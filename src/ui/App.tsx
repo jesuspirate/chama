@@ -311,15 +311,17 @@ function TradeCard({ state, pubkey, onSelect }: {
 // TRADE DETAIL
 // ══════════════════════════════════════════════════════════════════════════
 
-function TradeDetail({ state, pubkey, onBack, onVote, onClaim, onJoin }: {
+function TradeDetail({ state, pubkey, onBack, onVote, onClaim, onJoin, onLock }: {
   state: EscrowState; pubkey: string;
   onBack: () => void;
   onVote: (outcome: Outcome) => void;
   onClaim: () => void;
   onJoin: (role: Role) => void;
+  onLock: () => Promise<void>;
 }) {
   const [voting, setVoting] = useState(false);
   const [joining, setJoining] = useState(false);
+  const [locking, setLocking] = useState(false);
   const s = STATUS[state.status] || STATUS.CREATED;
   const myRole = state.participants.buyer === pubkey ? Role.BUYER
     : state.participants.seller === pubkey ? Role.SELLER
@@ -447,14 +449,41 @@ function TradeDetail({ state, pubkey, onBack, onVote, onClaim, onJoin }: {
         </div>
       )}
 
-      {/* FUNDED — waiting for lock */}
+      {/* FUNDED — lock ecash */}
       {state.status === EscrowStatus.FUNDED && myRole && (
         <div style={{
-          background: T.tealDim, border: `1px solid ${T.teal}44`,
-          borderRadius: T.r, padding: "14px 20px", marginBottom: 16,
-          textAlign: "center", fontFamily: T.mono, fontSize: 12, color: T.teal,
+          background: T.card, border: `1px solid ${T.teal}44`,
+          borderRadius: T.r, padding: 20, marginBottom: 16,
         }}>
-          All 3 participants joined! Ready to lock ecash.
+          <div style={{
+            textAlign: "center", fontFamily: T.mono, fontSize: 12,
+            color: T.teal, marginBottom: 14,
+          }}>
+            All 3 participants joined! Ready to lock ecash.
+          </div>
+          <button
+            disabled={locking}
+            onClick={async () => {
+              setLocking(true);
+              try { await onLock(); } finally { setLocking(false); }
+            }}
+            style={{
+              width: "100%", padding: "16px", borderRadius: T.rs,
+              background: locking ? T.surface : `linear-gradient(135deg, ${T.accent}, ${T.amber})`,
+              border: "none", color: locking ? T.muted : T.bg,
+              fontFamily: T.mono, fontSize: 14, fontWeight: 800,
+              cursor: locking ? "default" : "pointer",
+              letterSpacing: 0.5, transition: "all 0.2s",
+            }}
+          >
+            {locking ? "Locking..." : "\u26a1 Lock " + fmtSats(state.amountMsats) + " sats"}
+          </button>
+          <div style={{
+            textAlign: "center", marginTop: 8,
+            fontSize: 9, color: T.muted, fontFamily: T.mono,
+          }}>
+            Simulated SSS split (Fedimint WASM coming soon)
+          </div>
         </div>
       )}
 
@@ -818,7 +847,7 @@ export default function App() {
           </div>
         </div>
         <div style={{ fontSize: 9, color: T.muted, fontFamily: T.mono, padding: "4px 10px", borderRadius: 6, background: T.surface, border: `1px solid ${T.border}` }}>
-          v0.1.4
+          v0.1.5
         </div>
       </div>
 
@@ -847,6 +876,15 @@ export default function App() {
                 setToast({ message: `Joined as ${role}!`, type: "success" });
               } catch (e: any) {
                 setToast({ message: e.message || "Failed to join", type: "error" });
+              }
+            }}
+            onLock={async () => {
+              try {
+                setToast({ message: "Locking ecash (simulated SSS)...", type: "info" });
+                await actions.simulatedLock(selectedId!);
+                setToast({ message: "Locked! Vote buttons are live.", type: "success" });
+              } catch (e: any) {
+                setToast({ message: e.message || "Lock failed", type: "error" });
               }
             }}
           />

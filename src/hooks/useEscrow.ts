@@ -57,6 +57,8 @@ export interface UseEscrowActions {
   }) => Promise<{ escrowId: string; state: EscrowState }>;
   /** Join an existing escrow */
   joinEscrow: (escrowId: string, role: Role) => Promise<EscrowState>;
+  /** Lock ecash (simulated for testing) */
+  simulatedLock: (escrowId: string) => Promise<EscrowState>;
   /** Cast a vote */
   vote: (escrowId: string, outcome: Outcome) => Promise<EscrowState>;
   /** Claim ecash (winner only) */
@@ -232,6 +234,13 @@ export function useEscrow(config?: Partial<EscrowClientConfig>): [UseEscrowState
     return result;
   }, []);
 
+  const simulatedLockAction = useCallback(async (escrowId: string) => {
+    const client = requireClient();
+    const result = await client.simulatedLock(escrowId);
+    vibrate([60, 30, 60, 30, 120]); // Lock haptic
+    return result;
+  }, []);
+
   const voteAction = useCallback(async (escrowId: string, outcome: Outcome) => {
     const client = requireClient();
     const result = await client.vote(escrowId, outcome);
@@ -285,6 +294,7 @@ export function useEscrow(config?: Partial<EscrowClientConfig>): [UseEscrowState
     disconnect,
     createEscrow,
     joinEscrow,
+    simulatedLock: simulatedLockAction,
     vote: voteAction,
     claim: claimAction,
     sendChat,

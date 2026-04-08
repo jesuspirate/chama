@@ -297,6 +297,36 @@ export class EscrowClient {
     return this.applyLocally(escrowId, signed, payload);
   }
 
+  // ── Simulated lock (for testing without Fedimint WASM) ──────────────────
+
+  async simulatedLock(escrowId: string): Promise<EscrowState> {
+    const state = this.states.get(escrowId);
+    if (!state) throw new Error(`Escrow ${escrowId} not loaded`);
+
+    const buyerPk = state.participants.buyer || "mock_buyer";
+    const sellerPk = state.participants.seller || "mock_seller";
+    const arbiterPk = state.participants.arbiter || "mock_arbiter";
+
+    const platformFeeMsats = Math.floor((state.amountMsats * state.fees.platformBps) / 10_000);
+    const arbiterFeeMsats = state.fees.arbiterMsats;
+    const sellerReceivesMsats = state.amountMsats - platformFeeMsats - arbiterFeeMsats;
+
+    // Mock SSS shares (will be replaced with real Shamir when Fedimint WASM is wired)
+    const mockHash = "sim_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+
+    return this.lockEscrow(escrowId, {
+      notesHash: mockHash,
+      shares: [
+        { recipientPubkey: buyerPk, encryptedShare: "sim_share_0_" + mockHash, shareIndex: 0 },
+        { recipientPubkey: sellerPk, encryptedShare: "sim_share_1_" + mockHash, shareIndex: 1 },
+        { recipientPubkey: arbiterPk, encryptedShare: "sim_share_2_" + mockHash, shareIndex: 2 },
+      ],
+      sellerReceivesMsats,
+      arbiterFeeMsats,
+      platformFeeMsats,
+    });
+  }
+
   // ── Lock ecash in SSS escrow ────────────────────────────────────────────
 
   async lockEscrow(escrowId: string, params: {
@@ -322,9 +352,9 @@ export class EscrowClient {
       lockedAt: now,
     };
 
-    // Encrypt to self — each participant decrypts their share separately
-    const pubkey = await this.getPubkey();
-    const content = await this.signer.nip44Encrypt(JSON.stringify(payload), pubkey);
+    // For testing: plaintext. In production with real ecash, this will be NIP-44 encrypted.
+    // TODO: Re-enable NIP-44 encryption when Fedimint WASM is integrated
+    const content = JSON.stringify(payload);
 
     const unsigned: UnsignedEvent = {
       kind: EscrowEventKind.LOCK,
@@ -366,7 +396,8 @@ export class EscrowClient {
       votedAt: now,
     };
 
-    const content = await this.signer.nip44Encrypt(JSON.stringify(payload), pubkey);
+    // Plaintext for testing. TODO: NIP-44 encrypt when Fedimint WASM integrated
+    const content = JSON.stringify(payload);
 
     const unsigned: UnsignedEvent = {
       kind: EscrowEventKind.VOTE,
@@ -743,7 +774,7 @@ export class EscrowClient {
       resolvedAt: now,
     };
 
-    const content = await this.signer.nip44Encrypt(JSON.stringify(payload), pubkey);
+    const content = JSON.stringify(payload);
 
     const unsigned: UnsignedEvent = {
       kind: EscrowEventKind.RESOLVE,
