@@ -285,13 +285,20 @@ function TradeCard({ state, pubkey, onSelect }: {
 
       {/* Escrow ID — tap to copy */}
       <div
-        onClick={() => { navigator.clipboard?.writeText(state.id); }}
-        style={{
-          marginTop: 10, textAlign: "center", cursor: "pointer",
-          fontSize: 9, color: T.muted, fontFamily: T.mono,
-          padding: "4px 8px", borderRadius: 4,
-          background: T.surface, transition: "color 0.2s",
-        }}
+       onClick={() => {
+  	const id = state.id;
+  	if (navigator.clipboard?.writeText) {
+    	  navigator.clipboard.writeText(id).catch(() => {});
+  	}
+  	// Fallback: select from a temporary input
+  	const el = document.createElement("input");
+  	el.value = id;
+  	document.body.appendChild(el);
+  	el.select();
+  	document.execCommand("copy");
+  	document.body.removeChild(el);
+  	alert("Copied: " + id);
+       }}
         title="Tap to copy escrow ID"
       >
         {state.id} — tap to copy
