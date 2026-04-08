@@ -222,9 +222,9 @@ export class EscrowClient {
       createdAt: now,
     };
 
-    // For CREATE, we encrypt to ourselves (content is public to participants
-    // who join — they'll get re-encrypted copies via the JOIN handshake)
-    const content = await this.signer.nip44Encrypt(JSON.stringify(payload), pubkey);
+    // CREATE content is PLAINTEXT — trade terms are public (marketplace discovery).
+    // Only LOCK/VOTE/CLAIM/CHAT events get NIP-44 encrypted.
+    const content = JSON.stringify(payload);
 
     const unsigned: UnsignedEvent = {
       kind: EscrowEventKind.CREATE,
@@ -276,9 +276,8 @@ export class EscrowClient {
       joinedAt: now,
     };
 
-    // Encrypt to the initiator (they need to know who joined)
-    const initiatorPk = state.initiator.pubkey;
-    const content = await this.signer.nip44Encrypt(JSON.stringify(payload), initiatorPk);
+    // JOIN content is PLAINTEXT — who joined is public info.
+    const content = JSON.stringify(payload);
 
     const unsigned: UnsignedEvent = {
       kind: EscrowEventKind.JOIN,
@@ -558,18 +557,35 @@ export class EscrowClient {
     const rawEvents = await this.relayManager.fetchEscrowEvents(escrowId);
     if (rawEvents.length === 0) return null;
 
-    // Parse and decrypt all events
+    // Parse all events — try plaintext JSON first, then NIP-44 decrypt.
+    // CREATE and JOIN are plaintext; LOCK/VOTE/CLAIM/CHAT are encrypted.
     const parsed: ParsedEscrowEvent[] = [];
     for (const raw of rawEvents) {
+      let content: string | null = null;
+
+      // Try 1: plaintext JSON (CREATE, JOIN, CANCEL, COMPLETE, RESOLVE)
       try {
-        const decrypted = await this.signer.nip44Decrypt(raw.content, raw.pubkey);
-        const result = parseEscrowEvent(raw, decrypted, true);
-        if (result.ok) parsed.push(result.event);
-      } catch (e) {
-        // Some events might not be decryptable (encrypted to other participants)
-        // That's fine — we skip them and work with what we can read
-        console.warn(`[escrow] Could not decrypt event ${raw.id}: ${e}`);
+        const test = JSON.parse(raw.content);
+        if (test && typeof test.type === "string" && test.type.startsWith("escrow:")) {
+          content = raw.content;
+        }
+      } catch {
+        // Not valid JSON — likely NIP-44 encrypted
       }
+
+      // Try 2: NIP-44 decrypt (LOCK, VOTE, CLAIM, CHAT)
+      if (!content) {
+        try {
+          content = await this.signer.nip44Decrypt(raw.content, raw.pubkey);
+        } catch {
+          // Can't decrypt — encrypted to another participant, skip
+          console.warn(`[escrow] Skipping undecryptable event ${raw.id.slice(0, 8)}…`);
+          continue;
+        }
+      }
+
+      const result = parseEscrowEvent(raw, content, true);
+      if (result.ok) parsed.push(result.event);
     }
 
     if (parsed.length === 0) return null;
@@ -607,13 +623,23 @@ export class EscrowClient {
     if (!dTag?.[1]) return;
     const escrowId = dTag[1];
 
-    // Try to decrypt
-    let decrypted: string;
+    // Try plaintext JSON first (CREATE, JOIN), then NIP-44 decrypt (LOCK, VOTE, etc.)
+    let decrypted: string | null = null;
     try {
-      decrypted = await this.signer.nip44Decrypt(event.content, event.pubkey);
+      const test = JSON.parse(event.content);
+      if (test && typeof test.type === "string" && test.type.startsWith("escrow:")) {
+        decrypted = event.content;
+      }
     } catch {
-      // Can't decrypt — might be encrypted to another participant
-      return;
+      // Not plaintext JSON — try NIP-44
+    }
+    if (!decrypted) {
+      try {
+        decrypted = await this.signer.nip44Decrypt(event.content, event.pubkey);
+      } catch {
+        // Can't decrypt — encrypted to another participant, ignore
+        return;
+      }
     }
 
     // Parse

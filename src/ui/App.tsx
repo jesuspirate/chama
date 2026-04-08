@@ -282,6 +282,20 @@ function TradeCard({ state, pubkey, onSelect }: {
           />
         ))}
       </div>
+
+      {/* Escrow ID — tap to copy */}
+      <div
+        onClick={() => { navigator.clipboard?.writeText(state.id); }}
+        style={{
+          marginTop: 10, textAlign: "center", cursor: "pointer",
+          fontSize: 9, color: T.muted, fontFamily: T.mono,
+          padding: "4px 8px", borderRadius: 4,
+          background: T.surface, transition: "color 0.2s",
+        }}
+        title="Tap to copy escrow ID"
+      >
+        {state.id} — tap to copy
+      </div>
     </div>
   );
 }
@@ -290,13 +304,15 @@ function TradeCard({ state, pubkey, onSelect }: {
 // TRADE DETAIL
 // ══════════════════════════════════════════════════════════════════════════
 
-function TradeDetail({ state, pubkey, onBack, onVote, onClaim }: {
+function TradeDetail({ state, pubkey, onBack, onVote, onClaim, onJoin }: {
   state: EscrowState; pubkey: string;
   onBack: () => void;
   onVote: (outcome: Outcome) => void;
   onClaim: () => void;
+  onJoin: (role: Role) => void;
 }) {
   const [voting, setVoting] = useState(false);
+  const [joining, setJoining] = useState(false);
   const s = STATUS[state.status] || STATUS.CREATED;
   const myRole = state.participants.buyer === pubkey ? Role.BUYER
     : state.participants.seller === pubkey ? Role.SELLER
@@ -370,6 +386,70 @@ function TradeDetail({ state, pubkey, onBack, onVote, onClaim }: {
           ))}
         </div>
       </div>
+
+      {/* JOIN buttons — show when user is not a participant and slots are open */}
+      {!myRole && state.status === EscrowStatus.CREATED && (
+        <div style={{
+          background: T.card, border: `1px solid ${T.border}`,
+          borderRadius: T.r, padding: 20, marginBottom: 16,
+        }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: T.muted, fontFamily: T.mono, letterSpacing: 1, marginBottom: 12 }}>
+            JOIN THIS TRADE
+          </div>
+          <div style={{ display: "flex", gap: 10 }}>
+            {!state.participants.buyer && (
+              <button disabled={joining} onClick={async () => {
+                setJoining(true);
+                try { await onJoin(Role.BUYER); } finally { setJoining(false); }
+              }} style={{
+                flex: 1, padding: "14px", borderRadius: T.rs,
+                background: T.accentDim, border: `1px solid ${T.accent}44`,
+                color: T.accent, fontFamily: T.mono, fontSize: 13, fontWeight: 700,
+                cursor: joining ? "default" : "pointer", transition: "all 0.2s",
+              }}>
+                {joining ? "Joining..." : "Join as Buyer"}
+              </button>
+            )}
+            {!state.participants.arbiter && (
+              <button disabled={joining} onClick={async () => {
+                setJoining(true);
+                try { await onJoin(Role.ARBITER); } finally { setJoining(false); }
+              }} style={{
+                flex: 1, padding: "14px", borderRadius: T.rs,
+                background: T.purpleDim, border: `1px solid ${T.purple}44`,
+                color: T.purple, fontFamily: T.mono, fontSize: 13, fontWeight: 700,
+                cursor: joining ? "default" : "pointer", transition: "all 0.2s",
+              }}>
+                {joining ? "Joining..." : "Join as Arbiter"}
+              </button>
+            )}
+          </div>
+          {!state.participants.seller && (
+            <button disabled={joining} onClick={async () => {
+              setJoining(true);
+              try { await onJoin(Role.SELLER); } finally { setJoining(false); }
+            }} style={{
+              width: "100%", marginTop: 10, padding: "14px", borderRadius: T.rs,
+              background: T.tealDim, border: `1px solid ${T.teal}44`,
+              color: T.teal, fontFamily: T.mono, fontSize: 13, fontWeight: 700,
+              cursor: joining ? "default" : "pointer", transition: "all 0.2s",
+            }}>
+              {joining ? "Joining..." : "Join as Seller"}
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* FUNDED — waiting for lock */}
+      {state.status === EscrowStatus.FUNDED && myRole && (
+        <div style={{
+          background: T.tealDim, border: `1px solid ${T.teal}44`,
+          borderRadius: T.r, padding: "14px 20px", marginBottom: 16,
+          textAlign: "center", fontFamily: T.mono, fontSize: 12, color: T.teal,
+        }}>
+          All 3 participants joined! Ready to lock ecash.
+        </div>
+      )}
 
       {/* Vote tally */}
       {(state.status === EscrowStatus.LOCKED || state.status === EscrowStatus.APPROVED ||
@@ -578,6 +658,57 @@ function CreateForm({ onCreate, onClose }: {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
+// LOAD TRADE INPUT
+// ══════════════════════════════════════════════════════════════════════════
+
+function LoadTradeInput({ onLoad }: { onLoad: (id: string) => void }) {
+  const [id, setId] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const handleLoad = async () => {
+    if (!id.trim()) return;
+    setLoading(true);
+    try { await onLoad(id.trim()); } finally { setLoading(false); setId(""); }
+  };
+
+  return (
+    <div style={{
+      display: "flex", gap: 8, marginBottom: 16,
+      padding: 12, background: T.surface,
+      borderRadius: T.r, border: `1px solid ${T.border}`,
+    }}>
+      <input
+        value={id}
+        onChange={e => setId(e.target.value)}
+        onKeyDown={e => e.key === "Enter" && handleLoad()}
+        placeholder="Paste escrow ID to join a trade..."
+        style={{
+          flex: 1, padding: "8px 12px",
+          background: T.card, border: `1px solid ${T.border}`,
+          borderRadius: T.rs, color: T.text,
+          fontFamily: T.mono, fontSize: 11, outline: "none",
+        }}
+      />
+      <button
+        onClick={handleLoad}
+        disabled={!id.trim() || loading}
+        style={{
+          padding: "8px 16px", borderRadius: T.rs,
+          background: id.trim() && !loading ? T.tealDim : T.card,
+          border: `1px solid ${id.trim() && !loading ? T.teal + "44" : T.border}`,
+          color: id.trim() && !loading ? T.teal : T.muted,
+          fontFamily: T.mono, fontSize: 11, fontWeight: 700,
+          cursor: id.trim() && !loading ? "pointer" : "default",
+          transition: "all 0.2s", whiteSpace: "nowrap",
+        }}
+      >
+        {loading ? "Loading..." : "Load"}
+      </button>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════
 // TOAST
 // ══════════════════════════════════════════════════════════════════════════
 
@@ -680,7 +811,7 @@ export default function App() {
           </div>
         </div>
         <div style={{ fontSize: 9, color: T.muted, fontFamily: T.mono, padding: "4px 10px", borderRadius: 6, background: T.surface, border: `1px solid ${T.border}` }}>
-          v0.1.2
+          v0.1.4
         </div>
       </div>
 
@@ -702,6 +833,15 @@ export default function App() {
               () => setToast({ message: "Claimed! Ecash redeemed.", type: "success" }),
               (e: any) => setToast({ message: e.message, type: "error" })
             )}
+            onJoin={async (role) => {
+              try {
+                setToast({ message: `Joining as ${role}...`, type: "info" });
+                await actions.joinEscrow(selectedId!, role);
+                setToast({ message: `Joined as ${role}!`, type: "success" });
+              } catch (e: any) {
+                setToast({ message: e.message || "Failed to join", type: "error" });
+              }
+            }}
           />
         </div>
       ) : view === "create" ? (
@@ -726,6 +866,23 @@ export default function App() {
               + New trade
             </button>
           </div>
+
+          {/* Load trade by ID */}
+          <LoadTradeInput onLoad={async (id) => {
+            try {
+              setToast({ message: "Loading from relays...", type: "info" });
+              const state = await actions.loadEscrow(id);
+              if (state) {
+                setToast({ message: "Trade loaded!", type: "success" });
+                setSelectedId(id);
+                setView("detail");
+              } else {
+                setToast({ message: "Trade not found on relays", type: "error" });
+              }
+            } catch (e: any) {
+              setToast({ message: e.message || "Failed to load", type: "error" });
+            }
+          }} />
 
           {escrowList.length === 0 ? (
             <div style={{
