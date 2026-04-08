@@ -1,5 +1,5 @@
 // ══════════════════════════════════════════════════════════════════════════
-// SatoshiMarket Escrow Engine — Test Suite
+// Chama Escrow Engine — Test Suite
 // ══════════════════════════════════════════════════════════════════════════
 //
 // Run: npx tsx src/escrow-engine/tests.ts
@@ -220,7 +220,7 @@ function assertErr(result: TransitionResult, expectedCode: string, name: string)
 // TEST SUITES
 // ══════════════════════════════════════════════════════════════════════════
 
-console.log("\n🧪 SatoshiMarket Escrow Engine — Test Suite\n");
+console.log("\n🧪 Chama Escrow Engine — Test Suite\n");
 
 // ── 1. CREATE ─────────────────────────────────────────────────────────────
 console.log("── CREATE ──");

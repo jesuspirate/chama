@@ -120,7 +120,7 @@ function ConnectScreen({ onConnect, loading, error }: {
       <div style={{ fontSize: 48, lineHeight: 1 }}>₿</div>
       <div>
         <div style={{ fontSize: 24, fontWeight: 700, fontFamily: T.mono, letterSpacing: -1, marginBottom: 8 }}>
-          SatoshiMarket
+          Chama
         </div>
         <div style={{ fontSize: 11, color: T.muted, fontFamily: T.mono, letterSpacing: 2, textTransform: "uppercase" }}>
           Nostr · Fedimint · SSS Escrow
@@ -578,6 +578,28 @@ function CreateForm({ onCreate, onClose }: {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
+// TOAST
+// ══════════════════════════════════════════════════════════════════════════
+
+function Toast({ message, type, onDone }: { message: string; type: "success" | "error" | "info"; onDone: () => void }) {
+  useEffect(() => { const t = setTimeout(onDone, 4000); return () => clearTimeout(t); }, [onDone]);
+  const colors = { success: T.green, error: T.red, info: T.accent };
+  const bgs = { success: T.greenDim, error: T.redDim, info: T.accentDim };
+  return (
+    <div style={{
+      position: "fixed", top: 16, left: "50%", transform: "translateX(-50%)",
+      padding: "10px 20px", borderRadius: T.rs,
+      background: bgs[type], border: `1px solid ${colors[type]}44`,
+      color: colors[type], fontFamily: T.mono, fontSize: 12, fontWeight: 600,
+      zIndex: 9999, animation: "fadeIn 0.3s ease",
+      maxWidth: "90vw", textAlign: "center", wordBreak: "break-word",
+    }}>
+      {type === "success" ? "\u2713 " : type === "error" ? "\u2717 " : "\u26a1 "}{message}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════
 // MAIN APP
 // ══════════════════════════════════════════════════════════════════════════
 
@@ -589,9 +611,24 @@ export default function App() {
 
   const [view, setView] = useState<"list" | "detail" | "create">("list");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" | "info" } | null>(null);
 
   const escrowList = [...escrows.values()].sort((a, b) => b.createdAt - a.createdAt);
   const selected = selectedId ? escrows.get(selectedId) : null;
+
+  const handleCreate = async (params: any) => {
+    try {
+      setToast({ message: "Signing event with NIP-07...", type: "info" });
+      const { escrowId, state } = await actions.createEscrow(params);
+      setToast({ message: `Trade published! ${escrowId}`, type: "success" });
+      setView("detail");
+      setSelectedId(escrowId);
+    } catch (e: any) {
+      console.error("[chama] Create failed:", e);
+      setToast({ message: e.message || "Failed to create trade", type: "error" });
+      throw e;
+    }
+  };
 
   // ── Not connected → show connect screen ──
   if (!connected) {
@@ -625,6 +662,9 @@ export default function App() {
         ::-webkit-scrollbar-thumb{background:${T.border};border-radius:4px}
       `}</style>
 
+      {/* Toast */}
+      {toast && <Toast message={toast.message} type={toast.type} onDone={() => setToast(null)} />}
+
       {/* Header */}
       <div style={{
         padding: "16px 16px 12px", borderBottom: `1px solid ${T.border}`,
@@ -633,14 +673,14 @@ export default function App() {
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <span style={{ fontSize: 22 }}>₿</span>
           <div>
-            <div style={{ fontSize: 16, fontWeight: 700, fontFamily: T.mono, letterSpacing: -0.5 }}>SatoshiMarket</div>
+            <div style={{ fontSize: 16, fontWeight: 700, fontFamily: T.mono, letterSpacing: -0.5 }}>Chama</div>
             <div style={{ fontSize: 9, color: T.muted, fontFamily: T.mono, letterSpacing: 1.5, textTransform: "uppercase" }}>
               Nostr · Fedimint · SSS
             </div>
           </div>
         </div>
         <div style={{ fontSize: 9, color: T.muted, fontFamily: T.mono, padding: "4px 10px", borderRadius: 6, background: T.surface, border: `1px solid ${T.border}` }}>
-          v0.1.0
+          v0.1.2
         </div>
       </div>
 
@@ -654,14 +694,20 @@ export default function App() {
             state={selected}
             pubkey={pubkey!}
             onBack={() => { setView("list"); setSelectedId(null); }}
-            onVote={(outcome) => actions.vote(selectedId!, outcome)}
-            onClaim={() => selected.lock.notesHash && actions.claim(selectedId!, selected.lock.notesHash)}
+            onVote={(outcome) => actions.vote(selectedId!, outcome).then(
+              () => setToast({ message: `Voted ${outcome}!`, type: "success" }),
+              (e: any) => setToast({ message: e.message, type: "error" })
+            )}
+            onClaim={() => selected.lock.notesHash && actions.claim(selectedId!, selected.lock.notesHash).then(
+              () => setToast({ message: "Claimed! Ecash redeemed.", type: "success" }),
+              (e: any) => setToast({ message: e.message, type: "error" })
+            )}
           />
         </div>
       ) : view === "create" ? (
         <div style={{ animation: "fadeIn 0.3s ease" }}>
           <CreateForm
-            onCreate={actions.createEscrow}
+            onCreate={handleCreate}
             onClose={() => setView("list")}
           />
         </div>

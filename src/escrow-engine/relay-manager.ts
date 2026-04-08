@@ -208,6 +208,16 @@ export class RelayManager {
         // ["OK", event_id, accepted, message]
         if (data.length < 4) return;
         const [, eventId, accepted, message] = data as [string, string, boolean, string];
+
+        // Check if this is a pending publish
+        const key = `${eventId}:${relayUrl}`;
+        const pending = this.pendingOk.get(key);
+        if (pending) {
+          clearTimeout(pending.timeout);
+          this.pendingOk.delete(key);
+          pending.resolve({ accepted, message: message || "" });
+        }
+
         this.callbacks.onOk?.(eventId, accepted, message || "", relayUrl);
         break;
       }
@@ -276,27 +286,22 @@ export class RelayManager {
     return { accepted, rejected, errors };
   }
 
+  /** Pending OK handlers — keyed by "eventId:relayUrl" */
+  private pendingOk: Map<string, { resolve: (v: { accepted: boolean; message: string }) => void; timeout: ReturnType<typeof setTimeout> }> = new Map();
+
   private publishToSingleRelay(
     relay: RelayConnection,
     event: NostrEvent
   ): Promise<{ accepted: boolean; message: string }> {
     return new Promise((resolve) => {
+      const key = `${event.id}:${relay.url}`;
+
       const timeout = setTimeout(() => {
+        this.pendingOk.delete(key);
         resolve({ accepted: false, message: `Timeout on ${relay.url}` });
       }, PUBLISH_TIMEOUT_MS);
 
-      // Temporarily intercept OK for this event
-      const origOk = this.callbacks.onOk;
-      const handler = (eventId: string, accepted: boolean, message: string, relayUrl: string) => {
-        if (eventId === event.id && relayUrl === relay.url) {
-          clearTimeout(timeout);
-          this.callbacks.onOk = origOk;
-          origOk?.(eventId, accepted, message, relayUrl);
-          resolve({ accepted, message });
-        }
-      };
-      this.callbacks.onOk = handler;
-
+      this.pendingOk.set(key, { resolve, timeout });
       this.sendToRelay(relay, ["EVENT", event]);
     });
   }
