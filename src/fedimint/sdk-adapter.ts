@@ -339,13 +339,28 @@ function rotateFilename(): string {
   return name;
 }
 
-/** Check if an error is the OPFS "file is locked" error */
+/**
+ * Check if an error is the OPFS "file is locked" error.
+ *
+ * The @fedimint/transport-web worker posts errors as a STRING in
+ * `response.error` (not an Error object), so we have to sniff both
+ * shapes: DOMException-like objects AND plain string messages.
+ */
 function isOpfsLockError(e: unknown): boolean {
   if (!e) return false;
-  const err = e as { name?: string; message?: string };
+
+  // Plain string (this is how the worker actually rejects)
+  if (typeof e === "string") {
+    return /no modification allowed|invalidstate/i.test(e);
+  }
+
+  // Error / DOMException
+  const err = e as { name?: string; message?: string; toString?: () => string };
   if (err.name === "NoModificationAllowedError") return true;
   if (err.name === "InvalidStateError") return true;
-  return /no modification allowed|invalidstate/i.test(err.message || "");
+
+  const msg = err.message || (typeof err.toString === "function" ? err.toString() : "");
+  return /no modification allowed|invalidstate/i.test(msg);
 }
 
 export async function createRealWallet(
@@ -382,15 +397,26 @@ export async function createRealWallet(
     ({ d: director, t: transport } = await attemptInit(filename));
     console.info(`[chama] Fedimint OPFS file: ${filename}`);
   } catch (e) {
+    console.warn(
+      `[chama] init failed on '${filename}' —`,
+      e,
+      "isOpfsLockError:",
+      isOpfsLockError(e)
+    );
     if (isOpfsLockError(e)) {
-      console.warn(
-        `[chama] OPFS '${filename}' is locked (stale sync handle). Rotating.`,
-        e
-      );
+      console.warn(`[chama] OPFS '${filename}' is locked (stale sync handle). Rotating.`);
       terminateCurrentWorker();
+      // Give the browser a tick to finalize the failed worker's teardown
+      // before spinning up a new one. Some Firefox builds need this.
+      await new Promise((r) => setTimeout(r, 50));
       filename = rotateFilename();
-      ({ d: director, t: transport } = await attemptInit(filename));
-      console.info(`[chama] Fedimint OPFS file (rotated): ${filename}`);
+      try {
+        ({ d: director, t: transport } = await attemptInit(filename));
+        console.info(`[chama] Fedimint OPFS file (rotated): ${filename}`);
+      } catch (e2) {
+        console.error(`[chama] retry with rotated filename '${filename}' also failed:`, e2);
+        throw e2;
+      }
     } else {
       throw e;
     }
