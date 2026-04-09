@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useEscrow } from "../hooks/useEscrow.js";
+import { useEscrow, type FedimintState } from "../hooks/useEscrow.js";
 import { type EscrowState, Role, Outcome, EscrowStatus } from "../escrow-engine/types.js";
 import { canVote, getWinner, getSummary } from "../escrow-engine/state-machine.js";
 
@@ -484,7 +484,7 @@ function TradeDetail({ state, pubkey, onBack, onVote, onClaim, onJoin, onLock }:
             textAlign: "center", marginTop: 8,
             fontSize: 9, color: T.muted, fontFamily: T.mono,
           }}>
-            Simulated SSS split (Fedimint WASM coming soon)
+            Real 2-of-3 Shamir split · ecash spent from your Fedimint wallet
           </div>
         </div>
       )}
@@ -769,11 +769,317 @@ function Toast({ message, type, onDone }: { message: string; type: "success" | "
 }
 
 // ══════════════════════════════════════════════════════════════════════════
+// FEDIMINT BAR — compact balance + fund button
+// ══════════════════════════════════════════════════════════════════════════
+
+function FedimintBar({ fedimint, onFund, onInit }: {
+  fedimint: FedimintState; onFund: () => void; onInit: () => void;
+}) {
+  const sats = Math.floor(fedimint.balanceMsats / 1000);
+  return (
+    <div style={{
+      display: "flex", alignItems: "center", justifyContent: "space-between",
+      padding: "10px 16px", background: T.surface,
+      borderBottom: `1px solid ${T.border}`, fontFamily: T.mono,
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+        <div style={{
+          width: 8, height: 8, borderRadius: "50%",
+          background: fedimint.joined ? T.green : fedimint.busy ? T.amber : T.muted,
+          boxShadow: fedimint.joined ? `0 0 8px ${T.green}66` : "none",
+          animation: fedimint.busy ? "pulse 1.2s infinite" : "none",
+          flexShrink: 0,
+        }} />
+        <span style={{
+          fontSize: 10, color: T.muted,
+          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+        }}>
+          {fedimint.joined ? fedimint.federationName : fedimint.busy ? "Joining…" : "No federation"}
+        </span>
+        {fedimint.joined && (
+          <>
+            <span style={{ color: T.border }}>·</span>
+            <span style={{ fontSize: 11, color: T.accent, fontWeight: 700 }}>
+              {sats.toLocaleString()} sats
+            </span>
+          </>
+        )}
+      </div>
+      {fedimint.joined ? (
+        <button onClick={onFund} style={{
+          padding: "4px 12px", borderRadius: 12,
+          background: T.accentDim, border: `1px solid ${T.accent}44`,
+          color: T.accent, fontFamily: T.mono, fontSize: 10, fontWeight: 700,
+          cursor: "pointer",
+        }}>
+          + Fund
+        </button>
+      ) : !fedimint.busy && fedimint.initialized && (
+        <button onClick={onInit} style={{
+          padding: "4px 12px", borderRadius: 12,
+          background: T.surface, border: `1px solid ${T.border}`,
+          color: T.muted, fontFamily: T.mono, fontSize: 10, fontWeight: 700,
+          cursor: "pointer",
+        }}>
+          Retry
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// FEDERATION JOIN PANEL — onboarding for non-joined users
+// ══════════════════════════════════════════════════════════════════════════
+
+function FederationJoinPanel({
+  fedimint, showAdvanced, onToggleAdvanced,
+  customInviteInput, onCustomInviteChange, onJoinDefault, onJoinCustom,
+}: {
+  fedimint: FedimintState;
+  showAdvanced: boolean;
+  onToggleAdvanced: () => void;
+  customInviteInput: string;
+  onCustomInviteChange: (v: string) => void;
+  onJoinDefault: () => void;
+  onJoinCustom: () => void;
+}) {
+  return (
+    <div style={{
+      margin: 16, padding: 20,
+      background: T.card, border: `1px solid ${T.border}`, borderRadius: T.r,
+    }}>
+      <div style={{ fontSize: 11, fontWeight: 600, color: T.muted, fontFamily: T.mono, letterSpacing: 1, marginBottom: 10 }}>
+        FEDIMINT WALLET
+      </div>
+      <div style={{ fontSize: 13, color: T.text, fontFamily: T.sans, lineHeight: 1.5, marginBottom: 14 }}>
+        Chama locks ecash into 2-of-3 Shamir shares. To trade, join a federation that mints the ecash.
+      </div>
+      <div style={{
+        padding: 12, marginBottom: 12, borderRadius: T.rs,
+        background: T.surface, border: `1px solid ${T.border}`,
+      }}>
+        <div style={{ fontSize: 12, fontWeight: 600, color: T.text, fontFamily: T.sans, marginBottom: 4 }}>
+          Bitcoin Life Federation
+        </div>
+        <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono, lineHeight: 1.5, marginBottom: 10 }}>
+          Default for new users. Already using Fedi? Your balance stays in Fedi — Chama just needs a federation to mint into for the lock.
+        </div>
+        <button
+          disabled={fedimint.busy}
+          onClick={onJoinDefault}
+          style={{
+            width: "100%", padding: "10px 16px", borderRadius: T.rs,
+            background: fedimint.busy ? T.surface : T.accent,
+            border: `1px solid ${T.accent}`,
+            color: fedimint.busy ? T.muted : "#000",
+            fontFamily: T.mono, fontSize: 12, fontWeight: 800,
+            cursor: fedimint.busy ? "not-allowed" : "pointer",
+          }}
+        >
+          {fedimint.busy ? "Loading WASM…" : "Join Bitcoin Life Federation"}
+        </button>
+      </div>
+
+      <button
+        onClick={onToggleAdvanced}
+        style={{
+          background: "none", border: "none", color: T.muted,
+          fontFamily: T.mono, fontSize: 10, cursor: "pointer", padding: 0,
+        }}
+      >
+        {showAdvanced ? "▲" : "▼"} Advanced — use a custom federation
+      </button>
+
+      {showAdvanced && (
+        <div style={{ marginTop: 12 }}>
+          <input
+            type="text"
+            placeholder="fed1…"
+            value={customInviteInput}
+            onChange={(e) => onCustomInviteChange(e.target.value)}
+            style={{ ...inputStyle, marginBottom: 8 }}
+          />
+          <button
+            disabled={fedimint.busy || !customInviteInput.trim()}
+            onClick={onJoinCustom}
+            style={{
+              width: "100%", padding: "8px 16px", borderRadius: T.rs,
+              background: T.surface, border: `1px solid ${T.border}`,
+              color: customInviteInput.trim() ? T.text : T.muted,
+              fontFamily: T.mono, fontSize: 11, fontWeight: 700,
+              cursor: fedimint.busy || !customInviteInput.trim() ? "not-allowed" : "pointer",
+            }}
+          >
+            Join custom federation
+          </button>
+        </div>
+      )}
+
+      {fedimint.error && (
+        <div style={{
+          marginTop: 12, padding: 10, borderRadius: T.rs,
+          background: T.redDim, border: `1px solid ${T.red}44`,
+          color: T.red, fontFamily: T.mono, fontSize: 10,
+        }}>
+          {fedimint.error}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// FUND WALLET MODAL — Lightning invoice to top up
+// ══════════════════════════════════════════════════════════════════════════
+
+function FundWalletModal({ onClose, onCreateInvoice }: {
+  onClose: () => void;
+  onCreateInvoice: (amountSats: number, description: string) => Promise<string>;
+}) {
+  const [amountSats, setAmountSats] = useState("10000");
+  const [description, setDescription] = useState("Chama top-up");
+  const [invoice, setInvoice] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const handleGenerate = async () => {
+    const n = parseInt(amountSats, 10);
+    if (!n || n <= 0) { setErr("Enter a valid sats amount"); return; }
+    setBusy(true); setErr(null);
+    try {
+      const bolt11 = await onCreateInvoice(n, description || "Chama top-up");
+      setInvoice(bolt11);
+    } catch (e: any) {
+      setErr(e.message || "Failed to create invoice");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const copyInvoice = () => {
+    if (!invoice) return;
+    if (navigator.clipboard?.writeText) navigator.clipboard.writeText(invoice).catch(() => {});
+  };
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed", inset: 0, background: "#000a", zIndex: 9998,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        padding: 16, animation: "fadeIn 0.2s ease",
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: T.card, border: `1px solid ${T.borderHi}`, borderRadius: T.r,
+          padding: 24, maxWidth: 420, width: "100%",
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: T.text, fontFamily: T.sans }}>
+            Fund wallet
+          </div>
+          <button onClick={onClose} style={{
+            background: "none", border: "none", color: T.muted,
+            fontFamily: T.mono, fontSize: 18, cursor: "pointer", padding: 0, lineHeight: 1,
+          }}>×</button>
+        </div>
+
+        {!invoice ? (
+          <>
+            <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono, marginBottom: 4, letterSpacing: 1 }}>
+              AMOUNT (SATS)
+            </div>
+            <input
+              type="number"
+              value={amountSats}
+              onChange={(e) => setAmountSats(e.target.value)}
+              style={{ ...inputStyle, marginBottom: 12 }}
+            />
+            <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono, marginBottom: 4, letterSpacing: 1 }}>
+              DESCRIPTION
+            </div>
+            <input
+              type="text"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              style={{ ...inputStyle, marginBottom: 16 }}
+            />
+            <button
+              disabled={busy}
+              onClick={handleGenerate}
+              style={{
+                width: "100%", padding: "12px 16px", borderRadius: T.rs,
+                background: busy ? T.surface : T.accent, border: `1px solid ${T.accent}`,
+                color: busy ? T.muted : "#000",
+                fontFamily: T.mono, fontSize: 12, fontWeight: 800,
+                cursor: busy ? "not-allowed" : "pointer",
+              }}
+            >
+              {busy ? "Generating…" : "Generate Lightning invoice"}
+            </button>
+          </>
+        ) : (
+          <>
+            <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono, marginBottom: 8, letterSpacing: 1 }}>
+              PAY THIS INVOICE FROM ANY LIGHTNING WALLET
+            </div>
+            <div style={{
+              padding: 12, marginBottom: 12, borderRadius: T.rs,
+              background: T.surface, border: `1px solid ${T.border}`,
+              fontFamily: T.mono, fontSize: 9, color: T.text,
+              wordBreak: "break-all", maxHeight: 140, overflowY: "auto",
+            }}>
+              {invoice}
+            </div>
+            <button
+              onClick={copyInvoice}
+              style={{
+                width: "100%", padding: "10px 16px", borderRadius: T.rs,
+                background: T.accentDim, border: `1px solid ${T.accent}44`,
+                color: T.accent, fontFamily: T.mono, fontSize: 11, fontWeight: 700,
+                cursor: "pointer", marginBottom: 8,
+              }}
+            >
+              Copy invoice
+            </button>
+            <button
+              onClick={onClose}
+              style={{
+                width: "100%", padding: "10px 16px", borderRadius: T.rs,
+                background: T.surface, border: `1px solid ${T.border}`,
+                color: T.muted, fontFamily: T.mono, fontSize: 11, fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              Done
+            </button>
+          </>
+        )}
+
+        {err && (
+          <div style={{
+            marginTop: 12, padding: 10, borderRadius: T.rs,
+            background: T.redDim, border: `1px solid ${T.red}44`,
+            color: T.red, fontFamily: T.mono, fontSize: 10,
+          }}>
+            {err}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════
 // MAIN APP
 // ══════════════════════════════════════════════════════════════════════════
 
 export default function App() {
-  const [{ connected, pubkey, escrows, relayStatuses, connectedRelays, error, loading }, actions] = useEscrow({
+  const [{ connected, pubkey, escrows, relayStatuses, connectedRelays, error, loading, fedimint }, actions] = useEscrow({
     relays: ["wss://relay.damus.io", "wss://relay.primal.net", "wss://nos.lol"],
     defaultPlatformFeeBps: 50,
   });
@@ -781,6 +1087,9 @@ export default function App() {
   const [view, setView] = useState<"list" | "detail" | "create">("list");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" | "info" } | null>(null);
+  const [showFundModal, setShowFundModal] = useState(false);
+  const [showAdvancedFederation, setShowAdvancedFederation] = useState(false);
+  const [customInviteInput, setCustomInviteInput] = useState("");
 
   const escrowList = [...escrows.values()].sort((a, b) => b.createdAt - a.createdAt);
   const selected = selectedId ? escrows.get(selectedId) : null;
@@ -849,12 +1158,66 @@ export default function App() {
           </div>
         </div>
         <div style={{ fontSize: 9, color: T.muted, fontFamily: T.mono, padding: "4px 10px", borderRadius: 6, background: T.surface, border: `1px solid ${T.border}` }}>
-          v0.1.8
+          v0.1.9
         </div>
       </div>
 
       {/* Wallet bar */}
       <WalletBar pubkey={pubkey!} connectedRelays={connectedRelays} relayStatuses={relayStatuses} />
+
+      {/* Fedimint wallet bar */}
+      <FedimintBar
+        fedimint={fedimint}
+        onFund={() => setShowFundModal(true)}
+        onInit={() => actions.initFedimint().catch(
+          (e: any) => setToast({ message: e.message || "Federation join failed", type: "error" })
+        )}
+      />
+
+      {/* Federation onboarding panel (only if not joined) */}
+      {!fedimint.joined && (
+        <FederationJoinPanel
+          fedimint={fedimint}
+          showAdvanced={showAdvancedFederation}
+          onToggleAdvanced={() => setShowAdvancedFederation(!showAdvancedFederation)}
+          customInviteInput={customInviteInput}
+          onCustomInviteChange={setCustomInviteInput}
+          onJoinDefault={async () => {
+            try {
+              setToast({ message: "Joining Bitcoin Life Federation (WASM warming up)...", type: "info" });
+              await actions.initFedimint();
+              setToast({ message: "Joined! You can now fund and trade.", type: "success" });
+            } catch (e: any) {
+              setToast({ message: e.message || "Join failed", type: "error" });
+            }
+          }}
+          onJoinCustom={async () => {
+            const invite = customInviteInput.trim();
+            if (!invite.startsWith("fed1")) {
+              setToast({ message: "Invite must start with fed1...", type: "error" });
+              return;
+            }
+            try {
+              actions.setCustomInvite(invite);
+              setToast({ message: "Joining custom federation...", type: "info" });
+              await actions.initFedimint(invite);
+              setToast({ message: "Joined custom federation!", type: "success" });
+            } catch (e: any) {
+              setToast({ message: e.message || "Join failed", type: "error" });
+            }
+          }}
+        />
+      )}
+
+      {/* Fund wallet modal */}
+      {showFundModal && (
+        <FundWalletModal
+          onClose={() => setShowFundModal(false)}
+          onCreateInvoice={(amountSats, desc) =>
+            actions.createFundingInvoice(amountSats * 1000, desc)
+          }
+        />
+      )}
 
       {/* Content */}
       {view === "detail" && selected ? (
@@ -867,8 +1230,8 @@ export default function App() {
               () => setToast({ message: `Voted ${outcome}!`, type: "success" }),
               (e: any) => setToast({ message: e.message, type: "error" })
             )}
-            onClaim={() => selected.lock.notesHash && actions.claim(selectedId!, selected.lock.notesHash).then(
-              () => setToast({ message: "Claimed! Ecash redeemed.", type: "success" }),
+            onClaim={() => actions.claimAndRedeem(selectedId!).then(
+              () => setToast({ message: "Claimed! Ecash redeemed to your wallet.", type: "success" }),
               (e: any) => setToast({ message: e.message, type: "error" })
             )}
             onJoin={async (role) => {
@@ -881,9 +1244,13 @@ export default function App() {
               }
             }}
             onLock={async () => {
+              if (!fedimint.joined) {
+                setToast({ message: "Join a federation first (scroll up).", type: "error" });
+                return;
+              }
               try {
-                setToast({ message: "Locking ecash (simulated SSS)...", type: "info" });
-                await actions.simulatedLock(selectedId!);
+                setToast({ message: "Spending ecash & splitting shares...", type: "info" });
+                await actions.lockAndPublish(selectedId!);
                 setToast({ message: "Locked! Vote buttons are live.", type: "success" });
               } catch (e: any) {
                 setToast({ message: e.message || "Lock failed", type: "error" });
