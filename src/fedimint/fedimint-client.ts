@@ -164,14 +164,34 @@ export class FedimintClient {
   async init(opts: FedimintInitOptions = {}): Promise<void> {
     try {
       this.wallet = await this.walletFactory({ mnemonic: opts.mnemonic });
-      await this.wallet.open();
 
-      // Subscribe to balance updates
-      this.balanceUnsubscribe = this.wallet.balance.subscribeBalance((balance) => {
-        this.callbacks.onBalanceUpdate?.(balance);
-      });
+      // Try to open an existing client in the DB. On a fresh OPFS file
+      // (e.g. after filename rotation or a first-ever launch) there is
+      // no client yet and the SDK throws "client is not initialized for
+      // this database" — that's not a real error, it just means we
+      // haven't joined a federation on this DB yet. We'll open it
+      // implicitly when joinFederation() runs.
+      try {
+        await this.wallet.open();
+      } catch (openErr) {
+        const msg = typeof openErr === "string" ? openErr : (openErr as Error)?.message || "";
+        if (/client is not initialized|not initialized for this database|no such client/i.test(msg)) {
+          console.info(
+            "[chama] No existing Fedimint client in this DB — will be created on join"
+          );
+        } else {
+          throw openErr;
+        }
+      }
 
+      // Only subscribe to balance updates if we successfully opened an
+      // existing client. On a fresh DB the subscription would target a
+      // non-existent client; we'll subscribe inside joinFederation()
+      // instead, after the client is bootstrapped.
       if (this.wallet.isOpen()) {
+        this.balanceUnsubscribe = this.wallet.balance.subscribeBalance((balance) => {
+          this.callbacks.onBalanceUpdate?.(balance);
+        });
         this._federationId = await this.wallet.federation.getFederationId();
       }
     } catch (e) {
@@ -218,6 +238,15 @@ export class FedimintClient {
 
     await wallet.joinFederation(inviteCode);
     this._federationId = await wallet.federation.getFederationId();
+
+    // Now that the client exists in the DB, wire up the balance stream
+    // (if init() skipped it because the DB was empty).
+    if (!this.balanceUnsubscribe) {
+      this.balanceUnsubscribe = wallet.balance.subscribeBalance((balance) => {
+        this.callbacks.onBalanceUpdate?.(balance);
+      });
+    }
+
     this.callbacks.onFederationJoined?.(this._federationId);
     return this._federationId;
   }
