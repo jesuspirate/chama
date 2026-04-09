@@ -427,6 +427,71 @@ export class RelayManager {
     });
   }
 
+  // ── One-shot fetch with an arbitrary filter ─────────────────────────────
+
+  /**
+   * Fetch events matching an arbitrary filter. Resolves when every
+   * connected relay has sent EOSE, or after the timeout.
+   */
+  fetchOnce(filter: NostrFilter, timeoutMs = 5_000): Promise<NostrEvent[]> {
+    return new Promise((resolve) => {
+      const events: NostrEvent[] = [];
+      const seenIds = new Set<string>();
+      let eoseCount = 0;
+      const connectedCount = [...this.relays.values()].filter(
+        r => r.status === RelayStatus.CONNECTED
+      ).length;
+
+      if (connectedCount === 0) {
+        resolve([]);
+        return;
+      }
+
+      const subId = `sm_fetch_once_${++this.subscriptionCounter}`;
+
+      const origOnEvent = this.callbacks.onEvent;
+      const origOnEose = this.callbacks.onEose;
+
+      const cleanup = () => {
+        clearTimeout(timer);
+        this.unsubscribe(subId);
+        this.callbacks.onEvent = origOnEvent;
+        this.callbacks.onEose = origOnEose;
+      };
+
+      const timer = setTimeout(() => {
+        cleanup();
+        resolve(events);
+      }, timeoutMs);
+
+      this.callbacks.onEvent = (event, relayUrl) => {
+        origOnEvent?.(event, relayUrl);
+        if (!seenIds.has(event.id)) {
+          seenIds.add(event.id);
+          events.push(event);
+        }
+      };
+
+      this.callbacks.onEose = (sid, relayUrl) => {
+        origOnEose?.(sid, relayUrl);
+        if (sid === subId) {
+          eoseCount++;
+          if (eoseCount >= connectedCount) {
+            cleanup();
+            resolve(events);
+          }
+        }
+      };
+
+      for (const [, relay] of this.relays) {
+        relay.subscriptions.set(subId, filter);
+        if (relay.status === RelayStatus.CONNECTED) {
+          this.sendToRelay(relay, ["REQ", subId, filter]);
+        }
+      }
+    });
+  }
+
   // ── Status queries ──────────────────────────────────────────────────────
 
   getRelayStatuses(): Map<string, RelayStatus> {

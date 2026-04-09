@@ -153,12 +153,39 @@ export function adaptRealWallet(real: RealFedimintWallet): IFedimintWallet {
 // operations. Unit tests can still run without the SDK installed.
 // ══════════════════════════════════════════════════════════════════════════
 
-export async function createRealWallet(): Promise<IFedimintWallet> {
+export interface CreateRealWalletOptions {
+  /**
+   * Optional BIP-39 mnemonic (as a word array) to seed the wallet with.
+   * If omitted, the director will generate a fresh mnemonic via
+   * `generateMnemonic()`. Chama supplies this from the Nostr-backed
+   * seed-manager so the wallet is deterministic across devices.
+   */
+  mnemonic?: string[];
+}
+
+export async function createRealWallet(
+  opts: CreateRealWalletOptions = {}
+): Promise<IFedimintWallet> {
   const { WalletDirector } = await import("@fedimint/core");
   const { WasmWorkerTransport } = await import("@fedimint/transport-web");
 
   const director = new WalletDirector(new WasmWorkerTransport());
   await director.initialize();
+
+  // Install the seed BEFORE creating the wallet so the wallet's derived
+  // keys come from our Nostr-backed mnemonic rather than a fresh random.
+  if (opts.mnemonic && opts.mnemonic.length > 0) {
+    await (director as unknown as {
+      setMnemonic(words: string[]): Promise<boolean>;
+    }).setMnemonic(opts.mnemonic);
+  } else {
+    // No seed supplied — let the director generate one. (Only hit when
+    // seed-manager is unavailable, e.g. in unit tests.)
+    await (director as unknown as {
+      generateMnemonic(): Promise<string[]>;
+    }).generateMnemonic();
+  }
+
   const wallet = await director.createWallet();
 
   return adaptRealWallet(wallet as unknown as RealFedimintWallet);
