@@ -849,7 +849,7 @@ export default function App() {
           </div>
         </div>
         <div style={{ fontSize: 9, color: T.muted, fontFamily: T.mono, padding: "4px 10px", borderRadius: 6, background: T.surface, border: `1px solid ${T.border}` }}>
-          v0.1.7
+          v0.1.8
         </div>
       </div>
 
