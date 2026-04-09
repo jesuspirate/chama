@@ -56,6 +56,7 @@ import {
   getOrCreateSeed,
   clearSeedCache,
   isTestnetMode,
+  resetLocalFedimintWallet,
 } from "../fedimint/index.js";
 
 // ── Hook state ────────────────────────────────────────────────────────────
@@ -162,6 +163,13 @@ export interface UseEscrowActions {
   createFundingInvoice: (amountMsats: number, description?: string) => Promise<string>;
   /** Refresh the current balance from the wallet */
   refreshBalance: () => Promise<void>;
+  /**
+   * Wipe the local Fedimint wallet's IndexedDB and reset in-memory state.
+   * Use this to recover from a "No modification allowed" seed-mismatch error
+   * or any other stuck-state issue. Destructive to *local* state only — the
+   * Nostr-backed seed survives and will be re-installed on next initFedimint().
+   */
+  resetLocalWallet: () => Promise<void>;
 }
 
 // ── Default relay list ────────────────────────────────────────────────────
@@ -599,6 +607,30 @@ export function useEscrow(config?: Partial<EscrowClientConfig>): [UseEscrowState
     });
   }, [updateFedimint]);
 
+  const resetLocalWallet = useCallback(async () => {
+    // Tear down the in-memory wallet first so the IndexedDB delete isn't
+    // blocked by the WASM worker holding the database open.
+    try {
+      await fedimintRef.current?.cleanup();
+    } catch (e) {
+      console.debug("[chama] fedimint cleanup during reset:", e);
+    }
+    fedimintRef.current = null;
+    bridgeRef.current = null;
+    clearSeedCache();
+
+    await resetLocalFedimintWallet();
+
+    updateFedimint({
+      initialized: false,
+      joined: false,
+      federationId: null,
+      balanceMsats: 0,
+      busy: false,
+      error: null,
+    });
+  }, [updateFedimint]);
+
   const createFundingInvoice = useCallback(async (
     amountMsats: number,
     description: string = "Chama wallet top-up"
@@ -628,6 +660,7 @@ export function useEscrow(config?: Partial<EscrowClientConfig>): [UseEscrowState
     setCustomInvite,
     createFundingInvoice,
     refreshBalance,
+    resetLocalWallet,
   };
 
   return [state, actions];

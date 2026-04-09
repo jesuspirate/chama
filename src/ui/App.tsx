@@ -842,7 +842,7 @@ function FedimintBar({ fedimint, onFund, onInit }: {
 
 function FederationJoinPanel({
   fedimint, showAdvanced, onToggleAdvanced,
-  customInviteInput, onCustomInviteChange, onJoinPreset, onJoinCustom,
+  customInviteInput, onCustomInviteChange, onJoinPreset, onJoinCustom, onResetLocal,
 }: {
   fedimint: FedimintState;
   showAdvanced: boolean;
@@ -851,7 +851,11 @@ function FederationJoinPanel({
   onCustomInviteChange: (v: string) => void;
   onJoinPreset: (preset: FederationPreset) => void;
   onJoinCustom: () => void;
+  onResetLocal: () => void;
 }) {
+  const showResetHint =
+    !!fedimint.error &&
+    /no modification allowed|different seed|already installed/i.test(fedimint.error);
   const [presets, setPresets] = useState<FederationPreset[]>(CURATED_PRESETS);
   const [observerLoading, setObserverLoading] = useState(false);
   const [observerError, setObserverError] = useState<string | null>(null);
@@ -1010,6 +1014,43 @@ function FederationJoinPanel({
           {fedimint.error}
         </div>
       )}
+
+      {/* Reset local wallet — escape hatch for stuck IndexedDB state */}
+      <div style={{ marginTop: 14, paddingTop: 12, borderTop: `1px dashed ${T.border}` }}>
+        {showResetHint && (
+          <div style={{
+            fontSize: 10, color: T.amber, fontFamily: T.mono,
+            marginBottom: 8, lineHeight: 1.5,
+          }}>
+            Looks like stale local wallet state. Reset to clear it — your
+            Nostr-backed seed is safe and will be restored automatically.
+          </div>
+        )}
+        <button
+          onClick={() => {
+            if (window.confirm(
+              "Reset the local Fedimint wallet?\n\n" +
+              "This deletes the WASM wallet's IndexedDB on this device. " +
+              "Your Nostr-backed seed is preserved, so your wallet will " +
+              "restore automatically on the next join.\n\n" +
+              "Any ecash that hasn't been moved out of an un-joined federation " +
+              "on THIS device will be lost. Safe if you haven't joined yet."
+            )) {
+              onResetLocal();
+            }
+          }}
+          style={{
+            background: "none",
+            border: `1px solid ${T.border}`,
+            color: T.muted,
+            fontFamily: T.mono, fontSize: 9, fontWeight: 700,
+            padding: "6px 10px", borderRadius: T.rs,
+            cursor: "pointer", letterSpacing: 0.5,
+          }}
+        >
+          ↺ Reset local wallet
+        </button>
+      </div>
     </div>
   );
 }
@@ -1243,7 +1284,7 @@ export default function App() {
           </div>
         </div>
         <div style={{ fontSize: 9, color: T.muted, fontFamily: T.mono, padding: "4px 10px", borderRadius: 6, background: T.surface, border: `1px solid ${T.border}` }}>
-          v0.1.10
+          v0.1.11
         </div>
       </div>
 
@@ -1293,6 +1334,21 @@ export default function App() {
               setToast({ message: "Joined custom federation!", type: "success" });
             } catch (e: any) {
               setToast({ message: e.message || "Join failed", type: "error" });
+            }
+          }}
+          onResetLocal={async () => {
+            try {
+              setToast({ message: "Resetting local wallet…", type: "info" });
+              await actions.resetLocalWallet();
+              setToast({
+                message: "Local wallet reset. Try joining again.",
+                type: "success",
+              });
+            } catch (e: any) {
+              setToast({
+                message: e.message || "Reset failed",
+                type: "error",
+              });
             }
           }}
         />
