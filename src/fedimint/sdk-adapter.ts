@@ -235,7 +235,8 @@ export async function resetLocalFedimintWallet(): Promise<void> {
   // 1. Release any live sync handle by killing the worker that owns it.
   terminateCurrentWorker();
 
-  // 2. OPFS entry removal.
+  // 2. OPFS entry removal + filename rotation so the next init() uses a
+  //    guaranteed-fresh OPFS file, sidestepping any orphaned sync handle.
   if (
     typeof navigator === "undefined" ||
     !navigator.storage ||
@@ -249,27 +250,28 @@ export async function resetLocalFedimintWallet(): Promise<void> {
 
   const root = await navigator.storage.getDirectory();
 
-  try {
-    // @ts-ignore — options arg is supported in Chrome/Safari but not yet in
-    // all TypeScript DOM libs.
-    await root.removeEntry(FEDIMINT_OPFS_FILE, { recursive: true });
-    console.info("[chama] OPFS 'fedimint.db' removed");
-  } catch (e: any) {
-    // NotFoundError = nothing to delete, which is fine.
-    if (e?.name === "NotFoundError") {
-      console.info("[chama] OPFS 'fedimint.db' not present — nothing to clear");
-      return;
-    }
-    // NoModificationAllowed here means another worker (different tab)
-    // is still holding the handle. Surface to UI.
-    if (e?.name === "NoModificationAllowedError" || e?.name === "InvalidStateError") {
-      throw new Error(
-        "Couldn't clear local Fedimint wallet: another tab has it open. " +
-        "Close other Chama tabs and try again."
+  // Best-effort delete of the currently-configured file AND the legacy
+  // default name. Failures on a locked file are non-fatal because we're
+  // about to rotate anyway.
+  const namesToDelete = new Set<string>([getStoredFilename(), FEDIMINT_OPFS_FILE]);
+  for (const name of namesToDelete) {
+    try {
+      // @ts-ignore — options arg lacks TS lib coverage on some releases
+      await root.removeEntry(name, { recursive: true });
+      console.info(`[chama] OPFS '${name}' removed`);
+    } catch (e: any) {
+      if (e?.name === "NotFoundError") continue;
+      console.warn(
+        `[chama] couldn't remove OPFS '${name}' (${e?.name}) — rotating filename instead`
       );
     }
-    throw e;
   }
+
+  // 3. Rotate to a fresh filename. Even if the old file couldn't be
+  //    deleted, the next init() will use a brand-new name and skip
+  //    whatever stale handle was orphaned.
+  const newName = rotateFilename();
+  console.info(`[chama] Next init will use OPFS file: ${newName}`);
 }
 
 /** @internal — used by createRealWallet to stash the transport for termination */
@@ -302,21 +304,98 @@ export interface CreateRealWalletOptions {
   mnemonic?: string[];
 }
 
+// ── OPFS filename rotation ───────────────────────────────────────────────
+//
+// Firefox (and sometimes Chrome after crashes) can leak OPFS sync access
+// handles across page reloads. When that happens, the worker's attempt to
+// createSyncAccessHandle() on the default "fedimint.db" file throws
+// NoModificationAllowedError, and there's no API to release the orphaned
+// handle — it'll clear itself "eventually" but not during this session.
+//
+// Fix: rotate the OPFS filename. We store the chosen filename in
+// localStorage so the next page load reuses the same file (preserving
+// the WASM wallet's local state). If init fails, we generate a new
+// random filename and retry — losing no user data, because the
+// Nostr-backed mnemonic is what actually owns the funds; the OPFS file
+// is just a local cache.
+
+const FILENAME_STORAGE_KEY = "chama_fedimint_opfs_file_v1";
+const DEFAULT_FILENAME = "fedimint.db";
+
+function getStoredFilename(): string {
+  try {
+    return localStorage.getItem(FILENAME_STORAGE_KEY) || DEFAULT_FILENAME;
+  } catch {
+    return DEFAULT_FILENAME;
+  }
+}
+
+function rotateFilename(): string {
+  const suffix = Math.random().toString(36).slice(2, 10);
+  const name = `chama-fedimint-${suffix}.db`;
+  try {
+    localStorage.setItem(FILENAME_STORAGE_KEY, name);
+  } catch {}
+  return name;
+}
+
+/** Check if an error is the OPFS "file is locked" error */
+function isOpfsLockError(e: unknown): boolean {
+  if (!e) return false;
+  const err = e as { name?: string; message?: string };
+  if (err.name === "NoModificationAllowedError") return true;
+  if (err.name === "InvalidStateError") return true;
+  return /no modification allowed|invalidstate/i.test(err.message || "");
+}
+
 export async function createRealWallet(
   opts: CreateRealWalletOptions = {}
 ): Promise<IFedimintWallet> {
   const { WalletDirector } = await import("@fedimint/core");
   const { WasmWorkerTransport } = await import("@fedimint/transport-web");
 
-  // CRITICAL: terminate any worker left over from a previous init (HMR,
-  // double-init, or a failed join). If we don't, the new worker tries to
-  // open the OPFS 'fedimint.db' file and hits NoModificationAllowedError
-  // because the stale worker still holds the sync access handle.
-  const transport = new WasmWorkerTransport();
-  registerTransport(transport as unknown as AnyTransport);
+  // Terminate any worker left over from a previous init in this session.
+  // Handles HMR, double-init, and retry-after-failed-join. (This does NOT
+  // help the cross-reload leak case — that's what filename rotation is for.)
+  terminateCurrentWorker();
 
-  const director = new WalletDirector(transport);
-  await director.initialize();
+  // Try the stored filename first. If the worker can't open it (stale
+  // sync handle from a previous page load that didn't release), rotate
+  // to a fresh name and retry once.
+  let filename = getStoredFilename();
+  let director: any;
+  let transport: any;
+
+  const attemptInit = async (fname: string) => {
+    const t = new WasmWorkerTransport();
+    registerTransport(t as unknown as AnyTransport);
+    const d = new WalletDirector(t, /* lazy */ true);
+    // _client is protected; cast through unknown to reach initialize()
+    const tc = (d as unknown as {
+      _client: { initialize(testFilename?: string): Promise<boolean> };
+    })._client;
+    await tc.initialize(fname);
+    return { d, t };
+  };
+
+  try {
+    ({ d: director, t: transport } = await attemptInit(filename));
+    console.info(`[chama] Fedimint OPFS file: ${filename}`);
+  } catch (e) {
+    if (isOpfsLockError(e)) {
+      console.warn(
+        `[chama] OPFS '${filename}' is locked (stale sync handle). Rotating.`,
+        e
+      );
+      terminateCurrentWorker();
+      filename = rotateFilename();
+      ({ d: director, t: transport } = await attemptInit(filename));
+      console.info(`[chama] Fedimint OPFS file (rotated): ${filename}`);
+    } else {
+      throw e;
+    }
+  }
+  void transport; // retained reference via registerTransport
 
   // Install the seed BEFORE creating the wallet so the wallet's derived
   // keys come from our Nostr-backed mnemonic rather than a fresh random.
