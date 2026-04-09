@@ -70,7 +70,10 @@ export interface RealFedimintWallet {
 // ADAPTER
 // ══════════════════════════════════════════════════════════════════════════
 
-export function adaptRealWallet(real: RealFedimintWallet): IFedimintWallet {
+export function adaptRealWallet(
+  real: RealFedimintWallet,
+  onCleanup?: () => void
+): IFedimintWallet {
   return {
     async open() {
       await real.open();
@@ -140,64 +143,145 @@ export function adaptRealWallet(real: RealFedimintWallet): IFedimintWallet {
     },
 
     async cleanup() {
-      await real.cleanup();
+      try {
+        await real.cleanup();
+      } finally {
+        onCleanup?.();
+      }
     },
   };
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-// LOCAL WALLET RESET
+// LOCAL WALLET RESET — OPFS-based
 //
-// Wipes the Fedimint WASM wallet's IndexedDB so the next init() can install
-// a fresh seed. This is the "get me out of the No modification allowed
-// jail" escape hatch — safe to call whenever the user has no unspent ecash
-// on this device (e.g. they haven't joined a federation yet, or they've
-// already moved funds out).
+// IMPORTANT: Fedimint's WASM worker (@fedimint/transport-web) does NOT use
+// IndexedDB for persistence. It uses the Origin Private File System (OPFS)
+// via `navigator.storage.getDirectory()` + `createSyncAccessHandle()`.
+// The string "fedimint.db" in the worker source is the OPFS filename.
 //
-// The database name `fedimint.db` is the one used by @fedimint/transport-web
-// 0.1.x (grep `worker.js`). If a future SDK version changes this, update
-// DB_NAME here.
+// This matters for two reasons:
+//
+//   1. Deleting an IndexedDB database called "fedimint.db" is a no-op —
+//      no such database exists. Earlier Chama versions (v0.1.11) did exactly
+//      this and it didn't help.
+//
+//   2. The "NoModificationAllowedError" that users hit on re-init is NOT
+//      about stale data. It's OPFS refusing to open a second sync access
+//      handle on a file that's still locked by another handle — i.e. a
+//      PREVIOUS Web Worker is still alive and holding the file. In Vite
+//      dev with HMR this is extremely common: the old module gets replaced
+//      but its worker keeps running.
+//
+// Fixes:
+//   (a) Track the worker we spawn in a module-level ref, terminate it
+//       before spawning a new one AND on cleanup(). This handles the
+//       HMR / multi-init case end-to-end.
+//   (b) The reset helper terminates the worker first (releasing the OPFS
+//       handle) and then deletes the OPFS file so the next init starts
+//       from a blank slate.
 // ══════════════════════════════════════════════════════════════════════════
 
-/** IndexedDB database name used by @fedimint/transport-web */
-const FEDIMINT_DB_NAME = "fedimint.db";
+/** OPFS filename used by @fedimint/transport-web worker */
+const FEDIMINT_OPFS_FILE = "fedimint.db";
 
 /**
- * Delete the local Fedimint wallet state (IndexedDB + any in-memory caches).
+ * Module-level reference to the currently-live transport (for its worker).
+ * We terminate this worker before creating a new one so the OPFS sync
+ * access handle is released and the next init() doesn't throw
+ * NoModificationAllowedError. HMR-safe: `import.meta.hot?.dispose` also
+ * terminates it to be doubly sure during dev.
+ */
+type AnyTransport = { worker?: Worker };
+let currentTransport: AnyTransport | null = null;
+
+function terminateCurrentWorker(): void {
+  const t = currentTransport;
+  currentTransport = null;
+  if (t && t.worker && typeof t.worker.terminate === "function") {
+    try {
+      t.worker.terminate();
+      console.info("[chama] Previous Fedimint worker terminated");
+    } catch (e) {
+      console.debug("[chama] worker terminate threw:", e);
+    }
+  }
+}
+
+// Vite HMR: tear the worker down when the module is disposed so the next
+// hot-replaced instance starts fresh. No-op in production.
+// @ts-ignore — import.meta.hot is a dev-only Vite API
+if (typeof import.meta !== "undefined" && (import.meta as any).hot) {
+  // @ts-ignore
+  (import.meta as any).hot.dispose(() => {
+    terminateCurrentWorker();
+  });
+}
+
+/**
+ * Wipe the Fedimint WASM wallet's local state.
  *
- * This is destructive to *local* wallet state only. The Nostr-backed seed
- * stays intact on relays, so after a reset the next init() will reinstall
- * the same mnemonic and re-derive identical keys — any ecash that lives
- * inside an already-joined federation is recoverable by rejoining, and
- * any pending Lightning/mint operations that hadn't settled are lost.
+ * Steps:
+ *   1. Terminate any live worker so its OPFS sync access handle is released.
+ *   2. `removeEntry("fedimint.db")` on the OPFS root directory.
+ *   3. Fall back to a brute-force clear of the OPFS root if step 2 throws
+ *      (e.g. file is held by a worker in another tab). Returns a warning
+ *      rather than throwing so the UI can still recover.
  *
- * Returns once the database delete has resolved. Throws on blocked deletes
- * (e.g. another tab has the DB open) so the UI can surface the problem.
+ * Destructive to *local* state only. The Nostr-backed mnemonic lives on
+ * relays and will be reinstalled on the next init().
  */
 export async function resetLocalFedimintWallet(): Promise<void> {
-  if (typeof indexedDB === "undefined") {
-    throw new Error("IndexedDB is unavailable in this environment");
+  // 1. Release any live sync handle by killing the worker that owns it.
+  terminateCurrentWorker();
+
+  // 2. OPFS entry removal.
+  if (
+    typeof navigator === "undefined" ||
+    !navigator.storage ||
+    typeof navigator.storage.getDirectory !== "function"
+  ) {
+    throw new Error(
+      "This browser does not support OPFS (navigator.storage.getDirectory). " +
+      "Try a recent Chrome, Edge, or Safari build."
+    );
   }
 
-  await new Promise<void>((resolve, reject) => {
-    const req = indexedDB.deleteDatabase(FEDIMINT_DB_NAME);
-    req.onsuccess = () => resolve();
-    req.onerror = () =>
-      reject(
-        new Error(
-          `Failed to delete ${FEDIMINT_DB_NAME}: ${req.error?.message ?? "unknown"}`
-        )
-      );
-    req.onblocked = () =>
-      reject(
-        new Error(
-          `Reset blocked: another tab has the Fedimint wallet open. ` +
-          `Close other Chama tabs and try again.`
-        )
-      );
-  });
+  const root = await navigator.storage.getDirectory();
 
-  console.info("[chama] Local Fedimint wallet IndexedDB deleted");
+  try {
+    // @ts-ignore — options arg is supported in Chrome/Safari but not yet in
+    // all TypeScript DOM libs.
+    await root.removeEntry(FEDIMINT_OPFS_FILE, { recursive: true });
+    console.info("[chama] OPFS 'fedimint.db' removed");
+  } catch (e: any) {
+    // NotFoundError = nothing to delete, which is fine.
+    if (e?.name === "NotFoundError") {
+      console.info("[chama] OPFS 'fedimint.db' not present — nothing to clear");
+      return;
+    }
+    // NoModificationAllowed here means another worker (different tab)
+    // is still holding the handle. Surface to UI.
+    if (e?.name === "NoModificationAllowedError" || e?.name === "InvalidStateError") {
+      throw new Error(
+        "Couldn't clear local Fedimint wallet: another tab has it open. " +
+        "Close other Chama tabs and try again."
+      );
+    }
+    throw e;
+  }
+}
+
+/** @internal — used by createRealWallet to stash the transport for termination */
+function registerTransport(t: AnyTransport): void {
+  // Terminate any prior one first — catches the HMR and double-init cases.
+  terminateCurrentWorker();
+  currentTransport = t;
+}
+
+/** @internal — used by the adapted wallet's cleanup() to release the worker */
+function clearRegisteredTransport(): void {
+  terminateCurrentWorker();
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -224,7 +308,14 @@ export async function createRealWallet(
   const { WalletDirector } = await import("@fedimint/core");
   const { WasmWorkerTransport } = await import("@fedimint/transport-web");
 
-  const director = new WalletDirector(new WasmWorkerTransport());
+  // CRITICAL: terminate any worker left over from a previous init (HMR,
+  // double-init, or a failed join). If we don't, the new worker tries to
+  // open the OPFS 'fedimint.db' file and hits NoModificationAllowedError
+  // because the stale worker still holds the sync access handle.
+  const transport = new WasmWorkerTransport();
+  registerTransport(transport as unknown as AnyTransport);
+
+  const director = new WalletDirector(transport);
   await director.initialize();
 
   // Install the seed BEFORE creating the wallet so the wallet's derived
@@ -293,5 +384,8 @@ export async function createRealWallet(
 
   const wallet = await director.createWallet();
 
-  return adaptRealWallet(wallet as unknown as RealFedimintWallet);
+  return adaptRealWallet(
+    wallet as unknown as RealFedimintWallet,
+    clearRegisteredTransport
+  );
 }
