@@ -2,6 +2,14 @@ import { useState, useEffect } from "react";
 import { useEscrow, type FedimintState } from "../hooks/useEscrow.js";
 import { type EscrowState, Role, Outcome, EscrowStatus } from "../escrow-engine/types.js";
 import { canVote, getWinner, getSummary } from "../escrow-engine/state-machine.js";
+import {
+  type FederationPreset,
+  CURATED_PRESETS,
+  fetchObserverFederations,
+  mergePresets,
+  COMMUNITY_LEADER_MESSAGE,
+  DEFAULT_FEDERATION_INVITE,
+} from "../fedimint/federation-config.js";
 
 // ══════════════════════════════════════════════════════════════════════════
 // DESIGN TOKENS
@@ -834,16 +842,40 @@ function FedimintBar({ fedimint, onFund, onInit }: {
 
 function FederationJoinPanel({
   fedimint, showAdvanced, onToggleAdvanced,
-  customInviteInput, onCustomInviteChange, onJoinDefault, onJoinCustom,
+  customInviteInput, onCustomInviteChange, onJoinPreset, onJoinCustom,
 }: {
   fedimint: FedimintState;
   showAdvanced: boolean;
   onToggleAdvanced: () => void;
   customInviteInput: string;
   onCustomInviteChange: (v: string) => void;
-  onJoinDefault: () => void;
+  onJoinPreset: (preset: FederationPreset) => void;
   onJoinCustom: () => void;
 }) {
+  const [presets, setPresets] = useState<FederationPreset[]>(CURATED_PRESETS);
+  const [observerLoading, setObserverLoading] = useState(false);
+  const [observerError, setObserverError] = useState<string | null>(null);
+  const [selectedInvite, setSelectedInvite] = useState<string>(DEFAULT_FEDERATION_INVITE);
+
+  // Fetch the live observer list once on mount, merge in after curated
+  useEffect(() => {
+    let cancelled = false;
+    const ctrl = new AbortController();
+    setObserverLoading(true);
+    fetchObserverFederations(ctrl.signal).then((observerList) => {
+      if (cancelled) return;
+      if (observerList.length === 0) {
+        setObserverError("Couldn't reach fedimint-observer — showing curated list only.");
+      } else {
+        setPresets(mergePresets(CURATED_PRESETS, observerList));
+      }
+      setObserverLoading(false);
+    });
+    return () => { cancelled = true; ctrl.abort(); };
+  }, []);
+
+  const selectedPreset = presets.find((p) => p.inviteCode === selectedInvite) || presets[0];
+
   return (
     <div style={{
       margin: 16, padding: 20,
@@ -855,19 +887,54 @@ function FederationJoinPanel({
       <div style={{ fontSize: 13, color: T.text, fontFamily: T.sans, lineHeight: 1.5, marginBottom: 14 }}>
         Chama locks ecash into 2-of-3 Shamir shares. To trade, join a federation that mints the ecash.
       </div>
+
+      {/* Picker dropdown */}
       <div style={{
-        padding: 12, marginBottom: 12, borderRadius: T.rs,
+        padding: 12, marginBottom: 10, borderRadius: T.rs,
         background: T.surface, border: `1px solid ${T.border}`,
       }}>
-        <div style={{ fontSize: 12, fontWeight: 600, color: T.text, fontFamily: T.sans, marginBottom: 4 }}>
-          Bitcoin Life Federation
-        </div>
-        <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono, lineHeight: 1.5, marginBottom: 10 }}>
-          Default for new users. Already using Fedi? Your balance stays in Fedi — Chama just needs a federation to mint into for the lock.
-        </div>
+        <label style={{
+          display: "block", fontSize: 10, fontWeight: 600,
+          color: T.muted, fontFamily: T.mono, letterSpacing: 1, marginBottom: 6,
+        }}>
+          CHOOSE A FEDERATION {observerLoading && <span style={{ color: T.amber }}>· loading…</span>}
+        </label>
+        <select
+          value={selectedInvite}
+          onChange={(e) => setSelectedInvite(e.target.value)}
+          style={{
+            ...inputStyle,
+            appearance: "none",
+            cursor: "pointer",
+            marginBottom: 8,
+          }}
+        >
+          <optgroup label="Curated">
+            {presets.filter((p) => p.source === "curated").map((p) => (
+              <option key={p.inviteCode} value={p.inviteCode}>{p.name}</option>
+            ))}
+          </optgroup>
+          {presets.some((p) => p.source === "observer") && (
+            <optgroup label="Public (fedimint-observer)">
+              {presets.filter((p) => p.source === "observer").map((p) => (
+                <option key={p.inviteCode} value={p.inviteCode}>{p.name}</option>
+              ))}
+            </optgroup>
+          )}
+        </select>
+
+        {selectedPreset?.description && (
+          <div style={{
+            fontSize: 10, color: T.muted, fontFamily: T.mono, lineHeight: 1.5,
+            marginBottom: 10,
+          }}>
+            {selectedPreset.description}
+          </div>
+        )}
+
         <button
-          disabled={fedimint.busy}
-          onClick={onJoinDefault}
+          disabled={fedimint.busy || !selectedPreset}
+          onClick={() => selectedPreset && onJoinPreset(selectedPreset)}
           style={{
             width: "100%", padding: "10px 16px", borderRadius: T.rs,
             background: fedimint.busy ? T.surface : T.accent,
@@ -877,8 +944,26 @@ function FederationJoinPanel({
             cursor: fedimint.busy ? "not-allowed" : "pointer",
           }}
         >
-          {fedimint.busy ? "Loading WASM…" : "Join Bitcoin Life Federation"}
+          {fedimint.busy ? "Loading WASM…" : `Join ${selectedPreset?.name || "federation"}`}
         </button>
+
+        {observerError && (
+          <div style={{ fontSize: 9, color: T.muted, fontFamily: T.mono, marginTop: 8, lineHeight: 1.5 }}>
+            {observerError}
+          </div>
+        )}
+      </div>
+
+      {/* Community Leader messaging */}
+      <div style={{
+        padding: 12, marginBottom: 10, borderRadius: T.rs,
+        background: T.accentDim, border: `1px solid ${T.accent}33`,
+        fontSize: 11, color: T.text, fontFamily: T.sans, lineHeight: 1.55,
+      }}>
+        <strong style={{ color: T.accent }}>Community Leader tip:</strong>{" "}
+        {COMMUNITY_LEADER_MESSAGE}
+        {" "}Already using Fedi? Your balance stays in Fedi — Chama's wallet is
+        separate and you can top it up with a Lightning invoice.
       </div>
 
       <button
@@ -888,7 +973,7 @@ function FederationJoinPanel({
           fontFamily: T.mono, fontSize: 10, cursor: "pointer", padding: 0,
         }}
       >
-        {showAdvanced ? "▲" : "▼"} Advanced — use a custom federation
+        {showAdvanced ? "▲" : "▼"} Advanced — paste a custom invite
       </button>
 
       {showAdvanced && (
@@ -1158,7 +1243,7 @@ export default function App() {
           </div>
         </div>
         <div style={{ fontSize: 9, color: T.muted, fontFamily: T.mono, padding: "4px 10px", borderRadius: 6, background: T.surface, border: `1px solid ${T.border}` }}>
-          v0.1.9
+          v0.1.10
         </div>
       </div>
 
@@ -1182,11 +1267,15 @@ export default function App() {
           onToggleAdvanced={() => setShowAdvancedFederation(!showAdvancedFederation)}
           customInviteInput={customInviteInput}
           onCustomInviteChange={setCustomInviteInput}
-          onJoinDefault={async () => {
+          onJoinPreset={async (preset) => {
             try {
-              setToast({ message: "Joining Bitcoin Life Federation (WASM warming up)...", type: "info" });
-              await actions.initFedimint();
-              setToast({ message: "Joined! You can now fund and trade.", type: "success" });
+              setToast({ message: `Joining ${preset.name} (WASM warming up)…`, type: "info" });
+              // If the user picked something other than BLF, save it as custom
+              if (preset.inviteCode !== DEFAULT_FEDERATION_INVITE) {
+                actions.setCustomInvite(preset.inviteCode);
+              }
+              await actions.initFedimint(preset.inviteCode);
+              setToast({ message: `Joined ${preset.name}! You can now fund and trade.`, type: "success" });
             } catch (e: any) {
               setToast({ message: e.message || "Join failed", type: "error" });
             }

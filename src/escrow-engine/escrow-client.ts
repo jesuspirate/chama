@@ -185,6 +185,31 @@ export class EscrowClient {
     return this._pubkey;
   }
 
+  /** Access the underlying signer (for auxiliary modules like seed-manager) */
+  getSigner(): Signer {
+    return this.signer;
+  }
+
+  // ── Raw Nostr helpers ───────────────────────────────────────────────────
+  // These are used by auxiliary modules (e.g. the Fedimint seed manager)
+  // that need to publish or query events outside the escrow event chain.
+
+  /** Publish an already-signed Nostr event to all connected relays. */
+  async publishRaw(event: NostrEvent): Promise<void> {
+    await this.relayManager.publish(event);
+  }
+
+  /**
+   * One-shot query for events matching a filter. Resolves after EOSE
+   * from all connected relays, or after the timeout.
+   */
+  async queryOnce(
+    filter: import("./relay-manager.js").NostrFilter,
+    timeoutMs = 5_000
+  ): Promise<NostrEvent[]> {
+    return this.relayManager.fetchOnce(filter, timeoutMs);
+  }
+
   // ══════════════════════════════════════════════════════════════════════════
   // USER ACTIONS — One method per thing the UI can do
   // ══════════════════════════════════════════════════════════════════════════

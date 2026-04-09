@@ -91,6 +91,18 @@ export interface FedimintClientCallbacks {
   onError?: (error: Error, context: string) => void;
 }
 
+// ── Init / factory options ────────────────────────────────────────────────
+
+export interface FedimintWalletFactoryOptions {
+  /** BIP-39 mnemonic words, if a deterministic seed should be installed */
+  mnemonic?: string[];
+}
+
+export interface FedimintInitOptions {
+  /** BIP-39 mnemonic words, if a deterministic seed should be installed */
+  mnemonic?: string[];
+}
+
 // ══════════════════════════════════════════════════════════════════════════
 // FEDIMINT CLIENT — High-level escrow-focused ecash operations
 // ══════════════════════════════════════════════════════════════════════════
@@ -108,11 +120,11 @@ export class FedimintClient {
    *
    * Default (production): uses @fedimint/core + @fedimint/transport-web
    */
-  private walletFactory: () => Promise<IFedimintWallet>;
+  private walletFactory: (opts: FedimintWalletFactoryOptions) => Promise<IFedimintWallet>;
 
   constructor(
     callbacks: FedimintClientCallbacks = {},
-    walletFactory?: () => Promise<IFedimintWallet>
+    walletFactory?: (opts: FedimintWalletFactoryOptions) => Promise<IFedimintWallet>
   ) {
     this.callbacks = callbacks;
     this.walletFactory = walletFactory || FedimintClient.defaultWalletFactory;
@@ -120,11 +132,20 @@ export class FedimintClient {
 
   // ── Default factory — lazy-loads the WASM SDK ───────────────────────────
 
-  private static async defaultWalletFactory(): Promise<IFedimintWallet> {
+  private static async defaultWalletFactory(
+    opts: FedimintWalletFactoryOptions
+  ): Promise<IFedimintWallet> {
+    // ?testnet=1 → swap in the in-memory mock wallet. Dev/CI only.
+    const { isTestnetMode, createMockWallet } = await import("./mock-wallet.js");
+    if (isTestnetMode()) {
+      console.info("[chama] ⚠ testnet=1 — using mock Fedimint wallet");
+      return createMockWallet();
+    }
+
     // Dynamic import of the adapter keeps WASM out of the initial bundle.
     // The adapter maps @fedimint/core 0.1.x onto our IFedimintWallet shape.
     const { createRealWallet } = await import("./sdk-adapter.js");
-    return createRealWallet();
+    return createRealWallet({ mnemonic: opts.mnemonic });
   }
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -133,11 +154,16 @@ export class FedimintClient {
 
   /**
    * Initialize the WASM wallet. Call once at app startup.
-   * If the user has previously joined a federation, it reopens automatically.
+   *
+   * @param opts.mnemonic Optional BIP-39 mnemonic to seed the wallet. If
+   *                      supplied, the wallet is deterministic and
+   *                      recoverable on any device with the same seed.
+   *                      Chama's useEscrow hook fetches this from the
+   *                      Nostr-backed seed-manager.
    */
-  async init(): Promise<void> {
+  async init(opts: FedimintInitOptions = {}): Promise<void> {
     try {
-      this.wallet = await this.walletFactory();
+      this.wallet = await this.walletFactory({ mnemonic: opts.mnemonic });
       await this.wallet.open();
 
       // Subscribe to balance updates

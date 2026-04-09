@@ -53,6 +53,9 @@ import {
   setCustomFederationInvite,
   hasCustomFederation,
   DEFAULT_FEDERATION_NAME,
+  getOrCreateSeed,
+  clearSeedCache,
+  isTestnetMode,
 } from "../fedimint/index.js";
 
 // ── Hook state ────────────────────────────────────────────────────────────
@@ -319,6 +322,7 @@ export function useEscrow(config?: Partial<EscrowClientConfig>): [UseEscrowState
     fedimintRef.current = null;
     bridgeRef.current = null;
     signerRef.current = null;
+    clearSeedCache();
     setState({
       connected: false,
       pubkey: null,
@@ -516,6 +520,22 @@ export function useEscrow(config?: Partial<EscrowClientConfig>): [UseEscrowState
       // Reuse existing instance if already initialized
       let fedimint = fedimintRef.current;
       if (!fedimint) {
+        // Fetch (or generate + publish) the Fedimint seed from Nostr
+        // *before* initializing the wallet. The seed is encrypted
+        // to the user's own pubkey and stored as a replaceable
+        // kind-30078 event, so the wallet is recoverable on any
+        // device with access to the user's signer.
+        //
+        // In testnet mode the mock wallet ignores the mnemonic, so
+        // we skip the Nostr round-trip to avoid a gratuitous NIP-44
+        // popup on every dev reload.
+        const mnemonic = isTestnetMode()
+          ? undefined
+          : await getOrCreateSeed(
+              clientRef.current!,
+              signerRef.current!
+            );
+
         fedimint = new FedimintClient({
           onBalanceUpdate: (balance) => updateFedimint({ balanceMsats: balance }),
           onFederationJoined: (fedId) =>
@@ -525,7 +545,7 @@ export function useEscrow(config?: Partial<EscrowClientConfig>): [UseEscrowState
             updateFedimint({ error: `${ctx}: ${err.message}` });
           },
         });
-        await fedimint.init();
+        await fedimint.init({ mnemonic });
         fedimintRef.current = fedimint;
         updateFedimint({ initialized: true });
       }
