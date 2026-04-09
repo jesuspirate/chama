@@ -2,6 +2,34 @@
 // useEscrow — React hook connecting UI to the Nostr escrow engine
 // ══════════════════════════════════════════════════════════════════════════
 
+// ── localStorage helpers for escrow ID persistence ────────────────────────
+const STORAGE_KEY = "chama_escrow_ids";
+
+function getSavedEscrowIds(): string[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch { return []; }
+}
+
+function saveEscrowId(id: string) {
+  try {
+    const ids = getSavedEscrowIds();
+    if (!ids.includes(id)) {
+      ids.unshift(id); // newest first
+      // Keep max 50 IDs
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(ids.slice(0, 50)));
+    }
+  } catch {}
+}
+
+function removeEscrowId(id: string) {
+  try {
+    const ids = getSavedEscrowIds().filter(i => i !== id);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(ids));
+  } catch {}
+}
+
 import { useState, useEffect, useCallback, useRef } from "react";
 import {
   EscrowClient,
@@ -180,6 +208,19 @@ export function useEscrow(config?: Partial<EscrowClientConfig>): [UseEscrowState
       }));
 
       vibrate([50, 30, 50]); // Connected haptic
+
+      // Auto-reload saved escrows from relays
+      const savedIds = getSavedEscrowIds();
+      if (savedIds.length > 0) {
+        console.log(`[chama] Reloading ${savedIds.length} saved escrow(s)...`);
+        for (const id of savedIds.slice(0, 10)) { // Max 10 to avoid hammering relays
+          try {
+            await client.loadEscrow(id);
+          } catch (e) {
+            console.debug(`[chama] Could not reload ${id}:`, e);
+          }
+        }
+      }
     } catch (e) {
       setState(prev => ({
         ...prev,
@@ -223,6 +264,7 @@ export function useEscrow(config?: Partial<EscrowClientConfig>): [UseEscrowState
   const createEscrow = useCallback(async (params: Parameters<EscrowClient["createEscrow"]>[0]) => {
     const client = requireClient();
     const result = await client.createEscrow(params);
+    saveEscrowId(result.escrowId);
     vibrate([40, 20, 40, 20, 80]); // Celebratory haptic
     return result;
   }, []);
@@ -230,31 +272,61 @@ export function useEscrow(config?: Partial<EscrowClientConfig>): [UseEscrowState
   const joinEscrow = useCallback(async (escrowId: string, role: Role) => {
     const client = requireClient();
     const result = await client.joinEscrow(escrowId, role);
+    saveEscrowId(escrowId);
     vibrate([30, 20, 30]);
     return result;
   }, []);
 
   const simulatedLockAction = useCallback(async (escrowId: string) => {
     const client = requireClient();
-    const result = await client.simulatedLock(escrowId);
-    vibrate([60, 30, 60, 30, 120]); // Lock haptic
-    return result;
+    try {
+      const result = await client.simulatedLock(escrowId);
+      vibrate([60, 30, 60, 30, 120]);
+      return result;
+    } catch (e: any) {
+      const msg = e?.message || "";
+      if (msg.includes("expected FUNDED") || msg.includes("Cannot LOCK") ||
+          msg.includes("TERMINAL")) {
+        console.debug("[chama] Lock suppressed:", msg);
+        return client.getState(escrowId)!;
+      }
+      throw e;
+    }
   }, []);
 
   const voteAction = useCallback(async (escrowId: string, outcome: Outcome) => {
     const client = requireClient();
-    const result = await client.vote(escrowId, outcome);
-    // Strong haptic on vote — this is a significant action
-    vibrate(outcome === Outcome.RELEASE ? [80, 40, 80] : [60, 30, 60, 30, 60]);
-    return result;
+    try {
+      const result = await client.vote(escrowId, outcome);
+      vibrate(outcome === Outcome.RELEASE ? [80, 40, 80] : [60, 30, 60, 30, 60]);
+      return result;
+    } catch (e: any) {
+      // Swallow known duplicate/stale errors — they're from relay echoes
+      const msg = e?.message || "";
+      if (msg.includes("already voted") || msg.includes("Cannot vote") ||
+          msg.includes("TERMINAL") || msg.includes("not LOCKED")) {
+        console.debug("[chama] Vote suppressed:", msg);
+        return client.getState(escrowId)!;
+      }
+      throw e;
+    }
   }, []);
 
   const claimAction = useCallback(async (escrowId: string, notesHash: string) => {
     const client = requireClient();
-    const result = await client.claim(escrowId, notesHash);
-    // Victory haptic!
-    vibrate([100, 50, 100, 50, 200]);
-    return result;
+    try {
+      const result = await client.claim(escrowId, notesHash);
+      vibrate([100, 50, 100, 50, 200]);
+      return result;
+    } catch (e: any) {
+      const msg = e?.message || "";
+      if (msg.includes("already") || msg.includes("Cannot") ||
+          msg.includes("TERMINAL") || msg.includes("not APPROVED")) {
+        console.debug("[chama] Claim suppressed:", msg);
+        return client.getState(escrowId)!;
+      }
+      throw e;
+    }
   }, []);
 
   const sendChat = useCallback(async (escrowId: string, message: string) => {
@@ -275,6 +347,7 @@ export function useEscrow(config?: Partial<EscrowClientConfig>): [UseEscrowState
     setState(prev => ({ ...prev, loading: true }));
     try {
       const result = await client.loadEscrow(escrowId);
+      if (result) saveEscrowId(escrowId);
       setState(prev => ({ ...prev, loading: false }));
       return result;
     } catch (e) {
