@@ -46,8 +46,35 @@ import {
   Role,
   Outcome,
 } from "../escrow-engine/types.js";
+import {
+  FedimintClient,
+  EscrowFedimintBridge,
+  getFederationInvite,
+  setCustomFederationInvite,
+  hasCustomFederation,
+  DEFAULT_FEDERATION_NAME,
+} from "../fedimint/index.js";
 
 // ── Hook state ────────────────────────────────────────────────────────────
+
+export interface FedimintState {
+  /** Wallet initialized (WASM loaded, transport ready) */
+  initialized: boolean;
+  /** Joined a federation */
+  joined: boolean;
+  /** Active federation ID (hex) */
+  federationId: string | null;
+  /** Human-friendly federation name for display */
+  federationName: string;
+  /** Whether the user is on a custom (non-default) federation */
+  isCustom: boolean;
+  /** Balance in msats */
+  balanceMsats: number;
+  /** True while init/join/fund operations are in flight */
+  busy: boolean;
+  /** Latest Fedimint error (separate from escrow error) */
+  error: string | null;
+}
 
 export interface UseEscrowState {
   /** Whether the client is connected to relays */
@@ -64,6 +91,8 @@ export interface UseEscrowState {
   error: string | null;
   /** Loading state */
   loading: boolean;
+  /** Fedimint wallet state */
+  fedimint: FedimintState;
 }
 
 export interface UseEscrowActions {
@@ -85,12 +114,20 @@ export interface UseEscrowActions {
   }) => Promise<{ escrowId: string; state: EscrowState }>;
   /** Join an existing escrow */
   joinEscrow: (escrowId: string, role: Role) => Promise<EscrowState>;
-  /** Lock ecash (simulated for testing) */
-  simulatedLock: (escrowId: string) => Promise<EscrowState>;
+  /**
+   * Lock ecash into 2-of-3 SSS escrow.
+   * Runs the full real-Fedimint flow:
+   *   spendNotes → Shamir split → NIP-44 encrypt shares → publish LOCK
+   */
+  lockAndPublish: (escrowId: string) => Promise<EscrowState>;
   /** Cast a vote */
   vote: (escrowId: string, outcome: Outcome) => Promise<EscrowState>;
-  /** Claim ecash (winner only) */
-  claim: (escrowId: string, notesHash: string) => Promise<EscrowState>;
+  /**
+   * Claim ecash as the winner.
+   * Runs the full real-Fedimint flow:
+   *   decrypt shares → Shamir combine → verify hash → redeemEcash → publish CLAIM
+   */
+  claimAndRedeem: (escrowId: string) => Promise<EscrowState>;
   /** Send a chat message */
   sendChat: (escrowId: string, message: string) => Promise<void>;
   /** Cancel a trade (initiator only, pre-lock) */
@@ -99,6 +136,29 @@ export interface UseEscrowActions {
   loadEscrow: (escrowId: string) => Promise<EscrowState | null>;
   /** Trigger haptic feedback */
   vibrate: (pattern?: number | number[]) => void;
+
+  // ── Fedimint actions ───────────────────────────────────────────────────
+  /**
+   * Initialize the Fedimint WASM wallet and join a federation.
+   * If no invite code is provided, uses the stored custom invite (if any)
+   * or falls back to the Bitcoin Life Federation default.
+   * Idempotent: safe to call multiple times.
+   */
+  initFedimint: (inviteCode?: string) => Promise<void>;
+  /**
+   * Persist a custom federation invite code for future sessions.
+   * Pass empty string to clear and revert to the default.
+   * Does NOT automatically re-join — call initFedimint() after if you
+   * want to switch federations immediately.
+   */
+  setCustomInvite: (inviteCode: string) => void;
+  /**
+   * Create a Lightning invoice to fund the Fedimint wallet.
+   * Returns the BOLT11 string for the user to pay from another wallet.
+   */
+  createFundingInvoice: (amountMsats: number, description?: string) => Promise<string>;
+  /** Refresh the current balance from the wallet */
+  refreshBalance: () => Promise<void>;
 }
 
 // ── Default relay list ────────────────────────────────────────────────────
@@ -123,6 +183,9 @@ function vibrate(pattern: number | number[] = 50) {
 
 export function useEscrow(config?: Partial<EscrowClientConfig>): [UseEscrowState, UseEscrowActions] {
   const clientRef = useRef<EscrowClient | null>(null);
+  const fedimintRef = useRef<FedimintClient | null>(null);
+  const bridgeRef = useRef<EscrowFedimintBridge | null>(null);
+  const signerRef = useRef<Signer | null>(null);
 
   const [state, setState] = useState<UseEscrowState>({
     connected: false,
@@ -132,7 +195,21 @@ export function useEscrow(config?: Partial<EscrowClientConfig>): [UseEscrowState
     connectedRelays: 0,
     error: null,
     loading: false,
+    fedimint: {
+      initialized: false,
+      joined: false,
+      federationId: null,
+      federationName: hasCustomFederation() ? "Custom federation" : DEFAULT_FEDERATION_NAME,
+      isCustom: hasCustomFederation(),
+      balanceMsats: 0,
+      busy: false,
+      error: null,
+    },
   });
+
+  const updateFedimint = useCallback((partial: Partial<FedimintState>) => {
+    setState(prev => ({ ...prev, fedimint: { ...prev.fedimint, ...partial } }));
+  }, []);
 
   // ── State updater helpers ───────────────────────────────────────────────
 
@@ -176,6 +253,7 @@ export function useEscrow(config?: Partial<EscrowClientConfig>): [UseEscrowState
       }
 
       const pubkey = await signer.getPublicKey();
+      signerRef.current = signer;
 
       const callbacks: EscrowClientCallbacks = {
         onStateUpdate: (id, s) => updateEscrow(id, s),
@@ -235,6 +313,12 @@ export function useEscrow(config?: Partial<EscrowClientConfig>): [UseEscrowState
   const disconnect = useCallback(() => {
     clientRef.current?.disconnect();
     clientRef.current = null;
+    fedimintRef.current?.cleanup().catch((e) =>
+      console.debug("[chama] fedimint cleanup error:", e)
+    );
+    fedimintRef.current = null;
+    bridgeRef.current = null;
+    signerRef.current = null;
     setState({
       connected: false,
       pubkey: null,
@@ -243,6 +327,16 @@ export function useEscrow(config?: Partial<EscrowClientConfig>): [UseEscrowState
       connectedRelays: 0,
       error: null,
       loading: false,
+      fedimint: {
+        initialized: false,
+        joined: false,
+        federationId: null,
+        federationName: hasCustomFederation() ? "Custom federation" : DEFAULT_FEDERATION_NAME,
+        isCustom: hasCustomFederation(),
+        balanceMsats: 0,
+        busy: false,
+        error: null,
+      },
     });
   }, []);
 
@@ -251,6 +345,7 @@ export function useEscrow(config?: Partial<EscrowClientConfig>): [UseEscrowState
   useEffect(() => {
     return () => {
       clientRef.current?.disconnect();
+      fedimintRef.current?.cleanup().catch(() => {});
     };
   }, []);
 
@@ -292,11 +387,23 @@ export function useEscrow(config?: Partial<EscrowClientConfig>): [UseEscrowState
     }
   }, []);
 
-  const simulatedLockAction = useCallback(async (escrowId: string) => {
+  const requireBridge = (): EscrowFedimintBridge => {
+    if (!bridgeRef.current) {
+      throw new Error(
+        "Fedimint wallet not ready — join a federation before locking or claiming"
+      );
+    }
+    return bridgeRef.current;
+  };
+
+  const lockAndPublishAction = useCallback(async (escrowId: string) => {
     const client = requireClient();
+    const bridge = requireBridge();
     try {
-      const result = await client.simulatedLock(escrowId);
+      const result = await bridge.lockAndPublish(escrowId);
       vibrate([60, 30, 60, 30, 120]);
+      // Refresh balance after spending ecash
+      refreshBalanceRef.current?.().catch(() => {});
       return result;
     } catch (e: any) {
       const msg = e?.message || "";
@@ -308,6 +415,29 @@ export function useEscrow(config?: Partial<EscrowClientConfig>): [UseEscrowState
       throw e;
     }
   }, []);
+
+  const claimAndRedeemAction = useCallback(async (escrowId: string) => {
+    const client = requireClient();
+    const bridge = requireBridge();
+    try {
+      const result = await bridge.claimAndRedeem(escrowId);
+      vibrate([100, 50, 100, 50, 200]);
+      // Refresh balance after redeeming ecash
+      refreshBalanceRef.current?.().catch(() => {});
+      return result;
+    } catch (e: any) {
+      const msg = e?.message || "";
+      if (msg.includes("already") || msg.includes("Cannot") ||
+          msg.includes("TERMINAL") || msg.includes("not APPROVED")) {
+        console.debug("[chama] Claim suppressed:", msg);
+        return client.getState(escrowId)!;
+      }
+      throw e;
+    }
+  }, []);
+
+  // Forward-reference refreshBalance from within lock/claim actions
+  const refreshBalanceRef = useRef<(() => Promise<void>) | null>(null);
 
   const voteAction = useCallback(async (escrowId: string, outcome: Outcome) => {
     const client = requireClient();
@@ -321,23 +451,6 @@ export function useEscrow(config?: Partial<EscrowClientConfig>): [UseEscrowState
       if (msg.includes("already voted") || msg.includes("Cannot vote") ||
           msg.includes("TERMINAL") || msg.includes("not LOCKED")) {
         console.debug("[chama] Vote suppressed:", msg);
-        return client.getState(escrowId)!;
-      }
-      throw e;
-    }
-  }, []);
-
-  const claimAction = useCallback(async (escrowId: string, notesHash: string) => {
-    const client = requireClient();
-    try {
-      const result = await client.claim(escrowId, notesHash);
-      vibrate([100, 50, 100, 50, 200]);
-      return result;
-    } catch (e: any) {
-      const msg = e?.message || "";
-      if (msg.includes("already") || msg.includes("Cannot") ||
-          msg.includes("TERMINAL") || msg.includes("not APPROVED")) {
-        console.debug("[chama] Claim suppressed:", msg);
         return client.getState(escrowId)!;
       }
       throw e;
@@ -375,6 +488,108 @@ export function useEscrow(config?: Partial<EscrowClientConfig>): [UseEscrowState
     }
   }, []);
 
+  // ── Fedimint actions ────────────────────────────────────────────────────
+
+  const refreshBalance = useCallback(async () => {
+    const fedimint = fedimintRef.current;
+    if (!fedimint || !fedimint.isJoined()) return;
+    try {
+      const balanceMsats = await fedimint.getBalance();
+      updateFedimint({ balanceMsats });
+    } catch (e) {
+      console.debug("[chama] refreshBalance error:", e);
+    }
+  }, [updateFedimint]);
+
+  // Keep the ref in sync so lock/claim actions can call it without
+  // recreating their callbacks.
+  refreshBalanceRef.current = refreshBalance;
+
+  const initFedimint = useCallback(async (inviteCode?: string) => {
+    if (!clientRef.current || !signerRef.current) {
+      throw new Error("Connect to relays before initializing Fedimint");
+    }
+
+    updateFedimint({ busy: true, error: null });
+
+    try {
+      // Reuse existing instance if already initialized
+      let fedimint = fedimintRef.current;
+      if (!fedimint) {
+        fedimint = new FedimintClient({
+          onBalanceUpdate: (balance) => updateFedimint({ balanceMsats: balance }),
+          onFederationJoined: (fedId) =>
+            updateFedimint({ joined: true, federationId: fedId }),
+          onError: (err, ctx) => {
+            console.warn(`[chama] fedimint error (${ctx}):`, err);
+            updateFedimint({ error: `${ctx}: ${err.message}` });
+          },
+        });
+        await fedimint.init();
+        fedimintRef.current = fedimint;
+        updateFedimint({ initialized: true });
+      }
+
+      // Resolve the invite code: explicit arg > stored custom > BLF default
+      const effectiveInvite = inviteCode?.trim() || getFederationInvite();
+      const usingCustom = hasCustomFederation() || !!inviteCode?.trim();
+
+      // Join federation (idempotent in the SDK)
+      const federationId = await fedimint.joinFederation(effectiveInvite);
+
+      // Construct the bridge now that we have a working wallet
+      bridgeRef.current = new EscrowFedimintBridge(
+        clientRef.current,
+        fedimint,
+        signerRef.current
+      );
+
+      // Read initial balance
+      let balanceMsats = 0;
+      try {
+        balanceMsats = await fedimint.getBalance();
+      } catch {
+        // fresh wallet — balance fetch may fail briefly after join
+      }
+
+      updateFedimint({
+        initialized: true,
+        joined: true,
+        federationId,
+        federationName: usingCustom ? "Custom federation" : DEFAULT_FEDERATION_NAME,
+        isCustom: usingCustom,
+        balanceMsats,
+        busy: false,
+        error: null,
+      });
+
+      vibrate([40, 20, 40, 20, 80]);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      updateFedimint({ busy: false, error: message });
+      throw e;
+    }
+  }, [updateFedimint]);
+
+  const setCustomInvite = useCallback((inviteCode: string) => {
+    setCustomFederationInvite(inviteCode);
+    updateFedimint({
+      isCustom: !!inviteCode.trim(),
+      federationName: inviteCode.trim() ? "Custom federation" : DEFAULT_FEDERATION_NAME,
+    });
+  }, [updateFedimint]);
+
+  const createFundingInvoice = useCallback(async (
+    amountMsats: number,
+    description: string = "Chama wallet top-up"
+  ) => {
+    const fedimint = fedimintRef.current;
+    if (!fedimint || !fedimint.isJoined()) {
+      throw new Error("Join a federation before creating an invoice");
+    }
+    return fedimint.createInvoice(amountMsats, description);
+  }, []);
+
   // ── Return ──────────────────────────────────────────────────────────────
 
   const actions: UseEscrowActions = {
@@ -382,13 +597,17 @@ export function useEscrow(config?: Partial<EscrowClientConfig>): [UseEscrowState
     disconnect,
     createEscrow,
     joinEscrow,
-    simulatedLock: simulatedLockAction,
+    lockAndPublish: lockAndPublishAction,
     vote: voteAction,
-    claim: claimAction,
+    claimAndRedeem: claimAndRedeemAction,
     sendChat,
     cancel: cancelAction,
     loadEscrow,
     vibrate,
+    initFedimint,
+    setCustomInvite,
+    createFundingInvoice,
+    refreshBalance,
   };
 
   return [state, actions];

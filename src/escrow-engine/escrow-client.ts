@@ -297,40 +297,12 @@ export class EscrowClient {
     return this.applyLocally(escrowId, signed, payload);
   }
 
-  // ── Simulated lock (for testing without Fedimint WASM) ──────────────────
-
-  async simulatedLock(escrowId: string): Promise<EscrowState> {
-    const state = this.states.get(escrowId);
-    if (!state) throw new Error(`Escrow ${escrowId} not loaded`);
-    if (state.status !== EscrowStatus.FUNDED) {
-      throw new Error(`Cannot lock — status is ${state.status}, expected FUNDED`);
-    }
-
-    const buyerPk = state.participants.buyer || "mock_buyer";
-    const sellerPk = state.participants.seller || "mock_seller";
-    const arbiterPk = state.participants.arbiter || "mock_arbiter";
-
-    const platformFeeMsats = Math.floor((state.amountMsats * state.fees.platformBps) / 10_000);
-    const arbiterFeeMsats = state.fees.arbiterMsats;
-    const sellerReceivesMsats = state.amountMsats - platformFeeMsats - arbiterFeeMsats;
-
-    // Mock SSS shares (will be replaced with real Shamir when Fedimint WASM is wired)
-    const mockHash = "sim_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
-
-    return this.lockEscrow(escrowId, {
-      notesHash: mockHash,
-      shares: [
-        { recipientPubkey: buyerPk, encryptedShare: "sim_share_0_" + mockHash, shareIndex: 0 },
-        { recipientPubkey: sellerPk, encryptedShare: "sim_share_1_" + mockHash, shareIndex: 1 },
-        { recipientPubkey: arbiterPk, encryptedShare: "sim_share_2_" + mockHash, shareIndex: 2 },
-      ],
-      sellerReceivesMsats,
-      arbiterFeeMsats,
-      platformFeeMsats,
-    });
-  }
-
   // ── Lock ecash in SSS escrow ────────────────────────────────────────────
+  // The real lock flow runs through EscrowFedimintBridge.lockAndPublish,
+  // which calls FedimintClient.createEscrowLock (real WASM spendNotes +
+  // Shamir split) and then this.lockEscrow with the resulting shares.
+  // Use that bridge from the UI layer. This class only handles the
+  // Nostr event side.
 
   async lockEscrow(escrowId: string, params: {
     notesHash: string;

@@ -121,13 +121,10 @@ export class FedimintClient {
   // ── Default factory — lazy-loads the WASM SDK ───────────────────────────
 
   private static async defaultWalletFactory(): Promise<IFedimintWallet> {
-    // Dynamic import — keeps WASM out of the initial bundle
-    const { WalletDirector } = await import("@fedimint/core");
-    const { WasmWorkerTransport } = await import("@fedimint/transport-web");
-
-    const director = new WalletDirector(new WasmWorkerTransport());
-    const wallet = await director.createWallet();
-    return wallet as unknown as IFedimintWallet;
+    // Dynamic import of the adapter keeps WASM out of the initial bundle.
+    // The adapter maps @fedimint/core 0.1.x onto our IFedimintWallet shape.
+    const { createRealWallet } = await import("./sdk-adapter.js");
+    return createRealWallet();
   }
 
   // ══════════════════════════════════════════════════════════════════════════
