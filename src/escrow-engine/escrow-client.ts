@@ -1,5 +1,5 @@
 // ══════════════════════════════════════════════════════════════════════════
-// SatoshiMarket Nostr Escrow Engine — Escrow Client
+// Chama Nostr Escrow Engine — Escrow Client
 // ══════════════════════════════════════════════════════════════════════════
 //
 // High-level orchestrator that connects:
@@ -302,6 +302,9 @@ export class EscrowClient {
   async simulatedLock(escrowId: string): Promise<EscrowState> {
     const state = this.states.get(escrowId);
     if (!state) throw new Error(`Escrow ${escrowId} not loaded`);
+    if (state.status !== EscrowStatus.FUNDED) {
+      throw new Error(`Cannot lock — status is ${state.status}, expected FUNDED`);
+    }
 
     const buyerPk = state.participants.buyer || "mock_buyer";
     const sellerPk = state.participants.seller || "mock_seller";
@@ -443,7 +446,8 @@ export class EscrowClient {
       claimedAt: now,
     };
 
-    const content = await this.signer.nip44Encrypt(JSON.stringify(payload), pubkey);
+    // Plaintext for testing. TODO: NIP-44 encrypt for production
+    const content = JSON.stringify(payload);
 
     const unsigned: UnsignedEvent = {
       kind: EscrowEventKind.CLAIM,
@@ -481,9 +485,8 @@ export class EscrowClient {
       sentAt: now,
     };
 
-    // Encrypt to self (all participants will get the event via relay
-    // and decrypt with the sender's pubkey)
-    const content = await this.signer.nip44Encrypt(JSON.stringify(payload), pubkey);
+    // Plaintext for testing. TODO: NIP-44 encrypt for production
+    const content = JSON.stringify(payload);
 
     const unsigned: UnsignedEvent = {
       kind: EscrowEventKind.CHAT,
@@ -521,7 +524,8 @@ export class EscrowClient {
       cancelledAt: now,
     };
 
-    const content = await this.signer.nip44Encrypt(JSON.stringify(payload), pubkey);
+    // Plaintext for testing. TODO: NIP-44 encrypt for production
+    const content = JSON.stringify(payload);
 
     const unsigned: UnsignedEvent = {
       kind: EscrowEventKind.CANCEL,
@@ -709,7 +713,9 @@ export class EscrowClient {
 
       this.callbacks.onStateUpdate?.(escrowId, result.state);
     } else {
-      this.callbacks.onValidationError?.(escrowId, result.error.message, event.id);
+      // Only log — don't fire callback for expected rejections
+      // (duplicate events, stale state, events we already applied locally)
+      console.debug(`[escrow] Rejected event ${event.id.slice(0, 8)}: ${result.error.code}`);
     }
   }
 

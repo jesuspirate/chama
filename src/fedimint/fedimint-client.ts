@@ -1,5 +1,5 @@
 // ══════════════════════════════════════════════════════════════════════════
-// SatoshiMarket Nostr Escrow Engine — Fedimint Client (Browser WASM)
+// Chama Nostr Escrow Engine — Fedimint Client (Browser WASM)
 // ══════════════════════════════════════════════════════════════════════════
 //
 // Wraps the @fedimint/core SDK to provide ecash operations for escrow:
@@ -432,7 +432,7 @@ async function hashNotes(oobNotes: string): Promise<string> {
  * Split bytes into N shares with threshold T using Shamir Secret Sharing.
  *
  * Uses the `shamir-secret-sharing` npm package (same one used in
- * SatoshiMarket production — tested and proven).
+ * Chama production — tested and proven).
  */
 async function shamirSplit(secret: Uint8Array, n: number, t: number): Promise<SSSShare[]> {
   // Dynamic import to keep the dependency lazy

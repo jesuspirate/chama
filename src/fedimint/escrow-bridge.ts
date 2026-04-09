@@ -1,5 +1,5 @@
 // ══════════════════════════════════════════════════════════════════════════
-// SatoshiMarket — Escrow ↔ Fedimint Bridge
+// Chama — Escrow ↔ Fedimint Bridge
 // ══════════════════════════════════════════════════════════════════════════
 //
 // Glues the EscrowClient (trade protocol on Nostr) to the FedimintClient

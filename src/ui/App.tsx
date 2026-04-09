@@ -297,7 +297,9 @@ function TradeCard({ state, pubkey, onSelect }: {
   	el.select();
   	document.execCommand("copy");
   	document.body.removeChild(el);
-  	alert("Copied: " + id);
+  	// Brief visual feedback instead of alert
+        const t = document.querySelector('[title="Tap to copy escrow ID"]');
+        if (t) { (t as any).style.color = "#22c55e"; setTimeout(() => { (t as any).style.color = ""; }, 800); }
        }}
         title="Tap to copy escrow ID"
       >
@@ -847,7 +849,7 @@ export default function App() {
           </div>
         </div>
         <div style={{ fontSize: 9, color: T.muted, fontFamily: T.mono, padding: "4px 10px", borderRadius: 6, background: T.surface, border: `1px solid ${T.border}` }}>
-          v0.1.5
+          v0.1.6
         </div>
       </div>
 

@@ -1,5 +1,5 @@
 // ══════════════════════════════════════════════════════════════════════════
-// SatoshiMarket Nostr Escrow Engine — Types & Constants
+// Chama Nostr Escrow Engine — Types & Constants
 // ══════════════════════════════════════════════════════════════════════════
 //
 // Pure type definitions. No runtime dependencies. No server. No database.
@@ -12,7 +12,7 @@
 //   4. Immutable audit log — non-replaceable events, chained via e-tags
 
 // ── Escrow States ─────────────────────────────────────────────────────────
-// Matches the existing SatoshiMarket state machine from ARCHITECTURE.md
+// Matches the existing Chama state machine from ARCHITECTURE.md
 // but adapted for relay-native operation (no FUNDED state — funding IS locking)
 
 export enum EscrowStatus {
@@ -59,7 +59,7 @@ export enum Outcome {
 
 // ── Nostr Event Kinds ─────────────────────────────────────────────────────
 // Application-specific range (30000+). Non-replaceable for immutable audit.
-// Using 38100–38109 block for SatoshiMarket escrow protocol.
+// Using 38100–38109 block for Chama escrow protocol.
 
 export enum EscrowEventKind {
   /** Initiator publishes trade terms */

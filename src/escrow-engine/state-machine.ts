@@ -1,5 +1,5 @@
 // ══════════════════════════════════════════════════════════════════════════
-// SatoshiMarket Nostr Escrow Engine — State Machine
+// Chama Nostr Escrow Engine — State Machine
 // ══════════════════════════════════════════════════════════════════════════
 //
 // Pure function: (state, event) → state | error

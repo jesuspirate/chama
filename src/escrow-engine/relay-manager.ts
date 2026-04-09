@@ -1,5 +1,5 @@
 // ══════════════════════════════════════════════════════════════════════════
-// SatoshiMarket Nostr Escrow Engine — Relay Manager
+// Chama Nostr Escrow Engine — Relay Manager
 // ══════════════════════════════════════════════════════════════════════════
 //
 // Manages WebSocket connections to multiple Nostr relays.

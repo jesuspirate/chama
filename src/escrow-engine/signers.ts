@@ -1,5 +1,5 @@
 // ══════════════════════════════════════════════════════════════════════════
-// SatoshiMarket — Signer Implementations
+// Chama — Signer Implementations
 // ══════════════════════════════════════════════════════════════════════════
 //
 // Three implementations of the Signer interface:

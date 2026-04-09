@@ -1,5 +1,5 @@
 // ══════════════════════════════════════════════════════════════════════════
-// SatoshiMarket Nostr Escrow Engine — Event Parser
+// Chama Nostr Escrow Engine — Event Parser
 // ══════════════════════════════════════════════════════════════════════════
 //
 // Transforms raw Nostr events into typed ParsedEscrowEvent objects.
