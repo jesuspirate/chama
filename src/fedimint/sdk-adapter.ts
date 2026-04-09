@@ -146,6 +146,61 @@ export function adaptRealWallet(real: RealFedimintWallet): IFedimintWallet {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
+// LOCAL WALLET RESET
+//
+// Wipes the Fedimint WASM wallet's IndexedDB so the next init() can install
+// a fresh seed. This is the "get me out of the No modification allowed
+// jail" escape hatch — safe to call whenever the user has no unspent ecash
+// on this device (e.g. they haven't joined a federation yet, or they've
+// already moved funds out).
+//
+// The database name `fedimint.db` is the one used by @fedimint/transport-web
+// 0.1.x (grep `worker.js`). If a future SDK version changes this, update
+// DB_NAME here.
+// ══════════════════════════════════════════════════════════════════════════
+
+/** IndexedDB database name used by @fedimint/transport-web */
+const FEDIMINT_DB_NAME = "fedimint.db";
+
+/**
+ * Delete the local Fedimint wallet state (IndexedDB + any in-memory caches).
+ *
+ * This is destructive to *local* wallet state only. The Nostr-backed seed
+ * stays intact on relays, so after a reset the next init() will reinstall
+ * the same mnemonic and re-derive identical keys — any ecash that lives
+ * inside an already-joined federation is recoverable by rejoining, and
+ * any pending Lightning/mint operations that hadn't settled are lost.
+ *
+ * Returns once the database delete has resolved. Throws on blocked deletes
+ * (e.g. another tab has the DB open) so the UI can surface the problem.
+ */
+export async function resetLocalFedimintWallet(): Promise<void> {
+  if (typeof indexedDB === "undefined") {
+    throw new Error("IndexedDB is unavailable in this environment");
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    const req = indexedDB.deleteDatabase(FEDIMINT_DB_NAME);
+    req.onsuccess = () => resolve();
+    req.onerror = () =>
+      reject(
+        new Error(
+          `Failed to delete ${FEDIMINT_DB_NAME}: ${req.error?.message ?? "unknown"}`
+        )
+      );
+    req.onblocked = () =>
+      reject(
+        new Error(
+          `Reset blocked: another tab has the Fedimint wallet open. ` +
+          `Close other Chama tabs and try again.`
+        )
+      );
+  });
+
+  console.info("[chama] Local Fedimint wallet IndexedDB deleted");
+}
+
+// ══════════════════════════════════════════════════════════════════════════
 // FACTORY — Used by FedimintClient.defaultWalletFactory in production.
 //
 // Dynamically imports @fedimint/core and @fedimint/transport-web so that
@@ -174,16 +229,66 @@ export async function createRealWallet(
 
   // Install the seed BEFORE creating the wallet so the wallet's derived
   // keys come from our Nostr-backed mnemonic rather than a fresh random.
+  //
+  // The WASM wallet persists its seed in an IndexedDB database named
+  // "fedimint.db". If a previous Chama session already wrote a seed
+  // there, setMnemonic() will throw a "No modification allowed" error —
+  // the Rust SDK refuses to overwrite an existing seed because doing so
+  // would orphan any ecash associated with the old seed. We handle
+  // three cases:
+  //
+  //   1. No existing seed  → install ours.
+  //   2. Existing seed matches ours  → no-op, proceed.
+  //   3. Existing seed differs  → throw an actionable error asking the
+  //      user to reset their local wallet (which we also provide a
+  //      one-click button for in the UI).
+  const directorTyped = director as unknown as {
+    setMnemonic(words: string[]): Promise<boolean>;
+    getMnemonic(): Promise<string[]>;
+    generateMnemonic(): Promise<string[]>;
+  };
+
   if (opts.mnemonic && opts.mnemonic.length > 0) {
-    await (director as unknown as {
-      setMnemonic(words: string[]): Promise<boolean>;
-    }).setMnemonic(opts.mnemonic);
+    let existing: string[] | null = null;
+    try {
+      existing = await directorTyped.getMnemonic();
+    } catch {
+      // getMnemonic throws when no seed is set yet — that's fine
+      existing = null;
+    }
+
+    if (existing && existing.length > 0) {
+      // Compare word-by-word. Arrays from the SDK are canonical lowercase.
+      const sameLength = existing.length === opts.mnemonic.length;
+      const allMatch = sameLength && existing.every(
+        (w, i) => w.toLowerCase().trim() === opts.mnemonic![i].toLowerCase().trim()
+      );
+
+      if (!allMatch) {
+        throw new Error(
+          "Local Fedimint wallet has a different seed than your Nostr-backed " +
+          "seed. Click 'Reset local wallet' in the Fedimint bar to clear the " +
+          "stale local state and restore from Nostr. " +
+          "(This is safe if you haven't yet joined a federation on this device.)"
+        );
+      }
+      // Same seed already installed — nothing to do
+      console.info("[chama] Fedimint seed already matches Nostr backup — reusing");
+    } else {
+      // No existing seed → install ours
+      await directorTyped.setMnemonic(opts.mnemonic);
+    }
   } else {
-    // No seed supplied — let the director generate one. (Only hit when
-    // seed-manager is unavailable, e.g. in unit tests.)
-    await (director as unknown as {
-      generateMnemonic(): Promise<string[]>;
-    }).generateMnemonic();
+    // No seed supplied — let the director generate one, unless it already
+    // has one persisted (testnet / CI path).
+    try {
+      const existing = await directorTyped.getMnemonic();
+      if (!existing || existing.length === 0) {
+        await directorTyped.generateMnemonic();
+      }
+    } catch {
+      await directorTyped.generateMnemonic();
+    }
   }
 
   const wallet = await director.createWallet();

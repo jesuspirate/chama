@@ -102,11 +102,14 @@ export interface FederationPreset {
 }
 
 /**
- * Curated federation list. Edit this file to add your private federations
- * or vetted community federations. BLF is the default for beginners.
+ * Curated federation list. Intentionally minimal: only the Bitcoin Life
+ * Federation default lives here. Private federations are NOT baked into
+ * this file — instead, Community Leaders surface their federations
+ * organically via the arbiter / community-leader form (see roadmap for
+ * kind-38109 community federation announcements published to Nostr).
  *
- * For the wider public federation list, Chama fetches observer.fedimint.org
- * at runtime — see `fetchObserverFederations()` below.
+ * The wider public federation list is fetched live from
+ * observer.fedimint.org at runtime — see `fetchObserverFederations()`.
  */
 export const CURATED_PRESETS: FederationPreset[] = [
   {
@@ -115,14 +118,6 @@ export const CURATED_PRESETS: FederationPreset[] = [
     description: "Default for new users. Safe starting point.",
     source: "curated",
   },
-  // ── Add your private federation invites here ────────────────────────────
-  // {
-  //   name: "Example Private Fed",
-  //   inviteCode: "fed1...",
-  //   description: "Community XYZ",
-  //   source: "curated",
-  //   communityUrl: "https://example.org",
-  // },
 ];
 
 /**
