@@ -271,10 +271,25 @@ export function useEscrow(config?: Partial<EscrowClientConfig>): [UseEscrowState
 
   const joinEscrow = useCallback(async (escrowId: string, role: Role) => {
     const client = requireClient();
-    const result = await client.joinEscrow(escrowId, role);
-    saveEscrowId(escrowId);
-    vibrate([30, 20, 30]);
-    return result;
+    try {
+      const result = await client.joinEscrow(escrowId, role);
+      saveEscrowId(escrowId);
+      vibrate([30, 20, 30]);
+      return result;
+    } catch (e: any) {
+      // Swallow known duplicate/stale errors — they fire when a user reloads
+      // a trade they already joined and the state has advanced past OPEN.
+      // Engine strings: "Cannot JOIN in state <x>" and
+      // "Pubkey is already a participant".
+      const msg = e?.message || "";
+      if (msg.includes("Cannot JOIN") || msg.includes("already a participant") ||
+          msg.includes("TERMINAL")) {
+        console.debug("[chama] Join suppressed:", msg);
+        saveEscrowId(escrowId);
+        return client.getState(escrowId)!;
+      }
+      throw e;
+    }
   }, []);
 
   const simulatedLockAction = useCallback(async (escrowId: string) => {
