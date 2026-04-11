@@ -259,6 +259,10 @@ export class RelayManager {
       throw new Error("No connected relays — cannot publish");
     }
 
+    // Mark as seen BEFORE publishing — prevents the relay echo from
+    // being processed as a new event when it comes back to us.
+    this.seenEventIds.add(event.id);
+
     const results = await Promise.allSettled(
       connected.map(relay => this.publishToSingleRelay(relay, event))
     );

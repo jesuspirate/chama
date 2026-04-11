@@ -701,6 +701,9 @@ export class EscrowClient {
     this.states.set(escrowId, result.state);
     this.rawEvents.set(escrowId, rawEvents);
 
+    // Notify UI of the reconstructed state
+    this.callbacks.onStateUpdate?.(escrowId, result.state);
+
     // Start watching for live updates
     this.watchEscrow(escrowId);
 
