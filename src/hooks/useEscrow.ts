@@ -271,7 +271,9 @@ export function useEscrow(config?: Partial<EscrowClientConfig>): [UseEscrowState
       const callbacks: EscrowClientCallbacks = {
         onStateUpdate: (id, s) => updateEscrow(id, s),
         onChatMessage: (id, msg) => {
-          // Chat messages are embedded in escrow state via the engine
+          // Chat messages are embedded in escrow state via the engine.
+          // Force React re-render with the updated chatMessages.
+          updateEscrow(id, client.getState(id)!);
           vibrate([20, 30, 20]);
         },
         onValidationError: (id, error, eventId) => {

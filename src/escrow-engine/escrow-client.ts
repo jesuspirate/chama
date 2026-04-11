@@ -551,6 +551,19 @@ export class EscrowClient {
 
     const signed = await this.signer.signEvent(unsigned);
     await this.relayManager.publish(signed);
+
+    // Apply chat locally for instant display (don't wait for relay echo)
+    const chatParsed = parseEscrowEvent(signed, JSON.stringify(payload), true);
+    if (chatParsed.ok) {
+      const currentChatState = this.states.get(escrowId);
+      if (currentChatState) {
+        const chatResult = applyEvent(currentChatState, chatParsed.event);
+        if (chatResult.ok) {
+          this.states.set(escrowId, chatResult.state);
+          this.callbacks.onStateUpdate?.(escrowId, chatResult.state);
+        }
+      }
+    }
   }
 
   // ── Cancel (initiator only, pre-lock) ───────────────────────────────────
@@ -741,6 +754,10 @@ export class EscrowClient {
     if (parsed.kind === EscrowEventKind.CHAT) {
       const state = this.states.get(escrowId);
       if (state) {
+        // Dedup: skip if this chat message was already applied locally (sender echo)
+        const alreadyHave = state.chatMessages.some(m => m.raw.id === event.id);
+        if (alreadyHave) return;
+
         const result = applyEvent(state, parsed);
         if (result.ok) {
           this.states.set(escrowId, result.state);
