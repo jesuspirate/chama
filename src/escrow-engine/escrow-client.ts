@@ -142,6 +142,9 @@ export class EscrowClient {
   /** Our pubkey (cached after first call) */
   private _pubkey: string | null = null;
 
+  /** Buffered events waiting for their predecessors — escrowId → events[] */
+  private eventBuffer: Map<string, { event: NostrEvent; relay: string; attempts: number }[]> = new Map();
+
   constructor(
     signer: Signer,
     config: EscrowClientConfig,
@@ -415,8 +418,21 @@ export class EscrowClient {
 
     const newState = this.applyLocally(escrowId, signed, payload);
 
-    // Auto-resolve if 2-of-3 threshold is met
-    await this.maybeAutoResolve(escrowId);
+    // Auto-resolve if 2-of-3 threshold is met.
+    // Wrapped in try/catch — resolve failure must not break the vote.
+    // If this fails, handleIncomingEvent will retry when the relay
+    // delivers the VOTE to other browsers (or back to us).
+    try {
+      await this.maybeAutoResolve(escrowId);
+    } catch (e) {
+      console.warn("[escrow] Auto-resolve failed after vote — will retry on relay echo:", e);
+      // Retry once after a short delay
+      setTimeout(() => {
+        this.maybeAutoResolve(escrowId).catch(e2 =>
+          console.debug("[escrow] Auto-resolve retry also failed:", e2)
+        );
+      }, 2000);
+    }
 
     return newState;
   }
@@ -709,10 +725,59 @@ export class EscrowClient {
       this.rawEvents.set(escrowId, existing);
 
       this.callbacks.onStateUpdate?.(escrowId, result.state);
+
+      // If we just received a VOTE and the threshold is now met,
+      // ANY browser can publish the RESOLVE — not just the voter.
+      // This is the key redundancy: if the voter's auto-resolve failed,
+      // the next browser to see the vote picks up the slack.
+      if (parsed.kind === EscrowEventKind.VOTE) {
+        this.maybeAutoResolve(escrowId).catch(e =>
+          console.debug("[escrow] Incoming-vote auto-resolve failed:", e)
+        );
+      }
+
+      // Flush buffered events — predecessors may now be in the chain
+      this.flushEventBuffer(escrowId);
+    } else if (result.error.code === "NO_STATE") {
+      // Event arrived for an escrow we haven't loaded — buffer it
+      this.bufferEvent(escrowId, event, relayUrl);
     } else {
       // Only log — don't fire callback for expected rejections
-      // (duplicate events, stale state, events we already applied locally)
       console.debug(`[escrow] Rejected event ${event.id.slice(0, 8)}: ${result.error.code}`);
+    }
+  }
+
+  /** Buffer an event for later retry */
+  private bufferEvent(escrowId: string, event: NostrEvent, relay: string): void {
+    const buf = this.eventBuffer.get(escrowId) || [];
+    // Don't buffer duplicates
+    if (buf.some(b => b.event.id === event.id)) return;
+    // Max 20 buffered events per escrow
+    if (buf.length >= 20) return;
+    buf.push({ event, relay, attempts: 0 });
+    this.eventBuffer.set(escrowId, buf);
+  }
+
+  /** Try to apply buffered events after a state change */
+  private async flushEventBuffer(escrowId: string): Promise<void> {
+    const buf = this.eventBuffer.get(escrowId);
+    if (!buf || buf.length === 0) return;
+
+    const remaining: typeof buf = [];
+    for (const entry of buf) {
+      entry.attempts++;
+      try {
+        await this.handleIncomingEvent(entry.event, entry.relay);
+      } catch {
+        // Still can't apply — keep in buffer if under retry limit
+        if (entry.attempts < 5) remaining.push(entry);
+      }
+    }
+
+    if (remaining.length > 0) {
+      this.eventBuffer.set(escrowId, remaining);
+    } else {
+      this.eventBuffer.delete(escrowId);
     }
   }
 
@@ -739,7 +804,11 @@ export class EscrowClient {
   /** After a vote, check if 2-of-3 threshold is met and auto-publish RESOLVE */
   private async maybeAutoResolve(escrowId: string): Promise<void> {
     const state = this.states.get(escrowId);
-    if (!state || state.status !== EscrowStatus.LOCKED) return;
+    if (!state) return;
+    // Skip if already resolved or past LOCKED
+    if (state.status !== EscrowStatus.LOCKED) return;
+    // Skip if a RESOLVE event already exists in the chain
+    if (state.eventChain.some(e => e.kind === EscrowEventKind.RESOLVE)) return;
 
     // Count matching votes
     const votes = Object.entries(state.votes) as [Role, Outcome][];
