@@ -291,6 +291,20 @@ function TradeCard({ state, pubkey, onSelect }: {
         ))}
       </div>
 
+      {/* Compact countdown on card */}
+      {state.expiresAt && state.status !== "COMPLETED" && state.status !== "CANCELLED" && state.status !== "EXPIRED" && (() => {
+        const rem = state.expiresAt - Math.floor(Date.now() / 1000);
+        if (rem <= 0) return <div style={{ fontSize: 9, color: T.red, fontFamily: T.mono, textAlign: "center", marginTop: 8 }}>EXPIRED</div>;
+        const h = Math.floor(rem / 3600);
+        const m = Math.floor((rem % 3600) / 60);
+        const color = rem < 600 ? T.red : rem < 3600 ? T.amber : T.muted;
+        return (
+          <div style={{ fontSize: 9, color, fontFamily: T.mono, textAlign: "center", marginTop: 8 }}>
+            {h > 0 ? `${h}h ${m}m remaining` : `${m}m remaining`}
+          </div>
+        );
+      })()}
+
       {/* Escrow ID — tap to copy */}
       <div
        onClick={() => {
@@ -313,6 +327,62 @@ function TradeCard({ state, pubkey, onSelect }: {
       >
         {state.id} — tap to copy
       </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// COUNTDOWN TIMER
+// ══════════════════════════════════════════════════════════════════════════
+
+function CountdownTimer({ expiresAt }: { expiresAt: number }) {
+  const [now, setNow] = useState(Math.floor(Date.now() / 1000));
+
+  useEffect(() => {
+    const interval = setInterval(() => setNow(Math.floor(Date.now() / 1000)), 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const remaining = expiresAt - now;
+  if (remaining <= 0) {
+    return (
+      <div style={{
+        padding: "10px 16px", borderRadius: T.rs,
+        background: T.redDim, border: `1px solid ${T.red}44`,
+        textAlign: "center", fontFamily: T.mono, fontSize: 12,
+        color: T.red, fontWeight: 700,
+      }}>
+        EXPIRED
+      </div>
+    );
+  }
+
+  const hours = Math.floor(remaining / 3600);
+  const mins = Math.floor((remaining % 3600) / 60);
+  const secs = remaining % 60;
+  const timeStr = hours > 0
+    ? `${hours}h ${mins.toString().padStart(2, "0")}m ${secs.toString().padStart(2, "0")}s`
+    : mins > 0
+    ? `${mins}m ${secs.toString().padStart(2, "0")}s`
+    : `${secs}s`;
+
+  const urgent = remaining < 300;  // < 5 min
+  const warning = remaining < 600; // < 10 min
+  const caution = remaining < 3600; // < 1 hour
+
+  const color = warning ? T.red : caution ? T.amber : T.green;
+  const bg = warning ? T.redDim : caution ? T.amberDim : T.greenDim;
+
+  return (
+    <div style={{
+      display: "flex", alignItems: "center", justifyContent: "center",
+      gap: 8, padding: "8px 16px", borderRadius: T.rs,
+      background: bg, border: `1px solid ${color}44`,
+      fontFamily: T.mono, fontSize: 11,
+      animation: urgent ? "pulse 1s ease-in-out infinite" : "none",
+    }}>
+      <span style={{ color: T.muted, fontSize: 9, letterSpacing: 1 }}>EXPIRES IN</span>
+      <span style={{ color, fontWeight: 700, fontSize: 13 }}>{timeStr}</span>
     </div>
   );
 }
@@ -395,6 +465,13 @@ function TradeDetail({ state, pubkey, onBack, onVote, onClaim, onJoin, onLock, o
           )}
         </div>
       </div>
+
+      {/* Countdown timer — visible in all non-terminal states */}
+      {state.expiresAt && state.status !== "COMPLETED" && state.status !== "CANCELLED" && state.status !== "EXPIRED" && (
+        <div style={{ marginBottom: 16 }}>
+          <CountdownTimer expiresAt={state.expiresAt} />
+        </div>
+      )}
 
       {/* Participants */}
       <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: T.r, padding: 20, marginBottom: 16 }}>
@@ -1350,7 +1427,7 @@ export default function App() {
           </div>
         </div>
         <div style={{ fontSize: 9, color: T.muted, fontFamily: T.mono, padding: "4px 10px", borderRadius: 6, background: T.surface, border: `1px solid ${T.border}` }}>
-          v0.1.19
+          v0.1.20
         </div>
       </div>
 
