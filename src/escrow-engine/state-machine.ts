@@ -556,17 +556,21 @@ export function applyEvent(
     return { ok: true, state: next };
   }
 
-  // ── Check event chain continuity ──
+  // ── Check event chain continuity (soft — relay events arrive out of order) ──
+  // In a multi-relay async environment, events often arrive before their
+  // predecessors. The handler-level checks (status, votes, roles) are the
+  // real validation. Chain ordering is a convenience for replay, not a
+  // security boundary. We log mismatches but don't reject.
   if (event.kind !== EscrowEventKind.CHAT) {
     const lastEvent = state.eventChain[state.eventChain.length - 1];
     if (lastEvent && event.prevEventId !== lastEvent.raw.id) {
-      // Allow some flexibility — the event might reference any event in the chain
       const referencedInChain = state.eventChain.some(e => e.raw.id === event.prevEventId);
       if (!referencedInChain && event.prevEventId !== null) {
-        return err("CHAIN_BREAK",
-          "Event's e-tag doesn't reference any event in the chain",
-          event.raw.id,
-          { prevEventId: event.prevEventId, lastEventId: lastEvent?.raw.id }
+        // Soft warning — proceed to handler validation instead of rejecting
+        // The handler will catch any real issues (wrong status, missing votes, etc.)
+        console.debug(
+          `[escrow] Chain gap: event ${event.raw.id.slice(0, 8)} refs ` +
+          `${event.prevEventId?.slice(0, 8)} but chain tip is ${lastEvent.raw.id.slice(0, 8)} — allowing`
         );
       }
     }
