@@ -32,6 +32,7 @@ import {
   type CompletePayload,
   type CancelPayload,
   type ChatPayload,
+  type ReadyPayload,
   type ValidationResult,
   type ValidationError,
 } from "./types.js";
@@ -54,6 +55,7 @@ function cloneState(state: EscrowState): EscrowState {
   return {
     ...state,
     participants: { ...state.participants },
+    readiness: { ...state.readiness },
     votes: { ...state.votes },
     fees: { ...state.fees },
     lock: {
@@ -168,6 +170,7 @@ function handleCreate(event: ParsedEscrowEvent<CreatePayload>): TransitionResult
     mintUrl: p.mintUrl,
     participants,
     initiator: { pubkey: event.pubkey, role: initiatorRole },
+    readiness: {},
     votes: {},
     resolvedOutcome: null,
     resolvedMajority: null,
@@ -248,6 +251,21 @@ function handleLock(state: EscrowState, event: ParsedEscrowEvent<LockPayload>): 
 
   if (state.status !== EscrowStatus.FUNDED) {
     return err("INVALID_STATE", `Cannot LOCK in state ${state.status}`, event.raw.id);
+  }
+
+  // All 3 participants must have confirmed ready before locking
+  const allReady = state.readiness[Role.BUYER] &&
+                   state.readiness[Role.SELLER] &&
+                   state.readiness[Role.ARBITER];
+  if (!allReady) {
+    const missing = [Role.BUYER, Role.SELLER, Role.ARBITER]
+      .filter(r => !state.readiness[r])
+      .join(", ");
+    return err("NOT_ALL_READY",
+      `Cannot lock — waiting for readiness confirmation from: ${missing}`,
+      event.raw.id,
+      { readiness: state.readiness }
+    );
   }
 
   // Only the seller (who holds the sats) can lock
@@ -488,6 +506,40 @@ function handleCancel(state: EscrowState, event: ParsedEscrowEvent<CancelPayload
   return { ok: true, state: next };
 }
 
+// ── READY ─────────────────────────────────────────────────────────────────
+// Participant confirms they're online and ready for the escrow to lock.
+// All 3 must confirm before LOCK is allowed.
+
+function handleReady(state: EscrowState, event: ParsedEscrowEvent<ReadyPayload>): TransitionResult {
+  const p = event.payload;
+
+  if (state.status !== EscrowStatus.FUNDED) {
+    return err("INVALID_STATE", `Cannot confirm READY in state ${state.status}`, event.raw.id);
+  }
+
+  const role = getRole(state, event.pubkey);
+  if (!role) {
+    return err("NOT_PARTICIPANT", "Only participants can confirm ready", event.raw.id);
+  }
+
+  if (role !== p.role) {
+    return err("ROLE_MISMATCH",
+      `Signer has role ${role} but event claims ${p.role}`,
+      event.raw.id
+    );
+  }
+
+  if (state.readiness[role]) {
+    return err("ALREADY_READY", `${role} has already confirmed ready`, event.raw.id);
+  }
+
+  const next = cloneState(state);
+  next.readiness[role] = true;
+  next.eventChain.push(event);
+
+  return { ok: true, state: next };
+}
+
 // ── CHAT ──────────────────────────────────────────────────────────────────
 // Chat messages don't change state but are part of the escrow record.
 
@@ -594,6 +646,8 @@ export function applyEvent(
       return handleCancel(state, event as ParsedEscrowEvent<CancelPayload>);
     case EscrowEventKind.CHAT:
       return handleChat(state, event as ParsedEscrowEvent<ChatPayload>);
+    case EscrowEventKind.READY:
+      return handleReady(state, event as ParsedEscrowEvent<ReadyPayload>);
     default:
       return err("UNKNOWN_EVENT_KIND", `Unknown event kind: ${event.kind}`, event.raw.id);
   }

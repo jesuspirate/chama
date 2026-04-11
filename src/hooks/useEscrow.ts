@@ -118,6 +118,8 @@ export interface UseEscrowActions {
   }) => Promise<{ escrowId: string; state: EscrowState }>;
   /** Join an existing escrow */
   joinEscrow: (escrowId: string, role: Role) => Promise<EscrowState>;
+  /** Confirm ready for locking (pre-lock safety check) */
+  confirmReady: (escrowId: string) => Promise<EscrowState>;
   /**
    * Lock ecash into 2-of-3 SSS escrow.
    * Runs the full real-Fedimint flow:
@@ -399,6 +401,22 @@ export function useEscrow(config?: Partial<EscrowClientConfig>): [UseEscrowState
     }
   }, []);
 
+  const confirmReadyAction = useCallback(async (escrowId: string) => {
+    const client = requireClient();
+    try {
+      const result = await client.confirmReady(escrowId);
+      vibrate([30, 15, 30]);
+      return result;
+    } catch (e: any) {
+      const msg = e?.message || "";
+      if (msg.includes("ALREADY_READY") || msg.includes("already confirmed")) {
+        console.debug("[chama] Ready suppressed:", msg);
+        return client.getState(escrowId)!;
+      }
+      throw e;
+    }
+  }, []);
+
   const requireBridge = (): EscrowFedimintBridge => {
     if (!bridgeRef.current) {
       throw new Error(
@@ -649,6 +667,7 @@ export function useEscrow(config?: Partial<EscrowClientConfig>): [UseEscrowState
     disconnect,
     createEscrow,
     joinEscrow,
+    confirmReady: confirmReadyAction,
     lockAndPublish: lockAndPublishAction,
     vote: voteAction,
     claimAndRedeem: claimAndRedeemAction,

@@ -80,6 +80,8 @@ export enum EscrowEventKind {
   CANCEL = 38107,
   /** Chat message within escrow context (NIP-44 encrypted) */
   CHAT = 38108,
+  /** Participant confirms they're online and ready for locking */
+  READY = 38109,
 }
 
 // ── Valid State Transitions ───────────────────────────────────────────────
@@ -248,6 +250,13 @@ export interface ChatPayload {
   sentAt: number;
 }
 
+/** Content of a READY event — participant confirms they're online and prepared */
+export interface ReadyPayload {
+  type: "escrow:ready";
+  role: Role;
+  readyAt: number;
+}
+
 // ── Union type for all payloads ───────────────────────────────────────────
 
 export type EscrowPayload =
@@ -259,7 +268,8 @@ export type EscrowPayload =
   | ClaimPayload
   | CompletePayload
   | CancelPayload
-  | ChatPayload;
+  | ChatPayload
+  | ReadyPayload;
 
 // ── Raw Nostr Event (minimal, from nostr-tools) ──────────────────────────
 
@@ -322,6 +332,13 @@ export interface EscrowState {
 
   /** Who initiated the trade (and their role) */
   initiator: { pubkey: string; role: Role };
+
+  /** Readiness confirmations — who has published READY */
+  readiness: {
+    [Role.BUYER]?: boolean;
+    [Role.SELLER]?: boolean;
+    [Role.ARBITER]?: boolean;
+  };
 
   /** Votes cast so far */
   votes: {

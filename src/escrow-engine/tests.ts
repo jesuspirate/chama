@@ -24,6 +24,7 @@ import {
   type ChatPayload,
   type EscrowPayload,
   type NostrEvent,
+  type ReadyPayload,
 } from "./types.js";
 
 import {
@@ -164,6 +165,14 @@ function completeEvent(prevId: string): ParsedEscrowEvent<CompletePayload> {
   return makeParsedEvent(EscrowEventKind.COMPLETE, BUYER_PK, {
     type: "escrow:complete",
     completedAt: NOW + eventCounter,
+  }, prevId);
+}
+
+function readyEvent(role: Role, pubkey: string, prevId: string): ParsedEscrowEvent<any> {
+  return makeParsedEvent(EscrowEventKind.READY, pubkey, {
+    type: "escrow:ready",
+    role,
+    readyAt: NOW + eventCounter,
   }, prevId);
 }
 
@@ -312,7 +321,15 @@ console.log("\n── LOCK ──");
 
   assert(state.status === EscrowStatus.FUNDED, "Pre-condition: state is FUNDED");
 
-  const lock = lockEvent(j2.raw.id);
+  // All participants must confirm ready before lock
+  const rb = readyEvent(Role.BUYER, BUYER_PK, j2.raw.id);
+  state = (applyEvent(state, rb) as any).state;
+  const rs = readyEvent(Role.SELLER, SELLER_PK, rb.raw.id);
+  state = (applyEvent(state, rs) as any).state;
+  const ra = readyEvent(Role.ARBITER, ARBITER_PK, rs.raw.id);
+  state = (applyEvent(state, ra) as any).state;
+
+  const lock = lockEvent(ra.raw.id);
   const r = applyEvent(state, lock);
   if (assertOk(r, "Lock transitions to LOCKED")) {
     assert(r.state.status === EscrowStatus.LOCKED, "Status is LOCKED");
@@ -330,6 +347,14 @@ console.log("\n── LOCK ──");
   const j2 = joinEvent(Role.ARBITER, ARBITER_PK, j1.raw.id);
   state = applyEvent(state, j2).ok ? (applyEvent(state, j2) as any).state : state;
 
+  // Add READY events for lock test
+  const rb2 = readyEvent(Role.BUYER, BUYER_PK, j2.raw.id);
+  state = (applyEvent(state, rb2) as any).state;
+  const rs2 = readyEvent(Role.SELLER, SELLER_PK, rb2.raw.id);
+  state = (applyEvent(state, rs2) as any).state;
+  const ra2 = readyEvent(Role.ARBITER, ARBITER_PK, rs2.raw.id);
+  state = (applyEvent(state, ra2) as any).state;
+
   const badLock = makeParsedEvent(EscrowEventKind.LOCK, SELLER_PK, {
     type: "escrow:lock" as const,
     notesHash: "hash",
@@ -342,7 +367,7 @@ console.log("\n── LOCK ──");
     arbiterFeeMsats: 1_000_000,
     platformFeeMsats: 500_000,
     lockedAt: NOW,
-  }, j2.raw.id);
+  }, ra2.raw.id);
 
   assertErr(applyEvent(state, badLock), "AMOUNT_MISMATCH", "Lock with wrong amounts rejected");
 }
@@ -364,7 +389,18 @@ console.log("\n── VOTE (happy path: buyer+seller agree) ──");
   events.push(j2);
   state = (applyEvent(state, j2) as any).state;
 
-  const lock = lockEvent(j2.raw.id);
+  // Ready confirmations
+  const rb3 = readyEvent(Role.BUYER, BUYER_PK, j2.raw.id);
+  events.push(rb3);
+  state = (applyEvent(state, rb3) as any).state;
+  const rs3 = readyEvent(Role.SELLER, SELLER_PK, rb3.raw.id);
+  events.push(rs3);
+  state = (applyEvent(state, rs3) as any).state;
+  const ra3 = readyEvent(Role.ARBITER, ARBITER_PK, rs3.raw.id);
+  events.push(ra3);
+  state = (applyEvent(state, ra3) as any).state;
+
+  const lock = lockEvent(ra3.raw.id);
   events.push(lock);
   state = (applyEvent(state, lock) as any).state;
 
@@ -415,7 +451,15 @@ console.log("\n── VOTE (dispute: arbiter breaks tie) ──");
   state = (applyEvent(state, j1) as any).state;
   const j2 = joinEvent(Role.ARBITER, ARBITER_PK, j1.raw.id);
   state = (applyEvent(state, j2) as any).state;
-  const lock = lockEvent(j2.raw.id);
+  // Ready
+  const rb4 = readyEvent(Role.BUYER, BUYER_PK, j2.raw.id);
+  state = (applyEvent(state, rb4) as any).state;
+  const rs4 = readyEvent(Role.SELLER, SELLER_PK, rb4.raw.id);
+  state = (applyEvent(state, rs4) as any).state;
+  const ra4 = readyEvent(Role.ARBITER, ARBITER_PK, rs4.raw.id);
+  state = (applyEvent(state, ra4) as any).state;
+
+  const lock = lockEvent(ra4.raw.id);
   state = (applyEvent(state, lock) as any).state;
 
   // Buyer wants release, seller wants refund
@@ -457,7 +501,15 @@ console.log("\n── VOTE (dispute: arbiter breaks tie) ──");
   state = (applyEvent(state, j1) as any).state;
   const j2 = joinEvent(Role.ARBITER, ARBITER_PK, j1.raw.id);
   state = (applyEvent(state, j2) as any).state;
-  const lock = lockEvent(j2.raw.id);
+  // Ready
+  const rb5 = readyEvent(Role.BUYER, BUYER_PK, j2.raw.id);
+  state = (applyEvent(state, rb5) as any).state;
+  const rs5 = readyEvent(Role.SELLER, SELLER_PK, rb5.raw.id);
+  state = (applyEvent(state, rs5) as any).state;
+  const ra5 = readyEvent(Role.ARBITER, ARBITER_PK, rs5.raw.id);
+  state = (applyEvent(state, ra5) as any).state;
+
+  const lock = lockEvent(ra5.raw.id);
   state = (applyEvent(state, lock) as any).state;
 
   const earlyVote = voteEvent(Role.ARBITER, ARBITER_PK, Outcome.RELEASE, lock.raw.id);
@@ -472,7 +524,15 @@ console.log("\n── VOTE (dispute: arbiter breaks tie) ──");
   state = (applyEvent(state, j1) as any).state;
   const j2 = joinEvent(Role.ARBITER, ARBITER_PK, j1.raw.id);
   state = (applyEvent(state, j2) as any).state;
-  const lock = lockEvent(j2.raw.id);
+  // Ready
+  const rb6 = readyEvent(Role.BUYER, BUYER_PK, j2.raw.id);
+  state = (applyEvent(state, rb6) as any).state;
+  const rs6 = readyEvent(Role.SELLER, SELLER_PK, rb6.raw.id);
+  state = (applyEvent(state, rs6) as any).state;
+  const ra6 = readyEvent(Role.ARBITER, ARBITER_PK, rs6.raw.id);
+  state = (applyEvent(state, ra6) as any).state;
+
+  const lock = lockEvent(ra6.raw.id);
   state = (applyEvent(state, lock) as any).state;
 
   const v1 = voteEvent(Role.BUYER, BUYER_PK, Outcome.RELEASE, lock.raw.id);
@@ -491,7 +551,15 @@ console.log("\n── CLAIM + COMPLETE ──");
   state = (applyEvent(state, j1) as any).state;
   const j2 = joinEvent(Role.ARBITER, ARBITER_PK, j1.raw.id);
   state = (applyEvent(state, j2) as any).state;
-  const lock = lockEvent(j2.raw.id);
+  // Ready
+  const rb7 = readyEvent(Role.BUYER, BUYER_PK, j2.raw.id);
+  state = (applyEvent(state, rb7) as any).state;
+  const rs7 = readyEvent(Role.SELLER, SELLER_PK, rb7.raw.id);
+  state = (applyEvent(state, rs7) as any).state;
+  const ra7 = readyEvent(Role.ARBITER, ARBITER_PK, rs7.raw.id);
+  state = (applyEvent(state, ra7) as any).state;
+
+  const lock = lockEvent(ra7.raw.id);
   state = (applyEvent(state, lock) as any).state;
   const v1 = voteEvent(Role.BUYER, BUYER_PK, Outcome.RELEASE, lock.raw.id);
   state = (applyEvent(state, v1) as any).state;
@@ -523,6 +591,9 @@ console.log("\n── CLAIM + COMPLETE ──");
   state = (applyEvent(null, create) as any).state;
   state = (applyEvent(state, j1) as any).state;
   state = (applyEvent(state, j2) as any).state;
+  state = (applyEvent(state, rb7) as any).state;
+  state = (applyEvent(state, rs7) as any).state;
+  state = (applyEvent(state, ra7) as any).state;
   state = (applyEvent(state, lock) as any).state;
   state = (applyEvent(state, v1) as any).state;
   state = (applyEvent(state, v2) as any).state;
@@ -553,7 +624,15 @@ console.log("\n── CANCEL ──");
   state = (applyEvent(state, j1) as any).state;
   const j2 = joinEvent(Role.ARBITER, ARBITER_PK, j1.raw.id);
   state = (applyEvent(state, j2) as any).state;
-  const lock = lockEvent(j2.raw.id);
+  // Ready
+  const rb8 = readyEvent(Role.BUYER, BUYER_PK, j2.raw.id);
+  state = (applyEvent(state, rb8) as any).state;
+  const rs8 = readyEvent(Role.SELLER, SELLER_PK, rb8.raw.id);
+  state = (applyEvent(state, rs8) as any).state;
+  const ra8 = readyEvent(Role.ARBITER, ARBITER_PK, rs8.raw.id);
+  state = (applyEvent(state, ra8) as any).state;
+
+  const lock = lockEvent(ra8.raw.id);
   state = (applyEvent(state, lock) as any).state;
 
   const cancel = cancelEvent(lock.raw.id);
@@ -623,7 +702,15 @@ console.log("\n── REPLAY (full happy path from event chain) ──");
   const j2 = joinEvent(Role.ARBITER, ARBITER_PK, j1.raw.id);
   events.push(j2);
 
-  const lock = lockEvent(j2.raw.id);
+  // Ready
+  const rbR = readyEvent(Role.BUYER, BUYER_PK, j2.raw.id);
+  events.push(rbR);
+  const rsR = readyEvent(Role.SELLER, SELLER_PK, rbR.raw.id);
+  events.push(rsR);
+  const raR = readyEvent(Role.ARBITER, ARBITER_PK, rsR.raw.id);
+  events.push(raR);
+
+  const lock = lockEvent(raR.raw.id);
   events.push(lock);
 
   const v1 = voteEvent(Role.BUYER, BUYER_PK, Outcome.RELEASE, lock.raw.id);
@@ -644,7 +731,7 @@ console.log("\n── REPLAY (full happy path from event chain) ──");
   const result = replayEventChain(events);
   if (assertOk(result, "Full replay succeeds")) {
     assert(result.state.status === EscrowStatus.COMPLETED, "Final state is COMPLETED");
-    assert(result.state.eventChain.length === 9, "All 9 events in chain");
+    assert(result.state.eventChain.length === 12, "All 12 events in chain");
     assert(result.state.resolvedOutcome === Outcome.RELEASE, "Outcome is RELEASE");
 
     console.log("\n  📋 State summary:");

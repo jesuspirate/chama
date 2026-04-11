@@ -325,6 +325,44 @@ export class EscrowClient {
     return this.applyLocally(escrowId, signed, payload);
   }
 
+  // ── Confirm ready (pre-lock safety check) ───────────────────────────────
+
+  async confirmReady(escrowId: string): Promise<EscrowState> {
+    const state = this.states.get(escrowId);
+    if (!state) throw new Error(`Escrow ${escrowId} not loaded`);
+
+    const pubkey = await this.getPubkey();
+    const role = this.getMyRole(state, pubkey);
+    if (!role) throw new Error("You are not a participant in this escrow");
+
+    const now = Math.floor(Date.now() / 1000);
+    const lastEventId = state.eventChain[state.eventChain.length - 1]?.raw.id;
+
+    const payload = {
+      type: "escrow:ready" as const,
+      role,
+      readyAt: now,
+    };
+
+    const content = JSON.stringify(payload);
+
+    const unsigned: UnsignedEvent = {
+      kind: EscrowEventKind.READY,
+      created_at: now,
+      tags: [
+        [TAGS.ESCROW_ID, escrowId],
+        [TAGS.PREV_EVENT, lastEventId, "", "reply"],
+        [TAGS.TYPE, "escrow:ready"],
+      ],
+      content,
+    };
+
+    const signed = await this.signer.signEvent(unsigned);
+    await this.relayManager.publish(signed);
+
+    return this.applyLocally(escrowId, signed, payload);
+  }
+
   // ── Lock ecash in SSS escrow ────────────────────────────────────────────
   // The real lock flow runs through EscrowFedimintBridge.lockAndPublish,
   // which calls FedimintClient.createEscrowLock (real WASM spendNotes +

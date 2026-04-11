@@ -29,6 +29,7 @@ import {
   type CompletePayload,
   type CancelPayload,
   type ChatPayload,
+  type ReadyPayload,
   type ValidationResult,
   type ValidationError,
   Role,
@@ -51,6 +52,7 @@ const KIND_TO_TYPE: Record<number, string> = {
   [EscrowEventKind.COMPLETE]: "escrow:complete",
   [EscrowEventKind.CANCEL]:   "escrow:cancel",
   [EscrowEventKind.CHAT]:     "escrow:chat",
+  [EscrowEventKind.READY]:    "escrow:ready",
 };
 
 // ── Parse result type ─────────────────────────────────────────────────────
@@ -180,6 +182,15 @@ function validateChatPayload(data: unknown): data is ChatPayload {
   );
 }
 
+function validateReadyPayload(data: unknown): data is ReadyPayload {
+  const d = data as Record<string, unknown>;
+  return (
+    d.type === "escrow:ready" &&
+    typeof d.role === "string" && Object.values(Role).includes(d.role as Role) &&
+    typeof d.readyAt === "number"
+  );
+}
+
 // ── Payload validator dispatch ────────────────────────────────────────────
 
 const PAYLOAD_VALIDATORS: Record<number, (data: unknown) => boolean> = {
@@ -192,6 +203,7 @@ const PAYLOAD_VALIDATORS: Record<number, (data: unknown) => boolean> = {
   [EscrowEventKind.COMPLETE]: validateCompletePayload,
   [EscrowEventKind.CANCEL]:   validateCancelPayload,
   [EscrowEventKind.CHAT]:     validateChatPayload,
+  [EscrowEventKind.READY]:    validateReadyPayload,
 };
 
 // ══════════════════════════════════════════════════════════════════════════
