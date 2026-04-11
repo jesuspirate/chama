@@ -154,6 +154,7 @@ export async function fetchObserverFederations(
       // The observer schema has shifted over versions. Defensively pull
       // whatever fields look relevant and skip entries without an invite.
       const inviteCode =
+        entry?.invite ||
         entry?.invite_code ||
         entry?.inviteCode ||
         entry?.config?.invite_code ||
@@ -174,11 +175,25 @@ export async function fetchObserverFederations(
         entry?.description ||
         undefined;
 
+      // Extract health + activity for display
+      const health = entry?.health || "unknown";
+      const deposits = entry?.deposits ? Math.floor(entry.deposits / 1000) : 0;
+      const depositsSats = deposits > 0
+        ? deposits > 1_000_000 ? `${(deposits / 1_000_000).toFixed(1)}M sats`
+        : deposits > 1_000 ? `${(deposits / 1_000).toFixed(0)}k sats`
+        : `${deposits} sats`
+        : "";
+      const descParts = [];
+      if (health === "online") descParts.push("Online");
+      else if (health === "offline") descParts.push("Offline");
+      if (depositsSats) descParts.push(depositsSats + " deposits");
+      if (description) descParts.push(description);
+
       presets.push({
         name: String(name).slice(0, 60),
         federationId: federationId ? String(federationId) : undefined,
         inviteCode,
-        description: description ? String(description).slice(0, 160) : undefined,
+        description: descParts.join(" · ").slice(0, 160) || undefined,
         source: "observer",
       });
     }

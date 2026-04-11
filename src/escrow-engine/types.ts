@@ -82,6 +82,8 @@ export enum EscrowEventKind {
   CHAT = 38108,
   /** Participant confirms they're online and ready for locking */
   READY = 38109,
+  /** Kick an unresponsive participant (pre-lock only) */
+  KICK = 38110,
 }
 
 // ── Valid State Transitions ───────────────────────────────────────────────
@@ -257,6 +259,18 @@ export interface ReadyPayload {
   readyAt: number;
 }
 
+/** Content of a KICK event — remove unresponsive participant (pre-lock only) */
+export interface KickPayload {
+  type: "escrow:kick";
+  /** Role being kicked */
+  targetRole: Role;
+  /** Who initiated the kick */
+  kickerRole: Role;
+  /** Reason for the kick */
+  reason: string;
+  kickedAt: number;
+}
+
 // ── Union type for all payloads ───────────────────────────────────────────
 
 export type EscrowPayload =
@@ -269,7 +283,8 @@ export type EscrowPayload =
   | CompletePayload
   | CancelPayload
   | ChatPayload
-  | ReadyPayload;
+  | ReadyPayload
+  | KickPayload;
 
 // ── Raw Nostr Event (minimal, from nostr-tools) ──────────────────────────
 

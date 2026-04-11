@@ -33,6 +33,7 @@ import {
   type CancelPayload,
   type ChatPayload,
   type ReadyPayload,
+  type KickPayload,
   type ValidationResult,
   type ValidationError,
 } from "./types.js";
@@ -506,6 +507,53 @@ function handleCancel(state: EscrowState, event: ParsedEscrowEvent<CancelPayload
   return { ok: true, state: next };
 }
 
+// ── KICK ──────────────────────────────────────────────────────────────────
+// Remove an unresponsive participant. Only allowed in FUNDED state (pre-lock).
+// Reverts the escrow to CREATED so a new participant can join.
+
+function handleKick(state: EscrowState, event: ParsedEscrowEvent<KickPayload>): TransitionResult {
+  const p = event.payload;
+
+  // Only in FUNDED state (all 3 joined but not yet locked)
+  if (state.status !== EscrowStatus.FUNDED) {
+    return err("INVALID_STATE", `Cannot KICK in state ${state.status} — only allowed in FUNDED`, event.raw.id);
+  }
+
+  // Only existing participants can kick
+  const kickerRole = getRole(state, event.pubkey);
+  if (!kickerRole) {
+    return err("NOT_PARTICIPANT", "Only participants can kick", event.raw.id);
+  }
+
+  if (kickerRole !== p.kickerRole) {
+    return err("ROLE_MISMATCH", `Signer has role ${kickerRole} but claims ${p.kickerRole}`, event.raw.id);
+  }
+
+  // Can't kick yourself
+  if (p.targetRole === kickerRole) {
+    return err("SELF_KICK", "Cannot kick yourself — use CANCEL instead", event.raw.id);
+  }
+
+  // Can't kick the initiator
+  if (p.targetRole === state.initiator.role) {
+    return err("KICK_INITIATOR", "Cannot kick the trade initiator", event.raw.id);
+  }
+
+  const next = cloneState(state);
+
+  // Remove the kicked participant
+  next.participants[p.targetRole] = null;
+
+  // Clear all readiness (everyone needs to re-confirm after roster change)
+  next.readiness = {};
+
+  // Revert to CREATED (waiting for a replacement)
+  next.status = EscrowStatus.CREATED;
+
+  next.eventChain.push(event);
+  return { ok: true, state: next };
+}
+
 // ── READY ─────────────────────────────────────────────────────────────────
 // Participant confirms they're online and ready for the escrow to lock.
 // All 3 must confirm before LOCK is allowed.
@@ -648,6 +696,8 @@ export function applyEvent(
       return handleChat(state, event as ParsedEscrowEvent<ChatPayload>);
     case EscrowEventKind.READY:
       return handleReady(state, event as ParsedEscrowEvent<ReadyPayload>);
+    case EscrowEventKind.KICK:
+      return handleKick(state, event as ParsedEscrowEvent<KickPayload>);
     default:
       return err("UNKNOWN_EVENT_KIND", `Unknown event kind: ${event.kind}`, event.raw.id);
   }

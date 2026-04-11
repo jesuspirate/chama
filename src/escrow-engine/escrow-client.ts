@@ -325,6 +325,46 @@ export class EscrowClient {
     return this.applyLocally(escrowId, signed, payload);
   }
 
+  // ── Kick unresponsive participant (pre-lock only) ────────────────────────
+
+  async kickParticipant(escrowId: string, targetRole: Role, reason: string): Promise<EscrowState> {
+    const state = this.states.get(escrowId);
+    if (!state) throw new Error(`Escrow ${escrowId} not loaded`);
+
+    const pubkey = await this.getPubkey();
+    const myRole = this.getMyRole(state, pubkey);
+    if (!myRole) throw new Error("You are not a participant in this escrow");
+
+    const now = Math.floor(Date.now() / 1000);
+    const lastEventId = state.eventChain[state.eventChain.length - 1]?.raw.id;
+
+    const payload = {
+      type: "escrow:kick" as const,
+      targetRole,
+      kickerRole: myRole,
+      reason,
+      kickedAt: now,
+    };
+
+    const content = JSON.stringify(payload);
+
+    const unsigned: UnsignedEvent = {
+      kind: EscrowEventKind.KICK,
+      created_at: now,
+      tags: [
+        [TAGS.ESCROW_ID, escrowId],
+        [TAGS.PREV_EVENT, lastEventId, "", "reply"],
+        [TAGS.TYPE, "escrow:kick"],
+      ],
+      content,
+    };
+
+    const signed = await this.signer.signEvent(unsigned);
+    await this.relayManager.publish(signed);
+
+    return this.applyLocally(escrowId, signed, payload);
+  }
+
   // ── Confirm ready (pre-lock safety check) ───────────────────────────────
 
   async confirmReady(escrowId: string): Promise<EscrowState> {

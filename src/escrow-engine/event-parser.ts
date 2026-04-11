@@ -30,6 +30,7 @@ import {
   type CancelPayload,
   type ChatPayload,
   type ReadyPayload,
+  type KickPayload,
   type ValidationResult,
   type ValidationError,
   Role,
@@ -53,6 +54,7 @@ const KIND_TO_TYPE: Record<number, string> = {
   [EscrowEventKind.CANCEL]:   "escrow:cancel",
   [EscrowEventKind.CHAT]:     "escrow:chat",
   [EscrowEventKind.READY]:    "escrow:ready",
+  [EscrowEventKind.KICK]:     "escrow:kick",
 };
 
 // ── Parse result type ─────────────────────────────────────────────────────
@@ -182,6 +184,17 @@ function validateChatPayload(data: unknown): data is ChatPayload {
   );
 }
 
+function validateKickPayload(data: unknown): data is KickPayload {
+  const d = data as Record<string, unknown>;
+  return (
+    d.type === "escrow:kick" &&
+    typeof d.targetRole === "string" && Object.values(Role).includes(d.targetRole as Role) &&
+    typeof d.kickerRole === "string" && Object.values(Role).includes(d.kickerRole as Role) &&
+    typeof d.reason === "string" &&
+    typeof d.kickedAt === "number"
+  );
+}
+
 function validateReadyPayload(data: unknown): data is ReadyPayload {
   const d = data as Record<string, unknown>;
   return (
@@ -204,6 +217,7 @@ const PAYLOAD_VALIDATORS: Record<number, (data: unknown) => boolean> = {
   [EscrowEventKind.CANCEL]:   validateCancelPayload,
   [EscrowEventKind.CHAT]:     validateChatPayload,
   [EscrowEventKind.READY]:    validateReadyPayload,
+  [EscrowEventKind.KICK]:     validateKickPayload,
 };
 
 // ══════════════════════════════════════════════════════════════════════════

@@ -558,7 +558,7 @@ function CountdownTimer({ expiresAt }: { expiresAt: number }) {
 // TRADE DETAIL
 // ══════════════════════════════════════════════════════════════════════════
 
-function TradeDetail({ state, pubkey, onBack, onVote, onClaim, onJoin, onLock, onReady, onSendChat }: {
+function TradeDetail({ state, pubkey, onBack, onVote, onClaim, onJoin, onLock, onReady, onKick, onSendChat }: {
   state: EscrowState; pubkey: string;
   onBack: () => void;
   onVote: (outcome: Outcome) => void;
@@ -566,6 +566,7 @@ function TradeDetail({ state, pubkey, onBack, onVote, onClaim, onJoin, onLock, o
   onJoin: (role: Role) => void;
   onLock: () => Promise<void>;
   onReady: () => Promise<void>;
+  onKick: (targetRole: Role, reason: string) => Promise<void>;
   onSendChat: (message: string) => void;
 }) {
   const [voting, setVoting] = useState(false);
@@ -761,6 +762,25 @@ function TradeDetail({ state, pubkey, onBack, onVote, onClaim, onJoin, onLock, o
                 );
               })}
             </div>
+
+            {/* Kick button — for participants who haven't confirmed ready */}
+            {myReady && !allReady && readyCount >= 1 && [Role.BUYER, Role.SELLER, Role.ARBITER]
+              .filter((role: Role) => role !== myRole && !r[role] && !!state.participants[role] && role !== state.initiator.role)
+              .map((role: Role) => (
+                <button key={"kick-" + role} onClick={() => {
+                  console.log("[chama] kick button clicked for", role);
+                  onKick(role, "Unresponsive — not confirming ready");
+                }}
+                  style={{
+                    width: "100%", padding: "10px", borderRadius: T.rs,
+                    background: T.redDim, border: `1px solid ${T.red}33`,
+                    color: T.red, fontFamily: T.mono, fontSize: 11, fontWeight: 600,
+                    cursor: "pointer", marginBottom: 6, transition: "all 0.2s",
+                  }}>
+                  Kick {role} (not ready)
+                </button>
+              ))
+            }
 
             {/* Confirm Ready button — only if I haven't confirmed yet */}
             {!myReady && (
@@ -1600,7 +1620,7 @@ export default function App() {
           </div>
         </div>
         <div style={{ fontSize: 9, color: T.muted, fontFamily: T.mono, padding: "4px 10px", borderRadius: 6, background: T.surface, border: `1px solid ${T.border}` }}>
-          v0.1.21
+          v0.1.22
         </div>
       </div>
 
@@ -1702,6 +1722,15 @@ export default function App() {
                 setToast({ message: `Joined as ${role}!`, type: "success" });
               } catch (e: any) {
                 setToast({ message: e.message || "Failed to join", type: "error" });
+              }
+            }}
+            onKick={async (targetRole, reason) => {
+              try {
+                setToast({ message: `Kicking ${targetRole}...`, type: "info" });
+                await actions.kickParticipant(selectedId!, targetRole, reason);
+                setToast({ message: `${targetRole} removed. Waiting for replacement.`, type: "success" });
+              } catch (e: any) {
+                setToast({ message: e.message || "Kick failed", type: "error" });
               }
             }}
             onSendChat={(message) => {

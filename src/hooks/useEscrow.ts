@@ -120,6 +120,8 @@ export interface UseEscrowActions {
   joinEscrow: (escrowId: string, role: Role) => Promise<EscrowState>;
   /** Confirm ready for locking (pre-lock safety check) */
   confirmReady: (escrowId: string) => Promise<EscrowState>;
+  /** Kick an unresponsive participant (pre-lock only) */
+  kickParticipant: (escrowId: string, targetRole: Role, reason: string) => Promise<EscrowState>;
   /**
    * Lock ecash into 2-of-3 SSS escrow.
    * Runs the full real-Fedimint flow:
@@ -403,6 +405,13 @@ export function useEscrow(config?: Partial<EscrowClientConfig>): [UseEscrowState
     }
   }, []);
 
+  const kickParticipantAction = useCallback(async (escrowId: string, targetRole: Role, reason: string) => {
+    const client = requireClient();
+    const result = await client.kickParticipant(escrowId, targetRole, reason);
+    vibrate([80, 40, 80]);
+    return result;
+  }, []);
+
   const confirmReadyAction = useCallback(async (escrowId: string) => {
     const client = requireClient();
     try {
@@ -670,6 +679,7 @@ export function useEscrow(config?: Partial<EscrowClientConfig>): [UseEscrowState
     createEscrow,
     joinEscrow,
     confirmReady: confirmReadyAction,
+    kickParticipant: kickParticipantAction,
     lockAndPublish: lockAndPublishAction,
     vote: voteAction,
     claimAndRedeem: claimAndRedeemAction,
