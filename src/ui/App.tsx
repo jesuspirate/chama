@@ -763,23 +763,36 @@ function TradeDetail({ state, pubkey, onBack, onVote, onClaim, onJoin, onLock, o
               })}
             </div>
 
-            {/* Kick button — for participants who haven't confirmed ready */}
+            {/* Kick vote buttons — 2 participants must agree to remove the third */}
             {myReady && !allReady && readyCount >= 1 && [Role.BUYER, Role.SELLER, Role.ARBITER]
               .filter((role: Role) => role !== myRole && !r[role] && !!state.participants[role] && role !== state.initiator.role)
-              .map((role: Role) => (
-                <button key={"kick-" + role} onClick={() => {
-                  console.log("[chama] kick button clicked for", role);
-                  onKick(role, "Unresponsive — not confirming ready");
-                }}
-                  style={{
-                    width: "100%", padding: "10px", borderRadius: T.rs,
-                    background: T.redDim, border: `1px solid ${T.red}33`,
-                    color: T.red, fontFamily: T.mono, fontSize: 11, fontWeight: 600,
-                    cursor: "pointer", marginBottom: 6, transition: "all 0.2s",
-                  }}>
-                  Kick {role} (not ready)
-                </button>
-              ))
+              .map((role: Role) => {
+                const kv = (state.kickVotes || {})[role] || [];
+                const iVoted = kv.includes(myRole!);
+                const voteCount = kv.length;
+                return (
+                  <button key={"kick-" + role}
+                    disabled={iVoted}
+                    onClick={() => {
+                      if (!iVoted) onKick(role, "Unresponsive — not confirming ready");
+                    }}
+                    style={{
+                      width: "100%", padding: "10px", borderRadius: T.rs,
+                      background: iVoted ? T.surface : T.redDim,
+                      border: `1px solid ${iVoted ? T.border : T.red + "33"}`,
+                      color: iVoted ? T.muted : T.red,
+                      fontFamily: T.mono, fontSize: 11, fontWeight: 600,
+                      cursor: iVoted ? "default" : "pointer",
+                      marginBottom: 6, transition: "all 0.2s",
+                    }}>
+                    {iVoted
+                      ? `Voted to kick ${role} (${voteCount}/2)`
+                      : voteCount > 0
+                        ? `Confirm kick ${role} (${voteCount}/2 — needs your vote)`
+                        : `Vote to kick ${role} (0/2)`}
+                  </button>
+                );
+              })
             }
 
             {/* Confirm Ready button — only if I haven't confirmed yet */}
@@ -1620,7 +1633,7 @@ export default function App() {
           </div>
         </div>
         <div style={{ fontSize: 9, color: T.muted, fontFamily: T.mono, padding: "4px 10px", borderRadius: 6, background: T.surface, border: `1px solid ${T.border}` }}>
-          v0.1.22
+          v0.1.23
         </div>
       </div>
 

@@ -348,6 +348,9 @@ export interface EscrowState {
   /** Who initiated the trade (and their role) */
   initiator: { pubkey: string; role: Role };
 
+  /** Kick votes — tracks who voted to kick whom. When 2 votes target the same role, removal executes */
+  kickVotes: Record<string, string[]>;
+
   /** Readiness confirmations — who has published READY */
   readiness: {
     [Role.BUYER]?: boolean;

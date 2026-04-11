@@ -56,6 +56,7 @@ function cloneState(state: EscrowState): EscrowState {
   return {
     ...state,
     participants: { ...state.participants },
+    kickVotes: { ...state.kickVotes },
     readiness: { ...state.readiness },
     votes: { ...state.votes },
     fees: { ...state.fees },
@@ -171,6 +172,7 @@ function handleCreate(event: ParsedEscrowEvent<CreatePayload>): TransitionResult
     mintUrl: p.mintUrl,
     participants,
     initiator: { pubkey: event.pubkey, role: initiatorRole },
+    kickVotes: {},
     readiness: {},
     votes: {},
     resolvedOutcome: null,
@@ -508,7 +510,8 @@ function handleCancel(state: EscrowState, event: ParsedEscrowEvent<CancelPayload
 }
 
 // ── KICK ──────────────────────────────────────────────────────────────────
-// Remove an unresponsive participant. Only allowed in FUNDED state (pre-lock).
+// Dual-vote kick: 2 participants must agree to remove the third.
+// First vote records intent. Second vote executes the removal.
 // Reverts the escrow to CREATED so a new participant can join.
 
 function handleKick(state: EscrowState, event: ParsedEscrowEvent<KickPayload>): TransitionResult {
@@ -540,17 +543,36 @@ function handleKick(state: EscrowState, event: ParsedEscrowEvent<KickPayload>): 
   }
 
   const next = cloneState(state);
-
-  // Remove the kicked participant
-  next.participants[p.targetRole] = null;
-
-  // Clear all readiness (everyone needs to re-confirm after roster change)
-  next.readiness = {};
-
-  // Revert to CREATED (waiting for a replacement)
-  next.status = EscrowStatus.CREATED;
-
   next.eventChain.push(event);
+
+  // Initialize kick votes for this target if not exists
+  if (!next.kickVotes[p.targetRole]) {
+    next.kickVotes[p.targetRole] = [];
+  }
+
+  // Check for duplicate vote
+  if (next.kickVotes[p.targetRole].includes(kickerRole)) {
+    return err("ALREADY_VOTED_KICK", `${kickerRole} already voted to kick ${p.targetRole}`, event.raw.id);
+  }
+
+  // Record the kick vote
+  next.kickVotes[p.targetRole].push(kickerRole);
+
+  // Check if 2 votes reached — execute the removal
+  if (next.kickVotes[p.targetRole].length >= 2) {
+    // Remove the kicked participant
+    next.participants[p.targetRole] = null;
+
+    // Clear all readiness (everyone needs to re-confirm after roster change)
+    next.readiness = {};
+
+    // Clear kick votes (fresh start)
+    next.kickVotes = {};
+
+    // Revert to CREATED (waiting for a replacement)
+    next.status = EscrowStatus.CREATED;
+  }
+
   return { ok: true, state: next };
 }
 
