@@ -504,13 +504,13 @@ function TradeDetail({ state, pubkey, onBack, onVote, onClaim, onJoin, onLock, o
                       margin: "0 auto 4px",
                       fontSize: 14, color: isReady ? c : T.muted,
                     }}>
-                      {isReady ? "\u2713" : ROLE_ICON[role as keyof typeof ROLE_ICON]}
+                      {isReady ? "✓" : ROLE_ICON[role as keyof typeof ROLE_ICON]}
                     </div>
                     <div style={{
                       fontSize: 9, fontFamily: T.mono,
                       color: isMe ? c : T.muted, fontWeight: isMe ? 700 : 400,
                     }}>
-                      {isMe ? (isReady ? "You \u2713" : "You") : isReady ? "Ready" : "Waiting"}
+                      {isMe ? (isReady ? "You ✓" : "You") : isReady ? "Ready" : "Waiting"}
                     </div>
                   </div>
                 );
@@ -527,7 +527,7 @@ function TradeDetail({ state, pubkey, onBack, onVote, onClaim, onJoin, onLock, o
                   color: T.teal, fontFamily: T.mono, fontSize: 13, fontWeight: 700,
                   cursor: "pointer", marginBottom: 10, transition: "all 0.2s",
                 }}>
-                \u2713 Confirm I'm Ready
+                ✓ Confirm I'm Ready
               </button>
             )}
 
@@ -555,7 +555,7 @@ function TradeDetail({ state, pubkey, onBack, onVote, onClaim, onJoin, onLock, o
                   textAlign: "center", marginTop: 8,
                   fontSize: 9, color: T.muted, fontFamily: T.mono,
                 }}>
-                  Real 2-of-3 Shamir split \u00b7 ecash spent from your Fedimint wallet
+                  Real 2-of-3 Shamir split · ecash spent from your Fedimint wallet
                 </div>
               </>
             )}
@@ -837,7 +837,7 @@ function Toast({ message, type, onDone }: { message: string; type: "success" | "
       zIndex: 9999, animation: "fadeIn 0.3s ease",
       maxWidth: "90vw", textAlign: "center", wordBreak: "break-word",
     }}>
-      {type === "success" ? "\u2713 " : type === "error" ? "\u2717 " : "\u26a1 "}{message}
+      {type === "success" ? "✓ " : type === "error" ? "\u2717 " : "\u26a1 "}{message}
     </div>
   );
 }
