@@ -635,6 +635,21 @@ function TradeDetail({ state, pubkey, onBack, onVote, onClaim, onJoin, onLock, o
         </div>
       </div>
 
+      {/* Community arbiter pool indicator */}
+      {state.communityArbiters && state.communityArbiters.length > 0 && (
+        <div style={{
+          marginBottom: 12, padding: "8px 14px", borderRadius: T.rs,
+          background: T.purpleDim, border: `1px solid ${T.purple}22`,
+          display: "flex", alignItems: "center", gap: 8,
+        }}>
+          <span style={{ fontSize: 14 }}>🛡️</span>
+          <span style={{ fontSize: 10, color: T.purple, fontFamily: T.mono }}>
+            Community arbiter pool: {state.communityArbiters.length} backup{state.communityArbiters.length !== 1 ? "s" : ""}
+            {" · "}SSS share encrypted to all
+          </span>
+        </div>
+      )}
+
       {/* Countdown timer — visible in all non-terminal states */}
       {state.expiresAt && state.status !== "COMPLETED" && state.status !== "CANCELLED" && state.status !== "EXPIRED" && (
         <div style={{ marginBottom: 16 }}>
@@ -957,6 +972,8 @@ function CreateForm({ onCreate, onClose }: {
   const [cur, setCur] = useState("USD");
   const [mint, setMint] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [communityArbiters, setCommunityArbiters] = useState<string[]>([]);
+  const [primaryArbiter, setPrimaryArbiter] = useState<string | null>(null);
 
   const cats = [
     { id: "p2p-trade", l: "P2P Trade", i: "⚡" },
@@ -1633,7 +1650,7 @@ export default function App() {
           </div>
         </div>
         <div style={{ fontSize: 9, color: T.muted, fontFamily: T.mono, padding: "4px 10px", borderRadius: 6, background: T.surface, border: `1px solid ${T.border}` }}>
-          v0.1.23
+          v0.1.24
         </div>
       </div>
 

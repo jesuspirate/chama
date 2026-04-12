@@ -95,6 +95,15 @@ export interface FederationPreset {
   description?: string;
   /** Origin: "curated" = baked into this file, "observer" = live fetch */
   source: "curated" | "observer";
+  /** Community arbiter pool — npubs designated by community leader */
+  arbiters?: {
+    /** Primary arbiter — auto-selected for new trades */
+    primary: string;
+    /** Secondary/backup arbiters — share is encrypted to all of them */
+    pool: string[];
+    /** Minimum arbiters required (enforced at UI level) */
+    minArbiters?: number;
+  };
   /** Optional URL for a community leader / community page */
   communityUrl?: string;
   /** Optional country / locality tag */

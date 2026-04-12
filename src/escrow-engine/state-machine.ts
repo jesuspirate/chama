@@ -56,6 +56,7 @@ function cloneState(state: EscrowState): EscrowState {
   return {
     ...state,
     participants: { ...state.participants },
+    communityArbiters: [...state.communityArbiters],
     kickVotes: { ...state.kickVotes },
     readiness: { ...state.readiness },
     votes: { ...state.votes },
@@ -172,6 +173,7 @@ function handleCreate(event: ParsedEscrowEvent<CreatePayload>): TransitionResult
     mintUrl: p.mintUrl,
     participants,
     initiator: { pubkey: event.pubkey, role: initiatorRole },
+    communityArbiters: p.communityArbiters || [],
     kickVotes: {},
     readiness: {},
     votes: {},

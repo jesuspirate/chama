@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="description" content="Chama — Non-custodial Bitcoin commerce for communities. P2P exchange, bill pay, marketplace, lending. Powered by Fedimint ecash and 2-of-3 Shamir Secret Sharing.">
+<title>Chama — Non-custodial Bitcoin commerce</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;14..32,400;14..32,500;14..32,600;14..32,700;14..32,800;14..32,900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --black:#000;--bg:#0a0a0a;--s1:#111;--s2:#161616;--s3:#1c1c1e;
+  --b1:rgba(255,255,255,.06);--b2:rgba(255,255,255,.1);--b3:rgba(255,255,255,.15);
+  --w:#fff;--g1:#f5f5f7;--g2:#a1a1a6;--g3:#86868b;--g4:#6e6e73;--g5:#48484a;--g6:#2c2c2e;
+  --blue:#2997ff;--orange:#f7931a;--orange-l:#ffb340;--green:#30d158;--teal:#5ac8fa;--purple:#bf5af2;--red:#ff453a;
+  --sans:'Inter',-apple-system,BlinkMacSystemFont,'SF Pro Display','Helvetica Neue',sans-serif;
+  --mono:'JetBrains Mono','SF Mono',monospace;
+}
+html{scroll-behavior:smooth;background:var(--black);color:var(--g1);-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;overflow-x:hidden}
+body{font-family:var(--sans);background:var(--black);line-height:1.47059}
+a{color:inherit;text-decoration:none}
+::selection{background:rgba(247,147,26,.3)}
+
+/* ═══ REVEAL ═══ */
+.r{opacity:0;transform:translateY(24px);transition:opacity .8s cubic-bezier(.16,1,.3,1),transform .8s cubic-bezier(.16,1,.3,1)}
+.r.v{opacity:1;transform:none}
+.d1{transition-delay:.08s}.d2{transition-delay:.16s}.d3{transition-delay:.24s}.d4{transition-delay:.32s}.d5{transition-delay:.4s}.d6{transition-delay:.48s}
+
+/* ═══ NAV ═══ */
+nav{position:fixed;top:0;left:0;right:0;z-index:100;height:44px;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.8);backdrop-filter:saturate(180%) blur(20px);-webkit-backdrop-filter:saturate(180%) blur(20px);border-bottom:.5px solid rgba(255,255,255,.08)}
+.nav-c{width:100%;max-width:980px;padding:0 22px;display:flex;align-items:center;justify-content:space-between}
+.nav-w{font-size:21px;font-weight:700;letter-spacing:-.5px}
+.nav-l{display:flex;gap:30px}
+.nav-l a{font-size:12px;color:var(--g3);transition:color .25s;font-weight:400}
+.nav-l a:hover{color:var(--w)}
+.nav-r a{font-size:12px;color:var(--blue);font-weight:400;transition:opacity .25s}
+.nav-r a:hover{opacity:.7}
+@media(max-width:734px){.nav-l{display:none}}
+
+/* ═══ HERO ═══ */
+.hero{min-height:100svh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:100px 24px 60px;position:relative;overflow:hidden}
+.hero-glow{position:absolute;top:50%;left:50%;width:680px;height:680px;background:radial-gradient(circle,rgba(247,147,26,.08) 0%,rgba(191,90,242,.03) 40%,transparent 70%);transform:translate(-50%,-50%);pointer-events:none;animation:glow-breathe 8s ease-in-out infinite}
+@keyframes glow-breathe{0%,100%{opacity:.7;transform:translate(-50%,-50%) scale(1)}50%{opacity:1;transform:translate(-50%,-50%) scale(1.1)}}
+.hero>*{position:relative;z-index:1}
+.hero-badge{display:inline-flex;align-items:center;gap:8px;padding:6px 16px;border-radius:980px;background:rgba(247,147,26,.08);border:1px solid rgba(247,147,26,.12);font-family:var(--mono);font-size:11px;color:var(--orange);letter-spacing:.5px;margin-bottom:20px}
+.hero-badge::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--orange);animation:pulse 2s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+.hero h1{font-size:clamp(48px,8vw,80px);font-weight:700;letter-spacing:-.04em;line-height:1.05;margin-bottom:16px}
+.hero h1 .gradient{background:linear-gradient(90deg,var(--orange),var(--orange-l));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.hero-sub{font-size:clamp(17px,2vw,21px);color:var(--g3);max-width:520px;line-height:1.5;font-weight:400;margin-bottom:32px}
+.hero-btns{display:flex;gap:16px;flex-wrap:wrap;justify-content:center}
+.btn-w{display:inline-flex;align-items:center;gap:6px;padding:12px 24px;border-radius:980px;background:var(--w);color:var(--black);font-size:17px;font-weight:600;transition:all .25s;letter-spacing:-.01em}
+.btn-w:hover{background:var(--g1);transform:scale(1.02)}
+.btn-g{display:inline-flex;align-items:center;gap:4px;padding:12px 24px;border-radius:980px;color:var(--blue);font-size:17px;font-weight:400;transition:color .25s}
+.btn-g:hover{color:var(--teal)}
+
+/* ═══ TICKER ═══ */
+.ticker{padding:14px 24px;text-align:center;font-family:var(--mono);font-size:12px;color:var(--g5);letter-spacing:1.5px;text-transform:uppercase;border-top:.5px solid var(--b1);border-bottom:.5px solid var(--b1);overflow:hidden}
+
+/* ═══ SECTION HEADERS ═══ */
+.sec-h{text-align:center;padding:100px 24px 48px;max-width:680px;margin:0 auto}
+.sec-h h2{font-size:clamp(40px,5.5vw,56px);font-weight:700;letter-spacing:-.03em;line-height:1.07;margin-bottom:12px}
+.sec-h p{font-size:19px;color:var(--g3);font-weight:400;line-height:1.42}
+
+/* ═══ PRODUCT CARDS (Apple cinematic blocks) ═══ */
+.products{max-width:980px;margin:0 auto;padding:0 24px 80px}
+.p-hero{position:relative;border-radius:28px;overflow:hidden;padding:56px 48px;margin-bottom:16px;min-height:420px;display:flex;flex-direction:column;justify-content:flex-end;transition:transform .5s cubic-bezier(.16,1,.3,1)}
+.p-hero:hover{transform:scale(1.005)}
+.p-hero::before{content:'';position:absolute;inset:0;z-index:0}
+.p-hero>*{position:relative;z-index:1}
+
+.p-billpay::before{background:linear-gradient(160deg,#1f1a0a 0%,#13100a 40%,var(--s1) 100%)}
+.p-p2p::before{background:linear-gradient(160deg,#1a1105 0%,#100d05 40%,var(--s1) 100%)}
+.p-market::before{background:linear-gradient(160deg,#170d22 0%,#0e0914 40%,var(--s1) 100%)}
+.p-lend::before{background:linear-gradient(160deg,#0d1a14 0%,#080f0c 40%,var(--s1) 100%)}
+.p-escrow::before{background:linear-gradient(160deg,#121a24 0%,#0a0e14 40%,var(--s1) 100%)}
+
+.p-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:734px){.p-grid{grid-template-columns:1fr}.p-hero{padding:40px 28px;min-height:360px}}
+
+.p-emoji{font-size:48px;margin-bottom:20px;display:block}
+.p-name{font-size:clamp(28px,4vw,40px);font-weight:700;letter-spacing:-.02em;line-height:1.1;margin-bottom:6px}
+.p-tag{font-family:var(--mono);font-size:12px;color:var(--g4);letter-spacing:1px;text-transform:uppercase;margin-bottom:16px;display:block}
+.p-desc{font-size:17px;color:var(--g3);line-height:1.47;max-width:480px;font-weight:400}
+.p-cta{display:inline-flex;align-items:center;gap:4px;margin-top:20px;font-size:19px;color:var(--blue);font-weight:400}
+.p-cta:hover span{transform:translateX(3px)}
+.p-cta span{transition:transform .25s;display:inline-block}
+.live{display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:980px;background:rgba(48,209,88,.08);border:1px solid rgba(48,209,88,.15);font-family:var(--mono);font-size:10px;color:var(--green);letter-spacing:.8px;text-transform:uppercase;margin-bottom:16px}
+.live::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--green);animation:pulse 2s ease-in-out infinite}
+
+/* Name colors */
+.p-billpay .p-name{color:var(--orange-l)}
+.p-p2p .p-name{color:var(--orange)}
+.p-market .p-name{color:var(--purple)}
+.p-lend .p-name{color:var(--green)}
+.p-escrow .p-name{color:var(--teal)}
+
+/* ═══ NUMBERS ═══ */
+.nums{padding:80px 24px;border-top:.5px solid var(--b1);border-bottom:.5px solid var(--b1)}
+.nums-g{max-width:860px;margin:0 auto;display:grid;grid-template-columns:repeat(5,1fr);text-align:center;gap:16px}
+.n-v{font-family:var(--mono);font-size:clamp(32px,4.5vw,48px);font-weight:800;line-height:1}
+.n-l{font-size:13px;color:var(--g4);margin-top:6px;font-weight:400}
+@media(max-width:600px){.nums-g{grid-template-columns:repeat(3,1fr);gap:28px}}
+
+/* ═══ TECH GRID ═══ */
+.tech{max-width:980px;margin:0 auto;padding:0 24px 80px}
+.tech-g{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--b1);border-radius:20px;overflow:hidden}
+.tech-c{background:var(--bg);padding:40px 28px;text-align:center;transition:background .3s}
+.tech-c:hover{background:var(--s1)}
+.tech-c .ico{font-size:28px;margin-bottom:14px;display:block}
+.tech-c h4{font-size:17px;font-weight:600;margin-bottom:6px;letter-spacing:-.01em}
+.tech-c p{font-size:14px;color:var(--g4);line-height:1.5}
+@media(max-width:734px){.tech-g{grid-template-columns:1fr 1fr}}
+@media(max-width:480px){.tech-g{grid-template-columns:1fr}}
+
+/* ═══ PROTOCOL STEPS ═══ */
+.proto{max-width:720px;margin:0 auto;padding:0 24px 100px}
+.steps{position:relative;padding-left:48px}
+.steps::before{content:'';position:absolute;left:19px;top:4px;bottom:4px;width:1.5px;background:linear-gradient(180deg,var(--b1) 0%,var(--orange) 50%,var(--b1) 100%)}
+.st{position:relative;padding-bottom:40px}
+.st:last-child{padding-bottom:0}
+.st-n{position:absolute;left:-48px;top:0;width:38px;height:38px;border-radius:50%;background:var(--s2);border:1.5px solid var(--g6);display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:13px;font-weight:700;color:var(--g4);transition:all .4s}
+.st:hover .st-n{border-color:var(--orange);color:var(--orange);background:rgba(247,147,26,.06);box-shadow:0 0 24px rgba(247,147,26,.08)}
+.st h3{font-size:21px;font-weight:600;letter-spacing:-.02em;margin-bottom:4px}
+.st p{font-size:15px;color:var(--g4);line-height:1.53}
+.tags{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+.tag{padding:3px 10px;border-radius:980px;font-family:var(--mono);font-size:10px;letter-spacing:.3px;font-weight:500}
+.tag-n{background:rgba(191,90,242,.08);color:var(--purple);border:1px solid rgba(191,90,242,.12)}
+.tag-e{background:rgba(247,147,26,.08);color:var(--orange);border:1px solid rgba(247,147,26,.12)}
+.tag-s{background:rgba(90,200,250,.08);color:var(--teal);border:1px solid rgba(90,200,250,.12)}
+
+/* ═══ CTA ═══ */
+.cta{padding:120px 24px 140px;text-align:center;position:relative;overflow:hidden}
+.cta-glow{position:absolute;top:50%;left:50%;width:600px;height:600px;background:radial-gradient(circle,rgba(247,147,26,.05),transparent 60%);transform:translate(-50%,-50%);pointer-events:none}
+.cta>*{position:relative;z-index:1}
+.cta h2{font-size:clamp(40px,6vw,64px);font-weight:700;letter-spacing:-.03em;line-height:1.07;margin-bottom:16px}
+.cta h2 em{font-style:normal;color:var(--orange)}
+.cta p{font-size:19px;color:var(--g3);max-width:440px;margin:0 auto 32px;line-height:1.42}
+
+/* ═══ FOOTER ═══ */
+footer{padding:20px 24px;border-top:.5px solid var(--b1)}
+.ft{max-width:980px;margin:0 auto;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px}
+.ft-l{font-family:var(--mono);font-size:11px;color:var(--g5)}
+.ft-r{display:flex;gap:20px}
+.ft-r a{font-size:12px;color:var(--g4);transition:color .25s}
+.ft-r a:hover{color:var(--w)}
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <div class="nav-c">
+    <a href="#" class="nav-w">Chama</a>
+    <div class="nav-l">
+      <a href="#products">Products</a>
+      <a href="#tech">Technology</a>
+      <a href="#protocol">Protocol</a>
+      <a href="https://github.com/jesuspirate/chama" target="_blank" rel="noopener">GitHub</a>
+    </div>
+    <div class="nav-r">
+      <a href="https://chama.satoshimarket.app" target="_blank" rel="noopener">Open App →</a>
+    </div>
+  </div>
+</nav>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-glow"></div>
+  <div class="hero-badge r">Open source · Non-custodial · Live now</div>
+  <h1 class="r d1">Bitcoin commerce<br>for <span class="gradient">communities.</span></h1>
+  <p class="hero-sub r d2">Pay bills, trade sats for fiat, buy anything, lend to your neighbours. All protected by 2-of-3 cryptographic escrow — not corporations.</p>
+  <div class="hero-btns r d3">
+    <a href="https://chama.satoshimarket.app" class="btn-w" target="_blank" rel="noopener">Open Chama</a>
+    <a href="#protocol" class="btn-g">How it works <span>→</span></a>
+  </div>
+</section>
+
+<!-- TICKER -->
+<div class="ticker">Fedimint ecash · Nostr identity · 2-of-3 Shamir · NIP-44 encrypted · No KYC · EN / FR / ES / SW</div>
+
+<!-- PRODUCTS -->
+<div id="products">
+  <div class="sec-h">
+    <h2 class="r">Five products.<br>One escrow primitive.</h2>
+    <p class="r d1">Every product runs on the same 2-of-3 Shamir Secret Sharing escrow. Different flows, identical trust model: zero.</p>
+  </div>
+
+  <div class="products">
+    <!-- BILL PAY — full width hero -->
+    <div class="p-hero p-billpay r">
+      <div class="live">Live</div>
+      <span class="p-emoji">🧾</span>
+      <div class="p-name">Bill Pay</div>
+      <span class="p-tag">The front door to Bitcoin</span>
+      <p class="p-desc">Post any bill — electricity, rent, school fees. Lock sats in escrow. A community volunteer pays it externally and claims the sats. Single-session value for anyone, anywhere. No wallet required to understand it. This is how the next billion people meet Bitcoin.</p>
+      <a href="https://chama.satoshimarket.app" class="p-cta" target="_blank">Start a bill <span>→</span></a>
+    </div>
+
+    <!-- 2x2 grid -->
+    <div class="p-grid">
+      <div class="p-hero p-p2p r">
+        <div class="live">Live</div>
+        <span class="p-emoji">₿</span>
+        <div class="p-name">P2P Exchange</div>
+        <span class="p-tag">Sats ↔ Fiat</span>
+        <p class="p-desc">Seller locks sats. Buyer sends fiat via bank, mobile money, or cash. Both confirm. No order books, no custody. Live across multiple regions with 8+ fiat currencies supported.</p>
+        <a href="https://chama.satoshimarket.app" class="p-cta" target="_blank">Trade now <span>→</span></a>
+      </div>
+      <div class="p-hero p-market r d1">
+        <div class="live">Live</div>
+        <span class="p-emoji">🛒</span>
+        <div class="p-name">Marketplace</div>
+        <span class="p-tag">Buy anything with sats</span>
+        <p class="p-desc">Buyer pays sats, seller ships goods. Escrow protects both sides. Blossom image uploads. Seller ratings. Federation-scoped listings for community commerce.</p>
+        <a href="https://chama.satoshimarket.app" class="p-cta" target="_blank">Browse listings <span>→</span></a>
+      </div>
+      <div class="p-hero p-lend r d2">
+        <div class="live">Live</div>
+        <span class="p-emoji">🤝</span>
+        <div class="p-name">Community Lending</div>
+        <span class="p-tag">Digital tontines</span>
+        <p class="p-desc">Lock sats as loans. 5-tier trust scoring system. Auto-generated repayment escrows with interest tracking. Community arbiters verify every repayment. Microfinance on Bitcoin.</p>
+        <a href="https://chama.satoshimarket.app" class="p-cta" target="_blank">Lend sats <span>→</span></a>
+      </div>
+      <div class="p-hero p-escrow r d3">
+        <span class="p-emoji">⚖️</span>
+        <div class="p-name">Raw Escrow</div>
+        <span class="p-tag">The primitive</span>
+        <p class="p-desc">The naked 2-of-3 multisig tool. Lock sats, choose any arbiter, vote release or refund. NIP-44 encrypted trade chat built in. The cypherpunk's building block everything else runs on.</p>
+        <a href="https://chama.satoshimarket.app" class="p-cta" target="_blank">Create escrow <span>→</span></a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- NUMBERS -->
+<div class="nums">
+  <div class="nums-g">
+    <div class="r"><div class="n-v" style="color:var(--orange)">10+</div><div class="n-l">Federations</div></div>
+    <div class="r d1"><div class="n-v" style="color:var(--teal)">0</div><div class="n-l">Custodians</div></div>
+    <div class="r d2"><div class="n-v" style="color:var(--green)">8+</div><div class="n-l">Fiat currencies</div></div>
+    <div class="r d3"><div class="n-v" style="color:var(--purple)">4</div><div class="n-l">Languages</div></div>
+    <div class="r d4"><div class="n-v" style="color:var(--g3)">0.5%</div><div class="n-l">Platform fee</div></div>
+  </div>
+</div>
+
+<!-- TECHNOLOGY -->
+<div id="tech">
+  <div class="sec-h">
+    <h2 class="r">Built different.</h2>
+    <p class="r d1">Every design decision eliminates a trust assumption.</p>
+  </div>
+  <div class="tech">
+    <div class="tech-g">
+      <div class="tech-c r"><span class="ico">🔐</span><h4>Shamir Secret Sharing</h4><p>Ecash split into 2-of-3 shares via browser WASM. NIP-44 encrypted to each participant. Server is mathematically blind.</p></div>
+      <div class="tech-c r d1"><span class="ico">⚡</span><h4>Fedimint Ecash</h4><p>Blinded tokens. Instant settlement. Zero routing fees. Client-side WASM wallet with full spend/reissue cycle.</p></div>
+      <div class="tech-c r d2"><span class="ico">🔑</span><h4>Nostr Identity</h4><p>NIP-98 signed sessions with 24h bearer tokens. One key across every product. No passwords, no emails.</p></div>
+      <div class="tech-c r d3"><span class="ico">💬</span><h4>Encrypted Trade Chat</h4><p>NIP-44 per-trade messaging. End-to-end encrypted between escrow participants. Full audit trail preserved.</p></div>
+      <div class="tech-c r d4"><span class="ico">🏛️</span><h4>Federation Gating</h4><p>Listings scoped to your community. Federation ID validated at trade creation. Local arbiters, local trust, local commerce.</p></div>
+      <div class="tech-c r d5"><span class="ico">📡</span><h4>Multi-Relay Nostr</h4><p>Custom kinds 38100-38110. Publish to all relays, succeed on one. Any client can replay full escrow state.</p></div>
+    </div>
+  </div>
+</div>
+
+<!-- PROTOCOL -->
+<div id="protocol">
+  <div class="sec-h">
+    <h2 class="r">Five signed events.<br>One trustless trade.</h2>
+    <p class="r d1">The entire escrow lifecycle is a Nostr event chain. No database required — replay the chain, reconstruct the state.</p>
+  </div>
+  <div class="proto">
+    <div class="steps">
+      <div class="st r">
+        <div class="st-n">1</div>
+        <h3>Create</h3>
+        <p>Publish trade terms as kind:38100. NIP-44 encrypted, multi-relay broadcast. Participants only.</p>
+        <div class="tags"><span class="tag tag-n">Nostr</span></div>
+      </div>
+      <div class="st r d1">
+        <div class="st-n">2</div>
+        <h3>Join</h3>
+        <p>Counterparty + arbiter sign kind:38101 events. Three present → escrow funded. Federation ID validated at join, not later.</p>
+        <div class="tags"><span class="tag tag-n">Nostr</span></div>
+      </div>
+      <div class="st r d2">
+        <div class="st-n">3</div>
+        <h3>Lock</h3>
+        <p>Ecash notes split into 3 Shamir shares in browser WASM. Each share NIP-44 encrypted to its recipient. Server never touches funds.</p>
+        <div class="tags"><span class="tag tag-e">Ecash</span><span class="tag tag-s">2-of-3 SSS</span></div>
+      </div>
+      <div class="st r d3">
+        <div class="st-n">4</div>
+        <h3>Vote</h3>
+        <p>2-of-3 consensus resolves the trade. Agree? Instant. Disagree? Arbiter breaks the tie — 4 hour timeout, then auto-rotation.</p>
+        <div class="tags"><span class="tag tag-n">Nostr</span></div>
+      </div>
+      <div class="st r d4">
+        <div class="st-n">5</div>
+        <h3>Claim</h3>
+        <p>Winner combines 2 shares, reconstructs ecash, redeems into their Fedimint wallet. 0.5% fee collected at payout. Trade complete.</p>
+        <div class="tags"><span class="tag tag-e">Ecash</span><span class="tag tag-s">SSS</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- CTA -->
+<section class="cta">
+  <div class="cta-glow"></div>
+  <h2 class="r">Your community.<br>Your money.<br><em>Your rules.</em></h2>
+  <p class="r d1">Open source. No incorporation. No centralized entity. Just cryptography, community, and freedom.</p>
+  <div class="hero-btns r d2">
+    <a href="https://chama.satoshimarket.app" class="btn-w" target="_blank" rel="noopener">Open Chama</a>
+    <a href="https://github.com/jesuspirate/chama" class="btn-g" target="_blank" rel="noopener">View source <span>→</span></a>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div class="ft">
+    <div class="ft-l">Chama · est. block 934,669 · Open source</div>
+    <div class="ft-r">
+      <a href="https://github.com/jesuspirate/chama" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://chama.satoshimarket.app" target="_blank" rel="noopener">App</a>
+      <a href="https://stacker.news" target="_blank" rel="noopener">Stacker News</a>
+    </div>
+  </div>
+</footer>
+
+<script>
+const io=new IntersectionObserver(es=>{es.forEach(e=>{if(e.isIntersecting){e.target.classList.add('v');io.unobserve(e.target)}})},{threshold:.08,rootMargin:'0px 0px -32px 0px'});
+document.querySelectorAll('.r').forEach(el=>io.observe(el));
+</script>
+</body>
+</html>

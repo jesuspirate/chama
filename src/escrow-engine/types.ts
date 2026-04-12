@@ -166,6 +166,8 @@ export interface CreatePayload {
   paymentMethods?: string[];
   /** Expiry duration in seconds */
   expirySeconds: number;
+  /** Community arbiter pool — all pubkeys that receive the arbiter SSS share */
+  communityArbiters?: string[];
   /** Timestamp */
   createdAt: number;
 }
@@ -347,6 +349,9 @@ export interface EscrowState {
 
   /** Who initiated the trade (and their role) */
   initiator: { pubkey: string; role: Role };
+
+  /** Community arbiter pool — backup arbiters who also receive the SSS share */
+  communityArbiters: string[];
 
   /** Kick votes — tracks who voted to kick whom. When 2 votes target the same role, removal executes */
   kickVotes: Record<string, string[]>;
