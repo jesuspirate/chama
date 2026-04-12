@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, lazy, Suspense } from "react";
+const QRCode = lazy(() => import("./QRCode.js"));
 import { useEscrow, type FedimintState } from "../hooks/useEscrow.js";
 import { type EscrowState, Role, Outcome, EscrowStatus } from "../escrow-engine/types.js";
 import { canVote, getWinner, getSummary } from "../escrow-engine/state-machine.js";
@@ -215,44 +216,60 @@ function ConnectScreen({ onConnect, onConnectNIP46, onConnectNsec, loading, erro
         </div>
       )}
 
-      {/* NIP-46 connection URI — tappable link for mobile, copyable for desktop */}
+      {/* NIP-46 connection — QR code + tappable link */}
       {nip46Uri && (
         <div style={{
-          width: "100%", maxWidth: 340, padding: "16px",
+          width: "100%", maxWidth: 340, padding: "20px",
           background: T.purpleDim, border: `1px solid ${T.purple}33`,
           borderRadius: T.r, textAlign: "center",
         }}>
-          <div style={{ fontSize: 11, color: T.purple, fontFamily: T.mono, marginBottom: 8, fontWeight: 600 }}>
-            {nip46Waiting ? "Waiting for signer approval..." : "Tap to open in your signer:"}
+          <div style={{ fontSize: 12, color: T.purple, fontFamily: T.mono, marginBottom: 14, fontWeight: 600 }}>
+            {nip46Waiting ? "Scan with Amber or paste in signer" : "Scan to connect"}
           </div>
+
+          {/* QR Code */}
+          <div style={{
+            display: "flex", justifyContent: "center", marginBottom: 14,
+            padding: 12, background: "#111118", borderRadius: 12,
+          }}>
+            <Suspense fallback={<div style={{ width: 200, height: 200 }} />}>
+              <QRCode data={nip46Uri} size={200} fgColor="#a78bfa" />
+            </Suspense>
+          </div>
+
+          {/* Tappable link (mobile) */}
           <a
             href={nip46Uri}
             style={{
-              display: "block", padding: "12px 16px",
+              display: "block", padding: "10px 12px",
               background: T.surface, borderRadius: T.rs,
               border: `1px solid ${T.border}`,
-              color: T.purple, fontFamily: T.mono, fontSize: 10,
-              wordBreak: "break-all", lineHeight: 1.5,
-              textDecoration: "none",
+              color: T.purple, fontFamily: T.mono, fontSize: 9,
+              wordBreak: "break-all", lineHeight: 1.4,
+              textDecoration: "none", marginBottom: 10,
+              maxHeight: 60, overflow: "hidden",
             }}
           >
-            {nip46Uri}
+            {nip46Uri.slice(0, 80)}...
           </a>
-          <div style={{ display: "flex", gap: 8, marginTop: 10, justifyContent: "center" }}>
+
+          {/* Action buttons */}
+          <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
             <button onClick={() => {
               navigator.clipboard?.writeText(nip46Uri);
             }} style={{
-              padding: "6px 14px", borderRadius: T.rs,
+              padding: "8px 20px", borderRadius: T.rs,
               background: T.surface, border: `1px solid ${T.border}`,
               color: T.muted, fontFamily: T.mono, fontSize: 10,
               cursor: "pointer",
             }}>
-              Copy
+              Copy link
             </button>
           </div>
+
           {nip46Waiting && (
             <div style={{
-              marginTop: 10, fontSize: 10, color: T.muted, fontFamily: T.mono,
+              marginTop: 12, fontSize: 10, color: T.muted, fontFamily: T.mono,
               animation: "pulse 2s ease-in-out infinite",
             }}>
               Listening on relays for connection...
@@ -1812,7 +1829,7 @@ export default function App() {
           </div>
         </div>
         <div style={{ fontSize: 9, color: T.muted, fontFamily: T.mono, padding: "4px 10px", borderRadius: 6, background: T.surface, border: `1px solid ${T.border}` }}>
-          v0.1.27
+          v0.1.28
         </div>
       </div>
 
