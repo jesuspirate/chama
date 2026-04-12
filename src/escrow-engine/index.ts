@@ -12,4 +12,8 @@ export * from "./relay-manager.js";
 export * from "./escrow-client.js";
 export * from "./signers.js";
 export * from "./notifier.js";
+export * from "./nip46-signer.js";
+export * from "./nsec-signer.js";
+export * from "./nip46-signer.js";
+export * from "./nsec-signer.js";
 export * from "./encryption-config.js";

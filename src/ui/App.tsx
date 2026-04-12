@@ -116,8 +116,12 @@ const inputStyle: React.CSSProperties = {
 // CONNECT SCREEN
 // ══════════════════════════════════════════════════════════════════════════
 
-function ConnectScreen({ onConnect, onConnectAmber, loading, error }: {
-  onConnect: () => void; onConnectAmber: () => void; loading: boolean; error: string | null;
+function ConnectScreen({ onConnect, onConnectNIP46, onConnectNsec, loading, error }: {
+  onConnect: () => void;
+  onConnectNIP46: () => void;
+  onConnectNsec: (nsec: string) => void;
+  loading: boolean;
+  error: string | null;
 }) {
   return (
     <div style={{
@@ -153,6 +157,7 @@ function ConnectScreen({ onConnect, onConnectAmber, loading, error }: {
         </div>
       )}
 
+      {/* NIP-07 button — for desktop with browser extension */}
       <button
         onClick={onConnect}
         disabled={loading}
@@ -163,37 +168,86 @@ function ConnectScreen({ onConnect, onConnectAmber, loading, error }: {
           fontFamily: T.mono, fontSize: 14, fontWeight: 700,
           cursor: loading ? "default" : "pointer",
           letterSpacing: 0.5, transition: "all 0.2s",
-          minWidth: 220,
+          minWidth: 260,
         }}
       >
-        {loading ? "Connecting…" : "⚡ Connect with Nostr"}
+        {loading ? "Connecting…" : "⚡ Connect with Extension"}
       </button>
 
-      {/* Amber button — show on Android devices */}
-      {/android/i.test(navigator?.userAgent || "") && (
-        <button
-          onClick={onConnectAmber}
-          disabled={loading}
-          style={{
-            padding: "14px 40px", borderRadius: T.r,
-            background: loading ? T.surface : T.purpleDim,
-            border: `1px solid ${T.purple}44`,
-            color: loading ? T.muted : T.purple,
-            fontFamily: T.mono, fontSize: 13, fontWeight: 600,
-            cursor: loading ? "default" : "pointer",
-            letterSpacing: 0.3, transition: "all 0.2s",
-            minWidth: 220,
-          }}
-        >
-          {loading ? "Connecting…" : "🔐 Connect with Signer"}
-        </button>
-      )}
+      {/* NIP-46 button — works everywhere (QR code / bunker) */}
+      <button
+        onClick={onConnectNIP46}
+        disabled={loading}
+        style={{
+          padding: "14px 40px", borderRadius: T.r,
+          background: loading ? T.surface : T.purpleDim,
+          border: `1px solid ${T.purple}44`,
+          color: loading ? T.muted : T.purple,
+          fontFamily: T.mono, fontSize: 13, fontWeight: 600,
+          cursor: loading ? "default" : "pointer",
+          letterSpacing: 0.3, transition: "all 0.2s",
+          minWidth: 260,
+        }}
+      >
+        {loading ? "Waiting for signer…" : "🔐 Connect with Signer (QR)"}
+      </button>
 
-      <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono, lineHeight: 1.8 }}>
-        Desktop: NIP-07 extension (nos2x, Alby)<br />
-        Android: Amber signer app<br />
-        Fedi: Mini-App runtime
+      <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono, lineHeight: 1.8, textAlign: "center" }}>
+        Extension: nos2x, Alby (desktop)<br />
+        Signer QR: Amber, nsecBunker (any device)
       </div>
+
+      {/* nsec fallback — hidden, tap to reveal */}
+      {(() => {
+        const [showNsec, setShowNsec] = useState(false);
+        const [nsecInput, setNsecInput] = useState("");
+        return showNsec ? (
+          <div style={{ marginTop: 8, width: "100%", maxWidth: 320 }}>
+            <input
+              value={nsecInput}
+              onChange={(e: any) => setNsecInput(e.target.value)}
+              onKeyDown={(e: any) => e.key === "Enter" && nsecInput.trim() && onConnectNsec(nsecInput.trim())}
+              placeholder="nsec1... or hex private key"
+              type="password"
+              style={{
+                width: "100%", padding: "10px 14px",
+                background: T.surface, border: `1px solid ${T.border}`,
+                borderRadius: T.rs, color: T.text,
+                fontFamily: T.mono, fontSize: 11, outline: "none",
+                marginBottom: 6,
+              }}
+            />
+            <button
+              onClick={() => nsecInput.trim() && onConnectNsec(nsecInput.trim())}
+              disabled={!nsecInput.trim()}
+              style={{
+                width: "100%", padding: "10px",
+                background: nsecInput.trim() ? T.redDim : T.surface,
+                border: `1px solid ${nsecInput.trim() ? T.red + "33" : T.border}`,
+                borderRadius: T.rs, color: nsecInput.trim() ? T.red : T.muted,
+                fontFamily: T.mono, fontSize: 11, fontWeight: 600,
+                cursor: nsecInput.trim() ? "pointer" : "default",
+              }}
+            >
+              Sign in with nsec
+            </button>
+            <div style={{ fontSize: 8, color: T.red, fontFamily: T.mono, textAlign: "center", marginTop: 4 }}>
+              Your key never leaves this browser. Not recommended — use a signer app instead.
+            </div>
+          </div>
+        ) : (
+          <div
+            onClick={() => setShowNsec(true)}
+            style={{
+              marginTop: 8, fontSize: 9, color: T.muted + "88",
+              fontFamily: T.mono, cursor: "pointer",
+              transition: "color 0.2s",
+            }}
+          >
+            or paste nsec (advanced)
+          </div>
+        );
+      })()}
     </div>
   );
 }
@@ -1635,8 +1689,12 @@ export default function App() {
         `}</style>
         <ConnectScreen
           onConnect={actions.connect}
-          onConnectAmber={() => {
-            (window as any).__chama_prefer_amber = true;
+          onConnectNIP46={() => {
+            (window as any).__chama_connect_nip46 = true;
+            actions.connect();
+          }}
+          onConnectNsec={(nsec: string) => {
+            (window as any).__chama_connect_nsec = nsec;
             actions.connect();
           }}
           loading={loading}
@@ -1704,7 +1762,7 @@ export default function App() {
           </div>
         </div>
         <div style={{ fontSize: 9, color: T.muted, fontFamily: T.mono, padding: "4px 10px", borderRadius: 6, background: T.surface, border: `1px solid ${T.border}` }}>
-          v0.1.26
+          v0.1.27
         </div>
       </div>
 

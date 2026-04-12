@@ -256,16 +256,37 @@ export function useEscrow(config?: Partial<EscrowClientConfig>): [UseEscrowState
       // Detect signer (NIP-07 extension or Fedi runtime)
       let signer: Signer;
       try {
-        const preferAmber = !!(window as any).__chama_prefer_amber;
-        signer = detectSigner(preferAmber);
+        // Check for NIP-46 (QR code / bunker) connection request
+        if ((window as any).__chama_connect_nip46) {
+          delete (window as any).__chama_connect_nip46;
+          const { createNostrConnectSession } = await import("../escrow-engine/nip46-signer.js");
+          const session = await createNostrConnectSession();
+          // TODO: Show QR code with session.uri to the user
+          // For now, copy URI to clipboard and show in toast
+          try { await navigator.clipboard.writeText(session.uri); } catch {}
+          console.log("[chama] NIP-46 URI (scan with Amber):", session.uri);
+          setState(prev => ({ ...prev, error: "Scan the QR code or paste this in your signer: " + session.uri.slice(0, 50) + "..." }));
+          const result = await session.waitForConnection();
+          signer = result.signer;
+        }
+        // Check for nsec login
+        else if ((window as any).__chama_connect_nsec) {
+          const nsec = (window as any).__chama_connect_nsec;
+          delete (window as any).__chama_connect_nsec;
+          const { NsecSigner } = await import("../escrow-engine/nsec-signer.js");
+          signer = new NsecSigner(nsec);
+        }
+        // Default: NIP-07 extension
+        else {
+          signer = detectSigner();
+        }
       } catch {
         // Fallback: try NIP-07 with a delay (extensions sometimes load late)
         await new Promise(r => setTimeout(r, 500));
         try {
-          const preferAmber = !!(window as any).__chama_prefer_amber;
-          signer = detectSigner(preferAmber);
+          signer = detectSigner();
         } catch (e) {
-          throw new Error("No Nostr signer found. Install a NIP-07 extension (nos2x, Alby), use Amber on Android, or open in Fedi.");
+          throw new Error("No Nostr signer found. Use the Signer QR option, paste an nsec, or install a NIP-07 extension.");
         }
       }
 
