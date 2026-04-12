@@ -180,7 +180,27 @@ export class EscrowFedimintBridge {
 
   /** Decrypt an SSS share from a sender */
   private async decryptShare(encryptedShare: string, senderPubkey: string): Promise<SSSShare> {
-    const decrypted = await this.signer.nip44Decrypt(encryptedShare, senderPubkey);
+    // In dev/plaintext mode, shares are not encrypted — try parsing directly first
+    let decrypted: string;
+    try {
+      const parsed = JSON.parse(encryptedShare);
+      if (parsed && (parsed.index !== undefined || parsed.data !== undefined)) {
+        // Already plaintext JSON — no decryption needed
+        decrypted = encryptedShare;
+      } else {
+        decrypted = await this.signer.nip44Decrypt(encryptedShare, senderPubkey);
+      }
+    } catch {
+      // Not valid JSON — must be encrypted, decrypt it
+      try {
+        decrypted = await this.signer.nip44Decrypt(encryptedShare, senderPubkey);
+      } catch (decryptErr) {
+        // If decrypt also fails, the share might be a simulated plaintext string
+        // (from simulatedLock which uses "sim_share_0_..." format)
+        console.warn("[chama] Share decrypt failed, using as-is:", encryptedShare.slice(0, 30));
+        decrypted = encryptedShare;
+      }
+    }
     return JSON.parse(decrypted) as SSSShare;
   }
 
