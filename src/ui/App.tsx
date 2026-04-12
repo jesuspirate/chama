@@ -116,12 +116,70 @@ const inputStyle: React.CSSProperties = {
 // CONNECT SCREEN
 // ══════════════════════════════════════════════════════════════════════════
 
-function ConnectScreen({ onConnect, onConnectNIP46, onConnectNsec, loading, error }: {
+function NsecLogin({ onSubmit }: { onSubmit: (nsec: string) => void }) {
+  const [showNsec, setShowNsec] = useState(false);
+  const [nsecInput, setNsecInput] = useState("");
+
+  if (!showNsec) {
+    return (
+      <div
+        onClick={() => setShowNsec(true)}
+        style={{
+          marginTop: 8, fontSize: 9, color: T.muted + "88",
+          fontFamily: T.mono, cursor: "pointer",
+          transition: "color 0.2s",
+        }}
+      >
+        or paste nsec (advanced)
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ marginTop: 8, width: "100%", maxWidth: 320 }}>
+      <input
+        value={nsecInput}
+        onChange={(e) => setNsecInput(e.target.value)}
+        onKeyDown={(e) => e.key === "Enter" && nsecInput.trim() && onSubmit(nsecInput.trim())}
+        placeholder="nsec1... or hex private key"
+        type="password"
+        style={{
+          width: "100%", padding: "10px 14px",
+          background: T.surface, border: `1px solid ${T.border}`,
+          borderRadius: T.rs, color: T.text,
+          fontFamily: T.mono, fontSize: 11, outline: "none",
+          marginBottom: 6,
+        }}
+      />
+      <button
+        onClick={() => nsecInput.trim() && onSubmit(nsecInput.trim())}
+        disabled={!nsecInput.trim()}
+        style={{
+          width: "100%", padding: "10px",
+          background: nsecInput.trim() ? T.redDim : T.surface,
+          border: `1px solid ${nsecInput.trim() ? T.red + "33" : T.border}`,
+          borderRadius: T.rs, color: nsecInput.trim() ? T.red : T.muted,
+          fontFamily: T.mono, fontSize: 11, fontWeight: 600,
+          cursor: nsecInput.trim() ? "pointer" : "default",
+        }}
+      >
+        Sign in with nsec
+      </button>
+      <div style={{ fontSize: 8, color: T.red, fontFamily: T.mono, textAlign: "center", marginTop: 4 }}>
+        Your key never leaves this browser. Not recommended — use a signer app instead.
+      </div>
+    </div>
+  );
+}
+
+function ConnectScreen({ onConnect, onConnectNIP46, onConnectNsec, loading, error, nip46Uri, nip46Waiting }: {
   onConnect: () => void;
   onConnectNIP46: () => void;
   onConnectNsec: (nsec: string) => void;
   loading: boolean;
   error: string | null;
+  nip46Uri?: string | null;
+  nip46Waiting?: boolean;
 }) {
   return (
     <div style={{
@@ -154,6 +212,52 @@ function ConnectScreen({ onConnect, onConnectNIP46, onConnectNsec, loading, erro
           maxWidth: 360, wordBreak: "break-word",
         }}>
           {error}
+        </div>
+      )}
+
+      {/* NIP-46 connection URI — tappable link for mobile, copyable for desktop */}
+      {nip46Uri && (
+        <div style={{
+          width: "100%", maxWidth: 340, padding: "16px",
+          background: T.purpleDim, border: `1px solid ${T.purple}33`,
+          borderRadius: T.r, textAlign: "center",
+        }}>
+          <div style={{ fontSize: 11, color: T.purple, fontFamily: T.mono, marginBottom: 8, fontWeight: 600 }}>
+            {nip46Waiting ? "Waiting for signer approval..." : "Tap to open in your signer:"}
+          </div>
+          <a
+            href={nip46Uri}
+            style={{
+              display: "block", padding: "12px 16px",
+              background: T.surface, borderRadius: T.rs,
+              border: `1px solid ${T.border}`,
+              color: T.purple, fontFamily: T.mono, fontSize: 10,
+              wordBreak: "break-all", lineHeight: 1.5,
+              textDecoration: "none",
+            }}
+          >
+            {nip46Uri}
+          </a>
+          <div style={{ display: "flex", gap: 8, marginTop: 10, justifyContent: "center" }}>
+            <button onClick={() => {
+              navigator.clipboard?.writeText(nip46Uri);
+            }} style={{
+              padding: "6px 14px", borderRadius: T.rs,
+              background: T.surface, border: `1px solid ${T.border}`,
+              color: T.muted, fontFamily: T.mono, fontSize: 10,
+              cursor: "pointer",
+            }}>
+              Copy
+            </button>
+          </div>
+          {nip46Waiting && (
+            <div style={{
+              marginTop: 10, fontSize: 10, color: T.muted, fontFamily: T.mono,
+              animation: "pulse 2s ease-in-out infinite",
+            }}>
+              Listening on relays for connection...
+            </div>
+          )}
         </div>
       )}
 
@@ -198,56 +302,7 @@ function ConnectScreen({ onConnect, onConnectNIP46, onConnectNsec, loading, erro
       </div>
 
       {/* nsec fallback — hidden, tap to reveal */}
-      {(() => {
-        const [showNsec, setShowNsec] = useState(false);
-        const [nsecInput, setNsecInput] = useState("");
-        return showNsec ? (
-          <div style={{ marginTop: 8, width: "100%", maxWidth: 320 }}>
-            <input
-              value={nsecInput}
-              onChange={(e: any) => setNsecInput(e.target.value)}
-              onKeyDown={(e: any) => e.key === "Enter" && nsecInput.trim() && onConnectNsec(nsecInput.trim())}
-              placeholder="nsec1... or hex private key"
-              type="password"
-              style={{
-                width: "100%", padding: "10px 14px",
-                background: T.surface, border: `1px solid ${T.border}`,
-                borderRadius: T.rs, color: T.text,
-                fontFamily: T.mono, fontSize: 11, outline: "none",
-                marginBottom: 6,
-              }}
-            />
-            <button
-              onClick={() => nsecInput.trim() && onConnectNsec(nsecInput.trim())}
-              disabled={!nsecInput.trim()}
-              style={{
-                width: "100%", padding: "10px",
-                background: nsecInput.trim() ? T.redDim : T.surface,
-                border: `1px solid ${nsecInput.trim() ? T.red + "33" : T.border}`,
-                borderRadius: T.rs, color: nsecInput.trim() ? T.red : T.muted,
-                fontFamily: T.mono, fontSize: 11, fontWeight: 600,
-                cursor: nsecInput.trim() ? "pointer" : "default",
-              }}
-            >
-              Sign in with nsec
-            </button>
-            <div style={{ fontSize: 8, color: T.red, fontFamily: T.mono, textAlign: "center", marginTop: 4 }}>
-              Your key never leaves this browser. Not recommended — use a signer app instead.
-            </div>
-          </div>
-        ) : (
-          <div
-            onClick={() => setShowNsec(true)}
-            style={{
-              marginTop: 8, fontSize: 9, color: T.muted + "88",
-              fontFamily: T.mono, cursor: "pointer",
-              transition: "color 0.2s",
-            }}
-          >
-            or paste nsec (advanced)
-          </div>
-        );
-      })()}
+      <NsecLogin onSubmit={onConnectNsec} />
     </div>
   );
 }
@@ -1653,6 +1708,8 @@ export default function App() {
 
   const [view, setView] = useState<"list" | "detail" | "create">("list");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [nip46Uri, setNip46Uri] = useState<string | null>(null);
+  const [nip46Waiting, setNip46Waiting] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" | "info" } | null>(null);
   const [showFundModal, setShowFundModal] = useState(false);
   const [showAdvancedFederation, setShowAdvancedFederation] = useState(false);
@@ -1689,9 +1746,25 @@ export default function App() {
         `}</style>
         <ConnectScreen
           onConnect={actions.connect}
-          onConnectNIP46={() => {
-            (window as any).__chama_connect_nip46 = true;
-            actions.connect();
+          onConnectNIP46={async () => {
+            try {
+              setNip46Waiting(true);
+              const { createNostrConnectSession } = await import("../escrow-engine/nip46-signer.js");
+              const session = await createNostrConnectSession();
+              setNip46Uri(session.uri);
+              // Now wait for the bunker to connect (async, non-blocking UI)
+              const result = await session.waitForConnection();
+              // Connected! Store the signer and trigger normal connect flow
+              (window as any).__chama_nip46_signer = result.signer;
+              (window as any).__chama_nip46_pubkey = result.pubkey;
+              setNip46Uri(null);
+              setNip46Waiting(false);
+              actions.connect();
+            } catch (e: any) {
+              setNip46Waiting(false);
+              setNip46Uri(null);
+              console.error("[chama] NIP-46 connection failed:", e);
+            }
           }}
           onConnectNsec={(nsec: string) => {
             (window as any).__chama_connect_nsec = nsec;
@@ -1699,35 +1772,12 @@ export default function App() {
           }}
           loading={loading}
           error={error}
+          nip46Uri={nip46Uri}
+          nip46Waiting={nip46Waiting}
         />
       </div>
     );
   }
-
-  // ── Amber callback auto-connect ──
-  useEffect(() => {
-    const url = new URL(window.location.href);
-    const amberType = url.searchParams.get("amber_type");
-    const amberEvent = url.searchParams.get("event");
-
-    if (amberType === "get_public_key" && amberEvent) {
-      // Returning from Amber with pubkey — save and auto-connect
-      localStorage.setItem("chama_amber_pubkey", amberEvent);
-      url.searchParams.delete("amber_type");
-      url.searchParams.delete("event");
-      window.history.replaceState({}, "", url.toString());
-      (window as any).__chama_prefer_amber = true;
-      actions.connect();
-    } else if (
-      !state.connected && !state.loading &&
-      localStorage.getItem("chama_amber_pubkey") &&
-      /android/i.test(navigator?.userAgent || "")
-    ) {
-      // Returning Android user with cached Amber pubkey — auto-connect
-      (window as any).__chama_prefer_amber = true;
-      actions.connect();
-    }
-  }, []);
 
   // ── Connected → main app ──
   return (

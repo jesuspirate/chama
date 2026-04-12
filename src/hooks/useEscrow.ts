@@ -256,18 +256,10 @@ export function useEscrow(config?: Partial<EscrowClientConfig>): [UseEscrowState
       // Detect signer (NIP-07 extension or Fedi runtime)
       let signer: Signer;
       try {
-        // Check for NIP-46 (QR code / bunker) connection request
-        if ((window as any).__chama_connect_nip46) {
-          delete (window as any).__chama_connect_nip46;
-          const { createNostrConnectSession } = await import("../escrow-engine/nip46-signer.js");
-          const session = await createNostrConnectSession();
-          // TODO: Show QR code with session.uri to the user
-          // For now, copy URI to clipboard and show in toast
-          try { await navigator.clipboard.writeText(session.uri); } catch {}
-          console.log("[chama] NIP-46 URI (scan with Amber):", session.uri);
-          setState(prev => ({ ...prev, error: "Scan the QR code or paste this in your signer: " + session.uri.slice(0, 50) + "..." }));
-          const result = await session.waitForConnection();
-          signer = result.signer;
+        // Check for pre-connected NIP-46 signer (set by App component)
+        if ((window as any).__chama_nip46_signer) {
+          signer = (window as any).__chama_nip46_signer;
+          delete (window as any).__chama_nip46_signer;
         }
         // Check for nsec login
         else if ((window as any).__chama_connect_nsec) {
