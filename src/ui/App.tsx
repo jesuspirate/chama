@@ -224,7 +224,7 @@ function ConnectScreen({ onConnect, onConnectNIP46, onConnectNsec, loading, erro
           borderRadius: T.r, textAlign: "center",
         }}>
           <div style={{ fontSize: 12, color: T.purple, fontFamily: T.mono, marginBottom: 14, fontWeight: 600 }}>
-            {nip46Waiting ? "Scan with Amber or paste in signer" : "Scan to connect"}
+            {nip46Waiting ? "Scan with Amber or Primal" : "Scan with Amber or Primal"}
           </div>
 
           {/* QR Code */}
