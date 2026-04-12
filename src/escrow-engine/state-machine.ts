@@ -34,6 +34,9 @@ import {
   type ChatPayload,
   type ReadyPayload,
   type KickPayload,
+  type SubscribePayload,
+  type PeriodReleasePayload,
+  type SubscriptionMeta,
   type ValidationResult,
   type ValidationError,
 } from "./types.js";
@@ -57,6 +60,11 @@ function cloneState(state: EscrowState): EscrowState {
     ...state,
     participants: { ...state.participants },
     communityArbiters: [...state.communityArbiters],
+    subscription: state.subscription ? {
+      ...state.subscription,
+      periodStartTimes: [...state.subscription.periodStartTimes],
+      periodStatuses: [...state.subscription.periodStatuses],
+    } : null,
     kickVotes: { ...state.kickVotes },
     readiness: { ...state.readiness },
     votes: { ...state.votes },
@@ -174,6 +182,7 @@ function handleCreate(event: ParsedEscrowEvent<CreatePayload>): TransitionResult
     participants,
     initiator: { pubkey: event.pubkey, role: initiatorRole },
     communityArbiters: p.communityArbiters || [],
+    subscription: null,
     kickVotes: {},
     readiness: {},
     votes: {},
@@ -511,6 +520,131 @@ function handleCancel(state: EscrowState, event: ParsedEscrowEvent<CancelPayload
   return { ok: true, state: next };
 }
 
+// ── SUBSCRIBE ─────────────────────────────────────────────────────────────
+// Buyer adds subscription terms to an existing escrow.
+// Published after CREATE, before LOCK. Adds periodic release metadata.
+
+function handleSubscribe(state: EscrowState, event: ParsedEscrowEvent<SubscribePayload>): TransitionResult {
+  const p = event.payload;
+
+  // Only in CREATED or FUNDED state (before lock)
+  if (state.status !== EscrowStatus.CREATED && state.status !== EscrowStatus.FUNDED) {
+    return err("INVALID_STATE", `Cannot SUBSCRIBE in state ${state.status}`, event.raw.id);
+  }
+
+  // Only participants can subscribe
+  const role = getRole(state, event.pubkey);
+  if (!role) {
+    return err("NOT_PARTICIPANT", "Only participants can add subscription terms", event.raw.id);
+  }
+
+  // Can't subscribe twice
+  if (state.subscription) {
+    return err("ALREADY_SUBSCRIBED", "Subscription terms already set", event.raw.id);
+  }
+
+  // Validate total amount matches
+  const totalAmount = p.totalPeriods * p.periodAmountMsats;
+  if (totalAmount !== state.amountMsats) {
+    return err("AMOUNT_MISMATCH",
+      `Subscription total (${p.totalPeriods} × ${p.periodAmountMsats} = ${totalAmount}) doesn't match escrow amount (${state.amountMsats})`,
+      event.raw.id
+    );
+  }
+
+  const next = cloneState(state);
+
+  // Compute period start times
+  const periodStartTimes: number[] = [];
+  for (let i = 0; i < p.totalPeriods; i++) {
+    periodStartTimes.push(p.startsAt + i * p.periodDurationSeconds);
+  }
+
+  next.subscription = {
+    totalPeriods: p.totalPeriods,
+    periodAmountMsats: p.periodAmountMsats,
+    periodDurationSeconds: p.periodDurationSeconds,
+    periodStartTimes,
+    periodStatuses: Array(p.totalPeriods).fill("pending"),
+    releasedCount: 0,
+    disputedCount: 0,
+    totalReleasedMsats: 0,
+    startsAt: p.startsAt,
+  };
+
+  next.eventChain.push(event);
+  return { ok: true, state: next };
+}
+
+// ── PERIOD_RELEASE ────────────────────────────────────────────────────────
+// Release one period's sats to the seller. Can be triggered by:
+//   - Seller claiming after period expires (happy path)
+//   - Arbiter auto-releasing (scheduler)
+//   - Buyer releasing early (generous)
+
+function handlePeriodRelease(state: EscrowState, event: ParsedEscrowEvent<PeriodReleasePayload>): TransitionResult {
+  const p = event.payload;
+
+  // Must be LOCKED
+  if (state.status !== EscrowStatus.LOCKED) {
+    return err("INVALID_STATE", `Cannot release period in state ${state.status}`, event.raw.id);
+  }
+
+  // Must have subscription
+  if (!state.subscription) {
+    return err("NOT_SUBSCRIPTION", "This escrow is not a subscription", event.raw.id);
+  }
+
+  const sub = state.subscription;
+
+  // Validate period index
+  if (p.periodIndex < 0 || p.periodIndex >= sub.totalPeriods) {
+    return err("INVALID_PERIOD", `Period ${p.periodIndex} out of range (0-${sub.totalPeriods - 1})`, event.raw.id);
+  }
+
+  // Period must not already be released
+  if (sub.periodStatuses[p.periodIndex] === "released") {
+    return err("ALREADY_RELEASED", `Period ${p.periodIndex} already released`, event.raw.id);
+  }
+
+  // Period must not be disputed (use normal VOTE flow for disputes)
+  if (sub.periodStatuses[p.periodIndex] === "disputed") {
+    return err("PERIOD_DISPUTED", `Period ${p.periodIndex} is disputed — resolve via voting`, event.raw.id);
+  }
+
+  // Only participants can release
+  const role = getRole(state, event.pubkey);
+  if (!role) {
+    return err("NOT_PARTICIPANT", "Only participants can release periods", event.raw.id);
+  }
+
+  // Validate amount matches period amount
+  if (p.amountMsats !== sub.periodAmountMsats) {
+    return err("AMOUNT_MISMATCH",
+      `Release amount ${p.amountMsats} doesn't match period amount ${sub.periodAmountMsats}`,
+      event.raw.id
+    );
+  }
+
+  const next = cloneState(state);
+  const nextSub = next.subscription!;
+
+  // Mark period as released
+  nextSub.periodStatuses[p.periodIndex] = "released";
+  nextSub.releasedCount++;
+  nextSub.totalReleasedMsats += p.amountMsats;
+
+  next.eventChain.push(event);
+
+  // Check if all periods are released → COMPLETED
+  if (nextSub.releasedCount >= nextSub.totalPeriods) {
+    next.status = EscrowStatus.COMPLETED;
+    next.completedAt = p.releasedAt;
+  }
+
+  return { ok: true, state: next };
+}
+
 // ── KICK ──────────────────────────────────────────────────────────────────
 // Dual-vote kick: 2 participants must agree to remove the third.
 // First vote records intent. Second vote executes the removal.
@@ -722,6 +856,10 @@ export function applyEvent(
       return handleReady(state, event as ParsedEscrowEvent<ReadyPayload>);
     case EscrowEventKind.KICK:
       return handleKick(state, event as ParsedEscrowEvent<KickPayload>);
+    case EscrowEventKind.SUBSCRIBE:
+      return handleSubscribe(state, event as ParsedEscrowEvent<SubscribePayload>);
+    case EscrowEventKind.PERIOD_RELEASE:
+      return handlePeriodRelease(state, event as ParsedEscrowEvent<PeriodReleasePayload>);
     default:
       return err("UNKNOWN_EVENT_KIND", `Unknown event kind: ${event.kind}`, event.raw.id);
   }

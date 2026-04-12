@@ -31,6 +31,8 @@ import {
   type ChatPayload,
   type ReadyPayload,
   type KickPayload,
+  type SubscribePayload,
+  type PeriodReleasePayload,
   type ValidationResult,
   type ValidationError,
   Role,
@@ -55,6 +57,8 @@ const KIND_TO_TYPE: Record<number, string> = {
   [EscrowEventKind.CHAT]:     "escrow:chat",
   [EscrowEventKind.READY]:    "escrow:ready",
   [EscrowEventKind.KICK]:     "escrow:kick",
+  [EscrowEventKind.SUBSCRIBE]:      "escrow:subscribe",
+  [EscrowEventKind.PERIOD_RELEASE]: "escrow:period_release",
 };
 
 // ── Parse result type ─────────────────────────────────────────────────────
@@ -184,6 +188,29 @@ function validateChatPayload(data: unknown): data is ChatPayload {
   );
 }
 
+function validateSubscribePayload(data: unknown): data is SubscribePayload {
+  const d = data as Record<string, unknown>;
+  return (
+    d.type === "escrow:subscribe" &&
+    typeof d.totalPeriods === "number" && d.totalPeriods > 0 && d.totalPeriods <= 52 &&
+    typeof d.periodAmountMsats === "number" && d.periodAmountMsats > 0 &&
+    typeof d.periodDurationSeconds === "number" && d.periodDurationSeconds > 0 &&
+    typeof d.description === "string" &&
+    typeof d.startsAt === "number"
+  );
+}
+
+function validatePeriodReleasePayload(data: unknown): data is PeriodReleasePayload {
+  const d = data as Record<string, unknown>;
+  return (
+    d.type === "escrow:period_release" &&
+    typeof d.periodIndex === "number" && d.periodIndex >= 0 &&
+    typeof d.amountMsats === "number" && d.amountMsats > 0 &&
+    typeof d.triggeredBy === "string" &&
+    typeof d.releasedAt === "number"
+  );
+}
+
 function validateKickPayload(data: unknown): data is KickPayload {
   const d = data as Record<string, unknown>;
   return (
@@ -218,6 +245,8 @@ const PAYLOAD_VALIDATORS: Record<number, (data: unknown) => boolean> = {
   [EscrowEventKind.CHAT]:     validateChatPayload,
   [EscrowEventKind.READY]:    validateReadyPayload,
   [EscrowEventKind.KICK]:     validateKickPayload,
+  [EscrowEventKind.SUBSCRIBE]:      validateSubscribePayload,
+  [EscrowEventKind.PERIOD_RELEASE]: validatePeriodReleasePayload,
 };
 
 // ══════════════════════════════════════════════════════════════════════════

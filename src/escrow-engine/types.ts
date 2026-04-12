@@ -84,6 +84,10 @@ export enum EscrowEventKind {
   READY = 38109,
   /** Kick an unresponsive participant (pre-lock only) */
   KICK = 38110,
+  /** Create a subscription escrow with periodic releases */
+  SUBSCRIBE = 38111,
+  /** Release one period's sats to the seller */
+  PERIOD_RELEASE = 38112,
 }
 
 // ── Valid State Transitions ───────────────────────────────────────────────
@@ -261,6 +265,58 @@ export interface ReadyPayload {
   readyAt: number;
 }
 
+/** Content of a SUBSCRIBE event — buyer creates subscription terms */
+export interface SubscribePayload {
+  type: "escrow:subscribe";
+  /** Total number of periods (e.g. 3 months) */
+  totalPeriods: number;
+  /** Amount per period in msats */
+  periodAmountMsats: number;
+  /** Duration of each period in seconds (e.g. 2592000 = 30 days) */
+  periodDurationSeconds: number;
+  /** What the subscription is for */
+  description: string;
+  /** When the subscription starts */
+  startsAt: number;
+}
+
+/** Content of a PERIOD_RELEASE event — release one period's sats */
+export interface PeriodReleasePayload {
+  type: "escrow:period_release";
+  /** Which period (0-indexed) */
+  periodIndex: number;
+  /** Amount released in msats */
+  amountMsats: number;
+  /** Who triggered the release (seller claim, arbiter auto-release, or buyer early release) */
+  triggeredBy: Role;
+  releasedAt: number;
+}
+
+/** Status of a single subscription period */
+export type PeriodStatus = "pending" | "active" | "released" | "disputed" | "refunded";
+
+/** Subscription metadata stored in EscrowState */
+export interface SubscriptionMeta {
+  /** Total periods in the subscription */
+  totalPeriods: number;
+  /** Amount per period in msats */
+  periodAmountMsats: number;
+  /** Duration of each period in seconds */
+  periodDurationSeconds: number;
+  /** When each period starts (computed from startsAt + index * duration) */
+  periodStartTimes: number[];
+  /** Status of each period */
+  periodStatuses: PeriodStatus[];
+  /** Number of periods released so far */
+  releasedCount: number;
+  /** Number of periods disputed */
+  disputedCount: number;
+  /** Total msats released so far */
+  totalReleasedMsats: number;
+  /** When the subscription started */
+  startsAt: number;
+}
+
 /** Content of a KICK event — remove unresponsive participant (pre-lock only) */
 export interface KickPayload {
   type: "escrow:kick";
@@ -286,7 +342,9 @@ export type EscrowPayload =
   | CancelPayload
   | ChatPayload
   | ReadyPayload
-  | KickPayload;
+  | KickPayload
+  | SubscribePayload
+  | PeriodReleasePayload;
 
 // ── Raw Nostr Event (minimal, from nostr-tools) ──────────────────────────
 
@@ -352,6 +410,9 @@ export interface EscrowState {
 
   /** Community arbiter pool — backup arbiters who also receive the SSS share */
   communityArbiters: string[];
+
+  /** Subscription metadata (null for non-subscription escrows) */
+  subscription: SubscriptionMeta | null;
 
   /** Kick votes — tracks who voted to kick whom. When 2 votes target the same role, removal executes */
   kickVotes: Record<string, string[]>;
