@@ -233,6 +233,12 @@ export class EscrowClient {
     paymentMethods?: string[];
     arbiterFeeMsats?: number;
     expirySeconds?: number;
+    communityArbiters?: string[];
+    subscription?: {
+      totalPeriods: number;
+      periodAmountMsats: number;
+      periodDurationSeconds: number;
+    };
   }): Promise<{ escrowId: string; state: EscrowState }> {
     const pubkey = await this.getPubkey();
     const now = Math.floor(Date.now() / 1000);
@@ -251,6 +257,7 @@ export class EscrowClient {
       arbiterFeeMsats: params.arbiterFeeMsats,
       paymentMethods: params.paymentMethods,
       expirySeconds: params.expirySeconds || this.config.defaultExpirySeconds!,
+      communityArbiters: params.communityArbiters,
       createdAt: now,
     };
 
@@ -773,6 +780,42 @@ export class EscrowClient {
 
     // Notify community arbiters about the new trade
     this.notifier?.onTradeCreated(result.state).catch(() => {});
+
+    // If subscription params provided, publish SUBSCRIBE event
+    if (params.subscription) {
+      try {
+        const subNow = Math.floor(Date.now() / 1000);
+        const subPayload = {
+          type: "escrow:subscribe" as const,
+          totalPeriods: params.subscription.totalPeriods,
+          periodAmountMsats: params.subscription.periodAmountMsats,
+          periodDurationSeconds: params.subscription.periodDurationSeconds,
+          description: params.description,
+          startsAt: subNow,
+        };
+
+        const subContent = JSON.stringify(subPayload);
+        const lastEvtId = result.state.eventChain[result.state.eventChain.length - 1]?.raw.id;
+
+        const subUnsigned: UnsignedEvent = {
+          kind: EscrowEventKind.SUBSCRIBE,
+          created_at: subNow,
+          tags: [
+            [TAGS.ESCROW_ID, escrowId],
+            [TAGS.PREV_EVENT, lastEvtId, "", "reply"],
+            [TAGS.TYPE, "escrow:subscribe"],
+          ],
+          content: subContent,
+        };
+
+        const subSigned = await this.signer.signEvent(subUnsigned);
+        await this.relayManager.publish(subSigned);
+        this.applyLocally(escrowId, subSigned, subPayload);
+        console.debug("[chama] SUBSCRIBE event published for", escrowId);
+      } catch (e) {
+        console.warn("[chama] Failed to publish SUBSCRIBE event:", e);
+      }
+    }
 
     return result.state;
   }
