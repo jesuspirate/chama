@@ -295,33 +295,41 @@ export class AmberSigner implements Signer {
   }
 
   async getPublicKey(): Promise<string> {
+    // Return cached pubkey immediately — no redirect needed
     if (this.pubkey) return this.pubkey;
 
-    const result = await this.redirectToAmber({
-      type: "get_public_key",
-    });
+    // Check localStorage (set by previous Amber callback)
+    const cached = localStorage.getItem("chama_amber_pubkey");
+    if (cached) {
+      this.pubkey = cached;
+      return cached;
+    }
 
-    this.pubkey = result;
-    return result;
+    // No cached pubkey — need to redirect to Amber.
+    // This will cause a page reload, so we don't await the Promise.
+    // The callback handler will pick up the result on next page load.
+    this.redirectToAmber({ type: "get_public_key" });
+
+    // This Promise will never resolve (page is about to reload).
+    // Return a never-resolving Promise to prevent further execution.
+    return new Promise(() => {});
   }
 
   async signEvent(event: UnsignedEvent): Promise<NostrEvent> {
     const eventJson = JSON.stringify(event);
-    const result = await this.redirectToAmber({
+
+    // For signing, we need a round-trip to Amber.
+    // Store the pending event so we can reconstruct after redirect.
+    localStorage.setItem("chama_amber_pending_event", eventJson);
+
+    this.redirectToAmber({
       type: "sign_event",
       content: eventJson,
       current_user: this.pubkey || "",
     });
 
-    // Amber returns the signed event JSON or just the signature
-    try {
-      const parsed = JSON.parse(result);
-      return parsed as NostrEvent;
-    } catch {
-      // If it's just a signature, we need to construct the full event
-      // This shouldn't happen with returnType=event but handle it
-      return { ...event, pubkey: this.pubkey || "", id: "", sig: result } as NostrEvent;
-    }
+    // Page will reload — return never-resolving Promise
+    return new Promise(() => {});
   }
 
   async nip44Encrypt(plaintext: string, recipientPubkey: string): Promise<string> {

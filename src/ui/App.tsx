@@ -185,7 +185,7 @@ function ConnectScreen({ onConnect, onConnectAmber, loading, error }: {
             minWidth: 220,
           }}
         >
-          {loading ? "Connecting…" : "🟣 Connect with Amber"}
+          {loading ? "Connecting…" : "🔐 Connect with Signer"}
         </button>
       )}
 
@@ -1645,6 +1645,31 @@ export default function App() {
       </div>
     );
   }
+
+  // ── Amber callback auto-connect ──
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const amberType = url.searchParams.get("amber_type");
+    const amberEvent = url.searchParams.get("event");
+
+    if (amberType === "get_public_key" && amberEvent) {
+      // Returning from Amber with pubkey — save and auto-connect
+      localStorage.setItem("chama_amber_pubkey", amberEvent);
+      url.searchParams.delete("amber_type");
+      url.searchParams.delete("event");
+      window.history.replaceState({}, "", url.toString());
+      (window as any).__chama_prefer_amber = true;
+      actions.connect();
+    } else if (
+      !state.connected && !state.loading &&
+      localStorage.getItem("chama_amber_pubkey") &&
+      /android/i.test(navigator?.userAgent || "")
+    ) {
+      // Returning Android user with cached Amber pubkey — auto-connect
+      (window as any).__chama_prefer_amber = true;
+      actions.connect();
+    }
+  }, []);
 
   // ── Connected → main app ──
   return (
