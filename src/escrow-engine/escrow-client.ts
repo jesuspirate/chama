@@ -132,7 +132,6 @@ export class EscrowClient {
   private config: EscrowClientConfig;
   private notifier: EscrowNotifier | null = null;
   private callbacks: EscrowClientCallbacks;
-  private notifier: EscrowNotifier | null = null;
 
   /** Cached escrow states — escrowId → state */
   private states: Map<string, EscrowState> = new Map();

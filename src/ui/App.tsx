@@ -116,8 +116,8 @@ const inputStyle: React.CSSProperties = {
 // CONNECT SCREEN
 // ══════════════════════════════════════════════════════════════════════════
 
-function ConnectScreen({ onConnect, loading, error }: {
-  onConnect: () => void; loading: boolean; error: string | null;
+function ConnectScreen({ onConnect, onConnectAmber, loading, error }: {
+  onConnect: () => void; onConnectAmber: () => void; loading: boolean; error: string | null;
 }) {
   return (
     <div style={{
@@ -169,9 +169,30 @@ function ConnectScreen({ onConnect, loading, error }: {
         {loading ? "Connecting…" : "⚡ Connect with Nostr"}
       </button>
 
+      {/* Amber button — show on Android devices */}
+      {/android/i.test(navigator?.userAgent || "") && (
+        <button
+          onClick={onConnectAmber}
+          disabled={loading}
+          style={{
+            padding: "14px 40px", borderRadius: T.r,
+            background: loading ? T.surface : T.purpleDim,
+            border: `1px solid ${T.purple}44`,
+            color: loading ? T.muted : T.purple,
+            fontFamily: T.mono, fontSize: 13, fontWeight: 600,
+            cursor: loading ? "default" : "pointer",
+            letterSpacing: 0.3, transition: "all 0.2s",
+            minWidth: 220,
+          }}
+        >
+          {loading ? "Connecting…" : "🟣 Connect with Amber"}
+        </button>
+      )}
+
       <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono, lineHeight: 1.8 }}>
-        Requires a NIP-07 signer (nos2x, Alby, Amber)<br />
-        or Fedi Mini-App runtime
+        Desktop: NIP-07 extension (nos2x, Alby)<br />
+        Android: Amber signer app<br />
+        Fedi: Mini-App runtime
       </div>
     </div>
   );
@@ -1612,7 +1633,15 @@ export default function App() {
           input::placeholder{color:${T.muted}88}
           input:focus,select:focus{border-color:${T.accent}66!important}
         `}</style>
-        <ConnectScreen onConnect={actions.connect} loading={loading} error={error} />
+        <ConnectScreen
+          onConnect={actions.connect}
+          onConnectAmber={() => {
+            (window as any).__chama_prefer_amber = true;
+            actions.connect();
+          }}
+          loading={loading}
+          error={error}
+        />
       </div>
     );
   }
@@ -1650,7 +1679,7 @@ export default function App() {
           </div>
         </div>
         <div style={{ fontSize: 9, color: T.muted, fontFamily: T.mono, padding: "4px 10px", borderRadius: 6, background: T.surface, border: `1px solid ${T.border}` }}>
-          v0.1.25
+          v0.1.26
         </div>
       </div>
 

@@ -195,6 +195,155 @@ export class LocalSigner implements Signer {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
+// AMBER SIGNER — Android NIP-55 via nostrsigner: URL scheme
+// ══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Uses Amber (NIP-55) for signing on Android.
+ * 
+ * For web apps, Amber uses the nostrsigner: URL scheme with callback URLs.
+ * Each operation redirects to Amber, user approves, Amber redirects back
+ * with the result as a URL parameter.
+ * 
+ * Flow:
+ *   1. App navigates to nostrsigner:?type=get_public_key&callbackUrl=...
+ *   2. Amber opens, user approves
+ *   3. Amber redirects to callbackUrl?event=<result>
+ *   4. App reads the result from the URL
+ *
+ * Limitation: each signing operation is a redirect round-trip.
+ * For better UX, consider NIP-46 (Nostr Connect) which Amber also supports.
+ */
+export class AmberSigner implements Signer {
+  private pubkey: string | null = null;
+  private pendingResolve: ((value: string) => void) | null = null;
+  private callbackBase: string;
+
+  constructor() {
+    this.callbackBase = window.location.origin + window.location.pathname;
+    // Check if we're returning from Amber with a result
+    this.handleAmberCallback();
+  }
+
+  /** Check if this is an Android device (Amber only works on Android) */
+  static isAndroid(): boolean {
+    if (typeof navigator === "undefined") return false;
+    return /android/i.test(navigator.userAgent);
+  }
+
+  /** Check URL params for Amber callback results */
+  private handleAmberCallback(): void {
+    const url = new URL(window.location.href);
+    const event = url.searchParams.get("event");
+    const amberType = url.searchParams.get("amber_type");
+
+    if (event && amberType) {
+      // Clean the URL
+      url.searchParams.delete("event");
+      url.searchParams.delete("amber_type");
+      window.history.replaceState({}, "", url.toString());
+
+      // Store the result
+      if (amberType === "get_public_key") {
+        this.pubkey = event;
+        // Also persist for subsequent page loads
+        localStorage.setItem("chama_amber_pubkey", event);
+      }
+
+      // Resolve any pending promise
+      if (this.pendingResolve) {
+        this.pendingResolve(event);
+        this.pendingResolve = null;
+      }
+    }
+
+    // Restore cached pubkey
+    if (!this.pubkey) {
+      this.pubkey = localStorage.getItem("chama_amber_pubkey");
+    }
+  }
+
+  /** Redirect to Amber with a nostrsigner: URL */
+  private redirectToAmber(params: Record<string, string>): Promise<string> {
+    return new Promise((resolve) => {
+      this.pendingResolve = resolve;
+
+      const amberType = params.type || "unknown";
+      const callbackUrl = encodeURIComponent(
+        this.callbackBase + "?amber_type=" + amberType + "&event="
+      );
+
+      let uri = "nostrsigner:";
+      if (params.content) {
+        uri += params.content;
+      }
+
+      const queryParts = [];
+      for (const [key, value] of Object.entries(params)) {
+        if (key !== "content") {
+          queryParts.push(`${key}=${encodeURIComponent(value)}`);
+        }
+      }
+      queryParts.push(`callbackUrl=${callbackUrl}`);
+      queryParts.push("compressionType=none");
+      queryParts.push("returnType=signature");
+
+      uri += "?" + queryParts.join("&");
+
+      window.location.href = uri;
+    });
+  }
+
+  async getPublicKey(): Promise<string> {
+    if (this.pubkey) return this.pubkey;
+
+    const result = await this.redirectToAmber({
+      type: "get_public_key",
+    });
+
+    this.pubkey = result;
+    return result;
+  }
+
+  async signEvent(event: UnsignedEvent): Promise<NostrEvent> {
+    const eventJson = JSON.stringify(event);
+    const result = await this.redirectToAmber({
+      type: "sign_event",
+      content: eventJson,
+      current_user: this.pubkey || "",
+    });
+
+    // Amber returns the signed event JSON or just the signature
+    try {
+      const parsed = JSON.parse(result);
+      return parsed as NostrEvent;
+    } catch {
+      // If it's just a signature, we need to construct the full event
+      // This shouldn't happen with returnType=event but handle it
+      return { ...event, pubkey: this.pubkey || "", id: "", sig: result } as NostrEvent;
+    }
+  }
+
+  async nip44Encrypt(plaintext: string, recipientPubkey: string): Promise<string> {
+    return this.redirectToAmber({
+      type: "nip44_encrypt",
+      content: plaintext,
+      pubkey: recipientPubkey,
+      current_user: this.pubkey || "",
+    });
+  }
+
+  async nip44Decrypt(ciphertext: string, senderPubkey: string): Promise<string> {
+    return this.redirectToAmber({
+      type: "nip44_decrypt",
+      content: ciphertext,
+      pubkey: senderPubkey,
+      current_user: this.pubkey || "",
+    });
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════
 // AUTO-DETECT — Pick the right signer for the environment
 // ══════════════════════════════════════════════════════════════════════════
 
@@ -204,9 +353,25 @@ export class LocalSigner implements Signer {
  *   2. If window.nostr exists → NIP07Signer
  *   3. Otherwise → throw (caller must provide a LocalSigner)
  */
-export function detectSigner(): Signer {
+export function detectSigner(preferAmber?: boolean): Signer {
   if (typeof window === "undefined") {
     throw new Error("No browser environment — use LocalSigner for CLI/testing");
+  }
+
+  // If explicitly requesting Amber (mobile user tapped "Connect with Amber")
+  if (preferAmber && AmberSigner.isAndroid()) {
+    return new AmberSigner();
+  }
+
+  // Check if returning from Amber callback
+  const url = new URL(window.location.href);
+  if (url.searchParams.has("amber_type")) {
+    return new AmberSigner();
+  }
+
+  // Check if we have a cached Amber pubkey (user previously connected via Amber)
+  if (localStorage.getItem("chama_amber_pubkey") && AmberSigner.isAndroid()) {
+    return new AmberSigner();
   }
 
   if (FediSigner.isAvailable()) {
@@ -217,5 +382,5 @@ export function detectSigner(): Signer {
     return new NIP07Signer();
   }
 
-  throw new Error("No Nostr signer available — install a NIP-07 extension or use Fedi");
+  throw new Error("No Nostr signer available — install a NIP-07 extension, use Amber on Android, or open in Fedi");
 }

@@ -256,14 +256,16 @@ export function useEscrow(config?: Partial<EscrowClientConfig>): [UseEscrowState
       // Detect signer (NIP-07 extension or Fedi runtime)
       let signer: Signer;
       try {
-        signer = detectSigner();
+        const preferAmber = !!(window as any).__chama_prefer_amber;
+        signer = detectSigner(preferAmber);
       } catch {
         // Fallback: try NIP-07 with a delay (extensions sometimes load late)
         await new Promise(r => setTimeout(r, 500));
         try {
-          signer = detectSigner();
+          const preferAmber = !!(window as any).__chama_prefer_amber;
+          signer = detectSigner(preferAmber);
         } catch (e) {
-          throw new Error("No Nostr signer found. Install a NIP-07 extension (nos2x, Alby) or open in Fedi.");
+          throw new Error("No Nostr signer found. Install a NIP-07 extension (nos2x, Alby), use Amber on Android, or open in Fedi.");
         }
       }
 
