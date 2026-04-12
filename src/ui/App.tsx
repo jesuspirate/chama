@@ -117,6 +117,126 @@ const inputStyle: React.CSSProperties = {
 // CONNECT SCREEN
 // ══════════════════════════════════════════════════════════════════════════
 
+function SubscriptionTimeline({ subscription, onRelease }: {
+  subscription: any;
+  onRelease: (periodIndex: number) => void;
+}) {
+  const now = Math.floor(Date.now() / 1000);
+  const sub = subscription;
+  if (!sub) return null;
+
+  return (
+    <div style={{
+      background: T.card, border: `1px solid ${T.purple}22`,
+      borderRadius: T.r, padding: 16, marginBottom: 16,
+    }}>
+      <div style={{
+        fontSize: 11, fontWeight: 600, color: T.purple, fontFamily: T.mono,
+        letterSpacing: 1, marginBottom: 12,
+      }}>
+        🔄 SUBSCRIPTION · {sub.releasedCount}/{sub.totalPeriods} RELEASED
+      </div>
+
+      {/* Period blocks */}
+      <div style={{ display: "flex", gap: 3, marginBottom: 12 }}>
+        {sub.periodStatuses.map((status: string, i: number) => {
+          const startTime = sub.periodStartTimes[i];
+          const endTime = startTime + sub.periodDurationSeconds;
+          const isActive = now >= startTime && now < endTime;
+          const isPast = now >= endTime;
+
+          const color = status === "released" ? T.green
+            : status === "disputed" ? T.red
+            : status === "refunded" ? T.amber
+            : isActive ? T.purple
+            : T.border;
+
+          return (
+            <div key={i} style={{
+              flex: 1, height: 28, borderRadius: 4,
+              background: `${color}${status === "released" ? "44" : isActive ? "66" : "22"}`,
+              border: `1px solid ${color}${isActive ? "88" : "33"}`,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontSize: 8, fontFamily: T.mono, color,
+              fontWeight: isActive ? 700 : 400,
+              animation: isActive ? "pulse 2s ease-in-out infinite" : "none",
+              cursor: (isActive || isPast) && status === "pending" ? "pointer" : "default",
+            }}
+              title={`Period ${i + 1}: ${status}`}
+            >
+              {i + 1}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Legend */}
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
+        {[
+          { c: T.green, l: "Released" },
+          { c: T.purple, l: "Active" },
+          { c: T.border, l: "Pending" },
+          { c: T.red, l: "Disputed" },
+        ].map(item => (
+          <div key={item.l} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            <div style={{ width: 8, height: 8, borderRadius: 2, background: item.c + "66" }} />
+            <span style={{ fontSize: 9, color: T.muted, fontFamily: T.mono }}>{item.l}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Active period details + release button */}
+      {sub.periodStatuses.map((status: string, i: number) => {
+        const startTime = sub.periodStartTimes[i];
+        const endTime = startTime + sub.periodDurationSeconds;
+        const isActive = now >= startTime && now < endTime;
+        const canRelease = (isActive || now >= endTime) && status !== "released" && status !== "refunded";
+
+        if (!isActive && status !== "pending") return null;
+        if (!canRelease) return null;
+
+        const remaining = endTime - now;
+        const days = Math.floor(remaining / 86400);
+        const hours = Math.floor((remaining % 86400) / 3600);
+
+        return (
+          <div key={"release-" + i} style={{
+            padding: "12px", background: T.surface,
+            borderRadius: T.rs, border: `1px solid ${T.purple}22`,
+            marginBottom: 8,
+          }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <div style={{ fontSize: 11, color: T.purple, fontFamily: T.mono, fontWeight: 600 }}>
+                  Period {i + 1} · {Math.floor(sub.periodAmountMsats / 1000).toLocaleString()} sats
+                </div>
+                {remaining > 0 && (
+                  <div style={{ fontSize: 9, color: T.muted, fontFamily: T.mono, marginTop: 2 }}>
+                    Auto-releases in {days > 0 ? `${days}d ` : ""}{hours}h
+                  </div>
+                )}
+              </div>
+              <button onClick={() => onRelease(i)} style={{
+                padding: "8px 16px", borderRadius: T.rs,
+                background: T.greenDim, border: `1px solid ${T.green}33`,
+                color: T.green, fontFamily: T.mono, fontSize: 10, fontWeight: 600,
+                cursor: "pointer",
+              }}>
+                Release
+              </button>
+            </div>
+          </div>
+        );
+      })}
+
+      {/* Summary */}
+      <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono, textAlign: "center" }}>
+        {Math.floor(sub.totalReleasedMsats / 1000).toLocaleString()} / {Math.floor(sub.totalPeriods * sub.periodAmountMsats / 1000).toLocaleString()} sats released
+      </div>
+    </div>
+  );
+}
+
 function NsecLogin({ onSubmit }: { onSubmit: (nsec: string) => void }) {
   const [showNsec, setShowNsec] = useState(false);
   const [nsecInput, setNsecInput] = useState("");
@@ -407,6 +527,15 @@ function TradeCard({ state, pubkey, onSelect }: {
         <div style={{ flex: 1 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
             <span style={{ fontSize: 14, opacity: 0.6 }}>{CAT_ICON[state.category] || "📦"}</span>
+            {state.subscription && (
+              <span style={{
+                fontSize: 9, padding: "2px 6px", borderRadius: 8,
+                background: T.purpleDim, color: T.purple,
+                fontFamily: T.mono, fontWeight: 600,
+              }}>
+                🔄 {state.subscription.releasedCount}/{state.subscription.totalPeriods}
+              </span>
+            )}
             <span style={{ fontSize: 13, fontWeight: 600, color: T.text, fontFamily: T.sans, lineHeight: 1.3 }}>
               {state.description}
             </span>
@@ -782,6 +911,17 @@ function TradeDetail({ state, pubkey, onBack, onVote, onClaim, onJoin, onLock, o
         </div>
       </div>
 
+      {/* Subscription timeline */}
+      {state.subscription && (
+        <SubscriptionTimeline
+          subscription={state.subscription}
+          onRelease={(periodIndex) => {
+            onSendChat(`Releasing period ${periodIndex + 1}`);
+            // TODO: wire to actual PERIOD_RELEASE event
+          }}
+        />
+      )}
+
       {/* Community arbiter pool indicator */}
       {state.communityArbiters && state.communityArbiters.length > 0 && (
         <div style={{
@@ -1121,6 +1261,9 @@ function CreateForm({ onCreate, onClose }: {
   const [submitting, setSubmitting] = useState(false);
   const [communityArbiters, setCommunityArbiters] = useState<string[]>([]);
   const [primaryArbiter, setPrimaryArbiter] = useState<string | null>(null);
+  const [isSubscription, setIsSubscription] = useState(false);
+  const [periods, setPeriods] = useState("3");
+  const [intervalDays, setIntervalDays] = useState("30");
 
   const cats = [
     { id: "p2p-trade", l: "P2P Trade", i: "⚡" },
@@ -1133,14 +1276,23 @@ function CreateForm({ onCreate, onClose }: {
     if (!desc || !sats || !mint) return;
     setSubmitting(true);
     try {
-      await onCreate({
+      const amountMsats = parseInt(sats) * 1000;
+      const params: any = {
         description: desc,
-        amountMsats: parseInt(sats) * 1000,
+        amountMsats: isSubscription ? parseInt(periods) * amountMsats : amountMsats,
         fiatAmount: fiat ? parseFloat(fiat) : undefined,
         fiatCurrency: fiat ? cur : undefined,
         category: cat,
         mintUrl: mint,
-      });
+      };
+      if (isSubscription) {
+        params.subscription = {
+          totalPeriods: parseInt(periods),
+          periodAmountMsats: amountMsats,
+          periodDurationSeconds: parseInt(intervalDays) * 86400,
+        };
+      }
+      await onCreate(params);
       onClose();
     } finally {
       setSubmitting(false);
@@ -1196,6 +1348,85 @@ function CreateForm({ onCreate, onClose }: {
       <div style={{ marginBottom: 20 }}>
         <div style={{ fontSize: 11, color: T.muted, fontFamily: T.mono, marginBottom: 6 }}>FEDERATION INVITE CODE</div>
         <input value={mint} onChange={e => setMint(e.target.value)} placeholder="fed11qgq..." style={inputStyle} />
+      </div>
+
+      {/* Subscription toggle */}
+      <div style={{
+        marginBottom: 20, padding: 16,
+        background: isSubscription ? T.purpleDim : T.surface,
+        border: `1px solid ${isSubscription ? T.purple + "33" : T.border}`,
+        borderRadius: T.r, transition: "all 0.3s",
+      }}>
+        <div
+          onClick={() => setIsSubscription(!isSubscription)}
+          style={{
+            display: "flex", alignItems: "center", justifyContent: "space-between",
+            cursor: "pointer",
+          }}
+        >
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: isSubscription ? T.purple : T.muted, fontFamily: T.mono }}>
+              🔄 SUBSCRIPTION MODE
+            </div>
+            <div style={{ fontSize: 10, color: T.muted, fontFamily: T.sans, marginTop: 2 }}>
+              Periodic release — lock upfront, release in installments
+            </div>
+          </div>
+          <div style={{
+            width: 40, height: 22, borderRadius: 11,
+            background: isSubscription ? T.purple : T.border,
+            padding: 2, transition: "background 0.2s", cursor: "pointer",
+          }}>
+            <div style={{
+              width: 18, height: 18, borderRadius: "50%",
+              background: T.text, transition: "transform 0.2s",
+              transform: isSubscription ? "translateX(18px)" : "translateX(0)",
+            }} />
+          </div>
+        </div>
+
+        {isSubscription && (
+          <div style={{ marginTop: 14 }}>
+            <div style={{ display: "flex", gap: 12 }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 10, color: T.purple, fontFamily: T.mono, marginBottom: 4 }}>PERIODS</div>
+                <select value={periods} onChange={e => setPeriods(e.target.value)}
+                  style={{ ...inputStyle, fontSize: 12, color: T.text, background: T.surface }}>
+                  {[2,3,4,5,6,7,8,9,10,11,12,24,36,52].map(n => (
+                    <option key={n} value={n}>{n} period{n > 1 ? "s" : ""}</option>
+                  ))}
+                </select>
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 10, color: T.purple, fontFamily: T.mono, marginBottom: 4 }}>INTERVAL</div>
+                <select value={intervalDays} onChange={e => setIntervalDays(e.target.value)}
+                  style={{ ...inputStyle, fontSize: 12, color: T.text, background: T.surface }}>
+                  <option value="7">Weekly</option>
+                  <option value="14">Bi-weekly</option>
+                  <option value="30">Monthly</option>
+                  <option value="90">Quarterly</option>
+                </select>
+              </div>
+            </div>
+
+            {sats && (
+              <div style={{
+                marginTop: 10, padding: "10px 12px",
+                background: T.surface, borderRadius: T.rs,
+                border: `1px solid ${T.border}`,
+              }}>
+                <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono }}>SUBSCRIPTION SUMMARY</div>
+                <div style={{ fontSize: 13, color: T.purple, fontFamily: T.mono, fontWeight: 700, marginTop: 4 }}>
+                  {parseInt(periods)} × {parseInt(sats).toLocaleString()} sats = {(parseInt(periods) * parseInt(sats)).toLocaleString()} sats total
+                </div>
+                <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono, marginTop: 2 }}>
+                  {parseInt(sats).toLocaleString()} sats released every {intervalDays} days
+                  {" · "}Total duration: {Math.round(parseInt(periods) * parseInt(intervalDays) / 30)} months
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       <button onClick={handleSubmit} disabled={!desc || !sats || !mint || submitting} style={{
@@ -1829,7 +2060,7 @@ export default function App() {
           </div>
         </div>
         <div style={{ fontSize: 9, color: T.muted, fontFamily: T.mono, padding: "4px 10px", borderRadius: 6, background: T.surface, border: `1px solid ${T.border}` }}>
-          v0.1.29
+          v0.1.30
         </div>
       </div>
 
