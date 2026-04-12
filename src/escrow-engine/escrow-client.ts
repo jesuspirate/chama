@@ -41,6 +41,8 @@ import {
 } from "./types.js";
 
 import { applyEvent, replayEventChain, canVote, getWinner, type TransitionResult } from "./state-machine.js";
+import { EscrowNotifier } from "./notifier.js";
+import { ENCRYPTION_CONFIG, maybeEncrypt } from "./encryption-config.js";
 import { parseEscrowEvent, sortEventChain } from "./event-parser.js";
 import { RelayManager, type NostrFilter } from "./relay-manager.js";
 
@@ -128,7 +130,9 @@ export class EscrowClient {
   private relayManager: RelayManager;
   private signer: Signer;
   private config: EscrowClientConfig;
+  private notifier: EscrowNotifier | null = null;
   private callbacks: EscrowClientCallbacks;
+  private notifier: EscrowNotifier | null = null;
 
   /** Cached escrow states — escrowId → state */
   private states: Map<string, EscrowState> = new Map();
@@ -157,6 +161,7 @@ export class EscrowClient {
       ...config,
     };
     this.callbacks = callbacks;
+    this.notifier = new EscrowNotifier(signer, this.relayManager);
 
     this.relayManager = new RelayManager(
       config.relays,
@@ -322,7 +327,14 @@ export class EscrowClient {
     const signed = await this.signer.signEvent(unsigned);
     await this.relayManager.publish(signed);
 
-    return this.applyLocally(escrowId, signed, payload);
+    const joinResult = this.applyLocally(escrowId, signed, payload);
+
+    // Notify when all 3 joined
+    if (joinResult.status === "FUNDED") {
+      this.notifier?.onReadinessNeeded(joinResult).catch(() => {});
+    }
+
+    return joinResult;
   }
 
   // ── Kick unresponsive participant (pre-lock only) ────────────────────────
@@ -433,9 +445,13 @@ export class EscrowClient {
       lockedAt: now,
     };
 
-    // For testing: plaintext. In production with real ecash, this will be NIP-44 encrypted.
-    // TODO: Re-enable NIP-44 encryption when Fedimint WASM is integrated
-    const content = JSON.stringify(payload);
+    // Conditionally encrypt LOCK content (contains SSS shares)
+    const pubkey = await this.getPubkey();
+    const content = await maybeEncrypt(
+      payload, pubkey,
+      (pt, pk) => this.signer.nip44Encrypt(pt, pk),
+      ENCRYPTION_CONFIG.encryptLock,
+    );
 
     const unsigned: UnsignedEvent = {
       kind: EscrowEventKind.LOCK,
@@ -451,7 +467,12 @@ export class EscrowClient {
     const signed = await this.signer.signEvent(unsigned);
     await this.relayManager.publish(signed);
 
-    return this.applyLocally(escrowId, signed, payload);
+    const lockResult = this.applyLocally(escrowId, signed, payload);
+
+    // Notify all participants that ecash is locked
+    this.notifier?.onEscrowLocked(lockResult).catch(() => {});
+
+    return lockResult;
   }
 
   // ── Cast a vote ─────────────────────────────────────────────────────────
@@ -477,8 +498,12 @@ export class EscrowClient {
       votedAt: now,
     };
 
-    // Plaintext for testing. TODO: NIP-44 encrypt when Fedimint WASM integrated
-    const content = JSON.stringify(payload);
+    // Conditionally encrypt VOTE content
+    const content = await maybeEncrypt(
+      payload, pubkey,
+      (pt, pk) => this.signer.nip44Encrypt(pt, pk),
+      ENCRYPTION_CONFIG.encryptVote,
+    );
 
     const unsigned: UnsignedEvent = {
       kind: EscrowEventKind.VOTE,
@@ -746,6 +771,9 @@ export class EscrowClient {
 
     // Start watching for live updates
     this.watchEscrow(escrowId);
+
+    // Notify community arbiters about the new trade
+    this.notifier?.onTradeCreated(result.state).catch(() => {});
 
     return result.state;
   }

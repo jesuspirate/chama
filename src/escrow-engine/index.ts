@@ -11,3 +11,5 @@ export * from "./event-parser.js";
 export * from "./relay-manager.js";
 export * from "./escrow-client.js";
 export * from "./signers.js";
+export * from "./notifier.js";
+export * from "./encryption-config.js";
