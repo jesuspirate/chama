@@ -55,25 +55,29 @@ export class EscrowFedimintBridge {
       }
     );
 
-    // Encrypt each share to its intended recipient
+    // Dual-encrypt each share to ALL 3 participants
     const buyerPk = state.participants[Role.BUYER]!;
     const sellerPk = state.participants[Role.SELLER]!;
     const arbiterPk = state.participants[Role.ARBITER]!;
+    const allPks = [buyerPk, sellerPk, arbiterPk];
 
-    const encryptedShares = await Promise.all([
-      this.encryptShare(lockBundle.shares[0], buyerPk),
-      this.encryptShare(lockBundle.shares[1], sellerPk),
-      this.encryptShare(lockBundle.shares[2], arbiterPk),
-    ]);
+    const shares: { shareIndex: number; encryptedFor: Record<string, string> }[] = [];
+
+    for (let i = 0; i < lockBundle.shares.length; i++) {
+      const share = lockBundle.shares[i];
+      const encryptedFor: Record<string, string> = {};
+
+      for (const pk of allPks) {
+        encryptedFor[pk] = await this.encryptShare(share, pk);
+      }
+
+      shares.push({ shareIndex: i, encryptedFor });
+    }
 
     // Publish the LOCK event
     return this.escrow.lockEscrow(escrowId, {
       notesHash: lockBundle.notesHash,
-      shares: [
-        { recipientPubkey: buyerPk, encryptedShare: encryptedShares[0], shareIndex: 0 },
-        { recipientPubkey: sellerPk, encryptedShare: encryptedShares[1], shareIndex: 1 },
-        { recipientPubkey: arbiterPk, encryptedShare: encryptedShares[2], shareIndex: 2 },
-      ],
+      shares,
       sellerReceivesMsats: lockBundle.sellerReceivesMsats,
       arbiterFeeMsats: lockBundle.arbiterFeeMsats,
       platformFeeMsats: lockBundle.platformFeeMsats,
@@ -108,19 +112,18 @@ export class EscrowFedimintBridge {
       throw new Error("No lock data available — escrow may not be fully loaded");
     }
 
-    // Determine which 2 shares we can access:
-    // - Our own share (always available)
-    // - The share of a voter who voted the same way as the majority
-    const myShare = this.getMyEncryptedShare(state, myPubkey);
-    const partnerShare = this.getPartnerEncryptedShare(state, myPubkey);
-
-    if (!myShare || !partnerShare) {
-      throw new Error("Cannot find 2 accessible shares — state may be incomplete");
+    // With dual-encryption, any participant can decrypt all shares.
+    // We just need any 2 shares for Shamir reconstruction.
+    if (!state.lock.shares || state.lock.shares.length < 2) {
+      throw new Error("Not enough shares available — state may be incomplete");
     }
 
-    // Decrypt both shares
-    const decryptedMyShare = await this.decryptShare(myShare.encryptedShare, myShare.senderPubkey);
-    const decryptedPartnerShare = await this.decryptShare(partnerShare.encryptedShare, partnerShare.senderPubkey);
+    const share0 = state.lock.shares[0];
+    const share1 = state.lock.shares[1];
+
+    // Decrypt 2 shares — try dual-encryption format first, fall back to legacy
+    const decryptedMyShare = await this.decryptShareDual(share0, myPubkey);
+    const decryptedPartnerShare = await this.decryptShareDual(share1, myPubkey);
 
     // Reconstruct and redeem
     const { notesHash } = await this.fedimint.claimEscrow(
@@ -172,6 +175,24 @@ export class EscrowFedimintBridge {
   // ══════════════════════════════════════════════════════════════════════════
   // HELPERS
   // ══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Decrypt a share using the dual-encryption format.
+   * Looks up own pubkey in encryptedFor map, or falls back to legacy single share.
+   */
+  private async decryptShareDual(share: any, myPubkey: string): Promise<SSSShare> {
+    // Dual-encryption format: share.encryptedFor[myPubkey]
+    if (share.encryptedFor && share.encryptedFor[myPubkey]) {
+      return this.decryptShare(share.encryptedFor[myPubkey], myPubkey);
+    }
+
+    // Legacy format: share.encryptedShare (single recipient)
+    if (share.encryptedShare) {
+      return this.decryptShare(share.encryptedShare, share.recipientPubkey || myPubkey);
+    }
+
+    throw new Error(`No encrypted share found for pubkey ${myPubkey.slice(0, 8)}...`);
+  }
 
   /** Encrypt an SSS share to a recipient pubkey */
   private async encryptShare(share: SSSShare, recipientPubkey: string): Promise<string> {

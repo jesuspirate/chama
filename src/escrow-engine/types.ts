@@ -190,12 +190,16 @@ export interface LockPayload {
   type: "escrow:lock";
   /** Hash of the full ecash notes (for verification) */
   notesHash: string;
-  /** SSS share encrypted to each participant (3 entries) */
+  /** SSS shares — each encrypted to ALL participants for dual-encryption */
   shares: {
-    recipientPubkey: string;
-    /** NIP-44 encrypted share blob */
-    encryptedShare: string;
     shareIndex: number;
+    /** Map of recipientPubkey → NIP-44 encrypted share blob.
+     *  Each share is encrypted separately to each participant so
+     *  any participant can decrypt any share. */
+    encryptedFor: Record<string, string>;
+    /** Legacy: single encrypted share (backward compat with pre-v0.1.33 locks) */
+    recipientPubkey?: string;
+    encryptedShare?: string;
   }[];
   /** Breakdown of amounts */
   sellerReceivesMsats: number;
