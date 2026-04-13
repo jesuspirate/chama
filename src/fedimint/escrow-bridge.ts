@@ -114,12 +114,22 @@ export class EscrowFedimintBridge {
 
     // With dual-encryption, any participant can decrypt all shares.
     // We just need any 2 shares for Shamir reconstruction.
-    if (!state.lock.shares || state.lock.shares.length < 2) {
+    const sharesSize = state.lock.shares instanceof Map ? state.lock.shares.size : (state.lock.shares as any)?.length || 0;
+    if (!state.lock.shares || sharesSize < 2) {
       throw new Error("Not enough shares available — state may be incomplete");
     }
 
-    const share0 = state.lock.shares[0];
-    const share1 = state.lock.shares[1];
+    // shares is a Map<pubkey, encryptedShare> — convert to array of entries
+    const sharesMap = state.lock.shares as Map<string, string>;
+    const shareEntries = [...sharesMap.entries()];
+
+    if (shareEntries.length < 2) {
+      throw new Error("Not enough shares: got " + shareEntries.length + ", need 2");
+    }
+
+    // We need any 2 shares — wrap them in the legacy format for decryptShareDual
+    const share0 = { encryptedShare: shareEntries[0][1], recipientPubkey: shareEntries[0][0] };
+    const share1 = { encryptedShare: shareEntries[1][1], recipientPubkey: shareEntries[1][0] };
 
     // Decrypt 2 shares — try dual-encryption format first, fall back to legacy
     const decryptedMyShare = await this.decryptShareDual(share0, myPubkey);
@@ -133,7 +143,8 @@ export class EscrowFedimintBridge {
     );
 
     // Publish the CLAIM event
-    return this.escrow.claim(escrowId, notesHash);
+    const result = await this.escrow.claim(escrowId, notesHash);
+    return result;
   }
 
   // ── Pre-claim verification (optional but recommended) ───────────────────
