@@ -88,17 +88,56 @@ export async function getOrCreateSeed(
     // can serve stale copies.
     const newest = [...existing].sort((a, b) => b.created_at - a.created_at)[0];
 
+    // Try multiple decrypt methods — seed may have been encrypted with
+    // NIP-44, NIP-04, or even stored as plaintext (dev/testing)
+    let plaintext: string | null = null;
+
+    // Try 1: NIP-44 decrypt
     try {
-      const plaintext = await signer.nip44Decrypt(newest.content, pubkey);
-      const words = plaintext.trim().split(/\s+/);
-      if (words.length < 12 || words.length > 24) {
-        throw new Error(`Unexpected mnemonic word count: ${words.length}`);
+      plaintext = await signer.nip44Decrypt(newest.content, pubkey);
+      console.debug("[chama] Seed decrypted via NIP-44");
+    } catch (e1) {
+      console.debug("[chama] NIP-44 seed decrypt failed:", (e1 as Error)?.message?.slice(0, 50));
+    }
+
+    // Try 2: NIP-04 decrypt (seed may have been encrypted with older method)
+    if (!plaintext) {
+      try {
+        const nostr = (window as any).nostr;
+        if (nostr?.nip04?.decrypt) {
+          plaintext = await nostr.nip04.decrypt(pubkey, newest.content);
+          console.debug("[chama] Seed decrypted via NIP-04");
+        }
+      } catch (e2) {
+        console.debug("[chama] NIP-04 seed decrypt failed:", (e2 as Error)?.message?.slice(0, 50));
       }
-      cachedSeed = words;
-      cachedForPubkey = pubkey;
-      console.info("[chama] Fedimint seed recovered from Nostr relays");
-      return words;
-    } catch (e) {
+    }
+
+    // Try 3: content might be plaintext JSON or raw mnemonic (dev mode)
+    if (!plaintext) {
+      try {
+        const raw = newest.content.trim();
+        const testWords = raw.split(/\s+/);
+        if (testWords.length >= 12 && testWords.length <= 24 && testWords.every((w: string) => /^[a-z]+$/.test(w))) {
+          plaintext = raw;
+          console.debug("[chama] Seed found as plaintext mnemonic");
+        }
+      } catch {}
+    }
+
+    if (plaintext) {
+      const words = plaintext.trim().split(/\s+/);
+      if (words.length >= 12 && words.length <= 24) {
+        cachedSeed = words;
+        cachedForPubkey = pubkey;
+        console.info("[chama] Fedimint seed recovered from Nostr relays");
+        return words;
+      }
+    }
+
+    // All decrypt methods failed
+    {
+      const e = new Error("All decrypt methods failed");
       console.error(
         "[chama] Seed event found but decryption failed.",
         "This could mean: (1) you're using a different signer than the one that created the seed,",
