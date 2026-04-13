@@ -179,9 +179,11 @@ export interface UseEscrowActions {
 // ── Default relay list ────────────────────────────────────────────────────
 
 const DEFAULT_RELAYS = [
-  "wss://relay.damus.io",
   "wss://relay.primal.net",
   "wss://nos.lol",
+  "wss://relay.damus.io",
+  "wss://relay.nostr.band",
+  "wss://purplepag.es",
 ];
 
 // ── Haptic feedback ───────────────────────────────────────────────────────

@@ -372,7 +372,7 @@ export class RelayManager {
    * Fetch all events for an escrow and return them once all relays
    * have sent EOSE (end of stored events).
    */
-  fetchEscrowEvents(escrowId: string, timeoutMs = 10_000): Promise<NostrEvent[]> {
+  fetchEscrowEvents(escrowId: string, timeoutMs = 15_000): Promise<NostrEvent[]> {
     return new Promise((resolve) => {
       const events: NostrEvent[] = [];
       const seenIds = new Set<string>();
