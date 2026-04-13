@@ -131,6 +131,8 @@ export class EscrowClient {
   private signer: Signer;
   private config: EscrowClientConfig;
   private notifier: EscrowNotifier | null = null;
+  /** Buffer for events that arrived before their predecessors */
+  private retryBuffer: Map<string, { event: NostrEvent; relay: string; attempts: number }[]> = new Map();
   private callbacks: EscrowClientCallbacks;
 
   /** Cached escrow states — escrowId → state */
@@ -889,6 +891,9 @@ export class EscrowClient {
 
       this.callbacks.onStateUpdate?.(escrowId, result.state);
 
+      // Flush retry buffer — previously rejected events may now apply
+      this.flushRetryBuffer(escrowId);
+
       // If we just received a VOTE and the threshold is now met,
       // ANY browser can publish the RESOLVE — not just the voter.
       // This is the key redundancy: if the voter's auto-resolve failed,
@@ -904,8 +909,12 @@ export class EscrowClient {
     } else if (result.error.code === "NO_STATE") {
       // Event arrived for an escrow we haven't loaded — buffer it
       this.bufferEvent(escrowId, event, relayUrl);
+    } else if (["INVALID_STATE", "NOT_PARTICIPANT", "THRESHOLD_NOT_MET", "NOT_ALL_READY"].includes(result.error.code)) {
+      // Out-of-order event — buffer for retry when predecessors arrive
+      console.debug(`[escrow] Buffering event ${event.id.slice(0, 8)} (${result.error.code}) for retry`);
+      this.bufferEvent(escrowId, event, relayUrl);
     } else {
-      // Only log — don't fire callback for expected rejections
+      // Permanent rejection (DUPLICATE_CREATE, ALREADY_VOTED, etc.) — just log
       console.debug(`[escrow] Rejected event ${event.id.slice(0, 8)}: ${result.error.code}`);
     }
   }
@@ -945,6 +954,36 @@ export class EscrowClient {
   }
 
   /** Apply a locally-created event optimistically */
+  /**
+   * Flush the retry buffer for an escrow — re-process buffered events
+   * that were rejected due to out-of-order delivery.
+   */
+  private async flushRetryBuffer(escrowId: string): Promise<void> {
+    const buffer = this.retryBuffer.get(escrowId);
+    if (!buffer || buffer.length === 0) return;
+
+    // Take all buffered events and clear the buffer
+    const toRetry = [...buffer];
+    this.retryBuffer.set(escrowId, []);
+
+    let applied = 0;
+    for (const entry of toRetry) {
+      entry.attempts++;
+      if (entry.attempts > 10) {
+        // Too many retries — drop it
+        console.warn(`[escrow] Dropping event ${entry.event.id.slice(0, 8)} after ${entry.attempts} retries`);
+        continue;
+      }
+      // Re-process through the full handler
+      await this.handleIncomingEvent(entry.event, entry.relay);
+      applied++;
+    }
+
+    if (applied > 0) {
+      console.debug(`[escrow] Flushed ${applied} buffered events for ${escrowId}`);
+    }
+  }
+
   private applyLocally(escrowId: string, signed: NostrEvent, payload: EscrowPayload): EscrowState {
     const parsed = parseEscrowEvent(signed, JSON.stringify(payload), true);
     if (!parsed.ok) throw new Error(`Local parse failed: ${parsed.error.message}`);
