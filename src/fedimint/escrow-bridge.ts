@@ -127,13 +127,25 @@ export class EscrowFedimintBridge {
       throw new Error("Not enough shares: got " + shareEntries.length + ", need 2");
     }
 
-    // We need any 2 shares — wrap them in the legacy format for decryptShareDual
-    const share0 = { encryptedShare: shareEntries[0][1], recipientPubkey: shareEntries[0][0] };
-    const share1 = { encryptedShare: shareEntries[1][1], recipientPubkey: shareEntries[1][0] };
+    // Normalize shares for decryptShareDual
+    // Map values could be: string (legacy) or object with encryptedFor (dual-encryption)
+    const val0 = shareEntries[0][1];
+    const val1 = shareEntries[1][1];
+    const share0 = (typeof val0 === "object" && val0?.encryptedFor)
+      ? val0  // Already dual-encryption format — pass directly
+      : { encryptedShare: val0, recipientPubkey: shareEntries[0][0] };
+    const share1 = (typeof val1 === "object" && val1?.encryptedFor)
+      ? val1  // Already dual-encryption format — pass directly
+      : { encryptedShare: val1, recipientPubkey: shareEntries[1][0] };
 
-    // Decrypt 2 shares — try dual-encryption format first, fall back to legacy
-    const decryptedMyShare = await this.decryptShareDual(share0, myPubkey);
-    const decryptedPartnerShare = await this.decryptShareDual(share1, myPubkey);
+    // Find the locker's pubkey from the LOCK event in the chain
+    // NIP-44 decrypt needs the sender's pubkey (the person who encrypted)
+    const lockEvent = state.eventChain.find((e: any) => e.kind === 38102 || e.payload?.type === "escrow:lock");
+    const lockerPubkey = lockEvent?.raw?.pubkey || lockEvent?.pubkey || myPubkey;
+
+    // Decrypt 2 shares
+    const decryptedMyShare = await this.decryptShareDual(share0, myPubkey, lockerPubkey);
+    const decryptedPartnerShare = await this.decryptShareDual(share1, myPubkey, lockerPubkey);
 
     // Reconstruct and redeem
     const { notesHash } = await this.fedimint.claimEscrow(
@@ -191,15 +203,16 @@ export class EscrowFedimintBridge {
    * Decrypt a share using the dual-encryption format.
    * Looks up own pubkey in encryptedFor map, or falls back to legacy single share.
    */
-  private async decryptShareDual(share: any, myPubkey: string): Promise<SSSShare> {
+  private async decryptShareDual(share: any, myPubkey: string, lockerPubkey: string): Promise<SSSShare> {
     // Dual-encryption format: share.encryptedFor[myPubkey]
+    // NIP-44 decrypt needs the sender (locker) pubkey, not our own
     if (share.encryptedFor && share.encryptedFor[myPubkey]) {
-      return this.decryptShare(share.encryptedFor[myPubkey], myPubkey);
+      return this.decryptShare(share.encryptedFor[myPubkey], lockerPubkey);
     }
 
     // Legacy format: share.encryptedShare (single recipient)
     if (share.encryptedShare) {
-      return this.decryptShare(share.encryptedShare, share.recipientPubkey || myPubkey);
+      return this.decryptShare(share.encryptedShare, lockerPubkey);
     }
 
     throw new Error(`No encrypted share found for pubkey ${myPubkey.slice(0, 8)}...`);
@@ -207,17 +220,11 @@ export class EscrowFedimintBridge {
 
   /** Encrypt an SSS share to a recipient pubkey */
   private async encryptShare(share: SSSShare, recipientPubkey: string): Promise<string> {
-    // In dev mode, skip NIP-44 encryption — just JSON stringify
-    // This allows any participant to read any share for testing.
-    // In production, shares MUST be encrypted to the recipient.
+    // SSS shares MUST be NIP-44 encrypted to each recipient.
+    // This is the real security boundary — unencrypted shares on relays
+    // would let anyone reconstruct the ecash.
     const json = JSON.stringify(share);
-    try {
-      return await this.signer.nip44Encrypt(json, recipientPubkey);
-    } catch {
-      // NIP-44 encrypt failed — return plaintext JSON (dev mode fallback)
-      console.debug("[chama] Share encrypt failed, using plaintext");
-      return json;
-    }
+    return await this.signer.nip44Encrypt(json, recipientPubkey);
   }
 
   /** Decrypt an SSS share from a sender */
