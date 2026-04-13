@@ -201,7 +201,15 @@ export class EscrowFedimintBridge {
         decrypted = encryptedShare;
       }
     }
-    return JSON.parse(decrypted) as SSSShare;
+    // Try parsing as JSON (real SSS shares are JSON objects)
+    try {
+      return JSON.parse(decrypted) as SSSShare;
+    } catch {
+      // Not JSON — simulated or raw share string
+      // Wrap it as a minimal SSSShare-like object so downstream code can handle it
+      console.warn("[chama] Share is not JSON, wrapping as raw:", decrypted.slice(0, 30));
+      return { index: 0, data: decrypted } as unknown as SSSShare;
+    }
   }
 
   /**
