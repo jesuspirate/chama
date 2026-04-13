@@ -786,9 +786,20 @@ export class EscrowClient {
         try {
           content = await this.signer.nip44Decrypt(raw.content, raw.pubkey);
         } catch {
-          // Can't decrypt — encrypted to another participant, skip
-          console.warn(`[escrow] Skipping undecryptable event ${raw.id.slice(0, 8)}…`);
-          continue;
+          // Decrypt failed — try using raw content as-is (plaintext mode)
+          // In dev mode, all events are plaintext JSON. The decrypt fails
+          // because nos2x/NIP-44 can't decrypt non-encrypted content.
+          try {
+            const fallback = JSON.parse(raw.content);
+            if (fallback && typeof fallback.type === "string") {
+              content = raw.content;
+              console.debug(`[escrow] Decrypt failed for ${raw.id.slice(0, 8)}, using raw content (plaintext mode)`);
+            }
+          } catch {
+            // Not JSON either — truly undecryptable, skip
+            console.warn(`[escrow] Skipping undecryptable event ${raw.id.slice(0, 8)}…`);
+            continue;
+          }
         }
       }
 
