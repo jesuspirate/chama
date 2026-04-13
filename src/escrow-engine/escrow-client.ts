@@ -816,6 +816,14 @@ export class EscrowClient {
     // Start watching for live updates
     this.watchEscrow(escrowId);
 
+    // After replay, check if auto-resolve should trigger
+    // (RESOLVE might not have been published if the voter's browser closed)
+    if (result.state.status === EscrowStatus.LOCKED) {
+      this.maybeAutoResolve(escrowId).catch(e =>
+        console.debug("[escrow] Post-reload auto-resolve:", e?.message || e)
+      );
+    }
+
     return result.state;
   }
 
