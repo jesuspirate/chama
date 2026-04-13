@@ -296,7 +296,41 @@ export class EscrowClient {
     // Subscribe to this escrow's events
     this.watchEscrow(escrowId);
 
-    return { escrowId, state: result.state };
+    // If subscription params provided, auto-publish SUBSCRIBE event
+    if (params.subscription) {
+      try {
+        const subNow = Math.floor(Date.now() / 1000);
+        const subPayload = {
+          type: "escrow:subscribe" as const,
+          totalPeriods: params.subscription.totalPeriods,
+          periodAmountMsats: params.subscription.periodAmountMsats,
+          periodDurationSeconds: params.subscription.periodDurationSeconds,
+          description: params.description,
+          startsAt: subNow,
+        };
+        const subContent = JSON.stringify(subPayload);
+        const currentState = this.states.get(escrowId)!;
+        const lastEvtId = currentState.eventChain[currentState.eventChain.length - 1]?.raw.id;
+        const subUnsigned: UnsignedEvent = {
+          kind: EscrowEventKind.SUBSCRIBE,
+          created_at: subNow,
+          tags: [
+            [TAGS.ESCROW_ID, escrowId],
+            [TAGS.PREV_EVENT, lastEvtId, "", "reply"],
+            [TAGS.TYPE, "escrow:subscribe"],
+          ],
+          content: subContent,
+        };
+        const subSigned = await this.signer.signEvent(subUnsigned);
+        await this.relayManager.publish(subSigned);
+        this.applyLocally(escrowId, subSigned, subPayload);
+        console.debug("[chama] SUBSCRIBE event published for", escrowId);
+      } catch (e) {
+        console.warn("[chama] Failed to publish SUBSCRIBE:", e);
+      }
+    }
+
+    return { escrowId, state: this.states.get(escrowId)! };
   }
 
   // ── Join an existing escrow ─────────────────────────────────────────────
@@ -777,45 +811,6 @@ export class EscrowClient {
 
     // Start watching for live updates
     this.watchEscrow(escrowId);
-
-    // Notify community arbiters about the new trade
-    this.notifier?.onTradeCreated(result.state).catch(() => {});
-
-    // If subscription params provided, publish SUBSCRIBE event
-    if (params.subscription) {
-      try {
-        const subNow = Math.floor(Date.now() / 1000);
-        const subPayload = {
-          type: "escrow:subscribe" as const,
-          totalPeriods: params.subscription.totalPeriods,
-          periodAmountMsats: params.subscription.periodAmountMsats,
-          periodDurationSeconds: params.subscription.periodDurationSeconds,
-          description: params.description,
-          startsAt: subNow,
-        };
-
-        const subContent = JSON.stringify(subPayload);
-        const lastEvtId = result.state.eventChain[result.state.eventChain.length - 1]?.raw.id;
-
-        const subUnsigned: UnsignedEvent = {
-          kind: EscrowEventKind.SUBSCRIBE,
-          created_at: subNow,
-          tags: [
-            [TAGS.ESCROW_ID, escrowId],
-            [TAGS.PREV_EVENT, lastEvtId, "", "reply"],
-            [TAGS.TYPE, "escrow:subscribe"],
-          ],
-          content: subContent,
-        };
-
-        const subSigned = await this.signer.signEvent(subUnsigned);
-        await this.relayManager.publish(subSigned);
-        this.applyLocally(escrowId, subSigned, subPayload);
-        console.debug("[chama] SUBSCRIBE event published for", escrowId);
-      } catch (e) {
-        console.warn("[chama] Failed to publish SUBSCRIBE event:", e);
-      }
-    }
 
     return result.state;
   }
