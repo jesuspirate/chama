@@ -184,13 +184,18 @@ export class RelayManager {
         if (!event?.id) return;
 
         // Route to pending fetch subscriptions FIRST (before global dedup)
-        // This is critical: the global dedup would block fetch events
-        // that were already seen by live watch subscriptions.
-        if (this._pendingFetches) {
-          for (const [fetchSubId, fetchState] of this._pendingFetches) {
-            if (subId === fetchSubId && !fetchState.seenIds.has(event.id)) {
-              fetchState.seenIds.add(event.id);
-              fetchState.events.push(event);
+        // Match by escrow ID from the event's d-tag, NOT by subscription ID.
+        // Relays may tag events with the watch subscription ID instead of
+        // the fetch subscription ID when both match the same filter.
+        if (this._pendingFetches && this._pendingFetches.size > 0) {
+          const dTag = event.tags?.find((t: string[]) => t[0] === "d");
+          const eventEscrowId = dTag?.[1];
+          if (eventEscrowId) {
+            for (const [, fetchState] of this._pendingFetches) {
+              if (fetchState.escrowId === eventEscrowId && !fetchState.seenIds.has(event.id)) {
+                fetchState.seenIds.add(event.id);
+                fetchState.events.push(event);
+              }
             }
           }
         }
@@ -416,7 +421,7 @@ export class RelayManager {
       // Register this fetch in a per-subscription map so it doesn't
       // collide with other concurrent fetches
       if (!this._pendingFetches) this._pendingFetches = new Map();
-      this._pendingFetches.set(subId, { events, seenIds, eoseCount: 0, connectedCount, resolve, timer: null as any });
+      this._pendingFetches.set(subId, { events, seenIds, eoseCount: 0, connectedCount, resolve, timer: null as any, escrowId });
 
       const fetchState = this._pendingFetches.get(subId)!;
 
@@ -455,6 +460,7 @@ export class RelayManager {
     connectedCount: number;
     resolve: (events: NostrEvent[]) => void;
     timer: any;
+    escrowId: string;
   }> = new Map();
 
   // ── One-shot fetch with an arbitrary filter ─────────────────────────────
