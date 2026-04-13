@@ -836,10 +836,13 @@ export class EscrowClient {
     this.watchEscrow(escrowId);
 
     // After replay, check if auto-resolve should trigger
-    // (RESOLVE might not have been published if the voter's browser closed)
     if (result.state.status === EscrowStatus.LOCKED) {
       this.maybeAutoResolve(escrowId).catch(e =>
         console.debug("[escrow] Post-reload auto-resolve:", e?.message || e)
+      );
+      // Check if the escrow has expired — auto-vote REFUND if so
+      this.maybeAutoRefundExpired(escrowId).catch(e =>
+        console.debug("[escrow] Post-reload expiry check:", e?.message || e)
       );
     }
 
@@ -1045,6 +1048,45 @@ export class EscrowClient {
     this.callbacks.onStateUpdate?.(escrowId, result.state);
 
     return result.state;
+  }
+
+  /**
+   * Check if a LOCKED escrow has expired and auto-vote REFUND.
+   * This is called periodically and after loadEscrow.
+   * Any participant (especially community arbiters) can trigger this.
+   * 
+   * Expiry policy:
+   *   - Pre-lock (CREATED/FUNDED): state machine handles → EXPIRED
+   *   - Post-lock (LOCKED): arbiter auto-votes REFUND → buyer gets sats back
+   *   - APPROVED/CLAIMED: never expire (let the claim complete)
+   */
+  private async maybeAutoRefundExpired(escrowId: string): Promise<void> {
+    const state = this.states.get(escrowId);
+    if (!state) return;
+
+    // Only act on LOCKED escrows that have expired
+    if (state.status !== EscrowStatus.LOCKED) return;
+
+    const now = Math.floor(Date.now() / 1000);
+    if (now <= state.expiresAt) return;
+
+    // Check if we're a participant who can vote
+    const myPubkey = await this.signer.getPublicKey();
+    const myRole = Object.entries(state.participants).find(([, pk]) => pk === myPubkey)?.[0] as Role | undefined;
+    if (!myRole) return;
+
+    // Check if we already voted
+    if (state.votes[myRole]) return;
+
+    // Auto-vote REFUND on expired escrow
+    console.debug(`[escrow] Escrow ${escrowId} expired — auto-voting REFUND as ${myRole}`);
+
+    try {
+      await this.vote(escrowId, Outcome.REFUND);
+      console.debug(`[escrow] Auto-REFUND vote published for expired ${escrowId}`);
+    } catch (e) {
+      console.debug(`[escrow] Auto-REFUND vote failed for ${escrowId}:`, e);
+    }
   }
 
   /** After a vote, check if 2-of-3 threshold is met and auto-publish RESOLVE */

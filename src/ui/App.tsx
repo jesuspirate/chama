@@ -527,6 +527,15 @@ function TradeCard({ state, pubkey, onSelect }: {
         <div style={{ flex: 1 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
             <span style={{ fontSize: 14, opacity: 0.6 }}>{CAT_ICON[state.category] || "📦"}</span>
+            {state.status === "EXPIRED" && (
+              <span style={{
+                fontSize: 9, padding: "2px 6px", borderRadius: 8,
+                background: T.redDim, color: T.red,
+                fontFamily: T.mono, fontWeight: 600,
+              }}>
+                ⏰ Expired
+              </span>
+            )}
             {state.subscription && (
               <span style={{
                 fontSize: 9, padding: "2px 6px", borderRadius: 8,
@@ -568,6 +577,44 @@ function TradeCard({ state, pubkey, onSelect }: {
       </div>
 
       {/* Compact countdown on card */}
+      {/* Expiry info — what happens when time runs out */}
+      {state.status === "LOCKED" && state.expiresAt && (() => {
+        const now = Math.floor(Date.now() / 1000);
+        const remaining = state.expiresAt - now;
+        const isExpired = remaining <= 0;
+        const isUrgent = remaining > 0 && remaining < 7200;
+        return isExpired ? (
+          <div style={{
+            padding: "12px 16px", borderRadius: T.rs, textAlign: "center",
+            background: T.redDim, border: `1px solid ${T.red}33`, marginBottom: 16,
+          }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: T.red, fontFamily: T.mono }}>
+              ⏰ TRADE EXPIRED
+            </div>
+            <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono, marginTop: 4 }}>
+              🛡️ Community arbiter will auto-vote REFUND → sats return to buyer
+            </div>
+          </div>
+        ) : isUrgent ? (
+          <div style={{
+            padding: "8px 12px", borderRadius: T.rs, textAlign: "center",
+            background: T.redDim, border: `1px solid ${T.red}22`,
+            marginBottom: 8, fontSize: 9, color: T.red, fontFamily: T.mono,
+          }}>
+            ⚠️ Expiring soon — settle or the arbiter will auto-refund to buyer
+          </div>
+        ) : null;
+      })()}
+
+      {state.status === "LOCKED" && (
+        <div style={{
+          fontSize: 8, color: T.muted + "88", fontFamily: T.mono,
+          textAlign: "center", marginBottom: 8,
+        }}>
+          ⏱️ If time expires: arbiter auto-refunds to buyer · settle before deadline
+        </div>
+      )}
+
       {state.expiresAt && state.status !== "COMPLETED" && state.status !== "CANCELLED" && state.status !== "EXPIRED" && (() => {
         const rem = state.expiresAt - Math.floor(Date.now() / 1000);
         if (rem <= 0) return <div style={{ fontSize: 9, color: T.red, fontFamily: T.mono, textAlign: "center", marginTop: 8 }}>EXPIRED</div>;
@@ -2060,7 +2107,7 @@ export default function App() {
           </div>
         </div>
         <div style={{ fontSize: 9, color: T.muted, fontFamily: T.mono, padding: "4px 10px", borderRadius: 6, background: T.surface, border: `1px solid ${T.border}` }}>
-          v0.1.30
+          v0.1.32
         </div>
       </div>
 

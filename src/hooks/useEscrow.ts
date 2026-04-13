@@ -321,6 +321,22 @@ export function useEscrow(config?: Partial<EscrowClientConfig>): [UseEscrowState
 
       vibrate([50, 30, 50]); // Connected haptic
 
+      // Start periodic expiry checker — every 60 seconds, check all loaded escrows
+      const expiryInterval = setInterval(async () => {
+        if (!clientRef.current) return;
+        const escrowClient = clientRef.current;
+        const now = Math.floor(Date.now() / 1000);
+        for (const [escrowId, escrowState] of (escrowClient as any).states || []) {
+          if (escrowState.status === "LOCKED" && now > escrowState.expiresAt) {
+            try {
+              await (escrowClient as any).maybeAutoRefundExpired?.(escrowId);
+            } catch {}
+          }
+        }
+      }, 60_000);
+      // Store interval for cleanup
+      (clientRef as any)._expiryInterval = expiryInterval;
+
       // Auto-reload saved escrows — wait for relays to connect first
       const savedIds = getSavedEscrowIds();
       if (savedIds.length > 0) {
