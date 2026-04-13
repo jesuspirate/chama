@@ -888,9 +888,38 @@ export function replayEventChain(events: ParsedEscrowEvent[]): TransitionResult 
 
   let state: EscrowState | null = null;
 
+  // Benign error codes that can be safely skipped during replay.
+  // These occur when multiple participants publish redundant events
+  // (e.g. all 3 browsers auto-publish RESOLVE after seeing 2 votes).
+  // Skipping them is safe because:
+  //   - ALREADY_VOTED: duplicate vote from same pubkey (relay echo)
+  //   - ALREADY_READY: duplicate ready from same pubkey
+  //   - ALREADY_SUBSCRIBED: duplicate subscribe event
+  //   - INVALID_STATE on RESOLVE/COMPLETE: already resolved/completed
+  //   - DUPLICATE_CREATE: relay returned same CREATE twice
+  //   - ROLE_TAKEN: duplicate JOIN for same role
+  const benignCodes = new Set([
+    "ALREADY_VOTED", "ALREADY_READY", "ALREADY_SUBSCRIBED",
+    "DUPLICATE_CREATE", "ROLE_TAKEN", "TERMINAL_STATE",
+  ]);
+
   for (const event of events) {
     const result = applyEvent(state, event);
-    if (!result.ok) return result;
+    if (!result.ok) {
+      // Skip benign duplicates silently
+      if (benignCodes.has(result.error.code)) {
+        continue;
+      }
+      // INVALID_STATE on RESOLVE/COMPLETE/CLAIM is also benign
+      // (duplicate auto-resolve from multiple browsers)
+      if (result.error.code === "INVALID_STATE" && state &&
+          [EscrowEventKind.RESOLVE, EscrowEventKind.COMPLETE, EscrowEventKind.CLAIM]
+            .includes(event.kind)) {
+        continue;
+      }
+      // Real error — fail the replay
+      return result;
+    }
     state = result.state;
   }
 
