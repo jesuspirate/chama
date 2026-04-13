@@ -763,6 +763,7 @@ export class EscrowClient {
   /** Fetch and reconstruct full escrow state from relays */
   async loadEscrow(escrowId: string): Promise<EscrowState | null> {
     const rawEvents = await this.relayManager.fetchEscrowEvents(escrowId);
+    console.debug(`[escrow] loadEscrow ${escrowId}: fetched ${rawEvents.length} raw events from relays`);
     if (rawEvents.length === 0) return null;
 
     // Parse all events — try plaintext JSON first, then NIP-44 decrypt.
@@ -771,10 +772,11 @@ export class EscrowClient {
     for (const raw of rawEvents) {
       let content: string | null = null;
 
-      // Try 1: plaintext JSON (CREATE, JOIN, CANCEL, COMPLETE, RESOLVE)
+      // Try 1: plaintext JSON — accept any valid JSON with a type field
+      // The event parser will validate the specific type later.
       try {
         const test = JSON.parse(raw.content);
-        if (test && typeof test.type === "string" && test.type.startsWith("escrow:")) {
+        if (test && typeof test.type === "string") {
           content = raw.content;
         }
       } catch {
@@ -807,16 +809,22 @@ export class EscrowClient {
       if (result.ok) parsed.push(result.event);
     }
 
+    console.debug(`[escrow] loadEscrow ${escrowId}: parsed ${parsed.length}/${rawEvents.length} events`, 
+      parsed.map(e => `kind:${e.kind}`).join(', '));
     if (parsed.length === 0) return null;
 
     // Sort by dependency chain and replay
     const sorted = sortEventChain(parsed);
+    console.debug(`[escrow] loadEscrow ${escrowId}: sorted chain`, 
+      sorted.map(e => `kind:${e.kind}(${e.raw.id.slice(0,6)})`).join(' → '));
     const result = replayEventChain(sorted);
 
     if (!result.ok) {
+      console.error(`[escrow] loadEscrow ${escrowId}: replay FAILED — ${result.error.code}: ${result.error.message}`);
       this.callbacks.onValidationError?.(escrowId, result.error.message, result.error.eventId);
       return null;
     }
+    console.debug(`[escrow] loadEscrow ${escrowId}: replay OK — state is ${result.state.status}`);
 
     this.states.set(escrowId, result.state);
     this.rawEvents.set(escrowId, rawEvents);
