@@ -321,11 +321,22 @@ export function useEscrow(config?: Partial<EscrowClientConfig>): [UseEscrowState
 
       vibrate([50, 30, 50]); // Connected haptic
 
-      // Auto-reload saved escrows from relays
+      // Auto-reload saved escrows — wait for relays to connect first
       const savedIds = getSavedEscrowIds();
       if (savedIds.length > 0) {
-        console.log(`[chama] Reloading ${savedIds.length} saved escrow(s)...`);
-        for (const id of savedIds.slice(0, 10)) { // Max 10 to avoid hammering relays
+        // Wait for at least 2 relays to connect (up to 5 seconds)
+        let waited = 0;
+        while (waited < 5000) {
+          const connectedCount = [...client.relayManager.relays.values()]
+            .filter((r: any) => r.status === "connected").length;
+          if (connectedCount >= 2) break;
+          await new Promise(r => setTimeout(r, 500));
+          waited += 500;
+        }
+        const finalConnected = [...client.relayManager.relays.values()]
+          .filter((r: any) => r.status === "connected").length;
+        console.log(`[chama] Reloading ${savedIds.length} saved escrow(s) with ${finalConnected} relays connected...`);
+        for (const id of savedIds.slice(0, 10)) {
           try {
             await client.loadEscrow(id);
           } catch (e) {
