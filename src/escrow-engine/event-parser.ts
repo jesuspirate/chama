@@ -379,25 +379,33 @@ export function sortEventChain(events: ParsedEscrowEvent[]): ParsedEscrowEvent[]
     return [...events].sort((a, b) => a.timestamp - b.timestamp);
   }
 
-  // Build adjacency: eventId → next event
-  const byPrevId = new Map<string, ParsedEscrowEvent>();
+  // Build adjacency: eventId → next events (multiple events can reference same prev)
+  const byPrevId = new Map<string, ParsedEscrowEvent[]>();
   for (const event of stateEvents) {
     if (event.prevEventId) {
-      byPrevId.set(event.prevEventId, event);
+      const existing = byPrevId.get(event.prevEventId) || [];
+      existing.push(event);
+      byPrevId.set(event.prevEventId, existing);
     }
   }
 
-  // Walk the chain
+  // BFS walk the chain — handles branches (e.g. two VOTEs referencing same LOCK)
   const sorted: ParsedEscrowEvent[] = [root];
-  let current = root;
   const visited = new Set<string>([root.raw.id]);
+  const queue: ParsedEscrowEvent[] = [root];
 
-  while (true) {
-    const next = byPrevId.get(current.raw.id);
-    if (!next || visited.has(next.raw.id)) break;
-    sorted.push(next);
-    visited.add(next.raw.id);
-    current = next;
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    const children = byPrevId.get(current.raw.id) || [];
+    // Sort children by timestamp so earlier events come first
+    children.sort((a, b) => a.timestamp - b.timestamp);
+    for (const child of children) {
+      if (!visited.has(child.raw.id)) {
+        sorted.push(child);
+        visited.add(child.raw.id);
+        queue.push(child);
+      }
+    }
   }
 
   // Add any state events not reached by chain walk (shouldn't happen in valid chains)
