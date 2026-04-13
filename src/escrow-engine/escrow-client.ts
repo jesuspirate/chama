@@ -131,6 +131,8 @@ export class EscrowClient {
   private signer: Signer;
   private config: EscrowClientConfig;
   private notifier: EscrowNotifier | null = null;
+  /** Track which escrows are currently being reloaded to avoid duplicate reloads */
+  private _reloading: Set<string> = new Set();
   /** Buffer for events that arrived before their predecessors */
   private retryBuffer: Map<string, { event: NostrEvent; relay: string; attempts: number }[]> = new Map();
   private callbacks: EscrowClientCallbacks;
@@ -910,9 +912,24 @@ export class EscrowClient {
       // Event arrived for an escrow we haven't loaded — buffer it
       this.bufferEvent(escrowId, event, relayUrl);
     } else if (["INVALID_STATE", "NOT_PARTICIPANT", "THRESHOLD_NOT_MET", "NOT_ALL_READY"].includes(result.error.code)) {
-      // Out-of-order event — buffer for retry when predecessors arrive
-      console.debug(`[escrow] Buffering event ${event.id.slice(0, 8)} (${result.error.code}) for retry`);
-      this.bufferEvent(escrowId, event, relayUrl);
+      // Out-of-order event — reload full state from relays
+      // This is more reliable than buffering because it fetches ALL events,
+      // sorts by chain order, and replays the complete sequence.
+      if (!this._reloading.has(escrowId)) {
+        this._reloading.add(escrowId);
+        console.debug(`[escrow] Out-of-order event ${event.id.slice(0, 8)} (${result.error.code}) — reloading ${escrowId} from relays`);
+        // Small delay to let more events arrive before reloading
+        setTimeout(async () => {
+          try {
+            await this.loadEscrow(escrowId);
+            console.debug(`[escrow] Reloaded ${escrowId} from relays — state is now ${this.states.get(escrowId)?.status}`);
+          } catch (e) {
+            console.warn(`[escrow] Reload failed for ${escrowId}:`, e);
+          } finally {
+            this._reloading.delete(escrowId);
+          }
+        }, 1500);
+      }
     } else {
       // Permanent rejection (DUPLICATE_CREATE, ALREADY_VOTED, etc.) — just log
       console.debug(`[escrow] Rejected event ${event.id.slice(0, 8)}: ${result.error.code}`);
