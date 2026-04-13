@@ -193,6 +193,15 @@ export class RelayManager {
           this.seenEventIds = new Set(arr.slice(-5_000));
         }
 
+        // Route to pending fetch subscriptions first
+        if (this._pendingFetches) {
+          for (const [fetchSubId, fetchState] of this._pendingFetches) {
+            if (subId === fetchSubId && !fetchState.seenIds.has(event.id)) {
+              fetchState.seenIds.add(event.id);
+              fetchState.events.push(event);
+            }
+          }
+        }
         this.callbacks.onEvent?.(event, relayUrl);
         break;
       }
@@ -200,6 +209,20 @@ export class RelayManager {
       case "EOSE": {
         // ["EOSE", subscription_id]
         const subId = data[1] as string;
+        // Route to pending fetch if this EOSE matches
+        if (this._pendingFetches?.has(subId)) {
+          const fetchState = this._pendingFetches.get(subId)!;
+          fetchState.eoseCount++;
+          if (fetchState.eoseCount >= fetchState.connectedCount) {
+            console.debug(`[relay] fetch ${subId}: complete with ${fetchState.events.length} events from ${fetchState.eoseCount} relays`);
+            clearTimeout(fetchState.timer);
+            this.unsubscribe(subId);
+            const events = fetchState.events;
+            const resolveFn = fetchState.resolve;
+            this._pendingFetches.delete(subId);
+            resolveFn(events);
+          }
+        }
         this.callbacks.onEose?.(subId, relayUrl);
         break;
       }
@@ -379,42 +402,32 @@ export class RelayManager {
       let eoseCount = 0;
       const connectedCount = [...this.relays.values()].filter(r => r.status === RelayStatus.CONNECTED).length;
 
+      if (connectedCount === 0) {
+        console.warn(`[relay] fetchEscrowEvents: no relays connected, resolving empty`);
+        resolve(events);
+        return;
+      }
+
       const subId = `sm_fetch_${++this.subscriptionCounter}`;
 
+      // Register this fetch in a per-subscription map so it doesn't
+      // collide with other concurrent fetches
+      if (!this._pendingFetches) this._pendingFetches = new Map();
+      this._pendingFetches.set(subId, { events, seenIds, eoseCount: 0, connectedCount, resolve, timer: null as any });
+
+      const fetchState = this._pendingFetches.get(subId)!;
+
       const cleanup = () => {
-        clearTimeout(timer);
+        clearTimeout(fetchState.timer);
         this.unsubscribe(subId);
-        // Restore original callbacks
-        this.callbacks.onEvent = origOnEvent;
-        this.callbacks.onEose = origOnEose;
+        this._pendingFetches.delete(subId);
       };
 
-      const timer = setTimeout(() => {
+      fetchState.timer = setTimeout(() => {
+        console.debug(`[relay] fetchEscrowEvents ${escrowId}: timeout with ${events.length} events from ${fetchState.eoseCount}/${connectedCount} relays`);
         cleanup();
         resolve(events);
       }, timeoutMs);
-
-      const origOnEvent = this.callbacks.onEvent;
-      const origOnEose = this.callbacks.onEose;
-
-      this.callbacks.onEvent = (event, relayUrl) => {
-        origOnEvent?.(event, relayUrl);
-        if (!seenIds.has(event.id)) {
-          seenIds.add(event.id);
-          events.push(event);
-        }
-      };
-
-      this.callbacks.onEose = (sid, relayUrl) => {
-        origOnEose?.(sid, relayUrl);
-        if (sid === subId) {
-          eoseCount++;
-          if (eoseCount >= connectedCount) {
-            cleanup();
-            resolve(events);
-          }
-        }
-      };
 
       // Subscribe on all relays
       const filter: NostrFilter = {
@@ -430,6 +443,16 @@ export class RelayManager {
       }
     });
   }
+
+  /** Pending fetch state map — used to avoid callback collisions */
+  private _pendingFetches: Map<string, {
+    events: NostrEvent[];
+    seenIds: Set<string>;
+    eoseCount: number;
+    connectedCount: number;
+    resolve: (events: NostrEvent[]) => void;
+    timer: any;
+  }> = new Map();
 
   // ── One-shot fetch with an arbitrary filter ─────────────────────────────
 
