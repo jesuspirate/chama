@@ -183,17 +183,9 @@ export class RelayManager {
         const event = data[2] as NostrEvent;
         if (!event?.id) return;
 
-        // Dedup: only fire callback once per event ID across all relays
-        if (this.seenEventIds.has(event.id)) return;
-        this.seenEventIds.add(event.id);
-
-        // Trim seen set if it gets too large
-        if (this.seenEventIds.size > 10_000) {
-          const arr = [...this.seenEventIds];
-          this.seenEventIds = new Set(arr.slice(-5_000));
-        }
-
-        // Route to pending fetch subscriptions first
+        // Route to pending fetch subscriptions FIRST (before global dedup)
+        // This is critical: the global dedup would block fetch events
+        // that were already seen by live watch subscriptions.
         if (this._pendingFetches) {
           for (const [fetchSubId, fetchState] of this._pendingFetches) {
             if (subId === fetchSubId && !fetchState.seenIds.has(event.id)) {
@@ -202,6 +194,17 @@ export class RelayManager {
             }
           }
         }
+
+        // Global dedup: only fire live callback once per event ID
+        if (this.seenEventIds.has(event.id)) break;
+        this.seenEventIds.add(event.id);
+
+        // Trim seen set if it gets too large
+        if (this.seenEventIds.size > 10_000) {
+          const arr = [...this.seenEventIds];
+          this.seenEventIds = new Set(arr.slice(-5_000));
+        }
+
         this.callbacks.onEvent?.(event, relayUrl);
         break;
       }
