@@ -99,11 +99,21 @@ export async function getOrCreateSeed(
       console.info("[chama] Fedimint seed recovered from Nostr relays");
       return words;
     } catch (e) {
-      console.warn(
-        "[chama] Seed event found but decryption failed — generating new seed.",
+      console.error(
+        "[chama] Seed event found but decryption failed.",
+        "This could mean: (1) you're using a different signer than the one that created the seed,",
+        "(2) the NIP-44 implementation differs, or (3) the seed event is corrupted.",
+        "NOT generating a new seed to prevent overwriting your existing funds.",
         e
       );
-      // fall through to generate fresh
+      // DO NOT fall through to generate fresh — that would overwrite the
+      // existing seed on relays and orphan any wallet that has the old seed.
+      // Instead, throw so the caller can show an error to the user.
+      throw new Error(
+        "Cannot decrypt your Fedimint seed from Nostr. " +
+        "Try using the same signer (NIP-07 extension) that originally created your seed. " +
+        "If you've never joined a federation, click 'Reset local wallet' to start fresh."
+      );
     }
   }
 
