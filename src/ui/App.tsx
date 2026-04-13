@@ -608,10 +608,12 @@ function TradeCard({ state, pubkey, onSelect }: {
 
       {state.status === "LOCKED" && (
         <div style={{
-          fontSize: 8, color: T.muted + "88", fontFamily: T.mono,
+          fontSize: 10, color: T.amber, fontFamily: T.mono,
           textAlign: "center", marginBottom: 8,
+          padding: "6px 10px", borderRadius: 6,
+          background: T.amberDim || T.surface, border: `1px solid ${T.amber}22`,
         }}>
-          ⏱️ If time expires: arbiter auto-refunds to buyer · settle before deadline
+          ⏱️ If expired → arbiter auto-refunds to buyer
         </div>
       )}
 
@@ -985,6 +987,48 @@ function TradeDetail({ state, pubkey, onBack, onVote, onClaim, onJoin, onLock, o
       )}
 
       {/* Countdown timer — visible in all non-terminal states */}
+      {/* Expiry policy — visible on all LOCKED trades */}
+      {state.status === "LOCKED" && (() => {
+        const now = Math.floor(Date.now() / 1000);
+        const remaining = state.expiresAt - now;
+        const isExpired = remaining <= 0;
+        const isUrgent = remaining > 0 && remaining < 7200;
+        return (
+          <div style={{ marginBottom: 12 }}>
+            {isExpired ? (
+              <div style={{
+                padding: "14px 16px", borderRadius: 8, textAlign: "center",
+                background: T.redDim, border: `1px solid ${T.red}44`,
+              }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: T.red, fontFamily: T.mono }}>
+                  ⏰ TRADE EXPIRED
+                </div>
+                <div style={{ fontSize: 11, color: T.text, fontFamily: T.sans, marginTop: 6 }}>
+                  🛡️ Community arbiter will auto-vote REFUND
+                </div>
+                <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono, marginTop: 4 }}>
+                  Sats will be returned to the buyer automatically
+                </div>
+              </div>
+            ) : (
+              <div style={{
+                padding: "8px 12px", borderRadius: 6, textAlign: "center",
+                background: isUrgent ? T.redDim : T.surface,
+                border: `1px solid ${isUrgent ? T.red + "33" : T.amber + "22"}`,
+              }}>
+                <span style={{
+                  fontSize: 10, fontFamily: T.mono,
+                  color: isUrgent ? T.red : T.amber,
+                }}>
+                  {isUrgent ? "⚠️ Expiring soon! " : "⏱️ "}
+                  If time expires → arbiter auto-refunds to buyer
+                </span>
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
       {state.expiresAt && state.status !== "COMPLETED" && state.status !== "CANCELLED" && state.status !== "EXPIRED" && (
         <div style={{ marginBottom: 16 }}>
           <CountdownTimer expiresAt={state.expiresAt} />
