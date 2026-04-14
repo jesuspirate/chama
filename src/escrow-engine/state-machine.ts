@@ -984,7 +984,22 @@ export function canVote(state: EscrowState, pubkey: string): { canVote: boolean;
 /** Determine who the winner is (or null if not yet resolved) */
 export function getWinner(state: EscrowState): { pubkey: string; role: Role } | null {
   if (!state.resolvedOutcome) return null;
-  const winnerRole = state.resolvedOutcome === Outcome.RELEASE ? Role.BUYER : Role.SELLER;
+
+  // RELEASE sends sats to the non-locker; REFUND returns to locker.
+  //   p2p-trade:   seller locks → buyer wins release, seller wins refund
+  //   bill-pay:    seller locks → buyer wins release, seller wins refund
+  //   marketplace: buyer locks  → SELLER wins release, buyer wins refund
+  //   lending:     seller locks → buyer wins release, seller wins refund
+  //   raw-escrow:  default buyer wins release, seller wins refund
+  const isMarketplace = state.category === "marketplace";
+
+  let winnerRole: Role;
+  if (state.resolvedOutcome === Outcome.RELEASE) {
+    winnerRole = isMarketplace ? Role.SELLER : Role.BUYER;
+  } else {
+    winnerRole = isMarketplace ? Role.BUYER : Role.SELLER;
+  }
+
   const pubkey = state.participants[winnerRole];
   if (!pubkey) return null;
   return { pubkey, role: winnerRole };
