@@ -783,25 +783,22 @@ export class EscrowClient {
         // Not valid JSON — likely NIP-44 encrypted
       }
 
-      // Try 2: NIP-44 decrypt (LOCK, VOTE, CLAIM, CHAT)
+      // Try 2: NIP-44 decrypt — only if content looks like actual ciphertext
       if (!content) {
-        try {
-          content = await this.signer.nip44Decrypt(raw.content, raw.pubkey);
-        } catch {
-          // Decrypt failed — try using raw content as-is (plaintext mode)
-          // In dev mode, all events are plaintext JSON. The decrypt fails
-          // because nos2x/NIP-44 can't decrypt non-encrypted content.
+        const looksEncrypted = raw.content.length > 0 
+          && !raw.content.startsWith("{") 
+          && !raw.content.startsWith("[");
+        if (looksEncrypted) {
           try {
-            const fallback = JSON.parse(raw.content);
-            if (fallback && typeof fallback.type === "string") {
-              content = raw.content;
-              console.debug(`[escrow] Decrypt failed for ${raw.id.slice(0, 8)}, using raw content (plaintext mode)`);
-            }
+            content = await this.signer.nip44Decrypt(raw.content, raw.pubkey);
           } catch {
-            // Not JSON either — truly undecryptable, skip
-            console.warn(`[escrow] Skipping undecryptable event ${raw.id.slice(0, 8)}…`);
+            console.debug(`[escrow] Decrypt failed for ${raw.id.slice(0, 8)}, skipping`);
             continue;
           }
+        } else {
+          // Looks like JSON but didn't pass the type check — skip
+          console.debug(`[escrow] Skipping non-escrow JSON event ${raw.id.slice(0, 8)}`);
+          continue;
         }
       }
 
@@ -875,10 +872,20 @@ export class EscrowClient {
       // Not plaintext JSON — try NIP-44
     }
     if (!decrypted) {
-      try {
-        decrypted = await this.signer.nip44Decrypt(event.content, event.pubkey);
-      } catch {
-        // Can't decrypt — encrypted to another participant, ignore
+      // Only attempt NIP-44 decrypt if content looks like actual ciphertext
+      // (base64-ish string, not plaintext JSON that failed the type check)
+      const looksEncrypted = event.content.length > 0 
+        && !event.content.startsWith("{") 
+        && !event.content.startsWith("[");
+      if (looksEncrypted) {
+        try {
+          decrypted = await this.signer.nip44Decrypt(event.content, event.pubkey);
+        } catch {
+          // Can't decrypt — encrypted to another participant, ignore
+          return;
+        }
+      } else {
+        // Plaintext but didn't pass the type check — skip
         return;
       }
     }
