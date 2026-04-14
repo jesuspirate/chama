@@ -73,8 +73,36 @@ export async function createNostrConnectSession(): Promise<{
       const pool = new SimplePool();
 
       try {
-        // Wait for the bunker to connect (this blocks until approved)
-        const bunkerSigner = await BunkerSigner.fromURI(localSecretKey, uri, { pool });
+        // Race: attempt connection with a 15s timeout.
+        // If the relay is slow, retry with a fresh pool.
+        let bunkerSigner: any;
+        const attempt = (p: any) => BunkerSigner.fromURI(localSecretKey, uri, { pool: p });
+
+        const withTimeout = (p: any, ms: number) =>
+          Promise.race([
+            attempt(p),
+            new Promise((_, reject) => setTimeout(() => reject(new Error("NIP46_TIMEOUT")), ms)),
+          ]);
+
+        try {
+          bunkerSigner = await withTimeout(pool, 12000);
+        } catch (e: any) {
+          if (e?.message === "NIP46_TIMEOUT") {
+            console.debug("[chama] NIP-46 first attempt timed out, retrying with fresh pool...");
+            pool.close(NIP46_RELAYS);
+            const pool2 = new SimplePool();
+            try {
+              bunkerSigner = await withTimeout(pool2, 20000);
+            } catch (e2: any) {
+              pool2.close(NIP46_RELAYS);
+              throw e2?.message === "NIP46_TIMEOUT"
+                ? new Error("Connection timed out. Please try scanning again.")
+                : e2;
+            }
+          } else {
+            throw e;
+          }
+        }
 
         // Get the user's actual pubkey (different from the bunker's key)
         const userPubkey = await bunkerSigner.getPublicKey();
