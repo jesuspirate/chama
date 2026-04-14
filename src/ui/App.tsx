@@ -2292,6 +2292,14 @@ export default function App() {
                 setToast({ message: e.message || "Kick failed", type: "error" });
               }
             }}
+            onReleasePeriod={async (periodIndex) => {
+              try {
+                await actions.releasePeriod(selectedId!, periodIndex);
+                setToast({ message: "Period " + (periodIndex + 1) + " released!", type: "success" });
+              } catch (e: any) {
+                setToast({ message: e.message || "Release failed", type: "error" });
+              }
+            }}
             onSendChat={(message) => {
               actions.sendChat(selectedId!, message).catch((e: any) =>
                 setToast({ message: e.message || "Failed to send", type: "error" })
