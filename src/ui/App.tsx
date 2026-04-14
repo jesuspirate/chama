@@ -45,6 +45,7 @@ const STATUS = {
 const ROLE_COLOR = { buyer: T.accent, seller: T.teal, arbiter: T.purple };
 const ROLE_ICON  = { buyer: "B", seller: "S", arbiter: "A" };
 const CAT_ICON = { "p2p-trade": "⚡", "bill-pay": "🧾", marketplace: "🏪", lending: "🤝" } as Record<string, string>;
+const CAT_LABEL: Record<string, string> = { "p2p-trade": "⚡ P2P Trade", "bill-pay": "🧾 Bill Pay", marketplace: "🏪 Marketplace", lending: "🤝 Lending", "raw-escrow": "🔧 Raw Escrow" };
 
 const fmtSats = (ms: number) => Math.floor(ms / 1000).toLocaleString();
 
@@ -953,8 +954,16 @@ function TradeDetail({ state, pubkey, onBack, onVote, onClaim, onJoin, onLock, o
           <Badge status={state.status} />
           <span style={{ fontSize: 10, color: T.muted, fontFamily: T.mono }}>{state.id}</span>
         </div>
-        <div style={{ fontSize: 16, fontWeight: 600, color: T.text, fontFamily: T.sans, marginBottom: 12, lineHeight: 1.4 }}>
+        <div style={{ fontSize: 16, fontWeight: 600, color: T.text, fontFamily: T.sans, marginBottom: 4, lineHeight: 1.4 }}>
           {state.description}
+        </div>
+        <div style={{
+          display: "inline-flex", alignItems: "center", gap: 6,
+          padding: "3px 10px", borderRadius: 12, marginBottom: 12,
+          background: T.surface, border: "1px solid " + T.border,
+          fontSize: 10, fontFamily: T.mono, color: T.muted,
+        }}>
+          {CAT_LABEL[state.category] || state.category}
         </div>
         <div style={{ display: "flex", gap: 20, flexWrap: "wrap", paddingTop: 12, borderTop: `1px solid ${T.border}` }}>
           <div>
