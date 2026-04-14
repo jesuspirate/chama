@@ -891,7 +891,7 @@ function CountdownTimer({ expiresAt }: { expiresAt: number }) {
 // TRADE DETAIL
 // ══════════════════════════════════════════════════════════════════════════
 
-function TradeDetail({ state, pubkey, onBack, onVote, onClaim, onJoin, onLock, onReady, onKick, onSendChat }: {
+function TradeDetail({ state, pubkey, onBack, onVote, onClaim, onJoin, onLock, onReady, onKick, onSendChat, onReleasePeriod }: {
   state: EscrowState; pubkey: string;
   onBack: () => void;
   onVote: (outcome: Outcome) => void;
@@ -986,9 +986,12 @@ function TradeDetail({ state, pubkey, onBack, onVote, onClaim, onJoin, onLock, o
       {state.subscription && (
         <SubscriptionTimeline
           subscription={state.subscription}
-          onRelease={(periodIndex) => {
-            onSendChat(`Releasing period ${periodIndex + 1}`);
-            // TODO: wire to actual PERIOD_RELEASE event
+          onRelease={async (periodIndex) => {
+            try {
+              await onReleasePeriod(periodIndex);
+            } catch (e: any) {
+              console.error("[chama] Period release failed:", e);
+            }
           }}
         />
       )}

@@ -36,6 +36,7 @@ import {
   type ClaimPayload,
   type CompletePayload,
   type CancelPayload,
+  type PeriodReleasePayload,
   type ChatPayload,
   type EscrowPayload,
 } from "./types.js";
@@ -1158,6 +1159,55 @@ export class EscrowClient {
     await this.relayManager.publish(signed);
 
     this.applyLocally(escrowId, signed, payload);
+  }
+
+  // ── Release a subscription period ─────────────────────────────────────
+
+  async releasePeriod(escrowId: string, periodIndex: number): Promise<EscrowState> {
+    const state = this.states.get(escrowId);
+    if (!state) throw new Error("Escrow " + escrowId + " not loaded");
+    if (!state.subscription) throw new Error("This escrow is not a subscription");
+
+    const pubkey = await this.getPubkey();
+    const role = this.getMyRole(state, pubkey);
+    if (!role) throw new Error("You are not a participant in this escrow");
+
+    const sub = state.subscription;
+    if (periodIndex < 0 || periodIndex >= sub.totalPeriods) {
+      throw new Error("Period " + periodIndex + " out of range");
+    }
+    if (sub.periodStatuses[periodIndex] === "released") {
+      throw new Error("Period " + (periodIndex + 1) + " already released");
+    }
+
+    const now = Math.floor(Date.now() / 1000);
+    const lastEventId = state.eventChain[state.eventChain.length - 1]?.raw.id;
+
+    const payload: PeriodReleasePayload = {
+      type: "escrow:period_release",
+      periodIndex,
+      amountMsats: sub.periodAmountMsats,
+      triggeredBy: role,
+      releasedAt: now,
+    };
+
+    const content = JSON.stringify(payload);
+
+    const unsigned: UnsignedEvent = {
+      kind: EscrowEventKind.PERIOD_RELEASE,
+      created_at: now,
+      tags: [
+        [TAGS.ESCROW_ID, escrowId],
+        [TAGS.PREV_EVENT, lastEventId, "", "reply"],
+        [TAGS.TYPE, "escrow:period_release"],
+      ],
+      content,
+    };
+
+    const signed = await this.signer.signEvent(unsigned);
+    await this.relayManager.publish(signed);
+
+    return this.applyLocally(escrowId, signed, payload);
   }
 
   // ── Helpers ─────────────────────────────────────────────────────────────

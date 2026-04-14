@@ -136,6 +136,8 @@ export interface UseEscrowActions {
    *   decrypt shares → Shamir combine → verify hash → redeemEcash → publish CLAIM
    */
   claimAndRedeem: (escrowId: string) => Promise<EscrowState>;
+  /** Release a subscription period */
+  releasePeriod: (escrowId: string, periodIndex: number) => Promise<EscrowState>;
   /** Send a chat message */
   sendChat: (escrowId: string, message: string) => Promise<void>;
   /** Cancel a trade (initiator only, pre-lock) */
@@ -731,6 +733,12 @@ export function useEscrow(config?: Partial<EscrowClientConfig>): [UseEscrowState
     kickParticipant: kickParticipantAction,
     lockAndPublish: lockAndPublishAction,
     vote: voteAction,
+    releasePeriod: async (escrowId: string, periodIndex: number) => {
+      if (!clientRef.current) throw new Error("Not connected");
+      const newState = await clientRef.current.releasePeriod(escrowId, periodIndex);
+      updateEscrow(escrowId, newState);
+      return newState;
+    },
     claimAndRedeem: claimAndRedeemAction,
     sendChat,
     cancel: cancelAction,
