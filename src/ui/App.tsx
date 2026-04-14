@@ -1296,29 +1296,32 @@ function TradeDetail({ state, pubkey, onBack, onVote, onClaim, onJoin, onLock, o
       {/* Vote buttons */}
       {voteCheck.canVote && (
         <div style={{ display: "flex", gap: 12, marginBottom: 16 }}>
-          <button disabled={voting} onClick={() => handleVote(Outcome.RELEASE)} style={{
-            flex: 1, padding: "16px", borderRadius: T.rs,
-            background: voting ? T.surface : T.greenDim,
-            border: `1px solid ${T.green}44`, color: T.green,
-            fontFamily: T.mono, fontSize: 14, fontWeight: 700,
-            cursor: voting ? "default" : "pointer", transition: "all 0.2s",
-          }}>
-            ✓ Release
-          </button>
+          {!state.subscription && (
+            <button disabled={voting} onClick={() => handleVote(Outcome.RELEASE)} style={{
+              flex: 1, padding: "16px", borderRadius: T.rs,
+              background: voting ? T.surface : T.greenDim,
+              border: `1px solid ${T.green}44`, color: T.green,
+              fontFamily: T.mono, fontSize: 14, fontWeight: 700,
+              cursor: voting ? "default" : "pointer", transition: "all 0.2s",
+            }}>
+              ✓ Release
+            </button>
+          )}
           <button disabled={voting} onClick={() => handleVote(Outcome.REFUND)} style={{
             flex: 1, padding: "16px", borderRadius: T.rs,
-            background: voting ? T.surface : T.amberDim,
-            border: `1px solid ${T.amber}44`, color: T.amber,
+            background: voting ? T.surface : state.subscription ? T.redDim : T.amberDim,
+            border: `1px solid ${state.subscription ? T.red : T.amber}44`,
+            color: state.subscription ? T.red : T.amber,
             fontFamily: T.mono, fontSize: 14, fontWeight: 700,
             cursor: voting ? "default" : "pointer", transition: "all 0.2s",
           }}>
-            ↩ Refund
+            {state.subscription ? "🛑 Cancel & Refund Remaining" : "↩ Refund"}
           </button>
         </div>
       )}
 
       {/* Claim button */}
-      {state.status === EscrowStatus.APPROVED && iAmWinner && (
+      {state.status === EscrowStatus.APPROVED && iAmWinner && !state.subscription && (
         <button onClick={onClaim} style={{
           width: "100%", padding: "18px", borderRadius: T.rs,
           background: `linear-gradient(135deg, ${T.accent}, ${T.amber})`,
