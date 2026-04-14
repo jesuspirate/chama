@@ -321,6 +321,11 @@ export function useEscrow(config?: Partial<EscrowClientConfig>): [UseEscrowState
 
       vibrate([50, 30, 50]); // Connected haptic
 
+      // Start periodic balance refresh — every 30 seconds
+      const balanceInterval = setInterval(() => {
+        refreshBalanceRef.current?.().catch(() => {});
+      }, 30_000);
+
       // Start periodic expiry checker — every 60 seconds, check all loaded escrows
       const expiryInterval = setInterval(async () => {
         if (!clientRef.current) return;
