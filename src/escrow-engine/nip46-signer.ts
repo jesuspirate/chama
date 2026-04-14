@@ -22,6 +22,7 @@ const STORAGE_USER_PUBKEY = "chama_nip46_user_pubkey";
 
 // NIP-46 relays for communication
 const NIP46_RELAYS = [
+  "wss://relay.nsec.app",
   "wss://relay.primal.net",
   "wss://nos.lol",
 ];
