@@ -461,12 +461,12 @@ export async function createRealWallet(
       );
 
       if (!allMatch) {
-        throw new Error(
-          "Local Fedimint wallet has a different seed than your Nostr-backed " +
-          "seed. Click 'Reset local wallet' in the Fedimint bar to clear the " +
-          "stale local state and restore from Nostr. " +
-          "(This is safe if you haven't yet joined a federation on this device.)"
-        );
+        // Auto-reset: the Nostr seed is the source of truth.
+        // The local OPFS has a stale seed from a previous session.
+        // Overwrite it with the Nostr-backed seed so the user doesn't
+        // have to manually click "Reset local wallet".
+        console.warn("[chama] Local seed differs from Nostr backup — auto-installing Nostr seed");
+        await directorTyped.setMnemonic(opts.mnemonic);
       }
       // Same seed already installed — nothing to do
       console.info("[chama] Fedimint seed already matches Nostr backup — reusing");

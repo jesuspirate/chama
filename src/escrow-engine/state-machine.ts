@@ -298,7 +298,10 @@ function handleLock(state: EscrowState, event: ParsedEscrowEvent<LockPayload>): 
     : (state.category === "p2p-trade" || state.category === "bill-pay") ? Role.SELLER
     : null; // raw escrow: anyone
 
-  if (expectedLocker && lockerRole !== expectedLocker) {
+  // Only enforce locker role on trades created after v0.1.37 (April 13 2026)
+  // Old trades allowed any participant to lock — grandfather them in
+  const LOCKER_ENFORCEMENT_TIMESTAMP = 1776100000; // ~Apr 13 2026
+  if (expectedLocker && lockerRole !== expectedLocker && state.createdAt > LOCKER_ENFORCEMENT_TIMESTAMP) {
     return err("WRONG_LOCKER",
       "In " + state.category + ", only the " + expectedLocker + " can lock the escrow",
       event.raw.id
