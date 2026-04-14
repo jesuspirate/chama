@@ -632,23 +632,31 @@ function TradeCard({ state, pubkey, onSelect }: {
 
       {/* Escrow ID — tap to copy */}
       <div
-       onClick={() => {
-  	const id = state.id;
-  	if (navigator.clipboard?.writeText) {
-    	  navigator.clipboard.writeText(id).catch(() => {});
-  	}
-  	// Fallback: select from a temporary input
-  	const el = document.createElement("input");
-  	el.value = id;
-  	document.body.appendChild(el);
-  	el.select();
-  	document.execCommand("copy");
-  	document.body.removeChild(el);
-  	// Brief visual feedback instead of alert
-        const t = document.querySelector('[title="Tap to copy escrow ID"]');
-        if (t) { (t as any).style.color = "#22c55e"; setTimeout(() => { (t as any).style.color = ""; }, 800); }
-       }}
-        title="Tap to copy escrow ID"
+        onClick={(e) => {
+          e.stopPropagation();
+          const id = state.id;
+          if (navigator.clipboard?.writeText) {
+            navigator.clipboard.writeText(id).catch(() => {});
+          } else {
+            const el = document.createElement("input");
+            el.value = id;
+            document.body.appendChild(el);
+            el.select();
+            document.execCommand("copy");
+            document.body.removeChild(el);
+          }
+          const t = e.currentTarget;
+          const orig = t.textContent;
+          t.textContent = "\u2705 Copied!";
+          t.style.color = "#22c55e";
+          setTimeout(() => { t.textContent = orig; t.style.color = ""; }, 1200);
+        }}
+        style={{
+          fontSize: 10, color: "#6b6980", fontFamily: "'JetBrains Mono','SF Mono','Fira Code',monospace",
+          textAlign: "center", marginTop: 8, cursor: "pointer",
+          padding: "4px 8px", borderRadius: 6,
+          transition: "all 0.2s",
+        }}
       >
         {state.id} — tap to copy
       </div>
