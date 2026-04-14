@@ -2152,6 +2152,7 @@ export default function App() {
           onConnect={actions.connect}
           onConnectNIP46={async () => {
             try {
+              if (nip46Waiting) return; // prevent double-click
               setNip46Waiting(true);
               const { createNostrConnectSession } = await import("../escrow-engine/nip46-signer.js");
               const session = await createNostrConnectSession();

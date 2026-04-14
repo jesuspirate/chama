@@ -24,7 +24,6 @@ const STORAGE_USER_PUBKEY = "chama_nip46_user_pubkey";
 const NIP46_RELAYS = [
   "wss://relay.primal.net",
   "wss://nos.lol",
-  "wss://relay.damus.io",
 ];
 
 export interface NIP46ConnectResult {
