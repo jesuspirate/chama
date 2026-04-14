@@ -461,12 +461,22 @@ export async function createRealWallet(
       );
 
       if (!allMatch) {
-        // Auto-reset: the Nostr seed is the source of truth.
-        // The local OPFS has a stale seed from a previous session.
-        // Overwrite it with the Nostr-backed seed so the user doesn't
-        // have to manually click "Reset local wallet".
-        console.warn("[chama] Local seed differs from Nostr backup — auto-installing Nostr seed");
-        await directorTyped.setMnemonic(opts.mnemonic);
+        // Local seed differs from Nostr backup.
+        // This happens when: (a) user reset wallet on another device which
+        // published a new seed, or (b) OPFS retained a stale seed.
+        // 
+        // Safety: we CANNOT blindly overwrite — the local wallet might
+        // hold real sats under the old seed. Instead, show a clear
+        // error with the "Reset local wallet" button in the UI.
+        // The Nostr seed is recoverable; local-only funds are not.
+        console.warn(
+          "[chama] Seed mismatch — local OPFS has a different seed than Nostr.",
+          "Showing reset prompt to user."
+        );
+        throw new Error(
+          "Looks like stale local state. Reset to clear it — your Nostr-backed " +
+          "seed is safe and will be restored automatically."
+        );
       }
       // Same seed already installed — nothing to do
       console.info("[chama] Fedimint seed already matches Nostr backup — reusing");
