@@ -370,6 +370,22 @@ console.log("\n── LOCK ──");
   }, ra2.raw.id);
 
   assertErr(applyEvent(state, badLock), "AMOUNT_MISMATCH", "Lock with wrong amounts rejected");
+
+  // WRONG_LOCKER: buyer tries to lock in p2p-trade (only seller can)
+  const buyerLock = makeParsedEvent(EscrowEventKind.LOCK, BUYER_PK, {
+    type: "escrow:lock" as const,
+    notesHash: "hash",
+    shares: [
+      { recipientPubkey: BUYER_PK, encryptedShare: "s0", shareIndex: 0 },
+      { recipientPubkey: SELLER_PK, encryptedShare: "s1", shareIndex: 1 },
+      { recipientPubkey: ARBITER_PK, encryptedShare: "s2", shareIndex: 2 },
+    ],
+    sellerReceivesMsats: 98_500_000,
+    arbiterFeeMsats: 1_000_000,
+    platformFeeMsats: 500_000,
+    lockedAt: NOW,
+  }, ra2.raw.id);
+  assertErr(applyEvent(state, buyerLock), "WRONG_LOCKER", "Buyer can't lock in p2p-trade (seller must lock)");
 }
 
 // ── 4. VOTE — Happy Path ─────────────────────────────────────────────────

@@ -156,11 +156,11 @@ function handleCreate(event: ParsedEscrowEvent<CreatePayload>): TransitionResult
   }
 
   // Determine initiator role from category convention:
-  //   bill-pay → buyer creates (they want their bill paid)
-  //   p2p-trade → seller creates (they're offering to sell sats)
-  //   marketplace → seller creates (they're listing an item)
-  //   lending → buyer creates (they're requesting a loan)
-  const initiatorRole = (p.category === "bill-pay" || p.category === "lending")
+  //   bill-pay → seller creates (bitcoiner offering sats for bill payment)
+  //   p2p-trade → seller creates (offering to sell sats for fiat)
+  //   marketplace → seller creates (listing an item for sale)
+  //   lending → buyer creates (borrower requesting a loan)
+  const initiatorRole = p.category === "lending"
     ? Role.BUYER
     : Role.SELLER;
 
@@ -282,11 +282,27 @@ function handleLock(state: EscrowState, event: ParsedEscrowEvent<LockPayload>): 
     );
   }
 
-  // Only the seller (who holds the sats) can lock
-  // Exception: in bill-pay, the buyer locks
+  // Enforce who can lock based on category
   const lockerRole = getRole(state, event.pubkey);
   if (!lockerRole) {
     return err("NOT_PARTICIPANT", "Locker is not a participant", event.raw.id);
+  }
+
+  // Determine the expected locker role:
+  //   marketplace → buyer locks (paying for item)
+  //   lending → seller locks (lender funds the loan)
+  //   p2p-trade, bill-pay → seller locks (seller has the sats)
+  //   raw-escrow / unknown → any participant can lock
+  const expectedLocker = state.category === "marketplace" ? Role.BUYER
+    : state.category === "lending" ? Role.SELLER
+    : (state.category === "p2p-trade" || state.category === "bill-pay") ? Role.SELLER
+    : null; // raw escrow: anyone
+
+  if (expectedLocker && lockerRole !== expectedLocker) {
+    return err("WRONG_LOCKER",
+      "In " + state.category + ", only the " + expectedLocker + " can lock the escrow",
+      event.raw.id
+    );
   }
 
   // Validate shares — must have exactly 3, one per participant

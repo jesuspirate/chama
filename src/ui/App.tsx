@@ -905,6 +905,20 @@ function TradeDetail({ state, pubkey, onBack, onVote, onClaim, onJoin, onLock, o
   const winner = getWinner(state);
   const iAmWinner = winner?.pubkey === pubkey;
 
+  // Determine who can lock based on category
+  const expectedLocker = state.category === "marketplace" ? Role.BUYER
+    : state.category === "lending" ? Role.SELLER
+    : (state.category === "p2p-trade" || state.category === "bill-pay") ? Role.SELLER
+    : null;
+  const canILock = !expectedLocker || myRole === expectedLocker;
+
+  // Category-aware labels
+  const lockLabel = state.category === "marketplace" ? "Pay for Item"
+    : state.category === "lending" ? "Fund Loan"
+    : state.category === "bill-pay" ? "Lock Sats"
+    : state.category === "p2p-trade" ? "Fund Escrow"
+    : "Lock Sats";
+
   const handleVote = async (outcome: Outcome) => {
     setVoting(true);
     try { onVote(outcome); } finally { setTimeout(() => setVoting(false), 1000); }
@@ -1202,8 +1216,8 @@ function TradeDetail({ state, pubkey, onBack, onVote, onClaim, onJoin, onLock, o
               </button>
             )}
 
-            {/* Lock button — only after all 3 are ready */}
-            {allReady && (
+            {/* Lock button — only for the correct role after all 3 are ready */}
+            {allReady && canILock && (
               <>
                 <button
                   disabled={locking}
@@ -1220,7 +1234,7 @@ function TradeDetail({ state, pubkey, onBack, onVote, onClaim, onJoin, onLock, o
                     letterSpacing: 0.5, transition: "all 0.2s",
                   }}
                 >
-                  {locking ? "Locking..." : "\u26a1 Lock " + fmtSats(state.amountMsats) + " sats"}
+                  {locking ? "Locking..." : "\u26a1 " + lockLabel + " · " + fmtSats(state.amountMsats) + " sats"}
                 </button>
                 <div style={{
                   textAlign: "center", marginTop: 8,
