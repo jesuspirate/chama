@@ -2088,6 +2088,7 @@ export default function App() {
   const [view, setView] = useState<"list" | "detail" | "create">("list");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [nip46Uri, setNip46Uri] = useState<string | null>(null);
+  const [loginSuccess, setLoginSuccess] = useState(false);
   const [nip46Waiting, setNip46Waiting] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" | "info" } | null>(null);
   const [showFundModal, setShowFundModal] = useState(false);
@@ -2123,6 +2124,30 @@ export default function App() {
           input::placeholder{color:${T.muted}88}
           input:focus,select:focus{border-color:${T.accent}66!important}
         `}</style>
+        {loginSuccess && (
+          <div style={{
+            position: "fixed", inset: 0, zIndex: 9999,
+            display: "flex", flexDirection: "column",
+            alignItems: "center", justifyContent: "center",
+            background: T.bg,
+            animation: "fadeIn 0.3s ease-out",
+          }}>
+            <div style={{
+              width: 80, height: 80, borderRadius: "50%",
+              background: T.greenDim, border: "2px solid " + T.green,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              marginBottom: 20, animation: "fadeIn 0.4s ease-out",
+            }}>
+              <span style={{ fontSize: 36 }}>&#x2713;</span>
+            </div>
+            <div style={{ fontSize: 18, fontWeight: 700, color: T.green, fontFamily: T.mono, marginBottom: 8 }}>
+              Connected!
+            </div>
+            <div style={{ fontSize: 11, color: T.muted, fontFamily: T.mono }}>
+              Signer authenticated via Nostr
+            </div>
+          </div>
+        )}
         <ConnectScreen
           onConnect={actions.connect}
           onConnectNIP46={async () => {
@@ -2138,7 +2163,11 @@ export default function App() {
               (window as any).__chama_nip46_pubkey = result.pubkey;
               setNip46Uri(null);
               setNip46Waiting(false);
-              actions.connect();
+              setLoginSuccess(true);
+              setTimeout(() => {
+                setLoginSuccess(false);
+                actions.connect();
+              }, 1800);
             } catch (e: any) {
               setNip46Waiting(false);
               setNip46Uri(null);
