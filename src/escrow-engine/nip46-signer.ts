@@ -45,15 +45,11 @@ export async function createNostrConnectSession(): Promise<{
   const { BunkerSigner, createNostrConnectURI } = await import("nostr-tools/nip46");
   const { SimplePool } = await import("nostr-tools/pool");
 
-  // Generate or restore local keypair
-  let localSecretKey: Uint8Array;
-  const stored = localStorage.getItem(STORAGE_LOCAL_KEY);
-  if (stored) {
-    localSecretKey = new Uint8Array(JSON.parse(stored));
-  } else {
-    localSecretKey = generateSecretKey();
-    localStorage.setItem(STORAGE_LOCAL_KEY, JSON.stringify(Array.from(localSecretKey)));
-  }
+  // Always generate a FRESH local keypair for new connections.
+  // Reusing old keys causes relay noise from previous sessions,
+  // making the first connection attempt unreliable.
+  const localSecretKey = generateSecretKey();
+  localStorage.setItem(STORAGE_LOCAL_KEY, JSON.stringify(Array.from(localSecretKey)));
 
   const clientPubkey = getPublicKey(localSecretKey);
 
