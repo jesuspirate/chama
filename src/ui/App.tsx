@@ -549,6 +549,9 @@ function TradeCard({ state, pubkey, onSelect }: {
             <span style={{ fontSize: 13, fontWeight: 600, color: T.text, fontFamily: T.sans, lineHeight: 1.3 }}>
               {state.description}
             </span>
+            <span style={{ fontSize: 9, color: T.muted, fontFamily: T.mono, opacity: 0.7 }}>
+              {CAT_LABEL[state.category] || state.category}
+            </span>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <span style={{ fontSize: 15, fontWeight: 700, color: T.accent, fontFamily: T.mono }}>
