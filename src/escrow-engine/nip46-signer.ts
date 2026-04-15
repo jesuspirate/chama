@@ -22,9 +22,7 @@ const STORAGE_USER_PUBKEY = "chama_nip46_user_pubkey";
 
 // NIP-46 relays for communication
 const NIP46_RELAYS = [
-  "wss://relay.satoshimarket.app",  // Our own relay — fastest for NIP-46 handshakes
-  "wss://relay.nsec.app",
-  "wss://relay.primal.net",
+  "wss://relay.satoshimarket.app",  // Our own relay — only relay needed for NIP-46
 ];
 
 export interface NIP46ConnectResult {
