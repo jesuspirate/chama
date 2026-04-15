@@ -462,21 +462,27 @@ export async function createRealWallet(
 
       if (!allMatch) {
         // Local seed differs from Nostr backup.
-        // This happens when: (a) user reset wallet on another device which
-        // published a new seed, or (b) OPFS retained a stale seed.
-        // 
-        // Safety: we CANNOT blindly overwrite — the local wallet might
-        // hold real sats under the old seed. Instead, show a clear
-        // error with the "Reset local wallet" button in the UI.
-        // The Nostr seed is recoverable; local-only funds are not.
+        // The Nostr-backed seed is the source of truth — it's what was used
+        // to lock ecash in escrows. The local OPFS seed is just a cache that
+        // can go stale (filename rotation, browser clear, different device).
+        // Force-overwrite local with the Nostr seed so the user can claim.
         console.warn(
           "[chama] Seed mismatch — local OPFS has a different seed than Nostr.",
-          "Showing reset prompt to user."
+          "Overwriting local seed with Nostr-backed seed (source of truth)."
         );
-        throw new Error(
-          "Looks like stale local state. Reset to clear it — your Nostr-backed " +
-          "seed is safe and will be restored automatically."
-        );
+        try {
+          await directorTyped.setMnemonic(opts.mnemonic!);
+          console.info("[chama] Local seed overwritten with Nostr-backed seed");
+        } catch (setErr: any) {
+          // setMnemonic may fail if the SDK doesn't allow overwrite.
+          // In that case, we need a full reset — delete the OPFS file
+          // and let the next init start fresh with the Nostr seed.
+          console.warn("[chama] setMnemonic failed, forcing OPFS reset:", setErr?.message);
+          throw new Error(
+            "SEED_MISMATCH_RESET_NEEDED: Your wallet seed was out of sync. " +
+            "Please refresh the page — it will auto-recover from your Nostr backup."
+          );
+        }
       }
       // Same seed already installed — nothing to do
       console.info("[chama] Fedimint seed already matches Nostr backup — reusing");

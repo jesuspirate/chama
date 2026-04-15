@@ -1730,7 +1730,7 @@ function FederationJoinPanel({
 }) {
   const showResetHint =
     !!fedimint.error &&
-    /no modification allowed|different seed|already installed/i.test(fedimint.error);
+    /no modification allowed|different seed|already installed|SEED_MISMATCH_RESET_NEEDED|stale local state/i.test(fedimint.error);
   const [presets, setPresets] = useState<FederationPreset[]>(CURATED_PRESETS);
   const [observerLoading, setObserverLoading] = useState(false);
   const [observerError, setObserverError] = useState<string | null>(null);
