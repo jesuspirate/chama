@@ -435,6 +435,31 @@ export function sortEventChain(events: ParsedEscrowEvent[]): ParsedEscrowEvent[]
     }
   }
 
+  // Second pass: global kind-priority sort to fix cross-branch misordering.
+  // The BFS handles siblings correctly but events referencing different parents
+  // can end up in wrong global order (e.g. CLAIM before LOCK).
+  // Stable sort preserves BFS order for same-kind events.
+  const GLOBAL_KIND_ORDER: Record<number, number> = {
+    38100: 0,  // CREATE
+    38111: 1,  // SUBSCRIBE
+    38101: 2,  // JOIN
+    38109: 3,  // READY
+    38110: 4,  // KICK
+    38102: 5,  // LOCK
+    38103: 6,  // VOTE
+    38112: 6,  // PERIOD_RELEASE
+    38104: 7,  // RESOLVE
+    38105: 8,  // CLAIM
+    38106: 9,  // COMPLETE
+    38107: 10, // CANCEL
+  };
+  sorted.sort((a, b) => {
+    const pa = GLOBAL_KIND_ORDER[a.kind] ?? 99;
+    const pb = GLOBAL_KIND_ORDER[b.kind] ?? 99;
+    if (pa !== pb) return pa - pb;
+    return 0; // stable: preserve BFS order within same kind
+  });
+
   // Interleave chat events by timestamp
   const all = [...sorted];
   for (const chat of chatEvents) {
