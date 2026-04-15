@@ -165,7 +165,6 @@ export class EscrowClient {
       ...config,
     };
     this.callbacks = callbacks;
-    this.notifier = new EscrowNotifier(signer, this.relayManager);
 
     this.relayManager = new RelayManager(
       config.relays,
@@ -182,6 +181,8 @@ export class EscrowClient {
 
   connect(): void {
     this.relayManager.connect();
+
+    this.notifier = new EscrowNotifier(signer, this.relayManager);
   }
 
   disconnect(): void {
