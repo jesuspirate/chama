@@ -37,6 +37,10 @@ export class NIP07Signer implements Signer {
     const nostr = this.getNostr();
     // NIP-07 signEvent expects the full event template and returns it signed
     const signed = await nostr.signEvent(event);
+    // User rejected the signing prompt (nos2x returns {error: {message: "denied"}})
+    if (!signed || (signed as any).error || !signed.sig) {
+      throw new Error("Signing cancelled — you can try again");
+    }
     return signed as NostrEvent;
   }
 
