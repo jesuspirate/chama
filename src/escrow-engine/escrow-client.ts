@@ -182,7 +182,7 @@ export class EscrowClient {
   connect(): void {
     this.relayManager.connect();
 
-    this.notifier = new EscrowNotifier(signer, this.relayManager);
+    this.notifier = new EscrowNotifier(this.signer, this.relayManager);
   }
 
   disconnect(): void {
