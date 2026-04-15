@@ -474,14 +474,43 @@ export async function createRealWallet(
           await directorTyped.setMnemonic(opts.mnemonic!);
           console.info("[chama] Local seed overwritten with Nostr-backed seed");
         } catch (setErr: any) {
-          // setMnemonic may fail if the SDK doesn't allow overwrite.
-          // In that case, we need a full reset — delete the OPFS file
-          // and let the next init start fresh with the Nostr seed.
-          console.warn("[chama] setMnemonic failed, forcing OPFS reset:", setErr?.message);
-          throw new Error(
-            "SEED_MISMATCH_RESET_NEEDED: Your wallet seed was out of sync. " +
-            "Please refresh the page — it will auto-recover from your Nostr backup."
-          );
+          // setMnemonic doesn't allow overwrite. Auto-reset OPFS and retry.
+          console.warn("[chama] setMnemonic rejected overwrite — auto-resetting OPFS:", setErr?.message);
+          
+          // Terminate the current worker so OPFS handle is released
+          terminateCurrentWorker();
+          
+          // Delete the OPFS file and rotate to a fresh filename
+          try {
+            const root = await navigator.storage.getDirectory();
+            const oldName = getStoredFilename();
+            try { await (root as any).removeEntry(oldName, { recursive: true }); } catch {}
+            try { await (root as any).removeEntry("fedimint.db", { recursive: true }); } catch {}
+          } catch {}
+          const freshName = rotateFilename();
+          console.info("[chama] OPFS reset complete, retrying with fresh file:", freshName);
+          
+          // Retry: create a brand new director + transport with the fresh OPFS file
+          const { WalletDirector: WD2 } = await import("@fedimint/core");
+          const { WasmWorkerTransport: WT2 } = await import("@fedimint/transport-web");
+          const t2 = new WT2();
+          registerTransport(t2 as unknown as AnyTransport);
+          const d2 = new WD2(t2, true);
+          const tc2 = (d2 as unknown as {
+            _client: { initialize(testFilename?: string): Promise<boolean> };
+          })._client;
+          await tc2.initialize(freshName);
+          
+          // Fresh DB — no existing seed, install the Nostr-backed one
+          const dt2 = d2 as unknown as {
+            setMnemonic(words: string[]): Promise<boolean>;
+            getMnemonic(): Promise<string[]>;
+          };
+          await dt2.setMnemonic(opts.mnemonic!);
+          console.info("[chama] Nostr-backed seed installed in fresh OPFS file");
+          
+          // Replace the director reference for the rest of the factory
+          director = d2;
         }
       }
       // Same seed already installed — nothing to do
