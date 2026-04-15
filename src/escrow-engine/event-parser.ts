@@ -397,8 +397,28 @@ export function sortEventChain(events: ParsedEscrowEvent[]): ParsedEscrowEvent[]
   while (queue.length > 0) {
     const current = queue.shift()!;
     const children = byPrevId.get(current.raw.id) || [];
-    // Sort children by timestamp so earlier events come first
-    children.sort((a, b) => a.timestamp - b.timestamp);
+    // Sort children by kind priority first (state machine order), then timestamp.
+    // This ensures e.g. JOIN comes before LOCK even if timestamps are close.
+    const KIND_PRIORITY: Record<number, number> = {
+      38100: 0,  // CREATE
+      38111: 1,  // SUBSCRIBE
+      38101: 2,  // JOIN
+      38109: 3,  // READY
+      38110: 4,  // KICK
+      38102: 5,  // LOCK
+      38103: 6,  // VOTE
+      38104: 7,  // RESOLVE
+      38105: 8,  // CLAIM
+      38106: 9,  // COMPLETE
+      38107: 10, // CANCEL
+      38112: 6,  // PERIOD_RELEASE (same level as VOTE)
+    };
+    children.sort((a, b) => {
+      const pa = KIND_PRIORITY[a.kind] ?? 99;
+      const pb = KIND_PRIORITY[b.kind] ?? 99;
+      if (pa !== pb) return pa - pb;
+      return a.timestamp - b.timestamp;
+    });
     for (const child of children) {
       if (!visited.has(child.raw.id)) {
         sorted.push(child);
