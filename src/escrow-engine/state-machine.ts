@@ -471,17 +471,19 @@ function handleClaim(state: EscrowState, event: ParsedEscrowEvent<ClaimPayload>)
     return err("NO_OUTCOME", "Cannot claim — no resolved outcome", event.raw.id);
   }
 
-  // Verify the claimer is the correct winner
-  // release → buyer wins (they get the sats/goods)
-  // refund → seller wins (they get sats back)
-  const expectedWinner = state.resolvedOutcome === Outcome.RELEASE ? Role.BUYER : Role.SELLER;
+  // Verify the claimer is the correct winner (uses category-aware getWinner)
+  const winner = getWinner(state);
   const claimerRole = getRole(state, event.pubkey);
 
-  if (claimerRole !== expectedWinner) {
+  if (!winner) {
+    return err("NO_WINNER", "Cannot determine winner", event.raw.id);
+  }
+
+  if (claimerRole !== winner.role) {
     return err("WRONG_CLAIMER",
-      `Only ${expectedWinner} can claim on ${state.resolvedOutcome} outcome`,
+      `Only ${winner.role} can claim on ${state.resolvedOutcome} outcome`,
       event.raw.id,
-      { claimerRole, expectedWinner, outcome: state.resolvedOutcome }
+      { claimerRole, expectedWinner: winner.role, outcome: state.resolvedOutcome }
     );
   }
 
