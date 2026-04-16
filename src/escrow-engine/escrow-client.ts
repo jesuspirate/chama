@@ -821,6 +821,13 @@ export class EscrowClient {
     if (!result.ok) {
       console.error(`[escrow] loadEscrow ${escrowId}: replay FAILED — ${result.error.code}: ${result.error.message}`);
       this.callbacks.onValidationError?.(escrowId, result.error.message, result.error.eventId);
+      // Remove from saved list so we don't keep retrying a permanently broken chain
+      try {
+        const saved = JSON.parse(localStorage.getItem("chama_escrow_ids") || "[]");
+        const filtered = saved.filter((id: string) => id !== escrowId);
+        localStorage.setItem("chama_escrow_ids", JSON.stringify(filtered));
+        console.info(`[escrow] Removed broken escrow ${escrowId} from saved list`);
+      } catch {}
       return null;
     }
     console.debug(`[escrow] loadEscrow ${escrowId}: replay OK — state is ${result.state.status}`);
