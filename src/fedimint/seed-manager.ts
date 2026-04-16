@@ -84,18 +84,33 @@ export async function getOrCreateSeed(
   );
 
   if (existing.length > 0) {
-    // Pick the newest. Replaceable events should already dedupe but relays
-    // can serve stale copies.
-    const newest = [...existing].sort((a, b) => b.created_at - a.created_at)[0];
+    // Sort by newest first. Try each event until one decrypts to a valid mnemonic.
+    // This handles the case where multiple seed events exist (e.g. published
+    // from different sessions) and the newest might not be decryptable by this key.
+    const sorted = [...existing].sort((a, b) => b.created_at - a.created_at);
 
+    for (const candidate of sorted) {
     // Try multiple decrypt methods — seed may have been encrypted with
     // NIP-44, NIP-04, or even stored as plaintext (dev/testing)
     let plaintext: string | null = null;
+    const newest = candidate; // keep variable name for minimal diff
+
+    // Helper: check if decrypted text looks like a valid BIP-39 mnemonic
+    const looksLikeMnemonic = (text: string | null): boolean => {
+      if (!text) return false;
+      const w = text.trim().split(/\s+/);
+      return w.length >= 12 && w.length <= 24 && w.every(word => /^[a-z]+$/.test(word));
+    };
 
     // Try 1: NIP-44 decrypt
     try {
-      plaintext = await signer.nip44Decrypt(newest.content, pubkey);
-      console.debug("[chama] Seed decrypted via NIP-44");
+      const attempt = await signer.nip44Decrypt(newest.content, pubkey);
+      if (looksLikeMnemonic(attempt)) {
+        plaintext = attempt;
+        console.debug("[chama] Seed decrypted via NIP-44");
+      } else {
+        console.debug("[chama] NIP-44 decrypted but result is not a valid mnemonic — trying NIP-04");
+      }
     } catch (e1) {
       console.debug("[chama] NIP-44 seed decrypt failed:", (e1 as Error)?.message?.slice(0, 50));
     }
@@ -105,8 +120,13 @@ export async function getOrCreateSeed(
       try {
         const nostr = (window as any).nostr;
         if (nostr?.nip04?.decrypt) {
-          plaintext = await nostr.nip04.decrypt(pubkey, newest.content);
-          console.debug("[chama] Seed decrypted via NIP-04");
+          const attempt = await nostr.nip04.decrypt(pubkey, newest.content);
+          if (looksLikeMnemonic(attempt)) {
+            plaintext = attempt;
+            console.debug("[chama] Seed decrypted via NIP-04");
+          } else {
+            console.debug("[chama] NIP-04 decrypted but result is not a valid mnemonic");
+          }
         }
       } catch (e2) {
         console.debug("[chama] NIP-04 seed decrypt failed:", (e2 as Error)?.message?.slice(0, 50));
@@ -135,9 +155,11 @@ export async function getOrCreateSeed(
       }
     }
 
-    // All decrypt methods failed
+    } // end for-loop over candidate events
+
+    // None of the seed events decrypted to a valid mnemonic
     {
-      const e = new Error("All decrypt methods failed");
+      const e = new Error("All decrypt methods failed on all seed events");
       console.error(
         "[chama] Seed event found but decryption failed.",
         "This could mean: (1) you're using a different signer than the one that created the seed,",
