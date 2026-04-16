@@ -1,6 +1,7 @@
 import { useState, useEffect, lazy, Suspense } from "react";
 import { Capacitor } from "@capacitor/core";
 import { Preferences } from "@capacitor/preferences";
+import { BarcodeScanner, BarcodeFormat } from "@capacitor-mlkit/barcode-scanning";
 const QRCode = lazy(() => import("./QRCode.js"));
 import { useEscrow, type FedimintState } from "../hooks/useEscrow.js";
 import { type EscrowState, Role, Outcome, EscrowStatus } from "../escrow-engine/types.js";
@@ -338,10 +339,11 @@ function NsecLogin({ onSubmit }: { onSubmit: (nsec: string, remember: boolean) =
   );
 }
 
-function ConnectScreen({ onConnect, onConnectNIP46, onConnectNsec, loading, error, nip46Uri, nip46Waiting }: {
+function ConnectScreen({ onConnect, onConnectNIP46, onConnectNsec, onScanQR, loading, error, nip46Uri, nip46Waiting }: {
   onConnect: () => void;
   onConnectNIP46: () => void;
   onConnectNsec: (nsec: string, remember: boolean) => void | Promise<void>;
+  onScanQR?: () => void;
   loading: boolean;
   error: string | null;
   nip46Uri?: string | null;
@@ -480,6 +482,26 @@ function ConnectScreen({ onConnect, onConnectNIP46, onConnectNsec, loading, erro
         {loading ? "Waiting for signer…" : "🔐 Connect with Signer (QR)"}
       </button>
 
+      {/* Camera scan — native only */}
+      {onScanQR && Capacitor.isNativePlatform() && (
+        <button
+          onClick={onScanQR}
+          disabled={loading}
+          style={{
+            padding: "14px 40px", borderRadius: T.r,
+            background: loading ? T.surface : T.greenDim,
+            border: `1px solid ${T.green}44`,
+            color: loading ? T.muted : T.green,
+            fontFamily: T.mono, fontSize: 13, fontWeight: 600,
+            cursor: loading ? "default" : "pointer",
+            letterSpacing: 0.3, transition: "all 0.2s",
+            minWidth: 260,
+          }}
+        >
+          {"📷 Scan QR code"}
+        </button>
+      )}
+
       <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono, lineHeight: 1.8, textAlign: "center" }}>
         {Capacitor.isNativePlatform() ? (
           <>Signer QR: Amber, nsecBunker (mobile)<br />or paste nsec for built-in signer</>
@@ -498,8 +520,9 @@ function ConnectScreen({ onConnect, onConnectNIP46, onConnectNsec, loading, erro
 // WALLET BAR
 // ══════════════════════════════════════════════════════════════════════════
 
-function WalletBar({ pubkey, connectedRelays, relayStatuses }: {
+function WalletBar({ pubkey, connectedRelays, relayStatuses, onSignOut }: {
   pubkey: string; connectedRelays: number; relayStatuses: Map<string, string>;
+  onSignOut?: () => void;
 }) {
   const [showRelays, setShowRelays] = useState(false);
   return (
@@ -550,6 +573,24 @@ function WalletBar({ pubkey, connectedRelays, relayStatuses }: {
               </span>
             </div>
           ))}
+          {onSignOut && (
+            <div
+              onClick={() => {
+                if (confirm("Sign out? Your saved key will be removed from this device.")) {
+                  onSignOut();
+                }
+              }}
+              style={{
+                marginTop: 8, padding: "8px 12px",
+                background: T.redDim, border: `1px solid ${T.red}33`,
+                borderRadius: T.rs, fontSize: 10, fontFamily: T.mono,
+                color: T.red, cursor: "pointer", textAlign: "center",
+                fontWeight: 600, letterSpacing: 0.5,
+              }}
+            >
+              Sign out
+            </div>
+          )}
         </div>
       )}
     </>
@@ -2289,6 +2330,46 @@ export default function App() {
           error={error}
           nip46Uri={nip46Uri}
           nip46Waiting={nip46Waiting}
+          onScanQR={Capacitor.isNativePlatform() ? async () => {
+            try {
+              // Request camera permission
+              const { camera } = await BarcodeScanner.requestPermissions();
+              if (camera !== "granted") {
+                alert("Camera permission is needed to scan QR codes.");
+                return;
+              }
+              // Scan
+              const { barcodes } = await BarcodeScanner.scan({
+                formats: [BarcodeFormat.QrCode],
+              });
+              if (barcodes.length > 0) {
+                const scanned = barcodes[0].rawValue;
+                if (scanned) {
+                  // Check if it's a nostrconnect:// URI (NIP-46 bunker)
+                  if (scanned.startsWith("nostrconnect://") || scanned.startsWith("bunker://")) {
+                    // TODO: wire into NIP-46 connect flow with scanned URI
+                    navigator.clipboard?.writeText(scanned);
+                    alert("Scanned: " + scanned.slice(0, 60) + "...\n\nCopied to clipboard. Paste into bunker field if needed.");
+                  } else if (scanned.startsWith("nsec1")) {
+                    // It's an nsec — offer to sign in
+                    if (confirm("Found an nsec key. Sign in with it?")) {
+                      (window as any).__chama_connect_nsec = scanned;
+                      if (Capacitor.isNativePlatform()) {
+                        try { await Preferences.set({ key: "chama_saved_nsec", value: scanned }); } catch {}
+                      }
+                      actions.connect();
+                    }
+                  } else {
+                    alert("Scanned: " + scanned.slice(0, 100));
+                  }
+                }
+              }
+            } catch (e: any) {
+              console.warn("[chama] QR scan error:", e);
+              if (e?.message?.includes("canceled")) return;
+              alert("QR scan failed: " + (e.message || "Unknown error"));
+            }
+          } : undefined}
         />
       </div>
     );
@@ -2332,7 +2413,19 @@ export default function App() {
       </div>
 
       {/* Wallet bar */}
-      <WalletBar pubkey={pubkey!} connectedRelays={connectedRelays} relayStatuses={relayStatuses} />
+      <WalletBar
+        pubkey={pubkey!}
+        connectedRelays={connectedRelays}
+        relayStatuses={relayStatuses}
+        onSignOut={async () => {
+          if (Capacitor.isNativePlatform()) {
+            try { await Preferences.remove({ key: "chama_saved_nsec" }); } catch {}
+          }
+          // Clear the nsec from memory and reload the app
+          delete (window as any).__chama_connect_nsec;
+          window.location.reload();
+        }}
+      />
 
       {/* Fedimint wallet bar */}
       <FedimintBar
