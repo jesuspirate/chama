@@ -1,7 +1,7 @@
 import { useState, useEffect, lazy, Suspense } from "react";
 import { Capacitor } from "@capacitor/core";
 import { Preferences } from "@capacitor/preferences";
-import { BarcodeScanner, BarcodeFormat } from "@capacitor-mlkit/barcode-scanning";
+const QRScanner = lazy(() => import("./QRScanner.js"));
 const QRCode = lazy(() => import("./QRCode.js"));
 import { useEscrow, type FedimintState } from "../hooks/useEscrow.js";
 import { type EscrowState, Role, Outcome, EscrowStatus } from "../escrow-engine/types.js";
@@ -483,7 +483,7 @@ function ConnectScreen({ onConnect, onConnectNIP46, onConnectNsec, onScanQR, loa
       </button>
 
       {/* Camera scan — native only */}
-      {onScanQR && Capacitor.isNativePlatform() && (
+      {onScanQR && (
         <button
           onClick={onScanQR}
           disabled={loading}
@@ -2203,6 +2203,7 @@ export default function App() {
   const [showAdvancedFederation, setShowAdvancedFederation] = useState(false);
   const [customInviteInput, setCustomInviteInput] = useState("");
   const [autoLoginChecked, setAutoLoginChecked] = useState(false);
+  const [showQRScanner, setShowQRScanner] = useState(false);
 
   // Auto-login: on native platforms, check for saved nsec in secure storage
   useEffect(() => {
@@ -2288,6 +2289,28 @@ export default function App() {
             </div>
           </div>
         )}
+        {showQRScanner && (
+          <Suspense fallback={null}>
+            <QRScanner
+              onClose={() => setShowQRScanner(false)}
+              onScan={async (scanned) => {
+                setShowQRScanner(false);
+                if (scanned.startsWith("nsec1")) {
+                  if (confirm("Found an nsec key. Sign in with it?")) {
+                    (window as any).__chama_connect_nsec = scanned;
+                    try { await Preferences.set({ key: "chama_saved_nsec", value: scanned }); } catch {}
+                    actions.connect();
+                  }
+                } else if (scanned.startsWith("nostrconnect://") || scanned.startsWith("bunker://")) {
+                  navigator.clipboard?.writeText(scanned);
+                  alert("Scanned bunker URI copied to clipboard!");
+                } else {
+                  alert("Scanned: " + scanned.slice(0, 100));
+                }
+              }}
+            />
+          </Suspense>
+        )}
         <ConnectScreen
           onConnect={actions.connect}
           onConnectNIP46={async () => {
@@ -2330,46 +2353,7 @@ export default function App() {
           error={error}
           nip46Uri={nip46Uri}
           nip46Waiting={nip46Waiting}
-          onScanQR={Capacitor.isNativePlatform() ? async () => {
-            try {
-              // Request camera permission
-              const { camera } = await BarcodeScanner.requestPermissions();
-              if (camera !== "granted") {
-                alert("Camera permission is needed to scan QR codes.");
-                return;
-              }
-              // Scan
-              const { barcodes } = await BarcodeScanner.scan({
-                formats: [BarcodeFormat.QrCode],
-              });
-              if (barcodes.length > 0) {
-                const scanned = barcodes[0].rawValue;
-                if (scanned) {
-                  // Check if it's a nostrconnect:// URI (NIP-46 bunker)
-                  if (scanned.startsWith("nostrconnect://") || scanned.startsWith("bunker://")) {
-                    // TODO: wire into NIP-46 connect flow with scanned URI
-                    navigator.clipboard?.writeText(scanned);
-                    alert("Scanned: " + scanned.slice(0, 60) + "...\n\nCopied to clipboard. Paste into bunker field if needed.");
-                  } else if (scanned.startsWith("nsec1")) {
-                    // It's an nsec — offer to sign in
-                    if (confirm("Found an nsec key. Sign in with it?")) {
-                      (window as any).__chama_connect_nsec = scanned;
-                      if (Capacitor.isNativePlatform()) {
-                        try { await Preferences.set({ key: "chama_saved_nsec", value: scanned }); } catch {}
-                      }
-                      actions.connect();
-                    }
-                  } else {
-                    alert("Scanned: " + scanned.slice(0, 100));
-                  }
-                }
-              }
-            } catch (e: any) {
-              console.warn("[chama] QR scan error:", e);
-              if (e?.message?.includes("canceled")) return;
-              alert("QR scan failed: " + (e.message || "Unknown error"));
-            }
-          } : undefined}
+          onScanQR={() => setShowQRScanner(true)}
         />
       </div>
     );
