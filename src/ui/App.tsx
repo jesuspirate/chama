@@ -343,7 +343,6 @@ function ConnectScreen({ onConnect, onConnectNIP46, onConnectNsec, onScanQR, loa
   onConnect: () => void;
   onConnectNIP46: () => void;
   onConnectNsec: (nsec: string, remember: boolean) => void | Promise<void>;
-  onScanQR?: () => void;
   loading: boolean;
   error: string | null;
   nip46Uri?: string | null;
@@ -482,26 +481,6 @@ function ConnectScreen({ onConnect, onConnectNIP46, onConnectNsec, onScanQR, loa
         {loading ? "Waiting for signer…" : "🔐 Connect with Signer (QR)"}
       </button>
 
-      {/* Camera scan — native only */}
-      {onScanQR && (
-        <button
-          onClick={onScanQR}
-          disabled={loading}
-          style={{
-            padding: "14px 40px", borderRadius: T.r,
-            background: loading ? T.surface : T.greenDim,
-            border: `1px solid ${T.green}44`,
-            color: loading ? T.muted : T.green,
-            fontFamily: T.mono, fontSize: 13, fontWeight: 600,
-            cursor: loading ? "default" : "pointer",
-            letterSpacing: 0.3, transition: "all 0.2s",
-            minWidth: 260,
-          }}
-        >
-          {"📷 Scan QR code"}
-        </button>
-      )}
-
       <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono, lineHeight: 1.8, textAlign: "center" }}>
         {Capacitor.isNativePlatform() ? (
           <>Signer QR: Amber, nsecBunker (mobile)<br />or paste nsec for built-in signer</>
@@ -520,9 +499,10 @@ function ConnectScreen({ onConnect, onConnectNIP46, onConnectNsec, onScanQR, loa
 // WALLET BAR
 // ══════════════════════════════════════════════════════════════════════════
 
-function WalletBar({ pubkey, connectedRelays, relayStatuses, onSignOut }: {
+function WalletBar({ pubkey, connectedRelays, relayStatuses, onSignOut, onScanQR }: {
   pubkey: string; connectedRelays: number; relayStatuses: Map<string, string>;
   onSignOut?: () => void;
+  onScanQR?: () => void;
 }) {
   const [showRelays, setShowRelays] = useState(false);
   return (
@@ -573,6 +553,20 @@ function WalletBar({ pubkey, connectedRelays, relayStatuses, onSignOut }: {
               </span>
             </div>
           ))}
+          {onScanQR && (
+            <div
+              onClick={onScanQR}
+              style={{
+                marginTop: 8, padding: "8px 12px",
+                background: T.greenDim, border: `1px solid ${T.green}33`,
+                borderRadius: T.rs, fontSize: 10, fontFamily: T.mono,
+                color: T.green, cursor: "pointer", textAlign: "center",
+                fontWeight: 600, letterSpacing: 0.5,
+              }}
+            >
+              Scan QR code
+            </div>
+          )}
           {onSignOut && (
             <div
               onClick={() => {
@@ -2353,7 +2347,6 @@ export default function App() {
           error={error}
           nip46Uri={nip46Uri}
           nip46Waiting={nip46Waiting}
-          onScanQR={() => setShowQRScanner(true)}
         />
       </div>
     );
@@ -2401,6 +2394,7 @@ export default function App() {
         pubkey={pubkey!}
         connectedRelays={connectedRelays}
         relayStatuses={relayStatuses}
+        onScanQR={() => setShowQRScanner(true)}
         onSignOut={async () => {
           if (Capacitor.isNativePlatform()) {
             try { await Preferences.remove({ key: "chama_saved_nsec" }); } catch {}
