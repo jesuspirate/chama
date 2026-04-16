@@ -87,6 +87,36 @@ export function adaptRealWallet(
       await real.joinFederation(inviteCode);
     },
 
+    recovery: {
+      async hasPendingRecoveries(): Promise<boolean> {
+        try {
+          return await real.recovery.hasPendingRecoveries();
+        } catch { return false; }
+      },
+      async waitForAllRecoveries(): Promise<void> {
+        try {
+          await real.recovery.waitForAllRecoveries();
+        } catch (e) {
+          console.warn("[chama] waitForAllRecoveries error:", e);
+        }
+      },
+    },
+
+    recovery: {
+      async hasPendingRecoveries(): Promise<boolean> {
+        try {
+          return await real.recovery.hasPendingRecoveries();
+        } catch { return false; }
+      },
+      async waitForAllRecoveries(): Promise<void> {
+        try {
+          await real.recovery.waitForAllRecoveries();
+        } catch (e) {
+          console.warn("[chama] waitForAllRecoveries error:", e);
+        }
+      },
+    },
+
     balance: {
       getBalance() {
         return real.balance.getBalance();

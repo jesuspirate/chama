@@ -32,6 +32,14 @@ export interface IFedimintWallet {
   open(): Promise<void>;
   isOpen(): boolean;
   joinFederation(inviteCode: string): Promise<void>;
+  recovery: {
+    hasPendingRecoveries(): Promise<boolean>;
+    waitForAllRecoveries(): Promise<void>;
+  };
+  recovery: {
+    hasPendingRecoveries(): Promise<boolean>;
+    waitForAllRecoveries(): Promise<void>;
+  };
 
   balance: {
     getBalance(): Promise<number>;
@@ -193,6 +201,9 @@ export class FedimintClient {
           this.callbacks.onBalanceUpdate?.(balance);
         });
         this._federationId = await this.wallet.federation.getFederationId();
+
+        // Check for pending recovery on init (e.g. after auto-reset)
+        await this.runRecoveryIfNeeded(this.wallet);
       }
     } catch (e) {
       this.callbacks.onError?.(
@@ -247,8 +258,44 @@ export class FedimintClient {
       });
     }
 
+    // Check for pending recovery (happens when rejoining with same seed
+    // after OPFS reset — the federation can reconstruct ecash notes)
+    try {
+      const hasPending = await wallet.recovery.hasPendingRecoveries();
+      if (hasPending) {
+        console.info("[chama] Recovery in progress — waiting for federation to restore ecash notes...");
+        this.callbacks.onBalanceUpdate?.(-1); // Signal UI that recovery is running
+        await wallet.recovery.waitForAllRecoveries();
+        console.info("[chama] Recovery complete — ecash notes restored from federation");
+        // Force a balance refresh after recovery
+        const balance = await wallet.balance.getBalance();
+        this.callbacks.onBalanceUpdate?.(balance);
+      }
+    } catch (recoveryErr) {
+      console.warn("[chama] Recovery check failed (non-fatal):", recoveryErr);
+    }
+
     this.callbacks.onFederationJoined?.(this._federationId);
     return this._federationId;
+  }
+
+  /** Run ecash recovery if the federation has pending recoveries for this seed */
+  private async runRecoveryIfNeeded(wallet: IFedimintWallet): Promise<void> {
+    try {
+      const hasPending = await wallet.recovery.hasPendingRecoveries();
+      if (hasPending) {
+        console.info("[chama] Recovery in progress — restoring ecash notes from federation...");
+        await wallet.recovery.waitForAllRecoveries();
+        console.info("[chama] Recovery complete — ecash notes restored");
+        // Force balance refresh after recovery
+        try {
+          const balance = await wallet.balance.getBalance();
+          this.callbacks.onBalanceUpdate?.(balance);
+        } catch {}
+      }
+    } catch (e) {
+      console.warn("[chama] Recovery check failed (non-fatal):", e);
+    }
   }
 
   /** Get the current federation ID (null if not joined) */
