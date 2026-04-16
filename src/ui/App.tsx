@@ -955,7 +955,10 @@ function TradeDetail({ state, pubkey, onBack, onVote, onClaim, onJoin, onLock, o
         <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: `linear-gradient(90deg,${s.c},${s.c}00)` }} />
         <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 16 }}>
           <Badge status={state.status} />
-          <span style={{ fontSize: 10, color: T.muted, fontFamily: T.mono }}>{state.id}</span>
+          <span style={{ fontSize: 10, color: T.muted, fontFamily: T.mono }}>
+            {state.createdAt ? new Date(state.createdAt * 1000).toLocaleDateString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : ""}
+            {" · "}{state.id}
+          </span>
         </div>
         <div style={{ fontSize: 16, fontWeight: 600, color: T.text, fontFamily: T.sans, marginBottom: 4, lineHeight: 1.4 }}>
           {state.description}
