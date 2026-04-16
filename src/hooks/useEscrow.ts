@@ -167,6 +167,8 @@ export interface UseEscrowActions {
    * Returns the BOLT11 string for the user to pay from another wallet.
    */
   createFundingInvoice: (amountMsats: number, description?: string) => Promise<string>;
+  payInvoice: (bolt11: string) => Promise<void>;
+  spendNotes: (amountMsats: number) => Promise<string>;
   /** Refresh the current balance from the wallet */
   refreshBalance: () => Promise<void>;
   /**
@@ -747,6 +749,17 @@ export function useEscrow(config?: Partial<EscrowClientConfig>): [UseEscrowState
     initFedimint,
     setCustomInvite,
     createFundingInvoice,
+    payInvoice: async (bolt11: string) => {
+      const bridge = requireBridge();
+      await bridge.payInvoice(bolt11);
+      refreshBalanceRef.current?.().catch(() => {});
+    },
+    spendNotes: async (amountMsats: number) => {
+      const bridge = requireBridge();
+      const notes = await bridge.spendNotes(amountMsats);
+      refreshBalanceRef.current?.().catch(() => {});
+      return notes;
+    },
     refreshBalance,
     resetLocalWallet,
   };

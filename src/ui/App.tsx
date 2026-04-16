@@ -2298,6 +2298,9 @@ export default function App() {
           onCreateInvoice={(amountSats, desc) =>
             actions.createFundingInvoice(amountSats * 1000, desc)
           }
+          onPayInvoice={(bolt11) => actions.payInvoice(bolt11)}
+          onSpendNotes={(amountMsats) => actions.spendNotes(amountMsats)}
+          balanceMsats={fedimint.balance ?? 0}
         />
       )}
 
