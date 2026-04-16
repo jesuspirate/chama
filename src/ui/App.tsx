@@ -464,8 +464,8 @@ function ConnectScreen({ onConnect, onConnectNIP46, onConnectNsec, loading, erro
           </button>
         )}
 
-        {/* Secondary: NIP-46 signer */}
-        {!nip46Uri && (
+        {/* Secondary: NIP-46 signer — desktop only (on native, nsec is the full path) */}
+        {!isNative && !nip46Uri && (
           <button
             onClick={onConnectNIP46}
             disabled={loading}
