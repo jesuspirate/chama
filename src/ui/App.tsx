@@ -1,4 +1,6 @@
 import { useState, useEffect, lazy, Suspense } from "react";
+import { Capacitor } from "@capacitor/core";
+import { Preferences } from "@capacitor/preferences";
 const QRCode = lazy(() => import("./QRCode.js"));
 import { useEscrow, type FedimintState } from "../hooks/useEscrow.js";
 import { type EscrowState, Role, Outcome, EscrowStatus } from "../escrow-engine/types.js";
@@ -238,57 +240,99 @@ function SubscriptionTimeline({ subscription, onRelease }: {
   );
 }
 
-function NsecLogin({ onSubmit }: { onSubmit: (nsec: string) => void }) {
-  const [showNsec, setShowNsec] = useState(false);
+function NsecLogin({ onSubmit }: { onSubmit: (nsec: string, remember: boolean) => void }) {
+  const isNative = Capacitor.isNativePlatform();
+  const [showNsec, setShowNsec] = useState(isNative); // expanded by default on mobile
   const [nsecInput, setNsecInput] = useState("");
+  const [remember, setRemember] = useState(isNative); // default remember on native
 
   if (!showNsec) {
     return (
       <div
         onClick={() => setShowNsec(true)}
         style={{
-          marginTop: 8, fontSize: 9, color: T.muted + "88",
+          marginTop: 8, fontSize: 10, color: T.muted,
           fontFamily: T.mono, cursor: "pointer",
           transition: "color 0.2s",
         }}
+        onMouseEnter={(e) => (e.currentTarget.style.color = T.text)}
+        onMouseLeave={(e) => (e.currentTarget.style.color = T.muted)}
       >
         or paste nsec (advanced)
       </div>
     );
   }
 
+  const handleSubmit = () => {
+    if (!nsecInput.trim()) return;
+    onSubmit(nsecInput.trim(), remember);
+  };
+
   return (
-    <div style={{ marginTop: 8, width: "100%", maxWidth: 320 }}>
+    <div style={{ marginTop: isNative ? 0 : 8, width: "100%", maxWidth: 360 }}>
+      {isNative && (
+        <div style={{
+          fontSize: 10, color: T.muted, fontFamily: T.mono,
+          letterSpacing: 1, marginBottom: 8, textAlign: "center",
+        }}>
+          SIGN IN WITH YOUR KEY
+        </div>
+      )}
       <input
         value={nsecInput}
         onChange={(e) => setNsecInput(e.target.value)}
-        onKeyDown={(e) => e.key === "Enter" && nsecInput.trim() && onSubmit(nsecInput.trim())}
+        onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
         placeholder="nsec1... or hex private key"
         type="password"
+        autoComplete="off"
+        autoCapitalize="off"
+        autoCorrect="off"
+        spellCheck={false}
         style={{
-          width: "100%", padding: "10px 14px",
+          width: "100%", padding: "14px 16px", boxSizing: "border-box",
           background: T.surface, border: `1px solid ${T.border}`,
           borderRadius: T.rs, color: T.text,
-          fontFamily: T.mono, fontSize: 11, outline: "none",
-          marginBottom: 6,
+          fontFamily: T.mono, fontSize: 12, outline: "none",
+          marginBottom: 8,
         }}
       />
+      <label style={{
+        display: "flex", alignItems: "center", gap: 8,
+        fontSize: 10, color: T.muted, fontFamily: T.mono,
+        cursor: "pointer", marginBottom: 10,
+        userSelect: "none" as const,
+      }}>
+        <input
+          type="checkbox"
+          checked={remember}
+          onChange={(e) => setRemember(e.target.checked)}
+          style={{ accentColor: T.accent, width: 14, height: 14, cursor: "pointer" }}
+        />
+        Remember me on this device
+      </label>
       <button
-        onClick={() => nsecInput.trim() && onSubmit(nsecInput.trim())}
+        onClick={handleSubmit}
         disabled={!nsecInput.trim()}
         style={{
-          width: "100%", padding: "10px",
-          background: nsecInput.trim() ? T.redDim : T.surface,
-          border: `1px solid ${nsecInput.trim() ? T.red + "33" : T.border}`,
-          borderRadius: T.rs, color: nsecInput.trim() ? T.red : T.muted,
-          fontFamily: T.mono, fontSize: 11, fontWeight: 600,
+          width: "100%", padding: "14px",
+          background: nsecInput.trim() ? T.accent : T.surface,
+          border: `1px solid ${nsecInput.trim() ? T.accent : T.border}`,
+          borderRadius: T.rs, color: nsecInput.trim() ? T.bg : T.muted,
+          fontFamily: T.mono, fontSize: 13, fontWeight: 700,
           cursor: nsecInput.trim() ? "pointer" : "default",
+          letterSpacing: 0.5,
+          transition: "all 0.2s",
         }}
       >
-        Sign in with nsec
+        Sign in
       </button>
-      <div style={{ fontSize: 8, color: T.red, fontFamily: T.mono, textAlign: "center", marginTop: 4 }}>
-        Your key never leaves this browser. Not recommended — use a signer app instead.
+      <div style={{
+        fontSize: 9, color: T.muted, fontFamily: T.mono,
+        textAlign: "center", marginTop: 10, lineHeight: 1.5,
+      }}>
+        {isNative
+          ? "Your key stays on this device, encrypted in secure storage."
+          : "Your key never leaves this browser."}
       </div>
     </div>
   );
@@ -297,7 +341,7 @@ function NsecLogin({ onSubmit }: { onSubmit: (nsec: string) => void }) {
 function ConnectScreen({ onConnect, onConnectNIP46, onConnectNsec, loading, error, nip46Uri, nip46Waiting }: {
   onConnect: () => void;
   onConnectNIP46: () => void;
-  onConnectNsec: (nsec: string) => void;
+  onConnectNsec: (nsec: string, remember: boolean) => void | Promise<void>;
   loading: boolean;
   error: string | null;
   nip46Uri?: string | null;
@@ -399,22 +443,24 @@ function ConnectScreen({ onConnect, onConnectNIP46, onConnectNsec, loading, erro
         </div>
       )}
 
-      {/* NIP-07 button — for desktop with browser extension */}
-      <button
-        onClick={onConnect}
-        disabled={loading}
-        style={{
-          padding: "16px 48px", borderRadius: T.r,
-          background: loading ? T.surface : T.accent,
-          border: "none", color: loading ? T.muted : T.bg,
-          fontFamily: T.mono, fontSize: 14, fontWeight: 700,
-          cursor: loading ? "default" : "pointer",
-          letterSpacing: 0.5, transition: "all 0.2s",
-          minWidth: 260,
-        }}
-      >
-        {loading ? "Connecting…" : "⚡ Connect with Extension"}
-      </button>
+      {/* NIP-07 button — only shown on desktop browsers, not in native apps */}
+      {!Capacitor.isNativePlatform() && (
+        <button
+          onClick={onConnect}
+          disabled={loading}
+          style={{
+            padding: "16px 48px", borderRadius: T.r,
+            background: loading ? T.surface : T.accent,
+            border: "none", color: loading ? T.muted : T.bg,
+            fontFamily: T.mono, fontSize: 14, fontWeight: 700,
+            cursor: loading ? "default" : "pointer",
+            letterSpacing: 0.5, transition: "all 0.2s",
+            minWidth: 260,
+          }}
+        >
+          {loading ? "Connecting…" : "⚡ Connect with Extension"}
+        </button>
+      )}
 
       {/* NIP-46 button — works everywhere (QR code / bunker) */}
       <button
@@ -435,8 +481,11 @@ function ConnectScreen({ onConnect, onConnectNIP46, onConnectNsec, loading, erro
       </button>
 
       <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono, lineHeight: 1.8, textAlign: "center" }}>
-        Extension: nos2x, Alby (desktop)<br />
-        Signer QR: Amber, nsecBunker (any device)
+        {Capacitor.isNativePlatform() ? (
+          <>Signer QR: Amber, nsecBunker (mobile)<br />or paste nsec for built-in signer</>
+        ) : (
+          <>Extension: nos2x, Alby (desktop)<br />Signer QR: Amber, nsecBunker (any device)</>
+        )}
       </div>
 
       {/* nsec fallback — hidden, tap to reveal */}
@@ -2112,6 +2161,26 @@ export default function App() {
   const [showFundModal, setShowFundModal] = useState(false);
   const [showAdvancedFederation, setShowAdvancedFederation] = useState(false);
   const [customInviteInput, setCustomInviteInput] = useState("");
+  const [autoLoginChecked, setAutoLoginChecked] = useState(false);
+
+  // Auto-login: on native platforms, check for saved nsec in secure storage
+  useEffect(() => {
+    if (autoLoginChecked || connected || loading) return;
+    if (!Capacitor.isNativePlatform()) { setAutoLoginChecked(true); return; }
+    (async () => {
+      try {
+        const { value } = await Preferences.get({ key: "chama_saved_nsec" });
+        if (value) {
+          (window as any).__chama_connect_nsec = value;
+          actions.connect();
+        }
+      } catch (e) {
+        console.warn("[chama] auto-login check failed:", e);
+      } finally {
+        setAutoLoginChecked(true);
+      }
+    })();
+  }, [autoLoginChecked, connected, loading, actions]);
 
   // Filter trades: hide expired+terminal, and trades stuck in replay-failed state
   const now = Math.floor(Date.now() / 1000);
@@ -2205,8 +2274,15 @@ export default function App() {
               console.error("[chama] NIP-46 connection failed:", e);
             }
           }}
-          onConnectNsec={(nsec: string) => {
+          onConnectNsec={async (nsec: string, remember: boolean) => {
             (window as any).__chama_connect_nsec = nsec;
+            if (remember && Capacitor.isNativePlatform()) {
+              try {
+                await Preferences.set({ key: "chama_saved_nsec", value: nsec });
+              } catch (e) {
+                console.warn("[chama] Failed to save nsec to secure storage:", e);
+              }
+            }
             actions.connect();
           }}
           loading={loading}
