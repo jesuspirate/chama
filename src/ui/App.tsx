@@ -1934,15 +1934,23 @@ function FederationJoinPanel({
 // FUND WALLET MODAL — Lightning invoice to top up
 // ══════════════════════════════════════════════════════════════════════════
 
-function FundWalletModal({ onClose, onCreateInvoice }: {
+function FundWalletModal({ onClose, onCreateInvoice, onPayInvoice, onSpendNotes, balanceMsats }: {
   onClose: () => void;
   onCreateInvoice: (amountSats: number, description: string) => Promise<string>;
+  onPayInvoice: (bolt11: string) => Promise<void>;
+  onSpendNotes: (amountMsats: number) => Promise<string>;
+  balanceMsats: number;
 }) {
+  const [tab, setTab] = useState<"receive" | "send">("receive");
   const [amountSats, setAmountSats] = useState("10000");
   const [description, setDescription] = useState("Chama top-up");
   const [invoice, setInvoice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+  const [sendType, setSendType] = useState<"lightning" | "ecash">("lightning");
+  const [bolt11Input, setBolt11Input] = useState("");
+  const [ecashOutput, setEcashOutput] = useState<string | null>(null);
 
   const handleGenerate = async () => {
     const n = parseInt(amountSats, 10);
@@ -1953,129 +1961,136 @@ function FundWalletModal({ onClose, onCreateInvoice }: {
       setInvoice(bolt11);
     } catch (e: any) {
       setErr(e.message || "Failed to create invoice");
-    } finally {
-      setBusy(false);
-    }
+    } finally { setBusy(false); }
   };
 
-  const copyInvoice = () => {
-    if (!invoice) return;
-    if (navigator.clipboard?.writeText) navigator.clipboard.writeText(invoice).catch(() => {});
+  const handlePayInvoice = async () => {
+    if (!bolt11Input.trim()) { setErr("Paste a Lightning invoice"); return; }
+    setBusy(true); setErr(null); setSuccess(null);
+    try {
+      await onPayInvoice(bolt11Input.trim());
+      setSuccess("Payment sent!"); setBolt11Input("");
+    } catch (e: any) {
+      setErr(e.message || "Payment failed");
+    } finally { setBusy(false); }
   };
+
+  const handleSpendAll = async () => {
+    if (balanceMsats <= 0) { setErr("No balance to send"); return; }
+    setBusy(true); setErr(null);
+    try { setEcashOutput(await onSpendNotes(balanceMsats)); }
+    catch (e: any) { setErr(e.message || "Failed"); }
+    finally { setBusy(false); }
+  };
+
+  const handleSpendAmount = async () => {
+    const n = parseInt(amountSats, 10);
+    if (!n || n <= 0) { setErr("Enter a valid sats amount"); return; }
+    setBusy(true); setErr(null);
+    try { setEcashOutput(await onSpendNotes(n * 1000)); }
+    catch (e: any) { setErr(e.message || "Failed"); }
+    finally { setBusy(false); }
+  };
+
+  const copyText = (text: string) => {
+    navigator.clipboard?.writeText(text).catch(() => {});
+  };
+
+  const tabBtn = (t: "receive" | "send", label: string) => (
+    <button onClick={() => { setTab(t); setErr(null); setSuccess(null); setInvoice(null); setEcashOutput(null); }} style={{
+      flex: 1, padding: "8px 0", borderRadius: T.rs, border: "none",
+      background: tab === t ? T.accent : T.surface,
+      color: tab === t ? "#000" : T.muted,
+      fontFamily: T.mono, fontSize: 11, fontWeight: 700, cursor: "pointer",
+    }}>{label}</button>
+  );
 
   return (
-    <div
-      onClick={onClose}
-      style={{
-        position: "fixed", inset: 0, background: "#000a", zIndex: 9998,
-        display: "flex", alignItems: "center", justifyContent: "center",
-        padding: 16, animation: "fadeIn 0.2s ease",
-      }}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          background: T.card, border: `1px solid ${T.borderHi}`, borderRadius: T.r,
-          padding: 24, maxWidth: 420, width: "100%",
-        }}
-      >
+    <div onClick={onClose} style={{
+      position: "fixed", inset: 0, background: "#000a", zIndex: 9998,
+      display: "flex", alignItems: "center", justifyContent: "center",
+      padding: 16, animation: "fadeIn 0.2s ease",
+    }}>
+      <div onClick={(e) => e.stopPropagation()} style={{
+        background: T.card, border: `1px solid ${T.borderHi}`, borderRadius: T.r,
+        padding: 24, maxWidth: 420, width: "100%",
+      }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-          <div style={{ fontSize: 14, fontWeight: 700, color: T.text, fontFamily: T.sans }}>
-            Fund wallet
-          </div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: T.text, fontFamily: T.sans }}>Wallet</div>
           <button onClick={onClose} style={{
             background: "none", border: "none", color: T.muted,
             fontFamily: T.mono, fontSize: 18, cursor: "pointer", padding: 0, lineHeight: 1,
-          }}>×</button>
+          }}>{String.fromCharCode(215)}</button>
         </div>
 
-        {!invoice ? (
-          <>
-            <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono, marginBottom: 4, letterSpacing: 1 }}>
-              AMOUNT (SATS)
-            </div>
-            <input
-              type="number"
-              value={amountSats}
-              onChange={(e) => setAmountSats(e.target.value)}
-              style={{ ...inputStyle, marginBottom: 12 }}
-            />
-            <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono, marginBottom: 4, letterSpacing: 1 }}>
-              DESCRIPTION
-            </div>
-            <input
-              type="text"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              style={{ ...inputStyle, marginBottom: 16 }}
-            />
-            <button
-              disabled={busy}
-              onClick={handleGenerate}
-              style={{
-                width: "100%", padding: "12px 16px", borderRadius: T.rs,
-                background: busy ? T.surface : T.accent, border: `1px solid ${T.accent}`,
-                color: busy ? T.muted : "#000",
-                fontFamily: T.mono, fontSize: 12, fontWeight: 800,
-                cursor: busy ? "not-allowed" : "pointer",
-              }}
-            >
-              {busy ? "Generating…" : "Generate Lightning invoice"}
-            </button>
-          </>
-        ) : (
-          <>
-            <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono, marginBottom: 8, letterSpacing: 1 }}>
-              PAY THIS INVOICE FROM ANY LIGHTNING WALLET
-            </div>
-            <div style={{
-              padding: 12, marginBottom: 12, borderRadius: T.rs,
-              background: T.surface, border: `1px solid ${T.border}`,
-              fontFamily: T.mono, fontSize: 9, color: T.text,
-              wordBreak: "break-all", maxHeight: 140, overflowY: "auto",
-            }}>
-              {invoice}
-            </div>
-            <button
-              onClick={copyInvoice}
-              style={{
-                width: "100%", padding: "10px 16px", borderRadius: T.rs,
-                background: T.accentDim, border: `1px solid ${T.accent}44`,
-                color: T.accent, fontFamily: T.mono, fontSize: 11, fontWeight: 700,
-                cursor: "pointer", marginBottom: 8,
-              }}
-            >
-              Copy invoice
-            </button>
-            <button
-              onClick={onClose}
-              style={{
-                width: "100%", padding: "10px 16px", borderRadius: T.rs,
-                background: T.surface, border: `1px solid ${T.border}`,
-                color: T.muted, fontFamily: T.mono, fontSize: 11, fontWeight: 700,
-                cursor: "pointer",
-              }}
-            >
-              Done
-            </button>
-          </>
-        )}
+        <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+          {tabBtn("receive", "\u26a1 Receive")}
+          {tabBtn("send", "\u2197 Send")}
+        </div>
 
-        {err && (
-          <div style={{
-            marginTop: 12, padding: 10, borderRadius: T.rs,
-            background: T.redDim, border: `1px solid ${T.red}44`,
-            color: T.red, fontFamily: T.mono, fontSize: 10,
-          }}>
-            {err}
+        {/* RECEIVE */}
+        {tab === "receive" && !invoice && (<>
+          <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono, marginBottom: 4, letterSpacing: 1 }}>AMOUNT (SATS)</div>
+          <input type="number" value={amountSats} onChange={(e) => setAmountSats(e.target.value)} style={{ ...inputStyle, marginBottom: 12 }} />
+          <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono, marginBottom: 4, letterSpacing: 1 }}>DESCRIPTION</div>
+          <input type="text" value={description} onChange={(e) => setDescription(e.target.value)} style={{ ...inputStyle, marginBottom: 16 }} />
+          <button disabled={busy} onClick={handleGenerate} style={{
+            width: "100%", padding: "12px 16px", borderRadius: T.rs,
+            background: busy ? T.surface : T.accent, border: `1px solid ${T.accent}`,
+            color: busy ? T.muted : "#000", fontFamily: T.mono, fontSize: 12, fontWeight: 800,
+            cursor: busy ? "not-allowed" : "pointer",
+          }}>{busy ? "Generating..." : "\u26a1 Generate Lightning invoice"}</button>
+        </>)}
+
+        {tab === "receive" && invoice && (<>
+          <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono, marginBottom: 8, letterSpacing: 1, textAlign: "center" }}>SCAN OR COPY TO PAY</div>
+          <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}>
+            <Suspense fallback={<div style={{ width: 200, height: 200, background: T.surface, borderRadius: T.rs }} />}>
+              <QRCode data={invoice} size={200} fgColor="#a78bfa" />
+            </Suspense>
           </div>
-        )}
+          <div style={{ padding: 8, marginBottom: 12, borderRadius: T.rs, background: T.surface, border: `1px solid ${T.border}`, fontFamily: T.mono, fontSize: 8, color: T.muted, wordBreak: "break-all", maxHeight: 60, overflowY: "auto", textAlign: "center" }}>{invoice}</div>
+          <button onClick={() => copyText(invoice)} style={{ width: "100%", padding: "10px 16px", borderRadius: T.rs, background: T.accentDim, border: `1px solid ${T.accent}44`, color: T.accent, fontFamily: T.mono, fontSize: 11, fontWeight: 700, cursor: "pointer", marginBottom: 8 }}>Copy invoice</button>
+          <button onClick={() => setInvoice(null)} style={{ width: "100%", padding: "10px 16px", borderRadius: T.rs, background: T.surface, border: `1px solid ${T.border}`, color: T.muted, fontFamily: T.mono, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>New invoice</button>
+        </>)}
+
+        {/* SEND */}
+        {tab === "send" && !ecashOutput && (<>
+          <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+            <button onClick={() => setSendType("lightning")} style={{ flex: 1, padding: "6px 0", borderRadius: T.rs, border: sendType === "lightning" ? `1px solid ${T.accent}` : `1px solid ${T.border}`, background: sendType === "lightning" ? T.accentDim : T.surface, color: sendType === "lightning" ? T.accent : T.muted, fontFamily: T.mono, fontSize: 10, cursor: "pointer" }}>Lightning</button>
+            <button onClick={() => setSendType("ecash")} style={{ flex: 1, padding: "6px 0", borderRadius: T.rs, border: sendType === "ecash" ? `1px solid ${T.amber}` : `1px solid ${T.border}`, background: sendType === "ecash" ? T.amberDim : T.surface, color: sendType === "ecash" ? T.amber : T.muted, fontFamily: T.mono, fontSize: 10, cursor: "pointer" }}>Ecash</button>
+          </div>
+
+          {sendType === "lightning" && (<>
+            <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono, marginBottom: 4, letterSpacing: 1 }}>PASTE LIGHTNING INVOICE</div>
+            <textarea value={bolt11Input} onChange={(e) => setBolt11Input(e.target.value)} placeholder="lnbc1..." rows={3} style={{ ...inputStyle, resize: "vertical" as const, marginBottom: 12, minHeight: 60 }} />
+            <button disabled={busy} onClick={handlePayInvoice} style={{ width: "100%", padding: "12px 16px", borderRadius: T.rs, background: busy ? T.surface : T.red, border: `1px solid ${T.red}`, color: busy ? T.muted : "#fff", fontFamily: T.mono, fontSize: 12, fontWeight: 800, cursor: busy ? "not-allowed" : "pointer" }}>{busy ? "Sending..." : "\u26a1 Pay invoice"}</button>
+          </>)}
+
+          {sendType === "ecash" && (<>
+            <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono, marginBottom: 4, letterSpacing: 1 }}>AMOUNT (SATS)</div>
+            <input type="number" value={amountSats} onChange={(e) => setAmountSats(e.target.value)} style={{ ...inputStyle, marginBottom: 12 }} />
+            <div style={{ display: "flex", gap: 8 }}>
+              <button disabled={busy} onClick={handleSpendAmount} style={{ flex: 1, padding: "12px 8px", borderRadius: T.rs, background: busy ? T.surface : T.amber, border: `1px solid ${T.amber}`, color: busy ? T.muted : "#000", fontFamily: T.mono, fontSize: 11, fontWeight: 800, cursor: busy ? "not-allowed" : "pointer" }}>{busy ? "Creating..." : "Create ecash"}</button>
+              <button disabled={busy} onClick={handleSpendAll} style={{ flex: 1, padding: "12px 8px", borderRadius: T.rs, background: busy ? T.surface : T.red, border: `1px solid ${T.red}`, color: busy ? T.muted : "#fff", fontFamily: T.mono, fontSize: 11, fontWeight: 800, cursor: busy ? "not-allowed" : "pointer" }}>{`Send ALL (${Math.floor(balanceMsats / 1000)} sats)`}</button>
+            </div>
+          </>)}
+        </>)}
+
+        {tab === "send" && ecashOutput && (<>
+          <div style={{ fontSize: 10, color: T.amber, fontFamily: T.mono, marginBottom: 8, letterSpacing: 1, textAlign: "center" }}>ECASH NOTES \u2014 COPY AND SEND TO RECIPIENT</div>
+          <div style={{ padding: 8, marginBottom: 12, borderRadius: T.rs, background: T.surface, border: `1px solid ${T.border}`, fontFamily: T.mono, fontSize: 8, color: T.text, wordBreak: "break-all", maxHeight: 100, overflowY: "auto" }}>{ecashOutput}</div>
+          <button onClick={() => copyText(ecashOutput)} style={{ width: "100%", padding: "10px 16px", borderRadius: T.rs, background: T.amberDim, border: `1px solid ${T.amber}44`, color: T.amber, fontFamily: T.mono, fontSize: 11, fontWeight: 700, cursor: "pointer", marginBottom: 8 }}>Copy ecash notes</button>
+          <button onClick={() => setEcashOutput(null)} style={{ width: "100%", padding: "10px 16px", borderRadius: T.rs, background: T.surface, border: `1px solid ${T.border}`, color: T.muted, fontFamily: T.mono, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Done</button>
+        </>)}
+
+        {success && <div style={{ marginTop: 12, padding: 10, borderRadius: T.rs, background: T.greenDim, border: `1px solid ${T.green}44`, color: T.green, fontFamily: T.mono, fontSize: 10 }}>{success}</div>}
+        {err && <div style={{ marginTop: 12, padding: 10, borderRadius: T.rs, background: T.redDim, border: `1px solid ${T.red}44`, color: T.red, fontFamily: T.mono, fontSize: 10 }}>{err}</div>}
       </div>
     </div>
   );
 }
 
-// ══════════════════════════════════════════════════════════════════════════
 // MAIN APP
 // ══════════════════════════════════════════════════════════════════════════
 
