@@ -65,11 +65,6 @@ export function createMockWallet(): IFedimintWallet {
       async waitForAllRecoveries() {},
     },
 
-    recovery: {
-      async hasPendingRecoveries() { return false; },
-      async waitForAllRecoveries() {},
-    },
-
     async joinFederation(_inviteCode: string) {
       joined = true;
       // Give the user their welcome "sats" on first join
