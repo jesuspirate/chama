@@ -363,7 +363,7 @@ function ConnectScreen({ onConnect, onConnectNIP46, onConnectNsec, loading, erro
         <div style={{
           fontSize: 56, lineHeight: 1, marginBottom: 16,
           filter: "drop-shadow(0 0 20px #f7931a44)",
-        }}>\u20bf</div>
+        }}>₿</div>
         <div style={{
           fontSize: 28, fontWeight: 800, fontFamily: T.sans,
           letterSpacing: -0.5, marginBottom: 6, color: T.text,
@@ -374,17 +374,18 @@ function ConnectScreen({ onConnect, onConnectNIP46, onConnectNsec, loading, erro
           fontSize: 10, color: T.muted, fontFamily: T.mono,
           letterSpacing: 3, textTransform: "uppercase",
         }}>
-          Nostr \u00b7 Fedimint \u00b7 SSS
+          Nostr · Fedimint · SSS
         </div>
       </div>
 
       {/* Friendly tagline */}
       <div style={{
-        maxWidth: 300, fontSize: 15, color: T.muted, lineHeight: 1.7,
+        maxWidth: 300, fontSize: 14, color: T.muted, lineHeight: 1.8,
         fontFamily: T.sans, marginBottom: 32,
       }}>
-        Trade Bitcoin peer-to-peer.{" "}
-        <span style={{ color: T.text }}>No middleman. No bank. Just you.</span>
+        Pay bills with Bitcoin. Send money home.
+        <br />
+        <span style={{ color: T.text }}>Build your circular economy.</span>
       </div>
 
       {error && (
@@ -494,7 +495,7 @@ function ConnectScreen({ onConnect, onConnectNIP46, onConnectNsec, loading, erro
               onMouseEnter={(e) => (e.currentTarget.style.color = T.text)}
               onMouseLeave={(e) => (e.currentTarget.style.color = T.muted)}
             >
-              {showAdvanced ? "\u25b2 Hide advanced" : "\u25bc More sign-in options"}
+              {showAdvanced ? "▲ Hide advanced" : "▼ More sign-in options"}
             </div>
             {showAdvanced && <NsecLogin onSubmit={onConnectNsec} />}
           </>
@@ -506,9 +507,9 @@ function ConnectScreen({ onConnect, onConnectNIP46, onConnectNsec, loading, erro
         marginTop: 40, fontSize: 9, color: T.muted + "66", fontFamily: T.mono,
         lineHeight: 1.8, maxWidth: 280,
       }}>
-        Your keys, your coins. Chama never touches your funds.
+        Your keys, your coins. No server. No custodian.
         <br />
-        Powered by Nostr relays + Fedimint ecash.
+        Powered by community trust + Bitcoin.
       </div>
     </div>
   );
