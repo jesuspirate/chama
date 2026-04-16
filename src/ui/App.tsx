@@ -2110,7 +2110,19 @@ export default function App() {
   const [showAdvancedFederation, setShowAdvancedFederation] = useState(false);
   const [customInviteInput, setCustomInviteInput] = useState("");
 
-  const escrowList = [...escrows.values()].sort((a, b) => b.createdAt - a.createdAt);
+  // Filter trades: hide expired+terminal, and trades stuck in replay-failed state
+  const now = Math.floor(Date.now() / 1000);
+  const HIDE_AFTER = 7 * 86400; // hide completed/claimed trades older than 7 days
+  const escrowList = [...escrows.values()]
+    .filter(s => {
+      // Always show active trades (CREATED, FUNDED, LOCKED, APPROVED)
+      if (["CREATED", "FUNDED", "LOCKED", "APPROVED"].includes(s.status)) return true;
+      // Show CLAIMED/COMPLETED trades for 7 days after creation
+      if (s.createdAt && (now - s.createdAt) > HIDE_AFTER) return false;
+      // Show everything else
+      return true;
+    })
+    .sort((a, b) => b.createdAt - a.createdAt);
   const selected = selectedId ? escrows.get(selectedId) : null;
 
   const handleCreate = async (params: any) => {
