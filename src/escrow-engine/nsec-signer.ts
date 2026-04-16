@@ -57,13 +57,16 @@ export class NsecSigner implements Signer {
   }
 
   async nip44Encrypt(plaintext: string, recipientPubkey: string): Promise<string> {
-    // For now, return plaintext (NIP-44 encryption with nostr-tools
-    // requires additional setup). The ENCRYPTION_CONFIG toggle
-    // keeps everything plaintext in dev mode anyway.
-    return plaintext;
+    await this.init();
+    const { nip44 } = await import("nostr-tools");
+    const conversationKey = nip44.v2.utils.getConversationKey(this.secretKey, recipientPubkey);
+    return nip44.v2.encrypt(plaintext, conversationKey);
   }
 
   async nip44Decrypt(ciphertext: string, senderPubkey: string): Promise<string> {
-    return ciphertext;
+    await this.init();
+    const { nip44 } = await import("nostr-tools");
+    const conversationKey = nip44.v2.utils.getConversationKey(this.secretKey, senderPubkey);
+    return nip44.v2.decrypt(ciphertext, conversationKey);
   }
 }
