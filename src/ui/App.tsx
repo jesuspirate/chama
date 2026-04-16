@@ -339,7 +339,7 @@ function NsecLogin({ onSubmit }: { onSubmit: (nsec: string, remember: boolean) =
   );
 }
 
-function ConnectScreen({ onConnect, onConnectNIP46, onConnectNsec, onScanQR, loading, error, nip46Uri, nip46Waiting }: {
+function ConnectScreen({ onConnect, onConnectNIP46, onConnectNsec, loading, error, nip46Uri, nip46Waiting }: {
   onConnect: () => void;
   onConnectNIP46: () => void;
   onConnectNsec: (nsec: string, remember: boolean) => void | Promise<void>;
@@ -348,52 +348,66 @@ function ConnectScreen({ onConnect, onConnectNIP46, onConnectNsec, onScanQR, loa
   nip46Uri?: string | null;
   nip46Waiting?: boolean;
 }) {
+  const isNative = Capacitor.isNativePlatform();
+  const [showAdvanced, setShowAdvanced] = useState(false);
+
   return (
     <div style={{
       display: "flex", flexDirection: "column", alignItems: "center",
-      justifyContent: "center", minHeight: "100vh", padding: 32,
-      textAlign: "center", gap: 24,
+      justifyContent: "center", minHeight: "100vh", padding: "40px 24px",
+      textAlign: "center",
+      background: `radial-gradient(ellipse at 50% 0%, ${T.accent}08 0%, transparent 60%)`,
     }}>
-      <div style={{ fontSize: 48, lineHeight: 1 }}>₿</div>
-      <div>
-        <div style={{ fontSize: 24, fontWeight: 700, fontFamily: T.mono, letterSpacing: -1, marginBottom: 8 }}>
+      {/* Logo + branding */}
+      <div style={{ marginBottom: 32 }}>
+        <div style={{
+          fontSize: 56, lineHeight: 1, marginBottom: 16,
+          filter: "drop-shadow(0 0 20px #f7931a44)",
+        }}>\u20bf</div>
+        <div style={{
+          fontSize: 28, fontWeight: 800, fontFamily: T.sans,
+          letterSpacing: -0.5, marginBottom: 6, color: T.text,
+        }}>
           Chama
         </div>
-        <div style={{ fontSize: 11, color: T.muted, fontFamily: T.mono, letterSpacing: 2, textTransform: "uppercase" }}>
-          Nostr · Fedimint · SSS Escrow
+        <div style={{
+          fontSize: 10, color: T.muted, fontFamily: T.mono,
+          letterSpacing: 3, textTransform: "uppercase",
+        }}>
+          Nostr \u00b7 Fedimint \u00b7 SSS
         </div>
       </div>
 
+      {/* Friendly tagline */}
       <div style={{
-        maxWidth: 320, fontSize: 13, color: T.muted, lineHeight: 1.7,
-        fontFamily: T.sans,
+        maxWidth: 300, fontSize: 15, color: T.muted, lineHeight: 1.7,
+        fontFamily: T.sans, marginBottom: 32,
       }}>
-        Non-custodial P2P trading powered by Nostr relays, Fedimint ecash, and 2-of-3 Shamir Secret Sharing. No server. No custodian.
+        Trade Bitcoin peer-to-peer.{" "}
+        <span style={{ color: T.text }}>No middleman. No bank. Just you.</span>
       </div>
 
       {error && (
         <div style={{
-          padding: "10px 16px", borderRadius: T.rs,
+          padding: "10px 16px", borderRadius: T.rs, marginBottom: 16,
           background: T.redDim, border: `1px solid ${T.red}33`,
-          color: T.red, fontSize: 12, fontFamily: T.mono,
-          maxWidth: 360, wordBreak: "break-word",
+          color: T.red, fontSize: 11, fontFamily: T.mono,
+          maxWidth: 340, wordBreak: "break-word",
         }}>
           {error}
         </div>
       )}
 
-      {/* NIP-46 connection — QR code + tappable link */}
+      {/* NIP-46 QR code display (when waiting for signer) */}
       {nip46Uri && (
         <div style={{
-          width: "100%", maxWidth: 340, padding: "20px",
+          width: "100%", maxWidth: 340, padding: 20, marginBottom: 16,
           background: T.purpleDim, border: `1px solid ${T.purple}33`,
           borderRadius: T.r, textAlign: "center",
         }}>
-          <div style={{ fontSize: 12, color: T.purple, fontFamily: T.mono, marginBottom: 14, fontWeight: 600 }}>
-            {nip46Waiting ? "Scan with Amber or Primal" : "Scan with Amber or Primal"}
+          <div style={{ fontSize: 13, color: T.purple, fontFamily: T.sans, marginBottom: 14, fontWeight: 600 }}>
+            Open your signer app and scan
           </div>
-
-          {/* QR Code */}
           <div style={{
             display: "flex", justifyContent: "center", marginBottom: 14,
             padding: 12, background: "#111118", borderRadius: 12,
@@ -402,98 +416,104 @@ function ConnectScreen({ onConnect, onConnectNIP46, onConnectNsec, onScanQR, loa
               <QRCode data={nip46Uri} size={200} fgColor="#a78bfa" />
             </Suspense>
           </div>
-
-          {/* Tappable link (mobile) */}
-          <a
-            href={nip46Uri}
-            style={{
-              display: "block", padding: "10px 12px",
-              background: T.surface, borderRadius: T.rs,
-              border: `1px solid ${T.border}`,
-              color: T.purple, fontFamily: T.mono, fontSize: 9,
-              wordBreak: "break-all", lineHeight: 1.4,
-              textDecoration: "none", marginBottom: 10,
-              maxHeight: 60, overflow: "hidden",
-            }}
-          >
-            {nip46Uri.slice(0, 80)}...
+          <a href={nip46Uri} style={{
+            display: "block", padding: "10px 12px", marginBottom: 10,
+            background: T.surface, borderRadius: T.rs, border: `1px solid ${T.border}`,
+            color: T.purple, fontFamily: T.mono, fontSize: 9,
+            wordBreak: "break-all", lineHeight: 1.4, textDecoration: "none",
+            maxHeight: 50, overflow: "hidden",
+          }}>
+            {nip46Uri.slice(0, 60)}...
           </a>
-
-          {/* Action buttons */}
-          <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
-            <button onClick={() => {
-              navigator.clipboard?.writeText(nip46Uri);
-            }} style={{
-              padding: "8px 20px", borderRadius: T.rs,
-              background: T.surface, border: `1px solid ${T.border}`,
-              color: T.muted, fontFamily: T.mono, fontSize: 10,
-              cursor: "pointer",
-            }}>
-              Copy link
-            </button>
-          </div>
-
+          <button onClick={() => navigator.clipboard?.writeText(nip46Uri)} style={{
+            padding: "8px 20px", borderRadius: T.rs,
+            background: T.surface, border: `1px solid ${T.border}`,
+            color: T.muted, fontFamily: T.mono, fontSize: 10, cursor: "pointer",
+          }}>Copy link</button>
           {nip46Waiting && (
             <div style={{
-              marginTop: 12, fontSize: 10, color: T.muted, fontFamily: T.mono,
+              marginTop: 12, fontSize: 10, color: T.purple, fontFamily: T.mono,
               animation: "pulse 2s ease-in-out infinite",
             }}>
-              Listening on relays for connection...
+              Waiting for your signer...
             </div>
           )}
         </div>
       )}
 
-      {/* NIP-07 button — only shown on desktop browsers, not in native apps */}
-      {!Capacitor.isNativePlatform() && (
-        <button
-          onClick={onConnect}
-          disabled={loading}
-          style={{
-            padding: "16px 48px", borderRadius: T.r,
-            background: loading ? T.surface : T.accent,
-            border: "none", color: loading ? T.muted : T.bg,
-            fontFamily: T.mono, fontSize: 14, fontWeight: 700,
-            cursor: loading ? "default" : "pointer",
-            letterSpacing: 0.5, transition: "all 0.2s",
-            minWidth: 260,
-          }}
-        >
-          {loading ? "Connecting…" : "⚡ Connect with Extension"}
-        </button>
-      )}
+      {/* Main action buttons */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 12, width: "100%", maxWidth: 320 }}>
 
-      {/* NIP-46 button — works everywhere (QR code / bunker) */}
-      <button
-        onClick={onConnectNIP46}
-        disabled={loading}
-        style={{
-          padding: "14px 40px", borderRadius: T.r,
-          background: loading ? T.surface : T.purpleDim,
-          border: `1px solid ${T.purple}44`,
-          color: loading ? T.muted : T.purple,
-          fontFamily: T.mono, fontSize: 13, fontWeight: 600,
-          cursor: loading ? "default" : "pointer",
-          letterSpacing: 0.3, transition: "all 0.2s",
-          minWidth: 260,
-        }}
-      >
-        {loading ? "Waiting for signer…" : "🔐 Connect with Signer (QR)"}
-      </button>
-
-      <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono, lineHeight: 1.8, textAlign: "center" }}>
-        {Capacitor.isNativePlatform() ? (
-          <>Signer QR: Amber, nsecBunker (mobile)<br />or paste nsec for built-in signer</>
+        {/* Primary: nsec sign in (native) or Extension (desktop) */}
+        {isNative ? (
+          <NsecLogin onSubmit={onConnectNsec} />
         ) : (
-          <>Extension: nos2x, Alby (desktop)<br />Signer QR: Amber, nsecBunker (any device)</>
+          <button
+            onClick={onConnect}
+            disabled={loading}
+            style={{
+              width: "100%", padding: "16px", borderRadius: T.r,
+              background: loading ? T.surface : T.accent,
+              border: "none", color: loading ? T.muted : T.bg,
+              fontFamily: T.sans, fontSize: 15, fontWeight: 700,
+              cursor: loading ? "default" : "pointer",
+              transition: "all 0.2s",
+            }}
+          >
+            {loading ? "Connecting..." : "Sign in with Extension"}
+          </button>
+        )}
+
+        {/* Secondary: NIP-46 signer */}
+        {!nip46Uri && (
+          <button
+            onClick={onConnectNIP46}
+            disabled={loading}
+            style={{
+              width: "100%", padding: "14px", borderRadius: T.r,
+              background: "transparent",
+              border: `1px solid ${T.border}`,
+              color: T.muted, fontFamily: T.sans, fontSize: 13, fontWeight: 600,
+              cursor: loading ? "default" : "pointer",
+              transition: "all 0.2s",
+            }}
+          >
+            {loading ? "Waiting..." : "Use a signer app"}
+          </button>
+        )}
+
+        {/* Desktop: show nsec option as advanced */}
+        {!isNative && (
+          <>
+            <div
+              onClick={() => setShowAdvanced(!showAdvanced)}
+              style={{
+                fontSize: 11, color: T.muted, fontFamily: T.mono,
+                cursor: "pointer", marginTop: 4, transition: "color 0.2s",
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.color = T.text)}
+              onMouseLeave={(e) => (e.currentTarget.style.color = T.muted)}
+            >
+              {showAdvanced ? "\u25b2 Hide advanced" : "\u25bc More sign-in options"}
+            </div>
+            {showAdvanced && <NsecLogin onSubmit={onConnectNsec} />}
+          </>
         )}
       </div>
 
-      {/* nsec fallback — hidden, tap to reveal */}
-      <NsecLogin onSubmit={onConnectNsec} />
+      {/* Footer */}
+      <div style={{
+        marginTop: 40, fontSize: 9, color: T.muted + "66", fontFamily: T.mono,
+        lineHeight: 1.8, maxWidth: 280,
+      }}>
+        Your keys, your coins. Chama never touches your funds.
+        <br />
+        Powered by Nostr relays + Fedimint ecash.
+      </div>
     </div>
   );
 }
+
 
 // ══════════════════════════════════════════════════════════════════════════
 // WALLET BAR
