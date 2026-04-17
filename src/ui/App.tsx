@@ -2093,30 +2093,35 @@ function FundWalletModal({ onClose, onCreateInvoice, onPayInvoice, onSpendNotes,
     return () => clearInterval(id);
   }, [invoice, received]);
 
-  // Watch for balance delta — the SDK's subscribeBalance pushes updates
-  // into balanceMsats automatically, so we just compare against the
-  // pre-invoice snapshot.
+  // Detect payment: watch balance delta against the pre-invoice snapshot.
+  // NOTE: `received` intentionally NOT in deps — we only flip it to true
+  // here, and including it would recreate this effect on the flip, firing
+  // its cleanup on the next effect in the chain. See v0.1.56 bug notes.
   useEffect(() => {
     if (!invoice || received || balanceAtInvoice === null) return;
     const delta = balanceMsats - balanceAtInvoice;
     if (delta >= expectedMsats && expectedMsats > 0) {
       setReceived(true);
-      // Subtle haptic celebration
       if (typeof navigator !== "undefined" && navigator.vibrate) {
         navigator.vibrate([40, 30, 40, 30, 120]);
       }
-      // Auto-clear the invoice view after a beat so the user sees the
-      // confirmation, then returns to a clean state.
-      const t = setTimeout(() => {
-        setInvoice(null);
-        setBalanceAtInvoice(null);
-        setExpectedMsats(0);
-        setInvoiceExpiresAt(null);
-        setReceived(false);
-      }, 3500);
-      return () => clearTimeout(t);
     }
-  }, [balanceMsats, balanceAtInvoice, expectedMsats, invoice, received]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [balanceMsats, balanceAtInvoice, expectedMsats, invoice]);
+
+  // Auto-close: once `received` flips true, schedule the reset. Separate
+  // effect so its setTimeout isn't cancelled by the detect effect re-running.
+  useEffect(() => {
+    if (!received) return;
+    const t = setTimeout(() => {
+      setInvoice(null);
+      setBalanceAtInvoice(null);
+      setExpectedMsats(0);
+      setInvoiceExpiresAt(null);
+      setReceived(false);
+    }, 3500);
+    return () => clearTimeout(t);
+  }, [received]);
 
   const handleGenerate = async () => {
     const n = parseInt(amountSats, 10);
