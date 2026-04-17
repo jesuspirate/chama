@@ -328,17 +328,11 @@ function handleLock(state: EscrowState, event: ParsedEscrowEvent<LockPayload>): 
   next.lock.notesHash = p.notesHash;
   next.lock.lockedAt = p.lockedAt;
 
-  // Store encrypted shares — supports both formats:
-  // Dual-encryption: { shareIndex, encryptedFor: { pubkey: ciphertext } }
-  // Legacy: { recipientPubkey, encryptedShare }
+  // Store encrypted shares — dual-encryption only (legacy format dropped
+  // in v0.1.60). Each share object is stored keyed by shareIndex so any
+  // participant can later look up any share and decrypt via encryptedFor.
   for (const share of p.shares) {
-    if (share.encryptedFor) {
-      // Dual-encryption format — store the whole share object by index
-      next.lock.shares.set(String(share.shareIndex), share);
-    } else if (share.recipientPubkey) {
-      // Legacy single-recipient format
-      next.lock.shares.set(share.recipientPubkey, share.encryptedShare);
-    }
+    next.lock.shares.set(String(share.shareIndex), share);
   }
 
   // Update fee breakdown from actual lock amounts

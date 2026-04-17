@@ -13,7 +13,7 @@
 
 import { type EscrowClient, type Signer } from "../escrow-engine/escrow-client.js";
 import { type FedimintClient, type SSSShare } from "./fedimint-client.js";
-import { type EscrowState, Role, Outcome } from "../escrow-engine/types.js";
+import { type EscrowState, type LockShareEntry, Role, Outcome } from "../escrow-engine/types.js";
 import { getWinner } from "../escrow-engine/state-machine.js";
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -119,24 +119,17 @@ export class EscrowFedimintBridge {
       throw new Error("Not enough shares available — state may be incomplete");
     }
 
-    // shares is a Map<pubkey, encryptedShare> — convert to array of entries
-    const sharesMap = state.lock.shares as Map<string, string>;
-    const shareEntries = [...sharesMap.entries()];
+    // shares is a Map<shareIndex-as-string, LockShareEntry>.
+    // Each entry holds the encryptedFor map for every participant, so
+    // we can pick any two entries for Shamir reconstruction.
+    const shareEntries = [...state.lock.shares.values()];
 
     if (shareEntries.length < 2) {
       throw new Error("Not enough shares: got " + shareEntries.length + ", need 2");
     }
 
-    // Normalize shares for decryptShareDual
-    // Map values could be: string (legacy) or object with encryptedFor (dual-encryption)
-    const val0 = shareEntries[0][1];
-    const val1 = shareEntries[1][1];
-    const share0 = (typeof val0 === "object" && val0?.encryptedFor)
-      ? val0  // Already dual-encryption format — pass directly
-      : { encryptedShare: val0, recipientPubkey: shareEntries[0][0] };
-    const share1 = (typeof val1 === "object" && val1?.encryptedFor)
-      ? val1  // Already dual-encryption format — pass directly
-      : { encryptedShare: val1, recipientPubkey: shareEntries[1][0] };
+    const share0 = shareEntries[0];
+    const share1 = shareEntries[1];
 
     // Find the locker's pubkey from the LOCK event in the chain
     // NIP-44 decrypt needs the sender's pubkey (the person who encrypted)
@@ -201,21 +194,21 @@ export class EscrowFedimintBridge {
 
   /**
    * Decrypt a share using the dual-encryption format.
-   * Looks up own pubkey in encryptedFor map, or falls back to legacy single share.
+   * Looks up own pubkey in encryptedFor map and NIP-44-decrypts with
+   * the locker's pubkey as the sender.
    */
-  private async decryptShareDual(share: any, myPubkey: string, lockerPubkey: string): Promise<SSSShare> {
-    // Dual-encryption format: share.encryptedFor[myPubkey]
-    // NIP-44 decrypt needs the sender (locker) pubkey, not our own
-    if (share.encryptedFor && share.encryptedFor[myPubkey]) {
-      return this.decryptShare(share.encryptedFor[myPubkey], lockerPubkey);
+  private async decryptShareDual(
+    share: LockShareEntry,
+    myPubkey: string,
+    lockerPubkey: string,
+  ): Promise<SSSShare> {
+    const ciphertext = share.encryptedFor[myPubkey];
+    if (!ciphertext) {
+      throw new Error(
+        `No encrypted share found for pubkey ${myPubkey.slice(0, 8)}...`
+      );
     }
-
-    // Legacy format: share.encryptedShare (single recipient)
-    if (share.encryptedShare) {
-      return this.decryptShare(share.encryptedShare, lockerPubkey);
-    }
-
-    throw new Error(`No encrypted share found for pubkey ${myPubkey.slice(0, 8)}...`);
+    return this.decryptShare(ciphertext, lockerPubkey);
   }
 
   /** Encrypt an SSS share to a recipient pubkey */
@@ -263,20 +256,24 @@ export class EscrowFedimintBridge {
 
   /**
    * Get our own encrypted share from the escrow state.
-   * The locker encrypted it to our pubkey.
+   * The locker encrypted it to our pubkey as part of the dual-encryption map.
+   * Returns the ciphertext and the locker's pubkey (needed for NIP-44 decrypt).
    */
   private getMyEncryptedShare(
     state: EscrowState,
     myPubkey: string
   ): { encryptedShare: string; senderPubkey: string } | null {
-    const share = state.lock.shares.get(myPubkey);
-    if (!share) return null;
-
-    // The locker's pubkey is whoever published the LOCK event
-    const lockEvent = state.eventChain.find(e => e.kind === 38102); // EscrowEventKind.LOCK
-    const senderPubkey = lockEvent?.pubkey || state.initiator.pubkey;
-
-    return { encryptedShare: share, senderPubkey };
+    // Any share will do — they're all encrypted to every participant.
+    // Pick the first one that has a ciphertext for us.
+    for (const share of state.lock.shares.values()) {
+      const ciphertext = share.encryptedFor[myPubkey];
+      if (ciphertext) {
+        const lockEvent = state.eventChain.find(e => e.kind === 38102);
+        const senderPubkey = lockEvent?.pubkey || state.initiator.pubkey;
+        return { encryptedShare: ciphertext, senderPubkey };
+      }
+    }
+    return null;
   }
 
   /**
@@ -314,11 +311,17 @@ export class EscrowFedimintBridge {
     const partnerPubkey = state.participants[partnerRole];
     if (!partnerPubkey) return null;
 
-    // Look for the partner's share (which they re-encrypted to us)
-    const share = state.lock.shares.get(partnerPubkey);
-    if (!share) return null;
-
-    return { encryptedShare: share, senderPubkey: partnerPubkey };
+    // Look for any share where the partner has an entry in encryptedFor.
+    // Under dual-encryption any share object contains a ciphertext for
+    // every participant (including partner), so we iterate until we find
+    // the partner's ciphertext.
+    for (const share of state.lock.shares.values()) {
+      const ciphertext = share.encryptedFor[partnerPubkey];
+      if (ciphertext) {
+        return { encryptedShare: ciphertext, senderPubkey: partnerPubkey };
+      }
+    }
+    return null;
   }
 
   private getRoleForPubkey(state: EscrowState, pubkey: string): Role | null {

@@ -31,6 +31,7 @@ import {
   type CreatePayload,
   type JoinPayload,
   type LockPayload,
+  type LockShareEntry,
   type VotePayload,
   type ResolvePayload,
   type ClaimPayload,
@@ -470,7 +471,7 @@ export class EscrowClient {
 
   async lockEscrow(escrowId: string, params: {
     notesHash: string;
-    shares: { recipientPubkey: string; encryptedShare: string; shareIndex: number }[];
+    shares: LockShareEntry[];
     sellerReceivesMsats: number;
     arbiterFeeMsats: number;
     platformFeeMsats: number;

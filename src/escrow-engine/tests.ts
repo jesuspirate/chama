@@ -122,9 +122,9 @@ function lockEvent(prevId: string): ParsedEscrowEvent<LockPayload> {
     type: "escrow:lock",
     notesHash: "hash_of_ecash_notes_abc123",
     shares: [
-      { recipientPubkey: BUYER_PK,   encryptedShare: "enc_share_0", shareIndex: 0 },
-      { recipientPubkey: SELLER_PK,  encryptedShare: "enc_share_1", shareIndex: 1 },
-      { recipientPubkey: ARBITER_PK, encryptedShare: "enc_share_2", shareIndex: 2 },
+      { shareIndex: 0, encryptedFor: { [BUYER_PK]: "enc_0_for_buyer", [SELLER_PK]: "enc_0_for_seller", [ARBITER_PK]: "enc_0_for_arbiter" } },
+      { shareIndex: 1, encryptedFor: { [BUYER_PK]: "enc_1_for_buyer", [SELLER_PK]: "enc_1_for_seller", [ARBITER_PK]: "enc_1_for_arbiter" } },
+      { shareIndex: 2, encryptedFor: { [BUYER_PK]: "enc_2_for_buyer", [SELLER_PK]: "enc_2_for_seller", [ARBITER_PK]: "enc_2_for_arbiter" } },
     ],
     sellerReceivesMsats: 98_500_000,
     arbiterFeeMsats: 1_000_000,
@@ -359,9 +359,9 @@ console.log("\n── LOCK ──");
     type: "escrow:lock" as const,
     notesHash: "hash",
     shares: [
-      { recipientPubkey: BUYER_PK, encryptedShare: "s0", shareIndex: 0 },
-      { recipientPubkey: SELLER_PK, encryptedShare: "s1", shareIndex: 1 },
-      { recipientPubkey: ARBITER_PK, encryptedShare: "s2", shareIndex: 2 },
+      { shareIndex: 0, encryptedFor: { [BUYER_PK]: "s0b", [SELLER_PK]: "s0s", [ARBITER_PK]: "s0a" } },
+      { shareIndex: 1, encryptedFor: { [BUYER_PK]: "s1b", [SELLER_PK]: "s1s", [ARBITER_PK]: "s1a" } },
+      { shareIndex: 2, encryptedFor: { [BUYER_PK]: "s2b", [SELLER_PK]: "s2s", [ARBITER_PK]: "s2a" } },
     ],
     sellerReceivesMsats: 90_000_000, // Doesn't add up
     arbiterFeeMsats: 1_000_000,
@@ -376,9 +376,9 @@ console.log("\n── LOCK ──");
     type: "escrow:lock" as const,
     notesHash: "hash",
     shares: [
-      { recipientPubkey: BUYER_PK, encryptedShare: "s0", shareIndex: 0 },
-      { recipientPubkey: SELLER_PK, encryptedShare: "s1", shareIndex: 1 },
-      { recipientPubkey: ARBITER_PK, encryptedShare: "s2", shareIndex: 2 },
+      { shareIndex: 0, encryptedFor: { [BUYER_PK]: "bl0b", [SELLER_PK]: "bl0s", [ARBITER_PK]: "bl0a" } },
+      { shareIndex: 1, encryptedFor: { [BUYER_PK]: "bl1b", [SELLER_PK]: "bl1s", [ARBITER_PK]: "bl1a" } },
+      { shareIndex: 2, encryptedFor: { [BUYER_PK]: "bl2b", [SELLER_PK]: "bl2s", [ARBITER_PK]: "bl2a" } },
     ],
     sellerReceivesMsats: 98_500_000,
     arbiterFeeMsats: 1_000_000,

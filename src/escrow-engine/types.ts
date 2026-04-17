@@ -185,22 +185,22 @@ export interface JoinPayload {
   joinedAt: number;
 }
 
+/** Single share in a LOCK event's shares[] array.
+ *  `encryptedFor` is keyed by participant pubkey → NIP-44 ciphertext. */
+export interface LockShareEntry {
+  shareIndex: number;
+  encryptedFor: Record<string, string>;
+}
+
 /** Content of a LOCK event */
 export interface LockPayload {
   type: "escrow:lock";
   /** Hash of the full ecash notes (for verification) */
   notesHash: string;
-  /** SSS shares — each encrypted to ALL participants for dual-encryption */
-  shares: {
-    shareIndex: number;
-    /** Map of recipientPubkey → NIP-44 encrypted share blob.
-     *  Each share is encrypted separately to each participant so
-     *  any participant can decrypt any share. */
-    encryptedFor: Record<string, string>;
-    /** Legacy: single encrypted share (backward compat with pre-v0.1.33 locks) */
-    recipientPubkey?: string;
-    encryptedShare?: string;
-  }[];
+  /** SSS shares — each encrypted to ALL participants for dual-encryption.
+   *  Every share is NIP-44 encrypted separately to each participant's
+   *  pubkey, so any participant can decrypt any share. */
+  shares: LockShareEntry[];
   /** Breakdown of amounts */
   sellerReceivesMsats: number;
   arbiterFeeMsats: number;
@@ -452,8 +452,10 @@ export interface EscrowState {
   lock: {
     notesHash: string | null;
     lockedAt: number | null;
-    /** Encrypted SSS shares per participant */
-    shares: Map<string, string>; // pubkey → encrypted share
+    /** Encrypted SSS shares, keyed by share index (stringified).
+     *  Each entry contains the encryptedFor map so any participant can
+     *  decrypt any share they need for Shamir reconstruction. */
+    shares: Map<string, LockShareEntry>;
   };
 
   /** Claim details */
