@@ -51,6 +51,18 @@ const ROLE_ICON  = { buyer: "B", seller: "S", arbiter: "A" };
 const CAT_ICON = { "p2p-trade": "⚡", "bill-pay": "🧾", marketplace: "🏪", lending: "🤝" } as Record<string, string>;
 const CAT_LABEL: Record<string, string> = { "p2p-trade": "⚡ P2P Trade", "bill-pay": "🧾 Bill Pay", marketplace: "🏪 Marketplace", lending: "🤝 Lending", "raw-escrow": "🔧 Raw Escrow" };
 
+// Browse tab category filter pills. `id` matches state.category values
+// (or "all"/"subscription" as cross-cutting filters). Icons match the
+// create-form palette so the two flows feel continuous.
+const BROWSE_CATS: { id: string; l: string; i: string }[] = [
+  { id: "all",          l: "All",          i: "" },
+  { id: "p2p-trade",    l: "P2P Trade",    i: "⚡" },
+  { id: "bill-pay",     l: "Bill Pay",     i: "🧾" },
+  { id: "marketplace",  l: "Marketplace",  i: "🏪" },
+  { id: "lending",      l: "Lending",      i: "🤝" },
+  { id: "subscription", l: "Subscription", i: "🔄" },
+];
+
 const fmtSats = (ms: number) => Math.floor(ms / 1000).toLocaleString();
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -2540,7 +2552,7 @@ export default function App() {
           </div>
         </div>
         <div style={{ fontSize: 9, color: T.muted, fontFamily: T.mono, padding: "4px 10px", borderRadius: 6, background: T.surface, border: `1px solid ${T.border}` }}>
-          v0.1.53
+          v0.1.54
         </div>
       </div>
 
