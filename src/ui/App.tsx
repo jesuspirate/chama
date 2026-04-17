@@ -1031,6 +1031,7 @@ function TradeDetail({ state, pubkey, onBack, onVote, onClaim, onJoin, onLock, o
   onReady: () => Promise<void>;
   onKick: (targetRole: Role, reason: string) => Promise<void>;
   onSendChat: (message: string) => void;
+  onReleasePeriod?: (periodIndex: number) => void | Promise<void>;
 }) {
   const [voting, setVoting] = useState(false);
   const [joining, setJoining] = useState(false);
@@ -1129,7 +1130,7 @@ function TradeDetail({ state, pubkey, onBack, onVote, onClaim, onJoin, onLock, o
           subscription={state.subscription}
           onRelease={async (periodIndex) => {
             try {
-              await onReleasePeriod(periodIndex);
+              await onReleasePeriod?.(periodIndex);
             } catch (e: any) {
               console.error("[chama] Period release failed:", e);
             }
@@ -2104,7 +2105,7 @@ function FundWalletModal({ onClose, onCreateInvoice, onPayInvoice, onSpendNotes,
   // Detect payment: watch balance delta against the pre-invoice snapshot.
   // NOTE: `received` intentionally NOT in deps — we only flip it to true
   // here, and including it would recreate this effect on the flip, firing
-  // its cleanup on the next effect in the chain. See v0.1.58 bug notes.
+  // its cleanup on the next effect in the chain. See v0.1.59 bug notes.
   useEffect(() => {
     if (!invoice || received || balanceAtInvoice === null) return;
     const delta = balanceMsats - balanceAtInvoice;
@@ -2701,7 +2702,7 @@ export default function App() {
                 setToast({ message: e.message || "Kick failed", type: "error" });
               }
             }}
-            onReleasePeriod={async (periodIndex) => {
+            onReleasePeriod={async (periodIndex: number) => {
               try {
                 await actions.releasePeriod(selectedId!, periodIndex);
                 setToast({ message: "Period " + (periodIndex + 1) + " released!", type: "success" });

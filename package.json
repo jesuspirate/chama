@@ -1,7 +1,7 @@
 {
   "name": "satoshi-nostr-app",
   "private": true,
-  "version": "0.1.58",
+  "version": "0.1.59",
   "type": "module",
   "description": "Chama — Nostr-native P2P escrow client. Non-custodial. No server.",
   "scripts": {

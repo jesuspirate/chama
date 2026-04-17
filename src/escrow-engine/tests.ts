@@ -684,7 +684,7 @@ console.log("\n── CHAT ──");
     message: "Hey, I'm ready to trade!",
     senderRole: Role.BUYER,
     sentAt: NOW,
-  });
+  }) as unknown as ParsedEscrowEvent<LockPayload>;
 
   const r = applyEvent(state, chat);
   if (assertOk(r, "Chat message accepted")) {

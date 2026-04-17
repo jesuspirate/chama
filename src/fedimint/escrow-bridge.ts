@@ -327,4 +327,19 @@ export class EscrowFedimintBridge {
     if (state.participants[Role.ARBITER] === pubkey) return Role.ARBITER;
     return null;
   }
+
+  // ── Wallet passthrough: used by Fund Wallet modal ──────────────────────
+  // These delegate to FedimintClient and are exposed on the bridge so the
+  // UI can route ALL money operations through a single object. Keeps the
+  // hook layer consistent (always calls bridge.*) and makes it easy to
+  // add logging/metrics around wallet ops in one place.
+
+  async payInvoice(bolt11: string): Promise<void> {
+    await this.fedimint.payInvoice(bolt11);
+  }
+
+  async spendNotes(amountMsats: number): Promise<string> {
+    // FedimintClient exposes spendNotes via its wallet; route through there.
+    return await this.fedimint.spendNotes(amountMsats);
+  }
 }

@@ -55,11 +55,17 @@ interface RealFederationService {
   getInviteCode(peer?: number): Promise<string | null>;
 }
 
+interface RealRecoveryService {
+  hasPendingRecoveries(): Promise<boolean>;
+  waitForAllRecoveries(): Promise<void>;
+}
+
 export interface RealFedimintWallet {
   balance: RealBalanceService;
   mint: RealMintService;
   lightning: RealLightningService;
   federation: RealFederationService;
+  recovery: RealRecoveryService;
   open(clientName?: string): Promise<boolean>;
   joinFederation(inviteCode: string, clientName?: string): Promise<boolean>;
   cleanup(): Promise<void>;

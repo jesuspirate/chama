@@ -10,7 +10,7 @@
 // Future: upgrade to NIP-17 (kind:14 sealed sender) for better privacy.
 
 import type { EscrowState, Role } from "./types.js";
-import type { Signer } from "./signers.js";
+import type { Signer } from "./escrow-client.js";
 import type { RelayManager } from "./relay-manager.js";
 
 export interface NotificationConfig {

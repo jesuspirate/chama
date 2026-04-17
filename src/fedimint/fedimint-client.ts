@@ -36,10 +36,6 @@ export interface IFedimintWallet {
     hasPendingRecoveries(): Promise<boolean>;
     waitForAllRecoveries(): Promise<void>;
   };
-  recovery: {
-    hasPendingRecoveries(): Promise<boolean>;
-    waitForAllRecoveries(): Promise<void>;
-  };
 
   balance: {
     getBalance(): Promise<number>;
