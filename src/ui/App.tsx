@@ -2213,6 +2213,7 @@ export default function App() {
 
   const [view, setView] = useState<"list" | "detail" | "create">("list");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [tab, setTab] = useState<"browse" | "mine">("browse");
   const [nip46Uri, setNip46Uri] = useState<string | null>(null);
   const [loginSuccess, setLoginSuccess] = useState(false);
   const [nip46Waiting, setNip46Waiting] = useState(false);
@@ -2424,7 +2425,7 @@ export default function App() {
           </div>
         </div>
         <div style={{ fontSize: 9, color: T.muted, fontFamily: T.mono, padding: "4px 10px", borderRadius: 6, background: T.surface, border: `1px solid ${T.border}` }}>
-          v0.1.50
+          v0.1.51
         </div>
       </div>
 
