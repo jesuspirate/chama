@@ -1,14 +1,16 @@
 {
   "name": "satoshi-nostr-app",
   "private": true,
-  "version": "0.1.60",
+  "version": "0.1.61",
   "type": "module",
   "description": "Chama — Nostr-native P2P escrow client. Non-custodial. No server.",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "npx tsx src/escrow-engine/tests.ts"
+    "test": "npx tsx src/escrow-engine/tests.ts",
+    "typecheck": "tsc --noEmit",
+    "predeploy": "npm run typecheck && npm test"
   },
   "dependencies": {
     "@capacitor-mlkit/barcode-scanning": "^8.0.1",
