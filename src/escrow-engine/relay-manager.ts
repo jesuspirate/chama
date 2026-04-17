@@ -397,6 +397,23 @@ export class RelayManager {
     });
   }
 
+  /**
+   * Subscribe to all public CREATE events (open listings) across the network.
+   * Powers the Browse feed: trades anyone has posted, not just ones we're
+   * tagged in. CREATE payloads are plaintext so the UI can read them without
+   * being a participant.
+   *
+   * @param since Unix timestamp — only fetch CREATEs newer than this.
+   *              Default: 7 days ago. Prevents pulling the entire history.
+   */
+  subscribeToPublicListings(since?: number): string {
+    const sevenDaysAgo = Math.floor(Date.now() / 1000) - 7 * 86400;
+    return this.subscribe({
+      kinds: [EscrowEventKind.CREATE],
+      since: since ?? sevenDaysAgo,
+    });
+  }
+
   // ── One-shot fetch: get all events for an escrow ────────────────────────
 
   /**

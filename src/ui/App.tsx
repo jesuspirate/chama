@@ -14,6 +14,7 @@ import {
   COMMUNITY_LEADER_MESSAGE,
   DEFAULT_FEDERATION_INVITE,
 } from "../fedimint/federation-config.js";
+import { getFederationInvite } from "../fedimint/index.js";
 
 // ══════════════════════════════════════════════════════════════════════════
 // DESIGN TOKENS
@@ -2241,19 +2242,34 @@ export default function App() {
     })();
   }, [autoLoginChecked, connected, loading, actions]);
 
-  // Filter trades: hide expired+terminal, and trades stuck in replay-failed state
+  // Split trades into Browse (public, my federation, open) and My trades
+  // (anything I'm a participant in). Both share the hide-after-7-days rule
+  // for terminal states.
   const now = Math.floor(Date.now() / 1000);
-  const HIDE_AFTER = 7 * 86400; // hide completed/claimed trades older than 7 days
-  const escrowList = [...escrows.values()]
+  const HIDE_AFTER = 7 * 86400;
+  const myFederationInvite = fedimint.joined ? getFederationInvite() : null;
+
+  const visibleTrades = [...escrows.values()]
     .filter(s => {
-      // Always show active trades (CREATED, FUNDED, LOCKED, APPROVED)
       if (["CREATED", "FUNDED", "LOCKED", "APPROVED"].includes(s.status)) return true;
-      // Show CLAIMED/COMPLETED trades for 7 days after creation
       if (s.createdAt && (now - s.createdAt) > HIDE_AFTER) return false;
-      // Show everything else
       return true;
     })
     .sort((a, b) => b.createdAt - a.createdAt);
+
+  const isParticipant = (s: EscrowState) =>
+    s.participants.buyer === pubkey ||
+    s.participants.seller === pubkey ||
+    s.participants.arbiter === pubkey;
+
+  const myTrades = visibleTrades.filter(isParticipant);
+  const browseList = visibleTrades.filter(s =>
+    !isParticipant(s) &&
+    s.status === "CREATED" &&
+    (myFederationInvite ? s.mintUrl === myFederationInvite : false)
+  );
+  // Legacy name kept for any stragglers — points at My trades.
+  const escrowList = myTrades;
   const selected = selectedId ? escrows.get(selectedId) : null;
 
   const handleCreate = async (params: any) => {
@@ -2408,7 +2424,7 @@ export default function App() {
           </div>
         </div>
         <div style={{ fontSize: 9, color: T.muted, fontFamily: T.mono, padding: "4px 10px", borderRadius: 6, background: T.surface, border: `1px solid ${T.border}` }}>
-          v0.1.49
+          v0.1.50
         </div>
       </div>
 
@@ -2583,10 +2599,44 @@ export default function App() {
         </div>
       ) : (
         <div style={{ padding: 16 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-            <span style={{ fontSize: 14, fontWeight: 600, fontFamily: T.sans }}>
-              My trades <span style={{ fontSize: 11, color: T.muted, fontFamily: T.mono }}>{escrowList.length}</span>
-            </span>
+          {/* Tabs: Browse | My trades */}
+          <div style={{
+            display: "flex", gap: 4, marginBottom: 14,
+            padding: 4, background: T.surface,
+            borderRadius: 24, border: `1px solid ${T.border}`,
+          }}>
+            {(["browse", "mine"] as const).map(t => {
+              const active = tab === t;
+              const count = t === "browse" ? browseList.length : myTrades.length;
+              const label = t === "browse" ? "Browse" : "My trades";
+              return (
+                <button
+                  key={t}
+                  onClick={() => setTab(t)}
+                  style={{
+                    flex: 1, padding: "9px 12px", borderRadius: 20,
+                    background: active ? T.card : "transparent",
+                    border: "none",
+                    color: active ? T.text : T.muted,
+                    fontFamily: T.sans, fontSize: 12, fontWeight: 700,
+                    cursor: "pointer", transition: "all 0.15s",
+                    boxShadow: active ? `0 1px 3px ${T.bg}88` : "none",
+                    letterSpacing: 0.2,
+                  }}
+                >
+                  {label}
+                  <span style={{
+                    marginLeft: 6, fontSize: 10, color: T.muted, fontFamily: T.mono,
+                  }}>
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* + New trade */}
+          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
             <button onClick={() => setView("create")} style={{
               padding: "8px 16px", borderRadius: 20,
               background: T.accentDim, border: `1px solid ${T.accent}44`,
@@ -2597,39 +2647,52 @@ export default function App() {
             </button>
           </div>
 
-          {/* Load trade by ID */}
-          <LoadTradeInput onLoad={async (id) => {
-            try {
-              setToast({ message: "Loading from relays...", type: "info" });
-              const state = await actions.loadEscrow(id);
-              if (state) {
-                setToast({ message: "Trade loaded!", type: "success" });
-                setSelectedId(id);
-                setView("detail");
-              } else {
-                setToast({ message: "Trade not found on relays", type: "error" });
+          {/* Load-by-ID stays on My trades (power-user path) */}
+          {tab === "mine" && (
+            <LoadTradeInput onLoad={async (id) => {
+              try {
+                setToast({ message: "Loading from relays...", type: "info" });
+                const state = await actions.loadEscrow(id);
+                if (state) {
+                  setToast({ message: "Trade loaded!", type: "success" });
+                  setSelectedId(id);
+                  setView("detail");
+                } else {
+                  setToast({ message: "Trade not found on relays", type: "error" });
+                }
+              } catch (e: any) {
+                setToast({ message: e.message || "Failed to load", type: "error" });
               }
-            } catch (e: any) {
-              setToast({ message: e.message || "Failed to load", type: "error" });
-            }
-          }} />
-
-          {escrowList.length === 0 ? (
-            <div style={{
-              textAlign: "center", padding: "48px 16px",
-              color: T.muted, fontFamily: T.mono, fontSize: 12,
-            }}>
-              No trades yet. Create one or load by escrow ID.
-            </div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {escrowList.map((s, i) => (
-                <div key={s.id} style={{ animation: `fadeIn 0.4s ease ${i * 0.08}s both` }}>
-                  <TradeCard state={s} pubkey={pubkey!} onSelect={() => { setSelectedId(s.id); setView("detail"); }} />
-                </div>
-              ))}
-            </div>
+            }} />
           )}
+
+          {(() => {
+            const list = tab === "browse" ? browseList : myTrades;
+            if (list.length === 0) {
+              const emptyCopy = tab === "browse"
+                ? (fedimint.joined
+                    ? "No open listings in this federation yet. Be the first — tap + New trade."
+                    : "Join a federation to see open listings.")
+                : "No trades yet. Create one or load by escrow ID.";
+              return (
+                <div style={{
+                  textAlign: "center", padding: "48px 16px",
+                  color: T.muted, fontFamily: T.mono, fontSize: 12, lineHeight: 1.6,
+                }}>
+                  {emptyCopy}
+                </div>
+              );
+            }
+            return (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {list.map((s, i) => (
+                  <div key={s.id} style={{ animation: `fadeIn 0.4s ease ${i * 0.08}s both` }}>
+                    <TradeCard state={s} pubkey={pubkey!} onSelect={() => { setSelectedId(s.id); setView("detail"); }} />
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
 
           <div style={{
             marginTop: 24, padding: 16, background: T.surface,

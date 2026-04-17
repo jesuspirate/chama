@@ -762,6 +762,33 @@ export class EscrowClient {
     }
   }
 
+  /**
+   * Subscribe to all public trade listings (CREATE events) across relays.
+   * Powers the Browse tab. Events flow through the same onStateUpdate
+   * callback as individual escrow watches — the UI filters by "user is
+   * not a participant" to split Browse from My trades.
+   *
+   * Idempotent: safe to call multiple times.
+   *
+   * @param since Unix timestamp. Default: 7 days ago.
+   */
+  watchPublicListings(since?: number): void {
+    const label = "public-listings";
+    if (this.subscriptions.has(label)) return;
+    const subId = this.relayManager.subscribeToPublicListings(since);
+    this.subscriptions.set(label, subId);
+  }
+
+  /** Stop the Browse feed subscription. */
+  unwatchPublicListings(): void {
+    const label = "public-listings";
+    const subId = this.subscriptions.get(label);
+    if (subId) {
+      this.relayManager.unsubscribe(subId);
+      this.subscriptions.delete(label);
+    }
+  }
+
   /** Fetch and reconstruct full escrow state from relays */
   async loadEscrow(escrowId: string): Promise<EscrowState | null> {
     const rawEvents = await this.relayManager.fetchEscrowEvents(escrowId);

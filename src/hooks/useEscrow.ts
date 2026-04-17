@@ -178,6 +178,8 @@ export interface UseEscrowActions {
    * Nostr-backed seed survives and will be re-installed on next initFedimint().
    */
   resetLocalWallet: () => Promise<void>;
+  /** (Re-)start the Browse feed subscription for public listings. */
+  watchPublicListings: (since?: number) => void;
 }
 
 // ── Default relay list ────────────────────────────────────────────────────
@@ -315,6 +317,11 @@ export function useEscrow(config?: Partial<EscrowClientConfig>): [UseEscrowState
 
       client.connect();
       clientRef.current = client;
+
+      // Start Browse feed — subscribe to public CREATE events from the last 7 days.
+      // These flow through the same onStateUpdate callback and land in `escrows`;
+      // the UI filters by "am I a participant" to split Browse from My trades.
+      client.watchPublicListings();
 
       setState(prev => ({
         ...prev,
