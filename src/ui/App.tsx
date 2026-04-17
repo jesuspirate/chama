@@ -373,10 +373,18 @@ function ConnectScreen({ onConnect, onConnectNIP46, onConnectNsec, loading, erro
     }}>
       {/* Logo + branding */}
       <div style={{ marginBottom: 32 }}>
-        <div style={{
-          fontSize: 56, lineHeight: 1, marginBottom: 16,
-          filter: "drop-shadow(0 0 20px #f7931a44)",
-        }}>₿</div>
+        <img
+          src="/icons/chama-logo-128.png"
+          srcSet="/icons/chama-logo-128.png 1x, /icons/chama-logo-256.png 2x"
+          alt="Chama"
+          width={72}
+          height={72}
+          style={{
+            display: "block",
+            margin: "0 auto 16px",
+            filter: "drop-shadow(0 0 24px #f7931a33)",
+          }}
+        />
         <div style={{
           fontSize: 28, fontWeight: 800, fontFamily: T.sans,
           letterSpacing: -0.5, marginBottom: 6, color: T.text,
@@ -2096,7 +2104,7 @@ function FundWalletModal({ onClose, onCreateInvoice, onPayInvoice, onSpendNotes,
   // Detect payment: watch balance delta against the pre-invoice snapshot.
   // NOTE: `received` intentionally NOT in deps — we only flip it to true
   // here, and including it would recreate this effect on the flip, firing
-  // its cleanup on the next effect in the chain. See v0.1.57 bug notes.
+  // its cleanup on the next effect in the chain. See v0.1.58 bug notes.
   useEffect(() => {
     if (!invoice || received || balanceAtInvoice === null) return;
     const delta = balanceMsats - balanceAtInvoice;
