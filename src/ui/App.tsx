@@ -1770,7 +1770,7 @@ function FedimintBar({ fedimint, onFund, onInit }: {
   return (
     <div style={{
       display: "flex", alignItems: "center", justifyContent: "space-between",
-      padding: "10px 16px", background: T.surface,
+      padding: "12px 16px", background: T.surface,
       borderBottom: `1px solid ${T.border}`, fontFamily: T.mono,
     }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
@@ -1785,12 +1785,12 @@ function FedimintBar({ fedimint, onFund, onInit }: {
           fontSize: 10, color: T.muted,
           overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
         }}>
-          {fedimint.joined ? fedimint.federationName : fedimint.busy ? "Joining…" : "No federation"}
+          {fedimint.joined ? fedimint.federationName : fedimint.busy ? "Connecting wallet..." : "No federation"}
         </span>
         {fedimint.joined && (
           <>
-            <span style={{ color: T.border }}>·</span>
-            <span style={{ fontSize: 11, color: T.accent, fontWeight: 700 }}>
+            <span style={{ color: T.border }}>{String.fromCharCode(183)}</span>
+            <span style={{ fontSize: 13, color: T.accent, fontWeight: 800, letterSpacing: -0.3 }}>
               {sats.toLocaleString()} sats
             </span>
           </>
@@ -1798,16 +1798,18 @@ function FedimintBar({ fedimint, onFund, onInit }: {
       </div>
       {fedimint.joined ? (
         <button onClick={onFund} style={{
-          padding: "4px 12px", borderRadius: 12,
-          background: T.accentDim, border: `1px solid ${T.accent}44`,
-          color: T.accent, fontFamily: T.mono, fontSize: 10, fontWeight: 700,
-          cursor: "pointer",
+          padding: "6px 16px", borderRadius: 20,
+          background: `linear-gradient(135deg, ${T.accent}, ${T.accent}cc)`,
+          border: "none",
+          color: T.bg, fontFamily: T.sans, fontSize: 11, fontWeight: 700,
+          cursor: "pointer", letterSpacing: 0.3,
+          boxShadow: `0 2px 8px ${T.accent}33`,
         }}>
-          + Fund
+          Wallet
         </button>
       ) : !fedimint.busy && fedimint.initialized && (
         <button onClick={onInit} style={{
-          padding: "4px 12px", borderRadius: 12,
+          padding: "6px 16px", borderRadius: 20,
           background: T.surface, border: `1px solid ${T.border}`,
           color: T.muted, fontFamily: T.mono, fontSize: 10, fontWeight: 700,
           cursor: "pointer",
@@ -2406,7 +2408,7 @@ export default function App() {
           </div>
         </div>
         <div style={{ fontSize: 9, color: T.muted, fontFamily: T.mono, padding: "4px 10px", borderRadius: 6, background: T.surface, border: `1px solid ${T.border}` }}>
-          v0.1.33
+          v0.1.49
         </div>
       </div>
 
