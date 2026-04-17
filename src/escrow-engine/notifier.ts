@@ -10,7 +10,7 @@
 // Future: upgrade to NIP-17 (kind:14 sealed sender) for better privacy.
 
 import type { EscrowState, Role } from "./types.js";
-import type { ISigner } from "./signers.js";
+import type { Signer } from "./signers.js";
 import type { RelayManager } from "./relay-manager.js";
 
 export interface NotificationConfig {
@@ -28,11 +28,11 @@ export const DEFAULT_NOTIFICATION_CONFIG: NotificationConfig = {
 };
 
 export class EscrowNotifier {
-  private signer: ISigner;
+  private signer: Signer;
   private relayManager: RelayManager;
   private config: NotificationConfig;
 
-  constructor(signer: ISigner, relayManager: RelayManager, config?: Partial<NotificationConfig>) {
+  constructor(signer: Signer, relayManager: RelayManager, config?: Partial<NotificationConfig>) {
     this.signer = signer;
     this.relayManager = relayManager;
     this.config = { ...DEFAULT_NOTIFICATION_CONFIG, ...config };

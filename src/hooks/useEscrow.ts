@@ -769,6 +769,9 @@ export function useEscrow(config?: Partial<EscrowClientConfig>): [UseEscrowState
     },
     refreshBalance,
     resetLocalWallet,
+    watchPublicListings: (since?: number) => {
+      clientRef.current?.watchPublicListings(since);
+    },
   };
 
   return [state, actions];
