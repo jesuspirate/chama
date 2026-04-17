@@ -2320,6 +2320,7 @@ export default function App() {
   const [view, setView] = useState<"list" | "detail" | "create">("list");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [tab, setTab] = useState<"browse" | "mine">("browse");
+  const [browseCategory, setBrowseCategory] = useState<string>("all");
   const [nip46Uri, setNip46Uri] = useState<string | null>(null);
   const [loginSuccess, setLoginSuccess] = useState(false);
   const [nip46Waiting, setNip46Waiting] = useState(false);
@@ -2370,10 +2371,18 @@ export default function App() {
     s.participants.arbiter === pubkey;
 
   const myTrades = visibleTrades.filter(isParticipant);
+  // Category filter — "subscription" is cross-cutting, others match s.category.
+  const matchesBrowseCategory = (s: EscrowState) => {
+    if (browseCategory === "all") return true;
+    if (browseCategory === "subscription") return s.subscription !== null;
+    return s.category === browseCategory;
+  };
+
   const browseList = visibleTrades.filter(s =>
     !isParticipant(s) &&
     s.status === "CREATED" &&
-    (myFederationInvite ? s.mintUrl === myFederationInvite : false)
+    (myFederationInvite ? s.mintUrl === myFederationInvite : false) &&
+    matchesBrowseCategory(s)
   );
   // Legacy name kept for any stragglers — points at My trades.
   const escrowList = myTrades;
@@ -2531,7 +2540,7 @@ export default function App() {
           </div>
         </div>
         <div style={{ fontSize: 9, color: T.muted, fontFamily: T.mono, padding: "4px 10px", borderRadius: 6, background: T.surface, border: `1px solid ${T.border}` }}>
-          v0.1.52
+          v0.1.53
         </div>
       </div>
 
@@ -2741,6 +2750,41 @@ export default function App() {
               );
             })}
           </div>
+
+          {/* Browse category filter pills — only on Browse tab */}
+          {tab === "browse" && (
+            <div style={{
+              display: "flex", gap: 6, marginBottom: 12,
+              overflowX: "auto",
+              // Hide native scrollbar for a cleaner look; content still scrolls
+              scrollbarWidth: "none" as const,
+              WebkitOverflowScrolling: "touch" as const,
+              paddingBottom: 2,
+            }}>
+              {BROWSE_CATS.map(c => {
+                const active = browseCategory === c.id;
+                return (
+                  <button
+                    key={c.id}
+                    onClick={() => setBrowseCategory(c.id)}
+                    style={{
+                      flexShrink: 0,
+                      padding: "7px 13px", borderRadius: 18,
+                      background: active ? T.accentDim : T.surface,
+                      border: `1px solid ${active ? T.accent + "66" : T.border}`,
+                      color: active ? T.accent : T.muted,
+                      fontFamily: T.mono, fontSize: 11, fontWeight: 600,
+                      cursor: "pointer", transition: "all 0.15s",
+                      whiteSpace: "nowrap" as const,
+                      letterSpacing: 0.2,
+                    }}
+                  >
+                    {c.i ? c.i + " " : ""}{c.l}
+                  </button>
+                );
+              })}
+            </div>
+          )}
 
           {/* + New trade */}
           <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
