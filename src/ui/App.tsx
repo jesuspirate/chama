@@ -2096,7 +2096,7 @@ function FundWalletModal({ onClose, onCreateInvoice, onPayInvoice, onSpendNotes,
   // Detect payment: watch balance delta against the pre-invoice snapshot.
   // NOTE: `received` intentionally NOT in deps — we only flip it to true
   // here, and including it would recreate this effect on the flip, firing
-  // its cleanup on the next effect in the chain. See v0.1.56 bug notes.
+  // its cleanup on the next effect in the chain. See v0.1.57 bug notes.
   useEffect(() => {
     if (!invoice || received || balanceAtInvoice === null) return;
     const delta = balanceMsats - balanceAtInvoice;
@@ -2548,7 +2548,14 @@ export default function App() {
         display: "flex", justifyContent: "space-between", alignItems: "center",
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <span style={{ fontSize: 22 }}>₿</span>
+          <img
+            src="/icons/chama-logo-64.png"
+            srcSet="/icons/chama-logo-64.png 1x, /icons/chama-logo-128.png 2x"
+            alt="Chama"
+            width={28}
+            height={28}
+            style={{ display: "block", flexShrink: 0 }}
+          />
           <div>
             <div style={{ fontSize: 16, fontWeight: 700, fontFamily: T.mono, letterSpacing: -0.5 }}>Chama</div>
             <div style={{ fontSize: 9, color: T.muted, fontFamily: T.mono, letterSpacing: 1.5, textTransform: "uppercase" }}>

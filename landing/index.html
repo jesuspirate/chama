@@ -3,9 +3,6 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta name="theme-color" content="#000000">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="description" content="Chama — Non-custodial Bitcoin commerce for communities. P2P exchange, bill pay, marketplace, lending. Powered by Fedimint ecash and 2-of-3 Shamir Secret Sharing.">
 <title>Chama — Non-custodial Bitcoin commerce</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -149,7 +146,35 @@ footer{padding:20px 24px;border-top:.5px solid var(--b1)}
 .ft-r{display:flex;gap:20px}
 .ft-r a{font-size:12px;color:var(--g4);transition:color .25s}
 .ft-r a:hover{color:var(--w)}
+
+.hero-img{padding:80px 24px 56px;gap:24px}
+.hero-banner{max-width:min(1100px,94vw);width:100%;height:auto;display:block;filter:drop-shadow(0 24px 60px rgba(247,147,26,.08))}
+@media(max-width:734px){.hero-img{padding:72px 16px 40px}}
 </style>
+<!-- Favicons -->
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32x32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="icons/favicon-16x16.png">
+<link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png">
+<!-- Android/Chrome/PWA -->
+<link rel="manifest" href="icons/site.webmanifest">
+<meta name="theme-color" content="#000000">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Chama">
+<!-- Open Graph -->
+<meta property="og:title" content="Chama — Bitcoin commerce for communities.">
+<meta property="og:description" content="Non-custodial. Nostr-native. 2-of-3 Shamir escrow. Community trust, rendered in cryptography.">
+<meta property="og:image" content="https://chama.satoshimarket.app/icons/og-banner.png">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="640">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://chama.satoshimarket.app">
+<!-- Twitter/X -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Chama — Bitcoin commerce for communities.">
+<meta name="twitter:description" content="Non-custodial. Nostr-native. 2-of-3 Shamir escrow.">
+<meta name="twitter:image" content="https://chama.satoshimarket.app/icons/og-banner.png">
 </head>
 <body>
 
@@ -170,11 +195,18 @@ footer{padding:20px 24px;border-top:.5px solid var(--b1)}
 </nav>
 
 <!-- HERO -->
-<section class="hero">
+<section class="hero hero-img">
   <div class="hero-glow"></div>
   <div class="hero-badge r">Open source · Non-custodial · Live now</div>
-  <h1 class="r d1">Bitcoin commerce<br>for <span class="gradient">communities.</span></h1>
-  <p class="hero-sub r d2">Pay bills, trade sats for fiat, buy anything, lend to your neighbours. All protected by 2-of-3 cryptographic escrow — not corporations.</p>
+  <img
+    src="icons/chama-web-hero.png"
+    srcset="icons/chama-web-hero.png 1x, icons/chama-web-hero-2x.png 2x"
+    alt="Chama — Community trust, rendered in cryptography"
+    class="hero-banner r d1"
+    width="2400"
+    height="900"
+    decoding="async"
+  />
   <div class="hero-btns r d3">
     <a href="https://chama.satoshimarket.app" class="btn-w" target="_blank" rel="noopener">Open Chama</a>
     <a href="#protocol" class="btn-g">How it works <span>→</span></a>
