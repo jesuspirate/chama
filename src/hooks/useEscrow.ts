@@ -61,6 +61,28 @@ import {
 
 // ── Hook state ────────────────────────────────────────────────────────────
 
+/**
+ * Phases of a claim operation as seen by the UI.
+ *
+ * `submitted`  — user tapped claim, the bridge call is running.
+ * `watching`   — the bridge call rejected with a probably-transient error,
+ *                but the federation may still be processing. We're polling
+ *                balance for up to 120s to see if sats actually arrive.
+ * `success`    — either the bridge resolved cleanly, or the watchdog saw
+ *                the balance go up by the expected amount.
+ * `timeout`    — 120s elapsed during watching and balance didn't move
+ *                enough. The sats may still arrive later; we just stopped
+ *                watching. Not a red-toast failure.
+ * `failure`    — a genuine hard error (hash mismatch, state precondition
+ *                failed, etc.). Safe to show as red.
+ */
+export type ClaimPhase =
+  | { phase: "submitted"; escrowId: string }
+  | { phase: "watching"; escrowId: string; reason: string }
+  | { phase: "success"; escrowId: string; deltaMsats: number; viaWatchdog: boolean }
+  | { phase: "timeout"; escrowId: string }
+  | { phase: "failure"; escrowId: string; reason: string };
+
 export interface FedimintState {
   /** Wallet initialized (WASM loaded, transport ready) */
   initialized: boolean;
@@ -204,7 +226,17 @@ function vibrate(pattern: number | number[] = 50) {
 // HOOK
 // ══════════════════════════════════════════════════════════════════════════
 
-export function useEscrow(config?: Partial<EscrowClientConfig>): [UseEscrowState, UseEscrowActions] {
+/**
+ * Config accepted by useEscrow. Extends EscrowClientConfig (relays, fees, etc.)
+ * with UI-facing callbacks that let the hook communicate multi-phase events
+ * back to the UI without the UI having to drive complex promise chains.
+ */
+export interface UseEscrowConfig extends Partial<EscrowClientConfig> {
+  /** Called at each phase of a claim operation — see ClaimPhase. */
+  onClaimProgress?: (phase: ClaimPhase) => void;
+}
+
+export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowActions] {
   const clientRef = useRef<EscrowClient | null>(null);
   const fedimintRef = useRef<FedimintClient | null>(null);
   const bridgeRef = useRef<EscrowFedimintBridge | null>(null);
@@ -517,25 +549,172 @@ export function useEscrow(config?: Partial<EscrowClientConfig>): [UseEscrowState
     }
   }, []);
 
+  // Hard-failure signatures — errors we treat as red-toast worthy.
+  // These mean the claim will NEVER succeed; retrying won't help.
+  // Anything NOT on this list is assumed transient (federation may settle later).
+  const isHardClaimFailure = (msg: string): boolean => {
+    return msg.includes("not the winner") ||
+           msg.includes("not APPROVED") ||
+           msg.includes("Not enough shares") ||
+           msg.includes("No lock data") ||
+           msg.includes("hash mismatch") ||
+           msg.includes("Notes hash mismatch") ||
+           msg.includes("shares may be corrupted") ||
+           msg.includes("You are not");
+  };
+
+  // Stale-state signatures — these mean the action was a no-op because state
+  // already advanced. Suppress silently (same behavior as pre-v0.1.62).
+  const isStaleClaim = (msg: string): boolean => {
+    return msg.includes("already") ||
+           msg.includes("Cannot") ||
+           msg.includes("TERMINAL");
+  };
+
+  /**
+   * Poll the wallet balance, watching for an inbound delta that looks like
+   * the claim settling. Runs for ~120 seconds or until we see it.
+   *
+   * Resolves once with either "success" (if balance grew by expected amount)
+   * or "timeout" (if it didn't). Never rejects — this is a best-effort check.
+   */
+  const startClaimWatchdog = useCallback((
+    escrowId: string,
+    balanceBefore: number,
+    expectedDeltaMsats: number,
+  ): Promise<"success" | "timeout"> => {
+    return new Promise((resolve) => {
+      const fedimint = fedimintRef.current;
+      if (!fedimint) { resolve("timeout"); return; }
+
+      // Tolerance: accept any delta >= 90% of expected. Fedimint settles can
+      // have tiny variances from fee routing, and we'd rather false-positive
+      // a success than false-negative it into timeout territory.
+      const threshold = Math.floor(expectedDeltaMsats * 0.9);
+      const maxTicks = 24;       // 24 * 5s = 120s
+      const tickMs = 5_000;
+      let ticks = 0;
+
+      const check = async () => {
+        ticks++;
+        try {
+          const now = await fedimint.getBalance();
+          updateFedimint({ balanceMsats: now });
+          const delta = now - balanceBefore;
+          if (delta >= threshold) {
+            resolve("success");
+            return;
+          }
+        } catch (e) {
+          console.debug("[chama] watchdog getBalance threw:", e);
+        }
+        if (ticks >= maxTicks) {
+          resolve("timeout");
+          return;
+        }
+        setTimeout(check, tickMs);
+      };
+
+      setTimeout(check, tickMs);
+    });
+  }, [updateFedimint]);
+
   const claimAndRedeemAction = useCallback(async (escrowId: string) => {
     const client = requireClient();
     const bridge = requireBridge();
+    const fedimint = fedimintRef.current;
+    const notify = config?.onClaimProgress;
+
+    // Snapshot balance before we touch anything, so the watchdog knows
+    // what "before" meant. If we can't read balance, the watchdog just
+    // times out and the user sees the neutral info toast. No drama.
+    let balanceBefore = 0;
+    try {
+      if (fedimint) balanceBefore = await fedimint.getBalance();
+    } catch {}
+
+    // Expected amount back: state.fees.platformMsats and arbiterMsats are
+    // taken off the seller share at LOCK, so the winner actually receives
+    // the full trade minus those cuts. The state has this as sellerReceivesMsats
+    // via the LOCK event metadata — but for simplicity we estimate from the
+    // escrow amount and stored fee breakdown.
+    const state = client.getState(escrowId);
+    const expectedDeltaMsats = state
+      ? Math.max(
+          0,
+          state.amountMsats - state.fees.platformMsats - state.fees.arbiterMsats,
+        )
+      : 0;
+
+    notify?.({ phase: "submitted", escrowId });
+
     try {
       const result = await bridge.claimAndRedeem(escrowId);
+      // Happy path: federation responded before any timeout. Victory haptic.
       vibrate([100, 50, 100, 50, 200]);
-      // Refresh balance after redeeming ecash
+      // Refresh balance immediately; subscription callback will also fire.
       refreshBalanceRef.current?.().catch(() => {});
+      notify?.({
+        phase: "success",
+        escrowId,
+        deltaMsats: expectedDeltaMsats,
+        viaWatchdog: false,
+      });
       return result;
     } catch (e: any) {
-      const msg = e?.message || "";
-      if (msg.includes("already") || msg.includes("Cannot") ||
-          msg.includes("TERMINAL") || msg.includes("not APPROVED")) {
-        console.debug("[chama] Claim suppressed:", msg);
+      const msg = e?.message || String(e);
+
+      // Stale state (escrow already past APPROVED from a relay echo, etc.)
+      // — silently return the current local state. No toast.
+      if (isStaleClaim(msg)) {
+        console.debug("[chama] Claim suppressed (stale):", msg);
         return client.getState(escrowId)!;
       }
-      throw e;
+
+      // Hard failure — notify, then re-throw for the UI to red-toast.
+      if (isHardClaimFailure(msg)) {
+        notify?.({ phase: "failure", escrowId, reason: msg });
+        throw e;
+      }
+
+      // Probably transient (worker timeout, RPC hiccup, "fetch failed", etc.)
+      // The federation very likely IS processing the redeem. Start watching
+      // balance instead of throwing.
+      console.warn(
+        "[chama] Claim bridge threw — treating as in-flight, watching balance.",
+        msg,
+      );
+      notify?.({ phase: "watching", escrowId, reason: msg });
+
+      // Kick the watchdog off, but return immediately so the UI doesn't hang.
+      // When watchdog resolves, we notify success/timeout.
+      startClaimWatchdog(escrowId, balanceBefore, expectedDeltaMsats).then(
+        (outcome) => {
+          if (outcome === "success") {
+            vibrate([100, 50, 100, 50, 200]);
+            notify?.({
+              phase: "success",
+              escrowId,
+              deltaMsats: expectedDeltaMsats,
+              viaWatchdog: true,
+            });
+          } else {
+            notify?.({ phase: "timeout", escrowId });
+          }
+        },
+        (err) => {
+          console.warn("[chama] watchdog rejected unexpectedly:", err);
+          notify?.({ phase: "timeout", escrowId });
+        },
+      );
+
+      // Return the local state so the UI doesn't show an error state.
+      // The state will update naturally as the CLAIM event echoes back
+      // from relays (if the bridge managed to publish it before the
+      // timeout) or from the next loadEscrow.
+      return client.getState(escrowId)!;
     }
-  }, []);
+  }, [config?.onClaimProgress, startClaimWatchdog]);
 
   // Forward-reference refreshBalance from within lock/claim actions
   const refreshBalanceRef = useRef<(() => Promise<void>) | null>(null);

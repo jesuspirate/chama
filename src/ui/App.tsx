@@ -1,4 +1,4 @@
-import { useState, useEffect, lazy, Suspense } from "react";
+import { useState, useEffect, useRef, lazy, Suspense } from "react";
 import { Capacitor } from "@capacitor/core";
 import { Preferences } from "@capacitor/preferences";
 const QRScanner = lazy(() => import("./QRScanner.js"));
@@ -2105,7 +2105,7 @@ function FundWalletModal({ onClose, onCreateInvoice, onPayInvoice, onSpendNotes,
   // Detect payment: watch balance delta against the pre-invoice snapshot.
   // NOTE: `received` intentionally NOT in deps — we only flip it to true
   // here, and including it would recreate this effect on the flip, firing
-  // its cleanup on the next effect in the chain. See v0.1.59 bug notes.
+  // its cleanup on the next effect in the chain. See v0.1.62 bug notes.
   useEffect(() => {
     if (!invoice || received || balanceAtInvoice === null) return;
     const delta = balanceMsats - balanceAtInvoice;
@@ -2338,9 +2338,42 @@ function FundWalletModal({ onClose, onCreateInvoice, onPayInvoice, onSpendNotes,
 // ══════════════════════════════════════════════════════════════════════════
 
 export default function App() {
+  // Toast state needs to be declared before the hook since we pass
+  // onClaimProgress which dispatches toasts. useRef holds the callback
+  // so the hook gets a stable reference and doesn't re-wire on every render.
+  const toastRef = useRef<((t: { message: string; type: "success" | "error" | "info" }) => void) | null>(null);
+
   const [{ connected, pubkey, escrows, relayStatuses, connectedRelays, error, loading, fedimint }, actions] = useEscrow({
     relays: ["wss://relay.damus.io", "wss://relay.primal.net", "wss://nos.lol"],
     defaultPlatformFeeBps: 50,
+    onClaimProgress: (p) => {
+      const t = toastRef.current;
+      if (!t) return;
+      if (p.phase === "submitted") {
+        t({ message: "Claiming… reconstructing ecash.", type: "info" });
+      } else if (p.phase === "watching") {
+        t({
+          message: "Claim submitted. Waiting for the federation (up to 2 min)…",
+          type: "info",
+        });
+      } else if (p.phase === "success") {
+        const sats = Math.floor(p.deltaMsats / 1000).toLocaleString();
+        t({
+          message: p.viaWatchdog
+            ? "Claimed! " + sats + " sats arrived."
+            : "Claimed! Ecash redeemed to your wallet.",
+          type: "success",
+        });
+      } else if (p.phase === "timeout") {
+        t({
+          message:
+            "Still pending on the federation. Your sats will appear once settled — check the wallet.",
+          type: "info",
+        });
+      } else if (p.phase === "failure") {
+        t({ message: p.reason || "Claim failed", type: "error" });
+      }
+    },
   });
 
   const [view, setView] = useState<"list" | "detail" | "create">("list");
@@ -2351,6 +2384,9 @@ export default function App() {
   const [loginSuccess, setLoginSuccess] = useState(false);
   const [nip46Waiting, setNip46Waiting] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" | "info" } | null>(null);
+  // Keep toastRef in sync with setToast so the hook's claim-progress callback
+  // can dispatch toasts without depending on setToast directly.
+  toastRef.current = setToast;
   const [showFundModal, setShowFundModal] = useState(false);
   const [showAdvancedFederation, setShowAdvancedFederation] = useState(false);
   const [customInviteInput, setCustomInviteInput] = useState("");
@@ -2680,10 +2716,15 @@ export default function App() {
               () => setToast({ message: `Voted ${outcome}!`, type: "success" }),
               (e: any) => setToast({ message: e.message, type: "error" })
             )}
-            onClaim={() => actions.claimAndRedeem(selectedId!).then(
-              () => setToast({ message: "Claimed! Ecash redeemed to your wallet.", type: "success" }),
-              (e: any) => setToast({ message: e.message, type: "error" })
-            )}
+            onClaim={() => {
+              // Toast dispatch now happens through the hook's onClaimProgress
+              // callback (wired at useEscrow init). We still await the action
+              // to absorb any thrown error so it doesn't become an unhandled
+              // rejection — the hook already reported it as a "failure" phase.
+              actions.claimAndRedeem(selectedId!).catch((e: any) => {
+                console.debug("[chama] Claim action threw (already toasted):", e?.message);
+              });
+            }}
             onJoin={async (role) => {
               try {
                 setToast({ message: `Joining as ${role}...`, type: "info" });
