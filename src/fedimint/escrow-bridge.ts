@@ -140,16 +140,42 @@ export class EscrowFedimintBridge {
     const decryptedMyShare = await this.decryptShareDual(share0, myPubkey, lockerPubkey);
     const decryptedPartnerShare = await this.decryptShareDual(share1, myPubkey, lockerPubkey);
 
-    // Reconstruct and redeem
-    const { notesHash } = await this.fedimint.claimEscrow(
+    // v0.1.63: Publish CLAIM before redeem
+    // ──────────────────────────────────────
+    // The chain-correctness move. Reconstructing the notes + matching the
+    // hash is already cryptographic proof that the winner has the ecash.
+    // Publish CLAIM on the strength of that proof so the Nostr event chain
+    // reflects reality *now*, even if the federation redeem is slow.
+    //
+    // Order is:
+    //   1. reconstruct + verify (deterministic, local, fast)
+    //   2. publish CLAIM       (chain is now correct)
+    //   3. redeemWithRetry     (settle the wallet)
+    //
+    // If step 3 hard-fails, we throw a marked error so the hook can
+    // route to the "watching" UI state instead of red-toasting.
+
+    const { notesHash, oobNotes } = await this.fedimint.reconstructAndVerify(
       decryptedMyShare,
       decryptedPartnerShare,
       state.lock.notesHash
     );
 
-    // Publish the CLAIM event
-    const result = await this.escrow.claim(escrowId, notesHash);
-    return result;
+    const stateAfterClaim = await this.escrow.claim(escrowId, notesHash);
+
+    try {
+      await this.fedimint.redeemWithRetry(oobNotes);
+    } catch (redeemErr) {
+      const wrapped = new Error(
+        "Claim published to relays, but ecash redeem failed: " +
+          (redeemErr instanceof Error ? redeemErr.message : String(redeemErr))
+      );
+      (wrapped as any).claimPublished = true;
+      (wrapped as any).cause = redeemErr;
+      throw wrapped;
+    }
+
+    return stateAfterClaim;
   }
 
   // ── Pre-claim verification (optional but recommended) ───────────────────

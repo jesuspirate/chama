@@ -443,11 +443,23 @@ export class FedimintClient {
    *
    * Returns the verified notes hash for the CLAIM event.
    */
-  async claimEscrow(
+  /**
+   * Reconstruct ecash from 2 SSS shares and verify the hash. Does NOT redeem.
+   *
+   * This is the *provable* half of the claim: given a matching hash, the
+   * winner has demonstrated they can reconstruct the locked notes. The
+   * CLAIM Nostr event can be published on the strength of this result
+   * alone — federation redemption can follow asynchronously.
+   *
+   * Returns the verified notes hash (for the CLAIM event's
+   * notesHashVerification field), the raw OOB notes (for redemption),
+   * and the parsed amount (for display).
+   */
+  async reconstructAndVerify(
     share1: SSSShare,
     share2: SSSShare,
     expectedNotesHash: string
-  ): Promise<{ notesHash: string; amountMsats: number }> {
+  ): Promise<{ notesHash: string; oobNotes: string; amountMsats: number }> {
     const wallet = this.requireWallet();
 
     // Step 1: Reconstruct from 2 shares
@@ -465,13 +477,103 @@ export class FedimintClient {
     // Step 3: Parse to verify amount
     const parsed = await wallet.mint.parseNotes(oobNotes);
 
-    // Step 4: Redeem into wallet
-    await wallet.mint.redeemEcash(oobNotes);
-
     return {
       notesHash: actualHash,
+      oobNotes,
       amountMsats: parsed.total_amount,
     };
+  }
+
+  /**
+   * Redeem OOB ecash notes into the wallet with defensive retry.
+   *
+   * redeemEcash is NOT strictly idempotent — Fedimint rejects a second
+   * submission of the same notes with a double-spend error. We treat
+   * that rejection as *success*: the federation accepted the notes on
+   * a prior attempt, and the balance stream will catch up.
+   *
+   * IMPORTANT: the error strings below are educated guesses based on
+   * Fedimint's generic semantics. @fedimint/core does not document its
+   * error taxonomy, so we match on substrings. If in production we
+   * observe unknown error strings, expand this list. Worst case today:
+   * an unknown transient bubbles up and the hook's balance watchdog
+   * (v0.1.62) covers it — the user still gets correct UI feedback.
+   *
+   * @param oobNotes The OOB ecash string from reconstructAndVerify
+   * @param maxAttempts Total attempts including the first. Default 3.
+   */
+  async redeemWithRetry(oobNotes: string, maxAttempts = 3): Promise<void> {
+    const wallet = this.requireWallet();
+
+    let lastErr: unknown;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        await wallet.mint.redeemEcash(oobNotes);
+        return;
+      } catch (e) {
+        lastErr = e;
+        const msg = (e instanceof Error ? e.message : String(e)).toLowerCase();
+
+        // Already-accepted variants — federation has the notes, balance
+        // will reflect shortly. Treat as success.
+        if (
+          msg.includes("already spent") ||
+          msg.includes("already redeemed") ||
+          msg.includes("already used") ||
+          msg.includes("double spend") ||
+          msg.includes("double-spend") ||
+          msg.includes("note already")
+        ) {
+          console.debug(
+            `[chama] redeem attempt ${attempt}: notes already accepted by federation, treating as success`
+          );
+          return;
+        }
+
+        // Hard failures — surface immediately, don't retry.
+        if (
+          msg.includes("malformed") ||
+          msg.includes("invalid federation") ||
+          msg.includes("not joined") ||
+          msg.includes("parse error") ||
+          msg.includes("invalid note format")
+        ) {
+          throw e;
+        }
+
+        // Transient — back off and retry.
+        // Backoff schedule: ~500ms, ~1500ms, ~3500ms with jitter.
+        if (attempt < maxAttempts) {
+          const delay = 500 * (2 ** (attempt - 1)) + Math.floor(Math.random() * 200);
+          console.warn(
+            `[chama] redeem attempt ${attempt}/${maxAttempts} failed, retrying in ${delay}ms:`,
+            msg
+          );
+          await new Promise(r => setTimeout(r, delay));
+        }
+      }
+    }
+
+    throw lastErr instanceof Error
+      ? lastErr
+      : new Error(`redeemEcash failed after ${maxAttempts} attempts`);
+  }
+
+  /**
+   * @deprecated Prefer reconstructAndVerify + redeemWithRetry so callers
+   * can publish the CLAIM Nostr event between the two phases. Kept as a
+   * thin delegator for any callers that haven't been updated.
+   */
+  async claimEscrow(
+    share1: SSSShare,
+    share2: SSSShare,
+    expectedNotesHash: string
+  ): Promise<{ notesHash: string; amountMsats: number }> {
+    const { notesHash, oobNotes, amountMsats } = await this.reconstructAndVerify(
+      share1, share2, expectedNotesHash
+    );
+    await this.redeemWithRetry(oobNotes);
+    return { notesHash, amountMsats };
   }
 
   /**

@@ -664,6 +664,41 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     } catch (e: any) {
       const msg = e?.message || String(e);
 
+      // v0.1.63: partial-success claim — chain correct, redeem in flight
+      // ─────────────────────────────────────────────────────────────────
+      // The bridge publishes CLAIM before calling redeemWithRetry. If the
+      // redeem throws after CLAIM is on relays, the bridge wraps the error
+      // with {claimPublished: true}. Treat this as "watching" — the chain
+      // is correct, and the balance watchdog will either see the sats
+      // land or time out gracefully. No red toast.
+      if (e?.claimPublished) {
+        console.warn(
+          "[chama] Claim published, redeem failed — starting balance watchdog:",
+          msg,
+        );
+        notify?.({ phase: "watching", escrowId, reason: msg });
+        startClaimWatchdog(escrowId, balanceBefore, expectedDeltaMsats).then(
+          (outcome) => {
+            if (outcome === "success") {
+              vibrate([100, 50, 100, 50, 200]);
+              notify?.({
+                phase: "success",
+                escrowId,
+                deltaMsats: expectedDeltaMsats,
+                viaWatchdog: true,
+              });
+            } else {
+              notify?.({ phase: "timeout", escrowId });
+            }
+          },
+          (err) => {
+            console.warn("[chama] watchdog rejected unexpectedly:", err);
+            notify?.({ phase: "timeout", escrowId });
+          },
+        );
+        return client.getState(escrowId)!;
+      }
+
       // Stale state (escrow already past APPROVED from a relay echo, etc.)
       // — silently return the current local state. No toast.
       if (isStaleClaim(msg)) {
