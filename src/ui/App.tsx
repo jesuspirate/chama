@@ -46,7 +46,13 @@ const STATUS = {
   CANCELLED: { c: T.muted,  bg: T.surface,   l: "Cancelled" },
 } as Record<string, { c: string; bg: string; l: string }>;
 
-const ROLE_COLOR = { buyer: T.accent, seller: T.teal, arbiter: T.purple };
+// v0.1.64: brand-pack role colors (from Chama brand README)
+//   Buyer   = Nostr Purple   #BF5AF2
+//   Seller  = Bitcoin Orange #F7931A
+//   Arbiter = Signal Teal    #5AC8FA
+// These are explicit hex rather than T.* tokens so the role
+// palette is isolated from the rest of the design system.
+const ROLE_COLOR = { buyer: "#BF5AF2", seller: "#F7931A", arbiter: "#5AC8FA" };
 const ROLE_ICON  = { buyer: "B", seller: "S", arbiter: "A" };
 const CAT_ICON = { "p2p-trade": "⚡", "bill-pay": "🧾", marketplace: "🏪", lending: "🤝" } as Record<string, string>;
 const CAT_LABEL: Record<string, string> = { "p2p-trade": "⚡ P2P Trade", "bill-pay": "🧾 Bill Pay", marketplace: "🏪 Marketplace", lending: "🤝 Lending", "raw-escrow": "🔧 Raw Escrow" };
@@ -64,6 +70,14 @@ const BROWSE_CATS: { id: string; l: string; i: string }[] = [
 ];
 
 const fmtSats = (ms: number) => Math.floor(ms / 1000).toLocaleString();
+
+// v0.1.64: Who receives sats on a REFUND outcome, by category.
+// Mirrors the getWinner() logic in state-machine.ts for the REFUND branch.
+//   marketplace: buyer locks → refund returns to buyer
+//   p2p-trade / bill-pay / lending / raw-escrow: seller locks → refund to seller
+function refundRecipientFor(category: string): "buyer" | "seller" {
+  return category === "marketplace" ? "buyer" : "seller";
+}
 
 // ══════════════════════════════════════════════════════════════════════════
 // MICRO COMPONENTS
@@ -541,10 +555,9 @@ function ConnectScreen({ onConnect, onConnectNIP46, onConnectNsec, loading, erro
 // WALLET BAR
 // ══════════════════════════════════════════════════════════════════════════
 
-function WalletBar({ pubkey, connectedRelays, relayStatuses, onSignOut, onScanQR }: {
+function WalletBar({ pubkey, connectedRelays, relayStatuses, onSignOut }: {
   pubkey: string; connectedRelays: number; relayStatuses: Map<string, string>;
   onSignOut?: () => void;
-  onScanQR?: () => void;
 }) {
   const [showRelays, setShowRelays] = useState(false);
   return (
@@ -595,20 +608,7 @@ function WalletBar({ pubkey, connectedRelays, relayStatuses, onSignOut, onScanQR
               </span>
             </div>
           ))}
-          {onScanQR && (
-            <div
-              onClick={onScanQR}
-              style={{
-                marginTop: 8, padding: "8px 12px",
-                background: T.greenDim, border: `1px solid ${T.green}33`,
-                borderRadius: T.rs, fontSize: 10, fontFamily: T.mono,
-                color: T.green, cursor: "pointer", textAlign: "center",
-                fontWeight: 600, letterSpacing: 0.5,
-              }}
-            >
-              Scan QR code
-            </div>
-          )}
+          {/* v0.1.64: Scan QR removed from WalletBar — re-expose deliberately if needed */}
           {onSignOut && (
             <div
               onClick={() => {
@@ -722,7 +722,7 @@ function TradeCard({ state, pubkey, onSelect }: {
               ⏰ TRADE EXPIRED
             </div>
             <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono, marginTop: 4 }}>
-              🛡️ Community arbiter will auto-vote REFUND → sats return to buyer
+              🛡️ Community arbiter will auto-vote REFUND → sats return to {refundRecipientFor(state.category)}
             </div>
           </div>
         ) : isUrgent ? (
@@ -731,7 +731,7 @@ function TradeCard({ state, pubkey, onSelect }: {
             background: T.redDim, border: `1px solid ${T.red}22`,
             marginBottom: 8, fontSize: 9, color: T.red, fontFamily: T.mono,
           }}>
-            ⚠️ Expiring soon — settle or the arbiter will auto-refund to buyer
+            ⚠️ Expiring soon — settle or the arbiter will auto-refund to {refundRecipientFor(state.category)}
           </div>
         ) : null;
       })()}
@@ -743,7 +743,7 @@ function TradeCard({ state, pubkey, onSelect }: {
           padding: "6px 10px", borderRadius: 6,
           background: T.amberDim || T.surface, border: `1px solid ${T.amber}22`,
         }}>
-          ⏱️ If expired → arbiter auto-refunds to buyer
+          ⏱️ If expired → arbiter auto-refunds to {refundRecipientFor(state.category)}
         </div>
       )}
 
@@ -825,7 +825,7 @@ function ChatPanel({ state, myRole, onSend }: {
   };
 
   const roleColor = (role: string) =>
-    role === "buyer" ? T.accent : role === "seller" ? T.teal : role === "arbiter" ? T.purple : T.muted;
+    role === "buyer" ? "#BF5AF2" : role === "seller" ? "#F7931A" : role === "arbiter" ? "#5AC8FA" : T.muted;
 
   const roleName = (role: string) =>
     role === "buyer" ? "Buyer" : role === "seller" ? "Seller" : role === "arbiter" ? "Arbiter" : "Unknown";
@@ -1174,7 +1174,7 @@ function TradeDetail({ state, pubkey, onBack, onVote, onClaim, onJoin, onLock, o
                   🛡️ Community arbiter will auto-vote REFUND
                 </div>
                 <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono, marginTop: 4 }}>
-                  Sats will be returned to the buyer automatically
+                  Sats will be returned to the {refundRecipientFor(state.category)} automatically
                 </div>
               </div>
             ) : (
@@ -1188,7 +1188,7 @@ function TradeDetail({ state, pubkey, onBack, onVote, onClaim, onJoin, onLock, o
                   color: isUrgent ? T.red : T.amber,
                 }}>
                   {isUrgent ? "⚠️ Expiring soon! " : "⏱️ "}
-                  If time expires → arbiter auto-refunds to buyer
+                  If time expires → arbiter auto-refunds to {refundRecipientFor(state.category)}
                 </span>
               </div>
             )}
@@ -2609,7 +2609,7 @@ export default function App() {
           </div>
         </div>
         <div style={{ fontSize: 9, color: T.muted, fontFamily: T.mono, padding: "4px 10px", borderRadius: 6, background: T.surface, border: `1px solid ${T.border}` }}>
-          v0.1.55
+          v{__APP_VERSION__}
         </div>
       </div>
 
@@ -2618,7 +2618,6 @@ export default function App() {
         pubkey={pubkey!}
         connectedRelays={connectedRelays}
         relayStatuses={relayStatuses}
-        onScanQR={() => setShowQRScanner(true)}
         onSignOut={async () => {
           if (Capacitor.isNativePlatform()) {
             try { await Preferences.remove({ key: "chama_saved_nsec" }); } catch {}
