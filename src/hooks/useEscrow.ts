@@ -370,12 +370,22 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       }, 30_000);
 
       // Start periodic expiry checker — every 60 seconds, check all loaded escrows
+      // v0.1.65: periodic heal — also scan EXPIRED so stuck chains get
+      // healed by any online participant, not just those who happened
+      // to open the specific trade. The client-side guard inside
+      // maybeAutoRefundExpired filters by role + vote-state, so this
+      // is safe to call broadly.
       const expiryInterval = setInterval(async () => {
         if (!clientRef.current) return;
         const escrowClient = clientRef.current;
         const now = Math.floor(Date.now() / 1000);
         for (const [escrowId, escrowState] of (escrowClient as any).states || []) {
-          if (escrowState.status === "LOCKED" && now > escrowState.expiresAt) {
+          const isStuckLocked =
+            escrowState.status === "LOCKED" && now > escrowState.expiresAt;
+          const isStuckExpired =
+            escrowState.status === "EXPIRED" &&
+            !escrowState.eventChain?.some?.((e: any) => e.kind === 38104);
+          if (isStuckLocked || isStuckExpired) {
             try {
               await (escrowClient as any).maybeAutoRefundExpired?.(escrowId);
             } catch {}

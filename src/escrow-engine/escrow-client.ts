@@ -880,6 +880,15 @@ export class EscrowClient {
       );
     }
 
+    // v0.1.65: also heal EXPIRED on load — for trades that flipped to
+    // EXPIRED while everyone was offline. maybeAutoRefundExpired's own
+    // guard now accepts EXPIRED-without-RESOLVE, so this is safe.
+    if (result.state.status === EscrowStatus.EXPIRED) {
+      this.maybeAutoRefundExpired(escrowId).catch(e =>
+        console.debug("[escrow] Post-reload heal-on-load:", e?.message || e)
+      );
+    }
+
     return result.state;
   }
 
@@ -1108,8 +1117,23 @@ export class EscrowClient {
     const state = this.states.get(escrowId);
     if (!state) return;
 
-    // Only act on LOCKED escrows that have expired
-    if (state.status !== EscrowStatus.LOCKED) return;
+    // v0.1.65: heal-on-load — allow EXPIRED without RESOLVE
+    // ──────────────────────────────────────────────────────
+    // Previously this only fired on LOCKED. But if all participants
+    // were offline at expiry, the state machine implicitly advances to
+    // EXPIRED via timestamp checks, and this guard would then reject
+    // any healing attempt. We now also accept EXPIRED trades that
+    // haven't published a RESOLVE yet — the first participant back
+    // online after expiry heals the chain by publishing REFUND.
+    //
+    // CLAIMED/COMPLETED/CANCELLED are still skipped (RESOLVE already
+    // happened or the trade never got locked). APPROVED is skipped
+    // because the winner's claim is the next legitimate event.
+    const isStuckLocked = state.status === EscrowStatus.LOCKED;
+    const isStuckExpired =
+      state.status === EscrowStatus.EXPIRED &&
+      !state.eventChain.some(e => e.kind === EscrowEventKind.RESOLVE);
+    if (!isStuckLocked && !isStuckExpired) return;
 
     const now = Math.floor(Date.now() / 1000);
     if (now <= state.expiresAt) return;
