@@ -385,26 +385,21 @@ function ConnectScreen({ onConnect, onConnectNIP46, onConnectNsec, loading, erro
       textAlign: "center",
       background: `radial-gradient(ellipse at 50% 0%, ${T.accent}08 0%, transparent 60%)`,
     }}>
-      {/* Logo + branding */}
+      {/* v2.3 wordmark — the "chama." lockup with ring-as-c */}
       <div style={{ marginBottom: 32 }}>
         <img
-          src="/icons/chama-logo-128.png"
-          srcSet="/icons/chama-logo-128.png 1x, /icons/chama-logo-256.png 2x"
+          src="/icons/chama-wordmark-680.png"
+          srcSet="/icons/chama-wordmark-680.png 1x, /icons/chama-wordmark-1360.png 2x"
           alt="Chama"
-          width={72}
-          height={72}
           style={{
             display: "block",
-            margin: "0 auto 16px",
-            filter: "drop-shadow(0 0 24px #f7931a33)",
+            margin: "0 auto 12px",
+            height: 60,
+            width: "auto",
+            maxWidth: "80%",
+            filter: "drop-shadow(0 0 24px #f7931a22)",
           }}
         />
-        <div style={{
-          fontSize: 28, fontWeight: 800, fontFamily: T.sans,
-          letterSpacing: -0.5, marginBottom: 6, color: T.text,
-        }}>
-          Chama
-        </div>
         <div style={{
           fontSize: 10, color: T.muted, fontFamily: T.mono,
           letterSpacing: 3, textTransform: "uppercase",
@@ -2594,8 +2589,8 @@ export default function App() {
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <img
-            src="/icons/chama-logo-64.png"
-            srcSet="/icons/chama-logo-64.png 1x, /icons/chama-logo-128.png 2x"
+            src="/icons/chama-c-glyph-128.png"
+            srcSet="/icons/chama-c-glyph-128.png 1x, /icons/chama-c-glyph-256.png 2x"
             alt="Chama"
             width={28}
             height={28}
