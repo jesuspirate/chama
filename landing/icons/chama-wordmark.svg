@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1360 440" width="1360" height="440">
+  <title>Chama — Trinity Wordmark v2.3 (Dark)</title>
+  <defs>
+    <linearGradient id="wO" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#ffb340"/><stop offset="100%" stop-color="#f7931a"/></linearGradient>
+    <linearGradient id="wP" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#bf5af2"/><stop offset="100%" stop-color="#7a3cd0"/></linearGradient>
+    <linearGradient id="wT" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#5ac8fa"/><stop offset="100%" stop-color="#2997ff"/></linearGradient>
+  </defs>
+  <path d="M 355.95 283.39 A 150 150 0 0 1 126.95 337.63" stroke="url(#wP)" stroke-width="52" fill="none" stroke-linecap="round"/>
+  <path d="M 126.95 337.63 A 150 150 0 0 1 126.95 102.37" stroke="url(#wT)" stroke-width="52" fill="none" stroke-linecap="round"/>
+  <path d="M 126.95 102.37 A 150 150 0 0 1 355.95 156.61" stroke="url(#wO)" stroke-width="52" fill="none" stroke-linecap="round"/>
+  <circle cx="126.95" cy="337.63" r="12" fill="#ffffff"/>
+  <circle cx="126.95" cy="102.37" r="12" fill="#ffffff"/>
+  <circle cx="220" cy="220" r="10" fill="#f7931a"/>
+  <circle cx="220" cy="220" r="26" fill="none" stroke="rgba(247,147,26,0.4)" stroke-width="1.5"/>
+  <text x="410" y="345" font-family="'Inter', -apple-system, sans-serif" font-weight="800" font-size="280" letter-spacing="-14" fill="#ffffff">hama<tspan fill="#f7931a">.</tspan></text>
+</svg>

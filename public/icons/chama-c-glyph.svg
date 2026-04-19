@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 440 440" width="440" height="440">
+  <title>Chama — C Glyph v2.3 (Dark)</title>
+  <defs>
+    <linearGradient id="cgO" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#ffb340"/><stop offset="100%" stop-color="#f7931a"/></linearGradient>
+    <linearGradient id="cgP" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#bf5af2"/><stop offset="100%" stop-color="#7a3cd0"/></linearGradient>
+    <linearGradient id="cgT" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#5ac8fa"/><stop offset="100%" stop-color="#2997ff"/></linearGradient>
+  </defs>
+  <path d="M 355.95 283.39 A 150 150 0 0 1 126.95 337.63" stroke="url(#cgP)" stroke-width="52" fill="none" stroke-linecap="round"/>
+  <path d="M 126.95 337.63 A 150 150 0 0 1 126.95 102.37" stroke="url(#cgT)" stroke-width="52" fill="none" stroke-linecap="round"/>
+  <path d="M 126.95 102.37 A 150 150 0 0 1 355.95 156.61" stroke="url(#cgO)" stroke-width="52" fill="none" stroke-linecap="round"/>
+  <circle cx="126.95" cy="337.63" r="12" fill="#ffffff"/>
+  <circle cx="126.95" cy="102.37" r="12" fill="#ffffff"/>
+  <circle cx="220" cy="220" r="10" fill="#f7931a"/>
+  <circle cx="220" cy="220" r="26" fill="none" stroke="rgba(247,147,26,0.4)" stroke-width="1.5"/>
+</svg>

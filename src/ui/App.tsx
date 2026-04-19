@@ -385,19 +385,18 @@ function ConnectScreen({ onConnect, onConnectNIP46, onConnectNsec, loading, erro
       textAlign: "center",
       background: `radial-gradient(ellipse at 50% 0%, ${T.accent}08 0%, transparent 60%)`,
     }}>
-      {/* v2.3 wordmark — the "chama." lockup with ring-as-c */}
+      {/* v2.3 wordmark — the "chama." lockup with ring-as-c (SVG, transparent) */}
       <div style={{ marginBottom: 32 }}>
         <img
-          src="/icons/chama-wordmark-680.png"
-          srcSet="/icons/chama-wordmark-680.png 1x, /icons/chama-wordmark-1360.png 2x"
+          src="/icons/chama-wordmark.svg"
           alt="Chama"
           style={{
             display: "block",
-            margin: "0 auto 12px",
-            height: 60,
+            margin: "0 auto 16px",
+            height: 80,
             width: "auto",
-            maxWidth: "80%",
-            filter: "drop-shadow(0 0 24px #f7931a22)",
+            maxWidth: "90%",
+            filter: "drop-shadow(0 0 32px #f7931a22)",
           }}
         />
         <div style={{
@@ -2589,8 +2588,7 @@ export default function App() {
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <img
-            src="/icons/chama-c-glyph-128.png"
-            srcSet="/icons/chama-c-glyph-128.png 1x, /icons/chama-c-glyph-256.png 2x"
+            src="/icons/chama-c-glyph.svg"
             alt="Chama"
             width={28}
             height={28}
