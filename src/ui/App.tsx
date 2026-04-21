@@ -741,7 +741,7 @@ function TradeCard({ state, pubkey, onSelect }: {
         </div>
       )}
 
-      {state.expiresAt && state.status !== "COMPLETED" && state.status !== "CANCELLED" && state.status !== "EXPIRED" && (() => {
+      {state.expiresAt && state.status !== "COMPLETED" && state.status !== "CANCELLED" && state.status !== "EXPIRED" && state.status !== "APPROVED" && state.status !== "CLAIMED" && (() => {
         const rem = state.expiresAt - Math.floor(Date.now() / 1000);
         if (rem <= 0) return <div style={{ fontSize: 9, color: T.red, fontFamily: T.mono, textAlign: "center", marginTop: 8 }}>EXPIRED</div>;
         const h = Math.floor(rem / 3600);
