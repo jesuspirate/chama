@@ -633,7 +633,18 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     const client = requireClient();
     const bridge = requireBridge();
     const fedimint = fedimintRef.current;
-    const notify = config?.onClaimProgress;
+    // v0.1.66.31: wrap notify so phase:success triggers COMPLETE publish.
+    // Best-effort — errors are swallowed (COMPLETE is advisory; the
+    // reconciliation hook in loadEscrow will retry on next app reload).
+    const userNotify = config?.onClaimProgress;
+    const notify = (progress: ClaimPhase) => {
+      userNotify?.(progress);
+      if (progress.phase === "success") {
+        clientRef.current?.complete(progress.escrowId).catch(e =>
+          console.debug("[chama] post-claim COMPLETE publish failed:", (e as Error)?.message || e)
+        );
+      }
+    };
 
     // Snapshot balance before we touch anything, so the watchdog knows
     // what "before" meant. If we can't read balance, the watchdog just

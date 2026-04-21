@@ -629,6 +629,96 @@ export class EscrowClient {
     return this.applyLocally(escrowId, signed, payload);
   }
 
+  // ── Complete (winner confirms settlement finalized) ─────────────────────
+  //
+  // After a successful CLAIM + redeem, the winner publishes COMPLETE to
+  // move the escrow into the terminal COMPLETED state. Without this, the
+  // trade stays at CLAIMED forever and never reaches the defined terminal
+  // state. COMPLETE takes no action beyond publishing the event and
+  // transitioning local state — it's a protocol-level statement that
+  // settlement is finalized.
+  //
+  // Only the winner publishes COMPLETE. Non-winners observe it via relay
+  // echo. Duplicate COMPLETE events from multiple devices are benign —
+  // replayEventChain classifies INVALID_STATE on COMPLETE as a benign-skip.
+
+  async complete(escrowId: string): Promise<EscrowState> {
+    const state = this.states.get(escrowId);
+    if (!state) throw new Error(`Escrow ${escrowId} not loaded`);
+
+    if (state.status !== EscrowStatus.CLAIMED) {
+      throw new Error(`Cannot complete in state ${state.status} (need CLAIMED)`);
+    }
+
+    const pubkey = await this.getPubkey();
+    const winner = getWinner(state);
+    if (!winner || winner.pubkey !== pubkey) {
+      throw new Error("Only the winner can publish COMPLETE");
+    }
+
+    const now = Math.floor(Date.now() / 1000);
+    const lastEventId = state.eventChain[state.eventChain.length - 1]?.raw.id;
+
+    const payload: CompletePayload = {
+      type: "escrow:complete",
+      completedAt: now,
+    };
+
+    // Plaintext for consistency with CLAIM. COMPLETE reveals nothing
+    // beyond "this trade settled" which is already observable via the
+    // presence of a kind 38106 event with the escrow's d-tag.
+    const content = JSON.stringify(payload);
+
+    const unsigned: UnsignedEvent = {
+      kind: EscrowEventKind.COMPLETE,
+      created_at: now,
+      tags: [
+        [TAGS.ESCROW_ID, escrowId],
+        [TAGS.PREV_EVENT, lastEventId, "", "reply"],
+        [TAGS.TYPE, "escrow:complete"],
+      ],
+      content,
+    };
+
+    const signed = await this.signer.signEvent(unsigned);
+    await this.relayManager.publish(signed);
+
+    return this.applyLocally(escrowId, signed, payload);
+  }
+
+  /**
+   * Publish COMPLETE if all conditions are met.
+   * Safe to call anytime — no-ops if already completed, not winner, or
+   * not in CLAIMED state.
+   *
+   * Called from two places:
+   *   1. useEscrow's claim action, after a successful claim+redeem
+   *   2. loadEscrow's post-replay hook, to backfill stuck CLAIMED trades
+   *      and reconcile bridge-threw-but-sats-arrived watchdog cases.
+   */
+  private async maybeAutoComplete(escrowId: string): Promise<void> {
+    const state = this.states.get(escrowId);
+    if (!state) return;
+
+    // Only act on CLAIMED escrows
+    if (state.status !== EscrowStatus.CLAIMED) return;
+
+    // Only the winner publishes COMPLETE
+    const pubkey = await this.signer.getPublicKey();
+    const winner = getWinner(state);
+    if (!winner || winner.pubkey !== pubkey) return;
+
+    // Don't re-publish if COMPLETE is already in the chain
+    if (state.eventChain.some(e => e.kind === EscrowEventKind.COMPLETE)) return;
+
+    try {
+      await this.complete(escrowId);
+      console.debug(`[escrow] Auto-completed ${escrowId}`);
+    } catch (e) {
+      console.debug(`[escrow] Auto-complete failed for ${escrowId}:`, (e as Error)?.message || e);
+    }
+  }
+
   // ── Send a chat message ─────────────────────────────────────────────────
 
   async sendChat(escrowId: string, message: string): Promise<void> {
@@ -886,6 +976,17 @@ export class EscrowClient {
     if (result.state.status === EscrowStatus.EXPIRED) {
       this.maybeAutoRefundExpired(escrowId).catch(e =>
         console.debug("[escrow] Post-reload heal-on-load:", e?.message || e)
+      );
+    }
+
+    // v0.1.66.31: backfill + reconcile. If we're the winner on a CLAIMED
+    // escrow and COMPLETE hasn't been published yet, auto-publish it.
+    // This catches: (a) legacy trades that got stuck at CLAIMED because
+    // no code path ever published COMPLETE, (b) trades where the bridge
+    // threw but the balance watchdog confirmed sats arrived.
+    if (result.state.status === EscrowStatus.CLAIMED) {
+      this.maybeAutoComplete(escrowId).catch(e =>
+        console.debug("[escrow] Post-reload auto-complete:", (e as Error)?.message || e)
       );
     }
 
