@@ -42,6 +42,27 @@ export const TERMINAL_STATES: ReadonlySet<EscrowStatus> = new Set([
   EscrowStatus.CANCELLED,
 ]);
 
+// TRULY_TERMINAL_STATES — v0.1.66.26 (expiry heal / Mechanism A)
+// ────────────────────────────────────────────────────────────────
+// EXPIRED is NOT truly terminal in our model. It's a transient state
+// that represents "the escrow timed out while participants were
+// offline, but can heal via 2-of-3 REFUND votes once anyone comes
+// back online." The state machine (applyEvent) uses this stricter
+// set so that post-expiry VOTE events reach their handler instead of
+// being rejected with TERMINAL_STATE.
+//
+// TERMINAL_STATES is kept unchanged for UI purposes where EXPIRED
+// should still read as "this trade is done" in listings, filters,
+// and chat blocking — healing is a background process the user
+// doesn't need to see mid-flight.
+//
+// Only COMPLETED (money moved successfully) and CANCELLED (trade
+// aborted pre-lock) are genuinely unrecoverable.
+export const TRULY_TERMINAL_STATES: ReadonlySet<EscrowStatus> = new Set([
+  EscrowStatus.COMPLETED,
+  EscrowStatus.CANCELLED,
+]);
+
 // ── Participant Roles ─────────────────────────────────────────────────────
 
 export enum Role {

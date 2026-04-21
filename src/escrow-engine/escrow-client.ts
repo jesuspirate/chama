@@ -1161,8 +1161,11 @@ export class EscrowClient {
   private async maybeAutoResolve(escrowId: string): Promise<void> {
     const state = this.states.get(escrowId);
     if (!state) return;
-    // Skip if already resolved or past LOCKED
-    if (state.status !== EscrowStatus.LOCKED) return;
+    // v0.1.66.26: accept EXPIRED in addition to LOCKED so healing votes
+    // that meet 2-of-3 threshold trigger a RESOLVE publish. Without
+    // this, healing votes land but never produce a RESOLVE event, and
+    // the trade stays stuck in EXPIRED with 2 votes recorded.
+    if (state.status !== EscrowStatus.LOCKED && state.status !== EscrowStatus.EXPIRED) return;
     // Skip if a RESOLVE event already exists in the chain
     if (state.eventChain.some(e => e.kind === EscrowEventKind.RESOLVE)) return;
 

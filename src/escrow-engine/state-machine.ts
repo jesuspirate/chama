@@ -20,6 +20,7 @@ import {
   Role,
   Outcome,
   TERMINAL_STATES,
+  TRULY_TERMINAL_STATES,
   VALID_TRANSITIONS,
   type EscrowState,
   type ParsedEscrowEvent,
@@ -350,9 +351,12 @@ function handleLock(state: EscrowState, event: ParsedEscrowEvent<LockPayload>): 
 function handleVote(state: EscrowState, event: ParsedEscrowEvent<VotePayload>): TransitionResult {
   const p = event.payload;
 
-  if (state.status !== EscrowStatus.LOCKED) {
+  // v0.1.66.26: accept EXPIRED in addition to LOCKED so post-expiry
+  // healing votes can be recorded. Mechanism A relies on this.
+  if (state.status !== EscrowStatus.LOCKED && state.status !== EscrowStatus.EXPIRED) {
     return err("INVALID_STATE", `Cannot VOTE in state ${state.status}`, event.raw.id);
   }
+  const isHealing = state.status === EscrowStatus.EXPIRED;
 
   const voterRole = getRole(state, event.pubkey);
   if (!voterRole) {
@@ -372,8 +376,13 @@ function handleVote(state: EscrowState, event: ParsedEscrowEvent<VotePayload>): 
     return err("ALREADY_VOTED", `${voterRole} has already voted`, event.raw.id);
   }
 
-  // Arbiter can only vote after buyer AND seller have voted AND they disagree
-  if (voterRole === Role.ARBITER) {
+  // Arbiter can only vote after buyer AND seller have voted AND they disagree.
+  // v0.1.66.26: skip this ordering constraint during expiry healing.
+  // Healing votes are always REFUND and any participant (including the
+  // arbiter) should be able to kick off recovery — waiting for buyer
+  // and seller to vote first defeats the purpose when they're the ones
+  // who are offline.
+  if (voterRole === Role.ARBITER && !isHealing) {
     const buyerVote = state.votes[Role.BUYER];
     const sellerVote = state.votes[Role.SELLER];
 
@@ -410,7 +419,10 @@ function handleVote(state: EscrowState, event: ParsedEscrowEvent<VotePayload>): 
 function handleResolve(state: EscrowState, event: ParsedEscrowEvent<ResolvePayload>): TransitionResult {
   const p = event.payload;
 
-  if (state.status !== EscrowStatus.LOCKED) {
+  // v0.1.66.26: accept EXPIRED in addition to LOCKED so healing votes
+  // that meet 2-of-3 threshold can produce a RESOLVE event and
+  // transition EXPIRED → APPROVED.
+  if (state.status !== EscrowStatus.LOCKED && state.status !== EscrowStatus.EXPIRED) {
     return err("INVALID_STATE", `Cannot RESOLVE in state ${state.status}`, event.raw.id);
   }
 
@@ -821,7 +833,10 @@ export function applyEvent(
   }
 
   // ── Check terminal ──
-  if (TERMINAL_STATES.has(state.status)) {
+  // v0.1.66.26: use TRULY_TERMINAL_STATES so EXPIRED events can heal.
+  // EXPIRED is transient; healing votes must be able to reach the
+  // handlers. COMPLETED and CANCELLED remain unrecoverable.
+  if (TRULY_TERMINAL_STATES.has(state.status)) {
     return err("TERMINAL_STATE",
       `Escrow is in terminal state ${state.status} — no further events accepted`,
       event.raw.id
@@ -829,12 +844,34 @@ export function applyEvent(
   }
 
   // ── Check expiry ──
+  // v0.1.66.26: previously, any post-expiry event auto-expired the
+  // state and returned WITHOUT dispatching to the handler. That made
+  // Mechanism A (healing votes) impossible — VOTE events arriving past
+  // expiry were swallowed and never recorded.
+  //
+  // New behavior:
+  //   - If state is ALREADY EXPIRED: skip the auto-expire clause and
+  //     proceed to dispatch. Handlers (handleVote, handleResolve) now
+  //     accept EXPIRED and can record healing votes.
+  //   - If state is not-yet-EXPIRED and event is a VOTE past deadline:
+  //     flip to EXPIRED but continue to the handler so the vote is
+  //     recorded in the same apply call (no "lost first heal vote").
+  //   - For any other event past deadline on a non-expired state:
+  //     keep the original flip-and-return behavior.
   if (event.timestamp > state.expiresAt && state.status !== EscrowStatus.APPROVED && state.status !== EscrowStatus.CLAIMED) {
-    // Auto-expire: if we receive an event past the deadline on a non-terminal,
-    // non-approved state, the escrow has expired.
-    const next = cloneState(state);
-    next.status = EscrowStatus.EXPIRED;
-    return { ok: true, state: next };
+    if (state.status === EscrowStatus.EXPIRED) {
+      // Already expired — fall through to dispatch (healing path).
+    } else if (event.kind === EscrowEventKind.VOTE) {
+      // First post-expiry event is a VOTE: flip state and let handleVote run.
+      state = cloneState(state);
+      state.status = EscrowStatus.EXPIRED;
+      // fall through to dispatch
+    } else {
+      // Non-vote event past deadline on a live state: standard auto-expire.
+      const next = cloneState(state);
+      next.status = EscrowStatus.EXPIRED;
+      return { ok: true, state: next };
+    }
   }
 
   // ── Check event chain continuity (soft — relay events arrive out of order) ──
@@ -955,15 +992,20 @@ export function replayEventChain(events: ParsedEscrowEvent[]): TransitionResult 
 
 /** Check if a specific pubkey can vote in the current state */
 export function canVote(state: EscrowState, pubkey: string): { canVote: boolean; reason?: string } {
-  if (state.status !== EscrowStatus.LOCKED) {
-    return { canVote: false, reason: `State is ${state.status}, not LOCKED` };
+  // v0.1.66.26: accept EXPIRED in addition to LOCKED. Mirrors
+  // handleVote — healing votes on timed-out trades are allowed.
+  if (state.status !== EscrowStatus.LOCKED && state.status !== EscrowStatus.EXPIRED) {
+    return { canVote: false, reason: `State is ${state.status}, not LOCKED or EXPIRED` };
   }
+  const isHealing = state.status === EscrowStatus.EXPIRED;
 
   const role = getRole(state, pubkey);
   if (!role) return { canVote: false, reason: "Not a participant" };
   if (state.votes[role] !== undefined) return { canVote: false, reason: "Already voted" };
 
-  if (role === Role.ARBITER) {
+  // Arbiter ordering only applies during live disputes, not during
+  // expiry healing (all heal votes are REFUND, ordering is irrelevant).
+  if (role === Role.ARBITER && !isHealing) {
     const buyerVote = state.votes[Role.BUYER];
     const sellerVote = state.votes[Role.SELLER];
     if (buyerVote === undefined || sellerVote === undefined) {
