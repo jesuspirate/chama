@@ -792,9 +792,20 @@ export class EscrowClient {
 
   /** Fetch and reconstruct full escrow state from relays */
   async loadEscrow(escrowId: string): Promise<EscrowState | null> {
+    // v0.1.66.28 DIAGNOSTIC — elevated to console.log with visible tag.
+    // Tells us, per escrow, how many events the relay fetch returned
+    // and how many relays were connected at the moment of the fetch.
+    // If we see "fetched 0 raw events" for escrows we KNOW have events
+    // (e.g. confirmed elsewhere in the app), that's the hypothesis
+    // confirmed: relay fetch is returning empty on some browsers.
+    const connectedAtFetch = [...(this.relayManager as any).relays.values()]
+      .filter((r: any) => r.status === "connected").length;
     const rawEvents = await this.relayManager.fetchEscrowEvents(escrowId);
-    console.debug(`[escrow] loadEscrow ${escrowId}: fetched ${rawEvents.length} raw events from relays`);
-    if (rawEvents.length === 0) return null;
+    console.log(`[chama:diag] loadEscrow ${escrowId}: fetched ${rawEvents.length} raw events (${connectedAtFetch} relays connected)`);
+    if (rawEvents.length === 0) {
+      console.log(`[chama:diag] loadEscrow ${escrowId}: returning null early — no events fetched`);
+      return null;
+    }
 
     // Parse all events — try plaintext JSON first, then NIP-44 decrypt.
     // CREATE and JOIN are plaintext; LOCK/VOTE/CLAIM/CHAT are encrypted.
