@@ -410,28 +410,13 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
         const finalConnected = [...(client as any).relayManager.relays.values()]
           .filter((r: any) => r.status === "connected").length;
         console.log(`[chama] Reloading ${savedIds.length} saved escrow(s) with ${finalConnected} relays connected...`);
-
-        // v0.1.66.27 DIAGNOSTIC — reveal full reload loop behavior.
-        // No behavior change; slice(0, 10) cap and await ordering preserved.
-        // Remove after reload-loop bug is diagnosed and fixed.
-        console.log("[chama:diag] savedIds full list:", savedIds);
-        console.log("[chama:diag] savedIds.length =", savedIds.length, "slice(0,10).length =", savedIds.slice(0, 10).length);
-        const stuckIdIndex = savedIds.indexOf("sm_mo66ihj6_k4yqnoiu");
-        console.log("[chama:diag] sm_mo66ihj6 position in savedIds:", stuckIdIndex, stuckIdIndex >= 10 ? "(DROPPED by slice(0,10))" : stuckIdIndex === -1 ? "(NOT IN LIST)" : "(inside slice)");
-
-        const reloadLoopStart = Date.now();
-        for (const [i, id] of savedIds.slice(0, 10).entries()) {
-          const iterStart = Date.now();
-          console.log(`[chama:diag] [${i}/${savedIds.slice(0, 10).length}] ENTER loadEscrow(${id}) at t+${iterStart - reloadLoopStart}ms`);
+        for (const id of savedIds.slice(0, 10)) {
           try {
             await client.loadEscrow(id);
-            console.log(`[chama:diag] [${i}] EXIT loadEscrow(${id}) after ${Date.now() - iterStart}ms`);
           } catch (e) {
             console.debug(`[chama] Could not reload ${id}:`, e);
-            console.log(`[chama:diag] [${i}] THREW loadEscrow(${id}) after ${Date.now() - iterStart}ms`);
           }
         }
-        console.log(`[chama:diag] Reload loop total: ${Date.now() - reloadLoopStart}ms`);
       }
     } catch (e) {
       setState(prev => ({

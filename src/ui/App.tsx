@@ -969,6 +969,13 @@ function CountdownTimer({ expiresAt }: { expiresAt: number }) {
 
   const remaining = expiresAt - now;
   if (remaining <= 0) {
+    // v0.1.66.29: only the outer guard's skip-list keeps this from
+    // showing on resolved trades. As a safety net, call it "Deadline
+    // passed" rather than "EXPIRED" — the word EXPIRED is reserved
+    // for the actual EscrowStatus.EXPIRED terminal state, and having
+    // both renderers shout the same word caused confusion when heal
+    // flipped LOCKED-past-deadline into APPROVED without this label
+    // updating.
     return (
       <div style={{
         padding: "10px 16px", borderRadius: T.rs,
@@ -976,7 +983,7 @@ function CountdownTimer({ expiresAt }: { expiresAt: number }) {
         textAlign: "center", fontFamily: T.mono, fontSize: 12,
         color: T.red, fontWeight: 700,
       }}>
-        EXPIRED
+        DEADLINE PASSED
       </div>
     );
   }
@@ -1190,7 +1197,16 @@ function TradeDetail({ state, pubkey, onBack, onVote, onClaim, onJoin, onLock, o
         );
       })()}
 
-      {state.expiresAt && state.status !== "COMPLETED" && state.status !== "CANCELLED" && state.status !== "EXPIRED" && (
+      {/* v0.1.66.29: skip countdown in all post-vote states.
+          APPROVED/CLAIMED/COMPLETED mean consensus is reached —
+          showing an "EXPIRED" banner below a green APPROVED pill
+          confused users and us during v0.1.66.26 heal debug. */}
+      {state.expiresAt
+        && state.status !== "COMPLETED"
+        && state.status !== "CANCELLED"
+        && state.status !== "EXPIRED"
+        && state.status !== "APPROVED"
+        && state.status !== "CLAIMED" && (
         <div style={{ marginBottom: 16 }}>
           <CountdownTimer expiresAt={state.expiresAt} />
         </div>
