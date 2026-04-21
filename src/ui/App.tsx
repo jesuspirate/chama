@@ -4,7 +4,7 @@ import { Preferences } from "@capacitor/preferences";
 const QRScanner = lazy(() => import("./QRScanner.js"));
 const QRCode = lazy(() => import("./QRCode.js"));
 import { useEscrow, type FedimintState } from "../hooks/useEscrow.js";
-import { type EscrowState, Role, Outcome, EscrowStatus } from "../escrow-engine/types.js";
+import { type EscrowState, Role, Outcome, EscrowStatus, TRULY_TERMINAL_STATES } from "../escrow-engine/types.js";
 import { canVote, getWinner, getSummary } from "../escrow-engine/state-machine.js";
 import {
   type FederationPreset,
@@ -2460,6 +2460,30 @@ export default function App() {
   const escrowList = myTrades;
   const selected = selectedId ? escrows.get(selectedId) : null;
 
+  // v0.1.66.32: refetch on tap when local state may be stale.
+  // Navigation is instant from cache; if the local snapshot is
+  // missing or non-truly-terminal, fire loadEscrow in the
+  // background so onStateUpdate can re-render the detail view
+  // when fresh data arrives. Fixes the "tap into a trade on a
+  // device that hasn't seen recent events shows stale state"
+  // bug (e.g. APK cold-start past the savedIds reload cap, or
+  // a trade joined on another device since last sync).
+  const openEscrow = (id: string) => {
+    setSelectedId(id);
+    setView("detail");
+    const local = escrows.get(id);
+    const shouldRefetch =
+      !local || !TRULY_TERMINAL_STATES.has(local.status);
+    if (shouldRefetch) {
+      actions.loadEscrow(id).catch((e: any) => {
+        console.debug(
+          "[chama] background refetch on openEscrow failed:",
+          e?.message || e,
+        );
+      });
+    }
+  };
+
   const handleCreate = async (params: any) => {
     try {
       setToast({ message: "Signing event with NIP-07...", type: "info" });
@@ -2920,7 +2944,7 @@ export default function App() {
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 {list.map((s, i) => (
                   <div key={s.id} style={{ animation: `fadeIn 0.4s ease ${i * 0.08}s both` }}>
-                    <TradeCard state={s} pubkey={pubkey!} onSelect={() => { setSelectedId(s.id); setView("detail"); }} />
+                    <TradeCard state={s} pubkey={pubkey!} onSelect={() => openEscrow(s.id)} />
                   </div>
                 ))}
               </div>

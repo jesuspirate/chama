@@ -410,7 +410,10 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
         const finalConnected = [...(client as any).relayManager.relays.values()]
           .filter((r: any) => r.status === "connected").length;
         console.log(`[chama] Reloading ${savedIds.length} saved escrow(s) with ${finalConnected} relays connected...`);
-        for (const id of savedIds.slice(0, 10)) {
+        // v0.1.66.32: cap raised 10 → 50 to match save cap.
+        // Users with >10 saved trades were silently having older
+        // escrows skipped on cold start, causing stale-forever state.
+        for (const id of savedIds.slice(0, 50)) {
           try {
             await client.loadEscrow(id);
           } catch (e) {
