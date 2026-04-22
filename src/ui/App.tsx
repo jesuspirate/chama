@@ -35,16 +35,24 @@ const T = {
   sans: "'DM Sans',-apple-system,sans-serif",
 };
 
+// v0.1.66.33: human-first status vocabulary + three visual modes.
+//   mode "active"   → filled pill, pulsing dot (user action required)
+//   mode "working"  → filled pill, static dot  (system working)
+//   mode "resolved" → outlined pill, no dot    (done)
+// Labels rewritten from system-POV to user-POV: "Funded" ← technically
+// correct but suggests money moved when it hasn't; "Approved" ← vague
+// approval for what; "Expired" ← sounds irreversible when it can heal.
+type StatusMode = "active" | "working" | "resolved";
 const STATUS = {
-  CREATED:   { c: T.muted,  bg: T.surface,   l: "Created" },
-  FUNDED:    { c: T.teal,   bg: T.tealDim,   l: "Funded" },
-  LOCKED:    { c: T.accent, bg: T.accentDim, l: "Locked" },
-  APPROVED:  { c: T.green,  bg: T.greenDim,  l: "Approved" },
-  CLAIMED:   { c: T.amber,  bg: T.amberDim,  l: "Claimed" },
-  COMPLETED: { c: T.green,  bg: T.greenDim,  l: "Complete" },
-  EXPIRED:   { c: T.red,    bg: T.redDim,    l: "Expired" },
-  CANCELLED: { c: T.muted,  bg: T.surface,   l: "Cancelled" },
-} as Record<string, { c: string; bg: string; l: string }>;
+  CREATED:   { c: T.teal,   bg: T.tealDim,   l: "Open",            mode: "working"  as StatusMode },
+  FUNDED:    { c: T.green,  bg: T.greenDim,  l: "Ready to fund",   mode: "active"   as StatusMode },
+  LOCKED:    { c: T.purple, bg: T.purpleDim, l: "Sats in escrow",  mode: "working"  as StatusMode },
+  APPROVED:  { c: T.accent, bg: T.accentDim, l: "Ready to claim",  mode: "active"   as StatusMode },
+  CLAIMED:   { c: T.amber,  bg: T.amberDim,  l: "Settling",        mode: "working"  as StatusMode },
+  COMPLETED: { c: T.green,  bg: T.greenDim,  l: "Done",            mode: "resolved" as StatusMode },
+  EXPIRED:   { c: T.red,    bg: T.redDim,    l: "Timed out",       mode: "active"   as StatusMode },
+  CANCELLED: { c: T.muted,  bg: T.surface,   l: "Cancelled",       mode: "resolved" as StatusMode },
+} as Record<string, { c: string; bg: string; l: string; mode: StatusMode }>;
 
 // v0.1.64: brand-pack role colors (from Chama brand README)
 //   Buyer   = Nostr Purple   #BF5AF2
@@ -85,19 +93,28 @@ function refundRecipientFor(category: string): "buyer" | "seller" {
 
 function Badge({ status }: { status: string }) {
   const s = STATUS[status] || STATUS.CREATED;
+  // v0.1.66.33: pill treatment depends on mode.
+  // Resolved → outlined, no dot. Active → filled, pulsing dot.
+  // Working → filled, static dot.
+  const isResolved = s.mode === "resolved";
+  const isActive = s.mode === "active";
   return (
     <span style={{
       display: "inline-flex", alignItems: "center", gap: 5,
       padding: "3px 10px", borderRadius: 20,
-      background: s.bg, color: s.c,
+      background: isResolved ? "transparent" : s.bg,
+      color: s.c,
+      border: isResolved ? `1px solid ${s.c}66` : "1px solid transparent",
       fontSize: 11, fontWeight: 600, letterSpacing: 0.5,
       textTransform: "uppercase", fontFamily: T.mono,
     }}>
-      <span style={{
-        width: 6, height: 6, borderRadius: "50%", background: s.c,
-        boxShadow: `0 0 8px ${s.c}66`,
-        animation: status === "LOCKED" ? "pulse 2s ease-in-out infinite" : "none",
-      }} />
+      {!isResolved && (
+        <span style={{
+          width: 6, height: 6, borderRadius: "50%", background: s.c,
+          boxShadow: `0 0 8px ${s.c}66`,
+          animation: isActive ? "pulse 2s ease-in-out infinite" : "none",
+        }} />
+      )}
       {s.l}
     </span>
   );
@@ -1415,20 +1432,20 @@ function TradeDetail({ state, pubkey, onBack, onVote, onClaim, onJoin, onLock, o
       {(state.status === EscrowStatus.LOCKED || state.status === EscrowStatus.APPROVED ||
         state.status === EscrowStatus.CLAIMED || state.status === EscrowStatus.COMPLETED) && (
         <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: T.r, padding: 20, marginBottom: 16 }}>
-          <div style={{ fontSize: 11, fontWeight: 600, color: T.muted, fontFamily: T.mono, letterSpacing: 1, marginBottom: 16 }}>VOTES</div>
+          <div style={{ fontSize: 11, fontWeight: 600, color: T.muted, fontFamily: T.mono, letterSpacing: 1, marginBottom: 16 }}>STATUS</div>
           <div style={{ display: "flex", gap: 16, justifyContent: "center" }}>
             <div style={{ textAlign: "center", flex: 1 }}>
               <div style={{ fontSize: 32, fontWeight: 900, color: T.green, fontFamily: T.mono, lineHeight: 1 }}>
                 {Object.values(state.votes).filter(v => v === Outcome.RELEASE).length}
               </div>
-              <div style={{ fontSize: 9, color: T.muted, fontFamily: T.mono, letterSpacing: 1, marginTop: 4 }}>RELEASE</div>
+              <div style={{ fontSize: 9, color: T.muted, fontFamily: T.mono, letterSpacing: 1, marginTop: 4 }}>RELEASE ₿</div>
             </div>
             <div style={{ width: 1, background: T.border }} />
             <div style={{ textAlign: "center", flex: 1 }}>
               <div style={{ fontSize: 32, fontWeight: 900, color: T.amber, fontFamily: T.mono, lineHeight: 1 }}>
                 {Object.values(state.votes).filter(v => v === Outcome.REFUND).length}
               </div>
-              <div style={{ fontSize: 9, color: T.muted, fontFamily: T.mono, letterSpacing: 1, marginTop: 4 }}>REFUND</div>
+              <div style={{ fontSize: 9, color: T.muted, fontFamily: T.mono, letterSpacing: 1, marginTop: 4 }}>REFUND ₿</div>
             </div>
             {state.resolvedOutcome && (
               <>
@@ -1437,7 +1454,7 @@ function TradeDetail({ state, pubkey, onBack, onVote, onClaim, onJoin, onLock, o
                   <div style={{ fontSize: 13, fontWeight: 800, fontFamily: T.mono, color: state.resolvedOutcome === Outcome.RELEASE ? T.green : T.amber }}>
                     {state.resolvedOutcome.toUpperCase()} ✓
                   </div>
-                  <div style={{ fontSize: 9, color: T.muted, marginTop: 4, fontFamily: T.mono }}>RESOLVED</div>
+                  <div style={{ fontSize: 9, color: T.muted, marginTop: 4, fontFamily: T.mono }}>DECISION</div>
                 </div>
               </>
             )}
