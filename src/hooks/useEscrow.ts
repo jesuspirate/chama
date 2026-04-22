@@ -464,9 +464,21 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
   }, []);
 
   // ── Cleanup on unmount ──────────────────────────────────────────────────
+  //
+  // v0.1.66.34: mountedRef is the kill-switch for long-lived async polls
+  // (the claim watchdog in particular). setTimeout-driven polls hold
+  // closures over fedimintRef/updateFedimint, and firing those after
+  // unmount produces React "state update on unmounted component" warnings
+  // — worse, calling updateFedimint() on a stale instance can race a
+  // freshly-mounted hook's state and clobber a real balance update with
+  // a stale read.
+
+  const mountedRef = useRef(true);
 
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
+      mountedRef.current = false;
       clientRef.current?.disconnect();
       fedimintRef.current?.cleanup().catch(() => {});
     };
@@ -578,10 +590,16 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
 
   // Stale-state signatures — these mean the action was a no-op because state
   // already advanced. Suppress silently (same behavior as pre-v0.1.62).
+  //
+  // v0.1.66.34: tightened from substring matches on "already"/"Cannot"
+  // to specific state-machine error signatures. The previous predicate
+  // matched JavaScript TypeErrors like "Cannot read properties of
+  // undefined" — those are real bugs we want surfaced, not staleness.
   const isStaleClaim = (msg: string): boolean => {
-    return msg.includes("already") ||
-           msg.includes("Cannot") ||
-           msg.includes("TERMINAL");
+    return msg.includes("already claimed") ||
+           msg.includes("Cannot claim in state") ||
+           msg.includes("Cannot CLAIM") ||
+           msg.includes("TERMINAL_STATE");
   };
 
   /**
@@ -609,9 +627,15 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       let ticks = 0;
 
       const check = async () => {
+        // v0.1.66.34: bail out if the hook unmounted while we were
+        // asleep. Resolving as "timeout" keeps the promise chain in
+        // the claim action sane without leaking state updates into a
+        // stale component.
+        if (!mountedRef.current) { resolve("timeout"); return; }
         ticks++;
         try {
           const now = await fedimint.getBalance();
+          if (!mountedRef.current) { resolve("timeout"); return; }
           updateFedimint({ balanceMsats: now });
           const delta = now - balanceBefore;
           if (delta >= threshold) {

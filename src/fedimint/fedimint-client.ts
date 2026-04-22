@@ -608,21 +608,27 @@ export class FedimintClient {
 
 /**
  * SHA-256 hash of ecash notes string.
- * Uses Web Crypto API (available in all modern browsers).
+ *
+ * v0.1.66.34: uses Web Crypto API (crypto.subtle), which is available
+ * in every environment this app runs in: modern browsers, Node 19+
+ * (global crypto.subtle), and WebView in Capacitor. The previous
+ * `await import("crypto")` Node fallback was getting externalized
+ * by Vite into the browser bundle as a no-op, so if the top check
+ * ever missed, hashNotes would silently return garbage. Now throws
+ * explicitly — unreachable in practice, but fails loud if wrong.
  */
 async function hashNotes(oobNotes: string): Promise<string> {
   const data = new TextEncoder().encode(oobNotes);
 
-  // Use Web Crypto API (browser-native, no dependencies)
-  if (typeof crypto !== "undefined" && crypto.subtle) {
-    const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-    const hashArray = new Uint8Array(hashBuffer);
-    return Array.from(hashArray).map(b => b.toString(16).padStart(2, "0")).join("");
+  if (typeof crypto === "undefined" || !crypto.subtle) {
+    throw new Error(
+      "Web Crypto API (crypto.subtle) is required for hashNotes but is unavailable in this environment",
+    );
   }
 
-  // Node.js fallback
-  const { createHash } = await import("crypto");
-  return createHash("sha256").update(data).digest("hex");
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  const hashArray = new Uint8Array(hashBuffer);
+  return Array.from(hashArray).map(b => b.toString(16).padStart(2, "0")).join("");
 }
 
 /**
