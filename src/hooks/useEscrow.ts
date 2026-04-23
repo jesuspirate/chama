@@ -57,6 +57,7 @@ import {
   clearSeedCache,
   isTestnetMode,
   resetLocalFedimintWallet,
+  drainPendingRedemptions,
 } from "../fedimint/index.js";
 
 // ── Hook state ────────────────────────────────────────────────────────────
@@ -1040,6 +1041,22 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       } catch {
         // fresh wallet — balance fetch may fail briefly after join
       }
+
+      // v0.1.68: Drain any pending-redemption stash in the background.
+      // ─────────────────────────────────────────────────────────────────
+      // If a previous session died between CLAIM publish and redeem
+      // complete (the sm_moadjfkb_9ue9pd5p failure mode), oobNotes are
+      // sitting in localStorage waiting to be redeemed. Fire the drain
+      // fire-and-forget: onBalanceUpdate (wired above) will push the
+      // new balance into state as redemptions land, so the user sees
+      // balance tick up without a blocking spinner on init.
+      //
+      // Drain errors are already logged inside drainPendingRedemptions;
+      // the outer .catch here is defense-in-depth against an unexpected
+      // throw outside the per-entry try blocks.
+      drainPendingRedemptions(fedimint).catch((e) =>
+        console.warn("[chama] pending-redemption drain error:", e)
+      );
 
       updateFedimint({
         initialized: true,

@@ -13,6 +13,7 @@
 
 import { type EscrowClient, type Signer } from "../escrow-engine/escrow-client.js";
 import { type FedimintClient, type SSSShare } from "./fedimint-client.js";
+import { stashPendingRedemption, clearPendingRedemption } from "./pending-redemptions.js";
 import { type EscrowState, type LockShareEntry, Role, Outcome } from "../escrow-engine/types.js";
 import { getWinner } from "../escrow-engine/state-machine.js";
 
@@ -163,9 +164,38 @@ export class EscrowFedimintBridge {
 
     const stateAfterClaim = await this.escrow.claim(escrowId, notesHash);
 
+    // v0.1.68: Stash oobNotes to localStorage BEFORE attempting redeem.
+    // ───────────────────────────────────────────────────────────────────
+    // At this point:
+    //   - The chain has advanced: CLAIM is published, trade is COMPLETED.
+    //   - The reconstructed oobNotes bearer token exists only on this
+    //     JS stack frame.
+    //   - If the app closes before redeemWithRetry resolves, the token
+    //     is lost and the sats are orphaned (see sm_moadjfkb_9ue9pd5p
+    //     incident, v0.1.67 and earlier).
+    //
+    // Persisting here, then clearing after a successful redeem, makes
+    // the claim path crash-safe. A boot-time drainPendingRedemptions()
+    // call in useEscrow.initFedimint retries any entries that survive
+    // the browser/app dying mid-redeem.
+    //
+    // Note: stashPendingRedemption is synchronous (localStorage), so
+    // there's no new await that could itself be interrupted.
+    stashPendingRedemption({
+      escrowId,
+      oobNotes,
+      notesHash,
+      amountMsats: state.amountMsats,
+    });
+
     try {
       await this.fedimint.redeemWithRetry(oobNotes);
+      // Redeem confirmed (or already-spent, which redeemWithRetry treats
+      // as success). Federation has the notes, stash is no longer needed.
+      clearPendingRedemption(escrowId);
     } catch (redeemErr) {
+      // Stash stays. The boot-drain on next initFedimint() will retry.
+      // UI error surface is unchanged from v0.1.67.
       const wrapped = new Error(
         "Claim published to relays, but ecash redeem failed: " +
           (redeemErr instanceof Error ? redeemErr.message : String(redeemErr))

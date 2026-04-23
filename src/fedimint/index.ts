@@ -12,3 +12,4 @@ export {
   resetLocalFedimintWallet,
 } from "./sdk-adapter.js";
 export { isTestnetMode, createMockWallet } from "./mock-wallet.js";
+export { drainPendingRedemptions } from "./pending-redemptions.js";
