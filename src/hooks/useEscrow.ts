@@ -395,6 +395,116 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       // Store interval for cleanup
       (clientRef as any)._expiryInterval = expiryInterval;
 
+      // ── v0.1.67: Mechanism B sentinel ─────────────────────────────
+      //
+      // Background heal for stuck trades the user is a participant in.
+      // Three heals: stuck-LOCKED-past-expiry (publish my REFUND vote),
+      // CLAIMED-without-COMPLETE (publish COMPLETE), stuck-FUNDED-past-
+      // expiry as initiator (publish CANCEL).
+      //
+      // In-memory dedup prevents retrying the same heal every tick.
+      // Accepts duplicates across clients (state machine dedupes at
+      // replay via ALREADY_VOTED / TERMINAL_STATE / INVALID_STATE).
+      //
+      // Scope: escrowClient.states where the user's pubkey appears in
+      // state.participants. Ground-truth filter — independent of
+      // savedIds localStorage state.
+      const sentinelDedup = new Map<string, Set<string>>();
+      const markAttempted = (escrowId: string, healKind: string) => {
+        const set = sentinelDedup.get(escrowId) ?? new Set<string>();
+        set.add(healKind);
+        sentinelDedup.set(escrowId, set);
+      };
+      const alreadyAttempted = (escrowId: string, healKind: string): boolean =>
+        sentinelDedup.get(escrowId)?.has(healKind) ?? false;
+
+      const sentinelInterval = setInterval(async () => {
+        if (!mountedRef.current) return;
+        if (!clientRef.current || !signerRef.current) return;
+        const escrowClient = clientRef.current;
+        let myPubkey: string;
+        try {
+          myPubkey = await signerRef.current.getPublicKey();
+        } catch {
+          // Signer not ready — skip this tick silently.
+          return;
+        }
+
+        const nowSec = Math.floor(Date.now() / 1000);
+        let scanned = 0;
+        let heals = 0;
+
+        for (const [escrowId, escrowState] of (escrowClient as any).states || []) {
+          scanned++;
+
+          // Determine my role in this trade, if any. If I'm not a
+          // participant, skip entirely — this is the scope guard.
+          const p = escrowState.participants;
+          let myRole: Role | null = null;
+          if (p.buyer === myPubkey) myRole = Role.BUYER;
+          else if (p.seller === myPubkey) myRole = Role.SELLER;
+          else if (p.arbiter === myPubkey) myRole = Role.ARBITER;
+          if (!myRole) continue;
+
+          // ── Heal #1: LOCKED past expiry, I haven't voted REFUND ──
+          if (
+            escrowState.status === "LOCKED" &&
+            nowSec > escrowState.expiresAt &&
+            escrowState.votes?.[myRole] === undefined &&
+            !alreadyAttempted(escrowId, "refund-vote")
+          ) {
+            markAttempted(escrowId, "refund-vote");
+            try {
+              await escrowClient.vote(escrowId, Outcome.REFUND);
+              heals++;
+              console.log(`[chama] sentinel: published REFUND vote on ${escrowId}`);
+            } catch (e) {
+              console.debug(`[chama] sentinel: REFUND vote on ${escrowId} suppressed:`, (e as Error)?.message);
+            }
+            continue;
+          }
+
+          // ── Heal #2: CLAIMED without COMPLETE on chain ──
+          const hasCompleteEvent = escrowState.eventChain?.some?.((e: any) => e.kind === 38106);
+          if (
+            escrowState.status === "CLAIMED" &&
+            !hasCompleteEvent &&
+            !alreadyAttempted(escrowId, "complete")
+          ) {
+            markAttempted(escrowId, "complete");
+            try {
+              await escrowClient.complete(escrowId);
+              heals++;
+              console.log(`[chama] sentinel: published COMPLETE on ${escrowId}`);
+            } catch (e) {
+              console.debug(`[chama] sentinel: COMPLETE on ${escrowId} suppressed:`, (e as Error)?.message);
+            }
+            continue;
+          }
+
+          // ── Heal #3: FUNDED past expiry, no LOCK, I'm the initiator ──
+          const isInitiator = escrowState.initiator?.pubkey === myPubkey;
+          if (
+            escrowState.status === "FUNDED" &&
+            nowSec > escrowState.expiresAt &&
+            isInitiator &&
+            !alreadyAttempted(escrowId, "cancel")
+          ) {
+            markAttempted(escrowId, "cancel");
+            try {
+              await escrowClient.cancel(escrowId, "never_locked_past_expiry");
+              heals++;
+              console.log(`[chama] sentinel: published CANCEL on ${escrowId} (stuck FUNDED past expiry)`);
+            } catch (e) {
+              console.debug(`[chama] sentinel: CANCEL on ${escrowId} suppressed:`, (e as Error)?.message);
+            }
+          }
+        }
+
+        console.log(`[chama] sentinel: scanned ${scanned} escrows, ${heals} heals`);
+      }, 5 * 60_000);
+      (clientRef as any)._sentinelInterval = sentinelInterval;
+
       // Auto-reload saved escrows — wait for relays to connect first
       const savedIds = getSavedEscrowIds();
       if (savedIds.length > 0) {
