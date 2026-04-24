@@ -116,6 +116,8 @@ export class FedimintClient {
   private callbacks: FedimintClientCallbacks;
   private balanceUnsubscribe: (() => void) | null = null;
   private _federationId: string | null = null;
+  /** v0.1.69: cache the invite we actually joined with, to detect switch attempts */
+  private _joinedInvite: string | null = null;
 
   /**
    * Factory function to create the actual wallet instance.
@@ -238,13 +240,41 @@ export class FedimintClient {
   async joinFederation(inviteCode: string): Promise<string> {
     const wallet = this.requireWallet();
 
+    // v0.1.69: Gate federation switching.
+    // ─────────────────────────────────────────────────────────────────
+    // Ecash is federation-bound. Until Chama supports proper per-
+    // federation isolation (separate OPFS files or the SDK's native
+    // multi-federation client), switching federations on an already-
+    // open wallet would orphan ecash notes bound to the previous
+    // federation. The previous behavior silently ignored the incoming
+    // inviteCode and returned the existing federationId — the UI
+    // would show a stale "custom federation" label with the old
+    // balance. We now throw clearly on switch attempts, and treat
+    // re-joining with the same invite as idempotent.
     if (wallet.isOpen()) {
-      // Already joined — return current federation ID
-      return this._federationId || await wallet.federation.getFederationId();
+      const currentId =
+        this._federationId || (await wallet.federation.getFederationId());
+      // Idempotent: same invite on an already-open wallet = no-op.
+      // Compare after trimming to be defensive about whitespace/newlines
+      // that sometimes sneak in from clipboard paste.
+      if (
+        this._joinedInvite &&
+        this._joinedInvite.trim() === inviteCode.trim()
+      ) {
+        return currentId;
+      }
+      // Different invite = user is trying to switch. Refuse clearly.
+      throw new Error(
+        "Federation switching is not yet supported. " +
+        "Your wallet is currently joined to another federation, and " +
+        "switching would orphan any ecash bound to it. " +
+        "Multi-federation support is planned for a future release."
+      );
     }
 
     await wallet.joinFederation(inviteCode);
     this._federationId = await wallet.federation.getFederationId();
+    this._joinedInvite = inviteCode.trim();
 
     // Now that the client exists in the DB, wire up the balance stream
     // (if init() skipped it because the DB was empty).

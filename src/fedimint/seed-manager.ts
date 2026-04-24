@@ -35,6 +35,34 @@ export const CHAMA_SEED_KIND = 30078;
 /** Parameterized `d`-tag — version suffix lets us rotate the format later */
 export const CHAMA_SEED_D_TAG = "chama-fedimint-seed-v1";
 
+// ── v0.1.69: Seed resilience constants ──────────────────────────────────
+
+/**
+ * Republish the seed event if the most recent one we can find on relays
+ * is older than this threshold. 7 days gives us weekly refreshes, which
+ * keeps the event "warm" on relays that prune inactive replaceable events
+ * without hammering relays on every session.
+ */
+export const SEED_REPUBLISH_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** localStorage key for seed health tracking (for UI consumption) */
+export const SEED_HEALTH_STORAGE_KEY = "chama_seed_health_v1";
+
+/**
+ * Snapshot of seed-backup health. Consumed by UI (v0.1.71+) to render
+ * a "your seed is backed up on N relays" indicator.
+ */
+export interface SeedHealth {
+  /** How many seed events the relays returned on the last check */
+  relaysReturnedSeed: number;
+  /** Unix seconds — created_at of the newest seed event found */
+  newestEventCreatedAt: number | null;
+  /** Unix ms — when we last verified presence on relays */
+  lastCheckedAt: number;
+  /** Unix ms — when we last published (or republished) the seed */
+  lastPublishedAt: number | null;
+}
+
 // ── In-memory cache (per session) ──────────────────────────────────────────
 
 let cachedSeed: string[] | null = null;
@@ -197,6 +225,7 @@ export async function getOrCreateSeed(
 
   const signed: NostrEvent = await signer.signEvent(unsigned);
   await client.publishRaw(signed);
+  recordSeedPublished();
 
   cachedSeed = words;
   cachedForPubkey = pubkey;
@@ -228,4 +257,145 @@ export async function republishSeed(
   };
   const signed = await signer.signEvent(unsigned);
   await client.publishRaw(signed);
+  recordSeedPublished();
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// v0.1.69 — SEED RESILIENCE: staleness check, republish, health tracking
+// ══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Check how many seed events exist on relays, and republish if the newest
+ * is older than SEED_REPUBLISH_INTERVAL_MS. Records health info to
+ * localStorage for UI consumption.
+ *
+ * Called fire-and-forget from useEscrow.initFedimint after getOrCreateSeed.
+ * "Only republish on recovery, not fresh generation" is satisfied naturally:
+ * a freshly-generated seed has created_at ≈ now, so staleness check returns
+ * false and the republish branch is a no-op.
+ *
+ * Non-throwing by design — this is resilience work, and errors here should
+ * never block the user from using the wallet. All failures log and return.
+ */
+export async function checkAndMaybeRepublishSeed(
+  client: EscrowClient,
+  signer: Signer
+): Promise<SeedHealth> {
+  const now = Date.now();
+  let health: SeedHealth = {
+    relaysReturnedSeed: 0,
+    newestEventCreatedAt: null,
+    lastCheckedAt: now,
+    lastPublishedAt: loadSeedHealth()?.lastPublishedAt ?? null,
+  };
+
+  try {
+    const pubkey = await signer.getPublicKey();
+
+    // Query relays for the current seed event(s)
+    const existing = await client.queryOnce(
+      {
+        kinds: [CHAMA_SEED_KIND],
+        authors: [pubkey],
+        "#d": [CHAMA_SEED_D_TAG],
+        limit: 4,
+      },
+      5_000
+    );
+
+    health.relaysReturnedSeed = existing.length;
+
+    if (existing.length === 0) {
+      // No seed event on relays at all. This is surprising — getOrCreateSeed
+      // either recovered or generated one earlier this session. Could mean
+      // the relays we're connected to don't have it yet, or the event was
+      // pruned. Either way, if we have a cached seed, republish defensively.
+      if (cachedSeed) {
+        console.warn(
+          "[chama] No seed event found on relays — republishing cached seed"
+        );
+        try {
+          await republishSeed(client, signer);
+          health.lastPublishedAt = Date.now();
+        } catch (e) {
+          console.warn("[chama] defensive seed republish failed:", e);
+        }
+      }
+      saveSeedHealth(health);
+      return health;
+    }
+
+    // Find the newest event
+    const newest = existing.reduce((a, b) =>
+      b.created_at > a.created_at ? b : a
+    );
+    health.newestEventCreatedAt = newest.created_at;
+
+    // Staleness check: republish if the newest event is older than
+    // SEED_REPUBLISH_INTERVAL_MS
+    const ageMs = now - newest.created_at * 1000;
+    if (ageMs > SEED_REPUBLISH_INTERVAL_MS) {
+      console.info(
+        `[chama] seed event is ${Math.round(ageMs / 86400000)} days old ` +
+        `— republishing to keep it warm on relays`
+      );
+      try {
+        await republishSeed(client, signer);
+        health.lastPublishedAt = Date.now();
+      } catch (e) {
+        console.warn("[chama] staleness-triggered seed republish failed:", e);
+      }
+    }
+
+    saveSeedHealth(health);
+    return health;
+  } catch (e) {
+    console.warn("[chama] seed health check failed (non-fatal):", e);
+    saveSeedHealth(health);
+    return health;
+  }
+}
+
+/**
+ * Read the most recently recorded seed health snapshot. Returns null if
+ * no health check has ever run (first launch, or pre-v0.1.69 data).
+ */
+export function getSeedHealth(): SeedHealth | null {
+  return loadSeedHealth();
+}
+
+// ── Internal: seed health storage ────────────────────────────────────────
+
+function loadSeedHealth(): SeedHealth | null {
+  try {
+    if (typeof localStorage === "undefined") return null;
+    const raw = localStorage.getItem(SEED_HEALTH_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return null;
+    return parsed as SeedHealth;
+  } catch {
+    return null;
+  }
+}
+
+function saveSeedHealth(health: SeedHealth): void {
+  try {
+    if (typeof localStorage === "undefined") return;
+    localStorage.setItem(SEED_HEALTH_STORAGE_KEY, JSON.stringify(health));
+  } catch (e) {
+    console.warn("[chama] saveSeedHealth failed:", e);
+  }
+}
+
+/** Called by getOrCreateSeed and republishSeed on successful publish */
+function recordSeedPublished(): void {
+  const existing = loadSeedHealth();
+  const updated: SeedHealth = {
+    relaysReturnedSeed: existing?.relaysReturnedSeed ?? 0,
+    newestEventCreatedAt: Math.floor(Date.now() / 1000),
+    lastCheckedAt: existing?.lastCheckedAt ?? Date.now(),
+    lastPublishedAt: Date.now(),
+  };
+  saveSeedHealth(updated);
 }

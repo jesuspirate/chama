@@ -58,6 +58,7 @@ import {
   isTestnetMode,
   resetLocalFedimintWallet,
   drainPendingRedemptions,
+  checkAndMaybeRepublishSeed,
 } from "../fedimint/index.js";
 
 // ── Hook state ────────────────────────────────────────────────────────────
@@ -1057,6 +1058,29 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       drainPendingRedemptions(fedimint).catch((e) =>
         console.warn("[chama] pending-redemption drain error:", e)
       );
+
+      // v0.1.69: Seed health check + staleness republish.
+      // ─────────────────────────────────────────────────────────────────
+      // Query relays for the current seed event and republish if it's
+      // older than SEED_REPUBLISH_INTERVAL_MS (7 days). Also records
+      // health info (relay count, timestamps) to localStorage for UI
+      // consumption in a future release.
+      //
+      // Fresh-generation case: if getOrCreateSeed just generated a new
+      // seed this session, its created_at ≈ now, so the staleness check
+      // returns false and no republish happens — satisfying the "only
+      // republish on recovery, not fresh generation" rule naturally.
+      //
+      // Fire-and-forget, matches the v0.1.68 drain pattern. Non-blocking
+      // so UI transitions to the "joined" state without waiting.
+      if (!isTestnetMode()) {
+        checkAndMaybeRepublishSeed(
+          clientRef.current!,
+          signerRef.current!
+        ).catch((e) =>
+          console.warn("[chama] seed health check error:", e)
+        );
+      }
 
       updateFedimint({
         initialized: true,
