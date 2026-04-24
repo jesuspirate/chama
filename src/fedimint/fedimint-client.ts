@@ -240,30 +240,56 @@ export class FedimintClient {
   async joinFederation(inviteCode: string): Promise<string> {
     const wallet = this.requireWallet();
 
-    // v0.1.69: Gate federation switching.
+    // v0.1.69 / v0.1.70: Gate federation switching (with re-open fix).
     // ─────────────────────────────────────────────────────────────────
     // Ecash is federation-bound. Until Chama supports proper per-
     // federation isolation (separate OPFS files or the SDK's native
     // multi-federation client), switching federations on an already-
     // open wallet would orphan ecash notes bound to the previous
-    // federation. The previous behavior silently ignored the incoming
-    // inviteCode and returned the existing federationId — the UI
-    // would show a stale "custom federation" label with the old
-    // balance. We now throw clearly on switch attempts, and treat
-    // re-joining with the same invite as idempotent.
+    // federation. The v0.1.69 guard blocks explicit switches cleanly,
+    // but it also broke the re-open-after-reload case, where the
+    // wallet is already open from a previous session and the user
+    // (or code) tries to re-join the SAME federation — _joinedInvite
+    // is null at that point because we haven't called joinFederation
+    // this session, so the equality check fell through to the throw.
+    //
+    // v0.1.70: distinguish three sub-cases of isOpen():
+    //   (a) same session, same invite  → no-op
+    //   (b) re-open after reload       → trust the re-open, record
+    //                                    the invite, return current
+    //                                    federation ID
+    //   (c) same session, different    → throw (legitimate switch
+    //       invite                       attempt, still blocked)
+    //
+    // Residual risk in (b): if an invite for a different federation
+    // is passed while the OPFS holds federation X, we'd record it
+    // but the wallet stays on X. This matches pre-v0.1.68 behavior
+    // (silent no-op in this case) and doesn't introduce new risk
+    // relative to what shipped for months before. Closing this gap
+    // requires an SDK helper to peek an invite's federation ID
+    // without joining — revisit when multi-federation work starts.
     if (wallet.isOpen()) {
       const currentId =
         this._federationId || (await wallet.federation.getFederationId());
-      // Idempotent: same invite on an already-open wallet = no-op.
-      // Compare after trimming to be defensive about whitespace/newlines
-      // that sometimes sneak in from clipboard paste.
-      if (
-        this._joinedInvite &&
-        this._joinedInvite.trim() === inviteCode.trim()
-      ) {
+
+      // (b) Re-open case: wallet is open from a previous session but
+      // we haven't called joinFederation yet this session. Record the
+      // invite and return the existing federation ID. This is the
+      // common happy-path-after-reload flow; the user simply re-joined
+      // the same federation their OPFS already holds.
+      if (this._joinedInvite === null) {
+        this._joinedInvite = inviteCode.trim();
         return currentId;
       }
-      // Different invite = user is trying to switch. Refuse clearly.
+
+      // (a) Same-session idempotent re-join. Trim-compare to be
+      // defensive about whitespace that sometimes sneaks in from
+      // clipboard paste.
+      if (this._joinedInvite.trim() === inviteCode.trim()) {
+        return currentId;
+      }
+
+      // (c) Same session, different invite → switch attempt. Refuse.
       throw new Error(
         "Federation switching is not yet supported. " +
         "Your wallet is currently joined to another federation, and " +
