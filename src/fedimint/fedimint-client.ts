@@ -80,11 +80,10 @@ export interface EscrowLockBundle {
   notesHash: string;
   /** The 3 SSS shares */
   shares: SSSShare[];
-  /** Amount breakdown */
+  /** Amount breakdown (v0.1.71: 2-way split, no platformFeeMsats) */
   totalMsats: number;
   sellerReceivesMsats: number;
   arbiterFeeMsats: number;
-  platformFeeMsats: number;
 }
 
 // ── Callback interface ────────────────────────────────────────────────────
@@ -453,19 +452,32 @@ export class FedimintClient {
   async createEscrowLock(
     totalMsats: number,
     fees: {
-      platformFeeBps: number;
       arbiterFeeMsats: number;
     }
   ): Promise<EscrowLockBundle> {
     const wallet = this.requireWallet();
 
-    // Calculate fee breakdown
-    const platformFeeMsats = Math.floor((totalMsats * fees.platformFeeBps) / 10_000);
+    // v0.1.71: platform fee no longer deducted from lock.
+    // ─────────────────────────────────────────────────────────────────
+    // The locker spends only what's owed to participants (seller +
+    // arbiter). The 0.5% platform fee is collected separately via
+    // Lightning at trade completion (see fee-collector.ts in v0.1.72+).
+    //
+    // Parked code below — uncomment if LN-only fee collection ever needs
+    // to be reverted to protocol-level enforcement. The state machine's
+    // legacy sum check accepts either shape, so a future re-enable just
+    // means restoring this code, the LockPayload field, and the share-3
+    // encryption path in escrow-bridge.ts.
+    //
+    // const platformFeeMsats = Math.floor((totalMsats * fees.platformFeeBps) / 10_000);
+    // const sellerReceivesMsats = totalMsats - platformFeeMsats - fees.arbiterFeeMsats;
+    //
+    // 2-way split:
     const arbiterFeeMsats = fees.arbiterFeeMsats;
-    const sellerReceivesMsats = totalMsats - platformFeeMsats - arbiterFeeMsats;
+    const sellerReceivesMsats = totalMsats - arbiterFeeMsats;
 
     if (sellerReceivesMsats <= 0) {
-      throw new Error("Fees exceed total amount — seller would receive nothing");
+      throw new Error("Arbiter fee exceeds total amount — seller would receive nothing");
     }
 
     // Step 1: Spend the full amount as ecash notes
@@ -484,7 +496,6 @@ export class FedimintClient {
       totalMsats,
       sellerReceivesMsats,
       arbiterFeeMsats,
-      platformFeeMsats,
     };
   }
 

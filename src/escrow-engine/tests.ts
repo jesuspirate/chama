@@ -126,9 +126,9 @@ function lockEvent(prevId: string): ParsedEscrowEvent<LockPayload> {
       { shareIndex: 1, encryptedFor: { [BUYER_PK]: "enc_1_for_buyer", [SELLER_PK]: "enc_1_for_seller", [ARBITER_PK]: "enc_1_for_arbiter" } },
       { shareIndex: 2, encryptedFor: { [BUYER_PK]: "enc_2_for_buyer", [SELLER_PK]: "enc_2_for_seller", [ARBITER_PK]: "enc_2_for_arbiter" } },
     ],
-    sellerReceivesMsats: 98_500_000,
+    // v0.1.71: 2-way fee split (was 98_500_000 + 1_000_000 + 500_000).
+    sellerReceivesMsats: 99_000_000,
     arbiterFeeMsats: 1_000_000,
-    platformFeeMsats: 500_000,
     lockedAt: NOW + eventCounter,
   }, prevId);
 }
@@ -363,9 +363,9 @@ console.log("\n── LOCK ──");
       { shareIndex: 1, encryptedFor: { [BUYER_PK]: "s1b", [SELLER_PK]: "s1s", [ARBITER_PK]: "s1a" } },
       { shareIndex: 2, encryptedFor: { [BUYER_PK]: "s2b", [SELLER_PK]: "s2s", [ARBITER_PK]: "s2a" } },
     ],
+    // v0.1.71: 2-way split, still doesn't add up to 100_000_000
     sellerReceivesMsats: 90_000_000, // Doesn't add up
     arbiterFeeMsats: 1_000_000,
-    platformFeeMsats: 500_000,
     lockedAt: NOW,
   }, ra2.raw.id);
 
@@ -380,9 +380,10 @@ console.log("\n── LOCK ──");
       { shareIndex: 1, encryptedFor: { [BUYER_PK]: "bl1b", [SELLER_PK]: "bl1s", [ARBITER_PK]: "bl1a" } },
       { shareIndex: 2, encryptedFor: { [BUYER_PK]: "bl2b", [SELLER_PK]: "bl2s", [ARBITER_PK]: "bl2a" } },
     ],
-    sellerReceivesMsats: 98_500_000,
+    // v0.1.71: 2-way split summing to 100_000_000 so AMOUNT_MISMATCH
+    // doesn't fire before WRONG_LOCKER does.
+    sellerReceivesMsats: 99_000_000,
     arbiterFeeMsats: 1_000_000,
-    platformFeeMsats: 500_000,
     lockedAt: NOW,
   }, ra2.raw.id);
   assertErr(applyEvent(state, buyerLock), "WRONG_LOCKER", "Buyer can't lock in p2p-trade (seller must lock)");

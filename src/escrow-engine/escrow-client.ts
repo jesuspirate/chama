@@ -469,12 +469,13 @@ export class EscrowClient {
   // Use that bridge from the UI layer. This class only handles the
   // Nostr event side.
 
+  // v0.1.71: lockEscrow no longer takes platformFeeMsats.
+  // Platform fees are collected via Lightning at trade completion.
   async lockEscrow(escrowId: string, params: {
     notesHash: string;
     shares: LockShareEntry[];
     sellerReceivesMsats: number;
     arbiterFeeMsats: number;
-    platformFeeMsats: number;
   }): Promise<EscrowState> {
     const state = this.states.get(escrowId);
     if (!state) throw new Error(`Escrow ${escrowId} not loaded`);
@@ -488,7 +489,6 @@ export class EscrowClient {
       shares: params.shares,
       sellerReceivesMsats: params.sellerReceivesMsats,
       arbiterFeeMsats: params.arbiterFeeMsats,
-      platformFeeMsats: params.platformFeeMsats,
       lockedAt: now,
     };
 

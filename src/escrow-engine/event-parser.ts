@@ -118,6 +118,10 @@ function validateJoinPayload(data: unknown): data is JoinPayload {
 }
 
 function validateLockPayload(data: unknown): data is LockPayload {
+  // v0.1.71: platformFeeMsats no longer required — it was removed from
+  // the LockPayload schema. We accept old LOCKs that still carry the
+  // field (browsers keep cached events from pre-.71 trades), we just
+  // don't check or use it. State machine handles the 2-way amount sum.
   const d = data as Record<string, unknown>;
   return (
     d.type === "escrow:lock" &&
@@ -125,7 +129,6 @@ function validateLockPayload(data: unknown): data is LockPayload {
     Array.isArray(d.shares) && d.shares.length === 3 &&
     typeof d.sellerReceivesMsats === "number" &&
     typeof d.arbiterFeeMsats === "number" &&
-    typeof d.platformFeeMsats === "number" &&
     typeof d.lockedAt === "number"
   );
 }

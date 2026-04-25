@@ -314,13 +314,22 @@ function handleLock(state: EscrowState, event: ParsedEscrowEvent<LockPayload>): 
     return err("INVALID_SHARES", "LOCK must include exactly 3 SSS shares", event.raw.id);
   }
 
-  // Validate amounts add up
-  const total = p.sellerReceivesMsats + p.arbiterFeeMsats + p.platformFeeMsats;
-  if (total !== state.amountMsats) {
+  // v0.1.71: 2-way amount sum.
+  // Platform fee is no longer part of the lock — collected out-of-band
+  // via Lightning at trade completion. Lock math is seller + arbiter only.
+  // We accept old LOCKs (pre-.71) that may still carry platformFeeMsats
+  // in their payload by checking for either sum shape.
+  const seller = p.sellerReceivesMsats;
+  const arbiter = p.arbiterFeeMsats;
+  const legacyPlatform = (p as unknown as { platformFeeMsats?: number }).platformFeeMsats;
+  const newSum = seller + arbiter;
+  const legacySum = newSum + (typeof legacyPlatform === "number" ? legacyPlatform : 0);
+  const ok = newSum === state.amountMsats || legacySum === state.amountMsats;
+  if (!ok) {
     return err("AMOUNT_MISMATCH",
-      `Fee split (${total}) doesn't match escrow amount (${state.amountMsats})`,
+      `Fee split (${newSum}) doesn't match escrow amount (${state.amountMsats})`,
       event.raw.id,
-      { total, expected: state.amountMsats }
+      { total: newSum, expected: state.amountMsats }
     );
   }
 
@@ -336,8 +345,14 @@ function handleLock(state: EscrowState, event: ParsedEscrowEvent<LockPayload>): 
     next.lock.shares.set(String(share.shareIndex), share);
   }
 
-  // Update fee breakdown from actual lock amounts
-  next.fees.platformMsats = p.platformFeeMsats;
+  // v0.1.71: legacy platformFeeMsats writeback.
+  // New LOCKs don't carry platformFeeMsats (it's parked from the schema
+  // as platform fees move to LN collection). Old LOCKs (pre-.71) still
+  // do — read it via the legacy escape hatch so replays of historical
+  // chains preserve audit info. Defaults to 0 for new LOCKs.
+  const legacyPlatformWriteback =
+    (p as unknown as { platformFeeMsats?: number }).platformFeeMsats ?? 0;
+  next.fees.platformMsats = legacyPlatformWriteback;
   next.fees.arbiterMsats = p.arbiterFeeMsats;
 
   next.eventChain.push(event);

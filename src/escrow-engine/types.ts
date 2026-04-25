@@ -213,7 +213,17 @@ export interface LockShareEntry {
   encryptedFor: Record<string, string>;
 }
 
-/** Content of a LOCK event */
+/** Content of a LOCK event.
+ *
+ *  v0.1.71: platformFeeMsats parked — platform fees are now collected
+ *  out-of-band via Lightning at trade completion (see fee-collector.ts
+ *  in v0.1.72+). The lock math is now a 2-way split: seller + arbiter
+ *  must equal amountMsats. The platformFeeBps/Pubkey on CreatePayload
+ *  are kept as informational so the UI can show "0.5% via Lightning at
+ *  completion." If LN-only fee collection ever needs to be reverted to
+ *  protocol-level enforcement, restore the platformFeeMsats field here
+ *  and the matching code parked in fedimint-client.ts and state-machine.ts.
+ */
 export interface LockPayload {
   type: "escrow:lock";
   /** Hash of the full ecash notes (for verification) */
@@ -222,10 +232,9 @@ export interface LockPayload {
    *  Every share is NIP-44 encrypted separately to each participant's
    *  pubkey, so any participant can decrypt any share. */
   shares: LockShareEntry[];
-  /** Breakdown of amounts */
+  /** Breakdown of amounts (2-way split since v0.1.71) */
   sellerReceivesMsats: number;
   arbiterFeeMsats: number;
-  platformFeeMsats: number;
   lockedAt: number;
 }
 

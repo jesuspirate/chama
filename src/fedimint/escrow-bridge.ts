@@ -47,11 +47,12 @@ export class EscrowFedimintBridge {
     const state = this.escrow.getState(escrowId);
     if (!state) throw new Error(`Escrow ${escrowId} not loaded`);
 
-    // Create the SSS lock bundle (spends ecash from wallet)
+    // v0.1.71: no platformFeeBps passed.
+    // Lock math is now seller + arbiter only. Platform fee is collected
+    // out-of-band via Lightning at trade completion.
     const lockBundle = await this.fedimint.createEscrowLock(
       state.amountMsats,
       {
-        platformFeeBps: state.fees.platformBps,
         arbiterFeeMsats: state.fees.arbiterMsats,
       }
     );
@@ -75,13 +76,12 @@ export class EscrowFedimintBridge {
       shares.push({ shareIndex: i, encryptedFor });
     }
 
-    // Publish the LOCK event
+    // Publish the LOCK event (v0.1.71: no platformFeeMsats)
     return this.escrow.lockEscrow(escrowId, {
       notesHash: lockBundle.notesHash,
       shares,
       sellerReceivesMsats: lockBundle.sellerReceivesMsats,
       arbiterFeeMsats: lockBundle.arbiterFeeMsats,
-      platformFeeMsats: lockBundle.platformFeeMsats,
     });
   }
 
