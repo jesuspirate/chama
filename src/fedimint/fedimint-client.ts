@@ -86,6 +86,49 @@ export interface EscrowLockBundle {
   arbiterFeeMsats: number;
 }
 
+
+// [$$] money instrumentation v0.1.71b
+// ══════════════════════════════════════════════════════════════════════════
+// Money-flow instrumentation helpers.
+//
+// Activation: in the browser console, run:
+//   localStorage.setItem("chama_debug_money", "1")
+// To deactivate:
+//   localStorage.removeItem("chama_debug_money")
+//
+// All instrumentation lines start with "[$$]" so you can filter the
+// console with that one keyword to see *only* money flow across all
+// checkpoints. Federation ID is included on every line so you can
+// detect mid-flow federation drift (the v0.1.71 incident root cause
+// hypothesis).
+// ══════════════════════════════════════════════════════════════════════════
+
+function mlogEnabled(): boolean {
+  try {
+    return typeof localStorage !== "undefined"
+      && localStorage.getItem("chama_debug_money") !== null;
+  } catch {
+    return false;
+  }
+}
+
+function mlog(checkpoint: string, fields: Record<string, unknown>): void {
+  if (!mlogEnabled()) return;
+  // Stable shape: [$$] CHECKPOINT key=value key=value ...
+  const parts: string[] = [`[$$] ${checkpoint}`];
+  for (const [k, v] of Object.entries(fields)) {
+    let val: string;
+    if (v === undefined) val = "undef";
+    else if (v === null) val = "null";
+    else if (typeof v === "string") val = v.length > 64 ? `${v.slice(0, 60)}...(${v.length})` : v;
+    else if (typeof v === "number" || typeof v === "boolean") val = String(v);
+    else val = JSON.stringify(v).slice(0, 80);
+    parts.push(`${k}=${val}`);
+  }
+  // eslint-disable-next-line no-console
+  console.info(parts.join(" "));
+}
+
 // ── Callback interface ────────────────────────────────────────────────────
 
 export interface FedimintClientCallbacks {
@@ -194,10 +237,24 @@ export class FedimintClient {
       // non-existent client; we'll subscribe inside joinFederation()
       // instead, after the client is bootstrapped.
       if (this.wallet.isOpen()) {
+        // [$$] BAL-TICK on every balance push from the SDK
         this.balanceUnsubscribe = this.wallet.balance.subscribeBalance((balance) => {
+          mlog("BAL-TICK", {
+            fed: this._federationId,
+            balance,
+            source: "init-subscribe",
+          });
           this.callbacks.onBalanceUpdate?.(balance);
         });
         this._federationId = await this.wallet.federation.getFederationId();
+        try {
+          const initBal = await this.wallet.balance.getBalance();
+          mlog("FED-INIT", {
+            fed: this._federationId,
+            balance: initBal,
+            source: "existing-opfs",
+          });
+        } catch {}
 
         // Check for pending recovery on init (e.g. after auto-reset)
         await this.runRecoveryIfNeeded(this.wallet);
@@ -305,9 +362,23 @@ export class FedimintClient {
     // (if init() skipped it because the DB was empty).
     if (!this.balanceUnsubscribe) {
       this.balanceUnsubscribe = wallet.balance.subscribeBalance((balance) => {
+        // [$$] BAL-TICK on every balance push from the SDK
+        mlog("BAL-TICK", {
+          fed: this._federationId,
+          balance,
+          source: "join-subscribe",
+        });
         this.callbacks.onBalanceUpdate?.(balance);
       });
     }
+    try {
+      const joinBal = await wallet.balance.getBalance();
+      mlog("FED-JOIN", {
+        fed: this._federationId,
+        balance: joinBal,
+        invitePrefix: inviteCode.slice(0, 24),
+      });
+    } catch {}
 
     // Check for pending recovery (happens when rejoining with same seed
     // after OPFS reset — the federation can reconstruct ecash notes)
@@ -480,8 +551,39 @@ export class FedimintClient {
       throw new Error("Arbiter fee exceeds total amount — seller would receive nothing");
     }
 
+    // [$$] LOCK-IN — entering the spend
+    let _lockBalBefore: number | undefined;
+    try { _lockBalBefore = await wallet.balance.getBalance(); } catch {}
+    mlog("LOCK-IN", {
+      fed: this._federationId,
+      totalMsats,
+      arbiterFeeMsats,
+      sellerReceivesMsats,
+      balanceBefore: _lockBalBefore,
+    });
+
     // Step 1: Spend the full amount as ecash notes
     const oobNotes = await wallet.mint.spendNotes(totalMsats);
+
+    // [$$] LOCK-SPEND — what spendNotes actually returned
+    let _spentParsed: number | undefined;
+    try {
+      const _p = await wallet.mint.parseNotes(oobNotes);
+      _spentParsed = _p.total_amount;
+    } catch {}
+    let _lockBalAfter: number | undefined;
+    try { _lockBalAfter = await wallet.balance.getBalance(); } catch {}
+    mlog("LOCK-SPEND", {
+      fed: this._federationId,
+      requestedMsats: totalMsats,
+      oobNotesLen: oobNotes.length,
+      parsedTotalMsats: _spentParsed,
+      delta: _spentParsed !== undefined ? _spentParsed - totalMsats : undefined,
+      balanceAfter: _lockBalAfter,
+      balanceDelta: (_lockBalBefore !== undefined && _lockBalAfter !== undefined)
+        ? _lockBalAfter - _lockBalBefore
+        : undefined,
+    });
 
     // Step 2: Hash the notes for verification
     const notesHash = await hashNotes(oobNotes);
@@ -489,6 +591,15 @@ export class FedimintClient {
     // Step 3: Split into 2-of-3 Shamir shares
     const notesBytes = new TextEncoder().encode(oobNotes);
     const shares = await shamirSplit(notesBytes, 3, 2);
+
+    // [$$] LOCK-OUT — final breakdown leaving the bridge
+    mlog("LOCK-OUT", {
+      fed: this._federationId,
+      notesHashPrefix: notesHash.slice(0, 16),
+      sellerReceivesMsats,
+      arbiterFeeMsats,
+      totalMsats,
+    });
 
     return {
       notesHash,
@@ -544,6 +655,16 @@ export class FedimintClient {
     // Step 3: Parse to verify amount
     const parsed = await wallet.mint.parseNotes(oobNotes);
 
+    // [$$] CLAIM-RECON — reconstruction succeeded; report parsed amount
+    mlog("CLAIM-RECON", {
+      fed: this._federationId,
+      expectedHashPrefix: expectedNotesHash.slice(0, 16),
+      actualHashPrefix: actualHash.slice(0, 16),
+      hashMatch: actualHash === expectedNotesHash,
+      parsedTotalMsats: parsed.total_amount,
+      oobNotesLen: oobNotes.length,
+    });
+
     return {
       notesHash: actualHash,
       oobNotes,
@@ -572,10 +693,47 @@ export class FedimintClient {
   async redeemWithRetry(oobNotes: string, maxAttempts = 3): Promise<void> {
     const wallet = this.requireWallet();
 
+    // [$$] REDEEM-IN — entering redeem with intended amount
+    let _redeemAmount: number | undefined;
+    try {
+      const _p = await wallet.mint.parseNotes(oobNotes);
+      _redeemAmount = _p.total_amount;
+    } catch {}
+    let _redeemBalBefore: number | undefined;
+    try { _redeemBalBefore = await wallet.balance.getBalance(); } catch {}
+    mlog("REDEEM-IN", {
+      fed: this._federationId,
+      amountMsats: _redeemAmount,
+      oobNotesLen: oobNotes.length,
+      balanceBefore: _redeemBalBefore,
+    });
+
     let lastErr: unknown;
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
         await wallet.mint.redeemEcash(oobNotes);
+        // [$$] REDEEM-TRY — success path
+        let _redeemBalAfter: number | undefined;
+        try { _redeemBalAfter = await wallet.balance.getBalance(); } catch {}
+        mlog("REDEEM-TRY", {
+          fed: this._federationId,
+          attempt,
+          result: "success",
+          balanceAfter: _redeemBalAfter,
+        });
+        // [$$] REDEEM-OUT — final delta check
+        mlog("REDEEM-OUT", {
+          fed: this._federationId,
+          expectedMsats: _redeemAmount,
+          balanceBefore: _redeemBalBefore,
+          balanceAfter: _redeemBalAfter,
+          balanceDelta: (_redeemBalBefore !== undefined && _redeemBalAfter !== undefined)
+            ? _redeemBalAfter - _redeemBalBefore
+            : undefined,
+          deltaMatchesExpected: (_redeemAmount !== undefined && _redeemBalBefore !== undefined && _redeemBalAfter !== undefined)
+            ? (_redeemBalAfter - _redeemBalBefore) === _redeemAmount
+            : undefined,
+        });
         return;
       } catch (e) {
         lastErr = e;
@@ -594,6 +752,23 @@ export class FedimintClient {
           console.debug(
             `[chama] redeem attempt ${attempt}: notes already accepted by federation, treating as success`
           );
+          // [$$] REDEEM-TRY — already-spent treated as success
+          mlog("REDEEM-TRY", {
+            fed: this._federationId,
+            attempt,
+            result: "already-accepted",
+            errMsg: msg.slice(0, 80),
+          });
+          // [$$] REDEEM-OUT — exit on already-accepted
+          let _bAft: number | undefined;
+          try { _bAft = await wallet.balance.getBalance(); } catch {}
+          mlog("REDEEM-OUT", {
+            fed: this._federationId,
+            expectedMsats: _redeemAmount,
+            balanceBefore: _redeemBalBefore,
+            balanceAfter: _bAft,
+            note: "already-accepted-path",
+          });
           return;
         }
 
@@ -605,10 +780,32 @@ export class FedimintClient {
           msg.includes("parse error") ||
           msg.includes("invalid note format")
         ) {
+          // [$$] REDEEM-TRY — hard failure
+          mlog("REDEEM-TRY", {
+            fed: this._federationId,
+            attempt,
+            result: "hard-fail",
+            errMsg: msg.slice(0, 120),
+          });
+          // [$$] REDEEM-OUT — exit on hard fail (no balance change expected)
+          mlog("REDEEM-OUT", {
+            fed: this._federationId,
+            expectedMsats: _redeemAmount,
+            balanceBefore: _redeemBalBefore,
+            note: "hard-fail-no-credit",
+          });
           throw e;
         }
 
         // Transient — back off and retry.
+        // [$$] REDEEM-TRY — transient
+        mlog("REDEEM-TRY", {
+          fed: this._federationId,
+          attempt,
+          result: "transient",
+          errMsg: msg.slice(0, 120),
+          willRetry: attempt < maxAttempts,
+        });
         // Backoff schedule: ~500ms, ~1500ms, ~3500ms with jitter.
         if (attempt < maxAttempts) {
           const delay = 500 * (2 ** (attempt - 1)) + Math.floor(Math.random() * 200);
@@ -621,6 +818,13 @@ export class FedimintClient {
       }
     }
 
+    // [$$] REDEEM-OUT — exhausted retries, final fail
+    mlog("REDEEM-OUT", {
+      fed: this._federationId,
+      expectedMsats: _redeemAmount,
+      balanceBefore: _redeemBalBefore,
+      note: "all-retries-failed",
+    });
     throw lastErr instanceof Error
       ? lastErr
       : new Error(`redeemEcash failed after ${maxAttempts} attempts`);
