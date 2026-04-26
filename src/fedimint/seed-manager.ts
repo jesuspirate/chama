@@ -48,6 +48,76 @@ export const SEED_REPUBLISH_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000;
 /** localStorage key for seed health tracking (for UI consumption) */
 export const SEED_HEALTH_STORAGE_KEY = "chama_seed_health_v1";
 
+// ── v0.1.74 seed safety ─────────────────────────────────────────────────
+
+/**
+ * localStorage key. Set on a per-pubkey basis the first time we
+ * successfully publish a seed event for that pubkey on this device.
+ * Used as the "previously had a seed" gate that prevents silent fresh-
+ * seed generation on later launches when relay recovery returns empty.
+ *
+ * Format: { [pubkey: string]: { firstPublishedAt: number, lastEventId: string } }
+ */
+export const SEED_PUBLISHED_MARKER_KEY = "chama_seed_published_v1";
+
+/** Longer recovery timeout — was 5s, far too short on slow networks. */
+export const SEED_RECOVERY_TIMEOUT_MS = 15_000;
+
+/**
+ * v0.1.74 [$$] money-flow instrumentation, gated on
+ * localStorage.chama_debug_money === "1". Used to trace the seed
+ * lifecycle without depending on remote logs.
+ */
+function mlog(checkpoint: string, fields: Record<string, unknown> = {}): void {
+  try {
+    if (typeof localStorage === "undefined") return;
+    if (localStorage.getItem("chama_debug_money") !== "1") return;
+  } catch { return; }
+  const parts = Object.entries(fields)
+    .filter(([, v]) => v !== undefined && v !== null && v !== "")
+    .map(([k, v]) => `${k}=${typeof v === "string" ? v : JSON.stringify(v)}`)
+    .join(" ");
+  console.info(`[$$] ${checkpoint} ${parts}`);
+}
+
+/** Read the per-pubkey seed-published marker from localStorage. */
+function loadSeedPublishedMarker(pubkey: string): { firstPublishedAt: number; lastEventId: string } | null {
+  try {
+    if (typeof localStorage === "undefined") return null;
+    const raw = localStorage.getItem(SEED_PUBLISHED_MARKER_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return null;
+    const entry = parsed[pubkey];
+    if (!entry || typeof entry !== "object") return null;
+    if (typeof entry.firstPublishedAt !== "number") return null;
+    if (typeof entry.lastEventId !== "string") return null;
+    return entry;
+  } catch {
+    return null;
+  }
+}
+
+/** Write the per-pubkey seed-published marker to localStorage. */
+function saveSeedPublishedMarker(pubkey: string, eventId: string): void {
+  try {
+    if (typeof localStorage === "undefined") return;
+    let parsed: Record<string, { firstPublishedAt: number; lastEventId: string }> = {};
+    try {
+      const raw = localStorage.getItem(SEED_PUBLISHED_MARKER_KEY);
+      if (raw) parsed = JSON.parse(raw) || {};
+    } catch { /* parse failure -> overwrite with fresh */ }
+    const existing = parsed[pubkey];
+    parsed[pubkey] = {
+      firstPublishedAt: existing?.firstPublishedAt ?? Date.now(),
+      lastEventId: eventId,
+    };
+    localStorage.setItem(SEED_PUBLISHED_MARKER_KEY, JSON.stringify(parsed));
+  } catch (e) {
+    console.warn("[chama] saveSeedPublishedMarker failed:", e);
+  }
+}
+
 /**
  * Snapshot of seed-backup health. Consumed by UI (v0.1.71+) to render
  * a "your seed is backed up on N relays" indicator.
@@ -101,6 +171,13 @@ export async function getOrCreateSeed(
   }
 
   // ── 1. Try to recover existing seed ─────────────────────────────────────
+  // v0.1.74 seed safety: longer timeout, paranoid empty-result handling.
+  // The 5-second timeout used previously was the upstream cause of the
+  // silent fresh-seed bug — slow relays + cold WebSocket pool + first-
+  // load WASM contention frequently exceeded 5s, leading to a false-
+  // negative "no seed exists" result and a fresh-mnemonic generation
+  // that displaced the user's real seed on relays.
+  mlog("SEED-RECOVERY-START", { pubkey: pubkey.slice(0, 8), timeoutMs: SEED_RECOVERY_TIMEOUT_MS });
   const existing = await client.queryOnce(
     {
       kinds: [CHAMA_SEED_KIND],
@@ -108,8 +185,13 @@ export async function getOrCreateSeed(
       "#d": [CHAMA_SEED_D_TAG],
       limit: 4,
     },
-    5_000
+    SEED_RECOVERY_TIMEOUT_MS
   );
+  mlog("SEED-RECOVERY-RESULT", {
+    pubkey: pubkey.slice(0, 8),
+    eventCount: existing.length,
+    eventIds: existing.map(e => e.id?.slice(0, 8)).join(","),
+  });
 
   if (existing.length > 0) {
     // Sort by newest first. Try each event until one decrypts to a valid mnemonic.
@@ -178,6 +260,15 @@ export async function getOrCreateSeed(
       if (words.length >= 12 && words.length <= 24) {
         cachedSeed = words;
         cachedForPubkey = pubkey;
+        // v0.1.74 seed safety: record marker on recovery so future
+        // sessions are protected even if the seed was originally
+        // generated on a different device.
+        saveSeedPublishedMarker(pubkey, candidate.id);
+        mlog("SEED-RECOVERY-OK", {
+          pubkey: pubkey.slice(0, 8),
+          eventId: candidate.id.slice(0, 8),
+          createdAt: candidate.created_at,
+        });
         console.info("[chama] Fedimint seed recovered from Nostr relays");
         return words;
       }
@@ -206,7 +297,45 @@ export async function getOrCreateSeed(
     }
   }
 
-  // ── 2. Generate a fresh mnemonic and publish it ─────────────────────────
+  // ── 2. v0.1.74 seed safety: REFUSE to generate fresh if this pubkey
+  //      has previously published a seed from this device. ────────────
+  //
+  // Reaching this branch means recovery returned zero events. Before
+  // v0.1.74, we'd silently generate a new mnemonic and publish it,
+  // displacing the user's existing seed on relays via NIP-33 eviction
+  // and stranding their funds. That is the fatal money-loss bug this
+  // patch fixes.
+  //
+  // The published-marker is our local memory of "this pubkey has had
+  // a seed published from this device at least once before." If it
+  // exists, we know recovery returning empty is a transient relay
+  // issue, NOT a true first launch. Refuse to generate fresh, throw
+  // a clear error the user can act on.
+  const marker = loadSeedPublishedMarker(pubkey);
+  if (marker) {
+    mlog("SEED-REFUSE-FRESH", {
+      pubkey: pubkey.slice(0, 8),
+      markerFirstPublishedAt: marker.firstPublishedAt,
+      lastEventId: marker.lastEventId.slice(0, 8),
+    });
+    console.error(
+      "[chama] v0.1.74 seed safety: recovery returned no seed events, " +
+      "but this device has previously published a seed for this pubkey " +
+      `(first published: ${new Date(marker.firstPublishedAt).toISOString()}, ` +
+      `last event id: ${marker.lastEventId.slice(0, 16)}…). ` +
+      "REFUSING to generate a fresh seed — that would displace your " +
+      "existing seed on relays and strand your funds."
+    );
+    throw new Error(
+      "Couldn't reach your seed on Nostr relays. Your funds are safe — " +
+      "please check your network connection and try again. " +
+      "(To prevent fund loss, Chama refuses to generate a new seed when " +
+      "this device has previously stored one.)"
+    );
+  }
+
+  // ── 3. True first launch — no marker, no recovery. Generate fresh. ──
+  mlog("SEED-FIRST-LAUNCH", { pubkey: pubkey.slice(0, 8) });
   const mnemonic = generateSeedWords(); // 12-word BIP-39 via @scure/bip39
   const words = mnemonic.trim().split(/\s+/);
 
@@ -226,6 +355,16 @@ export async function getOrCreateSeed(
   const signed: NostrEvent = await signer.signEvent(unsigned);
   await client.publishRaw(signed);
   recordSeedPublished();
+
+  // v0.1.74 seed safety: record the marker so future sessions on this
+  // device know this pubkey has had a seed published before, and won't
+  // be allowed to silently regenerate on a relay timeout.
+  saveSeedPublishedMarker(pubkey, signed.id);
+  mlog("SEED-PUBLISH-OK", {
+    pubkey: pubkey.slice(0, 8),
+    eventId: signed.id.slice(0, 8),
+    source: "first-launch",
+  });
 
   cachedSeed = words;
   cachedForPubkey = pubkey;
@@ -258,6 +397,15 @@ export async function republishSeed(
   const signed = await signer.signEvent(unsigned);
   await client.publishRaw(signed);
   recordSeedPublished();
+  // v0.1.74 seed safety: keep the marker fresh on every republish so
+  // a device that successfully republishes is locked into the safety
+  // gate going forward.
+  saveSeedPublishedMarker(pubkey, signed.id);
+  mlog("SEED-PUBLISH-OK", {
+    pubkey: pubkey.slice(0, 8),
+    eventId: signed.id.slice(0, 8),
+    source: "republish",
+  });
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -306,21 +454,33 @@ export async function checkAndMaybeRepublishSeed(
     health.relaysReturnedSeed = existing.length;
 
     if (existing.length === 0) {
-      // No seed event on relays at all. This is surprising — getOrCreateSeed
-      // either recovered or generated one earlier this session. Could mean
-      // the relays we're connected to don't have it yet, or the event was
-      // pruned. Either way, if we have a cached seed, republish defensively.
-      if (cachedSeed) {
-        console.warn(
-          "[chama] No seed event found on relays — republishing cached seed"
-        );
-        try {
-          await republishSeed(client, signer);
-          health.lastPublishedAt = Date.now();
-        } catch (e) {
-          console.warn("[chama] defensive seed republish failed:", e);
-        }
-      }
+      // v0.1.74 seed safety: REMOVED the "republish defensively" branch.
+      //
+      // Original behavior:
+      //   On zero events found, the cached seed was republished. The
+      //   intent was "the network must have lost it, push our copy
+      //   back up." But this code path is exactly what made the
+      //   silent-fresh-seed bug durable: if getOrCreateSeed had just
+      //   minutes earlier fallen into its 5-second-timeout-empty trap
+      //   and generated a brand-new mnemonic, this branch would then
+      //   republish that fresh mnemonic, evicting any genuine seed
+      //   that did exist on relays a moment later.
+      //
+      // New behavior:
+      //   Zero events on relays is a SCARY result, not a routine one.
+      //   Surface it to the user via the health snapshot. Do not
+      //   self-heal silently — that's how funds get displaced.
+      //
+      //   The correct action when the user sees "0 relays returned
+      //   the seed" is to investigate (relay outage? pruned events?
+      //   wrong nsec?), not to push a republish that may overwrite
+      //   the very seed we're hoping the network can recover.
+      console.warn(
+        "[chama] Seed health check: zero events found on relays. " +
+        "Not republishing — see v0.1.74 seed safety. If you believe " +
+        "your seed has been lost from relays, investigate manually."
+      );
+      mlog("SEED-HEALTH-ZERO", { pubkey: pubkey.slice(0, 8) });
       saveSeedHealth(health);
       return health;
     }
@@ -332,13 +492,22 @@ export async function checkAndMaybeRepublishSeed(
     health.newestEventCreatedAt = newest.created_at;
 
     // Staleness check: republish if the newest event is older than
-    // SEED_REPUBLISH_INTERVAL_MS
+    // SEED_REPUBLISH_INTERVAL_MS. v0.1.74 seed safety: this is now the
+    // ONLY path that can trigger a republish from the health-check side.
+    // The "zero events found → republish defensively" branch was
+    // removed because it was the durability mechanism for the silent
+    // fresh-seed displacement bug.
     const ageMs = now - newest.created_at * 1000;
     if (ageMs > SEED_REPUBLISH_INTERVAL_MS) {
       console.info(
         `[chama] seed event is ${Math.round(ageMs / 86400000)} days old ` +
         `— republishing to keep it warm on relays`
       );
+      mlog("SEED-STALENESS-REPUBLISH", {
+        pubkey: pubkey.slice(0, 8),
+        ageDays: Math.round(ageMs / 86400000),
+        previousEventId: newest.id?.slice(0, 8),
+      });
       try {
         await republishSeed(client, signer);
         health.lastPublishedAt = Date.now();
