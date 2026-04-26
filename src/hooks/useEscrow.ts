@@ -605,7 +605,36 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
 
   const createEscrow = useCallback(async (params: Parameters<EscrowClient["createEscrow"]>[0]) => {
     const client = requireClient();
-    const result = await client.createEscrow(params);
+
+    // v0.1.72 federation gates ─────────────────────────────────────────
+    // Probe the locker's federation at create time. The captured prefix
+    // gets embedded in the CREATE event; participants can then verify
+    // they're on the same federation before joining/locking/claiming.
+    //
+    // If the probe fails (federation unreachable, wallet not joined,
+    // etc.) we proceed WITHOUT the tags. The trade will work, but
+    // participants won't have the gate as a safety net. This is the
+    // same as pre-.72 behavior, so it's a graceful degradation.
+    let probedFedPrefix: string | undefined;
+    let probedFed: string | undefined;
+    if (fedimintRef.current) {
+      try {
+        const probe = await fedimintRef.current.probeFederation();
+        probedFedPrefix = probe.prefix;
+        probedFed = probe.fed ?? undefined;
+      } catch (e) {
+        console.warn(
+          "[chama] CREATE: federation probe failed, trade will be created without fed tags:",
+          e instanceof Error ? e.message : e
+        );
+      }
+    }
+
+    const result = await client.createEscrow({
+      ...params,
+      fedPrefix: probedFedPrefix,
+      fed: probedFed,
+    });
     saveEscrowId(result.escrowId);
     vibrate([40, 20, 40, 20, 80]); // Celebratory haptic
     return result;
@@ -613,6 +642,47 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
 
   const joinEscrow = useCallback(async (escrowId: string, role: Role) => {
     const client = requireClient();
+
+    // v0.1.72 federation gates ─────────────────────────────────────────
+    // Pre-flight: if the trade's CREATE event carries a fedPrefix tag,
+    // probe the joiner's wallet and refuse to publish JOIN if there's
+    // a mismatch. This catches bad joins BEFORE any money operation.
+    //
+    // For pre-.72 trades (no fedPrefix on CREATE), we allow the join
+    // unconditionally — the LOCK gate will still catch a wallet
+    // mismatch when the locker tries to spend, and the REDEEM gate
+    // catches it when the winner tries to claim. Layered defense.
+    const state = client.getState(escrowId);
+    const createEvent = state?.eventChain?.[0];
+    const expectedFedPrefix: string | undefined =
+      (createEvent?.payload as any)?.fedPrefix;
+
+    if (expectedFedPrefix && fedimintRef.current) {
+      try {
+        const probe = await fedimintRef.current.probeFederation();
+        if (probe.prefix !== expectedFedPrefix) {
+          const err: any = new Error(
+            `This trade requires federation ${expectedFedPrefix}. ` +
+              `Your wallet is on ${probe.prefix}. ` +
+              `Sign out and rejoin with the correct federation, then try again.`
+          );
+          err.code = "FED_MISMATCH";
+          err.expected = expectedFedPrefix;
+          err.got = probe.prefix;
+          throw err;
+        }
+      } catch (probeErr: any) {
+        // If the error is FED_MISMATCH, re-throw — let the UI surface it.
+        if (probeErr?.code === "FED_MISMATCH") throw probeErr;
+        // Otherwise the probe itself failed (network, etc.). Allow the
+        // join to proceed — the LOCK gate is still in place.
+        console.warn(
+          "[chama] JOIN: federation probe failed, proceeding without gate:",
+          probeErr instanceof Error ? probeErr.message : probeErr
+        );
+      }
+    }
+
     try {
       const result = await client.joinEscrow(escrowId, role);
       saveEscrowId(escrowId);

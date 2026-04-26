@@ -164,11 +164,26 @@ export const TAGS = {
   CURRENCY: "currency",
   /** Category tag for marketplace filtering */
   CATEGORY: "cat",
+  // v0.1.72 federation gates ───────────────────────────────────────────
+  /** Federation prefix (first 10 chars of an ecash probe). Fast compare. */
+  FED_PREFIX: "fedPrefix",
+  /** Full federation ID (hex). Canonical record. */
+  FED: "fed",
 } as const;
 
 // ── Encrypted Content Payloads ────────────────────────────────────────────
 // These are the JSON structures inside NIP-44 encrypted `content` fields.
 
+/**
+ * v0.1.72 federation gates: CreatePayload now optionally carries the
+ * locker's federation identity, captured via a 1-sat probe at create
+ * time. Both fields are optional for backwards compatibility with
+ * pre-.72 trades; participants warn-and-allow when they're missing.
+ *
+ *   fedPrefix — first 10 chars of an OOB ecash probe. Cheap to compare.
+ *   fed       — full federation ID (hex). Canonical, used for display
+ *               and registry matching.
+ */
 /** Content of a CREATE event */
 export interface CreatePayload {
   type: "escrow:create";
@@ -193,6 +208,14 @@ export interface CreatePayload {
   expirySeconds: number;
   /** Community arbiter pool — all pubkeys that receive the arbiter SSS share */
   communityArbiters?: string[];
+  // v0.1.72 federation gates — payload fields ───────────────────────────
+  /** Federation prefix (first 10 chars of an OOB ecash probe). Locker
+   *  captures via FedimintClient.probeFederation() at create time.
+   *  Optional for backwards compatibility with pre-.72 trades. */
+  fedPrefix?: string;
+  /** Full federation ID (hex). Same probe captures both. Used for
+   *  display and registry matching. Optional for pre-.72 trades. */
+  fed?: string;
   /** Timestamp */
   createdAt: number;
 }

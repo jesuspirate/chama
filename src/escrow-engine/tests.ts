@@ -802,6 +802,69 @@ console.log("\n── EVENT PARSER ──");
   // Bad JSON
   const badJson = parseEscrowEvent(raw, "not json {{{", true);
   assert(!badJson.ok, "Parser rejects invalid JSON");
+
+  // v0.1.72 federation gates ─────────────────────────────────────────────
+  // CREATE with valid fedPrefix + fed — accepted
+  {
+    const goodFedDecrypted = JSON.stringify({
+      type: "escrow:create",
+      description: "Fed-tagged trade",
+      amountMsats: 50_000_000,
+      category: "marketplace",
+      mintUrl: "fed://test",
+      platformFeeBps: 50,
+      platformFeePubkey: PLATFORM_PK,
+      expirySeconds: 3600,
+      createdAt: NOW,
+      fedPrefix: "AwEEiItw7A",
+      fed: "888b70ec351c67dcbb0ae655d7b8b6fb26c0fc9e865ee5918af11dc6f53e2b9e",
+    });
+    const goodFedRaw = { ...raw, id: "good_fed", tags: [["d", "good-fed-1"]] };
+    const goodFedResult = parseEscrowEvent(goodFedRaw, goodFedDecrypted, true);
+    assert(goodFedResult.ok === true, "Parser accepts CREATE with fedPrefix + fed");
+    if (goodFedResult.ok) {
+      const p = goodFedResult.event.payload as CreatePayload;
+      assert((p as any).fedPrefix === "AwEEiItw7A", "fedPrefix preserved on parse");
+      assert(typeof (p as any).fed === "string" && (p as any).fed.length > 0, "fed preserved on parse");
+    }
+  }
+
+  // CREATE with malformed fedPrefix (wrong length) — rejected
+  {
+    const badPrefixDecrypted = JSON.stringify({
+      type: "escrow:create",
+      description: "Bad prefix",
+      amountMsats: 50_000_000,
+      category: "marketplace",
+      mintUrl: "fed://test",
+      platformFeeBps: 50,
+      platformFeePubkey: PLATFORM_PK,
+      expirySeconds: 3600,
+      createdAt: NOW,
+      fedPrefix: "tooshort", // 8 chars, not 10
+    });
+    const badPrefixRaw = { ...raw, id: "bad_prefix", tags: [["d", "bad-prefix-1"]] };
+    const badPrefixResult = parseEscrowEvent(badPrefixRaw, badPrefixDecrypted, true);
+    assert(!badPrefixResult.ok, "Parser rejects CREATE with malformed fedPrefix");
+  }
+
+  // CREATE without fedPrefix or fed (pre-.72) — accepted (backwards compat)
+  {
+    const preV72Decrypted = JSON.stringify({
+      type: "escrow:create",
+      description: "Old trade",
+      amountMsats: 50_000_000,
+      category: "marketplace",
+      mintUrl: "fed://test",
+      platformFeeBps: 50,
+      platformFeePubkey: PLATFORM_PK,
+      expirySeconds: 3600,
+      createdAt: NOW,
+    });
+    const preV72Raw = { ...raw, id: "pre_v72", tags: [["d", "pre-v72-1"]] };
+    const preV72Result = parseEscrowEvent(preV72Raw, preV72Decrypted, true);
+    assert(preV72Result.ok === true, "Parser accepts pre-.72 CREATE without fedPrefix/fed (backwards compat)");
+  }
 }
 
 // ── 11. CHAIN SORTING ────────────────────────────────────────────────────

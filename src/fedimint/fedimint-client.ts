@@ -478,6 +478,86 @@ export class FedimintClient {
     return { totalAmount: parsed.total_amount };
   }
 
+  // v0.1.72 federation gates ─────────────────────────────────────────────
+  /**
+   * Probe the wallet's current federation by spending 1 sat as ecash,
+   * extracting the federation-identifying prefix from the OOB notes
+   * string, and immediately redeeming the probe back. Net zero
+   * movement, ~1-second round trip, invisible to the user.
+   *
+   * The first ~10 chars of any OOB ecash notes string is a stable
+   * federation identifier — the VPS federated-escrow project mapped
+   * known prefixes:
+   *   AwEEiItw7A — Bitcoin Life Federation
+   *   AwEEG8tk5g — Global Bitcoin Federation
+   *   AwEE_yhqbg — Afribit Kibera
+   *
+   * Used by:
+   *   - escrow-client.createEscrow  — captures locker's fed at create
+   *   - escrow-client.joinEscrow    — refuses to join wrong federation
+   *   - escrow-bridge.lockAndPublish — verifies notes match the create
+   *   - escrow-bridge.claimAndRedeem — verifies redeemer is on the
+   *                                    federation that minted the notes
+   *
+   * Throws if the wallet isn't joined or if the federation rejects
+   * the probe (likely a connectivity issue).
+   */
+  async probeFederation(): Promise<{ prefix: string; fed: string | null }> {
+    const wallet = this.requireWallet();
+    const PROBE_MSATS = 1000; // 1 sat — smallest meaningful probe
+
+    let probeNotes: string;
+    try {
+      probeNotes = await wallet.mint.spendNotes(PROBE_MSATS);
+    } catch (e) {
+      mlog("FED-PROBE", {
+        fed: this._federationId,
+        result: "spend-failed",
+        errMsg: (e instanceof Error ? e.message : String(e)).slice(0, 120),
+      });
+      throw new Error(
+        "Federation probe failed (couldn't generate ecash). " +
+        "Your wallet may be disconnected or the federation may be unreachable. " +
+        "Try again in a moment."
+      );
+    }
+
+    if (!probeNotes || probeNotes.length < 10) {
+      // Try to refund what we got (best-effort) before throwing
+      try { await wallet.mint.redeemEcash(probeNotes); } catch {}
+      mlog("FED-PROBE", {
+        fed: this._federationId,
+        result: "short-notes",
+        oobNotesLen: probeNotes?.length ?? 0,
+      });
+      throw new Error("Federation probe returned malformed notes — try again.");
+    }
+
+    const prefix = probeNotes.slice(0, 10);
+
+    // Refund the probe immediately. Net zero movement.
+    try {
+      await wallet.mint.redeemEcash(probeNotes);
+    } catch (refundErr) {
+      // The probe sat may take a moment to come back via the balance
+      // subscriber, but the prefix we captured is still correct. Log
+      // and continue — we don't want to fail the whole flow over a
+      // 1-sat refund hiccup.
+      console.warn(
+        "[chama] FED-PROBE: 1-sat probe refund failed (will arrive via balance subscriber):",
+        refundErr instanceof Error ? refundErr.message : refundErr
+      );
+    }
+
+    mlog("FED-PROBE", {
+      fed: this._federationId,
+      prefix,
+      result: "ok",
+    });
+
+    return { prefix, fed: this._federationId };
+  }
+
   // ══════════════════════════════════════════════════════════════════════════
   // LIGHTNING — Funding the wallet
   // ══════════════════════════════════════════════════════════════════════════

@@ -246,6 +246,11 @@ export class EscrowClient {
       periodAmountMsats: number;
       periodDurationSeconds: number;
     };
+    // v0.1.72 federation gates ─────────────────────────────────────────
+    /** Federation prefix (first 10 chars of a 1-sat probe). Locker captures via probeFederation(). */
+    fedPrefix?: string;
+    /** Full federation ID (hex). Locker captures via probeFederation(). */
+    fed?: string;
   }): Promise<{ escrowId: string; state: EscrowState }> {
     const pubkey = await this.getPubkey();
     const now = Math.floor(Date.now() / 1000);
@@ -265,6 +270,9 @@ export class EscrowClient {
       paymentMethods: params.paymentMethods,
       expirySeconds: params.expirySeconds || this.config.defaultExpirySeconds!,
       communityArbiters: params.communityArbiters,
+      // v0.1.72 federation gates: optional locker-fed identity
+      fedPrefix: params.fedPrefix,
+      fed: params.fed,
       createdAt: now,
     };
 
@@ -282,6 +290,9 @@ export class EscrowClient {
         [TAGS.MINT, params.mintUrl],
         ...(params.fiatCurrency ? [[TAGS.CURRENCY, params.fiatCurrency]] : []),
         ...(params.category ? [[TAGS.CATEGORY, params.category]] : []),
+        // v0.1.72 federation gates: tag the locker's fed for fast filtering
+        ...(params.fedPrefix ? [[TAGS.FED_PREFIX, params.fedPrefix]] : []),
+        ...(params.fed ? [[TAGS.FED, params.fed]] : []),
       ],
       content,
     };

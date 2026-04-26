@@ -95,6 +95,16 @@ function getPrevEventId(tags: string[][]): string | null {
 
 function validateCreatePayload(data: unknown): data is CreatePayload {
   const d = data as Record<string, unknown>;
+  // v0.1.72 federation gates: fedPrefix and fed are optional (backwards
+  // compat with pre-.72 trades). When present, they must be the correct
+  // shape — fedPrefix is exactly 10 chars, fed is a non-empty hex-ish
+  // string. Loose validation; the gate logic is the real check.
+  if (d.fedPrefix !== undefined && (typeof d.fedPrefix !== "string" || d.fedPrefix.length !== 10)) {
+    return false;
+  }
+  if (d.fed !== undefined && (typeof d.fed !== "string" || d.fed.length === 0)) {
+    return false;
+  }
   return (
     d.type === "escrow:create" &&
     typeof d.description === "string" &&

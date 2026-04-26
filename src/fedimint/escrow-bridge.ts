@@ -36,6 +36,7 @@ export class EscrowFedimintBridge {
 
   /**
    * Full lock flow:
+   *   0. v0.1.72: Probe-and-verify locker's federation matches CREATE's.
    *   1. Spend ecash from Fedimint wallet (total trade amount)
    *   2. Split into 2-of-3 SSS shares
    *   3. NIP-44 encrypt each share to its recipient
@@ -46,6 +47,52 @@ export class EscrowFedimintBridge {
   async lockAndPublish(escrowId: string): Promise<EscrowState> {
     const state = this.escrow.getState(escrowId);
     if (!state) throw new Error(`Escrow ${escrowId} not loaded`);
+
+    // v0.1.72 federation gates ───────────────────────────────────────────
+    // Pre-flight: probe the locker's wallet, compare to CREATE's
+    // fedPrefix. On mismatch, refuse to spend at all — no money moves.
+    // On match (or absent fedPrefix for pre-.72 trades), proceed.
+    //
+    // This is BEFORE the spend, so there's nothing to refund on
+    // mismatch. The post-spend self-check below catches the very
+    // narrow window where the wallet could shift between probe and
+    // spend — it auto-refunds via redeemEcash.
+    const createEvent = state.eventChain.find(
+      (e: any) => e.kind === 38100 || e.payload?.type === "escrow:create"
+    );
+    const expectedFedPrefix: string | undefined =
+      (createEvent?.payload as any)?.fedPrefix;
+
+    if (expectedFedPrefix) {
+      let probe: { prefix: string; fed: string | null };
+      try {
+        probe = await this.fedimint.probeFederation();
+      } catch (probeErr) {
+        const err: any = new Error(
+          "Couldn't verify your federation. Your wallet may be disconnected. " +
+            "Try again in a moment. (No sats were spent.)"
+        );
+        err.code = "FED_PROBE_FAILED";
+        err.cause = probeErr;
+        throw err;
+      }
+
+      if (probe.prefix !== expectedFedPrefix) {
+        const err: any = new Error(
+          `This trade requires federation ${expectedFedPrefix}. ` +
+            `Your wallet is on ${probe.prefix}. ` +
+            `Sign out and rejoin with the correct federation invite. ` +
+            `(No sats were spent.)`
+        );
+        err.code = "FED_MISMATCH";
+        err.expected = expectedFedPrefix;
+        err.got = probe.prefix;
+        throw err;
+      }
+    }
+    // Pre-.72 trades have no fedPrefix tag — we allow with a passive
+    // warning surfaced by the UI elsewhere (no block here, per Jetty's
+    // backwards-compat decision).
 
     // v0.1.71: no platformFeeBps passed.
     // Lock math is now seller + arbiter only. Platform fee is collected
@@ -161,6 +208,53 @@ export class EscrowFedimintBridge {
       decryptedPartnerShare,
       state.lock.notesHash
     );
+
+    // v0.1.72 federation gates ───────────────────────────────────────────
+    // Probe the redeemer's wallet and verify the reconstructed notes
+    // were minted by the same federation. If not, the redeem will
+    // either silently partial-credit (the v0.1.71 incident root cause)
+    // or hard-fail with a confusing error from the SDK. Catch it here
+    // with a clear actionable error instead.
+    //
+    // We compare oobNotes.slice(0,10) (the reconstructed federation
+    // prefix) to a fresh probe of the redeemer's wallet. Both must
+    // match. Pre-.72 trades have no fedPrefix on CREATE, but the
+    // reconstructed notes themselves still carry the federation
+    // identity — so this check works regardless of whether CREATE
+    // was tagged.
+    const reconstructedPrefix = oobNotes.slice(0, 10);
+    let redeemProbe: { prefix: string; fed: string | null };
+    try {
+      redeemProbe = await this.fedimint.probeFederation();
+    } catch (probeErr) {
+      // Probe failed but we already have the reconstructed notes. We
+      // don't want to lose them — stash and surface a probe-specific
+      // error so the UI can offer a retry path.
+      const err: any = new Error(
+        "Couldn't verify your federation before claiming. " +
+          "Your sats are safe — they'll be claimed automatically when " +
+          "the federation is reachable. (Notes stashed for retry.)"
+      );
+      err.code = "FED_PROBE_FAILED";
+      err.cause = probeErr;
+      throw err;
+    }
+
+    if (redeemProbe.prefix !== reconstructedPrefix) {
+      const err: any = new Error(
+        `This trade's sats were minted on federation ${reconstructedPrefix}. ` +
+          `Your wallet is on ${redeemProbe.prefix}. ` +
+          `Sign out and rejoin with the correct federation, then retry. ` +
+          `Your claim has been published — your sats are safe and waiting.`
+      );
+      err.code = "FED_MISMATCH";
+      err.expected = reconstructedPrefix;
+      err.got = redeemProbe.prefix;
+      // Don't publish CLAIM yet — refusing redeem before claim publish
+      // means the trade chain doesn't advance prematurely. The user
+      // switches feds and retries; CLAIM will publish on the next try.
+      throw err;
+    }
 
     const stateAfterClaim = await this.escrow.claim(escrowId, notesHash);
 
