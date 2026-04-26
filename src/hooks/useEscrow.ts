@@ -202,6 +202,25 @@ export interface UseEscrowActions {
    * Nostr-backed seed survives and will be re-installed on next initFedimint().
    */
   resetLocalWallet: () => Promise<void>;
+  /**
+   * v0.1.73 dev fed-switch — TESTING ONLY.
+   *
+   * Atomically switch the Fedimint wallet to a different federation by:
+   *   1. Cleaning up the in-memory FedimintClient (terminates worker)
+   *   2. Wiping the current OPFS file + rotating to a fresh filename
+   *   3. Re-initializing with the new invite code
+   *
+   * This is destructive: any ecash held in the previous federation
+   * becomes "stranded" until you switch back. The Nostr-backed seed
+   * is preserved across the switch — your trade history, escrows,
+   * and signer all survive. Only the Fedimint wallet's local state
+   * is reset.
+   *
+   * Gated on `localStorage.chama_dev_fed_switch === "1"`. Real users
+   * never see this. The UI only renders the dev panel when the flag
+   * is set.
+   */
+  devSwitchFederation: (inviteCode: string) => Promise<void>;
   /** (Re-)start the Browse feed subscription for public listings. */
   watchPublicListings: (since?: number) => void;
 }
@@ -1203,6 +1222,75 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     });
   }, [updateFedimint]);
 
+  // v0.1.73 dev fed-switch ─────────────────────────────────────────────────
+  // Composed action: reset + reinit-with-new-invite, as one user-facing
+  // operation. Gated on localStorage flag so real users can't trigger it.
+  const devSwitchFederation = useCallback(async (inviteCode: string) => {
+    // Gate check — abort hard if the dev flag isn't set.
+    let gateOk = false;
+    try {
+      gateOk = typeof localStorage !== "undefined"
+        && localStorage.getItem("chama_dev_fed_switch") === "1";
+    } catch { /* gate stays false */ }
+    if (!gateOk) {
+      throw new Error(
+        "devSwitchFederation requires localStorage.chama_dev_fed_switch === \"1\". " +
+        "This is a testing-only action."
+      );
+    }
+
+    const trimmed = inviteCode.trim();
+    if (!trimmed.startsWith("fed1")) {
+      throw new Error("Invite code must start with 'fed1'");
+    }
+
+    console.info("[chama] DEV: switching federation to", trimmed.slice(0, 24) + "...");
+    updateFedimint({ busy: true, error: null });
+
+    try {
+      // Step 1 — tear down the current wallet (terminates worker, releases OPFS handle)
+      try {
+        await fedimintRef.current?.cleanup();
+      } catch (e) {
+        console.debug("[chama] dev-switch: cleanup threw (non-fatal):", e);
+      }
+      fedimintRef.current = null;
+      bridgeRef.current = null;
+      clearSeedCache();
+
+      // Step 2 — wipe OPFS file + rotate filename so init() opens a fresh DB
+      await resetLocalFedimintWallet();
+
+      // Step 3 — persist the new invite as the custom override so future
+      // reloads stay on this fed (matches the one-time onJoinPreset flow
+      // for non-default presets in FederationJoinPanel).
+      setCustomFederationInvite(trimmed);
+
+      // Step 4 — clear React state so initFedimint can rebuild from scratch
+      updateFedimint({
+        initialized: false,
+        joined: false,
+        federationId: null,
+        balanceMsats: 0,
+        busy: true,
+        error: null,
+      });
+
+      // Step 5 — re-init with the new invite. Reuses the existing
+      // initFedimint flow which probes the Nostr seed, joins the new
+      // fed, and wires up the balance subscriber. v0.1.72 federation
+      // gates will then see the new fed prefix on the next probe.
+      await initFedimint(trimmed);
+
+      console.info("[chama] DEV: federation switch complete");
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      console.error("[chama] DEV: federation switch failed:", message);
+      updateFedimint({ busy: false, error: message });
+      throw e;
+    }
+  }, [updateFedimint, initFedimint]);
+
   const createFundingInvoice = useCallback(async (
     amountMsats: number,
     description: string = "Chama wallet top-up"
@@ -1252,6 +1340,8 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     },
     refreshBalance,
     resetLocalWallet,
+    // v0.1.73 dev fed-switch
+    devSwitchFederation,
     watchPublicListings: (since?: number) => {
       clientRef.current?.watchPublicListings(since);
     },
