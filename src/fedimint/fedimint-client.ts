@@ -256,8 +256,10 @@ export class FedimintClient {
           });
         } catch {}
 
-        // Check for pending recovery on init (e.g. after auto-reset)
-        await this.runRecoveryIfNeeded(this.wallet);
+        // Check for pending recovery on init (e.g. after auto-reset).
+        // v0.1.75 recovery instrumentation: source="init" tells us this
+        // fired from the existing-OPFS path, not from a fresh join.
+        await this.runRecoveryIfNeeded(this.wallet, "init");
       }
     } catch (e) {
       this.callbacks.onError?.(
@@ -381,43 +383,112 @@ export class FedimintClient {
     } catch {}
 
     // Check for pending recovery (happens when rejoining with same seed
-    // after OPFS reset — the federation can reconstruct ecash notes)
-    try {
-      const hasPending = await wallet.recovery.hasPendingRecoveries();
-      if (hasPending) {
-        console.info("[chama] Recovery in progress — waiting for federation to restore ecash notes...");
-        this.callbacks.onBalanceUpdate?.(-1); // Signal UI that recovery is running
-        await wallet.recovery.waitForAllRecoveries();
-        console.info("[chama] Recovery complete — ecash notes restored from federation");
-        // Force a balance refresh after recovery
-        const balance = await wallet.balance.getBalance();
-        this.callbacks.onBalanceUpdate?.(balance);
-      }
-    } catch (recoveryErr) {
-      console.warn("[chama] Recovery check failed (non-fatal):", recoveryErr);
-    }
+    // after OPFS reset — the federation can reconstruct ecash notes).
+    //
+    // v0.1.75 recovery instrumentation: this used to be an inline block
+    // that duplicated the helper logic. Now it just delegates, with a
+    // source="join" tag so we can distinguish it from the init path in
+    // the [$$] mlog stream. This is the call site we expect to fire
+    // when a user has joined BLF after wiping OPFS — the funds-recovery
+    // moment we've been chasing.
+    await this.runRecoveryIfNeeded(wallet, "join");
 
     this.callbacks.onFederationJoined?.(this._federationId);
     return this._federationId;
   }
 
-  /** Run ecash recovery if the federation has pending recoveries for this seed */
-  private async runRecoveryIfNeeded(wallet: IFedimintWallet): Promise<void> {
+  /**
+   * Run ecash recovery if the federation has pending recoveries for this seed.
+   *
+   * v0.1.75 recovery instrumentation: takes a `source` param so the [$$]
+   * mlog distinguishes init-path from join-path checks. This is critical
+   * for diagnosing the post-OPFS-reset fund recovery flow, because we
+   * need to know which call site fired and what hasPendingRecoveries()
+   * returned.
+   *
+   * @param wallet The Fedimint wallet to recover into
+   * @param source Where the call came from: "init" (existing OPFS at
+   *               startup) or "join" (after joinFederation completes)
+   */
+  private async runRecoveryIfNeeded(
+    wallet: IFedimintWallet,
+    source: "init" | "join",
+  ): Promise<void> {
+    let balanceBefore: number | undefined;
     try {
-      const hasPending = await wallet.recovery.hasPendingRecoveries();
-      if (hasPending) {
-        console.info("[chama] Recovery in progress — restoring ecash notes from federation...");
-        await wallet.recovery.waitForAllRecoveries();
-        console.info("[chama] Recovery complete — ecash notes restored");
-        // Force balance refresh after recovery
-        try {
-          const balance = await wallet.balance.getBalance();
-          this.callbacks.onBalanceUpdate?.(balance);
-        } catch {}
-      }
-    } catch (e) {
-      console.warn("[chama] Recovery check failed (non-fatal):", e);
+      balanceBefore = await wallet.balance.getBalance();
+    } catch {
+      // pre-recovery balance may not be readable on a freshly-joined
+      // empty client — that's fine, we just won't have a delta.
     }
+
+    mlog("RECOVERY-CHECK", {
+      source,
+      fed: this._federationId,
+      balanceBefore,
+    });
+
+    const checkStart = Date.now();
+    let hasPending = false;
+    try {
+      hasPending = await wallet.recovery.hasPendingRecoveries();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      mlog("RECOVERY-ERROR", { source, phase: "hasPending", error: msg });
+      console.warn("[chama] Recovery check failed (non-fatal):", e);
+      return;
+    }
+    const checkDurationMs = Date.now() - checkStart;
+    mlog("RECOVERY-RESULT", {
+      source,
+      hasPending,
+      durationMs: checkDurationMs,
+    });
+
+    if (!hasPending) return;
+
+    // Pending recoveries exist — wait for them and report the delta.
+    console.info(
+      `[chama] Recovery in progress (source=${source}) — restoring ecash notes from federation...`,
+    );
+    mlog("RECOVERY-WAIT-START", { source, fed: this._federationId });
+    // Signal UI that recovery is running (used by join-path to show spinner)
+    if (source === "join") this.callbacks.onBalanceUpdate?.(-1);
+    const waitStart = Date.now();
+    try {
+      await wallet.recovery.waitForAllRecoveries();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      mlog("RECOVERY-ERROR", { source, phase: "waitForAll", error: msg });
+      console.warn("[chama] waitForAllRecoveries threw (non-fatal):", e);
+      // Fall through to the balance refresh anyway — partial recovery
+      // may have landed.
+    }
+    const waitDurationMs = Date.now() - waitStart;
+
+    let balanceAfter: number | undefined;
+    try {
+      balanceAfter = await wallet.balance.getBalance();
+      this.callbacks.onBalanceUpdate?.(balanceAfter);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      mlog("RECOVERY-ERROR", { source, phase: "balanceAfter", error: msg });
+    }
+
+    const delta = (balanceBefore !== undefined && balanceAfter !== undefined)
+      ? balanceAfter - balanceBefore
+      : undefined;
+    mlog("RECOVERY-WAIT-END", {
+      source,
+      durationMs: waitDurationMs,
+      balanceBefore,
+      balanceAfter,
+      delta,
+    });
+    console.info(
+      `[chama] Recovery complete (source=${source}) — ecash notes restored ` +
+      `(balance: ${balanceBefore ?? "?"} → ${balanceAfter ?? "?"})`,
+    );
   }
 
   /** Get the current federation ID (null if not joined) */
