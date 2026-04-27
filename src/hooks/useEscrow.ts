@@ -1198,7 +1198,42 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     });
   }, [updateFedimint]);
 
-  const resetLocalWallet = useCallback(async () => {
+  // v0.1.76 fund-loss protection: resetLocalWallet refuses to wipe
+  // OPFS if there is a non-zero balance, unless caller passes
+  // `force: true`. The UI layer is responsible for surfacing the
+  // destruction explicitly to the user before passing force.
+  const resetLocalWallet = useCallback(async (
+    options: { force?: boolean } = {},
+  ) => {
+    const { force = false } = options;
+
+    // Read the current balance from the live wallet, if any. If we
+    // can't read it, treat as "unknown" and refuse without force —
+    // we'd rather false-positive than destroy bearer notes.
+    let currentBalanceMsats: number | null = null;
+    try {
+      if (fedimintRef.current) {
+        currentBalanceMsats = await fedimintRef.current.getBalance();
+      }
+    } catch (e) {
+      console.debug("[chama] balance read during reset:", e);
+    }
+
+    if (!force && currentBalanceMsats !== null && currentBalanceMsats > 0) {
+      const sats = Math.floor(currentBalanceMsats / 1000);
+      const err = new Error(
+        `Refusing to reset local wallet: ${sats} sats would be ` +
+        `permanently destroyed (Fedimint ecash is bearer cash and ` +
+        `lives only in the local wallet file). Use force=true to ` +
+        `override after explicit user confirmation.`,
+      );
+      (err as Error & { code?: string; balanceMsats?: number }).code =
+        "RESET_REFUSED_NONZERO_BALANCE";
+      (err as Error & { code?: string; balanceMsats?: number })
+        .balanceMsats = currentBalanceMsats;
+      throw err;
+    }
+
     // Tear down the in-memory wallet first so the IndexedDB delete isn't
     // blocked by the WASM worker holding the database open.
     try {
@@ -1225,7 +1260,18 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
   // v0.1.73 dev fed-switch ─────────────────────────────────────────────────
   // Composed action: reset + reinit-with-new-invite, as one user-facing
   // operation. Gated on localStorage flag so real users can't trigger it.
-  const devSwitchFederation = useCallback(async (inviteCode: string) => {
+  // v0.1.76 fund-loss protection: dev-switch wipes OPFS, which
+  // destroys ecash. Now refuses if balance > 0 unless caller passes
+  // { force: true }. Real users should never hit this path — the
+  // localStorage gate is the primary defense — but the balance check
+  // is a critical second layer for cases where a developer or tester
+  // forgets the gate is active.
+  const devSwitchFederation = useCallback(async (
+    inviteCode: string,
+    options: { force?: boolean } = {},
+  ) => {
+    const { force = false } = options;
+
     // Gate check — abort hard if the dev flag isn't set.
     let gateOk = false;
     try {
@@ -1242,6 +1288,29 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     const trimmed = inviteCode.trim();
     if (!trimmed.startsWith("fed1")) {
       throw new Error("Invite code must start with 'fed1'");
+    }
+
+    // v0.1.76 fund-loss protection: balance-aware refusal.
+    let currentBalanceMsats: number | null = null;
+    try {
+      if (fedimintRef.current) {
+        currentBalanceMsats = await fedimintRef.current.getBalance();
+      }
+    } catch (e) {
+      console.debug("[chama] dev-switch: balance read failed:", e);
+    }
+    if (!force && currentBalanceMsats !== null && currentBalanceMsats > 0) {
+      const sats = Math.floor(currentBalanceMsats / 1000);
+      const err = new Error(
+        `Refusing dev-switch: ${sats} sats would be permanently ` +
+        `destroyed when the OPFS file is wiped for the new federation. ` +
+        `Override requires explicit user confirmation in the UI.`,
+      );
+      (err as Error & { code?: string; balanceMsats?: number }).code =
+        "DEV_SWITCH_REFUSED_NONZERO_BALANCE";
+      (err as Error & { code?: string; balanceMsats?: number })
+        .balanceMsats = currentBalanceMsats;
+      throw err;
     }
 
     console.info("[chama] DEV: switching federation to", trimmed.slice(0, 24) + "...");

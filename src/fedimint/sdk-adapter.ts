@@ -495,9 +495,71 @@ export async function createRealWallet(
           await directorTyped.setMnemonic(opts.mnemonic!);
           console.info("[chama] Local seed overwritten with Nostr-backed seed");
         } catch (setErr: any) {
-          // setMnemonic doesn't allow overwrite. Auto-reset OPFS and retry.
-          console.warn("[chama] setMnemonic rejected overwrite — auto-resetting OPFS:", setErr?.message);
-          
+          // v0.1.76 fund-loss protection: before the auto-reset path
+          // destroys the orphan OPFS, peek at its balance. Fedimint
+          // ecash is bearer cash and lives ONLY in this file — wiping
+          // it without checking has destroyed real user sats in the
+          // past. If balance > 0, throw a structured refusal that the
+          // UI can surface; require explicit user override before
+          // proceeding with destruction.
+          let orphanBalanceMsats: number | null = null;
+          try {
+            const orphanWallet = await (director as unknown as {
+              createWallet(): Promise<{
+                open(): Promise<void>;
+                isOpen(): boolean;
+                balance: { getBalance(): Promise<number> };
+                cleanup(): Promise<void>;
+              }>;
+            }).createWallet();
+            try {
+              await orphanWallet.open();
+            } catch {
+              // open() throws if no client exists in the DB; that means
+              // there's no orphan balance to worry about.
+            }
+            if (orphanWallet.isOpen()) {
+              orphanBalanceMsats = await orphanWallet.balance.getBalance();
+            }
+            try { await orphanWallet.cleanup(); } catch {}
+          } catch (peekErr) {
+            console.debug(
+              "[chama] orphan-balance peek threw (non-fatal):",
+              peekErr,
+            );
+          }
+          if (orphanBalanceMsats !== null && orphanBalanceMsats > 0) {
+            const orphanFingerprint = (existing ?? []).slice(0, 4).join(" ");
+            const nostrFingerprint = (opts.mnemonic ?? []).slice(0, 4).join(" ");
+            const sats = Math.floor(orphanBalanceMsats / 1000);
+            const refuseErr = new Error(
+              `Refusing to reset local Fedimint wallet: ${sats} sats are ` +
+              `held under a seed that differs from your Nostr backup. ` +
+              `Resetting destroys them permanently because Fedimint ecash ` +
+              `is bearer cash and is not recoverable from the federation. ` +
+              `Local seed: "${orphanFingerprint}…". ` +
+              `Nostr seed: "${nostrFingerprint}…".`,
+            );
+            (refuseErr as Error & {
+              code?: string;
+              orphanBalanceMsats?: number;
+            }).code = "ORPHAN_BALANCE_REFUSED";
+            (refuseErr as Error & {
+              code?: string;
+              orphanBalanceMsats?: number;
+            }).orphanBalanceMsats = orphanBalanceMsats;
+            throw refuseErr;
+          }
+
+          // Safe to reset — no orphan balance OR balance unknown and
+          // user has implicitly accepted the risk by reaching this
+          // path (which only fires when seed is already mismatched).
+          console.warn(
+            "[chama] setMnemonic rejected overwrite — auto-resetting OPFS " +
+            `(orphan balance: ${orphanBalanceMsats ?? "unknown"} msats):`,
+            setErr?.message,
+          );
+
           // Terminate the current worker so OPFS handle is released
           terminateCurrentWorker();
           

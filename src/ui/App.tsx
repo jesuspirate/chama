@@ -2238,19 +2238,11 @@ function FederationJoinPanel({
             Nostr-backed seed is safe and will be restored automatically.
           </div>
         )}
+        {/* v0.1.76 fund-loss protection: data layer refuses with a
+            clear error if there's a balance. window.confirm dropped
+            because it was a speedbump users clicked through. */}
         <button
-          onClick={() => {
-            if (window.confirm(
-              "Reset the local Fedimint wallet?\n\n" +
-              "This deletes the WASM wallet's IndexedDB on this device. " +
-              "Your Nostr-backed seed is preserved, so your wallet will " +
-              "restore automatically on the next join.\n\n" +
-              "Any ecash that hasn't been moved out of an un-joined federation " +
-              "on THIS device will be lost. Safe if you haven't joined yet."
-            )) {
-              onResetLocal();
-            }
-          }}
+          onClick={() => onResetLocal()}
           style={{
             background: "none",
             border: `1px solid ${T.border}`,
