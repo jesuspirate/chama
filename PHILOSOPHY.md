@@ -220,6 +220,11 @@ Apple-grade dark mode (#0a0a0a base, #f5f5f7 primary text, #86868b secondary tex
 - Arbiter as trade healer with bounded autonomous powers — essential for Lending repayment timeline enforcement
 - NIP draft for cross-client rating/reputation events
 - Merchant tier system beyond recurring-eligible
+- **Community gating, three layers, all opt-in by community/arbiter:**
+  - **Listing visibility gates:** creator picks `public` / `my community only` / `verified peers only` (rating threshold). Nostr-tag-based; Chama clients respect the convention.
+  - **Trade participation gates:** seller can require same-community, min-rating, min-trade-count, or arbiter-vouched buyers. The vouch model lets arbiters curate without per-trade work.
+  - **Arbiter opt-in:** arbiters can refuse auto-assignment for certain trade types, users, or federations. Combined with elected arbiters, creates a real political economy where arbiters compete on community service.
+  - **Principle:** gating is earned, not toggled. v1 is open-by-default to let signal accumulate; v2 unlocks gating capabilities only after rating data justifies them. Same graduated-trust primitive as everywhere else.
 
 ### v2+
 - Cross-community discovery as a deliberate feature (arbitrage flows, multi-currency users, etc.)
