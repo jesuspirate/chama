@@ -41,6 +41,10 @@ The community is the user-facing layer; the federation is the technical layer. A
 
 This is the deepest user-facing simplification in Chama. Most Bitcoin apps force users to learn the cryptographic vocabulary of their chosen primitive. Chama hides the primitive entirely and lets users pick a context that maps to their actual life: their currency, their country (or countries), the languages they share with their neighbors.
 
+**No user is locked out by federation availability.** A community always has a backing federation, even if only Chama-defined defaults exist for that region. **Bitcoin Life Federation (BLF) is the universal fallback** — when a user picks a community whose region has no community-run federation yet, BLF backs the wallet silently. Solo users in countries without organized federations can still trade, list, and rate. The "create your own federation" path is always available for sovereignty-minded users and groups, but it is never a prerequisite for participation. Same logic applies to arbiter onboarding — the federation field on an arbiter profile is optional, defaulting to BLF when blank.
+
+**Payment methods are first-class extensible data, not enumerated UI.** Geofencing by community/currency means each community surfaces a different set of payment rails (Wave/Orange Money in Senegal, M-Pesa/Airtel Money in Kenya, Revolut/Wise in Europe, Cash App/Zelle in the US, PIX in Brazil, etc.). The Create-listing form must be designed as a searchable/toggleable list rather than a fixed button row, because the rail count per community can be 5–20+. Localization at this layer is structural, not cosmetic.
+
 ### 2.4 The Trinity Ring as architectural truth
 
 Chama is a 3-of-3 SSS escrow with 2-of-3 vote resolution, encoded into the brand at the deepest level. The Trinity Ring (orange/purple/teal arcs joined at three white knot dots) is not decoration — it's the visual shorthand for the entire trust model:
@@ -207,6 +211,7 @@ Apple-grade dark mode (#0a0a0a base, #f5f5f7 primary text, #86868b secondary tex
 - Recurring payments unlock for graduated merchants (sats.coffee as design partner)
 - Auto-sweep detection at QR-OUT
 - **LN address / NWC pre-fill at QR-OUT.** User adds a static Lightning address (e.g. `user@getalby.com`) or connects via NWC in Settings. QR-OUT pre-fills the destination — paste-invoice flow becomes a fallback, not the default. NWC enables true one-tap claims with no app-switching. The QR-OUT screen must gracefully degrade to the paste-invoice flow when neither is configured.
+- **Self-hosted LN addresses (chama.app/u/{username}).** Using [`lnaddrd`](https://github.com/elsirion/lnaddrd) on the Chama domain, users can opt to receive a `username@chama.app` address that resolves to their NWC connection or last-known invoice destination. Zero-config first-class Lightning identity for users who want it; opt-out for users who want to keep their LN identity sovereign elsewhere.
 - Self-reveal gesture for individual ratings
 - Dashboard for failure-state telemetry (orphan-detection counts, drainPendingRedemptions recoveries)
 
