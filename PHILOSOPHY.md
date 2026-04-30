@@ -10,7 +10,7 @@
 
 ---
 
-## 2. The five pillars
+## 2. The six pillars
 
 These are the load-bearing architectural commitments. Every feature must sit on top of these without bending them.
 
@@ -44,7 +44,19 @@ Chama is a 3-of-3 SSS escrow with 2-of-3 vote resolution, encoded into the brand
 
 When the ring is whole, the trade is whole. When an arc is missing, a participant is missing. When the ring fills in front of the user during the funding-to-locked transition, they understand the trust model viscerally — without us writing a sentence about Shamir Secret Sharing.
 
-### 2.5 Reputation as the backbone primitive
+### 2.5 One codebase, every surface
+
+**Web is canonical.** Phone (Capacitor), desktop (Tauri), and web (direct) all run the same React/TypeScript codebase, the same Nostr layer, the same Fedimint WASM bridge. Chama is not three apps that share a name — it is one app that adapts to its viewport.
+
+This pillar costs zero if applied from the start and is hellish to retrofit. Every component is responsive-capable from day one:
+
+- **Phone (≤640px):** full-bleed cards, single-column feed, bottom nav (Browse / My Trades / Me).
+- **Tablet (640–1024px):** two-column feed, bottom nav retained, slightly denser cards.
+- **Desktop (≥1024px):** three-column feed or sidebar nav + detail pane pattern. Bottom nav is replaced by left rail or top bar. Trade detail and embedded chat render side-by-side without tab-switching — desktop is potentially the best surface for power users.
+
+The Fedimint browser constraints (OPFS storage, WASM init, single-DB) follow Capacitor into iOS/Android because Capacitor runs web code in a WebView. Escaping these constraints is a separate v2+ project (native Rust via FFI, partnering with Fedi's native bindings work) — not a reason to fork the codebase now. A Bitcoin-node bundled distribution (Umbrel/Start9-style sovereignty stack) is also a separate product and a separate repo if it ever happens — not a Chama UI variant.
+
+### 2.6 Reputation as the backbone primitive
 
 Every trade produces rating events. Public aggregate counts and percentages are visible on every npub's profile. Individual comments are NIP-44 encrypted to the recipient, who can later self-publish them as testimonials in v2. The rating events are Nostr-native (custom kind in the 30000-39999 range), portable across clients, and chain-replayable.
 
