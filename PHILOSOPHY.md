@@ -28,11 +28,18 @@ Only two consent gates remain in the entire flow: **VOTE** and **CLAIM**. Both a
 
 ### 2.3 Communities, not federations
 
-**Federations exist as invisible plumbing.** Every Chama wallet is backed by some Fedimint federation — that's the cryptographic substrate for the SSS-split ecash. But the user never selects a "federation." They select a **Community** at sign-in: a bundle of language + currency + country/region + cultural context. "Senegal · French · CFA · Bitcoin Life Community." "Kenya · Swahili · KES · Afribit Kibera." "Global · English · USD."
+**Federations exist as invisible plumbing.** Every Chama wallet is backed by some Fedimint federation — that's the cryptographic substrate for the SSS-split ecash. But the user never selects a "federation." They select a **Community** at sign-in.
 
-The community is the user-facing layer; the federation is the technical layer. A user picks a community, Chama silently provisions a wallet on the appropriate backing federation, and the user never has to think about Fedimint protocol semantics. If they pick the wrong community, they sign out and sign back in to re-pick — federation switching is deliberately hidden because Option B's LN-in/LN-out architecture means it's never necessary for trading.
+A community is defined as **currency-primary, country-and-language-multivalent**:
 
-This is the deepest user-facing simplification in Chama. Most Bitcoin apps force users to learn the cryptographic vocabulary of their chosen primitive. Chama hides the primitive entirely and lets users pick a context that maps to their actual life: where they live, what they speak, what currency they think in.
+- **One currency (always).** The load-bearing axis. Currency anchors trading and is what listings advertise prominently.
+- **One or more countries (often).** CFA spans 14 African countries. Euro spans 20. USD is multi-country. The community pill displays one or more flag glyphs depending on the community's reach.
+- **One or more languages (often).** A CFA community might be French + Wolof + Bambara. USD is English + Spanish. Listings and chat happen in whatever language participants share — Chama does not enforce a single language per community.
+- **A cultural/regional identity (always).** The "where my family lives" feeling — not a hard schema field but a real signal that drives matching and arbiter pool selection.
+
+The community is the user-facing layer; the federation is the technical layer. A user picks a community, Chama silently provisions a wallet on the appropriate backing federation, and the user never has to think about Fedimint protocol semantics. Users can switch communities at sign-in or via Settings → Advanced — switching is deliberately deprioritized in the UI because Option B's LN-in/LN-out architecture means cross-community trading doesn't require a wallet switch. Curious users can tap their community pill to peek at other communities ("snoop in") without changing their own membership.
+
+This is the deepest user-facing simplification in Chama. Most Bitcoin apps force users to learn the cryptographic vocabulary of their chosen primitive. Chama hides the primitive entirely and lets users pick a context that maps to their actual life: their currency, their country (or countries), the languages they share with their neighbors.
 
 ### 2.4 The Trinity Ring as architectural truth
 
@@ -46,15 +53,20 @@ When the ring is whole, the trade is whole. When an arc is missing, a participan
 
 ### 2.5 One codebase, every surface
 
-**Web is canonical.** Phone (Capacitor), desktop (Tauri), and web (direct) all run the same React/TypeScript codebase, the same Nostr layer, the same Fedimint WASM bridge. Chama is not three apps that share a name — it is one app that adapts to its viewport.
+**Web is canonical.** Chama is one app that adapts to its viewport, distributed through four vectors:
 
-This pillar costs zero if applied from the start and is hellish to retrofit. Every component is responsive-capable from day one:
+- **Web (canonical):** chama.app, served directly. The reference experience.
+- **Phone (Capacitor):** iOS and Android binaries wrapping the same web code in a native shell.
+- **Sovereignty packages (`.s9pk` for Start9, `.umbrel-app` for Umbrel):** the same web app, packaged so node runners can self-host the frontend on their own infrastructure. This is not a different version of Chama — it is the same frontend served from the user's own machine. The privacy win is knowing your Chama UI isn't being served by anyone else.
+- **Desktop binaries (Tauri, optional, post-v1):** a thin native wrapper for users who prefer dock icons over bookmarks. Same code as web.
+
+Every component is responsive-capable from day one — applied early it costs nothing, retrofitted later it requires rewriting most of the UI layer:
 
 - **Phone (≤640px):** full-bleed cards, single-column feed, bottom nav (Browse / My Trades / Me).
 - **Tablet (640–1024px):** two-column feed, bottom nav retained, slightly denser cards.
 - **Desktop (≥1024px):** three-column feed or sidebar nav + detail pane pattern. Bottom nav is replaced by left rail or top bar. Trade detail and embedded chat render side-by-side without tab-switching — desktop is potentially the best surface for power users.
 
-The Fedimint browser constraints (OPFS storage, WASM init, single-DB) follow Capacitor into iOS/Android because Capacitor runs web code in a WebView. Escaping these constraints is a separate v2+ project (native Rust via FFI, partnering with Fedi's native bindings work) — not a reason to fork the codebase now. A Bitcoin-node bundled distribution (Umbrel/Start9-style sovereignty stack) is also a separate product and a separate repo if it ever happens — not a Chama UI variant.
+Capabilities that the underlying environment unlocks (e.g. a self-hosted Lightning daemon as native QR-IN/QR-OUT target on a node-packaged install) are **runtime-detected enhancements**, never reasons to fork the codebase. Singularity holds.
 
 ### 2.6 Reputation as the backbone primitive
 
@@ -194,6 +206,7 @@ Apple-grade dark mode (#0a0a0a base, #f5f5f7 primary text, #86868b secondary tex
 - Manual arbiter selection (surface stats, optional manual pick)
 - Recurring payments unlock for graduated merchants (sats.coffee as design partner)
 - Auto-sweep detection at QR-OUT
+- **LN address / NWC pre-fill at QR-OUT.** User adds a static Lightning address (e.g. `user@getalby.com`) or connects via NWC in Settings. QR-OUT pre-fills the destination — paste-invoice flow becomes a fallback, not the default. NWC enables true one-tap claims with no app-switching. The QR-OUT screen must gracefully degrade to the paste-invoice flow when neither is configured.
 - Self-reveal gesture for individual ratings
 - Dashboard for failure-state telemetry (orphan-detection counts, drainPendingRedemptions recoveries)
 
