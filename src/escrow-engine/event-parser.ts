@@ -100,6 +100,20 @@ function validateCreatePayload(data: unknown): data is CreatePayload {
   if (d.fed !== undefined && (typeof d.fed !== "string" || d.fed.length === 0)) {
     return false;
   }
+  // PR 2: community is optional (pre-registry trades have no slug).
+  // When present, it's a non-empty string — the registry lookup at
+  // render time decides whether the slug is still meaningful.
+  if (d.community !== undefined && (typeof d.community !== "string" || d.community.length === 0)) {
+    return false;
+  }
+  // PR 2: fulfillment is optional — handleCreate normalizes it. When
+  // present it must be one of the three known values.
+  if (d.fulfillment !== undefined
+      && d.fulfillment !== "physical"
+      && d.fulfillment !== "service"
+      && d.fulfillment !== "digital") {
+    return false;
+  }
   return (
     d.type === "escrow:create" &&
     typeof d.description === "string" &&

@@ -15,6 +15,8 @@ import {
   DEFAULT_FEDERATION_INVITE,
 } from "../fedimint/federation-config.js";
 import { getFederationInvite } from "../fedimint/index.js";
+import { COMMUNITY_REGISTRY, getCommunityBySlug } from "../communities/registry.js";
+import { getVoteLabel, categoryAllowsFulfillmentChoice, type Fulfillment } from "../labels/vote-labels.js";
 
 // ══════════════════════════════════════════════════════════════════════════
 // DESIGN TOKENS
@@ -1379,8 +1381,8 @@ function TradeDetail({ state, pubkey, onBack, onVote, onClaim, onJoin, onLock, o
         </div>
       )}
 
-      {/* Vote buttons */}
-      {voteCheck.canVote && (
+      {/* Vote buttons — PR 2: vertical-aware copy from the label dictionary */}
+      {voteCheck.canVote && myRole && (
         <div style={{ display: "flex", gap: 12, marginBottom: 16 }}>
           {!state.subscription && (
             <button disabled={voting} onClick={() => handleVote(Outcome.RELEASE)} style={{
@@ -1390,7 +1392,7 @@ function TradeDetail({ state, pubkey, onBack, onVote, onClaim, onJoin, onLock, o
               fontFamily: T.mono, fontSize: 14, fontWeight: 700,
               cursor: voting ? "default" : "pointer", transition: "all 0.2s",
             }}>
-              ✓ Release
+              ✓ {getVoteLabel(state.category, state.fulfillment, myRole, Outcome.RELEASE)}
             </button>
           )}
           <button disabled={voting} onClick={() => handleVote(Outcome.REFUND)} style={{
@@ -1401,7 +1403,9 @@ function TradeDetail({ state, pubkey, onBack, onVote, onClaim, onJoin, onLock, o
             fontFamily: T.mono, fontSize: 14, fontWeight: 700,
             cursor: voting ? "default" : "pointer", transition: "all 0.2s",
           }}>
-            {state.subscription ? "🛑 Cancel & Refund Remaining" : "↩ Refund"}
+            {state.subscription
+              ? "🛑 Cancel & Refund Remaining"
+              : "↩ " + getVoteLabel(state.category, state.fulfillment, myRole, Outcome.REFUND)}
           </button>
         </div>
       )}
@@ -1469,6 +1473,18 @@ function CreateForm({ onCreate, onClose }: {
   const [isSubscription, setIsSubscription] = useState(false);
   const [periods, setPeriods] = useState("3");
   const [intervalDays, setIntervalDays] = useState("30");
+  // PR 2: community defaults to the user's selected community.
+  // fulfillment is only user-pickable for marketplace; for other
+  // verticals it's auto-set to "service" by handleCreate, so we don't
+  // even render the picker.
+  const [community, setCommunity] = useState<string>(() => {
+    try {
+      const raw = typeof localStorage !== "undefined"
+        ? localStorage.getItem("chama_community") : null;
+      return raw && getCommunityBySlug(raw) ? raw : "global-usd";
+    } catch { return "global-usd"; }
+  });
+  const [fulfillment, setFulfillment] = useState<Fulfillment>("physical");
 
   const cats = [
     { id: "p2p-trade", l: "P2P Trade", i: "⚡" },
@@ -1488,6 +1504,10 @@ function CreateForm({ onCreate, onClose }: {
         fiatAmount: fiat ? parseFloat(fiat) : undefined,
         fiatCurrency: fiat ? cur : undefined,
         category: cat,
+        community,
+        // For marketplace, ship the user's pick. For non-marketplace,
+        // leave undefined and let handleCreate normalize to "service".
+        fulfillment: cat === "marketplace" ? fulfillment : undefined,
         mintUrl: mint,
       };
       if (isSubscription) {
@@ -1524,6 +1544,30 @@ function CreateForm({ onCreate, onClose }: {
             {c.i} {c.l}
           </button>
         ))}
+      </div>
+
+      {/* PR 2: community selector + fulfillment selector (marketplace only) */}
+      <div style={{ display: "flex", gap: 12, marginBottom: 16 }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 11, color: T.muted, fontFamily: T.mono, marginBottom: 6 }}>COMMUNITY</div>
+          <select value={community} onChange={e => setCommunity(e.target.value)}
+            style={{ ...inputStyle, color: T.text, background: T.surface }}>
+            {COMMUNITY_REGISTRY.map(c => (
+              <option key={c.slug} value={c.slug}>{c.displayName}</option>
+            ))}
+          </select>
+        </div>
+        {categoryAllowsFulfillmentChoice(cat) && (
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 11, color: T.muted, fontFamily: T.mono, marginBottom: 6 }}>FULFILLMENT</div>
+            <select value={fulfillment} onChange={e => setFulfillment(e.target.value as Fulfillment)}
+              style={{ ...inputStyle, color: T.text, background: T.surface }}>
+              <option value="physical">Physical</option>
+              <option value="service">Service</option>
+              <option value="digital">Digital</option>
+            </select>
+          </div>
+        )}
       </div>
 
       <div style={{ marginBottom: 16 }}>
@@ -2494,6 +2538,10 @@ export default function App() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [tab, setTab] = useState<"browse" | "mine">("browse");
   const [browseCategory, setBrowseCategory] = useState<string>("all");
+  // PR 2: Browse community filter. "all" shows every community; the
+  // user's selected community is the default narrowing — they can
+  // widen back to "all" for arbitrage/cross-community discovery.
+  const [browseCommunity, setBrowseCommunity] = useState<string>(actions.getCommunity());
   const [nip46Uri, setNip46Uri] = useState<string | null>(null);
   const [loginSuccess, setLoginSuccess] = useState(false);
   const [nip46Waiting, setNip46Waiting] = useState(false);
@@ -2553,12 +2601,20 @@ export default function App() {
     if (browseCategory === "subscription") return s.subscription !== null;
     return s.category === browseCategory;
   };
+  // PR 2: community filter. "all" disables the filter; otherwise match
+  // the listing's community slug. Pre-PR-2 listings (community === null)
+  // only show under "all" — they have no slug to match against.
+  const matchesBrowseCommunity = (s: EscrowState) => {
+    if (browseCommunity === "all") return true;
+    return s.community === browseCommunity;
+  };
 
   const browseList = visibleTrades.filter(s =>
     !isParticipant(s) &&
     s.status === "CREATED" &&
     (myFederationInvite ? s.mintUrl === myFederationInvite : false) &&
-    matchesBrowseCategory(s)
+    matchesBrowseCategory(s) &&
+    matchesBrowseCommunity(s)
   );
   // Legacy name kept for any stragglers — points at My trades.
   const escrowList = myTrades;
@@ -2994,6 +3050,40 @@ export default function App() {
                     }}
                   >
                     {c.i ? c.i + " " : ""}{c.l}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {/* PR 2: Browse community filter pills */}
+          {tab === "browse" && (
+            <div style={{
+              display: "flex", gap: 6, marginBottom: 12,
+              overflowX: "auto",
+              scrollbarWidth: "none" as const,
+              WebkitOverflowScrolling: "touch" as const,
+              paddingBottom: 2,
+            }}>
+              {[{ slug: "all", displayName: "All communities" }, ...COMMUNITY_REGISTRY].map(c => {
+                const active = browseCommunity === c.slug;
+                return (
+                  <button
+                    key={c.slug}
+                    onClick={() => setBrowseCommunity(c.slug)}
+                    style={{
+                      flexShrink: 0,
+                      padding: "7px 13px", borderRadius: 18,
+                      background: active ? T.tealDim : T.surface,
+                      border: `1px solid ${active ? T.teal + "66" : T.border}`,
+                      color: active ? T.teal : T.muted,
+                      fontFamily: T.mono, fontSize: 11, fontWeight: 600,
+                      cursor: "pointer", transition: "all 0.15s",
+                      whiteSpace: "nowrap" as const,
+                      letterSpacing: 0.2,
+                    }}
+                  >
+                    {c.displayName}
                   </button>
                 );
               })}

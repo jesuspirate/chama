@@ -167,6 +167,13 @@ export const TAGS = {
   CURRENCY: "currency",
   /** Category tag for marketplace filtering */
   CATEGORY: "cat",
+  /** Community slug — drives Browse filtering and currency context.
+   *  Lower-case slug from the static communities registry. */
+  COMMUNITY: "community",
+  /** Fulfillment type: "physical" | "service" | "digital". Generic to
+   *  any listing; users only pick at create time for marketplace —
+   *  other categories auto-set in handleCreate. */
+  FULFILLMENT: "fulfillment",
   // v0.1.72 federation gates ───────────────────────────────────────────
   /** Federation prefix (first 10 chars of an ecash probe). Fast compare. */
   FED_PREFIX: "fedPrefix",
@@ -197,6 +204,16 @@ export interface CreatePayload {
   fiatCurrency?: string;
   /** Category: p2p-trade, bill-pay, marketplace, lending */
   category: string;
+  /** Fulfillment type: "physical" | "service" | "digital". Generic to
+   *  every listing per PR 2 call #3. The user picks only for
+   *  marketplace; for p2p-trade / bill-pay / lending, handleCreate
+   *  rewrites this to the canonical "service" if supplied (or fills
+   *  it in if missing) so the chain is consistent. */
+  fulfillment?: "physical" | "service" | "digital";
+  /** Community slug from the static registry (PR 2). Optional for
+   *  backwards compatibility with pre-registry trades — those flow
+   *  through Browse as cross-community listings without a pill. */
+  community?: string;
   /** Fedimint federation invite code */
   mintUrl: string;
   /** Platform fee in basis points */
@@ -448,6 +465,13 @@ export interface EscrowState {
   fiatCurrency?: string;
   /** Category */
   category: string;
+  /** Fulfillment type: "physical" | "service" | "digital". Always set
+   *  after handleCreate runs — defaults to "service" for non-marketplace
+   *  categories, "physical" for marketplace when not specified. */
+  fulfillment: "physical" | "service" | "digital";
+  /** Community slug. Null for pre-registry trades (no community tag
+   *  on CREATE) — Browse renders these without a community pill. */
+  community: string | null;
   /** Fedimint mint URL / invite code */
   mintUrl: string;
 

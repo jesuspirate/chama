@@ -236,6 +236,12 @@ export class EscrowClient {
     fiatAmount?: number;
     fiatCurrency?: string;
     category: string;
+    /** PR 2: marketplace user picks; non-marketplace categories get
+     *  "service" written by handleCreate regardless of what's passed. */
+    fulfillment?: "physical" | "service" | "digital";
+    /** PR 2: community slug from the static registry. Optional —
+     *  pre-registry trades work but won't show a community pill. */
+    community?: string;
     mintUrl: string;
     paymentMethods?: string[];
     arbiterFeeMsats?: number;
@@ -256,6 +262,15 @@ export class EscrowClient {
     const now = Math.floor(Date.now() / 1000);
     const escrowId = this.generateEscrowId();
 
+    // PR 2: normalize fulfillment so the wire payload matches what
+    // handleCreate will store. Marketplace defaults to "physical" when
+    // unspecified (form should still force a pick); other categories
+    // get "service" regardless of input.
+    const fulfillment: "physical" | "service" | "digital" =
+      params.category === "marketplace"
+        ? (params.fulfillment ?? "physical")
+        : "service";
+
     const payload: CreatePayload = {
       type: "escrow:create",
       description: params.description,
@@ -263,6 +278,8 @@ export class EscrowClient {
       fiatAmount: params.fiatAmount,
       fiatCurrency: params.fiatCurrency,
       category: params.category,
+      fulfillment,
+      community: params.community,
       mintUrl: params.mintUrl,
       platformFeeBps: this.config.defaultPlatformFeeBps!,
       platformFeePubkey: this.config.platformFeePubkey || pubkey,
@@ -290,6 +307,11 @@ export class EscrowClient {
         [TAGS.MINT, params.mintUrl],
         ...(params.fiatCurrency ? [[TAGS.CURRENCY, params.fiatCurrency]] : []),
         ...(params.category ? [[TAGS.CATEGORY, params.category]] : []),
+        // PR 2: community + fulfillment as relay-filterable tags. Browse
+        // can fan out a `#community` filter directly to relays without
+        // pulling and decoding every CREATE.
+        ...(params.community ? [[TAGS.COMMUNITY, params.community]] : []),
+        [TAGS.FULFILLMENT, fulfillment],
         // v0.1.72 federation gates: tag the locker's fed for fast filtering
         ...(params.fedPrefix ? [[TAGS.FED_PREFIX, params.fedPrefix]] : []),
         ...(params.fed ? [[TAGS.FED, params.fed]] : []),

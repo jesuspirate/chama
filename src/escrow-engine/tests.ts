@@ -1,21 +1,41 @@
 // ══════════════════════════════════════════════════════════════════════════
-// Chama Escrow Engine — Test Suite (PR 1: atomic funding)
+// Chama Escrow Engine — Test Suite (PR 1 atomic funding + PR 2 community)
 // ══════════════════════════════════════════════════════════════════════════
 //
 // Run: npx tsx src/escrow-engine/tests.ts
 //
 // Tests the pure state machine with synthetic events — no relays, no
-// crypto, no network. Just state transitions and invariants for the
-// atomic-funding model:
+// crypto, no network. Just state transitions and invariants for:
 //
-//   - LOCK fires directly from CREATED (no FUNDED, no READY ceremony)
-//   - LOCK is self-describing: it carries buyerPubkey + arbiterPubkey
-//   - JOIN is ACK only: it records a participant pubkey but does NOT
-//     transition state
-//   - Once LOCKED, a second LOCK is rejected (no double-lock from
-//     duplicate payment-detection events)
-//   - Arbiter must be from the communityArbiters pool when one exists
-//   - LOCK pubkeys must be consistent with any prior JOIN ACKs
+//   PR 1 — atomic funding spine:
+//     - LOCK fires directly from CREATED (no FUNDED, no READY ceremony)
+//     - LOCK is self-describing: carries buyerPubkey + arbiterPubkey
+//     - JOIN is ACK only — records pubkey but does NOT transition state
+//     - Double-LOCK rejected (atomic, not idempotent-with-side-effects)
+//     - Arbiter must be from communityArbiters pool when present
+//     - LOCK pubkeys consistent with any prior JOIN ACKs
+//
+//   PR 2 — community + listing schema + BLF resolver + vote labels:
+//     - Community registry lookup (valid/missing/null slug)
+//     - User community storage (default + persistence)
+//     - BLF fallback in resolveFederationForCommunity
+//     - Fulfillment normalization in handleCreate (auto-set per category)
+//     - Vote label dictionary returns the right copy per
+//       (category, fulfillment, role, outcome) tuple
+
+// PR 2: minimal localStorage stub for the storage + resolver tests.
+// The escrow modules already gate on `typeof localStorage !== "undefined"`,
+// so installing this stub before any imports lets the storage-aware code
+// paths run under tsx in Node without ceremony.
+(globalThis as any).localStorage = (() => {
+  const data = new Map<string, string>();
+  return {
+    getItem: (k: string) => (data.has(k) ? data.get(k)! : null),
+    setItem: (k: string, v: string) => { data.set(k, String(v)); },
+    removeItem: (k: string) => { data.delete(k); },
+    clear: () => { data.clear(); },
+  };
+})();
 
 import {
   EscrowStatus,
@@ -51,6 +71,28 @@ import {
   sortEventChain,
   buildEscrowFilter,
 } from "./event-parser.js";
+
+// PR 2 imports
+import {
+  COMMUNITY_REGISTRY,
+  DEFAULT_COMMUNITY_SLUG,
+  getCommunityBySlug,
+} from "../communities/registry.js";
+import {
+  getUserCommunitySlug,
+  setUserCommunitySlug,
+  COMMUNITY_STORAGE_KEY,
+} from "../communities/storage.js";
+import {
+  resolveFederationForCommunity,
+  setCustomFederationInvite,
+  DEFAULT_FEDERATION_INVITE,
+} from "../fedimint/federation-config.js";
+import {
+  getVoteLabel,
+  defaultFulfillmentFor,
+  categoryAllowsFulfillmentChoice,
+} from "../labels/vote-labels.js";
 
 // ── Test helpers ──────────────────────────────────────────────────────────
 
@@ -851,6 +893,245 @@ console.log("\n── EXPIRY ──");
 
   assert(!isExpired(state, NOW + 100), "Not expired within window");
   assert(isExpired(state, NOW + 100_000), "Expired past deadline");
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// PR 2 — community + listing schema + BLF resolver + vote labels
+// ══════════════════════════════════════════════════════════════════════════
+
+// ── 14. COMMUNITY REGISTRY + STORAGE ─────────────────────────────────────
+console.log("\n── COMMUNITY REGISTRY + STORAGE ──");
+{
+  // Registry shape — load-bearing seeds present
+  assert(COMMUNITY_REGISTRY.length === 4, "Registry has the 4 PR 2 seeds");
+  assert(getCommunityBySlug("sn-cfa")?.currency === "XOF", "sn-cfa is XOF");
+  assert(getCommunityBySlug("ke-kes")?.currency === "KES", "ke-kes is KES");
+  assert(getCommunityBySlug("sv-usd")?.currency === "USD", "sv-usd is USD");
+  assert(getCommunityBySlug("global-usd")?.currency === "USD", "global-usd is USD");
+  assert(DEFAULT_COMMUNITY_SLUG === "global-usd", "Default community is global-usd");
+
+  // Lookup with valid + missing slug
+  assert(getCommunityBySlug("sn-cfa") !== null, "Valid slug returns community");
+  assert(getCommunityBySlug("xx-zz") === null, "Unknown slug returns null");
+  assert(getCommunityBySlug(null) === null, "Null slug returns null");
+  assert(getCommunityBySlug(undefined) === null, "Undefined slug returns null");
+
+  // All seeds default to BLF (federationInvite === null) for v1
+  const allUseBlf = COMMUNITY_REGISTRY.every(c => c.federationInvite === null);
+  assert(allUseBlf, "All v1 seed communities fall back to BLF (federationInvite null)");
+
+  // Storage roundtrip — defaults to global-usd when nothing set
+  (globalThis as any).localStorage.clear();
+  assert(getUserCommunitySlug() === "global-usd",
+    "getUserCommunitySlug defaults to global-usd when nothing stored");
+
+  // Set + read
+  setUserCommunitySlug("sn-cfa");
+  assert(getUserCommunitySlug() === "sn-cfa", "Persisted slug round-trips");
+
+  // Stale/invalid slug falls back to default rather than flowing through
+  (globalThis as any).localStorage.setItem(COMMUNITY_STORAGE_KEY, "ghost-fed");
+  assert(getUserCommunitySlug() === "global-usd",
+    "Unknown stored slug falls back to default (registry validation)");
+
+  // Clear via empty string
+  setUserCommunitySlug("ke-kes");
+  assert(getUserCommunitySlug() === "ke-kes", "Pre-clear: ke-kes set");
+  setUserCommunitySlug("");
+  assert(getUserCommunitySlug() === "global-usd", "Empty string clears, falls to default");
+}
+
+// ── 15. BLF RESOLVER ─────────────────────────────────────────────────────
+console.log("\n── BLF RESOLVER ──");
+{
+  // No custom invite, no community: pure BLF fallback
+  (globalThis as any).localStorage.clear();
+  assert(resolveFederationForCommunity(null) === DEFAULT_FEDERATION_INVITE,
+    "Null slug → BLF default");
+  assert(resolveFederationForCommunity(undefined) === DEFAULT_FEDERATION_INVITE,
+    "Undefined slug → BLF default");
+  assert(resolveFederationForCommunity("xx-unknown") === DEFAULT_FEDERATION_INVITE,
+    "Unknown slug → BLF default");
+
+  // Known community whose federationInvite is null → still BLF (the
+  // load-bearing v1 invariant: communities without their own federation
+  // are silently backed by BLF, not blocked).
+  assert(resolveFederationForCommunity("sn-cfa") === DEFAULT_FEDERATION_INVITE,
+    "Community with null federationInvite → BLF fallback");
+  assert(resolveFederationForCommunity("ke-kes") === DEFAULT_FEDERATION_INVITE,
+    "ke-kes → BLF fallback");
+  assert(resolveFederationForCommunity("global-usd") === DEFAULT_FEDERATION_INVITE,
+    "global-usd → BLF fallback");
+
+  // Custom invite override beats community resolution
+  const fakeCustomInvite = "fed1qcustom_user_pasted_invite_for_resolver_test";
+  setCustomFederationInvite(fakeCustomInvite);
+  assert(resolveFederationForCommunity("sn-cfa") === fakeCustomInvite,
+    "Custom invite overrides community resolution");
+  assert(resolveFederationForCommunity(null) === fakeCustomInvite,
+    "Custom invite overrides null slug too");
+
+  // Cleanup so other tests aren't poisoned
+  setCustomFederationInvite("");
+  assert(resolveFederationForCommunity("sn-cfa") === DEFAULT_FEDERATION_INVITE,
+    "After clearing custom invite, falls back to BLF again");
+}
+
+// ── 16. FULFILLMENT NORMALIZATION ────────────────────────────────────────
+console.log("\n── FULFILLMENT NORMALIZATION (handleCreate) ──");
+{
+  // Helper to build a CREATE with a specific category + fulfillment
+  function createWith(category: string, fulfillment?: "physical" | "service" | "digital") {
+    return makeParsedEvent(EscrowEventKind.CREATE, SELLER_PK, {
+      type: "escrow:create",
+      description: "test",
+      amountMsats: 100_000_000,
+      category,
+      fulfillment,
+      community: "sn-cfa",
+      mintUrl: "fed11q...",
+      platformFeeBps: 50,
+      platformFeePubkey: PLATFORM_PK,
+      arbiterFeeMsats: 1_000_000,
+      expirySeconds: 86400,
+      createdAt: NOW,
+    });
+  }
+
+  // Marketplace + explicit pick → preserved
+  {
+    const r = applyEvent(null, createWith("marketplace", "digital"));
+    if (assertOk(r, "Marketplace + digital → CREATED")) {
+      assert(r.state.fulfillment === "digital", "Marketplace user pick preserved (digital)");
+      assert(r.state.community === "sn-cfa", "Community slug propagated to state");
+    }
+  }
+  {
+    const r = applyEvent(null, createWith("marketplace", "service"));
+    if (assertOk(r, "Marketplace + service → CREATED")) {
+      assert(r.state.fulfillment === "service", "Marketplace user pick preserved (service)");
+    }
+  }
+
+  // Marketplace + missing → defaults to "physical"
+  {
+    const r = applyEvent(null, createWith("marketplace"));
+    if (assertOk(r, "Marketplace + missing fulfillment → CREATED")) {
+      assert(r.state.fulfillment === "physical",
+        "Marketplace defaults to physical when fulfillment missing");
+    }
+  }
+
+  // Non-marketplace → forced to "service" regardless of input
+  for (const cat of ["p2p-trade", "bill-pay", "lending"]) {
+    const r1 = applyEvent(null, createWith(cat));
+    if (assertOk(r1, `${cat} + missing fulfillment → CREATED`)) {
+      assert(r1.state.fulfillment === "service",
+        `${cat} fulfillment defaults to "service" when missing`);
+    }
+    // Even if a misbehaving client passed "physical", normalize to service
+    const r2 = applyEvent(null, createWith(cat, "physical"));
+    if (assertOk(r2, `${cat} + (incorrect) physical → CREATED`)) {
+      assert(r2.state.fulfillment === "service",
+        `${cat} normalizes wire fulfillment back to "service" (chain consistency)`);
+    }
+  }
+
+  // Community is null when CREATE omits it (pre-PR-2 backwards compat)
+  {
+    const noCommunity = makeParsedEvent(EscrowEventKind.CREATE, SELLER_PK, {
+      type: "escrow:create",
+      description: "test",
+      amountMsats: 100_000_000,
+      category: "p2p-trade",
+      mintUrl: "fed11q...",
+      platformFeeBps: 50,
+      platformFeePubkey: PLATFORM_PK,
+      arbiterFeeMsats: 1_000_000,
+      expirySeconds: 86400,
+      createdAt: NOW,
+    });
+    const r = applyEvent(null, noCommunity);
+    if (assertOk(r, "CREATE without community → CREATED")) {
+      assert(r.state.community === null, "community is null when omitted (backwards compat)");
+    }
+  }
+}
+
+// ── 17. VOTE LABEL DICTIONARY ────────────────────────────────────────────
+console.log("\n── VOTE LABEL DICTIONARY ──");
+{
+  // Helpers
+  assert(defaultFulfillmentFor("marketplace") === "physical",
+    "Marketplace default fulfillment is physical");
+  assert(defaultFulfillmentFor("p2p-trade") === "service",
+    "p2p-trade default fulfillment is service");
+  assert(defaultFulfillmentFor("bill-pay") === "service",
+    "bill-pay default fulfillment is service");
+  assert(defaultFulfillmentFor(undefined) === "service",
+    "Undefined category default fulfillment is service");
+  assert(categoryAllowsFulfillmentChoice("marketplace") === true,
+    "Marketplace allows fulfillment choice");
+  assert(categoryAllowsFulfillmentChoice("p2p-trade") === false,
+    "p2p-trade does NOT allow fulfillment choice");
+  assert(categoryAllowsFulfillmentChoice("bill-pay") === false,
+    "bill-pay does NOT allow fulfillment choice");
+
+  // Marketplace — three fulfillments × buyer/seller × release/refund
+  assert(getVoteLabel("marketplace", "physical", Role.BUYER, Outcome.RELEASE) === "I received it",
+    "marketplace/physical/buyer/release = 'I received it'");
+  assert(getVoteLabel("marketplace", "physical", Role.SELLER, Outcome.RELEASE) === "Item delivered",
+    "marketplace/physical/seller/release = 'Item delivered'");
+  assert(getVoteLabel("marketplace", "physical", Role.BUYER, Outcome.REFUND) === "I didn't get it",
+    "marketplace/physical/buyer/refund = 'I didn't get it'");
+  assert(getVoteLabel("marketplace", "service", Role.BUYER, Outcome.RELEASE) === "I received the service",
+    "marketplace/service/buyer/release");
+  assert(getVoteLabel("marketplace", "service", Role.SELLER, Outcome.RELEASE) === "Service rendered",
+    "marketplace/service/seller/release");
+  assert(getVoteLabel("marketplace", "digital", Role.BUYER, Outcome.RELEASE) === "I received the file",
+    "marketplace/digital/buyer/release");
+  assert(getVoteLabel("marketplace", "digital", Role.SELLER, Outcome.RELEASE) === "Delivered",
+    "marketplace/digital/seller/release");
+  assert(getVoteLabel("marketplace", "digital", Role.BUYER, Outcome.REFUND) === "File never arrived",
+    "marketplace/digital/buyer/refund");
+
+  // P2P (always service)
+  assert(getVoteLabel("p2p-trade", "service", Role.BUYER, Outcome.RELEASE) === "I sent the fiat",
+    "p2p/buyer/release = 'I sent the fiat'");
+  assert(getVoteLabel("p2p-trade", "service", Role.SELLER, Outcome.RELEASE) === "Fiat received",
+    "p2p/seller/release = 'Fiat received'");
+
+  // Bill Pay — payer is the seller (sats-receiver), payee is the buyer (bill-holder)
+  assert(getVoteLabel("bill-pay", "service", Role.BUYER, Outcome.RELEASE) === "My bill was paid",
+    "bill-pay/buyer/release = 'My bill was paid'");
+  assert(getVoteLabel("bill-pay", "service", Role.SELLER, Outcome.RELEASE) === "Bill has been paid",
+    "bill-pay/seller/release = 'Bill has been paid'");
+
+  // Lending (placeholder labels for v1)
+  assert(getVoteLabel("lending", "service", Role.BUYER, Outcome.RELEASE) === "I got the loan",
+    "lending/buyer/release = 'I got the loan'");
+  assert(getVoteLabel("lending", "service", Role.SELLER, Outcome.RELEASE) === "Loan disbursed",
+    "lending/seller/release = 'Loan disbursed'");
+
+  // Arbiter neutral fallback
+  assert(getVoteLabel("marketplace", "physical", Role.ARBITER, Outcome.RELEASE) === "Side with buyer",
+    "Arbiter RELEASE = 'Side with buyer' (neutral)");
+  assert(getVoteLabel("p2p-trade", "service", Role.ARBITER, Outcome.REFUND) === "Side with seller",
+    "Arbiter REFUND = 'Side with seller' (neutral)");
+
+  // Unknown category falls through to neutral
+  assert(getVoteLabel("raw-escrow", "service", Role.BUYER, Outcome.RELEASE) === "Release sats",
+    "Unknown category → neutral 'Release sats'");
+  assert(getVoteLabel(undefined, undefined, Role.SELLER, Outcome.REFUND) === "Refund sats",
+    "Undefined category+fulfillment → neutral 'Refund sats'");
+
+  // Marketplace + missing fulfillment falls back to neutral (the dictionary
+  // requires an explicit fulfillment for marketplace; defaultFulfillmentFor
+  // is what callers should use to fill it in beforehand).
+  // Sanity: when callers DO use the default, marketplace/buyer/release lands.
+  assert(getVoteLabel("marketplace", defaultFulfillmentFor("marketplace"), Role.BUYER, Outcome.RELEASE)
+    === "I received it",
+    "Using defaultFulfillmentFor('marketplace') yields the physical labels");
 }
 
 // ══════════════════════════════════════════════════════════════════════════

@@ -74,6 +74,58 @@ export function hasCustomFederation(): boolean {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
+// COMMUNITY-AWARE RESOLUTION (PR 2)
+// ══════════════════════════════════════════════════════════════════════════
+//
+// Per PHILOSOPHY.md §2.3: communities are the user-facing layer; federations
+// are the technical layer that backs them. A community whose registry entry
+// has federationInvite === null falls back to BLF — "no user is locked out
+// by federation availability." This resolver is the single seam where that
+// fallback decision happens, so wallet bootstrap can stay community-aware
+// without knowing about BLF directly.
+//
+// Precedence (highest first):
+//   1. User's pasted custom invite (the manual-override escape hatch)
+//   2. The community's federationInvite (when the registry has one)
+//   3. BLF default
+//
+import { getCommunityBySlug } from "../communities/registry.js";
+
+/**
+ * Resolve the federation invite code for a given community slug.
+ *
+ * - If the user has set a custom invite, it always wins (manual override).
+ * - Otherwise, look up the community in the registry. If the entry has a
+ *   non-null federationInvite, use it.
+ * - Otherwise (community null/unknown, or its federationInvite is null),
+ *   fall back to BLF.
+ */
+export function resolveFederationForCommunity(slug: string | null | undefined): string {
+  // 1. Manual override beats everything — same precedence as
+  //    getFederationInvite(), kept consistent so the "Advanced" path
+  //    behaves identically across the codebase.
+  try {
+    if (typeof localStorage !== "undefined") {
+      const custom = localStorage.getItem(CUSTOM_INVITE_STORAGE_KEY);
+      if (custom && custom.trim().startsWith("fed1")) {
+        return custom.trim();
+      }
+    }
+  } catch {
+    // localStorage unavailable — fall through
+  }
+
+  // 2. Community-mapped invite, if any.
+  const community = getCommunityBySlug(slug);
+  if (community?.federationInvite) {
+    return community.federationInvite;
+  }
+
+  // 3. BLF fallback. Per the philosophy, this is the universal floor.
+  return DEFAULT_FEDERATION_INVITE;
+}
+
+// ══════════════════════════════════════════════════════════════════════════
 // FEDERATION PRESETS — Curated + dynamic list for the dropdown picker
 // ══════════════════════════════════════════════════════════════════════════
 

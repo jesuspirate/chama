@@ -154,6 +154,16 @@ function handleCreate(event: ParsedEscrowEvent<CreatePayload>): TransitionResult
     [Role.ARBITER]: null as string | null,
   };
 
+  // PR 2: fulfillment is generic to every listing, but only marketplace
+  // gives the user a real choice. For other categories we rewrite to
+  // the canonical "service" so the chain is consistent — even if a
+  // misbehaving client published a CREATE with fulfillment="physical"
+  // for a p2p-trade, replay normalizes it.
+  const fulfillment: "physical" | "service" | "digital" =
+    p.category === "marketplace"
+      ? (p.fulfillment ?? "physical")
+      : "service";
+
   const state: EscrowState = {
     id: event.escrowId,
     status: EscrowStatus.CREATED,
@@ -162,6 +172,8 @@ function handleCreate(event: ParsedEscrowEvent<CreatePayload>): TransitionResult
     fiatAmount: p.fiatAmount,
     fiatCurrency: p.fiatCurrency,
     category: p.category,
+    fulfillment,
+    community: p.community ?? null,
     mintUrl: p.mintUrl,
     participants,
     initiator: { pubkey: event.pubkey, role: initiatorRole },

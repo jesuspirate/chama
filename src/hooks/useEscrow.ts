@@ -49,7 +49,7 @@ import {
 import {
   FedimintClient,
   EscrowFedimintBridge,
-  getFederationInvite,
+  resolveFederationForCommunity,
   setCustomFederationInvite,
   hasCustomFederation,
   DEFAULT_FEDERATION_NAME,
@@ -60,6 +60,8 @@ import {
   drainPendingRedemptions,
   checkAndMaybeRepublishSeed,
 } from "../fedimint/index.js";
+import { getUserCommunitySlug, setUserCommunitySlug } from "../communities/storage.js";
+import { getCommunityBySlug, type Community } from "../communities/registry.js";
 
 // ── Hook state ────────────────────────────────────────────────────────────
 
@@ -220,6 +222,13 @@ export interface UseEscrowActions {
   devSwitchFederation: (inviteCode: string) => Promise<void>;
   /** (Re-)start the Browse feed subscription for public listings. */
   watchPublicListings: (since?: number) => void;
+  /** PR 2: read the user's selected community slug (always returns
+   *  a valid slug from the registry — defaults to global-usd). */
+  getCommunity: () => string;
+  /** PR 2: persist the user's community choice. Pass empty string to
+   *  clear and revert to default. Does NOT auto re-init the wallet —
+   *  call initFedimint() afterward to switch federations immediately. */
+  setCommunity: (slug: string) => void;
 }
 
 // ── Default relay list ────────────────────────────────────────────────────
@@ -1085,8 +1094,13 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
         updateFedimint({ initialized: true });
       }
 
-      // Resolve the invite code: explicit arg > stored custom > BLF default
-      const effectiveInvite = inviteCode?.trim() || getFederationInvite();
+      // PR 2: resolve via the community-aware path. Precedence is
+      // explicit arg > custom stored invite > community.federationInvite
+      // > BLF default. resolveFederationForCommunity handles the bottom
+      // three; the explicit arg is the manual override on top.
+      const userCommunity = getUserCommunitySlug();
+      const effectiveInvite = inviteCode?.trim()
+        || resolveFederationForCommunity(userCommunity);
       const usingCustom = hasCustomFederation() || !!inviteCode?.trim();
 
       // Join federation (idempotent in the SDK)
@@ -1387,6 +1401,8 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     watchPublicListings: (since?: number) => {
       clientRef.current?.watchPublicListings(since);
     },
+    getCommunity: getUserCommunitySlug,
+    setCommunity: setUserCommunitySlug,
   };
 
   return [state, actions];
