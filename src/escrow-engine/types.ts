@@ -261,6 +261,19 @@ export interface LockShareEntry {
   encryptedFor: Record<string, string>;
 }
 
+/** PR 4: 3-recipient envelope structure for LOCK-time data that needs
+ *  to reach all three participants. Mirrors LockShareEntry.encryptedFor.
+ *  Each value is a NIP-44 ciphertext encrypted by the locker (sender)
+ *  to the corresponding recipient pubkey. Any recipient decrypts their
+ *  entry using the locker's pubkey as the sender for ECDH.
+ *
+ *  General-purpose: today used for handle reveal; v1.5+ may reuse for
+ *  CHAT 3-recipient encryption or other pre-share fields. The helper
+ *  in src/escrow-engine/envelope.ts owns construction/decryption. */
+export interface HandleEnvelope {
+  encryptedFor: Record<string, string>;
+}
+
 /** Content of a LOCK event.
  *
  *  v0.1.71: platformFeeMsats parked — platform fees are now collected
@@ -292,17 +305,30 @@ export interface LockPayload {
    *    pool (or any pubkey if the pool is empty / pre-community trades). */
   buyerPubkey: string;
   arbiterPubkey: string;
-  /** PR 3: payment-handle reveal. The seller resolves their saved
-   *  handle at LOCK time and includes the cleartext here so the buyer
-   *  and arbiter know exactly where to send fiat. The whole LockPayload
-   *  is NIP-44-protected (encryptLock in encryption-config), so this
-   *  cleartext does NOT flow on listings or chat — only inside LOCK
-   *  content, only after the buyer's payment has triggered atomic lock.
+  /** PR 4 wire format: 3-recipient encrypted handle reveal. The locker
+   *  encrypts a JSON {handleId?, handle, rail?} blob to each of buyer /
+   *  seller / arbiter via NIP-44, mirroring how SSS shares are
+   *  distributed via LockShareEntry.encryptedFor. Each participant
+   *  decrypts their own entry; non-participants get a null lookup.
    *
-   *  All three fields are optional: marketplace digital trades, raw
-   *  escrows, and pre-PR-3 trades don't carry them. handleId is the
-   *  seller's local audit reference (their saved-handle ID, opaque to
-   *  others). rail names which payment rail the handle is for. */
+   *  Optional: marketplace digital trades, raw escrows, and trades
+   *  where the seller didn't pick a saved handle leave this undefined.
+   *  When the envelope IS present, the top-level handle/handleId/rail
+   *  fields below should be omitted on the wire — escrow-client's
+   *  receive pipeline resolves the envelope and synthesizes those
+   *  top-level fields on the parsed event before applyEvent runs. */
+  handleEnvelope?: HandleEnvelope;
+  /** PR 3 (deprecated wire format) + PR 4 transient apply-time fields.
+   *
+   *  On the wire: pre-PR-4 LOCKs carry handle/handleId/rail at the top
+   *  level (single-recipient via the now-removed outer NIP-44 wrap).
+   *  Replay still accepts those for backwards compat; new emitters use
+   *  handleEnvelope instead.
+   *
+   *  At apply time: escrow-client populates these from the envelope
+   *  (decrypts the viewer's entry) before passing to handleLock. The
+   *  state machine reads them as cleartext regardless of how they
+   *  arrived — wire-legacy or envelope-resolved. */
   handleId?: string;
   handle?: string;
   rail?: string;

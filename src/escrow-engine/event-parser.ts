@@ -144,11 +144,10 @@ function validateLockPayload(data: unknown): data is LockPayload {
   // the LockPayload schema. We accept old LOCKs that still carry the
   // field, we just don't check or use it.
   const d = data as Record<string, unknown>;
-  // PR 3 handle reveal: handle / handleId / rail are all optional
-  // (non-fiat trades and pre-PR-3 trades won't carry them). When
-  // present they must be non-empty strings. The handleId is opaque
-  // (seller's local audit ref) and handle is the cleartext that
-  // gets revealed to participants — both shape-checked here.
+  // PR 3 handle reveal (deprecated wire format, accepted on replay):
+  // handle / handleId / rail at the top level. PR 4 prefers the
+  // envelope path below, but legacy top-level fields still validate.
+  // Non-empty string when present.
   if (d.handleId !== undefined && (typeof d.handleId !== "string" || d.handleId.length === 0)) {
     return false;
   }
@@ -157,6 +156,21 @@ function validateLockPayload(data: unknown): data is LockPayload {
   }
   if (d.rail !== undefined && (typeof d.rail !== "string" || d.rail.length === 0)) {
     return false;
+  }
+  // PR 4 handle envelope: optional. When present, must be an object
+  // with an encryptedFor map of pubkey → ciphertext (both strings).
+  // Empty maps are allowed at the wire level — the consumer decides
+  // whether to treat that as "no recipients" or an error. We don't
+  // sanity-check pubkey shape here; that's a higher-layer concern.
+  if (d.handleEnvelope !== undefined) {
+    const env = d.handleEnvelope as Record<string, unknown>;
+    if (!env || typeof env !== "object") return false;
+    const encFor = env.encryptedFor as Record<string, unknown> | undefined;
+    if (!encFor || typeof encFor !== "object") return false;
+    for (const [k, v] of Object.entries(encFor)) {
+      if (typeof k !== "string" || k.length === 0) return false;
+      if (typeof v !== "string" || v.length === 0) return false;
+    }
   }
   return (
     d.type === "escrow:lock" &&

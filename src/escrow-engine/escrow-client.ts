@@ -32,6 +32,7 @@ import {
   type JoinPayload,
   type LockPayload,
   type LockShareEntry,
+  type HandleEnvelope,
   type VotePayload,
   type ResolvePayload,
   type ClaimPayload,
@@ -46,6 +47,7 @@ import { applyEvent, replayEventChain, canVote, getWinner, type TransitionResult
 import { EscrowNotifier } from "./notifier.js";
 import { ENCRYPTION_CONFIG, maybeEncrypt } from "./encryption-config.js";
 import { parseEscrowEvent, sortEventChain } from "./event-parser.js";
+import { createEnvelope, decryptFromEnvelope } from "./envelope.js";
 import { RelayManager, type NostrFilter } from "./relay-manager.js";
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -448,7 +450,29 @@ export class EscrowClient {
     const now = Math.floor(Date.now() / 1000);
     const lastEventId = state.eventChain[state.eventChain.length - 1]?.raw.id;
 
-    const payload: LockPayload = {
+    // PR 4: build the 3-recipient handle envelope when the locker
+    // supplied handle data. Mirrors LockShareEntry.encryptedFor — each
+    // participant gets a NIP-44 ciphertext of the handle JSON,
+    // decryptable only by them. Locker is the sender (their pubkey is
+    // the ECDH counterparty for all three decryption operations).
+    const lockerPubkey = await this.getPubkey();
+    let handleEnvelope: HandleEnvelope | undefined;
+    if (params.handle) {
+      const handleData = JSON.stringify({
+        handleId: params.handleId,
+        handle: params.handle,
+        rail: params.rail,
+      });
+      handleEnvelope = await createEnvelope(
+        handleData,
+        [params.buyerPubkey, lockerPubkey, params.arbiterPubkey],
+        (pt, pk) => this.signer.nip44Encrypt(pt, pk),
+      );
+    }
+
+    // Wire payload — envelope only. Top-level handle/handleId/rail are
+    // omitted; receivers resolve from the envelope.
+    const wirePayload: LockPayload = {
       type: "escrow:lock",
       notesHash: params.notesHash,
       shares: params.shares,
@@ -456,19 +480,17 @@ export class EscrowClient {
       arbiterFeeMsats: params.arbiterFeeMsats,
       buyerPubkey: params.buyerPubkey,
       arbiterPubkey: params.arbiterPubkey,
-      handleId: params.handleId,
-      handle: params.handle,
-      rail: params.rail,
+      handleEnvelope,
       lockedAt: now,
     };
 
-    // Conditionally encrypt LOCK content (contains SSS shares)
-    const pubkey = await this.getPubkey();
-    const content = await maybeEncrypt(
-      payload, pubkey,
-      (pt, pk) => this.signer.nip44Encrypt(pt, pk),
-      ENCRYPTION_CONFIG.encryptLock,
-    );
+    // PR 4: outer NIP-44 wrap removed for LOCK. The wrap was
+    // single-recipient-to-locker — fundamentally incompatible with
+    // 3-recipient distribution. Sensitive data is now per-recipient
+    // encrypted INSIDE the payload (shares were already; handle joins
+    // them via handleEnvelope). Wire content is plaintext JSON, same
+    // as DEV mode behavior, now correct in PROD mode too.
+    const content = JSON.stringify(wirePayload);
 
     const unsigned: UnsignedEvent = {
       kind: EscrowEventKind.LOCK,
@@ -484,7 +506,18 @@ export class EscrowClient {
     const signed = await this.signer.signEvent(unsigned);
     await this.relayManager.publish(signed);
 
-    const lockResult = this.applyLocally(escrowId, signed, payload);
+    // For local apply, we have the cleartext in scope — synthesize a
+    // payload that includes BOTH the envelope (for wire fidelity in
+    // eventChain replay) AND the top-level handle fields (so handleLock
+    // can populate state.lock.handle without going through a decrypt
+    // round-trip on our own envelope entry).
+    const localPayload: LockPayload = {
+      ...wirePayload,
+      handleId: params.handleId,
+      handle: params.handle,
+      rail: params.rail,
+    };
+    const lockResult = this.applyLocally(escrowId, signed, localPayload);
 
     // Notify all participants that ecash is locked
     this.notifier?.onEscrowLocked(lockResult).catch(() => {});
@@ -896,9 +929,19 @@ export class EscrowClient {
       if (result.ok) parsed.push(result.event);
     }
 
-    console.debug(`[escrow] loadEscrow ${escrowId}: parsed ${parsed.length}/${rawEvents.length} events`, 
+    console.debug(`[escrow] loadEscrow ${escrowId}: parsed ${parsed.length}/${rawEvents.length} events`,
       parsed.map(e => `kind:${e.kind}`).join(', '));
     if (parsed.length === 0) return null;
+
+    // PR 4: resolve LOCK handle envelopes before replay. Each LOCK with
+    // a handleEnvelope gets the viewer's entry decrypted into top-level
+    // handle/handleId/rail fields so handleLock applies as before.
+    // Sequential await so a slow signer doesn't fan out into N concurrent
+    // NIP-44 calls per replay; in practice there's at most one LOCK per
+    // chain anyway.
+    for (let i = 0; i < parsed.length; i++) {
+      parsed[i] = await this.resolveLockEnvelope(parsed[i]);
+    }
 
     // Sort by dependency chain and replay
     const sorted = sortEventChain(parsed);
@@ -1014,7 +1057,11 @@ export class EscrowClient {
       return;
     }
 
-    const parsed = parseResult.event;
+    // PR 4: resolve any LOCK handle envelope before applyEvent. The
+    // state machine reads handle/handleId/rail at the top level of the
+    // payload (whether they came from a legacy PR 3 wire or were
+    // synthesized from a PR 4 envelope decrypt). This is the seam.
+    const parsed = await this.resolveLockEnvelope(parseResult.event);
 
     // Handle chat separately
     if (parsed.kind === EscrowEventKind.CHAT) {
@@ -1153,6 +1200,67 @@ export class EscrowClient {
     if (applied > 0) {
       console.debug(`[escrow] Flushed ${applied} buffered events for ${escrowId}`);
     }
+  }
+
+  /** PR 4: resolve a LOCK event's handleEnvelope (if present) into
+   *  top-level handle/handleId/rail fields on the parsed payload. The
+   *  state machine reads from those top-level fields; this seam lets
+   *  the wire format use a 3-recipient envelope without leaking that
+   *  detail into the pure handler.
+   *
+   *  Behavior:
+   *   - Non-LOCK events: returned unchanged.
+   *   - LOCK without handleEnvelope: unchanged (legacy PR 3 wire format
+   *     with top-level handle fields still works; LOCKs without handle
+   *     data have no fields to populate).
+   *   - LOCK with handleEnvelope: decrypts viewer's entry, parses the
+   *     JSON {handleId?, handle, rail?}, returns a payload-mutated copy
+   *     with those fields synthesized at the top level.
+   *   - Decrypt failure (not a recipient, malformed ciphertext, wrong
+   *     sender): returns unchanged. handleLock will see no top-level
+   *     handle and leave state.lock.handle null. Non-participants
+   *     transit this path silently. */
+  private async resolveLockEnvelope(parsed: ParsedEscrowEvent): Promise<ParsedEscrowEvent> {
+    if (parsed.kind !== EscrowEventKind.LOCK) return parsed;
+    const lockPayload = parsed.payload as LockPayload;
+    if (!lockPayload.handleEnvelope) return parsed;
+    // Already resolved (locker's local apply path populates both)
+    if (lockPayload.handle) return parsed;
+
+    let myPubkey: string;
+    try {
+      myPubkey = await this.getPubkey();
+    } catch {
+      return parsed;
+    }
+
+    const cleartext = await decryptFromEnvelope(
+      lockPayload.handleEnvelope,
+      myPubkey,
+      parsed.pubkey,
+      (ct, sender) => this.signer.nip44Decrypt(ct, sender),
+    );
+    if (cleartext === null) return parsed;
+
+    let handleData: { handleId?: string; handle?: string; rail?: string };
+    try {
+      handleData = JSON.parse(cleartext);
+    } catch {
+      return parsed;
+    }
+    if (typeof handleData.handle !== "string" || handleData.handle.length === 0) {
+      return parsed;
+    }
+
+    return {
+      ...parsed,
+      payload: {
+        ...lockPayload,
+        handleId: handleData.handleId,
+        handle: handleData.handle,
+        rail: handleData.rail,
+      },
+    };
   }
 
   private applyLocally(escrowId: string, signed: NostrEvent, payload: EscrowPayload): EscrowState {

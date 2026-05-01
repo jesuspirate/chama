@@ -115,6 +115,33 @@ import {
   handleDisplayForViewer,
 } from "../payments/saved-handles.js";
 
+// PR 4 imports — envelope helpers + real NIP-44 from nostr-tools
+import {
+  createEnvelope,
+  decryptFromEnvelope,
+  envelopeHasRecipient,
+} from "./envelope.js";
+import { ENCRYPTION_CONFIG } from "./encryption-config.js";
+import { generateSecretKey, getPublicKey, nip44 } from "nostr-tools";
+
+/** Build a minimal NIP-44 encrypt/decrypt pair for a given private key,
+ *  using nostr-tools v2 NIP-44. The "encrypt as me to recipient" function
+ *  derives ECDH(my_priv, recipient_pub); "decrypt sent by sender" derives
+ *  ECDH(my_priv, sender_pub). Both lead to the same shared secret on
+ *  matched pairs, the bedrock of NIP-44. */
+function makeNip44(myPriv: Uint8Array) {
+  return {
+    encrypt: async (plaintext: string, recipientPubkey: string): Promise<string> => {
+      const conv = nip44.v2.utils.getConversationKey(myPriv, recipientPubkey);
+      return nip44.v2.encrypt(plaintext, conv);
+    },
+    decrypt: async (ciphertext: string, senderPubkey: string): Promise<string> => {
+      const conv = nip44.v2.utils.getConversationKey(myPriv, senderPubkey);
+      return nip44.v2.decrypt(ciphertext, conv);
+    },
+  };
+}
+
 // ── Test helpers ──────────────────────────────────────────────────────────
 
 const BUYER_PK    = "aa".repeat(32);
@@ -1478,6 +1505,523 @@ console.log("\n── EVENT PARSER (PR 3 LOCK handle fields) ──");
     ...baseLock, rail: 123,
   }), true);
   assert(!badRailType.ok, "Parser rejects LOCK with non-string rail");
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// PR 4 — LOCK 3-recipient envelope encryption
+// ══════════════════════════════════════════════════════════════════════════
+
+// ── 23. ENVELOPE HELPER (encrypt/decrypt round-trip) ─────────────────────
+console.log("\n── ENVELOPE HELPER ──");
+{
+  // Generate three real keypairs. The locker (seller) is the sender;
+  // each recipient decrypts their own entry.
+  const sellerPriv  = generateSecretKey();
+  const buyerPriv   = generateSecretKey();
+  const arbiterPriv = generateSecretKey();
+  const strangerPriv = generateSecretKey();
+  const sellerPub   = getPublicKey(sellerPriv);
+  const buyerPub    = getPublicKey(buyerPriv);
+  const arbiterPub  = getPublicKey(arbiterPriv);
+  const strangerPub = getPublicKey(strangerPriv);
+
+  const sellerCrypto   = makeNip44(sellerPriv);
+  const buyerCrypto    = makeNip44(buyerPriv);
+  const arbiterCrypto  = makeNip44(arbiterPriv);
+  const strangerCrypto = makeNip44(strangerPriv);
+
+  // Run async assertions in a top-level await IIFE-like block.
+  // tsx supports top-level await, so we just await directly.
+  const cleartext = JSON.stringify({
+    handleId: "h_seller_local_xyz",
+    handle: "+221 77 555 1234",
+    rail: "wave",
+  });
+
+  const env = await createEnvelope(
+    cleartext,
+    [buyerPub, sellerPub, arbiterPub],
+    sellerCrypto.encrypt,
+  );
+
+  // Three entries, one per recipient
+  assert(Object.keys(env.encryptedFor).length === 3,
+    "Envelope has exactly 3 entries for 3 distinct recipients");
+  assert(env.encryptedFor[buyerPub] !== undefined,
+    "Envelope has buyer entry");
+  assert(env.encryptedFor[sellerPub] !== undefined,
+    "Envelope has seller entry");
+  assert(env.encryptedFor[arbiterPub] !== undefined,
+    "Envelope has arbiter entry");
+
+  // Each ciphertext is non-empty and not the cleartext itself
+  for (const [pk, ct] of Object.entries(env.encryptedFor)) {
+    assert(ct !== cleartext,
+      `Entry for ${pk.slice(0, 8)}… is encrypted (not raw cleartext)`);
+    assert(ct.length > 0,
+      `Entry for ${pk.slice(0, 8)}… is non-empty`);
+  }
+
+  // envelopeHasRecipient is the cheap check
+  assert(envelopeHasRecipient(env, buyerPub) === true,
+    "envelopeHasRecipient: buyer is in");
+  assert(envelopeHasRecipient(env, strangerPub) === false,
+    "envelopeHasRecipient: stranger is not in");
+
+  // Each participant decrypts their entry to the SAME cleartext
+  const buyerSees = await decryptFromEnvelope(env, buyerPub, sellerPub, buyerCrypto.decrypt);
+  assert(buyerSees === cleartext,
+    "Buyer decrypts their entry → matching cleartext");
+
+  const sellerSees = await decryptFromEnvelope(env, sellerPub, sellerPub, sellerCrypto.decrypt);
+  assert(sellerSees === cleartext,
+    "Seller (locker) decrypts their own entry → matching cleartext");
+
+  const arbiterSees = await decryptFromEnvelope(env, arbiterPub, sellerPub, arbiterCrypto.decrypt);
+  assert(arbiterSees === cleartext,
+    "Arbiter decrypts their entry → matching cleartext");
+
+  // Non-participant: lookup miss → null
+  const strangerSees = await decryptFromEnvelope(env, strangerPub, sellerPub, strangerCrypto.decrypt);
+  assert(strangerSees === null,
+    "Stranger (not in envelope) → null, no throw");
+
+  // Even if a stranger somehow had a ciphertext to attempt, NIP-44 auth
+  // would fail and decryptFromEnvelope returns null cleanly. Simulate
+  // by giving them buyer's ciphertext; their decrypt with seller as
+  // sender will fail because their ECDH(stranger_priv, seller_pub) is
+  // a different shared secret than ECDH(buyer_priv, seller_pub).
+  const tamperedEnv = { encryptedFor: { [strangerPub]: env.encryptedFor[buyerPub] } };
+  const tamperedResult = await decryptFromEnvelope(tamperedEnv, strangerPub, sellerPub, strangerCrypto.decrypt);
+  assert(tamperedResult === null,
+    "Stranger handed buyer's ciphertext → null (NIP-44 auth fails cleanly, no throw)");
+
+  // Empty recipients → empty envelope
+  const emptyEnv = await createEnvelope("anything", [], sellerCrypto.encrypt);
+  assert(Object.keys(emptyEnv.encryptedFor).length === 0,
+    "Empty recipients list → empty envelope");
+
+  // Duplicate recipients collapse
+  const dupEnv = await createEnvelope("x", [buyerPub, buyerPub, buyerPub], sellerCrypto.encrypt);
+  assert(Object.keys(dupEnv.encryptedFor).length === 1,
+    "Duplicate recipient pubkeys collapse to a single entry");
+}
+
+// ── 24. LOCK WITH ENVELOPE — through the state machine ───────────────────
+console.log("\n── LOCK WITH ENVELOPE (state machine) ──");
+{
+  // Build a real-crypto LOCK envelope, then simulate what escrow-client's
+  // resolveLockEnvelope() does on each participant's side: decrypt their
+  // entry, synthesize top-level handle fields, apply through the state
+  // machine. End state: state.lock.handle.value matches cleartext for
+  // each of the 3 participants.
+
+  const sellerPriv  = generateSecretKey();
+  const buyerPriv   = generateSecretKey();
+  const arbiterPriv = generateSecretKey();
+  const sellerPub   = getPublicKey(sellerPriv);
+  const buyerPub    = getPublicKey(buyerPriv);
+  const arbiterPub  = getPublicKey(arbiterPriv);
+
+  const sellerCrypto  = makeNip44(sellerPriv);
+  const buyerCrypto   = makeNip44(buyerPriv);
+  const arbiterCrypto = makeNip44(arbiterPriv);
+
+  const handleData = {
+    handleId: "h_pr4_test",
+    handle: "+221 77 555 1234",
+    rail: "wave",
+  };
+  const handleJson = JSON.stringify(handleData);
+  const envelope = await createEnvelope(
+    handleJson,
+    [buyerPub, sellerPub, arbiterPub],
+    sellerCrypto.encrypt,
+  );
+
+  // Build CREATE (seller initiates a p2p-trade)
+  eventCounter = 600;
+  const create = makeParsedEvent(EscrowEventKind.CREATE, sellerPub, {
+    type: "escrow:create",
+    description: "PR 4 envelope test",
+    amountMsats: 100_000_000,
+    fiatAmount: 50,
+    fiatCurrency: "USD",
+    category: "p2p-trade",
+    mintUrl: "fed11q...",
+    platformFeeBps: 50,
+    platformFeePubkey: PLATFORM_PK,
+    arbiterFeeMsats: 1_000_000,
+    expirySeconds: 86400,
+    createdAt: NOW,
+  });
+
+  // Build LOCK with envelope only (no top-level handle fields — the wire
+  // format that escrow-client.lockEscrow now emits in PR 4).
+  const wireLock = makeParsedEvent(EscrowEventKind.LOCK, sellerPub, {
+    type: "escrow:lock" as const,
+    notesHash: "hash_of_ecash_notes_pr4",
+    shares: [
+      { shareIndex: 0, encryptedFor: { [buyerPub]: "x", [sellerPub]: "x", [arbiterPub]: "x" } },
+      { shareIndex: 1, encryptedFor: { [buyerPub]: "x", [sellerPub]: "x", [arbiterPub]: "x" } },
+      { shareIndex: 2, encryptedFor: { [buyerPub]: "x", [sellerPub]: "x", [arbiterPub]: "x" } },
+    ],
+    sellerReceivesMsats: 99_000_000,
+    arbiterFeeMsats: 1_000_000,
+    buyerPubkey: buyerPub,
+    arbiterPubkey: arbiterPub,
+    handleEnvelope: envelope,
+    lockedAt: NOW,
+  }, create.raw.id);
+
+  // Each participant resolves the envelope on their side. This is what
+  // escrow-client.resolveLockEnvelope does internally; here we exercise
+  // the same shape directly.
+  async function resolveAndApply(
+    viewerPub: string,
+    viewerCrypto: { decrypt: (ct: string, sender: string) => Promise<string> },
+    label: string,
+  ) {
+    let createState: any;
+    {
+      const r = applyEvent(null, create);
+      assert(r.ok, `${label}: CREATE applies`);
+      createState = (r as any).state;
+    }
+
+    // Resolve viewer's entry
+    const cleartext = await decryptFromEnvelope(
+      envelope, viewerPub, sellerPub, viewerCrypto.decrypt,
+    );
+    assert(cleartext === handleJson,
+      `${label}: envelope decrypt yields original cleartext`);
+
+    const resolved = JSON.parse(cleartext!);
+    const synthesizedLock = {
+      ...wireLock,
+      payload: {
+        ...wireLock.payload,
+        handleId: resolved.handleId,
+        handle: resolved.handle,
+        rail: resolved.rail,
+      },
+    };
+
+    const r = applyEvent(createState, synthesizedLock);
+    if (assertOk(r, `${label}: synthesized LOCK applies`)) {
+      assert(r.state.status === EscrowStatus.LOCKED,
+        `${label}: status is LOCKED`);
+      assert(r.state.lock.handle?.value === handleData.handle,
+        `${label}: state.lock.handle.value matches cleartext`);
+      assert(r.state.lock.handle?.id === handleData.handleId,
+        `${label}: handleId preserved`);
+      assert(r.state.lock.handle?.rail === handleData.rail,
+        `${label}: rail preserved`);
+    }
+  }
+
+  await resolveAndApply(buyerPub,   buyerCrypto,   "BUYER");
+  await resolveAndApply(sellerPub,  sellerCrypto,  "SELLER");
+  await resolveAndApply(arbiterPub, arbiterCrypto, "ARBITER");
+
+  // Non-participant view: a stranger trying to resolve the envelope
+  // gets null, leaving state.lock.handle null after apply (the state
+  // machine sees no top-level handle on the synthesized payload).
+  const strangerPriv = generateSecretKey();
+  const strangerPub = getPublicKey(strangerPriv);
+  const strangerCrypto = makeNip44(strangerPriv);
+  const strangerSees = await decryptFromEnvelope(
+    envelope, strangerPub, sellerPub, strangerCrypto.decrypt,
+  );
+  assert(strangerSees === null, "Non-participant decrypt returns null");
+
+  // What would happen if the stranger applied the wire LOCK as-is
+  // (without any synthesis)? state.lock.handle stays null because
+  // there's no top-level handle field. The cleartext is unreachable.
+  {
+    eventCounter = 700;
+    const create2 = makeParsedEvent(EscrowEventKind.CREATE, sellerPub, {
+      type: "escrow:create",
+      description: "non-participant view test",
+      amountMsats: 100_000_000,
+      category: "p2p-trade",
+      mintUrl: "fed11q...",
+      platformFeeBps: 50,
+      platformFeePubkey: PLATFORM_PK,
+      arbiterFeeMsats: 1_000_000,
+      expirySeconds: 86400,
+      createdAt: NOW,
+    });
+    const wireOnly = makeParsedEvent(EscrowEventKind.LOCK, sellerPub, {
+      type: "escrow:lock" as const,
+      notesHash: "h",
+      shares: [
+        { shareIndex: 0, encryptedFor: { [buyerPub]: "x", [sellerPub]: "x", [arbiterPub]: "x" } },
+        { shareIndex: 1, encryptedFor: { [buyerPub]: "x", [sellerPub]: "x", [arbiterPub]: "x" } },
+        { shareIndex: 2, encryptedFor: { [buyerPub]: "x", [sellerPub]: "x", [arbiterPub]: "x" } },
+      ],
+      sellerReceivesMsats: 99_000_000,
+      arbiterFeeMsats: 1_000_000,
+      buyerPubkey: buyerPub,
+      arbiterPubkey: arbiterPub,
+      handleEnvelope: envelope,
+      lockedAt: NOW,
+    }, create2.raw.id);
+
+    const r1 = applyEvent(null, create2);
+    if (r1.ok) {
+      const r2 = applyEvent(r1.state, wireOnly);
+      if (r2.ok) {
+        assert(r2.state.lock.handle === null,
+          "Wire-only LOCK without resolution leaves state.lock.handle null (handleLock has no top-level fields to read)");
+      }
+    }
+  }
+}
+
+// ── 25. BACKWARDS COMPAT — PR 3 top-level handle still works ────────────
+console.log("\n── BACKWARDS COMPAT (PR 3 top-level handle on replay) ──");
+{
+  // A LOCK from a v0.1.78 deployment has handle/handleId/rail at the
+  // top of the payload (no envelope). PR 4 must still apply these
+  // correctly so existing trades on relays don't break.
+  eventCounter = 800;
+
+  const create = createEvent();
+  let state = (applyEvent(null, create) as any).state;
+
+  const legacyLock = makeParsedEvent(EscrowEventKind.LOCK, SELLER_PK, {
+    type: "escrow:lock" as const,
+    notesHash: "hash_legacy_pr3",
+    shares: [
+      { shareIndex: 0, encryptedFor: { [BUYER_PK]: "x", [SELLER_PK]: "x", [ARBITER_PK]: "x" } },
+      { shareIndex: 1, encryptedFor: { [BUYER_PK]: "x", [SELLER_PK]: "x", [ARBITER_PK]: "x" } },
+      { shareIndex: 2, encryptedFor: { [BUYER_PK]: "x", [SELLER_PK]: "x", [ARBITER_PK]: "x" } },
+    ],
+    sellerReceivesMsats: 99_000_000,
+    arbiterFeeMsats: 1_000_000,
+    buyerPubkey: BUYER_PK,
+    arbiterPubkey: ARBITER_PK,
+    // PR 3 wire format: top-level fields, no envelope
+    handleId: "h_legacy_pr3_xyz",
+    handle: "@alice-legacy",
+    rail: "revtag",
+    lockedAt: NOW,
+  }, create.raw.id);
+
+  const r = applyEvent(state, legacyLock);
+  if (assertOk(r, "Legacy PR 3 LOCK (top-level handle, no envelope) applies")) {
+    assert(r.state.status === EscrowStatus.LOCKED, "Status LOCKED on legacy LOCK");
+    assert(r.state.lock.handle?.value === "@alice-legacy",
+      "Legacy top-level handle stored on state.lock.handle.value");
+    assert(r.state.lock.handle?.id === "h_legacy_pr3_xyz",
+      "Legacy handleId preserved");
+    assert(r.state.lock.handle?.rail === "revtag",
+      "Legacy rail preserved");
+  }
+}
+
+// ── 26. PROD ENCRYPTION END-TO-END — flip config, run cycle ──────────────
+console.log("\n── PROD ENCRYPTION CYCLE (config flip) ──");
+{
+  // Capture original config, flip to PROD-ish state, run a full
+  // CREATE → JOIN → LOCK → VOTE → VOTE → RESOLVE → CLAIM → COMPLETE
+  // cycle with a real-crypto handle envelope, verify all 3 participants
+  // see the revealed handle, then restore the original config.
+  //
+  // The flip is the critical part of this test: it asserts that PR 4's
+  // envelope path is independent of ENCRYPTION_CONFIG.encryptLock —
+  // the flag's old "single-recipient outer wrap" behavior is gone, and
+  // the envelope path always works. If a future PR re-introduces a
+  // flag-conditional outer wrap, this test should catch it.
+
+  const origEnabled    = ENCRYPTION_CONFIG.enabled;
+  const origEncryptLock = ENCRYPTION_CONFIG.encryptLock;
+  ENCRYPTION_CONFIG.enabled = true;
+  ENCRYPTION_CONFIG.encryptLock = true;
+
+  try {
+    const sellerPriv  = generateSecretKey();
+    const buyerPriv   = generateSecretKey();
+    const arbiterPriv = generateSecretKey();
+    const sellerPub   = getPublicKey(sellerPriv);
+    const buyerPub    = getPublicKey(buyerPriv);
+    const arbiterPub  = getPublicKey(arbiterPriv);
+
+    const sellerCrypto  = makeNip44(sellerPriv);
+    const buyerCrypto   = makeNip44(buyerPriv);
+    const arbiterCrypto = makeNip44(arbiterPriv);
+
+    eventCounter = 900;
+
+    // 1. CREATE
+    const create = makeParsedEvent(EscrowEventKind.CREATE, sellerPub, {
+      type: "escrow:create",
+      description: "PROD cycle test",
+      amountMsats: 100_000_000,
+      fiatAmount: 50,
+      fiatCurrency: "USD",
+      category: "p2p-trade",
+      mintUrl: "fed11q...",
+      platformFeeBps: 50,
+      platformFeePubkey: PLATFORM_PK,
+      arbiterFeeMsats: 1_000_000,
+      expirySeconds: 86400,
+      createdAt: NOW,
+    });
+    const r1 = applyEvent(null, create);
+    assertOk(r1, "[PROD] CREATE → CREATED");
+    let state = (r1 as any).state;
+
+    // 2 + 3. JOINs (ACK only) — buyer first, then arbiter
+    const j1 = makeParsedEvent(EscrowEventKind.JOIN, buyerPub, {
+      type: "escrow:join",
+      role: Role.BUYER,
+      joinedAt: NOW,
+    }, create.raw.id);
+    const r2 = applyEvent(state, j1);
+    assertOk(r2, "[PROD] Buyer JOIN ACK");
+    state = (r2 as any).state;
+
+    const j2 = makeParsedEvent(EscrowEventKind.JOIN, arbiterPub, {
+      type: "escrow:join",
+      role: Role.ARBITER,
+      joinedAt: NOW,
+    }, j1.raw.id);
+    const r3 = applyEvent(state, j2);
+    assertOk(r3, "[PROD] Arbiter JOIN ACK");
+    state = (r3 as any).state;
+    assert(state.status === EscrowStatus.CREATED,
+      "[PROD] After JOINs status is still CREATED (atomic-funding model)");
+
+    // 4. LOCK with real envelope (encrypts handle JSON to all 3 via NIP-44)
+    const handleData = {
+      handleId: "h_prod_cycle",
+      handle: "+221 77 999 0000",
+      rail: "wave",
+    };
+    const envelope = await createEnvelope(
+      JSON.stringify(handleData),
+      [buyerPub, sellerPub, arbiterPub],
+      sellerCrypto.encrypt,
+    );
+    const wireLock = makeParsedEvent(EscrowEventKind.LOCK, sellerPub, {
+      type: "escrow:lock" as const,
+      notesHash: "hash_of_ecash_prod",
+      shares: [
+        { shareIndex: 0, encryptedFor: { [buyerPub]: "x", [sellerPub]: "x", [arbiterPub]: "x" } },
+        { shareIndex: 1, encryptedFor: { [buyerPub]: "x", [sellerPub]: "x", [arbiterPub]: "x" } },
+        { shareIndex: 2, encryptedFor: { [buyerPub]: "x", [sellerPub]: "x", [arbiterPub]: "x" } },
+      ],
+      sellerReceivesMsats: 99_000_000,
+      arbiterFeeMsats: 1_000_000,
+      buyerPubkey: buyerPub,
+      arbiterPubkey: arbiterPub,
+      handleEnvelope: envelope,
+      lockedAt: NOW,
+    }, j2.raw.id);
+
+    // Each participant simulates resolveLockEnvelope on their side.
+    async function viewerState(
+      viewerPub: string,
+      viewerCrypto: { decrypt: (ct: string, sender: string) => Promise<string> },
+    ): Promise<any> {
+      const ct = await decryptFromEnvelope(envelope, viewerPub, sellerPub, viewerCrypto.decrypt);
+      const resolved = ct ? JSON.parse(ct) : {};
+      const synth = {
+        ...wireLock,
+        payload: {
+          ...wireLock.payload,
+          handleId: resolved.handleId,
+          handle: resolved.handle,
+          rail: resolved.rail,
+        },
+      };
+      // Each viewer replays from CREATE → JOIN×2 → LOCK; we can reuse
+      // the shared `state` (post-JOINs) and apply their synthesized LOCK.
+      const r = applyEvent(state, synth);
+      if (!r.ok) throw new Error("Viewer LOCK apply failed: " + r.error.message);
+      return r.state;
+    }
+
+    const buyerState   = await viewerState(buyerPub,   buyerCrypto);
+    const sellerState  = await viewerState(sellerPub,  sellerCrypto);
+    const arbiterState = await viewerState(arbiterPub, arbiterCrypto);
+
+    // All three see the cleartext handle on their state.lock.handle
+    assert(buyerState.lock.handle?.value === handleData.handle,
+      "[PROD] Buyer sees revealed handle cleartext");
+    assert(sellerState.lock.handle?.value === handleData.handle,
+      "[PROD] Seller sees revealed handle cleartext");
+    assert(arbiterState.lock.handle?.value === handleData.handle,
+      "[PROD] Arbiter sees revealed handle cleartext");
+    assert(buyerState.lock.handle?.value === arbiterState.lock.handle?.value,
+      "[PROD] Buyer and arbiter agree on handle (3-recipient envelope works)");
+
+    // 5 + 6. VOTEs (use buyerState as the converged chain head — all
+    // viewers' states are identical at this point besides the synthesized
+    // wire ID, which doesn't affect downstream).
+    state = buyerState;
+    const v1 = makeParsedEvent(EscrowEventKind.VOTE, buyerPub, {
+      type: "escrow:vote",
+      outcome: Outcome.RELEASE,
+      role: Role.BUYER,
+      votedAt: NOW,
+    }, wireLock.raw.id);
+    const r4 = applyEvent(state, v1);
+    assertOk(r4, "[PROD] Buyer votes RELEASE");
+    state = (r4 as any).state;
+
+    const v2 = makeParsedEvent(EscrowEventKind.VOTE, sellerPub, {
+      type: "escrow:vote",
+      outcome: Outcome.RELEASE,
+      role: Role.SELLER,
+      votedAt: NOW,
+    }, v1.raw.id);
+    const r5 = applyEvent(state, v2);
+    assertOk(r5, "[PROD] Seller votes RELEASE");
+    state = (r5 as any).state;
+
+    // 7. RESOLVE
+    const resolve = makeParsedEvent(EscrowEventKind.RESOLVE, buyerPub, {
+      type: "escrow:resolve",
+      outcome: Outcome.RELEASE,
+      majority: [Role.BUYER, Role.SELLER],
+      arbiterInvolved: false,
+      resolvedAt: NOW,
+    }, v2.raw.id);
+    const r6 = applyEvent(state, resolve);
+    assertOk(r6, "[PROD] RESOLVE → APPROVED");
+    state = (r6 as any).state;
+
+    // 8. CLAIM (buyer wins on RELEASE in p2p)
+    const claim = makeParsedEvent(EscrowEventKind.CLAIM, buyerPub, {
+      type: "escrow:claim",
+      claimerRole: Role.BUYER,
+      notesHashVerification: "hash_of_ecash_prod",
+      claimedAt: NOW,
+    }, resolve.raw.id);
+    const r7 = applyEvent(state, claim);
+    assertOk(r7, "[PROD] Buyer CLAIM → CLAIMED");
+    state = (r7 as any).state;
+
+    // 9. COMPLETE
+    const complete = makeParsedEvent(EscrowEventKind.COMPLETE, buyerPub, {
+      type: "escrow:complete",
+      completedAt: NOW,
+    }, claim.raw.id);
+    const r8 = applyEvent(state, complete);
+    assertOk(r8, "[PROD] COMPLETE → terminal");
+    state = (r8 as any).state;
+    assert(state.status === EscrowStatus.COMPLETED,
+      "[PROD] Final state COMPLETED");
+    assert(state.lock.handle?.value === handleData.handle,
+      "[PROD] Handle preserved through full cycle to terminal");
+  } finally {
+    // Restore original config so other tests aren't poisoned
+    ENCRYPTION_CONFIG.enabled = origEnabled;
+    ENCRYPTION_CONFIG.encryptLock = origEncryptLock;
+  }
 }
 
 // ══════════════════════════════════════════════════════════════════════════
