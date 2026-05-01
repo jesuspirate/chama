@@ -45,7 +45,6 @@ const T = {
 type StatusMode = "active" | "working" | "resolved";
 const STATUS = {
   CREATED:   { c: T.teal,   bg: T.tealDim,   l: "Open",            mode: "working"  as StatusMode },
-  FUNDED:    { c: T.green,  bg: T.greenDim,  l: "Ready to fund",   mode: "active"   as StatusMode },
   LOCKED:    { c: T.purple, bg: T.purpleDim, l: "Sats in escrow",  mode: "working"  as StatusMode },
   APPROVED:  { c: T.accent, bg: T.accentDim, l: "Ready to claim",  mode: "active"   as StatusMode },
   CLAIMED:   { c: T.amber,  bg: T.amberDim,  l: "Settling",        mode: "working"  as StatusMode },
@@ -1039,15 +1038,13 @@ function CountdownTimer({ expiresAt }: { expiresAt: number }) {
 // TRADE DETAIL
 // ══════════════════════════════════════════════════════════════════════════
 
-function TradeDetail({ state, pubkey, onBack, onVote, onClaim, onJoin, onLock, onReady, onKick, onSendChat, onReleasePeriod }: {
+function TradeDetail({ state, pubkey, onBack, onVote, onClaim, onJoin, onLock, onSendChat, onReleasePeriod }: {
   state: EscrowState; pubkey: string;
   onBack: () => void;
   onVote: (outcome: Outcome) => void;
   onClaim: () => void;
   onJoin: (role: Role) => void;
   onLock: () => Promise<void>;
-  onReady: () => Promise<void>;
-  onKick: (targetRole: Role, reason: string) => Promise<void>;
   onSendChat: (message: string) => void;
   onReleasePeriod?: (periodIndex: number) => void | Promise<void>;
 }) {
@@ -1293,140 +1290,60 @@ function TradeDetail({ state, pubkey, onBack, onVote, onClaim, onJoin, onLock, o
         </div>
       )}
 
-      {/* FUNDED — readiness check + lock ecash */}
-      {state.status === EscrowStatus.FUNDED && myRole && (() => {
-        const r = state.readiness || {};
-        const myReady = !!r[myRole];
-        const allReady = !!r[Role.BUYER] && !!r[Role.SELLER] && !!r[Role.ARBITER];
-        const readyCount = [Role.BUYER, Role.SELLER, Role.ARBITER].filter(role => !!r[role]).length;
-
-        return (
+      {/* CREATED — atomic lock surface for the locker.
+          PR 1: there is no FUNDED state and no readiness ceremony.
+          The instant the locker spends from their Fedimint wallet,
+          shares are split and LOCK publishes (CREATED → LOCKED in
+          a single event). For trades where the buyer has not yet
+          published a JOIN ACK, the bridge will refuse to lock —
+          surfaced here as a hint when buyer is missing. */}
+      {state.status === EscrowStatus.CREATED && myRole && canILock && (
+        <div style={{
+          background: T.card, border: `1px solid ${T.accent}44`,
+          borderRadius: T.r, padding: 20, marginBottom: 16,
+        }}>
           <div style={{
-            background: T.card, border: `1px solid ${T.teal}44`,
-            borderRadius: T.r, padding: 20, marginBottom: 16,
+            fontSize: 11, fontWeight: 600, color: T.muted, fontFamily: T.mono,
+            letterSpacing: 1, marginBottom: 12,
           }}>
-            <div style={{
-              fontSize: 11, fontWeight: 600, color: T.muted, fontFamily: T.mono,
-              letterSpacing: 1, marginBottom: 12,
-            }}>
-              PRE-LOCK READINESS CHECK
-            </div>
-
-            <div style={{
-              textAlign: "center", fontFamily: T.mono, fontSize: 12,
-              color: allReady ? T.green : T.teal, marginBottom: 14,
-            }}>
-              {allReady
-                ? "All participants ready! You can lock ecash now."
-                : `Waiting for readiness: ${readyCount}/3 confirmed`}
-            </div>
-
-            {/* Readiness dots */}
-            <div style={{ display: "flex", justifyContent: "space-around", marginBottom: 16 }}>
-              {([Role.BUYER, Role.SELLER, Role.ARBITER] as Role[]).map(role => {
-                const isReady = !!r[role];
-                const isMe = role === myRole;
-                const c = ROLE_COLOR[role];
-                return (
-                  <div key={role} style={{ textAlign: "center" }}>
-                    <div style={{
-                      width: 32, height: 32, borderRadius: "50%",
-                      background: isReady ? `${c}33` : T.surface,
-                      border: `2px ${isReady ? "solid" : "dashed"} ${isReady ? c : T.border}`,
-                      display: "flex", alignItems: "center", justifyContent: "center",
-                      margin: "0 auto 4px",
-                      fontSize: 14, color: isReady ? c : T.muted,
-                    }}>
-                      {isReady ? "✓" : ROLE_ICON[role as keyof typeof ROLE_ICON]}
-                    </div>
-                    <div style={{
-                      fontSize: 9, fontFamily: T.mono,
-                      color: isMe ? c : T.muted, fontWeight: isMe ? 700 : 400,
-                    }}>
-                      {isMe ? (isReady ? "You ✓" : "You") : isReady ? "Ready" : "Waiting"}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Kick vote buttons — 2 participants must agree to remove the third */}
-            {myReady && !allReady && readyCount >= 1 && [Role.BUYER, Role.SELLER, Role.ARBITER]
-              .filter((role: Role) => role !== myRole && !r[role] && !!state.participants[role] && role !== state.initiator.role)
-              .map((role: Role) => {
-                const kv = (state.kickVotes || {})[role] || [];
-                const iVoted = kv.includes(myRole!);
-                const voteCount = kv.length;
-                return (
-                  <button key={"kick-" + role}
-                    disabled={iVoted}
-                    onClick={() => {
-                      if (!iVoted) onKick(role, "Unresponsive — not confirming ready");
-                    }}
-                    style={{
-                      width: "100%", padding: "10px", borderRadius: T.rs,
-                      background: iVoted ? T.surface : T.redDim,
-                      border: `1px solid ${iVoted ? T.border : T.red + "33"}`,
-                      color: iVoted ? T.muted : T.red,
-                      fontFamily: T.mono, fontSize: 11, fontWeight: 600,
-                      cursor: iVoted ? "default" : "pointer",
-                      marginBottom: 6, transition: "all 0.2s",
-                    }}>
-                    {iVoted
-                      ? `Voted to kick ${role} (${voteCount}/2)`
-                      : voteCount > 0
-                        ? `Confirm kick ${role} (${voteCount}/2 — needs your vote)`
-                        : `Vote to kick ${role} (0/2)`}
-                  </button>
-                );
-              })
-            }
-
-            {/* Confirm Ready button — only if I haven't confirmed yet */}
-            {!myReady && (
-              <button
-                onClick={() => onReady()}
-                style={{
-                  width: "100%", padding: "14px", borderRadius: T.rs,
-                  background: T.tealDim, border: `1px solid ${T.teal}44`,
-                  color: T.teal, fontFamily: T.mono, fontSize: 13, fontWeight: 700,
-                  cursor: "pointer", marginBottom: 10, transition: "all 0.2s",
-                }}>
-                ✓ Confirm I'm Ready
-              </button>
-            )}
-
-            {/* Lock button — only for the correct role after all 3 are ready */}
-            {allReady && canILock && (
-              <>
-                <button
-                  disabled={locking}
-                  onClick={async () => {
-                    setLocking(true);
-                    try { await onLock(); } finally { setLocking(false); }
-                  }}
-                  style={{
-                    width: "100%", padding: "16px", borderRadius: T.rs,
-                    background: locking ? T.surface : `linear-gradient(135deg, ${T.accent}, ${T.amber})`,
-                    border: "none", color: locking ? T.muted : T.bg,
-                    fontFamily: T.mono, fontSize: 14, fontWeight: 800,
-                    cursor: locking ? "default" : "pointer",
-                    letterSpacing: 0.5, transition: "all 0.2s",
-                  }}
-                >
-                  {locking ? "Locking..." : "\u26a1 " + lockLabel + " · " + fmtSats(state.amountMsats) + " sats"}
-                </button>
-                <div style={{
-                  textAlign: "center", marginTop: 8,
-                  fontSize: 9, color: T.muted, fontFamily: T.mono,
-                }}>
-                  Real 2-of-3 Shamir split · ecash spent from your Fedimint wallet
-                </div>
-              </>
-            )}
+            ATOMIC LOCK
           </div>
-        );
-      })()}
+          <div style={{
+            textAlign: "center", fontFamily: T.mono, fontSize: 12,
+            color: T.accent, marginBottom: 14,
+          }}>
+            {state.participants.buyer
+              ? "Spending from your wallet will split shares and publish LOCK in one step."
+              : "Waiting for buyer to acknowledge the trade…"}
+          </div>
+          <button
+            disabled={locking || !state.participants.buyer}
+            onClick={async () => {
+              setLocking(true);
+              try { await onLock(); } finally { setLocking(false); }
+            }}
+            style={{
+              width: "100%", padding: "16px", borderRadius: T.rs,
+              background: locking || !state.participants.buyer
+                ? T.surface
+                : `linear-gradient(135deg, ${T.accent}, ${T.amber})`,
+              border: "none",
+              color: locking || !state.participants.buyer ? T.muted : T.bg,
+              fontFamily: T.mono, fontSize: 14, fontWeight: 800,
+              cursor: locking || !state.participants.buyer ? "default" : "pointer",
+              letterSpacing: 0.5, transition: "all 0.2s",
+            }}
+          >
+            {locking ? "Locking..." : "\u26a1 " + lockLabel + " · " + fmtSats(state.amountMsats) + " sats"}
+          </button>
+          <div style={{
+            textAlign: "center", marginTop: 8,
+            fontSize: 9, color: T.muted, fontFamily: T.mono,
+          }}>
+            Real 2-of-3 Shamir split · ecash spent from your Fedimint wallet
+          </div>
+        </div>
+      )}
 
       {/* Vote tally */}
       {(state.status === EscrowStatus.LOCKED || state.status === EscrowStatus.APPROVED ||
@@ -2618,7 +2535,7 @@ export default function App() {
 
   const visibleTrades = [...escrows.values()]
     .filter(s => {
-      if (["CREATED", "FUNDED", "LOCKED", "APPROVED"].includes(s.status)) return true;
+      if (["CREATED", "LOCKED", "APPROVED"].includes(s.status)) return true;
       if (s.createdAt && (now - s.createdAt) > HIDE_AFTER) return false;
       return true;
     })
@@ -2975,15 +2892,6 @@ export default function App() {
                 setToast({ message: e.message || "Failed to join", type: "error" });
               }
             }}
-            onKick={async (targetRole, reason) => {
-              try {
-                setToast({ message: `Kicking ${targetRole}...`, type: "info" });
-                await actions.kickParticipant(selectedId!, targetRole, reason);
-                setToast({ message: `${targetRole} removed. Waiting for replacement.`, type: "success" });
-              } catch (e: any) {
-                setToast({ message: e.message || "Kick failed", type: "error" });
-              }
-            }}
             onReleasePeriod={async (periodIndex: number) => {
               try {
                 await actions.releasePeriod(selectedId!, periodIndex);
@@ -2996,15 +2904,6 @@ export default function App() {
               actions.sendChat(selectedId!, message).catch((e: any) =>
                 setToast({ message: e.message || "Failed to send", type: "error" })
               );
-            }}
-            onReady={async () => {
-              try {
-                setToast({ message: "Confirming ready...", type: "info" });
-                await actions.confirmReady(selectedId!);
-                setToast({ message: "Ready confirmed!", type: "success" });
-              } catch (e: any) {
-                setToast({ message: e.message || "Failed to confirm ready", type: "error" });
-              }
             }}
             onLock={async () => {
               if (!fedimint.joined) {

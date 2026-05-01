@@ -94,6 +94,32 @@ export class EscrowFedimintBridge {
     // warning surfaced by the UI elsewhere (no block here, per Jetty's
     // backwards-compat decision).
 
+    // PR 1 atomic-funding: derive buyer + arbiter pubkeys before spending.
+    // LOCK is self-describing — it carries both pubkeys directly — so the
+    // chain no longer relies on prior JOIN events to populate slots.
+    //
+    // Buyer:   if a JOIN ACK landed pre-LOCK, use that pubkey. Otherwise
+    //          we don't know who's paying yet and refuse to spend.
+    // Arbiter: prefer a JOINed arbiter; fall back to picking the first
+    //          entry in the trade's communityArbiters pool. If both are
+    //          empty there's no one to assign and we refuse to spend.
+    const buyerPubkey = state.participants[Role.BUYER];
+    if (!buyerPubkey) {
+      throw new Error(
+        "Cannot lock — no buyer pubkey known. The buyer must publish a JOIN " +
+        "ACK (or the locker's payment-detection path must supply the buyer " +
+        "pubkey) before LOCK can fire."
+      );
+    }
+    const arbiterPubkey = state.participants[Role.ARBITER]
+      ?? state.communityArbiters[0];
+    if (!arbiterPubkey) {
+      throw new Error(
+        "Cannot lock — no arbiter available. The trade has no JOINed arbiter " +
+        "and the communityArbiters pool is empty."
+      );
+    }
+
     // v0.1.71: no platformFeeBps passed.
     // Lock math is now seller + arbiter only. Platform fee is collected
     // out-of-band via Lightning at trade completion.
@@ -105,10 +131,8 @@ export class EscrowFedimintBridge {
     );
 
     // Dual-encrypt each share to ALL 3 participants
-    const buyerPk = state.participants[Role.BUYER]!;
     const sellerPk = state.participants[Role.SELLER]!;
-    const arbiterPk = state.participants[Role.ARBITER]!;
-    const allPks = [buyerPk, sellerPk, arbiterPk];
+    const allPks = [buyerPubkey, sellerPk, arbiterPubkey];
 
     const shares: { shareIndex: number; encryptedFor: Record<string, string> }[] = [];
 
@@ -123,12 +147,13 @@ export class EscrowFedimintBridge {
       shares.push({ shareIndex: i, encryptedFor });
     }
 
-    // Publish the LOCK event (v0.1.71: no platformFeeMsats)
     return this.escrow.lockEscrow(escrowId, {
       notesHash: lockBundle.notesHash,
       shares,
       sellerReceivesMsats: lockBundle.sellerReceivesMsats,
       arbiterFeeMsats: lockBundle.arbiterFeeMsats,
+      buyerPubkey,
+      arbiterPubkey,
     });
   }
 

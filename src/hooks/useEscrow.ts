@@ -140,16 +140,13 @@ export interface UseEscrowActions {
     arbiterFeeMsats?: number;
     expirySeconds?: number;
   }) => Promise<{ escrowId: string; state: EscrowState }>;
-  /** Join an existing escrow */
+  /** Join an existing escrow as buyer or arbiter (ACK only — does not gate state) */
   joinEscrow: (escrowId: string, role: Role) => Promise<EscrowState>;
-  /** Confirm ready for locking (pre-lock safety check) */
-  confirmReady: (escrowId: string) => Promise<EscrowState>;
-  /** Kick an unresponsive participant (pre-lock only) */
-  kickParticipant: (escrowId: string, targetRole: Role, reason: string) => Promise<EscrowState>;
   /**
    * Lock ecash into 2-of-3 SSS escrow.
-   * Runs the full real-Fedimint flow:
+   * Atomic-funding flow: triggered as a side-effect of payment landing.
    *   spendNotes → Shamir split → NIP-44 encrypt shares → publish LOCK
+   * The LOCK event self-describes buyer + arbiter; no prior READY ceremony.
    */
   lockAndPublish: (escrowId: string) => Promise<EscrowState>;
   /** Cast a vote */
@@ -503,10 +500,12 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
             continue;
           }
 
-          // ── Heal #3: FUNDED past expiry, no LOCK, I'm the initiator ──
+          // ── Heal #3: CREATED past expiry, no LOCK, I'm the initiator ──
+          // Atomic-funding model: trades sit in CREATED until LOCK fires.
+          // If a buyer never paid by the deadline, the initiator cancels.
           const isInitiator = escrowState.initiator?.pubkey === myPubkey;
           if (
-            escrowState.status === "FUNDED" &&
+            escrowState.status === "CREATED" &&
             nowSec > escrowState.expiresAt &&
             isInitiator &&
             !alreadyAttempted(escrowId, "cancel")
@@ -515,7 +514,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
             try {
               await escrowClient.cancel(escrowId, "never_locked_past_expiry");
               heals++;
-              console.log(`[chama] sentinel: published CANCEL on ${escrowId} (stuck FUNDED past expiry)`);
+              console.log(`[chama] sentinel: published CANCEL on ${escrowId} (stuck CREATED past expiry)`);
             } catch (e) {
               console.debug(`[chama] sentinel: CANCEL on ${escrowId} suppressed:`, (e as Error)?.message);
             }
@@ -723,29 +722,6 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     }
   }, []);
 
-  const kickParticipantAction = useCallback(async (escrowId: string, targetRole: Role, reason: string) => {
-    const client = requireClient();
-    const result = await client.kickParticipant(escrowId, targetRole, reason);
-    vibrate([80, 40, 80]);
-    return result;
-  }, []);
-
-  const confirmReadyAction = useCallback(async (escrowId: string) => {
-    const client = requireClient();
-    try {
-      const result = await client.confirmReady(escrowId);
-      vibrate([30, 15, 30]);
-      return result;
-    } catch (e: any) {
-      const msg = e?.message || "";
-      if (msg.includes("ALREADY_READY") || msg.includes("already confirmed")) {
-        console.debug("[chama] Ready suppressed:", msg);
-        return client.getState(escrowId)!;
-      }
-      throw e;
-    }
-  }, []);
-
   const requireBridge = (): EscrowFedimintBridge => {
     if (!bridgeRef.current) {
       throw new Error(
@@ -766,8 +742,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       return result;
     } catch (e: any) {
       const msg = e?.message || "";
-      if (msg.includes("expected FUNDED") || msg.includes("Cannot LOCK") ||
-          msg.includes("TERMINAL")) {
+      if (msg.includes("Cannot LOCK") || msg.includes("TERMINAL")) {
         console.debug("[chama] Lock suppressed:", msg);
         return client.getState(escrowId)!;
       }
@@ -1378,8 +1353,6 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     disconnect,
     createEscrow,
     joinEscrow,
-    confirmReady: confirmReadyAction,
-    kickParticipant: kickParticipantAction,
     lockAndPublish: lockAndPublishAction,
     vote: voteAction,
     releasePeriod: async (escrowId: string, periodIndex: number) => {

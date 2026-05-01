@@ -1,11 +1,21 @@
 // ══════════════════════════════════════════════════════════════════════════
-// Chama Escrow Engine — Test Suite
+// Chama Escrow Engine — Test Suite (PR 1: atomic funding)
 // ══════════════════════════════════════════════════════════════════════════
 //
 // Run: npx tsx src/escrow-engine/tests.ts
 //
-// Tests the pure state machine with synthetic events — no relays,
-// no crypto, no network. Just state transitions.
+// Tests the pure state machine with synthetic events — no relays, no
+// crypto, no network. Just state transitions and invariants for the
+// atomic-funding model:
+//
+//   - LOCK fires directly from CREATED (no FUNDED, no READY ceremony)
+//   - LOCK is self-describing: it carries buyerPubkey + arbiterPubkey
+//   - JOIN is ACK only: it records a participant pubkey but does NOT
+//     transition state
+//   - Once LOCKED, a second LOCK is rejected (no double-lock from
+//     duplicate payment-detection events)
+//   - Arbiter must be from the communityArbiters pool when one exists
+//   - LOCK pubkeys must be consistent with any prior JOIN ACKs
 
 import {
   EscrowStatus,
@@ -24,7 +34,6 @@ import {
   type ChatPayload,
   type EscrowPayload,
   type NostrEvent,
-  type ReadyPayload,
 } from "./types.js";
 
 import {
@@ -45,11 +54,12 @@ import {
 
 // ── Test helpers ──────────────────────────────────────────────────────────
 
-const BUYER_PK   = "aa".repeat(32);
-const SELLER_PK  = "bb".repeat(32);
-const ARBITER_PK = "cc".repeat(32);
+const BUYER_PK    = "aa".repeat(32);
+const SELLER_PK   = "bb".repeat(32);
+const ARBITER_PK  = "cc".repeat(32);
+const ARBITER2_PK = "ee".repeat(32);
 const PLATFORM_PK = "dd".repeat(32);
-const ESCROW_ID  = "test-escrow-001";
+const ESCROW_ID   = "test-escrow-001";
 
 let eventCounter = 0;
 const NOW = Math.floor(Date.now() / 1000);
@@ -90,7 +100,7 @@ function makeParsedEvent<T extends EscrowPayload>(
 
 // ── Standard event builders ───────────────────────────────────────────────
 
-function createEvent(): ParsedEscrowEvent<CreatePayload> {
+function createEvent(opts: { communityArbiters?: string[] } = {}): ParsedEscrowEvent<CreatePayload> {
   return makeParsedEvent(EscrowEventKind.CREATE, SELLER_PK, {
     type: "escrow:create",
     description: "Sell 100k sats for $50 USD via Zelle",
@@ -104,6 +114,7 @@ function createEvent(): ParsedEscrowEvent<CreatePayload> {
     arbiterFeeMsats: 1_000_000,
     paymentMethods: ["Zelle", "CashApp"],
     expirySeconds: 86400,
+    communityArbiters: opts.communityArbiters,
     createdAt: NOW,
   });
 }
@@ -117,18 +128,27 @@ function joinEvent(role: Role, pubkey: string, prevId: string): ParsedEscrowEven
   }, prevId);
 }
 
-function lockEvent(prevId: string): ParsedEscrowEvent<LockPayload> {
-  return makeParsedEvent(EscrowEventKind.LOCK, SELLER_PK, {
+function lockEvent(prevId: string, opts: {
+  buyerPubkey?: string;
+  arbiterPubkey?: string;
+  sellerReceivesMsats?: number;
+  arbiterFeeMsats?: number;
+  locker?: string;
+} = {}): ParsedEscrowEvent<LockPayload> {
+  const buyerPk   = opts.buyerPubkey   ?? BUYER_PK;
+  const arbiterPk = opts.arbiterPubkey ?? ARBITER_PK;
+  return makeParsedEvent(EscrowEventKind.LOCK, opts.locker ?? SELLER_PK, {
     type: "escrow:lock",
     notesHash: "hash_of_ecash_notes_abc123",
     shares: [
-      { shareIndex: 0, encryptedFor: { [BUYER_PK]: "enc_0_for_buyer", [SELLER_PK]: "enc_0_for_seller", [ARBITER_PK]: "enc_0_for_arbiter" } },
-      { shareIndex: 1, encryptedFor: { [BUYER_PK]: "enc_1_for_buyer", [SELLER_PK]: "enc_1_for_seller", [ARBITER_PK]: "enc_1_for_arbiter" } },
-      { shareIndex: 2, encryptedFor: { [BUYER_PK]: "enc_2_for_buyer", [SELLER_PK]: "enc_2_for_seller", [ARBITER_PK]: "enc_2_for_arbiter" } },
+      { shareIndex: 0, encryptedFor: { [buyerPk]: "enc_0_b", [SELLER_PK]: "enc_0_s", [arbiterPk]: "enc_0_a" } },
+      { shareIndex: 1, encryptedFor: { [buyerPk]: "enc_1_b", [SELLER_PK]: "enc_1_s", [arbiterPk]: "enc_1_a" } },
+      { shareIndex: 2, encryptedFor: { [buyerPk]: "enc_2_b", [SELLER_PK]: "enc_2_s", [arbiterPk]: "enc_2_a" } },
     ],
-    // v0.1.71: 2-way fee split (was 98_500_000 + 1_000_000 + 500_000).
-    sellerReceivesMsats: 99_000_000,
-    arbiterFeeMsats: 1_000_000,
+    sellerReceivesMsats: opts.sellerReceivesMsats ?? 99_000_000,
+    arbiterFeeMsats:     opts.arbiterFeeMsats     ?? 1_000_000,
+    buyerPubkey:   buyerPk,
+    arbiterPubkey: arbiterPk,
     lockedAt: NOW + eventCounter,
   }, prevId);
 }
@@ -165,14 +185,6 @@ function completeEvent(prevId: string): ParsedEscrowEvent<CompletePayload> {
   return makeParsedEvent(EscrowEventKind.COMPLETE, BUYER_PK, {
     type: "escrow:complete",
     completedAt: NOW + eventCounter,
-  }, prevId);
-}
-
-function readyEvent(role: Role, pubkey: string, prevId: string): ParsedEscrowEvent<any> {
-  return makeParsedEvent(EscrowEventKind.READY, pubkey, {
-    type: "escrow:ready",
-    role,
-    readyAt: NOW + eventCounter,
   }, prevId);
 }
 
@@ -225,11 +237,22 @@ function assertErr(result: TransitionResult, expectedCode: string, name: string)
   }
 }
 
+// Helper: drive a fresh chain to LOCKED. Useful for tests downstream of LOCK.
+function buildToLocked(): { state: any; lock: ParsedEscrowEvent<LockPayload> } {
+  const create = createEvent();
+  const r1 = applyEvent(null, create);
+  if (!r1.ok) throw new Error("CREATE failed in helper");
+  const lock = lockEvent(create.raw.id);
+  const r2 = applyEvent(r1.state, lock);
+  if (!r2.ok) throw new Error("LOCK failed in helper: " + r2.error.message);
+  return { state: r2.state, lock };
+}
+
 // ══════════════════════════════════════════════════════════════════════════
 // TEST SUITES
 // ══════════════════════════════════════════════════════════════════════════
 
-console.log("\n🧪 Chama Escrow Engine — Test Suite\n");
+console.log("\n🧪 Chama Escrow Engine — Test Suite (PR 1 atomic funding)\n");
 
 // ── 1. CREATE ─────────────────────────────────────────────────────────────
 console.log("── CREATE ──");
@@ -242,8 +265,8 @@ console.log("── CREATE ──");
     assert(s.status === EscrowStatus.CREATED, "Status is CREATED");
     assert(s.id === ESCROW_ID, "Escrow ID set correctly");
     assert(s.participants[Role.SELLER] === SELLER_PK, "Seller is initiator");
-    assert(s.participants[Role.BUYER] === null, "Buyer slot empty");
-    assert(s.participants[Role.ARBITER] === null, "Arbiter slot empty");
+    assert(s.participants[Role.BUYER] === null, "Buyer slot empty pre-LOCK");
+    assert(s.participants[Role.ARBITER] === null, "Arbiter slot empty pre-LOCK");
     assert(s.amountMsats === 100_000_000, "Amount set correctly");
     assert(s.fees.platformBps === 50, "Platform fee BPS set");
     assert(s.fees.platformMsats === 500_000, "Platform fee calculated");
@@ -261,24 +284,25 @@ console.log("── CREATE ──");
   }
 }
 
-// ── 2. JOIN ───────────────────────────────────────────────────────────────
-console.log("\n── JOIN ──");
+// ── 2. JOIN as ACK (no state transition) ─────────────────────────────────
+console.log("\n── JOIN (ACK only — does not transition state) ──");
 {
   const create = createEvent();
   const r1 = applyEvent(null, create);
   if (r1.ok) {
     const join1 = joinEvent(Role.BUYER, BUYER_PK, create.raw.id);
     const r2 = applyEvent(r1.state, join1);
-    if (assertOk(r2, "Buyer joins")) {
-      assert(r2.state.participants[Role.BUYER] === BUYER_PK, "Buyer pubkey stored");
-      assert(r2.state.status === EscrowStatus.CREATED, "Still CREATED (only 2 of 3)");
+    if (assertOk(r2, "Buyer JOIN accepted as ACK")) {
+      assert(r2.state.participants[Role.BUYER] === BUYER_PK, "Buyer pubkey recorded");
+      assert(r2.state.status === EscrowStatus.CREATED, "Status STAYS CREATED after buyer JOIN");
 
       const join2 = joinEvent(Role.ARBITER, ARBITER_PK, join1.raw.id);
       const r3 = applyEvent(r2.state, join2);
-      if (assertOk(r3, "Arbiter joins → FUNDED")) {
-        assert(r3.state.status === EscrowStatus.FUNDED, "Status transitions to FUNDED");
-        assert(r3.state.participants[Role.ARBITER] === ARBITER_PK, "Arbiter pubkey stored");
-        assert(r3.state.fees.arbiterMsats === 1_000_000, "Arbiter fee recorded");
+      if (assertOk(r3, "Arbiter JOIN accepted as ACK")) {
+        assert(r3.state.participants[Role.ARBITER] === ARBITER_PK, "Arbiter pubkey recorded");
+        assert(r3.state.status === EscrowStatus.CREATED,
+          "Status STAYS CREATED even after all participants JOINed (no FUNDED state)");
+        assert(r3.state.fees.arbiterMsats === 1_000_000, "Arbiter fee recorded from JOIN payload");
       }
     }
   }
@@ -293,159 +317,199 @@ console.log("\n── JOIN ──");
     const r2 = applyEvent(r1.state, join1);
     if (r2.ok) {
       const join3 = joinEvent(Role.BUYER, "ee".repeat(32), join1.raw.id);
-      assertErr(applyEvent(r2.state, join3), "ROLE_TAKEN", "Duplicate role rejected");
+      assertErr(applyEvent(r2.state, join3), "ROLE_TAKEN", "Different pubkey can't grab a filled slot");
     }
   }
 }
 
-// Can't join as initiator's role (seller slot already filled by initiator → ROLE_TAKEN)
+// Same pubkey re-joining same role: ALREADY_JOINED (idempotent relay echo)
+{
+  const create = createEvent();
+  let state = (applyEvent(null, create) as any).state;
+  const join1 = joinEvent(Role.BUYER, BUYER_PK, create.raw.id);
+  state = (applyEvent(state, join1) as any).state;
+  const join1dup = joinEvent(Role.BUYER, BUYER_PK, join1.raw.id);
+  assertErr(applyEvent(state, join1dup), "ALREADY_JOINED", "Same pubkey re-JOIN is benign duplicate");
+}
+
+// Can't JOIN as initiator's role
 {
   const create = createEvent();
   const r1 = applyEvent(null, create);
   if (r1.ok) {
     const join = joinEvent(Role.SELLER, BUYER_PK, create.raw.id);
-    assertErr(applyEvent(r1.state, join), "ROLE_TAKEN", "Can't join as initiator's role");
+    assertErr(applyEvent(r1.state, join), "ROLE_CONFLICT", "Can't JOIN as initiator's role");
   }
 }
 
-// ── 3. LOCK ───────────────────────────────────────────────────────────────
-console.log("\n── LOCK ──");
+// Arbiter must be in communityArbiters pool when one exists
 {
-  // Get to FUNDED state
+  const create = createEvent({ communityArbiters: [ARBITER_PK, ARBITER2_PK] });
+  const r1 = applyEvent(null, create);
+  if (r1.ok) {
+    const goodArbiter = joinEvent(Role.ARBITER, ARBITER_PK, create.raw.id);
+    const ok = applyEvent(r1.state, goodArbiter);
+    assertOk(ok, "Arbiter from pool can JOIN");
+
+    const stranger = joinEvent(Role.ARBITER, "ff".repeat(32), create.raw.id);
+    assertErr(applyEvent(r1.state, stranger), "ARBITER_NOT_IN_POOL",
+      "Non-pool arbiter rejected when pool is non-empty");
+  }
+}
+
+// Empty pool: any arbiter accepted
+{
+  const create = createEvent(); // no pool
+  const r1 = applyEvent(null, create);
+  if (r1.ok) {
+    const anyArbiter = joinEvent(Role.ARBITER, "99".repeat(32), create.raw.id);
+    assertOk(applyEvent(r1.state, anyArbiter),
+      "Empty pool means any arbiter pubkey can JOIN");
+  }
+}
+
+// ── 3. ATOMIC LOCK ───────────────────────────────────────────────────────
+console.log("\n── ATOMIC LOCK (CREATED → LOCKED, no FUNDED hop) ──");
+
+// 3a. LOCK fires from CREATED with no prior JOINs
+{
   const create = createEvent();
-  let state = applyEvent(null, create).ok ? (applyEvent(null, create) as any).state : null;
-  const j1 = joinEvent(Role.BUYER, BUYER_PK, create.raw.id);
-  state = applyEvent(state, j1).ok ? (applyEvent(state, j1) as any).state : state;
-  const j2 = joinEvent(Role.ARBITER, ARBITER_PK, j1.raw.id);
-  state = applyEvent(state, j2).ok ? (applyEvent(state, j2) as any).state : state;
+  let state = (applyEvent(null, create) as any).state;
+  assert(state.status === EscrowStatus.CREATED, "Pre-condition: state is CREATED");
 
-  assert(state.status === EscrowStatus.FUNDED, "Pre-condition: state is FUNDED");
-
-  // All participants must confirm ready before lock
-  const rb = readyEvent(Role.BUYER, BUYER_PK, j2.raw.id);
-  state = (applyEvent(state, rb) as any).state;
-  const rs = readyEvent(Role.SELLER, SELLER_PK, rb.raw.id);
-  state = (applyEvent(state, rs) as any).state;
-  const ra = readyEvent(Role.ARBITER, ARBITER_PK, rs.raw.id);
-  state = (applyEvent(state, ra) as any).state;
-
-  const lock = lockEvent(ra.raw.id);
+  const lock = lockEvent(create.raw.id);
   const r = applyEvent(state, lock);
-  if (assertOk(r, "Lock transitions to LOCKED")) {
-    assert(r.state.status === EscrowStatus.LOCKED, "Status is LOCKED");
+  if (assertOk(r, "LOCK from CREATED with no prior JOINs (atomic funding)")) {
+    assert(r.state.status === EscrowStatus.LOCKED, "Status transitions CREATED → LOCKED directly");
+    assert(r.state.participants[Role.BUYER] === BUYER_PK, "LOCK populated buyer slot");
+    assert(r.state.participants[Role.ARBITER] === ARBITER_PK, "LOCK populated arbiter slot");
     assert(r.state.lock.notesHash === "hash_of_ecash_notes_abc123", "Notes hash stored");
     assert(r.state.lock.shares.size === 3, "3 SSS shares stored");
   }
 }
 
-// Lock with wrong amounts
+// 3b. LOCK fires from CREATED after JOIN ACKs (consistent pubkeys)
 {
   const create = createEvent();
-  let state = applyEvent(null, create).ok ? (applyEvent(null, create) as any).state : null;
+  let state = (applyEvent(null, create) as any).state;
   const j1 = joinEvent(Role.BUYER, BUYER_PK, create.raw.id);
-  state = applyEvent(state, j1).ok ? (applyEvent(state, j1) as any).state : state;
+  state = (applyEvent(state, j1) as any).state;
   const j2 = joinEvent(Role.ARBITER, ARBITER_PK, j1.raw.id);
-  state = applyEvent(state, j2).ok ? (applyEvent(state, j2) as any).state : state;
+  state = (applyEvent(state, j2) as any).state;
 
-  // Add READY events for lock test
-  const rb2 = readyEvent(Role.BUYER, BUYER_PK, j2.raw.id);
-  state = (applyEvent(state, rb2) as any).state;
-  const rs2 = readyEvent(Role.SELLER, SELLER_PK, rb2.raw.id);
-  state = (applyEvent(state, rs2) as any).state;
-  const ra2 = readyEvent(Role.ARBITER, ARBITER_PK, rs2.raw.id);
-  state = (applyEvent(state, ra2) as any).state;
+  const lock = lockEvent(j2.raw.id);
+  const r = applyEvent(state, lock);
+  assertOk(r, "LOCK after consistent JOIN ACKs");
+}
 
+// 3c. LOCK with buyer pubkey disagreeing with prior JOIN → BUYER_PUBKEY_MISMATCH
+{
+  const create = createEvent();
+  let state = (applyEvent(null, create) as any).state;
+  const j1 = joinEvent(Role.BUYER, BUYER_PK, create.raw.id);
+  state = (applyEvent(state, j1) as any).state;
+
+  const lock = lockEvent(j1.raw.id, { buyerPubkey: "ff".repeat(32) });
+  assertErr(applyEvent(state, lock), "BUYER_PUBKEY_MISMATCH",
+    "LOCK buyerPubkey must match prior buyer JOIN");
+}
+
+// 3d. LOCK with arbiter pubkey not in community pool → ARBITER_NOT_IN_POOL
+{
+  const create = createEvent({ communityArbiters: [ARBITER_PK, ARBITER2_PK] });
+  let state = (applyEvent(null, create) as any).state;
+  const lock = lockEvent(create.raw.id, { arbiterPubkey: "ff".repeat(32) });
+  assertErr(applyEvent(state, lock), "ARBITER_NOT_IN_POOL",
+    "LOCK arbiterPubkey must come from communityArbiters pool");
+}
+
+// 3e. LOCK missing buyerPubkey → MISSING_BUYER_PUBKEY
+{
+  const create = createEvent();
+  let state = (applyEvent(null, create) as any).state;
   const badLock = makeParsedEvent(EscrowEventKind.LOCK, SELLER_PK, {
     type: "escrow:lock" as const,
     notesHash: "hash",
     shares: [
-      { shareIndex: 0, encryptedFor: { [BUYER_PK]: "s0b", [SELLER_PK]: "s0s", [ARBITER_PK]: "s0a" } },
-      { shareIndex: 1, encryptedFor: { [BUYER_PK]: "s1b", [SELLER_PK]: "s1s", [ARBITER_PK]: "s1a" } },
-      { shareIndex: 2, encryptedFor: { [BUYER_PK]: "s2b", [SELLER_PK]: "s2s", [ARBITER_PK]: "s2a" } },
+      { shareIndex: 0, encryptedFor: { [BUYER_PK]: "x", [SELLER_PK]: "x", [ARBITER_PK]: "x" } },
+      { shareIndex: 1, encryptedFor: { [BUYER_PK]: "x", [SELLER_PK]: "x", [ARBITER_PK]: "x" } },
+      { shareIndex: 2, encryptedFor: { [BUYER_PK]: "x", [SELLER_PK]: "x", [ARBITER_PK]: "x" } },
     ],
-    // v0.1.71: 2-way split, still doesn't add up to 100_000_000
-    sellerReceivesMsats: 90_000_000, // Doesn't add up
-    arbiterFeeMsats: 1_000_000,
-    lockedAt: NOW,
-  }, ra2.raw.id);
-
-  assertErr(applyEvent(state, badLock), "AMOUNT_MISMATCH", "Lock with wrong amounts rejected");
-
-  // WRONG_LOCKER: buyer tries to lock in p2p-trade (only seller can)
-  const buyerLock = makeParsedEvent(EscrowEventKind.LOCK, BUYER_PK, {
-    type: "escrow:lock" as const,
-    notesHash: "hash",
-    shares: [
-      { shareIndex: 0, encryptedFor: { [BUYER_PK]: "bl0b", [SELLER_PK]: "bl0s", [ARBITER_PK]: "bl0a" } },
-      { shareIndex: 1, encryptedFor: { [BUYER_PK]: "bl1b", [SELLER_PK]: "bl1s", [ARBITER_PK]: "bl1a" } },
-      { shareIndex: 2, encryptedFor: { [BUYER_PK]: "bl2b", [SELLER_PK]: "bl2s", [ARBITER_PK]: "bl2a" } },
-    ],
-    // v0.1.71: 2-way split summing to 100_000_000 so AMOUNT_MISMATCH
-    // doesn't fire before WRONG_LOCKER does.
     sellerReceivesMsats: 99_000_000,
     arbiterFeeMsats: 1_000_000,
+    buyerPubkey: "",
+    arbiterPubkey: ARBITER_PK,
     lockedAt: NOW,
-  }, ra2.raw.id);
-  assertErr(applyEvent(state, buyerLock), "WRONG_LOCKER", "Buyer can't lock in p2p-trade (seller must lock)");
+  }, create.raw.id);
+  assertErr(applyEvent(state, badLock), "MISSING_BUYER_PUBKEY",
+    "LOCK with empty buyerPubkey rejected");
+}
+
+// 3f. LOCK with wrong amount sum → AMOUNT_MISMATCH
+{
+  const create = createEvent();
+  let state = (applyEvent(null, create) as any).state;
+  const badLock = lockEvent(create.raw.id, { sellerReceivesMsats: 90_000_000 });
+  assertErr(applyEvent(state, badLock), "AMOUNT_MISMATCH",
+    "LOCK with wrong amount sum rejected");
+}
+
+// 3g. WRONG_LOCKER: buyer can't lock in p2p-trade
+{
+  const create = createEvent();
+  let state = (applyEvent(null, create) as any).state;
+  const buyerLock = lockEvent(create.raw.id, { locker: BUYER_PK });
+  assertErr(applyEvent(state, buyerLock), "NOT_PARTICIPANT",
+    "In p2p-trade, the buyer pubkey is not a participant pre-LOCK so signing as buyer fails NOT_PARTICIPANT");
+}
+
+// 3h. DOUBLE-LOCK: a second LOCK after LOCKED is rejected
+//
+// This is the load-bearing atomic-funding invariant: payment-detection
+// can fire twice (relay echo, retry, two browsers), but the chain MUST
+// NOT advance past LOCKED twice. Sanity check: applying a second LOCK
+// to an already-LOCKED state returns INVALID_STATE.
+{
+  const { state, lock } = buildToLocked();
+  assert(state.status === EscrowStatus.LOCKED, "Pre-condition: first LOCK succeeded");
+
+  const dupLock = lockEvent(lock.raw.id);
+  assertErr(applyEvent(state, dupLock), "INVALID_STATE",
+    "Double-LOCK after LOCKED is rejected — atomic, not idempotent-with-side-effects");
+}
+
+// 3i. DUPLICATE_PARTICIPANT: arbiter == seller
+{
+  const create = createEvent();
+  let state = (applyEvent(null, create) as any).state;
+  const badLock = lockEvent(create.raw.id, { arbiterPubkey: SELLER_PK });
+  assertErr(applyEvent(state, badLock), "DUPLICATE_PARTICIPANT",
+    "LOCK can't assign seller pubkey as arbiter");
 }
 
 // ── 4. VOTE — Happy Path ─────────────────────────────────────────────────
 console.log("\n── VOTE (happy path: buyer+seller agree) ──");
 {
-  // Build to LOCKED state
-  const events: ParsedEscrowEvent[] = [];
   const create = createEvent();
-  events.push(create);
   let state = (applyEvent(null, create) as any).state;
-
-  const j1 = joinEvent(Role.BUYER, BUYER_PK, create.raw.id);
-  events.push(j1);
-  state = (applyEvent(state, j1) as any).state;
-
-  const j2 = joinEvent(Role.ARBITER, ARBITER_PK, j1.raw.id);
-  events.push(j2);
-  state = (applyEvent(state, j2) as any).state;
-
-  // Ready confirmations
-  const rb3 = readyEvent(Role.BUYER, BUYER_PK, j2.raw.id);
-  events.push(rb3);
-  state = (applyEvent(state, rb3) as any).state;
-  const rs3 = readyEvent(Role.SELLER, SELLER_PK, rb3.raw.id);
-  events.push(rs3);
-  state = (applyEvent(state, rs3) as any).state;
-  const ra3 = readyEvent(Role.ARBITER, ARBITER_PK, rs3.raw.id);
-  events.push(ra3);
-  state = (applyEvent(state, ra3) as any).state;
-
-  const lock = lockEvent(ra3.raw.id);
-  events.push(lock);
+  const lock = lockEvent(create.raw.id);
   state = (applyEvent(state, lock) as any).state;
 
-  // Buyer votes release
   const v1 = voteEvent(Role.BUYER, BUYER_PK, Outcome.RELEASE, lock.raw.id);
   const r1 = applyEvent(state, v1);
   if (assertOk(r1, "Buyer votes RELEASE")) {
     assert(r1.state.votes[Role.BUYER] === Outcome.RELEASE, "Buyer vote recorded");
     assert(r1.state.status === EscrowStatus.LOCKED, "Still LOCKED (need 2 votes + RESOLVE)");
 
-    // Seller votes release
     const v2 = voteEvent(Role.SELLER, SELLER_PK, Outcome.RELEASE, v1.raw.id);
     const r2 = applyEvent(r1.state, v2);
     if (assertOk(r2, "Seller votes RELEASE")) {
       assert(r2.state.votes[Role.SELLER] === Outcome.RELEASE, "Seller vote recorded");
-      assert(r2.state.status === EscrowStatus.LOCKED, "Still LOCKED (RESOLVE needed)");
 
-      // canVote checks
       const cv = canVote(r2.state, ARBITER_PK);
       assert(!cv.canVote, "Arbiter can't vote when buyer+seller agree");
 
-      // Resolve
-      const resolve = resolveEvent(
-        Outcome.RELEASE,
-        [Role.BUYER, Role.SELLER],
-        false,
-        v2.raw.id
-      );
+      const resolve = resolveEvent(Outcome.RELEASE, [Role.BUYER, Role.SELLER], false, v2.raw.id);
       const r3 = applyEvent(r2.state, resolve);
       if (assertOk(r3, "RESOLVE → APPROVED")) {
         assert(r3.state.status === EscrowStatus.APPROVED, "Status is APPROVED");
@@ -464,43 +528,21 @@ console.log("\n── VOTE (dispute: arbiter breaks tie) ──");
 {
   const create = createEvent();
   let state = (applyEvent(null, create) as any).state;
-  const j1 = joinEvent(Role.BUYER, BUYER_PK, create.raw.id);
-  state = (applyEvent(state, j1) as any).state;
-  const j2 = joinEvent(Role.ARBITER, ARBITER_PK, j1.raw.id);
-  state = (applyEvent(state, j2) as any).state;
-  // Ready
-  const rb4 = readyEvent(Role.BUYER, BUYER_PK, j2.raw.id);
-  state = (applyEvent(state, rb4) as any).state;
-  const rs4 = readyEvent(Role.SELLER, SELLER_PK, rb4.raw.id);
-  state = (applyEvent(state, rs4) as any).state;
-  const ra4 = readyEvent(Role.ARBITER, ARBITER_PK, rs4.raw.id);
-  state = (applyEvent(state, ra4) as any).state;
-
-  const lock = lockEvent(ra4.raw.id);
+  const lock = lockEvent(create.raw.id);
   state = (applyEvent(state, lock) as any).state;
 
-  // Buyer wants release, seller wants refund
   const v1 = voteEvent(Role.BUYER, BUYER_PK, Outcome.RELEASE, lock.raw.id);
   state = (applyEvent(state, v1) as any).state;
-
   const v2 = voteEvent(Role.SELLER, SELLER_PK, Outcome.REFUND, v1.raw.id);
   state = (applyEvent(state, v2) as any).state;
 
-  // Arbiter should now be able to vote
   const cv = canVote(state, ARBITER_PK);
   assert(cv.canVote === true, "Arbiter CAN vote after disagreement");
 
-  // Arbiter sides with seller (refund)
   const v3 = voteEvent(Role.ARBITER, ARBITER_PK, Outcome.REFUND, v2.raw.id);
   const r = applyEvent(state, v3);
   if (assertOk(r, "Arbiter votes REFUND")) {
-    // Resolve with refund outcome
-    const resolve = resolveEvent(
-      Outcome.REFUND,
-      [Role.SELLER, Role.ARBITER],
-      true,
-      v3.raw.id
-    );
+    const resolve = resolveEvent(Outcome.REFUND, [Role.SELLER, Role.ARBITER], true, v3.raw.id);
     const r2 = applyEvent(r.state, resolve);
     if (assertOk(r2, "RESOLVE with arbiter → APPROVED (refund)")) {
       assert(r2.state.resolvedOutcome === Outcome.REFUND, "Outcome is REFUND");
@@ -514,47 +556,23 @@ console.log("\n── VOTE (dispute: arbiter breaks tie) ──");
 {
   const create = createEvent();
   let state = (applyEvent(null, create) as any).state;
-  const j1 = joinEvent(Role.BUYER, BUYER_PK, create.raw.id);
-  state = (applyEvent(state, j1) as any).state;
-  const j2 = joinEvent(Role.ARBITER, ARBITER_PK, j1.raw.id);
-  state = (applyEvent(state, j2) as any).state;
-  // Ready
-  const rb5 = readyEvent(Role.BUYER, BUYER_PK, j2.raw.id);
-  state = (applyEvent(state, rb5) as any).state;
-  const rs5 = readyEvent(Role.SELLER, SELLER_PK, rb5.raw.id);
-  state = (applyEvent(state, rs5) as any).state;
-  const ra5 = readyEvent(Role.ARBITER, ARBITER_PK, rs5.raw.id);
-  state = (applyEvent(state, ra5) as any).state;
-
-  const lock = lockEvent(ra5.raw.id);
+  const lock = lockEvent(create.raw.id);
   state = (applyEvent(state, lock) as any).state;
 
   const earlyVote = voteEvent(Role.ARBITER, ARBITER_PK, Outcome.RELEASE, lock.raw.id);
-  assertErr(applyEvent(state, earlyVote), "ARBITER_TOO_EARLY", "Arbiter can't vote before buyer+seller");
+  assertErr(applyEvent(state, earlyVote), "ARBITER_TOO_EARLY",
+    "Arbiter can't vote before buyer+seller");
 }
 
 // Double vote
 {
   const create = createEvent();
   let state = (applyEvent(null, create) as any).state;
-  const j1 = joinEvent(Role.BUYER, BUYER_PK, create.raw.id);
-  state = (applyEvent(state, j1) as any).state;
-  const j2 = joinEvent(Role.ARBITER, ARBITER_PK, j1.raw.id);
-  state = (applyEvent(state, j2) as any).state;
-  // Ready
-  const rb6 = readyEvent(Role.BUYER, BUYER_PK, j2.raw.id);
-  state = (applyEvent(state, rb6) as any).state;
-  const rs6 = readyEvent(Role.SELLER, SELLER_PK, rb6.raw.id);
-  state = (applyEvent(state, rs6) as any).state;
-  const ra6 = readyEvent(Role.ARBITER, ARBITER_PK, rs6.raw.id);
-  state = (applyEvent(state, ra6) as any).state;
-
-  const lock = lockEvent(ra6.raw.id);
+  const lock = lockEvent(create.raw.id);
   state = (applyEvent(state, lock) as any).state;
 
   const v1 = voteEvent(Role.BUYER, BUYER_PK, Outcome.RELEASE, lock.raw.id);
   state = (applyEvent(state, v1) as any).state;
-
   const v1dup = voteEvent(Role.BUYER, BUYER_PK, Outcome.REFUND, v1.raw.id);
   assertErr(applyEvent(state, v1dup), "ALREADY_VOTED", "Double vote rejected");
 }
@@ -564,19 +582,7 @@ console.log("\n── CLAIM + COMPLETE ──");
 {
   const create = createEvent();
   let state = (applyEvent(null, create) as any).state;
-  const j1 = joinEvent(Role.BUYER, BUYER_PK, create.raw.id);
-  state = (applyEvent(state, j1) as any).state;
-  const j2 = joinEvent(Role.ARBITER, ARBITER_PK, j1.raw.id);
-  state = (applyEvent(state, j2) as any).state;
-  // Ready
-  const rb7 = readyEvent(Role.BUYER, BUYER_PK, j2.raw.id);
-  state = (applyEvent(state, rb7) as any).state;
-  const rs7 = readyEvent(Role.SELLER, SELLER_PK, rb7.raw.id);
-  state = (applyEvent(state, rs7) as any).state;
-  const ra7 = readyEvent(Role.ARBITER, ARBITER_PK, rs7.raw.id);
-  state = (applyEvent(state, ra7) as any).state;
-
-  const lock = lockEvent(ra7.raw.id);
+  const lock = lockEvent(create.raw.id);
   state = (applyEvent(state, lock) as any).state;
   const v1 = voteEvent(Role.BUYER, BUYER_PK, Outcome.RELEASE, lock.raw.id);
   state = (applyEvent(state, v1) as any).state;
@@ -585,37 +591,22 @@ console.log("\n── CLAIM + COMPLETE ──");
   const resolve = resolveEvent(Outcome.RELEASE, [Role.BUYER, Role.SELLER], false, v2.raw.id);
   state = (applyEvent(state, resolve) as any).state;
 
-  // Buyer claims
   const claim = claimEvent(Role.BUYER, BUYER_PK, resolve.raw.id);
   const rc = applyEvent(state, claim);
   if (assertOk(rc, "Buyer claims → CLAIMED")) {
     assert(rc.state.status === EscrowStatus.CLAIMED, "Status is CLAIMED");
 
-    // Wrong person tries to claim (should fail but we're past APPROVED now)
-    // Complete
     const complete = completeEvent(claim.raw.id);
     const rf = applyEvent(rc.state, complete);
     if (assertOk(rf, "COMPLETE → terminal")) {
       assert(rf.state.status === EscrowStatus.COMPLETED, "Status is COMPLETED");
 
-      // Try to do anything after COMPLETED
       const lateVote = voteEvent(Role.ARBITER, ARBITER_PK, Outcome.RELEASE, complete.raw.id);
       assertErr(applyEvent(rf.state, lateVote), "TERMINAL_STATE", "No events after COMPLETED");
     }
   }
 
   // Wrong claimer
-  state = (applyEvent(null, create) as any).state;
-  state = (applyEvent(state, j1) as any).state;
-  state = (applyEvent(state, j2) as any).state;
-  state = (applyEvent(state, rb7) as any).state;
-  state = (applyEvent(state, rs7) as any).state;
-  state = (applyEvent(state, ra7) as any).state;
-  state = (applyEvent(state, lock) as any).state;
-  state = (applyEvent(state, v1) as any).state;
-  state = (applyEvent(state, v2) as any).state;
-  state = (applyEvent(state, resolve) as any).state;
-
   const wrongClaim = claimEvent(Role.SELLER, SELLER_PK, resolve.raw.id);
   assertErr(applyEvent(state, wrongClaim), "WRONG_CLAIMER", "Seller can't claim on RELEASE outcome");
 }
@@ -635,23 +626,7 @@ console.log("\n── CANCEL ──");
 
 // Can't cancel after LOCKED
 {
-  const create = createEvent();
-  let state = (applyEvent(null, create) as any).state;
-  const j1 = joinEvent(Role.BUYER, BUYER_PK, create.raw.id);
-  state = (applyEvent(state, j1) as any).state;
-  const j2 = joinEvent(Role.ARBITER, ARBITER_PK, j1.raw.id);
-  state = (applyEvent(state, j2) as any).state;
-  // Ready
-  const rb8 = readyEvent(Role.BUYER, BUYER_PK, j2.raw.id);
-  state = (applyEvent(state, rb8) as any).state;
-  const rs8 = readyEvent(Role.SELLER, SELLER_PK, rb8.raw.id);
-  state = (applyEvent(state, rs8) as any).state;
-  const ra8 = readyEvent(Role.ARBITER, ARBITER_PK, rs8.raw.id);
-  state = (applyEvent(state, ra8) as any).state;
-
-  const lock = lockEvent(ra8.raw.id);
-  state = (applyEvent(state, lock) as any).state;
-
+  const { state, lock } = buildToLocked();
   const cancel = cancelEvent(lock.raw.id);
   assertErr(applyEvent(state, cancel), "INVALID_STATE", "Can't cancel after LOCKED");
 }
@@ -685,7 +660,7 @@ console.log("\n── CHAT ──");
     message: "Hey, I'm ready to trade!",
     senderRole: Role.BUYER,
     sentAt: NOW,
-  }) as unknown as ParsedEscrowEvent<LockPayload>;
+  });
 
   const r = applyEvent(state, chat);
   if (assertOk(r, "Chat message accepted")) {
@@ -713,21 +688,13 @@ console.log("\n── REPLAY (full happy path from event chain) ──");
   const create = createEvent();
   events.push(create);
 
+  // Optional JOIN ACKs (still valid pre-LOCK)
   const j1 = joinEvent(Role.BUYER, BUYER_PK, create.raw.id);
   events.push(j1);
-
   const j2 = joinEvent(Role.ARBITER, ARBITER_PK, j1.raw.id);
   events.push(j2);
 
-  // Ready
-  const rbR = readyEvent(Role.BUYER, BUYER_PK, j2.raw.id);
-  events.push(rbR);
-  const rsR = readyEvent(Role.SELLER, SELLER_PK, rbR.raw.id);
-  events.push(rsR);
-  const raR = readyEvent(Role.ARBITER, ARBITER_PK, rsR.raw.id);
-  events.push(raR);
-
-  const lock = lockEvent(raR.raw.id);
+  const lock = lockEvent(j2.raw.id);
   events.push(lock);
 
   const v1 = voteEvent(Role.BUYER, BUYER_PK, Outcome.RELEASE, lock.raw.id);
@@ -748,11 +715,35 @@ console.log("\n── REPLAY (full happy path from event chain) ──");
   const result = replayEventChain(events);
   if (assertOk(result, "Full replay succeeds")) {
     assert(result.state.status === EscrowStatus.COMPLETED, "Final state is COMPLETED");
-    assert(result.state.eventChain.length === 12, "All 12 events in chain");
+    assert(result.state.eventChain.length === 9, "All 9 events in chain");
     assert(result.state.resolvedOutcome === Outcome.RELEASE, "Outcome is RELEASE");
 
     console.log("\n  📋 State summary:");
     console.log("  " + getSummary(result.state).split("\n").join("\n  "));
+  }
+}
+
+// ── 9b. REPLAY without any JOIN events ───────────────────────────────────
+console.log("\n── REPLAY (atomic minimum: CREATE → LOCK → … with NO JOINs) ──");
+{
+  eventCounter = 200;
+  const events: ParsedEscrowEvent[] = [];
+  const create = createEvent();           events.push(create);
+  const lock = lockEvent(create.raw.id);  events.push(lock);
+  const v1 = voteEvent(Role.BUYER, BUYER_PK, Outcome.RELEASE, lock.raw.id);  events.push(v1);
+  const v2 = voteEvent(Role.SELLER, SELLER_PK, Outcome.RELEASE, v1.raw.id);  events.push(v2);
+  const resolve = resolveEvent(Outcome.RELEASE, [Role.BUYER, Role.SELLER], false, v2.raw.id); events.push(resolve);
+  const claim = claimEvent(Role.BUYER, BUYER_PK, resolve.raw.id);            events.push(claim);
+  const complete = completeEvent(claim.raw.id);                              events.push(complete);
+
+  const result = replayEventChain(events);
+  if (assertOk(result, "Replay succeeds without any JOIN events")) {
+    assert(result.state.status === EscrowStatus.COMPLETED,
+      "Trade completes from CREATE→LOCK→VOTE→RESOLVE→CLAIM→COMPLETE — no JOIN ceremony required");
+    assert(result.state.participants[Role.BUYER] === BUYER_PK,
+      "Buyer slot populated by LOCK payload, not JOIN");
+    assert(result.state.participants[Role.ARBITER] === ARBITER_PK,
+      "Arbiter slot populated by LOCK payload, not JOIN");
   }
 }
 
@@ -791,92 +782,50 @@ console.log("\n── EVENT PARSER ──");
 
   // Bad kind
   const badRaw = { ...raw, kind: 99999, id: "bad_kind" };
-  const badResult = parseEscrowEvent(badRaw, decrypted, true);
-  assert(!badResult.ok, "Parser rejects unknown kind");
+  assert(!parseEscrowEvent(badRaw, decrypted, true).ok, "Parser rejects unknown kind");
+
+  // Retired READY kind 38109 — must now reject as INVALID_KIND
+  const retiredReady = { ...raw, kind: 38109, id: "retired_ready" };
+  assert(!parseEscrowEvent(retiredReady, decrypted, true).ok, "Parser rejects retired READY kind");
+
+  // Retired KICK kind 38110 — must now reject as INVALID_KIND
+  const retiredKick = { ...raw, kind: 38110, id: "retired_kick" };
+  assert(!parseEscrowEvent(retiredKick, decrypted, true).ok, "Parser rejects retired KICK kind");
+
+  // LOCK without buyerPubkey/arbiterPubkey → INVALID_PAYLOAD
+  const badLockContent = JSON.stringify({
+    type: "escrow:lock",
+    notesHash: "h",
+    shares: [
+      { shareIndex: 0, encryptedFor: { x: "y" } },
+      { shareIndex: 1, encryptedFor: { x: "y" } },
+      { shareIndex: 2, encryptedFor: { x: "y" } },
+    ],
+    sellerReceivesMsats: 99_000_000,
+    arbiterFeeMsats: 1_000_000,
+    lockedAt: NOW,
+  });
+  const badLockRaw = { ...raw, kind: EscrowEventKind.LOCK, id: "no_pubkeys", tags: [["d", "no-pks"]] };
+  assert(!parseEscrowEvent(badLockRaw, badLockContent, true).ok,
+    "Parser rejects LOCK without buyerPubkey/arbiterPubkey");
 
   // Missing d-tag
   const noDTag = { ...raw, tags: [], id: "no_d" };
-  const noDResult = parseEscrowEvent(noDTag, decrypted, true);
-  assert(!noDResult.ok, "Parser rejects missing d-tag");
+  assert(!parseEscrowEvent(noDTag, decrypted, true).ok, "Parser rejects missing d-tag");
 
   // Bad JSON
-  const badJson = parseEscrowEvent(raw, "not json {{{", true);
-  assert(!badJson.ok, "Parser rejects invalid JSON");
-
-  // v0.1.72 federation gates ─────────────────────────────────────────────
-  // CREATE with valid fedPrefix + fed — accepted
-  {
-    const goodFedDecrypted = JSON.stringify({
-      type: "escrow:create",
-      description: "Fed-tagged trade",
-      amountMsats: 50_000_000,
-      category: "marketplace",
-      mintUrl: "fed://test",
-      platformFeeBps: 50,
-      platformFeePubkey: PLATFORM_PK,
-      expirySeconds: 3600,
-      createdAt: NOW,
-      fedPrefix: "AwEEiItw7A",
-      fed: "888b70ec351c67dcbb0ae655d7b8b6fb26c0fc9e865ee5918af11dc6f53e2b9e",
-    });
-    const goodFedRaw = { ...raw, id: "good_fed", tags: [["d", "good-fed-1"]] };
-    const goodFedResult = parseEscrowEvent(goodFedRaw, goodFedDecrypted, true);
-    assert(goodFedResult.ok === true, "Parser accepts CREATE with fedPrefix + fed");
-    if (goodFedResult.ok) {
-      const p = goodFedResult.event.payload as CreatePayload;
-      assert((p as any).fedPrefix === "AwEEiItw7A", "fedPrefix preserved on parse");
-      assert(typeof (p as any).fed === "string" && (p as any).fed.length > 0, "fed preserved on parse");
-    }
-  }
-
-  // CREATE with malformed fedPrefix (wrong length) — rejected
-  {
-    const badPrefixDecrypted = JSON.stringify({
-      type: "escrow:create",
-      description: "Bad prefix",
-      amountMsats: 50_000_000,
-      category: "marketplace",
-      mintUrl: "fed://test",
-      platformFeeBps: 50,
-      platformFeePubkey: PLATFORM_PK,
-      expirySeconds: 3600,
-      createdAt: NOW,
-      fedPrefix: "tooshort", // 8 chars, not 10
-    });
-    const badPrefixRaw = { ...raw, id: "bad_prefix", tags: [["d", "bad-prefix-1"]] };
-    const badPrefixResult = parseEscrowEvent(badPrefixRaw, badPrefixDecrypted, true);
-    assert(!badPrefixResult.ok, "Parser rejects CREATE with malformed fedPrefix");
-  }
-
-  // CREATE without fedPrefix or fed (pre-.72) — accepted (backwards compat)
-  {
-    const preV72Decrypted = JSON.stringify({
-      type: "escrow:create",
-      description: "Old trade",
-      amountMsats: 50_000_000,
-      category: "marketplace",
-      mintUrl: "fed://test",
-      platformFeeBps: 50,
-      platformFeePubkey: PLATFORM_PK,
-      expirySeconds: 3600,
-      createdAt: NOW,
-    });
-    const preV72Raw = { ...raw, id: "pre_v72", tags: [["d", "pre-v72-1"]] };
-    const preV72Result = parseEscrowEvent(preV72Raw, preV72Decrypted, true);
-    assert(preV72Result.ok === true, "Parser accepts pre-.72 CREATE without fedPrefix/fed (backwards compat)");
-  }
+  assert(!parseEscrowEvent(raw, "not json {{{", true).ok, "Parser rejects invalid JSON");
 }
 
 // ── 11. CHAIN SORTING ────────────────────────────────────────────────────
 console.log("\n── CHAIN SORTING ──");
 {
-  eventCounter = 200;
+  eventCounter = 300;
 
   const create = createEvent();
   const j1 = joinEvent(Role.BUYER, BUYER_PK, create.raw.id);
   const j2 = joinEvent(Role.ARBITER, ARBITER_PK, j1.raw.id);
 
-  // Feed them in wrong order
   const unsorted = [j2, create, j1];
   const sorted = sortEventChain(unsorted);
 

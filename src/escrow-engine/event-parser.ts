@@ -29,11 +29,8 @@ import {
   type CompletePayload,
   type CancelPayload,
   type ChatPayload,
-  type ReadyPayload,
-  type KickPayload,
   type SubscribePayload,
   type PeriodReleasePayload,
-  type ValidationResult,
   type ValidationError,
   Role,
   Outcome,
@@ -55,8 +52,6 @@ const KIND_TO_TYPE: Record<number, string> = {
   [EscrowEventKind.COMPLETE]: "escrow:complete",
   [EscrowEventKind.CANCEL]:   "escrow:cancel",
   [EscrowEventKind.CHAT]:     "escrow:chat",
-  [EscrowEventKind.READY]:    "escrow:ready",
-  [EscrowEventKind.KICK]:     "escrow:kick",
   [EscrowEventKind.SUBSCRIBE]:      "escrow:subscribe",
   [EscrowEventKind.PERIOD_RELEASE]: "escrow:period_release",
 };
@@ -128,10 +123,12 @@ function validateJoinPayload(data: unknown): data is JoinPayload {
 }
 
 function validateLockPayload(data: unknown): data is LockPayload {
+  // PR 1 atomic-funding: LOCK is self-describing about the buyer and
+  // arbiter pubkeys (the chain no longer relies on prior JOIN events
+  // to populate participants). Both fields are required.
   // v0.1.71: platformFeeMsats no longer required — it was removed from
   // the LockPayload schema. We accept old LOCKs that still carry the
-  // field (browsers keep cached events from pre-.71 trades), we just
-  // don't check or use it. State machine handles the 2-way amount sum.
+  // field, we just don't check or use it.
   const d = data as Record<string, unknown>;
   return (
     d.type === "escrow:lock" &&
@@ -139,6 +136,8 @@ function validateLockPayload(data: unknown): data is LockPayload {
     Array.isArray(d.shares) && d.shares.length === 3 &&
     typeof d.sellerReceivesMsats === "number" &&
     typeof d.arbiterFeeMsats === "number" &&
+    typeof d.buyerPubkey === "string" && d.buyerPubkey.length > 0 &&
+    typeof d.arbiterPubkey === "string" && d.arbiterPubkey.length > 0 &&
     typeof d.lockedAt === "number"
   );
 }
@@ -224,26 +223,6 @@ function validatePeriodReleasePayload(data: unknown): data is PeriodReleasePaylo
   );
 }
 
-function validateKickPayload(data: unknown): data is KickPayload {
-  const d = data as Record<string, unknown>;
-  return (
-    d.type === "escrow:kick" &&
-    typeof d.targetRole === "string" && Object.values(Role).includes(d.targetRole as Role) &&
-    typeof d.kickerRole === "string" && Object.values(Role).includes(d.kickerRole as Role) &&
-    typeof d.reason === "string" &&
-    typeof d.kickedAt === "number"
-  );
-}
-
-function validateReadyPayload(data: unknown): data is ReadyPayload {
-  const d = data as Record<string, unknown>;
-  return (
-    d.type === "escrow:ready" &&
-    typeof d.role === "string" && Object.values(Role).includes(d.role as Role) &&
-    typeof d.readyAt === "number"
-  );
-}
-
 // ── Payload validator dispatch ────────────────────────────────────────────
 
 const PAYLOAD_VALIDATORS: Record<number, (data: unknown) => boolean> = {
@@ -256,8 +235,6 @@ const PAYLOAD_VALIDATORS: Record<number, (data: unknown) => boolean> = {
   [EscrowEventKind.COMPLETE]: validateCompletePayload,
   [EscrowEventKind.CANCEL]:   validateCancelPayload,
   [EscrowEventKind.CHAT]:     validateChatPayload,
-  [EscrowEventKind.READY]:    validateReadyPayload,
-  [EscrowEventKind.KICK]:     validateKickPayload,
   [EscrowEventKind.SUBSCRIBE]:      validateSubscribePayload,
   [EscrowEventKind.PERIOD_RELEASE]: validatePeriodReleasePayload,
 };
@@ -411,20 +388,20 @@ export function sortEventChain(events: ParsedEscrowEvent[]): ParsedEscrowEvent[]
     const current = queue.shift()!;
     const children = byPrevId.get(current.raw.id) || [];
     // Sort children by kind priority first (state machine order), then timestamp.
-    // This ensures e.g. JOIN comes before LOCK even if timestamps are close.
+    // JOIN sits before LOCK so that when both arrive close together the ACK
+    // is recorded first — but JOIN no longer gates LOCK, so out-of-order
+    // delivery is harmless; LOCK validates participants from its own payload.
     const KIND_PRIORITY: Record<number, number> = {
       38100: 0,  // CREATE
       38111: 1,  // SUBSCRIBE
-      38101: 2,  // JOIN
-      38109: 3,  // READY
-      38110: 4,  // KICK
-      38102: 5,  // LOCK
-      38103: 6,  // VOTE
-      38104: 7,  // RESOLVE
-      38105: 8,  // CLAIM
-      38106: 9,  // COMPLETE
-      38107: 10, // CANCEL
-      38112: 6,  // PERIOD_RELEASE (same level as VOTE)
+      38101: 2,  // JOIN (ACK)
+      38102: 3,  // LOCK
+      38103: 4,  // VOTE
+      38104: 5,  // RESOLVE
+      38105: 6,  // CLAIM
+      38106: 7,  // COMPLETE
+      38107: 8,  // CANCEL
+      38112: 4,  // PERIOD_RELEASE (same level as VOTE)
     };
     children.sort((a, b) => {
       const pa = KIND_PRIORITY[a.kind] ?? 99;
@@ -455,16 +432,14 @@ export function sortEventChain(events: ParsedEscrowEvent[]): ParsedEscrowEvent[]
   const GLOBAL_KIND_ORDER: Record<number, number> = {
     38100: 0,  // CREATE
     38111: 1,  // SUBSCRIBE
-    38101: 2,  // JOIN
-    38109: 3,  // READY
-    38110: 4,  // KICK
-    38102: 5,  // LOCK
-    38103: 6,  // VOTE
-    38112: 6,  // PERIOD_RELEASE
-    38104: 7,  // RESOLVE
-    38105: 8,  // CLAIM
-    38106: 9,  // COMPLETE
-    38107: 10, // CANCEL
+    38101: 2,  // JOIN (ACK)
+    38102: 3,  // LOCK
+    38103: 4,  // VOTE
+    38112: 4,  // PERIOD_RELEASE
+    38104: 5,  // RESOLVE
+    38105: 6,  // CLAIM
+    38106: 7,  // COMPLETE
+    38107: 8,  // CANCEL
   };
   sorted.sort((a, b) => {
     const pa = GLOBAL_KIND_ORDER[a.kind] ?? 99;

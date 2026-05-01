@@ -385,91 +385,9 @@ export class EscrowClient {
     const signed = await this.signer.signEvent(unsigned);
     await this.relayManager.publish(signed);
 
-    const joinResult = this.applyLocally(escrowId, signed, payload);
-
-    // Notify when all 3 joined
-    if (joinResult.status === "FUNDED") {
-      this.notifier?.onReadinessNeeded(joinResult).catch(() => {});
-    }
-
-    return joinResult;
-  }
-
-  // ── Kick unresponsive participant (pre-lock only) ────────────────────────
-
-  async kickParticipant(escrowId: string, targetRole: Role, reason: string): Promise<EscrowState> {
-    const state = this.states.get(escrowId);
-    if (!state) throw new Error(`Escrow ${escrowId} not loaded`);
-
-    const pubkey = await this.getPubkey();
-    const myRole = this.getMyRole(state, pubkey);
-    if (!myRole) throw new Error("You are not a participant in this escrow");
-
-    const now = Math.floor(Date.now() / 1000);
-    const lastEventId = state.eventChain[state.eventChain.length - 1]?.raw.id;
-
-    const payload = {
-      type: "escrow:kick" as const,
-      targetRole,
-      kickerRole: myRole,
-      reason,
-      kickedAt: now,
-    };
-
-    const content = JSON.stringify(payload);
-
-    const unsigned: UnsignedEvent = {
-      kind: EscrowEventKind.KICK,
-      created_at: now,
-      tags: [
-        [TAGS.ESCROW_ID, escrowId],
-        [TAGS.PREV_EVENT, lastEventId, "", "reply"],
-        [TAGS.TYPE, "escrow:kick"],
-      ],
-      content,
-    };
-
-    const signed = await this.signer.signEvent(unsigned);
-    await this.relayManager.publish(signed);
-
-    return this.applyLocally(escrowId, signed, payload);
-  }
-
-  // ── Confirm ready (pre-lock safety check) ───────────────────────────────
-
-  async confirmReady(escrowId: string): Promise<EscrowState> {
-    const state = this.states.get(escrowId);
-    if (!state) throw new Error(`Escrow ${escrowId} not loaded`);
-
-    const pubkey = await this.getPubkey();
-    const role = this.getMyRole(state, pubkey);
-    if (!role) throw new Error("You are not a participant in this escrow");
-
-    const now = Math.floor(Date.now() / 1000);
-    const lastEventId = state.eventChain[state.eventChain.length - 1]?.raw.id;
-
-    const payload = {
-      type: "escrow:ready" as const,
-      role,
-      readyAt: now,
-    };
-
-    const content = JSON.stringify(payload);
-
-    const unsigned: UnsignedEvent = {
-      kind: EscrowEventKind.READY,
-      created_at: now,
-      tags: [
-        [TAGS.ESCROW_ID, escrowId],
-        [TAGS.PREV_EVENT, lastEventId, "", "reply"],
-        [TAGS.TYPE, "escrow:ready"],
-      ],
-      content,
-    };
-
-    const signed = await this.signer.signEvent(unsigned);
-    await this.relayManager.publish(signed);
-
+    // JOIN is ACK-only in the atomic-funding model: it records the
+    // joiner's pubkey on the chain but does not trigger any state
+    // transition or notifier hook. LOCK is what moves the trade.
     return this.applyLocally(escrowId, signed, payload);
   }
 
@@ -480,13 +398,21 @@ export class EscrowClient {
   // Use that bridge from the UI layer. This class only handles the
   // Nostr event side.
 
-  // v0.1.71: lockEscrow no longer takes platformFeeMsats.
-  // Platform fees are collected via Lightning at trade completion.
+  // PR 1 atomic funding: lockEscrow now requires buyerPubkey + arbiterPubkey
+  // because LOCK is self-describing (no prior JOIN required to populate
+  // participant slots). The bridge is responsible for picking the arbiter
+  // from state.communityArbiters and supplying the buyer pubkey from
+  // whichever source the locker has (prior JOIN ACK, or pre-lock invoice
+  // metadata that names the buyer).
+  // v0.1.71: lockEscrow no longer takes platformFeeMsats — platform fees
+  // are collected via Lightning at trade completion.
   async lockEscrow(escrowId: string, params: {
     notesHash: string;
     shares: LockShareEntry[];
     sellerReceivesMsats: number;
     arbiterFeeMsats: number;
+    buyerPubkey: string;
+    arbiterPubkey: string;
   }): Promise<EscrowState> {
     const state = this.states.get(escrowId);
     if (!state) throw new Error(`Escrow ${escrowId} not loaded`);
@@ -500,6 +426,8 @@ export class EscrowClient {
       shares: params.shares,
       sellerReceivesMsats: params.sellerReceivesMsats,
       arbiterFeeMsats: params.arbiterFeeMsats,
+      buyerPubkey: params.buyerPubkey,
+      arbiterPubkey: params.arbiterPubkey,
       lockedAt: now,
     };
 
@@ -1106,7 +1034,7 @@ export class EscrowClient {
     } else if (result.error.code === "NO_STATE") {
       // Event arrived for an escrow we haven't loaded — buffer it
       this.bufferEvent(escrowId, event, relayUrl);
-    } else if (["INVALID_STATE", "NOT_PARTICIPANT", "THRESHOLD_NOT_MET", "NOT_ALL_READY"].includes(result.error.code)) {
+    } else if (["INVALID_STATE", "NOT_PARTICIPANT", "THRESHOLD_NOT_MET"].includes(result.error.code)) {
       // Out-of-order event — reload full state from relays
       // This is more reliable than buffering because it fetches ALL events,
       // sorts by chain order, and replays the complete sequence.

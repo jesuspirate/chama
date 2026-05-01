@@ -12,15 +12,18 @@
 //   4. Immutable audit log — non-replaceable events, chained via e-tags
 
 // ── Escrow States ─────────────────────────────────────────────────────────
-// Matches the existing Chama state machine from ARCHITECTURE.md
-// but adapted for relay-native operation (no FUNDED state — funding IS locking)
+// Atomic-funding model: there is no FUNDED state. The instant the BOLT11
+// invoice is paid, the locker mints internally and publishes LOCK in one
+// atomic side-effect. CREATED → LOCKED is the only pre-vote transition.
+// JOIN events still exist as participant ACKs (carry the pubkey of buyer
+// or arbiter pre-LOCK if available) but they do not gate the state
+// machine. READY and KICK are gone — they were ceremony around the dead
+// FUNDED state.
 
 export enum EscrowStatus {
-  /** Trade terms published, waiting for counterparty + arbiter to join */
+  /** Trade terms published, waiting for payment to land and trigger LOCK */
   CREATED = "CREATED",
-  /** All 3 participants joined; ecash can be locked */
-  FUNDED = "FUNDED",
-  /** Ecash locked in 2-of-3 SSS escrow */
+  /** Ecash locked in 2-of-3 SSS escrow (atomic side-effect of payment landing) */
   LOCKED = "LOCKED",
   /** 2-of-3 votes agree on outcome */
   APPROVED = "APPROVED",
@@ -85,9 +88,11 @@ export enum Outcome {
 export enum EscrowEventKind {
   /** Initiator publishes trade terms */
   CREATE = 38100,
-  /** Counterparty + arbiter accept and join */
+  /** Participant ACK — records buyer or arbiter pubkey on the chain
+   *  before LOCK lands. Pure acknowledgment; does NOT transition state. */
   JOIN = 38101,
-  /** Ecash locked in 2-of-3 SSS — shares distributed */
+  /** Ecash locked in 2-of-3 SSS — shares distributed. Atomic side-effect
+   *  of BOLT11 payment landing; transitions CREATED → LOCKED directly. */
   LOCK = 38102,
   /** Participant casts a vote (release or refund) */
   VOTE = 38103,
@@ -101,10 +106,8 @@ export enum EscrowEventKind {
   CANCEL = 38107,
   /** Chat message within escrow context (NIP-44 encrypted) */
   CHAT = 38108,
-  /** Participant confirms they're online and ready for locking */
-  READY = 38109,
-  /** Kick an unresponsive participant (pre-lock only) */
-  KICK = 38110,
+  // 38109 (READY) and 38110 (KICK) retired — atomic funding eliminated
+  // the FUNDED ceremony those events gated. Numbers reserved.
   /** Create a subscription escrow with periodic releases */
   SUBSCRIBE = 38111,
   /** Release one period's sats to the seller */
@@ -117,8 +120,7 @@ export enum EscrowEventKind {
 // invalid transition is rejected during replay.
 
 export const VALID_TRANSITIONS: ReadonlyMap<EscrowStatus, ReadonlySet<EscrowStatus>> = new Map([
-  [EscrowStatus.CREATED,   new Set([EscrowStatus.FUNDED, EscrowStatus.CANCELLED, EscrowStatus.EXPIRED])],
-  [EscrowStatus.FUNDED,    new Set([EscrowStatus.LOCKED, EscrowStatus.CANCELLED, EscrowStatus.EXPIRED])],
+  [EscrowStatus.CREATED,   new Set([EscrowStatus.LOCKED, EscrowStatus.CANCELLED, EscrowStatus.EXPIRED])],
   [EscrowStatus.LOCKED,    new Set([EscrowStatus.APPROVED, EscrowStatus.EXPIRED])],
   [EscrowStatus.APPROVED,  new Set([EscrowStatus.CLAIMED])],
   [EscrowStatus.CLAIMED,   new Set([EscrowStatus.COMPLETED])],
@@ -129,16 +131,17 @@ export const VALID_TRANSITIONS: ReadonlyMap<EscrowStatus, ReadonlySet<EscrowStat
 ]);
 
 // ── Event Kind → Transition Mapping ───────────────────────────────────────
-// Which event kinds can trigger which state transitions
+// Which event kinds can trigger which state transitions.
+// JOIN is intentionally absent — it's an ACK that records a participant
+// pubkey but does not move the state machine forward.
 
 export const EVENT_KIND_TRANSITIONS: ReadonlyMap<EscrowEventKind, { from: EscrowStatus[]; to: EscrowStatus }> = new Map([
-  [EscrowEventKind.JOIN,     { from: [EscrowStatus.CREATED],  to: EscrowStatus.FUNDED }],
-  [EscrowEventKind.LOCK,     { from: [EscrowStatus.FUNDED],   to: EscrowStatus.LOCKED }],
+  [EscrowEventKind.LOCK,     { from: [EscrowStatus.CREATED],  to: EscrowStatus.LOCKED }],
   // VOTE doesn't directly transition — RESOLVE does when 2-of-3 is met
   [EscrowEventKind.RESOLVE,  { from: [EscrowStatus.LOCKED],   to: EscrowStatus.APPROVED }],
   [EscrowEventKind.CLAIM,    { from: [EscrowStatus.APPROVED], to: EscrowStatus.CLAIMED }],
   [EscrowEventKind.COMPLETE, { from: [EscrowStatus.CLAIMED],  to: EscrowStatus.COMPLETED }],
-  [EscrowEventKind.CANCEL,   { from: [EscrowStatus.CREATED, EscrowStatus.FUNDED], to: EscrowStatus.CANCELLED }],
+  [EscrowEventKind.CANCEL,   { from: [EscrowStatus.CREATED],  to: EscrowStatus.CANCELLED }],
 ]);
 
 // ── Nostr Event Tag Constants ─────────────────────────────────────────────
@@ -220,7 +223,12 @@ export interface CreatePayload {
   createdAt: number;
 }
 
-/** Content of a JOIN event */
+/** Content of a JOIN event — pure ACK, does not transition state.
+ *  Records the joining participant's pubkey on the chain so other
+ *  clients can discover them before LOCK lands. The locker may also
+ *  read participants from JOIN events to populate the LOCK payload's
+ *  buyerPubkey / arbiterPubkey, but is not required to — LOCK is
+ *  self-describing. */
 export interface JoinPayload {
   type: "escrow:join";
   role: Role;
@@ -258,6 +266,15 @@ export interface LockPayload {
   /** Breakdown of amounts (2-way split since v0.1.71) */
   sellerReceivesMsats: number;
   arbiterFeeMsats: number;
+  /** Atomic-funding fields (PR 1): LOCK is self-describing about who
+   *  the buyer and arbiter are. The chain no longer relies on prior
+   *  JOIN events to populate the participant slots — JOINs are ACKs.
+   *
+   *  buyerPubkey: the npub whose BOLT11 payment triggered this LOCK.
+   *  arbiterPubkey: the locker's pick from the trade's communityArbiters
+   *    pool (or any pubkey if the pool is empty / pre-community trades). */
+  buyerPubkey: string;
+  arbiterPubkey: string;
   lockedAt: number;
 }
 
@@ -315,13 +332,6 @@ export interface ChatPayload {
   sentAt: number;
 }
 
-/** Content of a READY event — participant confirms they're online and prepared */
-export interface ReadyPayload {
-  type: "escrow:ready";
-  role: Role;
-  readyAt: number;
-}
-
 /** Content of a SUBSCRIBE event — buyer creates subscription terms */
 export interface SubscribePayload {
   type: "escrow:subscribe";
@@ -374,18 +384,6 @@ export interface SubscriptionMeta {
   startsAt: number;
 }
 
-/** Content of a KICK event — remove unresponsive participant (pre-lock only) */
-export interface KickPayload {
-  type: "escrow:kick";
-  /** Role being kicked */
-  targetRole: Role;
-  /** Who initiated the kick */
-  kickerRole: Role;
-  /** Reason for the kick */
-  reason: string;
-  kickedAt: number;
-}
-
 // ── Union type for all payloads ───────────────────────────────────────────
 
 export type EscrowPayload =
@@ -398,8 +396,6 @@ export type EscrowPayload =
   | CompletePayload
   | CancelPayload
   | ChatPayload
-  | ReadyPayload
-  | KickPayload
   | SubscribePayload
   | PeriodReleasePayload;
 
@@ -470,16 +466,6 @@ export interface EscrowState {
 
   /** Subscription metadata (null for non-subscription escrows) */
   subscription: SubscriptionMeta | null;
-
-  /** Kick votes — tracks who voted to kick whom. When 2 votes target the same role, removal executes */
-  kickVotes: Record<string, string[]>;
-
-  /** Readiness confirmations — who has published READY */
-  readiness: {
-    [Role.BUYER]?: boolean;
-    [Role.SELLER]?: boolean;
-    [Role.ARBITER]?: boolean;
-  };
 
   /** Votes cast so far */
   votes: {

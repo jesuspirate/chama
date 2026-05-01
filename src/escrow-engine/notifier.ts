@@ -153,14 +153,4 @@ export class EscrowNotifier {
     await this.notifyMany(allRecipients, msg);
   }
 
-  /** Notify when readiness is needed */
-  async onReadinessNeeded(state: EscrowState): Promise<void> {
-    if (!this.config.notifyOnStateChange) return;
-
-    const pubkeys = this.getParticipantPubkeys(state);
-    const msg = `⏳ All 3 participants joined "${state.description}". ` +
-      `Please confirm you're ready so we can lock the ecash.`;
-
-    await this.notifyMany(pubkeys, msg);
-  }
 }

@@ -21,7 +21,6 @@ import {
   Outcome,
   TERMINAL_STATES,
   TRULY_TERMINAL_STATES,
-  VALID_TRANSITIONS,
   type EscrowState,
   type ParsedEscrowEvent,
   type CreatePayload,
@@ -33,12 +32,8 @@ import {
   type CompletePayload,
   type CancelPayload,
   type ChatPayload,
-  type ReadyPayload,
-  type KickPayload,
   type SubscribePayload,
   type PeriodReleasePayload,
-  type SubscriptionMeta,
-  type ValidationResult,
   type ValidationError,
 } from "./types.js";
 
@@ -66,8 +61,6 @@ function cloneState(state: EscrowState): EscrowState {
       periodStartTimes: [...state.subscription.periodStartTimes],
       periodStatuses: [...state.subscription.periodStatuses],
     } : null,
-    kickVotes: { ...state.kickVotes },
-    readiness: { ...state.readiness },
     votes: { ...state.votes },
     fees: { ...state.fees },
     lock: {
@@ -87,16 +80,6 @@ function getRole(state: EscrowState, pubkey: string): Role | null {
   if (state.participants[Role.SELLER] === pubkey) return Role.SELLER;
   if (state.participants[Role.ARBITER] === pubkey) return Role.ARBITER;
   return null;
-}
-
-// ── Helper: count how many participants have joined ───────────────────────
-
-function participantCount(state: EscrowState): number {
-  let count = 0;
-  if (state.participants[Role.BUYER]) count++;
-  if (state.participants[Role.SELLER]) count++;
-  if (state.participants[Role.ARBITER]) count++;
-  return count;
 }
 
 // ── Helper: check vote threshold ──────────────────────────────────────────
@@ -184,8 +167,6 @@ function handleCreate(event: ParsedEscrowEvent<CreatePayload>): TransitionResult
     initiator: { pubkey: event.pubkey, role: initiatorRole },
     communityArbiters: p.communityArbiters || [],
     subscription: null,
-    kickVotes: {},
-    readiness: {},
     votes: {},
     resolvedOutcome: null,
     resolvedMajority: null,
@@ -217,7 +198,19 @@ function handleCreate(event: ParsedEscrowEvent<CreatePayload>): TransitionResult
 }
 
 // ── JOIN ──────────────────────────────────────────────────────────────────
-// A participant joins an existing escrow.
+// Atomic-funding model: JOIN is a pure ACK. It records the joining
+// participant's pubkey on the chain so other clients (and the eventual
+// LOCK publisher) can discover them, but it does NOT transition the
+// state machine. The trade stays in CREATED until LOCK lands.
+//
+// Constraints:
+//   - Can only JOIN before LOCK (status must still be CREATED).
+//   - Buyer JOIN: fills the buyer slot if empty; idempotent if already
+//     filled by the same pubkey (e.g. relay echo).
+//   - Arbiter JOIN: must be a member of the trade's communityArbiters
+//     pool when the pool is non-empty. Empty pool = free-choice arbiter
+//     (legacy / pre-community trades).
+//   - Cannot JOIN as the initiator's role.
 
 function handleJoin(state: EscrowState, event: ParsedEscrowEvent<JoinPayload>): TransitionResult {
   const p = event.payload;
@@ -226,19 +219,33 @@ function handleJoin(state: EscrowState, event: ParsedEscrowEvent<JoinPayload>): 
     return err("INVALID_STATE", `Cannot JOIN in state ${state.status}`, event.raw.id);
   }
 
-  // Check they're not already a participant
-  if (getRole(state, event.pubkey) !== null) {
-    return err("ALREADY_JOINED", "Pubkey is already a participant", event.raw.id);
+  // Can't join as the initiator's role (that slot is already filled by CREATE)
+  if (p.role === state.initiator.role) {
+    return err("ROLE_CONFLICT", `Cannot join as ${p.role} — that's the initiator's role`, event.raw.id);
   }
 
-  // Check the role they want is available
+  // Idempotent: same pubkey re-joining the same role is a benign relay echo
+  if (state.participants[p.role] === event.pubkey) {
+    return err("ALREADY_JOINED", "Pubkey is already a participant in this role", event.raw.id);
+  }
+
+  // Slot already filled by a different pubkey — reject
   if (state.participants[p.role] !== null) {
     return err("ROLE_TAKEN", `Role ${p.role} is already filled`, event.raw.id);
   }
 
-  // Can't join as the initiator's role
-  if (p.role === state.initiator.role) {
-    return err("ROLE_CONFLICT", `Cannot join as ${p.role} — that's the initiator's role`, event.raw.id);
+  // Pubkey is registered in a different role — reject
+  if (getRole(state, event.pubkey) !== null) {
+    return err("ALREADY_JOINED", "Pubkey is already a participant in another role", event.raw.id);
+  }
+
+  // Arbiter must be in the community pool (when one exists)
+  if (p.role === Role.ARBITER && state.communityArbiters.length > 0
+      && !state.communityArbiters.includes(event.pubkey)) {
+    return err("ARBITER_NOT_IN_POOL",
+      "Arbiter pubkey is not in this trade's communityArbiters pool",
+      event.raw.id
+    );
   }
 
   const next = cloneState(state);
@@ -249,41 +256,37 @@ function handleJoin(state: EscrowState, event: ParsedEscrowEvent<JoinPayload>): 
     next.fees.arbiterMsats = p.arbiterFeeMsats;
   }
 
-  // Transition to FUNDED when all 3 are in
-  if (participantCount(next) === 3) {
-    next.status = EscrowStatus.FUNDED;
-  }
-
   next.eventChain.push(event);
+  // No state transition — JOIN is ACK only. LOCK is what moves the trade
+  // forward, and it can fire whether or not buyer/arbiter have JOINed
+  // (because LOCK carries their pubkeys directly).
   return { ok: true, state: next };
 }
 
 // ── LOCK ──────────────────────────────────────────────────────────────────
 // Ecash is locked in 2-of-3 SSS. Shares distributed to participants.
+//
+// Atomic-funding model: LOCK fires directly from CREATED. There is no
+// FUNDED state and no READY ceremony. The locker (the side holding
+// sats per their category) publishes LOCK as an automatic side-effect
+// of detecting their fee-invoice paid.
+//
+// LOCK is self-describing: it carries buyerPubkey and arbiterPubkey
+// (chosen from communityArbiters pool by the locker). The state
+// machine populates participants from the payload at lock time.
+// If a buyer or arbiter JOIN event landed earlier as an ACK, LOCK's
+// pubkey for that role must match the JOINed pubkey.
 
 function handleLock(state: EscrowState, event: ParsedEscrowEvent<LockPayload>): TransitionResult {
   const p = event.payload;
 
-  if (state.status !== EscrowStatus.FUNDED) {
+  if (state.status !== EscrowStatus.CREATED) {
     return err("INVALID_STATE", `Cannot LOCK in state ${state.status}`, event.raw.id);
   }
 
-  // All 3 participants must have confirmed ready before locking
-  const allReady = state.readiness[Role.BUYER] &&
-                   state.readiness[Role.SELLER] &&
-                   state.readiness[Role.ARBITER];
-  if (!allReady) {
-    const missing = [Role.BUYER, Role.SELLER, Role.ARBITER]
-      .filter(r => !state.readiness[r])
-      .join(", ");
-    return err("NOT_ALL_READY",
-      `Cannot lock — waiting for readiness confirmation from: ${missing}`,
-      event.raw.id,
-      { readiness: state.readiness }
-    );
-  }
-
-  // Enforce who can lock based on category
+  // The locker must be the seller's pubkey (or buyer for marketplace) —
+  // they're a participant from the moment CREATE published, so getRole
+  // works without any prior JOIN.
   const lockerRole = getRole(state, event.pubkey);
   if (!lockerRole) {
     return err("NOT_PARTICIPANT", "Locker is not a participant", event.raw.id);
@@ -299,12 +302,60 @@ function handleLock(state: EscrowState, event: ParsedEscrowEvent<LockPayload>): 
     : (state.category === "p2p-trade" || state.category === "bill-pay") ? Role.SELLER
     : null; // raw escrow: anyone
 
-  // Only enforce locker role on trades created after v0.1.37 (April 13 2026)
-  // Old trades allowed any participant to lock — grandfather them in
-  const LOCKER_ENFORCEMENT_TIMESTAMP = 1776100000; // ~Apr 13 2026
-  if (expectedLocker && lockerRole !== expectedLocker && state.createdAt > LOCKER_ENFORCEMENT_TIMESTAMP) {
+  if (expectedLocker && lockerRole !== expectedLocker) {
     return err("WRONG_LOCKER",
       "In " + state.category + ", only the " + expectedLocker + " can lock the escrow",
+      event.raw.id
+    );
+  }
+
+  // Atomic-funding: LOCK must name the buyer and arbiter. Validate both.
+  if (!p.buyerPubkey || typeof p.buyerPubkey !== "string") {
+    return err("MISSING_BUYER_PUBKEY",
+      "LOCK payload must carry buyerPubkey (the npub whose payment triggered the lock)",
+      event.raw.id
+    );
+  }
+  if (!p.arbiterPubkey || typeof p.arbiterPubkey !== "string") {
+    return err("MISSING_ARBITER_PUBKEY",
+      "LOCK payload must carry arbiterPubkey (chosen from the communityArbiters pool)",
+      event.raw.id
+    );
+  }
+
+  // If buyer JOINed earlier as ACK, LOCK's buyerPubkey must agree.
+  const joinedBuyer = state.participants[Role.BUYER];
+  if (joinedBuyer && joinedBuyer !== p.buyerPubkey) {
+    return err("BUYER_PUBKEY_MISMATCH",
+      `LOCK buyerPubkey ${p.buyerPubkey.slice(0, 8)}… disagrees with prior JOIN ${joinedBuyer.slice(0, 8)}…`,
+      event.raw.id
+    );
+  }
+
+  // Same for arbiter.
+  const joinedArbiter = state.participants[Role.ARBITER];
+  if (joinedArbiter && joinedArbiter !== p.arbiterPubkey) {
+    return err("ARBITER_PUBKEY_MISMATCH",
+      `LOCK arbiterPubkey ${p.arbiterPubkey.slice(0, 8)}… disagrees with prior JOIN ${joinedArbiter.slice(0, 8)}…`,
+      event.raw.id
+    );
+  }
+
+  // Arbiter must be from the community pool (when one exists).
+  if (state.communityArbiters.length > 0
+      && !state.communityArbiters.includes(p.arbiterPubkey)) {
+    return err("ARBITER_NOT_IN_POOL",
+      "LOCK arbiterPubkey is not in this trade's communityArbiters pool",
+      event.raw.id
+    );
+  }
+
+  // The buyer and arbiter must be distinct from the seller (and each other).
+  const sellerPk = state.participants[Role.SELLER];
+  if ((sellerPk && (p.buyerPubkey === sellerPk || p.arbiterPubkey === sellerPk))
+      || p.buyerPubkey === p.arbiterPubkey) {
+    return err("DUPLICATE_PARTICIPANT",
+      "LOCK assigns the same pubkey to multiple roles",
       event.raw.id
     );
   }
@@ -337,6 +388,13 @@ function handleLock(state: EscrowState, event: ParsedEscrowEvent<LockPayload>): 
   next.status = EscrowStatus.LOCKED;
   next.lock.notesHash = p.notesHash;
   next.lock.lockedAt = p.lockedAt;
+
+  // Atomic-funding: LOCK populates buyer + arbiter slots. If they were
+  // already set by prior JOIN ACKs, this is a no-op (consistency was
+  // checked above). If they were null, this is the first time the chain
+  // sees those pubkeys.
+  next.participants[Role.BUYER] = p.buyerPubkey;
+  next.participants[Role.ARBITER] = p.arbiterPubkey;
 
   // Store encrypted shares — dual-encryption only (legacy format dropped
   // in v0.1.60). Each share object is stored keyed by shareIndex so any
@@ -547,7 +605,7 @@ function handleComplete(state: EscrowState, event: ParsedEscrowEvent<CompletePay
 function handleCancel(state: EscrowState, event: ParsedEscrowEvent<CancelPayload>): TransitionResult {
   const p = event.payload;
 
-  if (state.status !== EscrowStatus.CREATED && state.status !== EscrowStatus.FUNDED) {
+  if (state.status !== EscrowStatus.CREATED) {
     return err("INVALID_STATE",
       `Cannot CANCEL in state ${state.status} — sats may be locked`,
       event.raw.id
@@ -577,8 +635,8 @@ function handleCancel(state: EscrowState, event: ParsedEscrowEvent<CancelPayload
 function handleSubscribe(state: EscrowState, event: ParsedEscrowEvent<SubscribePayload>): TransitionResult {
   const p = event.payload;
 
-  // Only in CREATED or FUNDED state (before lock)
-  if (state.status !== EscrowStatus.CREATED && state.status !== EscrowStatus.FUNDED) {
+  // Only before lock
+  if (state.status !== EscrowStatus.CREATED) {
     return err("INVALID_STATE", `Cannot SUBSCRIBE in state ${state.status}`, event.raw.id);
   }
 
@@ -691,107 +749,6 @@ function handlePeriodRelease(state: EscrowState, event: ParsedEscrowEvent<Period
     next.status = EscrowStatus.COMPLETED;
     next.completedAt = p.releasedAt;
   }
-
-  return { ok: true, state: next };
-}
-
-// ── KICK ──────────────────────────────────────────────────────────────────
-// Dual-vote kick: 2 participants must agree to remove the third.
-// First vote records intent. Second vote executes the removal.
-// Reverts the escrow to CREATED so a new participant can join.
-
-function handleKick(state: EscrowState, event: ParsedEscrowEvent<KickPayload>): TransitionResult {
-  const p = event.payload;
-
-  // Only in FUNDED state (all 3 joined but not yet locked)
-  if (state.status !== EscrowStatus.FUNDED) {
-    return err("INVALID_STATE", `Cannot KICK in state ${state.status} — only allowed in FUNDED`, event.raw.id);
-  }
-
-  // Only existing participants can kick
-  const kickerRole = getRole(state, event.pubkey);
-  if (!kickerRole) {
-    return err("NOT_PARTICIPANT", "Only participants can kick", event.raw.id);
-  }
-
-  if (kickerRole !== p.kickerRole) {
-    return err("ROLE_MISMATCH", `Signer has role ${kickerRole} but claims ${p.kickerRole}`, event.raw.id);
-  }
-
-  // Can't kick yourself
-  if (p.targetRole === kickerRole) {
-    return err("SELF_KICK", "Cannot kick yourself — use CANCEL instead", event.raw.id);
-  }
-
-  // Can't kick the initiator
-  if (p.targetRole === state.initiator.role) {
-    return err("KICK_INITIATOR", "Cannot kick the trade initiator", event.raw.id);
-  }
-
-  const next = cloneState(state);
-  next.eventChain.push(event);
-
-  // Initialize kick votes for this target if not exists
-  if (!next.kickVotes[p.targetRole]) {
-    next.kickVotes[p.targetRole] = [];
-  }
-
-  // Check for duplicate vote
-  if (next.kickVotes[p.targetRole].includes(kickerRole)) {
-    return err("ALREADY_VOTED_KICK", `${kickerRole} already voted to kick ${p.targetRole}`, event.raw.id);
-  }
-
-  // Record the kick vote
-  next.kickVotes[p.targetRole].push(kickerRole);
-
-  // Check if 2 votes reached — execute the removal
-  if (next.kickVotes[p.targetRole].length >= 2) {
-    // Remove the kicked participant
-    next.participants[p.targetRole] = null;
-
-    // Clear all readiness (everyone needs to re-confirm after roster change)
-    next.readiness = {};
-
-    // Clear kick votes (fresh start)
-    next.kickVotes = {};
-
-    // Revert to CREATED (waiting for a replacement)
-    next.status = EscrowStatus.CREATED;
-  }
-
-  return { ok: true, state: next };
-}
-
-// ── READY ─────────────────────────────────────────────────────────────────
-// Participant confirms they're online and ready for the escrow to lock.
-// All 3 must confirm before LOCK is allowed.
-
-function handleReady(state: EscrowState, event: ParsedEscrowEvent<ReadyPayload>): TransitionResult {
-  const p = event.payload;
-
-  if (state.status !== EscrowStatus.FUNDED) {
-    return err("INVALID_STATE", `Cannot confirm READY in state ${state.status}`, event.raw.id);
-  }
-
-  const role = getRole(state, event.pubkey);
-  if (!role) {
-    return err("NOT_PARTICIPANT", "Only participants can confirm ready", event.raw.id);
-  }
-
-  if (role !== p.role) {
-    return err("ROLE_MISMATCH",
-      `Signer has role ${role} but event claims ${p.role}`,
-      event.raw.id
-    );
-  }
-
-  if (state.readiness[role]) {
-    return err("ALREADY_READY", `${role} has already confirmed ready`, event.raw.id);
-  }
-
-  const next = cloneState(state);
-  next.readiness[role] = true;
-  next.eventChain.push(event);
 
   return { ok: true, state: next };
 }
@@ -927,10 +884,6 @@ export function applyEvent(
       return handleCancel(state, event as ParsedEscrowEvent<CancelPayload>);
     case EscrowEventKind.CHAT:
       return handleChat(state, event as ParsedEscrowEvent<ChatPayload>);
-    case EscrowEventKind.READY:
-      return handleReady(state, event as ParsedEscrowEvent<ReadyPayload>);
-    case EscrowEventKind.KICK:
-      return handleKick(state, event as ParsedEscrowEvent<KickPayload>);
     case EscrowEventKind.SUBSCRIBE:
       return handleSubscribe(state, event as ParsedEscrowEvent<SubscribePayload>);
     case EscrowEventKind.PERIOD_RELEASE:
@@ -968,13 +921,13 @@ export function replayEventChain(events: ParsedEscrowEvent[]): TransitionResult 
   // (e.g. all 3 browsers auto-publish RESOLVE after seeing 2 votes).
   // Skipping them is safe because:
   //   - ALREADY_VOTED: duplicate vote from same pubkey (relay echo)
-  //   - ALREADY_READY: duplicate ready from same pubkey
+  //   - ALREADY_JOINED: duplicate JOIN ACK from same pubkey
   //   - ALREADY_SUBSCRIBED: duplicate subscribe event
-  //   - INVALID_STATE on RESOLVE/COMPLETE: already resolved/completed
   //   - DUPLICATE_CREATE: relay returned same CREATE twice
-  //   - ROLE_TAKEN: duplicate JOIN for same role
+  //   - ROLE_TAKEN: duplicate JOIN for same role from a different pubkey
+  //     after the slot was already filled (rare; prefer first-writer-wins)
   const benignCodes = new Set([
-    "ALREADY_VOTED", "ALREADY_READY", "ALREADY_SUBSCRIBED",
+    "ALREADY_VOTED", "ALREADY_JOINED", "ALREADY_SUBSCRIBED",
     "DUPLICATE_CREATE", "ROLE_TAKEN", "TERMINAL_STATE",
   ]);
 
