@@ -144,6 +144,20 @@ function validateLockPayload(data: unknown): data is LockPayload {
   // the LockPayload schema. We accept old LOCKs that still carry the
   // field, we just don't check or use it.
   const d = data as Record<string, unknown>;
+  // PR 3 handle reveal: handle / handleId / rail are all optional
+  // (non-fiat trades and pre-PR-3 trades won't carry them). When
+  // present they must be non-empty strings. The handleId is opaque
+  // (seller's local audit ref) and handle is the cleartext that
+  // gets revealed to participants — both shape-checked here.
+  if (d.handleId !== undefined && (typeof d.handleId !== "string" || d.handleId.length === 0)) {
+    return false;
+  }
+  if (d.handle !== undefined && (typeof d.handle !== "string" || d.handle.length === 0)) {
+    return false;
+  }
+  if (d.rail !== undefined && (typeof d.rail !== "string" || d.rail.length === 0)) {
+    return false;
+  }
   return (
     d.type === "escrow:lock" &&
     typeof d.notesHash === "string" &&

@@ -45,7 +45,13 @@ This is the deepest user-facing simplification in Chama. Most Bitcoin apps force
 
 **Payment methods are first-class extensible data, not enumerated UI.** Geofencing by community/currency means each community surfaces a different set of payment rails (Wave/Orange Money in Senegal, M-Pesa/Airtel Money in Kenya, Revolut/Wise in Europe, Cash App/Zelle in the US, PIX in Brazil, etc.). The Create-listing form must be designed as a searchable/toggleable list rather than a fixed button row, because the rail count per community can be 5–20+. Localization at this layer is structural, not cosmetic.
 
-**Payment handles are private by default; rails are public.** A listing publicly advertises *which rails* a seller accepts ("Wave, Orange Money, Wizall") but masks the actual handle in Browse and previews. The handle (phone number, bank account, masked username) is revealed only to the three trade participants at lock time, via NIP-44 encryption in the LOCK event payload. Customizable public-by-design usernames (Revtag, $cashtag, ZBD username, etc.) get an opt-in "show publicly" toggle per saved handle in Settings; default is masked. Sensitive handles (phone numbers, bank accounts) have no public-toggle path — privacy default is locked. The npub's rating history carries trust pre-lock; the handle becomes visible at the moment trust is committed via funding.
+**Payment handles are private by default; rails are public.** A listing publicly advertises *which rails* a seller accepts ("Wave, Orange Money, Wizall") but the actual handle (phone number, bank account, username) is governed by three distinct privacy contexts:
+
+1. **Browse / listing cards** — handle not shown at all. The card surfaces rail name only. No masked dots, no length leak, no format leak. Browsers see what method the seller accepts; nothing about who they are off-chain.
+2. **Listing detail / "review this offer" view** — handle still not shown by default. Listing detail shows rail name, seller rating, trade history, description, rate spread, premium fields. *Only if* the seller has explicitly opted-in to public visibility on a `allowPublicHandle:true` rail (Revtag, $cashtag, ZBD, Wise tag, Strike) does the handle render here, masked with reveal-on-tap. Sensitive rails (phone-number-based, bank-account-based) have no public-toggle path — privacy default is locked, not even at this layer.
+3. **Locked trade (the 3 participants only)** — handle revealed in cleartext via NIP-44 encryption in the LOCK event payload. The npub's rating history carries trust pre-lock; the handle becomes visible at the moment trust is committed via funding.
+
+The Settings panel where a user manages their own saved handles is a fourth context — owner-viewing-own-data — and uses masked-with-reveal-on-tap for owner convenience. This component should not be reused as-is for non-owner contexts; audience determines rules.
 
 ### 2.4 The Trinity Ring as architectural truth
 

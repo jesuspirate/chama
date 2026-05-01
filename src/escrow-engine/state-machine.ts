@@ -66,6 +66,7 @@ function cloneState(state: EscrowState): EscrowState {
     lock: {
       ...state.lock,
       shares: new Map(state.lock.shares),
+      handle: state.lock.handle ? { ...state.lock.handle } : null,
     },
     claim: { ...state.claim },
     eventChain: [...state.eventChain],
@@ -192,6 +193,7 @@ function handleCreate(event: ParsedEscrowEvent<CreatePayload>): TransitionResult
       notesHash: null,
       lockedAt: null,
       shares: new Map(),
+      handle: null,
     },
     claim: {
       claimerRole: null,
@@ -413,6 +415,21 @@ function handleLock(state: EscrowState, event: ParsedEscrowEvent<LockPayload>): 
   // participant can later look up any share and decrypt via encryptedFor.
   for (const share of p.shares) {
     next.lock.shares.set(String(share.shareIndex), share);
+  }
+
+  // PR 3: capture the revealed payment handle when present. The whole
+  // LockPayload is NIP-44-protected (encryptLock), so this cleartext
+  // only flows to the locker in production until the broader 3-recipient
+  // LOCK encryption fanout lands; in dev mode it's plaintext on relays
+  // by design. The render layer (handleDisplayForViewer) is what gates
+  // the cleartext display on viewer context regardless of where it sits
+  // in local state.
+  if (p.handle) {
+    next.lock.handle = {
+      id: p.handleId ?? null,
+      value: p.handle,
+      rail: p.rail ?? null,
+    };
   }
 
   // v0.1.71: legacy platformFeeMsats writeback.

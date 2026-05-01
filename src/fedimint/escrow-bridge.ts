@@ -16,6 +16,7 @@ import { type FedimintClient, type SSSShare } from "./fedimint-client.js";
 import { stashPendingRedemption, clearPendingRedemption } from "./pending-redemptions.js";
 import { type EscrowState, type LockShareEntry, Role, Outcome } from "../escrow-engine/types.js";
 import { getWinner } from "../escrow-engine/state-machine.js";
+import { getSavedHandle } from "../payments/saved-handles.js";
 
 // ══════════════════════════════════════════════════════════════════════════
 // BRIDGE
@@ -44,7 +45,14 @@ export class EscrowFedimintBridge {
    *
    * After this, the money is in escrow — no one can move it alone.
    */
-  async lockAndPublish(escrowId: string): Promise<EscrowState> {
+  async lockAndPublish(escrowId: string, opts: {
+    /** PR 3: ID of a saved handle in the seller's localStorage. The
+     *  bridge resolves it to cleartext at lock time and includes both
+     *  the cleartext + audit ID in the (encrypted) LockPayload so the
+     *  buyer and arbiter can read where to send fiat. Optional —
+     *  marketplace digital trades and raw escrows don't need it. */
+    savedHandleId?: string;
+  } = {}): Promise<EscrowState> {
     const state = this.escrow.getState(escrowId);
     if (!state) throw new Error(`Escrow ${escrowId} not loaded`);
 
@@ -147,6 +155,33 @@ export class EscrowFedimintBridge {
       shares.push({ shareIndex: i, encryptedFor });
     }
 
+    // PR 3 handle reveal: resolve the seller's chosen saved handle to
+    // cleartext at lock time. The cleartext flows inside the LockPayload
+    // (NIP-44-protected by encryption-config), so it never appears on
+    // the public listing or chat — only the three trade participants
+    // see it once payment lands. handleId is the seller's local audit
+    // reference; opaque to other participants but useful for the seller
+    // to cross-check which saved handle was used.
+    let handleId: string | undefined;
+    let handle: string | undefined;
+    let rail: string | undefined;
+    if (opts.savedHandleId) {
+      const saved = getSavedHandle(opts.savedHandleId);
+      if (saved) {
+        handleId = saved.id;
+        handle = saved.handle;
+        rail = saved.rail;
+      } else {
+        // Stale ID — the saved handle was deleted between selection and
+        // lock. Don't crash the lock; just emit without the handle and
+        // let the participants chat to coordinate. The trade still works.
+        console.warn(
+          `[chama] lockAndPublish: savedHandleId ${opts.savedHandleId} ` +
+          `not found in local storage — proceeding without handle reveal`
+        );
+      }
+    }
+
     return this.escrow.lockEscrow(escrowId, {
       notesHash: lockBundle.notesHash,
       shares,
@@ -154,6 +189,9 @@ export class EscrowFedimintBridge {
       arbiterFeeMsats: lockBundle.arbiterFeeMsats,
       buyerPubkey,
       arbiterPubkey,
+      handleId,
+      handle,
+      rail,
     });
   }
 

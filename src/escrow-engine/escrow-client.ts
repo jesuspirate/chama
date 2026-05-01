@@ -435,6 +435,12 @@ export class EscrowClient {
     arbiterFeeMsats: number;
     buyerPubkey: string;
     arbiterPubkey: string;
+    /** PR 3 handle reveal — all optional. The bridge resolves these
+     *  from the seller's saved handles before calling. None of these
+     *  apply to non-fiat trades (marketplace digital, raw escrow). */
+    handleId?: string;
+    handle?: string;
+    rail?: string;
   }): Promise<EscrowState> {
     const state = this.states.get(escrowId);
     if (!state) throw new Error(`Escrow ${escrowId} not loaded`);
@@ -450,6 +456,9 @@ export class EscrowClient {
       arbiterFeeMsats: params.arbiterFeeMsats,
       buyerPubkey: params.buyerPubkey,
       arbiterPubkey: params.arbiterPubkey,
+      handleId: params.handleId,
+      handle: params.handle,
+      rail: params.rail,
       lockedAt: now,
     };
 

@@ -17,6 +17,23 @@ import {
 import { getFederationInvite } from "../fedimint/index.js";
 import { COMMUNITY_REGISTRY, getCommunityBySlug } from "../communities/registry.js";
 import { getVoteLabel, categoryAllowsFulfillmentChoice, type Fulfillment } from "../labels/vote-labels.js";
+import {
+  RAIL_REGISTRY,
+  getRailByKey,
+  railsForCommunity,
+  railAllowsPublicHandle,
+} from "../payments/rail-registry.js";
+import {
+  type SavedHandle,
+  listSavedHandles,
+  addSavedHandle,
+  deleteSavedHandle,
+  setHandleVisibility,
+  getSavedHandlesByRail,
+  maskHandle,
+  handleDisplayForViewer,
+  publicHandleDisplay,
+} from "../payments/saved-handles.js";
 
 // ══════════════════════════════════════════════════════════════════════════
 // DESIGN TOKENS
@@ -1040,19 +1057,25 @@ function CountdownTimer({ expiresAt }: { expiresAt: number }) {
 // TRADE DETAIL
 // ══════════════════════════════════════════════════════════════════════════
 
-function TradeDetail({ state, pubkey, onBack, onVote, onClaim, onJoin, onLock, onSendChat, onReleasePeriod }: {
+function TradeDetail({ state, pubkey, onBack, onVote, onClaim, onJoin, onLock, onSendChat, onReleasePeriod, onOpenSettings }: {
   state: EscrowState; pubkey: string;
   onBack: () => void;
   onVote: (outcome: Outcome) => void;
   onClaim: () => void;
   onJoin: (role: Role) => void;
-  onLock: () => Promise<void>;
+  /** PR 3: optional savedHandleId names which of the seller's saved
+   *  payment handles to reveal in the LOCK payload. */
+  onLock: (savedHandleId?: string) => Promise<void>;
   onSendChat: (message: string) => void;
   onReleasePeriod?: (periodIndex: number) => void | Promise<void>;
+  onOpenSettings?: () => void;
 }) {
   const [voting, setVoting] = useState(false);
   const [joining, setJoining] = useState(false);
   const [locking, setLocking] = useState(false);
+  // PR 3: seller's saved-handle pick to reveal in the LOCK payload.
+  // Empty string = no handle revealed (still allowed for non-fiat trades).
+  const [selectedHandleId, setSelectedHandleId] = useState<string>("");
   const s = STATUS[state.status] || STATUS.CREATED;
   const myRole = state.participants.buyer === pubkey ? Role.BUYER
     : state.participants.seller === pubkey ? Role.SELLER
@@ -1299,7 +1322,12 @@ function TradeDetail({ state, pubkey, onBack, onVote, onClaim, onJoin, onLock, o
           a single event). For trades where the buyer has not yet
           published a JOIN ACK, the bridge will refuse to lock —
           surfaced here as a hint when buyer is missing. */}
-      {state.status === EscrowStatus.CREATED && myRole && canILock && (
+      {state.status === EscrowStatus.CREATED && myRole && canILock && (() => {
+        const fiatCategory = state.category === "p2p-trade"
+          || state.category === "bill-pay"
+          || state.category === "lending";
+        const allHandles = fiatCategory ? listSavedHandles() : [];
+        return (
         <div style={{
           background: T.card, border: `1px solid ${T.accent}44`,
           borderRadius: T.r, padding: 20, marginBottom: 16,
@@ -1318,11 +1346,61 @@ function TradeDetail({ state, pubkey, onBack, onVote, onClaim, onJoin, onLock, o
               ? "Spending from your wallet will split shares and publish LOCK in one step."
               : "Waiting for buyer to acknowledge the trade…"}
           </div>
+
+          {/* PR 3: handle reveal picker for fiat categories */}
+          {fiatCategory && (
+            <div style={{ marginBottom: 14 }}>
+              <div style={{
+                fontSize: 10, fontWeight: 600, color: T.muted,
+                fontFamily: T.mono, letterSpacing: 0.5, marginBottom: 6,
+              }}>
+                REVEAL HANDLE TO PARTICIPANTS
+              </div>
+              {allHandles.length === 0 ? (
+                <div style={{
+                  padding: "10px 12px", borderRadius: T.rs,
+                  background: T.surface, border: `1px dashed ${T.border}`,
+                  color: T.muted, fontFamily: T.mono, fontSize: 11,
+                  display: "flex", justifyContent: "space-between", alignItems: "center",
+                }}>
+                  <span>No saved handles. Lock will proceed without one.</span>
+                  {onOpenSettings && (
+                    <button onClick={onOpenSettings} style={{
+                      background: "none", border: "none",
+                      color: T.accent, fontFamily: T.mono, fontSize: 11,
+                      fontWeight: 700, cursor: "pointer", padding: 0,
+                    }}>+ Add</button>
+                  )}
+                </div>
+              ) : (
+                <select
+                  value={selectedHandleId}
+                  onChange={e => setSelectedHandleId(e.target.value)}
+                  style={{ ...inputStyle, color: T.text, background: T.surface }}
+                >
+                  <option value="">— don't reveal a handle —</option>
+                  {allHandles.map(h => {
+                    const rail = getRailByKey(h.rail);
+                    return (
+                      <option key={h.id} value={h.id}>
+                        {(rail?.displayName || h.rail) + " · " + maskHandle(h.handle)}
+                      </option>
+                    );
+                  })}
+                </select>
+              )}
+            </div>
+          )}
+
           <button
             disabled={locking || !state.participants.buyer}
             onClick={async () => {
               setLocking(true);
-              try { await onLock(); } finally { setLocking(false); }
+              try {
+                await onLock(selectedHandleId || undefined);
+              } finally {
+                setLocking(false);
+              }
             }}
             style={{
               width: "100%", padding: "16px", borderRadius: T.rs,
@@ -1343,6 +1421,47 @@ function TradeDetail({ state, pubkey, onBack, onVote, onClaim, onJoin, onLock, o
             fontSize: 9, color: T.muted, fontFamily: T.mono,
           }}>
             Real 2-of-3 Shamir split · ecash spent from your Fedimint wallet
+          </div>
+        </div>
+        );
+      })()}
+
+      {/* PR 3: revealed payment handle for the trade's three participants.
+          Cleartext is shown to participants; non-participants see masked
+          via handleDisplayForViewer (they shouldn't be in this code path
+          on a LOCKED trade since they can't decrypt LOCK content, but the
+          gate is there as defense in depth). */}
+      {state.status === EscrowStatus.LOCKED && state.lock.handle && (
+        <div style={{
+          background: T.card, border: `1px solid ${T.amber}44`,
+          borderRadius: T.r, padding: 16, marginBottom: 16,
+        }}>
+          <div style={{
+            fontSize: 11, fontWeight: 600, color: T.muted,
+            fontFamily: T.mono, letterSpacing: 1, marginBottom: 8,
+          }}>
+            PAYMENT HANDLE
+            {state.lock.handle.rail && (
+              <span style={{ color: T.amber, marginLeft: 8 }}>
+                · {getRailByKey(state.lock.handle.rail)?.displayName || state.lock.handle.rail}
+              </span>
+            )}
+          </div>
+          <div style={{
+            fontFamily: T.mono, fontSize: 14, color: T.text,
+            padding: "10px 12px", background: T.surface,
+            borderRadius: T.rs, border: `1px solid ${T.border}`,
+            wordBreak: "break-all" as const,
+          }}>
+            {handleDisplayForViewer(state.lock.handle.value, !!myRole)}
+          </div>
+          <div style={{
+            fontSize: 9, color: T.muted, fontFamily: T.mono,
+            marginTop: 6, lineHeight: 1.4,
+          }}>
+            {myRole
+              ? "Revealed only to the three trade participants via the LOCK event."
+              : "Hidden — only the buyer, seller, and arbiter can see the full handle."}
           </div>
         </div>
       )}
@@ -1765,6 +1884,244 @@ function Toast({ message, type, onDone }: { message: string; type: "success" | "
       maxWidth: "90vw", textAlign: "center", wordBreak: "break-word",
     }}>
       {type === "success" ? "✓ " : type === "error" ? "\u2717 " : "\u26a1 "}{message}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// SAVED PAYMENT HANDLES — Settings panel (PR 3)
+// ══════════════════════════════════════════════════════════════════════════
+//
+// Add/edit/delete payment handles. Per-handle visibility toggle renders
+// only when rail.allowPublicHandle === true (sensitive rails are locked
+// private — saved-handles.ts enforces the same on writes as defense in
+// depth). Handle preview is masked by default with reveal-on-tap so the
+// owner can audit without exposing PII to a shoulder-surfer.
+
+function SavedHandlesPanel({ communitySlug, onClose }: {
+  communitySlug: string;
+  onClose: () => void;
+}) {
+  const [handles, setHandles] = useState<SavedHandle[]>(() => listSavedHandles());
+  const [revealedIds, setRevealedIds] = useState<Set<string>>(new Set());
+  const [addRail, setAddRail] = useState<string>("");
+  const [addValue, setAddValue] = useState<string>("");
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = () => setHandles(listSavedHandles());
+
+  // Rails available to the user's current community — drives the picker
+  // in the "add" form. The user can always switch communities to see
+  // other rails, but bias the default toward what they'll actually use.
+  const availableRails = railsForCommunity(communitySlug);
+
+  const handleAdd = () => {
+    setError(null);
+    if (!addRail || !addValue.trim()) {
+      setError("Pick a rail and enter a handle");
+      return;
+    }
+    try {
+      addSavedHandle(addRail, addValue.trim());
+      setAddRail("");
+      setAddValue("");
+      refresh();
+    } catch (e: any) {
+      setError(e?.message || "Failed to save");
+    }
+  };
+
+  const handleDelete = (id: string) => {
+    deleteSavedHandle(id);
+    refresh();
+  };
+
+  const handleToggleVisibility = (h: SavedHandle) => {
+    setError(null);
+    const next = h.visibility === "public" ? "private" : "public";
+    const result = setHandleVisibility(h.id, next);
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
+    refresh();
+  };
+
+  const handleReveal = (id: string) => {
+    setRevealedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  return (
+    <div style={{ padding: 16, maxWidth: 560, margin: "0 auto" }}>
+      <div style={{
+        display: "flex", justifyContent: "space-between",
+        alignItems: "center", marginBottom: 20,
+      }}>
+        <span style={{ fontSize: 18, fontWeight: 700, color: T.text, fontFamily: T.sans }}>
+          Payment handles
+        </span>
+        <button onClick={onClose} style={{
+          background: "none", border: "none",
+          color: T.muted, fontSize: 20, cursor: "pointer",
+        }}>×</button>
+      </div>
+
+      <div style={{
+        fontSize: 11, color: T.muted, fontFamily: T.mono,
+        marginBottom: 16, lineHeight: 1.5,
+      }}>
+        Handles are private by default. They're revealed to the three
+        participants of a trade only after lock. Public-by-design rails
+        (Revtag, $cashtag, etc.) can be opted in for profile display.
+      </div>
+
+      {/* Existing handles list */}
+      {handles.length === 0 ? (
+        <div style={{
+          padding: 24, textAlign: "center", borderRadius: T.r,
+          background: T.surface, border: `1px dashed ${T.border}`,
+          color: T.muted, fontFamily: T.mono, fontSize: 12,
+          marginBottom: 20,
+        }}>
+          No saved handles yet. Add one below to auto-fill at trade time.
+        </div>
+      ) : (
+        <div style={{ marginBottom: 24 }}>
+          {handles.map(h => {
+            const rail = getRailByKey(h.rail);
+            const railName = rail?.displayName || h.rail;
+            const allowsPublic = railAllowsPublicHandle(h.rail);
+            const revealed = revealedIds.has(h.id);
+            const display = revealed ? h.handle : maskHandle(h.handle);
+            return (
+              <div key={h.id} style={{
+                background: T.card, border: `1px solid ${T.border}`,
+                borderRadius: T.r, padding: 14, marginBottom: 10,
+              }}>
+                <div style={{
+                  display: "flex", justifyContent: "space-between",
+                  alignItems: "baseline", marginBottom: 8,
+                }}>
+                  <span style={{
+                    fontSize: 12, fontWeight: 700, color: T.text,
+                    fontFamily: T.sans,
+                  }}>{railName}</span>
+                  {allowsPublic ? (
+                    <button
+                      onClick={() => handleToggleVisibility(h)}
+                      style={{
+                        padding: "3px 10px", borderRadius: 12,
+                        background: h.visibility === "public" ? T.greenDim : T.surface,
+                        border: `1px solid ${h.visibility === "public" ? T.green + "66" : T.border}`,
+                        color: h.visibility === "public" ? T.green : T.muted,
+                        fontFamily: T.mono, fontSize: 9, fontWeight: 700,
+                        cursor: "pointer", letterSpacing: 0.3,
+                      }}
+                    >
+                      {h.visibility === "public" ? "PUBLIC" : "PRIVATE"}
+                    </button>
+                  ) : (
+                    <span style={{
+                      padding: "3px 10px", borderRadius: 12,
+                      background: T.surface, border: `1px solid ${T.border}`,
+                      color: T.muted, fontFamily: T.mono, fontSize: 9, fontWeight: 700,
+                      letterSpacing: 0.3,
+                    }}>PRIVATE · LOCKED</span>
+                  )}
+                </div>
+                <div
+                  onClick={() => handleReveal(h.id)}
+                  style={{
+                    fontFamily: T.mono, fontSize: 13, color: T.text,
+                    padding: "8px 10px", background: T.surface,
+                    borderRadius: T.rs, cursor: "pointer",
+                    border: `1px solid ${T.border}`, marginBottom: 8,
+                  }}
+                  title={revealed ? "Tap to mask" : "Tap to reveal"}
+                >
+                  {display}
+                  <span style={{ float: "right", color: T.muted, fontSize: 10 }}>
+                    {revealed ? "🙈 mask" : "👁 reveal"}
+                  </span>
+                </div>
+                <button
+                  onClick={() => handleDelete(h.id)}
+                  style={{
+                    background: "none", border: "none",
+                    color: T.red, fontFamily: T.mono, fontSize: 10,
+                    cursor: "pointer", padding: 0,
+                  }}
+                >Delete</button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Add new handle */}
+      <div style={{
+        background: T.card, border: `1px solid ${T.border}`,
+        borderRadius: T.r, padding: 16,
+      }}>
+        <div style={{
+          fontSize: 11, fontWeight: 600, color: T.muted,
+          fontFamily: T.mono, letterSpacing: 1, marginBottom: 12,
+        }}>
+          ADD HANDLE
+        </div>
+        <div style={{ marginBottom: 10 }}>
+          <div style={{ fontSize: 11, color: T.muted, fontFamily: T.mono, marginBottom: 6 }}>
+            RAIL
+          </div>
+          <select
+            value={addRail}
+            onChange={e => { setAddRail(e.target.value); setError(null); }}
+            style={{ ...inputStyle, color: T.text, background: T.surface }}
+          >
+            <option value="">— pick a rail —</option>
+            {availableRails.map(r => (
+              <option key={r.key} value={r.key}>
+                {r.displayName} {r.allowPublicHandle ? "" : "· private only"}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ fontSize: 11, color: T.muted, fontFamily: T.mono, marginBottom: 6 }}>
+            HANDLE
+          </div>
+          <input
+            value={addValue}
+            onChange={e => { setAddValue(e.target.value); setError(null); }}
+            placeholder={getRailByKey(addRail)?.placeholder || "Your handle"}
+            style={inputStyle}
+          />
+        </div>
+        {error && (
+          <div style={{
+            color: T.red, fontFamily: T.mono, fontSize: 11,
+            marginBottom: 10,
+          }}>{error}</div>
+        )}
+        <button
+          onClick={handleAdd}
+          disabled={!addRail || !addValue.trim()}
+          style={{
+            width: "100%", padding: "12px", borderRadius: T.rs,
+            background: !addRail || !addValue.trim() ? T.surface : T.accentDim,
+            border: `1px solid ${!addRail || !addValue.trim() ? T.border : T.accent + "44"}`,
+            color: !addRail || !addValue.trim() ? T.muted : T.accent,
+            fontFamily: T.mono, fontSize: 12, fontWeight: 700,
+            cursor: !addRail || !addValue.trim() ? "default" : "pointer",
+          }}
+        >
+          Save handle
+        </button>
+      </div>
     </div>
   );
 }
@@ -2534,7 +2891,7 @@ export default function App() {
     },
   });
 
-  const [view, setView] = useState<"list" | "detail" | "create">("list");
+  const [view, setView] = useState<"list" | "detail" | "create" | "settings">("list");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [tab, setTab] = useState<"browse" | "mine">("browse");
   const [browseCategory, setBrowseCategory] = useState<string>("all");
@@ -2961,25 +3318,33 @@ export default function App() {
                 setToast({ message: e.message || "Failed to send", type: "error" })
               );
             }}
-            onLock={async () => {
+            onLock={async (savedHandleId?: string) => {
               if (!fedimint.joined) {
                 setToast({ message: "Join a federation first (scroll up).", type: "error" });
                 return;
               }
               try {
                 setToast({ message: "Spending ecash & splitting shares...", type: "info" });
-                await actions.lockAndPublish(selectedId!);
+                await actions.lockAndPublish(selectedId!, { savedHandleId });
                 setToast({ message: "Locked! Vote buttons are live.", type: "success" });
               } catch (e: any) {
                 setToast({ message: e.message || "Lock failed", type: "error" });
               }
             }}
+            onOpenSettings={() => setView("settings")}
           />
         </div>
       ) : view === "create" ? (
         <div style={{ animation: "fadeIn 0.3s ease" }}>
           <CreateForm
             onCreate={handleCreate}
+            onClose={() => setView("list")}
+          />
+        </div>
+      ) : view === "settings" ? (
+        <div style={{ animation: "fadeIn 0.3s ease" }}>
+          <SavedHandlesPanel
+            communitySlug={actions.getCommunity()}
             onClose={() => setView("list")}
           />
         </div>
@@ -3090,8 +3455,16 @@ export default function App() {
             </div>
           )}
 
-          {/* + New trade */}
-          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+          {/* + New trade · Settings */}
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginBottom: 12 }}>
+            <button onClick={() => setView("settings")} style={{
+              padding: "8px 14px", borderRadius: 20,
+              background: T.surface, border: `1px solid ${T.border}`,
+              color: T.muted, fontFamily: T.mono, fontSize: 12, fontWeight: 700,
+              cursor: "pointer",
+            }}>
+              ⚙ Settings
+            </button>
             <button onClick={() => setView("create")} style={{
               padding: "8px 16px", borderRadius: 20,
               background: T.accentDim, border: `1px solid ${T.accent}44`,

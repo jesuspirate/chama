@@ -292,6 +292,20 @@ export interface LockPayload {
    *    pool (or any pubkey if the pool is empty / pre-community trades). */
   buyerPubkey: string;
   arbiterPubkey: string;
+  /** PR 3: payment-handle reveal. The seller resolves their saved
+   *  handle at LOCK time and includes the cleartext here so the buyer
+   *  and arbiter know exactly where to send fiat. The whole LockPayload
+   *  is NIP-44-protected (encryptLock in encryption-config), so this
+   *  cleartext does NOT flow on listings or chat — only inside LOCK
+   *  content, only after the buyer's payment has triggered atomic lock.
+   *
+   *  All three fields are optional: marketplace digital trades, raw
+   *  escrows, and pre-PR-3 trades don't carry them. handleId is the
+   *  seller's local audit reference (their saved-handle ID, opaque to
+   *  others). rail names which payment rail the handle is for. */
+  handleId?: string;
+  handle?: string;
+  rail?: string;
   lockedAt: number;
 }
 
@@ -519,6 +533,14 @@ export interface EscrowState {
      *  Each entry contains the encryptedFor map so any participant can
      *  decrypt any share they need for Shamir reconstruction. */
     shares: Map<string, LockShareEntry>;
+    /** PR 3: revealed payment handle for the trade. Populated by
+     *  handleLock when the LockPayload carried handle/rail fields.
+     *  null when the trade is a non-fiat vertical (marketplace digital,
+     *  raw-escrow) or a pre-PR-3 trade. The render layer applies
+     *  handleDisplayForViewer() to gate cleartext display on viewer
+     *  context — non-participants see masked output even when this
+     *  field is populated locally. */
+    handle: { id: string | null; value: string; rail: string | null } | null;
   };
 
   /** Claim details */

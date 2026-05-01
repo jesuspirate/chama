@@ -94,6 +94,27 @@ import {
   categoryAllowsFulfillmentChoice,
 } from "../labels/vote-labels.js";
 
+// PR 3 imports
+import {
+  RAIL_REGISTRY,
+  getRailByKey,
+  railsForCommunity,
+  railAllowsPublicHandle,
+} from "../payments/rail-registry.js";
+import {
+  SAVED_HANDLES_STORAGE_KEY,
+  listSavedHandles,
+  getSavedHandle,
+  getSavedHandlesByRail,
+  addSavedHandle,
+  deleteSavedHandle,
+  updateSavedHandle,
+  setHandleVisibility,
+  maskHandle,
+  publicHandleDisplay,
+  handleDisplayForViewer,
+} from "../payments/saved-handles.js";
+
 // ── Test helpers ──────────────────────────────────────────────────────────
 
 const BUYER_PK    = "aa".repeat(32);
@@ -1132,6 +1153,331 @@ console.log("\n── VOTE LABEL DICTIONARY ──");
   assert(getVoteLabel("marketplace", defaultFulfillmentFor("marketplace"), Role.BUYER, Outcome.RELEASE)
     === "I received it",
     "Using defaultFulfillmentFor('marketplace') yields the physical labels");
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// PR 3 — saved payment handles + handle reveal in LOCK
+// ══════════════════════════════════════════════════════════════════════════
+
+// ── 18. RAIL REGISTRY + allowPublicHandle ─────────────────────────────────
+console.log("\n── RAIL REGISTRY ──");
+{
+  // Sanity: registry loaded with v1 seeds
+  assert(RAIL_REGISTRY.length > 0, "Rail registry has entries");
+
+  // Sensitive rails (phone-number-based, bank, email-based) MUST NOT
+  // allow public handles. This is the defense-in-depth invariant.
+  assert(railAllowsPublicHandle("wave") === false,
+    "Wave (Senegal mobile money) does NOT allow public handles");
+  assert(railAllowsPublicHandle("orange-money") === false,
+    "Orange Money does NOT allow public handles");
+  assert(railAllowsPublicHandle("m-pesa") === false,
+    "M-Pesa does NOT allow public handles");
+  assert(railAllowsPublicHandle("bank-transfer") === false,
+    "Bank transfer does NOT allow public handles");
+  assert(railAllowsPublicHandle("paypal") === false,
+    "PayPal (email-based) does NOT allow public handles");
+  assert(railAllowsPublicHandle("zelle") === false,
+    "Zelle does NOT allow public handles");
+  assert(railAllowsPublicHandle("venmo") === false,
+    "Venmo defaults to private (handle-can-be-PII-adjacent)");
+
+  // Public-by-design tags MUST allow public handles (the username IS
+  // the address — opt-in publishing is the whole point).
+  assert(railAllowsPublicHandle("revtag") === true,
+    "Revtag allows public handles (public-by-design)");
+  assert(railAllowsPublicHandle("cashtag") === true,
+    "$cashtag allows public handles");
+  assert(railAllowsPublicHandle("zbd") === true,
+    "ZBD username allows public handles");
+  assert(railAllowsPublicHandle("wise-tag") === true,
+    "Wise tag allows public handles");
+  assert(railAllowsPublicHandle("strike") === true,
+    "Strike allows public handles");
+
+  // Unknown rail → conservative refusal (don't promote unfamiliar
+  // handles to public by accident).
+  assert(railAllowsPublicHandle("never-heard-of-it") === false,
+    "Unknown rail conservatively refuses public");
+  assert(railAllowsPublicHandle(null) === false,
+    "Null rail conservatively refuses public");
+
+  // railsForCommunity: region-scoped + cross-community filtering
+  const senegal = railsForCommunity("sn-cfa");
+  assert(senegal.some(r => r.key === "wave"),
+    "sn-cfa community shows Wave");
+  assert(senegal.some(r => r.key === "orange-money"),
+    "sn-cfa community shows Orange Money");
+  assert(senegal.some(r => r.key === "revtag"),
+    "sn-cfa community ALSO shows global rails (Revtag)");
+  assert(!senegal.some(r => r.key === "m-pesa"),
+    "sn-cfa community does NOT show m-pesa (Kenya-only)");
+
+  const kenya = railsForCommunity("ke-kes");
+  assert(kenya.some(r => r.key === "m-pesa"),
+    "ke-kes community shows M-Pesa");
+  assert(!kenya.some(r => r.key === "wave"),
+    "ke-kes community does NOT show Wave (Senegal-only)");
+
+  // Lookup
+  assert(getRailByKey("revtag")?.displayName === "Revtag (Revolut)",
+    "getRailByKey returns the right rail");
+  assert(getRailByKey("xyz") === null, "Unknown key → null");
+  assert(getRailByKey(null) === null, "Null key → null");
+}
+
+// ── 19. SAVED HANDLES — CRUD + visibility refusal ────────────────────────
+console.log("\n── SAVED HANDLES (CRUD + visibility) ──");
+{
+  // Reset storage so this section starts clean
+  (globalThis as any).localStorage.clear();
+  assert(listSavedHandles().length === 0, "Fresh storage starts empty");
+
+  // Add — defaults to private
+  const a = addSavedHandle("revtag", "@alice");
+  assert(a.id.startsWith("h_"), "addSavedHandle returns a generated ID");
+  assert(a.rail === "revtag", "Saved rail matches");
+  assert(a.handle === "@alice", "Saved handle matches");
+  assert(a.visibility === "private", "New handles default to private");
+  assert(typeof a.createdAt === "number", "createdAt set");
+
+  // Round-trip: reading back returns the same shape
+  const list1 = listSavedHandles();
+  assert(list1.length === 1, "List shows 1 entry after add");
+  assert(list1[0].id === a.id, "Round-trip ID matches");
+
+  // Whitespace trimmed
+  const trimmed = addSavedHandle("revtag", "  @bob  ");
+  assert(trimmed.handle === "@bob", "addSavedHandle trims whitespace");
+
+  // Empty handle rejected
+  let threw = false;
+  try { addSavedHandle("revtag", "   "); } catch { threw = true; }
+  assert(threw, "addSavedHandle rejects empty handle (post-trim)");
+
+  // getSavedHandle by ID
+  assert(getSavedHandle(a.id)?.handle === "@alice",
+    "getSavedHandle returns matching entry");
+  assert(getSavedHandle("h_nope") === null,
+    "getSavedHandle returns null for unknown ID");
+
+  // getSavedHandlesByRail filters and orders newest-first
+  const senegal = addSavedHandle("wave", "+221 77 555 1234");
+  const byRevtag = getSavedHandlesByRail("revtag");
+  assert(byRevtag.length === 2, "Two revtag handles");
+  assert(byRevtag.every(h => h.rail === "revtag"),
+    "getSavedHandlesByRail filters correctly");
+  assert(getSavedHandlesByRail("wave").length === 1, "One wave handle");
+
+  // Update
+  const updated = updateSavedHandle(a.id, { handle: "@alice.new" });
+  assert(updated?.handle === "@alice.new", "updateSavedHandle changes handle");
+  assert(updated?.id === a.id, "ID preserved on update");
+  assert(getSavedHandle(a.id)?.handle === "@alice.new",
+    "Update persisted to storage");
+
+  // Visibility — public allowed for revtag (allowPublicHandle: true)
+  const setPublic = setHandleVisibility(a.id, "public");
+  assert(setPublic.ok === true, "Setting Revtag handle to public succeeds");
+  if (setPublic.ok) {
+    assert(setPublic.handle.visibility === "public",
+      "Returned handle shows public");
+  }
+  assert(getSavedHandle(a.id)?.visibility === "public",
+    "Public visibility persisted");
+
+  // Visibility — public REJECTED for wave (allowPublicHandle: false).
+  // Defense in depth: even if the UI accidentally renders the toggle,
+  // this layer refuses the change.
+  const setPublicSensitive = setHandleVisibility(senegal.id, "public");
+  assert(setPublicSensitive.ok === false,
+    "Setting Wave handle to public is REJECTED (defense in depth)");
+  if (!setPublicSensitive.ok) {
+    assert(/doesn't allow public/i.test(setPublicSensitive.error),
+      "Refusal carries an explanatory message");
+  }
+  // And the storage is unchanged
+  assert(getSavedHandle(senegal.id)?.visibility === "private",
+    "Sensitive handle remains private after rejected upgrade");
+
+  // Setting back to private is always allowed
+  const back = setHandleVisibility(a.id, "private");
+  assert(back.ok === true, "Setting back to private always allowed");
+  assert(getSavedHandle(a.id)?.visibility === "private",
+    "Private downgrade persisted");
+
+  // Visibility on unknown ID errors cleanly
+  const setMissing = setHandleVisibility("h_does_not_exist", "private");
+  assert(setMissing.ok === false, "Visibility on unknown ID returns error");
+
+  // Delete
+  deleteSavedHandle(a.id);
+  assert(getSavedHandle(a.id) === null, "deleteSavedHandle removes the entry");
+  assert(listSavedHandles().length === 2, "Other entries unaffected by delete");
+}
+
+// ── 20. MASKING + handleDisplayForViewer ─────────────────────────────────
+console.log("\n── MASKING + viewer-aware display ──");
+{
+  // Phone-shaped: keep prefix + last 4
+  assert(maskHandle("+221 77 123 4567").includes("•••"),
+    "Phone handle gets masked");
+  assert(maskHandle("+221 77 123 4567").endsWith("4567"),
+    "Phone handle keeps last 4 digits");
+  assert(maskHandle("+221 77 123 4567").startsWith("+221"),
+    "Phone handle keeps country prefix");
+
+  // Email-shaped: mask local + domain
+  const masked = maskHandle("alice@example.com");
+  assert(masked.includes("@"), "Email handle keeps the @");
+  assert(masked.startsWith("a•••"), "Email keeps first char of local");
+
+  // Generic short handle
+  assert(maskHandle("@x") === "•••", "Very short handle fully masked");
+  assert(maskHandle("@username").includes("•••"),
+    "Generic handle gets masked");
+
+  // handleDisplayForViewer — viewer-context decides everything
+  assert(handleDisplayForViewer("+221 77 555 1234", true) === "+221 77 555 1234",
+    "Participant viewer sees cleartext");
+  assert(handleDisplayForViewer("+221 77 555 1234", false).includes("•••"),
+    "Non-participant viewer sees masked output");
+  // Critical invariant: non-participants see masked REGARDLESS of how
+  // the data got into client state (e.g. legacy plaintext on wire).
+  // The flag the seller set is irrelevant to viewer-side rendering.
+  assert(handleDisplayForViewer("@public-handle", false).includes("•••"),
+    "Non-participants see masked even for public-by-design handles");
+
+  // publicHandleDisplay — visibility flag + rail policy gate
+  (globalThis as any).localStorage.clear();
+  const publicTag = addSavedHandle("revtag", "@bob");
+  setHandleVisibility(publicTag.id, "public");
+  const publicTagAfter = getSavedHandle(publicTag.id)!;
+  assert(publicHandleDisplay(publicTagAfter) === "@bob",
+    "publicHandleDisplay returns cleartext when public + allowed");
+
+  const sensitive = addSavedHandle("wave", "+221 77 555 1234");
+  // setHandleVisibility refused public above, so it's still private
+  const sensitiveAfter = getSavedHandle(sensitive.id)!;
+  assert(publicHandleDisplay(sensitiveAfter).includes("•••"),
+    "publicHandleDisplay masks private (and sensitive-by-policy) handles");
+}
+
+// ── 21. LOCK PAYLOAD HANDLE PROPAGATION ──────────────────────────────────
+console.log("\n── LOCK HANDLE PROPAGATION (atomic-funding flow) ──");
+{
+  // CREATE → LOCK with handleId/handle/rail in payload, verify state
+  // captures the resolved handle on EscrowState.lock.handle.
+  eventCounter = 400;
+
+  const create = createEvent();
+  let state = (applyEvent(null, create) as any).state;
+  assert(state.lock.handle === null,
+    "Pre-LOCK: state.lock.handle is null");
+
+  // Build a LOCK payload with handle fields
+  const lockWithHandle = makeParsedEvent(EscrowEventKind.LOCK, SELLER_PK, {
+    type: "escrow:lock" as const,
+    notesHash: "hash_of_ecash_notes_abc123",
+    shares: [
+      { shareIndex: 0, encryptedFor: { [BUYER_PK]: "x", [SELLER_PK]: "x", [ARBITER_PK]: "x" } },
+      { shareIndex: 1, encryptedFor: { [BUYER_PK]: "x", [SELLER_PK]: "x", [ARBITER_PK]: "x" } },
+      { shareIndex: 2, encryptedFor: { [BUYER_PK]: "x", [SELLER_PK]: "x", [ARBITER_PK]: "x" } },
+    ],
+    sellerReceivesMsats: 99_000_000,
+    arbiterFeeMsats: 1_000_000,
+    buyerPubkey: BUYER_PK,
+    arbiterPubkey: ARBITER_PK,
+    handleId: "h_seller_local_id_xyz",
+    handle: "+221 77 555 1234",
+    rail: "wave",
+    lockedAt: NOW,
+  }, create.raw.id);
+
+  const r = applyEvent(state, lockWithHandle);
+  if (assertOk(r, "LOCK with handle/rail/handleId → LOCKED")) {
+    assert(r.state.status === EscrowStatus.LOCKED, "Status is LOCKED");
+    assert(r.state.lock.handle !== null,
+      "state.lock.handle populated by LOCK payload");
+    assert(r.state.lock.handle?.value === "+221 77 555 1234",
+      "Resolved handle cleartext stored on EscrowState");
+    assert(r.state.lock.handle?.id === "h_seller_local_id_xyz",
+      "handleId audit reference preserved");
+    assert(r.state.lock.handle?.rail === "wave",
+      "Rail key preserved");
+  }
+
+  // LOCK without handle fields (non-fiat trade) leaves lock.handle null
+  eventCounter = 500;
+  const create2 = createEvent();
+  let state2 = (applyEvent(null, create2) as any).state;
+  const lockBare = lockEvent(create2.raw.id);
+  const r2 = applyEvent(state2, lockBare);
+  if (assertOk(r2, "LOCK without handle fields → LOCKED")) {
+    assert(r2.state.lock.handle === null,
+      "state.lock.handle stays null when LOCK omits handle");
+  }
+
+  // Defense-in-depth: the masking gate at the render boundary still
+  // applies even when state has cleartext locally. Non-participant
+  // sees masked output regardless of what's in state.lock.handle.value.
+  if (r.ok && r.state.lock.handle) {
+    const cleartext = r.state.lock.handle.value;
+    assert(handleDisplayForViewer(cleartext, true) === cleartext,
+      "Participant view: full cleartext from LOCK");
+    assert(handleDisplayForViewer(cleartext, false).includes("•••"),
+      "Non-participant view: masked even though cleartext sits in state");
+  }
+}
+
+// ── 22. EVENT PARSER — handle field validation ────────────────────────────
+console.log("\n── EVENT PARSER (PR 3 LOCK handle fields) ──");
+{
+  const baseLock = {
+    type: "escrow:lock" as const,
+    notesHash: "h",
+    shares: [
+      { shareIndex: 0, encryptedFor: { x: "y" } },
+      { shareIndex: 1, encryptedFor: { x: "y" } },
+      { shareIndex: 2, encryptedFor: { x: "y" } },
+    ],
+    sellerReceivesMsats: 99_000_000,
+    arbiterFeeMsats: 1_000_000,
+    buyerPubkey: BUYER_PK,
+    arbiterPubkey: ARBITER_PK,
+    lockedAt: NOW,
+  };
+  const raw = {
+    id: "lock_parse_test",
+    pubkey: SELLER_PK,
+    created_at: NOW,
+    kind: EscrowEventKind.LOCK,
+    tags: [["d", "lock-parse"]],
+    content: "x",
+    sig: "s",
+  };
+
+  // Valid: with all PR 3 fields
+  const okWith = parseEscrowEvent(raw, JSON.stringify({
+    ...baseLock, handleId: "h_x", handle: "@alice", rail: "revtag",
+  }), true);
+  assert(okWith.ok === true, "Parser accepts LOCK with handle fields");
+
+  // Valid: without (optional)
+  const okWithout = parseEscrowEvent(raw, JSON.stringify(baseLock), true);
+  assert(okWithout.ok === true, "Parser accepts LOCK without handle fields");
+
+  // Invalid: empty-string handle
+  const badEmpty = parseEscrowEvent(raw, JSON.stringify({
+    ...baseLock, handle: "",
+  }), true);
+  assert(!badEmpty.ok, "Parser rejects LOCK with empty-string handle");
+
+  // Invalid: non-string rail
+  const badRailType = parseEscrowEvent(raw, JSON.stringify({
+    ...baseLock, rail: 123,
+  }), true);
+  assert(!badRailType.ok, "Parser rejects LOCK with non-string rail");
 }
 
 // ══════════════════════════════════════════════════════════════════════════

@@ -149,8 +149,12 @@ export interface UseEscrowActions {
    * Atomic-funding flow: triggered as a side-effect of payment landing.
    *   spendNotes → Shamir split → NIP-44 encrypt shares → publish LOCK
    * The LOCK event self-describes buyer + arbiter; no prior READY ceremony.
+   *
+   * PR 3: optional savedHandleId names which of the seller's saved
+   * payment handles to reveal in the LOCK payload. Bridge resolves
+   * to cleartext at lock time. Omit for non-fiat trades.
    */
-  lockAndPublish: (escrowId: string) => Promise<EscrowState>;
+  lockAndPublish: (escrowId: string, opts?: { savedHandleId?: string }) => Promise<EscrowState>;
   /** Cast a vote */
   vote: (escrowId: string, outcome: Outcome) => Promise<EscrowState>;
   /**
@@ -740,11 +744,11 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     return bridgeRef.current;
   };
 
-  const lockAndPublishAction = useCallback(async (escrowId: string) => {
+  const lockAndPublishAction = useCallback(async (escrowId: string, opts: { savedHandleId?: string } = {}) => {
     const client = requireClient();
     const bridge = requireBridge();
     try {
-      const result = await bridge.lockAndPublish(escrowId);
+      const result = await bridge.lockAndPublish(escrowId, opts);
       vibrate([60, 30, 60, 30, 120]);
       // Refresh balance after spending ecash
       refreshBalanceRef.current?.().catch(() => {});
