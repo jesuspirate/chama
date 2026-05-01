@@ -59,7 +59,7 @@ When the ring is whole, the trade is whole. When an arc is missing, a participan
 
 **Web is canonical.** Chama is one app that adapts to its viewport, distributed through four vectors:
 
-- **Web (canonical):** chama.app, served directly. The reference experience.
+- **Web (canonical):** `chama.community` — the warmer brand surface and primary app entry point. `chama.exchange` is an owned alternate for institutional/partner/press contexts and as an optional LN address suffix. Both redirect to the same app. `chama.app` is the eventual canonical short identity when the domain becomes available.
 - **Phone (Capacitor):** iOS and Android binaries wrapping the same web code in a native shell.
 - **Sovereignty packages (`.s9pk` for Start9, `.umbrel-app` for Umbrel):** the same web app, packaged so node runners can self-host the frontend on their own infrastructure. This is not a different version of Chama — it is the same frontend served from the user's own machine. The privacy win is knowing your Chama UI isn't being served by anyone else.
 - **Desktop binaries (Tauri, optional, post-v1):** a thin native wrapper for users who prefer dock icons over bookmarks. Same code as web.
@@ -210,8 +210,9 @@ Apple-grade dark mode (#0a0a0a base, #f5f5f7 primary text, #86868b secondary tex
 - Manual arbiter selection (surface stats, optional manual pick)
 - Recurring payments unlock for graduated merchants (sats.coffee as design partner)
 - Auto-sweep detection at QR-OUT
+- **3D globe community picker.** Replace the v1 list-based picker with a cinematic interactive globe at first-login. Currencies-grouped or region-grouped highlights, live activity dots showing where trades are happening in real time. The "from the dark, the world appears" first-impression moment. Built deliberately as polish, not as load-bearing — v1's list picker remains as the keyboard-accessible / low-bandwidth fallback.
 - **LN address / NWC pre-fill at QR-OUT.** User adds a static Lightning address (e.g. `user@getalby.com`) or connects via NWC in Settings. QR-OUT pre-fills the destination — paste-invoice flow becomes a fallback, not the default. NWC enables true one-tap claims with no app-switching. The QR-OUT screen must gracefully degrade to the paste-invoice flow when neither is configured.
-- **Self-hosted LN addresses (chama.app/u/{username}).** Using [`lnaddrd`](https://github.com/elsirion/lnaddrd) on the Chama domain, users can opt to receive a `username@chama.app` address that resolves to their NWC connection or last-known invoice destination. Zero-config first-class Lightning identity for users who want it; opt-out for users who want to keep their LN identity sovereign elsewhere.
+- **Self-hosted LN addresses (`username@chama.community`, `username@chama.exchange`, eventually `username@chama.app`).** Using [`lnaddrd`](https://github.com/elsirion/lnaddrd) on the Chama domains, users can opt to receive a Chama-domain Lightning address that forwards to their NWC connection or registered LNURL. Chama never holds custody — just provides the friendly identity. Particularly valuable for Fedi users who visit Chama and want a portable LN identity.
 - Self-reveal gesture for individual ratings
 - Dashboard for failure-state telemetry (orphan-detection counts, drainPendingRedemptions recoveries)
 
