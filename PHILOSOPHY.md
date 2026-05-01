@@ -45,6 +45,8 @@ This is the deepest user-facing simplification in Chama. Most Bitcoin apps force
 
 **Payment methods are first-class extensible data, not enumerated UI.** Geofencing by community/currency means each community surfaces a different set of payment rails (Wave/Orange Money in Senegal, M-Pesa/Airtel Money in Kenya, Revolut/Wise in Europe, Cash App/Zelle in the US, PIX in Brazil, etc.). The Create-listing form must be designed as a searchable/toggleable list rather than a fixed button row, because the rail count per community can be 5–20+. Localization at this layer is structural, not cosmetic.
 
+**Payment handles are private by default; rails are public.** A listing publicly advertises *which rails* a seller accepts ("Wave, Orange Money, Wizall") but masks the actual handle in Browse and previews. The handle (phone number, bank account, masked username) is revealed only to the three trade participants at lock time, via NIP-44 encryption in the LOCK event payload. Customizable public-by-design usernames (Revtag, $cashtag, ZBD username, etc.) get an opt-in "show publicly" toggle per saved handle in Settings; default is masked. Sensitive handles (phone numbers, bank accounts) have no public-toggle path — privacy default is locked. The npub's rating history carries trust pre-lock; the handle becomes visible at the moment trust is committed via funding.
+
 ### 2.4 The Trinity Ring as architectural truth
 
 Chama is a 3-of-3 SSS escrow with 2-of-3 vote resolution, encoded into the brand at the deepest level. The Trinity Ring (orange/purple/teal arcs joined at three white knot dots) is not decoration — it's the visual shorthand for the entire trust model:
