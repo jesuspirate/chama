@@ -964,9 +964,18 @@ console.log("\n── COMMUNITY REGISTRY + STORAGE ──");
   assert(getCommunityBySlug(null) === null, "Null slug returns null");
   assert(getCommunityBySlug(undefined) === null, "Undefined slug returns null");
 
-  // All seeds default to BLF (federationInvite === null) for v1
-  const allUseBlf = COMMUNITY_REGISTRY.every(c => c.federationInvite === null);
-  assert(allUseBlf, "All v1 seed communities fall back to BLF (federationInvite null)");
+  // v0.1.82: global-usd was repointed from BLF to BP because BLF
+  // requires Iroh transport unavailable in open-web browsers. Other
+  // seed communities (sn-cfa, ke-kes, sv-usd) keep federationInvite
+  // null and inherit the BLF fallback — when their dedicated
+  // federations come online they'll override.
+  const nonGlobalUseFallback = COMMUNITY_REGISTRY
+    .filter(c => c.slug !== "global-usd")
+    .every(c => c.federationInvite === null);
+  assert(nonGlobalUseFallback,
+    "Non-global v1 communities fall back to BLF (federationInvite null)");
+  assert(getCommunityBySlug("global-usd")?.federationInvite?.startsWith("fed1") === true,
+    "global-usd has explicit federationInvite (browser-reachable BP)");
 
   // Storage roundtrip — defaults to global-usd when nothing set
   (globalThis as any).localStorage.clear();
@@ -1008,8 +1017,14 @@ console.log("\n── BLF RESOLVER ──");
     "Community with null federationInvite → BLF fallback");
   assert(resolveFederationForCommunity("ke-kes") === DEFAULT_FEDERATION_INVITE,
     "ke-kes → BLF fallback");
-  assert(resolveFederationForCommunity("global-usd") === DEFAULT_FEDERATION_INVITE,
-    "global-usd → BLF fallback");
+  // v0.1.82: global-usd no longer falls back to BLF — its registry
+  // entry has an explicit BP invite for browser reachability. Resolver
+  // returns whatever the registry says.
+  const globalUsdInvite = getCommunityBySlug("global-usd")!.federationInvite!;
+  assert(resolveFederationForCommunity("global-usd") === globalUsdInvite,
+    "global-usd → registry-pinned BP invite (not BLF)");
+  assert(globalUsdInvite !== DEFAULT_FEDERATION_INVITE,
+    "global-usd invite is distinct from BLF");
 
   // Custom invite override beats community resolution
   const fakeCustomInvite = "fed1qcustom_user_pasted_invite_for_resolver_test";

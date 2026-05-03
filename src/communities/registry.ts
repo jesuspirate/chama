@@ -68,13 +68,18 @@ export const COMMUNITY_REGISTRY: Community[] = [
     languages: ["es"],
     federationInvite: null,
   },
+  // Default for users without a community-specific federation. Routes to
+  // BP because BP guardians expose WebSocket endpoints reachable from
+  // browsers; BLF (the original v1 default) requires Iroh transport
+  // which is unavailable in browsers. Fedi mini-app users override via
+  // context.
   {
     slug: "global-usd",
     displayName: "Global · USD",
     currency: "USD",
     countries: [],
     languages: ["en", "es"],
-    federationInvite: null,
+    federationInvite: "fed11qgqzxgthwden5te0v9cxjtnzd96xxmmfdckhqunfde3kjurvv4ejucm0d5hsqqfqkggx3jz0tvfv5n7lj0e7gs7nh47z06ry95x4963wfh8xlka7a80su3952t",
   },
 ];
 
