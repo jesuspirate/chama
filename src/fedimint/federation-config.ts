@@ -73,6 +73,52 @@ export function hasCustomFederation(): boolean {
   }
 }
 
+// ── Active joined invite (PR 5) ──────────────────────────────────────────
+//
+// Records the invite that the OPFS-resident wallet was actually joined
+// with, separately from the user's preference (CUSTOM_INVITE_STORAGE_KEY).
+// On next page load, initFedimint compares the two: if they diverge, the
+// OPFS holds a stale federation and must be wiped before joining the
+// preferred one. Without this reconciliation, a user who pastes a new
+// custom invite and hits the old "case (b) silent no-op" gets stuck on
+// whatever federation their OPFS was created with — a refresh wouldn't
+// rescue them, since the OPFS persists across reloads.
+//
+// Written on every successful join/switch; cleared on full reset.
+export const ACTIVE_INVITE_STORAGE_KEY = "chama_active_invite";
+
+export function getActiveInvite(): string | null {
+  try {
+    if (typeof localStorage === "undefined") return null;
+    const v = localStorage.getItem(ACTIVE_INVITE_STORAGE_KEY);
+    return v && v.startsWith("fed1") ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+export function setActiveInvite(invite: string): void {
+  try {
+    if (typeof localStorage === "undefined") return;
+    const trimmed = invite.trim();
+    if (!trimmed) {
+      localStorage.removeItem(ACTIVE_INVITE_STORAGE_KEY);
+      return;
+    }
+    localStorage.setItem(ACTIVE_INVITE_STORAGE_KEY, trimmed);
+  } catch {
+    // localStorage unavailable — silently no-op
+  }
+}
+
+export function clearActiveInvite(): void {
+  try {
+    if (typeof localStorage !== "undefined") {
+      localStorage.removeItem(ACTIVE_INVITE_STORAGE_KEY);
+    }
+  } catch { /* no-op */ }
+}
+
 // ══════════════════════════════════════════════════════════════════════════
 // COMMUNITY-AWARE RESOLUTION (PR 2)
 // ══════════════════════════════════════════════════════════════════════════

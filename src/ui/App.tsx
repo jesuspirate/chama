@@ -2134,6 +2134,45 @@ function FedimintBar({ fedimint, onFund, onInit }: {
   fedimint: FedimintState; onFund: () => void; onInit: () => void;
 }) {
   const sats = Math.floor(fedimint.balanceMsats / 1000);
+
+  // PR 5: presets-aware display name. Source of truth is the runtime
+  // federationId, not the (sometimes-stale) federationName string. Falls
+  // back to "Custom federation (xxxxxxxx)" with the first 8 hex chars of
+  // fed_id so users can distinguish multiple custom feds at a glance.
+  const [pillPresets, setPillPresets] = useState<FederationPreset[]>(CURATED_PRESETS);
+  useEffect(() => {
+    let cancelled = false;
+    const ctrl = new AbortController();
+    fetchObserverFederations(ctrl.signal).then((observerList) => {
+      if (cancelled || observerList.length === 0) return;
+      setPillPresets(mergePresets(CURATED_PRESETS, observerList));
+    });
+    return () => { cancelled = true; ctrl.abort(); };
+  }, []);
+
+  let displayName: string;
+  if (!fedimint.joined) {
+    displayName = fedimint.busy ? "Connecting wallet..." : "No federation";
+  } else {
+    const matched = fedimint.federationId
+      ? pillPresets.find((p) => p.federationId === fedimint.federationId)
+      : null;
+    if (matched) {
+      displayName = matched.name;
+    } else if (fedimint.federationId) {
+      displayName = `Custom federation (${fedimint.federationId.slice(0, 8)})`;
+    } else {
+      displayName = fedimint.federationName;
+    }
+  }
+
+  // PR 5: warn pill state when the last health probe failed.
+  const healthFailed = fedimint.joined && fedimint.lastHealthOk === false;
+  const dotColor = healthFailed
+    ? T.amber
+    : fedimint.joined ? T.green : fedimint.busy ? T.amber : T.muted;
+  const dotGlow = !healthFailed && fedimint.joined ? `0 0 8px ${T.green}66` : "none";
+
   return (
     <div style={{
       display: "flex", alignItems: "center", justifyContent: "space-between",
@@ -2141,18 +2180,21 @@ function FedimintBar({ fedimint, onFund, onInit }: {
       borderBottom: `1px solid ${T.border}`, fontFamily: T.mono,
     }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-        <div style={{
-          width: 8, height: 8, borderRadius: "50%",
-          background: fedimint.joined ? T.green : fedimint.busy ? T.amber : T.muted,
-          boxShadow: fedimint.joined ? `0 0 8px ${T.green}66` : "none",
-          animation: fedimint.busy ? "pulse 1.2s infinite" : "none",
-          flexShrink: 0,
-        }} />
+        <div
+          title={healthFailed ? "Federation unreachable — receives will be refused" : undefined}
+          style={{
+            width: 8, height: 8, borderRadius: "50%",
+            background: dotColor,
+            boxShadow: dotGlow,
+            animation: fedimint.busy ? "pulse 1.2s infinite" : "none",
+            flexShrink: 0,
+          }}
+        />
         <span style={{
           fontSize: 10, color: T.muted,
           overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
         }}>
-          {fedimint.joined ? fedimint.federationName : fedimint.busy ? "Connecting wallet..." : "No federation"}
+          {displayName}
         </span>
         {fedimint.joined && (
           <>
@@ -2189,37 +2231,35 @@ function FedimintBar({ fedimint, onFund, onInit }: {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-// v0.1.73 dev fed-switch — DEV MODE PANEL
+// SWITCH FEDERATION PANEL — power-user advanced action (PR 5)
 // ══════════════════════════════════════════════════════════════════════════
 //
-// Renders only when:
-//   (1) localStorage.chama_dev_fed_switch === "1"
-//   (2) fedimint.joined === true
+// Renders inside the Advanced section of the wallet area when the user is
+// already joined to a federation. Lets the user pick a different
+// federation (curated, observer, or custom invite) and commit the switch
+// via actions.switchFederation.
 //
-// Shows a federation dropdown that ACTUALLY commits a switch on
-// selection (via actions.devSwitchFederation). Used to test v0.1.72
-// federation gates by deliberately putting a wallet on a different
-// fed than the one a trade was created on.
-//
-// Real users never see this. Activation:
-//   localStorage.setItem("chama_dev_fed_switch", "1");
-//   location.reload();
+// Promoted from DevModePanel in PR 5: the localStorage.chama_dev_fed_switch
+// gate has been dropped — the v0.1.76 balance guard is the safety. In v2
+// the user-facing surface for federation choice will move into the
+// community picker (community switch implies federation rebind), so this
+// panel is the transitional home.
 // ══════════════════════════════════════════════════════════════════════════
 
-function DevModePanel({
+function SwitchFederationPanel({
   fedimint,
   onSwitch,
 }: {
   fedimint: FedimintState;
-  onSwitch: (inviteCode: string) => Promise<void>;
+  onSwitch: (inviteCode: string, opts?: { force?: boolean }) => Promise<void>;
 }) {
   const [presets, setPresets] = useState<FederationPreset[]>(CURATED_PRESETS);
   const [selectedInvite, setSelectedInvite] = useState<string>(DEFAULT_FEDERATION_INVITE);
+  const [customInvite, setCustomInvite] = useState<string>("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const [confirmingSwitch, setConfirmingSwitch] = useState<FederationPreset | null>(null);
+  const [confirming, setConfirming] = useState<{ name: string; invite: string } | null>(null);
 
-  // Fetch the live observer list on mount (same pattern as FederationJoinPanel)
   useEffect(() => {
     let cancelled = false;
     const ctrl = new AbortController();
@@ -2233,35 +2273,54 @@ function DevModePanel({
   }, []);
 
   const selectedPreset = presets.find((p) => p.inviteCode === selectedInvite) || presets[0];
+  const customTrimmed = customInvite.trim();
+  const customValid = customTrimmed.startsWith("fed1");
 
-  const doSwitch = async (preset: FederationPreset) => {
+  const requestPresetSwitch = () => {
+    if (!selectedPreset) return;
+    setConfirming({ name: selectedPreset.name, invite: selectedPreset.inviteCode });
+  };
+  const requestCustomSwitch = () => {
+    if (!customValid) return;
+    setConfirming({
+      name: `Custom federation (${customTrimmed.slice(4, 12)}…)`,
+      invite: customTrimmed,
+    });
+  };
+
+  const doSwitch = async (target: { name: string; invite: string }, force: boolean) => {
     setBusy(true);
     setErr(null);
     try {
-      await onSwitch(preset.inviteCode);
+      await onSwitch(target.invite, force ? { force: true } : undefined);
+      setConfirming(null);
+      setCustomInvite("");
     } catch (e: any) {
       setErr(e?.message || "Switch failed");
+      // Keep dialog open so the user can re-confirm with force if the
+      // refusal was the balance guard.
     } finally {
       setBusy(false);
-      setConfirmingSwitch(null);
     }
   };
 
+  const refusalCode = (err && /SWITCH_REFUSED_NONZERO_BALANCE/i.test(err)) ? "balance" : null;
+
   return (
     <div style={{
-      margin: "8px 16px", padding: 12,
-      background: "#2a1f00", border: `1px dashed ${T.amber}`, borderRadius: T.rs,
+      marginTop: 14, paddingTop: 12, borderTop: `1px dashed ${T.border}`,
     }}>
       <div style={{
-        fontSize: 9, fontWeight: 700, color: T.amber, fontFamily: T.mono,
-        letterSpacing: 1.5, marginBottom: 8,
+        fontSize: 10, fontWeight: 600, color: T.muted, fontFamily: T.mono,
+        letterSpacing: 1, marginBottom: 8,
       }}>
-        ⚠ DEV MODE — FEDERATION SWITCH (testing only)
+        SWITCH FEDERATION
       </div>
-      <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono, marginBottom: 8, lineHeight: 1.5 }}>
+      <div style={{ fontSize: 11, color: T.muted, fontFamily: T.mono, marginBottom: 10, lineHeight: 1.5 }}>
         Currently on: <span style={{ color: T.text }}>{fedimint.federationName}</span>
       </div>
-      <div style={{ display: "flex", gap: 8 }}>
+
+      <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
         <select
           value={selectedInvite}
           onChange={(e) => setSelectedInvite(e.target.value)}
@@ -2287,20 +2346,44 @@ function DevModePanel({
           )}
         </select>
         <button
-          disabled={busy || !selectedPreset}
-          onClick={() => selectedPreset && setConfirmingSwitch(selectedPreset)}
+          disabled={busy || !selectedPreset || selectedPreset.inviteCode === fedimint.federationId}
+          onClick={requestPresetSwitch}
           style={{
             padding: "8px 14px", borderRadius: T.rs,
-            background: T.amber, border: "none",
-            color: "#000", fontFamily: T.mono, fontSize: 11, fontWeight: 700,
+            background: T.surface, border: `1px solid ${T.border}`,
+            color: T.text, fontFamily: T.mono, fontSize: 11, fontWeight: 700,
             cursor: busy ? "not-allowed" : "pointer", whiteSpace: "nowrap",
           }}
         >
-          {busy ? "Switching…" : "DEV SWITCH"}
+          {busy ? "Switching…" : "Switch"}
         </button>
       </div>
 
-      {err && (
+      <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+        <input
+          type="text"
+          placeholder="…or paste custom fed1 invite"
+          value={customInvite}
+          onChange={(e) => setCustomInvite(e.target.value)}
+          disabled={busy}
+          style={{ ...inputStyle, flex: 1, marginBottom: 0 }}
+        />
+        <button
+          disabled={busy || !customValid}
+          onClick={requestCustomSwitch}
+          style={{
+            padding: "8px 14px", borderRadius: T.rs,
+            background: T.surface, border: `1px solid ${T.border}`,
+            color: customValid ? T.text : T.muted,
+            fontFamily: T.mono, fontSize: 11, fontWeight: 700,
+            cursor: busy || !customValid ? "not-allowed" : "pointer", whiteSpace: "nowrap",
+          }}
+        >
+          Switch
+        </button>
+      </div>
+
+      {err && !confirming && (
         <div style={{
           marginTop: 8, padding: 8, borderRadius: T.rs,
           background: T.redDim, border: `1px solid ${T.red}44`,
@@ -2310,7 +2393,7 @@ function DevModePanel({
         </div>
       )}
 
-      {confirmingSwitch && (
+      {confirming && (
         <div style={{
           position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)",
           display: "flex", alignItems: "center", justifyContent: "center",
@@ -2318,14 +2401,14 @@ function DevModePanel({
         }}>
           <div style={{
             maxWidth: 420, width: "100%", padding: 20, borderRadius: T.r,
-            background: T.card, border: `1px solid ${T.amber}`,
+            background: T.card, border: `1px solid ${T.border}`,
           }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: T.amber, fontFamily: T.mono, letterSpacing: 1, marginBottom: 12 }}>
-              ⚠ DEV: CONFIRM FEDERATION SWITCH
+            <div style={{ fontSize: 11, fontWeight: 700, color: T.text, fontFamily: T.mono, letterSpacing: 1, marginBottom: 12 }}>
+              CONFIRM FEDERATION SWITCH
             </div>
             <div style={{ fontSize: 13, color: T.text, fontFamily: T.sans, lineHeight: 1.55, marginBottom: 16 }}>
               Switch from <strong>{fedimint.federationName}</strong> to{" "}
-              <strong>{confirmingSwitch.name}</strong>?
+              <strong>{confirming.name}</strong>?
             </div>
             <div style={{ fontSize: 11, color: T.muted, fontFamily: T.mono, lineHeight: 1.5, marginBottom: 16 }}>
               This wipes the local Fedimint wallet's OPFS file and re-joins
@@ -2333,9 +2416,26 @@ function DevModePanel({
               be stranded until you switch back. Your Nostr-backed seed
               and trade history survive.
             </div>
+
+            {err && (
+              <div style={{
+                marginBottom: 16, padding: 10, borderRadius: T.rs,
+                background: T.redDim, border: `1px solid ${T.red}44`,
+                color: T.red, fontFamily: T.mono, fontSize: 11, lineHeight: 1.5,
+              }}>
+                {err}
+                {refusalCode === "balance" && (
+                  <div style={{ marginTop: 8, color: T.amber }}>
+                    Click <strong>Switch and destroy ecash</strong> to override.
+                    This permanently destroys the balance held under this fed.
+                  </div>
+                )}
+              </div>
+            )}
+
             <div style={{ display: "flex", gap: 8 }}>
               <button
-                onClick={() => setConfirmingSwitch(null)}
+                onClick={() => { setConfirming(null); setErr(null); }}
                 disabled={busy}
                 style={{
                   flex: 1, padding: "10px 14px", borderRadius: T.rs,
@@ -2347,16 +2447,20 @@ function DevModePanel({
                 Cancel
               </button>
               <button
-                onClick={() => doSwitch(confirmingSwitch)}
+                onClick={() => doSwitch(confirming, refusalCode === "balance")}
                 disabled={busy}
                 style={{
                   flex: 1, padding: "10px 14px", borderRadius: T.rs,
-                  background: T.amber, border: "none",
-                  color: "#000", fontFamily: T.mono, fontSize: 12, fontWeight: 700,
+                  background: refusalCode === "balance" ? T.red : T.accent,
+                  border: "none",
+                  color: refusalCode === "balance" ? "#fff" : "#000",
+                  fontFamily: T.mono, fontSize: 12, fontWeight: 700,
                   cursor: busy ? "not-allowed" : "pointer",
                 }}
               >
-                {busy ? "Switching…" : "Switch federation"}
+                {busy ? "Switching…"
+                  : refusalCode === "balance" ? "Switch and destroy ecash"
+                  : "Switch federation"}
               </button>
             </div>
           </div>
@@ -3178,28 +3282,6 @@ export default function App() {
         }}
       />
 
-      {/* v0.1.73 dev fed-switch — only renders when the flag is set + joined */}
-      {fedimint.joined && (() => {
-        try {
-          return typeof localStorage !== "undefined" &&
-            localStorage.getItem("chama_dev_fed_switch") === "1";
-        } catch { return false; }
-      })() && (
-        <DevModePanel
-          fedimint={fedimint}
-          onSwitch={async (inviteCode: string) => {
-            try {
-              setToast({ message: "DEV: switching federation…", type: "info" });
-              await actions.devSwitchFederation(inviteCode);
-              setToast({ message: "DEV: federation switch complete", type: "success" });
-            } catch (e: any) {
-              setToast({ message: e?.message || "Switch failed", type: "error" });
-              throw e;
-            }
-          }}
-        />
-      )}
-
       {/* Fedimint wallet bar */}
       <FedimintBar
         fedimint={fedimint}
@@ -3208,6 +3290,41 @@ export default function App() {
           (e: any) => setToast({ message: e.message || "Federation join failed", type: "error" })
         )}
       />
+
+      {/* PR 5: post-join Advanced area — federation switch lives here.
+          The pre-join FederationJoinPanel below has its own Advanced
+          toggle for the custom-invite first-join flow. */}
+      {fedimint.joined && (
+        <div style={{
+          margin: "0 16px 12px", padding: "12px 16px",
+          background: T.card, border: `1px solid ${T.border}`, borderRadius: T.r,
+        }}>
+          <button
+            onClick={() => setShowAdvancedFederation(!showAdvancedFederation)}
+            style={{
+              background: "none", border: "none", color: T.muted,
+              fontFamily: T.mono, fontSize: 10, cursor: "pointer", padding: 0,
+            }}
+          >
+            {showAdvancedFederation ? "▲" : "▼"} Advanced — switch or reset wallet
+          </button>
+          {showAdvancedFederation && (
+            <SwitchFederationPanel
+              fedimint={fedimint}
+              onSwitch={async (inviteCode: string, opts) => {
+                try {
+                  setToast({ message: "Switching federation…", type: "info" });
+                  await actions.switchFederation(inviteCode, opts);
+                  setToast({ message: "Federation switch complete", type: "success" });
+                } catch (e: any) {
+                  setToast({ message: e?.message || "Switch failed", type: "error" });
+                  throw e;
+                }
+              }}
+            />
+          )}
+        </div>
+      )}
 
       {/* Federation onboarding panel (only if not joined) */}
       {!fedimint.joined && (
@@ -3224,7 +3341,16 @@ export default function App() {
               if (preset.inviteCode !== DEFAULT_FEDERATION_INVITE) {
                 actions.setCustomInvite(preset.inviteCode);
               }
-              await actions.initFedimint(preset.inviteCode);
+              // PR 5: if a wallet is already in memory pointing somewhere,
+              // route through switchFederation so the OPFS gets wiped and
+              // the new fed actually lands. The case (b) silent no-op in
+              // FedimintClient.joinFederation made the old initFedimint
+              // path store the invite without re-binding the wallet.
+              if (fedimint.federationId) {
+                await actions.switchFederation(preset.inviteCode);
+              } else {
+                await actions.initFedimint(preset.inviteCode);
+              }
               setToast({ message: `Joined ${preset.name}! You can now fund and trade.`, type: "success" });
             } catch (e: any) {
               setToast({ message: e.message || "Join failed", type: "error" });
@@ -3239,7 +3365,13 @@ export default function App() {
             try {
               actions.setCustomInvite(invite);
               setToast({ message: "Joining custom federation...", type: "info" });
-              await actions.initFedimint(invite);
+              // PR 5: same routing as onJoinPreset — switch instead of
+              // init when a wallet is already bound to a fed.
+              if (fedimint.federationId) {
+                await actions.switchFederation(invite);
+              } else {
+                await actions.initFedimint(invite);
+              }
               setToast({ message: "Joined custom federation!", type: "success" });
             } catch (e: any) {
               setToast({ message: e.message || "Join failed", type: "error" });

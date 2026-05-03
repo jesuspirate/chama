@@ -59,6 +59,9 @@ import {
   resetLocalFedimintWallet,
   drainPendingRedemptions,
   checkAndMaybeRepublishSeed,
+  getActiveInvite,
+  setActiveInvite,
+  clearActiveInvite,
 } from "../fedimint/index.js";
 import { getUserCommunitySlug, setUserCommunitySlug } from "../communities/storage.js";
 import { getCommunityBySlug, type Community } from "../communities/registry.js";
@@ -104,6 +107,18 @@ export interface FedimintState {
   busy: boolean;
   /** Latest Fedimint error (separate from escrow error) */
   error: string | null;
+  /**
+   * PR 5: cached federation health probe result.
+   * `true`  = last probe succeeded (or last join/switch succeeded — that
+   *           also proves reachability).
+   * `false` = last probe failed; receive operations should refuse until
+   *           a fresh probe succeeds.
+   * `null`  = no probe yet (e.g. just after fresh init, before first
+   *           receive). Receive ops trigger a fresh probe in this case.
+   */
+  lastHealthOk: boolean | null;
+  /** PR 5: ms-since-epoch of the last probe. Used for the 30s cache TTL. */
+  lastHealthAt: number | null;
 }
 
 export interface UseEscrowState {
@@ -206,24 +221,19 @@ export interface UseEscrowActions {
    */
   resetLocalWallet: () => Promise<void>;
   /**
-   * v0.1.73 dev fed-switch — TESTING ONLY.
+   * Switch the Fedimint wallet to a different federation. Atomically:
+   *   1. Cleans up the in-memory FedimintClient (terminates worker)
+   *   2. Wipes the current OPFS file + rotates to a fresh filename
+   *   3. Re-initializes with the new invite code
    *
-   * Atomically switch the Fedimint wallet to a different federation by:
-   *   1. Cleaning up the in-memory FedimintClient (terminates worker)
-   *   2. Wiping the current OPFS file + rotating to a fresh filename
-   *   3. Re-initializing with the new invite code
-   *
-   * This is destructive: any ecash held in the previous federation
-   * becomes "stranded" until you switch back. The Nostr-backed seed
-   * is preserved across the switch — your trade history, escrows,
-   * and signer all survive. Only the Fedimint wallet's local state
-   * is reset.
-   *
-   * Gated on `localStorage.chama_dev_fed_switch === "1"`. Real users
-   * never see this. The UI only renders the dev panel when the flag
-   * is set.
+   * Destructive: any ecash held in the previous federation becomes
+   * stranded until you switch back. The v0.1.76 balance guard refuses
+   * the switch if `getBalance() > 0` unless `{ force: true }` is passed,
+   * which the UI must only do after explicit user confirmation. The
+   * Nostr-backed seed survives — trade history, escrows, and signer
+   * are unaffected.
    */
-  devSwitchFederation: (inviteCode: string) => Promise<void>;
+  switchFederation: (inviteCode: string, options?: { force?: boolean }) => Promise<void>;
   /** (Re-)start the Browse feed subscription for public listings. */
   watchPublicListings: (since?: number) => void;
   /** PR 2: read the user's selected community slug (always returns
@@ -272,6 +282,14 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
   const fedimintRef = useRef<FedimintClient | null>(null);
   const bridgeRef = useRef<EscrowFedimintBridge | null>(null);
   const signerRef = useRef<Signer | null>(null);
+  // PR 5: federation health cache. Mirrored into React state for the UI;
+  // the ref is the source of truth read inside createFundingInvoice so
+  // we don't depend on the latest closure of `state`.
+  const healthRef = useRef<{ ok: boolean | null; at: number | null }>({ ok: null, at: null });
+  // PR 5: latest state mirror. Lets callbacks read current values
+  // (e.g. federationName for error copy) without re-creating the
+  // callback on every state change.
+  const stateRef = useRef<UseEscrowState | null>(null);
 
   const [state, setState] = useState<UseEscrowState>({
     connected: false,
@@ -290,12 +308,18 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       balanceMsats: 0,
       busy: false,
       error: null,
+      lastHealthOk: null,
+      lastHealthAt: null,
     },
   });
 
   const updateFedimint = useCallback((partial: Partial<FedimintState>) => {
     setState(prev => ({ ...prev, fedimint: { ...prev.fedimint, ...partial } }));
   }, []);
+
+  // PR 5: keep stateRef in sync with state on every render so callbacks
+  // can read the latest values without taking `state` as a dependency.
+  stateRef.current = state;
 
   // ── State updater helpers ───────────────────────────────────────────────
 
@@ -602,6 +626,8 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
         balanceMsats: 0,
         busy: false,
         error: null,
+        lastHealthOk: null,
+        lastHealthAt: null,
       },
     });
   }, []);
@@ -1065,6 +1091,48 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     updateFedimint({ busy: true, error: null });
 
     try {
+      // PR 5: load-time reconciliation. The user's preferred invite
+      // (custom override or community/BLF default) might differ from
+      // what the OPFS-resident wallet was last joined to — typically
+      // because a previous session pasted a custom invite under the
+      // old "case (b) silent no-op" code path that stored the invite
+      // but never actually re-joined. On a cold start (no in-memory
+      // FedimintClient yet), wipe the OPFS so the desired join lands
+      // cleanly. Without this, users get permanently stuck on
+      // whatever fed their OPFS was created with.
+      //
+      // Only fires when (a) we're starting cold, (b) we have a record
+      // of a previous active invite, and (c) it differs from what
+      // we're about to join. Fresh installs and unchanged preferences
+      // skip this entirely — no extra OPFS churn for normal users.
+      const userCommunity = getUserCommunitySlug();
+      const desiredInvite = inviteCode?.trim()
+        || resolveFederationForCommunity(userCommunity);
+      const previousActiveInvite = getActiveInvite();
+      if (
+        !fedimintRef.current
+        && previousActiveInvite
+        && previousActiveInvite !== desiredInvite
+      ) {
+        console.warn(
+          "[chama] OPFS-bound invite differs from preferred invite — wiping OPFS to honor preference",
+          {
+            previous: previousActiveInvite.slice(0, 24) + "…",
+            desired: desiredInvite.slice(0, 24) + "…",
+          },
+        );
+        try {
+          await resetLocalFedimintWallet();
+        } catch (e) {
+          // Best-effort: if the wipe fails, the join below will still
+          // open the existing OPFS. Worst case the case (b) symptom
+          // recurs and the user sees the broken-old behavior — better
+          // than crashing init outright.
+          console.warn("[chama] OPFS wipe during reconciliation threw (non-fatal):", e);
+        }
+        clearActiveInvite();
+      }
+
       // Reuse existing instance if already initialized
       let fedimint = fedimintRef.current;
       if (!fedimint) {
@@ -1100,15 +1168,17 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
 
       // PR 2: resolve via the community-aware path. Precedence is
       // explicit arg > custom stored invite > community.federationInvite
-      // > BLF default. resolveFederationForCommunity handles the bottom
-      // three; the explicit arg is the manual override on top.
-      const userCommunity = getUserCommunitySlug();
-      const effectiveInvite = inviteCode?.trim()
-        || resolveFederationForCommunity(userCommunity);
+      // > BLF default. desiredInvite is computed at the top of the
+      // function for the PR 5 reconciliation pass; reuse it here.
+      const effectiveInvite = desiredInvite;
       const usingCustom = hasCustomFederation() || !!inviteCode?.trim();
 
       // Join federation (idempotent in the SDK)
       const federationId = await fedimint.joinFederation(effectiveInvite);
+
+      // PR 5: record the actually-joined invite so the next cold start
+      // can reconcile if the user later switches preference.
+      setActiveInvite(effectiveInvite);
 
       // Construct the bridge now that we have a working wallet
       bridgeRef.current = new EscrowFedimintBridge(
@@ -1164,6 +1234,10 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
         );
       }
 
+      // PR 5: a successful join is itself proof of reachability — seed
+      // the health cache so the first invoice doesn't have to probe.
+      const joinedAt = Date.now();
+      healthRef.current = { ok: true, at: joinedAt };
       updateFedimint({
         initialized: true,
         joined: true,
@@ -1173,6 +1247,8 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
         balanceMsats,
         busy: false,
         error: null,
+        lastHealthOk: true,
+        lastHealthAt: joinedAt,
       });
 
       vibrate([40, 20, 40, 20, 80]);
@@ -1237,6 +1313,8 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     fedimintRef.current = null;
     bridgeRef.current = null;
     clearSeedCache();
+    healthRef.current = { ok: null, at: null };
+    clearActiveInvite();
 
     await resetLocalFedimintWallet();
 
@@ -1247,36 +1325,27 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       balanceMsats: 0,
       busy: false,
       error: null,
+      lastHealthOk: null,
+      lastHealthAt: null,
     });
   }, [updateFedimint]);
 
-  // v0.1.73 dev fed-switch ─────────────────────────────────────────────────
+  // PR 5: switchFederation — production-grade fed switching.
+  // ──────────────────────────────────────────────────────────────────────
   // Composed action: reset + reinit-with-new-invite, as one user-facing
-  // operation. Gated on localStorage flag so real users can't trigger it.
-  // v0.1.76 fund-loss protection: dev-switch wipes OPFS, which
-  // destroys ecash. Now refuses if balance > 0 unless caller passes
-  // { force: true }. Real users should never hit this path — the
-  // localStorage gate is the primary defense — but the balance check
-  // is a critical second layer for cases where a developer or tester
-  // forgets the gate is active.
-  const devSwitchFederation = useCallback(async (
+  // operation. Promoted from devSwitchFederation in PR 5 — the prior
+  // localStorage.chama_dev_fed_switch gate has been dropped.
+  //
+  // Safety: the v0.1.76 fund-loss guard refuses if `getBalance() > 0`
+  // unless `{ force: true }` is passed. Fedimint ecash is bearer cash
+  // and lives only in the local OPFS file — wiping it without checking
+  // has destroyed real user sats in the past. Callers (UI) must only
+  // pass force after explicit user confirmation.
+  const switchFederation = useCallback(async (
     inviteCode: string,
     options: { force?: boolean } = {},
   ) => {
     const { force = false } = options;
-
-    // Gate check — abort hard if the dev flag isn't set.
-    let gateOk = false;
-    try {
-      gateOk = typeof localStorage !== "undefined"
-        && localStorage.getItem("chama_dev_fed_switch") === "1";
-    } catch { /* gate stays false */ }
-    if (!gateOk) {
-      throw new Error(
-        "devSwitchFederation requires localStorage.chama_dev_fed_switch === \"1\". " +
-        "This is a testing-only action."
-      );
-    }
 
     const trimmed = inviteCode.trim();
     if (!trimmed.startsWith("fed1")) {
@@ -1290,23 +1359,24 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
         currentBalanceMsats = await fedimintRef.current.getBalance();
       }
     } catch (e) {
-      console.debug("[chama] dev-switch: balance read failed:", e);
+      console.debug("[chama] switch-fed: balance read failed:", e);
     }
     if (!force && currentBalanceMsats !== null && currentBalanceMsats > 0) {
       const sats = Math.floor(currentBalanceMsats / 1000);
       const err = new Error(
-        `Refusing dev-switch: ${sats} sats would be permanently ` +
+        `Refusing federation switch: ${sats} sats would be permanently ` +
         `destroyed when the OPFS file is wiped for the new federation. ` +
-        `Override requires explicit user confirmation in the UI.`,
+        `Move funds out (Lightning withdrawal) before switching, or ` +
+        `confirm destruction explicitly in the UI.`,
       );
       (err as Error & { code?: string; balanceMsats?: number }).code =
-        "DEV_SWITCH_REFUSED_NONZERO_BALANCE";
+        "SWITCH_REFUSED_NONZERO_BALANCE";
       (err as Error & { code?: string; balanceMsats?: number })
         .balanceMsats = currentBalanceMsats;
       throw err;
     }
 
-    console.info("[chama] DEV: switching federation to", trimmed.slice(0, 24) + "...");
+    console.info("[chama] switching federation to", trimmed.slice(0, 24) + "...");
     updateFedimint({ busy: true, error: null });
 
     try {
@@ -1314,11 +1384,15 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       try {
         await fedimintRef.current?.cleanup();
       } catch (e) {
-        console.debug("[chama] dev-switch: cleanup threw (non-fatal):", e);
+        console.debug("[chama] switch-fed: cleanup threw (non-fatal):", e);
       }
       fedimintRef.current = null;
       bridgeRef.current = null;
       clearSeedCache();
+      healthRef.current = { ok: null, at: null };
+      // Clear the active-invite record now; initFedimint(trimmed) below
+      // will write the new one once the join succeeds.
+      clearActiveInvite();
 
       // Step 2 — wipe OPFS file + rotate filename so init() opens a fresh DB
       await resetLocalFedimintWallet();
@@ -1328,30 +1402,47 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       // for non-default presets in FederationJoinPanel).
       setCustomFederationInvite(trimmed);
 
-      // Step 4 — clear React state so initFedimint can rebuild from scratch
+      // Step 4 — clear React state so initFedimint can rebuild from scratch.
+      // Reset health probe cache too — the new fed needs its own probe.
       updateFedimint({
         initialized: false,
         joined: false,
         federationId: null,
         balanceMsats: 0,
+        lastHealthOk: null,
+        lastHealthAt: null,
         busy: true,
         error: null,
       });
 
       // Step 5 — re-init with the new invite. Reuses the existing
       // initFedimint flow which probes the Nostr seed, joins the new
-      // fed, and wires up the balance subscriber. v0.1.72 federation
-      // gates will then see the new fed prefix on the next probe.
+      // fed, and wires up the balance subscriber.
       await initFedimint(trimmed);
 
-      console.info("[chama] DEV: federation switch complete");
+      console.info("[chama] federation switch complete");
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
-      console.error("[chama] DEV: federation switch failed:", message);
+      console.error("[chama] federation switch failed:", message);
       updateFedimint({ busy: false, error: message });
       throw e;
     }
   }, [updateFedimint, initFedimint]);
+
+  // PR 5: federation health gate.
+  // ──────────────────────────────────────────────────────────────────────
+  // Invoice generation is the moment users discover whether the federation
+  // can actually transact. A successful join proves reachability at join
+  // time, but mid-session the federation may go unreachable (the iroh-
+  // canary failure mode) without producing any other surface signal. If
+  // we let the user generate an invoice against an unreachable federation,
+  // payments to it become orphaned.
+  //
+  // Cache discipline: 30s TTL. After a successful join/switch we seed
+  // ok=true so the first invoice within 30s is fast. Failed probes are
+  // also cached — repeat clicks within 30s see the same refusal without
+  // hammering the federation.
+  const HEALTH_TTL_MS = 30_000;
 
   const createFundingInvoice = useCallback(async (
     amountMsats: number,
@@ -1361,8 +1452,40 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     if (!fedimint || !fedimint.isJoined()) {
       throw new Error("Join a federation before creating an invoice");
     }
+
+    // Health gate: refuse if the most recent probe failed and is still
+    // fresh; probe now if the cache is stale or empty.
+    const cached = healthRef.current;
+    const now = Date.now();
+    const fresh = cached.at !== null && (now - cached.at) < HEALTH_TTL_MS;
+
+    let healthy: boolean;
+    if (fresh && cached.ok !== null) {
+      healthy = cached.ok;
+    } else {
+      try {
+        await fedimint.probeFederation();
+        healthy = true;
+        healthRef.current = { ok: true, at: now };
+        updateFedimint({ lastHealthOk: true, lastHealthAt: now });
+      } catch (e) {
+        healthy = false;
+        healthRef.current = { ok: false, at: now };
+        updateFedimint({ lastHealthOk: false, lastHealthAt: now });
+        console.warn("[chama] federation probe failed:", e);
+      }
+    }
+
+    if (!healthy) {
+      const fedName = stateRef.current?.fedimint.federationName ?? "(unknown)";
+      throw new Error(
+        `Wallet temporarily can't receive — federation ${fedName} unreachable. ` +
+        `Try again in a moment.`,
+      );
+    }
+
     return fedimint.createInvoice(amountMsats, description);
-  }, []);
+  }, [updateFedimint]);
 
   // ── Return ──────────────────────────────────────────────────────────────
 
@@ -1400,8 +1523,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     },
     refreshBalance,
     resetLocalWallet,
-    // v0.1.73 dev fed-switch
-    devSwitchFederation,
+    switchFederation,
     watchPublicListings: (since?: number) => {
       clientRef.current?.watchPublicListings(since);
     },
