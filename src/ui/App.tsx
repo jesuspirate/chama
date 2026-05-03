@@ -14,7 +14,7 @@ import {
   COMMUNITY_LEADER_MESSAGE,
   DEFAULT_FEDERATION_INVITE,
 } from "../fedimint/federation-config.js";
-import { getFederationInvite } from "../fedimint/index.js";
+import { getFederationInvite, getActiveInvite } from "../fedimint/index.js";
 import { COMMUNITY_REGISTRY, getCommunityBySlug } from "../communities/registry.js";
 import { getVoteLabel, categoryAllowsFulfillmentChoice, type Fulfillment } from "../labels/vote-labels.js";
 import {
@@ -2685,6 +2685,89 @@ function FederationJoinPanel({
 // FUND WALLET MODAL — Lightning invoice to top up
 // ══════════════════════════════════════════════════════════════════════════
 
+// ══════════════════════════════════════════════════════════════════════════
+// DESTROY ECASH CONFIRM MODAL — v0.1.82+ federation drift guard
+// ══════════════════════════════════════════════════════════════════════════
+//
+// Surfaces when initFedimint refuses with RECONCILE_REFUSED_NONZERO_BALANCE.
+// User picked federation B but the OPFS holds sats on federation A. Confirm
+// = wipe + rejoin B (sats destroyed). Cancel = revert preference to A.
+// ══════════════════════════════════════════════════════════════════════════
+
+function DestroyEcashConfirmModal({
+  targetLabel,
+  balanceMsats,
+  onCancel,
+  onConfirm,
+}: {
+  targetLabel: string;
+  balanceMsats: number;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const sats = Math.floor(balanceMsats / 1000);
+  return (
+    <div style={{
+      position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)",
+      display: "flex", alignItems: "center", justifyContent: "center",
+      padding: 20, zIndex: 1100,
+    }}>
+      <div style={{
+        maxWidth: 440, width: "100%", padding: 20, borderRadius: T.r,
+        background: T.card, border: `1px solid ${T.red}66`,
+      }}>
+        <div style={{
+          fontSize: 11, fontWeight: 700, color: T.red, fontFamily: T.mono,
+          letterSpacing: 1, marginBottom: 12,
+        }}>
+          ⚠ FUNDS AT RISK
+        </div>
+        <div style={{
+          fontSize: 13, color: T.text, fontFamily: T.sans, lineHeight: 1.55,
+          marginBottom: 16,
+        }}>
+          Switching to <strong>{targetLabel}</strong> will permanently destroy{" "}
+          <strong>{sats > 0 ? `${sats.toLocaleString()} sats` : "an unknown balance"}</strong>{" "}
+          held in your current wallet. Fedimint ecash is bearer cash — once
+          the local wallet is wiped, those sats cannot be recovered from
+          the federation.
+        </div>
+        <div style={{
+          fontSize: 11, color: T.muted, fontFamily: T.mono, lineHeight: 1.5,
+          marginBottom: 16,
+        }}>
+          To preserve them: cancel, withdraw the balance via Lightning, then
+          retry the switch.
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button
+            onClick={onCancel}
+            style={{
+              flex: 1, padding: "10px 14px", borderRadius: T.rs,
+              background: T.accent, border: "none",
+              color: "#000", fontFamily: T.mono, fontSize: 12, fontWeight: 700,
+              cursor: "pointer",
+            }}
+          >
+            Cancel — keep my sats
+          </button>
+          <button
+            onClick={onConfirm}
+            style={{
+              flex: 1, padding: "10px 14px", borderRadius: T.rs,
+              background: T.red, border: "none",
+              color: "#fff", fontFamily: T.mono, fontSize: 12, fontWeight: 700,
+              cursor: "pointer",
+            }}
+          >
+            Switch and destroy
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function FundWalletModal({ onClose, onCreateInvoice, onPayInvoice, onSpendNotes, balanceMsats }: {
   onClose: () => void;
   onCreateInvoice: (amountSats: number, description: string) => Promise<string>;
@@ -3015,6 +3098,21 @@ export default function App() {
   const [customInviteInput, setCustomInviteInput] = useState("");
   const [autoLoginChecked, setAutoLoginChecked] = useState(false);
   const [showQRScanner, setShowQRScanner] = useState(false);
+  // PR 5 (v0.1.82+): destroy-confirm modal triggered when initFedimint
+  // refuses with RECONCILE_REFUSED_NONZERO_BALANCE. Carries the user's
+  // attempted action so we can re-invoke it with { force: true } on
+  // confirm, or revert preference back to the active invite on cancel.
+  const [pendingDestroyConfirm, setPendingDestroyConfirm] = useState<{
+    invite: string;
+    label: string;
+    balanceMsats: number;
+    activeInvite: string;
+  } | null>(null);
+  // PR 5 (v0.1.82+): auto-init guard. Fires once per connect cycle to
+  // restore the user's last-joined federation without prompting them
+  // to re-pick on every reload. First-time users (no chama_active_invite)
+  // skip auto-init and see the FederationJoinPanel as before.
+  const [autoInitDone, setAutoInitDone] = useState(false);
 
   // Auto-login: on native platforms, check for saved nsec in secure storage
   useEffect(() => {
@@ -3034,6 +3132,37 @@ export default function App() {
       }
     })();
   }, [autoLoginChecked, connected, loading, actions]);
+
+  // PR 5 (v0.1.82+): auto-init Fedimint after connect when there's a
+  // record of a previously-joined federation. Without this, the user
+  // gets the federation picker on every reload — and clicking the
+  // wrong one used to silently destroy notes (the v0.1.81 reproduction
+  // that triggered this PR). With auto-init, the picker only renders
+  // for first-time users (no chama_active_invite); everyone else lands
+  // on their saved fed silently. The reconciliation balance guard in
+  // initFedimint covers the edge case where chama_federation_invite
+  // and chama_active_invite have drifted.
+  useEffect(() => {
+    if (!connected || autoInitDone) return;
+    if (fedimint.joined || fedimint.busy || fedimint.initialized) return;
+    const activeInvite = getActiveInvite();
+    if (!activeInvite) return;  // first-time user — let them pick
+    setAutoInitDone(true);
+    actions.initFedimint().catch((e: any) => {
+      // The reconciliation guard may throw — surface via the same
+      // destroy-confirm modal the manual join handlers use.
+      if (e?.code === "RECONCILE_REFUSED_NONZERO_BALANCE") {
+        setPendingDestroyConfirm({
+          invite: e.desiredInvite,
+          label: "your preferred federation",
+          balanceMsats: e.balanceMsats || 0,
+          activeInvite: e.previousActiveInvite,
+        });
+      } else {
+        setToast({ message: e?.message || "Auto-rejoin failed", type: "error" });
+      }
+    });
+  }, [connected, autoInitDone, fedimint.joined, fedimint.busy, fedimint.initialized, actions]);
 
   // Split trades into Browse (public, my federation, open) and My trades
   // (anything I'm a participant in). Both share the hide-after-7-days rule
@@ -3342,10 +3471,9 @@ export default function App() {
                 actions.setCustomInvite(preset.inviteCode);
               }
               // PR 5: if a wallet is already in memory pointing somewhere,
-              // route through switchFederation so the OPFS gets wiped and
-              // the new fed actually lands. The case (b) silent no-op in
-              // FedimintClient.joinFederation made the old initFedimint
-              // path store the invite without re-binding the wallet.
+              // route through switchFederation (which has its own balance
+              // guard). For cold-start joins, initFedimint's reconcile
+              // guard catches the same drift case.
               if (fedimint.federationId) {
                 await actions.switchFederation(preset.inviteCode);
               } else {
@@ -3353,7 +3481,16 @@ export default function App() {
               }
               setToast({ message: `Joined ${preset.name}! You can now fund and trade.`, type: "success" });
             } catch (e: any) {
-              setToast({ message: e.message || "Join failed", type: "error" });
+              if (e?.code === "RECONCILE_REFUSED_NONZERO_BALANCE") {
+                setPendingDestroyConfirm({
+                  invite: preset.inviteCode,
+                  label: preset.name,
+                  balanceMsats: e.balanceMsats || 0,
+                  activeInvite: e.previousActiveInvite,
+                });
+              } else {
+                setToast({ message: e.message || "Join failed", type: "error" });
+              }
             }
           }}
           onJoinCustom={async () => {
@@ -3365,8 +3502,6 @@ export default function App() {
             try {
               actions.setCustomInvite(invite);
               setToast({ message: "Joining custom federation...", type: "info" });
-              // PR 5: same routing as onJoinPreset — switch instead of
-              // init when a wallet is already bound to a fed.
               if (fedimint.federationId) {
                 await actions.switchFederation(invite);
               } else {
@@ -3374,7 +3509,16 @@ export default function App() {
               }
               setToast({ message: "Joined custom federation!", type: "success" });
             } catch (e: any) {
-              setToast({ message: e.message || "Join failed", type: "error" });
+              if (e?.code === "RECONCILE_REFUSED_NONZERO_BALANCE") {
+                setPendingDestroyConfirm({
+                  invite,
+                  label: `custom federation (${invite.slice(4, 12)}…)`,
+                  balanceMsats: e.balanceMsats || 0,
+                  activeInvite: e.previousActiveInvite,
+                });
+              } else {
+                setToast({ message: e.message || "Join failed", type: "error" });
+              }
             }
           }}
           onResetLocal={async () => {
@@ -3405,6 +3549,40 @@ export default function App() {
           onPayInvoice={(bolt11) => actions.payInvoice(bolt11)}
           onSpendNotes={(amountMsats) => actions.spendNotes(amountMsats)}
           balanceMsats={fedimint.balanceMsats ?? 0}
+        />
+      )}
+
+      {/* PR 5 (v0.1.82+): destroy-confirm modal for federation drift.
+          Surfaced when initFedimint refuses with
+          RECONCILE_REFUSED_NONZERO_BALANCE — i.e. the user asked to
+          join a federation that differs from the OPFS-bound one AND
+          the local wallet holds sats. */}
+      {pendingDestroyConfirm && (
+        <DestroyEcashConfirmModal
+          targetLabel={pendingDestroyConfirm.label}
+          balanceMsats={pendingDestroyConfirm.balanceMsats}
+          onCancel={() => {
+            // Revert preference back to the active invite so the next
+            // attempt doesn't immediately re-trigger the refusal.
+            actions.setCustomInvite(pendingDestroyConfirm.activeInvite);
+            setPendingDestroyConfirm(null);
+            // Re-init against the active invite so the user lands on
+            // the wallet that actually has their funds.
+            actions.initFedimint(pendingDestroyConfirm.activeInvite).catch((e: any) =>
+              setToast({ message: e?.message || "Re-init failed", type: "error" })
+            );
+          }}
+          onConfirm={async () => {
+            const target = pendingDestroyConfirm;
+            setPendingDestroyConfirm(null);
+            try {
+              setToast({ message: "Switching federation…", type: "info" });
+              await actions.initFedimint(target.invite, { force: true });
+              setToast({ message: `Joined ${target.label}!`, type: "success" });
+            } catch (e: any) {
+              setToast({ message: e?.message || "Switch failed", type: "error" });
+            }
+          }}
         />
       )}
 

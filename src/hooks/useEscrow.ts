@@ -193,10 +193,15 @@ export interface UseEscrowActions {
   /**
    * Initialize the Fedimint WASM wallet and join a federation.
    * If no invite code is provided, uses the stored custom invite (if any)
-   * or falls back to the Bitcoin Life Federation default.
+   * or falls back to the community-default (which falls back to BLF).
    * Idempotent: safe to call multiple times.
+   *
+   * v0.1.82+: throws `RECONCILE_REFUSED_NONZERO_BALANCE` if the OPFS-bound
+   * federation differs from the desired one AND the local wallet holds
+   * sats (or the balance can't be verified). The UI must surface a
+   * destroy-confirm modal before retrying with `{ force: true }`.
    */
-  initFedimint: (inviteCode?: string) => Promise<void>;
+  initFedimint: (inviteCode?: string, options?: { force?: boolean }) => Promise<void>;
   /**
    * Persist a custom federation invite code for future sessions.
    * Pass empty string to clear and revert to the default.
@@ -1083,97 +1088,168 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
   // recreating their callbacks.
   refreshBalanceRef.current = refreshBalance;
 
-  const initFedimint = useCallback(async (inviteCode?: string) => {
+  const initFedimint = useCallback(async (
+    inviteCode?: string,
+    options?: { force?: boolean },
+  ) => {
     if (!clientRef.current || !signerRef.current) {
       throw new Error("Connect to relays before initializing Fedimint");
     }
 
+    const force = options?.force === true;
+
     updateFedimint({ busy: true, error: null });
 
     try {
-      // PR 5: load-time reconciliation. The user's preferred invite
-      // (custom override or community/BLF default) might differ from
-      // what the OPFS-resident wallet was last joined to — typically
-      // because a previous session pasted a custom invite under the
-      // old "case (b) silent no-op" code path that stored the invite
-      // but never actually re-joined. On a cold start (no in-memory
-      // FedimintClient yet), wipe the OPFS so the desired join lands
-      // cleanly. Without this, users get permanently stuck on
-      // whatever fed their OPFS was created with.
-      //
-      // Only fires when (a) we're starting cold, (b) we have a record
-      // of a previous active invite, and (c) it differs from what
-      // we're about to join. Fresh installs and unchanged preferences
-      // skip this entirely — no extra OPFS churn for normal users.
+      // PR 2: resolve via the community-aware path. Precedence is
+      // explicit arg > custom stored invite > community.federationInvite
+      // > BLF default.
       const userCommunity = getUserCommunitySlug();
       const desiredInvite = inviteCode?.trim()
         || resolveFederationForCommunity(userCommunity);
       const previousActiveInvite = getActiveInvite();
-      if (
-        !fedimintRef.current
-        && previousActiveInvite
-        && previousActiveInvite !== desiredInvite
-      ) {
-        console.warn(
-          "[chama] OPFS-bound invite differs from preferred invite — wiping OPFS to honor preference",
-          {
-            previous: previousActiveInvite.slice(0, 24) + "…",
-            desired: desiredInvite.slice(0, 24) + "…",
-          },
-        );
-        try {
-          await resetLocalFedimintWallet();
-        } catch (e) {
-          // Best-effort: if the wipe fails, the join below will still
-          // open the existing OPFS. Worst case the case (b) symptom
-          // recurs and the user sees the broken-old behavior — better
-          // than crashing init outright.
-          console.warn("[chama] OPFS wipe during reconciliation threw (non-fatal):", e);
-        }
-        clearActiveInvite();
-      }
 
-      // Reuse existing instance if already initialized
+      // Fetch (or generate + publish) the Fedimint seed from Nostr
+      // *before* initializing the wallet. The seed is encrypted to the
+      // user's own pubkey and stored as a replaceable kind-30078 event,
+      // so the wallet is recoverable on any device with access to the
+      // user's signer. In testnet mode the mock wallet ignores the
+      // mnemonic, so we skip the Nostr round-trip.
+      const mnemonic = isTestnetMode()
+        ? undefined
+        : await getOrCreateSeed(clientRef.current!, signerRef.current!);
+
+      const buildClient = () => new FedimintClient({
+        onBalanceUpdate: (balance) => updateFedimint({ balanceMsats: balance }),
+        onFederationJoined: (fedId) =>
+          updateFedimint({ joined: true, federationId: fedId }),
+        onError: (err, ctx) => {
+          console.warn(`[chama] fedimint error (${ctx}):`, err);
+          updateFedimint({ error: `${ctx}: ${err.message}` });
+        },
+      });
+
+      // Reuse the in-memory client if init already ran this session;
+      // otherwise create + init a fresh one against whatever the OPFS
+      // currently holds.
       let fedimint = fedimintRef.current;
       if (!fedimint) {
-        // Fetch (or generate + publish) the Fedimint seed from Nostr
-        // *before* initializing the wallet. The seed is encrypted
-        // to the user's own pubkey and stored as a replaceable
-        // kind-30078 event, so the wallet is recoverable on any
-        // device with access to the user's signer.
-        //
-        // In testnet mode the mock wallet ignores the mnemonic, so
-        // we skip the Nostr round-trip to avoid a gratuitous NIP-44
-        // popup on every dev reload.
-        const mnemonic = isTestnetMode()
-          ? undefined
-          : await getOrCreateSeed(
-              clientRef.current!,
-              signerRef.current!
-            );
-
-        fedimint = new FedimintClient({
-          onBalanceUpdate: (balance) => updateFedimint({ balanceMsats: balance }),
-          onFederationJoined: (fedId) =>
-            updateFedimint({ joined: true, federationId: fedId }),
-          onError: (err, ctx) => {
-            console.warn(`[chama] fedimint error (${ctx}):`, err);
-            updateFedimint({ error: `${ctx}: ${err.message}` });
-          },
-        });
+        fedimint = buildClient();
         await fedimint.init({ mnemonic });
         fedimintRef.current = fedimint;
         updateFedimint({ initialized: true });
       }
 
-      // PR 2: resolve via the community-aware path. Precedence is
-      // explicit arg > custom stored invite > community.federationInvite
-      // > BLF default. desiredInvite is computed at the top of the
-      // function for the PR 5 reconciliation pass; reuse it here.
+      // PR 5 (v0.1.82+): cold-start reconciliation with balance guard.
+      // ───────────────────────────────────────────────────────────────
+      // After init, the in-memory client mirrors whatever the OPFS
+      // holds. If the user's preferred invite differs from the
+      // last-joined invite (drift — typically from a previous-session
+      // paste that the old "case (b) silent no-op" stored without
+      // actually switching), we may need to wipe + rejoin.
+      //
+      // CRITICAL: ecash on the OPFS-bound fed is bearer cash. A silent
+      // wipe destroys it. So before wiping, peek the balance:
+      //   - balance === 0           → safe to wipe + rejoin silently
+      //   - balance > 0 && !force   → REFUSE; throw structured error
+      //                               that the UI catches and surfaces
+      //                               as a destroy-confirm modal.
+      //   - balance > 0 && force    → user-confirmed destruction;
+      //                               proceed.
+      //
+      // This is the load-bearing safety. Without it, a refresh + wrong
+      // fed pick destroys notes purely and simply (reproduced twice
+      // during v0.1.81 testing).
+      const driftDetected =
+        previousActiveInvite !== null
+        && previousActiveInvite !== desiredInvite
+        && fedimint.isJoined();
+
+      if (driftDetected) {
+        let opfsBalanceMsats = 0;
+        try {
+          opfsBalanceMsats = await fedimint.getBalance();
+        } catch (e) {
+          // If we can't read the balance, treat as unknown — refuse
+          // without force rather than risk silent destruction.
+          console.debug("[chama] reconcile: balance read failed:", e);
+          opfsBalanceMsats = -1;
+        }
+
+        if (!force && opfsBalanceMsats !== 0) {
+          const sats = opfsBalanceMsats > 0
+            ? Math.floor(opfsBalanceMsats / 1000)
+            : null;
+          const refuseErr = new Error(
+            sats !== null
+              ? `Refusing to switch federations: ${sats} sats are held on ` +
+                `your current federation and would be permanently destroyed ` +
+                `when the local wallet is wiped. Move funds out (Lightning ` +
+                `withdrawal) before switching, or confirm destruction explicitly.`
+              : `Refusing to switch federations: couldn't verify the local ` +
+                `wallet balance. Try again, or confirm destruction explicitly.`,
+          );
+          (refuseErr as Error & {
+            code?: string;
+            balanceMsats?: number;
+            previousActiveInvite?: string;
+            desiredInvite?: string;
+          }).code = "RECONCILE_REFUSED_NONZERO_BALANCE";
+          (refuseErr as Error & {
+            code?: string;
+            balanceMsats?: number;
+            previousActiveInvite?: string;
+            desiredInvite?: string;
+          }).balanceMsats = opfsBalanceMsats > 0 ? opfsBalanceMsats : 0;
+          (refuseErr as Error & {
+            code?: string;
+            balanceMsats?: number;
+            previousActiveInvite?: string;
+            desiredInvite?: string;
+          }).previousActiveInvite = previousActiveInvite!;
+          (refuseErr as Error & {
+            code?: string;
+            balanceMsats?: number;
+            previousActiveInvite?: string;
+            desiredInvite?: string;
+          }).desiredInvite = desiredInvite;
+          throw refuseErr;
+        }
+
+        // Safe-to-wipe path: balance is 0, OR force === true.
+        console.warn(
+          "[chama] reconcile: wiping OPFS to switch federations",
+          {
+            previous: previousActiveInvite!.slice(0, 24) + "…",
+            desired: desiredInvite.slice(0, 24) + "…",
+            balanceMsats: opfsBalanceMsats,
+            forced: force,
+          },
+        );
+        try { await fedimint.cleanup(); } catch {}
+        fedimintRef.current = null;
+        bridgeRef.current = null;
+        healthRef.current = { ok: null, at: null };
+        try {
+          await resetLocalFedimintWallet();
+        } catch (e) {
+          console.warn("[chama] reconcile wipe threw (non-fatal):", e);
+        }
+        clearActiveInvite();
+
+        // Re-create + init against the now-empty OPFS so joinFederation
+        // below lands on the desired fed cleanly (no v0.1.69 case-c
+        // throw, no case-b silent no-op).
+        fedimint = buildClient();
+        await fedimint.init({ mnemonic });
+        fedimintRef.current = fedimint;
+      }
+
       const effectiveInvite = desiredInvite;
       const usingCustom = hasCustomFederation() || !!inviteCode?.trim();
 
-      // Join federation (idempotent in the SDK)
+      // Join federation (idempotent in the SDK when already on the
+      // same fed; lands cleanly on the new fed when post-wipe).
       const federationId = await fedimint.joinFederation(effectiveInvite);
 
       // PR 5: record the actually-joined invite so the next cold start
