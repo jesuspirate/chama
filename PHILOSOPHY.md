@@ -10,7 +10,7 @@
 
 ---
 
-## 2. The six pillars
+## 2. The seven pillars
 
 These are the load-bearing architectural commitments. Every feature must sit on top of these without bending them.
 
@@ -19,6 +19,10 @@ These are the load-bearing architectural commitments. Every feature must sit on 
 The trade lifecycle is **BOLT11 IN at fund time → ecash lives in escrow only during LOCK→CLAIM → BOLT11 OUT at claim → OPFS drains.** There is no persistent balance UI in Chama. The "Wallet" mental model is dead. What replaces it is the **"In escrow"** surface — sats are visible only when they're actively committed to a trade, and they leave via Lightning the moment the trade resolves.
 
 This pillar is the product's deepest ethical commitment. Chama does not custody funds. The federation does not custody unspent funds. The user's OPFS does not store idle balances. Every sat in the system is in transit through a specific trade, with a specific counterparty, toward a specific Lightning destination.
+
+**The Chama promise: no sats stranded, ever.** Every architectural decision — fund-loss guards, federation switch refusal, cold-start reconciliation, federation-follows-listing, the recovery banner, one-trade-at-a-time UX — is the same promise wearing different clothes. Like a shepherd leaving the 99 to find the one that's lost, Chama treats every stranded sat as a structural failure to repair, not an acceptable cost of doing business. The architecture gets harder to write because of this. The user experience gets simpler because of it.
+
+**One trade at a time, as a design choice.** A Chama user has at most one active trade. The active trade is the *current state of being a Chama user* — not a tab, not a status pill, not a notification waiting to be tapped. Every other surface (Browse, Create, Me) becomes *the things you do when you're between trades.* This feels strict to anyone steeped in legacy trading platforms, but Chama is not a trading platform; it is a peer-to-peer commerce primitive for users who are often afraid, often new to Bitcoin, and often trading with money that matters to them. Patience is the feature. A "good" trade is one where both users felt safe, were patient with each other, and left a positive rating — not one that completed at high frequency. The architectural one-trade limit reframes itself as *we want this to go well for both of you*, which users understand pre-cognitively as care. Speed emerges naturally from repeated successful trades; it cannot be designed for upfront without sacrificing safety.
 
 ### 2.2 Funding IS the lock
 
@@ -38,6 +42,8 @@ A community is defined as **currency-primary, country-and-language-multivalent**
 - **A cultural/regional identity (always).** The "where my family lives" feeling — not a hard schema field but a real signal that drives matching and arbiter pool selection.
 
 The community is the user-facing layer; the federation is the technical layer. A user picks a community, Chama silently provisions a wallet on the appropriate backing federation, and the user never has to think about Fedimint protocol semantics. Users can switch communities at sign-in or via Settings → Advanced — switching is deliberately deprioritized in the UI because Option B's LN-in/LN-out architecture means cross-community trading doesn't require a wallet switch. Curious users can tap their community pill to peek at other communities ("snoop in") without changing their own membership.
+
+**Each community carries a flag as its primary identity affordance.** The flag emoji compresses currency, language(s), time zone, payment-rail availability, cultural context, and — most importantly — *belonging* into one glyph. Users want to see their country represented, and that representation is granted permissionlessly: every country gets a community in the registry regardless of whether a native federation exists yet. If a country has a native federation (Kenya → Afribit / Bitsacco, US → BLF / GBF), that community uses it. If not (Senegal, Côte d'Ivoire, El Salvador as of v1), the community falls through to a browser-friendly default federation (BP) but keeps the country flag — the user sees 🇸🇳 Senegal · CFA, not "BP." A handful of explicitly global communities exist for users who don't want country identity (🌎 Global · USD, 🌍 Africa Free). When multiple federations serve one country, the federation name appears as a disambiguator (🇰🇪 Kenya · Afribit vs 🇰🇪 Kenya · Bitsacco). New federations onboard permissionlessly: any guardian set leader pastes their invite, claims a flag, and the community is listed automatically — like Nostr relays, no approval gate. The flag is the headline; the federation is the footnote.
 
 This is the deepest user-facing simplification in Chama. Most Bitcoin apps force users to learn the cryptographic vocabulary of their chosen primitive. Chama hides the primitive entirely and lets users pick a context that maps to their actual life: their currency, their country (or countries), the languages they share with their neighbors.
 
@@ -96,6 +102,18 @@ This dataset is **the substrate for graduated authority across the entire platfo
 - **Merchant graduation:** regular seller → recurring-payment-eligible → (future tiers)
 
 Both ladders use the same fuel: rating events accumulating on each npub over time. Earned authority replaces gatekept authority. New decisions about who-gets-what-power must always be measured against this primitive: does the rating system already provide the signal needed, or are we inventing trust where reputation could earn it?
+
+### 2.7 Educate at every opportunity
+
+Chama is not just a marketplace; it is a Bitcoin onboarding surface for users who have never thought about Fedimint, Nostr, ecash, Lightning, or non-custodial protocols in their lives. The product must teach without lecturing, explain without condescending, and build user mental models through small consistent affordances rather than walls of documentation. A landing page and FAQ section will exist, but **the in-product education is what actually moves understanding** — users read help docs only when something has gone wrong; they read tooltips and inline microcopy in the moment they need it.
+
+Three levels of in-product education:
+
+1. **Inline tooltip "?" affordances** next to any field whose meaning isn't self-evident. Listing expiration, trade timeout, premium percentage, payment rail privacy, federation membership — all earn a tiny `?` that surfaces a one-sentence explanation on tap. Cheap to add, high signal, never blocks the flow.
+2. **One-time-per-account info cards** for moments where the user is making a structurally-important choice for the first time (publishing first listing, funding first trade, claiming first sats). The card explains what's happening *once*, dismisses on acknowledgment, and never appears again for that user. Repeat users are not nagged.
+3. **Honest microcopy in destructive flows** — never euphemize. The cold-start guard's "Fedimint ecash is bearer cash — once the local wallet is wiped, those sats cannot be recovered from the federation" is the model. Educate users about the actual mechanics so they make informed decisions, even if the explanation is technical. Trust the user with the truth.
+
+Education is also a *style* choice. *"Hey Chama, where's home?"* is education — it teaches the user that Chama is a friendly entity that asks rather than demands. *"Send your sats over"* is education — it teaches that Lightning is the universal interface. *"Same as your wallet"* is education — it teaches that federations matter, quietly. Every microcopy decision is a teaching opportunity if approached with that lens.
 
 ---
 
@@ -223,9 +241,11 @@ Apple-grade dark mode (#0a0a0a base, #f5f5f7 primary text, #86868b secondary tex
 ### v1.5
 - Manual arbiter selection (surface stats, optional manual pick)
 - Recurring payments unlock for graduated merchants (sats.coffee as design partner)
+- **Bill Pay subscriptions for graduated bitcoiners (optional, low priority).** Recurring monthly Bill Pay listings for the family-utility-bill use case (e.g. paying mom's electric bill every month from sats). Volunteers can manually fulfill each cycle without subscriptions, so this is convenience polish — not a structural requirement. Family-Bitcoin Bill Pay works at v1 with one-shot listings; subscriptions just remove monthly re-listing friction.
 - Auto-sweep detection at QR-OUT
+- **Lightning routing visualization** at fund-time (BOLT11 paid → mint complete) and claim-time (SSS reconstruct → BOLT11 redeemed). Brief inline animation showing sats traveling through Lightning routing with honest framing — "your sats are arriving via Lightning" / "your sats are landing in your Lightning wallet." Educational without being condescending; teaches users that Lightning is the universal interface that Chama rides on top of. Originally sketched for federation-switching but doesn't belong there (federation switch is a sub-second client re-init with no money moving); the animation belongs at the moments where money actually traverses Lightning.
 - **Mutual extension primitive (`kind:38113 EXTEND`).** Buyer + seller co-signed event that pushes the trade timeout forward by N days, max M extensions. Generic — works for any vertical and any honest cooperative delay (slow international shipping, mobile-money outages, bank reviews, lending grace periods, customs holds). No new dispute logic; no arbiter-as-investigator burden. If buyer or seller refuses to sign, timeout fires per protocol — Chama does not insure off-platform outcomes. Honest framing: cooperative timeout slip, not adjudication.
-- **3D globe community picker.** Replace the v1 list-based picker with a cinematic interactive globe at first-login. Currencies-grouped or region-grouped highlights, live activity dots showing where trades are happening in real time. The "from the dark, the world appears" first-impression moment. Built deliberately as polish, not as load-bearing — v1's list picker remains as the keyboard-accessible / low-bandwidth fallback.
+- **3D globe community picker** — *"Hey Chama, where's home?"* Replace the v1 list-based picker with a cinematic interactive globe at first-login. The conversational opener reframes the choice from "configure your wallet" to "tell me where you live" — a question every human knows how to answer pre-cognitively. Users physically rotate Earth and tap their country; the flag emoji + community name surface; one tap confirms. Currencies-grouped or region-grouped highlights, live activity dots showing where trades are happening in real time. The "from the dark, the world appears" first-impression moment. Built deliberately as polish, not as load-bearing — v1's list picker remains as the keyboard-accessible / low-bandwidth fallback. Three.js is already in the stack.
 - **LN address / NWC pre-fill at QR-OUT.** User adds a static Lightning address (e.g. `user@getalby.com`) or connects via NWC in Settings. QR-OUT pre-fills the destination — paste-invoice flow becomes a fallback, not the default. NWC enables true one-tap claims with no app-switching. The QR-OUT screen must gracefully degrade to the paste-invoice flow when neither is configured.
 - **Self-hosted LN addresses (`username@chama.community`, `username@chama.exchange`, eventually `username@chama.app`).** Using [`lnaddrd`](https://github.com/elsirion/lnaddrd) on the Chama domains, users can opt to receive a Chama-domain Lightning address that forwards to their NWC connection or registered LNURL. Chama never holds custody — just provides the friendly identity. Particularly valuable for Fedi users who visit Chama and want a portable LN identity.
 - Self-reveal gesture for individual ratings
@@ -254,7 +274,7 @@ Apple-grade dark mode (#0a0a0a base, #f5f5f7 primary text, #86868b secondary tex
 
 Every proposal for new feature work must pass this test:
 
-1. **Does it sit on the five pillars without bending them?**
+1. **Does it sit on the seven pillars without bending them?**
    If it requires Chama to custody funds, persist a balance, hide a community signal, gate without graduated authority, or break the Trinity Ring as architectural truth → reject.
 
 2. **Does the existing reputation primitive provide the trust signal needed?**
