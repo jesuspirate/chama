@@ -1,0 +1,134 @@
+name: Windows Bridge Probe
+
+# One-shot probe answering three questions about the Windows desktop build:
+#   Q1. Does native/fedimint-bridge compile on Windows (MSVC)?
+#   Q2. Does the produced sidecar .exe spawn?
+#   Q3. Does Tauri emit an NSIS installer?
+#
+# The risky links are the bridge's NATIVE crates, not Tauri:
+#   - librocksdb-sys 0.17.3 (C++ via cc + cmake + bindgen/libclang)
+#   - aws-lc-sys 0.39/0.41 (via aws-lc-rs/rustls; needs NASM + CMake on MSVC)
+#   - ring 0.17 (needs NASM on Windows)
+# iroh (0.35/0.90) is pure-Rust QUIC and is low risk.
+#
+# Kept as a STANDALONE workflow so the heavy Windows compile does not run on
+# every PR. Once it is known-green, fold the `windows-bridge` job into ci.yml
+# as a permanent windows-latest leg.
+
+on:
+  push:
+    branches:
+      - 'claude/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-bridge-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows-bridge:
+    name: Windows — fedimint-bridge + Tauri NSIS
+    runs-on: windows-latest
+
+    steps:
+      # SECURITY: actions pinned to full commit SHAs, not floating tags.
+      # See .github/workflows/ci.yml for the full rationale. When bumping,
+      # verify the SHA against the action's GitHub release page.
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+
+      - name: Setup Node
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444  # v5.0.0
+        with:
+          node-version: 22
+          cache: npm
+
+      # rocksdb + aws-lc are slow to compile on Windows; cache so reruns are cheap.
+      - name: Cache cargo + build targets
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830  # v4.3.0
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            native/fedimint-bridge/target
+            src-tauri/target
+          key: win-bridge-${{ hashFiles('native/fedimint-bridge/Cargo.lock', 'src-tauri/Cargo.lock') }}
+          restore-keys: |
+            win-bridge-
+
+      # Records the stock windows-latest toolchain (Rust, MSVC cl, CMake, NASM,
+      # libclang, Perl) so the run self-documents what was available. Never fails.
+      - name: Toolchain sanity
+        shell: bash
+        run: |
+          {
+            echo "## Windows build toolchain"
+            echo '```'
+            rustc --version 2>&1 || echo "rustc: not found"
+            cargo --version 2>&1 || echo "cargo: not found"
+            cmake --version 2>&1 | head -1 || echo "cmake: not found"
+            nasm --version 2>&1 | head -1 || echo "nasm: not found"
+            clang --version 2>&1 | head -1 || echo "clang: not found"
+            perl --version 2>&1 | sed -n '2p' || echo "perl: not found"
+            echo "LIBCLANG_PATH=${LIBCLANG_PATH:-<unset>}"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Install frontend deps
+        run: npm install
+
+      # Tauri's beforeBuildCommand runs `npm run tauri:sidecar`, whose script is
+      # a .sh file. Point npm's script-shell at git-bash so it runs under bash
+      # (where the script's .exe / host-triple handling lives) instead of cmd.exe.
+      - name: Route npm run-scripts through git-bash
+        shell: bash
+        run: npm config set script-shell "C:\\Program Files\\Git\\bin\\bash.exe"
+
+      # ---- Q1: does the bridge compile on Windows MSVC? ----
+      - name: Build fedimint-bridge sidecar
+        shell: bash
+        run: ./scripts/build-tauri-fedimint-bridge.sh
+
+      # ---- Q2: does the produced sidecar .exe spawn? ----
+      # clap --help exits 0, proving the compiled Windows binary loads and runs
+      # (no missing DLLs, links resolved). serve --help exercises a subcommand.
+      - name: Smoke-test sidecar spawn
+        shell: bash
+        run: |
+          set -euo pipefail
+          BIN="$(ls src-tauri/binaries/chama-fedimint-bridge-*.exe | head -1)"
+          echo "Spawning: $BIN"
+          "$BIN" --help
+          "$BIN" serve --help
+          echo "OK: sidecar spawned and exited cleanly"
+
+      # ---- Q3: does Tauri emit an NSIS installer? ----
+      # --bundles nsis isolates the NSIS answer from WiX/MSI noise. beforeBuildCommand
+      # still rebuilds the sidecar (no-op, cached) and runs the vite frontend build.
+      - name: Tauri build (NSIS bundle)
+        run: npx tauri build --bundles nsis
+
+      - name: List bundle output
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "## Bundle output"
+            echo '```'
+            ls -R src-tauri/target/release/bundle 2>/dev/null || echo "no bundle dir produced"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload NSIS installer
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        with:
+          name: chama-windows-nsis
+          path: |
+            src-tauri/target/release/bundle/nsis/*.exe
+            src-tauri/target/release/bundle/nsis/*.nsi
+          if-no-files-found: warn
