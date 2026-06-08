@@ -79,11 +79,28 @@ and names the binary `chama-fedimint-bridge-<triple>.exe` to match Tauri's
 > For local builds, run from Git Bash and/or set the same npm `script-shell`,
 > or invoke `scripts/build-tauri-fedimint-bridge.sh` once by hand first.
 
-## Status
+## Result — all three: YES
 
-- **Linux baseline** (agent's container): bridge dependency graph resolves and
-  compiles cleanly — `aws-lc-rs`, `rustls`, and hundreds of fedimint crates
-  build without error, confirming the code itself is sound.
-- **Windows answers (Q1/Q2/Q3):** produced by the CI run of
-  `windows-bridge-probe.yml`. See the run logs + the `chama-windows-nsis`
-  artifact for the definitive result.
+Confirmed by CI run
+[27109714179](https://github.com/jesuspirate/chama/actions/runs/27109714179)
+on a stock `windows-latest` (MSVC) runner, plus a Linux baseline:
+
+| Question | Answer | Evidence |
+|---|---|---|
+| **Q1 — bridge builds on Windows?** | ✅ **YES** | `cargo build --release` of the full native tree (rocksdb, librocksdb-sys, aws-lc-sys, ring, iroh, fedimint client) finished on Windows MSVC in **~18.5 min**, exit 0. No NASM/libclang/CMake gaps — the stock runner toolchain sufficed. |
+| **Q2 — sidecar spawns?** | ✅ **YES** | `chama-fedimint-bridge-x86_64-pc-windows-msvc.exe --help` and `serve --help` both exited 0 — the compiled Windows binary loads and runs. |
+| **Q3 — NSIS bundles?** | ✅ **YES** | Tauri compiled the shell (4m 12s), fetched NSIS 3.11, and `makensis` produced **`Chama_2.7.0_x64-setup.exe`** (target x64). Uploaded as artifact `chama-windows-nsis` (~29.5 MB). |
+
+- **Linux baseline** (agent's container): the same bridge built clean in 14m 10s
+  (84 MB binary) and ran the identical spawn test — confirming the code is sound
+  and portable; the only variable was the Windows toolchain, which CI cleared.
+- **Total Windows job:** ~25 min cold (no cache). The workflow caches cargo +
+  target dirs, so reruns are far faster.
+
+### Notes for folding into `ci.yml`
+- GitHub warns that `actions/cache` and `actions/upload-artifact` (both v4, pinned
+  here) run on Node 20, which is deprecated; they are force-migrated to Node 24
+  on 2026-06-16. No version bump is available yet — the warning is harmless.
+- `targets: "all"` in `tauri.conf.json` would also attempt a WiX/MSI bundle on
+  Windows; this probe forced `--bundles nsis` to answer the NSIS question cleanly.
+  Validate MSI separately if you want both installer flavours in releases.
