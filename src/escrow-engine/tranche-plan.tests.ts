@@ -67,7 +67,7 @@ assert(getEffectiveParticipantAt(parent.state, Role.BUYER, 1_900_000_000) === BU
 const children: EscrowState[] = [];
 for (const row of tranches) {
   const tranche = buildChildDescriptor(PARENT, START_EVENT, plan, row.index);
-  const childPayload: CreatePayload = { ...parentPayload, amountMsats: row.amountMsats, parent: PARENT, sellerPubkey: SELLER, tranche };
+  const childPayload: CreatePayload = { ...parentPayload, amountMsats: row.amountMsats, parent: PARENT, sellerPubkey: SELLER, trancheChild: tranche };
   const childId = trancheChildId(PARENT, planId, row.index);
   assert(verifyTrancheChild(PARENT, START_EVENT, plan, childId, childPayload) === null, `child ${row.index + 1} verifies against frozen terms`);
   assert(isPrivatePlanChild(childPayload), `child ${row.index + 1} is excluded from public Browse`);
