@@ -15,3 +15,4 @@ export * from "./notifier.js";
 export * from "./nip46-signer.js";
 export * from "./nsec-signer.js";
 export * from "./encryption-config.js";
+export * from "./tranche-plan.js";
