@@ -745,6 +745,9 @@ export function shouldShowOnBrowse(inputs: {
 }): boolean {
   const { escrow, browseCategory } = inputs;
   if (escrow.status !== EscrowStatus.CREATED) return false;
+  // Once PLAN_START freezes the participants, this CREATE is the persistent
+  // parent room/manifest—not an offer another buyer can take.
+  if (escrow.tranchePlan) return false;
   // #7 Stage 3: a CHILD purchase escrow (carries `parent`) is a trade, not a
   // listing — it lives in Me / loadable by id, never as its own Browse card.
   if (escrow.parent !== undefined) return false;

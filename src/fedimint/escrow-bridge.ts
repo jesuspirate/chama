@@ -191,6 +191,14 @@ export class EscrowFedimintBridge {
       );
     }
 
+    // Parent/child tranche protocol: this runs before invoice/address creation
+    // and before createEscrowLock spends notes. It proves this is the single
+    // active verified child; the parent manifest and later children fail shut.
+    const trancheGate = (this.escrow as EscrowClient & {
+      assertTrancheFundingAllowed?: (candidate: EscrowState) => Promise<void>;
+    }).assertTrancheFundingAllowed;
+    if (trancheGate) await trancheGate.call(this.escrow, state);
+
     const createEvent = state.eventChain.find(
       (e: any) => e.kind === 38100 || e.payload?.type === "escrow:create"
     );

@@ -43,6 +43,8 @@ import {
   type SettlementPayload,
   type SubscribePayload,
   type PeriodReleasePayload,
+  type PlanStartPayload,
+  type ChildKeyPayload,
   type ValidationError,
 } from "./types.js";
 import { payoutRecipientFor } from "./recipients.js";
@@ -50,6 +52,7 @@ import { validateVoteShareEnvelope } from "./holder-shares.js";
 import { arbiterVotePriority, substitutionEligibleAt, clampSubstitutionGraceSeconds, oneSidedEscalationAt, isPerformanceContest } from "./arbiter-substitution.js";
 import { pickArbiterFromPool, pickPreferredArbiter } from "../arbiters/pool.js";
 import { finalArbiterSettlementProof, finalCoopSettlementProof } from "./onchain-settlement-transport.js";
+import { validatePlanStart } from "./tranche-plan.js";
 
 // Re-export so existing callers (escrow-client, escrow-bridge, tests) keep
 // importing payoutRecipientFor from the state machine.
@@ -128,6 +131,11 @@ function cloneState(state: EscrowState): EscrowState {
     chatMessages: [...state.chatMessages],
     premiumNotes: state.premiumNotes ? [...state.premiumNotes] : undefined,
     settlements: state.settlements ? [...state.settlements] : undefined,
+    tranchePlan: state.tranchePlan
+      ? { ...state.tranchePlan, tranches: state.tranchePlan.tranches.map(row => ({ ...row })) }
+      : undefined,
+    trancheChild: state.trancheChild ? { ...state.trancheChild } : undefined,
+    childKeys: state.childKeys ? { ...state.childKeys } : undefined,
   };
 }
 
@@ -296,19 +304,25 @@ function handleCreate(event: ParsedEscrowEvent<CreatePayload>): TransitionResult
   // (who discovers the child later via the `#parent` filter). A wrong/forged
   // sellerPubkey only locks the buyer's own funds to a counterparty that
   // won't fulfil → recovered via the existing refund/expiry path; no loss.
+  const isTrancheChild = p.trancheChild?.privatePlanChild === true;
   const isChildPurchase = p.parent !== undefined && p.sellerPubkey !== undefined;
 
-  const initiatorRole = (p.category === "lending" || isChildPurchase)
+  const initiatorRole = isTrancheChild
+    ? Role.SELLER
+    : (p.category === "lending" || isChildPurchase)
     ? Role.BUYER
     : Role.SELLER;
 
   const participants = {
-    [Role.BUYER]: initiatorRole === Role.BUYER ? event.pubkey : null,
-    [Role.SELLER]: isChildPurchase
+    [Role.BUYER]: isTrancheChild ? p.trancheChild!.buyerPubkey : (initiatorRole === Role.BUYER ? event.pubkey : null),
+    [Role.SELLER]: isTrancheChild ? p.trancheChild!.sellerPubkey : isChildPurchase
       ? p.sellerPubkey!
       : (initiatorRole === Role.SELLER ? event.pubkey : null),
-    [Role.ARBITER]: null as string | null,
+    [Role.ARBITER]: isTrancheChild ? p.trancheChild!.arbiterPubkey : null as string | null,
   };
+  if (isTrancheChild && event.pubkey !== p.trancheChild!.coordinatorPubkey) {
+    return err("INVALID_TRANCHE_COORDINATOR", "Only the frozen plan coordinator may create tranche children", event.raw.id);
+  }
 
   // PR 2: fulfillment is generic to every listing, but only marketplace
   // gives the user a real choice. For other categories we rewrite to
@@ -355,6 +369,7 @@ function handleCreate(event: ParsedEscrowEvent<CreatePayload>): TransitionResult
     ...(p.stock !== undefined ? { stock: p.stock } : {}),
     ...(p.parent !== undefined ? { parent: p.parent } : {}),
     ...(p.claimedQuantity !== undefined ? { claimedQuantity: p.claimedQuantity } : {}),
+    ...(p.trancheChild ? { trancheChild: { ...p.trancheChild }, childKeys: {} } : {}),
     participants,
     joinHolds: {},
     initiator: { pubkey: event.pubkey, role: initiatorRole },
@@ -397,6 +412,50 @@ function handleCreate(event: ParsedEscrowEvent<CreatePayload>): TransitionResult
   };
 
   return { ok: true, state };
+}
+
+function handlePlanStart(state: EscrowState, event: ParsedEscrowEvent<PlanStartPayload>): TransitionResult {
+  const p = event.payload;
+  if (state.trancheChild || state.parent) return err("PLAN_ON_CHILD", "A tranche child cannot start a plan", event.raw.id);
+  if (state.tranchePlan) {
+    return state.tranchePlan.eventId === event.raw.id
+      ? { ok: true, state }
+      : err("PLAN_ALREADY_STARTED", "Parent already has a frozen tranche plan", event.raw.id);
+  }
+  const invalid = validatePlanStart(p);
+  if (invalid) return err("INVALID_PLAN_START", invalid, event.raw.id);
+  if (event.pubkey !== state.initiator.pubkey || event.pubkey !== p.coordinatorPubkey) {
+    return err("INVALID_PLAN_COORDINATOR", "Plan start must be signed by the parent initiator", event.raw.id);
+  }
+  if (state.participants[Role.BUYER] !== p.buyerPubkey
+    || state.participants[Role.SELLER] !== p.sellerPubkey
+    || state.participants[Role.ARBITER] !== p.arbiterPubkey) {
+    return err("PLAN_PARTICIPANT_MISMATCH", "Plan participants must match the seated parent participants", event.raw.id);
+  }
+  if (p.totalMsats !== state.amountMsats) return err("PLAN_AMOUNT_MISMATCH", "Plan total must equal parent amount", event.raw.id);
+  const next = cloneState(state);
+  next.tranchePlan = { ...p, tranches: p.tranches.map(row => ({ ...row })), eventId: event.raw.id };
+  // The parent is now a persistent manifest/room, not a fundable listing.
+  next.expiresAt = Number.MAX_SAFE_INTEGER;
+  next.eventChain.push(event);
+  return { ok: true, state: next };
+}
+
+function handleChildKey(state: EscrowState, event: ParsedEscrowEvent<ChildKeyPayload>): TransitionResult {
+  const p = event.payload;
+  const tranche = state.trancheChild;
+  if (!tranche) return err("KEY_ON_NON_CHILD", "Child keys are accepted only on tranche children", event.raw.id);
+  if (p.parent !== tranche.parent || p.planId !== tranche.planId || p.index !== tranche.index) {
+    return err("CHILD_KEY_PLAN_MISMATCH", "Child key does not match this tranche", event.raw.id);
+  }
+  if (p.bitcoinNetwork !== tranche.bitcoinNetwork) return err("CHILD_KEY_NETWORK_MISMATCH", "Child key uses the wrong Bitcoin network", event.raw.id);
+  if (state.participants[p.role] !== event.pubkey) return err("UNAUTHORIZED_CHILD_KEY", "Key signer does not hold the declared frozen role", event.raw.id);
+  const existing = state.childKeys?.[p.role];
+  if (existing && existing !== p.xOnlyPubkey) return err("CHILD_KEY_ALREADY_SET", "A frozen role cannot replace its child key", event.raw.id);
+  const next = cloneState(state);
+  next.childKeys = { ...(next.childKeys ?? {}), [p.role]: p.xOnlyPubkey };
+  next.eventChain.push(event);
+  return { ok: true, state: next };
 }
 
 // ── JOIN ──────────────────────────────────────────────────────────────────
@@ -1630,7 +1689,9 @@ export function applyEvent(
   //     recorded in the same apply call (no "lost first heal vote").
   //   - For any other event past deadline on a non-expired state:
   //     keep the original flip-and-return behavior.
-  if (event.timestamp > state.expiresAt && state.status !== EscrowStatus.APPROVED && state.status !== EscrowStatus.CLAIMED) {
+  const activatesDeferredTranche = state.tranche
+    && (event.kind === EscrowEventKind.LOCK || event.kind === EscrowEventKind.CHILD_KEY);
+  if (!activatesDeferredTranche && event.timestamp > state.expiresAt && state.status !== EscrowStatus.APPROVED && state.status !== EscrowStatus.CLAIMED) {
     if (state.status === EscrowStatus.EXPIRED) {
       // Already expired — fall through to dispatch (healing path).
     } else if (event.kind === EscrowEventKind.VOTE) {
@@ -1688,6 +1749,10 @@ export function applyEvent(
       return handleSubscribe(state, event as ParsedEscrowEvent<SubscribePayload>);
     case EscrowEventKind.PERIOD_RELEASE:
       return handlePeriodRelease(state, event as ParsedEscrowEvent<PeriodReleasePayload>);
+    case EscrowEventKind.PLAN_START:
+      return handlePlanStart(state, event as ParsedEscrowEvent<PlanStartPayload>);
+    case EscrowEventKind.CHILD_KEY:
+      return handleChildKey(state, event as ParsedEscrowEvent<ChildKeyPayload>);
     default:
       return err("UNKNOWN_EVENT_KIND", `Unknown event kind: ${event.kind}`, event.raw.id);
   }

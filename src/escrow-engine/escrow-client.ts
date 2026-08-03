@@ -51,6 +51,10 @@ import {
   type PremiumPayload,
   type SettlementPayload,
   type EscrowPayload,
+  type TrancheChildDescriptor,
+  type TrancheBitcoinNetwork,
+  type PlanStartPayload,
+  type ChildKeyPayload,
 } from "./types.js";
 
 import { applyEvent, replayEventChain, canVote, getWinner, payoutRecipientFor, type TransitionResult } from "./state-machine.js";
@@ -82,6 +86,15 @@ import { verifyEvent as verifyNostrEventSignature } from "nostr-tools/pure";
 import { randomId } from "../storage/random-id.js";
 import { compactSelectedMenuItems } from "./selected-menu-items.js";
 import { pickPreferredArbiter } from "../arbiters/pool.js";
+import {
+  buildChildDescriptor,
+  canFundTranche,
+  isPrivatePlanChild,
+  splitTranches,
+  trancheChildId,
+  tranchePlanId,
+  trancheTermsDigest,
+} from "./tranche-plan.js";
 import {
   buildNip99ListingEvent,
   nip99ListingCoordinate,
@@ -882,7 +895,7 @@ export class EscrowClient {
 
   async createEscrow(params: {
     description: string;
-    listingKind?: "work";
+    listingKind?: CreatePayload["listingKind"];
     imageDataUrl?: string;
     imageUrls?: string[];
     amountMsats: number;
@@ -953,10 +966,17 @@ export class EscrowClient {
     /** Child purchase: the parent's seller pubkey, seated as SELLER so a
      *  buyer-created child is lock-ready without the seller online (Option A). */
     sellerPubkey?: string;
+    /** Internal deterministic id used only for verified tranche children. */
+    escrowId?: string;
+    /** Frozen private tranche-child descriptor. */
+    trancheChild?: TrancheChildDescriptor;
   }): Promise<{ escrowId: string; state: EscrowState }> {
     const pubkey = await this.getPubkey();
     const now = Math.floor(Date.now() / 1000);
-    const escrowId = this.generateEscrowId();
+    const escrowId = params.escrowId ?? this.generateEscrowId();
+    if (params.trancheChild && escrowId !== trancheChildId(params.trancheChild.parent, params.trancheChild.planId, params.trancheChild.index)) {
+      throw new Error("Tranche child id is not deterministic for its parent plan and index");
+    }
 
     // PR 2: normalize fulfillment so the wire payload matches what
     // handleCreate will store. Marketplace defaults to "physical" when
@@ -1019,6 +1039,7 @@ export class EscrowClient {
       parent: params.parent,
       claimedQuantity: params.claimedQuantity,
       sellerPubkey: params.sellerPubkey,
+      trancheChild: params.trancheChild,
       createdAt: now,
     };
 
@@ -1048,6 +1069,11 @@ export class EscrowClient {
         // `#parent` tag so Browse can fan out one relay filter to fetch all of
         // a listing's children and derive remaining stock.
         ...(params.parent ? [[TAGS.PARENT, params.parent]] : []),
+        ...(params.trancheChild ? [
+          [TAGS.PLAN, params.trancheChild.planId],
+          [TAGS.TRANCHE, String(params.trancheChild.index)],
+          [TAGS.BITCOIN_NETWORK, params.trancheChild.bitcoinNetwork],
+        ] : []),
         // Discovery (v3.x): a child purchase seats the parent's seller without
         // the seller authoring this CREATE — tag them `#p` so the trade is
         // relay-discoverable from the seller's side (discoverMyEscrowIds)
@@ -1059,6 +1085,10 @@ export class EscrowClient {
         ...((params.continuationPubkeys ?? [])
           .filter((pk, index, all) => pk !== pubkey && all.indexOf(pk) === index)
           .map((pk) => [TAGS.PARTICIPANT, pk])),
+        ...(params.trancheChild ? [
+          [TAGS.PARTICIPANT, params.trancheChild.buyerPubkey],
+          [TAGS.PARTICIPANT, params.trancheChild.arbiterPubkey],
+        ] : []),
         // Store listings have a standard NIP-99 public identity. The Chama
         // CREATE remains the escrow-capable source of truth and points to its
         // interoperable classified-listing mirror by addressable coordinate.
@@ -1141,6 +1171,123 @@ export class EscrowClient {
     }
 
     return { escrowId, state: this.states.get(escrowId)! };
+  }
+
+  /** Freeze a parent and idempotently fan out every private child. The parent
+   * stays the persistent room; children are tagged to all frozen participants
+   * but are excluded from the public listing feed. */
+  async startTranchePlan(
+    parentId: string,
+    maximumChildMsats: number,
+    bitcoinNetwork: TrancheBitcoinNetwork,
+  ): Promise<{ parent: EscrowState; children: EscrowState[] }> {
+    let parent = this.states.get(parentId) ?? await this.loadEscrow(parentId);
+    if (!parent) throw new Error(`Parent ${parentId} not found`);
+    const coordinator = await this.getPubkey();
+    if (parent.initiator.pubkey !== coordinator || parent.initiator.role !== Role.SELLER) throw new Error("Only the parent seller may coordinate its tranche plan");
+    const buyerPubkey = parent.participants[Role.BUYER];
+    const sellerPubkey = parent.participants[Role.SELLER];
+    const arbiterPubkey = parent.participants[Role.ARBITER];
+    if (!buyerPubkey || !sellerPubkey || !arbiterPubkey) throw new Error("Parent buyer, seller, and arbiter must all be seated before plan start");
+
+    const baseParams = {
+      description: parent.description,
+      listingKind: parent.listingKind,
+      imageDataUrl: parent.imageDataUrl,
+      imageUrls: parent.imageUrls,
+      fiatAmount: parent.fiatAmount,
+      fiatCurrency: parent.fiatCurrency,
+      premiumBps: parent.premiumBps,
+      category: parent.category,
+      fulfillment: parent.fulfillment,
+      community: parent.community ?? undefined,
+      country: parent.country ?? undefined,
+      billType: parent.billType ?? undefined,
+      mintUrl: parent.mintUrl,
+      paymentMethods: parent.paymentMethods,
+      items: parent.items,
+      arbiterFeeMsats: parent.fees.arbiterMsats,
+      expirySeconds: parent.tradeTimeoutSeconds ?? this.config.defaultExpirySeconds!,
+      communityArbiters: parent.communityArbiters,
+      bondedArbiters: parent.bondedArbiters,
+    };
+    const digestPayload: CreatePayload = {
+      type: "escrow:create", ...baseParams, amountMsats: parent.amountMsats,
+      platformFeeBps: parent.fees.platformBps, platformFeePubkey: parent.fees.platformPubkey,
+      createdAt: parent.createdAt,
+    };
+    const termsDigest = trancheTermsDigest(digestPayload);
+    const planId = tranchePlanId(parentId, termsDigest, buyerPubkey);
+    const tranches = splitTranches(parent.amountMsats, maximumChildMsats);
+    let planStartEventId = parent.tranchePlan?.eventId;
+    let plan: PlanStartPayload;
+    if (parent.tranchePlan) {
+      plan = parent.tranchePlan;
+      if (plan.planId !== planId || plan.bitcoinNetwork !== bitcoinNetwork) throw new Error("Parent already has a different frozen tranche plan");
+    } else {
+      const now = Math.floor(Date.now() / 1000);
+      plan = { type: "escrow:plan_start", planId, total: tranches.length, totalMsats: parent.amountMsats,
+        buyerPubkey, sellerPubkey, arbiterPubkey, termsDigest, coordinatorPubkey: coordinator,
+        bitcoinNetwork, tranches, startedAt: now };
+      const previous = parent.eventChain[parent.eventChain.length - 1]?.raw.id;
+      const unsigned: UnsignedEvent = { kind: EscrowEventKind.PLAN_START, created_at: now, tags: [
+        [TAGS.ESCROW_ID, parentId], [TAGS.PREV_EVENT, previous, "", "reply"],
+        [TAGS.TYPE, "escrow:plan_start"], [TAGS.PLAN, planId], [TAGS.BITCOIN_NETWORK, bitcoinNetwork],
+        [TAGS.PARTICIPANT, buyerPubkey], [TAGS.PARTICIPANT, sellerPubkey], [TAGS.PARTICIPANT, arbiterPubkey],
+      ], content: JSON.stringify(plan) };
+      const signed = await this.signWithSimTag(unsigned);
+      await this.relayManager.publish(signed);
+      parent = this.applyLocally(parentId, signed, plan);
+      planStartEventId = signed.id;
+    }
+    if (!planStartEventId) throw new Error("Plan start event id unavailable");
+
+    const existing = await this.loadChildren(parentId);
+    const byId = new Map(existing.map(child => [child.id, child]));
+    const children: EscrowState[] = [];
+    for (const row of plan.tranches) {
+      const id = trancheChildId(parentId, plan.planId, row.index);
+      let child = byId.get(id);
+      if (!child) {
+        const tranche = buildChildDescriptor(parentId, planStartEventId, plan, row.index);
+        child = (await this.createEscrow({ ...baseParams, amountMsats: row.amountMsats, parent: parentId,
+          sellerPubkey, escrowId: id, trancheChild: tranche })).state;
+      }
+      children.push(child);
+    }
+    return { parent, children };
+  }
+
+  async publishChildKey(escrowId: string, role: Role, xOnlyPubkey: string): Promise<EscrowState> {
+    const state = this.states.get(escrowId) ?? await this.loadEscrow(escrowId);
+    if (!state?.trancheChild) throw new Error("Escrow is not a tranche child");
+    const pubkey = await this.getPubkey();
+    if (state.participants[role] !== pubkey) throw new Error("Signer does not hold that frozen child role");
+    const now = Math.floor(Date.now() / 1000);
+    const payload: ChildKeyPayload = { type: "escrow:child_key", planId: state.trancheChild.planId,
+      parent: state.trancheChild.parent, index: state.trancheChild.index, role,
+      bitcoinNetwork: state.trancheChild.bitcoinNetwork, xOnlyPubkey, publishedAt: now };
+    const previous = state.eventChain[state.eventChain.length - 1]?.raw.id;
+    const unsigned: UnsignedEvent = { kind: EscrowEventKind.CHILD_KEY, created_at: now, tags: [
+      [TAGS.ESCROW_ID, escrowId], [TAGS.PREV_EVENT, previous, "", "reply"], [TAGS.TYPE, "escrow:child_key"],
+      [TAGS.PARENT, state.trancheChild.parent], [TAGS.PLAN, state.trancheChild.planId], [TAGS.TRANCHE, String(state.trancheChild.index)],
+      [TAGS.BITCOIN_NETWORK, state.trancheChild.bitcoinNetwork], [TAGS.PARTICIPANT, pubkey],
+    ], content: JSON.stringify(payload) };
+    const signed = await this.signWithSimTag(unsigned);
+    await this.relayManager.publish(signed);
+    return this.applyLocally(escrowId, signed, payload);
+  }
+
+  /** Pre-spend/pre-address-display tranche gate. Callers must run this before
+   * creating an invoice, deposit address, or spending wallet notes. */
+  async assertTrancheFundingAllowed(state: EscrowState): Promise<void> {
+    if (state.tranchePlan) throw new Error("The parent is a tranche manifest and cannot receive funding");
+    if (!state.trancheChild) return;
+    const parent = this.states.get(state.trancheChild.parent) ?? await this.loadEscrow(state.trancheChild.parent);
+    if (!parent?.tranchePlan) throw new Error("Cannot verify the signed parent tranche plan");
+    if (parent.tranchePlan.bitcoinNetwork !== state.trancheChild.bitcoinNetwork) throw new Error("Tranche Bitcoin network does not match its parent");
+    const children = await this.loadChildren(parent.id);
+    if (!canFundTranche(parent, children, state.id)) throw new Error("A prior tranche must complete before this child can fund");
   }
 
   // ── Join an existing escrow ─────────────────────────────────────────────
@@ -1313,6 +1460,7 @@ export class EscrowClient {
   }): Promise<EscrowState> {
     const state = this.states.get(escrowId);
     if (!state) throw new Error(`Escrow ${escrowId} not loaded`);
+    await this.assertTrancheFundingAllowed(state);
 
     const now = Math.floor(Date.now() / 1000);
     const lastEventId = state.eventChain[state.eventChain.length - 1]?.raw.id;
@@ -2750,6 +2898,7 @@ export class EscrowClient {
     // full chain before surfacing a never-seen escrow so completed/cancelled
     // trades do not resurrect as stale OPEN tiles on login.
     if (parsed.kind === EscrowEventKind.CREATE && !currentState) {
+      if (isPrivatePlanChild(parsed.payload as CreatePayload)) return;
       this.enqueueListingHydration(escrowId);
       return;
     }

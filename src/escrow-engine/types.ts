@@ -160,6 +160,10 @@ export enum EscrowEventKind {
   /** On-chain settlement PSBT transport. NON-CONSENSUS — its own state
    *  array, never eventChain, and accepted at APPROVED and after. */
   SETTLEMENT = 38114,
+  /** Freeze a parent trade's tranche plan and exact participant snapshot. */
+  PLAN_START = 38115,
+  /** Publish a pre-seated participant's per-child on-chain key. */
+  CHILD_KEY = 38116,
 }
 
 // ── Valid State Transitions ───────────────────────────────────────────────
@@ -231,7 +235,62 @@ export const TAGS = {
    *  child purchase escrow. Lets Browse fan out a `#parent` relay filter
    *  to count a storefront's children for derived remaining stock. */
   PARENT: "parent",
+  /** Deterministic tranche-plan identifier. */
+  PLAN: "plan",
+  /** Zero-based tranche index. */
+  TRANCHE: "tranche",
+  /** Exact Bitcoin network inherited from the parent plan. */
+  BITCOIN_NETWORK: "bitcoin_network",
 } as const;
+
+export type TrancheBitcoinNetwork = "mainnet" | "signet";
+
+export interface TrancheDescriptor {
+  index: number;
+  amountMsats: number;
+}
+
+export interface PlanStartPayload {
+  type: "escrow:plan_start";
+  planId: string;
+  total: number;
+  totalMsats: number;
+  buyerPubkey: string;
+  sellerPubkey: string;
+  arbiterPubkey: string;
+  termsDigest: string;
+  coordinatorPubkey: string;
+  bitcoinNetwork: TrancheBitcoinNetwork;
+  tranches: TrancheDescriptor[];
+  startedAt: number;
+}
+
+export interface TrancheChildDescriptor {
+  privatePlanChild: true;
+  parent: string;
+  planId: string;
+  planStartEventId: string;
+  index: number;
+  total: number;
+  totalMsats: number;
+  buyerPubkey: string;
+  sellerPubkey: string;
+  arbiterPubkey: string;
+  termsDigest: string;
+  coordinatorPubkey: string;
+  bitcoinNetwork: TrancheBitcoinNetwork;
+}
+
+export interface ChildKeyPayload {
+  type: "escrow:child_key";
+  planId: string;
+  parent: string;
+  index: number;
+  role: Role;
+  bitcoinNetwork: TrancheBitcoinNetwork;
+  xOnlyPubkey: string;
+  publishedAt: number;
+}
 
 // ── Encrypted Content Payloads ────────────────────────────────────────────
 // These are the JSON structures inside NIP-44 encrypted `content` fields.
@@ -373,6 +432,8 @@ export interface CreatePayload {
    *  LOCK immediately and the SSS share routes to the seller. Required when
    *  `parent` is set; absent on parents / standalone listings. */
   sellerPubkey?: string;
+  /** Private deterministic child in a signed sequential tranche plan. */
+  trancheChild?: TrancheChildDescriptor;
   /** Timestamp */
   createdAt: number;
 }
@@ -838,7 +899,9 @@ export type EscrowPayload =
   | PremiumPayload
   | SettlementPayload
   | SubscribePayload
-  | PeriodReleasePayload;
+  | PeriodReleasePayload
+  | PlanStartPayload
+  | ChildKeyPayload;
 
 // ── Raw Nostr Event (minimal, from nostr-tools) ──────────────────────────
 
@@ -944,6 +1007,12 @@ export interface EscrowState {
   /** Units this child escrow claims from the parent's stock. Set only on
    *  child escrows. */
   claimedQuantity?: number;
+  /** Present on a parent after its participant snapshot is frozen. */
+  tranchePlan?: PlanStartPayload & { eventId: string };
+  /** Present only on private deterministic tranche children. */
+  trancheChild?: TrancheChildDescriptor;
+  /** Per-child on-chain x-only keys published by the frozen participants. */
+  childKeys?: Partial<Record<Role, string>>;
 
   /** Participants — pubkeys mapped to roles */
   participants: {
@@ -1113,6 +1182,9 @@ export function getEffectiveParticipantAt(
 ): string | null {
   const pubkey = state.participants[role];
   if (!pubkey) return null;
+  // A signed PLAN_START freezes all three seats for the lifetime of the
+  // persistent parent room; the original buyer reservation no longer lapses.
+  if (state.tranchePlan) return pubkey;
   if (state.status !== EscrowStatus.CREATED) return pubkey;
 
   const hold = state.joinHolds?.[role];

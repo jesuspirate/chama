@@ -35,6 +35,8 @@ import {
   type HandleEnvelope,
   type SubscribePayload,
   type PeriodReleasePayload,
+  type PlanStartPayload,
+  type ChildKeyPayload,
   type ValidationError,
   Role,
   Outcome,
@@ -61,6 +63,8 @@ const KIND_TO_TYPE: Record<number, string> = {
   [EscrowEventKind.SETTLEMENT]: "escrow:settlement",
   [EscrowEventKind.SUBSCRIBE]:      "escrow:subscribe",
   [EscrowEventKind.PERIOD_RELEASE]: "escrow:period_release",
+  [EscrowEventKind.PLAN_START]: "escrow:plan_start",
+  [EscrowEventKind.CHILD_KEY]: "escrow:child_key",
 };
 
 function isFulfillment(v: unknown): v is "physical" | "service" | "digital" {
@@ -226,6 +230,18 @@ function validateCreatePayload(data: unknown): data is CreatePayload {
   if (d.parent !== undefined && (typeof d.parent !== "string" || d.parent.length === 0)) return false;
   if (d.claimedQuantity !== undefined && (!isPositiveNumber(d.claimedQuantity) || !Number.isInteger(d.claimedQuantity))) return false;
   if (d.sellerPubkey !== undefined && (typeof d.sellerPubkey !== "string" || d.sellerPubkey.length === 0)) return false;
+  if (d.trancheChild !== undefined) {
+    const t = d.trancheChild as Record<string, unknown>;
+    if (!t || typeof t !== "object" || t.privatePlanChild !== true
+      || typeof t.parent !== "string" || typeof t.planId !== "string"
+      || typeof t.planStartEventId !== "string" || !Number.isInteger(t.index)
+      || !Number.isInteger(t.total) || typeof t.totalMsats !== "number"
+      || typeof t.buyerPubkey !== "string" || typeof t.sellerPubkey !== "string"
+      || typeof t.arbiterPubkey !== "string" || typeof t.termsDigest !== "string"
+      || typeof t.coordinatorPubkey !== "string"
+      || (t.bitcoinNetwork !== "mainnet" && t.bitcoinNetwork !== "signet")) return false;
+    if (d.parent !== t.parent || d.sellerPubkey !== t.sellerPubkey) return false;
+  }
   // Stage 2b: a CHILD purchase (parent set) must name its seller. The buyer
   // publishes the child CREATE (Option A — seller offline), so without the
   // carried seller pubkey there's no SELLER to seat and the child could never
@@ -559,6 +575,32 @@ function validatePeriodReleasePayload(data: unknown): data is PeriodReleasePaylo
   );
 }
 
+function validatePlanStartPayload(data: unknown): data is PlanStartPayload {
+  const d = data as Record<string, unknown>;
+  return d.type === "escrow:plan_start"
+    && typeof d.planId === "string" && typeof d.termsDigest === "string"
+    && Number.isInteger(d.total) && typeof d.totalMsats === "number"
+    && typeof d.buyerPubkey === "string" && typeof d.sellerPubkey === "string"
+    && typeof d.arbiterPubkey === "string" && typeof d.coordinatorPubkey === "string"
+    && (d.bitcoinNetwork === "mainnet" || d.bitcoinNetwork === "signet")
+    && Array.isArray(d.tranches)
+    && d.tranches.every((t: unknown) => {
+      const row = t as Record<string, unknown>;
+      return row && Number.isInteger(row.index) && typeof row.amountMsats === "number";
+    })
+    && typeof d.startedAt === "number";
+}
+
+function validateChildKeyPayload(data: unknown): data is ChildKeyPayload {
+  const d = data as Record<string, unknown>;
+  return d.type === "escrow:child_key" && typeof d.planId === "string"
+    && typeof d.parent === "string" && Number.isInteger(d.index)
+    && typeof d.role === "string" && Object.values(Role).includes(d.role as Role)
+    && (d.bitcoinNetwork === "mainnet" || d.bitcoinNetwork === "signet")
+    && typeof d.xOnlyPubkey === "string" && /^[0-9a-f]{64}$/.test(d.xOnlyPubkey)
+    && typeof d.publishedAt === "number";
+}
+
 // ── Payload validator dispatch ────────────────────────────────────────────
 
 const PAYLOAD_VALIDATORS: Record<number, (data: unknown) => boolean> = {
@@ -575,6 +617,8 @@ const PAYLOAD_VALIDATORS: Record<number, (data: unknown) => boolean> = {
   [EscrowEventKind.SETTLEMENT]: validateSettlementPayload,
   [EscrowEventKind.SUBSCRIBE]:      validateSubscribePayload,
   [EscrowEventKind.PERIOD_RELEASE]: validatePeriodReleasePayload,
+  [EscrowEventKind.PLAN_START]: validatePlanStartPayload,
+  [EscrowEventKind.CHILD_KEY]: validateChildKeyPayload,
 };
 
 // ══════════════════════════════════════════════════════════════════════════
