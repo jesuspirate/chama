@@ -31,6 +31,7 @@ import {
   type ChatImageAttachment,
   type ChatPayload,
   type PremiumPayload,
+  type SettlementPayload,
   type HandleEnvelope,
   type SubscribePayload,
   type PeriodReleasePayload,
@@ -57,6 +58,7 @@ const KIND_TO_TYPE: Record<number, string> = {
   [EscrowEventKind.CANCEL]:   "escrow:cancel",
   [EscrowEventKind.CHAT]:     "escrow:chat",
   [EscrowEventKind.PREMIUM]:  "escrow:premium",
+  [EscrowEventKind.SETTLEMENT]: "escrow:settlement",
   [EscrowEventKind.SUBSCRIBE]:      "escrow:subscribe",
   [EscrowEventKind.PERIOD_RELEASE]: "escrow:period_release",
 };
@@ -189,7 +191,8 @@ function getPrevEventId(tags: string[][]): string | null {
 
 function validateCreatePayload(data: unknown): data is CreatePayload {
   const d = data as Record<string, unknown>;
-  if (d.listingKind !== undefined && d.listingKind !== "work") return false;
+  if (!validEscrowXonly(d.escrowXonly)) return false;
+  if (d.listingKind !== undefined && d.listingKind !== "work" && d.listingKind !== "work-request") return false;
   if (d.imageDataUrl !== undefined && !isSupportedListingImageRef(d.imageDataUrl)) return false;
   if (d.imageUrls !== undefined && !areSupportedListingImageRefs(d.imageUrls)) return false;
   // v0.1.72 federation gates: fedPrefix and fed are optional (backwards
@@ -246,6 +249,7 @@ function validateCreatePayload(data: unknown): data is CreatePayload {
 
 function validateJoinPayload(data: unknown): data is JoinPayload {
   const d = data as Record<string, unknown>;
+  if (!validateJoinEscrowKey(d)) return false;
   if (!validateSelectedMenuItems(d.selectedItems)) return false;
   if (d.amountMsats !== undefined && (typeof d.amountMsats !== "number" || d.amountMsats <= 0)) {
     return false;
@@ -259,6 +263,59 @@ function validateJoinPayload(data: unknown): data is JoinPayload {
     typeof d.joinedAt === "number" &&
     (d.holdExpiresAt === undefined || typeof d.holdExpiresAt === "number")
   );
+}
+
+const HEX64_RE = /^[0-9a-f]{64}$/;
+
+/** Tier 2.1: an optional published escrow key must be 64-hex when present.
+ *  Shape only — whether it is a valid curve point is discovered when the address
+ *  is built, and reported there as a blocker rather than a crash. */
+function validEscrowXonly(v: unknown): boolean {
+  return v === undefined || (typeof v === "string" && HEX64_RE.test(v.trim().toLowerCase()));
+}
+
+/** Structural check on on-chain lock terms.
+ *
+ *  ⚠ STRICT ON PURPOSE, and stricter than it looks necessary. Every field here
+ *  is an input to the escrow ADDRESS, so a sloppy value does not degrade
+ *  gracefully — it derives a different address, and the recipient's own
+ *  recomputation then rejects the whole lock. Failing at ingest with a clear
+ *  "malformed" is far better than admitting a lock that every honest client will
+ *  later refuse to believe.
+ *
+ *  Note this validates SHAPE only. Whether the address actually reproduces from
+ *  these terms, and whether the funding outpoint really holds those sats, are
+ *  chain questions — answered by the client (recompute + Esplora), never by the
+ *  pure reducer, which cannot read the chain. */
+function isValidOnchainLockTermsShape(v: unknown): boolean {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return false;
+  const t = v as Record<string, unknown>;
+  if (typeof t.address !== "string" || t.address.length === 0) return false;
+  if (typeof t.fundingTxid !== "string" || !HEX64_RE.test(t.fundingTxid)) return false;
+  if (typeof t.fundingVout !== "number" || !Number.isInteger(t.fundingVout) || t.fundingVout < 0) return false;
+  // Sats as a decimal STRING: an on-chain escrow can exceed Number.MAX_SAFE_
+  // INTEGER in msats, and a float would silently round real money.
+  if (typeof t.amountSats !== "string" || !/^\d+$/.test(t.amountSats) || t.amountSats === "0") return false;
+  for (const k of ["buyerXonly", "sellerXonly", "arbiterXonly"] as const) {
+    if (typeof t[k] !== "string" || !HEX64_RE.test(t[k] as string)) return false;
+  }
+  // Three distinct keys, or "2-of-3" is a lie.
+  if (new Set([t.buyerXonly, t.sellerXonly, t.arbiterXonly]).size !== 3) return false;
+  if (t.funder !== "buyer" && t.funder !== "seller") return false;
+  // Below 500,000,000 keeps CLTV in the BLOCK-HEIGHT domain (BIP65). A
+  // timestamp-domain value would produce a leaf that can never be spent.
+  if (typeof t.refundLockUntil !== "number" || !Number.isInteger(t.refundLockUntil)
+    || t.refundLockUntil <= 0 || t.refundLockUntil >= 500_000_000) return false;
+  if (typeof t.disputeCsvBlocks !== "number" || !Number.isInteger(t.disputeCsvBlocks)
+    || t.disputeCsvBlocks < 0 || t.disputeCsvBlocks > 65535) return false;
+  // Network is load-bearing: a signet address must never validate against a
+  // mainnet trade, or a client could be pointed at play money.
+  if (t.network !== "mainnet" && t.network !== "signet") return false;
+  return true;
+}
+
+function validateJoinEscrowKey(d: Record<string, unknown>): boolean {
+  return validEscrowXonly(d.escrowXonly);
 }
 
 function validateLockPayload(data: unknown): data is LockPayload {
@@ -312,6 +369,29 @@ function validateLockPayload(data: unknown): data is LockPayload {
     (typeof d.substitutionGraceSeconds !== "number" || !Number.isFinite(d.substitutionGraceSeconds))
   ) {
     return false;
+  }
+  // ── Tier 2.1: on-chain locks ────────────────────────────────────────────
+  // ⭐ ACCEPT-BOTH-SHAPES, with a hard rule about the middle. An ecash lock
+  // carries a notesHash + 3 shares; an on-chain lock carries `onchain` terms and
+  // NO shares (there are no notes to split). What must never validate is a
+  // half-shape — an `onchain` field alongside share-based fields, or an
+  // `onchain` field that is malformed. A lock the reducer accepts but cannot
+  // fully understand becomes a trade whose state says LOCKED with no reachable
+  // money, which is strictly worse than a rejected event.
+  const onchain = d.onchain;
+  if (onchain !== undefined) {
+    if (!isValidOnchainLockTermsShape(onchain)) return false;
+    // Shares and a notesHash are meaningless here; an honest on-chain lock
+    // carries neither. Refuse the ambiguous hybrid rather than guessing.
+    if (Array.isArray(d.shares) && d.shares.length > 0) return false;
+    return (
+      d.type === "escrow:lock" &&
+      typeof d.sellerReceivesMsats === "number" && Number.isFinite(d.sellerReceivesMsats) &&
+      typeof d.arbiterFeeMsats === "number" && Number.isFinite(d.arbiterFeeMsats) &&
+      typeof d.buyerPubkey === "string" && d.buyerPubkey.length > 0 &&
+      typeof d.arbiterPubkey === "string" && d.arbiterPubkey.length > 0 &&
+      typeof d.lockedAt === "number"
+    );
   }
   return (
     d.type === "escrow:lock" &&
@@ -445,6 +525,17 @@ function validatePremiumPayload(data: unknown): data is PremiumPayload {
   );
 }
 
+function validateSettlementPayload(data: unknown): data is SettlementPayload {
+  const d = data as Record<string, unknown>;
+  return (
+    d.type === "escrow:settlement" &&
+    typeof d.psbt === "string" && d.psbt.length > 0 &&
+    (d.leaf === "coop" || d.leaf === "arbiter") &&
+    typeof d.role === "string" && Object.values(Role).includes(d.role as Role) &&
+    (d.final === undefined || typeof d.final === "boolean")
+  );
+}
+
 function validateSubscribePayload(data: unknown): data is SubscribePayload {
   const d = data as Record<string, unknown>;
   return (
@@ -481,6 +572,7 @@ const PAYLOAD_VALIDATORS: Record<number, (data: unknown) => boolean> = {
   [EscrowEventKind.CANCEL]:   validateCancelPayload,
   [EscrowEventKind.CHAT]:     validateChatPayload,
   [EscrowEventKind.PREMIUM]:  validatePremiumPayload,
+  [EscrowEventKind.SETTLEMENT]: validateSettlementPayload,
   [EscrowEventKind.SUBSCRIBE]:      validateSubscribePayload,
   [EscrowEventKind.PERIOD_RELEASE]: validatePeriodReleasePayload,
 };
@@ -604,13 +696,15 @@ export function parseEscrowEvent(
  * timestamp since they don't participate in the state chain.
  */
 export function sortEventChain(events: ParsedEscrowEvent[]): ParsedEscrowEvent[] {
-  // Separate state events from auxiliary (non-consensus) events. CHAT and
-  // PREMIUM carry no e-tag (prevEventId null) — leaving them in the state
+  // Separate state events from auxiliary (non-consensus) events. CHAT,
+  // PREMIUM, and SETTLEMENT carry no e-tag (prevEventId null) — leaving them in the state
   // bucket would let `find(prevEventId === null)` pick one as the chain
   // ROOT ahead of CREATE, and the replay would fail MISSING_CREATE (trade
   // unloadable). They interleave by timestamp below instead.
   const isAux = (e: ParsedEscrowEvent) =>
-    e.kind === EscrowEventKind.CHAT || e.kind === EscrowEventKind.PREMIUM;
+    e.kind === EscrowEventKind.CHAT ||
+    e.kind === EscrowEventKind.PREMIUM ||
+    e.kind === EscrowEventKind.SETTLEMENT;
   const stateEvents = events.filter(e => !isAux(e));
   const chatEvents = events.filter(isAux);
 
@@ -716,6 +810,23 @@ export function sortEventChain(events: ParsedEscrowEvent[]): ParsedEscrowEvent[]
       }
     }
     all.splice(insertIdx, 0, chat);
+  }
+
+  // A direct on-chain COMPLETE carries an explicit settlement-proof tag. The
+  // final journal and COMPLETE are commonly signed in the same second; pure
+  // timestamp interleaving would then place the auxiliary proof after COMPLETE
+  // and make replay skip the otherwise valid terminal transition. Move only
+  // the specifically linked proof immediately before its COMPLETE event.
+  for (let completeIdx = 0; completeIdx < all.length; completeIdx++) {
+    const complete = all[completeIdx];
+    if (complete.kind !== EscrowEventKind.COMPLETE) continue;
+    const proofId = complete.raw.tags.find(tag => tag[0] === "settlement")?.[1];
+    if (!proofId) continue;
+    const proofIdx = all.findIndex(event => event.raw.id === proofId && event.kind === EscrowEventKind.SETTLEMENT);
+    if (proofIdx < 0 || proofIdx === completeIdx - 1) continue;
+    const [proof] = all.splice(proofIdx, 1);
+    const adjustedCompleteIdx = proofIdx < completeIdx ? completeIdx - 1 : completeIdx;
+    all.splice(adjustedCompleteIdx, 0, proof);
   }
 
   return all;

@@ -3,6 +3,8 @@ export const notify: Record<string, string> = {
   "notify.approvedBody":
     "El intercambio {label} se resolvió a tu favor — abre Chama para reclamar tus sats.",
   "notify.approvedTitle": "✅ Tu reclamo está listo",
+  "notify.arbiterKeyBody": "El intercambio on-chain {label} te seleccionó. Abre Chama y publica tu clave de custodia para iniciar la financiación.",
+  "notify.arbiterKeyTitle": "🔑 Un intercambio on-chain necesita tu clave",
   "notify.buyerInterestBody": "Un comprador está mirando tu anuncio {label}. Abre Chama para responder.",
   "notify.buyerInterestTitle": "👀 Un comprador está mirando tu anuncio",
   "notify.chatBody": "{who} te escribió en el intercambio {label}.",
@@ -17,6 +19,7 @@ export const notify: Record<string, string> = {
   "notify.dmLockedMsg": "🔒 Tu intercambio Chama {label} está bloqueado — abre la app para pagar/actuar. {link}",
   "notify.dmVoteMsg": "🗳️ Tu intercambio Chama {label} necesita tu voto. {link}",
   "notify.dmDisputeMsg": "⚖️ Un intercambio Chama {label} que arbitras necesita tu decisión. {link}",
+  "notify.dmArbiterKeyMsg": "🔑 El intercambio on-chain Chama {label} te seleccionó como árbitro — ábrelo y publica tu clave de custodia. {link}",
   "notify.dmSettledMsg": "✅ Tu intercambio Chama {label} se resolvió — reclama tu pago. {link}",
   "notify.expiredBody":
     "El intercambio {label} llegó a su fecha límite. Abre Chama para ver cómo quedó.",

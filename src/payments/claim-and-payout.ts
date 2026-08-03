@@ -103,6 +103,7 @@
 import { markSatsTracesDrained, recordSatsTrace } from "./sats-trace.js";
 import { maxLightningPayoutSats } from "./lightning-fees.js";
 import { PAY_RECONCILE_SINCE_MARGIN_MS } from "./payout-journal.js";
+import { recordClaimCredit } from "./claim-credit-ledger.js";
 
 // ── Phase types ──────────────────────────────────────────────────────────
 
@@ -821,6 +822,22 @@ export async function runClaimAndPayout(
   // the payout) — KEEP the stash. If the notes already redeemed, the next
   // boot drain's already-spent → success path clears it; if they're still
   // pending, the drain retries them. Self-reconciling either way.
+  // ⭐ Durable proof that the sats LANDED. This is the only moment the app can
+  // prove it — the balance grew by the expected amount after redeeming. Every
+  // other artifact (CLAIM event, COMPLETED status, a published chain) records
+  // what was announced, and v5.4 showed those three diverging from reality in
+  // the field. The tranche gate reads this and nothing else.
+  //
+  // Deliberately NOT recorded on the `cover` path below: that only proves the
+  // wallet had enough money, which may predate this claim entirely.
+  if (settledBy === "growth") {
+    try {
+      recordClaimCredit(opts.escrowId, opts.expectedDeltaMsats);
+    } catch (e) {
+      // Best-effort: a lost proof makes the gate more conservative, never less.
+      console.warn("[chama] claim-credit record failed:", e);
+    }
+  }
   if (settledBy === "growth" && opts.clearPendingRedemption) {
     try {
       opts.clearPendingRedemption(opts.escrowId);

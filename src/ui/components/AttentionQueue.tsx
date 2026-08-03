@@ -184,6 +184,7 @@ function AttentionCard({
   const owed = reason === "claim" ? t("me.owedClaim")
     : reason === "dispute" ? t("me.owedDispute")
     : reason === "vote" ? t("me.owedVote")
+    : reason === "arbiter-key" ? t("onchain.publishMyKey")
     : reason === "waiting" ? t("me.owedWaiting")
     : t("me.owedGeneric");
   const tone = reason === "claim" ? T.accent

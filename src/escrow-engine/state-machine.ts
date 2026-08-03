@@ -24,6 +24,7 @@ import {
   getEffectiveParticipantAt,
   JOIN_HOLD_LOCK_GRACE_SECONDS,
   joinHoldExpiresAt,
+  joinHoldExpiresAtFor,
   roleUsesJoinHold,
   type EscrowState,
   type ParsedEscrowEvent,
@@ -39,6 +40,7 @@ import {
   type CancelPayload,
   type ChatPayload,
   type PremiumPayload,
+  type SettlementPayload,
   type SubscribePayload,
   type PeriodReleasePayload,
   type ValidationError,
@@ -47,6 +49,7 @@ import { payoutRecipientFor } from "./recipients.js";
 import { validateVoteShareEnvelope } from "./holder-shares.js";
 import { arbiterVotePriority, substitutionEligibleAt, clampSubstitutionGraceSeconds, oneSidedEscalationAt, isPerformanceContest } from "./arbiter-substitution.js";
 import { pickArbiterFromPool, pickPreferredArbiter } from "../arbiters/pool.js";
+import { finalArbiterSettlementProof, finalCoopSettlementProof } from "./onchain-settlement-transport.js";
 
 // Re-export so existing callers (escrow-client, escrow-bridge, tests) keep
 // importing payoutRecipientFor from the state machine.
@@ -124,6 +127,7 @@ function cloneState(state: EscrowState): EscrowState {
     eventChain: [...state.eventChain],
     chatMessages: [...state.chatMessages],
     premiumNotes: state.premiumNotes ? [...state.premiumNotes] : undefined,
+    settlements: state.settlements ? [...state.settlements] : undefined,
   };
 }
 
@@ -337,6 +341,15 @@ function handleCreate(event: ParsedEscrowEvent<CreatePayload>): TransitionResult
     community: p.community ?? null,
     country: p.country ?? null,
     billType: p.billType ?? null,
+    workCategory: p.workCategory ?? null,
+    ...(p.tranche ? { tranche: p.tranche } : {}),
+    // Defaulted so no reader ever handles undefined; absent ⇒ every historical trade.
+    escrowMode: p.escrowMode === "onchain" ? "onchain" : "ecash",
+    // Tier 2.1: the creator never JOINs, so their escrow key rides in CREATE.
+    // Keyed by the INITIATOR'S role — in Exchange the creator is the seller, in
+    // a storefront child order the buyer, so hardcoding either would file the
+    // key under the wrong party and produce an address nobody can spend.
+    ...(p.escrowXonly ? { escrowKeys: { [initiatorRole]: p.escrowXonly.toLowerCase() } } : {}),
     mintUrl: p.mintUrl,
     // #7 multi-unit storefront (Stage 1): carried through, no behavior yet.
     ...(p.stock !== undefined ? { stock: p.stock } : {}),
@@ -471,7 +484,8 @@ function handleJoin(state: EscrowState, event: ParsedEscrowEvent<JoinPayload>): 
         role: p.role,
         pubkey: event.pubkey,
         joinedAt: existingHold?.joinedAt ?? p.joinedAt,
-        expiresAt: existingHold?.expiresAt ?? p.holdExpiresAt ?? joinHoldExpiresAt(p.joinedAt),
+        expiresAt: existingHold?.expiresAt ?? p.holdExpiresAt
+          ?? joinHoldExpiresAtFor(p.joinedAt, state.escrowMode),
         eventId: event.raw.id,
         ...(p.selectedItems && p.selectedItems.length > 0
           ? { selectedItems: p.selectedItems.map(cloneSelectedMenuItem) }
@@ -565,13 +579,23 @@ function handleJoin(state: EscrowState, event: ParsedEscrowEvent<JoinPayload>): 
   next.participants[p.role] = event.pubkey;
   next.joinHolds = { ...(next.joinHolds ?? {}) };
 
+  // Tier 2.1: record this party's on-chain escrow key. All three are needed
+  // before an escrow ADDRESS can exist, which is why the arbiter must JOIN
+  // before an on-chain trade can be funded at all.
+  if (p.escrowXonly) {
+    next.escrowKeys = { ...(next.escrowKeys ?? {}), [p.role]: p.escrowXonly.toLowerCase() };
+  }
+
   if (roleUsesJoinHold(p.role, state.initiator.role)) {
     const orderFinalizedAt = inferLegacyInitialOrderFinalizedAt(p, undefined);
     next.joinHolds[p.role] = {
       role: p.role,
       pubkey: event.pubkey,
       joinedAt: p.joinedAt,
-      expiresAt: p.holdExpiresAt ?? joinHoldExpiresAt(p.joinedAt),
+      // Fallback only — the client always stamps `holdExpiresAt`. Pure: derived
+      // from the CREATE-stamped escrowMode, so replay is identical everywhere,
+      // and byte-identical to the old constant on every ecash trade.
+      expiresAt: p.holdExpiresAt ?? joinHoldExpiresAtFor(p.joinedAt, state.escrowMode),
       eventId: event.raw.id,
       ...(p.selectedItems && p.selectedItems.length > 0
         ? { selectedItems: p.selectedItems.map(cloneSelectedMenuItem) }
@@ -706,8 +730,26 @@ function handleLock(state: EscrowState, event: ParsedEscrowEvent<LockPayload>): 
     );
   }
 
-  // Validate shares — must have exactly 3, one per participant
-  if (!p.shares || p.shares.length !== 3) {
+  // Validate shares — ⭐ the requirement is ECASH-SHAPED, and was applied
+  // unconditionally, which rejected every on-chain LOCK ever built. An on-chain
+  // escrow has no ecash to split: the sats sit in a 3-key Taproot output whose
+  // keys were published in CREATE and JOIN long before this LOCK. `event-parser`
+  // already encodes the correct rule (an on-chain lock carries `onchain` terms
+  // and NO shares); this branch was simply missing here, so a valid on-chain
+  // LOCK parsed fine and then died at apply. Found on the first live signet run.
+  //
+  // Strict in BOTH directions. An on-chain LOCK carrying shares is not a
+  // tolerable variation either: it means the locker built an ecash bundle for a
+  // trade whose counterparty agreed to on-chain, and refusing is safer than
+  // guessing which half was meant. Same reasoning as ESCROW_MODE_MISMATCH
+  // below — under-reading strands a trade, over-reading strands a person.
+  if (p.onchain) {
+    if (p.shares && p.shares.length > 0) {
+      return err("INVALID_SHARES",
+        "An on-chain LOCK must not carry SSS shares — there are no notes to split",
+        event.raw.id);
+    }
+  } else if (!p.shares || p.shares.length !== 3) {
     return err("INVALID_SHARES", "LOCK must include exactly 3 SSS shares", event.raw.id);
   }
 
@@ -864,10 +906,35 @@ function handleLock(state: EscrowState, event: ParsedEscrowEvent<LockPayload>): 
     );
   }
 
+  // ⭐⭐ MODE MATCH IS A HARD GATE, and it is why `escrowMode` lives in CREATE.
+  //
+  // The CREATE declares where this trade's escrow will live. A LOCK of the other
+  // shape is not a variation to tolerate — it means the locker either did not
+  // understand the trade they were funding, or is trying to substitute a
+  // substrate the counterparty never agreed to. Either way the counterparty
+  // decided to ship goods against ONE promise, so accepting the other would let
+  // that decision be swapped after the fact.
+  //
+  // Refusing here is safe in the direction that matters: the trade stays CREATED
+  // and visibly unfunded, rather than reading LOCKED with money nobody can
+  // reach. Under-reading strands a trade; over-reading strands a person.
+  const declaredMode = state.escrowMode ?? "ecash";
+  const lockMode = p.onchain ? "onchain" : "ecash";
+  if (declaredMode !== lockMode) {
+    return err("ESCROW_MODE_MISMATCH",
+      `This trade was created as ${declaredMode} escrow but the LOCK is ${lockMode}`,
+      event.raw.id,
+      { declared: declaredMode, lock: lockMode },
+    );
+  }
+
   const next = cloneState(state);
   next.status = EscrowStatus.LOCKED;
   next.amountMsats = expectedLockAmountMsats;
   next.lock.notesHash = p.notesHash;
+  // Tier 2.1: carry the on-chain terms so every client can recompute the address
+  // and confirm the deposit itself. Absent on an ecash lock — byte-identical.
+  if (p.onchain) next.lock.onchain = { ...p.onchain };
   next.lock.lockedAt = p.lockedAt;
   next.lock.selectedItems = selectedItems;
   // Holder-only shares: carry the share policy onto state so the claim path can
@@ -896,7 +963,10 @@ function handleLock(state: EscrowState, event: ParsedEscrowEvent<LockPayload>): 
   // Store encrypted shares — dual-encryption only (legacy format dropped
   // in v0.1.60). Each share object is stored keyed by shareIndex so any
   // participant can later look up any share and decrypt via encryptedFor.
-  for (const share of p.shares) {
+  // ⚠ `?? []` is load-bearing now that on-chain locks exist: the parser permits
+  // an on-chain LOCK to omit `shares` entirely, and iterating `undefined` would
+  // throw inside the reducer — turning a valid trade into an unloadable chain.
+  for (const share of p.shares ?? []) {
     next.lock.shares.set(String(share.shareIndex), share);
   }
 
@@ -1215,8 +1285,32 @@ function handleClaim(state: EscrowState, event: ParsedEscrowEvent<ClaimPayload>)
 // Final confirmation — ecash has been redeemed.
 
 function handleComplete(state: EscrowState, event: ParsedEscrowEvent<CompletePayload>): TransitionResult {
-  if (state.status !== EscrowStatus.CLAIMED) {
+  const directOnchain = state.status === EscrowStatus.APPROVED && !!state.lock.onchain;
+  if (state.status !== EscrowStatus.CLAIMED && !directOnchain) {
     return err("INVALID_STATE", `Cannot COMPLETE in state ${state.status}`, event.raw.id);
+  }
+  if (directOnchain) {
+    const sender = event.raw.pubkey;
+    const proofEventId = event.raw.tags.find(tag => tag[0] === "settlement")?.[1];
+    const proofEvent = state.settlements?.find(message => message.raw.id === proofEventId);
+    const winner = getWinner(state);
+    const winnerRole = winner?.role === Role.BUYER || winner?.role === Role.SELLER
+      ? winner.role
+      : null;
+    const requiresArbiter = !!state.resolvedMajority?.includes(Role.ARBITER);
+    const cooperative = !!(!requiresArbiter && proofEvent && winnerRole && state.lock.onchain
+      && finalCoopSettlementProof(proofEvent, state.lock.onchain, winnerRole));
+    const arbitrated = !!(requiresArbiter
+      && proofEvent && winnerRole && state.lock.onchain
+      && finalArbiterSettlementProof(proofEvent, state.lock.onchain, winnerRole));
+    const authorized = cooperative
+      ? sender === state.participants[Role.BUYER] || sender === state.participants[Role.SELLER]
+      : arbitrated && (sender === state.participants[winnerRole] || sender === state.participants[Role.ARBITER]);
+    if (!authorized) {
+      return err("INVALID_SETTLEMENT_PROOF",
+        "On-chain COMPLETE must link a fully signed settlement for this escrow",
+        event.raw.id);
+    }
   }
 
   const next = cloneState(state);
@@ -1432,6 +1526,27 @@ function handlePremium(state: EscrowState, event: ParsedEscrowEvent<PremiumPaylo
   return { ok: true, state: next };
 }
 
+// ── SETTLEMENT ────────────────────────────────────────────────────────────
+// On-chain PSBT transport is auxiliary state. It is accepted after approval,
+// including after completion for crash/reload convergence, and never enters
+// the consensus event chain.
+
+function handleSettlement(state: EscrowState, event: ParsedEscrowEvent<SettlementPayload>): TransitionResult {
+  const existing = state.settlements ?? [];
+  if (existing.some(e => e.raw.id === event.raw.id)) {
+    return { ok: true, state };
+  }
+
+  const senderRole = Object.values(Role).find(role => state.participants[role] === event.pubkey);
+  if (senderRole === undefined || senderRole !== event.payload.role) {
+    return err("NOT_PARTICIPANT", "Settlement sender must be the named participant for its role", event.raw.id);
+  }
+
+  const next = cloneState(state);
+  next.settlements = [...existing, event];
+  return { ok: true, state: next };
+}
+
 // ══════════════════════════════════════════════════════════════════════════
 // MAIN STATE MACHINE — applyEvent
 // ══════════════════════════════════════════════════════════════════════════
@@ -1463,7 +1578,7 @@ export function applyEvent(
     return err("NO_STATE", "Non-CREATE event received but no escrow state exists", event.raw.id);
   }
 
-  // ── PREMIUM bypasses terminal/expiry/chain checks entirely ──
+  // ── Auxiliary settlement-time events bypass terminal/expiry/chain checks ──
   // Premiums are paid AT settlement: COMPLETED is truly-terminal (rejected
   // below) and the expiry auto-flip isn't COMPLETED-aware, so a premium
   // routed through the normal gauntlet would either be dropped or flip a
@@ -1471,6 +1586,9 @@ export function applyEvent(
   // eventChain or status) and self-dedups, so the early dispatch is safe.
   if (event.kind === EscrowEventKind.PREMIUM) {
     return handlePremium(state, event as ParsedEscrowEvent<PremiumPayload>);
+  }
+  if (event.kind === EscrowEventKind.SETTLEMENT) {
+    return handleSettlement(state, event as ParsedEscrowEvent<SettlementPayload>);
   }
 
   // ── SECURITY: event-ID idempotency ──
@@ -1630,6 +1748,18 @@ export function replayEventChain(events: ParsedEscrowEvent[]): TransitionResult 
             .includes(event.kind)) {
         continue;
       }
+      // COMPLETE is advisory for on-chain escrow: the payout exists on-chain
+      // independently of this marker. A relay can return COMPLETE without the
+      // linked auxiliary SETTLEMENT proof (or with only a partial revision).
+      // Keep applyEvent strict for live publication, but during replay retain
+      // the last verified APPROVED state instead of letting an unverifiable
+      // terminal marker hide the whole trade and its recoverable payout.
+      if (event.kind === EscrowEventKind.COMPLETE
+          && result.error.code === "INVALID_SETTLEMENT_PROOF"
+          && state?.status === EscrowStatus.APPROVED
+          && !!state.lock.onchain) {
+        continue;
+      }
       // CHAT is auxiliary state, not the escrow's money/state chain. A legacy
       // or malicious nonparticipant chat must not make the CREATE/JOIN/LOCK
       // history unloadable from relays; keep rejecting it on live send/apply,
@@ -1639,6 +1769,10 @@ export function replayEventChain(events: ParsedEscrowEvent[]): TransitionResult 
       }
       // Same for PREMIUM — auxiliary, a bad one must never brick replay.
       if (event.kind === EscrowEventKind.PREMIUM && result.error.code === "NOT_PARTICIPANT") {
+        continue;
+      }
+      // Same for SETTLEMENT — hostile transport must not poison consensus replay.
+      if (event.kind === EscrowEventKind.SETTLEMENT && result.error.code === "NOT_PARTICIPANT") {
         continue;
       }
       // Real error — fail the replay

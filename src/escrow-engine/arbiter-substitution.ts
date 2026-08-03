@@ -102,6 +102,59 @@ export function arbiterPriorityOrderFor(params: {
   return order;
 }
 
+/** ⭐ Who actually receives an encrypted copy of the ARBITER share at LOCK.
+ *
+ *  ⚠ DELIBERATELY DIFFERENT FROM `arbiterPriorityOrderFor`, and the difference
+ *  is load-bearing. That function feeds TWO consumers:
+ *
+ *    1. the reducer, which gates the arbiter VOTE on it
+ *       (state-machine.ts `NOT_POOL_ARBITER`) — pure, replayed everywhere, so
+ *       changing it is a CONSENSUS change that would fork mixed-version chains
+ *       on a money path;
+ *    2. share distribution at LOCK build time — purely client-side.
+ *
+ *  Only (2) is safe to change, so only (2) changes. Vote eligibility stays
+ *  byte-identical.
+ *
+ *  THE PROBLEM THIS FIXES. `ARBITER_POOL_SHARE_CAP` is 3 and the default pool
+ *  (`BLF_CABINET_NPUBS`) is exactly 3, so every arbiter in the system received a
+ *  decryptable share on every pooled trade — seated or not. One principal
+ *  colluding with ANY pool member is two shares, which is a redeem: no seat, no
+ *  vote, no state machine involved. The seat was never the control it looked
+ *  like.
+ *
+ *  So recipients are capped strictly below the pool: at least the assigned
+ *  arbiter, never the whole pool. With a 3-member pool that is assigned + one
+ *  backup instead of all three.
+ *
+ *  ⚠ HONEST ABOUT WHAT THIS IS. It is a reduction, not a fix — "any one of two"
+ *  still redeems with a principal. The real fix is nesting the arbiter share
+ *  2-of-3 across the panel so no single arbiter is ever sufficient, and that
+ *  needs a pool genuinely larger than the cap. Do not let this line make the
+ *  screen look solved.
+ *
+ *  ⚠ THE COST, stated: a backup who is vote-eligible but holds no share can
+ *  still cast a valid arbiter vote, and simply cannot contribute the deciding
+ *  share with it (`buildVoteShareEnvelope` is best-effort by design). If the
+ *  assigned arbiter AND the first backup are both absent, the trade rides to
+ *  expiry and refunds rather than being decided. That is availability traded
+ *  for custody, and it is the correct direction — an availability failure
+ *  resolves to a refund, while a surplus share-holder resolves to a theft. */
+export function arbiterShareRecipientsFor(params: {
+  escrowId: string;
+  pool: readonly string[];
+  buyerPubkey?: string | null;
+  sellerPubkey?: string | null;
+  assignedArbiter?: string | null;
+}): string[] {
+  const order = arbiterPriorityOrderFor(params);
+  const poolSize = params.pool.length;
+  // Never the whole pool; always at least the assigned arbiter (a single-arbiter
+  // community must still be able to rule at all).
+  const limit = Math.max(1, Math.min(ARBITER_POOL_SHARE_CAP, poolSize - 1));
+  return order.slice(0, limit);
+}
+
 /** Deterministic arbiter priority order for this escrow: index 0 is the
  *  assigned arbiter (as committed in the LOCK), then backups derived by
  *  iterating the same deterministic pool pick the LOCK used, excluding

@@ -39,6 +39,7 @@ function listing(
   return {
     id,
     status: EscrowStatus.CREATED,
+    escrowMode: "ecash",
     description: `${id} sats offer`,
     amountMsats: 50_000_000,
     fiatAmount: 43,

@@ -23,6 +23,7 @@ import {
   type EscrowState, type ChatPayload, type ParsedEscrowEvent,
 } from "../escrow-engine/types.js";
 import { payoutRecipientFor } from "../escrow-engine/recipients.js";
+import { pickPreferredArbiter } from "../arbiters/pool.js";
 import { translate, getCurrentLang } from "../i18n/index.js";
 
 /** getchama.app deep link for a trade, safe to drop into a plaintext external DM.
@@ -65,6 +66,23 @@ function inDispute(state: EscrowState): boolean {
   return b !== undefined && s !== undefined && b !== s;
 }
 
+/** The pre-lock on-chain responder, once a buyer has taken the trade. Routing
+ *  and alerts may use this deterministic preview; consensus seating may not. */
+export function pendingOnchainArbiterPubkey(state: EscrowState): string | null {
+  if ((state.escrowMode ?? "ecash") !== "onchain") return null;
+  if (state.status !== EscrowStatus.CREATED) return null;
+  if (state.participants[Role.ARBITER]) return null;
+  const buyer = state.participants[Role.BUYER];
+  const seller = state.participants[Role.SELLER];
+  if (!buyer || !seller) return null;
+  return pickPreferredArbiter(
+    state.communityArbiters,
+    state.bondedArbiters,
+    state.id,
+    [buyer, seller],
+  ) ?? null;
+}
+
 /**
  * The notification (if any) to fire for one escrow transitioning prev → next,
  * from the perspective of `userPubkey`. Pure; null when nothing should buzz.
@@ -73,12 +91,38 @@ export function notificationForTransition(
   prev: EscrowState | null | undefined,
   next: EscrowState,
   userPubkey: string | null | undefined,
+  liveSinceSec = Number.POSITIVE_INFINITY,
 ): TradeNotification | null {
-  if (!prev || !userPubkey) return null; // only notify on an OBSERVED change
+  if (!userPubkey) return null;
   const role = roleOf(next, userPubkey);
   if (!role) return null; // not a party to this trade
   const id = next.id;
   const label = shortId(id);
+
+  // 0) A buyer just took an on-chain trade → summon the ONE deterministic
+  // bonded arbiter whose public key is required before an address can exist.
+  // This is an observed transition only; cold replay stays quiet.
+  const pendingArbiter = pendingOnchainArbiterPubkey(next);
+  const buyerJoin = next.joinHolds?.[Role.BUYER];
+  const freshFirstObservation = !prev
+    && !!buyerJoin
+    && buyerJoin.joinedAt >= liveSinceSec;
+  if (pendingArbiter && samePubkey(pendingArbiter, userPubkey)
+      && (prev
+        ? !prev.participants[Role.BUYER] && !!next.participants[Role.BUYER]
+        : freshFirstObservation)) {
+    return {
+      escrowId: id,
+      title: translate(getCurrentLang(), "notify.arbiterKeyTitle"),
+      body: translate(getCurrentLang(), "notify.arbiterKeyBody", { label }),
+      tag: `${id}:arbiter-key`,
+    };
+  }
+
+  // Every other transition requires a prior observation. The pre-lock arbiter
+  // exception above is intentionally freshness-gated because its routed JOIN is
+  // often the first event that makes the trade discoverable to that arbiter.
+  if (!prev) return null;
 
   // 1) Sats just locked → tell the NON-locker (the counterparty whose turn it
   //    is). The locker did the action; they don't need telling.
@@ -418,6 +462,15 @@ export function tradeDmNotificationFor(
       message: translate(lang, msgKey, { label, link }),
     };
   };
+
+  // 0) The buyer's JOIN makes the pre-lock on-chain arbiter deterministic.
+  // The buyer is the single sender; the recipient resolver maps ARBITER to the
+  // preview pubkey until JOIN/LOCK commits the seat.
+  if (myRole === Role.BUYER
+      && !prev.participants[Role.BUYER] && !!next.participants[Role.BUYER]
+      && pendingOnchainArbiterPubkey(next)) {
+    return build(Role.BUYER, [Role.ARBITER], "arbiter-key", "notify.dmArbiterKeyMsg");
+  }
 
   // 1) CREATED → LOCKED: the locker funded it; tell the NON-locker (the fiat
   //    payer / party whose move it is now). Sender = the locker.

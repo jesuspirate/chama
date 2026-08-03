@@ -143,6 +143,8 @@ export const bond: Record<string, string> = {
   "bond.lockedTitle": "Your bond is locked",
   "bond.lockedUntilAfter": ". It cannot move before then — not by you, not by anyone. After the term, only you can reclaim it.",
   "bond.lockedUntilBefore": " until block ",
+  "bond.merchantOnly": "Storefront only — don't make me an arbiter",
+  "bond.merchantOnlyBody": "Your bond keeps your listings renewing hands-free, but you won't be assigned disputes. Arbiters earn 0.25% insurance on every trade they cover; a storefront-only bond earns nothing. You can change this by announcing again.",
   "bond.missingBond": "This bond isn’t in local storage anymore (its record failed the tamper gate, or storage was cleared). Funded sats are still safe on-chain — they answer only to your key.",
   "bond.nearEndMany": "⚠ Only ~{blocks} blocks (~{time}) left on this term — a deposit needs a block to confirm, so it may lock already-reclaimable.",
   "bond.nearEndOne": "⚠ Only ~1 block (~{time}) left on this term — a deposit needs a block to confirm, so it may lock already-reclaimable.",

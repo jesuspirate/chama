@@ -54,6 +54,7 @@ import {
   type AggregateRatings,
 } from "../decisions.js";
 import { AttentionQueue } from "../components/AttentionQueue.js";
+import { latestParticipantTrade } from "../latest-trade.js";
 import { counterpartyToRate, type RatingThumb } from "../../reputation/ratings.js";
 import { RatingTap } from "../components/RatingTap.js";
 import {
@@ -106,6 +107,7 @@ export function MeScreen({
   onThemeModeChange,
   myTrades,
   allTrades,
+  needsYouTrades,
   archivedTrades,
   onOpenArchivedTrade,
   ratings,
@@ -145,6 +147,9 @@ export function MeScreen({
   onThemeModeChange?: (mode: ThemeMode) => void;
   myTrades: EscrowState[];
   allTrades?: EscrowState[];
+  /** Canonical urgency-ranked queue from App. Includes chain-verified pending
+   *  on-chain payouts in addition to ordinary reducer-derived work. */
+  needsYouTrades?: EscrowState[];
   /** Durable-index trades not currently loaded — the loss-proof "earlier
    *  trades" tail of the history list. Absent ⇒ section omitted. */
   archivedTrades?: TradeIndexEntry[];
@@ -274,13 +279,15 @@ export function MeScreen({
   const traceCopy = describeSatsTrace(satsTrace ?? null);
   const nowSec = Math.floor(Date.now() / 1000);
   const dashboard = buildMeDashboard(myTrades, allTrades ?? myTrades, pubkey, nowSec);
-  const tradeCounts = buildMeTradeCounts(myTrades, dashboard.needsYou);
-  const visibleTrades = filterMeTrades(myTrades, dashboard.needsYou, tradeFilter);
-  // The attention hero reads from the SAME urgency-ranked source as the Me-tab
-  // badge (selectNeedsYouTrades) — we never reimplement the ranking. Includes
-  // arbiter disputes, so it reads over allTrades (the pool-visible set).
-  const rankedNeedsYou = selectNeedsYouTrades({ escrows: allTrades ?? myTrades, userPubkey: pubkey, nowSec });
-  const latestTrade = myTrades.find(isLiveTrade) ?? myTrades[0] ?? null;
+  // App owns the canonical attention queue because it merges reducer-derived
+  // work with chain-verified pending on-chain payouts. Keep the Me hero, Needs
+  // count, and Needs filter on that exact source so the inner and outer pills
+  // cannot disagree. The fallback preserves standalone/test callers.
+  const rankedNeedsYou = needsYouTrades
+    ?? selectNeedsYouTrades({ escrows: allTrades ?? myTrades, userPubkey: pubkey, nowSec });
+  const tradeCounts = buildMeTradeCounts(myTrades, rankedNeedsYou);
+  const visibleTrades = filterMeTrades(myTrades, rankedNeedsYou, tradeFilter);
+  const latestTrade = latestParticipantTrade(myTrades);
   const hasSellerDashboard = dashboard.sellerOpen.length > 0 || dashboard.sellerLive.length > 0;
 
   return (

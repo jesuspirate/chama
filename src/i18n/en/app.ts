@@ -199,4 +199,18 @@ export const app: Record<string, string> = {
   "app.walletDisconnectedReconnect":
     "Chama wallet disconnected. Tap Reconnect and try again.",
   "app.yourFederation": "your federation",
+  "edit.title": "Edit your listing",
+  "edit.description": "DESCRIPTION",
+  "edit.priceSats": "PRICE (SATS)",
+  "edit.priceFiat": "PRICE ({currency})",
+  "edit.stock": "STOCK",
+  "edit.save": "Save changes",
+  "edit.saving": "Saving…",
+  "edit.saved": "Listing updated.",
+  "edit.savedOldRemains": "Updated. The old version may still show for a few hours until it lapses.",
+  "edit.failed": "Couldn't save those changes.",
+  "edit.badAmount": "Enter a price above zero.",
+  "edit.buyerHolding": "A buyer is holding this offer right now, at the price they saw. Wait a few minutes for their hold to lapse, then edit.",
+  "edit.blocked": "This can't be edited — only your own live, unfunded listings.",
+  "edit.replacesNote": "Saving republishes your offer, so it gets a new listing ID and the old one is removed.",
 };

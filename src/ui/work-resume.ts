@@ -1,5 +1,23 @@
 import { Role, type EscrowState } from "../escrow-engine/types.js";
 
+/** Any Work listing, either side. Use this wherever the question is "is this a
+ *  Work listing at all" — the vertical filter, the category chip, the renewal
+ *  lane. Reserve the narrower `isWorkOffer` / `isWorkRequest` for the places
+ *  where the SIDE actually changes behaviour, which is fewer than it looks. */
+export function isWorkListing(state: Pick<EscrowState, "listingKind">): boolean {
+  return state.listingKind === "work" || state.listingKind === "work-request";
+}
+
+/** A worker's offer: "I can do this." */
+export function isWorkOffer(state: Pick<EscrowState, "listingKind">): boolean {
+  return state.listingKind === "work";
+}
+
+/** A client's want-ad: "I need this done." */
+export function isWorkRequest(state: Pick<EscrowState, "listingKind">): boolean {
+  return state.listingKind === "work-request";
+}
+
 /** Resolve the economic worker, not merely the event author. This remains
  * correct if a future Work order is buyer-authored like storefront children. */
 export function workerPubkeyForListing(listing: EscrowState): string | null {
@@ -16,7 +34,7 @@ export function workOffersForWorker(
   const wanted = workerPubkey.toLowerCase();
   const seen = new Set<string>();
   return listings.filter(listing => {
-    if (listing.listingKind !== "work" || seen.has(listing.id)) return false;
+    if (!isWorkOffer(listing) || seen.has(listing.id)) return false;
     const worker = workerPubkeyForListing(listing);
     if (worker?.toLowerCase() !== wanted) return false;
     seen.add(listing.id);

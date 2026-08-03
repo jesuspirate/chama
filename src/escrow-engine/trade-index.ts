@@ -175,7 +175,8 @@ export function recordTradeToIndex(
 
 /** All remembered trades, newest-created first. */
 export function listTradeIndex(): TradeIndexEntry[] {
-  return Object.values(load()).sort((a, b) => b.createdAt - a.createdAt);
+  return Object.values(load()).sort((a, b) =>
+    b.createdAt - a.createdAt || b.id.localeCompare(a.id));
 }
 
 /** Index entries the live list ISN'T currently showing — the "archived"

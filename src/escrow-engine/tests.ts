@@ -41,10 +41,13 @@ import {
   EscrowStatus,
   TRULY_TERMINAL_STATES,
   EscrowEventKind,
+  TAGS,
   Role,
   Outcome,
   JOIN_HOLD_SECONDS,
   JOIN_HOLD_LOCK_GRACE_SECONDS,
+  joinHoldSecondsFor,
+  joinHoldExpiresAtFor,
   joinHoldExpiresAt,
   getEffectiveParticipantAt,
   type EscrowState,
@@ -59,6 +62,7 @@ import {
   type CompletePayload,
   type CancelPayload,
   type ChatPayload,
+  type SettlementPayload,
   type EscrowPayload,
   type NostrEvent,
 } from "./types.js";
@@ -119,6 +123,10 @@ import {
 } from "./storefront.js";
 import {
   canRenewListing,
+  canManuallyRenewListing,
+  renewalLaneFor,
+  resolveRenewalPolicy,
+  WORK_TENURE_SECONDS,
   listingNeverFunded,
   buildRenewCreateParams,
   sellerIsBonded,
@@ -156,6 +164,7 @@ import {
 } from "./arbiter-substitution.js";
 import {
   compactHotRawEvents,
+  discoveredEscrowIdsByActivity,
   escrowDeltaSince,
   EscrowClient,
   outOfOrderReloadCooldownMs,
@@ -475,8 +484,27 @@ import {
 } from "../bond-multisig/commitment-bond.js";
 import {
   buildBondAnnouncementEvent, parseBondAnnouncementEvent, verifyBondAnnouncement,
-  selectLatestAnnouncements, groupLatestAnnouncementsByCommunity, type VerifiedBond,
+  selectLatestAnnouncements, groupLatestAnnouncementsByCommunity,
+  ARBITER_BOND_ANNOUNCEMENT_KIND, type VerifiedBond,
 } from "../bond-multisig/bond-announcement.js";
+import {
+  routeCanvasIntent, matchableVerticalsFor, userPublishesFirst,
+  type CanvasAsset,
+} from "../guided/canvas-routing.js";
+import {
+  countCounterDemand, counterDemandByAsset,
+  type CounterDemandListing,
+} from "../guided/counter-demand.js";
+import * as esploraCfg from "../bond-multisig/esplora-config.js";
+import { deriveEscrowSigningKey } from "../bond-multisig/onchain-escrow-funding.js";
+import {
+  aggregateOnchainPayoutBalance,
+  buildOnchainPayoutSweep,
+  payoutCandidateFor,
+  payoutCandidatesFor,
+  payoutSweepFeeSats,
+  scanOnchainPayout,
+} from "../bond-multisig/onchain-payout-wallet.js";
 import { computeChamaLiveness, formatLivenessReadout, bondedArbitersForCommunity } from "../arbiters/live-chama.js";
 import {
   serializeCommitment, deserializeCommitment, type CommitmentRecord,
@@ -563,6 +591,8 @@ import {
 import {
   decideChamaBarLabel,
   decideVotePrompt,
+  mergeOnchainPayoutAttention,
+  needsYouReasonFor,
   selectNeedsYouTrades,
   countNeedsYou,
 } from "../ui/decisions.js";
@@ -665,7 +695,8 @@ import {
   assignablePool,
   assignableBondedArbiters,
 } from "../arbiters/exposure.js";
-import { notificationForTransition, chatNotificationFor, buyerInterestNotificationFor, newListingNotificationFor, tradeDmNotificationFor } from "../notifications/trade-notifications.js";
+import { notificationForTransition, chatNotificationFor, buyerInterestNotificationFor, newListingNotificationFor, pendingOnchainArbiterPubkey, tradeDmNotificationFor } from "../notifications/trade-notifications.js";
+import { latestParticipantTrade, participantTradeHistory, tradeActivityAt, tradeCreatedAt } from "../ui/latest-trade.js";
 import { catchUpPrev, readSeenStatus, recordSeenStatus } from "../notifications/notify-service.js";
 import {
   RATING_KIND,
@@ -756,6 +787,7 @@ function createEvent(opts: {
   claimedQuantity?: number;
   arbiterFeeMsats?: number;
   bondedArbiters?: string[];
+  escrowMode?: CreatePayload["escrowMode"];
 } = {}): ParsedEscrowEvent<CreatePayload> {
   return makeParsedEvent(EscrowEventKind.CREATE, SELLER_PK, {
     type: "escrow:create",
@@ -774,6 +806,7 @@ function createEvent(opts: {
     expirySeconds: 86400,
     communityArbiters: opts.communityArbiters,
     bondedArbiters: opts.bondedArbiters,
+    escrowMode: opts.escrowMode,
     items: opts.items,
     ...(opts.stock !== undefined ? { stock: opts.stock } : {}),
     ...(opts.parent !== undefined ? { parent: opts.parent } : {}),
@@ -1426,6 +1459,41 @@ console.log("\n── JOIN (ACK only — does not transition state) ──");
   }
 }
 
+// On-chain buyer JOIN routes the pre-lock trade to the ONE deterministic
+// bonded arbiter without seating them in consensus state.
+{
+  const create = createEvent({
+    community: "ke-kes",
+    communityArbiters: [ARBITER_PK],
+    bondedArbiters: [ARBITER_PK],
+    escrowMode: "onchain",
+  });
+  const r1 = applyEvent(null, create);
+  if (r1.ok) {
+    let publishedJoin: NostrEvent | null = null;
+    const buyerClient = new EscrowClient({
+      async getPublicKey() { return BUYER_PK; },
+      async signEvent(event: UnsignedEvent) {
+        return { ...event, id: "onchain_buyer_join_signed", pubkey: BUYER_PK, sig: "sig" } as NostrEvent;
+      },
+      async nip44Encrypt(plaintext: string) { return plaintext; },
+      async nip44Decrypt(ciphertext: string) { return ciphertext; },
+    }, { relays: [] });
+    (buyerClient as any).states.set(ESCROW_ID, r1.state);
+    (buyerClient as any).relayManager.publish = async (event: NostrEvent) => {
+      publishedJoin = event;
+      return { accepted: 1, rejected: 0, errors: [] };
+    };
+    await buyerClient.joinEscrow(ESCROW_ID, Role.BUYER, { escrowXonly: "44".repeat(32) });
+    const routed = publishedJoin as unknown as NostrEvent;
+    const recipients = routed.tags.filter(tag => tag[0] === TAGS.PARTICIPANT).map(tag => tag[1]);
+    assert(recipients.includes(BUYER_PK) && recipients.includes(ARBITER_PK),
+      "On-chain buyer JOIN participant-tags buyer + deterministic arbiter for relay discovery");
+    assert(buyerClient.getState(ESCROW_ID)?.participants[Role.ARBITER] === null,
+      "Routing tag does not consensus-seat the pre-lock arbiter");
+  }
+}
+
 // ── 3. ATOMIC LOCK ───────────────────────────────────────────────────────
 console.log("\n── ATOMIC LOCK (CREATED → LOCKED, no FUNDED hop) ──");
 
@@ -1951,21 +2019,38 @@ console.log("\n── ATOMIC LOCK (CREATED → LOCKED, no FUNDED hop) ──");
     assert(!listingNeverFunded({ ...listing, status: EscrowStatus.CANCELLED } as EscrowState),
       "store: a CANCELLED (seller-deleted) listing is not renewable");
     // Renew eligibility keys off lapse (or lead window), owner, unfunded.
-    assert(!canRenewListing(listing, SELLER_PK, NOW_S),
+    assert(!canManuallyRenewListing(listing, SELLER_PK, NOW_S),
       "store: a fresh listing far from lapse is not yet renewable");
-    assert(canRenewListing(listing, SELLER_PK, lapsedAt),
-      "store: the seller's own lapsed unfunded listing is renewable");
-    assert(!canRenewListing(listing, BUYER_PK, lapsedAt),
+    assert(canManuallyRenewListing(listing, SELLER_PK, lapsedAt),
+      "store: the seller's own lapsed unfunded listing is renewable by hand");
+    assert(!canManuallyRenewListing(listing, BUYER_PK, lapsedAt),
       "store: only the seller may renew, even once lapsed");
-    assert(!canRenewListing({ ...listing, category: "p2p-trade" } as EscrowState, SELLER_PK, lapsedAt),
-      "store: Exchange listings never inherit Storefront renewal");
-    assert(!canRenewListing({ ...listing, listingKind: "work" } as EscrowState, SELLER_PK, lapsedAt),
-      "store: Work offers never silently inherit Storefront renewal");
+    // ⭐ A2 CHANGED THIS DELIBERATELY. These three used to assert that Exchange,
+    // Work, and Bill Pay could never renew. That was the Stores-only era; the
+    // policy table is the explicit decision the old comment promised. Renewal
+    // is safe in those lanes WITHOUT a bond because `listingIdentityKey` +
+    // `supersededListingIds` already enforce one live listing per identical
+    // offer — accumulation, not repetition, is what makes renewal spam.
+    assert(canRenewListing({ ...listing, category: "p2p-trade" } as EscrowState, SELLER_PK, lapsedAt),
+      "⭐ A2: Exchange auto-renews with NO bond (curated brackets ⇒ tight identity space)");
+    assert(canRenewListing({ ...listing, listingKind: "work" } as EscrowState, SELLER_PK, lapsedAt),
+      "⭐ A2: a Work offer auto-renews with NO bond — the lane that has to be able to wait");
+    assert(canRenewListing({ ...listing, category: "bill-pay" } as EscrowState, SELLER_PK, lapsedAt),
+      "⭐ A2: Bill Pay auto-renews with NO bond (a bill is a recurring obligation)");
+    // Stores are the exception, and keep the bond gate: it is the one lane where
+    // a seller can mint genuinely-distinct offers all day.
+    assert(!canRenewListing(listing, SELLER_PK, lapsedAt, undefined, { bonded: false }),
+      "⭐ A2: an UNBONDED store still does not auto-renew — manual only, unchanged");
+    assert(canRenewListing(listing, SELLER_PK, lapsedAt, undefined, { bonded: true }),
+      "A2: a bonded store auto-renews, exactly as in Tier 3");
     assert(lapsedRenewableListings([
-      { ...listing, category: "bill-pay" } as EscrowState,
       { ...listing, category: "lending" } as EscrowState,
     ], SELLER_PK, lapsedAt).length === 0,
-      "store: Bill Pay and Lending stay out of the manual Storefront renewal card");
+      "A2: Lending is retired from Create and stays out of every renewal lane");
+    assert(lapsedRenewableListings([
+      { ...listing, parent: "parent_A" } as EscrowState,
+    ], SELLER_PK, lapsedAt).length === 0,
+      "A2: a child ORDER is never renewable in any lane");
     // Manual-card feed: only truly-lapsed listings.
     const lapsedList = lapsedRenewableListings([listing], SELLER_PK, lapsedAt);
     assert(lapsedList.length === 1 && lapsedList[0].id === listing.id,
@@ -1994,6 +2079,1043 @@ console.log("\n── ATOMIC LOCK (CREATED → LOCKED, no FUNDED hop) ──");
     "store: an unfunded bond announcement doesn't grant tenure");
   assert(!sellerIsBonded([{ ...bonds[0], actualSats: 1_000n }], SELLER_PK),
     "store: a sub-floor bond doesn't grant tenure");
+
+  // ── A2 merchant lane: a storefront license without the arbiter duty ────────
+  const merchantBond = { ...bonds[0], actualSats: 3_000n, roles: ["merchant" as const] };
+  assert(sellerIsBonded([merchantBond], SELLER_PK),
+    "⭐ A2: a 3k MERCHANT bond grants storefront tenure — a shopkeeper need not become a judge");
+  assert(!sellerIsBonded([{ ...merchantBond, actualSats: 2_000n }], SELLER_PK),
+    "A2: below the merchant floor grants nothing");
+  assert(!sellerIsBonded([{ ...bonds[0], actualSats: 3_000n, roles: ["arbiter" as const] }], SELLER_PK),
+    "⭐ A2: an ARBITER bond is held to the full 10k floor — it buys strictly more, so it costs more");
+  assert(!sellerIsBonded([{ ...bonds[0], actualSats: 3_000n }], SELLER_PK),
+    "⭐ A2: a bond with NO roles field (every pre-A0 bond) is an arbiter bond — the merchant floor is never inherited by default");
+  assert(sellerIsBonded([{ ...bonds[0], actualSats: 3_000n, roles: ["arbiter" as const, "merchant" as const] }], SELLER_PK) === false,
+    "A2: declaring both roles holds you to the arbiter floor");
+  assert(bondedArbitersForCommunity([merchantBond]).length === 0,
+    "⭐ A2: and the merchant bond is still NOT in the arbiter pool (A0 role filter)");
+
+  // ── A2 policy table ───────────────────────────────────────────────────────
+  const laneOf = (s: Partial<EscrowState>) =>
+    renewalLaneFor({ category: "marketplace", ...s } as EscrowState);
+  assert(laneOf({}) === "store" && laneOf({ listingKind: "work" }) === "work",
+    "A2: Work is checked BEFORE the storefront branch — it rides marketplace routing but is its own product");
+  assert(laneOf({ category: "bill-pay" }) === "bill" && laneOf({ category: "p2p-trade" }) === "exchange",
+    "A2: CBP and Exchange resolve to their own lanes");
+  assert(laneOf({ category: "lending" }) === "none" && laneOf({ parent: "p" }) === "none",
+    "A2: lending and child orders resolve to no lane");
+  const workPolicy = resolveRenewalPolicy({ category: "marketplace", listingKind: "work" } as EscrowState);
+  assert(workPolicy.autoRenew && !workPolicy.requiresBond && workPolicy.maxTenureSeconds === WORK_TENURE_SECONDS,
+    "A2: the Work lane auto-renews, bond-free, on a 30-day horizon");
+  assert(workPolicy.maxAutoRenewCycles >= 30,
+    "⭐ A2: the age-out cap follows the HORIZON — the Stores-era cap of 7 would have killed every Work offer after a week");
+  const storeUnbonded = resolveRenewalPolicy({ category: "marketplace" } as EscrowState, { bonded: false });
+  assert(storeUnbonded.renewable && !storeUnbonded.autoRenew && storeUnbonded.requiresBond,
+    "⭐ A2: an unbonded store is RENEWABLE (manually) but not AUTO-renewable — the two predicates must stay distinct");
+  // ── A3: editing a listing is a REPLACEMENT, not a mutation ────────────────
+  {
+    const {
+      canEditListing, editsAreMeaningful, buildEditCreateParams, listingHasLiveHold,
+    } = await import("./listing-edit.js");
+    const live = {
+      id: "L_edit", category: "marketplace", status: EscrowStatus.CREATED,
+      expiresAt: NOW_S + 3600, description: "Roasted beans", amountMsats: 20_000_000,
+      lock: { lockedAt: null, notesHash: null },
+      participants: { [Role.SELLER]: SELLER_PK },
+      initiator: { role: Role.SELLER, pubkey: SELLER_PK },
+      fees: { arbiterMsats: 0 }, communityArbiters: [], mintUrl: "fed11qstore",
+    } as unknown as EscrowState;
+
+    assert(canEditListing(live, SELLER_PK, NOW_S).ok,
+      "A3: the seller can edit their own live, unfunded listing");
+    assert(!canEditListing(live, BUYER_PK, NOW_S).ok,
+      "A3: only the seller may edit");
+    const funded = { ...live, lock: { lockedAt: NOW_S, notesHash: "h" } } as EscrowState;
+    const fundedCheck = canEditListing(funded, SELLER_PK, NOW_S);
+    assert(!fundedCheck.ok && fundedCheck.reason === "already-funded",
+      "⭐ A3: a FUNDED trade can never be edited — its terms are what the buyer locked to");
+    const childCheck = canEditListing({ ...live, parent: "P" } as EscrowState, SELLER_PK, NOW_S);
+    assert(!childCheck.ok && childCheck.reason === "not-a-listing",
+      "A3: a child order is not an editable listing");
+
+    // The fairness gate: a buyer holding a seat reserved these terms.
+    const held = {
+      ...live,
+      joinHolds: { [Role.BUYER]: { pubkey: BUYER_PK, expiresAt: NOW_S + 120 } },
+    } as unknown as EscrowState;
+    assert(listingHasLiveHold(held, NOW_S) && !listingHasLiveHold(held, NOW_S + 300),
+      "A3: a hold is live until it expires, then it isn't");
+    const heldCheck = canEditListing(held, SELLER_PK, NOW_S);
+    assert(!heldCheck.ok && heldCheck.reason === "buyer-holding",
+      "⭐ A3: no editing the price out from under a buyer who is holding the offer");
+    assert(canEditListing(held, SELLER_PK, NOW_S + 300).ok,
+      "A3: once their hold lapses, editing is allowed again");
+
+    // A no-op edit still costs a CREATE + a CANCEL on every relay.
+    assert(!editsAreMeaningful(live, { description: "Roasted beans", amountMsats: 20_000_000 }),
+      "A3: an edit that changes nothing is not an edit");
+    assert(editsAreMeaningful(live, { amountMsats: 25_000_000 }),
+      "A3: a price change is meaningful");
+    assert(editsAreMeaningful(live, { description: "Roasted beans, dark" }),
+      "A3: a description change is meaningful");
+
+    const edited = buildEditCreateParams(live, { amountMsats: 25_000_000, description: "  Dark roast  " });
+    assert(edited.amountMsats === 25_000_000 && edited.description === "Dark roast",
+      "A3: the replacement carries the new terms, trimmed");
+    assert(edited.category === "marketplace" && edited.mintUrl === "fed11qstore",
+      "A3: and inherits everything the seller did not change");
+    assert(!("expirySeconds" in edited),
+      "⭐ A3: an edit NEVER stamps a longer expiry — it inherits renewal's guarantee that the trade timeout stays short");
+  }
+
+  // ── Tier 2.1: the escrow network is SEPARATE from the bond network ────────
+  // ⚠ The regression guard for a genuinely scary mistake. Both live in
+  // bond-multisig, and "flip the network to test" reads like one switch. It is
+  // two: BOND_NETWORK also derives every commitment-bond address, and there are
+  // real bonds with real sats on mainnet. Flipping it would recompute those on
+  // signet, find nothing, and report a live bond as missing while the coins sat
+  // untouched at an address the app had stopped watching.
+  {
+    const { ESCROW_NETWORK, ESCROW_NETWORK_LABEL } =
+      await import("../bond-multisig/onchain-escrow.js");
+    const { SIGNET, MAINNET } = await import("../bond-multisig/multisig.js");
+    assert(ESCROW_NETWORK === SIGNET && ESCROW_NETWORK_LABEL === "signet",
+      "⭐ escrow network: testing on SIGNET — flip ESCROW_NETWORK (not BOND_NETWORK) to go live");
+    assert(ESCROW_NETWORK !== MAINNET,
+      "escrow network: and it is not mainnet while that is true");
+    const { DEFAULT_ESCROW_MODE } = await import("../bond-multisig/onchain-escrow.js");
+    assert(DEFAULT_ESCROW_MODE === "onchain",
+      "⭐ escrow network: a SIGNET build defaults new qualifying listings to ON-CHAIN — if a test build still defaulted to ecash, every listing a tester made would silently use the other substrate and look identical");
+    assert((ESCROW_NETWORK === SIGNET) === (DEFAULT_ESCROW_MODE === "onchain"),
+      "⭐ escrow network: the default is DERIVED from the network, so flipping to MAINNET restores ecash-by-default automatically — no second switch to remember");
+    assert((ESCROW_NETWORK === SIGNET) === (ESCROW_NETWORK_LABEL === "signet"),
+      "⭐ escrow network: the LOCK's network label is derived from the switch, so the two can never disagree — a cross-network address must never validate");
+  }
+
+  // ── Tier 2.1 plumbing: escrow keys reach the reducer ──────────────────────
+  {
+    const { parseEscrowEvent } = await import("./event-parser.js");
+    const raw = {
+      id: "j1", pubkey: BUYER_PK, kind: EscrowEventKind.JOIN, created_at: NOW_S,
+      tags: [["d", "sm_x"], ["t", "escrow:join"], ["e", "prev", "", "reply"]],
+      content: "", sig: "0".repeat(128),
+    } as unknown as NostrEvent;
+    const joinParses = (extra: Record<string, unknown>) =>
+      parseEscrowEvent(raw, JSON.stringify({
+        type: "escrow:join", role: Role.BUYER, joinedAt: NOW_S, ...extra,
+      }), true).ok;
+
+    assert(joinParses({}),
+      "plumbing: an ordinary ecash JOIN is unchanged — the key is optional");
+    assert(joinParses({ escrowXonly: "a".repeat(64) }),
+      "⭐ plumbing: a JOIN can carry this party's on-chain escrow key");
+    assert(!joinParses({ escrowXonly: "nothex" }) && !joinParses({ escrowXonly: "ab" }),
+      "plumbing: a malformed escrow key is rejected at ingest");
+    assert(joinParses({ escrowXonly: "A".repeat(64) }),
+      "plumbing: uppercase hex parses (the reducer lowercases before storing)");
+  }
+
+  // ── Tier 2.1 UI: the honesty rules, made testable ─────────────────────────
+  // The panel renders this and decides nothing itself, so these rules survive
+  // whoever edits the component next.
+  {
+    const { deriveOnchainView, mayEnableSignButton } =
+      await import("./onchain-escrow-view.js");
+    const base = {
+      id: "t1", category: "p2p-trade", status: EscrowStatus.CREATED,
+      amountMsats: 150_000_000, escrowMode: "onchain" as const,
+      lock: { lockedAt: null, notesHash: null },
+      participants: { [Role.BUYER]: BUYER_PK, [Role.SELLER]: SELLER_PK },
+    } as unknown as EscrowState;
+
+    const noAddr = deriveOnchainView({
+      state: base, viewerRole: Role.SELLER, recomputedAddress: null,
+      blockers: ["missing-arbiter-key"],
+    });
+    assert(noAddr.stage === "awaiting-keys" && noAddr.address === null,
+      "⭐ UI: with no locally recomputed address, the panel shows NO address — funding is irreversible, so a wire-supplied one is a payment to whoever tampered");
+    assert(noAddr.blockers.includes("waiting-for-arbiter"),
+      "⭐ UI: the blocker is NAMED — 'not ready' with no reason makes a user wait forever or fund something they shouldn't");
+
+    const ready = deriveOnchainView({
+      state: base, viewerRole: Role.SELLER, recomputedAddress: "tb1pexample",
+    });
+    assert(ready.stage === "awaiting-funding" && ready.address === "tb1pexample",
+      "UI: with an address the panel moves to funding");
+    assert(ready.viewerFunds,
+      "UI: in Exchange the SELLER funds, so the seller sees the send instruction");
+    assert(!deriveOnchainView({
+      state: base, viewerRole: Role.BUYER, recomputedAddress: "tb1pexample",
+    }).viewerFunds,
+      "UI: the buyer is told to wait, not to send");
+    assert(deriveOnchainView({
+      state: { ...base, category: "marketplace" } as EscrowState,
+      viewerRole: Role.BUYER, recomputedAddress: "tb1pexample",
+    }).viewerFunds,
+      "UI: in Stores the roles invert — the buyer funds");
+
+    const locked = deriveOnchainView({
+      state: {
+        ...base, status: EscrowStatus.LOCKED,
+        lock: { lockedAt: NOW_S, notesHash: null, onchain: { fundingTxid: "f".repeat(64), amountSats: "150000" } },
+      } as unknown as EscrowState,
+      viewerRole: Role.BUYER, recomputedAddress: "tb1pexample",
+    });
+    assert(locked.stage === "locked" && locked.fundingTxid === "f".repeat(64) && !locked.canSettle,
+      "UI: a locked escrow links the funding tx and offers no settlement yet");
+
+    // ⭐ The sign gate.
+    assert(!mayEnableSignButton(null) && !mayEnableSignButton(undefined),
+      "⭐⭐ UI: no checklist ⇒ the sign button STAYS DISABLED — 'we could not check' must never render as 'safe to sign'");
+    assert(!mayEnableSignButton({ ok: false }),
+      "⭐ UI: a FAILED checklist disables the button — this is the last thing between a user and a PSBT that pays an attacker");
+    assert(mayEnableSignButton({ ok: true }),
+      "UI: only a passed checklist enables signing");
+  }
+
+  // ── Tier 2.1 S6: the appeal window that consensus enforces ────────────────
+  // ⭐⭐ THE POINT OF THE WHOLE TIER. Everywhere else an appeal window is a
+  // request honest clients honour, and a colluding arbiter ignores it. Here the
+  // delay is compiled into the ADDRESS, so an early spend is not impolite — it
+  // is invalid, rejected by every node including the attacker's own.
+  {
+    const { buildOnchainEscrow, DISPUTE_CSV_BLOCKS } =
+      await import("../bond-multisig/onchain-escrow.js");
+    const {
+      buildSettlementPsbt, coSignSettlement, finalizeSettlement,
+      sequenceForLeaf, assertsRelativeBlockAge, disputeWindow, SEQUENCE_FINAL_MINUS_ONE,
+    } = await import("../bond-multisig/onchain-escrow-settle.js");
+    const btcLib = await import("@scure/btc-signer");
+    const { schnorr } = await import("@noble/curves/secp256k1.js");
+    const NET = btcLib.TEST_NETWORK;
+    const sk = [1, 2, 3].map((i) => { const b = new Uint8Array(32); b[31] = i; return b; });
+    const [BX, SX, AX] = sk.map((s) => schnorr.getPublicKey(s));
+
+    assert(DISPUTE_CSV_BLOCKS === 144,
+      "S6: the appeal window is ON at ~24 hours");
+
+    // The consensus trap, pinned so it cannot be reintroduced.
+    assert(!assertsRelativeBlockAge(SEQUENCE_FINAL_MINUS_ONE),
+      "⭐⭐ S6: 0xfffffffe sets the BIP68 DISABLE bit — using it on a CSV leaf silently breaks the spend rather than waiting");
+    assert(assertsRelativeBlockAge(sequenceForLeaf("dispute", 144))
+      && sequenceForLeaf("dispute", 144) === 144,
+      "⭐ S6: the dispute sequence actually ASSERTS a relative block age, and encodes the block count");
+    assert(sequenceForLeaf("coop", 144) === SEQUENCE_FINAL_MINUS_ONE
+      && sequenceForLeaf("refund", 144) === SEQUENCE_FINAL_MINUS_ONE,
+      "S6: coop and refund keep the nLockTime-enabling sequence (the refund leaf NEEDS it for CLTV)");
+    let badCsvSeq = false;
+    try { sequenceForLeaf("dispute", 70_000); } catch { badCsvSeq = true; }
+    assert(badCsvSeq, "S6: a CSV beyond the BIP68 block domain is refused");
+
+    const mid = disputeWindow({ fundingHeight: 800_000, tipHeight: 800_050, csvBlocks: 144 });
+    assert(!mid.open && mid.blocksRemaining === 94 && mid.opensAtHeight === 800_144,
+      "S6: inside the window the app can say exactly when it opens");
+    assert(disputeWindow({ fundingHeight: 800_000, tipHeight: 800_143, csvBlocks: 144 }).open,
+      "S6: the window opens at maturity");
+    assert(!disputeWindow({ fundingHeight: null, tipHeight: null, csvBlocks: 144 }).open,
+      "⭐ S6: unknown heights read CLOSED — an unknown that said 'open' would invite a broadcast the network rejects");
+
+    const esc = buildOnchainEscrow({
+      buyerXonly: BX, sellerXonly: SX, arbiterXonly: AX,
+      funder: "seller", refundLockUntil: 800_000, disputeCsvBlocks: 144, network: NET,
+    });
+    const utxos = [{ txid: "a".repeat(64), index: 0, amountSats: 200_000n }];
+    const WINNER = btcLib.p2tr(BX, undefined, NET).address!;
+
+    let refusedEarly = false;
+    try {
+      buildSettlementPsbt({
+        escrow: esc, utxos, destination: WINNER, feeSats: 1_000n,
+        leaf: "dispute", fundingHeight: 800_000, tipHeight: 800_050,
+      });
+    } catch (e: any) { refusedEarly = /appeal window/.test(e?.message ?? ""); }
+    assert(refusedEarly,
+      "⭐⭐ S6: arbitration inside the window is REFUSED — a corrupt arbiter cannot settle early, and an honest one is told when they can");
+
+    const late = buildSettlementPsbt({
+      escrow: esc, utxos, destination: WINNER, feeSats: 1_000n,
+      leaf: "dispute", fundingHeight: 800_000, tipHeight: 800_200,
+    });
+    assert(finalizeSettlement(
+      [coSignSettlement(coSignSettlement(late, sk[0]), sk[2])],
+      { escrow: esc, leaf: "dispute" },
+    ).length > 0,
+      "⭐ S6: after the window, buyer + arbiter settle — hand-finalized, because a CSV leaf has no @scure coder");
+
+    const coop = buildSettlementPsbt({ escrow: esc, utxos, destination: WINNER, feeSats: 1_000n });
+    assert(finalizeSettlement([coSignSettlement(coSignSettlement(coop, sk[0]), sk[1])]).length > 0,
+      "⭐⭐ S6: the COOPERATIVE path never waits — a normal trade is completely unaffected by the appeal window");
+  }
+
+  // ── Tier 2.1 S4/S5: settling — and the checklist that is the real security ─
+  // ⭐⭐ A 2-of-2 leaf guarantees two signatures are needed. It guarantees
+  // NOTHING about what they authorise. The attack these tests exist for is a
+  // valid PSBT that pays the attacker, signed by a victim who reasoned "it's
+  // 2-of-2, it's safe".
+  {
+    const {
+      buildSettlementPsbt, coSignSettlement, finalizeSettlement,
+      verifySettlementPsbt, settlementFeeCeilingSats,
+    } = await import("../bond-multisig/onchain-escrow-settle.js");
+    const { buildOnchainEscrow } = await import("../bond-multisig/onchain-escrow.js");
+    const btcLib = await import("@scure/btc-signer");
+    const { schnorr } = await import("@noble/curves/secp256k1.js");
+    const NET = btcLib.TEST_NETWORK;
+
+    const sk = [1, 2, 3].map((i) => { const b = new Uint8Array(32); b[31] = i; return b; });
+    const [BX, SX, AX] = sk.map((s) => schnorr.getPublicKey(s));
+    const esc = buildOnchainEscrow({
+      buyerXonly: BX, sellerXonly: SX, arbiterXonly: AX,
+      funder: "seller", refundLockUntil: 800_000, network: NET,
+    });
+    const utxos = [{ txid: "a".repeat(64), index: 0, amountSats: 200_000n }];
+    const WINNER = btcLib.p2tr(BX, undefined, NET).address!;
+    const ATTACKER = btcLib.p2tr(AX, undefined, NET).address!;
+    const expectation = { escrow: esc, utxos, destination: WINNER, maxFeeSats: 5_000n, network: NET };
+
+    const psbt = buildSettlementPsbt({ escrow: esc, utxos, destination: WINNER, feeSats: 1_000n });
+    assert(verifySettlementPsbt(psbt, expectation).ok,
+      "S4: an honest settlement PSBT passes the checklist");
+
+    const evil = buildSettlementPsbt({ escrow: esc, utxos, destination: ATTACKER, feeSats: 1_000n });
+    const evilCheck = verifySettlementPsbt(evil, expectation);
+    assert(!evilCheck.ok && evilCheck.failures.some((f) => f.includes("not the winner")),
+      "⭐⭐ S4: a PSBT paying the ATTACKER is REFUSED — the destination is compared against the winner WE resolved, never against the PSBT's own claim");
+    assert(!verifySettlementPsbt(
+      buildSettlementPsbt({ escrow: esc, utxos, destination: WINNER, feeSats: 90_000n }), expectation).ok,
+      "⭐ S4: an inflated FEE is refused — burning the escrow to miners is theft too");
+    assert(!verifySettlementPsbt(
+      buildSettlementPsbt({
+        escrow: esc, utxos: [{ txid: "f".repeat(64), index: 7, amountSats: 200_000n }],
+        destination: WINNER, feeSats: 1_000n,
+      }), expectation).ok,
+      "⭐ S4: an input that is not this escrow's UTXO is refused");
+    assert(!verifySettlementPsbt(psbt, {
+      ...expectation, utxos: [{ txid: "a".repeat(64), index: 0, amountSats: 500_000n }],
+    }).ok,
+      "⭐ S4: input amounts are checked against what WE observed on-chain — a lied-about amount would game the fee ceiling");
+    assert(!verifySettlementPsbt("not-base64!!", expectation).ok,
+      "S4: an unparseable PSBT is a failure, never a throw into the signing screen");
+
+    let dust = false;
+    try { buildSettlementPsbt({ escrow: esc, utxos, destination: WINNER, feeSats: 199_800n }); } catch { dust = true; }
+    assert(dust, "S4: a dust-sized payout is refused at build time — unrelayable");
+
+    // The real thing.
+    const oneSig = coSignSettlement(psbt, sk[0]);
+    let single = false;
+    try { finalizeSettlement([oneSig]); } catch { single = true; }
+    assert(single, "⭐ S4: ONE signature cannot finalize — the whole point of 2-of-2");
+    assert(finalizeSettlement([coSignSettlement(oneSig, sk[1])]).length > 0,
+      "⭐⭐ S4: buyer + seller co-sign the COOP leaf and the transaction finalizes");
+    assert(finalizeSettlement([coSignSettlement(coSignSettlement(psbt, sk[0]), sk[2])]).length > 0,
+      "⭐ S5: buyer + ARBITER settle the dispute path — same transaction shape, one different signer");
+    assert(finalizeSettlement([coSignSettlement(coSignSettlement(psbt, sk[1]), sk[0])]).length > 0,
+      "S4: signing ORDER does not matter — the transport is unreliable and parties sign when they can");
+
+    const two = [
+      { txid: "a".repeat(64), index: 0, amountSats: 120_000n },
+      { txid: "b".repeat(64), index: 1, amountSats: 80_000n },
+    ];
+    assert(verifySettlementPsbt(
+      buildSettlementPsbt({ escrow: esc, utxos: two, destination: WINNER, feeSats: 1_000n }),
+      { ...expectation, utxos: two }).ok,
+      "⭐ S4: settlement sweeps EVERY escrow UTXO — settling one would strand the rest behind a dispute or a 30-day timeout");
+    assert(settlementFeeCeilingSats("coop", 10n, 1) === 4_860n
+      && settlementFeeCeilingSats("coop", 10n, 2) > settlementFeeCeilingSats("coop", 10n, 1),
+      "S4: the fee ceiling is computed from measured leaf sizes, and extra inputs actually cost more");
+  }
+
+  // ── Tier 2.1 S3: keys, funding verification, LOCK terms ───────────────────
+  {
+    const {
+      deriveEscrowSigningKey, escrowKeyIndexFor, bip86EscrowPath,
+      resolveFundingPlan, verifyFunding, buildOnchainLockTerms,
+    } = await import("../bond-multisig/onchain-escrow-funding.js");
+    const btcLib = await import("@scure/btc-signer");
+    const { schnorr } = await import("@noble/curves/secp256k1.js");
+    const NET = btcLib.TEST_NETWORK;
+    const WORDS = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+
+    // Keys derive from the SEED, never from the Nostr identity — an extension or
+    // Amber user cannot sign a Bitcoin sighash with their nsec, and reusing the
+    // identity key would weld a public trading history to specific UTXOs.
+    const k1 = deriveEscrowSigningKey(WORDS, "sm_trade_one", { network: NET });
+    const k1again = deriveEscrowSigningKey(WORDS, "sm_trade_one", { network: NET });
+    const k2 = deriveEscrowSigningKey(WORDS, "sm_trade_two", { network: NET });
+    assert(k1.xonly.length === 32 && k1.priv.length === 32,
+      "S3: an escrow key derives to a 32-byte x-only pubkey + private key");
+    assert(msBytesToHex(k1.xonly) === msBytesToHex(k1again.xonly),
+      "⭐ S3: re-derivation from (seed, escrowId) is STABLE — a storage wipe must never strand on-chain money");
+    assert(msBytesToHex(k1.xonly) !== msBytesToHex(k2.xonly),
+      "S3: different trades get different keys (no UTXO commingling across trades)");
+    assert(escrowKeyIndexFor("sm_a") === escrowKeyIndexFor("sm_a")
+      && escrowKeyIndexFor("sm_a") !== escrowKeyIndexFor("sm_b"),
+      "S3: the derivation index is deterministic per escrow id");
+    assert(escrowKeyIndexFor("x") < 0x80000000,
+      "S3: the index stays inside the non-hardened BIP32 range");
+    assert(bip86EscrowPath(NET).includes("/1'/"),
+      "⭐ S3: escrow keys use a DIFFERENT account from bonds — a compromised escrow key reveals nothing about a bond");
+    let noId = false;
+    try { deriveEscrowSigningKey(WORDS, "", { network: NET }); } catch { noId = true; }
+    assert(noId, "S3: refuses to derive without an escrow id");
+
+    // Funding readiness names every missing input, precisely.
+    // ⚠ Must be REAL curve points: p2tr_ms rejects hex that is not a valid
+    // x-coordinate, and roughly half of all 32-byte values happen to be valid —
+    // so a hand-written "01"*32 fixture silently passes while "ff"*32 (above the
+    // field prime) does not. Derive them instead of inventing them.
+    const hexOf = (n: number) => {
+      const b = new Uint8Array(32); b[31] = n;
+      return msBytesToHex(schnorr.getPublicKey(b));
+    };
+    const okPlan = resolveFundingPlan({
+      buyerXonly: hexOf(1), sellerXonly: hexOf(2), arbiterXonly: hexOf(3),
+      funder: "seller", refundLockUntil: 800_000, network: NET,
+    });
+    assert(okPlan.ready && okPlan.address.startsWith("tb1p"),
+      "S3: with three keys the plan is ready and yields an address");
+    const noArb = resolveFundingPlan({
+      buyerXonly: hexOf(1), sellerXonly: hexOf(2), arbiterXonly: null,
+      funder: "seller", refundLockUntil: 800_000, network: NET,
+    });
+    assert(!noArb.ready && noArb.blockers.includes("missing-arbiter-key"),
+      "⭐⭐ S3: without the ARBITER's key the address cannot even be COMPUTED — an on-chain trade needs the arbiter's key BEFORE funding, unlike ecash where the locker alone suffices");
+    const dupKeys = resolveFundingPlan({
+      buyerXonly: hexOf(1), sellerXonly: hexOf(1), arbiterXonly: hexOf(3),
+      funder: "seller", refundLockUntil: 800_000, network: NET,
+    });
+    assert(!dupKeys.ready && dupKeys.blockers.includes("keys-not-distinct"),
+      "S3: duplicate keys block funding");
+    const badHeight = resolveFundingPlan({
+      buyerXonly: hexOf(1), sellerXonly: hexOf(2), arbiterXonly: hexOf(3),
+      funder: "seller", refundLockUntil: 500_000_001, network: NET,
+    });
+    assert(!badHeight.ready && badHeight.blockers.includes("bad-refund-height"),
+      "S3: a CLTV height outside the block domain blocks funding");
+    const junkKey = resolveFundingPlan({
+      buyerXonly: "ff".repeat(32), sellerXonly: hexOf(2), arbiterXonly: hexOf(3),
+      funder: "seller", refundLockUntil: 800_000, network: NET,
+    });
+    assert(!junkKey.ready && junkKey.blockers.includes("invalid-key"),
+      "⭐ S3: a hex-shaped key that is NOT a curve point returns a blocker, not a crash — a hostile peer must not be able to throw out of the funding screen");
+
+    // Funding verification.
+    const utxo = (sats: bigint, txid = "a".repeat(64), index = 0) =>
+      ({ txid, index, amountSats: sats } as any);
+    assert(verifyFunding({ utxos: [], expectedSats: 100_000n }).funded === false,
+      "S3: no deposit is not funded");
+    const exact = verifyFunding({ utxos: [utxo(100_000n)], expectedSats: 100_000n });
+    assert(exact.funded && exact.amountSats === 100_000n && exact.vout === 0,
+      "S3: an exact confirmed deposit funds the escrow and names the outpoint");
+    const over = verifyFunding({ utxos: [utxo(150_000n)], expectedSats: 100_000n });
+    assert(over.funded, "S3: overfunding is fine — the escrow simply holds more");
+    const short = verifyFunding({ utxos: [utxo(90_000n)], expectedSats: 100_000n });
+    assert(!short.funded && short.reason === "underfunded",
+      "⭐ S3: a SHORT deposit is reported short with both numbers — 'close enough' is how someone ships goods against a partial deposit");
+    const shallow = verifyFunding({
+      utxos: [utxo(100_000n)], expectedSats: 100_000n, minConfs: 2, confirmations: [1],
+    });
+    assert(!shallow.funded && shallow.reason === "unconfirmed",
+      "⭐ S3: 'not deep enough yet' is distinguished from 'not enough money' — one resolves itself, the other needs the funder to act");
+    const multi = verifyFunding({
+      utxos: [utxo(40_000n, "a".repeat(64), 0), utxo(70_000n, "b".repeat(64), 1)],
+      expectedSats: 100_000n,
+    });
+    assert(multi.funded && multi.amountSats === 110_000n && multi.vout === 1,
+      "S3: several deposits sum, and the LARGEST is named as the escrow outpoint");
+
+    // The LOCK terms can only describe what was derived + confirmed here.
+    const terms = buildOnchainLockTerms(okPlan as any, exact as any, "signet");
+    assert(terms.address === (okPlan as any).address && terms.amountSats === "100000"
+      && terms.funder === "seller" && terms.network === "signet",
+      "S3: LOCK terms are built from the recomputed plan and the verified funding, never from the wire");
+    assert(terms.buyerXonly === hexOf(1) && terms.arbiterXonly === hexOf(3),
+      "S3: the terms carry every key a recipient needs to recompute the address themselves");
+  }
+
+  // ── Tier 2.1 S2: the versioned LOCK, and accept-both-shapes replay ────────
+  // ⚠ THIS IS THE CONSENSUS CHANGE. The whole risk is a lock that one client
+  // accepts and another does not, on a money path. So the properties asserted
+  // here are about what must NEVER be accepted, more than what must be.
+  {
+    const { parseEscrowEvent } = await import("./event-parser.js");
+    const terms = {
+      address: "tb1pm9wh6jtu26fjmmeamk99mn7n6uwm0c7vczd2r55jyr3h3qgsrjzqmg2ypk",
+      fundingTxid: "a".repeat(64), fundingVout: 0, amountSats: "150000",
+      buyerXonly: "b".repeat(64), sellerXonly: "c".repeat(64), arbiterXonly: "d".repeat(64),
+      funder: "seller" as const, refundLockUntil: 800_000, disputeCsvBlocks: 0,
+      network: "mainnet" as const,
+    };
+    const lockBody = {
+      type: "escrow:lock", notesHash: "", shares: [],
+      sellerReceivesMsats: 150_000_000, arbiterFeeMsats: 0,
+      buyerPubkey: BUYER_PK, arbiterPubkey: ARBITER_PK, lockedAt: NOW_S,
+    };
+    const raw = {
+      id: "e1", pubkey: SELLER_PK, kind: EscrowEventKind.LOCK, created_at: NOW_S,
+      tags: [["d", "sm_x"], ["t", "escrow:lock"], ["e", "prev", "", "reply"]],
+      content: "", sig: "0".repeat(128),
+    } as unknown as NostrEvent;
+    /** Parses `content` as a LOCK, skipping the signature check (shape is what
+     *  is under test here, not authorship). */
+    const parses = (content: unknown): boolean =>
+      parseEscrowEvent(raw, JSON.stringify(content), true).ok;
+
+    assert(parses({ ...lockBody, onchain: terms }),
+      "⭐ S2: an on-chain LOCK parses — no notesHash, no shares, terms instead");
+    assert(parses({
+      type: "escrow:lock", notesHash: "h", shares: [{ shareIndex: 0, encryptedFor: {} }, { shareIndex: 1, encryptedFor: {} }, { shareIndex: 2, encryptedFor: {} }],
+      sellerReceivesMsats: 1000, arbiterFeeMsats: 0, buyerPubkey: BUYER_PK, arbiterPubkey: ARBITER_PK, lockedAt: NOW_S,
+    }),
+      "⭐ S2: the historical ecash LOCK still parses, unchanged — accept BOTH shapes");
+
+    // The dangerous middle: a half-shape must never validate.
+    assert(!parses({
+      ...lockBody, onchain: terms,
+      shares: [{ shareIndex: 0, encryptedFor: {} }, { shareIndex: 1, encryptedFor: {} }, { shareIndex: 2, encryptedFor: {} }],
+    }),
+      "⭐⭐ S2: a HYBRID lock (on-chain terms AND ecash shares) is REJECTED — a lock the reducer half-understands becomes a trade that reads LOCKED with no reachable money");
+    for (const [field, bad] of [
+      ["fundingTxid", "nothex"], ["amountSats", "0"], ["amountSats", 150000],
+      ["funder", "arbiter"], ["refundLockUntil", 500_000_001], ["refundLockUntil", 0],
+      ["disputeCsvBlocks", 70_000], ["disputeCsvBlocks", -1], ["network", "regtest"],
+      ["fundingVout", -1], ["address", ""],
+    ] as const) {
+      assert(!parses({ ...lockBody, onchain: { ...terms, [field]: bad } }),
+        `S2: malformed on-chain term rejected at ingest (${field}=${JSON.stringify(bad)})`);
+    }
+    assert(!parses({
+      ...lockBody, onchain: { ...terms, arbiterXonly: terms.buyerXonly },
+    }),
+      "⭐ S2: three keys must be DISTINCT or '2-of-3' is a lie");
+
+    // The mode gate.
+    const { replayEventChain } = await import("./state-machine.js");
+    assert(typeof replayEventChain === "function",
+      "S2: the reducer is reachable for the mode-mismatch checks below");
+  }
+
+  // ── Tier 2.1 S1: the on-chain 2-of-3 Taproot escrow, pure core ────────────
+  // Every leaf is spent for real here, not just constructed. A tree that builds
+  // and cannot be spent is worse than no tree — it strands money at an address
+  // nobody can open.
+  {
+    const {
+      buildOnchainEscrow, recomputeOnchainEscrowAddress, onchainEscrowAddressMatches,
+      onchainEscrowAvailable, buildRefundLeaf, buildDisputeLeaf, refundWitnessFor,
+      ONCHAIN_ESCROW_THRESHOLD_SATS, REFUND_CLTV_BLOCKS, LEAF_SPEND_VSIZE,
+    } = await import("../bond-multisig/onchain-escrow.js");
+    const btcLib = await import("@scure/btc-signer");
+    const { schnorr } = await import("@noble/curves/secp256k1.js");
+    const NET = btcLib.TEST_NETWORK;
+    const NUMS = "50929b74c1a04954b78b4b6035e97a5e078a5a0f28ec96d547bfee9ace803ac0";
+
+    const sk = [1, 2, 3].map((i) => { const b = new Uint8Array(32); b[31] = i; return b; });
+    const [BX, SX, AX] = sk.map((s) => schnorr.getPublicKey(s));
+    const base = {
+      buyerXonly: BX, sellerXonly: SX, arbiterXonly: AX,
+      funder: "seller" as const, refundLockUntil: 800_000, network: NET,
+    };
+    const esc = buildOnchainEscrow(base);
+
+    assert(!!esc.address && Object.keys(esc.leaves).length === 3,
+      "⭐ onchain: a three-leaf escrow (coop / dispute / refund) builds one address");
+    assert(recomputeOnchainEscrowAddress(base) === esc.address,
+      "onchain: recomputation is deterministic");
+    assert(onchainEscrowAddressMatches(esc.address, base),
+      "onchain: the matcher accepts the address the terms produce");
+    assert(!onchainEscrowAddressMatches("tb1pwrong0000000000000000000000000000000000000000000000000", base),
+      "⭐ onchain: RECOMPUTE-DON'T-TRUST — a tampered address is refused, and the peg-out is irreversible");
+    assert(recomputeOnchainEscrowAddress({ ...base, funder: "buyer" }) !== esc.address,
+      "⭐ onchain: every term is COMMITTED — swapping who gets the refund changes the address");
+    assert(recomputeOnchainEscrowAddress({ ...base, arbiterXonly: schnorr.getPublicKey(sk[0]) === AX ? AX : schnorr.getPublicKey(new Uint8Array(32).fill(9)) }) !== esc.address,
+      "onchain: swapping the arbiter changes the address");
+    let dup = false;
+    try { buildOnchainEscrow({ ...base, arbiterXonly: BX }); } catch { dup = true; }
+    assert(dup, "onchain: buyer, seller and arbiter must be three distinct keys");
+    let badCltv = false;
+    try { buildRefundLeaf(SX, 500_000_001); } catch { badCltv = true; }
+    assert(badCltv, "onchain: CLTV must stay in the BLOCK-HEIGHT domain — a timestamp-domain height would never spend");
+    let badCsv = false;
+    try { buildDisputeLeaf(BX, SX, AX, 70_000); } catch { badCsv = true; }
+    assert(badCsv, "onchain: the CSV window is bounds-checked");
+
+    assert(onchainEscrowAvailable(100_000n) && !onchainEscrowAvailable(99_999n)
+      && ONCHAIN_ESCROW_THRESHOLD_SATS === 100_000n,
+      "onchain: the threshold gate opens at 100k sats (from Chama's own measured round-trip cost)");
+    assert(REFUND_CLTV_BLOCKS === 4320,
+      "onchain: the refund leaf matures at ~30 days — a SECURITY parameter (how long before the funder's unilateral exit returns), not a convenience one");
+
+    // ── spend every leaf ──
+    const treeOf = () => btcLib.p2tr(
+      msHexToBytes(NUMS),
+      [{ script: esc.leaves.coop }, { script: esc.leaves.dispute }, { script: esc.leaves.refund }] as never,
+      NET, true,
+    );
+    const spendVia = (signers: Uint8Array[]) => {
+      const p = treeOf();
+      const tx = new btcLib.Transaction({ allowUnknown: true, allowUnknownOutputs: true });
+      tx.addInput({ txid: msHexToBytes("11".repeat(32)), index: 0, witnessUtxo: { script: p.script, amount: 200_000n }, ...p });
+      tx.addOutputAddress(btcLib.p2tr(BX, undefined, NET).address!, 199_000n, NET);
+      let psbt = tx.toPSBT();
+      for (const s of signers) {
+        const t = btcLib.Transaction.fromPSBT(psbt, { allowUnknown: true, allowUnknownOutputs: true });
+        t.signIdx(s, 0); psbt = t.toPSBT();
+      }
+      const f = btcLib.Transaction.fromPSBT(psbt, { allowUnknown: true, allowUnknownOutputs: true });
+      f.finalize();
+      return f;
+    };
+    const coopTx = spendVia([sk[0], sk[1]]);
+    assert(coopTx.vsize === LEAF_SPEND_VSIZE.coop,
+      "⭐ onchain: the COOP leaf spends with buyer + seller, and the quoted vsize is the MEASURED one");
+    const disputeTx = spendVia([sk[0], sk[2]]);
+    assert(disputeTx.vsize === LEAF_SPEND_VSIZE.dispute,
+      "⭐ onchain: the DISPUTE leaf spends with buyer + ARBITER — two signatures always, so a corrupt arbiter still needs a principal");
+
+    // The refund leaf cannot be auto-finalized (no CLTV coder in @scure) — the
+    // witness is hand-assembled, exactly as the shipped bond reclaim does.
+    const p = treeOf();
+    const rtx = new btcLib.Transaction({ allowUnknownOutputs: true, lockTime: 800_000 });
+    rtx.addInput({
+      txid: msHexToBytes("11".repeat(32)), index: 0,
+      witnessUtxo: { script: p.script, amount: 200_000n },
+      sequence: 0xfffffffe, // < 0xffffffff or nLockTime — and thus CLTV — is NOT enforced
+      ...p,
+    });
+    rtx.addOutputAddress(btcLib.p2tr(BX, undefined, NET).address!, 199_000n, NET);
+    rtx.signIdx(sk[1], 0);
+    rtx.updateInput(0, { finalScriptWitness: refundWitnessFor(esc, rtx, 0) });
+    assert(rtx.extract().length > 0 && rtx.vsize === LEAF_SPEND_VSIZE.refund,
+      "⭐ onchain: the REFUND leaf spends with the funder ALONE after CLTV, via a hand-assembled witness");
+
+    // The appeal window is committed, not advisory.
+    const withCsv = buildOnchainEscrow({ ...base, disputeCsvBlocks: 144 });
+    assert(withCsv.address !== esc.address
+      && withCsv.leaves.dispute.length > esc.leaves.dispute.length,
+      "⭐⭐ onchain: adding the CSV appeal window CHANGES THE ADDRESS — the delay is committed to by the escrow itself, so consensus enforces it rather than honest clients honouring it");
+  }
+
+  // ── creditObserved: what the tranche gate is allowed to call proof ────────
+  // The gate is only as honest as this. Everything else the app persists about
+  // a claim records what was PUBLISHED; only balance growth records what
+  // ARRIVED. v5.4 field evidence: three COMPLETED trades whose sats never
+  // landed.
+  {
+    const { judgeCredit, creditObserved, makeCreditObserver, recordClaimCredit, defaultCreditObserver } =
+      await import("../payments/claim-credit-ledger.js");
+    const none = { credit: null, redemption: null, payout: null } as const;
+
+    assert(judgeCredit(none) === "unknown" && !creditObserved(none),
+      "⭐ credit: no evidence is UNKNOWN and fails CLOSED — silence is not proof");
+    assert(judgeCredit({ ...none, credit: { amountMsats: 1000 } }) === "credited",
+      "credit: observed balance growth is proof the sats landed");
+    assert(judgeCredit({ ...none, payout: { status: "settled" } }) === "credited",
+      "credit: a settled payout proves credit — money cannot leave a wallet it never entered");
+    assert(judgeCredit({ ...none, payout: { status: "submitted" } }) === "unknown"
+      && judgeCredit({ ...none, payout: { status: "intent" } }) === "unknown",
+      "⭐ credit: a payout merely SUBMITTED proves nothing — that is the in-flight case, not an arrival");
+
+    assert(judgeCredit({ ...none, redemption: { unresolvedCredit: true } }) === "not-credited",
+      "⭐ credit: unresolved-credit is the v5.4 signature — notes called spent, no confirmed credit");
+    assert(judgeCredit({ ...none, redemption: { lastError: "boom" } }) === "not-credited",
+      "credit: a poisoned redemption is not a credit");
+    assert(judgeCredit({ ...none, redemption: {} }) === "not-credited",
+      "credit: notes still waiting to redeem have not landed");
+    assert(judgeCredit({ ...none, redemption: { unresolvedCredit: true, resolvedAt: 1 } }) === "not-credited",
+      "credit: a reconciled entry still isn't positive proof on its own — it only leaves the alarm list");
+
+    // ⚠ The conflict case, and the reason ordering is load-bearing.
+    assert(judgeCredit({
+      credit: null,
+      redemption: { unresolvedCredit: true },
+      payout: { status: "settled" },
+    }) === "not-credited",
+      "⭐⭐ credit: when a reassuring record and an alarm disagree, the ALARM wins — reading the settled payout first would blind the gate to exactly the failure it exists to catch");
+
+    // The bound observer must never open the gate on a broken read.
+    const throwing = makeCreditObserver({
+      getRedemption: () => { throw new Error("storage gone"); },
+      getPayout: () => null,
+    });
+    assert(throwing({ id: "x" }) === false,
+      "⭐ credit: an unreadable store is treated as unproven — a broken read can never open the gate");
+
+    recordClaimCredit("onchain_sweep_credit", 25_000_000, 123_456);
+    assert(defaultCreditObserver()({ id: "onchain_sweep_credit" }),
+      "⭐ tranche/on-chain: a successfully swept winner output becomes local credit proof for the next-slice gate");
+  }
+
+  // ── Tranching: bound the loss, and create detection where none exists ─────
+  {
+    const {
+      planTrancheAmounts, plannedMaxLossMsats, maxUsefulTranches,
+      tranchesForPlan, trancheOutcome, trancheGate, planIsComplete,
+      autoAdvanceOnchainTrancheKey, poolForNextTranche, MIN_TRANCHES, MAX_TRANCHES,
+    } = await import("./tranche.js");
+
+    // Splitting: remainder on the LAST tranche so the early ones — the ones a
+    // victim uses to discover a theft — stay small and predictable.
+    assert(JSON.stringify(planTrancheAmounts(1000, 4)) === JSON.stringify([250, 250, 250, 250]),
+      "tranche: an even total splits evenly");
+    const odd = planTrancheAmounts(1001, 4);
+    assert(odd.length === 4 && odd.reduce((a, b) => a + b, 0) === 1001 && odd[3] === 251,
+      "⭐ tranche: the remainder lands on the LAST tranche, never the first");
+    assert(planTrancheAmounts(1000, 99).length === MAX_TRANCHES
+      && planTrancheAmounts(1000, 1).length === MIN_TRANCHES,
+      "tranche: N is clamped to the usable range");
+    assert(planTrancheAmounts(3, 12).length === 1,
+      "⭐ tranche: a total too small to split honestly returns ONE tranche — never a zero tranche, which would settle trivially and hand a false green to the gate");
+    assert(planTrancheAmounts(0, 4).length === 0 && planTrancheAmounts(-5, 4).length === 0,
+      "tranche: nonsense totals produce no plan");
+    assert(plannedMaxLossMsats(1001, 4) === 251,
+      "⭐ tranche: the worst case is a number the user chose — and it is computed, not described");
+    assert(maxUsefulTranches(10_000, 2_000) === 5,
+      "tranche: offers no more slices than the total can fund");
+    // ⭐ The screenshot bug: a 1,000-sat trade was offered TWELVE slices of ~83
+    // sats. Every slice is a whole trade — funding, lock, settle, a round trip
+    // with a counterparty — so below the floor splitting is friction dressed as
+    // safety. An earlier `Math.max(MIN_TRANCHES, …)` told EVERY trade it could
+    // be split in two; a floor that cannot be honoured is not a floor.
+    const { trancheSplitAvailable, MIN_TRANCHE_SATS } = await import("./tranche.js");
+    assert(!trancheSplitAvailable(1_000 * 1000) && maxUsefulTranches(1_000 * 1000) === 0,
+      "⭐⭐ tranche: a 1,000-sat trade offers NO split at all");
+    assert(!trancheSplitAvailable(MIN_TRANCHE_SATS * 1000),
+      "⭐ tranche: exactly one slice's worth still cannot be split");
+    assert(trancheSplitAvailable(20_000 * 1000) && maxUsefulTranches(20_000 * 1000) === 2,
+      "tranche: two slices' worth is the smallest splittable trade");
+    assert(maxUsefulTranches(150_000 * 1000) === 12,
+      "tranche: a large trade is capped at MAX_TRANCHES, not at what fits");
+
+    const T = (index: number, status: EscrowStatus, planId = "P1", arbiter = ARBITER_PK): EscrowState => ({
+      id: `t${index}`, status, tranche: { planId, index, total: 3 },
+      participants: { [Role.BUYER]: BUYER_PK, [Role.SELLER]: SELLER_PK, [Role.ARBITER]: arbiter },
+    } as unknown as EscrowState);
+
+    const credited = () => true;
+    const notCredited = () => false;
+
+    assert(tranchesForPlan("P1", [T(2, EscrowStatus.CREATED), T(0, EscrowStatus.COMPLETED)]).length === 2,
+      "tranche: a plan's tranches are collected and ordered by index");
+    assert(tranchesForPlan("P1", [T(0, EscrowStatus.COMPLETED, "OTHER")]).length === 0,
+      "tranche: another plan's tranches are never mixed in");
+    const dupes = tranchesForPlan("P1", [T(0, EscrowStatus.EXPIRED), T(0, EscrowStatus.CREATED)]);
+    assert(dupes.length === 1 && dupes[0].status === EscrowStatus.EXPIRED,
+      "⭐ tranche: a re-published CREATE at the same index can never MASK a failure there");
+
+    assert(trancheOutcome(undefined, false) === "pending"
+      && trancheOutcome(T(0, EscrowStatus.LOCKED), false) === "live"
+      && trancheOutcome(T(0, EscrowStatus.CANCELLED), false) === "failed"
+      && trancheOutcome(T(0, EscrowStatus.COMPLETED), true) === "settled",
+      "tranche: outcomes classify from status plus observed credit");
+    assert(trancheOutcome(T(0, EscrowStatus.COMPLETED), false) === "unproven",
+      "⭐ tranche: COMPLETED without observed credit is UNPROVEN — a published CLAIM is not proof the sats landed (v5.4 field evidence)");
+
+    // The gate.
+    const gate0 = trancheGate({ planId: "P1", total: 3, states: [], creditObserved: credited });
+    assert(gate0.canProceed && gate0.nextIndex === 0,
+      "tranche: an empty plan starts at tranche 0");
+    const gate1 = trancheGate({
+      planId: "P1", total: 3, states: [T(0, EscrowStatus.COMPLETED)], creditObserved: credited,
+    });
+    assert(gate1.canProceed && gate1.nextIndex === 1 && gate1.settled === 1,
+      "tranche: a settled tranche unlocks exactly the next one");
+    const gateLive = trancheGate({
+      planId: "P1", total: 3, states: [T(0, EscrowStatus.LOCKED)], creditObserved: credited,
+    });
+    assert(!gateLive.canProceed && !gateLive.stopped,
+      "⭐ tranche: a LIVE tranche blocks the next — sequential is the whole mechanism, not a preference");
+    const gateUnproven = trancheGate({
+      planId: "P1", total: 3, states: [T(0, EscrowStatus.COMPLETED)], creditObserved: notCredited,
+    });
+    assert(!gateUnproven.canProceed && gateUnproven.stopped && gateUnproven.settled === 0,
+      "⭐⭐ tranche: a COMPLETED tranche whose sats never landed STOPS the plan — this is the drained-escrow signature, and advancing here would rebuild the single big escrow with extra steps");
+    const gateFailed = trancheGate({
+      planId: "P1", total: 3, states: [T(0, EscrowStatus.COMPLETED), T(1, EscrowStatus.EXPIRED)], creditObserved: credited,
+    });
+    assert(!gateFailed.canProceed && gateFailed.stopped && gateFailed.settled === 1,
+      "tranche: a failure stops the plan and reports what was actually settled");
+    // A gap must fail closed: index 1 present, index 0 missing.
+    const gateGap = trancheGate({
+      planId: "P1", total: 3, states: [T(1, EscrowStatus.COMPLETED)], creditObserved: credited,
+    });
+    assert(gateGap.canProceed && gateGap.nextIndex === 0,
+      "tranche: a gap resolves to filling the gap, never to skipping ahead");
+    const done = trancheGate({
+      planId: "P1", total: 2,
+      states: [T(0, EscrowStatus.COMPLETED), T(1, EscrowStatus.COMPLETED)],
+      creditObserved: credited,
+    });
+    assert(!done.canProceed && done.nextIndex === null && planIsComplete(done),
+      "tranche: a finished plan proceeds nowhere and reads complete");
+
+    const onchainReady = {
+      ...T(0, EscrowStatus.COMPLETED),
+      escrowMode: "onchain",
+      tranche: { planId: "P1", index: 0, total: 3, totalMsats: 300_000_000 },
+    } as EscrowState;
+    assert(autoAdvanceOnchainTrancheKey({ state: onchainReady, gate: gate1, viewerCanAdvance: true }) === "P1:1",
+      "⭐ tranche/on-chain: a proven settled slice immediately arms exactly the next slice");
+    assert(autoAdvanceOnchainTrancheKey({ state: onchainReady, gate: gateLive, viewerCanAdvance: true }) === null
+      && autoAdvanceOnchainTrancheKey({ state: onchainReady, gate: gateUnproven, viewerCanAdvance: true }) === null,
+      "⭐⭐ tranche/on-chain: live or unproven settlement can never auto-advance");
+    assert(autoAdvanceOnchainTrancheKey({ state: onchainReady, gate: gate1, viewerCanAdvance: false }) === null,
+      "tranche/on-chain: only the exposed party's client may auto-publish the next slice");
+    assert(autoAdvanceOnchainTrancheKey({
+      state: { ...onchainReady, escrowMode: "ecash" }, gate: gate1, viewerCanAdvance: true,
+    }) === null,
+      "tranche/ecash: the existing explicit continuation checkpoint is unchanged");
+
+    // Self-describing plan: any client can rebuild the split from any slice.
+    const { trancheAmountAt, outstandingMsats, buildNextTrancheParams } = await import("./tranche.js");
+    const ref = { planId: "P1", index: 0, total: 4, totalMsats: 1001 };
+    assert(trancheAmountAt(1001, 4, 0) === 250 && trancheAmountAt(1001, 4, 3) === 251,
+      "tranche: any index's amount is recomputed from the plan, never stored per slice");
+    assert(trancheAmountAt(1001, 4, 9) === 0,
+      "tranche: an out-of-range index yields nothing rather than guessing");
+    assert(outstandingMsats(ref, 0) === 1001 && outstandingMsats(ref, 2) === 501
+      && outstandingMsats(ref, 4) === 0,
+      "tranche: what's still to come is derived from settled count, not tracked separately");
+
+    // Building the next slice from the previous one.
+    const prior = {
+      id: "t0", status: EscrowStatus.COMPLETED, amountMsats: 250, fiatAmount: 100,
+      escrowMode: "onchain",
+      tranche: ref, communityArbiters: ["c1".repeat(32), "c2".repeat(32)],
+      participants: {
+        [Role.BUYER]: BUYER_PK,
+        [Role.SELLER]: SELLER_PK,
+        [Role.ARBITER]: "c1".repeat(32),
+      },
+    } as unknown as EscrowState;
+    const rebuild = (s: EscrowState) => ({ description: "d", amountMsats: s.amountMsats, category: "p2p-trade" });
+    const next = buildNextTrancheParams(prior, 1, [prior], rebuild, 100)!;
+    assert(next.amountMsats === 250 && (next.tranche as typeof ref).index === 1,
+      "tranche: the next slice carries the next index and its own amount");
+    assert(next.escrowMode === "onchain",
+      "⭐⭐ tranche: an on-chain plan stays on-chain after slice 1");
+    assert(JSON.stringify(next.continuationPubkeys) === JSON.stringify([BUYER_PK, SELLER_PK]),
+      "⭐ tranche: the next slice is routed to both existing principals so nobody hunts for it");
+    assert((next.communityArbiters as string[]).length === 1
+      && !(next.communityArbiters as string[]).includes("c1".repeat(32)),
+      "⭐ tranche: the next slice's pool excludes the arbiter who just served");
+    assert(next.fiatAmount === 25,
+      "⭐ tranche: FIAT is sliced too — otherwise every slice of a 4-way split would ask for the full price");
+    const { trancheFiatAt } = await import("./tranche.js");
+    assert([0, 1, 2, 3].reduce((sum, i) => sum + (trancheFiatAt(100.01, 4, i) ?? 0), 0).toFixed(2) === "100.01",
+      "⭐ tranche: fiat slices sum EXACTLY to the agreed price — a buyer who agreed to 100.01 is asked for 100.01, not 100.00");
+    assert(buildNextTrancheParams(prior, 4, [prior], rebuild) === null
+      && buildNextTrancheParams(prior, -1, [prior], rebuild) === null,
+      "tranche: refuses to build a slice outside the plan");
+    assert(buildNextTrancheParams({ ...prior, tranche: undefined } as EscrowState, 1, [], rebuild) === null,
+      "tranche: a trade that isn't part of a plan has no next slice");
+
+    // Fresh arbiter per tranche — an attacker must corrupt N, not one.
+    const pool = ["c1".repeat(32), "c2".repeat(32), "c3".repeat(32)];
+    const served = [{ participants: { [Role.ARBITER]: pool[0] } } as unknown as EscrowState];
+    assert(poolForNextTranche(pool, served).length === 2
+      && !poolForNextTranche(pool, served).includes(pool[0]),
+      "⭐ tranche: the next tranche excludes an arbiter who already served on this plan");
+    const allServed = pool.map((pk) => ({ participants: { [Role.ARBITER]: pk } } as unknown as EscrowState));
+    assert(poolForNextTranche(pool, allServed).length === 3,
+      "⭐ tranche: exclusion FAILS OPEN — stranding the victim to spite the attacker is the wrong trade");
+    assert(poolForNextTranche(pool, []).length === 3,
+      "tranche: the first tranche uses the whole pool");
+  }
+
+  // ── §0.1 + §0.3: who can actually take the money ──────────────────────────
+  // Two changes from the trust-without-honest-arbiters review, both at the
+  // consent/client layer, neither touching the reducer.
+  {
+    const { arbiterShareRecipientsFor, arbiterPriorityOrderFor, ARBITER_POOL_SHARE_CAP } =
+      await import("./arbiter-substitution.js");
+    const { verifyBondedStamp, stampIsForged } = await import("../arbiters/bonded-stamp.js");
+
+    // ⚠ Pool keys must NOT collide with BUYER_PK/SELLER_PK ("aa"/"bb" repeated
+    // = a/b x64), or the exclusion list silently shrinks the pool and the
+    // assertions below measure the fixture instead of the code.
+    const pool3 = ["c1".repeat(32), "c2".repeat(32), "c3".repeat(32)];
+    const args = { escrowId: "sm_x", pool: pool3, buyerPubkey: BUYER_PK, sellerPubkey: SELLER_PK };
+
+    // The finding: cap 3 against a pool of 3 handed a share to EVERY arbiter.
+    assert(arbiterPriorityOrderFor(args).length === 3 && ARBITER_POOL_SHARE_CAP === 3,
+      "§0.1: the vote-priority order still spans the whole 3-member pool (reducer-gated — unchanged)");
+    assert(arbiterShareRecipientsFor(args).length === 2,
+      "⭐ §0.1: SHARE recipients are capped strictly below the pool — no longer every arbiter in the system");
+    assert(arbiterShareRecipientsFor(args).every((pk) => arbiterPriorityOrderFor(args).includes(pk)),
+      "§0.1: recipients remain a prefix of the same deterministic order — no new selection logic");
+
+    // ⚠ The reducer gates the arbiter VOTE on arbiterPriorityOrder. Changing
+    // THAT would fork mixed-version chains on a money path, so it must stay
+    // identical while only share distribution narrows.
+    assert(arbiterPriorityOrderFor(args).length > arbiterShareRecipientsFor(args).length,
+      "⭐ §0.1: vote eligibility deliberately DIVERGES from share custody — that split is the whole safety of this change");
+
+    assert(arbiterShareRecipientsFor({ ...args, pool: ["c1".repeat(32)] }).length === 1,
+      "§0.1: a single-arbiter community still gets its one share — never zero, or nobody could ever rule");
+    assert(arbiterShareRecipientsFor({ ...args, pool: [...pool3, "c4".repeat(32), "c5".repeat(32)] }).length === 3,
+      "§0.1: with a pool larger than the cap, the cap governs and behaviour is unchanged");
+
+    // §0.3 — the creator-written stamp.
+    const bonded = ["a".repeat(64)];
+    const forged = verifyBondedStamp(["f".repeat(64)], bonded);
+    assert(forged.effective.length === 0 && stampIsForged(forged),
+      "⭐ §0.3: a stamp naming a non-bonded key is emptied — it can no longer short-circuit the deterministic pick");
+    const honest = verifyBondedStamp(bonded, bonded);
+    assert(honest.effective.length === 1 && !stampIsForged(honest),
+      "§0.3: a truthful stamp survives verification untouched");
+    const unchecked = verifyBondedStamp(bonded, null);
+    assert(unchecked.effective.length === 1 && !unchecked.checked && !stampIsForged(unchecked),
+      "⭐ §0.3: with no verified set (offline, flapping relays) the stamp is honoured as before — an honest bonded arbiter is never dropped for a slow network");
+    const emptyCommunity = verifyBondedStamp(bonded, []);
+    assert(emptyCommunity.effective.length === 0 && emptyCommunity.checked,
+      "⭐ §0.3: [] means CHECKED-and-none, and correctly empties the stamp — distinct from null");
+    assert(verifyBondedStamp([], bonded).effective.length === 0,
+      "§0.3: no stamp stays no stamp");
+    assert(verifyBondedStamp(["A".repeat(64)], ["a".repeat(64)]).effective.length === 1,
+      "§0.3: hex comparison is case-insensitive, matching the rest of the arbiter modules");
+  }
+
+  // ── Honest custody: who is exposed by a lock ──────────────────────────────
+  // A lock is 2-of-3 against the arbiter and the counterparty, and NOT against
+  // the funder. The disclosure has to reach the non-locker — the party who
+  // performs the irreversible off-platform leg — and must not nag the funder,
+  // who holds the capability rather than the risk.
+  {
+    const { expectedLockerRole, lockerRoleOf, viewerIsExposedByLock } =
+      await import("./lock-custody.js");
+
+    assert(expectedLockerRole("p2p-trade") === Role.SELLER
+      && expectedLockerRole("bill-pay") === Role.SELLER
+      && expectedLockerRole("marketplace") === Role.BUYER
+      && expectedLockerRole("lending") === Role.SELLER,
+      "custody: the funding role per category mirrors the reducer's expectedLocker");
+    assert(expectedLockerRole("raw-escrow") === null,
+      "custody: raw escrow has no fixed funder");
+
+    const locked = (category: string): EscrowState => ({
+      id: "L", category, status: EscrowStatus.LOCKED, expiresAt: NOW_S + 3600,
+      description: "t", amountMsats: 1_000_000,
+      lock: { lockedAt: NOW_S, notesHash: "h" },
+      participants: { [Role.BUYER]: BUYER_PK, [Role.SELLER]: SELLER_PK, [Role.ARBITER]: ARBITER_PK },
+    } as unknown as EscrowState);
+
+    // Exchange: the SELLER funds, so the BUYER (who sends fiat) is exposed.
+    assert(viewerIsExposedByLock(locked("p2p-trade"), Role.BUYER),
+      "⭐ custody: in Exchange the buyer sends fiat against the seller's lock — the buyer is warned");
+    assert(!viewerIsExposedByLock(locked("p2p-trade"), Role.SELLER),
+      "⭐ custody: the funder is NOT warned — they hold the capability, not the risk");
+    // Marketplace: the BUYER funds, so the SELLER (who ships) is exposed.
+    assert(viewerIsExposedByLock(locked("marketplace"), Role.SELLER)
+      && !viewerIsExposedByLock(locked("marketplace"), Role.BUYER),
+      "⭐ custody: in Stores the roles invert — the shipper is the exposed one");
+    assert(!viewerIsExposedByLock(locked("p2p-trade"), Role.ARBITER),
+      "custody: the arbiter moves nothing either way and is not warned");
+    assert(!viewerIsExposedByLock(locked("p2p-trade"), null),
+      "custody: a non-participant sees nothing");
+    assert(viewerIsExposedByLock(locked("raw-escrow"), Role.BUYER)
+      && viewerIsExposedByLock(locked("raw-escrow"), Role.SELLER),
+      "custody: when the funder can't be determined, BOTH principals are warned — fail loud");
+
+    const unlocked = { ...locked("p2p-trade"), lock: { lockedAt: null, notesHash: null } } as EscrowState;
+    assert(!viewerIsExposedByLock(unlocked, Role.BUYER),
+      "custody: nothing to disclose before a lock exists");
+    assert(lockerRoleOf(locked("marketplace")) === Role.BUYER,
+      "custody: the funder is derived from the category the reducer enforces");
+  }
+
+  // ── A4: Work phase 2 — a want is a listing with the roles flipped ─────────
+  {
+    const { scoreWorkMatch, findWorkMatches } = await import("../guided/work-match.js");
+    const { isWorkListing, isWorkOffer, isWorkRequest } = await import("../ui/work-resume.js");
+    const { isKnownWorkCategory, workCategoryDisplay } = await import("../communities/work-categories.js");
+
+    assert(isWorkListing({ listingKind: "work" }) && isWorkListing({ listingKind: "work-request" }),
+      "A4: both sides are Work listings");
+    assert(!isWorkListing({ listingKind: undefined }),
+      "A4: a plain marketplace listing is not Work");
+    assert(isWorkOffer({ listingKind: "work" }) && !isWorkOffer({ listingKind: "work-request" }),
+      "⭐ A4: 'work' keeps its historical meaning — a WORKER's offer, so no migration");
+    assert(isWorkRequest({ listingKind: "work-request" }),
+      "A4: 'work-request' is the client's want-ad");
+    assert(isKnownWorkCategory("repair-trades") && !isKnownWorkCategory("nonsense"),
+      "A4: the category set is closed and checkable");
+    assert(workCategoryDisplay("some-future-id")?.label === "some-future-id",
+      "A4: an unknown category renders raw rather than vanishing — a foreign list must still show");
+
+    const mkWork = (over: Partial<EscrowState>): EscrowState => ({
+      id: "w1", category: "marketplace", status: EscrowStatus.CREATED,
+      expiresAt: NOW_S + 3600, description: "job", amountMsats: 40_000_000,
+      lock: { lockedAt: null, notesHash: null },
+      participants: { [Role.SELLER]: SELLER_PK },
+      initiator: { role: Role.SELLER, pubkey: SELLER_PK },
+      community: "ke-kes", paymentMethods: ["mpesa"],
+      ...over,
+    } as unknown as EscrowState);
+
+    const offer = mkWork({ id: "offer1", listingKind: "work", workCategory: "repair-trades", amountMsats: 40_000_000 });
+    const request = mkWork({
+      id: "req1", listingKind: "work-request", workCategory: "repair-trades",
+      amountMsats: 50_000_000, participants: { [Role.SELLER]: BUYER_PK },
+      initiator: { role: Role.SELLER, pubkey: BUYER_PK },
+    } as unknown as Partial<EscrowState>);
+
+    const m = scoreWorkMatch(offer, request, { nowSec: NOW_S });
+    assert(m.matched && m.score > 0, "⭐ A4: a worker's offer matches a client's request in the same category");
+    const flipped = scoreWorkMatch(request, offer, { nowSec: NOW_S });
+    assert(flipped.matched && flipped.score === (m as any).score,
+      "⭐ A4: matching is SYMMETRIC — same pair, same score, whichever side you ask from");
+
+    assert(!scoreWorkMatch(offer, mkWork({ id: "o2", listingKind: "work", workCategory: "repair-trades" }), { nowSec: NOW_S }).matched,
+      "A4: two workers advertising at each other is not a match");
+    const mismatch = scoreWorkMatch(offer, mkWork({
+      id: "req2", listingKind: "work-request", workCategory: "teaching", amountMsats: 90_000_000,
+      participants: { [Role.SELLER]: BUYER_PK }, initiator: { role: Role.SELLER, pubkey: BUYER_PK },
+    } as unknown as Partial<EscrowState>), { nowSec: NOW_S });
+    assert(!mismatch.matched && (mismatch as any).reason === "category-mismatch",
+      "A4: a plumber and a tutor are not a near-miss");
+
+    // "other" is the free-text escape: it can't be compared, so it never blocks.
+    const openEnded = scoreWorkMatch(offer, mkWork({
+      id: "req3", listingKind: "work-request", workCategory: "other", amountMsats: 60_000_000,
+      participants: { [Role.SELLER]: BUYER_PK }, initiator: { role: Role.SELLER, pubkey: BUYER_PK },
+    } as unknown as Partial<EscrowState>), { nowSec: NOW_S });
+    assert(openEnded.matched && !openEnded.reasons.some((r) => r.code === "category"),
+      "⭐ A4: 'Something else' never blocks a match — it just earns no category points");
+
+    const tooPoor = scoreWorkMatch(offer, mkWork({
+      id: "req4", listingKind: "work-request", workCategory: "repair-trades", amountMsats: 10_000_000,
+      participants: { [Role.SELLER]: BUYER_PK }, initiator: { role: Role.SELLER, pubkey: BUYER_PK },
+    } as unknown as Partial<EscrowState>), { nowSec: NOW_S });
+    assert(!tooPoor.matched && (tooPoor as any).reason === "budget-below-ask",
+      "⭐ A4: a budget under the ask is a different conversation, not a weak match");
+
+    assert(!scoreWorkMatch(offer, mkWork({
+      id: "req5", listingKind: "work-request", workCategory: "repair-trades", amountMsats: 50_000_000,
+    }), { nowSec: NOW_S }).matched,
+      "A4: you never match your own want-ad");
+    assert(!scoreWorkMatch(offer, mkWork({
+      id: "req6", listingKind: "work-request", workCategory: "repair-trades",
+      amountMsats: 50_000_000, expiresAt: NOW_S - 1,
+      participants: { [Role.SELLER]: BUYER_PK }, initiator: { role: Role.SELLER, pubkey: BUYER_PK },
+    } as unknown as Partial<EscrowState>), { nowSec: NOW_S }).matched,
+      "A4: an expired listing is never a match");
+
+    const ranked = findWorkMatches(offer, [request, mkWork({
+      id: "req7", listingKind: "work-request", workCategory: "repair-trades",
+      amountMsats: 50_000_000, community: "tz-tzs", paymentMethods: [],
+      participants: { [Role.SELLER]: BUYER_PK }, initiator: { role: Role.SELLER, pubkey: BUYER_PK },
+    } as unknown as Partial<EscrowState>)], { nowSec: NOW_S });
+    assert(ranked.length === 2 && ranked[0].listing.id === "req1",
+      "A4: same community + shared rail outranks a distant one");
+  }
+
+  const { hasAgedOut, MAX_AUTO_RENEW_CYCLES } = await import("./listing-renewal-age.js");
+  assert(hasAgedOut(10, false, 30) === false && hasAgedOut(30, false, 30) === true,
+    "A2: the age-out cap is caller-supplied");
+  assert(hasAgedOut(MAX_AUTO_RENEW_CYCLES, false) === true,
+    "A2: and defaults to the Stores-era value, so every existing caller is byte-identical");
   const bondedT = resolveListingTenure({ bonded: true });
   const unbondedT = resolveListingTenure({ bonded: false });
   assert(bondedT.autoRenew && bondedT.maxTenureSeconds === BONDED_TENURE_SECONDS,
@@ -3676,6 +4798,286 @@ console.log("\n── Bond announcement (kind 38135, chain-verifiable) ──");
     "bondann: groupLatest is newest-wins per (arbiter, community)");
   assert(grouped.get("ke-kes")?.length === 1 && grouped.get("ke-kes")?.[0]?.npub === npub,
     "⭐ bondann: an arbiter bonded in TWO chamas counts in both (per-npub collapse avoided) and a broken-sig event is dropped");
+
+  // ── A0 SCHEMA PASS: roles + lineage ────────────────────────────────────────
+  // Both fields are optional and advisory. The load-bearing property is that a
+  // PRE-A0 announcement is untouched, and that nothing can silently unseat an
+  // arbiter. See design/mockups/chama-38135-schema-pass-brief.md.
+  const preA0 = finalizeEvent(buildBondAnnouncementEvent({
+    pubkey: npub, community, ownerXonly, lockUntil: T,
+    amountSats: 10_000n, network: MS_NET, address: bond.address, createdAt: 3000,
+  }), sk) as unknown as NostrEvent;
+  const preA0Payload = JSON.parse(preA0.content);
+  assert(!("roles" in preA0Payload) && !("lineage" in preA0Payload),
+    "⭐ A0: an ordinary arbiter bond emits NO roles/lineage — byte-identical to a pre-A0 announcement");
+  assert(parseBondAnnouncementEvent(preA0)?.roles?.join() === "arbiter",
+    "A0: absent roles parses as the arbiter default");
+
+  const merchantEvent = finalizeEvent(buildBondAnnouncementEvent({
+    pubkey: npub, community, ownerXonly, lockUntil: T,
+    amountSats: 10_000n, network: MS_NET, address: bond.address, createdAt: 3100,
+    roles: ["merchant"],
+  }), sk) as unknown as NostrEvent;
+  const merchantParsed = parseBondAnnouncementEvent(merchantEvent);
+  assert(merchantParsed?.roles?.join() === "merchant", "A0: a declared merchant role round-trips");
+
+  const merchantVerified = await verifyBondAnnouncement(merchantParsed!, {
+    network: MS_NET, fetchJson: fakeEsplora(bond.address), tipHeight: T - 10,
+  });
+  assert(merchantVerified?.funded === true && merchantVerified?.active === true,
+    "A0: a merchant bond still chain-verifies as a real funded bond");
+  assert(bondedArbitersForCommunity([merchantVerified!]).length === 0,
+    "⭐ A0: a merchant-only bond is NOT seated in the arbiter pool");
+  assert(bondedArbitersForCommunity([{ ...merchantVerified!, roles: ["arbiter", "merchant"] }]).length === 1,
+    "A0: a bond declaring BOTH roles is still an assignable arbiter");
+  assert(bondedArbitersForCommunity([{ ...merchantVerified!, roles: undefined }]).length === 1,
+    "⭐ A0: absent roles (pre-A0 bond, or a pre-A0 cache entry) is treated as arbiter — never unseated by missing data");
+
+  // An empty role array would otherwise silently unseat: it must fall back.
+  const emptyRolesEvent = finalizeEvent({
+    kind: ARBITER_BOND_ANNOUNCEMENT_KIND, created_at: 3200,
+    tags: [["d", community], ["t", "chama:commitment-bond"], ["c", community]],
+    content: JSON.stringify({ ...JSON.parse(merchantEvent.content), roles: [] }),
+  } as any, sk) as unknown as NostrEvent;
+  assert(parseBondAnnouncementEvent(emptyRolesEvent)?.roles?.join() === "arbiter",
+    "⭐ A0: roles:[] falls back to arbiter rather than unseating");
+
+  const lineage = {
+    hops: [
+      { fromXonly: "b".repeat(64), fromLockUntil: T - 200, fromTxid: "c".repeat(64) },
+      { fromXonly: "e".repeat(64), fromLockUntil: T - 400, fromTxid: "f".repeat(64) },
+    ],
+    rootTxid: "f".repeat(64),
+  };
+  const renewedEvent = finalizeEvent(buildBondAnnouncementEvent({
+    pubkey: npub, community, ownerXonly, lockUntil: T,
+    amountSats: 10_000n, network: MS_NET, address: bond.address, createdAt: 3300, lineage,
+  }), sk) as unknown as NostrEvent;
+  const renewedParsed = parseBondAnnouncementEvent(renewedEvent);
+  assert(renewedParsed?.lineage?.hops.length === 2
+    && renewedParsed?.lineage?.hops[0].fromTxid === "c".repeat(64)
+    && renewedParsed?.lineage?.hops[1].fromLockUntil === T - 400,
+    "A0: a well-formed multi-hop lineage round-trips newest-first for the A1 walk");
+
+  // A bad lineage claim drops the FIELD, never the bond — a malformed tenure
+  // claim must not invalidate real money locked on-chain.
+  const badLineageEvent = finalizeEvent({
+    kind: ARBITER_BOND_ANNOUNCEMENT_KIND, created_at: 3400,
+    tags: [["d", community], ["t", "chama:commitment-bond"], ["c", community]],
+    content: JSON.stringify({ ...JSON.parse(preA0.content), lineage: { hops: [{ fromXonly: "nope" }] } }),
+  } as any, sk) as unknown as NostrEvent;
+  const badParsed = parseBondAnnouncementEvent(badLineageEvent);
+  assert(badParsed !== null && badParsed.lineage === undefined,
+    "⭐ A0: a malformed lineage claim drops the field and KEEPS the announcement");
+
+  // Ordered hops TRUNCATE at the first bad one — a gap is what an inflated
+  // tenure claim looks like, so later hops must not skip over it.
+  const gappyEvent = finalizeEvent({
+    kind: ARBITER_BOND_ANNOUNCEMENT_KIND, created_at: 3450,
+    tags: [["d", community], ["t", "chama:commitment-bond"], ["c", community]],
+    content: JSON.stringify({
+      ...JSON.parse(preA0.content),
+      lineage: { hops: [lineage.hops[0], { fromXonly: "bad" }, lineage.hops[1]] },
+    }),
+  } as any, sk) as unknown as NostrEvent;
+  assert(parseBondAnnouncementEvent(gappyEvent)?.lineage?.hops.length === 1,
+    "⭐ A0: a malformed hop TRUNCATES the chain rather than letting later hops skip the gap");
+
+  // A repeated txid is a loop, not history.
+  const loopEvent = finalizeEvent({
+    kind: ARBITER_BOND_ANNOUNCEMENT_KIND, created_at: 3460,
+    tags: [["d", community], ["t", "chama:commitment-bond"], ["c", community]],
+    content: JSON.stringify({
+      ...JSON.parse(preA0.content),
+      lineage: { hops: [lineage.hops[0], lineage.hops[0]] },
+    }),
+  } as any, sk) as unknown as NostrEvent;
+  assert(parseBondAnnouncementEvent(loopEvent)?.lineage?.hops.length === 1,
+    "A0: a repeated hop txid is a loop and is cut");
+
+  // The pool cache round-trip must preserve everything the arbiter card reads.
+  const cacheable: VerifiedBond = {
+    ...merchantVerified!, roles: ["merchant"], lineage,
+    fundedAtHeight: 700_100, fundingTxid: "d".repeat(64),
+  };
+  const a0Cache = await import("../arbiters/bonded-pool-cache.js");
+  a0Cache.writeCachedCommunityBonds("a0-cache-test", [cacheable]);
+  const roundTripped = a0Cache.readCachedCommunityBonds("a0-cache-test")?.[0];
+  assert(roundTripped?.roles?.join() === "merchant"
+    && roundTripped?.fundedAtHeight === 700_100
+    && roundTripped?.fundingTxid === "d".repeat(64)
+    && roundTripped?.lineage?.hops[0]?.fromTxid === "c".repeat(64),
+    "⭐ A0: pool-cache round-trip preserves roles, lineage, tenure start, and funding txid (all four were previously DROPPED)");
+}
+
+// ── 5c-A1. TENURE ACROSS RENEWALS: the lineage walk (5.8 owed) ────────────────
+// A renewal spends the old bond into a new one, so the current UTXO's age
+// under-reports a long commitment. The walk proves ancestry hop by hop. The
+// load-bearing property is DIRECTIONAL: every failure mode must make tenure
+// SHORTER, never longer, because tenure gates capacity.
+console.log("\n── A1 bond lineage walk + tenure-gated capacity ──");
+{
+  const { verifyBondLineage, tenureStartHeight, lineageIsPartial, NO_LINEAGE } =
+    await import("../bond-multisig/bond-lineage.js");
+  const { buildCommitmentBond: mkBond } = await import("../bond-multisig/commitment-bond.js");
+
+  // Three generations of the same arbiter's bond, each renewing the last.
+  const keyA = new Uint8Array(32).fill(0xa1);
+  const keyB = new Uint8Array(32).fill(0xb2);
+  const hex = (k: Uint8Array) => [...k].map((b) => b.toString(16).padStart(2, "0")).join("");
+  const addrA = mkBond(keyA, 700_100, MS_NET).address;
+  const addrB = mkBond(keyB, 700_600, MS_NET).address;
+  const TXID_A = "1".repeat(64); // oldest funding tx
+  const TXID_B = "2".repeat(64); // renewed A → B
+  const TXID_C = "3".repeat(64); // renewed B → C (the CURRENT bond)
+
+  // A tiny Esplora that knows this history and nothing else.
+  const chain = (overrides: Record<string, any> = {}) => async (path: string) => {
+    const table: Record<string, any> = {
+      [`/tx/${TXID_A}`]: { vout: [{ scriptpubkey_address: addrA, value: 50_000 }], status: { block_height: 700_000 } },
+      [`/tx/${TXID_B}`]: { vout: [{ scriptpubkey_address: addrB, value: 49_000 }], status: { block_height: 700_500 } },
+      [`/tx/${TXID_A}/outspend/0`]: { spent: true, txid: TXID_B },
+      [`/tx/${TXID_B}/outspend/0`]: { spent: true, txid: TXID_C },
+      ...overrides,
+    };
+    if (!(path in table)) throw new Error(`esplora miss: ${path}`);
+    const v = table[path];
+    if (v instanceof Error) throw v;
+    return v;
+  };
+
+  const fullClaim = {
+    hops: [
+      { fromXonly: hex(keyB), fromLockUntil: 700_600, fromTxid: TXID_B },
+      { fromXonly: hex(keyA), fromLockUntil: 700_100, fromTxid: TXID_A },
+    ],
+  };
+
+  const proven = await verifyBondLineage({
+    lineage: fullClaim, currentFundingTxid: TXID_C, network: MS_NET, fetchJson: chain(),
+  });
+  assert(proven.provenHops === 2 && proven.stoppedBecause === "complete",
+    "⭐ A1: an unbroken two-hop renewal chain is fully proven on-chain");
+  assert(proven.rootFundedAtHeight === 700_000 && proven.rootTxid === TXID_A,
+    "A1: tenure starts at the OLDEST proven ancestor's funding height");
+  assert(!lineageIsPartial(proven), "A1: a fully-proven chain is not partial");
+
+  // The theft case: claiming someone else's bond as an ancestor. Their output
+  // was never spent into OUR funding tx, so the walk refuses it.
+  const stolen = await verifyBondLineage({
+    lineage: fullClaim, currentFundingTxid: "9".repeat(64), network: MS_NET, fetchJson: chain(),
+  });
+  assert(stolen.provenHops === 0 && stolen.stoppedBecause === "wrong_spender",
+    "⭐ A1: a bond cannot adopt another arbiter's history — hop 0 must be spent into OUR funding tx");
+
+  // Right txid, wrong key: the recomputed address is not in that transaction.
+  const wrongKey = await verifyBondLineage({
+    lineage: { hops: [{ fromXonly: hex(keyA), fromLockUntil: 700_600, fromTxid: TXID_B }] },
+    currentFundingTxid: TXID_C, network: MS_NET, fetchJson: chain(),
+  });
+  assert(wrongKey.provenHops === 0 && wrongKey.stoppedBecause === "address_mismatch",
+    "⭐ A1: a fabricated ancestor fails the local address recompute");
+
+  // An ancestor still sitting unspent cannot be an ancestor.
+  const unspent = await verifyBondLineage({
+    lineage: fullClaim, currentFundingTxid: TXID_C, network: MS_NET,
+    fetchJson: chain({ [`/tx/${TXID_B}/outspend/0`]: { spent: false } }),
+  });
+  assert(unspent.provenHops === 0 && unspent.stoppedBecause === "unspent",
+    "A1: an unspent claimed ancestor stops the walk");
+
+  // Esplora failure mid-walk keeps what was proven and stops — never guesses.
+  const flaky = await verifyBondLineage({
+    lineage: fullClaim, currentFundingTxid: TXID_C, network: MS_NET,
+    fetchJson: chain({ [`/tx/${TXID_A}`]: new Error("502") }),
+  });
+  assert(flaky.provenHops === 1 && flaky.stoppedBecause === "unreadable" && flaky.rootFundedAtHeight === 700_500,
+    "⭐ A1: a read failure truncates tenure to what was proven — every failure shortens, never lengthens");
+  assert(lineageIsPartial(flaky), "A1: a truncated walk reports itself partial (3 of 5 verified, not a silent 3)");
+
+  // No claim, or no anchor, ⇒ nothing.
+  assert((await verifyBondLineage({ lineage: undefined, currentFundingTxid: TXID_C, network: MS_NET, fetchJson: chain() })).provenHops === 0,
+    "A1: no lineage claim ⇒ no proven hops");
+  assert((await verifyBondLineage({ lineage: fullClaim, currentFundingTxid: undefined, network: MS_NET, fetchJson: chain() })).provenHops === 0,
+    "⭐ A1: without the current bond's funding txid the first hop is unanchored, so nothing is accepted");
+
+  // ── tenureStartHeight: older wins, impossible orderings rejected ───────────
+  assert(tenureStartHeight({ fundedAtHeight: 701_000 }, proven) === 700_000,
+    "A1: a renewed bond inherits its lineage root as its tenure start");
+  assert(tenureStartHeight({ fundedAtHeight: 701_000 }, NO_LINEAGE) === 701_000,
+    "A1: with no proven lineage, tenure is the current bond's own age");
+  assert(tenureStartHeight({ fundedAtHeight: 699_000 }, proven) === 699_000,
+    "A1: an 'ancestor' younger than the bond it funded is impossible — fall back to the verifiable value");
+
+  // ── tenure-gated capacity (lever 1) ───────────────────────────────────────
+  const { tenureCapacityMultiplier, effectiveBondCapacityMsats, assignableBondedArbiters: assignable, TENURE_FULL_CAPACITY_DAYS, TENURE_MIN_CAPACITY_FRACTION, TENURE_GATED_CAPACITY } =
+    await import("../arbiters/exposure.js");
+  assert(tenureCapacityMultiplier(0) === TENURE_MIN_CAPACITY_FRACTION
+    && tenureCapacityMultiplier(TENURE_FULL_CAPACITY_DAYS) === 1
+    && tenureCapacityMultiplier(999) === 1,
+    "A1: the tenure multiplier ramps from the floor to full at the maturity window, then stays flat");
+  assert(tenureCapacityMultiplier(null) === TENURE_MIN_CAPACITY_FRACTION,
+    "⭐ A1: UNKNOWN tenure earns the new-bond floor, never full credit");
+  assert(tenureCapacityMultiplier(15) > TENURE_MIN_CAPACITY_FRACTION && tenureCapacityMultiplier(15) < 1,
+    "A1: a half-mature bond sits between the floor and full — a ramp, not a cliff");
+  assert(effectiveBondCapacityMsats(100_000n, 0) === 25_000_000,
+    "A1: a day-one 100k-sat bond carries 25k sats of capacity — real work, bounded damage");
+
+  const freshBond = [{ npub: "a".repeat(64), actualSats: 100_000n, tenureDays: 0 }];
+  const agedBond = [{ npub: "a".repeat(64), actualSats: 100_000n, tenureDays: 60 }];
+  const bigTrade = 60_000_000; // 60k sats
+  const gated = (bonds: any, tradeMsats: number) =>
+    assignable({ bonds, tradeMsats, allTrades: [], tenureGated: true });
+  assert(gated(freshBond, bigTrade).length === 0,
+    "⭐ A1: a FRESH 100k bond cannot seat a 60k trade — the one cost a Sybil cannot buy");
+  assert(gated(agedBond, bigTrade).length === 1,
+    "⭐ A1: the SAME bond, matured, seats it");
+  assert(gated(freshBond, 5_000_000).length === 1,
+    "A1: a fresh arbiter still works immediately on small trades");
+  assert(gated([{ npub: "a".repeat(64), actualSats: 100_000n }], bigTrade).length === 0,
+    "⭐ A1: with the gate ON, a caller that cannot resolve tenure gets the STRICTER result, never a looser one");
+
+  // ⚠ The gate ships DORMANT. Today's live call site (CreateForm) passes bonds
+  // with no age, so defaulting it ON would have re-rated every arbiter on earth
+  // as brand new and cut real capacity to a quarter. The suite caught exactly
+  // that. These two assertions are the regression guard.
+  assert(TENURE_GATED_CAPACITY === false,
+    "⭐ A1: tenure-gated capacity ships DORMANT, like BONDS_ENFORCED");
+  assert(assignable({ bonds: freshBond, tradeMsats: bigTrade, allTrades: [] }).length === 1,
+    "⭐ A1: with the gate at its default, capacity is pure size — no existing caller changes behaviour");
+
+  // ── cohort context: publish the number, draw no conclusion ────────────────
+  const { bondCohort, COHORT_WINDOW_SECONDS } = await import("../arbiters/live-chama.js");
+  const T0 = 1_800_000_000;
+  const cohort = bondCohort({ npub: "aa", createdAt: T0 }, [
+    { npub: "aa", createdAt: T0 },                            // the subject
+    { npub: "bb", createdAt: T0 + 3600 },
+    { npub: "cc", createdAt: T0 - 86_400 },
+    { npub: "bb", createdAt: T0 + 7200 },                     // same peer twice
+    { npub: "dd", createdAt: T0 + COHORT_WINDOW_SECONDS * 3 }, // outside the window
+  ]);
+  assert(cohort.peerCount === 2,
+    "A1: cohort counts DISTINCT peers inside the window, excluding the subject and re-announcements");
+  assert(bondCohort({ npub: "aa", createdAt: T0 }, [{ npub: "aa", createdAt: T0 }]).peerCount === 0,
+    "A1: a lone bond has no cohort — nothing is implied by being first");
+
+  // ── A1b: what the arbiter card is allowed to say ─────────────────────────
+  // The card renders tenure from the PROVEN root, and shows concentration only
+  // once it means something. These two guards are the difference between
+  // information and manufactured suspicion.
+  const { verifiedBondTenureBlocks } = await import("../arbiters/live-chama.js");
+  assert(verifiedBondTenureBlocks({ fundedAtHeight: 701_000, tenureFromHeight: 700_000 }, 701_500) === 1_500,
+    "⭐ A1b: the card measures tenure from the proven lineage root, not the current UTXO");
+  assert(verifiedBondTenureBlocks({ fundedAtHeight: 701_000 }, 701_500) === 500,
+    "A1b: an unwalked bond still reports honestly — its own age, never longer");
+
+  const { concentrationWorthShowing } = await import("../arbiters/arbiter-pattern.js");
+  assert(!concentrationWorthShowing({ rulings: 1, byBeneficiary: [{ npub: "x", count: 1 }], topShare: 1 }),
+    "⭐ A1b: '1 of 1' is never shown — a first dispute is not a pattern");
+  assert(concentrationWorthShowing({ rulings: 3, byBeneficiary: [{ npub: "x", count: 3 }], topShare: 1 }),
+    "A1b: past the minimum, the number is shown with its denominator and no verdict");
+  assert(!concentrationWorthShowing({ rulings: 5, byBeneficiary: [], topShare: 0 }),
+    "A1b: rulings with no resolvable beneficiary say nothing");
 }
 
 // ── 5b-LIVECHAMA. Liveness score (coverage × commitment × reputation) ──────────
@@ -19965,6 +21367,35 @@ console.log("\n── Trade notifications (notificationForTransition) ──");
   const created = mk({ status: EscrowStatus.CREATED });
   const locked = mk({ status: EscrowStatus.LOCKED });
 
+  // Tier 2.1: once a buyer joins, the deterministic bonded arbiter is the one
+  // pre-lock responder. They receive an observed-transition buzz without being
+  // treated as consensus-seated yet.
+  const beforeOnchainBuyer = mk({
+    escrowMode: "onchain",
+    participants: { [Role.BUYER]: null, [Role.SELLER]: SELLER, [Role.ARBITER]: null },
+    bondedArbiters: [ARB],
+  });
+  const afterOnchainBuyer = mk({
+    escrowMode: "onchain",
+    participants: { [Role.BUYER]: BUYER, [Role.SELLER]: SELLER, [Role.ARBITER]: null },
+    bondedArbiters: [ARB],
+    joinHolds: { [Role.BUYER]: {
+      role: Role.BUYER, pubkey: BUYER, joinedAt: 1_000, expiresAt: 2_000, eventId: "buyer-join",
+    } },
+  });
+  assert(pendingOnchainArbiterPubkey(afterOnchainBuyer) === ARB,
+    "On-chain buyer JOIN resolves exactly one deterministic pending arbiter");
+  assert(notificationForTransition(beforeOnchainBuyer, afterOnchainBuyer, ARB)?.tag
+    === "sm_notif_demo_0001:arbiter-key",
+  "The selected pre-lock arbiter is buzzed when their key becomes necessary");
+  assert(notificationForTransition(beforeOnchainBuyer, afterOnchainBuyer, STRANGER) === null,
+    "A non-selected pool outsider is not buzzed for the arbiter key");
+  assert(notificationForTransition(null, afterOnchainBuyer, ARB, 999)?.tag
+    === "sm_notif_demo_0001:arbiter-key",
+  "A freshly routed JOIN buzzes the arbiter even when CREATE was never locally visible");
+  assert(notificationForTransition(null, afterOnchainBuyer, ARB, 1_001) === null,
+    "A historical routed JOIN stays silent on first observation");
+
   // 1) LOCKED → only the non-locker (buyer) is told; the locker (seller) isn't.
   const buyerLocked = notificationForTransition(created, locked, BUYER);
   assert(buyerLocked?.tag === "sm_notif_demo_0001:locked",
@@ -20040,6 +21471,23 @@ console.log("\n── External trade-alert DMs (tradeDmNotificationFor) ──")
 
   const created = mk({ status: EscrowStatus.CREATED });
   const locked = mk({ status: EscrowStatus.LOCKED });
+
+  const beforeOnchainBuyer = mk({
+    escrowMode: "onchain",
+    participants: { [Role.BUYER]: null, [Role.SELLER]: SELLER, [Role.ARBITER]: null },
+    bondedArbiters: [ARB],
+  });
+  const afterOnchainBuyer = mk({
+    escrowMode: "onchain",
+    participants: { [Role.BUYER]: BUYER, [Role.SELLER]: SELLER, [Role.ARBITER]: null },
+    bondedArbiters: [ARB],
+  });
+  const arbiterKeyDm = tradeDmNotificationFor(
+    beforeOnchainBuyer, afterOnchainBuyer, Role.BUYER,
+  );
+  assert(arbiterKeyDm?.transition === "sm_trade_dm_0001:arbiter-key"
+    && arbiterKeyDm.recipients[0] === Role.ARBITER,
+  "Buyer JOIN sends one external alert to the selected pre-lock arbiter");
   const lockDm = tradeDmNotificationFor(created, locked, Role.SELLER);
   assert(lockDm?.transition === "sm_trade_dm_0001:locked" && lockDm.recipients[0] === Role.BUYER,
     "LOCK publishes one external alert to the party whose action is needed");
@@ -20296,14 +21744,51 @@ console.log("\n── Liquidity & attention (buyerInterest / newListing / needsY
     votes: {}, expiresAt: nowSec + 9000 });
   const waiting = mk({ id: "t_wait", status: EscrowStatus.CREATED,
     joinHolds: { [Role.BUYER]: { role: Role.BUYER, pubkey: BUYER, joinedAt: nowSec - 5, expiresAt: nowSec + 9000, eventId: "jw" } } });
+  const arbiterKey = mk({ id: "t_arbiter_key", status: EscrowStatus.CREATED, escrowMode: "onchain",
+    participants: { [Role.BUYER]: BUYER, [Role.SELLER]: SELLER, [Role.ARBITER]: null },
+    communityArbiters: [ARB], bondedArbiters: [ARB], escrowKeys: {},
+    joinHolds: { [Role.BUYER]: { role: Role.BUYER, pubkey: BUYER, joinedAt: nowSec - 5, expiresAt: nowSec + 9000, eventId: "jak" } } });
   const idle = mk({ id: "t_idle", status: EscrowStatus.CREATED }); // no hold, no action
-  const ordered = selectNeedsYouTrades({ escrows: [waiting, claim, vote, idle], userPubkey: SELLER, nowSec });
-  assert(ordered.map((e) => e.id).join(",") === "t_claim,t_vote,t_wait",
-    "needs-you: ordered most-urgent first (claim → vote → waiting), idle listing excluded");
+  const ordered = selectNeedsYouTrades({ escrows: [waiting, claim, vote, idle, arbiterKey], userPubkey: SELLER, nowSec });
+  assert(ordered.map((e) => e.id).join(",") === "t_claim,t_vote,t_wait,t_arbiter_key",
+    "needs-you: ordered most-urgent first (claim → vote → waiting), including both live seller waits");
   assert(countNeedsYou({ escrows: [waiting, claim, vote, idle], userPubkey: SELLER, nowSec }) === 3,
     "needs-you: count matches the attention set size");
   assert(countNeedsYou({ escrows: [waiting, claim, vote, idle], userPubkey: STRANGER, nowSec }) === 0,
     "needs-you: a non-participant has zero attention items");
+  assert(selectNeedsYouTrades({ escrows: [arbiterKey], userPubkey: ARB, nowSec })[0]?.id === arbiterKey.id,
+    "needs-you: the selected on-chain arbiter gets the Me/Browse yellow attention path after buyer JOIN");
+  assert(needsYouReasonFor(arbiterKey, ARB, nowSec) === "arbiter-key",
+    "needs-you: arbiter attention names the publish-key action");
+  assert(selectNeedsYouTrades({
+    escrows: [{ ...arbiterKey, escrowKeys: { [Role.ARBITER]: "ab".repeat(32) } }], userPubkey: ARB, nowSec,
+  }).length === 0,
+    "needs-you: publishing the arbiter key clears the yellow attention path");
+  assert(selectNeedsYouTrades({
+    escrows: [{ ...arbiterKey, joinHolds: { [Role.BUYER]: { ...arbiterKey.joinHolds![Role.BUYER]!, expiresAt: nowSec } } }],
+    userPubkey: ARB, nowSec,
+  }).length === 0,
+    "needs-you: an expired buyer JOIN no longer summons the arbiter");
+  assert(selectNeedsYouTrades({ escrows: [arbiterKey], userPubkey: STRANGER, nowSec }).length === 0,
+    "needs-you: a non-selected pool outsider is not shown the arbiter key action");
+  const pendingOnchain = mk({ id: "t_onchain_payout", status: EscrowStatus.COMPLETED,
+    createdAt: nowSec - 50,
+    participants: { [Role.BUYER]: BUYER, [Role.SELLER]: SELLER, [Role.ARBITER]: ARB },
+    eventChain: [{ timestamp: nowSec + 2 } as any] });
+  const mergedAttention = mergeOnchainPayoutAttention({
+    needsYou: ordered,
+    escrows: [waiting, claim, vote, idle, pendingOnchain],
+    pendingEscrowIds: new Set([pendingOnchain.id]),
+  });
+  assert(mergedAttention.map(trade => trade.id).join(",")
+      === "t_onchain_payout,t_claim,t_vote,t_wait,t_arbiter_key",
+    "needs-you: a chain-verified unspent on-chain payout gets the yellow action pill ahead of ordinary work");
+  assert(mergeOnchainPayoutAttention({
+    needsYou: [pendingOnchain, claim],
+    escrows: [pendingOnchain, claim],
+    pendingEscrowIds: new Set([pendingOnchain.id]),
+  }).map(trade => trade.id).join(",") === "t_onchain_payout,t_claim",
+    "needs-you: payout attention merges without duplicate trade rows");
 
   // Seller navigation: untouched inventory is manageable, but a live buyer
   // reservation makes the CREATED parent an order room until its hold lapses.
@@ -22124,6 +23609,453 @@ console.log("\n── ARBITER PREMIUM (compute + kind 38113 + ledger) ──");
   assert(!parsedBad.ok,
     "premium: parser rejects a payload without a valid envelope");
 
+  // ── S7a settlement transport (kind 38114, non-consensus) ──
+  const settlementPayload: SettlementPayload = {
+    type: "escrow:settlement",
+    psbt: "cHNidP8BAAoCAAAAAQ==",
+    leaf: "coop",
+    role: Role.BUYER,
+  };
+  const settlementEv = makeParsedEvent(
+    EscrowEventKind.SETTLEMENT,
+    BUYER_PK,
+    settlementPayload,
+  );
+  const settlementApplied = applyEvent(doneState, settlementEv);
+  if (assertOk(settlementApplied,
+    "S7a: SETTLEMENT is accepted on a COMPLETED trade via the early auxiliary branch")) {
+    assert(settlementApplied.state.status === EscrowStatus.COMPLETED,
+      "S7a: SETTLEMENT never changes escrow status");
+    assert(settlementApplied.state.eventChain.length === doneState.eventChain.length,
+      "S7a: SETTLEMENT never enters eventChain");
+    assert((settlementApplied.state.settlements ?? []).length === 1,
+      "S7a: SETTLEMENT lands in its own state array");
+    const settlementAgain = applyEvent(settlementApplied.state, settlementEv);
+    assert(settlementAgain.ok && (settlementAgain.state.settlements ?? []).length === 1,
+      "S7a: a relay echo of the same SETTLEMENT event id dedups");
+  }
+
+  const mismatchedRole = makeParsedEvent(
+    EscrowEventKind.SETTLEMENT,
+    BUYER_PK,
+    { ...settlementPayload, role: Role.SELLER },
+  );
+  assertErr(applyEvent(doneState, mismatchedRole), "NOT_PARTICIPANT",
+    "S7a: a SETTLEMENT role must match the named participant who signed the event");
+
+  // ROOT TRAP REGRESSION: SETTLEMENT has no e-tag. If it remains in the
+  // state bucket it can displace CREATE as root and make the trade unloadable.
+  const settlementSorted = sortEventChain([settlementEv, createEv]);
+  assert(settlementSorted[0].kind === EscrowEventKind.CREATE,
+    "S7a: sortEventChain never lets SETTLEMENT become the chain root");
+  assert(replayEventChain(settlementSorted).ok,
+    "S7a: a relay-fetched chain containing SETTLEMENT replays clean");
+
+  const rawSettlement = makeRawEvent(EscrowEventKind.SETTLEMENT, BUYER_PK, [["d", ESCROW_ID]]);
+  const parsedSettlement = parseEscrowEvent(
+    rawSettlement,
+    JSON.stringify({ ...settlementPayload, final: true }),
+    true,
+  );
+  assert(parsedSettlement.ok && parsedSettlement.event.kind === EscrowEventKind.SETTLEMENT,
+    "S7a: parser accepts a well-formed kind-38114 settlement payload");
+  const badSettlement = parseEscrowEvent(
+    rawSettlement,
+    JSON.stringify({ ...settlementPayload, leaf: "refund" }),
+    true,
+  );
+  assert(!badSettlement.ok,
+    "S7a: parser rejects an unknown settlement leaf");
+
+  // S7b recipient doctrine: transport goes to every named participant and
+  // the author. The explicit self round-trip is the reload guard from #67.
+  const settlementEnvelope = await createEnvelope(
+    JSON.stringify(settlementPayload),
+    Array.from(new Set([BUYER_PK, SELLER_PK, ARBITER_PK, BUYER_PK])),
+    encMock,
+  );
+  assert(Object.keys(settlementEnvelope.encryptedFor).length === 3,
+    "S7b: settlement envelope contains each named participant exactly once");
+  const selfSettlement = await decryptFromEnvelope(
+    settlementEnvelope, BUYER_PK, BUYER_PK, decMock,
+  );
+  assert(selfSettlement !== null && JSON.parse(selfSettlement).psbt === settlementPayload.psbt,
+    "S7b: settlement author decrypts their own relay event after reload (#67)");
+  const peerSettlement = await decryptFromEnvelope(
+    settlementEnvelope, SELLER_PK, BUYER_PK, decMock,
+  );
+  assert(peerSettlement !== null && JSON.parse(peerSettlement).leaf === "coop",
+    "S7b: counterparty decrypts the settlement PSBT transport");
+
+  // Exercise the actual publisher, not only the envelope primitive.
+  let publishedSettlement: NostrEvent | null = null;
+  const settlementClient = new EscrowClient({
+    async getPublicKey() { return BUYER_PK; },
+    async signEvent(event: UnsignedEvent) {
+      return { ...event, id: "settlement_signed_1", pubkey: BUYER_PK, sig: "sig" } as NostrEvent;
+    },
+    async nip44Encrypt(pt: string, recipient: string) {
+      return `enc:${recipient}:${Buffer.from(pt, "utf8").toString("base64")}`;
+    },
+    async nip44Decrypt(ct: string) { return ct; },
+  }, { relays: [] });
+  (settlementClient as any).states.set(doneState.id, doneState);
+  (settlementClient as any).relayManager.publish = async (event: NostrEvent) => {
+    publishedSettlement = event;
+    return { accepted: 1, rejected: 0, errors: [] };
+  };
+  await settlementClient.sendSettlement(doneState.id, {
+    psbt: settlementPayload.psbt, leaf: "coop", role: Role.BUYER,
+  });
+  const sentSettlement = publishedSettlement as unknown as NostrEvent;
+  const sentEnvelope = JSON.parse(sentSettlement.content);
+  assert(!!sentEnvelope.encryptedFor[BUYER_PK]
+    && !!sentEnvelope.encryptedFor[SELLER_PK]
+    && !!sentEnvelope.encryptedFor[ARBITER_PK],
+    "S7b: actual publisher encrypts to buyer, seller, arbiter, and therefore self");
+  assert(!sentSettlement.content.includes(settlementPayload.psbt),
+    "S7b: actual settlement publisher never leaks PSBT cleartext");
+  assert((settlementClient.getState(doneState.id)?.settlements ?? []).length === 1,
+    "S7b: actual publisher applies its own settlement locally");
+
+  const transport = await import("./onchain-settlement-transport.js");
+  const settle = await import("../bond-multisig/onchain-escrow-settle.js");
+  const onchain = await import("../bond-multisig/onchain-escrow.js");
+  const bPriv = new Uint8Array(32).fill(11);
+  const sPriv = new Uint8Array(32).fill(12);
+  const aPriv = new Uint8Array(32).fill(13);
+  const bX = btcMs.utils.pubSchnorr(bPriv);
+  const sX = btcMs.utils.pubSchnorr(sPriv);
+  const aX = btcMs.utils.pubSchnorr(aPriv);
+  const testEscrow = onchain.buildOnchainEscrow({
+    buyerXonly: bX, sellerXonly: sX, arbiterXonly: aX,
+    funder: "seller", refundLockUntil: 2_000_000,
+    disputeCsvBlocks: 144, network: MS_NET,
+  });
+  const settleUtxos = [{ txid: "11".repeat(32), index: 0, amountSats: 100_000n, confirmations: 3 }];
+  const winnerAddress = btcMs.p2tr(bX, undefined, MS_NET).address!;
+  const attackerAddress = btcMs.p2tr(aX, undefined, MS_NET).address!;
+  const honestPsbt = settle.buildSettlementPsbt({
+    escrow: testEscrow, utxos: settleUtxos, destination: winnerAddress, feeSats: 1_000n,
+  });
+  const tamperedPsbt = settle.buildSettlementPsbt({
+    escrow: testEscrow, utxos: settleUtxos, destination: attackerAddress, feeSats: 1_000n,
+  });
+  const expectation = {
+    escrow: testEscrow, utxos: settleUtxos, destination: winnerAddress,
+    maxFeeSats: 3_000n, network: MS_NET,
+  };
+  const honestMessage = makeParsedEvent(EscrowEventKind.SETTLEMENT, BUYER_PK,
+    { ...settlementPayload, psbt: honestPsbt });
+  const tamperedNewest = makeParsedEvent(EscrowEventKind.SETTLEMENT, SELLER_PK,
+    { ...settlementPayload, psbt: tamperedPsbt, role: Role.SELLER });
+  assert(transport.selectVerifiedCoopSettlement(
+    [honestMessage, tamperedNewest], expectation,
+  ) === honestPsbt,
+  "S7b: invalid newest PSBT is ignored and cannot mask an older valid revision");
+  assert(transport.signingKeyMatchesRole(bX, Role.BUYER, {
+    buyerXonly: Buffer.from(bX).toString("hex"), sellerXonly: Buffer.from(sX).toString("hex"),
+  }) === true && transport.signingKeyMatchesRole(sX, Role.BUYER, {
+    buyerXonly: Buffer.from(bX).toString("hex"), sellerXonly: Buffer.from(sX).toString("hex"),
+  }) === false,
+  "S7b: signing key must match the funded escrow key committed for that role");
+  assert(transport.settlementBuildFeeSats(2n, 2) === (162n + 58n) * 2n,
+    "S7b: builder fee prices every additional settlement input");
+
+  // S7c: concurrent one-signature revisions converge, then a coherent
+  // outspend can recover the broadcast→COMPLETE crash window.
+  const buyerPartial = settle.coSignSettlement(honestPsbt, bPriv);
+  const sellerPartial = settle.coSignSettlement(honestPsbt, sPriv);
+  assert(transport.hasValidSettlementSignatureForRole(
+    buyerPartial, testEscrow, Role.BUYER, "coop",
+  ) === true && transport.hasValidSettlementSignatureForRole(
+    buyerPartial, testEscrow, Role.SELLER, "coop",
+  ) === false,
+  "S7 field UX: a valid local signature is recognized without mistaking it for the counterparty's");
+  const finalizable = transport.finalizableCoopSettlement([
+    makeParsedEvent(EscrowEventKind.SETTLEMENT, BUYER_PK,
+      { ...settlementPayload, psbt: buyerPartial }),
+    makeParsedEvent(EscrowEventKind.SETTLEMENT, SELLER_PK,
+      { ...settlementPayload, psbt: sellerPartial, role: Role.SELLER }),
+  ], expectation);
+  assert(finalizable !== null && finalizable.rawTx.length > 0,
+    "S7c: simultaneous buyer/seller partial signatures combine and finalize");
+  const adoptedTxid = "44".repeat(32);
+  assert(transport.adoptedSettlementTxid([
+    { spent: true, txid: adoptedTxid }, { spent: true, txid: adoptedTxid },
+  ]) === adoptedTxid,
+  "S7c: a coherent sweep is adopted after a broadcast-before-COMPLETE crash");
+  assert(transport.adoptedSettlementTxid([
+    { spent: true, txid: adoptedTxid }, { spent: false },
+  ]) === null && transport.adoptedSettlementTxid([
+    { spent: true, txid: adoptedTxid }, { spent: true, txid: "55".repeat(32) },
+  ]) === null,
+  "S7c: partial or conflicting outspends fail closed");
+  assert(transport.adoptedExpectedSettlementTxid(adoptedTxid, [
+    { spent: true, txid: adoptedTxid }, { spent: false },
+  ]) === null && transport.adoptedExpectedSettlementTxid(adoptedTxid, [
+    { spent: true, txid: "55".repeat(32) }, { spent: true, txid: "55".repeat(32) },
+  ]) === null,
+  "S7c: committed-input-only or wrong-txid recovery cannot adopt the final journal");
+
+  const onchainApproved: EscrowState = {
+    ...doneState,
+    status: EscrowStatus.APPROVED,
+    category: "marketplace",
+    resolvedOutcome: Outcome.REFUND,
+    completedAt: undefined,
+    lock: {
+      ...doneState.lock,
+      onchain: {
+        address: testEscrow.address,
+        fundingTxid: settleUtxos[0].txid,
+        fundingVout: settleUtxos[0].index,
+        amountSats: settleUtxos[0].amountSats.toString(),
+        buyerXonly: Buffer.from(bX).toString("hex"),
+        sellerXonly: Buffer.from(sX).toString("hex"),
+        arbiterXonly: Buffer.from(aX).toString("hex"),
+        funder: "seller",
+        refundLockUntil: 2_000_000,
+        disputeCsvBlocks: 144,
+        network: "signet",
+      },
+    },
+  };
+  const directComplete = makeParsedEvent(EscrowEventKind.COMPLETE, BUYER_PK, {
+    type: "escrow:complete", completedAt: NOW + eventCounter,
+  }, onchainApproved.eventChain.at(-1)?.raw.id ?? null);
+  assertErr(applyEvent(onchainApproved, directComplete), "INVALID_SETTLEMENT_PROOF",
+    "S7c: a principal cannot forge APPROVED→COMPLETE without a linked final settlement proof");
+
+  // Field regression: a relay may retain COMPLETE while omitting its linked
+  // auxiliary final SETTLEMENT journal. Live application must still reject the
+  // marker, but cold replay must retain the last verified APPROVED on-chain
+  // state so the winner-output recovery scan can find the funded trade.
+  const replayCreateBase = createEvent({ escrowMode: "onchain" });
+  const replayCreate = makeParsedEvent(EscrowEventKind.CREATE, SELLER_PK, {
+    ...replayCreateBase.payload,
+    escrowXonly: Buffer.from(sX).toString("hex"),
+  });
+  const replayLockBase = lockEvent(replayCreate.raw.id);
+  const replayLock = makeParsedEvent(EscrowEventKind.LOCK, SELLER_PK, {
+    ...replayLockBase.payload,
+    notesHash: "",
+    shares: [],
+    onchain: onchainApproved.lock.onchain!,
+  }, replayCreate.raw.id);
+  const replayBuyerVote = voteEvent(Role.BUYER, BUYER_PK, Outcome.RELEASE, replayLock.raw.id);
+  const replaySellerVote = voteEvent(Role.SELLER, SELLER_PK, Outcome.RELEASE, replayBuyerVote.raw.id);
+  const replayResolve = resolveEvent(
+    Outcome.RELEASE,
+    [Role.BUYER, Role.SELLER],
+    false,
+    replaySellerVote.raw.id,
+  );
+  const replayUnlinkedComplete = makeParsedEvent(EscrowEventKind.COMPLETE, BUYER_PK, {
+    type: "escrow:complete",
+    completedAt: NOW + eventCounter,
+  }, replayResolve.raw.id);
+  const replayWithoutProof = replayEventChain([
+    replayCreate,
+    replayLock,
+    replayBuyerVote,
+    replaySellerVote,
+    replayResolve,
+    replayUnlinkedComplete,
+  ]);
+  assert(replayWithoutProof.ok && replayWithoutProof.state.status === EscrowStatus.APPROVED
+    && !!replayWithoutProof.state.lock.onchain,
+  "S7c/replay: unverified on-chain COMPLETE is skipped and the verified APPROVED payout remains reachable");
+
+  // Ecash never uses settlement-proof COMPLETE. Its live failure remains the
+  // pre-existing INVALID_STATE path, not the on-chain replay exception.
+  const ecashCreate = createEvent();
+  const ecashLock = lockEvent(ecashCreate.raw.id);
+  const ecashBuyerVote = voteEvent(Role.BUYER, BUYER_PK, Outcome.RELEASE, ecashLock.raw.id);
+  const ecashSellerVote = voteEvent(Role.SELLER, SELLER_PK, Outcome.RELEASE, ecashBuyerVote.raw.id);
+  const ecashResolve = resolveEvent(
+    Outcome.RELEASE,
+    [Role.BUYER, Role.SELLER],
+    false,
+    ecashSellerVote.raw.id,
+  );
+  const ecashUnclaimedComplete = makeParsedEvent(EscrowEventKind.COMPLETE, BUYER_PK, {
+    type: "escrow:complete",
+    completedAt: NOW + eventCounter,
+  }, ecashResolve.raw.id);
+  const ecashApprovedReplay = replayEventChain([
+    ecashCreate,
+    ecashLock,
+    ecashBuyerVote,
+    ecashSellerVote,
+    ecashResolve,
+  ]);
+  assert(ecashApprovedReplay.ok, "S7c/replay fixture: ecash chain reaches APPROVED");
+  if (ecashApprovedReplay.ok) {
+    assertErr(applyEvent(ecashApprovedReplay.state, ecashUnclaimedComplete), "INVALID_STATE",
+      "S7c/replay: ecash COMPLETE without CLAIM does not gain the on-chain proof exception");
+  }
+  if (!finalizable) throw new Error("S7c finalizable fixture missing");
+  const finalJournal = makeParsedEvent(EscrowEventKind.SETTLEMENT, BUYER_PK, {
+    ...settlementPayload, psbt: finalizable.psbt, final: true,
+  });
+  const journaled = applyEvent(onchainApproved, finalJournal);
+  if (!journaled.ok) throw new Error(`S7c final journal fixture failed: ${journaled.error.code}`);
+  const linkedComplete: ParsedEscrowEvent<CompletePayload> = {
+    ...directComplete,
+    raw: {
+      ...directComplete.raw,
+      tags: [...directComplete.raw.tags, ["settlement", finalJournal.raw.id]],
+    },
+  };
+  const directResult = applyEvent(journaled.state, linkedComplete);
+  assert(directResult.ok && directResult.state.status === EscrowStatus.COMPLETED,
+    "S7c: linked fully signed cooperative proof authorizes on-chain COMPLETE during replay");
+  const sameSecondFinal = {
+    ...finalJournal,
+    timestamp: linkedComplete.timestamp,
+    raw: { ...finalJournal.raw, created_at: linkedComplete.raw.created_at },
+  };
+  const linkedSameSecond = {
+    ...linkedComplete,
+    raw: {
+      ...linkedComplete.raw,
+      tags: linkedComplete.raw.tags.map(tag =>
+        tag[0] === "settlement" ? ["settlement", sameSecondFinal.raw.id] : tag),
+    },
+  };
+  const proofOrdered = sortEventChain([createEv, linkedSameSecond, sameSecondFinal]);
+  assert(proofOrdered.indexOf(sameSecondFinal) < proofOrdered.indexOf(linkedSameSecond),
+    "S7c: same-second relay replay orders the linked final journal before COMPLETE");
+  const ecashApproved = { ...onchainApproved, lock: { ...onchainApproved.lock, onchain: undefined } };
+  assertErr(applyEvent(ecashApproved, directComplete), "INVALID_STATE",
+    "S7c: direct APPROVED→COMPLETE never leaks into the ecash CLAIM protocol");
+  const arbiterComplete = makeParsedEvent(EscrowEventKind.COMPLETE, ARBITER_PK, {
+    type: "escrow:complete", completedAt: NOW + eventCounter,
+  }, onchainApproved.eventChain.at(-1)?.raw.id ?? null);
+  assertErr(applyEvent(onchainApproved, arbiterComplete), "INVALID_SETTLEMENT_PROOF",
+    "S7c: an arbiter cannot publish cooperative COMPLETE");
+  const poisonedNewestFinal = makeParsedEvent(EscrowEventKind.SETTLEMENT, SELLER_PK, {
+    ...settlementPayload, psbt: tamperedPsbt, role: Role.SELLER, final: true,
+  });
+  const poisonedJournal = applyEvent(journaled.state, poisonedNewestFinal);
+  if (!poisonedJournal.ok) throw new Error(`S7c poisoned journal fixture failed: ${poisonedJournal.error.code}`);
+  publishedSettlement = null;
+  (settlementClient as any).states.set(onchainApproved.id, poisonedJournal.state);
+  const clientCompleted = await settlementClient.completeOnchain(onchainApproved.id, finalJournal.raw.id);
+  assert(clientCompleted.status === EscrowStatus.COMPLETED
+    && (publishedSettlement as unknown as NostrEvent)?.kind === EscrowEventKind.COMPLETE
+    && (publishedSettlement as unknown as NostrEvent).tags.some(tag =>
+      tag[0] === "settlement" && tag[1] === finalJournal.raw.id),
+  "S7c: actual client links the selected valid proof despite a newer poisoned final journal");
+
+  // S7d: the arbitration leaf is a distinct, CSV-gated transport. The winner
+  // and assigned arbiter sign; cooperative principals alone cannot finalize it.
+  let earlyDisputeRefused = false;
+  try {
+    settle.buildSettlementPsbt({
+      escrow: testEscrow, utxos: settleUtxos, destination: winnerAddress,
+      feeSats: 1_000n, leaf: "dispute", fundingHeight: 800_000, tipHeight: 800_050,
+    });
+  } catch { earlyDisputeRefused = true; }
+  assert(earlyDisputeRefused,
+    "S7d: dispute settlement construction fails closed before the CSV window opens");
+  const disputePsbt = settle.buildSettlementPsbt({
+    escrow: testEscrow, utxos: settleUtxos, destination: winnerAddress,
+    feeSats: 1_000n, leaf: "dispute", fundingHeight: 800_000, tipHeight: 800_143,
+  });
+  const disputeExpectation = { ...expectation, leaf: "dispute" as const };
+  const badSequenceTx = btcMs.Transaction.fromPSBT(msBase64.decode(disputePsbt), {
+    allowUnknown: true, allowUnknownOutputs: true,
+  });
+  badSequenceTx.updateInput(0, { sequence: 0xffffffff });
+  assert(!settle.verifySettlementPsbt(msBase64.encode(badSequenceTx.toPSBT()), disputeExpectation).ok,
+    "S7d: a wire dispute PSBT with disabled BIP68 fails the security checklist");
+  const disputeWinnerPartial = settle.coSignSettlement(disputePsbt, bPriv);
+  const disputeArbiterPartial = settle.coSignSettlement(disputePsbt, aPriv);
+  const disputeFinal = transport.finalizableArbiterSettlement([
+    makeParsedEvent(EscrowEventKind.SETTLEMENT, BUYER_PK, {
+      ...settlementPayload, psbt: disputeWinnerPartial, leaf: "arbiter", role: Role.BUYER,
+    }),
+    makeParsedEvent(EscrowEventKind.SETTLEMENT, ARBITER_PK, {
+      ...settlementPayload, psbt: disputeArbiterPartial, leaf: "arbiter", role: Role.ARBITER,
+    }),
+  ], disputeExpectation, testEscrow, Role.BUYER);
+  assert(disputeFinal !== null && disputeFinal.rawTx.length > 0,
+    "S7d: winner and arbiter revisions combine and hand-finalize leaf A");
+  assert(transport.finalizableArbiterSettlement([
+    makeParsedEvent(EscrowEventKind.SETTLEMENT, BUYER_PK, {
+      ...settlementPayload, psbt: disputeWinnerPartial, leaf: "arbiter", role: Role.BUYER,
+    }),
+    makeParsedEvent(EscrowEventKind.SETTLEMENT, SELLER_PK, {
+      ...settlementPayload, psbt: settle.coSignSettlement(disputePsbt, sPriv), leaf: "arbiter", role: Role.SELLER,
+    }),
+  ], disputeExpectation, testEscrow, Role.BUYER) === null,
+  "S7d: the losing principal cannot replace the assigned arbiter signature");
+  if (!disputeFinal) throw new Error("S7d dispute fixture missing");
+  const corruptTx = btcMs.Transaction.fromPSBT(msBase64.decode(disputeFinal.psbt), {
+    allowUnknown: true, allowUnknownOutputs: true,
+  });
+  const corruptSignature = corruptTx.getInput(0).tapScriptSig?.[0]?.[1];
+  if (!corruptSignature) throw new Error("S7d corrupt-signature fixture missing");
+  const corruptBytes = msBase64.decode(disputeFinal.psbt).slice();
+  let signatureOffset = -1;
+  outer: for (let offset = 0; offset <= corruptBytes.length - corruptSignature.length; offset++) {
+    for (let byte = 0; byte < corruptSignature.length; byte++) {
+      if (corruptBytes[offset + byte] !== corruptSignature[byte]) continue outer;
+    }
+    signatureOffset = offset;
+    break;
+  }
+  if (signatureOffset < 0) throw new Error("S7d signature bytes not found in PSBT fixture");
+  corruptBytes[signatureOffset] ^= 1;
+  const corruptFinalPsbt = msBase64.encode(corruptBytes);
+  assert(transport.finalizableArbiterSettlement([
+    makeParsedEvent(EscrowEventKind.SETTLEMENT, ARBITER_PK, {
+      ...settlementPayload, psbt: corruptFinalPsbt, leaf: "arbiter", role: Role.ARBITER,
+    }),
+  ], disputeExpectation, testEscrow, Role.BUYER) === null,
+  "S7d: committed-key metadata with a corrupt Schnorr signature cannot finalize");
+  const arbitratedApproved: EscrowState = {
+    ...onchainApproved,
+    resolvedMajority: [Role.BUYER, Role.ARBITER],
+  };
+  const disputeJournal = makeParsedEvent(EscrowEventKind.SETTLEMENT, ARBITER_PK, {
+    ...settlementPayload, psbt: disputeFinal.psbt, leaf: "arbiter", role: Role.ARBITER, final: true,
+  });
+  const disputeJournaled = applyEvent(arbitratedApproved, disputeJournal);
+  if (!disputeJournaled.ok) throw new Error(`S7d journal fixture failed: ${disputeJournaled.error.code}`);
+  const disputeComplete = makeParsedEvent(EscrowEventKind.COMPLETE, ARBITER_PK, {
+    type: "escrow:complete", completedAt: NOW + eventCounter,
+  }, arbitratedApproved.eventChain.at(-1)?.raw.id ?? null);
+  disputeComplete.raw.tags.push(["settlement", disputeJournal.raw.id]);
+  const disputeCompleted = applyEvent(disputeJournaled.state, disputeComplete);
+  assert(disputeCompleted.ok && disputeCompleted.state.status === EscrowStatus.COMPLETED,
+    "S7d: a linked replay-valid arbiter proof authorizes assigned-arbiter COMPLETE");
+  const corruptJournal = makeParsedEvent(EscrowEventKind.SETTLEMENT, ARBITER_PK, {
+    ...settlementPayload, psbt: corruptFinalPsbt, leaf: "arbiter", role: Role.ARBITER, final: true,
+  });
+  const corruptJournaled = applyEvent(arbitratedApproved, corruptJournal);
+  if (!corruptJournaled.ok) throw new Error(`S7d corrupt journal fixture failed: ${corruptJournaled.error.code}`);
+  const corruptComplete = { ...disputeComplete, raw: {
+    ...disputeComplete.raw,
+    id: `${disputeComplete.raw.id}_corrupt`,
+    tags: disputeComplete.raw.tags.map(tag => tag[0] === "settlement" ? ["settlement", corruptJournal.raw.id] : tag),
+  } };
+  assertErr(applyEvent(corruptJournaled.state, corruptComplete), "INVALID_SETTLEMENT_PROOF",
+    "S7d: corrupt script-path signatures cannot authorize COMPLETE replay");
+  const coopOnArbitrated = applyEvent(arbitratedApproved, finalJournal);
+  if (!coopOnArbitrated.ok) throw new Error(`S7d coop journal fixture failed: ${coopOnArbitrated.error.code}`);
+  const coopCompleteOnArbitrated = { ...linkedComplete, raw: {
+    ...linkedComplete.raw, id: `${linkedComplete.raw.id}_arbitrated`,
+  } };
+  assertErr(applyEvent(coopOnArbitrated.state, coopCompleteOnArbitrated), "INVALID_SETTLEMENT_PROOF",
+    "S7d: an arbitrated outcome rejects an otherwise valid cooperative proof");
+  assert(transport.finalArbiterSettlementProof(finalJournal, onchainApproved.lock.onchain!, Role.BUYER) === null,
+    "S7d: a cooperative final journal cannot masquerade as an arbiter proof");
+  assert(transport.signingKeyMatchesRole(aX, Role.ARBITER, onchainApproved.lock.onchain!),
+    "S7d: arbiter signing key is bound to the key committed in the funded tree");
+
   // ── ledger ──
   setLocalStorageUserScope("npub_premium_test");
   (globalThis as any).localStorage.clear();
@@ -22305,6 +24237,488 @@ console.log("\n── #62 REDEEM-PROBE + BONDED-POOL CACHE ──");
   cache.clearBondedPoolCache();
   assert(cache.readCachedCommunityBonds("tz-tzs", T0 + 1) === null,
     "cache: clear wipes the store");
+}
+
+// History chronology comes from the signed CREATE, never relay arrival order
+// or later activity on an older trade.
+{
+  const olderLive = {
+    id: "older-live", createdAt: 80, eventChain: [{ timestamp: 110 }],
+    settlements: [], chatMessages: [], premiumNotes: [],
+    participants: { buyer: "buyer", seller: "seller", arbiter: null },
+  } as unknown as EscrowState;
+  const newerCompleted = {
+    id: "newer-completed", createdAt: 100, eventChain: [{ timestamp: 200 }],
+    settlements: [], chatMessages: [], premiumNotes: [],
+    participants: { buyer: "buyer", seller: "seller", arbiter: null },
+  } as unknown as EscrowState;
+  const settlementActive = {
+    id: "settlement-active", createdAt: 70, eventChain: [{ timestamp: 120 }],
+    settlements: [{ timestamp: 250 }], chatMessages: [], premiumNotes: [],
+    participants: { buyer: "buyer", seller: "seller", arbiter: null },
+  } as unknown as EscrowState;
+  assert(tradeActivityAt(olderLive) === 110 && tradeActivityAt(settlementActive) === 250,
+    "Latest trade activity includes both consensus and auxiliary settlement events");
+  assert(latestParticipantTrade([olderLive, newerCompleted])?.id === "newer-completed",
+    "Latest trade no longer pins an older live trade above a newer completed trade");
+  assert(latestParticipantTrade([olderLive, newerCompleted, settlementActive])?.id === "newer-completed",
+    "Latest trade follows canonical CREATE chronology, not later activity on an older trade");
+  assert(participantTradeHistory([olderLive, newerCompleted, settlementActive], "buyer", 1_000)
+      .map((trade) => trade.id).join(",") === "newer-completed,older-live,settlement-active",
+    "participant history retains terminal trades and sorts by canonical CREATE time");
+  assert(participantTradeHistory([settlementActive, olderLive, newerCompleted], "buyer", 1_000)
+      .map((trade) => trade.id).join(",") === "newer-completed,older-live,settlement-active",
+    "out-of-order hydration produces exactly the same participant-history order");
+  const createdFallback = {
+    ...newerCompleted, id: "create-fallback", createdAt: 0,
+    eventChain: [{ kind: EscrowEventKind.CREATE, timestamp: 175 }],
+  } as unknown as EscrowState;
+  assert(tradeCreatedAt(createdFallback) === 175,
+    "history chronology recovers the signed CREATE timestamp when the state field is absent");
+  assert(participantTradeHistory([olderLive, newerCompleted], "buyer", 1_000, new Set(["older-live"]))
+      .map((trade) => trade.id).join(",") === "newer-completed",
+    "participant history still respects the explicit retired-listing ledger");
+
+  const discovered = discoveredEscrowIdsByActivity([
+    { ...makeRawEvent(EscrowEventKind.CREATE, "seller", [["d", "old"]]), created_at: 50 },
+    { ...makeRawEvent(EscrowEventKind.COMPLETE, "buyer", [["d", "fresh"]]), created_at: 500 },
+    { ...makeRawEvent(EscrowEventKind.LOCK, "seller", [["d", "old"]]), created_at: 200 },
+    { ...makeRawEvent(EscrowEventKind.JOIN, "buyer", [["d", "fresh"]]), created_at: 100 },
+  ]);
+  assert(discovered.join(",") === "fresh,old",
+    "cross-device discovery dedupes IDs and ranks newest activity instead of relay delivery order");
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// ON-CHAIN JOIN HOLD (A8) — the seat must outlast a confirmation
+// ══════════════════════════════════════════════════════════════════════════
+//
+// The bug this pins: a 5-minute hold against a ~10-minute mainnet block means
+// the confirmation the funder is waiting for lands AFTER the buyer is
+// un-seated, and `handleLock` refuses a LOCK that does not name a buyer. The
+// sats then sit at the escrow address until the CLTV refund matures. On-chain
+// escrow could not complete on mainnet at all.
+{
+  console.log("\n── On-chain join hold (A8) ──");
+
+  assert(joinHoldSecondsFor("onchain") === 90 * 60,
+    "hold: an on-chain trade seats the buyer for 90 minutes");
+  assert(joinHoldSecondsFor("ecash") === JOIN_HOLD_SECONDS,
+    "hold: ecash is unchanged at 5 minutes");
+  assert(joinHoldSecondsFor(undefined) === JOIN_HOLD_SECONDS,
+    "⭐ hold: a trade with NO escrowMode (every pre-Tier-2.1 chain) keeps the old 5 minutes");
+  assert(joinHoldSecondsFor("nonsense") === JOIN_HOLD_SECONDS,
+    "hold: an unknown mode falls back to ecash, never to the longer seat");
+
+  // Byte-identical to the old helper wherever escrow mode is absent or ecash —
+  // this is what makes the change safe for every trade already on a relay.
+  const t0 = 1_800_000_000;
+  assert(joinHoldExpiresAtFor(t0, undefined) === joinHoldExpiresAt(t0),
+    "⭐ hold: legacy default is byte-identical to the pre-change helper");
+  assert(joinHoldExpiresAtFor(t0, "ecash") === joinHoldExpiresAt(t0),
+    "hold: ecash default is byte-identical to the pre-change helper");
+  assert(joinHoldExpiresAtFor(t0, "onchain") === t0 + 90 * 60,
+    "hold: on-chain default is 90 minutes past the join");
+
+  // ⭐ THE REGRESSION TEST FOR THE WHOLE BRIEF. A buyer who joined 40 minutes
+  // ago — longer than the old hold, well inside a confirmation wait — must
+  // still be a participant, or the funder's LOCK is refused after they have
+  // already sent real coin.
+  // Only the three fields `getEffectiveParticipantAt` actually reads, so this
+  // block stays independent of whatever the rest of the suite's fixtures grow.
+  const HOLD_BUYER = "b".repeat(64);
+  const heldState = (mode: string | undefined, joinedAt: number, expiresAt?: number) => ({
+    status: EscrowStatus.CREATED,
+    escrowMode: mode,
+    participants: { [Role.BUYER]: HOLD_BUYER, [Role.SELLER]: null, [Role.ARBITER]: null },
+    joinHolds: {
+      [Role.BUYER]: {
+        role: Role.BUYER, pubkey: HOLD_BUYER, joinedAt,
+        expiresAt: expiresAt ?? joinHoldExpiresAtFor(joinedAt, mode), eventId: "h",
+      },
+    },
+  } as unknown as EscrowState);
+  const onchainState = heldState;
+
+  const joinedAt = t0;
+  const fortyMinutes = joinedAt + 40 * 60;
+  assert(
+    getEffectiveParticipantAt(onchainState("onchain", joinedAt), Role.BUYER, fortyMinutes) === HOLD_BUYER,
+    "⭐⭐ hold: on-chain buyer is STILL SEATED 40 minutes in — the LOCK after a slow block succeeds");
+  assert(
+    getEffectiveParticipantAt(onchainState("ecash", joinedAt), Role.BUYER, fortyMinutes) === null,
+    "hold: the same 40 minutes un-seats an ECASH buyer — the short hold is preserved where it belongs");
+  assert(
+    getEffectiveParticipantAt(onchainState("onchain", joinedAt), Role.BUYER, joinedAt + 100 * 60) === null,
+    "hold: past 90 minutes the on-chain seat does expire — a longer hold, not an unlimited one");
+
+  // A wire-supplied deadline still wins in both modes. This is the property the
+  // whole design rests on: older clients honour `holdExpiresAt` verbatim, which
+  // is why a longer on-chain seat needs no consensus change.
+  assert(
+    getEffectiveParticipantAt(
+      heldState("onchain", joinedAt, joinedAt + 7 * 60), Role.BUYER, joinedAt + 10 * 60,
+    ) === null,
+    "⭐ hold: an explicit wire deadline is authoritative — the mode default never overrides the chain");
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// ASSISTED CHAMA — CANVAS ROUTING (A5 · S1)
+// ══════════════════════════════════════════════════════════════════════════
+//
+// The routing table is the part that must be provably right: a wrong answer
+// walks someone into the wrong side of a market — writing a listing when they
+// meant to buy, or waiting for a counterparty who was never coming.
+{
+  console.log("\n── Assisted Chama canvas routing (A5 · S1) ──");
+
+  const ASSETS: CanvasAsset[] = ["sats", "cash", "work", "goods"];
+
+  // Totality first. Sixteen pairs, no throws, no undefined — the canvas must
+  // never reach a state it cannot describe.
+  let total = 0;
+  for (const b of ASSETS) for (const w of ASSETS) {
+    const r = routeCanvasIntent(b, w);
+    if (r && (r.kind === "publish" || r.kind === "match" || r.kind === "blocked")) total++;
+  }
+  assert(total === 16, "canvas: every one of the 16 (bring, want) pairs routes to something");
+
+  // ⭐ The publish-first doctrine, one assertion per market.
+  const pub = (b: CanvasAsset, w: CanvasAsset) => {
+    const r = routeCanvasIntent(b, w);
+    return r.kind === "publish" ? r.vertical : null;
+  };
+  assert(pub("sats", "cash") === "p2p-trade",
+    "⭐ canvas: the sats-holder speaks first in Exchange");
+  assert(pub("goods", "sats") === "marketplace",
+    "⭐ canvas: the seller lists their store — goods exist before demand for them");
+  assert(pub("work", "sats") === "work" && pub("sats", "work") === "work",
+    "⭐ canvas: BOTH sides of Work publish — the only two-sided market");
+  const workRoute = routeCanvasIntent("work", "sats");
+  assert(workRoute.kind === "publish" && workRoute.twoSided === true,
+    "canvas: Work is flagged two-sided so the UI can say nobody is waiting on anybody");
+  const exRoute = routeCanvasIntent("sats", "cash");
+  assert(exRoute.kind === "publish" && exRoute.twoSided === false,
+    "canvas: Exchange is one-sided — cash is always the reacting side");
+
+  // ⭐ The match side may span verticals, and that is the point.
+  const m = matchableVerticalsFor("cash", "sats");
+  assert(m.length === 2 && m.includes("p2p-trade") && m.includes("bill-pay"),
+    "⭐⭐ canvas: cash→sats matches Exchange AND bill-pay — one act, two markets, user picks a PERSON");
+  assert(matchableVerticalsFor("sats", "goods").join() === "marketplace",
+    "canvas: sats→goods matches the storefronts");
+
+  // ⭐ THE HONESTY RULE. A seller is not served by other sellers. Counting them
+  // would show "3 waiting" to someone nobody is waiting for.
+  assert(matchableVerticalsFor("sats", "cash").length === 0,
+    "⭐⭐ canvas: the publish side has NO matchable listings — competitors are not counterparties");
+  assert(matchableVerticalsFor("goods", "sats").length === 0,
+    "canvas: a seller listing goods is likewise matched against nothing");
+  assert(matchableVerticalsFor("work", "sats").length === 0,
+    "canvas: two-sided Work still publishes rather than matching");
+
+  // Non-markets name a reason AND an onward route. A dead end with no way
+  // forward is the thing this design exists to abolish.
+  const sameAsset = routeCanvasIntent("sats", "sats");
+  assert(sameAsset.kind === "blocked" && sameAsset.reason === "same-asset",
+    "canvas: sats for sats is not a trade");
+  const cashGoods = routeCanvasIntent("cash", "goods");
+  assert(cashGoods.kind === "blocked"
+    && cashGoods.reason === "stores-are-sats-only"
+    && cashGoods.goVia === "sats",
+    "⭐ canvas: cash can't buy goods (stores are sats-only) — routed VIA sats, not refused");
+  const barter = routeCanvasIntent("work", "goods");
+  assert(barter.kind === "blocked" && barter.reason === "no-sats-leg" && barter.goVia === "sats",
+    "canvas: work-for-goods is barter — no sats leg means no escrow to protect it");
+  const cashWork = routeCanvasIntent("cash", "work");
+  assert(cashWork.kind === "blocked" && cashWork.goVia === "sats",
+    "canvas: cash-for-work is a real trade in the world, but not one this escrow can secure");
+
+  // Every blocked pair offers a way forward.
+  let blocked = 0, withRoute = 0;
+  for (const b of ASSETS) for (const w of ASSETS) {
+    const r = routeCanvasIntent(b, w);
+    if (r.kind === "blocked") { blocked++; if (r.goVia !== null || r.reason === "same-asset") withRoute++; }
+  }
+  assert(blocked === withRoute,
+    "⭐ canvas: every blocked pair carries an onward route (or is trivially same-asset)");
+
+  assert(userPublishesFirst("sats", "cash") === true && userPublishesFirst("cash", "sats") === false,
+    "canvas: publish-first is derived from the pair, never asked");
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// ASSISTED CHAMA — COUNTER-DEMAND COUNTS (A5 · S2)
+// ══════════════════════════════════════════════════════════════════════════
+//
+// This number is the first quantitative claim Chama makes to a stranger. Every
+// rule errs toward UNDERCOUNTING — the honest zero matters more than the
+// impressive number.
+{
+  console.log("\n── Assisted Chama counter-demand (A5 · S2) ──");
+
+  const NOW = 1_800_000_000;
+  const OTHER = "c".repeat(64);
+  const ME = "d".repeat(64);
+
+  const mkListing = (over: Partial<EscrowState> & { id: string }): CounterDemandListing => ({
+    listing: {
+      category: "p2p-trade",
+      status: EscrowStatus.CREATED,
+      community: "usa-usd",
+      expiresAt: NOW + 3600,
+      initiator: { pubkey: OTHER, role: Role.SELLER },
+      participants: { [Role.BUYER]: null, [Role.SELLER]: OTHER, [Role.ARBITER]: null },
+      joinHolds: {},
+      ...over,
+    } as unknown as EscrowState,
+  });
+
+  const ctx = { viewerPubkey: ME, community: "usa-usd", nowSec: NOW };
+  const countOf = (ls: CounterDemandListing[]) =>
+    countCounterDemand("cash", "sats", ls, ctx).count;
+
+  assert(countOf([mkListing({ id: "a" }), mkListing({ id: "b" })]) === 2,
+    "counter-demand: two open in-community offers count as two");
+
+  // ⭐ The rule the whole module exists for.
+  assert(countCounterDemand("sats", "cash", [mkListing({ id: "a" })], ctx).count === 0,
+    "⭐⭐ counter-demand: the PUBLISH side counts zero — competitors are not counterparties");
+
+  // Each exclusion, one at a time, so a regression names itself.
+  assert(countOf([mkListing({ id: "x", status: EscrowStatus.LOCKED })]) === 0,
+    "counter-demand: a locked trade is somebody else's, not an offer");
+  assert(countOf([mkListing({ id: "x", expiresAt: NOW })]) === 0,
+    "counter-demand: expiry is exclusive at the boundary — an offer expiring this second is not available");
+  assert(countOf([mkListing({ id: "x", expiresAt: NOW + 1 })]) === 1,
+    "counter-demand: one second of life still counts");
+  assert(countOf([mkListing({ id: "x", initiator: { pubkey: ME, role: Role.SELLER } as any })]) === 0,
+    "⭐ counter-demand: your own listing never inflates your own count");
+  assert(countOf([mkListing({ id: "x", community: "ke-kes" })]) === 0,
+    "counter-demand: 'within your community' means exactly that");
+  assert(countOf([mkListing({ id: "x", community: null as any })]) === 1,
+    "counter-demand: a listing with no community is global and counts");
+  assert(countOf([mkListing({ id: "x", parent: "p1" } as any)]) === 0,
+    "counter-demand: a child order is one buyer's purchase, not an open offer");
+  assert(countOf([mkListing({
+    id: "x",
+    joinHolds: { [Role.BUYER]: { role: Role.BUYER, pubkey: OTHER, joinedAt: NOW, expiresAt: NOW + 60, eventId: "h" } },
+  } as any)]) === 0,
+    "⭐ counter-demand: a live reservation is not available NOW, and 'now' is what the number claims");
+  assert(countOf([mkListing({
+    id: "x",
+    joinHolds: { [Role.BUYER]: { role: Role.BUYER, pubkey: OTHER, joinedAt: NOW - 600, expiresAt: NOW - 1, eventId: "h" } },
+  } as any)]) === 1,
+    "counter-demand: a LAPSED hold frees the seat back into the count");
+
+  const stocked = { ...mkListing({ id: "x", category: "marketplace" }), availableUnits: 0 };
+  assert(countCounterDemand("sats", "goods", [stocked], ctx).count === 0,
+    "counter-demand: sold out is not available");
+
+  // A zero must always be explainable.
+  const explained = countCounterDemand("cash", "sats", [mkListing({ id: "x", community: "ke-kes" })], ctx);
+  assert(explained.count === 0 && explained.excluded[0]?.reason === "other-community",
+    "⭐ counter-demand: every excluded listing names WHY, so a zero is never merely asserted");
+  assert(countCounterDemand("sats", "cash", [mkListing({ id: "x" })], ctx).excluded.length === 0,
+    "counter-demand: the publish side reports no spurious exclusions");
+
+  // ⭐ cash→sats spans Exchange AND bill-pay — one act, two markets.
+  const merged = countCounterDemand("cash", "sats", [
+    mkListing({ id: "ex" }),
+    mkListing({ id: "bill", category: "bill-pay" }),
+    mkListing({ id: "shop", category: "marketplace" }),
+  ], ctx);
+  assert(merged.count === 2 && merged.listingIds.includes("ex") && merged.listingIds.includes("bill"),
+    "⭐⭐ counter-demand: cash→sats counts Exchange AND bill-pay together — bill pay found without looking for it");
+
+  const row = counterDemandByAsset("sats", [mkListing({ id: "ex" })], ctx);
+  assert(row.cash === 1 && row.sats === 0 && row.goods === 0 && row.work === 0,
+    "counter-demand: the Q1 row gives one number per asset, zeros included rather than hidden");
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// CONFIGURABLE ESPLORA — closing the explorer leak
+// ══════════════════════════════════════════════════════════════════════════
+//
+// Every bond and on-chain escrow address went to one hardcoded host that could
+// correlate them with each other and with the user's IP. Making it a setting is
+// easy; the tests here are about the ways a setting could be WORSE than the
+// leak — a misconfigured explorer makes bonds unverifiable, which un-seats
+// legitimate arbiters and strands trades.
+{
+  console.log("\n── Configurable Esplora ──");
+
+  // Normalisation is pure and guards string concatenation: every caller does
+  // `${base}/address/bc1…`, so a query string or fragment would silently build
+  // a nonsense URL instead of failing.
+  assert(esploraCfg.normalizeEsploraBase("https://mempool.space/api/") === "https://mempool.space/api",
+    "esplora: a trailing slash is stripped — callers concatenate leading-slash paths");
+  assert(esploraCfg.normalizeEsploraBase("  https://my-box.local/api  ") === "https://my-box.local/api",
+    "esplora: surrounding whitespace is forgiven");
+  assert(esploraCfg.normalizeEsploraBase("mempool.space/api") === null,
+    "esplora: a bare host with no scheme is refused, never guessed at");
+  assert(esploraCfg.normalizeEsploraBase("ftp://mempool.space") === null,
+    "esplora: only http(s)");
+  assert(esploraCfg.normalizeEsploraBase("https://x.dev/api?key=1") === null,
+    "⭐ esplora: a query string is refused — concatenation would build a nonsense URL");
+  assert(esploraCfg.normalizeEsploraBase("") === null && esploraCfg.normalizeEsploraBase("   ") === null,
+    "esplora: empty is not a base");
+
+  // ⭐ The probe. Asymmetric on purpose.
+  const fakeEsplora = (over: Record<string, any>) => async (path: string) => {
+    if (path in over) {
+      const v = over[path];
+      if (v instanceof Error) throw v;
+      return v;
+    }
+    throw new Error(`unexpected path ${path}`);
+  };
+  const GENESIS = esploraCfg.MAINNET_GENESIS_HASH;
+
+  const okMain = await esploraCfg.probeEsplora(MS_MAINNET, fakeEsplora({
+    "/blocks/tip/height": 870_000, "/block-height/0": GENESIS,
+  }));
+  assert(okMain.verdict === "ok" && okMain.tipHeight === 870_000,
+    "esplora: a real mainnet explorer probes ok and reports its tip");
+
+  const wrongChain = await esploraCfg.probeEsplora(MS_MAINNET, fakeEsplora({
+    "/blocks/tip/height": 200_000, "/block-height/0": "00".repeat(32),
+  }));
+  assert(wrongChain.verdict === "wrong-network",
+    "⭐⭐ esplora: a reachable explorer for a DIFFERENT chain is caught — it would report every bond unfunded");
+
+  const dead = await esploraCfg.probeEsplora(MS_MAINNET, fakeEsplora({
+    "/blocks/tip/height": new Error("ECONNREFUSED"),
+  }));
+  assert(dead.verdict === "unreachable",
+    "esplora: an endpoint that does not answer is unreachable, not 'wrong'");
+
+  const junk = await esploraCfg.probeEsplora(MS_MAINNET, fakeEsplora({
+    "/blocks/tip/height": "not a number",
+  }));
+  assert(junk.verdict === "not-esplora",
+    "esplora: something answering with nonsense is not an explorer");
+
+  // Test networks accept any reachable Esplora — Mutinynet's genesis differs
+  // from stock signet, and pinning one would reject our OWN shipped default.
+  const sig = await esploraCfg.probeEsplora(MS_NET, fakeEsplora({ "/blocks/tip/height": 1_500_000 }));
+  assert(sig.verdict === "ok",
+    "⭐ esplora: signet accepts any reachable explorer — signet variants legitimately differ");
+
+  // Round-trip through storage, and the escape hatch.
+  (globalThis as any).localStorage?.clear?.();
+  assert(esploraCfg.resolveEsploraBase(MS_MAINNET) === esploraCfg.BUILTIN_ESPLORA_BASE.mainnet,
+    "esplora: with no override the shipped default is unchanged");
+  assert(esploraCfg.usingCustomEsplora(MS_MAINNET) === false,
+    "esplora: and the UI is told it is on the default");
+  assert(esploraCfg.setEsploraOverride(MS_MAINNET, "https://my-box.local/api/") === true,
+    "esplora: a valid base saves");
+  assert(esploraCfg.resolveEsploraBase(MS_MAINNET) === "https://my-box.local/api",
+    "⭐ esplora: every call site follows the override through one accessor");
+  assert(esploraCfg.usingCustomEsplora(MS_MAINNET) === true,
+    "esplora: the UI can say the user is somewhere custom — a wrong explorer explains a 'broken' bond");
+  assert(esploraCfg.resolveEsploraBase(MS_NET) === esploraCfg.BUILTIN_ESPLORA_BASE.signet,
+    "⭐ esplora: overrides are PER-NETWORK — a custom mainnet explorer never becomes the signet one");
+  assert(esploraCfg.esploraTransactionUrl(MS_NET, "ab".repeat(32))
+      === `https://mutinynet.com/tx/${"ab".repeat(32)}`,
+    "⭐ explorer link: Mutinynet transactions stay on Mutinynet, not Bitcoin Core signet");
+  assert(esploraCfg.esploraTransactionUrl(MS_MAINNET, "cd".repeat(32))
+      === `https://my-box.local/tx/${"cd".repeat(32)}`,
+    "explorer link: a verified custom Esplora UI follows its configured API origin");
+  const tauriCapability = JSON.parse(readFileSync("src-tauri/capabilities/default.json", "utf8")) as {
+    permissions?: Array<string | { identifier?: string }>;
+  };
+  const openerPermissions = new Set((tauriCapability.permissions ?? []).map(permission =>
+    typeof permission === "string" ? permission : permission.identifier));
+  assert(openerPermissions.has("opener:allow-open-url")
+      && openerPermissions.has("opener:allow-default-urls"),
+    "⭐ explorer link: Tauri grants both the opener command and its http(s) URL scope");
+  assert(esploraCfg.setEsploraOverride(MS_MAINNET, "not a url") === false
+    && esploraCfg.resolveEsploraBase(MS_MAINNET) === "https://my-box.local/api",
+    "⭐ esplora: a rejected value leaves the previous one intact — never half-saved");
+  esploraCfg.clearEsploraOverride(MS_MAINNET);
+  assert(esploraCfg.resolveEsploraBase(MS_MAINNET) === esploraCfg.BUILTIN_ESPLORA_BASE.mainnet,
+    "esplora: clearing returns to the default — a setting you cannot undo is a trap");
+
+  // A corrupt entry must not take the explorer down with it.
+  (globalThis as any).localStorage?.setItem?.("chama_esplora_base_v1", "{not json");
+  assert(esploraCfg.resolveEsploraBase(MS_MAINNET) === esploraCfg.BUILTIN_ESPLORA_BASE.mainnet,
+    "⭐ esplora: unreadable storage falls back to the default rather than breaking every chain read");
+  (globalThis as any).localStorage?.clear?.();
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// S7 field closure — winner outputs are a recoverable local on-chain wallet
+// ══════════════════════════════════════════════════════════════════════════
+
+{
+  console.log("\n── S7 winner-output wallet ──");
+  const mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+  const escrowId = "sm_s7_payout_wallet";
+  const buyer = deriveEscrowSigningKey(mnemonic, escrowId, { network: MS_NET });
+  const seller = deriveEscrowSigningKey(mnemonic, `${escrowId}_seller`, { network: MS_NET });
+  const arbiter = deriveEscrowSigningKey(mnemonic, `${escrowId}_arbiter`, { network: MS_NET });
+  const buyerPk = "11".repeat(32);
+  const sellerPk = "22".repeat(32);
+  const address = btcMs.p2tr(buyer.xonly, undefined, MS_NET).address!;
+  const state = {
+    id: escrowId,
+    category: "p2p-trade",
+    status: EscrowStatus.COMPLETED,
+    resolvedOutcome: Outcome.RELEASE,
+    participants: { buyer: buyerPk, seller: sellerPk, arbiter: "33".repeat(32) },
+    lock: { onchain: {
+      network: "signet", address: "tb1pescrow", funder: "seller",
+      buyerXonly: msBytesToHex(buyer.xonly), sellerXonly: msBytesToHex(seller.xonly),
+      arbiterXonly: msBytesToHex(arbiter.xonly), fundingTxid: "aa".repeat(32), fundingVout: 0,
+      refundLockUntil: 1_000_000, disputeCsvBlocks: 144,
+    } },
+  } as unknown as EscrowState;
+
+  const candidate = payoutCandidateFor(state, buyerPk);
+  assert(candidate?.address === address && candidate.role === Role.BUYER,
+    "S7-wallet: resolved winner deterministically maps to their per-trade P2TR address");
+  assert(payoutCandidateFor(state, sellerPk) === null,
+    "S7-wallet: the losing identity cannot index the winner output as its balance");
+  assert(payoutCandidatesFor([state, state], buyerPk).length === 1,
+    "S7-wallet: duplicate hydrated state cannot double-count a trade");
+
+  const txid = "bb".repeat(32);
+  const script = msBytesToHex(btcMs.p2tr(buyer.xonly, undefined, MS_NET).script);
+  const fakeFetch: EsploraFetch = async (path) => {
+    if (path === `/address/${address}/utxo`) return [
+      { txid, vout: 0, value: 149_676, status: { confirmed: true } },
+      { txid: "cc".repeat(32), vout: 0, value: 10_000, status: { confirmed: false } },
+    ];
+    if (path === `/tx/${txid}`) return { vout: [{ scriptpubkey: script }] };
+    throw new Error(`unexpected ${path}`);
+  };
+  const payout = await scanOnchainPayout(candidate!, fakeFetch);
+  assert(payout.balanceSats === 149_676n && payout.utxos.length === 1,
+    "S7-wallet: only confirmed UTXOs with the locally recomputed script enter balance");
+  assert(aggregateOnchainPayoutBalance([payout, { ...payout, balanceSats: 324n }]) === 150_000n,
+    "S7-wallet: aggregate balance totals per-trade winner outputs exactly");
+  assert(payoutSweepFeeSats(2n, 1) === 222n && payoutSweepFeeSats(2n, 2) === 338n,
+    "S7-wallet: sweep fee grows with every additional key-path input");
+
+  const destinationKey = deriveEscrowSigningKey(mnemonic, "destination", { network: MS_NET });
+  const destination = btcMs.p2tr(destinationKey.xonly, undefined, MS_NET).address!;
+  const sweep = await buildOnchainPayoutSweep({
+    state, viewerPubkey: buyerPk, mnemonic, destination,
+    fetchJson: fakeFetch, feeRateSatsPerVb: 2n,
+  });
+  assert(sweep.sendSats === 149_454n && sweep.feeSats === 222n && sweep.rawTx.length > 100,
+    "S7-wallet: matching recovery seed builds a signed sweep with fee deducted");
+  let wrongSeedRefused = false;
+  try {
+    await buildOnchainPayoutSweep({
+      state, viewerPubkey: buyerPk,
+      mnemonic: "legal winner thank year wave sausage worth useful legal winner thank yellow",
+      destination, fetchJson: fakeFetch, feeRateSatsPerVb: 2n,
+    });
+  } catch (e: any) { wrongSeedRefused = /does not control/.test(e?.message ?? ""); }
+  assert(wrongSeedRefused,
+    "⭐⭐ S7-wallet: a different seed cannot sweep merely because it knows the trade id");
 }
 
 // ══════════════════════════════════════════════════════════════════════════

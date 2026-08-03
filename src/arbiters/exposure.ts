@@ -56,6 +56,65 @@ export const BONDS_ENFORCED: boolean = false;
 export const EXPOSURE_TIER_SILVER_FLOOR_MSATS = 100_000_000; //   100k sats
 export const EXPOSURE_TIER_GOLD_FLOOR_MSATS = 1_000_000_000; // 1,000k sats
 
+// ── A1 (5.8) TENURE-GATED CAPACITY — "lever 1" ──────────────────────────────
+//
+// Capacity used to be pure size: bond ≥ trade. Size is buyable, so a Sybil can
+// mint a credible arbiter the moment it has sats. Age is not buyable. Folding
+// tenure into capacity means a puppet has to be funded AND left alone AND used
+// honestly for weeks before it can reach a trade worth stealing — and every one
+// of those weeks is capital sitting idle in public view.
+//
+// Shape: capacity = bond size × a tenure multiplier that ramps from a small
+// floor to 1.0 over the maturity window. Deliberately a RAMP, not a cliff — a
+// cliff would make the moment of maturity a scheduling target, and would tell a
+// newcomer "you are worth nothing until day 30" rather than "you start small".
+// A new arbiter can still work immediately, just not on large trades.
+//
+// Tenure comes from the PROVEN lineage root (bond-lineage.ts), so a renewing
+// arbiter keeps their age. An unproven claim is worth exactly nothing here.
+
+/** ⚠ DORMANT master switch, mirroring BONDS_ENFORCED above — and dormant for a
+ *  reason the test suite caught before Jetty's device did.
+ *
+ *  "Unknown tenure ⇒ the new-bond floor" is the right rule for a caller that
+ *  KNOWS ages. But today's live call site (CreateForm) passes bonds straight
+ *  from `fetchCommunityBonds` with no age attached, because resolving days needs
+ *  a chain tip it does not hold. Defaulting the gate ON would therefore have
+ *  quietly re-rated every arbiter in the world as brand new — a year-old bond
+ *  included — and cut real capacity to a quarter overnight.
+ *
+ *  So the mechanism lands fully built and tested, and OFF. It flips when the
+ *  call sites actually resolve tenure (they now can: `fetchCommunityBonds`
+ *  stamps `tenureFromHeight`, and the tip is one `esploraTipHeight` away). */
+export const TENURE_GATED_CAPACITY: boolean = false;
+
+/** Days at which a bond reaches its full face-value capacity. */
+export const TENURE_FULL_CAPACITY_DAYS = 30;
+/** Fraction of face value a brand-new bond may cover. A day-one bond of 100k
+ *  sats seats trades up to 25k — real work, bounded damage. */
+export const TENURE_MIN_CAPACITY_FRACTION = 0.25;
+
+/** The multiplier a bond's face value earns at `tenureDays` old. Linear from the
+ *  floor to 1.0, then flat. Unknown/absent tenure ⇒ the FLOOR, never full
+ *  credit: an arbiter whose age cannot be established is treated as new. */
+export function tenureCapacityMultiplier(tenureDays: number | null | undefined): number {
+  if (typeof tenureDays !== "number" || !Number.isFinite(tenureDays) || tenureDays <= 0) {
+    return TENURE_MIN_CAPACITY_FRACTION;
+  }
+  if (tenureDays >= TENURE_FULL_CAPACITY_DAYS) return 1;
+  const ramp = tenureDays / TENURE_FULL_CAPACITY_DAYS;
+  return TENURE_MIN_CAPACITY_FRACTION + ramp * (1 - TENURE_MIN_CAPACITY_FRACTION);
+}
+
+/** A bond's EFFECTIVE capacity in msats: face value × the tenure multiplier.
+ *  Floored to a whole msat so the cap comparison stays integral. */
+export function effectiveBondCapacityMsats(
+  actualSats: bigint,
+  tenureDays: number | null | undefined,
+): number {
+  return Math.floor(Number(actualSats) * 1000 * tenureCapacityMultiplier(tenureDays));
+}
+
 export type ExposureTier = "Bronze" | "Silver" | "Gold";
 export type CapacityTier = "unbonded" | "covered" | "over-capacity";
 
@@ -192,13 +251,19 @@ export function canAssignArbiter(params: {
  *  Pure; the caller passes FUNDED+ACTIVE bonds (VerifiedBond) so no term-gating
  *  is needed. Feed the result to getTrustedArbiterPool's `bondedPool`. */
 export function assignableBondedArbiters(params: {
-  bonds: readonly { npub: string; actualSats: bigint }[];
+  /** `tenureDays` (A1) is OPTIONAL. When the gate is ON, absent ⇒ the new-bond
+   *  floor multiplier, so a caller that cannot resolve tenure gets a STRICTER
+   *  result, never a looser one — which is exactly why the gate defaults OFF
+   *  (see TENURE_GATED_CAPACITY). Pass `tenureGated: true` to opt in. */
+  bonds: readonly { npub: string; actualSats: bigint; tenureDays?: number | null }[];
   tradeMsats: number;
   allTrades: Iterable<EscrowState>;
   excludeTradeId?: string | null;
+  tenureGated?: boolean;
 }): string[] {
   const materialized = [...params.allTrades];
   const subFloor = params.tradeMsats < UNBONDED_FLOOR_MSATS;
+  const tenureGated = params.tenureGated ?? TENURE_GATED_CAPACITY;
   const out: string[] = [];
   const seen = new Set<string>();
   for (const b of params.bonds) {
@@ -206,7 +271,9 @@ export function assignableBondedArbiters(params: {
     if (!npub || seen.has(npub)) continue;
     seen.add(npub);
     if (subFloor) { out.push(npub); continue; }
-    const bondMsats = Number(b.actualSats) * 1000;
+    const bondMsats = tenureGated
+      ? effectiveBondCapacityMsats(b.actualSats, b.tenureDays)
+      : Number(b.actualSats) * 1000;
     const sumOther = sumOpenExposure(getOpenBondedTrades(npub, materialized, { excludeId: params.excludeTradeId }));
     // Both caps use ≤ — the bond must COVER its exposure (brief 2026-06-22).
     if (params.tradeMsats <= bondMsats && sumOther + params.tradeMsats <= bondMsats) out.push(npub);

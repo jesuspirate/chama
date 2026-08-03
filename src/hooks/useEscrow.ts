@@ -29,6 +29,47 @@ const FEDIMINT_WALLET_NOT_READY =
 const FEDI_ECASH_UNAVAILABLE =
   "Fedi wallet ecash funding is not available in this Fedi build. Chama did not create a Lightning invoice. Update Fedi, or use the Android APK/Tauri for this trade.";
 
+// ── A1: resolve tenure across renewals ──────────────────────────────────────
+//
+// Stamps each bond's PROVEN tenure start by walking its announced lineage
+// on-chain (bond-lineage.ts). Costs nothing for a bond that claims no ancestry,
+// which today is every bond — so this is free until renewals start appearing,
+// then bounded.
+//
+// Two budgets, because this runs on the CREATE path where latency is a real
+// cost: at most LINEAGE_BONDS_PER_FETCH bonds get walked, each capped at
+// LINEAGE_HOPS_PER_BOND hops. Exceeding a budget UNDER-reports tenure, which
+// is the safe direction — a bond that looks younger than it is seats smaller
+// trades, and its owner can see why on the card.
+const LINEAGE_BONDS_PER_FETCH = 8;
+const LINEAGE_HOPS_PER_BOND = 8;
+
+async function resolveLineageTenure(
+  bonds: VerifiedBond[],
+  fetchJson: EsploraFetch,
+): Promise<void> {
+  let walked = 0;
+  for (const bond of bonds) {
+    if (!bond.lineage || walked >= LINEAGE_BONDS_PER_FETCH) continue;
+    walked++;
+    try {
+      const proven = await verifyBondLineage({
+        lineage: bond.lineage,
+        currentFundingTxid: bond.fundingTxid,
+        network: BOND_NETWORK,
+        fetchJson,
+        maxHops: LINEAGE_HOPS_PER_BOND,
+      });
+      bond.tenureFromHeight = tenureStartHeight(bond, proven);
+      bond.lineageProven = { provenHops: proven.provenHops, claimedHops: proven.claimedHops };
+    } catch (e) {
+      // Fail-soft, and fail SHORT: an unwalkable claim leaves tenure measured
+      // from the current UTXO, exactly as it was before A1.
+      console.warn("[chama] lineage walk failed; tenure falls back to this bond's own age:", e);
+    }
+  }
+}
+
 function describeError(error: unknown, fallback: string): string {
   if (typeof error === "string" && error.trim()) return error.trim();
   if (error instanceof Error && error.message.trim()) return error.message.trim();
@@ -146,10 +187,19 @@ import {
 } from "../escrow-engine/types.js";
 import { recordTradeToIndex, removeTradeFromIndex } from "../escrow-engine/trade-index.js";
 import {
-  canRenewListing,
+  canManuallyRenewListing,
   buildRenewCreateParams,
   isSellerOwnedListing,
 } from "../escrow-engine/listing-renewal.js";
+import { retireListing } from "../escrow-engine/listing-renewal-ledger.js";
+import { trancheGate, tranchesForPlan, buildNextTrancheParams } from "../escrow-engine/tranche.js";
+import { defaultCreditObserver, recordClaimCredit } from "../payments/claim-credit-ledger.js";
+import {
+  canEditListing,
+  editsAreMeaningful,
+  buildEditCreateParams,
+  type ListingEdits,
+} from "../escrow-engine/listing-edit.js";
 import {
   FedimintClient,
   EscrowFedimintBridge,
@@ -195,7 +245,14 @@ import { clearPendingRedemption } from "../fedimint/pending-redemptions.js";
 import { isNativeBridgeModeOn } from "../fedimint/native-bridge-adapter.js";
 // ── Arbiter bond (sealed v1: single-key timelock COMMITMENT) ──────────────────
 import * as btcSigner from "@scure/btc-signer";
-import { findBondFundingUtxos, esploraFetcher, defaultEsploraBase, defaultMinConfs, esploraTipHeight, esploraBroadcast, esploraOutspend, esploraRecommendedFeeRate } from "../bond-multisig/fund-watcher.js";
+import { findBondFundingUtxos, esploraFetcher, defaultEsploraBase, defaultMinConfs, esploraTipHeight, esploraBroadcast, esploraOutspend, esploraRecommendedFeeRate, type EsploraFetch } from "../bond-multisig/fund-watcher.js";
+import { verifyBondLineage, tenureStartHeight } from "../bond-multisig/bond-lineage.js";
+import { deriveEscrowSigningKey, resolveFundingPlan, verifyFunding, buildOnchainLockTerms } from "../bond-multisig/onchain-escrow-funding.js";
+import { DISPUTE_CSV_BLOCKS, REFUND_CLTV_BLOCKS, ESCROW_NETWORK, ESCROW_NETWORK_LABEL, buildOnchainEscrow } from "../bond-multisig/onchain-escrow.js";
+import { buildSettlementPsbt, coSignSettlement, disputeWindow, verifySettlementPsbt, settlementFeeCeilingSats, type SettlementCheck } from "../bond-multisig/onchain-escrow-settle.js";
+import { aggregateOnchainPayoutBalance, buildOnchainPayoutSweep, payoutCandidatesFor, scanOnchainPayout, type OnchainPayout } from "../bond-multisig/onchain-payout-wallet.js";
+import { getWinner } from "../escrow-engine/state-machine.js";
+import { adoptedExpectedSettlementTxid, adoptedSettlementTxid, finalArbiterSettlementProof, finalCoopSettlementProof, finalizableArbiterSettlement, finalizableCoopSettlement, hasValidSettlementSignatureForRole, selectVerifiedArbiterSettlement, selectVerifiedCoopSettlement, settlementBuildFeeSats, settlementUnsignedId, signingKeyMatchesRole } from "../escrow-engine/onchain-settlement-transport.js";
 import {
   buildCommitmentBond,
   buildBondRolloverTx,
@@ -210,7 +267,7 @@ import {
   type CommitmentReclaimDestination,
   type ReclaimDestinationChoice,
 } from "../bond-multisig/commitment-bond.js";
-import { buildBondAnnouncementEvent, selectLatestAnnouncements, groupLatestAnnouncementsByCommunity, verifyBondAnnouncement, ARBITER_BOND_ANNOUNCEMENT_KIND, type VerifiedBond } from "../bond-multisig/bond-announcement.js";
+import { buildBondAnnouncementEvent, selectLatestAnnouncements, groupLatestAnnouncementsByCommunity, verifyBondAnnouncement, ARBITER_BOND_ANNOUNCEMENT_KIND, MAX_LINEAGE_HOPS, type BondLineage, type BondLineageHop, type BondRole, type VerifiedBond } from "../bond-multisig/bond-announcement.js";
 import {
   ARBITER_FAULT_KIND,
   excludedArbitersNow,
@@ -222,9 +279,10 @@ import {
  *  of fabricated escrow ids can't turn a CREATE into a hundred loads. */
 const FAULT_VERIFY_TRADE_CAP = 12;
 import { readCachedCommunityBonds, writeCachedCommunityBonds } from "../arbiters/bonded-pool-cache.js";
+import { bondedArbitersForCommunity } from "../arbiters/live-chama.js";
 import { getCommitmentBond, upsertCommitmentBond, listCommitmentBonds, newBondId, reconstructBondRecord } from "../bond-multisig/commitment-store.js";
-import { MAINNET as BOND_NETWORK } from "../bond-multisig/multisig.js";
-import { hexToBytes } from "@noble/hashes/utils.js";
+import { BOND_NETWORK } from "../bond-multisig/bond-network.js";
+import { hexToBytes, bytesToHex as msBytesToHexLocal } from "@noble/hashes/utils.js";
 import { computeChamaLiveness, type ChamaLiveness, type RatingSummary as LivenessRatingSummary } from "../arbiters/live-chama.js";
 import {
   getPayoutRecord,
@@ -841,6 +899,39 @@ export interface UseEscrowActions {
    *  Throws if the listing isn't renewable (not owned / ever funded / not yet
    *  lapsing). Moves no sats — Option B: renewal re-publishes, never transfers. */
   renewListing: (escrowId: string) => Promise<{ escrowId: string; state: EscrowState }>;
+  /** A3: edit a live listing by REPLACING it — publish a fresh CREATE with the
+   *  new terms, then CANCEL the old. There is no edit event by design (see
+   *  listing-edit.ts). Moves no sats; refuses a funded listing or one a buyer
+   *  is currently holding. */
+  editListing: (
+    escrowId: string,
+    edits: ListingEdits,
+  ) => Promise<{ escrowId: string; state: EscrowState; oldCancelled: boolean }>;
+  /** Tranching: publish the next slice of a plan. Re-checks the safety gate
+   *  itself — never trusts the UI's copy of it. */
+  startNextTranche: (fromEscrowId: string) => Promise<{ escrowId: string; state: EscrowState }>;
+  /** Tier 2.1 — the on-chain escrow plumbing. Every one recomputes the address
+   *  locally; none of them trusts a wire-supplied one. */
+  myEscrowKey: (escrowId: string) => Promise<{ priv: Uint8Array; xonly: Uint8Array; path: string }>;
+  onchainFundingPlan: (escrowId: string) => ReturnType<typeof resolveFundingPlan>;
+  checkOnchainFunding: (escrowId: string) => Promise<{
+    plan: ReturnType<typeof resolveFundingPlan>;
+    verdict: ReturnType<typeof verifyFunding> | null;
+  }>;
+  publishOnchainLock: (escrowId: string) => Promise<EscrowState>;
+  /** Build (if absent), publish, and locally verify the cooperative PSBT. */
+  prepareOnchainSettlement: (escrowId: string) => Promise<{ psbt: string; check: SettlementCheck; signedByMe: boolean }>;
+  /** Re-verify, add this participant's signature, and publish the revision. */
+  signOnchainSettlement: (escrowId: string) => Promise<{ psbt: string; check: SettlementCheck }>;
+  /** Finalize/broadcast once two signatures exist, or adopt an observed spend. */
+  finalizeOnchainSettlement: (escrowId: string) => Promise<{ status: "waiting" | "broadcast" | "adopted"; txid?: string }>;
+  /** Rebuild every winner address from known trades and total its confirmed,
+   *  unspent outputs. Survives restarts because addresses derive from trade IDs. */
+  scanMyOnchainPayouts: () => Promise<{ payouts: OnchainPayout[]; balanceSats: bigint }>;
+  /** Sweep one trade's confirmed winner outputs to a user-selected address. */
+  sweepOnchainPayout: (escrowId: string, destination: string) => Promise<{
+    txid: string; sentSats: bigint; feeSats: bigint;
+  }>;
   /** Monthly CBP recurrence: re-publish an identical CREATE for the caller's own
    *  bill-pay listing (bill-pay only, no bond, home-community inherited). Unlike
    *  renewListing it works on funded/settled priors too. Moves no sats. */
@@ -1000,7 +1091,7 @@ export interface UseEscrowActions {
   /** Announce a funded+locked bond to a community (kind 38135) so its liveness is
    *  publicly computable + chain-verifiable. The event is signed by the arbiter's
    *  Nostr key; verification recomputes the address + reads it on-chain. */
-  publishBondAnnouncement: (bondId: string, community: string) => Promise<{ community: string; address: string }>;
+  publishBondAnnouncement: (bondId: string, community: string, roles?: readonly BondRole[]) => Promise<{ community: string; address: string }>;
   /** Cross-device bond recovery: rebuild local bond records from the user's own
    *  kind-38135 announcements + seed, so a bond posted on one device shows + reclaims
    *  on another with the same npub. Returns how many were newly recovered. */
@@ -1290,7 +1381,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     // double-fires (even under StrictMode re-invokes) or blocks the update.
     const priorEscrow = stateRef.current?.escrows.get(escrowId);
     const notifyPubkey = stateRef.current?.pubkey;
-    maybeNotifyTransition(priorEscrow, escrowState, notifyPubkey);
+    maybeNotifyTransition(priorEscrow, escrowState, notifyPubkey, notifyLiveSinceRef.current);
 
     // Liquidity/attention (Part ①.3 + Part ②): pull the seller back the moment a
     // buyer shows interest (a pre-lock child order / a JOIN hold on their
@@ -1304,8 +1395,11 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     // transition, DM the counterparty so their external Nostr client (Damus/
     // Amethyst) surfaces it. The decider's single-sender rule + the persisted
     // per-(trade,transition) dedup keep it to exactly one send network-wide.
-    // Sim/testnet no-op (no real relays/counterparties to alert). Fire-and-forget.
-    if (!isSimModeOn() && !isTestnetMode()) {
+    // Sim is always synthetic. Signet on-chain field runs, however, use real
+    // Nostr identities and need the same responder alerts as mainnet; suppressing
+    // them is exactly how the assigned arbiter remained invisible in testing.
+    if (!isSimModeOn()
+        && (!isTestnetMode() || (escrowState.escrowMode ?? "ecash") === "onchain")) {
       const dmClient = clientRef.current;
       if (dmClient) {
         void maybeSendTradeDms(
@@ -1920,6 +2014,33 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     lastDiscoveryRelayCountRef.current = 0;
   }, []);
 
+  // ⚠ The refund leaf's CLTV is an ABSOLUTE height, so it must be resolved from
+  // a live tip. Held in a ref (not state) because it feeds a pure recompute, and
+  // a re-render mid-derivation must never change the address under a user who is
+  // looking at it. Zero until a tip is read, which reads as "bad-refund-height"
+  // — a blocker, not a wrong address.
+  const onchainRefundHeightRef = useRef(0);
+  useEffect(() => {
+    if (!state.connected) return;
+    let cancelled = false;
+    void esploraTipHeight(esploraFetcher(defaultEsploraBase(ESCROW_NETWORK), { network: ESCROW_NETWORK }))
+      .then((tip) => { if (!cancelled && tip > 0) onchainRefundHeightRef.current = tip + REFUND_CLTV_BLOCKS; })
+      .catch(() => { /* no tip ⇒ no on-chain address; the blocker says so */ });
+    return () => { cancelled = true; };
+  }, [state.connected]);
+
+  const myEscrowKey = useCallback(async (escrowId: string) => {
+    const client = requireClient();
+    const signer = signerRef.current;
+    if (!signer) throw new Error("Not connected");
+    const words = await getOrCreateSeed(client, signer);
+    return deriveEscrowSigningKey(
+      Array.isArray(words) ? words.join(" ") : String(words),
+      escrowId,
+      { network: ESCROW_NETWORK },
+    );
+  }, []);
+
   const createEscrow = useCallback(async (params: Parameters<EscrowClient["createEscrow"]>[0]) => {
     // Soft-gate (relay resilience): if relays are still handshaking, wait briefly
     // and auto-retry instead of dead-ending with "Not connected". Instant when
@@ -1961,11 +2082,21 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
         : {}),
       fedPrefix: fedTags.fedPrefix,
       fed: fedTags.fed,
+      // Tier 2.1: derive the creator's escrow key from the REAL escrow id, which
+      // only exists inside createEscrow. Per-trade keys, no commingling.
+      ...((params as { escrowMode?: string }).escrowMode === "onchain"
+        ? {
+            escrowKeyFor: async (id: string) => {
+              try { return msBytesToHexLocal((await myEscrowKey(id)).xonly); }
+              catch { return undefined; }
+            },
+          }
+        : {}),
     });
     saveEscrowId(result.escrowId, stateRef.current?.pubkey ?? null);
     vibrate([40, 20, 40, 20, 80]); // Celebratory haptic
     return result;
-  }, []);
+  }, [myEscrowKey]);
 
   const joinEscrow = useCallback(async (
     escrowId: string,
@@ -2019,7 +2150,23 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     }
 
     try {
-      const result = await client.joinEscrow(escrowId, role, opts);
+      // Tier 2.1: an on-chain trade needs every party's escrow key before its
+      // address can exist — including the arbiter's, which is exactly why they
+      // must JOIN before funding. Fails SOFT: a key we cannot derive leaves a
+      // named blocker on the funding screen rather than breaking the JOIN.
+      let escrowXonly: string | undefined;
+      const joinState = client.getState(escrowId);
+      if ((joinState?.escrowMode ?? "ecash") === "onchain") {
+        try {
+          escrowXonly = msBytesToHexLocal((await myEscrowKey(escrowId)).xonly);
+        } catch (e) {
+          console.warn("[chama] couldn't derive an escrow key for this JOIN:", e);
+        }
+      }
+      const result = await client.joinEscrow(escrowId, role, {
+        ...opts,
+        ...(escrowXonly ? { escrowXonly } : {}),
+      });
       saveEscrowId(escrowId, stateRef.current?.pubkey ?? null);
       vibrate([30, 20, 30]);
       return result;
@@ -2044,7 +2191,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       }
       throw e;
     }
-  }, []);
+  }, [myEscrowKey]);
 
 	  const requireBridge = (): EscrowFedimintBridge => {
 	    if (!bridgeRef.current && clientRef.current && fedimintRef.current && signerRef.current) {
@@ -2077,9 +2224,21 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       // power-user card set one) so it rides into the signed LOCK. Absent ⇒
       // legacy 4h default.
       const graceOverride = readSubstitutionGraceOverride();
+      // §0.3: hand the bridge a chain-verified bonded set so it does not have
+      // to trust the creator's CREATE stamp. This is the SYNCHRONOUS 12h pool
+      // cache — deliberately not a network fetch, because nothing may block or
+      // fail the money path for a preference check. No cache ⇒ null ⇒ the
+      // bridge ignores the stamp and uses the legacy deterministic pick.
+      const lockState = client.getState(escrowId);
+      const verifiedBondedArbiters = lockState?.community
+        ? bondedArbitersForCommunity(readCachedCommunityBonds(lockState.community) ?? [])
+        : null;
       const result = await bridge.lockAndPublish(escrowId, {
         ...opts,
         ...(graceOverride !== null ? { substitutionGraceSeconds: graceOverride } : {}),
+        ...(verifiedBondedArbiters && verifiedBondedArbiters.length > 0
+          ? { verifiedBondedArbiters }
+          : {}),
       });
       vibrate([60, 30, 60, 30, 120]);
       // Refresh balance after spending ecash
@@ -2498,6 +2657,490 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     return result;
   }, []);
 
+  // ── Tier 2.1: the on-chain escrow plumbing ────────────────────────────────
+  //
+  // Three actions, in the order a trade uses them:
+  //   myEscrowKey    — derive + publish this party's key (address needs all 3)
+  //   onchainFunding — recompute the address, ask the chain if it is funded
+  //   publishOnchainLock — LOCK once the deposit is confirmed
+  //
+  // Every one of them recomputes locally. Nothing here trusts a wire-supplied
+  // address, because funding is irreversible.
+
+  /** This user's escrow key for a trade, derived from the seed. */
+  /** Recompute the escrow address from the keys published so far.
+   *
+   *  ⚠ Returns blockers rather than an address when a key is missing — most
+   *  often the arbiter's, who must JOIN before an on-chain trade can be funded
+   *  at all. Never guesses, never invents an address. */
+  const onchainFundingPlan = useCallback((escrowId: string) => {
+    const client = requireClient();
+    const state = client.getState(escrowId);
+    if (!state) throw new Error("Escrow not loaded");
+    const keys = state.escrowKeys ?? {};
+
+    // ⭐ An AUTO-SEATED arbiter never publishes a JOIN, so they never publish an
+    // escrow key — and without it the address can never be computed and the
+    // trade waits forever. Their BOND key is already public, already
+    // chain-verified, and already something they can sign with, so it stands in.
+    // Consequence, stated plainly: an on-chain escrow requires a BONDED arbiter.
+    // That is a reasonable bar for a 100k+ trade and matches the bond's role
+    // everywhere else as the licence to arbitrate.
+    let arbiterXonly = keys[Role.ARBITER] ?? null;
+    const seatedArbiter = state.participants[Role.ARBITER];
+    if (!arbiterXonly && seatedArbiter && state.community) {
+      const cached = readCachedCommunityBonds(state.community) ?? [];
+      const theirs = cached.find(
+        (b) => b.npub.toLowerCase() === seatedArbiter.toLowerCase() && b.funded && b.active,
+      );
+      arbiterXonly = theirs?.ownerXonly ?? null;
+    }
+
+    return resolveFundingPlan({
+      buyerXonly: keys[Role.BUYER] ?? null,
+      sellerXonly: keys[Role.SELLER] ?? null,
+      arbiterXonly,
+      funder: state.category === "marketplace" ? "buyer" : "seller",
+      refundLockUntil: state.lock.onchain?.refundLockUntil
+        ?? (onchainRefundHeightRef.current || 0),
+      disputeCsvBlocks: DISPUTE_CSV_BLOCKS,
+      network: ESCROW_NETWORK,
+    });
+  }, []);
+
+  /** Ask the chain whether the escrow is funded, at OUR recomputed address. */
+  const checkOnchainFunding = useCallback(async (escrowId: string) => {
+    const client = requireClient();
+    const state = client.getState(escrowId);
+    if (!state) throw new Error("Escrow not loaded");
+    const plan = onchainFundingPlan(escrowId);
+    if (!plan.ready) return { plan, verdict: null as null | ReturnType<typeof verifyFunding> };
+    const fetchJson = esploraFetcher(defaultEsploraBase(ESCROW_NETWORK), { network: ESCROW_NETWORK });
+    const found = await findBondFundingUtxos({
+      address: plan.address,
+      fetchJson,
+      minConfs: defaultMinConfs(ESCROW_NETWORK),
+    });
+    const verdict = verifyFunding({
+      utxos: found.map((f) => f.utxo),
+      expectedSats: BigInt(Math.floor(state.amountMsats / 1000)),
+      minConfs: defaultMinConfs(ESCROW_NETWORK),
+    });
+    return { plan, verdict };
+  }, [onchainFundingPlan]);
+
+  /** Publish the on-chain LOCK once the deposit is confirmed.
+   *
+   *  ⚠ Re-verifies the funding itself rather than trusting a caller's "it's
+   *  funded" — a LOCK published against an unfunded address tells a counterparty
+   *  their money is safe when it is not, which is the worst lie this system can
+   *  tell. */
+  const publishOnchainLock = useCallback(async (escrowId: string) => {
+    const client = requireClient();
+    const state = client.getState(escrowId);
+    if (!state) throw new Error("Escrow not loaded");
+    if ((state.escrowMode ?? "ecash") !== "onchain") {
+      throw new Error("This trade is not an on-chain escrow.");
+    }
+    const { plan, verdict } = await checkOnchainFunding(escrowId);
+    if (!plan.ready) throw new Error("The escrow address isn't ready — a key is still missing.");
+    if (!verdict?.funded) {
+      throw new Error(
+        verdict?.reason === "underfunded"
+          ? `The escrow holds ${verdict.amountSats} sats, less than the trade's ${verdict.expectedSats}.`
+          : verdict?.reason === "unconfirmed"
+            ? "The deposit is still confirming."
+            : "No confirmed deposit at the escrow address yet.",
+      );
+    }
+    const terms = buildOnchainLockTerms(plan, verdict, ESCROW_NETWORK_LABEL);
+    const buyerPubkey = state.participants[Role.BUYER];
+    const arbiterPubkey = state.participants[Role.ARBITER];
+    if (!buyerPubkey || !arbiterPubkey) throw new Error("Buyer and arbiter must both have joined.");
+    return client.lockEscrow(escrowId, {
+      notesHash: "",
+      shares: [],
+      onchain: terms,
+      sellerReceivesMsats: state.amountMsats - state.fees.arbiterMsats,
+      arbiterFeeMsats: state.fees.arbiterMsats,
+      buyerPubkey,
+      arbiterPubkey,
+    });
+  }, [checkOnchainFunding]);
+
+  /** Recompute every security-sensitive settlement input locally. */
+  const onchainSettlementContext = useCallback(async (escrowId: string, leaf: "coop" | "dispute" = "coop") => {
+    const client = requireClient();
+    const trade = client.getState(escrowId);
+    if (!trade?.lock.onchain) throw new Error("This trade has no on-chain lock terms.");
+    if (trade.status !== EscrowStatus.APPROVED && trade.status !== EscrowStatus.CLAIMED
+      && trade.status !== EscrowStatus.COMPLETED) {
+      throw new Error("Settlement is available only after the outcome is approved.");
+    }
+    const t = trade.lock.onchain;
+    const escrow = buildOnchainEscrow({
+      buyerXonly: hexToBytes(t.buyerXonly), sellerXonly: hexToBytes(t.sellerXonly),
+      arbiterXonly: hexToBytes(t.arbiterXonly), funder: t.funder,
+      refundLockUntil: t.refundLockUntil, disputeCsvBlocks: t.disputeCsvBlocks,
+      network: ESCROW_NETWORK,
+    });
+    if (escrow.address !== t.address) throw new Error("On-chain lock address failed local recomputation.");
+    const winner = getWinner(trade);
+    if (!winner) throw new Error("No approved payout winner.");
+    const winnerXonly = winner.role === Role.BUYER ? t.buyerXonly : t.sellerXonly;
+    const destination = btcSigner.p2tr(hexToBytes(winnerXonly), undefined, ESCROW_NETWORK).address!;
+    const fetchJson = esploraFetcher(defaultEsploraBase(ESCROW_NETWORK), { network: ESCROW_NETWORK });
+    const found = await findBondFundingUtxos({
+      address: escrow.address, fetchJson, minConfs: defaultMinConfs(ESCROW_NETWORK),
+    });
+    const utxos = found.map(f => f.utxo);
+    if (utxos.length === 0) throw new Error("No confirmed escrow outputs are available to settle.");
+    const feeRate = await esploraRecommendedFeeRate(fetchJson, { floorPerVb: 2n });
+    let fundingHeight: number | undefined;
+    let tipHeight: number | undefined;
+    if (leaf === "dispute") {
+      if (found.some(f => typeof f.blockHeight !== "number")) {
+        throw new Error("The dispute window cannot be verified because a funding height is unknown.");
+      }
+      fundingHeight = Math.max(...found.map(f => f.blockHeight!));
+      tipHeight = await esploraTipHeight(fetchJson);
+      const window = disputeWindow({ fundingHeight, tipHeight, csvBlocks: t.disputeCsvBlocks });
+      if (!window.open) throw new Error(`The appeal window is still open — arbitration unlocks in ${window.blocksRemaining} block(s).`);
+    }
+    return {
+      client, trade, escrow, utxos, destination,
+      fundingHeight, tipHeight, leaf,
+      base: defaultEsploraBase(ESCROW_NETWORK), fetchJson,
+      feeSats: settlementBuildFeeSats(feeRate, utxos.length, leaf),
+      expectation: {
+        escrow, utxos, destination,
+        maxFeeSats: settlementFeeCeilingSats(leaf, feeRate, utxos.length),
+        network: ESCROW_NETWORK, leaf,
+      },
+    };
+  }, []);
+
+  const prepareOnchainSettlement = useCallback(async (escrowId: string) => {
+    const initial = requireClient().getState(escrowId);
+    const arbitrated = !!initial?.resolvedMajority?.includes(Role.ARBITER);
+    const leaf = arbitrated ? "dispute" : "coop";
+    const wireLeaf = arbitrated ? "arbiter" : "coop";
+    const ctx = await onchainSettlementContext(escrowId, leaf);
+    const winner = getWinner(ctx.trade);
+    let psbt = (arbitrated
+      ? selectVerifiedArbiterSettlement(ctx.trade.settlements ?? [], ctx.expectation)
+      : selectVerifiedCoopSettlement(ctx.trade.settlements ?? [], ctx.expectation)) ?? undefined;
+    if (!psbt) {
+      psbt = buildSettlementPsbt({
+        escrow: ctx.escrow, utxos: ctx.utxos, destination: ctx.destination,
+        feeSats: ctx.feeSats, leaf,
+        fundingHeight: ctx.fundingHeight, tipHeight: ctx.tipHeight,
+      });
+      const pubkey = await ctx.client.getPubkey();
+      const role = Object.values(Role).find(r => ctx.trade.participants[r] === pubkey);
+      const eligible = arbitrated
+        ? role === Role.ARBITER || role === winner?.role
+        : role === Role.BUYER || role === Role.SELLER;
+      if (!eligible || !role) {
+        throw new Error(arbitrated
+          ? "Only the resolved winner or assigned arbiter can build arbitration settlement."
+          : "Only buyer or seller can build cooperative settlement.");
+      }
+      await ctx.client.sendSettlement(escrowId, { psbt, leaf: wireLeaf, role });
+    }
+    const pubkey = await ctx.client.getPubkey();
+    const myRole = Object.values(Role).find(r => ctx.trade.participants[r] === pubkey);
+    const signedByMe = (myRole === Role.BUYER || myRole === Role.SELLER || myRole === Role.ARBITER)
+      && hasValidSettlementSignatureForRole(
+        psbt,
+        ctx.escrow,
+        myRole,
+        arbitrated ? "dispute" : "coop",
+      );
+    return { psbt, check: verifySettlementPsbt(psbt, ctx.expectation), signedByMe };
+  }, [onchainSettlementContext]);
+
+  const finalizeOnchainSettlement = useCallback(async (escrowId: string) => {
+    // Recovery must run before UTXO discovery: after a successful broadcast the
+    // address/utxo endpoint is empty, which is exactly the crash window S7c
+    // needs to heal. Recompute the lock address, then probe its committed
+    // funding outpoint directly.
+    const recoveryClient = requireClient();
+    const recoveryTrade = recoveryClient.getState(escrowId);
+    const recoveryTerms = recoveryTrade?.lock.onchain;
+    if (!recoveryTrade || !recoveryTerms) throw new Error("This trade has no on-chain lock terms.");
+    const recoveryEscrow = buildOnchainEscrow({
+      buyerXonly: hexToBytes(recoveryTerms.buyerXonly),
+      sellerXonly: hexToBytes(recoveryTerms.sellerXonly),
+      arbiterXonly: hexToBytes(recoveryTerms.arbiterXonly),
+      funder: recoveryTerms.funder,
+      refundLockUntil: recoveryTerms.refundLockUntil,
+      disputeCsvBlocks: recoveryTerms.disputeCsvBlocks,
+      network: ESCROW_NETWORK,
+    });
+    if (recoveryEscrow.address !== recoveryTerms.address) {
+      throw new Error("On-chain lock address failed local recomputation.");
+    }
+    const recoveryFetch = esploraFetcher(defaultEsploraBase(ESCROW_NETWORK), { network: ESCROW_NETWORK });
+    const recoveryWinner = getWinner(recoveryTrade);
+    const recoveryWinnerRole = recoveryWinner?.role === Role.BUYER || recoveryWinner?.role === Role.SELLER
+      ? recoveryWinner.role
+      : null;
+    const arbitrated = !!recoveryTrade.resolvedMajority?.includes(Role.ARBITER);
+    const recoveryProof = recoveryWinnerRole
+      ? [...(recoveryTrade.settlements ?? [])].reverse().map(message => ({
+          message,
+          proof: arbitrated
+            ? finalArbiterSettlementProof(message, recoveryTerms, recoveryWinnerRole)
+            : finalCoopSettlementProof(message, recoveryTerms, recoveryWinnerRole),
+        })).find(candidate => candidate.proof !== null)
+      : undefined;
+    const committedOutspend = await esploraOutspend(
+      recoveryFetch, recoveryTerms.fundingTxid, recoveryTerms.fundingVout,
+    );
+    if (committedOutspend.spent) {
+      if (!committedOutspend.txid) throw new Error("Esplora reported a spent escrow output without its transaction id.");
+      if (!recoveryProof?.proof || recoveryProof.proof.txid !== committedOutspend.txid) {
+        throw new Error("The committed escrow output was spent by a transaction that does not match the final settlement journal.");
+      }
+      const expectedOutspends = await Promise.all(recoveryProof.proof.inputs.map(input =>
+        esploraOutspend(recoveryFetch, input.txid, input.index),
+      ));
+      if (!adoptedExpectedSettlementTxid(recoveryProof.proof.txid, expectedOutspends)) {
+        throw new Error("The final settlement did not coherently sweep every journaled escrow input.");
+      }
+      if (recoveryTrade.status === EscrowStatus.APPROVED) {
+        await recoveryClient.completeOnchain(escrowId, recoveryProof.message.raw.id);
+      }
+      return { status: "adopted" as const, txid: committedOutspend.txid };
+    }
+
+    const ctx = await onchainSettlementContext(escrowId, arbitrated ? "dispute" : "coop");
+    const readOutspends = () => Promise.all(
+      ctx.utxos.map(utxo => esploraOutspend(ctx.fetchJson, utxo.txid, utxo.index)),
+    );
+    const adoptObservedSpend = async (expectedTxid?: string, proofEventId?: string) => {
+      const outspends = await readOutspends();
+      const txid = adoptedSettlementTxid(outspends);
+      if (!txid && outspends.some(out => out.spent)) {
+        throw new Error("Escrow outputs show a partial or conflicting spend; settlement completion is refused.");
+      }
+      if (!txid) return null;
+      if (!expectedTxid || !proofEventId || !adoptedExpectedSettlementTxid(expectedTxid, outspends)) {
+        throw new Error("Observed escrow spend does not match the final settlement transaction.");
+      }
+      if (ctx.trade.status === EscrowStatus.APPROVED) {
+        await ctx.client.completeOnchain(escrowId, proofEventId);
+      }
+      return txid;
+    };
+
+    const currentProof = recoveryProof?.proof ?? null;
+    const adopted = await adoptObservedSpend(currentProof?.txid, recoveryProof?.message.raw.id);
+    if (adopted) return { status: "adopted" as const, txid: adopted };
+
+    const finalizable = arbitrated
+      ? finalizableArbiterSettlement(ctx.trade.settlements ?? [], ctx.expectation, ctx.escrow, recoveryWinnerRole!)
+      : finalizableCoopSettlement(ctx.trade.settlements ?? [], ctx.expectation);
+    if (!finalizable) return { status: "waiting" as const };
+    const pubkey = await ctx.client.getPubkey();
+    const role = Object.values(Role).find(r => ctx.trade.participants[r] === pubkey);
+    const eligible = arbitrated
+      ? role === Role.ARBITER || role === recoveryWinnerRole
+      : role === Role.BUYER || role === Role.SELLER;
+    if (!eligible || !role) {
+      throw new Error(arbitrated
+        ? "Only the resolved winner or assigned arbiter can finalize arbitration settlement."
+        : "Only buyer or seller can finalize cooperative settlement.");
+    }
+    const finalId = settlementUnsignedId(finalizable.psbt);
+    let proofEventId = recoveryProof?.proof?.txid === finalId
+      ? recoveryProof.message.raw.id
+      : null;
+    if (!proofEventId) {
+      const publishedProof = await ctx.client.sendSettlement(escrowId, {
+        psbt: finalizable.psbt, leaf: arbitrated ? "arbiter" : "coop", role, final: true,
+      });
+      proofEventId = publishedProof.raw.id;
+    }
+    let txid: string;
+    try {
+      txid = await esploraBroadcast(ctx.base, finalizable.rawTx);
+    } catch (error) {
+      const recovered = await adoptObservedSpend(finalId, proofEventId);
+      if (!recovered) throw error;
+      return { status: "adopted" as const, txid: recovered };
+    }
+    await ctx.client.completeOnchain(escrowId, proofEventId);
+    return { status: "broadcast" as const, txid };
+  }, [onchainSettlementContext]);
+
+  const signOnchainSettlement = useCallback(async (escrowId: string) => {
+    const initial = requireClient().getState(escrowId);
+    const arbitrated = !!initial?.resolvedMajority?.includes(Role.ARBITER);
+    // Re-fetch the tip and re-run disputeWindow immediately before signing.
+    // A checklist rendered earlier is never authority for a CSV spend.
+    const ctx = await onchainSettlementContext(escrowId, arbitrated ? "dispute" : "coop");
+    const prepared = await prepareOnchainSettlement(escrowId);
+    if (!prepared.check.ok) {
+      throw new Error(`Settlement verification failed: ${prepared.check.failures.join("; ")}`);
+    }
+    const pubkey = await ctx.client.getPubkey();
+    const role = Object.values(Role).find(r => ctx.trade.participants[r] === pubkey);
+    const winner = getWinner(ctx.trade);
+    const eligible = arbitrated
+      ? role === Role.ARBITER || role === winner?.role
+      : role === Role.BUYER || role === Role.SELLER;
+    if (!eligible || !role) {
+      throw new Error(arbitrated
+        ? "Only the resolved winner or assigned arbiter can sign arbitration settlement."
+        : "Only buyer or seller can sign cooperative settlement.");
+    }
+    if (prepared.signedByMe) {
+      throw new Error("You already signed this settlement. Waiting for the other signer.");
+    }
+    const key = await myEscrowKey(escrowId);
+    if (!signingKeyMatchesRole(key.xonly, role, ctx.trade.lock.onchain!)) {
+      throw new Error("This device's derived escrow key does not match the key committed for your role.");
+    }
+    const signedPsbt = coSignSettlement(prepared.psbt, key.priv);
+    // Verify the exact revision again after signing; signatures must not be
+    // allowed to smuggle a different transaction through the UI gate.
+    const check = verifySettlementPsbt(signedPsbt, ctx.expectation);
+    if (!check.ok) throw new Error(`Signed settlement failed verification: ${check.failures.join("; ")}`);
+    await ctx.client.sendSettlement(escrowId, { psbt: signedPsbt, leaf: arbitrated ? "arbiter" : "coop", role });
+    await finalizeOnchainSettlement(escrowId);
+    return { psbt: signedPsbt, check };
+  }, [finalizeOnchainSettlement, myEscrowKey, onchainSettlementContext, prepareOnchainSettlement]);
+
+  const scanMyOnchainPayouts = useCallback(async () => {
+    const current = stateRef.current;
+    const pubkey = current?.pubkey;
+    if (!pubkey) throw new Error("Reconnect to check your on-chain balance.");
+    const candidates = payoutCandidatesFor([...(current?.escrows.values() ?? [])], pubkey);
+    const payouts = await Promise.all(candidates.map(candidate => {
+      const fetchJson = esploraFetcher(defaultEsploraBase(candidate.network), { network: candidate.network });
+      return scanOnchainPayout(candidate, fetchJson);
+    }));
+    return { payouts, balanceSats: aggregateOnchainPayoutBalance(payouts) };
+  }, []);
+
+  const sweepOnchainPayout = useCallback(async (escrowId: string, destination: string) => {
+    const current = stateRef.current;
+    const pubkey = current?.pubkey;
+    const trade = current?.escrows.get(escrowId);
+    const client = requireClient();
+    const signer = signerRef.current;
+    if (!pubkey || !trade || !signer) throw new Error("Reconnect to recover this on-chain payout.");
+    const words = await getOrCreateSeed(client, signer);
+    const mnemonic = Array.isArray(words) ? words.join(" ") : String(words);
+    const network = trade.lock.onchain?.network === "mainnet" ? (btcSigner.NETWORK as typeof ESCROW_NETWORK) : ESCROW_NETWORK;
+    const base = defaultEsploraBase(network);
+    const fetchJson = esploraFetcher(base, { network });
+    const feeRate = await esploraRecommendedFeeRate(fetchJson, { floorPerVb: 2n });
+    const built = await buildOnchainPayoutSweep({
+      state: trade, viewerPubkey: pubkey, mnemonic, destination,
+      fetchJson, feeRateSatsPerVb: feeRate,
+    });
+    const txid = await esploraBroadcast(base, built.rawTx);
+    // Tranche progression requires local proof that the winner received this
+    // slice. A successful sweep spends the confirmed, seed-controlled winner
+    // output and is the on-chain analogue of observed ecash wallet growth.
+    // Record it only after broadcast accepts the signed transaction.
+    recordClaimCredit(escrowId, trade.amountMsats);
+    return { txid, sentSats: built.sendSats, feeSats: built.feeSats };
+  }, []);
+
+  // ── Tranching: publish the next slice, but only if it is safe to ──────────
+  // The gate (escrow-engine/tranche.ts) is re-evaluated HERE, not trusted from
+  // the UI: a stale render, a mis-wired prop, or a user tapping twice must not
+  // be able to start the next tranche while the previous one is live or
+  // unproven. The UI's copy of the gate is for showing; this one is for doing.
+  /** The plan's whole fiat price. Slice 0 carries its own share, so scale it
+   *  back up by the plan's slice count rather than trusting any single slice. */
+  const planTotalFiat = (tranches: readonly EscrowState[], prior: EscrowState): number | undefined => {
+    const first = tranches.find((s) => s.tranche?.index === 0) ?? prior;
+    if (typeof first.fiatAmount !== "number" || !first.tranche) return undefined;
+    return Number((first.fiatAmount * first.tranche.total).toFixed(2));
+  };
+
+  const startNextTranche = useCallback(async (fromEscrowId: string) => {
+    const client = requireClient();
+    const prior = client.getState(fromEscrowId);
+    if (!prior?.tranche) throw new Error("This trade isn't part of a tranche plan.");
+
+    const all = [...client.getAllStates().values()];
+    const gate = trancheGate({
+      planId: prior.tranche.planId,
+      total: prior.tranche.total,
+      states: all,
+      creditObserved: defaultCreditObserver(),
+    });
+    if (!gate.canProceed || gate.nextIndex === null) {
+      throw new Error(
+        gate.stopped
+          ? "This plan stopped — the last slice didn't settle. Check it before sending anything else."
+          : "The current slice is still in flight. Wait for it to settle before starting the next one.",
+      );
+    }
+
+    const priorTranches = tranchesForPlan(prior.tranche.planId, all);
+    const params = buildNextTrancheParams(
+      prior, gate.nextIndex, priorTranches,
+      (s) => buildRenewCreateParams(s) as unknown as Record<string, unknown>,
+      // The PLAN's fiat, recovered from slice 0 — a later slice's own fiat
+      // would be re-divided on every hop until it disappeared.
+      planTotalFiat(priorTranches, prior),
+    );
+    if (!params) throw new Error("Couldn't build the next slice of this plan.");
+    return createEscrow(params as Parameters<EscrowClient["createEscrow"]>[0]);
+  }, [createEscrow]);
+
+  // ── A3: edit a listing = replace it ───────────────────────────────────────
+  // Publish the new terms, then retire + cancel the old. Create-then-cancel is
+  // deliberate: a failed CANCEL leaves a duplicate the seller can delete (and
+  // which lapses on its own within ~24h, since it is retired locally and will
+  // never auto-renew), whereas a failed CREATE after a successful CANCEL would
+  // leave them with no storefront at all.
+  const editListing = useCallback(async (escrowId: string, edits: ListingEdits) => {
+    const client = requireClient();
+    const state = client.getState(escrowId);
+    if (!state) throw new Error("Listing not found — reload it first.");
+    const userPubkey = stateRef.current?.pubkey ?? null;
+    const nowSec = Math.floor(Date.now() / 1000);
+
+    const check = canEditListing(state, userPubkey, nowSec);
+    if (!check.ok) {
+      throw new Error(
+        check.reason === "buyer-holding"
+          ? "A buyer is holding this offer right now. Wait a few minutes for their hold to lapse, then edit."
+          : check.reason === "already-funded"
+            ? "This trade is already funded — its terms are what the buyer locked to and can't change."
+            : check.reason === "not-owner"
+              ? "Only the seller can edit this listing."
+              : "This can't be edited — only your own live, unfunded listings.",
+      );
+    }
+    if (!editsAreMeaningful(state, edits)) {
+      throw new Error("Nothing changed.");
+    }
+
+    const params = buildEditCreateParams(state, edits);
+    const created = await createEscrow(params as Parameters<EscrowClient["createEscrow"]>[0]);
+
+    // Retire locally FIRST so the old listing leaves this seller's own surfaces
+    // (and can never be auto-renewed) even if the CANCEL publish fails.
+    retireListing(escrowId);
+    let oldCancelled = false;
+    try {
+      await client.cancel(escrowId, "seller_edited_listing");
+      oldCancelled = true;
+    } catch (e) {
+      console.warn("[chama] edit: the replacement published but cancelling the old listing failed:", e);
+    }
+    return { ...created, oldCancelled };
+  }, [createEscrow]);
+
   // ── Store permanence (#49) Tier 1: renew a lapsed-unfunded listing ─────────
   // Re-publish an IDENTICAL CREATE (fresh 24h window) for a listing that lapsed
   // WITHOUT ever being funded. Only the seller's own listing, only when it was
@@ -2511,8 +3154,11 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     const state = client.getState(escrowId);
     if (!state) throw new Error("Listing not found — reload it first.");
     const userPubkey = stateRef.current?.pubkey ?? null;
-    if (!canRenewListing(state, userPubkey, Math.floor(Date.now() / 1000))) {
-      throw new Error("This listing can't be renewed — only your own lapsed, unfunded stores.");
+    // A2: the MANUAL path, so it must not consult the bond — an unbonded
+    // storefront has always been allowed to re-list by hand, and that is the
+    // entire point of the unbonded tier.
+    if (!canManuallyRenewListing(state, userPubkey, Math.floor(Date.now() / 1000))) {
+      throw new Error("This listing can't be renewed — only your own lapsed, unfunded listings.");
     }
     const params = buildRenewCreateParams(state);
     return createEscrow(params as Parameters<EscrowClient["createEscrow"]>[0]);
@@ -4368,6 +5014,17 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     createEscrow,
     joinEscrow,
     renewListing,
+    editListing,
+    startNextTranche,
+    myEscrowKey,
+    onchainFundingPlan,
+    checkOnchainFunding,
+    publishOnchainLock,
+    prepareOnchainSettlement,
+    signOnchainSettlement,
+    finalizeOnchainSettlement,
+    scanMyOnchainPayouts,
+    sweepOnchainPayout,
     repostRecurringCbp,
     lockAndPublish: lockAndPublishAction,
     vote: voteAction,
@@ -4461,7 +5118,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       // privacy). Index = highest existing + 1 (legacy single-key bonds count as 0).
       const keyIndex = listCommitmentBonds().reduce((m, b) => Math.max(m, b.keyIndex ?? 0), -1) + 1;
       const { xonly } = deriveBondSigningKey(words.join(" "), { network: BOND_NETWORK, index: keyIndex });
-      const tip = await esploraTipHeight(esploraFetcher(defaultEsploraBase(BOND_NETWORK)));
+      const tip = await esploraTipHeight(esploraFetcher(defaultEsploraBase(BOND_NETWORK), { network: BOND_NETWORK }));
       const lockUntil = tip + termBlocks;
       const bond = buildCommitmentBond(xonly, lockUntil, BOND_NETWORK);
       const bondId = newBondId();
@@ -4480,7 +5137,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       // an already-recorded deposit.
       const found = await findBondFundingUtxos({
         address: rec.bond.address,
-        fetchJson: esploraFetcher(defaultEsploraBase(BOND_NETWORK)),
+        fetchJson: esploraFetcher(defaultEsploraBase(BOND_NETWORK), { network: BOND_NETWORK }),
         minConfs: defaultMinConfs(BOND_NETWORK),
       });
       const merged = new Map<string, { txid: string; index: number; amountSats: bigint }>();
@@ -4499,7 +5156,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       const info = await fedimint.getOnchainInfo();
       const utxos = rec.utxos ?? [];
       if (utxos.length === 0) return null;
-      const fetchJson = esploraFetcher(defaultEsploraBase(BOND_NETWORK));
+      const fetchJson = esploraFetcher(defaultEsploraBase(BOND_NETWORK), { network: BOND_NETWORK });
       const rate = await esploraRecommendedFeeRate(fetchJson, { floorPerVb: DEFAULT_RECLAIM_FEE_RATE });
       const minerFeeSats = estimateReclaimFeeSats(rec.bond, utxos.length, rate);
       const total = utxos.reduce((sum, u) => sum + u.amountSats, 0n);
@@ -4529,7 +5186,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
           catch (error: any) {
             if (!/missingorspent|already.*(mempool|chain|known)|txn-already/i.test(error?.message ?? "")) throw error;
             const first = old.utxos?.[0];
-            const out = first ? await esploraOutspend(esploraFetcher(defaultEsploraBase(BOND_NETWORK)), first.txid, first.index).catch(() => null) : null;
+            const out = first ? await esploraOutspend(esploraFetcher(defaultEsploraBase(BOND_NETWORK), { network: BOND_NETWORK }), first.txid, first.index).catch(() => null) : null;
             if (!out?.spent || !out.txid) throw error;
             txid = out.txid;
           }
@@ -4843,8 +5500,8 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       watchBondOnchainCredit(deposit.operationId, bondId);
       return { txid, operationId: deposit.operationId, amountSats: sendSats };
     },
-    getBondChainTip: async () => esploraTipHeight(esploraFetcher(defaultEsploraBase(BOND_NETWORK))),
-    publishBondAnnouncement: async (bondId: string, community: string) => {
+    getBondChainTip: async () => esploraTipHeight(esploraFetcher(defaultEsploraBase(BOND_NETWORK), { network: BOND_NETWORK })),
+    publishBondAnnouncement: async (bondId: string, community: string, roles?: readonly BondRole[]) => {
       const client = clientRef.current;
       const signer = signerRef.current;
       if (!client || !signer) throw new Error("Not connected");
@@ -4852,10 +5509,46 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       if (!rec) throw new Error("Unknown bond — post it first.");
       if (rec.phase !== "locked") throw new Error("Announce a bond only once it's funded and locked.");
       const npub = await signer.getPublicKey();
+      // A0: when this bond was created by renewing a previous one, carry the
+      // hop so the tenure walk (A1) has a chain to follow. Derived entirely
+      // from what the commitment store already persists — a renewal genuinely
+      // spends the previous bond's output, so the claim is chain-checkable.
+      // Fails SOFT: an unresolvable predecessor announces without lineage
+      // rather than blocking a real bond from being announced at all.
+      // The WHOLE chain, not one hop: announcing a renewal REPLACES the
+      // predecessor's 38135, so a one-hop pointer would dead-end at the first
+      // superseded ancestor. This device's commitment store is the only place
+      // the full history survives, so it publishes all of it and lets any
+      // reader prove each hop independently.
+      let lineage: BondLineage | undefined;
+      try {
+        const hops: BondLineageHop[] = [];
+        const walked = new Set<string>([rec.bondId]);
+        let cursor = rec.renewedFromBondId ? getCommitmentBond(rec.renewedFromBondId) : null;
+        while (cursor && hops.length < MAX_LINEAGE_HOPS) {
+          if (walked.has(cursor.bondId)) break; // corrupt store: a renewal loop
+          walked.add(cursor.bondId);
+          const fromTxid = cursor.utxos?.[0]?.txid;
+          if (!fromTxid) break; // no funding outpoint ⇒ nothing a verifier could check
+          hops.push({
+            fromXonly: [...cursor.bond.ownerXonly].map((b) => b.toString(16).padStart(2, "0")).join(""),
+            fromLockUntil: cursor.bond.lockUntil,
+            fromTxid,
+          });
+          cursor = cursor.renewedFromBondId ? getCommitmentBond(cursor.renewedFromBondId) : null;
+        }
+        if (hops.length > 0) lineage = { hops, rootTxid: hops[hops.length - 1].fromTxid };
+      } catch (e) {
+        // Fails SOFT: a bond announcing without its history under-reports its
+        // own tenure, which is always better than not announcing at all.
+        console.warn("[chama] bond lineage unavailable; announcing without it:", e);
+      }
       const unsigned = buildBondAnnouncementEvent({
         pubkey: npub, community,
         ownerXonly: rec.bond.ownerXonly, lockUntil: rec.bond.lockUntil,
         amountSats: rec.amountSats, network: BOND_NETWORK, address: rec.bond.address,
+        ...(roles ? { roles } : {}),
+        ...(lineage ? { lineage } : {}),
       });
       const signed = await signer.signEvent(unsigned as any);
       await client.publishRaw(signed);
@@ -4867,7 +5560,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       if (!client || !signer) throw new Error("Not connected");
       const myPubkey = await signer.getPublicKey();
       const words = await getOrCreateSeed(client, signer);
-      const fetchJson = esploraFetcher(defaultEsploraBase(BOND_NETWORK));
+      const fetchJson = esploraFetcher(defaultEsploraBase(BOND_NETWORK), { network: BOND_NETWORK });
       const events = await client.queryOnce(
         { kinds: [ARBITER_BOND_ANNOUNCEMENT_KIND], authors: [myPubkey] } as any, 6_000,
       );
@@ -4916,7 +5609,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
           (a: any) => a.npub.toLowerCase() === myPubkey,
         );
         if (latest.length === 0) return [];
-        const fetchJson = esploraFetcher(defaultEsploraBase(BOND_NETWORK));
+        const fetchJson = esploraFetcher(defaultEsploraBase(BOND_NETWORK), { network: BOND_NETWORK });
         const tip = await esploraTipHeight(fetchJson).catch(() => undefined);
         const verified: VerifiedBond[] = [];
         for (const a of latest) {
@@ -4925,6 +5618,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
           ).catch(() => null);
           if (v) verified.push(v);
         }
+        await resolveLineageTenure(verified, fetchJson);
         return verified;
       } catch (e) {
         console.warn("[chama] fetchMyBonds failed — showing local bonds only:", e);
@@ -4999,7 +5693,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
           );
         }
         const latest = selectLatestAnnouncements(events as any);
-        const fetchJson = esploraFetcher(defaultEsploraBase(BOND_NETWORK));
+        const fetchJson = esploraFetcher(defaultEsploraBase(BOND_NETWORK), { network: BOND_NETWORK });
         const tip = await esploraTipHeight(fetchJson).catch(() => undefined);
         // ⭐ Each announcement is chain-verified (recompute address + read on-chain);
         // an unfunded or unreproducible claim is dropped, never counted.
@@ -5008,6 +5702,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
           const v = await verifyBondAnnouncement(a, { network: BOND_NETWORK, fetchJson, tipHeight: tip });
           if (v) verified.push(v);
         }
+        await resolveLineageTenure(verified, fetchJson);
         if (verified.length > 0) {
           writeCachedCommunityBonds(community, verified);
           return verified;
@@ -5037,7 +5732,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       );
       const byCommunity = groupLatestAnnouncementsByCommunity(events as any);
       if (byCommunity.size === 0) return {};
-      const fetchJson = esploraFetcher(defaultEsploraBase(BOND_NETWORK));
+      const fetchJson = esploraFetcher(defaultEsploraBase(BOND_NETWORK), { network: BOND_NETWORK });
       const tip = (await esploraTipHeight(fetchJson).catch(() => 0)) ?? 0;
       const counts: Record<string, number> = {};
       for (const [community, anns] of byCommunity) {
@@ -5067,7 +5762,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       };
       throwIfAborted();
       // 1. Chain-verified bonds for the community + the chain tip they were verified against.
-      const fetchJson = esploraFetcher(defaultEsploraBase(BOND_NETWORK), { signal, timeoutMs: 8_000 });
+      const fetchJson = esploraFetcher(defaultEsploraBase(BOND_NETWORK), { signal, timeoutMs: 8_000, network: BOND_NETWORK });
       // A missing chain tip is UNKNOWN, never a verified zero-bond result.
       // Let the coordinator retain the last verified cache (or render unknown)
       // instead of overwriting it with a synthetic tip-height zero snapshot.

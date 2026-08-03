@@ -11,9 +11,11 @@ import {
   getEffectiveParticipantsAt,
   getJoinHoldRemainingSeconds,
   joinHoldExpiresAt,
+  joinHoldExpiresAtFor,
   selectedMenuItemsTotalMsats,
 } from "../../escrow-engine/types.js";
 import { getWinner } from "../../escrow-engine/state-machine.js";
+import type { SettlementCheck } from "../../bond-multisig/onchain-escrow-settle.js";
 import { isParentStorefront, isChildOrder } from "../../escrow-engine/storefront.js";
 import { payoutRecipientFor } from "../../escrow-engine/recipients.js";
 import { getCommunityBySlug } from "../../communities/registry.js";
@@ -51,7 +53,7 @@ import { isArbiterNoShow, isPerformanceContest } from "../../escrow-engine/arbit
 import { bondedArbitersForCommunity } from "../../arbiters/live-chama.js";
 import type { VerifiedBond } from "../../bond-multisig/bond-announcement.js";
 import { defaultEsploraBase, esploraFetcher, esploraTipHeight } from "../../bond-multisig/fund-watcher.js";
-import { MAINNET as BOND_NETWORK } from "../../bond-multisig/multisig.js";
+import { BOND_NETWORK } from "../../bond-multisig/bond-network.js";
 import { counterpartyToRate, type RatingThumb, type AggregateRatings } from "../../reputation/ratings.js";
 import { RatingTap } from "../components/RatingTap.js";
 import { markChatRead, getLastReadChatAt, countUnreadChat, unreadChatForTrade } from "../../chat/unread.js";
@@ -68,7 +70,20 @@ import { ReputationReadout } from "../components/ReputationReadout.js";
 import { CountdownTimer } from "../components/CountdownTimer.js";
 import { SubscriptionTimeline } from "../components/SubscriptionTimeline.js";
 import { BitcoinAmount } from "../components/BitcoinAmount.js";
-import { bondTenureBlocks, tenureDays, tenureTier } from "../../arbiters/live-chama.js";
+import { bondTenureBlocks, tenureDays, tenureTier, verifiedBondTenureBlocks, bondCohort } from "../../arbiters/live-chama.js";
+import { viewerIsExposedByLock, lockerRoleOf } from "../../escrow-engine/lock-custody.js";
+import { verifyBondedStamp, stampIsForged } from "../../arbiters/bonded-stamp.js";
+import { OnchainEscrowPanel } from "../panels/OnchainEscrowPanel.js";
+import { OnchainPayoutRecoveryCard } from "../panels/OnchainPayoutRecoveryCard.js";
+import type { OnchainPayout } from "../../bond-multisig/onchain-payout-wallet.js";
+import { deriveOnchainView } from "../../escrow-engine/onchain-escrow-view.js";
+import { ESCROW_NETWORK_LABEL } from "../../bond-multisig/onchain-escrow.js";
+import { TranchePlanStrip } from "../components/TranchePlanStrip.js";
+import { autoAdvanceOnchainTrancheKey, trancheGate } from "../../escrow-engine/tranche.js";
+import { defaultCreditObserver } from "../../payments/claim-credit-ledger.js";
+import {
+  arbiterRulingConcentration, concentrationWorthShowing, type RulingConcentration,
+} from "../../arbiters/arbiter-pattern.js";
 
 /** Mainnet block cadence — the tenure clock's unit. */
 const BOND_BLOCKS_PER_DAY = 144;
@@ -112,7 +127,7 @@ export function TradeDetail({
   disableNwc = false, onBack, onVote, onClaim, onJoin, onLock, onLockDirectNwc, onClaimDirectNwc, onConfirmPayout,
   onSendChat, onReleasePeriod, onOpenSettings, onOpenNwcSettings,
   onPrewarmFunding, onRebroadcast, onForget, onPurchase, onCancelDraftOrder, stockLeft, isOversoldOrder = false,
-  onRateCounterparty, myGivenRatings, fetchRatingSummary, fetchCommunityBonds,
+  onRateCounterparty, myGivenRatings, fetchRatingSummary, fetchCommunityBonds, knownTrades, onStartNextTranche, onchainFundingPlan, onPublishOnchainLock, onPrepareOnchainSettlement, onSignOnchainSettlement, onFinalizeOnchainSettlement, onScanMyOnchainPayouts, onSweepOnchainPayout,
   liveChildOrders, onOpenChild,
 }: {
   state: EscrowState; pubkey: string;
@@ -166,6 +181,24 @@ export function TradeDetail({
    *  bonds so a seated bonded arbiter is RECOGNIZED (green), not flagged
    *  "unrecognized". Optional + fail-soft. */
   fetchCommunityBonds?: (community: string) => Promise<VerifiedBond[]>;
+  /** Tranching: publish the next slice of this trade's plan. */
+  onStartNextTranche?: (fromEscrowId: string) => Promise<unknown>;
+  /** Tier 2.1: recompute this trade's escrow address from published keys. */
+  onchainFundingPlan?: (escrowId: string) => { ready: boolean; address?: string; blockers?: readonly string[] };
+  /** Tier 2.1: publish the on-chain LOCK once the deposit confirms. */
+  onPublishOnchainLock?: (escrowId: string) => Promise<unknown>;
+  onPrepareOnchainSettlement?: (escrowId: string) => Promise<{ psbt: string; check: SettlementCheck; signedByMe: boolean }>;
+  onSignOnchainSettlement?: (escrowId: string) => Promise<{ psbt: string; check: SettlementCheck }>;
+  onFinalizeOnchainSettlement?: (escrowId: string) => Promise<{ status: "waiting" | "broadcast" | "adopted"; txid?: string }>;
+  onScanMyOnchainPayouts?: () => Promise<{ payouts: OnchainPayout[]; balanceSats: bigint }>;
+  onSweepOnchainPayout?: (escrowId: string, destination: string) => Promise<{
+    txid: string; sentSats: bigint; feeSats: bigint;
+  }>;
+  /** A1b: every trade this device knows, for the seated arbiter's ruling
+   *  concentration. Read-only and local — it describes what THIS client has
+   *  seen, never a global claim, and the card says so by always showing the
+   *  denominator. Optional: absent ⇒ the line is simply not drawn. */
+  knownTrades?: readonly EscrowState[];
   onJoin: (
     role: Role,
     opts?: { selectedItems?: SelectedMenuItem[]; amountMsats?: number; orderFinalized?: boolean },
@@ -453,27 +486,108 @@ export function TradeDetail({
   // "unrecognized"). Fetch-once per community, fail-soft (empty ⇒ roster+device
   // trust only). Keyed on the slug; the fetcher reads the live client internally.
   const [bondedNpubs, setBondedNpubs] = useState<string[]>([]);
+  // null until a chain-verified read lands. Distinct from [] ("checked, and
+  // this community has no bonded arbiters") — see arbiters/bonded-stamp.ts.
+  const [verifiedBonded, setVerifiedBonded] = useState<string[] | null>(null);
   // The seated arbiter's own verified bond, kept for the arbiter card: tenure
   // (funding block height) and the funding outpoint, so a counterparty can
   // check the commitment in a block explorer instead of trusting this screen.
   const [seatedBond, setSeatedBond] = useState<VerifiedBond | null>(null);
   const [bondTipHeight, setBondTipHeight] = useState<number | null>(null);
+  // A1b: how many OTHER bonds were announced in this community the same week as
+  // the seated arbiter's. Derived from the bonds already fetched — no extra
+  // read. Null when it cannot be computed (pre-A0 announcements carry no date),
+  // which renders nothing rather than a misleading zero.
+  const [cohortPeers, setCohortPeers] = useState<number | null>(null);
+  // A1b: the seated arbiter's ruling concentration over the trades this device
+  // knows. Pure and memoized — no fetch, no relay read; it only ever describes
+  // the local view, which is why the card always shows the denominator.
+  // Tranching: the plan's live gate. Recomputed from what this device knows,
+  // and — critically — from OBSERVED CREDIT rather than any published status.
+  const [advancingTranche, setAdvancingTranche] = useState(false);
+  const [advanceTrancheError, setAdvanceTrancheError] = useState<string | null>(null);
+  const [trancheCreditTick, setTrancheCreditTick] = useState(0);
+  const autoAdvanceTrancheAttemptRef = useRef<string | null>(null);
+  // On-chain funding: the funder taps "I've sent it", we re-read the chain and
+  // LOCK. Any refusal (no deposit, still confirming, short) is surfaced VERBATIM
+  // — those messages already say the one thing the user needs.
+  const [checkingFunding, setCheckingFunding] = useState(false);
+  const [fundingNote, setFundingNote] = useState<string | null>(null);
+  /** The arbiter publishing their escrow key. Shares `fundingNote` for its
+   *  refusals — one place the panel reports what went wrong. */
+  const [publishingKey, setPublishingKey] = useState(false);
+  const [settlementCheck, setSettlementCheck] = useState<SettlementCheck | null>(null);
+  const [settlementSignedByMe, setSettlementSignedByMe] = useState(false);
+  const settlementFinalizeAttemptRef = useRef<string | null>(null);
+  const [settlementSigning, setSettlementSigning] = useState(false);
+  const trancheGateNow = useMemo(() => {
+    if (!state.tranche) return null;
+    return trancheGate({
+      planId: state.tranche.planId,
+      total: state.tranche.total,
+      states: knownTrades ?? [state],
+      creditObserved: defaultCreditObserver(),
+    });
+  }, [state, knownTrades, trancheCreditTick]);
+  const canAdvanceTranche = viewerIsExposedByLock(state, myRole) || state.lock.lockedAt === null;
+  const autoAdvanceTrancheKey = trancheGateNow
+    ? autoAdvanceOnchainTrancheKey({
+        state,
+        gate: trancheGateNow,
+        viewerCanAdvance: canAdvanceTranche,
+      })
+    : null;
+
+  // On-chain plans continue as soon as the fail-closed gate proves the last
+  // slice settled. The ref makes React re-renders harmless: one plan/index gets
+  // one publish attempt, while the manual button remains available if that
+  // attempt reports a relay or signer error.
+  useEffect(() => {
+    if (!autoAdvanceTrancheKey || !onStartNextTranche) return;
+    if (autoAdvanceTrancheAttemptRef.current === autoAdvanceTrancheKey) return;
+    autoAdvanceTrancheAttemptRef.current = autoAdvanceTrancheKey;
+    setAdvancingTranche(true);
+    setAdvanceTrancheError(null);
+    void Promise.resolve(onStartNextTranche(state.id))
+      .catch((error) => {
+        setAdvanceTrancheError(error instanceof Error ? error.message : String(error));
+      })
+      .finally(() => setAdvancingTranche(false));
+  }, [autoAdvanceTrancheKey, onStartNextTranche, state.id]);
+
+  const seatedArbiterPk = state.participants[Role.ARBITER];
+  const seatedConcentration = useMemo(() => {
+    if (!seatedArbiterPk || !knownTrades || knownTrades.length === 0) return null;
+    return arbiterRulingConcentration(knownTrades, seatedArbiterPk);
+  }, [knownTrades, seatedArbiterPk]);
   useEffect(() => {
     setBondedNpubs([]);
+    setVerifiedBonded(null);
     setSeatedBond(null);
+    setCohortPeers(null);
     if (!fetchCommunityBonds || !state.community) return;
     let cancelled = false;
     fetchCommunityBonds(state.community)
       .then((bonds) => {
         if (cancelled) return;
-        setBondedNpubs(bondedArbitersForCommunity(bonds));
+        const verified = bondedArbitersForCommunity(bonds);
+        setBondedNpubs(verified);
+        setVerifiedBonded(verified);
         const seated = state.participants[Role.ARBITER];
         const found = seated ? bonds.find((b) => b.npub === seated && b.funded) ?? null : null;
         setSeatedBond(found);
+        if (found && typeof found.announcedAt === "number") {
+          const dated = bonds
+            .filter((b): b is VerifiedBond & { announcedAt: number } => typeof b.announcedAt === "number")
+            .map((b) => ({ npub: b.npub, createdAt: b.announcedAt }));
+          setCohortPeers(
+            bondCohort({ npub: found.npub, createdAt: found.announcedAt }, dated).peerCount,
+          );
+        }
         // Tenure needs a tip to measure against. Only fetched when there is a
         // bond to measure, and fail-soft — no tip just means no age line.
         if (found) {
-          esploraTipHeight(esploraFetcher(defaultEsploraBase(BOND_NETWORK)))
+          esploraTipHeight(esploraFetcher(defaultEsploraBase(BOND_NETWORK), { network: BOND_NETWORK }))
             .then((tip) => { if (!cancelled) setBondTipHeight(tip); })
             .catch(() => { /* no tip → the card still shows the amount */ });
         }
@@ -488,10 +602,15 @@ export function TradeDetail({
   // answer here warns (or under-warns), never strands. Memoized on the state
   // object (every reducer apply produces a fresh one) because the roster read
   // re-verifies a Schnorr signature — too heavy for timer-driven re-renders.
-  const { arbiterProv, arbiterAssignment, selfRostered, feeGateUnmet } = useMemo(() => {
+  const { arbiterProv, arbiterAssignment, selfRostered, feeGateUnmet, forgedBondedStamp } = useMemo(() => {
     // Bonded arbiters (S3) are a chain-verified trust source — fold them in so a
     // seated bonded arbiter reads green, not "unrecognized". bondedNpubs is
     // fetched below; empty until it arrives (fails soft to roster+device).
+    // §0.3: the CREATE stamp is creator-written and unverified. Intersect it
+    // with the chain-verified set before ANY consent decision reads it — a
+    // stamp naming one confederate otherwise short-circuits the deterministic
+    // pick and seats them via the honest counterparty's own client.
+    const bondedStamp = verifyBondedStamp(state.bondedArbiters, verifiedBonded);
     const sources = getTrustedArbiterPoolSources({ community: state.community, bondedPool: bondedNpubs });
     const trusted = [...new Set([...sources.rosterArbiters, ...sources.deviceTrusted, ...sources.bondedArbiters])];
     const prov = classifyArbiterProvenance(state.communityArbiters, trusted);
@@ -507,7 +626,7 @@ export function TradeDetail({
         : null,
       buyerPubkey: state.participants[Role.BUYER],
       sellerPubkey: state.participants[Role.SELLER],
-      bondedArbiters: state.bondedArbiters,
+      bondedArbiters: bondedStamp.effective,
     });
     // Stake-holding identities only — a steward who also arbitrates in their
     // own community is the trust anchor, not a conflict (see classifySelfRoster).
@@ -524,6 +643,10 @@ export function TradeDetail({
       arbiterProv: prov,
       arbiterAssignment: assignment,
       selfRostered: rostered,
+      // The forged stamp is already neutralised by the intersection above, but
+      // a counterparty deciding whether to send fiat deserves to know the
+      // creator wrote something untrue into the trade.
+      forgedBondedStamp: stampIsForged(bondedStamp),
       feeGateUnmet: requiresVerifiedRosterConsent({
         arbiterFeeMsats: state.fees.arbiterMsats,
         amountMsats: state.amountMsats,
@@ -531,7 +654,7 @@ export function TradeDetail({
         distinctAuthorityVerified: prov.verified && !rostered,
       }),
     };
-  }, [state, bondedNpubs]);
+  }, [state, bondedNpubs, verifiedBonded]);
   const votePrompt = decideVotePrompt(state, pubkey, participants);
   const winner = getWinner(state);
   const iAmWinner = samePubkey(winner?.pubkey, pubkey);
@@ -600,9 +723,103 @@ export function TradeDetail({
     !participants.arbiter &&
     !previewArbiterPk &&
     state.communityArbiters.includes(pubkey);
+
+  // ⭐ Tier 2.1: an ON-CHAIN trade cannot be funded until the arbiter's escrow
+  // key is published, and an AUTO-SEATED arbiter never publishes a JOIN — so
+  // with auto-assignment on, the address could never be computed and the trade
+  // would wait forever on a message that reads like patience rather than
+  // deadlock. On-chain therefore needs the arbiter to act up front, and this is
+  // the affordance that lets them. Shown only to the deterministic pick, only
+  // while their key is missing.
+  const onchainNeedsMyArbiterKey =
+    (state.escrowMode ?? "ecash") === "onchain" &&
+    !state.lock.lockedAt &&
+    !(state.escrowKeys ?? {})[Role.ARBITER] &&
+    !!pubkey &&
+    (participants.arbiter === pubkey || previewArbiterPk === pubkey) &&
+    state.communityArbiters.includes(pubkey);
+  // Tier 2.1: the on-chain escrow surface. The address is RECOMPUTED here (via
+  // the hook) and never read off the wire — the panel refuses to show one it
+  // did not derive.
+  //
+  // Computed AFTER `onchainNeedsMyArbiterKey` on purpose: the view needs to know
+  // whether the viewer is the party the trade is stalled on, and that answer
+  // depends on the deterministic arbiter pick resolved just above.
+  const onchainView = useMemo(() => {
+    if ((state.escrowMode ?? "ecash") !== "onchain") return null;
+    let plan: { ready: boolean; address?: string; blockers?: readonly string[] } | null = null;
+    try { plan = onchainFundingPlan?.(state.id) ?? null; } catch { plan = null; }
+    return deriveOnchainView({
+      state,
+      viewerRole: myRole,
+      recomputedAddress: plan?.ready ? (plan.address ?? null) : null,
+      blockers: plan?.ready ? [] : (plan?.blockers ?? ["not-ready"]),
+      viewerIsPendingArbiter: onchainNeedsMyArbiterKey,
+    });
+    // ⚠ `verifiedBonded` is in the deps for a REASON that is not obvious.
+    //
+    // An auto-seated arbiter's escrow key comes from their bond, which
+    // `onchainFundingPlan` reads out of the bonded-pool CACHE — a synchronous
+    // read of data filled in asynchronously by the effect above. Without this
+    // dep the memo runs once, before the fetch lands, caches "no arbiter key"
+    // and never recomputes: the seller sits on "waiting for the arbiter" with a
+    // bond that has been live and announced for minutes. Re-running when the
+    // verified set arrives is what turns the blocker into an address.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state, myRole, onchainFundingPlan, onchainNeedsMyArbiterKey, verifiedBonded]);
+
+  useEffect(() => {
+    const arbitrated = !!state.resolvedMajority?.includes(Role.ARBITER);
+    const winnerRole = getWinner(state)?.role;
+    const eligibleSigner = arbitrated
+      ? myRole === Role.ARBITER || myRole === winnerRole
+      : myRole === Role.BUYER || myRole === Role.SELLER;
+    if (!onchainView?.canSettle || !onPrepareOnchainSettlement || !eligibleSigner) {
+      setSettlementCheck(null);
+      setSettlementSignedByMe(false);
+      return;
+    }
+    let cancelled = false;
+    void onPrepareOnchainSettlement(state.id).then(
+      ({ check, signedByMe }) => {
+        if (!cancelled) {
+          setSettlementCheck(check);
+          setSettlementSignedByMe(signedByMe);
+        }
+      },
+      (error) => {
+        if (!cancelled) setSettlementCheck({
+          ok: false,
+          failures: [error instanceof Error ? error.message : String(error)],
+        });
+      },
+    );
+    return () => { cancelled = true; };
+  }, [state.id, state.status, state.settlements?.length, myRole, onchainView?.canSettle, onPrepareOnchainSettlement]);
+
+  // Relay arrival can complete a pair of independently signed revisions even
+  // when neither signer currently holds the other's PSBT in their click path.
+  // Attempt once per observed revision count; the action itself rechecks chain
+  // outspends first and is therefore safe across tabs/reloads.
+  useEffect(() => {
+    const arbitrated = !!state.resolvedMajority?.includes(Role.ARBITER);
+    const winnerRole = getWinner(state)?.role;
+    const eligibleSigner = arbitrated
+      ? myRole === Role.ARBITER || myRole === winnerRole
+      : myRole === Role.BUYER || myRole === Role.SELLER;
+    const count = state.settlements?.length ?? 0;
+    if (!eligibleSigner || !onchainView?.canSettle || !onFinalizeOnchainSettlement || count === 0) return;
+    const attempt = `${state.id}:${count}`;
+    if (settlementFinalizeAttemptRef.current === attempt) return;
+    settlementFinalizeAttemptRef.current = attempt;
+    void onFinalizeOnchainSettlement(state.id).catch(error => {
+      console.warn("[chama] automatic on-chain settlement finalization failed:", error);
+    });
+  }, [state.id, state.settlements?.length, myRole, onchainView?.canSettle, onFinalizeOnchainSettlement]);
+
   const canJoinAsBuyer = !participants.buyer;
   const canJoinAsSeller = !participants.seller;
-  const canJoinTrade = canJoinAsBuyer || canJoinAsSeller || canJoinAsArbiter;
+  const canJoinTrade = canJoinAsBuyer || canJoinAsSeller || canJoinAsArbiter || onchainNeedsMyArbiterKey;
   const prewarmedEscrowRef = useRef<string | null>(null);
 
   // Disarm the cancel hatch whenever the viewed trade (or its vote state)
@@ -737,7 +954,7 @@ export function TradeDetail({
       const amountMsats = payload.amountMsats
         ?? selectedMenuItemsTotalMsats(selectedItems)
         ?? 0;
-      const expiresAt = payload.holdExpiresAt ?? joinHoldExpiresAt(payload.joinedAt);
+      const expiresAt = payload.holdExpiresAt ?? joinHoldExpiresAtFor(payload.joinedAt, state.escrowMode);
       const isLatest = index === buyerJoinEvents.length - 1;
       const isLive = isLatest && expiresAt > nowSec;
       const finalized = !!payload.orderFinalizedAt;
@@ -1258,6 +1475,24 @@ export function TradeDetail({
         </div>
       </div>
 
+      {trancheGateNow && (
+        <TranchePlanStrip
+          state={state}
+          gate={trancheGateNow}
+          canAdvance={canAdvanceTranche}
+          advancing={advancingTranche}
+          error={advanceTrancheError}
+          onAdvance={() => {
+            if (!onStartNextTranche) return;
+            setAdvancingTranche(true);
+            setAdvanceTrancheError(null);
+            void Promise.resolve(onStartNextTranche(state.id))
+              .catch((error) => setAdvanceTrancheError(error instanceof Error ? error.message : String(error)))
+              .finally(() => setAdvancingTranche(false));
+          }}
+        />
+      )}
+
       {/* #63 storefront routing: on a PARENT storefront, surface the live child
           orders (funded, unsettled) so the seller can jump straight to the sale
           they need to fulfill — instead of hunting for a second same-titled
@@ -1494,6 +1729,24 @@ export function TradeDetail({
             </div>
           )}
 
+          {state.status === EscrowStatus.COMPLETED
+            && getWinner(state)?.pubkey === pubkey
+            && state.lock.onchain
+            && onScanMyOnchainPayouts
+            && onSweepOnchainPayout && (
+              <OnchainPayoutRecoveryCard
+                escrowId={state.id}
+                credited={defaultCreditObserver()(state)}
+                embedded
+                scan={onScanMyOnchainPayouts}
+                sweep={async (escrowId, destination) => {
+                  const swept = await onSweepOnchainPayout(escrowId, destination);
+                  setTrancheCreditTick((tick) => tick + 1);
+                  return swept;
+                }}
+              />
+          )}
+
           {/* The performer's mark-done IS their release vote — ONE button, not a
               separate chat-note button. It renders below as the release vote,
               re-labelled with the per-vertical verb (Mark delivered / completed /
@@ -1505,9 +1758,75 @@ export function TradeDetail({
               from their old column positions; all gating logic unchanged. */}
           {/* CREATED — atomic lock surface for the locker. The locker can
               spend only after any cross-role menu order is finalized. */}
+          {/* ⭐⭐ ON-CHAIN FUNDING LIVES HERE, where the funder actually acts.
+              The panel used to render only in the PARTIES pane while the fund
+              button sat in DETAILS — so the locker read "send it to the escrow
+              address" directly above an ecash Fund button, with the address on a
+              tab they were not looking at. Copy that points at something not on
+              screen is worse than no copy.
+              The ecash surface below is replaced ENTIRELY, not supplemented: a
+              Lightning fund button on an on-chain trade spends the locker's
+              balance into an escrow the reducer will refuse. */}
+          {/* ⚠ NOT gated on `canILock`. The arbiter cannot lock, yet the trade
+              cannot be funded until they publish a key — gating this on the
+              locker hid the CTA from the only person who could act on it, on
+              every screen they visit. Buyer sees the same panel read-only. */}
+          {/* ⚠⚠ The lock CTA below requires `participants.buyer`, and that is
+              LOAD-BEARING rather than cosmetic. The reducer refuses a LOCK that
+              does not name a buyer, and a lapsed join hold un-seats one — so
+              offering the button without a seated buyer invites the funder to
+              send real sats to an address they then cannot lock, leaving the
+              coins there until the CLTV refund. The ecash branch always carried
+              this guard; it was dropped when the panel moved here. */}
+          {onchainView
+            && (myRole || onchainNeedsMyArbiterKey)
+            && (
+              <OnchainEscrowPanel
+                view={onchainView}
+                network={ESCROW_NETWORK_LABEL}
+                settlementCheck={settlementCheck}
+                signing={settlementSigning}
+                signedByViewer={settlementSignedByMe}
+                onSign={onSignOnchainSettlement && (
+                  state.resolvedMajority?.includes(Role.ARBITER)
+                    ? myRole === Role.ARBITER || myRole === getWinner(state)?.role
+                    : myRole === Role.BUYER || myRole === Role.SELLER
+                ) ? () => {
+                  setSettlementSigning(true);
+                  void onSignOnchainSettlement(state.id)
+                    .then(({ check }) => {
+                      setSettlementCheck(check);
+                      setSettlementSignedByMe(true);
+                    })
+                    .catch((error) => setSettlementCheck({
+                      ok: false,
+                      failures: [error instanceof Error ? error.message : String(error)],
+                    }))
+                    .finally(() => setSettlementSigning(false));
+                } : undefined}
+                onCheckFunding={onPublishOnchainLock && onchainView.viewerFunds && participants.buyer ? () => {
+                  setCheckingFunding(true);
+                  setFundingNote(null);
+                  void Promise.resolve(onPublishOnchainLock(state.id))
+                    .catch((e: any) => setFundingNote(e?.message ?? String(e)))
+                    .finally(() => setCheckingFunding(false));
+                } : undefined}
+                checking={checkingFunding}
+                fundingNote={fundingNote}
+                onPublishKey={() => {
+                  setPublishingKey(true);
+                  setFundingNote(null);
+                  void Promise.resolve(onJoin(Role.ARBITER))
+                    .catch((e: any) => setFundingNote(e?.message ?? String(e)))
+                    .finally(() => setPublishingKey(false));
+                }}
+                publishing={publishingKey}
+              />
+          )}
           {state.status === EscrowStatus.CREATED
             && myRole
             && canILock
+            && !onchainView
             && participants.buyer
             && !lockMenuSelectionMissing
             && !menuOrderNotFinal && (() => {
@@ -2193,7 +2512,16 @@ export function TradeDetail({
               disables with "Federation unreachable — reconnect first"
               subtitle. The Reconnect CTA lives in ChamaBar (single
               source of truth). */}
-          {(state.status === EscrowStatus.APPROVED || state.status === EscrowStatus.CLAIMED) && iAmWinner && !state.subscription && (
+          {/* ⚠⚠ `!onchainView` — the same class of bug as the funding modal.
+              This is the ECASH claim surface: it redeems SSS shares and pays
+              out over Lightning/NWC. An on-chain escrow has no shares and no
+              notes; its sats sit in a Taproot output that moves only when two
+              of three keys sign a settlement transaction. Offering "claim via
+              your Lightning address" there invites an action that cannot
+              succeed, on the one screen where the user believes they are being
+              paid. The on-chain settlement surface renders in its place, via
+              OnchainEscrowPanel above. */}
+          {(state.status === EscrowStatus.APPROVED || state.status === EscrowStatus.CLAIMED) && iAmWinner && !state.subscription && !onchainView && (
             <div style={{
               marginTop: 18,
               paddingTop: 16,
@@ -2452,7 +2780,12 @@ export function TradeDetail({
                     community pool will auto-assign one. v0.8.0 tightens
                     the empty-pool case too: no pool means no trusted arbiter
                     slot, not "anyone may volunteer." */}
-                {canJoinAsArbiter && (
+                {/* ⚠ The on-chain publish CTA lives in the panel above, where
+                    the explanation is. This row keeps it ONLY as a fallback for
+                    the case the panel isn't showing it — otherwise the arbiter
+                    gets two identical buttons and has to guess. */}
+                {(canJoinAsArbiter
+                  || (onchainNeedsMyArbiterKey && !onchainView?.viewerMustPublishKey)) && (
                   <button disabled={joining} onClick={async () => {
                     setJoining(true);
                     try {
@@ -2465,7 +2798,9 @@ export function TradeDetail({
                     color: ROLE_COLOR.arbiter, fontFamily: T.mono, fontSize: 13, fontWeight: 700,
                     cursor: joining ? "default" : "pointer", transition: "all 0.2s",
                   }}>
-                    {joining ? t("trade.joining") : t("trade.joinAsArbiter")}
+                    {joining ? t("trade.joining")
+                      : onchainNeedsMyArbiterKey ? t("onchain.publishMyKey")
+                      : t("trade.joinAsArbiter")}
                   </button>
                 )}
               </div>
@@ -3569,7 +3904,28 @@ export function TradeDetail({
           selfRostered={selfRostered}
         />
         <ArbiterSubstitutionNotice state={state} />
-        <ArbiterCommitmentCard bond={seatedBond} tipHeight={bondTipHeight} />
+        {forgedBondedStamp && (
+          <div style={{
+            padding: "11px 13px", marginBottom: 12, borderRadius: T.rs,
+            background: `${T.red}12`, border: `1px solid ${T.red}44`,
+            fontFamily: T.sans, fontSize: 12, color: T.red, lineHeight: 1.55,
+          }}>
+            <strong>⚠ {t("trade.forgedStampTitle")}</strong> {t("trade.forgedStampBody")}
+          </div>
+        )}
+        {/* The on-chain panel used to render here TOO, giving two copies of the
+            same address on two tabs. It now lives once, in Details, beside the
+            action it belongs to. */}
+        {/* ⚠ The funder-clawback warning is an ECASH property. An on-chain
+            escrow removes that capability outright, so showing it there would
+            be false in the frightening direction. */}
+        {!onchainView && <LockCustodyNotice state={state} myRole={myRole} />}
+        <ArbiterCommitmentCard
+          bond={seatedBond}
+          tipHeight={bondTipHeight}
+          cohortPeers={cohortPeers}
+          concentration={seatedConcentration}
+        />
         {/* Match the vote tally's 3-column grid (below) exactly so the arbiter
             (middle) sits directly above the FINAL DECISION chip and the buyer /
             seller align over their vote columns. */}
@@ -3626,6 +3982,18 @@ export function TradeDetail({
               <strong style={{ color: T.text }}>{t("trade.shieldEscrowStrong")}</strong> {t("trade.shieldBody2")}{" "}
               <strong style={{ color: T.text }}>{t("trade.shield2of3Strong")}</strong> {t("trade.shieldBody3")}{" "}
               <strong style={{ color: T.text }}>{t("trade.shieldNeverHolds")}</strong>
+            </div>
+            {/* ⚠ The 2-of-3 holds against the arbiter and against the
+                counterparty. It does NOT hold against the party who funded it —
+                they know the bearer-note string and can reissue it. See
+                escrow-engine/lock-custody.ts. Stated here for everyone, and
+                again where the exposed party will actually see it. */}
+            <div style={{
+              fontSize: 12, color: T.amber, lineHeight: 1.55, marginBottom: 12,
+              padding: "9px 11px", borderRadius: T.rs,
+              background: `${T.amber}10`, border: `1px solid ${T.amber}33`,
+            }}>
+              {t("trade.shieldFunderLimit")}
             </div>
             <div style={{ display: "grid", gap: 8 }}>
               {([
@@ -4060,16 +4428,30 @@ export function TradeDetail({
 // DESCRIPTIVE ONLY. The tint deepens with tenure and never turns green: green
 // reads as "approved by Chama", and Chama does not vouch for people. Time is
 // the one claim nobody can fake — sats can be borrowed for an afternoon.
-function ArbiterCommitmentCard({ bond, tipHeight }: {
+// A1b (5.8) adds three things to it, all descriptive, none a verdict:
+//   · tenure now counts PROVEN renewals, so a long commitment stops reading as
+//     six days every time the arbiter rolls their bond over;
+//   · a partial-lineage line, because "3 of 5 renewals verified" is information
+//     and a silent 3 is not;
+//   · cohort context and ruling concentration — two numbers, no conclusions.
+function ArbiterCommitmentCard({ bond, tipHeight, cohortPeers, concentration }: {
   bond: VerifiedBond | null;
   tipHeight: number | null;
+  cohortPeers: number | null;
+  concentration: RulingConcentration | null;
 }) {
   const { t } = useT();
   if (!bond || !bond.funded) return null;
 
-  const blocks = bondTenureBlocks(bond.fundedAtHeight, tipHeight);
+  // ⭐ The 5.8 fix: measure from the PROVEN lineage root, not this UTXO. A bond
+  // with no proven ancestry falls back to its own funding height, so this is
+  // never longer than what the chain backs — only, at last, not shorter.
+  const blocks = verifiedBondTenureBlocks(bond, tipHeight);
   const days = tenureDays(blocks, BOND_BLOCKS_PER_DAY);
   const tier = tenureTier(blocks, BOND_BLOCKS_PER_DAY);
+  const proven = bond.lineageProven;
+  const renewalsShown = proven && proven.provenHops > 0;
+  const renewalsPartial = !!proven && proven.claimedHops > proven.provenHops;
   // Subtle, like Browse's stranger cue — noticed, never shouted.
   const tint = tier === "year" ? 0.16 : tier === "half-year" ? 0.11 : tier === "month" ? 0.07 : 0.03;
 
@@ -4087,6 +4469,42 @@ function ArbiterCommitmentCard({ bond, tipHeight }: {
         <BitcoinAmount sats={Number(bond.actualSats)} size={12} gap={3} glyphScale={1.1} />
         {days !== null && <span style={{ color: T.muted }}> · {t("trade.bondedForDays", { count: days })}</span>}
       </div>
+      {/* Renewals are stated as a COUNT, never as a virtue. "Kept going through
+          4 renewals" is a fact about time; "trusted arbiter" would be Chama
+          vouching for a person, which it does not do. */}
+      {renewalsShown && (
+        <div style={{ color: T.muted, fontSize: 9.5 }}>
+          {t("trade.bondRenewals", { count: proven!.provenHops })}
+          {renewalsPartial && (
+            <span style={{ color: T.amber }}>
+              {" · "}{t("trade.bondRenewalsPartial", { proven: proven!.provenHops, claimed: proven!.claimedHops })}
+            </span>
+          )}
+        </div>
+      )}
+      {/* Cohort: a number, and nothing else. Several bonds appearing in one week
+          is what a Sybil looks like AND what a good recruitment drive looks
+          like. The people in the community can tell those apart; an algorithm
+          cannot, so it does not try. */}
+      {typeof cohortPeers === "number" && cohortPeers > 0 && (
+        <div style={{ color: T.muted, fontSize: 9.5 }}>
+          {t("trade.bondCohort", { count: cohortPeers })}
+        </div>
+      )}
+      {/* Ruling concentration — the instrument that can actually see
+          arbiter-favours-the-same-winner, which testimony structurally cannot
+          (the winner never signs against their own benefit). Shown only past
+          CONCENTRATION_MIN_RULINGS, because "1 of 1" manufactures suspicion out
+          of a first dispute. The denominator is always present: "3 of 3" and
+          "3 of 40" are different worlds and the reader gets to see which. */}
+      {concentration && concentrationWorthShowing(concentration) && (
+        <div style={{ color: T.muted, fontSize: 9.5 }}>
+          {t("trade.arbiterRulings", {
+            top: concentration.byBeneficiary[0].count,
+            total: concentration.rulings,
+          })}
+        </div>
+      )}
       {bond.fundingTxid && (
         <a
           href={`https://mempool.space/tx/${bond.fundingTxid}`}
@@ -4097,6 +4515,45 @@ function ArbiterCommitmentCard({ bond, tipHeight }: {
           {t("trade.verifyOnChain")} ↗
         </a>
       )}
+    </div>
+  );
+}
+
+// ⚠ Honest custody — what LOCKED does and doesn't mean.
+//
+// A lock is 2-of-3 against the arbiter and against the counterparty, and it is
+// NOT against the funder: they minted the bearer notes and can reissue them
+// (escrow-engine/lock-custody.ts has the full reasoning). Nothing detects a
+// drained escrow — `verifyClaim` is dead code — so the loss surfaces only when
+// the winner's claim fails, after the goods shipped or the fiat was sent.
+//
+// Shown ONLY to the exposed party: the non-locker, who performs the
+// irreversible off-platform leg. The funder holds the capability and is not at
+// risk from it, and telling them would be noise that trains everyone to ignore
+// the banner. Unfolded, because the person carrying the risk should not have to
+// open an accordion to learn they are carrying it.
+//
+// DELETE THIS COMPONENT when the escrow is held somewhere no single party can
+// reach — not before, and not because it makes the screen look less safe.
+function LockCustodyNotice({ state, myRole }: { state: EscrowState; myRole: Role | null }) {
+  const { t } = useT();
+  if (!viewerIsExposedByLock(state, myRole)) return null;
+  const lockerRole = lockerRoleOf(state);
+  const funder = lockerRole === Role.BUYER ? t("trade.lockFunderTheBuyer")
+    : lockerRole === Role.SELLER ? t("trade.lockFunderTheSeller")
+    : t("trade.lockFunderTheOther");
+  return (
+    <div style={{
+      padding: "11px 13px", marginBottom: 12, borderRadius: T.rs,
+      background: `${T.amber}12`, border: `1px solid ${T.amber}44`,
+      fontFamily: T.sans, color: T.amber, lineHeight: 1.55,
+    }}>
+      <div style={{ fontSize: 12.5, fontWeight: 800, marginBottom: 4 }}>
+        <span aria-hidden="true">⚠</span> {t("trade.lockNotCustodyTitle")}
+      </div>
+      <div style={{ fontSize: 12, opacity: 0.95 }}>
+        {t("trade.lockNotCustodyBody", { funder })}
+      </div>
     </div>
   );
 }
@@ -4492,6 +4949,21 @@ function detailNextStep({
           tone: "accent",
           color: T.accent,
           amountMsats: savedOrderAmountMsats > 0 ? savedOrderAmountMsats : null,
+        };
+      }
+      // ⚠ Tier 2.1: an ON-CHAIN trade is not funded from the Chama balance.
+      // Offering the Lightning/NWC "Fund it" affordance here would send the
+      // funder down the ecash path for a trade whose LOCK the reducer will
+      // refuse — and the bridge would have spent their sats before finding out.
+      // The on-chain panel above carries the address instead.
+      if ((state.escrowMode ?? "ecash") === "onchain") {
+        return {
+          kicker: t("trade.nsReadyToFund"),
+          title: t("onchain.fundOnchainTitle"),
+          body: t("onchain.fundOnchainBody"),
+          tone: "accent",
+          color: T.accent,
+          amountMsats: lockAmountMsats,
         };
       }
       return {

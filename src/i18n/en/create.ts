@@ -241,5 +241,12 @@ export const create: Record<string, string> = {
   "create.warnSoftHeadline": "You're currently arbiter on an active trade.",
   "create.warnSoftTitle": "You're an arbiter",
   "create.whatKindOfTrade": "WHAT KIND OF TRADE?",
+  "create.workCategoryHint": "This is how Chama finds you the other side. Pick the closest one — \"Something else\" is fine, your description does the rest.",
+  "create.workCategoryLabel": "KIND OF WORK",
+  "create.workSideLabel": "WHICH SIDE ARE YOU ON?",
+  "create.workSideOffer": "I'm offering work",
+  "create.workSideOfferBody": "You do the job and get paid.",
+  "create.workSideRequest": "I need someone",
+  "create.workSideRequestBody": "You pay for a job to be done.",
   "create.yourCommunityFallback": "your community",
 };

@@ -19,6 +19,7 @@
 
 import { hexToBytes } from "@noble/hashes/utils.js";
 import { SIGNET, type BtcNetwork, type BondUtxo } from "./multisig.js";
+import { resolveEsploraBase } from "./esplora-config.js";
 
 /** Minimal shape of an Esplora `/address/{addr}/utxo` entry. */
 export interface EsploraUtxo {
@@ -36,7 +37,12 @@ export type EsploraFetch = (path: string) => Promise<any>;
 /** The default Esplora base per network. Mainnet (our bond network as of v5.0) →
  *  mempool.space. Signet → the endpoint the live-attack harness used. */
 export function defaultEsploraBase(network: BtcNetwork): string {
-  return network === SIGNET ? "https://mutinynet.com/api" : "https://mempool.space/api";
+  // ⭐ Now consults the user's verified override (esplora-config.ts). Absent
+  // one, this returns exactly what it always returned. Routing it through the
+  // single existing accessor means every call site — bond funding, reclaim,
+  // rollover, announcement verification, on-chain escrow — follows the user's
+  // choice without any of them knowing a choice exists.
+  return resolveEsploraBase(network);
 }
 
 /** Confirmation depth to require before a bond reads locked. 1 conf on both nets.
@@ -53,7 +59,7 @@ export function defaultMinConfs(network: BtcNetwork): number {
  * non-2xx). An overall generation signal may cancel every chain read together. */
 export function esploraFetcher(
   base: string,
-  opts: { signal?: AbortSignal; timeoutMs?: number } = {},
+  opts: { signal?: AbortSignal; timeoutMs?: number; network?: BtcNetwork } = {},
 ): EsploraFetch {
   return async (path: string) => {
     // Never send a stale foreign-network address to an explorer. After the
@@ -63,7 +69,16 @@ export function esploraFetcher(
     // mainnet failure in the browser console.
     const addressMatch = path.match(/^\/address\/([^/]+)(?:\/|$)/);
     const address = addressMatch?.[1]?.toLowerCase();
-    const mainnetExplorer = /^https:\/\/(?:www\.)?mempool\.space(?:\/|$)/i.test(base);
+    // ⚠ Prefer the CALLER'S declared network over sniffing the URL. The old
+    // check asked "is this base mempool.space?" and treated anything else as a
+    // test explorer — which was fine while the host was hardcoded, and becomes
+    // a real bug the moment a user points at their own mainnet Esplora: every
+    // bc1… read would be refused locally and their bonds would read unfunded.
+    // URL sniffing survives only as the fallback for callers that pass no
+    // network, so existing behaviour is unchanged where nothing was declared.
+    const mainnetExplorer = opts.network !== undefined
+      ? opts.network !== SIGNET
+      : /^https:\/\/(?:www\.)?mempool\.space(?:\/|$)/i.test(base);
     if (address && ((mainnetExplorer && address.startsWith("tb1")) || (!mainnetExplorer && address.startsWith("bc1")))) {
       throw new Error(`Bitcoin address network does not match explorer: ${address.slice(0, 8)}…`);
     }

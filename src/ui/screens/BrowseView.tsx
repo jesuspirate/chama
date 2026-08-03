@@ -13,6 +13,7 @@ import { useT } from "../../i18n/index.js";
 import { ReputationReadout } from "../components/ReputationReadout.js";
 import type { AggregateRatings } from "../../reputation/ratings.js";
 import { workOffersForWorker } from "../work-resume.js";
+import { isWorkListing } from "../work-resume.js";
 
 // v4.2.1: the arbiter / recruitment on-ramp is hidden for now — it pushes a
 // leader decision at brand-new users before the bond exists. ArbiterApplyForm
@@ -723,9 +724,9 @@ function groupListingsByVertical(listings: EscrowState[]): BrowseListingSection[
       icon: c.i,
       listings: listings.filter(listing =>
         c.id === "work"
-          ? listing.listingKind === "work"
+          ? isWorkListing(listing)
           : c.id === "marketplace"
-            ? listing.category === "marketplace" && listing.listingKind !== "work"
+            ? listing.category === "marketplace" && !isWorkListing(listing)
             : listing.category === c.id),
     }))
     .filter(section => section.listings.length > 0);
@@ -739,9 +740,9 @@ function countListingsByCategory(
   return [...matchingListings, ...nonMatchingListings]
     .filter(listing =>
       category === "work"
-        ? listing.listingKind === "work"
+        ? isWorkListing(listing)
         : category === "marketplace"
-          ? listing.category === "marketplace" && listing.listingKind !== "work"
+          ? listing.category === "marketplace" && !isWorkListing(listing)
           : listing.category === category)
     .length;
 }

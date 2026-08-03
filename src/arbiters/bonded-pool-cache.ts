@@ -20,7 +20,12 @@
 // few sats, so a bounded mis-payment beats silent zero-revenue. The TTL is
 // 12h — half the 144-block (~1-day) minimum bond term.
 
-import type { VerifiedBond } from "../bond-multisig/bond-announcement.js";
+import {
+  DEFAULT_BOND_ROLES,
+  type BondLineage,
+  type BondRole,
+  type VerifiedBond,
+} from "../bond-multisig/bond-announcement.js";
 
 export const BONDED_POOL_CACHE_KEY = "chama_bonded_pool_cache_v1";
 export const BONDED_POOL_CACHE_TTL_MS = 12 * 60 * 60 * 1000;
@@ -37,6 +42,19 @@ interface SerializedBond {
   claimedSats: string;
   funded: boolean;
   active: boolean;
+  // A0: these four were previously DROPPED on the round-trip, so a cache-served
+  // bond lost its tenure start, its explorer link, and (once A0 landed) would
+  // have lost its declared roles — silently re-conscripting a merchant into the
+  // arbiter pool on any cache hit. All optional: an entry written before A0
+  // deserializes with them absent, which every reader already tolerates.
+  fundedAtHeight?: number;
+  fundingTxid?: string;
+  roles?: BondRole[];
+  lineage?: BondLineage;
+  tenureFromHeight?: number;
+  lineageProven?: { provenHops: number; claimedHops: number };
+  announcedAt?: number;
+  ownerXonly?: string;
 }
 
 interface CacheEntry {
@@ -86,6 +104,18 @@ function serializeBond(b: VerifiedBond): SerializedBond {
     claimedSats: b.claimedSats.toString(),
     funded: b.funded,
     active: b.active,
+    ...(typeof b.fundedAtHeight === "number" ? { fundedAtHeight: b.fundedAtHeight } : {}),
+    ...(b.fundingTxid ? { fundingTxid: b.fundingTxid } : {}),
+    ...(b.roles && b.roles.length ? { roles: [...b.roles] } : {}),
+    ...(b.lineage ? { lineage: { ...b.lineage } } : {}),
+    // Caching the RESOLVED tenure is the point of caching at all here: the walk
+    // costs on-chain reads, and a cache that dropped it would silently reset
+    // every renewing arbiter's age on every cache hit — the exact bug A1 exists
+    // to fix, reintroduced through the back door.
+    ...(typeof b.tenureFromHeight === "number" ? { tenureFromHeight: b.tenureFromHeight } : {}),
+    ...(b.lineageProven ? { lineageProven: { ...b.lineageProven } } : {}),
+    ...(typeof b.announcedAt === "number" ? { announcedAt: b.announcedAt } : {}),
+    ...(b.ownerXonly ? { ownerXonly: b.ownerXonly } : {}),
   };
 }
 
@@ -102,6 +132,17 @@ function deserializeBond(s: SerializedBond): VerifiedBond | null {
       claimedSats: BigInt(s.claimedSats),
       funded: !!s.funded,
       active: !!s.active,
+      // Absent (pre-A0 entry) ⇒ the arbiter default, matching how an
+      // announcement without `roles` parses. Never infer `merchant` from
+      // missing data: opting out of the pool must always be explicit.
+      roles: Array.isArray(s.roles) && s.roles.length ? [...s.roles] : [...DEFAULT_BOND_ROLES],
+      ...(typeof s.fundedAtHeight === "number" ? { fundedAtHeight: s.fundedAtHeight } : {}),
+      ...(s.fundingTxid ? { fundingTxid: s.fundingTxid } : {}),
+      ...(s.lineage ? { lineage: { ...s.lineage } } : {}),
+      ...(typeof s.tenureFromHeight === "number" ? { tenureFromHeight: s.tenureFromHeight } : {}),
+      ...(s.lineageProven ? { lineageProven: { ...s.lineageProven } } : {}),
+      ...(typeof s.announcedAt === "number" ? { announcedAt: s.announcedAt } : {}),
+      ...(s.ownerXonly ? { ownerXonly: s.ownerXonly } : {}),
     };
   } catch {
     return null;

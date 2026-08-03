@@ -36,11 +36,12 @@ import {
   type ReclaimDestinationChoice,
   type ReclaimDestinationKind,
 } from "../../bond-multisig/commitment-bond.js";
-import { MAINNET as BOND_NETWORK } from "../../bond-multisig/multisig.js";
+import { BOND_NETWORK, BOND_NETWORK_IS_TEST } from "../../bond-multisig/bond-network.js";
 import { getCommunityBySlug } from "../../communities/registry.js";
 import { getAllPickerCountries, type PickerCountry } from "../../communities/countries.js";
 import { countryMatchesSearch, countrySubline, resolveCountryCommunitySlug } from "../../communities/country-resolve.js";
 import { getUserCommunitySlug } from "../../communities/storage.js";
+import type { BondRole } from "../../bond-multisig/bond-announcement.js";
 
 const QRCode = lazy(() => import("../QRCode.js"));
 
@@ -91,7 +92,7 @@ export interface BondCeremonyModalProps {
   /** Publish the chain-verifiable kind:38135 bond announcement FOR a community —
    *  the data source for that community's live-chama liveness. Optional so the
    *  ceremony still renders where a caller hasn't wired it. */
-  publishBondAnnouncement?: (bondId: string, community: string) => Promise<{ community: string; address: string }>;
+  publishBondAnnouncement?: (bondId: string, community: string, roles?: readonly BondRole[]) => Promise<{ community: string; address: string }>;
   onClose: () => void;
 }
 
@@ -337,6 +338,9 @@ export function BondCeremonyModal({ createCommitmentBond, checkCommitmentFunding
     if (recForBond && tip != null && tip >= recForBond.bond.lockUntil) return;
     autoAnnouncedRef.current.add(bondId);
     const slug = getUserCommunitySlug();
+    // Auto-announce carries no role, so it defaults to arbiter — the historical
+    // behaviour. A merchant declares themselves deliberately in the panel below
+    // and re-announces; nobody is opted out of the pool by an automatic event.
     void publishBondAnnouncement(bondId, slug)
       .then(() => { setAnnounceSlug(slug); setAnnouncedTo(getCommunityBySlug(slug)?.displayName ?? slug); })
       .catch(() => { autoAnnouncedRef.current.delete(bondId); });
@@ -346,12 +350,18 @@ export function BondCeremonyModal({ createCommitmentBond, checkCommitmentFunding
     if (!publishBondAnnouncement) return;
     setAnnouncing(true); setAnnounceErr(null); setAnnouncedTo(null);
     try {
-      const r = await publishBondAnnouncement(bondId, slug);
+      const r = await publishBondAnnouncement(bondId, slug, merchantOnly ? ["merchant"] : ["arbiter"]);
       setAnnouncedTo(getCommunityBySlug(r.community)?.displayName ?? r.community);
     } catch (e: any) {
       setAnnounceErr(e?.message || t("bond.announceFailed"));
     } finally { setAnnouncing(false); }
   };
+
+  // A2 merchant lane: a shopkeeper who wants painless listing renewal should
+  // not be conscripted as a judge. Declaring `merchant` keeps the bond out of
+  // the assignable arbiter pool. Default OFF — arbiter is what every bond has
+  // always been, and opting out has to be a deliberate, signed statement.
+  const [merchantOnly, setMerchantOnly] = useState(false);
 
   const closeable = view.kind !== "working";
 
@@ -367,6 +377,23 @@ export function BondCeremonyModal({ createCommitmentBond, checkCommitmentFunding
       onClick={(e) => { if (backdropPressRef.current && e.target === e.currentTarget && closeable) onClose(); backdropPressRef.current = false; }}>
       <div style={{ background: T.card, border: `1px solid ${T.borderHi}`, borderRadius: T.r, width: "100%", maxWidth: 380, maxHeight: "90vh", overflow: "auto", padding: 20 }}>
         <Header onClose={onClose} closeable={closeable} />
+
+        {/* ⚠ A bond screen that quietly changed chains would be the single most
+            dangerous thing in this app. If the dev-only signet override is on,
+            it says so before anything else on the screen, and says which bonds
+            are hidden rather than letting them look deleted. */}
+        {BOND_NETWORK_IS_TEST && (
+          <div style={{
+            padding: "10px 12px", marginBottom: 14, borderRadius: T.rs,
+            background: `${T.amber}14`, border: `1px solid ${T.amber}55`,
+            color: T.amber, fontFamily: T.sans, fontSize: 12.5, lineHeight: 1.5,
+          }}>
+            <strong>⚠ Signet test bonds — dev build only.</strong> Every bond here
+            is test coins. Your real mainnet bonds are untouched and hidden while
+            this is on; clear <code style={{ fontFamily: T.mono }}>chama_test_bond_signet</code> and
+            reload to get them back.
+          </div>
+        )}
 
         {view.kind === "list" && (
           <BondList
@@ -535,6 +562,7 @@ export function BondCeremonyModal({ createCommitmentBond, checkCommitmentFunding
                 <AnnounceBond
                   slug={announceSlug} onSlug={setAnnounceSlug}
                   announcing={announcing} announcedTo={announcedTo} error={announceErr}
+                  merchantOnly={merchantOnly} onMerchantOnly={setMerchantOnly}
                   onAnnounce={() => void announce(view.bondId, announceSlug)}
                 />
               )}
@@ -909,12 +937,14 @@ function ArbiterDuties() {
 // Picking a country resolves it to a stable community slug (persisting a generated
 // shell so it's real). One publish button; success is a calm line, never a modal.
 // Re-announcing is fine (replaceable event — it just refreshes).
-function AnnounceBond({ slug, onSlug, announcing, announcedTo, error, onAnnounce }: {
+function AnnounceBond({ slug, onSlug, announcing, announcedTo, error, merchantOnly, onMerchantOnly, onAnnounce }: {
   slug: string;
   onSlug: (slug: string) => void;
   announcing: boolean;
   announcedTo: string | null;
   error: string | null;
+  merchantOnly: boolean;
+  onMerchantOnly: (v: boolean) => void;
   onAnnounce: () => void;
 }) {
   const { t } = useT();
@@ -959,6 +989,31 @@ function AnnounceBond({ slug, onSlug, announcing, announcedTo, error, onAnnounce
           ))}
         </div>
       )}
+      {/* A2 merchant lane. Off by default: an arbiter bond is what every bond
+          has always been, and it is also the only one that EARNS — the 0.25%
+          insurance premium is an arbiter's return on their stake. So the cost
+          of opting out is stated here rather than discovered later. */}
+      <label style={{
+        display: "flex", alignItems: "flex-start", gap: 9, marginBottom: 10,
+        background: T.surface, border: `1px solid ${T.border}`,
+        borderRadius: T.rs, padding: "9px 11px", cursor: announcing ? "default" : "pointer",
+      }}>
+        <input
+          type="checkbox"
+          checked={merchantOnly}
+          disabled={announcing}
+          onChange={(e) => onMerchantOnly(e.target.checked)}
+          style={{ marginTop: 2 }}
+        />
+        <span style={{ minWidth: 0 }}>
+          <span style={{ display: "block", fontSize: 11.5, color: T.text, fontFamily: T.mono, lineHeight: 1.45 }}>
+            {t("bond.merchantOnly")}
+          </span>
+          <span style={{ display: "block", fontSize: 10, color: T.muted, fontFamily: T.mono, lineHeight: 1.5, marginTop: 3 }}>
+            {t("bond.merchantOnlyBody")}
+          </span>
+        </span>
+      </label>
       <button onClick={onAnnounce} disabled={announcing || !slug} style={{ ...secondaryBtn, marginBottom: 0, borderColor: T.accent, color: T.accent }}>
         {announcing ? t("bond.announcing") : announcedTo ? t("bond.announceAgain") : t("bond.announceMyBond")}
       </button>

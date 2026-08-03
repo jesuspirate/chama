@@ -191,4 +191,18 @@ export const app: Record<string, string> = {
   "app.walletDisconnectedReconnect":
     "La billetera de Chama se desconectó. Toca Reconectar e inténtalo de nuevo.",
   "app.yourFederation": "tu federación",
+  "edit.title": "Edita tu anuncio",
+  "edit.description": "DESCRIPCIÓN",
+  "edit.priceSats": "PRECIO (SATS)",
+  "edit.priceFiat": "PRECIO ({currency})",
+  "edit.stock": "STOCK",
+  "edit.save": "Guardar cambios",
+  "edit.saving": "Guardando…",
+  "edit.saved": "Anuncio actualizado.",
+  "edit.savedOldRemains": "Actualizado. La versión anterior puede seguir visible unas horas hasta que venza.",
+  "edit.failed": "No se pudieron guardar esos cambios.",
+  "edit.badAmount": "Ingresa un precio mayor que cero.",
+  "edit.buyerHolding": "Un comprador está reservando esta oferta ahora mismo, al precio que vio. Espera unos minutos a que venza su reserva y luego edita.",
+  "edit.blocked": "Esto no se puede editar — solo tus propios anuncios activos y sin financiar.",
+  "edit.replacesNote": "Al guardar se vuelve a publicar tu oferta: recibe un ID nuevo y se retira la anterior.",
 };

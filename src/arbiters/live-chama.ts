@@ -114,9 +114,60 @@ export function computeChamaLiveness(
 export function bondedArbitersForCommunity(bonds: readonly VerifiedBond[]): string[] {
   const set = new Set<string>();
   for (const b of bonds) {
-    if (b.funded && b.active) set.add(b.npub.toLowerCase());
+    // A0: a bond may declare itself a MERCHANT license only — a storefront that
+    // renews without its holder being conscripted as a judge. `roles` defaults
+    // to ["arbiter"], so every bond announced before A0 is unaffected.
+    if (b.funded && b.active && declaresArbiterRole(b)) set.add(b.npub.toLowerCase());
   }
   return [...set];
+}
+
+/** True when the bond licenses dispute arbitration. Tolerates a bond that
+ *  predates `roles` (undefined ⇒ arbiter), so an older cache entry or an older
+ *  announcement can never silently unseat a real arbiter. */
+export function declaresArbiterRole(bond: Pick<VerifiedBond, "roles">): boolean {
+  return !bond.roles || bond.roles.length === 0 || bond.roles.includes("arbiter");
+}
+
+// ── A1 (5.8) COHORT CONTEXT ─────────────────────────────────────────────────
+//
+// A Sybil operator does not post one bond, they post several, and they tend to
+// post them together. That leaves a signature no individual bond can show:
+// a cluster of announcements in one community in one week.
+//
+// ⚠ RULE (locked with Jetty): PUBLISH THE NUMBER, DO NOT DRAW THE CONCLUSION.
+// This is not a detector and must never be rendered as an accusation. Seven
+// bonds in one week is what a Sybil looks like AND what a successful community
+// recruitment drive looks like — those are indistinguishable from here, and the
+// people in the community can tell them apart while an algorithm cannot. So we
+// state the fact beside the arbiter and stop talking.
+
+/** A week, in seconds — the cohort bucket. Wide enough to catch a batch posted
+ *  over a few days, narrow enough that an ordinary community rarely fills one. */
+export const COHORT_WINDOW_SECONDS = 7 * 24 * 60 * 60;
+
+export interface BondCohort {
+  /** Other bonds announced in this community within the window. Excludes the
+   *  subject, and counts each npub once (a re-announcement is not a peer). */
+  peerCount: number;
+  windowSeconds: number;
+}
+
+/** Count the subject's announcement cohort. Pure; takes the parsed
+ *  announcements the caller already fetched for the community. */
+export function bondCohort(
+  subject: { npub: string; createdAt: number },
+  communityAnnouncements: readonly { npub: string; createdAt: number }[],
+  windowSeconds: number = COHORT_WINDOW_SECONDS,
+): BondCohort {
+  const subjectNpub = subject.npub.toLowerCase();
+  const peers = new Set<string>();
+  for (const a of communityAnnouncements) {
+    const npub = a.npub.toLowerCase();
+    if (npub === subjectNpub) continue;
+    if (Math.abs(a.createdAt - subject.createdAt) <= windowSeconds) peers.add(npub);
+  }
+  return { peerCount: peers.size, windowSeconds };
 }
 
 /** Human readout for the onboarding chip — "3 arbiters · 96% · ~60-day bonds".
@@ -154,6 +205,16 @@ export function bondTenureBlocks(
   if (typeof fundedAtHeight !== "number" || typeof tipHeight !== "number") return null;
   if (!Number.isFinite(fundedAtHeight) || !Number.isFinite(tipHeight)) return null;
   return Math.max(0, tipHeight - fundedAtHeight);
+}
+
+/** A1: a bond's tenure INCLUDING proven renewals. `tenureFromHeight` is stamped
+ *  by the lineage walk; without it this is byte-identical to measuring the
+ *  current UTXO, so an unwalked bond under-reports rather than over-reports. */
+export function verifiedBondTenureBlocks(
+  bond: Pick<VerifiedBond, "fundedAtHeight" | "tenureFromHeight">,
+  tipHeight: number | null | undefined,
+): number | null {
+  return bondTenureBlocks(bond.tenureFromHeight ?? bond.fundedAtHeight, tipHeight);
 }
 
 /** Coarse tenure tiers. Few, widely spaced — a dozen badges mean nothing, and

@@ -86,6 +86,33 @@ export enum Role {
 export const JOIN_HOLD_SECONDS = 5 * 60;
 export const JOIN_HOLD_LOCK_GRACE_SECONDS = 2 * 60;
 
+// ⭐ ON-CHAIN NEEDS A LONGER SEAT — and this is a correctness fix, not comfort.
+//
+// An on-chain funder leaves the app, sends from another wallet, and waits for
+// ONE CONFIRMATION before a LOCK can be published. The reducer refuses a LOCK
+// that does not name a buyer, and a lapsed hold un-seats one. With a 5-minute
+// hold against a ~10-minute mainnet block, the confirmation the funder is
+// waiting for arrives AFTER the seat expires — essentially always. The sats
+// then sit at the escrow address until the CLTV refund leaf matures.
+//
+// 90 minutes is sized against a BAD-LUCK block, not an average one: with
+// Poisson arrivals a single block exceeds 30 minutes ~5% of the time and 60
+// minutes ~0.25%. Long enough that seat expiry is never the thing that fails;
+// short enough that an abandoned on-chain listing frees the same afternoon.
+//
+// ⚠ Deliberately NOT a consensus change. The hold deadline is carried in the
+// JOIN payload (`holdExpiresAt`) and every client — including ones that know
+// nothing about on-chain escrow — honours the wire value verbatim. These
+// constants only decide what the JOINING client stamps. See
+// design/mockups/chama-onchain-join-hold-brief.md.
+export const ONCHAIN_JOIN_HOLD_SECONDS = 90 * 60;
+
+/** Hold length for a trade, from its CREATE-stamped escrow mode. Pure: every
+ *  client replaying the same chain gets the same answer. */
+export function joinHoldSecondsFor(escrowMode?: string): number {
+  return escrowMode === "onchain" ? ONCHAIN_JOIN_HOLD_SECONDS : JOIN_HOLD_SECONDS;
+}
+
 // ── Vote Outcomes ─────────────────────────────────────────────────────────
 
 export enum Outcome {
@@ -130,6 +157,9 @@ export enum EscrowEventKind {
    *  (premiums are paid at settlement). MUST stay out of
    *  EVENT_KIND_TRANSITIONS. */
   PREMIUM = 38113,
+  /** On-chain settlement PSBT transport. NON-CONSENSUS — its own state
+   *  array, never eventChain, and accepted at APPROVED and after. */
+  SETTLEMENT = 38114,
 }
 
 // ── Valid State Transitions ───────────────────────────────────────────────
@@ -140,7 +170,7 @@ export enum EscrowEventKind {
 export const VALID_TRANSITIONS: ReadonlyMap<EscrowStatus, ReadonlySet<EscrowStatus>> = new Map([
   [EscrowStatus.CREATED,   new Set([EscrowStatus.LOCKED, EscrowStatus.CANCELLED, EscrowStatus.EXPIRED])],
   [EscrowStatus.LOCKED,    new Set([EscrowStatus.APPROVED, EscrowStatus.EXPIRED])],
-  [EscrowStatus.APPROVED,  new Set([EscrowStatus.CLAIMED])],
+  [EscrowStatus.APPROVED,  new Set([EscrowStatus.CLAIMED, EscrowStatus.COMPLETED])],
   [EscrowStatus.CLAIMED,   new Set([EscrowStatus.COMPLETED])],
   // Terminal — no transitions out
   [EscrowStatus.COMPLETED, new Set()],
@@ -158,7 +188,7 @@ export const EVENT_KIND_TRANSITIONS: ReadonlyMap<EscrowEventKind, { from: Escrow
   // VOTE doesn't directly transition — RESOLVE does when 2-of-3 is met
   [EscrowEventKind.RESOLVE,  { from: [EscrowStatus.LOCKED],   to: EscrowStatus.APPROVED }],
   [EscrowEventKind.CLAIM,    { from: [EscrowStatus.APPROVED], to: EscrowStatus.CLAIMED }],
-  [EscrowEventKind.COMPLETE, { from: [EscrowStatus.CLAIMED],  to: EscrowStatus.COMPLETED }],
+  [EscrowEventKind.COMPLETE, { from: [EscrowStatus.CLAIMED, EscrowStatus.APPROVED], to: EscrowStatus.COMPLETED }],
   [EscrowEventKind.CANCEL,   { from: [EscrowStatus.CREATED],  to: EscrowStatus.CANCELLED }],
 ]);
 
@@ -217,12 +247,28 @@ export const TAGS = {
  *               and registry matching.
  */
 /** Content of a CREATE event */
+/** A4 — the two sides of Work.
+ *
+ *  `"work"` is a WORKER's offer ("I can fix bicycles"). `"work-request"` is a
+ *  CLIENT's want-ad ("I need a bicycle fixed"). Both are marketplace escrows
+ *  with identical money semantics — the client funds, the worker receives — so
+ *  neither changes a single line of the reducer.
+ *
+ *  ⚠ The value `"work"` keeps its exact historical meaning. Every Work listing
+ *  published before A4 is a worker offer, and stays one, with no migration.
+ *  A want is a listing with the roles flipped; that is the whole trick, and it
+ *  is why matching both directions costs a scoring change rather than a
+ *  protocol change. */
+export type WorkListingKind = "work" | "work-request";
+
+import type { TrancheRef } from "./tranche.js";
+
 export interface CreatePayload {
   type: "escrow:create";
   /** Public product treatment layered over the stable marketplace money
    *  semantics. Work offers remain marketplace escrows (client funds, worker
    *  receives) while rendering and syndicating as a labor listing. */
-  listingKind?: "work";
+  listingKind?: WorkListingKind;
   description: string;
   /** Product photo for a single marketplace listing. */
   imageDataUrl?: string;
@@ -255,6 +301,22 @@ export interface CreatePayload {
    *  Informational metadata only — listing legibility + future Browse filtering,
    *  never escrow logic. Additive + display-only; same posture as `country`. */
   billType?: string;
+  /** A4: Work category id (e.g. "repair-trades"), the join key the guided
+   *  matcher compares a worker's offer against a client's request. Optional and
+   *  informational — it never touches escrow logic — but a listing without one
+   *  matches on the weaker signals only. */
+  workCategory?: string;
+  /** Tranching: which slice of a larger trade this escrow is. Informational —
+   *  the reducer stores it and reasons about nothing. Sequencing and the safety
+   *  gate live in escrow-engine/tranche.ts, entirely client-side. */
+  tranche?: TrancheRef;
+  /** Where this trade's escrow will live. Absent ⇒ "ecash" (every historical
+   *  trade). Stamped at CREATE so a client can refuse BEFORE funding — see
+   *  EscrowMode. */
+  escrowMode?: EscrowMode;
+  /** The CREATOR's on-chain escrow key. They never publish a JOIN, so their key
+   *  rides here instead. Same derivation and same reasons as JoinPayload's. */
+  escrowXonly?: string;
   /** Fedimint federation invite code */
   mintUrl: string;
   /** Platform fee in basis points */
@@ -324,6 +386,17 @@ export interface CreatePayload {
 export interface JoinPayload {
   type: "escrow:join";
   role: Role;
+  /** Tier 2.1: this party's on-chain escrow key (32-byte x-only, hex).
+   *
+   *  ⚠ NOT their Nostr pubkey. Derived from the BIP-39 seed instead, because an
+   *  extension or Amber user cannot sign a Bitcoin sighash with their nsec, and
+   *  reusing the identity key would weld a public trading history to specific
+   *  UTXOs. See bond-multisig/onchain-escrow-funding.ts.
+   *
+   *  Published in JOIN because an on-chain escrow ADDRESS cannot be computed
+   *  until all three keys are known — including the arbiter's, who must
+   *  therefore JOIN before funding. Absent on every ecash trade. */
+  escrowXonly?: string;
   /** Optional: arbiter's fee terms */
   arbiterFeeMsats?: number;
   joinedAt: number;
@@ -418,10 +491,55 @@ export interface HandleEnvelope {
  *  multi-party payout path can enforce ambient/dispute fees without
  *  making Fedi claims show the wrong amount.
  */
+/** Where a trade's escrow actually lives.
+ *
+ *  ⚠ THIS IS A CONSENSUS FIELD. It belongs in CREATE, not LOCK, deliberately:
+ *  by the time a LOCK exists the money has already moved, so a client that
+ *  learns the substrate only then has learned it too late to refuse. Stamped at
+ *  CREATE, every client knows before funding which shape of LOCK to expect —
+ *  and can refuse to fund a trade it does not understand.
+ *
+ *  Absent ⇒ `"ecash"`. Every trade ever published is an ecash trade, so the
+ *  default must reproduce that exactly. */
+export type EscrowMode = "ecash" | "onchain";
+
+/** The on-chain escrow's terms, carried by an on-chain LOCK.
+ *
+ *  ⭐ EVERY FIELD IS AN INPUT TO THE ADDRESS. That is the point: a recipient
+ *  rebuilds the address locally from these and refuses if it does not match the
+ *  claimed one (`onchainEscrowAddressMatches`). So this is not "trust me, the
+ *  money is at X" — it is "here is how to derive X yourself", and a tampered
+ *  field produces a different address rather than a stolen payment. */
+export interface OnchainLockTerms {
+  /** The escrow address. ADVISORY — always recomputed, never trusted. */
+  address: string;
+  /** Funding outpoint, so any client can confirm the deposit itself. */
+  fundingTxid: string;
+  fundingVout: number;
+  /** Confirmed sats at the escrow output. */
+  amountSats: string;
+  /** 32-byte x-only keys, hex. The three spending identities. */
+  buyerXonly: string;
+  sellerXonly: string;
+  arbiterXonly: string;
+  /** Which principal the refund leaf pays. */
+  funder: "buyer" | "seller";
+  /** Absolute block height the refund leaf matures at. */
+  refundLockUntil: number;
+  /** Relative blocks the dispute leaf is held back (0 = no appeal window). */
+  disputeCsvBlocks: number;
+  /** "mainnet" | "signet" — a cross-network address must never validate. */
+  network: "mainnet" | "signet";
+}
+
 export interface LockPayload {
   type: "escrow:lock";
-  /** Hash of the full ecash notes (for verification) */
+  /** ⚠ ECASH LOCKS ONLY. Empty string on an on-chain lock — there are no notes.
+   *  Read it through the lock's `mode`, never on its own truthiness. */
   notesHash: string;
+  /** ⭐ Present ONLY on an on-chain lock. Its presence is what makes this a
+   *  Tier-2 lock; absent ⇒ the historical ecash lock, byte-identical. */
+  onchain?: OnchainLockTerms;
   /** SSS shares. Encryption depends on `sharePolicy`:
    *   - absent / legacy: DUAL-ENCRYPTED — each share NIP-44-encrypted to ALL
    *     three participants, so any participant can decrypt any share (the
@@ -639,6 +757,20 @@ export interface PremiumPayload {
   sentAt: number;
 }
 
+/** Content of a SETTLEMENT event (kind 38114). The whole payload is carried
+ *  inside the client's per-recipient NIP-44 envelope; the parser only sees it
+ *  after local decryption. */
+export interface SettlementPayload {
+  type: "escrow:settlement";
+  /** Base64 PSBT. It is untrusted wire input until locally recomputed and
+   *  verified against the trade's own on-chain terms. */
+  psbt: string;
+  leaf: "coop" | "arbiter";
+  role: Role;
+  /** True only when the PSBT contains enough signatures to finalize. */
+  final?: boolean;
+}
+
 /** Content of a SUBSCRIBE event — buyer creates subscription terms */
 export interface SubscribePayload {
   type: "escrow:subscribe";
@@ -704,6 +836,7 @@ export type EscrowPayload =
   | CancelPayload
   | ChatPayload
   | PremiumPayload
+  | SettlementPayload
   | SubscribePayload
   | PeriodReleasePayload;
 
@@ -751,7 +884,7 @@ export interface EscrowState {
   description: string;
   /** Optional public product treatment. Absent keeps every historical listing
    *  byte-for-byte on its existing marketplace presentation. */
-  listingKind?: "work";
+  listingKind?: WorkListingKind;
   /** Product photo for a single marketplace listing. */
   imageDataUrl?: string;
   /** Ordered listing/store gallery. imageDataUrl remains the legacy cover. */
@@ -786,6 +919,16 @@ export interface EscrowState {
   /** v4.1 (#12): CBP bill-type id, carried for the card/detail display. Optional,
    *  display-only. */
   billType?: string | null;
+  /** A4: Work category id, carried for the card/detail display and for matching. */
+  workCategory?: string | null;
+  /** Tranching: this escrow's slice of a larger trade, when it is one. */
+  tranche?: TrancheRef;
+  /** Where this trade's escrow lives. Defaulted to "ecash" by the reducer, so
+   *  readers never have to handle undefined. */
+  escrowMode: EscrowMode;
+  /** Tier 2.1: each party's published on-chain escrow key, by role. All three
+   *  are needed before an escrow address exists. */
+  escrowKeys?: Partial<Record<Role, string>>;
   /** Fedimint mint URL / invite code */
   mintUrl: string;
 
@@ -874,6 +1017,9 @@ export interface EscrowState {
      *  to its holder (claim reconstructs from own LOCK share + a vote-carried
      *  share). Absent ⇒ legacy dual-encrypted (claim picks any two). */
     sharePolicy?: "holder-only-v1";
+    /** Tier 2.1: the on-chain escrow's terms, when this lock is on-chain.
+     *  Absent ⇒ an ecash lock. Read the MODE, not this field's truthiness. */
+    onchain?: OnchainLockTerms;
     /** Arbiter substitution: true when the arbiter share was encrypted to the
      *  escrow's deterministic priority order (assigned + 2 backups) so a pool
      *  backup may cast the arbiter vote after the grace window. Absent ⇒
@@ -939,6 +1085,10 @@ export interface EscrowState {
    *  separate from state transitions — like chatMessages. Optional so
    *  pre-premium state literals stay valid; read with `?? []`. */
   premiumNotes?: ParsedEscrowEvent<PremiumPayload>[];
+
+  /** On-chain settlement PSBT messages (kind 38114). Non-consensus and kept
+   *  outside eventChain so transport can never change escrow replay. */
+  settlements?: ParsedEscrowEvent<SettlementPayload>[];
 }
 
 export function roleUsesJoinHold(role: Role, initiatorRole: Role): boolean {
@@ -947,6 +1097,12 @@ export function roleUsesJoinHold(role: Role, initiatorRole: Role): boolean {
 
 export function joinHoldExpiresAt(joinedAt: number): number {
   return joinedAt + JOIN_HOLD_SECONDS;
+}
+
+/** Mode-aware hold deadline. `escrowMode` absent/ecash ⇒ byte-identical to
+ *  `joinHoldExpiresAt`, so every existing trade is unaffected. */
+export function joinHoldExpiresAtFor(joinedAt: number, escrowMode?: string): number {
+  return joinedAt + joinHoldSecondsFor(escrowMode);
 }
 
 export function getEffectiveParticipantAt(

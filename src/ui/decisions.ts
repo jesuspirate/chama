@@ -34,7 +34,9 @@ import {
 import { arbiterVotePriority, substitutionEligibleAt } from "../escrow-engine/arbiter-substitution.js";
 import { translate, getCurrentLang } from "../i18n/index.js";
 import { payoutRecipientFor } from "../escrow-engine/recipients.js";
+import { pendingOnchainArbiterPubkey } from "../notifications/trade-notifications.js";
 import type { AggregateRatings } from "../reputation/ratings.js";
+import { isWorkListing } from "./work-resume.js";
 
 // One dust line, defined in the payments layer so the UI decision code and the
 // data-layer switch guards can't drift apart (see balanceBlocksFederationSwitch).
@@ -567,6 +569,7 @@ const NEEDS_YOU_RANK = {
   claim: 4,   // APPROVED and I'm the winner — sats ready to claim
   dispute: 3, // I'm the arbiter and a dispute is open, my ruling owed
   vote: 2,    // LOCKED and I'm buyer/seller without my vote (incl. an order to deliver)
+  "arbiter-key": 1, // a buyer joined an on-chain trade; funding needs my key
   waiting: 1, // my CREATED listing has a live buyer hold — respond / lock it
 } as const;
 
@@ -606,10 +609,23 @@ function needsYouReason(
     return null;
   }
 
-  // Buyer waiting on my open listing — a live JOIN hold I should respond to.
-  if (e.status === EscrowStatus.CREATED && isSeller) {
+  if (e.status === EscrowStatus.CREATED) {
     const hold = e.joinHolds?.[Role.BUYER];
-    if (hold && hold.expiresAt > nowSec) return "waiting";
+    if (hold && hold.expiresAt > nowSec) {
+      // The exact deterministic arbiter already targeted by the OS/DM alert
+      // must also see the in-app yellow attention path. Keep this tied to the
+      // live buyer hold and the missing key: an expired reservation or an
+      // arbiter who already acted must immediately leave the queue.
+      const pendingArbiter = pendingOnchainArbiterPubkey(e);
+      if (
+        pendingArbiter
+        && samePk(pendingArbiter, userPubkey)
+        && !(e.escrowKeys ?? {})[Role.ARBITER]
+      ) return "arbiter-key";
+
+      // Buyer waiting on my open listing — a live JOIN hold I should respond to.
+      if (isSeller) return "waiting";
+    }
   }
   return null;
 }
@@ -642,6 +658,27 @@ export function selectNeedsYouTrades(inputs: {
   return ranked.map((r) => r.trade);
 }
 
+/** Add confirmed, still-unspent on-chain winner outputs to the same attention
+ * queue as claim/vote work. Chain scanning owns the truth about whether an
+ * output remains spendable; this helper only merges that verified result into
+ * the UI queue and keeps the newest completed payout first. */
+export function mergeOnchainPayoutAttention(inputs: {
+  needsYou: readonly EscrowState[];
+  escrows: Iterable<EscrowState>;
+  pendingEscrowIds: ReadonlySet<string>;
+}): EscrowState[] {
+  const activityAt = (trade: EscrowState): number => Math.max(
+    trade.createdAt || 0,
+    ...trade.eventChain.map(event => event.timestamp || 0),
+    ...(trade.settlements ?? []).map(event => event.timestamp || 0),
+  );
+  const pending = [...inputs.escrows]
+    .filter(trade => inputs.pendingEscrowIds.has(trade.id))
+    .sort((a, b) => activityAt(b) - activityAt(a) || b.id.localeCompare(a.id));
+  const seen = new Set(pending.map(trade => trade.id));
+  return [...pending, ...inputs.needsYou.filter(trade => !seen.has(trade.id))];
+}
+
 /**
  * A seller's untouched parent listing opens in inventory management. Once a
  * buyer has a live reservation, however, that same CREATED parent is an active
@@ -668,12 +705,12 @@ export function shouldOpenSellerListingManagement(inputs: {
 /** The urgency reason (if any) a trade needs the user to act on — the public
  *  accessor over the private needsYouReason so the attention hero can render a
  *  one-line "what's owed" WITHOUT reimplementing the urgency logic. Returns
- *  one of "claim" | "dispute" | "vote" | "waiting", or null. */
+ *  one of "claim" | "dispute" | "vote" | "arbiter-key" | "waiting", or null. */
 export function needsYouReasonFor(
   e: EscrowState,
   userPubkey: string,
   nowSec: number = Math.floor(Date.now() / 1000),
-): "claim" | "dispute" | "vote" | "waiting" | null {
+): "claim" | "dispute" | "vote" | "arbiter-key" | "waiting" | null {
   return needsYouReason(e, userPubkey, nowSec);
 }
 
@@ -718,9 +755,9 @@ export function shouldShowOnBrowse(inputs: {
   if (inputs.isSoldOut) return false;
   if (browseCategory === "all") return true;
   if (browseCategory === "subscription") return escrow.subscription !== null;
-  if (browseCategory === "work") return escrow.listingKind === "work";
+  if (browseCategory === "work") return isWorkListing(escrow);
   if (browseCategory === "marketplace") {
-    return escrow.category === "marketplace" && escrow.listingKind !== "work";
+    return escrow.category === "marketplace" && !isWorkListing(escrow);
   }
   return escrow.category === browseCategory;
 }

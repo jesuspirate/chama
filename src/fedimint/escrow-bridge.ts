@@ -53,9 +53,10 @@ import {
   shareIndexForRole,
   collectClaimEnvelopeCandidates,
 } from "../escrow-engine/holder-shares.js";
-import { arbiterPriorityOrderFor } from "../escrow-engine/arbiter-substitution.js";
+import { arbiterShareRecipientsFor } from "../escrow-engine/arbiter-substitution.js";
 import { getSavedHandle } from "../payments/saved-handles.js";
 import { pickArbiterFromPool, pickPreferredArbiter } from "../arbiters/pool.js";
+import { verifyBondedStamp } from "../arbiters/bonded-stamp.js";
 import { isSimModeOn } from "../sim/simMode.js";
 import { buildChamaOperationMeta, recordSatsTrace, type ChamaOperationMeta } from "../payments/sats-trace.js";
 import { receiveFediEcash } from "./fedi-internal.js";
@@ -103,6 +104,12 @@ interface LockOptions {
    *  default. Rides into the signed LOCK so backup eligibility replays
    *  identically everywhere. */
   substitutionGraceSeconds?: number;
+  /** §0.3: the caller's chain-verified bonded set for this community, when it
+   *  has one cheaply to hand (the 12h pool cache is a synchronous read — do NOT
+   *  add a blocking network fetch to the lock path for this). Absent ⇒ the
+   *  creator's unverified `bondedArbiters` stamp is IGNORED and seating falls
+   *  back to the legacy deterministic pick. */
+  verifiedBondedArbiters?: readonly string[] | null;
 }
 
 function amountMsatsForLock(state: EscrowState, selectedItems?: SelectedMenuItem[]): number {
@@ -151,7 +158,7 @@ export class EscrowFedimintBridge {
     this.signer = signer;
   }
 
-  private async prepareLockContext(escrowId: string, pinnedBuyerPubkey?: string): Promise<{
+  private async prepareLockContext(escrowId: string, opts: LockOptions = {}): Promise<{
     state: EscrowState;
     buyerPubkey: string;
     sellerPk: string;
@@ -169,6 +176,18 @@ export class EscrowFedimintBridge {
       throw new Error(
         `Cannot LOCK in state ${state.status} — this trade is no longer lockable. ` +
         `(No sats were spent.)`
+      );
+    }
+
+    // ⭐ Tier 2.1: never ecash-lock a trade created as on-chain escrow.
+    // The reducer rejects the mismatched LOCK anyway (ESCROW_MODE_MISMATCH), but
+    // that rejection happens AFTER this bridge would already have spent the
+    // locker's ecash — a refusal that costs the user their sats is not a
+    // refusal. Fail here, before any spend.
+    if ((state.escrowMode ?? "ecash") === "onchain") {
+      throw new Error(
+        "This trade uses on-chain escrow — fund the escrow address instead. " +
+        "(No sats were spent.)"
       );
     }
 
@@ -210,7 +229,7 @@ export class EscrowFedimintBridge {
     }
 
     const nowSec = Math.floor(Date.now() / 1000);
-    const buyerPubkey = resolveLockBuyerPubkey(state, nowSec, pinnedBuyerPubkey);
+    const buyerPubkey = resolveLockBuyerPubkey(state, nowSec, opts.buyerPubkey);
     if (!buyerPubkey) {
       throw new Error(
         "Cannot lock — no buyer pubkey known. The buyer must publish a JOIN " +
@@ -227,7 +246,19 @@ export class EscrowFedimintBridge {
       // The reducer JOIN gate + C1 classifier both accept this pick AND the legacy
       // one, so a mixed-version counterparty never reads it as off-assignment.
       // (Orthogonal to #37's spend/publish/stash — pure arbiter selection.)
-      ?? pickPreferredArbiter(state.communityArbiters, state.bondedArbiters, state.id, [buyerPubkey, sellerPk]);
+      // §0.3: the stamp is creator-written. A CREATE naming exactly one
+      // "bonded" key short-circuits the deterministic pick, so an attacker's
+      // stamp gets their confederate seated BY THE HONEST COUNTERPARTY'S OWN
+      // CLIENT. Only honour it against a chain-verified set; with none
+      // available we fall back to the legacy deterministic pick, which the
+      // reducer's JOIN gate and the C1 classifier both accept — so this is
+      // safe for mixed-version chains and never strands a lock.
+      ?? pickPreferredArbiter(
+        state.communityArbiters,
+        verifyBondedStamp(state.bondedArbiters, opts.verifiedBondedArbiters).effective,
+        state.id,
+        [buyerPubkey, sellerPk],
+      );
     if (!arbiterPubkey) {
       throw new Error(
         "Cannot lock — no arbiter available. The trade has no JOINed arbiter " +
@@ -275,7 +306,12 @@ export class EscrowFedimintBridge {
     // carry the deciding share if the assigned arbiter goes absent. Each pool
     // member still holds only this ONE slot, so nobody can reconstruct alone;
     // buyer/seller shares remain strictly single-holder.
-    const arbiterRecipients = arbiterPriorityOrderFor({
+    // ⚠ SHARE recipients, not the vote-priority order — see
+    // arbiterShareRecipientsFor. With a 3-member pool the old call handed a
+    // decryptable share to EVERY arbiter in the system on every trade, so a
+    // principal colluding with any one of them could redeem without a seat.
+    // Vote eligibility (reducer-gated) is deliberately unchanged.
+    const arbiterRecipients = arbiterShareRecipientsFor({
       escrowId,
       pool: state.communityArbiters ?? [],
       buyerPubkey,
@@ -428,7 +464,7 @@ export class EscrowFedimintBridge {
   }
 
   private async lockAndPublishInner(escrowId: string, opts: LockOptions = {}): Promise<EscrowState> {
-    const context = await this.prepareLockContext(escrowId, opts.buyerPubkey);
+    const context = await this.prepareLockContext(escrowId, opts);
     const amountMsats = amountMsatsForLock(context.state, opts.selectedItems);
     const meta = buildChamaOperationMeta({
       flow: "lock_spend",
@@ -541,7 +577,7 @@ export class EscrowFedimintBridge {
   }
 
   async lockAndPublishWithEcash(escrowId: string, oobNotes: string, opts: LockOptions = {}): Promise<EscrowState> {
-    const context = await this.prepareLockContext(escrowId, opts.buyerPubkey);
+    const context = await this.prepareLockContext(escrowId, opts);
     const amountMsats = amountMsatsForLock(context.state, opts.selectedItems);
     const lockBundle = await this.fedimint.createEscrowLockFromNotes(
       oobNotes,
@@ -572,6 +608,19 @@ export class EscrowFedimintBridge {
    *
    * After this, the money is in the winner's wallet.
    */
+  /** ⚠ ECASH CLAIMS ONLY. An on-chain escrow has no shares to reconstruct and
+   *  no notes to redeem — its settlement is a co-signed PSBT (S4/S5). Entering
+   *  this path with an on-chain lock would fail deep inside share decryption
+   *  with a confusing error, and any "retry" would be meaningless. Refuse at the
+   *  door with something true instead. */
+  private assertEcashSettlement(state: EscrowState): void {
+    if ((state.escrowMode ?? "ecash") === "onchain" || state.lock.onchain) {
+      throw new Error(
+        "This escrow is held on-chain — settle it by co-signing the payout transaction, not by claiming ecash."
+      );
+    }
+  }
+
   async claimAndRedeem(
     escrowId: string,
     opts: {
@@ -581,6 +630,7 @@ export class EscrowFedimintBridge {
   ): Promise<EscrowState> {
     let state = this.escrow.getState(escrowId);
     if (!state) throw new Error(`Escrow ${escrowId} not loaded`);
+    this.assertEcashSettlement(state);
 
     // Details opens immediately and refreshes the relay chain in the
     // background. On a cold/legacy trade the APPROVED/CLAIMED tail can already
@@ -984,41 +1034,26 @@ export class EscrowFedimintBridge {
     });
   }
 
-  // ── Pre-claim verification (optional but recommended) ───────────────────
-
-  /**
-   * Verify that the shares can reconstruct valid ecash
-   * BEFORE actually redeeming. Non-destructive check.
-   */
-  async verifyClaim(escrowId: string): Promise<{
-    valid: boolean;
-    amountMsats?: number;
-    error?: string;
-  }> {
-    const state = this.escrow.getState(escrowId);
-    if (!state) return { valid: false, error: "Escrow not loaded" };
-
-    const myPubkey = await this.signer.getPublicKey();
-    const myShare = this.getMyEncryptedShare(state, myPubkey);
-    const partnerShare = this.getPartnerEncryptedShare(state, myPubkey);
-
-    if (!myShare || !partnerShare) {
-      return { valid: false, error: "Cannot find 2 accessible shares" };
-    }
-
-    try {
-      const decMyShare = await this.decryptShare(myShare.encryptedShare, myShare.senderPubkey);
-      const decPartnerShare = await this.decryptShare(partnerShare.encryptedShare, partnerShare.senderPubkey);
-
-      return this.fedimint.verifyShares(
-        decMyShare,
-        decPartnerShare,
-        state.lock.notesHash!
-      );
-    } catch (e) {
-      return { valid: false, error: e instanceof Error ? e.message : String(e) };
-    }
-  }
+  // ── Pre-claim verification: REMOVED (2026-07-29) ────────────────────────
+  //
+  // ⚰️ `verifyClaim` lived here for a long time with ZERO callers, described as
+  // "optional but recommended". It was neither: it could not do the job its
+  // name implied, and nobody could call it to find out.
+  //
+  // What it actually did was reconstruct the shares and check them against the
+  // LOCK's `notesHash`. That hash is SHA-256 over the note STRING, so it stays
+  // valid forever — including after the notes have been spent. It therefore
+  // could not detect the one thing a pre-claim check exists to detect: whether
+  // the escrow still holds money. A funder who reissued their own notes
+  // (lock-custody.ts) would have sailed through it.
+  //
+  // Deleted rather than wired, because wiring it would have shipped a
+  // reassuring green check that proves nothing — worse than no check at all,
+  // since a counterparty would ship goods against it. A real liveness probe
+  // needs the federation to be asked whether the notes are spendable, and
+  // `parseNotes` is a local decode that never talks to anyone. Until that
+  // exists, detection comes from tranching (escrow-engine/tranche.ts), where a
+  // slice's claim either credits or does not.
 
   // ══════════════════════════════════════════════════════════════════════════
   // HELPERS
@@ -1086,82 +1121,6 @@ export class EscrowFedimintBridge {
     }
   }
 
-  /**
-   * Get our own encrypted share from the escrow state.
-   * The locker encrypted it to our pubkey as part of the dual-encryption map.
-   * Returns the ciphertext and the locker's pubkey (needed for NIP-44 decrypt).
-   */
-  private getMyEncryptedShare(
-    state: EscrowState,
-    myPubkey: string
-  ): { encryptedShare: string; senderPubkey: string } | null {
-    // Any share will do — they're all encrypted to every participant.
-    // Pick the first one that has a ciphertext for us.
-    for (const share of state.lock.shares.values()) {
-      const ciphertext = share.encryptedFor[myPubkey];
-      if (ciphertext) {
-        const lockEvent = state.eventChain.find(e => e.kind === 38102);
-        const senderPubkey = lockEvent?.pubkey || state.initiator.pubkey;
-        return { encryptedShare: ciphertext, senderPubkey };
-      }
-    }
-    return null;
-  }
-
-  /**
-   * Get a partner's encrypted share — someone who voted the same as the majority.
-   *
-   * In the happy path (buyer + seller agree): the winner gets both their
-   * own share plus the other agreeing voter's share.
-   *
-   * In a dispute: the winner gets their share + the arbiter's share
-   * (since the arbiter sided with them).
-   *
-   * The trick: the shares were encrypted to EACH recipient by the locker.
-   * So the winner can't directly decrypt another participant's share.
-   * Instead, the majority voters need to RE-ENCRYPT their shares to the
-   * winner after the vote resolves. This is handled by a share-exchange
-   * step that happens after RESOLVE and before CLAIM.
-   *
-   * For the MVP: we assume the escrow client handles share exchange
-   * via NIP-44 DMs between majority voters. The bridge just reads
-   * whatever shares are available in state.lock.shares.
-   */
-  private getPartnerEncryptedShare(
-    state: EscrowState,
-    myPubkey: string
-  ): { encryptedShare: string; senderPubkey: string } | null {
-    if (!state.resolvedOutcome || !state.resolvedMajority) return null;
-
-    // Find the other voter in the majority who isn't me
-    const myRole = this.getRoleForPubkey(state, myPubkey);
-    if (!myRole) return null;
-
-    const partnerRole = state.resolvedMajority.find(r => r !== myRole);
-    if (!partnerRole) return null;
-
-    const partnerPubkey = state.participants[partnerRole];
-    if (!partnerPubkey) return null;
-
-    // Look for any share where the partner has an entry in encryptedFor.
-    // Under dual-encryption any share object contains a ciphertext for
-    // every participant (including partner), so we iterate until we find
-    // the partner's ciphertext.
-    for (const share of state.lock.shares.values()) {
-      const ciphertext = share.encryptedFor[partnerPubkey];
-      if (ciphertext) {
-        return { encryptedShare: ciphertext, senderPubkey: partnerPubkey };
-      }
-    }
-    return null;
-  }
-
-  private getRoleForPubkey(state: EscrowState, pubkey: string): Role | null {
-    if (state.participants[Role.BUYER] === pubkey) return Role.BUYER;
-    if (state.participants[Role.SELLER] === pubkey) return Role.SELLER;
-    if (state.participants[Role.ARBITER] === pubkey) return Role.ARBITER;
-    return null;
-  }
 
   // ── Wallet passthrough: used by Fund Wallet modal ──────────────────────
   // These delegate to FedimintClient and are exposed on the bridge so the

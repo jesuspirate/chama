@@ -193,4 +193,18 @@ export const app: Record<string, string> = {
   "app.walletDisconnectedReconnect":
     "Portefeuille Chama déconnecté. Touchez Reconnecter et réessayez.",
   "app.yourFederation": "votre fédération",
+  "edit.title": "Modifier votre annonce",
+  "edit.description": "DESCRIPTION",
+  "edit.priceSats": "PRIX (SATS)",
+  "edit.priceFiat": "PRIX ({currency})",
+  "edit.stock": "STOCK",
+  "edit.save": "Enregistrer",
+  "edit.saving": "Enregistrement…",
+  "edit.saved": "Annonce mise à jour.",
+  "edit.savedOldRemains": "Mise à jour. L'ancienne version peut rester visible quelques heures jusqu'à son expiration.",
+  "edit.failed": "Impossible d'enregistrer ces modifications.",
+  "edit.badAmount": "Saisissez un prix supérieur à zéro.",
+  "edit.buyerHolding": "Un acheteur réserve cette offre en ce moment, au prix qu'il a vu. Attendez quelques minutes que sa réservation expire, puis modifiez.",
+  "edit.blocked": "Impossible à modifier — uniquement vos propres annonces actives et non financées.",
+  "edit.replacesNote": "Enregistrer republie votre offre : elle reçoit un nouvel identifiant et l'ancienne est retirée.",
 };

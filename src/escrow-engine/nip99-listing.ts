@@ -63,7 +63,7 @@ export function buildNip99ListingEvent(args: {
   if (!isNip99StoreListing(payload)) return null;
 
   const title = listingTitle(payload);
-  const isWork = payload.listingKind === "work";
+  const isWork = payload.listingKind === "work" || payload.listingKind === "work-request";
   const tags: string[][] = [
     ["d", escrowId],
     ["title", title],

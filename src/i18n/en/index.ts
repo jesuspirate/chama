@@ -17,9 +17,12 @@ import { labels } from "./labels.js";
 import { me } from "./me.js";
 import { nav } from "./nav.js";
 import { notify } from "./notify.js";
+import { onchain } from "./onchain.js";
 import { picker } from "./picker.js";
 import { recovery } from "./recovery.js";
 import { trade } from "./trade.js";
+import { tranche } from "./tranche.js";
+import { work } from "./work.js";
 
 export const en: Record<string, string> = {
   ...app,
@@ -37,8 +40,11 @@ export const en: Record<string, string> = {
   ...labels,
   ...me,
   ...nav,
+  ...onchain,
   ...notify,
   ...picker,
   ...recovery,
   ...trade,
+  ...tranche,
+  ...work,
 };

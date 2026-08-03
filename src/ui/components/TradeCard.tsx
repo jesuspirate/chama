@@ -32,6 +32,8 @@ import {
 } from "../amount-display.js";
 import { useT, type TFunc } from "../../i18n/index.js";
 import { SwipeImageGallery } from "./SwipeImageGallery.js";
+import { isWorkListing, isWorkOffer, isWorkRequest } from "../work-resume.js";
+import { ESCROW_NETWORK_LABEL } from "../../bond-multisig/onchain-escrow.js";
 
 // v0.2.0 item 4: variant="non-matching" applies an amber tint per
 // chama_browse_amber_tint_sorted. Quiet, not alarmist — it's a
@@ -285,7 +287,7 @@ export function TradeCard({
                   seller can tell the persistent shopfront apart from a live sale
                   in the trade list. The emoji rides the label; other verticals
                   keep the CAT_ICON glyph. */}
-              {state.listingKind === "work" ? t("card.categoryWork")
+              {isWorkListing(state) ? t("card.categoryWork")
                 : isParentStorefront(state) ? t("card.categoryStorefront")
                 : isChildOrder(state) ? t("card.categoryOrder")
                 : state.category === "marketplace" ? t("card.categorySingleListing")
@@ -294,6 +296,24 @@ export function TradeCard({
                     {shortCategoryLabel(state.category, t)}
                   </>}
             </span>
+            {/* ⛓ Which substrate holds this trade's money. Shown on the CARD
+                because a tester (and a trader) should be able to tell an
+                on-chain escrow from an ecash one without opening it — and
+                because on a signet build, "which network is this?" is the first
+                question anyone asks. */}
+            {state.escrowMode === "onchain" && (
+              <span style={{
+                display: "inline-flex", alignItems: "center", gap: 4,
+                fontSize: 10, padding: "3px 8px", borderRadius: 999,
+                background: ESCROW_NETWORK_LABEL === "signet" ? `${T.amber}1e` : `${T.accent}1e`,
+                color: ESCROW_NETWORK_LABEL === "signet" ? T.amber : T.accent,
+                border: `1px solid ${ESCROW_NETWORK_LABEL === "signet" ? T.amber : T.accent}55`,
+                fontFamily: T.mono, fontWeight: 800, lineHeight: 1.2,
+              }}>
+                <span style={{ fontSize: 11, lineHeight: 1 }}>⛓</span>
+                {ESCROW_NETWORK_LABEL === "signet" ? "SIGNET" : "ON-CHAIN"}
+              </span>
+            )}
             {billTypeChip && billTypeChip.label !== state.description && (
               <span style={{
                 display: "inline-flex", alignItems: "center", gap: 4,
@@ -366,15 +386,15 @@ export function TradeCard({
           }}>
             {state.category === "marketplace" && sellerPubkey && (
               <span
-                role={state.listingKind === "work" && onOpenWorkerProfile ? "button" : undefined}
-                tabIndex={state.listingKind === "work" && onOpenWorkerProfile ? 0 : undefined}
-                onClick={state.listingKind === "work" && onOpenWorkerProfile
+                role={isWorkOffer(state) && onOpenWorkerProfile ? "button" : undefined}
+                tabIndex={isWorkOffer(state) && onOpenWorkerProfile ? 0 : undefined}
+                onClick={isWorkOffer(state) && onOpenWorkerProfile
                   ? (event) => {
                       event.stopPropagation();
                       onOpenWorkerProfile(sellerPubkey);
                     }
                   : undefined}
-                onKeyDown={state.listingKind === "work" && onOpenWorkerProfile
+                onKeyDown={isWorkOffer(state) && onOpenWorkerProfile
                   ? (event) => {
                       if (event.key !== "Enter" && event.key !== " ") return;
                       event.preventDefault();
@@ -382,20 +402,20 @@ export function TradeCard({
                       onOpenWorkerProfile(sellerPubkey);
                     }
                   : undefined}
-                title={state.listingKind === "work" ? t("card.viewWorkerProfile") : undefined}
+                title={isWorkOffer(state) ? t("card.viewWorkerProfile") : undefined}
                 style={{
                 fontSize: 10, padding: "3px 9px", borderRadius: 999,
                 background: isParentStorefront(state) ? `${T.teal}12` : T.surface,
-                color: state.listingKind === "work" ? T.green : isParentStorefront(state) ? T.teal : T.muted,
+                color: isWorkListing(state) ? T.green : isParentStorefront(state) ? T.teal : T.muted,
                 border: `1px solid ${isParentStorefront(state) ? `${T.teal}3d` : T.border}`,
                 fontFamily: T.mono, fontWeight: 800,
                 display: "inline-flex", alignItems: "center", gap: 4,
                 maxWidth: "100%",
-                cursor: state.listingKind === "work" && onOpenWorkerProfile ? "pointer" : "default",
+                cursor: isWorkOffer(state) && onOpenWorkerProfile ? "pointer" : "default",
               }}>
-                <span aria-hidden="true">{state.listingKind === "work" ? "👤" : "★"}</span>
+                <span aria-hidden="true">{isWorkListing(state) ? "👤" : "★"}</span>
                 <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {t(state.listingKind === "work" ? "card.workerLine" : isParentStorefront(state) ? "card.storeLine" : "card.sellerLine", {
+                  {t(isWorkOffer(state) ? "card.workerLine" : isWorkRequest(state) ? "card.clientLine" : isParentStorefront(state) ? "card.storeLine" : "card.sellerLine", {
                     name: sellerName ?? shortPubkey(sellerPubkey),
                   })}
                 </span>

@@ -20,6 +20,9 @@ const STATUS_LABEL_KEY: Partial<Record<EscrowStatus, string>> = {
   [EscrowStatus.CREATED]: "card.pillOpen",
   [EscrowStatus.LOCKED]: "card.pillInEscrow",
   [EscrowStatus.APPROVED]: "card.pillReadyToClaim",
+  // COMPLETED only enters the action pill when chain scanning found the
+  // winner's still-unspent local on-chain output.
+  [EscrowStatus.COMPLETED]: "onchain.payoutTitle",
   [EscrowStatus.EXPIRED]: "card.pillTimedOut",
 };
 

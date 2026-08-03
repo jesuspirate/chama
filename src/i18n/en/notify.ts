@@ -12,6 +12,8 @@ export const notify: Record<string, string> = {
   "notify.approvedBody":
     "Trade {label} resolved in your favor — open Chama to claim your sats.",
   "notify.approvedTitle": "✅ Your claim is ready",
+  "notify.arbiterKeyBody": "On-chain trade {label} selected you. Open Chama and publish your escrow key so funding can begin.",
+  "notify.arbiterKeyTitle": "🔑 An on-chain trade needs your key",
   "notify.buyerInterestBody": "A buyer is looking at your listing {label}. Open Chama to respond.",
   "notify.buyerInterestTitle": "👀 A buyer is looking at your listing",
   "notify.chatBody": "{who} messaged you on trade {label}.",
@@ -28,6 +30,7 @@ export const notify: Record<string, string> = {
   "notify.dmLockedMsg": "🔒 Your Chama trade {label} is locked — open the app to pay/act. {link}",
   "notify.dmVoteMsg": "🗳️ Your Chama trade {label} needs your vote. {link}",
   "notify.dmDisputeMsg": "⚖️ A Chama trade {label} you arbitrate needs your ruling. {link}",
+  "notify.dmArbiterKeyMsg": "🔑 On-chain Chama trade {label} selected you as arbiter — open it and publish your escrow key. {link}",
   "notify.dmSettledMsg": "✅ Your Chama trade {label} settled — claim your payout. {link}",
   "notify.expiredBody":
     "Trade {label} reached its deadline. Open Chama to see where it landed.",

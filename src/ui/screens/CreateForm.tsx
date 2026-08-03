@@ -39,6 +39,9 @@ import { randomId } from "../../storage/random-id.js";
 import { categoryAllowsFulfillmentChoice, type Fulfillment } from "../../labels/vote-labels.js";
 import { getCommunityBySlug, communityForInvite, DEFAULT_COMMUNITY_SLUG } from "../../communities/registry.js";
 import { billTypesForCountry, billTypeDisplay } from "../../communities/bill-types.js";
+import { workCategoriesForCountry } from "../../communities/work-categories.js";
+import { trancheAmountAt, plannedMaxLossMsats, maxUsefulTranches, trancheSplitAvailable } from "../../escrow-engine/tranche.js";
+import { onchainEscrowAvailable, DEFAULT_ESCROW_MODE, ESCROW_NETWORK_LABEL } from "../../bond-multisig/onchain-escrow.js";
 import {
   getUserCommunitySlug,
   getUserCommunitySlugRaw,
@@ -84,6 +87,27 @@ import { ensureRemoteListingImage, MAX_LISTING_IMAGE_REFS, type ListingImageUplo
 import { SwipeImageGallery } from "../components/SwipeImageGallery.js";
 
 type Step = 1 | 2 | 3;
+/** Verticals whose value is divisible, so a trade can be settled in slices.
+ *  Marketplace is deliberately absent: you cannot ship a quarter of a bicycle.
+ *  Lending is absent because it is RETIRED (see the Vertical type below) — a
+ *  retired vertical must never pick up new capabilities. */
+const TRANCHEABLE_VERTICALS = new Set(["p2p-trade", "bill-pay", "work"]);
+
+/** ⚰️ `lending` is RETIRED and unreachable for NEW listings: it is absent from
+ *  VERTICALS, so it cannot be selected, and `readAllDrafts` only iterates that
+ *  list so an old lending draft can never be restored either.
+ *
+ *  ⚠ The type and its render/reducer paths are KEPT ON PURPOSE, and must not be
+ *  deleted or commented out. A `lending` escrow published by an older client
+ *  still lives on relays, and replay is how Chama reads money history — code
+ *  that a real trade's chain depends on is not dead code. Commenting it out
+ *  would be the worst of both: the trade stops rendering AND the reason is
+ *  buried. Retired means "no new ones", not "pretend the old ones never
+ *  happened".
+ *
+ *  RULE: a retired vertical never gains new capabilities. When adding a
+ *  feature keyed on vertical, leave lending out (as TRANCHEABLE_VERTICALS
+ *  above does). */
 type Vertical = "p2p-trade" | "bill-pay" | "marketplace" | "work" | "lending";
 type ListingMode = "single" | "menu";
 
@@ -118,6 +142,10 @@ interface FormState {
   premium: string;
   /** v4.1 (#12): optional Community-Bill-Pay bill-type id (single listing). */
   billType?: string;
+  workSide?: "work" | "work-request";
+  workCategory?: string;
+  trancheCount?: number;
+  escrowMode?: "ecash" | "onchain";
   /** Monthly CBP: owner marked this bill (bundle) as recurring — the client
    *  auto-re-posts it ~monthly to their home community. Bill-pay only. */
   recurringCbp?: boolean;
@@ -348,6 +376,10 @@ function normalizeFormState(raw: any, currency = "USD"): FormState {
     cur: fallback.cur,
     premium: typeof raw.premium === "string" || typeof raw.premium === "number" ? String(raw.premium) : fallback.premium,
     billType: typeof raw.billType === "string" ? raw.billType : "",
+    workSide: raw.workSide === "work-request" ? "work-request" : "work",
+    workCategory: typeof raw.workCategory === "string" ? raw.workCategory : "",
+    trancheCount: typeof raw.trancheCount === "number" ? raw.trancheCount : 1,
+    escrowMode: raw.escrowMode === "onchain" || raw.escrowMode === "ecash" ? raw.escrowMode : DEFAULT_ESCROW_MODE,
     recurringCbp: raw.recurringCbp === true,
     paymentMethods: Array.isArray(raw.paymentMethods)
       ? raw.paymentMethods
@@ -1035,6 +1067,10 @@ export function emptyCreateFormState(currency = "USD"): FormState {
     paymentMethods: [],
     menuItems: [],
     billType: "",
+    workSide: "work",
+    workCategory: "",
+    trancheCount: 1,
+    escrowMode: DEFAULT_ESCROW_MODE,
     recurringCbp: false,
   };
 }
@@ -1262,10 +1298,28 @@ export function CreateForm({
       // the always-present, unbounded fallback for anything above their bond).
       // Fail-soft — any fetch/verify hiccup just yields the OG pool.
       let bondedPool: string[] = [];
+      /** ⭐ Tier 2.1: arbiters whose ESCROW KEY is knowable to everyone.
+       *
+       *  An on-chain escrow address is built from all three keys. Buyer and
+       *  seller publish theirs (CREATE / JOIN), but the arbiter is seated
+       *  DETERMINISTICALLY and never joins — so their key can only come from
+       *  their bond announcement, which carries a chain-verified `ownerXonly`.
+       *  An arbiter without one can never supply a key, and a trade seated on
+       *  them can never be funded: a permanent deadlock that reads on screen as
+       *  "waiting for the arbiter" forever.
+       *
+       *  Hence: an on-chain escrow requires a BONDED arbiter. Consistent with
+       *  the bond's role everywhere else as the licence to arbitrate, and a
+       *  reasonable bar at these sizes. */
+      let onchainCapableArbiters: string[] = [];
       if (fetchCommunityBonds) {
         try {
           const bonds = (await fetchCommunityBonds(effectiveCommunity)).filter(b => b.funded && b.active);
           bondedPool = assignableBondedArbiters({ bonds, tradeMsats: amountMsats, allTrades: [] });
+          const keyed = new Set(
+            bonds.filter((b) => !!b.ownerXonly).map((b) => b.npub.toLowerCase()),
+          );
+          onchainCapableArbiters = bondedPool.filter((pk) => keyed.has(pk.toLowerCase()));
         } catch { /* leave bondedPool empty — OG pool carries it */ }
       }
       // Fault-attested arbiters (kind 38136) lose the seat — but only as a
@@ -1283,12 +1337,31 @@ export function CreateForm({
           faultExcluded = await fetchFaultExcludedArbiters(poolBeforeFaults);
         } catch { /* leave empty — never invent an exclusion */ }
       }
-      const communityArbiters = getTrustedArbiterPool({
+      const openPool = getTrustedArbiterPool({
         community: effectiveCommunity,
         excludePubkeys: [userPubkey],
         bondedPool,
         softExcludePubkeys: faultExcluded,
       });
+      // ⭐ On-chain narrows the pool to arbiters who can actually supply a key.
+      // The OG cabinet is deliberately NOT folded in here: it is the unbounded
+      // fallback for ecash, but an OG with no bond announcement has no escrow
+      // key, and seating one would publish a listing nobody can ever fund.
+      const wantsOnchain = (form.escrowMode ?? DEFAULT_ESCROW_MODE) === "onchain";
+      const communityArbiters = wantsOnchain ? onchainCapableArbiters : openPool;
+      // Refuse rather than publish a dead listing. The seller finds out here,
+      // in one sentence, instead of after a buyer has reserved it.
+      if (wantsOnchain && communityArbiters.length === 0) {
+        setPublishError(t("onchain.noCapableArbiter"));
+        setSubmitting(false);
+        return;
+      }
+      // Only DIVISIBLE value can be tranched. A single physical item cannot
+      // be delivered in quarters, so Stores are excluded — the honest answer
+      // there is holding the value somewhere no single party can reach.
+      const trancheCount = TRANCHEABLE_VERTICALS.has(vertical) && !hasMenu
+        ? Math.max(1, Math.floor(form.trancheCount ?? 1))
+        : 1;
       const params: any = {
         description,
         amountMsats,
@@ -1313,7 +1386,7 @@ export function CreateForm({
         // BUYER/funder and the offer author is SELLER/worker. listingKind gives
         // it its own public identity without forking the escrow reducer.
         category: vertical === "work" ? "marketplace" : vertical,
-        listingKind: vertical === "work" ? "work" : undefined,
+        listingKind: vertical === "work" ? (form.workSide ?? "work") : undefined,
         imageDataUrl: vertical === "marketplace" || vertical === "work" ? listingImageRefs[0] : undefined,
         imageUrls: vertical === "marketplace" || vertical === "work" ? listingImageRefs : undefined,
         community: effectiveCommunity,
@@ -1322,6 +1395,23 @@ export function CreateForm({
         country: getCommunityBySlug(effectiveCommunity)?.country ?? undefined,
         // v4.1 (#12): CBP bill type (single listing) — informational metadata only.
         billType: vertical === "bill-pay" && form.billType ? form.billType : undefined,
+        workCategory: vertical === "work" && form.workCategory ? form.workCategory : undefined,
+        // Tier 2.1: stamp the substrate at CREATE so every client knows which
+        // shape of LOCK to expect BEFORE anyone funds anything.
+        ...((form.escrowMode ?? DEFAULT_ESCROW_MODE) === "onchain" ? { escrowMode: "onchain" as const } : {}),
+        // Tranching: publish ONLY the first slice, stamped with the whole
+        // plan so any client can rebuild it. The remaining slices are
+        // published one at a time, each gated on the previous one's sats
+        // actually landing (escrow-engine/tranche.ts).
+        ...(trancheCount > 1 ? {
+          amountMsats: trancheAmountAt(amountMsats, trancheCount, 0),
+          tranche: {
+            planId: `tp_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
+            index: 0,
+            total: trancheCount,
+            totalMsats: amountMsats,
+          },
+        } : {}),
         fulfillment: vertical === "work" ? "service" : vertical === "marketplace" ? form.fulfillment : undefined,
         mintUrl,
         communityArbiters: communityArbiters.length > 0 ? communityArbiters : undefined,
@@ -1991,9 +2081,12 @@ function Step2({
   // CBP single listings now REQUIRE a bill-type — it's the listing identity since
   // the free-text description was retired, so no publishing a bare fallback title.
   const billTypeOk = vertical !== "bill-pay" || usingMenu || !!form.billType;
+  // A4: a Work listing without a category can only match on the weak signals.
+  const workCategoryOk = vertical !== "work" || usingMenu || !!form.workCategory;
   const ready =
     descriptionOk &&
     billTypeOk &&
+    workCategoryOk &&
     (usingMenu ? hasMenu : form.sats.trim().length > 0) &&
     !partialMenuRows &&
     uploadingImageIds.size === 0 &&
@@ -2402,6 +2495,192 @@ function Step2({
           </div>
           <div style={{ fontSize: 10, color: T.muted, fontFamily: T.sans, marginTop: 6, lineHeight: 1.4 }}>
             {t("create.billTypeHint")}
+          </div>
+        </div>
+      )}
+
+      {/* Tier 2.1 — where the sats sit. OPT-IN above the threshold (Jetty's
+          call): people who want on-chain will choose it, people trading small
+          amounts should not be pushed into a miner fee.
+
+          ⚠ COPY RULE, and it is deliberate: state what each option DOES and do
+          not editorialise. No "fast here, slow there" — that frames one choice
+          as the mistake. Both lines say the same kinds of thing (speed, cost,
+          privacy, who can take it back) and let the user weigh them. The
+          ecash line names the funder-clawback plainly, because a user choosing
+          between two escrows deserves to know the difference that matters. */}
+      {onchainEscrowAvailable(BigInt(Math.max(0, Math.floor(totalSats)))) && !usingMenu && (
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ fontSize: 11, color: T.muted, fontFamily: T.mono, marginBottom: 6 }}>
+            {t("onchain.modeLabel")}
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            {([
+              { id: "ecash", label: t("onchain.modeEcash"), body: t("onchain.modeEcashBody"), icon: "⚡" },
+              { id: "onchain", label: t("onchain.modeOnchain"), body: t("onchain.modeOnchainBody"), icon: "⛓" },
+            ] as const).map((opt) => {
+              const on = (form.escrowMode ?? DEFAULT_ESCROW_MODE) === opt.id;
+              return (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => set("escrowMode", opt.id)}
+                  style={{
+                    textAlign: "left", padding: "11px 12px", borderRadius: T.rs, cursor: "pointer",
+                    background: on ? `${T.accent}1f` : T.surface,
+                    border: `1px solid ${on ? T.accent : T.border}`,
+                  }}
+                >
+                  <div style={{ fontSize: 13, fontWeight: 800, color: on ? T.accent : T.text, fontFamily: T.sans }}>
+                    <span aria-hidden="true">{opt.icon}</span> {opt.label}
+                  </div>
+                  <div style={{ fontSize: 10.5, color: T.muted, fontFamily: T.sans, marginTop: 3, lineHeight: 1.45 }}>
+                    {opt.body}
+                  </div>
+                  {/* Name the network on the tile itself. A tester must be able
+                      to see, at a glance, which chain a listing will use — not
+                      discover it three screens later. */}
+                  {opt.id === "onchain" && (
+                    <div style={{
+                      display: "inline-block", marginTop: 6, padding: "2px 7px", borderRadius: 999,
+                      background: ESCROW_NETWORK_LABEL === "signet" ? `${T.amber}22` : `${T.green}22`,
+                      border: `1px solid ${ESCROW_NETWORK_LABEL === "signet" ? T.amber : T.green}55`,
+                      color: ESCROW_NETWORK_LABEL === "signet" ? T.amber : T.green,
+                      fontFamily: T.mono, fontSize: 9, fontWeight: 800, letterSpacing: 0.5,
+                    }}>
+                      {ESCROW_NETWORK_LABEL === "signet" ? "SIGNET · TEST COINS" : "MAINNET"}
+                    </div>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Tranching — split a big trade into slices settled one at a time.
+          Offered only where value is divisible, and only once an amount exists
+          (the whole control is a statement about that amount). The number the
+          user is really choosing is the LAST line: the most they can lose at
+          once. That is stated in sats rather than as "1/4", because a fraction
+          is not a loss a person can feel. */}
+      {TRANCHEABLE_VERTICALS.has(vertical) && !usingMenu
+        && trancheSplitAvailable(totalSats * 1000) && (() => {
+        // Only offer counts whose slices clear MIN_TRANCHE_SATS. Splitting a
+        // small trade is friction dressed as safety.
+        const cap = maxUsefulTranches(totalSats * 1000);
+        const options = [1, ...Array.from({ length: cap - 1 }, (_, i) => i + 2)];
+        if (options.length < 2) return null;
+        const chosen = Math.max(1, Math.floor(form.trancheCount ?? 1));
+        const maxLossSats = chosen > 1
+          ? Math.round(plannedMaxLossMsats(totalSats * 1000, chosen) / 1000)
+          : totalSats;
+        return (
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ fontSize: 11, color: T.muted, fontFamily: T.mono, marginBottom: 6 }}>
+              {t("tranche.splitLabel")}
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginBottom: 6 }}>
+              {options.map((n) => {
+                const on = chosen === n;
+                return (
+                  <button
+                    key={n}
+                    type="button"
+                    onClick={() => set("trancheCount", n)}
+                    style={{
+                      padding: "7px 12px", borderRadius: 999, cursor: "pointer",
+                      background: on ? `${T.accent}1f` : T.surface,
+                      border: `1px solid ${on ? T.accent : T.border}`,
+                      color: on ? T.accent : T.text,
+                      fontFamily: T.mono, fontSize: 11, fontWeight: 700,
+                    }}
+                  >
+                    {n === 1 ? t("tranche.splitOff") : t("tranche.splitN", { n })}
+                  </button>
+                );
+              })}
+            </div>
+            <div style={{ fontSize: 10, color: T.muted, fontFamily: T.sans, lineHeight: 1.45 }}>
+              {t("tranche.splitHint")}
+            </div>
+            <div style={{
+              fontSize: 11, color: chosen > 1 ? T.accent : T.muted,
+              fontFamily: T.mono, marginTop: 5,
+            }}>
+              {t("tranche.splitRisk", { max: maxLossSats.toLocaleString() })}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* A4 — Work, both sides.
+          The SIDE picker comes first because it changes who the listing is
+          addressed to, and the category second because that is the join key the
+          matcher compares an offer against a request. Both are shown for Work
+          only, and the category is REQUIRED — a Work listing without one can
+          only ever match on the weak signals, which is the difference between
+          "we found you a job" and "here is a wall of listings". */}
+      {vertical === "work" && !usingMenu && (
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ fontSize: 11, color: T.muted, fontFamily: T.mono, marginBottom: 6 }}>
+            {t("create.workSideLabel")}
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 14 }}>
+            {([
+              { id: "work", label: t("create.workSideOffer"), body: t("create.workSideOfferBody"), icon: "🛠️" },
+              { id: "work-request", label: t("create.workSideRequest"), body: t("create.workSideRequestBody"), icon: "🙋" },
+            ] as const).map(side => {
+              const on = form.workSide === side.id;
+              return (
+                <button
+                  key={side.id}
+                  type="button"
+                  onClick={() => set("workSide", side.id)}
+                  style={{
+                    textAlign: "left", padding: "11px 12px", borderRadius: T.rs,
+                    cursor: "pointer",
+                    background: on ? `${T.accent}1f` : T.surface,
+                    border: `1px solid ${on ? T.accent : T.border}`,
+                  }}
+                >
+                  <div style={{ fontSize: 13, fontWeight: 800, color: on ? T.accent : T.text, fontFamily: T.sans }}>
+                    <span aria-hidden="true">{side.icon}</span> {side.label}
+                  </div>
+                  <div style={{ fontSize: 10.5, color: T.muted, fontFamily: T.sans, marginTop: 3, lineHeight: 1.4 }}>
+                    {side.body}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+          <div style={{ fontSize: 11, color: T.muted, fontFamily: T.mono, marginBottom: 6 }}>
+            {t("create.workCategoryLabel")} <span style={{ color: T.amber, opacity: 0.9 }}>{t("create.billTypePickOne")}</span>
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
+            {workCategoriesForCountry(homeCommunity?.country).map(c => {
+              const on = form.workCategory === c.id;
+              return (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => set("workCategory", on ? "" : c.id)}
+                  style={{
+                    display: "inline-flex", alignItems: "center", gap: 5,
+                    padding: "7px 11px", borderRadius: 999, cursor: "pointer",
+                    background: on ? `${T.accent}1f` : T.surface,
+                    border: `1px solid ${on ? T.accent : T.border}`,
+                    color: on ? T.accent : T.text,
+                    fontFamily: T.mono, fontSize: 11, fontWeight: 700,
+                  }}
+                >
+                  <span aria-hidden="true">{c.icon}</span>{c.label}
+                </button>
+              );
+            })}
+          </div>
+          <div style={{ fontSize: 10, color: T.muted, fontFamily: T.sans, marginTop: 6, lineHeight: 1.4 }}>
+            {t("create.workCategoryHint")}
           </div>
         </div>
       )}
@@ -3239,9 +3518,11 @@ function Step3({
     totalSats < MIN_REAL_ATOMIC_FUNDING_SATS;
   const lendingCapExceeded = hasLendingAmountAboveCurrentCap(form, vertical);
   const billTypeOk = vertical !== "bill-pay" || hasMenu || !!form.billType;
+  const workCategoryOk = vertical !== "work" || hasMenu || !!form.workCategory;
   const ready =
     listingDescription.length > 0 &&
     billTypeOk &&
+    workCategoryOk &&
     (form.sats.trim().length > 0 || hasMenu) &&
     !partialMenuRows &&
     !amountTooSmall &&

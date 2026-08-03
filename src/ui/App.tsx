@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, lazy, Suspense, type ReactNode } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback, lazy, Suspense, type ReactNode } from "react";
 import { Capacitor } from "@capacitor/core";
 import { Preferences } from "@capacitor/preferences";
 
@@ -25,6 +25,7 @@ import { getWinner } from "../escrow-engine/state-machine.js";
 import { remainingStock, isSoldOut, overcommittedChildren, isLiveChildOrder, isActiveChildOrder } from "../escrow-engine/storefront.js";
 import { unreadChatForTrade } from "../chat/unread.js";
 import { archivedTradeEntries } from "../escrow-engine/trade-index.js";
+import { compareTradeChronology, participantTradeHistory } from "./latest-trade.js";
 import {
   lapsedRenewableListings,
   autoRenewableListings,
@@ -33,6 +34,7 @@ import {
   hasPendingStoreRollover,
   isSellerOwnedListing,
   listingNeverFunded,
+  resolveRenewalPolicy,
 } from "../escrow-engine/listing-renewal.js";
 import { listCommitmentBonds } from "../bond-multisig/commitment-store.js";
 import {
@@ -114,6 +116,7 @@ import {
   activeCommittedMsats,
   decideChamaBarLabel,
   findActiveTrade,
+  mergeOnchainPayoutAttention,
   selectNeedsYouTrades,
   shouldOpenSellerListingManagement,
   identifyStrandedEcashSource,
@@ -159,6 +162,8 @@ import { ClaimPayoutModal } from "./panels/ClaimPayoutModal.js";
 import { BondCeremonyModal } from "./panels/BondCeremonyModal.js";
 import { copyTextRobust } from "./components/CopyButton.js";
 import { RecoveryPayoutModal } from "./panels/RecoveryPayoutModal.js";
+import { EditListingModal } from "./panels/EditListingModal.js";
+import type { ListingEdits } from "../escrow-engine/listing-edit.js";
 import { EcashExportModal } from "./panels/EcashExportModal.js";
 import { addOrTouchPayoutDestination, listPayoutDestinations } from "../payments/payout-destinations.js";
 import {
@@ -194,6 +199,7 @@ import {
   shouldApplyCssSafeAreaInsets,
 } from "./sign-in-environment.js";
 import { readKind0Toggle, type NostrProfileNameMap } from "./nostr-profiles.js";
+import { isWorkListing } from "./work-resume.js";
 import {
   readAmountDisplayMode,
   writeAmountDisplayMode,
@@ -783,8 +789,39 @@ export default function App() {
   // deletes on a second tap of the same listing within 5s — no native dialog.
   const pendingDeleteRef = useRef<{ id: string; at: number } | null>(null);
 
-  const editSellerListing = (_id: string) => {
-    setToast({ message: t("app.editComingSoon"), type: "info" });
+  // A3: an edit is a replacement (listing-edit.ts) — publish the new terms,
+  // cancel the old. The sheet collects the changes; useEscrow owns the swap.
+  const [editListingId, setEditListingId] = useState<string | null>(null);
+  const editSellerListing = (id: string) => {
+    setSellerManageId(null);
+    setEditListingId(id);
+  };
+  // Tranching: the hook re-checks the safety gate itself, so a stale render
+  // or a double tap can never start the next slice early.
+  const handleStartNextTranche = async (fromEscrowId: string) => {
+    try {
+      const next = await actions.startNextTranche(fromEscrowId);
+      openEscrow(next.escrowId);
+      setToast({ message: t("tranche.startedToast"), type: "success" });
+    } catch (e: any) {
+      setToast({ message: e?.message || t("tranche.startFailed"), type: "error" });
+      // TradeDetail owns the persistent plan surface. Let it keep the failure
+      // visible beside the slices instead of reducing a continuity failure to
+      // a transient toast that disappears while the plan appears stuck.
+      throw e;
+    }
+  };
+
+  const saveListingEdits = async (id: string, edits: ListingEdits) => {
+    const result = await actions.editListing(id, edits);
+    setEditListingId(null);
+    setRetiredTick((n) => n + 1);
+    setToast({
+      // Honest about the partial case: the new listing is live either way, but
+      // if the CANCEL didn't land the seller may briefly see both.
+      message: result.oldCancelled ? t("edit.saved") : t("edit.savedOldRemains"),
+      type: result.oldCancelled ? "success" : "info",
+    });
   };
 
   const deleteSellerListing = async (id: string) => {
@@ -1104,14 +1141,11 @@ export default function App() {
       if (s.createdAt && (now - s.createdAt) > HIDE_AFTER) return false;
       return true;
     })
-    .sort((a, b) => b.createdAt - a.createdAt);
+    .sort(compareTradeChronology);
 
-  const isParticipant = (s: EscrowState) => {
-    const p = getEffectiveParticipantsAt(s, now);
-    return p.buyer === pubkey || p.seller === pubkey || p.arbiter === pubkey;
-  };
-
-  const myTrades = visibleTrades.filter(isParticipant);
+  // Participant history must not inherit Browse's seven-day retention filter:
+  // completed payouts remain recoverable on a fresh/cross-device client.
+  const myTrades = participantTradeHistory(escrows.values(), pubkey, now, retiredIds);
 
   // Loss-proof history: durable-index trades whose chain isn't loaded this
   // session (relay eviction / pre-community-relay / never-locked). Excludes
@@ -1119,7 +1153,8 @@ export default function App() {
   // renders these as compact "earlier trades" rows below the live list. Cheap
   // synchronous scoped-localStorage read; recomputed as escrows load.
   const archivedTrades = pubkey
-    ? archivedTradeEntries(escrows.keys())
+    ? archivedTradeEntries(myTrades.map((trade) => trade.id))
+        .filter((entry) => !retiredIds.has(entry.id))
     : [];
 
   // ── Store permanence (#49) ─────────────────────────────────────────────
@@ -1197,6 +1232,12 @@ export default function App() {
   const clearableListings = pubkey
     ? ownUnfundedListings(escrows.values(), pubkey, retiredIds)
     : [];
+  // A1b: the trades this device knows, for the seated arbiter's ruling
+  // concentration on TradeDetail. Materialized once per escrow-map change so
+  // the card's memo has a stable identity to key on — a fresh array every
+  // render would recompute the concentration on every keystroke in the chat.
+  const knownTradesForConcentration = useMemo(() => [...escrows.values()], [escrows]);
+
   const [showClearListings, setShowClearListings] = useState(false);
   const clearUnfundedListings = () => {
     for (const s of clearableListings) retireListing(s.id);
@@ -1229,11 +1270,18 @@ export default function App() {
     // storefront-only bridge while its replacement waits for 1 confirmation.
     // It never flows into the verified bond pool used for arbiter privileges.
     const storeBondContinuity = sellerBonded || hasPendingStoreRollover(listCommitmentBonds(), bondTip, Date.now());
-    if (!connected || !pubkey || !storeBondContinuity || !storeAutoRenewEnabled) return;
+    // A2: the bond gate is now per-LANE, not per-effect. Stores still need it;
+    // Work, CBP, and Exchange renew hands-free without one, protected instead
+    // by the one-live-listing identity rule. So the effect no longer returns
+    // early on an unbonded seller — it passes bond status down and lets
+    // `resolveRenewalPolicy` decide per listing.
+    if (!connected || !pubkey || !storeAutoRenewEnabled) return;
     // Persistent retired ledger is the cross-reload guard; autoRenewedRef stays
     // the in-session guard on top. Cap per pass so a pathological state can't
     // burst dozens of relay publishes on one load — the rest resolve next pass.
-    const renewables = autoRenewableListings(escrows.values(), pubkey, now, getRetiredIds())
+    const renewables = autoRenewableListings(
+      escrows.values(), pubkey, now, getRetiredIds(), { bonded: storeBondContinuity },
+    )
       .filter((l) => !autoRenewedRef.current.has(l.id))
       // Age-out (#82): stop auto-renewing an abandoned/test offer once its
       // lineage has hit the cap with no buyer interest. A listing that ever had
@@ -1244,6 +1292,8 @@ export default function App() {
           autoRenewCount: getAutoRenewCount(key),
           manuallyKept: isManuallyKept(key),
           hasBuyerInterest: listingHasBuyerInterest(l),
+          // Lane-aware: a 30-day Work offer gets ~30 cycles, a store keeps 7.
+          cap: resolveRenewalPolicy(l, { bonded: storeBondContinuity }).maxAutoRenewCycles,
         });
       })
       .slice(0, 5);
@@ -1390,9 +1440,50 @@ export default function App() {
   // the Me-tab red badge and promotes the attention pill to its loud, actionable
   // "N waiting · tap to act" reading (routing to the most urgent item). Falls
   // back to the calm active-trade pill when nothing needs the user.
-  const needsYouTrades = pubkey
+  const [pendingOnchainPayoutIds, setPendingOnchainPayoutIds] = useState<ReadonlySet<string>>(new Set());
+  const refreshOnchainPayoutAttention = useCallback(async () => {
+    if (!pubkey) {
+      setPendingOnchainPayoutIds(new Set());
+      return { payouts: [], balanceSats: 0n };
+    }
+    const result = await actions.scanMyOnchainPayouts();
+    setPendingOnchainPayoutIds(new Set(
+      result.payouts
+        .filter(payout => payout.balanceSats > 0n)
+        .map(payout => payout.escrowId),
+    ));
+    return result;
+  }, [pubkey, actions.scanMyOnchainPayouts]);
+  const onchainPayoutScanKey = pubkey
+    ? [...escrows.values()]
+        .filter(trade => !!trade.lock.onchain && getWinner(trade)?.pubkey === pubkey)
+        .map(trade => `${trade.id}:${trade.status}`)
+        .sort()
+        .join("|")
+    : "";
+  useEffect(() => {
+    if (!pubkey || !onchainPayoutScanKey) {
+      setPendingOnchainPayoutIds(new Set());
+      return;
+    }
+    const refresh = () => { void refreshOnchainPayoutAttention().catch(() => undefined); };
+    refresh();
+    window.addEventListener("focus", refresh);
+    const timer = window.setInterval(refresh, 60_000);
+    return () => {
+      window.removeEventListener("focus", refresh);
+      window.clearInterval(timer);
+    };
+  }, [pubkey, onchainPayoutScanKey, refreshOnchainPayoutAttention]);
+
+  const ordinaryNeedsYouTrades = pubkey
     ? selectNeedsYouTrades({ escrows: escrows.values(), userPubkey: pubkey, nowSec: now })
     : [];
+  const needsYouTrades = mergeOnchainPayoutAttention({
+    needsYou: ordinaryNeedsYouTrades,
+    escrows: escrows.values(),
+    pendingEscrowIds: pendingOnchainPayoutIds,
+  });
   const needsYouCount = needsYouTrades.length;
   const attentionTrade = needsYouTrades[0] ?? activeTrade;
   const attentionActionMode = needsYouCount > 0;
@@ -1822,9 +1913,9 @@ export default function App() {
       ? allVisibleListings.length
       : allVisibleListings.filter(listing =>
           cat.id === "work"
-            ? listing.listingKind === "work"
+            ? isWorkListing(listing)
             : cat.id === "marketplace"
-              ? listing.category === "marketplace" && listing.listingKind !== "work"
+              ? listing.category === "marketplace" && !isWorkListing(listing)
               : listing.category === cat.id
         ).length;
     return acc;
@@ -3093,6 +3184,15 @@ export default function App() {
             myGivenRatings={myGivenRatings}
             fetchRatingSummary={actions.fetchRatingSummary}
             fetchCommunityBonds={actions.fetchCommunityBonds}
+            knownTrades={knownTradesForConcentration}
+            onStartNextTranche={handleStartNextTranche}
+            onchainFundingPlan={actions.onchainFundingPlan}
+            onPublishOnchainLock={actions.publishOnchainLock}
+            onPrepareOnchainSettlement={actions.prepareOnchainSettlement}
+            onSignOnchainSettlement={actions.signOnchainSettlement}
+            onFinalizeOnchainSettlement={actions.finalizeOnchainSettlement}
+            onScanMyOnchainPayouts={refreshOnchainPayoutAttention}
+            onSweepOnchainPayout={actions.sweepOnchainPayout}
             // v0.3.1 Phase 3 (Q4 scope): same boot-probe flag the
             // ChamaBar's "unreachable" pill reads from. Fund + Claim
             // buttons disable with the "Federation unreachable —
@@ -3623,6 +3723,7 @@ export default function App() {
             onThemeModeChange={setThemeMode}
             myTrades={myTrades}
             allTrades={visibleTrades}
+            needsYouTrades={needsYouTrades}
             archivedTrades={archivedTrades}
             onOpenArchivedTrade={openArchivedTrade}
             ratings={myRatings}
@@ -3764,6 +3865,16 @@ export default function App() {
         </div>
       ) : (
         <>
+          {attentionTrade && (
+            <ActiveTradePill
+              trade={attentionTrade}
+              activeTradeCount={activeCommitmentCount}
+              activeTradeMsats={activeTradeMsats}
+              actionMode={attentionActionMode}
+              actionCount={needsYouCount}
+              onTap={() => openEscrow(attentionTrade.id)}
+            />
+          )}
           {nativeLockResume && (
             <PendingLockCard
               entry={nativeLockResume}
@@ -3924,6 +4035,15 @@ export default function App() {
             </div>
           </div>
         </>
+      )}
+
+      {editListingId && escrows.get(editListingId) && (
+        <EditListingModal
+          listing={escrows.get(editListingId)!}
+          userPubkey={pubkey ?? null}
+          onCancel={() => setEditListingId(null)}
+          onSave={(edits) => saveListingEdits(editListingId, edits)}
+        />
       )}
 
       {/* v3.2: the create flow opens from either the Browse floating-menu pencil

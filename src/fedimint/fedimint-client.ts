@@ -1821,30 +1821,6 @@ export class FedimintClient {
     return { notesHash, amountMsats };
   }
 
-  /**
-   * Verify that 2 shares can reconstruct notes matching a hash,
-   * WITHOUT redeeming them. Used for pre-claim verification.
-   */
-  async verifyShares(
-    share1: SSSShare,
-    share2: SSSShare,
-    expectedNotesHash: string
-  ): Promise<{ valid: boolean; amountMsats?: number; error?: string }> {
-    try {
-      const oobNotes = await shamirCombine(share1, share2);
-      const actualHash = await hashNotes(oobNotes);
-
-      if (actualHash !== expectedNotesHash) {
-        return { valid: false, error: "Hash mismatch — shares may be corrupted" };
-      }
-
-      const wallet = this.requireWallet();
-      const parsed = await wallet.mint.parseNotes(oobNotes);
-      return { valid: true, amountMsats: parsed.total_amount };
-    } catch (e) {
-      return { valid: false, error: e instanceof Error ? e.message : String(e) };
-    }
-  }
 }
 
 // ══════════════════════════════════════════════════════════════════════════

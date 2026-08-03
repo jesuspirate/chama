@@ -17,6 +17,7 @@ export const card: Record<string, string> = {
   "card.categoryOrder": "🛒 Order",
   "card.categoryStorefront": "🏪 Storefront",
   "card.categoryWork": "🛠️ Work offer",
+  "card.clientLine": "{name} is hiring",
   "card.workerLine": "Worker · {name}",
   "card.viewWorkerProfile": "View worker résumé",
   "card.categoryRaw": "Raw",

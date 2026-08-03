@@ -1,0 +1,18 @@
+// en/tranche — tranching: a split trade, and the stop that makes it worth splitting.
+export const tranche: Record<string, string> = {
+  "tranche.title": "Slice {done} of {total} settled",
+  "tranche.outstanding": "still to come",
+  "tranche.readyBody": "The last slice landed. Starting the next one puts up to {max} sats at risk — never the whole trade.",
+  "tranche.liveBody": "This slice is still in flight. The next one opens once it settles and the sats reach you.",
+  "tranche.completeBody": "Every slice settled. This trade is finished.",
+  "tranche.stoppedBody": "This slice finished on-chain but the sats didn't reach you. Stop here — don't send or ship anything else. Check your wallet and this trade before doing anything more with this counterparty.",
+  "tranche.startNext": "Start slice {n}",
+  "tranche.starting": "Starting…",
+  "tranche.splitLabel": "SPLIT THIS TRADE",
+  "tranche.splitHint": "Break a big trade into smaller slices, settled one at a time. If something goes wrong you lose one slice, not the lot.",
+  "tranche.splitOff": "Don't split",
+  "tranche.splitN": "{n} slices",
+  "tranche.splitRisk": "Most you can lose at once: {max} sats",
+  "tranche.startFailed": "Couldn't start the next slice.",
+  "tranche.startedToast": "Next slice published.",
+};

@@ -12,7 +12,7 @@
 import {
   notificationForTransition, chatNotificationFor,
   buyerInterestNotificationFor, newListingNotificationFor,
-  tradeDmNotificationFor, dmViewerRole,
+  tradeDmNotificationFor, dmViewerRole, pendingOnchainArbiterPubkey,
   type TradeNotification, type DmNotifyPref,
 } from "./trade-notifications.js";
 import { Role } from "../escrow-engine/types.js";
@@ -509,6 +509,7 @@ export function maybeNotifyTransition(
   prev: EscrowState | null | undefined,
   next: EscrowState,
   userPubkey: string | null | undefined,
+  liveSinceSec = Number.POSITIVE_INFINITY,
 ): void {
   // Record the observed status FIRST — independent of the enable toggle and of
   // whether anything buzzes — so a future cold start has a baseline to detect a
@@ -525,7 +526,7 @@ export function maybeNotifyTransition(
   const effectivePrev = catchUpPrev(prev, next, seenBefore);
   const coldCatchup = !prev && effectivePrev !== undefined;
 
-  const n = notificationForTransition(effectivePrev, next, userPubkey);
+  const n = notificationForTransition(effectivePrev, next, userPubkey, liveSinceSec);
   if (!n) return;
   if (readFiredTags().has(n.tag)) {
     notifyDebug(() => `skip (already fired) tag=${n.tag}`);
@@ -630,7 +631,9 @@ export async function maybeSendTradeDms(
 
     const pubkeyForRole = (role: Role): string | null => {
       if (role === Role.ARBITER) {
-        return next.participants[Role.ARBITER] ?? next.actingArbiter ?? null;
+        return next.participants[Role.ARBITER]
+          ?? next.actingArbiter
+          ?? pendingOnchainArbiterPubkey(next);
       }
       return next.participants[role] ?? null;
     };

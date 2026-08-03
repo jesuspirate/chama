@@ -13,6 +13,7 @@ export const card: Record<string, string> = {
   "card.categoryOrder": "🛒 Pedido",
   "card.categoryStorefront": "🏪 Tienda",
   "card.categoryWork": "🛠️ Oferta de trabajo",
+  "card.clientLine": "{name} está contratando",
   "card.workerLine": "Trabajador · {name}",
   "card.viewWorkerProfile": "Ver currículum del trabajador",
   "card.categoryRaw": "Directo",

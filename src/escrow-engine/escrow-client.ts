@@ -28,6 +28,7 @@ import {
   getEffectiveParticipantAt,
   getEffectiveParticipantsAt,
   joinHoldExpiresAt,
+  joinHoldExpiresAtFor,
   type NostrEvent,
   type EscrowState,
   type ParsedEscrowEvent,
@@ -48,6 +49,7 @@ import {
   type ChatPayload,
   type PremiumBody,
   type PremiumPayload,
+  type SettlementPayload,
   type EscrowPayload,
 } from "./types.js";
 
@@ -58,6 +60,8 @@ import {
 } from "./hydration-diagnostics.js";
 import { buildChildCreateParams, remainingStock, unsoldStock, isSoldOut, isLastUnitContested } from "./storefront.js";
 import { HOLDER_ONLY_SHARE_POLICY, shareIndexForRole } from "./holder-shares.js";
+import type { TrancheRef } from "./tranche.js";
+import type { EscrowMode } from "./types.js";
 import { arbiterVotePriority, arbiterPriorityOrder, isPerformanceContest } from "./arbiter-substitution.js";
 import type { VoteShareEnvelope } from "./types.js";
 import { EscrowNotifier } from "./notifier.js";
@@ -66,6 +70,7 @@ import { parseEscrowEvent, sortEventChain } from "./event-parser.js";
 import { getCachedEvents, putCachedEvents } from "./escrow-event-cache.js";
 import { selectBackfillEvents, shouldBackfillNow } from "./relay-backfill.js";
 import { createEnvelope, decryptFromEnvelope } from "./envelope.js";
+import { finalArbiterSettlementProof, finalCoopSettlementProof } from "./onchain-settlement-transport.js";
 import { RelayManager, RelayStatus, type NostrFilter } from "./relay-manager.js";
 import {
   FetchProbe,
@@ -76,6 +81,7 @@ import { simTagOrNull, shouldDropForSimPolicy } from "../sim/simMode.js";
 import { verifyEvent as verifyNostrEventSignature } from "nostr-tools/pure";
 import { randomId } from "../storage/random-id.js";
 import { compactSelectedMenuItems } from "./selected-menu-items.js";
+import { pickPreferredArbiter } from "../arbiters/pool.js";
 import {
   buildNip99ListingEvent,
   nip99ListingCoordinate,
@@ -286,6 +292,20 @@ export function escrowDeltaSince(events: readonly NostrEvent[]): number | undefi
   return newestIsHeavy
     ? newest + 1
     : Math.max(0, newest - ESCROW_DELTA_OVERLAP_SECS);
+}
+
+/** Rank relay-discovered trade ids by their newest observed event. Discovery
+ * hydration is bounded, so this ordering is a custody property: a fresh
+ * completed trade must not lose its slot to arbitrary relay frame order. */
+export function discoveredEscrowIdsByActivity(events: readonly NostrEvent[]): string[] {
+  const newest = new Map<string, number>();
+  for (const event of events) {
+    const id = event.tags.find(tag => tag[0] === TAGS.ESCROW_ID)?.[1];
+    if (!id) continue;
+    newest.set(id, Math.max(newest.get(id) ?? 0, event.created_at || 0));
+  }
+  return [...newest.keys()].sort((a, b) =>
+    (newest.get(b)! - newest.get(a)!) || a.localeCompare(b));
 }
 
 /** CHAT bodies can contain large inline attachments. The parsed state already
@@ -813,23 +833,23 @@ export class EscrowClient {
       this.relayManager.fetchOnce({ kinds, authors: [pubkey] }, timeoutMs, authoredProbe).catch(() => [] as NostrEvent[]),
       this.relayManager.fetchOnce({ kinds, "#p": [pubkey] }, timeoutMs, taggedProbe).catch(() => [] as NostrEvent[]),
     ]);
-    const ids = new Set<string>();
-    for (const ev of [...authored, ...tagged]) {
-      const id = ev.tags.find(t => t[0] === TAGS.ESCROW_ID)?.[1];
-      if (id) ids.add(id);
-    }
+    // Relay delivery order is explicitly NOT chronological. Discovery later
+    // hydrates under a bounded budget, so returning Set insertion order could
+    // strand today's trade beyond the cap while loading arbitrary old tests.
+    // Rank by the newest event observed for each id; ties stay deterministic.
+    const ids = discoveredEscrowIdsByActivity([...authored, ...tagged]);
     recordDiscoveryRun({
       at: Date.now(),
       queriedPubkey: pubkey,
       legs: [authoredProbe.snapshot(authored.length), taggedProbe.snapshot(tagged.length)],
-      idsDiscovered: ids.size,
+      idsDiscovered: ids.length,
       eventsFetched: authored.length + tagged.length,
     });
     console.debug(
-      `[escrow] discoverMyEscrowIds ${short}…: ${ids.size} ids ` +
+      `[escrow] discoverMyEscrowIds ${short}…: ${ids.length} ids ` +
         `(${authored.length} authored + ${tagged.length} tagged events)`,
     );
-    return [...ids];
+    return ids;
   }
 
   /**
@@ -882,6 +902,26 @@ export class EscrowClient {
     country?: string;
     /** v4.1 (#12): optional CBP bill-type id (informational metadata only). */
     billType?: string;
+    /** A4: optional Work category id (informational; the matcher's join key). */
+    workCategory?: string;
+    /** Tranching: this escrow's slice of a larger trade. Informational. */
+    tranche?: TrancheRef;
+    /** Relay-discovery recipients for a tranche continuation. Routing only;
+     *  does not seat a participant or enter the CREATE payload. */
+    continuationPubkeys?: string[];
+    /** Tier 2.1: where this trade's escrow will live. Absent ⇒ "ecash".
+     *  ⚠ Stamped at CREATE on purpose — a client must be able to refuse a
+     *  substrate it does not understand BEFORE it funds anything. */
+    escrowMode?: EscrowMode;
+    /** ⚠ Tier 2.1: a RESOLVER, not a key.
+     *
+     *  The creator's escrow key is derived from (seed, escrowId), and the
+     *  escrow id does not exist until this method generates it. Passing a
+     *  pre-derived key would therefore mean deriving from a placeholder — every
+     *  trade a user creates would share ONE escrow key, commingling their UTXOs
+     *  across unrelated trades and defeating the per-trade derivation entirely.
+     *  So the caller hands us a function and we call it with the real id. */
+    escrowKeyFor?: (escrowId: string) => Promise<string | undefined>;
     mintUrl: string;
     paymentMethods?: string[];
     items?: CreatePayload["items"];
@@ -927,6 +967,14 @@ export class EscrowClient {
         ? (params.fulfillment ?? "physical")
         : "service";
 
+    // Resolved AFTER the id exists — see escrowKeyFor. Fails soft: no key just
+    // means the funding screen names a blocker until it is published.
+    let escrowXonly: string | undefined;
+    if (params.escrowKeyFor) {
+      try { escrowXonly = await params.escrowKeyFor(escrowId); }
+      catch (e) { console.warn("[chama] creator escrow key unavailable:", e); }
+    }
+
     const payload: CreatePayload = {
       type: "escrow:create",
       description: params.description,
@@ -945,6 +993,14 @@ export class EscrowClient {
       country: params.country,
       // v4.1 (#12): carry the CBP bill type so the card/detail can show it.
       billType: params.billType,
+      // A4: carry the Work category so both sides can be matched on it.
+      workCategory: params.workCategory,
+      // Tranching: carry the slice descriptor so every client can rebuild the plan.
+      ...(params.tranche ? { tranche: params.tranche } : {}),
+      // Tier 2.1: only emit the field when it says something other than the
+      // default, so an ordinary ecash CREATE stays byte-identical on the wire.
+      ...(params.escrowMode === "onchain" ? { escrowMode: "onchain" as const } : {}),
+      ...(escrowXonly ? { escrowXonly } : {}),
       mintUrl: params.mintUrl,
       platformFeeBps: this.config.defaultPlatformFeeBps!,
       platformFeePubkey: this.config.platformFeePubkey || pubkey,
@@ -997,6 +1053,12 @@ export class EscrowClient {
         // relay-discoverable from the seller's side (discoverMyEscrowIds)
         // before they ever act on it. Additive; replay ignores this tag.
         ...(params.sellerPubkey ? [[TAGS.PARTICIPANT, params.sellerPubkey]] : []),
+        // Tranche continuity: both existing principals discover the next
+        // slice automatically. These are routing hints, never participant
+        // claims; reducer seating remains unchanged.
+        ...((params.continuationPubkeys ?? [])
+          .filter((pk, index, all) => pk !== pubkey && all.indexOf(pk) === index)
+          .map((pk) => [TAGS.PARTICIPANT, pk])),
         // Store listings have a standard NIP-99 public identity. The Chama
         // CREATE remains the escrow-capable source of truth and points to its
         // interoperable classified-listing mirror by addressable coordinate.
@@ -1086,7 +1148,7 @@ export class EscrowClient {
   async joinEscrow(
     escrowId: string,
     role: Role,
-    opts: { selectedItems?: SelectedMenuItem[]; amountMsats?: number; orderFinalized?: boolean } = {},
+    opts: { selectedItems?: SelectedMenuItem[]; amountMsats?: number; orderFinalized?: boolean; escrowXonly?: string } = {},
   ): Promise<EscrowState> {
     const state = this.states.get(escrowId);
     if (!state) throw new Error(`Escrow ${escrowId} not loaded`);
@@ -1140,7 +1202,11 @@ export class EscrowClient {
       role,
       joinedAt: now,
       ...(role === Role.BUYER || role === Role.SELLER
-        ? { holdExpiresAt: joinHoldExpiresAt(now) }
+        // ⭐ Mode-aware: an on-chain seat must outlast a confirmation, or the
+        // funder's LOCK is refused for naming a buyer who has been un-seated
+        // while they waited for the block. Stamped on the wire, so clients that
+        // predate on-chain escrow honour it without knowing why.
+        ? { holdExpiresAt: joinHoldExpiresAtFor(now, state.escrowMode) }
         : {}),
       ...(opts.selectedItems && opts.selectedItems.length > 0
         ? { selectedItems: opts.selectedItems }
@@ -1151,6 +1217,10 @@ export class EscrowClient {
       ...(opts.orderFinalized
         ? { orderFinalizedAt: now }
         : {}),
+      // Tier 2.1: publish this party's on-chain escrow key so the address can
+      // be computed. Only present on an on-chain trade — an ecash JOIN stays
+      // byte-identical.
+      ...(opts.escrowXonly ? { escrowXonly: opts.escrowXonly } : {}),
     };
 
     // JOIN content is PLAINTEXT — who joined is public info.
@@ -1164,6 +1234,24 @@ export class EscrowClient {
         [TAGS.PREV_EVENT, lastEventId, "", "reply"],
         [TAGS.TYPE, "escrow:join"],
         [TAGS.PARTICIPANT, pubkey],
+        // Tier 2.1 discovery: once the buyer is known, so is the exact
+        // deterministic bonded arbiter whose key the on-chain address needs.
+        // Tagging that pubkey makes the pre-lock trade relay-discoverable to
+        // them; replay still derives seating from JOIN/LOCK payloads and never
+        // treats this routing tag as consensus state.
+        ...(role === Role.BUYER && (state.escrowMode ?? "ecash") === "onchain"
+          ? (() => {
+              const assigned = pickPreferredArbiter(
+                state.communityArbiters,
+                state.bondedArbiters,
+                state.id,
+                [pubkey, state.participants[Role.SELLER]],
+              );
+              return assigned && assigned !== pubkey
+                ? [[TAGS.PARTICIPANT, assigned]]
+                : [];
+            })()
+          : []),
       ],
       content,
     };
@@ -1195,6 +1283,9 @@ export class EscrowClient {
   async lockEscrow(escrowId: string, params: {
     notesHash: string;
     shares: LockShareEntry[];
+    /** Tier 2.1: on-chain escrow terms. Present ⇒ this is an on-chain LOCK and
+     *  `notesHash` is "" with no shares — the reducer refuses the hybrid. */
+    onchain?: LockPayload["onchain"];
     sellerReceivesMsats: number;
     arbiterFeeMsats: number;
     buyerPubkey: string;
@@ -1257,6 +1348,7 @@ export class EscrowClient {
     const wirePayload: LockPayload = {
       type: "escrow:lock",
       notesHash: params.notesHash,
+      ...(params.onchain ? { onchain: params.onchain } : {}),
       shares: params.shares,
       sharePolicy: params.sharePolicy,
       arbiterPoolShare: params.arbiterPoolShare,
@@ -1558,6 +1650,48 @@ export class EscrowClient {
     return this.applyLocally(escrowId, signed, payload);
   }
 
+  /** Publish COMPLETE after a verified cooperative on-chain transaction was
+   *  broadcast or adopted from Esplora. Unlike ecash there is no CLAIM hop:
+   *  the Bitcoin spend itself is the settlement proof. */
+  async completeOnchain(escrowId: string, settlementProofEventId: string): Promise<EscrowState> {
+    const state = this.states.get(escrowId);
+    if (!state) throw new Error(`Escrow ${escrowId} not loaded`);
+    if (!state.lock.onchain || state.status !== EscrowStatus.APPROVED) {
+      throw new Error(`Cannot complete on-chain escrow in state ${state.status}`);
+    }
+    const pubkey = await this.getPubkey();
+    const settlementProof = state.settlements?.find(message => message.raw.id === settlementProofEventId);
+    const winner = getWinner(state);
+    const winnerRole = winner?.role === Role.BUYER || winner?.role === Role.SELLER ? winner.role : null;
+    const requiresArbiter = !!state.resolvedMajority?.includes(Role.ARBITER);
+    const cooperative = !!(!requiresArbiter && settlementProof && winnerRole
+      && finalCoopSettlementProof(settlementProof, state.lock.onchain, winnerRole));
+    const arbitrated = !!(requiresArbiter
+      && settlementProof && winnerRole
+      && finalArbiterSettlementProof(settlementProof, state.lock.onchain, winnerRole));
+    const authorized = cooperative
+      ? pubkey === state.participants[Role.BUYER] || pubkey === state.participants[Role.SELLER]
+      : arbitrated && (pubkey === state.participants[winnerRole!] || pubkey === state.participants[Role.ARBITER]);
+    if (!authorized) {
+      throw new Error("The selected settlement proof is not replay-valid for this signer");
+    }
+    const now = Math.floor(Date.now() / 1000);
+    const payload: CompletePayload = { type: "escrow:complete", completedAt: now };
+    const signed = await this.signWithSimTag({
+      kind: EscrowEventKind.COMPLETE,
+      created_at: now,
+      tags: [
+        [TAGS.ESCROW_ID, escrowId],
+        [TAGS.PREV_EVENT, state.eventChain[state.eventChain.length - 1]?.raw.id, "", "reply"],
+        ["settlement", settlementProofEventId],
+        [TAGS.TYPE, "escrow:complete"],
+      ],
+      content: JSON.stringify(payload),
+    });
+    await this.relayManager.publish(signed);
+    return this.applyLocally(escrowId, signed, payload);
+  }
+
   // ── Send a chat message ─────────────────────────────────────────────────
 
   async sendChat(
@@ -1796,6 +1930,58 @@ export class EscrowClient {
     } catch {
       return null;
     }
+  }
+
+  // ── On-chain settlement transport (kind 38114, Tier 2.1 · S7) ─────────
+
+  /** Publish a PSBT revision to every named participant AND the sender.
+   *  The self slot is load-bearing: without it, the author cannot decrypt
+   *  their own relay event after a reload. */
+  async sendSettlement(
+    escrowId: string,
+    input: Omit<SettlementPayload, "type">,
+  ): Promise<ParsedEscrowEvent<SettlementPayload>> {
+    const state = this.states.get(escrowId);
+    if (!state) throw new Error(`Escrow ${escrowId} not loaded`);
+    const pubkey = await this.getPubkey();
+    const role = Object.values(Role).find(r => state.participants[r] === pubkey);
+    if (!role || role !== input.role) {
+      throw new Error("Settlement sender role does not match this trade");
+    }
+    const payload: SettlementPayload = { type: "escrow:settlement", ...input };
+    const recipients = Array.from(new Set([
+      state.participants[Role.BUYER],
+      state.participants[Role.SELLER],
+      state.participants[Role.ARBITER],
+      pubkey,
+    ].filter((pk): pk is string => typeof pk === "string" && pk.length > 0)));
+    const envelope = await createEnvelope(
+      JSON.stringify(payload), recipients,
+      (pt, pk) => this.signer.nip44Encrypt(pt, pk),
+    );
+    const now = Math.floor(Date.now() / 1000);
+    const signed = await this.signWithSimTag({
+      kind: EscrowEventKind.SETTLEMENT,
+      created_at: now,
+      tags: [
+        [TAGS.ESCROW_ID, escrowId],
+        [TAGS.TYPE, "escrow:settlement"],
+        ...recipients.map(pk => [TAGS.PARTICIPANT, pk]),
+      ],
+      content: JSON.stringify(envelope),
+    });
+    await this.relayManager.publish(signed);
+
+    const parsed = parseEscrowEvent(signed, JSON.stringify(payload), true);
+    if (!parsed.ok) throw new Error(`Local settlement parse failed: ${parsed.error.message}`);
+    const current = this.states.get(escrowId);
+    if (!current) throw new Error(`Escrow ${escrowId} disappeared after settlement publish`);
+    const result = applyEvent(current, parsed.event);
+    if (!result.ok) throw new Error(result.error.message);
+    this.states.set(escrowId, result.state);
+    this.setHotRawEvents(escrowId, mergeRawEventsById(this.rawEvents.get(escrowId) ?? [], [signed]));
+    this.callbacks.onStateUpdate?.(escrowId, result.state);
+    return parsed.event as ParsedEscrowEvent<SettlementPayload>;
   }
 
   // ── Cancel (initiator only, pre-lock) ───────────────────────────────────
@@ -2092,7 +2278,12 @@ export class EscrowClient {
     const diagnostic = beginHydrationDiagnostic(escrowId);
     const promise = this.loadEscrowAttempt(escrowId, 0, diagnostic, repairFromCache)
       .then((state) => {
-        diagnostic.finish(state ? `state:${state.status}` : "null");
+        const failure = state ? null : this.getLastLoadFailure(escrowId);
+        diagnostic.finish(state
+          ? `state:${state.status}`
+          : failure
+            ? `error:${failure.code ?? failure.reason}:${failure.message ?? failure.reason}`
+            : "null");
         return state;
       })
       .catch((error) => {

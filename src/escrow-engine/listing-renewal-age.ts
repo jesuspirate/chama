@@ -119,8 +119,16 @@ export function markManuallyKept(key: string): void {
 
 /** Pure age-out predicate: an offer has aged out once it's been auto-renewed at
  *  or beyond the cap AND was never manually kept. */
-export function hasAgedOut(count: number, manuallyKept: boolean): boolean {
-  return !manuallyKept && count >= MAX_AUTO_RENEW_CYCLES;
+export function hasAgedOut(
+  count: number,
+  manuallyKept: boolean,
+  /** A2: the lane's own cap. Defaults to the Stores-era value, so every
+   *  existing caller is byte-identical. A 30-day lane renewing a 24h listing
+   *  needs ~30 cycles; capping it at 7 would have quietly killed every Work
+   *  offer after a week — the age-out backstop turning into a time bomb. */
+  cap: number = MAX_AUTO_RENEW_CYCLES,
+): boolean {
+  return !manuallyKept && count >= cap;
 }
 
 /** True when a listing shows any BUYER INTEREST — a JOIN/hold ever landed on it.
@@ -141,7 +149,9 @@ export function shouldAgeOutListing(opts: {
   autoRenewCount: number;
   manuallyKept: boolean;
   hasBuyerInterest: boolean;
+  /** A2: the renewal lane's cycle cap (RenewalPolicy.maxAutoRenewCycles). */
+  cap?: number;
 }): boolean {
   if (opts.hasBuyerInterest) return false;
-  return hasAgedOut(opts.autoRenewCount, opts.manuallyKept);
+  return hasAgedOut(opts.autoRenewCount, opts.manuallyKept, opts.cap);
 }

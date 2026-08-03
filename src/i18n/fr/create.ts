@@ -236,5 +236,12 @@ export const create: Record<string, string> = {
   "create.warnSoftHeadline": "Vous êtes actuellement arbitre sur un échange actif.",
   "create.warnSoftTitle": "Vous êtes arbitre",
   "create.whatKindOfTrade": "QUEL TYPE D'ÉCHANGE ?",
+  "create.workCategoryHint": "C'est ainsi que Chama vous trouve l'autre côté. Choisissez le plus proche — « Autre chose » convient, votre description fait le reste.",
+  "create.workCategoryLabel": "TYPE DE TRAVAIL",
+  "create.workSideLabel": "DE QUEL CÔTÉ ÊTES-VOUS ?",
+  "create.workSideOffer": "Je propose mon travail",
+  "create.workSideOfferBody": "Vous faites le travail et vous êtes payé.",
+  "create.workSideRequest": "Je cherche quelqu'un",
+  "create.workSideRequestBody": "Vous payez pour faire faire un travail.",
   "create.yourCommunityFallback": "votre communauté",
 };

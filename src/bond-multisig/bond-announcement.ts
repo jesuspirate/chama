@@ -43,6 +43,114 @@ function normHex(value: string | null | undefined): string | null {
   return t && HEX64.test(t) ? t : null;
 }
 
+// ── A0 schema pass (2026-07-28) — roles + lineage ──────────────────────────
+// Both fields are OPTIONAL and ADVISORY, under the same recompute-don't-trust
+// doctrine as `address`. An announcement made before this pass must parse,
+// verify, seat, and cache byte-identically. See
+// design/mockups/chama-38135-schema-pass-brief.md.
+
+/** What the bond licenses. `arbiter` = assignable in the dispute pool (the
+ *  historical, and still default, meaning). `merchant` = a storefront license
+ *  only: it renews listings but never seats its holder as a judge. A bond may
+ *  declare both. */
+export type BondRole = "arbiter" | "merchant";
+
+export const BOND_ROLES: readonly BondRole[] = ["arbiter", "merchant"];
+
+/** Absent `roles` ⇒ this. Every bond already announced in the wild is an arbiter
+ *  bond, so the default must reproduce that exactly. There is deliberately NO
+ *  path from an absent/malformed field to `merchant`: opting OUT of the arbiter
+ *  pool has to be an explicit, signed statement, never a parsing accident. */
+export const DEFAULT_BOND_ROLES: readonly BondRole[] = ["arbiter"];
+
+/** One hop back along a renewal chain. A renewal spends the previous bond's
+ *  output into a fresh CLTV bond under a NEWLY DERIVED key, so walking back
+ *  needs the previous bond's own key + term to recompute its address, plus the
+ *  txid of the funding output this hop's successor consumed. Nothing here is
+ *  trusted: `verifyBondLineage` recomputes every address and reads every spend
+ *  on-chain. */
+export interface BondLineageHop {
+  /** 64-hex x-only key of the bond at THIS hop (distinct from every other). */
+  fromXonly: string;
+  /** THIS hop's CLTV unlock height. */
+  fromLockUntil: number;
+  /** 64-hex txid of THIS hop's funding transaction. */
+  fromTxid: string;
+}
+
+/** ⚠ The full renewal ancestry, carried by the CURRENT announcement.
+ *
+ *  It has to be the full chain, not a single pointer. Kind 38135 is
+ *  parameterized-replaceable per (npub, community), so announcing a renewal
+ *  REPLACES the predecessor's announcement — after two renewals the middle
+ *  bond's event is simply gone from relays, and a one-hop pointer would dead-end
+ *  there. Since the announcer's own commitment store knows their whole history,
+ *  they publish every hop, and each one is INDEPENDENTLY verifiable on-chain by
+ *  anyone: recompute the hop's address, confirm its funding output was spent by
+ *  the very transaction that funded the next bond along. A fabricated hop fails
+ *  the recompute or fails the spend check. */
+export interface BondLineage {
+  /** Newest-first. `hops[0]` is the bond this one directly renewed. */
+  hops: BondLineageHop[];
+  /** Oldest claimed funding txid. Display-only; the walk is authoritative. */
+  rootTxid?: string;
+}
+
+/** Payload bound on the announced ancestry. ~2 years of monthly renewals, and it
+ *  caps a verifier's on-chain reads at 2 per hop. A chain longer than this
+ *  announces its most recent MAX hops; tenure then under-reports rather than
+ *  costing every reader an unbounded walk. */
+export const MAX_LINEAGE_HOPS = 24;
+
+/** Normalize a claimed role list. Unknown entries are dropped; an empty or
+ *  unusable result falls back to the default rather than unseating an arbiter. */
+function normRoles(value: unknown): BondRole[] {
+  if (!Array.isArray(value)) return [...DEFAULT_BOND_ROLES];
+  const seen = new Set<BondRole>();
+  for (const entry of value) {
+    if (typeof entry !== "string") continue;
+    const role = entry.trim().toLowerCase() as BondRole;
+    if (BOND_ROLES.includes(role)) seen.add(role);
+  }
+  return seen.size > 0 ? [...seen] : [...DEFAULT_BOND_ROLES];
+}
+
+function normLineageHop(value: unknown): BondLineageHop | null {
+  if (!value || typeof value !== "object") return null;
+  const raw = value as Record<string, unknown>;
+  const fromXonly = normHex(typeof raw.fromXonly === "string" ? raw.fromXonly : null);
+  const fromTxid = normHex(typeof raw.fromTxid === "string" ? raw.fromTxid : null);
+  if (!fromXonly || !fromTxid) return null;
+  if (!Number.isInteger(raw.fromLockUntil) || (raw.fromLockUntil as number) <= 0) return null;
+  return { fromXonly, fromLockUntil: raw.fromLockUntil as number, fromTxid };
+}
+
+/** Structurally validate a claimed lineage. A bad claim yields `undefined` — the
+ *  FIELD is dropped, never the announcement: a malformed tenure claim must not
+ *  invalidate a real, funded, chain-verifiable bond.
+ *
+ *  TRUNCATE, never partially accept: hops are ordered, and the walk stops at the
+ *  first one it cannot prove anyway. So a malformed hop ends the usable chain
+ *  there rather than letting later hops silently skip a gap — a gap is exactly
+ *  what an inflated tenure claim would look like. */
+function normLineage(value: unknown): BondLineage | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const raw = value as Record<string, unknown>;
+  if (!Array.isArray(raw.hops)) return undefined;
+  const hops: BondLineageHop[] = [];
+  const seenTxids = new Set<string>();
+  for (const entry of raw.hops.slice(0, MAX_LINEAGE_HOPS)) {
+    const hop = normLineageHop(entry);
+    if (!hop) break;
+    if (seenTxids.has(hop.fromTxid)) break; // a repeated txid is a loop, not history
+    seenTxids.add(hop.fromTxid);
+    hops.push(hop);
+  }
+  if (hops.length === 0) return undefined;
+  const rootTxid = normHex(typeof raw.rootTxid === "string" ? raw.rootTxid : null);
+  return { hops, ...(rootTxid ? { rootTxid } : {}) };
+}
+
 /** The advisory announcement payload (JSON in the event content). NEVER trusted for
  *  the funding truth — every field is re-derived/re-checked in verifyBondAnnouncement. */
 export interface BondAnnouncementPayload {
@@ -61,6 +169,11 @@ export interface BondAnnouncementPayload {
   network: NetworkLabel;
   /** Advisory recomputable address (cross-checked, never trusted). */
   address: string;
+  /** What this bond licenses. Absent ⇒ ["arbiter"] (every pre-A0 bond). */
+  roles?: BondRole[];
+  /** One hop back along the renewal chain, for the tenure walk. Absent on a
+   *  first bond, and on every bond announced before A0. */
+  lineage?: BondLineage;
 }
 
 /** A parsed, signature-verified announcement (NOT yet chain-verified). */
@@ -74,6 +187,10 @@ export interface ParsedBondAnnouncement {
   address: string;
   createdAt: number;
   eventId: string;
+  /** Always populated (defaulted, never empty) so callers need no null-check. */
+  roles: BondRole[];
+  /** Present only when the announcement carried a well-formed lineage claim. */
+  lineage?: BondLineage;
 }
 
 /** Build the UNSIGNED announcement event (the arbiter's own client signs + publishes).
@@ -87,6 +204,11 @@ export function buildBondAnnouncementEvent(params: {
   network: BtcNetwork;
   address: string;
   createdAt?: number;
+  /** Omit for an arbiter bond (the default). Pass ["merchant"] for a
+   *  storefront-only license, or both to do each. */
+  roles?: readonly BondRole[];
+  /** Pass when this bond was created by renewing a previous one. */
+  lineage?: BondLineage;
 }): { kind: number; created_at: number; tags: string[][]; content: string } {
   const pubkey = normHex(params.pubkey);
   if (!pubkey) throw new Error(`Announcement pubkey is not a 64-char hex key: ${params.pubkey}`);
@@ -98,6 +220,12 @@ export function buildBondAnnouncementEvent(params: {
   if (!HEX64.test(ownerXonlyHex)) throw new Error("ownerXonly must be a 32-byte x-only key");
   if (!Number.isInteger(params.lockUntil) || params.lockUntil <= 0) throw new Error("lockUntil must be a positive block height");
   if (params.amountSats <= 0n) throw new Error("amountSats must be positive");
+  // Emit `roles` only when it says something other than the default, so an
+  // ordinary arbiter bond stays byte-identical to a pre-A0 announcement.
+  const roles = params.roles ? normRoles([...params.roles]) : [...DEFAULT_BOND_ROLES];
+  const isDefaultRoles = roles.length === 1 && roles[0] === DEFAULT_BOND_ROLES[0];
+  const lineage = params.lineage ? normLineage(params.lineage) : undefined;
+  if (params.lineage && !lineage) throw new Error("lineage is malformed — refusing to announce an unverifiable renewal claim");
   const payload: BondAnnouncementPayload = {
     type: ARBITER_BOND_ANNOUNCEMENT_TYPE,
     npub: pubkey,
@@ -107,6 +235,8 @@ export function buildBondAnnouncementEvent(params: {
     amountSats: params.amountSats.toString(),
     network: networkLabel(params.network),
     address: params.address,
+    ...(isDefaultRoles ? {} : { roles }),
+    ...(lineage ? { lineage } : {}),
   };
   return {
     kind: ARBITER_BOND_ANNOUNCEMENT_KIND,
@@ -153,6 +283,8 @@ export function parseBondAnnouncementEvent(
     address: p.address,
     createdAt: event.created_at,
     eventId: event.id,
+    roles: normRoles(p.roles),
+    ...(normLineage(p.lineage) ? { lineage: normLineage(p.lineage) } : {}),
   };
 }
 
@@ -175,6 +307,42 @@ export interface VerifiedBond {
   /** Funding outpoint txid, so a human can check the claim in a block explorer
    *  instead of taking the app's word for it. */
   fundingTxid?: string;
+  /** What the announcer declared this bond licenses. Populated by
+   *  `verifyBondAnnouncement`; OPTIONAL because a bond can also arrive from a
+   *  cache entry written before A0. Read it through `declaresArbiterRole`,
+   *  which treats absent as the arbiter default — never as a merchant opt-out. */
+  roles?: BondRole[];
+  /** The announcer's renewal claim, structurally valid but NOT yet walked.
+   *  A1 turns this into proven tenure; until then it is a claim. */
+  lineage?: BondLineage;
+  /** A1: the block tenure actually starts at, after walking the lineage on-chain
+   *  — the oldest PROVEN ancestor's funding height, else this bond's own. Absent
+   *  when the walk has not been run. Read it through `bondTenureBlocks`, which
+   *  falls back to `fundedAtHeight` so an unwalked bond still reports honestly
+   *  (just shorter). */
+  tenureFromHeight?: number;
+  /** A1: how much of the announced ancestry the chain actually backed, so the
+   *  UI can say "3 of 5 renewals verified" instead of silently showing 3. */
+  lineageProven?: { provenHops: number; claimedHops: number };
+  /** ⭐ Tier 2.1: the arbiter's BOND key, x-only hex.
+   *
+   *  Carried onto the verified bond so an on-chain escrow can name an arbiter
+   *  who never JOINed. An auto-seated arbiter publishes no JOIN, so without this
+   *  their escrow key would never exist and the address could never be computed
+   *  — the trade would sit at "waiting for the arbiter" forever.
+   *
+   *  ⚠ Key reuse across contexts, stated rather than hidden: this key also
+   *  signs the bond's own CLTV reclaim. The scripts and sighashes differ, so
+   *  there is no nonce-reuse hazard, but it does link an arbiter's escrow
+   *  participation to their public bond. Acceptable because a bond IS public and
+   *  a seated arbiter is already named on the trade. The clean fix is a
+   *  dedicated escrow key in a future 38135 field; this is the version that
+   *  works with bonds already announced. */
+  ownerXonly?: string;
+  /** A1: when the announcement was signed (event `created_at`). NOT tenure —
+   *  tenure is chain-proven and this is merely when they said so. It exists for
+   *  cohort context: which bonds were announced in the same week. */
+  announcedAt?: number;
 }
 
 /** ⭐ Chain-verify a parsed announcement: REBUILD the address from (ownerXonly,
@@ -215,6 +383,10 @@ export async function verifyBondAnnouncement(
     active: typeof tip === "number" ? tip < parsed.lockUntil : true,
     fundedAtHeight,
     fundingTxid: earliest?.utxo.txid,
+    roles: parsed.roles,
+    ownerXonly: parsed.ownerXonly,
+    ...(parsed.lineage ? { lineage: parsed.lineage } : {}),
+    announcedAt: parsed.createdAt,
   };
 }
 
