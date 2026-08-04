@@ -16,6 +16,10 @@ forbidden_tracked=$(git ls-files -- \
   '.codex-vps-deploy/**' \
   '.codex-target.patch' \
   '**/.b64tmp/**' \
+  'node_modules' \
+  'node_modules/**' \
+  '**/node_modules' \
+  '**/node_modules/**' \
   'design/**' \
   'migration/**' \
   'social/**')
