@@ -240,7 +240,8 @@
       background: rgba(9,8,6,.35);
       backdrop-filter: blur(12px);
     }
-    .home-marquee-track { display: flex; width: max-content; animation: travel 28s linear infinite; }
+    .home-marquee-track { display: flex; width: max-content; animation: travel 112s linear infinite; }
+    .home-marquee-group { display: flex; flex: none; }
     .home-marquee span { padding: 18px 18px 20px; font: 600 clamp(18px, 2.1vw, 28px)/1 Manrope, sans-serif; letter-spacing: -.025em; white-space: nowrap; }
     .home-marquee span::after { content: "✦"; margin-left: 36px; color: var(--orange); }
     @keyframes travel { to { transform: translateX(-50%); } }
@@ -479,8 +480,18 @@
       </div>
       <div class="home-marquee" aria-hidden="true">
         <div class="home-marquee-track">
-          <span>Everyone has a home</span><span>Tout le monde a un foyer</span><span>Todos tienen un hogar</span><span>Kila mtu ana nyumbani</span>
-          <span>Everyone has a home</span><span>Tout le monde a un foyer</span><span>Todos tienen un hogar</span><span>Kila mtu ana nyumbani</span>
+          <div class="home-marquee-group">
+            <span>Everyone has a home</span><span>Tout le monde a un foyer</span><span>Todos tienen un hogar</span><span>Kila mtu ana nyumbani</span>
+            <span>Everyone has a home</span><span>Tout le monde a un foyer</span><span>Todos tienen un hogar</span><span>Kila mtu ana nyumbani</span>
+            <span>Everyone has a home</span><span>Tout le monde a un foyer</span><span>Todos tienen un hogar</span><span>Kila mtu ana nyumbani</span>
+            <span>Everyone has a home</span><span>Tout le monde a un foyer</span><span>Todos tienen un hogar</span><span>Kila mtu ana nyumbani</span>
+          </div>
+          <div class="home-marquee-group">
+            <span>Everyone has a home</span><span>Tout le monde a un foyer</span><span>Todos tienen un hogar</span><span>Kila mtu ana nyumbani</span>
+            <span>Everyone has a home</span><span>Tout le monde a un foyer</span><span>Todos tienen un hogar</span><span>Kila mtu ana nyumbani</span>
+            <span>Everyone has a home</span><span>Tout le monde a un foyer</span><span>Todos tienen un hogar</span><span>Kila mtu ana nyumbani</span>
+            <span>Everyone has a home</span><span>Tout le monde a un foyer</span><span>Todos tienen un hogar</span><span>Kila mtu ana nyumbani</span>
+          </div>
         </div>
       </div>
     </section>
