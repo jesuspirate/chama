@@ -20,6 +20,7 @@ struct BridgeSidecar(Mutex<Option<CommandChild>>);
 struct BridgeRuntime {
     bind: SocketAddr,
     bridge_url: String,
+    auth_token: String,
     instance_id: Option<String>,
     data_dir_override: Option<PathBuf>,
 }
@@ -72,6 +73,11 @@ fn optional_env(name: &str) -> Option<String> {
         .filter(|value| !value.is_empty())
 }
 
+fn generate_bridge_auth_token() -> String {
+    let bytes: [u8; 32] = rand::random();
+    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
 fn sanitize_instance_id(raw: &str) -> String {
     let sanitized = raw
         .chars()
@@ -96,14 +102,12 @@ fn choose_bridge_runtime() -> Result<BridgeRuntime, Box<dyn std::error::Error>> 
     let instance_id = optional_env("CHAMA_TAURI_INSTANCE_ID");
     let forced_port = optional_env("CHAMA_TAURI_BRIDGE_PORT")
         .map(|value| {
-            value
-                .parse::<u16>()
-                .map_err(|_| {
-                    std::io::Error::new(
-                        std::io::ErrorKind::InvalidInput,
-                        format!("invalid CHAMA_TAURI_BRIDGE_PORT: {value}"),
-                    )
-                })
+            value.parse::<u16>().map_err(|_| {
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    format!("invalid CHAMA_TAURI_BRIDGE_PORT: {value}"),
+                )
+            })
         })
         .transpose()?;
 
@@ -140,6 +144,7 @@ fn choose_bridge_runtime() -> Result<BridgeRuntime, Box<dyn std::error::Error>> 
     Ok(BridgeRuntime {
         bind,
         bridge_url: format!("http://{bind}"),
+        auth_token: generate_bridge_auth_token(),
         instance_id,
         data_dir_override: optional_env("CHAMA_TAURI_BRIDGE_DATA_DIR").map(PathBuf::from),
     })
@@ -178,6 +183,7 @@ fn js_string(value: &str) -> String {
 
 fn bridge_init_script(runtime: &BridgeRuntime) -> String {
     let bridge_url = js_string(&runtime.bridge_url);
+    let auth_token = js_string(&runtime.auth_token);
     let instance_id = runtime
         .instance_id
         .as_deref()
@@ -188,6 +194,7 @@ fn bridge_init_script(runtime: &BridgeRuntime) -> String {
         r#"
 ;window.__CHAMA_NATIVE_FEDIMINT__ = Object.freeze({{
   bridgeUrl: {bridge_url},
+  authToken: {auth_token},
   instanceId: {instance_id}
 }});
 "#,
@@ -203,6 +210,7 @@ fn start_bridge_sidecar(
 
     let data_dir_arg = data_dir.to_string_lossy().to_string();
     let bind_arg = runtime.bind.to_string();
+    let auth_token_arg = runtime.auth_token.as_str();
     eprintln!(
         "[chama-tauri] starting Fedimint bridge at {} using {}",
         runtime.bridge_url,
@@ -218,6 +226,12 @@ fn start_bridge_sidecar(
             "serve",
             "--bind",
             bind_arg.as_str(),
+            "--auth-token",
+            auth_token_arg,
+            "--allowed-origin",
+            "tauri://localhost",
+            "--allowed-origin",
+            "http://tauri.localhost",
         ])
         .spawn()?;
 

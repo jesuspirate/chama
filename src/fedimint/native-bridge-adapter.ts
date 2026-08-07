@@ -308,6 +308,16 @@ function getInjectedNativeBridgeUrl(): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
+function getInjectedNativeBridgeToken(): string | null {
+  const global = globalThis as {
+    __CHAMA_NATIVE_FEDIMINT__?: {
+      authToken?: unknown;
+    };
+  };
+  const value = global.__CHAMA_NATIVE_FEDIMINT__?.authToken;
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
 function setLocalStorageValue(key: string, value: string): void {
   try {
     if (typeof localStorage === "undefined") return;
@@ -530,6 +540,7 @@ export function getNativeBridgeUrl(): string {
 
 export function getNativeBridgeToken(): string | null {
   return (
+    getInjectedNativeBridgeToken() ??
     getLocalStorageValue(NATIVE_BRIDGE_TOKEN_KEY) ??
     getImportEnv("VITE_CHAMA_NATIVE_BRIDGE_TOKEN")
   );

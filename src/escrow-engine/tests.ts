@@ -582,6 +582,7 @@ import {
   NativeBridgeWallet,
   getConfiguredNativeBridgeCommunitySlug,
   getNativeBridgeCommunitySlug,
+  getNativeBridgeToken,
   getNativeBridgeUrl,
   isBridgeTransportFailure,
   isNativeBridgeModeOn,
@@ -14145,10 +14146,13 @@ console.log("\n── BOLT11 PAYOUT AMOUNT ROUTING ──");
     try {
       (globalThis as any).__CHAMA_NATIVE_FEDIMINT__ = {
         bridgeUrl: "http://127.0.0.1:61234",
+        authToken: "tauri-window-secret",
         instanceId: "second-demo-window",
       };
       assert(getNativeBridgeUrl() === "http://127.0.0.1:61234",
         "Tauri-injected bridge URL wins over shared localStorage");
+      assert(getNativeBridgeToken() === "tauri-window-secret",
+        "Tauri-injected bridge token wins over shared localStorage");
     } finally {
       if (originalInjected === undefined) delete (globalThis as any).__CHAMA_NATIVE_FEDIMINT__;
       else (globalThis as any).__CHAMA_NATIVE_FEDIMINT__ = originalInjected;
