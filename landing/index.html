@@ -207,8 +207,8 @@
       inset: 0;
       background: linear-gradient(180deg, rgba(9,8,6,.06), rgba(9,8,6,.64)), radial-gradient(circle at center, transparent 15%, rgba(9,8,6,.18) 78%);
     }
-    .home-row { display: flex; width: max-content; gap: 18px; animation: homes-left 55s linear infinite; }
-    .home-row.reverse { animation-name: homes-right; animation-duration: 62s; }
+    .home-row { display: flex; width: max-content; gap: 18px; animation: homes-left 145s linear infinite; }
+    .home-row.reverse { animation-name: homes-right; animation-duration: 160s; }
     .home-set { display: flex; flex: none; gap: 18px; }
     .home-set img { width: clamp(220px, 28vw, 430px); height: 100%; object-fit: cover; border-radius: 20px; filter: saturate(.86) contrast(1.03); }
     .home-set img:nth-child(3n + 1) { width: clamp(170px, 20vw, 300px); }
@@ -228,8 +228,21 @@
       padding-block: 100px;
       text-align: center;
     }
+    .home-content::before {
+      content: "";
+      position: absolute;
+      width: clamp(330px, 46vw, 640px);
+      aspect-ratio: 1;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(9,8,6,.46) 0 42%, rgba(9,8,6,.3) 58%, rgba(9,8,6,.08) 72%, transparent 78%);
+      box-shadow: 0 0 64px rgba(9,8,6,.16);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      pointer-events: none;
+    }
+    .home-content > * { position: relative; z-index: 1; }
     .home-content .label { color: rgba(255,255,255,.68); }
-    .home-content h2 { max-width: 9ch; font-size: clamp(62px, 10vw, 144px); line-height: .88; text-wrap: balance; }
+    .home-content h2 { max-width: 9ch; font-size: clamp(62px, 10vw, 144px); line-height: .88; text-wrap: balance; text-shadow: 0 2px 24px rgba(0,0,0,.28); }
     .home-content p { max-width: 42ch; margin: 0; color: rgba(255,255,255,.78); font-size: clamp(17px, 2vw, 21px); line-height: 1.5; }
     .home-marquee {
       position: absolute;
@@ -334,6 +347,7 @@
       .footer-row { align-items: flex-start; flex-direction: column; }
       .theme-toggle { width: 36px; height: 36px; }
       .home-banner, .home-content { min-height: 540px; }
+      .home-content::before { width: min(92vw, 400px); }
     }
     @media (prefers-reduced-motion: reduce) {
       html { scroll-behavior: auto; }
