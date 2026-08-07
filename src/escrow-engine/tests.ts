@@ -14139,6 +14139,7 @@ console.log("\n── BOLT11 PAYOUT AMOUNT ROUTING ──");
 
   {
     const originalInjected = (globalThis as any).__CHAMA_NATIVE_FEDIMINT__;
+    const originalAndroid = (globalThis as any).ChamaNativeFedimint;
     (globalThis as any).localStorage?.setItem?.(
       NATIVE_BRIDGE_URL_KEY,
       "http://127.0.0.1:8787",
@@ -14153,9 +14154,20 @@ console.log("\n── BOLT11 PAYOUT AMOUNT ROUTING ──");
         "Tauri-injected bridge URL wins over shared localStorage");
       assert(getNativeBridgeToken() === "tauri-window-secret",
         "Tauri-injected bridge token wins over shared localStorage");
+      delete (globalThis as any).__CHAMA_NATIVE_FEDIMINT__;
+      (globalThis as any).ChamaNativeFedimint = {
+        getBridgeUrl: () => "http://127.0.0.1:8787",
+        getAuthToken: () => "android-install-secret",
+      };
+      assert(getNativeBridgeUrl() === "http://127.0.0.1:8787",
+        "Android shell bridge URL is read from the native interface");
+      assert(getNativeBridgeToken() === "android-install-secret",
+        "Android shell bridge token is read from the native interface");
     } finally {
       if (originalInjected === undefined) delete (globalThis as any).__CHAMA_NATIVE_FEDIMINT__;
       else (globalThis as any).__CHAMA_NATIVE_FEDIMINT__ = originalInjected;
+      if (originalAndroid === undefined) delete (globalThis as any).ChamaNativeFedimint;
+      else (globalThis as any).ChamaNativeFedimint = originalAndroid;
       (globalThis as any).localStorage?.removeItem?.(NATIVE_BRIDGE_URL_KEY);
     }
   }
@@ -14218,6 +14230,10 @@ console.log("\n── BOLT11 PAYOUT AMOUNT ROUTING ──");
       "Tauri launches the native bridge with --data-dir, serve, and --bind in the expected order");
     assert(/command\.add\("--data-dir"\)[\s\S]*command\.add\(dataDir\.getAbsolutePath\(\)\)[\s\S]*command\.add\("serve"\)[\s\S]*command\.add\("--bind"\)[\s\S]*command\.add\(FEDIMINT_BRIDGE_BIND\)/.test(androidSrc),
       "Android launches the native bridge with --data-dir, serve, and --bind in the expected order");
+    assert(/SecureRandom\(\)\.nextBytes\(bytes\)/.test(androidSrc) &&
+      /command\.add\("--auth-token"\)[\s\S]*command\.add\(fedimintBridgeAuthToken\)/.test(androidSrc) &&
+      /command\.add\("--allowed-origin"\)[\s\S]*command\.add\(FEDIMINT_BRIDGE_ORIGIN\)/.test(androidSrc),
+      "Android generates and wires a persistent 256-bit token with an exact allowed origin");
 
     const tauriDiscoveryWiring = /--iroh-dns|CHAMA_FEDIMINT_IROH_DNS/.test(tauriSrc);
     const androidDiscoveryWiring = /--iroh-dns|CHAMA_FEDIMINT_IROH_DNS/.test(androidSrc);

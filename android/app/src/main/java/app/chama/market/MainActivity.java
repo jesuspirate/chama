@@ -9,6 +9,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
 import android.view.Window;
+import android.webkit.JavascriptInterface;
 import android.webkit.WebView;
 
 import com.getcapacitor.BridgeActivity;
@@ -16,6 +17,7 @@ import com.getcapacitor.BridgeActivity;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.InputStreamReader;
+import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -23,8 +25,11 @@ public class MainActivity extends BridgeActivity {
     private static final String TAG = "Chama";
     private static final String PREFS_NAME = "chama_native";
     private static final String ASSET_VERSION_KEY = "web_asset_version";
+    private static final String BRIDGE_AUTH_TOKEN_KEY = "fedimint_bridge_auth_token";
     private static final String FEDIMINT_BRIDGE_BINARY = "libchama_fedimint_bridge.so";
     private static final String FEDIMINT_BRIDGE_BIND = "127.0.0.1:8787";
+    private static final String FEDIMINT_BRIDGE_URL = "http://127.0.0.1:8787";
+    private static final String FEDIMINT_BRIDGE_ORIGIN = "https://localhost";
     private static final long FEDIMINT_BRIDGE_STABLE_MS = 30_000L;
     private static final long FEDIMINT_BRIDGE_MAX_RESTART_DELAY_MS = 30_000L;
 
@@ -32,7 +37,20 @@ public class MainActivity extends BridgeActivity {
     private final Handler fedimintBridgeHandler = new Handler(Looper.getMainLooper());
     private int fedimintBridgeRestartAttempts = 0;
     private boolean fedimintBridgeStopping = false;
+    private String fedimintBridgeAuthToken;
     private final Runnable fedimintBridgeRestartRunnable = this::startFedimintBridge;
+
+    private final class NativeFedimintConfig {
+        @JavascriptInterface
+        public String getBridgeUrl() {
+            return FEDIMINT_BRIDGE_URL;
+        }
+
+        @JavascriptInterface
+        public String getAuthToken() {
+            return fedimintBridgeAuthToken;
+        }
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -40,6 +58,11 @@ public class MainActivity extends BridgeActivity {
         getWindow().setBackgroundDrawable(new ColorDrawable(Color.rgb(5, 5, 10)));
         clearWebViewCacheAfterAppUpdate();
         super.onCreate(savedInstanceState);
+        fedimintBridgeAuthToken = getOrCreateBridgeAuthToken();
+        getBridge().getWebView().addJavascriptInterface(
+            new NativeFedimintConfig(),
+            "ChamaNativeFedimint"
+        );
         getWindow().setBackgroundDrawable(new ColorDrawable(Color.rgb(5, 5, 10)));
         getWindow().setStatusBarColor(Color.rgb(5, 5, 10));
         getWindow().setNavigationBarColor(Color.rgb(5, 5, 10));
@@ -88,6 +111,10 @@ public class MainActivity extends BridgeActivity {
         command.add("serve");
         command.add("--bind");
         command.add(FEDIMINT_BRIDGE_BIND);
+        command.add("--auth-token");
+        command.add(fedimintBridgeAuthToken);
+        command.add("--allowed-origin");
+        command.add(FEDIMINT_BRIDGE_ORIGIN);
 
         ProcessBuilder builder = new ProcessBuilder(command);
         builder.redirectErrorStream(true);
@@ -205,5 +232,25 @@ public class MainActivity extends BridgeActivity {
         } catch (Exception ignored) {
             return null;
         }
+    }
+
+    private String getOrCreateBridgeAuthToken() {
+        SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+        String existing = prefs.getString(BRIDGE_AUTH_TOKEN_KEY, "");
+        if (existing != null && existing.matches("[0-9a-f]{64}")) {
+            return existing;
+        }
+
+        byte[] bytes = new byte[32];
+        new SecureRandom().nextBytes(bytes);
+        StringBuilder token = new StringBuilder(bytes.length * 2);
+        for (byte value : bytes) {
+            token.append(String.format(java.util.Locale.ROOT, "%02x", value & 0xff));
+        }
+        String generated = token.toString();
+        if (!prefs.edit().putString(BRIDGE_AUTH_TOKEN_KEY, generated).commit()) {
+            throw new IllegalStateException("Could not persist Fedimint bridge auth token");
+        }
+        return generated;
     }
 }

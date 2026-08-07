@@ -318,6 +318,33 @@ function getInjectedNativeBridgeToken(): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
+function getAndroidNativeBridgeConfig(): {
+  bridgeUrl?: string;
+  authToken?: string;
+} | null {
+  const android = (globalThis as {
+    ChamaNativeFedimint?: {
+      getBridgeUrl?: () => unknown;
+      getAuthToken?: () => unknown;
+    };
+  }).ChamaNativeFedimint;
+  if (!android) return null;
+  try {
+    const bridgeUrl = android.getBridgeUrl?.();
+    const authToken = android.getAuthToken?.();
+    return {
+      bridgeUrl: typeof bridgeUrl === "string" && bridgeUrl.trim()
+        ? bridgeUrl.trim()
+        : undefined,
+      authToken: typeof authToken === "string" && authToken.trim()
+        ? authToken.trim()
+        : undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
 function setLocalStorageValue(key: string, value: string): void {
   try {
     if (typeof localStorage === "undefined") return;
@@ -532,6 +559,7 @@ export function getNativeBridgeUrl(): string {
     params?.get("nativeFedimintUrl") ??
     params?.get("native-fedimint-url") ??
     getInjectedNativeBridgeUrl() ??
+    getAndroidNativeBridgeConfig()?.bridgeUrl ??
     getLocalStorageValue(NATIVE_BRIDGE_URL_KEY) ??
     getImportEnv("VITE_CHAMA_NATIVE_BRIDGE_URL") ??
     DEFAULT_NATIVE_BRIDGE_URL;
@@ -541,6 +569,7 @@ export function getNativeBridgeUrl(): string {
 export function getNativeBridgeToken(): string | null {
   return (
     getInjectedNativeBridgeToken() ??
+    getAndroidNativeBridgeConfig()?.authToken ??
     getLocalStorageValue(NATIVE_BRIDGE_TOKEN_KEY) ??
     getImportEnv("VITE_CHAMA_NATIVE_BRIDGE_TOKEN")
   );
@@ -673,8 +702,9 @@ async function nativeBridgeFetch<T>(
   } = init;
   const headers = new Headers(rawHeaders);
   // Remote-bridge auth: every bridge request funnels through here, so this
-  // one line covers the whole wallet surface. Token-less local bridges
-  // (Tauri/Android sidecars) send no header — unchanged.
+  // one line covers the whole wallet surface. Shell-managed Tauri/Android
+  // bridges inject a token; explicitly configured remote bridges load one
+  // from localStorage/env.
   const token = getNativeBridgeToken();
   if (token && !headers.has("authorization")) {
     headers.set("authorization", `Bearer ${token}`);
