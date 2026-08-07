@@ -7,16 +7,56 @@ stop() {
 }
 trap stop INT TERM EXIT
 
+security_dir="/data/security"
+mkdir -p "$security_dir"
+chown root:nginx "$security_dir"
+chmod 750 "$security_dir"
+
+access_password_file="$security_dir/access-password"
+if [ ! -s "$access_password_file" ]; then
+  umask 077
+  openssl rand -hex 24 > "$access_password_file"
+fi
+access_password="$(tr -d '\r\n' < "$access_password_file")"
+if [ "${#access_password}" -ne 48 ]; then
+  echo "chama-startos: invalid access password state" >&2
+  exit 1
+fi
+htpasswd -bcB "$security_dir/htpasswd" chama "$access_password" >/dev/null
+chown root:nginx "$security_dir/htpasswd"
+chmod 600 "$access_password_file"
+chmod 640 "$security_dir/htpasswd"
+
 client=1
 for port in 8787 8788 8789; do
   data_dir="/data/client-$client"
+  token_file="$security_dir/bridge-token-$client"
   mkdir -p "$data_dir"
-  chama-fedimint-bridge --data-dir "$data_dir" serve --bind "127.0.0.1:$port" &
+  if [ ! -s "$token_file" ]; then
+    umask 077
+    openssl rand -hex 32 > "$token_file"
+  fi
+  bridge_token="$(tr -d '\r\n' < "$token_file")"
+  if [ "${#bridge_token}" -ne 64 ]; then
+    echo "chama-startos: invalid bridge token state for client $client" >&2
+    exit 1
+  fi
+  chmod 600 "$token_file"
+  chama-fedimint-bridge --data-dir "$data_dir" serve \
+    --bind "127.0.0.1:$port" \
+    --auth-token "$bridge_token" &
   pids="$pids $!"
   client=$((client + 1))
 done
 
-nginx -g 'daemon off;' &
+export CHAMA_BRIDGE_TOKEN_1="$(tr -d '\r\n' < "$security_dir/bridge-token-1")"
+export CHAMA_BRIDGE_TOKEN_2="$(tr -d '\r\n' < "$security_dir/bridge-token-2")"
+export CHAMA_BRIDGE_TOKEN_3="$(tr -d '\r\n' < "$security_dir/bridge-token-3")"
+envsubst '${CHAMA_BRIDGE_TOKEN_1} ${CHAMA_BRIDGE_TOKEN_2} ${CHAMA_BRIDGE_TOKEN_3}' \
+  < /etc/nginx/nginx.conf.template > /tmp/nginx.conf
+chmod 600 /tmp/nginx.conf
+
+nginx -c /tmp/nginx.conf -g 'daemon off;' &
 nginx_pid=$!
 pids="$pids $nginx_pid"
 

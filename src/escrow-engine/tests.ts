@@ -14225,6 +14225,9 @@ console.log("\n── BOLT11 PAYOUT AMOUNT ROUTING ──");
       "android/app/src/main/java/app/chama/market/MainActivity.java",
       "utf8",
     );
+    const startosEntrypoint = readFileSync("startos/entrypoint.sh", "utf8");
+    const startosNginx = readFileSync("startos/nginx.conf.template", "utf8");
+    const startosDockerfile = readFileSync("Dockerfile", "utf8");
     const tauriArgs = tauriSrc.match(/\.args\(\[\s*([\s\S]*?)\s*\]\)/)?.[1] ?? "";
     assert(/"--data-dir"[\s\S]*data_dir_arg\.as_str\(\)[\s\S]*"serve"[\s\S]*"--bind"[\s\S]*bind_arg\.as_str\(\)/.test(tauriArgs),
       "Tauri launches the native bridge with --data-dir, serve, and --bind in the expected order");
@@ -14239,6 +14242,23 @@ console.log("\n── BOLT11 PAYOUT AMOUNT ROUTING ──");
     const androidDiscoveryWiring = /--iroh-dns|CHAMA_FEDIMINT_IROH_DNS/.test(androidSrc);
     assert(tauriDiscoveryWiring === androidDiscoveryWiring,
       "Native bridge discovery policy wiring must stay in parity across Tauri and Android launchers");
+    assert(/openssl rand -hex 24/.test(startosEntrypoint) &&
+      /htpasswd -bcB/.test(startosEntrypoint) &&
+      /auth_basic_user_file \/data\/security\/htpasswd/.test(startosNginx),
+      "StartOS requires a persisted, user-visible password before any wallet UI or API route");
+    assert((startosEntrypoint.match(/openssl rand -hex 32/g) ?? []).length === 1 &&
+      /bridge-token-\$client/.test(startosEntrypoint) &&
+      /--auth-token "\$bridge_token"/.test(startosEntrypoint),
+      "StartOS gives each wallet bridge its own persistent 256-bit bearer token");
+    assert(/proxy_set_header Authorization "Bearer \$\{CHAMA_BRIDGE_TOKEN_1\}"/.test(startosNginx) &&
+      /proxy_set_header Authorization "Bearer \$\{CHAMA_BRIDGE_TOKEN_2\}"/.test(startosNginx) &&
+      /proxy_set_header Authorization "Bearer \$\{CHAMA_BRIDGE_TOKEN_3\}"/.test(startosNginx),
+      "StartOS nginx injects the matching isolated token for each wallet bridge");
+    assert(/cross-site 1/.test(startosNginx) &&
+      /if \(\$cross_site_request\) \{ return 403; \}/.test(startosNginx),
+      "StartOS rejects browser cross-site requests before the wallet proxy");
+    assert(!/EXPOSE[^\n]*(8787|8788|8789)/.test(startosDockerfile),
+      "StartOS does not expose direct native bridge ports outside the container");
   }
 
   {

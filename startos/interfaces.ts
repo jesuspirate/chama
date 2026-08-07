@@ -15,11 +15,11 @@ export const setInterfaces = sdk.setupInterfaces(async ({ effects }) => {
     sdk.createInterface(effects, {
       name: i18n(name),
       id,
-      description: i18n('An isolated Chama testing client'),
+      description: i18n('An authenticated, isolated Chama wallet client'),
       type: 'ui',
       masked: false,
       schemeOverride: null,
-      username: null,
+      username: 'chama',
       path: '',
       query: {},
     })

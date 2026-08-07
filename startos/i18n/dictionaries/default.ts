@@ -9,6 +9,7 @@ const dict = {
   'Client Two': 5,
   'Client Three': 6,
   'An isolated Chama testing client': 7,
+  'An authenticated, isolated Chama wallet client': 8,
 } as const
 
 export type LangDict = Record<(typeof dict)[keyof typeof dict], string>
