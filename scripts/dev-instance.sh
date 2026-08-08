@@ -73,6 +73,11 @@ if [ "$CHAMA_TAURI_BRIDGE_PORT" -gt 65535 ]; then
 fi
 export CHAMA_TAURI_BRIDGE_PORT
 
+# The bridge enforces browser Origin independently of CORS. Permit only this
+# instance's pinned Vite origin; never widen the production allowlist or use a
+# wildcard just to make the three-window test rig work.
+export CHAMA_TAURI_ALLOWED_ORIGIN="http://localhost:${PORT}"
+
 # Pre-flight cleanup: free THIS instance's OWN ports if a previous run left them
 # held — a crash (the bridge AddrInUse panic), or closing the window without
 # Cmd+Q. Tauri's `beforeDevCommand` vite child also orphans on a Rust-side panic.

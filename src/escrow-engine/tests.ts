@@ -14228,9 +14228,13 @@ console.log("\n── BOLT11 PAYOUT AMOUNT ROUTING ──");
     const startosEntrypoint = readFileSync("startos/entrypoint.sh", "utf8");
     const startosNginx = readFileSync("startos/nginx.conf.template", "utf8");
     const startosDockerfile = readFileSync("Dockerfile", "utf8");
-    const tauriArgs = tauriSrc.match(/\.args\(\[\s*([\s\S]*?)\s*\]\)/)?.[1] ?? "";
-    assert(/"--data-dir"[\s\S]*data_dir_arg\.as_str\(\)[\s\S]*"serve"[\s\S]*"--bind"[\s\S]*bind_arg\.as_str\(\)/.test(tauriArgs),
+    const devInstanceScript = readFileSync("scripts/dev-instance.sh", "utf8");
+    assert(/let mut sidecar_args = vec!\[[\s\S]*"--data-dir"[\s\S]*data_dir_arg[\s\S]*"serve"[\s\S]*"--bind"[\s\S]*bind_arg/.test(tauriSrc) &&
+      /\.args\(sidecar_args\)/.test(tauriSrc),
       "Tauri launches the native bridge with --data-dir, serve, and --bind in the expected order");
+    assert(/CHAMA_TAURI_ALLOWED_ORIGIN/.test(tauriSrc) &&
+      /CHAMA_TAURI_ALLOWED_ORIGIN="http:\/\/localhost:\$\{PORT\}"/.test(devInstanceScript),
+      "Each multi-instance Tauri dev bridge permits only its own pinned Vite origin");
     assert(/command\.add\("--data-dir"\)[\s\S]*command\.add\(dataDir\.getAbsolutePath\(\)\)[\s\S]*command\.add\("serve"\)[\s\S]*command\.add\("--bind"\)[\s\S]*command\.add\(FEDIMINT_BRIDGE_BIND\)/.test(androidSrc),
       "Android launches the native bridge with --data-dir, serve, and --bind in the expected order");
     assert(/SecureRandom\(\)\.nextBytes\(bytes\)/.test(androidSrc) &&

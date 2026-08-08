@@ -211,6 +211,23 @@ fn start_bridge_sidecar(
     let data_dir_arg = data_dir.to_string_lossy().to_string();
     let bind_arg = runtime.bind.to_string();
     let auth_token_arg = runtime.auth_token.as_str();
+    let mut sidecar_args = vec![
+        "--data-dir".to_owned(),
+        data_dir_arg,
+        "serve".to_owned(),
+        "--bind".to_owned(),
+        bind_arg,
+        "--auth-token".to_owned(),
+        auth_token_arg.to_owned(),
+        "--allowed-origin".to_owned(),
+        "tauri://localhost".to_owned(),
+        "--allowed-origin".to_owned(),
+        "http://tauri.localhost".to_owned(),
+    ];
+    if let Some(dev_origin) = optional_env("CHAMA_TAURI_ALLOWED_ORIGIN") {
+        sidecar_args.push("--allowed-origin".to_owned());
+        sidecar_args.push(dev_origin);
+    }
     eprintln!(
         "[chama-tauri] starting Fedimint bridge at {} using {}",
         runtime.bridge_url,
@@ -220,19 +237,7 @@ fn start_bridge_sidecar(
     let (mut rx, child) = app
         .shell()
         .sidecar("chama-fedimint-bridge")?
-        .args([
-            "--data-dir",
-            data_dir_arg.as_str(),
-            "serve",
-            "--bind",
-            bind_arg.as_str(),
-            "--auth-token",
-            auth_token_arg,
-            "--allowed-origin",
-            "tauri://localhost",
-            "--allowed-origin",
-            "http://tauri.localhost",
-        ])
+        .args(sidecar_args)
         .spawn()?;
 
     app.manage(BridgeSidecar(Mutex::new(Some(child))));
