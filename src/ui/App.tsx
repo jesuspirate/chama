@@ -811,6 +811,10 @@ export default function App() {
       throw e;
     }
   };
+  const handleStartPrivatePlan = async (parentId: string, sliceCount: number) => {
+    const result = await actions.startPrivateTranchePlan(parentId, sliceCount);
+    setToast({ message: `Private ${result.children.length}-slice plan started.`, type: "success" });
+  };
 
   const saveListingEdits = async (id: string, edits: ListingEdits) => {
     const result = await actions.editListing(id, edits);
@@ -3186,6 +3190,9 @@ export default function App() {
             fetchCommunityBonds={actions.fetchCommunityBonds}
             knownTrades={knownTradesForConcentration}
             onStartNextTranche={handleStartNextTranche}
+            privatePlanChildren={selected ? listingChildren(selected) : undefined}
+            onStartPrivatePlan={handleStartPrivatePlan}
+            onSyncPrivatePlan={actions.syncPrivateTranchePlan}
             onchainFundingPlan={actions.onchainFundingPlan}
             onPublishOnchainLock={actions.publishOnchainLock}
             onPrepareOnchainSettlement={actions.prepareOnchainSettlement}

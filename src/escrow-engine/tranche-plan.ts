@@ -30,6 +30,7 @@ export function trancheTermsDigest(payload: CreatePayload): string {
   return digest(canonical({
     description: payload.description,
     category: payload.category,
+    escrowMode: payload.escrowMode,
     fulfillment: payload.fulfillment,
     community: payload.community,
     fiatAmount: payload.fiatAmount,
@@ -141,7 +142,11 @@ export interface PlanState {
   nextSafeAction: "publish-missing-children" | "fund-active-child" | "settle-active-child" | "complete" | "repair-plan";
 }
 
-export function derivePlanState(parent: EscrowState, children: EscrowState[]): PlanState | null {
+export function derivePlanState(
+  parent: EscrowState,
+  children: EscrowState[],
+  creditObserved: (child: EscrowState) => boolean = () => false,
+): PlanState | null {
   const frozen = parent.tranchePlan;
   if (!frozen) return null;
   const byIndex = new Map(children.filter(c => c.trancheChild?.planId === frozen.planId).map(c => [c.trancheChild!.index, c]));
@@ -166,7 +171,7 @@ export function derivePlanState(parent: EscrowState, children: EscrowState[]): P
     rows.push({ id: child.id, index: tranche.index, amountMsats: tranche.amountMsats, status: child.status, valid,
       ...(!valid ? { error: verificationError ?? "child participants do not match frozen plan" } : {}) });
     if (!valid && !stoppedReason) stoppedReason = `Invalid tranche ${tranche.index + 1}`;
-    if (valid && child.status === EscrowStatus.COMPLETED && tranche.index === settledCount) {
+    if (valid && child.status === EscrowStatus.COMPLETED && creditObserved(child) && tranche.index === settledCount) {
       settledCount++;
       outstandingMsats -= tranche.amountMsats;
     }
@@ -188,8 +193,13 @@ export function derivePlanState(parent: EscrowState, children: EscrowState[]): P
   };
 }
 
-export function canFundTranche(parent: EscrowState, children: EscrowState[], childId: string): boolean {
-  const plan = derivePlanState(parent, children);
+export function canFundTranche(
+  parent: EscrowState,
+  children: EscrowState[],
+  childId: string,
+  creditObserved: (child: EscrowState) => boolean = () => false,
+): boolean {
+  const plan = derivePlanState(parent, children, creditObserved);
   return plan?.activeChildId === childId && plan.nextSafeAction === "fund-active-child";
 }
 

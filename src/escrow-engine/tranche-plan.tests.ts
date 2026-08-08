@@ -82,7 +82,14 @@ assert(derived?.activeChildId === children[0].id && canFundTranche(parent.state,
 assert(!canFundTranche(parent.state, children, children[1].id), "child 2 cannot fund before child 1 payout proof");
 children[0] = { ...children[0], status: EscrowStatus.COMPLETED };
 derived = derivePlanState(parent.state, children);
-assert(derived?.activeChildId === children[1].id && derived.settledCount === 1, "proven child 1 completion activates child 2");
+assert(derived?.activeChildId === children[0].id && derived.settledCount === 0,
+  "published completion without observed wallet credit keeps child 2 closed");
+assert(!canFundTranche(parent.state, children, children[1].id),
+  "a mere completion claim cannot authorize child 2 funding");
+const credited = (child: EscrowState) => child.id === children[0].id;
+derived = derivePlanState(parent.state, children, credited);
+assert(derived?.activeChildId === children[1].id && derived.settledCount === 1,
+  "observed child 1 wallet credit activates child 2");
 
 const wrongNetwork: CreatePayload = { ...parentPayload, amountMsats: tranches[0].amountMsats, parent: PARENT, sellerPubkey: SELLER,
   trancheChild: { ...buildChildDescriptor(PARENT, START_EVENT, plan, 0), bitcoinNetwork: "mainnet" } };

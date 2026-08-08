@@ -410,6 +410,9 @@ export interface EscrowClientConfig {
    * production code.
    */
   verifyEvent?: (event: NostrEvent) => boolean;
+  /** Local wallet evidence gate for advancing a private tranche plan. A
+   *  published COMPLETE is never sufficient on its own. */
+  trancheCreditObserved?: (state: EscrowState) => boolean;
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -1185,10 +1188,11 @@ export class EscrowClient {
     if (!parent) throw new Error(`Parent ${parentId} not found`);
     const coordinator = await this.getPubkey();
     if (parent.initiator.pubkey !== coordinator || parent.initiator.role !== Role.SELLER) throw new Error("Only the parent seller may coordinate its tranche plan");
-    const buyerPubkey = parent.participants[Role.BUYER];
+    const now = Math.floor(Date.now() / 1000);
+    const buyerPubkey = getEffectiveParticipantAt(parent, Role.BUYER, now);
     const sellerPubkey = parent.participants[Role.SELLER];
     const arbiterPubkey = parent.participants[Role.ARBITER];
-    if (!buyerPubkey || !sellerPubkey || !arbiterPubkey) throw new Error("Parent buyer, seller, and arbiter must all be seated before plan start");
+    if (!buyerPubkey || !sellerPubkey || !arbiterPubkey) throw new Error("Parent buyer, seller, and arbiter must all be actively seated before plan start");
 
     const baseParams = {
       description: parent.description,
@@ -1203,6 +1207,7 @@ export class EscrowClient {
       community: parent.community ?? undefined,
       country: parent.country ?? undefined,
       billType: parent.billType ?? undefined,
+      escrowMode: parent.escrowMode,
       mintUrl: parent.mintUrl,
       paymentMethods: parent.paymentMethods,
       items: parent.items,
@@ -1225,7 +1230,6 @@ export class EscrowClient {
       plan = parent.tranchePlan;
       if (plan.planId !== planId || plan.bitcoinNetwork !== bitcoinNetwork) throw new Error("Parent already has a different frozen tranche plan");
     } else {
-      const now = Math.floor(Date.now() / 1000);
       plan = { type: "escrow:plan_start", planId, total: tranches.length, totalMsats: parent.amountMsats,
         buyerPubkey, sellerPubkey, arbiterPubkey, termsDigest, coordinatorPubkey: coordinator,
         bitcoinNetwork, tranches, startedAt: now };
@@ -1287,7 +1291,9 @@ export class EscrowClient {
     if (!parent?.tranchePlan) throw new Error("Cannot verify the signed parent tranche plan");
     if (parent.tranchePlan.bitcoinNetwork !== state.trancheChild.bitcoinNetwork) throw new Error("Tranche Bitcoin network does not match its parent");
     const children = await this.loadChildren(parent.id);
-    if (!canFundTranche(parent, children, state.id)) throw new Error("A prior tranche must complete before this child can fund");
+    if (!canFundTranche(parent, children, state.id, this.config.trancheCreditObserved)) {
+      throw new Error("A prior tranche must complete and its payout must reach the winner before this child can fund");
+    }
   }
 
   // ── Join an existing escrow ─────────────────────────────────────────────

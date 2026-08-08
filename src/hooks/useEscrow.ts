@@ -192,7 +192,7 @@ import {
   isSellerOwnedListing,
 } from "../escrow-engine/listing-renewal.js";
 import { retireListing } from "../escrow-engine/listing-renewal-ledger.js";
-import { trancheGate, tranchesForPlan, buildNextTrancheParams } from "../escrow-engine/tranche.js";
+import { MIN_TRANCHE_SATS, trancheGate, tranchesForPlan, buildNextTrancheParams } from "../escrow-engine/tranche.js";
 import { defaultCreditObserver, recordClaimCredit } from "../payments/claim-credit-ledger.js";
 import {
   canEditListing,
@@ -910,6 +910,17 @@ export interface UseEscrowActions {
   /** Tranching: publish the next slice of a plan. Re-checks the safety gate
    *  itself — never trusts the UI's copy of it. */
   startNextTranche: (fromEscrowId: string) => Promise<{ escrowId: string; state: EscrowState }>;
+  /** Parent/child tranche protocol: freeze the already-seated parent and fan
+   *  out deterministic private children. This is deliberately separate from
+   *  the legacy public-slice mechanism above. */
+  startPrivateTranchePlan: (
+    parentId: string,
+    sliceCount: number,
+  ) => Promise<{ parent: EscrowState; children: EscrowState[] }>;
+  /** Re-fetch a frozen parent's private children, persist their local recovery
+   *  pointers, and publish this participant's per-child on-chain keys when
+   *  needed. Safe to run repeatedly and after relaunch. */
+  syncPrivateTranchePlan: (parentId: string) => Promise<EscrowState[]>;
   /** Tier 2.1 — the on-chain escrow plumbing. Every one recomputes the address
    *  locally; none of them trusts a wire-supplied one. */
   myEscrowKey: (escrowId: string) => Promise<{ priv: Uint8Array; xonly: Uint8Array; path: string }>;
@@ -1573,6 +1584,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
         defaultPlatformFeeBps: config?.defaultPlatformFeeBps ?? 50,
         platformFeePubkey: config?.platformFeePubkey,
         defaultExpirySeconds: config?.defaultExpirySeconds ?? 86_400,
+        trancheCreditObserved: defaultCreditObserver(),
         ...config,
       }, callbacks);
 
@@ -2657,6 +2669,52 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     return result;
   }, []);
 
+  const syncPrivateTranchePlan = useCallback(async (parentId: string): Promise<EscrowState[]> => {
+    const client = requireClient();
+    const children = await client.loadChildren(parentId);
+    const pubkey = stateRef.current?.pubkey ?? null;
+    for (const child of children) {
+      saveEscrowId(child.id, pubkey);
+      client.watchEscrow(child.id);
+      if (!pubkey || child.trancheChild?.bitcoinNetwork === undefined) continue;
+      const role = child.participants[Role.BUYER] === pubkey ? Role.BUYER
+        : child.participants[Role.SELLER] === pubkey ? Role.SELLER
+        : child.participants[Role.ARBITER] === pubkey ? Role.ARBITER
+        : null;
+      if (!role || child.childKeys?.[role]) continue;
+      const xOnlyPubkey = msBytesToHexLocal((await myEscrowKey(child.id)).xonly);
+      await client.publishChildKey(child.id, role, xOnlyPubkey);
+    }
+    return children.map(child => client.getState(child.id) ?? child);
+  }, [myEscrowKey]);
+
+  const startPrivateTranchePlan = useCallback(async (
+    parentId: string,
+    sliceCount: number,
+  ): Promise<{ parent: EscrowState; children: EscrowState[] }> => {
+    const client = requireClient();
+    const parent = client.getState(parentId) ?? await client.loadEscrow(parentId);
+    if (!parent) throw new Error("Parent trade not found.");
+    if ((parent.escrowMode ?? "ecash") !== "onchain") {
+      throw new Error("Private slice plans require on-chain escrow.");
+    }
+    const count = Math.floor(sliceCount);
+    if (count < 2 || count > 12) throw new Error("Choose between 2 and 12 slices.");
+    const minimumMsats = MIN_TRANCHE_SATS * 1000;
+    if (Math.floor(parent.amountMsats / count) < minimumMsats) {
+      throw new Error(`Each slice must be at least ${MIN_TRANCHE_SATS.toLocaleString()} sats.`);
+    }
+    // ceil(total/count) produces exactly `count` deterministic rows while the
+    // engine keeps the final remainder honest.
+    const maximumChildMsats = Math.ceil(parent.amountMsats / count);
+    const trancheNetwork = ESCROW_NETWORK_LABEL === "mainnet" ? "mainnet" : "signet";
+    const started = await client.startTranchePlan(parentId, maximumChildMsats, trancheNetwork);
+    saveEscrowId(parentId, stateRef.current?.pubkey ?? null);
+    for (const child of started.children) saveEscrowId(child.id, stateRef.current?.pubkey ?? null);
+    const children = await syncPrivateTranchePlan(parentId);
+    return { parent: client.getState(parentId) ?? started.parent, children };
+  }, [syncPrivateTranchePlan]);
+
   // ── Tier 2.1: the on-chain escrow plumbing ────────────────────────────────
   //
   // Three actions, in the order a trade uses them:
@@ -2677,7 +2735,11 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     const client = requireClient();
     const state = client.getState(escrowId);
     if (!state) throw new Error("Escrow not loaded");
-    const keys = state.escrowKeys ?? {};
+    // A normal trade collects keys through CREATE/JOIN (`escrowKeys`). A
+    // private tranche child is pre-seated from the signed parent snapshot, so
+    // its participants publish CHILD_KEY events instead (`childKeys`). Both
+    // are reducer-verified role maps and feed the exact same address builder.
+    const keys = state.trancheChild ? (state.childKeys ?? {}) : (state.escrowKeys ?? {});
 
     // ⭐ An AUTO-SEATED arbiter never publishes a JOIN, so they never publish an
     // escrow key — and without it the address can never be computed and the
@@ -2688,7 +2750,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     // everywhere else as the licence to arbitrate.
     let arbiterXonly = keys[Role.ARBITER] ?? null;
     const seatedArbiter = state.participants[Role.ARBITER];
-    if (!arbiterXonly && seatedArbiter && state.community) {
+    if (!state.trancheChild && !arbiterXonly && seatedArbiter && state.community) {
       const cached = readCachedCommunityBonds(state.community) ?? [];
       const theirs = cached.find(
         (b) => b.npub.toLowerCase() === seatedArbiter.toLowerCase() && b.funded && b.active,
@@ -5016,6 +5078,8 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     renewListing,
     editListing,
     startNextTranche,
+    startPrivateTranchePlan,
+    syncPrivateTranchePlan,
     myEscrowKey,
     onchainFundingPlan,
     checkOnchainFunding,

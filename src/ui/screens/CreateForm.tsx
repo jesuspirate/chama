@@ -40,7 +40,6 @@ import { categoryAllowsFulfillmentChoice, type Fulfillment } from "../../labels/
 import { getCommunityBySlug, communityForInvite, DEFAULT_COMMUNITY_SLUG } from "../../communities/registry.js";
 import { billTypesForCountry, billTypeDisplay } from "../../communities/bill-types.js";
 import { workCategoriesForCountry } from "../../communities/work-categories.js";
-import { trancheAmountAt, plannedMaxLossMsats, maxUsefulTranches, trancheSplitAvailable } from "../../escrow-engine/tranche.js";
 import { onchainEscrowAvailable, DEFAULT_ESCROW_MODE, ESCROW_NETWORK_LABEL } from "../../bond-multisig/onchain-escrow.js";
 import {
   getUserCommunitySlug,
@@ -87,11 +86,6 @@ import { ensureRemoteListingImage, MAX_LISTING_IMAGE_REFS, type ListingImageUplo
 import { SwipeImageGallery } from "../components/SwipeImageGallery.js";
 
 type Step = 1 | 2 | 3;
-/** Verticals whose value is divisible, so a trade can be settled in slices.
- *  Marketplace is deliberately absent: you cannot ship a quarter of a bicycle.
- *  Lending is absent because it is RETIRED (see the Vertical type below) — a
- *  retired vertical must never pick up new capabilities. */
-const TRANCHEABLE_VERTICALS = new Set(["p2p-trade", "bill-pay", "work"]);
 
 /** ⚰️ `lending` is RETIRED and unreachable for NEW listings: it is absent from
  *  VERTICALS, so it cannot be selected, and `readAllDrafts` only iterates that
@@ -105,9 +99,7 @@ const TRANCHEABLE_VERTICALS = new Set(["p2p-trade", "bill-pay", "work"]);
  *  buried. Retired means "no new ones", not "pretend the old ones never
  *  happened".
  *
- *  RULE: a retired vertical never gains new capabilities. When adding a
- *  feature keyed on vertical, leave lending out (as TRANCHEABLE_VERTICALS
- *  above does). */
+ *  RULE: a retired vertical never gains new capabilities. */
 type Vertical = "p2p-trade" | "bill-pay" | "marketplace" | "work" | "lending";
 type ListingMode = "single" | "menu";
 
@@ -144,7 +136,6 @@ interface FormState {
   billType?: string;
   workSide?: "work" | "work-request";
   workCategory?: string;
-  trancheCount?: number;
   escrowMode?: "ecash" | "onchain";
   /** Monthly CBP: owner marked this bill (bundle) as recurring — the client
    *  auto-re-posts it ~monthly to their home community. Bill-pay only. */
@@ -378,7 +369,6 @@ function normalizeFormState(raw: any, currency = "USD"): FormState {
     billType: typeof raw.billType === "string" ? raw.billType : "",
     workSide: raw.workSide === "work-request" ? "work-request" : "work",
     workCategory: typeof raw.workCategory === "string" ? raw.workCategory : "",
-    trancheCount: typeof raw.trancheCount === "number" ? raw.trancheCount : 1,
     escrowMode: raw.escrowMode === "onchain" || raw.escrowMode === "ecash" ? raw.escrowMode : DEFAULT_ESCROW_MODE,
     recurringCbp: raw.recurringCbp === true,
     paymentMethods: Array.isArray(raw.paymentMethods)
@@ -1069,7 +1059,6 @@ export function emptyCreateFormState(currency = "USD"): FormState {
     billType: "",
     workSide: "work",
     workCategory: "",
-    trancheCount: 1,
     escrowMode: DEFAULT_ESCROW_MODE,
     recurringCbp: false,
   };
@@ -1359,9 +1348,6 @@ export function CreateForm({
       // Only DIVISIBLE value can be tranched. A single physical item cannot
       // be delivered in quarters, so Stores are excluded — the honest answer
       // there is holding the value somewhere no single party can reach.
-      const trancheCount = TRANCHEABLE_VERTICALS.has(vertical) && !hasMenu
-        ? Math.max(1, Math.floor(form.trancheCount ?? 1))
-        : 1;
       const params: any = {
         description,
         amountMsats,
@@ -1399,19 +1385,6 @@ export function CreateForm({
         // Tier 2.1: stamp the substrate at CREATE so every client knows which
         // shape of LOCK to expect BEFORE anyone funds anything.
         ...((form.escrowMode ?? DEFAULT_ESCROW_MODE) === "onchain" ? { escrowMode: "onchain" as const } : {}),
-        // Tranching: publish ONLY the first slice, stamped with the whole
-        // plan so any client can rebuild it. The remaining slices are
-        // published one at a time, each gated on the previous one's sats
-        // actually landing (escrow-engine/tranche.ts).
-        ...(trancheCount > 1 ? {
-          amountMsats: trancheAmountAt(amountMsats, trancheCount, 0),
-          tranche: {
-            planId: `tp_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
-            index: 0,
-            total: trancheCount,
-            totalMsats: amountMsats,
-          },
-        } : {}),
         fulfillment: vertical === "work" ? "service" : vertical === "marketplace" ? form.fulfillment : undefined,
         mintUrl,
         communityArbiters: communityArbiters.length > 0 ? communityArbiters : undefined,
@@ -2557,62 +2530,6 @@ function Step2({
           </div>
         </div>
       )}
-
-      {/* Tranching — split a big trade into slices settled one at a time.
-          Offered only where value is divisible, and only once an amount exists
-          (the whole control is a statement about that amount). The number the
-          user is really choosing is the LAST line: the most they can lose at
-          once. That is stated in sats rather than as "1/4", because a fraction
-          is not a loss a person can feel. */}
-      {TRANCHEABLE_VERTICALS.has(vertical) && !usingMenu
-        && trancheSplitAvailable(totalSats * 1000) && (() => {
-        // Only offer counts whose slices clear MIN_TRANCHE_SATS. Splitting a
-        // small trade is friction dressed as safety.
-        const cap = maxUsefulTranches(totalSats * 1000);
-        const options = [1, ...Array.from({ length: cap - 1 }, (_, i) => i + 2)];
-        if (options.length < 2) return null;
-        const chosen = Math.max(1, Math.floor(form.trancheCount ?? 1));
-        const maxLossSats = chosen > 1
-          ? Math.round(plannedMaxLossMsats(totalSats * 1000, chosen) / 1000)
-          : totalSats;
-        return (
-          <div style={{ marginBottom: 16 }}>
-            <div style={{ fontSize: 11, color: T.muted, fontFamily: T.mono, marginBottom: 6 }}>
-              {t("tranche.splitLabel")}
-            </div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginBottom: 6 }}>
-              {options.map((n) => {
-                const on = chosen === n;
-                return (
-                  <button
-                    key={n}
-                    type="button"
-                    onClick={() => set("trancheCount", n)}
-                    style={{
-                      padding: "7px 12px", borderRadius: 999, cursor: "pointer",
-                      background: on ? `${T.accent}1f` : T.surface,
-                      border: `1px solid ${on ? T.accent : T.border}`,
-                      color: on ? T.accent : T.text,
-                      fontFamily: T.mono, fontSize: 11, fontWeight: 700,
-                    }}
-                  >
-                    {n === 1 ? t("tranche.splitOff") : t("tranche.splitN", { n })}
-                  </button>
-                );
-              })}
-            </div>
-            <div style={{ fontSize: 10, color: T.muted, fontFamily: T.sans, lineHeight: 1.45 }}>
-              {t("tranche.splitHint")}
-            </div>
-            <div style={{
-              fontSize: 11, color: chosen > 1 ? T.accent : T.muted,
-              fontFamily: T.mono, marginTop: 5,
-            }}>
-              {t("tranche.splitRisk", { max: maxLossSats.toLocaleString() })}
-            </div>
-          </div>
-        );
-      })()}
 
       {/* A4 — Work, both sides.
           The SIDE picker comes first because it changes who the listing is

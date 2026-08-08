@@ -80,6 +80,8 @@ import { deriveOnchainView } from "../../escrow-engine/onchain-escrow-view.js";
 import { ESCROW_NETWORK_LABEL } from "../../bond-multisig/onchain-escrow.js";
 import { TranchePlanStrip } from "../components/TranchePlanStrip.js";
 import { autoAdvanceOnchainTrancheKey, trancheGate } from "../../escrow-engine/tranche.js";
+import { MIN_TRANCHE_SATS } from "../../escrow-engine/tranche.js";
+import { derivePlanState } from "../../escrow-engine/tranche-plan.js";
 import { defaultCreditObserver } from "../../payments/claim-credit-ledger.js";
 import {
   arbiterRulingConcentration, concentrationWorthShowing, type RulingConcentration,
@@ -128,7 +130,7 @@ export function TradeDetail({
   onSendChat, onReleasePeriod, onOpenSettings, onOpenNwcSettings,
   onPrewarmFunding, onRebroadcast, onForget, onPurchase, onCancelDraftOrder, stockLeft, isOversoldOrder = false,
   onRateCounterparty, myGivenRatings, fetchRatingSummary, fetchCommunityBonds, knownTrades, onStartNextTranche, onchainFundingPlan, onPublishOnchainLock, onPrepareOnchainSettlement, onSignOnchainSettlement, onFinalizeOnchainSettlement, onScanMyOnchainPayouts, onSweepOnchainPayout,
-  liveChildOrders, onOpenChild,
+  liveChildOrders, onOpenChild, privatePlanChildren, onStartPrivatePlan, onSyncPrivatePlan,
 }: {
   state: EscrowState; pubkey: string;
   /** User's home community slug — drives State A vs State B subtitle
@@ -183,6 +185,11 @@ export function TradeDetail({
   fetchCommunityBonds?: (community: string) => Promise<VerifiedBond[]>;
   /** Tranching: publish the next slice of this trade's plan. */
   onStartNextTranche?: (fromEscrowId: string) => Promise<unknown>;
+  /** PR #9 parent/child protocol. Kept distinct from legacy tranche props so
+   *  the two incompatible mechanisms cannot be crossed accidentally. */
+  privatePlanChildren?: readonly EscrowState[];
+  onStartPrivatePlan?: (parentId: string, sliceCount: number) => Promise<unknown>;
+  onSyncPrivatePlan?: (parentId: string) => Promise<unknown>;
   /** Tier 2.1: recompute this trade's escrow address from published keys. */
   onchainFundingPlan?: (escrowId: string) => { ready: boolean; address?: string; blockers?: readonly string[] };
   /** Tier 2.1: publish the on-chain LOCK once the deposit confirms. */
@@ -508,6 +515,10 @@ export function TradeDetail({
   const [advanceTrancheError, setAdvanceTrancheError] = useState<string | null>(null);
   const [trancheCreditTick, setTrancheCreditTick] = useState(0);
   const autoAdvanceTrancheAttemptRef = useRef<string | null>(null);
+  const [privateSliceCount, setPrivateSliceCount] = useState(2);
+  const [privatePlanBusy, setPrivatePlanBusy] = useState(false);
+  const [privatePlanError, setPrivatePlanError] = useState<string | null>(null);
+  const privatePlanSyncRef = useRef<string | null>(null);
   // On-chain funding: the funder taps "I've sent it", we re-read the chain and
   // LOCK. Any refusal (no deposit, still confirming, short) is surfaced VERBATIM
   // — those messages already say the one thing the user needs.
@@ -529,6 +540,30 @@ export function TradeDetail({
       creditObserved: defaultCreditObserver(),
     });
   }, [state, knownTrades, trancheCreditTick]);
+  const privatePlanState = useMemo(
+    () => derivePlanState(state, [...(privatePlanChildren ?? [])], defaultCreditObserver()),
+    [state, privatePlanChildren, trancheCreditTick],
+  );
+  const isPrivatePlanParent = !state.parent && !state.trancheChild;
+  const privatePlanEligible = isPrivatePlanParent
+    && state.status === EscrowStatus.CREATED
+    && ["p2p-trade", "bill-pay", "work"].includes(state.category)
+    && !state.items?.length
+    && state.initiator.role === Role.SELLER
+    && state.initiator.pubkey === pubkey
+    && state.escrowMode === "onchain"
+    && !!participants[Role.BUYER]
+    && !!participants[Role.ARBITER]
+    && state.amountMsats >= MIN_TRANCHE_SATS * 1000 * 2;
+  useEffect(() => {
+    if (!state.tranchePlan || !onSyncPrivatePlan) return;
+    if (privatePlanSyncRef.current === state.tranchePlan.planId) return;
+    privatePlanSyncRef.current = state.tranchePlan.planId;
+    void Promise.resolve(onSyncPrivatePlan(state.id)).catch((error) => {
+      privatePlanSyncRef.current = null;
+      setPrivatePlanError(error instanceof Error ? error.message : String(error));
+    });
+  }, [state.id, state.tranchePlan?.planId, onSyncPrivatePlan]);
   const canAdvanceTranche = viewerIsExposedByLock(state, myRole) || state.lock.lockedAt === null;
   const autoAdvanceTrancheKey = trancheGateNow
     ? autoAdvanceOnchainTrancheKey({
@@ -1474,6 +1509,74 @@ export function TradeDetail({
           <Badge status={statusKey} />
         </div>
       </div>
+
+      {(privatePlanEligible || privatePlanState) && (
+        <div style={{
+          border: `1px solid ${T.accent}55`, background: T.accentDim,
+          borderRadius: 12, padding: "12px 13px", margin: "0 4px 16px",
+        }}>
+          <div style={{ color: T.accent, fontFamily: T.mono, fontSize: 11, fontWeight: 900, letterSpacing: 0.5 }}>
+            PRIVATE SLICE PLAN
+          </div>
+          {!privatePlanState ? (
+            <>
+              <div style={{ color: T.muted, fontFamily: T.sans, fontSize: 11, lineHeight: 1.45, marginTop: 6 }}>
+                Freeze these three participants, then create deterministic private slices. Only the parent stays public.
+              </div>
+              <div style={{ display: "flex", gap: 7, marginTop: 10, flexWrap: "wrap" }}>
+                {Array.from({ length: Math.min(4, Math.floor(state.amountMsats / (MIN_TRANCHE_SATS * 1000))) - 1 }, (_, i) => i + 2).map((count) => (
+                  <button key={count} type="button" onClick={() => setPrivateSliceCount(count)} style={{
+                    padding: "6px 10px", borderRadius: 999, cursor: "pointer",
+                    border: `1px solid ${privateSliceCount === count ? T.accent : T.border}`,
+                    background: privateSliceCount === count ? `${T.accent}22` : T.surface,
+                    color: privateSliceCount === count ? T.accent : T.text,
+                    fontFamily: T.mono, fontSize: 11, fontWeight: 800,
+                  }}>{count} slices</button>
+                ))}
+              </div>
+              <button type="button" disabled={privatePlanBusy} onClick={() => {
+                if (!onStartPrivatePlan) return;
+                setPrivatePlanBusy(true);
+                setPrivatePlanError(null);
+                void Promise.resolve(onStartPrivatePlan(state.id, privateSliceCount))
+                  .catch((error) => setPrivatePlanError(error instanceof Error ? error.message : String(error)))
+                  .finally(() => setPrivatePlanBusy(false));
+              }} style={{
+                width: "100%", marginTop: 10, padding: "10px 12px", borderRadius: 9,
+                border: 0, background: T.accent, color: T.bg, fontFamily: T.mono,
+                fontSize: 11, fontWeight: 900, cursor: privatePlanBusy ? "wait" : "pointer",
+                opacity: privatePlanBusy ? 0.65 : 1,
+              }}>{privatePlanBusy ? "STARTING…" : `START ${privateSliceCount}-SLICE PLAN`}</button>
+            </>
+          ) : (
+            <>
+              <div style={{ color: T.text, fontFamily: T.sans, fontSize: 11, marginTop: 7 }}>
+                {privatePlanState.settledCount} of {privatePlanState.plan.total} settled · {fmtSats(privatePlanState.outstandingMsats)} sats outstanding
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 10 }}>
+                {privatePlanState.children.map((row) => {
+                  const active = row.id === privatePlanState.activeChildId;
+                  return (
+                    <button key={row.id} type="button" disabled={!row.valid} onClick={() => onOpenChild?.(row.id)} style={{
+                      display: "flex", justifyContent: "space-between", padding: "8px 10px", borderRadius: 8,
+                      border: `1px solid ${active ? T.accent : T.border}`, background: active ? `${T.accent}1a` : T.surface,
+                      color: row.valid ? T.text : T.red, cursor: row.valid ? "pointer" : "not-allowed",
+                      fontFamily: T.mono, fontSize: 10,
+                    }}>
+                      <span>Slice {row.index + 1} · {fmtSats(row.amountMsats)} sats</span>
+                      <span>{row.valid
+                        ? (active && row.status === EscrowStatus.COMPLETED ? "AWAITING CREDIT" : active ? "ACTIVE" : row.status)
+                        : (row.error ?? "INVALID")}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              {privatePlanState.stoppedReason && <div style={{ color: T.red, fontSize: 10, marginTop: 8 }}>{privatePlanState.stoppedReason}</div>}
+            </>
+          )}
+          {privatePlanError && <div style={{ color: T.red, fontFamily: T.sans, fontSize: 10, marginTop: 8 }}>{privatePlanError}</div>}
+        </div>
+      )}
 
       {trancheGateNow && (
         <TranchePlanStrip
