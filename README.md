@@ -15,9 +15,9 @@ npm run dev
 
 The development server runs at `http://localhost:3000`.
 
-### StartOS package (lab — 3 clients)
+### StartOS package
 
-This package is a **local lab**: three co-located Chama UIs (ports 8080–8082), each with its own native Fedimint bridge under `/data/client-*`. It is **not** the friend-wallet / remote-bridge host.
+This package runs one personal real-funds Chama wallet behind an authenticated browser interface. It intentionally does not provide multi-user or friend-wallet access. The native Fedimint bridge remains loopback-only, and StartOS publishes only the authenticated Chama UI.
 
 Requirements: Docker, `start-cli`, `jq`, Node 22+, and a packaging workspace (this repo’s `.startos` link). The npm `@start9labs/start-sdk@1.5.3` pin may not ship `s9pk.mk`; the Makefile falls back to `$HOME/start9-workspace/.../s9pk.mk` or accepts:
 

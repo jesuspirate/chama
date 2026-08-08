@@ -42,46 +42,4 @@ http {
     }
     location / { root /usr/share/nginx/html; try_files $uri $uri/ /index.html; add_header Cache-Control $cache_control always; }
   }
-  server {
-    listen 8081;
-    auth_basic "Chama real-funds wallet";
-    auth_basic_user_file /data/security/htpasswd;
-    if ($cross_site_request) { return 403; }
-    location /bridge/ {
-      proxy_pass http://127.0.0.1:8788/;
-      proxy_set_header Authorization "Bearer ${CHAMA_BRIDGE_TOKEN_2}";
-      proxy_set_header Host 127.0.0.1:8788;
-      proxy_set_header Origin "";
-      proxy_connect_timeout 10s;
-      # /await-invoice is a long poll held open until the payer actually pays,
-      # so a read timeout here is a clock on the human, not on the bridge. At
-      # 110s nginx hung up during an ordinary scan-the-QR pause and answered
-      # with its own 504 HTML, which the client read as a rejected payment.
-      # The bridge stays reachable for a full invoice lifetime instead.
-      proxy_send_timeout 3600s;
-      proxy_read_timeout 3600s;
-    }
-    location / { root /usr/share/nginx/html; try_files $uri $uri/ /index.html; add_header Cache-Control $cache_control always; }
-  }
-  server {
-    listen 8082;
-    auth_basic "Chama real-funds wallet";
-    auth_basic_user_file /data/security/htpasswd;
-    if ($cross_site_request) { return 403; }
-    location /bridge/ {
-      proxy_pass http://127.0.0.1:8789/;
-      proxy_set_header Authorization "Bearer ${CHAMA_BRIDGE_TOKEN_3}";
-      proxy_set_header Host 127.0.0.1:8789;
-      proxy_set_header Origin "";
-      proxy_connect_timeout 10s;
-      # /await-invoice is a long poll held open until the payer actually pays,
-      # so a read timeout here is a clock on the human, not on the bridge. At
-      # 110s nginx hung up during an ordinary scan-the-QR pause and answered
-      # with its own 504 HTML, which the client read as a rejected payment.
-      # The bridge stays reachable for a full invoice lifetime instead.
-      proxy_send_timeout 3600s;
-      proxy_read_timeout 3600s;
-    }
-    location / { root /usr/share/nginx/html; try_files $uri $uri/ /index.html; add_header Cache-Control $cache_control always; }
-  }
 }

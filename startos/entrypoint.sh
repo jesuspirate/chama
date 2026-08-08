@@ -27,32 +27,26 @@ chown root:nginx "$security_dir/htpasswd"
 chmod 600 "$access_password_file"
 chmod 640 "$security_dir/htpasswd"
 
-client=1
-for port in 8787 8788 8789; do
-  data_dir="/data/client-$client"
-  token_file="$security_dir/bridge-token-$client"
-  mkdir -p "$data_dir"
-  if [ ! -s "$token_file" ]; then
-    umask 077
-    openssl rand -hex 32 > "$token_file"
-  fi
-  bridge_token="$(tr -d '\r\n' < "$token_file")"
-  if [ "${#bridge_token}" -ne 64 ]; then
-    echo "chama-startos: invalid bridge token state for client $client" >&2
-    exit 1
-  fi
-  chmod 600 "$token_file"
-  chama-fedimint-bridge --data-dir "$data_dir" serve \
-    --bind "127.0.0.1:$port" \
-    --auth-token "$bridge_token" &
-  pids="$pids $!"
-  client=$((client + 1))
-done
+data_dir="/data/client-1"
+token_file="$security_dir/bridge-token-1"
+mkdir -p "$data_dir"
+if [ ! -s "$token_file" ]; then
+  umask 077
+  openssl rand -hex 32 > "$token_file"
+fi
+bridge_token="$(tr -d '\r\n' < "$token_file")"
+if [ "${#bridge_token}" -ne 64 ]; then
+  echo "chama-startos: invalid bridge token state" >&2
+  exit 1
+fi
+chmod 600 "$token_file"
+chama-fedimint-bridge --data-dir "$data_dir" serve \
+  --bind "127.0.0.1:8787" \
+  --auth-token "$bridge_token" &
+pids="$pids $!"
 
 export CHAMA_BRIDGE_TOKEN_1="$(tr -d '\r\n' < "$security_dir/bridge-token-1")"
-export CHAMA_BRIDGE_TOKEN_2="$(tr -d '\r\n' < "$security_dir/bridge-token-2")"
-export CHAMA_BRIDGE_TOKEN_3="$(tr -d '\r\n' < "$security_dir/bridge-token-3")"
-envsubst '${CHAMA_BRIDGE_TOKEN_1} ${CHAMA_BRIDGE_TOKEN_2} ${CHAMA_BRIDGE_TOKEN_3}' \
+envsubst '${CHAMA_BRIDGE_TOKEN_1}' \
   < /etc/nginx/nginx.conf.template > /tmp/nginx.conf
 chmod 600 /tmp/nginx.conf
 

@@ -4,8 +4,8 @@ export const showAccessPassword = sdk.Action.withoutInput(
   'show-access-password',
   {
     name: 'Show Chama login',
-    description: 'Reveal the credentials required to open all three real-funds Chama wallet clients.',
-    warning: 'Anyone with this password can access the wallet clients. Keep it private.',
+    description: 'Reveal the credentials required to open your personal real-funds Chama wallet.',
+    warning: 'Anyone with this password can access your wallet. Keep it private and do not share it.',
     allowedStatuses: 'any',
     group: null,
     visibility: 'enabled',
@@ -35,7 +35,7 @@ export const showAccessPassword = sdk.Action.withoutInput(
     return {
       version: '1' as const,
       title: 'Chama wallet login',
-      message: 'Use username `chama` and the password below for Client One, Client Two, and Client Three.',
+      message: 'Use username `chama` and the password below to open your Chama wallet.',
       result: {
         type: 'single' as const,
         value: password,

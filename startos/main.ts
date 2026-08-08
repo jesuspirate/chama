@@ -1,6 +1,6 @@
 import { i18n } from './i18n'
 import { sdk } from './sdk'
-import { clientOnePort, clientThreePort, clientTwoPort } from './utils'
+import { chamaPort } from './utils'
 
 export const main = sdk.setupMain(async ({ effects }) => {
   console.info(i18n('Starting Chama'))
@@ -21,22 +21,13 @@ export const main = sdk.setupMain(async ({ effects }) => {
     subcontainer: chamaSubcontainer,
     exec: { command: ['/usr/local/bin/chama-startos-entrypoint'] },
     ready: {
-      display: i18n('Web clients'),
+      display: i18n('Chama wallet'),
       gracePeriod: 30_000,
-      fn: async () => {
-        const ports = [clientOnePort, clientTwoPort, clientThreePort]
-        for (const port of ports) {
-          const result = await sdk.healthCheck.checkPortListening(effects, port, {
-            successMessage: i18n('The Chama web clients are ready'),
-            errorMessage: i18n('The Chama web clients are not ready'),
-          })
-          if (result.result !== 'success') return result
-        }
-        return {
-          result: 'success' as const,
-          message: i18n('The Chama web clients are ready'),
-        }
-      },
+      fn: () =>
+        sdk.healthCheck.checkPortListening(effects, chamaPort, {
+          successMessage: i18n('The Chama wallet is ready'),
+          errorMessage: i18n('The Chama wallet is not ready'),
+        }),
     },
     requires: [],
   })
