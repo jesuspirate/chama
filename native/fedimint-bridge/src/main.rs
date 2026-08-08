@@ -8,7 +8,10 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result, bail};
 use axum::extract::{Query, State};
-use axum::http::{header::AUTHORIZATION, HeaderValue, Method, StatusCode};
+use axum::http::{
+    header::{AUTHORIZATION, HOST, ORIGIN},
+    HeaderValue, Method, StatusCode,
+};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
@@ -243,17 +246,20 @@ enum Command {
         invite_code: Option<String>,
 
         /// Require `Authorization: Bearer <token>` on EVERY route, /health
-        /// included (it leaks federation/gateway info). Unset keeps the
-        /// current open localhost behavior (Tauri/Android shells unchanged).
-        /// Mandatory when binding beyond loopback — serve refuses to start
-        /// on a non-loopback address without it.
+        /// included (it leaks federation/gateway info). Required for every
+        /// bind, including loopback: an untrusted local process or webpage
+        /// must never inherit wallet authority merely by reaching the port.
         #[arg(long, env = "CHAMA_BRIDGE_AUTH_TOKEN")]
-        auth_token: Option<String>,
+        auth_token: String,
 
         /// Exact origin allowed by CORS (repeatable, or comma-separated via
         /// the env var). When set, replaces the permissive `Any` origin —
         /// must include the app origin(s) that will call this bridge.
-        #[arg(long = "allowed-origin", env = "CHAMA_BRIDGE_ALLOWED_ORIGINS", value_delimiter = ',')]
+        #[arg(
+            long = "allowed-origin",
+            env = "CHAMA_BRIDGE_ALLOWED_ORIGINS",
+            value_delimiter = ','
+        )]
         allowed_origins: Vec<String>,
     },
 
@@ -2079,9 +2085,13 @@ struct AppState {
     /// directory per additional federation.
     active_data_dir: Arc<Mutex<PathBuf>>,
     discovery: Arc<Mutex<DiscoveryProbe>>,
-    /// When set, every route requires `Authorization: Bearer <token>`.
-    /// None keeps the historical open-localhost behavior.
-    auth_token: Option<Arc<str>>,
+    /// Every route requires `Authorization: Bearer <token>`.
+    auth_token: Arc<str>,
+    /// Exact HTTP authority accepted by this listener.
+    allowed_host: Arc<str>,
+    /// Exact browser origins accepted by this listener. An empty list means
+    /// originless native/proxy calls only, never a permissive browser policy.
+    allowed_origins: Arc<Vec<HeaderValue>>,
 }
 
 /// Byte-wise constant-time equality: examines every byte regardless of where
@@ -2095,17 +2105,11 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
     a.iter().zip(b.iter()).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
 }
 
-/// Bearer-token gate for remote-bridge deployments. With no token configured
-/// this is a pass-through (Tauri/Android localhost sidecars, unchanged).
 async fn require_bearer_auth(
     State(state): State<AppState>,
     request: axum::extract::Request,
     next: axum::middleware::Next,
 ) -> Response {
-    let Some(expected) = state.auth_token.as_deref() else {
-        return next.run(request).await;
-    };
-
     let presented = request
         .headers()
         .get(AUTHORIZATION)
@@ -2114,7 +2118,7 @@ async fn require_bearer_auth(
         .map(str::trim);
 
     match presented {
-        Some(token) if constant_time_eq(token.as_bytes(), expected.as_bytes()) => {
+        Some(token) if constant_time_eq(token.as_bytes(), state.auth_token.as_bytes()) => {
             next.run(request).await
         }
         _ => (
@@ -2123,6 +2127,43 @@ async fn require_bearer_auth(
         )
             .into_response(),
     }
+}
+
+async fn require_exact_host(
+    State(state): State<AppState>,
+    request: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> Response {
+    let presented = request
+        .headers()
+        .get(HOST)
+        .and_then(|value| value.to_str().ok());
+    if presented == Some(state.allowed_host.as_ref()) {
+        return next.run(request).await;
+    }
+    (
+        StatusCode::MISDIRECTED_REQUEST,
+        Json(json!({ "error": "invalid bridge host" })),
+    )
+        .into_response()
+}
+
+async fn require_allowed_origin(
+    State(state): State<AppState>,
+    request: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> Response {
+    let Some(presented) = request.headers().get(ORIGIN) else {
+        return next.run(request).await;
+    };
+    if state.allowed_origins.iter().any(|allowed| allowed == presented) {
+        return next.run(request).await;
+    }
+    (
+        StatusCode::FORBIDDEN,
+        Json(json!({ "error": "invalid bridge origin" })),
+    )
+        .into_response()
 }
 
 fn amount_to_floor_sats(amount: Amount) -> u64 {
@@ -2265,37 +2306,39 @@ async fn serve_bridge(
     bridge: Bridge,
     bind: SocketAddr,
     invite_code: Option<String>,
-    auth_token: Option<String>,
+    auth_token: String,
     allowed_origins: Vec<String>,
 ) -> Result<()> {
-    let auth_token: Option<Arc<str>> = auth_token
-        .map(|token| token.trim().to_owned())
-        .filter(|token| !token.is_empty())
-        .map(Arc::from);
-
-    // A token-less bridge is a drainable wallet to anyone who can reach the
-    // port. Loopback binds stay open (Tauri/Android sidecar behavior,
-    // unchanged); anything wider refuses to start without a token so a
-    // misconfigured remote deployment fails loud instead of exposing funds.
-    if auth_token.is_none() && !bind.ip().is_loopback() {
-        anyhow::bail!(
-            "refusing to serve on non-loopback {bind} without --auth-token \
-             (CHAMA_BRIDGE_AUTH_TOKEN): an unauthenticated bridge is a drainable wallet"
-        );
+    let auth_token = auth_token.trim();
+    if auth_token.len() < 32 {
+        anyhow::bail!("--auth-token must contain at least 32 characters");
     }
+    let auth_token: Arc<str> = Arc::from(auth_token.to_owned());
+    let allowed_host: Arc<str> = Arc::from(bind.to_string());
+    let allowed_origins = allowed_origins
+        .iter()
+        .map(|origin| {
+            origin
+                .trim()
+                .trim_end_matches('/')
+                .parse::<HeaderValue>()
+                .with_context(|| format!("invalid --allowed-origin {origin:?}"))
+        })
+        .collect::<Result<Vec<_>>>()?;
 
     let probe_target = bridge.discovery_probe_target();
     let initial_probe = match &probe_target {
         Some(addr) => DiscoveryProbe::probing(addr),
         None => DiscoveryProbe::skipped("no PKARR resolver configured"),
     };
-    let auth_enabled = auth_token.is_some();
     let state = AppState {
         active_data_dir: Arc::new(Mutex::new(bridge.data_dir.clone())),
         bridge,
         client: Arc::new(Mutex::new(None)),
         discovery: Arc::new(Mutex::new(initial_probe)),
         auth_token,
+        allowed_host,
+        allowed_origins: Arc::new(allowed_origins.clone()),
     };
 
     // Boot-time readiness probe: confirm the device can actually reach the
@@ -2326,18 +2369,8 @@ async fn serve_bridge(
             .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
             .allow_headers(Any)
     } else {
-        let origins = allowed_origins
-            .iter()
-            .map(|origin| {
-                origin
-                    .trim()
-                    .trim_end_matches('/')
-                    .parse::<HeaderValue>()
-                    .with_context(|| format!("invalid --allowed-origin {origin:?}"))
-            })
-            .collect::<Result<Vec<_>>>()?;
         CorsLayer::new()
-            .allow_origin(origins)
+            .allow_origin(allowed_origins)
             .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
             .allow_headers(Any)
     };
@@ -2373,6 +2406,14 @@ async fn serve_bridge(
             state.clone(),
             require_bearer_auth,
         ))
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            require_exact_host,
+        ))
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            require_allowed_origin,
+        ))
         .layer(cors)
         .with_state(state);
 
@@ -2380,8 +2421,7 @@ async fn serve_bridge(
         .await
         .with_context(|| format!("failed to bind {bind}"))?;
     eprintln!(
-        "chama-fedimint-bridge listening on http://{bind} (auth: {})",
-        if auth_enabled { "bearer token required" } else { "none — localhost only" },
+        "chama-fedimint-bridge listening on http://{bind} (bearer auth and exact Host required)",
     );
     axum::serve(listener, app).await?;
     Ok(())

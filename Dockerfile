@@ -15,7 +15,7 @@ COPY . .
 RUN VITE_CHAMA_NATIVE_BRIDGE_REQUIRED=1 VITE_CHAMA_NATIVE_BRIDGE_URL=/bridge npm run build
 
 FROM nginx:1.27-bookworm
-RUN apt-get update && apt-get install -y --no-install-recommends apache2-utils openssl && \
+RUN apt-get update && apt-get install -y --no-install-recommends apache2-utils curl openssl && \
     rm -rf /var/lib/apt/lists/*
 COPY startos/nginx.conf.template /etc/nginx/nginx.conf.template
 COPY --from=build /app/dist /usr/share/nginx/html

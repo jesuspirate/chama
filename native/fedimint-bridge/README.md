@@ -49,15 +49,16 @@ cargo run -- --data-dir /path/to/client onchain-withdraw --address "$BTC_ADDRESS
 ## Localhost API
 
 ```sh
-cargo run -- --data-dir /path/to/client serve --bind 127.0.0.1:8787
+BRIDGE_TOKEN="$(openssl rand -hex 32)"
+cargo run -- --data-dir /path/to/client serve --bind 127.0.0.1:8787 --auth-token "$BRIDGE_TOKEN"
 ```
 
 Example calls:
 
 ```sh
-curl http://127.0.0.1:8787/health
-curl http://127.0.0.1:8787/info
-curl http://127.0.0.1:8787/probe-gateways
+curl -H "Authorization: Bearer $BRIDGE_TOKEN" http://127.0.0.1:8787/health
+curl -H "Authorization: Bearer $BRIDGE_TOKEN" http://127.0.0.1:8787/info
+curl -H "Authorization: Bearer $BRIDGE_TOKEN" http://127.0.0.1:8787/probe-gateways
 curl -X POST http://127.0.0.1:8787/invoice \
   -H 'content-type: application/json' \
   --data '{"amountMsats":1000,"description":"Chama native test"}'
@@ -98,9 +99,11 @@ default native URL and native community:
 
 ```sh
 GBF='fed11qgqyj3mfwfhksw309uergwf3vvuxyefcvgcrwcmyxaskvvnzxs6nzdrxv3jnxwrz8pjrgdesv5crwve5xv6xyvtyv56nqcfevsmrwv3kx5erwv3n8qcrvde5qyqjqx7tvnngau9nmcadjm9e3dp69lvh920l5rak7r3x4thxn5w5vwuhsc2yh9'
+BRIDGE_TOKEN="$(openssl rand -hex 32)"
 CARGO_TARGET_DIR=/private/tmp/chama-fedimint-cli-test/cargo-target cargo run -- \
   --data-dir /private/tmp/chama-fedimint-bridge-gbf \
-  serve --bind 127.0.0.1:8787 --invite-code "$GBF"
+  serve --bind 127.0.0.1:8787 --auth-token "$BRIDGE_TOKEN" \
+  --allowed-origin http://localhost:3000 --invite-code "$GBF"
 ```
 
 Then run Chama normally and opt into the native adapter:
@@ -121,7 +124,8 @@ BLF can run in parallel on a second bridge port:
 BLF='fed11qgqyj3mfwfhksw309ajrwvmxvenxgvpkvyursenxxvur2c3sv4jkxdfcxf3kgdmyvs6nzcehvc6xzctzxumrxdmr89jnwdtpv5enqwtpxqmrsvfh89skxv34qqqjpzytwrkr28r8mjas4ej467utd7excr7fapj7ukgc4ugacm6nu2u73k7ram'
 CARGO_TARGET_DIR=/private/tmp/chama-fedimint-cli-test/cargo-target cargo run -- \
   --data-dir /private/tmp/chama-fedimint-bridge-blf \
-  serve --bind 127.0.0.1:8788 --invite-code "$BLF"
+  serve --bind 127.0.0.1:8788 --auth-token "$BRIDGE_TOKEN" \
+  --allowed-origin http://localhost:3000 --invite-code "$BLF"
 ```
 
 Open the app with:
@@ -135,6 +139,7 @@ Alternative persistent browser-console setup:
 ```js
 localStorage.setItem("chama_native_fedimint", "1")
 localStorage.setItem("chama_native_fedimint_url", "http://127.0.0.1:8787")
+localStorage.setItem("chama_native_fedimint_token", "<paste BRIDGE_TOKEN here>")
 ```
 
 The adapter preserves the existing wallet interface: invoice creation, invoice

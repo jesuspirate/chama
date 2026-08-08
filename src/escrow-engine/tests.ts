@@ -14247,13 +14247,12 @@ console.log("\n── BOLT11 PAYOUT AMOUNT ROUTING ──");
       /auth_basic_user_file \/data\/security\/htpasswd/.test(startosNginx),
       "StartOS requires a persisted, user-visible password before any wallet UI or API route");
     assert((startosEntrypoint.match(/openssl rand -hex 32/g) ?? []).length === 1 &&
-      /bridge-token-\$client/.test(startosEntrypoint) &&
+      /bridge-token-1/.test(startosEntrypoint) &&
       /--auth-token "\$bridge_token"/.test(startosEntrypoint),
-      "StartOS gives each wallet bridge its own persistent 256-bit bearer token");
+      "StartOS gives its personal wallet bridge a persistent 256-bit bearer token");
     assert(/proxy_set_header Authorization "Bearer \$\{CHAMA_BRIDGE_TOKEN_1\}"/.test(startosNginx) &&
-      /proxy_set_header Authorization "Bearer \$\{CHAMA_BRIDGE_TOKEN_2\}"/.test(startosNginx) &&
-      /proxy_set_header Authorization "Bearer \$\{CHAMA_BRIDGE_TOKEN_3\}"/.test(startosNginx),
-      "StartOS nginx injects the matching isolated token for each wallet bridge");
+      !/CHAMA_BRIDGE_TOKEN_[23]/.test(startosNginx),
+      "StartOS nginx injects only the personal wallet's isolated bridge token");
     assert(/cross-site 1/.test(startosNginx) &&
       /if \(\$cross_site_request\) \{ return 403; \}/.test(startosNginx),
       "StartOS rejects browser cross-site requests before the wallet proxy");
@@ -14278,6 +14277,16 @@ console.log("\n── BOLT11 PAYOUT AMOUNT ROUTING ──");
 
   {
     const bridgeSrc = readFileSync("native/fedimint-bridge/src/main.rs", "utf8");
+    assert(/auth_token: String/.test(bridgeSrc) &&
+      /--auth-token must contain at least 32 characters/.test(bridgeSrc) &&
+      !/auth_token: Option<String>/.test(bridgeSrc),
+      "Native bridge requires a minimum-strength bearer token by default");
+    assert(/async fn require_exact_host/.test(bridgeSrc) &&
+      /presented == Some\(state\.allowed_host\.as_ref\(\)\)/.test(bridgeSrc),
+      "Native bridge rejects every Host value except its exact listener authority");
+    assert(/async fn require_allowed_origin/.test(bridgeSrc) &&
+      /StatusCode::FORBIDDEN/.test(bridgeSrc),
+      "Native bridge rejects browser origins outside its exact allowlist");
     // Launch-blocker fix: native discovery must default to n0's HTTPS PKARR
     // relay so a fresh join resolves guardians the same reliable way the browser
     // does — DNS(:53)+DHT(UDP) alone hang on mobile/CGNAT. This is the lever that
