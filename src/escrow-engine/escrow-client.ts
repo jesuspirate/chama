@@ -1251,7 +1251,11 @@ export class EscrowClient {
     const children: EscrowState[] = [];
     for (const row of plan.tranches) {
       const id = trancheChildId(parentId, plan.planId, row.index);
-      let child = byId.get(id);
+      // PLAN_START is published before its children, so the TradeDetail sync
+      // effect can race this loop. Prefer an already-created local child before
+      // deciding that the relay query's temporary miss needs a new CREATE.
+      // This also makes a seller retry idempotent inside the live session.
+      let child = byId.get(id) ?? this.states.get(id);
       if (!child) {
         const tranche = buildChildDescriptor(parentId, planStartEventId, plan, row.index);
         child = (await this.createEscrow({ ...baseParams, amountMsats: row.amountMsats, parent: parentId,

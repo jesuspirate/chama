@@ -2671,8 +2671,31 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
 
   const syncPrivateTranchePlan = useCallback(async (parentId: string): Promise<EscrowState[]> => {
     const client = requireClient();
-    const children = await client.loadChildren(parentId);
     const pubkey = stateRef.current?.pubkey ?? null;
+    const parent = client.getState(parentId) ?? await client.loadEscrow(parentId);
+    if (!parent?.tranchePlan) return [];
+
+    // PLAN_START necessarily reaches subscribers before the coordinator has
+    // finished publishing every child CREATE. Subscribe first, then retry the
+    // bounded relay query instead of permanently latching the first empty
+    // result. The seller can also resume an interrupted fan-out by re-entering
+    // the idempotent engine method with the frozen plan's exact parameters.
+    client.watchChildren(parentId);
+    let children = await client.loadChildren(parentId);
+    for (let attempt = 0; children.length < parent.tranchePlan.total && attempt < 4; attempt++) {
+      await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1)));
+      children = await client.loadChildren(parentId);
+    }
+    if (children.length < parent.tranchePlan.total
+      && pubkey === parent.tranchePlan.coordinatorPubkey) {
+      const maximumChildMsats = Math.max(...parent.tranchePlan.tranches.map(row => row.amountMsats));
+      const resumed = await client.startTranchePlan(
+        parentId,
+        maximumChildMsats,
+        parent.tranchePlan.bitcoinNetwork,
+      );
+      children = resumed.children;
+    }
     for (const child of children) {
       saveEscrowId(child.id, pubkey);
       client.watchEscrow(child.id);
@@ -2735,6 +2758,10 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     const client = requireClient();
     const state = client.getState(escrowId);
     if (!state) throw new Error("Escrow not loaded");
+    // A frozen parent is a manifest only. Never render a deposit address for
+    // it: publishLock rejects it later, but showing the address first could
+    // strand an irreversible payment before that guard gets a chance to run.
+    if (state.tranchePlan) throw new Error("The parent is a tranche manifest and cannot receive funding");
     // A normal trade collects keys through CREATE/JOIN (`escrowKeys`). A
     // private tranche child is pre-seated from the signed parent snapshot, so
     // its participants publish CHILD_KEY events instead (`childKeys`). Both
