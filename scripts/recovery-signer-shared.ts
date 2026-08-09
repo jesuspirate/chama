@@ -12,6 +12,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import * as fs from "node:fs";
 import * as readline from "node:readline";
+import * as tty from "node:tty";
 import * as btc from "@scure/btc-signer";
 import { base64 } from "@scure/base";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
@@ -110,8 +111,8 @@ export function openTtySync(): TtyHandles | undefined {
       return undefined;
     }
     return {
-      input: fs.createReadStream("/dev/tty", { fd: inputFd, autoClose: true }),
-      output: fs.createWriteStream("/dev/tty", { fd: outputFd, autoClose: true }),
+      input: new tty.ReadStream(inputFd),
+      output: new tty.WriteStream(outputFd),
       isTty: true,
     };
   } catch {
