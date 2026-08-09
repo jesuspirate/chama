@@ -18,5 +18,5 @@
       "@fedimint/*": ["./src/fedimint/*"]
     }
   },
-  "include": ["src"]
+  "include": ["src", "scripts/recovery-signer-shared.ts", "scripts/sign-recovery-psbt.ts", "scripts/finalize-recovery-psbt.ts", "scripts/recovery-signer-shared.tests.ts", "scripts/build-recovery-psbt.ts", "scripts/verify-funded-parent-address.ts", "scripts/build-recovery-psbt.tests.ts", "scripts/verify-funded-parent-address.tests.ts"]
 }
