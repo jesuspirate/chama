@@ -92,6 +92,7 @@ export interface TtyHandles {
   input: NodeJS.ReadableStream;
   output: NodeJS.WritableStream;
   isTty: boolean;
+  close(): void;
 }
 
 /**
@@ -110,10 +111,16 @@ export function openTtySync(): TtyHandles | undefined {
       fs.closeSync(outputFd);
       return undefined;
     }
+    const input = new tty.ReadStream(inputFd);
+    const output = new tty.WriteStream(outputFd);
     return {
-      input: new tty.ReadStream(inputFd),
-      output: new tty.WriteStream(outputFd),
+      input,
+      output,
       isTty: true,
+      close: () => {
+        input.destroy();
+        output.destroy();
+      },
     };
   } catch {
     if (inputFd !== undefined) try { fs.closeSync(inputFd); } catch { /* ignore */ }
@@ -233,9 +240,13 @@ export async function hiddenPromptWithStreams(
  * stdout remains clean for the signed PSBT.
  */
 export async function hiddenPrompt(label: string): Promise<string> {
-  const tty = openTtySync();
-  if (tty) {
-    return hiddenPromptNoEcho(label, tty.input, tty.output);
+  const handles = openTtySync();
+  if (handles) {
+    try {
+      return await hiddenPromptNoEcho(label, handles.input, handles.output);
+    } finally {
+      handles.close();
+    }
   }
   return hiddenPromptWithStreams(label, process.stdin, process.stdout);
 }
