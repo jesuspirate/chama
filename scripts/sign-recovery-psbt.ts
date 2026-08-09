@@ -28,6 +28,7 @@ import { pathToFileURL } from "node:url";
 import {
   checkRecoveryPsbt,
   deriveRecoverySigningKey,
+  hasSignerSignature,
   hiddenPrompt,
   parseSignerArgs,
   readPsbt,
@@ -73,6 +74,16 @@ export async function main(argv: string[]): Promise<void> {
     signedPsbt = signRecoveryPsbt(psbtB64, key.priv);
   } finally {
     zeroKeyBuffers(key.priv, key.xonly);
+  }
+
+  // Re-verify after signing: the signature must be present and every structural
+  // check (input, destination, payout, fee, SIGHASH_DEFAULT) must still pass.
+  if (!hasSignerSignature(signedPsbt, expectedKey)) {
+    throw new Error(`Signature for ${roleDisplay} was not produced`);
+  }
+  const postCheck = checkRecoveryPsbt(signedPsbt, inputs, verified.escrow);
+  if (!postCheck.ok) {
+    throw new Error(`Post-sign PSBT verification failed:\n${postCheck.failures.join("\n")}`);
   }
 
   console.log(signedPsbt);

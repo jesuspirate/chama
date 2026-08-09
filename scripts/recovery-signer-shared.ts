@@ -83,65 +83,151 @@ function networkFor(network: "signet" | "mainnet"): typeof SIGNET | typeof MAINN
 
 // ── Mnemonic input: hidden TTY prompt, never argv/env ────────────────────────
 
+export interface TtyHandles {
+  input: NodeJS.ReadableStream;
+  output: NodeJS.WritableStream;
+  isTty: boolean;
+}
+
+/**
+ * Open /dev/tty synchronously and verify it is a character device.
+ * Returns undefined if the open fails or the path is not a TTY character device.
+ */
+export function openTtySync(): TtyHandles | undefined {
+  try {
+    const fd = fs.openSync("/dev/tty", "r+");
+    const stat = fs.fstatSync(fd);
+    if (!stat.isCharacterDevice()) {
+      fs.closeSync(fd);
+      return undefined;
+    }
+    return {
+      input: new fs.ReadStream(undefined, { fd, autoClose: true }),
+      output: new fs.WriteStream(undefined, { fd, autoClose: true }),
+      isTty: true,
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+function isReadStreamWithRawMode(s: NodeJS.ReadableStream): s is NodeJS.ReadableStream & {
+  isRaw?: boolean;
+  setRawMode(mode: boolean): void;
+  on(event: string, listener: (...args: unknown[]) => void): unknown;
+} {
+  return "setRawMode" in s && typeof (s as { setRawMode?: unknown }).setRawMode === "function";
+}
+
+/**
+ * Read a single line with echo disabled on a real TTY.
+ * Puts the input stream into raw mode and reads byte-by-byte so that nothing
+ * is ever written back for the typed characters. Handles backspace and Ctrl-C.
+ */
+export async function hiddenPromptNoEcho(
+  label: string,
+  input: NodeJS.ReadableStream,
+  output: NodeJS.WritableStream,
+): Promise<string> {
+  if (!isReadStreamWithRawMode(input)) {
+    throw new Error("hiddenPromptNoEcho requires a TTY input stream with setRawMode");
+  }
+
+  output.write(`${label}: `);
+  input.setRawMode(true);
+
+  const chunks: Buffer[] = [];
+  let cursor = 0;
+
+  return new Promise<string>((resolve, reject) => {
+    const cleanup = () => {
+      try {
+        input.setRawMode(false);
+      } catch {
+        // ignore
+      }
+    };
+
+    const onData = (data: Buffer) => {
+      for (let i = 0; i < data.length; i++) {
+        const byte = data[i];
+        if (byte === 0x0d || byte === 0x0a) {
+          // Enter
+          output.write("\n");
+          cleanup();
+          input.removeListener("data", onData);
+          input.removeListener("error", reject);
+          resolve(Buffer.concat(chunks).toString("utf8"));
+          return;
+        }
+        if (byte === 0x03) {
+          // Ctrl-C
+          cleanup();
+          input.removeListener("data", onData);
+          input.removeListener("error", reject);
+          process.exitCode = 130;
+          process.exit(130);
+          return;
+        }
+        if (byte === 0x7f || byte === 0x08) {
+          // Backspace / DEL
+          if (cursor > 0) {
+            cursor--;
+            chunks.length = 0;
+            output.write("\b \b");
+          }
+          continue;
+        }
+        // Printable ASCII / UTF-8 byte. We deliberately do NOT echo it.
+        if (byte >= 0x20) {
+          chunks.push(Buffer.from([byte]));
+          cursor++;
+        }
+      }
+    };
+
+    input.on("data", onData);
+    input.on("error", reject);
+  });
+}
+
+/**
+ * Fallback hidden prompt using readline with echo disabled.
+ * No masking characters are printed; the answer simply is not echoed.
+ */
+export async function hiddenPromptWithStreams(
+  label: string,
+  input: NodeJS.ReadableStream,
+  output: NodeJS.WritableStream,
+): Promise<string> {
+  const rl = readline.createInterface({
+    input,
+    output,
+    terminal: false,
+  });
+
+  return new Promise<string>((resolve, reject) => {
+    output.write(`${label}: `);
+    rl.question("", (answer) => {
+      output.write("\n");
+      rl.close();
+      resolve(answer.trim());
+    });
+    rl.on("error", reject);
+  });
+}
+
 /**
  * Read a single line from the terminal with echo disabled. Falls back to
  * stdin/stdout if /dev/tty cannot be opened. The prompt is written to stderr so
  * stdout remains clean for the signed PSBT.
  */
 export async function hiddenPrompt(label: string): Promise<string> {
-  const ttyInPath = "/dev/tty";
-  const ttyOutPath = "/dev/tty";
-
-  let ttyIn: fs.ReadStream | undefined;
-  let ttyOut: fs.WriteStream | undefined;
-  try {
-    ttyIn = fs.createReadStream(ttyInPath);
-    ttyOut = fs.createWriteStream(ttyOutPath);
-  } catch {
-    // fall through to stdin/stdout
+  const tty = openTtySync();
+  if (tty) {
+    return hiddenPromptNoEcho(label, tty.input, tty.output);
   }
-
-  const input = ttyIn ?? process.stdin;
-  const output = ttyOut ?? process.stdout;
-
-  return new Promise((resolve, reject) => {
-    const rl = readline.createInterface({
-      input,
-      output,
-      terminal: true,
-    });
-
-    output.write(`${label}: `);
-    let masked = false;
-    const onKeypress = (_c: string, key: readline.Key) => {
-      if (!rl.terminal) return;
-      const len = rl.line.length;
-      if (key && key.name === "return") {
-        output.write("\n");
-      } else if (key && key.name === "backspace" && len > 0) {
-        output.write("\b \b");
-      } else if (key && key.name === "c" && key.ctrl) {
-        output.write("\n");
-        process.exit(130);
-      } else if (key && key.sequence && key.sequence.length === 1) {
-        output.write("*");
-        masked = true;
-      }
-    };
-
-    if (rl.terminal) {
-      // readline's 'keypress' event is emitted when terminal: true.
-      rl.on("keypress", onKeypress as readline.ReadLine & ((c: string, k: readline.Key) => void));
-    }
-
-    rl.question("", (answer) => {
-      if (!masked && rl.terminal) output.write("\n");
-      rl.close();
-      resolve(answer.trim());
-    });
-
-    rl.on("error", reject);
-  });
+  return hiddenPromptWithStreams(label, process.stdin, process.stdout);
 }
 
 // ── Key derivation with explicit buffer zeroing ──────────────────────────────
@@ -510,11 +596,68 @@ export function signRecoveryPsbt(psbtB64: string, privKey: Uint8Array): string {
   return coSignSettlement(psbtB64, privKey);
 }
 
+/**
+ * Does the PSBT contain a Schnorr signature for the given x-only pubkey on
+ * input 0? Used by the finalizer to prove both required role signatures are
+ * present before it will combine and finalize.
+ */
+export function hasSignerSignature(psbtB64: string, xonlyHex: string): boolean {
+  const expected = hexToBytes(xonlyHex);
+  const tx = btc.Transaction.fromPSBT(base64.decode(psbtB64), {
+    allowUnknown: true,
+    allowUnknownOutputs: true,
+  });
+  if (tx.inputsLength === 0) return false;
+  const sigs = tx.getInput(0).tapScriptSig;
+  if (!Array.isArray(sigs)) return false;
+  return sigs.some((entry) => {
+    const pubKey = Array.isArray(entry) ? entry[0]?.pubKey : undefined;
+    return pubKey instanceof Uint8Array && bytesToHex(pubKey) === bytesToHex(expected);
+  });
+}
+
+export interface FinalizedRecovery {
+  txHex: string;
+  txid: string;
+  payoutSats: bigint;
+  feeSats: bigint;
+}
+
 export function combineAndFinalizeRecoveryPsbt(
   psbtsB64: readonly string[],
   escrow: OnchainEscrow,
-): { txHex: string; txid: string } {
+  inputs: { buyerKey: string; sellerKey: string; amountSats: bigint; destination: string; maxFeeSats: bigint },
+): FinalizedRecovery {
+  // Prove both required role signatures are present before combining.
+  const combined = btc.PSBTCombine(psbtsB64.map((p) => base64.decode(p)));
+  const combinedB64 = base64.encode(combined);
+
+  if (!hasSignerSignature(combinedB64, inputs.buyerKey)) {
+    throw new Error("Missing buyer signature in combined PSBT");
+  }
+  if (!hasSignerSignature(combinedB64, inputs.sellerKey)) {
+    throw new Error("Missing seller signature in combined PSBT");
+  }
+
   const txHex = finalizeSettlement(psbtsB64, { escrow, leaf: "coop" });
   const tx = btc.Transaction.fromRaw(hexToBytes(txHex), { allowUnknown: true, allowUnknownOutputs: true });
-  return { txHex, txid: tx.id as string };
+
+  // Independently decode and verify the final transaction preserves expectation.
+  if (tx.inputsLength !== 1) {
+    throw new Error(`Final transaction has ${tx.inputsLength} inputs, expected 1`);
+  }
+  if (tx.outputsLength !== 1) {
+    throw new Error(`Final transaction has ${tx.outputsLength} outputs, expected 1`);
+  }
+  const out = tx.getOutput(0);
+  const outAddr = btc.Address(escrow.params.network).encode(btc.OutScript.decode(out.script!));
+  if (outAddr !== inputs.destination) {
+    throw new Error(`Final transaction pays ${outAddr}, expected ${inputs.destination}`);
+  }
+  const feeSats = inputs.amountSats - out.amount!;
+  if (feeSats > inputs.maxFeeSats) {
+    throw new Error(`Final transaction fee ${feeSats} exceeds max ${inputs.maxFeeSats}`);
+  }
+
+  return { txHex, txid: tx.id as string, payoutSats: out.amount!, feeSats };
 }

@@ -52,7 +52,13 @@ export async function main(argv: string[]): Promise<void> {
     }
   }
 
-  const { txHex, txid } = combineAndFinalizeRecoveryPsbt(psbts, verified.escrow);
+  const { txHex, txid } = combineAndFinalizeRecoveryPsbt(psbts, verified.escrow, {
+    buyerKey: inputs.buyerKey,
+    sellerKey: inputs.sellerKey,
+    amountSats: inputs.amountSats,
+    destination: inputs.destination,
+    maxFeeSats: inputs.maxFeeSats,
+  });
 
   console.log("FINALIZED RECOVERY TRANSACTION (not broadcast)");
   console.log(`  txid: ${txid}`);

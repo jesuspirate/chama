@@ -6,17 +6,21 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { strict as assert } from "node:assert";
 import * as btc from "@scure/btc-signer";
+import { base64 } from "@scure/base";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import { buildSettlementPsbt, finalizeSettlement } from "../src/bond-multisig/onchain-escrow-settle.js";
 import { deriveEscrowSigningKey } from "../src/bond-multisig/onchain-escrow-funding.js";
 import { SIGNET } from "../src/bond-multisig/multisig.js";
 import { buildRecoveryEscrow, type RecoveryInputs, type RecoveryVerification } from "./build-recovery-psbt.js";
 import {
+  buildInputsFromSigner,
   buildRecoveryExpectation,
   checkRecoveryPsbt,
   combineAndFinalizeRecoveryPsbt,
   deriveRecoverySigningKey,
+  hasSignerSignature,
   hiddenPrompt,
+  hiddenPromptWithStreams,
   parseFinalizerArgs,
   parseSignerArgs,
   readPsbt,
@@ -202,12 +206,13 @@ async function testZeroKeyBuffersOverwrites(): Promise<void> {
 
 async function testVerifyFundingMockSucceeds(): Promise<void> {
   const inputs = baseSignerInputs();
-  const verified = await verifyRecoveryFunding(inputs, async () => ({ scriptpubkey: "", value: 0 }), async () => ({ spent: false }));
-  // Mock fetchers are ignored by verifyRecoveryFunding because it recomputes the escrow locally; but the current implementation calls them.
-  // Instead, use fakeVerifyFunding helper.
-  const fake = await fakeVerifyFunding(inputs);
-  assert.equal(fake.escrow.address, EXPECTED_ADDRESS);
-  assert.equal(fake.valueSats, Number(FUND_VALUE));
+  const escrow = buildRecoveryEscrow(buildInputsFromSigner(inputs));
+  const fakeOutput = async () => ({ scriptpubkey: bytesToHex(escrow.script), value: Number(FUND_VALUE) });
+  const fakeOutspend = async () => ({ spent: false });
+  const verified = await verifyRecoveryFunding(inputs, fakeOutput, fakeOutspend);
+  assert.equal(verified.escrow.address, EXPECTED_ADDRESS);
+  assert.equal(verified.valueSats, Number(FUND_VALUE));
+  assert.equal(verified.scriptpubkey, bytesToHex(escrow.script));
 }
 
 async function testCheckRecoveryPsbtAcceptsValid(): Promise<void> {
@@ -247,22 +252,7 @@ async function testRoundTripSignAndFinalize(): Promise<void> {
     ),
   });
 
-  const escrow = buildRecoveryEscrow({
-    parentId: inputs.parentId,
-    expectedAddress: inputs.expectedAddress,
-    buyerKey: inputs.buyerKey,
-    sellerKey: inputs.sellerKey,
-    arbiterKey: inputs.arbiterKey,
-    funder: inputs.funder,
-    network: inputs.network,
-    refundLockUntil: inputs.refundLockUntil,
-    txid: inputs.txid,
-    vout: inputs.vout,
-    amountSats: inputs.amountSats,
-    destination: inputs.destination,
-    feeRateSatsPerVb: 1n,
-    maxFeeSats: inputs.maxFeeSats,
-  });
+  const escrow = buildRecoveryEscrow(buildInputsFromSigner(inputs));
   inputs.expectedAddress = escrow.address;
 
   const feeSats = 162n;
@@ -292,6 +282,47 @@ async function testRoundTripSignAndFinalize(): Promise<void> {
   assert.equal(tx.inputsLength, 1);
   assert.equal(tx.outputsLength, 1);
   assert.equal(tx.id, txid);
+}
+
+async function testRoundTripWithSeparateSignedPsbts(): Promise<void> {
+  const parentId = `${ESCROW_ID}_separate_psbts`;
+  const testBuyer = deriveEscrowSigningKey(BUYER_WORDS, parentId, { network: SIGNET });
+  const testSeller = deriveEscrowSigningKey(SELLER_WORDS, parentId, { network: SIGNET });
+  const testArbiter = deriveEscrowSigningKey(WORDS, `${parentId}_arbiter`, { network: SIGNET });
+  const testDestination = deriveEscrowSigningKey(WORDS, `${parentId}_destination`, { network: SIGNET });
+
+  const inputs = baseSignerInputs({
+    parentId,
+    buyerKey: bytesToHex(testBuyer.xonly),
+    sellerKey: bytesToHex(testSeller.xonly),
+    arbiterKey: bytesToHex(testArbiter.xonly),
+    destination: btc.Address(SIGNET).encode(
+      btc.OutScript.decode(btc.p2tr(bytesToHex(testDestination.xonly)).script),
+    ),
+  });
+
+  const escrow = buildRecoveryEscrow(buildInputsFromSigner(inputs));
+  inputs.expectedAddress = escrow.address;
+
+  const psbt = buildSettlementPsbt({
+    escrow,
+    utxos: [{ txid: inputs.txid, index: inputs.vout, amountSats: inputs.amountSats }],
+    destination: inputs.destination,
+    feeSats: 162n,
+    leaf: "coop",
+  });
+
+  const buyerKey = deriveRecoverySigningKey(BUYER_WORDS, inputs.parentId, "signet");
+  const buyerSigned = signRecoveryPsbt(psbt, buyerKey.priv);
+  zeroKeyBuffers(buyerKey.priv, buyerKey.xonly);
+
+  const sellerKey = deriveRecoverySigningKey(SELLER_WORDS, inputs.parentId, "signet");
+  const sellerSigned = signRecoveryPsbt(psbt, sellerKey.priv);
+  zeroKeyBuffers(sellerKey.priv, sellerKey.xonly);
+
+  const { txHex, txid } = combineAndFinalizeRecoveryPsbt([buyerSigned, sellerSigned], escrow);
+  assert.ok(txHex.length > 0);
+  assert.ok(/^[0-9a-f]+$/.test(txid));
 }
 
 async function testFinalizerRequiresTwoSignatures(): Promise<void> {
@@ -325,6 +356,371 @@ async function testReadPsbtRejectsGarbage(): Promise<void> {
   );
 }
 
+async function testSignerRejectsWrongMnemonic(): Promise<void> {
+  const parentId = `${ESCROW_ID}_wrong_mnemonic`;
+  const testBuyer = deriveEscrowSigningKey(BUYER_WORDS, parentId, { network: SIGNET });
+  const testSeller = deriveEscrowSigningKey(SELLER_WORDS, parentId, { network: SIGNET });
+  const testArbiter = deriveEscrowSigningKey(WORDS, `${parentId}_arbiter`, { network: SIGNET });
+  const testDestination = deriveEscrowSigningKey(WORDS, `${parentId}_destination`, { network: SIGNET });
+
+  const inputs = baseSignerInputs({
+    parentId,
+    role: "buyer",
+    buyerKey: bytesToHex(testBuyer.xonly),
+    sellerKey: bytesToHex(testSeller.xonly),
+    arbiterKey: bytesToHex(testArbiter.xonly),
+    destination: btc.Address(SIGNET).encode(
+      btc.OutScript.decode(btc.p2tr(bytesToHex(testDestination.xonly)).script),
+    ),
+  });
+
+  const escrow = buildRecoveryEscrow(buildInputsFromSigner(inputs));
+  inputs.expectedAddress = escrow.address;
+
+  const psbt = buildSettlementPsbt({
+    escrow,
+    utxos: [{ txid: inputs.txid, index: inputs.vout, amountSats: inputs.amountSats }],
+    destination: inputs.destination,
+    feeSats: 162n,
+    leaf: "coop",
+  });
+
+  // Wrong mnemonic for the buyer role.
+  const wrongKey = deriveRecoverySigningKey(SELLER_WORDS, inputs.parentId, "signet");
+  assert.notEqual(bytesToHex(wrongKey.xonly), inputs.buyerKey);
+  assert.throws(
+    () => signRecoveryPsbt(psbt, wrongKey.priv),
+    /signature/i,
+  );
+  zeroKeyBuffers(wrongKey.priv, wrongKey.xonly);
+}
+
+async function testSignerRejectsWrongRole(): Promise<void> {
+  const parentId = `${ESCROW_ID}_wrong_role`;
+  const testBuyer = deriveEscrowSigningKey(BUYER_WORDS, parentId, { network: SIGNET });
+  const testSeller = deriveEscrowSigningKey(SELLER_WORDS, parentId, { network: SIGNET });
+  const testArbiter = deriveEscrowSigningKey(WORDS, `${parentId}_arbiter`, { network: SIGNET });
+  const testDestination = deriveEscrowSigningKey(WORDS, `${parentId}_destination`, { network: SIGNET });
+
+  const inputs = baseSignerInputs({
+    parentId,
+    role: "buyer",
+    buyerKey: bytesToHex(testBuyer.xonly),
+    sellerKey: bytesToHex(testSeller.xonly),
+    arbiterKey: bytesToHex(testArbiter.xonly),
+    destination: btc.Address(SIGNET).encode(
+      btc.OutScript.decode(btc.p2tr(bytesToHex(testDestination.xonly)).script),
+    ),
+  });
+
+  const escrow = buildRecoveryEscrow(buildInputsFromSigner(inputs));
+  inputs.expectedAddress = escrow.address;
+
+  const psbt = buildSettlementPsbt({
+    escrow,
+    utxos: [{ txid: inputs.txid, index: inputs.vout, amountSats: inputs.amountSats }],
+    destination: inputs.destination,
+    feeSats: 162n,
+    leaf: "coop",
+  });
+
+  // Sign with seller key while expecting buyer key.
+  const sellerKey = deriveRecoverySigningKey(SELLER_WORDS, inputs.parentId, "signet");
+  assert.throws(
+    () => signRecoveryPsbt(psbt, sellerKey.priv),
+    /signature/i,
+  );
+  zeroKeyBuffers(sellerKey.priv, sellerKey.xonly);
+}
+
+function mutatePsbtDestination(psbtB64: string, newDestination: string, network: typeof SIGNET): string {
+  const tx = btc.Transaction.fromPSBT(base64.decode(psbtB64), { allowUnknown: true, allowUnknownOutputs: true });
+  // Rebuild with the same input but a different output.
+  const out = tx.getOutput(0);
+  const mutated = new btc.Transaction({ allowUnknown: true, allowUnknownOutputs: true });
+  for (let i = 0; i < tx.inputsLength; i++) {
+    const inp = tx.getInput(i);
+    mutated.addInput({
+      txid: inp.txid!,
+      index: inp.index!,
+      witnessUtxo: inp.witnessUtxo,
+      sequence: inp.sequence,
+      finalScriptSig: inp.finalScriptSig,
+      tapInternalKey: inp.tapInternalKey,
+      tapLeafScript: inp.tapLeafScript,
+      tapMerkleRoot: inp.tapMerkleRoot,
+    });
+  }
+  mutated.addOutputAddress(newDestination, out.amount!, network);
+  return base64.encode(mutated.toPSBT());
+}
+
+async function testSignerRejectsAlteredPsbt(): Promise<void> {
+  const inputs = baseSignerInputs();
+  const psbt = await buildUnsignedRecoveryPsbt(inputs);
+  const verified = await fakeVerifyFunding(inputs);
+
+  // Tamper with destination.
+  const tampered = mutatePsbtDestination(psbt, EXPECTED_ADDRESS, SIGNET);
+  const check = checkRecoveryPsbt(tampered, inputs, verified.escrow);
+  assert.equal(check.ok, false);
+  assert.ok(check.failures.some((f) => f.includes("destination") || f.includes("winner")));
+}
+
+async function testFinalizerRejectsDuplicateSigner(): Promise<void> {
+  const parentId = `${ESCROW_ID}_duplicate_signer`;
+  const testBuyer = deriveEscrowSigningKey(BUYER_WORDS, parentId, { network: SIGNET });
+  const testSeller = deriveEscrowSigningKey(SELLER_WORDS, parentId, { network: SIGNET });
+  const testArbiter = deriveEscrowSigningKey(WORDS, `${parentId}_arbiter`, { network: SIGNET });
+  const testDestination = deriveEscrowSigningKey(WORDS, `${parentId}_destination`, { network: SIGNET });
+
+  const inputs = baseSignerInputs({
+    parentId,
+    buyerKey: bytesToHex(testBuyer.xonly),
+    sellerKey: bytesToHex(testSeller.xonly),
+    arbiterKey: bytesToHex(testArbiter.xonly),
+    destination: btc.Address(SIGNET).encode(
+      btc.OutScript.decode(btc.p2tr(bytesToHex(testDestination.xonly)).script),
+    ),
+  });
+
+  const escrow = buildRecoveryEscrow(buildInputsFromSigner(inputs));
+  inputs.expectedAddress = escrow.address;
+
+  const psbt = buildSettlementPsbt({
+    escrow,
+    utxos: [{ txid: inputs.txid, index: inputs.vout, amountSats: inputs.amountSats }],
+    destination: inputs.destination,
+    feeSats: 162n,
+    leaf: "coop",
+  });
+
+  const buyerKey = deriveRecoverySigningKey(BUYER_WORDS, inputs.parentId, "signet");
+  const buyerSigned1 = signRecoveryPsbt(psbt, buyerKey.priv);
+  const buyerSigned2 = signRecoveryPsbt(psbt, buyerKey.priv);
+  zeroKeyBuffers(buyerKey.priv, buyerKey.xonly);
+
+  assert.throws(
+    () => combineAndFinalizeRecoveryPsbt([buyerSigned1, buyerSigned2], escrow),
+    /Missing seller signature/,
+  );
+}
+
+function mutatePsbtOutputAmount(psbtB64: string, newAmount: bigint): string {
+  const tx = btc.Transaction.fromPSBT(base64.decode(psbtB64), { allowUnknown: true, allowUnknownOutputs: true });
+  const mutated = new btc.Transaction({ allowUnknown: true, allowUnknownOutputs: true });
+  for (let i = 0; i < tx.inputsLength; i++) {
+    const inp = tx.getInput(i);
+    mutated.addInput({
+      txid: inp.txid!,
+      index: inp.index!,
+      witnessUtxo: inp.witnessUtxo,
+      sequence: inp.sequence,
+      finalScriptSig: inp.finalScriptSig,
+      tapInternalKey: inp.tapInternalKey,
+      tapLeafScript: inp.tapLeafScript,
+      tapMerkleRoot: inp.tapMerkleRoot,
+    });
+  }
+  const out = tx.getOutput(0);
+  mutated.addOutput({ script: out.script!, amount: newAmount });
+  return base64.encode(mutated.toPSBT());
+}
+
+async function testFinalizerRejectsAlteredOutput(): Promise<void> {
+  const parentId = `${ESCROW_ID}_altered_output`;
+  const testBuyer = deriveEscrowSigningKey(BUYER_WORDS, parentId, { network: SIGNET });
+  const testSeller = deriveEscrowSigningKey(SELLER_WORDS, parentId, { network: SIGNET });
+  const testArbiter = deriveEscrowSigningKey(WORDS, `${parentId}_arbiter`, { network: SIGNET });
+  const testDestination = deriveEscrowSigningKey(WORDS, `${parentId}_destination`, { network: SIGNET });
+
+  const inputs = baseSignerInputs({
+    parentId,
+    buyerKey: bytesToHex(testBuyer.xonly),
+    sellerKey: bytesToHex(testSeller.xonly),
+    arbiterKey: bytesToHex(testArbiter.xonly),
+    destination: btc.Address(SIGNET).encode(
+      btc.OutScript.decode(btc.p2tr(bytesToHex(testDestination.xonly)).script),
+    ),
+  });
+
+  const escrow = buildRecoveryEscrow(buildInputsFromSigner(inputs));
+  inputs.expectedAddress = escrow.address;
+
+  const psbt = buildSettlementPsbt({
+    escrow,
+    utxos: [{ txid: inputs.txid, index: inputs.vout, amountSats: inputs.amountSats }],
+    destination: inputs.destination,
+    feeSats: 162n,
+    leaf: "coop",
+  });
+
+  const buyerKey = deriveRecoverySigningKey(BUYER_WORDS, inputs.parentId, "signet");
+  const sellerKey = deriveRecoverySigningKey(SELLER_WORDS, inputs.parentId, "signet");
+  const signed = signRecoveryPsbt(signRecoveryPsbt(psbt, buyerKey.priv), sellerKey.priv);
+  zeroKeyBuffers(buyerKey.priv, buyerKey.xonly, sellerKey.priv, sellerKey.xonly);
+
+  // Inflate payout by 1 sat (fee drops by 1 sat, still within maxFeeSats).
+  const tampered = mutatePsbtOutputAmount(signed, 99_839n);
+  assert.throws(
+    () => combineAndFinalizeRecoveryPsbt([tampered], escrow),
+    /fee|payout|amount|output/i,
+  );
+}
+
+async function testFinalizerRejectsAlteredFee(): Promise<void> {
+  const parentId = `${ESCROW_ID}_altered_fee`;
+  const testBuyer = deriveEscrowSigningKey(BUYER_WORDS, parentId, { network: SIGNET });
+  const testSeller = deriveEscrowSigningKey(SELLER_WORDS, parentId, { network: SIGNET });
+  const testArbiter = deriveEscrowSigningKey(WORDS, `${parentId}_arbiter`, { network: SIGNET });
+  const testDestination = deriveEscrowSigningKey(WORDS, `${parentId}_destination`, { network: SIGNET });
+
+  const inputs = baseSignerInputs({
+    parentId,
+    buyerKey: bytesToHex(testBuyer.xonly),
+    sellerKey: bytesToHex(testSeller.xonly),
+    arbiterKey: bytesToHex(testArbiter.xonly),
+    destination: btc.Address(SIGNET).encode(
+      btc.OutScript.decode(btc.p2tr(bytesToHex(testDestination.xonly)).script),
+    ),
+  });
+
+  const escrow = buildRecoveryEscrow(buildInputsFromSigner(inputs));
+  inputs.expectedAddress = escrow.address;
+
+  const psbt = buildSettlementPsbt({
+    escrow,
+    utxos: [{ txid: inputs.txid, index: inputs.vout, amountSats: inputs.amountSats }],
+    destination: inputs.destination,
+    feeSats: 162n,
+    leaf: "coop",
+  });
+
+  const buyerKey = deriveRecoverySigningKey(BUYER_WORDS, inputs.parentId, "signet");
+  const sellerKey = deriveRecoverySigningKey(SELLER_WORDS, inputs.parentId, "signet");
+  const signed = signRecoveryPsbt(signRecoveryPsbt(psbt, buyerKey.priv), sellerKey.priv);
+  zeroKeyBuffers(buyerKey.priv, buyerKey.xonly, sellerKey.priv, sellerKey.xonly);
+
+  // Reduce payout by 1 sat, increasing fee by 1 sat. Since fee is still only
+  // 163 sats, the failure must come from amount mismatch, not fee ceiling.
+  const tampered = mutatePsbtOutputAmount(signed, 99_837n);
+  assert.throws(
+    () => combineAndFinalizeRecoveryPsbt([tampered], escrow),
+    /fee|payout|amount|output/i,
+  );
+}
+
+async function testHiddenPromptFallbackWhenNoTty(): Promise<void> {
+  // Simulate the case where /dev/tty is not available by overriding the prompt
+  // to use a plain Readable/Writable pair. The fallback must still read the line.
+  const { Readable, Writable } = await import("node:stream");
+  const input = Readable.from(["secret words\n"]);
+  const outputChunks: Buffer[] = [];
+  const output = new Writable({ write(chunk, _enc, cb) { outputChunks.push(Buffer.from(chunk)); cb(); } });
+
+  const answer = await hiddenPromptWithStreams("Mnemonic", input, output);
+  assert.equal(answer, "secret words");
+  const written = Buffer.concat(outputChunks).toString("utf8");
+  assert.ok(written.includes("Mnemonic:"));
+  assert.ok(written.includes("\n"));
+}
+
+async function testHiddenPromptNoEchoOnFakeTty(): Promise<void> {
+  const secret = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+  const { Readable, Writable } = await import("node:stream");
+
+  const outputChunks: Buffer[] = [];
+  const output = new Writable({
+    write(chunk, _enc, cb) {
+      outputChunks.push(Buffer.from(chunk));
+      cb();
+    },
+  });
+
+  let rawMode = false;
+  const dataHandlers: Array<(data: Buffer) => void> = [];
+  const errorHandlers: Array<(err: Error) => void> = [];
+  const input = Object.assign(new Readable({ read() {} }), {
+    isRaw: false,
+    setRawMode(mode: boolean) {
+      rawMode = mode;
+      this.isRaw = mode;
+    },
+    on(event: string, handler: (...args: unknown[]) => void) {
+      if (event === "data") dataHandlers.push(handler as (data: Buffer) => void);
+      if (event === "error") errorHandlers.push(handler as (err: Error) => void);
+      return this;
+    },
+    removeListener(event: string, handler: (...args: unknown[]) => void) {
+      const idx = event === "data" ? dataHandlers.indexOf(handler as (data: Buffer) => void) : -1;
+      if (idx >= 0) dataHandlers.splice(idx, 1);
+      return this;
+    },
+    pushSecret() {
+      for (const h of dataHandlers) {
+        h(Buffer.from(secret + "\r", "utf8"));
+      }
+    },
+  });
+
+  const promptPromise = hiddenPromptNoEcho("Mnemonic", input, output);
+  // Yield so the prompt can set raw mode and attach listeners.
+  await new Promise((r) => setTimeout(r, 10));
+  assert.equal(rawMode, true, "input must be put into raw mode");
+  input.pushSecret();
+  const answer = await promptPromise;
+  assert.equal(answer, secret);
+
+  const written = Buffer.concat(outputChunks).toString("utf8");
+  assert.ok(written.includes("Mnemonic:"), "prompt label must be written");
+  assert.ok(written.includes("\n"), "newline must be written after Enter");
+  assert.ok(!written.includes(secret), "secret mnemonic must never appear in captured output");
+}
+
+async function testHiddenPromptNoEchoBackspace(): Promise<void> {
+  const { Readable, Writable } = await import("node:stream");
+
+  const outputChunks: Buffer[] = [];
+  const output = new Writable({
+    write(chunk, _enc, cb) {
+      outputChunks.push(Buffer.from(chunk));
+      cb();
+    },
+  });
+
+  const dataHandlers: Array<(data: Buffer) => void> = [];
+  const input = Object.assign(new Readable({ read() {} }), {
+    isRaw: false,
+    setRawMode(mode: boolean) {
+      this.isRaw = mode;
+    },
+    on(event: string, handler: (...args: unknown[]) => void) {
+      if (event === "data") dataHandlers.push(handler as (data: Buffer) => void);
+      return this;
+    },
+    removeListener() {
+      return this;
+    },
+    pushBytes(bytes: number[]) {
+      for (const h of dataHandlers) {
+        h(Buffer.from(bytes));
+      }
+    },
+  });
+
+  const promptPromise = hiddenPromptNoEcho("Mnemonic", input, output);
+  await new Promise((r) => setTimeout(r, 10));
+  // Type "abx", backspace, "c", enter => "abc"
+  input.pushBytes([0x61, 0x62, 0x78, 0x7f, 0x63, 0x0d]);
+  const answer = await promptPromise;
+  assert.equal(answer, "abc");
+
+  const written = Buffer.concat(outputChunks).toString("utf8");
+  assert.ok(written.includes("\b \b"), "backspace must erase a character on screen");
+  assert.ok(!written.includes("x"), "erased character must not remain in output");
+  assert.ok(!written.includes("abc"), "final secret characters must not be echoed");
+}
+
 // ── hiddenPrompt is hard to test without a TTY; skip interactive test. ───────
 
 const tests: Array<{ name: string; fn: () => Promise<void> }> = [
@@ -334,12 +730,23 @@ const tests: Array<{ name: string; fn: () => Promise<void> }> = [
   { name: "finalizer args require PSBT file", fn: testFinalizerArgsRequiresPsbt },
   { name: "recovery key derivation matches escrow funding", fn: testDeriveRecoveryKeyMatchesEscrowFunding },
   { name: "zeroKeyBuffers overwrites buffers", fn: testZeroKeyBuffersOverwrites },
+  { name: "verify funding mock succeeds", fn: testVerifyFundingMockSucceeds },
   { name: "checkRecoveryPsbt accepts valid PSBT", fn: testCheckRecoveryPsbtAcceptsValid },
   { name: "checkRecoveryPsbt rejects bad destination", fn: testCheckRecoveryPsbtRejectsBadDestination },
   { name: "sign and finalize round trip", fn: testRoundTripSignAndFinalize },
+  { name: "round trip with separate signed PSBTs", fn: testRoundTripWithSeparateSignedPsbts },
+  { name: "signer rejects wrong mnemonic", fn: testSignerRejectsWrongMnemonic },
+  { name: "signer rejects wrong role key", fn: testSignerRejectsWrongRole },
+  { name: "signer rejects altered PSBT", fn: testSignerRejectsAlteredPsbt },
   { name: "finalizer refuses unsigned PSBT", fn: testFinalizerRequiresTwoSignatures },
+  { name: "finalizer rejects duplicate signer", fn: testFinalizerRejectsDuplicateSigner },
+  { name: "finalizer rejects altered output", fn: testFinalizerRejectsAlteredOutput },
+  { name: "finalizer rejects altered fee", fn: testFinalizerRejectsAlteredFee },
   { name: "readPsbt trims file contents", fn: testReadPsbtFromFile },
   { name: "readPsbt rejects non-base64", fn: testReadPsbtRejectsGarbage },
+  { name: "hiddenPrompt fallback reads from stdin/stdout", fn: testHiddenPromptFallbackWhenNoTty },
+  { name: "hiddenPrompt no-echo on fake TTY", fn: testHiddenPromptNoEchoOnFakeTty },
+  { name: "hiddenPrompt backspace does not leak erased chars", fn: testHiddenPromptNoEchoBackspace },
 ];
 
 async function run(): Promise<void> {
