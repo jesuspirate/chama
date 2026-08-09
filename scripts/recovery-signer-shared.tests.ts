@@ -14,6 +14,7 @@ import { SIGNET } from "../src/bond-multisig/multisig.js";
 import { buildRecoveryEscrow, type RecoveryInputs, type RecoveryVerification } from "./build-recovery-psbt.js";
 import {
   buildInputsFromSigner,
+  assertRoleKeyMatch,
   buildRecoveryExpectation,
   checkRecoveryPsbt,
   combineAndFinalizeRecoveryPsbt,
@@ -21,6 +22,7 @@ import {
   hasSignerSignature,
   hiddenPrompt,
   hiddenPromptWithStreams,
+  hiddenPromptNoEcho,
   parseFinalizerArgs,
   parseSignerArgs,
   readPsbt,
@@ -67,6 +69,7 @@ function baseSignerInputs(overrides?: Partial<SignerInputs>): SignerInputs {
     amountSats: FUND_VALUE,
     destination: RECOVERY_ADDRESS,
     maxFeeSats: 500n,
+    expectedFeeSats: 162n,
     psbtFile: undefined,
     ...overrides,
   };
@@ -87,8 +90,20 @@ function baseFinalizerInputs(overrides?: Partial<FinalizerInputs>): FinalizerInp
     amountSats: FUND_VALUE,
     destination: RECOVERY_ADDRESS,
     maxFeeSats: 500n,
+    expectedFeeSats: 162n,
     psbtFiles: ["-"],
     ...overrides,
+  };
+}
+
+function finalizerExpectation(inputs: SignerInputs | FinalizerInputs) {
+  return {
+    buyerKey: inputs.buyerKey,
+    sellerKey: inputs.sellerKey,
+    amountSats: inputs.amountSats,
+    destination: inputs.destination,
+    maxFeeSats: inputs.maxFeeSats,
+    expectedFeeSats: inputs.expectedFeeSats,
   };
 }
 
@@ -144,6 +159,7 @@ async function testSignerArgs(): Promise<void> {
     "--amount-sats", "100000",
     "--destination", RECOVERY_ADDRESS,
     "--max-fee-sats", "500",
+    "--expected-fee-sats", "162",
     "--psbt-file", "psbt.base64",
   ]);
   assert.equal(inputs.role, "seller");
@@ -172,6 +188,7 @@ async function testFinalizerArgsMultiplePsbtFiles(): Promise<void> {
     "--amount-sats", "100000",
     "--destination", RECOVERY_ADDRESS,
     "--max-fee-sats", "500",
+    "--expected-fee-sats", "162",
     "--psbt-file", "a.psbt",
     "--psbt-file", "b.psbt",
   ]);
@@ -180,7 +197,7 @@ async function testFinalizerArgsMultiplePsbtFiles(): Promise<void> {
 
 async function testFinalizerArgsRequiresPsbt(): Promise<void> {
   assert.throws(
-    () => parseFinalizerArgs(["node", "script", "--parent-id", ESCROW_ID, "--expected-address", EXPECTED_ADDRESS, "--buyer-key", BUYER_KEY, "--seller-key", SELLER_KEY, "--arbiter-key", ARBITER_KEY, "--refund-lock-until", String(REFUND_HEIGHT), "--txid", FUND_TXID, "--vout", "0", "--amount-sats", "100000", "--destination", RECOVERY_ADDRESS, "--max-fee-sats", "500"]),
+    () => parseFinalizerArgs(["node", "script", "--parent-id", ESCROW_ID, "--expected-address", EXPECTED_ADDRESS, "--buyer-key", BUYER_KEY, "--seller-key", SELLER_KEY, "--arbiter-key", ARBITER_KEY, "--refund-lock-until", String(REFUND_HEIGHT), "--txid", FUND_TXID, "--vout", "0", "--amount-sats", "100000", "--destination", RECOVERY_ADDRESS, "--max-fee-sats", "500", "--expected-fee-sats", "162"]),
     /At least one --psbt-file is required/,
   );
 }
@@ -271,10 +288,12 @@ async function testRoundTripSignAndFinalize(): Promise<void> {
 
   const sellerKey = deriveRecoverySigningKey(SELLER_WORDS, inputs.parentId, "signet");
   assert.equal(bytesToHex(sellerKey.xonly), inputs.sellerKey);
-  const signedByBoth = signRecoveryPsbt(signedByBuyer, sellerKey.priv);
+  const signedBySeller = signRecoveryPsbt(psbt, sellerKey.priv);
   zeroKeyBuffers(sellerKey.priv, sellerKey.xonly);
 
-  const { txHex, txid } = combineAndFinalizeRecoveryPsbt([signedByBoth], escrow);
+  const { txHex, txid } = combineAndFinalizeRecoveryPsbt(
+    [signedByBuyer, signedBySeller], escrow, finalizerExpectation(inputs),
+  );
   assert.ok(txHex.length > 0);
   assert.ok(/^[0-9a-f]+$/.test(txid));
 
@@ -320,7 +339,9 @@ async function testRoundTripWithSeparateSignedPsbts(): Promise<void> {
   const sellerSigned = signRecoveryPsbt(psbt, sellerKey.priv);
   zeroKeyBuffers(sellerKey.priv, sellerKey.xonly);
 
-  const { txHex, txid } = combineAndFinalizeRecoveryPsbt([buyerSigned, sellerSigned], escrow);
+  const { txHex, txid } = combineAndFinalizeRecoveryPsbt(
+    [buyerSigned, sellerSigned], escrow, finalizerExpectation(inputs),
+  );
   assert.ok(txHex.length > 0);
   assert.ok(/^[0-9a-f]+$/.test(txid));
 }
@@ -330,7 +351,7 @@ async function testFinalizerRequiresTwoSignatures(): Promise<void> {
   const psbt = await buildUnsignedRecoveryPsbt(inputs);
   const verified = await fakeVerifyFunding(inputs);
   assert.throws(
-    () => combineAndFinalizeRecoveryPsbt([psbt], verified.escrow),
+    () => combineAndFinalizeRecoveryPsbt([psbt], verified.escrow, finalizerExpectation(inputs)),
     /not signed|finalize|threshold|signature/i,
   );
 }
@@ -389,8 +410,8 @@ async function testSignerRejectsWrongMnemonic(): Promise<void> {
   const wrongKey = deriveRecoverySigningKey(SELLER_WORDS, inputs.parentId, "signet");
   assert.notEqual(bytesToHex(wrongKey.xonly), inputs.buyerKey);
   assert.throws(
-    () => signRecoveryPsbt(psbt, wrongKey.priv),
-    /signature/i,
+    () => assertRoleKeyMatch(inputs, wrongKey.xonly),
+    /does not match/i,
   );
   zeroKeyBuffers(wrongKey.priv, wrongKey.xonly);
 }
@@ -427,8 +448,8 @@ async function testSignerRejectsWrongRole(): Promise<void> {
   // Sign with seller key while expecting buyer key.
   const sellerKey = deriveRecoverySigningKey(SELLER_WORDS, inputs.parentId, "signet");
   assert.throws(
-    () => signRecoveryPsbt(psbt, sellerKey.priv),
-    /signature/i,
+    () => assertRoleKeyMatch(inputs, sellerKey.xonly),
+    /does not match/i,
   );
   zeroKeyBuffers(sellerKey.priv, sellerKey.xonly);
 }
@@ -501,8 +522,10 @@ async function testFinalizerRejectsDuplicateSigner(): Promise<void> {
   zeroKeyBuffers(buyerKey.priv, buyerKey.xonly);
 
   assert.throws(
-    () => combineAndFinalizeRecoveryPsbt([buyerSigned1, buyerSigned2], escrow),
-    /Missing seller signature/,
+    () => combineAndFinalizeRecoveryPsbt(
+      [buyerSigned1, buyerSigned2], escrow, finalizerExpectation(inputs),
+    ),
+    /duplicate buyer|seller-signed/i,
   );
 }
 
@@ -555,15 +578,15 @@ async function testFinalizerRejectsAlteredOutput(): Promise<void> {
     leaf: "coop",
   });
 
+  // Inflate payout by 1 sat (fee drops by 1 sat, still within maxFeeSats).
+  const tampered = mutatePsbtOutputAmount(psbt, 99_839n);
   const buyerKey = deriveRecoverySigningKey(BUYER_WORDS, inputs.parentId, "signet");
   const sellerKey = deriveRecoverySigningKey(SELLER_WORDS, inputs.parentId, "signet");
-  const signed = signRecoveryPsbt(signRecoveryPsbt(psbt, buyerKey.priv), sellerKey.priv);
+  const buyerSigned = signRecoveryPsbt(tampered, buyerKey.priv);
+  const sellerSigned = signRecoveryPsbt(tampered, sellerKey.priv);
   zeroKeyBuffers(buyerKey.priv, buyerKey.xonly, sellerKey.priv, sellerKey.xonly);
-
-  // Inflate payout by 1 sat (fee drops by 1 sat, still within maxFeeSats).
-  const tampered = mutatePsbtOutputAmount(signed, 99_839n);
   assert.throws(
-    () => combineAndFinalizeRecoveryPsbt([tampered], escrow),
+    () => combineAndFinalizeRecoveryPsbt([buyerSigned, sellerSigned], escrow, finalizerExpectation(inputs)),
     /fee|payout|amount|output/i,
   );
 }
@@ -596,16 +619,16 @@ async function testFinalizerRejectsAlteredFee(): Promise<void> {
     leaf: "coop",
   });
 
-  const buyerKey = deriveRecoverySigningKey(BUYER_WORDS, inputs.parentId, "signet");
-  const sellerKey = deriveRecoverySigningKey(SELLER_WORDS, inputs.parentId, "signet");
-  const signed = signRecoveryPsbt(signRecoveryPsbt(psbt, buyerKey.priv), sellerKey.priv);
-  zeroKeyBuffers(buyerKey.priv, buyerKey.xonly, sellerKey.priv, sellerKey.xonly);
-
   // Reduce payout by 1 sat, increasing fee by 1 sat. Since fee is still only
   // 163 sats, the failure must come from amount mismatch, not fee ceiling.
-  const tampered = mutatePsbtOutputAmount(signed, 99_837n);
+  const tampered = mutatePsbtOutputAmount(psbt, 99_837n);
+  const buyerKey = deriveRecoverySigningKey(BUYER_WORDS, inputs.parentId, "signet");
+  const sellerKey = deriveRecoverySigningKey(SELLER_WORDS, inputs.parentId, "signet");
+  const buyerSigned = signRecoveryPsbt(tampered, buyerKey.priv);
+  const sellerSigned = signRecoveryPsbt(tampered, sellerKey.priv);
+  zeroKeyBuffers(buyerKey.priv, buyerKey.xonly, sellerKey.priv, sellerKey.xonly);
   assert.throws(
-    () => combineAndFinalizeRecoveryPsbt([tampered], escrow),
+    () => combineAndFinalizeRecoveryPsbt([buyerSigned, sellerSigned], escrow, finalizerExpectation(inputs)),
     /fee|payout|amount|output/i,
   );
 }

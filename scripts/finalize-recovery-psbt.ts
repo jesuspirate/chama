@@ -23,6 +23,7 @@
 //     --amount-sats 100000 \
 //     --destination tb1p... \
 //     --max-fee-sats 500 \
+//     --expected-fee-sats 162 \
 //     --psbt-file buyer-signed.psbt \
 //     --psbt-file seller-signed.psbt
 // ─────────────────────────────────────────────────────────────────────────────
@@ -58,6 +59,7 @@ export async function main(argv: string[]): Promise<void> {
     amountSats: inputs.amountSats,
     destination: inputs.destination,
     maxFeeSats: inputs.maxFeeSats,
+    expectedFeeSats: inputs.expectedFeeSats,
   });
 
   console.log("FINALIZED RECOVERY TRANSACTION (not broadcast)");

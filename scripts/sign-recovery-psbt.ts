@@ -22,11 +22,13 @@
 //     --amount-sats 100000 \
 //     --destination tb1p... \
 //     --max-fee-sats 500 \
+//     --expected-fee-sats 162 \
 //     [--psbt-file unsigned.psbt]
 // ─────────────────────────────────────────────────────────────────────────────
 import { pathToFileURL } from "node:url";
 import {
   checkRecoveryPsbt,
+  assertRoleKeyMatch,
   deriveRecoverySigningKey,
   hasSignerSignature,
   hiddenPrompt,
@@ -61,12 +63,11 @@ export async function main(argv: string[]): Promise<void> {
 
   // Verify the derived public key matches the expected recovery escrow key.
   const expectedKey = inputs.role === "buyer" ? inputs.buyerKey : inputs.sellerKey;
-  const derivedHex = bytesToHex(key.xonly);
-  if (derivedHex !== expectedKey) {
+  try {
+    assertRoleKeyMatch(inputs, key.xonly);
+  } catch (error) {
     zeroKeyBuffers(key.priv, key.xonly);
-    throw new Error(
-      `Derived ${roleDisplay} key does not match expected key:\n  expected: ${expectedKey}\n  derived:  ${derivedHex}`,
-    );
+    throw error;
   }
 
   let signedPsbt: string;
@@ -78,7 +79,7 @@ export async function main(argv: string[]): Promise<void> {
 
   // Re-verify after signing: the signature must be present and every structural
   // check (input, destination, payout, fee, SIGHASH_DEFAULT) must still pass.
-  if (!hasSignerSignature(signedPsbt, expectedKey)) {
+  if (!hasSignerSignature(signedPsbt, expectedKey, verified.escrow)) {
     throw new Error(`Signature for ${roleDisplay} was not produced`);
   }
   const postCheck = checkRecoveryPsbt(signedPsbt, inputs, verified.escrow);
@@ -88,8 +89,6 @@ export async function main(argv: string[]): Promise<void> {
 
   console.log(signedPsbt);
 }
-
-import { bytesToHex } from "@noble/hashes/utils.js";
 
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   main(process.argv).catch((err) => {

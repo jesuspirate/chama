@@ -17,6 +17,8 @@ import { base64 } from "@scure/base";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import { mnemonicToSeedSync } from "@scure/bip39";
 import { HDKey } from "@scure/bip32";
+import { schnorr } from "@noble/curves/secp256k1.js";
+import { tapLeafHash } from "@scure/btc-signer/payment.js";
 import {
   buildOnchainEscrow,
   type OnchainEscrow,
@@ -55,6 +57,7 @@ export interface SignerInputs {
   amountSats: bigint;
   destination: string;
   maxFeeSats: bigint;
+  expectedFeeSats: bigint;
   /** If provided, read the PSBT from this file; otherwise read from stdin. */
   psbtFile?: string;
 }
@@ -73,6 +76,7 @@ export interface FinalizerInputs {
   amountSats: bigint;
   destination: string;
   maxFeeSats: bigint;
+  expectedFeeSats: bigint;
   /** One or more partially signed PSBTs (base64). Paths or '-' for stdin. */
   psbtFiles: string[];
 }
@@ -94,19 +98,25 @@ export interface TtyHandles {
  * Returns undefined if the open fails or the path is not a TTY character device.
  */
 export function openTtySync(): TtyHandles | undefined {
+  let inputFd: number | undefined;
+  let outputFd: number | undefined;
   try {
-    const fd = fs.openSync("/dev/tty", "r+");
-    const stat = fs.fstatSync(fd);
+    inputFd = fs.openSync("/dev/tty", "r");
+    outputFd = fs.openSync("/dev/tty", "w");
+    const stat = fs.fstatSync(inputFd);
     if (!stat.isCharacterDevice()) {
-      fs.closeSync(fd);
+      fs.closeSync(inputFd);
+      fs.closeSync(outputFd);
       return undefined;
     }
     return {
-      input: new fs.ReadStream(undefined, { fd, autoClose: true }),
-      output: new fs.WriteStream(undefined, { fd, autoClose: true }),
+      input: fs.createReadStream("/dev/tty", { fd: inputFd, autoClose: true }),
+      output: fs.createWriteStream("/dev/tty", { fd: outputFd, autoClose: true }),
       isTty: true,
     };
   } catch {
+    if (inputFd !== undefined) try { fs.closeSync(inputFd); } catch { /* ignore */ }
+    if (outputFd !== undefined) try { fs.closeSync(outputFd); } catch { /* ignore */ }
     return undefined;
   }
 }
@@ -136,8 +146,7 @@ export async function hiddenPromptNoEcho(
   output.write(`${label}: `);
   input.setRawMode(true);
 
-  const chunks: Buffer[] = [];
-  let cursor = 0;
+  const bytes: number[] = [];
 
   return new Promise<string>((resolve, reject) => {
     const cleanup = () => {
@@ -157,7 +166,9 @@ export async function hiddenPromptNoEcho(
           cleanup();
           input.removeListener("data", onData);
           input.removeListener("error", reject);
-          resolve(Buffer.concat(chunks).toString("utf8"));
+          const answer = Buffer.from(bytes).toString("utf8");
+          bytes.fill(0);
+          resolve(answer);
           return;
         }
         if (byte === 0x03) {
@@ -171,17 +182,15 @@ export async function hiddenPromptNoEcho(
         }
         if (byte === 0x7f || byte === 0x08) {
           // Backspace / DEL
-          if (cursor > 0) {
-            cursor--;
-            chunks.length = 0;
+          if (bytes.length > 0) {
+            bytes.pop();
             output.write("\b \b");
           }
           continue;
         }
         // Printable ASCII / UTF-8 byte. We deliberately do NOT echo it.
         if (byte >= 0x20) {
-          chunks.push(Buffer.from([byte]));
-          cursor++;
+          bytes.push(byte);
         }
       }
     };
@@ -376,6 +385,10 @@ export function parseSignerArgs(argv: string[]): SignerInputs {
   if (maxFeeSats <= 0n || maxFeeSats >= amountSats) {
     throw new Error("--max-fee-sats must be positive and less than --amount-sats");
   }
+  const expectedFeeSats = BigInt(requireFlag("--expected-fee-sats"));
+  if (expectedFeeSats <= 0n || expectedFeeSats > maxFeeSats) {
+    throw new Error("--expected-fee-sats must be positive and no greater than --max-fee-sats");
+  }
 
   parseP2trAddress("--expected-address", expectedAddress, networkRaw);
   parseP2trAddress("--destination", destination, networkRaw);
@@ -395,6 +408,7 @@ export function parseSignerArgs(argv: string[]): SignerInputs {
     amountSats,
     destination,
     maxFeeSats,
+    expectedFeeSats,
     psbtFile: get("--psbt-file"),
   };
 }
@@ -446,6 +460,10 @@ export function parseFinalizerArgs(argv: string[]): FinalizerInputs {
   if (maxFeeSats <= 0n || maxFeeSats >= amountSats) {
     throw new Error("--max-fee-sats must be positive and less than --amount-sats");
   }
+  const expectedFeeSats = BigInt(requireFlag("--expected-fee-sats"));
+  if (expectedFeeSats <= 0n || expectedFeeSats > maxFeeSats) {
+    throw new Error("--expected-fee-sats must be positive and no greater than --max-fee-sats");
+  }
 
   const psbtFiles: string[] = [];
   let idx = args.indexOf("--psbt-file");
@@ -476,6 +494,7 @@ export function parseFinalizerArgs(argv: string[]): FinalizerInputs {
     amountSats,
     destination,
     maxFeeSats,
+    expectedFeeSats,
     psbtFiles,
   };
 }
@@ -587,7 +606,24 @@ export function checkRecoveryPsbt(
   inputs: SignerInputs | FinalizerInputs,
   escrow: OnchainEscrow,
 ): SettlementCheck {
-  return verifySettlementPsbt(psbtB64, buildRecoveryExpectation(inputs, escrow));
+  const check = verifySettlementPsbt(psbtB64, buildRecoveryExpectation(inputs, escrow));
+  if (!check.ok) return check;
+  try {
+    const tx = btc.Transaction.fromPSBT(base64.decode(psbtB64), {
+      allowUnknown: true, allowUnknownOutputs: true,
+    });
+    const inputTotal = Array.from({ length: tx.inputsLength }, (_, index) =>
+      tx.getInput(index).witnessUtxo?.amount ?? 0n).reduce((sum, amount) => sum + amount, 0n);
+    const outputTotal = Array.from({ length: tx.outputsLength }, (_, index) =>
+      tx.getOutput(index).amount ?? 0n).reduce((sum, amount) => sum + amount, 0n);
+    const fee = inputTotal - outputTotal;
+    if (fee !== inputs.expectedFeeSats) {
+      return { ok: false, failures: [`fee ${fee} does not equal approved fee ${inputs.expectedFeeSats}`] };
+    }
+    return check;
+  } catch (error) {
+    return { ok: false, failures: [`unable to verify exact recovery fee: ${String(error)}`] };
+  }
 }
 
 // ── Co-signing and finalization ──────────────────────────────────────────────
@@ -596,24 +632,54 @@ export function signRecoveryPsbt(psbtB64: string, privKey: Uint8Array): string {
   return coSignSettlement(psbtB64, privKey);
 }
 
+export function assertRoleKeyMatch(
+  inputs: SignerInputs,
+  derivedXonly: Uint8Array,
+): void {
+  const expected = inputs.role === "buyer" ? inputs.buyerKey : inputs.sellerKey;
+  const actual = bytesToHex(derivedXonly);
+  if (actual !== expected) {
+    throw new Error(`Derived ${inputs.role} key does not match expected key`);
+  }
+}
+
 /**
  * Does the PSBT contain a Schnorr signature for the given x-only pubkey on
  * input 0? Used by the finalizer to prove both required role signatures are
  * present before it will combine and finalize.
  */
-export function hasSignerSignature(psbtB64: string, xonlyHex: string): boolean {
+export function hasSignerSignature(
+  psbtB64: string,
+  xonlyHex: string,
+  escrow: OnchainEscrow,
+): boolean {
   const expected = hexToBytes(xonlyHex);
   const tx = btc.Transaction.fromPSBT(base64.decode(psbtB64), {
     allowUnknown: true,
     allowUnknownOutputs: true,
   });
   if (tx.inputsLength === 0) return false;
-  const sigs = tx.getInput(0).tapScriptSig;
-  if (!Array.isArray(sigs)) return false;
-  return sigs.some((entry) => {
-    const pubKey = Array.isArray(entry) ? entry[0]?.pubKey : undefined;
-    return pubKey instanceof Uint8Array && bytesToHex(pubKey) === bytesToHex(expected);
-  });
+  const prevouts = Array.from({ length: tx.inputsLength }, (_, index) => tx.getInput(index).witnessUtxo);
+  if (prevouts.some((output) => !output)) return false;
+  const leaf = escrow.leaves.coop;
+  const leafHash = tapLeafHash(leaf);
+  return Array.from({ length: tx.inputsLength }, (_, index) => {
+    const message = tx.preimageWitnessV1(
+      index,
+      prevouts.map((output) => output!.script),
+      0,
+      prevouts.map((output) => output!.amount),
+      undefined,
+      leaf,
+      0xc0,
+    );
+    const sigs = tx.getInput(index).tapScriptSig ?? [];
+    const entry = sigs.find(([meta, signature]) =>
+      bytesToHex(meta.pubKey) === bytesToHex(expected)
+      && bytesToHex(meta.leafHash) === bytesToHex(leafHash)
+      && signature.length === 64);
+    return !!entry && schnorr.verify(entry[1], message, expected);
+  }).every(Boolean);
 }
 
 export interface FinalizedRecovery {
@@ -626,16 +692,36 @@ export interface FinalizedRecovery {
 export function combineAndFinalizeRecoveryPsbt(
   psbtsB64: readonly string[],
   escrow: OnchainEscrow,
-  inputs: { buyerKey: string; sellerKey: string; amountSats: bigint; destination: string; maxFeeSats: bigint },
+  inputs: {
+    buyerKey: string; sellerKey: string; amountSats: bigint;
+    destination: string; maxFeeSats: bigint; expectedFeeSats: bigint;
+  },
 ): FinalizedRecovery {
+  if (psbtsB64.length !== 2) {
+    throw new Error("Finalizer requires exactly two PSBTs: one buyer-signed and one seller-signed");
+  }
+  const roles = psbtsB64.map((psbt) => ({
+    buyer: hasSignerSignature(psbt, inputs.buyerKey, escrow),
+    seller: hasSignerSignature(psbt, inputs.sellerKey, escrow),
+  }));
+  if (roles.filter((role) => role.buyer && !role.seller).length !== 1) {
+    throw new Error("Missing or duplicate buyer-signed PSBT");
+  }
+  if (roles.filter((role) => role.seller && !role.buyer).length !== 1) {
+    throw new Error("Missing or duplicate seller-signed PSBT");
+  }
+
   // Prove both required role signatures are present before combining.
   const combined = btc.PSBTCombine(psbtsB64.map((p) => base64.decode(p)));
   const combinedB64 = base64.encode(combined);
+  const combinedTx = btc.Transaction.fromPSBT(combined, {
+    allowUnknown: true, allowUnknownOutputs: true,
+  });
 
-  if (!hasSignerSignature(combinedB64, inputs.buyerKey)) {
+  if (!hasSignerSignature(combinedB64, inputs.buyerKey, escrow)) {
     throw new Error("Missing buyer signature in combined PSBT");
   }
-  if (!hasSignerSignature(combinedB64, inputs.sellerKey)) {
+  if (!hasSignerSignature(combinedB64, inputs.sellerKey, escrow)) {
     throw new Error("Missing seller signature in combined PSBT");
   }
 
@@ -649,12 +735,31 @@ export function combineAndFinalizeRecoveryPsbt(
   if (tx.outputsLength !== 1) {
     throw new Error(`Final transaction has ${tx.outputsLength} outputs, expected 1`);
   }
+  const prevout = combinedTx.getInput(0).witnessUtxo;
+  const witness = tx.getInput(0).finalScriptWitness;
+  if (!prevout || !witness || witness.length !== 4) {
+    throw new Error("Final transaction is missing the exact cooperative Taproot witness");
+  }
+  const message = combinedTx.preimageWitnessV1(
+    0, [prevout.script], 0, [prevout.amount], undefined, escrow.leaves.coop, 0xc0,
+  );
+  if (witness[1].length !== 64
+    || !schnorr.verify(witness[1], message, hexToBytes(inputs.buyerKey))) {
+    throw new Error("Final cooperative witness has an invalid buyer signature");
+  }
+  if (witness[0].length !== 64
+    || !schnorr.verify(witness[0], message, hexToBytes(inputs.sellerKey))) {
+    throw new Error("Final cooperative witness has an invalid seller signature");
+  }
   const out = tx.getOutput(0);
   const outAddr = btc.Address(escrow.params.network).encode(btc.OutScript.decode(out.script!));
   if (outAddr !== inputs.destination) {
     throw new Error(`Final transaction pays ${outAddr}, expected ${inputs.destination}`);
   }
   const feeSats = inputs.amountSats - out.amount!;
+  if (feeSats !== inputs.expectedFeeSats) {
+    throw new Error(`Final transaction fee ${feeSats} does not equal approved fee ${inputs.expectedFeeSats}`);
+  }
   if (feeSats > inputs.maxFeeSats) {
     throw new Error(`Final transaction fee ${feeSats} exceeds max ${inputs.maxFeeSats}`);
   }
