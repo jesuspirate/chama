@@ -206,3 +206,42 @@ export function canFundTranche(
 export function networkMatches(parentNetwork: TrancheBitcoinNetwork, childNetwork: TrancheBitcoinNetwork): boolean {
   return parentNetwork === childNetwork;
 }
+
+/** Frozen parents are manifests, never deposit targets. Kept synchronous so
+ * the UI can fail closed before it renders an irreversible Bitcoin address. */
+export function assertTrancheFundingAddressAllowed(state: EscrowState): void {
+  if (state.tranchePlan) throw new Error("The parent is a tranche manifest and cannot receive funding");
+}
+
+/** Runtime recovery seam for the PLAN_START -> child CREATE publication gap.
+ * Extracted from the React hook so the exact retry/coordinator behavior that
+ * failed in the live three-app run has direct regression coverage. */
+export async function syncPrivateTrancheChildren(input: {
+  parent: EscrowState;
+  pubkey: string | null;
+  watchChildren: (parentId: string) => void;
+  loadChildren: (parentId: string) => Promise<EscrowState[]>;
+  resumePlan: (
+    parentId: string,
+    maximumChildMsats: number,
+    bitcoinNetwork: TrancheBitcoinNetwork,
+  ) => Promise<EscrowState[]>;
+  delay?: (milliseconds: number) => Promise<void>;
+  retryCount?: number;
+}): Promise<EscrowState[]> {
+  const plan = input.parent.tranchePlan;
+  if (!plan) return [];
+  input.watchChildren(input.parent.id);
+  let children = await input.loadChildren(input.parent.id);
+  const delay = input.delay ?? (milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds)));
+  const retryCount = input.retryCount ?? 4;
+  for (let attempt = 0; children.length < plan.total && attempt < retryCount; attempt++) {
+    await delay(500 * (attempt + 1));
+    children = await input.loadChildren(input.parent.id);
+  }
+  if (children.length < plan.total && input.pubkey === plan.coordinatorPubkey) {
+    const maximumChildMsats = Math.max(...plan.tranches.map(row => row.amountMsats));
+    children = await input.resumePlan(input.parent.id, maximumChildMsats, plan.bitcoinNetwork);
+  }
+  return children;
+}

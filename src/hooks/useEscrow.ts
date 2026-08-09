@@ -193,6 +193,7 @@ import {
 } from "../escrow-engine/listing-renewal.js";
 import { retireListing } from "../escrow-engine/listing-renewal-ledger.js";
 import { MIN_TRANCHE_SATS, trancheGate, tranchesForPlan, buildNextTrancheParams } from "../escrow-engine/tranche.js";
+import { assertTrancheFundingAddressAllowed, syncPrivateTrancheChildren } from "../escrow-engine/tranche-plan.js";
 import { defaultCreditObserver, recordClaimCredit } from "../payments/claim-credit-ledger.js";
 import {
   canEditListing,
@@ -2680,22 +2681,14 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     // bounded relay query instead of permanently latching the first empty
     // result. The seller can also resume an interrupted fan-out by re-entering
     // the idempotent engine method with the frozen plan's exact parameters.
-    client.watchChildren(parentId);
-    let children = await client.loadChildren(parentId);
-    for (let attempt = 0; children.length < parent.tranchePlan.total && attempt < 4; attempt++) {
-      await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1)));
-      children = await client.loadChildren(parentId);
-    }
-    if (children.length < parent.tranchePlan.total
-      && pubkey === parent.tranchePlan.coordinatorPubkey) {
-      const maximumChildMsats = Math.max(...parent.tranchePlan.tranches.map(row => row.amountMsats));
-      const resumed = await client.startTranchePlan(
-        parentId,
-        maximumChildMsats,
-        parent.tranchePlan.bitcoinNetwork,
-      );
-      children = resumed.children;
-    }
+    const children = await syncPrivateTrancheChildren({
+      parent,
+      pubkey,
+      watchChildren: id => client.watchChildren(id),
+      loadChildren: id => client.loadChildren(id),
+      resumePlan: async (id, maximumChildMsats, bitcoinNetwork) =>
+        (await client.startTranchePlan(id, maximumChildMsats, bitcoinNetwork)).children,
+    });
     for (const child of children) {
       saveEscrowId(child.id, pubkey);
       client.watchEscrow(child.id);
@@ -2761,7 +2754,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     // A frozen parent is a manifest only. Never render a deposit address for
     // it: publishLock rejects it later, but showing the address first could
     // strand an irreversible payment before that guard gets a chance to run.
-    if (state.tranchePlan) throw new Error("The parent is a tranche manifest and cannot receive funding");
+    assertTrancheFundingAddressAllowed(state);
     // A normal trade collects keys through CREATE/JOIN (`escrowKeys`). A
     // private tranche child is pre-seated from the signed parent snapshot, so
     // its participants publish CHILD_KEY events instead (`childKeys`). Both

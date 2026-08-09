@@ -6,8 +6,9 @@ import { parseEscrowEvent } from "./event-parser.js";
 import { applyEvent } from "./state-machine.js";
 import { shouldShowOnBrowse } from "../ui/decisions.js";
 import {
-  buildChildDescriptor, canFundTranche, derivePlanState, isPrivatePlanChild,
-  splitTranches, trancheChildId, tranchePlanId, trancheTermsDigest, verifyTrancheChild,
+  assertTrancheFundingAddressAllowed, buildChildDescriptor, canFundTranche, derivePlanState,
+  isPrivatePlanChild, splitTranches, syncPrivateTrancheChildren, trancheChildId,
+  tranchePlanId, trancheTermsDigest, verifyTrancheChild,
 } from "./tranche-plan.js";
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -63,6 +64,9 @@ parent = applyEvent(parent.state, parse(raw(START_EVENT, SELLER, EscrowEventKind
 assert(parent.ok && parent.state.tranchePlan?.planId === planId, "signed plan start freezes the parent snapshot");
 assert(!shouldShowOnBrowse({ escrow: parent.state, browseCategory: "all", nowSec: 1_800_000_004 }), "frozen parent cannot be retaken from Browse");
 assert(getEffectiveParticipantAt(parent.state, Role.BUYER, 1_900_000_000) === BUYER, "frozen parent buyer seat does not lapse");
+let parentAddressRejected = false;
+try { assertTrancheFundingAddressAllowed(parent.state); } catch { parentAddressRejected = true; }
+assert(parentAddressRejected, "frozen parent is rejected before a funding address can render");
 
 const children: EscrowState[] = [];
 for (const row of tranches) {
@@ -102,5 +106,50 @@ const keyTarget = { ...children[0], status: EscrowStatus.CREATED };
 const keyed = applyEvent(keyTarget, parse(raw("88".repeat(32), BUYER, EscrowEventKind.CHILD_KEY, keyTarget.id, keyPayload,
   [["e", children[0].eventChain.at(-1)!.raw.id, "", "reply"]])));
 assert(keyed.ok && keyed.state.childKeys?.buyer === keyPayload.xOnlyPubkey, "pre-seated buyer publishes a per-child key without JOIN");
+
+const unevenTranches = splitTranches(100_000_001, 33_333_334);
+const unevenPlan: PlanStartPayload = {
+  ...plan,
+  total: unevenTranches.length,
+  totalMsats: 100_000_001,
+  tranches: unevenTranches,
+};
+const unevenParent: EscrowState = { ...parent.state, tranchePlan: { ...unevenPlan, eventId: START_EVENT } };
+const syncOrder: string[] = [];
+let loadAttempts = 0;
+let resumedMaximum = 0;
+const recoveredChildren = await syncPrivateTrancheChildren({
+  parent: unevenParent,
+  pubkey: SELLER,
+  watchChildren: () => syncOrder.push("watch"),
+  loadChildren: async () => {
+    syncOrder.push("load");
+    loadAttempts++;
+    return [];
+  },
+  resumePlan: async (_id, maximumChildMsats) => {
+    syncOrder.push("resume");
+    resumedMaximum = maximumChildMsats;
+    return children;
+  },
+  delay: async () => { syncOrder.push("delay"); },
+});
+assert(syncOrder[0] === "watch", "private child recovery subscribes before its first relay query");
+assert(loadAttempts === 5, "private child recovery performs the initial load plus four bounded retries");
+assert(syncOrder.at(-1) === "resume" && recoveredChildren === children,
+  "only the coordinator recovery fallback supplies the missing child set");
+assert(JSON.stringify(splitTranches(unevenPlan.totalMsats, resumedMaximum)) === JSON.stringify(unevenPlan.tranches),
+  "uneven final-slice recovery regenerates byte-identical tranche descriptors");
+let outsiderResumed = false;
+await syncPrivateTrancheChildren({
+  parent: unevenParent,
+  pubkey: BUYER,
+  watchChildren: () => {},
+  loadChildren: async () => [],
+  resumePlan: async () => { outsiderResumed = true; return []; },
+  delay: async () => {},
+  retryCount: 1,
+});
+assert(!outsiderResumed, "non-coordinator discovery never republishes missing children");
 
 console.log("\nParent/child tranche protocol tests passed.");
