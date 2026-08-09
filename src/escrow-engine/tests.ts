@@ -2280,7 +2280,7 @@ console.log("\n── ATOMIC LOCK (CREATED → LOCKED, no FUNDED hop) ──");
   // delay is compiled into the ADDRESS, so an early spend is not impolite — it
   // is invalid, rejected by every node including the attacker's own.
   {
-    const { buildOnchainEscrow, DISPUTE_CSV_BLOCKS } =
+    const { buildOnchainEscrow, leafWitnessFor, DISPUTE_CSV_BLOCKS } =
       await import("../bond-multisig/onchain-escrow.js");
     const {
       buildSettlementPsbt, coSignSettlement, finalizeSettlement,
@@ -2322,6 +2322,30 @@ console.log("\n── ATOMIC LOCK (CREATED → LOCKED, no FUNDED hop) ──");
     });
     const utxos = [{ txid: "a".repeat(64), index: 0, amountSats: 200_000n }];
     const WINNER = btcLib.p2tr(BX, undefined, NET).address!;
+    const assertLeafSignature = (
+      signedPsbt: string,
+      leaf: "coop" | "dispute" | "refund",
+      witnessIndex: number,
+      pubkey: Uint8Array,
+      label: string,
+    ) => {
+      const tx = btcLib.Transaction.fromPSBT(msBase64.decode(signedPsbt), {
+        allowUnknown: true, allowUnknownOutputs: true,
+      });
+      const prevouts = Array.from({ length: tx.inputsLength }, (_, index) => tx.getInput(index).witnessUtxo!);
+      const message = tx.preimageWitnessV1(
+        0,
+        prevouts.map((output) => output.script),
+        0,
+        prevouts.map((output) => output.amount),
+        undefined,
+        esc.leaves[leaf],
+        0xc0,
+      );
+      const witness = leafWitnessFor(esc, tx, 0, leaf);
+      assert(witness[witnessIndex]?.length === 64
+        && schnorr.verify(witness[witnessIndex], message, pubkey), label);
+    };
 
     let refusedEarly = false;
     try {
@@ -2337,15 +2361,35 @@ console.log("\n── ATOMIC LOCK (CREATED → LOCKED, no FUNDED hop) ──");
       escrow: esc, utxos, destination: WINNER, feeSats: 1_000n,
       leaf: "dispute", fundingHeight: 800_000, tipHeight: 800_200,
     });
+    const signedDispute = coSignSettlement(coSignSettlement(late, sk[0]), sk[2]);
     assert(finalizeSettlement(
-      [coSignSettlement(coSignSettlement(late, sk[0]), sk[2])],
+      [signedDispute],
       { escrow: esc, leaf: "dispute" },
     ).length > 0,
       "⭐ S6: after the window, buyer + arbiter settle — hand-finalized, because a CSV leaf has no @scure coder");
+    assertLeafSignature(signedDispute, "dispute", 2, BX,
+      "⭐⭐ S6: the finalized dispute witness selects the BUYER signature made for the dispute leaf");
+    assertLeafSignature(signedDispute, "dispute", 0, AX,
+      "⭐⭐ S6: the finalized dispute witness selects the ARBITER signature made for the dispute leaf");
 
     const coop = buildSettlementPsbt({ escrow: esc, utxos, destination: WINNER, feeSats: 1_000n });
-    assert(finalizeSettlement([coSignSettlement(coSignSettlement(coop, sk[0]), sk[1])]).length > 0,
+    const signedCoop = coSignSettlement(coSignSettlement(coop, sk[0]), sk[1]);
+    assert(finalizeSettlement([signedCoop], { escrow: esc, leaf: "coop" }).length > 0,
       "⭐⭐ S6: the COOPERATIVE path never waits — a normal trade is completely unaffected by the appeal window");
+    assertLeafSignature(signedCoop, "coop", 1, BX,
+      "⭐⭐ S6: the finalized coop witness selects the BUYER signature made for the coop leaf");
+    assertLeafSignature(signedCoop, "coop", 0, SX,
+      "⭐⭐ S6: the finalized coop witness selects the SELLER signature made for the coop leaf");
+
+    const refund = buildSettlementPsbt({
+      escrow: esc, utxos, destination: WINNER, feeSats: 1_000n,
+      leaf: "refund", lockTime: 800_000,
+    });
+    const signedRefund = coSignSettlement(refund, sk[1]);
+    assert(finalizeSettlement([signedRefund], { escrow: esc, leaf: "refund" }).length > 0,
+      "S6: the seller can finalize the refund leaf at its absolute lock height");
+    assertLeafSignature(signedRefund, "refund", 0, SX,
+      "⭐⭐ S6: the finalized refund witness selects the SELLER signature made for the refund leaf");
   }
 
   // ── Tier 2.1 S4/S5: settling — and the checklist that is the real security ─

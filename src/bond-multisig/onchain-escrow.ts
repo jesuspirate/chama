@@ -49,6 +49,7 @@
 // PURE: no relays, no wallet, no network. Builds and verifies scripts only.
 
 import * as btc from "@scure/btc-signer";
+import { TAP_LEAF_VERSION, tapLeafHash } from "@scure/btc-signer/payment.js";
 import { NUMS_INTERNAL_KEY, SIGNET, type BtcNetwork } from "./multisig.js";
 
 /** ⭐⭐ WHICH NETWORK THE ESCROW LIVES ON — and why this is NOT `BOND_NETWORK`.
@@ -378,7 +379,15 @@ export function leafWitnessFor(
   const found = leaves.find((l) => hex(l.script) === hex(script));
   if (!found) throw new Error(`${leaf} leaf missing from the recomputed tree`);
 
-  const sigs = tx.getInput(index).tapScriptSig ?? [];
+  // A signer can appear in more than one leaf, and @scure records one
+  // tapScriptSig per (pubkey, leafHash).  Only signatures made for the leaf
+  // whose script/control block we are revealing are valid in this witness.
+  // Selecting by pubkey alone can silently pair a dispute signature with the
+  // coop script (or vice versa), producing a transaction nodes reject.
+  const targetLeafHash = hex(tapLeafHash(script, TAP_LEAF_VERSION));
+  const sigs = (tx.getInput(index).tapScriptSig ?? []).filter(
+    ([meta]) => hex(meta.leafHash) === targetLeafHash,
+  );
   if (sigs.length === 0) throw new Error(`${leaf} input is not signed yet`);
 
   if (leaf === "refund") {
