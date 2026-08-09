@@ -10,7 +10,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "android:sync": "npm run build && npx cap sync android",
-    "test": "npx tsx src/escrow-engine/tests.ts && npx tsx src/escrow-engine/tranche-plan.tests.ts && npx tsx src/guided/tests.ts && npx tsx src/chip-in/tests.ts && npx tsx src/stack/tests.ts",
+    "test": "npx tsx scripts/verify-funded-parent-address.tests.ts && npx tsx src/escrow-engine/tests.ts && npx tsx src/escrow-engine/tranche-plan.tests.ts && npx tsx src/guided/tests.ts && npx tsx src/chip-in/tests.ts && npx tsx src/stack/tests.ts",
     "typecheck": "tsc --noEmit",
     "repo:hygiene": "./scripts/check-repo-hygiene.sh",
     "predeploy": "npm run repo:hygiene && npm run typecheck && npm test",
