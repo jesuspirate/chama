@@ -37,7 +37,11 @@ import {
 import { listingPremiumLine } from "../listing-metrics.js";
 import { useBitcoinPrice } from "../hooks/useBitcoinPrice.js";
 import { useFiatRates } from "../hooks/useFiatRates.js";
-import { decideTradeDetailFraming, decideVotePrompt } from "../decisions.js";
+import {
+  arbiterKeyActionSeatsAreStable,
+  decideTradeDetailFraming,
+  decideVotePrompt,
+} from "../decisions.js";
 import {
   pickArbiterFromPool,
   pickPreferredArbiter,
@@ -764,12 +768,15 @@ export function TradeDetail({
   // with auto-assignment on, the address could never be computed and the trade
   // would wait forever on a message that reads like patience rather than
   // deadlock. On-chain therefore needs the arbiter to act up front, and this is
-  // the affordance that lets them. Shown only to the deterministic pick, only
-  // while their key is missing.
+  // the affordance that lets them. Shown only after buyer + seller are fixed:
+  // before that exclusion set is stable, a prospective buyer/seller can also
+  // be the provisional arbiter preview and must not be allowed to seat itself
+  // as arbiter from the same screen that still offers its economic role.
   const onchainNeedsMyArbiterKey =
     (state.escrowMode ?? "ecash") === "onchain" &&
     !state.lock.lockedAt &&
     !(state.escrowKeys ?? {})[Role.ARBITER] &&
+    arbiterKeyActionSeatsAreStable(participants) &&
     !!pubkey &&
     (participants.arbiter === pubkey || previewArbiterPk === pubkey) &&
     state.communityArbiters.includes(pubkey);

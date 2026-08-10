@@ -590,6 +590,7 @@ import {
 
 // v0.3.0 Phase 5 — ChamaBar label decision
 import {
+  arbiterKeyActionSeatsAreStable,
   decideChamaBarLabel,
   decideVotePrompt,
   mergeOnchainPayoutAttention,
@@ -1169,6 +1170,17 @@ console.log("\n── MONEY-SCREEN ROLE + CHILD IDENTITY ──");
     "Publishing an escrow key leaves a child-specific arbiter confirmation on screen");
   assert(/<TradeDetail\s+key=\{selected\.id\}/.test(appSrc),
     "Switching child escrows remounts TradeDetail so local action state cannot bleed across money screens");
+  const sellerOnly = {
+    [Role.BUYER]: null,
+    [Role.SELLER]: SELLER_PK,
+    [Role.ARBITER]: null,
+  };
+  assert(!arbiterKeyActionSeatsAreStable(sellerOnly),
+    "Prospective buyer cannot receive an actionable arbiter-key prompt before taking the buyer seat");
+  assert(arbiterKeyActionSeatsAreStable({ ...sellerOnly, [Role.BUYER]: BUYER_PK }),
+    "Arbiter-key action becomes eligible only after buyer and seller seats are both fixed");
+  assert(detailSrc.includes("arbiterKeyActionSeatsAreStable(participants)"),
+    "Trade detail gates the arbiter banner and publish-key CTA on stable economic seats");
 }
 
 // ══════════════════════════════════════════════════════════════════════════

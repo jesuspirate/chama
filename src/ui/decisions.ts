@@ -42,6 +42,18 @@ import { isWorkListing } from "./work-resume.js";
 // data-layer switch guards can't drift apart (see balanceBlocksFederationSwitch).
 export const MAIN_SURFACE_RECOVERY_MIN_SATS = MATERIAL_RECOVERY_MIN_SATS;
 
+/**
+ * An actionable arbiter-key prompt is safe only after both economic seats are
+ * fixed. Before then, a prospective buyer/seller may also be the deterministic
+ * arbiter preview; exposing the prompt would let that provisional choice seat
+ * itself as arbiter and dead-end its intended buyer/seller join.
+ */
+export function arbiterKeyActionSeatsAreStable(
+  participants: EscrowState["participants"],
+): boolean {
+  return !!participants[Role.BUYER] && !!participants[Role.SELLER];
+}
+
 function hasMainSurfaceRecoveryBalance(balanceMsats: number): boolean {
   return balanceBlocksFederationSwitch(balanceMsats);
 }
