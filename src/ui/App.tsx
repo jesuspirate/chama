@@ -3177,6 +3177,7 @@ export default function App() {
           display: "flex", flexDirection: "column", minHeight: 0,
         }}>
           <TradeDetail
+            key={selected.id}
             state={selected}
             pubkey={pubkey!}
             homeCommunity={getUserCommunitySlugRaw()}
