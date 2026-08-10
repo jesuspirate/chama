@@ -1389,6 +1389,11 @@ export function TradeDetail({
   const dealTitle = (state.items?.[0]?.label?.trim())
     || (state.description?.trim())
     || tradeRoomTitle;
+  // Money-moving children can share the same title and amount. Keep the exact
+  // viewed child and the viewer's role visually pinned beneath the header so a
+  // profile that buys one child and arbitrates another cannot mistake them.
+  const visibleContextRole = myRole ?? (onchainNeedsMyArbiterKey ? Role.ARBITER : null);
+  const contextKind = isChildOrder(state) ? t("trade.contextOrder") : t("trade.contextTrade");
 
   // Living chat: lifecycle event bubbles derived from the event chain (+ the
   // synthetic dispute / timeout markers), woven into the message feed by time.
@@ -1507,6 +1512,62 @@ export function TradeDetail({
             quoteCurrency={homeQuoteCurrency}
           />
           <Badge status={statusKey} />
+        </div>
+      </div>
+
+      <div data-testid="trade-role-context" style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: 12,
+        margin: "-7px 0 14px",
+        padding: "9px 11px",
+        borderRadius: T.rs,
+        background: `${visibleContextRole ? ROLE_COLOR[visibleContextRole] : T.muted}12`,
+        border: `1px solid ${visibleContextRole ? ROLE_COLOR[visibleContextRole] : T.border}55`,
+        fontFamily: T.mono,
+      }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{
+            color: T.muted,
+            fontSize: 8.5,
+            fontWeight: 800,
+            letterSpacing: 1,
+            textTransform: "uppercase",
+            marginBottom: 3,
+          }}>
+            {t("trade.contextYourRole", { kind: contextKind })}
+          </div>
+          <div style={{
+            color: visibleContextRole ? ROLE_COLOR_TEXT[visibleContextRole] : T.muted,
+            fontSize: 12,
+            fontWeight: 900,
+            textTransform: "uppercase",
+          }}>
+            {visibleContextRole ? roleDisplayName(visibleContextRole, t) : t("trade.contextObserver")}
+          </div>
+        </div>
+        <div style={{ minWidth: 0, textAlign: "right" }}>
+          <div style={{
+            color: T.muted,
+            fontSize: 8.5,
+            fontWeight: 800,
+            letterSpacing: 1,
+            textTransform: "uppercase",
+            marginBottom: 3,
+          }}>
+            {t("trade.contextIdentity", { kind: contextKind })}
+          </div>
+          <div title={state.id} style={{
+            color: T.text,
+            fontSize: 10.5,
+            fontWeight: 800,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}>
+            {shortTradeId}
+          </div>
         </div>
       </div>
 
@@ -1920,6 +1981,7 @@ export function TradeDetail({
                   setPublishingKey(true);
                   setFundingNote(null);
                   void Promise.resolve(onJoin(Role.ARBITER))
+                    .then(() => setFundingNote(t("onchain.keyPublishedForOrder", { order: shortTradeId })))
                     .catch((e: any) => setFundingNote(e?.message ?? String(e)))
                     .finally(() => setPublishingKey(false));
                 }}

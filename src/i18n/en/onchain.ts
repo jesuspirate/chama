@@ -36,6 +36,7 @@ export const onchain: Record<string, string> = {
   "onchain.fundOnchainTitle": "Send it to the escrow address.",
   "onchain.arbiterKeyNeeded": "This escrow needs your key before it can be funded. Publishing it costs nothing and moves no sats.",
   "onchain.publishMyKey": "Publish my escrow key",
+  "onchain.keyPublishedForOrder": "Escrow key published for {order}. You are the arbiter for this order.",
   "onchain.checking": "Checking the chain…",
   "onchain.iveSentIt": "I have sent it — lock the trade",
   "onchain.yourKeyNeededTitle": "This trade is waiting on you.",

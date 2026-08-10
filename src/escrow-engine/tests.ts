@@ -1150,6 +1150,27 @@ assert(
     "Buyer-authored child orders are not published as public classifieds");
 }
 
+// ── MONEY-SCREEN ROLE + CHILD IDENTITY ────────────────────────────────────
+// Two children from one storefront can have the same title and amount while a
+// single identity is buyer in one and arbiter in the other. The detail surface
+// must pin both the current role and exact child id, and React-local action
+// state must not bleed when App selects a different child.
+console.log("\n── MONEY-SCREEN ROLE + CHILD IDENTITY ──");
+{
+  const detailSrc = readFileSync("src/ui/screens/TradeDetail.tsx", "utf8");
+  const appSrc = readFileSync("src/ui/App.tsx", "utf8");
+  assert(detailSrc.includes('data-testid="trade-role-context"'),
+    "Trade detail renders a persistent role/order context banner");
+  assert(detailSrc.includes('t("trade.contextYourRole"'),
+    "Money screen names the viewer's role explicitly rather than relying on shell/profile labels");
+  assert(detailSrc.includes("{shortTradeId}"),
+    "Money screen visibly distinguishes otherwise-identical child escrow ids");
+  assert(detailSrc.includes('t("onchain.keyPublishedForOrder"'),
+    "Publishing an escrow key leaves a child-specific arbiter confirmation on screen");
+  assert(/<TradeDetail\s+key=\{selected\.id\}/.test(appSrc),
+    "Switching child escrows remounts TradeDetail so local action state cannot bleed across money screens");
+}
+
 // ══════════════════════════════════════════════════════════════════════════
 // TEST SUITES
 // ══════════════════════════════════════════════════════════════════════════
