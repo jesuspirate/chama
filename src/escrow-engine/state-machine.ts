@@ -53,6 +53,10 @@ import { arbiterVotePriority, substitutionEligibleAt, clampSubstitutionGraceSeco
 import { pickArbiterFromPool, pickPreferredArbiter } from "../arbiters/pool.js";
 import { finalArbiterSettlementProof, finalCoopSettlementProof } from "./onchain-settlement-transport.js";
 import { validatePlanStart } from "./tranche-plan.js";
+import {
+  SETTLEMENT_POLICY_ECASH_SLICES, MAX_SLICE_COUNT, defaultSettlementPolicy,
+  minSlicesForCap, settlementPolicyMatchesMode,
+} from "./slice-policy.js";
 
 // Re-export so existing callers (escrow-client, escrow-bridge, tests) keep
 // importing payoutRecipientFor from the state machine.
@@ -289,6 +293,46 @@ function handleCreate(event: ParsedEscrowEvent<CreatePayload>): TransitionResult
     return err("INVALID_CREATE", "CREATE requires positive expiry duration", event.raw.id);
   }
 
+  // ── v6.0 settlement-policy gates (sibling to the ESCROW_MODE_MISMATCH hard
+  // gate; they never relax it). Resolve the mode first — the policy agreement
+  // check keys off it. */
+  const mode: "ecash" | "onchain" = p.escrowMode === "onchain" ? "onchain" : "ecash";
+  // On-chain stays single-settlement by default: a signed slice count on an
+  // onchain CREATE is rejected outright.
+  if (mode === "onchain" && p.sliceCount !== undefined) {
+    return err("ONCHAIN_SLICING_UNSUPPORTED", "On-chain escrows are single-settlement; sliceCount is ecash-only", event.raw.id);
+  }
+  // The signed settlementPolicy must agree with the signed escrowMode. Absent
+  // policy defers to the mode default (legacy trades), so this is a no-op for
+  // every historical CREATE and only bites when the two explicitly disagree.
+  if (!settlementPolicyMatchesMode(p.settlementPolicy, mode)) {
+    return err("SETTLEMENT_POLICY_MODE_MISMATCH", `settlementPolicy "${p.settlementPolicy}" does not match escrowMode "${mode}"`, event.raw.id);
+  }
+  // sliceCount is meaningful only on the ecash mutual-slices policy; reject a
+  // stray count on anything else (e.g. explicitly-labelled onchain policy).
+  if (p.sliceCount !== undefined && (p.settlementPolicy ?? defaultSettlementPolicy(mode)) !== SETTLEMENT_POLICY_ECASH_SLICES) {
+    return err("ONCHAIN_SLICING_UNSUPPORTED", "sliceCount requires the ecash-mutual-slices settlement policy", event.raw.id);
+  }
+  if (p.sliceCount !== undefined && (!Number.isSafeInteger(p.sliceCount) || p.sliceCount < 1)) {
+    return err("INVALID_CREATE", "sliceCount must be a positive safe integer (1 = single settlement)", event.raw.id);
+  }
+  // Cold-review L1: bound the signed count so a plan can never spawn an
+  // absurd number of child escrows (tranche-array allocation bound).
+  if (p.sliceCount !== undefined && p.sliceCount > MAX_SLICE_COUNT) {
+    return err("INVALID_CREATE", `sliceCount exceeds MAX_SLICE_COUNT (${MAX_SLICE_COUNT})`, event.raw.id);
+  }
+  // The cap-derived floor must also fit inside MAX_SLICE_COUNT. Otherwise a
+  // sufficiently large amount with a small user preference would still spawn
+  // more than 100 children when deriveSlicePlan enforces the 2M-sat cap.
+  if (p.sliceCount !== undefined && minSlicesForCap(p.amountMsats) > MAX_SLICE_COUNT) {
+    return err("INVALID_CREATE", `amountMsats requires more than MAX_SLICE_COUNT (${MAX_SLICE_COUNT}) slices`, event.raw.id);
+  }
+  // Cold-review L2: every slice must carry at least 1 sat — a signed count the
+  // amount can't fill would derive zero-msat child escrows downstream.
+  if (p.sliceCount !== undefined && p.amountMsats < p.sliceCount * 1_000) {
+    return err("INVALID_CREATE", "amountMsats too small for a positive amount in every slice", event.raw.id);
+  }
+
   // Determine initiator role from category convention:
   //   bill-pay → seller creates (bitcoiner offering sats for bill payment)
   //   p2p-trade → seller creates (offering to sell sats for fiat)
@@ -358,7 +402,10 @@ function handleCreate(event: ParsedEscrowEvent<CreatePayload>): TransitionResult
     workCategory: p.workCategory ?? null,
     ...(p.tranche ? { tranche: p.tranche } : {}),
     // Defaulted so no reader ever handles undefined; absent ⇒ every historical trade.
-    escrowMode: p.escrowMode === "onchain" ? "onchain" : "ecash",
+    // `mode` was resolved during the v6.0 gate above and is identical to this.
+    escrowMode: mode,
+    settlementPolicy: p.settlementPolicy ?? defaultSettlementPolicy(mode),
+    ...(p.sliceCount !== undefined ? { sliceCount: p.sliceCount } : {}),
     // Tier 2.1: the creator never JOINs, so their escrow key rides in CREATE.
     // Keyed by the INITIATOR'S role — in Exchange the creator is the seller, in
     // a storefront child order the buyer, so hardcoding either would file the

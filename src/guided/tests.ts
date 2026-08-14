@@ -40,6 +40,7 @@ function listing(
     id,
     status: EscrowStatus.CREATED,
     escrowMode: "ecash",
+    settlementPolicy: "ecash-mutual-slices-v1",
     description: `${id} sats offer`,
     amountMsats: 50_000_000,
     fiatAmount: 43,

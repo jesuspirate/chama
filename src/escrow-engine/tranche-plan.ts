@@ -196,3 +196,20 @@ export function canFundTranche(parent: EscrowState, children: EscrowState[], chi
 export function networkMatches(parentNetwork: TrancheBitcoinNetwork, childNetwork: TrancheBitcoinNetwork): boolean {
   return parentNetwork === childNetwork;
 }
+
+/** H3 (hard requirement): the deterministic `trancheChildId` MUST be passed as
+ *  the child escrow's `escrowId`. Everything the per-child isolation leans on
+ *  is keyed by `escrowId`, not childId — `stashFunding({escrowId})`,
+ *  `clearFunding(escrowId)`, the boot drain, and the deterministic per-child
+ *  signing/SSS key derived from (seed, escrowId) (escrow-client.ts:931, :976).
+ *  If childId ≠ escrowId the plan-level dedup key and the crash-guard/lock/key
+ *  key diverge onto two identifiers and the per-child isolation does NOT
+ *  compose. Centralized here so every caller enforces the same identity.
+ *  Returns the id unchanged on success; throws on divergence. */
+export function assertChildEscrowId(parentId: string, planId: string, index: number, escrowId: string): string {
+  const expected = trancheChildId(parentId, planId, index);
+  if (escrowId !== expected) {
+    throw new Error(`H3 violation: tranche child escrowId must equal trancheChildId(parent, plan, ${index}). Got ${escrowId}, expected ${expected}.`);
+  }
+  return escrowId;
+}

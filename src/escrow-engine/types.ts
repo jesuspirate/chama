@@ -373,6 +373,15 @@ export interface CreatePayload {
    *  trade). Stamped at CREATE so a client can refuse BEFORE funding — see
    *  EscrowMode. */
   escrowMode?: EscrowMode;
+  /** v6.0: the settlement-policy vocabulary, signed at CREATE. Must AGREE with
+   *  `escrowMode` (sibling gate, SETTLEMENT_POLICY_MODE_MISMATCH). Absent ⇒
+   *  the mode's default policy (legacy trades stay readable). */
+  settlementPolicy?: string;
+  /** v6.0: signed slice count for an ecash mutual-slices trade. Present only
+   *  on the ecash rail; on an onchain CREATE it is rejected
+   *  (ONCHAIN_SLICING_UNSUPPORTED). `1` is the degenerate single-settlement
+   *  case — identical to today's behaviour. */
+  sliceCount?: number;
   /** The CREATOR's on-chain escrow key. They never publish a JOIN, so their key
    *  rides here instead. Same derivation and same reasons as JoinPayload's. */
   escrowXonly?: string;
@@ -989,6 +998,11 @@ export interface EscrowState {
   /** Where this trade's escrow lives. Defaulted to "ecash" by the reducer, so
    *  readers never have to handle undefined. */
   escrowMode: EscrowMode;
+  /** v6.0: the signed settlement policy. Defaulted from `escrowMode` when the
+   *  CREATE omitted it, so readers never handle undefined. */
+  settlementPolicy: string;
+  /** v6.0: signed slice count. Present only on ecash mutual-slices trades. */
+  sliceCount?: number;
   /** Tier 2.1: each party's published on-chain escrow key, by role. All three
    *  are needed before an escrow address exists. */
   escrowKeys?: Partial<Record<Role, string>>;
