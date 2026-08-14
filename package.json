@@ -13,6 +13,7 @@
     "test": "npx tsx src/escrow-engine/tests.ts && npx tsx src/guided/tests.ts && npx tsx src/chip-in/tests.ts && npx tsx src/stack/tests.ts",
     "typecheck": "tsc --noEmit",
     "repo:hygiene": "./scripts/check-repo-hygiene.sh",
+    "audit:deps": "node scripts/dependency-audit.mjs",
     "predeploy": "npm run repo:hygiene && npm run typecheck && npm test",
     "ship": "./scripts/ship.sh",
     "deploy:live": "./scripts/release.sh --deploy-live",
@@ -67,8 +68,10 @@
     "vite-plugin-wasm": "^3.3.0",
     "ws": "^8.18.3"
   },
-  "//security_overrides": "SECURITY: vite 5 ships esbuild <= 0.24.2 with GHSA-67mh-4wv8-2f99 (any website can request from the dev server and read responses) — exploitable on a dev box running `npm run dev` while browsing untrusted sites. The override below forces the patched esbuild even on vite 5. Vite 8 would also fix it, but vite-plugin-top-level-await@1.6 (latest) still requires rollup and pulls uuid@10.0.0 — it isn't compatible with vite 8's rolldown pipeline yet. Drop the override and bump vite to 8 once that plugin ships a rolldown-compatible release.",
+  "//security_overrides": "SECURITY: (1) vite 5 ships esbuild <= 0.24.2 with GHSA-67mh-4wv8-2f99 (any website can request from the dev server and read responses) — exploitable on a dev box running `npm run dev` while browsing untrusted sites. The esbuild override below forces the patched build even on vite 5. Vite 8 would also fix it, but vite-plugin-top-level-await@1.6 (latest) still requires rollup and pulls uuid@10.0.0 — it isn't compatible with vite 8's rolldown pipeline yet. Drop the override and bump vite to 8 once that plugin ships a rolldown-compatible release. (2) tar/brace-expansion are pinned to patched releases: tar<=7.5.20 has 6 open advisories incl. critical GHSA-23hp-3jrh-7fpw (decompression DoS) and brace-expansion 3.0.0–5.0.8 has 3 high DoS advisories. Both enter only via @capacitor/cli, which still requires tar@^7.5.3 and rimraf@^6.0.1 (→glob→minimatch→brace-expansion) even at 8.5.0, and npm resolves those ranges to the vulnerable floors. The overrides force the fixed floors inside the existing compatible ranges — no behavior change, no upgrade needed. Recheck after the next @capacitor/cli bump.",
   "overrides": {
-    "esbuild": "^0.25.0"
+    "esbuild": "^0.25.0",
+    "tar": "^7.5.21",
+    "brace-expansion": "^5.0.9"
   }
 }
