@@ -3357,6 +3357,15 @@ export default function App() {
             // childrenByParent grouping (via listingChildren) — no re-query.
             liveChildOrders={selected ? listingChildren(selected).filter(isLiveChildOrder) : undefined}
             onOpenChild={(id) => openEscrow(id)}
+            onStartEcashSlicePlan={async (parentId) => {
+              try {
+                const result = await actions.startEcashSlicePlan(parentId);
+                setToast({ message: `Protected ${result.children.length}-slice ecash plan started.`, type: "success" });
+              } catch (e: any) {
+                setToast({ message: e?.message || "Couldn't start the ecash slice plan.", type: "error" });
+                throw e;
+              }
+            }}
             // v1.2.4: direct-NWC Fund. Saved-NWC users skip the
             // AtomicFundingModal chooser entirely; the button on
             // TradeDetail dispatches fundAndLock with NWC params and

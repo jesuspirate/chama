@@ -15,4 +15,12 @@ export const tranche: Record<string, string> = {
   "tranche.splitRisk": "Most you can lose at once: {max} sats",
   "tranche.startFailed": "Couldn't start the next slice.",
   "tranche.startedToast": "Next slice published.",
+  "tranche.capRaised": "Safety raised this trade to {n} slices so no slice exceeds the 2,000,000-sat cap.",
+  "tranche.ecashPlanTitle": "ECASH · {n} MUTUAL SLICES",
+  "tranche.ecashPlanBody": "Each slice gets its own 2-of-3 ecash lock. The next slice stays blocked until the prior payout is proven.",
+  "tranche.startProtected": "Start {n} protected slices",
+  "tranche.sellerStarts": "The seller starts the signed slice plan after buyer and arbiter seats are filled.",
+  "tranche.planTitle": "ECASH SLICE PLAN · {n} SLICES",
+  "tranche.sliceRow": "Slice {n}",
+  "tranche.publishing": "publishing",
 };

@@ -480,6 +480,11 @@ function handlePlanStart(state: EscrowState, event: ParsedEscrowEvent<PlanStartP
     return err("PLAN_PARTICIPANT_MISMATCH", "Plan participants must match the seated parent participants", event.raw.id);
   }
   if (p.totalMsats !== state.amountMsats) return err("PLAN_AMOUNT_MISMATCH", "Plan total must equal parent amount", event.raw.id);
+  if (state.sliceCount !== undefined) {
+    if (p.settlementPolicy !== state.settlementPolicy || p.sliceCount !== state.sliceCount) {
+      return err("PLAN_POLICY_MISMATCH", "Plan policy and slice count must match the signed parent CREATE", event.raw.id);
+    }
+  }
   const next = cloneState(state);
   next.tranchePlan = { ...p, tranches: p.tranches.map(row => ({ ...row })), eventId: event.raw.id };
   // The parent is now a persistent manifest/room, not a fundable listing.

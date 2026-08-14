@@ -15,4 +15,12 @@ export const tranche: Record<string, string> = {
   "tranche.splitRisk": "Lo máximo que puedes perder de una vez: {max} sats",
   "tranche.startFailed": "No se pudo iniciar el siguiente tramo.",
   "tranche.startedToast": "Siguiente tramo publicado.",
+  "tranche.capRaised": "Por seguridad, este intercambio aumentó a {n} tramos para que ninguno supere el límite de 2.000.000 sats.",
+  "tranche.ecashPlanTitle": "ECASH · {n} TRAMOS MUTUOS",
+  "tranche.ecashPlanBody": "Cada tramo tiene su propio bloqueo ecash 2-de-3. El siguiente queda bloqueado hasta probar el pago anterior.",
+  "tranche.startProtected": "Iniciar {n} tramos protegidos",
+  "tranche.sellerStarts": "El vendedor inicia el plan firmado cuando comprador y árbitro ocupen sus puestos.",
+  "tranche.planTitle": "PLAN DE TRAMOS ECASH · {n} TRAMOS",
+  "tranche.sliceRow": "Tramo {n}",
+  "tranche.publishing": "publicando",
 };

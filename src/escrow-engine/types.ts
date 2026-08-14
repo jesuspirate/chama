@@ -261,6 +261,12 @@ export interface PlanStartPayload {
   termsDigest: string;
   coordinatorPubkey: string;
   bitcoinNetwork: TrancheBitcoinNetwork;
+  /** v6.0: repeats the parent's signed policy in the frozen plan snapshot. */
+  settlementPolicy?: string;
+  /** v6.0: exact frozen child count for ecash mutual slicing. */
+  sliceCount?: number;
+  /** v6.0: hard maximum amount of any child in this plan. */
+  sliceCapMsats?: number;
   tranches: TrancheDescriptor[];
   startedAt: number;
 }

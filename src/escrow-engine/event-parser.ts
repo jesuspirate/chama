@@ -583,6 +583,9 @@ function validatePlanStartPayload(data: unknown): data is PlanStartPayload {
     && typeof d.buyerPubkey === "string" && typeof d.sellerPubkey === "string"
     && typeof d.arbiterPubkey === "string" && typeof d.coordinatorPubkey === "string"
     && (d.bitcoinNetwork === "mainnet" || d.bitcoinNetwork === "signet")
+    && (d.settlementPolicy === undefined || typeof d.settlementPolicy === "string")
+    && (d.sliceCount === undefined || Number.isInteger(d.sliceCount))
+    && (d.sliceCapMsats === undefined || typeof d.sliceCapMsats === "number")
     && Array.isArray(d.tranches)
     && d.tranches.every((t: unknown) => {
       const row = t as Record<string, unknown>;

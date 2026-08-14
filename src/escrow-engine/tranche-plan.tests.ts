@@ -7,7 +7,7 @@ import { applyEvent } from "./state-machine.js";
 import { shouldShowOnBrowse } from "../ui/decisions.js";
 import {
   buildChildDescriptor, canFundTranche, derivePlanState, isPrivatePlanChild,
-  splitTranches, trancheChildId, tranchePlanId, trancheTermsDigest, verifyTrancheChild,
+  splitTranches, trancheChildId, tranchePlanId, trancheTermsDigest, validatePlanStart, verifyTrancheChild,
 } from "./tranche-plan.js";
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -50,6 +50,17 @@ console.log("\n── PARENT/CHILD TRANCHE PROTOCOL ──");
 assert(tranches.length === 3 && tranches.every(t => t.amountMsats === 100_000_000), "split is deterministic and preserves total");
 assert(trancheChildId(PARENT, planId, 0) === trancheChildId(PARENT, planId, 0), "child id is retry-stable");
 assert(trancheChildId(PARENT, planId, 0) !== trancheChildId(PARENT, planId, 1), "child index produces a unique id");
+const v6Plan: PlanStartPayload = {
+  ...plan,
+  settlementPolicy: "ecash-mutual-slices-v1",
+  sliceCount: plan.total,
+  sliceCapMsats: 100_000_000,
+};
+assert(validatePlanStart(v6Plan) === null, "v6 frozen plan accepts matching policy count and cap");
+assert(validatePlanStart({ ...v6Plan, sliceCount: v6Plan.total + 1 }) === "slice count mismatch",
+  "v6 frozen plan rejects a slice count that disagrees with its child rows");
+assert(validatePlanStart({ ...v6Plan, sliceCapMsats: 99_999_999 }) === "tranche exceeds slice cap",
+  "v6 frozen plan rejects any child above its signed exposure cap");
 
 let parent = applyEvent(null, parse(raw(PARENT, SELLER, EscrowEventKind.CREATE, PARENT, parentPayload)));
 assert(parent.ok, "parent CREATE replays");

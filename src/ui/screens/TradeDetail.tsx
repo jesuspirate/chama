@@ -128,6 +128,7 @@ export function TradeDetail({
   onSendChat, onReleasePeriod, onOpenSettings, onOpenNwcSettings,
   onPrewarmFunding, onRebroadcast, onForget, onPurchase, onCancelDraftOrder, stockLeft, isOversoldOrder = false,
   onRateCounterparty, myGivenRatings, fetchRatingSummary, fetchCommunityBonds, knownTrades, onStartNextTranche, onchainFundingPlan, onPublishOnchainLock, onPrepareOnchainSettlement, onSignOnchainSettlement, onFinalizeOnchainSettlement, onScanMyOnchainPayouts, onSweepOnchainPayout,
+  onStartEcashSlicePlan,
   liveChildOrders, onOpenChild,
 }: {
   state: EscrowState; pubkey: string;
@@ -183,6 +184,8 @@ export function TradeDetail({
   fetchCommunityBonds?: (community: string) => Promise<VerifiedBond[]>;
   /** Tranching: publish the next slice of this trade's plan. */
   onStartNextTranche?: (fromEscrowId: string) => Promise<unknown>;
+  /** v6.0: seller freezes the signed plan after buyer + arbiter are seated. */
+  onStartEcashSlicePlan?: (parentId: string) => Promise<unknown>;
   /** Tier 2.1: recompute this trade's escrow address from published keys. */
   onchainFundingPlan?: (escrowId: string) => { ready: boolean; address?: string; blockers?: readonly string[] };
   /** Tier 2.1: publish the on-chain LOCK once the deposit confirms. */
@@ -505,6 +508,7 @@ export function TradeDetail({
   // Tranching: the plan's live gate. Recomputed from what this device knows,
   // and — critically — from OBSERVED CREDIT rather than any published status.
   const [advancingTranche, setAdvancingTranche] = useState(false);
+  const [startingSlicePlan, setStartingSlicePlan] = useState(false);
   const [advanceTrancheError, setAdvanceTrancheError] = useState<string | null>(null);
   const [trancheCreditTick, setTrancheCreditTick] = useState(0);
   const autoAdvanceTrancheAttemptRef = useRef<string | null>(null);
@@ -1491,6 +1495,67 @@ export function TradeDetail({
               .finally(() => setAdvancingTranche(false));
           }}
         />
+      )}
+
+      {state.escrowMode === "ecash" && (state.sliceCount ?? 1) > 1 && !state.tranchePlan && (
+        <div style={{
+          border: `1px solid ${T.accent}55`, background: T.accentDim,
+          borderRadius: 12, padding: 12, marginBottom: 12,
+        }}>
+          <div style={{ fontFamily: T.mono, fontWeight: 800, fontSize: 11, color: T.accent }}>
+            {t("tranche.ecashPlanTitle", { n: state.sliceCount ?? 1 })}
+          </div>
+          <div style={{ fontFamily: T.sans, fontSize: 11, color: T.muted, lineHeight: 1.5, marginTop: 5 }}>
+            {t("tranche.ecashPlanBody")}
+          </div>
+          {myRole === Role.SELLER && state.participants[Role.BUYER] && state.participants[Role.ARBITER] ? (
+            <button
+              type="button"
+              disabled={startingSlicePlan || !onStartEcashSlicePlan}
+              onClick={() => {
+                if (!onStartEcashSlicePlan) return;
+                setStartingSlicePlan(true);
+                setAdvanceTrancheError(null);
+                void Promise.resolve(onStartEcashSlicePlan(state.id))
+                  .catch((error) => setAdvanceTrancheError(error instanceof Error ? error.message : String(error)))
+                  .finally(() => setStartingSlicePlan(false));
+              }}
+              style={{ marginTop: 9, padding: "8px 12px", borderRadius: 999, border: `1px solid ${T.accent}`, background: T.accent, color: T.bg, fontFamily: T.mono, fontWeight: 800, cursor: "pointer" }}
+            >
+              {startingSlicePlan ? t("tranche.starting") : t("tranche.startProtected", { n: state.sliceCount ?? 1 })}
+            </button>
+          ) : (
+            <div style={{ fontFamily: T.sans, fontSize: 10, color: T.muted, marginTop: 7 }}>
+              {t("tranche.sellerStarts")}
+            </div>
+          )}
+          {advanceTrancheError && <div style={{ fontSize: 10, color: T.red, marginTop: 7 }}>{advanceTrancheError}</div>}
+        </div>
+      )}
+
+      {state.tranchePlan && state.settlementPolicy === "ecash-mutual-slices-v1" && (
+        <div style={{ border: `1px solid ${T.border}`, borderRadius: 12, padding: 12, marginBottom: 12 }}>
+          <div style={{ fontFamily: T.mono, fontWeight: 800, fontSize: 11, color: T.text }}>
+            {t("tranche.planTitle", { n: state.tranchePlan.total })}
+          </div>
+          <div style={{ display: "grid", gap: 6, marginTop: 8 }}>
+            {state.tranchePlan.tranches.map((row) => {
+              const child = knownTrades?.find((trade) => trade.trancheChild?.parent === state.id && trade.trancheChild.index === row.index);
+              return (
+                <button
+                  key={row.index}
+                  type="button"
+                  disabled={!child || !onOpenChild}
+                  onClick={() => child && onOpenChild?.(child.id)}
+                  style={{ display: "flex", justifyContent: "space-between", padding: "8px 10px", borderRadius: 9, border: `1px solid ${T.border}`, background: T.surface, color: T.text, cursor: child ? "pointer" : "default", fontFamily: T.mono, fontSize: 10 }}
+                >
+                  <span>{t("tranche.sliceRow", { n: row.index + 1 })}</span>
+                  <span>{Math.ceil(row.amountMsats / 1000).toLocaleString()} sats · {child?.status ?? t("tranche.publishing")}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
       )}
 
       {/* #63 storefront routing: on a PARENT storefront, surface the live child

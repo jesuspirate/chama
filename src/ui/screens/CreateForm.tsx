@@ -40,7 +40,12 @@ import { categoryAllowsFulfillmentChoice, type Fulfillment } from "../../labels/
 import { getCommunityBySlug, communityForInvite, DEFAULT_COMMUNITY_SLUG } from "../../communities/registry.js";
 import { billTypesForCountry, billTypeDisplay } from "../../communities/bill-types.js";
 import { workCategoriesForCountry } from "../../communities/work-categories.js";
-import { trancheAmountAt, plannedMaxLossMsats, maxUsefulTranches, trancheSplitAvailable } from "../../escrow-engine/tranche.js";
+import { maxUsefulTranches, trancheSplitAvailable } from "../../escrow-engine/tranche.js";
+import {
+  deriveSlicePlan,
+  SETTLEMENT_POLICY_ECASH_SLICES,
+  SETTLEMENT_POLICY_ONCHAIN_FULL,
+} from "../../escrow-engine/slice-policy.js";
 import { onchainEscrowAvailable, DEFAULT_ESCROW_MODE, ESCROW_NETWORK_LABEL } from "../../bond-multisig/onchain-escrow.js";
 import {
   getUserCommunitySlug,
@@ -1069,7 +1074,7 @@ export function emptyCreateFormState(currency = "USD"): FormState {
     billType: "",
     workSide: "work",
     workCategory: "",
-    trancheCount: 1,
+    trancheCount: 2,
     escrowMode: DEFAULT_ESCROW_MODE,
     recurringCbp: false,
   };
@@ -1359,9 +1364,13 @@ export function CreateForm({
       // Only DIVISIBLE value can be tranched. A single physical item cannot
       // be delivered in quarters, so Stores are excluded — the honest answer
       // there is holding the value somewhere no single party can reach.
-      const trancheCount = TRANCHEABLE_VERTICALS.has(vertical) && !hasMenu
-        ? Math.max(1, Math.floor(form.trancheCount ?? 1))
+      const escrowMode = form.escrowMode ?? DEFAULT_ESCROW_MODE;
+      const requestedSliceCount = escrowMode === "ecash" && TRANCHEABLE_VERTICALS.has(vertical) && !hasMenu
+        ? Math.max(1, Math.floor(form.trancheCount ?? 2))
         : 1;
+      const slicePlan = escrowMode === "ecash"
+        ? deriveSlicePlan({ totalMsats: amountMsats, userCount: requestedSliceCount })
+        : null;
       const params: any = {
         description,
         amountMsats,
@@ -1398,20 +1407,11 @@ export function CreateForm({
         workCategory: vertical === "work" && form.workCategory ? form.workCategory : undefined,
         // Tier 2.1: stamp the substrate at CREATE so every client knows which
         // shape of LOCK to expect BEFORE anyone funds anything.
-        ...((form.escrowMode ?? DEFAULT_ESCROW_MODE) === "onchain" ? { escrowMode: "onchain" as const } : {}),
-        // Tranching: publish ONLY the first slice, stamped with the whole
-        // plan so any client can rebuild it. The remaining slices are
-        // published one at a time, each gated on the previous one's sats
-        // actually landing (escrow-engine/tranche.ts).
-        ...(trancheCount > 1 ? {
-          amountMsats: trancheAmountAt(amountMsats, trancheCount, 0),
-          tranche: {
-            planId: `tp_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
-            index: 0,
-            total: trancheCount,
-            totalMsats: amountMsats,
-          },
-        } : {}),
+        ...(escrowMode === "onchain" ? { escrowMode: "onchain" as const } : {}),
+        settlementPolicy: escrowMode === "onchain"
+          ? SETTLEMENT_POLICY_ONCHAIN_FULL
+          : SETTLEMENT_POLICY_ECASH_SLICES,
+        ...(slicePlan ? { sliceCount: slicePlan.sliceCount } : {}),
         fulfillment: vertical === "work" ? "service" : vertical === "marketplace" ? form.fulfillment : undefined,
         mintUrl,
         communityArbiters: communityArbiters.length > 0 ? communityArbiters : undefined,
@@ -2564,17 +2564,22 @@ function Step2({
           user is really choosing is the LAST line: the most they can lose at
           once. That is stated in sats rather than as "1/4", because a fraction
           is not a loss a person can feel. */}
-      {TRANCHEABLE_VERTICALS.has(vertical) && !usingMenu
+      {(form.escrowMode ?? DEFAULT_ESCROW_MODE) === "ecash"
+        && TRANCHEABLE_VERTICALS.has(vertical) && !usingMenu
         && trancheSplitAvailable(totalSats * 1000) && (() => {
         // Only offer counts whose slices clear MIN_TRANCHE_SATS. Splitting a
         // small trade is friction dressed as safety.
         const cap = maxUsefulTranches(totalSats * 1000);
-        const options = [1, ...Array.from({ length: cap - 1 }, (_, i) => i + 2)];
+        // Keep the choice legible: the user picks among a few meaningful
+        // preferences. The hard exposure cap may still derive a larger signed
+        // count when safety requires it.
+        const visibleCap = Math.min(cap, 5);
+        const options = [1, ...Array.from({ length: visibleCap - 1 }, (_, i) => i + 2)];
         if (options.length < 2) return null;
-        const chosen = Math.max(1, Math.floor(form.trancheCount ?? 1));
-        const maxLossSats = chosen > 1
-          ? Math.round(plannedMaxLossMsats(totalSats * 1000, chosen) / 1000)
-          : totalSats;
+        const requested = Math.max(1, Math.floor(form.trancheCount ?? 2));
+        const plan = deriveSlicePlan({ totalMsats: totalSats * 1000, userCount: requested });
+        const chosen = plan.sliceCount;
+        const maxLossSats = Math.ceil(plan.maxSliceMsats / 1000);
         return (
           <div style={{ marginBottom: 16 }}>
             <div style={{ fontSize: 11, color: T.muted, fontFamily: T.mono, marginBottom: 6 }}>
@@ -2610,6 +2615,11 @@ function Step2({
             }}>
               {t("tranche.splitRisk", { max: maxLossSats.toLocaleString() })}
             </div>
+            {plan.capForcedUp && (
+              <div style={{ fontSize: 10, color: T.amber, fontFamily: T.sans, marginTop: 4 }}>
+                {t("tranche.capRaised", { n: plan.sliceCount })}
+              </div>
+            )}
           </div>
         );
       })()}

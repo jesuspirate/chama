@@ -193,6 +193,7 @@ import {
 } from "../escrow-engine/listing-renewal.js";
 import { retireListing } from "../escrow-engine/listing-renewal-ledger.js";
 import { trancheGate, tranchesForPlan, buildNextTrancheParams } from "../escrow-engine/tranche.js";
+import { MAX_SLICE_EXPOSURE_MSATS } from "../escrow-engine/slice-policy.js";
 import { defaultCreditObserver, recordClaimCredit } from "../payments/claim-credit-ledger.js";
 import {
   canEditListing,
@@ -766,6 +767,9 @@ export interface UseEscrowActions {
     arbiterFeeMsats?: number;
     expirySeconds?: number;
     communityArbiters?: string[];
+    escrowMode?: "ecash" | "onchain";
+    settlementPolicy?: string;
+    sliceCount?: number;
   }) => Promise<{ escrowId: string; state: EscrowState }>;
   /** Create a NIP-98 Authorization header for the authenticated photo host. */
   authorizeImageUpload: (url: string, method: "POST") => Promise<string>;
@@ -910,6 +914,8 @@ export interface UseEscrowActions {
   /** Tranching: publish the next slice of a plan. Re-checks the safety gate
    *  itself — never trusts the UI's copy of it. */
   startNextTranche: (fromEscrowId: string) => Promise<{ escrowId: string; state: EscrowState }>;
+  /** v6.0: freeze a signed ecash slice plan and fan out deterministic private children. */
+  startEcashSlicePlan: (parentId: string) => Promise<{ parent: EscrowState; children: EscrowState[] }>;
   /** Tier 2.1 — the on-chain escrow plumbing. Every one recomputes the address
    *  locally; none of them trusts a wire-supplied one. */
   myEscrowKey: (escrowId: string) => Promise<{ priv: Uint8Array; xonly: Uint8Array; path: string }>;
@@ -3096,6 +3102,20 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     return createEscrow(params as Parameters<EscrowClient["createEscrow"]>[0]);
   }, [createEscrow]);
 
+  const startEcashSlicePlan = useCallback(async (parentId: string) => {
+    const client = requireClient();
+    const parent = client.getState(parentId) ?? await client.loadEscrow(parentId);
+    if (!parent) throw new Error("Slice-plan parent not found.");
+    if (parent.escrowMode !== "ecash" || (parent.sliceCount ?? 1) < 2) {
+      throw new Error("This trade is not configured for ecash slicing.");
+    }
+    return client.startTranchePlan(
+      parentId,
+      MAX_SLICE_EXPOSURE_MSATS,
+      isTestnetMode() ? "signet" : "mainnet",
+    );
+  }, []);
+
   // ── A3: edit a listing = replace it ───────────────────────────────────────
   // Publish the new terms, then retire + cancel the old. Create-then-cancel is
   // deliberate: a failed CANCEL leaves a duplicate the seller can delete (and
@@ -5016,6 +5036,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     renewListing,
     editListing,
     startNextTranche,
+    startEcashSlicePlan,
     myEscrowKey,
     onchainFundingPlan,
     checkOnchainFunding,

@@ -73,10 +73,13 @@ export function validatePlanStart(plan: PlanStartPayload): string | null {
   if (!Number.isInteger(plan.total) || plan.total < 1 || plan.total > 100) return "invalid tranche count";
   if (!Number.isSafeInteger(plan.totalMsats) || plan.totalMsats <= 0) return "invalid total amount";
   if (!Array.isArray(plan.tranches) || plan.tranches.length !== plan.total) return "tranche count mismatch";
+  if (plan.sliceCount !== undefined && plan.sliceCount !== plan.total) return "slice count mismatch";
+  if (plan.sliceCapMsats !== undefined && (!Number.isSafeInteger(plan.sliceCapMsats) || plan.sliceCapMsats <= 0)) return "invalid slice cap";
   let sum = 0;
   for (let index = 0; index < plan.tranches.length; index++) {
     const tranche = plan.tranches[index];
     if (tranche.index !== index || !Number.isSafeInteger(tranche.amountMsats) || tranche.amountMsats <= 0) return "invalid tranche descriptor";
+    if (plan.sliceCapMsats !== undefined && tranche.amountMsats > plan.sliceCapMsats) return "tranche exceeds slice cap";
     sum += tranche.amountMsats;
   }
   return sum === plan.totalMsats ? null : "tranche amount mismatch";

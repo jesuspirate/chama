@@ -96,6 +96,11 @@ import {
   trancheTermsDigest,
 } from "./tranche-plan.js";
 import {
+  deriveSlicePlan,
+  MAX_SLICE_EXPOSURE_MSATS,
+  SETTLEMENT_POLICY_ECASH_SLICES,
+} from "./slice-policy.js";
+import {
   buildNip99ListingEvent,
   nip99ListingCoordinate,
 } from "./nip99-listing.js";
@@ -926,6 +931,10 @@ export class EscrowClient {
      *  ⚠ Stamped at CREATE on purpose — a client must be able to refuse a
      *  substrate it does not understand BEFORE it funds anything. */
     escrowMode?: EscrowMode;
+    /** v6.0 signed settlement policy. Must agree with escrowMode. */
+    settlementPolicy?: string;
+    /** v6.0 whole-plan ecash slice count. Parent CREATE only. */
+    sliceCount?: number;
     /** ⚠ Tier 2.1: a RESOLVER, not a key.
      *
      *  The creator's escrow key is derived from (seed, escrowId), and the
@@ -1020,6 +1029,8 @@ export class EscrowClient {
       // Tier 2.1: only emit the field when it says something other than the
       // default, so an ordinary ecash CREATE stays byte-identical on the wire.
       ...(params.escrowMode === "onchain" ? { escrowMode: "onchain" as const } : {}),
+      ...(params.settlementPolicy ? { settlementPolicy: params.settlementPolicy } : {}),
+      ...(params.sliceCount !== undefined ? { sliceCount: params.sliceCount } : {}),
       ...(escrowXonly ? { escrowXonly } : {}),
       mintUrl: params.mintUrl,
       platformFeeBps: this.config.defaultPlatformFeeBps!,
@@ -1218,7 +1229,13 @@ export class EscrowClient {
     };
     const termsDigest = trancheTermsDigest(digestPayload);
     const planId = tranchePlanId(parentId, termsDigest, buyerPubkey);
-    const tranches = splitTranches(parent.amountMsats, maximumChildMsats);
+    const ecashSlicePlan = parent.escrowMode === "ecash"
+      && parent.settlementPolicy === SETTLEMENT_POLICY_ECASH_SLICES
+      && parent.sliceCount !== undefined
+      ? deriveSlicePlan({ totalMsats: parent.amountMsats, userCount: parent.sliceCount })
+      : null;
+    const tranches = ecashSlicePlan?.tranches
+      ?? splitTranches(parent.amountMsats, maximumChildMsats);
     let planStartEventId = parent.tranchePlan?.eventId;
     let plan: PlanStartPayload;
     if (parent.tranchePlan) {
@@ -1228,7 +1245,13 @@ export class EscrowClient {
       const now = Math.floor(Date.now() / 1000);
       plan = { type: "escrow:plan_start", planId, total: tranches.length, totalMsats: parent.amountMsats,
         buyerPubkey, sellerPubkey, arbiterPubkey, termsDigest, coordinatorPubkey: coordinator,
-        bitcoinNetwork, tranches, startedAt: now };
+        bitcoinNetwork,
+        ...(ecashSlicePlan ? {
+          settlementPolicy: SETTLEMENT_POLICY_ECASH_SLICES,
+          sliceCount: ecashSlicePlan.sliceCount,
+          sliceCapMsats: MAX_SLICE_EXPOSURE_MSATS,
+        } : {}),
+        tranches, startedAt: now };
       const previous = parent.eventChain[parent.eventChain.length - 1]?.raw.id;
       const unsigned: UnsignedEvent = { kind: EscrowEventKind.PLAN_START, created_at: now, tags: [
         [TAGS.ESCROW_ID, parentId], [TAGS.PREV_EVENT, previous, "", "reply"],
@@ -1251,6 +1274,7 @@ export class EscrowClient {
       if (!child) {
         const tranche = buildChildDescriptor(parentId, planStartEventId, plan, row.index);
         child = (await this.createEscrow({ ...baseParams, amountMsats: row.amountMsats, parent: parentId,
+          ...(ecashSlicePlan ? { settlementPolicy: SETTLEMENT_POLICY_ECASH_SLICES } : {}),
           sellerPubkey, escrowId: id, trancheChild: tranche })).state;
       }
       children.push(child);
