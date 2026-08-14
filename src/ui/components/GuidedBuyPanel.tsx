@@ -75,8 +75,9 @@ export function GuidedBuyPanel({
       paymentRails: rail ? [rail] : [],
       strategy: "available_now" as const,
       community: browseCommunity || undefined,
-      ...(maxFiatNum !== undefined && fiatCurrency.trim()
-        ? { maxFiatAmount: maxFiatNum, fiatCurrency: fiatCurrency.trim().toUpperCase() }
+      ...(maxFiatNum !== undefined ? { maxFiatAmount: maxFiatNum } : {}),
+      ...(fiatCurrency.trim()
+        ? { fiatCurrency: fiatCurrency.trim().toUpperCase() }
         : {}),
     };
     const validated = validateGuidedTradeIntent(raw);
