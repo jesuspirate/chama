@@ -226,6 +226,27 @@ console.log("\n── GUIDED DETERMINISTIC MATCHING ──");
     "enforces an exact-currency maximum without inventing missing fiat quotes",
   );
 
+  const combined = matchGuidedListings({
+    ...INTENT,
+    amountSats: 50_000,
+    fiatCurrency: "USD",
+    maxFiatAmount: 42,
+  }, [
+    { listing: listing("exact-under", { amountMsats: 50_000_000, fiatAmount: 41 }) },
+    { listing: listing("exact-over", { amountMsats: 50_000_000, fiatAmount: 43 }) },
+    { listing: listing("wrong-sats-under", { amountMsats: 40_000_000, fiatAmount: 40 }) },
+  ], { nowSec: NOW, limit: 10 });
+  assert(
+    combined.candidates.map(value => value.listing.id).join(",") === "exact-under"
+      && combined.rejected.some(value =>
+        value.listingId === "exact-over" && value.code === "OVER_MAX_FIAT"
+      )
+      && combined.rejected.some(value =>
+        value.listingId === "wrong-sats-under" && value.code === "AMOUNT_MISMATCH"
+      ),
+    "intersects the exact-sats requirement with the maximum-fiat ceiling",
+  );
+
   const ranked = matchGuidedListings(INTENT, [
     {
       listing: listing("cheap-new", { fiatAmount: 41 }),

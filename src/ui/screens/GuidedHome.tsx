@@ -7,6 +7,7 @@ import {
   type GuidedMatchCandidate,
 } from "../../guided/index.js";
 import { useT } from "../../i18n/index.js";
+import { defaultCurrencyForCommunity } from "../../communities/currency.js";
 import { getCommunityBySlug } from "../../communities/registry.js";
 import { getRailByKey, railsForCommunity } from "../../payments/rail-registry.js";
 import type { AggregateRatings } from "../../reputation/ratings.js";
@@ -41,6 +42,7 @@ export function GuidedHome({
 }) {
   const { t } = useT();
   const community = getCommunityBySlug(browseCommunity);
+  const fiatCurrency = defaultCurrencyForCommunity(browseCommunity);
   const [surface, setSurface] = useState<GuidedSurface>("home");
   const [amountSats, setAmountSats] = useState("");
   const [paymentRail, setPaymentRail] = useState("");
@@ -90,10 +92,10 @@ export function GuidedHome({
       strategy: "available_now" as const,
       community: browseCommunity,
       ...(activeMintUrl ? { mintUrl: activeMintUrl } : {}),
-      ...(maxFiat.trim() && community?.currency
+      ...(maxFiat.trim()
         ? {
             maxFiatAmount: Number(maxFiat),
-            fiatCurrency: community.currency,
+            fiatCurrency,
           }
         : {}),
     };
@@ -150,7 +152,7 @@ export function GuidedHome({
 
   const recommendations = recommendGuidedCandidates(
     matches,
-    community?.currency,
+    fiatCurrency,
   );
   const recommendationCards = mergeRecommendationLanes([
     { label: t("guided.bestOverall"), candidate: recommendations.bestOverall },
@@ -270,12 +272,10 @@ export function GuidedHome({
                 placeholder={t("guided.noMaximum")}
                 style={{ ...inputStyle, paddingRight: 56 }}
               />
-              {community?.currency && (
-                <span style={{
-                  position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)",
-                  color: T.muted, fontFamily: T.mono, fontSize: 11,
-                }}>{community.currency}</span>
-              )}
+              <span style={{
+                position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)",
+                color: T.muted, fontFamily: T.mono, fontSize: 11,
+              }}>{fiatCurrency}</span>
             </div>
           </label>
 
