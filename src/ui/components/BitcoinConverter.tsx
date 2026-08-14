@@ -28,11 +28,6 @@ export function BitcoinConverter({ communitySlug }: { communitySlug?: string | n
   const seededFuturePrice = useRef(false);
 
   useEffect(() => setCurrency(homeCurrency), [homeCurrency]);
-  useEffect(() => {
-    if (seededFuturePrice.current || !price.usd) return;
-    seededFuturePrice.current = true;
-    setFuturePrice(String(Math.round(price.usd * 2 / 1000) * 1000));
-  }, [price.usd]);
 
   const currencies = useMemo(() => {
     const available = new Set(Object.keys(fiatRates.rates).filter(code => WORLD_FIAT_CURRENCIES.has(code)));
@@ -45,6 +40,25 @@ export function BitcoinConverter({ communitySlug }: { communitySlug?: string | n
 
   const rate = currency === "USD" ? 1 : fiatRates.rates[currency];
   const fiatPerBtc = price.usd && rate ? price.usd * rate : null;
+  useEffect(() => {
+    if (seededFuturePrice.current || !fiatPerBtc) return;
+    seededFuturePrice.current = true;
+    setFuturePrice(String(Math.round(fiatPerBtc * 2 / 1000) * 1000));
+  }, [fiatPerBtc]);
+
+  const changeCurrency = (nextCurrency: string) => {
+    const oldRate = currency === "USD" ? 1 : fiatRates.rates[currency];
+    const nextRate = nextCurrency === "USD" ? 1 : fiatRates.rates[nextCurrency];
+    const enteredFuturePrice = positiveNumber(futurePrice);
+    setCurrency(nextCurrency);
+    if (enteredFuturePrice && oldRate && nextRate) {
+      setFuturePrice(trimFiat(enteredFuturePrice / oldRate * nextRate));
+    } else {
+      seededFuturePrice.current = false;
+      setFuturePrice("");
+    }
+  };
+
   const numericAmount = positiveNumber(amount);
   const converted = fiatPerBtc && numericAmount
     ? from === "fiat"
@@ -52,14 +66,14 @@ export function BitcoinConverter({ communitySlug }: { communitySlug?: string | n
       : { sats: Math.round(numericAmount), fiat: numericAmount / 100_000_000 * fiatPerBtc }
     : null;
 
-  const scenarioPriceUsd = positiveNumber(futurePrice);
+  const scenarioPriceFiat = positiveNumber(futurePrice);
   const scenarioSats = positiveNumber(futureSats);
-  const scenarioFiat = scenarioPriceUsd && scenarioSats && rate
-    ? scenarioSats / 100_000_000 * scenarioPriceUsd * rate
+  const scenarioFiat = scenarioPriceFiat && scenarioSats
+    ? scenarioSats / 100_000_000 * scenarioPriceFiat
     : null;
   const goal = positiveNumber(goalFiat);
-  const goalSats = goal && scenarioPriceUsd && rate
-    ? Math.ceil(goal / (scenarioPriceUsd * rate) * 100_000_000)
+  const goalSats = goal && scenarioPriceFiat
+    ? Math.ceil(goal / scenarioPriceFiat * 100_000_000)
     : null;
   const currentGoalCost = goalSats && fiatPerBtc
     ? goalSats / 100_000_000 * fiatPerBtc
@@ -77,7 +91,7 @@ export function BitcoinConverter({ communitySlug }: { communitySlug?: string | n
           <div style={{ color: T.accent, fontFamily: T.mono, fontSize: 10, fontWeight: 800, letterSpacing: 1 }}>{t("bond.converterHeading")}</div>
           <div style={{ color: T.text, fontFamily: T.sans, fontSize: 18, fontWeight: 900, marginTop: 3 }}>{t("bond.converterTitle")}</div>
         </div>
-        <select aria-label={t("bond.converterCurrency")} value={currency} onChange={(event) => setCurrency(event.target.value)} style={{ ...inputStyle, width: "auto", minWidth: 82, padding: "8px 10px", fontFamily: T.mono, fontWeight: 800 }}>
+        <select aria-label={t("bond.converterCurrency")} value={currency} onChange={(event) => changeCurrency(event.target.value)} style={{ ...inputStyle, width: "auto", minWidth: 82, padding: "8px 10px", fontFamily: T.mono, fontWeight: 800 }}>
           {currencies.map(code => <option key={code} value={code}>{code}</option>)}
         </select>
       </div>
@@ -105,7 +119,7 @@ export function BitcoinConverter({ communitySlug }: { communitySlug?: string | n
         <div>
           <div style={{ fontSize: 12, color: T.muted, fontFamily: T.sans, lineHeight: 1.5, marginBottom: 14 }}>{t("bond.converterPlanIntro")}</div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            <LabeledInput label={t("bond.converterFuturePrice")} suffix="USD/BTC" value={futurePrice} onChange={setFuturePrice} />
+            <LabeledInput label={t("bond.converterFuturePrice")} suffix={`${currency}/BTC`} value={futurePrice} onChange={setFuturePrice} />
             <LabeledInput label={t("bond.converterYourSats")} suffix="sats" value={futureSats} onChange={setFutureSats} />
           </div>
           <ResultLine label={t("bond.converterFutureWorth")} value={scenarioFiat ? formatFiatAmount(scenarioFiat, currency) : "—"} accent />

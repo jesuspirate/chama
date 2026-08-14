@@ -41,6 +41,12 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      # Denylist check (crypto-js / plain-crypto-js / axios must never
+      # appear) + npm audit gate on production deps at high/critical.
+      # Dev-only advisories are out of scope here; see scripts/dependency-audit.mjs.
+      - name: Dependency security audit
+        run: npm run audit:deps
+
       - name: Typecheck
         run: npm run typecheck
 
