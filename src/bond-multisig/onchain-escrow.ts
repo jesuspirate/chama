@@ -49,7 +49,7 @@
 // PURE: no relays, no wallet, no network. Builds and verifies scripts only.
 
 import * as btc from "@scure/btc-signer";
-import { NUMS_INTERNAL_KEY, SIGNET, type BtcNetwork } from "./multisig.js";
+import { NUMS_INTERNAL_KEY, SIGNET, MAINNET, type BtcNetwork } from "./multisig.js";
 
 /** ⭐⭐ WHICH NETWORK THE ESCROW LIVES ON — and why this is NOT `BOND_NETWORK`.
  *
@@ -67,7 +67,7 @@ import { NUMS_INTERNAL_KEY, SIGNET, type BtcNetwork } from "./multisig.js";
  *  ⚠ THIS IS THE ONE LINE TO CHANGE when the on-chain escrow goes live:
  *  SIGNET → MAINNET. Everything cascades — address HRP (tb1p → bc1p), Esplora
  *  base, BIP86 coin index, and the `network` field written into every LOCK. */
-export const ESCROW_NETWORK: BtcNetwork = SIGNET;
+export const ESCROW_NETWORK: BtcNetwork = MAINNET;
 
 /** The label the LOCK payload carries, derived from the switch above so the two
  *  can never disagree. A cross-network address must never validate. */

@@ -2179,13 +2179,13 @@ console.log("\n── ATOMIC LOCK (CREATED → LOCKED, no FUNDED hop) ──");
     const { ESCROW_NETWORK, ESCROW_NETWORK_LABEL } =
       await import("../bond-multisig/onchain-escrow.js");
     const { SIGNET, MAINNET } = await import("../bond-multisig/multisig.js");
-    assert(ESCROW_NETWORK === SIGNET && ESCROW_NETWORK_LABEL === "signet",
-      "⭐ escrow network: testing on SIGNET — flip ESCROW_NETWORK (not BOND_NETWORK) to go live");
-    assert(ESCROW_NETWORK !== MAINNET,
-      "escrow network: and it is not mainnet while that is true");
+    assert(ESCROW_NETWORK === MAINNET && ESCROW_NETWORK_LABEL === "mainnet",
+      "⭐ escrow network: LIVE on MAINNET — flipped from SIGNET per Jet's explicit go 2026-08-15 (Path 2)");
+    assert(ESCROW_NETWORK !== SIGNET,
+      "escrow network: and it is not signet while that is true");
     const { DEFAULT_ESCROW_MODE } = await import("../bond-multisig/onchain-escrow.js");
-    assert(DEFAULT_ESCROW_MODE === "onchain",
-      "⭐ escrow network: a SIGNET build defaults new qualifying listings to ON-CHAIN — if a test build still defaulted to ecash, every listing a tester made would silently use the other substrate and look identical");
+    assert(DEFAULT_ESCROW_MODE === "ecash",
+      "⭐ escrow network: a MAINNET build defaults new qualifying listings to ECASH — on-chain is opt-in so a user is never moved onto a fee-paying, confirmation-waiting substrate without choosing it");
     assert((ESCROW_NETWORK === SIGNET) === (DEFAULT_ESCROW_MODE === "onchain"),
       "⭐ escrow network: the default is DERIVED from the network, so flipping to MAINNET restores ecash-by-default automatically — no second switch to remember");
     assert((ESCROW_NETWORK === SIGNET) === (ESCROW_NETWORK_LABEL === "signet"),
