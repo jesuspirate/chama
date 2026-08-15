@@ -966,16 +966,51 @@ export class EscrowFedimintBridge {
       throw err;
     }
 
+    // Native Chama wallets keep each federation in an isolated database. A
+    // prior trade can therefore leave the sidecar pointing at Afribit/GBF
+    // while the verified bearer note belongs to BLF. When the note itself
+    // carries its invite, select that preserved database automatically. This
+    // never wipes the current federation and happens before CLAIM publish or
+    // redeem, so a failed switch leaves the bearer note untouched and stashed.
+    if (
+      expectedFed
+      && !isSimModeOn()
+      && redeemProbe.fed !== expectedFed
+      && reconstructed.federationInvite
+    ) {
+      try {
+        await this.fedimint.switchFederationPreserving(
+          reconstructed.federationInvite,
+        );
+        redeemProbe = await this.fedimint.probeReachable();
+        claimTrace("bridge-route-switched", {
+          escrowId,
+          expectedFed,
+          actualFed: redeemProbe.fed,
+        });
+      } catch (switchError) {
+        claimTrace("bridge-route-switch-failed", {
+          escrowId,
+          expectedFed,
+          actualFed: redeemProbe.fed,
+          reason: switchError instanceof Error
+            ? switchError.message
+            : String(switchError),
+        });
+      }
+    }
+
     if (expectedFed && !isSimModeOn() && redeemProbe.fed !== expectedFed) {
       const err: any = new Error(
         `This trade's sats were minted on federation ${expectedFed}. ` +
           `Your wallet is on ${redeemProbe.fed}. ` +
-          `Sign out and rejoin with the correct federation, then retry. ` +
-          `Your claim has been published — your sats are safe and waiting.`
+          `Switch to the note's federation, then retry. ` +
+          `No claim was published — your sats are safe and waiting.`
       );
       err.code = "FED_MISMATCH";
       err.expected = expectedFed;
       err.got = redeemProbe.fed;
+      err.invite = reconstructed.federationInvite;
       // Don't publish CLAIM yet — refusing redeem before claim publish
       // means the trade chain doesn't advance prematurely. The user
       // switches feds and retries; CLAIM will publish on the next try.

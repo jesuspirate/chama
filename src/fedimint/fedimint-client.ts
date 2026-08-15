@@ -693,7 +693,8 @@ export class FedimintClient {
   }
 
   /** Select another already-isolated federation database without resetting it.
-   * Only the arbiter flow calls this, and only native adapters expose the hook. */
+   * Native arbiter routing and verified bearer-note claim recovery use this;
+   * adapters without preserved multi-federation storage reject explicitly. */
   async switchFederationPreserving(inviteCode: string): Promise<string> {
     const wallet = this.requireWallet();
     if (!wallet.switchFederationPreserving) {
