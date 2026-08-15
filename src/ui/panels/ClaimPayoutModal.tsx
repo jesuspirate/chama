@@ -2160,7 +2160,9 @@ function RunningPanel({
 
   const message =
     phase.kind === "claiming" ? t("claim.phaseClaiming") :
-    phase.kind === "confirming" ? t("claim.phaseConfirming") :
+    phase.kind === "confirming" && payoutMethod?.kind === "ecash"
+      ? t("claim.phaseConfirmingEcash")
+      : phase.kind === "confirming" ? t("claim.phaseConfirming") :
     phase.kind === "exporting-ecash" ? t("claim.phaseExportingEcash") :
     phase.kind === "paying-onchain" ? t("claim.phasePayingOnchain") :
     phase.kind === "payout-confirming" ? t("claim.phasePayoutConfirming") :

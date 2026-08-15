@@ -16028,6 +16028,8 @@ console.log("\n── RUN CLAIM AND PAYOUT ──");
       "Ecash claim returns the durably stashed bearer note");
     assert(exportedAmount === 99_750,
       "Ecash claim exports the net winner amount (premium residue stays local)");
+    assert(wallet.calls.payInvoice === 0,
+      "Ecash claim never creates or pays a Lightning invoice");
     assert(wallet.calls.completeClaim === 0,
       "Ecash claim does not publish COMPLETE before explicit import approval");
     assert(phases.some(p => p.kind === "exporting-ecash"),

@@ -903,12 +903,12 @@ export async function runClaimAndPayout(
     moneyLog("CLAIM-PAY-IN", {
       escrowId: opts.escrowId,
       kind: payoutKind,
-      invoicePrefix: payoutKind === "lightning" ? opts.bolt11.slice(0, 24) : "onchain",
+      destination: payoutKind === "lightning" ? opts.bolt11.slice(0, 24) : payoutKind,
     });
     claimTrace("orchestrator-pay-in", {
       escrowId: opts.escrowId,
       kind: payoutKind,
-      invoicePrefix: payoutKind === "lightning" ? opts.bolt11.slice(0, 24) : "onchain",
+      destination: payoutKind === "lightning" ? opts.bolt11.slice(0, 24) : payoutKind,
     });
     if (payoutKind === "onchain") {
       if (!opts.payOnchain) throw new Error("Onchain payout is not available");

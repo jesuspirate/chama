@@ -165,6 +165,8 @@ export const claim: Record<string, string> = {
     "{error}\n\nTus sats están a salvo en tu Chama. Toca Mostrar recuperación ahora para reintentar solo el pago.",
   "claim.phaseClaiming": "Recuperando tu parte…",
   "claim.phaseConfirming": "Confirmando con la federación…",
+  "claim.phaseConfirmingEcash":
+    "Preparando ecash exacto con la federación — sin Lightning…",
   "claim.phasePayingOnchain": "Transmitiendo pago en cadena…",
   "claim.phasePayoutConfirming": "Confirmando tu pago…",
   "claim.phaseSendingMpesaChapsmart": "Enviando a M-Pesa (ChapSmart)…",

@@ -177,6 +177,8 @@ export const claim: Record<string, string> = {
     "{error}\n\nVos sats sont en sécurité dans votre Chama. Tapez « Afficher la récupération » pour réessayer uniquement le versement.",
   "claim.phaseClaiming": "Récupération de votre part…",
   "claim.phaseConfirming": "Confirmation avec la fédération…",
+  "claim.phaseConfirmingEcash":
+    "Préparation de l’ecash exact avec la fédération — sans Lightning…",
   "claim.phasePayingOnchain": "Diffusion du versement onchain…",
   "claim.phasePayoutConfirming": "Confirmation de votre versement…",
   "claim.phaseSendingMpesaChapsmart": "Envoi vers M-Pesa (ChapSmart)…",
