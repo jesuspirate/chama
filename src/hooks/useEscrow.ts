@@ -185,7 +185,7 @@ import {
   Role,
   Outcome,
 } from "../escrow-engine/types.js";
-import { recordTradeToIndex, removeTradeFromIndex } from "../escrow-engine/trade-index.js";
+import { listTradeIndex, recordTradeToIndex, removeTradeFromIndex } from "../escrow-engine/trade-index.js";
 import {
   canManuallyRenewListing,
   buildRenewCreateParams,
@@ -431,6 +431,26 @@ async function mapPool<T, R>(items: T[], limit: number, worker: (item: T) => Pro
   return results;
 }
 
+/** Stable-partition known home-community trades to the front of hydration.
+ * Unknown trades retain their order and are discovered normally; this only
+ * makes the user's own Chama usable sooner without exposing hydration UI. */
+function prioritizeHomeCommunity<T extends string | { id: string }>(
+  items: T[],
+  client: EscrowClient,
+): void {
+  const home = getUserCommunitySlugRaw();
+  if (!home || items.length < 2) return;
+  const indexedCommunity = new Map(listTradeIndex().map(entry => [entry.id, entry.community]));
+  const idFor = (item: T) => typeof item === "string" ? item : item.id;
+  const isHome = (item: T) => {
+    const id = idFor(item);
+    return (client.getState(id)?.community ?? indexedCommunity.get(id) ?? null) === home;
+  };
+  const homeItems = items.filter(isHome);
+  const otherItems = items.filter(item => !isHome(item));
+  items.splice(0, items.length, ...homeItems, ...otherItems);
+}
+
 /**
  * Active relay discovery → hydrate. Asks the relays for every escrow ID this
  * npub took part in (EscrowClient.discoverMyEscrowIds: events it authored ∪
@@ -502,6 +522,7 @@ async function discoverAndLoadMyTrades(
       return 0;
     }
 
+    prioritizeHomeCommunity(toHeal, client);
     const capped = toHeal.slice(0, MAX_SAVED_ESCROW_IDS);
     const overCap = toHeal.slice(MAX_SAVED_ESCROW_IDS);
     // Persist pointers first (union-only, idempotent via saveEscrowId's dedup)
@@ -1025,7 +1046,8 @@ export interface UseEscrowActions {
       /** E1.1: arbiter-insurance msats folded into the invoice only. */
       premiumMsats?: number;
       description: string;
-      fundingMethod?: "lightning" | "onchain" | "nwc";
+      fundingMethod?: "lightning" | "onchain" | "nwc" | "ecash";
+      ecashNotes?: string;
       nwcConnectionString?: string;
       rememberNwc?: boolean;
       savedHandleId?: string;
@@ -1803,7 +1825,9 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
         // Users with >10 saved trades were silently having older
         // escrows skipped on cold start, causing stale-forever state.
         let savedReloadIndex = 0;
-        for (const id of savedIds.slice(0, 50)) {
+        const prioritizedSavedIds = [...savedIds];
+        prioritizeHomeCommunity(prioritizedSavedIds, client);
+        for (const id of prioritizedSavedIds.slice(0, 50)) {
           try {
             const loaded = await client.loadEscrow(id);
             if (loaded && isExpiredUnfundedEscrow(loaded)) {
@@ -4193,7 +4217,8 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
        *  path (exact-amount — a bump there would over-fund the escrow). */
       premiumMsats?: number;
       description: string;
-      fundingMethod?: "lightning" | "onchain" | "nwc";
+      fundingMethod?: "lightning" | "onchain" | "nwc" | "ecash";
+      ecashNotes?: string;
       nwcConnectionString?: string;
       rememberNwc?: boolean;
       savedHandleId?: string;
@@ -4411,6 +4436,33 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
           // defense-in-depth, and it fires before any spend.
           console.warn("[chama] pending-lock settle failed (continuing):", e);
         }
+      }
+
+      // Desktop/Tauri Fedi-note funding: validate the pasted bearer note
+      // against this wallet's federation and the exact trade amount, then
+      // publish LOCK under the bridge's durable restash guard. No Lightning
+      // invoice or intermediate Chama balance is involved.
+      if (opts.fundingMethod === "ecash") {
+        const notes = opts.ecashNotes?.trim();
+        if (!notes) throw new Error("Paste the ecash note exported by Fedi.");
+        if (opts.signal?.aborted) {
+          opts.onPhase({ kind: "aborted" });
+          return { kind: "aborted" };
+        }
+        opts.onPhase({ kind: "locking" });
+        const expectedNotesHash = await hashNotes(notes);
+        const locked = await lockAndPublishWithEcashAction(escrowId, notes, {
+          savedHandleId: opts.savedHandleId,
+          selectedItems: opts.selectedItems,
+          buyerPubkey: fundingBuyerPubkey,
+        });
+        if (locked?.lock?.notesHash !== expectedNotesHash) {
+          throw new Error(
+            "This trade did not confirm the pasted ecash LOCK. The note remains in Chama's recovery stash; do not discard your Fedi export yet."
+          );
+        }
+        opts.onPhase({ kind: "locked" });
+        return { kind: "locked" };
       }
 
       // #37: persist a funding INTENT for the SDK-wallet paths below, before

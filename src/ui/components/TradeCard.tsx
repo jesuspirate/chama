@@ -55,6 +55,7 @@ export function TradeCard({
   orderIndicator,
   onResumeOrder,
   onOpenWorkerProfile,
+  showCommunityChip = false,
 }: {
   state: EscrowState;
   pubkey: string;
@@ -77,6 +78,8 @@ export function TradeCard({
   /** Work offers turn the author into a live public résumé. Kept separate
    *  from onSelect so tapping the identity never starts the hire flow. */
   onOpenWorkerProfile?: (pubkey: string) => void;
+  /** Browse "All" context only: show which Chama/country owns the listing. */
+  showCommunityChip?: boolean;
 }) {
   const { t } = useT();
   const btcPrice = useBitcoinPrice();
@@ -391,7 +394,8 @@ export function TradeCard({
           {/* Identity and location are context, not listing type or activity.
               Keep them on their own predictable row so storefront/single,
               stock, and live-order state remain instantly scannable above. */}
-          {state.category === "marketplace" && (sellerPubkey || listingCommunity || state.country) && (
+          {((state.category === "marketplace" && !!sellerPubkey)
+            || (showCommunityChip && (!!listingCommunity || !!state.country))) && (
           <div style={{
             display: "flex", alignItems: "center", gap: 6,
             marginBottom: 8, flexWrap: "wrap",
@@ -433,7 +437,7 @@ export function TradeCard({
                 </span>
               </span>
             )}
-            {listingCommunity && (() => {
+            {showCommunityChip && listingCommunity && (() => {
               // Per-fed chip accent (registry-driven). Amber "off-route" state
               // wins — that's routing info, more important than which fed.
               // On-route/neutral: use the community's accent if it has one,
@@ -461,7 +465,7 @@ export function TradeCard({
             {/* v3.1 (B3): self-describing fallback — when the community slug isn't
                 resolvable on this device, show the stamped country's flag + currency
                 so a custom/not-yet-curated community (the Canada bug) still reads. */}
-            {!listingCommunity && state.country && (
+            {showCommunityChip && !listingCommunity && state.country && (
               <span style={{
                 fontSize: 10, padding: "3px 8px", borderRadius: 999,
                 background: T.surface, color: T.muted,

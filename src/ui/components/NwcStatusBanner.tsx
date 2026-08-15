@@ -54,6 +54,7 @@ export function NwcStatusBanner({
   const { t } = useT();
   const [nwcInput, setNwcInput] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState(false);
   const ready = isNwcConnectionString(nwcInput);
 
   const handleSave = () => {
@@ -78,7 +79,7 @@ export function NwcStatusBanner({
           alignItems: "center",
           justifyContent: "space-between",
           gap: 12,
-          padding: "10px 14px",
+          padding: "7px 10px",
           marginBottom: 12,
           borderRadius: T.r,
           background: T.accentDim,
@@ -91,16 +92,8 @@ export function NwcStatusBanner({
           minWidth: 0, flex: 1,
         }}>
           <span style={{ fontSize: 14, lineHeight: 1, flexShrink: 0 }}>⚡</span>
-          <div style={{
-            display: "flex", flexDirection: "column", gap: 2,
-            minWidth: 0,
-          }}>
-            <span style={{
-              fontSize: 9, color: T.accent, fontFamily: T.mono,
-              letterSpacing: 1, fontWeight: 800,
-            }}>
-              {t("fund.nwcAutoPay")}
-            </span>
+          <div style={{ minWidth: 0, display: "flex", alignItems: "center", gap: 5 }}>
+            <span style={{ fontSize: 9, color: T.accent, fontFamily: T.mono, fontWeight: 800 }}>NWC ·</span>
             <span style={{
               fontSize: 12, color: T.text, fontFamily: T.mono,
               fontWeight: 600,
@@ -140,7 +133,7 @@ export function NwcStatusBanner({
     <div
       className="nwc-status-banner nwc-status-banner-empty"
       style={{
-        padding: "12px 14px",
+        padding: expanded ? "10px 12px" : 0,
         marginBottom: 12,
         borderRadius: T.r,
         background: T.surface,
@@ -148,20 +141,22 @@ export function NwcStatusBanner({
         animation: "slideInDown 0.25s ease",
       }}
     >
-      <div style={{
-        display: "flex", alignItems: "center", gap: 8, marginBottom: 8,
-      }}>
-        <span style={{ fontSize: 14, lineHeight: 1 }}>⚡</span>
-        <div style={{
-          fontSize: 11, color: T.muted, fontFamily: T.mono,
-          lineHeight: 1.4,
-        }}>
-          <span style={{ color: T.text, fontWeight: 700 }}>
-            {t("fund.nwcOneTapTitle")}
-          </span>
-          {" "}
-          {t("fund.nwcOneTapBody")}
-        </div>
+      <button
+        type="button"
+        aria-expanded={expanded}
+        onClick={() => setExpanded(value => !value)}
+        style={{
+          width: "100%", padding: "8px 10px", background: "none", border: "none",
+          display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8,
+          color: T.muted, fontFamily: T.mono, fontSize: 10, fontWeight: 700, cursor: "pointer",
+        }}
+      >
+        <span>⚡ NWC · {t("fund.nwcOneTapTitle")}</span>
+        <span aria-hidden="true">{expanded ? "⌃" : "⌄"}</span>
+      </button>
+      {expanded && <>
+      <div style={{ color: T.muted, fontFamily: T.mono, fontSize: 10, lineHeight: 1.4, marginBottom: 8 }}>
+        {t("fund.nwcOneTapBody")}
       </div>
       <div style={{ display: "flex", gap: 8 }}>
         <input
@@ -206,6 +201,7 @@ export function NwcStatusBanner({
           {error}
         </div>
       )}
+      </>}
     </div>
   );
 }

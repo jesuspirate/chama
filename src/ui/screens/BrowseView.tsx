@@ -20,9 +20,9 @@ import { isWorkListing } from "../work-resume.js";
 // and all arbiter code stay intact; this just gates the FAB entry point. Flip
 // back to true when the bond (Phase 2A) lands and the leader pitch is real.
 const SHOW_ARBITER_FAB = false;
-const LEGACY_LOCAL_CHEAPEST_KEY = "chama_browse_local_cheapest_v1";
-const BROWSE_SCOPE_KEY = "chama_browse_scope_v1";
-const BROWSE_SORT_KEY = "chama_browse_sort_v1";
+// v2 intentionally resets the launch defaults once: local Chama + cheapest.
+const BROWSE_SCOPE_KEY = "chama_browse_scope_v2";
+const BROWSE_SORT_KEY = "chama_browse_sort_v2";
 type BrowseScope = "local" | "all";
 type BrowseSort = "cheapest" | "newest";
 
@@ -30,16 +30,16 @@ function getBrowseScope(): BrowseScope {
   try {
     const stored = localStorage.getItem(BROWSE_SCOPE_KEY);
     if (stored === "local" || stored === "all") return stored;
-    return localStorage.getItem(LEGACY_LOCAL_CHEAPEST_KEY) === "1" ? "local" : "all";
-  } catch { return "all"; }
+    return "local";
+  } catch { return "local"; }
 }
 
 function getBrowseSort(): BrowseSort {
   try {
     const stored = localStorage.getItem(BROWSE_SORT_KEY);
     if (stored === "cheapest" || stored === "newest") return stored;
-    return localStorage.getItem(LEGACY_LOCAL_CHEAPEST_KEY) === "1" ? "cheapest" : "newest";
-  } catch { return "newest"; }
+    return "cheapest";
+  } catch { return "cheapest"; }
 }
 
 function persistBrowsePreference(key: string, value: string): void {
@@ -197,6 +197,8 @@ export function BrowseView({
         : sortListingsNewestFirst(ownFilteredNonMatching),
     [browseScope, browseSort, ownFilteredNonMatching],
   );
+  const localScopeCount = ownFilteredMatching.length;
+  const allScopeCount = ownFilteredMatching.length + ownFilteredNonMatching.length;
   const totalListings = routedMatching.length + routedNonMatching.length;
   const homeCommunity = getCommunityBySlug(browseCommunity);
   const search = searchQuery.trim().toLowerCase();
@@ -431,7 +433,7 @@ export function BrowseView({
         <BrowsePreferenceControl
           label={t("browse.scope")}
           value={browseScope}
-          options={[["local", t("browse.scopeLocal")], ["all", t("browse.scopeAll")]]}
+          options={[["local", t("browse.scopeLocal"), localScopeCount], ["all", t("browse.scopeAll"), allScopeCount]]}
           onChange={(value) => setBrowseScope(value as BrowseScope)}
         />
         <BrowsePreferenceControl
@@ -449,19 +451,20 @@ export function BrowseView({
         WebkitOverflowScrolling: "touch" as const,
         paddingBottom: 2,
       }}>
-        {BROWSE_CATS.map(c => {
+        {BROWSE_CATS.filter(c => c.id !== "all").map(c => {
           const active = !showOwn && browseCategory === c.id;
           // #75: counts must reflect what the viewer actually SEES — the
           // own-hidden + retired filtering already applied to ownFiltered* — not
           // the raw prop (which still counts own/hidden listings). Fall back to
           // the prop only when no viewer-scoped set is available.
-          const count = c.id === "all"
-            ? totalListings
-            : countListingsByCategory(ownFilteredMatching, ownFilteredNonMatching, c.id);
+          const count = countListingsByCategory(routedMatching, routedNonMatching, c.id);
           return (
             <button
               key={c.id}
-              onClick={() => { if (showOwn) toggleShowOwn(); setBrowseCategory(c.id); }}
+              onClick={() => {
+                if (showOwn) toggleShowOwn();
+                setBrowseCategory(active ? "all" : c.id);
+              }}
               style={{
                 order: c.id === "all" ? 0 : 2,
                 flexShrink: 0,
@@ -608,6 +611,7 @@ export function BrowseView({
                     stockByListing={stockByListing}
                     orderIndicatorByListing={orderIndicatorByListing}
                     onOpenWorkerProfile={setResumePubkey}
+                    showCommunityChip={browseScope === "all"}
                   />
                 ))
               ) : (
@@ -626,6 +630,7 @@ export function BrowseView({
                         orderIndicator={orderIndicatorByListing?.get(s.id)}
                         onResumeOrder={onOpenEscrow}
                         onOpenWorkerProfile={setResumePubkey}
+                        showCommunityChip={browseScope === "all"}
                       />
                     </div>
                   ))}
@@ -668,6 +673,7 @@ export function BrowseView({
                     stockByListing={stockByListing}
                     orderIndicatorByListing={orderIndicatorByListing}
                     onOpenWorkerProfile={setResumePubkey}
+                    showCommunityChip={browseScope === "all"}
                   />
                 ))
               ) : (
@@ -687,6 +693,7 @@ export function BrowseView({
                         orderIndicator={orderIndicatorByListing?.get(s.id)}
                         onResumeOrder={onOpenEscrow}
                         onOpenWorkerProfile={setResumePubkey}
+                        showCommunityChip={browseScope === "all"}
                       />
                     </div>
                   ))}
@@ -962,7 +969,7 @@ function BrowsePreferenceControl({
 }: {
   label: string;
   value: string;
-  options: readonly (readonly [string, string])[];
+  options: readonly (readonly [string, string, number?])[];
   onChange: (value: string) => void;
 }) {
   return (
@@ -971,7 +978,7 @@ function BrowsePreferenceControl({
         {label}
       </div>
       <div style={{ display: "flex", padding: 3, gap: 3, background: T.surface, border: `1px solid ${T.border}`, borderRadius: T.rs }}>
-        {options.map(([optionValue, optionLabel]) => {
+        {options.map(([optionValue, optionLabel, optionCount]) => {
           const active = value === optionValue;
           return (
             <button
@@ -989,6 +996,9 @@ function BrowsePreferenceControl({
               }}
             >
               {optionLabel}
+              {optionCount != null && (
+                <span style={{ marginLeft: 5, opacity: active ? 1 : 0.7 }}>{optionCount}</span>
+              )}
             </button>
           );
         })}
@@ -1009,6 +1019,7 @@ function BrowseSection({
   stockByListing,
   orderIndicatorByListing,
   onOpenWorkerProfile,
+  showCommunityChip = false,
 }: {
   section: BrowseListingSection;
   pubkey: string;
@@ -1021,6 +1032,7 @@ function BrowseSection({
   stockByListing?: Map<string, number>;
   orderIndicatorByListing?: Map<string, { orders: number; unread: number; viewerOrderId?: string }>;
   onOpenWorkerProfile?: (pubkey: string) => void;
+  showCommunityChip?: boolean;
 }) {
   const { t } = useT();
   return (
@@ -1070,6 +1082,7 @@ function BrowseSection({
               orderIndicator={orderIndicatorByListing?.get(s.id)}
               onResumeOrder={onOpenEscrow}
               onOpenWorkerProfile={onOpenWorkerProfile}
+              showCommunityChip={showCommunityChip}
             />
           </div>
         ))}

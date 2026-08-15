@@ -90,7 +90,8 @@ export interface AtomicFundingModalProps {
       amountMsats: number;
       premiumMsats?: number;
       description: string;
-      fundingMethod?: "lightning" | "onchain" | "nwc";
+      fundingMethod?: "lightning" | "onchain" | "nwc" | "ecash";
+      ecashNotes?: string;
       nwcConnectionString?: string;
       rememberNwc?: boolean;
       savedHandleId?: string;
@@ -176,7 +177,8 @@ export function AtomicFundingModal({
   const insuranceSats = Math.floor(Math.max(0, premiumMsats) / 1000);
   const totalSats = amountSats + insuranceSats;
   const [phase, setPhase] = useState<ModalPhase>({ kind: "choose-method" });
-  const [fundingMethod, setFundingMethod] = useState<"lightning" | "onchain" | "nwc" | null>(null);
+  const [fundingMethod, setFundingMethod] = useState<"lightning" | "onchain" | "nwc" | "ecash" | null>(null);
+  const [ecashInput, setEcashInput] = useState("");
   const [savedNwcConnections, setSavedNwcConnections] = useState<SavedNwcConnection[]>(
     () => disableNwc ? [] : listSavedNwcConnections(),
   );
@@ -243,6 +245,7 @@ export function AtomicFundingModal({
         premiumMsats,
         description: `Chama trade · ${ctaLabel}`,
         fundingMethod,
+        ecashNotes: fundingMethod === "ecash" ? ecashInput.trim() : undefined,
         nwcConnectionString: selectedNwcConnection ?? undefined,
         rememberNwc,
         savedHandleId,
@@ -436,6 +439,12 @@ export function AtomicFundingModal({
     setPhase({ kind: "creating-invoice" });
   };
 
+  const handleSelectEcash = () => {
+    if (!ecashInput.trim()) return;
+    setFundingMethod("ecash");
+    setPhase({ kind: "locking" });
+  };
+
   const handleTryLockNow = async () => {
     settledRef.current = true;
     abortRef.current?.abort();
@@ -500,6 +509,9 @@ export function AtomicFundingModal({
             onNwcInputChange={setNwcInput}
             onRememberNwcChange={setRememberNwc}
             onSelectNwc={handleSelectNwc}
+            ecashInput={ecashInput}
+            onEcashInputChange={setEcashInput}
+            onSelectEcash={handleSelectEcash}
             disableNwc={disableNwc}
           />
         )}
@@ -639,6 +651,9 @@ function FundingMethodChooser({
   onNwcInputChange,
   onRememberNwcChange,
   onSelectNwc,
+  ecashInput,
+  onEcashInputChange,
+  onSelectEcash,
   disableNwc,
 }: {
   amountSats: number;
@@ -653,6 +668,9 @@ function FundingMethodChooser({
   onNwcInputChange: (value: string) => void;
   onRememberNwcChange: (value: boolean) => void;
   onSelectNwc: (connectionString: string, remember: boolean) => void;
+  ecashInput: string;
+  onEcashInputChange: (value: string) => void;
+  onSelectEcash: () => void;
   disableNwc?: boolean;
 }) {
   const { t } = useT();
@@ -817,6 +835,50 @@ function FundingMethodChooser({
           </div>
         </details>
       )}
+
+      <details style={{ marginBottom: 12 }}>
+        <summary style={{
+          padding: "10px 12px", borderRadius: T.rs, cursor: "pointer",
+          background: T.tealDim, border: `1px solid ${T.teal}66`,
+          color: T.teal, fontFamily: T.mono, fontSize: 11, fontWeight: 900,
+          listStyle: "none",
+        }}>
+          ▦ {t("fund.ecashLockTitle")}
+        </summary>
+        <div style={{
+          marginTop: 8, padding: 12, borderRadius: T.rs,
+          background: T.surface, border: `1px solid ${T.border}`,
+        }}>
+          <div style={{ color: T.muted, fontFamily: T.mono, fontSize: 10, lineHeight: 1.5, marginBottom: 8 }}>
+            {t("fund.ecashLockBody", { amount: amountSats.toLocaleString() })}
+          </div>
+          <textarea
+            value={ecashInput}
+            onChange={(event) => onEcashInputChange(event.target.value)}
+            placeholder={t("fund.ecashPastePlaceholder")}
+            rows={4}
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+            style={{ ...inputStyle, resize: "vertical", minHeight: 72, marginBottom: 8, fontSize: 10 }}
+          />
+          <button
+            type="button"
+            disabled={!ecashInput.trim()}
+            onClick={onSelectEcash}
+            style={{
+              width: "100%", padding: "11px 12px", borderRadius: T.rs,
+              background: ecashInput.trim() ? T.teal : T.card,
+              border: `1px solid ${ecashInput.trim() ? T.teal : T.border}`,
+              color: ecashInput.trim() ? "#000" : T.muted,
+              fontFamily: T.mono, fontSize: 11, fontWeight: 900,
+              cursor: ecashInput.trim() ? "pointer" : "not-allowed",
+            }}
+          >
+            {t("fund.lockWithEcash")}
+          </button>
+        </div>
+      </details>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
         <button

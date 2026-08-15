@@ -1276,12 +1276,9 @@ export default function App() {
     // storefront-only bridge while its replacement waits for 1 confirmation.
     // It never flows into the verified bond pool used for arbiter privileges.
     const storeBondContinuity = sellerBonded || hasPendingStoreRollover(listCommitmentBonds(), bondTip, Date.now());
-    // A2: the bond gate is now per-LANE, not per-effect. Stores still need it;
-    // Work, CBP, and Exchange renew hands-free without one, protected instead
-    // by the one-live-listing identity rule. So the effect no longer returns
-    // early on an unbonded seller — it passes bond status down and lets
-    // `resolveRenewalPolicy` decide per listing.
-    if (!connected || !pubkey || !storeAutoRenewEnabled) return;
+    // Keep-my-offers-live is a bonded-seller privilege. If the active bond is
+    // absent, the control is hidden and this background path is inert.
+    if (!connected || !pubkey || !sellerBonded || !storeAutoRenewEnabled) return;
     // Persistent retired ledger is the cross-reload guard; autoRenewedRef stays
     // the in-session guard on top. Cap per pass so a pathological state can't
     // burst dozens of relay publishes on one load — the rest resolve next pass.
@@ -2668,7 +2665,7 @@ export default function App() {
           <ChamaBar
             fedimint={fedimint}
             communitySlug={routeCommunitySlug}
-            chamaLabel={myTradesLoading ? { kind: "checking" } : decideChamaBarLabel({
+            chamaLabel={decideChamaBarLabel({
               balanceMsats: fedimint.balanceMsats ?? 0,
               hasActiveBuyerSellerCommitment: hasActiveCommitment,
               activeCommittedMsats: committedMsats,
@@ -3777,7 +3774,7 @@ export default function App() {
           <LapsedStoreCard
             listings={lapsedListings}
             bonded={sellerBonded}
-            showAutoRenew={sellerBonded || clearableListings.length > 0}
+            showAutoRenew={sellerBonded}
             autoRenewEnabled={storeAutoRenewEnabled}
             onAutoRenewChange={changeStoreAutoRenew}
             renewingId={renewingId}

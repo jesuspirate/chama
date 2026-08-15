@@ -586,8 +586,35 @@ export class EscrowFedimintBridge {
   }
 
   async lockAndPublishWithEcash(escrowId: string, oobNotes: string, opts: LockOptions = {}): Promise<EscrowState> {
+    return withNativeLockFlow(escrowId, () =>
+      this.lockAndPublishWithEcashInner(escrowId, oobNotes, opts),
+    );
+  }
+
+  private async lockAndPublishWithEcashInner(escrowId: string, oobNotes: string, opts: LockOptions = {}): Promise<EscrowState> {
     const context = await this.prepareLockContext(escrowId, opts);
     const amountMsats = amountMsatsForLock(context.state, opts.selectedItems);
+    const guardOn = this.nativeLockGuardOn();
+    const lockOpts = {
+      savedHandleId: opts.savedHandleId,
+      selectedItems: opts.selectedItems,
+      buyerPubkey: opts.buyerPubkey,
+    };
+
+    if (guardOn) {
+      const outcome = await this.settlePendingNativeLockInner(escrowId, { ignoreAttemptCap: true });
+      if (outcome === "cleared-committed") {
+        const settled = this.escrow.getState(escrowId);
+        if (settled) return settled;
+        throw new Error("This trade already locked with your previous ecash funding. Reopen it to continue.");
+      }
+      if (outcome === "kept") {
+        throw new Error("Chama is still recovering your previous ecash funding. Your notes are safely stashed; try again shortly.");
+      }
+    }
+
+    // Parse and validate federation + exact amount BEFORE taking custody in
+    // Chama's recovery stash. An invalid paste remains solely in Fedi.
     const lockBundle = await this.fedimint.createEscrowLockFromNotes(
       oobNotes,
       amountMsats,
@@ -600,7 +627,34 @@ export class EscrowFedimintBridge {
         amountMsats,
       }),
     );
-    return this.publishLockBundle(escrowId, context.state, lockBundle, context, opts);
+
+    if (guardOn) {
+      assertNativeLockStashWritable();
+      stashNativeLockIntent({
+        escrowId,
+        amountMsats,
+        federationId: this.fedimint.getFederationId(),
+        spendTimeoutSecs: LOCK_SPEND_TRY_CANCEL_SECS,
+        lockOpts,
+      });
+      upgradeNativeLockToSpent({
+        escrowId,
+        oobNotes,
+        amountMsats,
+        federationId: this.fedimint.getFederationId(),
+        spendTimeoutSecs: LOCK_SPEND_TRY_CANCEL_SECS,
+        lockOpts,
+      });
+      markNativeLockPublishAttempted(escrowId);
+    }
+
+    const resultState = await this.publishLockBundle(
+      escrowId, context.state, lockBundle, context, opts,
+    );
+    if (guardOn && resultState?.lock?.notesHash === lockBundle.notesHash) {
+      clearPendingNativeLock(escrowId);
+    }
+    return resultState;
   }
 
   // ── Claim: Decrypt shares → SSS combine → verify → redeem → publish CLAIM
