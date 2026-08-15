@@ -2665,7 +2665,9 @@ export default function App() {
           <ChamaBar
             fedimint={fedimint}
             communitySlug={routeCommunitySlug}
-            chamaLabel={decideChamaBarLabel({
+            chamaLabel={(myTradesLoading || publicListingsLoading)
+              ? { kind: "ready" }
+              : decideChamaBarLabel({
               balanceMsats: fedimint.balanceMsats ?? 0,
               hasActiveBuyerSellerCommitment: hasActiveCommitment,
               activeCommittedMsats: committedMsats,
@@ -2688,7 +2690,7 @@ export default function App() {
               // Stranded-payout recovery: same rule while an unfinished
               // claim payout owns the balance story.
               hasPendingClaimPayout,
-            })}
+              })}
             onTapStranded={() => setPendingRecovery({
               title: t("app.recoverSatsTitle"),
               traceContext: recoveryTraceContext,
