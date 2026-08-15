@@ -3210,6 +3210,13 @@ export default function App() {
           display: "flex", flexDirection: "column", minHeight: 0,
         }}>
           <TradeDetail
+            key={`${selected.id}:${(() => {
+              const p = getEffectiveParticipantsAt(selected, Math.floor(Date.now() / 1000));
+              return p.buyer === pubkey ? "buyer"
+                : p.seller === pubkey ? "seller"
+                : p.arbiter === pubkey ? "arbiter"
+                : "viewer";
+            })()}`}
             state={selected}
             pubkey={pubkey!}
             homeCommunity={getUserCommunitySlugRaw()}

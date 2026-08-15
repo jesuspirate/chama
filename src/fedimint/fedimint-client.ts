@@ -142,8 +142,13 @@ export interface IFedimintWallet {
     ): Promise<{ notes: string; operationId?: string }>;
     /** Redeem OOB ecash notes into wallet */
     redeemEcash(oobNotes: string, meta?: ChamaOperationMeta): Promise<string | void>;
-    /** Parse OOB notes to inspect amount without redeeming */
-    parseNotes(oobNotes: string): Promise<{ total_amount: number }>;
+    /** Parse OOB notes to inspect amount without redeeming. Native adapters
+     *  also expose the note's own federation route; browser SDKs may omit it. */
+    parseNotes(oobNotes: string): Promise<{
+      total_amount: number;
+      federation_id?: string;
+      federation_invite?: string;
+    }>;
   };
 
   lightning: {
@@ -878,10 +883,18 @@ export class FedimintClient {
    * Parse ecash notes to inspect the amount without redeeming.
    * Useful for verification before claiming.
    */
-  async parseNotes(oobNotes: string): Promise<{ totalAmount: number }> {
+  async parseNotes(oobNotes: string): Promise<{
+    totalAmount: number;
+    federationId?: string;
+    federationInvite?: string;
+  }> {
     const wallet = this.requireWallet();
     const parsed = await wallet.mint.parseNotes(oobNotes);
-    return { totalAmount: parsed.total_amount };
+    return {
+      totalAmount: parsed.total_amount,
+      federationId: parsed.federation_id,
+      federationInvite: parsed.federation_invite,
+    };
   }
 
   // v0.4.4 federation reachability ───────────────────────────────────────
@@ -1352,6 +1365,22 @@ export class FedimintClient {
         `but this trade requires ${totalMsats} msats. No LOCK was published.`,
       );
     }
+    // A Fedi-generated note can come from a different federation than the
+    // trade room currently represents. Amount-only validation accepted that
+    // shape and produced an escrow nobody in this room could redeem (the
+    // 202-sat BLF note locked into a GBF trade). The bearer note is the money:
+    // when its route is knowable, require an exact match before LOCK publish.
+    if (
+      parsed.federation_id
+      && this._federationId
+      && parsed.federation_id.toLowerCase() !== this._federationId.toLowerCase()
+    ) {
+      throw new Error(
+        `This ecash belongs to federation ${parsed.federation_id.slice(0, 8)}…, ` +
+        `but this trade is using ${this._federationId.slice(0, 8)}…. ` +
+        "Choose the matching Chama in Fedi and generate the ecash again. No LOCK was published.",
+      );
+    }
 
     mlog("LOCK-EXTERNAL-IN", {
       fed: this._federationId,
@@ -1410,7 +1439,13 @@ export class FedimintClient {
     share1: SSSShare,
     share2: SSSShare,
     expectedNotesHash: string
-  ): Promise<{ notesHash: string; oobNotes: string; amountMsats: number }> {
+  ): Promise<{
+    notesHash: string;
+    oobNotes: string;
+    amountMsats: number;
+    federationId?: string;
+    federationInvite?: string;
+  }> {
     const wallet = this.requireWallet();
 
     // Step 1: Reconstruct from 2 shares
@@ -1447,6 +1482,8 @@ export class FedimintClient {
       notesHash: actualHash,
       oobNotes,
       amountMsats: parsed.total_amount,
+      federationId: parsed.federation_id,
+      federationInvite: parsed.federation_invite,
     };
   }
 

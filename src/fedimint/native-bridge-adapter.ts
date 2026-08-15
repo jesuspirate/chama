@@ -23,6 +23,7 @@ import {
   LN_PAY_REFUNDED,
   codedPayError,
 } from "../payments/ln-pay-codes.js";
+import { expectedFederationIdForInvite } from "./federation-config.js";
 
 export const NATIVE_BRIDGE_MODE_KEY = "chama_native_fedimint";
 export const NATIVE_BRIDGE_URL_KEY = "chama_native_fedimint_url";
@@ -602,11 +603,24 @@ export function getNativeBridgeCommunitySlug(): string {
 
 export function getConfiguredNativeBridgeCommunitySlug(): string | null {
   const params = getBrowserSearchParams();
-  const slug =
+  const explicitSlug =
     params?.get("nativeFedimintCommunity") ??
     params?.get("native-fedimint-community") ??
-    getLocalStorageValue(NATIVE_BRIDGE_COMMUNITY_KEY) ??
     getImportEnv("VITE_CHAMA_NATIVE_COMMUNITY");
+  if (explicitSlug?.trim()) return explicitSlug.trim();
+
+  let slug = getLocalStorageValue(NATIVE_BRIDGE_COMMUNITY_KEY);
+  // v6.0 route migration: this key used to pin ordinary Tauri sessions to
+  // GBF even after their home Chama moved to BLF. Preserve query/env values
+  // as deliberate developer overrides, but migrate persisted app state.
+  if (slug?.trim() === "us-gbf") {
+    slug = DEFAULT_NATIVE_BRIDGE_COMMUNITY;
+    try {
+      globalThis.localStorage?.setItem(NATIVE_BRIDGE_COMMUNITY_KEY, slug);
+    } catch {
+      // Storage may be unavailable; returning BLF still prevents the stale pin.
+    }
+  }
   const trimmed = slug?.trim() ?? "";
   return trimmed ? trimmed : null;
 }
@@ -922,12 +936,24 @@ export class NativeBridgeWallet implements IFedimintWallet {
       return readOperationId(result);
     },
 
-    parseNotes: async (oobNotes: string): Promise<{ total_amount: number }> => {
+    parseNotes: async (oobNotes: string): Promise<{
+      total_amount: number;
+      federation_id?: string;
+      federation_invite?: string;
+    }> => {
       const result = await this.request<NativeParseNotesResponse>("/parse-notes", {
         method: "POST",
         body: { notes: oobNotes },
       });
-      return { total_amount: result.total_amount_msat };
+      const invite = isRecord(result.notes_json)
+        && typeof result.notes_json.invite === "string"
+        ? result.notes_json.invite
+        : undefined;
+      return {
+        total_amount: result.total_amount_msat,
+        federation_id: expectedFederationIdForInvite(invite) ?? undefined,
+        federation_invite: invite,
+      };
     },
   };
 

@@ -153,8 +153,8 @@ export function flagEmojiForCountry(country: string): string {
 //   Africa → Orange Club Africa · Latin America → LatNet · everywhere else → BLF.
 // Deterministic and sticky on purpose — NOT a boot-time rotation: a user's
 // backing fed must never change underneath them (Pillar 2.1 stickiness, and
-// a changed fed under a held ecash balance would strand it). US keeps GBF via
-// its own registry entry; this resolver only feeds country shells/defaults.
+// a changed fed under a held ecash balance would strand it). US and Canada
+// now resolve to BLF; this resolver feeds their country shells/defaults.
 const AFRICA_COUNTRY_CODES: ReadonlySet<string> = new Set([
   "DZ", "AO", "BJ", "BW", "BF", "BI", "CV", "CM", "CF", "TD", "KM", "CG",
   "CD", "CI", "DJ", "EG", "GQ", "ER", "SZ", "ET", "GA", "GM", "GH", "GN",
@@ -323,23 +323,22 @@ const CENTRAL_AFRICA_COUNTRY_CHAMAS: Community[] = [
 export const COMMUNITY_REGISTRY: Community[] = [
   {
     slug: "us-blf",
-    displayName: "Global · Bitcoin",
+    displayName: "USA · USD",
     currency: "USD",
-    countries: [],
+    countries: ["US"],
     languages: ["en", "es", "fr"],
     federationInvite: BLF_FEDERATION_INVITE,
-    flagEmoji: "🌍",
-    country: null,
+    flagEmoji: "🇺🇸",
+    country: "US",
     pickerLabel: "Bitcoin Life Federation",
     chipAccent: "#6366f1", // indigo — distinct from arbiter cyan + buyer magenta
     browserReliable: true,
     notes: NATIVE_VERIFIED_NOTE,
     disambiguator: "BLF",
-    // v3.1 A1: BLF is the Level-3 backup fed that silently backs every not-yet-
-    // served country — not a place you pick. Hidden from the picker but still
-    // wire-resolvable (existing listings render) and its arbiter pool is intact
-    // (readOfficialPool keys off federationInvite, before the hiddenFromPicker check).
-    hiddenFromPicker: true,
+    // v6.0: BLF replaces GBF as the visible US anchor as well as the
+    // universal/default route. Canada already resolves to BLF through its
+    // country shell. One route, one federation, no GBF default drift.
+    hiddenFromPicker: false,
     // V3 roster authority (maintainer's steward key, pinned 2026-06-08):
     // npub1ytm3v8mkup6mnc9z2zjy0zz2czdsfd3kal7hcup6jgu5a5lm885qhup3z6
     stewardPubkey: "22f7161f76e075b9e0a250a447884ac09b04b636effd7c703a92394ed3fb39e8",
@@ -358,7 +357,9 @@ export const COMMUNITY_REGISTRY: Community[] = [
     browserReliable: true,
     notes: "Native Fedimint sidecar route verified end-to-end against GBF.",
     disambiguator: "GBF",
-    hiddenFromPicker: false,
+    // Historical resolver only. Old signed GBF trades must keep their real
+    // federation route, but no new home/listing should anchor here.
+    hiddenFromPicker: true,
   },
   ...PUBLIC_FEDI_WALLET_SERVICE_CHAMAS,
   SOUTH_AFRICA_GLOBAL_CHAMA,
@@ -469,16 +470,15 @@ export function communityForInvite(invite: string | null | undefined): Community
   return getCustomCommunities().find(c => c.federationInvite === invite) ?? null;
 }
 
-/** Default community when the user hasn't picked one yet. us-blf is the
- *  silent universal backup (BLF) — hidden from the picker and intentionally
- *  nameless ("Global · Bitcoin", not "Global · USD"): a fallback shouldn't
- *  impersonate the one pickable US community (us-gbf, "USA · USD", on GBF).
- *  ChamaBar exposes the backing federation name for users who want detail. */
+/** Default community when the user hasn't picked one yet. In v6, us-blf is
+ *  both the BLF-backed US anchor and the universal fallback; Canada resolves
+ *  to BLF through its country shell. Historical us-gbf remains wire-resolvable
+ *  but is not a selectable or default route. */
 export const DEFAULT_COMMUNITY_SLUG = "us-blf";
 
 /** Registry communities (excluding hiddenFromPicker) whose primary (`country`)
  *  or spanned (`countries`) ISO 3166-1 alpha-2 code matches `code`. Returns 0,
- *  1, or many — e.g. Kenya → [Afribit, Bitsacco], US → [BLF, GBF]. The
+ *  1, or many — e.g. Kenya → [Afribit, Bitsacco], US → [BLF]. The
  *  full-world country picker uses this to resolve a tapped country to its
  *  Chama(s); 0 results means "no Chama here yet" (soft-landing / request),
  *  >1 means a disambiguation step keyed on `disambiguator`. */
@@ -490,8 +490,8 @@ export function getCommunitiesByCountry(code: string): Community[] {
 }
 
 /** Federations that back a confirmed, vouched LOCAL community with real
- *  arbiters/leaders today — the native Fedimint routes verified end-to-end
- *  (Afribit + Bitsacco in Kenya, GBF in the US). A community backed by one
+ *  arbiters/leaders today — currently Afribit + Bitsacco in Kenya. A
+ *  community backed by one
  *  of these is a REAL local Chama: the picker lands the user straight in.
  *
  *  Everything else — BLF/BP defaults and the unconfirmed public-Fedi wallet
@@ -501,11 +501,10 @@ export function getCommunitiesByCountry(code: string): Community[] {
  *  arbiter network. Add invites here as community-led federations onboard
  *  real, bonded arbiters (the graduated-trust / bond work is V3). */
 // Today only Kenya's on-the-ground communities (Afribit Kibera, Bitsacco)
-// qualify. GBF is intentionally NOT here: it's a real federation, but its
-// arbiters haven't gone through the (coming) elected + bonded + rated
-// process — and that bar applies to everyone, including Chama's own
-// operator. US therefore gets the same honest soft-landing as everywhere
-// else (still usable on GBF, just not claiming elected local arbiters).
+// qualify. The US BLF route is intentionally NOT here: its arbiters haven't
+// gone through the (coming) elected + bonded + rated process — and that bar
+// applies to everyone, including Chama's own operator. The US therefore gets
+// the same honest soft-landing as everywhere else.
 // Add an invite here only once its community completes the arbiter process.
 export const REAL_CHAMA_FEDERATION_INVITES: ReadonlySet<string> = new Set([
   AFRIBIT_KIBERA_FEDERATION_INVITE,

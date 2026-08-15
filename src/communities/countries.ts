@@ -9,7 +9,7 @@
 //
 // The honest split (the user's "a flag is not a Chama" point):
 //   • realChamas        — communities backed by a verified local federation
-//                         with real arbiters (Kenya/Afribit+Bitsacco, US/GBF).
+//                         with real arbiters (Kenya/Afribit+Bitsacco).
 //                         These land the user straight in.
 //   • defaultCommunity  — the country's own flag + currency on its regional
 //                         default federation (Africa→OCA, LatAm→LatNet, else→
@@ -55,7 +55,7 @@ export type PickerCountry = {
    *  (Kenya → Afribit + Bitsacco). >0 ⇒ land directly / disambiguate. */
   realChamas: Community[];
   /** ALL named registry chamas for this country — real-local AND
-   *  native-verified (US → GBF; Kenya → Afribit + Bitsacco) — excluding the
+   *  native-verified (US → BLF; Kenya → Afribit + Bitsacco) — excluding the
    *  synthesized country shell. Drives the N-chama drill-down: ≥2 ⇒ show the
    *  disambiguation picker (tier-tagged), regardless of which tier each is.
    *  Empty ⇒ the country lands on its generated shell. */

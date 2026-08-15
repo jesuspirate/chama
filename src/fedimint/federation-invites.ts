@@ -88,8 +88,8 @@ export interface PublicFediFederation {
 
 /**
  * Public wallet services shown in Fedi Discover as of the 2026-05-29
- * product pass. GBF is already a first-class visible Chama route, so this
- * list carries the remaining approved public services from that screen.
+ * product pass. GBF remains a historical Chama resolver, so this list carries
+ * the other approved public services from that screen.
  * Bitcoin Principles is included here as a visible public Fedi choice while
  * the older `global-usd` BP community stays hidden for legacy listings.
  */

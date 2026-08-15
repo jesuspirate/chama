@@ -867,7 +867,12 @@ export class EscrowFedimintBridge {
     // federation mutation — so trying several cannot double-spend. The
     // first candidate whose reconstruction matches the LOCK hash wins;
     // a corrupted or hostile envelope just falls through to the next.
-    let reconstructed: { notesHash: string; oobNotes: string } | null = null;
+    let reconstructed: {
+      notesHash: string;
+      oobNotes: string;
+      federationId?: string;
+      federationInvite?: string;
+    } | null = null;
     const reconstructErrors: string[] = [];
     for (const candidate of partnerCandidates) {
       try {
@@ -876,7 +881,12 @@ export class EscrowFedimintBridge {
           candidate.share,
           state.lock.notesHash
         );
-        reconstructed = { notesHash: result.notesHash, oobNotes: result.oobNotes };
+        reconstructed = {
+          notesHash: result.notesHash,
+          oobNotes: result.oobNotes,
+          federationId: result.federationId,
+          federationInvite: result.federationInvite,
+        };
         break;
       } catch (reconErr) {
         reconstructErrors.push(
@@ -922,7 +932,12 @@ export class EscrowFedimintBridge {
     const claimCreateEvent = state.eventChain.find(
       (e: any) => e.kind === 38100 || e.payload?.type === "escrow:create"
     );
-    const expectedFed = effectiveCreateFederationId(claimCreateEvent?.payload as any);
+    // The bearer note is the settlement's final route authority. CREATE is a
+    // compatibility fallback only for adapters that cannot inspect the note.
+    // This both detects cross-fed Fedi locks honestly and lets an already-
+    // stranded trade recover after the wallet switches to the note's real fed.
+    const expectedFed = reconstructed.federationId
+      ?? effectiveCreateFederationId(claimCreateEvent?.payload as any);
 
     let redeemProbe: { fed: string | null };
     try {

@@ -241,6 +241,7 @@ import {
   AFRIBIT_KIBERA_FEDERATION_ID,
   BITSACCO_FEDERATION_ID,
   BLF_FEDERATION_ID,
+  GBF_FEDERATION_ID,
   BP_FEDERATION_INVITE,
   AFRIBIT_KIBERA_FEDERATION_INVITE,
   BITSACCO_FEDERATION_INVITE,
@@ -6410,9 +6411,8 @@ console.log("\n── COMMUNITY REGISTRY + STORAGE ──");
   // v0.7.0: registry includes Tanzania/TZS plus every East/West/Central Africa
   // country Chama shell. Country-first identity is user-facing; the
   // backing federation stays hidden until a claimed local route exists.
-  // 2026-06-16: us-blf is the hidden universal backup (BLF), nameless
-  // ("Global · Bitcoin"); the one visible US community is us-gbf ("USA ·
-  // USD", GBF); legacy global-usd stays hidden and repoints to BLF.
+  // v6.0: BLF is both the universal backup and the visible US anchor. GBF
+  // remains wire-resolvable only for already-signed historical trades.
   // Permissionless additions live in localStorage and are not counted here.
   assert(COMMUNITY_REGISTRY.length === 58,
     "Registry has 58 pre-seeds: Global, GBF, Fedi-approved public routes, Kenya routes, South Africa, East/West/Central Africa, plus hidden legacy entries");
@@ -6440,21 +6440,18 @@ console.log("\n── COMMUNITY REGISTRY + STORAGE ──");
   assert(getCommunityBySlug("sv-usd")?.currency === "USD", "sv-usd is USD");
   assert(getCommunityBySlug("global-usd")?.currency === "USD", "global-usd is USD");
   assert(getCommunityBySlug("us-blf")?.currency === "USD", "us-blf is USD");
-  assert(getCommunityBySlug("us-blf")?.displayName === "Global · Bitcoin",
-    "us-blf presents as the nameless Global · Bitcoin backup (not 'Global · USD')");
+  assert(getCommunityBySlug("us-blf")?.displayName === "USA · USD",
+    "us-blf presents as the visible USA · USD community");
   assert(getCommunityBySlug("us-blf")?.pickerLabel === "Bitcoin Life Federation",
     "Global picker names the BLF wallet service as Bitcoin Life Federation");
   assert(getCommunityBySlug("us-gbf")?.pickerLabel === "Global Bitcoin Federation",
-    "Global picker names the GBF wallet service as Global Bitcoin Federation");
-  // 2026-06-16 label collision fix: GBF is the one visible US community
-  // ("USA · USD"); the BLF backup is nameless ("Global · Bitcoin"), not the
-  // "Global · USD" identity it used to impersonate.
+    "Historical GBF resolver keeps its federation name");
+  // The historical GBF resolver keeps its old label for old signed events,
+  // while new US selection uses the BLF entry above.
   assert(getCommunityBySlug("us-gbf")?.displayName === "USA · USD",
-    "us-gbf is the one visible US community, labeled USA · USD (GBF)");
-  assert(getCommunityBySlug("us-blf")?.displayName !== "Global · USD",
-    "us-blf no longer impersonates 'Global · USD' (label collision fixed)");
-  assert(getCommunityBySlug("us-blf")?.flagEmoji === "🌍",
-    "us-blf backup uses the Africa-facing globe emoji");
+    "Historical us-gbf events retain their original USA · USD label");
+  assert(getCommunityBySlug("us-blf")?.flagEmoji === "🇺🇸",
+    "us-blf is the US anchor and uses the US flag");
   assert(getCommunityBySlug("us-blf")?.disambiguator === "BLF",
     "us-blf shows BLF as its backing route in onboarding");
 
@@ -6915,15 +6912,15 @@ console.log("\n── COMMUNITY REGISTRY + STORAGE ──");
   // Picker filter excludes hiddenFromPicker entries
   const picker = COMMUNITY_REGISTRY.filter(c => !c.hiddenFromPicker);
   assert(picker.length === 55,
-    "Picker shows GBF, Fedi-approved wallet services, South Africa, two Kenya routes, plus every East/West/Central Africa country Chama (Global/BLF now hidden — it's the L3 backup, not a place you pick)");
-  assert(picker[0]?.slug !== "us-blf",
-    "Picker no longer leads with BLF — it's the hidden L3 backup; everyone starts at a country/community (L1/L2)");
+    "Picker swaps historical GBF out for the BLF-backed US community without changing its total route count");
+  assert(picker[0]?.slug === "us-blf",
+    "Picker leads with the BLF-backed US anchor");
   assert(!picker.some(c => c.slug === "sv-usd"),
     "Picker excludes sv-usd");
   assert(!picker.some(c => c.slug === "global-usd"),
     "Picker excludes legacy BP global-usd");
-  assert(!picker.some(c => c.slug === "us-blf"),
-    "Picker EXCLUDES us-blf — the hidden L3 backup fed (still wire-resolvable so existing listings render)");
+  assert(picker.some(c => c.slug === "us-blf") && !picker.some(c => c.slug === "us-gbf"),
+    "Picker includes BLF for the US and excludes historical GBF");
   assert(picker.some(c => c.slug === "fedi-bitcoin-principles"),
     "Picker includes Bitcoin Principles as a public Fedi wallet service");
   assert(PUBLIC_FEDI_APPROVED_FEDERATIONS.every(route => picker.some(c => c.slug === route.slug)),
@@ -6961,6 +6958,9 @@ console.log("\n── COMMUNITY REGISTRY + STORAGE ──");
   setUserCommunitySlug("ke-kes-bitsacco");
   assert(getUserCommunitySlug() === "ke-kes-bitsacco",
     "Bitsacco Kenya route persists as the user's home Chama");
+  setUserCommunitySlug("us-gbf");
+  assert(getUserCommunitySlug() === "us-blf",
+    "A persisted GBF home migrates to the BLF-backed US community");
 
   // Stale/invalid slug falls back to default rather than flowing through
   (globalThis as any).localStorage.setItem(COMMUNITY_STORAGE_KEY, "ghost-fed");
@@ -9459,7 +9459,7 @@ console.log("\n── COMMUNITY-PILL TAP EFFECT ──");
   if (switchSilent.kind === "switch-silent") {
     assert(switchSilent.targetInvite === BLF_FEDERATION_INVITE,
       "Switch-silent targets the community's pinned invite (us-blf → BLF)");
-    assert(switchSilent.displayName === "Global · Bitcoin",
+    assert(switchSilent.displayName === "USA · USD",
       "Switch-silent carries the community's displayName");
   }
 
@@ -11222,7 +11222,7 @@ console.log("\n── Native lock crash-safety: pending-native-locks (#37) ─�
     }
   }
 
-  function makeParseWallet(parseAmountMsats: number) {
+  function makeParseWallet(parseAmountMsats: number, noteFederationId?: string) {
     return {
       async open() {},
       isOpen() { return true; },
@@ -11240,7 +11240,9 @@ console.log("\n── Native lock crash-safety: pending-native-locks (#37) ─�
           throw new Error("spendNotes must not be called for Fedi external ecash");
         },
         async redeemEcash(_oob: string) {},
-        async parseNotes(_oob: string) { return { total_amount: parseAmountMsats }; },
+        async parseNotes(_oob: string) {
+          return { total_amount: parseAmountMsats, federation_id: noteFederationId };
+        },
       },
       lightning: {
         async createInvoice(_msat: number, _desc: string) {
@@ -11292,6 +11294,28 @@ console.log("\n── Native lock crash-safety: pending-native-locks (#37) ─�
     }
     assert(mismatchRejected,
       "createEscrowLockFromNotes refuses to LOCK when parsed notes do not exactly match the trade amount");
+    await client.cleanup();
+  }
+
+  {
+    const client = new FedimintClient(
+      {},
+      async () => makeParseWallet(1_000_000, GBF_FEDERATION_ID),
+    );
+    await client.init();
+    let wrongFederationRejected = false;
+    try {
+      await client.createEscrowLockFromNotes(
+        "gbf-notes-in-blf-room",
+        1_000_000,
+        { arbiterFeeMsats: 0 },
+      );
+    } catch (e: any) {
+      wrongFederationRejected = /belongs to federation/.test(e?.message || "")
+        && /No LOCK was published/.test(e?.message || "");
+    }
+    assert(wrongFederationRejected,
+      "createEscrowLockFromNotes refuses cross-federation Fedi ecash before publishing LOCK");
     await client.cleanup();
   }
 }
@@ -12859,7 +12883,7 @@ console.log("\n── decideListingTapEffect ──");
   if (switchSilent.kind === "switch-silent") {
     assert(switchSilent.targetInvite === BLF_FEDERATION_INVITE,
       "Target invite matches the listing's fed");
-    assert(switchSilent.displayName === "Global · Bitcoin",
+    assert(switchSilent.displayName === "USA · USD",
       "Display name carries community name for narration");
   }
 
@@ -14173,8 +14197,10 @@ console.log("\n── BOLT11 PAYOUT AMOUNT ROUTING ──");
       "Native bridge has no implicit configured community override");
 
     (globalThis as any).localStorage?.setItem?.(NATIVE_BRIDGE_COMMUNITY_KEY, "us-gbf");
-    assert(getConfiguredNativeBridgeCommunitySlug() === "us-gbf",
-      "Native bridge still honors an explicit debug community override");
+    assert(getConfiguredNativeBridgeCommunitySlug() === "us-blf",
+      "Native bridge migrates a persisted GBF pin to BLF");
+    assert((globalThis as any).localStorage?.getItem?.(NATIVE_BRIDGE_COMMUNITY_KEY) === "us-blf",
+      "Native bridge persists the migrated BLF pin");
     (globalThis as any).localStorage?.removeItem?.(NATIVE_BRIDGE_COMMUNITY_KEY);
   }
 
@@ -21808,7 +21834,14 @@ console.log("\n── Liquidity & attention (buyerInterest / newListing / needsY
   const nowSec = LIVE + 100;
   const claim = mk({ id: "t_claim", status: EscrowStatus.APPROVED, resolvedOutcome: Outcome.RELEASE,
     participants: { [Role.BUYER]: BUYER, [Role.SELLER]: SELLER, [Role.ARBITER]: ARB },
-    votes: { [Role.BUYER]: Outcome.RELEASE, [Role.SELLER]: Outcome.RELEASE }, expiresAt: nowSec + 9000 });
+    votes: { [Role.BUYER]: Outcome.RELEASE, [Role.SELLER]: Outcome.RELEASE }, expiresAt: nowSec + 9000,
+    lock: {
+      notesHash: "ab".repeat(32),
+      shares: new Map([
+        ["1", { encryptedFor: {} }],
+        ["2", { encryptedFor: {} }],
+      ]),
+    } as any });
   const vote = mk({ id: "t_vote", status: EscrowStatus.LOCKED,
     participants: { [Role.BUYER]: BUYER, [Role.SELLER]: SELLER, [Role.ARBITER]: ARB },
     votes: {}, expiresAt: nowSec + 9000 });
@@ -21826,6 +21859,10 @@ console.log("\n── Liquidity & attention (buyerInterest / newListing / needsY
     "needs-you: count matches the attention set size");
   assert(countNeedsYou({ escrows: [waiting, claim, vote, idle], userPubkey: STRANGER, nowSec }) === 0,
     "needs-you: a non-participant has zero attention items");
+  assert(needsYouReasonFor({ ...claim, lock: undefined as any }, SELLER, nowSec) === null,
+    "needs-you: an APPROVED hydration fragment without redeemable LOCK material is not an alert");
+  assert(needsYouReasonFor({ ...claim, escrowMode: "onchain" }, SELLER, nowSec) === null,
+    "needs-you: on-chain payouts enter attention only after a verified unspent-output scan");
   assert(selectNeedsYouTrades({ escrows: [arbiterKey], userPubkey: ARB, nowSec })[0]?.id === arbiterKey.id,
     "needs-you: the selected on-chain arbiter gets the Me/Browse yellow attention path after buyer JOIN");
   assert(needsYouReasonFor(arbiterKey, ARB, nowSec) === "arbiter-key",

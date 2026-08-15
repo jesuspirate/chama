@@ -592,7 +592,15 @@ function needsYouReason(
   // Claim owed — resolved in my favor, the payout is mine to take.
   if (e.status === EscrowStatus.APPROVED) {
     const winner = payoutRecipientFor(e, e.resolvedOutcome ?? Outcome.RELEASE);
-    return winner && samePk(winner.pubkey, userPubkey) ? "claim" : null;
+    if (!winner || !samePk(winner.pubkey, userPubkey)) return null;
+    // Hydration can momentarily replay a RESOLVE before its LOCK body, and old
+    // on-chain-era/test chains can remain APPROVED without any redeemable
+    // bearer material. Neither is an actionable ecash claim. Requiring the
+    // actual hash + shares prevents the 6→3→2→1 orange-alert churn and keeps
+    // impossible legacy ghosts in history instead of the urgent queue.
+    if ((e.escrowMode ?? "ecash") === "onchain" || e.lock?.onchain) return null;
+    if (!e.lock?.notesHash || !e.lock.shares || e.lock.shares.size < 2) return null;
+    return "claim";
   }
 
   if (e.status === EscrowStatus.LOCKED) {

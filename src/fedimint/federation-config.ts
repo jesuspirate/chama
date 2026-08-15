@@ -7,8 +7,8 @@
 // 0.90 bump, BLF's transport is browser-reliable (registry `browserReliable:
 // true`), so BLF is the universal backup/default across the board
 // (DECISION 2026-06-16). BP remains a curated/visible option but is no
-// longer the silent fallback. GBF is pinned to the one US community
-// (us-gbf, "USA · USD").
+// longer the silent fallback. As of v6, BLF also backs the visible US anchor;
+// GBF is retained only to resolve historical signed trades.
 //
 // The federation invite/name CONSTANTS live in ./federation-invites.ts
 // so the community registry can import them without forming a circular
@@ -260,9 +260,9 @@ export function shouldReconcileFederation(inputs: {
 // are the technical layer that backs them. A community whose registry entry
 // has federationInvite === null falls back to BLF — the universal backup
 // federation, browser-reliable since the v0.5.0 canary iroh bump
-// (DECISION 2026-06-16). The live default community (us-blf, "Global ·
-// Bitcoin") is itself BLF-backed; the one pickable US community (us-gbf,
-// "USA · USD") pins GBF.
+// (DECISION 2026-06-16). The live default and visible US community
+// (us-blf, "USA · USD") is BLF-backed. Historical us-gbf still resolves its
+// original invite so already-signed trades remain recoverable.
 //
 // Precedence (highest first):
 //   1. The community's federationInvite (when the registry has one)
