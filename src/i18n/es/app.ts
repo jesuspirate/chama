@@ -35,6 +35,12 @@ export const app: Record<string, string> = {
   "app.coachBrowseBody":
     "Cada intercambio que tu comunidad ha publicado vive aquí. Toca un anuncio para ver el trato y chatear con el otro lado.",
   "app.coachBrowseTitle": "Explora el mercado",
+  "app.coachAssistedBody":
+    "¿No sabes qué intercambio iniciar? Toca ✦ y Chama te guiará al flujo correcto.",
+  "app.coachAssistedTitle": "Empieza con Chama Assisted",
+  "app.coachBrowsePreferencesBody":
+    "Mi Chama y Más barato son los valores predeterminados. Cambia a Todos para descubrir ofertas de otros países y comunidades.",
+  "app.coachBrowsePreferencesTitle": "Elige qué muestra Explorar",
   "app.coachCreateBody":
     "Este botón ✎ siempre está a un toque — cambia efectivo por sats, paga una factura o vende algo.",
   "app.coachCreateTitle": "Inicia tu propio intercambio",

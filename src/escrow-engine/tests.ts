@@ -204,6 +204,7 @@ import {
   DEFAULT_COMMUNITY_SLUG,
   EAST_AFRICA_COUNTRY_CODES,
   WEST_AFRICA_COUNTRY_CODES,
+  getCommunitiesByCountry,
   getCommunityBySlug,
   communityForInvite,
   getCustomCommunities,
@@ -6911,16 +6912,18 @@ console.log("\n── COMMUNITY REGISTRY + STORAGE ──");
 
   // Picker filter excludes hiddenFromPicker entries
   const picker = COMMUNITY_REGISTRY.filter(c => !c.hiddenFromPicker);
-  assert(picker.length === 55,
-    "Picker swaps historical GBF out for the BLF-backed US community without changing its total route count");
+  assert(picker.length === 56,
+    "Picker includes BLF by default and GBF as the alternate US federation");
   assert(picker[0]?.slug === "us-blf",
     "Picker leads with the BLF-backed US anchor");
   assert(!picker.some(c => c.slug === "sv-usd"),
     "Picker excludes sv-usd");
   assert(!picker.some(c => c.slug === "global-usd"),
     "Picker excludes legacy BP global-usd");
-  assert(picker.some(c => c.slug === "us-blf") && !picker.some(c => c.slug === "us-gbf"),
-    "Picker includes BLF for the US and excludes historical GBF");
+  assert(picker.some(c => c.slug === "us-blf") && picker.some(c => c.slug === "us-gbf"),
+    "Picker includes both US federations while BLF remains first/default");
+  assert(getCommunitiesByCountry("US").map(c => c.slug).join(",") === "us-blf,us-gbf",
+    "US country selection disambiguates BLF and GBF like Kenya's two federations");
   assert(picker.some(c => c.slug === "fedi-bitcoin-principles"),
     "Picker includes Bitcoin Principles as a public Fedi wallet service");
   assert(PUBLIC_FEDI_APPROVED_FEDERATIONS.every(route => picker.some(c => c.slug === route.slug)),
@@ -6959,8 +6962,8 @@ console.log("\n── COMMUNITY REGISTRY + STORAGE ──");
   assert(getUserCommunitySlug() === "ke-kes-bitsacco",
     "Bitsacco Kenya route persists as the user's home Chama");
   setUserCommunitySlug("us-gbf");
-  assert(getUserCommunitySlug() === "us-blf",
-    "A persisted GBF home migrates to the BLF-backed US community");
+  assert(getUserCommunitySlug() === "us-gbf",
+    "GBF persists when the user explicitly selects the alternate US federation");
 
   // Stale/invalid slug falls back to default rather than flowing through
   (globalThis as any).localStorage.setItem(COMMUNITY_STORAGE_KEY, "ghost-fed");
@@ -14197,10 +14200,8 @@ console.log("\n── BOLT11 PAYOUT AMOUNT ROUTING ──");
       "Native bridge has no implicit configured community override");
 
     (globalThis as any).localStorage?.setItem?.(NATIVE_BRIDGE_COMMUNITY_KEY, "us-gbf");
-    assert(getConfiguredNativeBridgeCommunitySlug() === "us-blf",
-      "Native bridge migrates a persisted GBF pin to BLF");
-    assert((globalThis as any).localStorage?.getItem?.(NATIVE_BRIDGE_COMMUNITY_KEY) === "us-blf",
-      "Native bridge persists the migrated BLF pin");
+    assert(getConfiguredNativeBridgeCommunitySlug() === "us-gbf",
+      "Native bridge honors an explicit GBF selection");
     (globalThis as any).localStorage?.removeItem?.(NATIVE_BRIDGE_COMMUNITY_KEY);
   }
 

@@ -263,10 +263,9 @@ const TAB_FOR_VIEW: Record<View, Tab> = {
 };
 
 // v4.1 C1 / v4.2.1: the one-time post-sign-in coach-mark tour over the home
-// screen's reachable surfaces. Trimmed to four clean steps — Browse, the
-// create pencil FAB, the new Dashboard home, and Me — so a newcomer sees what
-// they can do without a redundant second Create stop or a leader pitch they
-// aren't ready for. (The arbiter on-ramp returns with the bond, Phase 2A.)
+// screen's reachable surfaces. Chama Assisted is called out immediately after
+// Browse because it is the low-friction path for a newcomer who does not yet
+// know which trade form they need.
 // i18n: title/body are DICTIONARY KEYS, resolved with t() at render (module-
 // level constants can't call hooks) — same pattern as INTRO_USE_CASES.
 const COACH_STEPS: CoachStep[] = [
@@ -274,6 +273,16 @@ const COACH_STEPS: CoachStep[] = [
     selector: '[data-coach="nav-browse"]',
     titleKey: "app.coachBrowseTitle",
     bodyKey: "app.coachBrowseBody",
+  },
+  {
+    selector: '[data-coach="chama-assisted"]',
+    titleKey: "app.coachAssistedTitle",
+    bodyKey: "app.coachAssistedBody",
+  },
+  {
+    selector: '[data-coach="browse-preferences"]',
+    titleKey: "app.coachBrowsePreferencesTitle",
+    bodyKey: "app.coachBrowsePreferencesBody",
   },
   {
     selector: '[data-coach="fab-create"]',

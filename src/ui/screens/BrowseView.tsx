@@ -358,6 +358,7 @@ export function BrowseView({
           <button
             type="button"
             onClick={onOpenGuided}
+            data-coach="chama-assisted"
             title={t("guided.assistant")}
             aria-label={t("guided.assistant")}
             style={{
@@ -429,7 +430,7 @@ export function BrowseView({
 
       <div style={{
         display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12,
-      }}>
+      }} data-coach="browse-preferences">
         <BrowsePreferenceControl
           label={t("browse.scope")}
           value={browseScope}

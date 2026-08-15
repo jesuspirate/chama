@@ -23,18 +23,6 @@ import {
 } from "../storage/user-scope.js";
 
 export const COMMUNITY_STORAGE_KEY = "chama_community";
-const RETIRED_HOME_MIGRATIONS: Readonly<Record<string, string>> = {
-  "us-gbf": DEFAULT_COMMUNITY_SLUG,
-};
-
-function migrateRetiredHome(raw: string): string {
-  const replacement = RETIRED_HOME_MIGRATIONS[raw] ?? raw;
-  if (replacement !== raw) {
-    setScopedStorageItem(COMMUNITY_STORAGE_KEY, replacement);
-    setLastHomeHint(replacement);
-  }
-  return replacement;
-}
 
 // v3.5.1 #6 — UNSCOPED "last home" display hint. The per-npub home lives at
 // the scoped `chama_community:<pubkey>` key, which is UNREADABLE before a
@@ -69,9 +57,7 @@ export function getLastHomeHint(): string | null {
     if (typeof localStorage === "undefined") return null;
     const raw = localStorage.getItem(LAST_HOME_KEY);
     if (!raw) return null;
-    const migrated = RETIRED_HOME_MIGRATIONS[raw] ?? raw;
-    if (migrated !== raw) localStorage.setItem(LAST_HOME_KEY, migrated);
-    return getCommunityBySlug(migrated) ? migrated : null;
+    return getCommunityBySlug(raw) ? raw : null;
   } catch {
     return null;
   }
@@ -85,8 +71,7 @@ export function getUserCommunitySlug(): string {
   try {
     const raw = claimLegacyStorageItem(COMMUNITY_STORAGE_KEY);
     if (!raw) return DEFAULT_COMMUNITY_SLUG;
-    const migrated = migrateRetiredHome(raw);
-    return getCommunityBySlug(migrated) ? migrated : DEFAULT_COMMUNITY_SLUG;
+    return getCommunityBySlug(raw) ? raw : DEFAULT_COMMUNITY_SLUG;
   } catch {
     return DEFAULT_COMMUNITY_SLUG;
   }
@@ -103,8 +88,7 @@ export function getUserCommunitySlugRaw(): string | null {
   try {
     const raw = claimLegacyStorageItem(COMMUNITY_STORAGE_KEY);
     if (!raw) return null;
-    const migrated = migrateRetiredHome(raw);
-    return getCommunityBySlug(migrated) ? migrated : null;
+    return getCommunityBySlug(raw) ? raw : null;
   } catch {
     return null;
   }

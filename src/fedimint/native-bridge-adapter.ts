@@ -609,18 +609,7 @@ export function getConfiguredNativeBridgeCommunitySlug(): string | null {
     getImportEnv("VITE_CHAMA_NATIVE_COMMUNITY");
   if (explicitSlug?.trim()) return explicitSlug.trim();
 
-  let slug = getLocalStorageValue(NATIVE_BRIDGE_COMMUNITY_KEY);
-  // v6.0 route migration: this key used to pin ordinary Tauri sessions to
-  // GBF even after their home Chama moved to BLF. Preserve query/env values
-  // as deliberate developer overrides, but migrate persisted app state.
-  if (slug?.trim() === "us-gbf") {
-    slug = DEFAULT_NATIVE_BRIDGE_COMMUNITY;
-    try {
-      globalThis.localStorage?.setItem(NATIVE_BRIDGE_COMMUNITY_KEY, slug);
-    } catch {
-      // Storage may be unavailable; returning BLF still prevents the stale pin.
-    }
-  }
+  const slug = getLocalStorageValue(NATIVE_BRIDGE_COMMUNITY_KEY);
   const trimmed = slug?.trim() ?? "";
   return trimmed ? trimmed : null;
 }

@@ -56,6 +56,12 @@ const GATEWAY_SELECT_TIMEOUT: Duration = Duration::from_secs(12);
 /// journals the payout `submitted` and reconciles), never to a re-payable error.
 /// Matches the browser SDK's 60s pay-watch window so native behaves the same.
 const PAY_AWAIT_TIMEOUT: Duration = Duration::from_secs(60);
+/// A reissue operation is durable in the Fedimint client database once
+/// `reissue_external_notes` returns. Do not hold the HTTP request forever
+/// while a slow guardian set settles it: return `pending` and let Chama's
+/// balance watchdog reconcile the durable operation. This also prevents the
+/// JS timeout from merely abandoning a still-live Rust request.
+const REISSUE_AWAIT_TIMEOUT: Duration = Duration::from_secs(25);
 /// Short per-gateway reachability probe used when auto-selecting a receive
 /// gateway. Kept well under `GATEWAY_SELECT_TIMEOUT` so several gateways can be
 /// tried in turn within the same budget — a single dead (e.g. `iroh://`)
@@ -1867,19 +1873,30 @@ impl Bridge {
                 .context("failed to subscribe to e-cash reissue")?
                 .into_stream();
 
-            while let Some(update) = updates.next().await {
-                match update {
-                    ReissueExternalNotesState::Done => {
-                        status = "done".to_owned();
-                        break;
-                    }
-                    ReissueExternalNotesState::Failed(error) => {
-                        bail!("reissue failed: {error}");
-                    }
-                    other => {
-                        status = format!("{other:?}");
+            let terminal = tokio::time::timeout(REISSUE_AWAIT_TIMEOUT, async {
+                while let Some(update) = updates.next().await {
+                    match update {
+                        ReissueExternalNotesState::Done => return Ok("done".to_owned()),
+                        ReissueExternalNotesState::Failed(error) => {
+                            bail!("reissue failed: {error}");
+                        }
+                        other => status = format!("{other:?}"),
                     }
                 }
+                Ok(status.clone())
+            })
+            .await;
+
+            status = match terminal {
+                Ok(result) => result?,
+                Err(_) => "pending".to_owned(),
+            };
+
+            if status == "pending" {
+                eprintln!(
+                    "reissue: {operation_id:?} still pending after {}s; returning for balance reconciliation",
+                    REISSUE_AWAIT_TIMEOUT.as_secs(),
+                );
             }
         }
 

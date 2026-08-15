@@ -357,9 +357,10 @@ export const COMMUNITY_REGISTRY: Community[] = [
     browserReliable: true,
     notes: "Native Fedimint sidecar route verified end-to-end against GBF.",
     disambiguator: "GBF",
-    // Historical resolver only. Old signed GBF trades must keep their real
-    // federation route, but no new home/listing should anchor here.
-    hiddenFromPicker: true,
+    // BLF remains the default US route, but GBF is a first-class alternate
+    // for users who deliberately choose it (matching Kenya's multi-fed
+    // country picker). Old signed GBF trades keep resolving here too.
+    hiddenFromPicker: false,
   },
   ...PUBLIC_FEDI_WALLET_SERVICE_CHAMAS,
   SOUTH_AFRICA_GLOBAL_CHAMA,
@@ -472,13 +473,13 @@ export function communityForInvite(invite: string | null | undefined): Community
 
 /** Default community when the user hasn't picked one yet. In v6, us-blf is
  *  both the BLF-backed US anchor and the universal fallback; Canada resolves
- *  to BLF through its country shell. Historical us-gbf remains wire-resolvable
- *  but is not a selectable or default route. */
+ *  to BLF through its country shell. GBF is selectable as a second US route,
+ *  but is never selected implicitly. */
 export const DEFAULT_COMMUNITY_SLUG = "us-blf";
 
 /** Registry communities (excluding hiddenFromPicker) whose primary (`country`)
  *  or spanned (`countries`) ISO 3166-1 alpha-2 code matches `code`. Returns 0,
- *  1, or many — e.g. Kenya → [Afribit, Bitsacco], US → [BLF]. The
+ *  1, or many — e.g. Kenya → [Afribit, Bitsacco], US → [BLF, GBF]. The
  *  full-world country picker uses this to resolve a tapped country to its
  *  Chama(s); 0 results means "no Chama here yet" (soft-landing / request),
  *  >1 means a disambiguation step keyed on `disambiguator`. */
