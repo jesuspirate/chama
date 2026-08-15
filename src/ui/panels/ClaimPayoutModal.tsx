@@ -751,21 +751,13 @@ function ClaimMethodChooser({
           </div>
         )}
 
-        {/* v1.2.5: saved NWC connections promoted to top-level quick-
-            pick buttons here, matching the AtomicFundingModal pattern
-            for funding. A returning user with a saved NWC wallet
-            claims straight to it in one tap; the LN button below
-            still routes through DestinationPicker for first-time
-            paste-an-address flow and Lightning-Address use cases. */}
+        {/* NWC is an expert shortcut: present but deliberately quiet. */}
         {savedNwcConnections.length > 0 && (
-          <div style={{ marginBottom: 12 }}>
-            <div style={{
-              fontSize: 9, color: T.accent, fontFamily: T.mono,
-              letterSpacing: 1, marginBottom: 6, fontWeight: 800,
-            }}>
-              {t("claim.fastestNwcHeading")}
-            </div>
-            <div style={{ display: "grid", gap: 6 }}>
+          <details style={{ marginBottom: 12 }}>
+            <summary style={{ color: T.muted, fontFamily: T.mono, fontSize: 9, cursor: "pointer" }}>
+              NWC · {savedNwcConnections.length}
+            </summary>
+            <div style={{ display: "grid", gap: 6, marginTop: 8 }}>
               {savedNwcConnections.map((connection) => (
                 <button
                   key={connection.id}
@@ -794,7 +786,7 @@ function ClaimMethodChooser({
                 </button>
               ))}
             </div>
-          </div>
+          </details>
         )}
 
         <div style={{ display: "grid", gridTemplateColumns: methodGridColumns, gap: 10 }}>
@@ -1003,6 +995,7 @@ function ClaimMethodChooser({
               minHeight: methodMinHeight, padding: 12, borderRadius: T.r,
               background: T.amberDim, border: `1px solid ${T.amber}66`,
               color: T.text, cursor: "pointer", textAlign: "left",
+              gridColumn: hasTallCards ? undefined : "1 / -1",
             }}
           >
             <div style={{ fontSize: 20, marginBottom: 8 }}>₿</div>

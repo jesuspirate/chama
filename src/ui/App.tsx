@@ -474,6 +474,7 @@ export default function App() {
     error,
     loading,
     publicListingsLoading,
+    myTradesLoading,
     earningsRevision,
     fedimint,
     fundingInProgress,
@@ -1491,6 +1492,10 @@ export default function App() {
   });
   const needsYouCount = needsYouTrades.length;
   const attentionTrade = needsYouTrades[0] ?? activeTrade;
+  // Participant discovery hydrates incrementally. A partial set makes the
+  // orange summary count/amount visibly count down, so keep it neutral until
+  // the initial saved-ID + relay pass is complete.
+  const visibleAttentionTrade = myTradesLoading ? null : attentionTrade;
   const attentionActionMode = needsYouCount > 0;
 
   // v0.6.5 funding-operation gate. The single backstop against two
@@ -2663,7 +2668,7 @@ export default function App() {
           <ChamaBar
             fedimint={fedimint}
             communitySlug={routeCommunitySlug}
-            chamaLabel={decideChamaBarLabel({
+            chamaLabel={myTradesLoading ? { kind: "checking" } : decideChamaBarLabel({
               balanceMsats: fedimint.balanceMsats ?? 0,
               hasActiveBuyerSellerCommitment: hasActiveCommitment,
               activeCommittedMsats: committedMsats,
@@ -3674,14 +3679,14 @@ export default function App() {
           {/* v0.6.5: Create no longer hard-blocks on active trades.
               The pill stays as the informational "you have N active
               trades" reminder; the form is always available below. */}
-          {attentionTrade && (
+          {visibleAttentionTrade && (
             <ActiveTradePill
-              trade={attentionTrade}
+              trade={visibleAttentionTrade}
               activeTradeCount={activeCommitmentCount}
               activeTradeMsats={activeTradeMsats}
               actionMode={attentionActionMode}
               actionCount={needsYouCount}
-              onTap={() => openEscrow(attentionTrade.id)}
+              onTap={() => openEscrow(visibleAttentionTrade.id)}
             />
           )}
           {nativeLockResume && (
@@ -3747,19 +3752,21 @@ export default function App() {
           livenessBlocksPerDay={BOND_LIVENESS_BLOCKS_PER_DAY}
           onOpenBondCeremony={() => setShowBondCeremony(true)}
           earningsRevision={earningsRevision}
+          balanceMsats={fedimint.balanceMsats ?? 0}
+          onWithdrawEcash={() => setShowEcashExport(true)}
           fetchMyBonds={actions.fetchMyBonds}
           getBondChainTip={actions.getBondChainTip}
         />
       ) : view === "me" ? (
         <div style={{ animation: "fadeIn 0.3s ease" }}>
-          {attentionTrade && (
+          {visibleAttentionTrade && (
             <ActiveTradePill
-              trade={attentionTrade}
+              trade={visibleAttentionTrade}
               activeTradeCount={activeCommitmentCount}
               activeTradeMsats={activeTradeMsats}
               actionMode={attentionActionMode}
               actionCount={needsYouCount}
-              onTap={() => openEscrow(attentionTrade.id)}
+              onTap={() => openEscrow(visibleAttentionTrade.id)}
             />
           )}
           <LapsedStoreCard
@@ -3829,14 +3836,14 @@ export default function App() {
         </div>
       ) : view === "saved-handles" ? (
         <div style={{ animation: "fadeIn 0.3s ease" }}>
-          {attentionTrade && (
+          {visibleAttentionTrade && (
             <ActiveTradePill
-              trade={attentionTrade}
+              trade={visibleAttentionTrade}
               activeTradeCount={activeCommitmentCount}
               activeTradeMsats={activeTradeMsats}
               actionMode={attentionActionMode}
               actionCount={needsYouCount}
-              onTap={() => openEscrow(attentionTrade.id)}
+              onTap={() => openEscrow(visibleAttentionTrade.id)}
             />
           )}
           <SavedHandlesPanel
@@ -3846,14 +3853,14 @@ export default function App() {
         </div>
       ) : view === "payout-destinations" ? (
         <div style={{ animation: "fadeIn 0.3s ease" }}>
-          {attentionTrade && (
+          {visibleAttentionTrade && (
             <ActiveTradePill
-              trade={attentionTrade}
+              trade={visibleAttentionTrade}
               activeTradeCount={activeCommitmentCount}
               activeTradeMsats={activeTradeMsats}
               actionMode={attentionActionMode}
               actionCount={needsYouCount}
-              onTap={() => openEscrow(attentionTrade.id)}
+              onTap={() => openEscrow(visibleAttentionTrade.id)}
             />
           )}
           <PayoutDestinationsPanel
@@ -3866,14 +3873,14 @@ export default function App() {
         </div>
       ) : view === "advanced" ? (
         <div style={{ animation: "fadeIn 0.3s ease" }}>
-          {attentionTrade && (
+          {visibleAttentionTrade && (
             <ActiveTradePill
-              trade={attentionTrade}
+              trade={visibleAttentionTrade}
               activeTradeCount={activeCommitmentCount}
               activeTradeMsats={activeTradeMsats}
               actionMode={attentionActionMode}
               actionCount={needsYouCount}
-              onTap={() => openEscrow(attentionTrade.id)}
+              onTap={() => openEscrow(visibleAttentionTrade.id)}
             />
           )}
           <SettingsAdvanced
@@ -3922,14 +3929,14 @@ export default function App() {
         </div>
       ) : (
         <>
-          {attentionTrade && (
+          {visibleAttentionTrade && (
             <ActiveTradePill
-              trade={attentionTrade}
+              trade={visibleAttentionTrade}
               activeTradeCount={activeCommitmentCount}
               activeTradeMsats={activeTradeMsats}
               actionMode={attentionActionMode}
               actionCount={needsYouCount}
-              onTap={() => openEscrow(attentionTrade.id)}
+              onTap={() => openEscrow(visibleAttentionTrade.id)}
             />
           )}
           {nativeLockResume && (

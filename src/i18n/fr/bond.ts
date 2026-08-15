@@ -1,5 +1,6 @@
 // fr/bond — Session B fills this from src/i18n/en/bond.ts (key set must match EXACTLY).
 export const bond: Record<string, string> = {
+  "bond.dashClaimRewardsEcash": "RÉCLAMER LE SOLDE DISPONIBLE EN ECASH",
   "bond.allBonds": "← Toutes les cautions",
   "bond.amountLabel": "Montant de la caution (sats)",
   "bond.announceAgain": "Annoncer à nouveau",

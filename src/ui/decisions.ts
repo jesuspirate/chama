@@ -872,6 +872,7 @@ export function activeCommittedMsats(inputs: {
 // and the UI is fine with the (brief) optimistic rendering during it.
 
 export type ChamaBarLabel =
+  | { kind: "checking" }
   | { kind: "ready" }
   | { kind: "in-trade"; sats: number; activeTradeCount: number }
   | { kind: "stranded"; sats: number }

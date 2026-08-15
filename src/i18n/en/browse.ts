@@ -55,6 +55,8 @@ export const browse: Record<string, string> = {
   "browse.showMyListings": "Show my listings",
   "browse.showingMyListings": "My listings only",
   "browse.mine": "Mine",
+  "browse.localCheapest": "My Chama · cheapest",
+  "browse.localCheapestHelp": "Only this Chama, with the lowest premium first",
   "browse.verifyingOffers": "Checking open offers…",
   "browse.verifyingOffersBody": "Verifying the latest trade state across relays.",
   "browse.showMyListingsHidden": "· {count} of yours hidden",

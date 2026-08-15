@@ -728,6 +728,9 @@ export interface UseEscrowState {
   loading: boolean;
   /** Browse has connected but is still verifying public listing chains. */
   publicListingsLoading: boolean;
+  /** Saved + relay-discovered participant trades are still being hydrated.
+   *  Global money/attention pills must not summarize this partial set. */
+  myTradesLoading: boolean;
   /** Increments when the local earnings view changes or relay receipts merge. */
   earningsRevision: number;
   /** Fedimint wallet state */
@@ -1338,6 +1341,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     error: null,
     loading: false,
     publicListingsLoading: false,
+    myTradesLoading: false,
     earningsRevision: 0,
     fundingInProgress: false,
     claimPayoutInProgress: false,
@@ -1638,6 +1642,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
         pubkey,
         loading: false,
         publicListingsLoading: true,
+        myTradesLoading: true,
         // Clean re-scope on a changed identity: drop the prior npub's escrows
         // so the role/pill can never be computed against the wrong identity.
         // The saved-ID reload + active discovery below repopulate for the new
@@ -1823,11 +1828,15 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       // openEscrow's refetch — so it never delays connect. Union-only and
       // denylist-aware (see discoverAndLoadMyTrades). Runs on every client;
       // a fresh APK install or any wiped cache benefits identically.
-      void runDiscovery(client, pubkey);
+      void runDiscovery(client, pubkey).finally(() => {
+        if (!mountedRef.current || clientRef.current !== client) return;
+        setState(prev => ({ ...prev, myTradesLoading: false }));
+      });
     } catch (e) {
       setState(prev => ({
         ...prev,
         loading: false,
+        myTradesLoading: false,
         error: e instanceof Error ? e.message : String(e),
       }));
     } finally {
@@ -1866,6 +1875,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       error: null,
       loading: false,
       publicListingsLoading: false,
+      myTradesLoading: false,
       earningsRevision: 0,
       fundingInProgress: false,
       claimPayoutInProgress: false,
@@ -4226,6 +4236,21 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       const err = describeError(e, "This trade is not ready to fund");
       opts.onPhase({ kind: "lock-failed", error: err });
       return { kind: "lock-failed", error: err };
+    }
+    // Fedi generates ecash from whichever federation its wallet currently has
+    // selected. Refuse before asking Fedi to spend unless that identity matches
+    // the trade's signed route. The bridge repeats this at LOCK time, but this
+    // early gate avoids even the safe generate→reabsorb round-trip.
+    if (hasFediInternalGenerateEcash() && !isSimModeOn()) {
+      const tradeState = requireClient().getState(escrowId);
+      const createPayload = tradeState?.eventChain?.[0]?.payload as any;
+      const expectedFed = effectiveCreateFederationId(createPayload);
+      const walletFed = fedimint.getFederationId()?.trim().toLowerCase() ?? null;
+      if (expectedFed && walletFed !== expectedFed) {
+        const err = "Fedi is open on a different Chama. Switch to this trade's federation before locking — no ecash was created.";
+        opts.onPhase({ kind: "lock-failed", error: err });
+        return { kind: "lock-failed", error: err };
+      }
     }
     // v0.6.5 funding-operation gate. The shared OPFS wallet's
     // spendNotes call cannot safely overlap with a second runFundAndLock.

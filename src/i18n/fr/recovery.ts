@@ -1,5 +1,6 @@
 // fr/recovery — Session B fills this from src/i18n/en/recovery.ts (key set must match EXACTLY).
 export const recovery: Record<string, string> = {
+  "recovery.barCheckingTrades": "Vérification de vos échanges…",
   "recovery.exportClearError": "Chama n’a pas pu terminer l’effacement de cet export. La copie de récupération reste conservée.",
   "recovery.exportClearing": "Finalisation sécurisée…",
   "recovery.exportStashFailedReabsorbed": "Chama n’a pas pu enregistrer la copie de récupération ecash, donc l’export a été annulé. Vos sats restent dans Chama (ou sont remboursés automatiquement après le délai). Libérez de l’espace et réessayez.",
@@ -24,7 +25,7 @@ export const recovery: Record<string, string> = {
   "recovery.exportClearCta": "Je l'ai importée — effacer",
   "recovery.exportCopyCta": "Copier l'ecash",
   "recovery.exportQrAlt": "Code QR ecash animé pour Fedi",
-  "recovery.exportQrHelp": "Dans Fedi, scannez en continu jusqu'à la fin de la barre de progression.",
+  "recovery.exportQrHelp": "Dans Fedi, scannez jusqu'à la fin de la barre. Si Fedi rejoint ou restaure encore cette fédération, terminez d'abord cette étape (redémarrez Fedi si nécessaire), puis rouvrez cet export en attente et scannez à nouveau.",
   "recovery.exportErrorTitle": "Impossible de générer la note",
   "recovery.exportGenerateCta": "Générer une note ecash",
   "recovery.exportGenerateError":

@@ -43,6 +43,8 @@ export function DashboardScreen({
   livenessBlocksPerDay = 144,
   onOpenBondCeremony,
   earningsRevision = 0,
+  balanceMsats = 0,
+  onWithdrawEcash,
   fetchMyBonds,
   getBondChainTip,
 }: {
@@ -57,6 +59,10 @@ export function DashboardScreen({
   onOpenBondCeremony?: () => void;
   /** Relay/local earnings reconciliation revision from useEscrow. */
   earningsRevision?: number;
+  /** Current federation wallet balance. Redeemed premiums land here. */
+  balanceMsats?: number;
+  /** Opens the same crash-safe bearer-note export used from Me. */
+  onWithdrawEcash?: () => void;
   /** #77: fetch the signed-in npub's own chain-verified announced bonds, so a bond
    *  shows cross-device (a fresh install has no local commitment record). Fail-soft. */
   fetchMyBonds?: () => Promise<VerifiedBond[]>;
@@ -174,6 +180,21 @@ export function DashboardScreen({
               <div style={{ fontSize: 10.5, color: T.muted, fontFamily: T.mono, lineHeight: 1.5, marginTop: 10 }}>
                 {t("bond.dashEarningsHint")}
               </div>
+              {mergedBonds.some((bond) => bond.locked) && balanceMsats >= 1_000 && onWithdrawEcash && (
+                <button
+                  type="button"
+                  onClick={onWithdrawEcash}
+                  style={{
+                    width: "100%", marginTop: 12, padding: "10px 12px",
+                    borderRadius: T.rs, background: T.purpleDim,
+                    border: `1px solid ${T.purple}66`, color: T.purple,
+                    fontFamily: T.mono, fontSize: 10, fontWeight: 800,
+                    cursor: "pointer",
+                  }}
+                >
+                  {t("bond.dashClaimRewardsEcash")}
+                </button>
+              )}
             </>
           ) : (
             <div style={{ fontSize: 12.5, color: T.muted, fontFamily: T.sans, lineHeight: 1.55 }}>

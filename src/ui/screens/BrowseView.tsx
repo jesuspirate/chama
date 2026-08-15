@@ -20,6 +20,31 @@ import { isWorkListing } from "../work-resume.js";
 // and all arbiter code stay intact; this just gates the FAB entry point. Flip
 // back to true when the bond (Phase 2A) lands and the leader pitch is real.
 const SHOW_ARBITER_FAB = false;
+const LOCAL_CHEAPEST_KEY = "chama_browse_local_cheapest_v1";
+
+function getLocalCheapest(): boolean {
+  try { return localStorage.getItem(LOCAL_CHEAPEST_KEY) === "1"; } catch { return false; }
+}
+
+function setLocalCheapest(value: boolean): void {
+  try { localStorage.setItem(LOCAL_CHEAPEST_KEY, value ? "1" : "0"); } catch { /* device-local preference */ }
+}
+
+/** Apples-to-apples price rank. Premium is the canonical Exchange quote;
+ *  older listings fall back to fiat per sat, then sort after priced offers. */
+export function sortListingsCheapestFirst(listings: readonly EscrowState[]): EscrowState[] {
+  const rank = (listing: EscrowState): number => {
+    if (typeof listing.premiumBps === "number" && Number.isFinite(listing.premiumBps)) {
+      return listing.premiumBps;
+    }
+    if (
+      typeof listing.fiatAmount === "number" && Number.isFinite(listing.fiatAmount)
+      && listing.amountMsats > 0
+    ) return 10_000 + listing.fiatAmount / (listing.amountMsats / 1_000);
+    return Number.POSITIVE_INFINITY;
+  };
+  return [...listings].sort((a, b) => rank(a) - rank(b) || a.id.localeCompare(b.id));
+}
 
 // Browse tab content — category filters, collapsed Chama selector, and card list.
 // Per PHILOSOPHY.md §2.3, the community pills are the user's identity
@@ -87,6 +112,12 @@ export function BrowseView({
   // My listings only. Selecting owner mode intentionally hides everything else.
   const [showOwn, setShowOwnState] = useState<boolean>(() => getBrowseShowOwn());
   const toggleShowOwn = () => setShowOwnState((v) => { const next = !v; setBrowseShowOwn(next); return next; });
+  const [localCheapest, setLocalCheapestState] = useState<boolean>(() => getLocalCheapest());
+  const toggleLocalCheapest = () => setLocalCheapestState((value) => {
+    const next = !value;
+    setLocalCheapest(next);
+    return next;
+  });
 
   // v3.1.1: fade the floating action menu down while the list is scrolling so it
   // never sits opaque over a card the user is reading; back to full ~300ms after
@@ -128,16 +159,21 @@ export function BrowseView({
     () => filterOwnListings(nonMatchingListings, pubkey, showOwn),
     [nonMatchingListings, pubkey, showOwn],
   );
-  const totalListings = ownFilteredMatching.length + ownFilteredNonMatching.length;
+  const routedMatching = useMemo(
+    () => localCheapest ? sortListingsCheapestFirst(ownFilteredMatching) : ownFilteredMatching,
+    [localCheapest, ownFilteredMatching],
+  );
+  const routedNonMatching = localCheapest ? [] : ownFilteredNonMatching;
+  const totalListings = routedMatching.length + routedNonMatching.length;
   const homeCommunity = getCommunityBySlug(browseCommunity);
   const search = searchQuery.trim().toLowerCase();
   const filteredMatchingListings = useMemo(
-    () => ownFilteredMatching.filter((listing) => listingMatchesSearch(listing, search)),
-    [ownFilteredMatching, search],
+    () => routedMatching.filter((listing) => listingMatchesSearch(listing, search)),
+    [routedMatching, search],
   );
   const filteredNonMatchingListings = useMemo(
-    () => ownFilteredNonMatching.filter((listing) => listingMatchesSearch(listing, search)),
-    [ownFilteredNonMatching, search],
+    () => routedNonMatching.filter((listing) => listingMatchesSearch(listing, search)),
+    [routedNonMatching, search],
   );
   const matchingSections = useMemo(
     () => groupListingsByVertical(filteredMatchingListings),
@@ -406,10 +442,33 @@ export function BrowseView({
             </button>
           );
         })}
+        {!showOwn && (
+          <button
+            type="button"
+            onClick={toggleLocalCheapest}
+            aria-pressed={localCheapest}
+            title={t("browse.localCheapestHelp")}
+            style={{
+              order: 1, flexShrink: 0, padding: "7px 11px", borderRadius: 18,
+              background: localCheapest ? T.greenDim : T.surface,
+              border: `1px solid ${localCheapest ? T.green + "66" : T.border}`,
+              color: localCheapest ? T.green : T.muted,
+              fontFamily: T.mono, fontSize: 11, fontWeight: 700,
+              cursor: "pointer", whiteSpace: "nowrap", display: "inline-flex",
+              alignItems: "center", gap: 6,
+            }}
+          >
+            <span>⌄</span><span>{t("browse.localCheapest")}</span>
+          </button>
+        )}
         {(ownListingCount > 0 || showOwn) && (
           <button
             type="button"
-            onClick={() => { if (!showOwn) toggleShowOwn(); setBrowseCategory("all"); }}
+            onClick={() => {
+              if (!showOwn) toggleShowOwn();
+              if (localCheapest) toggleLocalCheapest();
+              setBrowseCategory("all");
+            }}
             aria-pressed={showOwn}
             style={{
               order: 1,

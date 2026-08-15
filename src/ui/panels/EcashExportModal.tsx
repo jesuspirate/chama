@@ -274,14 +274,25 @@ export function EcashExportModal({
             </div>
 
             <button
+              onClick={onClose}
+              style={{
+                width: "100%", padding: "9px 12px", borderRadius: T.rs, marginBottom: 18,
+                background: "none", border: `1px solid ${T.border}`, color: T.muted,
+                fontFamily: T.mono, fontSize: 11, fontWeight: 700, cursor: "pointer",
+              }}
+            >
+              {t("recovery.exportKeepPending")}
+            </button>
+            <button
               onClick={() => { void dismissConfirmed(); }}
               disabled={clearing}
               style={{
-                width: "100%", padding: "10px 12px", borderRadius: T.rs, marginBottom: 8,
-                background: confirmClear ? T.amber : T.surface,
+                width: "100%", padding: "8px 12px", borderRadius: T.rs,
+                background: confirmClear ? T.amber : "transparent",
                 border: `1px solid ${confirmClear ? T.amber : T.border}`,
                 color: confirmClear ? "#000" : T.muted,
-                fontFamily: T.mono, fontSize: 11, fontWeight: 800, cursor: "pointer",
+                opacity: confirmClear ? 1 : 0.58,
+                fontFamily: T.mono, fontSize: 10, fontWeight: 700, cursor: "pointer",
               }}
             >
               {clearing
@@ -289,16 +300,6 @@ export function EcashExportModal({
                 : confirmClear
                 ? t("recovery.exportClearConfirm")
                 : t("recovery.exportClearCta")}
-            </button>
-            <button
-              onClick={onClose}
-              style={{
-                width: "100%", padding: "9px 12px", borderRadius: T.rs,
-                background: "none", border: `1px solid ${T.border}`, color: T.muted,
-                fontFamily: T.mono, fontSize: 11, fontWeight: 700, cursor: "pointer",
-              }}
-            >
-              {t("recovery.exportKeepPending")}
             </button>
           </>
         )}

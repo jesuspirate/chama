@@ -778,20 +778,14 @@ function FundingMethodChooser({
           External swaps are offramp-only and live post-CLAIM in
           ClaimPayoutModal. */}
 
-      {/* v1.2.4: saved NWC connections promoted out of the "More
-          options" disclosure to top-level quick-pick buttons. The
-          paste-new-NWC textarea stays behind the disclosure since
-          it's a rare-path setup step; returning users with a known
-          wallet should fund a trade in one tap. */}
+      {/* NWC remains available to experienced users without visually
+          outranking the ordinary lock mechanisms. */}
       {!disableNwc && savedNwcConnections.length > 0 && (
-        <div style={{ marginBottom: 12 }}>
-          <div style={{
-            fontSize: 9, color: T.accent, fontFamily: T.mono,
-            letterSpacing: 1, marginBottom: 6, fontWeight: 800,
-          }}>
-            {t("fund.fastestAutoPay")}
-          </div>
-          <div style={{ display: "grid", gap: 6 }}>
+        <details style={{ marginBottom: 12 }}>
+          <summary style={{ color: T.muted, fontFamily: T.mono, fontSize: 9, cursor: "pointer" }}>
+            NWC · {savedNwcConnections.length}
+          </summary>
+          <div style={{ display: "grid", gap: 6, marginTop: 8 }}>
             {savedNwcConnections.map((connection) => (
               <button
                 type="button"
@@ -821,7 +815,7 @@ function FundingMethodChooser({
               </button>
             ))}
           </div>
-        </div>
+        </details>
       )}
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>

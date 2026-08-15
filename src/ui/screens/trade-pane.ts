@@ -32,45 +32,11 @@ export interface DefaultPaneInput {
 }
 
 /**
- * Land the viewer on the pane where their pending action lives.
- *
- * Priority (highest first):
- *  1. Pre-lock (CREATED) — everyone reads/configures the terms (the cart /
- *     amount / bill selection all live on Details), so a buyer finishing a
- *     multi-item order lands where the config is.
- *  2. A money action → Details (the fund / claim button lives there):
- *       a. the fiat payer at LOCK owes the payment;
- *       b. the winner at APPROVED/CLAIMED owes the claim.
- *  3. A new/unread chat message with no higher-priority action → Chat.
- *  4. Otherwise the sensible default: coordination happens in Chat.
+ * Details is the stable entry surface for every trade state. It contains the
+ * terms, cart configurator and money actions; Chat remains one tap/swipe away
+ * and its unread badge remains visible. A deterministic default also removes
+ * the post-JOIN role/status race that could bounce a buyer back to Chat.
  */
-export function pickDefaultPane(input: DefaultPaneInput): number {
-  const { status, myRole, fiatPayerRole, iAmWinner, titleDisputed, hasUnreadChat } = input;
-
-  // 1. Pre-lock config / terms.
-  if (status === EscrowStatus.CREATED) return TRADE_PANE.DETAILS;
-
-  // 2a. Fiat payer at LOCK — the "You owe" headline + fund button are on Details.
-  if (
-    status === EscrowStatus.LOCKED &&
-    !titleDisputed &&
-    myRole != null &&
-    myRole === fiatPayerRole
-  ) {
-    return TRADE_PANE.DETAILS;
-  }
-
-  // 2b. Winner at claim/approve — the claim button is on Details.
-  if (
-    (status === EscrowStatus.APPROVED || status === EscrowStatus.CLAIMED) &&
-    iAmWinner
-  ) {
-    return TRADE_PANE.DETAILS;
-  }
-
-  // 3. Unread chat, no pending config/money action → Chat.
-  if (hasUnreadChat) return TRADE_PANE.CHAT;
-
-  // 4. Default coordination surface.
-  return TRADE_PANE.CHAT;
+export function pickDefaultPane(_input: DefaultPaneInput): number {
+  return TRADE_PANE.DETAILS;
 }

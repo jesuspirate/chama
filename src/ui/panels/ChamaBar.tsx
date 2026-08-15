@@ -159,6 +159,16 @@ function ChamaBarLabelPill({
   onTapUnreachable: () => void;
 }) {
   const { t } = useT();
+  if (label.kind === "checking") {
+    return (
+      <span style={{
+        fontSize: 10, color: T.muted, fontFamily: T.mono,
+        letterSpacing: 0.3, whiteSpace: "nowrap",
+      }}>
+        {t("recovery.barCheckingTrades")}
+      </span>
+    );
+  }
   if (label.kind === "unreachable") {
     // v0.3.1 Phase 3: federation joined but unreachable (boot probe
     // failed). Single Reconnect surface across the app — TradeDetail
