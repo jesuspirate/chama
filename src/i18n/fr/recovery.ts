@@ -1,5 +1,8 @@
 // fr/recovery — Session B fills this from src/i18n/en/recovery.ts (key set must match EXACTLY).
 export const recovery: Record<string, string> = {
+  "recovery.exportClearError": "Chama n’a pas pu terminer l’effacement de cet export. La copie de récupération reste conservée.",
+  "recovery.exportClearing": "Finalisation sécurisée…",
+  "recovery.exportStashFailedReabsorbed": "Chama n’a pas pu enregistrer la copie de récupération ecash, donc l’export a été annulé. Vos sats restent dans Chama (ou sont remboursés automatiquement après le délai). Libérez de l’espace et réessayez.",
   "recovery.aBalance": "un solde",
   "recovery.activeTradeMany": "{count} échanges actifs",
   "recovery.activeTradeOne": "1 échange actif",
@@ -20,6 +23,8 @@ export const recovery: Record<string, string> = {
     "Sûr ? Chama oubliera cette note — retapez seulement si elle est sauvegardée",
   "recovery.exportClearCta": "Je l'ai importée — effacer",
   "recovery.exportCopyCta": "Copier l'ecash",
+  "recovery.exportQrAlt": "Code QR ecash animé pour Fedi",
+  "recovery.exportQrHelp": "Dans Fedi, scannez en continu jusqu'à la fin de la barre de progression.",
   "recovery.exportErrorTitle": "Impossible de générer la note",
   "recovery.exportGenerateCta": "Générer une note ecash",
   "recovery.exportGenerateError":

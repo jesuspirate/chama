@@ -48,6 +48,9 @@ import {
 } from "../../escrow-engine/slice-policy.js";
 import { onchainEscrowAvailable, DEFAULT_ESCROW_MODE, ESCROW_NETWORK_LABEL } from "../../bond-multisig/onchain-escrow.js";
 import {
+  TRADE_SLICING_ENABLED,
+} from "../../escrow-engine/experimental-escrow-features.js";
+import {
   getUserCommunitySlug,
   getUserCommunitySlugRaw,
   setUserCommunitySlug,
@@ -383,7 +386,7 @@ function normalizeFormState(raw: any, currency = "USD"): FormState {
     billType: typeof raw.billType === "string" ? raw.billType : "",
     workSide: raw.workSide === "work-request" ? "work-request" : "work",
     workCategory: typeof raw.workCategory === "string" ? raw.workCategory : "",
-    trancheCount: typeof raw.trancheCount === "number" ? raw.trancheCount : 1,
+    trancheCount: TRADE_SLICING_ENABLED && typeof raw.trancheCount === "number" ? raw.trancheCount : 1,
     escrowMode: raw.escrowMode === "onchain" || raw.escrowMode === "ecash" ? raw.escrowMode : DEFAULT_ESCROW_MODE,
     recurringCbp: raw.recurringCbp === true,
     paymentMethods: Array.isArray(raw.paymentMethods)
@@ -1074,7 +1077,7 @@ export function emptyCreateFormState(currency = "USD"): FormState {
     billType: "",
     workSide: "work",
     workCategory: "",
-    trancheCount: 2,
+    trancheCount: TRADE_SLICING_ENABLED ? 2 : 1,
     escrowMode: DEFAULT_ESCROW_MODE,
     recurringCbp: false,
   };
@@ -1365,10 +1368,11 @@ export function CreateForm({
       // be delivered in quarters, so Stores are excluded — the honest answer
       // there is holding the value somewhere no single party can reach.
       const escrowMode = form.escrowMode ?? DEFAULT_ESCROW_MODE;
-      const requestedSliceCount = escrowMode === "ecash" && TRANCHEABLE_VERTICALS.has(vertical) && !hasMenu
+      const requestedSliceCount = TRADE_SLICING_ENABLED
+        && escrowMode === "ecash" && TRANCHEABLE_VERTICALS.has(vertical) && !hasMenu
         ? Math.max(1, Math.floor(form.trancheCount ?? 2))
         : 1;
-      const slicePlan = escrowMode === "ecash"
+      const slicePlan = TRADE_SLICING_ENABLED && escrowMode === "ecash" && requestedSliceCount > 1
         ? deriveSlicePlan({ totalMsats: amountMsats, userCount: requestedSliceCount })
         : null;
       const params: any = {
@@ -2564,7 +2568,8 @@ function Step2({
           user is really choosing is the LAST line: the most they can lose at
           once. That is stated in sats rather than as "1/4", because a fraction
           is not a loss a person can feel. */}
-      {(form.escrowMode ?? DEFAULT_ESCROW_MODE) === "ecash"
+      {TRADE_SLICING_ENABLED
+        && (form.escrowMode ?? DEFAULT_ESCROW_MODE) === "ecash"
         && TRANCHEABLE_VERTICALS.has(vertical) && !usingMenu
         && trancheSplitAvailable(totalSats * 1000) && (() => {
         // Only offer counts whose slices clear MIN_TRANCHE_SATS. Splitting a

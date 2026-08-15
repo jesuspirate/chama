@@ -1,5 +1,8 @@
 // es/recovery — Session C fills this from src/i18n/en/recovery.ts (key set must match EXACTLY).
 export const recovery: Record<string, string> = {
+  "recovery.exportClearError": "Chama no pudo terminar de borrar esta exportación. La copia de recuperación sigue guardada.",
+  "recovery.exportClearing": "Finalizando con seguridad…",
+  "recovery.exportStashFailedReabsorbed": "Chama no pudo guardar la copia de recuperación ecash, así que canceló la exportación. Tus sats permanecen en Chama (o se reembolsan automáticamente tras el plazo). Libera espacio e inténtalo de nuevo.",
   "recovery.aBalance": "un saldo",
   "recovery.activeTradeMany": "{count} intercambios activos",
   "recovery.activeTradeOne": "1 intercambio activo",
@@ -19,6 +22,8 @@ export const recovery: Record<string, string> = {
     "¿Seguro? Chama olvidará esta nota — toca de nuevo solo si la guardaste",
   "recovery.exportClearCta": "Ya la importé — borrar",
   "recovery.exportCopyCta": "Copiar ecash",
+  "recovery.exportQrAlt": "Código QR animado de ecash para Fedi",
+  "recovery.exportQrHelp": "En Fedi, escanea continuamente hasta que se complete la barra de progreso.",
   "recovery.exportErrorTitle": "No se pudo generar la nota",
   "recovery.exportGenerateCta": "Generar nota de ecash",
   "recovery.exportGenerateError":

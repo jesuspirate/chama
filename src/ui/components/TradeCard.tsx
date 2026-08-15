@@ -314,6 +314,18 @@ export function TradeCard({
                 {ESCROW_NETWORK_LABEL === "signet" ? "SIGNET" : "ON-CHAIN"}
               </span>
             )}
+            {(state.escrowMode ?? "ecash") === "ecash" && (
+              <span style={{
+                display: "inline-flex", alignItems: "center", gap: 4,
+                fontSize: 10, padding: "3px 8px", borderRadius: 999,
+                background: `${T.teal}18`, color: T.teal,
+                border: `1px solid ${T.teal}55`,
+                fontFamily: T.mono, fontWeight: 800, lineHeight: 1.2,
+              }}>
+                <span style={{ fontSize: 11, lineHeight: 1 }}>⚡</span>
+                ECASH
+              </span>
+            )}
             {billTypeChip && billTypeChip.label !== state.description && (
               <span style={{
                 display: "inline-flex", alignItems: "center", gap: 4,

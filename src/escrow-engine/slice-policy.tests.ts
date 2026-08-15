@@ -4,6 +4,10 @@ import {
   SETTLEMENT_POLICY_ONCHAIN_FULL, defaultSettlementPolicy, deriveSlicePlan,
   minSlicesForCap, settlementPolicyMatchesMode,
 } from "./slice-policy.js";
+import {
+  isSlicedTradeShape,
+  TRADE_SLICING_ENABLED,
+} from "./experimental-escrow-features.js";
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(`FAIL: ${message}`);
@@ -17,6 +21,11 @@ function assertThrows(fn: () => unknown, message: string): void {
 console.log("\n── V6 SLICE POLICY (option B) ──");
 const M = 1_000; // msats per sat
 const SAT = (n: number) => n * M;
+
+assert(TRADE_SLICING_ENABLED === false, "product tripwire: trade slicing remains paused");
+assert(isSlicedTradeShape({ sliceCount: 2 }), "paused-shape filter recognizes a sliced parent");
+assert(isSlicedTradeShape({ tranche: {} }), "paused-shape filter recognizes a legacy tranche child");
+assert(!isSlicedTradeShape({ sliceCount: 1 }), "ordinary single-settlement ecash stays visible");
 
 // Test #9 boundary cases from the contract: 2M→1, 2M+1→2, 5M→3.
 assert(MAX_SLICE_EXPOSURE_MSATS === 2_000_000_000, "cap is 2M sats in msats");

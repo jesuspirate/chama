@@ -1,5 +1,11 @@
 // fr/claim — Session B fills this from src/i18n/en/claim.ts (key set must match EXACTLY).
 export const claim: Record<string, string> = {
+  "claim.ecashMethod": "Ecash · sans frais",
+  "claim.ecashMethodBlurb": "Réclamez une note au porteur prête pour Fedi. Chama garde une copie de récupération jusqu’à votre confirmation.",
+  "claim.ecashReadyHeadline": "RÉCLAMATION PRÊTE · IMPORTER L’ECASH",
+  "claim.ecashReadyBody": "Scannez avec Fedi, puis confirmez seulement quand Fedi affiche les sats. Chama garde cette note exacte récupérable jusqu’à votre accord.",
+  "claim.phaseExportingEcash": "Sécurisation de votre note ecash…",
+  "claim.yourFederation": "votre fédération",
   "claim.add": "Ajouter",
   "claim.added": "Ajouté",
   "claim.badgeCash": "cash",

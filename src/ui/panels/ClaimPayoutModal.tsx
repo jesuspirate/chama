@@ -85,6 +85,7 @@ import type {
   ClaimAndPayoutPhase,
   ClaimAndPayoutTerminal,
 } from "../../payments/claim-and-payout.js";
+import { EcashExportModal } from "./EcashExportModal.js";
 
 export interface ClaimPayoutModalProps {
   /** Trade ID being claimed. Passed through to claimAndPayout. */
@@ -120,12 +121,14 @@ export interface ClaimPayoutModalProps {
     args: {
       bolt11?: string;
       onchainAddress?: string;
+      payoutKind?: "lightning" | "onchain" | "ecash";
       expectedDeltaMsats: number;
       saveAfter: boolean;
       addressUsed?: string;
       onPhase: (phase: ClaimAndPayoutPhase) => void;
     },
   ) => Promise<ClaimAndPayoutTerminal>;
+  confirmClaimEcashExport: (escrowId: string) => Promise<void>;
   /** Fedi Mini-App path: claim directly into the host Fedi wallet with
    *  window.fediInternal.receiveEcash instead of asking for a Lightning
    *  payout destination. */
@@ -154,6 +157,7 @@ type Stage =
 type PayoutMethod =
   | { kind: "lightning" }
   | { kind: "onchain" }
+  | { kind: "ecash" }
   | { kind: "tando" }
   | { kind: "chapsmart" }
   | { kind: "strike"; initialAddress?: string }
@@ -165,6 +169,7 @@ type PayoutMethod =
 interface DispatchArgs {
   bolt11?: string;
   onchainAddress?: string;
+  payoutKind?: "lightning" | "onchain" | "ecash";
   saveAfter: boolean;
   addressUsed?: string;
   nwcConnectionString?: string;
@@ -181,6 +186,7 @@ export function ClaimPayoutModal({
   tradeCommunity,
   fiatCurrency,
   claimAndPayout,
+  confirmClaimEcashExport,
   claimTarget = "lightning",
   probeFederation,
   onClose,
@@ -250,6 +256,7 @@ export function ClaimPayoutModal({
       terminal = await claimAndPayout(escrowId, {
         bolt11: args.bolt11,
         onchainAddress: args.onchainAddress,
+        payoutKind: args.payoutKind,
         // E1.1: the onchain path pays exactly this figure, and the LN
         // growth/cover checks are ≥-thresholds — so the reduced amount is
         // correct on every target (the fedi-wallet branch ignores it).
@@ -355,6 +362,15 @@ export function ClaimPayoutModal({
     void dispatchClaim(lastDispatchRef.current);
   };
 
+  const dispatchEcashClaim = () => {
+    lastDispatchRef.current = {
+      payoutKind: "ecash",
+      bolt11: "ecash-export",
+      saveAfter: false,
+    };
+    void dispatchClaim(lastDispatchRef.current);
+  };
+
   // Terminal retry handler. Two-step per Q2: probe first, then
   // re-dispatch only on probe success. Stays on terminal with updated
   // error if the probe still fails.
@@ -381,6 +397,28 @@ export function ClaimPayoutModal({
       setRetryProbing(false);
     }
   };
+
+  if (stage.kind === "terminal" && stage.terminal.kind === "ecash-ready") {
+    const ready = stage.terminal;
+    return (
+      <EcashExportModal
+        balanceMsats={ready.amountMsats}
+        federationLabel={tradeCommunity ?? homeCommunity ?? t("claim.yourFederation")}
+        spendNotes={async () => ready.notes}
+        preset={{
+          notes: ready.notes,
+          amountMsats: ready.amountMsats,
+          headline: t("claim.ecashReadyHeadline"),
+          body: t("claim.ecashReadyBody"),
+          onConfirmCleared: async () => {
+            await confirmClaimEcashExport(escrowId);
+          },
+        }}
+        closeAfterConfirm={() => onClose({ kind: "done" })}
+        onClose={() => onClose(undefined)}
+      />
+    );
+  }
 
   // Stage 1: DestinationPicker. The shell handles all three tiers
   // internally. We pass amountSats so the LNURL resolver requests an
@@ -412,6 +450,7 @@ export function ClaimPayoutModal({
           savedStrikeDestinations={savedStrikeDestinations}
           savedNwcConnections={savedNwcConnections}
           onSelect={setPayoutMethod}
+          onSelectEcash={dispatchEcashClaim}
           onSelectSavedStrike={openSavedStrikeClaim}
           onSelectSavedNwc={dispatchSavedNwcClaim}
           onCancel={() => onClose(undefined)}
@@ -591,6 +630,7 @@ function ClaimMethodChooser({
   savedStrikeDestinations,
   savedNwcConnections,
   onSelect,
+  onSelectEcash,
   onSelectSavedStrike,
   onSelectSavedNwc,
   onCancel,
@@ -615,6 +655,7 @@ function ClaimMethodChooser({
    *  to it in one tap — no detour through LN → DestinationPicker. */
   savedNwcConnections: SavedNwcConnection[];
   onSelect: (method: PayoutMethod) => void;
+  onSelectEcash: () => void;
   onSelectSavedStrike: (address: string) => void;
   onSelectSavedNwc: (connection: SavedNwcConnection) => void;
   onCancel: () => void;
@@ -757,6 +798,25 @@ function ClaimMethodChooser({
         )}
 
         <div style={{ display: "grid", gridTemplateColumns: methodGridColumns, gap: 10 }}>
+          <button
+            onClick={onSelectEcash}
+            style={{
+              minHeight: methodMinHeight, padding: 12, borderRadius: T.r,
+              background: T.purpleDim, border: `1px solid ${T.purple}66`,
+              color: T.text, cursor: "pointer", textAlign: "left",
+            }}
+          >
+            <div style={{ fontSize: 20, marginBottom: 8 }}>▦</div>
+            <div style={{
+              fontSize: 12, fontWeight: 800, color: T.purple,
+              fontFamily: T.mono, marginBottom: 6, textTransform: "uppercase",
+            }}>
+              {t("claim.ecashMethod")}
+            </div>
+            <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono, lineHeight: 1.45 }}>
+              {t("claim.ecashMethodBlurb")}
+            </div>
+          </button>
           {/* Tando — Kenya's lead cash-out. Native one-tap M-Pesa offramp
               (LUD-16 Lightning Address `<phone>@bitcoin.co.ke`), not a
               redirect. Rendered first for Kenyan claims. */}
@@ -2108,6 +2168,7 @@ function RunningPanel({
   const message =
     phase.kind === "claiming" ? t("claim.phaseClaiming") :
     phase.kind === "confirming" ? t("claim.phaseConfirming") :
+    phase.kind === "exporting-ecash" ? t("claim.phaseExportingEcash") :
     phase.kind === "paying-onchain" ? t("claim.phasePayingOnchain") :
     phase.kind === "payout-confirming" ? t("claim.phasePayoutConfirming") :
     phase.kind === "paying-invoice" && payoutMethod?.kind === "tando"
@@ -2183,6 +2244,7 @@ function TerminalPanel({
   onClose: () => void;
 }) {
   const { t } = useT();
+  if (terminal.kind === "ecash-ready") return null;
   if (terminal.kind === "done") {
     return (
       <div style={{

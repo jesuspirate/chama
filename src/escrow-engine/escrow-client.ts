@@ -1198,8 +1198,20 @@ export class EscrowClient {
     if (parent.initiator.pubkey !== coordinator || parent.initiator.role !== Role.SELLER) throw new Error("Only the parent seller may coordinate its tranche plan");
     const buyerPubkey = parent.participants[Role.BUYER];
     const sellerPubkey = parent.participants[Role.SELLER];
-    const arbiterPubkey = parent.participants[Role.ARBITER];
-    if (!buyerPubkey || !sellerPubkey || !arbiterPubkey) throw new Error("Parent buyer, seller, and arbiter must all be seated before plan start");
+    // Ordinary ecash does not require an arbiter JOIN: the locker freezes the
+    // deterministic pool pick inside LOCK. Slicing introduces PLAN_START before
+    // the first child can LOCK, so requiring a pre-seated arbiter here creates a
+    // deadlock that the legacy ecash flow can never resolve. Freeze the exact
+    // same deterministic assignment into the signed plan instead.
+    const arbiterPubkey = parent.participants[Role.ARBITER]
+      ?? pickPreferredArbiter(
+        parent.communityArbiters,
+        parent.bondedArbiters,
+        parent.id,
+        [buyerPubkey, sellerPubkey],
+      );
+    if (!buyerPubkey || !sellerPubkey) throw new Error("Parent buyer and seller must be seated before plan start");
+    if (!arbiterPubkey) throw new Error("No eligible arbiter is available for this slice plan");
 
     const baseParams = {
       description: parent.description,

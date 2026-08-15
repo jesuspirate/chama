@@ -5,7 +5,7 @@
 import { useState, useEffect, type CSSProperties } from "react";
 
 interface QRCodeProps {
-  data: string;
+  data: string | string[];
   size?: number;
   fgColor?: string;
   bgColor?: string;
@@ -13,6 +13,8 @@ interface QRCodeProps {
   alt?: string;
   errorCorrectionLevel?: "L" | "M" | "Q" | "H";
   showLogo?: boolean;
+  /** Frame cadence for qrloop/multipart data. Fedi uses 100 ms natively. */
+  frameIntervalMs?: number;
 }
 
 export function QRCode({
@@ -24,8 +26,10 @@ export function QRCode({
   alt = "QR code",
   errorCorrectionLevel = "H",
   showLogo = true,
+  frameIntervalMs = 100,
 }: QRCodeProps) {
-  const [dataUrl, setDataUrl] = useState<string | null>(null);
+  const [dataUrls, setDataUrls] = useState<string[]>([]);
+  const [activeFrame, setActiveFrame] = useState(0);
   const [error, setError] = useState(false);
   const shellPad = Math.round(Math.min(16, Math.max(10, size * 0.055)));
   const shellSize = size + shellPad * 2;
@@ -78,13 +82,19 @@ export function QRCode({
 
   useEffect(() => {
     let cancelled = false;
+    setError(false);
+    setDataUrls([]);
+    setActiveFrame(0);
 
     (async () => {
       try {
         // Dynamic import — only loaded when QR is needed
         const QRCodeLib = await import("qrcode");
-
-        const url = await QRCodeLib.toDataURL(data, {
+        const values = Array.isArray(data) ? data : [data];
+        if (!values.length || values.some((value) => !value)) {
+          throw new Error("QR data is empty");
+        }
+        const urls = await Promise.all(values.map((value) => QRCodeLib.toDataURL(value, {
           width: size,
           margin,
           color: {
@@ -92,9 +102,9 @@ export function QRCode({
             light: bgColor,
           },
           errorCorrectionLevel,
-        });
+        })));
 
-        if (!cancelled) setDataUrl(url);
+        if (!cancelled) setDataUrls(urls);
       } catch (e) {
         console.error("[chama] QR generation failed:", e);
         if (!cancelled) setError(true);
@@ -103,6 +113,16 @@ export function QRCode({
 
     return () => { cancelled = true; };
   }, [data, size, fgColor, bgColor, margin, errorCorrectionLevel]);
+
+  useEffect(() => {
+    if (dataUrls.length < 2) return;
+    const interval = window.setInterval(() => {
+      setActiveFrame((frame) => (frame + 1) % dataUrls.length);
+    }, frameIntervalMs);
+    return () => window.clearInterval(interval);
+  }, [dataUrls, frameIntervalMs]);
+
+  const dataUrl = dataUrls[activeFrame] ?? null;
 
   if (error) {
     return (
@@ -153,7 +173,7 @@ export function QRCode({
       ))}
       <img
         src={dataUrl}
-        alt={alt}
+        alt={dataUrls.length > 1 ? `${alt} — frame ${activeFrame + 1} of ${dataUrls.length}` : alt}
         width={size}
         height={size}
         style={{

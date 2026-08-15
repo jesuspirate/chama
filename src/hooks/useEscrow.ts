@@ -194,6 +194,7 @@ import {
 import { retireListing } from "../escrow-engine/listing-renewal-ledger.js";
 import { trancheGate, tranchesForPlan, buildNextTrancheParams } from "../escrow-engine/tranche.js";
 import { MAX_SLICE_EXPOSURE_MSATS } from "../escrow-engine/slice-policy.js";
+import { TRADE_SLICING_ENABLED } from "../escrow-engine/experimental-escrow-features.js";
 import { defaultCreditObserver, recordClaimCredit } from "../payments/claim-credit-ledger.js";
 import {
   canEditListing,
@@ -243,6 +244,12 @@ import {
 import { Capacitor } from "@capacitor/core";
 import type { InvoiceGatewayInfo, LnReceiveStateKind, OnchainInfo } from "../fedimint/index.js";
 import { clearPendingRedemption } from "../fedimint/pending-redemptions.js";
+import {
+  assertEcashExportWritable,
+  clearEcashExport,
+  getEcashExport,
+  stashEcashExport,
+} from "../payments/ecash-exports.js";
 import { isNativeBridgeModeOn } from "../fedimint/native-bridge-adapter.js";
 // ── Arbiter bond (sealed v1: single-key timelock COMMITMENT) ──────────────────
 import * as btcSigner from "@scure/btc-signer";
@@ -832,12 +839,17 @@ export interface UseEscrowActions {
     args: {
       bolt11?: string;
       onchainAddress?: string;
+      payoutKind?: "lightning" | "onchain" | "ecash";
       expectedDeltaMsats: number;
       saveAfter: boolean;
       addressUsed?: string;
       onPhase: (phase: import("../payments/claim-and-payout.js").ClaimAndPayoutPhase) => void;
     },
   ) => Promise<import("../payments/claim-and-payout.js").ClaimAndPayoutTerminal>;
+  /** Finish a claim-backed bearer export only after the user explicitly
+   *  confirms it was imported. COMPLETE is best-effort; the local bearer
+   *  recovery copy is then cleared. */
+  confirmClaimEcashExport: (escrowId: string) => Promise<void>;
   /** R3-1b: re-attach to a submitted payout and complete the trade if it
    *  settled (no re-pay). For re-opening a trade stuck on CLAIMED. */
   reattachPayout: (escrowId: string) => Promise<void>;
@@ -1023,7 +1035,11 @@ export interface UseEscrowActions {
   /** R3-1: re-attach to a submitted payout and report its terminal outcome
    *  without paying again (recovery-path double-pay guard). */
   awaitPayoutOutcome: (operationId: string) => Promise<"settled" | "refunded" | "unknown">;
-  spendNotes: (amountMsats: number, meta?: ChamaOperationMeta) => Promise<string>;
+  spendNotes: (
+    amountMsats: number,
+    meta?: ChamaOperationMeta,
+    includeInvite?: boolean,
+  ) => Promise<string>;
   redeemEcash: (oobNotes: string, meta?: ChamaOperationMeta) => Promise<void>;
   /** Read federation wallet-module onchain fees and confirmation policy. */
   getOnchainInfo: () => Promise<OnchainInfo>;
@@ -3072,6 +3088,9 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
   };
 
   const startNextTranche = useCallback(async (fromEscrowId: string) => {
+    if (!TRADE_SLICING_ENABLED) {
+      throw new Error("Trade slicing is paused in this build.");
+    }
     const client = requireClient();
     const prior = client.getState(fromEscrowId);
     if (!prior?.tranche) throw new Error("This trade isn't part of a tranche plan.");
@@ -3104,6 +3123,9 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
   }, [createEscrow]);
 
   const startEcashSlicePlan = useCallback(async (parentId: string) => {
+    if (!TRADE_SLICING_ENABLED) {
+      throw new Error("Trade slicing is paused in this build.");
+    }
     const client = requireClient();
     const parent = client.getState(parentId) ?? await client.loadEscrow(parentId);
     if (!parent) throw new Error("Slice-plan parent not found.");
@@ -4669,6 +4691,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     args: {
       bolt11?: string;
       onchainAddress?: string;
+      payoutKind?: "lightning" | "onchain" | "ecash";
       expectedDeltaMsats: number;
       saveAfter: boolean;
       addressUsed?: string;
@@ -4727,13 +4750,14 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
 
       const { runClaimAndPayout } = await import("../payments/claim-and-payout.js");
       const onchainAddress = args.onchainAddress?.trim();
+      const payoutKind = args.payoutKind ?? (onchainAddress ? "onchain" : "lightning");
       const result = await runClaimAndPayout({
         escrowId,
         bolt11: args.bolt11 ?? "onchain-payout",
         expectedDeltaMsats: args.expectedDeltaMsats,
         saveAfter: args.saveAfter,
         addressUsed: args.addressUsed,
-        payoutKind: onchainAddress ? "onchain" : "lightning",
+        payoutKind,
         getBalance: () => fedimint.getBalance(),
         // Production claim+payout uses the raw bridge claim, not
         // claimAndRedeemAction, because claimAndRedeemAction emits the
@@ -4810,6 +4834,59 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
           );
           refreshBalanceRef.current?.().catch(() => {});
         },
+        prepareEcashExport: payoutKind === "ecash"
+          ? () => {
+              const pending = assertEcashExportWritable(escrowId);
+              return pending
+                ? { notes: pending.notes, amountMsats: pending.amountMsats }
+                : null;
+            }
+          : undefined,
+        exportEcash: payoutKind === "ecash"
+          ? async (amountMsats: number) => {
+              const notes = await bridge.spendNotesForExport(
+                amountMsats,
+                buildChamaOperationMeta({
+                  flow: "claim_payout",
+                  escrowId,
+                  amountMsats,
+                }),
+              );
+              // The fresh note is the payout now. Persist it before returning
+              // to React so a close/crash can only lead to resume, never loss.
+              try {
+                stashEcashExport({
+                  notes,
+                  amountMsats,
+                  source: "claim",
+                  escrowId,
+                });
+              } catch (stashError) {
+                // Fail safe: never hand an unstashed bearer note to the UI.
+                // Reabsorb it immediately; the export's 14-day try_cancel is
+                // the final backstop if this recovery call is interrupted.
+                try {
+                  await bridge.redeemEcash(
+                    notes,
+                    buildChamaOperationMeta({
+                      flow: "claim_payout",
+                      escrowId,
+                      amountMsats,
+                      reason: "ecash-export-stash-failed-reabsorb",
+                    }),
+                  );
+                } catch (redeemError) {
+                  console.error("[chama] unstashed claim export reabsorb failed; auto-refund remains armed:", redeemError);
+                }
+                throw new Error(
+                  "Chama couldn't save the ecash recovery copy, so the export was canceled. Your sats stay in Chama (or auto-refund after the export timeout). Try again after freeing device storage.",
+                  { cause: stashError },
+                );
+              }
+              refreshBalanceRef.current?.().catch(() => {});
+              return { notes, amountMsats };
+            }
+          : undefined,
         addOrTouchLightningHandle: addOrTouchPayoutDestination,
         onPhase: args.onPhase,
       });
@@ -4827,6 +4904,25 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
         ? { ...prev, claimPayoutInProgress: false }
         : prev);
     }
+  }, []);
+
+  const confirmClaimEcashExportAction = useCallback(async (escrowId: string): Promise<void> => {
+    const pending = getEcashExport();
+    if (!pending || pending.source !== "claim" || pending.escrowId !== escrowId) {
+      throw new Error("This claim's pending ecash recovery copy was not found. Nothing was cleared.");
+    }
+    const client = requireClient();
+    try {
+      await client.complete(escrowId);
+      const st = client.getState(escrowId);
+      if (st) updateEscrow(escrowId, st);
+    } catch (e) {
+      // Same policy as Lightning/onchain after the user is made whole: relay
+      // COMPLETE is advisory and can reconcile later; it must not retain a
+      // bearer note the user explicitly confirmed importing.
+      console.warn("[chama] ecash claim COMPLETE publish failed after user confirmation:", e);
+    }
+    clearEcashExport();
   }, []);
 
   const watchBondOnchainCredit = (operationId: string, bondId?: string) => {
@@ -5058,6 +5154,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     },
     claimAndRedeem: claimAndRedeemAction,
     claimAndPayout: claimAndPayoutAction,
+    confirmClaimEcashExport: confirmClaimEcashExportAction,
     reattachPayout: reattachPayoutAction,
     payArbiterPremium: payArbiterPremiumAction,
     redeemArbiterPremiums: redeemArbiterPremiumsAction,
@@ -5921,9 +6018,15 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       }
       return [...latest.values()].map(({ tradeId, ratee, thumb, at }) => ({ tradeId, ratee, thumb, ratedAt: at }));
     },
-    spendNotes: async (amountMsats: number, meta?: ChamaOperationMeta) => {
+    spendNotes: async (
+      amountMsats: number,
+      meta?: ChamaOperationMeta,
+      includeInvite = false,
+    ) => {
       const bridge = requireBridge();
-      const notes = await bridge.spendNotes(amountMsats, meta);
+      const notes = includeInvite
+        ? await bridge.spendNotesForExport(amountMsats, meta)
+        : await bridge.spendNotes(amountMsats, meta, false);
       refreshBalanceRef.current?.().catch(() => {});
       return notes;
     },

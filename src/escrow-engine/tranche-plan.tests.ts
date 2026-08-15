@@ -67,6 +67,14 @@ assert(parent.ok, "parent CREATE replays");
 const buyerJoin = { type: "escrow:join" as const, role: Role.BUYER, joinedAt: 1_800_000_001, holdExpiresAt: 1_800_000_301 };
 parent = applyEvent(parent.state, parse(raw("66".repeat(32), BUYER, EscrowEventKind.JOIN, PARENT, buyerJoin, [["e", PARENT, "", "reply"], ["p", BUYER]])));
 assert(parent.ok, "buyer seats once on parent");
+const autoAssignedPlan = applyEvent(parent.state, parse(raw("88".repeat(32), SELLER, EscrowEventKind.PLAN_START, PARENT, plan, [["e", "66".repeat(32), "", "reply"]])));
+assert(autoAssignedPlan.ok, "ecash plan starts without an arbiter JOIN by freezing the deterministic pool assignment");
+assert(autoAssignedPlan.state.participants[Role.ARBITER] === ARBITER,
+  "PLAN_START auto-seats the frozen arbiter before child creation");
+const attackerPlan = applyEvent(parent.state, parse(raw("99".repeat(32), SELLER, EscrowEventKind.PLAN_START, PARENT,
+  { ...plan, arbiterPubkey: "aa".repeat(32) }, [["e", "66".repeat(32), "", "reply"]])));
+assert(!attackerPlan.ok && attackerPlan.error.code === "PLAN_ARBITER_NOT_ASSIGNED",
+  "seller cannot replace the deterministic assignment with an arbitrary arbiter");
 const arbiterJoin = { type: "escrow:join" as const, role: Role.ARBITER, joinedAt: 1_800_000_002 };
 parent = applyEvent(parent.state, parse(raw("77".repeat(32), ARBITER, EscrowEventKind.JOIN, PARENT, arbiterJoin, [["e", "66".repeat(32), "", "reply"], ["p", ARBITER]])));
 assert(parent.ok, "arbiter seats once on parent");

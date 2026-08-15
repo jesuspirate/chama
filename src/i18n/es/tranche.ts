@@ -19,8 +19,10 @@ export const tranche: Record<string, string> = {
   "tranche.ecashPlanTitle": "ECASH · {n} TRAMOS MUTUOS",
   "tranche.ecashPlanBody": "Cada tramo tiene su propio bloqueo ecash 2-de-3. El siguiente queda bloqueado hasta probar el pago anterior.",
   "tranche.startProtected": "Iniciar {n} tramos protegidos",
-  "tranche.sellerStarts": "El vendedor inicia el plan firmado cuando comprador y árbitro ocupen sus puestos.",
+  "tranche.sellerStarts": "Tras la reserva del comprador, el vendedor inicia el plan firmado. Chama fija automáticamente al árbitro asignado.",
   "tranche.planTitle": "PLAN DE TRAMOS ECASH · {n} TRAMOS",
   "tranche.sliceRow": "Tramo {n}",
+  "tranche.awaitingPlan": "esperando al vendedor",
+  "tranche.fundThisSlice": "financiar este tramo →",
   "tranche.publishing": "publicando",
 };

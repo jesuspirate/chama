@@ -25,6 +25,10 @@ import { getWinner } from "../escrow-engine/state-machine.js";
 import { remainingStock, isSoldOut, overcommittedChildren, isLiveChildOrder, isActiveChildOrder } from "../escrow-engine/storefront.js";
 import { unreadChatForTrade } from "../chat/unread.js";
 import { archivedTradeEntries } from "../escrow-engine/trade-index.js";
+import {
+  isSlicedTradeShape,
+  TRADE_SLICING_ENABLED,
+} from "../escrow-engine/experimental-escrow-features.js";
 import { compareTradeChronology, participantTradeHistory } from "./latest-trade.js";
 import {
   lapsedRenewableListings,
@@ -184,6 +188,7 @@ import {
   clearPendingRedemption,
   type StrandedRedemption,
 } from "../fedimint/pending-redemptions.js";
+import { clearEcashExport, getEcashExport } from "../payments/ecash-exports.js";
 import {
   MIN_REAL_ATOMIC_FUNDING_MSATS,
   minimumAtomicFundingMessage,
@@ -1888,6 +1893,9 @@ export default function App() {
     // as a live offer OR be counted. Retired is device-local (owner-only), so
     // this only ever hides the owner's own superseded duplicates.
     !retiredIds.has(s.id) &&
+    // Slicing is paused, but its replay code remains for history/recovery.
+    // Do not advertise old sliced parents beside today's single escrows.
+    (TRADE_SLICING_ENABLED || !isSlicedTradeShape(s)) &&
     shouldShowOnBrowse({ escrow: s, browseCategory: "all", nowSec: now, isSoldOut: listingSoldOut(s) })
   );
   const visibleListings = allVisibleListings.filter(s =>
@@ -2801,8 +2809,27 @@ export default function App() {
             ?? fedimint.federationName
             ?? t("app.yourFederation")
           }
-          spendNotes={(amountMsats) => actions.spendNotes(amountMsats)}
+          // Explicit wallet exports are intended to be portable to Fedi on a
+          // second device. Embed the invite so Fedi can auto-join when needed;
+          // escrow-lock notes keep the compact default (no invite).
+          spendNotes={(amountMsats) => actions.spendNotes(amountMsats, undefined, true)}
+          recoverUnstashed={(notes) => actions.redeemEcash(
+            notes,
+            buildChamaOperationMeta({
+              flow: "recovery_payout",
+              amountMsats: fedimint.balanceMsats ?? 0,
+              reason: "ecash-export-stash-failed-reabsorb",
+            }),
+          )}
           onExported={() => { actions.refreshBalance().catch(() => {}); }}
+          onConfirmCleared={async () => {
+            const pending = getEcashExport();
+            if (pending?.source === "claim" && pending.escrowId) {
+              await actions.confirmClaimEcashExport(pending.escrowId);
+            } else {
+              clearEcashExport();
+            }
+          }}
           onClose={() => setShowEcashExport(false)}
         />
       )}
@@ -2906,6 +2933,7 @@ export default function App() {
           tradeCommunity={pendingClaim.tradeCommunity}
           fiatCurrency={pendingClaim.fiatCurrency}
           claimAndPayout={actions.claimAndPayout}
+          confirmClaimEcashExport={actions.confirmClaimEcashExport}
           claimTarget={hasFediInternalEcash() ? "fedi-wallet" : "lightning"}
           probeFederation={actions.probeFederation}
           onClose={(terminal) => {
@@ -3185,7 +3213,7 @@ export default function App() {
             fetchRatingSummary={actions.fetchRatingSummary}
             fetchCommunityBonds={actions.fetchCommunityBonds}
             knownTrades={knownTradesForConcentration}
-            onStartNextTranche={handleStartNextTranche}
+            onStartNextTranche={TRADE_SLICING_ENABLED ? handleStartNextTranche : undefined}
             onchainFundingPlan={actions.onchainFundingPlan}
             onPublishOnchainLock={actions.publishOnchainLock}
             onPrepareOnchainSettlement={actions.prepareOnchainSettlement}
@@ -3368,15 +3396,22 @@ export default function App() {
                   && (c.expiresAt === undefined || c.expiresAt <= 0 || now <= c.expiresAt))
               : undefined}
             onOpenChild={(id) => openEscrow(id)}
-            onStartEcashSlicePlan={async (parentId) => {
+            onStartEcashSlicePlan={TRADE_SLICING_ENABLED ? async (parentId) => {
               try {
                 const result = await actions.startEcashSlicePlan(parentId);
                 setToast({ message: `Protected ${result.children.length}-slice ecash plan started.`, type: "success" });
+                // PLAN_START is not the user's destination. The first child is
+                // the only fundable escrow now, so take the locking seller
+                // straight there instead of leaving them on a manifest whose
+                // rows merely look informational.
+                const firstSlice = result.children.find((child) => child.trancheChild?.index === 0)
+                  ?? result.children[0];
+                if (firstSlice) openEscrow(firstSlice.id);
               } catch (e: any) {
                 setToast({ message: e?.message || "Couldn't start the ecash slice plan.", type: "error" });
                 throw e;
               }
-            }}
+            } : undefined}
             // v1.2.4: direct-NWC Fund. Saved-NWC users skip the
             // AtomicFundingModal chooser entirely; the button on
             // TradeDetail dispatches fundAndLock with NWC params and
@@ -3549,7 +3584,9 @@ export default function App() {
                   try { addOrTouchSavedNwcConnection(opts.nwcConnectionString); } catch {}
                   return { ok: true };
                 }
-                const msg = humanizeNwcError(terminal.error || t("app.claimFailed"));
+                const msg = humanizeNwcError(
+                  ("error" in terminal ? terminal.error : "") || t("app.claimFailed"),
+                );
                 setToast({ message: msg, type: "error" });
                 return { ok: false, error: msg };
               } catch (e: any) {

@@ -80,6 +80,12 @@ import { deriveOnchainView } from "../../escrow-engine/onchain-escrow-view.js";
 import { ESCROW_NETWORK_LABEL } from "../../bond-multisig/onchain-escrow.js";
 import { TranchePlanStrip } from "../components/TranchePlanStrip.js";
 import { autoAdvanceOnchainTrancheKey, trancheGate } from "../../escrow-engine/tranche.js";
+import { deriveSlicePlan } from "../../escrow-engine/slice-policy.js";
+import { derivePlanState } from "../../escrow-engine/tranche-plan.js";
+import {
+  isSlicedTradeShape,
+  TRADE_SLICING_ENABLED,
+} from "../../escrow-engine/experimental-escrow-features.js";
 import { defaultCreditObserver } from "../../payments/claim-credit-ledger.js";
 import {
   arbiterRulingConcentration, concentrationWorthShowing, type RulingConcentration,
@@ -531,7 +537,7 @@ export function TradeDetail({
   const settlementFinalizeAttemptRef = useRef<string | null>(null);
   const [settlementSigning, setSettlementSigning] = useState(false);
   const trancheGateNow = useMemo(() => {
-    if (!state.tranche) return null;
+    if (!TRADE_SLICING_ENABLED || !state.tranche) return null;
     return trancheGate({
       planId: state.tranche.planId,
       total: state.tranche.total,
@@ -705,6 +711,35 @@ export function TradeDetail({
   const lockAmountMsats = hasMenu && lockMenuAmountMsats > 0
     ? lockMenuAmountMsats
     : state.amountMsats;
+  // A sliced ecash parent is a manifest, never a fundable escrow. Before the
+  // seller freezes the plan it carries sliceCount; afterwards it carries the
+  // signed tranchePlan. Funding must happen only on the deterministic child
+  // escrows, one slice at a time.
+  const isEcashSliceParent =
+    state.escrowMode === "ecash"
+    && !state.trancheChild
+    && ((state.sliceCount ?? 1) > 1 || state.tranchePlan?.settlementPolicy === "ecash-mutual-slices-v1");
+  const isSlicingTrade = isSlicedTradeShape(state);
+  const pendingEcashSliceRows = useMemo(() => {
+    if (!isEcashSliceParent || state.tranchePlan || (state.sliceCount ?? 1) < 2) return [];
+    try {
+      return deriveSlicePlan({
+        totalMsats: state.amountMsats,
+        userCount: state.sliceCount ?? 2,
+      }).tranches;
+    } catch {
+      // The reducer validates signed CREATE slice fields. This is defensive for
+      // legacy/foreign state: never let a malformed preview crash TradeDetail.
+      return [];
+    }
+  }, [isEcashSliceParent, state.amountMsats, state.sliceCount, state.tranchePlan]);
+  const ecashSlicePlanState = useMemo(() => {
+    if (!state.tranchePlan || state.settlementPolicy !== "ecash-mutual-slices-v1") return null;
+    return derivePlanState(
+      state,
+      (knownTrades ?? []).filter((trade) => trade.trancheChild?.parent === state.id),
+    );
+  }, [state, knownTrades]);
   const lockRequiresFinalOrder = hasMenu && canILock && myRole !== menuSelectorRole;
   const menuOrderNotFinal = lockRequiresFinalOrder && lockMenuItems.length > 0 && !savedOrderFinalized;
   const createdMenuRows = canSelectMenu
@@ -1491,7 +1526,7 @@ export function TradeDetail({
         </div>
       </div>
 
-      {trancheGateNow && (
+      {TRADE_SLICING_ENABLED && trancheGateNow && (
         <TranchePlanStrip
           state={state}
           gate={trancheGateNow}
@@ -1509,7 +1544,7 @@ export function TradeDetail({
         />
       )}
 
-      {state.escrowMode === "ecash" && (state.sliceCount ?? 1) > 1 && !state.tranchePlan && (
+      {TRADE_SLICING_ENABLED && state.escrowMode === "ecash" && (state.sliceCount ?? 1) > 1 && !state.tranchePlan && (
         <div style={{
           border: `1px solid ${T.accent}55`, background: T.accentDim,
           borderRadius: 12, padding: 12, marginBottom: 12,
@@ -1520,7 +1555,20 @@ export function TradeDetail({
           <div style={{ fontFamily: T.sans, fontSize: 11, color: T.muted, lineHeight: 1.5, marginTop: 5 }}>
             {t("tranche.ecashPlanBody")}
           </div>
-          {myRole === Role.SELLER && state.participants[Role.BUYER] && state.participants[Role.ARBITER] ? (
+          {pendingEcashSliceRows.length > 0 && (
+            <div style={{ display: "grid", gap: 6, marginTop: 9 }}>
+              {pendingEcashSliceRows.map((row) => (
+                <div
+                  key={row.index}
+                  style={{ display: "flex", justifyContent: "space-between", padding: "8px 10px", borderRadius: 9, border: `1px solid ${T.border}`, background: T.surface, color: T.text, fontFamily: T.mono, fontSize: 10 }}
+                >
+                  <span>{t("tranche.sliceRow", { n: row.index + 1 })}</span>
+                  <span>{Math.ceil(row.amountMsats / 1000).toLocaleString()} sats · {t("tranche.awaitingPlan")}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {myRole === Role.SELLER && state.participants[Role.BUYER] && (state.participants[Role.ARBITER] || previewArbiterPk) ? (
             <button
               type="button"
               disabled={startingSlicePlan || !onStartEcashSlicePlan}
@@ -1545,7 +1593,7 @@ export function TradeDetail({
         </div>
       )}
 
-      {state.tranchePlan && state.settlementPolicy === "ecash-mutual-slices-v1" && (
+      {TRADE_SLICING_ENABLED && state.tranchePlan && state.settlementPolicy === "ecash-mutual-slices-v1" && (
         <div style={{ border: `1px solid ${T.border}`, borderRadius: 12, padding: 12, marginBottom: 12 }}>
           <div style={{ fontFamily: T.mono, fontWeight: 800, fontSize: 11, color: T.text }}>
             {t("tranche.planTitle", { n: state.tranchePlan.total })}
@@ -1553,16 +1601,19 @@ export function TradeDetail({
           <div style={{ display: "grid", gap: 6, marginTop: 8 }}>
             {state.tranchePlan.tranches.map((row) => {
               const child = knownTrades?.find((trade) => trade.trancheChild?.parent === state.id && trade.trancheChild.index === row.index);
+              const isActiveSlice = !!child
+                && child.id === ecashSlicePlanState?.activeChildId
+                && ecashSlicePlanState.nextSafeAction === "fund-active-child";
               return (
                 <button
                   key={row.index}
                   type="button"
                   disabled={!child || !onOpenChild}
                   onClick={() => child && onOpenChild?.(child.id)}
-                  style={{ display: "flex", justifyContent: "space-between", padding: "8px 10px", borderRadius: 9, border: `1px solid ${T.border}`, background: T.surface, color: T.text, cursor: child ? "pointer" : "default", fontFamily: T.mono, fontSize: 10 }}
+                  style={{ display: "flex", justifyContent: "space-between", padding: "8px 10px", borderRadius: 9, border: `1px solid ${isActiveSlice ? T.accent : T.border}`, background: isActiveSlice ? T.accentDim : T.surface, color: isActiveSlice ? T.accent : T.text, cursor: child ? "pointer" : "default", fontFamily: T.mono, fontSize: 10, fontWeight: isActiveSlice ? 800 : 400 }}
                 >
                   <span>{t("tranche.sliceRow", { n: row.index + 1 })}</span>
-                  <span>{Math.ceil(row.amountMsats / 1000).toLocaleString()} sats · {child?.status ?? t("tranche.publishing")}</span>
+                  <span>{Math.ceil(row.amountMsats / 1000).toLocaleString()} sats · {isActiveSlice ? t("tranche.fundThisSlice") : (child?.status ?? t("tranche.publishing"))}</span>
                 </button>
               );
             })}
@@ -1966,6 +2017,8 @@ export function TradeDetail({
             && myRole
             && canILock
             && !onchainView
+            && !isEcashSliceParent
+            && (TRADE_SLICING_ENABLED || !isSlicingTrade)
             && participants.buyer
             && !lockMenuSelectionMissing
             && !menuOrderNotFinal && (() => {
@@ -2849,7 +2902,9 @@ export function TradeDetail({
               </div>
             </div>
           )}
-          {!myRole && !hasDuplicateParticipant && !currentKeyAlreadyPresent && state.status === EscrowStatus.CREATED && canJoinTrade && (
+          {!myRole && !hasDuplicateParticipant && !currentKeyAlreadyPresent
+            && (TRADE_SLICING_ENABLED || !isSlicingTrade)
+            && state.status === EscrowStatus.CREATED && canJoinTrade && (
             <div style={{
               paddingTop: 16,
               marginTop: 16,
@@ -4270,7 +4325,9 @@ export function TradeDetail({
         </div>
       )}
 
-      {!myRole && !hasDuplicateParticipant && state.status === EscrowStatus.CREATED && currentKeyAlreadyPresent && (
+      {!myRole && !hasDuplicateParticipant
+        && (TRADE_SLICING_ENABLED || !isSlicingTrade)
+        && state.status === EscrowStatus.CREATED && currentKeyAlreadyPresent && (
         <div style={{
           background: T.amberDim, border: `1px solid ${T.amber}44`,
           borderRadius: T.r, padding: 14, marginBottom: 16,

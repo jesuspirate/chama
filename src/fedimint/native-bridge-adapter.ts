@@ -851,6 +851,7 @@ export class NativeBridgeWallet implements IFedimintWallet {
     spendNotes: async (
       amountMsats: number,
       _meta?: ChamaOperationMeta,
+      includeInvite = false,
     ): Promise<string> => {
       await this.ensureBridgeReady();
       const result = await this.request<NativeSpendNotesResponse>("/spend-notes", {
@@ -858,6 +859,7 @@ export class NativeBridgeWallet implements IFedimintWallet {
         body: {
           amountMsats,
           allowOverpay: false,
+          includeInvite,
         },
       });
       await this.refreshBalance().catch((error) => {
@@ -872,7 +874,7 @@ export class NativeBridgeWallet implements IFedimintWallet {
     // pending-native-locks stash.
     spendNotesDetailed: async (
       amountMsats: number,
-      opts: { tryCancelAfterSecs?: number },
+      opts: { tryCancelAfterSecs?: number; includeInvite?: boolean },
       _meta?: ChamaOperationMeta,
     ): Promise<{ notes: string; operationId?: string }> => {
       await this.ensureBridgeReady();
@@ -884,6 +886,7 @@ export class NativeBridgeWallet implements IFedimintWallet {
           ...(typeof opts.tryCancelAfterSecs === "number"
             ? { timeoutSecs: Math.floor(opts.tryCancelAfterSecs) }
             : {}),
+          includeInvite: opts.includeInvite ?? false,
         },
       });
       // Fire-and-forget: the notes must reach the caller's crash guard with

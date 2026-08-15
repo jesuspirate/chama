@@ -36,6 +36,10 @@ export interface EcashExport {
   federationLabel?: string;
   /** When the export was generated (Unix ms). */
   createdAt: number;
+  /** Wallet exports are standalone; claim exports must also finish the
+   *  matching escrow only after the user confirms the bearer note is safe. */
+  source?: "wallet" | "claim";
+  escrowId?: string;
 }
 
 /** Persist a freshly-generated export. Called immediately after spendNotes,
@@ -44,6 +48,8 @@ export function stashEcashExport(input: {
   notes: string;
   amountMsats: number;
   federationLabel?: string;
+  source?: "wallet" | "claim";
+  escrowId?: string;
 }): void {
   try {
     const entry: EcashExport = {
@@ -51,6 +57,8 @@ export function stashEcashExport(input: {
       amountMsats: input.amountMsats,
       federationLabel: input.federationLabel,
       createdAt: Date.now(),
+      source: input.source ?? "wallet",
+      escrowId: input.escrowId,
     };
     setScopedStorageItem(ECASH_EXPORT_KEY, JSON.stringify(entry));
     console.info(
@@ -60,7 +68,35 @@ export function stashEcashExport(input: {
   } catch (e) {
     // Loud: failing to persist defeats the crash-safety this exists for.
     console.error("[chama] ecash-export: stash failed — note may be at risk:", e);
+    throw e;
   }
+}
+
+/** Fail closed before any spend. Also prevents one pending bearer note from
+ *  being overwritten by another. A same-claim record is a resumable success. */
+export function assertEcashExportWritable(escrowId?: string): EcashExport | null {
+  const existing = getEcashExport();
+  if (existing) {
+    if (escrowId && existing.source === "claim" && existing.escrowId === escrowId) {
+      return existing;
+    }
+    throw new Error(
+      "Finish the pending ecash export in Me before creating another one. No sats moved.",
+    );
+  }
+  const probe = `chama-ecash-export-probe-${Date.now()}`;
+  try {
+    setScopedStorageItem(ECASH_EXPORT_KEY, probe);
+    if (getScopedStorageItem(ECASH_EXPORT_KEY) !== probe) throw new Error("storage verification failed");
+    removeScopedStorageItem(ECASH_EXPORT_KEY);
+  } catch (e) {
+    try { if (getScopedStorageItem(ECASH_EXPORT_KEY) === probe) removeScopedStorageItem(ECASH_EXPORT_KEY); } catch {}
+    throw new Error(
+      "Can't export ecash safely right now because this device can't persist the recovery copy. No sats moved.",
+      { cause: e },
+    );
+  }
+  return null;
 }
 
 /** The current pending export, or null. Drives the "pending ecash export"
@@ -91,5 +127,6 @@ export function clearEcashExport(): void {
     console.info("[chama] ecash-export cleared (user confirmed import)");
   } catch (e) {
     console.warn("[chama] ecash-export: clear failed:", e);
+    throw e;
   }
 }

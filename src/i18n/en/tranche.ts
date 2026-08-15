@@ -19,8 +19,10 @@ export const tranche: Record<string, string> = {
   "tranche.ecashPlanTitle": "ECASH · {n} MUTUAL SLICES",
   "tranche.ecashPlanBody": "Each slice gets its own 2-of-3 ecash lock. The next slice stays blocked until the prior payout is proven.",
   "tranche.startProtected": "Start {n} protected slices",
-  "tranche.sellerStarts": "The seller starts the signed slice plan after buyer and arbiter seats are filled.",
+  "tranche.sellerStarts": "After the buyer reserves, the seller starts the signed plan. Chama freezes the assigned arbiter automatically.",
   "tranche.planTitle": "ECASH SLICE PLAN · {n} SLICES",
   "tranche.sliceRow": "Slice {n}",
+  "tranche.awaitingPlan": "waiting for seller",
+  "tranche.fundThisSlice": "fund this slice →",
   "tranche.publishing": "publishing",
 };

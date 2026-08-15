@@ -475,9 +475,32 @@ function handlePlanStart(state: EscrowState, event: ParsedEscrowEvent<PlanStartP
     return err("INVALID_PLAN_COORDINATOR", "Plan start must be signed by the parent initiator", event.raw.id);
   }
   if (state.participants[Role.BUYER] !== p.buyerPubkey
-    || state.participants[Role.SELLER] !== p.sellerPubkey
-    || state.participants[Role.ARBITER] !== p.arbiterPubkey) {
-    return err("PLAN_PARTICIPANT_MISMATCH", "Plan participants must match the seated parent participants", event.raw.id);
+    || state.participants[Role.SELLER] !== p.sellerPubkey) {
+    return err("PLAN_PARTICIPANT_MISMATCH", "Plan buyer and seller must match the seated parent participants", event.raw.id);
+  }
+  const seatedArbiter = state.participants[Role.ARBITER];
+  if (seatedArbiter) {
+    if (seatedArbiter !== p.arbiterPubkey) {
+      return err("PLAN_PARTICIPANT_MISMATCH", "Plan arbiter must match the seated parent arbiter", event.raw.id);
+    }
+  } else {
+    // Ecash auto-assignment normally happens at LOCK. A sliced parent must
+    // freeze that same seat one event earlier, in PLAN_START, because children
+    // cannot exist (and therefore cannot LOCK) until the plan is signed.
+    // Accept only the deterministic preferred/legacy assignments; never let a
+    // coordinating seller name an arbitrary pool member.
+    const exclude = [p.buyerPubkey, p.sellerPubkey];
+    const preferred = pickPreferredArbiter(
+      state.communityArbiters,
+      state.bondedArbiters,
+      state.id,
+      exclude,
+    );
+    const legacy = pickArbiterFromPool(state.communityArbiters, state.id, exclude);
+    const accepted = [preferred, legacy].filter((pk): pk is string => !!pk);
+    if (!accepted.includes(p.arbiterPubkey)) {
+      return err("PLAN_ARBITER_NOT_ASSIGNED", "Plan arbiter must be the deterministic pool assignment", event.raw.id);
+    }
   }
   if (p.totalMsats !== state.amountMsats) return err("PLAN_AMOUNT_MISMATCH", "Plan total must equal parent amount", event.raw.id);
   if (state.sliceCount !== undefined) {
@@ -486,6 +509,10 @@ function handlePlanStart(state: EscrowState, event: ParsedEscrowEvent<PlanStartP
     }
   }
   const next = cloneState(state);
+  // PLAN_START is the ecash-slicing equivalent of LOCK's auto-seat: every
+  // child and every replay now sees the same frozen arbiter without requiring
+  // that arbiter to publish a pre-lock JOIN.
+  next.participants[Role.ARBITER] = p.arbiterPubkey;
   next.tranchePlan = { ...p, tranches: p.tranches.map(row => ({ ...row })), eventId: event.raw.id };
   // The parent is now a persistent manifest/room, not a fundable listing.
   next.expiresAt = Number.MAX_SAFE_INTEGER;

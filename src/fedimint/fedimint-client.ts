@@ -124,7 +124,11 @@ export interface IFedimintWallet {
 
   mint: {
     /** Spend notes from wallet — returns OOB ecash string */
-    spendNotes(amountMsats: number, meta?: ChamaOperationMeta): Promise<string>;
+    spendNotes(
+      amountMsats: number,
+      meta?: ChamaOperationMeta,
+      includeInvite?: boolean,
+    ): Promise<string>;
     /** #37 lock crash-safety: spend with an explicit try_cancel_after
      *  horizon and surface the spend operation id. Lock spends must
      *  outlive any trade + dispute (the client-side auto-cancel would
@@ -133,7 +137,7 @@ export interface IFedimintWallet {
      *  back to `spendNotes` (default horizon, no operation id). */
     spendNotesDetailed?(
       amountMsats: number,
-      opts: { tryCancelAfterSecs?: number },
+      opts: { tryCancelAfterSecs?: number; includeInvite?: boolean },
       meta?: ChamaOperationMeta,
     ): Promise<{ notes: string; operationId?: string }>;
     /** Redeem OOB ecash notes into wallet */
@@ -223,6 +227,10 @@ export interface EscrowLockBundle {
  * within minutes of the next boot instead).
  */
 export const LOCK_SPEND_TRY_CANCEL_SECS = 90 * 24 * 60 * 60;
+/** User-facing bearer exports stay claimable for two weeks, then the mint
+ *  client can reabsorb an unclaimed note. This bounds even the tiny
+ *  spend-return→stash crash window without hollowing out a live export. */
+export const ECASH_EXPORT_TRY_CANCEL_SECS = 14 * 24 * 60 * 60;
 
 
 // [$$] money instrumentation v0.1.71b
@@ -844,12 +852,16 @@ export class FedimintClient {
    *
    * This is what gets split into SSS shares for escrow.
    */
-  async spendNotes(amountMsats: number, meta?: ChamaOperationMeta): Promise<string> {
+  async spendNotes(
+    amountMsats: number,
+    meta?: ChamaOperationMeta,
+    includeInvite = false,
+  ): Promise<string> {
     const wallet = this.requireWallet();
     // INVARIANT(mint-mutex): every spend/redeem on the shared OPFS
     // wallet serializes on the cross-tab mint lock (C12). The wrapped
     // fn calls the raw wallet directly — never another locked method.
-    return withMintLock("spend-notes", () => wallet.mint.spendNotes(amountMsats, meta));
+    return withMintLock("spend-notes", () => wallet.mint.spendNotes(amountMsats, meta, includeInvite));
   }
 
   /**
@@ -1244,18 +1256,19 @@ export class FedimintClient {
     totalMsats: number,
     tryCancelAfterSecs: number,
     meta?: ChamaOperationMeta,
+    includeInvite = false,
   ): Promise<{ oobNotes: string; operationId?: string }> {
     const wallet = this.requireWallet();
     return withMintLock("premium-spend", async () => {
       if (wallet.mint.spendNotesDetailed) {
         const detailed = await wallet.mint.spendNotesDetailed(
           totalMsats,
-          { tryCancelAfterSecs },
+          { tryCancelAfterSecs, includeInvite },
           meta,
         );
         return { oobNotes: detailed.notes, operationId: detailed.operationId };
       }
-      const oobNotes = await wallet.mint.spendNotes(totalMsats, meta);
+      const oobNotes = await wallet.mint.spendNotes(totalMsats, meta, includeInvite);
       return { oobNotes };
     });
   }

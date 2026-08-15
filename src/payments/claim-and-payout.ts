@@ -112,6 +112,8 @@ export type ClaimAndPayoutPhase =
   | { kind: "confirming" }
   | { kind: "paying-invoice" }
   | { kind: "paying-onchain" }
+  | { kind: "exporting-ecash" }
+  | { kind: "ecash-ready"; notes: string; amountMsats: number }
   | { kind: "payout-confirming"; error?: string }
   | { kind: "done" }
   | { kind: "claim-failed"; error: string }
@@ -121,6 +123,7 @@ export type ClaimAndPayoutPhase =
 
 export type ClaimAndPayoutTerminal =
   | { kind: "done" }
+  | { kind: "ecash-ready"; notes: string; amountMsats: number }
   | { kind: "claim-failed"; error: string }
   | { kind: "claim-bridge-threw"; error: string }
   | { kind: "claim-pending"; error: string }
@@ -257,12 +260,12 @@ function errorMessage(e: unknown, fallback: string): string {
 export function balanceCoversPayout(
   balanceMsats: number,
   expectedDeltaMsats: number,
-  payoutKind: "lightning" | "onchain" = "lightning",
+  payoutKind: "lightning" | "onchain" | "ecash" = "lightning",
 ): boolean {
   const balance = Math.max(0, Math.floor(balanceMsats));
   const expected = Math.max(0, Math.floor(expectedDeltaMsats));
   if (expected <= 0) return false;
-  if (payoutKind === "onchain") {
+  if (payoutKind === "onchain" || payoutKind === "ecash") {
     const grossSats = Math.floor(expected / 1000);
     return grossSats > 0 && Math.floor(balance / 1000) >= grossSats;
   }
@@ -392,6 +395,12 @@ export interface RunClaimAndPayoutDeps {
   /** Optional native on-chain payout. Amount is the gross claimed sats
    *  available before wallet-module peg-out fees. */
   payOnchain?: (grossAmountSats: number) => Promise<void>;
+  /** Mint and durably stash a fresh bearer note for the net winner amount.
+   *  Must persist before resolving; COMPLETE waits for explicit approval. */
+  exportEcash?: (amountMsats: number) => Promise<{ notes: string; amountMsats: number }>;
+  /** Pre-spend fail-closed guard. Returns a same-claim pending export to
+   *  resume, throws if another export exists or durable storage is unavailable. */
+  prepareEcashExport?: () => { notes: string; amountMsats: number } | null;
   // ── 3.5.1 payout double-pay guard (Lightning only) ──────────────────────
   // All optional so existing callers/tests run unchanged (guard becomes a
   // no-op). Bound to payments/payout-journal.ts + bridge.awaitPayoutOutcome
@@ -433,7 +442,7 @@ export interface RunClaimAndPayoutDeps {
   /** Re-attach to a submitted payout and report its terminal outcome
    *  without paying again. "unknown" ⇒ keep the record, refuse to re-pay. */
   awaitPayoutOutcome?: (operationId: string) => Promise<"settled" | "refunded" | "unknown">;
-  payoutKind?: "lightning" | "onchain";
+  payoutKind?: "lightning" | "onchain" | "ecash";
   /** Publish escrow COMPLETE after the wallet balance has actually
    *  confirmed. Best-effort: failure must not block payout/recovery. */
   completeClaim?: (escrowId: string) => Promise<void>;
@@ -485,6 +494,23 @@ export async function runClaimAndPayout(
 ): Promise<ClaimAndPayoutTerminal> {
   const emit = (p: ClaimAndPayoutPhase) => opts.onPhase(p);
   const payoutKind = opts.payoutKind ?? "lightning";
+
+  // Ecash is a bearer payout. Refuse to reconstruct/redeem anything until
+  // durable storage is proven writable, and resume an already-created note
+  // instead of ever spending twice after a restart.
+  if (payoutKind === "ecash") {
+    try {
+      const pending = opts.prepareEcashExport?.() ?? null;
+      if (pending) {
+        emit({ kind: "ecash-ready", ...pending });
+        return { kind: "ecash-ready", ...pending };
+      }
+    } catch (e) {
+      const error = errorMessage(e, "Ecash export cannot start safely");
+      emit({ kind: "payout-failed", error, claimCompleted: false });
+      return { kind: "payout-failed", error, claimCompleted: false };
+    }
+  }
 
   // Best-effort COMPLETE publish — shared by the normal success path and the
   // already-settled short-circuits in the double-pay guard below.
@@ -868,7 +894,11 @@ export async function runClaimAndPayout(
   // Claim retries cleanly (picker → fresh invoice → cover check →
   // payout). This matters for tiny claims too: the balance can be real
   // but below the main recovery banner's material line.
-  emit({ kind: payoutKind === "onchain" ? "paying-onchain" : "paying-invoice" });
+  emit({ kind: payoutKind === "onchain"
+    ? "paying-onchain"
+    : payoutKind === "ecash"
+      ? "exporting-ecash"
+      : "paying-invoice" });
   try {
     moneyLog("CLAIM-PAY-IN", {
       escrowId: opts.escrowId,
@@ -883,6 +913,13 @@ export async function runClaimAndPayout(
     if (payoutKind === "onchain") {
       if (!opts.payOnchain) throw new Error("Onchain payout is not available");
       await opts.payOnchain(Math.floor(opts.expectedDeltaMsats / 1000));
+    } else if (payoutKind === "ecash") {
+      if (!opts.exportEcash) throw new Error("Ecash payout is not available");
+      const exported = await opts.exportEcash(opts.expectedDeltaMsats);
+      moneyLog("CLAIM-PAY-OUT", { escrowId: opts.escrowId, result: "ecash-ready" });
+      claimTrace("orchestrator-pay-out", { escrowId: opts.escrowId, result: "ecash-ready" });
+      emit({ kind: "ecash-ready", ...exported });
+      return { kind: "ecash-ready", ...exported };
     } else {
       // v4.0.0 FAIL-CLOSED: never SEND a payout we can't guard against a re-pay.
       // If the device can't persist the journal (quota / private mode / disabled
@@ -974,7 +1011,14 @@ export async function runClaimAndPayout(
     // other throw): the sats are still local, so re-paying is correct. Drop
     // any record so the top guard doesn't block the legitimate retry.
     if (payoutKind === "lightning") opts.clearPayoutRecord?.(opts.escrowId);
-    const error = errorMessage(e, payoutKind === "onchain" ? "Onchain payout failed" : "Lightning payment failed");
+    const error = errorMessage(
+      e,
+      payoutKind === "onchain"
+        ? "Onchain payout failed"
+        : payoutKind === "ecash"
+          ? "Ecash export failed"
+          : "Lightning payment failed",
+    );
     recordSatsTrace({
       source: "claim",
       escrowId: opts.escrowId,

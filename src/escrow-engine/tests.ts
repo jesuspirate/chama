@@ -273,6 +273,7 @@ import {
   stashEcashExport,
   getEcashExport,
   clearEcashExport,
+  assertEcashExportWritable,
 } from "../payments/ecash-exports.js";
 import {
   recoverSeedWordsFromEvents,
@@ -6512,12 +6513,18 @@ console.log("\n── COMMUNITY REGISTRY + STORAGE ──");
     (globalThis as any).localStorage.clear();
     setLocalStorageUserScope("npub_export_test_aaaa");
     assert(getEcashExport() === null, "ecash-export: empty by default");
+    assert(assertEcashExportWritable() === null,
+      "ecash-export: durable-storage preflight passes before a spend");
     stashEcashExport({ notes: "AwEEtestnote", amountMsats: 1500, federationLabel: "BLF" });
     const got = getEcashExport();
     assert(
       got !== null && got.notes === "AwEEtestnote" && got.amountMsats === 1500 && got.federationLabel === "BLF",
       "ecash-export: stash roundtrips notes + amount + label",
     );
+    let overwriteBlocked = false;
+    try { assertEcashExportWritable("another_claim"); } catch { overwriteBlocked = true; }
+    assert(overwriteBlocked,
+      "ecash-export: a pending bearer note blocks any second export before spend");
     // Scoped per npub — a pending export must never bleed to another user.
     setLocalStorageUserScope("npub_export_test_bbbb");
     assert(getEcashExport() === null, "ecash-export: a different npub sees no pending export (scoped)");
@@ -15959,6 +15966,69 @@ console.log("\n── RUN CLAIM AND PAYOUT ──");
       "Phase order: confirming → paying-invoice");
     assert(order[order.length - 1] === "done",
       "Terminal phase emitted: done");
+  }
+
+  // ── Ecash path: guarded redeem → fresh net note → wait for approval ──
+  {
+    const wallet = makeMockWallet({ balances: [0, 100_000, 100_000] });
+    const phases: ClaimAndPayoutPhase[] = [];
+    let exportedAmount = 0;
+    let nowMs = 0;
+    const terminal = await runClaimAndPayout({
+      escrowId: "esc_claim_ecash",
+      bolt11: "ecash-export",
+      payoutKind: "ecash",
+      expectedDeltaMsats: 99_750,
+      saveAfter: false,
+      getBalance: wallet.getBalance,
+      claimAndRedeem: wallet.claimAndRedeem,
+      completeClaim: wallet.completeClaim,
+      clearPendingRedemption: wallet.clearPendingRedemption,
+      payInvoice: wallet.payInvoice,
+      prepareEcashExport: () => null,
+      exportEcash: async (amountMsats) => {
+        exportedAmount = amountMsats;
+        return { notes: "fedimint-ready-note", amountMsats };
+      },
+      addOrTouchLightningHandle: wallet.addOrTouchLightningHandle,
+      onPhase: p => phases.push(p),
+      sleep: async (ms) => { nowMs += ms; },
+      now: () => nowMs,
+      confirmTimeoutMs: 30_000,
+      pollIntervalMs: 1_000,
+    });
+    assert(terminal.kind === "ecash-ready" && terminal.notes === "fedimint-ready-note",
+      "Ecash claim returns the durably stashed bearer note");
+    assert(exportedAmount === 99_750,
+      "Ecash claim exports the net winner amount (premium residue stays local)");
+    assert(wallet.calls.completeClaim === 0,
+      "Ecash claim does not publish COMPLETE before explicit import approval");
+    assert(phases.some(p => p.kind === "exporting-ecash"),
+      "Ecash claim exposes a securing-note phase");
+  }
+
+  // ── Restart: same-claim pending note resumes without claim or spend ──
+  {
+    let claims = 0;
+    let exports = 0;
+    const terminal = await runClaimAndPayout({
+      escrowId: "esc_claim_ecash_resume",
+      bolt11: "ecash-export",
+      payoutKind: "ecash",
+      expectedDeltaMsats: 50_000,
+      saveAfter: false,
+      getBalance: async () => 0,
+      claimAndRedeem: async () => { claims++; },
+      payInvoice: async () => {},
+      prepareEcashExport: () => ({ notes: "already-stashed", amountMsats: 50_000 }),
+      exportEcash: async () => { exports++; return { notes: "wrong", amountMsats: 50_000 }; },
+      addOrTouchLightningHandle: () => {},
+      onPhase: () => {},
+    });
+    assert(terminal.kind === "ecash-ready" && terminal.notes === "already-stashed",
+      "Restart resumes the exact pending claim export");
+    assert(claims === 0 && exports === 0,
+      "Restart never reconstructs or spends again when a claim export is pending");
   }
 
   // ── Sequencing: payInvoice never called before claim confirms ───────

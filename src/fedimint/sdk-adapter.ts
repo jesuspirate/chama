@@ -1804,8 +1804,17 @@ export function adaptRealWallet(
     },
 
     mint: {
-      async spendNotes(amountMsats: number, meta?: ChamaOperationMeta) {
-        const result = await real.mint.spendNotes(amountMsats, undefined, false, meta ?? {});
+      async spendNotes(
+        amountMsats: number,
+        meta?: ChamaOperationMeta,
+        includeInvite = false,
+      ) {
+        const result = await real.mint.spendNotes(
+          amountMsats,
+          undefined,
+          includeInvite,
+          meta ?? {},
+        );
         return result.notes;
       },
       // #37 lock crash-safety: lock spends pass an explicit long
@@ -1815,7 +1824,7 @@ export function adaptRealWallet(
       // pending-native-locks stash.
       async spendNotesDetailed(
         amountMsats: number,
-        opts: { tryCancelAfterSecs?: number },
+        opts: { tryCancelAfterSecs?: number; includeInvite?: boolean },
         meta?: ChamaOperationMeta,
       ) {
         const result = await real.mint.spendNotes(
@@ -1823,7 +1832,7 @@ export function adaptRealWallet(
           typeof opts.tryCancelAfterSecs === "number"
             ? Math.floor(opts.tryCancelAfterSecs)
             : undefined,
-          false,
+          opts.includeInvite ?? false,
           meta ?? {},
         );
         return {

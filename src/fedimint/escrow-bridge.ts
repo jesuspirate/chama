@@ -15,6 +15,7 @@ import { type EscrowClient, type Signer } from "../escrow-engine/escrow-client.j
 import {
   hashNotes,
   LOCK_SPEND_TRY_CANCEL_SECS,
+  ECASH_EXPORT_TRY_CANCEL_SECS,
   type EscrowLockBundle,
   type FedimintClient,
   type PayOutcomeByEscrowResult,
@@ -1162,9 +1163,29 @@ export class EscrowFedimintBridge {
     return await this.fedimint.payOutcomeByEscrow(escrowId, sinceMs);
   }
 
-  async spendNotes(amountMsats: number, meta?: ChamaOperationMeta): Promise<string> {
+  async spendNotes(
+    amountMsats: number,
+    meta?: ChamaOperationMeta,
+    includeInvite = false,
+  ): Promise<string> {
     // FedimintClient exposes spendNotes via its wallet; route through there.
-    return await this.fedimint.spendNotes(amountMsats, meta);
+    return await this.fedimint.spendNotes(amountMsats, meta, includeInvite);
+  }
+
+  /** User-facing export: long auto-refund horizon + invite-bearing note for
+   *  Fedi portability. Detailed spend returns straight into the caller's
+   *  synchronous stash write (no intervening await). */
+  async spendNotesForExport(
+    amountMsats: number,
+    meta?: ChamaOperationMeta,
+  ): Promise<string> {
+    const spent = await this.fedimint.spendNotesWithHorizon(
+      amountMsats,
+      ECASH_EXPORT_TRY_CANCEL_SECS,
+      meta,
+      true,
+    );
+    return spent.oobNotes;
   }
 
   async redeemEcash(oobNotes: string, meta?: ChamaOperationMeta): Promise<void> {

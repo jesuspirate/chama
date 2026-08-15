@@ -10,7 +10,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "android:sync": "npm run build && npx cap sync android",
-    "test": "npx tsx src/escrow-engine/tests.ts && npx tsx src/escrow-engine/tranche-plan.tests.ts && npx tsx src/escrow-engine/slice-policy.tests.ts && npx tsx src/escrow-engine/slice-create-gate.tests.ts && npx tsx src/escrow-engine/slice-funding-loop.tests.ts && npx tsx src/guided/tests.ts && npx tsx src/chip-in/tests.ts && npx tsx src/stack/tests.ts",
+    "test": "npx tsx src/escrow-engine/tests.ts && npx tsx src/escrow-engine/tranche-plan.tests.ts && npx tsx src/escrow-engine/slice-policy.tests.ts && npx tsx src/escrow-engine/slice-create-gate.tests.ts && npx tsx src/escrow-engine/slice-funding-loop.tests.ts && npx tsx src/payments/ecash-qr.tests.ts && npx tsx src/guided/tests.ts && npx tsx src/chip-in/tests.ts && npx tsx src/stack/tests.ts",
     "typecheck": "tsc --noEmit",
     "repo:hygiene": "./scripts/check-repo-hygiene.sh",
     "audit:deps": "node scripts/dependency-audit.mjs",
@@ -48,6 +48,7 @@
     "jsqr": "^1.4.0",
     "nostr-tools": "^2.23.3",
     "qrcode": "^1.5.4",
+    "qrloop": "^1.4.1",
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
     "shamir-secret-sharing": "^0.0.4"

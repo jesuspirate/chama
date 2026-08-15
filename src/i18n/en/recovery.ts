@@ -3,6 +3,9 @@
 // EcashExportModal, ChamaBar). ⚠ This copy was tuned calm-vs-alarm — the
 // English here must stay byte-identical to the shipped v5 wording.
 export const recovery: Record<string, string> = {
+  "recovery.exportClearError": "Chama couldn't finish clearing this export. The recovery copy is still kept.",
+  "recovery.exportClearing": "Finishing safely…",
+  "recovery.exportStashFailedReabsorbed": "Chama couldn't save the ecash recovery copy, so the export was canceled. Your sats stay in Chama (or auto-refund after the export timeout). Free device storage and try again.",
   "recovery.aBalance": "a balance",
   "recovery.activeTradeMany": "{count} active trades",
   "recovery.activeTradeOne": "1 active trade",
@@ -22,6 +25,8 @@ export const recovery: Record<string, string> = {
     "Sure? Chama will forget this note — tap again only if it's saved",
   "recovery.exportClearCta": "I've imported it — clear",
   "recovery.exportCopyCta": "Copy ecash",
+  "recovery.exportQrAlt": "Animated ecash QR code for Fedi",
+  "recovery.exportQrHelp": "In Fedi, scan this continuously until the progress bar completes.",
   "recovery.exportErrorTitle": "Couldn't generate the note",
   "recovery.exportGenerateCta": "Generate ecash note",
   "recovery.exportGenerateError":

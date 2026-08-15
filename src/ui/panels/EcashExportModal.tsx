@@ -13,13 +13,15 @@
 // surface in Me re-opens this modal to retrieve it. Clearing the stash is
 // two-tap, since it makes Chama forget the only copy it holds.
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { T } from "../theme.js";
 import { useT } from "../../i18n/index.js";
 import { BitcoinAmount } from "../components/BitcoinAmount.js";
 import { CopyButton } from "../components/CopyButton.js";
 import { QRCode } from "../QRCode.js";
+import { ecashToQrFrames } from "../../payments/ecash-qr.js";
 import {
+  assertEcashExportWritable,
   clearEcashExport,
   getEcashExport,
   stashEcashExport,
@@ -31,7 +33,10 @@ export function EcashExportModal({
   balanceMsats,
   federationLabel,
   spendNotes,
+  recoverUnstashed,
   onExported,
+  onConfirmCleared,
+  closeAfterConfirm,
   onClose,
   preset,
 }: {
@@ -41,8 +46,16 @@ export function EcashExportModal({
   federationLabel: string;
   /** Bound to actions.spendNotes — spends the amount into an OOB note string. */
   spendNotes: (amountMsats: number) => Promise<string>;
+  /** Reabsorb a freshly-created note if the post-spend durable stash write
+   *  unexpectedly fails after its preflight passed. */
+  recoverUnstashed?: (notes: string) => Promise<void>;
   /** Fired after a successful generate so the shell can refresh the balance. */
   onExported?: () => void;
+  /** Optional durable finalizer (claim-backed exports use this to publish
+   *  COMPLETE and clear only after explicit user approval). */
+  onConfirmCleared?: () => void | Promise<void>;
+  /** Override the normal dismiss callback after a successful confirmation. */
+  closeAfterConfirm?: () => void;
   onClose: () => void;
   /** v3.4.0 C13 — show an EXISTING bearer note (a stranded claim stash
    *  entry) instead of spending balance into a fresh one. The modal
@@ -56,7 +69,7 @@ export function EcashExportModal({
     headline: string;
     /** Replaces the ready-phase explainer copy. */
     body: string;
-    onConfirmCleared: () => void;
+    onConfirmCleared: () => void | Promise<void>;
   };
 }) {
   const { t } = useT();
@@ -70,17 +83,30 @@ export function EcashExportModal({
   );
   const [error, setError] = useState<string>("");
   const [confirmClear, setConfirmClear] = useState(false);
+  const [clearing, setClearing] = useState(false);
 
   const sats = Math.floor(Math.max(0, balanceMsats) / 1000);
   const exportedSats = Math.floor(Math.max(0, exportedMsats) / 1000);
+  const qrFrames = useMemo(() => ecashToQrFrames(notes), [notes]);
 
   const generate = async () => {
     setPhase("generating");
     setError("");
     try {
+      assertEcashExportWritable();
       const oob = await spendNotes(balanceMsats);
       // Crash-safety: persist BEFORE we show it.
-      stashEcashExport({ notes: oob, amountMsats: balanceMsats, federationLabel });
+      try {
+        stashEcashExport({ notes: oob, amountMsats: balanceMsats, federationLabel, source: "wallet" });
+      } catch (stashError) {
+        try { await recoverUnstashed?.(oob); } catch (redeemError) {
+          console.error("[chama] unstashed wallet export reabsorb failed; auto-refund remains armed:", redeemError);
+        }
+        throw new Error(
+          t("recovery.exportStashFailedReabsorbed"),
+          { cause: stashError },
+        );
+      }
       setNotes(oob);
       setExportedMsats(balanceMsats);
       setPhase("ready");
@@ -91,19 +117,28 @@ export function EcashExportModal({
     }
   };
 
-  const dismissConfirmed = () => {
+  const dismissConfirmed = async () => {
     if (!confirmClear) {
       setConfirmClear(true);
       return;
     }
-    if (preset) {
-      // Stranded-claim mode: the bearer note lives in the
-      // pending-redemptions stash, not the ecash-export stash.
-      preset.onConfirmCleared();
-    } else {
-      clearEcashExport();
+    setClearing(true);
+    setError("");
+    try {
+      if (preset) {
+        await preset.onConfirmCleared();
+      } else if (onConfirmCleared) {
+        await onConfirmCleared();
+      } else {
+        clearEcashExport();
+      }
+      (closeAfterConfirm ?? onClose)();
+    } catch (e: any) {
+      setError(e?.message || t("recovery.exportClearError"));
+      setPhase("error");
+    } finally {
+      setClearing(false);
     }
-    onClose();
   };
 
   return (
@@ -199,7 +234,21 @@ export function EcashExportModal({
             </div>
 
             <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}>
-              <QRCode data={notes} size={240} margin={4} errorCorrectionLevel="L" />
+              <QRCode
+                data={qrFrames}
+                size={240}
+                margin={4}
+                errorCorrectionLevel="L"
+                showLogo={false}
+                alt={t("recovery.exportQrAlt")}
+              />
+            </div>
+
+            <div style={{
+              margin: "-4px 0 12px", textAlign: "center", color: T.muted,
+              fontFamily: T.mono, fontSize: 9, lineHeight: 1.45,
+            }}>
+              {t("recovery.exportQrHelp")}
             </div>
 
             <div style={{
@@ -225,7 +274,8 @@ export function EcashExportModal({
             </div>
 
             <button
-              onClick={dismissConfirmed}
+              onClick={() => { void dismissConfirmed(); }}
+              disabled={clearing}
               style={{
                 width: "100%", padding: "10px 12px", borderRadius: T.rs, marginBottom: 8,
                 background: confirmClear ? T.amber : T.surface,
@@ -234,7 +284,9 @@ export function EcashExportModal({
                 fontFamily: T.mono, fontSize: 11, fontWeight: 800, cursor: "pointer",
               }}
             >
-              {confirmClear
+              {clearing
+                ? t("recovery.exportClearing")
+                : confirmClear
                 ? t("recovery.exportClearConfirm")
                 : t("recovery.exportClearCta")}
             </button>
