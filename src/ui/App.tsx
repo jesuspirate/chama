@@ -3356,6 +3356,17 @@ export default function App() {
             // tap through to each order to fulfill it. Reuses the App-derived
             // childrenByParent grouping (via listingChildren) — no re-query.
             liveChildOrders={selected ? listingChildren(selected).filter(isLiveChildOrder) : undefined}
+            // Pre-lock reservations on this storefront where I'm the seller:
+            // CREATED (unfunded) child orders that haven't passed their own
+            // deadline. Surfaces a "joined but not paid" order to the seller —
+            // the multi-unit analogue of the single-listing buyer-attempts panel.
+            pendingChildOrders={selected
+              ? listingChildren(selected).filter((c) =>
+                  isActiveChildOrder(c)
+                  && c.status === EscrowStatus.CREATED
+                  && c.participants[Role.SELLER] === pubkey
+                  && (c.expiresAt === undefined || c.expiresAt <= 0 || now <= c.expiresAt))
+              : undefined}
             onOpenChild={(id) => openEscrow(id)}
             onStartEcashSlicePlan={async (parentId) => {
               try {

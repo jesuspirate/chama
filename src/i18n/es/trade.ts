@@ -139,6 +139,8 @@ export const trade: Record<string, string> = {
   "trade.kickerWork": "🛠️ CONTRATO DE TRABAJO",
   "trade.storefrontOrderRow": "Pedido de {buyer}",
   "trade.storefrontOrdersTitle": "🛒 {count} pedidos en curso",
+  "trade.storefrontReservingRow": "Reservado por {buyer} — esperando pago",
+  "trade.storefrontReservingTitle": "🛎️ {count} reservando (sin pagar)",
   "trade.latestChamaNote": "Asegúrate de que todos en este intercambio tengan la última versión de Chama, para que la decisión se liquide igual para todos.",
   "trade.legendArbiter": "un desempate neutral — solo vota si las dos partes no están de acuerdo",
   "trade.legendBuyer": "la persona que compra en este intercambio",

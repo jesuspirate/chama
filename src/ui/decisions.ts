@@ -610,6 +610,19 @@ function needsYouReason(
   }
 
   if (e.status === EscrowStatus.CREATED) {
+    // A pre-lock CHILD order is a buyer-created draft on my storefront: the
+    // buyer is seated directly (no JOIN hold), so the hold-based branch below
+    // never fires and the seller got no persistent signal — only a live OS
+    // buzz that can't catch up on cold boot. Surface it as "waiting" so a
+    // reserved-but-unfunded order lands in the seller's Me-tab attention set
+    // (and the pill), the same pull a single-listing JOIN gives. Seller-only,
+    // and dropped once the child passes its own deadline.
+    if (
+      e.parent !== undefined
+      && isSeller
+      && !isPastEscrowDeadline(e, nowSec)
+    ) return "waiting";
+
     const hold = e.joinHolds?.[Role.BUYER];
     if (hold && hold.expiresAt > nowSec) {
       // The exact deterministic arbiter already targeted by the OS/DM alert

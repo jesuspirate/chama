@@ -1401,11 +1401,12 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     // transition, DM the counterparty so their external Nostr client (Damus/
     // Amethyst) surfaces it. The decider's single-sender rule + the persisted
     // per-(trade,transition) dedup keep it to exactly one send network-wide.
-    // Sim is always synthetic. Signet on-chain field runs, however, use real
-    // Nostr identities and need the same responder alerts as mainnet; suppressing
-    // them is exactly how the assigned arbiter remained invisible in testing.
-    if (!isSimModeOn()
-        && (!isTestnetMode() || (escrowState.escrowMode ?? "ecash") === "onchain")) {
+    // Sim is always synthetic. TESTNET field runs — on-chain AND ecash alike —
+    // use real Nostr identities and need the same responder alerts as mainnet;
+    // suppressing them is exactly how the assigned arbiter (on-chain) and the
+    // seller/buyer/arbiter on an ecash order stayed invisible in testing. Only
+    // sim mode is muted here.
+    if (!isSimModeOn()) {
       const dmClient = clientRef.current;
       if (dmClient) {
         void maybeSendTradeDms(

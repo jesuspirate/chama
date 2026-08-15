@@ -129,7 +129,7 @@ export function TradeDetail({
   onPrewarmFunding, onRebroadcast, onForget, onPurchase, onCancelDraftOrder, stockLeft, isOversoldOrder = false,
   onRateCounterparty, myGivenRatings, fetchRatingSummary, fetchCommunityBonds, knownTrades, onStartNextTranche, onchainFundingPlan, onPublishOnchainLock, onPrepareOnchainSettlement, onSignOnchainSettlement, onFinalizeOnchainSettlement, onScanMyOnchainPayouts, onSweepOnchainPayout,
   onStartEcashSlicePlan,
-  liveChildOrders, onOpenChild,
+  liveChildOrders, pendingChildOrders, onOpenChild,
 }: {
   state: EscrowState; pubkey: string;
   /** User's home community slug — drives State A vs State B subtitle
@@ -277,6 +277,12 @@ export function TradeDetail({
    *  drives the "N orders in progress" section. Derived in App from
    *  childrenByParent — undefined for non-storefront trades. */
   liveChildOrders?: EscrowState[];
+  /** Pre-lock (CREATED, unfunded) child orders spawned from THIS parent
+   *  storefront where the viewer is the seller — buyers who have RESERVED but
+   *  not yet paid. Drives the "N reserving" section so a reservation informs
+   *  the seller even before it funds. Derived in App from childrenByParent;
+   *  undefined for non-storefront trades. */
+  pendingChildOrders?: EscrowState[];
   /** #63 open a child order's detail (deep-link from the storefront's live-orders
    *  list). Wired to openEscrow in App. */
   onOpenChild?: (childId: string) => void;
@@ -977,8 +983,14 @@ export function TradeDetail({
       };
     })
     .sort((a, b) => b.joinedAt - a.joinedAt);
+  // A Store (marketplace) seller must see who reserved their listing exactly
+  // like a p2p seller does — the panel was p2p-only, which is why a buyer
+  // reserving a single-unit Store listing was invisible in trade detail. A
+  // multi-unit PARENT has no direct buyer JOINs (reservations are child orders),
+  // so buyerAttemptRows is empty there and this stays hidden — the pending-child
+  // "reserving" panel covers that case instead.
   const showBuyerAttempts =
-    state.category === "p2p-trade"
+    (state.category === "p2p-trade" || state.category === "marketplace")
     && state.status === EscrowStatus.CREATED
     && buyerAttemptRows.length > 0
     && !!sellerPubkey
@@ -1612,6 +1624,68 @@ export function TradeDetail({
                       </span>
                     )}
                     <span aria-hidden="true" style={{ color: T.accent }}>→</span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Pre-lock reservations: buyers who spawned a child order but haven't
+          funded it yet. On a multi-unit storefront the reservation is a child
+          escrow with no JOIN hold on the parent, so without this panel a
+          "joined but unpaid" order was invisible to the seller until it locked.
+          Amber (vs the accent live-orders panel) signals "reserved, not yet
+          paid". Seller-only — App filters to children where I'm the seller. */}
+      {isParentStorefront(state) && (pendingChildOrders?.length ?? 0) > 0 && (
+        <div style={{
+          border: `1px solid ${T.amber}44`,
+          background: `${T.amber}11`,
+          borderRadius: 12,
+          padding: "10px 12px",
+          margin: "0 4px 16px",
+        }}>
+          <div style={{
+            color: T.amber, fontFamily: T.mono, fontSize: 11, fontWeight: 800,
+            letterSpacing: 0.5, marginBottom: 8,
+          }}>
+            {t("trade.storefrontReservingTitle", { count: pendingChildOrders!.length })}
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {pendingChildOrders!.map((child) => {
+              const buyer = child.participants[Role.BUYER];
+              const childUnread = unreadChatForTrade(child, Role.SELLER);
+              return (
+                <button
+                  key={child.id}
+                  onClick={() => onOpenChild?.(child.id)}
+                  disabled={!onOpenChild}
+                  style={{
+                    display: "flex", alignItems: "center", justifyContent: "space-between",
+                    gap: 8, width: "100%", textAlign: "left",
+                    background: T.surface, border: `1px solid ${T.border}`,
+                    borderRadius: 9, padding: "8px 10px", cursor: onOpenChild ? "pointer" : "default",
+                    color: T.text, fontFamily: T.sans, fontSize: 13, fontWeight: 600,
+                  }}
+                >
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {t("trade.storefrontReservingRow", {
+                      buyer: buyer ? shortParticipantPubkey(buyer) : t("trade.buyer"),
+                    })}
+                  </span>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 6, flex: "0 0 auto" }}>
+                    {childUnread > 0 && (
+                      <span aria-label={childUnread === 1 ? t("card.unreadMessageOne") : t("card.unreadMessageMany", { count: childUnread })} style={{
+                        display: "inline-flex", alignItems: "center",
+                        minWidth: 18, height: 18, padding: "0 5px", boxSizing: "border-box",
+                        borderRadius: 999, background: T.accent, color: "#fff",
+                        fontFamily: T.mono, fontSize: 9.5, fontWeight: 800, lineHeight: "18px",
+                      }}>
+                        💬 {childUnread > 9 ? "9+" : childUnread}
+                      </span>
+                    )}
+                    <span aria-hidden="true" style={{ color: T.amber }}>→</span>
                   </span>
                 </button>
               );

@@ -21771,6 +21771,19 @@ console.log("\n── Liquidity & attention (buyerInterest / newListing / needsY
     "needs-you: an expired buyer JOIN no longer summons the arbiter");
   assert(selectNeedsYouTrades({ escrows: [arbiterKey], userPubkey: STRANGER, nowSec }).length === 0,
     "needs-you: a non-selected pool outsider is not shown the arbiter key action");
+  // Pre-lock CHILD order: a buyer reserved a multi-unit storefront but hasn't
+  // funded. No JOIN hold (the buyer is seated directly), so only the parent-ref
+  // branch summons the seller — with cold-boot catch-up the OS buzz can't give.
+  const pendingChild = mk({ id: "t_pending_child", parent: "t_parent", expiresAt: nowSec + 9000,
+    participants: { [Role.BUYER]: BUYER, [Role.SELLER]: SELLER, [Role.ARBITER]: null } });
+  assert(needsYouReasonFor(pendingChild, SELLER, nowSec) === "waiting",
+    "needs-you: a pre-lock (unfunded) child order summons the seller as waiting");
+  assert(needsYouReasonFor(pendingChild, BUYER, nowSec) === null,
+    "needs-you: the buyer who drafted the child order is not the one it summons");
+  assert(needsYouReasonFor(pendingChild, STRANGER, nowSec) === null,
+    "needs-you: a non-participant sees no attention for someone else's draft order");
+  assert(needsYouReasonFor({ ...pendingChild, expiresAt: nowSec - 1 }, SELLER, nowSec) === null,
+    "needs-you: a child order past its deadline drops out of the seller's attention");
   const pendingOnchain = mk({ id: "t_onchain_payout", status: EscrowStatus.COMPLETED,
     createdAt: nowSec - 50,
     participants: { [Role.BUYER]: BUYER, [Role.SELLER]: SELLER, [Role.ARBITER]: ARB },
