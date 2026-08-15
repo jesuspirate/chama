@@ -20,14 +20,30 @@ import { isWorkListing } from "../work-resume.js";
 // and all arbiter code stay intact; this just gates the FAB entry point. Flip
 // back to true when the bond (Phase 2A) lands and the leader pitch is real.
 const SHOW_ARBITER_FAB = false;
-const LOCAL_CHEAPEST_KEY = "chama_browse_local_cheapest_v1";
+const LEGACY_LOCAL_CHEAPEST_KEY = "chama_browse_local_cheapest_v1";
+const BROWSE_SCOPE_KEY = "chama_browse_scope_v1";
+const BROWSE_SORT_KEY = "chama_browse_sort_v1";
+type BrowseScope = "local" | "all";
+type BrowseSort = "cheapest" | "newest";
 
-function getLocalCheapest(): boolean {
-  try { return localStorage.getItem(LOCAL_CHEAPEST_KEY) === "1"; } catch { return false; }
+function getBrowseScope(): BrowseScope {
+  try {
+    const stored = localStorage.getItem(BROWSE_SCOPE_KEY);
+    if (stored === "local" || stored === "all") return stored;
+    return localStorage.getItem(LEGACY_LOCAL_CHEAPEST_KEY) === "1" ? "local" : "all";
+  } catch { return "all"; }
 }
 
-function setLocalCheapest(value: boolean): void {
-  try { localStorage.setItem(LOCAL_CHEAPEST_KEY, value ? "1" : "0"); } catch { /* device-local preference */ }
+function getBrowseSort(): BrowseSort {
+  try {
+    const stored = localStorage.getItem(BROWSE_SORT_KEY);
+    if (stored === "cheapest" || stored === "newest") return stored;
+    return localStorage.getItem(LEGACY_LOCAL_CHEAPEST_KEY) === "1" ? "cheapest" : "newest";
+  } catch { return "newest"; }
+}
+
+function persistBrowsePreference(key: string, value: string): void {
+  try { localStorage.setItem(key, value); } catch { /* device-local preference */ }
 }
 
 /** Apples-to-apples price rank. Premium is the canonical Exchange quote;
@@ -44,6 +60,10 @@ export function sortListingsCheapestFirst(listings: readonly EscrowState[]): Esc
     return Number.POSITIVE_INFINITY;
   };
   return [...listings].sort((a, b) => rank(a) - rank(b) || a.id.localeCompare(b.id));
+}
+
+export function sortListingsNewestFirst(listings: readonly EscrowState[]): EscrowState[] {
+  return [...listings].sort((a, b) => b.createdAt - a.createdAt || b.id.localeCompare(a.id));
 }
 
 // Browse tab content — category filters, collapsed Chama selector, and card list.
@@ -112,12 +132,16 @@ export function BrowseView({
   // My listings only. Selecting owner mode intentionally hides everything else.
   const [showOwn, setShowOwnState] = useState<boolean>(() => getBrowseShowOwn());
   const toggleShowOwn = () => setShowOwnState((v) => { const next = !v; setBrowseShowOwn(next); return next; });
-  const [localCheapest, setLocalCheapestState] = useState<boolean>(() => getLocalCheapest());
-  const toggleLocalCheapest = () => setLocalCheapestState((value) => {
-    const next = !value;
-    setLocalCheapest(next);
-    return next;
-  });
+  const [browseScope, setBrowseScopeState] = useState<BrowseScope>(() => getBrowseScope());
+  const [browseSort, setBrowseSortState] = useState<BrowseSort>(() => getBrowseSort());
+  const setBrowseScope = (scope: BrowseScope) => {
+    setBrowseScopeState(scope);
+    persistBrowsePreference(BROWSE_SCOPE_KEY, scope);
+  };
+  const setBrowseSort = (sort: BrowseSort) => {
+    setBrowseSortState(sort);
+    persistBrowsePreference(BROWSE_SORT_KEY, sort);
+  };
 
   // v3.1.1: fade the floating action menu down while the list is scrolling so it
   // never sits opaque over a card the user is reading; back to full ~300ms after
@@ -160,10 +184,19 @@ export function BrowseView({
     [nonMatchingListings, pubkey, showOwn],
   );
   const routedMatching = useMemo(
-    () => localCheapest ? sortListingsCheapestFirst(ownFilteredMatching) : ownFilteredMatching,
-    [localCheapest, ownFilteredMatching],
+    () => browseSort === "cheapest"
+      ? sortListingsCheapestFirst(ownFilteredMatching)
+      : sortListingsNewestFirst(ownFilteredMatching),
+    [browseSort, ownFilteredMatching],
   );
-  const routedNonMatching = localCheapest ? [] : ownFilteredNonMatching;
+  const routedNonMatching = useMemo(
+    () => browseScope === "local"
+      ? []
+      : browseSort === "cheapest"
+        ? sortListingsCheapestFirst(ownFilteredNonMatching)
+        : sortListingsNewestFirst(ownFilteredNonMatching),
+    [browseScope, browseSort, ownFilteredNonMatching],
+  );
   const totalListings = routedMatching.length + routedNonMatching.length;
   const homeCommunity = getCommunityBySlug(browseCommunity);
   const search = searchQuery.trim().toLowerCase();
@@ -393,6 +426,23 @@ export function BrowseView({
       </div>
 
       <div style={{
+        display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12,
+      }}>
+        <BrowsePreferenceControl
+          label={t("browse.scope")}
+          value={browseScope}
+          options={[["local", t("browse.scopeLocal")], ["all", t("browse.scopeAll")]]}
+          onChange={(value) => setBrowseScope(value as BrowseScope)}
+        />
+        <BrowsePreferenceControl
+          label={t("browse.sort")}
+          value={browseSort}
+          options={[["cheapest", t("browse.sortCheapest")], ["newest", t("browse.sortNewest")]]}
+          onChange={(value) => setBrowseSort(value as BrowseSort)}
+        />
+      </div>
+
+      <div style={{
         display: "flex", gap: 6, marginBottom: 12,
         overflowX: "auto",
         scrollbarWidth: "none" as const,
@@ -442,31 +492,11 @@ export function BrowseView({
             </button>
           );
         })}
-        {!showOwn && (
-          <button
-            type="button"
-            onClick={toggleLocalCheapest}
-            aria-pressed={localCheapest}
-            title={t("browse.localCheapestHelp")}
-            style={{
-              order: 1, flexShrink: 0, padding: "7px 11px", borderRadius: 18,
-              background: localCheapest ? T.greenDim : T.surface,
-              border: `1px solid ${localCheapest ? T.green + "66" : T.border}`,
-              color: localCheapest ? T.green : T.muted,
-              fontFamily: T.mono, fontSize: 11, fontWeight: 700,
-              cursor: "pointer", whiteSpace: "nowrap", display: "inline-flex",
-              alignItems: "center", gap: 6,
-            }}
-          >
-            <span>⌄</span><span>{t("browse.localCheapest")}</span>
-          </button>
-        )}
         {(ownListingCount > 0 || showOwn) && (
           <button
             type="button"
             onClick={() => {
               if (!showOwn) toggleShowOwn();
-              if (localCheapest) toggleLocalCheapest();
               setBrowseCategory("all");
             }}
             aria-pressed={showOwn}
@@ -919,6 +949,49 @@ function WorkerResume({
         <div style={{ marginTop: 14, color: T.muted, fontFamily: T.sans, fontSize: 11, lineHeight: 1.5 }}>
           {t("browse.workerResumeFootnote")}
         </div>
+      </div>
+    </div>
+  );
+}
+
+function BrowsePreferenceControl({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: readonly (readonly [string, string])[];
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div style={{ minWidth: 0 }}>
+      <div style={{ color: T.muted, fontFamily: T.mono, fontSize: 8, letterSpacing: 1, marginBottom: 5 }}>
+        {label}
+      </div>
+      <div style={{ display: "flex", padding: 3, gap: 3, background: T.surface, border: `1px solid ${T.border}`, borderRadius: T.rs }}>
+        {options.map(([optionValue, optionLabel]) => {
+          const active = value === optionValue;
+          return (
+            <button
+              key={optionValue}
+              type="button"
+              aria-pressed={active}
+              onClick={() => onChange(optionValue)}
+              style={{
+                flex: 1, minWidth: 0, padding: "6px 4px", borderRadius: 6,
+                background: active ? T.accentDim : "transparent",
+                border: `1px solid ${active ? T.accent + "66" : "transparent"}`,
+                color: active ? T.accent : T.muted,
+                fontFamily: T.mono, fontSize: 9, fontWeight: 800,
+                cursor: "pointer", whiteSpace: "nowrap",
+              }}
+            >
+              {optionLabel}
+            </button>
+          );
+        })}
       </div>
     </div>
   );

@@ -2947,6 +2947,11 @@ export default function App() {
             if (!terminal) {
               // User dismissed picker before resolving — silent.
             } else if (terminal.kind === "done") {
+              // The ecash export's explicit clear is the terminal claim action.
+              // Re-anchor the shell on this trade so a refresh cannot expose
+              // the destination picker again.
+              setSelectedId(pendingClaim.escrowId);
+              setView("detail");
               setBlockedClaimReasons(prev => {
                 if (!prev[pendingClaim.escrowId]) return prev;
                 const next = { ...prev };

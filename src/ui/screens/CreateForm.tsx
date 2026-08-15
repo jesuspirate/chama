@@ -1232,9 +1232,11 @@ export function CreateForm({
     const description = buildListingDescription(form, vertical, menuItems);
     const baseSats = hasMenu ? minimumMenuSats(menuItems) : parseWholeSats(form.sats);
     const totalSats = effectiveListingSats(form, vertical);
+    const paymentMethodsOk = !categoryUsesPaymentRails(vertical) || form.paymentMethods.length > 0;
     if (
       (!description && descriptionRequired(vertical, hasMenu)) ||
       (!hasMenu && !form.sats.trim()) ||
+      !paymentMethodsOk ||
       hasPartialMenuRows(form, vertical) ||
       hasLendingAmountAboveCurrentCap(form, vertical)
     ) return;
@@ -2087,10 +2089,12 @@ function Step2({
   const billTypeOk = vertical !== "bill-pay" || usingMenu || !!form.billType;
   // A4: a Work listing without a category can only match on the weak signals.
   const workCategoryOk = vertical !== "work" || usingMenu || !!form.workCategory;
+  const paymentMethodsOk = !categoryUsesPaymentRails(vertical) || form.paymentMethods.length > 0;
   const ready =
     descriptionOk &&
     billTypeOk &&
     workCategoryOk &&
+    paymentMethodsOk &&
     (usingMenu ? hasMenu : form.sats.trim().length > 0) &&
     !partialMenuRows &&
     uploadingImageIds.size === 0 &&
@@ -2933,13 +2937,18 @@ function Step2({
             gap: 8,
             marginBottom: 6,
           }}>
-            <div style={{ fontSize: 11, color: T.muted, fontFamily: T.mono }}>
-              {t("create.acceptedPayment")}
+            <div style={{ fontSize: 11, color: paymentMethodsOk ? T.muted : T.amber, fontFamily: T.mono }}>
+              {t("create.acceptedPayment")} · {t("create.required")}
             </div>
             <div style={{ fontSize: 9, color: T.muted, fontFamily: T.mono }}>
               {homeCommunity?.country ?? homeCommunity?.currency ?? t("create.localFallback")}
             </div>
           </div>
+          {!paymentMethodsOk && (
+            <div style={{ color: T.amber, fontFamily: T.mono, fontSize: 9, margin: "7px 2px 0" }}>
+              {t("create.paymentRequiredHint")}
+            </div>
+          )}
           <div className="payment-rail-scroll" style={{
             display: "flex",
             padding: 10,
@@ -3534,10 +3543,12 @@ function Step3({
   const lendingCapExceeded = hasLendingAmountAboveCurrentCap(form, vertical);
   const billTypeOk = vertical !== "bill-pay" || hasMenu || !!form.billType;
   const workCategoryOk = vertical !== "work" || hasMenu || !!form.workCategory;
+  const paymentMethodsOk = !categoryUsesPaymentRails(vertical) || form.paymentMethods.length > 0;
   const ready =
     listingDescription.length > 0 &&
     billTypeOk &&
     workCategoryOk &&
+    paymentMethodsOk &&
     (form.sats.trim().length > 0 || hasMenu) &&
     !partialMenuRows &&
     !amountTooSmall &&

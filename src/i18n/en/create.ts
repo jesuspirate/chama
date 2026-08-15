@@ -16,6 +16,8 @@ export const create: Record<string, string> = {
   "create.aboveLendingCapAfter": ".",
   "create.aboveLendingCapBefore": "Above current Fedimint lending cap of",
   "create.acceptedPayment": "ACCEPTED PAYMENT",
+  "create.required": "REQUIRED",
+  "create.paymentRequiredHint": "Choose at least one fiat payment method before continuing.",
   "create.addPhoto": "+ Photo",
   "create.uploadingPhoto": "Uploading…",
   "create.addRail": "Add",
