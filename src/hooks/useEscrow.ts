@@ -243,7 +243,7 @@ import {
 } from "../fedimint/index.js";
 import { Capacitor } from "@capacitor/core";
 import type { InvoiceGatewayInfo, LnReceiveStateKind, OnchainInfo } from "../fedimint/index.js";
-import { clearPendingRedemption } from "../fedimint/pending-redemptions.js";
+import { clearPendingRedemption, listPendingRedemptions } from "../fedimint/pending-redemptions.js";
 import {
   assertEcashExportWritable,
   clearEcashExport,
@@ -4985,7 +4985,10 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
 
   const confirmClaimEcashExportAction = useCallback(async (escrowId: string): Promise<void> => {
     const pending = getEcashExport();
-    if (!pending || pending.source !== "claim" || pending.escrowId !== escrowId) {
+    const pendingRedemption = listPendingRedemptions()
+      .find((entry) => entry.escrowId === escrowId) ?? null;
+    const hasClaimExport = pending?.source === "claim" && pending.escrowId === escrowId;
+    if (!hasClaimExport && !pendingRedemption) {
       throw new Error("This claim's pending ecash recovery copy was not found. Nothing was cleared.");
     }
     const client = requireClient();
@@ -4999,7 +5002,8 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       // bearer note the user explicitly confirmed importing.
       console.warn("[chama] ecash claim COMPLETE publish failed after user confirmation:", e);
     }
-    clearEcashExport();
+    if (hasClaimExport) clearEcashExport();
+    else clearPendingRedemption(escrowId);
   }, []);
 
   const watchBondOnchainCredit = (operationId: string, bondId?: string) => {

@@ -86,6 +86,7 @@ import type {
   ClaimAndPayoutTerminal,
 } from "../../payments/claim-and-payout.js";
 import { EcashExportModal } from "./EcashExportModal.js";
+import { listPendingRedemptions } from "../../fedimint/pending-redemptions.js";
 
 export interface ClaimPayoutModalProps {
   /** Trade ID being claimed. Passed through to claimAndPayout. */
@@ -204,6 +205,7 @@ export function ClaimPayoutModal({
   // Retry state: when a retryable terminal is up, the "Try again"
   // button toggles this to render the inline probing spinner.
   const [retryProbing, setRetryProbing] = useState(false);
+  const [showPendingRecovery, setShowPendingRecovery] = useState(false);
   // Stashed dispatch args. Set when the picker resolves; reused on
   // Try-again so the retry uses the exact same destination/save
   // semantics as the original attempt.
@@ -420,6 +422,31 @@ export function ClaimPayoutModal({
     );
   }
 
+  const pendingRecovery = stage.kind === "terminal" && stage.terminal.kind === "claim-pending"
+    ? listPendingRedemptions().find((entry) => entry.escrowId === escrowId) ?? null
+    : null;
+
+  if (showPendingRecovery && pendingRecovery) {
+    return (
+      <EcashExportModal
+        balanceMsats={pendingRecovery.amountMsats}
+        federationLabel={tradeCommunity ?? homeCommunity ?? t("claim.yourFederation")}
+        spendNotes={async () => pendingRecovery.oobNotes}
+        preset={{
+          notes: pendingRecovery.oobNotes,
+          amountMsats: pendingRecovery.amountMsats,
+          headline: t("claim.pendingRecoveryHeadline"),
+          body: t("claim.pendingRecoveryBody"),
+          onConfirmCleared: async () => {
+            await confirmClaimEcashExport(escrowId);
+          },
+        }}
+        closeAfterConfirm={() => onClose({ kind: "done" })}
+        onClose={() => setShowPendingRecovery(false)}
+      />
+    );
+  }
+
   // Stage 1: DestinationPicker. The shell handles all three tiers
   // internally. We pass amountSats so the LNURL resolver requests an
   // invoice of exactly the right size.
@@ -612,6 +639,8 @@ export function ClaimPayoutModal({
             payoutMethod={payoutMethod}
             retryProbing={retryProbing}
             recoveryCtaWorthwhile={payoutSats >= MATERIAL_RECOVERY_MIN_SATS}
+            pendingRecoveryAvailable={pendingRecovery !== null}
+            onOpenPendingRecovery={() => setShowPendingRecovery(true)}
             onRetry={handleClaimRetry}
             onClose={() => onClose(stage.terminal)}
           />
@@ -2225,7 +2254,8 @@ function RunningPanel({
 }
 
 function TerminalPanel({
-  terminal, payoutMethod, retryProbing, recoveryCtaWorthwhile, onRetry, onClose,
+  terminal, payoutMethod, retryProbing, recoveryCtaWorthwhile,
+  pendingRecoveryAvailable, onOpenPendingRecovery, onRetry, onClose,
 }: {
   terminal: ClaimAndPayoutTerminal;
   payoutMethod: PayoutMethod | null;
@@ -2235,6 +2265,8 @@ function TerminalPanel({
    *  now" CTA so sub-material payout failures aren't pointed at a
    *  surface that will ignore them. */
   recoveryCtaWorthwhile: boolean;
+  pendingRecoveryAvailable: boolean;
+  onOpenPendingRecovery: () => void;
   onRetry: () => void;
   onClose: () => void;
 }) {
@@ -2305,8 +2337,12 @@ function TerminalPanel({
     icon = "⚠";
     showRetry = true;
   } else if (terminal.kind === "claim-pending") {
-    title = t("claim.titleSatsStillArriving");
-    subtitle = humanizedError;
+    title = pendingRecoveryAvailable
+      ? t("claim.titleFederationClaimStuck")
+      : t("claim.titleSatsStillArriving");
+    subtitle = pendingRecoveryAvailable
+      ? t("claim.pendingRecoverySummary")
+      : humanizedError;
     tone = T.amber;
     toneDim = T.amberDim;
     icon = "⏳";
@@ -2352,15 +2388,28 @@ function TerminalPanel({
           {subtitle}
         </div>
       </div>
+      {pendingRecoveryAvailable && (
+        <button
+          onClick={onOpenPendingRecovery}
+          style={{
+            width: "100%", padding: "12px 16px", borderRadius: T.rs,
+            background: T.accent, border: `1px solid ${T.accent}`,
+            color: "#000", fontFamily: T.mono, fontSize: 12, fontWeight: 800,
+            cursor: "pointer", marginBottom: 8,
+          }}
+        >
+          {t("claim.openFediRecovery")}
+        </button>
+      )}
       {showRetry && (
         <button
           disabled={retryProbing}
           onClick={onRetry}
           style={{
             width: "100%", padding: "12px 16px", borderRadius: T.rs,
-            background: retryProbing ? T.surface : T.accent,
-            border: `1px solid ${T.accent}`,
-            color: retryProbing ? T.muted : "#000",
+            background: T.surface,
+            border: `1px solid ${pendingRecoveryAvailable ? T.border : T.accent}`,
+            color: retryProbing ? T.muted : pendingRecoveryAvailable ? T.muted : T.accent,
             fontFamily: T.mono, fontSize: 12, fontWeight: 800,
             cursor: retryProbing ? "not-allowed" : "pointer",
             marginBottom: 8,
