@@ -919,10 +919,20 @@ export class NativeBridgeWallet implements IFedimintWallet {
           wait: true,
         },
       });
+      const operationId = readOperationId(result);
+      if (result.status.toLowerCase() !== "done") {
+        const pending: Error & { code?: string; operationId?: string } = new Error(
+          "The federation accepted the ecash reissue operation, but it is still pending. " +
+            "The bearer note remains safely stashed and Chama will resume this same operation.",
+        );
+        pending.code = "MINT_REISSUE_PENDING";
+        pending.operationId = operationId;
+        throw pending;
+      }
       await this.refreshBalance().catch((error) => {
         console.warn("[chama] native bridge balance refresh after reissue failed:", error);
       });
-      return readOperationId(result);
+      return operationId;
     },
 
     parseNotes: async (oobNotes: string): Promise<{

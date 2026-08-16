@@ -19,10 +19,12 @@ use fedimint_client::secret::RootSecretStrategy;
 use fedimint_client::{Client, ClientBuilder, ClientHandleArc, RootSecret};
 use fedimint_connectors::ConnectorRegistry;
 use fedimint_core::Amount;
+use fedimint_core::bitcoin::hashes::{Hash, HashEngine, sha256, sha256t};
 use fedimint_core::bitcoin::address::NetworkUnchecked;
 use fedimint_core::bitcoin::{Address as BitcoinAddress, Amount as BitcoinAmount};
 use fedimint_core::core::OperationId;
 use fedimint_core::db::Database;
+use fedimint_core::encoding::Encodable;
 use fedimint_core::invite_code::InviteCode;
 use fedimint_core::secp256k1::PublicKey;
 use fedimint_core::util::SafeUrl;
@@ -62,6 +64,16 @@ const PAY_AWAIT_TIMEOUT: Duration = Duration::from_secs(60);
 /// balance watchdog reconcile the durable operation. This also prevents the
 /// JS timeout from merely abandoning a still-live Rust request.
 const REISSUE_AWAIT_TIMEOUT: Duration = Duration::from_secs(25);
+
+struct ChamaOobReissueTag;
+
+impl sha256t::Tag for ChamaOobReissueTag {
+    fn engine() -> sha256::HashEngine {
+        let mut engine = sha256::HashEngine::default();
+        engine.input(b"oob-reissue");
+        engine
+    }
+}
 /// Short per-gateway reachability probe used when auto-selecting a receive
 /// gateway. Kept well under `GATEWAY_SELECT_TIMEOUT` so several gateways can be
 /// tried in turn within the same budget — a single dead (e.g. `iroh://`)
@@ -1860,10 +1872,34 @@ impl Bridge {
         let oob_notes = OOBNotes::from_str(&notes).context("invalid e-cash notes")?;
         let total_amount_msat = oob_notes.total_amount().msats;
         let mint = client.get_first_module::<MintClientModule>()?;
-        let operation_id = mint
-            .reissue_external_notes(oob_notes, ())
-            .await
-            .context("failed to start e-cash reissue")?;
+        // Fedimint deliberately derives the reissue operation id from the
+        // bearer notes. Replaying the same saved claim therefore returns
+        // AlreadyReissued even while the original operation is still pending.
+        // Recover that deterministic id and reattach instead of turning every
+        // retry into a fresh-looking failure.
+        let expected_operation_id = OperationId(
+            oob_notes
+                .notes()
+                .consensus_hash::<sha256t::Hash<ChamaOobReissueTag>>()
+                .to_byte_array(),
+        );
+        let operation_id = match mint.reissue_external_notes(oob_notes, ()).await {
+            Ok(operation_id) => operation_id,
+            Err(start_error) => {
+                if mint
+                    .subscribe_reissue_external_notes(expected_operation_id)
+                    .await
+                    .is_ok()
+                {
+                    eprintln!(
+                        "reissue: resuming existing deterministic operation {expected_operation_id:?}"
+                    );
+                    expected_operation_id
+                } else {
+                    return Err(start_error).context("failed to start e-cash reissue");
+                }
+            }
+        };
 
         let mut status = "created".to_owned();
         if wait {

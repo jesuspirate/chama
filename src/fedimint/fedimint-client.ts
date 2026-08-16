@@ -1626,7 +1626,7 @@ export class FedimintClient {
         // retryable claim-pending terminal; the op may still land in the
         // background, where boot-drain + the cover check reconcile it.
         // Retrying in-loop would only stack more stalled SDK calls.
-        if (code === "REDEEM_TIMEOUT") {
+        if (code === "REDEEM_TIMEOUT" || code === "MINT_REISSUE_PENDING") {
           mlog("REDEEM-TRY", { fed: this._federationId, attempt, result: "timeout" });
           claimTrace("redeem-try", { fed: this._federationId, attempt, result: "timeout" });
           throw e;
