@@ -243,7 +243,11 @@ import {
 } from "../fedimint/index.js";
 import { Capacitor } from "@capacitor/core";
 import type { InvoiceGatewayInfo, LnReceiveStateKind, OnchainInfo } from "../fedimint/index.js";
-import { clearPendingRedemption, listPendingRedemptions } from "../fedimint/pending-redemptions.js";
+import {
+  clearPendingRedemption,
+  listPendingRedemptions,
+  markPendingRedemptionCredited,
+} from "../fedimint/pending-redemptions.js";
 import {
   assertEcashExportWritable,
   clearEcashExport,
@@ -3710,7 +3714,9 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       // Drain errors are already logged inside drainPendingRedemptions;
       // the outer .catch here is defense-in-depth against an unexpected
       // throw outside the per-entry try blocks.
-      drainPendingRedemptions(fedimint).catch((e) =>
+      drainPendingRedemptions(fedimint, {
+        onCredited: (entry) => recordClaimCredit(entry.escrowId, entry.amountMsats),
+      }).catch((e) =>
         console.warn("[chama] pending-redemption drain error:", e)
       );
 
@@ -4857,6 +4863,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
           await client.complete(id);
         },
         clearPendingRedemption,
+        markPendingRedemptionCredited,
         payInvoice: async (bolt11: string) => {
           const operationId = await bridge.payInvoice(
             bolt11,
@@ -4985,10 +4992,8 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
 
   const confirmClaimEcashExportAction = useCallback(async (escrowId: string): Promise<void> => {
     const pending = getEcashExport();
-    const pendingRedemption = listPendingRedemptions()
-      .find((entry) => entry.escrowId === escrowId) ?? null;
     const hasClaimExport = pending?.source === "claim" && pending.escrowId === escrowId;
-    if (!hasClaimExport && !pendingRedemption) {
+    if (!hasClaimExport) {
       throw new Error("This claim's pending ecash recovery copy was not found. Nothing was cleared.");
     }
     const client = requireClient();
@@ -5002,8 +5007,8 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       // bearer note the user explicitly confirmed importing.
       console.warn("[chama] ecash claim COMPLETE publish failed after user confirmation:", e);
     }
-    if (hasClaimExport) clearEcashExport();
-    else clearPendingRedemption(escrowId);
+    clearEcashExport();
+    clearPendingRedemption(escrowId);
   }, []);
 
   const watchBondOnchainCredit = (operationId: string, bondId?: string) => {
@@ -5046,6 +5051,26 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     try { pubkey = await client.getPubkey(); } catch { return; }
     const decision = computeArbiterPremium(state, pubkey);
     if (!decision.payable) return;
+    // A successful mint reissue is only the inbound half of a claim. Until
+    // its outbound payout is confirmed, those sats belong to that claimant
+    // and are unavailable to unrelated premium sweeps.
+    const reservedClaimMsats = listPendingRedemptions()
+      // Reserve plain in-flight entries too. That makes a failed creditedAt
+      // metadata write fail safe (premium deferred), not fail open (claimant
+      // funds spendable). Archived user-reconciled entries are the only ones
+      // that no longer represent an active local obligation.
+      .filter((entry) => !entry.resolvedAt)
+      .reduce((sum, entry) => sum + entry.amountMsats, 0);
+    if (reservedClaimMsats > 0) {
+      let balanceMsats = 0;
+      try { balanceMsats = await fedimint.getBalance(); } catch { return; }
+      if (balanceMsats - reservedClaimMsats < decision.amountMsats) {
+        console.info(
+          `[chama] arbiter premium deferred: ${reservedClaimMsats} msats reserved for unfinished claim payouts`,
+        );
+        return;
+      }
+    }
     // Durable idempotence + the decline preference: any record blocks.
     if (hasPremiumOutboxRecord(escrowId)) return;
     // CROSS-DEVICE idempotence. The outbox above is this device's

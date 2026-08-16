@@ -262,13 +262,6 @@ export const claim: Record<string, string> = {
   "claim.titlePayoutCouldntBeSent": "Payout couldn't be sent",
   "claim.titlePayoutSentConfirming": "Payout sent — confirming",
   "claim.titleSatsStillArriving": "Your sats are still arriving",
-  "claim.titleFederationClaimStuck": "This claim is stuck at the federation",
-  "claim.pendingRecoverySummary":
-    "Chama kept the original bearer note. Repeating the same claim will only resume the stalled operation. You can instead recover the saved note directly in Fedi.",
-  "claim.openFediRecovery": "Open Fedi recovery copy",
-  "claim.pendingRecoveryHeadline": "PENDING CLAIM · FEDI RECOVERY",
-  "claim.pendingRecoveryBody":
-    "This is the original escrow bearer note, preserved before the stalled federation reissue. Scan or paste it into Fedi. Keep it pending here until Fedi shows the sats, then explicitly clear Chama's copy.",
   "claim.tryAgain": "Try again",
   "claim.tryAmountBefore": "Try",
   "claim.vodacomTanzania": "Vodacom M-Pesa, Tanzania.",

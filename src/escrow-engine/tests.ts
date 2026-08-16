@@ -2726,6 +2726,8 @@ console.log("\n── ATOMIC LOCK (CREATED → LOCKED, no FUNDED hop) ──");
       "credit: a poisoned redemption is not a credit");
     assert(judgeCredit({ ...none, redemption: {} }) === "not-credited",
       "credit: notes still waiting to redeem have not landed");
+    assert(judgeCredit({ ...none, redemption: { creditedAt: 1 } }) === "credited",
+      "credit: a completed reissue is positive wallet-credit proof while its payout stays reserved");
     assert(judgeCredit({ ...none, redemption: { unresolvedCredit: true, resolvedAt: 1 } }) === "not-credited",
       "credit: a reconciled entry still isn't positive proof on its own — it only leaves the alarm list");
 
@@ -15910,6 +15912,7 @@ console.log("\n── RUN CLAIM AND PAYOUT ──");
       payInvoice: 0,
       completeClaim: 0,
       clearPendingRedemption: 0,
+      markPendingRedemptionCredited: 0,
       getBalance: 0,
       saveHandle: 0,
     };
@@ -15940,6 +15943,9 @@ console.log("\n── RUN CLAIM AND PAYOUT ──");
         calls.clearPendingRedemption++;
         clearedEscrows.push(id);
       },
+      markPendingRedemptionCredited: (_id: string) => {
+        calls.markPendingRedemptionCredited++;
+      },
       addOrTouchLightningHandle: (address: string) => {
         calls.saveHandle++;
         handlesSaved.push(address);
@@ -15962,6 +15968,7 @@ console.log("\n── RUN CLAIM AND PAYOUT ──");
       claimAndRedeem: wallet.claimAndRedeem,
       completeClaim: wallet.completeClaim,
       clearPendingRedemption: wallet.clearPendingRedemption,
+      markPendingRedemptionCredited: wallet.markPendingRedemptionCredited,
       payInvoice: wallet.payInvoice,
       addOrTouchLightningHandle: wallet.addOrTouchLightningHandle,
       onPhase: p => phases.push(p),
@@ -15979,7 +15986,9 @@ console.log("\n── RUN CLAIM AND PAYOUT ──");
     assert(wallet.calls.completeClaim === 1,
       "COMPLETE published exactly once after claim balance confirms");
     assert(wallet.calls.clearPendingRedemption === 1,
-      "Pending redemption stash clears exactly once after claim balance confirms");
+      "Pending redemption stash clears exactly once after the outbound payout confirms");
+    assert(wallet.calls.markPendingRedemptionCredited === 1,
+      "Wallet credit is reserved before the outbound payout");
     assert(wallet.clearedEscrows[0] === "esc_claim_1",
       "Pending redemption clear is scoped to the claimed escrow");
     assert(wallet.calls.saveHandle === 1,
@@ -16151,6 +16160,7 @@ console.log("\n── RUN CLAIM AND PAYOUT ──");
       claimAndRedeem: wallet.claimAndRedeem,
       completeClaim: wallet.completeClaim,
       clearPendingRedemption: wallet.clearPendingRedemption,
+      markPendingRedemptionCredited: wallet.markPendingRedemptionCredited,
       payInvoice: wallet.payInvoice,
       addOrTouchLightningHandle: wallet.addOrTouchLightningHandle,
       onPhase: () => {},
@@ -16164,7 +16174,7 @@ console.log("\n── RUN CLAIM AND PAYOUT ──");
     assert(wallet.calls.completeClaim === 1,
       "COMPLETE published after claimPublished path balance confirms");
     assert(wallet.calls.clearPendingRedemption === 1,
-      "Pending redemption stash clears once claimPublished path balance confirms");
+      "Pending redemption stash clears once claimPublished path payout confirms");
 	    assert(wallet.calls.payInvoice === 1,
 	      "payInvoice called after claimPublished path balance confirms");
 	  }
@@ -16227,6 +16237,7 @@ console.log("\n── RUN CLAIM AND PAYOUT ──");
       claimAndRedeem: wallet.claimAndRedeem,
       completeClaim: wallet.completeClaim,
       clearPendingRedemption: wallet.clearPendingRedemption,
+      markPendingRedemptionCredited: wallet.markPendingRedemptionCredited,
       payInvoice: wallet.payInvoice,
       addOrTouchLightningHandle: wallet.addOrTouchLightningHandle,
       onPhase: () => {},
@@ -16251,8 +16262,10 @@ console.log("\n── RUN CLAIM AND PAYOUT ──");
       assert(terminal.claimCompleted === false,
         "payout-failed marks claimCompleted=false so Claim stays the retry path");
     }
-    assert(wallet.calls.clearPendingRedemption === 1,
-      "Pending redemption stash clears once balance landed even if outbound payout fails");
+    assert(wallet.calls.clearPendingRedemption === 0,
+      "Pending redemption reservation survives when outbound payout fails");
+    assert(wallet.calls.markPendingRedemptionCredited === 1,
+      "Failed outbound payout keeps a marked wallet-credit reservation");
     assert(wallet.calls.saveHandle === 0,
       "Handle NOT saved when payout failed (retry needs a fresh successful payout)");
   }
@@ -16439,7 +16452,7 @@ console.log("\n── RUN CLAIM AND PAYOUT ──");
   // MINT_REISSUE_UNKNOWN shape), but the wallet already holds the
   // credit from the first attempt. Previously: instant claim-failed.
   // Now: cover check pays out, COMPLETE publishes AFTER the payout,
-  // stash is preserved for the boot drain to reconcile.
+  // reservation is released only after the outbound payout succeeds.
   {
     const consumed: any = new Error(
       "Claim published to relays, but ecash redeem failed: " +
@@ -16477,8 +16490,8 @@ console.log("\n── RUN CLAIM AND PAYOUT ──");
       "rescue: COMPLETE published exactly once");
     assert(order.indexOf("pay") < order.indexOf("complete"),
       "rescue: COVER path pays FIRST, then publishes COMPLETE (claim stays retryable if payout fails)");
-    assert(!order.includes("clear"),
-      "rescue: pending-redemption stash preserved on cover settlement (boot drain reconciles)");
+    assert(order.indexOf("clear") > order.indexOf("complete"),
+      "rescue: pending-redemption reservation releases only after payout + COMPLETE");
     assert(nowMs === 0,
       "rescue: growth poll SKIPPED when settlement is terminally failed (no pointless 90s wait)");
     assert(phases.includes("confirming"),
@@ -16515,8 +16528,8 @@ console.log("\n── RUN CLAIM AND PAYOUT ──");
       "cover-after-timeout: growth poll genuinely ran to timeout first");
     assert(order.indexOf("pay") < order.indexOf("complete"),
       "cover-after-timeout: pay-then-complete ordering on cover path");
-    assert(!order.includes("clear"),
-      "cover-after-timeout: stash preserved on cover settlement");
+    assert(order.indexOf("clear") > order.indexOf("complete"),
+      "cover-after-timeout: reservation clears only after payout + COMPLETE");
   }
 
   // ── Cover path payout failure → claim NOT completed, retry stays open
@@ -22586,7 +22599,10 @@ function makeFundSafetyWallet(overrides: {
 
   // ...then the boot drain arrives. It must ACQUIRE AND WAIT — neither
   // skip the lock (racing the spend) nor skip the entry.
-  const drainP = drainPendingRedemptions(client);
+  const credited: string[] = [];
+  const drainP = drainPendingRedemptions(client, {
+    onCredited: (entry) => { credited.push(entry.escrowId); },
+  });
   await new Promise(r => setTimeout(r, 40));
   assert(!order.includes("redeem"),
     "invariant_mint-mutex__drain_waits_for_fund: drain redeem WAITS while the fund spend holds the mint lock");
@@ -22598,8 +22614,13 @@ function makeFundSafetyWallet(overrides: {
     "invariant_mint-mutex__drain_waits_for_fund: drain redeem runs only after the fund spend released the lock");
   assert(summary.succeeded === 1,
     "invariant_mint-mutex__drain_waits_for_fund: the waited-for drain entry still redeems successfully");
-  assert(listPendingRedemptions().length === 0,
-    "invariant_mint-mutex__drain_waits_for_fund: drained entry is cleared from the stash");
+  assert(listPendingRedemptions()[0]?.creditedAt !== undefined,
+    "invariant_mint-mutex__drain_waits_for_fund: drained entry remains as a credited payout reservation");
+  assert(credited.join(",") === "drain_vs_fund",
+    "invariant_mint-mutex__drain_waits_for_fund: boot drain reports the credited escrow for durable credit proof");
+  const secondDrain = await drainPendingRedemptions(client);
+  assert(secondDrain.attempted === 0 && order.filter(x => x === "redeem").length === 1,
+    "invariant_mint-mutex__drain_waits_for_fund: credited reservations are never reissued again");
   await client.cleanup();
   clearAllPendingRedemptions();
 }

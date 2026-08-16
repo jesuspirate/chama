@@ -446,10 +446,12 @@ export interface RunClaimAndPayoutDeps {
   /** Publish escrow COMPLETE after the wallet balance has actually
    *  confirmed. Best-effort: failure must not block payout/recovery. */
   completeClaim?: (escrowId: string) => Promise<void>;
-  /** Clear the crash-recovery OOB note stash after balance growth proves
-   *  the redeem landed locally. Atomic claim+payout keeps the stash until
-   *  this point so a claim-pending timeout can be retried on next boot. */
+  /** Release the crash-recovery/reservation entry only after the outbound
+   *  payout is confirmed. Wallet credit by itself is not user payment. */
   clearPendingRedemption?: (escrowId: string) => void;
+  /** Convert the live bearer-note recovery entry into a credited payout
+   *  reservation after observed balance growth. */
+  markPendingRedemptionCredited?: (escrowId: string) => void;
   /** Bound to addOrTouchLightningHandle. Best-effort post-success save. */
   addOrTouchLightningHandle: (address: string) => void;
 }
@@ -548,6 +550,7 @@ export async function runClaimAndPayout(
     if (prior?.status === "settled") {
       claimTrace("orchestrator-payout-already-settled", { escrowId: opts.escrowId });
       await publishCompleteBestEffort("already-settled");
+      opts.clearPendingRedemption?.(opts.escrowId);
       emit({ kind: "done" });
       return { kind: "done" };
     }
@@ -592,6 +595,7 @@ export async function runClaimAndPayout(
           );
         }
         await publishCompleteBestEffort(`reconcile-${via}`);
+        opts.clearPendingRedemption?.(opts.escrowId);
         emit({ kind: "done" });
         return { kind: "done" };
       }
@@ -660,6 +664,7 @@ export async function runClaimAndPayout(
             );
           }
           await publishCompleteBestEffort("reattach-settled");
+          opts.clearPendingRedemption?.(opts.escrowId);
           emit({ kind: "done" });
           return { kind: "done" };
         }
@@ -842,12 +847,11 @@ export async function runClaimAndPayout(
     try { balanceAfterClaim = await opts.getBalance(); } catch {}
   }
 
-  // Stash discipline: GROWTH proves this attempt's redeem landed — clear.
-  // COVER is circumstantial (the credit may predate this attempt, or the
-  // redeem may still be genuinely pending while pre-existing funds cover
-  // the payout) — KEEP the stash. If the notes already redeemed, the next
-  // boot drain's already-spent → success path clears it; if they're still
-  // pending, the drain retries them. Self-reconciling either way.
+  // Stash discipline: GROWTH proves this attempt's redeem landed, so mark the
+  // entry credited but KEEP it as a reservation. Wallet credit is only the
+  // inbound half of a claim; clearing before the outbound payout allowed an
+  // unrelated premium sweep to spend the claimant's sats. COVER remains
+  // circumstantial and leaves the existing reservation untouched.
   // ⭐ Durable proof that the sats LANDED. This is the only moment the app can
   // prove it — the balance grew by the expected amount after redeeming. Every
   // other artifact (CLAIM event, COMPLETED status, a published chain) records
@@ -863,25 +867,23 @@ export async function runClaimAndPayout(
       // Best-effort: a lost proof makes the gate more conservative, never less.
       console.warn("[chama] claim-credit record failed:", e);
     }
-  }
-  if (settledBy === "growth" && opts.clearPendingRedemption) {
     try {
-      opts.clearPendingRedemption(opts.escrowId);
-      moneyLog("CLAIM-STASH-CLEAR", {
+      opts.markPendingRedemptionCredited?.(opts.escrowId);
+      moneyLog("CLAIM-STASH-RESERVE", {
         escrowId: opts.escrowId,
         result: "success",
       });
-      claimTrace("orchestrator-stash-clear", {
+      claimTrace("orchestrator-stash-reserve", {
         escrowId: opts.escrowId,
         result: "success",
       });
     } catch (e: any) {
-      moneyLog("CLAIM-STASH-CLEAR", {
+      moneyLog("CLAIM-STASH-RESERVE", {
         escrowId: opts.escrowId,
         result: "error",
         errMsg: (e?.message || String(e)).slice(0, 120),
       });
-      claimTrace("orchestrator-stash-clear", {
+      claimTrace("orchestrator-stash-reserve", {
         escrowId: opts.escrowId,
         result: "error",
         errMsg: (e?.message || String(e)).slice(0, 120),
@@ -1055,6 +1057,10 @@ export async function runClaimAndPayout(
   // balance from an earlier/late redeem. Best-effort: the money path
   // succeeded, so a relay publish failure must not undo the payout.
   await publishCompleteBestEffort(settledBy ?? "payout");
+  // Only the confirmed outbound payout releases the reservation. A wallet
+  // credit alone is not user payment and must remain protected from other
+  // background spends (notably arbiter premiums).
+  opts.clearPendingRedemption?.(opts.escrowId);
 
   let balanceAfterPayout: number | undefined;
   try { balanceAfterPayout = await opts.getBalance(); } catch {}

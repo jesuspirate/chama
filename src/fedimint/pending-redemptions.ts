@@ -87,6 +87,12 @@ export interface PendingRedemption {
   createdAt: number;
   /** Number of drain attempts (including the inline one in claimAndRedeem) */
   attempts: number;
+  /** The mint reissue completed into this Chama wallet, but the claimant's
+   *  requested outbound payout (ecash/LN/onchain) has not necessarily
+   *  completed yet. Keep the entry as a reservation until that payout is
+   *  explicitly confirmed; the bearer string is spent evidence, not a
+   *  recovery note. */
+  creditedAt?: number;
   /** Last error message, if drain has failed. Presence = entry is poisoned. */
   lastError?: string;
   /** When the entry was first poisoned (Unix ms) */
@@ -181,6 +187,7 @@ export function stashPendingRedemption(input: {
     amountMsats: input.amountMsats,
     createdAt: existing?.createdAt ?? Date.now(),
     attempts: existing?.attempts ?? 0,
+    creditedAt: existing?.creditedAt,
     // Preserve poisoned/unresolved state across re-stashes — a manual
     // claim retry after ALREADY_SPENT_UNCONFIRMED re-stashes the same
     // escrowId, and dropping unresolvedCredit here would silently
@@ -207,6 +214,23 @@ export function clearPendingRedemption(escrowId: string): void {
     saveStash(stash);
     console.info(`[claim-trace] pending-clear escrowId=${escrowId}`);
   }
+}
+
+/** Mark a stashed redemption as credited without releasing the claimant's
+ * reservation. Clearing belongs to the confirmed outbound-payout boundary. */
+export function markPendingRedemptionCredited(
+  escrowId: string,
+  nowMs = Date.now(),
+): void {
+  const stash = loadStash();
+  const entry = stash[escrowId];
+  if (!entry) return;
+  entry.creditedAt = entry.creditedAt ?? nowMs;
+  delete entry.lastError;
+  delete entry.poisonedAt;
+  delete entry.unresolvedCredit;
+  saveStash(stash);
+  console.info(`[claim-trace] pending-credited escrowId=${escrowId}`);
 }
 
 /** Snapshot of all current entries. For UI / debug / tests. */
@@ -354,7 +378,8 @@ export function partitionStrandedClaims(
  * they rejoin the original federation.
  */
 export async function drainPendingRedemptions(
-  fedimint: FedimintClient
+  fedimint: FedimintClient,
+  opts?: { onCredited?: (entry: PendingRedemption) => void | Promise<void> },
 ): Promise<DrainSummary> {
   const summary: DrainSummary = {
     attempted: 0,
@@ -368,6 +393,10 @@ export async function drainPendingRedemptions(
   const entries = Object.values(stash);
 
   for (const entry of entries) {
+    // The mint already credited this wallet. The entry now reserves those
+    // sats for the claimant's outbound payout; reissuing or exporting its
+    // original bearer string would be both pointless and misleading.
+    if (entry.creditedAt) continue;
     // Skip poisoned / unresolved entries — they've been diagnosed as
     // unrecoverable-by-retry. The C13 surface owns them now.
     if (entry.lastError && entry.poisonedAt) {
@@ -393,10 +422,11 @@ export async function drainPendingRedemptions(
 
     try {
       await fedimint.redeemWithRetry(entry.oobNotes);
-	      // Success: the SDK adapter watched a successful reissue, or the
-	      // fallback redeem path returned cleanly. Terminal mint reissue
-	      // failures throw before here, so the stash is not silently lost.
-	      clearPendingRedemption(entry.escrowId);
+      // Success proves the reissue credited this wallet, but does NOT prove
+      // the claimant received their requested outbound payout. Preserve the
+      // entry as a reservation until that later boundary confirms.
+      markPendingRedemptionCredited(entry.escrowId);
+      await opts?.onCredited?.({ ...entry, creditedAt: Date.now() });
       summary.succeeded++;
       console.info(
         `[chama] drained pending redemption for ${entry.escrowId} ` +

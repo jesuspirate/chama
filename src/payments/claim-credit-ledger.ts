@@ -122,6 +122,7 @@ export interface CreditEvidence {
     unresolvedCredit?: boolean;
     resolvedAt?: number;
     lastError?: string;
+    creditedAt?: number;
   } | null;
   /** The payout journal record, if any. */
   payout: { status: "intent" | "submitted" | "settled" } | null;
@@ -143,6 +144,9 @@ export function judgeCredit(evidence: CreditEvidence): CreditVerdict {
     // notes spent and no credit to this wallet could be confirmed.
     if (r.unresolvedCredit && !r.resolvedAt) return "not-credited";
     if (r.lastError) return "not-credited";
+    // A completed deterministic reissue is positive wallet-credit proof.
+    // The stash remains only to reserve those sats until outbound payout.
+    if (r.creditedAt) return "credited";
     // A plain live entry means the notes are still waiting to redeem.
     return "not-credited";
   }
