@@ -180,7 +180,19 @@ export function DashboardScreen({
               <div style={{ fontSize: 10.5, color: T.muted, fontFamily: T.mono, lineHeight: 1.5, marginTop: 10 }}>
                 {t("bond.dashEarningsHint")}
               </div>
-              {mergedBonds.some((bond) => bond.locked) && balanceMsats >= 1_000 && onWithdrawEcash && (
+              {/* ⚠ Deliberately NOT gated on a live bond.
+                  Two reasons, one cosmetic and one that matters.
+                  Cosmetic: `mergedBonds` merges a synchronous local read with an
+                  async relay fetch, so a stale local record reads `locked` on
+                  first paint and the verified fetch then drops it — the button
+                  appeared during hydration and vanished a second later.
+                  The real one: this withdraws sats the arbiter has ALREADY
+                  EARNED. Gating it on a currently-live bond would trap those
+                  earnings the moment a bond lapsed, which is the harmful
+                  direction — a lapsed bond ends your eligibility for NEW work,
+                  it does not retroactively forfeit pay for work already done.
+                  The enclosing `earnings.noteCount > 0` is the honest gate. */}
+              {balanceMsats >= 1_000 && onWithdrawEcash && (
                 <button
                   type="button"
                   onClick={onWithdrawEcash}
@@ -192,7 +204,18 @@ export function DashboardScreen({
                     cursor: "pointer",
                   }}
                 >
-                  {t("bond.dashClaimRewardsEcash")}
+                  {/* ⭐ The amount is ON the button, and it is NOT the number
+                      above it. The big figure is LIFETIME earnings — every
+                      premium ever redeemed by this identity, across devices,
+                      including sats already spent. This withdraws the ecash
+                      sitting on THIS device right now. Both are correct and
+                      they will rarely match; a withdraw button sitting under a
+                      lifetime total reads as "withdraw that", which made the
+                      honest lifetime figure look like a lying balance. Showing
+                      the two numbers side by side is the fix. */}
+                  {t("bond.dashClaimRewardsEcash", {
+                    sats: Math.floor(balanceMsats / 1000).toLocaleString(),
+                  })}
                 </button>
               )}
             </>

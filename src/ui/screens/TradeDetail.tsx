@@ -53,7 +53,7 @@ import { isArbiterNoShow, isPerformanceContest } from "../../escrow-engine/arbit
 import { bondedArbitersForCommunity } from "../../arbiters/live-chama.js";
 import type { VerifiedBond } from "../../bond-multisig/bond-announcement.js";
 import { defaultEsploraBase, esploraFetcher, esploraTipHeight } from "../../bond-multisig/fund-watcher.js";
-import { BOND_NETWORK } from "../../bond-multisig/bond-network.js";
+import { MAINNET as BOND_NETWORK } from "../../bond-multisig/multisig.js";
 import { counterpartyToRate, type RatingThumb, type AggregateRatings } from "../../reputation/ratings.js";
 import { RatingTap } from "../components/RatingTap.js";
 import { markChatRead, getLastReadChatAt, countUnreadChat, unreadChatForTrade } from "../../chat/unread.js";

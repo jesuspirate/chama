@@ -2818,8 +2818,15 @@ export default function App() {
         <EcashExportModal
           balanceMsats={fedimint.balanceMsats ?? 0}
           federationLabel={
-            getCommunityBySlug(routeCommunitySlug)?.displayName
-            ?? fedimint.federationName
+            // ⚠ The FEDERATION name first, community label only as a fallback.
+            // This string tells the user which wallet the bearer note will
+            // import into ("it only works on X"). A community displayName is
+            // "USA · USD" — a country and a currency, which no Fedimint wallet
+            // is named after and which therefore tells them nothing they can
+            // act on. The federation is "Bitcoin Life Federation", which is
+            // exactly what they'll be looking for in Fedi.
+            fedimint.federationName
+            ?? getCommunityBySlug(routeCommunitySlug)?.displayName
             ?? t("app.yourFederation")
           }
           // Explicit wallet exports are intended to be portable to Fedi on a
@@ -2856,8 +2863,15 @@ export default function App() {
         <EcashExportModal
           balanceMsats={fedimint.balanceMsats ?? 0}
           federationLabel={
-            getCommunityBySlug(routeCommunitySlug)?.displayName
-            ?? fedimint.federationName
+            // ⚠ The FEDERATION name first, community label only as a fallback.
+            // This string tells the user which wallet the bearer note will
+            // import into ("it only works on X"). A community displayName is
+            // "USA · USD" — a country and a currency, which no Fedimint wallet
+            // is named after and which therefore tells them nothing they can
+            // act on. The federation is "Bitcoin Life Federation", which is
+            // exactly what they'll be looking for in Fedi.
+            fedimint.federationName
+            ?? getCommunityBySlug(routeCommunitySlug)?.displayName
             ?? t("app.yourFederation")
           }
           spendNotes={(amountMsats) => actions.spendNotes(amountMsats)}

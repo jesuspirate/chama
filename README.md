@@ -2,7 +2,9 @@
 
 [![CI](https://github.com/jesuspirate/chama/actions/workflows/ci.yml/badge.svg)](https://github.com/jesuspirate/chama/actions/workflows/ci.yml)
 
-Chama is a Nostr-native peer-to-peer marketplace with non-custodial Fedimint ecash escrow. There is no central Chama account server or custody layer: clients coordinate encrypted trade events over Nostr and interact directly with a selected Fedimint federation.
+Chama is a Nostr-native peer-to-peer marketplace with non-custodial escrow. There is no central Chama account server or custody layer: clients coordinate encrypted trade events over Nostr and interact directly with a selected Fedimint federation.
+
+A trade can be held two ways. **Ecash** (the default) is instant, carries no miner fee, and settles inside the federation. **On-chain** holds the sats at a Bitcoin address built from three keys — both traders and their arbiter — with three spend paths: cooperative settlement, arbitration gated behind a consensus-enforced delay, and a timelocked refund to whoever funded it. On-chain is opt-in and available on larger trades, where a miner fee is small against the amount. Clients always recompute an escrow address from the trade's own terms and never trust one that arrived over the network.
 
 ## Run locally
 

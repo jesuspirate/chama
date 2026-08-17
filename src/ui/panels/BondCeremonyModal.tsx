@@ -36,7 +36,7 @@ import {
   type ReclaimDestinationChoice,
   type ReclaimDestinationKind,
 } from "../../bond-multisig/commitment-bond.js";
-import { BOND_NETWORK, BOND_NETWORK_IS_TEST } from "../../bond-multisig/bond-network.js";
+import { MAINNET as BOND_NETWORK } from "../../bond-multisig/multisig.js";
 import { getCommunityBySlug } from "../../communities/registry.js";
 import { getAllPickerCountries, type PickerCountry } from "../../communities/countries.js";
 import { countryMatchesSearch, countrySubline, resolveCountryCommunitySlug } from "../../communities/country-resolve.js";
@@ -377,23 +377,6 @@ export function BondCeremonyModal({ createCommitmentBond, checkCommitmentFunding
       onClick={(e) => { if (backdropPressRef.current && e.target === e.currentTarget && closeable) onClose(); backdropPressRef.current = false; }}>
       <div style={{ background: T.card, border: `1px solid ${T.borderHi}`, borderRadius: T.r, width: "100%", maxWidth: 380, maxHeight: "90vh", overflow: "auto", padding: 20 }}>
         <Header onClose={onClose} closeable={closeable} />
-
-        {/* ⚠ A bond screen that quietly changed chains would be the single most
-            dangerous thing in this app. If the dev-only signet override is on,
-            it says so before anything else on the screen, and says which bonds
-            are hidden rather than letting them look deleted. */}
-        {BOND_NETWORK_IS_TEST && (
-          <div style={{
-            padding: "10px 12px", marginBottom: 14, borderRadius: T.rs,
-            background: `${T.amber}14`, border: `1px solid ${T.amber}55`,
-            color: T.amber, fontFamily: T.sans, fontSize: 12.5, lineHeight: 1.5,
-          }}>
-            <strong>⚠ Signet test bonds — dev build only.</strong> Every bond here
-            is test coins. Your real mainnet bonds are untouched and hidden while
-            this is on; clear <code style={{ fontFamily: T.mono }}>chama_test_bond_signet</code> and
-            reload to get them back.
-          </div>
-        )}
 
         {view.kind === "list" && (
           <BondList

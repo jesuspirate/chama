@@ -293,7 +293,7 @@ const FAULT_VERIFY_TRADE_CAP = 12;
 import { readCachedCommunityBonds, writeCachedCommunityBonds } from "../arbiters/bonded-pool-cache.js";
 import { bondedArbitersForCommunity } from "../arbiters/live-chama.js";
 import { getCommitmentBond, upsertCommitmentBond, listCommitmentBonds, newBondId, reconstructBondRecord } from "../bond-multisig/commitment-store.js";
-import { BOND_NETWORK } from "../bond-multisig/bond-network.js";
+import { MAINNET as BOND_NETWORK } from "../bond-multisig/multisig.js";
 import { hexToBytes, bytesToHex as msBytesToHexLocal } from "@noble/hashes/utils.js";
 import { computeChamaLiveness, type ChamaLiveness, type RatingSummary as LivenessRatingSummary } from "../arbiters/live-chama.js";
 import {

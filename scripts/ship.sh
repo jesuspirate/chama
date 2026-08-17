@@ -45,7 +45,7 @@ set -euo pipefail
 #                      release-all.sh / android-release.sh / release.sh
 #
 # Tip: export the usual env once, e.g.
-#   export SIGN_WITH=browser CHAMA_ZSP_BIN=/private/tmp/zsp
+#   export SIGN_WITH=browser CHAMA_ZSP_BIN="$HOME/go/bin/zsp"
 #   npm run ship -- --minor
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -76,11 +76,18 @@ export SIGN_WITH="${SIGN_WITH:-browser}"
 # "vX.Y.Z" chip. Local `npm run build` / android:sync (without this) bake an
 # amber "v2.0.3 · dev MM-DD HH:mm" stamp so testers can SEE a refresh landed.
 export CHAMA_RELEASE=1
+# ⚠ Order matters. The durable `go install` location is preferred over
+# /private/tmp, which macOS WIPES on reboot/cleanup — a stale-but-present
+# binary there used to win over the good one, and a missing one killed the
+# whole lane with "❌ zsp CLI is required" mid-release. /private/tmp survives
+# only as a last resort for an older machine that still has it there.
 if [ -z "${CHAMA_ZSP_BIN:-}" ]; then
-  if [ -x /private/tmp/zsp ]; then
-    CHAMA_ZSP_BIN=/private/tmp/zsp
+  if [ -x "$HOME/go/bin/zsp" ]; then
+    CHAMA_ZSP_BIN="$HOME/go/bin/zsp"
   elif command -v zsp >/dev/null 2>&1; then
     CHAMA_ZSP_BIN="$(command -v zsp)"
+  elif [ -x /private/tmp/zsp ]; then
+    CHAMA_ZSP_BIN=/private/tmp/zsp
   fi
 fi
 export CHAMA_ZSP_BIN

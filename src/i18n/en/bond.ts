@@ -2,7 +2,7 @@
 // renew, arbiter duties, announce), Dashboard, liveness signal, arbiter apply.
 // Keys MUST be prefixed "bond." — see src/i18n/en/connect.ts for the pattern.
 export const bond: Record<string, string> = {
-  "bond.dashClaimRewardsEcash": "CLAIM AVAILABLE BALANCE AS ECASH",
+  "bond.dashClaimRewardsEcash": "WITHDRAW {sats} SATS ON THIS DEVICE",
   "bond.allBonds": "← All bonds",
   "bond.amountLabel": "Bond amount (sats)",
   "bond.announceAgain": "Announce again",

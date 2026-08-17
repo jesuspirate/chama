@@ -26,7 +26,6 @@ import {
   type ReclaimDestinationKind,
 } from "./commitment-bond.js";
 import { SIGNET, type BtcNetwork, type BondUtxo } from "./multisig.js";
-import { BOND_ADDRESS_PREFIX } from "./bond-network.js";
 import * as btc from "@scure/btc-signer";
 import {
   getScopedStorageItem,
@@ -247,22 +246,15 @@ function writeRaw(map: StoreMap, opts: { allowEmptyOverwrite?: boolean } = {}): 
 
 // ── public API ───────────────────────────────────────────────────────────────
 export function listCommitmentBonds(): CommitmentRecord[] {
-  // Active-network display: drop any cross-network record — e.g. a signet test
-  // bond persisted on a dev device. A mainnet Taproot bond address is bc1p…, a
-  // signet/testnet one is tb1p…, so this HIDES foreign-chain leftovers without
-  // deleting them: the records survive untouched and reappear the moment the
-  // active network matches again. deserialize is left network-agnostic (tests
-  // round-trip signet).
-  //
-  // ⚠ The prefix follows BOND_NETWORK rather than being hardcoded to mainnet,
-  // so a dev running the signet test bond sees their test bond and NOT their
-  // real one. In production BOND_ADDRESS_PREFIX is the literal "bc1" — this is
-  // byte-identical to the old hardcoded check.
+  // Mainnet-only display: drop any stale cross-network record — e.g. a pre-v5.0
+  // signet/Mutinynet test bond persisted on a dev device. A mainnet Taproot bond
+  // address is bc1p…, a signet/testnet one is tb1p…, so this hides foreign-chain
+  // leftovers (without deleting them) so the Dashboard + ceremony only ever show
+  // live mainnet bonds. deserialize is left network-agnostic (tests round-trip signet).
   return Object.values(readRaw())
     .sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
     .map(deserializeCommitment)
-    .filter((r): r is CommitmentRecord =>
-      r !== null && r.bond.address.startsWith(BOND_ADDRESS_PREFIX));
+    .filter((r): r is CommitmentRecord => r !== null && r.bond.address.startsWith("bc1"));
 }
 export function getCommitmentBond(bondId: string): CommitmentRecord | null {
   const rec = readRaw()[bondId];
