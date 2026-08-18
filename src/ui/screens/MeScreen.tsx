@@ -2027,6 +2027,7 @@ function YourChamaCard({
   const { t } = useT();
   const [changing, setChanging] = useState(false);
   const [query, setQuery] = useState("");
+  const [expandedCountry, setExpandedCountry] = useState<string | null>(null);
   // Your own chama's chain-verified liveness — auto-refreshed (mount, focus, and a
   // gentle poll) so a bond appearing shows up without a manual reload. Fails soft.
   const { liveness, loading: livenessLoading, outcome: livenessOutcome } = useLiveness(communitySlug, loadLiveness, { intervalMs: LIVENESS_POLL_MS });
@@ -2036,16 +2037,22 @@ function YourChamaCard({
     ? countries.find((country) => country.code === current.country) ?? null
     : null;
   const currentCountryCode = currentCountry?.code ?? current?.country ?? null;
-  const currentCountryLabel = currentCountry?.name ?? current?.country ?? t("me.globalRegion");
+  const currentCountryLabel = current?.displayName ?? currentCountry?.name ?? current?.country ?? t("me.globalRegion");
   const currentCountryFlag = currentCountry?.flag ?? (current?.country ? current.flagEmoji : null);
-  const currentCountrySubline = currentCountry
-    ? countrySubline(currentCountry)
-    : current?.currency ?? "USD";
+  const currentCountrySubline = current
+    ? [current.disambiguator, current.pickerLabel, current.currency].filter(Boolean).join(" · ")
+    : currentCountry ? countrySubline(currentCountry) : "USD";
   const search = query.trim().toLowerCase();
   const filteredCountries = search
     ? countries.filter((country) => countryMatchesSearch(country, search))
     : countries;
-  const otherCountries = filteredCountries.filter((country) => country.code !== currentCountryCode);
+  // Keep the current country visible when it contains another Chama. This is
+  // what makes GBF → BLF possible: the old country-only list removed USA as
+  // "already selected" and accidentally hid every alternate federation in it.
+  const switchCountries = filteredCountries.filter((country) =>
+    country.code !== currentCountryCode
+    || country.chamas.some((chama) => chama.slug !== communitySlug),
+  );
 
   return (
     <div style={{
@@ -2066,6 +2073,7 @@ function YourChamaCard({
             onClick={() => {
               setChanging((v) => !v);
               setQuery("");
+              setExpandedCountry(null);
             }}
             style={{
               background: changing ? T.surface : T.accentDim,
@@ -2157,13 +2165,13 @@ function YourChamaCard({
             fontFamily: T.mono, letterSpacing: 1, marginBottom: 8,
           }}>
             {search
-              ? (otherCountries.length === 1
-                ? t("me.countryMatchOne", { count: otherCountries.length })
-                : t("me.countryMatchMany", { count: otherCountries.length }))
+              ? (switchCountries.length === 1
+                ? t("me.countryMatchOne", { count: switchCountries.length })
+                : t("me.countryMatchMany", { count: switchCountries.length }))
               : t("me.otherCountries")}
           </div>
           <div style={{ display: "grid", gap: 8, maxHeight: 260, overflowY: "auto", paddingRight: 2 }}>
-            {otherCountries.length === 0 ? (
+            {switchCountries.length === 0 ? (
               <div style={{
                 padding: "14px 12px", borderRadius: T.rs,
                 background: T.surface, border: `1px dashed ${T.border}`,
@@ -2172,46 +2180,81 @@ function YourChamaCard({
               }}>
                 {t("me.noCountriesMatch")}
               </div>
-            ) : otherCountries.map((country) => (
-              <button
-                key={country.code}
-                onClick={() => {
-                  setChanging(false);
-                  setQuery("");
-                  onSelectCommunity(resolveCountryCommunitySlug(country));
-                }}
-                style={{
-                  width: "100%",
-                  display: "flex", alignItems: "center", gap: 11,
-                  padding: "11px 12px", borderRadius: T.rs,
-                  background: T.surface, border: `1px solid ${T.border}`,
-                  color: T.text, fontFamily: T.sans,
-                  cursor: "pointer", textAlign: "left",
-                }}
-              >
-                <span style={{ fontSize: 22, lineHeight: 1 }}>{country.flag}</span>
-                <span style={{ minWidth: 0, flex: 1 }}>
-                  <span style={{
-                    display: "block", overflow: "hidden",
-                    textOverflow: "ellipsis", whiteSpace: "nowrap",
-                    fontSize: 13, fontWeight: 800, color: T.text,
-                  }}>
-                    {country.name}
-                  </span>
-                  <span style={{
-                    display: "block", marginTop: 2,
-                    overflow: "hidden", textOverflow: "ellipsis",
-                    whiteSpace: "nowrap", fontFamily: T.mono,
-                    fontSize: 10, color: T.muted,
-                  }}>
-                    {countrySubline(country)}
-                  </span>
-                </span>
-                <span style={{ color: T.accent, fontFamily: T.mono, fontSize: 11, fontWeight: 900 }}>
-                  {t("me.switchAction")}
-                </span>
-              </button>
-            ))}
+            ) : switchCountries.map((country) => {
+              const choices = country.chamas.length > 1 ? country.chamas : [];
+              const open = expandedCountry === country.code;
+              return (
+                <div key={country.code} style={{ display: "grid", gap: 6 }}>
+                  <button
+                    onClick={() => {
+                      if (choices.length > 1) {
+                        setExpandedCountry(open ? null : country.code);
+                        return;
+                      }
+                      setChanging(false);
+                      setQuery("");
+                      onSelectCommunity(resolveCountryCommunitySlug(country));
+                    }}
+                    style={{
+                      width: "100%", display: "flex", alignItems: "center", gap: 11,
+                      padding: "11px 12px", borderRadius: T.rs,
+                      background: T.surface, border: `1px solid ${open ? T.accent + "66" : T.border}`,
+                      color: T.text, fontFamily: T.sans, cursor: "pointer", textAlign: "left",
+                    }}
+                  >
+                    <span style={{ fontSize: 22, lineHeight: 1 }}>{country.flag}</span>
+                    <span style={{ minWidth: 0, flex: 1 }}>
+                      <span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 13, fontWeight: 800, color: T.text }}>
+                        {country.name}
+                      </span>
+                      <span style={{ display: "block", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: T.mono, fontSize: 10, color: T.muted }}>
+                        {choices.length > 1
+                          ? t("me.chamasInCountry", { count: choices.length })
+                          : countrySubline(country)}
+                      </span>
+                    </span>
+                    <span style={{ color: T.accent, fontFamily: T.mono, fontSize: 11, fontWeight: 900 }}>
+                      {choices.length > 1 ? (open ? "−" : "+") : t("me.switchAction")}
+                    </span>
+                  </button>
+                  {open && choices.map((choice) => {
+                    const isCurrent = choice.slug === communitySlug;
+                    return (
+                      <button
+                        key={choice.slug}
+                        disabled={isCurrent}
+                        onClick={() => {
+                          setChanging(false);
+                          setQuery("");
+                          setExpandedCountry(null);
+                          onSelectCommunity(choice.slug);
+                        }}
+                        style={{
+                          marginLeft: 18, width: "calc(100% - 18px)", display: "flex", alignItems: "center", gap: 10,
+                          padding: "9px 11px", borderRadius: T.rs, textAlign: "left",
+                          background: isCurrent ? T.accentDim : T.card,
+                          border: `1px solid ${isCurrent ? T.accent + "55" : T.border}`,
+                          color: isCurrent ? T.accent : T.text,
+                          cursor: isCurrent ? "default" : "pointer",
+                        }}
+                      >
+                        <span style={{ minWidth: 0, flex: 1 }}>
+                          <span style={{ display: "block", fontFamily: T.sans, fontSize: 12, fontWeight: 800 }}>
+                            {choice.pickerLabel ?? choice.displayName}
+                          </span>
+                          <span style={{ display: "block", marginTop: 2, color: T.muted, fontFamily: T.mono, fontSize: 9 }}>
+                            {[choice.disambiguator, choice.currency].filter(Boolean).join(" · ")}
+                          </span>
+                        </span>
+                        <span style={{ fontFamily: T.mono, fontSize: 10, fontWeight: 900 }}>
+                          {isCurrent ? t("me.current") : t("me.switchAction")}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              );
+            })}
           </div>
         </div>
       )}

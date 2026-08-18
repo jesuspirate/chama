@@ -71,6 +71,7 @@ export const me: Record<string, string> = {
   "me.checkOtherDeviceTitle": "REVISA TU OTRO DISPOSITIVO",
   "me.countryMatchMany": "{count} COINCIDENCIAS",
   "me.countryMatchOne": "{count} COINCIDENCIA",
+  "me.chamasInCountry": "{count} Chamas · elige uno",
   "me.current": "actual",
   "me.dark": "Oscuro",
   "me.decide": "Decidir",

@@ -111,7 +111,6 @@ import {
   decideListingTapEffect,
   decideArbiterWarning,
   canOfferSubscription,
-  shouldShowBrowserSupportBanner,
   shouldShowRecoveryBanner,
   MAIN_SURFACE_RECOVERY_MIN_SATS,
   hasActiveBuyerSellerCommitment,
@@ -135,13 +134,11 @@ import { Toast } from "./components/Toast.js";
 import { BitcoinAmount } from "./components/BitcoinAmount.js";
 import { BottomNav, BOTTOM_NAV_HEIGHT, type Tab } from "./components/BottomNav.js";
 import { CoachMarkTour, readCoachSeen, type CoachStep } from "./components/CoachMarkTour.js";
-import { BrowserSupportBanner } from "./components/BrowserSupportBanner.js";
 import { ActiveTradePill } from "./components/ActiveTradePill.js";
 import { BitcoinPricePill } from "./components/BitcoinPricePill.js";
 import { RecoveryBanner } from "./screens/RecoveryBanner.js";
 import { PendingLockCard } from "./components/PendingLockCard.js";
 import { PendingPayoutCard } from "./components/PendingPayoutCard.js";
-import { useBrowserBanner } from "./hooks/useBrowserBanner.js";
 import { useFederationCommands } from "./hooks/useFederationCommands.js";
 
 import { BrowseView } from "./screens/BrowseView.js";
@@ -558,9 +555,6 @@ export default function App() {
   // post-connect GlobeCountryPicker (the pick moved out of the pre-signer
   // ConnectScreen). Re-evaluated whenever a signer connects.
   const [needsHomePick, setNeedsHomePick] = useState(false);
-  const [nip46Uri, setNip46Uri] = useState<string | null>(null);
-  const [loginSuccess, setLoginSuccess] = useState(false);
-  const [nip46Waiting, setNip46Waiting] = useState(false);
   const [toast, setToast] = useState<{ message: ReactNode; type: "success" | "error" | "info" } | null>(null);
   toastRef.current = setToast;
   const [showFundModal, setShowFundModal] = useState(false);
@@ -792,12 +786,6 @@ export default function App() {
     const t = setTimeout(() => setCoachReady(true), 600);
     return () => clearTimeout(t);
   }, [connected, coachSeen]);
-  // Browser-support banner state lives in a dedicated hook so the
-  // per-pubkey scoping (Bug E from v0.1.85 smoke testing) stays
-  // testable in isolation and App.tsx stays an orchestrator.
-  const { dismissed: browserBannerDismissed, dismiss: dismissBrowserBanner } =
-    useBrowserBanner(pubkey);
-
   // Two-tap confirm for destructive listing delete. window.confirm() is a
   // no-op in the Tauri/Capacitor webview (it silently returned false, so the
   // old confirm-gated delete never fired). This arms on the first tap and
@@ -2461,7 +2449,6 @@ export default function App() {
         <style>{globalCss()}</style>
         <SimModePill />
         <SimEntryModal />
-        {loginSuccess && <LoginSuccessSplash />}
         {showQRScanner && (
           <Suspense fallback={null}>
             <QRScanner
@@ -2492,29 +2479,6 @@ export default function App() {
         )}
         <ConnectScreen
           onConnect={actions.connect}
-          onConnectNIP46={async () => {
-            try {
-              if (nip46Waiting) return;
-              setNip46Waiting(true);
-              const { createNostrConnectSession } = await import("../escrow-engine/nip46-signer.js");
-              const session = await createNostrConnectSession();
-              setNip46Uri(session.uri);
-              const result = await session.waitForConnection();
-              (window as any).__chama_nip46_signer = result.signer;
-              (window as any).__chama_nip46_pubkey = result.pubkey;
-              setNip46Uri(null);
-              setNip46Waiting(false);
-              setLoginSuccess(true);
-              setTimeout(() => {
-                setLoginSuccess(false);
-                actions.connect();
-              }, 1800);
-            } catch (e: any) {
-              setNip46Waiting(false);
-              setNip46Uri(null);
-              console.error("[chama] NIP-46 connection failed:", e);
-            }
-          }}
           onConnectNsec={async (nsec: string, remember: boolean, wasGenerated: boolean) => {
             (window as any).__chama_connect_nsec = nsec;
             if (remember && shouldPersistNsecInShell()) {
@@ -2532,8 +2496,6 @@ export default function App() {
           }}
           loading={loading}
           error={error}
-          nip46Uri={nip46Uri}
-          nip46Waiting={nip46Waiting}
         />
       </div>
     );
@@ -2718,18 +2680,6 @@ export default function App() {
             }}
           />
         </>
-      )}
-
-      {/* Honest runtime-support disclosure — one-time-per-account. Fires
-          regardless of join state, so first-time users encounter it
-          before committing to a federation (the right educational
-          moment per Pillar 2.7). */}
-      {!detailMode && shouldShowBrowserSupportBanner({
-        isBrowser: !Capacitor.isNativePlatform(),
-        dismissed: browserBannerDismissed,
-        simModeOn: simOn,
-      }) && !isNativeBridgeModeOn() && (
-        <BrowserSupportBanner onDismiss={dismissBrowserBanner} />
       )}
 
       {/* The first-time onboarding picker no longer renders in the shell.
@@ -4294,31 +4244,3 @@ const globalCss = () => `
   .td-timeline summary::-webkit-details-marker{display:none}
   .td-timeline[open] .td-tl-chev{transform:rotate(90deg);border-color:${T.accent};color:${T.accent}}
 `;
-
-function LoginSuccessSplash() {
-  const { t } = useT();
-  return (
-    <div style={{
-      position: "fixed", inset: 0, zIndex: 9999,
-      display: "flex", flexDirection: "column",
-      alignItems: "center", justifyContent: "center",
-      background: T.bg,
-      animation: "fadeIn 0.3s ease-out",
-    }}>
-      <div style={{
-        width: 80, height: 80, borderRadius: "50%",
-        background: T.greenDim, border: "2px solid " + T.green,
-        display: "flex", alignItems: "center", justifyContent: "center",
-        marginBottom: 20, animation: "fadeIn 0.4s ease-out",
-      }}>
-        <span style={{ fontSize: 36 }}>✓</span>
-      </div>
-      <div style={{ fontSize: 18, fontWeight: 700, color: T.green, fontFamily: T.mono, marginBottom: 8 }}>
-        {t("app.connectedSplash")}
-      </div>
-      <div style={{ fontSize: 11, color: T.muted, fontFamily: T.mono }}>
-        {t("app.signerAuthenticated")}
-      </div>
-    </div>
-  );
-}

@@ -21,6 +21,7 @@ export function NsecLogin({
   friendly?: boolean;
   friendlySecondary?: {
     label: string;
+    hint?: string;
     onClick: () => void;
     disabled?: boolean;
     tone?: "accent" | "neutral";
@@ -202,7 +203,14 @@ export function NsecLogin({
             cursor: friendlySecondary?.disabled ? "default" : "pointer",
           }}
         >
-          {friendlySecondary?.label ?? t("chat.haveKey")}
+          <span style={{ display: "block" }}>
+            {friendlySecondary?.label ?? t("chat.haveKey")}
+          </span>
+          {friendlySecondary?.hint && (
+            <span style={{ display: "block", marginTop: 3, fontSize: 10, fontWeight: 500, color: T.muted }}>
+              ({friendlySecondary.hint})
+            </span>
+          )}
         </button>
         <div style={{
           fontSize: 10, color: T.muted, fontFamily: T.sans,

@@ -1,7 +1,7 @@
 // fr/connect — Session B fills this from src/i18n/en/connect.ts (key set must match EXACTLY).
 export const connect: Record<string, string> = {
   "connect.errorNoSigner":
-    "Aucun signeur trouvé sur cet appareil. Si vous revenez avec une clé de récupération, utilisez « Plus d'options de connexion » ci-dessous.",
+    "L'extension du navigateur n'a pas pu se connecter. Utilisez votre clé de récupération ci-dessous.",
   "connect.fediBody":
     "Chama utilise l'identité et le portefeuille que Fedi vous a déjà donnés — entrez, c'est tout.",
   "connect.footerNonCustodial": "Chama ne détient pas vos fonds.",
@@ -21,6 +21,7 @@ export const connect: Record<string, string> = {
   "connect.recoveryFooter":
     "Collez la clé de récupération enregistrée lors de votre première configuration de Chama — c'est le seul moyen de retrouver votre compte.",
   "connect.returningCitizen": "Je suis déjà citoyen Chama",
+  "connect.returningCitizenHint": "utilise votre extension ou ouvre la connexion par clé de récupération",
   "connect.saferExtBody":
     "Un signeur Nostr comme Alby garde votre clé hors de la page. Ne collez ci-dessous que si vous n'en avez pas.",
   "connect.saferExtTitle": "Plus sûr avec une extension.",

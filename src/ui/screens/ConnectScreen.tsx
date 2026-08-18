@@ -1,7 +1,6 @@
-import { useEffect, useState, lazy, Suspense, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Capacitor } from "@capacitor/core";
 import { T } from "../theme.js";
-import { CopyButton } from "../components/CopyButton.js";
 import { NsecLogin } from "../panels/NsecLogin.js";
 import { BrandHeader } from "../components/BrandHeader.js";
 import { useT, type TFunc } from "../../i18n/index.js";
@@ -9,7 +8,6 @@ import {
   getSignInEnvironment,
   isFediWebViewSignInEnvironment,
   isTauriRuntime,
-  shouldOfferNIP46Signer,
 } from "../sign-in-environment.js";
 import { isNativeBridgeModeOn } from "../../fedimint/native-bridge-adapter.js";
 import { getCommunityBySlug } from "../../communities/registry.js";
@@ -18,8 +16,6 @@ import {
   getLastHomeHint,
 } from "../../communities/storage.js";
 import { getPendingCommunityReport } from "../../communities/community-request.js";
-
-const QRCode = lazy(() => import("../QRCode.js"));
 
 // v2.6: the orientation moment. A brand-new user (no home community yet)
 // historically met "Choose your local market" cold — the app asked for a
@@ -73,15 +69,12 @@ const INTRO_USE_CASES: { icon: string; titleKey: string; blurbKey: string; tint:
 ];
 
 export function ConnectScreen({
-  onConnect, onConnectNIP46, onConnectNsec, loading, error, nip46Uri, nip46Waiting,
+  onConnect, onConnectNsec, loading, error,
 }: {
   onConnect: () => void;
-  onConnectNIP46: () => void;
   onConnectNsec: (nsec: string, remember: boolean, wasGenerated: boolean) => void | Promise<void>;
   loading: boolean;
   error: string | null;
-  nip46Uri?: string | null;
-  nip46Waiting?: boolean;
 }) {
   const { t } = useT();
   // A browser pointed at a remote Rust bridge (the VPS "friend wallet" link) is
@@ -94,7 +87,6 @@ export function ConnectScreen({
     isNativePlatform: isNative,
   };
   const isFediWebView = isFediWebViewSignInEnvironment(signInEnvironment);
-  const offerNIP46Signer = shouldOfferNIP46Signer(signInEnvironment);
   // A returning npub's choice is scoped (read post-connect); the unscoped "last
   // home" hint (#6) is a display-only fallback so a returning user sees "welcome
   // back to <chama>" pre-signin. It never resolves a committed home, so it can't
@@ -103,7 +95,6 @@ export function ConnectScreen({
   const homeSlug = getUserCommunitySlugRaw() ?? getLastHomeHint();
   // v2.6: gate the one-time orientation screen ahead of the market picker.
   const [introSeen, setIntroSeen] = useState<boolean>(() => readIntroSeen());
-  const [showAdvanced, setShowAdvanced] = useState(false);
   // v2.5: the recovery-key paste box, revealed by "I'm a returning Chama
   // citizen" on the platforms where pasting is the right path — no hint detour,
   // no intermediate button.
@@ -200,48 +191,6 @@ export function ConnectScreen({
 
       {error && <ErrorBox>{friendlySignInError(error, t)}</ErrorBox>}
 
-      {nip46Uri && (
-        <div style={{
-          width: "100%", maxWidth: 340, padding: 20, marginBottom: 16,
-          background: T.purpleDim, border: `1px solid ${T.purple}33`,
-          borderRadius: T.r, textAlign: "center",
-        }}>
-          <div style={{ fontSize: 13, color: T.purple, fontFamily: T.sans, marginBottom: 14, fontWeight: 600 }}>
-            {t("connect.scanWithSigner")}
-          </div>
-          <div style={{
-            display: "flex", justifyContent: "center", marginBottom: 14,
-            padding: 12, background: "#111118", borderRadius: 12,
-          }}>
-            <Suspense fallback={<div style={{ width: 220, height: 220 }} />}>
-              <QRCode data={nip46Uri} size={220} margin={4} />
-            </Suspense>
-          </div>
-          <a href={nip46Uri} style={{
-            display: "block", padding: "10px 12px", marginBottom: 10,
-            background: T.surface, borderRadius: T.rs, border: `1px solid ${T.border}`,
-            color: T.purple, fontFamily: T.mono, fontSize: 9,
-            wordBreak: "break-all", lineHeight: 1.4, textDecoration: "none",
-            maxHeight: 50, overflow: "hidden",
-          }}>
-            {nip46Uri.slice(0, 60)}...
-          </a>
-          <CopyButton value={nip46Uri} label={t("common.copyLink")} copiedLabel={t("common.copied")} style={{
-            padding: "8px 20px", borderRadius: T.rs,
-            background: T.surface, border: `1px solid ${T.border}`,
-            color: T.muted, fontFamily: T.mono, fontSize: 10, cursor: "pointer",
-          }} />
-          {nip46Waiting && (
-            <div style={{
-              marginTop: 12, fontSize: 10, color: T.purple, fontFamily: T.mono,
-              animation: "pulse 2s ease-in-out infinite",
-            }}>
-              {t("connect.waitingSigner")}
-            </div>
-          )}
-        </div>
-      )}
-
       <div style={{ display: "flex", flexDirection: "column", gap: 12, width: "100%", maxWidth: 360 }}>
         {isFediWebView ? (
           <FediOnlyConnectButton
@@ -262,6 +211,7 @@ export function ConnectScreen({
                 : undefined}
               friendlySecondary={{
                 label: loading ? t("common.connecting") : t("connect.returningCitizen"),
+                hint: t("connect.returningCitizenHint"),
                 // Opens and focuses the attached recovery-key field directly.
                 onClick: handleReturningSignIn,
                 disabled: loading,
@@ -297,52 +247,6 @@ export function ConnectScreen({
               />
             )}
 
-            <button
-              onClick={() => setShowAdvanced(!showAdvanced)}
-              style={{
-                width: "100%", padding: "10px", borderRadius: T.r,
-                background: "transparent", border: "none",
-                color: T.muted, fontFamily: T.mono, fontSize: 11,
-                cursor: "pointer",
-              }}
-            >
-              {showAdvanced ? t("connect.hideMoreOptions") : t("connect.moreOptions")}
-            </button>
-
-            {showAdvanced && (
-              <>
-                {hasNostrExtension && (
-                  <button
-                    onClick={onConnect}
-                    disabled={loading}
-                    style={{
-                      width: "100%", padding: "14px", borderRadius: T.r,
-                      background: "transparent",
-                      border: `1px solid ${T.border}`,
-                      color: T.text, fontFamily: T.sans, fontSize: 13, fontWeight: 600,
-                      cursor: loading ? "default" : "pointer",
-                    }}
-                  >
-                    {loading ? t("common.connecting") : t("connect.signInExtension")}
-                  </button>
-                )}
-                {offerNIP46Signer && !nip46Uri && (
-                  <button
-                    onClick={onConnectNIP46}
-                    disabled={loading || nip46Waiting}
-                    style={{
-                      width: "100%", padding: "14px", borderRadius: T.r,
-                      background: "transparent",
-                      border: `1px solid ${T.border}`,
-                      color: T.muted, fontFamily: T.sans, fontSize: 13, fontWeight: 600,
-                      cursor: loading || nip46Waiting ? "default" : "pointer",
-                    }}
-                  >
-                    {nip46Waiting ? t("common.waiting") : t("connect.useSignerApp")}
-                  </button>
-                )}
-              </>
-            )}
           </>
         )}
       </div>

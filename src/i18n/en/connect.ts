@@ -2,7 +2,7 @@
 // conversion; see ConnectScreen.tsx for every extraction pattern in use).
 export const connect: Record<string, string> = {
   "connect.errorNoSigner":
-    "We couldn't find a signer on this device. If you're returning with a recovery key, use More sign-in options below.",
+    "The browser extension couldn't connect. Use your recovery key below.",
   "connect.fediBody":
     "Chama uses the identity and wallet Fedi already gave you — just step in.",
   "connect.footerNonCustodial": "Chama does not hold your funds.",
@@ -20,6 +20,7 @@ export const connect: Record<string, string> = {
   "connect.recoveryFooter":
     "Paste the recovery key you saved when you first set up Chama — it's the only way back into your account.",
   "connect.returningCitizen": "I'm a returning Chama citizen",
+  "connect.returningCitizenHint": "uses your browser extension, or opens recovery key sign-in",
   "connect.saferExtBody":
     "A Nostr signer like Alby keeps your key off the page. Only paste below if you don’t have one.",
   "connect.saferExtTitle": "Safer with an extension.",

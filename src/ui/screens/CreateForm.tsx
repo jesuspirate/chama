@@ -32,7 +32,7 @@
 //     honesty info card (one-time-per-account, dismissed on first
 //     publish). Save-draft button + Publish button.
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, type WheelEvent } from "react";
 import { useT, translate, getCurrentLang } from "../../i18n/index.js";
 import { type MenuItem } from "../../escrow-engine/types.js";
 import { randomId } from "../../storage/random-id.js";
@@ -63,6 +63,14 @@ import { sellerIsBonded, resolveListingTenure } from "../../escrow-engine/listin
 import type { VerifiedBond } from "../../bond-multisig/bond-announcement.js";
 import { type ArbiterWarning, displayCounterpartyName, resolveCreateMintUrl } from "../decisions.js";
 import { T, inputStyle, fmtSats } from "../theme.js";
+
+// Number inputs must not hijack page scrolling. Browser wheel-stepping is easy
+// to trigger while moving through the Create sheet—especially on Premium—and
+// can silently change a listing. Blurring hands the wheel back to the page;
+// deliberate typing and the native stepper remain available.
+function releaseNumberWheel(event: WheelEvent<HTMLInputElement>): void {
+  event.currentTarget.blur();
+}
 import {
   MIN_REAL_ATOMIC_FUNDING_SATS,
   minimumAtomicFundingMessage,
@@ -2394,6 +2402,7 @@ function Step2({
           <div style={{ fontSize: 11, color: T.muted, fontFamily: T.mono, marginBottom: 6 }}>{t("create.unitsInStock")}</div>
           <input
             type="number"
+            onWheel={releaseNumberWheel}
             inputMode="numeric"
             min={1}
             value={form.stock ?? ""}
@@ -2753,6 +2762,7 @@ function Step2({
             </div>
             <input
               type="number"
+              onWheel={releaseNumberWheel}
               value={form.sats}
               onChange={e => syncSingleSats(e.target.value)}
               placeholder="100000"
@@ -2778,7 +2788,7 @@ function Step2({
               }}>
                 {form.cur}
               </div>
-              <input type="number" value={form.fiat} onChange={e => syncSingleFiat(e.target.value)} placeholder="50" style={{ ...inputStyle, flex: 1 }} />
+              <input type="number" onWheel={releaseNumberWheel} value={form.fiat} onChange={e => syncSingleFiat(e.target.value)} placeholder="50" style={{ ...inputStyle, flex: 1 }} />
             </div>
             <div style={{ marginTop: 5, fontSize: 9, color: T.muted, fontFamily: T.mono }}>
               {t("create.localPriceNote")}
@@ -2792,6 +2802,7 @@ function Step2({
             </div>
             <input
               type="number"
+              onWheel={releaseNumberWheel}
               value={form.sats}
               onChange={e => syncSingleSats(e.target.value)}
               placeholder="100000"
@@ -2836,7 +2847,7 @@ function Step2({
               }}>
                 {form.cur}
               </div>
-              <input type="number" value={form.fiat} onChange={e => syncSingleFiat(e.target.value)} placeholder="50" style={{ ...inputStyle, flex: 1 }} />
+              <input type="number" onWheel={releaseNumberWheel} value={form.fiat} onChange={e => syncSingleFiat(e.target.value)} placeholder="50" style={{ ...inputStyle, flex: 1 }} />
             </div>
             {/* 3.5.1 #4 belt-and-suspenders: when the live rate for this
                 currency isn't available yet (fresh instance, forex feed not
@@ -2904,6 +2915,8 @@ function Step2({
           }}>
             <input
               type="number"
+              onWheel={releaseNumberWheel}
+              step="0.1"
               value={form.premium}
               onChange={e => set("premium", e.target.value)}
               placeholder={vertical === "lending" ? "12" : "2.5"}
@@ -3165,6 +3178,7 @@ function Step2({
                   />
                   <input
                     type="number"
+                    onWheel={releaseNumberWheel}
                     value={item.sats}
                     onChange={e => updateMenuSats(item.id, e.target.value)}
                     placeholder={vertical === "p2p-trade" ? t("create.minSatsPlaceholder") : vertical === "lending" ? t("create.principalPlaceholder") : "sats"}
@@ -3173,6 +3187,7 @@ function Step2({
                   {vertical === "p2p-trade" && (
                     <input
                       type="number"
+                      onWheel={releaseNumberWheel}
                       value={item.maxSats}
                       onChange={e => updateMenuItem(item.id, { maxSats: e.target.value })}
                       placeholder={t("create.maxPlaceholder")}
@@ -3190,6 +3205,7 @@ function Step2({
                   {vertical !== "lending" && (
                     <input
                       type="number"
+                      onWheel={releaseNumberWheel}
                       value={item.fiat}
                       onChange={e => updateMenuFiat(item.id, e.target.value)}
                       placeholder={form.cur}
@@ -3208,6 +3224,7 @@ function Step2({
                     <>
                       <input
                         type="number"
+                        onWheel={releaseNumberWheel}
                         value={item.termDays}
                         onChange={e => updateMenuItem(item.id, { termDays: e.target.value })}
                         placeholder={t("create.daysPlaceholder")}
@@ -3215,6 +3232,7 @@ function Step2({
                       />
                       <input
                         type="number"
+                        onWheel={releaseNumberWheel}
                         value={item.apr}
                         onChange={e => updateMenuItem(item.id, { apr: e.target.value })}
                         placeholder={t("create.aprPlaceholder")}
@@ -3351,6 +3369,7 @@ function Step2({
                         {t("create.maxPerOrder")}
                         <input
                           type="number"
+                          onWheel={releaseNumberWheel}
                           min={1}
                           inputMode="numeric"
                           placeholder="∞"

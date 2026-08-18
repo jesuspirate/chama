@@ -74,6 +74,7 @@ export const me: Record<string, string> = {
   "me.checkOtherDeviceTitle": "CHECK YOUR OTHER DEVICE",
   "me.countryMatchMany": "{count} MATCHES",
   "me.countryMatchOne": "{count} MATCH",
+  "me.chamasInCountry": "{count} Chamas · choose one",
   "me.current": "current",
   "me.dark": "Dark",
   "me.decide": "Decide",
