@@ -456,7 +456,7 @@ export class EscrowFedimintBridge {
    *   1. Settle any prior attempt's stash entry (re-absorb / idempotent
    *      resume / honest refuse) — its bearer notes must never be clobbered.
    *   2. Persist an INTENT record, fail-closed on unwritable storage.
-   *   3. Spend ecash (90-day try_cancel horizon) → stash the notes
+   *   3. Spend ecash (browser-safe 14-day try_cancel horizon) → stash the notes
    *      SYNCHRONOUSLY before anything else can await, throw, or reload.
    *   4. Split into 2-of-3 SSS shares, NIP-44 encrypt, publish the LOCK.
    *   5. Clear the stash ONLY on a confirmed LOCKED-with-our-notesHash.

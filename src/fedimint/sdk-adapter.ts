@@ -148,6 +148,28 @@ type RealMintTransaction = {
 
 type RealTransaction = RealLightningTransaction | RealMintTransaction | Record<string, unknown>;
 
+/**
+ * Fedimint browser WASM ultimately passes sleeps to JS setTimeout through an
+ * i32 millisecond argument (`n0-future` does `duration.as_millis() as i32`).
+ * A larger OOB auto-cancel horizon wraps negative and fires immediately,
+ * returning the bearer notes to the sender before the receiver can redeem.
+ */
+export const MAX_BROWSER_OOB_TIMEOUT_SECS = Math.floor(0x7fffffff / 1000);
+
+export function assertBrowserSafeOobTimeoutSecs(seconds: number): number {
+  const normalized = Math.floor(seconds);
+  if (!Number.isFinite(seconds) || normalized <= 0) {
+    throw new Error("Fedimint OOB spend timeout must be a positive number of seconds");
+  }
+  if (normalized > MAX_BROWSER_OOB_TIMEOUT_SECS) {
+    throw new Error(
+      `Fedimint OOB spend timeout ${normalized}s exceeds the browser WASM timer ceiling ` +
+        `(${MAX_BROWSER_OOB_TIMEOUT_SECS}s); refusing to create notes that would refund immediately`,
+    );
+  }
+  return normalized;
+}
+
 /** V7 reconcile-by-escrow scan window (newest-first). A payment being
  *  reconciled was dispatched around its journal record's lifetime, so it
  *  sits among the newest ops; a sub-limit page proves the scan saw
@@ -1827,11 +1849,12 @@ export function adaptRealWallet(
         opts: { tryCancelAfterSecs?: number; includeInvite?: boolean },
         meta?: ChamaOperationMeta,
       ) {
+        const tryCancelAfter = typeof opts.tryCancelAfterSecs === "number"
+          ? assertBrowserSafeOobTimeoutSecs(opts.tryCancelAfterSecs)
+          : undefined;
         const result = await real.mint.spendNotes(
           amountMsats,
-          typeof opts.tryCancelAfterSecs === "number"
-            ? Math.floor(opts.tryCancelAfterSecs)
-            : undefined,
+          tryCancelAfter,
           opts.includeInvite ?? false,
           meta ?? {},
         );

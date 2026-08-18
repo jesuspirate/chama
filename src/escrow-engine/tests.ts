@@ -255,7 +255,13 @@ import {
   listArbiterFederationRoutes,
   rememberArbiterFederationRoute,
 } from "../fedimint/arbiter-federation-store.js";
-import { adaptRealWallet, resetLocalFedimintWallet, classifyPayOutcome } from "../fedimint/sdk-adapter.js";
+import {
+  adaptRealWallet,
+  resetLocalFedimintWallet,
+  classifyPayOutcome,
+  assertBrowserSafeOobTimeoutSecs,
+  MAX_BROWSER_OOB_TIMEOUT_SECS,
+} from "../fedimint/sdk-adapter.js";
 import {
   clearAllPendingRedemptions,
   listPendingRedemptions,
@@ -19749,6 +19755,31 @@ console.log("\n── SIM WALLET — balance subscription end-to-end ──");
 // Chama wallet never credits.
 console.log("\n── REAL SDK ADAPTER — Lightning receive watcher ──");
 {
+  // Browser Fedimint's timer bridge accepts signed-i32 milliseconds. The
+  // historical 90-day lock horizon overflowed that boundary and became an
+  // immediate sender refund, hollowing the escrow before claim. Keep both the
+  // boundary guard and Chama's selected horizon under regression coverage.
+  {
+    const { LOCK_SPEND_TRY_CANCEL_SECS } = await import("../fedimint/fedimint-client.js");
+    assert(
+      assertBrowserSafeOobTimeoutSecs(MAX_BROWSER_OOB_TIMEOUT_SECS) ===
+        MAX_BROWSER_OOB_TIMEOUT_SECS,
+      "Browser OOB timeout guard accepts the largest signed-i32 millisecond duration",
+    );
+    let overflowRefused = false;
+    try {
+      assertBrowserSafeOobTimeoutSecs(MAX_BROWSER_OOB_TIMEOUT_SECS + 1);
+    } catch {
+      overflowRefused = true;
+    }
+    assert(overflowRefused,
+      "Browser OOB timeout guard refuses a duration that would wrap and refund immediately");
+    assert(LOCK_SPEND_TRY_CANCEL_SECS === 14 * 24 * 60 * 60,
+      "Lock OOB notes use a browser-safe 14-day horizon (beyond the longest trade + dispute window)");
+    assert(LOCK_SPEND_TRY_CANCEL_SECS < MAX_BROWSER_OOB_TIMEOUT_SECS,
+      "Lock OOB timeout remains below the browser WASM signed-i32 timer ceiling");
+  }
+
   type TestGatewayInfo = {
     gateway_id: string;
     api: string;
@@ -19772,6 +19803,8 @@ console.log("\n── REAL SDK ADAPTER — Lightning receive watcher ──");
       subscribeLnReceive: 0,
       subscribeLnPay: 0,
       subscribeInternalPayment: 0,
+      spendNotes: 0,
+      spendNotesTimeoutSecs: undefined as number | undefined,
       unsubscribeReceive: 0,
       unsubscribePay: 0,
       unsubscribeInternalPay: 0,
@@ -19809,7 +19842,14 @@ console.log("\n── REAL SDK ADAPTER — Lightning receive watcher ──");
         subscribeBalance() { return () => {}; },
       },
       mint: {
-        async spendNotes() { return { notes: "notes", operation_id: "mint_op" }; },
+        async spendNotes(
+          _amountMsats: number,
+          tryCancelAfterSecs?: number,
+        ) {
+          calls.spendNotes++;
+          calls.spendNotesTimeoutSecs = tryCancelAfterSecs;
+          return { notes: "notes", operation_id: "mint_op" };
+        },
         async redeemEcash() { return "mint_op"; },
         async parseNotes() { return 0; },
       },
@@ -19887,6 +19927,22 @@ console.log("\n── REAL SDK ADAPTER — Lightning receive watcher ──");
     };
 
     return { real, calls, claim: () => receiveCb?.("claimed"), fund: () => receiveCb?.("funded") };
+  }
+
+  // The adapter must forward the safe lock horizon verbatim. If this ever
+  // regresses to the old 90-day value, the guard refuses before any note moves.
+  {
+    const { LOCK_SPEND_TRY_CANCEL_SECS } = await import("../fedimint/fedimint-client.js");
+    const h = makeRealWallet();
+    const wallet = adaptRealWallet(h.real as any);
+    const spent = await wallet.mint.spendNotesDetailed!(
+      124_000,
+      { tryCancelAfterSecs: LOCK_SPEND_TRY_CANCEL_SECS },
+    );
+    assert(spent.operationId === "mint_op" && h.calls.spendNotes === 1,
+      "Detailed browser OOB spend preserves the operation ID for crash recovery");
+    assert(h.calls.spendNotesTimeoutSecs === LOCK_SPEND_TRY_CANCEL_SECS,
+      "Detailed browser OOB spend forwards the safe lock timeout to Fedimint");
   }
 
   // createInvoice must arm subscribe_ln_receive before returning the QR.

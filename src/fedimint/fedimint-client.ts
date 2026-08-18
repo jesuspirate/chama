@@ -220,7 +220,7 @@ export interface EscrowLockBundle {
 }
 
 /**
- * #37: try_cancel_after horizon for LOCK spends, in seconds (90 days).
+ * #37: try_cancel_after horizon for LOCK spends, in seconds (14 days).
  *
  * fedimint OOB spends carry a CLIENT-SIDE auto-cancel: after this window
  * the spender's own client refunds the notes to itself. The SDK defaults
@@ -230,8 +230,15 @@ export interface EscrowLockBundle {
  * therefore pass this explicit long horizon; crash recovery no longer
  * leans on the auto-cancel (the pending-native-locks stash re-absorbs
  * within minutes of the next boot instead).
+ *
+ * IMPORTANT(browser WASM): Fedimint's n0-future sleep converts milliseconds
+ * with `as i32` before calling setTimeout. Anything above 2^31-1ms wraps
+ * negative and fires immediately. The old 90-day value therefore refunded
+ * every browser-created escrow note as soon as it was made. Fourteen days is
+ * safely below that timer ceiling and comfortably beyond Chama's longest
+ * 7-day trade window plus its dispute/healing slack.
  */
-export const LOCK_SPEND_TRY_CANCEL_SECS = 90 * 24 * 60 * 60;
+export const LOCK_SPEND_TRY_CANCEL_SECS = 14 * 24 * 60 * 60;
 /** User-facing bearer exports stay claimable for two weeks, then the mint
  *  client can reabsorb an unclaimed note. This bounds even the tiny
  *  spend-return→stash crash window without hollowing out a live export. */
@@ -1219,7 +1226,7 @@ export class FedimintClient {
   /**
    * #37 lock crash-safety, half 1: spend the lock amount and SURFACE the
    * raw OOB notes (+ operation id when the wallet provides one) so the
-   * caller can persist them BEFORE the LOCK publish. Uses the 90-day
+   * caller can persist them BEFORE the LOCK publish. Uses the 14-day
    * try_cancel horizon (LOCK_SPEND_TRY_CANCEL_SECS) — the SDK defaults are
    * shorter than a disputed trade's life and would hollow out the escrow.
    */
