@@ -101,6 +101,8 @@ export const app: Record<string, string> = {
   "app.joiningChama": "Entrée dans le Chama…",
   "app.keyScanned": "⚡ Clé scannée — connexion en cours.",
   "app.listingDeleted": "Annonce supprimée.",
+  "app.remoteBridgeRevoked":
+    "Le nœud Chama utilisé par ce navigateur ne l'accepte plus. Vous êtes revenu sur votre propre portefeuille — les sats conservés sur ce nœud y sont toujours. Demandez un nouveau lien à la personne qui l'héberge.",
   "app.listingOtherChama":
     "Cette annonce tourne sur un autre Chama — terminez d'abord votre échange en cours ici.",
   "app.loadFailed": "Échec du chargement",

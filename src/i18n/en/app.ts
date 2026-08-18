@@ -109,6 +109,10 @@ export const app: Record<string, string> = {
   "app.joiningChama": "Joining Chama…",
   "app.keyScanned": "⚡ Key scanned — signing you in.",
   "app.listingDeleted": "Listing deleted.",
+  // Shown once after a revoked friend-wallet token dropped this browser back
+  // onto its own wallet. Must be explicit that the sats did NOT come with it.
+  "app.remoteBridgeRevoked":
+    "The Chama node this browser used no longer accepts it. You're back on your own wallet — any sats held on that node are still there. Ask whoever runs it for a new link.",
   "app.listingOtherChama":
     "That listing runs on another Chama — finish your live trade here first.",
   "app.loadFailed": "Failed to load",

@@ -164,6 +164,11 @@ export class EscrowFedimintBridge {
     buyerPubkey: string;
     sellerPk: string;
     arbiterPubkey: string;
+    /** The federation this trade's CREATE committed to, or null for legacy
+     *  chains that stamped none. Returned rather than recomputed by the caller
+     *  so the pre-spend probe and the post-spend note check can never disagree
+     *  about what "the right federation" means. */
+    expectedFed: string | null;
   }> {
     const state = this.escrow.getState(escrowId);
     if (!state) throw new Error(`Escrow ${escrowId} not loaded`);
@@ -282,7 +287,7 @@ export class EscrowFedimintBridge {
       );
     }
 
-    return { state, buyerPubkey, sellerPk, arbiterPubkey };
+    return { state, buyerPubkey, sellerPk, arbiterPubkey, expectedFed: expectedFed ?? null };
   }
 
   private async publishLockBundle(
@@ -547,6 +552,66 @@ export class EscrowFedimintBridge {
         : undefined,
     );
 
+    // ⭐⭐ VERIFY THE INSTRUMENT, NOT THE PROBE.
+    //
+    // A pre-spend probe already asked the wallet which federation it is on and
+    // refused on mismatch (see prepareLockContext). In the field that guard did
+    // not fire and BLF notes were locked into a GBF trade anyway — most likely a
+    // probe→spend race, since the bridge can switch its active client between
+    // the two. Rather than chase a race no test can prove gone, check the thing
+    // that actually matters: the notes we are about to commit. `parseNotes` is a
+    // LOCAL decode that talks to nobody, so this cannot fail for network
+    // reasons, and a wrong-federation note is unambiguous evidence — however the
+    // probe was bypassed.
+    //
+    // Chama-generated lock notes now always embed the federation invite, and
+    // the browser adapter uses WalletDirector's federation-aware parser. That
+    // lets this fail CLOSED on an absent/unreadable ID: a lock we cannot bind
+    // to CREATE's federation is returned to the wallet, never published.
+    //
+    // Gated on `guardOn` — the same condition that wrote the #37 stash — so the
+    // re-absorb path below is guaranteed to have an entry to recover. Without
+    // that pairing a refusal here would strand the spend it just refused.
+    if (guardOn && context.expectedFed) {
+      let mintedFed: string | undefined;
+      let parseFailure: unknown;
+      try {
+        mintedFed = (await this.fedimint.parseNotes(spend.oobNotes)).federationId;
+      } catch (parseErr) {
+        parseFailure = parseErr;
+      }
+      if (!mintedFed || mintedFed !== context.expectedFed) {
+        // Re-absorb through the #37 machinery and publish NO LOCK. The notes go
+        // back to the wallet; the trade stays CREATED and fundable.
+        let recovered = false;
+        try {
+          const outcome = await this.settlePendingNativeLockInner(escrowId, { ignoreAttemptCap: true });
+          recovered = outcome !== "none";
+        } catch (recoverErr) {
+          console.warn(
+            "[chama] lock: cross-federation refusal could not re-absorb inline; " +
+            "the boot drain owns recovery.",
+            recoverErr,
+          );
+        }
+        const instrumentProblem = mintedFed
+          ? `These sats are from federation ${mintedFed}, but this trade is held on ${context.expectedFed}.`
+          : `Chama could not verify that these sats belong to federation ${context.expectedFed}.`;
+        const err: any = new Error(
+          `${instrumentProblem} Chama did not lock them — ` +
+          (recovered
+            ? "they are back in your wallet."
+            : "they are saved and will return to your wallet automatically.") +
+          " Switch to the trade's federation and try again.",
+        );
+        err.code = mintedFed ? "FED_MISMATCH_NOTES" : "FED_UNVERIFIED_NOTES";
+        err.expected = context.expectedFed;
+        err.got = mintedFed ?? null;
+        err.cause = parseFailure;
+        throw err;
+      }
+    }
+
     const lockBundle = await this.fedimint.buildEscrowLockBundle(
       spend.oobNotes,
       amountMsats,
@@ -610,6 +675,30 @@ export class EscrowFedimintBridge {
       }
       if (outcome === "kept") {
         throw new Error("Chama is still recovering your previous ecash funding. Your notes are safely stashed; try again shortly.");
+      }
+    }
+
+    // External/Fedi notes were minted outside Chama's active client. Refuse
+    // unless the bearer instrument itself carries the full federation route
+    // committed by CREATE. The caller still owns the note and its fund-loss
+    // guard will re-absorb it when this throws.
+    if (context.expectedFed && !isSimModeOn()) {
+      let parsedFed: string | undefined;
+      try {
+        parsedFed = (await this.fedimint.parseNotes(oobNotes)).federationId;
+      } catch {
+        // The fail-closed error below is the user-facing boundary.
+      }
+      if (!parsedFed || parsedFed !== context.expectedFed) {
+        const err: any = new Error(
+          parsedFed
+            ? `This ecash belongs to federation ${parsedFed}, but this trade is held on ${context.expectedFed}. No LOCK was published.`
+            : `Chama could not verify which federation minted this ecash. No LOCK was published.`,
+        );
+        err.code = parsedFed ? "FED_MISMATCH_NOTES" : "FED_UNVERIFIED_NOTES";
+        err.expected = context.expectedFed;
+        err.got = parsedFed ?? null;
+        throw err;
       }
     }
 

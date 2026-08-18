@@ -33,6 +33,32 @@ export const NATIVE_BRIDGE_URL_KEY = "chama_native_fedimint_url";
 export const NATIVE_BRIDGE_TOKEN_KEY = "chama_native_fedimint_token";
 export const NATIVE_BRIDGE_INVITE_KEY = "chama_native_fedimint_invite";
 export const NATIVE_BRIDGE_COMMUNITY_KEY = "chama_native_fedimint_community";
+/** One-shot breadcrumb: set when a revoked bridge token dropped this browser
+ *  back onto its own wallet. DURABLE on purpose — the swap happens deep in
+ *  wallet init and often precedes a reload, so a console line or in-memory
+ *  flag would never reach the person it concerns. The UI reads it once,
+ *  clears it, and says plainly that the sats on that node did NOT come back. */
+export const REMOTE_BRIDGE_REVOKED_KEY = "chama_remote_bridge_revoked_v1";
+/** Same-document notification for the UI. The browser `storage` event does
+ * not fire in the tab that wrote localStorage, so the durable key alone would
+ * not be visible until the next reload. */
+export const REMOTE_BRIDGE_REVOKED_EVENT = "chama:remote-bridge-revoked";
+
+/** Persist and immediately announce a successful remote→browser fallback. */
+export function announceRemoteBridgeRevoked(): void {
+  try {
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem(REMOTE_BRIDGE_REVOKED_KEY, "1");
+    }
+  } catch {
+    // The live event can still reach the mounted UI.
+  }
+  try {
+    globalThis.dispatchEvent?.(new Event(REMOTE_BRIDGE_REVOKED_EVENT));
+  } catch {
+    // The durable key remains for the next render/reload.
+  }
+}
 export const DEFAULT_NATIVE_BRIDGE_URL = "http://127.0.0.1:8787";
 export const DEFAULT_NATIVE_BRIDGE_COMMUNITY = "us-blf";
 

@@ -1,4 +1,5 @@
 import { useMemo, useState, useEffect } from "react";
+import { getScopedStorageItem, setScopedStorageItem } from "../../storage/user-scope.js";
 import { type EscrowState } from "../../escrow-engine/types.js";
 import { getCommunityBySlug, type Community } from "../../communities/registry.js";
 import { T, ROLE_COLOR, BROWSE_CATS, inputStyle, fmtSats } from "../theme.js";
@@ -26,9 +27,22 @@ const BROWSE_SORT_KEY = "chama_browse_sort_v2";
 type BrowseScope = "local" | "all";
 type BrowseSort = "cheapest" | "newest";
 
+// ⭐ Per-npub, like every other Chama preference. These two used to read and
+// write RAW localStorage, so a second identity on the same device inherited the
+// first one's Browse scope and sort — the cross-identity bleed the user-scope
+// module exists to prevent. `getScopedStorageItem` migrates an existing unscoped
+// value onto the signed-in npub on first read, so nobody loses the setting they
+// already chose; a different identity then starts from the defaults.
+//
+// ⚠ The DEFAULTS below are correct and deliberate: local Chama + cheapest. A
+// report of "Browse defaults to All" is a persisted tap, not a wrong default —
+// do not "fix" it here.
+//
+// Read once via a lazy `useState` initializer, so there is no
+// default-then-stored flicker even if the scope resolves late.
 function getBrowseScope(): BrowseScope {
   try {
-    const stored = localStorage.getItem(BROWSE_SCOPE_KEY);
+    const stored = getScopedStorageItem(BROWSE_SCOPE_KEY);
     if (stored === "local" || stored === "all") return stored;
     return "local";
   } catch { return "local"; }
@@ -36,14 +50,14 @@ function getBrowseScope(): BrowseScope {
 
 function getBrowseSort(): BrowseSort {
   try {
-    const stored = localStorage.getItem(BROWSE_SORT_KEY);
+    const stored = getScopedStorageItem(BROWSE_SORT_KEY);
     if (stored === "cheapest" || stored === "newest") return stored;
     return "cheapest";
   } catch { return "cheapest"; }
 }
 
 function persistBrowsePreference(key: string, value: string): void {
-  try { localStorage.setItem(key, value); } catch { /* device-local preference */ }
+  try { setScopedStorageItem(key, value); } catch { /* device-local preference */ }
 }
 
 /** Apples-to-apples price rank. Premium is the canonical Exchange quote;

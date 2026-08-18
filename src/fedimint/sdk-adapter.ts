@@ -1187,15 +1187,13 @@ async function getMetaVettedGatewayIds(
 
   curatedGatewayIds = await getCuratedGatewayIds(real);
 
-  if (trusted.size === 0 && purpose === "pay") {
+  // ⭐ The curated fallback now applies to RECEIVE as well as PAY. It used to be
+  // pay-only, which meant a federation whose guardians publish their trusted
+  // gateways could still never produce a receive invoice here. See the trusted-
+  // gateway selection below for the full reasoning.
+  if (trusted.size === 0) {
     curatedGatewayIds = await addCuratedGatewayTrust(real, trusted, purpose);
     curatedFallbackApplied = curatedGatewayIds.length > 0;
-  } else if (trusted.size === 0 && purpose === "receive") {
-    console.warn(
-      configContainsMetaModule
-        ? "[chama] LN receive skipped curated gateway fallback because receive invoices require SDK-vetted gateway trust"
-        : "[chama] LN receive skipped curated gateway fallback; receive invoices require SDK-vetted gateway trust",
-    );
   }
 
   if (trusted.size > 0) {
@@ -1214,7 +1212,7 @@ async function getMetaVettedGatewayIds(
       metaRpcFailures,
       metaVettedGatewayIds: [...trusted],
       curatedGatewayIds,
-      curatedFallbackAllowed: purpose === "pay",
+      curatedFallbackAllowed: true,
       curatedFallbackApplied,
     },
   };
@@ -1272,7 +1270,12 @@ async function buildGatewayTrustDiagnostics(args: {
 
 export function adaptRealWallet(
   real: RealFedimintWallet,
-  onCleanup?: () => void
+  onCleanup?: () => void,
+  parseOobNotes?: (notes: string) => Promise<{
+    total_amount: number;
+    federation_id?: string | null;
+    invite_code?: string | null;
+  }>,
 ): IFedimintWallet {
   const activeReceiveWatches = new Set<() => void>();
   const armedReceiveOperationIds = new Set<string>();
@@ -1360,18 +1363,28 @@ export function adaptRealWallet(
         candidate.info &&
         metaVettedGatewayIds.has(candidate.info.gateway_id?.toLowerCase() ?? "")
       );
-      const trustedGateway = purpose === "receive"
-        ? vettedGateway
-        : vettedGateway ?? metaVettedGateway;
-      if (purpose === "receive" && !vettedGateway && metaVettedGateway?.info) {
-        console.warn(
-          `[chama] LN receive refusing meta-vetted-only gateway; SDK reports gateway.vetted=false: ${summarizeGateway(
-            metaVettedGateway,
-            gateways.indexOf(metaVettedGateway),
-            gateways.length,
-          )}`,
-        );
-      }
+      // ⭐⭐ RECEIVE NOW ACCEPTS THE FEDERATION'S OWN PUBLISHED TRUST.
+      //
+      // This line used to read `purpose === "receive" ? vettedGateway : …`,
+      // which required the JS SDK's `gateway.vetted === true` on every receive.
+      // That flag is not populated on browser SDK paths — our own comments say
+      // so — while the signal that IS available, the federation's `vetted_gateways`
+      // meta key, was computed and then explicitly discarded here. A gate
+      // demanding a flag nobody sets never opens: browser Lightning funding was
+      // impossible on EVERY federation, and presented as an unexplained failure
+      // rather than a refusal.
+      //
+      // It was also inconsistent by RUNTIME rather than by risk — the native
+      // Rust bridge permits exactly what this refused, on the same federation
+      // and the same gateway. Fedi, whose federations these are, treats vetting
+      // as a preference and never declines to make an invoice
+      // (`ln_gateway_service.rs`: `if !vetted.is_empty() { vetted } else { unvetted }`).
+      //
+      // ⚠ We deliberately do NOT take Fedi's final fallback to fully unvetted
+      // gateways. Chama's funding amounts are trade-sized, so one bad gateway
+      // costs materially more than a chat wallet's top-up. Meta-published or
+      // curated trust is the floor; no trust signal at all is still a refusal.
+      const trustedGateway = vettedGateway ?? metaVettedGateway;
       if (!trustedGateway?.info) {
         if (selectableGateways.length > 0) {
           const diagnostic = await buildGatewayTrustDiagnostics({
@@ -1948,6 +1961,14 @@ export function adaptRealWallet(
         }
       },
       async parseNotes(oobNotes: string) {
+        if (parseOobNotes) {
+          const parsed = await parseOobNotes(oobNotes);
+          return {
+            total_amount: parsed.total_amount,
+            federation_id: parsed.federation_id ?? undefined,
+            federation_invite: parsed.invite_code ?? undefined,
+          };
+        }
         const total = await real.mint.parseNotes(oobNotes);
         return { total_amount: total };
       },
@@ -2757,7 +2778,14 @@ export async function createRealWallet(
       () => {
         clearRegisteredTransport();
         releaseRuntimeLease();
-      }
+      },
+      (notes) => (director as unknown as {
+        parseOobNotes(notes: string): Promise<{
+          total_amount: number;
+          federation_id?: string | null;
+          invite_code?: string | null;
+        }>;
+      }).parseOobNotes(notes),
     );
     walletReady = true;
     return adapted;

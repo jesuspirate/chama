@@ -3467,9 +3467,28 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       const runtimeWarmup = !skipMnemonic && (!isNativeBridgeModeOn() || browserRemoteBridge)
         ? preloadRealWalletRuntime()
         : Promise.resolve(null);
+      // ⚠ v5.2.1 REGRESSION GUARD. In browser-remote-bridge mode the bridge
+      // holds its own seed and never uses this one — the fetch exists ONLY to
+      // arm the revoked-token fallback in FedimintClient.init. v5.2.1 removed
+      // this round-trip from bridge mode precisely because an empty relay read
+      // sets the published marker and the fund-safety guard then throws
+      // "couldn't reach your seed" for a seed the wallet never touches. Keep
+      // that fix intact: a failed read costs the FALLBACK, never the session.
+      // The fallback refuses to build a wallet without a seed (see init), so
+      // degrading to undefined here is safe — it can only withhold recovery,
+      // never invent a wallet under a seed that was never published.
       const mnemonic = skipSeedFetch
         ? undefined
-        : await getOrCreateSeed(clientRef.current!, signerRef.current!);
+        : browserRemoteBridge
+          ? await getOrCreateSeed(clientRef.current!, signerRef.current!)
+              .catch((seedErr) => {
+                console.warn(
+                  "[chama] Seed unavailable — remote-bridge fallback is disabled for this session:",
+                  seedErr,
+                );
+                return undefined;
+              })
+          : await getOrCreateSeed(clientRef.current!, signerRef.current!);
       await runtimeWarmup;
       // Sim wallet keys its persisted state by npub so multiple
       // identities in the same browser don't share a sim balance.

@@ -101,6 +101,8 @@ export const app: Record<string, string> = {
   "app.joiningChama": "Uniéndote al Chama…",
   "app.keyScanned": "⚡ Llave escaneada — iniciando tu sesión.",
   "app.listingDeleted": "Anuncio eliminado.",
+  "app.remoteBridgeRevoked":
+    "El nodo de Chama que usaba este navegador ya no lo acepta. Volviste a tu propia billetera — los sats guardados en ese nodo siguen ahí. Pídele un enlace nuevo a quien lo administra.",
   "app.listingOtherChama":
     "Ese anuncio corre en otro Chama — termina primero tu intercambio activo aquí.",
   "app.loadFailed": "No se pudo cargar",

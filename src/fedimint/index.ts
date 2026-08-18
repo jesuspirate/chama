@@ -15,10 +15,13 @@ export {
 } from "./sdk-adapter.js";
 export {
   createNativeBridgeWallet,
+  announceRemoteBridgeRevoked,
   getConfiguredNativeBridgeCommunitySlug,
   getNativeBridgeCommunitySlug,
   getNativeBridgeUrl,
   isNativeBridgeModeOn,
+  REMOTE_BRIDGE_REVOKED_KEY,
+  REMOTE_BRIDGE_REVOKED_EVENT,
   resetNativeBridgeWallet,
 } from "./native-bridge-adapter.js";
 export { isTestnetMode, createMockWallet } from "./mock-wallet.js";

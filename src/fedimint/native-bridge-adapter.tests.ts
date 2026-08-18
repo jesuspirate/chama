@@ -3,6 +3,9 @@ import {
   NATIVE_BRIDGE_MODE_KEY,
   NATIVE_BRIDGE_TOKEN_KEY,
   NATIVE_BRIDGE_URL_KEY,
+  REMOTE_BRIDGE_REVOKED_EVENT,
+  REMOTE_BRIDGE_REVOKED_KEY,
+  announceRemoteBridgeRevoked,
   clearNativeBridgeConfig,
   createNativeBridgeWallet,
   isBrowserRemoteBridgeMode,
@@ -43,6 +46,17 @@ assert.equal(values.has(NATIVE_BRIDGE_URL_KEY), false);
 assert.equal(values.has(NATIVE_BRIDGE_TOKEN_KEY), false);
 assert.equal(values.has(NATIVE_BRIDGE_MODE_KEY), false);
 assert.equal(isBrowserRemoteBridgeMode(), false);
+
+let revokeEvents = 0;
+const revokeTarget = new EventTarget();
+Object.defineProperty(globalThis, "dispatchEvent", {
+  configurable: true,
+  value: revokeTarget.dispatchEvent.bind(revokeTarget),
+});
+revokeTarget.addEventListener(REMOTE_BRIDGE_REVOKED_EVENT, () => { revokeEvents++; }, { once: true });
+announceRemoteBridgeRevoked();
+assert.equal(values.get(REMOTE_BRIDGE_REVOKED_KEY), "1");
+assert.equal(revokeEvents, 1, "same-tab fallback is announced immediately");
 
 globalThis.fetch = originalFetch;
 console.info("✓ stale browser bridge authorization is recoverable");

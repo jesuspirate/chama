@@ -475,11 +475,20 @@ export class FedimintClient {
       } catch (openErr) {
         const {
           clearNativeBridgeConfig,
+          announceRemoteBridgeRevoked,
           isBrowserRemoteBridgeMode,
           isNativeBridgeAuthFailure,
         } = await import("./native-bridge-adapter.js");
+        // ⚠ NEVER fall back without the user's seed. createRealWallet does
+        // `setMnemonic(opts.mnemonic!)` — hand it undefined and it builds a
+        // wallet under a freshly generated seed that was never published to
+        // Nostr, so any sats received into it are unrecoverable on any other
+        // device. That is strictly worse than showing the auth error. Unknown
+        // seed ⇒ refuse, and let the honest failure surface instead.
         const canRecoverInBrowser =
-          isNativeBridgeAuthFailure(openErr) && isBrowserRemoteBridgeMode();
+          isNativeBridgeAuthFailure(openErr) &&
+          isBrowserRemoteBridgeMode() &&
+          !!opts.mnemonic;
 
         if (canRecoverInBrowser) {
           // Remote access is an optional convenience, not an account binding.
@@ -511,6 +520,11 @@ export class FedimintClient {
               throw fallbackOpenErr;
             }
           }
+          // ⚠ This restored the IDENTITY, not the BALANCE. Only announce the
+          // switch after the fallback wallet actually opened (or was confirmed
+          // as a fresh, joinable client). The durable key survives reload; the
+          // same-document event makes the already-mounted UI show it now.
+          announceRemoteBridgeRevoked();
         } else {
           const msg = typeof openErr === "string" ? openErr : (openErr as Error)?.message || "";
           if (/client is not initialized|client database not initialized|database not initialized|not initialized for this database|no such client|client secret is not present|run join first/i.test(msg)) {
@@ -1267,13 +1281,15 @@ export class FedimintClient {
       if (wallet.mint.spendNotesDetailed) {
         const detailed = await wallet.mint.spendNotesDetailed(
           totalMsats,
-          { tryCancelAfterSecs: LOCK_SPEND_TRY_CANCEL_SECS },
+          // Carry the invite in the bearer token so WalletDirector can return
+          // the full federation ID for the post-spend instrument check.
+          { tryCancelAfterSecs: LOCK_SPEND_TRY_CANCEL_SECS, includeInvite: true },
           meta,
         );
         oobNotes = detailed.notes;
         operationId = detailed.operationId;
       } else {
-        oobNotes = await wallet.mint.spendNotes(totalMsats, meta);
+        oobNotes = await wallet.mint.spendNotes(totalMsats, meta, true);
       }
 
       // Crash guard FIRST — synchronous, before any further await.

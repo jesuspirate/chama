@@ -10122,6 +10122,27 @@ console.log("\n── PROBE REACHABILITY ──");
     await client.cleanup();
   }
 
+  // Lock notes must carry their invite. Without it WalletDirector can return
+  // only a 4-byte prefix, and the post-spend cross-federation guard cannot
+  // compare the actual instrument against CREATE's full federation ID.
+  {
+    const wallet: any = makeZeroBalanceWallet({ federationId: BLF_FEDERATION_ID });
+    let includeInvite = false;
+    wallet.mint.spendNotesDetailed = async (
+      _msat: number,
+      opts: { includeInvite?: boolean },
+    ) => {
+      includeInvite = opts.includeInvite === true;
+      return { notes: "notes-with-invite", operationId: "lock-op" };
+    };
+    const client = new FedimintClient({}, async () => wallet);
+    await client.init();
+    await client.spendNotesForLock(20_000);
+    assert(includeInvite,
+      "Lock spend embeds the federation invite so the browser can verify the minted notes");
+    await client.cleanup();
+  }
+
   // (1a.1) Tauri/native first run: the Rust sidecar returns
   // "Client database not initialized" from /info before /join. That
   // must be treated the same as the browser SDK's fresh-DB message so
@@ -19805,6 +19826,7 @@ console.log("\n── REAL SDK ADAPTER — Lightning receive watcher ──");
       subscribeInternalPayment: 0,
       spendNotes: 0,
       spendNotesTimeoutSecs: undefined as number | undefined,
+      spendNotesIncludeInvite: false,
       unsubscribeReceive: 0,
       unsubscribePay: 0,
       unsubscribeInternalPay: 0,
@@ -19845,9 +19867,11 @@ console.log("\n── REAL SDK ADAPTER — Lightning receive watcher ──");
         async spendNotes(
           _amountMsats: number,
           tryCancelAfterSecs?: number,
+          includeInvite?: boolean,
         ) {
           calls.spendNotes++;
           calls.spendNotesTimeoutSecs = tryCancelAfterSecs;
+          calls.spendNotesIncludeInvite = includeInvite === true;
           return { notes: "notes", operation_id: "mint_op" };
         },
         async redeemEcash() { return "mint_op"; },
@@ -19943,6 +19967,27 @@ console.log("\n── REAL SDK ADAPTER — Lightning receive watcher ──");
       "Detailed browser OOB spend preserves the operation ID for crash recovery");
     assert(h.calls.spendNotesTimeoutSecs === LOCK_SPEND_TRY_CANCEL_SECS,
       "Detailed browser OOB spend forwards the safe lock timeout to Fedimint");
+  }
+
+  // WalletDirector has the federation-aware OOB parser; MintService's parser
+  // returns only the amount. The adapter must preserve the director fields so
+  // the post-spend lock guard can compare the actual bearer instrument.
+  {
+    const h = makeRealWallet();
+    const wallet = adaptRealWallet(
+      h.real as any,
+      undefined,
+      async () => ({
+        total_amount: 124_000,
+        federation_id: BLF_FEDERATION_ID,
+        invite_code: BLF_FEDERATION_INVITE,
+      }),
+    );
+    const parsed = await wallet.mint.parseNotes("notes-with-invite");
+    assert(parsed.total_amount === 124_000
+      && parsed.federation_id === BLF_FEDERATION_ID
+      && parsed.federation_invite === BLF_FEDERATION_INVITE,
+    "Browser adapter preserves WalletDirector federation identity when parsing lock notes");
   }
 
   // createInvoice must arm subscribe_ln_receive before returning the QR.
@@ -20179,11 +20224,16 @@ console.log("\n── REAL SDK ADAPTER — Lightning receive watcher ──");
       "Adapter does not start payout without a trusted gateway");
   }
 
-  // Some Fedi-style federations publish gateway trust in meta.vetted_gateways
-  // while list_gateways still reports vetted=false. Production claim_rejected
-  // logs prove that metadata-only trust is not enough for receive invoices:
-  // the payer can send sats, then the federation rejects the gateway claim
-  // before ecash mints. Refuse that receive path before showing a QR.
+  // ⭐⭐ B1: Fedi-style federations publish gateway trust in
+  // `meta.vetted_gateways` while `list_gateways` still reports vetted=false.
+  //
+  // This block used to assert we REFUSED that receive path. The refusal was
+  // written from production claim_rejected logs and the fear is legitimate —
+  // but it required the SDK's `gateway.vetted === true`, which browser SDK
+  // paths never set, so it refused EVERY receive on EVERY federation and
+  // presented as "browser funding is broken". Fedi, whose federations these
+  // are, treats vetting as a preference and never declines to make an invoice.
+  // Our own pay path has always accepted this same signal.
   {
     const metaTrustedGatewayId =
       "0284cf7053be11bb23e59381861299dbaf7670c60dd62c928479c235a53bd95fe4";
@@ -20215,25 +20265,50 @@ console.log("\n── REAL SDK ADAPTER — Lightning receive watcher ──");
       },
     ]);
     const wallet = adaptRealWallet(h.real as any);
+    const invoice = await wallet.lightning.createInvoice(100_000, "fund");
+
+    assert(typeof invoice?.invoice === "string" && invoice.invoice.length > 0,
+      "⭐⭐ B1: meta-vetted trust now produces a receive invoice — the pay path always accepted this signal, receive refused it");
+    assert(h.calls.createInvoice === 1,
+      "B1: exactly one receive invoice was created");
+    await wallet.cleanup();
+  }
+
+  // ⚠ The floor still holds: NO trust signal at all is still a refusal. We did
+  // not take Fedi's final fallback to fully unvetted gateways, because Chama's
+  // funding amounts are trade-sized and one bad gateway costs materially more
+  // than a chat wallet's top-up.
+  {
+    const h = makeRealWallet({
+      federation: {
+        async getConfig() { return { modules: { 0: { kind: "ln" } } }; },
+        async getFederationId() { return "fed_no_trust_at_all"; },
+        async getInviteCode() { return "fed1none"; },
+        async listTransactions() { return []; },
+      },
+    }, [
+      {
+        info: {
+          gateway_id: "aa".repeat(33),
+          api: "https://gateway.unknown.example/v1",
+          lightning_alias: "Unknown",
+          supports_private_payments: true,
+        },
+        vetted: false,
+        ttl: 60,
+      },
+    ]);
+    const wallet = adaptRealWallet(h.real as any);
     let threw = false;
-    let diagnostics: any = null;
     try {
       await wallet.lightning.createInvoice(100_000, "fund");
     } catch (e) {
-      diagnostics = (e as any).chamaDiagnostics;
       threw = /No wallet-verifiable Lightning receive gateway/.test((e as Error).message);
     }
-
     assert(threw,
-      "Adapter refuses receive invoices when gateway trust is metadata-only");
-    assert(diagnostics?.adapter === "browser-wasm-sdk",
-      "Receive refusal diagnostics identify the browser SDK adapter");
-    assert(diagnostics?.nativeBridge?.active === false,
-      "Receive refusal diagnostics say this is not the native bridge path");
-    assert(diagnostics?.metaProbe?.metaVettedGatewayIds?.includes(metaTrustedGatewayId),
-      "Receive refusal diagnostics include the metadata-vetted gateway ID");
+      "⭐ B1: a gateway with NO trust signal — not SDK-vetted, not meta, not curated — is still refused");
     assert(h.calls.createInvoice === 0,
-      "Adapter does not create a receive QR from metadata-only trust");
+      "B1: no QR is created for a wholly untrusted gateway");
     await wallet.cleanup();
   }
 
@@ -20527,37 +20602,33 @@ console.log("\n── REAL SDK ADAPTER — Lightning receive watcher ──");
         ttl: 60,
       },
     ]);
+    // ⭐⭐ B1 REGRESSION — this block used to assert the OPPOSITE.
+    //
+    // It pinned "refuse a BLF receive invoice when only curated trust exists",
+    // which is exactly the gate that made browser Lightning funding impossible
+    // on every federation: we required the JS SDK's `gateway.vetted === true`,
+    // a flag that path never sets, while discarding the federation's own
+    // published trust. Proven wrong in the field — Jetty received 200 sats twice
+    // in a browser Fedimint wallet, on GBF and BLF, over these same gateways.
+    // Receive now accepts meta/curated trust exactly as the pay path always has.
     const wallet = adaptRealWallet(h.real as any);
-    let threw = false;
-    let diagnostics: any = null;
-    try {
-      await wallet.lightning.createInvoice(100_000, "fund");
-    } catch (e) {
-      diagnostics = (e as any).chamaDiagnostics;
-      threw = /No wallet-verifiable Lightning receive gateway/.test((e as Error).message);
-    }
+    const invoice = await wallet.lightning.createInvoice(100_000, "fund");
 
-    assert(threw,
-      "Adapter refuses BLF receive invoices when only curated trust exists");
-    assert(diagnostics?.demoSafeFallback?.kind === "sim_mode",
-      "BLF receive trust refusal exposes sim mode as the demo-safe fallback");
-    assert(diagnostics?.demoSafeFallback?.invoiceCreated === false,
-      "BLF receive trust refusal records that no invoice was created");
-	    assert(diagnostics?.metaProbe?.curatedGatewayIds?.includes(blfTrustedGatewayId),
-	      "BLF receive diagnostics include the known curated gateway ID even though receive fallback is blocked");
-	    assert(diagnostics?.metaProbe?.curatedFallbackAllowed === false,
-	      "BLF receive diagnostics explicitly say curated fallback is not allowed");
-	    assert(diagnostics?.metaProbe?.curatedFallbackApplied === false,
-	      "BLF receive diagnostics explicitly say curated fallback was not applied");
-    assert(h.calls.createInvoice === 0,
-      "Adapter does not create a BLF receive QR from curated-only trust");
+    assert(typeof invoice?.invoice === "string" && invoice.invoice.length > 0,
+      "⭐⭐ B1: a BLF receive invoice IS created from the federation's curated trust — the flag-nobody-sets gate is gone");
+    assert(h.calls.createInvoice === 1,
+      "B1: the receive reached the SDK exactly once");
     await wallet.cleanup();
   }
 
-  // BLF's current browser SDK advertises a meta module in get_config, but the
-  // WASM client can answer "module not found" for client-rpc(meta). That is
-  // still not enough for receive: Chama must not show a QR unless wallet code
-  // can verify gateway trust itself.
+  // ⭐⭐ B1 — THE case the curated list was written for, and the one that used to
+  // fail. BLF's browser SDK advertises a meta module in get_config, then answers
+  // "module not found" for client-rpc(meta). The curated entry is a
+  // hand-transcription of that federation's own `vetted_gateways` — it exists
+  // precisely BECAUSE this read fails. Refusing here refused the substitute in
+  // the only situation it was ever meant to substitute for, which is why browser
+  // receive was dead on BLF. Trust is now read the same way for receive as for
+  // pay; the floor (no signal at all ⇒ refuse) is asserted separately below.
   {
     const blfFederationId =
       "888b70ec351c67dcbb0ae655d7b8b6fb26c0fc9e865ee5918af11dc6f53e2b9e";
@@ -20607,6 +20678,57 @@ console.log("\n── REAL SDK ADAPTER — Lightning receive watcher ──");
       },
     ]);
     const wallet = adaptRealWallet(h.real as any);
+    const invoice = await wallet.lightning.createInvoice(100_000, "fund");
+
+    assert(typeof invoice?.invoice === "string" && invoice.invoice.length > 0,
+      "⭐⭐ B1: an unreadable meta module no longer blocks BLF receive — the curated entry stands in for exactly the read that failed");
+    assert(h.calls.createInvoice === 1,
+      "B1: the receive reached the SDK exactly once");
+    await wallet.cleanup();
+  }
+
+  // ⭐ THE FLOOR, restated for the meta-unreadable case. Same broken meta RPC as
+  // above, but a federation Chama has never audited — so there is no curated
+  // entry, no SDK vetted flag, and no readable meta. Nothing vouches for this
+  // gateway, so no QR is shown, and the diagnostics still carry WHY (the failed
+  // probes by kind and by instance id) rather than a bare refusal.
+  {
+    const h = makeRealWallet({
+      federation: {
+        clientName: "test-client",
+        client: {
+          async rpcSingle() {
+            throw new Error("module not found: meta");
+          },
+        },
+        async getConfig() {
+          return {
+            modules: {
+              0: { kind: "ln" },
+              1: { kind: "mint" },
+              4: { kind: "meta" },
+            },
+          };
+        },
+        async getFederationId() {
+          return "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+        },
+        async getInviteCode() { return "fed1unaudited"; },
+        async listTransactions() { return []; },
+      },
+    }, [
+      {
+        info: {
+          gateway_id: "039d1e06e6b10f3d18bbb76bb67f38a7088679c9a5e5914f4efe839298cb17e5e1",
+          api: "https://gateway.henwen.net/v1",
+          lightning_alias: "Henwen",
+          supports_private_payments: true,
+        },
+        vetted: false,
+        ttl: 60,
+      },
+    ]);
+    const wallet = adaptRealWallet(h.real as any);
     let threw = false;
     let diagnostics: any = null;
     try {
@@ -20617,17 +20739,17 @@ console.log("\n── REAL SDK ADAPTER — Lightning receive watcher ──");
     }
 
     assert(threw,
-      "Adapter refuses BLF receive when meta exists but this SDK cannot call it");
+      "⭐ B1: with no curated entry and no readable meta, receive is still refused");
     assert(diagnostics?.metaProbe?.metaRpcFailures?.some((failure: string) =>
       /module=meta key=0/.test(failure)
-    ), "BLF receive diagnostics preserve the failed meta-module probe by kind");
+    ), "B1: refusal diagnostics preserve the failed meta-module probe by kind");
     assert(diagnostics?.metaProbe?.metaRpcFailures?.some((failure: string) =>
       /module=4 key=0/.test(failure)
-    ), "BLF receive diagnostics preserve the failed meta-module probe by instance id");
+    ), "B1: refusal diagnostics preserve the failed meta-module probe by instance id");
     assert(diagnostics?.demoSafeFallback?.kind === "sim_mode",
-      "BLF meta access failure still points demos to the no-real-sats fallback");
+      "B1: meta access failure still points demos to the no-real-sats fallback");
     assert(h.calls.createInvoice === 0,
-      "Adapter does not create a receive QR from config-meta-only curated trust");
+      "B1: no QR is created for a federation nothing vouches for");
     await wallet.cleanup();
   }
 

@@ -70,6 +70,8 @@ import {
   getNativeBridgeUrl,
   hasFediInternalEcash,
   isNativeBridgeModeOn,
+  REMOTE_BRIDGE_REVOKED_KEY,
+  REMOTE_BRIDGE_REVOKED_EVENT,
   isTestnetMode,
   expectedFederationIdForInvite,
   listPendingNativeLocks,
@@ -786,6 +788,27 @@ export default function App() {
     const t = setTimeout(() => setCoachReady(true), 600);
     return () => clearTimeout(t);
   }, [connected, coachSeen]);
+  // A revoked friend-wallet token dropped this browser back onto its own
+  // wallet during Fedimint init. That restored the identity, NOT the balance:
+  // the bridge owns a separate seed and database, so sats held there are still
+  // there and are not in this wallet. Say so once, plainly — the swap happens
+  // too deep in init to surface itself, and a silent jump to a zero balance
+  // reads as "Chama lost my money".
+  useEffect(() => {
+    const raise = () => {
+      try {
+        if (localStorage.getItem(REMOTE_BRIDGE_REVOKED_KEY) !== "1") return;
+        localStorage.removeItem(REMOTE_BRIDGE_REVOKED_KEY);
+      } catch {
+        return;
+      }
+      setToast({ message: t("app.remoteBridgeRevoked"), type: "info" });
+    };
+    globalThis.addEventListener?.(REMOTE_BRIDGE_REVOKED_EVENT, raise);
+    raise();
+    return () => globalThis.removeEventListener?.(REMOTE_BRIDGE_REVOKED_EVENT, raise);
+  }, [t]);
+
   // Two-tap confirm for destructive listing delete. window.confirm() is a
   // no-op in the Tauri/Capacitor webview (it silently returned false, so the
   // old confirm-gated delete never fired). This arms on the first tap and
