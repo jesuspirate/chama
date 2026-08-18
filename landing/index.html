@@ -114,6 +114,47 @@
     .button.primary { color: var(--white); background: var(--ink); }
     .button.light { color: var(--ink); background: var(--white); border-color: var(--white); }
     .button.ghost { border-color: var(--line); }
+    @property --portal-angle {
+      syntax: "<angle>";
+      inherits: true;
+      initial-value: 0deg;
+    }
+    .button.enter {
+      --portal-angle: 0deg;
+      position: relative;
+      isolation: isolate;
+      color: #fff;
+      border: 2px solid transparent;
+      background:
+        linear-gradient(105deg, rgba(255,255,255,.12), transparent 38%, rgba(255,255,255,.06)) padding-box,
+        #171616 padding-box,
+        conic-gradient(from var(--portal-angle), var(--orange), var(--purple), var(--teal), var(--orange)) border-box;
+      box-shadow: 0 10px 26px rgba(19,18,15,.20), inset 0 1px 0 rgba(255,255,255,.12);
+      animation: portal-turn 5.8s linear infinite;
+    }
+    .button.enter::before {
+      content: "";
+      position: absolute;
+      inset: -7px;
+      z-index: -1;
+      border-radius: inherit;
+      background: conic-gradient(from var(--portal-angle), var(--orange), var(--purple), var(--teal), var(--orange));
+      filter: blur(11px);
+      opacity: .42;
+      pointer-events: none;
+      animation: portal-breathe 2.9s ease-in-out infinite alternate;
+    }
+    .button.enter:hover {
+      transform: translateY(-3px) scale(1.025);
+      box-shadow: 0 15px 34px rgba(19,18,15,.24), inset 0 1px 0 rgba(255,255,255,.16);
+    }
+    @keyframes portal-turn {
+      to { --portal-angle: 360deg; }
+    }
+    @keyframes portal-breathe {
+      from { opacity: .28; transform: scale(.97); }
+      to { opacity: .62; transform: scale(1.04); }
+    }
 
     .hero {
       position: relative;
@@ -300,6 +341,9 @@
     .home-content .label { color: rgba(255,255,255,.68); }
     .home-content h2 { max-width: 9ch; font-size: clamp(62px, 10vw, 144px); line-height: .88; text-wrap: balance; text-shadow: 0 2px 24px rgba(0,0,0,.28); }
     .home-content p { max-width: 42ch; margin: 0; color: rgba(255,255,255,.78); font-size: clamp(17px, 2vw, 21px); line-height: 1.5; }
+    .availability-note { max-width: 58ch; color: rgba(255,255,255,.86); font-size: 13px; font-weight: 700; }
+    .availability-note a { border-bottom: 1px solid rgba(255,255,255,.48); }
+    .availability-note a:hover { border-color: var(--orange); }
     .home-marquee {
       position: absolute;
       z-index: 2;
@@ -343,9 +387,13 @@
       border-radius: 18px;
       background: var(--paper);
     }
-    .use-icon { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; background: var(--paper); font-size: 20px; }
+    .use-icon { display: grid; place-items: center; width: 44px; height: 44px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); color: var(--ink); }
+    .use-icon svg, .use-icon img { width: 26px; height: 26px; object-fit: contain; }
     .use h3 { font-size: 20px; letter-spacing: -.025em; }
     .use p { margin: 5px 0 0; color: var(--muted); font-size: 14px; }
+    .use-title { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+    .soon-badge { padding: 4px 8px; border: 1px solid rgba(247,147,26,.38); border-radius: 999px; color: #b76000; background: rgba(247,147,26,.10); font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+    html[data-theme="dark"] .soon-badge { color: #ffb14d; background: rgba(247,147,26,.12); }
     .arrow { color: var(--muted); font-size: 20px; }
 
     .trust { color: var(--on-dark); background: var(--night); }
@@ -373,6 +421,7 @@
     .closing .eyebrow::before { display: none; }
     .closing h2 { max-width: 12ch; margin-inline: auto; }
     .closing p { max-width: 46ch; margin: 25px auto 32px; color: var(--muted); font-size: 18px; line-height: 1.6; }
+    .closing .hero-actions { justify-content: center; margin-top: 0; }
     .community { padding-top: 0; }
     .community-card { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: clamp(44px,8vw,110px); align-items: center; padding: clamp(36px,6vw,76px); border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
     .community h2 { max-width: 8ch; }
@@ -409,6 +458,265 @@
     .reveal { opacity: 0; transform: translateY(18px); transition: opacity .7s ease, transform .7s ease; }
     .reveal.visible { opacity: 1; transform: none; }
 
+    /* The page is one quiet path toward the door: editorial, neutral, tactile. */
+    body {
+      background-image:
+        linear-gradient(90deg, transparent calc(50% - .5px), rgba(19,18,15,.035) 50%, transparent calc(50% + .5px));
+      background-size: 100% 100%;
+    }
+    html[data-theme="dark"] body {
+      background-image:
+        linear-gradient(90deg, transparent calc(50% - .5px), rgba(255,255,255,.025) 50%, transparent calc(50% + .5px));
+    }
+    .nav {
+      position: sticky;
+      top: 14px;
+      z-index: 100;
+      min-height: 62px;
+      margin-top: 14px;
+      padding: 8px 10px 8px 16px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--glass) 88%, transparent);
+      box-shadow: 0 12px 36px rgba(19,18,15,.07), inset 0 1px 0 rgba(255,255,255,.26);
+      -webkit-backdrop-filter: blur(18px) saturate(1.2);
+      backdrop-filter: blur(18px) saturate(1.2);
+    }
+    .nav-center a { position: relative; }
+    .nav-center a::after {
+      content: "";
+      position: absolute;
+      left: 0;
+      right: 100%;
+      bottom: -7px;
+      height: 1px;
+      background: currentColor;
+      transition: right .2s ease;
+    }
+    .nav-center a:hover::after { right: 0; }
+
+    .button.enter {
+      overflow: visible;
+      background:
+        linear-gradient(112deg, rgba(255,255,255,.22), rgba(255,255,255,.035) 34%, rgba(255,255,255,.11) 70%, rgba(255,255,255,.045)) padding-box,
+        rgba(18,17,16,.78) padding-box,
+        conic-gradient(from var(--portal-angle), var(--orange), var(--purple), var(--teal), var(--orange)) border-box;
+      box-shadow:
+        0 12px 30px rgba(19,18,15,.22),
+        inset 0 1px 0 rgba(255,255,255,.28),
+        inset 0 -1px 0 rgba(255,255,255,.07);
+      -webkit-backdrop-filter: blur(14px) saturate(1.35);
+      backdrop-filter: blur(14px) saturate(1.35);
+    }
+
+    .hero {
+      min-height: max(calc(100svh - 90px), 760px);
+      padding-block: clamp(80px, 11vh, 140px);
+    }
+    .hero::before {
+      content: "";
+      position: absolute;
+      inset: 5% -18% 5% 42%;
+      z-index: -1;
+      border: 1px solid var(--line);
+      border-radius: 50%;
+      box-shadow: 0 0 0 7vw color-mix(in srgb, var(--line) 25%, transparent),
+                  0 0 0 14vw color-mix(in srgb, var(--line) 12%, transparent);
+      opacity: .68;
+    }
+    .hero-copy { padding-left: clamp(44px, 4.5vw, 68px); }
+    .eyebrow::before { background: currentColor; }
+    h1 { max-width: 8.3ch; }
+    h1 .accent {
+      color: var(--paper);
+      background: var(--ink);
+      box-shadow: none;
+    }
+    .weave-stage::before { background: radial-gradient(circle, color-mix(in srgb, var(--ink) 7%, transparent), transparent 66%); }
+    .role { color: var(--ink); box-shadow: 0 8px 28px rgba(19,18,15,.07); }
+    .seller, .buyer, .arbiter { color: var(--ink); }
+
+    .proof-strip { padding-block: 0 26px; }
+    .proof-grid {
+      gap: 0;
+      border-block: 1px solid var(--line);
+    }
+    .proof {
+      position: relative;
+      min-height: 164px;
+      padding: 34px clamp(22px, 3vw, 42px);
+      border-radius: 0;
+      background: transparent;
+    }
+    .proof + .proof { border-left: 1px solid var(--line); }
+    .proof::before {
+      display: block;
+      margin-bottom: 28px;
+      color: var(--muted);
+      font: 700 10px/1 Manrope,sans-serif;
+      letter-spacing: .12em;
+    }
+    .proof:nth-child(1)::before { content: "AGREEMENT / 01"; }
+    .proof:nth-child(2)::before { content: "CUSTODY / 00"; }
+    .proof:nth-child(3)::before { content: "OWNERSHIP / YOU"; }
+
+    section { position: relative; }
+    .section-head {
+      display: grid;
+      grid-template-columns: minmax(150px,.32fr) minmax(0,1fr);
+      gap: clamp(28px, 6vw, 90px);
+      align-items: start;
+      margin-bottom: clamp(54px, 8vw, 100px);
+      padding-top: 24px;
+      border-top: 1px solid var(--line);
+    }
+    .section-head > .label { margin: 7px 0 0; }
+    .section-head h2 { max-width: 11ch; }
+
+    .steps {
+      position: relative;
+      gap: 0;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: color-mix(in srgb, var(--surface) 48%, transparent);
+      overflow: hidden;
+    }
+    .step {
+      position: relative;
+      min-height: 330px;
+      padding: clamp(28px,4vw,50px);
+    }
+    .step + .step { border-left: 1px solid var(--line); }
+    .step-number {
+      display: grid;
+      place-items: center;
+      width: 42px;
+      height: 42px;
+      border: 1px solid var(--line);
+      border-radius: 50%;
+      background: var(--paper);
+      color: var(--ink);
+    }
+    .step h3 { margin-top: clamp(70px,8vw,104px); font-size: clamp(26px,3vw,36px); }
+    .step-line { width: 100%; height: 1px; background: var(--line); }
+    .step:nth-child(2) .step-line, .step:nth-child(3) .step-line { background: var(--line); }
+
+    .uses {
+      padding-top: clamp(110px, 13vw, 180px);
+      background: color-mix(in srgb, var(--surface) 72%, transparent);
+      border-block: 1px solid var(--line);
+    }
+    .use-grid { gap: 0; border-top: 1px solid var(--line); }
+    .use {
+      min-height: 138px;
+      padding: 28px 8px;
+      border-bottom: 1px solid var(--line);
+      border-radius: 0;
+      background: transparent;
+      transition: padding .22s ease, background .22s ease;
+    }
+    .use:nth-child(odd) { padding-right: 32px; border-right: 1px solid var(--line); }
+    .use:nth-child(even) { padding-left: 32px; }
+    .use:hover { background: color-mix(in srgb, var(--paper) 58%, transparent); }
+    .use-icon { border-radius: 50%; background: transparent; }
+    .use .arrow { transition: transform .2s ease; }
+    .use:hover .arrow { transform: translateX(4px); }
+
+    .home-banner { border-block: 1px solid rgba(255,255,255,.14); }
+    .home-content::before {
+      border: 1px solid rgba(255,255,255,.14);
+      background: radial-gradient(ellipse, rgba(0,0,0,.91) 0 42%, rgba(0,0,0,.79) 58%, rgba(0,0,0,.34) 74%, transparent 86%);
+      box-shadow: 0 0 0 22px rgba(0,0,0,.08), 0 0 54px rgba(0,0,0,.32);
+    }
+    .home-marquee span::after { color: rgba(255,255,255,.62); }
+
+    .trust { overflow: hidden; }
+    .trust::before {
+      content: "";
+      position: absolute;
+      inset: 9% auto 9% 50%;
+      width: 1px;
+      background: linear-gradient(transparent, rgba(255,255,255,.18), transparent);
+    }
+    .trust-grid { grid-template-columns: 1fr 1fr; }
+    .trust-diagram { position: relative; min-height: 520px; }
+    .trust-core {
+      position: relative;
+      z-index: 2;
+      margin: 0 8%;
+      padding: clamp(30px,4vw,54px);
+      border-color: rgba(255,255,255,.22);
+      background: rgba(255,255,255,.065);
+      box-shadow: 0 28px 70px rgba(0,0,0,.24), inset 0 1px 0 rgba(255,255,255,.09);
+      -webkit-backdrop-filter: blur(12px);
+      backdrop-filter: blur(12px);
+    }
+    .trust-core::before, .trust-core::after {
+      content: "";
+      position: absolute;
+      inset: -18px 18px 18px -18px;
+      z-index: -1;
+      border: 1px solid rgba(255,255,255,.10);
+      border-radius: inherit;
+    }
+    .trust-core::after { inset: 18px -18px -18px 18px; }
+    .trust-core span { color: rgba(255,255,255,.72); }
+    .trust-signals { position: relative; z-index: 3; }
+    .trust-signal { background: rgba(255,255,255,.045); }
+    .trust-signal b, .trust-signal:nth-child(2) b, .trust-signal:nth-child(3) b { color: rgba(255,255,255,.62); }
+    .trust-item b { color: rgba(255,255,255,.64); }
+
+    .closing {
+      min-height: min(900px, 92svh);
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+      isolation: isolate;
+    }
+    .closing::before, .closing::after {
+      content: "";
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      z-index: -1;
+      width: min(80vw, 840px);
+      aspect-ratio: 1;
+      border: 1px solid var(--line);
+      border-radius: 50%;
+      transform: translate(-50%,-50%);
+    }
+    .closing::after {
+      width: min(56vw, 590px);
+      box-shadow: 0 0 0 min(9vw,110px) color-mix(in srgb, var(--line) 24%, transparent),
+                  0 0 0 min(18vw,220px) color-mix(in srgb, var(--line) 11%, transparent);
+    }
+    .closing .wrap { position: relative; z-index: 1; }
+    .closing h2 { max-width: 10ch; font-size: clamp(54px,8vw,112px); line-height: .94; }
+    .closing p { max-width: 40ch; }
+    .closing .button.enter { min-height: 58px; padding-inline: 27px; }
+
+    .community-card {
+      position: relative;
+      overflow: hidden;
+      background: color-mix(in srgb, var(--surface) 80%, transparent);
+      box-shadow: inset 0 1px 0 color-mix(in srgb, white 30%, transparent);
+      -webkit-backdrop-filter: blur(12px);
+      backdrop-filter: blur(12px);
+    }
+    .community-card::before {
+      content: "COMMUNITY / OPEN DOOR";
+      position: absolute;
+      right: 28px;
+      top: 22px;
+      color: var(--muted);
+      font: 700 9px/1 Manrope,sans-serif;
+      letter-spacing: .14em;
+    }
+    .qr-corner { filter: none; }
+    .qr-corner.tl, .qr-corner.tr, .qr-corner.bl, .qr-corner.br { border-color: var(--muted); }
+    .social-icon { color: var(--muted); }
+    .social-link:hover { border-color: var(--ink); }
+
     @media (max-width: 880px) {
       .nav-center { display: none; }
       .hero { display: block; min-height: auto; }
@@ -418,12 +726,15 @@
       .steps { grid-template-columns: 1fr; }
       .step, .step + .step { padding: 24px 0; }
       .step h3 { margin-top: 28px; }
+      .steps { border-inline: 0; border-radius: 0; background: transparent; }
+      .step, .step + .step { min-height: 0; padding: 34px 0; border-left: 0; border-bottom: 1px solid var(--line); }
+      .step h3 { margin-top: 36px; }
       .home-banner, .home-content { min-height: 560px; }
     }
     @media (max-width: 620px) {
       .weave-stage { --role-gap: 10px; }
       .wrap { width: calc(100% - 32px); }
-      .nav { min-height: 68px; }
+      .nav { top: 8px; min-height: 58px; margin-top: 8px; padding-left: 12px; }
       .nav-actions > .button { display: none; }
       .languages button { padding: 7px 9px; }
       .hero { padding-block: 64px 86px; }
@@ -435,9 +746,12 @@
       .proof-grid { grid-template-columns: 1fr; }
       .proof { border-right: 0; border-bottom: 1px solid var(--line); }
       .proof:last-child { border-bottom: 0; }
+      .proof + .proof { border-left: 0; }
+      .section-head { grid-template-columns: 1fr; gap: 24px; }
       .section-head { margin-bottom: 46px; }
       .use-grid { grid-template-columns: 1fr; }
       .use, .use:nth-child(even) { padding: 20px; }
+      .use:nth-child(odd) { padding: 20px; border-right: 0; }
       .trust-diagram { min-height: 0; }
       .trust-signals { grid-template-columns: 1fr; }
       .footer-row { align-items: flex-start; flex-direction: column; }
@@ -448,9 +762,13 @@
       .theme-toggle { width: 36px; height: 36px; }
       .home-banner, .home-content { min-height: 540px; }
       .home-content::before { width: min(64vw, 240px); height: min(58vh, 340px); }
+      .closing { min-height: 720px; }
+      .closing::before { width: 130vw; }
+      .closing::after { width: 92vw; }
     }
     @media (prefers-reduced-motion: reduce) {
       html { scroll-behavior: auto; }
+      .button.enter, .button.enter::before { animation: none; }
       .weave-stage img { animation: none; }
       .home-marquee-track { animation: none; }
       .home-row { animation: none; transform: translateX(-8%); }
@@ -475,7 +793,7 @@
         <button type="button" data-lang="es">ES</button>
         <button type="button" data-lang="fr">FR</button>
       </div>
-      <a class="button primary" href="https://getchama.app/?sim=1" target="_blank" rel="noopener" data-copy="try">Try Chama</a>
+      <a class="button enter" href="https://getchama.app/" target="_blank" rel="noopener" data-copy="openApp">Enter your Chama</a>
     </div>
   </header>
 
@@ -487,7 +805,7 @@
         <p data-copy="heroSub">Chama helps buyers and sellers trade with Bitcoin while a trusted community arbiter keeps both sides accountable. Your money never belongs to us.</p>
         <div class="hero-actions">
           <a class="button primary" href="https://getchama.app/?sim=1" target="_blank" rel="noopener" data-copy="sandbox">Try the sandbox</a>
-          <a class="button ghost" href="#how" data-copy="seeHow">See how it works ↓</a>
+          <a class="button enter" href="https://getchama.app/" target="_blank" rel="noopener" data-copy="openApp">Enter your Chama</a>
         </div>
         <div class="tiny-proof" data-copy="tinyProof">Open source · Non-custodial · Built on Bitcoin, Fedimint and Nostr</div>
       </div>
@@ -549,12 +867,12 @@
           </div>
         </div>
         <div class="use-grid">
-          <div class="use reveal"><span class="use-icon">↔</span><div><h3 data-copy="useSwap">Swap sats and cash</h3><p data-copy="useSwapBody">Trade with local payment rails.</p></div><span class="arrow">→</span></div>
-          <div class="use reveal"><span class="use-icon">⌁</span><div><h3 data-copy="useBills">Pay a bill</h3><p data-copy="useBillsBody">Match sats with someone who can pay it.</p></div><span class="arrow">→</span></div>
-          <div class="use reveal"><span class="use-icon">□</span><div><h3 data-copy="useShop">Buy and sell</h3><p data-copy="useShopBody">Protect goods, services, and delivery.</p></div><span class="arrow">→</span></div>
-          <div class="use reveal"><span class="use-icon">✓</span><div><h3 data-copy="useWork">Get paid for work</h3><p data-copy="useWorkBody">Lock the job before work begins.</p></div><span class="arrow">→</span></div>
-          <div class="use reveal"><span class="use-icon">＋</span><div><h3 data-copy="useChip">Chip in together</h3><p data-copy="useChipBody">Reach a shared goal transparently.</p></div><span class="arrow">→</span></div>
-          <div class="use reveal"><span class="use-icon">◎</span><div><h3 data-copy="useStack">Stack over time</h3><p data-copy="useStackBody">Build a plan through smaller trades.</p></div><span class="arrow">→</span></div>
+          <div class="use reveal"><span class="use-icon exchange" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h13m0 0-3-3m3 3-3 3M20 16H7m0 0 3 3m-3-3 3-3"/></svg></span><div><h3 data-copy="useSwap">Swap sats and cash</h3><p data-copy="useSwapBody">Trade with local payment rails.</p></div><span class="arrow">→</span></div>
+          <div class="use reveal"><span class="use-icon bill" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2V3Z"/><path d="M9 8h6M9 12h4"/></svg></span><div><h3 data-copy="useBills">Pay a bill</h3><p data-copy="useBillsBody">Match sats with someone who can pay it.</p></div><span class="arrow">→</span></div>
+          <div class="use reveal"><span class="use-icon store" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9v10h16V9M3 9l2.5-5h13L21 9"/><path d="M3 9c0 1.2 1 2 2.2 2s2.1-.8 2.1-2c0 1.2 1 2 2.3 2s2.4-.8 2.4-2c0 1.2 1.1 2 2.4 2s2.3-.8 2.3-2c0 1.2.9 2 2.1 2S21 10.2 21 9"/><circle cx="12" cy="15.5" r="2.5" fill="currentColor" stroke="none"/><path d="M12.2 13.7v3.6m1.1-2.7c-.2-.5-.7-.7-1.5-.7h-.7v3h.9c.9 0 1.5-.4 1.5-1s-.5-.8-1.3-.8h-1.1" stroke="var(--surface)" stroke-width=".9"/></svg></span><div><h3 data-copy="useShop">Buy and sell</h3><p data-copy="useShopBody">Protect goods, services, and delivery.</p></div><span class="arrow">→</span></div>
+          <div class="use reveal"><span class="use-icon work" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M3 12h18M10 12v2h4v-2"/></svg></span><div><h3 data-copy="useWork">Get paid for work</h3><p data-copy="useWorkBody">Lock the job before work begins.</p></div><span class="arrow">→</span></div>
+          <div class="use reveal"><span class="use-icon chip" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="9" r="3"/><circle cx="16" cy="9" r="3"/><path d="M3 20c.4-3.2 2-5 5-5s4.6 1.8 5 5M11 20c.4-3.2 2-5 5-5s4.6 1.8 5 5"/></svg></span><div><div class="use-title"><h3 data-copy="useChip">Chip in together</h3><span class="soon-badge" data-copy="soon">Soon</span></div><p data-copy="useChipBody">Reach a shared goal transparently.</p></div><span class="arrow">→</span></div>
+          <div class="use reveal"><span class="use-icon stack" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v4c0 1.7 3.1 3 7 3s7-1.3 7-3V6M5 10v4c0 1.7 3.1 3 7 3s7-1.3 7-3v-4M5 14v4c0 1.7 3.1 3 7 3s7-1.3 7-3v-4"/></svg></span><div><div class="use-title"><h3 data-copy="useStack">Stack over time</h3><span class="soon-badge" data-copy="soon">Soon</span></div><p data-copy="useStackBody">Build a plan through smaller trades.</p></div><span class="arrow">→</span></div>
         </div>
       </div>
     </section>
@@ -592,6 +910,7 @@
         <div class="label" data-copy="homeLabel">Built for everywhere</div>
         <h2 id="home-title" data-copy="homeTitle">Everyone has a home.</h2>
         <p data-copy="homeBody">Wherever people trade, trust already has roots. Chama gives those communities tools that travel without taking over.</p>
+        <div class="availability-note"><span data-copy="availability">Choose your country to see whether Chama is locally live, federation-backed, or coming soon.</span> <a href="https://getchama.app/" target="_blank" rel="noopener" data-copy="checkAvailability">Check availability →</a></div>
       </div>
       <div class="home-marquee" aria-hidden="true">
         <div class="home-marquee-track">
@@ -639,7 +958,10 @@
         <div class="eyebrow" data-copy="closingLabel">Trust belongs to the community</div>
         <h2 data-copy="closingTitle">Your people. Your money. Your rules.</h2>
         <p data-copy="closingBody">Start in the sandbox. See the whole trade before risking a single sat.</p>
-        <a class="button primary" href="https://getchama.app/?sim=1" target="_blank" rel="noopener" data-copy="sandbox">Try the sandbox</a>
+        <div class="hero-actions">
+          <a class="button enter" href="https://getchama.app/" target="_blank" rel="noopener" data-copy="openApp">Enter your Chama</a>
+          <a class="button ghost" href="https://getchama.app/?sim=1" target="_blank" rel="noopener" data-copy="sandbox">Try the sandbox</a>
+        </div>
       </div>
     </section>
 
@@ -685,29 +1007,29 @@
     const copy = {
       en: {},
       es: {
-        navHow: "Cómo funciona", navUses: "Qué puedes hacer", navTrust: "Por qué es seguro", try: "Probar Chama",
+        navHow: "Cómo funciona", navUses: "Qué puedes hacer", navTrust: "Por qué es seguro", openApp: "Entra a tu Chama",
         eyebrow: "Comercio Bitcoin, sin custodio", hero: "Comercia con personas. <span class='accent'>No con plataformas.</span>",
         heroSub: "Chama ayuda a compradores y vendedores a comerciar con Bitcoin mientras un árbitro comunitario mantiene a ambos responsables. Tu dinero nunca nos pertenece.",
-        sandbox: "Probar el sandbox", seeHow: "Ver cómo funciona ↓", tinyProof: "Código abierto · Sin custodia · Bitcoin, Fedimint y Nostr",
-        seller: "Vendedor", buyer: "Comprador", arbiter: "Árbitro", proofOne: "Dos personas acuerdan. El trato se liquida.", proofTwo: "Chama no puede tomar ni mover tus sats.", proofThree: "La reputación sigue a las personas, no a una empresa.", homeLabel: "Hecho para todas partes", homeTitle: "Todos tienen un hogar.", homeBody: "Donde las personas comercian, la confianza ya tiene raíces. Chama da a esas comunidades herramientas que viajan sin imponerse.",
+        sandbox: "Probar el sandbox", tinyProof: "Código abierto · Sin custodia · Bitcoin, Fedimint y Nostr",
+        seller: "Vendedor", buyer: "Comprador", arbiter: "Árbitro", proofOne: "Dos personas acuerdan. El trato se liquida.", proofTwo: "Chama no puede tomar ni mover tus sats.", proofThree: "La reputación sigue a las personas, no a una empresa.", homeLabel: "Hecho para todas partes", homeTitle: "Todos tienen un hogar.", homeBody: "Donde las personas comercian, la confianza ya tiene raíces. Chama da a esas comunidades herramientas que viajan sin imponerse.", availability: "Elige tu país para ver si Chama está activo localmente, respaldado por una federación o llegará pronto.", checkAvailability: "Ver disponibilidad →",
         howLabel: "Cómo funciona", howTitle: "Tres personas. Un trato honesto.", howIntro: "La mayoría de los intercambios terminan solo con comprador y vendedor. El árbitro interviene únicamente si no están de acuerdo.",
         stepOneTitle: "Acuerden", stepOneBody: "Elijan los términos, el monto y un árbitro comunitario de confianza.", stepTwoTitle: "Bloqueen", stepTwoBody: "Los sats se bloquean en custodia 2-de-3. Nadie, ni siquiera Chama, los controla solo.", stepThreeTitle: "Liquiden", stepThreeBody: "Ambos confirman y los fondos se liberan. Si hay disputa, el árbitro rompe el empate.",
         usesLabel: "Una capa de confianza", usesTitle: "Úsalo en la vida real.", usesIntro: "Una protección sencilla para las formas en que las comunidades ya intercambian valor.",
-        useSwap: "Cambia sats y efectivo", useSwapBody: "Comercia con medios de pago locales.", useBills: "Paga una factura", useBillsBody: "Encuentra a alguien que pueda pagarla.", useShop: "Compra y vende", useShopBody: "Protege bienes, servicios y entregas.", useWork: "Cobra por tu trabajo", useWorkBody: "Bloquea el pago antes de empezar.", useChip: "Aporten juntos", useChipBody: "Alcancen una meta compartida.", useStack: "Acumula con tiempo", useStackBody: "Construye un plan con intercambios pequeños.",
+        useSwap: "Cambia sats y efectivo", useSwapBody: "Comercia con medios de pago locales.", useBills: "Paga una factura", useBillsBody: "Encuentra a alguien que pueda pagarla.", useShop: "Compra y vende", useShopBody: "Protege bienes, servicios y entregas.", useWork: "Cobra por tu trabajo", useWorkBody: "Bloquea el pago antes de empezar.", useChip: "Aporten juntos", useChipBody: "Alcancen una meta compartida.", useStack: "Acumula con tiempo", useStackBody: "Construye un plan con intercambios pequeños.", soon: "Próximamente",
         trustVisualLabel: "El papel de Chama", trustVisualTitle: "Coordinar el acuerdo.", trustVisualNever: "Nunca custodiar el dinero.", trustVisualEscrow: "La custodia impide que alguien actúe solo", trustVisualIdentity: "La identidad y la reputación siguen siendo portátiles", trustVisualRules: "Las reglas abiertas se pueden inspeccionar y reproducir",
         trustLabel: "Por qué es diferente", trustTitle: "La plataforma nunca se convierte en banco.", trustIntro: "Chama coordina el acuerdo. No posee el dinero, no elige al ganador ni guarda un registro privado de la verdad.", trustOne: "<strong>La custodia 2-de-3</strong> impide que alguien actúe solo.", trustTwo: "<strong>La identidad Nostr</strong> hace que la reputación sea portátil.", trustThree: "<strong>Las reglas abiertas</strong> se pueden inspeccionar y reproducir.", closingLabel: "La confianza pertenece a la comunidad", closingTitle: "Tu gente. Tu dinero. Tus reglas.", closingBody: "Empieza en el sandbox. Mira el intercambio completo antes de arriesgar un solo sat.",
         communityLabel: "Chat comunitario", communityTitle: "Ven a saludar.", communityBody: "Saluda, agradece a alguien o comparte tus comentarios en Fedi. Un escaneo une ambos espacios de Chama, o elige una sala.", roomEn: "Sala inglesa", roomFr: "Sala francesa", fediScan: "Escanea — únete a ambos espacios", ethosLabel: "El ethos público · léelo en X", findUs: "Encuéntranos en público"
       },
       fr: {
-        navHow: "Fonctionnement", navUses: "Usages", navTrust: "Pourquoi c’est sûr", try: "Essayer Chama",
+        navHow: "Fonctionnement", navUses: "Usages", navTrust: "Pourquoi c’est sûr", openApp: "Entrer dans votre Chama",
         eyebrow: "Commerce Bitcoin, sans dépositaire", hero: "Échangez entre personnes. <span class='accent'>Pas avec des plateformes.</span>",
         heroSub: "Chama aide acheteurs et vendeurs à échanger en Bitcoin tandis qu’un arbitre communautaire responsabilise les deux parties. Votre argent ne nous appartient jamais.",
-        sandbox: "Essayer le bac à sable", seeHow: "Voir le fonctionnement ↓", tinyProof: "Open source · Sans garde · Bitcoin, Fedimint et Nostr",
-        seller: "Vendeur", buyer: "Acheteur", arbiter: "Arbitre", proofOne: "Deux personnes s’accordent. L’échange est réglé.", proofTwo: "Chama ne peut ni prendre ni déplacer vos sats.", proofThree: "La réputation suit les personnes, pas une entreprise.", homeLabel: "Pensé pour tous les lieux", homeTitle: "Tout le monde a un foyer.", homeBody: "Partout où les personnes échangent, la confiance a déjà des racines. Chama donne à ces communautés des outils qui voyagent sans s’imposer.",
+        sandbox: "Essayer le bac à sable", tinyProof: "Open source · Sans garde · Bitcoin, Fedimint et Nostr",
+        seller: "Vendeur", buyer: "Acheteur", arbiter: "Arbitre", proofOne: "Deux personnes s’accordent. L’échange est réglé.", proofTwo: "Chama ne peut ni prendre ni déplacer vos sats.", proofThree: "La réputation suit les personnes, pas une entreprise.", homeLabel: "Pensé pour tous les lieux", homeTitle: "Tout le monde a un foyer.", homeBody: "Partout où les personnes échangent, la confiance a déjà des racines. Chama donne à ces communautés des outils qui voyagent sans s’imposer.", availability: "Choisissez votre pays pour voir si Chama est actif localement, soutenu par une fédération ou bientôt disponible.", checkAvailability: "Vérifier la disponibilité →",
         howLabel: "Fonctionnement", howTitle: "Trois personnes. Un échange honnête.", howIntro: "La plupart des échanges se terminent entre l’acheteur et le vendeur. L’arbitre n’intervient qu’en cas de désaccord.",
         stepOneTitle: "Accord", stepOneBody: "Choisissez les conditions, le montant et un arbitre de confiance.", stepTwoTitle: "Verrouillage", stepTwoBody: "Les sats sont verrouillés en séquestre 2-sur-3. Personne, pas même Chama, ne les contrôle seul.", stepThreeTitle: "Règlement", stepThreeBody: "Les deux confirment et les fonds sont libérés. En cas de litige, l’arbitre départage.",
         usesLabel: "Une couche de confiance", usesTitle: "Pour la vie réelle.", usesIntro: "Une protection simple pour les échanges que les communautés pratiquent déjà.",
-        useSwap: "Échanger sats et espèces", useSwapBody: "Utilisez les moyens de paiement locaux.", useBills: "Payer une facture", useBillsBody: "Trouvez quelqu’un qui peut la régler.", useShop: "Acheter et vendre", useShopBody: "Protégez biens, services et livraisons.", useWork: "Être payé pour son travail", useWorkBody: "Verrouillez le paiement avant de commencer.", useChip: "Cotiser ensemble", useChipBody: "Atteignez un objectif commun.", useStack: "Épargner dans le temps", useStackBody: "Construisez un plan par petits échanges.",
+        useSwap: "Échanger sats et espèces", useSwapBody: "Utilisez les moyens de paiement locaux.", useBills: "Payer une facture", useBillsBody: "Trouvez quelqu’un qui peut la régler.", useShop: "Acheter et vendre", useShopBody: "Protégez biens, services et livraisons.", useWork: "Être payé pour son travail", useWorkBody: "Verrouillez le paiement avant de commencer.", useChip: "Cotiser ensemble", useChipBody: "Atteignez un objectif commun.", useStack: "Épargner dans le temps", useStackBody: "Construisez un plan par petits échanges.", soon: "Bientôt",
         trustVisualLabel: "Le rôle de Chama", trustVisualTitle: "Coordonner l’accord.", trustVisualNever: "Ne jamais détenir l’argent.", trustVisualEscrow: "Le séquestre empêche quiconque d’agir seul", trustVisualIdentity: "L’identité et la réputation restent portables", trustVisualRules: "Les règles ouvertes peuvent être inspectées et rejouées",
         trustLabel: "Pourquoi c’est différent", trustTitle: "La plateforme ne devient jamais la banque.", trustIntro: "Chama coordonne l’accord. Elle ne possède pas l’argent, ne choisit pas le gagnant et ne garde pas de registre privé de la vérité.", trustOne: "<strong>Le séquestre 2-sur-3</strong> empêche d’agir seul.", trustTwo: "<strong>L’identité Nostr</strong> rend la réputation portable.", trustThree: "<strong>Les règles ouvertes</strong> peuvent être inspectées et rejouées.", closingLabel: "La confiance appartient à la communauté", closingTitle: "Vos proches. Votre argent. Vos règles.", closingBody: "Commencez dans le bac à sable. Voyez tout l’échange avant de risquer un seul sat.",
         communityLabel: "Discussion communautaire", communityTitle: "Venez dire bonjour.", communityBody: "Dites bonjour, remerciez quelqu’un ou partagez vos retours sur Fedi. Un scan rejoint les deux espaces Chama, ou choisissez une salle.", roomEn: "Salle anglaise", roomFr: "Salle française", fediScan: "Scanner — rejoindre les deux espaces", ethosLabel: "L’éthique publique · à lire sur X", findUs: "Retrouvez-nous en public"

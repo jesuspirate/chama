@@ -254,7 +254,10 @@ import {
   getEcashExport,
   stashEcashExport,
 } from "../payments/ecash-exports.js";
-import { isNativeBridgeModeOn } from "../fedimint/native-bridge-adapter.js";
+import {
+  isBrowserRemoteBridgeMode,
+  isNativeBridgeModeOn,
+} from "../fedimint/native-bridge-adapter.js";
 // ── Arbiter bond (sealed v1: single-key timelock COMMITMENT) ──────────────────
 import * as btcSigner from "@scure/btc-signer";
 import { findBondFundingUtxos, esploraFetcher, defaultEsploraBase, defaultMinConfs, esploraTipHeight, esploraBroadcast, esploraOutspend, esploraRecommendedFeeRate, type EsploraFetch } from "../bond-multisig/fund-watcher.js";
@@ -3426,12 +3429,16 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       // refusal for a seed the bridge never uses. Skip the fetch in bridge mode too
       // (result unused) — but DO NOT fold this into skipMnemonic, which also drives
       // storageScope below; keep storage scoping exactly as it was.
-      const skipSeedFetch = skipMnemonic || isNativeBridgeModeOn();
+      // A browser remote bridge is optional. Recover the browser wallet seed in
+      // parallel so a revoked/stale bridge token can fall back immediately.
+      // Packaged native shells remain bridge-only and continue skipping this.
+      const browserRemoteBridge = isBrowserRemoteBridgeMode();
+      const skipSeedFetch = skipMnemonic || (isNativeBridgeModeOn() && !browserRemoteBridge);
       // Browser only: overlap the large Fedimint core/transport imports with
       // Nostr seed recovery. Both are required before wallet construction,
       // but neither depends on the other; doing them serially made the first
       // trip to a federation needlessly longer on cold caches.
-      const runtimeWarmup = !skipMnemonic && !isNativeBridgeModeOn()
+      const runtimeWarmup = !skipMnemonic && (!isNativeBridgeModeOn() || browserRemoteBridge)
         ? preloadRealWalletRuntime()
         : Promise.resolve(null);
       const mnemonic = skipSeedFetch

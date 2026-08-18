@@ -211,6 +211,7 @@ function sleepMs(ms: number): Promise<void> {
  *  path must never read one as the other: a reverse proxy hanging up on a long
  *  poll is not the federation rejecting a payment. */
 const BRIDGE_TRANSPORT_FAILURE = "chamaBridgeTransportFailure";
+const BRIDGE_AUTH_FAILURE = "chamaBridgeAuthFailure";
 
 function markBridgeTransportFailure<E extends Error>(error: E): E {
   (error as E & { [BRIDGE_TRANSPORT_FAILURE]?: boolean })[BRIDGE_TRANSPORT_FAILURE] = true;
@@ -220,6 +221,16 @@ function markBridgeTransportFailure<E extends Error>(error: E): E {
 export function isBridgeTransportFailure(error: unknown): boolean {
   return error instanceof Error &&
     (error as Error & { [BRIDGE_TRANSPORT_FAILURE]?: boolean })[BRIDGE_TRANSPORT_FAILURE] === true;
+}
+
+function markBridgeAuthFailure<E extends Error>(error: E): E {
+  (error as E & { [BRIDGE_AUTH_FAILURE]?: boolean })[BRIDGE_AUTH_FAILURE] = true;
+  return error;
+}
+
+export function isNativeBridgeAuthFailure(error: unknown): boolean {
+  return error instanceof Error &&
+    (error as Error & { [BRIDGE_AUTH_FAILURE]?: boolean })[BRIDGE_AUTH_FAILURE] === true;
 }
 
 /** Gateway-class HTTP statuses: something between us and the bridge answered.
@@ -512,6 +523,14 @@ export function isNativeBridgeModeOn(): boolean {
   return isCapacitorNativePlatform() || isTauriNativePlatform();
 }
 
+/** True only for the optional browser-to-remote-bridge route. Native shells
+ * and managed deployments must never silently fall back to the browser SDK. */
+export function isBrowserRemoteBridgeMode(): boolean {
+  if (isShellManagedNativeBridge()) return false;
+  if (isEnabledSetting(getImportEnv("VITE_CHAMA_NATIVE_BRIDGE_REQUIRED"))) return false;
+  return getLocalStorageValue(NATIVE_BRIDGE_URL_KEY) !== null;
+}
+
 export function getNativeBridgeUrl(): string {
   const managedBridgeUrl = isEnabledSetting(getImportEnv("VITE_CHAMA_NATIVE_BRIDGE_REQUIRED"))
     ? getImportEnv("VITE_CHAMA_NATIVE_BRIDGE_URL")
@@ -558,6 +577,7 @@ export function clearNativeBridgeConfig(): void {
     if (typeof localStorage === "undefined") return;
     localStorage.removeItem(NATIVE_BRIDGE_URL_KEY);
     localStorage.removeItem(NATIVE_BRIDGE_TOKEN_KEY);
+    localStorage.removeItem(NATIVE_BRIDGE_MODE_KEY);
   } catch {
     // Ignore; worst case the browser stays in remote-bridge mode.
   }
@@ -630,7 +650,7 @@ async function assertNativeBridgeCompatible(baseUrl: string): Promise<NativeHeal
       timeoutMs: NATIVE_BRIDGE_HEALTH_TIMEOUT_MS,
     });
   } catch (error) {
-    if (hasChamaDiagnostics(error)) throw error;
+    if (hasChamaDiagnostics(error) || isNativeBridgeAuthFailure(error)) throw error;
     throw nativeBridgeCompatibilityError(baseUrl, asErrorMessage(error));
   }
 
@@ -730,6 +750,7 @@ async function nativeBridgeFetch<T>(
     const failure = new Error(
       `Native Fedimint bridge ${path} failed (${response.status}): ${bridgeMessage}`,
     );
+    if (response.status === 401) throw markBridgeAuthFailure(failure);
     throw isProxyGatewayStatus(response.status)
       ? markBridgeTransportFailure(failure)
       : failure;

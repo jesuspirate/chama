@@ -154,7 +154,14 @@ export function DashboardScreen({
           onClick={() => setConverterOpen((open) => !open)}
           style={{ display: "flex", alignItems: "center", gap: 7, flex: "0 0 auto", padding: "9px 11px", borderRadius: T.rs, border: `1px solid ${converterOpen ? T.accent : T.accent + "66"}`, background: converterOpen ? T.accentDim : T.card, color: T.accent, fontFamily: T.mono, fontSize: 10, fontWeight: 800, letterSpacing: .4, cursor: "pointer", boxShadow: `0 0 0 1px ${T.accent}12` }}
         >
-          <span aria-hidden="true" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 20, height: 20, borderRadius: "50%", background: "#f7931a", color: "#fff", fontFamily: T.sans, fontSize: 14, fontWeight: 900, lineHeight: 1 }}>₿</span>
+          <img
+            src="/icons/bitcoin-mark-64.png"
+            alt=""
+            aria-hidden="true"
+            width={20}
+            height={20}
+            style={{ display: "block", width: 20, height: 20 }}
+          />
           {t("bond.converterHeading")}
         </button>
       </div>

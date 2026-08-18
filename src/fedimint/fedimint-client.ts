@@ -466,13 +466,53 @@ export class FedimintClient {
       try {
         await this.wallet.open();
       } catch (openErr) {
-        const msg = typeof openErr === "string" ? openErr : (openErr as Error)?.message || "";
-        if (/client is not initialized|client database not initialized|database not initialized|not initialized for this database|no such client|client secret is not present|run join first/i.test(msg)) {
-          console.info(
-            "[chama] No existing Fedimint client in this DB — will be created on join"
+        const {
+          clearNativeBridgeConfig,
+          isBrowserRemoteBridgeMode,
+          isNativeBridgeAuthFailure,
+        } = await import("./native-bridge-adapter.js");
+        const canRecoverInBrowser =
+          isNativeBridgeAuthFailure(openErr) && isBrowserRemoteBridgeMode();
+
+        if (canRecoverInBrowser) {
+          // Remote access is an optional convenience, not an account binding.
+          // A revoked token must not strand this browser on somebody else's
+          // bridge. Clear only the browser route, then open the deterministic
+          // wallet recovered from the signed-in user's Nostr seed.
+          const staleWallet = this.wallet;
+          try {
+            await staleWallet.cleanup();
+          } catch (cleanupError) {
+            console.warn("[chama] Could not clean up stale remote bridge wallet:", cleanupError);
+          }
+          clearNativeBridgeConfig();
+          const { createRealWallet } = await import("./sdk-adapter.js");
+          this.wallet = await createRealWallet({
+            mnemonic: opts.mnemonic,
+            storageScope: opts.storageScope,
+          });
+          console.warn(
+            "[chama] Remote bridge authorization expired — restored this account with the browser wallet",
           );
+          try {
+            await this.wallet.open();
+          } catch (fallbackOpenErr) {
+            const fallbackMsg = typeof fallbackOpenErr === "string"
+              ? fallbackOpenErr
+              : (fallbackOpenErr as Error)?.message || "";
+            if (!/client is not initialized|client database not initialized|database not initialized|not initialized for this database|no such client|client secret is not present|run join first/i.test(fallbackMsg)) {
+              throw fallbackOpenErr;
+            }
+          }
         } else {
-          throw openErr;
+          const msg = typeof openErr === "string" ? openErr : (openErr as Error)?.message || "";
+          if (/client is not initialized|client database not initialized|database not initialized|not initialized for this database|no such client|client secret is not present|run join first/i.test(msg)) {
+            console.info(
+              "[chama] No existing Fedimint client in this DB — will be created on join"
+            );
+          } else {
+            throw openErr;
+          }
         }
       }
 
