@@ -2462,6 +2462,13 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       startClaimWatchdog(escrowId, balanceBefore, expectedDeltaMsats).then(
         (outcome) => {
           if (outcome === "success") {
+            // The bridge can time out after Fedimint has accepted the notes.
+            // Balance growth is the proof that THIS wallet received them; once
+            // observed, retire the crash-recovery bearer note immediately.
+            // Leaving it in the stash lets the next boot replay an already
+            // consumed note and falsely surface it as a stranded claim.
+            clearPendingRedemption(escrowId);
+            recordClaimCredit(escrowId, expectedDeltaMsats);
             vibrate([100, 50, 100, 50, 200]);
             refreshBalanceRef.current?.().catch(() => {});
             notify?.({
@@ -2504,6 +2511,25 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       // so the payout orchestrator can run its absolute-balance cover check
       // and, when no matching credit exists, show the honest terminal error.
       // The unresolved redemption record remains available for recovery.
+      if (
+        e?.claimPublished &&
+        e?.settlementFailed &&
+        e?.code === "ALREADY_SPENT_UNCONFIRMED"
+      ) {
+        // Native reissue can finish just after the request boundary, then a
+        // duplicate/retry reports the now-consumed note as already spent.
+        // Do not turn that transport race into a loss alarm: watch the balance
+        // captured before this claim. Growth clears the recovery note above;
+        // no growth leaves it intact and still fails closed.
+        console.warn(
+          "[chama] Claim note was consumed; checking this wallet for the matching credit:",
+          msg,
+        );
+        notify?.({ phase: "watching", escrowId, reason: msg });
+        finishWhenBalanceConfirms(true);
+        return client.getState(escrowId)!;
+      }
+
       if (e?.claimPublished && e?.settlementFailed) {
         console.error(
           "[chama] Claim published, but wallet settlement was not confirmed:",
