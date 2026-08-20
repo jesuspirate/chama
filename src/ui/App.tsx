@@ -2726,7 +2726,10 @@ export default function App() {
             actions.createFundingInvoice(amountSats * 1000, desc)
           }
           onPayInvoice={async (bolt11) => { await actions.payInvoice(bolt11); }}
-          onSpendNotes={(amountMsats) => actions.spendNotes(amountMsats)}
+          // This is a recipient-facing export, so use the explicit browser-safe
+          // 14-day horizon and invite-bearing format. The plain spend path uses
+          // the SDK default and is reserved for compact internal lock notes.
+          onSpendNotes={(amountMsats) => actions.spendNotes(amountMsats, undefined, true)}
           onRedeemEcash={(oobNotes) => actions.redeemEcash(oobNotes)}
           balanceMsats={fedimint.balanceMsats ?? 0}
         />

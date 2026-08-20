@@ -64,6 +64,12 @@ import {
 /** localStorage key. Versioned so we can migrate the payload shape later. */
 export const PENDING_REDEMPTIONS_KEY = "chama_pending_redemptions_v1";
 
+/** Legacy FundWalletModal used the claim-recovery queue as durable storage for
+ * an OUTGOING bearer note. That note must remain spendable by its recipient;
+ * the boot drain must never redeem it back into Chama. New exports use
+ * payments/ecash-exports.ts, but keep this guard for already-stored entries. */
+export const LEGACY_MANUAL_ECASH_EXPORT_ID = "manual-fund-ecash";
+
 /**
  * After this many failed drain attempts we stop retrying automatically.
  * The entry stays in the stash with `lastError` set so it's visible for
@@ -393,6 +399,10 @@ export async function drainPendingRedemptions(
   const entries = Object.values(stash);
 
   for (const entry of entries) {
+    // This is an outgoing payment, not a claim waiting to credit this wallet.
+    // Older releases wrote it into this queue; redeeming it here makes the
+    // recipient's copy immediately fail as already spent.
+    if (entry.escrowId === LEGACY_MANUAL_ECASH_EXPORT_ID) continue;
     // The mint already credited this wallet. The entry now reserves those
     // sats for the claimant's outbound payout; reissuing or exporting its
     // original bearer string would be both pointless and misleading.

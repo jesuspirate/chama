@@ -7,18 +7,46 @@ import { isSimModeOn, setSimMode } from "../../sim/simMode.js";
 import { makeLightningInvoiceQrPayload } from "../../payments/lightning-qr.js";
 import {
   clearPendingRedemption,
+  LEGACY_MANUAL_ECASH_EXPORT_ID,
   listPendingRedemptions,
-  stashPendingRedemption,
 } from "../../fedimint/pending-redemptions.js";
-import { hashNotes } from "../../fedimint/fedimint-client.js";
+import {
+  assertEcashExportWritable,
+  clearEcashExport,
+  getEcashExport,
+  stashEcashExport,
+  type EcashExport,
+} from "../../payments/ecash-exports.js";
 
-/** Stash slot for manual-fund ecash. Not an escrow — a fixed synthetic id so
- *  there is exactly one uncollected manual bundle at a time, and the existing
- *  stranded-notes machinery can see it like any other. */
-const MANUAL_FUND_STASH_ID = "manual-fund-ecash";
-
-function readManualFundStash() {
-  return listPendingRedemptions().find(r => r.escrowId === MANUAL_FUND_STASH_ID) ?? null;
+/** Resume the dedicated outgoing-export stash. Migrate the legacy synthetic
+ * claim entry on sight; pending-redemptions also excludes it from its boot
+ * drain, so opening this modal can never race an automatic re-absorb. */
+function readManualFundStash(): EcashExport | null {
+  const current = getEcashExport();
+  // Claim exports have their own completion boundary; this generic wallet
+  // modal must never redeem or clear one behind ClaimPayoutModal's back.
+  if (current) return current.source === "claim" ? null : current;
+  const legacy = listPendingRedemptions().find(
+    r => r.escrowId === LEGACY_MANUAL_ECASH_EXPORT_ID,
+  );
+  if (!legacy) return null;
+  try {
+    stashEcashExport({
+      notes: legacy.oobNotes,
+      amountMsats: legacy.amountMsats,
+      source: "wallet",
+    });
+    clearPendingRedemption(LEGACY_MANUAL_ECASH_EXPORT_ID);
+    return getEcashExport();
+  } catch (e) {
+    console.warn("[chama] couldn't migrate legacy manual ecash export:", e);
+    return {
+      notes: legacy.oobNotes,
+      amountMsats: legacy.amountMsats,
+      createdAt: legacy.createdAt,
+      source: "wallet",
+    };
+  }
 }
 
 const QRCode = lazy(() => import("../QRCode.js"));
@@ -127,33 +155,32 @@ export function FundWalletModal({ onClose, onCreateInvoice, onPayInvoice, onSpen
     } finally { setBusy(false); }
   };
 
-  // Manual-fund ecash is bearer money that exists ONLY as the string on screen.
-  // Close the modal without copying it and the UI has lost it — the mint will
-  // auto-refund it eventually, but the user has no way to know that and no way
-  // to get it back sooner. So stash it durably the instant it exists, exactly
-  // like the claim path does, and offer it back on return.
-  const stashSpentNotes = async (notes: string, amountMsats: number) => {
+  // Manual ecash is an OUTGOING bearer payment. Keep its recovery copy in the
+  // export stash, never the claim-redemption queue (whose boot drain consumes
+  // notes back into this wallet). Prove storage before spending and reabsorb if
+  // the post-spend write unexpectedly fails.
+  const createEcashExport = async (amountMsats: number) => {
+    assertEcashExportWritable();
+    const notes = await onSpendNotes(amountMsats);
     try {
-      stashPendingRedemption({
-        escrowId: MANUAL_FUND_STASH_ID,
-        oobNotes: notes,
-        notesHash: await hashNotes(notes),
-        amountMsats,
-      });
-      setStashed(readManualFundStash());
-    } catch (e) {
-      // Never block the spend on bookkeeping — the notes are already on screen.
-      console.warn("[chama] couldn't stash manual-fund ecash:", e);
+      stashEcashExport({ notes, amountMsats, source: "wallet" });
+    } catch (stashError) {
+      try {
+        await onRedeemEcash(notes);
+      } catch (redeemError) {
+        console.error("[chama] unstashed manual ecash reabsorb failed:", redeemError);
+      }
+      throw new Error(t("recovery.exportStashFailedReabsorbed"), { cause: stashError });
     }
+    setEcashOutput(notes);
+    setStashed(getEcashExport());
   };
 
   const handleSpendAll = async () => {
     if (balanceMsats <= 0) { setErr(t("fund.noBalanceToSend")); return; }
     setBusy(true); setErr(null);
     try {
-      const notes = await onSpendNotes(balanceMsats);
-      setEcashOutput(notes);
-      await stashSpentNotes(notes, balanceMsats);
+      await createEcashExport(balanceMsats);
     }
     catch (e: any) { setErr(e.message || t("fund.failed")); }
     finally { setBusy(false); }
@@ -164,9 +191,7 @@ export function FundWalletModal({ onClose, onCreateInvoice, onPayInvoice, onSpen
     if (!n || n <= 0) { setErr(t("fund.enterValidSats")); return; }
     setBusy(true); setErr(null);
     try {
-      const notes = await onSpendNotes(n * 1000);
-      setEcashOutput(notes);
-      await stashSpentNotes(notes, n * 1000);
+      await createEcashExport(n * 1000);
     }
     catch (e: any) { setErr(e.message || t("fund.failed")); }
     finally { setBusy(false); }
@@ -177,8 +202,10 @@ export function FundWalletModal({ onClose, onCreateInvoice, onPayInvoice, onSpen
     if (!stashed) return;
     setBusy(true); setErr(null);
     try {
-      await onRedeemEcash(stashed.oobNotes);
-      clearPendingRedemption(MANUAL_FUND_STASH_ID);
+      await onRedeemEcash(stashed.notes);
+      clearEcashExport();
+      // A failed migration may still be displaying the legacy entry.
+      clearPendingRedemption(LEGACY_MANUAL_ECASH_EXPORT_ID);
       setStashed(null);
       setEcashOutput(null);
       setSuccess(t("fund.ecashRestashed"));
@@ -387,7 +414,7 @@ export function FundWalletModal({ onClose, onCreateInvoice, onPayInvoice, onSpen
               {busy ? t("fund.sending") : t("fund.putEcashBack")}
             </button>
             <CopyButton
-              value={stashed.oobNotes}
+              value={stashed.notes}
               label={t("fund.copyEcashAgain")}
               copiedLabel={t("common.copied")}
               style={{

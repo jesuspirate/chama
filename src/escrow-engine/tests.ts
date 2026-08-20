@@ -272,6 +272,7 @@ import {
   resolveUnresolvedCredit,
   listStrandedRedemptions,
   partitionStrandedClaims,
+  LEGACY_MANUAL_ECASH_EXPORT_ID,
   MAX_DRAIN_ATTEMPTS,
   PENDING_REDEMPTIONS_KEY,
 } from "../fedimint/pending-redemptions.js";
@@ -22799,6 +22800,32 @@ function makeFundSafetyWallet(overrides: {
   const secondDrain = await drainPendingRedemptions(client);
   assert(secondDrain.attempted === 0 && order.filter(x => x === "redeem").length === 1,
     "invariant_mint-mutex__drain_waits_for_fund: credited reservations are never reissued again");
+  await client.cleanup();
+  clearAllPendingRedemptions();
+}
+
+// ── outgoing ecash is never consumed by the claim-recovery drain ──────────
+{
+  const { FedimintClient } = await import("../fedimint/fedimint-client.js");
+  clearAllPendingRedemptions();
+  let redeems = 0;
+  const wallet = makeFundSafetyWallet({
+    redeemEcash: async () => { redeems++; },
+    parseNotes: async () => ({ total_amount: 100_000 }),
+  });
+  const client = new FedimintClient({}, async () => wallet as any);
+  await client.init();
+  stashPendingRedemption({
+    escrowId: LEGACY_MANUAL_ECASH_EXPORT_ID,
+    oobNotes: "oob_outgoing_to_fedi",
+    notesHash: "hash_outgoing_to_fedi",
+    amountMsats: 100_000,
+  });
+  const summary = await drainPendingRedemptions(client);
+  assert(summary.attempted === 0 && redeems === 0,
+    "invariant_outgoing-ecash__claim-drain-never-reabsorbs-recipient-note: legacy manual exports remain claimable by Fedi");
+  assert(listPendingRedemptions().some(e => e.escrowId === LEGACY_MANUAL_ECASH_EXPORT_ID),
+    "invariant_outgoing-ecash__claim-drain-never-reabsorbs-recipient-note: legacy export stays available for UI migration");
   await client.cleanup();
   clearAllPendingRedemptions();
 }
