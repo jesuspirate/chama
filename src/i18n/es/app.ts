@@ -10,7 +10,7 @@ export const app: Record<string, string> = {
   "app.arbiterWaitingBothVotes":
     "Esperando al comprador y al vendedor; el árbitro solo actúa en una disputa",
   "app.archivedIncomplete":
-    "Falta parte del historial de este intercambio en los relays, así que todavía no se puede reconstruir — el resumen que ves aquí es lo que está guardado en este dispositivo. Puede volver si otro participante se conecta.",
+    "El historial de este intercambio no se pudo reconstruir en este dispositivo, así que el resumen que ves aquí es lo guardado localmente. Puede reconstruirse más tarde, o en otro dispositivo que aún tenga la cadena completa.",
   "app.archivedNotOnRelay":
     "El historial completo de este intercambio ya no está en tu relay de Chama — el resumen que ves aquí es lo que está guardado en este dispositivo.",
   "app.archivedStillLoading":
@@ -58,6 +58,8 @@ export const app: Record<string, string> = {
   "app.connectedSplash": "¡Conectado!",
   "app.couldntDeleteListing": "No se pudo eliminar el anuncio.",
   "app.couldntJoinChama": "No pudimos unirte a tu Chama. ¿Intentar de nuevo?",
+  "app.walletOpenInOtherTab": "Tu billetera está abierta en otra pestaña de Chama.",
+  "app.useWalletHere": "Usarla aquí",
   "app.couldntLoadTrade": "No se pudo cargar el intercambio {id}.",
   "app.couldntReconnect": "No se pudo reconectar. ¿Intentar de nuevo?",
   "app.couldntStartOrder": "No se pudo iniciar el pedido.",

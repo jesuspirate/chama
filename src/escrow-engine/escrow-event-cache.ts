@@ -199,6 +199,63 @@ export async function putCachedEvents(
   }
 }
 
+/** Merge `events` INTO an escrow's cached chain, read and write inside ONE
+ *  readwrite transaction.
+ *
+ *  Unlike `putCachedEvents` (whole-record replace) this can never truncate what
+ *  is already stored, which is what the LIVE event path needs: the caller there
+ *  holds only the state-chain raws (the hot cache is deliberately CHAT-free), so
+ *  a replace would delete every cached chat message for the trade. Two
+ *  properties make that impossible here:
+ *
+ *   1. **No read-then-write window.** A separate `getCachedEvents` +
+ *      `putCachedEvents` pair can lose a concurrent write, and its empty result
+ *      is ambiguous — `[]` means both "nothing cached" and "the bounded read
+ *      timed out", so the caller cannot tell a fresh trade from a stalled disk.
+ *      Sharing one transaction removes the question.
+ *   2. **Existing raws win on an id collision** (`dedupEventsById` keeps the
+ *      first occurrence, and stored events are passed first). A copy whose
+ *      ciphertext was stripped for display can therefore never overwrite the
+ *      good one already on disk.
+ *
+ *  Fire-and-forget from the caller; never throws. */
+export async function appendCachedEvents(
+  escrowId: string,
+  events: readonly NostrEvent[],
+  status: EscrowStatus,
+): Promise<void> {
+  if (events.length === 0) return;
+  const db = await openDb();
+  if (!db) {
+    const prev = memoryFallback.get(escrowId);
+    memoryFallback.set(escrowId, {
+      escrowId,
+      events: dedupEventsById([...(prev?.events ?? []), ...events]),
+      terminal: isEvictableTerminal(status),
+      updatedAt: Date.now(),
+    });
+    evictMemoryFallback();
+    return;
+  }
+  await withTimeout((async () => {
+    const tx = db.transaction(EVENT_CACHE_STORE, "readwrite");
+    const store = tx.objectStore(EVENT_CACHE_STORE);
+    // `reqToPromise` settles from the request's own success handler, so the
+    // continuation runs as a microtask and the transaction stays alive. Do not
+    // await anything else in here — a macrotask turn would auto-close it.
+    const prev = (await reqToPromise(store.get(escrowId))) as CacheRecord | undefined;
+    const record: CacheRecord = {
+      escrowId,
+      events: dedupEventsById([...(prev?.events ?? []), ...events]),
+      terminal: isEvictableTerminal(status),
+      updatedAt: Date.now(),
+    };
+    store.put(record);
+    await txDone(tx);
+  })(), TXN_TIMEOUT_MS, undefined);
+  await maybeEvict(db);
+}
+
 function txDone(tx: IDBTransaction): Promise<void> {
   return new Promise<void>((resolve) => {
     tx.oncomplete = () => resolve();

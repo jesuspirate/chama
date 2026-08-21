@@ -38,6 +38,7 @@ import {
   claimPayoutReserveSats,
   claimPayoutSats,
   MATERIAL_RECOVERY_MIN_SATS,
+  type ClaimPayoutTarget,
 } from "../../payments/lightning-fees.js";
 import {
   EXTERNAL_SWAPS_ENABLED,
@@ -132,7 +133,7 @@ export interface ClaimPayoutModalProps {
   /** Fedi Mini-App path: claim directly into the host Fedi wallet with
    *  window.fediInternal.receiveEcash instead of asking for a Lightning
    *  payout destination. */
-  claimTarget?: "lightning" | "fedi-wallet";
+  claimTarget?: ClaimPayoutTarget;
   /** v0.3.1 Phase 1: bound to actions.probeFederation. Called from the
    *  Try-again button on claim-bridge-threw terminal. Returns ok/error
    *  shape (never throws). The retry path only re-dispatches the claim
@@ -199,6 +200,11 @@ export function ClaimPayoutModal({
   const insuranceSats = Math.floor(Math.max(0, Math.floor(premiumMsats)) / 1000);
   const payoutSats = claimPayoutSats(effectiveMsats, claimTarget);
   const reserveSats = claimPayoutReserveSats(effectiveMsats, claimTarget);
+  // The bearer-note export is picked INSIDE the chooser, not at mount, so it
+  // cannot ride `claimTarget` — which on a non-Fedi client is "lightning".
+  // Quote it separately: a bearer note pays no outbound Lightning fee, so the
+  // reserve baked into `payoutSats` is money the user actually gets.
+  const ecashPayoutSats = claimPayoutSats(effectiveMsats, "ecash");
   const [stage, setStage] = useState<Stage>({ kind: "picking" });
   const [payoutMethod, setPayoutMethod] = useState<PayoutMethod | null>(null);
   // Retry state: when a retryable terminal is up, the "Try again"
@@ -259,7 +265,7 @@ export function ClaimPayoutModal({
         payoutKind: args.payoutKind,
         // E1.1: the onchain path pays exactly this figure, and the LN
         // growth/cover checks are ≥-thresholds — so the reduced amount is
-        // correct on every target (the fedi-wallet branch ignores it).
+        // correct on every target (the ecash branch ignores it).
         expectedDeltaMsats: effectiveMsats,
         saveAfter: args.saveAfter,
         addressUsed: args.addressUsed,
@@ -282,7 +288,7 @@ export function ClaimPayoutModal({
   };
 
   useEffect(() => {
-    if (claimTarget !== "fedi-wallet") return;
+    if (claimTarget !== "ecash") return;
     if (stage.kind !== "picking") return;
     if (lastDispatchRef.current) return;
     lastDispatchRef.current = {
@@ -424,7 +430,7 @@ export function ClaimPayoutModal({
   // internally. We pass amountSats so the LNURL resolver requests an
   // invoice of exactly the right size.
   if (stage.kind === "picking") {
-    if (claimTarget === "fedi-wallet") {
+    if (claimTarget === "ecash") {
       return (
         <div
           style={{
@@ -443,6 +449,7 @@ export function ClaimPayoutModal({
       return (
         <ClaimMethodChooser
           payoutSats={payoutSats}
+          ecashPayoutSats={ecashPayoutSats}
           externalSwaps={externalSwaps}
           tandoEligible={tandoEligible}
           chapsmartEligible={chapsmartEligible}
@@ -623,6 +630,7 @@ export function ClaimPayoutModal({
 
 function ClaimMethodChooser({
   payoutSats,
+  ecashPayoutSats,
   externalSwaps,
   tandoEligible,
   chapsmartEligible,
@@ -635,7 +643,13 @@ function ClaimMethodChooser({
   onSelectSavedNwc,
   onCancel,
 }: {
+  /** The headline quote, net of the outbound Lightning fee reserve — right for
+   *  every method on this screen EXCEPT the bearer-note export. */
   payoutSats: number;
+  /** The bearer-note export's quote: the full amount, because no Lightning hop
+   *  happens. Shown on the ecash card whenever it differs from the headline,
+   *  so a 123 sat note never advertises itself as 119. */
+  ecashPayoutSats: number;
   externalSwaps: ExternalSwapMatch[];
   /** Kenya context — surface the native one-tap Tando M-Pesa offramp as
    *  the lead cash-out card. Independent of the external-swap registry. */
@@ -808,6 +822,18 @@ function ClaimMethodChooser({
             <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono, lineHeight: 1.45 }}>
               {t("claim.ecashMethodBlurb")}
             </div>
+            {ecashPayoutSats !== payoutSats && (
+              <div style={{ marginTop: 6 }}>
+                <BitcoinAmount
+                  sats={ecashPayoutSats}
+                  size={11}
+                  gap={4}
+                  glyphScale={1.18}
+                  color={T.purple}
+                  glyphColor={T.muted}
+                />
+              </div>
+            )}
           </button>
           {/* Tando — Kenya's lead cash-out. Native one-tap M-Pesa offramp
               (LUD-16 Lightning Address `<phone>@bitcoin.co.ke`), not a

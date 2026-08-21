@@ -71,7 +71,7 @@ import type { VoteShareEnvelope } from "./types.js";
 import { EscrowNotifier } from "./notifier.js";
 import { ENCRYPTION_CONFIG } from "./encryption-config.js";
 import { parseEscrowEvent, sortEventChain } from "./event-parser.js";
-import { getCachedEvents, putCachedEvents } from "./escrow-event-cache.js";
+import { appendCachedEvents, getCachedEvents, putCachedEvents } from "./escrow-event-cache.js";
 import { selectBackfillEvents, shouldBackfillNow } from "./relay-backfill.js";
 import { createEnvelope, decryptFromEnvelope } from "./envelope.js";
 import { finalArbiterSettlementProof, finalCoopSettlementProof } from "./onchain-settlement-transport.js";
@@ -1984,18 +1984,24 @@ export class EscrowClient {
           // Sender echoes take the same durable-first / bounded-hot path as
           // received chat. The relay echo dedups, so persist the exact signed
           // ciphertext here before releasing it from renderer memory.
-          const durable = mergeRawEventsById(
-            this.rawEvents.get(escrowId) ?? [],
-            [
-              ...chatResult.state.chatMessages.map(message => message.raw),
-              signed,
-            ],
-          );
-          void putCachedEvents(
-            escrowId,
-            durableRawSnapshot(durable),
-            chatResult.state.status,
-          );
+          // APPEND, and never write back a raw we already blanked. Entries in
+          // state.chatMessages from earlier passes had their ciphertext stripped
+          // by stripParsedChatCiphertext, and mergeRawEventsById lets the SECOND
+          // argument win — so a whole-record put here rewrote every earlier
+          // chat's stored body to "". appendCachedEvents keeps the STORED copy
+          // on an id collision, and the filter stops a blanked raw from entering
+          // a record that doesn't have it yet. Chat carries receipts and
+          // proof-of-payment, so this is dispute evidence, not cosmetics.
+          const durable = durableRawSnapshot(
+            mergeRawEventsById(
+              this.rawEvents.get(escrowId) ?? [],
+              [
+                ...chatResult.state.chatMessages.map(message => message.raw),
+                signed,
+              ],
+            ),
+          ).filter(raw => raw.kind !== EscrowEventKind.CHAT || !!raw.content);
+          void appendCachedEvents(escrowId, durable, chatResult.state.status);
           stripParsedChatCiphertext(chatResult.state);
           this.states.set(escrowId, chatResult.state);
           this.callbacks.onStateUpdate?.(escrowId, chatResult.state);
@@ -2910,15 +2916,15 @@ export class EscrowClient {
         if (result.ok) {
           // Persist CHAT durably but do not retain its potentially-large
           // ciphertext in the hot rawEvents map. Parsed chat remains in state.
-          const durable = mergeRawEventsById(
-            this.rawEvents.get(escrowId) ?? [],
-            result.state.chatMessages.map(message => message.raw),
-          );
-          void putCachedEvents(
-            escrowId,
-            durableRawSnapshot(durable),
-            result.state.status,
-          );
+          // APPEND + drop already-blanked raws — see the sender-echo site above
+          // for why a whole-record put here erased every earlier chat body.
+          const durable = durableRawSnapshot(
+            mergeRawEventsById(
+              this.rawEvents.get(escrowId) ?? [],
+              result.state.chatMessages.map(message => message.raw),
+            ),
+          ).filter(raw => raw.kind !== EscrowEventKind.CHAT || !!raw.content);
+          void appendCachedEvents(escrowId, durable, result.state.status);
           stripParsedChatCiphertext(result.state);
           this.states.set(escrowId, result.state);
           this.callbacks.onChatMessage?.(escrowId, parsed as ParsedEscrowEvent<ChatPayload>);
@@ -2947,7 +2953,28 @@ export class EscrowClient {
 
       // Store raw event
       const existing = this.rawEvents.get(escrowId) || [];
-      this.setHotRawEvents(escrowId, compactHotRawEvents([...existing, event]));
+      const hotChain = compactHotRawEvents([...existing, event]);
+      this.setHotRawEvents(escrowId, hotChain);
+
+      // Durable persistence for the LIVE path. Without this, a trade that
+      // advances while the app is open leaves NOTHING on disk: `rawEvents` is an
+      // in-memory map with an eviction cap, so the next session can only rebuild
+      // from relays — and the trade you were PRESENT for is exactly the one whose
+      // events you never saved. A LOCKED chain lost this way costs the claim
+      // (the shares live in the LOCK event), so this is a money path, not merely
+      // history. Mirrors what the two CHAT sites already do.
+      //
+      // APPEND, never put: `putCachedEvents` replaces the whole record, and the
+      // hot map is deliberately CHAT-free (compactHotRawEvents), so a blind put
+      // here would delete every cached chat message for this trade. Merging
+      // `state.chatMessages` in to compensate does not work either — after the
+      // first stripParsedChatCiphertext those raws carry content:"" and would
+      // overwrite good ciphertext. `appendCachedEvents` merges inside a single
+      // readwrite transaction with stored events winning on an id collision, so
+      // neither hazard is reachable from here.
+      void appendCachedEvents(escrowId, hotChain, result.state.status).catch((e) =>
+        console.debug(`[escrow] live durable persist ${escrowId}:`, e),
+      );
 
       this.callbacks.onStateUpdate?.(escrowId, result.state);
 

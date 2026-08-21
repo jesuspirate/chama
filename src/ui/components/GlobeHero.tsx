@@ -7,15 +7,45 @@
 // keep onboarding cheap and deterministic instead of spending GPU/CPU for the
 // entire time a visitor considers their country.
 
+import { useEffect, useRef } from "react";
+
 type Marker = readonly [number, number];
 
 export function GlobeHero({
   size = 190,
+  onReady,
 }: {
   size?: number;
   /** Retained for call-site compatibility; the static asset has baked-in dots. */
   markers?: readonly Marker[];
+  /** Fires after the actual rendered artwork has decoded (or fails open). */
+  onReady?: () => void;
 }) {
+  const imageRef = useRef<HTMLImageElement>(null);
+  const onReadyRef = useRef(onReady);
+  const didReportReady = useRef(false);
+  onReadyRef.current = onReady;
+
+  const reportReady = () => {
+    if (didReportReady.current) return;
+    didReportReady.current = true;
+    onReadyRef.current?.();
+  };
+
+  const decodeThenReport = (image: HTMLImageElement) => {
+    if (typeof image.decode === "function") image.decode().then(reportReady, reportReady);
+    else reportReady();
+  };
+
+  useEffect(() => {
+    const image = imageRef.current;
+    if (image?.complete && image.naturalWidth > 0) decodeThenReport(image);
+    // Some embedded webviews do not reliably emit an image error. Never leave
+    // onboarding permanently hidden if the asset genuinely cannot be read.
+    const failOpen = window.setTimeout(reportReady, 2500);
+    return () => window.clearTimeout(failOpen);
+  }, []);
+
   return (
     <div
       aria-hidden="true"
@@ -32,13 +62,16 @@ export function GlobeHero({
       }}
     >
       <img
+        ref={imageRef}
         src="/icons/africa-globe-base.png"
         alt=""
         width={size}
         height={size}
         loading="eager"
-        decoding="async"
+        decoding="sync"
         fetchPriority="high"
+        onLoad={(event) => decodeThenReport(event.currentTarget)}
+        onError={reportReady}
         draggable={false}
         style={{
           width: size,

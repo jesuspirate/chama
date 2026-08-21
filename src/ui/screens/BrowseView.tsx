@@ -146,6 +146,11 @@ export function BrowseView({
   // My listings only. Selecting owner mode intentionally hides everything else.
   const [showOwn, setShowOwnState] = useState<boolean>(() => getBrowseShowOwn());
   const toggleShowOwn = () => setShowOwnState((v) => { const next = !v; setBrowseShowOwn(next); return next; });
+  // The category the user was on when they entered owner mode, so leaving it
+  // returns them to that shelf instead of dumping them in "all". A category
+  // chip clears owner mode itself (it is the same mutually-exclusive row), so
+  // this is only read by the ★ chip's own off-tap.
+  const [categoryBeforeOwn, setCategoryBeforeOwn] = useState<string>("all");
   const [browseScope, setBrowseScopeState] = useState<BrowseScope>(() => getBrowseScope());
   const [browseSort, setBrowseSortState] = useState<BrowseSort>(() => getBrowseSort());
   const setBrowseScope = (scope: BrowseScope) => {
@@ -514,8 +519,18 @@ export function BrowseView({
           <button
             type="button"
             onClick={() => {
-              if (!showOwn) toggleShowOwn();
-              setBrowseCategory("all");
+              // The chip advertises toggle semantics (aria-pressed, and it lights
+              // up like the category chips beside it), so a second tap has to turn
+              // owner mode OFF. Turning it on stashes the shelf we came from;
+              // turning it off restores it.
+              if (showOwn) {
+                toggleShowOwn();
+                setBrowseCategory(categoryBeforeOwn);
+              } else {
+                setCategoryBeforeOwn(browseCategory);
+                toggleShowOwn();
+                setBrowseCategory("all");
+              }
             }}
             aria-pressed={showOwn}
             style={{

@@ -23,7 +23,7 @@
 // two handlers. Pure plumbing — all decisions live in the pure helpers
 // in src/ui/decisions.ts.
 
-import type { ReactNode } from "react";
+import { createElement, Fragment, type ReactNode } from "react";
 import type { FedimintState, UseEscrowActions } from "../../hooks/useEscrow.js";
 import { getCommunityBySlug, DEFAULT_COMMUNITY_SLUG } from "../../communities/registry.js";
 import { getUserCommunitySlugRaw } from "../../communities/storage.js";
@@ -39,7 +39,9 @@ export interface FederationCommandsDeps {
   /** A locked arbiter bond enables per-federation preserved storage, so an
    *  earnings balance is not a reason to force a Lightning withdrawal. */
   preservesFederationBalances?: boolean;
-  setToast: (t: { message: ReactNode; type: "success" | "error" | "info" }) => void;
+  setToast: (t: {
+    message: ReactNode; type: "success" | "error" | "info"; sticky?: boolean;
+  }) => void;
   setBrowseCommunity: (slug: string) => void;
   setPendingDestroyConfirm: (
     p: {
@@ -63,7 +65,7 @@ export function useFederationCommands(deps: FederationCommandsDeps): FederationC
     setToast, setBrowseCommunity, setPendingDestroyConfirm,
   } = deps;
 
-  const handleSelectCommunity = async (slug: string) => {
+  const handleSelectCommunity: (slug: string) => Promise<void> = async (slug) => {
     // Capture previous state BEFORE any mutation so we can revert on
     // switch failure. We track the RAW community (null for first-timers)
     // separately from the resolution-flavored fallback — without that
@@ -126,6 +128,49 @@ export function useFederationCommands(deps: FederationCommandsDeps): FederationC
             label: effect.displayName,
             balanceMsats: e.balanceMsats || 0,
             activeInvite: e.previousActiveInvite || previousInvite || "",
+          });
+          return;
+        }
+
+        // A REFUSED RUNTIME LEASE IS NOT A REACHABILITY PROBLEM. The
+        // community is fine; this browser already has the wallet open
+        // somewhere else — or a tab that never closed cleanly is still
+        // holding the slot until the lease TTL expires. Reverting here is
+        // what bounced a first-timer out of Browse and back to the picker
+        // seconds after landing, under a message ("Couldn't reach X") that
+        // sent them looking for a network fault that was never there.
+        // Keep the pick, say what actually happened, and offer the takeover.
+        if (e?.code === "FEDIMINT_RUNTIME_IN_OTHER_TAB") {
+          console.warn("[chama] runtime lease refused for", effect.displayName, e);
+          setToast({
+            type: "error",
+            sticky: true,
+            message: createElement(
+              Fragment,
+              null,
+              "Your wallet is open in another Chama tab. ",
+              createElement(
+                "button",
+                {
+                  type: "button",
+                  onClick: () => {
+                    void (async () => {
+                      const { armBrowserRuntimeTakeover } = await import(
+                        "../../fedimint/browser-runtime-lease.js"
+                      );
+                      armBrowserRuntimeTakeover();
+                      await handleSelectCommunity(slug);
+                    })();
+                  },
+                  style: {
+                    background: "none", border: "none", padding: 0,
+                    color: "inherit", font: "inherit", fontWeight: 800,
+                    textDecoration: "underline", cursor: "pointer",
+                  },
+                },
+                "Use it here",
+              ),
+            ),
           });
           return;
         }

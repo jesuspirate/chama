@@ -3,13 +3,21 @@ import { T } from "../theme.js";
 import { isSimModeOn } from "../../sim/simMode.js";
 import { SIM_PILL_HEIGHT } from "../../sim/SimModeBanner.js";
 
-export function Toast({ message, type, onDone }: {
+export function Toast({ message, type, onDone, sticky = false }: {
   message: ReactNode; type: "success" | "error" | "info"; onDone: () => void;
+  /** Hold until dismissed. For a toast that CARRIES A DECISION — a button the
+   *  user is meant to press — an auto-dismiss makes the affordance a race the
+   *  user usually loses. Sticky toasts get an explicit ✕ instead. */
+  sticky?: boolean;
 }) {
   // Type-aware dwell: a success/info confirmation only needs a glance, so it
   // shouldn't linger; an error carries more to read, so it stays a touch longer.
   const dwellMs = type === "error" ? 4500 : type === "info" ? 3000 : 2200;
-  useEffect(() => { const t = setTimeout(onDone, dwellMs); return () => clearTimeout(t); }, [onDone, dwellMs]);
+  useEffect(() => {
+    if (sticky) return;
+    const t = setTimeout(onDone, dwellMs);
+    return () => clearTimeout(t);
+  }, [onDone, dwellMs, sticky]);
   const colors = { success: T.green, error: T.red, info: T.accent };
   // v0.4.2 hotfix round 2: SIM MODE pill (top:0, z:10000) was clipping
   // the top of the toast (top:16, z:9999). Slide the toast below the
@@ -19,7 +27,9 @@ export function Toast({ message, type, onDone }: {
   return (
     <div style={{
       position: "fixed", top: topOffset, left: "50%", transform: "translateX(-50%)",
-      padding: "14px 24px", borderRadius: 999,
+      // A sticky toast carries a corner ✕. Pad the right so a long message
+      // never runs under it, rather than letting it wrap to its own line.
+      padding: sticky ? "14px 40px 14px 24px" : "14px 24px", borderRadius: 999,
       // OPAQUE surface so the toast never blends into whatever's behind it — a
       // toast is allowed to hide the page for its few seconds. The type colour
       // lives in the border, icon, and text; a soft shadow lifts it off.
@@ -37,6 +47,21 @@ export function Toast({ message, type, onDone }: {
         <span aria-hidden="true" style={{ fontSize: 17, lineHeight: 1 }}>{type === "success" ? "✓" : type === "error" ? "✗" : "⚡"}</span>
         <span>{message}</span>
       </span>
+      {sticky && (
+        <button
+          type="button"
+          onClick={onDone}
+          aria-label="Dismiss"
+          style={{
+            position: "absolute", top: 10, right: 14,
+            background: "none", border: "none", color: colors[type],
+            fontFamily: T.sans, fontSize: 14, fontWeight: 800,
+            cursor: "pointer", padding: 0, lineHeight: 1, opacity: 0.65,
+          }}
+        >
+          ✕
+        </button>
+      )}
     </div>
   );
 }

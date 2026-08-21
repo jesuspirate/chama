@@ -183,6 +183,7 @@ import {
   type SatsTraceEntry,
 } from "../payments/sats-trace.js";
 import {
+  clearPendingRedemptionsMatchingNotes,
   listPendingRedemptions,
   clearPendingRedemption,
   type StrandedRedemption,
@@ -557,7 +558,7 @@ export default function App() {
   // post-connect GlobeCountryPicker (the pick moved out of the pre-signer
   // ConnectScreen). Re-evaluated whenever a signer connects.
   const [needsHomePick, setNeedsHomePick] = useState(false);
-  const [toast, setToast] = useState<{ message: ReactNode; type: "success" | "error" | "info" } | null>(null);
+  const [toast, setToast] = useState<{ message: ReactNode; type: "success" | "error" | "info"; sticky?: boolean } | null>(null);
   toastRef.current = setToast;
   const [showFundModal, setShowFundModal] = useState(false);
   // v2.4 #56: "withdraw as ecash" modal (fee-free Fedimint note export).
@@ -2282,10 +2283,20 @@ export default function App() {
     // loads that simply hadn't finished. Those tell the user different things
     // about whether the history is coming back.
     const failure = timedOut ? null : actions.getLoadFailure(id);
+    // Name the replay error. "chain-incomplete" covers several genuinely
+    // different failures — a missing CREATE, a vote threshold that can't be met,
+    // a participant the chain doesn't recognise — and the reducer already knows
+    // which one (`LoadFailure.code`). Without it the copy reads the same whether
+    // the relay lost an event or this device failed to decrypt one, which sent a
+    // 2026-08-19 investigation down the wrong path for hours. Terse and
+    // technical on purpose: it is a handle for a bug report, not an explanation.
+    const code = failure?.reason === "chain-incomplete" && failure.code
+      ? ` (${failure.code})`
+      : "";
     const message = timedOut
       ? t("app.archivedStillLoading")
       : failure?.reason === "chain-incomplete"
-        ? t("app.archivedIncomplete")
+        ? t("app.archivedIncomplete") + code
         : failure?.reason === "undecryptable"
           ? t("app.archivedUnreadable")
           : t("app.archivedNotOnRelay");
@@ -2542,7 +2553,7 @@ export default function App() {
         {/* Failed first picks toast their reason (handleSelectCommunity's
             "Couldn't reach X. Try another community.") — without this the
             gate swallowed them and a retry looked like a dead tap. */}
-        {toast && <Toast message={toast.message} type={toast.type} onDone={() => setToast(null)} />}
+        {toast && <Toast message={toast.message} type={toast.type} sticky={toast.sticky} onDone={() => setToast(null)} />}
         <GlobeCountryPicker
           onSelect={async (slug) => {
             // handleSelectCommunity persists the identity choice synchronously
@@ -2586,7 +2597,7 @@ export default function App() {
       <SimModePill />
       <SimEntryModal />
 
-      {toast && <Toast message={toast.message} type={toast.type} onDone={() => setToast(null)} />}
+      {toast && <Toast message={toast.message} type={toast.type} sticky={toast.sticky} onDone={() => setToast(null)} />}
 
       {!detailMode && (
         <>
@@ -2697,9 +2708,46 @@ export default function App() {
               // relay re-probe runs first so init has a live pool to publish the
               // seed round-trip into.
               actions.recoverRelays();
-              actions.initFedimint().catch(
-                (e: any) => setToast({ message: e.message || t("app.couldntJoinChama"), type: "error" })
-              );
+              const runInit = () => actions.initFedimint().catch((e: any) => {
+                // A refused runtime lease is the one failure Reconnect cannot
+                // fix by retrying: the slot is held by another tab, or by one
+                // that never closed cleanly and still owns it until the TTL
+                // expires. Offer the takeover rather than leaving the user
+                // tapping a button that is guaranteed to keep failing.
+                if (e?.code === "FEDIMINT_RUNTIME_IN_OTHER_TAB") {
+                  setToast({
+                    type: "error",
+                    sticky: true,
+                    message: (
+                      <>
+                        {t("app.walletOpenInOtherTab")}{" "}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            void (async () => {
+                              const { armBrowserRuntimeTakeover } = await import(
+                                "../fedimint/browser-runtime-lease.js"
+                              );
+                              armBrowserRuntimeTakeover();
+                              runInit();
+                            })();
+                          }}
+                          style={{
+                            background: "none", border: "none", padding: 0,
+                            color: "inherit", font: "inherit", fontWeight: 800,
+                            textDecoration: "underline", cursor: "pointer",
+                          }}
+                        >
+                          {t("app.useWalletHere")}
+                        </button>
+                      </>
+                    ),
+                  });
+                  return;
+                }
+                setToast({ message: e.message || t("app.couldntJoinChama"), type: "error" });
+              });
+              runInit();
             }}
           />
         </>
@@ -2727,8 +2775,8 @@ export default function App() {
           }
           onPayInvoice={async (bolt11) => { await actions.payInvoice(bolt11); }}
           // This is a recipient-facing export, so use the explicit browser-safe
-          // 14-day horizon and invite-bearing format. The plain spend path uses
-          // the SDK default and is reserved for compact internal lock notes.
+          // 14-day horizon. The export helper deliberately emits the compact
+          // Fedi-compatible payload; `true` selects that hardened helper.
           onSpendNotes={(amountMsats) => actions.spendNotes(amountMsats, undefined, true)}
           onRedeemEcash={(oobNotes) => actions.redeemEcash(oobNotes)}
           balanceMsats={fedimint.balanceMsats ?? 0}
@@ -2805,9 +2853,9 @@ export default function App() {
             ?? getCommunityBySlug(routeCommunitySlug)?.displayName
             ?? t("app.yourFederation")
           }
-          // Explicit wallet exports are intended to be portable to Fedi on a
-          // second device. Embed the invite so Fedi can auto-join when needed;
-          // escrow-lock notes keep the compact default (no invite).
+          // Use the hardened export spend (long auto-refund horizon). Its OOB
+          // payload stays compact: invite-bearing notes repeatedly parsed in
+          // Fedi but then failed to claim for real users.
           spendNotes={(amountMsats) => actions.spendNotes(amountMsats, undefined, true)}
           recoverUnstashed={(notes) => actions.redeemEcash(
             notes,
@@ -2822,7 +2870,13 @@ export default function App() {
             const pending = getEcashExport();
             if (pending?.source === "claim" && pending.escrowId) {
               await actions.confirmClaimEcashExport(pending.escrowId);
+              clearPendingRedemptionsMatchingNotes(pending.notes);
             } else {
+              // The export is the canonical copy. Once the user confirms it
+              // was imported, remove any byte-identical legacy recovery record
+              // before clearing that canonical copy. Equal value alone never
+              // authorizes a merge.
+              if (pending?.notes) clearPendingRedemptionsMatchingNotes(pending.notes);
               clearEcashExport();
             }
           }}
@@ -2937,7 +2991,7 @@ export default function App() {
           fiatCurrency={pendingClaim.fiatCurrency}
           claimAndPayout={actions.claimAndPayout}
           confirmClaimEcashExport={actions.confirmClaimEcashExport}
-          claimTarget={hasFediInternalEcash() ? "fedi-wallet" : "lightning"}
+          claimTarget={hasFediInternalEcash() ? "ecash" : "lightning"}
           probeFederation={actions.probeFederation}
           onClose={(terminal) => {
             const { resolve } = pendingClaim;

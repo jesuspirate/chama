@@ -66,7 +66,15 @@ import {
   type SatsTraceEntry,
 } from "../../payments/sats-trace.js";
 import { getEcashExport } from "../../payments/ecash-exports.js";
-import { listStrandedRedemptions, partitionStrandedClaims, resolveUnresolvedCredit, type StrandedRedemption } from "../../fedimint/pending-redemptions.js";
+import {
+  excludeStrandedRedemptionsOwnedByExport,
+  listPendingRedemptions,
+  listStrandedRedemptions,
+  partitionStrandedClaims,
+  reopenBalanceReconciledCredit,
+  resolveUnresolvedCredit,
+  type StrandedRedemption,
+} from "../../fedimint/pending-redemptions.js";
 import type { PendingNativeLock } from "../../fedimint/pending-native-locks.js";
 import { T, ROLE_COLOR, type ThemeMode } from "../theme.js";
 import {
@@ -258,12 +266,30 @@ export function MeScreen({
   // the only copy of the money. Rendered as the topmost alarm card.
   // v4.0.0: bump to force a re-read after a dismiss mutates the stash.
   const [, bumpStrandedTick] = useState(0);
-  const strandedClaims = listStrandedRedemptions();
+  useEffect(() => {
+    // A previous build treated the pending export's face value as proof that a
+    // consumed claim had landed and archived its warning. An export is not
+    // proof—the receiving wallet can reject it as already spent. Reopen only
+    // those automatic archives while the unconfirmed export still exists.
+    if (!pendingEcashExport) return;
+    let reopened = false;
+    for (const entry of listPendingRedemptions()) {
+      if (reopenBalanceReconciledCredit(entry.escrowId)) reopened = true;
+    }
+    if (reopened) bumpStrandedTick((tick) => tick + 1);
+  }, [pendingEcashExport?.createdAt]);
+  const strandedClaims = excludeStrandedRedemptionsOwnedByExport(
+    listStrandedRedemptions(),
+    pendingEcashExport?.notes,
+  );
   // Reconcile the "unresolved-credit" sliver against the wallet balance the
   // copy already invokes — covered → resolve silently; short → calm nudge;
   // poisoned / retries-exhausted stay loud (may be live money). See
   // partitionStrandedClaims.
   const { loud: loudClaims, calm: calmClaims, reconciledIds } =
+    // A pending export is not proof of value: the receiver may find that note
+    // already consumed. Only confirmed wallet balance can reconcile a failed
+    // claim automatically.
     partitionStrandedClaims(strandedClaims, balanceMsats);
   const reconciledKey = reconciledIds.join(",");
   useEffect(() => {
@@ -289,6 +315,12 @@ export function MeScreen({
   const visibleTrades = filterMeTrades(myTrades, rankedNeedsYou, tradeFilter);
   const latestTrade = latestParticipantTrade(myTrades);
   const hasSellerDashboard = dashboard.sellerOpen.length > 0 || dashboard.sellerLive.length > 0;
+  const hasVisibleMoneyAction =
+    loudClaims.length > 0
+    || calmClaims.length > 0
+    || (showLocalRecovery && !isSmallLeftover)
+    || Boolean(stuckNativeLocks?.length)
+    || Boolean(pendingEcashExport && onWithdrawEcash);
 
   return (
     <div style={{ padding: 16, maxWidth: 560, margin: "0 auto" }}>
@@ -343,6 +375,7 @@ export function MeScreen({
         pubkey={pubkey}
         onOpenTrade={onOpenTrade}
         latestTrade={latestTrade}
+        suppressEmptyState={hasVisibleMoneyAction}
       />
 
       {/* ── MONEY-SAFETY, always visible (never collapsed) ──────────────────

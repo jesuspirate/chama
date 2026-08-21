@@ -140,6 +140,15 @@ export interface StrandedRedemption extends PendingRedemption {
 
 type Stash = Record<string, PendingRedemption>;
 
+/** Terminal reissue failures mean the federation consumed the bearer note but
+ * local wallet credit could not be proven. The note is no longer exportable,
+ * so this is an unresolved-credit case—not a poisoned/live-note case. */
+function isConsumedCreditUnconfirmed(entry: Pick<PendingRedemption, "lastError">): boolean {
+  const msg = entry.lastError?.toLowerCase() ?? "";
+  return msg.includes("mint reissue operation failed after federation consumed")
+    || msg.includes("mint notes were consumed by the federation");
+}
+
 function loadStash(): Stash {
   try {
     const raw = getStrictScopedStorageItem(PENDING_REDEMPTIONS_KEY);
@@ -244,6 +253,25 @@ export function listPendingRedemptions(): PendingRedemption[] {
   return Object.values(loadStash());
 }
 
+/** Remove every recovery record for an exact bearer note. This is only for
+ * the explicit "I imported this export" boundary: amount is deliberately not
+ * accepted as identity because two independent notes may have the same value. */
+export function clearPendingRedemptionsMatchingNotes(oobNotes: string): string[] {
+  if (!oobNotes) return [];
+  const stash = loadStash();
+  const cleared: string[] = [];
+  for (const [escrowId, entry] of Object.entries(stash)) {
+    if (entry.oobNotes !== oobNotes) continue;
+    delete stash[escrowId];
+    cleared.push(escrowId);
+  }
+  if (cleared.length > 0) {
+    saveStash(stash);
+    console.info(`[claim-trace] pending-clear matching export ids=${cleared.join(",")}`);
+  }
+  return cleared;
+}
+
 /**
  * Mark an entry as poisoned (permanent failure). The entry stays in
  * the stash for forensics but will be skipped by future drain calls.
@@ -297,11 +325,31 @@ export function resolveUnresolvedCredit(
 ): void {
   const stash = loadStash();
   const entry = stash[escrowId];
-  if (!entry || !entry.unresolvedCredit) return;
+  if (!entry || (!entry.unresolvedCredit && !isConsumedCreditUnconfirmed(entry))) return;
+  entry.unresolvedCredit = true;
   entry.resolvedAt = entry.resolvedAt ?? Date.now();
   entry.resolution = resolution;
   saveStash(stash);
   console.info(`[claim-trace] unresolved-credit reconciled escrowId=${escrowId} via=${resolution}`);
+}
+
+/** Undo a balance-based archive when the supposed covering value was only an
+ * unconfirmed ecash export. This is deliberately narrow: user-dismissed
+ * records and genuinely live poisoned notes are never reopened or rewritten. */
+export function reopenBalanceReconciledCredit(escrowId: string): boolean {
+  const stash = loadStash();
+  const entry = stash[escrowId];
+  if (
+    !entry
+    || entry.resolution !== "balance-reconciled"
+    || (!entry.unresolvedCredit && !isConsumedCreditUnconfirmed(entry))
+  ) return false;
+  delete entry.resolvedAt;
+  delete entry.resolution;
+  entry.unresolvedCredit = true;
+  saveStash(stash);
+  console.info(`[claim-trace] unresolved-credit reopened escrowId=${escrowId} reason=unconfirmed-export`);
+  return true;
 }
 
 /**
@@ -318,7 +366,7 @@ export function listStrandedRedemptions(): StrandedRedemption[] {
     // Archived (balance-reconciled / user-dismissed) entries are kept in the
     // stash for forensics but drop out of the alarm list.
     if (entry.resolvedAt) continue;
-    if (entry.unresolvedCredit) {
+    if (entry.unresolvedCredit || isConsumedCreditUnconfirmed(entry)) {
       stranded.push({ ...entry, stranded: "unresolved-credit" });
     } else if (entry.lastError && entry.poisonedAt) {
       stranded.push({ ...entry, stranded: "poisoned" });
@@ -327,6 +375,23 @@ export function listStrandedRedemptions(): StrandedRedemption[] {
     }
   }
   return stranded.sort((a, b) => a.createdAt - b.createdAt);
+}
+
+/** A pending export is already the canonical recovery surface for its exact
+ * bearer note. Also defer the legacy manual-export slot while that canonical
+ * surface exists: older releases mislabeled that outgoing note as a claim, so
+ * rendering it red beside the teal export tells two contradictory stories.
+ * The legacy record is NOT deleted; if the canonical export goes away it can
+ * surface again. Equal amounts alone are never enough to merge money records. */
+export function excludeStrandedRedemptionsOwnedByExport(
+  entries: StrandedRedemption[],
+  exportedNotes?: string | null,
+): StrandedRedemption[] {
+  if (!exportedNotes) return entries;
+  return entries.filter((entry) =>
+    entry.oobNotes !== exportedNotes
+    && entry.escrowId !== LEGACY_MANUAL_ECASH_EXPORT_ID
+  );
 }
 
 /**
@@ -454,7 +519,11 @@ export async function drainPendingRedemptions(
       // (earlier session) or another wallet took it (front-run). Mark
       // it unresolved so the drain stops burning attempts and the C13
       // surface puts it in front of the user.
-      if (code === "ALREADY_SPENT_UNCONFIRMED") {
+      if (
+        code === "ALREADY_SPENT_UNCONFIRMED"
+        || code === "MINT_REISSUE_FAILED"
+        || code === "MINT_REISSUE_UNKNOWN"
+      ) {
         markUnresolvedCredit(
           entry.escrowId,
           e instanceof Error ? e.message : String(e)

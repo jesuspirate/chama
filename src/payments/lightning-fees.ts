@@ -68,17 +68,33 @@ export function lightningPayoutReserveSats(balanceMsats: number): number {
   return Math.max(0, Math.ceil((Math.max(0, balanceMsats) - payoutSats * 1000) / 1000));
 }
 
-export type ClaimPayoutTarget = "lightning" | "fedi-wallet";
+/** How a claim's sats LEAVE, for quoting purposes.
+ *
+ *  - `"lightning"` — the payout is an outbound Lightning send, so the browser
+ *    Fedimint client spends a fee ON TOP of the invoice and the quote has to
+ *    hold a reserve back.
+ *  - `"ecash"` — the sats stay ecash: handed to a host Fedi wallet via
+ *    `fediInternal.receiveEcash`, or exported as a bearer note over the native
+ *    bridge. No Lightning hop, so no reserve, so the user is owed the whole
+ *    amount.
+ *
+ *  Named for the INSTRUMENT rather than the destination app on purpose. The
+ *  old `"fedi-wallet"` spelling read as one specific integration, so the
+ *  native-bridge ecash export — the same zero-fee instrument — was never
+ *  added, fell through to `"lightning"`, and got quoted 119 sats for a 123
+ *  sat note. If a payout is not a Lightning send, it belongs on the `"ecash"`
+ *  side of this union. */
+export type ClaimPayoutTarget = "lightning" | "ecash";
 
 export function claimPayoutSats(balanceMsats: number, target: ClaimPayoutTarget): number {
-  if (target === "fedi-wallet") {
+  if (target === "ecash") {
     return Math.max(0, Math.floor(balanceMsats / 1000));
   }
   return maxLightningPayoutSats(balanceMsats);
 }
 
 export function claimPayoutReserveSats(balanceMsats: number, target: ClaimPayoutTarget): number {
-  if (target === "fedi-wallet") return 0;
+  if (target === "ecash") return 0;
   return lightningPayoutReserveSats(balanceMsats);
 }
 

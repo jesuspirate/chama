@@ -103,6 +103,12 @@ export function GlobeCountryPicker({ onSelect, loadLiveness, loadBondedCounts, l
   );
 
   const [query, setQuery] = useState("");
+  // The header mark is tiny and decodes almost instantly; the globe is a much
+  // larger asset. Hold the main picker's first visible paint until the globe
+  // has decoded so onboarding arrives as one composed surface instead of a
+  // logo-first / globe-later flash. The timeout fails open if an embedded
+  // webview reports neither load nor error.
+  const [globeArtworkReady, setGlobeArtworkReady] = useState(false);
   // A country opened for disambiguation (≥2 chamas) or the green landing.
   const [selected, setSelected] = useState<PickerCountry | null>(null);
   // Chain-verified liveness for the opened single-community landing (best-effort).
@@ -332,7 +338,18 @@ export function GlobeCountryPicker({ onSelect, loadLiveness, loadBondedCounts, l
 
   // ── Main: globe hero + searchable full-world list ──
   return (
-    <>
+    <div
+      aria-busy={!globeArtworkReady}
+      style={{
+        width: "100%",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        opacity: globeArtworkReady ? 1 : 0,
+        visibility: globeArtworkReady ? "visible" : "hidden",
+        transition: "opacity 140ms ease",
+      }}
+    >
       <BrandHeader />
       {/* Language pills — the first screen a fresh npub meets, and the natural
           moment: language pairs with picking where home is. */}
@@ -347,7 +364,11 @@ export function GlobeCountryPicker({ onSelect, loadLiveness, loadBondedCounts, l
       </div>
 
       <div style={{ marginBottom: 18 }}>
-        <GlobeHero size={186} markers={GLOBE_MARKERS} />
+        <GlobeHero
+          size={186}
+          markers={GLOBE_MARKERS}
+          onReady={() => setGlobeArtworkReady(true)}
+        />
       </div>
 
       <div style={{ width: "100%", maxWidth: 380, marginBottom: 12 }}>
@@ -410,7 +431,7 @@ export function GlobeCountryPicker({ onSelect, loadLiveness, loadBondedCounts, l
           </div>
         </>
       )}
-    </>
+    </div>
   );
 }
 

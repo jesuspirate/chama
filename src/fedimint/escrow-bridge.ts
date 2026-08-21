@@ -1191,7 +1191,11 @@ export class EscrowFedimintBridge {
       // pointless (the notes are consumed), so mark the stash entry now
       // rather than burning boot-drain attempts before the C13 surface
       // lights up. The entry (with the bearer notes) stays exportable.
-      if (redeemCode === "ALREADY_SPENT_UNCONFIRMED") {
+      if (
+        redeemCode === "ALREADY_SPENT_UNCONFIRMED"
+        || redeemCode === "MINT_REISSUE_FAILED"
+        || redeemCode === "MINT_REISSUE_UNKNOWN"
+      ) {
         markUnresolvedCredit(
           escrowId,
           redeemErr instanceof Error ? redeemErr.message : String(redeemErr)
@@ -1365,9 +1369,11 @@ export class EscrowFedimintBridge {
     return await this.fedimint.spendNotes(amountMsats, meta, includeInvite);
   }
 
-  /** User-facing export: long auto-refund horizon + invite-bearing note for
-   *  Fedi portability. Detailed spend returns straight into the caller's
-   *  synchronous stash write (no intervening await). */
+  /** User-facing export: long auto-refund horizon + compact bearer note.
+   *  Invite-bearing notes repeatedly parsed in Fedi but then failed during
+   *  claim; the compact form is the proven interoperable path for a recipient
+   *  already joined to the federation. Detailed spend returns straight into
+   *  the caller's synchronous stash write (no intervening await). */
   async spendNotesForExport(
     amountMsats: number,
     meta?: ChamaOperationMeta,
@@ -1376,7 +1382,7 @@ export class EscrowFedimintBridge {
       amountMsats,
       ECASH_EXPORT_TRY_CANCEL_SECS,
       meta,
-      true,
+      false,
     );
     return spent.oobNotes;
   }

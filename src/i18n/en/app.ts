@@ -18,7 +18,7 @@ export const app: Record<string, string> = {
   "app.arbiterWaitingBothVotes":
     "Waiting for buyer and seller; arbiter only acts on a dispute",
   "app.archivedIncomplete":
-    "Part of this trade's history is missing from the relays, so it can't be rebuilt yet — the summary here is what's saved on this device. It may come back if another participant is online.",
+    "This trade's history couldn't be rebuilt on this device, so the summary here is what's saved locally. It may rebuild later, or on another device that still holds the full chain.",
   "app.archivedNotOnRelay":
     "This trade's full history isn't on your Chama relay anymore — the summary here is what's saved on this device.",
   "app.archivedStillLoading":
@@ -66,6 +66,12 @@ export const app: Record<string, string> = {
   "app.connectedSplash": "Connected!",
   "app.couldntDeleteListing": "Couldn't delete listing.",
   "app.couldntJoinChama": "Couldn't join your Chama. Try again?",
+  // A refused runtime lease, not a network fault: this browser already has
+  // the wallet open elsewhere (or a tab that never closed cleanly still
+  // holds it). Naming the real cause is what stops the user hunting a
+  // connection problem that was never there.
+  "app.walletOpenInOtherTab": "Your wallet is open in another Chama tab.",
+  "app.useWalletHere": "Use it here",
   "app.couldntLoadTrade": "Couldn't load trade {id}.",
   "app.couldntReconnect": "Couldn't reconnect. Try again?",
   "app.couldntStartOrder": "Couldn't start the order.",

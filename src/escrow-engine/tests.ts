@@ -81,7 +81,11 @@ import { workOffersForWorker, workerPubkeyForListing } from "../ui/work-resume.j
 import { BROWSE_CATS } from "../ui/theme.js";
 import {
   BROWSER_RUNTIME_LEASE_TTL_MS,
+  acquireBrowserRuntimeLease,
   browserRuntimeLeaseIsActive,
+  browserRuntimeLeaseCookieName,
+  browserRuntimeTakeoverArmed,
+  armBrowserRuntimeTakeover,
   parseBrowserRuntimeLease,
 } from "../fedimint/browser-runtime-lease.js";
 import {
@@ -264,11 +268,14 @@ import {
 } from "../fedimint/sdk-adapter.js";
 import {
   clearAllPendingRedemptions,
+  clearPendingRedemptionsMatchingNotes,
+  excludeStrandedRedemptionsOwnedByExport,
   listPendingRedemptions,
   stashPendingRedemption,
   drainPendingRedemptions,
   markPoisoned,
   markUnresolvedCredit,
+  reopenBalanceReconciledCredit,
   resolveUnresolvedCredit,
   listStrandedRedemptions,
   partitionStrandedClaims,
@@ -1066,6 +1073,53 @@ function assertErr(result: TransitionResult, expectedCode: string, name: string)
   assert(
     parseBrowserRuntimeLease("chama_fedimint_runtime=malformed") === null,
     "runtime lease: malformed cookies fail open without throwing",
+  );
+
+  // Keyed by WALLET SCOPE, not by host. A cookie ignores the port, so a
+  // host-keyed lease refused every unrelated Chama tab on the same hostname
+  // — two dev servers, two identities — and reported it as "Couldn't reach
+  // <community>". Two scopes must not see each other's lease at all.
+  const scopeA = "6448850e8dd43ed461c238dc9cb0dbc36b3615f92b85180cca71ff57922e133f";
+  const scopeB = "12ab62eb07df6d61b5d7f329ae6c7137c113e868dc3ffd74d1106fed6e65028d";
+  assert(
+    browserRuntimeLeaseCookieName(scopeA) !== browserRuntimeLeaseCookieName(scopeB),
+    "runtime lease: distinct identities get distinct lease cookies",
+  );
+  assert(
+    browserRuntimeLeaseCookieName(null) === "chama_fedimint_runtime",
+    "runtime lease: a scopeless caller keeps the unscoped guard",
+  );
+  const jar = `${browserRuntimeLeaseCookieName(scopeA)}=tab-a.${now}`;
+  assert(
+    parseBrowserRuntimeLease(jar, scopeA)?.token === "tab-a",
+    "runtime lease: a scoped lease is visible to its own wallet",
+  );
+  assert(
+    parseBrowserRuntimeLease(jar, scopeB) === null,
+    "runtime lease: one identity's live wallet never blocks another's",
+  );
+  assert(
+    browserRuntimeLeaseCookieName("  644885AB-cd  ") === "chama_fedimint_runtime_644885abcd",
+    "runtime lease: scope is normalized to a cookie-safe name",
+  );
+
+  // The takeover is one-shot: an armed flag that goes unused must not sit
+  // around and silently override an unrelated refusal later in the session.
+  assert(
+    browserRuntimeTakeoverArmed() === false,
+    "runtime lease: takeover is disarmed until the user asks for it",
+  );
+  armBrowserRuntimeTakeover();
+  assert(
+    browserRuntimeTakeoverArmed() === true,
+    "runtime lease: arming the takeover is explicit",
+  );
+  // The flag is consumed synchronously, ahead of the first await, so this
+  // reads the post-consume state without needing the promise to settle.
+  void acquireBrowserRuntimeLease();
+  assert(
+    browserRuntimeTakeoverArmed() === false,
+    "runtime lease: an armed takeover is consumed by the next acquire, never reused",
   );
 }
 
@@ -17819,10 +17873,10 @@ console.log("\n── LIGHTNING PAYOUT FEE RESERVE ──");
     "50 sat balance pays a 47 sat invoice, leaving fee headroom");
   assert(lightningPayoutReserveSats(50_000) === 3,
     "50 sat balance shows an about-3-sat Lightning fee reserve");
-  assert(claimPayoutSats(55_000, "fedi-wallet") === 55,
-    "Fedi wallet claim display shows the exact ecash payout with no LN reserve");
-  assert(claimPayoutReserveSats(55_000, "fedi-wallet") === 0,
-    "Fedi wallet claim display reserves zero sats for outbound Lightning fees");
+  assert(claimPayoutSats(55_000, "ecash") === 55,
+    "Ecash claim display shows the exact payout with no LN reserve");
+  assert(claimPayoutReserveSats(55_000, "ecash") === 0,
+    "Ecash claim display reserves zero sats for outbound Lightning fees");
   assert(claimPayoutSats(55_000, "lightning") === maxLightningPayoutSats(55_000),
     "Lightning claim display still uses outbound fee reserve math");
   assert(maxLightningPayoutSats(2_500) === 0,
@@ -22054,6 +22108,19 @@ console.log("\n── Liquidity & attention (buyerInterest / newListing / needsY
     "needs-you: count matches the attention set size");
   assert(countNeedsYou({ escrows: [waiting, claim, vote, idle], userPubkey: STRANGER, nowSec }) === 0,
     "needs-you: a non-participant has zero attention items");
+  // Turn gate — mirrors decideVotePrompt's ordering. With zero buyer/seller
+  // votes the happy path is one-sided, so summoning the second voter would send
+  // them to a room that shows "waiting on ..." and offers no buttons.
+  assert(needsYouReasonFor(vote, BUYER, nowSec) === null,
+    "needs-you: on a marketplace trade the buyer is not summoned before the seller ships");
+  assert(needsYouReasonFor({ ...vote, category: "p2p-trade" }, SELLER, nowSec) === null,
+    "needs-you: P2P exchange is buyer-first, so the seller waits on the buyer's vote");
+  assert(needsYouReasonFor({ ...vote, category: "p2p-trade" }, BUYER, nowSec) === "vote",
+    "needs-you: P2P exchange summons the buyer, who does the off-chain deed");
+  assert(needsYouReasonFor({ ...vote, votes: { [Role.SELLER]: Outcome.RELEASE } }, BUYER, nowSec) === "vote",
+    "needs-you: once the deed-doer has voted, the counterparty's response is owed");
+  assert(needsYouReasonFor({ ...vote, category: "p2p-trade", expiresAt: nowSec - 1 }, SELLER, nowSec) === "vote",
+    "needs-you: past the deadline healing skips ordering — either side may vote REFUND");
   assert(needsYouReasonFor({ ...claim, lock: undefined as any }, SELLER, nowSec) === null,
     "needs-you: an APPROVED hydration fragment without redeemable LOCK material is not an alert");
   assert(needsYouReasonFor({ ...claim, escrowMode: "onchain" }, SELLER, nowSec) === null,
@@ -22550,6 +22617,115 @@ console.log("\n── ESCROW CLIENT — Browse listing hydration ──");
     await cacheMod.clearEventCache();
   }
 
+  // ── LIVE STATE EVENTS REACH THE DURABLE CACHE ──
+  //
+  // A trade that MOVES while you are watching it used to persist NOTHING. The
+  // live branch wrote the raw only to the in-memory hot map, which is capped
+  // and evictable, so the chain you were present for the whole time was
+  // exactly the one the next session could not rebuild once the relays aged it
+  // off. On a LOCKED trade that costs the claim — the shares live in the LOCK
+  // event — so this is a money path, not history.
+  //
+  // Node has no IndexedDB, so these assertions exercise the cache's in-memory
+  // fallback. The MERGE RULE under test is the same one either way; the shared
+  // transaction is what makes that rule atomic on a real disk.
+  {
+    const cacheMod = await import("./escrow-event-cache.js");
+    await cacheMod.clearEventCache();
+    FakeWebSocket.instances = [];
+    const liveClient = new EscrowClient(
+      fakeSigner,
+      {
+        relays: ["wss://relay.test"],
+        wsImpl: FakeWebSocket as unknown as typeof WebSocket,
+        verifyEvent: () => true,
+      },
+    );
+    liveClient.connect();
+    const liveSocket = FakeWebSocket.instances[0]!;
+    liveSocket.onopen?.({} as Event);
+
+    const answerLiveFetch = async (events: readonly ParsedEscrowEvent<EscrowPayload>[]) => {
+      const before = liveSocket.sent.length;
+      await waitUntil(() => liveSocket.sent.slice(before - 1).some(raw => {
+        const msg = JSON.parse(raw);
+        return msg[0] === "REQ" && String(msg[1]).startsWith("sm_fetch_");
+      }));
+      const sub = liveSocket.sent
+        .map(raw => JSON.parse(raw))
+        .filter(msg => msg[0] === "REQ" && String(msg[1]).startsWith("sm_fetch_"))
+        .at(-1)![1];
+      for (const event of events) liveSocket.emit(["EVENT", sub, rawFromParsed(event)]);
+      liveSocket.emit(["EOSE", sub]);
+    };
+
+    const lockedLoad = liveClient.loadEscrow(ESCROW_ID);
+    await answerLiveFetch([create, lock]);
+    // A non-terminal replay arms the completeness retry, so the socket is fed
+    // twice. Answering the re-fetch with EOSE and no events ends the loop
+    // (nothing fetched + a non-empty local chain) and the load settles.
+    await answerLiveFetch([]);
+    const lockedState = await lockedLoad;
+    assert(lockedState?.status === EscrowStatus.LOCKED,
+      "live-persist: the watched trade starts LOCKED from the relay chain");
+
+    // Something this device already holds that the hot map deliberately does
+    // NOT keep: a chat message, ciphertext included.
+    const cachedChat: NostrEvent = {
+      id: "live-persist-chat",
+      pubkey: BUYER_PK,
+      created_at: lock.raw.created_at + 1,
+      kind: EscrowEventKind.CHAT,
+      tags: [["d", ESCROW_ID]],
+      content: "ciphertext-that-must-survive",
+      sig: "sig",
+    };
+    await cacheMod.appendCachedEvents(ESCROW_ID, [cachedChat], EscrowStatus.LOCKED);
+
+    // …and now the trade moves under the live subscription the load left open.
+    const watchReq = liveSocket.sent
+      .map(raw => JSON.parse(raw))
+      .filter(msg => msg[0] === "REQ" && String(msg[1]).startsWith("sm_sub_")
+        && msg[2]?.["#d"]?.[0] === ESCROW_ID)
+      .at(-1);
+    assert(!!watchReq, "live-persist: a successful load leaves a live subscription on the trade");
+    liveSocket.emit(["EVENT", watchReq[1], rawFromParsed(voteBuyer)]);
+
+    let liveCached: NostrEvent[] = [];
+    for (let i = 0; i < 200 && !liveCached.some(e => e.id === voteBuyer.raw.id); i++) {
+      await new Promise(r => setTimeout(r, 5));
+      liveCached = await cacheMod.getCachedEvents(ESCROW_ID);
+    }
+    assert(liveCached.some(e => e.id === voteBuyer.raw.id),
+      "live-persist: a state event applied from the live subscription is written durably");
+    assert([create, lock].every(e => liveCached.some(c => c.id === e.raw.id)),
+      "live-persist: the chain it arrived on is still cached — the live write appends, never replaces");
+    assert(liveCached.find(e => e.id === cachedChat.id)?.content === cachedChat.content,
+      "live-persist: cached chat survives the live write with its ciphertext intact");
+
+    // The regression the append exists for: a display copy that has released
+    // its ciphertext must never overwrite the good one already on disk.
+    await cacheMod.appendCachedEvents(
+      ESCROW_ID, [{ ...cachedChat, content: "" }], EscrowStatus.LOCKED);
+    const afterStripped = await cacheMod.getCachedEvents(ESCROW_ID);
+    assert(afterStripped.find(e => e.id === cachedChat.id)?.content === cachedChat.content,
+      "durable cache: stored events win an id collision, so a stripped copy can't clobber good ciphertext");
+
+    // …and why the live path cannot use a put: a whole-record write of the
+    // CHAT-free hot chain — all that call site holds — deletes the chat.
+    await cacheMod.putCachedEvents(
+      ESCROW_ID,
+      liveCached.filter(e => e.kind !== EscrowEventKind.CHAT),
+      EscrowStatus.LOCKED,
+    );
+    const afterPut = await cacheMod.getCachedEvents(ESCROW_ID);
+    assert(!afterPut.some(e => e.id === cachedChat.id),
+      "durable cache: a put drops whatever it wasn't handed — the hazard the live path appends around");
+
+    liveClient.disconnect();
+    await cacheMod.clearEventCache();
+  }
+
   FakeWebSocket.instances = [];
   const orderClient = new EscrowClient(
     fakeSigner,
@@ -22826,8 +23002,57 @@ function makeFundSafetyWallet(overrides: {
     "invariant_outgoing-ecash__claim-drain-never-reabsorbs-recipient-note: legacy manual exports remain claimable by Fedi");
   assert(listPendingRedemptions().some(e => e.escrowId === LEGACY_MANUAL_ECASH_EXPORT_ID),
     "invariant_outgoing-ecash__claim-drain-never-reabsorbs-recipient-note: legacy export stays available for UI migration");
+
+  markPoisoned(LEGACY_MANUAL_ECASH_EXPORT_ID, "legacy drain failed");
+  stashPendingRedemption({
+    escrowId: "same_amount_different_note",
+    oobNotes: "oob_different_100_sat_note",
+    notesHash: "hash_different_100_sat_note",
+    amountMsats: 100_000,
+  });
+  markPoisoned("same_amount_different_note", "separate recovery failed");
+  const visible = excludeStrandedRedemptionsOwnedByExport(
+    listStrandedRedemptions(),
+    // The canonical replacement is a newly minted note, so it is not
+    // byte-identical to the old synthetic manual-export record.
+    "oob_new_canonical_export",
+  );
+  assert(!visible.some(e => e.escrowId === LEGACY_MANUAL_ECASH_EXPORT_ID),
+    "invariant_outgoing-ecash__one-canonical-surface: a legacy manual export is deferred while the canonical export is pending");
+  assert(visible.some(e => e.escrowId === "same_amount_different_note"),
+    "invariant_outgoing-ecash__one-canonical-surface: a different note with the same amount remains visible");
+  const cleared = clearPendingRedemptionsMatchingNotes("oob_outgoing_to_fedi");
+  assert(cleared.join(",") === LEGACY_MANUAL_ECASH_EXPORT_ID,
+    "invariant_outgoing-ecash__confirm-clears-exact-duplicate: import confirmation clears the matching legacy record");
+  assert(listPendingRedemptions().some(e => e.escrowId === "same_amount_different_note"),
+    "invariant_outgoing-ecash__confirm-clears-exact-duplicate: import confirmation never clears an equal-value different note");
   await client.cleanup();
   clearAllPendingRedemptions();
+}
+
+// Recipient exports use the compact OOB format. Invite-bearing notes were
+// accepted by Fedi's parser but repeatedly failed during claim in production.
+{
+  let includeInvite: boolean | undefined;
+  const bridge = new EscrowFedimintBridge(
+    {} as any,
+    {
+      spendNotesWithHorizon: async (
+        _amountMsats: number,
+        _timeoutSecs: number,
+        _meta: unknown,
+        include: boolean,
+      ) => {
+        includeInvite = include;
+        return { oobNotes: "compact-export", operationId: "export-op" };
+      },
+    } as any,
+    {} as any,
+  );
+  assert(await bridge.spendNotesForExport(100_000) === "compact-export",
+    "ecash export returns the compact recipient bearer note");
+  assert(includeInvite === false,
+    "ecash export does not embed the federation invite that Fedi failed to claim");
 }
 
 // ── C5 · invariant_already-spent__requires_confirmed_credit ───────────────
@@ -22997,6 +23222,26 @@ function makeFundSafetyWallet(overrides: {
     "reconcile: balance < unresolved amount → calm nudge (user is visibly short), not auto-resolved");
   assert(short.loud.length === 1 && short.loud[0].escrowId === "poison",
     "reconcile: short balance still keeps the poisoned note loud");
+
+  // Older builds stored terminal reissue failures as poisoned even though the
+  // federation had already consumed the bearer note. Migrate that persisted
+  // shape into unresolved-credit so a later balance/export can prove cover.
+  stashPendingRedemption({ escrowId: "consumed_old", oobNotes: "oob_consumed", notesHash: "h_consumed", amountMsats: 100_000 });
+  markPoisoned(
+    "consumed_old",
+    "Mint reissue operation failed after federation consumed the notes (op amount=100000 outcome=Failed)",
+  );
+  const consumedOld = listStrandedRedemptions().find(s => s.escrowId === "consumed_old");
+  assert(consumedOld?.stranded === "unresolved-credit",
+    "reconcile: persisted consumed-note failures migrate from poisoned to unresolved-credit");
+  resolveUnresolvedCredit("consumed_old", "balance-reconciled");
+  assert(!listStrandedRedemptions().some(s => s.escrowId === "consumed_old"),
+    "reconcile: a covered legacy consumed-note failure can be archived safely");
+  assert(reopenBalanceReconciledCredit("consumed_old"),
+    "reconcile: an automatic archive can be reopened when its covering export was unconfirmed");
+  assert(listStrandedRedemptions().some(s => s.escrowId === "consumed_old"),
+    "reconcile: reopening restores the consumed-note warning instead of trusting the export's face value");
+  resolveUnresolvedCredit("consumed_old", "balance-reconciled");
 
   // SUM guard: two unresolved (6.17M each) and a balance that covers ONE but
   // not BOTH must reconcile NEITHER (same balance can't cover both).

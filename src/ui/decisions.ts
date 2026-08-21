@@ -605,8 +605,15 @@ function needsYouReason(
 
   if (e.status === EscrowStatus.LOCKED) {
     // Vote / deliver owed — my turn on a live trade (a live child order to
-    // deliver lands here for the seller until they vote release).
-    if ((isBuyer || isSeller) && e.votes[getRoleKey(isBuyer)] === undefined) return "vote";
+    // deliver lands here for the seller until they vote release). The turn
+    // gate is load-bearing: without it the queue summons the SECOND voter to
+    // a trade room that correctly shows "waiting on the buyer" and offers no
+    // buttons, so the badge and the room contradict each other.
+    if (
+      (isBuyer || isSeller)
+      && e.votes[getRoleKey(isBuyer)] === undefined
+      && voteTurnIsOpen(e, getRoleKey(isBuyer), nowSec)
+    ) return "vote";
     // Arbiter ruling owed — a buyer↔seller dispute is open and my vote isn't in.
     const bV = e.votes[Role.BUYER];
     const sV = e.votes[Role.SELLER];
@@ -653,6 +660,28 @@ function needsYouReason(
 
 function getRoleKey(isBuyer: boolean): Role {
   return isBuyer ? Role.BUYER : Role.SELLER;
+}
+
+/**
+ * Mirrors `decideVotePrompt`'s ordering gate (see `firstHappyPathVoter`), which
+ * is the only other place that decides whether a buyer/seller may act on a
+ * LOCKED trade. With zero buyer/seller votes the happy path is deliberately
+ * one-sided — only the off-chain deed-doer can vote, and the other side's trade
+ * room renders "waiting on the buyer to confirm payment sent". The attention
+ * queue must agree, or the Me badge says "tap to act" and the room it routes to
+ * says "wait".
+ *
+ * Two cases deliberately stay open:
+ *  - the counterparty has already voted (real duality; my response is owed);
+ *  - the trade is past its deadline (healing), where `decideVotePrompt` also
+ *    skips ordering because either side may vote REFUND to unstick it.
+ */
+function voteTurnIsOpen(e: EscrowState, role: Role, nowSec: number): boolean {
+  if (isPastEscrowDeadline(e, nowSec)) return true;
+  const buyerVote = e.votes[Role.BUYER];
+  const sellerVote = e.votes[Role.SELLER];
+  if (buyerVote !== undefined || sellerVote !== undefined) return true;
+  return role === firstHappyPathVoter(e);
 }
 
 /**

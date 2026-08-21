@@ -265,6 +265,12 @@ const REISSUE_WATCH_TIMEOUT_MS = 90 * 1000;
 // resumeMintReissueFromHistory if the WASM call eventually lands).
 const REISSUE_SUBMIT_TIMEOUT_MS = 30 * 1000;
 
+/** Clock slop allowed when deciding whether a mint-reissue transaction belongs
+ *  to the redeem attempt currently in flight. The federation stamps the record,
+ *  so its clock and ours can differ; this is generous enough to absorb that and
+ *  a slow submit, and far too short to reach back to a previous trade. */
+const MINT_REISSUE_HISTORY_SKEW_MS = 2 * 60 * 1000;
+
 const CURATED_LIGHTNING_GATEWAY_TRUST: Record<string, string[]> = {
   // Bitcoin Life Federation. The guardian admin UI exposes this gateway in
   // Manage Meta as `vetted_gateways`, but older browser SDK paths do not expose
@@ -1619,6 +1625,9 @@ export function adaptRealWallet(
   const resumeMintReissueFromHistory = async (
     expectedMsats: number | null,
     source: "already-reissued" | "open" | "join",
+    /** When this redeem attempt began (epoch ms). Transactions older than this
+     *  belong to some OTHER redeem and must never decide this one's outcome. */
+    startedAtMs?: number,
   ): Promise<string | null> => {
     let txs: RealMintTransaction[] = [];
     try {
@@ -1632,29 +1641,64 @@ export function adaptRealWallet(
       .filter((tx) => expectedMsats === null || normalizeMsats(tx.amountMsats) === expectedMsats)
       .sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0));
 
+    // ⚠ AMOUNT IS NOT AN IDENTITY. `listTransactions` carries no note linkage,
+    // so amount is the only join key available here — and on a wallet that has
+    // traded the same round number before, the newest same-amount reissue is
+    // very often a DIFFERENT operation. Reporting its outcome as this claim's
+    // is how a claim that credited correctly was shown to a user as
+    // "CLAIM FAILED · needs recovery" on 2026-08-19 (the buyer's wallet held
+    // the full 100 sats the whole time). Bound the match by time so a stale
+    // failure from an earlier trade cannot be adopted as this one's verdict.
+    const windowFloorMs = startedAtMs !== undefined
+      ? startedAtMs - MINT_REISSUE_HISTORY_SKEW_MS
+      : null;
+    const inWindow = windowFloorMs === null
+      ? candidates
+      : candidates.filter((tx) => (tx.timestamp ?? 0) >= windowFloorMs);
+
     console.info(
       `[chama] mint reissue history (${source}) expected=${expectedMsats ?? "unknown"} ` +
-        `candidates=${candidates.map(summarizeMintReissueTx).join(" | ") || "none"}`,
+        `since=${windowFloorMs ?? "any"} ` +
+        `inWindow=${inWindow.map(summarizeMintReissueTx).join(" | ") || "none"} ` +
+        `(scanned=${candidates.length})`,
     );
 
-	    const latest = candidates[0] ?? null;
+	    // A completed reissue in the window means the money landed — prefer it
+	    // over any failure, in either sort order. A Failed record sorted newest
+	    // does not outrank a Done one when both are plausibly ours.
+	    const done = inWindow.find((tx) => isMintReissueDoneOutcome(tx.outcome));
+	    if (done) {
+	      console.info(
+	        `[chama] mint redeem ${done.operationId}: reissue in this attempt's window is ${done.outcome}`,
+	      );
+	      return done.operationId;
+	    }
+
+	    const latest = inWindow[0] ?? null;
+	    // Only a failure INSIDE the window may be reported as this claim's
+	    // failure. Outside it we return null and the caller raises
+	    // MINT_REISSUE_UNKNOWN — "we cannot confirm" keeps the stash and keeps
+	    // looking, where "it failed" tells the user their sats are gone.
 	    if (latest && isMintReissueFailedOutcome(latest.outcome)) {
 	      throw mintReissueFailedError(latest);
 	    }
-	    if (latest && isMintReissueDoneOutcome(latest.outcome)) {
-	      console.info(
-	        `[chama] mint redeem ${latest.operationId}: latest historical reissue is already ${latest.outcome}`,
+	    if (windowFloorMs !== null && inWindow.length === 0 && candidates.length > 0) {
+	      console.warn(
+	        `[chama] mint reissue history (${source}): ${candidates.length} same-amount ` +
+	          `reissue(s) found but all predate this attempt — refusing to adopt one as ` +
+	          `this claim's outcome (newest: ${summarizeMintReissueTx(candidates[0])})`,
 	      );
-	      return latest.operationId;
+	      return null;
 	    }
 
-	    const pending = candidates.find(shouldResumeMintReissue);
-	    const match = pending ?? latest;
+	    // Still in flight — resume watching it. Scoped to the window for the same
+	    // reason: an unrelated pending reissue is not this claim either.
+	    const match = inWindow.find(shouldResumeMintReissue) ?? latest;
 	    if (!match) return null;
 
 	    if (isMintReissueDoneOutcome(match.outcome)) {
 	      console.info(
-	        `[chama] mint redeem ${match.operationId}: matching historical reissue is already ${match.outcome}`,
+	        `[chama] mint redeem ${match.operationId}: matching reissue is already ${match.outcome}`,
 	      );
 	      return match.operationId;
 	    }
@@ -1887,6 +1931,9 @@ export function adaptRealWallet(
           return existing;
         }
         const promise = (async (): Promise<string> => {
+          // Stamped BEFORE the submit so the history scan below can tell this
+          // attempt's reissue from an older one for the same sat amount.
+          const startedAtMs = Date.now();
           let expectedMsats: number | null = null;
           try { expectedMsats = await real.mint.parseNotes(oobNotes); } catch {}
 
@@ -1928,6 +1975,7 @@ export function adaptRealWallet(
             const historicalOperationId = await resumeMintReissueFromHistory(
               expectedMsats,
               "already-reissued",
+              startedAtMs,
             );
             if (!historicalOperationId) {
               const err: any = new Error(
@@ -2475,7 +2523,18 @@ export async function createRealWallet(
   opts: CreateRealWalletOptions = {}
 ): Promise<IFedimintWallet> {
   const { acquireBrowserRuntimeLease } = await import("./browser-runtime-lease.js");
-  const releaseRuntimeLease = await acquireBrowserRuntimeLease();
+  // Keyed by storageScope — the SAME value that picks the OPFS wallet file
+  // below — so the lease refuses exactly the runtimes that would fight over
+  // one seed, and no longer refuses an unrelated identity or a second dev
+  // server that merely shares the hostname the cookie is stored under.
+  // onLost tears this tab's worker down if another tab takes the runtime
+  // over, so a takeover can never leave two WASM runtimes on one seed.
+  const releaseRuntimeLease = await acquireBrowserRuntimeLease(opts.storageScope, {
+    onLost: () => {
+      terminateCurrentWorker();
+      clearRegisteredTransport();
+    },
+  });
   let walletReady = false;
   try {
     const { WalletDirector, WasmWorkerTransport } = await preloadRealWalletRuntime();

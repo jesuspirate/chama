@@ -94,7 +94,7 @@ export function QRCode({
         if (!values.length || values.some((value) => !value)) {
           throw new Error("QR data is empty");
         }
-        const urls = await Promise.all(values.map((value) => QRCodeLib.toDataURL(value, {
+        const render = (value: string) => QRCodeLib.toDataURL(value, {
           width: size,
           margin,
           color: {
@@ -102,9 +102,19 @@ export function QRCode({
             light: bgColor,
           },
           errorCorrectionLevel,
-        })));
+        });
 
-        if (!cancelled) setDataUrls(urls);
+        // Multipart invite-bearing ecash can have many frames. Waiting for
+        // Promise.all made the safe portable export feel much slower than an
+        // old compact note even though frame 1 was already renderable. Paint
+        // the first QR immediately, then build the remaining animation frames
+        // in the background without weakening the exported instrument.
+        const first = await render(values[0]);
+        if (!cancelled) setDataUrls([first]);
+        if (values.length > 1) {
+          const rest = await Promise.all(values.slice(1).map(render));
+          if (!cancelled) setDataUrls([first, ...rest]);
+        }
       } catch (e) {
         console.error("[chama] QR generation failed:", e);
         if (!cancelled) setError(true);

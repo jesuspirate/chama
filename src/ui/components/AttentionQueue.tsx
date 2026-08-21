@@ -37,6 +37,7 @@ export function AttentionQueue({
   pubkey,
   onOpenTrade,
   latestTrade,
+  suppressEmptyState = false,
 }: {
   /** Urgency-ranked needs-you trades (selectNeedsYouTrades output). */
   ranked: EscrowState[];
@@ -45,12 +46,17 @@ export function AttentionQueue({
   /** Shown under the "all caught up" line when nothing needs action — a calm
    *  pointer to the user's latest / live trade. */
   latestTrade?: EscrowState | null;
+  /** Money-safety actions live directly below this trade queue. When one is
+   *  visible, do not contradict it with the broad "all caught up" empty copy. */
+  suppressEmptyState?: boolean;
 }) {
   const { t } = useT();
   // Bump to re-read the triage store after a pin/snooze mutation.
   const [tick, bump] = useState(0);
   const nowMs = Date.now();
   const ordered = orderAttention(ranked, getPins(), getSnoozes(), nowMs);
+
+  if (ordered.length === 0 && suppressEmptyState) return null;
 
   if (ordered.length === 0) {
     return (
