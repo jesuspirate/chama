@@ -1,0 +1,22 @@
+name: Release
+
+on:
+  push:
+    tags:
+      # StartOS release tags carry the packaging revision as `_<n>` (v5.7.0_0),
+      # written by tagAndRelease. The app's own desktop lane tags plain `v5.7.0`,
+      # which `v*.*` would also match — so this filter names the underscore.
+      - 'v*_*'
+
+jobs:
+  release:
+    uses: Start9Labs/start-technologies/.github/workflows/release.yml@master
+    with:
+      RELEASE_REGISTRY: ${{ vars.RELEASE_REGISTRY }}
+      S3_S9PKS_BASE_URL: ${{ vars.S3_S9PKS_BASE_URL }}
+    secrets:
+      DEV_KEY: ${{ secrets.DEV_KEY }}
+      S3_ACCESS_KEY: ${{ secrets.S3_ACCESS_KEY }}
+      S3_SECRET_KEY: ${{ secrets.S3_SECRET_KEY }}
+    permissions:
+      contents: write

@@ -67,7 +67,8 @@ chama-pulse-log.md
 # (restored 2026-07-13 after the "clean public repository" cleanup removed them;
 #  PHILOSOPHY/DECISIONS/INVARIANTS/BACKLOG restored 2026-07-25 from 7e4162c).
 # Keep on disk for Claude/CC continuity; push only if explicitly needed.
-CLAUDE.md
+# CLAUDE.md is the exception: as a StartOS package repo this tree ships the
+# tracked one-line `@AGENTS.md` import every package carries.
 Codex.md
 PHILOSOPHY.md
 DECISIONS.md
@@ -77,3 +78,6 @@ design/mockups/
 
 # Local StartOS package artifacts (rebuild; do not commit)
 *.s9pk
+startos/*.js
+docker-images
+ncc-cache

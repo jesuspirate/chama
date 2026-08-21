@@ -23,7 +23,8 @@
     "tauri:build": "tauri build",
     "tauri:dev": "tauri dev",
     "tauri:sidecar": "./scripts/build-tauri-fedimint-bridge.sh",
-    "startos:check": "tsc --noEmit -p tsconfig.startos.json",
+    "startos:check": "tsc --noEmit -p startos/tsconfig.json",
+    "startos:lint": "node node_modules/@start9labs/start-sdk/lint.mjs",
     "startos:build": "rm -rf javascript && ncc build startos/index.ts -o javascript --transpile-only",
     "profile:start9-memory": "tsx scripts/profile-start9-memory.ts"
   },
@@ -54,7 +55,7 @@
     "shamir-secret-sharing": "^0.0.4"
   },
   "devDependencies": {
-    "@start9labs/start-sdk": "1.5.3",
+    "@start9labs/start-sdk": "2.0.9",
     "@tauri-apps/cli": "^2.11.2",
     "@types/node": "^22.0.0",
     "@types/react": "^18.3.0",
@@ -75,5 +76,11 @@
     "esbuild": "^0.25.0",
     "tar": "^7.5.21",
     "brace-expansion": "^5.0.9"
+  },
+  "prettier": {
+    "trailingComma": "all",
+    "tabWidth": 2,
+    "semi": false,
+    "singleQuote": true
   }
 }

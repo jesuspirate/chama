@@ -1,17 +1,57 @@
 # Chama
 
-## Open isolated test clients
+## Documentation
 
-The service exposes **Client One**, **Client Two**, and **Client Three** on its dashboard. Open each interface in a separate browser tab to act as different marketplace participants. Each interface has a distinct origin and a dedicated native Fedimint wallet, so Chama keeps its identity, wallet, and local state separate from the other two clients.
+- [Chama technical overview](https://github.com/jesuspirate/chama/blob/main/chama-technical-overview.pdf) — how the escrow state machine, the Nostr event kinds, and Fedimint settlement fit together.
+- [Relay operations](https://github.com/jesuspirate/chama/blob/main/docs/RELAY_OPERATIONS.md) — for anyone running a Nostr relay that carries Chama traffic.
 
-Use different Nostr identities for buyer, seller, and arbiter scenarios. All three clients use the relays and Fedimint federation selected inside Chama; the StartOS package itself has no account server, database, or custody role.
+## What you get on StartOS
 
-## Data and backups
+Three separate Chama clients — **Client One**, **Client Two**, and **Client
+Three** — each with its own address. They are fully independent: a Nostr
+identity, browser storage, and a Fedimint ecash wallet per client, with nothing
+shared between them. Use one for yourself, or use several to hold separate
+trading identities, or to play buyer, seller, and arbiter through a trade
+end to end.
 
-Chama stores identity and trade state in each browser profile, while each native Fedimint wallet is stored in the StartOS service volume. StartOS backups cover the native wallet volume but do not include browser storage. Back up any secrets or recovery material shown by Chama using the in-app guidance.
+The Fedimint wallet of each client is the one part that lives on your server
+rather than in your browser, so it is what StartOS backs up.
 
-Clearing site data, changing browsers, or opening an interface in a private window creates a fresh local client and can remove access to browser-only state.
+## Getting set up
 
-## Learn more
+Do this once per client you intend to use:
 
-- [Chama source and documentation](https://github.com/jesuspirate/chama)
+1. Open the client from the **Interfaces** tab and let the page load.
+2. Choose or import a Nostr identity when Chama asks for one. This is the
+   identity your counterparties will see, so use a different one in each client
+   if you want the clients to be unrelated.
+3. Join a Fedimint federation with an invite code. Until you do, the client can
+   browse but cannot hold ecash or fund an escrow.
+4. Save whatever recovery material Chama shows you, somewhere off this server.
+
+## Using Chama
+
+### Web interfaces
+
+Each client opens on the Chama marketplace: browse offers, publish your own,
+negotiate, and settle. Bookmark the address of the client you use — the identity
+and history you built up belong to that address, and opening a different client
+gets you a different, empty one.
+
+### Actions
+
+**Wallet Bridge Status** reports, for each client, whether its wallet is
+answering, whether it has joined a federation yet, and whether Chama can reach
+the relay-discovery service it uses to find federation nodes. Run it when a
+client will not load its balance or a payment seems stuck.
+
+## Limitations
+
+- **A Chama client has no login.** Anyone who can open one of these addresses
+  can spend that client's ecash. Enable only the addresses you trust, and treat
+  each one like a password.
+- **Backups cover the wallets, not your history.** Your identity, trades, and
+  drafts live in the browser you opened the client with. Clearing site data,
+  switching browsers, or using a private window gives you a fresh empty client
+  and can lose access to the old one — export your recovery material instead of
+  relying on the backup.

@@ -28,6 +28,11 @@ on:
   push:
     tags:
       - "v*"
+      # StartOS packaging tags carry the packaging revision as `_<n>`
+      # (v5.7.0_0) and are pushed by tagAndRelease.yml, not by release.sh.
+      # They are not desktop releases, and the gates job below would reject
+      # them anyway for not matching package.json's version.
+      - "!v*_*"
   workflow_dispatch:
 
 permissions:

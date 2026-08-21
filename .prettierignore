@@ -1,0 +1,19 @@
+# the application; only startos/ packaging is ours
+src/
+src-tauri/
+landing/
+native/
+public/
+docs/
+android/
+zapstore/
+index.html
+vite.config.ts
+capacitor.config.ts
+tsconfig.json
+scripts/
+
+# upstream's own CI — ours are build/release/tagAndRelease/syncNext
+.github/dependabot.yml
+.github/workflows/ci.yml
+.github/workflows/desktop-release.yml
