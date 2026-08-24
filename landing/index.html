@@ -692,7 +692,6 @@
       padding: 0;
       font: inherit;
       cursor: pointer;
-      perspective: 1100px;
       appearance: none;
       -webkit-appearance: none;
     }
@@ -733,8 +732,7 @@
       inset: 0;
       z-index: 1;
       display: block;
-      transform-style: preserve-3d;
-      transition: transform .72s cubic-bezier(.22,1,.36,1);
+      transform-style: flat;
     }
     .use-art-face {
       position: absolute;
@@ -742,10 +740,10 @@
       display: grid;
       place-items: center;
       overflow: hidden;
-      backface-visibility: hidden;
-      -webkit-backface-visibility: hidden;
+      transition: opacity .3s ease, visibility 0s linear .3s;
     }
-    .use-art-back { transform: rotateY(180deg); background: #171512; }
+    .use-art-front { opacity: 1; visibility: visible; transition-delay: 0s; }
+    .use-art-back { opacity: 0; visibility: hidden; background: #171512; }
     .use-art-back img {
       width: 100%;
       height: 100%;
@@ -757,43 +755,33 @@
       outline: 3px solid color-mix(in srgb, var(--teal) 72%, white);
       outline-offset: -4px;
     }
-    .use-art.is-flipped .use-art-flipper { transform: rotateY(180deg); }
+    .use-art.is-flipped .use-art-front {
+      opacity: 0;
+      visibility: hidden;
+      transition-delay: 0s, .3s;
+    }
+    .use-art.is-flipped .use-art-back {
+      opacity: 1;
+      visibility: visible;
+      transition-delay: 0s;
+    }
     .use-art.is-flipped::before,
     .use-art.is-flipped::after { opacity: 0; }
     .use-art.is-flipped .use-art-back img { transform: scale(1.045); }
     @media (hover: hover) {
-      .uses .use:hover .use-art-flipper { transform: rotateY(180deg); }
-      .uses .use:hover .use-art::before,
-      .uses .use:hover .use-art::after { opacity: 0; }
-      .uses .use:hover .use-art-back img { transform: scale(1.045); }
-    }
-    /* iOS Safari can paint the hidden SVG face through a rotated 3D layer,
-       producing a reversed duplicate over the revealed photograph. Touch does
-       not need hover theatre, so use two clean composited faces there. */
-    @media (hover: none), (pointer: coarse) {
-      .use-art { perspective: none; }
-      .use-art-flipper {
-        transform: none !important;
-        transform-style: flat;
-        transition: none;
-      }
-      .use-art-face {
-        backface-visibility: visible;
-        -webkit-backface-visibility: visible;
-        transition: opacity .28s ease, visibility 0s linear .28s;
-      }
-      .use-art-front { opacity: 1; visibility: visible; transition-delay: 0s; }
-      .use-art-back { transform: none; opacity: 0; visibility: hidden; }
-      .use-art.is-flipped .use-art-front {
+      .uses .use:hover .use-art-front {
         opacity: 0;
         visibility: hidden;
-        transition-delay: 0s, .28s;
+        transition-delay: 0s, .3s;
       }
-      .use-art.is-flipped .use-art-back {
+      .uses .use:hover .use-art-back {
         opacity: 1;
         visibility: visible;
         transition-delay: 0s;
       }
+      .uses .use:hover .use-art::before,
+      .uses .use:hover .use-art::after { opacity: 0; }
+      .uses .use:hover .use-art-back img { transform: scale(1.045); }
     }
     .use-art svg {
       position: relative;
