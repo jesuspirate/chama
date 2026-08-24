@@ -767,6 +767,34 @@
       .uses .use:hover .use-art::after { opacity: 0; }
       .uses .use:hover .use-art-back img { transform: scale(1.045); }
     }
+    /* iOS Safari can paint the hidden SVG face through a rotated 3D layer,
+       producing a reversed duplicate over the revealed photograph. Touch does
+       not need hover theatre, so use two clean composited faces there. */
+    @media (hover: none), (pointer: coarse) {
+      .use-art { perspective: none; }
+      .use-art-flipper {
+        transform: none !important;
+        transform-style: flat;
+        transition: none;
+      }
+      .use-art-face {
+        backface-visibility: visible;
+        -webkit-backface-visibility: visible;
+        transition: opacity .28s ease, visibility 0s linear .28s;
+      }
+      .use-art-front { opacity: 1; visibility: visible; transition-delay: 0s; }
+      .use-art-back { transform: none; opacity: 0; visibility: hidden; }
+      .use-art.is-flipped .use-art-front {
+        opacity: 0;
+        visibility: hidden;
+        transition-delay: 0s, .28s;
+      }
+      .use-art.is-flipped .use-art-back {
+        opacity: 1;
+        visibility: visible;
+        transition-delay: 0s;
+      }
+    }
     .use-art svg {
       position: relative;
       z-index: 1;
