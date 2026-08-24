@@ -1,0 +1,55 @@
+# HTML
+index.html
+faq.html
+faq.es.html
+faq.fr.html
+
+# Brand and social metadata
+icons/chama-mark-64.png
+icons/chama-mark-512.png
+icons/chama-color-cycle-hd-v3.gif
+icons/bitcoin-mark-256.png
+icons/lightning-network-mark.svg
+icons/favicon.ico
+icons/og-image-social-v9.png
+icons/use-cases/bill-pay.svg
+icons/use-cases/bill-pay-dark.svg
+icons/use-cases/stack.svg
+icons/use-cases/stack-dark.svg
+icons/use-cases/store.svg
+icons/use-cases/store-dark.svg
+icons/use-cases/work.svg
+icons/use-cases/work-dark.svg
+
+# Use-case scenes revealed by the tile flip
+img/p-p2p-v5.jpg
+img/p-billpay-v2.jpg
+img/p-stores-v4.jpg
+img/p-work-v27-neon-teal-approved.jpg
+img/p-chipin-v27-higgsfield-hands-clean.jpg
+img/p-stack-v22-higgsfield-independent-clean.jpg
+
+# Closing community threshold
+img/chama-community-threshold-v9.png
+img/chama-community-threshold-v9-hd.png
+
+# Everyone-has-a-home artwork
+img/comm-home-andean-v1.jpg
+img/comm-home-caribbean-coastal-v1.jpg
+img/comm-home-east-africa-hillside-v1.jpg
+img/comm-home-france-city-v8.jpg
+img/comm-home-france-rural-v8.jpg
+img/comm-home-latin-hillside-v1.jpg
+img/comm-home-north-africa-courtyard-v1.jpg
+img/comm-home-river-stilt-v1.jpg
+img/comm-home-seasia-shophouse-v1.jpg
+img/comm-home-south-asia-lane-v1.jpg
+img/comm-home-us-city-v8.jpg
+img/comm-home-west-africa-v1.jpg
+
+# Community and FAQ support
+img/fedi-qr.png
+img/nostr-ostrich-footer-v1.png
+img/faq/faq-cancel.png
+img/faq/faq-chooser.png
+img/faq/faq-mpesa.png
