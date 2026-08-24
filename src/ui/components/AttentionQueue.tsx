@@ -19,8 +19,9 @@ import {
   getEffectiveParticipantsAt,
 } from "../../escrow-engine/types.js";
 import { needsYouReasonFor } from "../decisions.js";
-import { CAT_ICON, T } from "../theme.js";
+import { T } from "../theme.js";
 import { BitcoinAmount } from "./BitcoinAmount.js";
+import { VerticalIcon } from "./VerticalIcon.js";
 import {
   getPins,
   getSnoozes,
@@ -88,7 +89,7 @@ export function AttentionQueue({
               cursor: "pointer",
             }}
           >
-            <span style={{ fontSize: 16, lineHeight: 1 }}>{CAT_ICON[latestTrade.category] || "📦"}</span>
+            <VerticalIcon vertical={latestTrade.category} size={22} fallback="📦" />
             <span style={{ minWidth: 0, flex: 1 }}>
               <span style={{
                 display: "block", fontFamily: T.sans, fontSize: 13, fontWeight: 700,
@@ -217,9 +218,7 @@ function AttentionCard({
       boxShadow: `0 0 24px ${tone}14`,
     }}>
       <div style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 12 }}>
-        <span style={{ fontSize: 20, lineHeight: 1, flexShrink: 0 }}>
-          {CAT_ICON[trade.category] || "📦"}
-        </span>
+        <VerticalIcon vertical={trade.category} size={28} fallback="📦" />
         <div style={{ minWidth: 0, flex: 1 }}>
           <div style={{
             fontFamily: T.sans, fontSize: 15, fontWeight: 800, color: T.text,

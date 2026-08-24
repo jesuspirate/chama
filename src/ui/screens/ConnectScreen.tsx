@@ -3,6 +3,7 @@ import { Capacitor } from "@capacitor/core";
 import { T } from "../theme.js";
 import { NsecLogin } from "../panels/NsecLogin.js";
 import { BrandHeader } from "../components/BrandHeader.js";
+import { VerticalIcon, type ChamaVerticalIconId } from "../components/VerticalIcon.js";
 import { useT, type TFunc } from "../../i18n/index.js";
 import {
   getSignInEnvironment,
@@ -59,13 +60,13 @@ function markIntroSeen(): void {
 // (Lending retired; Work replaces it; Chip In + Stack are the community verticals).
 // i18n: title/blurb are DICTIONARY KEYS, resolved with t() at render so the
 // splash follows the live language (module-level constants can't call hooks).
-const INTRO_USE_CASES: { icon: string; titleKey: string; blurbKey: string; tint: string; soon?: boolean }[] = [
-  { icon: "⚡", titleKey: "connect.useCaseExchange",    blurbKey: "connect.useCaseExchangeBlurb",    tint: T.accent },
-  { icon: "🧾", titleKey: "connect.useCaseBillPay",     blurbKey: "connect.useCaseBillPayBlurb",     tint: T.teal },
-  { icon: "🏪", titleKey: "connect.useCaseMarketplace", blurbKey: "connect.useCaseMarketplaceBlurb", tint: T.purple },
-  { icon: "🛠️", titleKey: "connect.useCaseWork",        blurbKey: "connect.useCaseWorkBlurb",        tint: T.green },
-  { icon: "🤝", titleKey: "connect.useCaseChipIn",      blurbKey: "connect.useCaseChipInBlurb",      tint: T.accent, soon: true },
-  { icon: "🪙", titleKey: "connect.useCaseStack",       blurbKey: "connect.useCaseStackBlurb",       tint: T.teal,   soon: true },
+const INTRO_USE_CASES: { vertical: ChamaVerticalIconId; titleKey: string; blurbKey: string; soon?: boolean }[] = [
+  { vertical: "p2p-trade", titleKey: "connect.useCaseExchange",    blurbKey: "connect.useCaseExchangeBlurb" },
+  { vertical: "bill-pay", titleKey: "connect.useCaseBillPay",     blurbKey: "connect.useCaseBillPayBlurb" },
+  { vertical: "marketplace", titleKey: "connect.useCaseMarketplace", blurbKey: "connect.useCaseMarketplaceBlurb" },
+  { vertical: "work", titleKey: "connect.useCaseWork",        blurbKey: "connect.useCaseWorkBlurb" },
+  { vertical: "chip-in", titleKey: "connect.useCaseChipIn",      blurbKey: "connect.useCaseChipInBlurb", soon: true },
+  { vertical: "stack", titleKey: "connect.useCaseStack",       blurbKey: "connect.useCaseStackBlurb", soon: true },
 ];
 
 export function ConnectScreen({
@@ -333,7 +334,7 @@ function WelcomeIntro({ onContinue }: { onContinue: () => void }) {
         display: "grid", gap: 8, width: "100%", maxWidth: 380,
         marginBottom: 16,
       }}>
-        {INTRO_USE_CASES.map(({ icon, titleKey, blurbKey, tint, soon }) => (
+        {INTRO_USE_CASES.map(({ vertical, titleKey, blurbKey, soon }) => (
           <div
             key={titleKey}
             style={{
@@ -348,10 +349,10 @@ function WelcomeIntro({ onContinue }: { onContinue: () => void }) {
               flexShrink: 0,
               width: 38, height: 38, borderRadius: T.rs,
               display: "flex", alignItems: "center", justifyContent: "center",
-              fontSize: 19, lineHeight: 1,
-              background: tint + "1a", border: `1px solid ${tint}44`,
+              lineHeight: 1,
+              background: T.surface, border: `1px solid ${T.border}`,
             }}>
-              {icon}
+              <VerticalIcon vertical={vertical} size={32} />
             </span>
             <span style={{ minWidth: 0 }}>
               <span style={{

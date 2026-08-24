@@ -9,7 +9,7 @@ import {
 } from "../../escrow-engine/types.js";
 import { getCommunityBySlug, flagEmojiForCountry } from "../../communities/registry.js";
 import { pickPreferredArbiter } from "../../arbiters/pool.js";
-import { T, CAT_ICON, ROLE_COLOR, ROLE_ICON, STATUS, TRINITY_RING_ORDER, fmtSats } from "../theme.js";
+import { T, ROLE_COLOR, ROLE_ICON, STATUS, TRINITY_RING_ORDER, fmtSats } from "../theme.js";
 import { copyTextRobust } from "./CopyButton.js";
 import { listingPremiumLine } from "../listing-metrics.js";
 import { unreadChatForTrade } from "../../chat/unread.js";
@@ -33,6 +33,7 @@ import {
 import { useT, type TFunc } from "../../i18n/index.js";
 import { SwipeImageGallery } from "./SwipeImageGallery.js";
 import { isWorkListing, isWorkOffer, isWorkRequest } from "../work-resume.js";
+import { VerticalIcon } from "./VerticalIcon.js";
 import { ESCROW_NETWORK_LABEL } from "../../bond-multisig/onchain-escrow.js";
 
 // v0.2.0 item 4: variant="non-matching" applies an amber tint per
@@ -285,19 +286,15 @@ export function TradeCard({
               fontFamily: T.mono, fontWeight: 700,
               lineHeight: 1.2,
             }}>
+              <VerticalIcon vertical={isWorkListing(state) ? "work" : state.category} size={14} fallback="📦" />
               {/* #63 storefront-vs-order clarity: a multi-unit parent reads as a
-                  🏪 Storefront, a spawned child purchase as a 🛒 Order — so a
-                  seller can tell the persistent shopfront apart from a live sale
-                  in the trade list. The emoji rides the label; other verticals
-                  keep the CAT_ICON glyph. */}
+                  Storefront, a spawned child purchase as an Order — so a seller
+                  can tell the persistent shopfront apart from a live sale. */}
               {isWorkListing(state) ? t("card.categoryWork")
                 : isParentStorefront(state) ? t("card.categoryStorefront")
                 : isChildOrder(state) ? t("card.categoryOrder")
                 : state.category === "marketplace" ? t("card.categorySingleListing")
-                : <>
-                    <span style={{ fontSize: 11, lineHeight: 1 }}>{CAT_ICON[state.category] || "📦"}</span>
-                    {shortCategoryLabel(state.category, t)}
-                  </>}
+                : shortCategoryLabel(state.category, t)}
             </span>
             {/* ⛓ Which substrate holds this trade's money. Shown on the CARD
                 because a tester (and a trader) should be able to tell an

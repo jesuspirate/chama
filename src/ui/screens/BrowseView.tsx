@@ -4,6 +4,7 @@ import { type EscrowState } from "../../escrow-engine/types.js";
 import { getCommunityBySlug, type Community } from "../../communities/registry.js";
 import { T, ROLE_COLOR, BROWSE_CATS, inputStyle, fmtSats } from "../theme.js";
 import { TradeCard } from "../components/TradeCard.js";
+import { VerticalIcon } from "../components/VerticalIcon.js";
 import { BOTTOM_NAV_HEIGHT } from "../components/BottomNav.js";
 import { ArbiterApplyForm } from "../components/ArbiterApplyForm.js";
 import { LoadTradeInput } from "../components/LoadTradeInput.js";
@@ -499,7 +500,7 @@ export function BrowseView({
                 display: "inline-flex", alignItems: "center", gap: 6,
               }}
             >
-              {c.i && <span>{c.i}</span>}
+              <VerticalIcon vertical={c.id} size={18} />
               <span>{t(c.l)}</span>
               <span style={{
                 color: active ? T.bg : T.muted,
@@ -837,7 +838,6 @@ function listingMatchesSearch(listing: EscrowState, query: string): boolean {
 interface BrowseListingSection {
   id: string;
   label: string;
-  icon: string;
   listings: EscrowState[];
 }
 
@@ -847,7 +847,6 @@ function groupListingsByVertical(listings: EscrowState[]): BrowseListingSection[
     .map(c => ({
       id: c.id,
       label: c.l,
-      icon: c.i,
       listings: listings.filter(listing =>
         c.id === "work"
           ? isWorkListing(listing)
@@ -968,7 +967,7 @@ function WorkerResume({
                 display: "flex", alignItems: "center", gap: 10,
               }}
             >
-              <span style={{ fontSize: 18 }}>🛠️</span>
+              <VerticalIcon vertical="work" size={24} />
               <span style={{ flex: 1, minWidth: 0 }}>
                 <span style={{
                   display: "block", color: T.text, fontFamily: T.sans,
@@ -1085,7 +1084,7 @@ function BrowseSection({
           letterSpacing: 0.8,
           textTransform: "uppercase",
         }}>
-          <span style={{ fontSize: 13 }}>{section.icon}</span>
+          <VerticalIcon vertical={section.id} size={17} />
           {t(section.label)}
         </div>
         <div style={{

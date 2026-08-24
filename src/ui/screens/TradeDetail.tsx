@@ -38,6 +38,7 @@ import { listingPremiumLine } from "../listing-metrics.js";
 import { useBitcoinPrice } from "../hooks/useBitcoinPrice.js";
 import { useFiatRates } from "../hooks/useFiatRates.js";
 import { decideTradeDetailFraming, decideVotePrompt } from "../decisions.js";
+import { VerticalIcon } from "../components/VerticalIcon.js";
 import {
   pickArbiterFromPool,
   pickPreferredArbiter,
@@ -1400,6 +1401,11 @@ export function TradeDetail({
     : state.category === "bill-pay" ? t("trade.kickerBillPay")
     : state.category === "lending" ? t("trade.kickerLending")
     : t("trade.kickerEscrow");
+  const verticalIconId = state.listingKind === "work"
+    ? "work"
+    : (isParentStorefront(state) || isChildOrder(state) || state.category === "marketplace")
+    ? "marketplace"
+    : state.category;
   // Short deal title beside the back arrow (the item, not the phase narrative —
   // that lives in the action card). Menu listings summarise via the first item.
   const dealTitle = (state.items?.[0]?.label?.trim())
@@ -1483,6 +1489,9 @@ export function TradeDetail({
         <div style={{ minWidth: 0 }}>
           {/* Vertical kicker — the trade's vertical, never inferred. */}
           <div style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 5,
             color: T.accent,
             fontFamily: T.mono,
             fontSize: 9.5,
@@ -1494,6 +1503,7 @@ export function TradeDetail({
             textOverflow: "ellipsis",
             whiteSpace: "nowrap",
           }}>
+            <VerticalIcon vertical={verticalIconId} size={15} />
             {verticalKicker}
           </div>
           <div className="trade-detail-title" style={{
@@ -3078,8 +3088,8 @@ export function TradeDetail({
           </div>
           {/* pane 1 — Details (cart/order pre-lock, read-only reminder after) */}
           <div className="td-pane" style={TD_PANE_STYLE}>
-            <div style={{ fontFamily: T.mono, fontSize: 10.5, letterSpacing: 1, color: T.accent, fontWeight: 700, margin: "2px 2px 13px" }}>
-              DETAILS <span style={{ color: T.muted }}>· {verticalKicker}</span>
+            <div style={{ display: "flex", alignItems: "center", gap: 5, fontFamily: T.mono, fontSize: 10.5, letterSpacing: 1, color: T.accent, fontWeight: 700, margin: "2px 2px 13px" }}>
+              DETAILS <span style={{ color: T.muted }}>·</span> <VerticalIcon vertical={verticalIconId} size={15} /> <span style={{ color: T.muted }}>{verticalKicker}</span>
             </div>
             {billTypeChip && (
               <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}>

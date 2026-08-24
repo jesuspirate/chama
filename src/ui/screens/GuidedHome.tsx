@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { Role, type EscrowState } from "../../escrow-engine/types.js";
 import {
   matchGuidedListings,
@@ -12,6 +12,7 @@ import { getCommunityBySlug } from "../../communities/registry.js";
 import { getRailByKey, railsForCommunity } from "../../payments/rail-registry.js";
 import type { AggregateRatings } from "../../reputation/ratings.js";
 import { T, inputStyle } from "../theme.js";
+import { VerticalIcon } from "../components/VerticalIcon.js";
 
 type GuidedSurface = "home" | "need-sats" | "review";
 
@@ -354,26 +355,26 @@ export function GuidedHome({
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 14 }}>
         <IntentCard
-          icon="⚡"
+          icon={<VerticalIcon vertical="p2p-trade" size={28} />}
           title={t("guided.needSats")}
           body={t("guided.needSatsBody")}
           emphasis
           onClick={startNeedSats}
         />
         <IntentCard
-          icon="↗"
+          icon={<VerticalIcon vertical="p2p-trade" size={28} />}
           title={t("guided.haveSats")}
           body={t("guided.haveSatsBody")}
           onClick={onCreate}
         />
         <IntentCard
-          icon="◫"
+          icon={<VerticalIcon vertical="marketplace" size={28} />}
           title={t("guided.marketplace")}
           body={t("guided.marketplaceBody")}
           onClick={() => onBrowse("marketplace")}
         />
         <IntentCard
-          icon="✓"
+          icon={<VerticalIcon vertical="bill-pay" size={28} />}
           title={t("guided.payBill")}
           body={t("guided.payBillBody")}
           onClick={() => onBrowse("bill-pay")}
@@ -530,7 +531,7 @@ function IntentCard({
   emphasis = false,
   onClick,
 }: {
-  icon: string;
+  icon: ReactNode;
   title: string;
   body: string;
   emphasis?: boolean;
@@ -547,7 +548,7 @@ function IntentCard({
         color: T.text, textAlign: "left", cursor: "pointer", fontFamily: T.sans,
       }}
     >
-      <span style={{ color: emphasis ? T.accent : T.muted, fontSize: 22 }}>{icon}</span>
+      <span style={{ display: "inline-flex", color: emphasis ? T.accent : T.muted }}>{icon}</span>
       <span style={{ display: "block", marginTop: 14, fontSize: 15, fontWeight: 800 }}>{title}</span>
       <span style={{ display: "block", marginTop: 5, color: T.muted, fontSize: 11.5, lineHeight: 1.45 }}>{body}</span>
     </button>

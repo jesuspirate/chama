@@ -101,6 +101,7 @@ import { useBitcoinPrice } from "../hooks/useBitcoinPrice.js";
 import { useFiatRates } from "../hooks/useFiatRates.js";
 import { ensureRemoteListingImage, MAX_LISTING_IMAGE_REFS, type ListingImageUploadAuthorizer } from "../../media/listing-image-upload.js";
 import { SwipeImageGallery } from "../components/SwipeImageGallery.js";
+import { VerticalIcon } from "../components/VerticalIcon.js";
 
 type Step = 1 | 2 | 3;
 /** Verticals whose value is divisible, so a trade can be settled in slices.
@@ -136,13 +137,13 @@ type ListingMode = "single" | "menu";
 // Vertical + logic stay in code for back-compat.
 // i18n: label/description are DICTIONARY KEYS, resolved with t() at render
 // (module-level constants can't call hooks) — same pattern as INTRO_USE_CASES.
-const VERTICALS: { id: string; labelKey: string; icon: string; descriptionKey: string; comingSoon?: boolean }[] = [
-  { id: "p2p-trade", labelKey: "create.verticalExchange", icon: "⚡", descriptionKey: "create.verticalExchangeDesc" },
-  { id: "bill-pay", labelKey: "create.verticalBillPay", icon: "🧾", descriptionKey: "create.verticalBillPayDesc" },
-  { id: "marketplace", labelKey: "create.verticalMarketplace", icon: "🏪", descriptionKey: "create.verticalMarketplaceDesc" },
-  { id: "work", labelKey: "create.verticalWork", icon: "🛠️", descriptionKey: "create.verticalWorkDesc" },
-  { id: "chip-in", labelKey: "create.verticalChipIn", icon: "🤝", descriptionKey: "create.verticalChipInDesc", comingSoon: true },
-  { id: "stack", labelKey: "create.verticalStack", icon: "🪙", descriptionKey: "create.verticalStackDesc", comingSoon: true },
+const VERTICALS: { id: string; labelKey: string; descriptionKey: string; comingSoon?: boolean }[] = [
+  { id: "p2p-trade", labelKey: "create.verticalExchange", descriptionKey: "create.verticalExchangeDesc" },
+  { id: "bill-pay", labelKey: "create.verticalBillPay", descriptionKey: "create.verticalBillPayDesc" },
+  { id: "marketplace", labelKey: "create.verticalMarketplace", descriptionKey: "create.verticalMarketplaceDesc" },
+  { id: "work", labelKey: "create.verticalWork", descriptionKey: "create.verticalWorkDesc" },
+  { id: "chip-in", labelKey: "create.verticalChipIn", descriptionKey: "create.verticalChipInDesc", comingSoon: true },
+  { id: "stack", labelKey: "create.verticalStack", descriptionKey: "create.verticalStackDesc", comingSoon: true },
 ];
 
 interface FormState {
@@ -1831,7 +1832,7 @@ function Step1({
                     color: T.text, fontFamily: T.sans,
                   }}
                 >
-                  <span style={{ fontSize: 18 }}>{v.icon}</span>
+                  <VerticalIcon vertical={v.id} size={22} />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 13, fontWeight: 600 }}>
                       {t("create.continueDraftTitle", { vertical: t(v.labelKey) })}
@@ -1903,7 +1904,7 @@ function Step1({
               }}
             >
               <span style={{ display: "flex", alignItems: "center", gap: 7, width: "100%" }}>
-                <span style={{ fontSize: 22 }}>{v.icon}</span>
+                <VerticalIcon vertical={v.id} size={38} />
                 {soon && (
                   <span style={{
                     marginLeft: "auto", fontSize: 8, fontWeight: 800, letterSpacing: 0.5,
@@ -2673,7 +2674,7 @@ function Step2({
                   }}
                 >
                   <div style={{ fontSize: 13, fontWeight: 800, color: on ? T.accent : T.text, fontFamily: T.sans }}>
-                    <span aria-hidden="true">{side.icon}</span> {side.label}
+                    {side.id === "work" ? <VerticalIcon vertical="work" size={20} /> : <span aria-hidden="true">{side.icon}</span>} {side.label}
                   </div>
                   <div style={{ fontSize: 10.5, color: T.muted, fontFamily: T.sans, marginTop: 3, lineHeight: 1.4 }}>
                     {side.body}
@@ -3643,7 +3644,7 @@ function Step3({
           {t("create.previewLabel")}
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
-          <span style={{ fontSize: 16 }}>{v.icon}</span>
+          <VerticalIcon vertical={v.id} size={24} />
           <span style={{ fontSize: 13, fontWeight: 700, color: T.text, fontFamily: T.sans }}>
             {t(v.labelKey)}
           </span>

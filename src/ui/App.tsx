@@ -134,6 +134,7 @@ import {
 } from "./decisions.js";
 import { Toast } from "./components/Toast.js";
 import { BitcoinAmount } from "./components/BitcoinAmount.js";
+import { VerticalIcon } from "./components/VerticalIcon.js";
 import { BottomNav, BOTTOM_NAV_HEIGHT, type Tab } from "./components/BottomNav.js";
 import { CoachMarkTour, readCoachSeen, type CoachStep } from "./components/CoachMarkTour.js";
 import { ActiveTradePill } from "./components/ActiveTradePill.js";
@@ -4127,7 +4128,7 @@ export default function App() {
               color: T.amber, fontFamily: T.mono, fontSize: 10,
               fontWeight: 800, letterSpacing: 1.1, textTransform: "uppercase",
               marginBottom: 8,
-            }}>🏪 Your listing</div>
+            }}><span style={{ display: "inline-flex", verticalAlign: "middle", marginRight: 5 }}><VerticalIcon vertical="marketplace" size={15} /></span>Your listing</div>
             <div style={{
               color: T.text, fontFamily: T.sans, fontSize: 21,
               fontWeight: 850, lineHeight: 1.2, paddingRight: 38,
