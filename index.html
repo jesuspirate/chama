@@ -48,6 +48,7 @@
          after the main bundle and wallet initialization. -->
     <link rel="preload" as="image" href="/icons/favicon-192x192.png" fetchpriority="high">
     <link rel="preload" as="image" href="/icons/chama-woven-trust-mark-transparent-64.png" fetchpriority="high">
+    <link rel="preload" as="image" href="/icons/chama-color-cycle-boot-hd-v6.png" type="image/png" fetchpriority="high">
     <link rel="preload" as="image" href="/icons/africa-globe-base.png" fetchpriority="high">
     <script>
       // The home picker is reached only after sign-in, so use boot time to
@@ -102,7 +103,31 @@
     <meta name="twitter:image" content="https://getchama.app/icons/getchama-social-exchange-v1.png">
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div id="chama-boot" role="status" aria-label="Chama is opening">
+        <img class="chama-boot-motion" src="/icons/chama-color-cycle-boot-hd-v6.png" width="112" height="112" alt="">
+        <img class="chama-boot-static" src="/icons/chama-woven-trust-mark-transparent-64.png" width="112" height="112" alt="">
+      </div>
+    </div>
+    <style>
+      #chama-boot {
+        min-height: 100dvh;
+        display: grid;
+        place-items: center;
+      }
+      #chama-boot img {
+        display: block;
+        width: 112px;
+        height: 112px;
+        object-fit: contain;
+        filter: drop-shadow(0 12px 28px rgba(247, 147, 26, .18));
+      }
+      .chama-boot-static { display: none !important; }
+      @media (prefers-reduced-motion: reduce) {
+        .chama-boot-motion { display: none !important; }
+        .chama-boot-static { display: block !important; }
+      }
+    </style>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
