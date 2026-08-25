@@ -116,7 +116,14 @@ export interface PendingRedemption {
    *  poisoned / retries-exhausted note may still be LIVE money and must
    *  never be silently archived. */
   resolvedAt?: number;
-  resolution?: "balance-reconciled" | "user-dismissed";
+  resolution?: "balance-reconciled" | "user-dismissed" | "probed-dead";
+  /** 6.0.2 liveness probe: the last verdict `reabsorbBearerNotes()` got from
+   *  the federation for THIS entry's exact bearer string, and when. Present
+   *  ⇒ the federation was actually asked, and its answer OUTRANKS every
+   *  heuristic in this file. Absent ⇒ never probed; the fallbacks apply. */
+  probedAt?: number;
+  probeVerdict?: "recovered" | "consumed-uncredited" | "dead" | "unknown" | "foreign";
+  probeReason?: string;
 }
 
 export interface DrainSummary {
@@ -140,10 +147,35 @@ export interface StrandedRedemption extends PendingRedemption {
 
 type Stash = Record<string, PendingRedemption>;
 
-/** Terminal reissue failures mean the federation consumed the bearer note but
- * local wallet credit could not be proven. The note is no longer exportable,
- * so this is an unresolved-credit case—not a poisoned/live-note case. */
-function isConsumedCreditUnconfirmed(entry: Pick<PendingRedemption, "lastError">): boolean {
+/**
+ * Is this entry's bearer note consumed-but-credit-unproven?
+ *
+ * ── This function used to BE the answer. It is now the fallback. ──────────
+ *
+ * Everything below the first branch infers a note's state by string-matching
+ * an error message — a guess about what the federation meant, made without
+ * asking it. `reabsorbBearerNotes()` (reabsorb-bearer-notes.ts) replaces that
+ * guess with an actual round-trip, so when a probe verdict is present it is
+ * the authority and the text sniffing is not consulted at all.
+ *
+ * The string match survives only for entries NEVER PROBED — records written
+ * by earlier releases, and live entries the user hasn't tapped yet. Don't
+ * extend it; probe instead.
+ */
+function isConsumedCreditUnconfirmed(
+  entry: Pick<PendingRedemption, "lastError" | "probeVerdict">,
+): boolean {
+  // The federation was asked. Its answer stands, in both directions: a
+  // consumed verdict is a consumed note however the old text reads, and a
+  // `recovered`/`unknown`/`foreign` verdict means this heuristic has no
+  // business declaring the note consumed.
+  //
+  // `consumed-uncredited` is the exact question this function asks, so it
+  // must answer true here — a probe verdict that inverted its own predicate
+  // would be worse than the guess it replaced.
+  if (entry.probeVerdict) {
+    return entry.probeVerdict === "consumed-uncredited" || entry.probeVerdict === "dead";
+  }
   const msg = entry.lastError?.toLowerCase() ?? "";
   return msg.includes("mint reissue operation failed after federation consumed")
     || msg.includes("mint notes were consumed by the federation");
@@ -210,6 +242,17 @@ export function stashPendingRedemption(input: {
     lastError: existing?.lastError,
     poisonedAt: existing?.poisonedAt,
     unresolvedCredit: existing?.unresolvedCredit,
+    // A probe verdict belongs to the exact bearer string it was obtained for.
+    // A re-stash of the same escrowId can arrive with DIFFERENT notes (a fresh
+    // reconstruction), and carrying a "dead" verdict across would condemn a
+    // note the federation was never asked about.
+    ...(existing && existing.oobNotes === input.oobNotes
+      ? {
+          probedAt: existing.probedAt,
+          probeVerdict: existing.probeVerdict,
+          probeReason: existing.probeReason,
+        }
+      : {}),
   };
   saveStash(stash);
   console.info(
@@ -333,9 +376,180 @@ export function resolveUnresolvedCredit(
   console.info(`[claim-trace] unresolved-credit reconciled escrowId=${escrowId} via=${resolution}`);
 }
 
+/**
+ * 6.0.2 liveness probe: record what the federation actually said about a
+ * bearer note. Written ONLY from a `reabsorbBearerNotes()` result.
+ *
+ * ── Keyed by the exact note, never by escrow id ───────────────────────────
+ *
+ * A verdict is a statement about a BEARER STRING, not about a trade. The
+ * surfaces that call this hold a note and an escrow id that may not refer to
+ * the same money — a claim-backed export's record can hold a different note
+ * than the export itself — and stamping a verdict onto a record by id would
+ * attribute an answer about note A to note B. Same rule as
+ * `clearPendingRedemptionsMatchingNotes`: exact string or nothing.
+ *
+ * An `unknown` verdict is deliberately recorded too — not to change how the
+ * entry is treated (rule 2: unknown leaves everything exactly as it was) but
+ * so the forensic record distinguishes "asked, couldn't tell" from "never
+ * asked". It does NOT overwrite an earlier definitive verdict: a note proven
+ * dead does not become uncertain because a later probe timed out.
+ *
+ * Returns the escrow ids stamped.
+ */
+export function recordBearerProbe(
+  oobNotes: string,
+  verdict: NonNullable<PendingRedemption["probeVerdict"]>,
+  reason?: string,
+): string[] {
+  if (!oobNotes) return [];
+  const stash = loadStash();
+  const stamped: string[] = [];
+  for (const [escrowId, entry] of Object.entries(stash)) {
+    if (entry.oobNotes !== oobNotes) continue;
+    if (verdict === "unknown" && entry.probeVerdict && entry.probeVerdict !== "unknown") continue;
+    entry.probedAt = Date.now();
+    entry.probeVerdict = verdict;
+    if (reason) entry.probeReason = reason.slice(0, 500);
+    stamped.push(escrowId);
+  }
+  if (stamped.length > 0) {
+    saveStash(stash);
+    console.info(`[claim-trace] bearer-probe verdict=${verdict} ids=${stamped.join(",")}`);
+  }
+  return stamped;
+}
+
+/**
+ * The federation definitively rejected this exact bearer string. Mark every
+ * recovery record holding it dead and archive them out of the alarm list.
+ *
+ * ── Why this may do what `resolveUnresolvedCredit` refuses ────────────────
+ *
+ * That function's guardrail exists because a poisoned / retries-exhausted note
+ * MAY STILL BE LIVE MONEY, and silencing it would hide real sats. A definitive
+ * federation rejection is precisely the proof that it is not live — the one
+ * piece of evidence that guardrail was waiting for. Nothing weaker (a balance
+ * that happens to cover, a user shrugging) unlocks this path.
+ *
+ * Archive, not delete: the bearer string stays for forensics, exactly like
+ * every other resolution in this file.
+ *
+ * Identity is the exact note (never the amount — two independent notes can be
+ * worth the same). Returns the escrow ids marked.
+ */
+export function markPendingRedemptionsProbedDead(
+  oobNotes: string,
+  reason: string,
+): string[] {
+  if (!oobNotes) return [];
+  const stash = loadStash();
+  const marked: string[] = [];
+  for (const [escrowId, entry] of Object.entries(stash)) {
+    if (entry.oobNotes !== oobNotes) continue;
+    entry.probedAt = Date.now();
+    entry.probeVerdict = "dead";
+    entry.probeReason = reason.slice(0, 500);
+    entry.resolvedAt = entry.resolvedAt ?? Date.now();
+    entry.resolution = "probed-dead";
+    marked.push(escrowId);
+  }
+  if (marked.length > 0) {
+    saveStash(stash);
+    console.info(`[claim-trace] bearer-probe dead ids=${marked.join(",")}`);
+  }
+  return marked;
+}
+
+/** A deterministic stash slot for a bearer note that has no trade behind it —
+ *  a wallet-source ecash export. Derived from the note itself so a double-tap
+ *  writes one record rather than two. Not a security boundary; an id. */
+function noteSlotId(oobNotes: string): string {
+  // FNV-1a, 32-bit. Synchronous on purpose: this module's whole API is
+  // synchronous so the claim path never awaits to persist bearer material.
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < oobNotes.length; i++) {
+    hash ^= oobNotes.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return `consumed-note-${hash.toString(16).padStart(8, "0")}`;
+}
+
+/**
+ * 6.0.2 · the federation has definitively CONSUMED this bearer string, and
+ * whether the credit reached this wallet is unresolved. Record both facts.
+ *
+ * ── Why this creates a record when none exists ────────────────────────────
+ *
+ * The caller's next move is to clear the ecash-export stash, because a
+ * consumed note is not a pending send and must stop jamming
+ * `assertEcashExportWritable()`. But a wallet-source export writes ONLY that
+ * stash — no pending-redemption entry is ever created for it. So clearing it
+ * without writing a record first would delete the last trace of an open money
+ * question, which is the failure this whole line of work exists to stop.
+ *
+ * Creating the record is therefore part of recording the verdict, not
+ * something a caller is trusted to remember — the same reason the balance
+ * bracket lives inside `reabsorbBearerNotes()` rather than in its callers.
+ *
+ * ARCHIVE IS NOT SET. Unlike `markPendingRedemptionsProbedDead`, this entry
+ * stays in the alarm list: the note is finished, the sats are not.
+ *
+ * Idempotent — probing the same note twice updates one record. Returns the
+ * escrow ids holding this note afterwards.
+ */
+export function recordConsumedUncreditedNote(input: {
+  oobNotes: string;
+  amountMsats: number;
+  reason: string;
+  /** The trade this note belongs to, when there is one. */
+  escrowId?: string;
+}): string[] {
+  if (!input.oobNotes) return [];
+  const stash = loadStash();
+  const now = Date.now();
+  const touched: string[] = [];
+  for (const [escrowId, entry] of Object.entries(stash)) {
+    if (entry.oobNotes !== input.oobNotes) continue;
+    entry.probedAt = now;
+    entry.probeVerdict = "consumed-uncredited";
+    entry.probeReason = input.reason.slice(0, 500);
+    entry.lastError = input.reason.slice(0, 500);
+    entry.poisonedAt = entry.poisonedAt ?? now;
+    entry.unresolvedCredit = true;
+    touched.push(escrowId);
+  }
+  if (touched.length === 0) {
+    // No record holds this note — a wallet-source export. Open the question.
+    const slot = input.escrowId ?? noteSlotId(input.oobNotes);
+    stash[slot] = {
+      escrowId: slot,
+      oobNotes: input.oobNotes,
+      // No LOCK, so no chain hash to match. Recorded honestly as absent rather
+      // than filled with a plausible-looking value.
+      notesHash: "",
+      amountMsats: input.amountMsats,
+      createdAt: now,
+      attempts: 0,
+      probedAt: now,
+      probeVerdict: "consumed-uncredited",
+      probeReason: input.reason.slice(0, 500),
+      lastError: input.reason.slice(0, 500),
+      poisonedAt: now,
+      unresolvedCredit: true,
+    };
+    touched.push(slot);
+  }
+  saveStash(stash);
+  console.info(`[claim-trace] bearer-probe consumed-uncredited ids=${touched.join(",")}`);
+  return touched;
+}
+
 /** Undo a balance-based archive when the supposed covering value was only an
  * unconfirmed ecash export. This is deliberately narrow: user-dismissed
- * records and genuinely live poisoned notes are never reopened or rewritten. */
+ * records and genuinely live poisoned notes are never reopened or rewritten.
+ * A `probed-dead` archive is likewise out of reach — it rests on the
+ * federation's own rejection, which no balance reading can overturn. */
 export function reopenBalanceReconciledCredit(escrowId: string): boolean {
   const stash = loadStash();
   const entry = stash[escrowId];
@@ -363,9 +577,19 @@ export function reopenBalanceReconciledCredit(escrowId: string): boolean {
 export function listStrandedRedemptions(): StrandedRedemption[] {
   const stranded: StrandedRedemption[] = [];
   for (const entry of Object.values(loadStash())) {
-    // Archived (balance-reconciled / user-dismissed) entries are kept in the
-    // stash for forensics but drop out of the alarm list.
+    // Archived (balance-reconciled / user-dismissed / probed-dead) entries are
+    // kept in the stash for forensics but drop out of the alarm list.
     if (entry.resolvedAt) continue;
+    // A note the federation rejected as never-valid has nothing to export and
+    // no money question behind it. markPendingRedemptionsProbedDead archives as
+    // well as marks, so this is belt-and-braces — it also covers an entry that
+    // a re-stash un-archived while carrying the same proven-dead bearer string.
+    //
+    // NOTE the asymmetry: `consumed-uncredited` deliberately does NOT drop out.
+    // Its note is equally un-importable, but the sats are an open question, and
+    // the surface's job is to keep holding that question — honestly (the UI
+    // reads probeVerdict to avoid asserting where the money went).
+    if (entry.probeVerdict === "dead") continue;
     if (entry.unresolvedCredit || isConsumedCreditUnconfirmed(entry)) {
       stranded.push({ ...entry, stranded: "unresolved-credit" });
     } else if (entry.lastError && entry.poisonedAt) {
@@ -472,6 +696,13 @@ export async function drainPendingRedemptions(
     // sats for the claimant's outbound payout; reissuing or exporting its
     // original bearer string would be both pointless and misleading.
     if (entry.creditedAt) continue;
+    // The federation was asked about this exact note and has taken it. Retrying
+    // across boots cannot change a definitive answer — and unlike the poison
+    // heuristics below, this one was tested rather than inferred.
+    if (entry.probeVerdict === "dead" || entry.probeVerdict === "consumed-uncredited") {
+      summary.unresolved++;
+      continue;
+    }
     // Skip poisoned / unresolved entries — they've been diagnosed as
     // unrecoverable-by-retry. The C13 surface owns them now.
     if (entry.lastError && entry.poisonedAt) {

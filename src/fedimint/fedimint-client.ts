@@ -1876,17 +1876,35 @@ export class FedimintClient {
    * redeemWithRetry entry.
    *
    * Under the mint mutex (C12) no other mint op moves this wallet's
-   * balance concurrently, so `delta >= expected` is a sound credit
-   * signal for mint traffic. Lightning receives are NOT under the mint
-   * lock, so one accepted residual risk remains: an unrelated LN
-   * receive of >= the claim amount landing inside this poll window
-   * would false-confirm a front-run — success is reported and the
-   * stash entry is cleared with no alarm. That window is bounded by
-   * alreadySpentConfirmTimeoutMs (default 10s) from a baseline taken
-   * at redeem entry, and the real SDK adapter never reaches this
-   * branch for a self-credit (it resumes from local op history), so
-   * the coincidence-of-amount-and-timing is judged acceptably rare.
-   * Do NOT widen this window without revisiting that trade-off.
+   * balance concurrently. Lightning receives are NOT under the mint
+   * lock, so an unrelated LN receive landing inside this poll window
+   * is the one thing that can move the balance without being this
+   * credit.
+   *
+   * ── 2026-08-22: the delta must be EXACT, not `>=` ─────────────────
+   *
+   * This test used to be `delta >= expected`, with the LN coincidence
+   * booked as an accepted residual risk ("judged acceptably rare; do
+   * NOT widen this window without revisiting that trade-off"). Two
+   * things forced the revisit:
+   *
+   *   1. THIS FUNCTION SITS UNDERNEATH THE REISSUE PROBE, NOT BESIDE
+   *      IT. On the already-spent path it derives confirmed=true from
+   *      the balance and returns NORMALLY, so reabsorbBearerNotes()
+   *      then reads the same balance and treats it as independent
+   *      corroboration. The two loose checks that each looked
+   *      survivable were one loose check, counted twice.
+   *   2. The window here is a poll loop up to
+   *      alreadySpentConfirmTimeoutMs (default 10s), far wider than
+   *      the probe's single bracket — and a false positive here is
+   *      SILENT SUCCESS on the claim path, which is precisely what
+   *      the invariant above this call promises never to do.
+   *
+   * Exactness is affordable now in a way it was not before: a
+   * confirm-timeout no longer archives anything, it opens a recorded
+   * `consumed-uncredited` question (see reabsorb-bearer-notes.ts). The
+   * cost of strictness is a question the user can see; the cost of
+   * looseness was a silent one.
    *
    * Returns confirmed=false when the entry balance or the parsed
    * amount was unreadable — "can't confirm" must surface, not pass.
@@ -1906,7 +1924,10 @@ export class FedimintClient {
     for (;;) {
       try {
         balanceAfter = await wallet.balance.getBalance();
-        if (balanceAfter - balanceBefore >= expectedMsats) {
+        // EXACT. A delta larger than the claim is not this claim plus
+        // rounding — it is this claim plus something else, or something
+        // else entirely, and neither is evidence about these notes.
+        if (balanceAfter - balanceBefore === expectedMsats) {
           return { confirmed: true, balanceAfter };
         }
       } catch {

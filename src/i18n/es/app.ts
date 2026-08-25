@@ -148,6 +148,15 @@ export const app: Record<string, string> = {
   "app.phaseRecoveringShare": "Recuperando tu parte…",
   "app.phaseSendingNwc": "Enviando a NWC…",
   "app.phaseStillCreatingInvoice": "Todavía creando la factura…",
+  "app.reabsorbConsumedUncredited":
+    "Tu Chama ya aceptó estas notas — no se pueden volver a importar, así que dejan de ofrecerse. No podemos confirmar que los sats llegaran a esta billetera, así que queda como un asunto abierto en lugar de darse por perdido.",
+  "app.reabsorbDead":
+    "Estas notas ya no son válidas — no se recuperó nada. Tu Chama confirmó que ya están gastadas, así que esta entrada deja de pedirte que las persigas.",
+  "app.reabsorbForeign":
+    "Esta nota pertenece a otra federación, así que no puede volver aquí. No se cambió nada — abre Chama en esa federación para usarla.",
+  "app.reabsorbRecovered": "₿{sats} recuperados a tu saldo.",
+  "app.reabsorbUnknown":
+    "No se pudo obtener una respuesta clara de tu Chama, así que no se cambió nada. La nota está exactamente donde estaba — inténtalo de nuevo en un momento.",
   "app.recoverAndSwitchSubtitle":
     "Envía a tu billetera Lightning y luego cambia a {label}.",
   "app.recoverAndSwitchTitle": "Recuperar y cambiar de Chama",

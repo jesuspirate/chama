@@ -162,6 +162,17 @@ export const app: Record<string, string> = {
   "app.phaseRecoveringShare": "Recovering your share…",
   "app.phaseSendingNwc": "Sending to NWC…",
   "app.phaseStillCreatingInvoice": "Still creating invoice…",
+  // 6.0.2 liveness probe. The four honest answers a reissue can give. Never a
+  // spinner that ends in silence, and never a cause we did not test.
+  "app.reabsorbConsumedUncredited":
+    "Your Chama has already accepted these notes — they can't be imported again, so they've stopped being offered. We can't confirm the sats reached this wallet, so it's being kept as an open item rather than written off.",
+  "app.reabsorbDead":
+    "These notes are no longer valid — nothing was recovered. Your Chama confirmed they're already spent, so this entry has stopped asking you to chase them.",
+  "app.reabsorbForeign":
+    "This note belongs to a different federation, so it can't come back here. Nothing was changed — open Chama on that federation to use it.",
+  "app.reabsorbRecovered": "Recovered ₿{sats} to your balance.",
+  "app.reabsorbUnknown":
+    "Couldn't get a straight answer from your Chama, so nothing was changed. The note is exactly where it was — try again in a moment.",
   "app.recoverAndSwitchSubtitle":
     "Send to your Lightning wallet, then switch to {label}.",
   "app.recoverAndSwitchTitle": "Recover & switch Chama",

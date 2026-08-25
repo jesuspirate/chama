@@ -274,7 +274,10 @@ import {
   stashPendingRedemption,
   drainPendingRedemptions,
   markPoisoned,
+  markPendingRedemptionsProbedDead,
   markUnresolvedCredit,
+  recordBearerProbe,
+  recordConsumedUncreditedNote,
   reopenBalanceReconciledCredit,
   resolveUnresolvedCredit,
   listStrandedRedemptions,
@@ -284,6 +287,7 @@ import {
   PENDING_REDEMPTIONS_KEY,
 } from "../fedimint/pending-redemptions.js";
 import { decideOrphanWipe, NO_CLIENT_OPEN_ERROR_RE } from "../fedimint/orphan-wipe-policy.js";
+import { reabsorbBearerNotes } from "../fedimint/reabsorb-bearer-notes.js";
 import { collectClaimEnvelopeCandidates } from "./holder-shares.js";
 import {
   stashEcashExport,
@@ -22858,7 +22862,7 @@ console.log("\n── V3.4.0 FUND SAFETY ──");
 function makeFundSafetyWallet(overrides: {
   spendNotes?: (msat: number) => Promise<string>;
   redeemEcash?: (oob: string) => Promise<void>;
-  parseNotes?: (oob: string) => Promise<{ total_amount: number }>;
+  parseNotes?: (oob: string) => Promise<{ total_amount: number; federation_id?: string }>;
   getBalance?: () => Promise<number>;
 }) {
   return {
@@ -23112,6 +23116,41 @@ function makeFundSafetyWallet(overrides: {
     await client.cleanup();
   }
 
+  // (b2) 2026-08-22 — the LN-coincidence hole this function's own docblock
+  //      used to book as "acceptably rare". An unrelated Lightning receive
+  //      settles inside the 10s confirm window; it is not under the mint lock,
+  //      so nothing else stops it. Under `delta >= expected` it false-confirmed
+  //      a front-run as SUCCESS and cleared the stash silently — the exact
+  //      thing the invariant above the call promises never to happen. One extra
+  //      msat is enough to prove the credit is not this claim's.
+  {
+    let bal = 0;
+    const wallet = makeFundSafetyWallet({
+      redeemEcash: async () => {
+        // An LN receive of 7,001 msats lands while we poll: close enough to
+        // pass a `>=` test, and provably not the 7,000-msat claim.
+        bal += 7_001;
+        throw new Error("Notes already spent by the federation");
+      },
+      parseNotes: async () => ({ total_amount: 7_000 }),
+      getBalance: async () => bal,
+    });
+    const client = new FedimintClient({}, async () => wallet as any);
+    await client.init();
+    client.alreadySpentConfirmTimeoutMs = 60;
+    let thrownCode = "";
+    let resolvedSilently = false;
+    try {
+      await client.redeemWithRetry("oob_ln_coincidence");
+      resolvedSilently = true;
+    } catch (e) {
+      thrownCode = (e as { code?: string })?.code ?? "";
+    }
+    assert(!resolvedSilently && thrownCode === "ALREADY_SPENT_UNCONFIRMED",
+      "invariant_already-spent__requires_confirmed_credit: a concurrent credit of expected+1 inside the confirm window is NOT this claim — unconfirmed, never silent success");
+    await client.cleanup();
+  }
+
   // (c) Drain integration: an unconfirmed already-spent entry is marked
   //     unresolved-credit (surfaced, skipped by future drains) instead of
   //     burning retry attempts forever.
@@ -23194,6 +23233,473 @@ function makeFundSafetyWallet(overrides: {
     "invariant_stranded-notes__surfaced_and_exportable: poison and retry-exhaustion are classified");
   assert(stranded.every(s => s.oobNotes === `oob_${s.escrowId}`),
     "invariant_stranded-notes__surfaced_and_exportable: every stranded entry carries its full bearer note verbatim (exportable)");
+  clearAllPendingRedemptions();
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// 6.0.2 · REISSUANCE AS THE LIVENESS PROBE (reabsorb-bearer-notes.ts)
+// ══════════════════════════════════════════════════════════════════════════
+//
+// "Do not verify a note. Consume it." Every assertion here pins one of the
+// rules that make the answer trustworthy — above all rule 3, the balance
+// bracket, whose absence is the whole 2026-08-19 fund-loss narrative.
+
+console.log("\n── 6.0.2 REISSUE LIVENESS PROBE ──");
+
+/** A wallet whose balance actually moves, so the bracket is exercised for
+ *  real rather than being asserted against a constant. */
+function makeProbeClient(opts: {
+  startBalanceMsats?: number;
+  creditOnRedeemMsats?: number;
+  redeemThrows?: () => unknown;
+  parsed?: { total_amount: number; federation_id?: string };
+  balanceThrows?: boolean;
+  onRedeem?: () => void;
+}) {
+  let balance = opts.startBalanceMsats ?? 0;
+  const calls = { redeems: 0, parses: 0 };
+  const wallet = makeFundSafetyWallet({
+    getBalance: async () => {
+      if (opts.balanceThrows) throw new Error("balance read failed");
+      return balance;
+    },
+    parseNotes: async () => {
+      calls.parses++;
+      return opts.parsed ?? { total_amount: 100_000 };
+    },
+    redeemEcash: async () => {
+      calls.redeems++;
+      opts.onRedeem?.();
+      const err = opts.redeemThrows?.();
+      if (err) throw err;
+      balance += opts.creditOnRedeemMsats ?? 0;
+    },
+  });
+  return { wallet, calls, balanceNow: () => balance };
+}
+
+// ── recovered: the notes were live and the balance moved by the expected amount
+{
+  const { FedimintClient } = await import("../fedimint/fedimint-client.js");
+  const { wallet, calls } = makeProbeClient({ creditOnRedeemMsats: 100_000 });
+  const client = new FedimintClient({}, async () => wallet as any);
+  await client.init();
+  const result = await reabsorbBearerNotes(client, {
+    oobNotes: "oob_live_100",
+    expectedMsats: 100_000,
+    context: "pending-export",
+  });
+  assert(result.outcome === "recovered",
+    "invariant_reabsorb__consume-is-the-probe: a live note comes back as `recovered`, not as an opinion about it");
+  assert(result.outcome === "recovered" && result.recoveredMsats === 100_000,
+    "invariant_reabsorb__consume-is-the-probe: the amount reported is the OBSERVED balance delta");
+  assert(calls.redeems === 1,
+    "invariant_reabsorb__consume-is-the-probe: the probe asks by reissuing exactly once");
+  await client.cleanup();
+}
+
+// ── ⚠ THE 2026-08-19 CASE: reissue "succeeded" but the balance never moved ──
+{
+  const { FedimintClient } = await import("../fedimint/fedimint-client.js");
+  // creditOnRedeemMsats omitted: redeemEcash resolves cleanly and credits 0.
+  const { wallet } = makeProbeClient({});
+  const client = new FedimintClient({}, async () => wallet as any);
+  await client.init();
+  const result = await reabsorbBearerNotes(client, {
+    oobNotes: "oob_phantom",
+    expectedMsats: 100_000,
+    context: "stranded-claim",
+  });
+  assert(result.outcome === "unknown",
+    "invariant_reabsorb__balance-bracket: a success the balance does not corroborate is UNKNOWN, never `recovered`");
+  await client.cleanup();
+}
+
+// ── a CLEAN resolve is exact too — the second reading is not a second signal ─
+//
+// On the already-spent path, confirmAlreadySpentCredit derives its verdict from
+// the balance and then returns NORMALLY, so this branch re-reads the same
+// number. Treating that as independent corroboration counted one signal twice.
+{
+  const { FedimintClient } = await import("../fedimint/fedimint-client.js");
+  let balance = 0;
+  const wallet = makeFundSafetyWallet({
+    getBalance: async () => balance,
+    parseNotes: async () => ({ total_amount: 100_000 }),
+    // The reissue resolves cleanly AND an unrelated receive lands beside it.
+    redeemEcash: async () => { balance += 100_001; },
+  });
+  const client = new FedimintClient({}, async () => wallet as any);
+  await client.init();
+  const result = await reabsorbBearerNotes(client, {
+    oobNotes: "oob_clean_but_overshot",
+    expectedMsats: 100_000,
+    context: "pending-export",
+  });
+  assert(result.outcome === "unknown",
+    "invariant_reabsorb__balance-bracket: even a clean resolve needs an EXACT delta — an overshooting balance is not this note's value confirmed");
+  await client.cleanup();
+}
+
+// ── the balance moved even though the call threw: still recovered ──────────
+{
+  const { FedimintClient } = await import("../fedimint/fedimint-client.js");
+  const { wallet } = makeProbeClient({
+    creditOnRedeemMsats: 0,
+    redeemThrows: () => {
+      const e: any = new Error("stream closed");
+      return e;
+    },
+  });
+  // Credit lands late, between the throw and the closing bracket read.
+  let balance = 0;
+  (wallet as any).balance.getBalance = async () => balance;
+  (wallet as any).mint.redeemEcash = async () => {
+    balance += 100_000;
+    throw new Error("stream closed after the op landed");
+  };
+  const client = new FedimintClient({}, async () => wallet as any);
+  await client.init();
+  const result = await reabsorbBearerNotes(client, {
+    oobNotes: "oob_late",
+    expectedMsats: 100_000,
+    context: "stranded-claim",
+  });
+  assert(result.outcome === "recovered" && result.lateCredit,
+    "invariant_reabsorb__balance-bracket: a throw whose op still credited the wallet is `recovered` (flagged late), never `dead`");
+  await client.cleanup();
+}
+
+// ── consumed-uncredited: the note is finished, the sats are an open question ─
+//
+// One outcome was answering two questions (2026-08-22 fixture probe). These
+// pin them apart.
+{
+  const { FedimintClient } = await import("../fedimint/fedimint-client.js");
+  const { wallet } = makeProbeClient({
+    redeemThrows: () => new Error("Notes already spent by the federation"),
+  });
+  const client = new FedimintClient({}, async () => wallet as any);
+  await client.init();
+  client.alreadySpentConfirmTimeoutMs = 60;
+  const result = await reabsorbBearerNotes(client, {
+    oobNotes: "oob_spent",
+    expectedMsats: 100_000,
+    context: "pending-export",
+  });
+  assert(result.outcome === "consumed-uncredited",
+    "invariant_reabsorb__consumed-is-not-dead: an already-spent note with no confirmed credit is CONSUMED with the money question still open — never archived as dead");
+  await client.cleanup();
+}
+
+// ── the fixture's exact shape: MINT_REISSUE_UNKNOWN wrapping an already-spent
+//    cause. The proof is in err.cause, which the top-level message hides. ────
+{
+  const { FedimintClient } = await import("../fedimint/fedimint-client.js");
+  const { wallet } = makeProbeClient({
+    redeemThrows: () => {
+      const e: any = new Error(
+        "Mint notes were consumed by the federation, but no local reissue operation was found to confirm wallet credit.",
+      );
+      e.code = "MINT_REISSUE_UNKNOWN";
+      e.cause = new Error("notes already reissued");
+      return e;
+    },
+  });
+  const client = new FedimintClient({}, async () => wallet as any);
+  await client.init();
+  const result = await reabsorbBearerNotes(client, {
+    oobNotes: "oob_consumed_unknown",
+    expectedMsats: 100_000,
+    context: "pending-export",
+  });
+  assert(result.outcome === "consumed-uncredited",
+    "invariant_reabsorb__consumed-is-not-dead: the federation's rejection is read from err.cause, not from the wrapper's message about what it could not confirm");
+  await client.cleanup();
+}
+
+// ── ...but MINT_REISSUE_UNKNOWN with NO such cause is still just unknown ────
+{
+  const { FedimintClient } = await import("../fedimint/fedimint-client.js");
+  const { wallet } = makeProbeClient({
+    redeemThrows: () => {
+      // Same message — text that reads exactly like a verdict — but nothing
+      // underneath it. A future second raise site must not smuggle a verdict
+      // in on the strength of the code alone.
+      const e: any = new Error(
+        "Mint notes were consumed by the federation, but no local reissue operation was found to confirm wallet credit.",
+      );
+      e.code = "MINT_REISSUE_UNKNOWN";
+      return e;
+    },
+  });
+  const client = new FedimintClient({}, async () => wallet as any);
+  await client.init();
+  const result = await reabsorbBearerNotes(client, {
+    oobNotes: "oob_unknown",
+    expectedMsats: 100_000,
+    context: "stranded-claim",
+  });
+  assert(result.outcome === "unknown",
+    "invariant_reabsorb__only-rejection-is-death: an uncorroborated MINT_REISSUE_UNKNOWN stays UNKNOWN — the code alone is not the federation's word");
+  await client.cleanup();
+}
+
+// ── `dead` is now narrow: never-valid only, and it carries no money question ─
+{
+  const { FedimintClient } = await import("../fedimint/fedimint-client.js");
+  const { wallet } = makeProbeClient({
+    redeemThrows: () => new Error("invalid note format: malformed denomination"),
+  });
+  const client = new FedimintClient({}, async () => wallet as any);
+  await client.init();
+  const result = await reabsorbBearerNotes(client, {
+    oobNotes: "oob_never_valid",
+    expectedMsats: 100_000,
+    context: "stranded-claim",
+  });
+  assert(result.outcome === "dead",
+    "invariant_reabsorb__consumed-is-not-dead: a string the federation will never honour is dead — there was no money here, so no question follows it");
+  await client.cleanup();
+}
+
+// ── a verdict OUTRANKS the balance, even a perfectly-sized concurrent credit ─
+{
+  const { FedimintClient } = await import("../fedimint/fedimint-client.js");
+  let balance = 0;
+  const wallet = makeFundSafetyWallet({
+    getBalance: async () => balance,
+    parseNotes: async () => ({ total_amount: 100_000 }),
+    redeemEcash: async () => {
+      // A Lightning receive settles inside the probe's bracket — it is under
+      // no mint lock — while the federation rejects the note. Uses a
+      // structured terminal code, because a BARE "already spent" message never
+      // reaches the probe in this shape: redeemWithRetry's own
+      // confirmAlreadySpentCredit sees the +100,000 and reports the redeem as
+      // an accepted credit one layer down.
+      balance += 100_000;
+      const e: any = new Error(
+        "Mint reissue operation failed after federation consumed the notes (outcome=Failed)",
+      );
+      e.code = "MINT_REISSUE_FAILED";
+      throw e;
+    },
+  });
+  const client = new FedimintClient({}, async () => wallet as any);
+  await client.init();
+  const result = await reabsorbBearerNotes(client, {
+    oobNotes: "oob_rejected_but_ln_landed",
+    expectedMsats: 100_000,
+    context: "pending-export",
+  });
+  assert(result.outcome === "consumed-uncredited",
+    "invariant_reabsorb__verdict-outranks-delta: an unrelated credit landing inside the bracket can NEVER turn a federation rejection into `recovered`");
+  await client.cleanup();
+}
+
+// ── late credit demands EXACT equality, not `>=` ───────────────────────────
+{
+  const { FedimintClient } = await import("../fedimint/fedimint-client.js");
+  for (const [creditMsats, wanted, why] of [
+    [100_000, "recovered", "a non-definitive throw whose op landed for exactly this note's value is recovered"],
+    [100_001, "unknown", "delta === expected + 1 is UNKNOWN — one extra msat means the movement is not attributable to this note"],
+    [250_000, "unknown", "a larger unattributable credit is never read as this note coming back"],
+  ] as const) {
+    let balance = 0;
+    const wallet = makeFundSafetyWallet({
+      getBalance: async () => balance,
+      parseNotes: async () => ({ total_amount: 100_000 }),
+      redeemEcash: async () => {
+        balance += creditMsats;
+        throw new Error("stream closed before the reissue confirmed");
+      },
+    });
+    const client = new FedimintClient({}, async () => wallet as any);
+    await client.init();
+    const result = await reabsorbBearerNotes(client, {
+      oobNotes: `oob_late_${creditMsats}`,
+      expectedMsats: 100_000,
+      context: "pending-export",
+    });
+    assert(result.outcome === wanted,
+      `invariant_reabsorb__late-credit-is-exact: ${why}`);
+    await client.cleanup();
+  }
+}
+
+// ── foreign: reported as unreachable, and NEVER consumed ──────────────────
+{
+  const { FedimintClient } = await import("../fedimint/fedimint-client.js");
+  const { wallet, calls } = makeProbeClient({
+    parsed: { total_amount: 100_000, federation_id: "fed_somewhere_else" },
+    creditOnRedeemMsats: 100_000,
+  });
+  const client = new FedimintClient({}, async () => wallet as any);
+  await client.init();
+  const result = await reabsorbBearerNotes(client, {
+    oobNotes: "oob_foreign",
+    expectedMsats: 100_000,
+    context: "pending-export",
+  });
+  assert(result.outcome === "foreign",
+    "invariant_reabsorb__foreign-is-not-dead: a note bound to another federation reports foreign");
+  assert(calls.redeems === 0,
+    "invariant_reabsorb__foreign-is-not-dead: a foreign note is never consumed by the probe");
+  await client.cleanup();
+}
+
+// ── no readable balance ⇒ refuse to consume at all ────────────────────────
+{
+  const { FedimintClient } = await import("../fedimint/fedimint-client.js");
+  const { wallet, calls } = makeProbeClient({ balanceThrows: true, creditOnRedeemMsats: 100_000 });
+  const client = new FedimintClient({}, async () => wallet as any);
+  await client.init();
+  const result = await reabsorbBearerNotes(client, {
+    oobNotes: "oob_no_bracket",
+    expectedMsats: 100_000,
+    context: "stranded-claim",
+  });
+  assert(result.outcome === "unknown",
+    "invariant_reabsorb__balance-bracket: without a readable balance the probe reports unknown");
+  assert(calls.redeems === 0,
+    "invariant_reabsorb__balance-bracket: an unverifiable consume is never attempted — refusing costs nothing, guessing costs sats");
+  await client.cleanup();
+}
+
+// ── double-tap coalescing (ABOVE the mint lock, where it has to be) ───────
+{
+  const { FedimintClient } = await import("../fedimint/fedimint-client.js");
+  let release!: () => void;
+  const gate = new Promise<void>((r) => { release = r; });
+  let balance = 0;
+  let redeems = 0;
+  const wallet = makeFundSafetyWallet({
+    getBalance: async () => balance,
+    parseNotes: async () => ({ total_amount: 100_000 }),
+    redeemEcash: async () => {
+      redeems++;
+      await gate;
+      balance += 100_000;
+    },
+  });
+  const client = new FedimintClient({}, async () => wallet as any);
+  await client.init();
+  const a = reabsorbBearerNotes(client, {
+    oobNotes: "oob_double_tap", expectedMsats: 100_000, context: "pending-export",
+  });
+  const b = reabsorbBearerNotes(client, {
+    oobNotes: "oob_double_tap", expectedMsats: 100_000, context: "pending-export",
+  });
+  release();
+  const [ra, rb] = await Promise.all([a, b]);
+  assert(redeems === 1,
+    "invariant_reabsorb__double-tap-safe: two concurrent probes of the same note reissue ONCE");
+  assert(ra.outcome === "recovered" && rb.outcome === "recovered",
+    "invariant_reabsorb__double-tap-safe: the second tap gets the same honest answer, not 'already spent ⇒ dead' for money it just recovered");
+  await client.cleanup();
+}
+
+// ── the seam: a probe verdict outranks the lastError string match ─────────
+{
+  clearAllPendingRedemptions();
+
+  // (a) Unprobed + legacy consumed-note wording ⇒ the FALLBACK still works.
+  stashPendingRedemption({ escrowId: "legacy", oobNotes: "oob_legacy", notesHash: "h", amountMsats: 100_000 });
+  markPoisoned("legacy", "Mint reissue operation failed after federation consumed the notes (outcome=Failed)");
+  assert(listStrandedRedemptions().find(e => e.escrowId === "legacy")?.stranded === "unresolved-credit",
+    "invariant_reabsorb__probe-is-the-authority: an entry never probed still falls back to the lastError heuristic");
+
+  // (b) A note the heuristic reads as plain-poisoned (possibly LIVE money, so
+  //     a loud red export card) but which the federation has now definitively
+  //     rejected. The card was offering a note that cannot be redeemed by
+  //     anyone; the probe is what ends that.
+  stashPendingRedemption({ escrowId: "probed", oobNotes: "oob_probed", notesHash: "h2", amountMsats: 100_000 });
+  markPoisoned("probed", "malformed notes");
+  assert(listStrandedRedemptions().some(e => e.escrowId === "probed"),
+    "invariant_reabsorb__probe-is-the-authority: before the probe, a poisoned note is loudly offered for export");
+  const marked = markPendingRedemptionsProbedDead("oob_probed", "already spent");
+  assert(marked.join(",") === "probed",
+    "invariant_reabsorb__probe-is-the-authority: the dead mark lands on the exact bearer string that was probed");
+  assert(!listStrandedRedemptions().some(e => e.escrowId === "probed"),
+    "invariant_reabsorb__probe-is-the-authority: a federation-proven-dead note stops being offered — the one thing resolveUnresolvedCredit may never do to a poisoned entry");
+  assert(listPendingRedemptions().some(e => e.escrowId === "probed" && e.resolution === "probed-dead"),
+    "invariant_reabsorb__probe-is-the-authority: dead entries are ARCHIVED, not deleted (forensics, like every other resolution)");
+  assert(!reopenBalanceReconciledCredit("probed"),
+    "invariant_reabsorb__probe-is-the-authority: no balance reading can reopen an archive that rests on the federation's own rejection");
+
+  // (c) Amount is never identity: an equal-value different note is untouched.
+  stashPendingRedemption({ escrowId: "twin", oobNotes: "oob_twin", notesHash: "h3", amountMsats: 100_000 });
+  markPoisoned("twin", "malformed notes");
+  assert(markPendingRedemptionsProbedDead("oob_probed", "already spent").join(",") === "probed"
+    && listStrandedRedemptions().some(e => e.escrowId === "twin"),
+    "invariant_reabsorb__probe-is-the-authority: an equal-value DIFFERENT note is never marked dead by association");
+
+  // (c1) consumed-uncredited: the note stops being offered for recovery but the
+  //      MONEY QUESTION STAYS OPEN — it must remain in the alarm list, and it
+  //      must be recorded even when no trade record holds the note (a
+  //      wallet-source export), or clearing the export erases the last trace.
+  {
+    clearAllPendingRedemptions();
+    const ids = recordConsumedUncreditedNote({
+      oobNotes: "oob_orphan_export",
+      amountMsats: 100_000,
+      reason: "Mint notes were consumed by the federation",
+    });
+    assert(ids.length === 1,
+      "invariant_reabsorb__open-question-survives: a consumed note with no trade behind it gets a record created for it");
+    const listed = listStrandedRedemptions();
+    assert(listed.length === 1 && listed[0].stranded === "unresolved-credit",
+      "invariant_reabsorb__open-question-survives: it stays in the alarm list as unresolved credit — archiving would close a question that is open");
+    assert(listed[0].probeVerdict === "consumed-uncredited",
+      "invariant_reabsorb__open-question-survives: the UI can tell a TESTED consumption from an inferred one, so it never asserts where the money went");
+    assert(recordConsumedUncreditedNote({
+      oobNotes: "oob_orphan_export", amountMsats: 100_000, reason: "again",
+    }).join(",") === ids.join(","),
+      "invariant_reabsorb__open-question-survives: a second probe of the same note updates one record rather than creating a twin");
+    clearAllPendingRedemptions();
+    stashPendingRedemption({ escrowId: "legacy", oobNotes: "oob_legacy", notesHash: "h", amountMsats: 100_000 });
+    markPoisoned("legacy", "Mint reissue operation failed after federation consumed the notes (outcome=Failed)");
+    stashPendingRedemption({ escrowId: "probed", oobNotes: "oob_probed", notesHash: "h2", amountMsats: 100_000 });
+    markPoisoned("probed", "malformed notes");
+    markPendingRedemptionsProbedDead("oob_probed", "already spent");
+    stashPendingRedemption({ escrowId: "twin", oobNotes: "oob_twin", notesHash: "h3", amountMsats: 100_000 });
+    markPoisoned("twin", "malformed notes");
+  }
+
+  // (c2) And the boot drain stops reissuing a note the federation rejected.
+  {
+    const { FedimintClient } = await import("../fedimint/fedimint-client.js");
+    let redeems = 0;
+    const wallet = makeFundSafetyWallet({
+      redeemEcash: async () => { redeems++; },
+      parseNotes: async () => ({ total_amount: 100_000 }),
+    });
+    const client = new FedimintClient({}, async () => wallet as any);
+    await client.init();
+    stashPendingRedemption({ escrowId: "fresh_dead", oobNotes: "oob_fresh_dead", notesHash: "h4", amountMsats: 100_000 });
+    markPendingRedemptionsProbedDead("oob_fresh_dead", "already spent");
+    const summary = await drainPendingRedemptions(client);
+    assert(summary.attempted === 0 && redeems === 0,
+      "invariant_reabsorb__probe-is-the-authority: the boot drain never re-consumes a note the federation definitively rejected");
+    await client.cleanup();
+  }
+
+  // (d) A verdict is a statement about a BEARER STRING, not about a trade —
+  //     and a later "unknown" never downgrades a definitive one.
+  assert(recordBearerProbe("oob_twin", "dead", "already spent").join(",") === "twin",
+    "invariant_reabsorb__probe-is-the-authority: a verdict is stamped by exact bearer string, not by escrow id");
+  recordBearerProbe("oob_twin", "unknown", "timed out");
+  assert(listPendingRedemptions().find(e => e.escrowId === "twin")?.probeVerdict === "dead",
+    "invariant_reabsorb__probe-is-the-authority: a note proven dead does not become uncertain because a later probe timed out");
+  assert(recordBearerProbe("oob_not_in_the_stash", "unknown", "timed out").length === 0,
+    "invariant_reabsorb__probe-is-the-authority: a verdict about a note no record holds stamps nothing");
+
+  // (e) A verdict belongs to the bearer string it was obtained for. Re-stashing
+  //     the same escrow with FRESH notes must not condemn them by inheritance.
+  stashPendingRedemption({ escrowId: "twin", oobNotes: "oob_twin_v2", notesHash: "h3", amountMsats: 100_000 });
+  assert(listPendingRedemptions().find(e => e.escrowId === "twin")?.probeVerdict === undefined,
+    "invariant_reabsorb__probe-is-the-authority: a re-stash with different notes drops the old verdict — the federation was never asked about THESE notes");
+
   clearAllPendingRedemptions();
 }
 

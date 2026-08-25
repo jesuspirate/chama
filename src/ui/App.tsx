@@ -187,8 +187,12 @@ import {
   clearPendingRedemptionsMatchingNotes,
   listPendingRedemptions,
   clearPendingRedemption,
+  markPendingRedemptionsProbedDead,
+  recordBearerProbe,
+  recordConsumedUncreditedNote,
   type StrandedRedemption,
 } from "../fedimint/pending-redemptions.js";
+import type { ReabsorbOutcome } from "../fedimint/reabsorb-bearer-notes.js";
 import { clearEcashExport, getEcashExport } from "../payments/ecash-exports.js";
 import {
   MIN_REAL_ATOMIC_FUNDING_MSATS,
@@ -870,6 +874,102 @@ export default function App() {
         type: "error",
       });
     }
+  };
+
+  // ── 6.0.2 · reissuance as the liveness probe ──────────────────────────
+  //
+  // Three recovery cards used to present bearer material as recoverable value
+  // without ever asking whether it was live. This is where that stops: the
+  // card taps here, the federation is asked by CONSUMING the note, and the
+  // record is resolved by the answer instead of by an inference.
+  //
+  // Storage resolution lives here (not in the probe, and not in MeScreen) for
+  // one reason: the probe must stay a pure question-and-answer that no caller
+  // can talk into a different verdict, and MeScreen must stay a surface that
+  // renders records rather than one that decides them.
+  const handleReabsorbBearerNotes = async (input: {
+    oobNotes: string;
+    expectedMsats: number;
+    context: "pending-export" | "stranded-claim";
+    escrowId?: string;
+  }): Promise<ReabsorbOutcome> => {
+    let result;
+    try {
+      result = await actions.reabsorbBearerNotes(input);
+    } catch (e: any) {
+      // The probe is documented never to throw; if a caller layer does, that
+      // is still "we don't know", which means CHANGE NOTHING.
+      console.error("[chama] reabsorb probe threw — treating as unknown:", e);
+      setToast({ message: t("app.reabsorbUnknown"), type: "info" });
+      return "unknown";
+    }
+
+    const pending = getEcashExport();
+    const isThisExport = input.context === "pending-export"
+      && pending?.notes === input.oobNotes;
+
+    if (result.outcome === "recovered") {
+      // Exact-bearer-note identity, and amount explicitly not accepted as
+      // identity — the same discipline the recovery records already enforce.
+      clearPendingRedemptionsMatchingNotes(input.oobNotes);
+      if (isThisExport) {
+        if (pending?.source === "claim" && pending.escrowId) {
+          // The sats are irreversibly in this wallet, which is the same
+          // terminal state a claim-into-wallet reaches. Publishing COMPLETE
+          // is honest here; it also clears the export stash.
+          try {
+            await actions.confirmClaimEcashExport(pending.escrowId);
+          } catch (e) {
+            console.warn("[chama] COMPLETE after reabsorb failed (advisory):", e);
+            clearEcashExport();
+          }
+        } else {
+          clearEcashExport();
+        }
+      }
+      setToast({
+        message: t("app.reabsorbRecovered", {
+          sats: String(Math.floor(result.recoveredMsats / 1000)),
+        }),
+        type: "success",
+      });
+    } else if (result.outcome === "consumed-uncredited") {
+      // Two facts, and both have to survive. The note is finished — the
+      // federation has taken it and will never honour it again, so it stops
+      // being offered and stops jamming assertEcashExportWritable. The SATS
+      // are a different question, and an unanswered one: the record is written
+      // FIRST (creating one if this export never had a trade behind it), so
+      // clearing the export can't delete the last trace of it.
+      recordConsumedUncreditedNote({
+        oobNotes: input.oobNotes,
+        amountMsats: input.expectedMsats,
+        reason: result.reason,
+        escrowId: input.escrowId,
+      });
+      // Deliberately NOT confirmClaimEcashExport: nobody was made whole, so
+      // COMPLETE would be a claim we haven't earned.
+      if (isThisExport) clearEcashExport();
+      setToast({ message: t("app.reabsorbConsumedUncredited"), type: "info", sticky: true });
+    } else if (result.outcome === "dead") {
+      // The federation rejected the string as one it will never honour — there
+      // was never money here, so there is no question to keep open. Deliberately
+      // no "are you sure?": nothing is being discarded, the user is being told.
+      markPendingRedemptionsProbedDead(input.oobNotes, result.reason);
+      if (isThisExport) clearEcashExport();
+      setToast({ message: t("app.reabsorbDead"), type: "info", sticky: true });
+    } else {
+      // unknown / foreign: the entry is left EXACTLY as it was. The verdict is
+      // still recorded so the forensic trail can tell "asked, couldn't tell"
+      // apart from "never asked".
+      recordBearerProbe(input.oobNotes, result.outcome, "reason" in result ? result.reason : undefined);
+      setToast({
+        message: result.outcome === "foreign"
+          ? t("app.reabsorbForeign")
+          : t("app.reabsorbUnknown"),
+        type: "info",
+      });
+    }
+    return result.outcome;
   };
 
   // v0.2.0 item 8 / v0.3.0 Phase 4 reminder #3: post-recover auto-
@@ -3892,6 +3992,7 @@ export default function App() {
             onSignOut={handleSignOut}
             onWithdrawEcash={() => setShowEcashExport(true)}
             onExportStrandedClaim={(entry) => setStrandedClaimExport(entry)}
+            onReabsorbBearerNotes={handleReabsorbBearerNotes}
             communitySlug={browseCommunity}
             onSelectCommunity={handleSelectCommunity}
             onOpenBondCeremony={() => setShowBondCeremony(true)}

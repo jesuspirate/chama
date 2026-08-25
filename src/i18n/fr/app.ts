@@ -150,6 +150,15 @@ export const app: Record<string, string> = {
   "app.phaseRecoveringShare": "Récupération de votre part…",
   "app.phaseSendingNwc": "Envoi vers NWC…",
   "app.phaseStillCreatingInvoice": "Création de la facture toujours en cours…",
+  "app.reabsorbConsumedUncredited":
+    "Votre Chama a déjà accepté ces notes — elles ne peuvent plus être importées, elles ne sont donc plus proposées. Nous ne pouvons pas confirmer que les sats sont arrivés dans ce portefeuille ; l'affaire reste donc ouverte plutôt que d'être passée en perte.",
+  "app.reabsorbDead":
+    "Ces notes ne sont plus valides — rien n'a été récupéré. Votre Chama a confirmé qu'elles sont déjà dépensées ; cette entrée cesse donc de vous demander de les poursuivre.",
+  "app.reabsorbForeign":
+    "Cette note appartient à une autre fédération, elle ne peut donc pas revenir ici. Rien n'a été modifié — ouvrez Chama sur cette fédération pour l'utiliser.",
+  "app.reabsorbRecovered": "₿{sats} récupérés dans votre solde.",
+  "app.reabsorbUnknown":
+    "Impossible d'obtenir une réponse claire de votre Chama, donc rien n'a été modifié. La note est exactement là où elle était — réessayez dans un instant.",
   "app.recoverAndSwitchSubtitle":
     "Envoyez vers votre portefeuille Lightning, puis basculez vers {label}.",
   "app.recoverAndSwitchTitle": "Récupérer & changer de Chama",

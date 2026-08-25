@@ -171,6 +171,12 @@ export const me: Record<string, string> = {
   "me.queueSettled": "Liquidados",
   "me.queueStock": "Inventario",
   "me.queueWatching": "En vista",
+  "me.probedConsumedBody":
+    "fue aceptada por tu Chama, así que estas notas ya no se pueden importar. Adónde fueron los sats no está establecido — queda abierto en lugar de darse por perdido, y la nota se conserva como evidencia.",
+  "me.probedConsumedTitle": "YA ACEPTADA · CRÉDITO SIN CONFIRMAR",
+  "me.reabsorbBusy": "Consultando a tu Chama…",
+  "me.reabsorbCancelCta": "Cancelar envío · devolver a mi saldo",
+  "me.reabsorbCta": "Devolver a mi saldo",
   "me.ratingMany": "evaluaciones",
   "me.ratingOne": "evaluación",
   "me.ratingPrompt": "¿Qué tal tu contraparte?",

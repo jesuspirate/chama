@@ -1073,6 +1073,16 @@ export interface UseEscrowActions {
     includeInvite?: boolean,
   ) => Promise<string>;
   redeemEcash: (oobNotes: string, meta?: ChamaOperationMeta) => Promise<void>;
+  /** 6.0.2 liveness probe. Ask the federation whether a bearer note is live
+   *  by TAKING it: `recovered` puts the sats in this balance, `dead` is the
+   *  federation's own rejection, `unknown` means change nothing, `foreign`
+   *  means another federation holds it. Never throws.
+   *
+   *  USER-INITIATED ONLY — a live note reissued here is taken back from
+   *  whoever was about to claim it. Never poll it, never call it on render. */
+  reabsorbBearerNotes: (
+    input: import("../fedimint/reabsorb-bearer-notes.js").ReabsorbInput,
+  ) => Promise<import("../fedimint/reabsorb-bearer-notes.js").ReabsorbResult>;
   /** Read federation wallet-module onchain fees and confirmation policy. */
   getOnchainInfo: () => Promise<OnchainInfo>;
   /**
@@ -6192,6 +6202,17 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       const bridge = requireBridge();
       await bridge.redeemEcash(oobNotes, meta);
       refreshBalanceRef.current?.().catch(() => {});
+    },
+    reabsorbBearerNotes: async (
+      input: import("../fedimint/reabsorb-bearer-notes.js").ReabsorbInput,
+    ) => {
+      const bridge = requireBridge();
+      const result = await bridge.reabsorbBearerNotes(input);
+      // Refresh on EVERY outcome, not just `recovered`: a `dead` verdict is
+      // frequently the moment a stale surface stops disagreeing with the real
+      // balance, and that is the number the user is about to look at.
+      refreshBalanceRef.current?.().catch(() => {});
+      return result;
     },
     getOnchainInfo: async () => {
       const fedimint = fedimintRef.current;

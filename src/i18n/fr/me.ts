@@ -181,6 +181,12 @@ export const me: Record<string, string> = {
   "me.queueSettled": "Réglés",
   "me.queueStock": "Stock",
   "me.queueWatching": "Suivi",
+  "me.probedConsumedBody":
+    "a été accepté par votre Chama, ces notes ne peuvent donc plus être importées. Où sont allés les sats n'est pas établi — l'affaire reste ouverte plutôt que passée en perte, et la note est conservée comme preuve.",
+  "me.probedConsumedTitle": "DÉJÀ ACCEPTÉ · CRÉDIT NON CONFIRMÉ",
+  "me.reabsorbBusy": "Interrogation de votre Chama…",
+  "me.reabsorbCancelCta": "Annuler l'envoi · remettre sur mon solde",
+  "me.reabsorbCta": "Remettre sur mon solde",
   "me.ratingMany": "évaluations",
   "me.ratingOne": "évaluation",
   "me.ratingPrompt": "Comment était votre contrepartie ?",

@@ -66,6 +66,7 @@ import {
   type SatsTraceEntry,
 } from "../../payments/sats-trace.js";
 import { getEcashExport } from "../../payments/ecash-exports.js";
+import type { ReabsorbOutcome } from "../../fedimint/reabsorb-bearer-notes.js";
 import {
   excludeStrandedRedemptionsOwnedByExport,
   listPendingRedemptions,
@@ -140,6 +141,7 @@ export function MeScreen({
   onRateCounterparty,
   myGivenRatings,
   onExportStrandedClaim,
+  onReabsorbBearerNotes,
   onOpenBondCeremony,
   loadLiveness,
   livenessBlocksPerDay,
@@ -197,6 +199,20 @@ export function MeScreen({
   /** v3.4.0 C13 — open the export modal for a stranded claim's bearer
    *  note (a pending-redemption entry automatic retry gave up on). */
   onExportStrandedClaim?: (entry: StrandedRedemption) => void;
+  /** 6.0.2 liveness probe. Ask the federation whether a bearer note is still
+   *  live by TAKING it back into this wallet, and act on the answer (App owns
+   *  the storage resolution + the toast; this screen only triggers and
+   *  re-reads). Resolves to the outcome so the card can re-render.
+   *
+   *  Deliberately a prop and not a render-time effect: reissuing a LIVE note
+   *  takes it back from whoever was about to claim it, so it must never fire
+   *  except on a user's tap. */
+  onReabsorbBearerNotes?: (input: {
+    oobNotes: string;
+    expectedMsats: number;
+    context: "pending-export" | "stranded-claim";
+    escrowId?: string;
+  }) => Promise<ReabsorbOutcome>;
   onSignOut: () => void;
   /** v2.3.1: the user's current Chama. The Browse pill is now view-only;
    *  this screen is the deliberate place to CHANGE it. */
@@ -300,6 +316,56 @@ export function MeScreen({
   const dismissClaim = (escrowId: string) => {
     resolveUnresolvedCredit(escrowId, "user-dismissed");
     bumpStrandedTick((t) => t + 1);
+  };
+  // 6.0.2 liveness probe. Keyed by the exact bearer string so two cards
+  // holding different notes stay independently tappable, and so a double-tap
+  // on one card can't fire twice (the probe layer coalesces too, but a
+  // disabled button is the honest surface).
+  const [probingNotes, setProbingNotes] = useState<string | null>(null);
+  const reabsorb = async (input: {
+    oobNotes: string;
+    expectedMsats: number;
+    context: "pending-export" | "stranded-claim";
+    escrowId?: string;
+  }) => {
+    if (!onReabsorbBearerNotes || probingNotes) return;
+    setProbingNotes(input.oobNotes);
+    try {
+      await onReabsorbBearerNotes(input);
+    } finally {
+      setProbingNotes(null);
+      // App has already resolved the storage records; re-read them. An
+      // `unknown` outcome changes nothing, and the re-read shows exactly that.
+      bumpStrandedTick((t) => t + 1);
+    }
+  };
+  /** The one action shared by all three recovery cards. */
+  const reabsorbButton = (
+    input: {
+      oobNotes: string;
+      expectedMsats: number;
+      context: "pending-export" | "stranded-claim";
+      escrowId?: string;
+    },
+    opts: { label: string; accent: string },
+  ) => {
+    const busy = probingNotes === input.oobNotes;
+    return (
+      <button
+        onClick={(e) => { e.stopPropagation(); void reabsorb(input); }}
+        disabled={probingNotes !== null}
+        style={{
+          width: "100%",
+          minHeight: 40, padding: "11px 12px", borderRadius: T.rs,
+          background: T.surface, border: `1px solid ${opts.accent}66`,
+          color: opts.accent, fontFamily: T.mono, fontSize: 11, fontWeight: 800,
+          cursor: probingNotes === null ? "pointer" : "default",
+          opacity: probingNotes !== null && !busy ? 0.5 : 1,
+        }}
+      >
+        {busy ? t("me.reabsorbBusy") : opts.label}
+      </button>
+    );
   };
   const isClaimPayoutRecovery = !isSmallLeftover && Boolean(satsTrace?.escrowId);
   const traceCopy = describeSatsTrace(satsTrace ?? null);
@@ -410,6 +476,22 @@ export function MeScreen({
             <BitcoinAmount sats={Math.floor(entry.amountMsats / 1000)} size={13} gap={4} glyphScale={1.18} color={T.text} glyphColor={T.muted} />
             {" "}{t("me.strandedClaimBody")}
           </div>
+          {/* The honest alternative to exporting a note nobody has tested:
+              ask the federation by taking it. Either the sats land in the
+              balance or this card learns it was chasing nothing. */}
+          {onReabsorbBearerNotes && (
+            <div style={{ marginTop: 12 }}>
+              {reabsorbButton(
+                {
+                  oobNotes: entry.oobNotes,
+                  expectedMsats: entry.amountMsats,
+                  context: "stranded-claim",
+                  escrowId: entry.escrowId,
+                },
+                { label: t("me.reabsorbCta"), accent: T.text },
+              )}
+            </div>
+          )}
         </div>
       ))}
 
@@ -418,7 +500,14 @@ export function MeScreen({
           rescue) but this wallet is short — likely claimed on another device.
           Honest, dismissible nudge; the note is archived (kept) on dismiss. The
           balance-covered case never reaches here — it auto-reconciles silently. */}
-      {calmClaims.map((entry) => (
+      {calmClaims.map((entry) => {
+        // Two different stories share this card, and only one of them has been
+        // tested. Unprobed: "it most likely landed on another device" — an
+        // inference from a balance shortfall. Probed consumed-uncredited: the
+        // federation confirmed it took the notes, and where the sats went is
+        // NOT established and must not be asserted.
+        const probedConsumed = entry.probeVerdict === "consumed-uncredited";
+        return (
         <div
           key={entry.escrowId}
           style={{
@@ -430,12 +519,29 @@ export function MeScreen({
             fontSize: 11, fontWeight: 600, color: T.amber,
             fontFamily: T.mono, letterSpacing: 1, marginBottom: 8,
           }}>
-            {t("me.checkOtherDeviceTitle")}
+            {probedConsumed ? t("me.probedConsumedTitle") : t("me.checkOtherDeviceTitle")}
           </div>
           <div style={{ fontSize: 13, color: T.text, fontFamily: T.sans, lineHeight: 1.5, marginBottom: 12 }}>
             <BitcoinAmount sats={Math.floor(entry.amountMsats / 1000)} size={13} gap={4} glyphScale={1.18} color={T.text} glyphColor={T.muted} />
-            {" "}{t("me.checkOtherDeviceBody")}
+            {" "}{probedConsumed ? t("me.probedConsumedBody") : t("me.checkOtherDeviceBody")}
           </div>
+          {/* The unprobed card's whole claim is an inference; the probe is the
+              only thing that can settle it. Once it HAS been settled, offering
+              to probe again is offering to re-ask a question already answered
+              — so the button goes away with the guess it replaced. */}
+          {onReabsorbBearerNotes && !probedConsumed && (
+            <div style={{ marginBottom: 8 }}>
+              {reabsorbButton(
+                {
+                  oobNotes: entry.oobNotes,
+                  expectedMsats: entry.amountMsats,
+                  context: "stranded-claim",
+                  escrowId: entry.escrowId,
+                },
+                { label: t("me.reabsorbCta"), accent: T.amber },
+              )}
+            </div>
+          )}
           <div style={{ display: "flex", gap: 8 }}>
             {onExportStrandedClaim && (
               <button
@@ -463,7 +569,8 @@ export function MeScreen({
             </button>
           </div>
         </div>
-      ))}
+        );
+      })}
 
       {/* Only surface a leftover once it's worth acting on. Below the dust line it
           reads as "you're losing sats in limbo" — against Chama's no-wallet promise —
@@ -619,6 +726,25 @@ export function MeScreen({
               ? t("me.mintedEcashAfterOnFed", { federation: pendingEcashExport.federationLabel })
               : t("me.mintedEcashAfter")}
           </div>
+          {/* The missing exit. Before this, onWithdrawEcash was the card's
+              ONLY action, so a note the user knows is dead could not be
+              cleared and assertEcashExportWritable then blocked every future
+              export. This needs no "are you sure?" — nothing is being
+              discarded. The user either gets the money back or learns there
+              was none. It IS a cancel-send, so it says so. */}
+          {onReabsorbBearerNotes && (
+            <div style={{ marginTop: 12 }}>
+              {reabsorbButton(
+                {
+                  oobNotes: pendingEcashExport.notes,
+                  expectedMsats: pendingEcashExport.amountMsats,
+                  context: "pending-export",
+                  escrowId: pendingEcashExport.escrowId,
+                },
+                { label: t("me.reabsorbCancelCta"), accent: T.teal },
+              )}
+            </div>
+          )}
         </div>
       )}
 

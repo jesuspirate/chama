@@ -174,6 +174,18 @@ export const me: Record<string, string> = {
   "me.queueSettled": "Settled",
   "me.queueStock": "Stock",
   "me.queueWatching": "Watching",
+  // Replaces the CHECK YOUR OTHER DEVICE copy once the federation has actually
+  // been asked. That card's "it most likely landed on another device" is an
+  // inference from a balance shortfall; this one states only what was tested.
+  "me.probedConsumedBody":
+    "was accepted by your Chama, so these notes can't be imported again. Where the sats went isn't established — this stays open rather than being written off, and the note is kept as evidence.",
+  "me.probedConsumedTitle": "ALREADY ACCEPTED · CREDIT UNCONFIRMED",
+  "me.reabsorbBusy": "Asking your Chama…",
+  // Labelled as a CANCEL on the export card: reissuing a live note takes it
+  // back from whoever was about to claim it, which is exactly the intent here
+  // — but the user has to be told that is what the tap does.
+  "me.reabsorbCancelCta": "Cancel send · return to my balance",
+  "me.reabsorbCta": "Return to my balance",
   "me.ratingMany": "ratings",
   "me.ratingOne": "rating",
   "me.ratingPrompt": "How was your counterparty?",

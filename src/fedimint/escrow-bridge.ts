@@ -23,6 +23,11 @@ import {
 } from "./fedimint-client.js";
 import { stashPendingRedemption, clearPendingRedemption, markUnresolvedCredit } from "./pending-redemptions.js";
 import {
+  reabsorbBearerNotes,
+  type ReabsorbInput,
+  type ReabsorbResult,
+} from "./reabsorb-bearer-notes.js";
+import {
   assertNativeLockStashWritable,
   clearPendingNativeLock,
   getPendingNativeLock,
@@ -1257,9 +1262,19 @@ export class EscrowFedimintBridge {
   // reassuring green check that proves nothing — worse than no check at all,
   // since a counterparty would ship goods against it. A real liveness probe
   // needs the federation to be asked whether the notes are spendable, and
-  // `parseNotes` is a local decode that never talks to anyone. Until that
-  // exists, detection comes from tranching (escrow-engine/tranche.ts), where a
-  // slice's claim either credits or does not.
+  // `parseNotes` is a local decode that never talks to anyone.
+  //
+  // ✅ 2026-08-21 — THAT PROBE NOW EXISTS: `reabsorbBearerNotes()`
+  // (reabsorb-bearer-notes.ts, exposed below). It asks by CONSUMING: the
+  // reissue is simultaneously the check and the taking of custody.
+  //
+  // Which is also why it still cannot be used HERE, before a claim. It answers
+  // "were these notes live?" by making them not-live, so a pre-claim caller
+  // would spend the escrow to find out whether the escrow was spendable. It is
+  // a recovery instrument — recover or mark dead, never verify and keep
+  // showing. Pre-shipment detection remains tranching
+  // (escrow-engine/tranche.ts), where a slice's claim either credits or does
+  // not.
 
   // ══════════════════════════════════════════════════════════════════════════
   // HELPERS
@@ -1389,6 +1404,14 @@ export class EscrowFedimintBridge {
 
   async redeemEcash(oobNotes: string, meta?: ChamaOperationMeta): Promise<void> {
     await this.fedimint.redeemEcash(oobNotes, meta);
+  }
+
+  /** Liveness probe by consumption — see reabsorb-bearer-notes.ts. Routed
+   *  through the bridge like every other money operation so the UI keeps a
+   *  single object to call. USER-INITIATED ONLY: never poll this, and never
+   *  call it on render. */
+  async reabsorbBearerNotes(input: ReabsorbInput): Promise<ReabsorbResult> {
+    return await reabsorbBearerNotes(this.fedimint, input);
   }
 
   async getOnchainWithdrawFees(address: string, amountSats: number) {
