@@ -263,8 +263,16 @@ export function SettingsAdvanced({
 
       {/* Remote-bridge "friend wallet": point this browser at a Rust bridge
           running on a trusted person's server. Every money leg then runs in
-          the Rust lane (identical to Tauri) — the browser is pure UI. */}
-      <RemoteBridgeCard />
+          the Rust lane (identical to Tauri) — the browser is pure UI.
+
+          Soft-shutdown (2026-08-24): friend links are retired, so this manual
+          config form is now power-user gated — the same home as its sibling
+          route-switching / external-invite-paste surfaces below. The card, its
+          i18n, and native-bridge-adapter.ts are untouched; a power user (or a
+          dev build, isDev) still gets the form for manual bridge testing. */}
+      {(powerUserOn || isDev) && (
+        <RemoteBridgeCard />
+      )}
 
       {/* v2.4 — Recovery phrase. Visible to ALL users (not power-user gated):
           backing up your own funds is a right, not an advanced toggle. Chama

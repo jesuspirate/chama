@@ -3,7 +3,6 @@ import ReactDOM from "react-dom/client";
 import App from "./ui/App.js";
 import { LangProvider } from "./i18n/index.js";
 import { assertProductionEncryption } from "./escrow-engine/encryption-config.js";
-import { claimRemoteBridgeInviteFromFragment } from "./fedimint/native-bridge-adapter.js";
 import { requestPersistentStorageIfWorthwhile } from "./storage/persistent-storage.js";
 
 // SECURITY: hard-fail at boot if a production build is somehow
@@ -15,11 +14,36 @@ import { requestPersistentStorageIfWorthwhile } from "./storage/persistent-stora
 // or web bundle.
 assertProductionEncryption(import.meta.env.PROD);
 
-// Remote-bridge "friend wallet" invite links carry `#bridge=<url>&token=<t>`
-// in the URL fragment. Claim it into localStorage and strip it BEFORE the app
-// renders, so the first wallet init already talks to the invited bridge and
-// the token never lingers in the address bar.
-claimRemoteBridgeInviteFromFragment();
+// Remote-bridge "friend wallet" invite links carried `#bridge=<url>&token=<t>`
+// in the URL fragment — a wallet-repoint primitive: opening such a link used to
+// silently point your money lane at the sender's node. Friend links were soft-
+// shut-down (2026-08-24, nobody uses them; the in-browser WASM wallet replaced
+// them), so we NO LONGER CLAIM the fragment for anyone. We only NEUTRALIZE it:
+// if such a fragment is present we strip it from the URL and do nothing else,
+// so an old or hostile link can't leave a bearer token lingering in the address
+// bar or history. Manual bridge config through Settings → Advanced (power-user
+// only) is the sole remaining way in. Runs before render so nothing ever reads
+// a fragment-supplied bridge URL.
+function neutralizeRemoteBridgeInviteFragment(): void {
+  try {
+    if (typeof window === "undefined") return;
+    const rawHash = window.location.hash.replace(/^#/, "");
+    if (!rawHash) return;
+    // Match the invite shape: either key alone is enough to justify stripping,
+    // so a partial link that left only a `token=` behind is cleaned too. No
+    // other feature uses the URL fragment, so this can't clobber real state.
+    if (!/(?:^|[&?])(?:bridge|token)=/.test(rawHash)) return;
+    window.history.replaceState(
+      null,
+      "",
+      window.location.pathname + window.location.search,
+    );
+  } catch {
+    // Best-effort: the fragment is client-side only and was never claimed, so
+    // a failed strip transmits nothing and repoints nothing.
+  }
+}
+neutralizeRemoteBridgeInviteFragment();
 
 // Android Chrome/PWA requires web notifications to be shown by a service
 // worker; the page-level Notification constructor may be present yet throw.
@@ -49,14 +73,13 @@ void requestPersistentStorageIfWorthwhile().then((outcome) => {
   }
 });
 
-// Opening another friend-wallet invite in an already-running Chama tab is a
-// same-document hash navigation, so `main.tsx` does not execute again. Claim
-// that new invite as soon as the hash changes, then reload once so every wallet
-// consumer is rebuilt against the newly selected isolated bridge. The claim
-// strips the hash before reload, preventing a loop and keeping the token out of
-// the address bar.
+// A friend-wallet invite arriving in an already-running Chama tab is a same-
+// document hash navigation, so `main.tsx` does not execute again. We no longer
+// claim it (see above) — we only strip it, so a link opened into a live tab
+// likewise can't leave a bearer token in the address bar. No reload: nothing
+// was claimed, so there is nothing to rebuild the wallet against.
 window.addEventListener("hashchange", () => {
-  if (claimRemoteBridgeInviteFromFragment()) window.location.reload();
+  neutralizeRemoteBridgeInviteFragment();
 });
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
