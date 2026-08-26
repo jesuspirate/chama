@@ -3,12 +3,23 @@ import { T } from "../theme.js";
 import { isSimModeOn } from "../../sim/simMode.js";
 import { SIM_PILL_HEIGHT } from "../../sim/SimModeBanner.js";
 
-export function Toast({ message, type, onDone, sticky = false }: {
+export function Toast({ message, type, onDone, sticky = false, dismissOnTap = false }: {
   message: ReactNode; type: "success" | "error" | "info"; onDone: () => void;
   /** Hold until dismissed. For a toast that CARRIES A DECISION — a button the
    *  user is meant to press — an auto-dismiss makes the affordance a race the
    *  user usually loses. Sticky toasts get an explicit ✕ instead. */
   sticky?: boolean;
+  /** 6.1: sticky comes in two flavours, and they want different exits.
+   *
+   *  A toast that carries a DECISION (the runtime-lease takeover button) must
+   *  keep the ✕ as its only dismissal: a stray tap anywhere on the body would
+   *  take the choice away mid-reach — the same race auto-dismiss loses.
+   *
+   *  A toast that is sticky only because it is LONG TO READ (the probe
+   *  verdicts) carries no decision at all, so making the whole thing a dismiss
+   *  target costs nothing and turns a 14px corner glyph into a target the size
+   *  of the toast. Set it there, never on the decision-carrying ones. */
+  dismissOnTap?: boolean;
 }) {
   // Type-aware dwell: a success/info confirmation only needs a glance, so it
   // shouldn't linger; an error carries more to read, so it stays a touch longer.
@@ -24,25 +35,31 @@ export function Toast({ message, type, onDone, sticky = false }: {
   // pill when sim mode is on so the green community-switch confirmation
   // and other toasts read cleanly.
   const topOffset = isSimModeOn() ? SIM_PILL_HEIGHT + 16 : 16;
+  // Only meaningful while sticky — a self-dismissing toast has nothing to tap.
+  const tapToDismiss = sticky && dismissOnTap;
   return (
-    <div style={{
-      position: "fixed", top: topOffset, left: "50%", transform: "translateX(-50%)",
-      // A sticky toast carries a corner ✕. Pad the right so a long message
-      // never runs under it, rather than letting it wrap to its own line.
-      padding: sticky ? "14px 40px 14px 24px" : "14px 24px", borderRadius: 999,
-      // OPAQUE surface so the toast never blends into whatever's behind it — a
-      // toast is allowed to hide the page for its few seconds. The type colour
-      // lives in the border, icon, and text; a soft shadow lifts it off.
-      background: T.card, border: `1.5px solid ${colors[type]}99`,
-      boxShadow: `0 10px 28px rgba(0,0,0,0.45), 0 0 0 1px ${T.bg}`,
-      // Readable-first: bold DM Sans (NOT mono) at a size anyone can catch at a
-      // glance — this is a human notification, not a crypto string. "Be bold on
-      // important stuff" (fed switches, reconnects, vote confirmations).
-      color: colors[type], fontFamily: T.sans, fontSize: 15.5, fontWeight: 800,
-      lineHeight: 1.35, letterSpacing: 0.1,
-      zIndex: 9999, animation: "fadeIn 0.3s ease",
-      maxWidth: "92vw", textAlign: "center", wordBreak: "break-word",
-    }}>
+    <div
+      onClick={tapToDismiss ? onDone : undefined}
+      style={{
+        position: "fixed", top: topOffset, left: "50%", transform: "translateX(-50%)",
+        // A sticky toast carries a corner ✕. Pad the right so a long message
+        // never runs under it, rather than letting it wrap to its own line.
+        padding: sticky ? "14px 40px 14px 24px" : "14px 24px", borderRadius: 999,
+        // OPAQUE surface so the toast never blends into whatever's behind it — a
+        // toast is allowed to hide the page for its few seconds. The type colour
+        // lives in the border, icon, and text; a soft shadow lifts it off.
+        background: T.card, border: `1.5px solid ${colors[type]}99`,
+        boxShadow: `0 10px 28px rgba(0,0,0,0.45), 0 0 0 1px ${T.bg}`,
+        // Readable-first: bold DM Sans (NOT mono) at a size anyone can catch at a
+        // glance — this is a human notification, not a crypto string. "Be bold on
+        // important stuff" (fed switches, reconnects, vote confirmations).
+        color: colors[type], fontFamily: T.sans, fontSize: 15.5, fontWeight: 800,
+        lineHeight: 1.35, letterSpacing: 0.1,
+        zIndex: 9999, animation: "fadeIn 0.3s ease",
+        maxWidth: "92vw", textAlign: "center", wordBreak: "break-word",
+        cursor: tapToDismiss ? "pointer" : undefined,
+      }}
+    >
       <span style={{ display: "inline-flex", alignItems: "baseline", justifyContent: "center", gap: 8, flexWrap: "wrap" }}>
         <span aria-hidden="true" style={{ fontSize: 17, lineHeight: 1 }}>{type === "success" ? "✓" : type === "error" ? "✗" : "⚡"}</span>
         <span>{message}</span>
@@ -50,7 +67,8 @@ export function Toast({ message, type, onDone, sticky = false }: {
       {sticky && (
         <button
           type="button"
-          onClick={onDone}
+          // stopPropagation so the ✕ and a tap-to-dismiss body don't both fire.
+          onClick={(e) => { e.stopPropagation(); onDone(); }}
           aria-label="Dismiss"
           style={{
             position: "absolute", top: 10, right: 14,

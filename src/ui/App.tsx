@@ -563,7 +563,7 @@ export default function App() {
   // post-connect GlobeCountryPicker (the pick moved out of the pre-signer
   // ConnectScreen). Re-evaluated whenever a signer connects.
   const [needsHomePick, setNeedsHomePick] = useState(false);
-  const [toast, setToast] = useState<{ message: ReactNode; type: "success" | "error" | "info"; sticky?: boolean } | null>(null);
+  const [toast, setToast] = useState<{ message: ReactNode; type: "success" | "error" | "info"; sticky?: boolean; dismissOnTap?: boolean } | null>(null);
   toastRef.current = setToast;
   const [showFundModal, setShowFundModal] = useState(false);
   // v2.4 #56: "withdraw as ecash" modal (fee-free Fedimint note export).
@@ -949,14 +949,14 @@ export default function App() {
       // Deliberately NOT confirmClaimEcashExport: nobody was made whole, so
       // COMPLETE would be a claim we haven't earned.
       if (isThisExport) clearEcashExport();
-      setToast({ message: t("app.reabsorbConsumedUncredited"), type: "info", sticky: true });
+      setToast({ message: t("app.reabsorbConsumedUncredited"), type: "info", sticky: true, dismissOnTap: true });
     } else if (result.outcome === "dead") {
       // The federation rejected the string as one it will never honour — there
       // was never money here, so there is no question to keep open. Deliberately
       // no "are you sure?": nothing is being discarded, the user is being told.
       markPendingRedemptionsProbedDead(input.oobNotes, result.reason);
       if (isThisExport) clearEcashExport();
-      setToast({ message: t("app.reabsorbDead"), type: "info", sticky: true });
+      setToast({ message: t("app.reabsorbDead"), type: "info", sticky: true, dismissOnTap: true });
     } else {
       // unknown / foreign: the entry is left EXACTLY as it was. The verdict is
       // still recorded so the forensic trail can tell "asked, couldn't tell"
@@ -2654,7 +2654,7 @@ export default function App() {
         {/* Failed first picks toast their reason (handleSelectCommunity's
             "Couldn't reach X. Try another community.") — without this the
             gate swallowed them and a retry looked like a dead tap. */}
-        {toast && <Toast message={toast.message} type={toast.type} sticky={toast.sticky} onDone={() => setToast(null)} />}
+        {toast && <Toast message={toast.message} type={toast.type} sticky={toast.sticky} dismissOnTap={toast.dismissOnTap} onDone={() => setToast(null)} />}
         <GlobeCountryPicker
           onSelect={async (slug) => {
             // handleSelectCommunity persists the identity choice synchronously
@@ -2698,7 +2698,7 @@ export default function App() {
       <SimModePill />
       <SimEntryModal />
 
-      {toast && <Toast message={toast.message} type={toast.type} sticky={toast.sticky} onDone={() => setToast(null)} />}
+      {toast && <Toast message={toast.message} type={toast.type} sticky={toast.sticky} dismissOnTap={toast.dismissOnTap} onDone={() => setToast(null)} />}
 
       {!detailMode && (
         <>
@@ -2880,6 +2880,11 @@ export default function App() {
           // Fedi-compatible payload; `true` selects that hardened helper.
           onSpendNotes={(amountMsats) => actions.spendNotes(amountMsats, undefined, true)}
           onRedeemEcash={(oobNotes) => actions.redeemEcash(oobNotes)}
+          // 6.1 · the UNCOLLECTED ECASH "put it back" button routes through the
+          // same probe as the Me-screen teal card, so both give one honest
+          // structured answer for the same note (verdict toast + storage
+          // resolution owned here, not guessed at the call site).
+          onReabsorbBearerNotes={handleReabsorbBearerNotes}
           balanceMsats={fedimint.balanceMsats ?? 0}
         />
       )}

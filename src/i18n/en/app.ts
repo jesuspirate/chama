@@ -165,7 +165,7 @@ export const app: Record<string, string> = {
   // 6.0.2 liveness probe. The four honest answers a reissue can give. Never a
   // spinner that ends in silence, and never a cause we did not test.
   "app.reabsorbConsumedUncredited":
-    "Your Chama has already accepted these notes — they can't be imported again, so they've stopped being offered. We can't confirm the sats reached this wallet, so it's being kept as an open item rather than written off.",
+    "Your Chama has already accepted these notes — they can't be imported again, so they've stopped being offered. We can't confirm the sats reached this wallet, so it's logged for your records — nothing you need to do.",
   "app.reabsorbDead":
     "These notes are no longer valid — nothing was recovered. Your Chama confirmed they're already spent, so this entry has stopped asking you to chase them.",
   "app.reabsorbForeign":

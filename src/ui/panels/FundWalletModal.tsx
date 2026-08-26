@@ -17,6 +17,7 @@ import {
   stashEcashExport,
   type EcashExport,
 } from "../../payments/ecash-exports.js";
+import type { ReabsorbOutcome } from "../../fedimint/reabsorb-bearer-notes.js";
 
 /** Resume the dedicated outgoing-export stash. Migrate the legacy synthetic
  * claim entry on sight; pending-redemptions also excludes it from its boot
@@ -55,12 +56,23 @@ function blurNumberInputOnWheel(e: WheelEvent<HTMLInputElement>) {
   e.currentTarget.blur();
 }
 
-export function FundWalletModal({ onClose, onCreateInvoice, onPayInvoice, onSpendNotes, onRedeemEcash, balanceMsats }: {
+export function FundWalletModal({ onClose, onCreateInvoice, onPayInvoice, onSpendNotes, onRedeemEcash, onReabsorbBearerNotes, balanceMsats }: {
   onClose: () => void;
   onCreateInvoice: (amountSats: number, description: string) => Promise<string>;
   onPayInvoice: (bolt11: string) => Promise<void>;
   onSpendNotes: (amountMsats: number) => Promise<string>;
   onRedeemEcash: (oobNotes: string) => Promise<void>;
+  /** 6.1 · the same liveness probe the Me-screen teal card runs. Ask the
+   *  federation whether an uncollected note is still live by TAKING it back,
+   *  and let App own the storage resolution + verdict toast. The real mount
+   *  wires it; kept optional only so a test caller can omit it, in which case
+   *  the UNCOLLECTED ECASH "put it back" button falls back to a plain redeem. */
+  onReabsorbBearerNotes?: (input: {
+    oobNotes: string;
+    expectedMsats: number;
+    context: "pending-export" | "stranded-claim";
+    escrowId?: string;
+  }) => Promise<ReabsorbOutcome>;
   balanceMsats: number;
 }) {
   const { t } = useT();
@@ -197,20 +209,66 @@ export function FundWalletModal({ onClose, onCreateInvoice, onPayInvoice, onSpen
     finally { setBusy(false); }
   };
 
-  /** Put an uncollected note bundle back into the wallet. */
+  /** Put an uncollected note bundle back into the wallet.
+   *
+   * 6.1 · this is the 4th surface that holds a bearer note, and it used to be
+   * the last one still redeeming it blind — `onRedeemEcash(stashed.notes)`
+   * inside a try/catch. On a note the federation had already consumed that
+   * THREW correctly (so it was never dangerous), but it showed a raw error
+   * instead of the honest verdict, wrote NO unresolved-credit record, and had
+   * no balance bracket — so the untested unverified-success shape (reissue
+   * reports success, balance doesn't move) would have silently cleared the
+   * stash here. Route it through the SAME probe the teal card runs so the two
+   * give identical structured answers for the same note. App owns the storage
+   * resolution (clear / record / leave-untouched) and the verdict toast; this
+   * modal only re-reads its own view of the stash from the outcome.
+   *
+   * When no probe handler is wired (a test caller that omits the optional
+   * prop) fall back to the old direct redeem — that path is unchanged. */
   const handleRestash = async () => {
     if (!stashed) return;
-    setBusy(true); setErr(null);
+    setBusy(true); setErr(null); setSuccess(null);
+
+    if (!onReabsorbBearerNotes) {
+      try {
+        await onRedeemEcash(stashed.notes);
+        clearEcashExport();
+        clearPendingRedemption(LEGACY_MANUAL_ECASH_EXPORT_ID);
+        setStashed(null);
+        setEcashOutput(null);
+        setSuccess(t("fund.ecashRestashed"));
+      } catch (e: any) {
+        setErr(e.message || t("fund.failed"));
+      } finally { setBusy(false); }
+      return;
+    }
+
     try {
-      await onRedeemEcash(stashed.notes);
-      clearEcashExport();
-      // A failed migration may still be displaying the legacy entry.
-      clearPendingRedemption(LEGACY_MANUAL_ECASH_EXPORT_ID);
-      setStashed(null);
-      setEcashOutput(null);
-      setSuccess(t("fund.ecashRestashed"));
-    } catch (e: any) {
-      setErr(e.message || t("fund.failed"));
+      const outcome = await onReabsorbBearerNotes({
+        oobNotes: stashed.notes,
+        expectedMsats: stashed.amountMsats,
+        context: "pending-export",
+        escrowId: stashed.escrowId,
+      });
+      // App has already spoken the verdict (toast) and resolved storage: on a
+      // terminal outcome it cleared the export stash and wrote any record; on
+      // unknown / foreign it changed nothing. Mirror only the LOCAL view.
+      //
+      //   recovered           → sats are in the balance
+      //   consumed-uncredited → note dead, record written, sats an open Q
+      //   dead                → note was never valid
+      // …all three retire this card. unknown / foreign leave it exactly as it
+      // was so the note stays recoverable — the whole point of the probe.
+      if (outcome === "recovered" || outcome === "consumed-uncredited" || outcome === "dead") {
+        // A failed legacy migration may still be displaying that entry.
+        clearPendingRedemption(LEGACY_MANUAL_ECASH_EXPORT_ID);
+        setStashed(null);
+        setEcashOutput(null);
+      } else {
+        // unknown / foreign: re-read in case another surface touched it, but
+        // never assume this note is gone.
+        setStashed(getEcashExport());
+      }
     } finally { setBusy(false); }
   };
 
