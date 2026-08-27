@@ -29,7 +29,16 @@ const HEARTBEAT_MS = 15_000;
 // callback per minute. Three minutes keeps a healthy hidden wallet from being
 // mistaken for a dead owner while still recovering automatically after a
 // renderer crash.
-export const BROWSER_RUNTIME_LEASE_TTL_MS = 180_000;
+// Dev runs two Vite servers (:3000/:3001) that share the host cookie, so a
+// stale lease from a closed/crashed dev tab otherwise blocks the other origin
+// for a full 3 minutes. Shorten the wait in DEV ONLY — still well above the
+// 15s HEARTBEAT_MS, so a live FOREGROUND tab (which writes every 15s) is never
+// mistaken for dead. Production is UNCHANGED: Chrome throttles hidden-tab
+// timers to ~1/min, and 180s (12x heartbeat) is the margin that keeps a
+// healthy backgrounded wallet from being reaped — the guard against one seed
+// driving two divergent ecash runtimes. `?.` so the node/tsx test import
+// (no import.meta.env) falls through to the production value.
+export const BROWSER_RUNTIME_LEASE_TTL_MS = import.meta.env?.DEV ? 30_000 : 180_000;
 // A taken-over owner must stop touching the wallet quickly, so the cookie is
 // READ far more often than it is written. Reads are free; the write cadence
 // stays at HEARTBEAT_MS.
