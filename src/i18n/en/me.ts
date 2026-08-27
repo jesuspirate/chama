@@ -70,8 +70,8 @@ export const me: Record<string, string> = {
   "me.categoryLending": "Lending",
   "me.categoryMarket": "Stores",
   "me.checkOtherDeviceBody":
-    "from a settled trade was reported already claimed, but your balance here is short by that much — it most likely landed on another device. The note is saved as a backup if you need it.",
-  "me.checkOtherDeviceTitle": "CHECK YOUR OTHER DEVICE",
+    "from a settled trade was reported already claimed, but your balance here is short by that much. Where it went isn't established yet — tap below to ask your Chama, or dismiss to keep the note as a backup.",
+  "me.checkOtherDeviceTitle": "CHECK WITH YOUR CHAMA",
   "me.countryMatchMany": "{count} MATCHES",
   "me.countryMatchOne": "{count} MATCH",
   "me.chamasInCountry": "{count} Chamas · choose one",

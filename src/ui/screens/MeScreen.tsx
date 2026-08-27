@@ -497,15 +497,16 @@ export function MeScreen({
 
       {/* CALM: unresolved-credit whose amount the wallet balance does NOT cover.
           The note was reported already-redeemed (so it's not live money to
-          rescue) but this wallet is short — likely claimed on another device.
-          Honest, dismissible nudge; the note is archived (kept) on dismiss. The
-          balance-covered case never reaches here — it auto-reconciles silently. */}
+          rescue) but this wallet is short. Honest, dismissible nudge; the note
+          is archived (kept) on dismiss. The balance-covered case never reaches
+          here — it auto-reconciles silently. */}
       {calmClaims.map((entry) => {
-        // Two different stories share this card, and only one of them has been
-        // tested. Unprobed: "it most likely landed on another device" — an
-        // inference from a balance shortfall. Probed consumed-uncredited: the
-        // federation confirmed it took the notes, and where the sats went is
-        // NOT established and must not be asserted.
+        // Two different states share this card, and only one has been tested.
+        // Unprobed: where the sats went is NOT established — the copy names no
+        // cause and points at the probe (the reabsorb CTA) as the way to find
+        // out. Probed consumed-uncredited: the federation confirmed it took the
+        // notes, and where the sats went is still NOT established, so neither
+        // state ever asserts a location.
         const probedConsumed = entry.probeVerdict === "consumed-uncredited";
         return (
         <div

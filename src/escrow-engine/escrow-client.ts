@@ -2907,28 +2907,41 @@ export class EscrowClient {
     // Handle chat separately
     if (parsed.kind === EscrowEventKind.CHAT) {
       const state = this.states.get(escrowId);
-      if (state) {
-        // Dedup: skip if this chat message was already applied locally (sender echo)
-        const alreadyHave = state.chatMessages.some(m => m.raw.id === event.id);
-        if (alreadyHave) return;
+      if (!state) {
+        // A CHAT that arrives before this device has loaded the trade's state
+        // used to be DROPPED here, while the general path two blocks below
+        // BUFFERS the identical no-state case — so the very first chat message
+        // (an image, typically) vanished until a manual leave-and-re-enter
+        // refetched it. Buffer it instead, exactly as the general path does:
+        // flushEventBuffer() replays through this same handler once state
+        // loads, and by then `state` is present so the block below applies it
+        // and fires onChatMessage. The same 20-per-escrow cap bounds it, and
+        // the dedup below guards a buffered-then-also-refetched duplicate.
+        console.info("[chat-drop] buffering CHAT for unloaded escrow", escrowId, event.id);
+        this.bufferEvent(escrowId, event, relayUrl);
+        return;
+      }
 
-        const result = applyEvent(state, parsed);
-        if (result.ok) {
-          // Persist CHAT durably but do not retain its potentially-large
-          // ciphertext in the hot rawEvents map. Parsed chat remains in state.
-          // APPEND + drop already-blanked raws — see the sender-echo site above
-          // for why a whole-record put here erased every earlier chat body.
-          const durable = durableRawSnapshot(
-            mergeRawEventsById(
-              this.rawEvents.get(escrowId) ?? [],
-              result.state.chatMessages.map(message => message.raw),
-            ),
-          ).filter(raw => raw.kind !== EscrowEventKind.CHAT || !!raw.content);
-          void appendCachedEvents(escrowId, durable, result.state.status);
-          stripParsedChatCiphertext(result.state);
-          this.states.set(escrowId, result.state);
-          this.callbacks.onChatMessage?.(escrowId, parsed as ParsedEscrowEvent<ChatPayload>);
-        }
+      // Dedup: skip if this chat message was already applied locally (sender echo)
+      const alreadyHave = state.chatMessages.some(m => m.raw.id === event.id);
+      if (alreadyHave) return;
+
+      const result = applyEvent(state, parsed);
+      if (result.ok) {
+        // Persist CHAT durably but do not retain its potentially-large
+        // ciphertext in the hot rawEvents map. Parsed chat remains in state.
+        // APPEND + drop already-blanked raws — see the sender-echo site above
+        // for why a whole-record put here erased every earlier chat body.
+        const durable = durableRawSnapshot(
+          mergeRawEventsById(
+            this.rawEvents.get(escrowId) ?? [],
+            result.state.chatMessages.map(message => message.raw),
+          ),
+        ).filter(raw => raw.kind !== EscrowEventKind.CHAT || !!raw.content);
+        void appendCachedEvents(escrowId, durable, result.state.status);
+        stripParsedChatCiphertext(result.state);
+        this.states.set(escrowId, result.state);
+        this.callbacks.onChatMessage?.(escrowId, parsed as ParsedEscrowEvent<ChatPayload>);
       }
       return;
     }

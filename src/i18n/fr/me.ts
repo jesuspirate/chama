@@ -68,8 +68,8 @@ export const me: Record<string, string> = {
   "me.categoryLending": "Prêt",
   "me.categoryMarket": "Boutique",
   "me.checkOtherDeviceBody":
-    "issus d'un échange réglé ont été signalés comme déjà réclamés, mais votre solde ici est plus bas d'autant — ils ont très probablement atterri sur un autre appareil. La note est gardée en secours si vous en avez besoin.",
-  "me.checkOtherDeviceTitle": "VÉRIFIEZ VOTRE AUTRE APPAREIL",
+    "issus d'un échange réglé ont été signalés comme déjà réclamés, mais votre solde ici est plus bas d'autant. Où ils sont allés n'est pas encore établi — touchez ci-dessous pour demander à votre Chama, ou ignorez pour garder la note en secours.",
+  "me.checkOtherDeviceTitle": "VÉRIFIEZ AUPRÈS DE VOTRE CHAMA",
   "me.countryMatchMany": "{count} RÉSULTATS",
   "me.countryMatchOne": "{count} RÉSULTAT",
   "me.chamasInCountry": "{count} Chamas · choisissez-en un",

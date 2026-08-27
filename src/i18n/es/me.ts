@@ -67,8 +67,8 @@ export const me: Record<string, string> = {
   "me.categoryLending": "Préstamos",
   "me.categoryMarket": "Tiendas",
   "me.checkOtherDeviceBody":
-    "de un intercambio liquidado se reportó como ya reclamado, pero tu saldo aquí está corto por ese monto — lo más probable es que haya llegado a otro dispositivo. La nota queda guardada como respaldo por si la necesitas.",
-  "me.checkOtherDeviceTitle": "REVISA TU OTRO DISPOSITIVO",
+    "de un intercambio liquidado se reportó como ya reclamado, pero tu saldo aquí está corto por ese monto. Aún no se ha establecido a dónde fue — toca abajo para preguntar a tu Chama, o descarta para conservar la nota como respaldo.",
+  "me.checkOtherDeviceTitle": "CONSULTA CON TU CHAMA",
   "me.countryMatchMany": "{count} COINCIDENCIAS",
   "me.countryMatchOne": "{count} COINCIDENCIA",
   "me.chamasInCountry": "{count} Chamas · elige uno",

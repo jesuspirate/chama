@@ -5980,6 +5980,112 @@ console.log("\n── CHAT ──");
   }
 }
 
+// ── 8·live · a CHAT for an unloaded escrow is BUFFERED, not dropped (Step 5) ─
+//
+// The live handler's CHAT branch used to `return` when no state was loaded,
+// while the general path two blocks down BUFFERS the identical no-state case.
+// So the FIRST chat message on a trade the counterparty hadn't opened yet — an
+// image, usually — was silently dropped until a manual leave-and-re-enter
+// refetched it. The fix buffers it; but the load-time flush then has to re-drive
+// THIS CHAT-special branch, not merely the general applyEvent path, or the image
+// still never renders. This locks both halves: buffered on arrival, delivered on
+// flush.
+console.log("\n── CHAT no-state buffering (Step 5) ──");
+{
+  const create = createEvent();
+  const joinBuyer = joinEvent(Role.BUYER, BUYER_PK, create.raw.id);
+  const afterCreate = applyEvent(null, create);
+  assert(afterCreate.ok, "step5 setup: CREATE applies");
+  const afterJoin = applyEvent((afterCreate as { ok: true; state: EscrowState }).state, joinBuyer);
+  assert(afterJoin.ok, "step5 setup: JOIN applies");
+  const loadedState = (afterJoin as { ok: true; state: EscrowState }).state;
+
+  const imageChat = makeParsedEvent<ChatPayload>(EscrowEventKind.CHAT, BUYER_PK, {
+    type: "escrow:chat",
+    message: "Receipt attached",
+    attachments: [{
+      id: "img_step5_first", kind: "image", mimeType: "image/jpeg",
+      dataUrl: "data:image/jpeg;base64,ZmFrZQ==", name: "receipt.jpg",
+      width: 800, height: 600, sizeBytes: 4,
+    }],
+    senderRole: Role.BUYER,
+    sentAt: NOW,
+  });
+  // Live-path raw: the plaintext CHAT payload IS the content, so
+  // decryptEventContent's Shape-1 branch returns it and the handler reaches the
+  // CHAT branch (the same shape the sender publishes for a DEV-mode chat).
+  const rawChat: NostrEvent = { ...imageChat.raw, content: JSON.stringify(imageChat.payload) };
+
+  const delivered: ParsedEscrowEvent<ChatPayload>[] = [];
+  const client = new EscrowClient(
+    {
+      async getPublicKey() { return SELLER_PK; },
+      async signEvent(e: UnsignedEvent) { return { ...e, id: "x", pubkey: SELLER_PK, sig: "sig" } as NostrEvent; },
+      async nip44Encrypt(pt: string) { return pt; },
+      async nip44Decrypt(ct: string) { return ct; },
+    },
+    { relays: [] },
+    { onChatMessage: (_id, msg) => delivered.push(msg) },
+  );
+
+  // 1. CHAT arrives before this device has loaded the trade → buffered, not dropped.
+  await (client as unknown as { handleIncomingEvent(e: NostrEvent, r: string): Promise<void> })
+    .handleIncomingEvent(rawChat, "wss://relay.test");
+  const bufferAt = (id: string) =>
+    (client as unknown as { eventBuffer: Map<string, unknown[]> }).eventBuffer.get(id)?.length ?? 0;
+  assert(delivered.length === 0,
+    "invariant_chat-buffer__no-state-does-not-deliver: a CHAT for an unloaded escrow is not applied yet");
+  assert(bufferAt(ESCROW_ID) === 1,
+    "invariant_chat-buffer__no-state-buffers: the CHAT is buffered (the drop is fixed), mirroring the general path");
+
+  // 2. State loads (loadEscrow / a general applyEvent populates it in production).
+  (client as unknown as { states: Map<string, EscrowState> }).states.set(ESCROW_ID, loadedState);
+
+  // 3. Flush — production runs this after a successful general applyEvent for the
+  //    escrow. The buffered CHAT must re-enter the CHAT-special branch WITH state
+  //    now present, apply, and fire onChatMessage — the part that silently fails
+  //    if the flush only replays through the general applyEvent path.
+  await (client as unknown as { flushEventBuffer(id: string): Promise<void> })
+    .flushEventBuffer(ESCROW_ID);
+  assert(delivered.length === 1,
+    "invariant_chat-buffer__flush-redrives-chat: flushEventBuffer replays the buffered CHAT through the CHAT branch, delivering it");
+  assert(delivered[0]?.payload.attachments?.[0]?.id === "img_step5_first",
+    "invariant_chat-buffer__flush-redrives-chat: the first image renders on flush without a manual leave-and-re-enter");
+  assert(bufferAt(ESCROW_ID) === 0,
+    "invariant_chat-buffer__flush-clears: a delivered CHAT is removed from the buffer");
+
+  client.disconnect();
+}
+
+// ── TradeView resizable split · guard-rail normalization (Resize brief) ─────
+//
+// The draggable divider stores the top zone's height SHARE as a fraction. The
+// read path must never render a zero-height zone or throw on a corrupt value:
+// non-numeric / absent falls back to the default (null → render as before), and
+// any finite number snaps into [SPLIT_MIN, SPLIT_MAX] so an out-of-range value
+// can't collapse a zone. (The CSS minHeight floors are the pixel-level backstop;
+// this is the fraction-level one.)
+console.log("\n── TradeView resizable split ──");
+{
+  const { normalizeStoredSplit, clampSplitFrac, SPLIT_MIN, SPLIT_MAX } =
+    await import("../ui/tradeview-split.js");
+
+  assert(normalizeStoredSplit(null) === null && normalizeStoredSplit("") === null,
+    "invariant_split__absent-is-default: no stored value renders the default layout, not a forced ratio");
+  assert(normalizeStoredSplit("garbage") === null && normalizeStoredSplit("NaN") === null,
+    "invariant_split__corrupt-is-default: a non-numeric stored value falls back to the default, never throws");
+  assert(normalizeStoredSplit("0.5") === 0.5,
+    "invariant_split__in-range-passes: a valid fraction is used as-is");
+  assert(normalizeStoredSplit("0") === SPLIT_MIN && normalizeStoredSplit("-3") === SPLIT_MIN,
+    "invariant_split__no-zero-height: a zero/negative fraction snaps up to the floor, never collapsing the top zone");
+  assert(normalizeStoredSplit("1") === SPLIT_MAX && normalizeStoredSplit("42") === SPLIT_MAX,
+    "invariant_split__no-zero-height: an over-1 fraction snaps down to the ceiling, never collapsing the pager");
+  assert(clampSplitFrac(Number.NaN) === SPLIT_MIN,
+    "invariant_split__drag-nan-safe: a NaN live-drag fraction clamps to the floor rather than propagating NaN into flex-grow");
+  assert(SPLIT_MIN > 0 && SPLIT_MAX < 1 && SPLIT_MIN < SPLIT_MAX,
+    "invariant_split__bounds-inside-unit: the hard bounds sit strictly inside (0,1) so neither zone can reach zero share");
+}
+
 // ── 8a. HOLDER-ONLY SHARES — payoutRecipientFor pure over candidate outcome ─
 // Refinement #2 (the subtlest bug site): a voter must route their vote-carried
 // share to the recipient of THEIR voted outcome, computed BEFORE resolution.
@@ -23031,6 +23137,48 @@ function makeFundSafetyWallet(overrides: {
   assert(listPendingRedemptions().some(e => e.escrowId === "same_amount_different_note"),
     "invariant_outgoing-ecash__confirm-clears-exact-duplicate: import confirmation never clears an equal-value different note");
   await client.cleanup();
+  clearAllPendingRedemptions();
+}
+
+// ── Step 3B · the teal↔amber collapse fires for a same-note stranded claim ──
+//
+// When the pending export (teal card) and a stranded calm-claim (amber card)
+// hold the SAME bearer note, they are two views of one balance and must not
+// show as two cards. The collapse is keyed on the exact bearer string — not on
+// escrowId and not on amount — precisely so a genuinely DIFFERENT note is never
+// hidden (hiding a distinct recoverable note would lose money). This locks both
+// halves: same note collapses, different note stays.
+{
+  clearAllPendingRedemptions();
+  stashPendingRedemption({
+    escrowId: "escrow_shared_note",
+    oobNotes: "oob_shared_note",
+    notesHash: "hash_shared_note",
+    amountMsats: 50_000,
+  });
+  markPoisoned("escrow_shared_note", "retry gave up");
+  const collapsed = excludeStrandedRedemptionsOwnedByExport(
+    listStrandedRedemptions(),
+    // The teal export owns this exact bearer string.
+    "oob_shared_note",
+  );
+  assert(!collapsed.some(e => e.escrowId === "escrow_shared_note"),
+    "invariant_two-tiles__one-card-per-note: a stranded claim the pending export owns is collapsed, never shown beside the teal card");
+
+  // A genuinely different note (even same amount) is NOT hidden by the export.
+  stashPendingRedemption({
+    escrowId: "escrow_other_note",
+    oobNotes: "oob_other_note",
+    notesHash: "hash_other_note",
+    amountMsats: 50_000,
+  });
+  markPoisoned("escrow_other_note", "retry gave up");
+  const stillVisible = excludeStrandedRedemptionsOwnedByExport(
+    listStrandedRedemptions(),
+    "oob_shared_note",
+  );
+  assert(stillVisible.some(e => e.escrowId === "escrow_other_note"),
+    "invariant_two-tiles__distinct-note-stays: a distinct bearer note is never hidden by an unrelated export (no money hidden)");
   clearAllPendingRedemptions();
 }
 
