@@ -200,6 +200,11 @@ export const app: Record<string, string> = {
     "⚠ This note was reported already-redeemed, but Chama couldn't confirm YOUR wallet was credited. Save it anyway, then check your balance — if the sats aren't there, this string is your evidence and recovery path.",
   "app.switchOverlayAfter": "…",
   "app.switchOverlayBefore": "Switching to",
+  // Trade-jump variant: opening a trade that lives in another community
+  // reads as navigating to a DIFFERENT trade there — never as the trade you
+  // were on changing its currency. Used by the attention-pill / listing-tap
+  // silent switch, not by a deliberate community switch.
+  "app.switchOverlayTradeBefore": "Opening your trade in",
   "app.switchingForTrade": "Switching to {name} for this trade...",
   "app.switchingTo": "Switching to {label}…",
   "app.switchingToDots": "Switching to {label}...",

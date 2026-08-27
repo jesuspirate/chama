@@ -124,9 +124,23 @@ import {
   type AmountDisplayMode,
 } from "../amount-display.js";
 import { useT, type TFunc } from "../../i18n/index.js";
+import {
+  readSplitFrac,
+  writeSplitFrac,
+  clearSplitFrac,
+  clampSplitFrac,
+} from "../tradeview-split.js";
 
 const samePubkey = (a?: string | null, b?: string | null): boolean =>
   !!a && !!b && a.toLowerCase() === b.toLowerCase();
+
+// Readable-minimum floors for the two TradeView zones. The bottom floor is the
+// pre-existing `.td-lower` clamp; the top floor is its comparable — enough to
+// show the action headline + primary button (the top zone scrolls internally
+// past that). These are CSS hard limits the drag can never cross, so a stored
+// split fraction, however extreme, can't collapse either zone.
+const SPLIT_FLOOR_TOP = "clamp(120px, 20dvh, 300px)";
+const SPLIT_FLOOR_BOTTOM = "clamp(140px, 22dvh, 340px)";
 
 export function TradeDetail({
   state, pubkey, homeCommunity, bootProbeFailed, receiveUnavailable, fundingInProgress,
@@ -1381,6 +1395,75 @@ export function TradeDetail({
   const onPillsTouchStart = (e: React.TouchEvent) => { const t = e.touches[0]; if (t) pillsDown(t.clientX, t.clientY); };
   const onPillsTouchEnd = (e: React.TouchEvent) => { const t = e.changedTouches[0]; if (t) pillsUp(t.clientX, t.clientY); };
 
+  // ── User-adjustable split between the action zone and the pager ──────────
+  //
+  // The two zones' share of the shell height was fixed by their flex rules
+  // (top `flex 0 1 auto`, bottom `flex 1 1 0`); a draggable divider turns that
+  // into the viewer's choice, stored as a FRACTION (the top zone's share of the
+  // space the two divide) so it survives viewport/orientation changes. `null`
+  // renders exactly the old layout — this is additive. CSS `minHeight` floors
+  // on both zones are the hard limits, so no drag or stored value can collapse
+  // a zone; the live drag is clamped to the same [SPLIT_MIN, SPLIT_MAX] bounds.
+  const [splitFrac, setSplitFrac] = useState<number | null>(() => readSplitFrac());
+  const topZoneRef = useRef<HTMLDivElement | null>(null);
+  const lowerZoneRef = useRef<HTMLDivElement | null>(null);
+  // Live drag anchor: pointer Y at grab + the two zones' pixel heights then, so
+  // a pixel drag maps to a fraction of the height the two actually share.
+  const splitDrag = useRef<{ startY: number; sharedPx: number; startTopPx: number; frac: number } | null>(null);
+  const splitTapAt = useRef(0);
+
+  const beginSplitDrag = (y: number) => {
+    const top = topZoneRef.current?.getBoundingClientRect().height ?? 0;
+    const lower = lowerZoneRef.current?.getBoundingClientRect().height ?? 0;
+    const sharedPx = top + lower;
+    if (sharedPx <= 0) return; // not laid out yet — nothing to divide
+    splitDrag.current = { startY: y, sharedPx, startTopPx: top, frac: clampSplitFrac(top / sharedPx) };
+  };
+  const moveSplitDrag = (y: number) => {
+    const s = splitDrag.current;
+    if (!s) return;
+    const nextTopPx = s.startTopPx + (y - s.startY);
+    s.frac = clampSplitFrac(nextTopPx / s.sharedPx);
+    setSplitFrac(s.frac);
+  };
+  const endSplitDrag = () => {
+    const s = splitDrag.current;
+    if (!s) return;
+    splitDrag.current = null;
+    // Persist only the settled value, not every intermediate frame.
+    writeSplitFrac(s.frac);
+  };
+  const resetSplit = () => { clearSplitFrac(); setSplitFrac(null); };
+  // Pointer captures the drag so it keeps tracking outside the thin handle.
+  const onDividerPointerDown = (e: React.PointerEvent) => {
+    if (e.pointerType === "touch") return; // touch handled by onTouch* below
+    // Double-click the handle → reset to the default split.
+    if (Date.now() - splitTapAt.current < 350) { splitTapAt.current = 0; resetSplit(); return; }
+    splitTapAt.current = Date.now();
+    e.preventDefault();
+    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+    beginSplitDrag(e.clientY);
+  };
+  const onDividerPointerMove = (e: React.PointerEvent) => {
+    if (!splitDrag.current) return;
+    e.preventDefault();
+    moveSplitDrag(e.clientY);
+  };
+  const onDividerPointerUp = () => endSplitDrag();
+  const onDividerTouchStart = (e: React.TouchEvent) => {
+    const t = e.touches[0]; if (!t) return;
+    if (Date.now() - splitTapAt.current < 350) { splitTapAt.current = 0; resetSplit(); return; }
+    splitTapAt.current = Date.now();
+    beginSplitDrag(t.clientY);
+  };
+  const onDividerTouchMove = (e: React.TouchEvent) => {
+    const t = e.touches[0]; if (!t || !splitDrag.current) return;
+    // Claim the gesture so the page/pager doesn't scroll under a vertical drag.
+    e.preventDefault();
+    moveSplitDrag(t.clientY);
+  };
+  const onDividerTouchEnd = () => endSplitDrag();
+
   // Vertical kicker over the nav title + on the Details pane header, so the
   // trade's vertical is obvious without inferring it from vote labels.
   // #63 storefront-vs-order clarity: a multi-unit PARENT reads as a storefront,
@@ -1856,7 +1939,20 @@ export function TradeDetail({
           an internal scroll zone (flex 0 1 auto) so a tall lock/claim phase scrolls
           HERE, not the shell — the outer frame stays a fixed rectangle and the
           timeline footer is never pushed off-screen. */}
-        <div className="td-action-scroll" style={{ flex: "0 1 auto", minHeight: 0, overflowY: "auto", overflowX: "hidden" }}>
+        <div
+          ref={topZoneRef}
+          className="td-action-scroll"
+          style={{
+            // No stored split → render exactly as before (content-sized top,
+            // pager takes the rest). A stored/dragged split → the top zone
+            // takes its fraction of the shared space, floored so it can't
+            // collapse; it still scrolls internally when its content is taller.
+            ...(splitFrac == null
+              ? { flex: "0 1 auto", minHeight: 0 }
+              : { flex: `${splitFrac} 1 0`, minHeight: SPLIT_FLOOR_TOP }),
+            overflowY: "auto", overflowX: "hidden",
+          }}
+        >
         <div style={{
           padding: 14,
           borderRadius: T.rs,
@@ -3046,6 +3142,39 @@ export function TradeDetail({
         </div>
         </div>{/* end .td-action-scroll — the internal-scroll top zone */}
 
+      {/* Draggable divider — the viewer allocates height between the action zone
+          and the pager. ~10px hit area, ~2px visible affordance; pointer + touch
+          for real device support (mirrors the pager pills drag). Double-tap
+          resets to the default split. A thin grip pill hints it's draggable. */}
+      <div
+        role="separator"
+        aria-label={t("trade.resizeSplit")}
+        aria-orientation="horizontal"
+        title={t("trade.resizeSplitHint")}
+        onPointerDown={onDividerPointerDown}
+        onPointerMove={onDividerPointerMove}
+        onPointerUp={onDividerPointerUp}
+        onPointerCancel={onDividerPointerUp}
+        onTouchStart={onDividerTouchStart}
+        onTouchMove={onDividerTouchMove}
+        onTouchEnd={onDividerTouchEnd}
+        style={{
+          flex: "0 0 auto",
+          height: 10,
+          margin: "2px 0",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          cursor: "ns-resize",
+          touchAction: "none",
+          userSelect: "none",
+          WebkitUserSelect: "none",
+        }}
+      >
+        <div style={{
+          width: 36, height: 3, borderRadius: 3,
+          background: splitFrac == null ? T.border : `${T.accent}99`,
+        }} />
+      </div>
+
       {/* Zone B — swipe middle: a horizontal pager of three full-width panes
           (Chat · Details · Parties). The pager scrolls natively (touch); the
           pills row also drags to page (pointer + touch), so the whole region
@@ -3056,7 +3185,18 @@ export function TradeDetail({
           own .td-action-scroll zone; td-lower stays ≥ floor, the shell never scrolls,
           and the timeline footer below stays anchored. The outer frame is fixed; only
           the internal top-vs-chat divide flexes (Jetty's dynamic split, 2026-06-25). */}
-      <div className="td-lower" style={{ marginTop: 2, flex: "1 1 0", minHeight: "clamp(140px, 22dvh, 340px)", minWidth: 0, display: "flex", flexDirection: "column" }}>
+      <div
+        ref={lowerZoneRef}
+        className="td-lower"
+        style={{
+          // Complement of the top share when a split is set; the original
+          // grow-to-fill when it isn't. minHeight stays the hard floor either
+          // way, so the pager can never be dragged below readable.
+          ...(splitFrac == null ? { flex: "1 1 0" } : { flex: `${1 - splitFrac} 1 0` }),
+          minHeight: SPLIT_FLOOR_BOTTOM,
+          minWidth: 0, display: "flex", flexDirection: "column",
+        }}
+      >
         <div
           onPointerDown={onPillsPointerDown}
           onPointerUp={onPillsPointerUp}

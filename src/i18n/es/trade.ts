@@ -396,6 +396,8 @@ export const trade: Record<string, string> = {
   "trade.theBuyer": "el comprador",
   "trade.theSeller": "el vendedor",
   "trade.theirReservationExpired": "{role} {pubkey} se unió, pero el intercambio no se bloqueó antes de que cerrara la ventana. Pídele que se una de nuevo. Ningún sat se movió.",
+  "trade.resizeSplit": "Redimensionar la vista del intercambio",
+  "trade.resizeSplitHint": "Arrastra para redimensionar · doble toque para restablecer",
   "trade.thisCommunity": "esta comunidad",
   "trade.tierLabel": "nivel {tier}",
   "trade.titleBuildOrder": "Arma el pedido",

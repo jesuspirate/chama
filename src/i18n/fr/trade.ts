@@ -394,6 +394,8 @@ export const trade: Record<string, string> = {
   "trade.theBuyer": "l'acheteur",
   "trade.theSeller": "le vendeur",
   "trade.theirReservationExpired": "{role} {pubkey} a rejoint, mais l'échange n'a pas été verrouillé avant la fermeture de la fenêtre. Demandez-lui de rejoindre à nouveau. Aucun sat n'a bougé.",
+  "trade.resizeSplit": "Redimensionner la vue de l'échange",
+  "trade.resizeSplitHint": "Glissez pour redimensionner · double-tap pour réinitialiser",
   "trade.thisCommunity": "cette communauté",
   "trade.tierLabel": "niveau {tier}",
   "trade.titleBuildOrder": "Composez la commande",

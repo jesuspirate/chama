@@ -396,6 +396,8 @@ export const trade: Record<string, string> = {
   "trade.theBuyer": "the buyer",
   "trade.theSeller": "the seller",
   "trade.theirReservationExpired": "{role} {pubkey} joined, but the trade didn't lock before the window closed. Ask them to join again. No sats moved.",
+  "trade.resizeSplit": "Resize the trade view",
+  "trade.resizeSplitHint": "Drag to resize · double-tap to reset",
   "trade.thisCommunity": "this community",
   "trade.tierLabel": "tier {tier}",
   "trade.titleBuildOrder": "Build the order",

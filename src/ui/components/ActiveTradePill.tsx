@@ -32,6 +32,7 @@ export function ActiveTradePill({
   activeTradeMsats,
   actionMode = false,
   actionCount = 0,
+  communityLabel = null,
   onTap,
 }: {
   trade: EscrowState;
@@ -48,6 +49,13 @@ export function ActiveTradePill({
   actionMode?: boolean;
   /** How many items need the user right now (drives the loud headline count). */
   actionCount?: number;
+  /** Step 4: the destination trade's community label ("Senegal · CFA"),
+   *  resolved by the caller with the same resolver the Details pane uses. In
+   *  action mode the pill NAMES where it will take you — amount + community —
+   *  because the tap routes to the most urgent needs-you trade, which is often
+   *  not the one on screen. A surprise jump then read as the current trade
+   *  changing currency; naming the destination up front stops that. */
+  communityLabel?: string | null;
   onTap: () => void;
 }) {
   const { t } = useT();
@@ -94,7 +102,17 @@ export function ActiveTradePill({
           overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const,
           marginTop: 2,
         }}>
-          {trade.description} · {statusLabel}
+          {actionMode ? (
+            // Name the destination: its OWN amount (not the aggregate) + its
+            // community, then the description. Amount and community lead so
+            // they survive the ellipsis; the description truncates first.
+            <>
+              <BitcoinAmount msats={trade.amountMsats} size={13} gap={3} glyphScale={1.18} />
+              {communityLabel ? <> · {communityLabel}</> : null} · {trade.description}
+            </>
+          ) : (
+            <>{trade.description} · {statusLabel}</>
+          )}
         </div>
       </div>
       <span style={{ color: T.muted, fontSize: 18, flexShrink: 0 }}>›</span>

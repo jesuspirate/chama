@@ -648,7 +648,11 @@ export default function App() {
   };
   // v0.2.0 item 1: brief inline overlay during silent re-init triggered
   // by listing-tap. Sub-second on a healthy fed; modal-free.
-  const [switchingToCommunity, setSwitchingToCommunity] = useState<{ displayName: string } | null>(null);
+  // `forTrade` distinguishes a navigation TO a trade that lives in another
+  // community (the attention-pill / listing-tap silent switch) from a deliberate
+  // community switch. The overlay reframes its copy so opening a Benin trade
+  // never reads as the trade you were looking at mutating to XOF.
+  const [switchingToCommunity, setSwitchingToCommunity] = useState<{ displayName: string; forTrade?: boolean } | null>(null);
 
   // v0.2.0 item 8: when the user picks "Withdraw via Lightning" from the
   // destroy-confirm modal, we stash the pending switch here. The
@@ -1616,6 +1620,15 @@ export default function App() {
   // the initial saved-ID + relay pass is complete.
   const visibleAttentionTrade = myTradesLoading ? null : attentionTrade;
   const attentionActionMode = needsYouCount > 0;
+  // Step 4: the attention pill routes to the most urgent needs-you trade
+  // (needsYouTrades[0]), which is often NOT the trade on screen. Name its
+  // destination — amount + community — so tapping is a deliberate jump, not a
+  // surprise that then reads as the current trade mutating to another currency.
+  // Same resolver the Details pane uses (getCommunityBySlug().displayName), so
+  // the pill and the destination agree.
+  const attentionCommunityLabel = visibleAttentionTrade?.community
+    ? getCommunityBySlug(visibleAttentionTrade.community)?.displayName ?? null
+    : null;
 
   // v0.6.5 funding-operation gate. The single backstop against two
   // concurrent runFundAndLock calls racing on the shared OPFS wallet.
@@ -2283,7 +2296,9 @@ export default function App() {
     }
 
     if (effect.kind === "switch-silent") {
-      setSwitchingToCommunity({ displayName: effect.displayName });
+      // A jump to a trade in another community — frame the overlay as opening
+      // that trade there, not as switching the trade you were on.
+      setSwitchingToCommunity({ displayName: effect.displayName, forTrade: true });
       setToast({ message: t("app.switchingForTrade", { name: effect.displayName }), type: "info" });
       (async () => {
         const switchStartedAt = Date.now();
@@ -3332,7 +3347,11 @@ export default function App() {
           {/* Readable-first fed-switch banner: big bold DM Sans so it reads at a
               glance, with a calm reassurance line beneath. */}
           <div style={{ fontSize: 18, fontWeight: 800, color: T.text, fontFamily: T.sans, textAlign: "center", padding: "0 24px", lineHeight: 1.3 }}>
-            {t("app.switchOverlayBefore")} <span style={{ color: T.accent }}>{switchingToCommunity.displayName}</span>{t("app.switchOverlayAfter")}
+            {switchingToCommunity.forTrade ? (
+              <>{t("app.switchOverlayTradeBefore")} <span style={{ color: T.accent }}>{switchingToCommunity.displayName}</span></>
+            ) : (
+              <>{t("app.switchOverlayBefore")} <span style={{ color: T.accent }}>{switchingToCommunity.displayName}</span>{t("app.switchOverlayAfter")}</>
+            )}
           </div>
           <div style={{ fontSize: 12.5, fontWeight: 600, color: T.muted, fontFamily: T.sans }}>
             {t("app.noSatsMoveWhileSwitching")}
@@ -3856,6 +3875,7 @@ export default function App() {
               activeTradeMsats={activeTradeMsats}
               actionMode={attentionActionMode}
               actionCount={needsYouCount}
+              communityLabel={attentionCommunityLabel}
               onTap={() => openEscrow(visibleAttentionTrade.id)}
             />
           )}
@@ -3936,6 +3956,7 @@ export default function App() {
               activeTradeMsats={activeTradeMsats}
               actionMode={attentionActionMode}
               actionCount={needsYouCount}
+              communityLabel={attentionCommunityLabel}
               onTap={() => openEscrow(visibleAttentionTrade.id)}
             />
           )}
@@ -4014,6 +4035,7 @@ export default function App() {
               activeTradeMsats={activeTradeMsats}
               actionMode={attentionActionMode}
               actionCount={needsYouCount}
+              communityLabel={attentionCommunityLabel}
               onTap={() => openEscrow(visibleAttentionTrade.id)}
             />
           )}
@@ -4031,6 +4053,7 @@ export default function App() {
               activeTradeMsats={activeTradeMsats}
               actionMode={attentionActionMode}
               actionCount={needsYouCount}
+              communityLabel={attentionCommunityLabel}
               onTap={() => openEscrow(visibleAttentionTrade.id)}
             />
           )}
@@ -4051,6 +4074,7 @@ export default function App() {
               activeTradeMsats={activeTradeMsats}
               actionMode={attentionActionMode}
               actionCount={needsYouCount}
+              communityLabel={attentionCommunityLabel}
               onTap={() => openEscrow(visibleAttentionTrade.id)}
             />
           )}
@@ -4107,6 +4131,7 @@ export default function App() {
               activeTradeMsats={activeTradeMsats}
               actionMode={attentionActionMode}
               actionCount={needsYouCount}
+              communityLabel={attentionCommunityLabel}
               onTap={() => openEscrow(visibleAttentionTrade.id)}
             />
           )}

@@ -186,6 +186,7 @@ export const app: Record<string, string> = {
     "⚠ Cette note a été signalée comme déjà encaissée, mais Chama n'a pas pu confirmer que VOTRE portefeuille a été crédité. Sauvegardez-la quand même, puis vérifiez votre solde — si les sats n'y sont pas, cette chaîne de caractères est votre preuve et votre voie de récupération.",
   "app.switchOverlayAfter": "…",
   "app.switchOverlayBefore": "Bascule vers",
+  "app.switchOverlayTradeBefore": "Ouverture de votre échange dans",
   "app.switchingForTrade": "Bascule vers {name} pour cet échange...",
   "app.switchingTo": "Bascule vers {label}…",
   "app.switchingToDots": "Bascule vers {label}...",

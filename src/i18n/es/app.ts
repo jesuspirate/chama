@@ -184,6 +184,7 @@ export const app: Record<string, string> = {
     "⚠ Esta nota se reportó como ya canjeada, pero Chama no pudo confirmar que TU billetera fuera acreditada. Guárdala de todos modos y luego revisa tu saldo — si los sats no están ahí, esta cadena es tu evidencia y tu vía de recuperación.",
   "app.switchOverlayAfter": "…",
   "app.switchOverlayBefore": "Cambiando a",
+  "app.switchOverlayTradeBefore": "Abriendo tu intercambio en",
   "app.switchingForTrade": "Cambiando a {name} para este intercambio...",
   "app.switchingTo": "Cambiando a {label}…",
   "app.switchingToDots": "Cambiando a {label}...",
