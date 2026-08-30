@@ -658,6 +658,14 @@ export function MeScreen({
               {t("me.withdrawEcash")}
             </button>
           )}
+          {onWithdrawEcash && (
+            <div style={{
+              marginTop: 6, fontSize: 9, color: T.muted, fontFamily: T.mono,
+              lineHeight: 1.5, textAlign: "center",
+            }}>
+              {t("me.withdrawEcashBackupHint")}
+            </div>
+          )}
         </div>
       )}
 

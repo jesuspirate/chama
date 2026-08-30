@@ -243,6 +243,7 @@ export const me: Record<string, string> = {
   "me.waitingForCheckout": "waiting for checkout",
   "me.waitingForYourLock": "waiting for your lock",
   "me.withdrawEcash": "Withdraw as ecash · no LN fees",
+  "me.withdrawEcashBackupHint": "Clearing browser data erases funds you haven't exported.",
   "me.you": "You",
   "me.yourChama": "YOUR CHAMA",
 };

@@ -1510,6 +1510,10 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     if (connectInFlightRef.current || clientRef.current) return;
     connectInFlightRef.current = true;
     setState(prev => ({ ...prev, loading: true, error: null }));
+    // Keep the construction-local handle reachable from catch: client.connect()
+    // or the first subscription can throw before/after clientRef is assigned.
+    // Either way, a failed attempt must not leave the retry guard wedged.
+    let client: EscrowClient | null = null;
 
     try {
       // Detect signer (NIP-07 extension or Fedi runtime)
@@ -1592,13 +1596,15 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       const callbacks: EscrowClientCallbacks = {
         onStateUpdate: (id, s) => updateEscrow(id, s),
         onChatMessage: (id, msg) => {
+          const chatClient = clientRef.current;
+          if (!chatClient) return;
           // Chat messages are embedded in escrow state via the engine.
           // Force React re-render with the updated chatMessages.
-          updateEscrow(id, client.getState(id)!);
+          updateEscrow(id, chatClient.getState(id)!);
           vibrate([20, 30, 20]);
           // OS-buzz the inbound message per the DM preference (auto = arbiters
           // only). The pure decision + delivery live in notify-service.
-          const s = client.getState(id);
+          const s = chatClient.getState(id);
           if (s) maybeNotifyChatMessage(s, msg, pubkey, chatNotifyLiveSince);
         },
         onValidationError: (id, error, eventId) => {
@@ -1634,7 +1640,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
         },
       };
 
-      const client = new EscrowClient(signer, {
+      client = new EscrowClient(signer, {
         relays: config?.relays || DEFAULT_RELAYS,
         defaultPlatformFeeBps: config?.defaultPlatformFeeBps ?? 50,
         platformFeePubkey: config?.platformFeePubkey,
@@ -1874,9 +1880,27 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
         setState(prev => ({ ...prev, myTradesLoading: false }));
       });
     } catch (e) {
+      // A partial client used to survive here. Because connect() guards on a
+      // non-null clientRef, every later tap then returned silently until a full
+      // page refresh recreated the hook. Tear down both the local and published
+      // handles so the very next tap is a real retry.
+      if (publicListingsSettleTimerRef.current) {
+        clearTimeout(publicListingsSettleTimerRef.current);
+        publicListingsSettleTimerRef.current = null;
+      }
+      const failedClient = clientRef.current ?? client;
+      try { failedClient?.disconnect(); } catch { /* best-effort failed-connect cleanup */ }
+      clientRef.current = null;
+      signerRef.current = null;
+      lastDiscoveryRelayCountRef.current = 0;
+      discoveryInFlightRef.current = null;
+      publicListingHydrationsPendingRef.current = 0;
+      setLocalStorageUserScope(null);
       setState(prev => ({
         ...prev,
+        connected: false,
         loading: false,
+        publicListingsLoading: false,
         myTradesLoading: false,
         error: e instanceof Error ? e.message : String(e),
       }));

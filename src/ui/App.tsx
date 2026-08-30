@@ -2441,9 +2441,9 @@ export default function App() {
   }, [connected, actions]);
 
   // ── Notification deep-links: a tapped trade notification opens that trade ───
-  // Register native tap handlers once at mount. Web taps wire themselves in
-  // notify-service via Notification.onclick. Both feed the same pending-deeplink
-  // buffer drained below.
+  // Register native + service-worker tap handlers once at mount. Page-created
+  // web notifications wire themselves in notify-service via Notification.onclick.
+  // Every route feeds the same pending-deeplink buffer drained below.
   useEffect(() => {
     const unregister = registerNotificationTapHandlers();
     // Opt-in delivery probe (localStorage chama_notify_selftest=1) — fires one

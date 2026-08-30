@@ -274,9 +274,11 @@ export function SettingsAdvanced({
         <RemoteBridgeCard />
       )}
 
-      {/* v2.4 — Recovery phrase. Visible to ALL users (not power-user gated):
-          backing up your own funds is a right, not an advanced toggle. Chama
-          is not a wallet — these 12 words are the private key to the ecash. */}
+      {/* v2.4 — Identity phrase. Visible to ALL users (not power-user gated):
+          backing up your own account is a right, not an advanced toggle. These
+          12 words restore your Chama account (Nostr identity, trade history,
+          reputation) on a new device — they do NOT restore your ecash balance;
+          that is what the ecash-note export ("Withdraw as ecash") is for. */}
       <RecoveryPhraseCard />
 
       <StewardRosterCard
@@ -783,12 +785,13 @@ function NwcPermissionCard({
   );
 }
 
-// ── Recovery phrase (v2.4) ───────────────────────────────────────────────
-// Chama is not a wallet — it puts the user in total control. The 12-word
-// BIP-39 mnemonic is the private key to the ecash that passed through their
-// account; it lives NIP-44-encrypted on Nostr, but the user has every right to
-// hold it offline too (paper backup) so they can restore on any Fedimint
-// wallet even if they lose this device or their Nostr account. Hidden by
+// ── Identity phrase (v2.4; honest-copy pass 6.1) ─────────────────────────
+// The 12-word BIP-39 mnemonic backs up the ACCOUNT — restoring it on a new
+// device signs the user back into their Chama (Nostr identity, trade history,
+// reputation, arbiter standing). It does NOT restore the ecash balance: a
+// fresh client cannot reconstruct bearer notes (the Fedimint SDK exposes no
+// recovery scan — force_recover is hardcoded false), so the real fund backup
+// is the exported ecash note ("Withdraw as ecash"), not this phrase. Hidden by
 // default behind a deliberate reveal; the words never leave the device unless
 // the user copies/QRs them on purpose.
 // Remote-bridge "friend wallet" config (2026-07-14 brief): URL + bearer token
@@ -938,13 +941,13 @@ function RecoveryPhraseCard() {
         fontSize: 11, fontWeight: 600, color: T.muted, fontFamily: T.mono,
         letterSpacing: 1, marginBottom: 8,
       }}>
-        RECOVERY PHRASE
+        IDENTITY PHRASE
       </div>
       <div style={{ fontSize: 11, color: T.muted, fontFamily: T.mono, lineHeight: 1.6, marginBottom: 12 }}>
-        Chama is not a wallet — it puts you in total control. These 12 words are
-        the private key to the ecash that passed through your account. Back them
-        up offline and you can restore your funds on any Fedimint wallet, even if
-        you lose this device or your Nostr account.
+        These 12 words restore your Chama account — your trades, reputation and
+        arbiter standing — on a new device. They do NOT restore your ecash
+        balance. To back up funds, export them as an ecash note (Me › Withdraw
+        as ecash) and keep it safe.
       </div>
 
       {!words ? (
@@ -953,7 +956,7 @@ function RecoveryPhraseCard() {
           background: T.surface, border: `1px solid ${T.border}`,
           color: T.muted, fontFamily: T.mono, fontSize: 11, lineHeight: 1.5,
         }}>
-          Connect your Chama first, then come back to reveal your recovery phrase.
+          Connect your Chama first, then come back to reveal your identity phrase.
         </div>
       ) : !revealed ? (
         <>
@@ -962,9 +965,9 @@ function RecoveryPhraseCard() {
             background: T.amberDim, border: `1px solid ${T.amber}44`,
             color: T.amber, fontFamily: T.mono, fontSize: 10, lineHeight: 1.6,
           }}>
-            ⚠ Anyone with these words can take your funds. Never type them into a
-            website, and never share them — Chama will never ask for them. Make
-            sure no one is watching your screen.
+            ⚠ Anyone with these words can take over your account. Never type them
+            into a website, and never share them — Chama will never ask for them.
+            Make sure no one is watching your screen.
           </div>
           <button
             onClick={() => setRevealed(true)}
@@ -975,7 +978,7 @@ function RecoveryPhraseCard() {
               cursor: "pointer", letterSpacing: 0.5,
             }}
           >
-            Reveal recovery phrase
+            Reveal identity phrase
           </button>
         </>
       ) : (
@@ -1118,7 +1121,7 @@ function NsecRevealCard({
       <div style={{ fontSize: 11, color: T.muted, fontFamily: T.mono, lineHeight: 1.6, marginBottom: 12 }}>
         Your nsec is the master key to this account — it owns your Nostr identity
         and can recover your wallet. It is strictly more powerful than your
-        recovery phrase: anyone who has it owns everything.
+        identity phrase: anyone who has it owns everything.
       </div>
 
       {!loaded ? (

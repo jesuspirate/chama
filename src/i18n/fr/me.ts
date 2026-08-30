@@ -249,6 +249,7 @@ export const me: Record<string, string> = {
   "me.waitingForCheckout": "en attente de commande",
   "me.waitingForYourLock": "en attente de votre verrouillage",
   "me.withdrawEcash": "Retirer en ecash · sans frais LN",
+  "me.withdrawEcashBackupHint": "Effacer les données du navigateur supprime les fonds que vous n'avez pas exportés.",
   "me.you": "Vous",
   "me.yourChama": "VOTRE CHAMA",
 };

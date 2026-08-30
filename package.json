@@ -1,7 +1,7 @@
 {
   "name": "chama",
   "private": true,
-  "version": "6.0.1",
+  "version": "6.1.0",
   "license": "MIT",
   "type": "module",
   "description": "Chama — Nostr-native P2P escrow client. Non-custodial. No server.",
@@ -10,7 +10,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "android:sync": "npm run build && npx cap sync android",
-    "test": "npx tsx src/escrow-engine/tests.ts && npx tsx src/escrow-engine/tranche-plan.tests.ts && npx tsx src/escrow-engine/slice-policy.tests.ts && npx tsx src/escrow-engine/slice-create-gate.tests.ts && npx tsx src/escrow-engine/slice-funding-loop.tests.ts && npx tsx src/payments/ecash-qr.tests.ts && npx tsx src/fedimint/native-bridge-adapter.tests.ts && npx tsx src/guided/tests.ts && npx tsx src/chip-in/tests.ts && npx tsx src/stack/tests.ts",
+    "test": "npx tsx src/escrow-engine/tests.ts && npx tsx src/escrow-engine/tranche-plan.tests.ts && npx tsx src/escrow-engine/slice-policy.tests.ts && npx tsx src/escrow-engine/slice-create-gate.tests.ts && npx tsx src/escrow-engine/slice-funding-loop.tests.ts && npx tsx src/payments/ecash-qr.tests.ts && npx tsx src/fedimint/native-bridge-adapter.tests.ts && npx tsx src/notifications/deep-link.tests.ts && npx tsx src/guided/tests.ts && npx tsx src/chip-in/tests.ts && npx tsx src/stack/tests.ts",
     "typecheck": "tsc --noEmit",
     "repo:hygiene": "./scripts/check-repo-hygiene.sh",
     "audit:deps": "node scripts/dependency-audit.mjs",

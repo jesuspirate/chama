@@ -151,7 +151,7 @@ export const app: Record<string, string> = {
   "app.phaseSendingNwc": "Envoi vers NWC…",
   "app.phaseStillCreatingInvoice": "Création de la facture toujours en cours…",
   "app.reabsorbConsumedUncredited":
-    "Votre Chama a déjà accepté ces notes — elles ne peuvent plus être importées, elles ne sont donc plus proposées. Nous ne pouvons pas confirmer que les sats sont arrivés dans ce portefeuille ; c'est donc consigné dans vos archives — vous n'avez rien à faire.",
+    "Votre Chama a déjà accepté ces notes — elles ne peuvent plus être importées, elles ne sont donc plus proposées. Nous ne pouvons pas confirmer que les sats sont arrivés dans ce portefeuille ; c'est donc conservé comme preuve — une récupération sera peut-être possible dans une future mise à jour.",
   "app.reabsorbDead":
     "Ces notes ne sont plus valides — rien n'a été récupéré. Votre Chama a confirmé qu'elles sont déjà dépensées ; cette entrée cesse donc de vous demander de les poursuivre.",
   "app.reabsorbForeign":

@@ -149,7 +149,7 @@ export const app: Record<string, string> = {
   "app.phaseSendingNwc": "Enviando a NWC…",
   "app.phaseStillCreatingInvoice": "Todavía creando la factura…",
   "app.reabsorbConsumedUncredited":
-    "Tu Chama ya aceptó estas notas — no se pueden volver a importar, así que dejan de ofrecerse. No podemos confirmar que los sats llegaran a esta billetera, así que queda registrado para tu control — no tienes que hacer nada.",
+    "Tu Chama ya aceptó estas notas — no se pueden volver a importar, así que dejan de ofrecerse. No podemos confirmar que los sats llegaran a esta billetera, así que queda guardado como prueba — la recuperación podría ser posible en una futura actualización.",
   "app.reabsorbDead":
     "Estas notas ya no son válidas — no se recuperó nada. Tu Chama confirmó que ya están gastadas, así que esta entrada deja de pedirte que las persigas.",
   "app.reabsorbForeign":

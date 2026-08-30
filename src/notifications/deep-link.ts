@@ -70,13 +70,23 @@ function extractEscrowId(extra: unknown): string | null {
   return typeof id === "string" && ESCROW_ID_RE.test(id) ? id : null;
 }
 
+/** Route a warm web-service-worker notification tap without navigating the
+ *  live document (and therefore without destroying its memory-only nsec). */
+export function handleWebNotificationClickMessage(data: unknown): void {
+  const message = data as { type?: unknown; escrowId?: unknown } | null | undefined;
+  if (message?.type !== "chama:notificationclick") return;
+  setPendingTradeDeepLink(extractEscrowId(message));
+}
+
 let registered = false;
 
 /**
  * Register OS-notification tap handlers for the current native platform, routing
  * each tap into the pending-deeplink buffer. Idempotent and never throws — a
- * missing plugin or a web context is a silent no-op (web taps are wired in
- * notify-service via Notification.onclick). Returns a best-effort unregister.
+ * missing plugin is a silent no-op. Page-constructed web notifications are
+ * wired in notify-service via Notification.onclick; service-worker-delivered
+ * web notifications arrive here via postMessage. Returns a best-effort
+ * unregister.
  */
 export function registerNotificationTapHandlers(): () => void {
   if (registered) return () => {};
@@ -106,6 +116,13 @@ export function registerNotificationTapHandlers(): () => void {
         disposers.push(() => { try { void handle.unregister(); } catch { /* ignore */ } });
       } catch { /* plugin unavailable; ignore */ }
     })();
+  } else if (typeof navigator !== "undefined" && navigator.serviceWorker) {
+    const serviceWorker = navigator.serviceWorker;
+    const onMessage = (event: MessageEvent) => {
+      handleWebNotificationClickMessage(event.data);
+    };
+    serviceWorker.addEventListener("message", onMessage);
+    disposers.push(() => serviceWorker.removeEventListener("message", onMessage));
   }
 
   return () => {
