@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -14,6 +15,28 @@ const manifest = new Set(entries);
 const missingFiles = entries.filter((entry) => !fs.existsSync(path.join(landingRoot, entry)));
 if (missingFiles.length) {
   console.error(`Landing deploy manifest names missing files:\n${missingFiles.join("\n")}`);
+  process.exit(1);
+}
+
+// Generated landing assets are ignored by default so local image iterations
+// never dirty the repository. A file promoted into the VPS manifest must cross
+// the opposite boundary explicitly: it must be tracked, so a clean checkout
+// contains exactly what deploy-landing.sh expects to upload.
+const tracked = new Set(
+  execFileSync("git", ["ls-files", "--", "landing"], {
+    cwd: repoRoot,
+    encoding: "utf8",
+  })
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .map((file) => path.relative("landing", file)),
+);
+const untrackedManifestFiles = entries.filter((entry) => !tracked.has(entry));
+if (untrackedManifestFiles.length) {
+  console.error(
+    `Landing deploy manifest names files that are not tracked by Git:\n${untrackedManifestFiles.join("\n")}\n` +
+      "Promote each reviewed asset with: git add -f landing/<file>",
+  );
   process.exit(1);
 }
 

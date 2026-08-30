@@ -44,6 +44,13 @@ outputs/
 # scratch dir (agent session) — not source
 tmp/
 
+# Generated image iterations are local working material by default. Existing
+# reviewed assets remain tracked; promote a new production asset explicitly by
+# adding it to landing/deploy-files.txt and staging it with `git add -f`.
+/landing/img/**
+/landing/icons/**
+/public/icons/**
+
 # Mutinynet bond live-attack harness — signet test keys (never commit)
 scripts/.mutinynet-bond-keys.json
 
