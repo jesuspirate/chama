@@ -82,6 +82,7 @@ design/mockups/
 # StartOS packages are built only in Start9-Community/chama-startos. Ignore
 # locally copied artifacts here so they can never reintroduce packaging into
 # this application repository.
+/startos/
 *.s9pk
 docker-images
 ncc-cache

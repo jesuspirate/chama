@@ -19,6 +19,9 @@ forbidden_tracked=$(git ls-files -- \
   '.codex-vps-deploy/**' \
   '.codex-target.patch' \
   '**/.b64tmp/**' \
+  'startos' \
+  'startos/**' \
+  '*.s9pk' \
   'design/**' \
   'migration/**' \
   'social/**')

@@ -13,43 +13,50 @@ pubkey: npub1ytm3v8mkup6mnc9z2zjy0zz2czdsfd3kal7hcup6jgu5a5lm885qhup3z6
 release_notes: ./zapstore/release-notes.md
 
 name: Chama
-summary: Trade Bitcoin peer-to-peer with escrow no one can freeze — non-custodial, serverless, no KYC.
+summary: Local money, Bitcoin rails — peer-to-peer commerce with community-backed escrow.
 description: |
-  **Trade Bitcoin with anyone. Trust the math, not a middleman.**
+  **Trade with your community. Trust the math, not a middleman.**
 
-  A *chama* is an East African savings circle — neighbors who pool their money
-  and settle on trust. Chama gives that same circle to the whole world, except
-  here the trust is cryptographic. Buy and sell Bitcoin, goods, and services
-  peer-to-peer behind an escrow that no company can freeze, seize, or switch
-  off — because there is no company in the middle. No server. No "Chama Inc."
-  Just you, your counterparty, your community, and Nostr.
+  Chama is a Nostr-native client for peer-to-peer commerce: exchange sats and
+  local money, pay community bills, run a storefront, or offer work without a
+  central Chama account server, custodial marketplace operator, or proprietary
+  social graph.
 
-  **Your money is never ours to lose.** Every trade is locked into a 2-of-3
-  escrow, split with Shamir Secret Sharing and held as Fedimint ecash. No
-  custodian ever touches the funds. When both sides are happy it settles over
-  Lightning in seconds. If a deal goes sideways, a community arbiter you already
-  trust — not a faceless support queue — helps release the funds to the right
-  side. Two of three keys always decide. Never one.
+  A *chama* is an East African savings circle built on shared responsibility.
+  Chama carries that idea into open digital commerce. You choose your country,
+  currency, payment rails, counterparty, and community arbiter. Listings, chat,
+  reputation, and verifiable trade state travel over Nostr rather than through
+  a company-owned marketplace database.
 
-  **No account. No email. No KYC.** Sign in with your Nostr key and you're in —
-  nothing to sign up for, nothing to be deplatformed from. Trades travel as
-  encrypted Nostr events (NIP-44) across many relays, so the marketplace itself
-  is as censorship-resistant as Nostr.
+  **Escrow belongs to the trade—not to Chama.** A funded ecash trade uses three
+  Shamir shares and a 2-of-3 outcome across buyer, seller, and arbiter. Ordinary
+  trades settle when the two parties agree. The arbiter acts only when they
+  disagree or when an expired trade needs a protocol-defined healing vote. No
+  single participant, arbiter, or Chama operator can move the sats alone.
 
-  **Built for real-world commerce:**
+  **Chama is not a wallet.** Fedimint ecash is held only while a trade is active.
+  After settlement, claim promptly through the route that fits you: a Lightning
+  address or invoice, a connected Nostr Wallet Connect wallet, ecash export,
+  on-chain Bitcoin where available, or supported local cash-out rails such as
+  M-Pesa in Kenya. Your Nostr key restores your identity and trade history; it
+  does not recreate device-local bearer ecash.
 
-  - 2-of-3 escrow with community arbiters — disputes settled by people, not policies
-  - Lightning-fast settlement via client-side Fedimint ecash
-  - **Cash out to M-Pesa in one tap (Kenya)** — your sats become mobile-money shillings in seconds, no app or account for the recipient; more local rails rolling out
-  - Get paid your way — mobile money, bank transfer, and the local rails that matter where you live (Strike, Cash App, Zelle and more where they apply)
-  - Bring your own Lightning wallet over Nostr Wallet Connect (NWC)
-  - Join community "Chamas" — from Bitcoin Life to Global USD — each with its own arbiters and payment rails
-  - Runs in your browser, on Android, and on desktop — same keys everywhere
+  **Built for commerce, not speculation:**
 
-  Bitcoin was meant to be peer-to-peer electronic cash. Chama is peer-to-peer
-  electronic *commerce* — sovereign, private, and woven from trust.
+  - Exchange Bitcoin and local currency using the payment methods people already use
+  - Buy or sell goods through community storefronts
+  - Find or offer work with the same verifiable escrow protocol
+  - Coordinate community bill payments without a central collection account
+  - Browse through a guided Chama assistant or open the full marketplace tools
+  - Build portable reputation from completed, cryptographically verifiable trades
 
-  Bring your keys. Bring your circle.
+  **No Chama signup. No email. No KYC database.** Your Nostr identity is your
+  account, and encrypted trade coordination can travel across multiple relays.
+  Chama runs on the web, as an Android or desktop app, and as a self-hosted
+  StartOS service. Wallet storage follows the client you use, so preserve your
+  Nostr secret key and any exported bearer notes separately.
+
+  Local money. Bitcoin rails. Bring your keys—and bring your circle.
 website: https://getchama.app
 icon: public/icons/android-chrome-512x512.png
 images:
