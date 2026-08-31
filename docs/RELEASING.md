@@ -34,6 +34,8 @@ Use the same entry point with `--only` when the version already exists and only 
 
 `npm run publish -- --only …` is an equivalent direct entry point. Add `--dry-run` to any target to print the exact command without changing local or remote state.
 
+If `main` has advanced beyond the requested release tag, the GitHub-assets, Zapstore, Zapstore-listing, and full targets automatically reuse that tag's prepared APK. They never rebuild a tagged release from newer source. Use `--release-dir` when restoring those assets from a different directory.
+
 ## Zapstore metadata limitation
 
 Zapstore's publisher does not expose an app-metadata-only operation. `zapstore-listing` therefore verifies the existing signed APK and re-publishes the current release event with `--overwrite-release`, which refreshes the app event containing `zapstore.yaml`'s icon, screenshots, summary, and description. Existing Zapstore release notes are preserved unless `--zapstore-notes-file` is supplied. It does not deploy or upload anywhere else.

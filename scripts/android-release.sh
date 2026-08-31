@@ -682,8 +682,12 @@ assert_release_tag_signed "$TAG"
 
 TAG_SHA=$(git rev-list -n 1 "$TAG")
 if [ "$TAG_SHA" != "$COMMIT_SHA" ]; then
-  echo "❌ Local tag $TAG points at $TAG_SHA, not HEAD $COMMIT_SHA."
-  exit 1
+  if [ "$BUILD_APK" = "1" ]; then
+    echo "❌ Local tag $TAG points at $TAG_SHA, not HEAD $COMMIT_SHA."
+    echo "   Refusing to build release assets from code newer than the requested tag."
+    exit 1
+  fi
+  echo "↷ Reusing verified assets for $TAG while HEAD is $COMMIT_SHA."
 fi
 
 if ! git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
@@ -692,8 +696,8 @@ if ! git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; t
 fi
 
 REMOTE_TAG_SHA=$(remote_tag_target_sha "$TAG")
-if [ "$REMOTE_TAG_SHA" != "$COMMIT_SHA" ]; then
-  echo "❌ Remote tag $TAG points at $REMOTE_TAG_SHA, not HEAD $COMMIT_SHA."
+if [ "$REMOTE_TAG_SHA" != "$TAG_SHA" ]; then
+  echo "❌ Remote tag $TAG points at $REMOTE_TAG_SHA, not local tag target $TAG_SHA."
   exit 1
 fi
 

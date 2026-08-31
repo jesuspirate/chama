@@ -150,6 +150,20 @@ require_file_if_set() {
 require_file_if_set "Release notes file" "$NOTES_FILE"
 require_file_if_set "Zapstore notes file" "$ZAPSTORE_NOTES_FILE"
 
+# Channel retries commonly happen after docs or tooling have advanced main past
+# the release tag. Never rebuild a tagged APK from that newer checkout: reuse
+# the already verified release artifact instead. A missing artifact then fails
+# closed inside android-release.sh with a precise path to restore.
+if [[ "$TARGET" =~ ^(github-assets|zapstore|zapstore-listing|full)$ ]] \
+  && git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+  tag_target=$(git rev-list -n 1 "$TAG")
+  head_target=$(git rev-parse HEAD)
+  if [ "$tag_target" != "$head_target" ]; then
+    REUSE_APK=1
+    echo "↷ $TAG is behind HEAD; reusing its verified APK instead of rebuilding newer code."
+  fi
+fi
+
 android_args=(--tag "$TAG" --gpg-key "$GPG_KEY")
 [ -n "$REPO" ] && android_args+=(--repo "$REPO")
 [ -n "$RELEASE_DIR" ] && android_args+=(--release-dir "$RELEASE_DIR")
