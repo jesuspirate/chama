@@ -265,6 +265,7 @@ import {
   armBrowserWalletRecoveryForDiagnostics,
   resetLocalFedimintWallet,
   classifyPayOutcome,
+  isOpfsTransientStorageError,
   assertBrowserSafeOobTimeoutSecs,
   MAX_BROWSER_OOB_TIMEOUT_SECS,
 } from "../fedimint/sdk-adapter.js";
@@ -26848,6 +26849,35 @@ console.log("\n── #62 REDEEM-PROBE + BONDED-POOL CACHE ──");
   assert(wrongSeedRefused,
     "⭐⭐ S7-wallet: a different seed cannot sweep merely because it knows the trade id");
 }
+
+// ══════════════════════════════════════════════════════════════════════════
+// Browser OPFS failure classification
+// ══════════════════════════════════════════════════════════════════════════
+
+assert(
+  isOpfsTransientStorageError(
+    "The operation failed for an unknown transient reason (e.g. out of memory).",
+  ),
+  "iOS WebKit's string-only OPFS UnknownError is classified as a storage failure",
+);
+assert(
+  isOpfsTransientStorageError({
+    name: "UnknownError",
+    message: "The operation failed for an unknown transient reason",
+  }),
+  "a structured WebKit UnknownError is classified as a storage failure",
+);
+assert(
+  isOpfsTransientStorageError({
+    name: "QuotaExceededError",
+    message: "Quota exceeded",
+  }),
+  "an OPFS quota refusal is classified as a storage failure",
+);
+assert(
+  !isOpfsTransientStorageError(new Error("federation invite expired")),
+  "an unrelated wallet error is not mislabeled as an OPFS storage failure",
+);
 
 // ══════════════════════════════════════════════════════════════════════════
 // RESULTS

@@ -3041,11 +3041,11 @@ export interface CreateRealWalletOptions {
 
 // ── OPFS filename rotation ───────────────────────────────────────────────
 //
-// Firefox (and sometimes Chrome after crashes) can leak OPFS sync access
-// handles across page reloads. When that happens, the worker's attempt to
-// createSyncAccessHandle() on the default "fedimint.db" file throws
-// NoModificationAllowedError, and there's no API to release the orphaned
-// handle — it'll clear itself "eventually" but not during this session.
+// Browsers can leak OPFS sync access handles across page reloads. When that
+// happens, the worker's attempt to createSyncAccessHandle() on the wallet file
+// throws. Ordinary startup retries only the SAME file and then fails closed;
+// it must never rotate merely to escape a lock because the preserved file may
+// contain bearer ecash.
 //
 // Chama historically treated filename rotation as harmless because the
 // Nostr-backed mnemonic recreates the same keys. That was incomplete: the
@@ -3053,8 +3053,8 @@ export interface CreateRealWalletOptions {
 // progress, and bearer ecash is not restored merely by reinstalling a seed.
 // A fresh/rotated database under an already-used seed must force federation
 // recovery before wallet use. The old file is preserved whenever a money
-// incident triggers rotation; an OPFS-lock rotation still fails closed later
-// if the recovery-capable join cannot complete.
+// incident is the only path that triggers rotation, and it retains a durable
+// journal plus rollback pointer if the recovery-capable join cannot complete.
 
 const FILENAME_STORAGE_KEY = "chama_fedimint_opfs_file_v1";
 const DEFAULT_FILENAME = "fedimint.db";
@@ -3133,6 +3133,56 @@ function isOpfsLockError(e: unknown): boolean {
 }
 
 /**
+ * WebKit uses this deliberately vague DOMException when an embedded/private
+ * browser cannot create the synchronous OPFS handle the Fedimint database
+ * requires. The transport currently posts only `e.message`, so production
+ * may receive the sentence without the original `UnknownError` name.
+ *
+ * This is not evidence that the phone itself ran out of RAM. It is a failure
+ * of the browser storage operation and must fail closed: selecting another
+ * OPFS filename could hide an existing bearer-ecash wallet.
+ */
+export function isOpfsTransientStorageError(e: unknown): boolean {
+  if (!e) return false;
+  if (typeof e === "string") {
+    return /unknown transient reason|out of memory/i.test(e);
+  }
+  const err = e as { name?: string; message?: string; toString?: () => string };
+  if (err.name === "UnknownError" || err.name === "QuotaExceededError") return true;
+  const msg = err.message || (typeof err.toString === "function" ? err.toString() : "");
+  return /unknown transient reason|out of memory/i.test(msg);
+}
+
+export const BROWSER_WALLET_STORAGE_UNAVAILABLE_CODE =
+  "FEDIMINT_BROWSER_STORAGE_UNAVAILABLE";
+
+function browserWalletStorageUnavailableError(cause: unknown): Error {
+  const error = new Error(
+    "Chama could not open its secure local wallet storage. This is a browser " +
+      "storage failure—not evidence that your iPhone ran out of memory—and " +
+      "Reconnect cannot repair it in this browser. On iPhone, open " +
+      "getchama.app in standard Safari (not an iPhone third-party or private " +
+      "browser), " +
+      "then sign in again. If Safari reports the same failure, check free " +
+      "device storage and install the latest iOS update. No wallet file was replaced.",
+  ) as Error & { code?: string; cause?: unknown };
+  error.code = BROWSER_WALLET_STORAGE_UNAVAILABLE_CODE;
+  error.cause = cause;
+  return error;
+}
+
+function browserWalletFileBusyError(cause: unknown): Error {
+  const error = new Error(
+    "Chama's secure local wallet file is still open in another browser " +
+      "process. Close every other Chama tab or window, fully close the " +
+      "browser, then reopen Chama. No wallet file was replaced.",
+  ) as Error & { code?: string; cause?: unknown };
+  error.code = "FEDIMINT_BROWSER_STORAGE_BUSY";
+  error.cause = cause;
+  return error;
+}
+
+/**
  * Start loading the heavy browser Fedimint runtime without creating a wallet.
  * initFedimint uses this while the Nostr seed recovery is in flight, so the
  * WASM/transport chunks do not sit serially in front of the federation join.
@@ -3174,13 +3224,15 @@ export async function createRealWallet(
     const { WalletDirector, WasmWorkerTransport } = await preloadRealWalletRuntime();
 
   // Terminate any worker left over from a previous init in this session.
-  // Handles HMR, double-init, and retry-after-failed-join. (This does NOT
-  // help the cross-reload leak case — that's what filename rotation is for.)
+  // Handles HMR, double-init, and retry-after-failed-join. A cross-reload
+  // leaked handle is retried against the same file below and then fails
+  // closed; it is never an excuse to replace the selected wallet database.
   terminateCurrentWorker();
 
-  // Try the stored filename first. If the worker can't open it (stale
-  // sync handle from a previous page load that didn't release), rotate
-  // to a fresh name and retry once.
+  // Always open the stored filename. A failed OPFS handle may be transient,
+  // so we can tear down the worker and retry that SAME file once. Never rotate
+  // merely to make startup succeed: this file can contain bearer ecash that a
+  // fresh database cannot reconstruct.
   let filenameEntry = getStoredFilenameEntry(opts.storageScope);
   let filename = filenameEntry.filename;
   let filenameSource = filenameEntry.source;
@@ -3234,25 +3286,35 @@ export async function createRealWallet(
     ({ d: director, t: transport } = await attemptInit(filename));
     console.info(`[chama] Fedimint OPFS file: ${filename}`);
   } catch (e) {
+    const storageHandleFailure =
+      isOpfsLockError(e) || isOpfsTransientStorageError(e);
     console.warn(
       `[chama] init failed on '${filename}' —`,
       e,
       "isOpfsLockError:",
-      isOpfsLockError(e)
+      isOpfsLockError(e),
+      "isOpfsTransientStorageError:",
+      isOpfsTransientStorageError(e),
     );
-    if (isOpfsLockError(e)) {
-      console.warn(`[chama] OPFS '${filename}' is locked (stale sync handle). Rotating.`);
+    if (storageHandleFailure) {
+      console.warn(
+        `[chama] OPFS '${filename}' handle failed; retrying the same wallet file once.`,
+      );
       terminateCurrentWorker();
-      // Give the browser a tick to finalize the failed worker's teardown
-      // before spinning up a new one. Some Firefox builds need this.
-      await new Promise((r) => setTimeout(r, 50));
-      filename = rotateFilename(opts.storageScope);
-      filenameSource = opts.storageScope ? "scoped" : "legacy";
+      // WebKit can need more than one event-loop turn to dispose a failed
+      // worker and release its file-system operation.
+      await new Promise((r) => setTimeout(r, 250));
       try {
         ({ d: director, t: transport } = await attemptInit(filename));
-        console.info(`[chama] Fedimint OPFS file (rotated): ${filename}`);
+        console.info(`[chama] Fedimint OPFS file (same-file retry): ${filename}`);
       } catch (e2) {
-        console.error(`[chama] retry with rotated filename '${filename}' also failed:`, e2);
+        console.error(`[chama] same-file retry for '${filename}' also failed:`, e2);
+        if (isOpfsLockError(e2)) {
+          throw browserWalletFileBusyError(e2);
+        }
+        if (isOpfsTransientStorageError(e2)) {
+          throw browserWalletStorageUnavailableError(e2);
+        }
         throw e2;
       }
     } else {
