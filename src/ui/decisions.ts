@@ -31,7 +31,11 @@ import {
   TERMINAL_STATES,
   getEffectiveParticipantsAt,
 } from "../escrow-engine/types.js";
-import { arbiterVotePriority, substitutionEligibleAt } from "../escrow-engine/arbiter-substitution.js";
+import {
+  arbiterVotePriority,
+  isPerformanceContest,
+  substitutionEligibleAt,
+} from "../escrow-engine/arbiter-substitution.js";
 import { translate, getCurrentLang } from "../i18n/index.js";
 import { payoutRecipientFor } from "../escrow-engine/recipients.js";
 import { pendingOnchainArbiterPubkey } from "../notifications/trade-notifications.js";
@@ -598,7 +602,6 @@ function needsYouReason(
   const isBuyer = samePk(p.buyer, userPubkey);
   const isSeller = samePk(p.seller, userPubkey);
   const isAssignedArbiter = samePk(p.arbiter, userPubkey);
-  const isPoolArbiter = e.communityArbiters?.some((a) => samePk(a, userPubkey)) ?? false;
 
   // Claim owed — resolved in my favor, the payout is mine to take.
   if (e.status === EscrowStatus.APPROVED) {
@@ -615,6 +618,15 @@ function needsYouReason(
   }
 
   if (e.status === EscrowStatus.LOCKED) {
+    const buyerVote = e.votes[Role.BUYER];
+    const sellerVote = e.votes[Role.SELLER];
+    const conflictingPrincipalVotes = buyerVote !== undefined
+      && sellerVote !== undefined
+      && buyerVote !== sellerVote;
+    const automaticExpiryHealing = isPastEscrowDeadline(e, nowSec)
+      && !conflictingPrincipalVotes
+      && !isPerformanceContest(e);
+
     // Vote / deliver owed — my turn on a live trade (a live child order to
     // deliver lands here for the seller until they vote release). The turn
     // gate is load-bearing: without it the queue summons the SECOND voter to
@@ -622,15 +634,45 @@ function needsYouReason(
     // buttons, so the badge and the room contradict each other.
     if (
       (isBuyer || isSeller)
+      && !automaticExpiryHealing
       && e.votes[getRoleKey(isBuyer)] === undefined
       && voteTurnIsOpen(e, getRoleKey(isBuyer), nowSec)
     ) return "vote";
-    // Arbiter ruling owed — a buyer↔seller dispute is open and my vote isn't in.
-    const bV = e.votes[Role.BUYER];
-    const sV = e.votes[Role.SELLER];
-    const dispute = bV !== undefined && sV !== undefined && bV !== sV;
-    if ((isAssignedArbiter || isPoolArbiter) && dispute && e.votes[Role.ARBITER] === undefined) {
-      return "dispute";
+    // Arbiter ruling owed. Merely appearing in CREATE's communityArbiters is
+    // NOT an obligation: Browse/history hydration can put trades from the
+    // whole historical pool in memory, while only the assigned arbiter and the
+    // deterministic pooled-share backups may ever act. The attention queue
+    // must mirror the vote surface/reducer gates or a hydrated arbiter account
+    // gets dozens of false "needs you" rows for trades it cannot touch.
+    const dispute = conflictingPrincipalVotes;
+    const chain = e.eventChain ?? [];
+    const unresolved = !chain.some(event => event.kind === EscrowEventKind.RESOLVE);
+    const alreadyVoted = chain.some(event =>
+      event.kind === EscrowEventKind.VOTE && samePk(event.pubkey, userPubkey)
+    );
+    const escalationAt = e.eventChain ? substitutionEligibleAt(e) : null;
+    const arbiterMatterOpen = dispute
+      || (escalationAt !== null && escalationAt <= nowSec);
+
+    // The assigned arbiter keeps responsibility for this already-locked trade
+    // even if their CURRENT bond later lapses; hiding it would strand funds.
+    // Per-pubkey vote history matters on pooled locks because a backup may fill
+    // the derived ARBITER slot before the assigned arbiter acts.
+    if (
+      isAssignedArbiter
+      && !alreadyVoted
+      && unresolved
+      && arbiterMatterOpen
+    ) return "dispute";
+
+    // A backup is actionable only when this LOCK opted into pool-share
+    // substitution, this npub is in the deterministic capped priority order,
+    // and (for a live dispute) the assigned arbiter's floor has elapsed.
+    const priority = e.lock?.arbiterPoolShare === true
+      ? arbiterVotePriority(e, userPubkey)
+      : null;
+    if (priority !== null && priority > 0 && !alreadyVoted && unresolved) {
+      if (escalationAt !== null && escalationAt <= nowSec) return "dispute";
     }
     return null;
   }
@@ -669,6 +711,15 @@ function needsYouReason(
   return null;
 }
 
+/** Viewing or voting on a post-lock trade is Nostr state work; it must not
+ * switch the browser's bearer-ecash wallet merely to open the room. Funding
+ * and claiming retain their existing route requirements. */
+export function canInspectTradeWithoutFederationSwitch(
+  status: EscrowStatus,
+): boolean {
+  return status === EscrowStatus.LOCKED || status === EscrowStatus.EXPIRED;
+}
+
 function getRoleKey(isBuyer: boolean): Role {
   return isBuyer ? Role.BUYER : Role.SELLER;
 }
@@ -682,10 +733,11 @@ function getRoleKey(isBuyer: boolean): Role {
  * queue must agree, or the Me badge says "tap to act" and the room it routes to
  * says "wait".
  *
- * Two cases deliberately stay open:
+ * Two cases deliberately stay open at the vote-surface level:
  *  - the counterparty has already voted (real duality; my response is owed);
- *  - the trade is past its deadline (healing), where `decideVotePrompt` also
- *    skips ordering because either side may vote REFUND to unstick it.
+ *  - the trade is past its deadline, where `decideVotePrompt` also skips
+ *    ordering. The attention queue separately suppresses uncontested expiry
+ *    because the escrow client performs that REFUND healing automatically.
  */
 function voteTurnIsOpen(e: EscrowState, role: Role, nowSec: number): boolean {
   if (isPastEscrowDeadline(e, nowSec)) return true;

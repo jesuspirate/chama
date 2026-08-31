@@ -3112,18 +3112,45 @@ const DEFAULT_FILENAME = "fedimint.db";
 
 type FilenameSource = "scoped" | "legacy";
 
+function isDedicatedArbiterFederationScope(scope?: string | null): boolean {
+  return scope?.trim().toLowerCase().includes(":arbiter-fed:") === true;
+}
+
 function scopedFilenameKey(scope: string | null | undefined): string | null {
   const clean = scope?.trim().toLowerCase();
   if (!clean) return null;
   return `${FILENAME_STORAGE_KEY}:${clean}`;
 }
 
-function getStoredFilenameEntry(scope?: string | null): { filename: string; source: FilenameSource } {
+export function getStoredFilenameEntry(scope?: string | null): { filename: string; source: FilenameSource } {
   try {
     const scopedKey = scopedFilenameKey(scope);
     if (scopedKey) {
       const scoped = localStorage.getItem(scopedKey);
-      if (scoped) return { filename: scoped, source: "scoped" };
+      if (scoped) {
+        const legacy = localStorage.getItem(FILENAME_STORAGE_KEY) || DEFAULT_FILENAME;
+        // Repair installs that already encountered the old fallthrough bug:
+        // it could persist the legacy filename under the new federation's
+        // dedicated key after observing the same mnemonic. Preserve that
+        // legacy file and move only this poisoned route to a fresh file.
+        if (isDedicatedArbiterFederationScope(scope) && scoped === legacy) {
+          return { filename: rotateFilename(scope), source: "scoped" };
+        }
+        return { filename: scoped, source: "scoped" };
+      }
+
+      // A bonded arbiter may serve several federations. Each route is a
+      // separate bearer-ecash wallet and therefore MUST start on a separate
+      // OPFS file. Falling through to the legacy/global filename here opened
+      // whichever federation the browser had used first; the subsequent
+      // federation mismatch correctly refused to wipe it, leaving every old
+      // trade behind an unrecoverable "re-select the federation" loop.
+      //
+      // Identity scopes intentionally retain the legacy fallback below: that
+      // is the one-time migration path which preserves existing user wallets.
+      if (isDedicatedArbiterFederationScope(scope)) {
+        return { filename: rotateFilename(scope), source: "scoped" };
+      }
     }
     return {
       filename: localStorage.getItem(FILENAME_STORAGE_KEY) || DEFAULT_FILENAME,

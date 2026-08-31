@@ -134,6 +134,7 @@ import {
   findActiveTrade,
   mergeOnchainPayoutAttention,
   selectNeedsYouTrades,
+  canInspectTradeWithoutFederationSwitch,
   shouldOpenSellerListingManagement,
   identifyStrandedEcashSource,
   isMidFunding,
@@ -2328,6 +2329,24 @@ export default function App() {
     // through normally because those are real trades requiring attention.
     if (shouldOpenSellerListingManagement({ escrow: local, viewerPubkey: pubkey })) {
       setSellerManageId(id);
+      return;
+    }
+
+    // LOCKED/EXPIRED rooms are safe to inspect and vote on without touching
+    // the active Fedimint wallet. Forcing federation-following here made an
+    // arbiter switch wallets just to read an old dispute; legacy routes then
+    // hit the non-destructive mismatch guard and every attention card became
+    // impossible to open. Money-moving states still use the route logic below.
+    if (canInspectTradeWithoutFederationSwitch(local.status)) {
+      setDetailBackView(safeBackView);
+      setSelectedId(id);
+      setView("detail");
+      actions.loadEscrow(id).catch((e: any) => {
+        console.debug(
+          "[chama] background refetch on openEscrow failed:",
+          e?.message || e,
+        );
+      });
       return;
     }
 

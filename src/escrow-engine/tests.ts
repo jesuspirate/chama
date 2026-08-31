@@ -267,6 +267,7 @@ import {
   classifyPayOutcome,
   isOpfsTransientStorageError,
   assertBrowserSafeOobTimeoutSecs,
+  getStoredFilenameEntry,
   MAX_BROWSER_OOB_TIMEOUT_SECS,
 } from "../fedimint/sdk-adapter.js";
 import {
@@ -642,6 +643,7 @@ import {
   needsYouReasonFor,
   selectNeedsYouTrades,
   countNeedsYou,
+  canInspectTradeWithoutFederationSwitch,
 } from "../ui/decisions.js";
 import {
   estimateFiatForMsats,
@@ -10333,6 +10335,33 @@ console.log("\n── PROBE REACHABILITY ──");
     "arbiter federation routes are stable and newest-first");
     assert(listArbiterFederationRoutes("b".repeat(64)).length === 0,
       "arbiter federation routes are isolated per signer (not available to another user/Stack)");
+
+    const filenameKey = "chama_fedimint_opfs_file_v1";
+    const scopedFilenameKey = `${filenameKey}:${kenyaScope.toLowerCase()}`;
+    const priorLegacyFilename = localStorage.getItem(filenameKey);
+    localStorage.setItem(filenameKey, "legacy-wallet.db");
+    localStorage.setItem(scopedFilenameKey, "legacy-wallet.db");
+    const freshArbiterWallet = getStoredFilenameEntry(kenyaScope);
+    const stableArbiterWallet = getStoredFilenameEntry(kenyaScope);
+    assert(freshArbiterWallet.source === "scoped"
+      && freshArbiterWallet.filename !== "legacy-wallet.db",
+    "arbiter federation OPFS: a missing or poisoned federation scope never inherits the legacy bearer wallet");
+    assert(stableArbiterWallet.filename === freshArbiterWallet.filename,
+      "arbiter federation OPFS: the newly allocated isolated filename is stable on retry");
+    const unusedScope = arbiterFederationStorageScope(pubkey, "d".repeat(64));
+    const unusedScopedFilenameKey = `${filenameKey}:${unusedScope.toLowerCase()}`;
+    localStorage.removeItem(unusedScopedFilenameKey);
+    const neverOpenedArbiterWallet = getStoredFilenameEntry(unusedScope);
+    assert(neverOpenedArbiterWallet.source === "scoped"
+      && neverOpenedArbiterWallet.filename !== "legacy-wallet.db",
+    "arbiter federation OPFS: a never-opened federation gets a fresh isolated wallet file");
+    const legacyIdentityWallet = getStoredFilenameEntry("c".repeat(64));
+    assert(legacyIdentityWallet.source === "legacy" && legacyIdentityWallet.filename === "legacy-wallet.db",
+      "identity OPFS migration: an ordinary identity scope still adopts the preserved legacy wallet");
+    localStorage.removeItem(scopedFilenameKey);
+    localStorage.removeItem(unusedScopedFilenameKey);
+    if (priorLegacyFilename === null) localStorage.removeItem(filenameKey);
+    else localStorage.setItem(filenameKey, priorLegacyFilename);
   }
 
   // (1a) probeReachable returns { fed } at 0 balance — the boot-probe
@@ -23048,8 +23077,88 @@ console.log("\n── Liquidity & attention (buyerInterest / newListing / needsY
     "needs-you: P2P exchange summons the buyer, who does the off-chain deed");
   assert(needsYouReasonFor({ ...vote, votes: { [Role.SELLER]: Outcome.RELEASE } }, BUYER, nowSec) === "vote",
     "needs-you: once the deed-doer has voted, the counterparty's response is owed");
-  assert(needsYouReasonFor({ ...vote, category: "p2p-trade", expiresAt: nowSec - 1 }, SELLER, nowSec) === "vote",
-    "needs-you: past the deadline healing skips ordering — either side may vote REFUND");
+  assert(needsYouReasonFor({ ...vote, category: "p2p-trade", expiresAt: nowSec - 1 }, SELLER, nowSec) === null,
+    "needs-you: uncontested expiry healing is automatic, not a manual attention item");
+  const expiredPerformanceContest = {
+    ...vote,
+    category: "p2p-trade",
+    expiresAt: nowSec - 1,
+    votes: { [Role.BUYER]: Outcome.RELEASE },
+  };
+  assert(needsYouReasonFor(expiredPerformanceContest, SELLER, nowSec) === "vote",
+    "needs-you: a standing performance claim remains a real human-attention item");
+  assert(canInspectTradeWithoutFederationSwitch(EscrowStatus.LOCKED) === true
+    && canInspectTradeWithoutFederationSwitch(EscrowStatus.EXPIRED) === true,
+  "trade routing: locked and expired rooms can be inspected without switching bearer wallets");
+  assert(canInspectTradeWithoutFederationSwitch(EscrowStatus.CREATED) === false
+    && canInspectTradeWithoutFederationSwitch(EscrowStatus.APPROVED) === false,
+  "trade routing: funding and claim-capable states retain federation routing");
+  // Arbiter attention must match the actual vote surface. Browse/history can
+  // hydrate trades containing an entire historical community pool; membership
+  // by itself must never inflate the Me badge or Guided Home queue.
+  const BACKUP = "55".repeat(32);
+  const OUTSIDER = "66".repeat(32);
+  const POOL_MEMBER_3 = "88".repeat(32);
+  const disputeEvents = [
+    { kind: EscrowEventKind.VOTE, pubkey: BUYER, payload: { role: Role.BUYER, outcome: Outcome.RELEASE }, raw: { created_at: nowSec - 20 } },
+    { kind: EscrowEventKind.VOTE, pubkey: SELLER, payload: { role: Role.SELLER, outcome: Outcome.REFUND }, raw: { created_at: nowSec - 10 } },
+  ] as any;
+  const arbiterDispute = mk({
+    id: "t_arbiter_dispute",
+    status: EscrowStatus.LOCKED,
+    participants: { [Role.BUYER]: BUYER, [Role.SELLER]: SELLER, [Role.ARBITER]: ARB },
+    communityArbiters: [ARB, BACKUP, OUTSIDER, POOL_MEMBER_3],
+    votes: { [Role.BUYER]: Outcome.RELEASE, [Role.SELLER]: Outcome.REFUND },
+    eventChain: disputeEvents,
+    expiresAt: nowSec + 9000,
+    lock: { arbiterPoolShare: false } as any,
+  });
+  assert(needsYouReasonFor(arbiterDispute, ARB, nowSec) === "dispute",
+    "needs-you: the assigned arbiter is summoned for a live dispute");
+  assert(needsYouReasonFor(arbiterDispute, BACKUP, nowSec) === null,
+    "needs-you: mere historical pool membership is not an arbiter obligation");
+  const pooledDispute = {
+    ...arbiterDispute,
+    lock: { arbiterPoolShare: true, substitutionGraceSeconds: 60 } as any,
+  };
+  const poolBackups = [BACKUP, OUTSIDER, POOL_MEMBER_3];
+  const eligibleBackup = poolBackups.find(pk => {
+    const priority = arbiterVotePriority(pooledDispute, pk);
+    return priority !== null && priority > 0;
+  }) ?? null;
+  const ineligiblePoolMember = poolBackups.find(
+    pk => arbiterVotePriority(pooledDispute, pk) === null,
+  ) ?? null;
+  assert(eligibleBackup !== null,
+    "needs-you fixture: pooled lock has a deterministic backup");
+  assert(ineligiblePoolMember !== null,
+    "needs-you fixture: capped backup order excludes at least one pool member");
+  assert(needsYouReasonFor(pooledDispute, eligibleBackup!, nowSec + 30) === null,
+    "needs-you: a deterministic backup stays out during the assigned arbiter's floor");
+  assert(needsYouReasonFor(pooledDispute, eligibleBackup!, nowSec + 60) === "dispute",
+    "needs-you: a deterministic backup is summoned when its substitution window opens");
+  assert(needsYouReasonFor(pooledDispute, ineligiblePoolMember!, nowSec + 60) === null,
+    "needs-you: a pool member outside the capped backup order is never summoned");
+  const expiredPooled = { ...pooledDispute, expiresAt: nowSec - 1 };
+  assert(needsYouReasonFor(expiredPooled, eligibleBackup!, nowSec) === "dispute",
+    "needs-you: an eligible pooled backup can heal an expired unresolved dispute");
+  const expiredWithoutDispute = {
+    ...expiredPooled,
+    votes: {},
+    eventChain: [],
+  };
+  assert(needsYouReasonFor(expiredWithoutDispute, ARB, nowSec) === null,
+    "needs-you: expiry alone does not summon an arbiter when no dispute exists");
+  assert(needsYouReasonFor(expiredWithoutDispute, eligibleBackup!, nowSec) === null,
+    "needs-you: expiry alone does not summon a pooled backup when no dispute exists");
+  const backupVote = {
+    kind: EscrowEventKind.VOTE,
+    pubkey: eligibleBackup!,
+    payload: { role: Role.ARBITER, outcome: Outcome.REFUND },
+    raw: { created_at: nowSec },
+  } as any;
+  assert(needsYouReasonFor({ ...expiredPooled, eventChain: [...disputeEvents, backupVote] }, eligibleBackup!, nowSec) === null,
+    "needs-you: an arbiter's own healing vote clears its attention item");
   assert(needsYouReasonFor({ ...claim, lock: undefined as any }, SELLER, nowSec) === null,
     "needs-you: an APPROVED hydration fragment without redeemable LOCK material is not an alert");
   assert(needsYouReasonFor({ ...claim, escrowMode: "onchain" }, SELLER, nowSec) === null,
