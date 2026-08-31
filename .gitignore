@@ -70,12 +70,8 @@ scripts/remote-bridge/
 # Agent-generated adoption log — artifact, not source.
 chama-pulse-log.md
 
-# Local agent memory + internal design briefs — NEVER pushed to the public repo
-# (restored 2026-07-13 after the "clean public repository" cleanup removed them;
-#  PHILOSOPHY/DECISIONS/INVARIANTS/BACKLOG restored 2026-07-25 from 7e4162c).
+# Local agent memory + internal design briefs — NEVER pushed to the public repo.
 # Keep on disk for Claude/CC continuity; push only if explicitly needed.
-# CLAUDE.md is the exception: as a StartOS package repo this tree ships the
-# tracked one-line `@AGENTS.md` import every package carries.
 Codex.md
 PHILOSOPHY.md
 DECISIONS.md
@@ -83,8 +79,9 @@ INVARIANTS.md
 BACKLOG.md
 design/mockups/
 
-# Local StartOS package artifacts (rebuild; do not commit)
+# StartOS packages are built only in Start9-Community/chama-startos. Ignore
+# locally copied artifacts here so they can never reintroduce packaging into
+# this application repository.
 *.s9pk
-startos/*.js
 docker-images
 ncc-cache

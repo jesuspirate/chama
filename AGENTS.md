@@ -1,39 +1,37 @@
 # AGENTS.md
 
-This is a StartOS service-package repository — it builds a `.s9pk` for StartOS.
+This is the authoritative Chama application repository. It contains the web/PWA client, desktop and Android shells, the Nostr escrow protocol, and the native Fedimint bridge.
 
-Develop it inside a StartOS packaging workspace created by `start-cli s9pk init-workspace`,
-which provides the packaging guide and agent context one level up. If you're reading this in a
-bare clone with no workspace, the full guide is at <https://docs.start9.com/packaging>.
+## Repository boundary
 
-**Start every task at the recipe index** — `../start-technologies/projects/start-sdk/docs/src/recipes.md`
-(or <https://docs.start9.com/packaging/recipes.html>). It maps an intent ("prompt the user to create
-admin credentials", "expose a web UI") to the constructs, the reference pages, and a named production
-package to copy. Find the recipe before you read this package's neighbours: a package you reach by
-grepping may be non-conformant, and the recipe outranks it.
+- Application changes land here: <https://github.com/jesuspirate/chama>.
+- StartOS packaging lives only at <https://github.com/Start9-Community/chama-startos>. It consumes this repository through the `chama/` git submodule pinned to a signed `vX.Y.Z` application tag.
+- **Never update or synchronize <https://github.com/Start9-Community/chama>.** That repository is a retired fork. Its ahead/behind count does not describe the version packaged by StartOS.
+- Do not add `startos/`, `.s9pk` build workflows, StartOS version metadata, or package-repository release tags back to this tree. Package issues and PRs belong in `chama-startos`.
 
-Freshly scaffolded? Work the
-[New Package Checklist](../start-technologies/projects/start-sdk/docs/src/new-package-checklist.md)
-(or <https://docs.start9.com/packaging/new-package-checklist.html>) from top to bottom. It is a
-guide page, not a file in this repo — read it, don't copy it in.
+## Working rules
 
-Keep `README.md` (technical reference for an AI support or administering agent) and
-`instructions.md` (end-user docs) in sync with your changes.
+- Preserve unrelated user changes in a dirty worktree.
+- Use `rg` / `rg --files` for repository search.
+- Keep money-path changes fail-closed. Never replace, rotate, or delete a possibly funded wallet merely to make startup succeed.
+- A Nostr identity is not a bearer-ecash backup. Keep device-local browser wallets and the native bridge's wallet state conceptually separate.
+- Buyer, seller, and arbiter decisions must come from committed escrow state. Historical community-pool membership alone is not a current obligation.
+- Update regression coverage for wallet storage, federation routing, encryption, escrow voting, claims, and recovery behavior.
 
-**Bugs and feature requests are GitHub issues on this repo** — file them as you find them.
-Don't record work in the repo instead: no `TODO.md`, no `NOTES.md`, no `PLAN.md`. What you
-verified, tried, and decided belongs in the commit message and the PR body.
+## Verification
 
-## This repo
+Use the application commands in this repository:
 
-- **`startos/utils.ts`'s `clients` array is the TypeScript source for the single Chama interface.** `startos/nginx.conf` and `startos/entrypoint.sh` hardcode the matching UI and bridge ports, so changing the interface still means editing all three and verifying they agree. Preserve the legacy `client-one` / `client-one-host` identifiers, port 8080, bridge port 8787, and `/data/client-1` across upgrades: they retain the existing browser origin and native wallet.
-- **`packageRepo` is this fork** (`Start9-Community/chama`); `upstreamRepo` is the application's home. Packaging changes land here.
-- **Use the `startos:*` npm scripts, never `check` / `build`.** `npm run build` is the Vite web build the `Dockerfile` calls and `npm run typecheck` is the app's; the StartOS bundle is `startos:check` → `startos:lint` → `startos:build`. The `Makefile` overrides `s9pk.mk`'s stock `javascript/index.js` recipe for exactly this reason, so make's "overriding recipe" warning on every run is expected.
-- **The StartOS tsconfig is `startos/tsconfig.json`, not the root one.** The root belongs to the React app and includes only `src`. Keeping the packaging tsconfig inside `startos/` is also what lets the SDK's ESLint runner resolve a project for `startos/**/*.ts`.
-- **`javascript/index.js` is emitted as ESM, not CJS.** `ncc` follows the root `package.json`'s `"type": "module"` and writes a matching `javascript/package.json`; the container runtime `require()`s it, which works on Node ≥ 20.19. Don't "fix" it by dropping `"type": "module"` — the app needs it — and don't add a `startos/package.json` to force CJS: webpack then emits an empty export table and the package loads with no `manifest`/`main`/`init`.
-- **Keep the entrypoint's zombie check.** `kill -0` still succeeds for an unreaped zombie, so without reading the process state a natively-aborted bridge leaves nginx serving a healthy-looking UI whose bridge upstream is permanently dead.
-- **The long `proxy_send_timeout` on the invoice path is load-bearing.** It is a long poll held open until a human pays; at nginx's default it hung up mid-scan and returned a 504 page the client read as a rejected payment.
-- **`icon.png` is a 512×512 downscale of `src-tauri/icons/icon.png`.** The 1024×1024 original is ~713 KB and a package icon is embedded as a base64 data URL in every registry index. Regenerate with:
-  `convert src-tauri/icons/icon.png -filter Lanczos -resize 512x512 -strip -quality 95 icon.png`
-- **Two release lanes share this repo's tags.** `scripts/release.sh` tags `vX.Y.Z` for the desktop/Zapstore lane; StartOS's `tagAndRelease.yml` tags `vX.Y.Z_<revision>`. The tag filters in `release.yml` and `desktop-release.yml` keep them apart — keep them in sync if either changes.
-- **The Docker build context is the whole repo**, filtered by `.dockerignore`. Anything the web build or the Rust bridge needs must stay out of that ignore list.
+```sh
+npm run typecheck
+npm test
+npm run build
+```
+
+`npm run predeploy` also runs the repository-hygiene gate. Do not use StartOS package commands here.
+
+## Releases
+
+`scripts/release.sh` owns signed application tags in the form `vX.Y.Z`. It requires a clean `main` exactly synchronized with `origin/main`, runs the release gates, bumps `package.json`, commits, tags, pushes, and deploys.
+
+StartOS package tags (`vX.Y.Z_<revision>`) are created only in `chama-startos`. After an application release, update that repository by checking its `chama/` submodule out at the new signed tag and changing its StartOS version metadata. Never merge application commits into a packaging fork.

@@ -2,100 +2,94 @@
   <img src="icon.png" alt="Chama Logo" width="21%">
 </p>
 
-# Chama on StartOS
+# Chama
 
-Chama is a self-hosted, Nostr-native peer-to-peer marketplace for local commerce. It has no central Chama account server and no custody layer: users publish and coordinate trades over Nostr, while the selected Fedimint federation or Bitcoin network performs settlement.
+**Local money. Bitcoin rails.**
 
-Trades can use instant Fedimint ecash escrow or opt-in on-chain Bitcoin escrow. Ecash is the default. On-chain trades use a Bitcoin address recomputed from the signed trade terms and offer cooperative, delayed-arbitration, and timelocked-refund spend paths.
+Chama is a Nostr-native peer-to-peer commerce client for exchanging value with people and communities directly. It combines local payment methods with Bitcoin settlement without a central Chama account server, a custodial marketplace operator, or a proprietary social graph.
 
-This StartOS package serves the same Chama frontend as upstream through one interface and gives it one native Rust Fedimint wallet bridge. The package is infrastructure for one self-hosted Chama app, not a three-party trade simulator: buyers, sellers, and arbiters are independent Chama identities coordinating over Nostr.
+People can exchange sats and fiat, pay community bills, run storefronts, and offer work. Listings, chat, reputation, and trade state travel over Nostr. Fedimint ecash is held only while a trade is in escrow and leaves through the chosen payout route after settlement; opt-in on-chain Bitcoin escrow is also available.
 
-- **Upstream repo:** <https://github.com/jesuspirate/chama>
-- **StartOS package repo:** <https://github.com/Start9-Community/chama>
 - **Website:** <https://getchama.app/>
+- **Application source:** <https://github.com/jesuspirate/chama>
+- **StartOS package:** <https://github.com/Start9-Community/chama-startos>
 
-## Runtime
+## What makes Chama different
 
-The `chama-sub` subcontainer runs nginx, one `chama-fedimint-bridge`, and an entrypoint watchdog. nginx serves Chama on port 8080 and proxies `/bridge/` to the native wallet on loopback port 8787. The bridge is never exposed directly.
+- **No Chama account server.** Your Nostr identity is the account and relays carry the coordination layer.
+- **Escrow without a Chama custodian.** A locked ecash trade uses three Shamir shares and a 2-of-3 vote outcome across buyer, seller, and community arbiter.
+- **Local payment methods.** Communities can trade around the rails people already use while Bitcoin supplies settlement and finality.
+- **Purpose-built commerce.** Exchange, Community Bill Pay, Stores, and Work share one verifiable trade protocol.
+- **Portable clients.** Chama runs as a web/PWA client, desktop app, Android app, and self-hosted StartOS service.
+- **No idle wallet product.** Chama is an escrow client, not a place to warehouse funds. Complete trades should be claimed or exported promptly.
 
-The entrypoint restarts the service if nginx or the bridge dies, including an unreaped zombie. nginx keeps the invoice proxy timeout at one hour because invoice settlement is a human-paced long poll; a short timeout can turn an ordinary scan delay into a misleading failure.
+## Trust and recovery model
 
-## Interface and upgrade stability
+Chama coordinates trades; it does not promise that a Nostr key recovers bearer ecash. Browser Fedimint wallets are device-local, and StartOS uses its own native wallet bridge and server volume. Preserve your Nostr secret key, but also move completed payouts and save any exported ecash notes independently.
 
-The package exports one unmasked UI interface named **Chama**.
+Arbiters act only when the trading parties disagree or when an expired trade needs a protocol-defined healing vote. Community arbiter bonds are visible commitments, not custodial balances controlled by Chama.
 
-| Interface ID | MultiHost ID | Port | Purpose |
-| --- | --- | --- | --- |
-| `client-one` | `client-one-host` | 8080 | The self-hosted Chama app |
+See [PHILOSOPHY.md](PHILOSOPHY.md) for the product boundaries and [chama-technical-overview.pdf](chama-technical-overview.pdf) for the protocol overview.
 
-Those legacy IDs and the port intentionally remain unchanged from the 6.0.x package. Keeping them stable preserves the primary browser origin and its origin-scoped identity, settings, and local trade cache during upgrade.
+## Run locally
 
-Version 6.0.x temporarily exposed Client One, Client Two, and Client Three as a co-located testing lab. Version 6.1 retires that topology. Only Client One becomes the ordinary Chama interface. The package does not delete `/data/client-2` or `/data/client-3`; they remain in the `main` volume and in backups as legacy wallet evidence, but no service or UI is launched for them. Anyone who deliberately stored funds in those experimental wallets should export them before upgrading.
+Requires Node.js 22 or newer.
 
-## Data and backups
-
-| Path | Contents |
-| --- | --- |
-| `/data/client-1` | Active native Fedimint wallet state |
-| `/data/client-2` | Retained legacy Client Two wallet data, if present |
-| `/data/client-3` | Retained legacy Client Three wallet data, if present |
-
-StartOS backs up the entire `main` volume, so active and retained legacy wallet directories are included.
-
-Nostr identity, contacts, settings, drafts, and browser-side trade cache remain scoped to the browser origin. They are not part of the server volume. Back up the Nostr account key and any exported bearer notes separately; opening Chama through a different origin or clearing browser storage creates fresh browser state even when the server wallet still exists.
-
-## Dependencies and configuration
-
-The package has no StartOS service dependencies and no file models. Users choose a remote Fedimint federation inside Chama. There is no package-level federation configuration and no credential wizard.
-
-## First run
-
-1. Open **Chama** from the Interfaces tab.
-2. Create or import your Chama identity.
-3. Join a Fedimint federation inside Chama.
-4. Store the Nostr account key and any fund backup exports somewhere safe.
-
-Until a federation is joined, the app can browse but its native wallet cannot receive or escrow ecash.
-Nostr sign-in and the selected home community remain valid while wallet startup is unavailable; the Chama bar shows **Connecting** during startup and exposes **Reconnect** after a failure instead of returning the user to onboarding. Browser Fedimint clients are device-local: an intact OPFS database reopens its existing client, while a genuinely missing database creates a new local seed and joins normally. Chama retries a failed OPFS handle only against that same wallet file and never replaces it just to make startup succeed. Startup reads one shared wallet-operation snapshot for failed-payout repair and pending Lightning/ecash watch resumption; these custody checks do not repeat the same mature-wallet history scan. Device-local browser wallets also do not wait on Nostr relays for wallet seed storage they no longer use. Some iPhone third-party/private browser shells refuse the synchronous OPFS handle the Fedimint SDK requires; use standard Safari when Chama reports that browser-storage failure. The WebKit “unknown transient reason (e.g. out of memory)” text describes the failed storage operation, not proven device-memory exhaustion. Chama does not force federation recovery merely because the same npub has used Chama before. This matches the product boundary—Chama settles escrow and claims out through Lightning, on-chain, or ecash; a Nostr identity backup is not presented as a recovery mechanism for bearer ecash. Nostr-backed seed material remains available only for features that explicitly require deterministic cross-device keys, such as commitment bonds.
-
-Participant history remains in a hydration state until both the bounded saved-trade replay and the relay discovery/heal pass finish; saved histories are replayed with a three-request pool so large accounts do not serialize dozens of relay round trips. Attention badges and renewal surfaces stay hidden during that window. The lapsed Store reminder accepts only actual Store listings and additionally requires a live chain tip proving that the seller's current bond is still funded and before its lock height; cached or indeterminate bond state never resurrects an old storefront, and a legacy Exchange offer is never mislabeled as a Store.
-
-## Action
-
-### Wallet Bridge Status
-
-A read-only action that reports whether the native wallet bridge answers, whether it has joined a federation, and whether federation relay discovery is reachable, degraded, still probing, or not configured. Run it while the service is running when balances or wallet operations appear unavailable.
-
-## Health
-
-The `primary` daemon is ready only when both port 8080 and bridge port 8787 are listening. A web page without its native wallet bridge is not considered healthy. The readiness grace period is 30 seconds.
-
-## Limitations
-
-1. StartOS backs up the native wallet volume, not browser-scoped identity and application state.
-2. Browser state belongs to the exact interface origin used to open Chama.
-3. The selected Fedimint federation is joined inside the app, not through StartOS configuration.
-4. The retained Client Two/Three directories are backup evidence only after the 6.1 topology migration; they are not served.
-5. The service deliberately restarts if either nginx or the wallet bridge exits.
-
-## Quick reference
-
-```yaml
-package_id: chama
-title: Chama
-image: built from ./Dockerfile
-architectures: [x86_64, aarch64]
-subcontainers:
-  - chama-sub # nginx + one native Fedimint bridge
-volumes:
-  main: /data
-active_wallet: /data/client-1
-interfaces:
-  client-one: { name: Chama, type: ui, port: 8080 }
-actions:
-  - wallet-status
-health_checks:
-  - primary # UI 8080 + bridge 8787
-dependencies: []
-file_models: []
+```sh
+npm install
+npm run dev
 ```
+
+The default development server is printed by Vite. To choose a port explicitly:
+
+```sh
+npm run dev -- --port 3001
+```
+
+## Verify a change
+
+```sh
+npm run typecheck
+npm test
+npm run build
+```
+
+`npm run predeploy` runs the repository hygiene check, typecheck, and full test suite together.
+
+## Repository map
+
+| Path | Purpose |
+| --- | --- |
+| `src/` | React UI, Nostr escrow protocol, wallet orchestration, and tests |
+| `native/fedimint-bridge/` | Native Rust Fedimint bridge used by packaged clients |
+| `src-tauri/` | Desktop shell and release configuration |
+| `android/` | Capacitor Android application |
+| `landing/` | Public website assets |
+| `docs/` | Operational and protocol notes |
+| `scripts/` | Release, deployment, audit, and build utilities |
+
+## Releases and StartOS
+
+This repository is the authoritative Chama **application**. It publishes signed `vX.Y.Z` tags for the web, desktop, Android, Zapstore, and downstream packagers.
+
+StartOS packaging lives exclusively in [`Start9-Community/chama-startos`](https://github.com/Start9-Community/chama-startos). That repository pins this application as the `chama/` git submodule at a released `vX.Y.Z` tag and owns the `.s9pk`, StartOS metadata, migrations, and `vX.Y.Z_<revision>` package tags.
+
+> **Do not update [`Start9-Community/chama`](https://github.com/Start9-Community/chama).** It is a retired application fork and is not a release or packaging source. Its ahead/behind status is irrelevant. Application fixes land here; StartOS updates move the submodule pin in `chama-startos`.
+
+Application releases are cut from a clean, synchronized `main`:
+
+```sh
+./scripts/release.sh --patch "fix: concise release subject"
+# or, for a backward-compatible feature/foundational release:
+./scripts/release.sh --minor "feat: concise release subject"
+```
+
+## Security
+
+Chama handles real signing keys, bearer ecash, Lightning invoices, and Bitcoin transactions. Treat changes to wallet storage, federation routing, encryption, escrow voting, payout recovery, and release automation as money-path changes: fail closed, preserve existing wallet files, and verify them with regression tests.
+
+Security-sensitive dependencies are pinned or overridden in `package.json`; `npm run audit:deps` documents the repository's dependency policy.
+
+## License
+
+[MIT](LICENSE)

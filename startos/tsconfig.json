@@ -1,4 +1,0 @@
-{
-  "extends": "@start9labs/start-sdk/tsconfig.base.json",
-  "include": ["./**/*.ts", "../node_modules/**/startos"]
-}
