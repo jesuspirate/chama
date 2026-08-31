@@ -79,10 +79,12 @@ StartOS packaging lives exclusively in [`Start9-Community/chama-startos`](https:
 Application releases are cut from a clean, synchronized `main`:
 
 ```sh
-./scripts/release.sh --patch "fix: concise release subject"
+npm run ship -- --patch
 # or, for a backward-compatible feature/foundational release:
-./scripts/release.sh --minor "feat: concise release subject"
+npm run ship -- --minor
 ```
+
+For the complete release lane or a one-destination refresh—web, landing page, GitHub assets, GitHub Release page, Zapstore, or Zapstore listing metadata—see [Releasing Chama](docs/RELEASING.md). The remembered entry point is `npm run ship`; add `--only <target>` to guarantee unrelated channels are not touched.
 
 ## Security
 

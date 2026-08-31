@@ -32,6 +32,8 @@ npm run build
 
 ## Releases
 
-`scripts/release.sh` owns signed application tags in the form `vX.Y.Z`. It requires a clean `main` exactly synchronized with `origin/main`, runs the release gates, bumps `package.json`, commits, tags, pushes, and deploys.
+`npm run ship -- --patch|--minor|--major` is the canonical new-version entry point. It requires a clean `main`, consumes the convention-named release-note files, commits and pushes the bump, then delegates the signed tag, deployment, Android, GitHub, and Zapstore work to the existing release scripts. `scripts/release.sh` remains the low-level owner of signed application tags in the form `vX.Y.Z`.
+
+For an existing version, `npm run ship -- --only <target>` must be used for channel-specific work. The available targets and their isolation guarantees are documented in `docs/RELEASING.md`; do not hand-compose partial release commands when a target exists.
 
 StartOS package tags (`vX.Y.Z_<revision>`) are created only in `chama-startos`. After an application release, update that repository by checking its `chama/` submodule out at the new signed tag and changing its StartOS version metadata. Never merge application commits into a packaging fork.

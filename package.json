@@ -16,6 +16,7 @@
     "audit:deps": "node scripts/dependency-audit.mjs",
     "predeploy": "npm run repo:hygiene && npm run typecheck && npm test",
     "ship": "./scripts/ship.sh",
+    "publish": "./scripts/publish.sh",
     "deploy:live": "./scripts/release.sh --deploy-live",
     "release:current": "./scripts/release.sh --current",
     "release:all": "./scripts/release-all.sh",

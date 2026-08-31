@@ -16,6 +16,7 @@ set -euo pipefail
 #   ./scripts/android-release.sh --pgp-public-key-url https://example.com/key.asc
 #   SIGN_WITH=browser ./scripts/android-release.sh --zapstore
 #   SIGN_WITH=bunker://... ./scripts/android-release.sh --github-release --zapstore
+#   SIGN_WITH=browser ./scripts/android-release.sh --no-build --zapstore --preserve-zapstore-notes
 #
 # Default mode builds the APK and prepares release assets in /private/tmp.
 # --github-release uploads those assets to the matching GitHub tag/release.
@@ -38,6 +39,7 @@ APK_PATH="$ANDROID_DIR/app/build/outputs/apk/release/app-release.apk"
 UPLOAD_GITHUB=0
 PUBLISH_ZAPSTORE=0
 ZAPSTORE_OVERWRITE=0
+PRESERVE_ZAPSTORE_NOTES=0
 BUILD_APK=1
 RUN_WEB_GATE=1
 CLOBBER=0
@@ -191,11 +193,11 @@ verify_checksum_signature() {
 write_default_release_notes() {
   local notes_path="$1"
   cat > "$notes_path" <<EOF
-Android patch release for Chama $TAG.
+Chama $TAG release assets.
 
 Included:
-- v1.0.x hotfix: improve browser/native detection and error copy so we never confuse SDK failure with Rust failure.
-- Android APK packages the native Rust Fedimint bridge and refuses release builds that do not include it.
+- Signed Android APK with the native Rust Fedimint bridge.
+- SHA-256 checksum, optional OpenPGP checksum signature, and signing-certificate report.
 
 Verification:
 - Download \`app-release.apk\`, \`app-release.apk.sha256\`,
@@ -328,6 +330,8 @@ EOF
     node "$ROOT_DIR/scripts/validate-zapstore-notes.mjs" "$ZAPSTORE_NOTES_FILE"
     cp "$ZAPSTORE_NOTES_FILE" "$ZAPSTORE_NOTES_TARGET"
     echo "📝 Zapstore notes: $ZAPSTORE_NOTES_FILE → $ZAPSTORE_NOTES_TARGET"
+  elif [ "$PRESERVE_ZAPSTORE_NOTES" = "1" ] && [ -f "$ZAPSTORE_NOTES_TARGET" ]; then
+    echo "↷ Preserving existing Zapstore notes: $ZAPSTORE_NOTES_TARGET"
   else
     # No short notes provided — write a placeholder pointing at the
     # GitHub Release where the full engineering notes live, so the
@@ -368,6 +372,10 @@ while [ $# -gt 0 ]; do
       ;;
     --zapstore-overwrite|--overwrite-zapstore)
       ZAPSTORE_OVERWRITE=1
+      shift
+      ;;
+    --preserve-zapstore-notes)
+      PRESERVE_ZAPSTORE_NOTES=1
       shift
       ;;
     --no-build)

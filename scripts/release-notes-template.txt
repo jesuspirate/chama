@@ -1,6 +1,6 @@
 Chama release-notes template
 ============================
-See scripts/ship.sh and the README "Releasing with npm run ship" section.
+See scripts/ship.sh and docs/RELEASING.md.
 
 For each release, save TWO files in $CHAMA_COMMIT_DIR (default /tmp), named for
 the TARGET version (the version you're about to ship, i.e. after the bump):

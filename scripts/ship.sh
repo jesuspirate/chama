@@ -36,6 +36,8 @@ set -euo pipefail
 #   ./scripts/ship.sh --no-release           # bump + commit + push only
 #   ./scripts/ship.sh --no-push --no-release # bump + commit only
 #   npm run ship -- --minor                  # same, via package.json
+#   npm run ship -- --only landing           # current version, landing only
+#   npm run ship -- --only zapstore-listing  # current version, listing refresh only
 #
 # ── Env (defaults match the maintainer; override to re-home) ──────────────
 #   CHAMA_COMMIT_DIR   where the notes files live           (default /tmp)
@@ -50,6 +52,16 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
+
+# Channel-only work must never bump, commit, tag, or publish unrelated
+# destinations. Keep ship.sh as the one remembered entry point, but delegate
+# any --only request before the new-version machinery resolves notes or mutates
+# package.json.
+for __chama_arg in "$@"; do
+  if [ "$__chama_arg" = "--only" ]; then
+    exec "$ROOT_DIR/scripts/publish.sh" "$@"
+  fi
+done
 
 # Load local, gitignored deploy config (deploy host/key/signing/poc-dist) so a fresh
 # terminal tab always has it — independent of ~/.zshrc / which tab you opened. This is
