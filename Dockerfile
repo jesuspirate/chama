@@ -19,13 +19,9 @@ COPY startos/nginx.conf /etc/nginx/nginx.conf
 COPY --from=build /app/dist /usr/share/nginx/html
 COPY --from=bridge-build /bridge/target/release/chama-fedimint-bridge /usr/local/bin/chama-fedimint-bridge
 COPY startos/entrypoint.sh /usr/local/bin/chama-startos-entrypoint
-EXPOSE 8080 8081 8082
+EXPOSE 8080
 HEALTHCHECK --interval=10s --timeout=5s --start-period=25s --retries=3 \
   CMD curl -fsS http://127.0.0.1:8080/ >/dev/null \
-    && curl -fsS http://127.0.0.1:8081/ >/dev/null \
-    && curl -fsS http://127.0.0.1:8082/ >/dev/null \
     && curl -fsS http://127.0.0.1:8787/health >/dev/null \
-    && curl -fsS http://127.0.0.1:8788/health >/dev/null \
-    && curl -fsS http://127.0.0.1:8789/health >/dev/null \
     || exit 1
 ENTRYPOINT ["/usr/local/bin/chama-startos-entrypoint"]

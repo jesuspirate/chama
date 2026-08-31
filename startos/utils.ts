@@ -1,9 +1,8 @@
-// One Chama client per entry. Each gets its own nginx server block (uiPort)
-// and its own chama-fedimint-bridge process on loopback (bridgePort) writing
-// to its own wallet directory under /data — startos/nginx.conf and
-// startos/entrypoint.sh derive the same three from these numbers.
+// StartOS exposes one ordinary Chama app. Keep the original Client One ids,
+// ports and wallet directory stable across the 6.0.x → 6.1.0 topology change:
+// changing any of them would create a new browser origin or orphan the primary
+// native wallet. startos/nginx.conf and startos/entrypoint.sh hardcode the same
+// ports because those files cannot import this TypeScript value.
 export const clients = [
-  { id: 'client-one', name: 'Client One', uiPort: 8080, bridgePort: 8787 },
-  { id: 'client-two', name: 'Client Two', uiPort: 8081, bridgePort: 8788 },
-  { id: 'client-three', name: 'Client Three', uiPort: 8082, bridgePort: 8789 },
+  { id: 'client-one', name: 'Chama', uiPort: 8080, bridgePort: 8787 },
 ] as const

@@ -26,7 +26,7 @@ verified, tried, and decided belongs in the commit message and the PR body.
 
 ## This repo
 
-- **`startos/utils.ts`'s `clients` array is the single source for the three clients**, but only for the TypeScript side. `startos/nginx.conf` and `startos/entrypoint.sh` hardcode the same ports — adding or renaming a client means editing all three, and nothing catches a mismatch.
+- **`startos/utils.ts`'s `clients` array is the TypeScript source for the single Chama interface.** `startos/nginx.conf` and `startos/entrypoint.sh` hardcode the matching UI and bridge ports, so changing the interface still means editing all three and verifying they agree. Preserve the legacy `client-one` / `client-one-host` identifiers, port 8080, bridge port 8787, and `/data/client-1` across upgrades: they retain the existing browser origin and native wallet.
 - **`packageRepo` is this fork** (`Start9-Community/chama`); `upstreamRepo` is the application's home. Packaging changes land here.
 - **Use the `startos:*` npm scripts, never `check` / `build`.** `npm run build` is the Vite web build the `Dockerfile` calls and `npm run typecheck` is the app's; the StartOS bundle is `startos:check` → `startos:lint` → `startos:build`. The `Makefile` overrides `s9pk.mk`'s stock `javascript/index.js` recipe for exactly this reason, so make's "overriding recipe" warning on every run is expected.
 - **The StartOS tsconfig is `startos/tsconfig.json`, not the root one.** The root belongs to the React app and includes only `src`. Keeping the packaging tsconfig inside `startos/` is also what lets the SDK's ESLint runner resolve a project for `startos/**/*.ts`.

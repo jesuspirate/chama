@@ -7,21 +7,20 @@ stop() {
 }
 trap stop INT TERM EXIT
 
-client=1
-for port in 8787 8788 8789; do
-  data_dir="/data/client-$client"
-  mkdir -p "$data_dir"
-  chama-fedimint-bridge --data-dir "$data_dir" serve --bind "127.0.0.1:$port" &
-  pids="$pids $!"
-  client=$((client + 1))
-done
+# Preserve the original Client One wallet path. The retired Client Two/Three
+# directories are deliberately left untouched in /data so an upgrade never
+# deletes wallet evidence or removes it from StartOS backups.
+data_dir="/data/client-1"
+mkdir -p "$data_dir"
+chama-fedimint-bridge --data-dir "$data_dir" serve --bind "127.0.0.1:8787" &
+pids="$pids $!"
 
 nginx -g 'daemon off;' &
 nginx_pid=$!
 pids="$pids $nginx_pid"
 
 # Exit if any child dies so StartOS restarts the whole service
-# (UI-up / bridges-down is not a healthy lab package).
+# (UI-up / bridge-down is not a healthy package).
 while kill -0 "$nginx_pid" 2>/dev/null; do
   for pid in $pids; do
     # `kill -0` still succeeds for an unreaped zombie. Without this state

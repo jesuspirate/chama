@@ -7,7 +7,7 @@ export const manifest = setupManifest({
   license: 'MIT',
   packageRepo: 'https://github.com/Start9-Community/chama',
   upstreamRepo: 'https://github.com/jesuspirate/chama',
-  marketingUrl: 'https://chama.community/',
+  marketingUrl: 'https://getchama.app/',
   donationUrl: null,
   description: { short, long },
   volumes: ['main'],

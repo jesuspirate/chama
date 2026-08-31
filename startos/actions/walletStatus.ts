@@ -33,7 +33,7 @@ export const walletStatus = sdk.Action.withoutInput(
   async ({ effects }) => ({
     name: i18n('Wallet Bridge Status'),
     description: i18n(
-      "Report the federation and relay discovery state of each client's Fedimint wallet bridge",
+      "Report the federation and relay discovery state of Chama's native Fedimint wallet",
     ),
     warning: null,
     allowedStatuses: 'only-running',
@@ -45,7 +45,7 @@ export const walletStatus = sdk.Action.withoutInput(
     version: '1' as const,
     title: i18n('Wallet Bridge Status'),
     message: i18n(
-      'A client holds ecash only once you have joined a federation from inside Chama.',
+      'Chama holds ecash only once you have joined a federation inside the app.',
     ),
     result: {
       type: 'group' as const,

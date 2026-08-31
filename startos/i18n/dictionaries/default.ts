@@ -3,21 +3,11 @@ export const DEFAULT_LANG = 'en_US'
 const dict = {
   // main.ts
   'Starting Chama': 0,
-  'Web Clients': 1,
-  'All three Chama clients are ready': 2,
   '${client} is not ready yet': 3,
   "${client}'s wallet bridge is not ready yet": 4,
 
   // interfaces.ts
-  'Client One': 5,
-  'Client Two': 6,
-  'Client Three': 7,
-  'A self-contained Chama client with its own identity, browser storage and Fedimint wallet': 8,
-
-  // actions/walletStatus.ts
   'Wallet Bridge Status': 9,
-  "Report the federation and relay discovery state of each client's Fedimint wallet bridge": 10,
-  'A client holds ecash only once you have joined a federation from inside Chama.': 11,
   'Not responding': 12,
   Federation: 13,
   Joined: 14,
@@ -28,6 +18,12 @@ const dict = {
   'Still probing': 19,
   'Not configured': 20,
   Unknown: 21,
+  Chama: 22,
+  'Web App': 23,
+  'Chama is ready': 24,
+  'Your self-hosted Chama marketplace with a native Fedimint wallet': 25,
+  "Report the federation and relay discovery state of Chama's native Fedimint wallet": 26,
+  'Chama holds ecash only once you have joined a federation inside the app.': 27,
 } as const
 
 /**

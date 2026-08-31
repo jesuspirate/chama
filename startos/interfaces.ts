@@ -5,8 +5,8 @@ import { clients } from './utils'
 export const setInterfaces = sdk.setupInterfaces(async ({ effects }) => {
   const receipts = []
 
-  // A separate host per client, so each lands on its own origin and the
-  // browser keeps their identities, storage and wallets apart.
+  // Keep `client-one-host` stable from the former lab package so an upgrade
+  // preserves the primary browser origin and its identity-scoped storage.
   for (const { id, name, uiPort } of clients) {
     const origin = await sdk.MultiHost.of(effects, `${id}-host`).bindPort(
       uiPort,
@@ -18,7 +18,7 @@ export const setInterfaces = sdk.setupInterfaces(async ({ effects }) => {
           name: i18n(name),
           id,
           description: i18n(
-            'A self-contained Chama client with its own identity, browser storage and Fedimint wallet',
+            'Your self-hosted Chama marketplace with a native Fedimint wallet',
           ),
           type: 'ui',
           masked: false,

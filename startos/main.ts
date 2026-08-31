@@ -19,7 +19,7 @@ export const main = sdk.setupMain(async ({ effects }) => {
     ),
     exec: { command: ['/usr/local/bin/chama-startos-entrypoint'] },
     ready: {
-      display: i18n('Web Clients'),
+      display: i18n('Web App'),
       gracePeriod: 30_000,
       fn: async () => {
         for (const { name, uiPort, bridgePort } of clients) {
@@ -37,7 +37,7 @@ export const main = sdk.setupMain(async ({ effects }) => {
               effects,
               port,
               {
-                successMessage: i18n('All three Chama clients are ready'),
+                successMessage: i18n('Chama is ready'),
                 errorMessage,
               },
             )
@@ -46,7 +46,7 @@ export const main = sdk.setupMain(async ({ effects }) => {
         }
         return {
           result: 'success' as const,
-          message: i18n('All three Chama clients are ready'),
+          message: i18n('Chama is ready'),
         }
       },
     },

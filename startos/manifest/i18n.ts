@@ -1,6 +1,6 @@
 export const short = {
   en_US:
-    'A sovereign Nostr marketplace for trading anything, anywhere, with ecash escrow',
+    'Non-custodial Bitcoin commerce for communities, coordinated over Nostr',
   es_ES:
     'Mercado soberano en Nostr para comerciar con todo, con depósito ecash',
   de_DE:
@@ -13,7 +13,7 @@ export const short = {
 
 export const long = {
   en_US:
-    'Chama is a borderless peer-to-peer marketplace for real-world trade without platform accounts, custodial middlemen, or permission. Publish offers over Nostr, negotiate directly, coordinate buyer-seller-arbiter escrow, and settle with Fedimint ecash, Lightning, or on-chain Bitcoin.',
+    'Chama is a self-hosted, peer-to-peer marketplace without platform accounts or custodial middlemen. Publish offers over Nostr, negotiate directly, protect trades with buyer-seller-community-arbiter escrow, and settle with Fedimint ecash, Lightning, or on-chain Bitcoin.',
   es_ES:
     'Chama es un mercado entre pares sin fronteras para el comercio real, sin cuentas de plataforma, sin intermediarios que custodien tus fondos y sin pedir permiso. Publica ofertas por Nostr, negocia directamente, coordina un depósito en garantía entre comprador, vendedor y árbitro, y liquida con ecash de Fedimint, Lightning o Bitcoin on-chain.',
   de_DE:

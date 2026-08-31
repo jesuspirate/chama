@@ -1,57 +1,42 @@
 # Chama
 
-## Documentation
-
-- [Chama technical overview](https://github.com/jesuspirate/chama/blob/main/chama-technical-overview.pdf) — how the escrow state machine, the Nostr event kinds, and Fedimint settlement fit together.
-- [Relay operations](https://github.com/jesuspirate/chama/blob/main/docs/RELAY_OPERATIONS.md) — for anyone running a Nostr relay that carries Chama traffic.
+Chama is a self-hosted peer-to-peer marketplace for local commerce with Bitcoin rails. It coordinates offers and trades over Nostr without a central Chama account server or custodial middleman. Trades can settle with Fedimint ecash, Lightning, or opt-in on-chain Bitcoin.
 
 ## What you get on StartOS
 
-Three separate Chama clients — **Client One**, **Client Two**, and **Client
-Three** — each with its own address. They are fully independent: a Nostr
-identity, browser storage, and a Fedimint ecash wallet per client, with nothing
-shared between them. Use one for yourself, or use several to hold separate
-trading identities, or to play buyer, seller, and arbiter through a trade
-end to end.
+One **Chama** web interface backed by one native Rust Fedimint wallet. Open it from the Interfaces tab and use it like the ordinary Chama app. Buyers, sellers, and community arbiters use their own Chama identities and coordinate over Nostr; they are not three clients bundled into one server.
 
-The Fedimint wallet of each client is the one part that lives on your server
-rather than in your browser, so it is what StartOS backs up.
+## Upgrading from 6.0.x
+
+The earlier StartOS package exposed three co-located clients for testing. Version 6.1 retires that model and keeps the former **Client One** as the single **Chama** interface. Its interface identity, browser origin, port, and `/data/client-1` wallet directory remain unchanged so the primary app and wallet survive the upgrade.
+
+Client Two and Client Three are no longer launched or shown. Their `/data/client-2` and `/data/client-3` directories are not deleted and remain in StartOS backups, but this release does not provide an interface for spending from them. If you intentionally kept ecash in either experimental client, export it before upgrading.
 
 ## Getting set up
 
-Do this once per client you intend to use:
+1. Open **Chama** from the Interfaces tab.
+2. Create a new Chama identity or import your existing identity phrase.
+3. Join your chosen Fedimint federation inside Chama.
+4. Save the identity phrase and any exported ecash fund backups somewhere safe.
 
-1. Open the client from the **Interfaces** tab and let the page load.
-2. Choose or import a Nostr identity when Chama asks for one. This is the
-   identity your counterparties will see, so use a different one in each client
-   if you want the clients to be unrelated.
-3. Join a Fedimint federation with an invite code. Until you do, the client can
-   browse but cannot hold ecash or fund an escrow.
-4. Save whatever recovery material Chama shows you, somewhere off this server.
+The native wallet cannot receive or escrow ecash until it has joined a federation.
 
-## Using Chama
+## Backups
 
-### Web interfaces
+StartOS backs up the native wallet data stored on the server. Your Nostr identity, contacts, drafts, settings, and browser-side trade cache belong to the exact browser origin used to open Chama and are not included in the server backup.
 
-Each client opens on the Chama marketplace: browse offers, publish your own,
-negotiate, and settle. Bookmark the address of the client you use — the identity
-and history you built up belong to that address, and opening a different client
-gets you a different, empty one.
+Do not treat the identity phrase as an ecash balance backup. For funds, use Chama's ecash export and store the bearer note safely.
 
-### Actions
+## Wallet Bridge Status
 
-**Wallet Bridge Status** reports, for each client, whether its wallet is
-answering, whether it has joined a federation yet, and whether Chama can reach
-the relay-discovery service it uses to find federation nodes. Run it when a
-client will not load its balance or a payment seems stuck.
+The read-only **Wallet Bridge Status** action reports whether the native wallet bridge responds, whether Chama has joined a federation, and whether federation relay discovery is reachable, degraded, still probing, or not configured. Run it when Chama loads but wallet balances or payments are unavailable.
 
-## Limitations
+## Security note
 
-- **A Chama client has no login.** Anyone who can open one of these addresses
-  can spend that client's ecash. Enable only the addresses you trust, and treat
-  each one like a password.
-- **Backups cover the wallets, not your history.** Your identity, trades, and
-  drafts live in the browser you opened the client with. Clearing site data,
-  switching browsers, or using a private window gives you a fresh empty client
-  and can lose access to the old one — export your recovery material instead of
-  relying on the backup.
+The browser session and native wallet can authorize real payments. Expose the interface only through addresses and devices you trust.
+
+## Documentation
+
+- [Chama website](https://getchama.app/)
+- [Technical overview](https://github.com/jesuspirate/chama/blob/main/chama-technical-overview.pdf)
+- [Relay operations](https://github.com/jesuspirate/chama/blob/main/docs/RELAY_OPERATIONS.md)
