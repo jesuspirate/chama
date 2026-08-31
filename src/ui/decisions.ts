@@ -119,6 +119,17 @@ export interface CommunityTapInputs {
   activeCommitmentCount?: number;
 }
 
+/** A user's first saved home is authentication/profile state, not proof that
+ * the local Fedimint wallet opened. If there is no prior identity and no prior
+ * wallet route to restore, an init failure must keep the new identity so the
+ * signed-in shell can expose Reconnect instead of looping onboarding. */
+export function keepFirstCommunityChoiceAfterWalletFailure(
+  previousCommunityRaw: string | null,
+  previousInvite: string | null,
+): boolean {
+  return previousCommunityRaw === null && !previousInvite;
+}
+
 export function decideCommunityTapEffect(inputs: CommunityTapInputs): CommunityTapEffect {
   const community = getCommunityBySlug(inputs.slug);
   // Community-tap honors the community's pinned invite (or BP fallback).

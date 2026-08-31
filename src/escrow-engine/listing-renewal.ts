@@ -85,10 +85,19 @@ export function hasPendingStoreRollover(
 
 /** True when `npub` holds a chain-verified, funded, still-active 38135 bond at
  *  or above the storefront-license floor. Drives Tier 3 tenure. */
-export function sellerIsBonded(bonds: readonly VerifiedBond[], npub: string | null): boolean {
+export function sellerIsBonded(
+  bonds: readonly VerifiedBond[],
+  npub: string | null,
+  tipHeight?: number | null,
+): boolean {
   if (!npub) return false;
   return bonds.some((b) => {
     if (!b.funded || !b.active || !samePubkey(b.npub, npub)) return false;
+    // Present-tense storefront privileges need present-tense chain evidence.
+    // When a caller has fetched the current tip, use it instead of trusting an
+    // `active` bit that may have come from a cache or a verification performed
+    // while the tip endpoint was unavailable.
+    if (tipHeight !== undefined && (tipHeight === null || tipHeight >= b.lockUntil)) return false;
     // A bond that opted OUT of arbitration is a storefront license, and clears
     // the lower merchant floor. A bond that is (also) an arbiter bond is held to
     // the full arbiter floor — it buys strictly more, so it costs more.
@@ -339,9 +348,11 @@ export function canManuallyRenewListing(
   );
 }
 
-/** Fully-lapsed unfunded listings the seller owns — the manual "your store
+/** Fully-lapsed unfunded STOREFRONTS the seller owns — the manual "your store
  *  lapsed — renew?" card feeds off this (no lead window; only truly-lapsed).
- *  Retired ids are excluded so a superseded listing never re-offers the card. */
+ *  Exchange/Work/Bill offers have their own renewal policies and must never be
+ *  mislabeled as a Store by this shared surface. Retired ids are excluded so a
+ *  superseded listing never re-offers the card. */
 export function lapsedRenewableListings(
   states: Iterable<EscrowState>,
   userPubkey: string | null,
@@ -352,9 +363,7 @@ export function lapsedRenewableListings(
   for (const s of states) {
     if (
       !retired.has(s.id) &&
-      // MANUAL renew is offered for every renewable lane regardless of bond —
-      // the bond gates hands-free renewal, never the seller's own right to
-      // re-list something that lapsed.
+      renewalLaneFor(s) === "store" &&
       resolveRenewalPolicy(s).renewable &&
       isSellerOwnedListing(s, userPubkey) &&
       listingNeverFunded(s) &&
@@ -366,15 +375,15 @@ export function lapsedRenewableListings(
   return out;
 }
 
-/** Whether a lapsed listing belongs in the Me reminder right now. Storefront
- * reminders are a bonded-seller surface: old stores stay dormant while the
- * bond is inactive, automatically return with the verified bond, and may be
- * snoozed locally. Other renewal lanes retain their existing visibility. */
+/** Whether a lapsed storefront belongs in the Me reminder right now.
+ * Non-store offers never enter this Store-specific surface. Old stores stay
+ * dormant while the bond is inactive, automatically return with the verified
+ * bond, and may be snoozed locally. */
 export function lapsedRenewalReminderVisible(
   state: EscrowState,
   opts: { bonded: boolean; snoozedUntilMs?: number; nowMs: number },
 ): boolean {
-  if (renewalLaneFor(state) !== "store") return true;
+  if (renewalLaneFor(state) !== "store") return false;
   return opts.bonded && opts.nowMs >= (opts.snoozedUntilMs ?? 0);
 }
 

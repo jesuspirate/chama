@@ -20,6 +20,9 @@ Client Two and Client Three are no longer launched or shown. Their `/data/client
 4. Save the identity phrase and any exported ecash fund backups somewhere safe.
 
 The native wallet cannot receive or escrow ecash until it has joined a federation.
+If the wallet or Nostr relays are still starting, Chama keeps you signed in and preserves your selected home community. The Chama bar shows **Connecting** while startup is active and **Reconnect** if it fails. Chama will not create or replace a browser-wallet seed from an incomplete relay reading, and a genuinely new wallet will not waste time running recovery for a balance that cannot yet exist—even if you reload before its first join completes. After one successful seed lookup, returning logins on that device use a signature-verified encrypted event cache and refresh relay health in the background; Chama does not store the plaintext recovery phrase there. Chama also never starts forced recovery as routine boot work. If an older seed is found but its local wallet file is missing, you can still browse; tap **Reconnect** to discard the boot-only client and explicitly start the repair attempt.
+
+On accounts with a long trade history, **Checking your complete trade history…** remains visible until Chama has replayed saved trades and completed its relay discovery/heal pass. Action badges and old listing reminders stay hidden until that reading is complete. Lapsed Store reminders apply only to actual Store listings and only return while a current on-chain bond is verifiably active; an expired, cached, or temporarily unverifiable bond does not bring an old store back, and an old Exchange offer is not shown as a Store.
 
 ## Backups
 

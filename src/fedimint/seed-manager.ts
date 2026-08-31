@@ -27,6 +27,7 @@
 import type { NostrEvent } from "../escrow-engine/types.js";
 import type { EscrowClient, Signer, UnsignedEvent } from "../escrow-engine/escrow-client.js";
 import { generateSeedWords } from "nostr-tools/nip06";
+import { verifyEvent as verifyNostrEventSignature } from "nostr-tools/pure";
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -67,6 +68,16 @@ export const SEED_HEALTH_STORAGE_KEY = "chama_seed_health_v1";
  * Format: { [pubkey: string]: { firstPublishedAt: number, lastEventId: string } }
  */
 export const SEED_PUBLISHED_MARKER_KEY = "chama_seed_published_v1";
+/** Per-pubkey proof that this browser created a seed but has not completed its
+ * first federation join yet. This lets a reload resume a brand-new wallet
+ * without misclassifying its just-published relay event as an old wallet that
+ * needs force_recover. */
+export const SEED_PENDING_FIRST_JOIN_KEY = "chama_seed_pending_first_join_v1";
+/** Signed, still-encrypted seed event cached per npub. This contains no
+ * plaintext mnemonic; the active signer must decrypt it again. Returning
+ * identities can therefore open their mapped local wallet without waiting
+ * for a 15-second relay round trip on every login. */
+export const SEED_LOCAL_EVENT_CACHE_KEY = "chama_seed_event_cache_v1";
 
 /** Longer recovery timeout — was 5s, far too short on slow networks. */
 export const SEED_RECOVERY_TIMEOUT_MS = 15_000;
@@ -88,6 +99,16 @@ export const SEED_RECOVERY_RETRY_DELAYS_MS = [1_000, 2_000, 4_000];
  */
 export const SEED_DECRYPT_RETRY_DELAYS_MS = [750, 1_500, 3_000];
 export const FEDI_SEED_DECRYPT_RETRY_DELAYS_MS = [750, 1_500, 3_000, 6_000, 10_000];
+export const SEED_RECOVERY_RELAYS_UNREADY = "SEED_RECOVERY_RELAYS_UNREADY";
+
+function seedRecoveryRelaysUnreadyError(): Error & { code: string } {
+  const error = new Error(
+    "Your Nostr relays are still connecting, so Chama did not create or replace a wallet seed. " +
+    "Your account is signed in; tap Reconnect in the Chama bar when the relay count recovers.",
+  ) as Error & { code: string };
+  error.code = SEED_RECOVERY_RELAYS_UNREADY;
+  return error;
+}
 
 function hasFediRuntime(): boolean {
   return typeof window !== "undefined" && !!(window as any).fediInternal;
@@ -267,6 +288,35 @@ function saveSeedPublishedMarker(pubkey: string, eventId: string): void {
   }
 }
 
+function localSeedEventKey(pubkey: string): string {
+  return `${SEED_LOCAL_EVENT_CACHE_KEY}:${pubkey}`;
+}
+
+function saveLocalSeedEvent(pubkey: string, event: NostrEvent): void {
+  try {
+    if (typeof localStorage === "undefined") return;
+    localStorage.setItem(localSeedEventKey(pubkey), JSON.stringify(event));
+  } catch (error) {
+    console.debug("[chama] Couldn't cache encrypted seed event locally:", error);
+  }
+}
+
+function loadLocalSeedEvent(pubkey: string): NostrEvent | null {
+  try {
+    if (typeof localStorage === "undefined") return null;
+    const raw = localStorage.getItem(localSeedEventKey(pubkey));
+    if (!raw) return null;
+    const event = JSON.parse(raw) as NostrEvent;
+    const marker = loadSeedPublishedMarker(pubkey);
+    if (!marker || marker.lastEventId !== event.id) return null;
+    if (!isChamaSeedEvent(event, pubkey)) return null;
+    if (!verifyNostrEventSignature(event as any)) return null;
+    return event;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Snapshot of seed-backup health. Consumed by UI (v0.1.71+) to render
  * a "your seed is backed up on N relays" indicator.
@@ -286,11 +336,66 @@ export interface SeedHealth {
 
 let cachedSeed: string[] | null = null;
 let cachedForPubkey: string | null = null;
+let cachedSeedSource: "fresh" | "recovered" | null = null;
 
 /** Clear the cache — call on disconnect / signer change */
 export function clearSeedCache(): void {
   cachedSeed = null;
   cachedForPubkey = null;
+  cachedSeedSource = null;
+}
+
+/**
+ * Tell wallet bootstrap whether the cached mnemonic predates this browser
+ * wallet. Recovery is required for a seed read from relays, because it may
+ * already have mint state on another device. A seed generated moments ago for
+ * a genuinely new identity has nothing to recover and must join normally.
+ */
+export function cachedSeedRequiresFederationRecovery(pubkey: string): boolean {
+  return cachedForPubkey === pubkey && cachedSeedSource === "recovered";
+}
+
+function loadPendingFirstJoin(pubkey: string): { eventId: string; createdAt: number } | null {
+  try {
+    if (typeof localStorage === "undefined") return null;
+    const parsed = JSON.parse(localStorage.getItem(SEED_PENDING_FIRST_JOIN_KEY) || "{}");
+    const entry = parsed?.[pubkey];
+    return entry && typeof entry.eventId === "string" && typeof entry.createdAt === "number"
+      ? entry
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function savePendingFirstJoin(pubkey: string, eventId: string): void {
+  try {
+    if (typeof localStorage === "undefined") return;
+    const parsed = JSON.parse(localStorage.getItem(SEED_PENDING_FIRST_JOIN_KEY) || "{}");
+    parsed[pubkey] = { eventId, createdAt: Date.now() };
+    localStorage.setItem(SEED_PENDING_FIRST_JOIN_KEY, JSON.stringify(parsed));
+  } catch (error) {
+    console.warn("[chama] Couldn't persist fresh-wallet first-join state:", error);
+  }
+}
+
+/** Mark the first federation join complete. Future fresh-database openings for
+ * this seed must use force_recover because mint state may now exist. */
+export function markCachedSeedFederationJoined(pubkey: string): void {
+  if (cachedForPubkey === pubkey) cachedSeedSource = "recovered";
+  try {
+    if (typeof localStorage === "undefined") return;
+    const parsed = JSON.parse(localStorage.getItem(SEED_PENDING_FIRST_JOIN_KEY) || "{}");
+    if (!parsed?.[pubkey]) return;
+    delete parsed[pubkey];
+    if (Object.keys(parsed).length > 0) {
+      localStorage.setItem(SEED_PENDING_FIRST_JOIN_KEY, JSON.stringify(parsed));
+    } else {
+      localStorage.removeItem(SEED_PENDING_FIRST_JOIN_KEY);
+    }
+  } catch (error) {
+    console.warn("[chama] Couldn't clear fresh-wallet first-join state:", error);
+  }
 }
 
 /** v2.4 — read the in-memory BIP-39 mnemonic for the recovery-phrase reveal
@@ -328,6 +433,29 @@ export async function getOrCreateSeed(
 
   if (cachedSeed && cachedForPubkey === pubkey) {
     return cachedSeed;
+  }
+
+  // Returning-device fast path. The cached object is the same signed,
+  // NIP-44-encrypted event previously accepted from relays (or published by
+  // this signer), never a plaintext mnemonic. Verify its event signature and
+  // marker binding, then ask the current signer to decrypt it. Relay health is
+  // checked fire-and-forget after wallet startup, so this removes login
+  // latency without weakening the remote backup or replacement-seed guards.
+  const localEvent = loadLocalSeedEvent(pubkey);
+  if (localEvent) {
+    const local = await recoverSeedWordsFromEvents(
+      [localEvent],
+      pubkey,
+      signer,
+      { delaysMs: [] },
+    );
+    if (local) {
+      cachedSeed = local.words;
+      cachedForPubkey = pubkey;
+      cachedSeedSource = loadPendingFirstJoin(pubkey) ? "fresh" : "recovered";
+      console.info("[chama] Fedimint seed opened from verified local encrypted cache");
+      return local.words;
+    }
   }
 
   // ── 1. Try to recover existing seed ─────────────────────────────────────
@@ -385,10 +513,14 @@ export async function getOrCreateSeed(
       const { words, event } = recovered;
       cachedSeed = words;
       cachedForPubkey = pubkey;
+      cachedSeedSource = loadPendingFirstJoin(pubkey)?.eventId === event.id
+        ? "fresh"
+        : "recovered";
       // v0.1.74 seed safety: record marker on recovery so future
       // sessions are protected even if the seed was originally
       // generated on a different device.
       saveSeedPublishedMarker(pubkey, event.id);
+      saveLocalSeedEvent(pubkey, event);
       mlog("SEED-RECOVERY-OK", {
         pubkey: pubkey.slice(0, 8),
         eventId: event.id.slice(0, 8),
@@ -456,6 +588,22 @@ export async function getOrCreateSeed(
     );
   }
 
+  // A zero-event read is only evidence of "no prior wallet" when enough of
+  // the configured relay pool actually answered. This matters most on mobile
+  // webviews: `connected` means the Nostr client was constructed, not that its
+  // WebSockets have opened. Before this guard, a fresh device with an OLD npub
+  // could query zero relays, conclude there was no backup, and attempt to
+  // publish a replacement seed. The later publish usually failed too, which
+  // appeared to the user as a login failure; worse, a partial pool could have
+  // accepted the replacement. Fail closed and let reconnect retry instead.
+  if (!client.hasRecoveryReadQuorum()) {
+    mlog("SEED-REFUSE-FRESH-RELAY-QUORUM", {
+      pubkey: pubkey.slice(0, 8),
+      connectedRelays: client.getConnectedRelayCount(),
+    });
+    throw seedRecoveryRelaysUnreadyError();
+  }
+
   // ── 3. True first launch — no marker, no recovery. Generate fresh. ──
   mlog("SEED-FIRST-LAUNCH", { pubkey: pubkey.slice(0, 8) });
   const mnemonic = generateSeedWords(); // 12-word BIP-39 via @scure/bip39
@@ -482,6 +630,8 @@ export async function getOrCreateSeed(
   // device know this pubkey has had a seed published before, and won't
   // be allowed to silently regenerate on a relay timeout.
   saveSeedPublishedMarker(pubkey, signed.id);
+  saveLocalSeedEvent(pubkey, signed);
+  savePendingFirstJoin(pubkey, signed.id);
   mlog("SEED-PUBLISH-OK", {
     pubkey: pubkey.slice(0, 8),
     eventId: signed.id.slice(0, 8),
@@ -490,6 +640,7 @@ export async function getOrCreateSeed(
 
   cachedSeed = words;
   cachedForPubkey = pubkey;
+  cachedSeedSource = "fresh";
   console.info("[chama] Fresh Fedimint seed generated and published to relays");
   return words;
 }
@@ -523,6 +674,7 @@ export async function republishSeed(
   // a device that successfully republishes is locked into the safety
   // gate going forward.
   saveSeedPublishedMarker(pubkey, signed.id);
+  saveLocalSeedEvent(pubkey, signed);
   mlog("SEED-PUBLISH-OK", {
     pubkey: pubkey.slice(0, 8),
     eventId: signed.id.slice(0, 8),

@@ -128,7 +128,14 @@ export function ChamaBar({
           onTapStranded={onTapStranded}
           onTapUnreachable={onInit}
         />
-      ) : !fedimint.busy && showReconnect && (
+      ) : fedimint.busy ? (
+        <span style={{
+          fontSize: 10, color: T.amber, fontFamily: T.mono,
+          letterSpacing: 0.3, whiteSpace: "nowrap",
+        }}>
+          {t("common.connecting")}
+        </span>
+      ) : showReconnect && (
         <button onClick={onInit} style={{
           padding: "6px 16px", borderRadius: 20,
           background: T.surface, border: `1px solid ${T.border}`,

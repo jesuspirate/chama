@@ -308,10 +308,15 @@ import {
   assertEcashExportWritable,
 } from "../payments/ecash-exports.js";
 import {
+  clearSeedCache,
+  cachedSeedRequiresFederationRecovery,
+  markCachedSeedFederationJoined,
+  getOrCreateSeed,
   recoverSeedWordsFromEvents,
   queryUntilFound,
   FEDI_SEED_DECRYPT_RETRY_DELAYS_MS,
   SEED_DECRYPT_RETRY_DELAYS_MS,
+  SEED_RECOVERY_RELAYS_UNREADY,
   SEED_RECOVERY_RETRY_DELAYS_MS,
 } from "../fedimint/seed-manager.js";
 import { deriveCreateFedTags } from "../fedimint/create-fed-tags.js";
@@ -2147,6 +2152,10 @@ console.log("\n── ATOMIC LOCK (CREATED → LOCKED, no FUNDED hop) ──");
       { ...listing, parent: "parent_A" } as EscrowState,
     ], SELLER_PK, lapsedAt).length === 0,
       "A2: a child ORDER is never renewable in any lane");
+    assert(lapsedRenewableListings([
+      { ...listing, category: "p2p-trade" } as EscrowState,
+    ], SELLER_PK, lapsedAt).length === 0,
+      "store: a lapsed Exchange offer never masquerades as a Store reminder");
     // Manual-card feed: only truly-lapsed listings.
     const lapsedList = lapsedRenewableListings([listing], SELLER_PK, lapsedAt);
     assert(lapsedList.length === 1 && lapsedList[0].id === listing.id,
@@ -2162,9 +2171,9 @@ console.log("\n── ATOMIC LOCK (CREATED → LOCKED, no FUNDED hop) ──");
     assert(!lapsedRenewalReminderVisible(listing, {
       bonded: true, snoozedUntilMs: lapsedAt * 1000 + 60_000, nowMs: lapsedAt * 1000,
     }), "store: a bonded seller can snooze the resurfaced reminder");
-    assert(lapsedRenewalReminderVisible({ ...listing, category: "p2p-trade" } as EscrowState, {
+    assert(!lapsedRenewalReminderVisible({ ...listing, category: "p2p-trade" } as EscrowState, {
       bonded: false, snoozedUntilMs: Number.MAX_SAFE_INTEGER, nowMs: lapsedAt * 1000,
-    }), "store: bond/snooze visibility never leaks into non-store renewal lanes");
+    }), "store: a non-store renewal lane never leaks into the Store reminder");
     // Re-publish params: identical terms, NO longer expiry (trade timeout stays).
     const rp = buildRenewCreateParams(listing);
     assert(rp.description === listing.description && rp.amountMsats === 20_000_000,
@@ -2182,6 +2191,10 @@ console.log("\n── ATOMIC LOCK (CREATED → LOCKED, no FUNDED hop) ──");
     { npub: SELLER_PK, community: "ke-kes", address: "a", lockUntil: 999, actualSats: 50_000n, claimedSats: 50_000n, funded: true, active: true },
   ];
   assert(sellerIsBonded(bonds, SELLER_PK), "store: a funded+active bond ≥ floor makes the seller bonded");
+  assert(!sellerIsBonded(bonds, SELLER_PK, 999),
+    "store: a bond at its lock height is no longer a present-tense storefront license");
+  assert(!sellerIsBonded(bonds, SELLER_PK, null),
+    "store: an unavailable chain tip cannot resurrect a cached storefront license");
   assert(!sellerIsBonded(bonds, BUYER_PK), "store: another npub isn't bonded off the seller's bond");
   assert(!sellerIsBonded([{ ...bonds[0], funded: false }], SELLER_PK),
     "store: an unfunded bond announcement doesn't grant tenure");
@@ -9626,6 +9639,7 @@ import {
   MAIN_SURFACE_RECOVERY_MIN_SATS,
   activeCommittedMsats,
   shouldOpenSellerListingManagement,
+  keepFirstCommunityChoiceAfterWalletFailure,
 } from "../ui/decisions.js";
 import { pickArbiterFromPool, pickPreferredArbiter } from "../arbiters/pool.js";
 // BP_FEDERATION_INVITE / BLF_FEDERATION_INVITE already imported above
@@ -9658,6 +9672,14 @@ console.log("\n── COMMUNITY-PILL TAP EFFECT ──");
     assert(firstTime.displayName === "Senegal · CFA",
       "First-time tap carries the community displayName");
   }
+  assert(
+    keepFirstCommunityChoiceAfterWalletFailure(null, null),
+    "First home choice survives a wallet-init failure so authentication never loops",
+  );
+  assert(
+    !keepFirstCommunityChoiceAfterWalletFailure("us-blf", BLF_FEDERATION_INVITE),
+    "A returning federation switch may still restore its previous identity route",
+  );
 
   // Returning user already on the community's federation → identity-only.
   const sameFed = decideCommunityTapEffect({
@@ -11771,6 +11793,164 @@ console.log("\n── community-blind federation fallback ──");
 // a mock sleepFn so the suite runs without real timers.
 console.log("\n── SEED RECOVERY RETRY ──");
 {
+  // A fresh browser profile is not evidence of a fresh identity. If the
+  // relay pool has not reached recovery-read quorum, an empty query must not
+  // generate/sign/publish a replacement seed for an old npub.
+  {
+    clearSeedCache();
+    (globalThis as any).localStorage.clear();
+    let encrypted = false;
+    let published = false;
+    const pubkey = "ad".repeat(32);
+    const signer: Signer = {
+      async getPublicKey() { return pubkey; },
+      async signEvent(event: UnsignedEvent) {
+        return { ...event, id: "unexpected", pubkey, sig: "sig" } as NostrEvent;
+      },
+      async nip44Encrypt() { encrypted = true; return "cipher"; },
+      async nip44Decrypt(value: string) { return value; },
+    };
+    const noQuorumClient = {
+      async queryOnce() { return []; },
+      getConnectedRelayCount() { return 0; },
+      hasRecoveryReadQuorum() { return false; },
+      async publishRaw() { published = true; },
+    };
+    let code = "";
+    try {
+      await getOrCreateSeed(noQuorumClient as any, signer);
+    } catch (error: any) {
+      code = error?.code ?? "";
+    }
+    assert(code === SEED_RECOVERY_RELAYS_UNREADY,
+      "Empty seed read without relay quorum fails as retryable relay startup");
+    assert(!encrypted && !published,
+      "No-quorum seed recovery never creates or publishes a replacement seed");
+  }
+
+  // A genuinely new seed must not trigger force_recover on its first join.
+  // There is no prior mint state to restore, and forcing recovery here can
+  // park a brand-new identity in the SDK recovery wait indefinitely.
+  {
+    clearSeedCache();
+    (globalThis as any).localStorage.clear();
+    const pubkey = "be".repeat(32);
+    const signer: Signer = {
+      async getPublicKey() { return pubkey; },
+      async signEvent(event: UnsignedEvent) {
+        return { ...event, id: "fresh-seed-event", pubkey, sig: "sig" } as NostrEvent;
+      },
+      async nip44Encrypt(value: string) { return value; },
+      async nip44Decrypt(value: string) { return value; },
+    };
+    let publishedSeedEvent: NostrEvent | null = null;
+    const healthyEmptyClient = {
+      async queryOnce() { return []; },
+      getConnectedRelayCount() { return 4; },
+      hasRecoveryReadQuorum() { return true; },
+      async publishRaw(event: NostrEvent) { publishedSeedEvent = event; },
+    };
+    await getOrCreateSeed(healthyEmptyClient as any, signer);
+    assert(!cachedSeedRequiresFederationRecovery(pubkey),
+      "First-ever seed joins normally instead of forcing an empty recovery");
+
+    // Reload before the first join: the seed now exists on relays, but its
+    // durable pending-first-join marker must preserve fresh provenance.
+    clearSeedCache();
+    const reloadClient = {
+      ...healthyEmptyClient,
+      async queryOnce() { return publishedSeedEvent ? [publishedSeedEvent] : []; },
+    };
+    await getOrCreateSeed(reloadClient as any, signer);
+    assert(!cachedSeedRequiresFederationRecovery(pubkey),
+      "Reloaded first-join seed does not become a false recovery candidate");
+
+    markCachedSeedFederationJoined(pubkey);
+    assert(cachedSeedRequiresFederationRecovery(pubkey),
+      "Successful first join promotes the seed to recovery-required provenance");
+  }
+
+  // Conversely, a seed recovered from a relay may already have federation
+  // nonce/client state elsewhere and must retain the force-recovery path.
+  {
+    clearSeedCache();
+    (globalThis as any).localStorage.clear();
+    const pubkey = "bf".repeat(32);
+    const mnemonic = "able baker cable delta eager fabric galaxy habit icon jacket kitten ladder";
+    const signer: Signer = {
+      async getPublicKey() { return pubkey; },
+      async signEvent(event: UnsignedEvent) {
+        return { ...event, id: "unused", pubkey, sig: "sig" } as NostrEvent;
+      },
+      async nip44Encrypt(value: string) { return value; },
+      async nip44Decrypt(value: string) { return value; },
+    };
+    const recoveredClient = {
+      async queryOnce() {
+        return [{
+          id: "existing-seed-event",
+          pubkey,
+          created_at: 1,
+          kind: 30078,
+          tags: [["d", "chama-fedimint-seed-v1"]],
+          content: mnemonic,
+          sig: "sig",
+        }];
+      },
+      getConnectedRelayCount() { return 4; },
+      hasRecoveryReadQuorum() { return true; },
+      async publishRaw() {},
+    };
+    await getOrCreateSeed(recoveredClient as any, signer);
+    assert(cachedSeedRequiresFederationRecovery(pubkey),
+      "Relay-recovered seed retains forced federation recovery on a fresh database");
+  }
+
+  // Returning-device login reuses only a signature-verified encrypted event.
+  // The mnemonic is decrypted again by the active signer; plaintext is never
+  // written to browser storage and relay refresh can run after readiness.
+  {
+    clearSeedCache();
+    (globalThis as any).localStorage.clear();
+    const secret = generateSecretKey();
+    const pubkey = getPublicKey(secret);
+    const mnemonic = "able baker cable delta eager fabric galaxy habit icon jacket kitten ladder";
+    const event = finalizeEvent({
+      kind: 30078,
+      created_at: 2,
+      tags: [["d", "chama-fedimint-seed-v1"]],
+      content: mnemonic,
+    }, secret) as unknown as NostrEvent;
+    const signer: Signer = {
+      async getPublicKey() { return pubkey; },
+      async signEvent(unsigned: UnsignedEvent) {
+        return finalizeEvent(unsigned, secret) as unknown as NostrEvent;
+      },
+      async nip44Encrypt(value: string) { return value; },
+      async nip44Decrypt(value: string) { return value; },
+    };
+    let relayQueries = 0;
+    const client = {
+      async queryOnce() { relayQueries++; return [event]; },
+      getConnectedRelayCount() { return 4; },
+      hasRecoveryReadQuorum() { return true; },
+      async publishRaw() {},
+    };
+    await getOrCreateSeed(client as any, signer);
+    clearSeedCache();
+    await getOrCreateSeed({
+      ...client,
+      async queryOnce() {
+        relayQueries++;
+        throw new Error("returning-device fast path must not block on relays");
+      },
+    } as any, signer);
+    assert(relayQueries === 1,
+      "Returning identity opens the verified encrypted seed cache without a second relay wait");
+    assert(cachedSeedRequiresFederationRecovery(pubkey),
+      "Encrypted local cache preserves existing-wallet recovery provenance");
+  }
+
   // First-attempt success — one sleep (1s before attempt), one query.
   {
     const sleepCalls: number[] = [];
@@ -20410,7 +20590,25 @@ console.log("\n── REAL SDK ADAPTER — Lightning receive watcher ──");
 
   {
     const h = makeRealWallet();
-    const wallet = adaptRealWallet(h.real as any, undefined, undefined, true);
+    const blockedWallet = adaptRealWallet(h.real as any, undefined, undefined, true);
+    let blockedCode = "";
+    try {
+      await blockedWallet.joinFederation(BLF_FEDERATION_INVITE);
+    } catch (error) {
+      blockedCode = (error as Error & { code?: string }).code ?? "";
+    }
+    assert(blockedCode === "FEDIMINT_RECOVERY_REQUIRES_USER_ACTION"
+      && h.calls.joinFederation === 0,
+    "Routine boot never starts a forced federation recovery");
+
+    const wallet = adaptRealWallet(
+      h.real as any,
+      undefined,
+      undefined,
+      true,
+      undefined,
+      true,
+    );
     await wallet.joinFederation(BLF_FEDERATION_INVITE);
     assert(h.calls.joinFederation === 1
       && h.calls.joinFederationOptions?.forceRecover === true,
@@ -23580,6 +23778,64 @@ function makeFundSafetyWallet(overrides: {
     },
     async cleanup() {},
   };
+}
+
+// Regression: init used to compute forceRecoverOnJoin=false correctly for a
+// brand-new seed, then accidentally drop that flag before calling the real
+// wallet factory. The adapter's conservative mnemonic fallback turned it
+// back into true and parked every new npub in recovery.
+{
+  const { FedimintClient } = await import("../fedimint/fedimint-client.js");
+  let received: any = null;
+  const client = new FedimintClient({}, async (options) => {
+    received = options;
+    return makeFundSafetyWallet({}) as any;
+  });
+  await client.init({
+    mnemonic: ["fresh"],
+    storageScope: "fresh-npub",
+    forceRecoverOnJoin: false,
+    allowRecoveryOnJoin: false,
+  });
+  assert(received?.forceRecoverOnJoin === false,
+    "FedimintClient preserves fresh-seed provenance through the wallet factory");
+  assert(received?.allowRecoveryOnJoin === false,
+    "FedimintClient keeps routine boot recovery-disabled through the wallet factory");
+  await client.cleanup();
+}
+
+{
+  const { FedimintClient } = await import("../fedimint/fedimint-client.js");
+  let factoryCalls = 0;
+  let cleanupCalls = 0;
+  const recoveryLeadWallet = {
+    ...makeFundSafetyWallet({}),
+    async open() {
+      const error = new Error("repair lead") as Error & { code?: string };
+      error.code = "BROWSER_WALLET_RECOVERY_REQUIRED";
+      throw error;
+    },
+    async cleanup() { cleanupCalls++; },
+  };
+  const client = new FedimintClient({}, async () => {
+    factoryCalls++;
+    return recoveryLeadWallet as any;
+  });
+  let code = "";
+  try {
+    await client.init({
+      mnemonic: ["existing"],
+      storageScope: "existing-npub",
+      forceRecoverOnJoin: true,
+      allowRecoveryOnJoin: false,
+    });
+  } catch (error) {
+    code = (error as Error & { code?: string }).code ?? "";
+  }
+  assert(code === "FEDIMINT_RECOVERY_REQUIRES_USER_ACTION",
+    "A recorded repair lead pauses at Reconnect instead of recovering during boot");
+  assert(factoryCalls === 1 && cleanupCalls === 1,
+    "Deferred boot recovery closes the inspected wallet without rotating into a recovery client");
 }
 
 // ── C12 · invariant_mint-mutex__concurrent_spends_serialize ──────────────

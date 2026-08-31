@@ -656,6 +656,17 @@ export class EscrowClient {
     return this.relayManager.getConnectedCount();
   }
 
+  /** Whether enough of the configured relay pool is online to treat an
+   * empty identity-backup query as authoritative. Money-bearing identity
+   * recovery must not turn "the mobile webview has not opened its sockets
+   * yet" into "this npub has never had a wallet". */
+  hasRecoveryReadQuorum(): boolean {
+    return !relayPoolNeedsRecoveryBackfill(
+      this.relayManager.getConnectedCount(),
+      this.config.relays.length,
+    );
+  }
+
   /** Escrows with a live subscription — the ones still taking events. */
   private watchedEscrowIds(): Set<string> {
     const watched = new Set<string>();

@@ -1314,8 +1314,9 @@ export default function App() {
     : [];
 
   // ── Store permanence (#49) ─────────────────────────────────────────────
-  // Tier 1: the seller's own listings that lapsed UNFUNDED — feed the manual
-  // "your store lapsed — renew?" card. Cheap pure filter over loaded escrows.
+  // Tier 1: the seller's own STOREFRONTS that lapsed UNFUNDED — feed the manual
+  // "your store lapsed — renew?" card. Exchange/Work/Bill renewal stays in its
+  // own lane and is never mislabeled as a Store here.
   const rawLapsedListings = pubkey
     ? lapsedRenewableListings(escrows.values(), pubkey, now, retiredIds)
     : [];
@@ -1452,7 +1453,10 @@ export default function App() {
           actions.fetchCommunityBonds(browseCommunity, { allowCachedFallback: false }),
           actions.getBondChainTip(),
         ]);
-        if (!cancelled) { setSellerBonded(sellerIsBonded(bonds, pubkey)); setBondTip(tip); }
+        if (!cancelled) {
+          setSellerBonded(sellerIsBonded(bonds, pubkey, tip));
+          setBondTip(tip);
+        }
       } catch { if (!cancelled) setSellerBonded(false); }
     })();
     return () => { cancelled = true; };
@@ -2753,9 +2757,9 @@ export default function App() {
       }}>
         <style>{globalCss()}</style>
         <SimModePill />
-        {/* Failed first picks toast their reason (handleSelectCommunity's
-            "Couldn't reach X. Try another community.") — without this the
-            gate swallowed them and a retry looked like a dead tap. */}
+        {/* The picker only remains mounted until the identity choice is saved.
+            Wallet initialization errors no longer clear that choice; they are
+            handled from the signed-in shell's Chama bar. */}
         {toast && <Toast message={toast.message} type={toast.type} sticky={toast.sticky} dismissOnTap={toast.dismissOnTap} onDone={() => setToast(null)} />}
         <GlobeCountryPicker
           onSelect={async (slug) => {
@@ -2767,8 +2771,9 @@ export default function App() {
             const selection = handleSelectCommunity(slug);
             setNeedsHomePick(getUserCommunitySlugRaw() === null);
             await selection;
-            // Reconcile after success/failure. A failed first-time switch has
-            // cleared the choice, so the picker comes back with its error toast.
+            // Reconcile after success/failure. The home identity stays saved
+            // even when its wallet is temporarily unavailable, so a wallet
+            // error can never trap an authenticated user in onboarding.
             setNeedsHomePick(getUserCommunitySlugRaw() === null);
           }}
           loadLiveness={actions.getChamaLiveness}
@@ -2911,7 +2916,9 @@ export default function App() {
               // relay re-probe runs first so init has a live pool to publish the
               // seed round-trip into.
               actions.recoverRelays();
-              const runInit = () => actions.initFedimint().catch((e: any) => {
+              const runInit = () => actions.initFedimint(undefined, {
+                allowRecovery: true,
+              }).catch((e: any) => {
                 // A refused runtime lease is the one failure Reconnect cannot
                 // fix by retrying: the slot is held by another tab, or by one
                 // that never closed cleanly and still owns it until the TTL
@@ -2948,7 +2955,11 @@ export default function App() {
                   });
                   return;
                 }
-                setToast({ message: e.message || t("app.couldntJoinChama"), type: "error" });
+                setToast({
+                  message: e.message || t("app.couldntJoinChama"),
+                  type: "error",
+                  sticky: true,
+                });
               });
               runInit();
             }}

@@ -363,6 +363,13 @@ export interface FedimintWalletFactoryOptions {
    *  files per Nostr identity so one profile can test multiple npubs without
    *  tripping seed-mismatch safety. */
   storageScope?: string | null;
+  /** Force recovery when this mnemonic came from an existing relay backup.
+   * False for a seed created during this identity's first-ever join. */
+  forceRecoverOnJoin?: boolean;
+  /** Recovery is an explicit repair operation, never ordinary boot work.
+   * When false, a fresh database that requires recovery fails fast and leaves
+   * authentication/browsing usable until the user taps Reconnect. */
+  allowRecoveryOnJoin?: boolean;
   /** v0.4.2 sim mode: hex pubkey of the active signer. Sim-wallet keys
    *  its persistent state by this so multiple identities in one browser
    *  don't share a sim balance. Ignored by the real wallet factory. */
@@ -374,6 +381,10 @@ export interface FedimintInitOptions {
   mnemonic?: string[];
   /** Stable browser-storage scope. See FedimintWalletFactoryOptions. */
   storageScope?: string | null;
+  /** See FedimintWalletFactoryOptions.forceRecoverOnJoin. */
+  forceRecoverOnJoin?: boolean;
+  /** See FedimintWalletFactoryOptions.allowRecoveryOnJoin. */
+  allowRecoveryOnJoin?: boolean;
   /** v0.4.2 sim mode: hex pubkey of the active signer. See
    *  FedimintWalletFactoryOptions.simNpub. */
   simNpub?: string | null;
@@ -454,6 +465,8 @@ export class FedimintClient {
     return createRealWallet({
       mnemonic: opts.mnemonic,
       storageScope: opts.storageScope,
+      forceRecoverOnJoin: opts.forceRecoverOnJoin,
+      allowRecoveryOnJoin: opts.allowRecoveryOnJoin,
     });
   }
 
@@ -479,6 +492,8 @@ export class FedimintClient {
         mnemonic: opts.mnemonic,
         storageScope: opts.storageScope,
         simNpub: opts.simNpub,
+        forceRecoverOnJoin: opts.forceRecoverOnJoin,
+        allowRecoveryOnJoin: opts.allowRecoveryOnJoin,
       });
 
       // Try to open an existing client in the DB. On a fresh OPFS file
@@ -504,10 +519,20 @@ export class FedimintClient {
               cleanupError,
             );
           }
+          if (opts.allowRecoveryOnJoin !== true) {
+            this.wallet = null;
+            const deferred = new Error(
+              "Chama found a wallet repair lead but did not run recovery during boot. Tap Reconnect to start the explicit recovery attempt.",
+            ) as Error & { code?: string };
+            deferred.code = "FEDIMINT_RECOVERY_REQUIRES_USER_ACTION";
+            throw deferred;
+          }
           const { createRealWallet } = await import("./sdk-adapter.js");
           this.wallet = await createRealWallet({
             mnemonic: opts.mnemonic,
             storageScope: opts.storageScope,
+            forceRecoverOnJoin: opts.forceRecoverOnJoin,
+            allowRecoveryOnJoin: opts.allowRecoveryOnJoin,
           });
           console.warn(
             "[chama] Paid receive failure matched this wallet; preserved its old OPFS file and prepared forced recovery",
@@ -556,6 +581,8 @@ export class FedimintClient {
           this.wallet = await createRealWallet({
             mnemonic: opts.mnemonic,
             storageScope: opts.storageScope,
+            forceRecoverOnJoin: opts.forceRecoverOnJoin,
+            allowRecoveryOnJoin: opts.allowRecoveryOnJoin,
           });
           console.warn(
             "[chama] Remote bridge authorization expired — restored this account with the browser wallet",

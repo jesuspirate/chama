@@ -28,7 +28,10 @@ import type { FedimintState, UseEscrowActions } from "../../hooks/useEscrow.js";
 import { getCommunityBySlug, DEFAULT_COMMUNITY_SLUG } from "../../communities/registry.js";
 import { getUserCommunitySlugRaw } from "../../communities/storage.js";
 import { getActiveInvite } from "../../fedimint/index.js";
-import { decideCommunityTapEffect } from "../decisions.js";
+import {
+  decideCommunityTapEffect,
+  keepFirstCommunityChoiceAfterWalletFailure,
+} from "../decisions.js";
 
 export interface FederationCommandsDeps {
   fedimint: FedimintState;
@@ -175,20 +178,26 @@ export function useFederationCommands(deps: FederationCommandsDeps): FederationC
           return;
         }
 
-        // Switch failed for a non-balance reason (iroh unreachable,
-        // timeout, etc.). Revert identity AND attempt to re-join the
-        // previous federation so we don't strand the user. If revert
-        // also fails, surface a retry CTA — the FedimintBar Reconnect
-        // button is the recovery path.
+        // Switch failed for a non-balance reason (relay startup, iroh
+        // unreachable, timeout, etc.). A first home choice is AUTH identity;
+        // wallet availability is a separate capability. Never turn a wallet
+        // initialization failure into a logout loop by clearing that choice.
+        // The main shell can render safely with fedimint.joined=false and its
+        // Chama bar is the explicit retry surface.
         //
-        // For first-timers (previousCommunityRaw === null) we revert by
-        // CLEARING the chama_community localStorage entry (so they
-        // stay uncommitted) while reverting the visual filter to
-        // DEFAULT_COMMUNITY_SLUG (the same default a fresh first-time
-        // user sees). They land back in the same state they started in
-        // and can try a different pill. v0.1.87 retired the "all" pill,
-        // so the visual default is a real slug.
+        // A previous wallet route still requires the older revert behavior:
+        // restore its identity/filter (or the visual default when legacy data
+        // has an invite but no scoped community), then rejoin that route.
         console.warn("[chama] community-tap switch failed, reverting:", e);
+        if (keepFirstCommunityChoiceAfterWalletFailure(previousCommunityRaw, previousInvite)) {
+          setToast({
+            message: `Signed in to ${effect.displayName}. Your Chama wallet did not start yet; tap Reconnect in the Chama bar.`,
+            type: "error",
+            sticky: true,
+          });
+          return;
+        }
+
         if (previousCommunityRaw) {
           actions.setCommunity(previousCommunityRaw);
           setBrowseCommunity(previousCommunityRaw);
@@ -198,9 +207,11 @@ export function useFederationCommands(deps: FederationCommandsDeps): FederationC
         }
 
         if (!previousInvite) {
-          // First-time user with a failed init — nothing to revert to.
+          // A previously stored identity without an active wallet has nothing
+          // to rejoin. Keep the earlier identity restoration above and surface
+          // the wallet retry rather than pretending the country is unreachable.
           setToast({
-            message: `Couldn't reach ${effect.displayName}. Try another community.`,
+            message: `Your Chama wallet could not start on ${effect.displayName}. Tap Reconnect in the Chama bar.`,
             type: "error",
           });
           return;

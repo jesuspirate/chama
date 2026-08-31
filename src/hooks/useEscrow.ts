@@ -210,6 +210,8 @@ import {
   hasCustomFederation,
   BP_FEDERATION_NAME,
   getOrCreateSeed,
+  cachedSeedRequiresFederationRecovery,
+  markCachedSeedFederationJoined,
   clearSeedCache,
   isTestnetMode,
   preloadRealWalletRuntime,
@@ -1009,7 +1011,11 @@ export interface UseEscrowActions {
    * UI must surface a destroy-confirm modal before retrying with
    * `{ force: true }`.
    */
-  initFedimint: (inviteCode?: string, options?: { force?: boolean; persistCustom?: boolean }) => Promise<void>;
+  initFedimint: (inviteCode?: string, options?: {
+    force?: boolean;
+    persistCustom?: boolean;
+    allowRecovery?: boolean;
+  }) => Promise<void>;
   /**
    * Persist a custom federation invite code for future sessions.
    * Pass empty string to clear and revert to the default.
@@ -1841,6 +1847,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       // Auto-reload saved escrows — wait for relays to connect first
       const savedIds = getSavedEscrowIds(pubkey);
       if (savedIds.length > 0) {
+        const connectedClient = client!;
         // Wait for at least 2 relays to connect (up to 5 seconds)
         let waited = 0;
         while (waited < 5000) {
@@ -1856,25 +1863,30 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
         // v0.1.66.32: cap raised 10 → 50 to match save cap.
         // Users with >10 saved trades were silently having older
         // escrows skipped on cold start, causing stale-forever state.
-        let savedReloadIndex = 0;
         const prioritizedSavedIds = [...savedIds];
-        prioritizeHomeCommunity(prioritizedSavedIds, client);
-        for (const id of prioritizedSavedIds.slice(0, 50)) {
+        prioritizeHomeCommunity(prioritizedSavedIds, connectedClient);
+        // Replay the durable pointers with the same small, field-proven pool
+        // used by active discovery. The old serial loop made a 50-trade
+        // account wait on 50 independent relay round trips before discovery
+        // could even begin, which is why Me sometimes appeared ten-plus
+        // seconds after the rest of the shell. Three in flight stays below
+        // the WebView subscription ceiling while making boot time bounded by
+        // relay batches rather than total history length.
+        await mapPool(prioritizedSavedIds.slice(0, MAX_SAVED_ESCROW_IDS), HEAL_CONCURRENCY, async (id) => {
           try {
-            const loaded = await client.loadEscrow(id);
+            const loaded = await connectedClient.loadEscrow(id);
             if (loaded && isExpiredUnfundedEscrow(loaded)) {
-              (client as any).states?.delete?.(id);
-              (client as any).rawEvents?.delete?.(id);
+              (connectedClient as any).states?.delete?.(id);
+              (connectedClient as any).rawEvents?.delete?.(id);
               rememberExpiredUnfundedId(id, pubkey);
             }
           } catch (e) {
             console.debug(`[chama] Could not reload ${id}:`, e);
           }
-          savedReloadIndex += 1;
-          if (savedReloadIndex % 3 === 0) {
-            await new Promise<void>(resolve => setTimeout(resolve, 0));
-          }
-        }
+          // Yield after each completed job so historical replay cannot starve
+          // input/rendering even when all three slots finish together.
+          await new Promise<void>(resolve => setTimeout(resolve, 0));
+        });
       }
 
       // ── Active relay discovery (self-healing My Trades) ────────────────
@@ -3435,7 +3447,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
 
   const initFedimint = useCallback(async (
     inviteCode?: string,
-    options?: { force?: boolean; persistCustom?: boolean },
+    options?: { force?: boolean; persistCustom?: boolean; allowRecovery?: boolean },
   ) => {
     if (!clientRef.current || !signerRef.current) {
       // Tag so the auto-init re-arm and the UI can distinguish a transient
@@ -3449,6 +3461,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
 
     const force = options?.force === true;
     const persistCustom = options?.persistCustom !== false;
+    const allowRecoveryOnJoin = options?.allowRecovery === true;
 
     updateFedimint({ busy: true, error: null });
 
@@ -3472,14 +3485,20 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       // the saved-escrow-reload pattern (line ~671): bounded wait, ≥1
       // relay is enough since seed publish goes to all of them.
       if (!isTestnetMode() && !isSimModeOn()) {
-        const client: any = clientRef.current;
+        const client = clientRef.current!;
         let waited = 0;
         while (waited < 5000) {
-          const connectedCount = [...client.relayManager.relays.values()]
-            .filter((r: any) => r.status === "connected").length;
+          const connectedCount = client.getConnectedRelayCount();
           if (connectedCount >= 1) break;
           await new Promise(r => setTimeout(r, 250));
           waited += 250;
+        }
+        if (client.getConnectedRelayCount() === 0) {
+          const err = new Error(
+            "Nostr relays are still connecting. Your account is signed in; Chama will retry the wallet connection.",
+          ) as Error & { code?: string };
+          err.code = "RELAYS_CONNECTING";
+          throw err;
         }
       }
 
@@ -3538,6 +3557,8 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       // Sim wallet keys its persisted state by npub so multiple
       // identities in the same browser don't share a sim balance.
       const activePubkey = await signerRef.current!.getPublicKey().catch(() => null);
+      const forceRecoverOnJoin = !!activePubkey &&
+        cachedSeedRequiresFederationRecovery(activePubkey);
       const simNpub = isSimModeOn()
         ? activePubkey
         : null;
@@ -3605,7 +3626,13 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       }
       if (!fedimint) {
         fedimint = buildClient();
-        await fedimint.init({ mnemonic, storageScope, simNpub });
+        await fedimint.init({
+          mnemonic,
+          storageScope,
+          simNpub,
+          forceRecoverOnJoin,
+          allowRecoveryOnJoin,
+        });
         fedimintRef.current = fedimint;
         updateFedimint({ initialized: true });
       }
@@ -3774,7 +3801,13 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
         // below lands on the desired fed cleanly (no v0.1.69 case-c
         // throw, no case-b silent no-op).
         fedimint = buildClient();
-        await fedimint.init({ mnemonic, storageScope, simNpub });
+        await fedimint.init({
+          mnemonic,
+          storageScope,
+          simNpub,
+          forceRecoverOnJoin,
+          allowRecoveryOnJoin,
+        });
         fedimintRef.current = fedimint;
       }
 
@@ -3791,6 +3824,9 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       // Join federation (idempotent in the SDK when already on the
       // same fed; lands cleanly on the new fed when post-wipe).
       const federationId = await fedimint.joinFederation(effectiveInvite);
+      if (activePubkey && mnemonic) {
+        markCachedSeedFederationJoined(activePubkey);
+      }
 
       // Adopt the pre-multi-federation database as the arbiter's first route.
       // This is the migration that preserves already-earned premiums (including
@@ -3970,7 +4006,25 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       });
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
-      updateFedimint({ busy: false, error: message });
+      const code = (e as Error & { code?: string })?.code;
+      if (code === "FEDIMINT_RECOVERY_REQUIRES_USER_ACTION") {
+        // The adapter captures recovery permission when it is constructed.
+        // Do not retain a boot-time recovery-disabled client: Reconnect must
+        // construct a new instance with allowRecoveryOnJoin=true instead of
+        // retrying forever against the same immutable refusal.
+        const deferredClient = fedimintRef.current;
+        fedimintRef.current = null;
+        bridgeRef.current = null;
+        try { await deferredClient?.cleanup(); } catch {}
+        updateFedimint({
+          initialized: false,
+          joined: false,
+          busy: false,
+          error: message,
+        });
+      } else {
+        updateFedimint({ busy: false, error: message });
+      }
       throw e;
     }
   }, [updateFedimint]);

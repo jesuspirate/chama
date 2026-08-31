@@ -1533,6 +1533,7 @@ export function adaptRealWallet(
     incident?: BrowserWalletRecoveryRequest | null;
     rollbackFilename?: string | null;
   },
+  allowRecoveryOnJoin = false,
 ): IFedimintWallet {
   const activeReceiveWatches = new Set<() => void>();
   const armedReceiveOperationIds = new Set<string>();
@@ -2374,6 +2375,13 @@ export function adaptRealWallet(
 
     async joinFederation(inviteCode: string) {
       if (forceRecoverOnJoin) {
+        if (!allowRecoveryOnJoin) {
+          const error = new Error(
+            "This wallet seed has prior federation state. Chama did not run recovery during boot; tap Reconnect to start the explicit recovery attempt.",
+          ) as Error & { code?: string };
+          error.code = "FEDIMINT_RECOVERY_REQUIRES_USER_ACTION";
+          throw error;
+        }
         // Chama supplies one Nostr-backed mnemonic on every device. A fresh or
         // rotated OPFS file therefore does NOT imply a fresh Fedimint wallet.
         // Joining normally under an already-used seed restarts the mint's
@@ -3024,6 +3032,11 @@ export interface CreateRealWalletOptions {
    * wrong local Fedimint file and hitting seed-mismatch safety.
    */
   storageScope?: string | null;
+  /** Whether a fresh database must recover prior mint state for this seed.
+   * Defaults conservatively to true when a mnemonic is supplied. */
+  forceRecoverOnJoin?: boolean;
+  /** Whether this invocation was explicitly authorized to start recovery. */
+  allowRecoveryOnJoin?: boolean;
 }
 
 // ── OPFS filename rotation ───────────────────────────────────────────────
@@ -3171,7 +3184,10 @@ export async function createRealWallet(
   let filenameEntry = getStoredFilenameEntry(opts.storageScope);
   let filename = filenameEntry.filename;
   let filenameSource = filenameEntry.source;
-  incidentRecovery = opts.mnemonic?.length
+  // A durable incident receipt is a recovery lead, not permission to spend
+  // boot time rotating files and contacting guardians. Ordinary startup opens
+  // the preserved wallet only; explicit Reconnect opts into the repair.
+  incidentRecovery = opts.mnemonic?.length && opts.allowRecoveryOnJoin === true
     ? consumeBrowserWalletRecoveryRequest(opts.storageScope)
     : null;
   recoveryRollbackFilename = incidentRecovery ? filename : null;
@@ -3496,12 +3512,13 @@ export async function createRealWallet(
           invite_code?: string | null;
         }>;
       }).parseOobNotes(notes),
-      Boolean(opts.mnemonic?.length),
+      opts.forceRecoverOnJoin ?? Boolean(opts.mnemonic?.length),
       {
         storageScope: opts.storageScope,
         incident: incidentRecovery,
         rollbackFilename: recoveryRollbackFilename,
       },
+      opts.allowRecoveryOnJoin === true,
     );
     walletReady = true;
     return adapted;
