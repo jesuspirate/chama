@@ -1221,8 +1221,8 @@ export interface UseEscrowActions {
   /**
    * Wipe the local Fedimint wallet's IndexedDB and reset in-memory state.
    * Use this to recover from a "No modification allowed" seed-mismatch error
-   * or any other stuck-state issue. Destructive to *local* state only — the
-   * Nostr-backed seed survives and will be re-installed on next initFedimint().
+   * or any other stuck-state issue. Destructive to the device-local wallet;
+   * a new local wallet is created on the next initFedimint().
    */
   resetLocalWallet: () => Promise<void>;
   /**
@@ -1235,8 +1235,7 @@ export interface UseEscrowActions {
    * stranded until you switch back. The v0.1.76 balance guard refuses
    * the switch if the current balance is Lightning-withdrawable unless
    * `{ force: true }` is passed, which the UI must only do after explicit
-   * user confirmation. The Nostr-backed seed survives — trade history,
-   * escrows, and signer are unaffected.
+   * user confirmation. Nostr trade history and the signer are unaffected.
    */
   switchFederation: (inviteCode: string, options?: { force?: boolean; persistCustom?: boolean }) => Promise<void>;
   /** (Re-)start the Browse feed subscription for public listings. */
@@ -3502,12 +3501,16 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
         }
       }
 
-      // Fetch (or generate + publish) the Fedimint seed from Nostr
-      // *before* initializing the wallet. The seed is encrypted to the
-      // user's own pubkey and stored as a replaceable kind-30078 event,
-      // so the same wallet identity can be reconstructed on another device.
-      // A fresh database must still force federation recovery, and the seed
-      // does not recreate bearer ecash that existed only in the old database.
+      // Browser wallets are deliberately device-local. Chama is an escrow
+      // client, not a balance wallet: after a trade, users claim out through
+      // Lightning/on-chain/ecash instead of depending on a restorable Chama
+      // balance. Reusing a Nostr-backed mnemonic in a missing/fresh OPFS file
+      // forced every returning npub through Fedimint recovery merely to sign
+      // in; that recovery does not restore bearer ecash and proved unreliable
+      // on mobile browsers. A fresh browser DB now generates its own seed,
+      // while an intact DB simply reopens its persisted seed and client state.
+      // This also avoids deterministic mint-nonce reuse without pretending a
+      // Nostr identity backup is a wallet backup.
       // In testnet/sim mode the mock wallets ignore the mnemonic, so we skip
       // the Nostr round-trip.
       const skipMnemonic = isTestnetMode() || isSimModeOn();
@@ -3523,11 +3526,13 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       // parallel so a revoked/stale bridge token can fall back immediately.
       // Packaged native shells remain bridge-only and continue skipping this.
       const browserRemoteBridge = isBrowserRemoteBridgeMode();
-      const skipSeedFetch = skipMnemonic || (isNativeBridgeModeOn() && !browserRemoteBridge);
-      // Browser only: overlap the large Fedimint core/transport imports with
-      // Nostr seed recovery. Both are required before wallet construction,
-      // but neither depends on the other; doing them serially made the first
-      // trip to a federation needlessly longer on cold caches.
+      const browserUsesDeviceLocalWallet = !isNativeBridgeModeOn() && !browserRemoteBridge;
+      const skipSeedFetch = skipMnemonic
+        || browserUsesDeviceLocalWallet
+        || (isNativeBridgeModeOn() && !browserRemoteBridge);
+      // Browser only: start loading the large Fedimint core/transport chunks
+      // before wallet construction. Remote-bridge fallback may recover its
+      // legacy Nostr-backed browser seed in parallel.
       const runtimeWarmup = !skipMnemonic && (!isNativeBridgeModeOn() || browserRemoteBridge)
         ? preloadRealWalletRuntime()
         : Promise.resolve(null);
@@ -3557,7 +3562,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       // Sim wallet keys its persisted state by npub so multiple
       // identities in the same browser don't share a sim balance.
       const activePubkey = await signerRef.current!.getPublicKey().catch(() => null);
-      const forceRecoverOnJoin = !!activePubkey &&
+      const forceRecoverOnJoin = !!mnemonic && !!activePubkey &&
         cachedSeedRequiresFederationRecovery(activePubkey);
       const simNpub = isSimModeOn()
         ? activePubkey
@@ -3926,7 +3931,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       //
       // Fire-and-forget, matches the v0.1.68 drain pattern. Non-blocking
       // so UI transitions to the "joined" state without waiting.
-      if (!isTestnetMode() && !isSimModeOn()) {
+      if (mnemonic && !isTestnetMode() && !isSimModeOn()) {
         checkAndMaybeRepublishSeed(
           clientRef.current!,
           signerRef.current!
@@ -4025,7 +4030,20 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       } else {
         updateFedimint({ busy: false, error: message });
       }
-      throw e;
+      // Worker/RPC failures can reject with a plain string or an object. The
+      // UI expects Error.message; rethrowing the raw value replaced the useful
+      // Fedimint diagnostic with the generic "Couldn't join" toast.
+      if (e instanceof Error) throw e;
+      const normalized = new Error(
+        typeof e === "string"
+          ? e
+          : (() => {
+              try { return JSON.stringify(e); } catch { return String(e); }
+            })(),
+      ) as Error & { code?: string };
+      const rawCode = (e as { code?: unknown } | null)?.code;
+      if (typeof rawCode === "string") normalized.code = rawCode;
+      throw normalized;
     }
   }, [updateFedimint]);
 

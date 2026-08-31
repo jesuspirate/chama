@@ -2956,7 +2956,9 @@ export default function App() {
                   return;
                 }
                 setToast({
-                  message: e.message || t("app.couldntJoinChama"),
+                  message: e instanceof Error
+                    ? (e.message || t("app.couldntJoinChama"))
+                    : (typeof e === "string" ? e : t("app.couldntJoinChama")),
                   type: "error",
                   sticky: true,
                 });

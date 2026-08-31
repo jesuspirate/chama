@@ -20,7 +20,6 @@ import {
   lightningPayoutReserveSats,
   maxLightningPayoutSats,
 } from "../../payments/lightning-fees.js";
-import { getCachedSeedWords } from "../../fedimint/seed-manager.js";
 import {
   getLastDiscoveryRun,
   subscribeDiscoveryRun,
@@ -334,13 +333,6 @@ export function SettingsAdvanced({
         <RemoteBridgeCard />
       )}
 
-      {/* v2.4 — Identity phrase. Visible to ALL users (not power-user gated):
-          backing up your own account is a right, not an advanced toggle. These
-          12 words restore your Chama account (Nostr identity, trade history,
-          reputation) on a new device — they do NOT restore your ecash balance;
-          that is what the ecash-note export ("Withdraw as ecash") is for. */}
-      <RecoveryPhraseCard />
-
       <StewardRosterCard
         communitySlug={communitySlug ?? null}
         userPubkey={userPubkey ?? null}
@@ -441,9 +433,9 @@ export function SettingsAdvanced({
               RESET LOCAL CHAMA
             </div>
             <div style={{ fontSize: 11, color: T.muted, fontFamily: T.mono, lineHeight: 1.5, marginBottom: 12 }}>
-              Wipes the OPFS-bound Fedimint client. Your Nostr-backed seed and
-              trade history survive. The v0.1.76 fund-loss guard refuses if a
-              balance is present — withdraw via Lightning first.
+              Wipes the device-local OPFS Fedimint client. Your Nostr trade
+              history survives, but the local wallet does not. The fund-loss
+              guard refuses if a balance is present — withdraw first.
             </div>
             <button
               onClick={() => {
@@ -987,130 +979,9 @@ function RemoteBridgeCard() {
   );
 }
 
-function RecoveryPhraseCard() {
-  const [revealed, setRevealed] = useState(false);
-  const [showQr, setShowQr] = useState(false);
-  const words = getCachedSeedWords();
-  const phrase = words ? words.join(" ") : "";
-
-  return (
-    <div style={{
-      background: T.card, border: `1px solid ${T.border}`,
-      borderRadius: T.r, padding: 16, marginBottom: 16,
-    }}>
-      <div style={{
-        fontSize: 11, fontWeight: 600, color: T.muted, fontFamily: T.mono,
-        letterSpacing: 1, marginBottom: 8,
-      }}>
-        IDENTITY PHRASE
-      </div>
-      <div style={{ fontSize: 11, color: T.muted, fontFamily: T.mono, lineHeight: 1.6, marginBottom: 12 }}>
-        These 12 words restore your Chama account — your trades, reputation and
-        arbiter standing — on a new device. They do NOT restore your ecash
-        balance. To back up funds, export them as an ecash note (Me › Withdraw
-        as ecash) and keep it safe.
-      </div>
-
-      {!words ? (
-        <div style={{
-          padding: "10px 12px", borderRadius: T.rs,
-          background: T.surface, border: `1px solid ${T.border}`,
-          color: T.muted, fontFamily: T.mono, fontSize: 11, lineHeight: 1.5,
-        }}>
-          Connect your Chama first, then come back to reveal your identity phrase.
-        </div>
-      ) : !revealed ? (
-        <>
-          <div style={{
-            padding: "10px 12px", borderRadius: T.rs, marginBottom: 12,
-            background: T.amberDim, border: `1px solid ${T.amber}44`,
-            color: T.amber, fontFamily: T.mono, fontSize: 10, lineHeight: 1.6,
-          }}>
-            ⚠ Anyone with these words can take over your account. Never type them
-            into a website, and never share them — Chama will never ask for them.
-            Make sure no one is watching your screen.
-          </div>
-          <button
-            onClick={() => setRevealed(true)}
-            style={{
-              width: "100%", padding: "11px 14px", borderRadius: T.rs,
-              background: T.accentDim, border: `1px solid ${T.accent}66`,
-              color: T.accent, fontFamily: T.mono, fontSize: 12, fontWeight: 800,
-              cursor: "pointer", letterSpacing: 0.5,
-            }}
-          >
-            Reveal identity phrase
-          </button>
-        </>
-      ) : (
-        <>
-          <div style={{
-            display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6,
-            marginBottom: 12,
-          }}>
-            {words.map((word, i) => (
-              <div key={i} style={{
-                display: "flex", alignItems: "baseline", gap: 6,
-                padding: "7px 10px", borderRadius: T.rs,
-                background: T.surface, border: `1px solid ${T.border}`,
-                fontFamily: T.mono,
-              }}>
-                <span style={{ fontSize: 9, color: T.muted, minWidth: 14, textAlign: "right" }}>{i + 1}</span>
-                <span style={{ fontSize: 12, color: T.text, fontWeight: 700 }}>{word}</span>
-              </div>
-            ))}
-          </div>
-
-          {showQr && (
-            <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}>
-              <QRCode data={phrase} size={240} margin={4} />
-            </div>
-          )}
-
-          <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-            <CopyButton
-              value={phrase}
-              label="Copy"
-              copiedLabel="✓ Copied"
-              style={{
-                flex: 1, padding: "9px 12px", borderRadius: T.rs,
-                background: T.surface, border: `1px solid ${T.border}`, color: T.muted,
-                fontFamily: T.mono, fontSize: 11, fontWeight: 700, cursor: "pointer",
-              }}
-            />
-            <button
-              onClick={() => setShowQr((v) => !v)}
-              style={{
-                flex: 1, padding: "9px 12px", borderRadius: T.rs,
-                background: T.surface, border: `1px solid ${T.border}`,
-                color: T.muted, fontFamily: T.mono, fontSize: 11, fontWeight: 700, cursor: "pointer",
-              }}
-            >
-              {showQr ? "Hide QR" : "Show QR"}
-            </button>
-            <button
-              onClick={() => { setRevealed(false); setShowQr(false); }}
-              style={{
-                flex: 1, padding: "9px 12px", borderRadius: T.rs,
-                background: T.surface, border: `1px solid ${T.border}`,
-                color: T.muted, fontFamily: T.mono, fontSize: 11, fontWeight: 700, cursor: "pointer",
-              }}
-            >
-              Hide
-            </button>
-          </div>
-          <div style={{ fontSize: 9, color: T.muted, fontFamily: T.mono, lineHeight: 1.5, textAlign: "center" }}>
-            Write these on paper, in order. Copy and QR expose the phrase — use them only into your own backup.
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
 // ── Account key reveal (v2.5) ────────────────────────────────────────────
-// The nsec is the MASTER key: it owns the Nostr identity AND decrypts the
-// wallet seed stored on Nostr — so it can recover everything. We reveal it
+// The nsec is the master key for the Nostr identity, trade history, and
+// reputation. It is not a backup of device-local bearer ecash.
 // The reveal is an explicit user action. It asks the active local signer for
 // its in-memory key, with a secure-storage fallback for older generated
 // accounts. Extension and NIP-46 keys never touch Chama and cannot be revealed.
@@ -1180,9 +1051,10 @@ function NsecRevealCard({
         ACCOUNT KEY (NSEC)
       </div>
       <div style={{ fontSize: 11, color: T.muted, fontFamily: T.mono, lineHeight: 1.6, marginBottom: 12 }}>
-        Your nsec is the master key to this account — it owns your Nostr identity
-        and can recover your wallet. It is strictly more powerful than your
-        identity phrase: anyone who has it owns everything.
+        Your nsec is the master key to this account — it restores your Nostr
+        identity, trade history, and reputation. It does not restore bearer
+        ecash held in a device-local wallet. Anyone who has it controls your
+        Chama identity.
       </div>
 
       {!loaded ? (

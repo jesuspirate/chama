@@ -42,7 +42,7 @@ Version 6.0.x temporarily exposed Client One, Client Two, and Client Three as a 
 
 StartOS backs up the entire `main` volume, so active and retained legacy wallet directories are included.
 
-Nostr identity, contacts, settings, drafts, and browser-side trade cache remain scoped to the browser origin. They are not part of the server volume. Back up the identity phrase and any exported bearer notes separately; opening Chama through a different origin or clearing browser storage creates fresh browser state even when the server wallet still exists.
+Nostr identity, contacts, settings, drafts, and browser-side trade cache remain scoped to the browser origin. They are not part of the server volume. Back up the Nostr account key and any exported bearer notes separately; opening Chama through a different origin or clearing browser storage creates fresh browser state even when the server wallet still exists.
 
 ## Dependencies and configuration
 
@@ -53,10 +53,10 @@ The package has no StartOS service dependencies and no file models. Users choose
 1. Open **Chama** from the Interfaces tab.
 2. Create or import your Chama identity.
 3. Join a Fedimint federation inside Chama.
-4. Store the identity phrase and any fund backup exports somewhere safe.
+4. Store the Nostr account key and any fund backup exports somewhere safe.
 
 Until a federation is joined, the app can browse but its native wallet cannot receive or escrow ecash.
-Nostr sign-in and the selected home community remain valid while wallet startup is unavailable; the Chama bar shows **Connecting** during startup and exposes **Reconnect** after a failure instead of returning the user to onboarding. Browser-wallet seed recovery also requires the configured Nostr relay read quorum before an empty result may be treated as a genuinely new wallet, so a slow or offline relay pool cannot trigger replacement-seed creation. A signature-verified copy of the still-NIP-44-encrypted seed event is cached per npub after the first successful relay read, allowing later logins on that device to decrypt locally while relay health refreshes in the background; no plaintext mnemonic is cached. A seed created during that authoritative first-launch read joins normally, including after a reload before its first successful join. Routine boot never starts forced Fedimint recovery: if a previously joined mnemonic reaches a fresh local database, Chama stays signed in and fails the wallet connection fast; an explicit **Reconnect** discards the recovery-disabled bootstrap client and creates the user-authorized recovery attempt.
+Nostr sign-in and the selected home community remain valid while wallet startup is unavailable; the Chama bar shows **Connecting** during startup and exposes **Reconnect** after a failure instead of returning the user to onboarding. Browser Fedimint clients are device-local: an intact OPFS database reopens its existing client, while a genuinely missing database creates a new local seed and joins normally. Chama does not force federation recovery merely because the same npub has used Chama before. This matches the product boundary—Chama settles escrow and claims out through Lightning, on-chain, or ecash; a Nostr identity backup is not presented as a recovery mechanism for bearer ecash. Nostr-backed seed material remains available only for features that explicitly require deterministic cross-device keys, such as commitment bonds.
 
 Participant history remains in a hydration state until both the bounded saved-trade replay and the relay discovery/heal pass finish; saved histories are replayed with a three-request pool so large accounts do not serialize dozens of relay round trips. Attention badges and renewal surfaces stay hidden during that window. The lapsed Store reminder accepts only actual Store listings and additionally requires a live chain tip proving that the seller's current bond is still funded and before its lock height; cached or indeterminate bond state never resurrects an old storefront, and a legacy Exchange offer is never mislabeled as a Store.
 
