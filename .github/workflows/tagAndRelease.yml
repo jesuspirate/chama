@@ -11,6 +11,10 @@ concurrency:
 
 jobs:
   tag:
+    # The application repository carries this workflow so its packaging files
+    # stay in sync, but registry variables and signing secrets live only on the
+    # Start9 community package fork. Upstream pushes must not attempt a release.
+    if: github.repository == 'Start9-Community/chama'
     uses: Start9Labs/start-technologies/.github/workflows/tagAndRelease.yml@master
     with:
       REFERENCE_REGISTRY: ${{ vars.REFERENCE_REGISTRY }}
