@@ -20362,6 +20362,7 @@ console.log("\n── REAL SDK ADAPTER — Lightning receive watcher ──");
         clientName?: string;
         forceRecover?: boolean;
       },
+      listTransactions: 0,
       subscribedOperationId: "",
       subscribedPayOperationId: "",
     };
@@ -20505,7 +20506,10 @@ console.log("\n── REAL SDK ADAPTER — Lightning receive watcher ──");
             outcome: { outcome: { canceled: { reason: "claim_rejected" } } },
           };
         },
-        async listTransactions() { return []; },
+        async listTransactions() {
+          calls.listTransactions++;
+          return [];
+        },
       },
       async cleanup() { calls.cleanup++; },
       ...overrides,
@@ -20534,6 +20538,42 @@ console.log("\n── REAL SDK ADAPTER — Lightning receive watcher ──");
       "Detailed browser OOB spend preserves the operation ID for crash recovery");
     assert(h.calls.spendNotesTimeoutSecs === LOCK_SPEND_TRY_CANCEL_SECS,
       "Detailed browser OOB spend forwards the safe lock timeout to Fedimint");
+  }
+
+  // Mature browser wallets must not pay the OPFS/WASM cost of reading the
+  // same operation page once per startup repair/resume concern. One snapshot
+  // feeds failed-reissue detection plus both pending-operation watch types.
+  {
+    const h = makeRealWallet();
+    h.real.federation.listTransactions = async () => {
+      h.calls.listTransactions++;
+      return [
+        {
+          kind: "ln",
+          type: "receive",
+          operationId: "pending_receive_on_open",
+          outcome: "funded",
+        },
+        {
+          kind: "mint",
+          type: "reissue",
+          operationId: "pending_reissue_on_open",
+          outcome: "Issuing",
+          timestamp: Date.now(),
+        },
+      ] as any;
+    };
+    const wallet = adaptRealWallet(h.real as any);
+    await wallet.open();
+    assert(
+      h.calls.listTransactions === 1,
+      "Wallet startup reuses one transaction snapshot for every repair and resume check",
+    );
+    assert(
+      h.calls.subscribeLnReceive === 1 &&
+        h.calls.subscribedOperationId === "pending_receive_on_open",
+      "The consolidated startup snapshot still resumes pending Lightning receives",
+    );
   }
 
   // WalletDirector has the federation-aware OOB parser; MintService's parser

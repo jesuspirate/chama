@@ -3475,32 +3475,6 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
         || resolveFederationForCommunity(userCommunity);
       const previousActiveInvite = getActiveInvite();
 
-      // Wait for at least one relay to actually accept publishes before
-      // running the seed round-trip. `state.connected` flips true
-      // synchronously when client.connect() is dispatched, but the
-      // relay WebSocket handshakes happen async — racing this gate
-      // sends getOrCreateSeed's publishRaw into "No connected relays —
-      // cannot publish" on first-launch (no seed marker) users. Match
-      // the saved-escrow-reload pattern (line ~671): bounded wait, ≥1
-      // relay is enough since seed publish goes to all of them.
-      if (!isTestnetMode() && !isSimModeOn()) {
-        const client = clientRef.current!;
-        let waited = 0;
-        while (waited < 5000) {
-          const connectedCount = client.getConnectedRelayCount();
-          if (connectedCount >= 1) break;
-          await new Promise(r => setTimeout(r, 250));
-          waited += 250;
-        }
-        if (client.getConnectedRelayCount() === 0) {
-          const err = new Error(
-            "Nostr relays are still connecting. Your account is signed in; Chama will retry the wallet connection.",
-          ) as Error & { code?: string };
-          err.code = "RELAYS_CONNECTING";
-          throw err;
-        }
-      }
-
       // Browser wallets are deliberately device-local. Chama is an escrow
       // client, not a balance wallet: after a trade, users claim out through
       // Lightning/on-chain/ecash instead of depending on a restorable Chama
@@ -3530,6 +3504,27 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       const skipSeedFetch = skipMnemonic
         || browserUsesDeviceLocalWallet
         || (isNativeBridgeModeOn() && !browserRemoteBridge);
+      // Only a wallet that will actually read/publish its mnemonic needs a
+      // Nostr relay before construction. Device-local browser wallets stopped
+      // doing that in v6.1, but the old unconditional relay gate remained and
+      // could add a pointless five seconds to every mobile startup.
+      if (!skipSeedFetch) {
+        const client = clientRef.current!;
+        let waited = 0;
+        while (waited < 5000) {
+          const connectedCount = client.getConnectedRelayCount();
+          if (connectedCount >= 1) break;
+          await new Promise(r => setTimeout(r, 250));
+          waited += 250;
+        }
+        if (client.getConnectedRelayCount() === 0) {
+          const err = new Error(
+            "Nostr relays are still connecting. Your account is signed in; Chama will retry the wallet connection.",
+          ) as Error & { code?: string };
+          err.code = "RELAYS_CONNECTING";
+          throw err;
+        }
+      }
       // Browser only: start loading the large Fedimint core/transport chunks
       // before wallet construction. Remote-bridge fallback may recover its
       // legacy Nostr-backed browser seed in parallel.

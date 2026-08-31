@@ -2025,9 +2025,16 @@ export function adaptRealWallet(
     });
   };
 
-  const listMintReissueTransactions = async (limit = 100): Promise<RealMintTransaction[]> => {
+  const listTransactions = async (limit = 100): Promise<RealTransaction[]> => {
     if (typeof real.federation.listTransactions !== "function") return [];
-    const txs = await real.federation.listTransactions(limit);
+    return await real.federation.listTransactions(limit) as RealTransaction[];
+  };
+
+  const listMintReissueTransactions = async (
+    limit = 100,
+    transactions?: RealTransaction[],
+  ): Promise<RealMintTransaction[]> => {
+    const txs = transactions ?? await listTransactions(limit);
     return txs.filter(isMintReissueTransaction);
   };
 
@@ -2229,10 +2236,13 @@ export function adaptRealWallet(
     }
   };
 
-  const armPendingReceiveWatches = async (source: "open" | "join"): Promise<void> => {
+  const armPendingReceiveWatches = async (
+    source: "open" | "join",
+    transactions?: RealTransaction[],
+  ): Promise<void> => {
     if (typeof real.federation.listTransactions !== "function") return;
     try {
-      const txs = await real.federation.listTransactions(100);
+      const txs = transactions ?? await listTransactions(100);
       for (const tx of txs) {
         const record = recordOf(tx);
         if (record?.kind === "ln" && record.type === "receive" && shouldResumeReceive(tx as RealLightningTransaction)) {
@@ -2247,9 +2257,12 @@ export function adaptRealWallet(
     }
   };
 
-  const armPendingMintReissueWatches = async (source: "open" | "join"): Promise<void> => {
+  const armPendingMintReissueWatches = async (
+    source: "open" | "join",
+    transactions?: RealTransaction[],
+  ): Promise<void> => {
     try {
-      const txs = await listMintReissueTransactions(100);
+      const txs = await listMintReissueTransactions(100, transactions);
       const pending = txs.filter(shouldResumeMintReissue);
       if (pending.length > 0) {
         console.info(
@@ -2275,7 +2288,34 @@ export function adaptRealWallet(
 
   return {
     async open() {
+      const walletOpenStartedAt = Date.now();
       await real.open();
+      console.info(
+        `[chama/startup] wallet database open: ${Date.now() - walletOpenStartedAt}ms`,
+      );
+
+      // listTransactions is an OPFS/WASM RPC and can take several seconds on
+      // a mature wallet, especially in Safari. Startup previously performed
+      // this exact 100-operation scan three times in series: once for failed
+      // payout recovery, once for pending Lightning receives, and once for
+      // pending mint reissues. Take one custody-complete snapshot and reuse it
+      // for all three checks so no safety or resume coverage is deferred.
+      const historyScanStartedAt = Date.now();
+      let startupTransactions: RealTransaction[] | undefined;
+      try {
+        startupTransactions = await listTransactions(100);
+        console.info(
+          `[chama/startup] wallet history snapshot: ${Date.now() - historyScanStartedAt}ms ` +
+            `(${startupTransactions.length} operations)`,
+        );
+      } catch (error) {
+        // The identity-scoped failed-reissue audit is custody-sensitive. Its
+        // old behavior was fail-closed, so preserve that contract. Wallets
+        // without a recovery scope may still open; their resume helpers have
+        // always been fail-soft.
+        if (recoveryContext?.storageScope) throw error;
+        console.debug("[chama] Startup transaction scan failed:", error);
+      }
 
       // A claim_rejected record alone is origin-wide and cannot identify the
       // affected Chama identity. Prove ownership by finding that exact receive
@@ -2331,7 +2371,7 @@ export function adaptRealWallet(
       // holds any readable ecash; its preserved OPFS file must remain selected
       // until recovery is independently proven not to hide that balance.
       if (recoveryContext?.storageScope) {
-        const failedReissues = (await listMintReissueTransactions(100))
+        const failedReissues = (await listMintReissueTransactions(100, startupTransactions ?? []))
           .filter((tx) => isMintReissueFailedOutcome(tx.outcome))
           .sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0));
         const latestFailure = failedReissues[0] ?? null;
@@ -2365,8 +2405,8 @@ export function adaptRealWallet(
           }
         }
       }
-      await armPendingReceiveWatches("open");
-      await armPendingMintReissueWatches("open");
+      await armPendingReceiveWatches("open", startupTransactions);
+      await armPendingMintReissueWatches("open", startupTransactions);
     },
 
     isOpen() {
@@ -2446,8 +2486,19 @@ export function adaptRealWallet(
           throw new Error("Fedimint SDK did not join the federation");
         }
       }
-      await armPendingReceiveWatches("join");
-      await armPendingMintReissueWatches("join");
+      const historyScanStartedAt = Date.now();
+      let startupTransactions: RealTransaction[] | undefined;
+      try {
+        startupTransactions = await listTransactions(100);
+        console.info(
+          `[chama/startup] joined-wallet history snapshot: ${Date.now() - historyScanStartedAt}ms ` +
+            `(${startupTransactions.length} operations)`,
+        );
+      } catch (error) {
+        console.debug("[chama] Joined-wallet transaction scan failed:", error);
+      }
+      await armPendingReceiveWatches("join", startupTransactions);
+      await armPendingMintReissueWatches("join", startupTransactions);
     },
 
     recovery: {
