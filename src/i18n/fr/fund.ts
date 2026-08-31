@@ -17,6 +17,10 @@ export const fund: Record<string, string> = {
   "fund.balanceUpdatedClosing": "Solde mis à jour · fermeture…",
   "fund.bestForAlmostEveryone":
     "Le meilleur choix pour presque tout le monde. Réglé en quelques secondes, en général.",
+  "fund.browserLightningBlockedTitle": "LIGHTNING NAVIGATEUR SUSPENDU",
+  "fund.browserLightningBlockedShort": "Désactivé ici après des réceptions payées échouées avant la frappe.",
+  "fund.browserLightningBlockedBody":
+    "Le financement Lightning et NWC de BLF est désactivé dans le navigateur après des factures payées qui ont échoué avant la frappe de l'ecash. Aucune facture ne sera créée. Exportez exactement {amount} sats en ecash depuis Fedi et collez-les ci-dessous, ou utilisez un portefeuille Chama natif.",
   "fund.cancelRecoverLater": "Annuler & récupérer plus tard",
   "fund.cancelled": "ANNULÉ",
   "fund.change": "CHANGER",

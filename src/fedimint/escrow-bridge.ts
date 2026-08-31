@@ -149,6 +149,25 @@ export function resolveLockBuyerPubkey(
   );
 }
 
+/** Money-boundary helper for browser ecash claims. The bearer note must be
+ * durably recoverable before the relay chain can announce CLAIM. Keeping this
+ * tiny seam exported makes the ordering invariant directly testable without
+ * mocking cryptography or a federation. */
+export async function persistThenPublishDirectEcash<T>(opts: {
+  notes: string;
+  amountMsats: number;
+  notesHash: string;
+  stash: (input: { notes: string; amountMsats: number; notesHash: string }) => void;
+  publish: () => Promise<T>;
+}): Promise<T> {
+  opts.stash({
+    notes: opts.notes,
+    amountMsats: opts.amountMsats,
+    notesHash: opts.notesHash,
+  });
+  return opts.publish();
+}
+
 // ══════════════════════════════════════════════════════════════════════════
 // BRIDGE
 // ══════════════════════════════════════════════════════════════════════════
@@ -782,7 +801,15 @@ export class EscrowFedimintBridge {
     escrowId: string,
     opts: {
       clearPendingOnRedeem?: boolean;
-      redeemWith?: "browser-sdk" | "fedi-internal";
+      redeemWith?: "browser-sdk" | "fedi-internal" | "external-ecash";
+      /** Persist the reconstructed bearer note before CLAIM is published.
+       *  Required for external-ecash; the callback must throw unless the
+       *  exact note is durably recoverable after a crash. */
+      stashExternalEcash?: (input: {
+        notes: string;
+        amountMsats: number;
+        notesHash: string;
+      }) => void;
     } = {},
   ): Promise<EscrowState> {
     let state = this.escrow.getState(escrowId);
@@ -1008,6 +1035,39 @@ export class EscrowFedimintBridge {
       candidatesTried: reconstructErrors.length + 1,
       candidatesAvailable: partnerCandidates.length,
     });
+
+    // Browser-safe claim payout: the reconstructed OOB note already IS the
+    // winner's sats. Do not consume it in a browser mint reissue merely to
+    // mint another OOB note immediately afterwards. Persist the exact bearer
+    // note first, then publish CLAIM. A crash before publish leaves a harmless
+    // resumable export; a crash after publish still leaves the money-bearing
+    // string recoverable from the export journal.
+    if (opts.redeemWith === "external-ecash") {
+      if (!opts.stashExternalEcash) {
+        throw new Error("Direct ecash claim has no durable recovery journal. No claim was published.");
+      }
+      const existingClaim = state.eventChain.find((e: any) => {
+        const payload = e.payload;
+        return (e.kind === EscrowEventKind.CLAIM || payload?.type === "escrow:claim") &&
+          payload?.claimerRole === winner.role &&
+          payload?.notesHashVerification === notesHash;
+      });
+      claimTrace("bridge-direct-ecash-stashed", {
+        escrowId,
+        existingClaim: Boolean(existingClaim),
+        amountMsats: state.amountMsats,
+        notesHashPrefix: notesHash.slice(0, 16),
+      });
+      return persistThenPublishDirectEcash({
+        notes: oobNotes,
+        amountMsats: state.amountMsats,
+        notesHash,
+        stash: opts.stashExternalEcash,
+        publish: () => existingClaim
+          ? Promise.resolve(state)
+          : this.escrow.claim(escrowId, notesHash),
+      });
+    }
 
     // v0.4.4 federation gates (fed-ID equality) ──────────────────────────
     // Probe reachability of the redeemer's wallet, and verify it sits on
@@ -1243,6 +1303,38 @@ export class EscrowFedimintBridge {
       ...opts,
       redeemWith: "fedi-internal",
     });
+  }
+
+  async claimAndExportEcash(
+    escrowId: string,
+    stash: (input: {
+      notes: string;
+      amountMsats: number;
+      notesHash: string;
+    }) => void,
+  ): Promise<{ state: EscrowState; notes: string; amountMsats: number; notesHash: string }> {
+    let exported: { notes: string; amountMsats: number; notesHash: string } | null = null;
+    const state = await this.claimAndRedeem(escrowId, {
+      redeemWith: "external-ecash",
+      stashExternalEcash: (input) => {
+        stash(input);
+        exported = {
+          notes: input.notes,
+          amountMsats: input.amountMsats,
+          notesHash: input.notesHash,
+        };
+      },
+    });
+    if (!exported) {
+      throw new Error("Direct ecash claim did not produce a recoverable bearer note.");
+    }
+    const ready = exported as { notes: string; amountMsats: number; notesHash: string };
+    return {
+      state,
+      notes: ready.notes,
+      amountMsats: ready.amountMsats,
+      notesHash: ready.notesHash,
+    };
   }
 
   // ── Pre-claim verification: REMOVED (2026-07-29) ────────────────────────

@@ -32,7 +32,7 @@
 //     honesty info card (one-time-per-account, dismissed on first
 //     publish). Save-draft button + Publish button.
 
-import { useState, useEffect, type WheelEvent } from "react";
+import { useState, useEffect, type KeyboardEvent, type WheelEvent } from "react";
 import { useT, translate, getCurrentLang } from "../../i18n/index.js";
 import { type MenuItem } from "../../escrow-engine/types.js";
 import { randomId } from "../../storage/random-id.js";
@@ -64,12 +64,13 @@ import type { VerifiedBond } from "../../bond-multisig/bond-announcement.js";
 import { type ArbiterWarning, displayCounterpartyName, resolveCreateMintUrl } from "../decisions.js";
 import { T, inputStyle, fmtSats } from "../theme.js";
 
-// Number inputs must not hijack page scrolling. Browser wheel-stepping is easy
+// Number inputs must not hijack the mouse wheel. Browser wheel-stepping is easy
 // to trigger while moving through the Create sheet—especially on Premium—and
-// can silently change a listing. Blurring hands the wheel back to the page;
-// deliberate typing and the native stepper remain available.
+// can silently change a listing. Keep the caret/focus exactly where the seller
+// put it; the old blur-on-wheel fix made every accidental scroll require a
+// second click before typing could continue.
 function releaseNumberWheel(event: WheelEvent<HTMLInputElement>): void {
-  event.currentTarget.blur();
+  event.preventDefault();
 }
 import {
   MIN_REAL_ATOMIC_FUNDING_SATS,
@@ -1114,7 +1115,10 @@ export function CreateForm({
    *  bonds so bonded arbiters whose commitment COVERS this trade get seated in
    *  its pool (alongside the always-present OG cabinet). Optional + fail-soft —
    *  absent/throwing just leaves the OG pool, never blocks publish. */
-  fetchCommunityBonds?: (community: string) => Promise<VerifiedBond[]>;
+  fetchCommunityBonds?: (
+    community: string,
+    opts?: { allowCachedFallback?: boolean },
+  ) => Promise<VerifiedBond[]>;
   fetchFaultExcludedArbiters?: (candidates: readonly string[]) => Promise<string[]>;
   /** NIP-98 authorization from the active Chama signer for the photo host. */
   authorizeImageUpload?: ListingImageUploadAuthorizer;
@@ -1139,6 +1143,14 @@ export function CreateForm({
     const slug = getUserCommunitySlug();
     return getCommunityBySlug(slug) ? slug : DEFAULT_COMMUNITY_SLUG;
   })();
+  // The active wallet route is authoritative when it differs from the shell's
+  // community label. Compute this once for both the preload and Publish so the
+  // trust snapshot can never be fetched for one community and stamped onto
+  // another.
+  const effectiveCommunity =
+    activeInvite && getCommunityBySlug(community)?.federationInvite !== activeInvite
+      ? (communityForInvite(activeInvite)?.slug ?? community)
+      : community;
   const homeCommunity = getCommunityBySlug(community);
   const communityCurrency = defaultCurrencyForCommunity(community);
   // v2.2.0: the listing community now follows the header identity, but
@@ -1206,17 +1218,66 @@ export function CreateForm({
   // expiry (renewal keeps the short trade timeout — permanence via renewal, not
   // longer locks). Fail-soft: any fetch hiccup leaves the unbonded posture.
   const [storeBonded, setStoreBonded] = useState(false);
+  const [trustSnapshot, setTrustSnapshot] = useState<{
+    community: string;
+    bonds: VerifiedBond[];
+    bondsReady: boolean;
+    faultExcluded: string[];
+  } | null>(null);
   useEffect(() => {
-    if (!fetchCommunityBonds || !userPubkey) { setStoreBonded(false); return; }
+    if (!fetchCommunityBonds || !userPubkey) {
+      setStoreBonded(false);
+      setTrustSnapshot(null);
+      return;
+    }
     let cancelled = false;
     void (async () => {
+      let bonds: VerifiedBond[] = [];
       try {
-        const bonds = await fetchCommunityBonds(community);
-        if (!cancelled) setStoreBonded(sellerIsBonded(bonds, userPubkey));
-      } catch { if (!cancelled) setStoreBonded(false); }
+        bonds = await fetchCommunityBonds(effectiveCommunity, { allowCachedFallback: false });
+      } catch {
+        // Fail open to the established community pool. Publish must never wait
+        // again on a failed advisory refresh for an ordinary ecash listing.
+      }
+      if (cancelled) return;
+      setStoreBonded(sellerIsBonded(bonds, userPubkey));
+      setTrustSnapshot({
+        community: effectiveCommunity,
+        bonds,
+        bondsReady: true,
+        faultExcluded: [],
+      });
+
+      if (!ARBITER_FAULT_READS_ENABLED || !fetchFaultExcludedArbiters) return;
+      // Fault attestations are a soft seating preference. Preload them after
+      // bonds instead of serializing their 6s relay query (and possible trade
+      // loads) inside the user's Publish tap. Include every active bonded
+      // arbiter as a candidate here; the amount-specific capacity filter still
+      // runs synchronously below when the final CREATE params are assembled.
+      const activeBonded = bonds
+        .filter((bond) => bond.funded && bond.active)
+        .map((bond) => bond.npub);
+      const candidates = getTrustedArbiterPool({
+        community: effectiveCommunity,
+        excludePubkeys: [userPubkey],
+        bondedPool: activeBonded,
+      });
+      try {
+        const faultExcluded = await fetchFaultExcludedArbiters(candidates);
+        if (!cancelled) {
+          setTrustSnapshot({
+            community: effectiveCommunity,
+            bonds,
+            bondsReady: true,
+            faultExcluded,
+          });
+        }
+      } catch {
+        // Soft preference only; the verified bond snapshot remains usable.
+      }
     })();
     return () => { cancelled = true; };
-  }, [community, userPubkey]);
+  }, [effectiveCommunity, userPubkey]);
   const storeTenure = resolveListingTenure({ bonded: storeBonded });
 
   // Auto-save draft on field change (silent, debounced via the form
@@ -1307,10 +1368,6 @@ export function CreateForm({
       // re-resolve to the community backing the active fed so the Browse chip
       // and the off-route amber tint (which keys off the real fed) can never
       // disagree. No drift → browseCommunity is kept untouched.
-      const effectiveCommunity =
-        activeInvite && getCommunityBySlug(community)?.federationInvite !== activeInvite
-          ? (communityForInvite(activeInvite)?.slug ?? community)
-          : community;
       const mintUrl = resolveCreateMintUrl({ activeInvite, community: effectiveCommunity });
       // Bond → arbiter enrollment (S3): fold in chain-verified bonded arbiters
       // whose commitment COVERS this trade (per-trade cap; the OG cabinet stays
@@ -1331,16 +1388,25 @@ export function CreateForm({
        *  the bond's role everywhere else as the licence to arbitrate, and a
        *  reasonable bar at these sizes. */
       let onchainCapableArbiters: string[] = [];
-      if (fetchCommunityBonds) {
+      const wantsOnchain = (form.escrowMode ?? DEFAULT_ESCROW_MODE) === "onchain";
+      let bonds = trustSnapshot?.community === effectiveCommunity && trustSnapshot.bondsReady
+        ? trustSnapshot.bonds
+        : [];
+      // Ordinary ecash listings use the background snapshot and never block
+      // here. On-chain cannot fail open: its address literally requires a
+      // bonded arbiter's published escrow key, so a missing preload must finish
+      // the verified read before we can construct a spendable listing.
+      if (wantsOnchain && bonds.length === 0 && fetchCommunityBonds) {
         try {
-          const bonds = (await fetchCommunityBonds(effectiveCommunity)).filter(b => b.funded && b.active);
-          bondedPool = assignableBondedArbiters({ bonds, tradeMsats: amountMsats, allTrades: [] });
-          const keyed = new Set(
-            bonds.filter((b) => !!b.ownerXonly).map((b) => b.npub.toLowerCase()),
-          );
-          onchainCapableArbiters = bondedPool.filter((pk) => keyed.has(pk.toLowerCase()));
-        } catch { /* leave bondedPool empty — OG pool carries it */ }
+          bonds = await fetchCommunityBonds(effectiveCommunity, { allowCachedFallback: false });
+        } catch { /* the explicit no-capable-arbiter blocker below owns copy */ }
       }
+      const activeBonds = bonds.filter(b => b.funded && b.active);
+      bondedPool = assignableBondedArbiters({ bonds: activeBonds, tradeMsats: amountMsats, allTrades: [] });
+      const keyed = new Set(
+        activeBonds.filter((b) => !!b.ownerXonly).map((b) => b.npub.toLowerCase()),
+      );
+      onchainCapableArbiters = bondedPool.filter((pk) => keyed.has(pk.toLowerCase()));
       // Fault-attested arbiters (kind 38136) lose the seat — but only as a
       // PREFERENCE. getTrustedArbiterPool drops the soft exclusion entirely if
       // honouring it would leave nobody assignable, so an attestation can
@@ -1350,12 +1416,9 @@ export function CreateForm({
         excludePubkeys: [userPubkey],
         bondedPool,
       });
-      let faultExcluded: string[] = [];
-      if (ARBITER_FAULT_READS_ENABLED && fetchFaultExcludedArbiters && poolBeforeFaults.length > 0) {
-        try {
-          faultExcluded = await fetchFaultExcludedArbiters(poolBeforeFaults);
-        } catch { /* leave empty — never invent an exclusion */ }
-      }
+      const faultExcluded = trustSnapshot?.community === effectiveCommunity
+        ? trustSnapshot.faultExcluded
+        : [];
       const openPool = getTrustedArbiterPool({
         community: effectiveCommunity,
         excludePubkeys: [userPubkey],
@@ -1366,7 +1429,6 @@ export function CreateForm({
       // The OG cabinet is deliberately NOT folded in here: it is the unbounded
       // fallback for ecash, but an OG with no bond announcement has no escrow
       // key, and seating one would publish a listing nobody can ever fund.
-      const wantsOnchain = (form.escrowMode ?? DEFAULT_ESCROW_MODE) === "onchain";
       const communityArbiters = wantsOnchain ? onchainCapableArbiters : openPool;
       // Refuse rather than publish a dead listing. The seller finds out here,
       // in one sentence, instead of after a buyer has reserved it.
@@ -2083,6 +2145,22 @@ function Step2({
   const menuItems = normalizeMenuItems(form, vertical);
   const hasMenu = menuItems.length > 0;
   const usingMenu = form.listingMode === "menu";
+  type CreateFocusKey = "price" | "description" | "stock" | "premium" | "payment";
+  const createFocusOrder: CreateFocusKey[] = ["price", "description", "stock", "premium", "payment"];
+  const focusNextImportant = (
+    event: KeyboardEvent<HTMLElement>,
+    current: CreateFocusKey,
+  ) => {
+    if (event.key !== "Enter" || event.shiftKey || event.altKey || event.metaKey || event.ctrlKey) return;
+    const start = createFocusOrder.indexOf(current);
+    for (const key of createFocusOrder.slice(start + 1)) {
+      const candidate = document.querySelector<HTMLElement>(`[data-create-focus="${key}"]`);
+      if (!candidate || candidate.getAttribute("aria-disabled") === "true" || (candidate as HTMLInputElement).disabled) continue;
+      event.preventDefault();
+      candidate.focus();
+      return;
+    }
+  };
   const partialMenuRows = hasPartialMenuRows(form, vertical);
   const totalSats = effectiveListingSats(form, vertical);
   const amountTooSmall =
@@ -2404,6 +2482,8 @@ function Step2({
           <input
             type="number"
             onWheel={releaseNumberWheel}
+            data-create-focus="stock"
+            onKeyDown={event => focusNextImportant(event, "stock")}
             inputMode="numeric"
             min={1}
             value={form.stock ?? ""}
@@ -2423,6 +2503,8 @@ function Step2({
           {descriptionLabel(vertical, usingMenu)}
         </div>
         <input value={form.desc} onChange={e => set("desc", e.target.value)}
+          data-create-focus="description"
+          onKeyDown={event => focusNextImportant(event, "description")}
           placeholder={descriptionPlaceholder(vertical, usingMenu)}
           style={inputStyle} />
       </div>
@@ -2764,6 +2846,9 @@ function Step2({
             <input
               type="number"
               onWheel={releaseNumberWheel}
+              autoFocus
+              data-create-focus="price"
+              onKeyDown={event => focusNextImportant(event, "price")}
               value={form.sats}
               onChange={e => syncSingleSats(e.target.value)}
               placeholder="100000"
@@ -2789,7 +2874,7 @@ function Step2({
               }}>
                 {form.cur}
               </div>
-              <input type="number" onWheel={releaseNumberWheel} value={form.fiat} onChange={e => syncSingleFiat(e.target.value)} placeholder="50" style={{ ...inputStyle, flex: 1 }} />
+              <input type="number" onWheel={releaseNumberWheel} autoFocus data-create-focus="price" onKeyDown={event => focusNextImportant(event, "price")} value={form.fiat} onChange={e => syncSingleFiat(e.target.value)} placeholder="50" style={{ ...inputStyle, flex: 1 }} />
             </div>
             <div style={{ marginTop: 5, fontSize: 9, color: T.muted, fontFamily: T.mono }}>
               {t("create.localPriceNote")}
@@ -2917,6 +3002,8 @@ function Step2({
             <input
               type="number"
               onWheel={releaseNumberWheel}
+              data-create-focus="premium"
+              onKeyDown={event => focusNextImportant(event, "premium")}
               step="0.1"
               value={form.premium}
               onChange={e => set("premium", e.target.value)}
@@ -2980,7 +3067,7 @@ function Step2({
               minWidth: "100%",
               width: "max-content",
             }}>
-              {paymentMethodOptions.map(rail => {
+              {paymentMethodOptions.map((rail, railIndex) => {
                 const selected = form.paymentMethods.some(method =>
                   toRailKey(method) === rail.key
                 );
@@ -2988,6 +3075,7 @@ function Step2({
                   <button
                     key={rail.key}
                     type="button"
+                    data-create-focus={railIndex === 0 ? "payment" : undefined}
                     onClick={() => togglePaymentMethod(rail.displayName)}
                     style={{
                       padding: "6px 9px",
@@ -3180,6 +3268,9 @@ function Step2({
                   <input
                     type="number"
                     onWheel={releaseNumberWheel}
+                    autoFocus={index === 0}
+                    data-create-focus={index === 0 ? "price" : undefined}
+                    onKeyDown={index === 0 ? event => focusNextImportant(event, "price") : undefined}
                     value={item.sats}
                     onChange={e => updateMenuSats(item.id, e.target.value)}
                     placeholder={vertical === "p2p-trade" ? t("create.minSatsPlaceholder") : vertical === "lending" ? t("create.principalPlaceholder") : "sats"}

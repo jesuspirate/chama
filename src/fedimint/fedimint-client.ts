@@ -32,6 +32,18 @@ export type { LnReceiveStateKind };
 import type { ChamaOperationMeta } from "../payments/sats-trace.js";
 import { expectedFederationIdForInvite } from "./federation-config.js";
 import { withMintLock } from "./mint-mutex.js";
+import {
+  readBrowserWalletRecoveryJournal,
+  shouldCheckBrowserWalletRecovery,
+  updateBrowserWalletRecoveryJournal,
+} from "./browser-wallet-recovery-journal.js";
+
+// Fedimint currently has an upstream failure mode where a failed module
+// recovery parks forever and wait_for_all_recoveries never resolves
+// (fedimint/fedimint#8968). Bound Chama's await so a broken recovery is
+// recorded as inconclusive instead of leaving the wallet/UI in an eternal
+// spinner. Five minutes still leaves ample room for a healthy browser restore.
+const BROWSER_WALLET_RECOVERY_TIMEOUT_MS = 5 * 60 * 1000;
 
 /** V7 reconcile-by-escrow verdict. `none` is a POSITIVE "no matching payment
  *  exists" (the scan reached ops older than `sinceMs`); `unknown` means the
@@ -81,17 +93,18 @@ export interface OnchainWithdrawResult {
 /**
  * Which Lightning gateway minted a receive invoice.
  *
- * A federation can announce several gateways, and the one chosen decides the
- * only route a payer may use. `provenPayable` is the load-bearing field: false
- * means the gateway answers its API but nothing has ever settled through it,
- * which is exactly the state that hands payers "no route" — worth telling the
- * user before they wait on a QR code.
+ * A federation can announce several gateways. The chosen gateway is invoice
+ * context for external Lightning payments, but a sender on the same federation
+ * may use Fedimint's internal-payment path. It must therefore be retained as
+ * diagnostic evidence without being presented as proven fault.
  */
 export interface InvoiceGatewayInfo {
   id: string;
   alias?: string;
   api?: string;
   provenPayable: boolean;
+  /** SDK operation log handle for an actionable receive-failure report. */
+  operationId?: string;
 }
 
 /**
@@ -377,6 +390,7 @@ export class FedimintClient {
   private _federationId: string | null = null;
   /** v0.1.69: cache the invite we actually joined with, to detect switch attempts */
   private _joinedInvite: string | null = null;
+  private _storageScope: string | null = null;
   /** C5 (v3.4.0): how long the "already spent" path polls for a
    *  confirmed balance credit before declaring the redeem unresolved.
    *  Public so tests can shrink it; production default is generous
@@ -451,12 +465,15 @@ export class FedimintClient {
    * Initialize the WASM wallet. Call once at app startup.
    *
    * @param opts.mnemonic Optional BIP-39 mnemonic to seed the wallet. If
-   *                      supplied, the wallet is deterministic and
-   *                      recoverable on any device with the same seed.
-   *                      Chama's useEscrow hook fetches this from the
-   *                      Nostr-backed seed-manager.
+   *                      supplied, the wallet identity is deterministic.
+   *                      Reusing it with a fresh database requires a forced
+   *                      federation recovery before mint use; the phrase by
+   *                      itself does not recreate bearer ecash held only in
+   *                      the old database. Chama's useEscrow hook fetches it
+   *                      from the Nostr-backed seed-manager.
    */
   async init(opts: FedimintInitOptions = {}): Promise<void> {
+    this._storageScope = opts.storageScope ?? null;
     try {
       this.wallet = await this.walletFactory({
         mnemonic: opts.mnemonic,
@@ -473,6 +490,39 @@ export class FedimintClient {
       try {
         await this.wallet.open();
       } catch (openErr) {
+        const { BROWSER_WALLET_RECOVERY_REQUIRED_CODE } = await import("./sdk-adapter.js");
+        const browserRecoveryRequired =
+          (openErr as Error & { code?: string })?.code ===
+          BROWSER_WALLET_RECOVERY_REQUIRED_CODE;
+        if (browserRecoveryRequired && opts.mnemonic) {
+          const staleWallet = this.wallet;
+          try {
+            await staleWallet.cleanup();
+          } catch (cleanupError) {
+            console.warn(
+              "[chama] Could not close the pre-recovery browser wallet:",
+              cleanupError,
+            );
+          }
+          const { createRealWallet } = await import("./sdk-adapter.js");
+          this.wallet = await createRealWallet({
+            mnemonic: opts.mnemonic,
+            storageScope: opts.storageScope,
+          });
+          console.warn(
+            "[chama] Paid receive failure matched this wallet; preserved its old OPFS file and prepared forced recovery",
+          );
+          try {
+            await this.wallet.open();
+          } catch (recoveryOpenErr) {
+            const recoveryOpenMsg = typeof recoveryOpenErr === "string"
+              ? recoveryOpenErr
+              : (recoveryOpenErr as Error)?.message || "";
+            if (!/client is not initialized|client database not initialized|database not initialized|not initialized for this database|no such client|client secret is not present|run join first/i.test(recoveryOpenMsg)) {
+              throw recoveryOpenErr;
+            }
+          }
+        } else {
         const {
           clearNativeBridgeConfig,
           announceRemoteBridgeRevoked,
@@ -535,6 +585,7 @@ export class FedimintClient {
             throw openErr;
           }
         }
+        }
       }
 
       // Only subscribe to balance updates if we successfully opened an
@@ -589,11 +640,13 @@ export class FedimintClient {
       } finally {
         this._federationId = null;
         this._joinedInvite = null;
+        this._storageScope = null;
       }
       return;
     }
     this._federationId = null;
     this._joinedInvite = null;
+    this._storageScope = null;
   }
 
   private requireWallet(): IFedimintWallet {
@@ -738,15 +791,17 @@ export class FedimintClient {
       });
     } catch {}
 
-    // Check for pending recovery (happens when rejoining with same seed
-    // after OPFS reset — the federation can reconstruct ecash notes).
+    // Check for pending SDK recovery after a forced rejoin with an already-used
+    // seed. This restores federation-recoverable client state; it must not be
+    // described as recreating arbitrary bearer ecash from the phrase.
     //
     // v0.1.75 recovery instrumentation: this used to be an inline block
     // that duplicated the helper logic. Now it just delegates, with a
     // source="join" tag so we can distinguish it from the init path in
     // the [$$] mlog stream. This is the call site we expect to fire
-    // when a user has joined BLF after wiping OPFS — the funds-recovery
-    // moment we've been chasing.
+    // when a user has joined BLF after rotating OPFS. Completion proves the
+    // SDK procedure ran; only a positive attributable balance delta proves it
+    // recovered funds.
     await this.runRecoveryIfNeeded(wallet, "join");
 
     this.callbacks.onFederationJoined?.(this._federationId);
@@ -782,7 +837,7 @@ export class FedimintClient {
    *
    * v0.1.75 recovery instrumentation: takes a `source` param so the [$$]
    * mlog distinguishes init-path from join-path checks. This is critical
-   * for diagnosing the post-OPFS-reset fund recovery flow, because we
+   * for diagnosing the post-OPFS-rotation wallet repair flow, because we
    * need to know which call site fired and what hasPendingRecoveries()
    * returned.
    *
@@ -794,6 +849,25 @@ export class FedimintClient {
     wallet: IFedimintWallet,
     source: "init" | "join",
   ): Promise<void> {
+    const recoveryJournal = readBrowserWalletRecoveryJournal(this._storageScope);
+    if (!shouldCheckBrowserWalletRecovery(source, recoveryJournal)) {
+      mlog("RECOVERY-SKIP", {
+        source,
+        fed: this._federationId,
+        reason: recoveryJournal
+          ? `journal-${recoveryJournal.stage}`
+          : "no-active-journal",
+      });
+      return;
+    }
+
+    // An active journal means this is an explicitly-started repair. Preserve
+    // crash resumption on init, but never auto-repeat a completed or
+    // inconclusive attempt merely because the app restarted.
+    const receiptPending = !!recoveryJournal &&
+      (recoveryJournal.stage === "requested" ||
+        recoveryJournal.stage === "rotating" ||
+        recoveryJournal.stage === "recovering");
     let balanceBefore: number | undefined;
     try {
       balanceBefore = await wallet.balance.getBalance();
@@ -816,6 +890,13 @@ export class FedimintClient {
       const msg = e instanceof Error ? e.message : String(e);
       mlog("RECOVERY-ERROR", { source, phase: "hasPending", error: msg });
       console.warn("[chama] Recovery check failed (non-fatal):", e);
+      if (receiptPending) {
+        updateBrowserWalletRecoveryJournal(this._storageScope, {
+          stage: "inconclusive",
+          balanceBeforeMsats: balanceBefore,
+          error: `Recovery status check failed: ${msg}`,
+        });
+      }
       return;
     }
     const checkDurationMs = Date.now() - checkStart;
@@ -825,7 +906,21 @@ export class FedimintClient {
       durationMs: checkDurationMs,
     });
 
-    if (!hasPending) return;
+    if (!hasPending) {
+      if (receiptPending) {
+        updateBrowserWalletRecoveryJournal(this._storageScope, {
+          stage: balanceBefore !== undefined ? "completed" : "inconclusive",
+          hadPendingRecovery: false,
+          balanceBeforeMsats: balanceBefore,
+          balanceAfterMsats: balanceBefore,
+          durationMs: checkDurationMs,
+          error: balanceBefore === undefined
+            ? "Forced recovery returned, but the recovered balance could not be read"
+            : undefined,
+        });
+      }
+      return;
+    }
 
     // Pending recoveries exist — wait for them and report the delta.
     console.info(
@@ -835,10 +930,26 @@ export class FedimintClient {
     // Signal UI that recovery is running (used by join-path to show spinner)
     if (source === "join") this.callbacks.onBalanceUpdate?.(-1);
     const waitStart = Date.now();
+    let waitError: string | null = null;
     try {
-      await wallet.recovery.waitForAllRecoveries();
+      let timeoutId: ReturnType<typeof setTimeout> | undefined;
+      try {
+        await Promise.race([
+          wallet.recovery.waitForAllRecoveries(),
+          new Promise<never>((_, reject) => {
+            timeoutId = setTimeout(() => {
+              reject(new Error(
+                `Fedimint wallet recovery did not finish within ${BROWSER_WALLET_RECOVERY_TIMEOUT_MS / 1000} seconds`,
+              ));
+            }, BROWSER_WALLET_RECOVERY_TIMEOUT_MS);
+          }),
+        ]);
+      } finally {
+        if (timeoutId !== undefined) clearTimeout(timeoutId);
+      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
+      waitError = msg;
       mlog("RECOVERY-ERROR", { source, phase: "waitForAll", error: msg });
       console.warn("[chama] waitForAllRecoveries threw (non-fatal):", e);
       // Fall through to the balance refresh anyway — partial recovery
@@ -847,12 +958,17 @@ export class FedimintClient {
     const waitDurationMs = Date.now() - waitStart;
 
     let balanceAfter: number | undefined;
-    try {
-      balanceAfter = await wallet.balance.getBalance();
-      this.callbacks.onBalanceUpdate?.(balanceAfter);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      mlog("RECOVERY-ERROR", { source, phase: "balanceAfter", error: msg });
+    // A timed-out/failed recovery may still own the client database. Do not
+    // issue another wallet RPC into that state; keep the receipt inconclusive
+    // and require a fresh, non-destructive recovery attempt instead.
+    if (!waitError) {
+      try {
+        balanceAfter = await wallet.balance.getBalance();
+        this.callbacks.onBalanceUpdate?.(balanceAfter);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        mlog("RECOVERY-ERROR", { source, phase: "balanceAfter", error: msg });
+      }
     }
 
     const delta = (balanceBefore !== undefined && balanceAfter !== undefined)
@@ -866,9 +982,23 @@ export class FedimintClient {
       delta,
     });
     console.info(
-      `[chama] Recovery complete (source=${source}) — ecash notes restored ` +
-      `(balance: ${balanceBefore ?? "?"} → ${balanceAfter ?? "?"})`,
+      `[chama] Federation recovery procedure finished (source=${source}) ` +
+      `(balance: ${balanceBefore ?? "?"} → ${balanceAfter ?? "?"}; ` +
+      `attributable delta: ${delta ?? "unknown"} msats)`,
     );
+    if (receiptPending) {
+      const completed = !waitError && balanceAfter !== undefined;
+      updateBrowserWalletRecoveryJournal(this._storageScope, {
+        stage: completed ? "completed" : "inconclusive",
+        hadPendingRecovery: true,
+        balanceBeforeMsats: balanceBefore,
+        balanceAfterMsats: balanceAfter,
+        durationMs: waitDurationMs,
+        error: waitError ?? (balanceAfter === undefined
+          ? "Recovery returned, but the recovered balance could not be read"
+          : undefined),
+      });
+    }
   }
 
   /** Get the current federation ID (null if not joined) */

@@ -35,6 +35,15 @@ import type { IFedimintWallet } from "./fedimint-client.js";
 import type { ChamaOperationMeta } from "../payments/sats-trace.js";
 import { randomId } from "../storage/random-id.js";
 import { setMintLockScope } from "./mint-mutex.js";
+import {
+  browserLightningReceiveIsBlocked,
+  consumeBrowserLightningReceiveProbe,
+} from "./lightning-receive-safety.js";
+import {
+  readBrowserWalletRecoveryJournal,
+  updateBrowserWalletRecoveryJournal,
+  writeBrowserWalletRecoveryJournal,
+} from "./browser-wallet-recovery-journal.js";
 import { decideOrphanWipe, NO_CLIENT_OPEN_ERROR_RE, type OrphanPeek } from "./orphan-wipe-policy.js";
 import {
   LN_PAY_INFLIGHT,
@@ -211,6 +220,10 @@ interface RealLightningService {
   ): () => void;
   updateGatewayCache?(): Promise<unknown>;
   listGateways?(): Promise<RealLightningGateway[]>;
+  getAvailableGateway?(args?: {
+    gateway?: RealGatewayInfo;
+    invoice?: string;
+  }): Promise<RealGatewayInfo | null>;
 }
 
 interface RealFederationService {
@@ -235,7 +248,13 @@ export interface RealFedimintWallet {
   federation: RealFederationService;
   recovery: RealRecoveryService;
   open(clientName?: string): Promise<boolean>;
-  joinFederation(inviteCode: string, clientName?: string): Promise<boolean>;
+  joinFederation(
+    inviteCode: string,
+    clientNameOrOptions?: string | {
+      clientName?: string;
+      forceRecover?: boolean;
+    },
+  ): Promise<boolean>;
   cleanup(): Promise<void>;
   isOpen(): boolean;
 }
@@ -281,6 +300,187 @@ const CURATED_LIGHTNING_GATEWAY_TRUST: Record<string, string[]> = {
     "0284cf7053be11bb23e59381861299dbaf7670c60dd62c928479c235a53bd95fe4",
   ],
 };
+
+// Keep a paid receive failure attached to the federation, not the selected
+// gateway. A separate wallet-lifecycle repair is not evidence that this route
+// is safe again, so upgrades deliberately preserve the existing pause.
+const RECEIVE_ROUTE_QUARANTINE_KEY = "chama_ln_receive_route_quarantine_v3";
+const RECEIVE_ROUTE_QUARANTINE_MS = 6 * 60 * 60 * 1000;
+export const BROWSER_WALLET_RECOVERY_REQUIRED_CODE =
+  "BROWSER_WALLET_RECOVERY_REQUIRED";
+const BROWSER_WALLET_RECOVERY_PERSIST_FAILED_CODE =
+  "BROWSER_WALLET_RECOVERY_PERSIST_FAILED";
+const BROWSER_WALLET_RECOVERY_REQUEST_PREFIX =
+  "chama_fedimint_recovery_request_v1:";
+
+type ReceiveRouteQuarantine = {
+  federationId: string;
+  reason: string;
+  operationId: string;
+  until: number;
+};
+
+type BrowserWalletRecoveryRequest = {
+  operationId: string;
+  federationId: string;
+  requestedAt: number;
+  trigger?: "operation-proof" | "explicit-diagnostic" | "mint-reissue-failed";
+};
+
+function browserWalletRecoveryRequestKey(storageScope?: string | null): string {
+  return `${BROWSER_WALLET_RECOVERY_REQUEST_PREFIX}${storageScope || "legacy"}`;
+}
+
+function requestBrowserWalletRecovery(
+  storageScope: string | null | undefined,
+  request: BrowserWalletRecoveryRequest,
+): boolean {
+  try {
+    globalThis.localStorage?.setItem(
+      browserWalletRecoveryRequestKey(storageScope),
+      JSON.stringify(request),
+    );
+    return globalThis.localStorage?.getItem(
+      browserWalletRecoveryRequestKey(storageScope),
+    ) !== null;
+  } catch {
+    // The receive route remains blocked. Without durable storage Chama cannot
+    // safely rotate this wallet automatically, so initialization must fail.
+    return false;
+  }
+}
+
+function consumeBrowserWalletRecoveryRequest(
+  storageScope?: string | null,
+): BrowserWalletRecoveryRequest | null {
+  try {
+    const key = browserWalletRecoveryRequestKey(storageScope);
+    const raw = globalThis.localStorage?.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<BrowserWalletRecoveryRequest>;
+    if (
+      typeof parsed.operationId !== "string" ||
+      typeof parsed.federationId !== "string" ||
+      typeof parsed.requestedAt !== "number"
+    ) return null;
+    globalThis.localStorage?.removeItem(key);
+    return parsed as BrowserWalletRecoveryRequest;
+  } catch {
+    return null;
+  }
+}
+
+function readReceiveRouteQuarantines(
+  now = Date.now(),
+  includeExpired = false,
+): ReceiveRouteQuarantine[] {
+  try {
+    const raw = globalThis.localStorage?.getItem(RECEIVE_ROUTE_QUARANTINE_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((entry): entry is ReceiveRouteQuarantine =>
+      !!entry && typeof entry === "object" &&
+      typeof entry.federationId === "string" &&
+      typeof entry.reason === "string" &&
+      typeof entry.operationId === "string" &&
+      typeof entry.until === "number" && (includeExpired || entry.until > now),
+    );
+  } catch {
+    return [];
+  }
+}
+
+function writeReceiveRouteQuarantines(entries: ReceiveRouteQuarantine[]): void {
+  try {
+    globalThis.localStorage?.setItem(RECEIVE_ROUTE_QUARANTINE_KEY, JSON.stringify(entries));
+  } catch {
+    // Safety still comes from the current terminal flow; persistence is a
+    // best-effort guard against repeating it on the next invoice.
+  }
+}
+
+async function quarantinedReceiveRoute(
+  real: RealFedimintWallet,
+): Promise<ReceiveRouteQuarantine | null> {
+  try {
+    const federationId = normalizeFederationId(await real.federation.getFederationId());
+    if (!federationId) return null;
+    return readReceiveRouteQuarantines().find((entry) =>
+      entry.federationId === federationId
+    ) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function quarantineReceiveRoute(
+  real: RealFedimintWallet,
+  operationId: string,
+  reason: string,
+): Promise<void> {
+  if (reason !== "claim_rejected") return;
+  try {
+    const federationId = normalizeFederationId(await real.federation.getFederationId());
+    if (!federationId) return;
+    const now = Date.now();
+    // Keep expired failures as a recovery ledger. Expiry ends only the
+    // temporary receive-route pause; it must not erase the operation id that
+    // lets the owning identity prove and repair its rejected mint claim.
+    const next = readReceiveRouteQuarantines(now, true).filter((entry) =>
+      entry.federationId !== federationId,
+    );
+    next.push({
+      federationId,
+      reason,
+      operationId,
+      until: now + RECEIVE_ROUTE_QUARANTINE_MS,
+    });
+    writeReceiveRouteQuarantines(next);
+    console.warn(
+      `[chama] LN receive route paused for 6h after ${reason}: federation=${federationId}`,
+    );
+  } catch (error) {
+    console.debug("[chama] Could not persist receive route pause:", error);
+  }
+}
+
+/**
+ * Development-only field verifier. The caller is already signed in as the
+ * wallet being repaired and explicitly selects that identity by loading the
+ * diagnostic URL. Unlike the automatic path, this does not infer identity
+ * ownership from an origin-wide failure record.
+ */
+export function armBrowserWalletRecoveryForDiagnostics(
+  storageScope: string,
+): BrowserWalletRecoveryRequest {
+  const incident = readReceiveRouteQuarantines(Date.now(), true)
+    .filter((entry) => entry.reason === "claim_rejected")
+    .sort((a, b) => b.until - a.until)[0];
+  if (!incident) {
+    throw new Error("No rejected browser receive is recorded on this origin");
+  }
+  const request: BrowserWalletRecoveryRequest = {
+    operationId: incident.operationId,
+    federationId: incident.federationId,
+    requestedAt: Date.now(),
+    trigger: "explicit-diagnostic",
+  };
+  if (!requestBrowserWalletRecovery(storageScope, request)) {
+    throw new Error("The browser refused to persist the wallet recovery request");
+  }
+  if (!writeBrowserWalletRecoveryJournal(storageScope, {
+    version: 1,
+    stage: "requested",
+    operationId: request.operationId,
+    federationId: request.federationId,
+    trigger: "explicit-diagnostic",
+    requestedAt: request.requestedAt,
+    updatedAt: Date.now(),
+  })) {
+    throw new Error("The browser refused to persist the wallet recovery receipt");
+  }
+  return request;
+}
 
 function isReceiveTerminal(state: RealLnReceiveState): boolean {
   return state === "claimed" ||
@@ -383,6 +583,51 @@ async function traceReceiveOperation(
   }
 }
 
+async function buildReceiveFailureDiagnostic(
+  real: RealFedimintWallet,
+  operationId: string,
+  reason: string,
+  gateway?: RealGatewayInfo,
+): Promise<Record<string, unknown>> {
+  let federationId: string | null = null;
+  let operation: Record<string, unknown> = { present: false };
+  try {
+    federationId = normalizeFederationId(await real.federation.getFederationId()) || null;
+  } catch {
+    // The operation evidence below remains useful without the federation id.
+  }
+  try {
+    const getOperation = real.federation.getOperation;
+    if (typeof getOperation === "function") {
+      operation = summarizeReceiveOperationLog(
+        await getOperation.call(real.federation, operationId),
+      );
+    }
+  } catch (error) {
+    operation = { present: false, readError: String(error) };
+  }
+  return {
+    issue: "lightning_receive_rejected",
+    reason,
+    meaning: reason === "claim_rejected"
+      ? "The incoming contract funded; the receiver claim transaction was rejected by the federation."
+      : null,
+    federationId,
+    operationId,
+    gateway: gateway?.gateway_id
+      ? {
+          id: gateway.gateway_id,
+          alias: gateway.lightning_alias ?? null,
+          api: gateway.api ?? null,
+        }
+      : null,
+    operation,
+    sdkPackages: FEDIMINT_SDK_DIAGNOSTICS,
+    payerPath:
+      "The receive wallet cannot determine whether the payer used Fedimint's internal-payment path. The sender operation is required to prove that. A gateway id here identifies invoice context; it does not prove the gateway caused this rejection.",
+  };
+}
+
 /**
  * v0.6.5: public-facing classification of the SDK's LN receive state.
  * Exposed (re-exported via fedimint-client) so the orchestrator can
@@ -402,7 +647,7 @@ async function traceReceiveOperation(
 export type LnReceiveStateKind =
   | "created"
   | "waiting_for_payment"
-  | { canceled: { reason: string } }
+  | { canceled: { reason: string; diagnostic?: Record<string, unknown> } }
   | "funded"
   | "awaiting_funds"
   | "claimed";
@@ -974,9 +1219,9 @@ type LowLevelRpcClient = {
 // that JSON value; they are not themselves meta-module keys.
 const META_DEFAULT_KEY = 0;
 const FEDIMINT_SDK_DIAGNOSTICS = {
-  "@fedimint/core": "0.0.0-canary-cf43f9193627f8081b7144f7c057a7a112989031",
-  "@fedimint/transport-web": "0.0.0-canary-cf43f9193627f8081b7144f7c057a7a112989031",
-  "@fedimint/fedimint-client-wasm-bundler": "0.0.0-canary-cf43f9193627f8081b7144f7c057a7a112989031",
+  "@fedimint/core": "0.0.0-canary-c65cc1396f26b1b6593c3fae6ac0e820d96a4a10",
+  "@fedimint/transport-web": "0.0.0-canary-c65cc1396f26b1b6593c3fae6ac0e820d96a4a10",
+  "@fedimint/fedimint-client-wasm-bundler": "0.0.0-canary-c65cc1396f26b1b6593c3fae6ac0e820d96a4a10",
 };
 
 type GatewayTrustProbeSummary = {
@@ -1282,6 +1527,12 @@ export function adaptRealWallet(
     federation_id?: string | null;
     invite_code?: string | null;
   }>,
+  forceRecoverOnJoin = false,
+  recoveryContext?: {
+    storageScope?: string | null;
+    incident?: BrowserWalletRecoveryRequest | null;
+    rollbackFilename?: string | null;
+  },
 ): IFedimintWallet {
   const activeReceiveWatches = new Set<() => void>();
   const armedReceiveOperationIds = new Set<string>();
@@ -1297,6 +1548,56 @@ export function adaptRealWallet(
   // fine for a Map). The first caller wins; later callers await the
   // same Promise.
   const inFlightMintReissuesByNotes = new Map<string, Promise<string>>();
+
+  const scheduleFailedMintReissueRecovery = async (
+    operationId: string,
+  ): Promise<boolean> => {
+    const storageScope = recoveryContext?.storageScope;
+    if (!storageScope || !operationId) return false;
+
+    let federationId = "";
+    try {
+      federationId = normalizeFederationId(
+        await real.federation.getFederationId(),
+      ) ?? "";
+    } catch {}
+    if (!federationId) {
+      console.warn(
+        `[chama] Could not arm wallet recovery for failed mint reissue ${operationId}: federation id unavailable`,
+      );
+      return false;
+    }
+
+    const request: BrowserWalletRecoveryRequest = {
+      operationId,
+      federationId,
+      requestedAt: Date.now(),
+      trigger: "mint-reissue-failed",
+    };
+    if (!requestBrowserWalletRecovery(storageScope, request)) {
+      console.warn(
+        `[chama] Could not persist wallet recovery request for failed mint reissue ${operationId}`,
+      );
+      return false;
+    }
+    if (!writeBrowserWalletRecoveryJournal(storageScope, {
+      version: 1,
+      stage: "requested",
+      operationId,
+      federationId,
+      trigger: "mint-reissue-failed",
+      requestedAt: request.requestedAt,
+      updatedAt: Date.now(),
+    })) {
+      console.warn(
+        `[chama] Recovery request for ${operationId} is durable, but its display receipt could not be written`,
+      );
+    }
+    console.warn(
+      `[chama] Failed mint reissue ${operationId} armed an identity-scoped forced recovery for the next wallet start`,
+    );
+    return true;
+  };
 
   const summarizeGateway = (
     gateway: RealLightningGateway,
@@ -1319,7 +1620,42 @@ export function adaptRealWallet(
 
   const getTrustedLightningGateway = async (
     purpose: "receive" | "pay",
+    amountMsats?: number,
   ): Promise<RealGatewayInfo | undefined> => {
+    let oneShotReceiveProbe = false;
+    if (purpose === "receive") {
+      let federationId: string | null = null;
+      try {
+        federationId = normalizeFederationId(await real.federation.getFederationId()) || null;
+      } catch {
+        // The ordinary reachability and gateway gates below still fail closed.
+      }
+      if (browserLightningReceiveIsBlocked(federationId)) {
+        oneShotReceiveProbe = consumeBrowserLightningReceiveProbe(
+          federationId,
+          amountMsats ?? 0,
+        );
+      }
+      if (browserLightningReceiveIsBlocked(federationId) && !oneShotReceiveProbe) {
+        const diagnostic = {
+          issue: "browser_lightning_receive_disabled",
+          adapter: "browser-wasm-sdk",
+          federationId,
+          invoiceCreated: false,
+          sdkPackages: FEDIMINT_SDK_DIAGNOSTICS,
+          interpretation:
+            "Chama disabled browser Lightning and NWC receives for this federation after repeated paid invoices reached claim_rejected before ecash minted. Browser gateway and balance probes cannot pre-validate the later claim transaction. Use exact-value Fedi ecash or a native Chama wallet; no BOLT11 was created.",
+        };
+        const error = new Error(
+          "Browser Lightning funding is disabled for Bitcoin Life Federation after repeated paid invoices failed before ecash minted. " +
+            "Chama did not create a QR. Export the exact trade amount as ecash from Fedi and paste it here, or use a native Chama wallet.\n\n" +
+            `Chama diagnostics:\n${JSON.stringify(diagnostic, null, 2)}`,
+        );
+        (error as Error & { chamaDiagnostics?: Record<string, unknown> }).chamaDiagnostics =
+          diagnostic;
+        throw error;
+      }
+    }
     if (typeof real.lightning.listGateways !== "function") {
       if (purpose === "receive") {
         const diagnostic = {
@@ -1344,6 +1680,25 @@ export function adaptRealWallet(
     }
 
     try {
+      if (purpose === "receive") {
+        const paused = await quarantinedReceiveRoute(real);
+        if (paused && !oneShotReceiveProbe) {
+          const diagnostic = {
+            issue: "receive_federation_route_paused",
+            federationId: paused.federationId,
+            priorOperationId: paused.operationId,
+            priorReason: paused.reason,
+            retryAfter: new Date(paused.until).toISOString(),
+            interpretation:
+              "Chama paused browser Lightning receives for this federation after a paid invoice failed to mint. This does not assign fault to its gateway; same-federation payments may use Fedimint's internal-payment path.",
+          };
+          throw new Error(
+            "Lightning funding is temporarily paused for this federation after a paid invoice failed to mint. " +
+            "Do not pay another invoice from this browser route until the safety window ends; use a different funding path or federation.\n\n" +
+            `Chama diagnostics:\n${JSON.stringify(diagnostic, null, 2)}`,
+          );
+        }
+      }
       if (typeof real.lightning.updateGatewayCache === "function") {
         await real.lightning.updateGatewayCache();
       }
@@ -1424,6 +1779,59 @@ export function adaptRealWallet(
           gateways.length,
         )}`,
       );
+
+      if (purpose === "receive") {
+        const selectAvailable = real.lightning.getAvailableGateway;
+        if (typeof selectAvailable !== "function") {
+          const diagnostic = {
+            issue: "receive_gateway_availability_unverifiable",
+            gatewayId: trustedGateway.info.gateway_id ?? null,
+            sdkPackages: FEDIMINT_SDK_DIAGNOSTICS,
+            interpretation:
+              "This SDK cannot run select_available_gateway. Chama will not create a payable invoice from listGateways data alone.",
+          };
+          throw new Error(
+            "The federation's trusted Lightning gateway could not be checked for current availability. " +
+            "No invoice was created.\n\n" +
+            `Chama diagnostics:\n${JSON.stringify(diagnostic, null, 2)}`,
+          );
+        }
+        const available = await selectAvailable.call(real.lightning, {
+          gateway: trustedGateway.info,
+        });
+        if (!available?.gateway_id) {
+          const diagnostic = {
+            issue: "trusted_receive_gateway_unavailable",
+            gatewayId: trustedGateway.info.gateway_id ?? null,
+            sdkPackages: FEDIMINT_SDK_DIAGNOSTICS,
+            interpretation:
+              "The gateway is trusted but the Fedimint client's select_available_gateway RPC did not consider it currently usable. No invoice was created.",
+          };
+          throw new Error(
+            "The federation's trusted Lightning gateway is not currently available. " +
+            "No invoice was created.\n\n" +
+            `Chama diagnostics:\n${JSON.stringify(diagnostic, null, 2)}`,
+          );
+        }
+        const availableId = available.gateway_id.toLowerCase();
+        const trustedIds = new Set([
+          ...(vettedGateway?.info?.gateway_id
+            ? [vettedGateway.info.gateway_id.toLowerCase()]
+            : []),
+          ...metaVettedGatewayIds,
+        ]);
+        if (!trustedIds.has(availableId)) {
+          throw new Error(
+            "Fedimint selected a Lightning receive gateway that this federation has not marked trusted. " +
+            "No invoice was created.",
+          );
+        }
+        console.info(
+          `[chama] LN receive availability confirmed by select_available_gateway: ${available.gateway_id}`,
+        );
+        return available;
+      }
+
       return trustedGateway.info;
     } catch (e) {
       console.warn(`[chama] LN ${purpose} gateway selection failed:`, e);
@@ -1726,6 +2134,7 @@ export function adaptRealWallet(
     operationId: string,
     strict = true,
     onState?: (kind: LnReceiveStateKind) => void,
+    gateway?: RealGatewayInfo,
   ): void => {
     if (armedReceiveOperationIds.has(operationId)) return;
     armedReceiveOperationIds.add(operationId);
@@ -1762,16 +2171,38 @@ export function adaptRealWallet(
             `[chama] LN receive ${operationId}: ${stateLabel}`,
             state,
           );
-          void traceReceiveOperation(real, operationId, `state:${stateLabel}`);
+          const canceled = typeof state === "object" && state !== null && "canceled" in state
+            ? state.canceled
+            : null;
+          if (canceled) {
+            void quarantineReceiveRoute(real, operationId, canceled.reason);
+          } else {
+            void traceReceiveOperation(real, operationId, `state:${stateLabel}`);
+          }
           // v0.6.5: forward the classified state to an external
           // listener (the orchestrator) so it can advance UI phases
           // without waiting for the 5s balance poll. Defensive
           // try/catch — a listener throwing should never destabilize
           // the SDK subscription itself.
           if (onState) {
-            try { onState(classifyReceiveState(state)); }
-            catch (e) {
-              console.debug("[chama] LN receive onState listener threw:", e);
+            if (canceled) {
+              void buildReceiveFailureDiagnostic(
+                real,
+                operationId,
+                canceled.reason,
+                gateway,
+              ).then((diagnostic) => {
+                try {
+                  onState({ canceled: { reason: canceled.reason, diagnostic } });
+                } catch (e) {
+                  console.debug("[chama] LN receive onState listener threw:", e);
+                }
+              });
+            } else {
+              try { onState(classifyReceiveState(state)); }
+              catch (e) {
+                console.debug("[chama] LN receive onState listener threw:", e);
+              }
             }
           }
           if (isReceiveTerminal(state)) stop();
@@ -1844,6 +2275,95 @@ export function adaptRealWallet(
   return {
     async open() {
       await real.open();
+
+      // A claim_rejected record alone is origin-wide and cannot identify the
+      // affected Chama identity. Prove ownership by finding that exact receive
+      // operation in this opened wallet before scheduling a recovery rotation.
+      // This prevents one BLF user's failure from rotating another user's DB.
+      if (recoveryContext?.storageScope && real.federation.getOperation) {
+        // Include expired route pauses here: the six-hour safety window and
+        // durable wallet repair are separate concerns.
+        for (const entry of readReceiveRouteQuarantines(Date.now(), true)) {
+          if (entry.reason !== "claim_rejected") continue;
+          try {
+            const operation = await real.federation.getOperation(entry.operationId);
+            if (!operation) continue;
+            const recoveryRecorded = requestBrowserWalletRecovery(
+              recoveryContext.storageScope,
+              {
+              operationId: entry.operationId,
+              federationId: entry.federationId,
+              requestedAt: Date.now(),
+              trigger: "operation-proof",
+              },
+            );
+            if (!recoveryRecorded) {
+              const error = new Error(
+                "This wallet owns a rejected paid receive, but the browser refused durable recovery state. Chama left the wallet file untouched and will not continue unsafely.",
+              );
+              (error as Error & { code?: string }).code =
+                BROWSER_WALLET_RECOVERY_PERSIST_FAILED_CODE;
+              throw error;
+            }
+            const error = new Error(
+              "This browser wallet owns a paid receive whose mint claim was rejected. " +
+              "Chama will preserve the current wallet file and force a federation recovery in a fresh file before it can receive again.",
+            );
+            (error as Error & { code?: string }).code =
+              BROWSER_WALLET_RECOVERY_REQUIRED_CODE;
+            throw error;
+          } catch (error) {
+            const code = (error as Error & { code?: string }).code;
+            if (
+              code === BROWSER_WALLET_RECOVERY_REQUIRED_CODE ||
+              code === BROWSER_WALLET_RECOVERY_PERSIST_FAILED_CODE
+            ) throw error;
+            // An unreadable operation is not proof that this identity owns it.
+          }
+        }
+      }
+
+      // A payout reissue failure is already identity-proven: it appears only
+      // in the wallet that submitted and lost that exact operation. Recover a
+      // failure that predated Chama's live arming hook without asking the user
+      // to consume/retry the bearer notes. Fail closed if this wallet currently
+      // holds any readable ecash; its preserved OPFS file must remain selected
+      // until recovery is independently proven not to hide that balance.
+      if (recoveryContext?.storageScope) {
+        const failedReissues = (await listMintReissueTransactions(100))
+          .filter((tx) => isMintReissueFailedOutcome(tx.outcome))
+          .sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0));
+        const latestFailure = failedReissues[0] ?? null;
+        const journal = readBrowserWalletRecoveryJournal(
+          recoveryContext.storageScope,
+        );
+        if (
+          latestFailure &&
+          journal?.operationId !== latestFailure.operationId
+        ) {
+          let currentBalanceMsats: number | null = null;
+          try {
+            currentBalanceMsats = await real.balance.getBalance();
+          } catch {}
+          if (currentBalanceMsats === 0) {
+            const armed = await scheduleFailedMintReissueRecovery(
+              latestFailure.operationId,
+            );
+            if (armed) {
+              const error = new Error(
+                "This browser wallet owns a failed payout reissue. Chama preserved its current wallet file and will force federation recovery in a fresh file before further wallet use.",
+              );
+              (error as Error & { code?: string }).code =
+                BROWSER_WALLET_RECOVERY_REQUIRED_CODE;
+              throw error;
+            }
+          } else {
+            console.warn(
+              `[chama] Failed mint reissue ${latestFailure.operationId} needs recovery, but the current wallet balance is ${currentBalanceMsats ?? "unreadable"} msats; preserving the active file and refusing automatic rotation`,
+            );
+          }
+        }
+      }
       await armPendingReceiveWatches("open");
       await armPendingMintReissueWatches("open");
     },
@@ -1853,7 +2373,71 @@ export function adaptRealWallet(
     },
 
     async joinFederation(inviteCode: string) {
-      await real.joinFederation(inviteCode);
+      if (forceRecoverOnJoin) {
+        // Chama supplies one Nostr-backed mnemonic on every device. A fresh or
+        // rotated OPFS file therefore does NOT imply a fresh Fedimint wallet.
+        // Joining normally under an already-used seed restarts the mint's
+        // deterministic nonce counters at zero. Reused blind nonces are a
+        // separate, documented Fedimint safety failure and can make later mint
+        // outputs fail. This repair is important, but it does not by itself
+        // explain a particular claim_rejected receive.
+        //
+        // Chama now pins to the first upstream SDK canary that exposes this
+        // operation publicly. Do not reach through private `_client` fields:
+        // recovery is part of the supported wallet lifecycle and upgrades can
+        // no longer silently remove it from beneath us.
+        console.info(
+          "[chama] Fresh browser client + Nostr-backed seed: forcing federation recovery before wallet use",
+        );
+        let joined: boolean;
+        try {
+          joined = await real.joinFederation(inviteCode, {
+            forceRecover: true,
+          });
+        } catch (error) {
+          updateBrowserWalletRecoveryJournal(recoveryContext?.storageScope, {
+            stage: "inconclusive",
+            error: error instanceof Error ? error.message : String(error),
+          });
+          if (recoveryContext?.incident && recoveryContext.rollbackFilename) {
+            rememberFilename(
+              recoveryContext.storageScope,
+              recoveryContext.rollbackFilename,
+            );
+            requestBrowserWalletRecovery(
+              recoveryContext.storageScope,
+              recoveryContext.incident,
+            );
+          }
+          throw error;
+        }
+        if (joined === false) {
+          updateBrowserWalletRecoveryJournal(recoveryContext?.storageScope, {
+            stage: "inconclusive",
+            error: "Fedimint SDK did not start forced wallet recovery",
+          });
+          if (recoveryContext?.incident && recoveryContext.rollbackFilename) {
+            rememberFilename(
+              recoveryContext.storageScope,
+              recoveryContext.rollbackFilename,
+            );
+            requestBrowserWalletRecovery(
+              recoveryContext.storageScope,
+              recoveryContext.incident,
+            );
+          }
+          throw new Error("Fedimint SDK did not start forced wallet recovery");
+        }
+        updateBrowserWalletRecoveryJournal(recoveryContext?.storageScope, {
+          stage: "recovering",
+          error: undefined,
+        });
+      } else {
+        const joined = await real.joinFederation(inviteCode);
+        if (joined === false) {
+          throw new Error("Fedimint SDK did not join the federation");
+        }
+      }
       await armPendingReceiveWatches("join");
       await armPendingMintReissueWatches("join");
     },
@@ -1865,11 +2449,10 @@ export function adaptRealWallet(
         } catch { return false; }
       },
       async waitForAllRecoveries(): Promise<void> {
-        try {
-          await real.recovery.waitForAllRecoveries();
-        } catch (e) {
-          console.warn("[chama] waitForAllRecoveries error:", e);
-        }
+        // Propagate terminal module failures. Swallowing this error made the
+        // caller record a false successful recovery with a zero/unknown
+        // balance; the recovery journal must remain fail-closed instead.
+        await real.recovery.waitForAllRecoveries();
       },
     },
 
@@ -1966,17 +2549,40 @@ export function adaptRealWallet(
             console.info(`[chama] mint redeem ${operationId}: submitted`);
             await waitForMintReissue(operationId);
           } catch (e) {
+            const failedOperationId = String(
+              (e as Error & { operationId?: string })?.operationId ?? "",
+            );
+            if (
+              (e as Error & { code?: string })?.code === "MINT_REISSUE_FAILED" &&
+              failedOperationId
+            ) {
+              await scheduleFailedMintReissueRecovery(failedOperationId);
+            }
             if (!isAlreadyReissuedError(e)) throw e;
             console.warn(
               `[chama] mint redeem: notes already reissued; searching local operation history ` +
                 `expected=${expectedMsats ?? "unknown"}`,
               e,
             );
-            const historicalOperationId = await resumeMintReissueFromHistory(
-              expectedMsats,
-              "already-reissued",
-              startedAtMs,
-            );
+            let historicalOperationId: string | null;
+            try {
+              historicalOperationId = await resumeMintReissueFromHistory(
+                expectedMsats,
+                "already-reissued",
+                startedAtMs,
+              );
+            } catch (historyError) {
+              const failedHistoryOperationId = String(
+                (historyError as Error & { operationId?: string })?.operationId ?? "",
+              );
+              if (
+                (historyError as Error & { code?: string })?.code === "MINT_REISSUE_FAILED" &&
+                failedHistoryOperationId
+              ) {
+                await scheduleFailedMintReissueRecovery(failedHistoryOperationId);
+              }
+              throw historyError;
+            }
             if (!historicalOperationId) {
               const err: any = new Error(
                 "Mint notes were consumed by the federation, but no local reissue operation was found to confirm wallet credit."
@@ -2029,7 +2635,7 @@ export function adaptRealWallet(
         onReceiveState?: (kind: LnReceiveStateKind) => void,
         meta?: ChamaOperationMeta,
       ) {
-        const gateway = await getTrustedLightningGateway("receive");
+        const gateway = await getTrustedLightningGateway("receive", amountMsats);
         const result = await real.lightning.createInvoice(
           amountMsats,
           description,
@@ -2046,10 +2652,21 @@ export function adaptRealWallet(
         });
         // v0.6.5: pass the listener through to the watch so the
         // orchestrator can react to `funded` etc. in real time.
-        armReceiveWatch(result.operation_id, true, onReceiveState);
+        armReceiveWatch(result.operation_id, true, onReceiveState, gateway);
         return {
           invoice: result.invoice,
           operationId: result.operation_id,
+          gateway: gateway?.gateway_id
+            ? {
+                id: gateway.gateway_id,
+                alias: gateway.lightning_alias,
+                api: gateway.api,
+                // Browser SDK trust metadata says the route is approved, not
+                // that this client has observed a successful receive through it.
+                provenPayable: false,
+                operationId: result.operation_id,
+              }
+            : undefined,
         };
       },
       async payInvoice(bolt11: string, meta?: ChamaOperationMeta) {
@@ -2417,12 +3034,14 @@ export interface CreateRealWalletOptions {
 // NoModificationAllowedError, and there's no API to release the orphaned
 // handle — it'll clear itself "eventually" but not during this session.
 //
-// Fix: rotate the OPFS filename. We store the chosen filename in
-// localStorage so the next page load reuses the same file (preserving
-// the WASM wallet's local state). If init fails, we generate a new
-// random filename and retry — losing no user data, because the
-// Nostr-backed mnemonic is what actually owns the funds; the OPFS file
-// is just a local cache.
+// Chama historically treated filename rotation as harmless because the
+// Nostr-backed mnemonic recreates the same keys. That was incomplete: the
+// OPFS database also carries mint state, including deterministic nonce
+// progress, and bearer ecash is not restored merely by reinstalling a seed.
+// A fresh/rotated database under an already-used seed must force federation
+// recovery before wallet use. The old file is preserved whenever a money
+// incident triggers rotation; an OPFS-lock rotation still fails closed later
+// if the recovery-capable join cannot complete.
 
 const FILENAME_STORAGE_KEY = "chama_fedimint_opfs_file_v1";
 const DEFAULT_FILENAME = "fedimint.db";
@@ -2536,6 +3155,8 @@ export async function createRealWallet(
     },
   });
   let walletReady = false;
+  let incidentRecovery: BrowserWalletRecoveryRequest | null = null;
+  let recoveryRollbackFilename: string | null = null;
   try {
     const { WalletDirector, WasmWorkerTransport } = await preloadRealWalletRuntime();
 
@@ -2550,6 +3171,36 @@ export async function createRealWallet(
   let filenameEntry = getStoredFilenameEntry(opts.storageScope);
   let filename = filenameEntry.filename;
   let filenameSource = filenameEntry.source;
+  incidentRecovery = opts.mnemonic?.length
+    ? consumeBrowserWalletRecoveryRequest(opts.storageScope)
+    : null;
+  recoveryRollbackFilename = incidentRecovery ? filename : null;
+  if (incidentRecovery) {
+    filename = rotateFilename(opts.storageScope);
+    filenameSource = opts.storageScope ? "scoped" : "legacy";
+    console.warn(
+      `[chama] Preserving '${recoveryRollbackFilename}' and opening '${filename}' ` +
+      `for forced recovery of receive ${incidentRecovery.operationId}`,
+    );
+    const existingJournalTrigger = incidentRecovery.trigger ?? "operation-proof";
+    if (!writeBrowserWalletRecoveryJournal(opts.storageScope, {
+      version: 1,
+      stage: "rotating",
+      operationId: incidentRecovery.operationId,
+      federationId: incidentRecovery.federationId,
+      trigger: existingJournalTrigger,
+      requestedAt: incidentRecovery.requestedAt,
+      updatedAt: Date.now(),
+      oldFilename: recoveryRollbackFilename ?? undefined,
+      newFilename: filename,
+    })) {
+      rememberFilename(opts.storageScope, recoveryRollbackFilename!);
+      requestBrowserWalletRecovery(opts.storageScope, incidentRecovery);
+      throw new Error(
+        "The browser refused to persist the recovery receipt; the old wallet file remains selected",
+      );
+    }
+  }
   let director: any;
   let transport: any;
 
@@ -2671,11 +3322,11 @@ export async function createRealWallet(
       );
 
       if (!allMatch) {
-        // Local seed differs from Nostr backup.
-        // The Nostr-backed seed is the source of truth — it's what was used
-        // to lock ecash in escrows. The local OPFS seed is just a cache that
-        // can go stale (filename rotation, browser clear, different device).
-        // Force-overwrite local with the Nostr seed so the user can claim.
+        // Local seed differs from the identity's Nostr-backed seed. Do not
+        // describe OPFS as a disposable cache: it may contain bearer ecash and
+        // mint nonce progress that the identity phrase alone does not restore.
+        // setMnemonic is attempted only before the balance-proven preservation
+        // policy below decides whether a new identity-scoped file is safe.
         console.warn(
           "[chama] Seed mismatch — local OPFS has a different seed than Nostr.",
           "Overwriting local seed with Nostr-backed seed (source of truth)."
@@ -2845,11 +3496,29 @@ export async function createRealWallet(
           invite_code?: string | null;
         }>;
       }).parseOobNotes(notes),
+      Boolean(opts.mnemonic?.length),
+      {
+        storageScope: opts.storageScope,
+        incident: incidentRecovery,
+        rollbackFilename: recoveryRollbackFilename,
+      },
     );
     walletReady = true;
     return adapted;
   } finally {
     if (!walletReady) {
+      // If the fresh recovery database could not even initialize, return the
+      // identity to its preserved file and retain the recovery request. A
+      // transient worker/OPFS failure must never silently strand the pointer
+      // on a half-created replacement.
+      if (incidentRecovery && recoveryRollbackFilename) {
+        updateBrowserWalletRecoveryJournal(opts.storageScope, {
+          stage: "inconclusive",
+          error: "Fresh recovery wallet initialization failed; restored the prior file pointer",
+        });
+        rememberFilename(opts.storageScope, recoveryRollbackFilename);
+        requestBrowserWalletRecovery(opts.storageScope, incidentRecovery);
+      }
       terminateCurrentWorker();
       releaseRuntimeLease();
     }

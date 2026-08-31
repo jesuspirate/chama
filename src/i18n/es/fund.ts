@@ -12,6 +12,10 @@ export const fund: Record<string, string> = {
   "fund.backToInvoice": "← Volver a la factura",
   "fund.balanceUpdatedClosing": "Saldo actualizado · cerrando…",
   "fund.bestForAlmostEveryone": "La mejor opción para casi todos. Suele liquidarse en segundos.",
+  "fund.browserLightningBlockedTitle": "LIGHTNING DEL NAVEGADOR EN PAUSA",
+  "fund.browserLightningBlockedShort": "Deshabilitado aquí tras fallos de recepción pagada antes de acuñar.",
+  "fund.browserLightningBlockedBody":
+    "Lightning y NWC de BLF están deshabilitados en el navegador tras facturas pagadas que fallaron antes de acuñar ecash. No se creará ninguna factura. Exporta exactamente {amount} sats como ecash desde Fedi y pégalo abajo, o usa una billetera Chama nativa.",
   "fund.cancelRecoverLater": "Cancelar y recuperar luego",
   "fund.cancelled": "CANCELADO",
   "fund.change": "CAMBIAR",

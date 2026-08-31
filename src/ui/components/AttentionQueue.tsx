@@ -22,6 +22,7 @@ import { needsYouReasonFor } from "../decisions.js";
 import { T } from "../theme.js";
 import { BitcoinAmount } from "./BitcoinAmount.js";
 import { VerticalIcon } from "./VerticalIcon.js";
+import type { LatestTradePointer } from "../latest-trade.js";
 import {
   getPins,
   getSnoozes,
@@ -46,7 +47,7 @@ export function AttentionQueue({
   onOpenTrade: (id: string) => void;
   /** Shown under the "all caught up" line when nothing needs action — a calm
    *  pointer to the user's latest / live trade. */
-  latestTrade?: EscrowState | null;
+  latestTrade?: LatestTradePointer | null;
   /** Money-safety actions live directly below this trade queue. When one is
    *  visible, do not contradict it with the broad "all caught up" empty copy. */
   suppressEmptyState?: boolean;

@@ -385,6 +385,13 @@ export interface RunClaimAndPayoutDeps {
    *  + redeem). May resolve before balance has fully settled — the
    *  orchestrator polls separately to handle the watchdog case. */
   claimAndRedeem: (escrowId: string) => Promise<unknown>;
+  /** Browser-safe bearer payout: reconstruct the released escrow note,
+   *  durably stash that exact note, then publish CLAIM. This deliberately
+   *  performs no browser-wallet mint reissue. */
+  claimAndExportEcash?: (escrowId: string) => Promise<{
+    notes: string;
+    amountMsats: number;
+  }>;
   /** Bound to bridge.payInvoice. Outbound Lightning send. Resolves with the
    *  durable LN-pay operationId (success ⇒ `success{preimage}` reached).
    *  Throws a coded error on failure: `code` is LN_PAY_INFLIGHT (submitted,
@@ -400,7 +407,11 @@ export interface RunClaimAndPayoutDeps {
   exportEcash?: (amountMsats: number) => Promise<{ notes: string; amountMsats: number }>;
   /** Pre-spend fail-closed guard. Returns a same-claim pending export to
    *  resume, throws if another export exists or durable storage is unavailable. */
-  prepareEcashExport?: () => { notes: string; amountMsats: number } | null;
+  prepareEcashExport?: () => {
+    notes: string;
+    amountMsats: number;
+    claimPublished?: boolean;
+  } | null;
   // ── 3.5.1 payout double-pay guard (Lightning only) ──────────────────────
   // All optional so existing callers/tests run unchanged (guard becomes a
   // no-op). Bound to payments/payout-journal.ts + bridge.awaitPayoutOutcome
@@ -463,6 +474,11 @@ export interface RunClaimAndPayoutOpts extends RunClaimAndPayoutDeps {
   /** Expected post-fee payout in msats. The wallet's balance after CLAIM
    *  should grow by this much, give or take 10% threshold tolerance. */
   expectedDeltaMsats: number;
+  /** The protocol CLAIM is already on relays (for example after a direct
+   * bearer-note export was returned to this wallet). If the current balance
+   * covers the requested payout, resume at payout without re-claiming or
+   * waiting through a growth window that can no longer occur. */
+  claimAlreadyPublished?: boolean;
   /** Whether to call addOrTouchLightningHandle on success. Set by the
    *  DestinationPicker — true when user tapped a saved row OR typed an
    *  address with the "Save for next time" toggle on. */
@@ -500,10 +516,10 @@ export async function runClaimAndPayout(
   // Ecash is a bearer payout. Refuse to reconstruct/redeem anything until
   // durable storage is proven writable, and resume an already-created note
   // instead of ever spending twice after a restart.
-  if (payoutKind === "ecash") {
+  if (opts.payoutKind === "ecash") {
     try {
       const pending = opts.prepareEcashExport?.() ?? null;
-      if (pending) {
+      if (pending && pending.claimPublished !== false) {
         emit({ kind: "ecash-ready", ...pending });
         return { kind: "ecash-ready", ...pending };
       }
@@ -511,6 +527,27 @@ export async function runClaimAndPayout(
       const error = errorMessage(e, "Ecash export cannot start safely");
       emit({ kind: "payout-failed", error, claimCompleted: false });
       return { kind: "payout-failed", error, claimCompleted: false };
+    }
+
+    // A browser ecash payout must never take the legacy
+    // escrow-note -> browser reissue -> fresh export route. The first reissue
+    // is precisely the failure boundary that can consume valid escrow notes
+    // without crediting the browser wallet. Export the already-reconstructed
+    // escrow bearer note directly instead.
+    if (!opts.claimAndExportEcash) {
+      const error = "Direct ecash claim is not available on this client. No sats moved.";
+      emit({ kind: "payout-failed", error, claimCompleted: false });
+      return { kind: "payout-failed", error, claimCompleted: false };
+    }
+    emit({ kind: "claiming" });
+    try {
+      const exported = await opts.claimAndExportEcash(opts.escrowId);
+      emit({ kind: "ecash-ready", ...exported });
+      return { kind: "ecash-ready", ...exported };
+    } catch (e) {
+      const error = errorMessage(e, "Couldn't prepare this ecash claim safely");
+      emit({ kind: "claim-failed", error });
+      return { kind: "claim-failed", error };
     }
   }
 
@@ -703,6 +740,9 @@ export async function runClaimAndPayout(
     expectedDeltaMsats: opts.expectedDeltaMsats,
   });
 
+  const resumedPublishedClaimCover = opts.claimAlreadyPublished === true
+    && balanceCoversPayout(baseline, opts.expectedDeltaMsats, payoutKind);
+
   // Phase 1: claim. Decrypt shares, SSS-combine, redeem ecash, publish
   // CLAIM. May resolve via:
   //   - synchronous success (balance already grew)
@@ -720,9 +760,10 @@ export async function runClaimAndPayout(
   let settlementFailedHard = false;
   let settlementFailedError = "";
   try {
-    await opts.claimAndRedeem(opts.escrowId);
+    if (!resumedPublishedClaimCover) await opts.claimAndRedeem(opts.escrowId);
     claimTrace("orchestrator-claim-returned", {
       escrowId: opts.escrowId,
+      resumedPublishedClaimCover,
     });
   } catch (e: any) {
     const error = errorMessage(e, "Claim failed");
@@ -789,7 +830,7 @@ export async function runClaimAndPayout(
   //            growth can never be observed again).
   emit({ kind: "confirming" });
   let grew: "grew" | "timeout" | "aborted" = "timeout";
-  if (!settlementFailedHard) {
+  if (!settlementFailedHard && !resumedPublishedClaimCover) {
     grew = await waitForBalanceGrowth({
       debugId: opts.escrowId,
       baselineMsats: baseline,
@@ -801,8 +842,10 @@ export async function runClaimAndPayout(
       now: opts.now,
     });
   }
-  let settledBy: "growth" | "cover" | null = grew === "grew" ? "growth" : null;
-  let coverBalanceMsats: number | undefined;
+  let settledBy: "growth" | "cover" | null = resumedPublishedClaimCover
+    ? "cover"
+    : grew === "grew" ? "growth" : null;
+  let coverBalanceMsats: number | undefined = resumedPublishedClaimCover ? baseline : undefined;
   if (!settledBy) {
     try { coverBalanceMsats = await opts.getBalance(); } catch {}
     if (

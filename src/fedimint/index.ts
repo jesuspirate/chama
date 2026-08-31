@@ -9,10 +9,17 @@ export * from "./arbiter-federation-store.js";
 export * from "./seed-manager.js";
 export {
   adaptRealWallet,
+  armBrowserWalletRecoveryForDiagnostics,
   createRealWallet,
   preloadRealWalletRuntime,
   resetLocalFedimintWallet,
 } from "./sdk-adapter.js";
+export {
+  readBrowserWalletRecoveryJournal,
+} from "./browser-wallet-recovery-journal.js";
+export type {
+  BrowserWalletRecoveryJournal,
+} from "./browser-wallet-recovery-journal.js";
 export {
   createNativeBridgeWallet,
   announceRemoteBridgeRevoked,

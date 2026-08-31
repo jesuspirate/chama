@@ -22,7 +22,6 @@ export function BrandHeader() {
           alt=""
           width={78}
           height={78}
-          fetchPriority="high"
           decoding="async"
           style={{
             display: "block",

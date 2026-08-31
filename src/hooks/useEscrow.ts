@@ -213,6 +213,7 @@ import {
   clearSeedCache,
   isTestnetMode,
   preloadRealWalletRuntime,
+  armBrowserWalletRecoveryForDiagnostics,
   resetLocalFedimintWallet,
   drainPendingRedemptions,
   stashPendingFunding,
@@ -246,12 +247,17 @@ import type { InvoiceGatewayInfo, LnReceiveStateKind, OnchainInfo } from "../fed
 import {
   clearPendingRedemption,
   listPendingRedemptions,
+  markPendingRedemptionsProbedDead,
   markPendingRedemptionCredited,
+  recordBearerProbe,
+  recordConsumedUncreditedNote,
+  stashPendingRedemption,
 } from "../fedimint/pending-redemptions.js";
 import {
   assertEcashExportWritable,
   clearEcashExport,
   getEcashExport,
+  markClaimEcashExportPublished,
   stashEcashExport,
 } from "../payments/ecash-exports.js";
 import {
@@ -401,6 +407,8 @@ import { syncArbiterEarnings } from "../arbiters/arbiter-earnings-sync.js";
 import {
   MIN_REAL_ATOMIC_FUNDING_MSATS,
   minimumAtomicFundingMessage,
+  minimumRealFundingMsatsForMethod,
+  minimumLightningFundingMessage,
 } from "../payments/funding-limits.js";
 import { setLocalStorageUserScope } from "../storage/user-scope.js";
 import { reconcileIdentity } from "../storage/identity-pin.js";
@@ -478,7 +486,6 @@ async function discoverAndLoadMyTrades(
   try {
     const ids = await client.discoverMyEscrowIds(pubkey);
     const known = new Set(getSavedEscrowIds(pubkey));
-    const expiredUnfunded = getExpiredUnfundedIds(pubkey);
 
     // Round 3b fix (a): RE-HEAL, don't just hydrate-new. The old code only
     // loaded brand-new ids (`fresh = !known && !forgotten`), so a KNOWN trade
@@ -499,10 +506,9 @@ async function discoverAndLoadMyTrades(
     const toHeal: { id: string; wasKnown: boolean }[] = [];
     for (const id of ids) {
       const wasKnown = known.has(id);
-      if (expiredUnfunded.has(id)) {
-        idDiags.push({ id, cls: wasKnown ? "known" : "fresh", outcome: "expired-unfunded (skipped)", discarded: true, terminal: true });
-        continue;
-      }
+      // Never skip a relay-discovered id solely because this device once saw
+      // it expire unfunded. A buyer can act on that still-relay-visible listing
+      // later; JOIN/LOCK/COMPLETE must be allowed to overturn the local marker.
       if (forgottenIds.has(id)) {
         forgottenCount++;
         idDiags.push({ id, cls: "forgotten", outcome: "(forgotten — skipped)" });
@@ -1162,7 +1168,10 @@ export interface UseEscrowActions {
   recoverMyBonds: () => Promise<{ recovered: number }>;
   /** Fetch every arbiter's current bond announcement for a community, chain-verified
    *  (the data source for the live-chama liveness score). */
-  fetchCommunityBonds: (community: string) => Promise<VerifiedBond[]>;
+  fetchCommunityBonds: (
+    community: string,
+    opts?: { allowCachedFallback?: boolean },
+  ) => Promise<VerifiedBond[]>;
   /** Arbiters currently excluded by a verified dual-signed fault attestation.
    *  Preference-only and fail-open — see the implementation. */
   fetchFaultExcludedArbiters: (candidates: readonly string[]) => Promise<string[]>;
@@ -3477,9 +3486,11 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       // Fetch (or generate + publish) the Fedimint seed from Nostr
       // *before* initializing the wallet. The seed is encrypted to the
       // user's own pubkey and stored as a replaceable kind-30078 event,
-      // so the wallet is recoverable on any device with access to the
-      // user's signer. In testnet/sim mode the mock wallets ignore the
-      // mnemonic, so we skip the Nostr round-trip.
+      // so the same wallet identity can be reconstructed on another device.
+      // A fresh database must still force federation recovery, and the seed
+      // does not recreate bearer ecash that existed only in the old database.
+      // In testnet/sim mode the mock wallets ignore the mnemonic, so we skip
+      // the Nostr round-trip.
       const skipMnemonic = isTestnetMode() || isSimModeOn();
       // Native/remote-bridge mode holds its OWN seed in the bridge's own database
       // and DISCARDS any mnemonic we pass (the wallet factory ignores it), so the
@@ -3541,6 +3552,37 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       const storageScope = !skipMnemonic
         ? (rememberedArbiterRoute?.storageScope ?? activePubkey)
         : null;
+
+      // Local field-verification route for an explicitly selected affected
+      // identity. It never ships in production and never enables Lightning;
+      // it only forces the same non-destructive recovery path while writing a
+      // durable receipt that can be inspected without risking another payment.
+      const diagnosticRecoveryRequested = (() => {
+        try {
+          return !!(import.meta as any).env?.DEV &&
+            new URLSearchParams(window.location.search)
+              .get("forceFedimintRecovery") === "1";
+        } catch {
+          return false;
+        }
+      })();
+      if (
+        diagnosticRecoveryRequested &&
+        storageScope &&
+        !skipMnemonic &&
+        !isNativeBridgeModeOn()
+      ) {
+        armBrowserWalletRecoveryForDiagnostics(storageScope);
+        const cleanUrl = new URL(window.location.href);
+        cleanUrl.searchParams.delete("forceFedimintRecovery");
+        window.history.replaceState({}, "", cleanUrl.toString());
+        const existing = fedimintRef.current;
+        if (existing) {
+          try { await existing.cleanup(); } catch {}
+          fedimintRef.current = null;
+          bridgeRef.current = null;
+        }
+      }
 
       const buildClient = () => new FedimintClient({
         onBalanceUpdate: (balance) => updateFedimint({ balanceMsats: balance }),
@@ -4335,9 +4377,11 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     if (
       !isSimModeOn() &&
       !isTestnetMode() &&
-      opts.amountMsats < MIN_REAL_ATOMIC_FUNDING_MSATS
+      opts.amountMsats < minimumRealFundingMsatsForMethod(opts.fundingMethod)
     ) {
-      const err = `${minimumAtomicFundingMessage()} Enter a positive amount for a real Lightning escrow.`;
+      const err = opts.fundingMethod === "ecash" || opts.fundingMethod === "onchain"
+        ? `${minimumAtomicFundingMessage()} Enter a positive amount for a real escrow.`
+        : minimumLightningFundingMessage();
       opts.onPhase({ kind: "lock-failed", error: err });
       return { kind: "lock-failed", error: err };
     }
@@ -4920,6 +4964,108 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       const { runClaimAndPayout } = await import("../payments/claim-and-payout.js");
       const onchainAddress = args.onchainAddress?.trim();
       const payoutKind = args.payoutKind ?? (onchainAddress ? "onchain" : "lightning");
+      // Browser Lightning and onchain claims are deliberately two-stage. The field-proven
+      // sequence is: persist the exact reconstructed bearer note, publish
+      // CLAIM, reabsorb that exact note with a strict balance bracket, then
+      // dispatch the selected outbound payment. Never return to the older
+      // one-step claimAndRedeem path that could consume the note without
+      // proving local credit. Onchain shares the proven custody boundary; only
+      // its already-tested federation peg-out runs after that proof.
+
+      const persistDirectClaimExport = async (id: string) => {
+        const existing = assertEcashExportWritable(id);
+        if (existing && (existing.source !== "claim" || existing.escrowId !== id)) {
+          throw new Error("A different ecash recovery copy is already pending. Resolve it before claiming.");
+        }
+        const exported = await bridge.claimAndExportEcash(id, (input) => {
+          const current = assertEcashExportWritable(id);
+          if (current) {
+            if (current.notes !== input.notes || current.amountMsats !== input.amountMsats) {
+              throw new Error("A different recovery copy already exists for this claim. No claim was published.");
+            }
+            return;
+          }
+          stashEcashExport({
+            notes: input.notes,
+            amountMsats: input.amountMsats,
+            source: "claim",
+            escrowId: id,
+            claimPublished: false,
+          });
+          const saved = getEcashExport();
+          if (
+            saved?.source !== "claim" ||
+            saved.escrowId !== id ||
+            saved.notes !== input.notes ||
+            saved.amountMsats !== input.amountMsats
+          ) {
+            throw new Error("Chama couldn't verify the ecash recovery copy. No claim was published.");
+          }
+        });
+        markClaimEcashExportPublished(id);
+        return {
+          ...getEcashExport()!,
+          notes: exported.notes,
+          amountMsats: exported.amountMsats,
+          notesHash: exported.notesHash,
+        };
+      };
+
+      const claimIntoBrowserWalletSafely = async (id: string) => {
+        const pending = await persistDirectClaimExport(id);
+        stashPendingRedemption({
+          escrowId: id,
+          oobNotes: pending.notes,
+          notesHash: pending.notesHash,
+          amountMsats: pending.amountMsats,
+        });
+        const result = await bridge.reabsorbBearerNotes({
+          oobNotes: pending.notes,
+          expectedMsats: pending.amountMsats,
+          context: "pending-export",
+          escrowId: id,
+        });
+        if (result.outcome === "recovered") {
+          markPendingRedemptionCredited(id);
+          clearEcashExport();
+          await refreshBalanceRef.current?.().catch(() => {});
+          return client.getState(id)!;
+        }
+
+        const error: any = new Error(
+          result.outcome === "consumed-uncredited"
+            ? "The federation consumed this claim note but Chama could not prove the wallet credit. The exact note was recorded for recovery; no Lightning payout was attempted."
+            : result.outcome === "dead"
+              ? "The federation rejected this claim note as no longer spendable. No Lightning payout was attempted."
+              : result.outcome === "foreign"
+                ? "This claim note belongs to a different federation. Switch to that federation and retry; the recovery copy is still saved."
+                : "Chama could not determine whether the claim note reached this wallet. The recovery copy is still saved and no Lightning payout was attempted.",
+        );
+        error.claimPublished = true;
+        if (result.outcome === "consumed-uncredited") {
+          recordConsumedUncreditedNote({
+            oobNotes: pending.notes,
+            amountMsats: pending.amountMsats,
+            reason: result.reason,
+            escrowId: id,
+          });
+          clearEcashExport();
+          error.settlementFailed = true;
+          error.code = "MINT_REISSUE_FAILED";
+        } else if (result.outcome === "dead") {
+          markPendingRedemptionsProbedDead(pending.notes, result.reason);
+          clearEcashExport();
+          error.settlementFailed = true;
+          error.code = "MINT_REISSUE_FAILED";
+        } else {
+          recordBearerProbe(
+            pending.notes,
+            result.outcome,
+            "reason" in result ? result.reason : undefined,
+          );
+        }
+        throw error;
+      };
       const result = await runClaimAndPayout({
         escrowId,
         bolt11: args.bolt11 ?? "onchain-payout",
@@ -4927,6 +5073,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
         saveAfter: args.saveAfter,
         addressUsed: args.addressUsed,
         payoutKind,
+        claimAlreadyPublished: client.getState(escrowId)?.status === EscrowStatus.CLAIMED,
         getBalance: () => fedimint.getBalance(),
         // Production claim+payout uses the raw bridge claim, not
         // claimAndRedeemAction, because claimAndRedeemAction emits the
@@ -4935,7 +5082,9 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
         // after redeemEcash returns.
         claimAndRedeem: async (id: string) => {
           try {
-            return await bridge.claimAndRedeem(id, { clearPendingOnRedeem: false });
+            return !isNativeBridgeModeOn() && (payoutKind === "lightning" || payoutKind === "onchain")
+              ? await claimIntoBrowserWalletSafely(id)
+              : await bridge.claimAndRedeem(id, { clearPendingOnRedeem: false });
           } catch (e: any) {
             const msg = e?.message || String(e);
             if (isStaleClaim(msg)) {
@@ -4945,6 +5094,12 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
             throw e;
           }
         },
+        claimAndExportEcash: payoutKind === "ecash"
+          ? async (id: string) => {
+              const exported = await persistDirectClaimExport(id);
+              return { notes: exported.notes, amountMsats: exported.amountMsats };
+            }
+          : undefined,
         completeClaim: async (id: string) => {
           await client.complete(id);
         },
@@ -5081,6 +5236,9 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     const hasClaimExport = pending?.source === "claim" && pending.escrowId === escrowId;
     if (!hasClaimExport) {
       throw new Error("This claim's pending ecash recovery copy was not found. Nothing was cleared.");
+    }
+    if (pending.claimPublished === false) {
+      throw new Error("This claim has not reached the relays yet. Reopen the trade and tap Claim to repair it before confirming import.");
     }
     const client = requireClient();
     try {
@@ -5984,9 +6142,13 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       }
     },
 
-    fetchCommunityBonds: async (community: string) => {
+    fetchCommunityBonds: async (
+      community: string,
+      opts?: { allowCachedFallback?: boolean },
+    ) => {
       const client = clientRef.current;
       if (!client) throw new Error("Not connected");
+      const allowCachedFallback = opts?.allowCachedFallback !== false;
       // Stamp-hardening (the flaky-bondedArbiters fix): this fetch feeds the
       // CREATE-time bonded stamp, where a silent empty result = silent
       // arbiter-revenue loss on the whole trade. So: (1) retry an EMPTY relay
@@ -6020,9 +6182,11 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
         }
         // Empty after the retry: either genuinely bond-less or a flap that
         // outlived the retry. Prefer recent verified truth while it's fresh.
-        return readCachedCommunityBonds(community) ?? verified;
+        return allowCachedFallback
+          ? readCachedCommunityBonds(community) ?? verified
+          : verified;
       } catch (e) {
-        const cached = readCachedCommunityBonds(community);
+        const cached = allowCachedFallback ? readCachedCommunityBonds(community) : null;
         if (cached) {
           console.warn(
             `[chama] fetchCommunityBonds(${community}): live fetch failed — using cached chain-verified set:`, e,

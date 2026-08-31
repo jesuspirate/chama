@@ -54,7 +54,7 @@ import {
   type AggregateRatings,
 } from "../decisions.js";
 import { AttentionQueue } from "../components/AttentionQueue.js";
-import { latestParticipantTrade } from "../latest-trade.js";
+import { latestParticipantTradePointer } from "../latest-trade.js";
 import { counterpartyToRate, type RatingThumb } from "../../reputation/ratings.js";
 import { RatingTap } from "../components/RatingTap.js";
 import {
@@ -115,6 +115,7 @@ export function MeScreen({
   themeMode,
   onThemeModeChange,
   myTrades,
+  hydratingTrades = false,
   allTrades,
   needsYouTrades,
   archivedTrades,
@@ -156,6 +157,9 @@ export function MeScreen({
   themeMode?: ThemeMode;
   onThemeModeChange?: (mode: ThemeMode) => void;
   myTrades: EscrowState[];
+  /** Participant chains are still converging from saved ids + relays. Hide
+   * trade-derived summaries until the settled snapshot is available. */
+  hydratingTrades?: boolean;
   allTrades?: EscrowState[];
   /** Canonical urgency-ranked queue from App. Includes chain-verified pending
    *  on-chain payouts in addition to ordinary reducer-derived work. */
@@ -275,7 +279,13 @@ export function MeScreen({
   // v2.4 #56 — a pending ecash export (generated but not yet confirmed
   // imported). Surfaced even when the balance reads 0, so the user can always
   // get back to the bearer note they minted.
-  const pendingEcashExport = getEcashExport();
+  const pendingEcashExportRecord = getEcashExport();
+  // A claim note is saved before its CLAIM relay event. If that publish was
+  // interrupted, keep the bearer string protected but do not present it as a
+  // finished payout; reopening Claim repairs the event first.
+  const pendingEcashExport = pendingEcashExportRecord?.claimPublished === false
+    ? null
+    : pendingEcashExportRecord;
   // v3.4.0 C13 — claims whose bearer notes automatic retry gave up on.
   // These sit in clearable localStorage while the chain reads COMPLETED;
   // without a loud surface, a data-clear or federation switch destroys
@@ -379,7 +389,7 @@ export function MeScreen({
     ?? selectNeedsYouTrades({ escrows: allTrades ?? myTrades, userPubkey: pubkey, nowSec });
   const tradeCounts = buildMeTradeCounts(myTrades, rankedNeedsYou);
   const visibleTrades = filterMeTrades(myTrades, rankedNeedsYou, tradeFilter);
-  const latestTrade = latestParticipantTrade(myTrades);
+  const latestTrade = latestParticipantTradePointer(myTrades, archivedTrades);
   const hasSellerDashboard = dashboard.sellerOpen.length > 0 || dashboard.sellerLive.length > 0;
   const hasVisibleMoneyAction =
     loudClaims.length > 0
@@ -436,13 +446,25 @@ export function MeScreen({
       {/* ⭐ ATTENTION HERO — the single prioritized "needs your attention" queue.
           One source of truth with the Me-tab badge (selectNeedsYouTrades),
           pin/snooze triage on top. Everything else is collapsed below. */}
-      <AttentionQueue
-        ranked={rankedNeedsYou}
-        pubkey={pubkey}
-        onOpenTrade={onOpenTrade}
-        latestTrade={latestTrade}
-        suppressEmptyState={hasVisibleMoneyAction}
-      />
+      {hydratingTrades ? (
+        <div style={{
+          background: T.card, border: `1px solid ${T.border}`,
+          borderRadius: T.r, padding: 18, marginBottom: 16,
+          color: T.muted, fontFamily: T.mono, fontSize: 11,
+          display: "flex", alignItems: "center", gap: 10,
+        }}>
+          <span style={{ display: "inline-block", animation: "spin 0.8s linear infinite" }}>↻</span>
+          <span>{t("me.hydratingTrades")}</span>
+        </div>
+      ) : (
+        <AttentionQueue
+          ranked={rankedNeedsYou}
+          pubkey={pubkey}
+          onOpenTrade={onOpenTrade}
+          latestTrade={latestTrade}
+          suppressEmptyState={hasVisibleMoneyAction}
+        />
+      )}
 
       {/* ── MONEY-SAFETY, always visible (never collapsed) ──────────────────
           Recovery / stranded-claim / lock-recovery / pending-ecash cards are
@@ -758,7 +780,7 @@ export function MeScreen({
       )}
 
       {/* ── MY TRADES (collapsed by default) — seller queue + full history ─── */}
-      <Accordion
+      {!hydratingTrades && <Accordion
         title={t("me.accMyTrades")}
         count={myTrades.length || undefined}
       >
@@ -786,10 +808,10 @@ export function MeScreen({
             onOpenArchivedTrade={onOpenArchivedTrade}
           />
         </div>
-      </Accordion>
+      </Accordion>}
 
       {/* ── ARBITER (collapsed) — rendered only for an arbiter / pool member ── */}
-      {dashboard.arbiterVisible && (
+      {!hydratingTrades && dashboard.arbiterVisible && (
         <Accordion
           title={t("me.accArbiter")}
           count={dashboard.arbiterDisputes.length || undefined}
@@ -828,6 +850,8 @@ export function MeScreen({
                   return (
                     <button
                       key={mode}
+                      type="button"
+                      aria-pressed={active}
                       onClick={() => onThemeModeChange(mode)}
                       style={{
                         padding: "6px 10px", borderRadius: 999,

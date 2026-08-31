@@ -1,10 +1,13 @@
 // fr/me — Session B fills this from src/i18n/en/me.ts (key set must match EXACTLY).
 export const me: Record<string, string> = {
+  "me.hydratingTrades": "Vérification de l’historique complet de vos échanges…",
   // Permanence de la boutique (#49) Niveau 1 — carte « votre boutique a expiré ».
   "me.storeLapsedTitleOne": "Votre boutique a expiré",
   "me.storeLapsedTitleMany": "{count} de vos boutiques ont expiré",
   "me.storeLapsedSubtitleBonded": "Votre vitrine s'est éteinte pendant votre absence. Renouvelez pour la rouvrir.",
   "me.storeLapsedSubtitleUnbonded": "Une boutique sans caution expire après 24 h. Renouvelez pour la remettre sur Parcourir.",
+  "me.storeLapsedSnooze": "Reporter 24 h",
+  "me.storeLapsedSnoozeHint": "Masquer ces boutiques expirées pendant 24 heures.",
   "me.storeRenew": "Renouveler",
   "me.storeRenewing": "Renouvellement…",
   "me.storeRenewed": "Boutique renouvelée — de retour sur Parcourir.",

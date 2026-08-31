@@ -2,7 +2,7 @@
 // ⚠ markDoneChatMessage output is NOT here on purpose — it rides the wire
 // (kind 38108) and stays byte-identical English in every UI language.
 export const labels: Record<string, string> = {
-  "labels.bubbleArbiterRefunded": "El árbitro reembolsó → de vuelta a {funder}",
+  "labels.bubbleArbiterRefunded": "El árbitro votó por reembolsar a {funder}",
   "labels.bubbleAskedRefund": "{voter} pidió un reembolso",
   "labels.bubbleDisputeOpened": "Disputa abierta",
   "labels.bubbleMarkedIt": "{voter} lo marcó como {done}",

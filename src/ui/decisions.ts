@@ -1210,6 +1210,12 @@ export function summarizePendingPayoutsForUi(inputs: {
    *  treated exactly like NO record — the "finish" bucket, balance-gated;
    *  the claim retry's own guard reconciles by escrow before re-paying. */
   getPayoutRecord: (escrowId: string) => { status: "intent" | "submitted" | "settled" } | null;
+  /** True when the claim's bearer note is already classified as consumed
+   *  without attributable wallet credit. That historical state is evidence,
+   *  not a resumable payout: the retired claim path must never advertise
+   *  "Finish your payout" for it merely because unrelated wallet balance
+   *  happens to cover the same amount. */
+  isClaimCreditUnresolved?: (escrowId: string) => boolean;
   balanceMsats: number;
   nowMs: number;
   /** The wallet's CURRENT federation. When provided, trades stamped with a
@@ -1226,6 +1232,7 @@ export function summarizePendingPayoutsForUi(inputs: {
     if (e.status !== EscrowStatus.CLAIMED) continue;
     const claimAtSec = latestUserClaimAtSec(e, inputs.userPubkey);
     if (claimAtSec === null) continue;
+    if (inputs.isClaimCreditUnresolved?.(e.id)) continue;
     const tradeFed = escrowFedId(e);
     if (currentFed && tradeFed && tradeFed !== currentFed) continue;
     if (inputs.nowMs - claimAtSec * 1000 > PENDING_PAYOUT_SUPPRESS_MAX_MS) continue;

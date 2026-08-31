@@ -19,6 +19,10 @@ export const fund: Record<string, string> = {
   "fund.backToInvoice": "← Back to invoice",
   "fund.balanceUpdatedClosing": "Balance updated · closing…",
   "fund.bestForAlmostEveryone": "Best for almost everyone. Usually settles in seconds.",
+  "fund.browserLightningBlockedTitle": "BROWSER LIGHTNING PAUSED",
+  "fund.browserLightningBlockedShort": "Disabled here after paid receives failed before minting.",
+  "fund.browserLightningBlockedBody":
+    "BLF browser Lightning and NWC funding are disabled after paid invoices failed before ecash minted. No invoice will be created. Export exactly {amount} sats as ecash from Fedi and paste it below, or use a native Chama wallet.",
   "fund.cancelRecoverLater": "Cancel & recover later",
   "fund.cancelled": "CANCELLED",
   "fund.change": "CHANGE",

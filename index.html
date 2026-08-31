@@ -49,22 +49,6 @@
     <link rel="preload" as="image" href="/icons/favicon-192x192.png" fetchpriority="high">
     <link rel="preload" as="image" href="/icons/chama-woven-trust-mark-transparent-64.png" fetchpriority="high">
     <link rel="preload" as="image" href="/icons/chama-color-cycle-boot-hd-v6.png" type="image/png" fetchpriority="high">
-    <link rel="preload" as="image" href="/icons/africa-globe-base.png" fetchpriority="high">
-    <script>
-      // The home picker is reached only after sign-in, so use boot time to
-      // fetch and decode its static globe instead of starting that work when
-      // the picker mounts. Keep a reference so the decoded bitmap stays warm.
-      (function () {
-        try {
-          var globe = new Image();
-          globe.decoding = "sync";
-          globe.fetchPriority = "high";
-          globe.src = "/icons/africa-globe-base.png";
-          window.__chamaGlobeWarm = globe;
-          if (globe.decode) globe.decode().catch(function () {});
-        } catch (e) {}
-      })();
-    </script>
     <!-- Self-hosted webfonts: DM Sans + JetBrains Mono (theme.ts declares them
          but they were never loaded → system fallback). Vendored woff2 under
          /fonts so the app renders with its real type offline/native (Tauri),

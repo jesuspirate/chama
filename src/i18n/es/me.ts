@@ -1,10 +1,13 @@
 // es/me — Session C fills this from src/i18n/en/me.ts (key set must match EXACTLY).
 export const me: Record<string, string> = {
+  "me.hydratingTrades": "Comprobando tu historial completo de operaciones…",
   // Permanencia de la tienda (#49) Nivel 1 — tarjeta «tu tienda venció».
   "me.storeLapsedTitleOne": "Tu tienda venció",
   "me.storeLapsedTitleMany": "{count} de tus tiendas vencieron",
   "me.storeLapsedSubtitleBonded": "Tu escaparate se apagó mientras estabas desconectado. Renueva para reabrirlo.",
   "me.storeLapsedSubtitleUnbonded": "Una tienda sin fianza vence tras 24 h. Renueva para volver a Explorar.",
+  "me.storeLapsedSnooze": "Posponer 24 h",
+  "me.storeLapsedSnoozeHint": "Oculta estas tiendas vencidas durante 24 horas.",
   "me.storeRenew": "Renovar",
   "me.storeRenewing": "Renovando…",
   "me.storeRenewed": "Tienda renovada — de vuelta en Explorar.",

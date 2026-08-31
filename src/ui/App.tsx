@@ -29,9 +29,15 @@ import {
   isSlicedTradeShape,
   TRADE_SLICING_ENABLED,
 } from "../escrow-engine/experimental-escrow-features.js";
-import { compareTradeChronology, participantTradeHistory } from "./latest-trade.js";
+import {
+  compareTradeChronology,
+  participantTradeHistory,
+  retiredListingIsStillSuperseded,
+  retiredTradeIndexEntryIsStillSuperseded,
+} from "./latest-trade.js";
 import {
   lapsedRenewableListings,
+  lapsedRenewalReminderVisible,
   autoRenewableListings,
   ownUnfundedListings,
   sellerIsBonded,
@@ -80,6 +86,10 @@ import {
 } from "../fedimint/index.js";
 import { getPayoutRecord } from "../payments/payout-journal.js";
 import {
+  browserLightningReceiveIsBlocked,
+  browserLightningReceiveProbeIsArmed,
+} from "../fedimint/lightning-receive-safety.js";
+import {
   computeArbiterPremium,
   funderPremiumMsats,
   selectPremiumPayTargets,
@@ -105,7 +115,8 @@ import {
 
 import {
   BROWSE_CATS, T, TRINITY_RING_ORDER,
-  applyThemeMode, readThemeMode, writeThemeMode, type ThemeMode,
+  activeResolvedTheme, applyThemeMode, readThemeMode, resolveThemeMode,
+  writeThemeMode, type ThemeMode,
 } from "./theme.js";
 import { useT, translate, getCurrentLang } from "../i18n/index.js";
 import {
@@ -196,7 +207,9 @@ import type { ReabsorbOutcome } from "../fedimint/reabsorb-bearer-notes.js";
 import { clearEcashExport, getEcashExport } from "../payments/ecash-exports.js";
 import {
   MIN_REAL_ATOMIC_FUNDING_MSATS,
+  MIN_REAL_LIGHTNING_FUNDING_MSATS,
   minimumAtomicFundingMessage,
+  minimumLightningFundingMessage,
 } from "../payments/funding-limits.js";
 import { SavedHandlesPanel } from "./panels/SavedHandlesPanel.js";
 import { PayoutDestinationsPanel } from "./panels/PayoutDestinationsPanel.js";
@@ -742,11 +755,22 @@ export default function App() {
   const [themeMode, setThemeModeState] = useState<ThemeMode>(readThemeMode);
   const [, setThemeEpoch] = useState(0);
   const setThemeMode = (mode: ThemeMode) => {
+    // Selected-state first: the pill responds on the same React update even if
+    // persistence or document-chrome work is unusually slow in this browser.
+    setThemeModeState(mode);
     writeThemeMode(mode);
     applyThemeMode(mode);
-    setThemeModeState(mode);
     setThemeEpoch(e => e + 1);
   };
+  // Vite Fast Refresh can preserve App state while re-evaluating theme.ts,
+  // whose module initializer reapplies localStorage to the mutable T palette.
+  // That used to produce the impossible screenshot state "light page, Dark
+  // pill" until another unrelated render happened. Reconcile before the tree
+  // reads T so selected mode and painted palette can never diverge, in dev or
+  // after any future external state restoration.
+  if (activeResolvedTheme() !== resolveThemeMode(themeMode)) {
+    applyThemeMode(themeMode);
+  }
   const storedActiveInvite = getActiveInvite();
   const liveActiveInvite = resolveLiveActiveInvite({
     joined: fedimint.joined,
@@ -1266,9 +1290,9 @@ export default function App() {
 
   const visibleTrades = [...escrows.values()]
     .filter(s => {
-      // Superseded (retired) own listings must not surface as live trades in
-      // Browse, Me, or the attention queue — they were replaced by a renewal.
-      if (retiredIds.has(s.id)) return false;
+      // Superseded untouched listings stay hidden, but buyer activity upgrades
+      // an old relay-visible listing into a real trade that must resurface.
+      if (retiredListingIsStillSuperseded(s, retiredIds)) return false;
       if (["CREATED", "LOCKED", "APPROVED"].includes(s.status)) return true;
       if (s.createdAt && (now - s.createdAt) > HIDE_AFTER) return false;
       return true;
@@ -1286,13 +1310,13 @@ export default function App() {
   // synchronous scoped-localStorage read; recomputed as escrows load.
   const archivedTrades = pubkey
     ? archivedTradeEntries(myTrades.map((trade) => trade.id))
-        .filter((entry) => !retiredIds.has(entry.id))
+        .filter((entry) => !retiredTradeIndexEntryIsStillSuperseded(entry, retiredIds))
     : [];
 
   // ── Store permanence (#49) ─────────────────────────────────────────────
   // Tier 1: the seller's own listings that lapsed UNFUNDED — feed the manual
   // "your store lapsed — renew?" card. Cheap pure filter over loaded escrows.
-  const lapsedListings = pubkey
+  const rawLapsedListings = pubkey
     ? lapsedRenewableListings(escrows.values(), pubkey, now, retiredIds)
     : [];
   const [renewingId, setRenewingId] = useState<string | null>(null);
@@ -1302,6 +1326,40 @@ export default function App() {
   // once per connect via the existing fetchCommunityBonds/esplora path.
   const [sellerBonded, setSellerBonded] = useState(false);
   const [bondTip, setBondTip] = useState<number | null>(null);
+  const lapsedStoreSnoozeKey = pubkey
+    ? `chama_lapsed_store_snooze_v1_${pubkey.toLowerCase()}`
+    : null;
+  const [lapsedStoreSnoozeUntil, setLapsedStoreSnoozeUntil] = useState(0);
+  useEffect(() => {
+    if (!lapsedStoreSnoozeKey || typeof localStorage === "undefined") {
+      setLapsedStoreSnoozeUntil(0);
+      return;
+    }
+    try {
+      const value = Number(localStorage.getItem(lapsedStoreSnoozeKey) ?? 0);
+      setLapsedStoreSnoozeUntil(Number.isFinite(value) ? value : 0);
+    } catch {
+      setLapsedStoreSnoozeUntil(0);
+    }
+  }, [lapsedStoreSnoozeKey]);
+  const snoozeLapsedStores = () => {
+    if (!lapsedStoreSnoozeKey) return;
+    const until = Date.now() + 24 * 60 * 60 * 1000;
+    try { localStorage.setItem(lapsedStoreSnoozeKey, String(until)); } catch {}
+    setLapsedStoreSnoozeUntil(until);
+  };
+  // A Store is a bonded storefront privilege. Keep its old lapsed offers out
+  // of Me while the commitment bond is inactive; they reappear automatically
+  // when the verified bond returns. Non-store renewal lanes keep their own
+  // existing policy. A bonded seller can snooze the resurfaced reminder 24h.
+  const lapsedListings = rawLapsedListings.filter((listing) => {
+    if (myTradesLoading) return false;
+    return lapsedRenewalReminderVisible(listing, {
+      bonded: sellerBonded,
+      snoozedUntilMs: lapsedStoreSnoozeUntil,
+      nowMs: Date.now(),
+    });
+  });
   // Store renewal is an explicit, per-identity preference. Older builds
   // silently treated every bonded seller as opted in; defaulting OFF makes the
   // behavior visible and consensual while leaving manual renewal untouched.
@@ -1382,10 +1440,18 @@ export default function App() {
   // (fail-soft — any hiccup leaves them unbonded ⇒ manual renew only).
   useEffect(() => {
     if (!connected || !pubkey || !browseCommunity) { setSellerBonded(false); setBondTip(null); return; }
+    // Never carry a previous identity/community's positive bond result across
+    // the live verification window. Present-tense storefront privileges fail
+    // closed; the assignment cache is intentionally not authoritative here.
+    setSellerBonded(false);
+    setBondTip(null);
     let cancelled = false;
     void (async () => {
       try {
-        const [bonds, tip] = await Promise.all([actions.fetchCommunityBonds(browseCommunity), actions.getBondChainTip()]);
+        const [bonds, tip] = await Promise.all([
+          actions.fetchCommunityBonds(browseCommunity, { allowCachedFallback: false }),
+          actions.getBondChainTip(),
+        ]);
         if (!cancelled) { setSellerBonded(sellerIsBonded(bonds, pubkey)); setBondTip(tip); }
       } catch { if (!cancelled) setSellerBonded(false); }
     })();
@@ -1687,6 +1753,14 @@ export default function App() {
         escrows: escrows.values(),
         userPubkey: pubkey,
         getPayoutRecord,
+        isClaimCreditUnresolved: (escrowId) => listPendingRedemptions().some(entry =>
+          entry.escrowId === escrowId
+          && (
+            entry.unresolvedCredit === true
+            || entry.probeVerdict === "consumed-uncredited"
+            || entry.probeVerdict === "dead"
+          )
+        ),
         balanceMsats: fedimint.balanceMsats ?? 0,
         nowMs: Date.now(),
         currentFederationId: fedimint.federationId,
@@ -2426,6 +2500,19 @@ export default function App() {
     if (!id || !/^sm_[a-z0-9_]+$/i.test(id)) return;
 
     urlEscrowOpenAttemptedRef.current = true;
+    // A deep link is a one-shot navigation intent, not a durable startup
+    // preference. Older notification clicks left ?trade=... in the address,
+    // so every later reload/nsec login reopened the same failed trade and
+    // looked like a recovery loop. Consume both aliases without reloading;
+    // the trade remains available through Me and the attention queue.
+    const cleanUrl = new URL(window.location.href);
+    cleanUrl.searchParams.delete("escrowId");
+    cleanUrl.searchParams.delete("trade");
+    window.history.replaceState(
+      window.history.state,
+      "",
+      `${cleanUrl.pathname}${cleanUrl.search}${cleanUrl.hash}`,
+    );
     setDetailBackView("browse");
     setSelectedId(id);
     setView("detail");
@@ -2925,6 +3012,15 @@ export default function App() {
           getOnchainInfo={actions.getOnchainInfo}
           lockAndPublish={actions.lockAndPublish}
           disableNwc={fediWebView}
+          browserLightningBlocked={
+            !fediWebView &&
+            !isNativeBridgeModeOn() &&
+            browserLightningReceiveIsBlocked(fedimint.federationId)
+          }
+          browserLightningProbeArmed={browserLightningReceiveProbeIsArmed(
+            fedimint.federationId,
+            pendingFundAndLock.amountMsats + (pendingFundAndLock.premiumMsats ?? 0),
+          )}
           onClose={(terminal) => {
             const { resolve } = pendingFundAndLock;
             setPendingFundAndLock(null);
@@ -3112,7 +3208,14 @@ export default function App() {
           fiatCurrency={pendingClaim.fiatCurrency}
           claimAndPayout={actions.claimAndPayout}
           confirmClaimEcashExport={actions.confirmClaimEcashExport}
-          claimTarget={hasFediInternalEcash() ? "ecash" : "lightning"}
+          // Browser Lightning/onchain now use the field-proven staged custody
+          // path: persist exact note → CLAIM → strict reabsorb → payout.
+          // Fedi internal still receives the note through its host API.
+          claimTarget={
+            hasFediInternalEcash()
+              ? "ecash"
+              : "lightning"
+          }
           probeFederation={actions.probeFederation}
           onClose={(terminal) => {
             const { resolve } = pendingClaim;
@@ -3425,6 +3528,10 @@ export default function App() {
             fundingInProgress={midFunding}
             claimBlockedReason={selectedClaimBlockedReason}
             disableNwc={fediWebView}
+            forceClaimMethodChooser={
+              !fediWebView
+              && !isNativeBridgeModeOn()
+            }
             onBack={() => { setView(detailBackView); setSelectedId(null); maybeSnapBackHome(); }}
             onVote={(outcome) => actions.vote(selectedId!, outcome).then(
               () => setToast({ message: t("app.votedOutcome", { outcome }), type: "success" }),
@@ -3635,10 +3742,10 @@ export default function App() {
               if (
                 !simOn &&
                 !isTestnetMode() &&
-                opts.amountMsats < MIN_REAL_ATOMIC_FUNDING_MSATS
+                opts.amountMsats < MIN_REAL_LIGHTNING_FUNDING_MSATS
               ) {
                 setToast({
-                  message: `${minimumAtomicFundingMessage()} ${t("app.enterPositiveAmount")}`,
+                  message: minimumLightningFundingMessage(),
                   type: "error",
                 });
                 return { ok: false, error: "Amount too small" };
@@ -3968,8 +4075,9 @@ export default function App() {
             onAutoRenewChange={changeStoreAutoRenew}
             renewingId={renewingId}
             onRenew={renewListing}
+            onSnooze={snoozeLapsedStores}
           />
-          <RecurringBillCard series={recurringSeries} onStop={cancelRecurring} />
+          {!myTradesLoading && <RecurringBillCard series={recurringSeries} onStop={cancelRecurring} />}
           <MeScreen
             pubkey={pubkey!}
             kind0Enabled={kind0Enabled}
@@ -3977,6 +4085,7 @@ export default function App() {
             themeMode={themeMode}
             onThemeModeChange={setThemeMode}
             myTrades={myTrades}
+            hydratingTrades={myTradesLoading}
             allTrades={visibleTrades}
             needsYouTrades={needsYouTrades}
             archivedTrades={archivedTrades}
@@ -4214,7 +4323,7 @@ export default function App() {
         </>
       )}
 
-      {!detailMode && <BottomNav active={activeTab} onSelect={switchTab} badges={{ me: needsYouCount }} />}
+      {!detailMode && <BottomNav active={activeTab} onSelect={switchTab} badges={{ me: myTradesLoading ? 0 : needsYouCount }} />}
 
       {/* v4.1 C1: one-time post-sign-in tour. Only on the Browse home screen
           (FABs mounted), never over the create sheet or a detail view. */}

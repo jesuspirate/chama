@@ -366,6 +366,18 @@ export function lapsedRenewableListings(
   return out;
 }
 
+/** Whether a lapsed listing belongs in the Me reminder right now. Storefront
+ * reminders are a bonded-seller surface: old stores stay dormant while the
+ * bond is inactive, automatically return with the verified bond, and may be
+ * snoozed locally. Other renewal lanes retain their existing visibility. */
+export function lapsedRenewalReminderVisible(
+  state: EscrowState,
+  opts: { bonded: boolean; snoozedUntilMs?: number; nowMs: number },
+): boolean {
+  if (renewalLaneFor(state) !== "store") return true;
+  return opts.bonded && opts.nowMs >= (opts.snoozedUntilMs ?? 0);
+}
+
 /** Every one of the user's OWN never-funded listings (any status short of a
  *  funded/locked/settled trade), excluding already-retired ids. Feeds the
  *  "Clear my unfunded listings" action — a one-tap retire of the seller's whole

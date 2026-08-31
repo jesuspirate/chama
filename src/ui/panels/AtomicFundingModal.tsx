@@ -21,6 +21,10 @@ import { CopyButton } from "../components/CopyButton.js";
 import { BitcoinAmount } from "../components/BitcoinAmount.js";
 import { isSimModeOn, setSimMode } from "../../sim/simMode.js";
 import { makeLightningInvoiceQrPayload } from "../../payments/lightning-qr.js";
+import {
+  MIN_REAL_LIGHTNING_FUNDING_SATS,
+  minimumLightningFundingMessage,
+} from "../../payments/funding-limits.js";
 import { isNwcConnectionString } from "../../payments/nwc.js";
 import {
   addOrTouchSavedNwcConnection,
@@ -112,6 +116,12 @@ export interface AtomicFundingModalProps {
   /** Hide NWC in environments where funding must stay on an internal
    *  wallet route, e.g. Fedi Mini-App. */
   disableNwc?: boolean;
+  /** Fail-closed product gate for a browser receive route with confirmed
+   *  paid-invoice claim failures. The data layer independently enforces it. */
+  browserLightningBlocked?: boolean;
+  /** Localhost-only, one-invoice diagnostic permission. This opens manual
+   *  Lightning only; NWC remains behind the product circuit breaker. */
+  browserLightningProbeArmed?: boolean;
   /** Closed when the modal terminates (success or user cancel). The
    *  consumer can read the terminal kind to decide post-modal navigation
    *  (e.g. show success toast on locked, error toast on lock-failed). */
@@ -168,6 +178,8 @@ export function AtomicFundingModal({
   getOnchainInfo,
   lockAndPublish,
   disableNwc = false,
+  browserLightningBlocked = false,
+  browserLightningProbeArmed = false,
   onClose,
 }: AtomicFundingModalProps) {
   const { t } = useT();
@@ -414,7 +426,15 @@ export function AtomicFundingModal({
     setRetryToken((t) => t + 1);
   };
 
+  const manualLightningBlocked = browserLightningBlocked && !browserLightningProbeArmed;
+
   const handleSelectMethod = (method: "lightning" | "onchain") => {
+    if (method === "lightning" && manualLightningBlocked) return;
+    if (
+      method === "lightning" &&
+      !isSimModeOn() &&
+      amountSats < MIN_REAL_LIGHTNING_FUNDING_SATS
+    ) return;
     if (method === "onchain" && onchainInfoState.kind !== "ready") return;
     if (method === "onchain" && onchainInfoState.kind === "ready") {
       const minimumDepositSats = Math.max(
@@ -432,6 +452,8 @@ export function AtomicFundingModal({
   };
 
   const handleSelectNwc = (connectionString: string, remember: boolean) => {
+    if (browserLightningBlocked) return;
+    if (!isSimModeOn() && amountSats < MIN_REAL_LIGHTNING_FUNDING_SATS) return;
     if (!isNwcConnectionString(connectionString)) return;
     setSelectedNwcConnection(connectionString.trim());
     setRememberNwc(remember);
@@ -513,6 +535,8 @@ export function AtomicFundingModal({
             onEcashInputChange={setEcashInput}
             onSelectEcash={handleSelectEcash}
             disableNwc={disableNwc}
+            browserLightningBlocked={manualLightningBlocked}
+            browserNwcBlocked={browserLightningBlocked}
           />
         )}
 
@@ -655,6 +679,8 @@ function FundingMethodChooser({
   onEcashInputChange,
   onSelectEcash,
   disableNwc,
+  browserLightningBlocked,
+  browserNwcBlocked,
 }: {
   amountSats: number;
   onchainInfoState:
@@ -672,6 +698,8 @@ function FundingMethodChooser({
   onEcashInputChange: (value: string) => void;
   onSelectEcash: () => void;
   disableNwc?: boolean;
+  browserLightningBlocked?: boolean;
+  browserNwcBlocked?: boolean;
 }) {
   const { t } = useT();
   const onchainGate = (() => {
@@ -713,6 +741,10 @@ function FundingMethodChooser({
     };
   })();
   const nwcReady = isNwcConnectionString(nwcInput);
+  const lightningTooSmall =
+    !isSimModeOn() && amountSats < MIN_REAL_LIGHTNING_FUNDING_SATS;
+  const lightningDisabled = lightningTooSmall || browserLightningBlocked;
+  const nwcDisabled = lightningTooSmall || browserNwcBlocked;
   // #65: above the LN routing ceiling, a single Lightning payment likely won't
   // route through the federation's gateway. Warn + steer to on-chain (which is
   // available here whenever onchainGate is not disabled). Never hard-blocks.
@@ -751,23 +783,48 @@ function FundingMethodChooser({
 
         <button
           type="button"
+          disabled={lightningDisabled}
           onClick={() => onSelect("lightning")}
           style={{
             width: "100%", minHeight: 64, padding: "14px 16px",
             borderRadius: T.r, background: T.accent,
             border: `1px solid ${T.accent}`, color: "#000",
-            cursor: "pointer", fontFamily: T.mono, fontSize: 13,
+            cursor: lightningDisabled ? "not-allowed" : "pointer",
+            opacity: lightningDisabled ? 0.55 : 1,
+            fontFamily: T.mono, fontSize: 13,
             fontWeight: 900, letterSpacing: 0.5,
           }}
         >
           {t("fund.useFediWalletBefore")} <BitcoinAmount sats={amountSats} size={13} gap={4} glyphScale={1.18} color="#000" glyphColor="#000" />
         </button>
+        {browserLightningBlocked && (
+          <div style={{ marginTop: 8, color: T.red, fontFamily: T.mono, fontSize: 10, lineHeight: 1.45 }}>
+            {t("fund.browserLightningBlockedBody", { amount: amountSats.toLocaleString() })}
+          </div>
+        )}
+        {!browserLightningBlocked && lightningTooSmall && (
+          <div style={{ marginTop: 8, color: T.red, fontFamily: T.mono, fontSize: 10, lineHeight: 1.45 }}>
+            {minimumLightningFundingMessage()}
+          </div>
+        )}
       </div>
     );
   }
 
   return (
     <div>
+      {browserLightningBlocked && (
+        <div style={{
+          marginBottom: 12, padding: "12px 14px", borderRadius: T.r,
+          background: T.redDim, border: `1px solid ${T.red}66`,
+          color: T.red, fontFamily: T.mono, fontSize: 10.5, lineHeight: 1.5,
+        }}>
+          <div style={{ fontWeight: 900, letterSpacing: 0.7, marginBottom: 5 }}>
+            {t("fund.browserLightningBlockedTitle")}
+          </div>
+          <div>{t("fund.browserLightningBlockedBody", { amount: amountSats.toLocaleString() })}</div>
+        </div>
+      )}
       {largeAmount && (
         <div style={{
           marginBottom: 12, padding: "10px 12px", borderRadius: T.rs,
@@ -808,12 +865,15 @@ function FundingMethodChooser({
               <button
                 type="button"
                 key={connection.id}
+                disabled={nwcDisabled}
                 onClick={() => onSelectNwc(connection.connectionString, true)}
                 style={{
                   width: "100%", padding: "12px 14px", borderRadius: T.r,
                   background: T.accentDim, border: `1px solid ${T.accent}66`,
                   color: T.text, fontFamily: T.mono, fontSize: 12,
-                  cursor: "pointer", display: "flex",
+                  cursor: nwcDisabled ? "not-allowed" : "pointer",
+                  opacity: nwcDisabled ? 0.55 : 1,
+                  display: "flex",
                   justifyContent: "space-between", alignItems: "center",
                   gap: 12,
                 }}
@@ -883,14 +943,17 @@ function FundingMethodChooser({
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
         <button
           type="button"
+          disabled={lightningDisabled}
           onClick={() => onSelect("lightning")}
           style={{
             minHeight: 118, padding: 12, borderRadius: T.r,
             background: T.accentDim, border: `1px solid ${T.accent}66`,
-            color: T.text, cursor: "pointer", textAlign: "left",
+            color: T.text,
+            cursor: lightningDisabled ? "not-allowed" : "pointer",
+            textAlign: "left",
             // #65: de-emphasize LN above the routing ceiling (still tappable —
             // never hard-blocked; the user may proceed at their own risk).
-            opacity: onchainSteerable ? 0.6 : 1,
+            opacity: lightningDisabled ? 0.45 : onchainSteerable ? 0.6 : 1,
           }}
         >
           <div style={{ fontSize: 20, marginBottom: 8 }}>⚡</div>
@@ -898,7 +961,11 @@ function FundingMethodChooser({
             {t("fund.lnFast")}
           </div>
           <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono, lineHeight: 1.45 }}>
-            {t("fund.bestForAlmostEveryone")}
+            {browserLightningBlocked
+              ? t("fund.browserLightningBlockedShort")
+              : lightningTooSmall
+              ? minimumLightningFundingMessage()
+              : t("fund.bestForAlmostEveryone")}
           </div>
         </button>
         <button
@@ -993,15 +1060,15 @@ function FundingMethodChooser({
             {t("fund.rememberNwcWallet")}
           </label>
           <button
-            disabled={!nwcReady}
+            disabled={!nwcReady || nwcDisabled}
             onClick={() => onSelectNwc(nwcInput, rememberNwc)}
             style={{
               width: "100%", padding: "11px 12px", borderRadius: T.rs,
-              background: nwcReady ? T.accent : T.card,
-              border: `1px solid ${nwcReady ? T.accent : T.border}`,
-              color: nwcReady ? "#000" : T.muted,
+              background: nwcReady && !nwcDisabled ? T.accent : T.card,
+              border: `1px solid ${nwcReady && !nwcDisabled ? T.accent : T.border}`,
+              color: nwcReady && !nwcDisabled ? "#000" : T.muted,
               fontFamily: T.mono, fontSize: 11, fontWeight: 800,
-              cursor: nwcReady ? "pointer" : "not-allowed",
+              cursor: nwcReady && !nwcDisabled ? "pointer" : "not-allowed",
             }}
           >
             {t("fund.autoPayWithNwc")}
@@ -2060,13 +2127,15 @@ function LockFailedState({
     /native_fedimint_bridge_unavailable|Native Fedimint bridge is enabled but unreachable/i.test(error);
   const isWalletVerifiableGatewayError =
     /wallet-verifiable Lightning receive gateway/i.test(error);
+  const isReceiveRoutePaused =
+    /receive_federation_route_paused|Lightning funding is temporarily paused/i.test(error);
   const isReceiveRejection =
     /Federation didn't accept the payment|canceled:|claim_rejected|before Chama received ecash/i.test(error);
   const diagnostics = extractChamaDiagnostics(error);
   const showSimFallback = isWalletVerifiableGatewayError && !isNativeBridgeUnavailable && !isSimModeOn();
   const title = isNativeBridgeUnavailable
     ? t("fund.nativeBridgeUnavailableTitle")
-    : isWalletVerifiableGatewayError
+    : isWalletVerifiableGatewayError || isReceiveRoutePaused
     ? t("fund.fundingUnavailableTitle")
     : isReceiveRejection
       ? t("fund.receiveRejectedTitle")

@@ -139,6 +139,7 @@ import {
   resolveListingTenure,
   isSellerOwnedListing,
   lapsedRenewableListings,
+  lapsedRenewalReminderVisible,
   BONDED_TENURE_SECONDS,
   UNBONDED_TENURE_SECONDS,
 } from "./listing-renewal.js";
@@ -261,11 +262,22 @@ import {
 } from "../fedimint/arbiter-federation-store.js";
 import {
   adaptRealWallet,
+  armBrowserWalletRecoveryForDiagnostics,
   resetLocalFedimintWallet,
   classifyPayOutcome,
   assertBrowserSafeOobTimeoutSecs,
   MAX_BROWSER_OOB_TIMEOUT_SECS,
 } from "../fedimint/sdk-adapter.js";
+import {
+  readBrowserWalletRecoveryJournal,
+  shouldCheckBrowserWalletRecovery,
+} from "../fedimint/browser-wallet-recovery-journal.js";
+import {
+  BROWSER_LIGHTNING_CLAIM_PROBE_KEY,
+  browserLightningClaimFieldTestIsEnabled,
+  browserLightningClaimProbeIsArmed,
+  consumeBrowserLightningClaimProbe,
+} from "../fedimint/lightning-receive-safety.js";
 import {
   clearAllPendingRedemptions,
   clearPendingRedemptionsMatchingNotes,
@@ -579,7 +591,11 @@ import {
 import {
   MIN_REAL_ATOMIC_FUNDING_MSATS,
   MIN_REAL_ATOMIC_FUNDING_SATS,
+  MIN_REAL_LIGHTNING_FUNDING_MSATS,
+  MIN_REAL_LIGHTNING_FUNDING_SATS,
   minimumAtomicFundingMessage,
+  minimumLightningFundingMessage,
+  minimumRealFundingMsatsForMethod,
 } from "../payments/funding-limits.js";
 import {
   parseBolt11Msats as parsePaymentBolt11Msats,
@@ -594,7 +610,11 @@ import {
   SATS_TRACE_STORAGE_KEY,
 } from "../payments/sats-trace.js";
 import { makeLightningInvoiceQrPayload } from "../payments/lightning-qr.js";
-import { EscrowFedimintBridge, resolveLockBuyerPubkey } from "../fedimint/escrow-bridge.js";
+import {
+  EscrowFedimintBridge,
+  persistThenPublishDirectEcash,
+  resolveLockBuyerPubkey,
+} from "../fedimint/escrow-bridge.js";
 import {
   DEFAULT_NATIVE_BRIDGE_COMMUNITY,
   NATIVE_BRIDGE_COMMUNITY_KEY,
@@ -717,7 +737,15 @@ import {
   assignableBondedArbiters,
 } from "../arbiters/exposure.js";
 import { notificationForTransition, chatNotificationFor, buyerInterestNotificationFor, newListingNotificationFor, pendingOnchainArbiterPubkey, tradeDmNotificationFor } from "../notifications/trade-notifications.js";
-import { latestParticipantTrade, participantTradeHistory, tradeActivityAt, tradeCreatedAt } from "../ui/latest-trade.js";
+import {
+  latestParticipantTrade,
+  latestParticipantTradePointer,
+  participantTradeHistory,
+  retiredTradeIndexEntryIsStillSuperseded,
+  tradeActivityAt,
+  tradeCreatedAt,
+  tradeEnteredAt,
+} from "../ui/latest-trade.js";
 import { catchUpPrev, readSeenStatus, recordSeenStatus } from "../notifications/notify-service.js";
 import {
   RATING_KIND,
@@ -2125,6 +2153,18 @@ console.log("\n── ATOMIC LOCK (CREATED → LOCKED, no FUNDED hop) ──");
       "store: lapsedRenewableListings surfaces the seller's lapsed store");
     assert(lapsedRenewableListings([listing], SELLER_PK, NOW_S).length === 0,
       "store: a not-yet-lapsed listing isn't on the manual-renew card");
+    assert(!lapsedRenewalReminderVisible(listing, {
+      bonded: false, nowMs: lapsedAt * 1000,
+    }), "store: an old lapsed storefront stays dormant while its seller is unbonded");
+    assert(lapsedRenewalReminderVisible(listing, {
+      bonded: true, nowMs: lapsedAt * 1000,
+    }), "store: the lapsed storefront reminder resurrects when the seller is bonded again");
+    assert(!lapsedRenewalReminderVisible(listing, {
+      bonded: true, snoozedUntilMs: lapsedAt * 1000 + 60_000, nowMs: lapsedAt * 1000,
+    }), "store: a bonded seller can snooze the resurfaced reminder");
+    assert(lapsedRenewalReminderVisible({ ...listing, category: "p2p-trade" } as EscrowState, {
+      bonded: false, snoozedUntilMs: Number.MAX_SAFE_INTEGER, nowMs: lapsedAt * 1000,
+    }), "store: bond/snooze visibility never leaks into non-store renewal lanes");
     // Re-publish params: identical terms, NO longer expiry (trade timeout stays).
     const rp = buildRenewCreateParams(listing);
     assert(rp.description === listing.description && rp.amountMsats === 20_000_000,
@@ -12385,6 +12425,47 @@ console.log("\n── claim incomplete-LOCK rehydrate ──");
   }
 }
 
+// ── 31d-3a2. Direct browser ecash claim ordering ────────────────────────
+// The original escrow bearer note is already the payout. Publishing CLAIM
+// before persisting it would let a tab crash strand the winner; attempting a
+// browser mint reissue would recreate the production failure this path avoids.
+console.log("\n── direct ecash claim persistence boundary ──");
+{
+  const order: string[] = [];
+  const result = await persistThenPublishDirectEcash({
+    notes: "exact-escrow-bearer-note",
+    amountMsats: 35_000,
+    notesHash: "verified-note-hash",
+    stash: (input) => {
+      order.push("stash");
+      assert(input.notes === "exact-escrow-bearer-note" && input.amountMsats === 35_000,
+        "Direct claim stashes the exact reconstructed bearer note and amount");
+    },
+    publish: async () => {
+      order.push("publish");
+      return "claimed";
+    },
+  });
+  assert(result === "claimed" && order.join(",") === "stash,publish",
+    "Direct claim durably stashes the bearer note before publishing CLAIM");
+
+  let publishedAfterStashFailure = false;
+  try {
+    await persistThenPublishDirectEcash({
+      notes: "unstashable-note",
+      amountMsats: 35_000,
+      notesHash: "verified-note-hash",
+      stash: () => { throw new Error("storage unavailable"); },
+      publish: async () => {
+        publishedAfterStashFailure = true;
+        return "wrong";
+      },
+    });
+  } catch { /* expected fail-closed result */ }
+  assert(!publishedAfterStashFailure,
+    "A failed recovery-copy write prevents CLAIM publication");
+}
+
 // ── 31d-3b. 2B prefer-bonded arbiter assignment (consensus-safe) ─────────
 //
 // Prefer a FUNDED bonded arbiter, stamped into CREATE. The JOIN gate accepts
@@ -12826,6 +12907,17 @@ console.log("\n── PENDING CLAIM PAYOUTS (stranded-payout recovery) ──");
     "No journal record → the card invites finishing the payout (RETRY CLAIM path)");
   assert(finish.card?.amountMsats === 1_570_000_000,
     "The card carries the trade amount, not the wallet balance");
+
+  // A legacy one-step claim whose exact note was consumed without proven
+  // wallet credit is NOT a payout waiting to finish. Unrelated later balance
+  // must not resurrect that retired path as an actionable Browse card.
+  const consumedUncredited = summarizePendingPayoutsForUi({
+    escrows: [claimed], userPubkey: me, getPayoutRecord: noRecord,
+    isClaimCreditUnresolved: (escrowId) => escrowId === claimed.id,
+    balanceMsats: 2_462_000_000, nowMs: NOW_MS,
+  });
+  assert(consumedUncredited.suppressRecovery === false && consumedUncredited.card === null,
+    "Consumed-without-credit claim → no Finish payout card (historical evidence, retired path)");
 
   // Balance can't hold the claim (claim-pending: redeem never landed) →
   // no false "your sats are back" story; nothing suppresses.
@@ -14460,8 +14552,8 @@ console.log("\n── BOLT11 PAYOUT AMOUNT ROUTING ──");
       "Native bridge lockfile keeps the next-gen iroh-relay 0.90.0 version visible");
     assert(relayVersions.includes("0.35.0"),
       "Native bridge lockfile keeps the Fedimint stable iroh-relay 0.35.0 version visible");
-    assert(packageJson.includes('"@fedimint/transport-web": "0.0.0-canary-cf43f9193627f8081b7144f7c057a7a112989031"'),
-      "Browser Fedimint transport stays on the known iroh-relay-0.90 canary until native/browser transport is intentionally re-aligned");
+    assert(packageJson.includes('"@fedimint/transport-web": "0.0.0-canary-c65cc1396f26b1b6593c3fae6ac0e820d96a4a10"'),
+      "Browser Fedimint transport pins the recovery-capable iroh canary instead of floating across SDK builds");
   }
 
   {
@@ -15790,7 +15882,16 @@ console.log("\n── RUN FUND AND LOCK ──");
       amountMsats: 100_000,
       description: "receive-watch rejected before funded",
       getBalance: wallet.getBalance,
-      createFundingInvoice: wallet.createFundingInvoice,
+      createFundingInvoice: async (amountMsats, description, onReceiveState, onGateway) => {
+        onGateway?.({
+          id: "gateway_claim_rejected",
+          alias: "Rejected Test Gateway",
+          api: "https://gateway.example.test",
+          provenPayable: false,
+          operationId: "ln_receive_rejected_1",
+        });
+        return wallet.createFundingInvoice(amountMsats, description, onReceiveState);
+      },
       lockAndPublish: wallet.lockAndPublish,
       onPhase: p => phases.push(p),
       sleep,
@@ -15804,6 +15905,10 @@ console.log("\n── RUN FUND AND LOCK ──");
     if (terminal.kind === "lock-failed") {
       assert(/claim_rejected/.test(terminal.error),
         "Pre-funded cancellation preserves the exact receive cancel reason");
+      assert(/Chama diagnostics:/.test(terminal.error)
+        && /gateway_claim_rejected/.test(terminal.error)
+        && /ln_receive_rejected_1/.test(terminal.error),
+      "Receive rejection carries copyable gateway + operation diagnostics");
     }
     assert(phases.some(p => p.kind === "lock-failed"),
       "Pre-funded cancellation emits the diagnostic lock-failed phase");
@@ -16196,12 +16301,11 @@ console.log("\n── RUN CLAIM AND PAYOUT ──");
       "Terminal phase emitted: done");
   }
 
-  // ── Ecash path: guarded redeem → fresh net note → wait for approval ──
+  // ── Ecash path: direct escrow-note export; no browser mint reissue ──
   {
     const wallet = makeMockWallet({ balances: [0, 100_000, 100_000] });
     const phases: ClaimAndPayoutPhase[] = [];
-    let exportedAmount = 0;
-    let nowMs = 0;
+    let directClaims = 0;
     const terminal = await runClaimAndPayout({
       escrowId: "esc_claim_ecash",
       bolt11: "ecash-export",
@@ -16214,30 +16318,30 @@ console.log("\n── RUN CLAIM AND PAYOUT ──");
       clearPendingRedemption: wallet.clearPendingRedemption,
       payInvoice: wallet.payInvoice,
       prepareEcashExport: () => null,
-      exportEcash: async (amountMsats) => {
-        exportedAmount = amountMsats;
-        return { notes: "fedimint-ready-note", amountMsats };
+      claimAndExportEcash: async () => {
+        directClaims++;
+        return { notes: "fedimint-ready-note", amountMsats: 100_000 };
       },
       addOrTouchLightningHandle: wallet.addOrTouchLightningHandle,
       onPhase: p => phases.push(p),
-      sleep: async (ms) => { nowMs += ms; },
-      now: () => nowMs,
-      confirmTimeoutMs: 30_000,
-      pollIntervalMs: 1_000,
     });
     assert(terminal.kind === "ecash-ready" && terminal.notes === "fedimint-ready-note",
       "Ecash claim returns the durably stashed bearer note");
-    assert(exportedAmount === 99_750,
-      "Ecash claim exports the net winner amount (premium residue stays local)");
+    assert(terminal.kind === "ecash-ready" && terminal.amountMsats === 100_000,
+      "Direct ecash claim exports the original full escrow note without a reissue split");
+    assert(directClaims === 1 && wallet.calls.claimAndRedeem === 0,
+      "Direct ecash claim bypasses the browser-wallet redeem path entirely");
+    assert(wallet.calls.getBalance === 0,
+      "Direct ecash claim does not depend on the browser wallet balance");
     assert(wallet.calls.payInvoice === 0,
       "Ecash claim never creates or pays a Lightning invoice");
     assert(wallet.calls.completeClaim === 0,
       "Ecash claim does not publish COMPLETE before explicit import approval");
-    assert(phases.some(p => p.kind === "exporting-ecash"),
-      "Ecash claim exposes a securing-note phase");
+    assert(phases.map(p => p.kind).join(",") === "claiming,ecash-ready",
+      "Direct ecash claim only reconstructs, stashes, and exposes the bearer note");
   }
 
-  // ── Restart: same-claim pending note resumes without claim or spend ──
+  // ── Restart after published CLAIM: resume without reconstruction ──
   {
     let claims = 0;
     let exports = 0;
@@ -16249,9 +16353,12 @@ console.log("\n── RUN CLAIM AND PAYOUT ──");
       saveAfter: false,
       getBalance: async () => 0,
       claimAndRedeem: async () => { claims++; },
+      claimAndExportEcash: async () => {
+        exports++;
+        return { notes: "wrong", amountMsats: 50_000 };
+      },
       payInvoice: async () => {},
-      prepareEcashExport: () => ({ notes: "already-stashed", amountMsats: 50_000 }),
-      exportEcash: async () => { exports++; return { notes: "wrong", amountMsats: 50_000 }; },
+      prepareEcashExport: () => ({ notes: "already-stashed", amountMsats: 50_000, claimPublished: true }),
       addOrTouchLightningHandle: () => {},
       onPhase: () => {},
     });
@@ -16259,6 +16366,34 @@ console.log("\n── RUN CLAIM AND PAYOUT ──");
       "Restart resumes the exact pending claim export");
     assert(claims === 0 && exports === 0,
       "Restart never reconstructs or spends again when a claim export is pending");
+  }
+
+  // ── Crash in stash→publish seam: retry CLAIM before showing note ──
+  {
+    let directClaims = 0;
+    const terminal = await runClaimAndPayout({
+      escrowId: "esc_claim_ecash_unpublished",
+      bolt11: "ecash-export",
+      payoutKind: "ecash",
+      expectedDeltaMsats: 35_000,
+      saveAfter: false,
+      getBalance: async () => 0,
+      claimAndRedeem: async () => { throw new Error("browser redeem must not run"); },
+      claimAndExportEcash: async () => {
+        directClaims++;
+        return { notes: "protected-before-publish", amountMsats: 35_000 };
+      },
+      payInvoice: async () => { throw new Error("Lightning must not run"); },
+      prepareEcashExport: () => ({
+        notes: "protected-before-publish",
+        amountMsats: 35_000,
+        claimPublished: false,
+      }),
+      addOrTouchLightningHandle: () => {},
+      onPhase: () => {},
+    });
+    assert(directClaims === 1 && terminal.kind === "ecash-ready",
+      "An unpublished recovery copy retries the direct CLAIM boundary before becoming ready");
   }
 
   // ── Sequencing: payInvoice never called before claim confirms ───────
@@ -16637,6 +16772,37 @@ console.log("\n── RUN CLAIM AND PAYOUT ──");
       "cover/onchain: whole-sat coverage of gross amount suffices");
     assert(balanceCoversPayout(18_999, 19_600, "onchain") === false,
       "cover/onchain: below gross sats does not cover");
+  }
+
+  // A direct bearer-note claim was already published, then the user chose
+  // "return to my balance". That balance is now the payout proof: reopening
+  // the same CLAIMED trade must offer a destination and pay immediately,
+  // without re-claiming consumed notes or waiting 90 seconds for impossible
+  // post-baseline growth.
+  {
+    let claimCalls = 0;
+    let payCalls = 0;
+    let nowMs = 0;
+    const terminal = await runClaimAndPayout({
+      escrowId: "esc_returned_export_resume",
+      bolt11: "lnbc180n1preturnedexport",
+      expectedDeltaMsats: 21_000,
+      claimAlreadyPublished: true,
+      saveAfter: false,
+      getBalance: async () => 21_000,
+      claimAndRedeem: async () => { claimCalls++; },
+      payInvoice: async () => { payCalls++; },
+      addOrTouchLightningHandle: () => {},
+      onPhase: () => {},
+      sleep: async (ms) => { nowMs += ms; },
+      now: () => nowMs,
+      confirmTimeoutMs: 30_000,
+      pollIntervalMs: 1_000,
+    });
+    assert(terminal.kind === "done" && claimCalls === 0 && payCalls === 1,
+      "CLAIMED export returned to balance resumes directly into one Lightning payout");
+    assert(nowMs === 0,
+      "Returned-export payout never waits for impossible post-claim balance growth");
   }
 
   // ── The Samuel rescue: consumed notes + covering balance → payout ───
@@ -18005,11 +18171,22 @@ console.log("\n── LIGHTNING PAYOUT FEE RESERVE ──");
 console.log("\n── REAL LIGHTNING FUNDING GUARDRAILS ──");
 {
   assert(MIN_REAL_ATOMIC_FUNDING_SATS === 1,
-    "Real Lightning funding floor allows tiny Fedi ecash test locks");
+    "Direct ecash funding floor allows tiny Fedi ecash test locks");
   assert(MIN_REAL_ATOMIC_FUNDING_MSATS === 1_000,
-    "Real Lightning funding floor is exposed in msats for lock gating");
+    "Direct ecash funding floor is exposed in msats for lock gating");
   assert(minimumAtomicFundingMessage().includes("1 sat"),
-    "Real Lightning funding floor copy names the 1 sat minimum");
+    "Direct ecash funding floor copy names the 1 sat minimum");
+  assert(MIN_REAL_LIGHTNING_FUNDING_SATS === 1
+    && MIN_REAL_LIGHTNING_FUNDING_MSATS === 1_000,
+  "Lightning keeps BLF/Fedimint's one-sat product floor; wallet recovery fixes nonce reuse");
+  assert(minimumRealFundingMsatsForMethod("lightning") === 1_000
+    && minimumRealFundingMsatsForMethod("nwc") === 1_000,
+  "Lightning and NWC do not invent a federation minimum");
+  assert(minimumRealFundingMsatsForMethod("ecash") === 1_000
+    && minimumRealFundingMsatsForMethod("onchain") === 1_000,
+  "Direct ecash stays tiny and on-chain keeps its separate federation-derived minimum");
+  assert(minimumLightningFundingMessage().includes("1 sat"),
+  "Lightning minimum copy names the actual one-sat product floor");
 }
 
 // ── 42. CHAMA BAR LABEL DECISION (v0.3.0 Phase 5) ────────────────────────
@@ -19978,7 +20155,8 @@ console.log("\n── REAL SDK ADAPTER — Lightning receive watcher ──");
     overrides: Record<string, unknown> = {},
     gatewayList?: TestGateway[],
   ) {
-    let receiveCb: ((state: "claimed" | "funded") => void) | null = null;
+    type TestReceiveState = "claimed" | "funded" | { canceled: { reason: string } };
+    let receiveCb: ((state: TestReceiveState) => void) | null = null;
     const calls = {
       createInvoice: 0,
       createInvoiceGatewayId: "",
@@ -19986,6 +20164,8 @@ console.log("\n── REAL SDK ADAPTER — Lightning receive watcher ──");
       payInvoiceGatewayId: "",
       updateGatewayCache: 0,
       listGateways: 0,
+      getAvailableGateway: 0,
+      requestedAvailableGatewayId: "",
       subscribeLnReceive: 0,
       subscribeLnPay: 0,
       subscribeInternalPayment: 0,
@@ -19996,6 +20176,11 @@ console.log("\n── REAL SDK ADAPTER — Lightning receive watcher ──");
       unsubscribePay: 0,
       unsubscribeInternalPay: 0,
       cleanup: 0,
+      joinFederation: 0,
+      joinFederationOptions: undefined as undefined | {
+        clientName?: string;
+        forceRecover?: boolean;
+      },
       subscribedOperationId: "",
       subscribedPayOperationId: "",
     };
@@ -20019,7 +20204,16 @@ console.log("\n── REAL SDK ADAPTER — Lightning receive watcher ──");
     const real = {
       async open() { return true; },
       isOpen() { return true; },
-      async joinFederation() { return true; },
+      async joinFederation(
+        _inviteCode: string,
+        options?: string | { clientName?: string; forceRecover?: boolean },
+      ) {
+        calls.joinFederation++;
+        calls.joinFederationOptions = typeof options === "string"
+          ? { clientName: options }
+          : options;
+        return true;
+      },
       recovery: {
         async hasPendingRecoveries() { return false; },
         async waitForAllRecoveries() {},
@@ -20090,7 +20284,7 @@ console.log("\n── REAL SDK ADAPTER — Lightning receive watcher ──");
         },
         subscribeLnReceive(
           operationId: string,
-          onSuccess?: (state: "claimed" | "funded") => void,
+          onSuccess?: (state: TestReceiveState) => void,
         ) {
           calls.subscribeLnReceive++;
           calls.subscribedOperationId = operationId;
@@ -20104,18 +20298,45 @@ console.log("\n── REAL SDK ADAPTER — Lightning receive watcher ──");
           calls.listGateways++;
           return gateways;
         },
+        async getAvailableGateway(args?: { gateway?: TestGatewayInfo }) {
+          calls.getAvailableGateway++;
+          calls.requestedAvailableGatewayId = args?.gateway?.gateway_id ?? "";
+          return args?.gateway ?? null;
+        },
       },
       federation: {
         async getConfig() { return {}; },
         async getFederationId() { return "fed_real"; },
         async getInviteCode() { return "fed1real"; },
+        async getOperation(operationId: string) {
+          return {
+            operation_module_kind: "ln",
+            meta: {
+              amount: 100_000,
+              variant: {
+                receive: {
+                  gateway_id: "vetted_gateway_456",
+                  invoice: "lnbc100n1pchama",
+                  out_point: { txid: "receive_txid", out_idx: 0 },
+                },
+              },
+            },
+            outcome: { outcome: { canceled: { reason: "claim_rejected" } } },
+          };
+        },
         async listTransactions() { return []; },
       },
       async cleanup() { calls.cleanup++; },
       ...overrides,
     };
 
-    return { real, calls, claim: () => receiveCb?.("claimed"), fund: () => receiveCb?.("funded") };
+    return {
+      real,
+      calls,
+      claim: () => receiveCb?.("claimed"),
+      fund: () => receiveCb?.("funded"),
+      cancelReceive: (reason: string) => receiveCb?.({ canceled: { reason } }),
+    };
   }
 
   // The adapter must forward the safe lock horizon verbatim. If this ever
@@ -20155,7 +20376,298 @@ console.log("\n── REAL SDK ADAPTER — Lightning receive watcher ──");
     "Browser adapter preserves WalletDirector federation identity when parsing lock notes");
   }
 
-  // createInvoice must arm subscribe_ln_receive before returning the QR.
+  // A new OPFS database under an existing Nostr-backed mnemonic is a restored
+  // wallet, not a new one. Chama must use the SDK's supported forced-recovery
+  // option so deterministic mint nonce counters are recovered before any
+  // receive claim creates ecash outputs.
+  {
+    const journal = (stage: "requested" | "rotating" | "recovering" | "completed" | "inconclusive") => ({
+      version: 1 as const,
+      stage,
+      operationId: "recovery-operation",
+      federationId: BLF_FEDERATION_ID,
+      trigger: "operation-proof" as const,
+      requestedAt: 1,
+      updatedAt: 2,
+    });
+    assert(
+      !shouldCheckBrowserWalletRecovery("init", null) &&
+        !shouldCheckBrowserWalletRecovery("init", journal("completed")) &&
+        !shouldCheckBrowserWalletRecovery("init", journal("inconclusive")),
+      "Normal boot performs no recovery RPC for absent, completed, or inconclusive repair receipts",
+    );
+    assert(
+      shouldCheckBrowserWalletRecovery("init", journal("requested")) &&
+        shouldCheckBrowserWalletRecovery("init", journal("rotating")) &&
+        shouldCheckBrowserWalletRecovery("init", journal("recovering")),
+      "Boot resumes only an explicitly journaled repair that was interrupted in flight",
+    );
+    assert(
+      shouldCheckBrowserWalletRecovery("join", null),
+      "A fresh mnemonic-backed join still checks the SDK recovery started by forceRecover",
+    );
+  }
+
+  {
+    const h = makeRealWallet();
+    const wallet = adaptRealWallet(h.real as any, undefined, undefined, true);
+    await wallet.joinFederation(BLF_FEDERATION_INVITE);
+    assert(h.calls.joinFederation === 1
+      && h.calls.joinFederationOptions?.forceRecover === true,
+    "Fresh browser storage uses the public SDK recovery API instead of restarting nonce counters");
+  }
+
+  // A route-level claim rejection is origin-wide, while each Nostr identity
+  // owns a different Fedimint wallet. Recovery rotation must therefore require
+  // proof that the exact failed operation exists in the opened wallet.
+  {
+    const quarantineKey = "chama_ln_receive_route_quarantine_v3";
+    const storageScope = "test-receive-owner";
+    const requestKey = `chama_fedimint_recovery_request_v1:${storageScope}`;
+    (globalThis as any).localStorage.setItem(quarantineKey, JSON.stringify([{
+      federationId: BLF_FEDERATION_ID,
+      reason: "claim_rejected",
+      operationId: "owned_receive_operation",
+      // The receive-route pause may be over, but its exact operation remains
+      // a durable recovery lead for the wallet that can prove ownership.
+      until: Date.now() - 1_000,
+    }]));
+    (globalThis as any).localStorage.removeItem(requestKey);
+
+    const owner = makeRealWallet();
+    (owner.real.federation as any).getOperation = async (operationId: string) =>
+      operationId === "owned_receive_operation" ? { operation_id: operationId } : null;
+    const ownerWallet = adaptRealWallet(
+      owner.real as any,
+      undefined,
+      undefined,
+      false,
+      { storageScope },
+    );
+    let ownerRecoveryCode = "";
+    try {
+      await ownerWallet.open();
+    } catch (error) {
+      ownerRecoveryCode = (error as Error & { code?: string }).code ?? "";
+    }
+    assert(ownerRecoveryCode === "BROWSER_WALLET_RECOVERY_REQUIRED",
+      "The wallet that owns the rejected receive schedules a preserved forced-recovery rotation");
+    assert(JSON.parse((globalThis as any).localStorage.getItem(requestKey)).operationId
+      === "owned_receive_operation",
+    "The recovery request is scoped to the owning Chama identity and exact operation");
+
+    (globalThis as any).localStorage.removeItem(requestKey);
+    const originalSetItem = (globalThis as any).localStorage.setItem;
+    (globalThis as any).localStorage.setItem = () => {
+      throw new Error("storage denied");
+    };
+    let persistenceFailureCode = "";
+    try {
+      await ownerWallet.open();
+    } catch (error) {
+      persistenceFailureCode =
+        (error as Error & { code?: string }).code ?? "";
+    } finally {
+      (globalThis as any).localStorage.setItem = originalSetItem;
+    }
+    assert(
+      persistenceFailureCode === "BROWSER_WALLET_RECOVERY_PERSIST_FAILED",
+      "Recovery refuses to rotate when the browser cannot durably record rollback state",
+    );
+
+    const other = makeRealWallet();
+    (other.real.federation as any).getOperation = async () => null;
+    const otherWallet = adaptRealWallet(
+      other.real as any,
+      undefined,
+      undefined,
+      false,
+      { storageScope: "different-identity" },
+    );
+    await otherWallet.open();
+    assert(true,
+      "An unrelated identity on the same origin is never rotated by another wallet's receive failure");
+
+    const diagnosticScope = "explicit-recovery-identity";
+    const diagnosticRequest = armBrowserWalletRecoveryForDiagnostics(diagnosticScope);
+    const diagnosticJournal = readBrowserWalletRecoveryJournal(diagnosticScope);
+    assert(
+      diagnosticRequest.operationId === "owned_receive_operation" &&
+        diagnosticJournal?.stage === "requested" &&
+        diagnosticJournal.trigger === "explicit-diagnostic",
+      "An explicitly selected affected identity gets a durable no-payment recovery receipt",
+    );
+    (globalThis as any).localStorage.removeItem(
+      `chama_fedimint_recovery_request_v1:${diagnosticScope}`,
+    );
+    (globalThis as any).localStorage.removeItem(
+      `chama_fedimint_recovery_journal_v1:${diagnosticScope}`,
+    );
+    (globalThis as any).localStorage.removeItem(quarantineKey);
+  }
+
+  // A failed payout reissue is stronger recovery evidence than an
+  // origin-wide receive quarantine: this wallet submitted the exact
+  // operation and observed its terminal failure. Preserve this identity's
+  // database and arm forced recovery without involving another Chama on the
+  // same origin.
+  {
+    const storageScope = "failed-mint-reissue-owner";
+    const requestKey = `chama_fedimint_recovery_request_v1:${storageScope}`;
+    const journalKey = `chama_fedimint_recovery_journal_v1:${storageScope}`;
+    (globalThis as any).localStorage.removeItem(requestKey);
+    (globalThis as any).localStorage.removeItem(journalKey);
+
+    const failedOperationId = "45f718e24a37317f000000000000000000000000000000000000000000000000";
+    const h = makeRealWallet({
+      mint: {
+        async spendNotes() {
+          return { notes: "notes", operation_id: "mint_spend" };
+        },
+        async parseNotes() { return 35_000; },
+        async reissueExternalNotes() { return failedOperationId; },
+        subscribeReissueExternalNotes(
+          _operationId: string,
+          onSuccess?: (state: { failed: { reason: string } }) => void,
+        ) {
+          onSuccess?.({ failed: { reason: "mint transaction rejected" } });
+          return () => {};
+        },
+      },
+    });
+    h.real.federation.getFederationId = async () => BLF_FEDERATION_ID;
+    const wallet = adaptRealWallet(
+      h.real as any,
+      undefined,
+      undefined,
+      false,
+      { storageScope },
+    );
+    let failureCode = "";
+    try {
+      await wallet.mint.redeemEcash("35-sat-escrow-notes");
+    } catch (error) {
+      failureCode = (error as Error & { code?: string }).code ?? "";
+    }
+    const request = JSON.parse(
+      (globalThis as any).localStorage.getItem(requestKey),
+    );
+    const journal = JSON.parse(
+      (globalThis as any).localStorage.getItem(journalKey),
+    );
+    assert(failureCode === "MINT_REISSUE_FAILED",
+      "A terminal payout reissue failure remains a hard claim failure");
+    assert(request.operationId === failedOperationId
+      && request.trigger === "mint-reissue-failed",
+    "The exact failed payout operation arms recovery for its owning identity");
+    assert(journal.stage === "requested"
+      && journal.operationId === failedOperationId
+      && journal.trigger === "mint-reissue-failed",
+    "The claimant gets a durable, attributable recovery receipt before restart");
+
+    (globalThis as any).localStorage.removeItem(requestKey);
+    (globalThis as any).localStorage.removeItem(journalKey);
+
+    const preHookFailure = makeRealWallet();
+    preHookFailure.real.federation.getFederationId = async () => BLF_FEDERATION_ID;
+    preHookFailure.real.federation.listTransactions = async () => [{
+      operationId: failedOperationId,
+      amountMsats: 35_000,
+      timestamp: Date.now(),
+      kind: "mint",
+      type: "reissue",
+      outcome: "Failed",
+    }] as any;
+    const preHookWallet = adaptRealWallet(
+      preHookFailure.real as any,
+      undefined,
+      undefined,
+      false,
+      { storageScope },
+    );
+    let startupRecoveryCode = "";
+    try {
+      await preHookWallet.open();
+    } catch (error) {
+      startupRecoveryCode = (error as Error & { code?: string }).code ?? "";
+    }
+    assert(startupRecoveryCode === "BROWSER_WALLET_RECOVERY_REQUIRED",
+      "Startup finds a pre-hook failed payout operation without retrying Claim");
+    assert(JSON.parse((globalThis as any).localStorage.getItem(requestKey)).operationId
+      === failedOperationId,
+    "Startup recovery remains tied to the claimant's exact failed operation");
+
+    (globalThis as any).localStorage.removeItem(requestKey);
+    (globalThis as any).localStorage.removeItem(journalKey);
+  }
+
+  // The staged claim field result re-opens BLF receive. createInvoice must
+  // still arm subscribe_ln_receive before returning the QR.
+  {
+    const h = makeRealWallet();
+    h.real.federation.getFederationId = async () => BLF_FEDERATION_ID;
+    const wallet = adaptRealWallet(h.real as any);
+    const result = await wallet.lightning.createInvoice(35_000, "staged claim proven");
+    assert(result.operationId === "ln_op_123",
+      "A successful staged claim field result re-enables BLF browser Lightning receive");
+    assert(h.calls.updateGatewayCache === 1
+      && h.calls.listGateways === 1
+      && h.calls.createInvoice === 1,
+    "Re-enabled BLF receive still verifies gateway availability before invoice creation");
+  }
+
+  // Legacy localhost probe keys cannot reintroduce a hidden one-shot limit
+  // after the production route is enabled.
+  {
+    const originalLocation = (globalThis as any).location;
+    Object.defineProperty(globalThis, "location", {
+      configurable: true,
+      value: { hostname: "localhost" },
+    });
+    localStorage.setItem("chama_browser_lightning_receive_probe_v1", "1");
+    const h = makeRealWallet();
+    h.real.federation.getFederationId = async () => BLF_FEDERATION_ID;
+    const wallet = adaptRealWallet(h.real as any);
+    const result = await wallet.lightning.createInvoice(35_000, "one-shot probe");
+    assert(result.operationId === "ln_op_123" && h.calls.createInvoice === 1,
+      "A legacy probe key does not prevent an enabled BLF invoice");
+    assert(localStorage.getItem("chama_browser_lightning_receive_probe_v1") === "1",
+      "Enabled production receive no longer consumes a localhost probe key");
+
+    await wallet.lightning.createInvoice(35_000, "second enabled invoice");
+    assert(h.calls.createInvoice === 2,
+      "Production BLF receive is not silently limited to one invoice");
+
+    localStorage.setItem("chama_browser_lightning_receive_probe_v1", "1");
+    await wallet.lightning.createInvoice(50_001, "over obsolete probe cap");
+    assert(h.calls.createInvoice === 3,
+      "The obsolete 50-sat probe cap does not constrain enabled production receive");
+    assert(localStorage.getItem("chama_browser_lightning_receive_probe_v1") === "1",
+      "An oversized attempt does not consume the bounded probe token");
+    localStorage.removeItem("chama_browser_lightning_receive_probe_v1");
+
+    localStorage.setItem(BROWSER_LIGHTNING_CLAIM_PROBE_KEY, "1");
+    assert(browserLightningClaimFieldTestIsEnabled(21_000),
+      "Every localhost claimant origin exposes the bounded Lightning claim field test");
+    assert(browserLightningClaimProbeIsArmed(21_000)
+      && localStorage.getItem(BROWSER_LIGHTNING_CLAIM_PROBE_KEY) === "1",
+    "Claim UI can expose Lightning without consuming its one-shot authorization");
+    assert(consumeBrowserLightningClaimProbe(21_000),
+      "Localhost one-shot claim probe permits one small browser Lightning payout");
+    assert(localStorage.getItem(BROWSER_LIGHTNING_CLAIM_PROBE_KEY) === null
+      && !consumeBrowserLightningClaimProbe(21_000),
+    "Browser Lightning claim authorization is burned before the first payout attempt");
+    localStorage.setItem(BROWSER_LIGHTNING_CLAIM_PROBE_KEY, "1");
+    assert(!consumeBrowserLightningClaimProbe(50_001)
+      && localStorage.getItem(BROWSER_LIGHTNING_CLAIM_PROBE_KEY) === "1",
+    "The claim probe refuses more than 50 sats without consuming its token");
+    localStorage.removeItem(BROWSER_LIGHTNING_CLAIM_PROBE_KEY);
+    Object.defineProperty(globalThis, "location", {
+      configurable: true,
+      value: originalLocation,
+    });
+  }
+
   {
     const h = makeRealWallet();
     const wallet = adaptRealWallet(h.real as any);
@@ -20165,12 +20677,18 @@ console.log("\n── REAL SDK ADAPTER — Lightning receive watcher ──");
       "Adapter returns the BOLT11 from real.lightning.createInvoice");
     assert(result.operationId === "ln_op_123",
       "Adapter preserves the real receive operation ID");
+    assert(result.gateway?.id === "vetted_gateway_456"
+      && result.gateway.operationId === "ln_op_123",
+    "Adapter returns the selected gateway and operation ID with the invoice");
     assert(h.calls.createInvoice === 1,
       "real.lightning.createInvoice called once");
     assert(h.calls.updateGatewayCache === 1,
       "Adapter refreshes the gateway cache before creating a receive invoice");
     assert(h.calls.listGateways === 1,
       "Adapter lists gateways before creating a receive invoice");
+    assert(h.calls.getAvailableGateway === 1
+      && h.calls.requestedAvailableGatewayId === "vetted_gateway_456",
+    "Adapter validates the trusted receive route through select_available_gateway");
     assert(h.calls.createInvoiceGatewayId === "vetted_gateway_456",
       "Adapter passes the first vetted gateway into createInvoice");
     assert(h.calls.subscribeLnReceive === 1,
@@ -20181,6 +20699,82 @@ console.log("\n── REAL SDK ADAPTER — Lightning receive watcher ──");
     h.claim();
     assert(h.calls.unsubscribeReceive === 1,
       "Receive watcher unsubscribes after claimed");
+  }
+
+  // The pinned SDK deliberately replaced listGateways()[0] with
+  // select_available_gateway. Chama must not bypass that repair by passing a
+  // stale listed gateway record directly into invoice creation.
+  {
+    const h = makeRealWallet();
+    const freshGateway = {
+      gateway_id: "vetted_gateway_456",
+      api: "https://fresh-gateway.example.test",
+      lightning_alias: "Fresh Available Gateway",
+      supports_private_payments: true,
+    };
+    h.real.lightning.getAvailableGateway = async () => {
+      h.calls.getAvailableGateway++;
+      return freshGateway;
+    };
+    const originalCreate = h.real.lightning.createInvoice;
+    let invoiceGatewayApi = "";
+    h.real.lightning.createInvoice = async (...args: any[]) => {
+      invoiceGatewayApi = args[3]?.api ?? "";
+      return originalCreate.apply(h.real.lightning, args as any);
+    };
+    const wallet = adaptRealWallet(h.real as any);
+    await wallet.lightning.createInvoice(100_000, "fresh route");
+    assert(invoiceGatewayApi === freshGateway.api,
+      "Receive invoice uses the SDK-confirmed available gateway record, not stale list data");
+  }
+
+  {
+    const h = makeRealWallet();
+    h.real.lightning.getAvailableGateway = async () => null;
+    const wallet = adaptRealWallet(h.real as any);
+    let refused = false;
+    try {
+      await wallet.lightning.createInvoice(100_000, "unavailable route");
+    } catch (error) {
+      refused = /trusted_receive_gateway_unavailable/.test((error as Error).message);
+    }
+    assert(refused && h.calls.createInvoice === 0,
+      "Unavailable trusted gateway is refused before a payable invoice is created");
+  }
+
+  // A federation receive that returned claim_rejected is not safe to hand
+  // another payable invoice immediately. This is federation-scoped rather
+  // than gateway-scoped: same-federation senders may use the SDK's internal
+  // payment path, so the receive gateway is evidence but not proven fault.
+  {
+    const quarantineKey = "chama_ln_receive_route_quarantine_v3";
+    const quarantineFederationId = "ab".repeat(32);
+    localStorage.removeItem(quarantineKey);
+    const first = makeRealWallet();
+    first.real.federation.getFederationId = async () => quarantineFederationId;
+    const firstWallet = adaptRealWallet(first.real as any);
+    await firstWallet.lightning.createInvoice(100_000, "fund");
+    first.cancelReceive("claim_rejected");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const retry = makeRealWallet();
+    retry.real.federation.getFederationId = async () => quarantineFederationId;
+    const retryWallet = adaptRealWallet(retry.real as any);
+    let refused = false;
+    try {
+      await retryWallet.lightning.createInvoice(100_000, "fund retry");
+    } catch (error) {
+      refused = /temporarily paused/.test((error as Error).message)
+        && /receive_federation_route_paused/.test((error as Error).message)
+        && /same-federation payments may use Fedimint's internal-payment path/.test(
+          (error as Error).message,
+        );
+    }
+    assert(refused,
+      "claim_rejected pauses the federation receive route without assigning gateway fault");
+    assert(retry.calls.createInvoice === 0,
+      "Paused federation receive route is stopped before generating another payable invoice");
+    localStorage.removeItem(quarantineKey);
   }
 
   // Outbound LN payout must use the same trusted gateway selection; letting
@@ -20723,9 +21317,9 @@ console.log("\n── REAL SDK ADAPTER — Lightning receive watcher ──");
     await wallet.cleanup();
   }
 
-  // Receive invoices are different from outbound payout: if the wallet cannot
-  // verify gateway trust itself, a QR can take payment and then reject before
-  // ecash mints. BLF's curated fallback is therefore NOT allowed on receive.
+  // BLF's curated trust remains the fallback when the SDK and metadata do not
+  // mark the gateway. The staged claim path, rather than a receive ban, now
+  // protects the winner-side reissue boundary.
   {
     const blfFederationId =
       "888b70ec351c67dcbb0ae655d7b8b6fb26c0fc9e865ee5918af11dc6f53e2b9e";
@@ -20767,33 +21361,17 @@ console.log("\n── REAL SDK ADAPTER — Lightning receive watcher ──");
         ttl: 60,
       },
     ]);
-    // ⭐⭐ B1 REGRESSION — this block used to assert the OPPOSITE.
-    //
-    // It pinned "refuse a BLF receive invoice when only curated trust exists",
-    // which is exactly the gate that made browser Lightning funding impossible
-    // on every federation: we required the JS SDK's `gateway.vetted === true`,
-    // a flag that path never sets, while discarding the federation's own
-    // published trust. Proven wrong in the field — Jetty received 200 sats twice
-    // in a browser Fedimint wallet, on GBF and BLF, over these same gateways.
-    // Receive now accepts meta/curated trust exactly as the pay path always has.
     const wallet = adaptRealWallet(h.real as any);
     const invoice = await wallet.lightning.createInvoice(100_000, "fund");
-
-    assert(typeof invoice?.invoice === "string" && invoice.invoice.length > 0,
-      "⭐⭐ B1: a BLF receive invoice IS created from the federation's curated trust — the flag-nobody-sets gate is gone");
-    assert(h.calls.createInvoice === 1,
-      "B1: the receive reached the SDK exactly once");
+    assert(Boolean(invoice.invoice),
+      "⭐⭐ B1: BLF curated gateway trust creates a receive invoice after staged-claim validation");
+    assert(h.calls.listGateways === 1 && h.calls.createInvoice === 1,
+      "B1: BLF receive still discovers and selects the trusted gateway");
     await wallet.cleanup();
   }
 
-  // ⭐⭐ B1 — THE case the curated list was written for, and the one that used to
-  // fail. BLF's browser SDK advertises a meta module in get_config, then answers
-  // "module not found" for client-rpc(meta). The curated entry is a
-  // hand-transcription of that federation's own `vetted_gateways` — it exists
-  // precisely BECAUSE this read fails. Refusing here refused the substitute in
-  // the only situation it was ever meant to substitute for, which is why browser
-  // receive was dead on BLF. Trust is now read the same way for receive as for
-  // pay; the floor (no signal at all ⇒ refuse) is asserted separately below.
+  // A fresh origin with unreadable meta can still use BLF's curated gateway;
+  // safety no longer depends on per-origin localStorage or a blanket block.
   {
     const blfFederationId =
       "888b70ec351c67dcbb0ae655d7b8b6fb26c0fc9e865ee5918af11dc6f53e2b9e";
@@ -20844,11 +21422,10 @@ console.log("\n── REAL SDK ADAPTER — Lightning receive watcher ──");
     ]);
     const wallet = adaptRealWallet(h.real as any);
     const invoice = await wallet.lightning.createInvoice(100_000, "fund");
-
-    assert(typeof invoice?.invoice === "string" && invoice.invoice.length > 0,
-      "⭐⭐ B1: an unreadable meta module no longer blocks BLF receive — the curated entry stands in for exactly the read that failed");
-    assert(h.calls.createInvoice === 1,
-      "B1: the receive reached the SDK exactly once");
+    assert(Boolean(invoice.invoice),
+      "⭐⭐ B1: a fresh BLF browser origin uses curated trust when meta is unreadable");
+    assert(h.calls.listGateways === 1 && h.calls.createInvoice === 1,
+      "B1: fresh-origin BLF receive verifies the curated route before invoice creation");
     await wallet.cleanup();
   }
 
@@ -21021,6 +21598,9 @@ console.log("\n── REAL SDK ADAPTER — Lightning receive watcher ──");
               ttl: 60,
             },
           ];
+        },
+        async getAvailableGateway(args?: { gateway?: TestGatewayInfo }) {
+          return args?.gateway ?? null;
         },
         async createInvoice() {
           return { invoice: "lnbc100n1punwatched", operation_id: "ln_op_bad" };
@@ -25505,12 +26085,28 @@ console.log("\n── #62 REDEEM-PROBE + BONDED-POOL CACHE ──");
     settlements: [{ timestamp: 250 }], chatMessages: [], premiumNotes: [],
     participants: { buyer: "buyer", seller: "seller", arbiter: null },
   } as unknown as EscrowState;
+  const olderListingJoinedLater = {
+    id: "older-listing-joined-later", createdAt: 60,
+    eventChain: [
+      { kind: EscrowEventKind.CREATE, timestamp: 60 },
+      { kind: EscrowEventKind.JOIN, timestamp: 180 },
+      { kind: EscrowEventKind.COMPLETE, timestamp: 210 },
+    ],
+    settlements: [], chatMessages: [], premiumNotes: [],
+    participants: { buyer: "buyer", seller: "seller", arbiter: null },
+  } as unknown as EscrowState;
   assert(tradeActivityAt(olderLive) === 110 && tradeActivityAt(settlementActive) === 250,
     "Latest trade activity includes both consensus and auxiliary settlement events");
+  assert(tradeEnteredAt(olderListingJoinedLater) === 180,
+    "latest-trade chronology follows the signed JOIN when an older listing becomes a trade");
   assert(latestParticipantTrade([olderLive, newerCompleted])?.id === "newer-completed",
     "Latest trade no longer pins an older live trade above a newer completed trade");
   assert(latestParticipantTrade([olderLive, newerCompleted, settlementActive])?.id === "newer-completed",
-    "Latest trade follows canonical CREATE chronology, not later activity on an older trade");
+    "without a JOIN, latest-trade chronology falls back to deterministic CREATE time");
+  assert(latestParticipantTrade([
+    olderLive, newerCompleted, settlementActive, olderListingJoinedLater,
+  ])?.id === "older-listing-joined-later",
+  "an older listing reserved later outranks newer listings without letting late settlement activity resurrect old trades");
   assert(participantTradeHistory([olderLive, newerCompleted, settlementActive], "buyer", 1_000)
       .map((trade) => trade.id).join(",") === "newer-completed,older-live,settlement-active",
     "participant history retains terminal trades and sorts by canonical CREATE time");
@@ -25525,7 +26121,35 @@ console.log("\n── #62 REDEEM-PROBE + BONDED-POOL CACHE ──");
     "history chronology recovers the signed CREATE timestamp when the state field is absent");
   assert(participantTradeHistory([olderLive, newerCompleted], "buyer", 1_000, new Set(["older-live"]))
       .map((trade) => trade.id).join(",") === "newer-completed",
-    "participant history still respects the explicit retired-listing ledger");
+    "participant history hides a retired listing that never attracted a buyer");
+  const retiredAfterBuyerActed = {
+    ...newerCompleted,
+    id: "retired-after-buyer-acted",
+    eventChain: [
+      { kind: EscrowEventKind.CREATE, timestamp: 100 },
+      { kind: EscrowEventKind.JOIN, timestamp: 110 },
+      { kind: EscrowEventKind.LOCK, timestamp: 120 },
+      { kind: EscrowEventKind.COMPLETE, timestamp: 130 },
+    ],
+    lock: { lockedAt: 120, notesHash: "locked-notes" },
+  } as unknown as EscrowState;
+  assert(participantTradeHistory(
+    [olderLive, retiredAfterBuyerActed], "buyer", 1_000,
+    new Set(["older-live", "retired-after-buyer-acted"]),
+  ).map((trade) => trade.id).join(",") === "retired-after-buyer-acted",
+  "a seller-local retired flag cannot hide a listing after a buyer joins and it becomes a trade");
+  const rememberedCompleted = {
+    id: "remembered-completed", category: "p2p-trade", description: "Sats for sale",
+    amountMsats: 38_000, community: "usa-usd", role: Role.SELLER,
+    counterparty: "buyer", lastStatus: EscrowStatus.COMPLETED,
+    createdAt: 60, lastActivityAt: 350, enteredAt: 300, updatedAt: 400_000,
+  } as const;
+  assert(!retiredTradeIndexEntryIsStillSuperseded(
+    rememberedCompleted, new Set([rememberedCompleted.id]),
+  ), "a durable COMPLETED summary overrides the seller's stale retired-listing marker");
+  assert(latestParticipantTradePointer([newerCompleted], [rememberedCompleted])?.id
+    === "remembered-completed",
+  "the Me hero selects a newer durable signed JOIN even when its CREATE is older and full chain is not loaded");
 
   const discovered = discoveredEscrowIdsByActivity([
     { ...makeRawEvent(EscrowEventKind.CREATE, "seller", [["d", "old"]]), created_at: 50 },

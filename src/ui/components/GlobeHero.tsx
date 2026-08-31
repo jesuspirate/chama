@@ -69,7 +69,6 @@ export function GlobeHero({
         height={size}
         loading="eager"
         decoding="sync"
-        fetchPriority="high"
         onLoad={(event) => decodeThenReport(event.currentTarget)}
         onError={reportReady}
         draggable={false}

@@ -11,7 +11,7 @@
 //     `.includes(" Marked as ")` + icon-prefix check. It stays byte-identical
 //     English in every UI language.
 export const labels: Record<string, string> = {
-  "labels.bubbleArbiterRefunded": "Arbiter refunded → back to {funder}",
+  "labels.bubbleArbiterRefunded": "Arbiter voted to refund {funder}",
   "labels.bubbleAskedRefund": "{voter} asked for a refund",
   "labels.bubbleDisputeOpened": "Dispute opened",
   "labels.bubbleMarkedIt": "{voter} marked it {done}",

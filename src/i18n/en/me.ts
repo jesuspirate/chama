@@ -3,11 +3,14 @@
 // pre-extraction JSX. Before/After pairs wrap a mid-sentence <BitcoinAmount>
 // component; xxxOne/xxxMany are the plural pairs (see picker.matchOne/Many).
 export const me: Record<string, string> = {
+  "me.hydratingTrades": "Checking your complete trade history…",
   // Store permanence (#49) Tier 1 — "your store lapsed — renew?" card.
   "me.storeLapsedTitleOne": "Your store lapsed",
   "me.storeLapsedTitleMany": "{count} of your stores lapsed",
   "me.storeLapsedSubtitleBonded": "Your shopfront went quiet while you were offline. Renew to reopen it.",
   "me.storeLapsedSubtitleUnbonded": "An unbonded store lapses after 24h. Renew to put it back on Browse.",
+  "me.storeLapsedSnooze": "Snooze 24h",
+  "me.storeLapsedSnoozeHint": "Hide these lapsed stores for 24 hours.",
   "me.storeRenew": "Renew",
   "me.storeRenewing": "Renewing…",
   "me.storeRenewed": "Store renewed — back on Browse.",

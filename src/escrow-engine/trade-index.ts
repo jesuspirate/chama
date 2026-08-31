@@ -24,7 +24,7 @@ import {
   setScopedStorageItem,
   removeScopedStorageItem,
 } from "../storage/user-scope.js";
-import { type EscrowState, EscrowStatus, Role } from "./types.js";
+import { EscrowEventKind, type EscrowState, EscrowStatus, Role } from "./types.js";
 
 /** Case-insensitive pubkey compare (hex npub). Local copy — `samePubkey` is a
  *  per-file helper across the codebase, not a shared export. */
@@ -55,6 +55,13 @@ export interface TradeIndexEntry {
   lastStatus: EscrowStatus;
   /** Trade createdAt (Unix SECONDS) — for display + sort. */
   createdAt: number;
+  /** Newest signed event/activity timestamp (Unix SECONDS). Unlike updatedAt,
+   *  this is stable across relay hydration order and app restarts. */
+  lastActivityAt?: number;
+  /** When the listing became this trade for its participants (Unix SECONDS):
+   *  CREATE until a signed JOIN exists, then the newest JOIN. Late votes,
+   *  claims and relay healing must not resurrect an old trade as "latest". */
+  enteredAt?: number;
   /** When the index last touched this entry (Unix MS) — for eviction. */
   updatedAt: number;
 }
@@ -113,6 +120,29 @@ export function userRoleInTrade(state: EscrowState, userPubkey: string | null): 
   return null;
 }
 
+/** Latest signed trade activity, independent of local hydration time. */
+export function signedTradeActivityAt(state: EscrowState): number {
+  return Math.max(
+    state.createdAt || 0,
+    ...state.eventChain.map(event => event.timestamp || 0),
+    ...(state.settlements ?? []).map(event => event.timestamp || 0),
+    ...(state.chatMessages ?? []).map(event => event.timestamp || 0),
+    ...(state.premiumNotes ?? []).map(event => event.timestamp || 0),
+  );
+}
+
+/** Stable participant chronology for the "latest trade" pointer. A listing
+ * becomes a shared trade when JOIN is signed. Consensus work performed later
+ * is state progression, not a new entry in the user's trade history. */
+export function signedTradeEnteredAt(state: EscrowState): number {
+  return Math.max(
+    state.createdAt || 0,
+    ...state.eventChain
+      .filter(event => event.kind === EscrowEventKind.JOIN)
+      .map(event => event.timestamp || 0),
+  );
+}
+
 /** Build the compact index record from a full EscrowState, or null when the
  *  user isn't a party. Pure — testable without storage. */
 export function deriveTradeIndexEntry(
@@ -138,6 +168,8 @@ export function deriveTradeIndexEntry(
     description: state.description,
     lastStatus: state.status,
     createdAt: state.createdAt,
+    lastActivityAt: signedTradeActivityAt(state),
+    enteredAt: signedTradeEnteredAt(state),
     updatedAt: nowMs,
   };
 }
@@ -161,6 +193,16 @@ export function recordTradeToIndex(
     }
     // Preserve the first-seen createdAt (a later replay may carry 0/stale).
     if (prev.createdAt > 0) entry.createdAt = prev.createdAt;
+    // A partial replay cannot make remembered signed activity move backward.
+    entry.lastActivityAt = Math.max(
+      prev.lastActivityAt ?? prev.createdAt ?? 0,
+      entry.lastActivityAt ?? entry.createdAt ?? 0,
+    );
+    // Preserve the newest signed JOIN across partial relay replays.
+    entry.enteredAt = Math.max(
+      prev.enteredAt ?? prev.createdAt ?? 0,
+      entry.enteredAt ?? entry.createdAt ?? 0,
+    );
   }
   idx[entry.id] = entry;
 

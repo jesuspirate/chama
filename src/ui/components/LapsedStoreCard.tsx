@@ -21,6 +21,7 @@ export function LapsedStoreCard({
   onAutoRenewChange,
   renewingId,
   onRenew,
+  onSnooze,
 }: {
   /** The seller's lapsed-unfunded listings (from lapsedRenewableListings). */
   listings: EscrowState[];
@@ -35,6 +36,8 @@ export function LapsedStoreCard({
   /** The listing id a renew is currently in-flight for (disables its button). */
   renewingId: string | null;
   onRenew: (id: string) => void;
+  /** Hide the resurfaced lapsed-store reminder for 24 hours. */
+  onSnooze: () => void;
 }) {
   const { t } = useT();
   if (listings.length === 0 && !showAutoRenew) return null;
@@ -84,16 +87,31 @@ export function LapsedStoreCard({
       )}
       {listings.length > 0 && (
         <>
-          <div
-            style={{
-              fontSize: 11, color: T.purple, fontFamily: T.mono,
-              letterSpacing: 0.5, textTransform: "uppercase", fontWeight: 700,
-              marginTop: showAutoRenew ? 14 : 0,
-            }}
-          >
-            {listings.length === 1
-              ? t("me.storeLapsedTitleOne")
-              : t("me.storeLapsedTitleMany", { count: listings.length })}
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: showAutoRenew ? 14 : 0 }}>
+            <div
+              style={{
+                flex: 1, minWidth: 0,
+                fontSize: 11, color: T.purple, fontFamily: T.mono,
+                letterSpacing: 0.5, textTransform: "uppercase", fontWeight: 700,
+              }}
+            >
+              {listings.length === 1
+                ? t("me.storeLapsedTitleOne")
+                : t("me.storeLapsedTitleMany", { count: listings.length })}
+            </div>
+            <button
+              type="button"
+              onClick={onSnooze}
+              title={t("me.storeLapsedSnoozeHint")}
+              style={{
+                flexShrink: 0, padding: "4px 8px", borderRadius: 999,
+                border: `1px solid ${T.purple}55`, background: "transparent",
+                color: T.purple, fontFamily: T.mono, fontSize: 9,
+                fontWeight: 800, cursor: "pointer",
+              }}
+            >
+              {t("me.storeLapsedSnooze")}
+            </button>
           </div>
           <div style={{ fontSize: 12, color: T.muted, marginTop: 3 }}>
             {bonded ? t("me.storeLapsedSubtitleBonded") : t("me.storeLapsedSubtitleUnbonded")}

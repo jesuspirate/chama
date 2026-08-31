@@ -50,6 +50,16 @@ function markIntroSeen(): void {
   }
 }
 
+function isExplicitFedimintRecoveryDiagnostic(): boolean {
+  try {
+    return !!(import.meta as any).env?.DEV
+      && new URLSearchParams(window.location.search)
+        .get("forceFedimintRecovery") === "1";
+  } catch {
+    return false;
+  }
+}
+
 // The four things you can do, in the user's words. Mirrors the Create
 // wizard's trade-type cards (CreateForm) so the model a newcomer learns
 // here is the exact model they act on later — no re-teaching. Tints are
@@ -109,6 +119,15 @@ export function ConnectScreen({
   // Prefer the browser extension when one is present. If there is no extension,
   // or that attempt fails, reveal the recovery field; NsecLogin autofocuses it.
   const handleReturningSignIn = () => {
+    // A field-recovery run must be tied to the exact affected nsec. Browser
+    // extensions can be connected to another identity, which would make the
+    // diagnostic rotate/recover the wrong identity-scoped OPFS wallet. In dev,
+    // the explicit recovery URL therefore opens the private recovery-key field
+    // directly and never consults window.nostr.
+    if (isExplicitFedimintRecoveryDiagnostic()) {
+      setShowRecoveryKey(true);
+      return;
+    }
     if (!hasNostrExtension) {
       setShowRecoveryKey(true);
       return;

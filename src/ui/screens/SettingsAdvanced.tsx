@@ -42,6 +42,7 @@ import {
   clearNativeBridgeConfig,
   setNativeBridgeConfig,
 } from "../../fedimint/native-bridge-adapter.js";
+import { readBrowserWalletRecoveryJournal } from "../../fedimint/browser-wallet-recovery-journal.js";
 
 // Settings → Advanced — the home of Power-user mode (formerly
 // "Sandbox mode" through v0.4.1) and the federation-switching tools
@@ -125,6 +126,9 @@ export function SettingsAdvanced({
   const recoverableSats = maxLightningPayoutSats(balanceMsats);
   const reserveSats = lightningPayoutReserveSats(balanceMsats);
   const routeLabel = fedimint.federationName || (fedimint.joined ? "Joined route" : "No Chama");
+  const browserRecoveryJournal = userPubkey
+    ? readBrowserWalletRecoveryJournal(userPubkey)
+    : null;
   const [nwcManagerOpen, setNwcManagerOpen] = useState(focusNwc);
   const [savedNwcConnections, setSavedNwcConnections] = useState<SavedNwcConnection[]>(
     () => listSavedNwcConnections(),
@@ -219,6 +223,62 @@ export function SettingsAdvanced({
           </div>
         )}
       </div>
+
+      {browserRecoveryJournal && (
+        <div style={{
+          background: T.card,
+          border: `1px solid ${browserRecoveryJournal.stage === "completed" ? T.green : T.amber}`,
+          borderRadius: T.r,
+          padding: 16,
+          marginBottom: 16,
+        }}>
+          <div style={{
+            fontSize: 11,
+            fontWeight: 700,
+            color: browserRecoveryJournal.stage === "completed" ? T.green : T.amber,
+            fontFamily: T.mono,
+            letterSpacing: 1,
+            marginBottom: 8,
+          }}>
+            BROWSER WALLET REPAIR ATTEMPT · {browserRecoveryJournal.stage.toUpperCase()}
+          </div>
+          <div style={{
+            fontSize: 11,
+            color: T.text,
+            fontFamily: T.mono,
+            lineHeight: 1.65,
+          }}>
+            {browserRecoveryJournal.stage === "completed"
+              ? (browserRecoveryJournal.balanceBeforeMsats !== undefined
+                  && browserRecoveryJournal.balanceAfterMsats !== undefined
+                  && browserRecoveryJournal.balanceAfterMsats > browserRecoveryJournal.balanceBeforeMsats
+                ? `The federation recovery procedure finished and this wallet increased by ${browserRecoveryJournal.balanceAfterMsats - browserRecoveryJournal.balanceBeforeMsats} msats. This is evidence of recovered balance for this attempt.`
+                : "The federation recovery procedure finished and the wallet was readable, but no balance was recovered in this attempt. This proves the procedure ran—not that funds were restored.")
+              : browserRecoveryJournal.error || "Recovery is still running or needs another check."}
+          </div>
+          <div style={{
+            fontSize: 9,
+            color: T.muted,
+            fontFamily: T.mono,
+            lineHeight: 1.6,
+            marginTop: 10,
+            wordBreak: "break-all",
+          }}>
+            operation {browserRecoveryJournal.operationId}
+            <br />
+            balance {browserRecoveryJournal.balanceBeforeMsats ?? "?"} → {browserRecoveryJournal.balanceAfterMsats ?? "?"} msats
+            {browserRecoveryJournal.durationMs !== undefined
+              ? <> · {browserRecoveryJournal.durationMs} ms</>
+              : null}
+          </div>
+          <div style={{ marginTop: 10 }}>
+            <CopyButton
+              value={JSON.stringify(browserRecoveryJournal, null, 2)}
+              label="Copy repair receipt"
+            />
+          </div>
+        </div>
+      )}
 
       <div ref={nwcSectionRef} style={{
         background: T.card, border: `1px solid ${T.border}`,
@@ -789,9 +849,10 @@ function NwcPermissionCard({
 // The 12-word BIP-39 mnemonic backs up the ACCOUNT — restoring it on a new
 // device signs the user back into their Chama (Nostr identity, trade history,
 // reputation, arbiter standing). It does NOT restore the ecash balance: a
-// fresh client cannot reconstruct bearer notes (the Fedimint SDK exposes no
-// recovery scan — force_recover is hardcoded false), so the real fund backup
-// is the exported ecash note ("Withdraw as ecash"), not this phrase. Hidden by
+// fresh client cannot be assumed to reconstruct bearer notes. Chama requests
+// forced recovery when a known phrase joins a fresh browser wallet, but that
+// path is not yet field-verified as a reliable fund backup. The user-verifiable
+// fund backup remains the exported ecash note ("Withdraw as ecash"), not this phrase. Hidden by
 // default behind a deliberate reveal; the words never leave the device unless
 // the user copies/QRs them on purpose.
 // Remote-bridge "friend wallet" config (2026-07-14 brief): URL + bearer token

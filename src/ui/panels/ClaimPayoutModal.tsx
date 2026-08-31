@@ -292,7 +292,11 @@ export function ClaimPayoutModal({
     if (stage.kind !== "picking") return;
     if (lastDispatchRef.current) return;
     lastDispatchRef.current = {
-      bolt11: "fedi-internal://receive-ecash",
+      // Fedi-internal is intercepted before payout dispatch. In a normal
+      // browser, payoutKind selects the crash-safe direct bearer-note export
+      // instead of falling through to the forbidden browser-wallet reissue.
+      bolt11: "ecash-export",
+      payoutKind: "ecash",
       saveAfter: false,
     };
     void dispatchClaim(lastDispatchRef.current);

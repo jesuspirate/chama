@@ -258,6 +258,8 @@ export function eventToSystemBubble(
         // amber is the synthetic "⚖ Dispute opened" bubble when both sides clash.
         const funderName = ctx.nameFor(funderRole(ctx.category));
         if (voterRole === Role.ARBITER) {
+          // This is one VOTE, not the resolved outcome. Calling it a refund is
+          // false when the other two votes still resolve RELEASE.
           return { key, at, icon: "⚖", tone: "vote", text: t("labels.bubbleArbiterRefunded", { funder: funderName }) };
         }
         if (voterRole === performerRole(ctx.category)) {

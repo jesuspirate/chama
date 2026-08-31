@@ -70,6 +70,46 @@ export interface FundingGatewayInfo {
   alias?: string;
   api?: string;
   provenPayable: boolean;
+  operationId?: string;
+}
+
+function receiveRejectedMessage(
+  reason: string,
+  opts: Pick<RunFundAndLockOpts, "escrowId" | "amountMsats">,
+  gateway?: FundingGatewayInfo,
+  receiveDiagnostic?: Record<string, unknown>,
+): string {
+  const message =
+    (reason === "claim_rejected"
+      ? "Payment funded the incoming contract, but the federation rejected Chama's claim transaction. "
+      : `Federation didn't accept the payment (reason: ${reason}). `) +
+    "Do not pay another invoice for this trade. Your sending wallet " +
+    "may refund automatically. This can also fail on a same-federation " +
+    "internal payment, so the gateway is not assumed to be the cause.";
+  const diagnostic = {
+    issue: "lightning_receive_rejected",
+    reason,
+    meaning: reason === "claim_rejected"
+      ? "The incoming contract funded; the receiver claim transaction was rejected by the federation."
+      : null,
+    escrowId: opts.escrowId,
+    amountMsats: opts.amountMsats,
+    gateway: gateway
+      ? {
+          id: gateway.id,
+          alias: gateway.alias ?? null,
+          api: gateway.api ?? null,
+          operationId: gateway.operationId ?? null,
+          provenPayable: gateway.provenPayable,
+        }
+      : null,
+    receiveOperation: receiveDiagnostic ?? null,
+    protection:
+      reason === "claim_rejected"
+        ? "Browser Lightning receives for this federation are paused for six hours; no gateway fault is asserted."
+        : "No automatic federation-route pause was applied for this reason.",
+  };
+  return `${message}\n\nChama diagnostics:\n${JSON.stringify(diagnostic, null, 2)}`;
 }
 
 /** Phases emitted during the polling loop (a sub-set of the orchestrator's
@@ -389,7 +429,7 @@ export async function pollForFunding(opts: PollFundingOpts): Promise<FundingTerm
 export type LnReceiveWatchKind =
   | "created"
   | "waiting_for_payment"
-  | { canceled: { reason: string } }
+  | { canceled: { reason: string; diagnostic?: Record<string, unknown> } }
   | "funded"
   | "awaiting_funds"
   | "claimed";
@@ -533,6 +573,7 @@ export async function runFundAndLock(
   let mintConfirmingEmittedByWatch = false;
   let watchOverride: FundAndLockTerminal | null = null;
   let postFundedCancelReason: string | null = null;
+  let receiveFailureDiagnostic: Record<string, unknown> | undefined;
   const watchAbort = new AbortController();
   const onReceiveState = (kind: LnReceiveWatchKind) => {
     if (typeof kind === "object" && "canceled" in kind) {
@@ -540,6 +581,7 @@ export async function runFundAndLock(
       // events from the SDK after a cancel are no-ops anyway.
       if (watchOverride) return;
       const reason = kind.canceled.reason;
+      receiveFailureDiagnostic = kind.canceled.diagnostic;
       if (mintConfirmingEmittedByWatch) {
         // The gateway already saw the HTLC. Preserve the v0.6.4 race
         // protection by continuing to poll balance for a short grace
@@ -556,11 +598,12 @@ export async function runFundAndLock(
         emit({ kind: "expired" });
         finishReceiveWatchReady(new Error("Lightning invoice expired"));
       } else {
-        const msg =
-          `Federation didn't accept the payment (reason: ${reason}). ` +
-          "Do not pay another invoice for this trade. Your sending wallet " +
-          "may refund automatically; if it doesn't, contact the gateway or " +
-          "switch communities before trying again.";
+        const msg = receiveRejectedMessage(
+          reason,
+          opts,
+          fundingGateway,
+          receiveFailureDiagnostic,
+        );
         watchOverride = { kind: "lock-failed", error: msg };
         emit({ kind: "lock-failed", error: msg });
         finishReceiveWatchReady(new Error(msg));
@@ -692,7 +735,12 @@ export async function runFundAndLock(
   if (watchOverride) return watchOverride;
 
   if (polled.kind === "mint-timeout" && postFundedCancelReason) {
-    const err =
+    const err = receiveRejectedMessage(
+      postFundedCancelReason,
+      opts,
+      fundingGateway,
+      receiveFailureDiagnostic,
+    ) + "\n\n" +
       `Payment reached the Lightning gateway, but the federation rejected ` +
       `the mint before Chama received ecash (canceled:${postFundedCancelReason}). ` +
       "Do not pay another invoice for this trade yet. Check the sending " +

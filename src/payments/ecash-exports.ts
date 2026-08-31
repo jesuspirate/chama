@@ -40,6 +40,10 @@ export interface EcashExport {
    *  matching escrow only after the user confirms the bearer note is safe. */
   source?: "wallet" | "claim";
   escrowId?: string;
+  /** Claim exports are stashed before CLAIM publication. `false` means the
+   *  bearer note is protected but must not yet be presented as a completed
+   *  payout; the next Claim attempt repairs the relay event first. */
+  claimPublished?: boolean;
 }
 
 /** Persist a freshly-generated export. Called immediately after spendNotes,
@@ -50,6 +54,7 @@ export function stashEcashExport(input: {
   federationLabel?: string;
   source?: "wallet" | "claim";
   escrowId?: string;
+  claimPublished?: boolean;
 }): void {
   try {
     const entry: EcashExport = {
@@ -59,6 +64,7 @@ export function stashEcashExport(input: {
       createdAt: Date.now(),
       source: input.source ?? "wallet",
       escrowId: input.escrowId,
+      claimPublished: input.claimPublished,
     };
     setScopedStorageItem(ECASH_EXPORT_KEY, JSON.stringify(entry));
     console.info(
@@ -70,6 +76,22 @@ export function stashEcashExport(input: {
     console.error("[chama] ecash-export: stash failed — note may be at risk:", e);
     throw e;
   }
+}
+
+/** Mark the stash/display boundary only after CLAIM reached a relay. */
+export function markClaimEcashExportPublished(escrowId: string): void {
+  const entry = getEcashExport();
+  if (!entry || entry.source !== "claim" || entry.escrowId !== escrowId) {
+    throw new Error("This claim's ecash recovery copy was not found.");
+  }
+  stashEcashExport({
+    notes: entry.notes,
+    amountMsats: entry.amountMsats,
+    federationLabel: entry.federationLabel,
+    source: "claim",
+    escrowId,
+    claimPublished: true,
+  });
 }
 
 /** Fail closed before any spend. Also prevents one pending bearer note from

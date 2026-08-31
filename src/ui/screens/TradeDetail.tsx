@@ -145,7 +145,7 @@ const SPLIT_FLOOR_BOTTOM = "clamp(140px, 22dvh, 340px)";
 export function TradeDetail({
   state, pubkey, homeCommunity, bootProbeFailed, receiveUnavailable, fundingInProgress,
   claimBlockedReason, amountDisplayMode = "sats", onAmountDisplayModeChange, kind0Enabled = false, profileNames,
-  disableNwc = false, onBack, onVote, onClaim, onJoin, onLock, onLockDirectNwc, onClaimDirectNwc, onConfirmPayout,
+  disableNwc = false, forceClaimMethodChooser = false, onBack, onVote, onClaim, onJoin, onLock, onLockDirectNwc, onClaimDirectNwc, onConfirmPayout,
   onSendChat, onReleasePeriod, onOpenSettings, onOpenNwcSettings,
   onPrewarmFunding, onRebroadcast, onForget, onPurchase, onCancelDraftOrder, stockLeft, isOversoldOrder = false,
   onRateCounterparty, myGivenRatings, fetchRatingSummary, fetchCommunityBonds, knownTrades, onStartNextTranche, onchainFundingPlan, onPublishOnchainLock, onPrepareOnchainSettlement, onSignOnchainSettlement, onFinalizeOnchainSettlement, onScanMyOnchainPayouts, onSweepOnchainPayout,
@@ -185,6 +185,10 @@ export function TradeDetail({
   profileNames?: NostrProfileNameMap;
   /** Fedi Mini-App must stay on internal ecash paths, not NWC shortcuts. */
   disableNwc?: boolean;
+  /** Local money-path field testing must always show the destination chooser,
+   * even when a saved NWC wallet would normally turn Claim into a one-tap
+   * shortcut. */
+  forceClaimMethodChooser?: boolean;
   onBack: () => void;
   // v1.2.2 vote-freeze fix: typed as Promise<void> so handleVote can
   // await the publish-and-toast chain wired in App. The previous `void`
@@ -202,7 +206,10 @@ export function TradeDetail({
   /** Bond → arbiter enrollment (S3): fetch this community's chain-verified 38135
    *  bonds so a seated bonded arbiter is RECOGNIZED (green), not flagged
    *  "unrecognized". Optional + fail-soft. */
-  fetchCommunityBonds?: (community: string) => Promise<VerifiedBond[]>;
+  fetchCommunityBonds?: (
+    community: string,
+    opts?: { allowCachedFallback?: boolean },
+  ) => Promise<VerifiedBond[]>;
   /** Tranching: publish the next slice of this trade's plan. */
   onStartNextTranche?: (fromEscrowId: string) => Promise<unknown>;
   /** v6.0: seller freezes the signed plan after buyer + arbiter are seated. */
@@ -2844,7 +2851,7 @@ export function TradeDetail({
                   // v1.2.4: direct-NWC claim path. Saved NWC wallet skips
                   // the ClaimPayoutModal chooser → resolveNwcConnectionToInvoice
                   // → claimAndPayout in one shot, all from the button.
-                  if (activeNwc && onClaimDirectNwc) {
+                  if (!forceClaimMethodChooser && activeNwc && onClaimDirectNwc) {
                     setDirectNwcClaimPhase(t("trade.starting"));
                     try {
                       await onClaimDirectNwc({
@@ -2884,7 +2891,7 @@ export function TradeDetail({
                   ? t("trade.claimDidNotSettle")
                   : claiming
                   ? state.status === EscrowStatus.CLAIMED ? t("trade.retryingClaim") : t("trade.claiming")
-                  : activeNwc && onClaimDirectNwc
+                  : !forceClaimMethodChooser && activeNwc && onClaimDirectNwc
                     ? (state.status === EscrowStatus.CLAIMED
                         ? t("trade.retryClaimVia", { wallet: activeNwc.label })
                         : t("trade.claimSatsVia", { wallet: activeNwc.label }))
@@ -2918,7 +2925,7 @@ export function TradeDetail({
               {/* "Try other method" fallback link — same pattern as the
                   Fund button. Opens ClaimPayoutModal with the full
                   chooser when the user wants a different destination. */}
-              {activeNwc && onClaimDirectNwc && !directNwcClaimPhase && !claiming && !payoutConfirming && (
+              {!forceClaimMethodChooser && activeNwc && onClaimDirectNwc && !directNwcClaimPhase && !claiming && !payoutConfirming && (
                 <button
                   onClick={async () => {
                     setClaiming(true);

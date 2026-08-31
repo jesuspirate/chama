@@ -3,7 +3,7 @@
 // delivered — on its way." etc.) N'EST PAS ici — elle reste en anglais
 // byte-identique sur le fil (kind 38108, comparée cross-client).
 export const labels: Record<string, string> = {
-  "labels.bubbleArbiterRefunded": "L'arbitre a remboursé → retour à {funder}",
+  "labels.bubbleArbiterRefunded": "L'arbitre a voté pour rembourser {funder}",
   "labels.bubbleAskedRefund": "{voter} a demandé un remboursement",
   "labels.bubbleDisputeOpened": "Litige ouvert",
   "labels.bubbleMarkedIt": "{voter} a marqué comme {done}",
