@@ -827,9 +827,10 @@ export class EscrowClient {
    */
   async queryOnce(
     filter: import("./relay-manager.js").NostrFilter,
-    timeoutMs = 5_000
+    timeoutMs = 5_000,
+    options?: import("./relay-manager.js").OnceFetchOptions,
   ): Promise<NostrEvent[]> {
-    return this.relayManager.fetchOnce(filter, timeoutMs);
+    return this.relayManager.fetchOnce(filter, timeoutMs, undefined, options);
   }
 
   /**

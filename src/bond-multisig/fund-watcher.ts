@@ -19,7 +19,7 @@
 
 import { hexToBytes } from "@noble/hashes/utils.js";
 import { SIGNET, type BtcNetwork, type BondUtxo } from "./multisig.js";
-import { resolveEsploraBase } from "./esplora-config.js";
+import { BUILTIN_ESPLORA_BASE, resolveEsploraBase } from "./esplora-config.js";
 
 /** Minimal shape of an Esplora `/address/{addr}/utxo` entry. */
 export interface EsploraUtxo {
@@ -82,22 +82,84 @@ export function esploraFetcher(
     if (address && ((mainnetExplorer && address.startsWith("tb1")) || (!mainnetExplorer && address.startsWith("bc1")))) {
       throw new Error(`Bitcoin address network does not match explorer: ${address.slice(0, 8)}…`);
     }
-    const controller = new AbortController();
-    const timeout = setTimeout(
-      () => controller.abort(new DOMException("Esplora request timed out", "TimeoutError")),
-      opts.timeoutMs ?? 8_000,
-    );
-    const abortOverall = () => controller.abort(opts.signal?.reason);
-    if (opts.signal?.aborted) abortOverall();
-    else opts.signal?.addEventListener("abort", abortOverall, { once: true });
-    try {
-      const res = await fetch(`${base}${path}`, { signal: controller.signal });
-      if (!res.ok) throw new Error(`Esplora ${res.status} for ${path}`);
-      return res.json();
-    } finally {
-      clearTimeout(timeout);
-      opts.signal?.removeEventListener("abort", abortOverall);
-    }
+    const normalizedBase = base.replace(/\/+$/, "");
+    const builtinMainnet = BUILTIN_ESPLORA_BASE.mainnet.replace(/\/+$/, "");
+    // Firefox-family privacy browsers have been observed leaving a perfectly
+    // valid mempool.space fetch pending for several seconds while
+    // blockstream.info answers immediately (and vice versa is possible). A
+    // single public explorer must not turn a chain-verified bonded count into a
+    // silent zero. Hedge only the SHIPPED mainnet endpoint; a user-selected
+    // explorer remains authoritative and is never bypassed behind their back.
+    const candidates = opts.network !== SIGNET && normalizedBase === builtinMainnet
+      ? [normalizedBase, "https://blockstream.info/api"]
+      : [normalizedBase];
+
+    const controllers = candidates.map(() => new AbortController());
+    let winner = false;
+    let completed = 0;
+    let fallbackTimer: ReturnType<typeof setTimeout> | null = null;
+    const errors: unknown[] = [];
+
+    return new Promise<any>((resolve, reject) => {
+      const finishFailure = (index: number, error: unknown) => {
+        errors[index] = error;
+        completed += 1;
+        if (winner) return;
+        // A fast explicit failure should not wait for the hedge delay.
+        if (index === 0 && candidates.length > 1 && fallbackTimer) {
+          clearTimeout(fallbackTimer);
+          fallbackTimer = null;
+          launch(1);
+        }
+        if (completed >= candidates.length) {
+          reject(errors.find(Boolean) ?? new Error(`Esplora unavailable for ${path}`));
+        }
+      };
+
+      const launch = (index: number) => {
+        const controller = controllers[index];
+        if (!controller || winner) return;
+        const timeout = setTimeout(
+          () => controller.abort(new DOMException("Esplora request timed out", "TimeoutError")),
+          opts.timeoutMs ?? 8_000,
+        );
+        const abortOverall = () => controller.abort(opts.signal?.reason);
+        if (opts.signal?.aborted) abortOverall();
+        else opts.signal?.addEventListener("abort", abortOverall, { once: true });
+
+        void fetch(`${candidates[index]}${path}`, { signal: controller.signal })
+          .then(async (res) => {
+            if (!res.ok) throw new Error(`Esplora ${res.status} for ${path}`);
+            return res.json();
+          })
+          .then((value) => {
+            if (winner) return;
+            winner = true;
+            if (fallbackTimer) clearTimeout(fallbackTimer);
+            controllers.forEach((other, otherIndex) => {
+              if (otherIndex !== index) other.abort(new DOMException("Esplora hedge won", "AbortError"));
+            });
+            resolve(value);
+          })
+          .catch((error) => finishFailure(index, error))
+          .finally(() => {
+            clearTimeout(timeout);
+            opts.signal?.removeEventListener("abort", abortOverall);
+          });
+      };
+
+      launch(0);
+      if (candidates.length > 1) {
+        // Keep the normal one-request path when the primary is healthy, while
+        // preventing a privacy-browser stall from consuming the whole UI
+        // deadline. 600 ms is below a perceptible onboarding pause but avoids
+        // doubling routine explorer traffic.
+        fallbackTimer = setTimeout(() => {
+          fallbackTimer = null;
+          launch(1);
+        }, 600);
+      }
+    });
   };
 }
 

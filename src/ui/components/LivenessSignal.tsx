@@ -16,6 +16,7 @@ import { HelpTip } from "./HelpTip.js";
 import { type ChamaLiveness } from "../../arbiters/live-chama.js";
 import {
   loadCoordinatedLiveness,
+  readCachedLiveness,
   type LivenessGenerationDiagnostic,
 } from "../../arbiters/liveness-coordinator.js";
 
@@ -40,9 +41,14 @@ export function useLiveness(
   loadRef.current = loadLiveness;
   const intervalMs = opts.intervalMs ?? 0;
   useEffect(() => {
-    setLiveness(null);
     const load = loadRef.current;
-    if (!load || !slug) return;
+    if (!load || !slug) { setLiveness(null); return; }
+    // Public chain truth is safe to reuse across identities. Paint the most
+    // recent verified result synchronously, then refresh behind it; a returning
+    // user should never stare at "checking" merely because Me and Dashboard
+    // mounted a fresh copy of the same signal.
+    const warm = readCachedLiveness(slug);
+    setLiveness(warm);
     let cancelled = false;
     const run = (showLoading: boolean) => {
       if (showLoading) setLoading(true);
@@ -60,7 +66,7 @@ export function useLiveness(
         })
         .finally(() => { if (!cancelled) setLoading(false); });
     };
-    run(true);
+    run(!warm);
     const id = intervalMs > 0 ? setInterval(() => run(false), intervalMs) : null;
     const onFocus = () => run(false);
     if (typeof window !== "undefined") window.addEventListener("focus", onFocus);

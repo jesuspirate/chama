@@ -2797,6 +2797,7 @@ export default function App() {
           }}
           loadLiveness={actions.getChamaLiveness}
           loadBondedCounts={actions.fetchBondedArbiterCounts}
+          bondedCountsGeneration={connectedRelays}
           livenessBlocksPerDay={BOND_LIVENESS_BLOCKS_PER_DAY}
         />
       </div>

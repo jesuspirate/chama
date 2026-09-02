@@ -55,7 +55,7 @@ function persist(diagnostic: LivenessGenerationDiagnostic): void {
   }
 }
 
-function cached(community: string, now = Date.now()): ChamaLiveness | null {
+export function readCachedLiveness(community: string, now = Date.now()): ChamaLiveness | null {
   let entry = verifiedCache.get(community);
   if (!entry) {
     try {
@@ -141,7 +141,7 @@ export function loadCoordinatedLiveness(
     diagnostic.outcome = outcome;
     persist(diagnostic);
     if (value) rememberVerified(community, value, diagnostic.finishedAt);
-    const fallback = value ?? cached(community, diagnostic.finishedAt);
+    const fallback = value ?? readCachedLiveness(community, diagnostic.finishedAt);
     return { liveness: fallback, source: value ? "live" : fallback ? "cache" : "none", outcome };
   };
 

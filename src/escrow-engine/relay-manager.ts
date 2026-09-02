@@ -56,6 +56,13 @@ export interface NostrFilter {
   limit?: number;
 }
 
+/** Per-read startup policy. Full escrow/history reads retain the default
+ * quorum wait; small public hints may first ask whichever relay is already
+ * open, then deliberately fall back to the normal quorum path themselves. */
+export interface OnceFetchOptions {
+  quorumBudgetMs?: number;
+}
+
 // ── Relay events ──────────────────────────────────────────────────────────
 
 export interface RelayCallbacks {
@@ -1098,7 +1105,12 @@ export class RelayManager {
    * Fetch events matching an arbitrary filter. Resolves when every
    * connected relay has sent EOSE, or after the timeout.
    */
-  async fetchOnce(filter: NostrFilter, timeoutMs = 5_000, probe?: FetchProbe): Promise<NostrEvent[]> {
+  async fetchOnce(
+    filter: NostrFilter,
+    timeoutMs = 5_000,
+    probe?: FetchProbe,
+    options?: OnceFetchOptions,
+  ): Promise<NostrEvent[]> {
     // Quorum-gate (see fetchEscrowEvents) — discovery (authors ∪ #p) must not
     // resolve against one relay and return a partial trade list, which is what
     // made My Trades oscillate 2↔3 on slow webviews. The hook also re-fires
@@ -1109,7 +1121,10 @@ export class RelayManager {
     // that records per-relay REQ/EVENT/EOSE and how the fetch resolved. It
     // never gates or changes the fetch — see discovery-diagnostics.ts.
     if (!this.hasRelayQuorum(this.effectiveQuorum())) {
-      await this.waitForRelayQuorum(this.effectiveQuorum(), FETCH_QUORUM_BUDGET_MS);
+      await this.waitForRelayQuorum(
+        this.effectiveQuorum(),
+        options?.quorumBudgetMs ?? FETCH_QUORUM_BUDGET_MS,
+      );
     }
 
     return new Promise((resolve) => {

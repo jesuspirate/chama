@@ -28,6 +28,7 @@ import {
 } from "../bond-multisig/bond-announcement.js";
 
 export const BONDED_POOL_CACHE_KEY = "chama_bonded_pool_cache_v1";
+export const BONDED_COUNT_SNAPSHOT_KEY = "chama_bonded_count_snapshot_v1";
 export const BONDED_POOL_CACHE_TTL_MS = 12 * 60 * 60 * 1000;
 /** Bounded: communities a device actually creates in are few. */
 export const BONDED_POOL_CACHE_MAX_COMMUNITIES = 50;
@@ -188,10 +189,59 @@ export function readCachedCommunityBonds(
   return bonds.length > 0 ? bonds : null;
 }
 
+/**
+ * The worldwide picker count is a distinct cache entry, rather than an
+ * inference from whichever individual communities happen to have been opened
+ * on this device. That distinction prevents one partial detail-view cache hit
+ * from masquerading as a complete country-list snapshot.
+ */
+export function writeCachedBondedArbiterCounts(
+  counts: Readonly<Record<string, number>>,
+  nowMs = Date.now(),
+): void {
+  const clean: Record<string, number> = {};
+  for (const [community, raw] of Object.entries(counts)) {
+    const count = Math.max(0, Math.floor(raw));
+    if (community && Number.isFinite(count) && count > 0) clean[community] = count;
+  }
+  if (Object.keys(clean).length === 0) return;
+  try {
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem(BONDED_COUNT_SNAPSHOT_KEY, JSON.stringify({ verifiedAt: nowMs, counts: clean }));
+    }
+  } catch { /* best-effort public-data cache */ }
+}
+
+export function readCachedBondedArbiterCounts(
+  nowMs = Date.now(),
+): Record<string, number> | null {
+  try {
+    if (typeof localStorage === "undefined") return null;
+    const parsed = JSON.parse(localStorage.getItem(BONDED_COUNT_SNAPSHOT_KEY) ?? "null") as {
+      verifiedAt?: unknown;
+      counts?: unknown;
+    } | null;
+    if (!parsed || typeof parsed.verifiedAt !== "number" || !Number.isFinite(parsed.verifiedAt)) return null;
+    if (nowMs - parsed.verifiedAt > BONDED_POOL_CACHE_TTL_MS) return null;
+    if (!parsed.counts || typeof parsed.counts !== "object") return null;
+    const clean: Record<string, number> = {};
+    for (const [community, raw] of Object.entries(parsed.counts as Record<string, unknown>)) {
+      if (typeof raw !== "number" || !Number.isInteger(raw) || raw <= 0) return null;
+      clean[community] = raw;
+    }
+    return Object.keys(clean).length > 0 ? clean : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Tests only. */
 export function clearBondedPoolCache(): void {
   try {
-    if (typeof localStorage !== "undefined") localStorage.removeItem(BONDED_POOL_CACHE_KEY);
+    if (typeof localStorage !== "undefined") {
+      localStorage.removeItem(BONDED_POOL_CACHE_KEY);
+      localStorage.removeItem(BONDED_COUNT_SNAPSHOT_KEY);
+    }
   } catch {
     /* best-effort */
   }

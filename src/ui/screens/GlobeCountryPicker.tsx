@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { T } from "../theme.js";
 import { BrandHeader } from "../components/BrandHeader.js";
 import { GlobeHero } from "../components/GlobeHero.js";
 import { LivenessSignal } from "../components/LivenessSignal.js";
-import { loadCoordinatedLiveness, type LivenessGenerationDiagnostic } from "../../arbiters/liveness-coordinator.js";
+import { loadCoordinatedLiveness, readCachedLiveness, type LivenessGenerationDiagnostic } from "../../arbiters/liveness-coordinator.js";
 import { LanguagePills } from "../components/LanguagePills.js";
 import { useT } from "../../i18n/index.js";
 import type { ChamaLiveness } from "../../arbiters/live-chama.js";
@@ -65,7 +65,7 @@ function localeCountryCode(): string | null {
   return null;
 }
 
-export function GlobeCountryPicker({ onSelect, loadLiveness, loadBondedCounts, livenessBlocksPerDay = 144 }: {
+export function GlobeCountryPicker({ onSelect, loadLiveness, loadBondedCounts, bondedCountsGeneration = 0, livenessBlocksPerDay = 144 }: {
   onSelect: (slug: string) => void;
   /** Optional: compute a community's chain-verified liveness (getChamaLiveness).
    *  Absent during pre-signer onboarding (no connected client) — the detail screen
@@ -78,6 +78,10 @@ export function GlobeCountryPicker({ onSelect, loadLiveness, loadBondedCounts, l
    *  without lose nothing — the computed signal can only light up, never darken.
    *  Fails soft; absent (pre-signer callers) the registry tiers stand alone. */
   loadBondedCounts?: () => Promise<Record<string, number>>;
+  /** Reactive relay-readiness generation. The post-connect picker can mount
+   *  before its WebSockets open; advancing this value gives a genuinely empty
+   *  first read another chance as relay connectivity arrives. */
+  bondedCountsGeneration?: number;
   /** Blocks/day for the liveness "~D-day" term readout (signet ~2880, mainnet ~144). */
   livenessBlocksPerDay?: number;
 }) {
@@ -117,19 +121,69 @@ export function GlobeCountryPicker({ onSelect, loadLiveness, loadBondedCounts, l
   const [livenessOutcome, setLivenessOutcome] = useState<LivenessGenerationDiagnostic["outcome"] | null>(null);
 
   // The batched list signal: slug → chain-verified bonded-arbiter count.
-  // Fetched once per mount, fail-soft (null ⇒ registry tiers stand alone).
+  // The loader owns its fast durable-relay read plus one bounded public-relay
+  // fallback. Do not wrap it in UI retries: queryOnce has its own hidden relay
+  // readiness budget, so three innocent-looking retries previously turned one
+  // additive label into a 25–30+ second onboarding stall.
   const [bondedBySlug, setBondedBySlug] = useState<Record<string, number> | null>(null);
+  const bondedCountsResolved = useRef(false);
+  const bondedCountsMounted = useRef(true);
+  const bondedCountsInFlight = useRef(false);
+  const bondedCountsLatestGeneration = useRef(bondedCountsGeneration);
+  const bondedCountsAttemptGeneration = useRef(0);
+  const [bondedCountsRetry, setBondedCountsRetry] = useState(0);
+  bondedCountsLatestGeneration.current = bondedCountsGeneration;
   useEffect(() => {
-    if (!loadBondedCounts) return;
-    let cancelled = false;
-    loadBondedCounts()
-      .then((r) => { if (!cancelled) setBondedBySlug(r); })
-      .catch(() => { /* fail-soft — the list never darkens for a failed read */ });
-    return () => { cancelled = true; };
-    // Fire once per mount — the prop is a fresh identity each render but reads
-    // the live client internally, so a stale closure is fine.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // React StrictMode rehearses setup → cleanup → setup in development. Set
+    // this true in every setup (not only in the ref initializer), or that
+    // rehearsal permanently makes a still-mounted picker reject its result.
+    bondedCountsMounted.current = true;
+    return () => {
+      bondedCountsMounted.current = false;
+    };
   }, []);
+  useEffect(() => {
+    if (
+      !loadBondedCounts ||
+      bondedCountsGeneration < 1 ||
+      bondedCountsResolved.current ||
+      bondedCountsInFlight.current
+    ) return;
+    // Relay connections arrive one at a time during a fresh sign-in. Never
+    // start a worldwide chain audit for each increment: the old effect merely
+    // discarded each earlier result while its relay + Esplora work continued,
+    // leaving Firefox with several overlapping audits and no painted answer.
+    // Serialize attempts. If this attempt is genuinely empty and more relays
+    // arrived while it ran, the finally block schedules exactly one retry.
+    const attemptGeneration = bondedCountsGeneration;
+    bondedCountsAttemptGeneration.current = attemptGeneration;
+    bondedCountsInFlight.current = true;
+    void loadBondedCounts()
+      .then(result => {
+        if (bondedCountsMounted.current) {
+          setBondedBySlug(result);
+          // A positive verified snapshot is final for this picker mount. An
+          // empty result remains retryable when another relay connects.
+          if (Object.keys(result).length > 0) bondedCountsResolved.current = true;
+        }
+      })
+      .catch(() => {
+        if (bondedCountsMounted.current) setBondedBySlug({});
+      })
+      .finally(() => {
+        bondedCountsInFlight.current = false;
+        if (
+          bondedCountsMounted.current &&
+          !bondedCountsResolved.current &&
+          bondedCountsLatestGeneration.current > bondedCountsAttemptGeneration.current
+        ) {
+          setBondedCountsRetry(n => n + 1);
+        }
+      });
+    // The loader prop is a fresh identity each render. Relay readiness is the
+    // only meaningful retry signal; resolved positive counts latch above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bondedCountsGeneration, bondedCountsRetry]);
   // A country's note sums its chamas' counts (an arbiter bonded in two chamas of
   // one country counts per chama — the per-chama truth lives on the detail view).
   const bondedForCountry = (c: PickerCountry): number => {
@@ -148,7 +202,9 @@ export function GlobeCountryPicker({ onSelect, loadLiveness, loadBondedCounts, l
     if (!selected || !loadLiveness || selected.chamas.length >= 2) return;
     const slug = selected.defaultCommunity.slug;
     let cancelled = false;
-    setLivenessLoading(true);
+    const warm = readCachedLiveness(slug);
+    setLiveness(warm);
+    setLivenessLoading(!warm);
     loadCoordinatedLiveness(slug, (community, signal) => loadLiveness(community, signal))
       .then((result) => {
         if (!cancelled) {
@@ -345,9 +401,10 @@ export function GlobeCountryPicker({ onSelect, loadLiveness, loadBondedCounts, l
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
-        opacity: globeArtworkReady ? 1 : 0,
-        visibility: globeArtworkReady ? "visible" : "hidden",
-        transition: "opacity 140ms ease",
+        // Never blank the entire authenticated screen while one decorative
+        // asset decodes. GlobeHero reserves its own space and fades itself in.
+        opacity: 1,
+        visibility: "visible",
       }}
     >
       <BrandHeader />

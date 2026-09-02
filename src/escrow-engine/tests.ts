@@ -97,6 +97,7 @@ import {
   LIVENESS_DIAGNOSTICS_KEY,
   getLivenessDiagnostics,
   loadCoordinatedLiveness,
+  readCachedLiveness,
   resetLivenessCoordinator,
 } from "../arbiters/liveness-coordinator.js";
 import {
@@ -1076,6 +1077,12 @@ function assertErr(result: TransitionResult, expectedCode: string, name: string)
     "us-blf",
     async () => verifiedLiveness,
     20,
+  );
+  const synchronousWarmRead = readCachedLiveness("us-blf");
+  assert(
+    synchronousWarmRead?.arbiterCount === 1
+      && synchronousWarmRead.totalBondSats === 50_000n,
+    "liveness coordinator: verified public truth is synchronously reusable before a refresh",
   );
   const cachedAfterTimeout = await loadCoordinatedLiveness(
     "us-blf",
@@ -22363,6 +22370,21 @@ console.log("\n── RELAY MANAGER — reconnect resilience ──");
   assert(quorumOf(["a", "b", "c", "d", "e"]) === 3, "effectiveQuorum: 5-relay pool keeps 3");
   assert(quorumOf(["a", "b", "c", "d", "e", "f", "g"]) === 3,
     "effectiveQuorum: 7-relay pool stays at 3 (margin without a wall of red)");
+
+  // (5) Small public hints (the country-list bond count) may deliberately ask
+  // the already-open durable relay first. Pin that the override reaches the
+  // readiness gate instead of silently paying the default five-second budget.
+  const rmFastHint = new RelayManager(["a", "b", "c", "d"]);
+  let observedQuorumBudget = -1;
+  (rmFastHint as any).waitForRelayQuorum = async (_quorum: number, budget: number) => {
+    observedQuorumBudget = budget;
+    return [];
+  };
+  const fastHint = await rmFastHint.fetchOnce(
+    { kinds: [38135], limit: 500 }, 50, undefined, { quorumBudgetMs: 0 },
+  );
+  assert(fastHint.length === 0 && observedQuorumBudget === 0,
+    "fetchOnce: a fast public hint can bypass the generic 5s relay-quorum wait");
 }
 
 // ── FIRST-ACK PUBLISH (field fix: slow Create→Publish) ─────────────────
@@ -26469,6 +26491,12 @@ console.log("\n── #62 REDEEM-PROBE + BONDED-POOL CACHE ──");
     "cache: past the TTL the entry is stale → null (caller goes live-or-nothing)");
   assert(cache.readCachedCommunityBonds("ke-kes", T0) === null,
     "cache: unknown community → null");
+  cache.writeCachedBondedArbiterCounts({ "us-blf": 1, "tz-tzs": 1 }, T0);
+  const countSnapshot = cache.readCachedBondedArbiterCounts(T0 + 60_000);
+  assert(countSnapshot?.["us-blf"] === 1 && countSnapshot?.["tz-tzs"] === 1,
+    "cache: a worldwide verified count snapshot is reusable across fresh identities");
+  assert(cache.readCachedBondedArbiterCounts(T0 + cache.BONDED_POOL_CACHE_TTL_MS + 1) === null,
+    "cache: the worldwide count snapshot expires with the underlying verified bonds");
   // One bad record poisons the whole entry (never a partial trust).
   (globalThis as any).localStorage.setItem(cache.BONDED_POOL_CACHE_KEY, JSON.stringify({
     "tz-tzs": { verifiedAt: T0, bonds: [{ npub: "n", community: "tz-tzs", address: "a", lockUntil: 1, actualSats: "not-a-bigint", claimedSats: "0", funded: true, active: true }] },
@@ -26478,6 +26506,8 @@ console.log("\n── #62 REDEEM-PROBE + BONDED-POOL CACHE ──");
   cache.clearBondedPoolCache();
   assert(cache.readCachedCommunityBonds("tz-tzs", T0 + 1) === null,
     "cache: clear wipes the store");
+  assert(cache.readCachedBondedArbiterCounts(T0 + 1) === null,
+    "cache: clear also wipes the worldwide count snapshot");
 }
 
 // History chronology comes from the signed CREATE, never relay arrival order

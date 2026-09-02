@@ -22,6 +22,11 @@ If the relay restricts writes by kind, allow the kinds currently declared in the
 
 This prevents relay policy from silently falling behind protocol changes.
 
+The production community relay reserves the complete `38100–38199` Chama
+protocol band. Do not narrow its upper bound to the newest allocated kind: the
+kind-38135 bond rollout exposed how that strands newly introduced events on
+public fallbacks and makes browser hydration depend on third-party relay health.
+
 ## Verification
 
 Before adding a relay to the default pool:

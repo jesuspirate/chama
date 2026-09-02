@@ -301,7 +301,12 @@ import {
 /** Bound on chain fetches triggered by one fault-attestation read, so a flood
  *  of fabricated escrow ids can't turn a CREATE into a hundred loads. */
 const FAULT_VERIFY_TRADE_CAP = 12;
-import { readCachedCommunityBonds, writeCachedCommunityBonds } from "../arbiters/bonded-pool-cache.js";
+import {
+  readCachedBondedArbiterCounts,
+  readCachedCommunityBonds,
+  writeCachedBondedArbiterCounts,
+  writeCachedCommunityBonds,
+} from "../arbiters/bonded-pool-cache.js";
 import { bondedArbitersForCommunity } from "../arbiters/live-chama.js";
 import { getCommitmentBond, upsertCommitmentBond, listCommitmentBonds, newBondId, reconstructBondRecord } from "../bond-multisig/commitment-store.js";
 import { MAINNET as BOND_NETWORK } from "../bond-multisig/multisig.js";
@@ -322,7 +327,7 @@ import {
   setUserCommunitySlug,
   setLastHomeHint,
 } from "../communities/storage.js";
-import { getCommunityBySlug, type Community } from "../communities/registry.js";
+import { COMMUNITY_REGISTRY, getCommunityBySlug, type Community } from "../communities/registry.js";
 import {
   sendCommunityRequestToGlobalArbiters,
   type CommunityRequestInput,
@@ -6266,35 +6271,114 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     fetchBondedArbiterCounts: async (): Promise<Record<string, number>> => {
       const client = clientRef.current;
       if (!client) throw new Error("Not connected");
-      // ONE batched read across every community (no #d filter). Announcements
-      // are parameterized-replaceable and rare (one per arbiter × community),
-      // so a 500-limit comfortably covers the world for now.
-      const events = await client.queryOnce(
-        { kinds: [ARBITER_BOND_ANNOUNCEMENT_KIND], limit: 500 } as any, 6_000,
-      );
+      const worldwideSnapshot = readCachedBondedArbiterCounts();
+      if (worldwideSnapshot) {
+        // This snapshot was produced only after a worldwide relay read plus
+        // on-chain verification. It is intentionally device-global public
+        // data, so a fresh nsec can paint the same truth immediately. Individual
+        // community caches are NOT accepted here: they may be partial.
+        return worldwideSnapshot;
+      }
+      // Public, chain-verified bond data is deliberately device-global. Use it
+      // immediately across fresh nsec signups instead of re-running a worldwide
+      // Esplora audit before the country picker may paint one small count.
+      const cachedCounts: Record<string, number> = {};
+      for (const community of COMMUNITY_REGISTRY) {
+        const cachedBonds = readCachedCommunityBonds(community.slug);
+        const count = cachedBonds ? bondedArbitersForCommunity(cachedBonds).length : 0;
+        if (count > 0) cachedCounts[community.slug] = count;
+      }
+      // A cache hit may cover only ONE community (for example, a detail view
+      // verified us-blf yesterday). It is a fallback, not proof that the
+      // worldwide country-list snapshot is complete. Always revalidate the
+      // batched relay set; otherwise one partial cache entry suppresses every
+      // other country's count until its 12-hour TTL expires.
+      // `state.connected` means the client has been constructed; websocket
+      // handshakes may still be finishing. The country picker mounts in that
+      // exact window on a fresh nsec, so wait briefly for one live relay rather
+      // than converting startup timing into a false global zero.
+      const relayDeadline = Date.now() + 1_500;
+      while (client.getConnectedRelayCount() < 1 && Date.now() < relayDeadline) {
+        await new Promise((resolve) => setTimeout(resolve, 200));
+      }
+      // ONE batched read across every community (no #d filter). First ask the
+      // relay(s) already open. relay.chama.community is normally first and this
+      // makes a durable/cached answer sub-second instead of paying the generic
+      // five-second history quorum gate. If it has no announcements, make ONE
+      // normal quorum read so older bonds stranded on public relays can heal.
+      const filter = { kinds: [ARBITER_BOND_ANNOUNCEMENT_KIND], limit: 500 } as any;
+      let events = await client.queryOnce(filter, 1_500, { quorumBudgetMs: 0 });
+      let usedPublicFallback = false;
+      if (events.length === 0) {
+        usedPublicFallback = true;
+        events = await client.queryOnce(filter, 3_500);
+      }
       const byCommunity = groupLatestAnnouncementsByCommunity(events as any);
-      if (byCommunity.size === 0) return {};
-      const fetchJson = esploraFetcher(defaultEsploraBase(BOND_NETWORK), { network: BOND_NETWORK });
-      const tip = (await esploraTipHeight(fetchJson).catch(() => 0)) ?? 0;
+      if (byCommunity.size === 0) return cachedCounts;
+      // Historical 38135s pre-date the durable Chama relay and currently live
+      // mostly on flaky public relays. Whoever successfully sees them repairs
+      // that durability gap by re-offering the ORIGINAL signed events. No keys,
+      // resigning, or state mutation: the same immutable event id is copied to
+      // today's relay set. Future fresh browsers can then use the fast path.
+      if (usedPublicFallback) {
+        void mapPool(events.slice(0, 72), 3, event =>
+          client.publishRaw(event).then(() => true).catch(() => false),
+        ).catch(() => {});
+      }
+      const controller = new AbortController();
+      const deadline = setTimeout(() => controller.abort(), 6_000);
+      const fetchJson = esploraFetcher(defaultEsploraBase(BOND_NETWORK), {
+        network: BOND_NETWORK,
+        signal: controller.signal,
+        timeoutMs: 4_500,
+      });
+      const tip = await esploraTipHeight(fetchJson).catch(() => null);
+      if (tip === null) { clearTimeout(deadline); return cachedCounts; }
       const counts: Record<string, number> = {};
-      for (const [community, anns] of byCommunity) {
-        // ⭐ Same recompute-don't-trust as the detail read — every counted bond
-        // is chain-verified. Per-community chain reads bounded: the list count
-        // saturates visually long before 12, and a flood of fake announcements
-        // must not turn the picker into an esplora hammer.
-        const bonds: VerifiedBond[] = [];
-        for (const a of anns.slice(0, 12)) {
-          const v = await verifyBondAnnouncement(
-            a, { network: BOND_NETWORK, fetchJson, tipHeight: tip },
+      // Verify the world list as one bounded pool. The old community-by-community
+      // loop multiplied slow Esplora responses by every represented chama and
+      // could make a one-digit onboarding label take minutes.
+      const candidates = [...byCommunity.entries()].flatMap(([community, anns]) =>
+        anns.slice(0, 12).map(announcement => ({ community, announcement })),
+      ).slice(0, 72);
+      // One on-chain commitment may intentionally license the same arbiter in
+      // several chamas. Verify that address once, then project the verified
+      // result back onto each signed community announcement. The previous loop
+      // asked Esplora for the identical address once per country (currently six
+      // times for the main BLF arbiter), wasting the picker's startup budget.
+      const verificationByCommitment = new Map<string, Promise<VerifiedBond | null>>();
+      const verified = await mapPool(candidates, 6, ({ community, announcement }) => {
+        const key = `${announcement.network}:${announcement.ownerXonly}:${announcement.lockUntil}`;
+        let verification = verificationByCommitment.get(key);
+        if (!verification) {
+          verification = verifyBondAnnouncement(
+            announcement, { network: BOND_NETWORK, fetchJson, tipHeight: tip },
           ).catch(() => null);
-          if (v) bonds.push(v);
+          verificationByCommitment.set(key, verification);
         }
+        return verification.then(bond => ({
+          community,
+          bond: bond ? { ...bond, community } : null,
+        }));
+      });
+      clearTimeout(deadline);
+      const verifiedByCommunity = new Map<string, VerifiedBond[]>();
+      for (const result of verified) {
+        if (!result.bond) continue;
+        const list = verifiedByCommunity.get(result.community) ?? [];
+        list.push(result.bond);
+        verifiedByCommunity.set(result.community, list);
+      }
+      for (const [community, bonds] of verifiedByCommunity) {
+        if (bonds.length > 0) writeCachedCommunityBonds(community, bonds);
         // Empty ratings map: the list needs the FUNDED+ACTIVE distinct-arbiter
         // count only (computeChamaLiveness owns that predicate + dedup).
         const n = computeChamaLiveness(community, bonds, new Map(), tip).arbiterCount;
         if (n > 0) counts[community] = n;
       }
-      return counts;
+      const result = { ...cachedCounts, ...counts };
+      writeCachedBondedArbiterCounts(result);
+      return result;
     },
     getChamaLiveness: async (community: string, signal?: AbortSignal): Promise<ChamaLiveness> => {
       const client = clientRef.current;
@@ -6304,19 +6388,19 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       };
       throwIfAborted();
       // 1. Chain-verified bonds for the community + the chain tip they were verified against.
-      const fetchJson = esploraFetcher(defaultEsploraBase(BOND_NETWORK), { signal, timeoutMs: 8_000, network: BOND_NETWORK });
-      // A missing chain tip is UNKNOWN, never a verified zero-bond result.
-      // Let the coordinator retain the last verified cache (or render unknown)
-      // instead of overwriting it with a synthetic tip-height zero snapshot.
-      const tip = await esploraTipHeight(fetchJson);
-      throwIfAborted();
-      const annEvents = await client.queryOnce(
-        { kinds: [ARBITER_BOND_ANNOUNCEMENT_KIND], "#d": [community] } as any, 6_000,
-      );
+      const fetchJson = esploraFetcher(defaultEsploraBase(BOND_NETWORK), { signal, timeoutMs: 4_500, network: BOND_NETWORK });
+      // Relay history and the chain tip are independent. Fetch them together;
+      // doing them serially made the minimum wait the sum of both networks.
+      const [tip, annEvents] = await Promise.all([
+        esploraTipHeight(fetchJson),
+        client.queryOnce(
+          { kinds: [ARBITER_BOND_ANNOUNCEMENT_KIND], "#d": [community] } as any, 3_500,
+        ),
+      ]);
       throwIfAborted();
       const bonds: VerifiedBond[] = [];
       const candidates = selectLatestAnnouncements(annEvents as any).slice(0, 12);
-      const verified = await mapPool(candidates, 3, async (announcement) => {
+      const verified = await mapPool(candidates, 6, async (announcement) => {
         throwIfAborted();
         return verifyBondAnnouncement(
           announcement,
@@ -6325,25 +6409,16 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       });
       for (const bond of verified) if (bond) bonds.push(bond);
       throwIfAborted();
-      // 2. Trade-verified ratings for exactly the bonded arbiters (one query, then
-      //    the SAME verification fetchRatingSummary uses — a rating on a trade we
-      //    can't see, or one that never settled, never counts).
+      // 2. Ratings are enrichment, not permission to reveal the bonded count.
+      // Use only already-hydrated trades and a short relay read. The previous
+      // path loaded up to 12 historical escrow chains here, turning Me,
+      // Dashboard, and onboarding into a hidden history-hydration job.
       const npubs = [...new Set(bonds.map((b) => b.npub.toLowerCase()))];
       const ratingsByNpub = new Map<string, LivenessRatingSummary>();
       if (npubs.length > 0) {
         const events = await client.queryOnce(
-          { kinds: [RATING_KIND], "#p": npubs, limit: 500 } as any, 6_000,
-        );
-        throwIfAborted();
-        const missingTradeIds = [...new Set(
-          (events as any[])
-            .map((e) => parseRatingEvent(e as any)?.tradeId ?? null)
-            .filter((id): id is string => !!id && !client.getState(id)),
-        )].slice(0, 12);
-        await mapPool(missingTradeIds, 3, async (id) => {
-          throwIfAborted();
-          try { await client.loadEscrow(id); } catch { /* unverifiable → won't count */ }
-        });
+          { kinds: [RATING_KIND], "#p": npubs, limit: 500 } as any, 1_200,
+        ).catch(() => []);
         throwIfAborted();
         for (const npub of npubs) {
           const agg = aggregateVerifiedRatings(events as any, npub, (id) => client.getState(id));
