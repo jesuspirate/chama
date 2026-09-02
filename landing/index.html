@@ -751,18 +751,16 @@
       place-items: center;
       overflow: hidden;
     }
-    /* Sequence the faces instead of crossfading them. The old overlap made
-       every emblem ghost over its photo during the return animation. */
+    /* Swap faces in the hover frame. Only the photo zoom animates; delaying
+       either face makes quick pointer movement across the grid feel sticky. */
     .use-art-front {
       opacity: 1;
       visibility: visible;
-      transition: opacity .14s ease .12s, visibility 0s linear 0s;
     }
     .use-art-back {
       opacity: 0;
       visibility: hidden;
       background: #171512;
-      transition: opacity .12s ease 0s, visibility 0s linear .12s;
     }
     .use-art-back img {
       width: 100%;
@@ -780,12 +778,10 @@
     .use-art.is-flipped .use-art-front {
       opacity: 0;
       visibility: hidden;
-      transition: opacity .12s ease 0s, visibility 0s linear .12s;
     }
     .use-art.is-flipped .use-art-back {
       opacity: 1;
       visibility: visible;
-      transition: opacity .14s ease .12s, visibility 0s linear 0s;
     }
     .use-art.is-flipped::before { opacity: 0; }
     .use-art.is-flipped::after {
@@ -800,12 +796,10 @@
       .uses .use:hover .use-art-front {
         opacity: 0;
         visibility: hidden;
-        transition: opacity .12s ease 0s, visibility 0s linear .12s;
       }
       .uses .use:hover .use-art-back {
         opacity: 1;
         visibility: visible;
-        transition: opacity .14s ease .12s, visibility 0s linear 0s;
       }
       .uses .use:hover .use-art::before { opacity: 0; }
       .uses .use:hover .use-art::after {
