@@ -187,7 +187,9 @@ export const BROWSE_CATS: { id: string; l: string; i: string }[] = [
   { id: "p2p-trade",    l: "browse.catExchange", i: "⚡" },
   { id: "bill-pay",     l: "browse.catBillPay",  i: "🧾" },
   { id: "marketplace",  l: "browse.catMarket",   i: "🏪" },
-  { id: "work",         l: "browse.catWork",     i: "🛠️" },
+  // Work is parked for a future release. Its protocol support remains so old
+  // trades can still be recovered and settled safely.
+  // { id: "work", l: "browse.catWork", i: "🛠️" },
 ];
 
 export const fmtSats = (ms: number) => Math.floor(ms / 1000).toLocaleString();

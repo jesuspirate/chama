@@ -8,7 +8,7 @@
 
 Chama is a Nostr-native peer-to-peer commerce client for exchanging value with people and communities directly. It combines local payment methods with Bitcoin settlement without a central Chama account server, a custodial marketplace operator, or a proprietary social graph.
 
-People can exchange sats and fiat, pay community bills, run storefronts, and offer work. Listings, chat, reputation, and trade state travel over Nostr. Fedimint ecash is held only while a trade is in escrow and leaves through the chosen payout route after settlement; opt-in on-chain Bitcoin escrow is also available.
+People can exchange sats and fiat, pay community bills, and buy or sell through community markets. Listings, chat, reputation, and trade state travel over Nostr. Fedimint ecash is held only while a trade is in escrow and leaves through the chosen payout route after settlement; opt-in on-chain Bitcoin escrow is also available.
 
 - **Website:** <https://getchama.app/>
 - **Application source:** <https://github.com/jesuspirate/chama>
@@ -19,7 +19,7 @@ People can exchange sats and fiat, pay community bills, run storefronts, and off
 - **No Chama account server.** Your Nostr identity is the account and relays carry the coordination layer.
 - **Escrow without a Chama custodian.** A locked ecash trade uses three Shamir shares and a 2-of-3 vote outcome across buyer, seller, and community arbiter.
 - **Local payment methods.** Communities can trade around the rails people already use while Bitcoin supplies settlement and finality.
-- **Purpose-built commerce.** Exchange, Community Bill Pay, Stores, and Work share one verifiable trade protocol.
+- **Purpose-built commerce.** Exchange, Community Bill Pay, and Market share one verifiable trade protocol, with Stack coming soon.
 - **Portable clients.** Chama runs as a web/PWA client, desktop app, Android app, and self-hosted StartOS service.
 - **No idle wallet product.** Chama is an escrow client, not a place to warehouse funds. Complete trades should be claimed or exported promptly.
 

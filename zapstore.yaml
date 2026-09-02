@@ -18,7 +18,7 @@ description: |
   **Trade with your community. Trust the math, not a middleman.**
 
   Chama is a Nostr-native client for peer-to-peer commerce: exchange sats and
-  local money, pay community bills, run a storefront, or offer work without a
+  local money, pay community bills, or buy and sell in a community market without a
   central Chama account server, custodial marketplace operator, or proprietary
   social graph.
 
@@ -45,8 +45,8 @@ description: |
 
   - Exchange Bitcoin and local currency using the payment methods people already use
   - Buy or sell goods through community storefronts
-  - Find or offer work with the same verifiable escrow protocol
   - Coordinate community bill payments without a central collection account
+  - Stack toward a goal in a future release while keeping your keys and your sats
   - Browse through a guided Chama assistant or open the full marketplace tools
   - Build portable reputation from completed, cryptographically verifiable trades
 

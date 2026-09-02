@@ -129,21 +129,23 @@ const TRANCHEABLE_VERTICALS = new Set(["p2p-trade", "bill-pay", "work"]);
 type Vertical = "p2p-trade" | "bill-pay" | "marketplace" | "work" | "lending";
 type ListingMode = "single" | "menu";
 
-// Trade-type cards, mirroring the onboarding splash (INTRO_USE_CASES). The three
+// Trade-type cards, mirroring the onboarding splash (INTRO_USE_CASES). The
 // Live verticals carry real `Vertical` ids; the coming-soon previews carry
 // display-only ids (never reach setVertical — the click is guarded on !soon) so
 // the wizard sells the same vision the splash does without promising a creatable
 // flow that isn't wired. `id` is `string` for that reason. Lending retired here
 // Work now reuses marketplace money semantics via listingKind; the "lending"
-// Vertical + logic stay in code for back-compat.
+// Vertical + logic stay in code for back-compat. Work and Chip In are parked at
+// the public-entry-point level only; old Work trades must remain replayable.
 // i18n: label/description are DICTIONARY KEYS, resolved with t() at render
 // (module-level constants can't call hooks) — same pattern as INTRO_USE_CASES.
 const VERTICALS: { id: string; labelKey: string; descriptionKey: string; comingSoon?: boolean }[] = [
   { id: "p2p-trade", labelKey: "create.verticalExchange", descriptionKey: "create.verticalExchangeDesc" },
   { id: "bill-pay", labelKey: "create.verticalBillPay", descriptionKey: "create.verticalBillPayDesc" },
   { id: "marketplace", labelKey: "create.verticalMarketplace", descriptionKey: "create.verticalMarketplaceDesc" },
-  { id: "work", labelKey: "create.verticalWork", descriptionKey: "create.verticalWorkDesc" },
-  { id: "chip-in", labelKey: "create.verticalChipIn", descriptionKey: "create.verticalChipInDesc", comingSoon: true },
+  // Parked for later:
+  // { id: "work", labelKey: "create.verticalWork", descriptionKey: "create.verticalWorkDesc" },
+  // { id: "chip-in", labelKey: "create.verticalChipIn", descriptionKey: "create.verticalChipInDesc", comingSoon: true },
   { id: "stack", labelKey: "create.verticalStack", descriptionKey: "create.verticalStackDesc", comingSoon: true },
 ];
 

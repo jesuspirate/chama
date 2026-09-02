@@ -60,22 +60,24 @@ function isExplicitFedimintRecoveryDiagnostic(): boolean {
   }
 }
 
-// The four things you can do, in the user's words. Mirrors the Create
+// The public things you can do. Mirrors the Create
 // wizard's trade-type cards (CreateForm) so the model a newcomer learns
 // here is the exact model they act on later — no re-teaching. Tints are
 // drawn from the theme palette (not the sacred buyer/seller/arbiter role
 // hexes) purely for glanceable variety.
 // `soon` marks a vertical that's on the way but not yet a Create option — shown
 // so the splash sells the full vision without promising a button that isn't there
-// (Lending retired; Work replaces it; Chip In + Stack are the community verticals).
+// Work and Chip In are parked for a future release. Keep their underlying
+// protocol/rendering support intact so existing relay history remains readable.
 // i18n: title/blurb are DICTIONARY KEYS, resolved with t() at render so the
 // splash follows the live language (module-level constants can't call hooks).
 const INTRO_USE_CASES: { vertical: ChamaVerticalIconId; titleKey: string; blurbKey: string; soon?: boolean }[] = [
   { vertical: "p2p-trade", titleKey: "connect.useCaseExchange",    blurbKey: "connect.useCaseExchangeBlurb" },
   { vertical: "bill-pay", titleKey: "connect.useCaseBillPay",     blurbKey: "connect.useCaseBillPayBlurb" },
   { vertical: "marketplace", titleKey: "connect.useCaseMarketplace", blurbKey: "connect.useCaseMarketplaceBlurb" },
-  { vertical: "work", titleKey: "connect.useCaseWork",        blurbKey: "connect.useCaseWorkBlurb" },
-  { vertical: "chip-in", titleKey: "connect.useCaseChipIn",      blurbKey: "connect.useCaseChipInBlurb", soon: true },
+  // Parked for later:
+  // { vertical: "work", titleKey: "connect.useCaseWork", blurbKey: "connect.useCaseWorkBlurb" },
+  // { vertical: "chip-in", titleKey: "connect.useCaseChipIn", blurbKey: "connect.useCaseChipInBlurb", soon: true },
   { vertical: "stack", titleKey: "connect.useCaseStack",       blurbKey: "connect.useCaseStackBlurb", soon: true },
 ];
 

@@ -55,7 +55,7 @@ export const faqEn: FaqContent = {
       items: [
         { q: "What features does Chama have?", a: { intro: "Here is the whole app in one quick tour:", steps: [
           "Browse offers from your community or peek into another country and currency.",
-          "Create an Exchange, Store, Work, Chip In, Stack, or Community Bill Pay listing, with prices, payment methods, menus, and quantities where they apply.",
+          "Create an Exchange, Market, or Community Bill Pay listing, with prices, payment methods, menus, and quantities where they apply. Stack is coming soon.",
           "Join a listing, chat privately with the other people in the trade, fund the Bitcoin escrow, track each step, and vote to release or refund.",
           "Claim a payout to M-Pesa where supported, any Lightning address or invoice, a connected NWC wallet, or an on-chain Bitcoin address.",
           "Use Dashboard to see your Chama, active listings, arbiter activity, bonds, earnings, and any sats waiting for you.",

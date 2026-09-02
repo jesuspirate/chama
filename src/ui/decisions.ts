@@ -869,9 +869,12 @@ export function shouldShowOnBrowse(inputs: {
   }
   // #7 Stage 3: a sold-out multi-unit parent stops showing as buyable.
   if (inputs.isSoldOut) return false;
+  // Work is parked as a public capability. Existing participants still reach
+  // their trades through Me/history, but open Work offers are not advertised.
+  if (isWorkListing(escrow)) return false;
   if (browseCategory === "all") return true;
   if (browseCategory === "subscription") return escrow.subscription !== null;
-  if (browseCategory === "work") return isWorkListing(escrow);
+  // Parked for later: if (browseCategory === "work") return isWorkListing(escrow);
   if (browseCategory === "marketplace") {
     return escrow.category === "marketplace" && !isWorkListing(escrow);
   }

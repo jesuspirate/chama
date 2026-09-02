@@ -1176,9 +1176,9 @@ function buildToLocked(): { state: any; lock: ParsedEscrowEvent<LockPayload> } {
 
 console.log("\n── NIP-99 Store listing interoperability ──");
 assert(
-  BROWSE_CATS.some(category => category.id === "work")
+  !BROWSE_CATS.some(category => category.id === "work")
     && !BROWSE_CATS.some(category => category.id === "lending"),
-  "Browse exposes Work but keeps the legacy Lending vertical internal",
+  "Browse keeps the parked Work and legacy Lending verticals internal",
 );
 {
   const pubkey = "11".repeat(32);
@@ -12236,6 +12236,13 @@ console.log("\n── hasActiveBuyerSellerCommitment + findActiveTrade ──");
   assert(
     shouldShowOnBrowse({ escrow: listingOnly, browseCategory: "all" }) === true,
     "Browse shows the seller's own CREATED listing until lock lands",
+  );
+  assert(
+    shouldShowOnBrowse({
+      escrow: { ...listingOnly, category: "marketplace", listingKind: "work" },
+      browseCategory: "all",
+    }) === false,
+    "Browse does not advertise parked Work listings",
   );
 
   const joinedCreated = escrow({

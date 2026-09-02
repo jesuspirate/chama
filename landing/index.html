@@ -670,8 +670,8 @@
     .use .arrow { transition: transform .2s ease; }
     .use:hover .arrow { transform: translateX(4px); }
 
-    .uses .use-grid { grid-template-columns: repeat(3, 1fr); gap: 12px; border-top: 0; }
-    .uses .use { position: relative; display: flex; flex-direction: column; align-items: stretch; min-height: 390px; padding: 0; border: 1px solid var(--line); border-radius: 22px; background: var(--paper); overflow: hidden; transform: translateZ(0); transition: transform .42s cubic-bezier(.22,1,.36,1), opacity .32s ease, filter .32s ease, border-color .32s ease, box-shadow .42s ease, background .22s ease; }
+    .uses .use-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; border-top: 0; }
+    .uses .use { position: relative; display: flex; flex-direction: column; align-items: stretch; min-height: 390px; padding: 0; border: 1px solid var(--line); border-radius: 22px; background: var(--paper); overflow: hidden; transform: translateZ(0); transition: opacity .32s ease, filter .32s ease, border-color .32s ease, box-shadow .42s ease, background .22s ease; }
     .uses .use:nth-child(odd), .uses .use:nth-child(even) { padding: 0; border: 1px solid var(--line); }
     .use-art {
       --art-shift: 8px;
@@ -680,15 +680,20 @@
       display: grid;
       place-items: center;
       width: 100%;
-      height: 235px;
+      height: auto;
+      /* All four retained scenes are ~1.48:1. Let the wider two-column cards
+         grow with the artwork instead of cropping the top and bottom away. */
+      aspect-ratio: 28 / 19;
       flex: none;
       overflow: hidden;
       color: var(--art-ink);
       background:
         linear-gradient(165deg, color-mix(in srgb, var(--art-paper) 94%, white), var(--art-paper) 68%);
-      border-bottom: 1px solid var(--line);
       border: 0;
-      border-bottom: 1px solid var(--line);
+      /* Keep the image/body divider opaque and pixel-aligned while the image
+         layers crossfade. A translucent line on a moving card visibly pulsed
+         against the dark theme as it passed through subpixel positions. */
+      border-bottom: 1px solid color-mix(in srgb, var(--ink) 14%, var(--paper));
       padding: 0;
       font: inherit;
       cursor: pointer;
@@ -711,21 +716,28 @@
     .uses .use-swap .use-art::before { content: "01"; }
     .uses .use-bills .use-art::before { content: "02"; }
     .uses .use-shop .use-art::before { content: "03"; }
-    .uses .use-work .use-art::before { content: "04"; }
-    .uses .use-chip-in .use-art::before { content: "05"; }
-    .uses .use-stack .use-art::before { content: "06"; }
+    /* Work and Chip In are parked for a future release. */
+    /* .uses .use-work .use-art::before { content: "04"; } */
+    /* .uses .use-chip-in .use-art::before { content: "05"; } */
+    .uses .use-stack .use-art::before { content: "04"; }
     .use-art::after {
       content: attr(data-art-label);
       position: absolute;
-      left: 18px;
-      bottom: 14px;
+      left: 12px;
+      bottom: 10px;
+      padding: 7px 9px;
+      border: 1px solid transparent;
+      border-radius: 999px;
       color: var(--muted);
+      background: transparent;
       font: 700 9px/1 Manrope, sans-serif;
       letter-spacing: .16em;
       text-transform: uppercase;
-      z-index: 2;
+      z-index: 3;
       pointer-events: none;
-      transition: opacity .25s ease;
+      -webkit-backdrop-filter: blur(0);
+      backdrop-filter: blur(0);
+      transition: opacity .25s ease, color .25s ease, background .25s ease, border-color .25s ease, box-shadow .25s ease, backdrop-filter .25s ease;
     }
     .use-art-flipper {
       position: absolute;
@@ -748,7 +760,7 @@
       width: 100%;
       height: 100%;
       object-fit: cover;
-      transform: scale(1.015);
+      transform: scale(1);
       transition: transform 1.4s cubic-bezier(.22,1,.36,1);
     }
     .use-art:focus-visible {
@@ -765,9 +777,17 @@
       visibility: visible;
       transition-delay: 0s;
     }
-    .use-art.is-flipped::before,
-    .use-art.is-flipped::after { opacity: 0; }
-    .use-art.is-flipped .use-art-back img { transform: scale(1.045); }
+    .use-art.is-flipped::before { opacity: 0; }
+    .use-art.is-flipped::after {
+      opacity: 1;
+      color: #fffdf8;
+      background: rgba(19, 18, 15, .72);
+      border-color: rgba(255, 253, 248, .24);
+      box-shadow: 0 5px 18px rgba(0, 0, 0, .22);
+      -webkit-backdrop-filter: blur(8px);
+      backdrop-filter: blur(8px);
+    }
+    .use-art.is-flipped .use-art-back img { transform: scale(1.012); }
     @media (hover: hover) {
       .uses .use:hover .use-art-front {
         opacity: 0;
@@ -779,9 +799,17 @@
         visibility: visible;
         transition-delay: 0s;
       }
-      .uses .use:hover .use-art::before,
-      .uses .use:hover .use-art::after { opacity: 0; }
-      .uses .use:hover .use-art-back img { transform: scale(1.045); }
+      .uses .use:hover .use-art::before { opacity: 0; }
+      .uses .use:hover .use-art::after {
+        opacity: 1;
+        color: #fffdf8;
+        background: rgba(19, 18, 15, .72);
+        border-color: rgba(255, 253, 248, .24);
+        box-shadow: 0 5px 18px rgba(0, 0, 0, .22);
+        -webkit-backdrop-filter: blur(8px);
+        backdrop-filter: blur(8px);
+      }
+      .uses .use:hover .use-art-back img { transform: scale(1.012); }
     }
     .use-art svg {
       position: relative;
@@ -842,10 +870,9 @@
     .use-chip-in .use-symbol-stage { width: min(62%, 190px); }
     @media (hover: hover) {
       .uses .use-grid:has(.use:hover) .use:not(:hover) { opacity: .48; filter: blur(.8px) saturate(.72); }
-      /* Move the card only on whole CSS pixels. Scaling the rounded shell made
-         its pale border land between device pixels in dark mode, producing a
-         bright angled seam on one side. The emblem still moves below. */
-      .uses .use:hover { z-index: 2; transform: translateY(-5px) translateZ(0); border-color: color-mix(in srgb, var(--ink) 38%, transparent); box-shadow: 0 0 0 2px var(--paper), 0 0 0 3px color-mix(in srgb, var(--ink) 34%, transparent), 0 20px 48px rgba(0,0,0,.18); }
+      /* Keep the card shell fixed so its one-pixel dividers stay on the same
+         device-pixel row; the artwork and emblem provide the hover motion. */
+      .uses .use:hover { z-index: 2; border-color: color-mix(in srgb, var(--ink) 38%, transparent); box-shadow: 0 0 0 2px var(--paper), 0 0 0 3px color-mix(in srgb, var(--ink) 34%, transparent), 0 20px 48px rgba(0,0,0,.18); }
       .uses .use:hover .use-art::before { transform: translateY(8px); opacity: .09; }
       .uses .use:hover .use-art svg { transform: translateX(var(--art-shift)) translateY(-6px) scale(1.045); }
       .uses .use:hover .use-symbol-stage { transform: translateX(-20px) translateY(-9px) scale(1.045); }
@@ -861,10 +888,8 @@
     @media (min-width: 881px) {
       .uses .use-swap { grid-area: 1 / 1; }
       .uses .use-bills { grid-area: 1 / 2; }
-      .uses .use-shop { grid-area: 1 / 3; }
-      .uses .use-work { grid-area: 2 / 1; }
-      .uses .use-chip-in { grid-area: 2 / 2; }
-      .uses .use-stack { grid-area: 2 / 3; }
+      .uses .use-shop { grid-area: 2 / 1; }
+      .uses .use-stack { grid-area: 2 / 2; }
     }
 
     .home-banner { border-block: 1px solid rgba(255,255,255,.14); }
@@ -1007,7 +1032,7 @@
       .use:nth-child(odd) { padding: 20px; border-right: 0; }
       .uses .use-grid { grid-template-columns: 1fr; }
       .uses .use, .uses .use:nth-child(odd), .uses .use:nth-child(even) { min-height: 0; padding: 0; border: 1px solid var(--line); }
-      .use-art { height: 220px; }
+      .use-art { height: auto; }
       .brand-stage, .brand-stage.reveal.visible { width: 100%; margin-top: 48px; }
       .brand-monument { aspect-ratio: 1; border-radius: 24px; }
       .brand-monument { padding: 46px 26px 30px; }
@@ -1152,10 +1177,12 @@
         </div>
         <div class="use-grid" id="use-grid">
           <article class="use use-swap reveal"><button class="use-art" type="button" data-art-label="Exchange" aria-label="Show the Exchange scene" aria-pressed="false"><span class="use-art-flipper"><span class="use-art-face use-art-front"><span class="use-symbol-stage"><svg viewBox="0 0 240 180"><path class="mass" d="M28 24h122V8l62 38-62 38V68H28V24Zm184 132H90v16l-62-38 62-38v16h122v44Z"/><circle class="cut" cx="120" cy="90" r="39"/><image href="icons/bitcoin-mark-256.png" x="86" y="56" width="68" height="68"/></svg></span></span><span class="use-art-face use-art-back"><img src="img/p-p2p-v5.jpg" alt="A buyer and seller exchanging cash for sats" loading="lazy" decoding="async"></span></span></button><div class="use-body"><div><div class="use-title"><h3 data-copy="useSwap">Swap sats and cash</h3><span class="live-badge" data-copy="live">Live</span></div><p data-copy="useSwapBody">Food, fares, and everyday cash.</p></div><span class="arrow">→</span></div></article>
-          <article class="use use-bills reveal"><button class="use-art" type="button" data-art-label="Bills" aria-label="Show the Bills scene" aria-pressed="false"><span class="use-art-flipper"><span class="use-art-face use-art-front"><span class="use-symbol-stage"><img class="use-symbol-light" src="icons/use-cases/bill-pay.svg" alt=""><img class="use-symbol-dark" src="icons/use-cases/bill-pay-dark.svg" alt=""></span></span><span class="use-art-face use-art-back"><img src="img/p-billpay-v2.jpg" alt="Three people settling a household bill together" loading="lazy" decoding="async"></span></span></button><div class="use-body"><div><div class="use-title"><h3 data-copy="useBills">Pay a bill</h3><span class="live-badge" data-copy="live">Live</span></div><p data-copy="useBillsBody">Rent, utilities, care, and obligations.</p></div><span class="arrow">→</span></div></article>
+          <article class="use use-bills reveal"><button class="use-art" type="button" data-art-label="Community Bill Pay" aria-label="Show the Community Bill Pay scene" aria-pressed="false"><span class="use-art-flipper"><span class="use-art-face use-art-front"><span class="use-symbol-stage"><img class="use-symbol-light" src="icons/use-cases/bill-pay.svg" alt=""><img class="use-symbol-dark" src="icons/use-cases/bill-pay-dark.svg" alt=""></span></span><span class="use-art-face use-art-back"><img src="img/p-billpay-v2.jpg" alt="Three people settling a household bill together" loading="lazy" decoding="async"></span></span></button><div class="use-body"><div><div class="use-title"><h3 data-copy="useBills">Pay a bill</h3><span class="live-badge" data-copy="live">Live</span></div><p data-copy="useBillsBody">Rent, utilities, care, and obligations.</p></div><span class="arrow">→</span></div></article>
           <article class="use use-shop reveal"><button class="use-art" type="button" data-art-label="Market" aria-label="Show the Market scene" aria-pressed="false"><span class="use-art-flipper"><span class="use-art-face use-art-front"><span class="use-symbol-stage"><img class="use-symbol-light" src="icons/use-cases/store.svg" alt=""><img class="use-symbol-dark" src="icons/use-cases/store-dark.svg" alt=""></span></span><span class="use-art-face use-art-back"><img src="img/p-stores-v4.jpg" alt="A local market seller completing a Bitcoin purchase" loading="lazy" decoding="async"></span></span></button><div class="use-body"><div><div class="use-title"><h3 data-copy="useShop">Buy and sell</h3><span class="live-badge" data-copy="live">Live</span></div><p data-copy="useShopBody">Groceries, bicycles, cars, even a home.</p></div><span class="arrow">→</span></div></article>
+          <!-- Work and Chip In are parked for a future release.
           <article class="use use-work reveal"><button class="use-art" type="button" data-art-label="Work" aria-label="Show the Work scene" aria-pressed="false"><span class="use-art-flipper"><span class="use-art-face use-art-front"><span class="use-symbol-stage"><img class="use-symbol-light" src="icons/use-cases/work.svg" alt=""><img class="use-symbol-dark" src="icons/use-cases/work-dark.svg" alt=""></span></span><span class="use-art-face use-art-back"><img src="img/p-work-v27-neon-teal-approved.jpg" alt="A bicycle mechanic completing a repair" loading="lazy" decoding="async"></span></span></button><div class="use-body"><div><div class="use-title"><h3 data-copy="useWork">Get paid for work</h3><span class="live-badge" data-copy="live">Live</span></div><p data-copy="useWorkBody">A repair, a ride, or a day’s work.</p></div><span class="arrow">→</span></div></article>
           <article class="use use-chip-in reveal"><button class="use-art" type="button" data-art-label="Together" aria-label="Show the Together scene" aria-pressed="false"><span class="use-art-flipper"><span class="use-art-face use-art-front"><span class="use-symbol-stage"><svg viewBox="0 0 240 180"><path class="detail-line" style="stroke-width:6" d="M120 43v15M73 90h15M167 90h-15M120 122v15"/><circle class="mass" cx="120" cy="23" r="20"/><circle class="mass" cx="53" cy="90" r="20"/><circle class="mass" cx="187" cy="90" r="20"/><circle class="mass" cx="120" cy="157" r="20"/><path class="token-line" style="stroke-width:6" d="M53 84v12M47 90h12M120 14v18M111 23h18M120 144v26M107 157h26M187 73v34M170 90h34"/><circle class="goal-disc" style="stroke-width:8" cx="120" cy="90" r="32"/><path class="beneficiary-body" d="M100 113c2-15 9-23 20-23s18 8 20 23h-40Z"/><circle class="beneficiary-head" cx="120" cy="79" r="9"/></svg></span></span><span class="use-art-face use-art-back"><img src="img/p-chipin-v27-higgsfield-hands-clean.jpg" alt="Three friends contributing toward one shared goal" loading="lazy" decoding="async"></span></span></button><div class="use-body"><div><div class="use-title"><h3 data-copy="useChip">Chip in together</h3><span class="soon-badge" data-copy="soon">Soon</span></div><p data-copy="useChipBody">A wedding, a trip, or one shared goal.</p></div><span class="arrow">→</span></div></article>
+          -->
           <article class="use use-stack reveal"><button class="use-art" type="button" data-art-label="Stack" aria-label="Show the Stack scene" aria-pressed="false"><span class="use-art-flipper"><span class="use-art-face use-art-front"><span class="use-symbol-stage"><img class="use-symbol-light" src="icons/use-cases/stack.svg" alt=""><img class="use-symbol-dark" src="icons/use-cases/stack-dark.svg" alt=""></span></span><span class="use-art-face use-art-back"><img src="img/p-stack-v22-higgsfield-independent-clean.jpg" alt="People independently stacking sats over time" loading="lazy" decoding="async"></span></span></button><div class="use-body"><div><div class="use-title"><h3 data-copy="useStack">Stack over time</h3><span class="soon-badge" data-copy="soon">Soon</span></div><p data-copy="useStackBody">A home, a plan, and a future.</p></div><span class="arrow">→</span></div></article>
         </div>
       </div>
