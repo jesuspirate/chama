@@ -671,7 +671,7 @@
     .use:hover .arrow { transform: translateX(4px); }
 
     .uses .use-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; border-top: 0; }
-    .uses .use { position: relative; display: flex; flex-direction: column; align-items: stretch; min-height: 390px; padding: 0; border: 1px solid var(--line); border-radius: 22px; background: var(--paper); overflow: hidden; transform: translateZ(0); transition: opacity .32s ease, filter .32s ease, border-color .32s ease, box-shadow .42s ease, background .22s ease; }
+    .uses .use { position: relative; display: flex; flex-direction: column; align-items: stretch; min-height: 390px; padding: 0; border: 1px solid var(--line); border-radius: 22px; background: var(--paper); overflow: hidden; transform: translateZ(0); transition: opacity .24s ease, border-color .26s ease, box-shadow .32s ease, background .2s ease; }
     .uses .use:nth-child(odd), .uses .use:nth-child(even) { padding: 0; border: 1px solid var(--line); }
     .use-art {
       --art-shift: 8px;
@@ -735,9 +735,7 @@
       text-transform: uppercase;
       z-index: 3;
       pointer-events: none;
-      -webkit-backdrop-filter: blur(0);
-      backdrop-filter: blur(0);
-      transition: opacity .25s ease, color .25s ease, background .25s ease, border-color .25s ease, box-shadow .25s ease, backdrop-filter .25s ease;
+      transition: opacity .2s ease, color .2s ease, background .2s ease, border-color .2s ease, box-shadow .2s ease;
     }
     .use-art-flipper {
       position: absolute;
@@ -752,16 +750,28 @@
       display: grid;
       place-items: center;
       overflow: hidden;
-      transition: opacity .3s ease, visibility 0s linear .3s;
     }
-    .use-art-front { opacity: 1; visibility: visible; transition-delay: 0s; }
-    .use-art-back { opacity: 0; visibility: hidden; background: #171512; }
+    /* Sequence the faces instead of crossfading them. The old overlap made
+       every emblem ghost over its photo during the return animation. */
+    .use-art-front {
+      opacity: 1;
+      visibility: visible;
+      transition: opacity .14s ease .12s, visibility 0s linear 0s;
+    }
+    .use-art-back {
+      opacity: 0;
+      visibility: hidden;
+      background: #171512;
+      transition: opacity .12s ease 0s, visibility 0s linear .12s;
+    }
     .use-art-back img {
       width: 100%;
       height: 100%;
       object-fit: cover;
-      transform: scale(1);
-      transition: transform 1.4s cubic-bezier(.22,1,.36,1);
+      transform: translateZ(0) scale(1);
+      backface-visibility: hidden;
+      will-change: transform;
+      transition: transform .48s cubic-bezier(.22,1,.36,1);
     }
     .use-art:focus-visible {
       outline: 3px solid color-mix(in srgb, var(--teal) 72%, white);
@@ -770,12 +780,12 @@
     .use-art.is-flipped .use-art-front {
       opacity: 0;
       visibility: hidden;
-      transition-delay: 0s, .3s;
+      transition: opacity .12s ease 0s, visibility 0s linear .12s;
     }
     .use-art.is-flipped .use-art-back {
       opacity: 1;
       visibility: visible;
-      transition-delay: 0s;
+      transition: opacity .14s ease .12s, visibility 0s linear 0s;
     }
     .use-art.is-flipped::before { opacity: 0; }
     .use-art.is-flipped::after {
@@ -784,20 +794,18 @@
       background: rgba(19, 18, 15, .72);
       border-color: rgba(255, 253, 248, .24);
       box-shadow: 0 5px 18px rgba(0, 0, 0, .22);
-      -webkit-backdrop-filter: blur(8px);
-      backdrop-filter: blur(8px);
     }
-    .use-art.is-flipped .use-art-back img { transform: scale(1.012); }
+    .use-art.is-flipped .use-art-back img { transform: translateZ(0) scale(1.018); }
     @media (hover: hover) {
       .uses .use:hover .use-art-front {
         opacity: 0;
         visibility: hidden;
-        transition-delay: 0s, .3s;
+        transition: opacity .12s ease 0s, visibility 0s linear .12s;
       }
       .uses .use:hover .use-art-back {
         opacity: 1;
         visibility: visible;
-        transition-delay: 0s;
+        transition: opacity .14s ease .12s, visibility 0s linear 0s;
       }
       .uses .use:hover .use-art::before { opacity: 0; }
       .uses .use:hover .use-art::after {
@@ -806,10 +814,8 @@
         background: rgba(19, 18, 15, .72);
         border-color: rgba(255, 253, 248, .24);
         box-shadow: 0 5px 18px rgba(0, 0, 0, .22);
-        -webkit-backdrop-filter: blur(8px);
-        backdrop-filter: blur(8px);
       }
-      .uses .use:hover .use-art-back img { transform: scale(1.012); }
+      .uses .use:hover .use-art-back img { transform: translateZ(0) scale(1.018); }
     }
     .use-art svg {
       position: relative;
@@ -824,7 +830,7 @@
       stroke-linecap: round;
       stroke-linejoin: round;
       transform: translateX(var(--art-shift)) translateY(-9px);
-      transition: transform .72s cubic-bezier(.22,1,.36,1);
+      transition: transform .44s cubic-bezier(.22,1,.36,1);
     }
     .use-symbol-stage {
       position: relative;
@@ -835,7 +841,7 @@
       aspect-ratio: 1;
       overflow: visible;
       transform: translateX(-20px) translateY(-5px);
-      transition: transform .72s cubic-bezier(.22,1,.36,1);
+      transition: transform .44s cubic-bezier(.22,1,.36,1);
     }
     .use-symbol-stage img, .use-symbol-stage svg {
       width: 100%;
@@ -854,6 +860,8 @@
     .uses .use:nth-child(even) .use-art { --art-shift: -8px; }
     .use-art .mass { fill: currentColor; stroke: none; }
     .use-art .cut { fill: var(--art-paper); stroke: none; }
+    .use-art .bitcoin-disc { fill: var(--orange); stroke: #13120f; stroke-width: 1.5; }
+    .use-art .bitcoin-glyph { fill: #fffdf8; stroke: none; font: 700 50px/1 Arial, sans-serif; text-anchor: middle; dominant-baseline: central; }
     .use-art .use-symbol-stage .cut { fill: var(--art-paper); }
     .use-art .cut-line { fill: none; stroke: var(--art-paper); stroke-width: 7; }
     .use-art .detail-line { fill: none; stroke: currentColor; stroke-width: 5; }
@@ -869,7 +877,9 @@
     .use-shop .use-symbol-stage { width: min(62%, 190px); }
     .use-chip-in .use-symbol-stage { width: min(62%, 190px); }
     @media (hover: hover) {
-      .uses .use-grid:has(.use:hover) .use:not(:hover) { opacity: .48; filter: blur(.8px) saturate(.72); }
+      /* Opacity preserves focus without asking the browser to live-blur three
+         large cards every time the pointer crosses the grid. */
+      .uses .use-grid:has(.use:hover) .use:not(:hover) { opacity: .5; }
       /* Keep the card shell fixed so its one-pixel dividers stay on the same
          device-pixel row; the artwork and emblem provide the hover motion. */
       .uses .use:hover { z-index: 2; border-color: color-mix(in srgb, var(--ink) 38%, transparent); box-shadow: 0 0 0 2px var(--paper), 0 0 0 3px color-mix(in srgb, var(--ink) 34%, transparent), 0 20px 48px rgba(0,0,0,.18); }
@@ -1176,7 +1186,7 @@
           </div>
         </div>
         <div class="use-grid" id="use-grid">
-          <article class="use use-swap reveal"><button class="use-art" type="button" data-art-label="Exchange" aria-label="Show the Exchange scene" aria-pressed="false"><span class="use-art-flipper"><span class="use-art-face use-art-front"><span class="use-symbol-stage"><svg viewBox="0 0 240 180"><path class="mass" d="M28 24h122V8l62 38-62 38V68H28V24Zm184 132H90v16l-62-38 62-38v16h122v44Z"/><circle class="cut" cx="120" cy="90" r="39"/><image href="icons/bitcoin-mark-256.png" x="86" y="56" width="68" height="68"/></svg></span></span><span class="use-art-face use-art-back"><img src="img/p-p2p-v5.jpg" alt="A buyer and seller exchanging cash for sats" loading="lazy" decoding="async"></span></span></button><div class="use-body"><div><div class="use-title"><h3 data-copy="useSwap">Swap sats and cash</h3><span class="live-badge" data-copy="live">Live</span></div><p data-copy="useSwapBody">Food, fares, and everyday cash.</p></div><span class="arrow">→</span></div></article>
+          <article class="use use-swap reveal"><button class="use-art" type="button" data-art-label="Exchange" aria-label="Show the Exchange scene" aria-pressed="false"><span class="use-art-flipper"><span class="use-art-face use-art-front"><span class="use-symbol-stage"><svg viewBox="0 0 240 180"><path class="mass" d="M28 24h122V8l62 38-62 38V68H28V24Zm184 132H90v16l-62-38 62-38v16h122v44Z"/><circle class="cut" cx="120" cy="90" r="39"/><circle class="bitcoin-disc" cx="120" cy="90" r="34"/><text class="bitcoin-glyph" x="120" y="90" transform="rotate(9 120 90)">₿</text></svg></span></span><span class="use-art-face use-art-back"><img src="img/p-p2p-v5.jpg" alt="A buyer and seller exchanging cash for sats" loading="lazy" decoding="async"></span></span></button><div class="use-body"><div><div class="use-title"><h3 data-copy="useSwap">Swap sats and cash</h3><span class="live-badge" data-copy="live">Live</span></div><p data-copy="useSwapBody">Food, fares, and everyday cash.</p></div><span class="arrow">→</span></div></article>
           <article class="use use-bills reveal"><button class="use-art" type="button" data-art-label="Community Bill Pay" aria-label="Show the Community Bill Pay scene" aria-pressed="false"><span class="use-art-flipper"><span class="use-art-face use-art-front"><span class="use-symbol-stage"><img class="use-symbol-light" src="icons/use-cases/bill-pay.svg" alt=""><img class="use-symbol-dark" src="icons/use-cases/bill-pay-dark.svg" alt=""></span></span><span class="use-art-face use-art-back"><img src="img/p-billpay-v2.jpg" alt="Three people settling a household bill together" loading="lazy" decoding="async"></span></span></button><div class="use-body"><div><div class="use-title"><h3 data-copy="useBills">Pay a bill</h3><span class="live-badge" data-copy="live">Live</span></div><p data-copy="useBillsBody">Rent, utilities, care, and obligations.</p></div><span class="arrow">→</span></div></article>
           <article class="use use-shop reveal"><button class="use-art" type="button" data-art-label="Market" aria-label="Show the Market scene" aria-pressed="false"><span class="use-art-flipper"><span class="use-art-face use-art-front"><span class="use-symbol-stage"><img class="use-symbol-light" src="icons/use-cases/store.svg" alt=""><img class="use-symbol-dark" src="icons/use-cases/store-dark.svg" alt=""></span></span><span class="use-art-face use-art-back"><img src="img/p-stores-v4.jpg" alt="A local market seller completing a Bitcoin purchase" loading="lazy" decoding="async"></span></span></button><div class="use-body"><div><div class="use-title"><h3 data-copy="useShop">Buy and sell</h3><span class="live-badge" data-copy="live">Live</span></div><p data-copy="useShopBody">Groceries, bicycles, cars, even a home.</p></div><span class="arrow">→</span></div></article>
           <!-- Work and Chip In are parked for a future release.
