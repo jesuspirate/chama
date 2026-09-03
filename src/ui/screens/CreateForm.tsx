@@ -41,6 +41,7 @@ import { getCommunityBySlug, communityForInvite, DEFAULT_COMMUNITY_SLUG } from "
 import { billTypesForCountry, billTypeDisplay } from "../../communities/bill-types.js";
 import { workCategoriesForCountry } from "../../communities/work-categories.js";
 import { maxUsefulTranches, trancheSplitAvailable } from "../../escrow-engine/tranche.js";
+import type { CanvasCreatePrefill } from "../../guided/create-prefill.js";
 import {
   deriveSlicePlan,
   SETTLEMENT_POLICY_ECASH_SLICES,
@@ -175,10 +176,9 @@ interface FormState {
   intervalDays: string;
   paymentMethods: string[];
   menuItems: MenuDraftItem[];
-  /** #7 multi-unit storefront: units in stock for a single-product marketplace
-   *  listing. ">=2 makes it a multi-unit parent (buyers spawn child escrows);
-   *  blank / 1 is a legacy single-unit listing. Stored as a string for the
-   *  input; parsed at submit. Optional so older drafts load without it. */
+  /** Units available for a single-product marketplace listing. Required in the
+   *  editor; 1 retains the established single-order protocol shape while 2+
+   *  becomes a stock-managed parent listing. */
   stock?: string;
 }
 
@@ -401,6 +401,7 @@ function normalizeFormState(raw: any, currency = "USD"): FormState {
     trancheCount: TRADE_SLICING_ENABLED && typeof raw.trancheCount === "number" ? raw.trancheCount : 1,
     escrowMode: raw.escrowMode === "onchain" || raw.escrowMode === "ecash" ? raw.escrowMode : DEFAULT_ESCROW_MODE,
     recurringCbp: raw.recurringCbp === true,
+    stock: typeof raw.stock === "string" || typeof raw.stock === "number" ? String(raw.stock) : "",
     paymentMethods: Array.isArray(raw.paymentMethods)
       ? raw.paymentMethods
           .map((method: unknown) => typeof method === "string" ? method.trim() : "")
@@ -1086,6 +1087,7 @@ export function emptyCreateFormState(currency = "USD"): FormState {
     intervalDays: "30",
     paymentMethods: [],
     menuItems: [],
+    stock: "",
     billType: "",
     workSide: "work",
     workCategory: "",
@@ -1104,6 +1106,7 @@ export function CreateForm({
   fetchCommunityBonds,
   fetchFaultExcludedArbiters,
   authorizeImageUpload,
+  initialCanvasIntent,
 }: {
   onCreate: (params: any) => void;
   onClose: () => void;
@@ -1134,6 +1137,9 @@ export function CreateForm({
    *  Optional: falls back to the stored home for any callsite that
    *  doesn't thread it. */
   communitySlug?: string | null;
+  /** Assisted Chama may carry already-entered ordinary fields into this
+   *  existing review flow. It never bypasses validation or publication. */
+  initialCanvasIntent?: CanvasCreatePrefill | null;
 }) {
   const { t } = useT();
   // Resolve community context for the listing. Read once at mount;
@@ -1179,11 +1185,25 @@ export function CreateForm({
     try { setUserCommunitySlug(community); } catch {}
     setPersistedHome(community);
   };
-  const [step, setStep] = useState<Step>(1);
-  const [vertical, setVertical] = useState<Vertical>("p2p-trade");
-  const [form, setForm] = useState<FormState>(() =>
-    emptyCreateFormState(communityCurrency),
-  );
+  const [step, setStep] = useState<Step>(() => initialCanvasIntent ? 2 : 1);
+  const [vertical, setVertical] = useState<Vertical>(() => initialCanvasIntent?.vertical ?? "p2p-trade");
+  const [form, setForm] = useState<FormState>(() => {
+    const initial = emptyCreateFormState(initialCanvasIntent?.fiatCurrency ?? communityCurrency);
+    if (!initialCanvasIntent) return initial;
+    return {
+      ...initial,
+      desc: initialCanvasIntent.description ?? initial.desc,
+      sats: initialCanvasIntent.amountSats && initialCanvasIntent.amountSats > 0
+        ? String(Math.round(initialCanvasIntent.amountSats))
+        : initial.sats,
+      fiat: initialCanvasIntent.fiatAmount && initialCanvasIntent.fiatAmount > 0
+        ? String(initialCanvasIntent.fiatAmount)
+        : initial.fiat,
+      cur: initialCanvasIntent.fiatCurrency ?? initial.cur,
+      billType: initialCanvasIntent.billType ?? initial.billType,
+      paymentMethods: initialCanvasIntent.paymentMethods?.filter(Boolean) ?? initial.paymentMethods,
+    };
+  });
   const [submitting, setSubmitting] = useState(false);
   const [publishError, setPublishError] = useState<string | null>(null);
   const [arbiterDismissed, setArbiterDismissed] = useState(false);
@@ -1305,10 +1325,12 @@ export function CreateForm({
     const baseSats = hasMenu ? minimumMenuSats(menuItems) : parseWholeSats(form.sats);
     const totalSats = effectiveListingSats(form, vertical);
     const paymentMethodsOk = !categoryUsesPaymentRails(vertical) || form.paymentMethods.length > 0;
+    const stockOk = vertical !== "marketplace" || hasMenu || parseOptionalPositiveInt(form.stock ?? "") !== undefined;
     if (
       (!description && descriptionRequired(vertical, hasMenu)) ||
       (!hasMenu && !form.sats.trim()) ||
       !paymentMethodsOk ||
+      !stockOk ||
       hasPartialMenuRows(form, vertical) ||
       hasLendingAmountAboveCurrentCap(form, vertical)
     ) return;
@@ -1564,7 +1586,7 @@ export function CreateForm({
         <span style={{ fontSize: 18, fontWeight: 700, color: T.text, fontFamily: T.sans }}>
           {t("create.newListing")}
         </span>
-        <button onClick={onClose} style={{
+        <button data-chama-shortcut="back" onClick={onClose} style={{
           background: "none", border: "none", color: T.muted,
           fontSize: 20, cursor: "pointer",
         }}>×</button>
@@ -1598,6 +1620,9 @@ export function CreateForm({
           canOfferSubscription={canOfferSubscription}
           amountDisplayMode={amountDisplayMode}
           authorizeImageUpload={authorizeImageUpload}
+          emphasizeStock={!!initialCanvasIntent && vertical === "marketplace"}
+          emphasizePremium={!!initialCanvasIntent?.emphasizePremium && (vertical === "p2p-trade" || vertical === "bill-pay")}
+          emphasizePaymentMethods={!!initialCanvasIntent?.emphasizePaymentMethods && categoryUsesPaymentRails(vertical)}
           onBack={() => setStep(1)}
           onNext={() => setStep(3)}
         />
@@ -2102,7 +2127,7 @@ function Step1({
         </div>
       )}
 
-      <button onClick={onNext} style={{
+      <button data-chama-shortcut="enter" onClick={onNext} style={{
         width: "100%", padding: "14px",
         background: T.accent, border: "none", borderRadius: T.rs,
         color: T.bg, fontFamily: T.mono, fontSize: 14, fontWeight: 800,
@@ -2124,6 +2149,9 @@ function Step2({
   canOfferSubscription,
   amountDisplayMode,
   authorizeImageUpload,
+  emphasizeStock,
+  emphasizePremium,
+  emphasizePaymentMethods,
   onBack, onNext,
 }: {
   vertical: Vertical;
@@ -2133,6 +2161,9 @@ function Step2({
   canOfferSubscription: boolean;
   amountDisplayMode: AmountDisplayMode;
   authorizeImageUpload?: ListingImageUploadAuthorizer;
+  emphasizeStock?: boolean;
+  emphasizePremium?: boolean;
+  emphasizePaymentMethods?: boolean;
   onBack: () => void;
   onNext: () => void;
 }) {
@@ -2156,11 +2187,21 @@ function Step2({
     if (event.key !== "Enter" || event.shiftKey || event.altKey || event.metaKey || event.ctrlKey) return;
     const start = createFocusOrder.indexOf(current);
     for (const key of createFocusOrder.slice(start + 1)) {
+      const alreadyComplete =
+        (key === "description" && descriptionOk) ||
+        (key === "stock" && stockOk) ||
+        (key === "premium" && premiumOk) ||
+        (key === "payment" && paymentMethodsOk);
+      if (alreadyComplete) continue;
       const candidate = document.querySelector<HTMLElement>(`[data-create-focus="${key}"]`);
       if (!candidate || candidate.getAttribute("aria-disabled") === "true" || (candidate as HTMLInputElement).disabled) continue;
       event.preventDefault();
       candidate.focus();
       return;
+    }
+    if (ready) {
+      event.preventDefault();
+      onNext();
     }
   };
   const partialMenuRows = hasPartialMenuRows(form, vertical);
@@ -2179,11 +2220,15 @@ function Step2({
   // A4: a Work listing without a category can only match on the weak signals.
   const workCategoryOk = vertical !== "work" || usingMenu || !!form.workCategory;
   const paymentMethodsOk = !categoryUsesPaymentRails(vertical) || form.paymentMethods.length > 0;
+  const stockOk = vertical !== "marketplace" || usingMenu || parseOptionalPositiveInt(form.stock ?? "") !== undefined;
+  const premiumOk = !emphasizePremium || parsePremiumBps(form.premium) !== undefined;
   const ready =
     descriptionOk &&
     billTypeOk &&
     workCategoryOk &&
     paymentMethodsOk &&
+    stockOk &&
+    premiumOk &&
     (usingMenu ? hasMenu : form.sats.trim().length > 0) &&
     !partialMenuRows &&
     uploadingImageIds.size === 0 &&
@@ -2191,6 +2236,21 @@ function Step2({
     !lendingCapExceeded;
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm(prev => ({ ...prev, [key]: value }));
+
+  useEffect(() => {
+    if (!emphasizeStock || vertical !== "marketplace" || usingMenu || form.stock?.trim()) return;
+    const frame = window.requestAnimationFrame(() => {
+      document.querySelector<HTMLInputElement>('[data-create-focus="stock"]')?.focus();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [emphasizeStock, vertical, usingMenu, form.stock]);
+  useEffect(() => {
+    if (!emphasizePremium || (vertical !== "p2p-trade" && vertical !== "bill-pay") || form.premium.trim()) return;
+    const frame = window.requestAnimationFrame(() => {
+      document.querySelector<HTMLInputElement>('[data-create-focus="premium"]')?.focus();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [emphasizePremium, vertical, form.premium]);
   const setStoreFulfillment = (fulfillment: Fulfillment) => {
     setForm(prev => ({
       ...prev,
@@ -2479,8 +2539,16 @@ function Step2({
       {/* #7 multi-unit storefront: single-product marketplace listings can carry
           a stock count. 2+ makes it a parent buyers purchase via child escrows. */}
       {vertical === "marketplace" && !usingMenu && (
-        <div style={{ marginBottom: 16 }}>
-          <div style={{ fontSize: 11, color: T.muted, fontFamily: T.mono, marginBottom: 6 }}>{t("create.unitsInStock")}</div>
+        <div style={{
+          marginBottom: 16,
+          padding: emphasizeStock && !stockOk ? 12 : 0,
+          borderRadius: T.r,
+          background: emphasizeStock && !stockOk ? T.accentDim : "transparent",
+          border: emphasizeStock && !stockOk ? `1px solid ${T.accent}77` : "1px solid transparent",
+        }}>
+          <div style={{ fontSize: 11, color: emphasizeStock && !stockOk ? T.accent : T.muted, fontFamily: T.mono, marginBottom: 6, fontWeight: emphasizeStock && !stockOk ? 800 : 400 }}>
+            {t("create.unitsInStock")} · {t("create.required")}
+          </div>
           <input
             type="number"
             onWheel={releaseNumberWheel}
@@ -2491,7 +2559,8 @@ function Step2({
             value={form.stock ?? ""}
             onChange={e => set("stock", e.target.value)}
             placeholder="1"
-            style={{ ...inputStyle, color: T.text, background: T.surface }}
+            aria-required="true"
+            style={{ ...inputStyle, color: T.text, background: T.surface, borderColor: !stockOk ? T.accent : T.border }}
           />
           <div style={{ fontSize: 10, color: T.muted, fontFamily: T.sans, marginTop: 5, lineHeight: 1.4 }}>
             {t("create.stockHint")}
@@ -2991,9 +3060,22 @@ function Step2({
       )}
 
       {supportsPremium(vertical) && (
-        <div style={{ marginBottom: 16 }}>
-          <div style={{ fontSize: 11, color: T.muted, fontFamily: T.mono, marginBottom: 6 }}>
+        <div style={{
+          marginBottom: 16,
+          padding: emphasizePremium && !premiumOk ? 12 : 0,
+          borderRadius: T.r,
+          background: emphasizePremium && !premiumOk ? T.accentDim : "transparent",
+          border: emphasizePremium && !premiumOk ? `1px solid ${T.accent}77` : "1px solid transparent",
+        }}>
+          <div style={{
+            fontSize: 11,
+            color: emphasizePremium && !premiumOk ? T.accent : T.muted,
+            fontFamily: T.mono,
+            marginBottom: 6,
+            fontWeight: emphasizePremium && !premiumOk ? 800 : 400,
+          }}>
             {premiumLabelForVertical(vertical)}
+            {emphasizePremium ? ` · ${t("create.required")}` : ""}
           </div>
           <div style={{
             display: "grid",
@@ -3010,7 +3092,11 @@ function Step2({
               value={form.premium}
               onChange={e => set("premium", e.target.value)}
               placeholder={vertical === "lending" ? "12" : "2.5"}
-              style={inputStyle}
+              aria-required={emphasizePremium || undefined}
+              style={{
+                ...inputStyle,
+                borderColor: emphasizePremium && !premiumOk ? T.accent : T.border,
+              }}
             />
             <div style={{
               minHeight: 44,
@@ -3032,7 +3118,13 @@ function Step2({
       )}
 
       {categoryUsesPaymentRails(vertical) && paymentMethodOptions.length > 0 && (
-        <div style={{ marginBottom: 16 }}>
+        <div style={{
+          marginBottom: 16,
+          padding: emphasizePaymentMethods && !paymentMethodsOk ? 12 : 0,
+          borderRadius: T.r,
+          background: emphasizePaymentMethods && !paymentMethodsOk ? T.accentDim : "transparent",
+          border: emphasizePaymentMethods && !paymentMethodsOk ? `1px solid ${T.accent}77` : "1px solid transparent",
+        }}>
           <div style={{
             display: "flex",
             alignItems: "center",
@@ -3040,7 +3132,12 @@ function Step2({
             gap: 8,
             marginBottom: 6,
           }}>
-            <div style={{ fontSize: 11, color: paymentMethodsOk ? T.muted : T.amber, fontFamily: T.mono }}>
+            <div style={{
+              fontSize: 11,
+              color: emphasizePaymentMethods && !paymentMethodsOk ? T.accent : paymentMethodsOk ? T.muted : T.amber,
+              fontFamily: T.mono,
+              fontWeight: emphasizePaymentMethods && !paymentMethodsOk ? 800 : 400,
+            }}>
               {t("create.acceptedPayment")} · {t("create.required")}
             </div>
             <div style={{ fontSize: 9, color: T.muted, fontFamily: T.mono }}>
@@ -3584,7 +3681,7 @@ function Step2({
       )}
 
       <div style={{ display: "flex", gap: 8 }}>
-        <button onClick={onBack} style={{
+        <button data-chama-shortcut="back" onClick={onBack} style={{
           flex: 1, padding: "14px",
           background: T.surface, border: `1px solid ${T.border}`, borderRadius: T.rs,
           color: T.text, fontFamily: T.mono, fontSize: 13, fontWeight: 700,
@@ -3592,7 +3689,7 @@ function Step2({
         }}>
           {t("create.backButton")}
         </button>
-        <button onClick={onNext} disabled={!ready} style={{
+        <button data-chama-shortcut="enter" onClick={onNext} disabled={!ready} style={{
           flex: 2, padding: "14px",
           background: ready ? T.accent : T.surface,
           border: ready ? "none" : `1px solid ${T.border}`,
@@ -3657,11 +3754,13 @@ function Step3({
   const billTypeOk = vertical !== "bill-pay" || hasMenu || !!form.billType;
   const workCategoryOk = vertical !== "work" || hasMenu || !!form.workCategory;
   const paymentMethodsOk = !categoryUsesPaymentRails(vertical) || form.paymentMethods.length > 0;
+  const stockOk = vertical !== "marketplace" || hasMenu || parseOptionalPositiveInt(form.stock ?? "") !== undefined;
   const ready =
     listingDescription.length > 0 &&
     billTypeOk &&
     workCategoryOk &&
     paymentMethodsOk &&
+    stockOk &&
     (form.sats.trim().length > 0 || hasMenu) &&
     !partialMenuRows &&
     !amountTooSmall &&
@@ -3921,6 +4020,11 @@ function Step3({
                 {previewPremiumCheckout ? ` · ${previewPremiumCheckout}` : ""}
               </div>
             )}
+            {vertical === "marketplace" && (
+              <div style={{ marginTop: 8, color: T.muted, fontFamily: T.mono, fontSize: 10 }}>
+                {t("create.unitsAvailable", { count: parseOptionalPositiveInt(form.stock ?? "") ?? 0 })}
+              </div>
+            )}
           </>
         )}
         {partialMenuRows && (
@@ -3931,7 +4035,7 @@ function Step3({
       </div>
 
       <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-        <button onClick={onBack} style={{
+        <button data-chama-shortcut="back" onClick={onBack} style={{
           flex: 1, padding: "14px",
           background: T.surface, border: `1px solid ${T.border}`, borderRadius: T.rs,
           color: T.text, fontFamily: T.mono, fontSize: 13, fontWeight: 700,

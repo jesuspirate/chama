@@ -153,6 +153,13 @@ export interface Signer {
   /** Export a locally-held recovery key on an explicit user request.
    * Remote/extension signers intentionally omit this capability. */
   exportRecoveryKey?(): Promise<string>;
+
+  /** A6 background push: the NIP-44 conversation key shared with `pubkey`
+   *  (ECDH). Both trade participants derive the SAME key; the VPS cannot. Used
+   *  only to compute opaque watch-tags. Local-key signers implement it; remote
+   *  signers (bunker/extension) omit it, and background push degrades to the
+   *  resume catch-up path. */
+  conversationKey?(pubkey: string): Promise<Uint8Array>;
 }
 
 /** Unsigned event template — the client builds these, the signer completes them */
@@ -415,6 +422,14 @@ export interface EscrowClientConfig {
    * production code.
    */
   verifyEvent?: (event: NostrEvent) => boolean;
+  /**
+   * A6 background push (opt-in): given an about-to-be-signed escrow-chain
+   * event, return extra opaque `["w", tag]` tags to append so the VPS watcher
+   * can wake a sleeping counterparty. Injected by the app layer so the engine
+   * stays free of any notifications dependency. Best-effort — a throw here
+   * never blocks a publish. Absent/returns [] by default (a no-op).
+   */
+  chainEventTagger?: (unsigned: UnsignedEvent) => Promise<string[][]>;
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -780,6 +795,15 @@ export class EscrowClient {
     const simTag = simTagOrNull();
     if (simTag) {
       unsigned = { ...unsigned, tags: [...unsigned.tags, simTag] };
+    }
+    // A6 background push: append opaque wake-tags for any registered
+    // counterparty. Gated + implemented in the app layer; best-effort — a
+    // wake-tag failure must NEVER block a trade publish.
+    if (this.config.chainEventTagger) {
+      try {
+        const wake = await this.config.chainEventTagger(unsigned);
+        if (wake && wake.length) unsigned = { ...unsigned, tags: [...unsigned.tags, ...wake] };
+      } catch { /* swallow — publishing the trade event matters, the wake does not */ }
     }
     return this.signer.signEvent(unsigned);
   }

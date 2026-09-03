@@ -25,9 +25,32 @@
 //
 // So the canvas never asks which mode the user is in. It derives it.
 
-/** What a person can bring to, or want from, a trade. Deliberately four plain
+/** What a person can bring to, or want from, a trade. Deliberately plain
  *  nouns — this is the vocabulary a newcomer already has. */
-export type CanvasAsset = "sats" | "cash" | "work" | "goods";
+export type CanvasAsset = "sats" | "cash" | "work" | "goods" | "bill";
+
+/** The public Assisted Chama front door. Work remains replayable and available
+ *  in Classic Chama, but it is deliberately not advertised here. The order is
+ *  product-significant: local money first because it opens both direct
+ *  Exchange and Community Bill Pay; Bitcoin remains the immediate second
+ *  choice, followed by the two concrete things people can offer or pay. */
+export const ASSISTED_CANVAS_ASSETS = ["cash", "sats", "goods", "bill"] as const;
+export type AssistedCanvasAsset = typeof ASSISTED_CANVAS_ASSETS[number];
+
+/** Real return choices for the Assisted canvas. A one-choice "question" is
+ *  fake friction, so callers should use `inferredAssistedWant` and advance. */
+export function assistedWantChoices(bring: AssistedCanvasAsset): readonly AssistedCanvasAsset[] {
+  if (bring === "sats") return ["cash", "goods"];
+  if (bring === "bill") return ["cash"];
+  return ["sats"];
+}
+
+/** Return the deterministic counter-asset, or null when the user has a real
+ *  choice to make. */
+export function inferredAssistedWant(bring: AssistedCanvasAsset): AssistedCanvasAsset | null {
+  const choices = assistedWantChoices(bring);
+  return choices.length === 1 ? choices[0] : null;
+}
 
 /** Chama's internal vertical ids. Unchanged from the escrow engine on purpose:
  *  the canvas is a new front door, not a new house. */
@@ -59,11 +82,24 @@ export type BlockedReason =
 /**
  * Route a (bring, want) pair.
  *
- * Total: every one of the sixteen pairs returns something, and nothing throws.
+ * Total: every asset pair returns something, and nothing throws.
  * A pair with no market returns `blocked` WITH an onward asset, never silence.
  */
 export function routeCanvasIntent(bring: CanvasAsset, want: CanvasAsset): CanvasRoute {
   if (bring === want) return { kind: "blocked", reason: "same-asset", goVia: null };
+
+  // ── Community Bill Pay ─────────────────────────────────────────────────
+  // "I have a bill" is a human starting point, not an implementation detail.
+  // The bill owner publishes the request and commits sats; a local-money
+  // volunteer reacts by paying the bill. In the public canvas `bill` is only a
+  // bring choice—the thing wanted is the local-money payment of that bill.
+  if (bring === "bill") {
+    if (want === "cash") return { kind: "publish", vertical: "bill-pay", twoSided: false };
+    return { kind: "blocked", reason: "no-sats-leg", goVia: "sats" };
+  }
+  if (want === "bill") {
+    return { kind: "blocked", reason: "no-sats-leg", goVia: "sats" };
+  }
 
   // ── Work is special and must be tested FIRST ────────────────────────────
   // It is the only two-sided market: the person offering their labour and the

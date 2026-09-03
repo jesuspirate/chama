@@ -120,6 +120,15 @@ export class NsecSigner implements Signer {
     return nip44.v2.encrypt(plaintext, conversationKey);
   }
 
+  /** A6 background push: the NIP-44 conversation key shared with `pubkey`.
+   *  Symmetric ECDH — the trade counterparty derives the identical key, the VPS
+   *  cannot. Never leaves the process; used only to seed opaque watch-tags. */
+  async conversationKey(pubkey: string): Promise<Uint8Array> {
+    await this.init();
+    const { nip44 } = await import("nostr-tools");
+    return nip44.v2.utils.getConversationKey(this.secretKey, pubkey);
+  }
+
   async nip44Decrypt(ciphertext: string, senderPubkey: string): Promise<string> {
     await this.init();
     const { nip44 } = await import("nostr-tools");

@@ -68,7 +68,7 @@ export const me: Record<string, string> = {
   "me.categoryBillPay": "Pago com. fact.",
   "me.categoryExchange": "Intercambio",
   "me.categoryLending": "Préstamos",
-  "me.categoryMarket": "Tiendas",
+  "me.categoryMarket": "Mercado",
   "me.checkOtherDeviceBody":
     "de un intercambio liquidado se reportó como ya reclamado, pero tu saldo aquí está corto por ese monto. Aún no se ha establecido a dónde fue — toca abajo para preguntar a tu Chama, o descarta para conservar la nota como respaldo.",
   "me.checkOtherDeviceTitle": "CONSULTA CON TU CHAMA",

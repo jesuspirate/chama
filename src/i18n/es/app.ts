@@ -42,8 +42,8 @@ export const app: Record<string, string> = {
     "Mi Chama y Más barato son los valores predeterminados. Cambia a Todos para descubrir ofertas de otros países y comunidades.",
   "app.coachBrowsePreferencesTitle": "Elige qué muestra Explorar",
   "app.coachCreateBody":
-    "Este botón ✎ siempre está a un toque — cambia efectivo por sats, paga una factura o vende algo.",
-  "app.coachCreateTitle": "Inicia tu propio intercambio",
+    "Este botón ✎ abre tres preguntas sencillas. Chama encuentra una coincidencia o prepara la oferta correcta.",
+  "app.coachCreateTitle": "Empieza con lo que tienes",
   "app.coachDashboardBody":
     "Tu reputación, estadísticas, ganancias y calificaciones llegarán aquí — el lugar que muestra cómo te va mientras intercambias.",
   "app.coachDashboardTitle": "Tu base",
@@ -91,7 +91,7 @@ export const app: Record<string, string> = {
   "app.foundTradesMany": "Se encontraron {count} intercambios en los relays.",
   "app.foundTradesOne": "Se encontró {count} intercambio en los relays.",
   "app.fundingFailed": "El financiamiento falló",
-  "app.headerTagline": "Dinero local · Rieles de Bitcoin",
+  "app.headerTagline": "Rieles de Bitcoin",
   "app.invoiceExpired": "La factura expiró — no se recibió el pago.",
   "app.joinChamaFirst": "Únete a un Chama primero — toca una comunidad.",
   "app.joinFailed": "No pudimos unirte",

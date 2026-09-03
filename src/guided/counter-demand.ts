@@ -155,7 +155,7 @@ export function counterDemandByAsset(
   listings: readonly CounterDemandListing[],
   ctx: CounterDemandContext,
 ): Record<CanvasAsset, number> {
-  const assets: CanvasAsset[] = ["sats", "cash", "work", "goods"];
+  const assets: CanvasAsset[] = ["sats", "cash", "work", "goods", "bill"];
   const out = {} as Record<CanvasAsset, number>;
   for (const bring of assets) {
     out[bring] = countCounterDemand(bring, want, listings, ctx).count;

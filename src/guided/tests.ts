@@ -6,6 +6,14 @@ import {
 } from "../escrow-engine/types.js";
 import { validateGuidedTradeIntent } from "./intent-validation.js";
 import { matchGuidedListings, recommendGuidedCandidates } from "./match-listings.js";
+import { marketNameScore, matchMarketListings } from "./market-match.js";
+import { savedIntentMatchesListing, type SavedIntent } from "./saved-intents.js";
+import {
+  ASSISTED_CANVAS_ASSETS,
+  assistedWantChoices,
+  inferredAssistedWant,
+  routeCanvasIntent,
+} from "./canvas-routing.js";
 import type { GuidedTradeIntent } from "./types.js";
 
 let passed = 0;
@@ -31,6 +39,39 @@ const INTENT: GuidedTradeIntent = {
   community: "global-usd",
   mintUrl: "fed1-guided",
 };
+
+console.log("\n── ASSISTED CANVAS NORMAL-USER FLOW ──");
+{
+  assert(
+    ASSISTED_CANVAS_ASSETS.join(",") === "cash,sats,goods,bill",
+    "orders the public canvas local money, Bitcoin, goods/services, then bills and does not advertise Work",
+  );
+  assert(
+    assistedWantChoices("sats").join(",") === "cash,goods"
+      && inferredAssistedWant("sats") === null,
+    "asks a real return question only when the user brings Bitcoin",
+  );
+  assert(
+    inferredAssistedWant("cash") === "sats"
+      && inferredAssistedWant("goods") === "sats"
+      && inferredAssistedWant("bill") === "cash",
+    "infers deterministic returns instead of rendering one-option questions",
+  );
+  assert(
+    (() => {
+      const cashRoute = routeCanvasIntent("cash", "sats");
+      const billRoute = routeCanvasIntent("bill", "cash");
+      return cashRoute.kind === "match"
+        && cashRoute.verticals.join(",") === "p2p-trade,bill-pay"
+        && billRoute.kind === "publish"
+        && billRoute.vertical === "bill-pay";
+    })()
+      && routeCanvasIntent("goods", "sats").kind === "publish"
+      && routeCanvasIntent("sats", "cash").kind === "publish"
+      && routeCanvasIntent("sats", "goods").kind === "match",
+    "keeps Exchange, Market, and Community Bill Pay terminations reachable from the four public assets",
+  );
+}
 
 function listing(
   id: string,
@@ -86,6 +127,113 @@ function listing(
     chatMessages: [],
     ...overrides,
   };
+}
+
+console.log("\n── ASSISTED MARKET RECALL ──");
+{
+  assert(
+    marketNameScore("I am looking for ugalli", "Fresh Ugali plate") > 0.8,
+    "ignores conversational filler and survives an ordinary one-letter product typo",
+  );
+  const near = listing("ugali", {
+    category: "marketplace",
+    description: "Fresh Ugali plate",
+    amountMsats: 32_000,
+    fiatAmount: undefined,
+    fiatCurrency: undefined,
+  });
+  const unrelated = listing("coffee", {
+    category: "marketplace",
+    description: "Roasted coffee beans",
+    amountMsats: 30_000,
+    fiatAmount: undefined,
+    fiatCurrency: undefined,
+  });
+  const results = matchMarketListings([unrelated, near], {
+    query: "ugalli",
+    budgetSats: 30,
+  });
+  assert(
+    results[0]?.listing.id === "ugali"
+      && results[0]?.reasons.includes("close-name")
+      && results[0]?.reasons.includes("near-budget"),
+    "keeps a typo-tolerant product hit visible when it is only a few sats over budget and explains both facts",
+  );
+  assert(
+    results.length === 2 && results.some(result => result.listing.id === "coffee"),
+    "keeps available alternatives discoverable instead of turning a weak query into a false zero",
+  );
+}
+
+console.log("\n── SAVED INTENT MATCH ALERTS ──");
+{
+  const intent: SavedIntent = {
+    id: "si-market",
+    bring: "sats",
+    want: "goods",
+    community: "global-usd",
+    amountSats: 30,
+    query: "ugalli",
+    createdAt: NOW - 120,
+  };
+  const close = listing("saved-ugali", {
+    category: "marketplace",
+    description: "Fresh Ugali plate",
+    amountMsats: 32_000,
+    fiatAmount: undefined,
+    fiatCurrency: undefined,
+  });
+  const cheapButWrong = listing("saved-coffee", {
+    category: "marketplace",
+    description: "Roasted coffee beans",
+    amountMsats: 20_000,
+    fiatAmount: undefined,
+    fiatCurrency: undefined,
+  });
+  const own = listing("saved-own-ugali", {
+    category: "marketplace",
+    description: "Ugali plate",
+    amountMsats: 30_000,
+    fiatAmount: undefined,
+    fiatCurrency: undefined,
+    initiator: { pubkey: "viewer", role: Role.SELLER },
+    participants: { [Role.BUYER]: null, [Role.SELLER]: "viewer", [Role.ARBITER]: null },
+  });
+  assert(
+    savedIntentMatchesListing(intent, close, "viewer", NOW),
+    "alerts on a typo-tolerant Market description with a nearby price",
+  );
+  assert(
+    !savedIntentMatchesListing(intent, cheapButWrong, "viewer", NOW),
+    "does not call an unrelated cheap Market item a saved-intent match",
+  );
+  assert(
+    !savedIntentMatchesListing(intent, own, "viewer", NOW),
+    "does not alert a Market seller about their own listing",
+  );
+  assert(
+    !savedIntentMatchesListing(intent, { ...close, parent: "store-parent" }, "viewer", NOW),
+    "does not treat a child order as a newly available listing",
+  );
+
+  const cashIntent: SavedIntent = {
+    id: "si-cash",
+    bring: "cash",
+    want: "sats",
+    community: "global-usd",
+    fiatCurrency: "USD",
+    fiatAmount: 42,
+    paymentRails: ["cash-app"],
+    createdAt: NOW - 120,
+  };
+  assert(
+    savedIntentMatchesListing(cashIntent, listing("saved-exchange", { fiatAmount: 41 }), "viewer", NOW),
+    "alerts when a compatible Exchange offer fits the saved fiat budget and payment method",
+  );
+  assert(
+    !savedIntentMatchesListing(cashIntent, listing("saved-expensive", { fiatAmount: 43 }), "viewer", NOW),
+    "does not alert when the Exchange offer exceeds the saved fiat budget",
+  );
 }
 
 console.log("\n── GUIDED INTENT VALIDATION ──");
@@ -206,6 +354,23 @@ console.log("\n── GUIDED DETERMINISTIC MATCHING ──");
       && bracketResult.candidates[0]?.selectedItem?.quantity === 1
       && bracketResult.candidates[0]?.reasons.includes("amount_in_range"),
     "maps a requested amount inside an existing exchange bracket to a lock-compatible selection",
+  );
+
+  const bill: MenuItem = {
+    id: "electricity",
+    label: "Electricity bill",
+    kind: "bill",
+    amountMsats: 50_000_000,
+    fiatAmount: 40,
+    fiatCurrency: "USD",
+  };
+  const billResult = matchGuidedListings(INTENT, [
+    { listing: listing("bill", { category: "bill-pay", items: [bill], amountMsats: 50_000_000 }) },
+  ], { nowSec: NOW });
+  assert(
+    billResult.candidates[0]?.listing.category === "bill-pay"
+      && billResult.candidates[0]?.selectedItem?.itemId === "electricity",
+    "returns compatible community bill-pay offers beside Exchange offers for cash-to-sats intent",
   );
 
   const limited = matchGuidedListings({

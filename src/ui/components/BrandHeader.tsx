@@ -54,7 +54,7 @@ export function BrandHeader() {
         fontSize: 10, color: T.muted, fontFamily: T.mono,
         letterSpacing: 3, textTransform: "uppercase",
       }}>
-        local money, bitcoin rails
+        bitcoin commerce, together
       </div>
     </div>
   );

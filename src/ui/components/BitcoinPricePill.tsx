@@ -26,6 +26,7 @@ const TOGGLE_CSS = `
 .chama-price-btn { transition: transform .14s cubic-bezier(.34,1.56,.64,1), box-shadow .2s ease; }
 .chama-price-btn:active { transform: scale(.98); }
 .chama-price-swap { transition: color .3s ease, opacity .3s ease; }
+.chama-price-rocker-knob { transition: transform .24s cubic-bezier(.34,1.56,.64,1), background .2s ease, box-shadow .2s ease; }
 .chama-price-pop { animation: chamaPricePop .3s cubic-bezier(.34,1.56,.64,1); transform-origin: center; }
 @media (prefers-reduced-motion: reduce) { .chama-price-pop { animation: none; } }
 `;
@@ -201,99 +202,103 @@ export function BitcoinPricePill({
             boxShadow: stale ? "none" : `0 0 26px ${T.green}12`,
           }}
         >
-          {/* Row 1 — LABEL left, toggle RIGHT (balances the bar). The toggle
-              is a SEGMENTED switch: only the ACTIVE side wears the glowing pill
-              (FIAT→green, BTC→accent), the other is plain dim; the ⇄ stays loud
-              + bright. Pops on each swap (key change). */}
+          {/* One clean exchange line. The values remain plain; the physical
+              rocker in the middle is the only control-shaped object. */}
           <div style={{
-            display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10,
+            display: "grid", gridTemplateColumns: "minmax(98px,.72fr) 64px minmax(0,1.35fr)",
+            alignItems: "center", gap: 12,
           }}>
-            <span style={{
-              display: "inline-flex", alignItems: "center", gap: 8, flexShrink: 0,
-              color: stale ? T.muted : T.green, fontFamily: T.mono, fontSize: 14, fontWeight: 900,
-              letterSpacing: 0.8, textTransform: "uppercase",
+            <div style={{
+              display: "flex", alignItems: "center", gap: 8, minWidth: 0,
+              color: stale ? T.muted : T.green,
+              fontFamily: T.mono, fontSize: 22, fontWeight: 950,
+              letterSpacing: 0.2, whiteSpace: "nowrap",
             }}>
               <span aria-hidden="true" style={{
                 width: 9, height: 9, borderRadius: "50%",
                 background: stale ? T.muted : T.green,
                 boxShadow: stale ? "none" : `0 0 12px ${T.green}99`,
               }} />
-              1 BTC =
-            </span>
+              1 BTC
+            </div>
             <span
-              key={amountMode}
-              className="chama-price-swap chama-price-pop"
+              className="chama-price-swap"
+              aria-hidden="true"
               style={{
-                display: "inline-flex", alignItems: "center", gap: 6, flexShrink: 0,
-                fontFamily: T.mono, fontSize: 11, fontWeight: 900,
-                textTransform: "uppercase", letterSpacing: 0.6,
+                position: "relative", width: 64, height: 34, borderRadius: 11,
+                display: "block", overflow: "hidden",
+                border: `1px solid ${T.borderHi}`,
+                background: `linear-gradient(90deg, ${T.accentDim}, ${T.greenDim})`,
+                boxShadow: `inset 0 3px 7px ${T.bg}cc, 0 1px 0 ${T.text}16`,
               }}
             >
-              <span style={amountMode === "fiat"
-                ? {
-                    padding: "3px 9px", borderRadius: 999,
-                    border: `1px solid ${T.green}`, background: T.greenDim,
-                    color: T.green, boxShadow: `0 0 10px ${T.green}66`,
-                  }
-                : { padding: "3px 9px", color: T.muted, opacity: 0.55 }}>
-                FIAT
-              </span>
-              <span aria-hidden="true" style={{
-                color: T.accent, fontSize: 17, fontWeight: 900, lineHeight: 1,
-                textShadow: `0 0 9px ${T.accent}, 0 0 4px ${T.accent}`,
-              }}>
-                ⇄
-              </span>
-              <span style={amountMode === "sats"
-                ? {
-                    padding: "3px 9px", borderRadius: 999,
-                    border: `1px solid ${T.accent}`, background: T.accentDim,
-                    color: T.accent, boxShadow: `0 0 10px ${T.accent}66`,
-                  }
-                : { padding: "3px 9px", color: T.muted, opacity: 0.55 }}>
-                BTC
+              <span
+                className="chama-price-rocker-knob"
+                style={{
+                  position: "absolute", zIndex: 0, left: 3, top: 3,
+                  width: 28, height: 26, borderRadius: 8,
+                  transform: amountMode === "fiat" ? "translateX(28px)" : "translateX(0)",
+                  background: amountMode === "fiat"
+                    ? `linear-gradient(180deg, ${T.green}dd, ${T.green}88)`
+                    : `linear-gradient(180deg, ${T.accent}dd, ${T.accent}88)`,
+                  boxShadow: `0 4px 8px ${T.bg}cc, inset 0 1px 0 ${T.text}66`,
+                }}
+              />
+              <span
+                key={amountMode}
+                className="chama-price-pop"
+                style={{
+                  position: "absolute", zIndex: 1, inset: 0,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  color: T.text, lineHeight: 0,
+                  textShadow: `0 1px 4px ${T.bg}`,
+                }}
+              >
+                <svg
+                  width="24"
+                  height="16"
+                  viewBox="0 0 24 16"
+                  fill="none"
+                  aria-hidden="true"
+                  style={{ display: "block", overflow: "visible", filter: `drop-shadow(0 1px 2px ${T.bg})` }}
+                >
+                  <path d="M3 5h15M15 2l3 3-3 3" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M21 11H6M9 8l-3 3 3 3" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
               </span>
             </span>
-          </div>
-
-          {/* Row 2 — currency TICKER left, big DIGITS right (shrink-to-fit,
-              right-aligned). Ticker anchors the left column; the value lands on
-              the right, aligned under the toggle. */}
-          <div style={{
-            display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12,
-          }}>
-            <span style={{
-              flexShrink: 0,
-              color: price.usd ? T.text : T.muted, fontFamily: T.mono, fontSize: 30, fontWeight: 950,
-              lineHeight: 1, letterSpacing: 0,
+            <div style={{
+              display: "flex", alignItems: "baseline", justifyContent: "flex-end", gap: 8,
+              minWidth: 0,
             }}>
-              {priceTicker}
-            </span>
-            <FitText
-              text={priceDigits}
-              max={30}
-              min={15}
-              align="right"
-              style={{
+              <span style={{
+                flexShrink: 0, color: price.usd ? T.text : T.muted,
+                fontFamily: T.mono, fontSize: 20, fontWeight: 950,
+              }}>{priceTicker}</span>
+              <FitText text={priceDigits} max={50} min={23} align="right" style={{
                 color: price.usd ? T.text : T.muted,
                 fontFamily: T.mono,
                 fontWeight: 950,
-                lineHeight: 1,
-                letterSpacing: 0,
-              }}
-            />
+                lineHeight: .94,
+                letterSpacing: -1.5,
+              }} />
+            </div>
           </div>
 
-          {/* Row 3 — source, anchored RIGHT now (under the digits) so the left
-              column can give "1 BTC =" + the ticker their full, maximized size. */}
-          <span style={{
-            alignSelf: "flex-end", maxWidth: "100%", textAlign: "right",
-            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-            color: T.muted, fontFamily: T.mono, fontSize: 9, fontWeight: 800,
-            textTransform: "uppercase", letterSpacing: 0.6,
-          }}>
-            {sourceLabel}
-          </span>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+            <span style={{
+              color: amountMode === "fiat" ? T.green : T.accent,
+              fontFamily: T.mono, fontSize: 9, fontWeight: 900,
+              textTransform: "uppercase", letterSpacing: .7,
+            }}>
+              Browse in {amountMode === "fiat" ? displayCurrency : "sats"}
+            </span>
+            <span style={{
+              minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+              color: T.muted, fontFamily: T.mono, fontSize: 8, fontWeight: 800,
+              textTransform: "uppercase", letterSpacing: 0.5,
+            }}>{sourceLabel}</span>
+          </div>
         </button>
         </>
       );

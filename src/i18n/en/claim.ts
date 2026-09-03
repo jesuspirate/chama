@@ -181,6 +181,7 @@ export const claim: Record<string, string> = {
   "claim.phaseSendingWallet": "Sending to your wallet…",
   "claim.phaseWorking": "Working…",
   "claim.phoneNumber": "Phone number",
+  "claim.phoneCountryCodeNudge": "Using a phone number? Include the country code, for example {example}.",
   "claim.phoneProgressHint": "{country}: {expected} after +{code}",
   "claim.privacyPrivate": "Private",
   "claim.privacyPublicOptIn": "Public opt-in",

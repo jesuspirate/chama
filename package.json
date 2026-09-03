@@ -7,6 +7,8 @@
   "description": "Chama — Nostr-native P2P escrow client. Non-custodial. No server.",
   "scripts": {
     "dev": "vite",
+    "sync:icons": "node scripts/sync-vertical-icons.mjs",
+    "prebuild": "npm run sync:icons",
     "build": "vite build",
     "preview": "vite preview",
     "android:sync": "npm run build && npx cap sync android",

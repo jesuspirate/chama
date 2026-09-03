@@ -1,5 +1,8 @@
 // es/connect — Session C fills this from src/i18n/en/connect.ts (key set must match EXACTLY).
 export const connect: Record<string, string> = {
+  "connect.changeHome": "Cambiar",
+  "connect.changeQueued": "Listo ✓",
+  "connect.chooseAfterSignIn": "Elige tu Chama después de entrar",
   "connect.errorNoSigner":
     "La extensión del navegador no pudo conectar. Usa tu llave de recuperación abajo.",
   "connect.fediBody":
@@ -15,6 +18,7 @@ export const connect: Record<string, string> = {
     "Cambia efectivo por sats, paga facturas, vende y más — en tu moneda local.",
   "connect.introNeverHolds": "Chama nunca retiene tu dinero.",
   "connect.introTitle": "Intercambia bitcoin con tu comunidad",
+  "connect.lastChamaHere": "Último Chama usado en este navegador",
   "connect.moreOptions": "▼ Más opciones de acceso",
   "connect.pendingReportSignIn":
     "Inicia sesión para ponerte en el mapa. En cuanto te conectes, les diremos a los árbitros de Chama que {chama} quiere entrar.",
@@ -39,7 +43,7 @@ export const connect: Record<string, string> = {
   "connect.useCaseChipInBlurb": "Junta sats con tu comunidad",
   "connect.useCaseExchange": "Intercambio",
   "connect.useCaseExchangeBlurb": "Cambia efectivo por sats con alguien local",
-  "connect.useCaseMarketplace": "Tiendas",
+  "connect.useCaseMarketplace": "Mercado",
   "connect.useCaseMarketplaceBlurb": "Vende bienes, servicios o artículos digitales",
   "connect.useCaseStack": "Ahorro",
   "connect.useCaseStackBlurb": "Ahorra hacia una meta — tus llaves, tus sats",

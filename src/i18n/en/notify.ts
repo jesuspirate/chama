@@ -39,8 +39,12 @@ export const notify: Record<string, string> = {
   "notify.lockedTitle": "⚡ Sats locked in escrow",
   "notify.newListingBody": "New listing in {community}: {title}",
   "notify.newListingTitle": "🆕 New listing in your chama",
+  "notify.savedIntentTitle": "A match just appeared",
+  "notify.savedIntentSatsBody": "Someone is offering the sats you wanted. Tap to see it.",
+  "notify.savedIntentGoodsBody": "Someone just listed “{query}”. Tap to see it.",
+  "notify.savedIntentGoodsBodyGeneric": "A listing you were watching just appeared. Tap to see it.",
   "notify.newOrderBody": "A buyer funded order {label} on your storefront. Open Chama to fulfill it.",
-  "notify.newOrderTitle": "🛒 New order on your storefront",
+  "notify.newOrderTitle": "New order on your storefront",
   "notify.selfTestBody":
     "If you can see this, OS notification delivery works on this build.",
   "notify.selfTestTitle": "Chama notifications OK",

@@ -167,11 +167,11 @@ export const TRINITY_RING_ORDER: readonly Role[] = [
   Role.SELLER,
 ];
 
-export const CAT_ICON = { "p2p-trade": "⚡", "bill-pay": "🧾", marketplace: "🏪", work: "🛠️", lending: "🤝" } as Record<string, string>;
+export const CAT_ICON = { "p2p-trade": "⚡", "bill-pay": "🧾", marketplace: "", work: "🛠️", lending: "🤝" } as Record<string, string>;
 export const CAT_LABEL: Record<string, string> = {
   "p2p-trade":   "⚡ Exchange",
   "bill-pay":    "🧾 Community Bill Pay",
-  marketplace:   "🏪 Marketplace",
+  marketplace:   "Market",
   work:          "🛠️ Work",
   lending:       "🤝 Lending",
   "raw-escrow":  "🔧 Raw Escrow",
@@ -186,7 +186,7 @@ export const BROWSE_CATS: { id: string; l: string; i: string }[] = [
   { id: "all",          l: "browse.catAll",      i: "" },
   { id: "p2p-trade",    l: "browse.catExchange", i: "⚡" },
   { id: "bill-pay",     l: "browse.catBillPay",  i: "🧾" },
-  { id: "marketplace",  l: "browse.catMarket",   i: "🏪" },
+  { id: "marketplace",  l: "browse.catMarket",   i: "" },
   // Work is parked for a future release. Its protocol support remains so old
   // trades can still be recovered and settled safely.
   // { id: "work", l: "browse.catWork", i: "🛠️" },

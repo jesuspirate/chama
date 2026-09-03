@@ -107,7 +107,6 @@ export function BrowseView({
   onOpenEscrow, onLoadById,
   fetchRatingSummary,
   onCreate, onApplyAsArbiter,
-  onOpenGuided,
 }: {
   browseCategory: string;
   setBrowseCategory: (s: string) => void;
@@ -131,11 +130,10 @@ export function BrowseView({
   onOpenEscrow: (id: string) => void;
   onLoadById: (id: string) => void | Promise<void>;
   fetchRatingSummary?: (ratee: string) => Promise<AggregateRatings>;
-  /** v3.1.1: floating-menu on-ramps — pencil opens Create; the ⚖️ FAB opens the
-   *  arbiter application form inline (no bounce to Me). */
+  /** S4: the primary pencil opens Assisted Chama. The full editor remains
+   *  reachable from the canvas through its explicit More options door. */
   onCreate: () => void;
   onApplyAsArbiter: (community: string, statement: string) => Promise<void>;
-  onOpenGuided: () => void;
 }) {
   const { t } = useT();
   const [showAdvancedTools, setShowAdvancedTools] = useState(false);
@@ -375,19 +373,6 @@ export function BrowseView({
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-          <button
-            type="button"
-            onClick={onOpenGuided}
-            data-coach="chama-assisted"
-            title={t("guided.assistant")}
-            aria-label={t("guided.assistant")}
-            style={{
-              width: 34, height: 34, borderRadius: 12,
-              background: T.accentDim, border: `1px solid ${T.accent}44`,
-              color: T.accent, cursor: "pointer", fontSize: 16,
-              display: "grid", placeItems: "center",
-            }}
-          >✦</button>
           {/* v3.1.1: the create + arbiter on-ramps moved out of the header into
               the floating action menu (FAB stack) rendered at the screen root. */}
           {homeCommunity && (

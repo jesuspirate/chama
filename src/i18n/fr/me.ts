@@ -69,7 +69,7 @@ export const me: Record<string, string> = {
   "me.categoryBillPay": "Factures comm.",
   "me.categoryExchange": "Échange",
   "me.categoryLending": "Prêt",
-  "me.categoryMarket": "Boutique",
+  "me.categoryMarket": "Marché",
   "me.checkOtherDeviceBody":
     "issus d'un échange réglé ont été signalés comme déjà réclamés, mais votre solde ici est plus bas d'autant. Où ils sont allés n'est pas encore établi — touchez ci-dessous pour demander à votre Chama, ou ignorez pour garder la note en secours.",
   "me.checkOtherDeviceTitle": "VÉRIFIEZ AUPRÈS DE VOTRE CHAMA",

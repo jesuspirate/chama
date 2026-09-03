@@ -76,7 +76,7 @@ export const browse: Record<string, string> = {
   "browse.catAll": "Todos",
   "browse.catExchange": "Intercambio",
   "browse.catBillPay": "Pago com. fact.",
-  "browse.catMarket": "Tiendas",
+  "browse.catMarket": "Mercado",
   "browse.catWork": "Trabajo",
   "browse.catLending": "Préstamos",
   "browse.workerResumeTitle": "Currículum del trabajador",

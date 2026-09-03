@@ -344,7 +344,8 @@ import {
   buildArbiterApplicationEvent,
   collectArbiterApplications,
 } from "../arbiters/applications.js";
-import { maybeNotifyTransition, maybeNotifyChatMessage, maybeNotifyBuyerInterest, maybeNotifyNewListing, maybeSendTradeDms } from "../notifications/notify-service.js";
+import { maybeNotifyTransition, maybeNotifyChatMessage, maybeNotifyBuyerInterest, maybeNotifyNewListing, maybeNotifySavedIntentMatch, maybeSendTradeDms } from "../notifications/notify-service.js";
+import { makeChainEventTagger } from "../notifications/watch-tags.js";
 import {
   RATING_KIND,
   buildRatingEvent,
@@ -1474,6 +1475,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     // deduped internally, so they never block the update or double-fire.
     maybeNotifyBuyerInterest(priorEscrow, escrowState, notifyPubkey, notifyLiveSinceRef.current);
     maybeNotifyNewListing(priorEscrow, escrowState, notifyPubkey, notifyLiveSinceRef.current);
+    maybeNotifySavedIntentMatch(priorEscrow, escrowState, notifyPubkey, notifyLiveSinceRef.current);
 
     // #79: Nostr-native "email alert" — when THIS client caused a trade-critical
     // transition, DM the counterparty so their external Nostr client (Damus/
@@ -1665,6 +1667,9 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
         platformFeePubkey: config?.platformFeePubkey,
         defaultExpirySeconds: config?.defaultExpirySeconds ?? 86_400,
         ...config,
+        // A6 background push (opt-in): wake a sleeping counterparty on each
+        // chain publish. Self-gates — a no-op until the user enables it.
+        chainEventTagger: makeChainEventTagger(signer),
       }, callbacks);
 
       client.connect();

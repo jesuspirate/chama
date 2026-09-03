@@ -57,6 +57,7 @@ function fiatQuoteFor(item: MenuItem | undefined, listing: GuidedListingInput["l
 function matchingMenuItem(items: readonly MenuItem[], amountMsats: number): MenuItem | undefined {
   return items
     .filter(item => {
+      if (item.kind === "bill") return item.amountMsats === amountMsats;
       if (item.kind !== "exchange-bracket") return false;
       const min = item.minAmountMsats ?? item.amountMsats;
       const max = item.maxAmountMsats ?? item.amountMsats;
@@ -150,7 +151,8 @@ function candidateScore(
   return score;
 }
 
-/** Pure, conservative matcher for today's seller-created p2p-trade listings.
+/** Pure, conservative matcher for today's seller-created cash-to-sats offers:
+ * Exchange listings and community bill-pay listings.
  * It prepares no event, joins no seat, signs nothing, and moves no funds. */
 export function matchGuidedListings(
   intent: GuidedTradeIntent,
@@ -174,7 +176,9 @@ export function matchGuidedListings(
     const listing = input.listing;
     let code: GuidedRejectedListing["code"] | null = null;
 
-    if (listing.category !== "p2p-trade") code = "NOT_P2P_LISTING";
+    if (listing.category !== "p2p-trade" && listing.category !== "bill-pay") {
+      code = "NOT_P2P_LISTING";
+    }
     else if (listing.status !== EscrowStatus.CREATED) code = "NOT_OPEN";
     else if (listing.parent !== undefined) code = "CHILD_ORDER";
     else if ((listing.listingExpiresAt ?? listing.expiresAt) <= nowSec) code = "EXPIRED";

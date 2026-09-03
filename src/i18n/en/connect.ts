@@ -1,6 +1,9 @@
 // i18n namespace "connect" — ConnectScreen + WelcomeIntro (the exemplar
 // conversion; see ConnectScreen.tsx for every extraction pattern in use).
 export const connect: Record<string, string> = {
+  "connect.changeHome": "Change",
+  "connect.changeQueued": "Ready ✓",
+  "connect.chooseAfterSignIn": "Choose your Chama after signing in",
   "connect.errorNoSigner":
     "The browser extension couldn't connect. Use your recovery key below.",
   "connect.fediBody":
@@ -14,6 +17,7 @@ export const connect: Record<string, string> = {
     "Swap cash for sats, pay bills, sell, and more — in your local currency.",
   "connect.introNeverHolds": "Chama never holds your money.",
   "connect.introTitle": "Trade bitcoin with your community",
+  "connect.lastChamaHere": "Last Chama used in this browser",
   "connect.moreOptions": "▼ More sign-in options",
   "connect.pendingReportSignIn":
     "Sign in to put yourself on the map. The moment you connect, we'll tell the Chama arbiters that {chama} wants in.",
@@ -37,7 +41,7 @@ export const connect: Record<string, string> = {
   "connect.useCaseChipInBlurb": "Pool sats together with your community",
   "connect.useCaseExchange": "Exchange",
   "connect.useCaseExchangeBlurb": "Swap cash for sats with someone local",
-  "connect.useCaseMarketplace": "Stores",
+  "connect.useCaseMarketplace": "Market",
   "connect.useCaseMarketplaceBlurb": "Sell goods, services, or digital items",
   "connect.useCaseStack": "Stack",
   "connect.useCaseStackBlurb": "Save toward a goal — your keys, your sats",

@@ -106,6 +106,7 @@ import {
   DEFAULT_COMMUNITY_SLUG,
   claimGeneratedShellCreator,
 } from "../communities/registry.js";
+import { defaultCurrencyForCommunity } from "../communities/currency.js";
 import { getUserCommunitySlugRaw } from "../communities/storage.js";
 import {
   getPendingCommunityReport,
@@ -151,13 +152,15 @@ import { BottomNav, BOTTOM_NAV_HEIGHT, type Tab } from "./components/BottomNav.j
 import { CoachMarkTour, readCoachSeen, type CoachStep } from "./components/CoachMarkTour.js";
 import { ActiveTradePill } from "./components/ActiveTradePill.js";
 import { BitcoinPricePill } from "./components/BitcoinPricePill.js";
+import { useDesktopNavigationShortcuts } from "./hooks/useDesktopNavigationShortcuts.js";
 import { RecoveryBanner } from "./screens/RecoveryBanner.js";
 import { PendingLockCard } from "./components/PendingLockCard.js";
 import { PendingPayoutCard } from "./components/PendingPayoutCard.js";
 import { useFederationCommands } from "./hooks/useFederationCommands.js";
 
 import { BrowseView } from "./screens/BrowseView.js";
-import { GuidedHome } from "./screens/GuidedHome.js";
+import { AssistedCanvas } from "./screens/AssistedCanvas.js";
+import type { CanvasCreatePrefill } from "../guided/create-prefill.js";
 import { ConnectScreen } from "./screens/ConnectScreen.js";
 import { GlobeCountryPicker } from "./screens/GlobeCountryPicker.js";
 import { DashboardScreen } from "./screens/DashboardScreen.js";
@@ -281,10 +284,9 @@ const TAB_FOR_VIEW: Record<View, Tab> = {
   help: "me",
 };
 
-// v4.1 C1 / v4.2.1: the one-time post-sign-in coach-mark tour over the home
-// screen's reachable surfaces. Chama Assisted is called out immediately after
-// Browse because it is the low-friction path for a newcomer who does not yet
-// know which trade form they need.
+// v4.1 C1 / S4: the one-time post-sign-in coach-mark tour over the home
+// screen's reachable surfaces. The pencil now opens the Assisted canvas; the
+// full editor is deliberately one level deeper behind More options.
 // i18n: title/body are DICTIONARY KEYS, resolved with t() at render (module-
 // level constants can't call hooks) — same pattern as INTRO_USE_CASES.
 const COACH_STEPS: CoachStep[] = [
@@ -292,11 +294,6 @@ const COACH_STEPS: CoachStep[] = [
     selector: '[data-coach="nav-browse"]',
     titleKey: "app.coachBrowseTitle",
     bodyKey: "app.coachBrowseBody",
-  },
-  {
-    selector: '[data-coach="chama-assisted"]',
-    titleKey: "app.coachAssistedTitle",
-    bodyKey: "app.coachAssistedBody",
   },
   {
     selector: '[data-coach="browse-preferences"]',
@@ -487,6 +484,7 @@ function nativeBridgePortLabel(): string | null {
 }
 
 export default function App() {
+  useDesktopNavigationShortcuts();
   const { t } = useT();
   // Toast state needs to be declared before the hook since we pass
   // onClaimProgress which dispatches toasts. useRef holds the callback
@@ -551,6 +549,7 @@ export default function App() {
   // v3.2: the create flow opens as one shared overlay. The Browse pencil and
   // the old bottom-nav Create slot both hit this same path for now.
   const [createOverlayOpen, setCreateOverlayOpen] = useState(false);
+  const [createCanvasIntent, setCreateCanvasIntent] = useState<CanvasCreatePrefill | null>(null);
   // When the Advanced screen is opened from the trade-page NWC "Change" link,
   // land focused on the NWC wallets section instead of the top of the page.
   const [advancedFocusNwc, setAdvancedFocusNwc] = useState(false);
@@ -577,6 +576,10 @@ export default function App() {
   // post-connect GlobeCountryPicker (the pick moved out of the pre-signer
   // ConnectScreen). Re-evaluated whenever a signer connects.
   const [needsHomePick, setNeedsHomePick] = useState(false);
+  // A disconnected screen can show only a browser-wide "last home" hint. If
+  // the person asks to change it, defer the real mutation until authentication
+  // gives us an npub and the existing federation-switch safety gates can run.
+  const [changeHomeAfterConnect, setChangeHomeAfterConnect] = useState(false);
   const [toast, setToast] = useState<{ message: ReactNode; type: "success" | "error" | "info"; sticky?: boolean; dismissOnTap?: boolean } | null>(null);
   toastRef.current = setToast;
   const [showFundModal, setShowFundModal] = useState(false);
@@ -1051,11 +1054,11 @@ export default function App() {
     setKind0Enabled(readKind0Toggle(pubkey));
     // Auth-first: if THIS npub has never picked a home chama, gate the
     // post-connect picker before the main app renders.
-    setNeedsHomePick(getUserCommunitySlugRaw() === null);
-  }, [connected, pubkey]);
+    setNeedsHomePick(changeHomeAfterConnect || getUserCommunitySlugRaw() === null);
+  }, [connected, pubkey, changeHomeAfterConnect]);
 
-  // v2.7 onboarding completion — two pre-login deferrals settle once a signer
-  // exists (the globe picker runs before sign-in):
+  // v2.7 onboarding completion — legacy pre-login deferrals settle once a signer
+  // exists (the globe picker used to run before sign-in):
   //   1. Stamp this identity onto any pre-login generated country shells, so
   //      their permissionless arbiter rosters become verifiable (creatorPubkey
   //      was null before we knew who the user was). Idempotent.
@@ -2698,7 +2701,8 @@ export default function App() {
   // globe. Keep `needsHomePick` as the in-flight latch while a selected
   // community is joining.
   const shouldShowHomePicker =
-    connected && !!pubkey && (needsHomePick || getUserCommunitySlugRaw() === null);
+    connected && !!pubkey
+      && (changeHomeAfterConnect || needsHomePick || getUserCommunitySlugRaw() === null);
 
   if (!connected) {
     return (
@@ -2739,6 +2743,7 @@ export default function App() {
         )}
         <ConnectScreen
           onConnect={actions.connect}
+          onRequestHomeChange={() => setChangeHomeAfterConnect(true)}
           onConnectNsec={async (nsec: string, remember: boolean, wasGenerated: boolean) => {
             (window as any).__chama_connect_nsec = nsec;
             if (remember && shouldPersistNsecInShell()) {
@@ -2790,6 +2795,7 @@ export default function App() {
             const selection = handleSelectCommunity(slug);
             setNeedsHomePick(getUserCommunitySlugRaw() === null);
             await selection;
+            setChangeHomeAfterConnect(false);
             // Reconcile after success/failure. The home identity stays saved
             // even when its wallet is temporarily unavailable, so a wallet
             // error can never trap an authenticated user in onboarding.
@@ -2806,6 +2812,7 @@ export default function App() {
 
   // ── Connected → main app ──
   const detailMode = view === "detail" && !!selected;
+  const assistedCanvasMode = view === "guided";
   const activeTab = detailMode ? TAB_FOR_VIEW[detailBackView] : TAB_FOR_VIEW[view];
   const effectiveShellPaddingBottom = detailMode ? 0 : shellPaddingBottom;
 
@@ -2817,7 +2824,9 @@ export default function App() {
       // actually engage on desktop/landscape — it was previously throttled to
       // 720px and never triggered. `.trade-detail-shell` caps + centers itself
       // responsively (520 → 1040 → 1120); narrow/mobile is unaffected.
-      fontFamily: T.sans, maxWidth: detailMode ? 1120 : 520, margin: "0 auto",
+      // Assisted Canvas owns its readable inner width, so its page surface can
+      // fill the viewport instead of exposing dark gutters on wide desktops.
+      fontFamily: T.sans, maxWidth: detailMode ? 1120 : assistedCanvasMode ? "none" : 520, margin: "0 auto",
       paddingBottom: effectiveShellPaddingBottom,
       paddingTop: shellPaddingTop,
     }}>
@@ -2845,7 +2854,7 @@ export default function App() {
               <div>
                 <div style={{ fontSize: 16, fontWeight: 700, fontFamily: T.mono, letterSpacing: -0.5 }}>Chama</div>
                 <div style={{ fontSize: 9, color: T.muted, fontFamily: T.mono, letterSpacing: 1.5, textTransform: "uppercase" }}>
-                  {t("app.headerTagline")}
+                  {defaultCurrencyForCommunity(routeCommunitySlug)} · {t("app.headerTagline")}
                 </div>
               </div>
             </div>
@@ -3497,20 +3506,26 @@ export default function App() {
 
       {/* Content — routed by view */}
       {view === "guided" ? (
-        <GuidedHome
+        <AssistedCanvas
           listings={allVisibleListings}
           stockByListing={stockByListing}
           browseCommunity={routeCommunitySlug}
           activeMintUrl={myActiveInvite}
           viewerPubkey={pubkey!}
           listingsLoading={publicListingsLoading}
-          attentionTrades={needsYouTrades}
           fetchRatingSummary={actions.fetchRatingSummary}
           onBrowse={(category) => {
             setBrowseCategory(category);
             setView("browse");
           }}
-          onCreate={() => setCreateOverlayOpen(true)}
+          onCreate={(intent) => {
+            setCreateCanvasIntent(intent);
+            setCreateOverlayOpen(true);
+          }}
+          onMoreOptions={() => {
+            setCreateCanvasIntent(null);
+            setCreateOverlayOpen(true);
+          }}
           onOpenTrade={(id) => openEscrow(id, "guided")}
         />
       ) : view === "detail" && selected ? (
@@ -4329,11 +4344,12 @@ export default function App() {
               kind0Enabled={kind0Enabled}
               profileNames={nostrProfiles}
               fetchRatingSummary={actions.fetchRatingSummary}
-              onCreate={() => setCreateOverlayOpen(true)}
+              onCreate={() => {
+                setView("guided");
+              }}
               onApplyAsArbiter={async (community, statement) => {
                 await actions.applyAsArbiter(community, statement);
               }}
-              onOpenGuided={() => setView("guided")}
               onOpenEscrow={openEscrow}
               onLoadById={async (id) => {
                 try {
@@ -4455,7 +4471,7 @@ export default function App() {
       {createOverlayOpen && (
         <>
           <div
-            onClick={() => setCreateOverlayOpen(false)}
+            onClick={() => { setCreateOverlayOpen(false); setCreateCanvasIntent(null); }}
             aria-hidden="true"
             style={{
               position: "fixed", inset: 0, zIndex: 9994,
@@ -4479,14 +4495,22 @@ export default function App() {
             overflowY: "auto", animation: "fadeIn 0.25s ease",
           }}>
             <CreateForm
+              key={createCanvasIntent
+                ? `canvas:${createCanvasIntent.vertical}:${createCanvasIntent.description ?? ""}:${createCanvasIntent.amountSats ?? ""}:${createCanvasIntent.fiatAmount ?? ""}:${createCanvasIntent.billType ?? ""}:${createCanvasIntent.emphasizePremium ? "premium" : "ordinary"}:${createCanvasIntent.emphasizePaymentMethods ? "payment" : "ordinary"}`
+                : "classic"}
               onCreate={async (params: any) => {
                 await handleCreate(params);
                 setCreateOverlayOpen(false);
+                setCreateCanvasIntent(null);
                 setDetailBackView("browse");
               }}
-              onClose={() => setCreateOverlayOpen(false)}
+              onClose={() => { setCreateOverlayOpen(false); setCreateCanvasIntent(null); }}
               arbiterWarning={arbiterWarning}
-              onGoToArbiterTrade={(escrowId) => { setCreateOverlayOpen(false); openEscrow(escrowId); }}
+              onGoToArbiterTrade={(escrowId) => {
+                setCreateOverlayOpen(false);
+                setCreateCanvasIntent(null);
+                openEscrow(escrowId);
+              }}
               canOfferSubscription={userCanSubscribe}
               userPubkey={pubkey ?? null}
               activeInvite={liveActiveInvite}
@@ -4495,10 +4519,12 @@ export default function App() {
               fetchCommunityBonds={actions.fetchCommunityBonds}
               fetchFaultExcludedArbiters={actions.fetchFaultExcludedArbiters}
               authorizeImageUpload={actions.authorizeImageUpload}
+              initialCanvasIntent={createCanvasIntent}
             />
           </div>
         </>
       )}
+
     </div>
   );
 }

@@ -206,9 +206,7 @@ export function addSavedHandle(
   // v0.7.0: phone numbers get canonicalized to "+CC XXX-XXX-XXXX" on
   // save. Other rails store the user's input verbatim — formatting a
   // Revtag or email wouldn't help and could break a literal handle.
-  const normalized = shouldSanitizeHandleAsPhone(rail, trimmed)
-    ? sanitizePhoneNumberForSave(trimmed)
-    : trimmed;
+  const normalized = normalizeHandleForRail(rail, trimmed);
   const existing = readAll();
   const networks = opts?.networks?.filter(n => typeof n === "string" && n.length > 0);
   const entry: SavedHandle = {
@@ -501,9 +499,24 @@ const PHONE_LENGTH_RULES: Record<string, PhoneLengthRule> = {
 function normalizeHandleForRail(rail: string, handle: string): string {
   const trimmed = handle.trim();
   if (!trimmed) throw new Error("Handle cannot be empty");
+  if (paymentHandleNeedsCountryCode(rail, trimmed)) {
+    throw new Error("Include the country code so the other person can use this number, for example +1 555 555 5555.");
+  }
   return shouldSanitizeHandleAsPhone(rail, trimmed)
     ? sanitizePhoneNumberForSave(trimmed)
     : trimmed;
+}
+
+/** True when a phone-capable payment rail received a phone-shaped value without
+ *  an international prefix. Email/user-name alternatives remain untouched.
+ *  Shared by every entry surface and enforced again at persistence. */
+export function paymentHandleNeedsCountryCode(rail: string, handle: string): boolean {
+  const trimmed = handle.trim();
+  if (!trimmed || trimmed.startsWith("+") || trimmed.includes("@")) return false;
+  const meta = getRailByKey(rail);
+  const acceptsPhone = rail === "phone-number" || meta?.placeholder?.includes("+") === true;
+  if (!acceptsPhone) return false;
+  return /^\(?\d[\d\s().-]+$/.test(trimmed);
 }
 
 function railLooksPhoneBased(rail: string): boolean {

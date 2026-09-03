@@ -42,7 +42,7 @@ export const app: Record<string, string> = {
   "app.claimingReconstructing": "Claiming… reconstructing ecash.",
   "app.coachBrowseBody":
     "Every trade your community has posted lives here. Tap a listing to see the deal and chat with the other side.",
-  "app.coachBrowseTitle": "Browse the stores",
+  "app.coachBrowseTitle": "Browse the market",
   "app.coachAssistedBody":
     "Not sure which trade to start? Tap ✦ and Chama will guide you to the right flow.",
   "app.coachAssistedTitle": "Start with Chama Assisted",
@@ -50,8 +50,8 @@ export const app: Record<string, string> = {
     "My Chama and Cheapest are the defaults. Switch to All when you want to discover offers from other countries and communities.",
   "app.coachBrowsePreferencesTitle": "Choose what Browse shows",
   "app.coachCreateBody":
-    "This ✎ button is always one tap away — swap cash for sats, pay a bill, or sell something.",
-  "app.coachCreateTitle": "Start your own trade",
+    "This ✎ button opens three plain questions. Chama finds a match or prepares the right offer for you.",
+  "app.coachCreateTitle": "Start with what you have",
   "app.coachDashboardBody":
     "Your standing, stats, earnings, and ratings are coming here — the place that tracks how you're doing as you trade.",
   "app.coachDashboardTitle": "Your home base",
@@ -103,7 +103,7 @@ export const app: Record<string, string> = {
   "app.foundTradesMany": "Found {count} trades from relays.",
   "app.foundTradesOne": "Found {count} trade from relays.",
   "app.fundingFailed": "Funding failed",
-  "app.headerTagline": "Local money · Bitcoin rails",
+  "app.headerTagline": "Bitcoin rails",
   "app.invoiceExpired": "Invoice expired — no payment received.",
   "app.joinChamaFirst": "Join a Chama first — tap a community pill.",
   "app.joinFailed": "Failed to join",

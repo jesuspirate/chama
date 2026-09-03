@@ -29,7 +29,7 @@ export const notify: Record<string, string> = {
   "notify.newListingBody": "Nouvelle annonce dans {community} : {title}",
   "notify.newListingTitle": "🆕 Nouvelle annonce dans votre chama",
   "notify.newOrderBody": "Un acheteur a financé la commande {label} sur votre boutique. Ouvrez Chama pour la traiter.",
-  "notify.newOrderTitle": "🛒 Nouvelle commande sur votre boutique",
+  "notify.newOrderTitle": "Nouvelle commande sur votre boutique",
   "notify.selfTestBody":
     "Si vous voyez ceci, la livraison des notifications OS fonctionne sur cette version.",
   "notify.selfTestTitle": "Notifications Chama OK",

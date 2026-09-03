@@ -82,10 +82,13 @@ const INTRO_USE_CASES: { vertical: ChamaVerticalIconId; titleKey: string; blurbK
 ];
 
 export function ConnectScreen({
-  onConnect, onConnectNsec, loading, error,
+  onConnect, onConnectNsec, onRequestHomeChange, loading, error,
 }: {
   onConnect: () => void;
   onConnectNsec: (nsec: string, remember: boolean, wasGenerated: boolean) => void | Promise<void>;
+  /** A pre-sign-in home is only a browser-wide display hint. Request the real
+   *  picker after authentication, when the choice can be scoped to the npub. */
+  onRequestHomeChange: () => void;
   loading: boolean;
   error: string | null;
 }) {
@@ -103,8 +106,8 @@ export function ConnectScreen({
   // A returning npub's choice is scoped (read post-connect); the unscoped "last
   // home" hint (#6) is a display-only fallback so a returning user sees "welcome
   // back to <chama>" pre-signin. It never resolves a committed home, so it can't
-  // leak across npubs. Auth-first: this is REASSURANCE only — the actual pick (or
-  // re-pick) happens post-connect, so there's no in-screen picker to update it.
+  // leak across npubs. Auth-first: this is REASSURANCE only. The Change action
+  // below can request a re-pick, but the actual mutation waits until post-connect.
   const homeSlug = getUserCommunitySlugRaw() ?? getLastHomeHint();
   // v2.6: gate the one-time orientation screen ahead of the market picker.
   const [introSeen, setIntroSeen] = useState<boolean>(() => readIntroSeen());
@@ -113,6 +116,7 @@ export function ConnectScreen({
   // no intermediate button.
   const [showRecoveryKey, setShowRecoveryKey] = useState(false);
   const [returningSignInAttempted, setReturningSignInAttempted] = useState(false);
+  const [homeChangeRequested, setHomeChangeRequested] = useState(false);
   const homeCommunity = homeSlug ? getCommunityBySlug(homeSlug) : null;
   // NIP-07 browser extension (Alby, nos2x, …). Only meaningful in a desktop
   // browser — native shells and the Fedi WebView don't inject window.nostr.
@@ -169,16 +173,14 @@ export function ConnectScreen({
     <OnboardingShell>
       <BrandHeader />
 
-      {/* Returning user's remembered chama — read-only reassurance ("welcome
-          back to <chama>"). Auth-first: re-picking happens post-connect via the
-          Me switcher, so there's no pre-connect Change here. A fresh user (no
-          remembered home) simply doesn't see this pill. */}
-      {homeCommunity && (
+      {/* Browser-wide continuity hint, explicitly labelled as such. Change only
+          queues the authenticated picker; it never writes another npub's home. */}
+      {!isNative && homeCommunity && (
         <div style={{
           maxWidth: 360, width: "100%", marginBottom: 18,
           padding: 14, borderRadius: T.r,
           background: T.surface, border: `1px solid ${T.border}`,
-          display: "flex", alignItems: "center", gap: 12,
+          display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
         }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
             <span style={{ fontSize: 24, lineHeight: 1 }}>{homeCommunity.flagEmoji}</span>
@@ -187,10 +189,28 @@ export function ConnectScreen({
                 {homeCommunity.displayName}
               </div>
               <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono }}>
-                {t("connect.yourChama")}
+                {homeChangeRequested ? t("connect.chooseAfterSignIn") : t("connect.lastChamaHere")}
               </div>
             </div>
           </div>
+          <button
+            type="button"
+            onClick={() => {
+              setHomeChangeRequested(true);
+              onRequestHomeChange();
+            }}
+            disabled={homeChangeRequested}
+            style={{
+              flexShrink: 0, padding: "7px 10px", borderRadius: T.rs,
+              background: homeChangeRequested ? "transparent" : T.accentDim,
+              border: `1px solid ${homeChangeRequested ? T.border : `${T.accent}66`}`,
+              color: homeChangeRequested ? T.green : T.accent,
+              fontFamily: T.sans, fontSize: 11, fontWeight: 800,
+              cursor: homeChangeRequested ? "default" : "pointer",
+            }}
+          >
+            {homeChangeRequested ? t("connect.changeQueued") : t("connect.changeHome")}
+          </button>
         </div>
       )}
 
@@ -423,6 +443,7 @@ function WelcomeIntro({ onContinue }: { onContinue: () => void }) {
       </div>
 
       <button
+        data-chama-shortcut="enter"
         onClick={onContinue}
         style={{
           width: "100%", maxWidth: 380, padding: "16px",

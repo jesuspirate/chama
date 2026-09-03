@@ -95,6 +95,8 @@ import { TradeCard } from "../components/TradeCard.js";
 import { BitcoinAmount } from "../components/BitcoinAmount.js";
 import type { TradeIndexEntry } from "../../escrow-engine/trade-index.js";
 import { readKind0Toggle, writeKind0Toggle } from "../nostr-profiles.js";
+import { backgroundPushEnabled, enableBackgroundPush, disableBackgroundPush } from "../../notifications/watch-tags.js";
+import { isWebPushSupported, iosNeedsInstallForPush } from "../../notifications/web-push-client.js";
 
 type MeTradeFilter = "all" | "needs" | "live" | "listings" | "done";
 
@@ -871,6 +873,7 @@ export function MeScreen({
           )}
           <LanguageRow />
           <NotificationsRow />
+          <BackgroundPushRow />
           <DmNotificationsRow />
           <CounterpartyDmRow />
           <NewListingNotificationsRow />
@@ -2768,6 +2771,77 @@ function NotificationsRow() {
         }} />
       </button>
       </div>
+    </div>
+  );
+}
+
+function BackgroundPushRow() {
+  const { t } = useT();
+  const supported = isWebPushSupported();
+  const needsInstall = iosNeedsInstallForPush();
+  const [on, setOn] = useState<boolean>(() => backgroundPushEnabled());
+  const [busy, setBusy] = useState(false);
+  const [blocked, setBlocked] = useState(false);
+  const disabled = !supported || needsInstall || busy;
+
+  const toggle = () => {
+    if (disabled) return;
+    if (on) {
+      setOn(false);
+      setBlocked(false);
+      void disableBackgroundPush();
+      return;
+    }
+    setBusy(true);
+    setBlocked(false);
+    // enableBackgroundPush asks OS permission + subscribes; false = it couldn't
+    // (denied, or the VPS/VAPID key isn't live yet). Reflect that honestly.
+    void enableBackgroundPush().then(ok => {
+      setBusy(false);
+      setOn(ok);
+      setBlocked(!ok);
+    });
+  };
+
+  const hint =
+    needsInstall ? t("me.bgPushInstall")
+    : !supported ? t("me.bgPushUnsupported")
+    : blocked ? t("me.bgPushBlocked")
+    : t("me.bgPushHint");
+
+  return (
+    <div style={{
+      display: "flex", alignItems: "center", justifyContent: "space-between",
+      gap: 10, padding: "14px 16px", borderBottom: `1px solid ${T.border}`,
+      opacity: (!supported || needsInstall) ? 0.6 : 1,
+    }}>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: T.text, fontFamily: T.sans }}>
+          {t("me.bgPush")}
+        </div>
+        <div style={{ fontSize: 11, color: T.muted, fontFamily: T.mono, marginTop: 2 }}>
+          {hint}
+        </div>
+      </div>
+      <button
+        onClick={toggle}
+        role="switch"
+        aria-checked={on}
+        disabled={disabled}
+        style={{
+          width: 46, height: 26, borderRadius: 999, position: "relative",
+          border: `1px solid ${on ? T.green + "66" : T.border}`,
+          background: on ? T.green + "33" : T.surface,
+          cursor: disabled ? "default" : "pointer", transition: "background 0.15s, border-color 0.15s",
+          flexShrink: 0,
+        }}
+      >
+        <span style={{
+          position: "absolute", top: 2, left: on ? 22 : 2,
+          width: 20, height: 20, borderRadius: "50%",
+          background: on ? T.green : T.muted, transition: "left 0.15s",
+        }} />
+      </button>
     </div>
   );
 }

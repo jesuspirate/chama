@@ -15,6 +15,7 @@ import {
   getPhoneNumberDisplayParts,
   getPhoneCountryHint,
   phonePlaceholderForCountryIso,
+  paymentHandleNeedsCountryCode,
   sanitizePhoneNumberForSave,
 } from "../../payments/saved-handles.js";
 import { getCommunityBySlug } from "../../communities/registry.js";
@@ -242,6 +243,10 @@ export function SavedHandlesPanel({ communitySlug, onClose }: {
         code: phoneCountryHint.countryCode,
       })
     : null;
+  const selectedRailNeedsCountryCode = selectedRail
+    ? selectedRail.placeholder?.includes("+") === true
+      && (!addValue.trim() || paymentHandleNeedsCountryCode(selectedRail.key, addValue))
+    : false;
 
   const handlePhoneInputChange = (rawInput: string) => {
     setError(null);
@@ -711,6 +716,14 @@ export function SavedHandlesPanel({ communitySlug, onClose }: {
                 {t("claim.saveMethod")}
               </button>
             </div>
+            {selectedRailNeedsCountryCode && (
+              <div style={{
+                marginTop: 7, color: T.amber, fontFamily: T.mono,
+                fontSize: 10, lineHeight: 1.45,
+              }}>
+                {t("claim.phoneCountryCodeNudge", { example: phonePlaceholder })}
+              </div>
+            )}
           </div>
         )}
         </div>

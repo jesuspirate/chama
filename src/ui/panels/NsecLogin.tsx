@@ -16,7 +16,7 @@ export function NsecLogin({
   autoFocusInput = false,
   choiceFooter,
 }: {
-  onSubmit: (nsec: string, remember: boolean, wasGenerated: boolean) => void;
+  onSubmit: (nsec: string, remember: boolean, wasGenerated: boolean) => void | Promise<void>;
   defaultOpen?: boolean;
   friendly?: boolean;
   friendlySecondary?: {
@@ -49,7 +49,8 @@ export function NsecLogin({
   // what people expect on their own phone.
   const remember = isNative;
   const [generatedNsec, setGeneratedNsec] = useState<string | null>(null);
-  const [backupConfirmed, setBackupConfirmed] = useState(false);
+  const [backupActionDone, setBackupActionDone] = useState(false);
+  const [backupVerification, setBackupVerification] = useState("");
   const [showKey, setShowKey] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [generateError, setGenerateError] = useState<string | null>(null);
@@ -86,7 +87,8 @@ export function NsecLogin({
       await identifyCredential(secretKey);
       setNsecInput(nsec);
       setGeneratedNsec(nsec);
-      setBackupConfirmed(false);
+      setBackupActionDone(false);
+      setBackupVerification("");
       setShowKey(true);
     } catch (e: any) {
       setGenerateError(e?.message || t("chat.couldNotCreateKey"));
@@ -97,7 +99,8 @@ export function NsecLogin({
 
   const handleSubmit = async () => {
     if (!nsecInput.trim()) return;
-    if (generatedNsec && nsecInput.trim() === generatedNsec && !backupConfirmed) return;
+    if (generatedNsec && nsecInput.trim() === generatedNsec
+      && (!backupActionDone || backupVerification.trim() !== generatedNsec)) return;
     const validated = await validateRecoveryKeyInput(nsecInput);
     if (!validated.ok) {
       setInputError(validated.error);
@@ -109,17 +112,20 @@ export function NsecLogin({
     // generated keys get the master-key reveal in Me › Advanced). The submitted
     // key matching the just-generated one is the signal.
     const wasGenerated = generatedNsec !== null && nsecInput.trim() === generatedNsec;
-    onSubmit(nsecInput.trim(), remember, wasGenerated);
+    await onSubmit(nsecInput.trim(), remember, wasGenerated);
   };
 
   const generatedActive = generatedNsec !== null && nsecInput.trim() === generatedNsec;
-  const submitDisabled = !nsecInput.trim() || (generatedActive && !backupConfirmed);
+  const backupVerified = generatedActive
+    && backupActionDone
+    && backupVerification.trim() === generatedNsec;
+  const submitDisabled = !nsecInput.trim() || (generatedActive && !backupVerified);
   const showPasteInput = !generatedActive || mode === "paste";
 
   useEffect(() => {
     const value = nsecInput.trim();
     if (!showPasteInput || !value || generatedActive) return;
-    if (generatedNsec && value === generatedNsec && !backupConfirmed) return;
+    if (generatedNsec && value === generatedNsec && !backupVerified) return;
     if (autoSubmittedKeyRef.current === value) return;
 
     let cancelled = false;
@@ -144,7 +150,7 @@ export function NsecLogin({
     showPasteInput,
     generatedActive,
     generatedNsec,
-    backupConfirmed,
+    backupVerified,
     remember,
     onSubmit,
   ]);
@@ -189,7 +195,8 @@ export function NsecLogin({
             : () => {
                 setMode("paste");
                 setGeneratedNsec(null);
-                setBackupConfirmed(false);
+                setBackupActionDone(false);
+                setBackupVerification("");
                 setInputError(null);
               }}
           disabled={friendlySecondary?.disabled}
@@ -265,7 +272,8 @@ export function NsecLogin({
             setMode("choice");
             setNsecInput("");
             setGeneratedNsec(null);
-            setBackupConfirmed(false);
+            setBackupActionDone(false);
+            setBackupVerification("");
             setInputError(null);
           }}
           style={{
@@ -288,7 +296,8 @@ export function NsecLogin({
               setInputError(null);
               if (generatedNsec && e.target.value.trim() !== generatedNsec) {
                 setGeneratedNsec(null);
-                setBackupConfirmed(false);
+                setBackupActionDone(false);
+                setBackupVerification("");
               }
             }}
             onKeyDown={(e) => e.key === "Enter" && void handleSubmit()}
@@ -383,6 +392,10 @@ export function NsecLogin({
               disabled={!generatedNsec}
               label={t("chat.copyKey")}
               copiedLabel={t("chat.copiedKey")}
+              onCopied={() => {
+                setBackupActionDone(true);
+                setBackupVerification("");
+              }}
               style={{
                 padding: "9px 14px", flexShrink: 0,
                 background: T.surface, border: `1px solid ${T.borderHi}`,
@@ -391,19 +404,46 @@ export function NsecLogin({
                 cursor: "pointer",
               }}
             />
-            <label style={{
-              display: "flex", alignItems: "center", gap: 8,
-              color: T.text, fontSize: 13, fontFamily: T.sans, fontWeight: 600,
-              cursor: "pointer", userSelect: "none" as const,
+            <span style={{
+              color: backupActionDone ? T.green : T.muted,
+              fontSize: 12, fontFamily: T.sans, fontWeight: 700,
             }}>
+              {backupActionDone ? t("chat.copyDone") : t("chat.copyFirst")}
+            </span>
+          </div>
+          {backupActionDone && (
+            <label style={{ display: "block", marginTop: 12 }}>
+              <span style={{
+                display: "block", color: T.text, fontSize: 12,
+                fontFamily: T.sans, fontWeight: 700, marginBottom: 7,
+              }}>
+                {backupVerified ? t("chat.keyVerified") : t("chat.verifyKey")}
+              </span>
               <input
-                type="checkbox"
-                checked={backupConfirmed}
-                onChange={(e) => setBackupConfirmed(e.target.checked)}
-                style={{ accentColor: T.accent, width: 16, height: 16, cursor: "pointer" }}
+                name="password"
+                value={backupVerification}
+                onChange={(e) => setBackupVerification(e.target.value)}
+                placeholder={t("chat.verifyKeyPlaceholder")}
+                type="password"
+                autoComplete="new-password"
+                autoCapitalize="off"
+                autoCorrect="off"
+                spellCheck={false}
+                style={{
+                  width: "100%", boxSizing: "border-box", padding: "12px 13px",
+                  background: T.bg,
+                  border: `1px solid ${backupVerified ? T.green : T.border}`,
+                  borderRadius: T.rs, color: T.text, fontFamily: T.mono,
+                  fontSize: 12, outline: "none",
+                }}
               />
-              {t("chat.savedIt")}
             </label>
+          )}
+          <div style={{
+            marginTop: 10, color: T.muted, fontSize: 10,
+            fontFamily: T.sans, lineHeight: 1.5,
+          }}>
+            {t("chat.passwordManagerHint")}
           </div>
         </div>
       )}

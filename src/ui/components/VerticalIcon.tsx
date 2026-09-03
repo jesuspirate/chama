@@ -76,6 +76,26 @@ export function VerticalIcon({
     );
   }
 
+  if (vertical === "local-money") {
+    // Two-tone banknote for the "Local money" asset — same ink/paper palette as
+    // the other bespoke marks. Reads unambiguously as fiat cash at 40px, where
+    // the Exchange arrows read as "swap" rather than "local money".
+    const ink = theme === "dark" ? "#eee3d0" : "#13120f";
+    const paper = theme === "dark" ? "#14110d" : "#eee8dc";
+    return (
+      <span style={common} aria-hidden="true">
+        <svg viewBox="0 0 240 180" width={size} height={size} style={{ display: "block", overflow: "visible" }}>
+          <rect x="20" y="44" width="200" height="92" rx="18" fill={ink} />
+          <rect x="36" y="60" width="168" height="60" rx="9" fill="none" stroke={paper} strokeWidth="6" />
+          <circle cx="120" cy="90" r="22" fill={paper} />
+          <circle cx="120" cy="90" r="10" fill={ink} />
+          <circle cx="64" cy="90" r="7" fill={paper} />
+          <circle cx="176" cy="90" r="7" fill={paper} />
+        </svg>
+      </span>
+    );
+  }
+
   const asset = ASSET_NAMES[vertical as ChamaVerticalIconId];
   if (asset) {
     return (

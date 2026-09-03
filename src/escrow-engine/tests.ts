@@ -755,7 +755,13 @@ import {
   tradeCreatedAt,
   tradeEnteredAt,
 } from "../ui/latest-trade.js";
-import { catchUpPrev, readSeenStatus, recordSeenStatus } from "../notifications/notify-service.js";
+import {
+  catchUpPrev,
+  isFreshNotificationActivity,
+  latestNotificationActivityAt,
+  readSeenStatus,
+  recordSeenStatus,
+} from "../notifications/notify-service.js";
 import {
   RATING_KIND,
   buildRatingEvent,
@@ -8537,12 +8543,17 @@ console.log("\n── SAVED HANDLES — phone-network tagging (v0.6.5) ──");
     southAfrica.handle === "+27 711-234-567",
     "Known 2-digit +27 country code beats the old +2xx heuristic",
   );
-  const domestic = addSavedHandle("phone-number", "0712345678");
-  assert(
-    domestic.handle.replace(/-/g, "") === "0712345678"
-    && domestic.handle.includes("-"),
-    "Domestic-format number (no +) is dashed",
-  );
+  let rejectedDomesticPhone = false;
+  try { addSavedHandle("phone-number", "0712345678"); } catch { rejectedDomesticPhone = true; }
+  assert(rejectedDomesticPhone,
+    "Phone handles require an international country code");
+  let rejectedDomesticZelle = false;
+  try { addSavedHandle("zelle", "555 123 4567"); } catch { rejectedDomesticZelle = true; }
+  assert(rejectedDomesticZelle,
+    "A phone-shaped Zelle ID requires an international country code");
+  const zelleEmail = addSavedHandle("zelle", "alice@example.com");
+  assert(zelleEmail.handle === "alice@example.com",
+    "A Zelle email remains valid and is not treated as a phone number");
   assert(
     sanitizePhoneNumberForSave("+254712345678") === "+254 712-345-678",
     "Phone save sanitizer accepts complete Kenya numbers",
@@ -22846,12 +22857,11 @@ console.log("\n── External trade-alert DMs (tradeDmNotificationFor) ──")
     "COMPLETED sends no external DM — payout-ready was the final useful alert");
 }
 
-// ── Cold-start catch-up (catchUpPrev + persisted last-seen status) ──
-// Bug 2: a KILLED app re-observes trades with prev=undefined. catchUpPrev feeds
-// the persisted last-seen status back as a synthesized prev so a transition that
-// advanced while the app was dead still fires once — without re-buzzing every
-// historical trade on a fresh install.
-console.log("\n── Cold-start catch-up (catchUpPrev + last-seen store) ──");
+// ── Transition history + hydration freshness ──
+// The persisted status can still reconstruct what changed, but the side-effect
+// layer now requires a committed moment from this session. That prevents an old
+// CREATE shell → hydrated terminal state from becoming a login notification.
+console.log("\n── Transition history + hydration freshness ──");
 {
   const BUYER = "11".repeat(32);
   const SELLER = "22".repeat(32);
@@ -22885,21 +22895,46 @@ console.log("\n── Cold-start catch-up (catchUpPrev + last-seen store) ──
   assert(catchUpPrev(undefined, locked, EscrowStatus.LOCKED) === undefined,
     "catchUpPrev returns undefined when last-seen equals the current status");
 
-  // Seen EARLIER (CREATED) + now LOCKED → synthesize prev@CREATED → buzz once.
+  // Seen EARLIER (CREATED) + now LOCKED → synthesize prev@CREATED. The pure
+  // transition decision remains reconstructible; freshness governs delivery.
   const synthLocked = catchUpPrev(undefined, locked, EscrowStatus.CREATED);
   assert(synthLocked?.status === EscrowStatus.CREATED,
     "catchUpPrev synthesizes a prev pinned at the last-seen status");
   assert(notificationForTransition(synthLocked, locked, BUYER)?.tag === "sm_notif_catchup_01:locked",
-    "A LOCK missed while the app was dead fires once on cold start (non-locker buyer)");
+    "A prior CREATED baseline reconstructs the later LOCKED transition");
 
-  // Multi-status jump while dead (seen LOCKED, now COMPLETED) → the terminal
-  // moment fires, not a stale intermediate one.
+  // A multi-status jump reconstructs the terminal moment, not an intermediate.
   const synthDone = catchUpPrev(undefined, completed, EscrowStatus.LOCKED);
   assert(notificationForTransition(synthDone, completed, BUYER)?.tag === "sm_notif_catchup_01:completed",
-    "A multi-status jump while dead fires the terminal (completed) moment on cold start");
+    "A multi-status jump reconstructs the terminal completed moment");
 
-  // Persisted last-seen store: round-trip, no-op-on-unchanged, overwrite, isolation.
+  const historicalHydration = mk({
+    status: EscrowStatus.LOCKED,
+    createdAt: 900,
+    lock: { notesHash: null, lockedAt: 950, shares: new Map(), handle: null },
+    eventChain: [{ timestamp: 950 } as ParsedEscrowEvent],
+  });
+  assert(latestNotificationActivityAt(historicalHydration) === 950,
+    "notification freshness follows the latest committed trade moment");
+  assert(!isFreshNotificationActivity(historicalHydration, 1_000),
+    "historical hydration is silent even when CREATE and full state arrive separately");
+  assert(isFreshNotificationActivity({
+    ...historicalHydration,
+    eventChain: [{ timestamp: 1_001 } as ParsedEscrowEvent],
+  }, 1_000), "a genuinely new post-login event remains notification-worthy");
+  assert(isFreshNotificationActivity(mk({
+    status: EscrowStatus.EXPIRED,
+    createdAt: 900,
+    expiresAt: 1_001,
+    lock: { notesHash: null, lockedAt: 950, shares: new Map(), handle: null },
+    eventChain: [{ timestamp: 950 } as ParsedEscrowEvent],
+  }), 1_000), "a deadline expiring during the live session remains notification-worthy");
+
+  // Persisted last-seen store: round-trip, no-op-on-unchanged, overwrite, and
+  // strict npub isolation. A browser used for many test identities must never
+  // let one identity's hydration baseline drive another identity's alerts.
   const ID = "sm_seen_store_01";
+  setLocalStorageUserScope("notif-history-alice");
   assert(readSeenStatus(ID) === null, "Unknown trade has no last-seen status");
   recordSeenStatus(ID, EscrowStatus.LOCKED);
   assert(readSeenStatus(ID) === EscrowStatus.LOCKED, "recordSeenStatus persists the status");
@@ -22908,6 +22943,11 @@ console.log("\n── Cold-start catch-up (catchUpPrev + last-seen store) ──
   recordSeenStatus(ID, EscrowStatus.COMPLETED);
   assert(readSeenStatus(ID) === EscrowStatus.COMPLETED, "recordSeenStatus overwrites with the newer status");
   assert(readSeenStatus("sm_seen_store_other") === null, "Last-seen is per-trade (no cross-trade bleed)");
+  setLocalStorageUserScope("notif-history-bob");
+  assert(readSeenStatus(ID) === null, "Last-seen notification history never crosses npubs");
+  setLocalStorageUserScope("notif-history-alice");
+  assert(readSeenStatus(ID) === EscrowStatus.COMPLETED, "Returning to an npub restores only its notification history");
+  setLocalStorageUserScope(null);
 }
 
 // ── DM / trade-chat notifications (chatNotificationFor) ──
@@ -26687,16 +26727,16 @@ console.log("\n── #62 REDEEM-PROBE + BONDED-POOL CACHE ──");
 {
   console.log("\n── Assisted Chama canvas routing (A5 · S1) ──");
 
-  const ASSETS: CanvasAsset[] = ["sats", "cash", "work", "goods"];
+  const ASSETS: CanvasAsset[] = ["sats", "cash", "work", "goods", "bill"];
 
-  // Totality first. Sixteen pairs, no throws, no undefined — the canvas must
+  // Totality first. Twenty-five pairs, no throws, no undefined — the canvas must
   // never reach a state it cannot describe.
   let total = 0;
   for (const b of ASSETS) for (const w of ASSETS) {
     const r = routeCanvasIntent(b, w);
     if (r && (r.kind === "publish" || r.kind === "match" || r.kind === "blocked")) total++;
   }
-  assert(total === 16, "canvas: every one of the 16 (bring, want) pairs routes to something");
+  assert(total === 25, "canvas: every one of the 25 (bring, want) pairs routes to something");
 
   // ⭐ The publish-first doctrine, one assertion per market.
   const pub = (b: CanvasAsset, w: CanvasAsset) => {
@@ -26707,6 +26747,8 @@ console.log("\n── #62 REDEEM-PROBE + BONDED-POOL CACHE ──");
     "⭐ canvas: the sats-holder speaks first in Exchange");
   assert(pub("goods", "sats") === "marketplace",
     "⭐ canvas: the seller lists their store — goods exist before demand for them");
+  assert(pub("bill", "cash") === "bill-pay",
+    "⭐ canvas: the person bringing a bill publishes the Community Bill Pay request");
   assert(pub("work", "sats") === "work" && pub("sats", "work") === "work",
     "⭐ canvas: BOTH sides of Work publish — the only two-sided market");
   const workRoute = routeCanvasIntent("work", "sats");

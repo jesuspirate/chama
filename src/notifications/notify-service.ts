@@ -15,12 +15,18 @@ import {
   tradeDmNotificationFor, dmViewerRole, pendingOnchainArbiterPubkey,
   type TradeNotification, type DmNotifyPref,
 } from "./trade-notifications.js";
-import { Role } from "../escrow-engine/types.js";
+import { Role, EscrowStatus } from "../escrow-engine/types.js";
 import { setPendingTradeDeepLink } from "./deep-link.js";
 import { translate, getCurrentLang } from "../i18n/index.js";
-import { getScopedStorageItem, setScopedStorageItem } from "../storage/user-scope.js";
+import {
+  getScopedStorageItem,
+  getStrictScopedStorageItem,
+  setScopedStorageItem,
+  setStrictScopedStorageItem,
+} from "../storage/user-scope.js";
 import { getUserCommunitySlugRaw } from "../communities/storage.js";
 import { getCommunityBySlug } from "../communities/registry.js";
+import { listSavedIntents, savedIntentMatchesListing, type SavedIntent } from "../guided/saved-intents.js";
 import type { EscrowState, ChatPayload, ParsedEscrowEvent } from "../escrow-engine/types.js";
 
 export type { DmNotifyPref };
@@ -243,7 +249,7 @@ export function newListingEnabledForCategory(category: string | null | undefined
 
 function readFiredTags(): Set<string> {
   try {
-    const raw = globalThis.localStorage?.getItem(FIRED_KEY);
+    const raw = getStrictScopedStorageItem(FIRED_KEY);
     const arr = raw ? (JSON.parse(raw) as unknown) : [];
     return new Set(Array.isArray(arr) ? arr.filter((t): t is string => typeof t === "string") : []);
   } catch {
@@ -257,7 +263,7 @@ function recordFiredTag(tag: string): void {
     tags.add(tag);
     // Keep only the most recent MAX_FIRED_TAGS (insertion order ≈ recency).
     const trimmed = [...tags].slice(-MAX_FIRED_TAGS);
-    globalThis.localStorage?.setItem(FIRED_KEY, JSON.stringify(trimmed));
+    setStrictScopedStorageItem(FIRED_KEY, JSON.stringify(trimmed));
   } catch {
     /* ignore */
   }
@@ -273,17 +279,16 @@ function recordFiredTag(tag: string): void {
 // transition that advanced while the app was dead is silently suppressed.
 //
 // Only trade *ids* are persisted (not state), so we keep a tiny per-trade
-// last-seen status here. On a cold first-observation we feed it back as a
-// synthesized prev (catchUpPrev) so the missed transition buzzes once — the
-// fired-tag dedup still prevents repeats. A fresh install / wiped store has no
-// record, so cold-replay of historical trades stays silent (no spam).
+// last-seen status here. It lets us reconstruct the prior status when useful,
+// but the orchestrator still requires a genuinely fresh committed event before
+// producing an OS alert. A fresh install / wiped store has no record.
 const SEEN_KEY = "chama_notif_seen_status_v1";
 /** Cap the seen-status map so it can't grow unbounded over a lifetime. */
 const MAX_SEEN_TRADES = 500;
 
 function readSeenStatuses(): Record<string, string> {
   try {
-    const raw = globalThis.localStorage?.getItem(SEEN_KEY);
+    const raw = getStrictScopedStorageItem(SEEN_KEY);
     const obj = raw ? (JSON.parse(raw) as unknown) : {};
     return obj && typeof obj === "object" && !Array.isArray(obj)
       ? (obj as Record<string, string>)
@@ -313,7 +318,7 @@ export function recordSeenStatus(escrowId: string, status: string): void {
       next = {};
       for (const k of keys.slice(-MAX_SEEN_TRADES)) next[k] = all[k];
     }
-    globalThis.localStorage?.setItem(SEEN_KEY, JSON.stringify(next));
+    setStrictScopedStorageItem(SEEN_KEY, JSON.stringify(next));
   } catch {
     /* diagnostic baseline only; ignore storage failure */
   }
@@ -323,14 +328,14 @@ export function recordSeenStatus(escrowId: string, status: string): void {
  * Pick the `prev` to compare a transition against — pure, so the cold-start
  * catch-up rule is exhaustively testable. A live in-memory `prev` always wins.
  * Otherwise, if a prior session recorded an EARLIER status for this trade,
- * synthesize a prev pinned at that status so a transition that advanced while
- * the app was dead is detected. No prior record (fresh install / never seen) ⇒
- * return undefined so cold-replay of historical trades stays silent.
+ * synthesize a prev pinned at that status so the status delta is detectable.
+ * Notification delivery independently applies its live-session freshness gate;
+ * this reconstruction alone is never permission to buzz. No prior record
+ * (fresh install / never seen) returns undefined.
  *
  * Note: vote-based transitions (a dispute opening) can't be reconstructed from
  * a status alone, so a dispute that opened while the app was dead won't buzz on
- * cold start — the arbiter still sees it in-app. Status-based moments (locked,
- * claim-ready, completed, expired) all catch up correctly.
+ * cold start — the arbiter still sees it in-app.
  */
 export function catchUpPrev(
   prev: EscrowState | null | undefined,
@@ -342,6 +347,28 @@ export function catchUpPrev(
     return { ...next, status: seenStatus as EscrowState["status"] };
   }
   return undefined;
+}
+
+/** Latest committed moment represented by this replayed state. Initial relay
+ * hydration can replace a plaintext CREATE shell with a much newer terminal
+ * state during the same render session; its historical timestamps distinguish
+ * that reconstruction from activity that actually happened after login. */
+export function latestNotificationActivityAt(state: EscrowState): number {
+  const moments = [
+    state.createdAt,
+    state.lock?.lockedAt ?? 0,
+    state.resolvedAt ?? 0,
+    state.completedAt ?? 0,
+    state.cancelledAt ?? 0,
+    ...(state.eventChain ?? []).map(event => event.timestamp),
+    ...Object.values(state.joinHolds ?? {}).map(hold => hold?.joinedAt ?? 0),
+  ];
+  if (state.status === EscrowStatus.EXPIRED) moments.push(state.expiresAt);
+  return Math.max(0, ...moments.filter(value => Number.isFinite(value)));
+}
+
+export function isFreshNotificationActivity(state: EscrowState, liveSinceSec: number): boolean {
+  return latestNotificationActivityAt(state) >= liveSinceSec;
 }
 
 // ── Permission ───────────────────────────────────────────────────────────────
@@ -512,17 +539,21 @@ export function maybeNotifyTransition(
   liveSinceSec = Number.POSITIVE_INFINITY,
 ): void {
   // Record the observed status FIRST — independent of the enable toggle and of
-  // whether anything buzzes — so a future cold start has a baseline to detect a
-  // transition that advanced while the app was dead. Capture the prior record
-  // BEFORE overwriting it.
+  // whether anything buzzes — so subsequent observations have a scoped status
+  // baseline. Capture the prior record BEFORE overwriting it.
   const seenBefore = readSeenStatus(next.id);
   recordSeenStatus(next.id, next.status);
 
   if (!notificationsEnabled()) return;
 
-  // Cold-start catch-up: a killed app re-observes trades with prev=undefined;
-  // synthesize a prev from the persisted last-seen status so the missed moment
-  // still fires once (dedup below guards repeats; fresh installs stay silent).
+  // Never turn login hydration into a burst of historical alerts. The relay
+  // may first expose CREATE and then replay an old LOCK/RESOLVE/COMPLETE into
+  // the same in-memory slot; only a committed moment from this live session is
+  // notification-worthy. Closed-app wake-ups are owned by the VPS path.
+  if (Number.isFinite(liveSinceSec) && !isFreshNotificationActivity(next, liveSinceSec)) return;
+
+  // Reconstruct the prior status when the in-memory state is absent. This may
+  // describe a transition, but only the freshness gate above authorizes a buzz.
   const effectivePrev = catchUpPrev(prev, next, seenBefore);
   const coldCatchup = !prev && effectivePrev !== undefined;
 
@@ -600,6 +631,52 @@ export function maybeNotifyNewListing(
   const n = newListingNotificationFor(prev, next, userPubkey, home, label, liveSinceSec);
   if (!n) return;
   deliverOnce(n, "new-listing");
+}
+
+// ── S4.2 — saved-intent match alerts ─────────────────────────────────────────
+// When a NEWLY published listing matches what a canvas user asked to be notified
+// about ("notify me when one appears"), fire a targeted alert. Mirrors the
+// new-listing guards (brand-new sighting, open, backlog-guarded) and reuses the
+// guided matchers so "compatible" means exactly what it means in the canvas.
+// The VPS community wake (watcher) is what brings a CLOSED device online to run
+// this; warm/foreground it fires straight off the live subscription.
+
+function savedIntentBody(intent: SavedIntent): string {
+  if (intent.bring === "sats" && intent.want === "goods") {
+    return intent.query
+      ? translate(getCurrentLang(), "notify.savedIntentGoodsBody", { query: intent.query })
+      : translate(getCurrentLang(), "notify.savedIntentGoodsBodyGeneric");
+  }
+  return translate(getCurrentLang(), "notify.savedIntentSatsBody");
+}
+
+export function maybeNotifySavedIntentMatch(
+  prev: EscrowState | null | undefined,
+  next: EscrowState,
+  userPubkey: string | null | undefined,
+  liveSinceSec: number,
+): void {
+  if (!notificationsEnabled()) return;
+  if (!userPubkey) return;
+  if (prev) return;                              // only a brand-new sighting
+  if (next.status !== EscrowStatus.CREATED) return;
+  if (next.parent !== undefined) return;         // child orders aren't listings
+  if (next.createdAt < liveSinceSec) return;     // backlog guard (no cold-start spam)
+  let intents: SavedIntent[];
+  try { intents = listSavedIntents(userPubkey); } catch { return; }
+  if (intents.length === 0) return;
+  for (const intent of intents) {
+    if (intent.community && next.community && intent.community !== next.community) continue;
+    if (next.createdAt < intent.createdAt) continue; // only offers that appeared AFTER you asked
+    if (!savedIntentMatchesListing(intent, next, userPubkey)) continue;
+    deliverOnce({
+      escrowId: next.id,
+      title: translate(getCurrentLang(), "notify.savedIntentTitle"),
+      body: savedIntentBody(intent),
+      tag: `saved-intent:${intent.id}:${next.id}`,
+    }, "saved-intent");
+    return;                                        // one alert per new listing
+  }
 }
 
 /**

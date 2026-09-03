@@ -41,6 +41,7 @@ export function CopyButton({
   copiedLabel,
   style,
   disabled,
+  onCopied,
 }: {
   value: string;
   /** Defaults to a localized "Copy". */
@@ -49,6 +50,9 @@ export function CopyButton({
   copiedLabel?: string;
   style?: React.CSSProperties;
   disabled?: boolean;
+  /** Called after the explicit copy action. Useful when a flow must prove
+   *  that the user performed a real backup step before continuing. */
+  onCopied?: () => void;
 }) {
   const { t } = useT();
   const [copied, setCopied] = useState(false);
@@ -59,6 +63,7 @@ export function CopyButton({
   const copy = () => {
     if (disabled) return;
     copyTextRobust(value);
+    onCopied?.();
     setCopied(true);
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => setCopied(false), 1300);

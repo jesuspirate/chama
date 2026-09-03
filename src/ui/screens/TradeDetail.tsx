@@ -1195,9 +1195,7 @@ export function TradeDetail({
   const routeNote = state.status === EscrowStatus.CREATED
     ? framing.kind === "state-b"
       ? t("trade.tradingOn", { flag: framing.listingFlagEmoji, name: framing.listingCommunityName })
-      : framing.sameFedSameCommunity
-        ? t("trade.sameCommunity")
-        : t("trade.sameFederation")
+      : framing.sameFedSameCommunity ? null : t("trade.sameFederation")
     : null;
 
   const handleVote = async (outcome: Outcome) => {
@@ -1345,6 +1343,17 @@ export function TradeDetail({
     setActivePane(prev => (prev === i ? prev : i));
     userMovedPaneRef.current = true;
   };
+  // Each pane scrolls vertically inside the fixed trade shell. When a trade
+  // advances, content can be inserted above the viewer's old scroll position
+  // (for example the LOCKED fiat-due card), which used to make Details appear
+  // clipped underneath the pager tabs. A newly selected pane or a lifecycle
+  // change always starts at its beginning; ordinary scrolling within the same
+  // pane remains untouched.
+  useEffect(() => {
+    const pager = pagerRef.current;
+    const pane = pager?.children.item(activePane) as HTMLElement | null;
+    if (pane) pane.scrollTop = 0;
+  }, [activePane, state.id, state.status]);
   // v4.1 lifecycle landing: when a trade goes LIVE (LOCKED), send the fiat payer to
   // Details (who to pay + the "You owe" headline) and the receiver to Chat (to catch
   // the "sent" ping + proof). When a vote is actually summoned (dispute), send that
@@ -1387,6 +1396,10 @@ export function TradeDetail({
   }, [activePane, state.chatMessages.length, state.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const chatUnread = activePane === 0 ? 0 : countUnreadChat(state.chatMessages, myRole, chatReadAt);
   const pagerBadges = [chatUnread, 0, 0];
+  const isCreatedReservation = state.status === EscrowStatus.CREATED && !!liveJoinHold;
+  const isReservedDetails = isCreatedReservation
+    && activePane === 1
+    && nextStep.kicker === t("trade.nsReserved");
   // The pager scrolls natively; this pages when the drag starts on the PILLS
   // row (not itself a scroll container). Touch + pointer so it's real on device.
   const pillsDrag = useRef<{ x: number; y: number } | null>(null);
@@ -1501,6 +1514,13 @@ export function TradeDetail({
   const dealTitle = (state.items?.[0]?.label?.trim())
     || (state.description?.trim())
     || tradeRoomTitle;
+  const heroMetaParts = [
+    state.description.trim() !== dealTitle.trim() ? state.description.trim() : null,
+    showHeroFiat ? `₿ ${fmtSats(heroAmountMsats)}` : heroFiatLabel,
+    viewerEstimateLabel,
+    routeNote,
+    myRole ? roleDisplayName(myRole, t) : null,
+  ].filter((part): part is string => !!part);
 
   // Living chat: lifecycle event bubbles derived from the event chain (+ the
   // synthetic dispute / timeout markers), woven into the message feed by time.
@@ -1622,7 +1642,7 @@ export function TradeDetail({
             onAmountModeChange={onAmountDisplayModeChange}
             quoteCurrency={homeQuoteCurrency}
           />
-          <Badge status={statusKey} />
+          {!isCreatedReservation && <Badge status={statusKey} />}
         </div>
       </div>
 
@@ -1985,32 +2005,34 @@ export function TradeDetail({
           }`,
           marginBottom: 16,
         }}>
-          <div style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            gap: 12,
-            marginBottom: 7,
-          }}>
+          {(!isReservedDetails || (activePane !== 1 && nextStepDisplayAmountMsats !== null)) && (
             <div style={{
-              // Identity accent — v3.2: the kicker wears the viewer's role
-              // colour in every state except error (red stays sacred). Money
-              // colour now lives on the buttons inside the card, not the chrome.
-              // ROLE_COLOR_TEXT = light-mode-legible variant of the role hexes.
-              color: (myRole && nextStep.tone !== "red")
-                ? ROLE_COLOR_TEXT[myRole as keyof typeof ROLE_COLOR_TEXT]
-                : nextStep.color,
-              fontFamily: T.mono,
-              fontSize: 11,
-              fontWeight: 900,
-              letterSpacing: 1,
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: 12,
+              marginBottom: 7,
             }}>
-              {nextStep.kicker}
+              {!isReservedDetails && <div style={{
+                // Identity accent — v3.2: the kicker wears the viewer's role
+                // colour in every state except error (red stays sacred). Money
+                // colour now lives on the buttons inside the card, not the chrome.
+                // ROLE_COLOR_TEXT = light-mode-legible variant of the role hexes.
+                color: (myRole && nextStep.tone !== "red")
+                  ? ROLE_COLOR_TEXT[myRole as keyof typeof ROLE_COLOR_TEXT]
+                  : nextStep.color,
+                fontFamily: T.mono,
+                fontSize: 11,
+                fontWeight: 900,
+                letterSpacing: 1,
+              }}>
+                {nextStep.kicker}
+              </div>}
+              {activePane !== 1 && nextStepDisplayAmountMsats !== null && (
+                <BitcoinAmount msats={nextStepDisplayAmountMsats} size={12} gap={4} style={{ whiteSpace: "nowrap" }} />
+              )}
             </div>
-            {nextStepDisplayAmountMsats !== null && (
-              <BitcoinAmount msats={nextStepDisplayAmountMsats} size={12} gap={4} style={{ whiteSpace: "nowrap" }} />
-            )}
-          </div>
+          )}
           <div style={{
             color: T.text,
             fontFamily: T.sans,
@@ -2029,6 +2051,14 @@ export function TradeDetail({
               marginTop: 8,
             }}>
               {nextStep.body}
+            </div>
+          )}
+          {isReservedDetails && liveJoinHold && (
+            <div style={{ marginTop: 12 }}>
+              <CountdownTimer
+                expiresAt={liveJoinHold.expiresAt}
+                label={t("trade.lockWindowEndsIn", { role: roleDisplayName(liveLockWindowRole ?? liveJoinHold.role, t).toUpperCase() })}
+              />
             </div>
           )}
 
@@ -3235,9 +3265,6 @@ export function TradeDetail({
           </div>
           {/* pane 1 — Details (cart/order pre-lock, read-only reminder after) */}
           <div className="td-pane" style={TD_PANE_STYLE}>
-            <div style={{ display: "flex", alignItems: "center", gap: 5, fontFamily: T.mono, fontSize: 10.5, letterSpacing: 1, color: T.accent, fontWeight: 700, margin: "2px 2px 13px" }}>
-              DETAILS <span style={{ color: T.muted }}>·</span> <VerticalIcon vertical={verticalIconId} size={15} /> <span style={{ color: T.muted }}>{verticalKicker}</span>
-            </div>
             {billTypeChip && (
               <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}>
                 <span style={{
@@ -3324,15 +3351,7 @@ export function TradeDetail({
               fontSize: 10,
               lineHeight: 1.45,
             }}>
-              {state.description}
-              {showHeroFiat
-                ? ` · ₿ ${fmtSats(heroAmountMsats)}`
-                : heroFiatLabel
-                  ? ` · ${heroFiatLabel}`
-                  : ""}
-              {viewerEstimateLabel ? ` · ${viewerEstimateLabel}` : ""}
-              {routeNote ? ` · ${routeNote}` : ""}
-              {myRole ? ` · ${roleDisplayName(myRole, t)}` : ""}
+              {heroMetaParts.join(" · ")}
             </div>
             {state.category === "marketplace" && sellerPubkey && (
               <div style={{
@@ -4014,7 +4033,8 @@ export function TradeDetail({
         && state.status !== "CANCELLED"
         && state.status !== "EXPIRED"
         && state.status !== "APPROVED"
-        && state.status !== "CLAIMED" && (
+        && state.status !== "CLAIMED"
+        && !isReservedDetails && (
         <div style={{ marginBottom: 16 }}>
           <CountdownTimer
             expiresAt={liveJoinHold?.expiresAt ?? state.expiresAt}
@@ -5331,7 +5351,7 @@ function detailNextStep({
     return {
       kicker: t("trade.nsReserved"),
       title: t("trade.nsWaitingLockerFund"),
-      body: t("trade.nsStayNearby"),
+      body: "",
       tone: "purple",
       color: T.purple,
       amountMsats: savedOrderAmountMsats || state.amountMsats,
@@ -5985,9 +6005,15 @@ function detailPremiumCheckoutLine(
   }
   const checkoutFiat = heroFiat.amount * (1 + state.premiumBps / 10_000);
   if (!Number.isFinite(checkoutFiat) || checkoutFiat < 0) return null;
+  const base = formatFiatAmount(heroFiat.amount, heroFiat.currency);
+  const checkout = formatFiatAmount(checkoutFiat, heroFiat.currency);
+  // Tiny trades can round both sides to the same displayed cent. Repeating an
+  // identical equation under an already-visible premium looks broken and adds
+  // no information, so leave the honest percentage as the sole explanation.
+  if (base === checkout) return null;
   return t("trade.premiumCheckoutLine", {
-    base: formatFiatAmount(heroFiat.amount, heroFiat.currency),
-    checkout: formatFiatAmount(checkoutFiat, heroFiat.currency),
+    base,
+    checkout,
   });
 }
 

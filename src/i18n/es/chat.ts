@@ -11,6 +11,8 @@ export const chat: Record<string, string> = {
   "chat.continueWithKey": "Continuar con esta llave",
   "chat.copiedKey": "Copiada ✓",
   "chat.copyKey": "Copiar llave",
+  "chat.copyDone": "Copiada — ahora verifícala abajo",
+  "chat.copyFirst": "Cópiala para continuar",
   "chat.couldNotAttachImage": "No se pudo adjuntar esa imagen",
   "chat.couldNotCreateKey": "No se pudo crear la llave",
   "chat.createMyAccount": "Crear mi cuenta",
@@ -46,6 +48,8 @@ export const chat: Record<string, string> = {
   "chat.nowOn": "Ahora en: ",
   "chat.pasteInvitePlaceholder": "…o pega una invitación fed1",
   "chat.pasteRecoveryKey": "Pegar llave de recuperación",
+  "chat.passwordManagerHint":
+    "Al continuar, tu navegador puede ofrecer guardar esta llave en tu gestor de contraseñas.",
   "chat.roleArbiter": "Árbitro",
   "chat.roleBuyer": "Comprador",
   "chat.roleSeller": "Vendedor",
@@ -68,5 +72,8 @@ export const chat: Record<string, string> = {
     "Esto borra el archivo OPFS de tu Chama local y se une de nuevo al otro. Cualquier ecash en el Chama actual quedará varado hasta que regreses. Tu semilla respaldada en Nostr y tu historial de intercambios sobreviven.",
   "chat.typeMessagePlaceholder": "Escribe un mensaje...",
   "chat.useExistingAccount": "Usar una cuenta existente",
+  "chat.verifyKey": "Pega la llave para confirmar tu respaldo",
+  "chat.keyVerified": "Respaldo verificado ✓",
+  "chat.verifyKeyPlaceholder": "Pega la llave copiada",
   "chat.you": "Tú",
 };
