@@ -1,0 +1,21 @@
+[Unit]
+Description=Chama A6 web-push watcher (opaque wake-ups)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/chama/chama-webpush-watcher
+EnvironmentFile=/home/chama/chama-webpush-watcher/.env
+ExecStart=/usr/bin/node watcher.mjs
+Restart=always
+RestartSec=3
+# Harden: this service needs no elevated access and holds only opaque routing.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/chama/chama-webpush-watcher
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

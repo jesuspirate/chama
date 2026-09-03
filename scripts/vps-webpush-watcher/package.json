@@ -1,0 +1,18 @@
+{
+  "name": "chama-webpush-watcher",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "A6 privacy-preserving VPS watcher: observes the Chama Nostr band and sends OPAQUE web-push wake-ups. Stores {opaque tag -> [push endpoint]} only. No pubkeys, no escrow ids, no content.",
+  "main": "watcher.mjs",
+  "scripts": {
+    "start": "node watcher.mjs",
+    "gen-vapid": "node -e \"const w=require('web-push');const k=w.generateVAPIDKeys();console.log('VAPID_PUBLIC='+k.publicKey);console.log('VAPID_PRIVATE='+k.privateKey)\""
+  },
+  "dependencies": {
+    "nostr-tools": "2.23.3",
+    "web-push": "^3.6.7",
+    "ws": "^8.18.0"
+  },
+  "engines": { "node": ">=20" }
+}
