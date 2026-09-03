@@ -7,6 +7,7 @@ import { loadCoordinatedLiveness, readCachedLiveness, type LivenessGenerationDia
 import { LanguagePills } from "../components/LanguagePills.js";
 import { useT } from "../../i18n/index.js";
 import type { ChamaLiveness } from "../../arbiters/live-chama.js";
+import { readCachedBondedArbiterCounts } from "../../arbiters/bonded-pool-cache.js";
 import {
   getAllPickerCountries,
   GLOBE_MARKERS,
@@ -125,7 +126,12 @@ export function GlobeCountryPicker({ onSelect, loadLiveness, loadBondedCounts, b
   // fallback. Do not wrap it in UI retries: queryOnce has its own hidden relay
   // readiness budget, so three innocent-looking retries previously turned one
   // additive label into a 25–30+ second onboarding stall.
-  const [bondedBySlug, setBondedBySlug] = useState<Record<string, number> | null>(null);
+  // Paint the last verified public snapshot immediately, but never mistake it
+  // for final truth: the live loader below always refreshes it. A valid 12-hour
+  // cache can predate a newly announced community bond.
+  const [bondedBySlug, setBondedBySlug] = useState<Record<string, number> | null>(
+    () => readCachedBondedArbiterCounts(),
+  );
   const bondedCountsResolved = useRef(false);
   const bondedCountsMounted = useRef(true);
   const bondedCountsInFlight = useRef(false);
@@ -309,6 +315,7 @@ export function GlobeCountryPicker({ onSelect, loadLiveness, loadBondedCounts, b
           <div style={{ display: "grid", gap: 10, width: "100%", maxWidth: 380 }}>
             {selected.chamas.map((c) => {
               const real = isRealLocalChama(c);
+              const bonded = bondedBySlug?.[c.slug] ?? 0;
               return (
               <button
                 key={c.slug}
@@ -329,6 +336,11 @@ export function GlobeCountryPicker({ onSelect, loadLiveness, loadBondedCounts, b
                     {real
                       ? t("picker.subLocalChama", { currency: c.currency })
                       : t("picker.subAvailableNow", { currency: c.currency })}
+                    {bonded > 0 && (
+                      <span style={{ color: T.green }}>
+                        {t("picker.bondedNote", { count: bonded })}
+                      </span>
+                    )}
                   </span>
                 </span>
                 <span style={{ fontFamily: T.mono, color: T.accent, fontSize: 16, lineHeight: 1 }}>→</span>

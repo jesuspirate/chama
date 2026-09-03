@@ -6277,17 +6277,11 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       const client = clientRef.current;
       if (!client) throw new Error("Not connected");
       const worldwideSnapshot = readCachedBondedArbiterCounts();
-      if (worldwideSnapshot) {
-        // This snapshot was produced only after a worldwide relay read plus
-        // on-chain verification. It is intentionally device-global public
-        // data, so a fresh nsec can paint the same truth immediately. Individual
-        // community caches are NOT accepted here: they may be partial.
-        return worldwideSnapshot;
-      }
       // Public, chain-verified bond data is deliberately device-global. Use it
-      // immediately across fresh nsec signups instead of re-running a worldwide
-      // Esplora audit before the country picker may paint one small count.
-      const cachedCounts: Record<string, number> = {};
+      // immediately across fresh nsec signups, but keep refreshing: a still-valid
+      // snapshot may have been written just before a new community announcement.
+      // Returning it as final truth hid that bond for the full 12-hour TTL.
+      const cachedCounts: Record<string, number> = { ...(worldwideSnapshot ?? {}) };
       for (const community of COMMUNITY_REGISTRY) {
         const cachedBonds = readCachedCommunityBonds(community.slug);
         const count = cachedBonds ? bondedArbitersForCommunity(cachedBonds).length : 0;
