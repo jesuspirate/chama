@@ -120,7 +120,7 @@ git checkout -B "$BRANCH" "upstream/$BASE_BRANCH" --quiet
 echo "📌 Pinning chama/ submodule to $TAG"
 git submodule update --init chama --quiet
 git -C chama fetch --tags origin --quiet
-git -C chama checkout "$TAG" --quiet
+git -C chama checkout --quiet "$TAG"
 git add chama
 
 # ── Install the prepared version file ─────────────────────────────────────

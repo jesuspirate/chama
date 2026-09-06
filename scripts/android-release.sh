@@ -691,6 +691,7 @@ fi
 COMMIT_SHA=$(git rev-parse HEAD)
 if ! git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
   echo "❌ Local tag $TAG does not exist."
+  git update-index -q --refresh || true
   if ! git diff-index --quiet HEAD -- || [ -n "$(git ls-files --others --exclude-standard)" ]; then
     echo "   The working tree is dirty, so commit and push this version before tagging:"
     git status --short

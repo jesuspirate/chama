@@ -217,6 +217,9 @@ fi
 # happy path, but a clean-tree precondition is the load-bearing
 # guarantee — verified once, up front, so every later step can trust
 # it.
+# Refresh first: a file rewritten with identical content but a new mtime
+# (editor save, stash apply, sync tool) otherwise reads as dirty here.
+git update-index -q --refresh || true
 if ! git diff-index --quiet HEAD --; then
   echo "❌ Working tree has uncommitted changes. Commit or stash first."
   git status --short
