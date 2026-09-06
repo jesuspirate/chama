@@ -36,6 +36,7 @@ import {
   isPerformanceContest,
   substitutionEligibleAt,
 } from "../escrow-engine/arbiter-substitution.js";
+import { expectedLockerRole } from "../escrow-engine/lock-custody.js";
 import { translate, getCurrentLang } from "../i18n/index.js";
 import { payoutRecipientFor } from "../escrow-engine/recipients.js";
 import { pendingOnchainArbiterPubkey } from "../notifications/trade-notifications.js";
@@ -597,6 +598,7 @@ function needsYouReason(
   e: EscrowState,
   userPubkey: string,
   nowSec: number,
+  settledClaimIds?: ReadonlySet<string>,
 ): keyof typeof NEEDS_YOU_RANK | null {
   const p = getEffectiveParticipantsAt(e, nowSec);
   const isBuyer = samePk(p.buyer, userPubkey);
@@ -614,6 +616,18 @@ function needsYouReason(
     // impossible legacy ghosts in history instead of the urgent queue.
     if ((e.escrowMode ?? "ecash") === "onchain" || e.lock?.onchain) return null;
     if (!e.lock?.notesHash || !e.lock.shares || e.lock.shares.size < 2) return null;
+    // Zombie-claim suppression. Hydration can replay a chain that is still
+    // APPROVED (the CLAIM event missed the relays, or a stale relay serves an
+    // old snapshot) for a payout this device ALREADY redeemed — the notes are
+    // consumed, the sats landed or sit in the pending-redemption stash. The
+    // chain facts above cannot see that: they are relay truth, and the proof
+    // of redemption is device-local (claim-credit ledger + redemption stash).
+    // Summoning the user back to "Claim your payout" here railroads them into
+    // re-swallowing spent notes. The caller passes the union of both local
+    // money-trail ledgers; a hit means this claim was already handled, so it
+    // belongs in history, not the urgent queue. The room itself stays fully
+    // reachable from My trades for recovery flows.
+    if (settledClaimIds?.has(e.id)) return null;
     return "claim";
   }
 
@@ -691,6 +705,24 @@ function needsYouReason(
       && !isPastEscrowDeadline(e, nowSec)
     ) return "waiting";
 
+    // Funder summons (surgical redo): I reserved a seat with a LIVE JOIN hold
+    // and the lock is mine to make — closing the app must not lose the trail
+    // to my own unfunded seat. Live-hold-gated so an expired reservation or an
+    // old draft can never revive into the queue, and child orders (which seat
+    // the buyer directly, with no JOIN hold) never fire it — the buyer who
+    // drafted a child order stays unsummoned.
+    const lockerRole = expectedLockerRole(e.category);
+    if (lockerRole !== null) {
+      const myHold = e.joinHolds?.[lockerRole];
+      if (
+        myHold
+        && samePk(myHold.pubkey, userPubkey)
+        && samePk(e.participants[lockerRole], myHold.pubkey)
+        && myHold.expiresAt > nowSec
+        && !isPastEscrowDeadline(e, nowSec)
+      ) return "waiting";
+    }
+
     const hold = e.joinHolds?.[Role.BUYER];
     if (hold && hold.expiresAt > nowSec) {
       // The exact deterministic arbiter already targeted by the OS/DM alert
@@ -756,13 +788,16 @@ export function selectNeedsYouTrades(inputs: {
   escrows: Iterable<EscrowState>;
   userPubkey: string;
   nowSec?: number;
+  /** Escrow ids whose payout this device already redeemed (claim-credit
+   *  ledger ∪ pending-redemption stash) — suppresses zombie "claim" replays. */
+  settledClaimIds?: ReadonlySet<string>;
 }): EscrowState[] {
   const nowSec = inputs.nowSec ?? Math.floor(Date.now() / 1000);
   const ranked: { trade: EscrowState; rank: number }[] = [];
   const seen = new Set<string>();
   for (const e of inputs.escrows) {
     if (seen.has(e.id)) continue;
-    const reason = needsYouReason(e, inputs.userPubkey, nowSec);
+    const reason = needsYouReason(e, inputs.userPubkey, nowSec, inputs.settledClaimIds);
     if (!reason) continue;
     seen.add(e.id);
     ranked.push({ trade: e, rank: NEEDS_YOU_RANK[reason] });
@@ -823,8 +858,9 @@ export function needsYouReasonFor(
   e: EscrowState,
   userPubkey: string,
   nowSec: number = Math.floor(Date.now() / 1000),
+  settledClaimIds?: ReadonlySet<string>,
 ): "claim" | "dispute" | "vote" | "arbiter-key" | "waiting" | null {
-  return needsYouReason(e, userPubkey, nowSec);
+  return needsYouReason(e, userPubkey, nowSec, settledClaimIds);
 }
 
 /** Count of trades needing the user's action — the Me-tab red badge. */
@@ -832,6 +868,7 @@ export function countNeedsYou(inputs: {
   escrows: Iterable<EscrowState>;
   userPubkey: string;
   nowSec?: number;
+  settledClaimIds?: ReadonlySet<string>;
 }): number {
   return selectNeedsYouTrades(inputs).length;
 }

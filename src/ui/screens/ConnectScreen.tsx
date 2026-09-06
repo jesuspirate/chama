@@ -78,7 +78,7 @@ const INTRO_USE_CASES: { vertical: ChamaVerticalIconId; titleKey: string; blurbK
   // Parked for later:
   // { vertical: "work", titleKey: "connect.useCaseWork", blurbKey: "connect.useCaseWorkBlurb" },
   // { vertical: "chip-in", titleKey: "connect.useCaseChipIn", blurbKey: "connect.useCaseChipInBlurb", soon: true },
-  { vertical: "stack", titleKey: "connect.useCaseStack",       blurbKey: "connect.useCaseStackBlurb", soon: true },
+  { vertical: "chama", titleKey: "connect.useCaseChama",       blurbKey: "connect.useCaseChamaBlurb", soon: true },
 ];
 
 export function ConnectScreen({

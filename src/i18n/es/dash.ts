@@ -1,0 +1,15 @@
+export const dash: Record<string, string> = {
+  "dash.volumeLabel": "Sats operados",
+  "dash.vsPrior": "vs periodo anterior",
+  "dash.window90": "90 DÍAS",
+  "dash.windowYear": "AÑO",
+  "dash.windowAll": "TODO",
+  "dash.whereYouTrade": "Dónde operas",
+  "dash.ratingTile": "Valoración",
+  "dash.onDevice": "En este dispositivo",
+  "dash.livenessKicker": "Vitalidad del Chama",
+  "dash.livenessLive": "activo",
+  "dash.noVolumeYet": "Aún no hay volumen — tu primera operación financiada dibuja esta línea.",
+  "dash.liveEscrow": "{sats} sats en escrow",
+  "dash.noVerticalsYet": "Completa una operación y aquí aparece tu mezcla de Cambio, Pago de facturas y Mercado.",
+};

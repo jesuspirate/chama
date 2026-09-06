@@ -23228,6 +23228,17 @@ console.log("\n── Liquidity & attention (buyerInterest / newListing / needsY
   } as any;
   assert(needsYouReasonFor({ ...expiredPooled, eventChain: [...disputeEvents, backupVote] }, eligibleBackup!, nowSec) === null,
     "needs-you: an arbiter's own healing vote clears its attention item");
+  // Zombie-claim suppression: a device-local settled set (claim-credit ledger
+  // ∪ pending-redemption stash) silences a replayed APPROVED claim whose notes
+  // were already redeemed — while an unrelated id changes nothing.
+  assert(needsYouReasonFor(claim, SELLER, nowSec, new Set([claim.id])) === null,
+    "needsYouReasonFor: settled set suppresses zombie claim replay");
+  assert(needsYouReasonFor(claim, SELLER, nowSec, new Set(["someone-else"])) === "claim",
+    "needsYouReasonFor: unrelated settled id leaves a live claim summonable");
+  assert(selectNeedsYouTrades({ escrows: [claim], userPubkey: SELLER, nowSec, settledClaimIds: new Set([claim.id]) }).length === 0,
+    "selectNeedsYouTrades: settledClaimIds drops the zombie claim from the queue");
+  assert(countNeedsYou({ escrows: [waiting, claim, vote, idle], userPubkey: SELLER, nowSec, settledClaimIds: new Set([claim.id]) }) === 2,
+    "countNeedsYou: suppressed claim leaves the badge counting only live work");
   assert(needsYouReasonFor({ ...claim, lock: undefined as any }, SELLER, nowSec) === null,
     "needs-you: an APPROVED hydration fragment without redeemable LOCK material is not an alert");
   assert(needsYouReasonFor({ ...claim, escrowMode: "onchain" }, SELLER, nowSec) === null,

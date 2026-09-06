@@ -89,6 +89,13 @@ export function recordClaimCredit(escrowId: string, amountMsats: number, nowMs =
 }
 
 /** The recorded proof for an escrow, or null when there is none. */
+/** Every recorded credit. Read-only snapshot for callers that need the full
+ *  set of already-paid escrow ids (e.g. silencing zombie "claim" summonses for
+ *  trades whose sats demonstrably landed). */
+export function listClaimCredits(): ClaimCredit[] {
+  return Object.values(load());
+}
+
 export function getClaimCredit(escrowId: string): ClaimCredit | null {
   return load()[escrowId] ?? null;
 }

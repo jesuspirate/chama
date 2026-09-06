@@ -106,6 +106,15 @@ export function savedIntentMatchesListing(
     if (listing.category !== "p2p-trade" && listing.category !== "bill-pay") return false;
     const amountSats = Math.floor((listing.amountMsats ?? 0) / 1000);
     if (amountSats <= 0) return false;
+    // Market-priced listings (premium %, no stored fiat quote) can never pass
+    // a fiat-budget probe — the pure matcher refuses to invent quotes (the
+    // FIAT_QUOTE_REQUIRED family), and this alert path has no live price to
+    // inject. Probe those WITHOUT the budget: better to buzz "a compatible
+    // offer appeared — check the price" than to stay silent forever, and the
+    // canvas re-verifies against live prices the moment it opens.
+    const hasStoredQuote = listing.fiatAmount !== undefined
+      || (listing.items ?? []).some(item => item.fiatAmount !== undefined);
+    const applyBudget = hasStoredQuote && !!intent.fiatAmount && !!intent.fiatCurrency;
     const validated = validateGuidedTradeIntent({
       version: 1,
       direction: "buy_sats",
@@ -113,8 +122,7 @@ export function savedIntentMatchesListing(
       paymentRails: intent.paymentRails ?? [],
       strategy: "available_now",
       ...(intent.community ? { community: intent.community } : {}),
-      ...(intent.fiatAmount ? { maxFiatAmount: intent.fiatAmount } : {}),
-      ...(intent.fiatCurrency ? { fiatCurrency: intent.fiatCurrency } : {}),
+      ...(applyBudget ? { maxFiatAmount: intent.fiatAmount, fiatCurrency: intent.fiatCurrency } : {}),
     });
     if (!validated.ok) return false;
     return matchGuidedListings(validated.value, [{ listing }], {

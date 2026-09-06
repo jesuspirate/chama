@@ -25,34 +25,36 @@ import {
 import { en } from "./en/index.js";
 import { fr } from "./fr/index.js";
 import { es } from "./es/index.js";
+import { sw } from "./sw/index.js";
 
-export type Lang = "en" | "fr" | "es";
-export const LANGS: readonly Lang[] = ["en", "fr", "es"] as const;
+export type Lang = "en" | "fr" | "es" | "sw";
+export const LANGS: readonly Lang[] = ["en", "fr", "es", "sw"] as const;
 // Endonyms — NEVER translated: a French speaker hunting for their language
 // must see "Français" no matter what language the app is currently in.
 export const LANG_LABELS: Record<Lang, string> = {
   en: "English",
   fr: "Français",
   es: "Español",
+  sw: "Kiswahili",
 };
 
 export type Dict = Record<string, string>;
 export type TFunc = (key: string, params?: Record<string, string | number>) => string;
 
-const DICTS: Record<Lang, Dict> = { en, fr, es };
+const DICTS: Record<Lang, Dict> = { en, fr, es, sw };
 
 const LANG_STORAGE_KEY = "chama_lang";
 
 function detectInitialLang(): Lang {
   try {
     const saved = localStorage.getItem(LANG_STORAGE_KEY);
-    if (saved === "en" || saved === "fr" || saved === "es") return saved;
+    if (saved === "en" || saved === "fr" || saved === "es" || saved === "sw") return saved;
   } catch {
     /* private mode / storage disabled — fall through to locale detect */
   }
   try {
     const nav = (navigator.language || "").slice(0, 2).toLowerCase();
-    if (nav === "fr" || nav === "es") return nav as Lang;
+    if (nav === "fr" || nav === "es" || nav === "sw") return nav as Lang;
   } catch {
     /* no navigator — English */
   }

@@ -36,6 +36,11 @@ export const me: Record<string, string> = {
   "me.accumulatingTooSmall": "Accumulating — too small to recover over Lightning yet",
   // Me refactor: attention hero + accordions.
   "me.accArbiter": "Arbiter",
+  "me.tabCommunity": "Community",
+  "me.tabSats": "Wallet",
+  "me.recentSettlements": "Recent settlements",
+  "me.settledReleased": "released",
+  "me.settledRefunded": "refunded",
   "me.accMyTrades": "My trades",
   "me.accProfileChama": "Profile & Chama",
   "me.accSettings": "Settings",
@@ -68,7 +73,7 @@ export const me: Record<string, string> = {
   "me.blfPool": "BLF pool",
   "me.buyer": "Buyer",
   "me.buyerBrowsing": "buyer browsing",
-  "me.categoryBillPay": "Com. Bill Pay",
+  "me.categoryBillPay": "Bill Pay",
   "me.categoryExchange": "Exchange",
   "me.categoryLending": "Lending",
   "me.categoryMarket": "Market",
@@ -224,6 +229,10 @@ export const me: Record<string, string> = {
   "me.sellerQueue": "Seller queue",
   "me.sellerQueueHint": "Listings stay public here; live orders become your working queue.",
   "me.signOut": "Sign out",
+  "me.signOutConfirmTag": "BEFORE YOU GO",
+  "me.signOutConfirmTitle": "Sign out of Chama?",
+  "me.signOutConfirmBody":
+    "Signing out forgets your recovery key on this device. You'll need your own saved copy to sign back in — Chama never keeps it and can't recover it for you.",
   "me.singleListing": "single listing",
   "me.smallLeftoverBody":
     "saved as a small leftover. Chama keeps small leftovers out of the main flow and lets them accumulate here.",

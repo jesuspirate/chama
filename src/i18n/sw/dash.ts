@@ -1,0 +1,15 @@
+export const dash: Record<string, string> = {
+  "dash.volumeLabel": "Sats zilizouzwa",
+  "dash.vsPrior": "dhidi ya kipindi kilichopita",
+  "dash.window90": "SIKU 90",
+  "dash.windowYear": "MWAKA",
+  "dash.windowAll": "ZOTE",
+  "dash.whereYouTrade": "Unapofanyia biashara",
+  "dash.ratingTile": "Tathmini",
+  "dash.onDevice": "Kwenye kifaa hiki",
+  "dash.livenessKicker": "Uhai wa Chama",
+  "dash.livenessLive": "hai",
+  "dash.noVolumeYet": "Bado hakuna mzunguko — biashara yako ya kwanza iliyogharamiwa inachora mstari huu.",
+  "dash.liveEscrow": "sats {sats} kwenye escrow",
+  "dash.noVerticalsYet": "Kamilisha biashara na mchanganyiko wako wa Kubadilishana, Bili na Soko utaonekana hapa.",
+};

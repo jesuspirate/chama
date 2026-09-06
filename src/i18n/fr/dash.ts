@@ -1,0 +1,15 @@
+export const dash: Record<string, string> = {
+  "dash.volumeLabel": "Sats échangés",
+  "dash.vsPrior": "vs période précédente",
+  "dash.window90": "90 JOURS",
+  "dash.windowYear": "ANNÉE",
+  "dash.windowAll": "TOUT",
+  "dash.whereYouTrade": "Où vous échangez",
+  "dash.ratingTile": "Note",
+  "dash.onDevice": "Sur cet appareil",
+  "dash.livenessKicker": "Vitalité du Chama",
+  "dash.livenessLive": "actif",
+  "dash.noVolumeYet": "Pas encore de volume — votre premier échange financé dessine cette ligne.",
+  "dash.liveEscrow": "{sats} sats en séquestre",
+  "dash.noVerticalsYet": "Terminez un échange et votre répartition Échange, Factures et Marché apparaît ici.",
+};

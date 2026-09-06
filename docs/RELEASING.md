@@ -12,7 +12,11 @@ npm run ship -- --minor
 npm run ship -- --major
 ```
 
-The convention-named release-note files described in `scripts/release-notes-template.txt` are required for a new version.
+The convention-named release-note files described in `scripts/release-notes-template.txt` are required for a new version. They live in the gitignored repo-local `release-notes/` directory (falling back to `/tmp`); when the notes for a version newer than `package.json` are present, plain `npm run ship` infers the target version from them — so the whole release is: drop the notes, run `npm run ship`, confirm the plan.
+
+## Start9
+
+When `release-notes/chama-vX.Y.Z_startos_current.ts` exists (a full five-locale replacement for the packaging repo's `startos/versions/current.ts`), `ship` finishes by running `scripts/start9-release.sh`: it pins the `chama/` submodule in a fork checkout of [`Start9-Community/chama-startos`](https://github.com/Start9-Community/chama-startos) to the signed release tag, installs the version file, pushes branch `chama-vX.Y.Z` to the fork, and opens the community PR with `gh`. Merging that PR triggers the packaging repo's CI to build, sign, and publish the `.s9pk` — nothing is built locally. Skip with `--no-start9`; run alone with `npm run ship -- --only start9 --tag vX.Y.Z` (add `--dry-run` to preview). The checkout lives at `~/start9-workspace/chama-startos` (override `CHAMA_STARTOS_DIR`).
 
 ## One destination only
 
@@ -29,6 +33,7 @@ Use the same entry point with `--only` when the version already exists and only 
 | Edit the GitHub Release page | `npm run ship -- --only release-page --notes-file /tmp/notes` | Assets and other channels |
 | Publish the GitHub Release page | `npm run ship -- --only release-page --publish` | Assets and other channels |
 | Publish current Android release to Zapstore | `npm run ship -- --only zapstore` | Web, landing, GitHub |
+| Update Start9 packaging + open the community PR | `npm run ship -- --only start9 --tag vX.Y.Z` | Every other channel |
 | Refresh Zapstore images and description | `npm run ship -- --only zapstore-listing` | Web, landing, GitHub |
 | Run all distribution channels for the current version | `npm run ship -- --only full` | No version bump or new commit |
 

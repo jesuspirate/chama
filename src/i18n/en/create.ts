@@ -7,6 +7,9 @@
 export const create: Record<string, string> = {
   // Monthly CBP — recurring bill toggle (bill-pay only, no bond, online-gated).
   "create.recurringToggleLabel": "Recurring monthly",
+  "create.publishingTitle": "Publishing your offer…",
+  "create.publishingSub": "Putting it live in your community. This only takes a moment.",
+  "create.reviewManually": "Review manually",
   "create.recurringToggleHint": "Auto-re-post this bill to your community every month while you're online. No bond needed — stop it any time from Me.",
   // Store permanence (#49) Tier 3 — bond-gated tenure note on the review step.
   "create.tenureBondedTitle": "Bonded storefront",
@@ -211,7 +214,7 @@ export const create: Record<string, string> = {
   "create.totalSuffix": "total",
   "create.unitsInStock": "UNITS IN STOCK",
   "create.unitsAvailable": "{count} units available",
-  "create.verticalBillPay": "Community Bill Pay",
+  "create.verticalBillPay": "Bill Pay",
   "create.verticalBillPayDesc": "Pay a bill in exchange for sats.",
   "create.verticalChipIn": "Chip In",
   "create.verticalChipInDesc": "Pool sats together with your community.",
@@ -227,6 +230,8 @@ export const create: Record<string, string> = {
   "create.billCookingGas": "Cooking gas (LPG)",
   "create.verticalMarketplace": "Market",
   "create.verticalMarketplaceDesc": "Sell goods, services, or digital items.",
+  "create.verticalChama": "Chama",
+  "create.verticalChamaDesc": "Lock sats together. If the circle doesn't fill, everyone gets theirs back.",
   "create.verticalStack": "Stack",
   "create.verticalStackDesc": "Save toward a goal — your keys, your sats.",
   "create.verticalWork": "Work",

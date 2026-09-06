@@ -317,7 +317,7 @@ export function ChatPanel({ state, myRole, onSend, embedded = false, hideHeader 
       {/* Header */}
       {!hideHeader && (
       <div style={{
-        padding: embedded ? "16px 0 10px" : "12px 16px",
+        padding: embedded ? "16px 14px 10px" : "12px 16px",
         borderBottom: `1px solid ${T.border}`,
         borderTop: embedded ? `1px solid ${T.border}` : "none",
         display: "flex", justifyContent: "space-between", alignItems: "center",
@@ -337,7 +337,7 @@ export function ChatPanel({ state, myRole, onSend, embedded = false, hideHeader 
       <div style={{
         ...(fill ? { flex: 1, minHeight: 0 } : { maxHeight: embedded ? 340 : 280 }),
         overflowY: "auto",
-        padding: embedded ? "14px 0" : "12px 16px",
+        padding: embedded ? "14px 14px" : "12px 16px",
         display: "flex", flexDirection: "column", gap: 10,
       }}>
         {feed.length === 0 ? (
@@ -458,7 +458,7 @@ export function ChatPanel({ state, myRole, onSend, embedded = false, hideHeader 
           back to the rating CTA above. */}
       {myRole && chatClosed && (
         <div style={{
-          padding: embedded ? "12px 0 2px" : "12px 16px",
+          padding: embedded ? "12px 14px 12px" : "12px 16px",
           borderTop: `1px solid ${T.border}`,
           textAlign: "center" as const,
         }}>
@@ -470,8 +470,9 @@ export function ChatPanel({ state, myRole, onSend, embedded = false, hideHeader 
       {/* Input bar */}
       {myRole && !chatClosed && (
         <div style={{
-          padding: embedded ? "10px 0 0" : "10px 12px",
+          padding: embedded ? "10px 14px 12px" : "10px 12px",
           borderTop: `1px solid ${T.border}`,
+          borderBottom: embedded ? `1px solid ${T.border}` : undefined,
           display: "grid", gap: 8,
           // R3-3: keep the grid (and its flex input row) shrinkable so a wide
           // attachment preview / narrow embedded column can never overflow and

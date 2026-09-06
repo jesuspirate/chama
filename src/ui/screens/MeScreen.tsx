@@ -387,12 +387,17 @@ export function MeScreen({
   // work with chain-verified pending on-chain payouts. Keep the Me hero, Needs
   // count, and Needs filter on that exact source so the inner and outer pills
   // cannot disagree. The fallback preserves standalone/test callers.
+  // (The fallback lacks App's zombie-claim suppression set — it exists only
+  // for standalone/test callers; the app always passes needsYouTrades.)
   const rankedNeedsYou = needsYouTrades
     ?? selectNeedsYouTrades({ escrows: allTrades ?? myTrades, userPubkey: pubkey, nowSec });
   const tradeCounts = buildMeTradeCounts(myTrades, rankedNeedsYou);
   const visibleTrades = filterMeTrades(myTrades, rankedNeedsYou, tradeFilter);
   const latestTrade = latestParticipantTradePointer(myTrades, archivedTrades);
   const hasSellerDashboard = dashboard.sellerOpen.length > 0 || dashboard.sellerLive.length > 0;
+  // v6.3 approved redesign: Browse-style pill tabs replace the accordions.
+  // Money-safety cards stay ABOVE the tabs — never hidden behind one.
+  const [meTab, setMeTab] = useState<"trades" | "sats" | "arbiter" | "profile" | "settings">("trades");
   const hasVisibleMoneyAction =
     loudClaims.length > 0
     || calmClaims.length > 0
@@ -401,7 +406,7 @@ export function MeScreen({
     || Boolean(pendingEcashExport && onWithdrawEcash);
 
   return (
-    <div style={{ padding: 16, maxWidth: 560, margin: "0 auto" }}>
+    <div style={{ padding: 16, maxWidth: 760, margin: "0 auto" }}>
       {/* Profile header — HIDDEN (Jetty 2026-07-15): Me is "what needs attention
           + settings" right now, not a profile space, so we reclaim this real
           estate. The npub still lives in the Profile & Chama accordion below.
@@ -781,18 +786,54 @@ export function MeScreen({
         </div>
       )}
 
-      {/* ── MY TRADES (collapsed by default) — seller queue + full history ─── */}
-      {!hydratingTrades && <Accordion
-        title={t("me.accMyTrades")}
-        count={myTrades.length || undefined}
-      >
+      {/* ── PILL TABS (v6.3) — the whole Me surface behind five Browse-style
+          pills. Trades is home; Sats holds the money utilities; Arbiter shows
+          only for arbiters; Profile & Settings hold the rest. */}
+      <div style={{ display: "flex", gap: 7, flexWrap: "wrap", margin: "2px 0 16px" }}>
+        {([
+          ["trades", t("me.accMyTrades"), myTrades.length || undefined],
+          ["sats", t("me.tabSats"), undefined],
+          ...(dashboard.arbiterVisible ? [["arbiter", t("me.accArbiter"), dashboard.arbiterDisputes.length || undefined] as const] : []),
+          ["profile", t("me.tabCommunity"), undefined],
+          ["settings", t("me.accSettings"), undefined],
+        ] as Array<readonly [typeof meTab, string, number | undefined]>).map(([key, label, count]) => {
+          const on = meTab === key;
+          return (
+            <button key={key} type="button" aria-pressed={on} onClick={() => setMeTab(key)}
+              style={{
+                display: "inline-flex", alignItems: "center", gap: 7,
+                padding: "8px 15px", borderRadius: 999, cursor: "pointer",
+                border: `1px solid ${on ? T.accent : T.borderHi}`,
+                background: on ? T.accentDim : "transparent",
+                color: on ? T.accent : T.muted,
+                fontFamily: T.mono, fontSize: 11.5, fontWeight: 700,
+              }}>
+              {label}
+              {count !== undefined && (
+                <span style={{ fontSize: 9.5, fontWeight: 900, padding: "1px 7px", borderRadius: 999, background: on ? T.accent : T.surface, color: on ? T.bg : T.muted, border: on ? "none" : `1px solid ${T.border}` }}>
+                  {count}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* ── TRADES — settlements ledger + seller queue + full history ─── */}
+      {meTab === "trades" && !hydratingTrades && <>
         {hasSellerDashboard && (
-          <SellerDashboardPanel
-            dashboard={dashboard}
-            onOpenTrade={onOpenTrade}
-            onSellerEditListing={onSellerEditListing}
-            onSellerDeleteListing={onSellerDeleteListing}
-          />
+          <Accordion
+            title={t("me.sellerDashboard")}
+            count={(dashboard.sellerOpen.length + dashboard.sellerLive.length) || undefined}
+            defaultOpen={dashboard.sellerLive.length > 0}
+          >
+            <SellerDashboardPanel
+              dashboard={dashboard}
+              onOpenTrade={onOpenTrade}
+              onSellerEditListing={onSellerEditListing}
+              onSellerDeleteListing={onSellerDeleteListing}
+            />
+          </Accordion>
         )}
         <div style={{ marginTop: hasSellerDashboard ? 16 : 0 }}>
           <MeTradeHistory
@@ -810,24 +851,33 @@ export function MeScreen({
             onOpenArchivedTrade={onOpenArchivedTrade}
           />
         </div>
-      </Accordion>}
+      </>}
 
-      {/* ── ARBITER (collapsed) — rendered only for an arbiter / pool member ── */}
-      {!hydratingTrades && dashboard.arbiterVisible && (
-        <Accordion
-          title={t("me.accArbiter")}
-          count={dashboard.arbiterDisputes.length || undefined}
-        >
-          <ArbiterDashboardPanel
-            dashboard={dashboard}
-            onOpenTrade={onOpenTrade}
-            viewerPubkey={pubkey}
-          />
-        </Accordion>
+      {/* ── SATS — money utilities. Deliberately not called a wallet. ── */}
+      {meTab === "sats" && (
+        <div style={{
+          background: T.card, border: `1px solid ${T.border}`,
+          borderRadius: T.r, padding: 0, overflow: "hidden",
+        }}>
+          {onWithdrawEcash && (
+            <SettingsRow label={t("me.withdrawEcash")} hint={t("me.withdrawEcashBackupHint")} onClick={onWithdrawEcash} />
+          )}
+          <SettingsRow label={t("me.paymentMethods")} hint={t("me.paymentMethodsHint")} onClick={onOpenSavedHandles} />
+          <SettingsRow label={t("me.lightningAddresses")} hint={t("me.lightningAddressesHint")} onClick={onOpenPayoutDestinations} />
+        </div>
       )}
 
-      {/* ── SETTINGS (collapsed) ────────────────────────────────────────────── */}
-      <Accordion title={t("me.accSettings")}>
+      {/* ── ARBITER — rendered only for an arbiter / pool member ── */}
+      {meTab === "arbiter" && !hydratingTrades && dashboard.arbiterVisible && (
+        <ArbiterDashboardPanel
+          dashboard={dashboard}
+          onOpenTrade={onOpenTrade}
+          viewerPubkey={pubkey}
+        />
+      )}
+
+      {/* ── SETTINGS ────────────────────────────────────────────── */}
+      {meTab === "settings" && <>
         <div style={{
           background: T.card, border: `1px solid ${T.border}`,
           borderRadius: T.r, padding: 0, overflow: "hidden",
@@ -881,8 +931,6 @@ export function MeScreen({
           {SHOW_BOND_CEREMONY && onOpenBondCeremony && (
             <SettingsRow label={t("me.postYourBond")} hint={t("me.postYourBondHint")} onClick={onOpenBondCeremony} />
           )}
-          <SettingsRow label={t("me.paymentMethods")} hint={t("me.paymentMethodsHint")} onClick={onOpenSavedHandles} />
-          <SettingsRow label={t("me.lightningAddresses")} hint={t("me.lightningAddressesHint")} onClick={onOpenPayoutDestinations} />
           {onClearUnfundedListings && (unfundedListingCount ?? 0) > 0 && (
             <SettingsRow
               label={t("me.clearListings")}
@@ -892,11 +940,14 @@ export function MeScreen({
           )}
           <SettingsRow label={t("me.advanced")} hint={t("me.advancedHint")} onClick={onOpenAdvanced} />
           <SettingsRow label={t("me.helpFaq")} hint={t("me.helpFaqHint")} onClick={onOpenHelp} />
+          <SettingsRow label={t("me.signOut")} hint={null} onClick={onSignOut} danger />
         </div>
-      </Accordion>
+      </>}
 
-      {/* ── PROFILE & CHAMA (collapsed) — your chama, reputation, sign out ──── */}
-      <Accordion title={t("me.accProfileChama")}>
+      {/* ── COMMUNITY — the chama switcher, alone. Ratings live on the
+          Dashboard; the identity hex lives in the top banner; sign out lives
+          in Settings. */}
+      {meTab === "profile" && <>
         {onSelectCommunity && (
           <YourChamaCard
             communitySlug={communitySlug ?? null}
@@ -906,66 +957,11 @@ export function MeScreen({
             livenessBlocksPerDay={livenessBlocksPerDay}
           />
         )}
-
-        {/* Ratings — reputation is the backbone primitive; the surface ships
-            even before rating events do, so users learn the model. */}
-        <div style={{
-          background: T.card, border: `1px solid ${T.border}`,
-          borderRadius: T.r, padding: 20, marginBottom: 16,
-        }}>
-          <div style={{
-            fontSize: 11, fontWeight: 600, color: T.muted, fontFamily: T.mono,
-            letterSpacing: 1, marginBottom: 12,
-          }}>
-            {t("me.ratingsTitle")}
-          </div>
-          {ratings && ratings.count > 0 ? (
-            <div>
-              <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
-                <span style={{ fontSize: 28, fontWeight: 800, color: T.text, fontFamily: T.mono }}>
-                  {ratings.count}
-                </span>
-                <span style={{ fontSize: 12, color: T.muted, fontFamily: T.mono }}>
-                  {ratings.count !== 1 ? t("me.ratingMany") : t("me.ratingOne")}
-                </span>
-                <span style={{ flex: 1 }} />
-                <span style={{
-                  fontSize: 16, fontWeight: 700,
-                  color: ratings.positive >= ratings.count - ratings.negative ? T.green : T.amber,
-                  fontFamily: T.mono,
-                }}>
-                  {Math.round((ratings.positive / Math.max(ratings.count, 1)) * 100)}%
-                </span>
-                <span style={{ fontSize: 11, color: T.muted, fontFamily: T.mono }}>
-                  {t("me.positive")}
-                </span>
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 14, marginTop: 10, fontFamily: T.mono, fontSize: 13 }}>
-                <span style={{ color: T.green, fontWeight: 700 }}>👍 {ratings.positive}</span>
-                <span style={{ color: T.amber, fontWeight: 700 }}>👎 {ratings.negative}</span>
-                <span style={{ color: T.muted, fontSize: 11 }}>{ratings.count !== 1 ? t("me.ratingsFromTradesMany", { count: ratings.count }) : t("me.ratingsFromTradesOne", { count: ratings.count })}</span>
-              </div>
-            </div>
-          ) : (
-            <div style={{ fontSize: 12, color: T.muted, fontFamily: T.sans, lineHeight: 1.55 }}>
-              {t("me.noRatingsYet")}
-            </div>
-          )}
-        </div>
-
-        <div style={{
-          background: T.card, border: `1px solid ${T.border}`,
-          borderRadius: T.r, padding: 0, overflow: "hidden",
-        }}>
-          <SettingsRow label={t("me.signOut")} hint={null} onClick={onSignOut} danger />
-        </div>
-      </Accordion>
+      </>}
     </div>
   );
 }
 
-// Simple collapsible section. Closed by default — the Me screen keeps only the
-// attention hero + money-safety cards open; everything else lives behind these.
 function Accordion({
   title,
   count,

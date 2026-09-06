@@ -1,0 +1,16 @@
+export const common: Record<string, string> = {
+  "common.back": "Rudi",
+  "common.cancel": "Ghairi",
+  "common.close": "Funga",
+  "common.retry": "Jaribu tena",
+  "common.connecting": "Inaunganisha...",
+  "common.copied": "✓ Imenakiliwa",
+  "common.copy": "Nakili",
+  "common.copyLink": "Nakili kiungo",
+  "common.done": "Imekamilika",
+  "common.language": "Lugha",
+  "common.languageHint": "Inatumika kwenye programu nzima",
+  "common.loading": "Inapakia…",
+  "common.soon": "Hivi karibuni",
+  "common.waiting": "Inasubiri...",
+};

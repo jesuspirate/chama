@@ -5,6 +5,7 @@ export const common: Record<string, string> = {
   "common.back": "Back",
   "common.cancel": "Cancel",
   "common.close": "Close",
+  "common.retry": "Retry",
   "common.connecting": "Connecting...",
   "common.copied": "✓ Copied",
   "common.copy": "Copy",

@@ -170,7 +170,7 @@ export const TRINITY_RING_ORDER: readonly Role[] = [
 export const CAT_ICON = { "p2p-trade": "⚡", "bill-pay": "🧾", marketplace: "", work: "🛠️", lending: "🤝" } as Record<string, string>;
 export const CAT_LABEL: Record<string, string> = {
   "p2p-trade":   "⚡ Exchange",
-  "bill-pay":    "🧾 Community Bill Pay",
+  "bill-pay":    "🧾 Bill Pay",
   marketplace:   "Market",
   work:          "🛠️ Work",
   lending:       "🤝 Lending",

@@ -57,6 +57,26 @@ cd "$ROOT_DIR"
 # destinations. Keep ship.sh as the one remembered entry point, but delegate
 # any --only request before the new-version machinery resolves notes or mutates
 # package.json.
+# `--only start9` routes to the Start9 lane, forwarding every other flag
+# (e.g. --tag, --dry-run) untouched wherever it sits on the command line.
+__chama_prev=""
+__chama_is_start9=0
+for __chama_arg in "$@"; do
+  if [ "$__chama_prev" = "--only" ] && [ "$__chama_arg" = "start9" ]; then
+    __chama_is_start9=1
+  fi
+  __chama_prev="$__chama_arg"
+done
+if [ "$__chama_is_start9" = "1" ]; then
+  __chama_fwd=()
+  __chama_skip=0
+  for __chama_arg in "$@"; do
+    if [ "$__chama_skip" = "1" ]; then __chama_skip=0; continue; fi
+    if [ "$__chama_arg" = "--only" ]; then __chama_skip=1; continue; fi
+    __chama_fwd+=("$__chama_arg")
+  done
+  exec "$ROOT_DIR/scripts/start9-release.sh" ${__chama_fwd[@]+"${__chama_fwd[@]}"}
+fi
 for __chama_arg in "$@"; do
   if [ "$__chama_arg" = "--only" ]; then
     exec "$ROOT_DIR/scripts/publish.sh" "$@"
@@ -73,7 +93,14 @@ SET_VERSION=""
 DRY=0
 DO_PUSH=1
 DO_RELEASE=1
+DO_START9=1
 ASSUME_YES=0
+# Notes live in the repo-local release-notes/ dir when it exists (gitignored;
+# where Claude drops them straight onto this machine), falling back to the
+# historical /tmp convention. CHAMA_COMMIT_DIR still overrides everything.
+if [ -z "${CHAMA_COMMIT_DIR:-}" ] && [ -d "$ROOT_DIR/release-notes" ]; then
+  CHAMA_COMMIT_DIR="$ROOT_DIR/release-notes"
+fi
 CHAMA_COMMIT_DIR="${CHAMA_COMMIT_DIR:-/tmp}"
 # Maintainer's signing key. A GPG *fingerprint* is public (it's on every
 # signed tag), so defaulting it is safe; any other releaser overrides it.
@@ -118,11 +145,27 @@ while [ $# -gt 0 ]; do
     --dry-run|-n) DRY=1; shift ;;
     --no-push) DO_PUSH=0; shift ;;
     --no-release) DO_RELEASE=0; shift ;;
+    --no-start9) DO_START9=0; shift ;;
     --yes|-y) ASSUME_YES=1; shift ;;
     -h|--help) sed -n '4,52p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "❌ Unknown option: $1"; exit 1 ;;
   esac
 done
+
+# ── Git index lock pre-flight ─────────────────────────────────────────────
+# A crashed git process leaves .git/index.lock behind, and step 2's commit
+# would then fail AFTER the version bump — a half-bumped tree. Detect it now:
+# with no live git process the lock is stale debris and is removed; with one
+# running, abort before anything mutates.
+LOCK_FILE="$(git rev-parse --git-dir)/index.lock"
+if [ -e "$LOCK_FILE" ]; then
+  if pgrep -x git >/dev/null 2>&1; then
+    echo "❌ $LOCK_FILE exists and a git process is running — finish/kill it, then re-run."
+    exit 1
+  fi
+  echo "🧹 Removing stale $LOCK_FILE (no git process is running)."
+  rm -f "$LOCK_FILE"
+fi
 
 # ── Must run from main (mirrors release.sh) ───────────────────────────────
 CURRENT_BRANCH="$(git branch --show-current)"
@@ -178,6 +221,17 @@ if [ -z "$SET_VERSION" ] && [ "$BUMP_EXPLICIT" != "1" ]; then
     SET_VERSION="$NEW_VERSION"
     echo "📝 Targeting v$NEW_VERSION — inferred from $CHAMA_COMMIT_DIR/chama-v${NEW_VERSION}_release_notes"
     echo "   (newest future-versioned notes file; pass --set-version or --patch/--minor/--major to override)"
+  elif [ -z "$INFERRED" ] \
+    && [ -f "$CHAMA_COMMIT_DIR/chama-v${CURRENT_VERSION}_release_notes" ] \
+    && ! git rev-parse -q --verify "refs/tags/v$CURRENT_VERSION" >/dev/null; then
+    # Resume: package.json already declares an UNTAGGED version whose notes
+    # exist — a previous run bumped and then died (lock file, ctrl-C, power).
+    # Plain `npm run ship` picks that release back up instead of aiming a
+    # phantom --patch one version past it.
+    NEW_VERSION="$CURRENT_VERSION"
+    SET_VERSION="$NEW_VERSION"
+    echo "📝 Resuming v$NEW_VERSION — package.json already declares it, the tag doesn't exist yet,"
+    echo "   and $CHAMA_COMMIT_DIR/chama-v${NEW_VERSION}_release_notes is present."
   fi
 fi
 
@@ -195,6 +249,12 @@ fi
 
 HAVE_ZAP=0
 [ -f "$ZAP_NOTES" ] && HAVE_ZAP=1
+
+# Start9 lane runs automatically when its prepared current.ts is present —
+# the file's existence is the opt-in, exactly like the notes-file inference.
+S9_NOTES="$CHAMA_COMMIT_DIR/chama-v${NEW_VERSION}_startos_current.ts"
+HAVE_S9=0
+[ "$DO_START9" = "1" ] && [ -f "$S9_NOTES" ] && HAVE_S9=1
 
 if [ "$HAVE_ZAP" = "1" ]; then
   node "$ROOT_DIR/scripts/validate-zapstore-notes.mjs" "$ZAP_NOTES"
@@ -245,6 +305,7 @@ echo "  release notes: $REL_NOTES"
 echo "  zapstore note: $([ "$HAVE_ZAP" = 1 ] && echo "$ZAP_NOTES" || echo "(none — release:all writes its placeholder)")"
 echo "  push to main : $([ "$DO_PUSH" = 1 ] && echo yes || echo "no (--no-push)")"
 echo "  full release : $([ "$DO_RELEASE" = 1 ] && echo yes || echo "no (--no-release)")"
+echo "  start9 PR    : $([ "$HAVE_S9" = 1 ] && echo "yes ($S9_NOTES)" || echo "no (no chama-v${NEW_VERSION}_startos_current.ts$([ "$DO_START9" = 0 ] && echo ", --no-start9"))")"
 echo "  steps:"
 if [ "$NEW_VERSION" = "$CURRENT_VERSION" ]; then
   echo "    1) keep existing untagged package version $NEW_VERSION"
@@ -253,6 +314,7 @@ else
 fi
 echo "    2) git add -A && git commit -F \"$REL_NOTES\"$([ "$DO_PUSH" = 1 ] && echo " && git push origin main")"
 [ "$DO_RELEASE" = 1 ] && echo "    3) npm run release:all -- ${RELEASE_FLAGS[*]}"
+[ "$HAVE_S9" = 1 ] && echo "    4) scripts/start9-release.sh --tag v$NEW_VERSION   (submodule pin + PR to Start9-Community/chama-startos)"
 if [ -n "$PREFLIGHT_WARN" ]; then
   echo "  ⚠️  zapstore pre-flight (commit/push/web/GitHub still succeed — only the Zapstore step would fail at the end):"
   printf '%b' "$PREFLIGHT_WARN"
@@ -323,6 +385,13 @@ fi
 if [ "$DO_RELEASE" = "1" ]; then
   echo "🚀 npm run release:all -- ${RELEASE_FLAGS[*]}"
   npm run release:all -- "${RELEASE_FLAGS[@]}"
+fi
+
+# ── 4. Start9 lane: pin the packaging submodule and open the PR ───────────
+if [ "$HAVE_S9" = "1" ] && [ "$DO_RELEASE" = "1" ]; then
+  echo "📦 scripts/start9-release.sh --tag v$NEW_VERSION"
+  CHAMA_COMMIT_DIR="$CHAMA_COMMIT_DIR" "$ROOT_DIR/scripts/start9-release.sh" --tag "v$NEW_VERSION" \
+    || echo "⚠️  Start9 lane failed — everything else shipped. Re-run alone with: npm run ship -- --only start9 --tag v$NEW_VERSION"
 fi
 
 echo "✅ Shipped v$NEW_VERSION"

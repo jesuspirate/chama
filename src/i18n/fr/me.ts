@@ -34,6 +34,11 @@ export const me: Record<string, string> = {
     "Accumulation — encore trop petit pour une récupération via Lightning",
   // Refonte Me : héros d'attention + accordéons.
   "me.accArbiter": "Arbitre",
+  "me.tabCommunity": "Communauté",
+  "me.tabSats": "Portefeuille",
+  "me.recentSettlements": "Règlements récents",
+  "me.settledReleased": "libéré",
+  "me.settledRefunded": "remboursé",
   "me.accMyTrades": "Mes échanges",
   "me.accProfileChama": "Profil et Chama",
   "me.accSettings": "Paramètres",
@@ -66,7 +71,7 @@ export const me: Record<string, string> = {
   "me.blfPool": "Vivier BLF",
   "me.buyer": "Acheteur",
   "me.buyerBrowsing": "acheteur en visite",
-  "me.categoryBillPay": "Factures comm.",
+  "me.categoryBillPay": "Factures",
   "me.categoryExchange": "Échange",
   "me.categoryLending": "Prêt",
   "me.categoryMarket": "Marché",
@@ -154,6 +159,11 @@ export const me: Record<string, string> = {
   "me.newListingNotifications": "Nouvelles annonces dans mon chama",
   "me.newListingNotificationsHint": "Me prévenir quand quelqu'un publie une nouvelle annonce ici",
   "me.nothingInView": "Rien dans cette vue pour le moment.",
+  "me.bgPush": "Alertes en arrière-plan",
+  "me.bgPushHint": "Réveillez-moi pour les actions d’échange même quand Chama est complètement fermée",
+  "me.bgPushInstall": "Ajoutez d’abord Chama à votre écran d’accueil pour recevoir les alertes sur iPhone",
+  "me.bgPushUnsupported": "Ce navigateur ne peut pas livrer d’alertes quand Chama est fermée",
+  "me.bgPushBlocked": "Autorisez les notifications dans votre navigateur pour activer ceci",
   "me.notifications": "Notifications",
   "me.notificationsHint": "Verrouillé · réclamation prête · litiges · réglé",
   "me.off": "Désactivé",
@@ -225,6 +235,10 @@ export const me: Record<string, string> = {
   "me.sellerQueueHint":
     "Vos annonces restent publiques ici ; les commandes en cours deviennent votre file de travail.",
   "me.signOut": "Se déconnecter",
+  "me.signOutConfirmTag": "AVANT DE PARTIR",
+  "me.signOutConfirmTitle": "Se déconnecter de Chama ?",
+  "me.signOutConfirmBody":
+    "La déconnexion oublie votre clé de récupération sur cet appareil. Il vous faudra votre propre copie sauvegardée pour vous reconnecter — Chama ne la conserve jamais et ne peut pas la récupérer pour vous.",
   "me.singleListing": "annonce simple",
   "me.smallLeftoverBody":
     "mis de côté comme petit reste. Chama garde les petits restes hors du flux principal et les laisse s'accumuler ici.",

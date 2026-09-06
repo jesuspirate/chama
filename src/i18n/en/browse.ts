@@ -11,6 +11,7 @@ export const browse: Record<string, string> = {
   "browse.beFirstCreate": "Create",
   "browse.beFirstTitle": "Be the first to post here",
   "browse.becomeArbiterTitle": "Become a community arbiter",
+  "browse.browseIn": "Browse in {unit}",
   "browse.btcPriceLoading": "BTC price…",
   "browse.cachedQuote": "cached quote",
   "browse.camera": "Camera",
@@ -77,7 +78,7 @@ export const browse: Record<string, string> = {
   // Category filter chips + section headers (labels held as keys in BROWSE_CATS).
   "browse.catAll": "All",
   "browse.catExchange": "Exchange",
-  "browse.catBillPay": "Com. Bill Pay",
+  "browse.catBillPay": "Bill Pay",
   "browse.catMarket": "Market",
   "browse.catWork": "Work",
   "browse.catLending": "Lending",

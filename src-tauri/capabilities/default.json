@@ -24,6 +24,8 @@
       "identifier": "http:default",
       "allow": [
         { "url": "https://mempool.space/*" },
+        { "url": "https://blockstream.info/*" },
+        { "url": "https://mutinynet.com/*" },
         { "url": "https://api.coinbase.com/*" },
         { "url": "https://api.coingecko.com/*" },
         { "url": "https://api.kraken.com/*" },

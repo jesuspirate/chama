@@ -291,7 +291,7 @@ export function BitcoinPricePill({
               fontFamily: T.mono, fontSize: 9, fontWeight: 900,
               textTransform: "uppercase", letterSpacing: .7,
             }}>
-              Browse in {amountMode === "fiat" ? displayCurrency : "sats"}
+              {t("browse.browseIn", { unit: amountMode === "fiat" ? displayCurrency : "sats" })}
             </span>
             <span style={{
               minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",

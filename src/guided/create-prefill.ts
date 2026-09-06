@@ -16,8 +16,20 @@ export interface CanvasCreatePrefill {
   emphasizePaymentMethods?: boolean;
   description?: string;
   amountSats?: number;
+  /** Exchange range (Jet 2026-09-05: "no single offers ever"): with both
+   *  amountSats (min) and maxAmountSats set on a p2p-trade prefill, Create
+   *  seeds ONE exchange-bracket menu item [min..max] instead of a single-amount
+   *  listing, so any buyer can take a slice of the range. */
+  maxAmountSats?: number;
   fiatAmount?: number;
   fiatCurrency?: string;
   billType?: string;
   paymentMethods?: string[];
+  /** S4.3: the premium the canvas already asked for (Exchange %, CBP bonus), in bps. */
+  premiumBps?: number;
+  /** S4.3: single-listing stock so a marketplace publish validates without the form. */
+  stock?: number;
+  /** S4.3: publish immediately by headlessly reusing this form's proven assembly,
+   *  then route to the canvas status screen — the guided user never sees this form. */
+  autoPublish?: boolean;
 }

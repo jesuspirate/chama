@@ -7,7 +7,8 @@ export type ChamaVerticalIconId =
   | "marketplace"
   | "work"
   | "chip-in"
-  | "stack";
+  | "stack"
+  | "chama";
 
 const ASSET_NAMES: Partial<Record<ChamaVerticalIconId, string>> = {
   "bill-pay": "bill-pay",
@@ -71,6 +72,26 @@ export function VerticalIcon({
           <circle fill="#f2e8d6" stroke={ink} strokeWidth="8" cx="120" cy="90" r="32" />
           <path fill="#13120f" d="M100 113c2-15 9-23 20-23s18 8 20 23h-40Z" />
           <circle fill="#f7931a" cx="120" cy="79" r="9" />
+        </svg>
+      </span>
+    );
+  }
+
+  if (vertical === "chama") {
+    // The Chama circle — three people around one shared pot. Same ink/paper
+    // palette as the other bespoke marks; the orange dot is the pooled sats.
+    // "Lock together; if the circle doesn't fill, everyone gets theirs back."
+    const ink = theme === "dark" ? "#eee3d0" : "#13120f";
+    return (
+      <span style={common} aria-hidden="true">
+        <svg viewBox="0 0 240 180" width={size} height={size} style={{ display: "block", overflow: "visible" }}>
+          <circle fill={ink} cx="120" cy="26" r="20" />
+          <circle fill={ink} cx="50" cy="142" r="20" />
+          <circle fill={ink} cx="190" cy="142" r="20" />
+          <path fill="none" stroke={ink} strokeWidth="9" strokeLinecap="round"
+            d="M120 50v16M66 130l26-18M174 130l-26-18" />
+          <circle fill="#f2e8d6" stroke={ink} strokeWidth="8" cx="120" cy="98" r="32" />
+          <circle fill="#f7931a" cx="120" cy="98" r="11" />
         </svg>
       </span>
     );

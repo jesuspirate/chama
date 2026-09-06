@@ -234,6 +234,19 @@ console.log("\n── SAVED INTENT MATCH ALERTS ──");
     !savedIntentMatchesListing(cashIntent, listing("saved-expensive", { fiatAmount: 43 }), "viewer", NOW),
     "does not alert when the Exchange offer exceeds the saved fiat budget",
   );
+  // Jet 2026-09-05: a market-priced listing (premium %, NO stored fiat quote)
+  // must still buzz a fiat-budget watcher — this path has no live price to
+  // inject, so the budget probe is skipped rather than silently failing with
+  // FIAT_QUOTE_REQUIRED forever. The canvas re-verifies price on open.
+  assert(
+    savedIntentMatchesListing(
+      cashIntent,
+      listing("saved-market-priced", { fiatAmount: undefined, fiatCurrency: undefined, premiumBps: 200 } as any),
+      "viewer",
+      NOW,
+    ),
+    "alerts on a market-priced (no stored quote) Exchange offer instead of staying silent",
+  );
 }
 
 console.log("\n── GUIDED INTENT VALIDATION ──");

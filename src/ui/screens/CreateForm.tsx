@@ -32,7 +32,7 @@
 //     honesty info card (one-time-per-account, dismissed on first
 //     publish). Save-draft button + Publish button.
 
-import { useState, useEffect, type KeyboardEvent, type WheelEvent } from "react";
+import { useState, useEffect, useRef, type KeyboardEvent, type WheelEvent } from "react";
 import { useT, translate, getCurrentLang } from "../../i18n/index.js";
 import { type MenuItem } from "../../escrow-engine/types.js";
 import { randomId } from "../../storage/random-id.js";
@@ -147,7 +147,8 @@ const VERTICALS: { id: string; labelKey: string; descriptionKey: string; comingS
   // Parked for later:
   // { id: "work", labelKey: "create.verticalWork", descriptionKey: "create.verticalWorkDesc" },
   // { id: "chip-in", labelKey: "create.verticalChipIn", descriptionKey: "create.verticalChipInDesc", comingSoon: true },
-  { id: "stack", labelKey: "create.verticalStack", descriptionKey: "create.verticalStackDesc", comingSoon: true },
+  // { id: "stack", labelKey: "create.verticalStack", descriptionKey: "create.verticalStackDesc", comingSoon: true },
+  { id: "chama", labelKey: "create.verticalChama", descriptionKey: "create.verticalChamaDesc", comingSoon: true },
 ];
 
 interface FormState {
@@ -1202,9 +1203,31 @@ export function CreateForm({
       cur: initialCanvasIntent.fiatCurrency ?? initial.cur,
       billType: initialCanvasIntent.billType ?? initial.billType,
       paymentMethods: initialCanvasIntent.paymentMethods?.filter(Boolean) ?? initial.paymentMethods,
+      premium: initialCanvasIntent.premiumBps !== undefined ? String(initialCanvasIntent.premiumBps / 100) : initial.premium,
+      stock: initialCanvasIntent.stock !== undefined ? String(initialCanvasIntent.stock) : initial.stock,
+      // Exchange range → one exchange-bracket menu item [min..max]. Publishes
+      // through the exact same menu-mode assembly the full editor uses.
+      ...(initialCanvasIntent.vertical === "p2p-trade"
+        && initialCanvasIntent.amountSats && initialCanvasIntent.amountSats > 0
+        && initialCanvasIntent.maxAmountSats
+        && initialCanvasIntent.maxAmountSats > initialCanvasIntent.amountSats
+        ? {
+            listingMode: "menu" as const,
+            menuItems: [{
+              ...newMenuDraftItem(),
+              label: translate(getCurrentLang(), "create.fallbackSatsForSale"),
+              sats: String(Math.round(initialCanvasIntent.amountSats)),
+              maxSats: String(Math.round(initialCanvasIntent.maxAmountSats)),
+            }],
+          }
+        : {}),
     };
   });
   const [submitting, setSubmitting] = useState(false);
+  // S4.3: headless auto-publish from the canvas. Reuses handlePublish verbatim
+  // (identical escrow), just skips the form UI so the guided user never sees it.
+  const [autoMode, setAutoMode] = useState<boolean>(() => !!initialCanvasIntent?.autoPublish);
+  const autoFiredRef = useRef(false);
   const [publishError, setPublishError] = useState<string | null>(null);
   const [arbiterDismissed, setArbiterDismissed] = useState(false);
   const [drafts, setDrafts] = useState<SavedDraft[]>(() => readAllDrafts());
@@ -1317,7 +1340,7 @@ export function CreateForm({
     setStep(2);
   };
 
-  const handlePublish = async () => {
+  const handlePublish = async (): Promise<"published" | "invalid" | "error"> => {
     setPublishError(null);
     let menuItems = normalizeMenuItems(form, vertical);
     const hasMenu = menuItems.length > 0;
@@ -1333,12 +1356,12 @@ export function CreateForm({
       !stockOk ||
       hasPartialMenuRows(form, vertical) ||
       hasLendingAmountAboveCurrentCap(form, vertical)
-    ) return;
+    ) return "invalid";
     if (
       !isSimModeOn() &&
       !isTestnetMode() &&
       totalSats < MIN_REAL_ATOMIC_FUNDING_SATS
-    ) return;
+    ) return "invalid";
     setSubmitting(true);
     try {
       // Old drafts may still contain inline data URLs. Upload them before CREATE
@@ -1459,7 +1482,7 @@ export function CreateForm({
       if (wantsOnchain && communityArbiters.length === 0) {
         setPublishError(t("onchain.noCapableArbiter"));
         setSubmitting(false);
-        return;
+        return "error";
       }
       // Only DIVISIBLE value can be tranched. A single physical item cannot
       // be delivered in quarters, so Stores are excluded — the honest answer
@@ -1558,12 +1581,55 @@ export function CreateForm({
       clearDraft(vertical);
       markFirstPublished(userPubkey);
       onClose();
+      return "published";
     } catch (error: any) {
       setPublishError(error?.message || "Couldn't publish this listing. Your draft is still here.");
+      return "error";
     } finally {
       setSubmitting(false);
     }
   };
+
+  // S4.3: fire the publish once, when in auto mode. If the user has an arbiter
+  // warning to resolve, bail to the normal form instead of publishing silently.
+  useEffect(() => {
+    if (!autoMode) return;
+    if (arbiterWarning.kind !== "none") { setAutoMode(false); return; }
+    if (autoFiredRef.current) return;
+    autoFiredRef.current = true;
+    void (async () => {
+      const result = await handlePublish();
+      // Validation short-circuit (no error surfaced) → let them finish in the
+      // full form rather than hang on the publishing screen. "error" keeps
+      // auto-mode so the retry/manual card shows; "published" closes the overlay.
+      if (result === "invalid") setAutoMode(false);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoMode, arbiterWarning.kind]);
+
+  // S4.3: while auto-publishing, show a calm status instead of the wizard; on
+  // failure, offer retry or a drop into the full form (never a dead end).
+  if (autoMode && !publishError) {
+    return (
+      <div style={{ padding: 44, maxWidth: 480, margin: "0 auto", textAlign: "center" }}>
+        <div style={{ fontSize: 16, fontWeight: 800, color: T.text, fontFamily: T.sans }}>{t("create.publishingTitle")}</div>
+        <div style={{ marginTop: 10, color: T.muted, fontSize: 14 }}>{t("create.publishingSub")}</div>
+      </div>
+    );
+  }
+  if (autoMode && publishError) {
+    return (
+      <div style={{ padding: 28, maxWidth: 480, margin: "0 auto" }}>
+        <div style={{ color: T.red, fontWeight: 700, marginBottom: 16, lineHeight: 1.4 }}>{publishError}</div>
+        <div style={{ display: "flex", gap: 10 }}>
+          <button onClick={() => { autoFiredRef.current = false; setPublishError(null); void handlePublish(); }}
+            style={{ padding: "10px 16px", borderRadius: 999, border: 0, background: T.accent, color: T.bg, fontWeight: 800, cursor: "pointer" }}>{t("common.retry")}</button>
+          <button onClick={() => { setAutoMode(false); setPublishError(null); }}
+            style={{ padding: "10px 16px", borderRadius: 999, border: `1px solid ${T.border}`, background: "transparent", color: T.text, cursor: "pointer" }}>{t("create.reviewManually")}</button>
+        </div>
+      </div>
+    );
+  }
 
   // ── Render: arbiter warning intercepts before the wizard renders ──
   if (arbiterWarning.kind !== "none" && !arbiterDismissed) {
@@ -2539,7 +2605,7 @@ function Step2({
       {/* #7 multi-unit storefront: single-product marketplace listings can carry
           a stock count. 2+ makes it a parent buyers purchase via child escrows. */}
       {vertical === "marketplace" && !usingMenu && (
-        <div style={{
+        <div className={emphasizeStock && !stockOk ? "create-recommend-glow" : undefined} style={{
           marginBottom: 16,
           padding: emphasizeStock && !stockOk ? 12 : 0,
           borderRadius: T.r,
@@ -3060,7 +3126,7 @@ function Step2({
       )}
 
       {supportsPremium(vertical) && (
-        <div style={{
+        <div className={emphasizePremium && !premiumOk ? "create-recommend-glow" : undefined} style={{
           marginBottom: 16,
           padding: emphasizePremium && !premiumOk ? 12 : 0,
           borderRadius: T.r,
@@ -3118,7 +3184,7 @@ function Step2({
       )}
 
       {categoryUsesPaymentRails(vertical) && paymentMethodOptions.length > 0 && (
-        <div style={{
+        <div className={emphasizePaymentMethods && !paymentMethodsOk ? "create-recommend-glow" : undefined} style={{
           marginBottom: 16,
           padding: emphasizePaymentMethods && !paymentMethodsOk ? 12 : 0,
           borderRadius: T.r,

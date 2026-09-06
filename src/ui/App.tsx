@@ -28,6 +28,7 @@ import { archivedTradeEntries } from "../escrow-engine/trade-index.js";
 import {
   isSlicedTradeShape,
   TRADE_SLICING_ENABLED,
+  LIVE_TRADE_SURFACE_ENABLED,
 } from "../escrow-engine/experimental-escrow-features.js";
 import {
   compareTradeChronology,
@@ -135,6 +136,7 @@ import {
   findActiveTrade,
   mergeOnchainPayoutAttention,
   selectNeedsYouTrades,
+  needsYouReasonFor,
   canInspectTradeWithoutFederationSwitch,
   shouldOpenSellerListingManagement,
   identifyStrandedEcashSource,
@@ -159,12 +161,15 @@ import { PendingPayoutCard } from "./components/PendingPayoutCard.js";
 import { useFederationCommands } from "./hooks/useFederationCommands.js";
 
 import { BrowseView } from "./screens/BrowseView.js";
-import { AssistedCanvas } from "./screens/AssistedCanvas.js";
+import { AssistedCanvas, type AssistedCanvasResume } from "./screens/AssistedCanvas.js";
 import type { CanvasCreatePrefill } from "../guided/create-prefill.js";
 import { ConnectScreen } from "./screens/ConnectScreen.js";
 import { GlobeCountryPicker } from "./screens/GlobeCountryPicker.js";
 import { DashboardScreen } from "./screens/DashboardScreen.js";
 import { TradeDetail } from "./screens/TradeDetail.js";
+import { LiveTradeSurface } from "./screens/LiveTradeSurface.js";
+import { CanvasAttentionBell } from "./components/CanvasAttentionBell.js";
+import { OfflineBar } from "./components/OfflineBar.js";
 import { CreateForm } from "./screens/CreateForm.js";
 import { MeScreen } from "./screens/MeScreen.js";
 import { LapsedStoreCard } from "./components/LapsedStoreCard.js";
@@ -175,6 +180,7 @@ import { HelpScreen } from "./screens/HelpScreen.js";
 import { WalletBar } from "./panels/WalletBar.js";
 import { ChamaBar } from "./panels/ChamaBar.js";
 import { DestroyEcashConfirmModal } from "./panels/DestroyEcashConfirmModal.js";
+import { SignOutConfirmModal } from "./panels/SignOutConfirmModal.js";
 import { FundWalletModal } from "./panels/FundWalletModal.js";
 import { AtomicFundingModal } from "./panels/AtomicFundingModal.js";
 import { ClaimPayoutModal } from "./panels/ClaimPayoutModal.js";
@@ -208,6 +214,7 @@ import {
   type StrandedRedemption,
 } from "../fedimint/pending-redemptions.js";
 import type { ReabsorbOutcome } from "../fedimint/reabsorb-bearer-notes.js";
+import { listClaimCredits } from "../payments/claim-credit-ledger.js";
 import { clearEcashExport, getEcashExport } from "../payments/ecash-exports.js";
 import {
   MIN_REAL_ATOMIC_FUNDING_MSATS,
@@ -491,6 +498,10 @@ export default function App() {
   // so the hook gets a stable reference and doesn't re-wire on every render.
   const toastRef = useRef<((t: { message: ReactNode; type: "success" | "error" | "info" }) => void) | null>(null);
 
+  // Canvas conversation snapshot — lets back-from-a-trade land on the match
+  // results the user left, instead of resetting to "What are you bringing?".
+  const canvasResumeRef = useRef<AssistedCanvasResume | null>(null);
+
   const [{
     connected,
     pubkey,
@@ -550,6 +561,7 @@ export default function App() {
   // the old bottom-nav Create slot both hit this same path for now.
   const [createOverlayOpen, setCreateOverlayOpen] = useState(false);
   const [createCanvasIntent, setCreateCanvasIntent] = useState<CanvasCreatePrefill | null>(null);
+  const [canvasPublished, setCanvasPublished] = useState<{ label: string; escrowId?: string } | null>(null);
   // When the Advanced screen is opened from the trade-page NWC "Change" link,
   // land focused on the NWC wallets section instead of the top of the page.
   const [advancedFocusNwc, setAdvancedFocusNwc] = useState(false);
@@ -557,6 +569,163 @@ export default function App() {
   const [sellerManageId, setSellerManageId] = useState<string | null>(null);
   const urlEscrowOpenAttemptedRef = useRef(false);
   const [detailBackView, setDetailBackView] = useState<View>("browse");
+  // LiveTradeSurface (flag-gated): the guided question/vote view of a live
+  // trade. "More options" flips to the full TradeDetail for this trade only;
+  // reset when the open trade changes so each trade starts guided.
+  const [expertTradeView, setExpertTradeView] = useState(false);
+  useEffect(() => { setExpertTradeView(false); }, [selectedId]);
+
+  // Offline guard: no publish/money action should fire when we have no relays —
+  // otherwise the user works through the whole flow and only fails at the end.
+  const requireOnline = (): boolean => {
+    if (!connected || connectedRelays === 0) {
+      setToast({ message: t("canvas.offlineToast"), type: "error" });
+      return false;
+    }
+    return true;
+  };
+
+  // Claim, lifted so LiveTradeSurface fires the IDENTICAL ClaimPayoutModal flow.
+  const tradeOnClaim = async (): Promise<void> => {
+    if (!requireOnline()) return;
+              // v0.3.0 Phase 3: open ClaimPayoutModal instead of
+              // dispatching claimAndRedeem directly. In browsers this
+              // can still route through a payout destination; inside
+              // Fedi, the modal auto-claims into the host wallet.
+              if (!selected) return;
+              // Current Fedi/ecash path expects the whole reconstructed
+              // token. Fee fields stay in the protocol record, but should
+              // only affect this amount once real payout fan-out exists.
+              const payoutMsats = selected.amountMsats;
+              // E1.1: hold back the winner's 0.25% arbiter insurance from
+              // the payout quote so the settle sweep finds it in the wallet.
+              const claimDecision = (!isSimModeOn() && !isTestnetMode() && pubkey)
+                ? computeArbiterPremium(selected, pubkey)
+                : null;
+              return new Promise<void>((resolve) => {
+                setPendingClaim({
+                  escrowId: selectedId!,
+                  payoutMsats,
+                  premiumMsats: claimDecision?.payable ? claimDecision.amountMsats : 0,
+                  tradeCommunity: selected.community,
+                  fiatCurrency: selected.fiatCurrency,
+                  resolve,
+                });
+              });
+  };
+
+  // Join / seat, lifted so the guided surface can seat a matched buyer inline
+  // (no bounce to the full view). Same actions.joinEscrow + FED_MISMATCH switch.
+  const tradeOnJoin = async (
+    role: Role,
+    joinOpts?: { selectedItems?: SelectedMenuItem[]; amountMsats?: number; orderFinalized?: boolean },
+  ): Promise<void> => {
+    if (!requireOnline()) return;
+              try {
+                setToast({
+                  message: joinOpts?.orderFinalized
+                    ? t("app.confirmingOrder")
+                    : joinOpts?.selectedItems?.length
+                      ? t("app.savingCart")
+                      : t("app.joiningAsRole", { role }),
+                  type: "info",
+                });
+                await actions.joinEscrow(selectedId!, role, joinOpts);
+                setToast({
+                  message: joinOpts?.orderFinalized
+                    ? t("app.orderReady")
+                    : joinOpts?.selectedItems?.length
+                      ? t("app.cartSaved")
+                      : t("app.joinedAsRole", { role }),
+                  type: "success",
+                });
+              } catch (e: any) {
+                // #25: the trade lives on a different fed than the wallet. Don't
+                // dump "sign out and rejoin" — offer a one-tap switch to its chama.
+                if (e?.code === "FED_MISMATCH" && selected?.community) {
+                  setPendingFedSwitch({
+                    community: selected.community,
+                    retry: async () => { await actions.joinEscrow(selectedId!, role, joinOpts); },
+                  });
+                  return;
+                }
+                setToast({ message: e.message || t("app.joinFailed"), type: "error" });
+              }
+  };
+
+  // Fund / lock, lifted from the inline TradeDetail prop so the guided
+  // LiveTradeSurface fires the IDENTICAL AtomicFundingModal flow (no money-path
+  // fork). Both views pass this same handler.
+  const tradeOnLock = async (
+    lockOpts: { savedHandleId?: string; selectedItems?: SelectedMenuItem[]; amountMsats?: number } = {},
+  ): Promise<void> => {
+    if (!requireOnline()) return;
+              const savedHandleId = lockOpts.savedHandleId;
+              const selectedItems = lockOpts.selectedItems;
+              if (!fedimint.joined) {
+                setToast({ message: t("app.joinChamaFirst"), type: "error" });
+                return;
+              }
+              // v0.6.5: the only Fund gate is mid-funding — multiple
+              // concurrent trades are fine, but two concurrent atomic
+              // funding flows would race the shared OPFS wallet.
+              if (midFunding) {
+                setToast({
+                  message: t("app.anotherFundingInProgress"),
+                  type: "error",
+                });
+                return;
+              }
+              if (!selected) return;
+              const lockAmountMsats = lockOpts.amountMsats ?? selected.amountMsats;
+              if (
+                !simOn &&
+                !isTestnetMode() &&
+                lockAmountMsats < MIN_REAL_ATOMIC_FUNDING_MSATS
+              ) {
+                setToast({
+                  message: `${minimumAtomicFundingMessage()} ${t("app.enterPositiveAmount")}`,
+                  type: "error",
+                });
+                return;
+              }
+              const probe = await actions.probeFederation();
+              if (!probe.ok) {
+                setToast({
+                  message: probe.error || t("app.walletDisconnectedReconnect"),
+                  type: "error",
+                });
+                return;
+              }
+              // v0.3.0 Phase 2: open AtomicFundingModal instead of
+              // dispatching lockAndPublish directly. The modal handles
+              // BOLT11 → mint → LOCK in one user-perceived motion.
+              // Pillar 2.1 Option B: no intermediate balance UI.
+              const lockLabel = selected.category === "marketplace" ? "Pay for Item"
+                : selected.category === "lending" ? "Fund Loan"
+                : selected.category === "bill-pay" ? "Lock Sats"
+                : selected.category === "p2p-trade" ? "Fund Escrow"
+                : "Lock Sats";
+              // E1.1: fold the funder's 0.25% arbiter insurance into the
+              // invoice (bonded-stamp trades only; zero in sim/testnet).
+              const fundPremiumMsats = (!simOn && !isTestnetMode())
+                ? funderPremiumMsats(selected, lockAmountMsats)
+                : 0;
+              return new Promise<void>((resolve) => {
+                setPendingFundAndLock({
+                  escrowId: selectedId!,
+                  amountMsats: lockAmountMsats,
+                  premiumMsats: fundPremiumMsats,
+                  ctaLabel: lockLabel,
+                  savedHandleId,
+                  selectedItems,
+                  tradeCommunity: selected.community,
+                  fiatCurrency: selected.fiatCurrency,
+                  tradeCategory: selected.category,
+                  resolve,
+                });
+              });
+  };
   // V3 #75: set when a listing-tap silently switched the wallet onto the
   // listing's fed (identity stayed home). Consumed by maybeSnapBackHome()
   // when the user backs out of the detail view.
@@ -602,6 +771,10 @@ export default function App() {
   // switch to the chama the trade lives in. Captures the trade's community + a retry.
   const [pendingFedSwitch, setPendingFedSwitch] = useState<{ community: string; retry: () => Promise<void> } | null>(null);
   const [autoInitDone, setAutoInitDone] = useState(false);
+  // Suppress the offline banner during initial boot/seed-paste (relays connect a
+  // beat after login) — only show it once we've actually been online and dropped.
+  const [everOnline, setEverOnline] = useState(false);
+  useEffect(() => { if (connected && connectedRelays > 0) setEverOnline(true); }, [connected, connectedRelays]);
   // Relay-resilience re-arm. The auto-init effect latches autoInitDone on
   // dispatch so it fires once and never hot-loops — but that left a failed/empty
   // first attempt stuck until a manual Reconnect. These re-open the latch when
@@ -1679,8 +1852,24 @@ export default function App() {
     };
   }, [pubkey, onchainPayoutScanKey, refreshOnchainPayoutAttention]);
 
+  // Zombie-claim suppression set: escrow ids whose payout this device already
+  // redeemed. Relay hydration can replay a still-APPROVED chain (the CLAIM
+  // event never reached a relay, or a stale relay serves an old snapshot) and
+  // the pure chain facts then resurrect "Claim your payout" for notes that are
+  // long consumed. The proof of redemption is device-local, so we read both
+  // money-trail ledgers: the claim-credit ledger (balance demonstrably grew)
+  // and the pending-redemption stash (notes exported/probed/marked used —
+  // entries are archived, never deleted, so "marked as used" stays visible
+  // here). Recomputed per render on purpose: both are small bounded
+  // localStorage ledgers, and a just-recorded credit must suppress on the very
+  // next paint.
+  const settledClaimIds = new Set<string>();
+  if (pubkey) {
+    for (const r of listPendingRedemptions()) settledClaimIds.add(r.escrowId);
+    for (const c of listClaimCredits()) settledClaimIds.add(c.escrowId);
+  }
   const ordinaryNeedsYouTrades = pubkey
-    ? selectNeedsYouTrades({ escrows: escrows.values(), userPubkey: pubkey, nowSec: now })
+    ? selectNeedsYouTrades({ escrows: escrows.values(), userPubkey: pubkey, nowSec: now, settledClaimIds })
     : [];
   const needsYouTrades = mergeOnchainPayoutAttention({
     needsYou: ordinaryNeedsYouTrades,
@@ -2330,7 +2519,13 @@ export default function App() {
     // not an active trade. Its owner gets management actions instead of the
     // buyer-oriented TradeDetail. Spawned/funded child orders still pass
     // through normally because those are real trades requiring attention.
-    if (shouldOpenSellerListingManagement({ escrow: local, viewerPubkey: pubkey })) {
+    // A trade that NEEDS the viewer is a trade room, not inventory: the bell
+    // and attention cards must always land on the guided surface, never on the
+    // owner's Edit/Delete management view.
+    const needsViewer = pubkey
+      ? needsYouReasonFor(local, pubkey, undefined, settledClaimIds) !== null
+      : false;
+    if (!needsViewer && shouldOpenSellerListingManagement({ escrow: local, viewerPubkey: pubkey })) {
       setSellerManageId(id);
       return;
     }
@@ -2609,6 +2804,7 @@ export default function App() {
       // trade by a notification + the attention signal the moment a buyer acts.
       setSelectedId(null);
       setView("browse");
+      return escrowId;
     } catch (e: any) {
       console.error("[chama] Create failed:", e);
       setToast({ message: e.message || t("app.createFailed"), type: "error" });
@@ -2616,7 +2812,12 @@ export default function App() {
     }
   };
 
-  const handleSignOut = async () => {
+  const [pendingSignOut, setPendingSignOut] = useState(false);
+  // Sign out is destructive (removeSavedNsec wipes the on-device key on
+  // native/Tauri; web drops the in-memory key on reload). Gate it behind a
+  // confirm so it's the last-chance backup reminder, not a silent one-tap wipe.
+  const handleSignOut = () => setPendingSignOut(true);
+  const performSignOut = async () => {
     await removeSavedNsec();
     delete (window as any).__chama_connect_nsec;
     window.location.reload();
@@ -2813,6 +3014,10 @@ export default function App() {
   // ── Connected → main app ──
   const detailMode = view === "detail" && !!selected;
   const assistedCanvasMode = view === "guided";
+  // v6.3: the Pulse dashboard and tabbed Me own their inner readable widths
+  // (1080 / 760, centered) — the 520 shell clamp made both render as a crammed
+  // phone column on desktop.
+  const wideOwnWidthMode = view === "dashboard" || view === "me";
   const activeTab = detailMode ? TAB_FOR_VIEW[detailBackView] : TAB_FOR_VIEW[view];
   const effectiveShellPaddingBottom = detailMode ? 0 : shellPaddingBottom;
 
@@ -2826,11 +3031,12 @@ export default function App() {
       // responsively (520 → 1040 → 1120); narrow/mobile is unaffected.
       // Assisted Canvas owns its readable inner width, so its page surface can
       // fill the viewport instead of exposing dark gutters on wide desktops.
-      fontFamily: T.sans, maxWidth: detailMode ? 1120 : assistedCanvasMode ? "none" : 520, margin: "0 auto",
+      fontFamily: T.sans, maxWidth: detailMode ? 1120 : (assistedCanvasMode || wideOwnWidthMode) ? "none" : 520, margin: "0 auto",
       paddingBottom: effectiveShellPaddingBottom,
       paddingTop: shellPaddingTop,
     }}>
       <style>{globalCss()}</style>
+      {everOnline && (!connected || connectedRelays === 0) && <OfflineBar />}
       <SimModePill />
       <SimEntryModal />
 
@@ -3343,6 +3549,15 @@ export default function App() {
           zero. The destroy escape (v0.2.0's tertiary button) is gone
           — Sandbox-mode users who truly need to nuke OPFS use
           Settings → Advanced → Sandbox → Reset OPFS. */}
+      {pendingSignOut && (
+        <SignOutConfirmModal
+          onCancel={() => setPendingSignOut(false)}
+          onConfirm={() => {
+            setPendingSignOut(false);
+            void performSignOut();
+          }}
+        />
+      )}
       {pendingDestroyConfirm && balanceBlocksFederationSwitch(pendingDestroyConfirm.balanceMsats) && (
         <DestroyEcashConfirmModal
           targetLabel={pendingDestroyConfirm.label}
@@ -3506,6 +3721,7 @@ export default function App() {
 
       {/* Content — routed by view */}
       {view === "guided" ? (
+        <>
         <AssistedCanvas
           listings={allVisibleListings}
           stockByListing={stockByListing}
@@ -3519,6 +3735,7 @@ export default function App() {
             setView("browse");
           }}
           onCreate={(intent) => {
+            if (!requireOnline()) return;
             setCreateCanvasIntent(intent);
             setCreateOverlayOpen(true);
           }}
@@ -3527,7 +3744,19 @@ export default function App() {
             setCreateOverlayOpen(true);
           }}
           onOpenTrade={(id) => openEscrow(id, "guided")}
+          publishedInfo={canvasPublished}
+          onDismissPublished={() => setCanvasPublished(null)}
+          resumeRef={canvasResumeRef}
         />
+        {visibleAttentionTrade && (
+          <CanvasAttentionBell
+            trade={visibleAttentionTrade}
+            needsYouCount={needsYouCount}
+            actionMode={attentionActionMode}
+            onTap={() => openEscrow(visibleAttentionTrade.id, "guided")}
+          />
+        )}
+        </>
       ) : view === "detail" && selected ? (
         <div style={{
           animation: "fadeIn 0.3s ease",
@@ -3538,6 +3767,39 @@ export default function App() {
           height: `calc(100dvh - ${typeof shellPaddingTop === "number" ? `${shellPaddingTop}px` : shellPaddingTop} - ${simOn ? `${SIM_PILL_HEIGHT}px` : "0px"} - env(safe-area-inset-bottom, 0px))`,
           display: "flex", flexDirection: "column", minHeight: 0,
         }}>
+          {LIVE_TRADE_SURFACE_ENABLED && !expertTradeView ? (
+            <LiveTradeSurface
+              key={`lts:${selected.id}`}
+              state={selected}
+              pubkey={pubkey!}
+              onBack={() => { setView(detailBackView); setSelectedId(null); maybeSnapBackHome(); }}
+              backLabel={
+                detailBackView === "me" ? t("browse.navMe")
+                : detailBackView === "dashboard" ? t("browse.navDashboard")
+                : t("browse.navBrowse")
+              }
+              onOpenFullView={() => setExpertTradeView(true)}
+              onLock={tradeOnLock}
+              onClaim={tradeOnClaim}
+              onJoin={tradeOnJoin}
+              onVote={(outcome) => actions.vote(selectedId!, outcome).then(
+                () => setToast({ message: t("app.votedOutcome", { outcome }), type: "success" }),
+                (e: any) => {
+                  if (e?.voteSuppressed) { setToast({ message: e?.message || t("app.voteAlreadyRecorded"), type: "info" }); return; }
+                  setToast({ message: e?.message || t("app.voteFailed"), type: "error" });
+                },
+              )}
+              onConfirmPayout={(escrowId) => { void actions.reattachPayout(escrowId); }}
+              onSendChat={(message) => {
+                actions.sendChat(selectedId!, message).catch((e: any) =>
+                  setToast({ message: e.message || t("app.sendFailed"), type: "error" }));
+              }}
+              onRateCounterparty={handleRateCounterparty}
+              myGivenRatings={myGivenRatings}
+              fundingInProgress={midFunding}
+              bootProbeFailed={fedimint.bootProbeState === "failed"}
+            />
+          ) : (
           <TradeDetail
             key={`${selected.id}:${(() => {
               const p = getEffectiveParticipantsAt(selected, Math.floor(Date.now() / 1000));
@@ -3603,64 +3865,8 @@ export default function App() {
             // R3-1b: re-attach to a submitted payout on view → complete a
             // CLAIMED trade whose refund/claim already landed (no re-pay).
             onConfirmPayout={(escrowId) => { void actions.reattachPayout(escrowId); }}
-            onClaim={async () => {
-              // v0.3.0 Phase 3: open ClaimPayoutModal instead of
-              // dispatching claimAndRedeem directly. In browsers this
-              // can still route through a payout destination; inside
-              // Fedi, the modal auto-claims into the host wallet.
-              if (!selected) return;
-              // Current Fedi/ecash path expects the whole reconstructed
-              // token. Fee fields stay in the protocol record, but should
-              // only affect this amount once real payout fan-out exists.
-              const payoutMsats = selected.amountMsats;
-              // E1.1: hold back the winner's 0.25% arbiter insurance from
-              // the payout quote so the settle sweep finds it in the wallet.
-              const claimDecision = (!isSimModeOn() && !isTestnetMode() && pubkey)
-                ? computeArbiterPremium(selected, pubkey)
-                : null;
-              return new Promise<void>((resolve) => {
-                setPendingClaim({
-                  escrowId: selectedId!,
-                  payoutMsats,
-                  premiumMsats: claimDecision?.payable ? claimDecision.amountMsats : 0,
-                  tradeCommunity: selected.community,
-                  fiatCurrency: selected.fiatCurrency,
-                  resolve,
-                });
-              });
-            }}
-            onJoin={async (role, joinOpts) => {
-              try {
-                setToast({
-                  message: joinOpts?.orderFinalized
-                    ? t("app.confirmingOrder")
-                    : joinOpts?.selectedItems?.length
-                      ? t("app.savingCart")
-                      : t("app.joiningAsRole", { role }),
-                  type: "info",
-                });
-                await actions.joinEscrow(selectedId!, role, joinOpts);
-                setToast({
-                  message: joinOpts?.orderFinalized
-                    ? t("app.orderReady")
-                    : joinOpts?.selectedItems?.length
-                      ? t("app.cartSaved")
-                      : t("app.joinedAsRole", { role }),
-                  type: "success",
-                });
-              } catch (e: any) {
-                // #25: the trade lives on a different fed than the wallet. Don't
-                // dump "sign out and rejoin" — offer a one-tap switch to its chama.
-                if (e?.code === "FED_MISMATCH" && selected?.community) {
-                  setPendingFedSwitch({
-                    community: selected.community,
-                    retry: async () => { await actions.joinEscrow(selectedId!, role, joinOpts); },
-                  });
-                  return;
-                }
-                setToast({ message: e.message || t("app.joinFailed"), type: "error" });
-              }
-            }}
+            onClaim={tradeOnClaim}
+            onJoin={tradeOnJoin}
             onReleasePeriod={async (periodIndex: number) => {
               try {
                 await actions.releasePeriod(selectedId!, periodIndex);
@@ -3944,79 +4150,14 @@ export default function App() {
                 return { ok: false, error: msg };
               }
             }}
-            onLock={async (lockOpts = {}) => {
-              const savedHandleId = lockOpts.savedHandleId;
-              const selectedItems = lockOpts.selectedItems;
-              if (!fedimint.joined) {
-                setToast({ message: t("app.joinChamaFirst"), type: "error" });
-                return;
-              }
-              // v0.6.5: the only Fund gate is mid-funding — multiple
-              // concurrent trades are fine, but two concurrent atomic
-              // funding flows would race the shared OPFS wallet.
-              if (midFunding) {
-                setToast({
-                  message: t("app.anotherFundingInProgress"),
-                  type: "error",
-                });
-                return;
-              }
-              if (!selected) return;
-              const lockAmountMsats = lockOpts.amountMsats ?? selected.amountMsats;
-              if (
-                !simOn &&
-                !isTestnetMode() &&
-                lockAmountMsats < MIN_REAL_ATOMIC_FUNDING_MSATS
-              ) {
-                setToast({
-                  message: `${minimumAtomicFundingMessage()} ${t("app.enterPositiveAmount")}`,
-                  type: "error",
-                });
-                return;
-              }
-              const probe = await actions.probeFederation();
-              if (!probe.ok) {
-                setToast({
-                  message: probe.error || t("app.walletDisconnectedReconnect"),
-                  type: "error",
-                });
-                return;
-              }
-              // v0.3.0 Phase 2: open AtomicFundingModal instead of
-              // dispatching lockAndPublish directly. The modal handles
-              // BOLT11 → mint → LOCK in one user-perceived motion.
-              // Pillar 2.1 Option B: no intermediate balance UI.
-              const lockLabel = selected.category === "marketplace" ? "Pay for Item"
-                : selected.category === "lending" ? "Fund Loan"
-                : selected.category === "bill-pay" ? "Lock Sats"
-                : selected.category === "p2p-trade" ? "Fund Escrow"
-                : "Lock Sats";
-              // E1.1: fold the funder's 0.25% arbiter insurance into the
-              // invoice (bonded-stamp trades only; zero in sim/testnet).
-              const fundPremiumMsats = (!simOn && !isTestnetMode())
-                ? funderPremiumMsats(selected, lockAmountMsats)
-                : 0;
-              return new Promise<void>((resolve) => {
-                setPendingFundAndLock({
-                  escrowId: selectedId!,
-                  amountMsats: lockAmountMsats,
-                  premiumMsats: fundPremiumMsats,
-                  ctaLabel: lockLabel,
-                  savedHandleId,
-                  selectedItems,
-                  tradeCommunity: selected.community,
-                  fiatCurrency: selected.fiatCurrency,
-                  tradeCategory: selected.category,
-                  resolve,
-                });
-              });
-            }}
+            onLock={tradeOnLock}
             onPrewarmFunding={() => {
               void actions.prewarmFunding();
             }}
             onOpenSettings={() => setView("saved-handles")}
             onOpenNwcSettings={() => { setAdvancedFocusNwc(true); setView("advanced"); }}
           />
+          )}
         </div>
       ) : view === "create" ? (
         <div style={{ animation: "fadeIn 0.3s ease" }}>
@@ -4499,10 +4640,17 @@ export default function App() {
                 ? `canvas:${createCanvasIntent.vertical}:${createCanvasIntent.description ?? ""}:${createCanvasIntent.amountSats ?? ""}:${createCanvasIntent.fiatAmount ?? ""}:${createCanvasIntent.billType ?? ""}:${createCanvasIntent.emphasizePremium ? "premium" : "ordinary"}:${createCanvasIntent.emphasizePaymentMethods ? "payment" : "ordinary"}`
                 : "classic"}
               onCreate={async (params: any) => {
-                await handleCreate(params);
+                const auto = !!createCanvasIntent?.autoPublish;
+                const label = createCanvasIntent?.vertical === "bill-pay" ? "your bill request"
+                  : createCanvasIntent?.vertical === "marketplace" ? "your listing"
+                  : "your offer";
+                const publishedEscrowId = await handleCreate(params);
                 setCreateOverlayOpen(false);
                 setCreateCanvasIntent(null);
-                setDetailBackView("browse");
+                // S4.3: a canvas auto-publish lands on the guided status screen —
+                // never dumped into Browse or the empty trade room.
+                if (auto) { setCanvasPublished({ label, ...(publishedEscrowId ? { escrowId: publishedEscrowId } : {}) }); setView("guided"); }
+                else setDetailBackView("browse");
               }}
               onClose={() => { setCreateOverlayOpen(false); setCreateCanvasIntent(null); }}
               arbiterWarning={arbiterWarning}
@@ -4562,11 +4710,20 @@ const globalCss = () => `
   /* TradeView gated money buttons: one tap ARMS (amber, pulsing) before the
      confirming second tap. */
   @keyframes armPulse{0%,100%{box-shadow:0 0 0 0 ${T.amber}00}50%{box-shadow:0 0 0 4px ${T.amber}22}}
+  /* CreateForm wayfinding: the recommended/required field cards (premium,
+     units-in-stock, accepted payment) breathe a soft accent glow so the guided
+     user's eye lands on the single field still needed before publish. Only the
+     currently-emphasized card carries the class, one at a time — unlike the
+     decorative trade-room beams this is a real cue, so it stays visible at phone
+     widths and only stills (not hides) under reduced motion. */
+  @keyframes recommendGlow{0%,100%{box-shadow:0 0 0 0 ${T.accent}00}50%{box-shadow:0 0 0 3px ${T.accent}33,0 0 15px 0 ${T.accent}3a}}
+  .create-recommend-glow{animation:recommendGlow 2.4s ease-in-out infinite}
   @media (prefers-reduced-motion: reduce){
     .spine-node-live{animation:none!important}
     .spine-beam{animation:none!important;transform:translateX(80%)!important}
     .td-pager-nudge{animation:none!important}
     .td-armed{animation:none!important}
+    .create-recommend-glow{animation:none!important;box-shadow:0 0 0 3px ${T.accent}44!important}
   }
   /* Start9 split view gives each active-trade renderer a narrow viewport.
      Chrome 150 was observed driving one such renderer to a 3.5 GB physical
@@ -4581,6 +4738,18 @@ const globalCss = () => `
     .td-armed{animation:none!important}
   }
   *{box-sizing:border-box;margin:0;padding:0}
+  /* Reserve the scrollbar gutter always, so switching to the taller Me tab
+     (which overflows and summons a scrollbar) no longer nudges the centered
+     column sideways. */
+  html{scrollbar-gutter:stable}html,body{background:${T.bg}}
+  /* Reusable boot-mark loader: animated color-cycle by default, static woven
+     mark under reduced motion. */
+  .chama-loader-motion{display:block}
+  .chama-loader-static{display:none}
+  @media (prefers-reduced-motion: reduce){
+    .chama-loader-motion{display:none!important}
+    .chama-loader-static{display:block!important}
+  }
   /* v2.5 polish: kill the browser's default tap-highlight (the blue/grey
      flash on Android taps) and the default blue focus halo on buttons/links.
      Keep accessibility intact: a subtle Chama focus ring still shows for

@@ -2,11 +2,14 @@ Chama release-notes template
 ============================
 See scripts/ship.sh and docs/RELEASING.md.
 
-For each release, save TWO files in $CHAMA_COMMIT_DIR (default /tmp), named for
-the TARGET version (the version you're about to ship, i.e. after the bump):
+For each release, save THREE files in $CHAMA_COMMIT_DIR — which defaults to the
+repo-local release-notes/ dir when it exists (gitignored; where Claude writes
+them), else /tmp — named for the TARGET version (after the bump):
 
-  /tmp/chama-v<VERSION>_release_notes     (required)
-  /tmp/chama-v<VERSION>_zapstore_notes    (optional)
+  release-notes/chama-v<VERSION>_release_notes       (required)
+  release-notes/chama-v<VERSION>_zapstore_notes      (optional)
+  release-notes/chama-v<VERSION>_startos_current.ts  (optional — presence turns
+                                                      the Start9 lane on)
 
 ship.sh resolves both by name and refuses to start if the required one is
 missing, so a typo can never leave you with a half-bumped tree.
@@ -54,3 +57,14 @@ Rules:
 `scripts/validate-zapstore-notes.mjs` enforces this shape before publication.
 Omit the file only for a dev-only release; public releases require curated
 notes.
+
+
+── chama-v<VERSION>_startos_current.ts (separate file) ──────────────────────
+A complete replacement for startos/versions/current.ts in the packaging repo
+(Start9-Community/chama-startos): version '<VERSION>:0' plus releaseNotes in
+all five locales (en_US, es_ES, de_DE, pl_PL, fr_FR) describing what a StartOS
+user observes — simple but accurate, not the app changelog. When this file
+exists, ship.sh runs scripts/start9-release.sh after the main lane: it pins the
+chama/ submodule to the signed tag, installs this file, pushes a branch to the
+fork, and opens the community PR. Merging the PR builds and publishes the
+.s9pk via the packaging repo's CI — nothing to build locally.

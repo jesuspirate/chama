@@ -84,5 +84,10 @@ design/mockups/
 # this application repository.
 /startos/
 *.s9pk
+
+# Release-notes working files (chama-vX.Y.Z_*): ship.sh reads them from here
+# by convention; the content ships as the commit message / release pages, so
+# the files themselves stay untracked.
+/release-notes/
 docker-images
 ncc-cache

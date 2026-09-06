@@ -142,6 +142,14 @@ const samePubkey = (a?: string | null, b?: string | null): boolean =>
 const SPLIT_FLOOR_TOP = "clamp(120px, 20dvh, 300px)";
 const SPLIT_FLOOR_BOTTOM = "clamp(140px, 22dvh, 340px)";
 
+// Shared inline-style fragments (exact duplicates factored out — no visual
+// change; each was byte-identical at 2+ call sites in this file).
+const centerAmberNote: React.CSSProperties = { textAlign: "center", marginTop: 8, fontSize: 10, color: T.amber, fontFamily: T.mono };
+const ellipsisClamp: React.CSSProperties = { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" };
+const mutedMonoNote: React.CSSProperties = { fontSize: 10, color: T.muted, fontFamily: T.mono, lineHeight: 1.5 };
+const textLinkButtonStyle: React.CSSProperties = { background: "none", border: "none", color: T.muted, fontFamily: T.mono, fontSize: 10, cursor: "pointer", padding: "8px 0", width: "100%", textAlign: "center", textDecoration: "underline" };
+
+
 export function TradeDetail({
   state, pubkey, homeCommunity, bootProbeFailed, receiveUnavailable, fundingInProgress,
   claimBlockedReason, amountDisplayMode = "sats", onAmountDisplayModeChange, kind0Enabled = false, profileNames,
@@ -1778,7 +1786,7 @@ export function TradeDetail({
                     color: T.text, fontFamily: T.sans, fontSize: 13, fontWeight: 600,
                   }}
                 >
-                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  <span style={ellipsisClamp}>
                     {t("trade.storefrontOrderRow", {
                       buyer: buyer ? shortParticipantPubkey(buyer) : t("trade.buyer"),
                     })}
@@ -1840,7 +1848,7 @@ export function TradeDetail({
                     color: T.text, fontFamily: T.sans, fontSize: 13, fontWeight: 600,
                   }}
                 >
-                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  <span style={ellipsisClamp}>
                     {t("trade.storefrontReservingRow", {
                       buyer: buyer ? shortParticipantPubkey(buyer) : t("trade.buyer"),
                     })}
@@ -2368,46 +2376,28 @@ export function TradeDetail({
                       setLocking(false);
                     }
                   }}
-                  style={{
-                    background: "none", border: "none",
-                    color: T.muted, fontFamily: T.mono, fontSize: 10,
-                    cursor: "pointer", padding: "8px 0",
-                    width: "100%", textAlign: "center",
-                    textDecoration: "underline",
-                  }}
+                  style={textLinkButtonStyle}
                 >
                   {t("trade.useDifferentFunding")}
                 </button>
               )}
               {fundingInProgress && (
-                <div style={{
-                  textAlign: "center", marginTop: 8,
-                  fontSize: 10, color: T.amber, fontFamily: T.mono,
-                }}>
+                <div style={centerAmberNote}>
                   {t("trade.fundingInProgressNote")}
                 </div>
               )}
               {lockBlockedByNoArbiter && !fundingInProgress && (
-                <div style={{
-                  textAlign: "center", marginTop: 8,
-                  fontSize: 10, color: T.amber, fontFamily: T.mono,
-                }}>
+                <div style={centerAmberNote}>
                   {t("trade.noArbiterShort")}
                 </div>
               )}
               {bootProbeFailed && !fundingInProgress && !lockBlockedByNoArbiter && (
-                <div style={{
-                  textAlign: "center", marginTop: 8,
-                  fontSize: 10, color: T.amber, fontFamily: T.mono,
-                }}>
+                <div style={centerAmberNote}>
                   {t("trade.fedUnreachable")}
                 </div>
               )}
               {receiveUnavailable && !bootProbeFailed && !fundingInProgress && !lockBlockedByNoArbiter && (
-                <div style={{
-                  textAlign: "center", marginTop: 8,
-                  fontSize: 10, color: T.amber, fontFamily: T.mono,
-                }}>
+                <div style={centerAmberNote}>
                   {t("trade.receiveUnavailableShort")}
                 </div>
               )}
@@ -2965,22 +2955,13 @@ export function TradeDetail({
                       setClaiming(false);
                     }
                   }}
-                  style={{
-                    background: "none", border: "none",
-                    color: T.muted, fontFamily: T.mono, fontSize: 10,
-                    cursor: "pointer", padding: "8px 0",
-                    width: "100%", textAlign: "center",
-                    textDecoration: "underline",
-                  }}
+                  style={textLinkButtonStyle}
                 >
                   {t("trade.useDifferentPayout")}
                 </button>
               )}
               {bootProbeFailed && (
-                <div style={{
-                  textAlign: "center", marginTop: 8,
-                  fontSize: 10, color: T.amber, fontFamily: T.mono,
-                }}>
+                <div style={centerAmberNote}>
                   {t("trade.fedUnreachable")}
                 </div>
               )}
@@ -3370,7 +3351,7 @@ export function TradeDetail({
                 maxWidth: "100%",
               }}>
                 <span aria-hidden="true">★</span>
-                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                <span style={ellipsisClamp}>
                   {t("trade.storeName", { name: sellerProfileName ?? shortParticipantPubkey(sellerPubkey) })}
                 </span>
               </div>
@@ -5048,7 +5029,7 @@ function ArbiterProvenanceBanner({ state, prov, assignment, selfRostered }: {
             {t("trade.offAssignmentTitle")}
           </span>
         </div>
-        <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono, lineHeight: 1.5 }}>
+        <div style={mutedMonoNote}>
           {t("trade.offAssignBody1", { seated: seated ? ` (${shortParticipantPubkey(seated)})` : "" })}
           {assignment.accepted.length > 0 && (
             <> {t("trade.offAssignExpected", { list: assignment.accepted.map(shortParticipantPubkey).join(" or ") })}</>
@@ -5070,7 +5051,7 @@ function ArbiterProvenanceBanner({ state, prov, assignment, selfRostered }: {
             {t("trade.selfRosteredTitle")}
           </span>
         </div>
-        <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono, lineHeight: 1.5 }}>
+        <div style={mutedMonoNote}>
           {t("trade.selfRosteredBody")}
         </div>
       </div>
@@ -5090,7 +5071,7 @@ function ArbiterProvenanceBanner({ state, prov, assignment, selfRostered }: {
             {prov.unrecognized.length !== 1 ? t("trade.unrecognizedMany") : t("trade.unrecognizedOne")}
           </span>
         </div>
-        <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono, lineHeight: 1.5 }}>
+        <div style={mutedMonoNote}>
           {t(
             pool.length === 1
               ? "trade.unrecognizedBodyOneOfOne"
