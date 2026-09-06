@@ -112,6 +112,18 @@ esac
 VERSION=$(node -p "require('./package.json').version")
 TAG="${TAG:-v$VERSION}"
 
+# Default the notes files from the repo-local release-notes/ convention when
+# they were not passed explicitly, so a standalone channel retry ships the
+# SAME curated notes the full lane would — v6.3.0 taught us that a bare
+# `--only zapstore` otherwise publishes a placeholder over the real notes.
+NOTES_DIR="${CHAMA_COMMIT_DIR:-$ROOT_DIR/release-notes}"
+[ -z "$NOTES_FILE" ] && [ -f "$NOTES_DIR/chama-${TAG}_release_notes" ] \
+  && NOTES_FILE="$NOTES_DIR/chama-${TAG}_release_notes" \
+  && echo "📝 Using $NOTES_FILE"
+[ -z "$ZAPSTORE_NOTES_FILE" ] && [ -f "$NOTES_DIR/chama-${TAG}_zapstore_notes" ] \
+  && ZAPSTORE_NOTES_FILE="$NOTES_DIR/chama-${TAG}_zapstore_notes" \
+  && echo "📝 Using $ZAPSTORE_NOTES_FILE"
+
 default_repo() {
   local url
   url=$(git config --get remote.origin.url 2>/dev/null || true)
