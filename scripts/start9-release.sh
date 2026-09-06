@@ -98,14 +98,23 @@ if [ ! -d "$S9_DIR/.git" ]; then
 fi
 cd "$S9_DIR"
 git remote get-url upstream >/dev/null 2>&1 || git remote add upstream "https://github.com/$UPSTREAM.git"
-git fetch upstream main --quiet
+git fetch upstream --quiet
 git fetch origin --quiet || true
+
+# The packaging repo's default branch is whatever upstream says it is
+# (Start9-Community/chama-startos uses master, not main) — never assume.
+BASE_BRANCH="$(git ls-remote --symref "https://github.com/$UPSTREAM.git" HEAD 2>/dev/null | sed -n 's|^ref: refs/heads/\(.*\)[[:space:]]HEAD$|\1|p')"
+if [ -z "$BASE_BRANCH" ]; then
+  if git rev-parse -q --verify upstream/master >/dev/null; then BASE_BRANCH=master
+  elif git rev-parse -q --verify upstream/main >/dev/null; then BASE_BRANCH=main
+  else echo "❌ Cannot determine $UPSTREAM's default branch."; exit 1; fi
+fi
 
 # Refuse to clobber unrelated local work; the branch itself may be re-run.
 if [ -n "$(git status --porcelain)" ]; then
   echo "❌ $S9_DIR has uncommitted changes — resolve them first."; exit 1
 fi
-git checkout -B "$BRANCH" upstream/main --quiet
+git checkout -B "$BRANCH" "upstream/$BASE_BRANCH" --quiet
 
 # ── Pin the submodule at the release tag ──────────────────────────────────
 echo "📌 Pinning chama/ submodule to $TAG"
@@ -140,7 +149,7 @@ BODY_FILE="$(mktemp)"
   echo
   echo "🤖 Generated with [Claude Code](https://claude.com/claude-code)"
 } > "$BODY_FILE"
-PR_URL="$(gh pr create --repo "$UPSTREAM" --base main --head "$FORK_OWNER:$BRANCH" \
+PR_URL="$(gh pr create --repo "$UPSTREAM" --base "$BASE_BRANCH" --head "$FORK_OWNER:$BRANCH" \
   --title "Update Chama to $VER" --body-file "$BODY_FILE")"
 rm -f "$BODY_FILE"
 echo "✅ Start9 PR: $PR_URL"

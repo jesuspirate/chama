@@ -294,6 +294,18 @@ if [ "$DO_RELEASE" = "1" ] && [ "${#RELEASE_FLAGS[@]}" -gt 0 ] && \
   if [ -z "${SIGN_WITH:-}" ]; then
     PREFLIGHT_WARN="${PREFLIGHT_WARN}    - SIGN_WITH is unset — Zapstore publish needs it (e.g. SIGN_WITH=browser)\n"
   fi
+  # The Android build needs a real JDK; macOS's /usr/bin/java is only a stub.
+  # android-release.sh probes the usual homes itself — warn here only when
+  # neither JAVA_HOME nor any known location will satisfy it, so the failure
+  # shows in the plan instead of after the web deploy has already run.
+  if ! { [ -n "${JAVA_HOME:-}" ] && [ -x "${JAVA_HOME}/bin/java" ]; } \
+    && ! /usr/libexec/java_home >/dev/null 2>&1 \
+    && [ ! -x "/Applications/Android Studio.app/Contents/jbr/Contents/Home/bin/java" ] \
+    && ! ls /opt/homebrew/opt/openjdk*/libexec/openjdk.jdk/Contents/Home/bin/java >/dev/null 2>&1 \
+    && ! ls /Library/Java/JavaVirtualMachines/*/Contents/Home/bin/java >/dev/null 2>&1 \
+    && ! java -version >/dev/null 2>&1; then
+    PREFLIGHT_WARN="${PREFLIGHT_WARN}    - no JDK found — the Android APK build will fail (brew install --cask temurin)\n"
+  fi
 fi
 
 # ── Show the plan ─────────────────────────────────────────────────────────

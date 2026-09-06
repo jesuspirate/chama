@@ -508,9 +508,34 @@ ASC_FILE="$SHA_FILE.asc"
 SIGNER_FILE="$RELEASE_DIR/app-release.apk.apksigner.txt"
 PUBLIC_KEY_FILE="$RELEASE_DIR/chama-release-pgp-key.asc"
 
-if [ -z "${JAVA_HOME:-}" ] && [ -x "/Applications/Android Studio.app/Contents/jbr/Contents/Home/bin/java" ]; then
-  export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
+# ── Locate a usable JDK (gradle needs one; macOS's /usr/bin/java is only a
+# stub that prints "Unable to locate a Java Runtime"). A stale JAVA_HOME from
+# a shell profile is re-validated rather than trusted, then the usual homes
+# are probed: the system resolver, Android Studio's bundled JBR, Homebrew
+# OpenJDK/Temurin, and /Library JVMs. Failing all of those aborts BEFORE the
+# gradle build with install instructions instead of the cryptic stub.
+java_home_ok() { [ -n "${1:-}" ] && [ -x "$1/bin/java" ] && "$1/bin/java" -version >/dev/null 2>&1; }
+if ! java_home_ok "${JAVA_HOME:-}"; then
+  JAVA_HOME=""
+  for jdk_candidate in \
+    "$(/usr/libexec/java_home 2>/dev/null || true)" \
+    "/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
+    /opt/homebrew/opt/openjdk*/libexec/openjdk.jdk/Contents/Home \
+    /usr/local/opt/openjdk*/libexec/openjdk.jdk/Contents/Home \
+    /Library/Java/JavaVirtualMachines/*/Contents/Home; do
+    if java_home_ok "$jdk_candidate"; then JAVA_HOME="$jdk_candidate"; break; fi
+  done
+fi
+if java_home_ok "${JAVA_HOME:-}"; then
+  export JAVA_HOME
   export PATH="$JAVA_HOME/bin:$PATH"
+  echo "☕ Using JDK at $JAVA_HOME"
+elif [ "$BUILD_APK" = "1" ]; then
+  echo "❌ No usable Java runtime found — the Android build needs a JDK."
+  echo "   Install one (either works), then re-run:"
+  echo "     brew install --cask temurin       # standalone JDK"
+  echo "     …or install Android Studio (bundles a JDK at Contents/jbr)"
+  exit 1
 fi
 
 if [ "$BUILD_APK" = "1" ]; then
