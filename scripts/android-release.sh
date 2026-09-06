@@ -517,9 +517,14 @@ PUBLIC_KEY_FILE="$RELEASE_DIR/chama-release-pgp-key.asc"
 java_home_ok() { [ -n "${1:-}" ] && [ -x "$1/bin/java" ] && "$1/bin/java" -version >/dev/null 2>&1; }
 if ! java_home_ok "${JAVA_HOME:-}"; then
   JAVA_HOME=""
+  # Order matters: AGP's JdkImageTransform (jlink) breaks on very new JDKs
+  # (Temurin 26 fails on core-for-system-modules.jar), so prefer 21, then 17,
+  # then Android Studio's bundled JBR, and only then whatever is newest.
   for jdk_candidate in \
-    "$(/usr/libexec/java_home 2>/dev/null || true)" \
+    "$(/usr/libexec/java_home -v 21 2>/dev/null || true)" \
+    "$(/usr/libexec/java_home -v 17 2>/dev/null || true)" \
     "/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
+    "$(/usr/libexec/java_home 2>/dev/null || true)" \
     /opt/homebrew/opt/openjdk*/libexec/openjdk.jdk/Contents/Home \
     /usr/local/opt/openjdk*/libexec/openjdk.jdk/Contents/Home \
     /Library/Java/JavaVirtualMachines/*/Contents/Home; do
@@ -530,6 +535,12 @@ if java_home_ok "${JAVA_HOME:-}"; then
   export JAVA_HOME
   export PATH="$JAVA_HOME/bin:$PATH"
   echo "☕ Using JDK at $JAVA_HOME"
+  jdk_major="$("$JAVA_HOME/bin/java" -version 2>&1 | sed -n 's/.*version "\([0-9]*\).*/\1/p' | head -1)"
+  if [ "${jdk_major:-0}" -gt 21 ] 2>/dev/null; then
+    echo "⚠️  JDK $jdk_major is newer than the Android Gradle Plugin supports (jlink"
+    echo "   image transform fails). Install a compatible one and re-run:"
+    echo "     brew install --cask temurin@21"
+  fi
 elif [ "$BUILD_APK" = "1" ]; then
   echo "❌ No usable Java runtime found — the Android build needs a JDK."
   echo "   Install one (either works), then re-run:"

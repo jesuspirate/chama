@@ -118,8 +118,8 @@ git checkout -B "$BRANCH" "upstream/$BASE_BRANCH" --quiet
 
 # ── Pin the submodule at the release tag ──────────────────────────────────
 echo "📌 Pinning chama/ submodule to $TAG"
-git submodule update --init chama --quiet
-git -C chama fetch --tags origin --quiet
+git submodule update --init --quiet chama
+git -C chama fetch --tags --quiet origin
 git -C chama checkout --quiet "$TAG"
 git add chama
 
