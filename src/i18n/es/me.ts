@@ -254,4 +254,8 @@ export const me: Record<string, string> = {
   "me.withdrawEcashBackupHint": "Borrar los datos del navegador elimina los fondos que no hayas exportado.",
   "me.you": "Tú",
   "me.yourChama": "TU CHAMA",
+  "me.tradeName": "Nombre en operaciones",
+  "me.tradeNameHint": "Se muestra en tus operaciones en lugar de tu clave. D\u00e9jalo vac\u00edo para usar tu nombre generado: {name}.",
+  "me.tradeNameSave": "Guardar",
+  "me.tradeNameSaved": "Guardado",
 };

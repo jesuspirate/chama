@@ -269,4 +269,8 @@ export const me: Record<string, string> = {
   "me.withdrawEcashBackupHint": "Effacer les données du navigateur supprime les fonds que vous n'avez pas exportés.",
   "me.you": "Vous",
   "me.yourChama": "VOTRE CHAMA",
+  "me.tradeName": "Nom sur les \u00e9changes",
+  "me.tradeNameHint": "Affich\u00e9 sur vos \u00e9changes \u00e0 la place de votre cl\u00e9. Laissez vide pour utiliser votre nom g\u00e9n\u00e9r\u00e9 : {name}.",
+  "me.tradeNameSave": "Enregistrer",
+  "me.tradeNameSaved": "Enregistr\u00e9",
 };

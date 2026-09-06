@@ -94,7 +94,7 @@ import {
 import { TradeCard } from "../components/TradeCard.js";
 import { BitcoinAmount } from "../components/BitcoinAmount.js";
 import type { TradeIndexEntry } from "../../escrow-engine/trade-index.js";
-import { readKind0Toggle, writeKind0Toggle } from "../nostr-profiles.js";
+import { readKind0Toggle, writeKind0Toggle, readLocalTradeName, writeLocalTradeName, sanitizeTradeName, generatedNameFor } from "../nostr-profiles.js";
 import { backgroundPushEnabled, enableBackgroundPush, disableBackgroundPush } from "../../notifications/watch-tags.js";
 import { isWebPushSupported, iosNeedsInstallForPush } from "../../notifications/web-push-client.js";
 
@@ -927,6 +927,7 @@ export function MeScreen({
           <DmNotificationsRow />
           <CounterpartyDmRow />
           <NewListingNotificationsRow />
+          <TradeNameRow pubkey={pubkey} />
           <NostrNamesRow on={kind0On} onToggle={() => setKind0On(!kind0On)} />
           {SHOW_BOND_CEREMONY && onOpenBondCeremony && (
             <SettingsRow label={t("me.postYourBond")} hint={t("me.postYourBondHint")} onClick={onOpenBondCeremony} />
@@ -2994,6 +2995,59 @@ function NewListingNotificationsRow() {
           background: on ? T.green : T.muted, transition: "left 0.15s",
         }} />
       </button>
+    </div>
+  );
+}
+
+/** v6.3.1: quick in-app trade name — no Nostr profile setup required.
+ *  Stored per active npub on this device; empty falls back to the
+ *  deterministic generated name every client derives from the pubkey. */
+function TradeNameRow({ pubkey }: { pubkey: string }) {
+  const { t } = useT();
+  const [draft, setDraft] = useState<string>(() => readLocalTradeName() ?? "");
+  const [savedTick, setSavedTick] = useState(false);
+  const generated = generatedNameFor(pubkey);
+  const save = () => {
+    writeLocalTradeName(draft);
+    setDraft(readLocalTradeName() ?? "");
+    setSavedTick(true);
+    setTimeout(() => setSavedTick(false), 2000);
+  };
+  return (
+    <div style={{ padding: "14px 16px", borderBottom: `1px solid ${T.border}` }}>
+      <div style={{ fontSize: 13, fontWeight: 600, color: T.text, fontFamily: T.sans }}>
+        {t("me.tradeName")}
+      </div>
+      <div style={{ fontSize: 11, color: T.muted, fontFamily: T.mono, marginTop: 2 }}>
+        {t("me.tradeNameHint", { name: generated })}
+      </div>
+      <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+        <input
+          value={draft}
+          onChange={event => setDraft(event.target.value)}
+          onKeyDown={event => { if (event.key === "Enter") save(); }}
+          placeholder={generated}
+          maxLength={24}
+          style={{
+            flex: 1, minWidth: 0, padding: "9px 11px", borderRadius: T.rs,
+            border: `1px solid ${T.border}`, outline: "none",
+            background: T.surface, color: T.text, fontFamily: T.sans, fontSize: 13,
+          }}
+        />
+        <button
+          type="button"
+          onClick={save}
+          disabled={sanitizeTradeName(draft) === (readLocalTradeName() ?? "")}
+          style={{
+            padding: "9px 14px", borderRadius: 999, border: 0, cursor: "pointer",
+            background: savedTick ? T.greenDim : T.accent,
+            color: savedTick ? T.green : T.bg,
+            fontFamily: T.sans, fontSize: 12, fontWeight: 800,
+          }}
+        >
+          {savedTick ? t("me.tradeNameSaved") : t("me.tradeNameSave")}
+        </button>
+      </div>
     </div>
   );
 }

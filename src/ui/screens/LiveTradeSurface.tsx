@@ -529,8 +529,14 @@ export function LiveTradeSurface({
         .lts-pane{background:${T.surface};min-height:0;display:flex;flex-direction:column;overflow:hidden}
         .lts-votes{padding:18px;overflow-y:auto}
         @media (max-width:720px){
-          .lts-grid{grid-template-columns:1fr;grid-template-rows:auto 1fr}
-          .lts-votes{max-height:52%}
+          .lts-grid{grid-template-columns:1fr;grid-template-rows:minmax(0,auto) minmax(0,1fr)}
+          /* dvh, never %: a percentage max-height on an item in an auto grid
+             row is cyclic — Chrome ignores it, iOS Safari resolves it
+             mid-layout and clamps the pane SHORTER than its own row, which
+             clipped the decision text and exposed the grid's border-colored
+             background as a dead band between the panes (Jet's 6.3 phone
+             screenshot). 52dvh is definite everywhere. */
+          .lts-votes{max-height:52dvh}
           .lts-grid.lts-prejoin .lts-chat{display:none}
           .lts-grid.lts-prejoin{grid-template-rows:1fr}
         }

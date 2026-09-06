@@ -108,6 +108,11 @@ export function applyThemeMode(mode: ThemeMode): void {
     if (doc) {
       doc.documentElement.style.background = T.bg;
       if (doc.body) doc.body.style.background = T.bg;
+      // index.html's boot pre-paint styles #root too (an ID selector, which
+      // outranks the app's html,body rule) — repaint it or a system-light
+      // boot leaves cream gutters around a dark session forever.
+      const root = doc.getElementById("root");
+      if (root) root.style.background = T.bg;
       doc.documentElement.style.colorScheme = resolvedTheme;
       doc.querySelector('meta[name="theme-color"]')
         ?.setAttribute("content", resolvedTheme === "light" ? LIGHT.bg : "#000000");

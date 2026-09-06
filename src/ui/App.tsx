@@ -4741,7 +4741,7 @@ const globalCss = () => `
   /* Reserve the scrollbar gutter always, so switching to the taller Me tab
      (which overflows and summons a scrollbar) no longer nudges the centered
      column sideways. */
-  html{scrollbar-gutter:stable}html,body{background:${T.bg}}
+  html{scrollbar-gutter:stable}html,body,#root{background:${T.bg}}
   /* Reusable boot-mark loader: animated color-cycle by default, static woven
      mark under reduced motion. */
   .chama-loader-motion{display:block}

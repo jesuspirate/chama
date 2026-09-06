@@ -34,6 +34,7 @@ import { useBitcoinPrice } from "../hooks/useBitcoinPrice.js";
 import { useFiatRates } from "../hooks/useFiatRates.js";
 import { VerticalIcon } from "../components/VerticalIcon.js";
 import { T } from "../theme.js";
+import { profileNameFor } from "../nostr-profiles.js";
 import { translate, getCurrentLang } from "../../i18n/index.js";
 
 // Render-time translation (same pattern as decisions.ts) — module-level so the
@@ -663,7 +664,7 @@ export function AssistedCanvas({
         <ReviewRow label={tr("canvas.youReceive")} value={tr("canvas.satsValue", { amount: selected.amountSats.toLocaleString() })} />
         <ReviewRow label={tr("canvas.youPay")} value={selected.fiatQuote ? `${selected.fiatQuote.amount.toLocaleString()} ${selected.fiatQuote.currency}` : tr("canvas.confirmWithSeller")} />
         <ReviewRow label={tr("canvas.paymentMethod")} value={getRailByKey(selected.paymentRail)?.displayName ?? selected.paymentRail} />
-        <ReviewRow label={tr("canvas.seller")} value={shortKey(selected.sellerPubkey)} last />
+        <ReviewRow label={tr("canvas.seller")} value={profileNameFor(undefined, selected.sellerPubkey, false) ?? shortKey(selected.sellerPubkey)} last />
       </div>
       <Primary onClick={() => onOpenTrade(selected.listing.id)}>{tr("canvas.reviewFullTrade")}</Primary>
       <Safety>{tr("canvas.reviewSafety")}</Safety>
@@ -960,7 +961,7 @@ function GoodsMatch({ match, onOpen }: { match: MarketMatch; onOpen: () => void 
   const seller = listing.participants[Role.SELLER] ?? listing.initiator?.pubkey ?? tr("canvas.seller");
   return <button type="button" className="assisted-match" onClick={onOpen}>
     <div className="assisted-tags">{match.reasons.slice(0, 2).map(reason => <span key={reason}>{marketReasonLabel(reason, match.overBudgetSats)}</span>)}</div>
-    <div className="assisted-match-row"><div><strong>{match.matchedItem?.label ?? listing.description}</strong><small>{match.matchedItem ? listing.description : shortKey(seller)}</small></div><b>{tr("canvas.satsValue", { amount: match.amountSats.toLocaleString() })}</b></div>
+    <div className="assisted-match-row"><div><strong>{match.matchedItem?.label ?? listing.description}</strong><small>{match.matchedItem ? listing.description : (profileNameFor(undefined, seller, false) ?? shortKey(seller))}</small></div><b>{tr("canvas.satsValue", { amount: match.amountSats.toLocaleString() })}</b></div>
     <div className="assisted-match-foot"><span>{tr("canvas.inYourChama")}</span><b>{tr("canvas.review")}</b></div>
   </button>;
 }

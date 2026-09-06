@@ -18952,6 +18952,29 @@ console.log("\n── THEME PALETTE SWAP ──");
     "inputStyle is rebuilt to the active palette on swap",
   );
   applyThemeMode("dark");
+
+  // ── v6.3.1: generated trade names (deterministic, layered resolver) ──
+  {
+    const { generatedNameFor, profileNameFor } = await import("../ui/nostr-profiles.js");
+    const pkA = "a".repeat(64);
+    const pkB = "b".repeat(64);
+    assert(generatedNameFor(pkA) === generatedNameFor(pkA),
+      "generatedNameFor: deterministic for the same pubkey");
+    assert(generatedNameFor(pkA) === generatedNameFor(pkA.toUpperCase()),
+      "generatedNameFor: case-insensitive over the key");
+    assert(/^[A-Z][a-z]+ [A-Z][a-z]+$/.test(generatedNameFor(pkA)),
+      "generatedNameFor: Adjective Animal shape");
+    assert(profileNameFor(undefined, pkA, false) === generatedNameFor(pkA),
+      "profileNameFor: falls back to the generated name with no kind-0 map");
+    assert(profileNameFor({ [pkA]: "Amina" }, pkA, true) === "Amina",
+      "profileNameFor: kind-0 name wins when the opt-in is enabled");
+    assert(profileNameFor({ [pkA]: "Amina" }, pkA, false) === generatedNameFor(pkA),
+      "profileNameFor: kind-0 map is ignored when the opt-in is off");
+    assert(profileNameFor(undefined, null, true) === null,
+      "profileNameFor: null without a pubkey");
+    assert(generatedNameFor(pkA) !== generatedNameFor(pkB),
+      "generatedNameFor: distinct keys get distinct names (this pair)");
+  }
   assert(
     T.bg === darkBg && T.accent === darkAccent,
     "Swapping back restores the dark brand palette exactly",
