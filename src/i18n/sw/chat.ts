@@ -75,4 +75,6 @@ export const chat: Record<string, string> = {
   "chat.keyVerified": "Hifadhi imethibitishwa ✓",
   "chat.verifyKeyPlaceholder": "Bandika ufunguo ulionakili",
   "chat.you": "Wewe",
+  "chat.signingIn": "Inaingia\u2026",
+  "chat.saveOfferHint": "Meneja wako wa manenosiri anaweza kukupa sasa kuhifadhi ufunguo wako wa uokoaji \u2014 kubali ili uwe na nakala salama unayoweza kurejesha kutoka popote.",
 };

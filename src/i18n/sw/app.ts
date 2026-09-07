@@ -223,4 +223,6 @@ export const app: Record<string, string> = {
   "edit.buyerHolding": "Mnunuzi ameshikilia ofa hii sasa hivi, kwa bei aliyoiona. Subiri dakika chache hifadhi yake iishe, kisha uhariri.",
   "edit.blocked": "Hili haliwezi kuhaririwa — matangazo yako hai yasiyogharamiwa pekee.",
   "edit.replacesNote": "Kuhifadhi kunachapisha ofa yako upya, hivyo inapata kitambulisho kipya na ya zamani inaondolewa.",
+  "app.openingTrade": "Inafungua biashara\u2026",
+  "app.tradeOpenFailed": "Imeshindwa kufungua biashara hiyo \u2014 relays hazikuirudisha. Jaribu tena baada ya muda mfupi.",
 };

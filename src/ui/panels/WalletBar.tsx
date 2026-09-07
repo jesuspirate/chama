@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { T } from "../theme.js";
 import { useT } from "../../i18n/index.js";
+import { profileNameFor } from "../nostr-profiles.js";
 
 // Identity bar — shows the user's npub + relay status. Function name kept
 // for back-compat; the "Wallet" framing is dead per PHILOSOPHY.md §2.1.
@@ -38,6 +39,11 @@ export function WalletBar({ pubkey, connectedRelays, relayStatuses }: {
             {networkLabel}
           </span>
           <span style={{ color: T.border }}>·</span>
+          {/* v6.3.2: the trade name lives HERE, next to the hex, once — the
+              one strip every main surface shares. Canvas/Create stay clean. */}
+          <span style={{ fontSize: 10, color: T.text, fontWeight: 700 }}>
+            {profileNameFor(undefined, pubkey, false)}
+          </span>
           <span style={{ fontSize: 10, color: T.muted }}>
             {pubkey.slice(0, 8)}…{pubkey.slice(-4)}
           </span>

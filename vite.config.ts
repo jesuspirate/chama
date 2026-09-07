@@ -36,5 +36,16 @@ export default defineConfig({
   },
   server: {
     port: 3000,
+    // Bind the LAN too so a phone on the same network can open the dev
+    // build (http://<mac-ip>:3000). Note: a bare-IP http origin is NOT a
+    // secure context — camera QR scanning, notifications, and clipboard
+    // write are degraded there; core trading crypto (noble, pure JS) works.
+    host: true,
+    // Cloudflared quick tunnels (`cloudflared tunnel --url http://localhost:3000`)
+    // give the dev build a real https origin — the only way a phone gets a
+    // SECURE context (OPFS wallet storage, camera QR, notifications) against
+    // this server. Scoped to that domain; vite's default host check still
+    // blocks everything else.
+    allowedHosts: [".trycloudflare.com"],
   },
 });

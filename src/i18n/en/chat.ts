@@ -79,4 +79,6 @@ export const chat: Record<string, string> = {
   "chat.keyVerified": "Backup verified ✓",
   "chat.verifyKeyPlaceholder": "Paste your copied key",
   "chat.you": "You",
+  "chat.signingIn": "Signing in\u2026",
+  "chat.saveOfferHint": "Your password manager may now offer to save your recovery key \u2014 accept it to keep a safe copy you can restore from anywhere.",
 };

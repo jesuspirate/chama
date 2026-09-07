@@ -236,3 +236,12 @@ Goal endorsed; mechanism redirected:
   sats appreciate week over week, spending them in the Market becomes the
   natural next step: recurring, sat-holding customers are the pitch that
   attracts businesses to sell there. Weekly chama parties, market included.
+
+## Correction (Jet, 2026-09-07): TWO parents, not one
+
+Big Boss Chama remodels BOTH parked satellites, which together sparked the
+idea: **Chip In** contributes the money engine (threshold + deadline +
+auto-refund = fill-or-refund), and **Stack** contributes the rhythm and the
+streak — its weekly-goal + consecutive-periods-hit logic is literally the
+cadence and the "clean rounds repair damage" standing mechanic. Reuse both;
+rebuild neither.

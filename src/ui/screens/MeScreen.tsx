@@ -20,7 +20,7 @@
 // "Chama doesn't manage your Nostr profile" educational copy so the
 // doctrine is visible from day one.
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useT, translate, getCurrentLang } from "../../i18n/index.js";
 import { LanguageRow } from "../components/LanguagePills.js";
 import {
@@ -381,19 +381,38 @@ export function MeScreen({
   };
   const isClaimPayoutRecovery = !isSmallLeftover && Boolean(satsTrace?.escrowId);
   const traceCopy = describeSatsTrace(satsTrace ?? null);
-  const nowSec = Math.floor(Date.now() / 1000);
-  const dashboard = buildMeDashboard(myTrades, allTrades ?? myTrades, pubkey, nowSec);
+  // Minute-coarse clock so the memos below have a stable key: these
+  // derivations walk every trade's event chain, and running them on EVERY
+  // render made each tab-pill tap visibly laggy on phones (v6.3.1 field
+  // report). Nothing here needs sub-minute freshness.
+  const nowSec = Math.floor(Date.now() / 60_000) * 60;
+  const dashboard = useMemo(
+    () => buildMeDashboard(myTrades, allTrades ?? myTrades, pubkey, nowSec),
+    [myTrades, allTrades, pubkey, nowSec],
+  );
   // App owns the canonical attention queue because it merges reducer-derived
   // work with chain-verified pending on-chain payouts. Keep the Me hero, Needs
   // count, and Needs filter on that exact source so the inner and outer pills
   // cannot disagree. The fallback preserves standalone/test callers.
   // (The fallback lacks App's zombie-claim suppression set — it exists only
   // for standalone/test callers; the app always passes needsYouTrades.)
-  const rankedNeedsYou = needsYouTrades
-    ?? selectNeedsYouTrades({ escrows: allTrades ?? myTrades, userPubkey: pubkey, nowSec });
-  const tradeCounts = buildMeTradeCounts(myTrades, rankedNeedsYou);
-  const visibleTrades = filterMeTrades(myTrades, rankedNeedsYou, tradeFilter);
-  const latestTrade = latestParticipantTradePointer(myTrades, archivedTrades);
+  const rankedNeedsYou = useMemo(
+    () => needsYouTrades
+      ?? selectNeedsYouTrades({ escrows: allTrades ?? myTrades, userPubkey: pubkey, nowSec }),
+    [needsYouTrades, allTrades, myTrades, pubkey, nowSec],
+  );
+  const tradeCounts = useMemo(
+    () => buildMeTradeCounts(myTrades, rankedNeedsYou),
+    [myTrades, rankedNeedsYou],
+  );
+  const visibleTrades = useMemo(
+    () => filterMeTrades(myTrades, rankedNeedsYou, tradeFilter),
+    [myTrades, rankedNeedsYou, tradeFilter],
+  );
+  const latestTrade = useMemo(
+    () => latestParticipantTradePointer(myTrades, archivedTrades),
+    [myTrades, archivedTrades],
+  );
   const hasSellerDashboard = dashboard.sellerOpen.length > 0 || dashboard.sellerLive.length > 0;
   // v6.3 approved redesign: Browse-style pill tabs replace the accordions.
   // Money-safety cards stay ABOVE the tabs — never hidden behind one.

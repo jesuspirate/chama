@@ -70,8 +70,13 @@ function sysToneStyle(tone: SystemBubbleTone): CSSProperties {
 // dataUrl at ~24 KB (≈ 4× → ~100 KB event) and shrink the longest edge to keep
 // quality usable at that byte budget. (Old values 120 KB / 960 px produced
 // ~480 KB events — the silent image-upload failure across APK/Tauri.)
-const MAX_CHAT_IMAGE_DATA_URL_CHARS = 24_000;
-const CHAT_IMAGE_MAX_EDGE_PX = 720;
+// v6.3.2: 26k chars ≈ 4× → ~104 KB event, still under the 128 KB relay cap
+// with margin; combined with WebP-first encoding (below) and a 960px edge,
+// a text-bearing phone screenshot stays legible for the arbiter instead of
+// dissolving into 720px JPEG soup. True full-resolution evidence needs
+// multi-event chunking (the ecash QR-frames pattern) — a v6.4 feature.
+const MAX_CHAT_IMAGE_DATA_URL_CHARS = 26_000;
+const CHAT_IMAGE_MAX_EDGE_PX = 960;
 const CHAT_IMAGE_ACCEPT = [
   "image/*",
   ".avif",
@@ -184,7 +189,7 @@ async function prepareChatImage(file: File): Promise<ChatImageAttachment> {
   // easily at 720px, while a busy or photographic one falls back to smaller
   // edges so it ALWAYS sends rather than hard-failing. The final throw is a
   // clear, non-silent error reserved for pathological input.
-  for (const maxEdge of [CHAT_IMAGE_MAX_EDGE_PX, 560, 440, 340]) {
+  for (const maxEdge of [CHAT_IMAGE_MAX_EDGE_PX, 720, 560, 440, 340]) {
     const scale = Math.min(1, maxEdge / Math.max(width, height));
     const targetWidth = Math.max(1, Math.round(width * scale));
     const targetHeight = Math.max(1, Math.round(height * scale));
@@ -197,6 +202,25 @@ async function prepareChatImage(file: File): Promise<ChatImageAttachment> {
     ctx.fillRect(0, 0, targetWidth, targetHeight);
     ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
 
+    // WebP first: at these byte budgets it keeps screenshot text readable
+    // ~35% better than JPEG. Safari's canvas can't encode WebP and silently
+    // returns a PNG dataUrl instead — the prefix check detects that and the
+    // JPEG ladder below stays the universal fallback.
+    for (const quality of [0.8, 0.68, 0.55, 0.45]) {
+      const dataUrl = canvas.toDataURL("image/webp", quality);
+      if (dataUrl.startsWith("data:image/webp") && dataUrl.length <= MAX_CHAT_IMAGE_DATA_URL_CHARS) {
+        return {
+          id: imageId(),
+          kind: "image",
+          mimeType: "image/webp",
+          dataUrl,
+          name: file.name,
+          width: targetWidth,
+          height: targetHeight,
+          sizeBytes: Math.ceil(dataUrl.length * 0.75),
+        };
+      }
+    }
     for (const quality of [0.72, 0.6, 0.48, 0.38, 0.3]) {
       const dataUrl = canvas.toDataURL("image/jpeg", quality);
       if (dataUrl.length <= MAX_CHAT_IMAGE_DATA_URL_CHARS) {

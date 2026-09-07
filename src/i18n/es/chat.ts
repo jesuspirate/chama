@@ -76,4 +76,6 @@ export const chat: Record<string, string> = {
   "chat.keyVerified": "Respaldo verificado ✓",
   "chat.verifyKeyPlaceholder": "Pega la llave copiada",
   "chat.you": "Tú",
+  "chat.signingIn": "Iniciando sesi\u00f3n\u2026",
+  "chat.saveOfferHint": "Tu gestor de contrase\u00f1as puede ofrecerte ahora guardar tu clave de recuperaci\u00f3n \u2014 ac\u00e9ptalo para conservar una copia segura que podr\u00e1s restaurar desde cualquier lugar.",
 };

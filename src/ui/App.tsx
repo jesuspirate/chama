@@ -150,6 +150,7 @@ import {
 import { Toast } from "./components/Toast.js";
 import { BitcoinAmount } from "./components/BitcoinAmount.js";
 import { VerticalIcon } from "./components/VerticalIcon.js";
+import { ChamaLoader } from "./components/ChamaLoader.js";
 import { BottomNav, BOTTOM_NAV_HEIGHT, type Tab } from "./components/BottomNav.js";
 import { CoachMarkTour, readCoachSeen, type CoachStep } from "./components/CoachMarkTour.js";
 import { ActiveTradePill } from "./components/ActiveTradePill.js";
@@ -2511,6 +2512,11 @@ export default function App() {
           "[chama] background refetch on openEscrow failed:",
           e?.message || e,
         );
+        // The loading surface below (view "detail" with no local copy yet)
+        // would otherwise spin forever on a trade the relays can't return.
+        setToast({ message: t("app.tradeOpenFailed"), type: "error" });
+        setSelectedId(null);
+        setView(safeBackView);
       });
       return;
     }
@@ -2544,6 +2550,11 @@ export default function App() {
           "[chama] background refetch on openEscrow failed:",
           e?.message || e,
         );
+        // The loading surface below (view "detail" with no local copy yet)
+        // would otherwise spin forever on a trade the relays can't return.
+        setToast({ message: t("app.tradeOpenFailed"), type: "error" });
+        setSelectedId(null);
+        setView(safeBackView);
       });
       return;
     }
@@ -4158,6 +4169,17 @@ export default function App() {
             onOpenNwcSettings={() => { setAdvancedFocusNwc(true); setView("advanced"); }}
           />
           )}
+        </div>
+      ) : view === "detail" ? (
+        /* Archived/old trades aren't in the live escrow map yet — openEscrow
+           is hydrating in the background. Without this branch the ternary
+           fell through to Browse, so tapping "Latest trade" (or any history
+           row) flashed — or fully landed — on Browse until the fetch won. */
+        <div style={{
+          minHeight: "60dvh", display: "flex", alignItems: "center",
+          justifyContent: "center", animation: "fadeIn 0.2s ease",
+        }}>
+          <ChamaLoader label={t("app.openingTrade")} />
         </div>
       ) : view === "create" ? (
         <div style={{ animation: "fadeIn 0.3s ease" }}>

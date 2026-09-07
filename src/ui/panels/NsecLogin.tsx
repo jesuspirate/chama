@@ -55,6 +55,10 @@ export function NsecLogin({
   const [generating, setGenerating] = useState(false);
   const [generateError, setGenerateError] = useState<string | null>(null);
   const [inputError, setInputError] = useState<string | null>(null);
+  // True from the instant a valid submit is accepted: swaps the credential
+  // form out of the DOM so Safari's save-password heuristic gets its
+  // completion signal NOW instead of on a later visibility change.
+  const [handoffDone, setHandoffDone] = useState(false);
   const autoSubmittedKeyRef = useRef<string | null>(null);
   const credentialUsernameRef = useRef<HTMLInputElement | null>(null);
   const [credentialUsername, setCredentialUsername] = useState("Chama Nostr account");
@@ -107,13 +111,65 @@ export function NsecLogin({
       return;
     }
     setInputError(null);
-    await identifyCredential(validated.secretKey);
+    const username = await identifyCredential(validated.secretKey);
     // v2.5: tell the shell whether this key was generated in Chama (so only
     // generated keys get the master-key reveal in Me › Advanced). The submitted
     // key matching the just-generated one is the signal.
     const wasGenerated = generatedNsec !== null && nsecInput.trim() === generatedNsec;
-    await onSubmit(nsecInput.trim(), remember, wasGenerated);
+
+    // ── Make the password-manager save offer DETERMINISTIC (v6.3.2) ──
+    // Two engines, two contracts:
+    //  · Chromium / Android WebView (the APK): the Credential Management API
+    //    stores the pair explicitly — no heuristics involved.
+    //  · iOS/macOS Safari has no credentials.store; it decides to offer a save
+    //    when a submitted form's credential fields LEAVE the DOM (or the page
+    //    navigates). In this SPA the form used to stay mounted while the
+    //    wallet booted, so Safari sat on the offer and fired it on a random
+    //    visibility change (Jet's app-switching, v6.3.1 tunnel test).
+    //    handoffDone below unmounts the credential fields immediately.
+    try {
+      const CredCtor = (globalThis as any).PasswordCredential;
+      if (CredCtor && (navigator as any).credentials?.store) {
+        await (navigator as any).credentials.store(new CredCtor({
+          id: username,
+          name: "Chama recovery key",
+          password: nsecInput.trim(),
+        }));
+      }
+    } catch {
+      // Optional enhancement only — a refusal or unsupported ctor never
+      // blocks sign-in.
+    }
+    (document.activeElement as HTMLElement | null)?.blur?.();
+    setHandoffDone(true);
+    // WebKit batches its save-password decision and releases it on a
+    // NAVIGATION, not on DOM teardown — field-verified: the sheet appeared
+    // the instant a manual reload began. A same-URL History push is the
+    // SPA-legal navigation signal both WebKit and Chromium accept as
+    // "login succeeded, page moved on". Same URL, so routing is untouched;
+    // worst case is one inert back-button entry.
+    try {
+      history.pushState({ chamaSignedIn: true }, "", window.location.href);
+    } catch { /* cosmetic only */ }
+
+    try {
+      await onSubmit(nsecInput.trim(), remember, wasGenerated);
+    } catch (e: any) {
+      // Bring the form back — a failed boot must never strand the user on
+      // the handoff placeholder.
+      setHandoffDone(false);
+      setInputError(e?.message || String(e));
+    }
   };
+
+  // Chromium exposes the Credential Management API; WebKit does not. Where
+  // it exists we save through it EXCLUSIVELY — rendering the WebKit-heuristic
+  // hidden password field too made Android show TWO Bitwarden prompts at
+  // once (the store() dialog plus the autofill framework's bottom sheet —
+  // Jet's GrapheneOS recording, v6.3.1 tunnel test).
+  const supportsCredentialStore =
+    typeof (globalThis as any).PasswordCredential === "function" &&
+    !!(navigator as any).credentials?.store;
 
   const generatedActive = generatedNsec !== null && nsecInput.trim() === generatedNsec;
   const backupVerified = generatedActive
@@ -230,6 +286,26 @@ export function NsecLogin({
     );
   }
 
+  if (handoffDone) {
+    // Post-submit handoff: credential fields are gone (see handleSubmit);
+    // the shell is booting the wallet behind this.
+    return (
+      <div style={{
+        marginTop: isNative ? 0 : 8, width: "100%", maxWidth: 360,
+        padding: "28px 0", textAlign: "center", color: T.muted,
+        fontFamily: T.mono, fontSize: 12,
+      }}>
+        <div>{t("chat.signingIn")}</div>
+        <div style={{
+          marginTop: 12, color: T.text, fontFamily: T.sans, fontSize: 13,
+          lineHeight: 1.5,
+        }}>
+          {t("chat.saveOfferHint")}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <form
       onSubmit={(e) => {
@@ -256,6 +332,31 @@ export function NsecLogin({
           border: 0,
         }}
       />
+      {/* v6.3.2 follow-up: in the GENERATED flow the visible paste input is
+          not rendered and the verify field is deliberately invisible to
+          password managers — which left the form with a username and NO
+          password-classified control at submit, so Safari/Bitwarden had
+          nothing to offer to save (the old flaky offer rode the verify
+          field's name="password", the same attribute that summoned the
+          strong-password hijack). This hidden-but-real field restores the
+          username+password pair managers capture at submission. Never
+          focusable, so iOS's strong-password sheet cannot attach to it. */}
+      {generatedActive && !showPasteInput && !supportsCredentialStore && (
+        <input
+          name="password"
+          type="password"
+          value={nsecInput}
+          readOnly
+          autoComplete="new-password"
+          aria-hidden="true"
+          tabIndex={-1}
+          style={{
+            position: "absolute", width: 1, height: 1, padding: 0, margin: -1,
+            overflow: "hidden", clip: "rect(0, 0, 0, 0)", whiteSpace: "nowrap",
+            border: 0,
+          }}
+        />
+      )}
       {isNative && (
         <div style={{
           fontSize: 10, color: T.muted, fontFamily: T.mono,
@@ -420,12 +521,23 @@ export function NsecLogin({
                 {backupVerified ? t("chat.keyVerified") : t("chat.verifyKey")}
               </span>
               <input
-                name="password"
+                /* This field PROVES the user manually saved their key — a
+                   password manager filling it defeats the verification, and
+                   name="password" + type="password" + new-password summoned
+                   iOS's "Use Strong Password" sheet offering to REPLACE the
+                   pasted nsec with a generated password (Jet's screenshot,
+                   v6.3.1). type=text + -webkit-text-security keeps the
+                   shoulder-surfing mask without tripping those heuristics;
+                   the ignore attrs cover Bitwarden/1Password/LastPass. */
+                name="nsec-backup-verification"
                 value={backupVerification}
                 onChange={(e) => setBackupVerification(e.target.value)}
                 placeholder={t("chat.verifyKeyPlaceholder")}
-                type="password"
-                autoComplete="new-password"
+                type="text"
+                autoComplete="off"
+                data-bwignore="true"
+                data-1p-ignore="true"
+                data-lpignore="true"
                 autoCapitalize="off"
                 autoCorrect="off"
                 spellCheck={false}
@@ -435,6 +547,7 @@ export function NsecLogin({
                   border: `1px solid ${backupVerified ? T.green : T.border}`,
                   borderRadius: T.rs, color: T.text, fontFamily: T.mono,
                   fontSize: 12, outline: "none",
+                  ...({ WebkitTextSecurity: "disc" } as React.CSSProperties),
                 }}
               />
             </label>
