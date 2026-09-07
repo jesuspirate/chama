@@ -22129,6 +22129,63 @@ console.log("\n── RELAY RECOVERY — bounded delta + hot-cache policy ──
 
 console.log("\n── RELAY MANAGER — one-shot fetch isolation ──");
 {
+  // ── v6.3.2: zombie-socket publish retry (roaming-phone CREATE failure) ──
+  // All relays "timing out" at once = dead-but-CONNECTED sockets. publish()
+  // must cycle the pool and resend the same signed event exactly once.
+  {
+    let round = 1;
+    class ZombieWS {
+      static all: ZombieWS[] = [];
+      sent: string[] = [];
+      closed = false;
+      round = round;
+      onopen: ((e: unknown) => void) | null = null;
+      onmessage: ((e: { data: string }) => void) | null = null;
+      onerror: ((e: unknown) => void) | null = null;
+      onclose: ((e: unknown) => void) | null = null;
+      constructor(public url: string) { ZombieWS.all.push(this); }
+      send(message: string) {
+        this.sent.push(message);
+        if (this.round >= 2) {
+          const frame = JSON.parse(message);
+          if (frame[0] === "EVENT") {
+            queueMicrotask(() => this.onmessage?.({ data: JSON.stringify(["OK", frame[1].id, true, ""]) }));
+          }
+        }
+        // Round 1: swallow everything — the zombie.
+      }
+      close() { this.closed = true; queueMicrotask(() => this.onclose?.({})); }
+    }
+    const zrm = new RelayManager(
+      ["wss://z1.test", "wss://z2.test"],
+      {},
+      ZombieWS as unknown as typeof WebSocket,
+      { publishTimeoutMs: 40 },
+    );
+    zrm.connect();
+    for (const sock of ZombieWS.all) sock.onopen?.({});
+    round = 2;
+    const opener = setInterval(() => {
+      for (const sock of ZombieWS.all) {
+        if (sock.round >= 2 && !sock.closed && sock.onopen && sock.sent.length === 0) sock.onopen({});
+      }
+    }, 25);
+    const zombieEvent = { id: "ab".repeat(32), kind: 1, content: "", tags: [], pubkey: "cd".repeat(32), sig: "", created_at: 0 } as any;
+    const result = await zrm.publish(zombieEvent);
+    clearInterval(opener);
+    assert(result.accepted >= 1,
+      "zombie publish: retry after cycling reaches an accepting relay");
+    assert(ZombieWS.all.slice(0, 2).every(sock => sock.closed),
+      "zombie publish: the dead-but-CONNECTED sockets were force-closed");
+    assert(ZombieWS.all.length >= 3,
+      "zombie publish: cycling re-dialed fresh sockets");
+    const round2Events = ZombieWS.all.filter(sock => sock.round >= 2)
+      .flatMap(sock => sock.sent).filter(message => JSON.parse(message)[0] === "EVENT");
+    assert(round2Events.length >= 1,
+      "zombie publish: the SAME signed event was resent, not re-created");
+    zrm.disconnect();
+  }
+
   class FakeWebSocket {
     static instances: FakeWebSocket[] = [];
     sent: string[] = [];

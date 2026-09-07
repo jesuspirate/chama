@@ -263,7 +263,7 @@ export const me: Record<string, string> = {
   "me.withdrawEcashBackupHint": "Clearing browser data erases funds you haven't exported.",
   "me.you": "You",
   "me.yourChama": "YOUR CHAMA",
-  "me.tradeName": "Name on trades",
+  "me.tradeName": "Profile name",
   "me.tradeNameHint": "Shown on your trades instead of your key. Leave empty to use your generated name: {name}.",
   "me.tradeNameSave": "Save",
   "me.tradeNameSaved": "Saved",

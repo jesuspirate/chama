@@ -249,7 +249,7 @@ export const me: Record<string, string> = {
   "me.withdrawEcashBackupHint": "Kufuta data ya kivinjari kunafuta fedha ambazo hujazihamisha.",
   "me.you": "Wewe",
   "me.yourChama": "CHAMA CHAKO",
-  "me.tradeName": "Jina kwenye biashara",
+  "me.tradeName": "Jina la wasifu",
   "me.tradeNameHint": "Huonyeshwa kwenye biashara zako badala ya ufunguo wako. Acha wazi kutumia jina lako lililotengenezwa: {name}.",
   "me.tradeNameSave": "Hifadhi",
   "me.tradeNameSaved": "Imehifadhiwa",

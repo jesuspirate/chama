@@ -20,7 +20,7 @@
 // "Chama doesn't manage your Nostr profile" educational copy so the
 // doctrine is visible from day one.
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useDeferredValue } from "react";
 import { useT, translate, getCurrentLang } from "../../i18n/index.js";
 import { LanguageRow } from "../components/LanguagePills.js";
 import {
@@ -417,6 +417,12 @@ export function MeScreen({
   // v6.3 approved redesign: Browse-style pill tabs replace the accordions.
   // Money-safety cards stay ABOVE the tabs — never hidden behind one.
   const [meTab, setMeTab] = useState<"trades" | "sats" | "arbiter" | "profile" | "settings">("trades");
+  // Perceived tap latency fix (Jet, v6.3.3 — worst on iOS PWA): the pills
+  // render from meTab and flip color the instant React commits the click,
+  // while the SECTIONS below render from this deferred value, so unmounting
+  // a long trade list and mounting Settings happens in a non-blocking pass
+  // instead of holding the tap's frame hostage.
+  const shownTab = useDeferredValue(meTab);
   const hasVisibleMoneyAction =
     loudClaims.length > 0
     || calmClaims.length > 0
@@ -839,7 +845,7 @@ export function MeScreen({
       </div>
 
       {/* ── TRADES — settlements ledger + seller queue + full history ─── */}
-      {meTab === "trades" && !hydratingTrades && <>
+      {shownTab === "trades" && !hydratingTrades && <>
         {hasSellerDashboard && (
           <Accordion
             title={t("me.sellerDashboard")}
@@ -873,7 +879,7 @@ export function MeScreen({
       </>}
 
       {/* ── SATS — money utilities. Deliberately not called a wallet. ── */}
-      {meTab === "sats" && (
+      {shownTab === "sats" && (
         <div style={{
           background: T.card, border: `1px solid ${T.border}`,
           borderRadius: T.r, padding: 0, overflow: "hidden",
@@ -887,7 +893,7 @@ export function MeScreen({
       )}
 
       {/* ── ARBITER — rendered only for an arbiter / pool member ── */}
-      {meTab === "arbiter" && !hydratingTrades && dashboard.arbiterVisible && (
+      {shownTab === "arbiter" && !hydratingTrades && dashboard.arbiterVisible && (
         <ArbiterDashboardPanel
           dashboard={dashboard}
           onOpenTrade={onOpenTrade}
@@ -896,11 +902,14 @@ export function MeScreen({
       )}
 
       {/* ── SETTINGS ────────────────────────────────────────────── */}
-      {meTab === "settings" && <>
+      {shownTab === "settings" && <>
         <div style={{
           background: T.card, border: `1px solid ${T.border}`,
           borderRadius: T.r, padding: 0, overflow: "hidden",
         }}>
+          {/* Jet 6.3.3: profile name leads the settings — identity first,
+              not buried under the notification rows. */}
+          <TradeNameRow pubkey={pubkey} />
           {themeMode && onThemeModeChange && (
             <div style={{
               display: "flex", alignItems: "center", justifyContent: "space-between",
@@ -946,7 +955,6 @@ export function MeScreen({
           <DmNotificationsRow />
           <CounterpartyDmRow />
           <NewListingNotificationsRow />
-          <TradeNameRow pubkey={pubkey} />
           <NostrNamesRow on={kind0On} onToggle={() => setKind0On(!kind0On)} />
           {SHOW_BOND_CEREMONY && onOpenBondCeremony && (
             <SettingsRow label={t("me.postYourBond")} hint={t("me.postYourBondHint")} onClick={onOpenBondCeremony} />
@@ -967,7 +975,7 @@ export function MeScreen({
       {/* ── COMMUNITY — the chama switcher, alone. Ratings live on the
           Dashboard; the identity hex lives in the top banner; sign out lives
           in Settings. */}
-      {meTab === "profile" && <>
+      {shownTab === "profile" && <>
         {onSelectCommunity && (
           <YourChamaCard
             communitySlug={communitySlug ?? null}

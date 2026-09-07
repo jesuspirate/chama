@@ -192,12 +192,18 @@ export class RelayManager {
   private WebSocketImpl: typeof WebSocket;
   private stopped = false;
 
+  /** Test seam only: shortens the per-relay OK wait so the zombie-socket
+   *  retry path is exercisable without real 8-second timeouts. */
+  private publishTimeoutMs = PUBLISH_TIMEOUT_MS;
+
   constructor(
     relayUrls: string[],
     callbacks: RelayCallbacks = {},
-    wsImpl?: typeof WebSocket
+    wsImpl?: typeof WebSocket,
+    tuning?: { publishTimeoutMs?: number }
   ) {
     this.callbacks = callbacks;
+    if (tuning?.publishTimeoutMs) this.publishTimeoutMs = tuning.publishTimeoutMs;
     // Allow injecting WebSocket for Node.js (ws package) or testing
     this.WebSocketImpl = wsImpl || (typeof WebSocket !== "undefined" ? WebSocket : undefined as any);
 
@@ -237,7 +243,14 @@ export class RelayManager {
       const ws = new this.WebSocketImpl(url);
       relay.ws = ws;
 
+      // STALE-SOCKET GUARD (v6.3.2 zombie-cycle work): every handler below
+      // ignores events from a socket that is no longer relay.ws. Without
+      // this, a replaced socket's late onclose fires after the pool has
+      // already dialed a replacement and clobbers the NEW connection's
+      // bookkeeping (ws nulled, status demoted) — a real interleaving under
+      // mobile reconnect storms, caught by the zombie-publish test.
       ws.onopen = () => {
+        if (relay.ws !== ws) return;
         relay.status = RelayStatus.CONNECTED;
         relay.retryCount = 0;
         this.callbacks.onStatusChange?.(url, RelayStatus.CONNECTED);
@@ -256,6 +269,7 @@ export class RelayManager {
       };
 
       ws.onmessage = (msg: MessageEvent) => {
+        if (relay.ws !== ws) return;
         try {
           const raw = this.readBoundedRelayFrame(msg.data);
           if (raw === null) {
@@ -270,6 +284,7 @@ export class RelayManager {
       };
 
       ws.onerror = () => {
+        if (relay.ws !== ws) return;
         relay.status = RelayStatus.ERROR;
         this.callbacks.onError?.(new Error(`WebSocket error on ${url}`), url);
         this.callbacks.onStatusChange?.(url, RelayStatus.ERROR);
@@ -282,6 +297,7 @@ export class RelayManager {
       };
 
       ws.onclose = () => {
+        if (relay.ws !== ws) return;
         relay.ws = null;
         // quarantineRelay already published the ERROR state and intentionally
         // suppresses automatic backoff. Do not immediately overwrite that
@@ -373,6 +389,30 @@ export class RelayManager {
    * reconnect now. No-op after disconnect() (respects `stopped`). Connected
    * relays are left untouched.
    */
+  /** Force-close ONE relay that claims to be CONNECTED and reconnect it
+   *  from scratch. forceReconnectAll deliberately skips CONNECTED relays,
+   *  which is exactly the blind spot on phones: the radio sleeps, TCP dies
+   *  with no close event, and the socket stays "CONNECTED" while eating
+   *  every frame. retryCount resets first so the reconnect fires at the
+   *  base backoff, not wherever the old curve left off. */
+  private cycleConnection(url: string): void {
+    if (this.stopped) return;
+    const relay = this.relays.get(url);
+    if (!relay || relay.status !== RelayStatus.CONNECTED) return;
+    relay.retryCount = 0;
+    if (relay.ws) {
+      try { relay.ws.close(); } catch { /* already dead — exactly the point */ }
+      // Some runtimes never deliver onclose for an already-dead socket, so
+      // do the onclose bookkeeping inline; scheduleReconnect dedupes.
+      relay.ws = null;
+    }
+    if (relay.status === RelayStatus.CONNECTED) {
+      relay.status = RelayStatus.DISCONNECTED;
+      this.callbacks.onStatusChange?.(url, RelayStatus.DISCONNECTED);
+      this.scheduleReconnect(url);
+    }
+  }
+
   forceReconnectAll(): void {
     if (this.stopped) return;
     for (const [url, relay] of this.relays) {
@@ -603,6 +643,24 @@ export class RelayManager {
    * Rejects if zero relays accept within the timeout.
    */
   async publish(event: NostrEvent): Promise<{ accepted: number; rejected: number; errors: string[] }> {
+    try {
+      return await this.publishOnce(event);
+    } catch (error) {
+      const tagged = error as Error & { allRelayTimeouts?: boolean };
+      if (this.stopped || !tagged?.allRelayTimeouts) throw error;
+      // Zombie-socket recovery (Jet's roaming-phone CREATE, v6.3.2): close
+      // every "CONNECTED" socket, let the pool re-dial, and resend the SAME
+      // signed event once. Idempotent by construction — same event id,
+      // relays dedupe, and seenEventIds already suppresses the echo.
+      console.warn("[chama] publish: every relay timed out — cycling sockets and retrying once");
+      for (const url of this.relays.keys()) this.cycleConnection(url);
+      const reconnected = await this.waitForConnectedRelays(PUBLISH_CONNECT_WAIT_MS);
+      if (reconnected.length === 0) throw error;
+      return await this.publishOnce(event);
+    }
+  }
+
+  private async publishOnce(event: NostrEvent): Promise<{ accepted: number; rejected: number; errors: string[] }> {
     let connected = [...this.relays.values()].filter(r => r.status === RelayStatus.CONNECTED);
 
     if (connected.length === 0) {
@@ -694,7 +752,14 @@ export class RelayManager {
 
           if (settledCount === sends.length) {
             if (!resolvedEarly && accepted === 0) {
-              reject(new Error(`All ${rejected} relays rejected the event: ${errors.join("; ")}`));
+              const failure = new Error(`All ${rejected} relays rejected the event: ${errors.join("; ")}`) as Error & { allRelayTimeouts?: boolean };
+              // Every relay "timing out" AT ONCE is not three independent
+              // outages — it is the mobile zombie-socket signature (radio
+              // slept, TCP died, no close event, sockets still CONNECTED).
+              // The tag lets publish() cycle the pool and retry once.
+              failure.allRelayTimeouts = errors.length > 0
+                && errors.every(message => message.startsWith("Timeout on "));
+              reject(failure);
             } else if (resolvedEarly && rejected > 0) {
               console.debug(
                 `[chama] publish ${event.id.slice(0, 8)}…: ${accepted}/${sends.length} relays accepted; stragglers: ${errors.join("; ")}`,
@@ -875,7 +940,7 @@ export class RelayManager {
       const timeout = setTimeout(() => {
         this.pendingOk.delete(key);
         resolve({ accepted: false, message: `Timeout on ${relay.url}` });
-      }, PUBLISH_TIMEOUT_MS);
+      }, this.publishTimeoutMs);
 
       this.pendingOk.set(key, { resolve, timeout });
       this.sendToRelay(relay, ["EVENT", event]);
