@@ -1,3 +1,6 @@
+import { shareEscrowId, circleFromEscrow, shareCreatePayload } from "../chama/policy.js";
+import { canTakeSeat } from "../chama/circle.js";
+import { sharesForCircle, createChamaRefundWatcher } from "../chama/wiring.js";
 // ══════════════════════════════════════════════════════════════════════════
 // Chama Nostr Escrow Engine — Escrow Client
 // ══════════════════════════════════════════════════════════════════════════
@@ -932,6 +935,84 @@ export class EscrowClient {
   // USER ACTIONS — One method per thing the UI can do
   // ══════════════════════════════════════════════════════════════════════════
 
+  /** Creates a retry-stable seat; callers fund it through the normal atomic bridge. */
+  async createChamaShare(parentId: string): Promise<{ escrowId: string; state: EscrowState }> {
+    const parent = await this.resolveChamaParent(parentId);
+    if (!parent) throw new Error("A validated circle parent is required");
+    const pubkey = await this.getPubkey();
+    const circle = circleFromEscrow(parent)!;
+    const id = shareEscrowId(parentId, pubkey, circle.roundIndex);
+    const existing = this.states.get(id) ?? await this.loadEscrow(id);
+    if (existing) {
+      if (existing.chamaPolicy !== "share-v1" || existing.parent !== parentId || existing.participants[Role.BUYER] !== pubkey) throw new Error("Circle seat id is occupied by a different escrow");
+      return { escrowId: id, state: existing };
+    }
+    await this.loadChildren(parentId);
+    const now = Math.floor(Date.now() / 1000);
+    const seat = canTakeSeat(circle, sharesForCircle(this.states.values()), pubkey, now);
+    if (!seat.ok) throw new Error(`Cannot take a circle seat: ${seat.reason}`);
+    return this.createEscrow({ ...shareCreatePayload(parent, now), escrowId: id });
+  }
+
+  private async resolveChamaParent(id: string): Promise<EscrowState | undefined> {
+    const existing = this.states.get(id);
+    if (existing) return circleFromEscrow(existing) ? existing : undefined;
+    const events = await this.relayManager.fetchOnce({ kinds: [EscrowEventKind.CREATE], "#d": [id] }, 15_000);
+    for (const raw of sortEventChain(events.map(raw => parseEscrowEvent(raw, raw.content, true)).filter(r => r.ok).map(r => r.event))) {
+      if (raw.escrowId !== id || (raw.payload as CreatePayload).category !== "chama") continue;
+      const result = applyEvent(null, raw);
+      if (result.ok) {
+        this.states.set(id, result.state);
+        this.callbacks.onStateUpdate?.(id, result.state);
+        this.watchChildren(id);
+        return result.state;
+      }
+    }
+    return undefined;
+  }
+
+  private async parseWithChamaContext(raw: NostrEvent, content: string) {
+    let parent: EscrowState | undefined;
+    if (raw.kind === EscrowEventKind.CREATE) {
+      try {
+        const payload = JSON.parse(content);
+        if (payload?.chamaPolicy === "share-v1" && typeof payload.parent === "string") parent = await this.resolveChamaParent(payload.parent);
+      } catch { /* Structural parser reports malformed JSON below. */ }
+    }
+    const id = raw.tags.find(t => t[0] === TAGS.ESCROW_ID)?.[1] ?? "";
+    return parseEscrowEvent(raw, content, true, { parent, state: this.states.get(id) });
+  }
+
+  /** Circles whose children refresh COMPLETED in this session. Only these
+   *  views are trusted to declare a failed fill before roundEnd. */
+  private readonly chamaViewComplete = new Set<string>();
+
+  private readonly chamaRefundWatcher = createChamaRefundWatcher({
+    getEscrows: () => this.states.values(), getPubkey: () => this.getPubkey(),
+    vote: (id, outcome) => this.vote(id, outcome),
+    viewComplete: (circleId) => this.chamaViewComplete.has(circleId),
+    onError: (id, error) => console.debug(`[chama] refund remains pending for ${id}`, error),
+  });
+
+  private chamaRefundRefreshRunning = false;
+
+  async maybeAutoRefundChama(nowSec = Math.floor(Date.now() / 1000)): Promise<void> {
+    if (this.chamaRefundRefreshRunning) return;
+    this.chamaRefundRefreshRunning = true;
+    try {
+      // Refresh cross-child evidence before evaluating the fill deadline.
+      for (const parent of [...this.states.values()]) {
+        const circle = circleFromEscrow(parent);
+        if (circle && nowSec >= circle.fillDeadlineSec) {
+          await this.loadChildren(parent.id);
+          // Reached only when the refresh resolved: a throw unwinds the pass.
+          this.chamaViewComplete.add(parent.id);
+        }
+      }
+      await this.chamaRefundWatcher(nowSec);
+    } finally { this.chamaRefundRefreshRunning = false; }
+  }
+
   // ── Create a new escrow trade ───────────────────────────────────────────
 
   async createEscrow(params: {
@@ -944,6 +1025,8 @@ export class EscrowClient {
     fiatCurrency?: string;
     premiumBps?: number;
     category: string;
+    chamaPolicy?: CreatePayload["chamaPolicy"];
+    chamaCircle?: CreatePayload["chamaCircle"];
     /** PR 2: marketplace user picks; non-marketplace categories get
      *  "service" written by handleCreate regardless of what's passed. */
     fulfillment?: "physical" | "service" | "digital";
@@ -1016,9 +1099,20 @@ export class EscrowClient {
     /** Frozen private tranche-child descriptor. */
     trancheChild?: TrancheChildDescriptor;
   }): Promise<{ escrowId: string; state: EscrowState }> {
+    if ((params.category === "chama" || params.chamaPolicy) && params.subscription) throw new Error("Circles cannot subscribe");
     const pubkey = await this.getPubkey();
     const now = Math.floor(Date.now() / 1000);
-    const escrowId = params.escrowId ?? this.generateEscrowId();
+    const parent = params.chamaPolicy && params.parent ? await this.resolveChamaParent(params.parent) : undefined;
+    if (params.chamaPolicy && !parent) throw new Error("A validated circle parent is required");
+    const escrowId = params.escrowId ?? (parent ? shareEscrowId(parent.id, pubkey, parent.chamaCircle!.roundIndex) : this.generateEscrowId());
+    if (parent) {
+      const existing = this.states.get(escrowId) ?? await this.loadEscrow(escrowId);
+      if (existing) {
+        if (existing.chamaPolicy !== "share-v1" || existing.parent !== parent.id || existing.participants[Role.BUYER] !== pubkey) throw new Error("Circle seat id is occupied by a different escrow");
+        return { escrowId, state: existing };
+      }
+      if (params.subscription) throw new Error("Shares cannot subscribe");
+    }
     if (params.trancheChild && escrowId !== trancheChildId(params.trancheChild.parent, params.trancheChild.planId, params.trancheChild.index)) {
       throw new Error("Tranche child id is not deterministic for its parent plan and index");
     }
@@ -1051,6 +1145,8 @@ export class EscrowClient {
       fiatCurrency: params.fiatCurrency,
       premiumBps: params.premiumBps,
       category: params.category,
+      chamaPolicy: params.chamaPolicy,
+      chamaCircle: params.chamaCircle,
       fulfillment,
       community: params.community,
       // v3.1 B3: carry the ISO country so receivers who don't know this
@@ -1069,12 +1165,12 @@ export class EscrowClient {
       ...(params.sliceCount !== undefined ? { sliceCount: params.sliceCount } : {}),
       ...(escrowXonly ? { escrowXonly } : {}),
       mintUrl: params.mintUrl,
-      platformFeeBps: this.config.defaultPlatformFeeBps!,
+      platformFeeBps: params.chamaPolicy ? 0 : this.config.defaultPlatformFeeBps!,
       platformFeePubkey: this.config.platformFeePubkey || pubkey,
       arbiterFeeMsats: params.arbiterFeeMsats,
       paymentMethods: params.paymentMethods,
       items: params.items,
-      expirySeconds: params.expirySeconds || this.config.defaultExpirySeconds!,
+      expirySeconds: parent ? parent.chamaCircle!.roundEndSec - now : params.chamaCircle ? params.chamaCircle.roundEndSec - now : params.expirySeconds || this.config.defaultExpirySeconds!,
       communityArbiters: params.communityArbiters,
       bondedArbiters: params.bondedArbiters,
       // v0.1.72 federation gates: optional locker-fed identity
@@ -1147,6 +1243,10 @@ export class EscrowClient {
     };
 
     const signed = await this.signWithSimTag(unsigned);
+    const parsed = parseEscrowEvent(signed, JSON.stringify(payload), true, { parent });
+    if (!parsed.ok) throw new Error(parsed.error.code === "INVALID_CHAMA_CREATE" ? parsed.error.message : `Local parse failed: ${parsed.error.message}`);
+    const result = applyEvent(null, parsed.event);
+    if (!result.ok) throw new Error(`Local apply failed: ${result.error.message}`);
     await this.relayManager.publish(signed);
 
     // Best-effort dual publication: a relay/signer failure in the NIP-99
@@ -1168,13 +1268,6 @@ export class EscrowClient {
         console.warn(`[chama] NIP-99 mirror publish failed for ${escrowId}:`, error);
       }
     }
-
-    // Apply locally immediately (optimistic)
-    const parsed = parseEscrowEvent(signed, JSON.stringify(payload), true);
-    if (!parsed.ok) throw new Error(`Local parse failed: ${parsed.error.message}`);
-
-    const result = applyEvent(null, parsed.event);
-    if (!result.ok) throw new Error(`Local apply failed: ${result.error.message}`);
 
     this.states.set(escrowId, result.state);
     this.setHotRawEvents(escrowId, [signed]);
@@ -1622,6 +1715,13 @@ export class EscrowClient {
     };
 
     const signed = await this.signWithSimTag(unsigned);
+    if (state.chamaPolicy) {
+      const parsed = parseEscrowEvent(signed, JSON.stringify(wirePayload), true, { state });
+      if (!parsed.ok) throw new Error(`Invalid share LOCK: ${parsed.error.message}`);
+      const checked = applyEvent(state, parsed.event);
+      if (!checked.ok) throw new Error(`Invalid share LOCK: ${checked.error.message}`);
+    }
+
     await this.relayManager.publish(signed);
 
     // For local apply, we have the cleartext in scope — synthesize a
@@ -1700,7 +1800,7 @@ export class EscrowClient {
       }
     }
 
-    const voteCheck = canVote(state, pubkey);
+    const voteCheck = canVote(state, pubkey, undefined, outcome);
     if (!voteCheck.canVote) throw new Error(`Cannot vote: ${voteCheck.reason}`);
 
     const now = Math.floor(Date.now() / 1000);
@@ -2611,8 +2711,22 @@ export class EscrowClient {
           skippedEvents++;
           continue;
         }
-        const result = parseEscrowEvent(raw, content, true);
+        const result = await this.parseWithChamaContext(raw, content);
         if (result.ok) parsed.push(result.event);
+      }
+      // A cold replay has no cached share state while decrypting its VOTEs.
+      // Once CREATE is known, apply the contextual parser gate before replay;
+      // a forbidden RELEASE must not poison an otherwise recoverable chain.
+      const shareCreate = parsed.find(e => e.kind === EscrowEventKind.CREATE && (e.payload as CreatePayload).chamaPolicy === "share-v1");
+      if (shareCreate) {
+        const initial = applyEvent(null, shareCreate);
+        if (initial.ok) {
+          for (let index = parsed.length - 1; index >= 0; index--) {
+            const e = parsed[index];
+            if (e.kind !== EscrowEventKind.VOTE && e.kind !== EscrowEventKind.RESOLVE) continue;
+            if (!parseEscrowEvent(e.raw, JSON.stringify(e.payload), true, { state: initial.state }).ok) parsed.splice(index, 1);
+          }
+        }
       }
       diagnostic.step(
         `decrypt:${pass}`,
@@ -2927,7 +3041,7 @@ export class EscrowClient {
     if (decrypted === null) return;
 
     // Parse
-    const parseResult = parseEscrowEvent(event, decrypted, true);
+    const parseResult = await this.parseWithChamaContext(event, decrypted);
     if (!parseResult.ok) {
       this.callbacks.onValidationError?.(escrowId, parseResult.error.message, event.id);
       return;
@@ -3563,7 +3677,7 @@ export class EscrowClient {
   }
 
   private applyLocally(escrowId: string, signed: NostrEvent, payload: EscrowPayload): EscrowState {
-    const parsed = parseEscrowEvent(signed, JSON.stringify(payload), true);
+    const parsed = parseEscrowEvent(signed, JSON.stringify(payload), true, { state: this.states.get(escrowId) });
     if (!parsed.ok) throw new Error(`Local parse failed: ${parsed.error.message}`);
 
     const currentState = this.states.get(escrowId) || null;

@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const SRC = join(root, "landing/icons/use-cases");
 const DST = join(root, "public/icons/verticals");
-const ICONS = ["bill-pay", "stack", "store", "work"];
+const ICONS = ["bill-pay", "stack", "store", "work", "chama"];
 
 let synced = 0;
 for (const id of ICONS) {

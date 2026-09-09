@@ -1,3 +1,4 @@
+import { circle } from "./circle.js";
 // English — the source of truth. One namespace file per screen-group so the
 // extraction sweep (and later the fr/es translation passes) fan out with zero
 // file contention. Every key is dot-prefixed with its namespace.
@@ -28,6 +29,7 @@ import { tranche } from "./tranche.js";
 import { work } from "./work.js";
 
 export const en: Record<string, string> = {
+  ...circle,
   ...app,
   ...bond,
   ...browse,

@@ -97,7 +97,7 @@ export function BrowseView({
   browseCategory, setBrowseCategory,
   browseCommunity,
   amountDisplayMode,
-  matchingListings, nonMatchingListings,
+  matchingListings, nonMatchingListings, allEscrows, circleChildrenLoaded,
   stockByListing,
   orderIndicatorByListing,
   categoryCounts,
@@ -112,6 +112,8 @@ export function BrowseView({
   setBrowseCategory: (s: string) => void;
   browseCommunity: string;
   amountDisplayMode: AmountDisplayMode;
+  allEscrows?: readonly EscrowState[];
+  circleChildrenLoaded?: ReadonlySet<string>;
   matchingListings: EscrowState[];
   nonMatchingListings: EscrowState[];
   /** #7 Stage 3: derived "N left" per multi-unit parent listing id. */
@@ -625,6 +627,8 @@ export function BrowseView({
                     amountDisplayMode={amountDisplayMode}
                     quoteCurrency={quoteCurrency}
                     stockByListing={stockByListing}
+                    allEscrows={allEscrows}
+                    circleChildrenLoaded={circleChildrenLoaded}
                     orderIndicatorByListing={orderIndicatorByListing}
                     onOpenWorkerProfile={setResumePubkey}
                     showCommunityChip={browseScope === "all"}
@@ -635,6 +639,8 @@ export function BrowseView({
                   {filteredMatchingListings.map((s, i) => (
                     <div key={s.id} style={{ animation: `fadeIn 0.4s ease ${i * 0.08}s both` }}>
                       <TradeCard
+                        allEscrows={allEscrows}
+                        circleChildrenLoaded={circleChildrenLoaded}
                         state={s}
                         pubkey={pubkey}
                         onSelect={() => onOpenEscrow(s.id)}
@@ -687,6 +693,8 @@ export function BrowseView({
                     amountDisplayMode={amountDisplayMode}
                     quoteCurrency={quoteCurrency}
                     stockByListing={stockByListing}
+                    allEscrows={allEscrows}
+                    circleChildrenLoaded={circleChildrenLoaded}
                     orderIndicatorByListing={orderIndicatorByListing}
                     onOpenWorkerProfile={setResumePubkey}
                     showCommunityChip={browseScope === "all"}
@@ -697,6 +705,8 @@ export function BrowseView({
                   {filteredNonMatchingListings.map((s, i) => (
                     <div key={s.id} style={{ animation: `fadeIn 0.4s ease ${i * 0.08}s both` }}>
                       <TradeCard
+                        allEscrows={allEscrows}
+                        circleChildrenLoaded={circleChildrenLoaded}
                         state={s}
                         pubkey={pubkey}
                         onSelect={() => onOpenEscrow(s.id)}
@@ -1022,7 +1032,7 @@ function BrowsePreferenceControl({
 }
 
 function BrowseSection({
-  section,
+  section, allEscrows, circleChildrenLoaded,
   pubkey,
   onOpenEscrow,
   variant = "matching",
@@ -1035,6 +1045,8 @@ function BrowseSection({
   onOpenWorkerProfile,
   showCommunityChip = false,
 }: {
+  allEscrows?: readonly EscrowState[];
+  circleChildrenLoaded?: ReadonlySet<string>;
   section: BrowseListingSection;
   pubkey: string;
   onOpenEscrow: (id: string) => void;
@@ -1084,6 +1096,8 @@ function BrowseSection({
         {section.listings.map((s, i) => (
           <div key={s.id} style={{ animation: `fadeIn 0.4s ease ${i * 0.08}s both` }}>
             <TradeCard
+                        allEscrows={allEscrows}
+                        circleChildrenLoaded={circleChildrenLoaded}
               state={s}
               pubkey={pubkey}
               onSelect={() => onOpenEscrow(s.id)}

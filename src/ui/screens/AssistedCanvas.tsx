@@ -106,11 +106,26 @@ export function AssistedCanvas({
   const fiatCurrency = defaultCurrencyForCommunity(browseCommunity);
   const btcPrice = useBitcoinPrice();
   const fiatRates = useFiatRates();
-  // Replay the last snapshot (if fresh) so back-from-a-trade lands on the same
-  // step — usually the match results — instead of a blank canvas.
-  const resume = resumeRef?.current && Date.now() - resumeRef.current.at <= CANVAS_RESUME_MAX_AGE_MS
-    ? resumeRef.current
+  // Replay the last snapshot so back-from-a-trade lands on the same step —
+  // usually the match results — instead of a blank canvas. The SEARCH itself
+  // (bring/want/amount/rails/premium) is the user's intent and never rots, so
+  // it replays at ANY age (Jet, 2026-09-07: "we could just drop them back to
+  // their previous search — that's the most important thing to them"). Only
+  // the match RESULTS go stale: past the freshness window we keep the search,
+  // clear the dead results, and re-run the match on mount (staleResults).
+  const rawResume = resumeRef?.current ?? null;
+  const freshResume = rawResume && Date.now() - rawResume.at <= CANVAS_RESUME_MAX_AGE_MS
+    ? rawResume
     : null;
+  const staleResults = !!rawResume && !freshResume
+    && (rawResume.surface === "matches" || rawResume.surface === "review");
+  const resume: AssistedCanvasResume | null = freshResume ?? (rawResume && {
+    ...rawResume,
+    matches: [],
+    goodsMatches: [],
+    matchWhy: null,
+    surface: rawResume.surface === "review" ? "matches" : rawResume.surface,
+  });
   const [surface, setSurface] = useState<Surface>(resume?.surface ?? "bring");
   const [bring, setBring] = useState<AssistedCanvasAsset | null>(resume?.bring ?? null);
   const [want, setWant] = useState<AssistedCanvasAsset | null>(resume?.want ?? null);
@@ -143,6 +158,12 @@ export function AssistedCanvas({
   };
   useEffect(() => () => {
     if (resumeRef) resumeRef.current = snapshotRef.current;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Stale-results resume: same search, fresh offers. Runs once on mount.
+  useEffect(() => {
+    if (staleResults) void finishRoute();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -942,9 +963,9 @@ function AssetMark({ asset }: { asset: AssistedCanvasAsset }) {
 
 function RouteCue({ children }: { children: string }) { return <div className="assisted-route">{children}</div>; }
 function Kicker({ children }: { children: string }) { return <div style={{ color: T.accent, fontFamily: T.mono, fontSize: 10, fontWeight: 700, letterSpacing: ".16em", textTransform: "uppercase" }}>{children}</div>; }
-function Back({ onClick, children }: { onClick: () => void; children: string }) { return <button type="button" data-chama-shortcut="back" onClick={onClick} style={{ border: 0, padding: 0, marginBottom: "clamp(10px, 2vh, 28px)", background: "transparent", color: T.muted, cursor: "pointer" }}>← {children}</button>; }
-function QuestionCard({ children }: { children: ReactNode }) { return <div className="assisted-question-card">{children}</div>; }
-function Primary({ children, onClick, disabled = false }: { children: ReactNode; onClick: () => void; disabled?: boolean }) { return <button type="button" data-chama-shortcut="enter" disabled={disabled} onClick={onClick} className="assisted-primary">{children}</button>; }
+export function Back({ onClick, children }: { onClick: () => void; children: string }) { return <button type="button" data-chama-shortcut="back" onClick={onClick} style={{ border: 0, padding: 0, marginBottom: "clamp(10px, 2vh, 28px)", background: "transparent", color: T.muted, cursor: "pointer" }}>← {children}</button>; }
+export function QuestionCard({ children }: { children: ReactNode }) { return <div className="assisted-question-card">{children}</div>; }
+export function Primary({ children, onClick, disabled = false }: { children: ReactNode; onClick: () => void; disabled?: boolean }) { return <button type="button" data-chama-shortcut="enter" disabled={disabled} onClick={onClick} className="assisted-primary">{children}</button>; }
 function Safety({ children }: { children: ReactNode }) { return <div style={{ marginTop: 14, color: T.muted, fontSize: 12, lineHeight: 1.5 }}>{children}</div>; }
 function ErrorBox({ children }: { children: ReactNode }) { return <div style={{ marginTop: 16, padding: "12px 14px", borderRadius: T.r, color: T.red, background: T.redDim, border: `1px solid ${T.red}44` }}>{children}</div>; }
 
@@ -1025,14 +1046,14 @@ function shortKey(pubkey: string) { return pubkey.length > 16 ? `${pubkey.slice(
 // (vh-driven clamps below); the hero heading yields a few px only on short
 // windows (the 8vh term) and never drops below readable. Content that is
 // legitimately tall (match lists, dashboards) still scrolls naturally.
-function headingStyle(): CSSProperties { return { margin: "clamp(8px, 1.2vh, 14px) 0 0", maxWidth: 900, color: T.text, fontSize: "clamp(36px, min(5vw, 8vh), 76px)", lineHeight: .98, letterSpacing: "-.055em", fontWeight: 650 }; }
-function subStyle(): CSSProperties { return { margin: "clamp(10px, 1.8vh, 24px) 0 0", maxWidth: 680, color: T.muted, fontSize: "clamp(16px, 1.7vw, 22px)", lineHeight: 1.45 }; }
-function reviewStyle(): CSSProperties { return { maxWidth: 760, marginTop: "clamp(16px, 3vh, 42px)", padding: "clamp(12px, 1.8vh, 20px) 28px", borderRadius: 22, background: T.card, border: `1px solid ${T.borderHi}`, boxShadow: "0 22px 65px rgba(0,0,0,.12)" }; }
+export function headingStyle(): CSSProperties { return { margin: "clamp(8px, 1.2vh, 14px) 0 0", maxWidth: 900, color: T.text, fontSize: "clamp(30px, min(5vw, 7vh), 76px)", lineHeight: .98, letterSpacing: "-.055em", fontWeight: 650 }; }
+export function subStyle(): CSSProperties { return { margin: "clamp(10px, 1.8vh, 24px) 0 0", maxWidth: 680, color: T.muted, fontSize: "clamp(16px, 1.7vw, 22px)", lineHeight: 1.45 }; }
+export function reviewStyle(): CSSProperties { return { maxWidth: 760, marginTop: "clamp(16px, 3vh, 42px)", padding: "clamp(12px, 1.8vh, 20px) 28px", borderRadius: 22, background: T.card, border: `1px solid ${T.borderHi}`, boxShadow: "0 22px 65px rgba(0,0,0,.12)" }; }
 function fieldStyle(): CSSProperties { return { width: "100%", padding: "17px 0", border: 0, borderBottom: `1px solid ${T.border}`, outline: 0, background: "transparent", color: T.text, font: `600 clamp(23px, 3vw, 38px)/1.2 ${T.sans}` }; }
 function bareInputStyle(): CSSProperties { return { minWidth: 0, flex: 1, border: 0, outline: 0, background: "transparent", color: T.text, font: `600 clamp(25px, 4vw, 45px)/1.1 ${T.sans}` }; }
 function amountLineStyle(): CSSProperties { return { display: "flex", alignItems: "baseline", gap: 12, paddingBottom: 15, borderBottom: `1px solid ${T.border}`, color: T.accent, fontFamily: T.mono, fontWeight: 700 }; }
 
-function canvasCss() { return `
+export function canvasCss() { return `
   .assisted-canvas{min-height:calc(100dvh - 360px);display:grid;grid-template-rows:1fr auto;padding:clamp(14px,2.5vh,48px) clamp(22px,5vw,70px) 12px;animation:fadeIn .25s ease}
   .assisted-canvas-main{width:100%;max-width:1080px;margin:0 auto;align-self:center}
   .assisted-canvas-footer{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:18px;color:${T.muted};font-size:12px}
@@ -1073,6 +1094,42 @@ function canvasCss() { return `
   .assisted-premium-grid button{min-height:52px;padding:12px;border:1px solid ${T.borderHi};border-radius:15px;background:${T.bg};color:${T.text};font-weight:700;cursor:pointer;transition:.16s ease}
   .assisted-premium-grid button:hover{border-color:${T.accent}}.assisted-premium-grid button.selected{border-color:${T.accent};background:${T.accentDim};color:${T.accent}}
   .assisted-linky{margin-top:16px}.assisted-linky button{border:0;background:transparent;color:${T.accent};cursor:pointer;padding:0;font-weight:700;font-size:14px}
-  @media(max-height:760px){.assisted-rail-grid button{min-height:46px;padding:10px 13px}.assisted-premium-grid button{min-height:46px;padding:10px}.assisted-payment-fields{gap:7px}.assisted-canvas-footer{font-size:11px}}
+  /* Height budget (measured, 2026-09-08): the chrome above the canvas is
+     ~260px and the fixed bottom nav 65px, so a 907px-tall window leaves the
+     canvas ~582px — and the rails slide measured 716px at full comfort
+     (Jet's 150%-zoom desktop screenshot: page scrolls, Find matches below
+     the fold). Below 1000px of viewport, spend the height on the CHOICES,
+     not the air around them. Every slide must fit its budget unscrolled. */
+  @media(max-height:1000px){
+    .assisted-canvas{padding-top:10px;padding-bottom:8px}
+    .assisted-route{margin-top:6px}
+    .assisted-question-card{margin-top:12px;padding:14px 18px}
+    .assisted-rail-grid{gap:8px}
+    .assisted-rail-grid button{min-height:44px;padding:8px 13px}
+    .assisted-premium-grid button{min-height:44px;padding:8px}
+    .assisted-rail-help{margin-top:5px;font-size:11px}
+    .assisted-payment-nudge{margin-top:8px;padding:8px 12px}
+    .assisted-primary{margin-top:10px;padding:11px 22px}
+    .assisted-choice-grid{margin-top:12px}
+    .assisted-choice{min-height:clamp(96px,13vh,140px)}
+  }
+  @media(max-height:760px){
+    .assisted-rail-grid button{min-height:40px;padding:7px 12px}
+    .assisted-premium-grid button{min-height:40px;padding:7px}
+    .assisted-payment-fields{gap:7px}
+    .assisted-canvas-footer{font-size:11px}
+    /* On truly short windows the page still never scrolls: the RAIL LIST
+       becomes the scroll well (same dvh discipline as .lts-votes) while the
+       question, help line and Find matches stay pinned in view — "one
+       perfectly viewable view, unless necessary" applies here too. */
+    .assisted-question-card{margin-top:8px;padding:10px 14px}
+    .assisted-rail-grid{max-height:max(140px,calc(100dvh - 520px));overflow-y:auto}
+    .assisted-canvas{padding-top:6px}
+    .assisted-route{margin-top:4px}
+    .assisted-canvas-main>p{display:none}
+    .assisted-primary{margin-top:8px;padding:10px 22px}
+    .assisted-choice-grid{margin-top:8px}
+    .assisted-choice{min-height:88px}
+  }
   @media(max-width:760px){.assisted-canvas{min-height:calc(100dvh - 116px);padding:clamp(16px,2.5vh,48px) 18px 14px}.assisted-choice-grid,.assisted-choice-grid.two{grid-template-columns:1fr}.assisted-choice{min-height:120px}.assisted-choice strong{margin-top:18px}.assisted-result-grid{grid-template-columns:1fr}.assisted-rail-grid,.assisted-premium-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.assisted-canvas-footer{grid-template-columns:1fr auto}.assisted-canvas-footer small{display:none}}
 `; }

@@ -1,6 +1,10 @@
 import { useRef, useState } from "react";
-import { EscrowStatus, Outcome, Role, selectedMenuItemsTotalMsats, type EscrowState, type SelectedMenuItem } from "../../escrow-engine/types.js";
-import { decideVotePrompt } from "../decisions.js";
+import { EscrowStatus, Outcome, Role, selectedMenuItemsTotalMsats, getEffectiveParticipantsAt, type EscrowState, type SelectedMenuItem } from "../../escrow-engine/types.js";
+import { decideVotePrompt, preLockDeadline, tradeRoomPresence, type RoomPresence } from "../decisions.js";
+import { profileNameFor, type NostrProfileNameMap } from "../nostr-profiles.js";
+import { BitcoinPricePill } from "../components/BitcoinPricePill.js";
+import { getCommunityBySlug } from "../../communities/registry.js";
+import { ROLE_COLOR } from "../theme.js";
 import { getWinner } from "../../escrow-engine/state-machine.js";
 import { expectedLockerRole } from "../../escrow-engine/lock-custody.js";
 import { GUIDED_SLICE_CHOICE_ENABLED } from "../../escrow-engine/experimental-escrow-features.js";
@@ -12,6 +16,8 @@ import { translate, getCurrentLang } from "../../i18n/index.js";
 import { shareTradeLink } from "../share-link.js";
 import { listSavedHandles } from "../../payments/saved-handles.js";
 import { getRailByKey, toRailKey } from "../../payments/rail-registry.js";
+import { VerticalIcon } from "../components/VerticalIcon.js";
+import { isParentStorefront, isChildOrder } from "../../escrow-engine/storefront.js";
 
 // Render-time translation (same pattern as decisions.ts): picked up per render,
 // so a language switch re-reads the live language without prop threading.
@@ -56,6 +62,10 @@ export function LiveTradeSurface({
   myGivenRatings = [],
   fundingInProgress = false,
   bootProbeFailed = false,
+  profileNames,
+  kind0Enabled = false,
+  amountDisplayMode,
+  onAmountDisplayModeChange,
 }: {
   state: EscrowState;
   pubkey: string;
@@ -79,6 +89,14 @@ export function LiveTradeSurface({
   myGivenRatings?: Array<{ tradeId: string; ratee: string; thumb: RatingThumb }>;
   fundingInProgress?: boolean;
   bootProbeFailed?: boolean;
+  /** Counterparty names for the room strip (PHILOSOPHY rule 1: people, not
+   *  platforms). Same map + toggle TradeDetail already receives. */
+  profileNames?: NostrProfileNameMap;
+  kind0Enabled?: boolean;
+  /** Same sats⇄fiat rocker state Browse's hero uses — the banner is the SAME
+   *  banner, all the way from Browse into the trade room. */
+  amountDisplayMode?: Parameters<typeof BitcoinPricePill>[0]["amountMode"];
+  onAmountDisplayModeChange?: (mode: NonNullable<Parameters<typeof BitcoinPricePill>[0]["amountMode"]>) => void;
 }) {
   const participants = state.participants;
   const myRole: Role | null =
@@ -131,6 +149,10 @@ export function LiveTradeSurface({
 
   // A joined range (bracket) order carries its own amount on the buyer hold;
   // the room and the lock must speak THAT number, not the bracket minimum.
+  const communityCurrency = getCommunityBySlug(state.community)?.currency ?? null;
+  // The honest pre-lock clock: a CREATED trade dies when a seat lapses, not
+  // when the listing expires. See preLockDeadline().
+  const preLock = preLockDeadline(state);
   const buyerHold = state.joinHolds?.[Role.BUYER];
   const orderItems = buyerHold?.selectedItems;
   const orderMsats = buyerHold?.amountMsats
@@ -138,6 +160,14 @@ export function LiveTradeSurface({
   const effectiveMsats = state.status === EscrowStatus.CREATED && orderMsats ? orderMsats : state.amountMsats;
   const amountLabel = tr("lts.satsAmount", { amount: fmtSats(effectiveMsats) });
   const catLabel = CAT_LABEL[state.category] ?? state.category;
+  // The vertical speaks through its MARK, not a word (Jet, 6.3.4 review):
+  // same id mapping TradeDetail's kicker uses, so every surface shows the
+  // same new-generation logo for the same trade type.
+  const verticalIconId = state.listingKind === "work"
+    ? "work"
+    : (isParentStorefront(state) || isChildOrder(state) || state.category === "marketplace")
+    ? "marketplace"
+    : state.category;
   const winner = getWinner(state);
   const iAmWinner = !!winner && samePubkey(winner.pubkey, pubkey);
   const counterparty =
@@ -203,27 +233,47 @@ export function LiveTradeSurface({
             ) : (
               <MoreOptions onClick={onOpenFullView} label={tr("lts.fundFullView", { amount: amountLabel })} />
             )}
-            {state.expiresAt > 0 && (
+            {preLock && !preLock.lapsed && (
               <div style={{ marginTop: 4 }}>
-                <CountdownTimer expiresAt={state.expiresAt} label={tr("lts.toLockExpires")} />
+                <CountdownTimer
+                  expiresAt={preLock.at}
+                  label={tr(preLock.kind === "hold" ? "lts.toLockSeat" : "lts.toLockExpires")}
+                />
               </div>
+            )}
+            {preLock?.lapsed && (
+              <Hint>{tr(preLock.kind === "hold" ? "lts.seatLapsed" : "lts.listingExpired")}</Hint>
             )}
           </Decision>
         );
       }
       if (myRole != null) {
+        // Lapsed: say so. The seat is gone and the listing is back in Browse —
+        // leaving a countdown running here is how someone waits an entire
+        // listing lifetime for a lock that can no longer happen.
+        if (preLock?.lapsed) {
+          return (
+            <Waiting
+              message={tr(
+                preLock.kind === "hold" ? "lts.lockMissed" : "lts.listingExpired",
+                { role: roleLabel(funderRole) },
+              )}
+            />
+          );
+        }
         return (
           <Waiting message={tr("lts.waitingLock", { role: roleLabel(funderRole) })}>
-            {state.expiresAt > 0 && (
-              <CountdownTimer expiresAt={state.expiresAt} label={tr("lts.forRoleLock", { role: roleLabel(funderRole) })} />
+            {preLock && (
+              <CountdownTimer expiresAt={preLock.at} label={tr("lts.forRoleLock", { role: roleLabel(funderRole) })} />
             )}
           </Waiting>
         );
       }
       // Unseated viewer (opened from a match): seat inline into the open slot,
       // then the surface re-renders to the waiting/lock state — no full-view bounce.
-      const openRole = !participants[Role.BUYER] ? Role.BUYER
-        : !participants[Role.SELLER] ? Role.SELLER : null;
+      const seats = getEffectiveParticipantsAt(state);
+      const openRole = !seats[Role.BUYER] ? Role.BUYER
+        : !seats[Role.SELLER] ? Role.SELLER : null;
       // Slicing chunks the UNSECURED, irreversible leg so only 1/N is ever at
       // risk at a step. The buyer picks the granularity here: fiat (Exchange/CBP)
       // is divisible, and Market services/digital deliver per milestone — but a
@@ -527,7 +577,9 @@ export function LiveTradeSurface({
       <style>{`
         .lts-grid{display:grid;grid-template-columns:.95fr 1.12fr;gap:1px;background:${T.border};flex:1;min-height:0}
         .lts-pane{background:${T.surface};min-height:0;display:flex;flex-direction:column;overflow:hidden}
-        .lts-votes{padding:18px;overflow-y:auto}
+        .lts-votes{padding:18px;overflow-y:auto;display:flex;flex-direction:column}
+        .lts-decision-well{width:100%}
+        @media (min-width:721px){.lts-decision-well{margin:auto 0;padding:12px 0}}
         @media (max-width:720px){
           .lts-grid{grid-template-columns:1fr;grid-template-rows:minmax(0,auto) minmax(0,1fr)}
           /* dvh, never %: a percentage max-height on an item in an auto grid
@@ -540,8 +592,47 @@ export function LiveTradeSurface({
           .lts-grid.lts-prejoin .lts-chat{display:none}
           .lts-grid.lts-prejoin{grid-template-rows:1fr}
         }
+        .lts-price-hero{padding:10px 16px;border-bottom:1px solid ${T.border};background:${T.bg}}
+        .lts-hero-slim{display:none}
+        .lts-cat-word{overflow:hidden;text-overflow:ellipsis}
+        @media (max-width:720px){.lts-cat-word{display:none}}
+        @media (max-width:720px){
+          .lts-price-hero{padding:8px 12px}
+          .lts-hero-full{display:none}
+          .lts-hero-slim{display:block}
+        }
+        .lts-room{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+          padding:8px 16px;border-bottom:1px solid ${T.border};background:${T.bg}}
+        .lts-room-people{display:flex;align-items:center;gap:8px;min-width:0;flex:1 1 auto}
+        @keyframes ltsHere{0%,100%{opacity:1}50%{opacity:.35}}
+        @media (prefers-reduced-motion:reduce){.lts-here-dot{animation:none!important}}
         @keyframes ltsPulse{0%,100%{box-shadow:0 0 0 0 ${T.amber}00}50%{box-shadow:0 0 0 4px ${T.amber}33}}
       `}</style>
+
+      {/* The price, HERO-sized and FIRST (Jet, 6.3.4 review): the same big
+          banner that anchors Browse rides through the whole trade — Browse,
+          Convert, and the trade room all speak the one number, no squinting.
+          The header (and its back button) sits BELOW it, closer to the thumb:
+          nobody stretches to the top-left corner just to go back. */}
+      <div className="lts-price-hero">
+        <div className="lts-hero-full">
+          <BitcoinPricePill
+            hero
+            amountMode={amountDisplayMode}
+            onAmountModeChange={onAmountDisplayModeChange}
+            quoteCurrency={communityCurrency}
+          />
+        </div>
+        <div className="lts-hero-slim">
+          <BitcoinPricePill
+            hero
+            slim
+            amountMode={amountDisplayMode}
+            onAmountModeChange={onAmountDisplayModeChange}
+            quoteCurrency={communityCurrency}
+          />
+        </div>
+      </div>
 
       {/* Header */}
       <div style={{
@@ -551,12 +642,20 @@ export function LiveTradeSurface({
         <button
           type="button"
           onClick={onBack}
-          style={{ background: "none", border: "none", color: T.muted, fontFamily: T.mono, fontSize: 13, cursor: "pointer" }}
+          style={{ background: "none", border: "none", color: T.muted, fontFamily: T.mono, fontSize: 13, cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0, padding: 0 }}
         >
           {backLabel ? `‹ ${backLabel}` : tr("lts.backTrades")}
         </button>
-        <div style={{ fontWeight: 700, fontSize: 13.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {catLabel} · <span style={{ fontFamily: T.mono, color: T.accent }}>{amountLabel}</span>
+        <div
+          title={catLabel}
+          aria-label={catLabel}
+          style={{ display: "flex", alignItems: "center", gap: 7, fontWeight: 700, fontSize: 13.5, minWidth: 0, overflow: "hidden", whiteSpace: "nowrap" }}
+        >
+          <VerticalIcon vertical={verticalIconId} size={20} fallback={catLabel} />
+          {/* The word rides along where there's room (desktop) and yields to
+              the mark alone where there isn't (phones) — real estate first. */}
+          <span className="lts-cat-word">{catLabel.replace(/^[^ ]* /, m => /[a-z]/i.test(m) ? m : "")}</span>
+          <span style={{ fontFamily: T.mono, color: T.accent, overflow: "hidden", textOverflow: "ellipsis" }}>{amountLabel}</span>
         </div>
         <button
           type="button"
@@ -582,13 +681,39 @@ export function LiveTradeSurface({
         </span>
       </div>
 
+      {/* The room strip. PHILOSOPHY.md rule 1 — "trade with people, not
+          platforms": you should always be able to see WHO is across from you
+          and whether they are actually there, and (Jet, 6.3) the price you
+          are trading against should never disappear the moment a trade opens.
+          Presence is evidence-derived only (see tradeRoomPresence). */}
+      <div className="lts-room">
+        <div className="lts-room-people">
+          {tradeRoomPresence(state, pubkey).map(person => (
+            <PersonChip
+              key={person.role}
+              person={person}
+              name={person.isYou
+                ? tr("lts.roomYou")
+                : profileNameFor(profileNames, person.pubkey, kind0Enabled)}
+            />
+          ))}
+        </div>
+      </div>
+
       {/* Decision left · chat right (decision on top on phones; an unseated
           phone viewer sees only the join question — chat appears once seated) */}
       <div className={`lts-grid${myRole === null && state.status === EscrowStatus.CREATED ? " lts-prejoin" : ""}`}>
         <div className="lts-pane lts-votes">
-          {renderDecision()}
-          <div style={{ marginTop: 20, paddingTop: 16, borderTop: `1px solid ${T.border}` }}>
-            <MoreOptions onClick={onOpenFullView} label={tr("lts.moreOptions")} />
+          {/* The decision floats to the vertical CENTER of the pane on
+              desktop (Jet, 6.3.4 review): vote in the middle-left, talk on
+              the right. margin:auto both centers and degrades safely — a
+              tall phase (reason chips, slice chooser) scrolls instead of
+              clipping at the top the way justify-content:center would. */}
+          <div className="lts-decision-well">
+            {renderDecision()}
+            <div style={{ marginTop: 20, paddingTop: 16, borderTop: `1px solid ${T.border}` }}>
+              <MoreOptions onClick={onOpenFullView} label={tr("lts.moreOptions")} />
+            </div>
           </div>
         </div>
         <div className="lts-pane lts-chat">
@@ -600,6 +725,59 @@ export function LiveTradeSurface({
 }
 
 // ── Small presentational helpers ─────────────────────────────────────────
+
+/** One person in the room. The dot carries the sacred role colour; it only
+ *  breathes when we have real evidence they are here right now. */
+function PersonChip({ person, name }: { person: RoomPresence; name: string | null }) {
+  const color = ROLE_COLOR[person.role as keyof typeof ROLE_COLOR] ?? T.muted;
+  if (!person.pubkey) {
+    return (
+      <span style={{
+        display: "inline-flex", alignItems: "center", gap: 6,
+        fontFamily: T.mono, fontSize: 11, color: T.muted,
+        border: `1px dashed ${T.border}`, borderRadius: 999, padding: "4px 10px",
+      }}>
+        <span style={{
+          width: 7, height: 7, borderRadius: "50%",
+          border: `1px solid ${T.border}`,
+        }} />
+        {tr("lts.seatOpen")}
+      </span>
+    );
+  }
+  const here = person.signal === "active";
+  const sub =
+    person.signal === "active" ? tr("lts.hereNow")
+    : person.signal === "recent" ? tr("lts.justHere")
+    : tr("lts.roomQuiet");
+  return (
+    <span style={{
+      display: "inline-flex", alignItems: "center", gap: 6, minWidth: 0,
+      fontFamily: T.mono, fontSize: 11,
+      background: T.surface, border: `1px solid ${person.ready ? `${T.green}44` : T.border}`,
+      borderRadius: 999, padding: "4px 10px",
+    }}>
+      <span
+        className={here ? "lts-here-dot" : undefined}
+        style={{
+          width: 7, height: 7, borderRadius: "50%", background: color, flexShrink: 0,
+          opacity: here ? 1 : 0.5,
+          animation: here ? "ltsHere 2s ease-in-out infinite" : undefined,
+        }}
+      />
+      <span style={{
+        color: T.text, fontWeight: 700, maxWidth: 116,
+        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+      }}>
+        {name ?? tr("lts.roomSomeone")}
+      </span>
+      <span style={{ color: person.ready ? T.green : T.muted, flexShrink: 0 }}>
+        · {person.ready ? tr("lts.roomReady") : sub}
+      </span>
+    </span>
+  );
+}
+
 function Decision({ q, sub, children }: { q: string; sub?: string; children: React.ReactNode }) {
   return (
     <div>

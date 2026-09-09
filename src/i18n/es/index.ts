@@ -1,3 +1,4 @@
+import { circle } from "./circle.js";
 // ES dictionary — per-namespace files (mirrors en/) so translation agents
 // fan out with zero file contention. Missing keys fall back to en, then the key.
 import { app } from "./app.js";
@@ -27,6 +28,7 @@ import { tranche } from "./tranche.js";
 import { work } from "./work.js";
 
 export const es: Record<string, string> = {
+  ...circle,
   ...app,
   ...bond,
   ...browse,

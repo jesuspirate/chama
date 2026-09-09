@@ -9661,6 +9661,10 @@ import {
   activeCommittedMsats,
   shouldOpenSellerListingManagement,
   keepFirstCommunityChoiceAfterWalletFailure,
+  preLockDeadline,
+  tradeRoomPresence,
+  ROOM_PRESENCE_ACTIVE_SEC,
+  ROOM_PRESENCE_RECENT_SEC,
 } from "../ui/decisions.js";
 import { pickArbiterFromPool, pickPreferredArbiter } from "../arbiters/pool.js";
 // BP_FEDERATION_INVITE / BLF_FEDERATION_INVITE already imported above
@@ -27197,6 +27201,146 @@ assert(
   !isOpfsTransientStorageError(new Error("federation invite expired")),
   "an unrelated wallet error is not mislabeled as an OPFS storage failure",
 );
+
+// ── THE PRE-LOCK CLOCK ──────────────────────────────────────────────────
+// A CREATED trade does not live until the listing expires: it dies when the
+// first seat lapses. Showing the listing expiry while waiting for a lock left
+// a joined buyer counting down for days on a trade that had silently gone
+// back to Browse.
+console.log("\n── PRE-LOCK CLOCK ──");
+{
+  const NOW = 1_900_000_000;
+  const LISTING = NOW + 7 * 86_400;
+  const HOLD = NOW + 300;
+
+  const mk = (over: Record<string, unknown> = {}): EscrowState => ({
+    status: EscrowStatus.CREATED,
+    expiresAt: LISTING,
+    participants: { [Role.BUYER]: BUYER_PK, [Role.SELLER]: SELLER_PK, [Role.ARBITER]: null },
+    joinHolds: {
+      [Role.BUYER]: { role: Role.BUYER, pubkey: BUYER_PK, joinedAt: NOW, expiresAt: HOLD, eventId: "e1" },
+    },
+    ...over,
+  } as unknown as EscrowState);
+
+  const live = preLockDeadline(mk(), NOW);
+  assert(live?.at === HOLD + JOIN_HOLD_LOCK_GRACE_SECONDS && live?.kind === "hold" && !live.lapsed,
+    "a live join hold — not the listing expiry — is the deadline while waiting for a lock");
+  assert((live?.at ?? 0) < LISTING,
+    "the seat clock runs out days before the listing does — that gap WAS the bug");
+
+  assert(preLockDeadline(mk(), HOLD + JOIN_HOLD_LOCK_GRACE_SECONDS + 1)?.lapsed === true,
+    "past the hold plus its grace, the deadline reads lapsed instead of counting down");
+  assert(preLockDeadline(mk(), HOLD + JOIN_HOLD_LOCK_GRACE_SECONDS - 1)?.lapsed === false,
+    "inside the hidden grace window the seat is still alive — the UI must not call it dead early");
+
+  // Two live holds: the trade dies with whichever seat goes first.
+  const both = preLockDeadline(mk({
+    joinHolds: {
+      [Role.BUYER]: { role: Role.BUYER, pubkey: BUYER_PK, joinedAt: NOW, expiresAt: HOLD, eventId: "e1" },
+      [Role.SELLER]: { role: Role.SELLER, pubkey: SELLER_PK, joinedAt: NOW, expiresAt: HOLD + 600, eventId: "e2" },
+    },
+  }), NOW);
+  assert(both?.at === HOLD + JOIN_HOLD_LOCK_GRACE_SECONDS,
+    "with two seats held, the EARLIER lapse is the deadline");
+
+  // A hold left behind by someone who is no longer in the seat says nothing.
+  const stale = preLockDeadline(mk({
+    joinHolds: {
+      [Role.BUYER]: { role: Role.BUYER, pubkey: "99".repeat(32), joinedAt: NOW, expiresAt: HOLD, eventId: "e1" },
+    },
+  }), NOW);
+  assert(stale?.at === LISTING && stale?.kind === "listing",
+    "a stale hold from a lapsed joiner is ignored — it does not bind the current occupant");
+
+  assert(preLockDeadline(mk({ joinHolds: undefined }), NOW)?.kind === "listing",
+    "with no holds at all the listing expiry is the honest deadline");
+
+  // A signed PLAN_START freezes the seats for the parent room's lifetime.
+  assert(preLockDeadline(mk({ tranchePlan: { rounds: 3 } }), NOW)?.kind === "listing",
+    "a tranche plan freezes the seats, so no hold can lapse the room");
+
+  assert(preLockDeadline(mk({ status: EscrowStatus.LOCKED }), NOW) === null,
+    "once the sats are locked the pre-lock clock is over — trade time takes over");
+  assert(preLockDeadline(mk({ expiresAt: 0, joinHolds: undefined }), NOW) === null,
+    "nothing bounds an unexpiring unheld trade — render no countdown at all");
+}
+
+// ── THE ROOM STRIP (people, not platforms) ──────────────────────────────
+// Presence is EVIDENCE, never a decorative green dot: only something the
+// counterparty actually published counts.
+console.log("\n── ROOM PRESENCE ──");
+{
+  const NOW = 1_900_000_000;
+  const ev = (pk: string, at: number, kind: EscrowEventKind = EscrowEventKind.JOIN) =>
+    ({ pubkey: pk, timestamp: at, kind } as unknown as EscrowState["eventChain"][number]);
+
+  const room = (over: Record<string, unknown> = {}): EscrowState => ({
+    status: EscrowStatus.CREATED,
+    category: "marketplace",
+    expiresAt: NOW + 86_400,
+    participants: { [Role.BUYER]: BUYER_PK, [Role.SELLER]: SELLER_PK, [Role.ARBITER]: null },
+    eventChain: [],
+    chatMessages: [],
+    ...over,
+  } as unknown as EscrowState);
+
+  const nobody = tradeRoomPresence(room({ participants: { [Role.BUYER]: null, [Role.SELLER]: SELLER_PK, [Role.ARBITER]: null } }), SELLER_PK, NOW);
+  assert(nobody[0]?.signal === "empty" && nobody[0]?.pubkey === null,
+    "an unfilled seat reads as an open seat, not as a silent person");
+
+  const unseen = tradeRoomPresence(room(), SELLER_PK, NOW);
+  assert(unseen[0]?.signal === "seated" && unseen[0]?.lastSeenAgoSec === null,
+    "a seat we have no evidence for is 'seated' — we never claim someone is here");
+
+  const fresh = tradeRoomPresence(
+    room({ eventChain: [ev(BUYER_PK, NOW - 30)] }), SELLER_PK, NOW);
+  assert(fresh[0]?.signal === "active" && fresh[0]?.lastSeenAgoSec === 30,
+    "a signed event 30s ago is real evidence they are here now");
+
+  assert(tradeRoomPresence(room({ eventChain: [ev(BUYER_PK, NOW - ROOM_PRESENCE_ACTIVE_SEC - 1)] }), SELLER_PK, NOW)[0]?.signal === "recent",
+    "just past the active window they read as 'just here', not gone");
+  assert(tradeRoomPresence(room({ eventChain: [ev(BUYER_PK, NOW - ROOM_PRESENCE_RECENT_SEC - 1)] }), SELLER_PK, NOW)[0]?.signal === "seated",
+    "past the recent window we stop claiming presence and just say they hold the seat");
+
+  const chatted = tradeRoomPresence(
+    room({ chatMessages: [ev(BUYER_PK, NOW - 5, EscrowEventKind.CHAT)] }), SELLER_PK, NOW);
+  assert(chatted[0]?.signal === "active",
+    "a chat message counts as presence — talking in the room IS being in the room");
+
+  const skewed = tradeRoomPresence(
+    room({ eventChain: [ev(BUYER_PK, NOW + 5_000)] }), SELLER_PK, NOW);
+  assert(skewed[0]?.lastSeenAgoSec === 0 && skewed[0]?.signal === "active",
+    "a clock-skewed future stamp reads as 'just now', never as a negative age");
+
+  // Whose move is it? A marketplace CREATED trade waits on the BUYER to lock.
+  const created = tradeRoomPresence(room(), SELLER_PK, NOW);
+  assert(created[0]?.ready === false && created[1]?.ready === true,
+    "on a CREATED marketplace trade the buyer owes the lock; the seller is ready");
+  const p2p = tradeRoomPresence(room({ category: "p2p-trade" }), BUYER_PK, NOW);
+  assert(p2p[0]?.ready === true && p2p[1]?.ready === false,
+    "p2p flips the funder — the seller owes the lock there");
+
+  const locked = tradeRoomPresence(room({
+    status: EscrowStatus.LOCKED,
+    eventChain: [ev(BUYER_PK, NOW - 10, EscrowEventKind.VOTE)],
+  }), SELLER_PK, NOW);
+  assert(locked[0]?.ready === true && locked[1]?.ready === false,
+    "once locked, 'ready' means you have voted — the person still owing a vote reads unready");
+
+  // A lapsed join hold means the person LEFT: the strip must show an open
+  // seat, never a phantom name marked ready (caught live on the dev build —
+  // the first render of the strip showed a lapsed buyer as seated).
+  const lapsed = tradeRoomPresence(room({
+    joinHolds: { [Role.BUYER]: { role: Role.BUYER, pubkey: BUYER_PK, joinedAt: NOW - 3_600, expiresAt: NOW - 1_800, eventId: "e1" } },
+  }), SELLER_PK, NOW);
+  assert(lapsed[0]?.signal === "empty" && lapsed[0]?.pubkey === null,
+    "a seat whose join hold lapsed reads as an open seat, not a phantom person");
+
+  const me = tradeRoomPresence(room(), BUYER_PK.toUpperCase(), NOW);
+  assert(me[0]?.isYou === true && me[1]?.isYou === false,
+    "you are matched case-insensitively, so the room never shows you as a stranger");
+}
 
 // ══════════════════════════════════════════════════════════════════════════
 // RESULTS

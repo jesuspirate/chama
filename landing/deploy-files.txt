@@ -16,6 +16,8 @@ icons/use-cases/bill-pay.svg
 icons/use-cases/bill-pay-dark.svg
 icons/use-cases/stack.svg
 icons/use-cases/stack-dark.svg
+icons/use-cases/chama.svg
+icons/use-cases/chama-dark.svg
 icons/use-cases/store.svg
 icons/use-cases/store-dark.svg
 icons/use-cases/work.svg

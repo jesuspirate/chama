@@ -35,7 +35,7 @@ import { Role, type EscrowState } from "./types.js";
  *  this must change with it, or the disclosure names the wrong party.
  *  `null` = raw escrow, where anyone may lock. */
 export function expectedLockerRole(category: string): Role | null {
-  if (category === "marketplace") return Role.BUYER;
+  if (category === "marketplace" || category === "chama-share") return Role.BUYER;
   if (category === "lending") return Role.SELLER;
   if (category === "p2p-trade" || category === "bill-pay") return Role.SELLER;
   return null;

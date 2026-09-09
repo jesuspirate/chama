@@ -245,3 +245,22 @@ auto-refund = fill-or-refund), and **Stack** contributes the rhythm and the
 streak — its weekly-goal + consecutive-periods-hit logic is literally the
 cadence and the "clean rounds repair damage" standing mechanic. Reuse both;
 rebuild neither.
+
+## Who opens, who collects (Jet's ruling, 2026-09-07, encoded in levels.ts)
+
+Five tiers from COMPLETED circles (refunded rounds count for nothing, cost
+nothing): 1 Mgeni (0) · 2 Mwanachama (1) · 3 Mwenyeji (3) · 4 Mzee (6) ·
+5 Bosi Mkubwa (12). Coarse levels gate CAPABILITIES; continuous
+standingWeight orders COLLECTION — "may you?" vs "when do you?".
+
+- v1 circle creation stays open to EVERYONE — a commitment pool has no
+  collector, so it is riskless, and open creation is the ladder itself
+  (gating it at level 3 would deadlock the cold start). The gate keeps
+  people IN circles building the graph: creation is a graduation, not an
+  entry point.
+- Opening a ROTATING chama requires level 3 (Mwenyeji): three completed
+  circles, in anyone's chamas, all combined.
+- WHO COLLECTS FIRST: never the creator by right. Rotation order =
+  standingWeight descending (ties: earlier lock, then pubkey — every client
+  derives the identical queue). The creator's power is the terms; the queue
+  is earned. A joining Mzee rightfully collects before a Mwenyeji creator.

@@ -30,6 +30,7 @@ import {
   Outcome,
   TERMINAL_STATES,
   getEffectiveParticipantsAt,
+  JOIN_HOLD_LOCK_GRACE_SECONDS,
 } from "../escrow-engine/types.js";
 import {
   arbiterVotePriority,
@@ -600,6 +601,10 @@ function needsYouReason(
   nowSec: number,
   settledClaimIds?: ReadonlySet<string>,
 ): keyof typeof NEEDS_YOU_RANK | null {
+  // Quiet while filling/running. At the fill deadline cross-circle orchestration
+  // supplies the first REFUND vote; a lone share cannot infer failed fill.
+  if (e.chamaPolicy && e.status !== EscrowStatus.APPROVED && nowSec < e.expiresAt
+      && e.votes[Role.BUYER] !== Outcome.REFUND && e.votes[Role.SELLER] !== Outcome.REFUND) return null;
   const p = getEffectiveParticipantsAt(e, nowSec);
   const isBuyer = samePk(p.buyer, userPubkey);
   const isSeller = samePk(p.seller, userPubkey);
@@ -897,7 +902,7 @@ export function shouldShowOnBrowse(inputs: {
   if (escrow.status !== EscrowStatus.CREATED) return false;
   // Once PLAN_START freezes the participants, this CREATE is the persistent
   // parent room/manifest—not an offer another buyer can take.
-  if (escrow.tranchePlan) return false;
+  if (escrow.tranchePlan || escrow.category === "chama-share") return false;
   // #7 Stage 3: a CHILD purchase escrow (carries `parent`) is a trade, not a
   // listing — it lives in Me / loadable by id, never as its own Browse card.
   if (escrow.parent !== undefined) return false;
@@ -1751,6 +1756,158 @@ export function formatStepInCountdown(seconds: number): string {
   return h > 0
     ? translate(getCurrentLang(), "app.countdownHoursMinutes", { h, m })
     : translate(getCurrentLang(), "app.countdownMinutes", { m });
+}
+
+// ── Who else is in the room ───────────────────────────────────────────────
+//
+// PHILOSOPHY.md rule 1 — "trade with people, not platforms". A trade room
+// that shows a status enum and nothing else is a platform. It should show the
+// person you are trading with, and whether they are actually there.
+//
+// There is no presence protocol here and we will not fake one: a green dot
+// that means nothing is worse than no dot. Everything below is derived from
+// evidence the counterparty actually PUBLISHED — their events on the chain
+// and their messages in the trade chat. "Active" means they signed something
+// two minutes ago. Nothing here guesses.
+
+export type RoomPresenceSignal =
+  /** Published something in the last two minutes — they are here now. */
+  | "active"
+  /** Published within the last quarter hour — they were just here. */
+  | "recent"
+  /** Holds the seat, but we have not seen them in a while. */
+  | "seated"
+  /** Seat is empty. */
+  | "empty";
+
+export const ROOM_PRESENCE_ACTIVE_SEC = 120;
+export const ROOM_PRESENCE_RECENT_SEC = 15 * 60;
+
+export type RoomPresence = {
+  role: Role;
+  pubkey: string | null;
+  isYou: boolean;
+  signal: RoomPresenceSignal;
+  /** Seconds since their last published trace; null when we have seen none. */
+  lastSeenAgoSec: number | null;
+  /** Nothing is waiting on them at this status. */
+  ready: boolean;
+};
+
+/** Whose move is it at this status? Everyone else is, by definition, ready. */
+function awaitedRoleAt(state: EscrowState): Role | null {
+  if (state.status === EscrowStatus.CREATED) return expectedLockerRole(state.category);
+  return null;
+}
+
+/** The room strip: buyer + seller, as people. Pure; time is an argument. */
+export function tradeRoomPresence(
+  state: EscrowState,
+  viewerPubkey: string,
+  nowSec: number = Math.floor(Date.now() / 1000),
+): RoomPresence[] {
+  const lastSeen = new Map<string, number>();
+  const note = (pk: string | null | undefined, at: number) => {
+    if (!pk) return;
+    const key = pk.toLowerCase();
+    const prev = lastSeen.get(key);
+    if (prev === undefined || at > prev) lastSeen.set(key, at);
+  };
+  for (const ev of state.eventChain) note(ev.pubkey, ev.timestamp);
+  for (const msg of state.chatMessages) note(msg.pubkey, msg.timestamp);
+
+  const awaited = awaitedRoleAt(state);
+  const voted = new Set(
+    state.eventChain
+      .filter(ev => ev.kind === EscrowEventKind.VOTE)
+      .map(ev => ev.pubkey.toLowerCase()),
+  );
+
+  // EFFECTIVE participants, not raw: a joiner whose hold lapsed is not in
+  // the room any more, and showing their name (let alone "ready") would put
+  // a phantom person in the strip — the exact class of lie the pre-lock
+  // clock fix removes from the countdowns.
+  const effective = getEffectiveParticipantsAt(state, nowSec);
+  return ([Role.BUYER, Role.SELLER] as const).map((role): RoomPresence => {
+    const pk = effective[role] ?? null;
+    if (!pk) {
+      return { role, pubkey: null, isYou: false, signal: "empty", lastSeenAgoSec: null, ready: false };
+    }
+    const seenAt = lastSeen.get(pk.toLowerCase());
+    // A clock-skewed future timestamp reads as "just now", never as negative.
+    const ago = seenAt === undefined ? null : Math.max(0, nowSec - seenAt);
+    const signal: RoomPresenceSignal =
+      ago === null ? "seated"
+      : ago <= ROOM_PRESENCE_ACTIVE_SEC ? "active"
+      : ago <= ROOM_PRESENCE_RECENT_SEC ? "recent"
+      : "seated";
+    const ready =
+      state.status === EscrowStatus.LOCKED || state.status === EscrowStatus.EXPIRED
+        ? voted.has(pk.toLowerCase())
+        : awaited === null || awaited !== role;
+    return {
+      role,
+      pubkey: pk,
+      isYou: pk.toLowerCase() === viewerPubkey.trim().toLowerCase(),
+      signal,
+      lastSeenAgoSec: ago,
+      ready,
+    };
+  });
+}
+
+// ── The pre-lock clock ────────────────────────────────────────────────────
+//
+// A CREATED trade does NOT live until the listing expires. It dies at the
+// FIRST of three clocks: the funder's seat lapsing (they never locked), the
+// viewer's own seat lapsing (the listing quietly returns to Browse for anyone
+// to take), or the listing simply expiring. Rendering the listing expiry
+// while waiting for a lock is a lie — it leaves someone staring at a healthy
+// countdown on a trade that went back to Browse an hour ago. Lock time first,
+// trade time only once the sats are actually locked.
+
+export type PreLockDeadline = {
+  /** Unix seconds this CREATED trade stops being viable for this viewer. */
+  at: number;
+  /** "hold" = a seat lapses first; "listing" = the listing simply expires. */
+  kind: "hold" | "listing";
+  /** Already past — render the lapsed state, never a running countdown. */
+  lapsed: boolean;
+};
+
+/** The honest deadline on a CREATED trade. Null when nothing bounds it. */
+export function preLockDeadline(
+  state: EscrowState,
+  nowSec: number = Math.floor(Date.now() / 1000),
+): PreLockDeadline | null {
+  if (state.status !== EscrowStatus.CREATED) return null;
+
+  const listingAt = state.expiresAt > 0 ? state.expiresAt : null;
+
+  // A signed PLAN_START freezes all three seats for the parent room's
+  // lifetime (getEffectiveParticipantAt), so no hold can lapse there.
+  let holdAt: number | null = null;
+  if (!state.tranchePlan) {
+    for (const role of [Role.BUYER, Role.SELLER] as const) {
+      const hold = state.joinHolds?.[role];
+      // A hold only binds the seat it actually holds: a stale hold left by a
+      // joiner who already lapsed says nothing about the current occupant.
+      if (!hold || hold.pubkey !== state.participants[role]) continue;
+      const lapseAt = hold.expiresAt + JOIN_HOLD_LOCK_GRACE_SECONDS;
+      holdAt = holdAt === null ? lapseAt : Math.min(holdAt, lapseAt);
+    }
+  }
+
+  if (holdAt === null && listingAt === null) return null;
+  const at =
+    holdAt === null ? (listingAt as number)
+    : listingAt === null ? holdAt
+    : Math.min(holdAt, listingAt);
+  return {
+    at,
+    kind: holdAt !== null && at === holdAt ? "hold" : "listing",
+    lapsed: at <= nowSec,
+  };
 }
 
 export function decideVotePrompt(

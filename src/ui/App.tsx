@@ -1,3 +1,10 @@
+import { resolveCreateMintUrl } from "./decisions.js";
+import { CircleCanvas } from "./screens/CircleCanvas.js";
+import { CircleSurface } from "./screens/CircleSurface.js";
+import { circleFromEscrow } from "../chama/policy.js";
+import { nextRoundTemplate } from "../chama/circle.js";
+import type { CircleRound } from "../chama/types.js";
+import { getTrustedArbiterPool } from "../arbiters/pool.js";
 import { useState, useEffect, useMemo, useRef, useCallback, lazy, Suspense, type ReactNode } from "react";
 import { Capacitor } from "@capacitor/core";
 import { Preferences } from "@capacitor/preferences";
@@ -249,6 +256,8 @@ type View =
   | "guided"
   | "browse"
   | "detail"
+  | "circle"
+  | "circle-create"
   | "create"
   | "dashboard"
   | "me"
@@ -281,6 +290,8 @@ const TAB_FOR_VIEW: Record<View, Tab> = {
   guided: "browse",
   browse: "browse",
   detail: "browse",
+  circle: "browse",
+  "circle-create": "browse",
   // v4.2.1: the inline create view is legacy/dead (Create lives on the pencil
   // FAB overlay now); keep it mapped to a valid tab. The middle tab is Dashboard.
   create: "browse",
@@ -569,7 +580,12 @@ export default function App() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [sellerManageId, setSellerManageId] = useState<string | null>(null);
   const urlEscrowOpenAttemptedRef = useRef(false);
-  const [detailBackView, setDetailBackView] = useState<View>("browse");
+  // Where "back" from a trade lands when nothing better is known. The
+  // canvas IS home (view boots to "guided"), so the fallback must be the
+  // canvas too — the old "browse" default is why a seller who opened their
+  // trade through a path that never set this got thrown into the OG Browse
+  // list after voting (Jet, 2026-09-07, prod 6.3).
+  const [detailBackView, setDetailBackView] = useState<View>("guided");
   // LiveTradeSurface (flag-gated): the guided question/vote view of a live
   // trade. "More options" flips to the full TradeDetail for this trade only;
   // reset when the open trade changes so each trade starts guided.
@@ -862,6 +878,20 @@ export default function App() {
   // modal mounts. The TradeDetail Fund button awaits a promise that
   // resolves on modal close, preserving the in-flight disabled state
   // throughout the modal's lifetime.
+  const [circleInitial, setCircleInitial] = useState<CircleRound | undefined>();
+  const [circleChildrenLoaded, setCircleChildrenLoaded] = useState<Set<string>>(new Set());
+  const [circleLoadError, setCircleLoadError] = useState<string | null>(null);
+  const circleRouteRequest = useRef(0);
+  const refreshCircle = async (id: string) => {
+    await actions.loadCircle(id);
+    setCircleChildrenLoaded(previous => new Set(previous).add(id));
+    setCircleLoadError(null);
+  };
+  const openCircleCanvas = () => {
+    setCreateOverlayOpen(false); setCircleInitial(undefined);
+    setDetailBackView(view === "circle" ? detailBackView : view);
+    setView("circle-create");
+  };
   const [pendingFundAndLock, setPendingFundAndLock] = useState<{
     escrowId: string;
     amountMsats: number;
@@ -2496,8 +2526,22 @@ export default function App() {
   // active.fed.
   const openEscrow = (id: string, returnTo?: View) => {
     const local = escrows.get(id);
-    const nextBackView = returnTo ?? (view === "detail" ? detailBackView : view);
-    const safeBackView = nextBackView === "detail" ? "browse" : nextBackView;
+    const nextBackView = returnTo ?? ((view === "detail" || view === "circle") ? detailBackView : view);
+    const safeBackView = (nextBackView === "detail" || nextBackView === "circle") ? "guided" : nextBackView;
+
+    if (local?.category === "chama" || local?.chamaPolicy === "share-v1") {
+      const parentId = local.chamaPolicy ? local.parent! : local.id;
+      setDetailBackView(safeBackView); setSelectedId(parentId); setView("circle"); setCircleLoadError(null);
+      const request = ++circleRouteRequest.current;
+      void (async () => {
+        if (!escrows.has(parentId)) {
+          const parent = await actions.loadEscrow(parentId);
+          if (!parent) throw new Error(t("app.tradeNotFound"));
+        }
+        await refreshCircle(parentId);
+      })().catch(error => { if (circleRouteRequest.current === request) setCircleLoadError(error.message); });
+      return;
+    }
 
     // No local copy yet — the listing may have come from a relay
     // refetch race. Fall through to the legacy refetch path; the
@@ -2789,6 +2833,12 @@ export default function App() {
     return onTradeDeepLink(route);
   }, [connected, activeTrade]);
 
+  useEffect(() => {
+    if (view !== "detail" || !selectedId) return;
+    const state = escrows.get(selectedId);
+    if (state?.category === "chama" || state?.chamaPolicy === "share-v1") openEscrow(selectedId, detailBackView);
+  }, [view, selectedId, escrows]);
+
   const handleCreate = async (params: any) => {
     try {
       setToast({ message: t("app.signingNip07"), type: "info" });
@@ -3023,8 +3073,8 @@ export default function App() {
   }
 
   // ── Connected → main app ──
-  const detailMode = view === "detail" && !!selected;
-  const assistedCanvasMode = view === "guided";
+  const detailMode = (view === "detail" || view === "circle") && !!selected;
+  const assistedCanvasMode = view === "guided" || view === "circle-create";
   // v6.3: the Pulse dashboard and tabbed Me own their inner readable widths
   // (1080 / 760, centered) — the 520 shell clamp made both render as a crammed
   // phone column on desktop.
@@ -3731,7 +3781,58 @@ export default function App() {
       )}
 
       {/* Content — routed by view */}
-      {view === "guided" ? (
+      {view === "circle-create" ? (
+        <CircleCanvas viewerPubkey={pubkey!} community={circleInitial?.community ?? browseCommunity} mintUrl={circleInitial?.mintUrl ?? resolveCreateMintUrl({ activeInvite: liveActiveInvite, community: browseCommunity })}
+          initial={circleInitial} onBack={() => setView(circleInitial && selected ? "circle" : detailBackView)}
+          onPublish={async round => {
+            const communityArbiters = getTrustedArbiterPool({ community: round.community, excludePubkeys: [pubkey] });
+            const { escrowId } = await actions.createEscrow({ category: "chama", description: round.name, amountMsats: round.shareMsats,
+              community: round.community, mintUrl: round.mintUrl, escrowMode: "ecash", arbiterFeeMsats: 0,
+              communityArbiters, expirySeconds: round.roundEndSec - Math.floor(Date.now() / 1000),
+              chamaCircle: { shareMsats: round.shareMsats, seatThreshold: round.seatThreshold, seatCap: round.seatCap,
+                fillDeadlineSec: round.fillDeadlineSec, roundEndSec: round.roundEndSec, roundIndex: round.roundIndex, prevCircleId: round.prevCircleId } });
+            setSelectedId(escrowId); setView("circle"); setCircleChildrenLoaded(previous => new Set(previous).add(escrowId));
+            void refreshCircle(escrowId).catch(error => setCircleLoadError(error.message));
+          }} />
+      ) : (view === "circle" || view === "detail" && !!selected && (selected.category === "chama" || selected.chamaPolicy === "share-v1")) ? (
+        selected && circleFromEscrow(selected) ? <CircleSurface key={selected.id} parent={selected} escrows={escrows} viewerPubkey={pubkey!}
+          childrenLoaded={circleChildrenLoaded.has(selected.id)} loadError={circleLoadError}
+          backLabel={detailBackView === "me" ? t("browse.navMe") : detailBackView === "dashboard" ? t("browse.navDashboard") : detailBackView === "guided" ? t("lts.backHome") : t("browse.navBrowse")}
+          onBack={() => { ++circleRouteRequest.current; setView(detailBackView); setSelectedId(null); maybeSnapBackHome(); }}
+          onRefresh={() => refreshCircle(selected.id)}
+          onLock={async () => {
+            const effect = decideListingTapEffect({ listing: { mintUrl: selected.mintUrl, community: selected.community },
+              currentInvite: liveActiveInvite, balanceMsats: fedimint.balanceMsats ?? 0, activeCommitmentCount });
+            if (effect.kind === "blocked-active-commitment") throw new Error(t("app.listingOtherChama"));
+            if (effect.kind === "destroy-confirm") {
+              queueDestroyConfirm({ invite: effect.targetInvite, label: effect.displayName, balanceMsats: effect.balanceMsats,
+                activeInvite: effect.currentInvite, navigateToEscrowAfter: selected.id });
+              return;
+            }
+            if (!simOn && !isTestnetMode() && selected.amountMsats < MIN_REAL_ATOMIC_FUNDING_MSATS) throw new Error(minimumAtomicFundingMessage());
+            if (effect.kind === "switch-silent") {
+              if (fedimint.federationId) await actions.switchFederation(effect.targetInvite);
+              else await actions.initFedimint(effect.targetInvite);
+              visitedForeignFedRef.current = true;
+            }
+            const probe = await actions.probeFederation();
+            if (!probe.ok) throw new Error(probe.error);
+            const { state: share } = await actions.createChamaShare(selected.id);
+            await new Promise<void>(resolve => setPendingFundAndLock({ escrowId: share.id, amountMsats: share.amountMsats,
+              premiumMsats: 0, ctaLabel: t("circle.lock"), tradeCommunity: share.community, tradeCategory: share.category, resolve }));
+            await refreshCircle(selected.id);
+          }}
+          onReturn={async () => {
+            const share = [...escrows.values()].find(e => e.parent === selected.id && e.chamaPolicy === "share-v1" && e.participants[Role.BUYER] === pubkey);
+            if (share) await actions.vote(share.id, Outcome.REFUND);
+          }}
+          onNextRound={circle => { setCircleInitial(nextRoundTemplate(circle, { circleId: "", startSec: Math.floor(Date.now() / 1000) })); setView("circle-create"); }} />
+        : <div style={{ padding: 30 }}><button onClick={() => { ++circleRouteRequest.current; setView(detailBackView); }}>‹ {t("common.back")}</button><p role="status">{circleLoadError ?? t("circle.loading")}</p>
+          {circleLoadError && selectedId && <button onClick={() => {
+            setCircleLoadError(null);
+            void refreshCircle(selectedId).catch(error => setCircleLoadError(error.message));
+          }}>{t("circle.retry")}</button>}</div>
+      ) : view === "guided" ? (
         <>
         <AssistedCanvas
           listings={allVisibleListings}
@@ -3787,6 +3888,7 @@ export default function App() {
               backLabel={
                 detailBackView === "me" ? t("browse.navMe")
                 : detailBackView === "dashboard" ? t("browse.navDashboard")
+                : detailBackView === "guided" ? t("lts.backHome")
                 : t("browse.navBrowse")
               }
               onOpenFullView={() => setExpertTradeView(true)}
@@ -3809,6 +3911,10 @@ export default function App() {
               myGivenRatings={myGivenRatings}
               fundingInProgress={midFunding}
               bootProbeFailed={fedimint.bootProbeState === "failed"}
+              profileNames={nostrProfiles}
+              kind0Enabled={kind0Enabled}
+              amountDisplayMode={amountDisplayMode}
+              onAmountDisplayModeChange={setAmountDisplayMode}
             />
           ) : (
           <TradeDetail
@@ -4232,6 +4338,7 @@ export default function App() {
             />
           ) : (
             <CreateForm
+              onCreateCircle={openCircleCanvas}
               onCreate={handleCreate}
               onClose={() => setView("browse")}
               arbiterWarning={arbiterWarning}
@@ -4490,6 +4597,8 @@ export default function App() {
             />
           ) : (
             <BrowseView
+              allEscrows={[...escrows.values()]}
+              circleChildrenLoaded={circleChildrenLoaded}
               browseCategory={browseCategory}
               setBrowseCategory={setBrowseCategory}
               browseCommunity={routeCommunitySlug}
@@ -4658,6 +4767,7 @@ export default function App() {
             overflowY: "auto", animation: "fadeIn 0.25s ease",
           }}>
             <CreateForm
+              onCreateCircle={openCircleCanvas}
               key={createCanvasIntent
                 ? `canvas:${createCanvasIntent.vertical}:${createCanvasIntent.description ?? ""}:${createCanvasIntent.amountSats ?? ""}:${createCanvasIntent.fiatAmount ?? ""}:${createCanvasIntent.billType ?? ""}:${createCanvasIntent.emphasizePremium ? "premium" : "ordinary"}:${createCanvasIntent.emphasizePaymentMethods ? "payment" : "ordinary"}`
                 : "classic"}

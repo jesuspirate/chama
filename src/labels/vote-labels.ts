@@ -24,7 +24,7 @@ import { translate, getCurrentLang } from "../i18n/index.js";
 
 export type Fulfillment = "physical" | "service" | "digital";
 
-export type Category = "marketplace" | "p2p-trade" | "bill-pay" | "lending" | "raw-escrow";
+export type Category = "marketplace" | "p2p-trade" | "bill-pay" | "lending" | "raw-escrow" | "chama" | "chama-share";
 
 // i18n (namespace "labels"): the tables below hold i18n KEYS, not display
 // strings — safe at module load. getVoteLabel resolves the key through

@@ -1,3 +1,4 @@
+import { chamaFundingError } from "../chama/policy.js";
 // ══════════════════════════════════════════════════════════════════════════
 // Chama — Escrow ↔ Fedimint Bridge
 // ══════════════════════════════════════════════════════════════════════════
@@ -59,7 +60,7 @@ import {
   shareIndexForRole,
   collectClaimEnvelopeCandidates,
 } from "../escrow-engine/holder-shares.js";
-import { arbiterShareRecipientsFor } from "../escrow-engine/arbiter-substitution.js";
+import { arbiterPriorityOrder, arbiterShareRecipientsFor } from "../escrow-engine/arbiter-substitution.js";
 import { getSavedHandle } from "../payments/saved-handles.js";
 import { pickArbiterFromPool, pickPreferredArbiter } from "../arbiters/pool.js";
 import { verifyBondedStamp } from "../arbiters/bonded-stamp.js";
@@ -196,6 +197,11 @@ export class EscrowFedimintBridge {
   }> {
     const state = this.escrow.getState(escrowId);
     if (!state) throw new Error(`Escrow ${escrowId} not loaded`);
+    if (state.chamaCircle) {
+      const reason = chamaFundingError(state, await this.escrow.getPubkey(), Math.floor(Date.now() / 1000));
+      if (reason) throw new Error(`Cannot LOCK — ${reason}. (No sats were spent.)`);
+      if (opts.selectedItems?.length) throw new Error("Chama shares cannot change their amount through menu selections");
+    }
 
     // #37 hardening: refuse pre-spend AND pre-publish when the trade is no
     // longer CREATED. The reducer only accepts LOCK from CREATED, but until
@@ -349,7 +355,7 @@ export class EscrowFedimintBridge {
     // decryptable share to EVERY arbiter in the system on every trade, so a
     // principal colluding with any one of them could redeem without a seat.
     // Vote eligibility (reducer-gated) is deliberately unchanged.
-    const arbiterRecipients = arbiterShareRecipientsFor({
+    const arbiterRecipients = state.chamaPolicy ? arbiterPriorityOrder(state) : arbiterShareRecipientsFor({
       escrowId,
       pool: state.communityArbiters ?? [],
       buyerPubkey,

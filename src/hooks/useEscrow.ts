@@ -1,3 +1,4 @@
+import { getCurrentLang, translate } from "../i18n/index.js";
 // ══════════════════════════════════════════════════════════════════════════
 // useEscrow — React hook connecting UI to the Nostr escrow engine
 // ══════════════════════════════════════════════════════════════════════════
@@ -805,24 +806,9 @@ export interface UseEscrowActions {
    *  discovery — the recovery lever behind the in-app "Reconnect" control. */
   recoverRelays: () => void;
   /** Create a new escrow trade */
-  createEscrow: (params: {
-    description: string;
-    imageDataUrl?: string;
-    imageUrls?: string[];
-    amountMsats: number;
-    fiatAmount?: number;
-    fiatCurrency?: string;
-    category: string;
-    mintUrl: string;
-    paymentMethods?: string[];
-    items?: Parameters<EscrowClient["createEscrow"]>[0]["items"];
-    arbiterFeeMsats?: number;
-    expirySeconds?: number;
-    communityArbiters?: string[];
-    escrowMode?: "ecash" | "onchain";
-    settlementPolicy?: string;
-    sliceCount?: number;
-  }) => Promise<{ escrowId: string; state: EscrowState }>;
+  createEscrow: EscrowClient["createEscrow"];
+  createChamaShare: EscrowClient["createChamaShare"];
+  loadCircle: (parentId: string) => Promise<void>;
   /** Create a NIP-98 Authorization header for the authenticated photo host. */
   authorizeImageUpload: (url: string, method: "POST") => Promise<string>;
   /** Join an existing escrow as buyer or arbiter; menu buyers can later
@@ -1736,6 +1722,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
         if (!clientRef.current) return;
         const escrowClient = clientRef.current;
         const now = Math.floor(Date.now() / 1000);
+        void escrowClient.maybeAutoRefundChama(now).catch(() => {});
         for (const [escrowId, escrowState] of (escrowClient as any).states || []) {
           const isStuckLocked =
             escrowState.status === "LOCKED" && now > escrowState.expiresAt;
@@ -2854,7 +2841,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       buyerXonly: keys[Role.BUYER] ?? null,
       sellerXonly: keys[Role.SELLER] ?? null,
       arbiterXonly,
-      funder: state.category === "marketplace" ? "buyer" : "seller",
+      funder: (state.category === "marketplace" || state.chamaPolicy) ? "buyer" : "seller",
       refundLockUntil: state.lock.onchain?.refundLockUntil
         ?? (onchainRefundHeightRef.current || 0),
       disputeCsvBlocks: DISPUTE_CSV_BLOCKS,
@@ -5556,6 +5543,20 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     disconnect,
     recoverRelays,
     createEscrow,
+    createChamaShare: async (parentId) => {
+      if (!(await ensureRelayReady())) throw new Error(translate(getCurrentLang(), "circle.relayUnavailable"));
+      const result = await requireClient().createChamaShare(parentId);
+      saveEscrowId(result.escrowId, stateRef.current?.pubkey ?? null);
+      updateEscrow(result.escrowId, result.state);
+      return result;
+    },
+    loadCircle: async (parentId) => {
+      const client = requireClient();
+      const parent = client.getState(parentId) ?? await client.loadEscrow(parentId);
+      if (!parent || parent.category !== "chama") throw new Error(translate(getCurrentLang(), "circle.notFound"));
+      client.watchChildren(parentId);
+      await client.loadChildren(parentId);
+    },
     joinEscrow,
     renewListing,
     editListing,

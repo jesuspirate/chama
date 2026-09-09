@@ -27,7 +27,8 @@ export function payoutRecipientFor(
   state: EscrowState,
   outcome: Outcome,
 ): { pubkey: string; role: Role } | null {
-  const isMarketplace = state.category === "marketplace";
+  if (state.chamaPolicy && outcome !== Outcome.REFUND) return null;
+  const isMarketplace = state.category === "marketplace" || state.chamaPolicy === "share-v1";
   const winnerRole: Role = outcome === Outcome.RELEASE
     ? (isMarketplace ? Role.SELLER : Role.BUYER)
     : (isMarketplace ? Role.BUYER : Role.SELLER);

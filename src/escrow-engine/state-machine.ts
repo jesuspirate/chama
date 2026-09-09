@@ -1,3 +1,4 @@
+import { chamaCreateError } from "../chama/policy.js";
 // ══════════════════════════════════════════════════════════════════════════
 // Chama Nostr Escrow Engine — State Machine
 // ══════════════════════════════════════════════════════════════════════════
@@ -49,7 +50,7 @@ import {
 } from "./types.js";
 import { payoutRecipientFor } from "./recipients.js";
 import { validateVoteShareEnvelope } from "./holder-shares.js";
-import { arbiterVotePriority, substitutionEligibleAt, clampSubstitutionGraceSeconds, oneSidedEscalationAt, isPerformanceContest } from "./arbiter-substitution.js";
+import { arbiterPriorityOrder, arbiterVotePriority, substitutionEligibleAt, clampSubstitutionGraceSeconds, oneSidedEscalationAt, isPerformanceContest } from "./arbiter-substitution.js";
 import { pickArbiterFromPool, pickPreferredArbiter } from "../arbiters/pool.js";
 import { finalArbiterSettlementProof, finalCoopSettlementProof } from "./onchain-settlement-transport.js";
 import { validatePlanStart } from "./tranche-plan.js";
@@ -281,6 +282,8 @@ function checkVoteThreshold(votes: EscrowState["votes"]): {
 
 function handleCreate(event: ParsedEscrowEvent<CreatePayload>): TransitionResult {
   const p = event.payload;
+  const chamaError = chamaCreateError(p, event.escrowId, event.pubkey, event.timestamp, event.chamaParent);
+  if (chamaError) return err("INVALID_CHAMA_CREATE", chamaError, event.raw.id);
 
   // Validate required fields
   if (!p.description || p.amountMsats <= 0) {
@@ -378,6 +381,10 @@ function handleCreate(event: ParsedEscrowEvent<CreatePayload>): TransitionResult
       ? (p.fulfillment ?? "physical")
       : "service";
 
+  if (p.chamaPolicy) {
+    participants[Role.ARBITER] = pickPreferredArbiter(p.communityArbiters ?? [], p.bondedArbiters ?? [], event.escrowId, [event.pubkey, p.sellerPubkey!]) ?? null;
+    if (!participants[Role.ARBITER]) return err("INVALID_CHAMA_CREATE", "Share requires a distinct pool arbiter", event.raw.id);
+  }
   const listingExpiresAt = event.timestamp + p.expirySeconds;
   const items = p.items?.map(cloneMenuItem);
 
@@ -393,6 +400,8 @@ function handleCreate(event: ParsedEscrowEvent<CreatePayload>): TransitionResult
     fiatCurrency: p.fiatCurrency,
     premiumBps: p.premiumBps,
     category: p.category,
+    ...(p.chamaPolicy ? { chamaPolicy: p.chamaPolicy, chamaCircle: { ...event.chamaParent!.chamaCircle! } } : {}),
+    ...(p.chamaCircle ? { chamaCircle: { ...p.chamaCircle } } : {}),
     paymentMethods: normalizePaymentMethods(p.paymentMethods),
     items,
     fulfillment,
@@ -463,7 +472,7 @@ function handleCreate(event: ParsedEscrowEvent<CreatePayload>): TransitionResult
 
 function handlePlanStart(state: EscrowState, event: ParsedEscrowEvent<PlanStartPayload>): TransitionResult {
   const p = event.payload;
-  if (state.trancheChild || state.parent) return err("PLAN_ON_CHILD", "A tranche child cannot start a plan", event.raw.id);
+  if (state.chamaCircle || state.trancheChild || state.parent) return err("PLAN_ON_CHILD", "A tranche child cannot start a plan", event.raw.id);
   if (state.tranchePlan) {
     return state.tranchePlan.eventId === event.raw.id
       ? { ok: true, state }
@@ -590,6 +599,7 @@ function inferLegacyInitialOrderFinalizedAt(payload: JoinPayload, existingHold: 
 
 function handleJoin(state: EscrowState, event: ParsedEscrowEvent<JoinPayload>): TransitionResult {
   const p = event.payload;
+  if (state.chamaCircle) return err("CHAMA_SEATS_FIXED", "Circle seats are established by share CREATE", event.raw.id);
 
   if (state.status !== EscrowStatus.CREATED) {
     return err("INVALID_STATE", `Cannot JOIN in state ${state.status}`, event.raw.id);
@@ -779,6 +789,22 @@ function handleJoin(state: EscrowState, event: ParsedEscrowEvent<JoinPayload>): 
 
 function handleLock(state: EscrowState, event: ParsedEscrowEvent<LockPayload>): TransitionResult {
   const p = event.payload;
+  if (state.category === "chama") return err("CHAMA_MANIFEST", "Circle parents cannot hold funds", event.raw.id);
+  if (state.chamaPolicy && (event.timestamp < state.createdAt || event.timestamp >= state.chamaCircle!.fillDeadlineSec || p.lockedAt !== event.timestamp || p.buyerPubkey !== state.participants[Role.BUYER]
+    || p.arbiterPubkey !== state.participants[Role.ARBITER] || p.arbiterPoolShare !== true || p.arbiterFeeMsats !== 0 || p.sellerReceivesMsats !== state.amountMsats)) return err("INVALID_CHAMA_LOCK", "Share LOCK must be on time with committed seats and pool healing", event.raw.id);
+
+  if (state.chamaPolicy) {
+    if (p.sharePolicy !== "holder-only-v1" || !p.notesHash || !Array.isArray(p.shares) || p.shares.length !== 3) return err("INVALID_CHAMA_LOCK", "Shares require holder-only encrypted custody", event.raw.id);
+    const holders = [[state.participants[Role.BUYER]!], [state.participants[Role.SELLER]!], arbiterPriorityOrder(state)];
+    for (let index = 0; index < 3; index++) {
+      const entries = p.shares.filter(share => share?.shareIndex === index);
+      const recipients = entries[0]?.encryptedFor;
+      if (entries.length !== 1 || !recipients || Object.keys(recipients).length !== holders[index].length
+        || !holders[index].every(pk => typeof recipients[pk] === "string" && recipients[pk].length > 0)) {
+        return err("INVALID_CHAMA_LOCK", "Share ciphertext must route only to its committed holders", event.raw.id);
+      }
+    }
+  }
 
   if (state.status !== EscrowStatus.CREATED) {
     return err("INVALID_STATE", `Cannot LOCK in state ${state.status}`, event.raw.id);
@@ -797,7 +823,7 @@ function handleLock(state: EscrowState, event: ParsedEscrowEvent<LockPayload>): 
   //   lending → seller locks (lender funds the loan)
   //   p2p-trade, bill-pay → seller locks (seller has the sats)
   //   raw-escrow / unknown → any participant can lock
-  const expectedLocker = state.category === "marketplace" ? Role.BUYER
+  const expectedLocker = (state.category === "marketplace" || state.chamaPolicy === "share-v1") ? Role.BUYER
     : state.category === "lending" ? Role.SELLER
     : (state.category === "p2p-trade" || state.category === "bill-pay") ? Role.SELLER
     : null; // raw escrow: anyone
@@ -1089,7 +1115,7 @@ function handleLock(state: EscrowState, event: ParsedEscrowEvent<LockPayload>): 
   }
   next.listingExpiresAt = state.listingExpiresAt ?? state.expiresAt;
   next.tradeTimeoutSeconds = tradeTimeoutSecondsFor(state);
-  next.expiresAt = p.lockedAt + next.tradeTimeoutSeconds;
+  next.expiresAt = state.chamaPolicy ? state.expiresAt : p.lockedAt + next.tradeTimeoutSeconds;
 
   // Atomic-funding: LOCK populates buyer + arbiter slots. If they were
   // already set by prior JOIN ACKs, this is a no-op (consistency was
@@ -1148,6 +1174,7 @@ function handleLock(state: EscrowState, event: ParsedEscrowEvent<LockPayload>): 
 
 function handleVote(state: EscrowState, event: ParsedEscrowEvent<VotePayload>): TransitionResult {
   const p = event.payload;
+  if (state.chamaPolicy && p.outcome !== Outcome.REFUND) return err("CHAMA_REFUND_ONLY", "Shares only allow REFUND", event.raw.id);
 
   // v0.1.66.26: accept EXPIRED in addition to LOCKED so post-expiry
   // healing votes can be recorded. Mechanism A relies on this.
@@ -1324,6 +1351,7 @@ function handleVote(state: EscrowState, event: ParsedEscrowEvent<VotePayload>): 
 
 function handleResolve(state: EscrowState, event: ParsedEscrowEvent<ResolvePayload>): TransitionResult {
   const p = event.payload;
+  if (state.chamaPolicy && p.outcome !== Outcome.REFUND) return err("CHAMA_REFUND_ONLY", "Shares only allow REFUND", event.raw.id);
 
   // v0.1.66.26: accept EXPIRED in addition to LOCKED so healing votes
   // that meet 2-of-3 threshold can produce a RESOLVE event and
@@ -1493,6 +1521,7 @@ function handleCancel(state: EscrowState, event: ParsedEscrowEvent<CancelPayload
 // Published after CREATE, before LOCK. Adds periodic release metadata.
 
 function handleSubscribe(state: EscrowState, event: ParsedEscrowEvent<SubscribePayload>): TransitionResult {
+  if (state.chamaCircle) return err("CHAMA_NO_SUBSCRIPTION", "Circles cannot subscribe", event.raw.id);
   const p = event.payload;
 
   // Only before lock
@@ -1716,6 +1745,9 @@ export function applyEvent(
     return err("NO_STATE", "Non-CREATE event received but no escrow state exists", event.raw.id);
   }
 
+  if (state.chamaPolicy && (event.kind === EscrowEventKind.VOTE || event.kind === EscrowEventKind.RESOLVE)
+      && (event.payload as VotePayload).outcome !== Outcome.REFUND) return err("CHAMA_REFUND_ONLY", "Shares only allow REFUND", event.raw.id);
+
   // ── Auxiliary settlement-time events bypass terminal/expiry/chain checks ──
   // Premiums are paid AT settlement: COMPLETED is truly-terminal (rejected
   // below) and the expiry auto-flip isn't COMPLETED-aware, so a premium
@@ -1933,7 +1965,8 @@ export function replayEventChain(events: ParsedEscrowEvent[]): TransitionResult 
 // ══════════════════════════════════════════════════════════════════════════
 
 /** Check if a specific pubkey can vote in the current state */
-export function canVote(state: EscrowState, pubkey: string, nowSec?: number): { canVote: boolean; reason?: string } {
+export function canVote(state: EscrowState, pubkey: string, nowSec?: number, outcome?: Outcome): { canVote: boolean; reason?: string } {
+  if (state.chamaPolicy && outcome !== undefined && outcome !== Outcome.REFUND) return { canVote: false, reason: "Shares only allow REFUND" };
   // v0.1.66.26: accept EXPIRED in addition to LOCKED. Mirrors
   // handleVote — healing votes on timed-out trades are allowed.
   if (state.status !== EscrowStatus.LOCKED && state.status !== EscrowStatus.EXPIRED) {

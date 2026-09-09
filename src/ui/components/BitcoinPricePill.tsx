@@ -74,12 +74,17 @@ function FitText({ text, max, min, align = "left", style }: {
 export function BitcoinPricePill({
   compact = false,
   hero = false,
+  slim = false,
   amountMode,
   onAmountModeChange,
   quoteCurrency,
 }: {
   compact?: boolean;
   hero?: boolean;
+  /** Phone-sized hero: same gradient, same rocker, ONE line — drops the
+   *  sub-labels and the "1 BTC" column so the digits stay big at 375px.
+   *  Only meaningful together with `hero`. */
+  slim?: boolean;
   amountMode?: AmountDisplayMode;
   onAmountModeChange?: (mode: AmountDisplayMode) => void;
   quoteCurrency?: string | null;
@@ -176,6 +181,93 @@ export function BitcoinPricePill({
 
   if (amountMode && onAmountModeChange) {
     const nextMode = nextAmountDisplayMode(amountMode);
+    if (hero && slim) {
+      // The phone hero: one line, price as the biggest thing on it.
+      return (
+        <>
+        <ToggleStyle />
+        <button
+          type="button"
+          className="chama-price-btn"
+          title={t("browse.tapToSwitch", { title, mode: nextMode })}
+          onClick={() => onAmountModeChange(nextMode)}
+          style={{
+            width: "100%",
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            padding: "9px 12px",
+            borderRadius: T.r,
+            border: `1px solid ${stale ? T.borderHi : T.green + "55"}`,
+            background: stale
+              ? `linear-gradient(135deg, ${T.surface}, ${T.card})`
+              : `linear-gradient(135deg, ${T.greenDim}, ${T.surface} 48%, ${T.accentDim})`,
+            color: T.text,
+            cursor: "pointer",
+            boxShadow: stale ? "none" : `0 0 26px ${T.green}12`,
+          }}
+        >
+          <span aria-hidden="true" style={{
+            flexShrink: 0, width: 8, height: 8, borderRadius: "50%",
+            background: stale ? T.muted : T.green,
+            boxShadow: stale ? "none" : `0 0 10px ${T.green}99`,
+          }} />
+          <span style={{
+            flexShrink: 0, color: stale ? T.muted : T.green,
+            fontFamily: T.mono, fontSize: 13, fontWeight: 950, whiteSpace: "nowrap",
+          }}>1 BTC</span>
+          <span
+            className="chama-price-swap"
+            aria-hidden="true"
+            style={{
+              position: "relative", flexShrink: 0, width: 48, height: 26, borderRadius: 9,
+              display: "block", overflow: "hidden",
+              border: `1px solid ${T.borderHi}`,
+              background: `linear-gradient(90deg, ${T.accentDim}, ${T.greenDim})`,
+              boxShadow: `inset 0 2px 5px ${T.bg}cc, 0 1px 0 ${T.text}16`,
+            }}
+          >
+            <span
+              className="chama-price-rocker-knob"
+              style={{
+                position: "absolute", zIndex: 0, left: 2, top: 2,
+                width: 21, height: 20, borderRadius: 6,
+                transform: amountMode === "fiat" ? "translateX(21px)" : "translateX(0)",
+                background: amountMode === "fiat"
+                  ? `linear-gradient(180deg, ${T.green}dd, ${T.green}88)`
+                  : `linear-gradient(180deg, ${T.accent}dd, ${T.accent}88)`,
+                boxShadow: `0 3px 6px ${T.bg}cc, inset 0 1px 0 ${T.text}66`,
+              }}
+            />
+            <span key={amountMode} className="chama-price-pop" style={{
+              position: "absolute", zIndex: 1, inset: 0,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              color: T.text, lineHeight: 0, textShadow: `0 1px 4px ${T.bg}`,
+            }}>
+              <svg width="18" height="12" viewBox="0 0 24 16" fill="none" aria-hidden="true"
+                style={{ display: "block", overflow: "visible", filter: `drop-shadow(0 1px 2px ${T.bg})` }}>
+                <path d="M3 5h15M15 2l3 3-3 3" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M21 11H6M9 8l-3 3 3 3" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </span>
+          </span>
+          <span style={{
+            display: "flex", alignItems: "baseline", justifyContent: "flex-end",
+            gap: 6, minWidth: 0, flex: 1,
+          }}>
+            <span style={{
+              flexShrink: 0, color: price.usd ? T.text : T.muted,
+              fontFamily: T.mono, fontSize: 13, fontWeight: 950,
+            }}>{priceTicker}</span>
+            <FitText text={priceDigits} max={30} min={18} align="right" style={{
+              color: price.usd ? T.text : T.muted,
+              fontFamily: T.mono, fontWeight: 950, lineHeight: .94, letterSpacing: -1,
+            }} />
+          </span>
+        </button>
+        </>
+      );
+    }
     if (hero) {
       return (
         <>

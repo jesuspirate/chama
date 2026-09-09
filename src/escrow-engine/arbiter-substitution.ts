@@ -247,6 +247,15 @@ export function substitutionEligibleAt(state: EscrowState): number | null {
 export function oneSidedReleaseAnchor(
   state: EscrowState,
 ): { nonLockerRole: Role; releaseVoteAt: number } | null {
+  if (state.chamaPolicy) {
+    for (const role of [Role.BUYER, Role.SELLER]) {
+      const other = role === Role.BUYER ? Role.SELLER : Role.BUYER;
+      if (state.votes[role] !== Outcome.REFUND || state.votes[other] !== undefined) continue;
+      const vote = state.eventChain.find(e => e.kind === EscrowEventKind.VOTE && e.pubkey === state.participants[role] && (e.payload as VotePayload).outcome === Outcome.REFUND);
+      if (vote) return { nonLockerRole: role, releaseVoteAt: clampDisputeAnchor(state, vote.timestamp) };
+    }
+    return null;
+  }
   const nonLocker = payoutRecipientFor(state, Outcome.RELEASE);
   const locker = payoutRecipientFor(state, Outcome.REFUND);
   if (!nonLocker || !locker) return null;

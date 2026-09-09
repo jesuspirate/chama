@@ -1,3 +1,7 @@
+import { circleFromEscrow } from "../../chama/policy.js";
+import { sharesForCircle } from "../../chama/wiring.js";
+import { circleCardModel } from "../../chama/surface.js";
+import { circleTimeText } from "../screens/CircleSurface.js";
 import { useState } from "react";
 import {
   type EscrowState,
@@ -45,6 +49,7 @@ import { ESCROW_NETWORK_LABEL } from "../../bond-multisig/onchain-escrow.js";
 // they'd be switching to.
 export function TradeCard({
   state,
+  allEscrows, circleChildrenLoaded,
   pubkey,
   onSelect,
   variant = "matching",
@@ -58,6 +63,8 @@ export function TradeCard({
   onOpenWorkerProfile,
   showCommunityChip = false,
 }: {
+  allEscrows?: readonly EscrowState[];
+  circleChildrenLoaded?: ReadonlySet<string>;
   state: EscrowState;
   pubkey: string;
   onSelect: () => void;
@@ -86,6 +93,32 @@ export function TradeCard({
   const btcPrice = useBitcoinPrice();
   const fiatRates = useFiatRates();
   const nowSec = Math.floor(Date.now() / 1000);
+  const circle = circleFromEscrow(state);
+  if (circle) {
+    const model = circleCardModel(circle, sharesForCircle(allEscrows ?? [], circle.circleId), nowSec,
+      { childrenLoaded: circleChildrenLoaded?.has(circle.circleId) ? true : undefined });
+    return <button type="button" onClick={onSelect} className="circle-browse-card" style={{ width: "100%", display: "flex", gap: 18, alignItems: "center", padding: "22px 20px", background: T.card, border: `1px solid ${T.border}`, borderRadius: T.r, color: T.text, textAlign: "left", cursor: "pointer" }}>
+      <VerticalIcon vertical="chama" size={74} />
+      <span style={{ display: "grid", gap: 7, minWidth: 0 }}><strong style={{ font: `750 21px ${T.sans}`, overflowWrap: "anywhere" }}>{circle.name}</strong>
+        <span style={{ color: T.accent, fontWeight: 700 }}>{t("circle.satsEach", { amount: fmtSats(model.shareMsats) })}</span>
+        <span style={{ color: T.muted, font: `11px ${T.mono}`, lineHeight: 1.6 }}>{model.seatsLocked === null ? `· ${t("circle.open")}` : t("circle.seats", { filled: model.seatsLocked, total: model.seatThreshold })}<br />{model.secsToFillDeadline > 0 ? t("circle.closesIn", { time: circleTimeText(model.secsToFillDeadline, t) }) : t("circle.closed")}</span>
+      </span><span style={{ marginLeft: "auto", color: T.accent }} aria-hidden="true">↗</span>
+    </button>;
+  }
+
+  if (state.chamaPolicy === "share-v1") {
+    const st = STATUS[state.status] ?? STATUS.CREATED;
+    return <button type="button" onClick={onSelect} className="circle-browse-card" style={{ width: "100%", display: "flex", gap: 18, alignItems: "center", padding: "22px 20px", background: T.card, border: `1px solid ${T.border}`, borderRadius: T.r, color: T.text, textAlign: "left", cursor: "pointer" }}>
+      <VerticalIcon vertical="chama" size={74} />
+      <span style={{ display: "grid", gap: 7, minWidth: 0 }}>
+        <strong style={{ font: `750 21px ${T.sans}`, overflowWrap: "anywhere" }}>{state.description}</strong>
+        <span style={{ color: T.accent, fontWeight: 700 }}>{t("circle.yourShare", { amount: fmtSats(state.amountMsats) })}</span>
+        <span style={{ justifySelf: "start", fontSize: 10, padding: "3px 8px", borderRadius: 999, background: st.bg, color: st.c, border: `1px solid ${st.c}55`, fontFamily: T.mono, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5 }}>{t(st.l)}</span>
+      </span>
+      <span style={{ marginLeft: "auto", color: T.accent }} aria-hidden="true">↗</span>
+    </button>;
+  }
+
   const participants = getEffectiveParticipantsAt(state, nowSec);
   const isAmber = variant === "non-matching";
   const cardBg = isAmber ? T.amberDim : T.card;

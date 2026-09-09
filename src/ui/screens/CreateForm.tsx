@@ -148,7 +148,7 @@ const VERTICALS: { id: string; labelKey: string; descriptionKey: string; comingS
   // { id: "work", labelKey: "create.verticalWork", descriptionKey: "create.verticalWorkDesc" },
   // { id: "chip-in", labelKey: "create.verticalChipIn", descriptionKey: "create.verticalChipInDesc", comingSoon: true },
   // { id: "stack", labelKey: "create.verticalStack", descriptionKey: "create.verticalStackDesc", comingSoon: true },
-  { id: "chama", labelKey: "create.verticalChama", descriptionKey: "create.verticalChamaDesc", comingSoon: true },
+  { id: "chama", labelKey: "create.verticalChama", descriptionKey: "create.verticalChamaDesc" },
 ];
 
 interface FormState {
@@ -645,7 +645,7 @@ function clearDraft(vertical: Vertical): void {
 
 function readAllDrafts(): SavedDraft[] {
   return VERTICALS
-    .filter(v => !v.comingSoon)
+    .filter(v => !v.comingSoon && v.id !== "chama")
     .map(v => readDraft(v.id as Vertical))
     .filter((d): d is SavedDraft => d !== null)
     .sort((a, b) => b.savedAt - a.savedAt);
@@ -1099,7 +1099,7 @@ export function emptyCreateFormState(currency = "USD"): FormState {
 }
 
 export function CreateForm({
-  onCreate, onClose,
+  onCreate, onClose, onCreateCircle,
   arbiterWarning, onGoToArbiterTrade,
   canOfferSubscription, userPubkey, activeInvite,
   amountDisplayMode,
@@ -1109,6 +1109,7 @@ export function CreateForm({
   authorizeImageUpload,
   initialCanvasIntent,
 }: {
+  onCreateCircle: () => void;
   onCreate: (params: any) => void;
   onClose: () => void;
   arbiterWarning: ArbiterWarning;
@@ -1662,6 +1663,7 @@ export function CreateForm({
 
       {step === 1 && (
         <Step1
+          onCreateCircle={onCreateCircle}
           vertical={vertical}
           setVertical={setVertical}
           listingMode={form.listingMode}
@@ -1924,7 +1926,7 @@ function equalButtonStyle(): React.CSSProperties {
 // ══════════════════════════════════════════════════════════════════════════
 
 function Step1({
-  vertical, setVertical,
+  vertical, setVertical, onCreateCircle,
   listingMode, setListingMode,
   homeCommunity,
   isHomeCommunity,
@@ -1933,6 +1935,7 @@ function Step1({
   onContinueDraft,
   onNext,
 }: {
+  onCreateCircle: () => void;
   vertical: Vertical;
   setVertical: (v: Vertical) => void;
   listingMode: ListingMode;
@@ -2044,6 +2047,7 @@ function Step1({
               disabled={soon}
               onClick={() => {
                 if (soon) return;
+                if (v.id === "chama") { onCreateCircle(); return; }
                 const next = v.id as Vertical;
                 setVertical(next);
                 if (next === "work") setListingMode("single");
