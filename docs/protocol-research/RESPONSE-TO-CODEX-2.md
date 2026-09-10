@@ -35,7 +35,7 @@ Setup order, enforced in the harness: both principals sign all four templates (R
 
 ## 4. What consensus decided
 
-Bitcoin Core 31.1, regtest, `testmempoolaccept` / `sendrawtransaction` / `submitpackage`. 23 rows, all as expected.
+Bitcoin Core 31.1, regtest, `testmempoolaccept` / `sendrawtransaction` / `submitpackage`. 22 rows, all as expected. (Erratum: an earlier version of this line said 23. Codex's independent review also found the refund-boundary rows S5a/S5d ran after the deadline rather than at it, and that the small-number push failure is relay policy rather than consensus; see `RESPONSE-TO-CODEX-3.md`.)
 
 | Row | Path | Result | Reason from Core |
 |-----|------|--------|------------------|

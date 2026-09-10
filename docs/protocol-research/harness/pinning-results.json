@@ -1,0 +1,120 @@
+{
+  "title": "Hostile fee matrix — Bitcoin Core /Satoshi:31.1.0/",
+  "date": "2026-09-10T22:02:30.641Z",
+  "params": {
+    "ESCROW": 100000,
+    "ANCHOR_SATS": 240,
+    "minRelaySatPerVb": 1
+  },
+  "rowCount": 14,
+  "rows": [
+    {
+      "id": "M1a",
+      "scenario": "attacker pins: zero-fee ruling + 993 vB child at ~1.08 sat/vB package",
+      "expect": "ACCEPT",
+      "got": "ACCEPT",
+      "reason": ""
+    },
+    {
+      "id": "M1b",
+      "scenario": "honest sibling eviction one sat below the measured threshold (1315 sat)",
+      "expect": "REJECT",
+      "got": "REJECT",
+      "reason": "insufficient fee — insufficient fee, rejecting replacement fb1a9648bf14d13212cf4b0156fb2240b36571b1bd0a7ef5fbcff87ecd85d5aa, not enough additional fees to relay; 0.00000015 < 0.00000016"
+    },
+    {
+      "id": "M1c",
+      "scenario": "honest sibling eviction at the measured threshold (1316 sat)",
+      "expect": "ACCEPT",
+      "got": "ACCEPT",
+      "reason": "",
+      "vsize": 153,
+      "fees": 1316,
+      "note": "pin cost to honest side = attacker's fee + 16 sat for a 153 vB child"
+    },
+    {
+      "id": "M1d",
+      "scenario": "after replacement: attacker child evicted, honest child + ruling in mempool",
+      "expect": "ACCEPT",
+      "got": "ACCEPT",
+      "reason": ""
+    },
+    {
+      "id": "M1e",
+      "scenario": "ruling confirmed after honest replacement",
+      "expect": "ACCEPT",
+      "got": "ACCEPT",
+      "reason": ""
+    },
+    {
+      "id": "M2a",
+      "scenario": "attacker pins at 12.1 sat/vB with 993 vB (attacker burns 12000 sat)",
+      "expect": "ACCEPT",
+      "got": "ACCEPT",
+      "reason": ""
+    },
+    {
+      "id": "M2b",
+      "scenario": "honest replacement one sat below the measured threshold (12015 sat)",
+      "expect": "REJECT",
+      "got": "REJECT",
+      "reason": "insufficient fee — insufficient fee, rejecting replacement 7c1292850302714c08c159d19298956d23e168f3bb7daa496c7f4364afc2eb6a, not enough additional fees to relay; 0.00000015 < 0.00000016"
+    },
+    {
+      "id": "M2c",
+      "scenario": "honest replacement at the measured threshold (12016 sat = attacker fee + 16)",
+      "expect": "ACCEPT",
+      "got": "ACCEPT",
+      "reason": "",
+      "vsize": 153,
+      "fees": 12016,
+      "note": "attacker burns ~what the honest side pays: griefing is bounded and symmetric"
+    },
+    {
+      "id": "M3a",
+      "scenario": "attacker child over the TRUC 1000 vB child ceiling (1368 vB), even at high fee",
+      "expect": "REJECT",
+      "got": "REJECT",
+      "reason": "TRUC-violation — TRUC-violation, version=3 child tx b875884c7670fc7baa58ac9e96657650ecce0167febafc48138687ef2486d889 (wtxid=86936b8ef47123bed6ce87f33d0c1cfa4c6d7b61ea055f4ff39d59a3745559de) is too big: 1368 > 1000 virtual bytes"
+    },
+    {
+      "id": "M3b",
+      "scenario": "attacker non-v3 child of a v3 parent",
+      "expect": "REJECT",
+      "got": "REJECT",
+      "reason": "TRUC-violation — TRUC-violation, non-version=3 tx fa0729651b2ac529f346c37b835fe064930143b46907606937549e85e1e63a9c (wtxid=e1605e5a33591f2e8699b1166fd02b38fa35df7e354f7c68b60cdcccb77d7626) cannot spend from version=3 tx 14360fcef1275c6e02c703a7bc06089e09a59dfc603a31b177277b74a418be29 (wtxid=efb2b852087050e2b13a5ad24c65ccc1e868ef3269ff9cf4b671b9633af8cb20)"
+    },
+    {
+      "id": "M3c",
+      "scenario": "second pin vector: parent has no other anyone-can-spend output (Q needs principal keys)",
+      "expect": "REJECT",
+      "got": "REJECT",
+      "reason": "structural: only one anchor exists",
+      "note": "not a mempool probe"
+    },
+    {
+      "id": "M4a",
+      "scenario": "anchor child spending an UNCONFIRMED sponsor (two unconfirmed parents)",
+      "expect": "REJECT",
+      "got": "REJECT",
+      "reason": "[\"min relay fee not met, 0 < 21\",\"bad-txns-inputs-missingorspent\"]",
+      "note": "confirmed fee liquidity is a hard requirement"
+    },
+    {
+      "id": "M4b",
+      "scenario": "same child once the sponsor is confirmed",
+      "expect": "ACCEPT",
+      "got": "ACCEPT",
+      "reason": ""
+    },
+    {
+      "id": "M5a",
+      "scenario": "attacker's min-relay pin gets mined when blocks are not full: attacker paid to confirm the honest ruling",
+      "expect": "ACCEPT",
+      "got": "ACCEPT",
+      "reason": "",
+      "note": "a pin only delays under fee pressure; the ruling is never lost"
+    }
+  ],
+  "allOk": true
+}
