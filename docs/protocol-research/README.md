@@ -8,9 +8,11 @@ This branch archives the conversation, research, Claude's response, and the late
 
 ## Read in this order
 
-**Latest:** [Codex's independent regtest review](CODEX-REGTEST-REVIEW.md). The original 22 recorded outcomes reproduce (the earlier report says 23), but the refund-boundary labels are wrong. An extended 29-row run checks exact heights, copied pre-signatures, both zero-fee stages, and demonstrates that the small-number rejection is relay policy rather than consensus invalidity. The constrained graph remains the candidate; adversarial fee handling and distributed recovery remain unproven.
+**Latest:** [Codex's fee and recovery audit](CODEX-FEE-RECOVERY-REVIEW.md), reviewing [Claude's round-3 response](RESPONSE-TO-CODEX-3.md). Both suites reproduce in instrumented copies: 16 fee rows and 24 distributed rows including four added checks. Evicted attackers do not pay the offered fee; completed participant restarts time out; malformed relay JSON crashes a participant. The graph remains the candidate. Next: complete local backup/state handling, add the appeal participant, then test fixed budgets and reorgs before real Nostr transport.
 
-0. [Claude's round-2 response with regtest evidence](RESPONSE-TO-CODEX-2.md) — the appeal gap conceded; the complete funding → ruling → appeal/refund graph executed on Bitcoin Core 31.1 regtest (23 rows, all as expected). Harness: `harness/regtest-graph.ts`, results: `harness/regtest-results.json`.
+Previous: [Codex's independent graph review](CODEX-REGTEST-REVIEW.md) corrected refund timing and policy/consensus claims with a 29-row extension.
+
+0. [Claude's round-2 response with regtest evidence](RESPONSE-TO-CODEX-2.md) — the appeal gap conceded; the complete funding → ruling → appeal/refund graph executed on Bitcoin Core 31.1 regtest (22 recorded rows; original prose said 23). Harness: `harness/regtest-graph.ts`, results: `harness/regtest-results.json`.
 1. [Codex's response to Claude](RESPONSE-TO-CLAUDE.md) — agreement on pre-signed rulings, the appeal-panel authority gap, and a corrected candidate.
 2. [Conversation transcript](CONVERSATION.md) — the recorded user-visible discussion, including the original request and both earlier answers.
 3. [Claude's complete response](prework/CLAUDE-RESPONSE-TO-REVIEW.md).
@@ -42,7 +44,7 @@ The files in `prework/` are unchanged snapshots of the shared Hourglass director
 
 Open this branch's `docs/protocol-research/README.md` in GitHub. For an assistant with repository access, use:
 
-> Continue the Chama settlement design discussion on branch `research/chama-settlement-design`. Read `docs/protocol-research/README.md`, `CODEX-REGTEST-REVIEW.md`, `RESPONSE-TO-CODEX-2.md`, and `CONVERSATION.md`. Preserve legacy funded-contract recovery. We are deciding a protocol, not authorizing a deployment. The basic constrained graph has regtest evidence. Focus next on hostile anchor replacement/pinning, affordable fee sponsorship near deadlines, and separated participant recovery stores with crashes, malformed artifacts, and reorgs. Treat all archived cryptographic claims as claims to check, not established proofs.
+> Continue the Chama settlement design discussion on branch `research/chama-settlement-design`. Read `docs/protocol-research/README.md`, `CODEX-FEE-RECOVERY-REVIEW.md`, `RESPONSE-TO-CODEX-3.md`, and `CONVERSATION.md`. Preserve legacy funded-contract recovery. We are deciding a protocol, not authorizing a deployment. The basic constrained graph has regtest evidence. Focus next on contract-bound messages, self-contained backups, idempotent terminal recovery, an independently stored appeal participant, affordable fee sponsorship near deadlines, and reorgs. Evicted fee bids are not burned fees. The newest audit reproduces two lifecycle defects; green counterexample rows mean those defects remain present. Treat all archived cryptographic claims as claims to check, not established proofs.
 
 Original shared checkout: `/home/satoshi/Work/chama` remains on `main`. Separate research worktree: `/home/satoshi/Work/chama-protocol-research`. No need to switch the shared checkout away from Claude's work.
 
@@ -56,7 +58,7 @@ BITCOIND=/path/to/bitcoind npx tsx docs/protocol-research/harness/pinning-matrix
 BITCOIND=/path/to/bitcoind npx tsx docs/protocol-research/harness/distributed-setup.ts # 22 rows, port 18899
 ```
 
-Needs Bitcoin Core 28+ (TRUC, P2A). Starts and tears down its own regtest node.
+Use Bitcoin Core 31.1 for the recorded policy results; compatibility with other releases has not been established by these runs. Starts and tears down its own regtest node.
 
 The independent review was tested on Core 31.1. To reproduce its instrumented and extended runs, sequentially:
 
@@ -75,3 +77,10 @@ python3 docs/protocol-research/check_appeal_authority.py
 ```
 
 The first script has 12 checks; the second has 6. All passed locally on 2026-09-10. They are abstract counterexamples/group-algebra checks, not a Bitcoin Script interpreter, complete protocol model, regtest harness, or external audit. Application typecheck/tests/build were not run because this branch contains documentation and standalone research models only.
+
+Latest audit reproductions (original harnesses remain unchanged):
+
+```sh
+BITCOIND=/path/to/bitcoind node_modules/.bin/tsx docs/protocol-research/harness/codex-fee-audit.ts          # 16 rows, port 19799
+BITCOIND=/path/to/bitcoind node_modules/.bin/tsx docs/protocol-research/harness/codex-distributed-audit.ts  # 24 rows, port 19899
+```

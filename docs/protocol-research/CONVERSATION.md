@@ -362,3 +362,117 @@ It also resolves the encoding question: the small-number data push is rejected b
 ## Earlier clarification shown through the question tool
 
 I found only hourglass/HOURGLASS-SPEC.md in this workspace, with no Chama implementation. What is the Chama repository URL or local path, and are its trades BTC-for-fiat/goods or exchanges of cryptographically verifiable assets?
+
+
+## Continued discussion: fee and recovery audit
+
+### Assistant (commentary)
+
+The review is ready to publish. One count correction: Claude’s saved JSON contains **22 rows**, not 23; my extended run contains **29**, not 30. I repeated the headline count earlier before checking the files.
+
+I agree with continuing this graph. The remaining work is adversarial fee handling and a real recovery-ready protocol across separate participant devices—not another redesign of the basic contract.
+
+### Assistant (final_answer)
+
+**I agree with the core design. I independently reproduced it, and found several claims that need tightening—not another fatal flaw in the transaction graph.**
+
+I pushed Claude’s commit and my review to the discussion branch:
+
+[**Read the independent regtest review**](https://github.com/jesuspirate/chama/blob/research/chama-settlement-design/docs/protocol-research/CODEX-REGTEST-REVIEW.md)
+
+**What now has execution evidence**
+
+The constrained rulings and appeals work in the tested cases. I also added an attack that copies the honest principal’s **actual pre-signature** onto a changed payout. Core rejects it with `Invalid Schnorr signature`. That directly tests the restriction we care about.
+
+I extended the fee test to cover **both** a zero-fee ruling and its pre-signed zero-fee appeal, each sponsored after its predecessor confirms. Both packages were accepted.
+
+There are four important corrections:
+
+1. **The original refund-boundary test was mistimed.** Its deadline was height 142, but the relevant tests ran at 159. The harness requested “mine −17 blocks”; Core did nothing. Therefore, the “before deadline” and “at deadline” labels were inaccurate. I added explicit height assertions and tested the actual boundary. The underlying refund-race conclusion remains correct.
+
+2. **The small-number encoding failure is relay policy, not consensus invalidity.** I submitted the same CSV=10 transaction two ways: mempool validation rejected its non-minimal push, but direct inclusion in a block succeeded. Chama should still encode small numbers correctly for reliable relay. Calling those spends consensus-invalid was too strong.
+
+3. **Fee sponsorship works; adversarial fee handling remains unproven.** I accept Claude’s confirm-before-child refinement. It addresses the topology concern for these packages. But neither successful package submission nor available anchors establishes that an honest party can beat a hostile anchor spender within its budget and deadline. Pinning, replacement, confirmed fee liquidity, and propagation still need tests. Those requirements affect recovery security. [TRUC’s rules](https://github.com/bitcoin/bips/blob/master/bip-0431.mediawiki).
+
+4. **The recovery-ready gate is still a placeholder.** The harness counts two signature entries while holding everyone’s keys in one process. It does not yet demonstrate independent verification, durable storage on separate devices, safe signature exchange, or recovery after a crash. A valid transaction graph is a substantial milestone; a safe distributed setup protocol is the next one.
+
+A bookkeeping correction too: Claude’s committed JSON contains **22 rows**, despite the report saying 23. My extended run has **29 passing rows**. I corrected the counts in my review.
+
+**On the proposed decisions:** reversal-only appeals, fixed dedicated keys, and default payout on panel silence are coherent choices for a first prototype. However, “appeals must be filed by halfway through the window” is an application rule. The scripts do not enforce that filing deadline, and the panel’s authorized reversal remains possible until a competing spend confirms.
+
+My recommendation is now quite definite: **keep this graph and test hostile fee behavior plus separate-participant recovery before extracting it into production Chama.** We have moved from a plausible construction to executable evidence for its central spending restrictions. We have not yet established reliable recovery under adversarial operating conditions.
+
+### User
+
+Codex is right to demand hostile-fee and multi-device evidence before anything touches production. That's what I'll build now. First I'll pull their review and check the timing bug they found in my refund rows.
+
+  Ran 1 shell command
+
+I accept all four corrections and will focus on building the two key milestones instead of debating: a hostile-fee matrix on regtest and a truly distributed setup with isolated participant processes tested against crashes and tampering. First I'll check a library for cross-party signature verification and review Codex's refund timing fix for consistency. · summarized
+
+  Searched for 1 pattern, ran 2 shell commands
+
+Cross-device signature verification works as intended—valid templates pass, tampered ones fail. Next, I'll factor the shared builders into a library and write the two new test harnesses. · summarized
+
+  Read 2 files, ran 2 shell commands
+
+The funding got accepted, but the failure now looks like the first pin scenario—the attacker's package was likely rejected and the parent never made it into the mempool. Let me print the package result to check why. · summarized
+
+  Ran 2 shell commands
+
+The pin replacement rows now pass; the only remaining failure is my confirmation check, which requires a transaction index the node doesn't have. I'll switch to checking confirmations via the UTXO set instead. · summarized
+
+  Ran 2 shell commands
+
+I realize I had one assumption wrong: the replacement rule charges the incremental fee on the honest child's own size, not the attacker's, so the honest cost is really just the attacker's fee plus ~150 sats—cheaper than expected. I'll correct those rows and write the distributed-setup harness in the same pass. · summarized
+
+  Ran 1 shell command
+
+I'll empirically measure the exact threshold Co it, then move on to writing thedistributed-setup harness. · summarized
+
+  Ran 1 shell command
+
+The hostile-fee matrix checks out across all 14 rows, confirming a pin eviction only costs the attacker's fee plus 16 sats
+under Core 31's 0.1 sat/vB relay fee. Next, I'l with each participant running as its own process with its own key/store, communicating via a signed-message relay directory, and injecting crash/tamper faults. · summarized
+
+  Read 1 file, ran 1 shell command
+
+All 22 distributed rows pass, confirming crash recovery, tamper detection, forged message rejection, and late arbiter reconstruction all work correctly. I'll now writhe earlier row count, update the index, andcommit. · summarized
+  Read 1 file
+Committed as eae1e8e on the research branch, ready to push. Here's where we are.
+I accept all four of Codex's corrections. My refund-boundary rows ran seventeen blocks late because a negative mine count isa no-op. The small-number push failure is relayge acceptance doesn't prove fee safety. And myrecovery gate was a signature count inside one process. Each is now fixed in code, and my row count is corrected to 22.
+Then I built the two milestones Codex named, and both pass on Bitcoin Core 31.1 regtest.
+Hostile fees, 14 rows. The only thing an attacker can touch in a pre-signed ruling is its anchor. Under TRUC sibling        eviction, the honest side evicts a pin by payin plus 16 sats. That held whether the attackerburned 1,300 sats or 12,000. Oversize and non-v3 children are rejected outright. A child spending an unconfirmed sponsor is rejected, so a confirmed fee reserve is a hard a pin only delays: when blocks aren't full, theattacker's own fee mines the honest ruling.
+
+Distributed setup, 22 rows. Each participant now runs as its own process with only its own keys and store, exchanging bare
+signatures over an identity-signed relay directt a template it rebuilt itself. Crashing at all14 boundaries and restarting from the store alone completes setup and lands funding on chain. A counterparty that signs a
+template paying itself one extra sat causes thesigning the funding transaction. Forged relaymessages are ignored. An arbiter absent during setup reconstructs everything from the relay afterward and rules.
+
+What's still not shown: real Nostr relays across two machines, reorgs after setup, and budget exhaustion near a deadline.
+Those are the next rows.
+
+To publish, from the research worktree:
+
+! cd ~/Work/chama-protocol-research && git pushment-design
+
+✻ Crunched for 11m 7s · done 6:06 PM Claude did serious work. What do you think and what's next?
+
+### Assistant (commentary)
+
+I’ll inspect and reproduce both new harnesses, then check whether the fee bound and crash tests support the stated guarantees. I’ll use those results to identify the next concrete milestone.
+
+### Assistant (commentary)
+
+The new tests strengthen the case for keeping this transaction graph. I found one important problem in the fee interpretation: an attacker’s replacement fee is an offer, not necessarily a cost they pay. If their transaction is evicted, their fee input remains unspent. I’m checking that directly, along with what the recovery tests actually cover.
+
+### Assistant (commentary)
+
+The fee check confirms the distinction: the honest side paid **12,016 sats**, while the evicted attacker retained its entire **200,000-sat input** and paid no confirmed fee. A 2,000-sat replacement budget failed. This disproves “nearly symmetric cost”; it does not by itself prove the attacker can prevent settlement, because mining the attacker’s package also confirms the ruling.
+
+The recovery audit also found two concrete gaps: restarting already-completed participants times out, and malformed relay JSON crashes a participant. These look fixable without changing the transaction graph.
+
+### Assistant (commentary)
+
+Both suites reproduced successfully, including the four added checks. My recommendation is to keep this graph and make the next milestone a complete recovery lifecycle: backups that contain all required terms, messages bound to one contract, safe restarts, and an independently recovering appeal participant. Then test fixed fee budgets and reorgs locally before moving to real Nostr relays.
+
+I’m saving the review and reproducible counterexamples on the research branch so you and Claude can continue from the same evidence.
