@@ -8,6 +8,8 @@ This branch archives the conversation, research, Claude's response, and the late
 
 ## Read in this order
 
+**Latest:** [Codex's independent regtest review](CODEX-REGTEST-REVIEW.md). The original 22 recorded outcomes reproduce (the earlier report says 23), but the refund-boundary labels are wrong. An extended 29-row run checks exact heights, copied pre-signatures, both zero-fee stages, and demonstrates that the small-number rejection is relay policy rather than consensus invalidity. The constrained graph remains the candidate; adversarial fee handling and distributed recovery remain unproven.
+
 0. [Claude's round-2 response with regtest evidence](RESPONSE-TO-CODEX-2.md) — the appeal gap conceded; the complete funding → ruling → appeal/refund graph executed on Bitcoin Core 31.1 regtest (23 rows, all as expected). Harness: `harness/regtest-graph.ts`, results: `harness/regtest-results.json`.
 1. [Codex's response to Claude](RESPONSE-TO-CLAUDE.md) — agreement on pre-signed rulings, the appeal-panel authority gap, and a corrected candidate.
 2. [Conversation transcript](CONVERSATION.md) — the recorded user-visible discussion, including the original request and both earlier answers.
@@ -40,7 +42,7 @@ The files in `prework/` are unchanged snapshots of the shared Hourglass director
 
 Open this branch's `docs/protocol-research/README.md` in GitHub. For an assistant with repository access, use:
 
-> Continue the Chama settlement design discussion on branch `research/chama-settlement-design`. Read `docs/protocol-research/README.md`, `RESPONSE-TO-CLAUDE.md`, and `CONVERSATION.md`. Preserve legacy funded-contract recovery. We are deciding a protocol, not authorizing a deployment. Focus next on a concrete fixed-payout appeal transaction graph, its timeout races, complete pre-funding recovery artifacts, and feasible fee handling. Treat all archived cryptographic claims as claims to check, not established proofs.
+> Continue the Chama settlement design discussion on branch `research/chama-settlement-design`. Read `docs/protocol-research/README.md`, `CODEX-REGTEST-REVIEW.md`, `RESPONSE-TO-CODEX-2.md`, and `CONVERSATION.md`. Preserve legacy funded-contract recovery. We are deciding a protocol, not authorizing a deployment. The basic constrained graph has regtest evidence. Focus next on hostile anchor replacement/pinning, affordable fee sponsorship near deadlines, and separated participant recovery stores with crashes, malformed artifacts, and reorgs. Treat all archived cryptographic claims as claims to check, not established proofs.
 
 Original shared checkout: `/home/satoshi/Work/chama` remains on `main`. Separate research worktree: `/home/satoshi/Work/chama-protocol-research`. No need to switch the shared checkout away from Claude's work.
 
@@ -52,6 +54,15 @@ BITCOIND=/path/to/bitcoind npx tsx docs/protocol-research/harness/regtest-graph.
 ```
 
 Needs Bitcoin Core 28+ (TRUC, P2A). Starts and tears down its own regtest node.
+
+The independent review was tested on Core 31.1. To reproduce its instrumented and extended runs, sequentially:
+
+```sh
+BITCOIND=/path/to/bitcoind node_modules/.bin/tsx docs/protocol-research/harness/codex-reproduction.ts
+BITCOIND=/path/to/bitcoind node_modules/.bin/tsx docs/protocol-research/harness/codex-extended.ts
+```
+
+Results are recorded separately; the original Claude harness and results are preserved unchanged.
 
 ## Reproduce the illustrative checks
 

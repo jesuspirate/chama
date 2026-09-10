@@ -1,0 +1,200 @@
+{
+  "date": "2026-09-10T21:46:32.465Z",
+  "core": "/Satoshi:31.1.0/",
+  "params": {
+    "ESCROW_SATS": 100000,
+    "TEMPLATE_FEE": 1000,
+    "ANCHOR_SATS": 240,
+    "W": 20,
+    "REFUND_AFTER": 30
+  },
+  "rows": [
+    {
+      "id": "S1",
+      "scenario": "F coop leaf: A+B pay seller",
+      "expect": "ACCEPT",
+      "got": "ACCEPT",
+      "reason": "",
+      "vsize": 162,
+      "tipHeight": 112
+    },
+    {
+      "id": "S2a",
+      "scenario": "ruling R_A completed by arbiter (pre-signed by A,B)",
+      "expect": "ACCEPT",
+      "got": "ACCEPT",
+      "reason": "",
+      "vsize": 208,
+      "tipHeight": 113
+    },
+    {
+      "id": "S2b",
+      "scenario": "Q_A default leaf: winner spends before W=20 blocks",
+      "expect": "REJECT",
+      "got": "REJECT",
+      "reason": "non-BIP68-final",
+      "tipHeight": 114
+    },
+    {
+      "id": "S2c",
+      "scenario": "Q_A default leaf: winner spends at W=20 confirmations",
+      "expect": "ACCEPT",
+      "got": "ACCEPT",
+      "reason": "",
+      "vsize": 138,
+      "tipHeight": 133
+    },
+    {
+      "id": "S3a",
+      "scenario": "ruling R_B completed by arbiter",
+      "expect": "ACCEPT",
+      "got": "ACCEPT",
+      "reason": "",
+      "vsize": 208,
+      "tipHeight": 134
+    },
+    {
+      "id": "S3b",
+      "scenario": "Q_B appeal leaf: P completes pre-signed reversal → pays A, undelayed",
+      "expect": "ACCEPT",
+      "got": "ACCEPT",
+      "reason": "",
+      "vsize": 208,
+      "tipHeight": 135
+    },
+    {
+      "id": "S4a",
+      "scenario": "F ruling leaf: R+A pay attacker, B's signature absent",
+      "expect": "REJECT",
+      "got": "REJECT",
+      "reason": "mempool-script-verify-flag-failed (Script evaluated without error but finished with a false/empty top stack element)",
+      "tipHeight": 136
+    },
+    {
+      "id": "S4b",
+      "scenario": "F ruling leaf: R alone, non-template outputs",
+      "expect": "REJECT",
+      "got": "REJECT",
+      "reason": "mempool-script-verify-flag-failed (Script evaluated without error but finished with a false/empty top stack element)",
+      "tipHeight": 136
+    },
+    {
+      "id": "S4c",
+      "scenario": "ruling R_A (setup for panel redirection attempt)",
+      "expect": "ACCEPT",
+      "got": "ACCEPT",
+      "reason": "",
+      "vsize": 208,
+      "tipHeight": 136
+    },
+    {
+      "id": "S4d",
+      "scenario": "Q_A appeal leaf: P+A pay attacker, B's signature absent",
+      "expect": "REJECT",
+      "got": "REJECT",
+      "reason": "mempool-script-verify-flag-failed (Script evaluated without error but finished with a false/empty top stack element)",
+      "tipHeight": 137
+    },
+    {
+      "id": "S4e",
+      "scenario": "Q_A appeal leaf: P alone pays attacker",
+      "expect": "REJECT",
+      "got": "REJECT",
+      "reason": "mempool-script-verify-flag-failed (Script evaluated without error but finished with a false/empty top stack element)",
+      "tipHeight": 137
+    },
+    {
+      "id": "S6a",
+      "scenario": "Q_A default leaf after W: winner's spend valid",
+      "expect": "ACCEPT",
+      "got": "ACCEPT",
+      "reason": "",
+      "vsize": 138,
+      "tipHeight": 157
+    },
+    {
+      "id": "S6b",
+      "scenario": "Q_A appeal leaf after W: P's pre-signed reversal STILL valid (no expiry)",
+      "expect": "ACCEPT",
+      "got": "ACCEPT",
+      "reason": "",
+      "vsize": 208,
+      "tipHeight": 157
+    },
+    {
+      "id": "S6c",
+      "scenario": "Q_A default leaf after reversal confirmed: winner's spend now conflicts",
+      "expect": "REJECT",
+      "got": "REJECT",
+      "reason": "missing-inputs",
+      "tipHeight": 158
+    },
+    {
+      "id": "S5a",
+      "scenario": "F refund leaf: funder spends with nLockTime < H_refund",
+      "expect": "REJECT",
+      "got": "REJECT",
+      "reason": "mempool-script-verify-flag-failed (Locktime requirement not satisfied)",
+      "tipHeight": 158
+    },
+    {
+      "id": "S5b",
+      "scenario": "F refund leaf: correct nLockTime but nSequence=0xffffffff (CLTV disabled)",
+      "expect": "REJECT",
+      "got": "REJECT",
+      "reason": "mempool-script-verify-flag-failed (Locktime requirement not satisfied)",
+      "tipHeight": 158
+    },
+    {
+      "id": "S5c",
+      "scenario": "ruling R_B on F[5] confirmed before H_refund",
+      "expect": "ACCEPT",
+      "got": "ACCEPT",
+      "reason": "",
+      "vsize": 208,
+      "tipHeight": 158
+    },
+    {
+      "id": "S5d",
+      "scenario": "F refund leaf: funder spends at H_refund (no ruling ever confirmed)",
+      "expect": "ACCEPT",
+      "got": "ACCEPT",
+      "reason": "",
+      "vsize": 146,
+      "tipHeight": 159
+    },
+    {
+      "id": "S5e",
+      "scenario": "F refund leaf on F[5] after H_refund: input already consumed by ruling",
+      "expect": "REJECT",
+      "got": "REJECT",
+      "reason": "missing-inputs",
+      "tipHeight": 159
+    },
+    {
+      "id": "S5f",
+      "scenario": "F[4] at H_refund: pre-signed ruling R_A ALSO valid — pure mempool race",
+      "expect": "ACCEPT",
+      "got": "ACCEPT",
+      "reason": "",
+      "vsize": 208,
+      "tipHeight": 159
+    },
+    {
+      "id": "S7a",
+      "scenario": "zero-fee ruling alone",
+      "expect": "REJECT",
+      "got": "REJECT",
+      "reason": "min relay fee not met",
+      "tipHeight": 159
+    },
+    {
+      "id": "S7b",
+      "scenario": "zero-fee ruling + P2A anchor child via submitpackage (TRUC)",
+      "expect": "ACCEPT",
+      "got": "ACCEPT",
+      "reason": ""
+    }
+  ],
+  "allOk": true
+}
