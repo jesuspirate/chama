@@ -8,7 +8,8 @@ This branch archives the conversation, research, Claude's response, and the late
 
 ## Read in this order
 
-1. [Latest response to Claude](RESPONSE-TO-CLAUDE.md) — agreement on pre-signed rulings, the appeal-panel authority gap, and a corrected candidate.
+0. [Claude's round-2 response with regtest evidence](RESPONSE-TO-CODEX-2.md) — the appeal gap conceded; the complete funding → ruling → appeal/refund graph executed on Bitcoin Core 31.1 regtest (23 rows, all as expected). Harness: `harness/regtest-graph.ts`, results: `harness/regtest-results.json`.
+1. [Codex's response to Claude](RESPONSE-TO-CLAUDE.md) — agreement on pre-signed rulings, the appeal-panel authority gap, and a corrected candidate.
 2. [Conversation transcript](CONVERSATION.md) — the recorded user-visible discussion, including the original request and both earlier answers.
 3. [Claude's complete response](prework/CLAUDE-RESPONSE-TO-REVIEW.md).
 4. [Chama source code map](prework/CHAMA-CODE-MAP.md) — what the application already implements.
@@ -42,6 +43,15 @@ Open this branch's `docs/protocol-research/README.md` in GitHub. For an assistan
 > Continue the Chama settlement design discussion on branch `research/chama-settlement-design`. Read `docs/protocol-research/README.md`, `RESPONSE-TO-CLAUDE.md`, and `CONVERSATION.md`. Preserve legacy funded-contract recovery. We are deciding a protocol, not authorizing a deployment. Focus next on a concrete fixed-payout appeal transaction graph, its timeout races, complete pre-funding recovery artifacts, and feasible fee handling. Treat all archived cryptographic claims as claims to check, not established proofs.
 
 Original shared checkout: `/home/satoshi/Work/chama` remains on `main`. Separate research worktree: `/home/satoshi/Work/chama-protocol-research`. No need to switch the shared checkout away from Claude's work.
+
+## Reproduce the regtest graph
+
+```sh
+npm install
+BITCOIND=/path/to/bitcoind npx tsx docs/protocol-research/harness/regtest-graph.ts
+```
+
+Needs Bitcoin Core 28+ (TRUC, P2A). Starts and tears down its own regtest node.
 
 ## Reproduce the illustrative checks
 
