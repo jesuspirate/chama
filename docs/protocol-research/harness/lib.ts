@@ -183,7 +183,7 @@ export const CRASH_POINTS = [
   "A:peer-sigs-verified-before-persist", "A:ready-before-publish",
   "A:funding-signed-before-persist", "A:funding-persisted-before-broadcast", "A:funding-broadcast-before-persist",
   "B:templates-signed-before-persist", "B:sigs-persisted-before-publish", "B:peer-sigs-verified-before-persist", "B:ready-before-publish",
-  "R:verified-before-persist",
+  "R:verified-before-persist", "P:verified-before-persist",
 ] as const;
 
 // ── results ─────────────────────────────────────────────────────────────────

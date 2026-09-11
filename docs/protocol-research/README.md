@@ -54,8 +54,8 @@ Original shared checkout: `/home/satoshi/Work/chama` remains on `main`. Separate
 npm install
 BITCOIND=/path/to/bitcoind npx tsx docs/protocol-research/harness/regtest-graph.ts       # 22 rows, port 18599
 BITCOIND=/path/to/bitcoind npx tsx docs/protocol-research/harness/codex-extended.ts     # 29 rows, port 18699
-BITCOIND=/path/to/bitcoind npx tsx docs/protocol-research/harness/pinning-matrix.ts     # 14 rows, port 18799
-BITCOIND=/path/to/bitcoind npx tsx docs/protocol-research/harness/distributed-setup.ts # 22 rows, port 18899
+BITCOIND=/path/to/bitcoind npx tsx docs/protocol-research/harness/pinning-matrix.ts     # 18 rows, port 18799
+BITCOIND=/path/to/bitcoind npx tsx docs/protocol-research/harness/distributed-setup.ts # 26 rows, port 18899 (party.ts v2)
 ```
 
 Use Bitcoin Core 31.1 for the recorded policy results; compatibility with other releases has not been established by these runs. Starts and tears down its own regtest node.

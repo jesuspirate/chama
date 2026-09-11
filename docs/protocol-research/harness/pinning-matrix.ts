@@ -50,7 +50,8 @@ async function main() {
       t.signIdx(A.priv, 0); t.signIdx(B.priv, 0); t.signIdx(R.priv, 0);
       return finalize(t, F, "ruling");
     };
-    const minRelay = 1; // sat/vB on regtest default (minrelaytxfee 1000 sat/kvB)
+    const mpi = await rpc<any>("getmempoolinfo", [], "");
+    const minRelay = Math.round(mpi.incrementalrelayfee * 1e8 / 1000 * 1000) / 1000; // sat/vB, read from the node
     const confs = async (txid: string) => ((await rpc<any>("gettxout", [txid, 0]))?.confirmations ?? 0) as number;
     const vsizeOf = async (raw: string) => (await rpc<any>("decoderawtransaction", [raw])).vsize as number;
 
@@ -94,8 +95,10 @@ async function main() {
       for (; thr2 <= 14_000n; thr2++) { const [r] = await rpc<any[]>("testmempoolaccept", [[anchorChild(ptxid, 1, honestSponsors[1], HONEST, thr2)]]); if (r.allowed) break; }
       await rec.probe("M2b", `honest replacement one sat below the measured threshold (${thr2 - 1n} sat)`, anchorChild(ptxid, 1, honestSponsors[1], HONEST, thr2 - 1n), "REJECT");
       const honest = anchorChild(ptxid, 1, honestSponsors[1], HONEST, thr2);
-      await rec.probe("M2c", `honest replacement at the measured threshold (${thr2} sat = attacker fee + ${thr2 - 12_000n})`, honest, "ACCEPT", "attacker burns ~what the honest side pays: griefing is bounded and symmetric");
+      await rec.probe("M2c", `honest replacement at the measured threshold (${thr2} sat = attacker fee + ${thr2 - 12_000n})`, honest, "ACCEPT", "replacement threshold only; see M2d for what the attacker actually paid");
       await rpc("sendrawtransaction", [honest]); await mine(rpc, 1);
+      const attackerStillUnspent = !!(await rpc<any>("gettxout", [attackerSponsors[1].txid, attackerSponsors[1].vout]));
+      rec.record("M2d", "after eviction and confirmation: attacker's sponsor input is STILL UNSPENT — an evicted transaction pays nothing", "ACCEPT", attackerStillUnspent, "", "attack cost is capital at risk, not a burn; the honest side paid 12016 sat, the attacker 0");
     }
 
     // ── M3: TRUC ceilings bound the pin. Oversize child, extra child, non-v3 child. ──
@@ -139,6 +142,21 @@ async function main() {
       await rpc("submitpackage", [[parent, pin]]);
       await mine(rpc, 1);
       rec.record("M5a", "attacker's min-relay pin gets mined when blocks are not full: attacker paid to confirm the honest ruling", "ACCEPT", (await confs(ptxid)) === 1, "", "a pin only delays under fee pressure; the ruling is never lost");
+    }
+
+    // ── M6: reorgs. A zero-fee ruling + anchor child confirmed, then the block is invalidated. ──
+    {
+      const parent = ruling(5); const ptxid = txidOf(parent);
+      const child = anchorChild(ptxid, 1, honestSponsors[5], HONEST, 2_000n);
+      await rpc("submitpackage", [[parent, child]]); await mine(rpc, 1);
+      const h = await rpc<number>("getblockcount");
+      await rpc("invalidateblock", [await rpc<string>("getblockhash", [h])]);
+      const mem = await rpc<string[]>("getrawmempool");
+      rec.record("M6a", "ruling block invalidated: Core re-admits the disconnected zero-fee ruling AND its anchor child (fee limits bypassed on reorg)", "ACCEPT", mem.includes(ptxid) && mem.includes(txidOf(child)), JSON.stringify(mem), "do not rely on this from other nodes; re-submit the package anyway");
+      const pkg = await rpc<any>("submitpackage", [[parent, child]]);
+      rec.record("M6b", "re-submitting the same package after the reorg is harmless (idempotent)", "ACCEPT", pkg.package_msg === "success", JSON.stringify(pkg).slice(0, 120));
+      await mine(rpc, 1);
+      rec.record("M6c", "ruling confirmed again; the CSV clock on Q restarts from the NEW confirmation height", "ACCEPT", (await confs(ptxid)) === 1, "", "confirmation-derived timers must be recomputed after a reorg");
     }
 
     rec.report("Hostile fee matrix — Bitcoin Core " + (await rpc<any>("getnetworkinfo", [], "")).subversion,
