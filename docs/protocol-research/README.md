@@ -8,9 +8,11 @@ This branch archives the conversation, research, Claude's response, and the late
 
 ## Read in this order
 
-**Latest:** [Codex's fee and recovery audit](CODEX-FEE-RECOVERY-REVIEW.md), reviewing [Claude's round-3 response](RESPONSE-TO-CODEX-3.md). Both suites reproduce in instrumented copies: 16 fee rows and 24 distributed rows including four added checks. Evicted attackers do not pay the offered fee; completed participant restarts time out; malformed relay JSON crashes a participant. The graph remains the candidate. Next: complete local backup/state handling, add the appeal participant, then test fixed budgets and reorgs before real Nostr transport.
+**Latest:** [Codex's deadline and lifecycle review](CODEX-DEADLINE-LIFECYCLE-REVIEW.md), reviewing [Claude's round-4 response](RESPONSE-TO-CODEX-4.md). Claude's 26 lifecycle / 18 fee checks reproduce. New work fixes nested contract hashing, an unpublished terminal funding message, and malformed authenticated payload handling. The extended lifecycle has 34 checks; a new 22-check experiment demonstrates actual refund/default races under controlled fee-ranked congestion, a successful larger-budget ruling, and CSV eligibility after delayed reconfirmation. All expectations match. These are research results, not production guarantees.
 
-Previous: [Codex's independent graph review](CODEX-REGTEST-REVIEW.md) corrected refund timing and policy/consensus claims with a 29-row extension.
+**Next build:** a continuous chain observer and a bounded fee policy, exercised through the deadline scenarios. Then real Nostr transport, then production extraction and optional FROST. Read the latest review for the concrete scope and remaining limits.
+
+Previous: [fee/recovery review](CODEX-FEE-RECOVERY-REVIEW.md) and [independent graph review](CODEX-REGTEST-REVIEW.md).
 
 0. [Claude's round-2 response with regtest evidence](RESPONSE-TO-CODEX-2.md) — the appeal gap conceded; the complete funding → ruling → appeal/refund graph executed on Bitcoin Core 31.1 regtest (22 recorded rows; original prose said 23). Harness: `harness/regtest-graph.ts`, results: `harness/regtest-results.json`.
 1. [Codex's response to Claude](RESPONSE-TO-CLAUDE.md) — agreement on pre-signed rulings, the appeal-panel authority gap, and a corrected candidate.
@@ -44,7 +46,7 @@ The files in `prework/` are unchanged snapshots of the shared Hourglass director
 
 Open this branch's `docs/protocol-research/README.md` in GitHub. For an assistant with repository access, use:
 
-> Continue the Chama settlement design discussion on branch `research/chama-settlement-design`. Read `docs/protocol-research/README.md`, `CODEX-FEE-RECOVERY-REVIEW.md`, `RESPONSE-TO-CODEX-3.md`, and `CONVERSATION.md`. Preserve legacy funded-contract recovery. We are deciding a protocol, not authorizing a deployment. The basic constrained graph has regtest evidence. Focus next on contract-bound messages, self-contained backups, idempotent terminal recovery, an independently stored appeal participant, affordable fee sponsorship near deadlines, and reorgs. Evicted fee bids are not burned fees. The newest audit reproduces two lifecycle defects; green counterexample rows mean those defects remain present. Treat all archived cryptographic claims as claims to check, not established proofs.
+> Continue the Chama settlement design discussion on branch `research/chama-settlement-design`. Read `docs/protocol-research/README.md`, `CODEX-DEADLINE-LIFECYCLE-REVIEW.md`, `RESPONSE-TO-CODEX-4.md`, and `CONVERSATION.md`. Preserve legacy funded-contract recovery. No deployment is authorized. The graph remains the experimental candidate. Codex fixed omitted nested terms in contract hashing (research wire version 2), a terminal publication crash gap, and payload validation. Latest suites: 34 lifecycle checks and 22 deadline checks, all expectations matched. Congestion can make an unconfirmed ruling/appeal lose to an authorized refund/default; a larger fee reserve only succeeds within assumptions. Build a continuous reorg-aware chain observer and per-contract bounded fee policy next, test alternating replacement bids and shared sponsor reservations, then use real Nostr transport. Read historical results at their source commits; shared research builders have changed. Do not treat green counterexample rows as proofs of security.
 
 Original shared checkout: `/home/satoshi/Work/chama` remains on `main`. Separate research worktree: `/home/satoshi/Work/chama-protocol-research`. No need to switch the shared checkout away from Claude's work.
 
@@ -84,3 +86,12 @@ Latest audit reproductions (original harnesses remain unchanged):
 BITCOIND=/path/to/bitcoind node_modules/.bin/tsx docs/protocol-research/harness/codex-fee-audit.ts          # 16 rows, port 19799
 BITCOIND=/path/to/bitcoind node_modules/.bin/tsx docs/protocol-research/harness/codex-distributed-audit.ts  # 24 rows, port 19899
 ```
+
+## Latest supported research suites
+
+```sh
+BITCOIND=/path/to/bitcoind node_modules/.bin/tsx docs/protocol-research/harness/codex-lifecycle-v3.ts  # 34 checks, RPC 19899
+BITCOIND=/path/to/bitcoind node_modules/.bin/tsx docs/protocol-research/harness/deadline-budget.ts     # 22 checks, RPC 19999
+```
+
+Use Core 31.1. The deadline test deliberately limits miner templates to 40,000 weight units and records actual fee-ranked block contents. It is not a mainnet fee forecast. Run historical suites at their originating commits: shared `party.ts` and `lib.ts` have evolved, including an additional crash point and corrected wire context.

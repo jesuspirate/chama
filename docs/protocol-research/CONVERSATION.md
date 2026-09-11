@@ -476,3 +476,98 @@ The recovery audit also found two concrete gaps: restarting already-completed pa
 Both suites reproduced successfully, including the four added checks. My recommendation is to keep this graph and make the next milestone a complete recovery lifecycle: backups that contain all required terms, messages bound to one contract, safe restarts, and an independently recovering appeal participant. Then test fixed fee budgets and reorgs locally before moving to real Nostr relays.
 
 I’m saving the review and reproducible counterexamples on the research branch so you and Claude can continue from the same evidence.
+
+
+## Continued discussion: lifecycle fixes and deadline experiments
+
+### Assistant (final_answer)
+
+**Yes—this is meaningful progress, and I agree we should keep Chama and this transaction graph.** I reproduced Claude’s suites with four additional checks: **16 fee rows and 24 distributed rows**, all matching their expected outcomes. Two added rows deliberately reproduce bugs; green results do not mean production readiness.
+
+**The important refutation is “nearly symmetric” attack cost.** My added check measured:
+
+| After honest replacement confirms | Result |
+|---|---:|
+| Attacker’s advertised fee | 12,000 sats |
+| Attacker’s actual confirmed fee | **0 sats** |
+| Attacker’s sponsor input | Entire 200,000 sats still unspent |
+| Honest party’s confirmed fee | **12,016 sats** |
+
+An evicted transaction does not pay its offered fee. The attacker risks paying if its package confirms, but that expenditure is not guaranteed.
+
+A **2,000-sat honest replacement budget failed**. This does **not** demonstrate permanent blocking: mining the attacker’s package also confirms the ruling. It means “automatically outbid every attacker” is an expensive strategy, and deadline-aware decisions still need testing. TRUC improves replacement mechanics; it does not guarantee affordable confirmation. [BIP 431](https://github.com/bitcoin/bips/blob/master/bip-0431.mediawiki)
+
+The distributed work is also useful, but I reproduced two missing cases:
+
+- Restarting already-completed funder and arbiter processes **times out instead of completing successfully**.
+- A malformed JSON relay message **crashes a participant**.
+
+Source inspection found three further boundaries: recovery still requires a shared external `terms.json`; `READY` messages lack explicit contract binding; and the appeal panel has no independent participant process or recovery store yet.
+
+**What’s next, in order:**
+
+1. **Complete local recovery.** Self-contained backups, contract-bound messages, malformed-input handling, successful terminal-state restarts, and an independently recovering appeal participant using an ordinary key.
+2. **Test budgets and deadlines together.** Repeated fee bids, congested blocks, competing refunds/default awards, and funding/ruling reorgs. Measure the payout that actually confirms and the fees actually paid. These tests can start on local regtest.
+3. **Then run across devices through Nostr.** Repeat with replay, dropped messages, relay outages, and stale backups.
+4. **Then integrate into Chama and add FROST behind the tested signer interface.** Keep Fedimint’s payment functionality; it does not automatically inherit the on-chain contract’s guarantees.
+
+These findings call for implementation hardening, not another architectural restart. The remaining fundamental boundary is unchanged: cryptography can restrict an arbiter’s payout choices, but cannot prove an honest verdict about fiat or physical goods.
+
+I pushed Claude’s commit and my review, counterexamples, results, and conversation update as **`630655e`** to the existing research branch. [Read the full review and continuation steps](https://github.com/jesuspirate/chama/blob/research/chama-settlement-design/docs/protocol-research/CODEX-FEE-RECOVERY-REVIEW.md).
+
+### User
+
+Codex found real bugs, and the "symmetric cost" claim of mine is wrong: an evicted transaction pays nothing. I'll concede that, then do exactly the milestone they ordered first: complete local recovery. Pulling their review first.
+
+  Ran 1 shell command
+
+I'll rewrite the participant (contract-bound messages, self-contained stores, schema validation, atomic publish, terminal-state restarts, real appeal participant, confirmation-aware funding), extend the distributed harness with offline restore, malformed input, cross-contract replay, terminal restarts, and funding reorg tests, and correct the fee matrix's incorrect "symmetric" claim with real attacker-paid-fee and ruling-reorg rows. Then I'll run the two harnesses in parallel on separate ports. · summarized
+
+  Read 1 file
+
+Distributed lifecycle passed all 26 cases; fee matrix passed 17/18, with the miss revealing that Core re-admits a disconnected zero-fee ruling and its child together after a reorg, bypassing the fee floor. I'll log that as a real finding and rerun. · summarized
+
+  Ran 2 shell commands
+
+Committed as ed6b2ff on the research branch, ready to push.
+
+I retract the "symmetric cost" claim. Codex is right: an evicted transaction pays nothing. I added the measurement to my own matrix so the record corrects itself. The attacker's sponsor input is still unspent after the honest side pays 12,016 sats to evict the pin. Attack cost is capital at risk, not a burn.
+
+I accepted the rest and delivered Codex's milestone 1 in full. The participant is rewritten, and every finding maps to a row that passes:
+
+- Contract binding. Every message carries version, network, and a hash of the terms. Authentic messages replayed from one
+  contract into another with the same identitieto.
+- Self-contained stores. Terms are validated and persisted on first run. The offline restore row deletes the relay and the
+  terms file, copies each store to a fresh dires identical templates and contract id from thecopy alone.
+- A real appeal participant. P runs as its own erifies both principals' signatures on the appeal templates, and completes the reversal from a restored copy. It has its own crash point too.
+- Hardening. Malformed, wrong-schema, and overssh anyone. Publish is atomic. Terminal restartsexit cleanly. READY names the funding txid and all four template txids, and a mismatch aborts. B checks funding
+  confirmation on chain itself instead of trustows now assert confirmations after mining.
+
+Two new findings from the reorg rows. After a badmits the disconnected zero-fee ruling togetherwith its anchor child, bypassing the fee floor, but that is one node's behavior and the package should be re-submitted
+regardless. And the appeal window on the ruling confirmation height, so any confirmation-derived timer must be recomputed after a reorg.
+
+Totals this round: 26 lifecycle rows and 18 fee rows, all matching, on Bitcoin Core 31.1 regtest.
+
+Still open from Codex's list: a fixed honest budget against repeated bids under congested blocks, and conflicting refund and default spends at exact boundaries. Those need  regtest, which is the next build. Then realNostr relays across two machines. Claude finished. Your turn to make miracle happen!
+
+### Assistant (commentary)
+
+I’ll review and reproduce the recovery rewrite, then build the remaining fee-budget and deadline tests. The next question is whether the intended payout still confirms when an opponent competes near the deadline and the honest party has a fixed spending limit.
+
+### Assistant (commentary)
+
+I found a new bug in the contract identifier: the JSON “canonicalization” drops the nested participant keys and funding outpoint before hashing. That means different contracts can receive the same identifier. Transaction signatures still constrain the payouts, but the message-binding claim is incomplete.
+
+I’m adding a regression for that exact case and fixing the research implementation. For the deadline tests, I’ll use deliberately small block templates filled with higher-fee transactions, so we can observe actual miner selection under controlled congestion.
+
+### Assistant (commentary)
+
+The deadline experiment now shows both outcomes under real fee-ranked mining. With a 2,000-sat cap, the ruling stayed pending through congested blocks and a competing refund confirmed. A separate, larger-budget ruling confirmed before that boundary and made its refund unspendable.
+
+The appeal test shows the same risk: a pending reversal can lose to the default winner at CSV maturity. This gives us concrete limits to design around—not a reason to discard the graph, but a reason to make fee reserves, monitoring, and settlement deadlines part of the contract’s operating requirements.
+
+### Assistant (commentary)
+
+The extended checks pass: **34 lifecycle checks and 22 deadline/reorg checks**. I fixed the contract hash, added recovery for a crash between saving `funded` and publishing its announcement, and made malformed authenticated messages unable to hide later valid signatures. Restored stores can now produce both refund and default-collection transactions.
+
+I also tested a ruling that reconfirms two blocks later after a reorg: the old CSV deadline is rejected, and the recomputed deadline works. The next implementation step should be a chain monitor and a fee policy with a hard budget; those need to drive the client before Nostr transport or FROST is added.

@@ -1,0 +1,209 @@
+{
+  "title": "Distributed recovery-ready lifecycle v2 \u2014 Bitcoin Core /Satoshi:31.1.0/",
+  "date": "2026-09-11T01:58:38.674Z",
+  "crashPoints": [
+    "A:plan-built-before-persist",
+    "A:plan-persisted-before-publish",
+    "A:templates-signed-before-persist",
+    "A:sigs-persisted-before-publish",
+    "A:peer-sigs-verified-before-persist",
+    "A:ready-before-publish",
+    "A:funding-signed-before-persist",
+    "A:funding-persisted-before-broadcast",
+    "A:funding-broadcast-before-persist",
+    "B:templates-signed-before-persist",
+    "B:sigs-persisted-before-publish",
+    "B:peer-sigs-verified-before-persist",
+    "B:ready-before-publish",
+    "R:verified-before-persist",
+    "P:verified-before-persist"
+  ],
+  "rowCount": 26,
+  "rows": [
+    {
+      "id": "D1a",
+      "scenario": "A funded, B confirmed, R stored, P stored (exit 0/0/0/0)",
+      "expect": "ACCEPT",
+      "got": "ACCEPT",
+      "reason": ""
+    },
+    {
+      "id": "D1b",
+      "scenario": "offline restore from a copied store (relay + terms deleted): identical templates, contract id, complete sigs per role",
+      "expect": "ACCEPT",
+      "got": "ACCEPT",
+      "reason": ""
+    },
+    {
+      "id": "D1c",
+      "scenario": "R rules R_A from the restored copy; mined",
+      "expect": "ACCEPT",
+      "got": "ACCEPT",
+      "reason": ""
+    },
+    {
+      "id": "D1d",
+      "scenario": "P completes the pre-signed reversal AP_A from its restored copy; mined (pays B)",
+      "expect": "ACCEPT",
+      "got": "ACCEPT",
+      "reason": ""
+    },
+    {
+      "id": "D1e",
+      "scenario": "restarting every completed participant exits 0 immediately",
+      "expect": "ACCEPT",
+      "got": "ACCEPT",
+      "reason": ""
+    },
+    {
+      "id": "D2:A:plan-built-before-persist",
+      "scenario": "crash at A:plan-built-before-persist: exit 99, restart completes, store complete, funding CONFIRMED",
+      "expect": "ACCEPT",
+      "got": "ACCEPT",
+      "reason": ""
+    },
+    {
+      "id": "D2:A:plan-persisted-before-publish",
+      "scenario": "crash at A:plan-persisted-before-publish: exit 99, restart completes, store complete, funding CONFIRMED",
+      "expect": "ACCEPT",
+      "got": "ACCEPT",
+      "reason": ""
+    },
+    {
+      "id": "D2:A:templates-signed-before-persist",
+      "scenario": "crash at A:templates-signed-before-persist: exit 99, restart completes, store complete, funding CONFIRMED",
+      "expect": "ACCEPT",
+      "got": "ACCEPT",
+      "reason": ""
+    },
+    {
+      "id": "D2:A:sigs-persisted-before-publish",
+      "scenario": "crash at A:sigs-persisted-before-publish: exit 99, restart completes, store complete, funding CONFIRMED",
+      "expect": "ACCEPT",
+      "got": "ACCEPT",
+      "reason": ""
+    },
+    {
+      "id": "D2:A:peer-sigs-verified-before-persist",
+      "scenario": "crash at A:peer-sigs-verified-before-persist: exit 99, restart completes, store complete, funding CONFIRMED",
+      "expect": "ACCEPT",
+      "got": "ACCEPT",
+      "reason": ""
+    },
+    {
+      "id": "D2:A:ready-before-publish",
+      "scenario": "crash at A:ready-before-publish: exit 99, restart completes, store complete, funding CONFIRMED",
+      "expect": "ACCEPT",
+      "got": "ACCEPT",
+      "reason": ""
+    },
+    {
+      "id": "D2:A:funding-signed-before-persist",
+      "scenario": "crash at A:funding-signed-before-persist: exit 99, restart completes, store complete, funding CONFIRMED",
+      "expect": "ACCEPT",
+      "got": "ACCEPT",
+      "reason": ""
+    },
+    {
+      "id": "D2:A:funding-persisted-before-broadcast",
+      "scenario": "crash at A:funding-persisted-before-broadcast: exit 99, restart completes, store complete, funding CONFIRMED",
+      "expect": "ACCEPT",
+      "got": "ACCEPT",
+      "reason": ""
+    },
+    {
+      "id": "D2:A:funding-broadcast-before-persist",
+      "scenario": "crash at A:funding-broadcast-before-persist: exit 99, restart completes, store complete, funding CONFIRMED",
+      "expect": "ACCEPT",
+      "got": "ACCEPT",
+      "reason": ""
+    },
+    {
+      "id": "D2:B:templates-signed-before-persist",
+      "scenario": "crash at B:templates-signed-before-persist: exit 99, restart completes, store complete, funding CONFIRMED",
+      "expect": "ACCEPT",
+      "got": "ACCEPT",
+      "reason": ""
+    },
+    {
+      "id": "D2:B:sigs-persisted-before-publish",
+      "scenario": "crash at B:sigs-persisted-before-publish: exit 99, restart completes, store complete, funding CONFIRMED",
+      "expect": "ACCEPT",
+      "got": "ACCEPT",
+      "reason": ""
+    },
+    {
+      "id": "D2:B:peer-sigs-verified-before-persist",
+      "scenario": "crash at B:peer-sigs-verified-before-persist: exit 99, restart completes, store complete, funding CONFIRMED",
+      "expect": "ACCEPT",
+      "got": "ACCEPT",
+      "reason": ""
+    },
+    {
+      "id": "D2:B:ready-before-publish",
+      "scenario": "crash at B:ready-before-publish: exit 99, restart completes, store complete, funding CONFIRMED",
+      "expect": "ACCEPT",
+      "got": "ACCEPT",
+      "reason": ""
+    },
+    {
+      "id": "D2:R:verified-before-persist",
+      "scenario": "crash at R:verified-before-persist: exit 99, restart completes, store complete, funding CONFIRMED",
+      "expect": "ACCEPT",
+      "got": "ACCEPT",
+      "reason": ""
+    },
+    {
+      "id": "D2:P:verified-before-persist",
+      "scenario": "crash at P:verified-before-persist: exit 99, restart completes, store complete, funding CONFIRMED",
+      "expect": "ACCEPT",
+      "got": "ACCEPT",
+      "reason": ""
+    },
+    {
+      "id": "D3a",
+      "scenario": "B signs AP_A paying itself +1 sat: A aborts (exit 2), never signs funding",
+      "expect": "ACCEPT",
+      "got": "ACCEPT",
+      "reason": ""
+    },
+    {
+      "id": "D3b",
+      "scenario": "B's messages carry a wrong identity signature: ignored; A times out unfunded (exit 3)",
+      "expect": "ACCEPT",
+      "got": "ACCEPT",
+      "reason": ""
+    },
+    {
+      "id": "D3c",
+      "scenario": "truncated JSON, wrong-schema, and oversize relay files present: all four participants still complete",
+      "expect": "ACCEPT",
+      "got": "ACCEPT",
+      "reason": ""
+    },
+    {
+      "id": "D3d",
+      "scenario": "authentic messages from contract 1 replayed into contract 2 (same identities): dropped by contract binding; A times out unfunded",
+      "expect": "ACCEPT",
+      "got": "ACCEPT",
+      "reason": ""
+    },
+    {
+      "id": "D4",
+      "scenario": "R and P absent during setup; join after funding; R rules R_B, P reverses AP_B; both mined",
+      "expect": "ACCEPT",
+      "got": "ACCEPT",
+      "reason": ""
+    },
+    {
+      "id": "D5",
+      "scenario": "funding block invalidated after setup: funding returns to mempool, re-mined at a new height, templates unchanged, ruling mined",
+      "expect": "ACCEPT",
+      "got": "ACCEPT",
+      "reason": ""
+    }
+  ],
+  "allOk": true,
+  "sourceCommit": "ed6b2ff",
+  "reproductionNote": "Recorded before research fixes; original source at ed6b2ff, with distinct RPC port and result filename."
+}

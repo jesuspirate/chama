@@ -34,13 +34,13 @@ export function makeRpc(port: number) {
 export type Rpc = ReturnType<typeof makeRpc>;
 export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-export async function startNode(port: number): Promise<{ proc: ChildProcess; datadir: string; rpc: Rpc; stop: () => Promise<void> }> {
+export async function startNode(port: number, extraArgs: string[] = []): Promise<{ proc: ChildProcess; datadir: string; rpc: Rpc; stop: () => Promise<void> }> {
   const datadir = fs.mkdtempSync(path.join(os.tmpdir(), "chama-regtest-"));
   const bin = process.env.BITCOIND ?? "bitcoind";
   const proc = spawn(bin, [
     "-regtest", `-datadir=${datadir}`, `-rpcport=${port}`, `-port=${port - 1}`,
     "-rpcuser=harness", "-rpcpassword=harness", "-server=1", "-listen=0",
-    "-fallbackfee=0.00001", "-debuglogfile=0", "-printtoconsole=0",
+    "-fallbackfee=0.00001", "-debuglogfile=0", "-printtoconsole=0", ...extraArgs,
   ], { stdio: "ignore" });
   const rpc = makeRpc(port);
   for (let i = 0; i < 150; i++) {
@@ -181,7 +181,7 @@ export const CRASH_POINTS = [
   "A:plan-built-before-persist", "A:plan-persisted-before-publish",
   "A:templates-signed-before-persist", "A:sigs-persisted-before-publish",
   "A:peer-sigs-verified-before-persist", "A:ready-before-publish",
-  "A:funding-signed-before-persist", "A:funding-persisted-before-broadcast", "A:funding-broadcast-before-persist",
+  "A:funding-signed-before-persist", "A:funding-persisted-before-broadcast", "A:funding-broadcast-before-persist", "A:funded-persisted-before-publish",
   "B:templates-signed-before-persist", "B:sigs-persisted-before-publish", "B:peer-sigs-verified-before-persist", "B:ready-before-publish",
   "R:verified-before-persist", "P:verified-before-persist",
 ] as const;

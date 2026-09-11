@@ -1,7 +1,7 @@
 #!/usr/bin/env npx tsx
 // One PARTICIPANT of the fixed-payout ruling contract, as its own process. REGTEST ONLY.
 //
-// v2 (after Codex's fee/recovery review):
+// v3 research hardening (wire version 2; incompatible with the flawed v1 context hash):
 //  • every message is bound to {v, net, contract} where contract = sha256(canonical terms);
 //    messages for another contract, network or protocol version are dropped before crypto
 //  • bounded, schema-checked, malformed-tolerant relay reading; atomic (tmp+rename) publish
@@ -16,11 +16,14 @@
 //   party.ts recover --role X --store DIR                    → JSON: rebuilt templates + sig counts
 //   party.ts rule    --role R --store DIR --winner A|B       → raw hex
 //   party.ts appeal  --role P --store DIR --winner A|B       → raw hex (reversal of R_winner)
+//   party.ts status  --role X --store DIR  → current chain observation; RPC required
+//   party.ts refund  --role A --store DIR --to HEX_SCRIPT → raw refund; caller checks maturity
 //   party.ts collect --role A|B --store DIR --winner A|B --to HEX_SCRIPT → raw hex (default award after W)
 //
 // env CRASH_AT=<point>  exit(99) at that boundary       env TAMPER=1 / FORGE=1 (B) as before
 // env RPC_PORT          regtest RPC                      env MAX_WAIT_MS  give up (exit 3)
 import * as fs from "node:fs";
+import { canonicalJson } from "./contract-context.js";
 import * as path from "node:path";
 import { btc, hex, hexToBytes, schnorr, sha256, keypair, fundingTree, appealTree, newSpend, addToTree, addToKey, addP2A, attachSig, sigFor, finalize, makeRpc, ANCHOR_SATS, REGTEST, CRASH_POINTS, type Roles, type Tree, type Outpoint } from "./lib.js";
 
@@ -32,7 +35,7 @@ interface State {
   ownSigs?: Record<string, string>; peerSigs?: Record<string, Record<string, string>>; abort?: string;
 }
 const TEMPLATE_IDS = ["R_A", "R_B", "AP_A", "AP_B"] as const;
-const PROTO = 1;
+const PROTO = 2; // research wire break: v1 omitted nested terms from the contract hash
 const MAX_MSG_BYTES = 16_384;
 
 // ── args / io ────────────────────────────────────────────────────────────────
@@ -58,7 +61,7 @@ const keys = load<{ escrow: string; id: string } | null>("keys.json", null);
 if (!keys) throw new Error("keys.json missing: the orchestrator seeds each store with that party's own keys only");
 const me = keypair(hexToBytes(keys.escrow));
 const myId = keypair(hexToBytes(keys.id));
-const canonical = (t: Terms) => JSON.stringify(t, Object.keys(t).sort());
+const canonical = canonicalJson;
 let terms = load<Terms | null>("terms.json", null);
 if (!terms) {
   const f = opt("terms"); if (!f) throw new Error("first run needs --terms");
@@ -68,6 +71,11 @@ if (!terms) {
   for (const r of ROLES) if (!/^[0-9a-f]{64}$/.test(t.keys[r]) || !/^[0-9a-f]{64}$/.test(t.idKeys[r])) throw new Error("bad key in terms");
   persist("terms.json", t); terms = t;
 }
+if (terms.net !== "regtest" || terms.keys[role] !== hex(me.xonly) || terms.idKeys[role] !== hex(myId.xonly)) throw new Error("stored terms do not match my keys/network");
+if (!Number.isInteger(terms.W) || terms.W < 1 || terms.W > 65535) throw new Error("W must be a block delay in 1..65535");
+if (!Number.isInteger(terms.refundHeight) || terms.refundHeight < 1 || terms.refundHeight >= 500000000) throw new Error("refundHeight must use block-height locktime");
+if (!/^[0-9]+$/.test(terms.escrowSats) || BigInt(terms.escrowSats) < 1000n || BigInt(terms.escrowSats) > 2100000000000000n) throw new Error("invalid escrow amount");
+if (!/^[0-9a-f]{64}$/.test(terms.funderInput.txid) || !Number.isInteger(terms.funderInput.vout) || terms.funderInput.vout < 0 || terms.funderInput.vout > 0xffffffff || !/^[0-9]+$/.test(terms.funderInput.amount) || BigInt(terms.funderInput.amount) < BigInt(terms.escrowSats) + 2330n) throw new Error("invalid funder input");
 const CONTRACT = hex(sha256(new TextEncoder().encode(canonical(terms))));
 const roles: Roles = { A: hexToBytes(terms.keys.A), B: hexToBytes(terms.keys.B), R: hexToBytes(terms.keys.R), P: hexToBytes(terms.keys.P) };
 const ESCROW = BigInt(terms.escrowSats);
@@ -94,6 +102,7 @@ function readRelay(): Msg[] {
       if (typeof m !== "object" || m === null) continue;
       if (m.v !== PROTO || m.net !== terms!.net || m.contract !== CONTRACT) { log("dropped: other contract/net/version", f); continue; }
       if (!ROLES.includes(m.from) || !KINDS.has(m.kind) || typeof m.sig !== "string" || !/^[0-9a-f]{128}$/.test(m.sig)) { log("dropped: schema", f); continue; }
+      if (!validPayload(m.kind, m.payload)) { log("dropped: payload schema", f); continue; }
       const key = `${m.from}:${m.kind}`; if (seen.has(key)) continue;   // first authenticated message of a kind wins
       const body = JSON.stringify({ v: m.v, net: m.net, contract: m.contract, from: m.from, kind: m.kind, payload: m.payload });
       if (!schnorr.verify(hexToBytes(m.sig), sha256(new TextEncoder().encode(body)), hexToBytes(terms!.idKeys[m.from]))) { log("IGNORED forged message", m.kind, "claiming", m.from); continue; }
@@ -103,6 +112,18 @@ function readRelay(): Msg[] {
   return out;
 }
 const isSigMap = (p: unknown): p is Record<string, string> => typeof p === "object" && p !== null && TEMPLATE_IDS.every((id) => /^[0-9a-f]{128}$/.test((p as any)[id] ?? ""));
+
+function validPayload(kind: string, p: unknown): boolean {
+  if (typeof p !== "object" || p === null || Array.isArray(p)) return false;
+  const o = p as Record<string, any>;
+  const isHash = (v: unknown) => typeof v === "string" && /^[0-9a-f]{64}$/.test(v);
+  if (kind === "SIGS") return isSigMap(o) && Object.keys(o).length === TEMPLATE_IDS.length;
+  if (kind === "READY") return isHash(o.fundingTxid) && typeof o.templates === "object" && o.templates !== null && TEMPLATE_IDS.every(id => isHash(o.templates[id]));
+  if (kind === "FUNDED") return isHash(o.txid);
+  if (kind === "FUNDING_PLAN") return typeof o.unsignedHex === "string" && o.unsignedHex.length <= 8000 && /^(?:[0-9a-f]{2})+$/.test(o.unsignedHex);
+  if (kind === "ABORT") return typeof o.reason === "string" && o.reason.length <= 512;
+  return false;
+}
 
 // ── deterministic contract construction (identical in every party) ──────────
 function buildTemplates(fundingTxid: string) {
@@ -154,12 +175,15 @@ async function run() {
   const started = Date.now();
   const maxWait = Number(process.env.MAX_WAIT_MS ?? 20_000);
   const TERMINAL = new Set(["funded", "stored", "done", "aborted"]);
-  if (TERMINAL.has(st.phase)) { log("already terminal:", st.phase); process.exit(st.phase === "aborted" ? 2 : 0); }
 
   // Restart hygiene: re-publish whatever this phase already committed to (dupes are ignored by readers).
-  if (role === "A" && st.unsignedFundingHex) publish("FUNDING_PLAN", { unsignedHex: st.unsignedFundingHex });
-  if (st.ownSigs) publish("SIGS", st.ownSigs);
-  if (st.phase === "ready" && st.fundingTxid) publish("READY", { fundingTxid: st.fundingTxid, templates: templateTxids(buildTemplates(st.fundingTxid)) });
+  if (relay && fs.existsSync(relay)) {
+    if (role === "A" && st.unsignedFundingHex) publish("FUNDING_PLAN", { unsignedHex: st.unsignedFundingHex });
+    if (st.ownSigs) publish("SIGS", st.ownSigs);
+    if (["ready", "funded", "done"].includes(st.phase) && st.fundingTxid) publish("READY", { fundingTxid: st.fundingTxid, templates: templateTxids(buildTemplates(st.fundingTxid)) });
+    if (st.phase === "funded") publish("FUNDED", { txid: st.fundingTxid });
+  }
+  if (TERMINAL.has(st.phase)) { log("already terminal:", st.phase); process.exit(st.phase === "aborted" ? 2 : 0); }
 
   for (;;) {
     if (Date.now() - started > maxWait) { log("timeout in phase", st.phase); process.exit(3); }
@@ -231,6 +255,7 @@ async function run() {
         if (!known) await rpc("sendrawtransaction", [st.signedFundingHex]);
         crash("A:funding-broadcast-before-persist");
         st.phase = "funded"; save();
+        crash("A:funded-persisted-before-publish");
         publish("FUNDED", { txid: st.fundingTxid });
         log("FUNDED (announced; confirmation is the chain's job)", st.fundingTxid); process.exit(0);
       }
@@ -288,6 +313,27 @@ function complete(id: string) {
   T[id].tx.signIdx(me.priv, 0);
   console.log(finalize(T[id].tx, T[id].tree, T[id].leaf));
 }
+async function status() {
+  // Setup completion is durable; confirmation is an observation of the current chain.
+  const st = load<State>("state.json", { phase: "init" });
+  const rpc = makeRpc(Number(process.env.RPC_PORT ?? 18899));
+  const tip = await rpc<any>("getblockchaininfo", [], "");
+  const o = st.fundingTxid ? await rpc<any>("gettxout", [st.fundingTxid, 0]) : null;
+  const fundingConfirmed = !!o && o.confirmations >= 1; // read-only: never race setup state writes
+  console.log(JSON.stringify({ phase: st.phase, contract: CONTRACT, fundingTxid: st.fundingTxid,
+    fundingConfirmed, confirmations: o?.confirmations ?? null,
+    fundingOutpoint: o ? (o.confirmations >= 1 ? "confirmed-unspent" : "mempool-unspent") : "spent-or-unknown",
+    observedTip: tip.bestblockhash, observedHeight: tip.blocks }));
+}
+function refund() {
+  if (role !== "A") throw new Error("only the funder refunds");
+  const st = load<State>("state.json", { phase: "init" });
+  const T = buildTemplates(st.fundingTxid!);
+  const tx = newSpend(T.F, "refund", { txid: st.fundingTxid!, vout: 0, amount: ESCROW }, { lockTime: terms!.refundHeight, sequence: 0xfffffffd });
+  tx.addOutput({ script: hexToBytes(opt("to")!), amount: ESCROW - 500n });
+  tx.signIdx(me.priv, 0);
+  console.log(finalize(tx, T.F, "refund"));
+}
 function collect() {
   // Default award: winner alone after W confirmations of R_winner.
   const st = load<State>("state.json", { phase: "init" });
@@ -302,7 +348,9 @@ function collect() {
 
 if (cmd === "run") run().catch((e) => { log("fatal", e); process.exit(1); });
 else if (cmd === "recover") recover();
+else if (cmd === "status") status().catch(e => { log("status failed", e); process.exit(1); });
+else if (cmd === "refund") refund();
 else if (cmd === "rule") { if (role !== "R") throw new Error("rule is R's command"); complete(`R_${opt("winner")}`); }
 else if (cmd === "appeal") { if (role !== "P") throw new Error("appeal is P's command"); complete(`AP_${opt("winner")}`); }
 else if (cmd === "collect") collect();
-else { console.error("usage: party.ts run|recover|rule|appeal|collect ..."); process.exit(1); }
+else { console.error("usage: party.ts run|recover|status|rule|appeal|refund|collect ..."); process.exit(1); }
