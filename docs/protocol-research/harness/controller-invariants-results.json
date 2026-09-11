@@ -1,0 +1,155 @@
+{
+  "completed": true,
+  "rows": [
+    {
+      "id": "zero-fee-parent-does-not-zero-template-cutoff",
+      "ok": true,
+      "evidence": {
+        "cutoff": 5
+      }
+    },
+    {
+      "id": "exclusive-concurrent-reservation",
+      "ok": true,
+      "evidence": [
+        true,
+        false
+      ]
+    },
+    {
+      "id": "exclusive-cross-process-reservation",
+      "ok": true,
+      "evidence": [
+        {
+          "code": 0,
+          "out": "{\"reserved\":true}\n",
+          "err": ""
+        },
+        {
+          "code": 0,
+          "out": "{\"reserved\":false}\n",
+          "err": ""
+        }
+      ]
+    },
+    {
+      "id": "initial-paid",
+      "ok": true,
+      "evidence": {
+        "paid": 2000,
+        "offered": 0
+      }
+    },
+    {
+      "id": "reorg-paid-to-mempool-offer",
+      "ok": true,
+      "evidence": {
+        "paid": 0,
+        "offered": 2000,
+        "mempool": [
+          "b8b26fd88e6649248eec1c5ee8bdff7e356a89d67bc5381811bf54cf5f3a74a6",
+          "b17f7e1583b9f74d3789e304f0a75d35d6df12f9659f909d9976d93311e9555b"
+        ]
+      }
+    },
+    {
+      "id": "spent-change-does-not-erase-paid-fee",
+      "ok": true,
+      "evidence": {
+        "paid": 2000,
+        "offered": 0
+      }
+    },
+    {
+      "id": "parent-height-not-appeal-height",
+      "ok": true,
+      "evidence": {
+        "expected": 114,
+        "actual": 114,
+        "appealHeight": 116
+      }
+    },
+    {
+      "id": "spent-payout-remains-confirmed",
+      "ok": true,
+      "evidence": {
+        "payout": "appeal-confirmed",
+        "ruling": {
+          "winner": "A",
+          "tx": {
+            "state": "confirmed",
+            "height": 114,
+            "blockHash": "0afbeae62ddea580c641a262d663a6f706aec4c46c5597feb58742f1646c7e81",
+            "confirmations": 4
+          },
+          "qUnspent": false
+        }
+      }
+    },
+    {
+      "id": "actual-process-exit-after-persist",
+      "ok": true,
+      "evidence": {
+        "code": 99,
+        "err": ""
+      }
+    },
+    {
+      "id": "absent-signed-offer-retains-exposure",
+      "ok": true,
+      "evidence": {
+        "paid": 0,
+        "offered": 2000,
+        "hasRaw": true
+      }
+    },
+    {
+      "id": "crash-retry-confirms-and-counts-once",
+      "ok": true,
+      "evidence": {
+        "decision": {
+          "action": "submit",
+          "fee": 2000,
+          "reason": "retry durable signed offer"
+        },
+        "paid": 2000,
+        "offered": 0
+      }
+    },
+    {
+      "id": "cross-stage-cap-enforced-at-persistence",
+      "ok": true,
+      "evidence": {
+        "rejected": true,
+        "paid": 2000,
+        "offered": 0
+      }
+    },
+    {
+      "id": "last-safe-block-does-not-blindly-wait",
+      "ok": true,
+      "evidence": {
+        "action": "submit",
+        "fee": 517,
+        "reason": "need 517 sat; remaining 1000"
+      }
+    },
+    {
+      "id": "higher-signed-variant-reserves-cross-stage-budget",
+      "ok": true,
+      "evidence": {
+        "ceilingBlocked": true,
+        "paid": 2000,
+        "signedCeiling": 2500
+      }
+    },
+    {
+      "id": "stale-budget-write-rejected",
+      "ok": true,
+      "evidence": {
+        "staleRejected": true
+      }
+    }
+  ],
+  "allOk": true
+}

@@ -1,0 +1,83 @@
+{
+  "rows": [
+    {
+      "id": "exclusive-concurrent-reservation",
+      "ok": false,
+      "evidence": [
+        true,
+        true
+      ]
+    },
+    {
+      "id": "initial-paid",
+      "ok": true,
+      "evidence": {
+        "paid": 2000,
+        "offered": 0
+      }
+    },
+    {
+      "id": "reorg-paid-to-mempool-offer",
+      "ok": false,
+      "evidence": {
+        "paid": 2000,
+        "offered": 0,
+        "mempool": [
+          "d255c878503c819480f48bc573c387efcfe118a52e7f24e1ec3c26855a84ffab",
+          "f035e7cc4ce668202341b4dd9c108a4adf4227423ae6c4c83c24b3435b45d6aa"
+        ]
+      }
+    },
+    {
+      "id": "spent-change-does-not-erase-paid-fee",
+      "ok": false,
+      "evidence": {
+        "paid": 0,
+        "offered": 0
+      }
+    },
+    {
+      "id": "parent-height-not-appeal-height",
+      "ok": false,
+      "evidence": {
+        "expected": 114,
+        "actual": 116,
+        "appealHeight": 116
+      }
+    },
+    {
+      "id": "spent-payout-remains-confirmed",
+      "ok": false,
+      "evidence": {
+        "payout": "refund-or-coop-spent-escrow",
+        "ruling": {
+          "winner": null,
+          "tx": {
+            "state": "unseen",
+            "confirmations": 0
+          },
+          "qUnspent": null
+        }
+      }
+    },
+    {
+      "id": "absent-signed-offer-retains-exposure",
+      "ok": false,
+      "evidence": {
+        "paid": 0,
+        "offered": 0,
+        "hasRaw": false
+      }
+    },
+    {
+      "id": "stale-budget-write-rejected",
+      "ok": false,
+      "evidence": {
+        "staleRejected": false
+      }
+    }
+  ],
+  "allOk": false,
+  "sourceCommit": "444834f",
+  "note": "Initial eight-check audit before fixes; seven failed. Latest audit extends this to 15 checks and replaces the absent-offer RPC simulation with a real process crash and valid parent."
+}

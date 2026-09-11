@@ -1,0 +1,418 @@
+{
+  "title": "Observer + bounded fee controller under congestion \u2014 Bitcoin Core /Satoshi:31.1.0/",
+  "date": "2026-09-11T03:06:31.766Z",
+  "minRelaySatPerVb": 0.1,
+  "blockMaxWeight": 40000,
+  "budgets": {
+    "C1": {
+      "contract": "C1",
+      "capSats": 20000,
+      "paidSats": 6687,
+      "offeredSats": 0,
+      "stages": {
+        "ruling": {
+          "stage": "ruling",
+          "parentTxid": "f1608271107074543348defc2b16d47873c884b7a7f614363144b754ba1ecef1",
+          "paid": 6687,
+          "history": [
+            {
+              "height": 128,
+              "action": "submit",
+              "fee": 6687,
+              "reason": "need 6687 sat (rate 6687, eviction 1317); remaining 20000"
+            },
+            {
+              "height": 129,
+              "action": "done",
+              "reason": "parent confirmed"
+            }
+          ],
+          "ourChild": {
+            "txid": "5355aed76b0db462b036b419da2d68a45c57963603970f052bd16101812ad2d4",
+            "fee": 6687,
+            "raw": "03000000000102f1ce1eba54b744313614f6a7b784c87378d4162bfcde483354747010718260f10100000000fdffffffae2916eab79a858ebd211d5eeb368aaddb2439f2866f2d5383e011713c6976d60100000000fdffffff01c1300200000000002251201cb6be4d23628674013c943d29b9a45dbc4427007f06c5babd71396d656e54260001405555ca164873a99795ce357988f59f2621faa307dd18a4a42e1909836cec2be9c07cfb1b01f2c1b85ea5c4896c45e32c9ea933085c37c8b6a7cac01538f69e8f00000000",
+            "sponsor": {
+              "txid": "d676693c7111e083532d6f86f23924dbad8a36eb5e1d21bd8e859ab7ea1629ae",
+              "vout": 1,
+              "amount": "150000"
+            }
+          }
+        }
+      }
+    },
+    "C1b": {
+      "contract": "C1b",
+      "capSats": 20000,
+      "paidSats": 0,
+      "offeredSats": 0,
+      "stages": {
+        "ruling": {
+          "stage": "ruling",
+          "parentTxid": "660c3eeec6b851e73eb61d4c8089d25a145938c383edddaf58eba8943a4f961a",
+          "paid": 0,
+          "history": [
+            {
+              "height": 131,
+              "action": "submit",
+              "fee": 6687,
+              "reason": "need 6687 sat (rate 6687, eviction 1317); remaining 20000"
+            },
+            {
+              "height": -1,
+              "action": "evicted",
+              "fee": 6687,
+              "reason": "child no longer in mempool; offer released"
+            },
+            {
+              "height": 131,
+              "action": "wait",
+              "reason": "competitor's package already clears the cutoff (21.3 \u2265 18.5 sat/vB): let them pay"
+            },
+            {
+              "height": 132,
+              "action": "done",
+              "reason": "parent confirmed"
+            }
+          ]
+        }
+      }
+    },
+    "C2": {
+      "contract": "C2",
+      "capSats": 2000,
+      "paidSats": 0,
+      "offeredSats": 0,
+      "stages": {
+        "ruling": {
+          "stage": "ruling",
+          "parentTxid": "9416062f75546d59c08de4bbe2a619c60b79de5593661ef349234bc93d2def52",
+          "paid": 0,
+          "history": [
+            {
+              "height": 134,
+              "action": "cannot-afford",
+              "reason": "need 65227 sat > remaining budget 2000 sat (cap 2000, paid 0, offered 0)"
+            },
+            {
+              "height": 135,
+              "action": "cannot-afford",
+              "reason": "need 65227 sat > remaining budget 2000 sat (cap 2000, paid 0, offered 0)"
+            },
+            {
+              "height": 136,
+              "action": "cannot-afford",
+              "reason": "need 65227 sat > remaining budget 2000 sat (cap 2000, paid 0, offered 0)"
+            },
+            {
+              "height": 137,
+              "action": "cannot-afford",
+              "reason": "need 65227 sat > remaining budget 2000 sat (cap 2000, paid 0, offered 0)"
+            }
+          ]
+        }
+      }
+    },
+    "C3": {
+      "contract": "C3",
+      "capSats": 2000,
+      "paidSats": 0,
+      "offeredSats": 0,
+      "stages": {
+        "ruling": {
+          "stage": "ruling",
+          "parentTxid": "3de915afc3cb3ef8212725e77fce9c9d2568b07962ceb9b4371adb128ce2c6e5",
+          "paid": 0,
+          "history": [
+            {
+              "height": 141,
+              "action": "cannot-afford",
+              "reason": "need 65227 sat > remaining budget 2000 sat (cap 2000, paid 0, offered 0)"
+            },
+            {
+              "height": 142,
+              "action": "cannot-afford",
+              "reason": "need 65227 sat > remaining budget 2000 sat (cap 2000, paid 0, offered 0)"
+            },
+            {
+              "height": 143,
+              "action": "wait",
+              "reason": "competitor's package already clears the cutoff (10.0 \u2265 0.5 sat/vB): let them pay"
+            },
+            {
+              "height": 144,
+              "action": "done",
+              "reason": "parent confirmed"
+            }
+          ]
+        }
+      }
+    },
+    "C4": {
+      "contract": "C4",
+      "capSats": 20000,
+      "paidSats": 182,
+      "offeredSats": 0,
+      "stages": {
+        "ruling": {
+          "stage": "ruling",
+          "parentTxid": "fbd8370789e2f8ac1d02bdc392492772c4ca3ae195eb9c32d01676b188c6526e",
+          "paid": 182,
+          "history": [
+            {
+              "height": 146,
+              "action": "submit",
+              "fee": 182,
+              "reason": "need 182 sat (rate 182, eviction 0); remaining 20000"
+            },
+            {
+              "height": 147,
+              "action": "done",
+              "reason": "parent confirmed"
+            },
+            {
+              "height": 146,
+              "action": "wait",
+              "reason": "our child (182 sat) already meets need (182)"
+            },
+            {
+              "height": 148,
+              "action": "done",
+              "reason": "parent confirmed"
+            }
+          ],
+          "ourChild": {
+            "txid": "50f4e1f1b4754613c78315291453f43fc99d8be5dd9c40e3003e1c19480993cd",
+            "fee": 182,
+            "raw": "030000000001026e52c688b17616d0329ceb95e13acac472274992c3bd021dacf8e2890737d8fb0100000000fdffffff1a63dd35488468d6fba61aa41edd83d0974b8613241a93b719850ac86bf2faba0100000000fdffffff012a4a0200000000002251201cb6be4d23628674013c943d29b9a45dbc4427007f06c5babd71396d656e542600014029b1bbaf4b37274c642dbb79d36a29c1461d865f3ce6017e64397ff4453346de2f8f2ba06831f54a9c0a6565e1af81b112736c9a47f5d957687e93a1aa16dac200000000",
+            "sponsor": {
+              "txid": "bafaf26bc80a8519b7931a2413864b97d083dd1ea41aa6fbd668844835dd631a",
+              "vout": 1,
+              "amount": "150000"
+            }
+          }
+        }
+      }
+    },
+    "C5a": {
+      "contract": "C5a",
+      "capSats": 20000,
+      "paidSats": 182,
+      "offeredSats": 0,
+      "stages": {
+        "ruling": {
+          "stage": "ruling",
+          "parentTxid": "98941054825de14fea28b708bc5554a89d285509312b18e89ff900069a8be7c9",
+          "paid": 182,
+          "history": [
+            {
+              "height": 152,
+              "action": "submit",
+              "fee": 182,
+              "reason": "need 182 sat (rate 182, eviction 0); remaining 20000"
+            },
+            {
+              "height": 153,
+              "action": "done",
+              "reason": "parent confirmed"
+            }
+          ],
+          "ourChild": {
+            "txid": "df987b71e11a6b868493c44aa127717d277d52ee1c8f5a3a4d1b9788ad084343",
+            "fee": 182,
+            "raw": "03000000000102c9e78b9a0600f99fe8182b310955289da85455bc08b728ea4fe15d82541094980100000000fdffffff4bd0a00c1292ce49ffc712c7342aa6424d56b0255254e991e555f85c8c385e840100000000fdffffff012a4a0200000000002251201cb6be4d23628674013c943d29b9a45dbc4427007f06c5babd71396d656e5426000140624d481012e4cffa05e00287eb08dbecdf41e290b8e75929a6ac23a5faf2f7497d5a554c1401664649b7030749412032a824592f8c29d0277ed8f24ee737899d00000000",
+            "sponsor": {
+              "txid": "845e388c5cf855e591e9545225b0564d42a62a34c712c7ff49ce92120ca0d04b",
+              "vout": 1,
+              "amount": "150000"
+            }
+          }
+        }
+      }
+    },
+    "C5b": {
+      "contract": "C5b",
+      "capSats": 20000,
+      "paidSats": 182,
+      "offeredSats": 0,
+      "stages": {
+        "ruling": {
+          "stage": "ruling",
+          "parentTxid": "da42f07288c9cbd63d200b5230e55e40bdc1884598bb5380b0999bfab446d23e",
+          "paid": 182,
+          "history": [
+            {
+              "height": 152,
+              "action": "wait",
+              "reason": "no confirmed, unreserved sponsor input available"
+            },
+            {
+              "height": 153,
+              "action": "submit",
+              "fee": 182,
+              "reason": "need 182 sat (rate 182, eviction 0); remaining 20000"
+            },
+            {
+              "height": 154,
+              "action": "done",
+              "reason": "parent confirmed"
+            }
+          ],
+          "ourChild": {
+            "txid": "438827c913d513bb8274f7d2f7387b30a9afe618b1d03200e1a6d99ed7ec6677",
+            "fee": 182,
+            "raw": "030000000001023ed246b4fa9b99b08053bb984588c1bd405ee530520b203dd6cbc98872f042da0100000000fdffffff434308ad88971b4d3a5a8f1cee527d277d7127a14ac49384866b1ae1717b98df0000000000fdffffff01644a0200000000002251201cb6be4d23628674013c943d29b9a45dbc4427007f06c5babd71396d656e54260001406d1f817ce9c47724e9ea7d244ff6008a9da2fe8159fa607bcf68feb42e9564d54caaebf373036c66d11f74cd1f21984d67fcf7e0a9a79070c2d1653372a81b2900000000",
+            "sponsor": {
+              "txid": "df987b71e11a6b868493c44aa127717d277d52ee1c8f5a3a4d1b9788ad084343",
+              "vout": 0,
+              "amount": "150058"
+            }
+          }
+        }
+      }
+    },
+    "C6a": {
+      "contract": "C6a",
+      "capSats": 20000,
+      "paidSats": 6687,
+      "offeredSats": 0,
+      "stages": {
+        "appeal": {
+          "stage": "appeal",
+          "parentTxid": "b5c7de391d2b5c5db82cd216855e3d9f955d6b49e6c74a97015deb35dfd3fe34",
+          "paid": 6687,
+          "history": [
+            {
+              "height": 157,
+              "action": "submit",
+              "fee": 6687,
+              "reason": "need 6687 sat (rate 6687, eviction 1317); remaining 20000"
+            },
+            {
+              "height": 158,
+              "action": "done",
+              "reason": "parent confirmed"
+            }
+          ],
+          "ourChild": {
+            "txid": "b17c2d82a31b262782e517a15118a9d41459823953cc9da860ecb13ae24703a7",
+            "fee": 6687,
+            "raw": "0300000000010234fed3df35eb5d01974ac7e6496b5d959f3d5e8516d22cb85d5c2b1d39dec7b50100000000fdfffffffb1d1218f55886ff7e4ef9eb67e0d9a834cd3659d595a4efe4fcd1cc3a6e894b0000000000fdffffff01c1300200000000002251201cb6be4d23628674013c943d29b9a45dbc4427007f06c5babd71396d656e5426000140e68cf765b5dd3e16cc337b0530b6127306cc61ce9a87f74eff4e3292f1ac8a8e77cf10c4d9e788f2799383c0ded84b53aebadd64a1834e10a0b420d8815443ac00000000",
+            "sponsor": {
+              "txid": "4b896e3accd1fce4efa495d55936cd34a8d9e067ebf94e7eff8658f518121dfb",
+              "vout": 0,
+              "amount": "150000"
+            }
+          }
+        }
+      }
+    },
+    "C6b": {
+      "contract": "C6b",
+      "capSats": 2000,
+      "paidSats": 0,
+      "offeredSats": 0,
+      "stages": {
+        "appeal": {
+          "stage": "appeal",
+          "parentTxid": "901a5c9e54e14e33767fab167ee297e74db6e25b1b6ca5d46cf5e575bf3138aa",
+          "paid": 0,
+          "history": [
+            {
+              "height": 161,
+              "action": "cannot-afford",
+              "reason": "need 6687 sat > remaining budget 2000 sat (cap 2000, paid 0, offered 0)"
+            },
+            {
+              "height": 162,
+              "action": "cannot-afford",
+              "reason": "need 6687 sat > remaining budget 2000 sat (cap 2000, paid 0, offered 0)"
+            },
+            {
+              "height": 163,
+              "action": "cannot-afford",
+              "reason": "need 6687 sat > remaining budget 2000 sat (cap 2000, paid 0, offered 0)"
+            },
+            {
+              "height": 164,
+              "action": "give-up",
+              "reason": "deadline reached: a competing spend is now eligible; the ruling may still confirm but we stop paying"
+            },
+            {
+              "height": 165,
+              "action": "give-up",
+              "reason": "deadline reached: a competing spend is now eligible; the ruling may still confirm but we stop paying"
+            }
+          ]
+        }
+      }
+    }
+  },
+  "rowCount": 8,
+  "rows": [
+    {
+      "id": "C1a",
+      "scenario": "padded attacker cannot climb the ladder: submit:6687 \u2192 atk-rejected:7687 \u2192 done",
+      "expect": "ACCEPT",
+      "got": "ACCEPT",
+      "reason": "",
+      "note": "honest paid 6687, attacker paid 0; replacement requires a higher FEERATE, and padding makes that expensive"
+    },
+    {
+      "id": "C1b",
+      "scenario": "small-child attacker ladder: submit:6687 \u2192 atk:7687 \u2192 wait \u2192 done",
+      "expect": "ACCEPT",
+      "got": "ACCEPT",
+      "reason": "",
+      "note": "honest paid 0, attacker paid their rebid: whoever's child confirms pays; the controller waits once the competitor clears the cutoff"
+    },
+    {
+      "id": "C2",
+      "scenario": "cap 2000 vs 12000 pin, 4 congested blocks: decisions cannot-afford,cannot-afford,cannot-afford,cannot-afford; refund eligible and confirms",
+      "expect": "ACCEPT",
+      "got": "ACCEPT",
+      "reason": "",
+      "note": "honest paid 0 (nothing confirmed); intended ruling lost to the scripted refund"
+    },
+    {
+      "id": "C3",
+      "scenario": "congestion clears at block 3: decisions cannot-afford,cannot-afford,wait,done",
+      "expect": "ACCEPT",
+      "got": "ACCEPT",
+      "reason": "",
+      "note": "attacker paid their offered fee; honest paid 0"
+    },
+    {
+      "id": "C4",
+      "scenario": "child confirmed (paid 182), block invalidated \u2192 observer reports reorg, controller re-submits, re-confirms; paid counted once",
+      "expect": "ACCEPT",
+      "got": "ACCEPT",
+      "reason": ""
+    },
+    {
+      "id": "C5",
+      "scenario": "contract 2 waited (no confirmed, unreserved sponsor input a\u2026) while contract 1 held the only sponsor; then proceeded on the confirmed change",
+      "expect": "ACCEPT",
+      "got": "ACCEPT",
+      "reason": ""
+    },
+    {
+      "id": "C6a",
+      "scenario": "appeal stage, cap 20000: submit:6687 \u2192 done \u2192 appeal-confirmed",
+      "expect": "ACCEPT",
+      "got": "ACCEPT",
+      "reason": "",
+      "note": "reversal paid for within cap, before W"
+    },
+    {
+      "id": "C6b",
+      "scenario": "appeal stage, cap 2000: cannot-afford \u2192 cannot-afford \u2192 cannot-afford \u2192 give-up \u2192 give-up \u2192 default-or-coop-spent-q",
+      "expect": "ACCEPT",
+      "got": "ACCEPT",
+      "reason": "",
+      "note": "cap exhausted: give-up; default award wins at W"
+    }
+  ],
+  "allOk": true,
+  "sourceCommit": "444834f",
+  "note": "Reproduced before fixes; distinct port and result filename."
+}

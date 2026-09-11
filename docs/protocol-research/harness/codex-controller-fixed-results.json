@@ -1,0 +1,522 @@
+{
+  "title": "Observer + bounded fee controller under congestion — Bitcoin Core /Satoshi:31.1.0/",
+  "date": "2026-09-11T03:17:11.960Z",
+  "minRelaySatPerVb": 0.1,
+  "blockMaxWeight": 40000,
+  "budgets": {
+    "C1": {
+      "contract": "C1",
+      "capSats": 20000,
+      "paidSats": 6687,
+      "offeredSats": 0,
+      "stages": {
+        "ruling": {
+          "stage": "ruling",
+          "parentTxid": "ca08e1205c77c8e71805640451f3b1cee3f4f27a1c0d6928b7cee20a9945fd0c",
+          "paid": 6687,
+          "history": [
+            {
+              "height": 128,
+              "action": "submit",
+              "fee": 6687,
+              "reason": "need 6687 sat; remaining 20000"
+            },
+            {
+              "height": 129,
+              "action": "done",
+              "reason": "parent confirmed"
+            }
+          ],
+          "offers": [
+            {
+              "txid": "541847377439e513db1b893bba2de51c2cd1967ccd3ac425113bb3552989e5fc",
+              "fee": 6687,
+              "raw": "030000000001020cfd45990ae2ceb728690d1c7af2f4e3ceb1f35104640518e7c8775c20e108ca0100000000fdffffffde3ec84c548bae9a5ddf6af05f9930f20f1f59bea00d9bfecfbe06bc3fedfee00000000000fdffffff01c13002000000000022512069a304084838442ccef6a6f705d0548a8e0942071242969e9cd7d975815a18b200014018956bb23e4c2f3c2cdbcc7916087606632b395f1799a4b361daa15b302b95ad76a8c3bc81686d083406b7d5b3964d659f0f7747facf1d3db847e5f29100075200000000",
+              "sponsor": {
+                "txid": "e0feed3fbc06becffe9b0da0be591f0ff230995ff06adf5d9aae8b544cc83ede",
+                "vout": 0,
+                "amount": "150000"
+              }
+            }
+          ],
+          "ourChild": {
+            "txid": "541847377439e513db1b893bba2de51c2cd1967ccd3ac425113bb3552989e5fc",
+            "fee": 6687,
+            "raw": "030000000001020cfd45990ae2ceb728690d1c7af2f4e3ceb1f35104640518e7c8775c20e108ca0100000000fdffffffde3ec84c548bae9a5ddf6af05f9930f20f1f59bea00d9bfecfbe06bc3fedfee00000000000fdffffff01c13002000000000022512069a304084838442ccef6a6f705d0548a8e0942071242969e9cd7d975815a18b200014018956bb23e4c2f3c2cdbcc7916087606632b395f1799a4b361daa15b302b95ad76a8c3bc81686d083406b7d5b3964d659f0f7747facf1d3db847e5f29100075200000000",
+            "sponsor": {
+              "txid": "e0feed3fbc06becffe9b0da0be591f0ff230995ff06adf5d9aae8b544cc83ede",
+              "vout": 0,
+              "amount": "150000"
+            }
+          },
+          "exposure": 0,
+          "absent": false
+        }
+      },
+      "revision": 3,
+      "signedCeilingSats": 6687
+    },
+    "C1b": {
+      "contract": "C1b",
+      "capSats": 20000,
+      "paidSats": 0,
+      "offeredSats": 0,
+      "stages": {
+        "ruling": {
+          "stage": "ruling",
+          "parentTxid": "0d9bf6180d446ee8a6e11cb0a00c507730d4288023e3fe2185d16eebc473861d",
+          "paid": 0,
+          "history": [
+            {
+              "height": 131,
+              "action": "submit",
+              "fee": 6687,
+              "reason": "need 6687 sat; remaining 20000"
+            },
+            {
+              "height": 131,
+              "action": "wait",
+              "reason": "competitor package clears estimated cutoff; time remains to monitor"
+            },
+            {
+              "height": 132,
+              "action": "done",
+              "reason": "parent confirmed"
+            }
+          ],
+          "offers": [
+            {
+              "txid": "8ae01e828eb79024e42801516a18a65ff9758c55779d947f68d568b06f59303d",
+              "fee": 6687,
+              "raw": "030000000001021d8673c4eb6ed18521fee3238028d43077500ca0b01ce1a6e86e440d18f69b0d0100000000fdffffff345672155299b0566e2872b3a6f213d47736adae5e9cf87e4ae559a21a50d9aa0000000000fdffffff01c13002000000000022512069a304084838442ccef6a6f705d0548a8e0942071242969e9cd7d975815a18b2000140225c3496944bcdeef1a9518dd6751f5115ec57ecc93457496090c2c467e1b8a453b9a15aec8d7fb2d630fc29a582e9d4ef8a56e8746ef1aab6df00f4b0ec547400000000",
+              "sponsor": {
+                "txid": "aad9501aa259e54a7ef89c5eaead3677d413f2a6b372286e56b0995215725634",
+                "vout": 0,
+                "amount": "150000"
+              }
+            }
+          ],
+          "ourChild": {
+            "txid": "8ae01e828eb79024e42801516a18a65ff9758c55779d947f68d568b06f59303d",
+            "fee": 6687,
+            "raw": "030000000001021d8673c4eb6ed18521fee3238028d43077500ca0b01ce1a6e86e440d18f69b0d0100000000fdffffff345672155299b0566e2872b3a6f213d47736adae5e9cf87e4ae559a21a50d9aa0000000000fdffffff01c13002000000000022512069a304084838442ccef6a6f705d0548a8e0942071242969e9cd7d975815a18b2000140225c3496944bcdeef1a9518dd6751f5115ec57ecc93457496090c2c467e1b8a453b9a15aec8d7fb2d630fc29a582e9d4ef8a56e8746ef1aab6df00f4b0ec547400000000",
+            "sponsor": {
+              "txid": "aad9501aa259e54a7ef89c5eaead3677d413f2a6b372286e56b0995215725634",
+              "vout": 0,
+              "amount": "150000"
+            }
+          },
+          "exposure": 0,
+          "absent": true
+        }
+      },
+      "revision": 5,
+      "signedCeilingSats": 6687
+    },
+    "C2": {
+      "contract": "C2",
+      "capSats": 2000,
+      "paidSats": 0,
+      "offeredSats": 0,
+      "stages": {
+        "ruling": {
+          "stage": "ruling",
+          "parentTxid": "99a5dd2dcccecc792331d287fe6b20b3c1b1927702694bcdf4d42db4100d216d",
+          "paid": 0,
+          "history": [
+            {
+              "height": 134,
+              "action": "cannot-afford",
+              "reason": "need 65227 sat > remaining budget 2000"
+            },
+            {
+              "height": 135,
+              "action": "cannot-afford",
+              "reason": "need 65227 sat > remaining budget 2000"
+            },
+            {
+              "height": 136,
+              "action": "cannot-afford",
+              "reason": "need 65227 sat > remaining budget 2000"
+            },
+            {
+              "height": 137,
+              "action": "cannot-afford",
+              "reason": "need 65227 sat > remaining budget 2000"
+            }
+          ]
+        }
+      },
+      "revision": 4,
+      "signedCeilingSats": 0
+    },
+    "C3": {
+      "contract": "C3",
+      "capSats": 2000,
+      "paidSats": 0,
+      "offeredSats": 0,
+      "stages": {
+        "ruling": {
+          "stage": "ruling",
+          "parentTxid": "c419962b3a4f3eed3242895f1b35cfcd552e5143758886ca3b3c45645cb442c8",
+          "paid": 0,
+          "history": [
+            {
+              "height": 141,
+              "action": "cannot-afford",
+              "reason": "need 65227 sat > remaining budget 2000"
+            },
+            {
+              "height": 142,
+              "action": "cannot-afford",
+              "reason": "need 65227 sat > remaining budget 2000"
+            },
+            {
+              "height": 143,
+              "action": "wait",
+              "reason": "competitor package clears estimated cutoff; time remains to monitor"
+            },
+            {
+              "height": 144,
+              "action": "done",
+              "reason": "parent confirmed"
+            }
+          ]
+        }
+      },
+      "revision": 4,
+      "signedCeilingSats": 0
+    },
+    "C4": {
+      "contract": "C4",
+      "capSats": 20000,
+      "paidSats": 182,
+      "offeredSats": 0,
+      "stages": {
+        "ruling": {
+          "stage": "ruling",
+          "parentTxid": "07255533a5062e0b622cfd44b1ef712c2730bc49132bb7b618f3f5d183320cbd",
+          "paid": 182,
+          "history": [
+            {
+              "height": 146,
+              "action": "submit",
+              "fee": 182,
+              "reason": "need 182 sat; remaining 20000"
+            },
+            {
+              "height": 147,
+              "action": "done",
+              "reason": "parent confirmed"
+            },
+            {
+              "height": 146,
+              "action": "wait",
+              "reason": "our pending offer meets estimated need"
+            },
+            {
+              "height": 148,
+              "action": "done",
+              "reason": "parent confirmed"
+            }
+          ],
+          "offers": [
+            {
+              "txid": "ade037c09f879679d779416589b1391e4539e9badd24073ada025de0960c7a0c",
+              "fee": 182,
+              "raw": "03000000000102bd0c3283d1f5f318b6b72b1349bc30272c71efb144fd2c620b2e06a5335525070100000000fdffffff0b42bd9a20ecce3dd427e5a9230907e58ccda0505498a035363e52c38d741b460000000000fdffffff012a4a02000000000022512069a304084838442ccef6a6f705d0548a8e0942071242969e9cd7d975815a18b200014027c05f945232cd0b19a50786cd804663ab50cd051eadf09f41be982b9b4bd228fa32f543084781d6d66f9e4d974d7fd816f68a4a6fe0b8b62592f1c207e959c500000000",
+              "sponsor": {
+                "txid": "461b748dc3523e3635a0985450a0cd8ce5070923a9e527d43dceec209abd420b",
+                "vout": 0,
+                "amount": "150000"
+              }
+            }
+          ],
+          "ourChild": {
+            "txid": "ade037c09f879679d779416589b1391e4539e9badd24073ada025de0960c7a0c",
+            "fee": 182,
+            "raw": "03000000000102bd0c3283d1f5f318b6b72b1349bc30272c71efb144fd2c620b2e06a5335525070100000000fdffffff0b42bd9a20ecce3dd427e5a9230907e58ccda0505498a035363e52c38d741b460000000000fdffffff012a4a02000000000022512069a304084838442ccef6a6f705d0548a8e0942071242969e9cd7d975815a18b200014027c05f945232cd0b19a50786cd804663ab50cd051eadf09f41be982b9b4bd228fa32f543084781d6d66f9e4d974d7fd816f68a4a6fe0b8b62592f1c207e959c500000000",
+            "sponsor": {
+              "txid": "461b748dc3523e3635a0985450a0cd8ce5070923a9e527d43dceec209abd420b",
+              "vout": 0,
+              "amount": "150000"
+            }
+          },
+          "exposure": 0,
+          "absent": false
+        }
+      },
+      "revision": 7,
+      "signedCeilingSats": 182
+    },
+    "C5a": {
+      "contract": "C5a",
+      "capSats": 20000,
+      "paidSats": 182,
+      "offeredSats": 0,
+      "stages": {
+        "ruling": {
+          "stage": "ruling",
+          "parentTxid": "d83516f3db0ade9337e74d3315eee60d5221bb967ae8e19e2170305429d3c3e1",
+          "paid": 182,
+          "history": [
+            {
+              "height": 152,
+              "action": "submit",
+              "fee": 182,
+              "reason": "need 182 sat; remaining 20000"
+            },
+            {
+              "height": 153,
+              "action": "done",
+              "reason": "parent confirmed"
+            }
+          ],
+          "offers": [
+            {
+              "txid": "2e3eae4e36a46ef0ea03f24657727dc4feb5be72115f85e6c0bd2240ed490462",
+              "fee": 182,
+              "raw": "03000000000102e1c3d329543070219ee1e87a96bb21520de6ee15334de73793de0adbf31635d80100000000fdffffff514b773dbd12866be24c0569e5e317994a95c6b643ed01f3f7b9917e808315800000000000fdffffff012a4a02000000000022512069a304084838442ccef6a6f705d0548a8e0942071242969e9cd7d975815a18b200014006db4dbb1bcb8cbff8c747bb0230e8fbfc1eb9592c7fc3704ed9b9ed3d553fe7c86f3669fcf803ec92b1c5ffe9f27dcda6215d08549fef6824aea483a03d952d00000000",
+              "sponsor": {
+                "txid": "801583807e91b9f7f301ed43b6c6954a9917e3e569054ce26b8612bd3d774b51",
+                "vout": 0,
+                "amount": "150000"
+              }
+            }
+          ],
+          "ourChild": {
+            "txid": "2e3eae4e36a46ef0ea03f24657727dc4feb5be72115f85e6c0bd2240ed490462",
+            "fee": 182,
+            "raw": "03000000000102e1c3d329543070219ee1e87a96bb21520de6ee15334de73793de0adbf31635d80100000000fdffffff514b773dbd12866be24c0569e5e317994a95c6b643ed01f3f7b9917e808315800000000000fdffffff012a4a02000000000022512069a304084838442ccef6a6f705d0548a8e0942071242969e9cd7d975815a18b200014006db4dbb1bcb8cbff8c747bb0230e8fbfc1eb9592c7fc3704ed9b9ed3d553fe7c86f3669fcf803ec92b1c5ffe9f27dcda6215d08549fef6824aea483a03d952d00000000",
+            "sponsor": {
+              "txid": "801583807e91b9f7f301ed43b6c6954a9917e3e569054ce26b8612bd3d774b51",
+              "vout": 0,
+              "amount": "150000"
+            }
+          },
+          "exposure": 0,
+          "absent": false
+        }
+      },
+      "revision": 3,
+      "signedCeilingSats": 182
+    },
+    "C5b": {
+      "contract": "C5b",
+      "capSats": 20000,
+      "paidSats": 182,
+      "offeredSats": 0,
+      "stages": {
+        "ruling": {
+          "stage": "ruling",
+          "parentTxid": "468977ff9b1b7a083563b5cdf1e171521997179bb3ea5b22f820faf6d30188cc",
+          "paid": 182,
+          "history": [
+            {
+              "height": 152,
+              "action": "wait",
+              "reason": "no confirmed, unreserved sponsor input available"
+            },
+            {
+              "height": 153,
+              "action": "submit",
+              "fee": 182,
+              "reason": "need 182 sat; remaining 20000"
+            },
+            {
+              "height": 154,
+              "action": "done",
+              "reason": "parent confirmed"
+            }
+          ],
+          "offers": [
+            {
+              "txid": "43c6582cf7bccd3e9af3e9539088bc4fb2bb34ff12e2c9548070f0c95d06dbf8",
+              "fee": 182,
+              "raw": "03000000000102cc8801d3f6fa20f8225beab39b1797195271e1f1cdb56335087a1b9bff7789460100000000fdffffff620449ed4022bdc0e6855f1172beb5fec47d725746f203eaf06ea4364eae3e2e0000000000fdffffff01644a02000000000022512069a304084838442ccef6a6f705d0548a8e0942071242969e9cd7d975815a18b2000140da35de5177f6be8d348df312ca74f837515c1f1733a8ccb58f3c2518d5a33ff5ae29dddec500b431e794da8d1c8215a4a2e2bb24725bb37d9c7a69c1126d612c00000000",
+              "sponsor": {
+                "txid": "2e3eae4e36a46ef0ea03f24657727dc4feb5be72115f85e6c0bd2240ed490462",
+                "vout": 0,
+                "amount": "150058"
+              }
+            }
+          ],
+          "ourChild": {
+            "txid": "43c6582cf7bccd3e9af3e9539088bc4fb2bb34ff12e2c9548070f0c95d06dbf8",
+            "fee": 182,
+            "raw": "03000000000102cc8801d3f6fa20f8225beab39b1797195271e1f1cdb56335087a1b9bff7789460100000000fdffffff620449ed4022bdc0e6855f1172beb5fec47d725746f203eaf06ea4364eae3e2e0000000000fdffffff01644a02000000000022512069a304084838442ccef6a6f705d0548a8e0942071242969e9cd7d975815a18b2000140da35de5177f6be8d348df312ca74f837515c1f1733a8ccb58f3c2518d5a33ff5ae29dddec500b431e794da8d1c8215a4a2e2bb24725bb37d9c7a69c1126d612c00000000",
+            "sponsor": {
+              "txid": "2e3eae4e36a46ef0ea03f24657727dc4feb5be72115f85e6c0bd2240ed490462",
+              "vout": 0,
+              "amount": "150058"
+            }
+          },
+          "exposure": 0,
+          "absent": false
+        }
+      },
+      "revision": 4,
+      "signedCeilingSats": 182
+    },
+    "C6a": {
+      "contract": "C6a",
+      "capSats": 20000,
+      "paidSats": 6687,
+      "offeredSats": 0,
+      "stages": {
+        "appeal": {
+          "stage": "appeal",
+          "parentTxid": "ae60a9fe4ac7cefdf1a4fec9309e548a57d0a806c2b365477634a845c5f35076",
+          "paid": 6687,
+          "history": [
+            {
+              "height": 157,
+              "action": "submit",
+              "fee": 6687,
+              "reason": "need 6687 sat; remaining 20000"
+            },
+            {
+              "height": 158,
+              "action": "done",
+              "reason": "parent confirmed"
+            }
+          ],
+          "offers": [
+            {
+              "txid": "a10aacf431977a841222c32e023f7121b1488fd8127170ee3c40ce080d5a0efc",
+              "fee": 6687,
+              "raw": "030000000001027650f3c545a834764765b3c206a8d0578a549e30c9fea4f1fdcec74afea960ae0100000000fdffffffead851d056274b45598591f3cb78f321ac36f0eb4b1efe11429991e6301e6f070100000000fdffffff01c13002000000000022512069a304084838442ccef6a6f705d0548a8e0942071242969e9cd7d975815a18b20001401f139f0a9e19b1dad47a187eab914c93a0ba4be36c2fc931f85397ac2c40e9cddec8f2e6d46da5d806deb9731544d65347648b9f9487cfed2a4b2972e13aa9d300000000",
+              "sponsor": {
+                "txid": "076f1e30e691994211fe1e4bebf036ac21f378cbf3918559454b2756d051d8ea",
+                "vout": 1,
+                "amount": "150000"
+              }
+            }
+          ],
+          "ourChild": {
+            "txid": "a10aacf431977a841222c32e023f7121b1488fd8127170ee3c40ce080d5a0efc",
+            "fee": 6687,
+            "raw": "030000000001027650f3c545a834764765b3c206a8d0578a549e30c9fea4f1fdcec74afea960ae0100000000fdffffffead851d056274b45598591f3cb78f321ac36f0eb4b1efe11429991e6301e6f070100000000fdffffff01c13002000000000022512069a304084838442ccef6a6f705d0548a8e0942071242969e9cd7d975815a18b20001401f139f0a9e19b1dad47a187eab914c93a0ba4be36c2fc931f85397ac2c40e9cddec8f2e6d46da5d806deb9731544d65347648b9f9487cfed2a4b2972e13aa9d300000000",
+            "sponsor": {
+              "txid": "076f1e30e691994211fe1e4bebf036ac21f378cbf3918559454b2756d051d8ea",
+              "vout": 1,
+              "amount": "150000"
+            }
+          },
+          "exposure": 0,
+          "absent": false
+        }
+      },
+      "revision": 3,
+      "signedCeilingSats": 6687
+    },
+    "C6b": {
+      "contract": "C6b",
+      "capSats": 2000,
+      "paidSats": 0,
+      "offeredSats": 0,
+      "stages": {
+        "appeal": {
+          "stage": "appeal",
+          "parentTxid": "04663e5538a0a3c3b03444a75ecf39a5974cfc8f64b08a01f93bfac60ddf4b0f",
+          "paid": 0,
+          "history": [
+            {
+              "height": 161,
+              "action": "cannot-afford",
+              "reason": "need 6687 sat > remaining budget 2000"
+            },
+            {
+              "height": 162,
+              "action": "cannot-afford",
+              "reason": "need 6687 sat > remaining budget 2000"
+            },
+            {
+              "height": 163,
+              "action": "cannot-afford",
+              "reason": "need 6687 sat > remaining budget 2000"
+            },
+            {
+              "height": 164,
+              "action": "give-up",
+              "reason": "competing spend eligible: configured policy stops new spending; signed offers remain tracked"
+            },
+            {
+              "height": 165,
+              "action": "give-up",
+              "reason": "competing spend eligible: configured policy stops new spending; signed offers remain tracked"
+            }
+          ]
+        }
+      },
+      "revision": 5,
+      "signedCeilingSats": 0
+    }
+  },
+  "rowCount": 8,
+  "rows": [
+    {
+      "id": "C1a",
+      "scenario": "padded attacker cannot climb the ladder: submit:6687 → atk-rejected:7687 → done",
+      "expect": "ACCEPT",
+      "got": "ACCEPT",
+      "reason": "",
+      "note": "honest paid 6687, attacker paid 0; replacement requires a higher FEERATE, and padding makes that expensive"
+    },
+    {
+      "id": "C1b",
+      "scenario": "small-child attacker ladder: submit:6687 → atk:7687 → wait → done",
+      "expect": "ACCEPT",
+      "got": "ACCEPT",
+      "reason": "",
+      "note": "honest paid 0, attacker paid their rebid: whoever's child confirms pays; the controller waits once the competitor clears the cutoff"
+    },
+    {
+      "id": "C2",
+      "scenario": "cap 2000 vs 12000 pin, 4 congested blocks: decisions cannot-afford,cannot-afford,cannot-afford,cannot-afford; refund eligible and confirms",
+      "expect": "ACCEPT",
+      "got": "ACCEPT",
+      "reason": "",
+      "note": "honest paid 0 (nothing confirmed); intended ruling lost to the scripted refund"
+    },
+    {
+      "id": "C3",
+      "scenario": "congestion clears at block 3: decisions cannot-afford,cannot-afford,wait,done",
+      "expect": "ACCEPT",
+      "got": "ACCEPT",
+      "reason": "",
+      "note": "attacker paid their offered fee; honest paid 0"
+    },
+    {
+      "id": "C4",
+      "scenario": "child confirmed (paid 182), block invalidated → observer reports reorg, controller re-submits, re-confirms; paid counted once",
+      "expect": "ACCEPT",
+      "got": "ACCEPT",
+      "reason": ""
+    },
+    {
+      "id": "C5",
+      "scenario": "contract 2 waited (no confirmed, unreserved sponsor input a…) while contract 1 held the only sponsor; then proceeded on the confirmed change",
+      "expect": "ACCEPT",
+      "got": "ACCEPT",
+      "reason": ""
+    },
+    {
+      "id": "C6a",
+      "scenario": "appeal stage, cap 20000: submit:6687 → done → appeal-confirmed",
+      "expect": "ACCEPT",
+      "got": "ACCEPT",
+      "reason": "",
+      "note": "reversal paid for within cap, before W"
+    },
+    {
+      "id": "C6b",
+      "scenario": "appeal stage, cap 2000: cannot-afford → cannot-afford → cannot-afford → give-up → give-up → default-or-coop-spent-q",
+      "expect": "ACCEPT",
+      "got": "ACCEPT",
+      "reason": "",
+      "note": "cap exhausted: give-up; default award wins at W"
+    }
+  ],
+  "allOk": true
+}

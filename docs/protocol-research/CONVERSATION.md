@@ -571,3 +571,114 @@ The appeal test shows the same risk: a pending reversal can lose to the default 
 The extended checks pass: **34 lifecycle checks and 22 deadline/reorg checks**. I fixed the contract hash, added recovery for a crash between saving `funded` and publishing its announcement, and made malformed authenticated messages unable to hide later valid signatures. Restored stores can now produce both refund and default-collection transactions.
 
 I also tested a ruling that reconfirms two blocks later after a reorg: the old CSV deadline is rejected, and the recomputed deadline works. The next implementation step should be a chain monitor and a fee policy with a hard budget; those need to drive the client before Nostr transport or FROST is added.
+
+
+## Continued discussion: observer and fee controller audit
+
+### Assistant (commentary)
+
+I’m packaging the fixes, test results, and continuation instructions on the research branch. The review distinguishes ordinary fee-ranked mining from deliberately selected blocks used to test consensus alternatives, so the results remain easy to audit.
+
+The main design conclusion is now supported by execution: confirmed rulings disable the funding refund, but pending rulings and appeals remain vulnerable to their authorized timeout alternatives. Chama needs to expose and manage that distinction explicitly.
+
+### Assistant (final_answer)
+
+**I reproduced Claude’s results, fixed additional bugs, and built the congested-deadline experiment. Keep Chama and this transaction graph.**
+
+The new suites pass **34 lifecycle checks and 22 deadline/reorg checks** on Core 31.1. These include deliberately demonstrated failure outcomes—not a production-safety certificate.
+
+Three bugs needed fixing:
+
+- **Contract hashing omitted nested fields.** Different participant keys and funding outpoints could produce the same contract identifier. Fixed with recursive encoding and regression checks.
+- **A crash after saving “funded” could strand the counterparty.** Restart returned success without publishing the missing announcement. Fixed and tested at that exact boundary.
+- **An authenticated malformed message could hide later valid signatures.** Payload validation now happens before deduplication.
+
+Restored stores also successfully produced refund and default-collection transactions.
+
+**The most important result is what actually confirms under congestion:**
+
+| Tested situation | Outcome |
+|---|---|
+| 2,000-sat cap; escalating anchor bids; occupied blocks | Ruling stays pending; competing refund wins |
+| Separate ruling sponsored with 90,000 sats | Confirms before the boundary; refund becomes unspendable |
+| Congestion clears; honest party waits | Attacker’s package confirms the intended ruling |
+| Appeal pending at CSV maturity | Higher-fee default wins |
+
+Those amounts are controlled stress-test values, **not recommended reserves or mainnet fee estimates**.
+
+I also reconfirmed a ruling **two blocks later** after a reorg. Its default transaction failed at the old deadline and became eligible at the recomputed deadline. That directly tests the timer consequence.
+
+**What’s next is a concrete implementation step:** a continuous chain monitor plus a fee controller with a hard per-contract budget. They must track competing spends, recompute deadlines after reorgs, reserve sponsor inputs safely, and decide when to wait versus increase fees. Then run those components through these scenarios before adding real Nostr transport and optional FROST.
+
+The graph’s payout restrictions held in these experiments. Timely settlement still depends on fees, availability, and confirmation; honest judgments about fiat or goods remain an arbitration assumption.
+
+Everything—including Claude’s commit, my fixes, results, and conversation update—is pushed as **`cce50ca`** on the research branch. No production application changes.
+
+[Full review, reproducible tests, and Claude’s next-build instructions](https://github.com/jesuspirate/chama/blob/research/chama-settlement-design/docs/protocol-research/CODEX-DEADLINE-LIFECYCLE-REVIEW.md).
+
+### User
+
+Committed as 444834f on the research branch, ready to push.
+
+All three of Codex's bugs are conceded. The contract-hash one was mine and it was bad: a JSON replacer array filters keys at every depth, so participant keys and the funding outpoint hashed as empty objects. Codex's recursive encoder and wire-version bump are the right fix.
+
+Then I built what Codex asked for and drove it through their congestion setup. Two modules and eight scenarios, all passing on Bitcoin Core 31.1:
+
+- Observer. Derives contract status purely from the active chain, recomputes every deadline on each call so a reorg moves the timer, and reports a reorg diff when a confirmed height changes. "Unknown" means investigate, never "assume refund."
+- Fee controller. Hard per-contract cap shared across ruling and appeal stages. Offered and paid are separate ledgers; an evicted child's offer is released and a reorged-out paid child goes back to offered. Sponsor inputs must be confirmed and are reserved per contract so two contracts can't race for one coin. Every offer persists before broadcast.
+
+What the scenarios showed.
+
+- A padded pin is cheap to place but expensive to re-place: to evict a small honest child the attacker must beat its feerate over nearly a kilobyte, so their rebid was rejected.
+- Against a smart small-child attacker, the controller waited once the attacker's feerate cleared the cutoff, and the attacker's own child confirmed the ruling and paid for it. Honest paid zero.
+- With a 2,000-sat cap under heavy congestion, the controller reported "cannot afford" every block, never overspent, and the scripted refund won. Same in the appeal stage: the default award won at maturity. Those two deliberate losses are the honest behavior Codex wanted.
+- A reorg of a paid child was detected, re-submitted, and counted once on re-confirmation.
+- Two contracts sharing one confirmed sponsor: the second waited with an explicit reason, then proceeded on the first one's confirmed change.
+
+Two harness lessons worth recording. The attacker needs fresh coins per scenario, because a consumed sponsor silently removed the competitor in one run and masked the test. And reconciliation must be reversible or reorgs double-count.
+
+What the controller still lacks, and what I'd adding-envelope check at setup that refuses contractsthe cap can't plausibly cover, and a rule to stop waiting when the competitor is below the cutoff and the deadline is close.
+
+To publish:
+
+! cd ~/Work/chama-protocol-research && git push origin research/chama-settlement-design have I shre that with you yet? Claude's response?
+
+### Assistant (final_answer)
+
+This is the first time you’ve shared **Claude’s `444834f` response** here. The last commit we discussed was my **`cce50ca`**.
+
+It addresses the next milestone we identified: the chain observer and bounded fee controller. I haven’t inspected or reproduced this new code yet, so its eight passing scenarios remain Claude’s reported results.
+
+The key points to verify next are **crash-safe sponsor reservations, reversible accounting across reorgs, and when the controller stops waiting near a deadline**.
+
+### User
+
+go for it, it's your turn right?
+
+### Assistant (commentary)
+
+I’ll inspect and reproduce `444834f`, then test sponsor reservations across crashes, accounting across reorgs, and waiting decisions near deadlines. I’ll put any fixes and new evidence on the research branch.
+
+### Assistant (commentary)
+
+I found two important gaps the eight scenarios don’t check. Sponsor reservation is a read–await–write operation, so concurrent controllers can both claim the same coin. Also, accounting uses an unspent-output lookup to decide whether a fee transaction confirmed; once its change is spent, that lookup can wrongly make a paid fee disappear.
+
+The reorg test checks the final balance, but not the intermediate state: the current code leaves a reorged transaction counted as paid when it returns to the mempool. I’m adding checks for those cases before changing the implementation.
+
+### Assistant (commentary)
+
+The added checks reproduced seven failures, including both controllers claiming one sponsor and a 2,000-sat paid fee dropping to zero after its change was spent. The observer also substituted the appeal’s height for the ruling’s height, then lost track of the completed appeal after its recipient spent the payout.
+
+I’m correcting the two underlying problems: tracking confirmed transaction history independently of unspent outputs, and committing reservations and budgets atomically. An absent signed transaction will retain its fee exposure until confirmed chain evidence invalidates it.
+
+### Assistant (commentary)
+
+The first fixes pass the new checks: separate processes now compete safely for one reservation, a crash after persistence can recover and broadcast the saved transaction, and spending change no longer erases a paid fee.
+
+I’m tightening one more reorg edge case: a cheaper fee variant can confirm while a more expensive signed variant remains usable after a reorg. The controller needs to retain that higher commitment when deciding how much budget remains for the appeal stage.
+
+### Assistant (commentary)
+
+The revised controller passes **15 adversarial checks**, and all **eight original congestion scenarios** still pass. The new checks include separate-process reservations, recovery after an actual process exit, rejection of stale budget writes, and a reorg case where a higher signed fee must still constrain the appeal budget.
+
+This remains research code. Its chain-history reader requires an unpruned regtest node, and reservation exclusivity applies to controllers sharing the same database—not independent devices with copied fee wallets. I’m documenting those limits and publishing the review and results.
