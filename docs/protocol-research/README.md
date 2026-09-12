@@ -8,11 +8,11 @@ This branch archives the conversation, research, Claude's response, and the late
 
 ## Read in this order
 
-**Latest:** [Codex's controller review and fixes](CODEX-CONTROLLER-REVIEW.md), reviewing [Claude's round-5 response](RESPONSE-TO-CODEX-5.md) at `444834f`. The original eight congestion scenarios reproduce. The initial additional audit found seven failures. Fixes now pass fifteen adversarial checks and the original eight scenarios, including separate-process sponsor reservations, actual persistence-before-broadcast crash recovery, spent-change accounting, parent-height tracking and conservative signed-fee commitments across reorgs.
+**Latest:** [Codex's admission/index/ownership review](CODEX-ADMISSION-INDEX-REVIEW.md), reviewing [Claude's round-6 response](RESPONSE-TO-CODEX-6.md) at `771625d`. Original twenty checks reproduce. Fixes pass sixteen added checks and the original twenty scenarios: validated admission inputs, correct exclusive appeal timing, atomic block matches/cursor, durable rescans, concurrent indexing guards, and sponsor scripts bound to device databases.
 
-**Next:** explicit fee-sponsor ownership across devices, setup admission policy, and a bounded persistent chain index before production. The current index is for unpruned regtest; SQLite coordination covers one shared database, not copied wallets on independent machines.
+**Next:** one integrated setup path with an authoritative per-device allocation ledger, admission before signing, and consumers that require complete indexed history. These components are not yet wired into `party.ts` or the observer/controller. Real Nostr transport comes after that path is exercised.
 
-Previous: [deadline/lifecycle review](CODEX-DEADLINE-LIFECYCLE-REVIEW.md), [fee/recovery review](CODEX-FEE-RECOVERY-REVIEW.md).
+Previous: [controller review](CODEX-CONTROLLER-REVIEW.md), [deadline/lifecycle review](CODEX-DEADLINE-LIFECYCLE-REVIEW.md).
 
 0. [Claude's round-2 response with regtest evidence](RESPONSE-TO-CODEX-2.md) — the appeal gap conceded; the complete funding → ruling → appeal/refund graph executed on Bitcoin Core 31.1 regtest (22 recorded rows; original prose said 23). Harness: `harness/regtest-graph.ts`, results: `harness/regtest-results.json`.
 1. [Codex's response to Claude](RESPONSE-TO-CLAUDE.md) — agreement on pre-signed rulings, the appeal-panel authority gap, and a corrected candidate.
@@ -46,7 +46,7 @@ The files in `prework/` are unchanged snapshots of the shared Hourglass director
 
 Open this branch's `docs/protocol-research/README.md` in GitHub. For an assistant with repository access, use:
 
-> Continue Chama research on `research/chama-settlement-design`. Read `docs/protocol-research/README.md`, `CODEX-CONTROLLER-REVIEW.md`, `RESPONSE-TO-CODEX-5.md`, and `CONVERSATION.md`. Preserve legacy funded-contract recovery; no deployment is authorized. Keep the graph. Current controller suites: fifteen adversarial checks and eight congestion scenarios pass. Use active transaction history, not UTXO existence, for paid fees and parent heights. Reservations/budgets are authoritative in one SQLite database with revisions; independent copied databases are not coordinated. Signed ceilings retain the highest signed fee per stage across reorgs. The current observer scans unpruned regtest history and is not production-ready. Next decide cross-device fee sponsorship, add setup admission assumptions, and implement bounded persistent indexing before real Nostr/device and production work. Historical suites must be run at their originating commits.
+> Continue Chama research on `research/chama-settlement-design`. Read `docs/protocol-research/README.md`, `CODEX-ADMISSION-INDEX-REVIEW.md`, `RESPONSE-TO-CODEX-6.md`, and `CONVERSATION.md`. Keep the transaction graph and preserve legacy funded recovery; no deployment is authorized. Latest validation: sixteen adversarial admission/index/pool checks and twenty original scenarios pass. Block matches and cursor now commit together; rescan requests survive restart; sponsor databases bind device id and script. Admission requires validated domains and uses W-1 for the exclusive appeal interval. Components are still standalone. Next integrate policy, actual coin allocation, recovery persistence and indexed observation before signatures; use one authoritative fee reservation ledger per device rather than independent pool/controller records. Exercise concurrent setups, missing history and allocation/signature crash boundaries before Nostr transport. Historical constructors/schemas changed; use source commits for old suites.
 
 Original shared checkout: `/home/satoshi/Work/chama` remains on `main`. Separate research worktree: `/home/satoshi/Work/chama-protocol-research`. No need to switch the shared checkout away from Claude's work.
 
@@ -106,3 +106,12 @@ BITCOIND=/path/to/bitcoind node_modules/.bin/tsx docs/protocol-research/harness/
 ```
 
 Tested with Core 31.1 and Node 26.7 (`node:sqlite`). See the latest review for the persistence scope, deliberate negative cases, source commits, and unresolved production requirements.
+
+## Current admission/index/ownership suites
+
+```sh
+BITCOIND=/path/to/bitcoind node_modules/.bin/tsx docs/protocol-research/harness/aio-invariants.ts # 16 checks, RPC 20699
+BITCOIND=/path/to/bitcoind node_modules/.bin/tsx docs/protocol-research/harness/codex-aio-fixed.ts # 20 scenarios, RPC 20799
+```
+
+Use Core 31.1 and Node providing `node:sqlite`. The sponsor pool now requires an explicit owner script, and the index uses schema version 2. Do not silently migrate or reset old funded state. See the latest review for coverage and integration limits.

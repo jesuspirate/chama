@@ -1,0 +1,195 @@
+{
+  "complete": true,
+  "rows": [
+    {
+      "id": "reject NaN cap",
+      "ok": true,
+      "evidence": {
+        "admitted": false,
+        "reasons": [
+          "invalid capSats"
+        ],
+        "numbers": {}
+      }
+    },
+    {
+      "id": "reject infinite liquidity",
+      "ok": true,
+      "evidence": {
+        "admitted": false,
+        "reasons": [
+          "invalid confirmedUnreservedLiquiditySats"
+        ],
+        "numbers": {}
+      }
+    },
+    {
+      "id": "reject negative stage",
+      "ok": true,
+      "evidence": {
+        "admitted": false,
+        "reasons": [
+          "invalid stageVsize.ruling"
+        ],
+        "numbers": {}
+      }
+    },
+    {
+      "id": "reject fractional W",
+      "ok": true,
+      "evidence": {
+        "admitted": false,
+        "reasons": [
+          "invalid W"
+        ],
+        "numbers": {}
+      }
+    },
+    {
+      "id": "appeal exclusive window counts W-1",
+      "ok": true,
+      "evidence": {
+        "admitted": false,
+        "reasons": [
+          "exclusive appeal window W-1=59 < expected appeal 36 + margin 24"
+        ],
+        "caveats": [
+          "no competing absolute-fee bound: rate estimate alone does not cover adversarial replacement costs"
+        ],
+        "numbers": {
+          "worstRuling": 7237,
+          "worstAppeal": 7237,
+          "worstBoth": 14474,
+          "feeFractionPct": 2,
+          "liquidityNeeded": 30330,
+          "rulingWindow": 300,
+          "rulingNeeded": 60,
+          "appealNeeded": 60
+        }
+      }
+    },
+    {
+      "id": "explicit competing bids constrain both-stage admission",
+      "ok": true,
+      "evidence": {
+        "admitted": false,
+        "reasons": [
+          "cap 20000 < worst-case both stages at 20 sat/vB (24034)"
+        ],
+        "caveats": [
+          "competing absolute-fee bounds are assumptions, not enforcement"
+        ],
+        "numbers": {
+          "worstRuling": 12017,
+          "worstAppeal": 12017,
+          "worstBoth": 24034,
+          "feeFractionPct": 2,
+          "liquidityNeeded": 30330,
+          "rulingWindow": 300,
+          "rulingNeeded": 60,
+          "appealNeeded": 60
+        }
+      }
+    },
+    {
+      "id": "failed block commit leaves no transaction rows",
+      "ok": true,
+      "evidence": {
+        "failed": true,
+        "status": null,
+        "cursor": {
+          "height": 110,
+          "hash": "22f6c04bf4a567d577b2ab9918e01db0a5be0ae5c6cf50c1c5a596d608489e57"
+        }
+      }
+    },
+    {
+      "id": "late-watch rescan survives restart",
+      "ok": true,
+      "evidence": {
+        "status": {
+          "height": 111,
+          "hash": "411ad498f00795007d440bd839e7f08d9cc35d3453f955bab10cb1346db7ccd2"
+        }
+      }
+    },
+    {
+      "id": "earlier birth updates existing watch",
+      "ok": true,
+      "evidence": {
+        "status": {
+          "height": 111,
+          "hash": "411ad498f00795007d440bd839e7f08d9cc35d3453f955bab10cb1346db7ccd2"
+        }
+      }
+    },
+    {
+      "id": "failed rescan survives restart and retries",
+      "ok": true,
+      "evidence": {
+        "status": {
+          "height": 111,
+          "hash": "411ad498f00795007d440bd839e7f08d9cc35d3453f955bab10cb1346db7ccd2"
+        }
+      }
+    },
+    {
+      "id": "foreign coin remains refused after local registration",
+      "ok": true,
+      "evidence": {
+        "reserved": null
+      }
+    },
+    {
+      "id": "registered amount must match confirmed output",
+      "ok": true,
+      "evidence": {
+        "reserved": null
+      }
+    },
+    {
+      "id": "inventory must not masquerade as validated liquidity",
+      "ok": true,
+      "evidence": {
+        "registeredOnly": 2059999,
+        "live": 0
+      }
+    },
+    {
+      "id": "concurrent index writers reject stale cursors",
+      "ok": true,
+      "evidence": {
+        "outcomes": [
+          "fulfilled",
+          "rejected"
+        ],
+        "errors": [
+          "Error: index changed during RPC; retry sync"
+        ]
+      }
+    },
+    {
+      "id": "mid-read reorg cannot commit orphan transaction",
+      "ok": true,
+      "evidence": {
+        "error": "Error: chain changed while fetching block; retry sync",
+        "status": null,
+        "cursor": {
+          "height": 112,
+          "hash": "590c037c9a28e08e3fec7bd62f8910ebd67ee0021e686c9675cd18aede782ba5"
+        }
+      }
+    },
+    {
+      "id": "retry after chain movement indexes replacement branch",
+      "ok": true,
+      "evidence": {
+        "cursor": {
+          "height": 113,
+          "hash": "0fa0e825f1e066b8381785454e8d5ad6ceb0e5fbcb0cd869c3356eadaab0d440"
+        }
+      }
+    }
+  ],
+  "allOk": true
+}

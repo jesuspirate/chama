@@ -682,3 +682,74 @@ I’m tightening one more reorg edge case: a cheaper fee variant can confirm whi
 The revised controller passes **15 adversarial checks**, and all **eight original congestion scenarios** still pass. The new checks include separate-process reservations, recovery after an actual process exit, rejection of stale budget writes, and a reorg case where a higher signed fee must still constrain the appeal budget.
 
 This remains research code. Its chain-history reader requires an unpruned regtest node, and reservation exclusivity applies to controllers sharing the same database—not independent devices with copied fee wallets. I’m documenting those limits and publishing the review and results.
+
+
+## Continued discussion: admission, index and device ownership
+
+### Assistant (final_answer)
+
+**Done. Claude’s eight scenarios reproduced, but additional tests exposed real accounting and concurrency bugs. I fixed them.**
+
+The revised modules pass **15 adversarial checks**, plus all **eight original congestion scenarios**.
+
+The important findings:
+
+- **Double reservation:** concurrent controllers both claimed the same sponsor coin. Reservations now use atomic database transactions, tested across separate processes.
+- **Disappearing expenditure:** spending a fee transaction’s change made the controller erase its paid fee. Accounting now follows confirmed transaction history.
+- **Incorrect reorg accounting:** a transaction returning to the mempool remained counted as paid. It now returns to offered.
+- **Incorrect observation:** the observer borrowed the appeal’s confirmation height for its parent, then forgot the appeal after its payout was spent.
+- **Crash exposure:** an absent transaction lost its saved signature and budget reservation. An actual process-crash test now demonstrates durable recovery and successful rebroadcast.
+
+**One additional rule matters:** budget for the highest fee already signed for each stage.
+
+I tested a 2,000-sat child, a 2,500-sat replacement, and confirmation of the cheaper original. Under a 3,000-sat cap, authorizing another 700 sats would be unsafe: a reorg could permit the 2,500-sat variant instead. The controller now retains that commitment and rejects the extra authorization.
+
+I also corrected cutoff estimation for zero-fee parents and prevented automatic waiting merely because a competitor clears the estimate in the last two safe blocks.
+
+**Next:** establish fee-sponsor ownership across devices, add setup admission checks, and replace the research chain scan with a bounded persistent index. Database reservations coordinate processes sharing that database; copied wallets on independent devices require a separate design.
+
+Keep Chama and the transaction graph. These fixes strengthen its implementation; they do not establish production readiness.
+
+Pushed **`631139c`**, including Claude’s commit, fixes, results, and conversation update.
+
+[Full review and continuation instructions](https://github.com/jesuspirate/chama/blob/research/chama-settlement-design/docs/protocol-research/CODEX-CONTROLLER-REVIEW.md).
+
+### User
+
+Committed as 771625d on the research branch, ready to push.
+
+All five controller bugs conceded, plus the rule I missed. The one that matters most is the signed ceiling: a cheaper fee variant confirming does not retire a dearer one I already signed, because a reorg can bring it back. Budgeting the highest fee signed per stage is the only safe accounting, and Codex's SQLite-transaction rewrite of the controller is the right foundation.
+
+Then I built the three things Codex named next, 20 rows passing on Bitcoin Core 31.1.
+
+- Admission check. A pure policy gate that refuses a contract before any signature when the cap can't cover both stages at the assumed high feerate, when this device's confirmed liquidity is short after other contracts' ceilings, when the refund or appeal windows are too tight for expected durations plus margin, or when fees would exceed a set fraction of escrow. One row admitted, five rejected with distinct reasons.
+- Bounded persistent index. Replaces the full-chain scan. Atomic per-block commits, reorg rewind within retained history, and two explicit errors instead of guesses: too-deep reorg and missing block history, both leaving the cursor at the last good block. Stale backup restore, late registration with targeted rescan, and copied-index refusal all pass. After a 13-block reorg, a watched funding transaction that was never re-mined is reported absent, agreeing with the live chain rather than remembering it.
+- Sponsor ownership. The decision implemented: non-overlapping sponsor coins per device, each device with its own derived key and its own database, refusing to open a database from another device. Two rows are deliberate negatives and say so: a faithful clone is not detected, and per-device caps do not sum to a global cap.
+
+Next, in the order I'd do it: wire admission and the device pool into the participant's setup, swap the observer onto the bounded index, then the same protocol over real Nostr relays across two machines with loss, reordering, censorship, and stale backups. Extraction into Chama and FROST behind the appeal signer stay after that.
+
+To publish:
+
+! cd ~/Work/chama-protocol-research && git push origin research/chama-settlement-design Claude is done, your turn.
+
+### Assistant (commentary)
+
+I’ll review `771625d` and reproduce the 20 checks, focusing on admission before signing, index recovery after reorgs, and device ownership checks. Then I’ll test the integration boundaries and save any fixes and results on the research branch.
+
+### Assistant (commentary)
+
+The index has two gaps worth testing before integration: transaction rows are written before the purported atomic block commit, and late-registration rescan requests exist only in memory. A failed commit or restart could leave it reporting incomplete history.
+
+I’m also checking invalid admission inputs and sponsor ownership after a foreign coin is registered locally—the existing ownership test only tries a coin absent from that database.
+
+### Assistant (commentary)
+
+The added checks confirmed the gaps: a failed block commit left a transaction indexed above the cursor, and restarting lost a pending rescan. Admission also accepted NaN and invalid sizes. The sponsor pool accepted a foreign coin when it was registered locally and the caller supplied that coin’s script.
+
+I’ve corrected those paths and tightened the appeal timing check: a `W`-block CSV delay provides only `W−1` intervening blocks before the default becomes eligible. I’m now testing reorgs and concurrent activity during indexing.
+
+### Assistant (commentary)
+
+The fixes pass **16 added checks**, and all **20 original scenarios** still pass. The added tests cover SQL commit failure, restart during rescan, concurrent index writers, and a reorg during block retrieval.
+
+The next build should connect the modules into one setup path. Admission still needs to govern signing, and the device pool and fee controller need a single source of truth for reservations. I’m documenting that integration boundary rather than treating the standalone checks as proof that setup is protected.

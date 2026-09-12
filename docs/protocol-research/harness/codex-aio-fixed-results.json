@@ -1,0 +1,150 @@
+{
+  "title": "Admission, bounded index, sponsor ownership — Bitcoin Core /Satoshi:31.1.0/",
+  "date": "2026-09-12T02:49:56.694Z",
+  "rowCount": 20,
+  "rows": [
+    {
+      "id": "A1",
+      "scenario": "envelope satisfied: cap 20000 ≥ worst-case both stages 14474, liquidity, time",
+      "expect": "ACCEPT",
+      "got": "ACCEPT",
+      "reason": ""
+    },
+    {
+      "id": "A2",
+      "scenario": "cap below worst-case both stages at the assumed high rate → rejected",
+      "expect": "REJECT",
+      "got": "REJECT",
+      "reason": "cap 10000 < worst-case both stages at 20 sat/vB (14474)"
+    },
+    {
+      "id": "A3",
+      "scenario": "liquidity below cap + outstanding ceilings of other contracts → rejected",
+      "expect": "REJECT",
+      "got": "REJECT",
+      "reason": "confirmed unreserved liquidity 25000 < needed 30330 (cap + outstanding ceilings + dust)"
+    },
+    {
+      "id": "A4",
+      "scenario": "refund window shorter than expected ruling time + margin → rejected",
+      "expect": "REJECT",
+      "got": "REJECT",
+      "reason": "refund window 50 blocks < expected ruling 36 + margin 24"
+    },
+    {
+      "id": "A5",
+      "scenario": "W shorter than expected appeal time + margin → rejected",
+      "expect": "REJECT",
+      "got": "REJECT",
+      "reason": "exclusive appeal window W-1=39 < expected appeal 36 + margin 24"
+    },
+    {
+      "id": "A6",
+      "scenario": "cap is 20% of a 100k escrow, above the 5% limit → rejected",
+      "expect": "REJECT",
+      "got": "REJECT",
+      "reason": "cap is 20.0% of escrow, above the 5.0% limit"
+    },
+    {
+      "id": "I1",
+      "scenario": "initial sync from birth 110 finds the watched tx at its height",
+      "expect": "ACCEPT",
+      "got": "ACCEPT",
+      "reason": ""
+    },
+    {
+      "id": "I2",
+      "scenario": "6 blocks unobserved, one contains a spend of the watched outpoint: one sync catches up and records the spender at the right height",
+      "expect": "ACCEPT",
+      "got": "ACCEPT",
+      "reason": ""
+    },
+    {
+      "id": "I3",
+      "scenario": "3-block reorg inside retention (10): rewound from 115, spend re-indexed (same height 115, new block)",
+      "expect": "ACCEPT",
+      "got": "ACCEPT",
+      "reason": ""
+    },
+    {
+      "id": "I4",
+      "scenario": "stale backup (cursor 118) restored and synced to 123: matches live",
+      "expect": "ACCEPT",
+      "got": "ACCEPT",
+      "reason": ""
+    },
+    {
+      "id": "I5",
+      "scenario": "history missing at height 125: explicit HistoryUnavailable, cursor stopped at 124 (last good block), no guess",
+      "expect": "ACCEPT",
+      "got": "ACCEPT",
+      "reason": ""
+    },
+    {
+      "id": "I6",
+      "scenario": "late registration (birth 127 < cursor): targeted rescan from 127 finds it",
+      "expect": "ACCEPT",
+      "got": "ACCEPT",
+      "reason": ""
+    },
+    {
+      "id": "I7",
+      "scenario": "13-block reorg beyond retention (10): ReorgTooDeep, then explicit rescanFrom(birth) rebuilds; index agrees with the live chain for every watched item (c2 was NOT re-mined and is reported absent, not remembered)",
+      "expect": "ACCEPT",
+      "got": "ACCEPT",
+      "reason": ""
+    },
+    {
+      "id": "I8",
+      "scenario": "index copied to another device id: refused to open",
+      "expect": "REJECT",
+      "got": "REJECT",
+      "reason": "Error: index device mismatch or legacy schema: explicit rebuild required"
+    },
+    {
+      "id": "S1",
+      "scenario": "two device indexes derive different sponsor keys from one seed",
+      "expect": "ACCEPT",
+      "got": "ACCEPT",
+      "reason": ""
+    },
+    {
+      "id": "S2",
+      "scenario": "two devices reserve concurrently for two contracts: disjoint coins, no conflict",
+      "expect": "ACCEPT",
+      "got": "ACCEPT",
+      "reason": ""
+    },
+    {
+      "id": "S3",
+      "scenario": "device 1 tries to reserve a coin registered to device 2: refused",
+      "expect": "REJECT",
+      "got": "REJECT",
+      "reason": "not owned by this device"
+    },
+    {
+      "id": "S4",
+      "scenario": "device 2's database copied and opened as device 3: refused",
+      "expect": "REJECT",
+      "got": "REJECT",
+      "reason": "Error: device/script mismatch or legacy unbound database: explicit migration required"
+    },
+    {
+      "id": "S5",
+      "scenario": "a faithful clone (same device id + copied db) opens normally: cloned devices are NOT coordinated by this design",
+      "expect": "ACCEPT",
+      "got": "ACCEPT",
+      "reason": "",
+      "note": "known limit, stated: ownership covers accidental reuse, not deliberate cloning"
+    },
+    {
+      "id": "S6",
+      "scenario": "admission sees only this device's unreserved liquidity (100000 sat): a combined cap across devices is not enforced",
+      "expect": "ACCEPT",
+      "got": "ACCEPT",
+      "reason": "",
+      "note": "known limit, stated: per-device caps do not sum to a global policy cap"
+    }
+  ],
+  "allOk": true
+}

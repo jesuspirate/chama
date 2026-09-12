@@ -1,0 +1,167 @@
+{
+  "complete": true,
+  "rows": [
+    {
+      "id": "reject NaN cap",
+      "ok": false,
+      "evidence": {
+        "admitted": true,
+        "reasons": [],
+        "numbers": {
+          "worstRuling": 7237,
+          "worstAppeal": 7237,
+          "worstBoth": 14474,
+          "feeFractionPct": null,
+          "liquidityNeeded": null,
+          "rulingWindow": 300,
+          "rulingNeeded": 60,
+          "appealNeeded": 60
+        }
+      }
+    },
+    {
+      "id": "reject infinite liquidity",
+      "ok": false,
+      "evidence": {
+        "admitted": true,
+        "reasons": [],
+        "numbers": {
+          "worstRuling": 7237,
+          "worstAppeal": 7237,
+          "worstBoth": 14474,
+          "feeFractionPct": 2,
+          "liquidityNeeded": 30330,
+          "rulingWindow": 300,
+          "rulingNeeded": 60,
+          "appealNeeded": 60
+        }
+      }
+    },
+    {
+      "id": "reject negative stage",
+      "ok": false,
+      "evidence": {
+        "admitted": true,
+        "reasons": [],
+        "numbers": {
+          "worstRuling": -3,
+          "worstAppeal": 7237,
+          "worstBoth": 7234,
+          "feeFractionPct": 2,
+          "liquidityNeeded": 30330,
+          "rulingWindow": 300,
+          "rulingNeeded": 60,
+          "appealNeeded": 60
+        }
+      }
+    },
+    {
+      "id": "reject fractional W",
+      "ok": false,
+      "evidence": {
+        "admitted": true,
+        "reasons": [],
+        "numbers": {
+          "worstRuling": 7237,
+          "worstAppeal": 7237,
+          "worstBoth": 14474,
+          "feeFractionPct": 2,
+          "liquidityNeeded": 30330,
+          "rulingWindow": 300,
+          "rulingNeeded": 60,
+          "appealNeeded": 60
+        }
+      }
+    },
+    {
+      "id": "appeal exclusive window counts W-1",
+      "ok": false,
+      "evidence": {
+        "admitted": true,
+        "reasons": [],
+        "numbers": {
+          "worstRuling": 7237,
+          "worstAppeal": 7237,
+          "worstBoth": 14474,
+          "feeFractionPct": 2,
+          "liquidityNeeded": 30330,
+          "rulingWindow": 300,
+          "rulingNeeded": 60,
+          "appealNeeded": 60
+        }
+      }
+    },
+    {
+      "id": "failed block commit leaves no transaction rows",
+      "ok": false,
+      "evidence": {
+        "failed": true,
+        "status": {
+          "height": 111,
+          "hash": "0c55ccf18af1323e1a749d9ffae3c4f7bb282c718fb109be528ed7de0bda6224"
+        },
+        "cursor": {
+          "height": 110,
+          "hash": ""
+        }
+      }
+    },
+    {
+      "id": "late-watch rescan survives restart",
+      "ok": false,
+      "evidence": {
+        "status": null
+      }
+    },
+    {
+      "id": "earlier birth updates existing watch",
+      "ok": true,
+      "evidence": {
+        "status": {
+          "height": 111,
+          "hash": "0c55ccf18af1323e1a749d9ffae3c4f7bb282c718fb109be528ed7de0bda6224"
+        }
+      }
+    },
+    {
+      "id": "failed rescan survives restart and retries",
+      "ok": false,
+      "evidence": {
+        "status": null
+      }
+    },
+    {
+      "id": "foreign coin remains refused after local registration",
+      "ok": false,
+      "evidence": {
+        "reserved": {
+          "txid": "22dc5cb80c4859eb00dc13efce4b288e6c4c24ab2c918c6e62fe62c42e8e028f",
+          "vout": 1,
+          "amount": "60000"
+        }
+      }
+    },
+    {
+      "id": "registered amount must match confirmed output",
+      "ok": false,
+      "evidence": {
+        "reserved": {
+          "txid": "99ac36ca91c4e23caa607293753a22f66662b5d840cac4a4b405ccf49b78ab8a",
+          "vout": 0,
+          "amount": "999999"
+        }
+      }
+    },
+    {
+      "id": "inventory must not masquerade as validated liquidity",
+      "ok": false,
+      "evidence": {
+        "registeredOnly": 0,
+        "hasLiveQuery": false
+      }
+    }
+  ],
+  "allOk": false,
+  "sourceCommit": "771625d",
+  "note": "Captured before fixes. Initial audit earlier-birth case did not isolate re-registration, and its final row only checked live-query API availability; both probes are strengthened in the current audit."
+}
