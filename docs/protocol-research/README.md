@@ -59,6 +59,7 @@ BITCOIND=/path/to/bitcoind npx tsx docs/protocol-research/harness/codex-extended
 BITCOIND=/path/to/bitcoind npx tsx docs/protocol-research/harness/pinning-matrix.ts     # 18 rows, port 18799
 BITCOIND=/path/to/bitcoind npx tsx docs/protocol-research/harness/distributed-setup.ts # 26 rows, port 18899 (party.ts v2)
 BITCOIND=/path/to/bitcoind npx tsx docs/protocol-research/harness/controller-scenarios.ts # 8 scenarios, port 20099 (observer + fee controller)
+BITCOIND=/path/to/bitcoind npx tsx docs/protocol-research/harness/admission-index-ownership.ts # 20 rows, port 20499 (admission, bounded index, sponsor ownership)
 ```
 
 Use Bitcoin Core 31.1 for the recorded policy results; compatibility with other releases has not been established by these runs. Starts and tears down its own regtest node.
