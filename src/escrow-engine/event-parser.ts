@@ -643,7 +643,7 @@ export function parseEscrowEvent(
   raw: NostrEvent,
   decryptedContent: string,
   skipSignatureCheck = false,
-  context?: { parent?: EscrowState; witness?: EscrowState; state?: EscrowState }
+  context?: { parent?: EscrowState; witness?: EscrowState; cycle?: { circles: EscrowState[]; shares: EscrowState[] }; state?: EscrowState }
 ): ParseResult {
 
   // ── 1. Validate event kind ──
@@ -721,7 +721,7 @@ export function parseEscrowEvent(
   }
 
   if (kind === EscrowEventKind.CREATE) {
-    const message = chamaCreateError(payload as CreatePayload, escrowId, raw.pubkey, raw.created_at, context?.parent, context?.witness);
+    const message = chamaCreateError(payload as CreatePayload, escrowId, raw.pubkey, raw.created_at, context?.parent, context?.witness, context?.cycle);
     if (message) return { ok: false, error: { code: "INVALID_CHAMA_CREATE", message, eventId: raw.id } };
   }
   if (context?.state?.chamaPolicy && (kind === EscrowEventKind.VOTE || kind === EscrowEventKind.RESOLVE)
@@ -734,6 +734,7 @@ export function parseEscrowEvent(
     raw,
     ...(context?.parent ? { chamaParent: context.parent } : {}),
     ...(context?.witness ? { chamaWitness: context.witness } : {}),
+    ...(context?.cycle ? { chamaCycle: context.cycle } : {}),
     payload,
     escrowId,
     prevEventId,

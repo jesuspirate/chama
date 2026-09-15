@@ -66,6 +66,11 @@ export interface CircleRound {
   /** Absolute: when every locked share returns to its owner. The whole
    *  promise in one number: "locked together, guaranteed back by <date>". */
   roundEndSec: number;
+  /** Rotation v2 (docs/chama-rotation-v2-spec.md): declares this cycle a
+   *  merry-go-round at round 1. Additive — old clients ignore it and can
+   *  fully participate in the commitment round (which is pure share-v1);
+   *  only rounds 2+ need v2 readers. Absent = fill-or-refund circle. */
+  pot?: "rotation-v2";
   /** 1-based pulse counter across a re-forming circle's lifetime. */
   roundIndex: number;
   /** Auto-re-entry lineage: the previous round's circleId, null for a

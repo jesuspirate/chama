@@ -348,8 +348,8 @@ export interface CreatePayload {
   premiumBps?: number;
   /** Category: p2p-trade, bill-pay, marketplace, lending */
   category: string;
-  chamaPolicy?: "share-v1";
-  chamaCircle?: Pick<CircleRound, "shareMsats" | "seatThreshold" | "seatCap" | "unlisted" | "fillDeadlineSec" | "roundEndSec" | "roundIndex" | "prevCircleId">;
+  chamaPolicy?: "share-v1" | "share-v2";
+  chamaCircle?: Pick<CircleRound, "shareMsats" | "seatThreshold" | "seatCap" | "unlisted" | "pot" | "fillDeadlineSec" | "roundEndSec" | "roundIndex" | "prevCircleId">;
   /** Fulfillment type: "physical" | "service" | "digital". Generic to
    *  every listing per PR 2 call #3. The user picks only for
    *  marketplace; for p2p-trade / bill-pay / lending, handleCreate
@@ -941,6 +941,9 @@ export interface ParsedEscrowEvent<T extends EscrowPayload = EscrowPayload> {
   chamaParent?: EscrowState;
   /** Locally resolved ring-witness share (v1.1); never trusted from a wire payload. Revalidated by CREATE. */
   chamaWitness?: EscrowState;
+  /** Locally resolved rotation-cycle context (v2): the cycle's circle states
+   *  and share states. Never trusted from a wire payload. Revalidated by CREATE. */
+  chamaCycle?: { circles: EscrowState[]; shares: EscrowState[] };
   /** Original Nostr event */
   raw: NostrEvent;
   /** Decrypted and parsed payload */
@@ -983,8 +986,8 @@ export interface EscrowState {
   premiumBps?: number;
   /** Category */
   category: string;
-  chamaPolicy?: "share-v1";
-  chamaCircle?: Pick<CircleRound, "shareMsats" | "seatThreshold" | "seatCap" | "unlisted" | "fillDeadlineSec" | "roundEndSec" | "roundIndex" | "prevCircleId">;
+  chamaPolicy?: "share-v1" | "share-v2";
+  chamaCircle?: Pick<CircleRound, "shareMsats" | "seatThreshold" | "seatCap" | "unlisted" | "pot" | "fillDeadlineSec" | "roundEndSec" | "roundIndex" | "prevCircleId">;
   /** Public payment rails/methods accepted for this listing, when the
    *  seller chose to advertise them at create time. Handle cleartext
    *  still stays private until LOCK. */

@@ -4,6 +4,7 @@ import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils.js";
 import { validateCircleRound } from "./circle.js";
 import type { CircleRound, CircleShareLock } from "./types.js";
 import { CHAMA_RING_WRITER_ENABLED } from "../escrow-engine/experimental-escrow-features.js";
+import { collectorForRound, commitmentLocks, rotationOrder, roundCircleId } from "./rotation.js";
 import { EscrowEventKind, EscrowStatus, Role, type CreatePayload, type EscrowState } from "../escrow-engine/types.js";
 
 export function shareEscrowId(circleId: string, memberPubkey: string, roundIndex: number): string {
@@ -17,8 +18,58 @@ export function circleFromEscrow(state: EscrowState): CircleRound | null {
     mintUrl: state.mintUrl, name: state.description, createdAt: state.createdAt };
 }
 
+export interface ChamaCycleContext { circles: EscrowState[]; shares: EscrowState[] }
+
+/** Derive the sealed rotation from locally resolved cycle context. Returns
+ *  an error string, or the round-1 anchor + the rotation order. Everything
+ *  downstream (round ids, collectors, seats) hangs off this one derivation,
+ *  so every layer answers identically. */
+export function rotationFromCycle(cycle: ChamaCycleContext): { round1Id: string; round1: CircleRound; order: string[] } | string {
+  for (const state of cycle.circles) {
+    const c = circleFromEscrow(state);
+    if (!c || c.roundIndex !== 1 || c.pot !== "rotation-v2" || validateCircleRound(c).length) continue;
+    const order = rotationOrder({ circleId: state.id, creatorPubkey: c.creatorPubkey }, commitmentLocks(state.id, cycle.shares));
+    if (order.length < 3) return "A rotation needs at least three sealed members";
+    if (order.length < c.seatThreshold) return "The commitment round did not fill";
+    return { round1Id: state.id, round1: c, order };
+  }
+  return "Rotation cycle context must include a lawful round 1";
+}
+
+/** The chained-round law (spec: One cycle = a commitment round + N
+ *  collection rounds). Deterministic ids, schedule anchoring, sealed terms,
+ *  and previous-round fill — all from locally resolved context. */
+function chainedRoundError(c: CircleRound, id: string, pubkey: string, at: number, cycle?: ChamaCycleContext): string | null {
+  if (!cycle) return "A rotation round requires cycle context";
+  const rot = rotationFromCycle(cycle);
+  if (typeof rot === "string") return rot;
+  const { round1Id, round1, order } = rot;
+  if (id !== roundCircleId(round1Id, c.roundIndex)) return "Rotation round id must be deterministic";
+  if (c.prevCircleId !== (c.roundIndex === 2 ? round1Id : roundCircleId(round1Id, c.roundIndex - 1))) return "Rotation round must chain to the previous round";
+  if (c.roundIndex > order.length + 1) return "No round beyond the rotation";
+  if (!order.includes(pubkey.toLowerCase())) return "Only a sealed member can open a rotation round";
+  if (c.shareMsats !== round1.shareMsats || c.community !== round1.community || c.mintUrl !== round1.mintUrl) return "Rotation rounds must keep the cycle terms";
+  if (c.seatThreshold !== order.length - 1 || c.seatCap !== order.length - 1) return "Rotation round seats must equal the sealed members minus the collector";
+  if (c.unlisted !== true) return "Rotation rounds are members-only";
+  const duration = round1.roundEndSec - round1.createdAt;
+  const fillWindow = round1.fillDeadlineSec - round1.createdAt;
+  const start = round1.roundEndSec + (c.roundIndex - 2) * duration;
+  if (c.fillDeadlineSec !== start + fillWindow || c.roundEndSec !== start + duration) return "Rotation rounds keep the cycle schedule";
+  if (at < start) return "A rotation round cannot open before the previous round ends";
+  if (at >= c.fillDeadlineSec) return "This rotation round's fill window has passed";
+  if (c.roundIndex > 2) {
+    const prevId = roundCircleId(round1Id, c.roundIndex - 1);
+    const prevCollector = collectorForRound(order, c.roundIndex - 1)!;
+    const lockedMembers = new Set(cycle.shares
+      .filter(e => e.chamaPolicy === "share-v2" && e.parent === prevId && e.eventChain.some(ev => ev.kind === EscrowEventKind.LOCK))
+      .map(e => e.participants[Role.BUYER]!.toLowerCase()));
+    if (!order.every(m => m === prevCollector || lockedMembers.has(m))) return "The previous round did not fill";
+  }
+  return null;
+}
+
 /** Shared parser/reducer gate. Cross-chain context must come from a replayed parent. */
-export function chamaCreateError(p: CreatePayload, id: string, pubkey: string, at: number, parent?: EscrowState, witness?: EscrowState): string | null {
+export function chamaCreateError(p: CreatePayload, id: string, pubkey: string, at: number, parent?: EscrowState, witness?: EscrowState, cycle?: ChamaCycleContext): string | null {
   if (p.category !== "chama" && p.category !== "chama-share" && p.chamaPolicy === undefined && p.chamaCircle === undefined) return null;
   for (const pool of [p.communityArbiters, p.bondedArbiters]) {
     if (pool !== undefined && (!Array.isArray(pool) || !pool.every(pk => typeof pk === "string" && /^[0-9a-f]{64}$/.test(pk)))) return "Invalid circle arbiter pool";
@@ -36,16 +87,31 @@ export function chamaCreateError(p: CreatePayload, id: string, pubkey: string, a
     const errors = validateCircleRound(c);
     if (errors.length) return errors.join("; ");
     if (at + p.expirySeconds !== c.roundEndSec) return "Circle expiry must equal round end";
+    if (c.pot !== undefined && c.pot !== "rotation-v2") return "Unknown circle pot policy";
+    if (c.pot === "rotation-v2" && c.roundIndex > 1) return chainedRoundError(c, id, pubkey, at, cycle);
     return null;
   }
-  if (p.category !== "chama-share" || p.chamaPolicy !== "share-v1" || p.chamaCircle !== undefined) return "Invalid share policy/category";
+  if (p.category !== "chama-share" || (p.chamaPolicy !== "share-v1" && p.chamaPolicy !== "share-v2") || p.chamaCircle !== undefined) return "Invalid share policy/category";
   const circle = parent && circleFromEscrow(parent);
   if (!parent || !circle || validateCircleRound(circle).length || p.parent !== parent.id) return "A validated circle parent is required";
   if (p.amountMsats !== circle.shareMsats) return "Share amount must equal circle share amount";
   if (at < circle.createdAt || at >= circle.fillDeadlineSec || at + p.expirySeconds !== circle.roundEndSec) return "Share must use the circle's fixed deadlines";
   if (id !== shareEscrowId(parent.id, pubkey, circle.roundIndex)) return "Share id must be deterministic";
   if (!/^[0-9a-f]{64}$/.test(pubkey) || typeof p.sellerPubkey !== "string" || !/^[0-9a-f]{64}$/.test(p.sellerPubkey) || pubkey === p.sellerPubkey) return "Share must seat distinct member and witness";
-  if (p.sellerPubkey !== circle.creatorPubkey) {
+  const rotationRound = circle.pot === "rotation-v2" && circle.roundIndex >= 2;
+  if (rotationRound && p.chamaPolicy !== "share-v2") return "Rotation rounds require share-v2";
+  if (!rotationRound && p.chamaPolicy === "share-v2") return "share-v2 requires a rotation round parent";
+  if (p.chamaPolicy === "share-v2") {
+    // Rotation share: the seller seat is the round's collector — derived
+    // from the chain, never trusted from the payload (spec: engine delta 1).
+    if (!cycle) return "A rotation share requires cycle context";
+    const rot = rotationFromCycle(cycle);
+    if (typeof rot === "string") return rot;
+    if (parent.id !== roundCircleId(rot.round1Id, circle.roundIndex)) return "Rotation share must sit in its cycle's round";
+    const collector = collectorForRound(rot.order, circle.roundIndex);
+    if (!collector || p.sellerPubkey !== collector) return "Rotation share must pay the round's collector";
+    if (!rot.order.includes(pubkey.toLowerCase())) return "Only sealed members lock rotation shares";
+  } else if (p.sellerPubkey !== circle.creatorPubkey) {
     // v1.1 ring share (host-seat spec, task 1: readers first, writers later).
     // A non-creator witness is legal only when they are a MEMBER whose own
     // share in this circle locked before this share was created — proven by

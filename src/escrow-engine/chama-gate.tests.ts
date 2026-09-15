@@ -5,6 +5,7 @@ import { applyEvent, canVote, getWinner, replayEventChain } from "./state-machin
 import { payoutRecipientFor } from "./recipients.js";
 import { oneSidedEscalationAt } from "./arbiter-substitution.js";
 import { shareEscrowId, shareCreatePayload } from "../chama/policy.js";
+import { roundCircleId } from "../chama/rotation.js";
 import { sharesForCircle, createChamaRefundWatcher } from "../chama/wiring.js";
 import { canTakeSeat, circleProgress } from "../chama/circle.js";
 import { circleFromEscrow } from "../chama/policy.js";
@@ -258,3 +259,56 @@ const hostShare = accepted(null, { ...event(K.CREATE, hostPayload, SELLER, share
 assert.equal(hostShare.participants[R.BUYER], SELLER);
 assert.equal(hostShare.participants[R.SELLER], BUYER, "host witnessed by the locked member");
 assert.equal((canTakeSeat(circleView, sharesForCircle([locked, hostShare]), SELLER, T + 50, true) as { ok: false; reason: string }).reason, "already-seated");
+
+// ── rotation v2 gates (commitment round + chained collection rounds) ──────
+const M3 = "77".repeat(32);
+const P2 = "88".repeat(32);
+const r1Payload: CreatePayload = { ...parentPayload, description: "Merry-go-round",
+  chamaCircle: { ...parentPayload.chamaCircle!, pot: "rotation-v2" } };
+const r1 = accepted(null, event(K.CREATE, r1Payload, SELLER, P2, T));
+const commitShare = (m: string) => accepted(null, { ...event(K.CREATE,
+  { ...sharePayload, parent: P2, createdAt: T + 5, expirySeconds: END - T - 5 }, m, shareEscrowId(P2, m, 1), T + 5), chamaParent: r1 });
+const commitLock = (st: EscrowState, m: string, at: number) => accepted(st, event(K.LOCK,
+  { ...lockPayload, buyerPubkey: m, lockedAt: at, arbiterPubkey: st.participants[R.ARBITER]!,
+    shares: [ { shareIndex: 0, encryptedFor: { [m]: "buyer" } }, { shareIndex: 1, encryptedFor: { [SELLER]: "seller" } },
+      { shareIndex: 2, encryptedFor: { [ARBITER]: "arbiter", [BACKUP]: "backup" } } ] }, m, st.id, at, st));
+const c1 = commitLock(commitShare(BUYER), BUYER, T + 100);
+const c2 = commitLock(commitShare(MEMBER2), MEMBER2, T + 200);
+const c3 = commitLock(commitShare(M3), M3, T + 300);
+const cycle = { circles: [r1], shares: [c1, c2, c3] };
+const R2 = roundCircleId(P2, 2);
+const DUR = END - T, WIN = FILL - T;
+const r2Circle = { shareMsats: 100000, seatThreshold: 2, seatCap: 2, fillDeadlineSec: END + WIN,
+  roundEndSec: END + DUR, roundIndex: 2, prevCircleId: P2, pot: "rotation-v2" as const, unlisted: true };
+const r2Payload: CreatePayload = { ...parentPayload, chamaCircle: r2Circle, createdAt: END, expirySeconds: DUR };
+const mkR2 = (patch: Partial<typeof r2Circle> = {}, pk = M3, at = END, withCycle = true) => {
+  const payload = { ...r2Payload, chamaCircle: { ...r2Circle, ...patch }, createdAt: at, expirySeconds: (patch.roundEndSec ?? r2Circle.roundEndSec) - at };
+  return { ...event(K.CREATE, payload, pk, roundCircleId(P2, patch.roundIndex ?? 2), at), ...(withCycle ? { chamaCycle: cycle } : {}) };
+};
+const r2 = accepted(null, mkR2());
+assert.equal(r2.chamaCircle!.roundIndex, 2, "a sealed member opens the first collection round");
+assert(!applyEvent(null, mkR2({}, M3, END, false)).ok, "rotation rounds require cycle context");
+assert(!applyEvent(null, mkR2({}, ARBITER)).ok, "outsiders cannot open a rotation round");
+assert(!applyEvent(null, mkR2({}, SELLER)).ok, "the host without a commitment lock is not in the rotation");
+assert(!applyEvent(null, mkR2({ unlisted: undefined as unknown as boolean })).ok, "rotation rounds are members-only");
+assert(!applyEvent(null, mkR2({ seatThreshold: 3, seatCap: 3 })).ok, "seats must be members minus collector");
+assert(!applyEvent(null, mkR2({ shareMsats: 99000 })).ok, "share amount is a cycle term");
+assert(!applyEvent(null, mkR2({ fillDeadlineSec: END + WIN + 1 })).ok, "the schedule is anchored to round 1");
+assert(!applyEvent(null, mkR2({}, M3, END - 1)).ok, "a round cannot open before the previous ends");
+assert(!applyEvent(null, mkR2({}, M3, END + WIN)).ok, "a round published past its fill window is dead");
+assert(!applyEvent(null, mkR2({ roundIndex: 5, prevCircleId: roundCircleId(P2, 4) }, M3, END + 3 * DUR)).ok, "no round beyond the rotation");
+// Rotation shares: the collector (first commitment locker = BUYER) is paid by everyone else.
+const sv2 = (m: string, seller = BUYER, at = END + 10, withCycle = true) => ({ ...event(K.CREATE,
+  { ...sharePayload, chamaPolicy: "share-v2" as const, parent: R2, sellerPubkey: seller, createdAt: at, expirySeconds: (END + DUR) - at },
+  m, shareEscrowId(R2, m, 2), at), chamaParent: r2, ...(withCycle ? { chamaCycle: cycle } : {}) });
+const pay1 = accepted(null, sv2(MEMBER2));
+assert.equal(pay1.participants[R.SELLER], BUYER, "the round's collector holds the seller seat");
+assert.equal(pay1.participants[R.BUYER], MEMBER2);
+assert(accepted(null, sv2(M3)), "every non-collector member pays in");
+assert(!applyEvent(null, sv2(MEMBER2, M3)).ok, "paying anyone but the collector is unlawful");
+assert(!applyEvent(null, sv2(BUYER, MEMBER2)).ok, "the collector sits out their own round");
+assert(!applyEvent(null, sv2(ARBITER)).ok, "outsiders cannot lock rotation shares");
+assert(!applyEvent(null, sv2(MEMBER2, BUYER, END + 10, false)).ok, "rotation shares require cycle context");
+assert(!applyEvent(null, { ...event(K.CREATE, { ...sharePayload, parent: R2, createdAt: END + 10, expirySeconds: DUR - 10 }, MEMBER2, shareEscrowId(R2, MEMBER2, 2), END + 10), chamaParent: r2, chamaCycle: cycle }).ok, "share-v1 is unlawful in a rotation round");
+assert(!applyEvent(null, { ...sv2(MEMBER2), chamaParent: parent }).ok, "share-v2 requires a rotation round parent");
+console.log("Rotation v2 gate assertions passed.");

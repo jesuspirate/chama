@@ -8,6 +8,7 @@
 import { sha256 } from "@noble/hashes/sha2.js";
 import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils.js";
 import type { CircleRound, CircleShareLock } from "./types.js";
+import { EscrowEventKind, Role, type EscrowState } from "../escrow-engine/types.js";
 
 /** How long the collector has after roundEndSec to claim the pot before
  *  REFUND becomes the only lawful outcome again (decision 1, sealed
@@ -75,4 +76,22 @@ export function roundOutcomeAt(
   if (nowSec < round.roundEndSec + COLLECT_WINDOW_SEC) return "release";
   // Collector never claimed: notes must not rot because one person vanished.
   return "refund";
+}
+
+/** The commitment round's LOCKed seats, derived from raw share escrows —
+ *  the one input the rotation needs. Kept here (not wiring.ts) so the pure
+ *  gate layer can use it without an import cycle. Only share-v1 children of
+ *  round 1 count: the commitment round IS the shipped v1 product. */
+export function commitmentLocks(round1CircleId: string, shares: readonly EscrowState[]): CircleShareLock[] {
+  const seen = new Set<string>();
+  const out: CircleShareLock[] = [];
+  for (const e of shares) {
+    if (e.chamaPolicy !== "share-v1" || e.parent !== round1CircleId || seen.has(e.id)) continue;
+    seen.add(e.id);
+    const lock = e.eventChain.find(ev => ev.kind === EscrowEventKind.LOCK);
+    if (!lock) continue;
+    out.push({ circleId: round1CircleId, memberPubkey: e.participants[Role.BUYER]!,
+      escrowId: e.id, lockedAtSec: lock.timestamp, status: "locked", readyToClaim: false });
+  }
+  return out;
 }

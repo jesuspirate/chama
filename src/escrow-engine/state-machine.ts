@@ -282,7 +282,7 @@ function checkVoteThreshold(votes: EscrowState["votes"]): {
 
 function handleCreate(event: ParsedEscrowEvent<CreatePayload>): TransitionResult {
   const p = event.payload;
-  const chamaError = chamaCreateError(p, event.escrowId, event.pubkey, event.timestamp, event.chamaParent, event.chamaWitness);
+  const chamaError = chamaCreateError(p, event.escrowId, event.pubkey, event.timestamp, event.chamaParent, event.chamaWitness, event.chamaCycle);
   if (chamaError) return err("INVALID_CHAMA_CREATE", chamaError, event.raw.id);
 
   // Validate required fields
