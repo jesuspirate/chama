@@ -312,3 +312,50 @@ assert(!applyEvent(null, sv2(MEMBER2, BUYER, END + 10, false)).ok, "rotation sha
 assert(!applyEvent(null, { ...event(K.CREATE, { ...sharePayload, parent: R2, createdAt: END + 10, expirySeconds: DUR - 10 }, MEMBER2, shareEscrowId(R2, MEMBER2, 2), END + 10), chamaParent: r2, chamaCycle: cycle }).ok, "share-v1 is unlawful in a rotation round");
 assert(!applyEvent(null, { ...sv2(MEMBER2), chamaParent: parent }).ok, "share-v2 requires a rotation round parent");
 console.log("Rotation v2 gate assertions passed.");
+
+// ── rotation v2 outcome law: the payday lifecycle ─────────────────────────
+const END2 = END + DUR, FILL2 = END + WIN;
+const v2Lock = (st: EscrowState, m: string, at: number) => accepted(st, { ...event(K.LOCK,
+  { ...lockPayload, buyerPubkey: m, lockedAt: at, arbiterPubkey: st.participants[R.ARBITER]!,
+    shares: [ { shareIndex: 0, encryptedFor: { [m]: "buyer" } }, { shareIndex: 1, encryptedFor: { [BUYER]: "seller" } },
+      { shareIndex: 2, encryptedFor: { [ARBITER]: "arbiter", [BACKUP]: "backup" } } ] }, m, st.id, at, st), chamaCycle: cycle });
+const p1 = v2Lock(pay1, MEMBER2, END + 100);
+const p2 = v2Lock(accepted(null, sv2(M3)), M3, END + 200);
+const cycleFull = { circles: [r1, r2], shares: [c1, c2, c3, p1, p2] };
+const cycleShort = { circles: [r1, r2], shares: [c1, c2, c3, p1] };
+const v2vote = (st: EscrowState, role: R, pk: string, o: O, at: number, cyc?: typeof cycleFull) =>
+  ({ ...event(K.VOTE, { type: "escrow:vote", role, outcome: o, votedAt: at }, pk, st.id, at, st), ...(cyc ? { chamaCycle: cyc } : {}) });
+// Before the payday: RELEASE is unlawful even with full evidence.
+assert(!applyEvent(p1, v2vote(p1, R.SELLER, BUYER, O.RELEASE, END + 300, cycleFull)).ok, "no release before roundEnd");
+// A filled, running round cannot refund out from under its collector.
+assert(!applyEvent(p1, v2vote(p1, R.BUYER, MEMBER2, O.REFUND, FILL2 + 1, cycleFull)).ok, "no refund of a filled round");
+// RELEASE without evidence is never lawful.
+assert(!applyEvent(p1, v2vote(p1, R.SELLER, BUYER, O.RELEASE, END2, undefined)).ok, "release requires cycle context");
+// The payday: collector + member vote RELEASE, resolve, collector claims.
+const rv1 = accepted(p1, v2vote(p1, R.SELLER, BUYER, O.RELEASE, END2, cycleFull));
+const rv2 = accepted(rv1, v2vote(rv1, R.BUYER, MEMBER2, O.RELEASE, END2 + 1, cycleFull));
+const rres = accepted(rv2, { ...event(K.RESOLVE, { type: "escrow:resolve", outcome: O.RELEASE, majority: [R.BUYER, R.SELLER], arbiterInvolved: false, resolvedAt: END2 + 2 }, MEMBER2, p1.id, END2 + 2, rv2), chamaCycle: cycleFull });
+assert.equal(getWinner(rres)?.pubkey, BUYER, "the collector wins the pot");
+assert.equal(payoutRecipientFor(p1, O.RELEASE)?.pubkey, BUYER, "release pays the collector");
+assert.equal(payoutRecipientFor(p1, O.REFUND)?.pubkey, MEMBER2, "refund returns to the member");
+const rclaim = accepted(rres, event(K.CLAIM, { type: "escrow:claim", claimerRole: R.SELLER, notesHashVerification: "hash", claimedAt: END2 + 3 }, BUYER, p1.id, END2 + 3, rres));
+assert(replayEventChain(rclaim.eventChain).ok, "the full collection chain replays");
+// Resolution is never evidence-free, either outcome.
+assert(!applyEvent(rv2, event(K.RESOLVE, { type: "escrow:resolve", outcome: O.RELEASE, majority: [R.BUYER, R.SELLER], arbiterInvolved: false, resolvedAt: END2 + 2 }, MEMBER2, p1.id, END2 + 2, rv2)).ok, "resolve requires cycle context");
+// A short round (M3 never locked): refund from the fill deadline, release never.
+assert(!applyEvent(p1, v2vote(p1, R.BUYER, MEMBER2, O.REFUND, END + 400, cycleShort)).ok, "no refund while seats can still fill");
+assert(accepted(p1, v2vote(p1, R.BUYER, MEMBER2, O.REFUND, FILL2, cycleShort)), "failed fill refunds at the deadline");
+assert(!applyEvent(p1, v2vote(p1, R.SELLER, BUYER, O.RELEASE, END2, cycleShort)).ok, "a short round never releases");
+// The collect window lapses: the pot refunds back to the members.
+import { COLLECT_WINDOW_SEC } from "../chama/rotation.js";
+assert(!applyEvent(p1, v2vote(p1, R.BUYER, MEMBER2, O.REFUND, END2 + COLLECT_WINDOW_SEC - 1, cycleFull)).ok, "no refund inside the collect window");
+assert(accepted(p1, v2vote(p1, R.BUYER, MEMBER2, O.REFUND, END2 + COLLECT_WINDOW_SEC, cycleFull)), "an unclaimed pot refunds after the window");
+assert(!applyEvent(p1, v2vote(p1, R.SELLER, BUYER, O.RELEASE, END2 + COLLECT_WINDOW_SEC, cycleFull)).ok, "release lapses with the window");
+// A lone REFUND vote is recordable without context but cannot finalize.
+const lone = accepted(p1, v2vote(p1, R.BUYER, MEMBER2, O.REFUND, FILL2 + 1));
+assert(!applyEvent(lone, event(K.RESOLVE, { type: "escrow:resolve", outcome: O.REFUND, majority: [R.BUYER, R.SELLER], arbiterInvolved: false, resolvedAt: FILL2 + 2 }, MEMBER2, p1.id, FILL2 + 2, lone)).ok, "context-free refund never finalizes");
+// canVote mirrors the law.
+assert(!canVote(p1, BUYER, END + 300, O.RELEASE, cycleFull).canVote);
+assert(canVote(p1, BUYER, END2, O.RELEASE, cycleFull).canVote, "the collector may vote release at the payday");
+assert(!canVote(p1, MEMBER2, END2, O.REFUND, cycleFull).canVote);
+console.log("Rotation v2 outcome-law assertions passed.");

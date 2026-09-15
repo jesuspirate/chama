@@ -4,8 +4,8 @@ import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils.js";
 import { validateCircleRound } from "./circle.js";
 import type { CircleRound, CircleShareLock } from "./types.js";
 import { CHAMA_RING_WRITER_ENABLED } from "../escrow-engine/experimental-escrow-features.js";
-import { collectorForRound, commitmentLocks, rotationOrder, roundCircleId } from "./rotation.js";
-import { EscrowEventKind, EscrowStatus, Role, type CreatePayload, type EscrowState } from "../escrow-engine/types.js";
+import { collectorForRound, commitmentLocks, rotationOrder, roundCircleId, roundOutcomeAt } from "./rotation.js";
+import { EscrowEventKind, EscrowStatus, Outcome, Role, type CreatePayload, type EscrowState } from "../escrow-engine/types.js";
 
 export function shareEscrowId(circleId: string, memberPubkey: string, roundIndex: number): string {
   return bytesToHex(sha256(utf8ToBytes(JSON.stringify(["chama-share-v1", circleId, memberPubkey.toLowerCase(), roundIndex]))));
@@ -130,6 +130,45 @@ export function chamaCreateError(p: CreatePayload, id: string, pubkey: string, a
   if (!pickPreferredArbiter(p.communityArbiters ?? [], p.bondedArbiters ?? [], id, [pubkey, p.sellerPubkey!])) return "Share requires a distinct pool arbiter";
   if (p.platformFeeBps !== 0 || (p.arbiterFeeMsats ?? 0) !== 0) return "Shares return the full amount without fees";
   return null;
+}
+
+/** THE DETERMINISTIC-OUTCOME LAW at the vote/resolve layer
+ *  (docs/chama-rotation-v2-spec.md). share-v1 keeps REFUND-only, forever.
+ *  share-v2 admits exactly one outcome from fill evidence + the clock:
+ *  refund before/after a failed fill or a lapsed collect window, release
+ *  to the collector from roundEnd after a successful fill.
+ *
+ *  Context rules (mirrors the CREATE gates' locally-resolved-context
+ *  doctrine — honest clients converge because loadEscrow resolves the
+ *  cycle exactly as it resolves parents):
+ *  - RELEASE always requires cycle context proving the payday. No
+ *    evidence, no release — the conservative side is REFUND, never
+ *    RELEASE.
+ *  - A lone REFUND VOTE is recordable without context (it cannot resolve
+ *    alone, and the second voter or arbiter carries evidence).
+ *  - RESOLVE requires context for BOTH outcomes: finalization is never
+ *    evidence-free. */
+export function chamaOutcomeError(state: EscrowState, outcome: Outcome, at: number, cycle?: ChamaCycleContext, finalizing = false): string | null {
+  if (!state.chamaPolicy) return null;
+  if (state.chamaPolicy === "share-v1") return outcome === Outcome.REFUND ? null : "Shares only allow REFUND";
+  if (outcome !== Outcome.REFUND && outcome !== Outcome.RELEASE) return "Rotation shares allow REFUND or RELEASE only";
+  if (!cycle) {
+    if (outcome === Outcome.REFUND && !finalizing) return null;
+    return "Rotation share resolution requires cycle context";
+  }
+  const rot = rotationFromCycle(cycle);
+  if (typeof rot === "string") return rot;
+  const circle = state.chamaCircle!;
+  const collector = collectorForRound(rot.order, circle.roundIndex);
+  if (!collector || !state.parent || state.parent !== roundCircleId(rot.round1Id, circle.roundIndex)) return "Rotation share is not part of this cycle";
+  const expected = rot.order.filter(m => m !== collector);
+  const locked = new Set(cycle.shares
+    .filter(e => e.chamaPolicy === "share-v2" && e.parent === state.parent && e.eventChain.some(ev => ev.kind === EscrowEventKind.LOCK))
+    .map(e => e.participants[Role.BUYER]!.toLowerCase()));
+  const lockedCount = expected.filter(m => locked.has(m)).length;
+  const lawful = roundOutcomeAt(circle, lockedCount, expected.length, at);
+  if (outcome === Outcome.RELEASE) return lawful === "release" ? null : "Release is only lawful for a filled round at its payday";
+  return lawful === "refund" ? null : "Refund is not lawful while the round can still pay its collector";
 }
 
 /** Pre-spend gate shared by the native/browser bridge and regression tests. */

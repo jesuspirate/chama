@@ -254,7 +254,11 @@ export function oneSidedReleaseAnchor(
       const vote = state.eventChain.find(e => e.kind === EscrowEventKind.VOTE && e.pubkey === state.participants[role] && (e.payload as VotePayload).outcome === Outcome.REFUND);
       if (vote) return { nonLockerRole: role, releaseVoteAt: clampDisputeAnchor(state, vote.timestamp) };
     }
-    return null;
+    // share-v1: REFUND is the only outcome, so a lone REFUND is the only
+    // one-sided case. share-v2: a lone collector RELEASE at the payday
+    // (member silent) must also open the bounded escalation window, so it
+    // falls through to the generic non-locker RELEASE arm below.
+    if (state.chamaPolicy !== "share-v2") return null;
   }
   const nonLocker = payoutRecipientFor(state, Outcome.RELEASE);
   const locker = payoutRecipientFor(state, Outcome.REFUND);

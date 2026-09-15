@@ -1,4 +1,4 @@
-import { chamaCreateError } from "../chama/policy.js";
+import { chamaCreateError, chamaOutcomeError, type ChamaCycleContext } from "../chama/policy.js";
 // ══════════════════════════════════════════════════════════════════════════
 // Chama Nostr Escrow Engine — State Machine
 // ══════════════════════════════════════════════════════════════════════════
@@ -823,7 +823,7 @@ function handleLock(state: EscrowState, event: ParsedEscrowEvent<LockPayload>): 
   //   lending → seller locks (lender funds the loan)
   //   p2p-trade, bill-pay → seller locks (seller has the sats)
   //   raw-escrow / unknown → any participant can lock
-  const expectedLocker = (state.category === "marketplace" || state.chamaPolicy === "share-v1") ? Role.BUYER
+  const expectedLocker = (state.category === "marketplace" || state.chamaPolicy !== undefined) ? Role.BUYER
     : state.category === "lending" ? Role.SELLER
     : (state.category === "p2p-trade" || state.category === "bill-pay") ? Role.SELLER
     : null; // raw escrow: anyone
@@ -1174,7 +1174,8 @@ function handleLock(state: EscrowState, event: ParsedEscrowEvent<LockPayload>): 
 
 function handleVote(state: EscrowState, event: ParsedEscrowEvent<VotePayload>): TransitionResult {
   const p = event.payload;
-  if (state.chamaPolicy && p.outcome !== Outcome.REFUND) return err("CHAMA_REFUND_ONLY", "Shares only allow REFUND", event.raw.id);
+  const outcomeLaw = chamaOutcomeError(state, p.outcome, event.timestamp, event.chamaCycle);
+  if (outcomeLaw) return err("CHAMA_REFUND_ONLY", outcomeLaw, event.raw.id);
 
   // v0.1.66.26: accept EXPIRED in addition to LOCKED so post-expiry
   // healing votes can be recorded. Mechanism A relies on this.
@@ -1351,7 +1352,8 @@ function handleVote(state: EscrowState, event: ParsedEscrowEvent<VotePayload>): 
 
 function handleResolve(state: EscrowState, event: ParsedEscrowEvent<ResolvePayload>): TransitionResult {
   const p = event.payload;
-  if (state.chamaPolicy && p.outcome !== Outcome.REFUND) return err("CHAMA_REFUND_ONLY", "Shares only allow REFUND", event.raw.id);
+  const outcomeLaw = chamaOutcomeError(state, p.outcome, event.timestamp, event.chamaCycle, true);
+  if (outcomeLaw) return err("CHAMA_REFUND_ONLY", outcomeLaw, event.raw.id);
 
   // v0.1.66.26: accept EXPIRED in addition to LOCKED so healing votes
   // that meet 2-of-3 threshold can produce a RESOLVE event and
@@ -1745,8 +1747,10 @@ export function applyEvent(
     return err("NO_STATE", "Non-CREATE event received but no escrow state exists", event.raw.id);
   }
 
-  if (state.chamaPolicy && (event.kind === EscrowEventKind.VOTE || event.kind === EscrowEventKind.RESOLVE)
-      && (event.payload as VotePayload).outcome !== Outcome.REFUND) return err("CHAMA_REFUND_ONLY", "Shares only allow REFUND", event.raw.id);
+  if (state.chamaPolicy && (event.kind === EscrowEventKind.VOTE || event.kind === EscrowEventKind.RESOLVE)) {
+    const law = chamaOutcomeError(state, (event.payload as VotePayload).outcome, event.timestamp, event.chamaCycle, event.kind === EscrowEventKind.RESOLVE);
+    if (law) return err("CHAMA_REFUND_ONLY", law, event.raw.id);
+  }
 
   // ── Auxiliary settlement-time events bypass terminal/expiry/chain checks ──
   // Premiums are paid AT settlement: COMPLETED is truly-terminal (rejected
@@ -1965,8 +1969,11 @@ export function replayEventChain(events: ParsedEscrowEvent[]): TransitionResult 
 // ══════════════════════════════════════════════════════════════════════════
 
 /** Check if a specific pubkey can vote in the current state */
-export function canVote(state: EscrowState, pubkey: string, nowSec?: number, outcome?: Outcome): { canVote: boolean; reason?: string } {
-  if (state.chamaPolicy && outcome !== undefined && outcome !== Outcome.REFUND) return { canVote: false, reason: "Shares only allow REFUND" };
+export function canVote(state: EscrowState, pubkey: string, nowSec?: number, outcome?: Outcome, cycle?: ChamaCycleContext): { canVote: boolean; reason?: string } {
+  if (state.chamaPolicy && outcome !== undefined) {
+    const law = chamaOutcomeError(state, outcome, nowSec ?? Math.floor(Date.now() / 1000), cycle);
+    if (law) return { canVote: false, reason: law };
+  }
   // v0.1.66.26: accept EXPIRED in addition to LOCKED. Mirrors
   // handleVote — healing votes on timed-out trades are allowed.
   if (state.status !== EscrowStatus.LOCKED && state.status !== EscrowStatus.EXPIRED) {

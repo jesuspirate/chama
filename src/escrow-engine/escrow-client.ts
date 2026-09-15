@@ -2806,7 +2806,7 @@ export class EscrowClient {
       // A cold replay has no cached share state while decrypting its VOTEs.
       // Once CREATE is known, apply the contextual parser gate before replay;
       // a forbidden RELEASE must not poison an otherwise recoverable chain.
-      const shareCreate = parsed.find(e => e.kind === EscrowEventKind.CREATE && (e.payload as CreatePayload).chamaPolicy === "share-v1");
+      const shareCreate = parsed.find(e => e.kind === EscrowEventKind.CREATE && (e.payload as CreatePayload).chamaPolicy !== undefined);
       if (shareCreate) {
         const initial = applyEvent(null, shareCreate);
         if (initial.ok) {

@@ -1,4 +1,4 @@
-import { chamaCreateError } from "../chama/policy.js";
+import { chamaCreateError, chamaOutcomeError } from "../chama/policy.js";
 import type { EscrowState } from "./types.js";
 // ══════════════════════════════════════════════════════════════════════════
 // Chama Nostr Escrow Engine — Event Parser
@@ -724,9 +724,9 @@ export function parseEscrowEvent(
     const message = chamaCreateError(payload as CreatePayload, escrowId, raw.pubkey, raw.created_at, context?.parent, context?.witness, context?.cycle);
     if (message) return { ok: false, error: { code: "INVALID_CHAMA_CREATE", message, eventId: raw.id } };
   }
-  if (context?.state?.chamaPolicy && (kind === EscrowEventKind.VOTE || kind === EscrowEventKind.RESOLVE)
-      && (payload as VotePayload).outcome !== Outcome.REFUND) {
-    return { ok: false, error: { code: "CHAMA_REFUND_ONLY", message: "Shares only allow REFUND", eventId: raw.id } };
+  if (context?.state?.chamaPolicy && (kind === EscrowEventKind.VOTE || kind === EscrowEventKind.RESOLVE)) {
+    const law = chamaOutcomeError(context.state, (payload as VotePayload).outcome, raw.created_at, context.cycle, kind === EscrowEventKind.RESOLVE);
+    if (law) return { ok: false, error: { code: "CHAMA_REFUND_ONLY", message: law, eventId: raw.id } };
   }
 
   // ── 5. Build the typed event ──

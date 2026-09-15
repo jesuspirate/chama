@@ -27,8 +27,11 @@ export function payoutRecipientFor(
   state: EscrowState,
   outcome: Outcome,
 ): { pubkey: string; role: Role } | null {
-  if (state.chamaPolicy && outcome !== Outcome.REFUND) return null;
-  const isMarketplace = state.category === "marketplace" || state.chamaPolicy === "share-v1";
+  // share-v1: REFUND-only, forever. share-v2 (rotation): RELEASE pays the
+  // collector in the seller seat; REFUND returns to the member. Both are
+  // buyer-funded, so the marketplace mapping below covers them.
+  if (state.chamaPolicy === "share-v1" && outcome !== Outcome.REFUND) return null;
+  const isMarketplace = state.category === "marketplace" || state.chamaPolicy !== undefined;
   const winnerRole: Role = outcome === Outcome.RELEASE
     ? (isMarketplace ? Role.SELLER : Role.BUYER)
     : (isMarketplace ? Role.BUYER : Role.SELLER);
