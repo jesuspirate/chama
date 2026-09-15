@@ -41,25 +41,47 @@ for trades.
 
 ## The design
 
-### One cycle = N chained circles
+### One cycle = a commitment round + N collection rounds (amended 2026-09-15)
 
-A cycle is N rounds; each round is a circle escrow, chained by prevCircleId,
-roundIndex 1..N. The MEMBER SET SEALS when round 1 fills: rounds 2..N admit
-exactly the round-1 members. Round r's circle id is DETERMINISTIC:
-sha256(["chama-round", round1CircleId, r]) — so ANY member can publish the
-next round's CREATE (no host liveness dependency), duplicates are
-structurally impossible, and readers can walk the chain both ways.
-Round r's circle CREATE is lawful only if: prevCircleId = round r-1's id,
-identical shareMsats/member terms, roundIndex increments by one, and the
-previous round SETTLED (all its shares CLAIMED or REFUNDED).
+Round 1 is the COMMITMENT ROUND: exactly the shipped v1 product — every
+member locks, everyone's own sats return at roundEnd, standing minted. Its
+job is sealing the MEMBER SET and the ROTATION (lock order, host last)
+before anyone's money moves sideways. The rotation cannot be derived from a
+round it is needed in (round 1's collector would be its first locker, who
+cannot hold a seat paying themselves), so the handshake round is structural,
+not ceremonial. v1 is never deprecated: it is the opening ceremony of every
+merry-go-round, already field-proven.
+
+Rounds 2..N+1 are the COLLECTION rounds — one payday per member, collector
+for circle roundIndex r = rotation[r-2]. Round r's circle id is
+DETERMINISTIC: sha256(["chama-round-v2", round1CircleId, r]) — so ANY member
+can publish the next round's CREATE (no host liveness dependency),
+duplicates are structurally impossible, and readers can walk the chain both
+ways. Round r's circle CREATE is lawful only if: prevCircleId = round r-1's
+id, identical shareMsats and member terms, roundIndex increments by one,
+and the previous round FILLED AND ENDED (its outcome is determined; claims
+proceed independently — decision 3's immediate cadence must not wait on the
+collector's 7-day claim window). Deadlines are anchored to the SCHEDULE
+(round 1's clock), never to publish time: fillDeadline and roundEnd of
+round r are round 1's offsets shifted by (r-1) round-durations. A round
+published too late to fill simply fails and ends the cycle — deterministic,
+and the watcher publishes rounds on time in practice.
+
+### The pot arithmetic (worked, 5 members × 10,000 sats)
+
+Round 1: five lock 10,000 each, five get 10,000 back. No pot.
+Rounds 2..6: the collector sits out, the other FOUR lock 10,000, and the
+collector receives exactly 40,000 = (N-1) × share. EVERY payday is
+identical. Per member per cycle: 4 × 10,000 paid in, 40,000 collected
+once — net zero, with the lump arriving in your round.
 
 ### Turn order: lock order, host last
 
 The rotation is the round-1 lock order — first to lock collects first —
 with the host pinned LAST regardless (hosts lock last, hosts collect last:
 the leadership gesture, decided 2026-09-15). Chain-derived from round-1
-LOCK timestamps; no new events needed. Collector for round r =
-orderedMembers[r-1].
+LOCK timestamps; no new events needed. Collector for circle roundIndex r
+(r ≥ 2) = orderedMembers[r-2]; round 1 has NO collector.
 
 ### The share, v2: the collector sits in the seller seat
 

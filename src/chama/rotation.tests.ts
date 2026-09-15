@@ -28,11 +28,12 @@ assert.deepEqual(rotationOrder(circle, [lock(M1.toUpperCase(), T + 10)]), [M1], 
 
 // ── collector per round ────────────────────────────────────────────────────
 const order = rotationOrder(circle, locks);
-assert.equal(collectorForRound(order, 1), M1);
-assert.equal(collectorForRound(order, 4), HOST, "the host's payday is the last round");
+assert.equal(collectorForRound(order, 1), null, "round 1 is the commitment round — no collector");
+assert.equal(collectorForRound(order, 2), M1, "first payday goes to the first round-1 locker");
+assert.equal(collectorForRound(order, 5), HOST, "the host's payday is the last round");
 assert.equal(collectorForRound(order, 0), null);
-assert.equal(collectorForRound(order, 5), null, "no round beyond the rotation");
-assert.equal(collectorForRound([], 1), null);
+assert.equal(collectorForRound(order, 6), null, "no round beyond the rotation");
+assert.equal(collectorForRound([], 2), null);
 
 // ── the deterministic-outcome law ─────────────────────────────────────────
 const round = { fillDeadlineSec: T + 86_400, roundEndSec: T + 604_800 };

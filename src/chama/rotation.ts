@@ -40,12 +40,14 @@ export function rotationOrder(circle: Pick<CircleRound, "circleId" | "creatorPub
   return order;
 }
 
-/** Collector for round r (1-based) of a sealed rotation. Null when the
- *  cycle has no such round — callers treat that as "no lawful collector",
- *  never as "anyone". */
+/** Collector for the circle at roundIndex r of a sealed rotation. Round 1
+ *  is the COMMITMENT round (no collector — the rotation is derived from its
+ *  locks); collection rounds run roundIndex 2..N+1, collector = order[r-2].
+ *  Null when the cycle has no such round — callers treat that as "no lawful
+ *  collector", never as "anyone". */
 export function collectorForRound(order: readonly string[], roundIndex: number): string | null {
-  if (!Number.isSafeInteger(roundIndex) || roundIndex < 1 || roundIndex > order.length) return null;
-  return order[roundIndex - 1] ?? null;
+  if (!Number.isSafeInteger(roundIndex) || roundIndex < 2 || roundIndex > order.length + 1) return null;
+  return order[roundIndex - 2] ?? null;
 }
 
 /** THE DETERMINISTIC-OUTCOME LAW (spec §what replaces REFUND-only).
