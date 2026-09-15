@@ -2,7 +2,8 @@ import { pickPreferredArbiter } from "../arbiters/pool.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils.js";
 import { validateCircleRound } from "./circle.js";
-import type { CircleRound } from "./types.js";
+import type { CircleRound, CircleShareLock } from "./types.js";
+import { CHAMA_RING_WRITER_ENABLED } from "../escrow-engine/experimental-escrow-features.js";
 import { EscrowEventKind, EscrowStatus, Role, type CreatePayload, type EscrowState } from "../escrow-engine/types.js";
 
 export function shareEscrowId(circleId: string, memberPubkey: string, roundIndex: number): string {
@@ -74,12 +75,27 @@ export function chamaFundingError(state: EscrowState, pubkey: string, nowSec: nu
   return null;
 }
 
-export function shareCreatePayload(parent: EscrowState, nowSec: number): CreatePayload {
+export function shareCreatePayload(parent: EscrowState, nowSec: number,
+  ring?: { buyerPubkey: string; locks: readonly CircleShareLock[]; enabled?: boolean }): CreatePayload {
   const circle = circleFromEscrow(parent);
   if (!circle || validateCircleRound(circle).length) throw new Error("A validated circle parent is required");
   const original = parent.eventChain[0].payload as CreatePayload;
+  // Witness selection (ring writer, docs/chama-host-seat-spec.md): the most
+  // recently LOCKED member witnesses the next share — each joiner is
+  // witnessed by the member who locked just before them, and the creator
+  // bootstraps the first share. Fixed at CREATE, immutable after. The host
+  // may only take a seat once a member's lock exists to witness theirs.
+  let sellerPubkey = circle.creatorPubkey;
+  if (ring && (ring.enabled ?? CHAMA_RING_WRITER_ENABLED)) {
+    const buyer = ring.buyerPubkey.toLowerCase();
+    const candidates = ring.locks.filter(l => l.circleId === parent.id && l.status === "locked"
+      && l.lockedAtSec !== null && l.lockedAtSec <= nowSec && l.memberPubkey.toLowerCase() !== buyer);
+    const latest = [...candidates].sort((a, b) => b.lockedAtSec! - a.lockedAtSec!)[0];
+    if (latest) sellerPubkey = latest.memberPubkey;
+    else if (buyer === circle.creatorPubkey.toLowerCase()) throw new Error("Hosts lock last: another member must lock first");
+  }
   return { type: "escrow:create", description: circle.name, category: "chama-share", chamaPolicy: "share-v1",
-    parent: parent.id, sellerPubkey: circle.creatorPubkey, amountMsats: circle.shareMsats,
+    parent: parent.id, sellerPubkey, amountMsats: circle.shareMsats,
     mintUrl: parent.mintUrl, community: parent.community ?? undefined, fed: original.fed, fedPrefix: original.fedPrefix,
     platformFeeBps: 0, platformFeePubkey: original.platformFeePubkey, arbiterFeeMsats: 0,
     communityArbiters: [...parent.communityArbiters], bondedArbiters: [...(parent.bondedArbiters ?? [])],

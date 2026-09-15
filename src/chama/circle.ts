@@ -8,6 +8,7 @@ import {
   type LockPunctuality,
   type SeatRefusal,
 } from "./types.js";
+import { CHAMA_RING_WRITER_ENABLED } from "../escrow-engine/experimental-escrow-features.js";
 
 // ── Validation ─────────────────────────────────────────────────────────────
 
@@ -143,16 +144,23 @@ export function canTakeSeat(
   locks: readonly CircleShareLock[],
   memberPubkey: string,
   nowSec: number = Math.floor(Date.now() / 1000),
+  hostSeat: boolean = CHAMA_RING_WRITER_ENABLED,
 ): { ok: true } | { ok: false; reason: SeatRefusal } {
   if (nowSec >= circle.fillDeadlineSec) return { ok: false, reason: "closed" };
   const mine = circleLocks(circle, locks);
   const member = memberPubkey.toLowerCase();
-  // The host cannot hold a seat in their own round: a share seats the member
-  // as BUYER and the creator as witness-SELLER, and one pubkey cannot be
-  // both. The engine gate (chamaCreateError) is the law; refusing HERE means
-  // callers never offer a button the chain would reject. See the open
-  // product question in docs/chama-money-path-design.md.
-  if (circle.creatorPubkey.toLowerCase() === member) return { ok: false, reason: "host" };
+  // Host seats (ring witnessing, docs/chama-host-seat-spec.md): with the
+  // writer OFF, the v1 law stands — a share seats the member as BUYER and
+  // the creator as witness-SELLER, and one pubkey cannot be both. With the
+  // writer ON, hosts lock LAST: the host takes a seat only once another
+  // member's LOCKED share exists to witness theirs. The engine gate
+  // (chamaCreateError) is the law; refusing HERE means callers never offer
+  // a button the chain would reject.
+  if (circle.creatorPubkey.toLowerCase() === member) {
+    if (!hostSeat) return { ok: false, reason: "host" };
+    const witnessed = mine.some(l => l.status === "locked" && l.memberPubkey.toLowerCase() !== member);
+    if (!witnessed) return { ok: false, reason: "host-waits" };
+  }
   const seated = mine.some(
     l =>
       l.memberPubkey.toLowerCase() === member

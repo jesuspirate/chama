@@ -36,6 +36,17 @@ export const GUIDED_SLICE_CHOICE_ENABLED = false;
 // first real circle completed its round trip).
 export const CHAMA_CIRCLES_ENABLED = true;
 
+// Ring witnessing / the host's seat (docs/chama-host-seat-spec.md v1.1).
+// OFF gates the WRITER only: shareCreatePayload keeps seating the creator as
+// witness and canTakeSeat keeps refusing the host. The READER relaxation
+// (chamaCreateError accepting proven ring shares) shipped un-gated on main
+// after 6.4.0 — readers first, writers later. Do NOT flip this until 6.4.1+
+// readers have real deployment in the field: a 6.4.0 client REJECTS ring
+// shares at parse, so an early writer would present thin circle views to
+// old clients. Decisions locked with Jet 2026-09-15: hosts lock last (no
+// arbiter bootstrap), witness fixed at share CREATE, immutable.
+export const CHAMA_RING_WRITER_ENABLED = false;
+
 export function isSlicedTradeShape(state: {
   sliceCount?: number;
   tranche?: unknown;

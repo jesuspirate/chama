@@ -76,6 +76,7 @@ export const circle: Record<string, string> = {
   "circle.nextRound": "Start the next round",
   "circle.footer": "Sats in, the same sats back. Nobody is ever the only one who showed up.",
   "circle.full": "This circle has no open seats.",
+  "circle.hostLocksLast": "Hosts lock last — your share opens once a member locks theirs.",
   "circle.alreadySeated": "You already have a seat.",
   "circle.loading": "Loading your circle…",
   "circle.retry": "Try again",

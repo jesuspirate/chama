@@ -120,7 +120,7 @@ export type CircleProgress = {
   dueBackEscrowIds: string[];
 };
 
-export type SeatRefusal = "closed" | "full" | "already-seated" | "host";
+export type SeatRefusal = "closed" | "full" | "already-seated" | "host" | "host-waits";
 
 /** Chain-derived punctuality signals for one lock — the standing inputs the
  *  brief locks: early earns (decaying to zero), weighted in sat-days so it

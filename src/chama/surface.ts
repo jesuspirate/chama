@@ -117,7 +117,15 @@ export function circleSurfaceModel(
     if (seat?.status === "locked") {
       return { ...base, move: seatsStillOpen ? "invite" : "wait" };
     }
-    if (isHost) return { ...base, move: seatsStillOpen ? "invite" : "wait" };
+    if (isHost) {
+      // Ring writer ON: the host locks LAST — their seat opens once another
+      // member's locked share exists to witness theirs. Until then (or with
+      // the writer OFF, reason "host"), hosting means inviting.
+      const hostSeat = canTakeSeat(circle, shares, viewerPubkey, nowSec);
+      if (hostSeat.ok) return { ...base, move: "lock" };
+      if (hostSeat.reason === "host-waits") return { ...base, move: seatsStillOpen ? "invite" : "wait", refusal: "host-waits" };
+      return { ...base, move: seatsStillOpen ? "invite" : "wait" };
+    }
     const takeable = canTakeSeat(circle, shares, viewerPubkey, nowSec);
     if (takeable.ok) return { ...base, move: "lock" };
     return { ...base, move: "none", refusal: takeable.reason };

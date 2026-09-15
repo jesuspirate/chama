@@ -76,6 +76,7 @@ export const circle: Record<string, string> = {
   "circle.nextRound": "Anza mzunguko unaofuata",
   "circle.footer": "Sats ulizoleta ndizo zinarudi. Hakuna anayebaki peke yake katika ushiriki.",
   "circle.full": "Duara hili halina nafasi wazi.",
+  "circle.hostLocksLast": "Mwenyeji hufunga mwisho — fungu lako hufunguka mara mwanachama afungapo lake.",
   "circle.alreadySeated": "Tayari una nafasi.",
   "circle.loading": "Duara lako linapakiwa…",
   "circle.retry": "Jaribu tena",

@@ -972,7 +972,7 @@ export class EscrowClient {
     const now = Math.floor(Date.now() / 1000);
     const seat = canTakeSeat(circle, sharesForCircle(this.states.values()), pubkey, now);
     if (!seat.ok) throw new Error(`Cannot take a circle seat: ${seat.reason}`);
-    return this.createEscrow({ ...shareCreatePayload(parent, now), escrowId: id });
+    return this.createEscrow({ ...shareCreatePayload(parent, now, { buyerPubkey: pubkey, locks: sharesForCircle(this.states.values(), parentId) }), escrowId: id });
   }
 
   private async resolveChamaParent(id: string): Promise<EscrowState | undefined> {

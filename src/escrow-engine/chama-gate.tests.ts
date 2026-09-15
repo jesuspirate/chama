@@ -4,9 +4,9 @@ import { parseEscrowEvent } from "./event-parser.js";
 import { applyEvent, canVote, getWinner, replayEventChain } from "./state-machine.js";
 import { payoutRecipientFor } from "./recipients.js";
 import { oneSidedEscalationAt } from "./arbiter-substitution.js";
-import { shareEscrowId } from "../chama/policy.js";
+import { shareEscrowId, shareCreatePayload } from "../chama/policy.js";
 import { sharesForCircle, createChamaRefundWatcher } from "../chama/wiring.js";
-import { circleProgress } from "../chama/circle.js";
+import { canTakeSeat, circleProgress } from "../chama/circle.js";
 import { circleFromEscrow } from "../chama/policy.js";
 import { shouldShowOnBrowse, needsYouReasonFor } from "../ui/decisions.js";
 const BUYER = "22".repeat(32), SELLER = "11".repeat(32), ARBITER = "33".repeat(32), BACKUP = "55".repeat(32), ID = "44".repeat(32);
@@ -232,3 +232,29 @@ assert(!applyEvent(null, { ...event(K.CREATE, { ...ringPayload, sellerPubkey: ME
 assert(!applyEvent(null, makeRing(ringPayload, parent)).ok, "circle parent is not a witness share");
 assert([ARBITER, BACKUP].includes(ring.participants[R.ARBITER]!));
 assert.equal(sharesForCircle([locked, ring]).length, 2, "ring share counts toward the circle");
+
+// ── ring writer (flag-gated; explicit enabled:true / hostSeat:true below) ──
+const circleView = circleFromEscrow(parent)!;
+const ringLocks = sharesForCircle([locked]);
+// Flag OFF defaults: v1 law intact — host refused, creator witnesses.
+assert.equal((canTakeSeat(circleView, ringLocks, SELLER, T + 40) as { ok: false; reason: string }).reason, "host");
+assert.equal(shareCreatePayload(parent, T + 40, { buyerPubkey: MEMBER2, locks: ringLocks }).sellerPubkey, SELLER);
+// Writer ON: hosts lock last — refused until a member's lock exists…
+assert.equal((canTakeSeat(circleView, [], SELLER, T + 5, true) as { ok: false; reason: string }).reason, "host-waits");
+assert.equal((canTakeSeat(circleView, sharesForCircle([share]), SELLER, T + 15, true) as { ok: false; reason: string }).reason, "host-waits", "a reserved (unlocked) share is no witness");
+// …then seated like any member.
+assert(canTakeSeat(circleView, ringLocks, SELLER, T + 40, true).ok);
+// The most recent lock witnesses the next share; bootstrap falls back to the creator.
+assert.equal(shareCreatePayload(parent, T + 40, { buyerPubkey: MEMBER2, locks: ringLocks, enabled: true }).sellerPubkey, BUYER);
+assert.equal(shareCreatePayload(parent, T + 5, { buyerPubkey: MEMBER2, locks: [], enabled: true }).sellerPubkey, SELLER);
+// Never yourself: the buyer's own lock is not a witness candidate.
+assert.equal(shareCreatePayload(parent, T + 40, { buyerPubkey: BUYER, locks: ringLocks, enabled: true }).sellerPubkey, SELLER);
+// Hosts lock last is enforced at build time too.
+assert.throws(() => shareCreatePayload(parent, T + 5, { buyerPubkey: SELLER, locks: [], enabled: true }));
+// End to end: the host's ring share round-trips the reader gate.
+const hostPayload = shareCreatePayload(parent, T + 40, { buyerPubkey: SELLER, locks: ringLocks, enabled: true });
+assert.equal(hostPayload.sellerPubkey, BUYER);
+const hostShare = accepted(null, { ...event(K.CREATE, hostPayload, SELLER, shareEscrowId(ID, SELLER, 1), T + 40), chamaParent: parent, chamaWitness: locked });
+assert.equal(hostShare.participants[R.BUYER], SELLER);
+assert.equal(hostShare.participants[R.SELLER], BUYER, "host witnessed by the locked member");
+assert.equal((canTakeSeat(circleView, sharesForCircle([locked, hostShare]), SELLER, T + 50, true) as { ok: false; reason: string }).reason, "already-seated");
