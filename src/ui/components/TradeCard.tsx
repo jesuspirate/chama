@@ -99,7 +99,7 @@ export function TradeCard({
       { childrenLoaded: circleChildrenLoaded?.has(circle.circleId) ? true : undefined });
     return <button type="button" onClick={onSelect} className="circle-browse-card" style={{ width: "100%", display: "flex", gap: 18, alignItems: "center", padding: "22px 20px", background: T.card, border: `1px solid ${T.border}`, borderRadius: T.r, color: T.text, textAlign: "left", cursor: "pointer" }}>
       <VerticalIcon vertical="chama" size={74} />
-      <span style={{ display: "grid", gap: 7, minWidth: 0 }}><strong style={{ font: `750 21px ${T.sans}`, overflowWrap: "anywhere" }}>{circle.name}</strong>
+      <span style={{ display: "grid", gap: 7, minWidth: 0 }}><strong style={{ font: `750 21px ${T.sans}`, overflowWrap: "anywhere" }}>{circle.name}{circle.roundIndex > 1 ? ` · ${t("circle.roundN", { n: circle.roundIndex })}` : ""}</strong>
         <span style={{ color: T.accent, fontWeight: 700 }}>{t("circle.satsEach", { amount: fmtSats(model.shareMsats) })}</span>
         <span style={{ color: T.muted, font: `11px ${T.mono}`, lineHeight: 1.6 }}>{model.seatsLocked === null ? `· ${t("circle.open")}` : t("circle.seats", { filled: model.seatsLocked, total: model.seatThreshold })}<br />{model.secsToFillDeadline > 0 ? t("circle.closesIn", { time: circleTimeText(model.secsToFillDeadline, t) }) : t("circle.closed")}</span>
       </span><span style={{ marginLeft: "auto", color: T.accent }} aria-hidden="true">↗</span>
@@ -108,11 +108,24 @@ export function TradeCard({
 
   if (state.chamaPolicy === "share-v1") {
     const st = STATUS[state.status] ?? STATUS.CREATED;
+    // WHOSE share? The circle creator is counterparty on every member's
+    // share, so members' shares surface in the HOST's My Trades too — and
+    // this card used to caption all of them "Your share", which sent the
+    // host chasing a claim that was never theirs (launch night, 2026-09-15:
+    // "both 1000 sats tiles point to the same thing... what did you miss?").
+    const memberPk = state.participants[Role.BUYER] ?? null;
+    const viewerIsMember = !!memberPk && !!pubkey && memberPk.toLowerCase() === pubkey.toLowerCase();
+    const parentCircle = state.parent
+      ? (() => { const parent = (allEscrows ?? []).find(e => e.id === state.parent); return parent ? circleFromEscrow(parent) : null; })()
+      : null;
+    const roundTag = parentCircle && parentCircle.roundIndex > 1 ? ` · ${t("circle.roundN", { n: parentCircle.roundIndex })}` : "";
     return <button type="button" onClick={onSelect} className="circle-browse-card" style={{ width: "100%", display: "flex", gap: 18, alignItems: "center", padding: "22px 20px", background: T.card, border: `1px solid ${T.border}`, borderRadius: T.r, color: T.text, textAlign: "left", cursor: "pointer" }}>
       <VerticalIcon vertical="chama" size={74} />
       <span style={{ display: "grid", gap: 7, minWidth: 0 }}>
-        <strong style={{ font: `750 21px ${T.sans}`, overflowWrap: "anywhere" }}>{state.description}</strong>
-        <span style={{ color: T.accent, fontWeight: 700 }}>{t("circle.yourShare", { amount: fmtSats(state.amountMsats) })}</span>
+        <strong style={{ font: `750 21px ${T.sans}`, overflowWrap: "anywhere" }}>{state.description}{roundTag}</strong>
+        <span style={{ color: T.accent, fontWeight: 700 }}>{viewerIsMember
+          ? t("circle.yourShare", { amount: fmtSats(state.amountMsats) })
+          : t("circle.memberShare", { name: profileNameFor(profileNames, memberPk, kind0Enabled) ?? "…", amount: fmtSats(state.amountMsats) })}</span>
         <span style={{ justifySelf: "start", fontSize: 10, padding: "3px 8px", borderRadius: 999, background: st.bg, color: st.c, border: `1px solid ${st.c}55`, fontFamily: T.mono, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5 }}>{t(st.l)}</span>
       </span>
       <span style={{ marginLeft: "auto", color: T.accent }} aria-hidden="true">↗</span>

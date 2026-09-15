@@ -1,4 +1,10 @@
 import { shareEscrowId, circleFromEscrow, shareCreatePayload } from "../chama/policy.js";
+import {
+  ackDurableClaim,
+  defaultDurableClaimStore,
+  enqueueDurableClaim,
+  readDurableClaims,
+} from "./durable-claim-queue.js";
 import { canTakeSeat } from "../chama/circle.js";
 import { sharesForCircle, createChamaRefundWatcher } from "../chama/wiring.js";
 // ══════════════════════════════════════════════════════════════════════════
@@ -629,6 +635,11 @@ export class EscrowClient {
     this.relayManager.connect();
 
     this.notifier = new EscrowNotifier(this.signer, this.relayManager);
+
+    // Boot drain for durable claims: give the pool a beat to dial, then
+    // re-offer anything a previous session redeemed but never landed on the
+    // preferred relay. The 60s heartbeat (useEscrow) keeps retrying after.
+    setTimeout(() => { void this.drainDurableClaims().catch(() => {}); }, 5_000);
   }
 
   /** #79 — send one trade-critical alert DM over NIP-17 (kind-4 fallback for
@@ -942,12 +953,22 @@ export class EscrowClient {
     const pubkey = await this.getPubkey();
     const circle = circleFromEscrow(parent)!;
     const id = shareEscrowId(parentId, pubkey, circle.roundIndex);
-    const existing = this.states.get(id) ?? await this.loadEscrow(id);
+    // Warm path: the circle route already ran loadChildren AND holds a live
+    // children subscription, so the in-memory view answers both questions a
+    // lock press asks — "do I already hold this seat?" and "is a seat open?".
+    // Re-walking the relays here is what made the button take seconds; a
+    // relay set that would answer those probes differently would have fed
+    // the same events into this snapshot. The engine's CREATE gate remains
+    // the enforcement either way. Cold path (deep link straight to lock)
+    // still does the full fetch.
+    const warm = this.childrenSnapshotAt.has(parentId)
+      && this.subscriptions.has(`children:${parentId}`);
+    const existing = this.states.get(id) ?? (warm ? undefined : await this.loadEscrow(id));
     if (existing) {
       if (existing.chamaPolicy !== "share-v1" || existing.parent !== parentId || existing.participants[Role.BUYER] !== pubkey) throw new Error("Circle seat id is occupied by a different escrow");
       return { escrowId: id, state: existing };
     }
-    await this.loadChildren(parentId);
+    if (!warm) await this.loadChildren(parentId);
     const now = Math.floor(Date.now() / 1000);
     const seat = canTakeSeat(circle, sharesForCircle(this.states.values()), pubkey, now);
     if (!seat.ok) throw new Error(`Cannot take a circle seat: ${seat.reason}`);
@@ -986,6 +1007,12 @@ export class EscrowClient {
   /** Circles whose children refresh COMPLETED in this session. Only these
    *  views are trusted to declare a failed fill before roundEnd. */
   private readonly chamaViewComplete = new Set<string>();
+
+  /** When loadChildren last finished per parent — a LATENCY hint only, never
+   *  a safety signal (that is chamaViewComplete's job). With this fresh and a
+   *  live children subscription up, the lock press can trust the in-memory
+   *  child view instead of re-walking the relays. */
+  private readonly childrenSnapshotAt = new Map<string, number>();
 
   private readonly chamaRefundWatcher = createChamaRefundWatcher({
     getEscrows: () => this.states.values(), getPubkey: () => this.getPubkey(),
@@ -1908,9 +1935,36 @@ export class EscrowClient {
     };
 
     const signed = await this.signWithSimTag(unsigned);
+    // Durable CLAIM publication (v6.4 runway item 1): the signed event hits
+    // disk BEFORE its first publish attempt, so an app-kill mid-publish can
+    // never leave a redeemed-but-unpublished claim that exists only on a
+    // dead JS stack. Retired only when the PREFERRED relay accepts it —
+    // drained here, on boot, and on the 60s heartbeat.
+    enqueueDurableClaim(defaultDurableClaimStore(), signed, escrowId);
     await this.relayManager.publish(signed);
+    void this.drainDurableClaims().catch(() => {});
 
     return this.applyLocally(escrowId, signed, payload);
+  }
+
+  /** Re-offer every persisted un-acked CLAIM to the preferred relay and
+   *  retire the ones it has explicitly accepted. Cheap no-op when empty;
+   *  never throws past the heartbeat (a failed drain just waits for the
+   *  next one). */
+  async drainDurableClaims(): Promise<void> {
+    const store = defaultDurableClaimStore();
+    const entries = readDurableClaims(store);
+    if (entries.length === 0) return;
+    const unacked: typeof entries = [];
+    for (const entry of entries) {
+      if (this.relayManager.wasAcceptedByPreferred(entry.event.id)) ackDurableClaim(store, entry.event.id);
+      else unacked.push(entry);
+    }
+    if (unacked.length === 0) return;
+    await this.relayManager.republishToPreferredRelay(unacked.map(entry => entry.event));
+    for (const entry of unacked) {
+      if (this.relayManager.wasAcceptedByPreferred(entry.event.id)) ackDurableClaim(store, entry.event.id);
+    }
   }
 
   // ── Complete (winner confirms settlement finalized) ─────────────────────
@@ -2496,15 +2550,20 @@ export class EscrowClient {
       const d = ev.tags.find(t => t[0] === TAGS.ESCROW_ID)?.[1];
       if (d) childIds.add(d);
     }
-    const children: EscrowState[] = [];
-    for (const id of childIds) {
+    // Children load in PARALLEL: a 5-seat circle used to pay five sequential
+    // relay round-trips here — most of the "Lock your share takes seconds"
+    // feel (Jet, 2026-09-07) on the cold path and on every refund pass.
+    const loaded = await Promise.all([...childIds].map(async id => {
       try {
         const state = await this.loadEscrow(id);
-        if (state && state.parent === parentId) children.push(state);
+        return state && state.parent === parentId ? state : null;
       } catch (e) {
         console.debug(`[escrow] loadChildren ${parentId}: child ${id} failed to load`, e);
+        return null;
       }
-    }
+    }));
+    const children = loaded.filter((c): c is EscrowState => c !== null);
+    this.childrenSnapshotAt.set(parentId, Date.now());
     return children;
   }
 

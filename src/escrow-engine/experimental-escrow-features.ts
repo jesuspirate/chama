@@ -23,6 +23,19 @@ export const LIVE_TRADE_SURFACE_ENABLED = true;
 // honor yet. Flip back on when the preference threads into plan_start.
 export const GUIDED_SLICE_CHOICE_ENABLED = false;
 
+// Chama Circles — the savings-circle vertical (create a circle, discover
+// circles in Browse, the circle canvas/surface). Held for the 6.4 "Big Boss
+// Chama" launch. OFF gates CREATION, DISCOVERY, and marketing only — never
+// the readers: an existing circle a member already locked into stays visible
+// and refundable in Me, and all relay/replay code remains intact. 6.4 flips
+// this to true (and un-comments the landing card marked CHAMA_CIRCLES).
+//
+// (Shipped un-gated by accident in 6.3.4 when ship.sh's `git add -A` swept the
+// in-progress tree; 6.3.5 re-darkened it via this flag.)
+// FLIPPED for the 6.4 "Big Boss Chama" launch (2026-09-14, the night the
+// first real circle completed its round trip).
+export const CHAMA_CIRCLES_ENABLED = true;
+
 export function isSlicedTradeShape(state: {
   sliceCount?: number;
   tranche?: unknown;

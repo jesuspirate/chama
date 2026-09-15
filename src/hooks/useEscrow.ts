@@ -1723,6 +1723,10 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
         const escrowClient = clientRef.current;
         const now = Math.floor(Date.now() / 1000);
         void escrowClient.maybeAutoRefundChama(now).catch(() => {});
+        // Durable-claim heartbeat: no-op when nothing is pending; otherwise
+        // keeps re-offering un-acked CLAIMs until the preferred relay takes
+        // them (v6.4 runway item 1 — the zombie-claim factory).
+        void escrowClient.drainDurableClaims().catch(() => {});
         for (const [escrowId, escrowState] of (escrowClient as any).states || []) {
           const isStuckLocked =
             escrowState.status === "LOCKED" && now > escrowState.expiresAt;

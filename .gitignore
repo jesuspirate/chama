@@ -91,3 +91,7 @@ design/mockups/
 /release-notes/
 docker-images
 ncc-cache
+
+# Sandbox-session scratch (stale git locks moved aside by Claude's VM,
+# which lacks unlink permission) — never ship this.
+/_to_delete/

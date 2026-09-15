@@ -1,5 +1,6 @@
 import { sharesForCircle } from "./wiring.js";
 import { EscrowEventKind, EscrowStatus, Outcome, type EscrowState } from "../escrow-engine/types.js";
+import { circleCanvasRound } from "./canvas.js";
 import {
   canTakeSeat,
   circleProgress,
@@ -252,6 +253,12 @@ const returnedShare = { ...fundedShare, status: EscrowStatus.CLAIMED, resolvedOu
 assert(sharesForCircle([returnedShare])[0].status === "returned", "round-end claim maps to returned");
 assert(sharesForCircle([{ ...returnedShare, resolvedAt: FILL }])[0].status === "refunded", "early claim maps to refunded");
 assert(sharesForCircle([{ ...returnedShare, status: EscrowStatus.APPROVED }])[0].status === "locked", "unclaimed approval stays on the return worklist");
+assert(sharesForCircle([{ ...returnedShare, status: EscrowStatus.APPROVED }])[0].readyToClaim === true,
+  "an approved refund is COLLECTIBLE — resolution landed, redemption pending");
+assert(sharesForCircle([fundedShare])[0].readyToClaim !== true,
+  "a share still voting is not collectible");
+assert(sharesForCircle([returnedShare])[0].readyToClaim !== true,
+  "a share already redeemed has nothing left to collect");
 assert(sharesForCircle([fundedShare], "another-circle").length === 0, "adapter keeps circles separate");
 
 console.log("\n── Chama circle: one status, one move ──");
@@ -273,6 +280,18 @@ assert(move(threeLocked, "amina", FILL + 86_400) === "wait",
   "a running circle is calm on purpose — there is nothing to do");
 assert(move(filling2, "a", FILL + 60) === "returning",
   "a failed fill returns the share automatically; do not prompt");
+// The COLLECT move — the missing last leg found at the first real completion
+// (2026-09-14): both devices said "your sats are coming back" while READY TO
+// CLAIM shares sat unclaimed with no button anywhere in the app.
+const collectible = (base: CircleShareLock): CircleShareLock => ({ ...base, readyToClaim: true });
+assert(move([collectible(seat("a", "locked")), seat("b", "locked")], "a", FILL + 60) === "collect",
+  "refund-due + resolution landed = COLLECT, not a moot manual vote");
+assert(move([collectible(seat("a", "locked")), seat("b", "locked")], "a", FILL + MANUAL_REFUND_GRACE_SEC) === "collect",
+  "collect outranks the manual escape hatch once the vote is already resolved");
+assert(move([collectible(seat("a", "locked")), seat("b", "locked"), seat("c", "locked")], "a", END + 10) === "collect",
+  "a completed round with an approved share offers COLLECT — the sats come home by a tap, not a promise");
+assert(move(threeLocked.map(x => x.memberPubkey === "a" ? collectible(x) : x), "b", END + 10) === "returning",
+  "another member's collectible share changes nothing for me");
 assert(move(filling2, "a", FILL + MANUAL_REFUND_GRACE_SEC) === "return-now",
   "after the grace, the manual refund escape hatch appears");
 assert(move(filling2, "dora", FILL + 86_400) === "none",
@@ -295,6 +314,20 @@ assert(circleSurfaceModel(CIRCLE, threeLocked, "a", T0 + 3_600).move === "invite
   "threshold met but seats open (cap 5) still welcomes people — filled is not full");
 assert(circleSurfaceModel({ ...CIRCLE, seatCap: null }, threeLocked, "a", T0 + 3_600).move === "invite",
   "an uncapped circle keeps welcoming people right up to the deadline");
+
+console.log("\n── Chama circle: the audience split (just us vs anyone) ──");
+{
+  const base = { shareSats: 1000, threshold: 5, createdAt: T0, creatorPubkey: "amina",
+    community: "tz-tzs", mintUrl: "fed1", name: "Mama Mboga" } as const;
+  const friends = circleCanvasRound({ ...base, cap: 5, unlisted: true });
+  assert(friends.seatCap === friends.seatThreshold && friends.unlisted === true,
+    "'just us' collapses floor and ceiling into ONE number — all of you, by invite, unlisted");
+  assert(validateCircleRound(friends).length === 0, "a just-us circle is lawful as generated");
+  const anyone = circleCanvasRound({ ...base, cap: null });
+  assert(anyone.seatCap === null && anyone.unlisted !== true,
+    "'anyone' keeps only the go-ahead floor: open to the world, listed in Browse");
+  assert(validateCircleRound(anyone).length === 0, "an open circle is lawful as generated");
+}
 
 console.log("\n── Chama circle: the Browse card ──");
 assert(circleCardModel(CIRCLE, [], T0 + 10).seatsLocked === null,

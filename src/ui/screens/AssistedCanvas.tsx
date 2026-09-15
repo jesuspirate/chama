@@ -33,6 +33,7 @@ import { shareTradeLink } from "../share-link.js";
 import { useBitcoinPrice } from "../hooks/useBitcoinPrice.js";
 import { useFiatRates } from "../hooks/useFiatRates.js";
 import { VerticalIcon } from "../components/VerticalIcon.js";
+import { CHAMA_CIRCLES_ENABLED } from "../../escrow-engine/experimental-escrow-features.js";
 import { T } from "../theme.js";
 import { profileNameFor } from "../nostr-profiles.js";
 import { translate, getCurrentLang } from "../../i18n/index.js";
@@ -81,6 +82,7 @@ export function AssistedCanvas({
   onCreate,
   onMoreOptions,
   onOpenTrade,
+  onStartCircle,
   publishedInfo,
   onDismissPublished,
   resumeRef,
@@ -96,6 +98,10 @@ export function AssistedCanvas({
   onCreate: (intent: CanvasCreatePrefill) => void;
   onMoreOptions: () => void;
   onOpenTrade: (id: string) => void;
+  /** Start a savings circle from the home canvas (Jet, launch night: "how
+   *  does a normal user create their own Chama from the home menu?"). Shown
+   *  as a third answer to "what comes back?" when you bring Bitcoin. */
+  onStartCircle?: () => void;
   publishedInfo?: { label: string; escrowId?: string } | null;
   onDismissPublished?: () => void;
   resumeRef?: { current: AssistedCanvasResume | null };
@@ -894,6 +900,16 @@ export function AssistedCanvas({
       <p style={subStyle()}>{tr("canvas.onlyProtected")}</p>
       <div className="assisted-choice-grid two">
         {assistedWantChoices(bring).map(asset => <AssetCard key={asset} asset={asset} fiatCurrency={fiatCurrency} note={asset === "goods" ? offerLabel(goodsOffers) : tr("canvas.beFirstSide")} onClick={() => chooseWant(asset)} />)}
+        {/* The namesake gets a front door: bringing Bitcoin can also mean
+            saving it TOGETHER. Routes straight to the circle canvas. */}
+        {CHAMA_CIRCLES_ENABLED && onStartCircle && (
+          <button type="button" className="assisted-choice" onClick={onStartCircle}>
+            <span className="assisted-glyph"><VerticalIcon vertical="chama" size={40} /></span>
+            <strong>{tr("canvas.chamaWant")}</strong>
+            <small>{tr("canvas.chamaWantDesc")}</small>
+            <em>{tr("canvas.chamaWantBadge")}</em>
+          </button>
+        )}
       </div>
     </CanvasShell>;
   }

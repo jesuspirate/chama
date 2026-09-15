@@ -1,4 +1,7 @@
 export const canvas: Record<string, string> = {
+  "canvas.chamaWant": "Ahorradlo juntos",
+  "canvas.chamaWantDesc": "Abre un círculo Chama — partes iguales, todos completan o todos reciben reembolso.",
+  "canvas.chamaWantBadge": "EL HOMÓNIMO",
   "canvas.enterRailDetails": "Introduce tus datos de pago de {rail}.",
   "canvas.detailsSaveFailed": "No se pudieron guardar esos datos de pago.",
   "canvas.enterAmountAndRail": "Introduce un monto y elige al menos una forma de pago.",

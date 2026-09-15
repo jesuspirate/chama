@@ -3,6 +3,7 @@ import { getScopedStorageItem, setScopedStorageItem } from "../../storage/user-s
 import { type EscrowState } from "../../escrow-engine/types.js";
 import { getCommunityBySlug, type Community } from "../../communities/registry.js";
 import { T, ROLE_COLOR, BROWSE_CATS, inputStyle, fmtSats } from "../theme.js";
+import { CHAMA_CIRCLES_ENABLED } from "../../escrow-engine/experimental-escrow-features.js";
 import { TradeCard } from "../components/TradeCard.js";
 import { VerticalIcon } from "../components/VerticalIcon.js";
 import { BOTTOM_NAV_HEIGHT } from "../components/BottomNav.js";
@@ -459,7 +460,7 @@ export function BrowseView({
         WebkitOverflowScrolling: "touch" as const,
         paddingBottom: 2,
       }}>
-        {BROWSE_CATS.filter(c => c.id !== "all").map(c => {
+        {BROWSE_CATS.filter(c => c.id !== "all" && (CHAMA_CIRCLES_ENABLED || c.id !== "chama")).map(c => {
           const active = !showOwn && browseCategory === c.id;
           // #75: counts must reflect what the viewer actually SEES — the
           // own-hidden + retired filtering already applied to ownFiltered* — not
@@ -838,7 +839,7 @@ interface BrowseListingSection {
 
 function groupListingsByVertical(listings: EscrowState[]): BrowseListingSection[] {
   return BROWSE_CATS
-    .filter(c => c.id !== "all")
+    .filter(c => c.id !== "all" && (CHAMA_CIRCLES_ENABLED || c.id !== "chama"))
     .map(c => ({
       id: c.id,
       label: c.l,

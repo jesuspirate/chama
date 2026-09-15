@@ -1203,7 +1203,11 @@ function MeTradeHistory({
             // history (the "rate later" path for users who bolt with their sats).
             // Once rated, the tap drops — the slot is replaceable, so it reappears
             // nowhere and double-rating is impossible.
-            const ratee = onRateCounterparty && s.status === EscrowStatus.COMPLETED
+            // Chama shares never prompt for a rating: a savings circle has no
+            // counterparty performance to judge — punctuality standing is the
+            // circle's reputation, chain-derived and automatic (Jet, launch
+            // night review).
+            const ratee = onRateCounterparty && s.status === EscrowStatus.COMPLETED && !s.chamaPolicy
               ? counterpartyToRate(s, pubkey)
               : null;
             const alreadyRated = ratee

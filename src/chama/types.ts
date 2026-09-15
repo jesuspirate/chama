@@ -57,6 +57,10 @@ export interface CircleRound {
   /** Optional ceiling on seats (null = open to the world until deadline).
    *  Must be ≥ seatThreshold when set. */
   seatCap: number | null;
+  /** "Just us" circles: shared by invite link, not listed in Browse. This is
+   *  best-effort DISCOVERABILITY, not secrecy — the events live on public
+   *  relays like everything else. Old clients ignore the flag (additive). */
+  unlisted?: boolean;
   /** Absolute: last moment a share can lock. Agreed BEFORE any lock. */
   fillDeadlineSec: number;
   /** Absolute: when every locked share returns to its owner. The whole
@@ -78,6 +82,10 @@ export interface CircleShareLock {
    *  counts for nothing. */
   escrowId: string | null;
   status: "reserved" | "locked" | "returned" | "refunded";
+  /** REFUND is resolved but redemption is not yet proven (escrow APPROVED):
+   *  the member can collect NOW. Distinct from status — an approved share is
+   *  still owed, so it stays "locked" until the sats actually move. */
+  readyToClaim?: boolean;
   /** Unix seconds the lock landed (chain fact, feeds punctuality standing).
    *  Null while reserved. */
   lockedAtSec: number | null;

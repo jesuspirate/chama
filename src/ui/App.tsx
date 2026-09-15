@@ -36,6 +36,7 @@ import {
   isSlicedTradeShape,
   TRADE_SLICING_ENABLED,
   LIVE_TRADE_SURFACE_ENABLED,
+  CHAMA_CIRCLES_ENABLED,
 } from "../escrow-engine/experimental-escrow-features.js";
 import {
   compareTradeChronology,
@@ -888,6 +889,7 @@ export default function App() {
     setCircleLoadError(null);
   };
   const openCircleCanvas = () => {
+    if (!CHAMA_CIRCLES_ENABLED) { setCreateOverlayOpen(false); return; }
     setCreateOverlayOpen(false); setCircleInitial(undefined);
     setDetailBackView(view === "circle" ? detailBackView : view);
     setView("circle-create");
@@ -2335,6 +2337,14 @@ export default function App() {
     // Slicing is paused, but its replay code remains for history/recovery.
     // Do not advertise old sliced parents beside today's single escrows.
     (TRADE_SLICING_ENABLED || !isSlicedTradeShape(s)) &&
+    // Chama Circles held for 6.4: keep circles out of public discovery while
+    // the flag is off. Existing circles stay in the owner's Me list (a
+    // separate array) so anyone mid-round can still see and refund.
+    (CHAMA_CIRCLES_ENABLED || (s.category !== "chama" && s.chamaPolicy !== "share-v1")) &&
+    // "Just us" circles are invite-link only: never in public Browse. Members
+    // reach them from Me and the shared link (openEscrow by id). Best-effort
+    // discoverability, not secrecy — the events are on public relays.
+    !(s.category === "chama" && s.chamaCircle?.unlisted) &&
     shouldShowOnBrowse({ escrow: s, browseCategory: "all", nowSec: now, isSoldOut: listingSoldOut(s) })
   );
   const visibleListings = allVisibleListings.filter(s =>
@@ -3790,6 +3800,7 @@ export default function App() {
               community: round.community, mintUrl: round.mintUrl, escrowMode: "ecash", arbiterFeeMsats: 0,
               communityArbiters, expirySeconds: round.roundEndSec - Math.floor(Date.now() / 1000),
               chamaCircle: { shareMsats: round.shareMsats, seatThreshold: round.seatThreshold, seatCap: round.seatCap,
+                ...(round.unlisted ? { unlisted: true } : {}),
                 fillDeadlineSec: round.fillDeadlineSec, roundEndSec: round.roundEndSec, roundIndex: round.roundIndex, prevCircleId: round.prevCircleId } });
             setSelectedId(escrowId); setView("circle"); setCircleChildrenLoaded(previous => new Set(previous).add(escrowId));
             void refreshCircle(escrowId).catch(error => setCircleLoadError(error.message));
@@ -3826,6 +3837,25 @@ export default function App() {
             const share = [...escrows.values()].find(e => e.parent === selected.id && e.chamaPolicy === "share-v1" && e.participants[Role.BUYER] === pubkey);
             if (share) await actions.vote(share.id, Outcome.REFUND);
           }}
+          onClaim={async () => {
+            if (!requireOnline()) return;
+            const share = [...escrows.values()].find(e => e.parent === selected.id && e.chamaPolicy === "share-v1" && e.participants[Role.BUYER] === pubkey);
+            if (!share) return;
+            // Identical ClaimPayoutModal flow as every trade — aimed at the
+            // SHARE escrow. No arbiter-premium holdback: share fees are
+            // pinned to zero, the member gets back exactly what they locked.
+            await new Promise<void>((resolve) => {
+              setPendingClaim({
+                escrowId: share.id,
+                payoutMsats: share.amountMsats,
+                premiumMsats: 0,
+                tradeCommunity: share.community,
+                fiatCurrency: share.fiatCurrency,
+                resolve,
+              });
+            });
+            await refreshCircle(selected.id);
+          }}
           onNextRound={circle => { setCircleInitial(nextRoundTemplate(circle, { circleId: "", startSec: Math.floor(Date.now() / 1000) })); setView("circle-create"); }} />
         : <div style={{ padding: 30 }}><button onClick={() => { ++circleRouteRequest.current; setView(detailBackView); }}>‹ {t("common.back")}</button><p role="status">{circleLoadError ?? t("circle.loading")}</p>
           {circleLoadError && selectedId && <button onClick={() => {
@@ -3856,6 +3886,7 @@ export default function App() {
             setCreateOverlayOpen(true);
           }}
           onOpenTrade={(id) => openEscrow(id, "guided")}
+          onStartCircle={openCircleCanvas}
           publishedInfo={canvasPublished}
           onDismissPublished={() => setCanvasPublished(null)}
           resumeRef={canvasResumeRef}

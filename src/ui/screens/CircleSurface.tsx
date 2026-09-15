@@ -17,10 +17,13 @@ export function circleTimeText(seconds: number, t: TFunc): string {
   return t("circle.minutes", { count: Math.max(0, Math.ceil(seconds / 60)) });
 }
 
-export function CircleSurface({ parent, escrows, viewerPubkey, backLabel, childrenLoaded, loadError, onBack, onLock, onReturn, onNextRound, onRefresh }: {
+export function CircleSurface({ parent, escrows, viewerPubkey, backLabel, childrenLoaded, loadError, onBack, onLock, onReturn, onClaim, onNextRound, onRefresh }: {
   parent: EscrowState; escrows: ReadonlyMap<string, EscrowState>; viewerPubkey: string;
   backLabel: string; childrenLoaded: boolean; loadError?: string | null; onBack: () => void;
   onLock: () => Promise<void>; onReturn: () => Promise<void>;
+  /** REFUND resolved on the viewer's share: fire the SAME ClaimPayoutModal
+   *  flow every trade uses, aimed at the share escrow. The last leg home. */
+  onClaim: () => Promise<void>;
   onNextRound: (circle: CircleRound) => void; onRefresh: () => Promise<void>;
 }) {
   const { t, lang } = useT();
@@ -36,21 +39,28 @@ export function CircleSurface({ parent, escrows, viewerPubkey, backLabel, childr
   const run = async (action: () => Promise<void>) => { if (busy) return; setBusy(true); setMessage(null); try { await action(); } catch (e) { setMessage(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); } };
   const invite = async () => { const result = await shareTradeLink(circle.circleId); if (result !== "shared") setMessage(t(result === "copied" ? "circle.copied" : "circle.shareFailed")); };
   const status = !childrenLoaded ? t("circle.syncing") : model.status === "filling"
-    ? model.move === "invite" && !model.isHost ? t("circle.yourShareIn", { count: Math.max(0, model.seatThreshold - model.seatsLocked) }) : t("circle.seats", { filled: model.seatsLocked, total: model.seatThreshold })
+    // Fixed round clock: a FILLED circle keeps filling until the deadline
+    // (no early start), so "waiting for 0 more" was arithmetically true and
+    // humanly nonsense. Say the real thing: everyone's in, here's when it
+    // starts. Members and host both get it; an outside viewer keeps N-of-M.
+    ? model.filled && (model.seated || model.isHost)
+      ? t("circle.filledStarts", { time: circleTimeText(model.secsToFillDeadline, t) })
+      : model.move === "invite" && !model.isHost ? t("circle.yourShareIn", { count: Math.max(0, model.seatThreshold - model.seatsLocked) }) : t("circle.seats", { filled: model.seatsLocked, total: model.seatThreshold })
     : model.status === "running" ? t("circle.backBy", { date: date(circle.roundEndSec) })
     : model.status === "refund-due" ? t("circle.failedFill") : t("circle.complete");
-  const moveKey = { lock: "circle.lock", invite: "circle.invite", "return-now": "circle.returnNow", "next-round": "circle.nextRound" } as const;
-  const action = model.move === "lock" ? onLock : model.move === "invite" ? invite : model.move === "return-now" ? onReturn : model.move === "next-round" ? async () => onNextRound(circle) : null;
+  const moveKey = { lock: "circle.lock", invite: "circle.invite", collect: "circle.collect", "return-now": "circle.returnNow", "next-round": "circle.nextRound" } as const;
+  const action = model.move === "lock" ? onLock : model.move === "invite" ? invite : model.move === "collect" ? onClaim : model.move === "return-now" ? onReturn : model.move === "next-round" ? async () => onNextRound(circle) : null;
   return <section className="circle-surface" style={{ maxWidth: 640, margin: "0 auto", padding: "24px 18px 38px", color: T.text }}>
     <button type="button" data-chama-shortcut="back" onClick={onBack} style={{ background: "none", border: 0, color: T.muted, padding: "8px 0", cursor: "pointer" }}>‹ {backLabel}</button>
     <div style={{ display: "flex", alignItems: "center", gap: 9, color: T.accent, font: `700 11px ${T.mono}`, letterSpacing: 2 }}><VerticalIcon vertical="chama" size={30} />CHAMA</div>
-    <h1 style={{ fontSize: "clamp(32px, 6vw, 52px)", letterSpacing: "-.05em", margin: "10px 0 24px" }}>{circle.name}</h1>
+    <h1 style={{ fontSize: "clamp(32px, 6vw, 52px)", letterSpacing: "-.05em", margin: "10px 0 24px" }}>{circle.name}{circle.roundIndex > 1 && <span style={{ color: T.muted, fontWeight: 500 }}> · {t("circle.roundN", { n: circle.roundIndex })}</span>}</h1>
     <div style={{ background: T.card, border: `1px solid ${T.borderHi}`, borderRadius: 30, padding: "clamp(22px,4vw,36px)", textAlign: "center" }}>
       {childrenLoaded && <CircleSeatRing filled={model.seatsLocked} total={model.seatThreshold} potMsats={model.potMsats} targetMsats={circle.shareMsats * model.seatThreshold} />}
       <h2 aria-live="polite" style={{ fontSize: "clamp(22px,4vw,30px)", lineHeight: 1.2, marginBottom: 12 }}>{status}</h2>
       <p style={{ color: T.muted, fontFamily: T.mono, lineHeight: 1.6 }}>{t("circle.satsEach", { amount: fmtSats(circle.shareMsats) })}{model.status === "filling" && ` · ${t("circle.closesIn", { time: circleTimeText(model.secsToFillDeadline, t) })}`}</p>
       {model.status === "running" && <p style={{ color: T.accent }}>{t("circle.countdown", { time: circleTimeText(model.secsToRoundEnd, t) })}</p>}
       {(model.move === "returning" || model.move === "return-now") && <p>{t("circle.returning")}</p>}
+      {model.move === "collect" && <p style={{ color: T.accent, fontWeight: 700 }}>{t("circle.readyCollect")}</p>}
       {model.refusal && <p>{t(model.refusal === "full" ? "circle.full" : model.refusal === "closed" ? "circle.closed" : "circle.alreadySeated")}</p>}
       {model.status === "complete" && childrenLoaded && <>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 10, margin: "26px 0" }}>

@@ -17,6 +17,7 @@ export function sharesForCircle(escrows: Iterable<EscrowState>, circleId?: strin
     const returned = settled && (e.status === EscrowStatus.CLAIMED || e.status === EscrowStatus.COMPLETED);
     result.push({ circleId: e.parent, memberPubkey: e.participants[Role.BUYER]!,
       escrowId: lock ? e.id : null, lockedAtSec: lock?.timestamp ?? null,
+      readyToClaim: settled && e.status === EscrowStatus.APPROVED,
       status: !lock ? "reserved" : returned
         ? ((e.resolvedAt ?? e.claim.claimedAt ?? Infinity) < e.chamaCircle!.roundEndSec ? "refunded" : "returned") : "locked" });
   }

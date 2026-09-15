@@ -50,6 +50,7 @@ import {
 import { onchainEscrowAvailable, DEFAULT_ESCROW_MODE, ESCROW_NETWORK_LABEL } from "../../bond-multisig/onchain-escrow.js";
 import {
   TRADE_SLICING_ENABLED,
+  CHAMA_CIRCLES_ENABLED,
 } from "../../escrow-engine/experimental-escrow-features.js";
 import {
   getUserCommunitySlug,
@@ -2037,7 +2038,7 @@ function Step1({
         display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10,
         marginBottom: 20,
       }}>
-        {VERTICALS.map(v => {
+        {VERTICALS.filter(v => CHAMA_CIRCLES_ENABLED || v.id !== "chama").map(v => {
           const active = vertical === v.id;
           const soon = !!v.comingSoon;
           return (

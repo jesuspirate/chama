@@ -1,6 +1,9 @@
 // AssistedCanvas (the guided create/browse canvas) + its satellite components
 // (attention bell, offline bar). Extracted for 6.3.1 — EN is source of truth.
 export const canvas: Record<string, string> = {
+  "canvas.chamaWant": "Save it together",
+  "canvas.chamaWantDesc": "Start a Chama circle — equal shares, everyone completes or everyone is refunded.",
+  "canvas.chamaWantBadge": "THE NAMESAKE",
   // errors / dynamic
   "canvas.enterRailDetails": "Enter your {rail} payment details.",
   "canvas.detailsSaveFailed": "Those payment details could not be saved.",

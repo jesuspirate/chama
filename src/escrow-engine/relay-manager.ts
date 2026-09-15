@@ -730,7 +730,8 @@ export class RelayManager {
             // Rejected or timed out on Chama's own relay: keep it for the
             // next connect rather than letting a public-relay accept stand
             // in for durability.
-            if (!result.accepted) this.queuePreferredRepublish(event);
+            if (result.accepted) this.notePreferredAccepted(event.id);
+            else this.queuePreferredRepublish(event);
           }
 
           if (!resolvedEarly && result.accepted) {
@@ -858,6 +859,26 @@ export class RelayManager {
   private preferredRepublishQueue: Map<string, { event: NostrEvent; queuedAt: number }> = new Map();
   private preferredFlushInFlight = false;
 
+  /** Event ids the PREFERRED relay has explicitly ACCEPTED this session.
+   *  The durable-claim queue asks this before retiring a persisted claim —
+   *  "gone from the republish queue" is ambiguous (TTL and the cap also
+   *  remove), acceptance is not. Insertion-ordered; trimmed at the cap. */
+  private readonly preferredAcceptedIds = new Set<string>();
+
+  private notePreferredAccepted(eventId: string): void {
+    if (!eventId) return;
+    this.preferredAcceptedIds.add(eventId);
+    if (this.preferredAcceptedIds.size > 500) {
+      const oldest = this.preferredAcceptedIds.values().next().value;
+      if (oldest !== undefined) this.preferredAcceptedIds.delete(oldest);
+    }
+  }
+
+  /** Has the preferred relay accepted this event id this session? */
+  wasAcceptedByPreferred(eventId: string): boolean {
+    return this.preferredAcceptedIds.has(eventId);
+  }
+
   /** Queue an event for the preferred relay. Idempotent per event id; drops
    *  the oldest entry when full so a long offline stretch can't grow forever. */
   private queuePreferredRepublish(event: NostrEvent): void {
@@ -892,6 +913,7 @@ export class RelayManager {
         const result = await this.publishToSingleRelay(relay, entry.event);
         if (result.accepted) {
           this.preferredRepublishQueue.delete(id);
+          this.notePreferredAccepted(entry.event.id);
           restored++;
           consecutiveFailures = 0;
           continue;

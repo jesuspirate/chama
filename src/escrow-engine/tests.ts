@@ -9667,6 +9667,13 @@ import {
   ROOM_PRESENCE_RECENT_SEC,
 } from "../ui/decisions.js";
 import { pickArbiterFromPool, pickPreferredArbiter } from "../arbiters/pool.js";
+import {
+  ackDurableClaim,
+  enqueueDurableClaim,
+  readDurableClaims,
+  DURABLE_CLAIM_MAX_AGE_SEC,
+  MAX_DURABLE_CLAIMS,
+} from "./durable-claim-queue.js";
 // BP_FEDERATION_INVITE / BLF_FEDERATION_INVITE already imported above
 // from federation-config (which re-exports from federation-invites).
 
@@ -27340,6 +27347,62 @@ console.log("\n── ROOM PRESENCE ──");
   const me = tradeRoomPresence(room(), BUYER_PK.toUpperCase(), NOW);
   assert(me[0]?.isYou === true && me[1]?.isYou === false,
     "you are matched case-insensitively, so the room never shows you as a stranger");
+}
+
+// ── DURABLE CLAIM QUEUE (runway item 1 — the zombie-claim factory) ──────
+// A claim redeemed but never published must survive crash/refresh/app-kill:
+// persisted before the first publish attempt, retired only on the preferred
+// relay's explicit accept.
+console.log("\n── DURABLE CLAIM QUEUE ──");
+{
+  const NOW = 1_900_000_000;
+  const mem = (): { get(): string | null; set(v: string): void; raw(): string | null } => {
+    let value: string | null = null;
+    return { get: () => value, set: (v: string) => { value = v; }, raw: () => value };
+  };
+  const ev = (id: string) => ({ id, kind: 38105, created_at: NOW, tags: [], content: "", pubkey: "p", sig: "s" } as unknown as NostrEvent);
+
+  const store = mem();
+  enqueueDurableClaim(store, ev("c1"), "esc_1", NOW);
+  assert(readDurableClaims(store, NOW).length === 1
+    && readDurableClaims(store, NOW)[0]!.event.id === "c1",
+    "a signed claim persists verbatim before its first publish attempt");
+
+  enqueueDurableClaim(store, ev("c1"), "esc_1", NOW + 10);
+  assert(readDurableClaims(store, NOW + 10).length === 1,
+    "re-enqueueing the same event id is idempotent — retries never fork the queue");
+
+  enqueueDurableClaim(store, ev("c2"), "esc_2", NOW + 20);
+  ackDurableClaim(store, "c1");
+  const afterAck = readDurableClaims(store, NOW + 20);
+  assert(afterAck.length === 1 && afterAck[0]!.event.id === "c2",
+    "the preferred relay's accept retires exactly that claim, nothing else");
+
+  ackDurableClaim(store, "ghost");
+  assert(readDurableClaims(store, NOW + 20).length === 1,
+    "acking an unknown id is a no-op, not a wipe");
+
+  const aged = mem();
+  enqueueDurableClaim(aged, ev("old"), "esc_old", NOW);
+  assert(readDurableClaims(aged, NOW + DURABLE_CLAIM_MAX_AGE_SEC).length === 1
+    && readDurableClaims(aged, NOW + DURABLE_CLAIM_MAX_AGE_SEC + 1).length === 0,
+    "the 30-day ceiling ages a hopeless claim out — recovery past that is trade-index rehydration");
+
+  const full = mem();
+  for (let i = 0; i < MAX_DURABLE_CLAIMS + 5; i++) enqueueDurableClaim(full, ev(`b${i}`), `esc_${i}`, NOW + i);
+  const capped = readDurableClaims(full, NOW + 100);
+  assert(capped.length === MAX_DURABLE_CLAIMS
+    && !capped.some(e => e.event.id === "b0")
+    && capped.some(e => e.event.id === `b${MAX_DURABLE_CLAIMS + 4}`),
+    "the cap drops the OLDEST entries and always keeps the newest claim");
+
+  const broken = mem();
+  broken.set("{not json");
+  assert(readDurableClaims(broken, NOW).length === 0,
+    "corrupt storage degrades to an empty queue, never a crash in the claim path");
+  enqueueDurableClaim(broken, ev("fresh"), "esc_f", NOW);
+  assert(readDurableClaims(broken, NOW).length === 1,
+    "and the queue heals itself on the next enqueue");
 }
 
 // ══════════════════════════════════════════════════════════════════════════

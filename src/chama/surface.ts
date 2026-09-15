@@ -25,6 +25,11 @@ export const MANUAL_REFUND_GRACE_SEC = 600;
 export type CircleMove =
   /** Take a seat, or finish funding one already reserved. */
   | "lock"
+  /** REFUND resolved, redemption pending: the member collects their sats.
+      The one move that actually brings the money home — found missing at
+      the first real completion (Jet, 2026-09-14): "Your sats are coming
+      back" was a promise with no hands. */
+  | "collect"
   /** Seated and waiting on others — help the circle fill. */
   | "invite"
   /** Filled and running. Calm on purpose: there is nothing to do. */
@@ -124,6 +129,9 @@ export function circleSurfaceModel(
 
   if (progress.status === "refund-due") {
     if (seat?.status !== "locked") return { ...base, move: "none" };
+    // Resolution already landed: the manual REFUND vote is moot — the only
+    // thing left is to take the sats.
+    if (seat.readyToClaim) return { ...base, move: "collect" };
     const sinceFailure = nowSec - circle.fillDeadlineSec;
     return {
       ...base,
@@ -132,7 +140,9 @@ export function circleSurfaceModel(
   }
 
   // complete
-  if (seat?.status === "locked") return { ...base, move: "returning" };
+  if (seat?.status === "locked") {
+    return { ...base, move: seat.readyToClaim ? "collect" : "returning" };
+  }
   return { ...base, move: isHost ? "next-round" : "none" };
 }
 

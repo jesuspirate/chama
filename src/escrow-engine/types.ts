@@ -349,7 +349,7 @@ export interface CreatePayload {
   /** Category: p2p-trade, bill-pay, marketplace, lending */
   category: string;
   chamaPolicy?: "share-v1";
-  chamaCircle?: Pick<CircleRound, "shareMsats" | "seatThreshold" | "seatCap" | "fillDeadlineSec" | "roundEndSec" | "roundIndex" | "prevCircleId">;
+  chamaCircle?: Pick<CircleRound, "shareMsats" | "seatThreshold" | "seatCap" | "unlisted" | "fillDeadlineSec" | "roundEndSec" | "roundIndex" | "prevCircleId">;
   /** Fulfillment type: "physical" | "service" | "digital". Generic to
    *  every listing per PR 2 call #3. The user picks only for
    *  marketplace; for p2p-trade / bill-pay / lending, handleCreate
@@ -982,7 +982,7 @@ export interface EscrowState {
   /** Category */
   category: string;
   chamaPolicy?: "share-v1";
-  chamaCircle?: Pick<CircleRound, "shareMsats" | "seatThreshold" | "seatCap" | "fillDeadlineSec" | "roundEndSec" | "roundIndex" | "prevCircleId">;
+  chamaCircle?: Pick<CircleRound, "shareMsats" | "seatThreshold" | "seatCap" | "unlisted" | "fillDeadlineSec" | "roundEndSec" | "roundIndex" | "prevCircleId">;
   /** Public payment rails/methods accepted for this listing, when the
    *  seller chose to advertise them at create time. Handle cleartext
    *  still stays private until LOCK. */

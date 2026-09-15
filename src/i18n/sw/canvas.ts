@@ -1,4 +1,7 @@
 export const canvas: Record<string, string> = {
+  "canvas.chamaWant": "Ziweke pamoja",
+  "canvas.chamaWantDesc": "Fungua duara la Chama — sehemu sawa, wote wanakamilisha au wote wanarejeshewa.",
+  "canvas.chamaWantBadge": "JINA LENYEWE",
   "canvas.enterRailDetails": "Weka maelezo yako ya malipo ya {rail}.",
   "canvas.detailsSaveFailed": "Maelezo hayo ya malipo hayakuweza kuhifadhiwa.",
   "canvas.enterAmountAndRail": "Weka kiasi na uchague angalau njia moja ya kulipa.",
