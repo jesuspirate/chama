@@ -939,6 +939,8 @@ export interface NostrEvent {
 export interface ParsedEscrowEvent<T extends EscrowPayload = EscrowPayload> {
   /** Locally resolved parent; never trusted from a wire payload. Revalidated by CREATE. */
   chamaParent?: EscrowState;
+  /** Locally resolved ring-witness share (v1.1); never trusted from a wire payload. Revalidated by CREATE. */
+  chamaWitness?: EscrowState;
   /** Original Nostr event */
   raw: NostrEvent;
   /** Decrypted and parsed payload */

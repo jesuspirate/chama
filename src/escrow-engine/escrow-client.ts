@@ -994,14 +994,44 @@ export class EscrowClient {
 
   private async parseWithChamaContext(raw: NostrEvent, content: string) {
     let parent: EscrowState | undefined;
+    let witness: EscrowState | undefined;
     if (raw.kind === EscrowEventKind.CREATE) {
       try {
         const payload = JSON.parse(content);
-        if (payload?.chamaPolicy === "share-v1" && typeof payload.parent === "string") parent = await this.resolveChamaParent(payload.parent);
+        if (payload?.chamaPolicy === "share-v1" && typeof payload.parent === "string") {
+          parent = await this.resolveChamaParent(payload.parent);
+          // v1.1 ring share: a non-creator witness must be proven by their own
+          // locked share at its deterministic id (host-seat spec task 1 —
+          // readers accept ring shares before any writer produces them).
+          const circle = parent && circleFromEscrow(parent);
+          if (circle && typeof payload.sellerPubkey === "string" && /^[0-9a-f]{64}$/.test(payload.sellerPubkey)
+              && payload.sellerPubkey !== circle.creatorPubkey) {
+            witness = await this.resolveRingWitness(payload.parent, payload.sellerPubkey, circle.roundIndex);
+          }
+        }
       } catch { /* Structural parser reports malformed JSON below. */ }
     }
     const id = raw.tags.find(t => t[0] === TAGS.ESCROW_ID)?.[1] ?? "";
-    return parseEscrowEvent(raw, content, true, { parent, state: this.states.get(id) });
+    return parseEscrowEvent(raw, content, true, { parent, witness, state: this.states.get(id) });
+  }
+
+  /** Ring-witness loads in progress. An honest witness chain is a DAG ordered
+   *  by lock time and terminates at a creator-witnessed bootstrap share; a
+   *  cycle is only constructible by an attacker, so on re-entry we return
+   *  undefined and let the CREATE gate reject that share. */
+  private readonly witnessResolutionStack = new Set<string>();
+
+  private async resolveRingWitness(parentId: string, witnessPubkey: string, roundIndex: number): Promise<EscrowState | undefined> {
+    const id = shareEscrowId(parentId, witnessPubkey, roundIndex);
+    const cached = this.states.get(id);
+    if (cached) return cached;
+    if (this.witnessResolutionStack.has(id)) return undefined;
+    this.witnessResolutionStack.add(id);
+    try {
+      return (await this.loadEscrow(id)) ?? undefined;
+    } finally {
+      this.witnessResolutionStack.delete(id);
+    }
   }
 
   /** Circles whose children refresh COMPLETED in this session. Only these

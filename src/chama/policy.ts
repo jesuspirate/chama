@@ -3,7 +3,7 @@ import { sha256 } from "@noble/hashes/sha2.js";
 import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils.js";
 import { validateCircleRound } from "./circle.js";
 import type { CircleRound } from "./types.js";
-import { EscrowStatus, Role, type CreatePayload, type EscrowState } from "../escrow-engine/types.js";
+import { EscrowEventKind, EscrowStatus, Role, type CreatePayload, type EscrowState } from "../escrow-engine/types.js";
 
 export function shareEscrowId(circleId: string, memberPubkey: string, roundIndex: number): string {
   return bytesToHex(sha256(utf8ToBytes(JSON.stringify(["chama-share-v1", circleId, memberPubkey.toLowerCase(), roundIndex]))));
@@ -17,7 +17,7 @@ export function circleFromEscrow(state: EscrowState): CircleRound | null {
 }
 
 /** Shared parser/reducer gate. Cross-chain context must come from a replayed parent. */
-export function chamaCreateError(p: CreatePayload, id: string, pubkey: string, at: number, parent?: EscrowState): string | null {
+export function chamaCreateError(p: CreatePayload, id: string, pubkey: string, at: number, parent?: EscrowState, witness?: EscrowState): string | null {
   if (p.category !== "chama" && p.category !== "chama-share" && p.chamaPolicy === undefined && p.chamaCircle === undefined) return null;
   for (const pool of [p.communityArbiters, p.bondedArbiters]) {
     if (pool !== undefined && (!Array.isArray(pool) || !pool.every(pk => typeof pk === "string" && /^[0-9a-f]{64}$/.test(pk)))) return "Invalid circle arbiter pool";
@@ -43,7 +43,21 @@ export function chamaCreateError(p: CreatePayload, id: string, pubkey: string, a
   if (p.amountMsats !== circle.shareMsats) return "Share amount must equal circle share amount";
   if (at < circle.createdAt || at >= circle.fillDeadlineSec || at + p.expirySeconds !== circle.roundEndSec) return "Share must use the circle's fixed deadlines";
   if (id !== shareEscrowId(parent.id, pubkey, circle.roundIndex)) return "Share id must be deterministic";
-  if (!/^[0-9a-f]{64}$/.test(pubkey) || p.sellerPubkey !== circle.creatorPubkey || pubkey === p.sellerPubkey) return "Share must seat distinct member and creator";
+  if (!/^[0-9a-f]{64}$/.test(pubkey) || typeof p.sellerPubkey !== "string" || !/^[0-9a-f]{64}$/.test(p.sellerPubkey) || pubkey === p.sellerPubkey) return "Share must seat distinct member and witness";
+  if (p.sellerPubkey !== circle.creatorPubkey) {
+    // v1.1 ring share (host-seat spec, task 1: readers first, writers later).
+    // A non-creator witness is legal only when they are a MEMBER whose own
+    // share in this circle locked before this share was created — proven by
+    // the witness escrow at its deterministic id. This keeps the invariant
+    // the old member≠creator law protected: nobody holds two SSS keys to any
+    // escrow, and every witness is themselves locked into the same round.
+    if (!witness) return "Ring witness share is required";
+    if (witness.id !== shareEscrowId(parent.id, p.sellerPubkey, circle.roundIndex)) return "Ring witness share id mismatch";
+    if (witness.chamaPolicy !== "share-v1" || witness.parent !== parent.id) return "Ring witness must hold a share in this circle";
+    if (witness.participants[Role.BUYER] !== p.sellerPubkey) return "Ring witness must own their share";
+    const witnessLock = witness.eventChain.find(e => e.kind === EscrowEventKind.LOCK);
+    if (!witnessLock || witnessLock.timestamp > at) return "Ring witness must lock before witnessing";
+  }
   if (p.mintUrl !== parent.mintUrl || (p.community ?? null) !== parent.community || p.fed !== (parent.eventChain[0].payload as CreatePayload).fed || p.fedPrefix !== (parent.eventChain[0].payload as CreatePayload).fedPrefix) return "Share federation/community must match parent";
   if (JSON.stringify(p.communityArbiters ?? []) !== JSON.stringify(parent.communityArbiters) || JSON.stringify(p.bondedArbiters ?? []) !== JSON.stringify(parent.bondedArbiters ?? [])) return "Share arbiter pool must match parent";
   if (!pickPreferredArbiter(p.communityArbiters ?? [], p.bondedArbiters ?? [], id, [pubkey, p.sellerPubkey!])) return "Share requires a distinct pool arbiter";

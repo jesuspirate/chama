@@ -209,3 +209,26 @@ coldSeam.relayManager.fetchEscrowEvents = async () => [vote(locked, R.SELLER, SE
 const coldLoaded = await cold.loadEscrow(shareId);
 assert.equal(coldLoaded?.status, S.LOCKED, "invalid RELEASE cannot hide a recoverable share during cold hydration");
 console.log("Chama running-round and cold-hydration regressions passed.");
+
+// ── v1.1 ring shares (host-seat spec task 1: readers first) ───────────────
+const MEMBER2 = "66".repeat(32);
+const ringId = shareEscrowId(ID, MEMBER2, 1);
+const ringPayload: CreatePayload = { ...sharePayload, sellerPubkey: BUYER, createdAt: T + 30, expirySeconds: END - T - 30 };
+const makeRing = (p = ringPayload, witness: EscrowState | null = locked) =>
+  ({ ...event(K.CREATE, p, MEMBER2, shareEscrowId(ID, MEMBER2, 1), p.createdAt), chamaParent: parent, ...(witness ? { chamaWitness: witness } : {}) });
+const ringEvent = makeRing();
+const ring = accepted(null, ringEvent);
+assert.equal(ring.participants[R.BUYER], MEMBER2);
+assert.equal(ring.participants[R.SELLER], BUYER, "witness seated as counterparty");
+assert(parseEscrowEvent(ringEvent.raw, ringEvent.raw.content, true, { parent, witness: locked }).ok, "parser accepts a witnessed ring share");
+assert(!applyEvent(null, makeRing(ringPayload, null)).ok, "ring share without witness proof rejected");
+assert(!parseEscrowEvent(ringEvent.raw, ringEvent.raw.content, true, { parent }).ok, "parser rejects ring share without witness");
+assert(!applyEvent(null, makeRing(ringPayload, share)).ok, "unlocked witness rejected");
+const early = { ...ringPayload, createdAt: T + 15, expirySeconds: END - T - 15 };
+assert(!applyEvent(null, makeRing(early)).ok, "witness must lock before the share is created");
+assert(!applyEvent(null, { ...makeRing({ ...ringPayload, sellerPubkey: ARBITER }), chamaWitness: locked }).ok, "witness id must match the named witness");
+assert(!applyEvent(null, makeRing(ringPayload, { ...locked, participants: { ...locked.participants, [R.BUYER]: SELLER } })).ok, "witness must own their share");
+assert(!applyEvent(null, { ...event(K.CREATE, { ...ringPayload, sellerPubkey: MEMBER2 }, MEMBER2, ringId, ringPayload.createdAt), chamaParent: parent, chamaWitness: locked }).ok, "buyer may never witness their own share");
+assert(!applyEvent(null, makeRing(ringPayload, parent)).ok, "circle parent is not a witness share");
+assert([ARBITER, BACKUP].includes(ring.participants[R.ARBITER]!));
+assert.equal(sharesForCircle([locked, ring]).length, 2, "ring share counts toward the circle");

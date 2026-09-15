@@ -71,10 +71,28 @@ always the creator:
    would present thin views to old clients; the viewComplete guard prevents
    wrongful refund-due declarations, but do not lean on it as a plan.
 
-## Open questions for Jet before implementation
+## Decisions (Jet, 2026-09-15)
 
-- Host-locks-last: acceptable ceremony, or should a solo host be able to
-  open + lock immediately with the arbiter as bootstrap witness?
-- Ring reassignment when a witness's seat lapses pre-lock: re-ring at fill
-  deadline, or fix witnesses only at lock time (recommended: at lock time,
-  immutable after).
+- HOST-LOCKS-LAST: approved. No arbiter-bootstrap for solo hosts. The host
+  needs at least one locked member before taking a seat. Product framing:
+  the host watches members lock (and accrue early-lock standing) first; in
+  v2 rotation, turn order following lock order also pays the host out LAST
+  — a leadership/trust gesture worth marketing.
+- WITNESS FIXED AT SHARE CREATE, immutable after. The witness sits in the
+  CREATE payload (sellerPubkey), so this is also the only shape the chain
+  can verify deterministically. No re-ringing on lapse: a lapsed witness
+  was already locked when chosen (readers require the witness's LOCK to
+  predate the ring share's CREATE), and locks don't unwind before round end.
+- DIRECTION for next release: host+member unified — the person who opens a
+  circle saves in it like everyone else. Ring witnessing is the standard
+  share shape, creator-witnessing remains the bootstrap for the first share.
+
+## Status
+
+- Task 1 (reader relaxation) LANDED on main post-6.4.0: chamaCreateError
+  accepts a ring share only with witness proof (witness's own share at its
+  deterministic id, owned by them, LOCKed before the ring share's CREATE).
+  Witness context threads via ParsedEscrowEvent.chamaWitness / parser
+  context.witness; escrow-client resolves it like the parent, with a cycle
+  guard. Writer side (shareCreatePayload counterparty param, canTakeSeat
+  host rule, ring assignment UI) is the next-release feature.
