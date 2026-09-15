@@ -41,14 +41,44 @@ export function rotationOrder(circle: Pick<CircleRound, "circleId" | "creatorPub
   return order;
 }
 
-/** Collector for the circle at roundIndex r of a sealed rotation. Round 1
- *  is the COMMITMENT round (no collector — the rotation is derived from its
- *  locks); collection rounds run roundIndex 2..N+1, collector = order[r-2].
- *  Null when the cycle has no such round — callers treat that as "no lawful
- *  collector", never as "anyone". */
-export function collectorForRound(order: readonly string[], roundIndex: number): string | null {
+/** THE WEEKLY RACE (spec: Turn order, amended 2026-09-15). Collector for
+ *  the circle at roundIndex r = the fastest LOCKer of round r-1 among the
+ *  sealed members who have not yet collected this cycle, host pinned to the
+ *  final round regardless of speed. Round 1 is the COMMITMENT round (no
+ *  collector). Deterministic: round r opens at round r-1's roundEnd, long
+ *  after round r-1's fill window closed, so every ranking timestamp is
+ *  final on-chain when the collector must be named. Ties break by pubkey.
+ *  Null means "no lawful collector", never "anyone". */
+export function collectorForRound(
+  round1Id: string,
+  order: readonly string[],
+  hostPubkey: string,
+  shares: readonly EscrowState[],
+  roundIndex: number,
+): string | null {
   if (!Number.isSafeInteger(roundIndex) || roundIndex < 2 || roundIndex > order.length + 1) return null;
-  return order[roundIndex - 2] ?? null;
+  const host = hostPubkey.toLowerCase();
+  const hostSeated = order.includes(host) ? host : null;
+  const collected = new Set<string>();
+  let collector: string | null = null;
+  for (let r = 2; r <= roundIndex; r++) {
+    if (hostSeated && r === order.length + 1) { collector = collected.has(hostSeated) ? null : hostSeated; break; }
+    const prevId = r === 2 ? round1Id.toLowerCase() : roundCircleId(round1Id, r - 1);
+    const prevPolicy = r === 2 ? "share-v1" : "share-v2";
+    const ranked: { m: string; at: number }[] = [];
+    for (const e of shares) {
+      if (e.chamaPolicy !== prevPolicy || e.parent?.toLowerCase() !== prevId) continue;
+      const lock = e.eventChain.find(ev => ev.kind === EscrowEventKind.LOCK);
+      const m = e.participants[Role.BUYER]?.toLowerCase();
+      if (!lock || !m || !order.includes(m)) continue;
+      ranked.push({ m, at: lock.timestamp });
+    }
+    ranked.sort((a, b) => a.at - b.at || (a.m < b.m ? -1 : 1));
+    collector = ranked.find(x => !collected.has(x.m) && x.m !== hostSeated)?.m ?? null;
+    if (!collector) return null;
+    collected.add(collector);
+  }
+  return collector;
 }
 
 /** THE DETERMINISTIC-OUTCOME LAW (spec §what replaces REFUND-only).

@@ -59,7 +59,8 @@ function chainedRoundError(c: CircleRound, id: string, pubkey: string, at: numbe
   if (at >= c.fillDeadlineSec) return "This rotation round's fill window has passed";
   if (c.roundIndex > 2) {
     const prevId = roundCircleId(round1Id, c.roundIndex - 1);
-    const prevCollector = collectorForRound(order, c.roundIndex - 1)!;
+    const prevCollector = collectorForRound(round1Id, order, round1.creatorPubkey, cycle.shares, c.roundIndex - 1);
+    if (!prevCollector) return "The previous round has no lawful collector";
     const lockedMembers = new Set(cycle.shares
       .filter(e => e.chamaPolicy === "share-v2" && e.parent === prevId && e.eventChain.some(ev => ev.kind === EscrowEventKind.LOCK))
       .map(e => e.participants[Role.BUYER]!.toLowerCase()));
@@ -108,7 +109,7 @@ export function chamaCreateError(p: CreatePayload, id: string, pubkey: string, a
     const rot = rotationFromCycle(cycle);
     if (typeof rot === "string") return rot;
     if (parent.id !== roundCircleId(rot.round1Id, circle.roundIndex)) return "Rotation share must sit in its cycle's round";
-    const collector = collectorForRound(rot.order, circle.roundIndex);
+    const collector = collectorForRound(rot.round1Id, rot.order, rot.round1.creatorPubkey, cycle.shares, circle.roundIndex);
     if (!collector || p.sellerPubkey !== collector) return "Rotation share must pay the round's collector";
     if (!rot.order.includes(pubkey.toLowerCase())) return "Only sealed members lock rotation shares";
   } else if (p.sellerPubkey !== circle.creatorPubkey) {
@@ -159,7 +160,7 @@ export function chamaOutcomeError(state: EscrowState, outcome: Outcome, at: numb
   const rot = rotationFromCycle(cycle);
   if (typeof rot === "string") return rot;
   const circle = state.chamaCircle!;
-  const collector = collectorForRound(rot.order, circle.roundIndex);
+  const collector = collectorForRound(rot.round1Id, rot.order, rot.round1.creatorPubkey, cycle.shares, circle.roundIndex);
   if (!collector || !state.parent || state.parent !== roundCircleId(rot.round1Id, circle.roundIndex)) return "Rotation share is not part of this cycle";
   const expected = rot.order.filter(m => m !== collector);
   const locked = new Set(cycle.shares

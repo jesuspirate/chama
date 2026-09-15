@@ -75,13 +75,33 @@ collector receives exactly 40,000 = (N-1) × share. EVERY payday is
 identical. Per member per cycle: 4 × 10,000 paid in, 40,000 collected
 once — net zero, with the lump arriving in your round.
 
-### Turn order: lock order, host last
+### Turn order: THE WEEKLY RACE (amended 2026-09-15, Jet)
 
-The rotation is the round-1 lock order — first to lock collects first —
-with the host pinned LAST regardless (hosts lock last, hosts collect last:
-the leadership gesture, decided 2026-09-15). Chain-derived from round-1
-LOCK timestamps; no new events needed. Collector for circle roundIndex r
-(r ≥ 2) = orderedMembers[r-2]; round 1 has NO collector.
+The queue is not sealed once — it re-runs every round. Collector for
+circle roundIndex r (r ≥ 2) = the FASTEST LOCKER OF ROUND r-1 among the
+sealed members who have not yet collected this cycle, host excluded until
+the final round (hosts collect last, regardless of speed — the leadership
+gesture survives the race). Round 1 has NO collector; round 2's collector
+is therefore the fastest commitment locker, and from then on every round
+is a fresh race: your queue position is bought with exactly one currency,
+how fast you locked THIS week. Ties break by pubkey.
+
+Why this is lawful with zero new machinery: round r+1 opens at round r's
+roundEnd, and round r's fill window closed long before — every LOCK
+timestamp is final and on-chain when the next collector must be named.
+Deterministic for every client, no negotiation event exists (order-swap
+arguments are structurally unexpressible), nobody collects twice (the
+candidate pool shrinks), and fast fills — the classic ROSCA liveness
+risk — become the thing that pays. Standing alignment is free: early
+locks already mint the punctuality bonus; now they buy position too.
+
+KNOWN BOUND, accepted for v2: Nostr created_at is self-declared, so a
+cheating client can backdate a LOCK toward the round-open second. This
+buys AT MOST an earlier slot (never amounts, never a second collection,
+never a release the law forbids). v1 punctuality standing already accepts
+the same exposure. Dashboards may expose relay receipt lag socially;
+small circles police the rest. Do not pretend the clock is stronger than
+it is anywhere in product copy.
 
 ### The share, v2: the collector sits in the seller seat
 
