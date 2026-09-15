@@ -139,15 +139,22 @@ standing engine in the design, for the person who convened it.
 - No partial pots, no variable share amounts, no mid-cycle joins.
 - No covenant claims: bearer ecash outside the protocol stays bearer ecash.
 
-## Open questions for Jet
+## Decisions (Jet, 2026-09-15 — all five sealed)
 
-1. COLLECT_WINDOW_SEC = 7 days after roundEnd before an unclaimed pot
-   refunds back to the members — right length?
-2. Should the collector ALSO lock a share in their own round (traditional
-   chamas often do; it fattens the pot but their own share is a wash and
-   it would break buyer ≠ seller)? Recommended: collector sits out.
-3. Round cadence: round r+1's funding window opens at round r's
-   roundEndSec — immediate weekly rhythm, or a grace gap?
-4. Cycle failure = cycle ends (recommended, spec above) vs one retry round
-   for the failed slot?
-5. Post-collection sacrifice-round standing mint at maximum bonus — agreed?
+1. COLLECT_WINDOW_SEC = 7 days. Tighten later only if it proves a risk.
+2. Collector SITS OUT their own round. The traditional everyone-pays ritual
+   was social proof for chains that had no chain; ours does. Buyer ≠ seller
+   preserved structurally, no self-payment round-trip.
+3. Round r+1 opens IMMEDIATELY at round r's roundEndSec. "Mining a block
+   kickstarts the new race" (Jet). The fill window is the built-in grace;
+   an idle gap would only delay everyone's payday.
+4. A failed fill ENDS the cycle. No retry round. Members who still locked
+   earn exactly the standing their sats sat for — the standard mint, no
+   sweetener (loot is the motive; the record just must not treat those who
+   showed up like those who didn't). No-shows take the burn.
+5. SACRIFICE-ROUND MINT: a member who locks in any round AFTER their own
+   collection earns the punctuality bonus at its MAXIMUM regardless of when
+   in the window they lock. Post-payday locking is the only act with zero
+   financial motive, hence the strongest possible promise-keeping evidence,
+   hence pointed at the exact spot every real-world chama dies. "The only
+   weapon we have" (Jet).
