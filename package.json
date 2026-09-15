@@ -12,7 +12,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "android:sync": "npm run build && npx cap sync android",
-    "test": "npx tsx src/escrow-engine/tests.ts && npx tsx src/escrow-engine/tranche-plan.tests.ts && npx tsx src/escrow-engine/slice-policy.tests.ts && npx tsx src/escrow-engine/slice-create-gate.tests.ts && npx tsx src/escrow-engine/slice-funding-loop.tests.ts && npx tsx src/payments/ecash-qr.tests.ts && npx tsx src/fedimint/native-bridge-adapter.tests.ts && npx tsx src/notifications/deep-link.tests.ts && npx tsx src/guided/tests.ts && npx tsx src/chip-in/tests.ts && npx tsx src/stack/tests.ts && npx tsx src/chama/tests.ts && npx tsx src/chama/ui-wiring.tests.ts && npx tsx src/escrow-engine/chama-gate.tests.ts",
+    "test": "npx tsx src/escrow-engine/tests.ts && npx tsx src/escrow-engine/tranche-plan.tests.ts && npx tsx src/escrow-engine/slice-policy.tests.ts && npx tsx src/escrow-engine/slice-create-gate.tests.ts && npx tsx src/escrow-engine/slice-funding-loop.tests.ts && npx tsx src/payments/ecash-qr.tests.ts && npx tsx src/fedimint/native-bridge-adapter.tests.ts && npx tsx src/notifications/deep-link.tests.ts && npx tsx src/guided/tests.ts && npx tsx src/chip-in/tests.ts && npx tsx src/stack/tests.ts && npx tsx src/chama/tests.ts && npx tsx src/chama/ui-wiring.tests.ts && npx tsx src/chama/rotation.tests.ts && npx tsx src/escrow-engine/chama-gate.tests.ts",
     "typecheck": "tsc --noEmit",
     "repo:hygiene": "./scripts/check-repo-hygiene.sh",
     "audit:deps": "node scripts/dependency-audit.mjs",

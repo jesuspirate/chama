@@ -47,6 +47,13 @@ export const CHAMA_CIRCLES_ENABLED = true;
 // arbiter bootstrap), witness fixed at share CREATE, immutable.
 export const CHAMA_RING_WRITER_ENABLED = false;
 
+// Rotation v2 — collection (docs/chama-rotation-v2-spec.md). OFF gates the
+// WRITER only: no client creates share-v2 escrows or chained-round circles
+// until the v2 READERS (the deterministic-outcome law) have shipped and the
+// fleet has updated. Flips in the same release as CHAMA_RING_WRITER_ENABLED
+// — one sealed upgrade, decided with Jet 2026-09-15.
+export const CHAMA_ROTATION_ENABLED = false;
+
 export function isSlicedTradeShape(state: {
   sliceCount?: number;
   tranche?: unknown;
