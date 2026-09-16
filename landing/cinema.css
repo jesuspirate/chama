@@ -54,7 +54,7 @@
 .role .person-name { position:absolute;top:128px;left:50%;transform:translateX(-50%);font-size:14px;font-weight:600;padding:0;background:none; }
 .role small { position:absolute;top:150px;left:50%;transform:translateX(-50%);white-space:nowrap;font-size:10px;color:#63705a; }
 .role-buyer { left:17.5%;top:44.16%; }.role-seller { left:82.5%;top:44.16%; }.role-arbiter { left:50%;top:13.33%;opacity:var(--arbiter-opacity);transform:translate(-50%,-50%); }
-.portrait-buyer { background-position:2% 28%; }.portrait-seller { background-position:99% 26%; }.portrait-arbiter { background-position:65% 23%; }
+.portrait-buyer { background-position:8% 27%; }.portrait-seller { background-position:94% 28%; }.portrait-arbiter { background-position:65% 23%; }
 .role-arbiter .role-portrait { width:96px;height:96px; }.role-arbiter .person-name { top:100px; }.role-arbiter small { top:120px; }
 .person-check { position:absolute;right:7px;top:79px;width:27px;height:27px;background:#456644;color:#fff8e9;border:3px solid #ececdf;border-radius:50%;font-size:14px;display:grid;place-items:center; }
 .buyer-check { opacity:var(--buyer-confirm); }.seller-check { opacity:var(--seller-confirm); }
@@ -123,3 +123,74 @@
 
 @media(max-width:760px){.chapter-copy{position:static}.journey-chapter{padding:55px 0 65px}}
 @media(min-width:761px){#trade{min-height:160svh}}
+
+/* Shared appearance and original Chama portal treatment. */
+:root{--purple:#a855f7;--teal:#15b8a6}
+    @property --portal-angle {
+      syntax: "<angle>";
+      inherits: true;
+      initial-value: 0deg;
+    }
+    .button.enter {
+      --portal-angle: 0deg;
+      position: relative;
+      isolation: isolate;
+      color: #fff;
+      border: 2px solid transparent;
+      background:
+        linear-gradient(105deg, rgba(255,255,255,.12), transparent 38%, rgba(255,255,255,.06)) padding-box,
+        linear-gradient(#171616, #171616) padding-box,
+        conic-gradient(from var(--portal-angle), var(--orange), var(--purple), var(--teal), var(--orange)) border-box;
+      box-shadow: 0 10px 26px rgba(19,18,15,.20), inset 0 1px 0 rgba(255,255,255,.12);
+      animation: portal-turn 5.8s linear infinite;
+    }
+    .button.enter::before {
+      content: "";
+      position: absolute;
+      inset: -7px;
+      z-index: -1;
+      border-radius: inherit;
+      background: conic-gradient(from var(--portal-angle), var(--orange), var(--purple), var(--teal), var(--orange));
+      filter: blur(11px);
+      opacity: .42;
+      pointer-events: none;
+      animation: portal-breathe 2.9s ease-in-out infinite alternate;
+    }
+    .button.enter:hover {
+      box-shadow: 0 15px 34px rgba(19,18,15,.24), inset 0 1px 0 rgba(255,255,255,.16);
+    }
+    @keyframes portal-turn {
+      to { --portal-angle: 360deg; }
+    }
+    @keyframes portal-breathe {
+      from { opacity: .28; transform: scale(.97); }
+      to { opacity: .62; transform: scale(1.04); }
+    }
+
+.theme-toggle{flex:none;display:grid;place-items:center;width:38px;height:38px;border:1px solid currentColor;border-radius:50%;background:transparent;color:inherit;cursor:pointer;font-size:20px}
+.theme-toggle:hover{background:#8882}
+.nav .button.enter,.button.enter{color:#fff}
+.quiet-link.button{display:flex;margin-top:22px;width:fit-content}
+.circle-art{width:min(36vw,500px);height:auto;aspect-ratio:1;right:40px;top:30px;border:0;box-shadow:none}
+.circle-art img{width:100%;height:100%;object-fit:contain}
+.circle-art i{transform:translate(-50%,-50%) rotate(calc(var(--i)*60deg)) translateY(calc(min(18vw,250px) * -1));width:27px;height:27px;border-width:7px;box-shadow:0 0 20px #f6a23b45}
+html[data-theme=dark]{color-scheme:dark;--paper:#11100e;--ink:#f4f0e8;--muted:#b1b3a8;--line:#ffffff24}
+html[data-theme=dark] .nav.past-cinema{background:#11100ef5}
+html[data-theme=dark] .journey{background:#1b211b}
+html[data-theme=dark] .role-portrait{border-color:#282e26}
+html[data-theme=dark] .coordinator{background:#1b211b}
+html[data-theme=dark] :is(.role small,.coordinator small,.intent-card small,.chapter-copy>p:not(.chapter-number),.chapter-caption,.life-card>span){color:var(--muted)}
+html[data-theme=dark] :is(.match-filters,.agreement-pill,.agreement-note,.received small){color:#b6cda7}
+html[data-theme=dark] .journey-nav a{color:#abb8a0}
+html[data-theme=dark] .journey-nav [aria-current]{color:#f4f0e8}
+html[data-theme=dark] .cash-transfer{background:#2e3b2a}
+html[data-theme=dark] .cash-transfer svg{stroke:#c3d6b6}
+html[data-theme=dark] .cash-transfer small{color:#c3d6b6}
+html[data-theme=dark] .escrow-vault{background:#272b22;border-color:#687159}
+html[data-theme=dark] .escrow-vault svg{stroke:#c1caab}
+html[data-theme=dark] .escrow-vault span{color:#c1caab}
+html[data-theme=dark] .sats-transfer small{color:#eab477}
+html[data-theme=dark] .real-life{background:#1b211b}
+html[data-theme=dark] :is(.story-bridge h2 em,.chapter-number,.trust summary:after){color:#eab477}
+@media(max-width:760px){.nav-actions{gap:10px}.theme-toggle{width:32px;height:32px;font-size:18px}html[data-theme=dark] .journey-nav{background:#1b211b;border-color:var(--line)}html[data-theme=dark] .cinema h1 em{color:#eab477}.circle-art{position:relative;width:min(76vw,360px);height:auto;aspect-ratio:1;right:auto;top:auto;opacity:1;margin:55px auto 0}.circle-art i{transform:translate(-50%,-50%) rotate(calc(var(--i)*60deg)) translateY(clamp(-180px,-38vw,-110px))}.invitation .wrap{overflow:visible}}
+@media(prefers-reduced-motion:reduce){.button.enter,.button.enter::before{animation:none}}

@@ -568,22 +568,22 @@ h2 {
   top:50%;
   transform:rotate(calc(var(--i)*60deg)) translateY(-250px)
 }
-.circle-art i:nth-child(1) {
+.circle-art i:nth-of-type(1) {
   --i:0
 }
-.circle-art i:nth-child(2) {
+.circle-art i:nth-of-type(2) {
   --i:1
 }
-.circle-art i:nth-child(3) {
+.circle-art i:nth-of-type(3) {
   --i:2
 }
-.circle-art i:nth-child(4) {
+.circle-art i:nth-of-type(4) {
   --i:3
 }
-.circle-art i:nth-child(5) {
+.circle-art i:nth-of-type(5) {
   --i:4
 }
-.circle-art i:nth-child(6) {
+.circle-art i:nth-of-type(6) {
   --i:5
 }
 .community {

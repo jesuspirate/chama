@@ -57,6 +57,7 @@ function setLanguage(lang) {
   setPhase(active);
   updateStory();
   filmLabels();
+  syncThemeButton();
   scheduleStory();
   try { localStorage.setItem('chama-landing-language', lang); } catch (_) { /* Optional storage. */ }
 }
@@ -173,3 +174,25 @@ try { const saved = localStorage.getItem('chama-landing-language'); if (saved &&
 setPhase(0);
 filmLabels();
 updateStory();
+
+// Keep the existing Chama theme preference across the redesign.
+function syncThemeButton(){
+  const dark=document.documentElement.dataset.theme==='dark';
+  const labels={en:['Use dark mode','Use light mode'],es:['Usar modo oscuro','Usar modo claro'],fr:['Activer le mode sombre','Activer le mode clair']};
+  const button=document.querySelector('.theme-toggle');
+  button.setAttribute('aria-label',(labels[document.documentElement.lang]||labels.en)[Number(dark)]);
+  button.setAttribute('aria-pressed',String(dark));
+  button.textContent=dark?'☀':'◐';
+  document.querySelector('meta[name="theme-color"]').content=dark?'#11100e':'#f3f0e7';
+}
+document.querySelector('.theme-toggle').addEventListener('click',()=>{
+  const theme=document.documentElement.dataset.theme==='dark'?'light':'dark';
+  document.documentElement.dataset.theme=theme;
+  try{localStorage.setItem('chama-theme',theme)}catch(_){}
+  syncThemeButton();
+});
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change',event=>{
+  try{if(localStorage.getItem('chama-theme'))return}catch(_){}
+  document.documentElement.dataset.theme=event.matches?'dark':'light';syncThemeButton();
+});
+syncThemeButton();
