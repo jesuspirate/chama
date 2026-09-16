@@ -19,7 +19,7 @@ People can exchange sats and fiat, pay community bills, and buy or sell through 
 - **No Chama account server.** Your Nostr identity is the account and relays carry the coordination layer.
 - **Escrow without a Chama custodian.** A locked ecash trade uses three Shamir shares and a 2-of-3 vote outcome across buyer, seller, and community arbiter.
 - **Local payment methods.** Communities can trade around the rails people already use while Bitcoin supplies settlement and finality.
-- **Purpose-built commerce.** Exchange, Community Bill Pay, and Market share one verifiable trade protocol, with Stack coming soon.
+- **Purpose-built commerce.** Exchange, Community Bill Pay, Market, and Chama savings circles share one verifiable trade protocol, with Stack coming soon.
 - **Portable clients.** Chama runs as a web/PWA client, desktop app, Android app, and self-hosted StartOS service.
 - **No idle wallet product.** Chama is an escrow client, not a place to warehouse funds. Complete trades should be claimed or exported promptly.
 
@@ -30,6 +30,35 @@ Chama coordinates trades; it does not promise that a Nostr key recovers bearer e
 Arbiters act only when the trading parties disagree or when an expired trade needs a protocol-defined healing vote. Community arbiter bonds are visible commitments, not custodial balances controlled by Chama.
 
 See [PHILOSOPHY.md](PHILOSOPHY.md) for the product boundaries and [chama-technical-overview.pdf](chama-technical-overview.pdf) for the protocol overview.
+
+## Where circles are going: the merry-go-round
+
+Savings circles shipped in v6.4 as fill-or-refund — everyone locks equal
+shares, and everyone's exact sats come back. That round proved the rails.
+The declared direction (2026-09-16) is the real chama: **rotating
+collection**. Every round the members pay in and ONE member collects the
+whole pot, rotating until everyone has collected once.
+
+- **Round 1 is the handshake.** The commitment round — pure fill-or-refund —
+  seals the member set and starts the race before anyone's money moves
+  sideways.
+- **The weekly race.** Each round's lock speed decides the next collector:
+  lock fast today, collect sooner next week. No negotiated swaps exist in
+  the protocol — order is arithmetic, never privilege. Hosts collect last.
+- **No discretion, anywhere.** The REFUND-only law that protects v1 shares
+  is replaced for collection rounds by a deterministic-outcome law: at
+  every moment, chain-visible fill evidence plus the clock admit exactly
+  one lawful outcome, and every settlement carries its own committed
+  evidence. Arbiters stay mechanical; nobody's seat ever involves judgment.
+- **Standing is the collateral.** Locking after your own payday is the one
+  act with zero financial motive — it mints reputation at the maximum
+  rate. Collecting and then abandoning your circle forfeits all standing
+  at once and leaves a permanent, chain-derived mark.
+
+The complete engine — chained rounds, the race, the outcome law, the
+penalty system — is already in this repository, adversarially reviewed and
+covered by a full-cycle simulation, dark behind feature flags until the
+reader-capable releases reach the fleet. It arrives as **v6.5**.
 
 ## Run locally
 
