@@ -1,4 +1,5 @@
 import { chamaCreateError, chamaOutcomeError } from "../chama/policy.js";
+import { eventIsSim } from "../sim/simMode.js";
 import type { EscrowState } from "./types.js";
 // ══════════════════════════════════════════════════════════════════════════
 // Chama Nostr Escrow Engine — Event Parser
@@ -721,7 +722,7 @@ export function parseEscrowEvent(
   }
 
   if (kind === EscrowEventKind.CREATE) {
-    const message = chamaCreateError(payload as CreatePayload, escrowId, raw.pubkey, raw.created_at, context?.parent, context?.witness, context?.cycle);
+    const message = chamaCreateError(payload as CreatePayload, escrowId, raw.pubkey, raw.created_at, context?.parent, context?.witness, context?.cycle, eventIsSim(raw));
     if (message) return { ok: false, error: { code: "INVALID_CHAMA_CREATE", message, eventId: raw.id } };
   }
   if (context?.state?.chamaPolicy && (kind === EscrowEventKind.VOTE || kind === EscrowEventKind.RESOLVE)) {

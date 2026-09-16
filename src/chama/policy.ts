@@ -76,7 +76,7 @@ function chainedRoundError(c: CircleRound, id: string, pubkey: string, at: numbe
 }
 
 /** Shared parser/reducer gate. Cross-chain context must come from a replayed parent. */
-export function chamaCreateError(p: CreatePayload, id: string, pubkey: string, at: number, parent?: EscrowState, witness?: EscrowState, cycle?: ChamaCycleContext): string | null {
+export function chamaCreateError(p: CreatePayload, id: string, pubkey: string, at: number, parent?: EscrowState, witness?: EscrowState, cycle?: ChamaCycleContext, sim = false): string | null {
   if (p.category !== "chama" && p.category !== "chama-share" && p.chamaPolicy === undefined && p.chamaCircle === undefined) return null;
   for (const pool of [p.communityArbiters, p.bondedArbiters]) {
     if (pool !== undefined && (!Array.isArray(pool) || !pool.every(pk => typeof pk === "string" && /^[0-9a-f]{64}$/.test(pk)))) return "Invalid circle arbiter pool";
@@ -101,7 +101,10 @@ export function chamaCreateError(p: CreatePayload, id: string, pubkey: string, a
       // never a savings circle — review finding 10). Chained rounds inherit
       // the schedule structurally, and a late-but-in-window publication of
       // one must not be rejected for its shrunken remaining window.
-      if (c.roundIndex === 1 && (c.fillDeadlineSec - at < 3600 || c.roundEndSec - c.fillDeadlineSec < 3600)) return "Pot circles need at least an hour to fill and an hour to run";
+      // Sim circles (chama-sim tagged, mock money, hard-partitioned from
+      // prod) compress a week into minutes for test drives — the anti-
+      // farming floor only guards real sats and real standing.
+      if (!sim && c.roundIndex === 1 && (c.fillDeadlineSec - at < 3600 || c.roundEndSec - c.fillDeadlineSec < 3600)) return "Pot circles need at least an hour to fill and an hour to run";
       if (c.roundIndex > 1) {
         const chainError = chainedRoundError(c, id, pubkey, at, cycle);
         if (chainError) return chainError;

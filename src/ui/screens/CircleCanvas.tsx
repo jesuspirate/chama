@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { isSimModeOn } from "../../sim/simMode.js";
 import type { CircleRound } from "../../chama/types.js";
 import { DEFAULT_ROUND_SEC } from "../../chama/types.js";
 import { circleCanvasRound, circleCanvasErrors } from "../../chama/canvas.js";
@@ -81,7 +82,7 @@ export function CircleCanvas({ viewerPubkey, community, mintUrl, initial, onBack
           : t("circle.publicNote", { count: threshold })}</p>
       </QuestionCard></>}
       {step === 2 && <><p style={subStyle()}>{t("circle.twoWeekBound")}</p><QuestionCard>
-        <div className="circle-chips">{[7, 14].map(days => <button type="button" key={days} aria-pressed={duration === days * 86400} onClick={() => setDuration(days * 86400)}>{t(days === 7 ? "circle.oneWeek" : "circle.twoWeeks")}</button>)}</div>
+        <div className="circle-chips">{[7, 14].map(days => <button type="button" key={days} aria-pressed={duration === days * 86400} onClick={() => setDuration(days * 86400)}>{t(days === 7 ? "circle.oneWeek" : "circle.twoWeeks")}</button>)}{isSimModeOn() && <button type="button" aria-pressed={duration === 300} onClick={() => setDuration(300)}>{t("circle.testDrive")}</button>}</div>
         <h2>{t("circle.backBy", { date: date(round.roundEndSec) })}</h2><p className="circle-muted">{t("circle.closesDate", { date: date(round.fillDeadlineSec) })}</p>
       </QuestionCard></>}
       {step === 3 && <div style={reviewStyle()}>

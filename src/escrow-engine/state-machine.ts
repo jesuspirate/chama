@@ -1,4 +1,5 @@
 import { chamaCreateError, chamaOutcomeError, type ChamaCycleContext } from "../chama/policy.js";
+import { eventIsSim } from "../sim/simMode.js";
 // ══════════════════════════════════════════════════════════════════════════
 // Chama Nostr Escrow Engine — State Machine
 // ══════════════════════════════════════════════════════════════════════════
@@ -282,7 +283,7 @@ function checkVoteThreshold(votes: EscrowState["votes"]): {
 
 function handleCreate(event: ParsedEscrowEvent<CreatePayload>): TransitionResult {
   const p = event.payload;
-  const chamaError = chamaCreateError(p, event.escrowId, event.pubkey, event.timestamp, event.chamaParent, event.chamaWitness, event.chamaCycle);
+  const chamaError = chamaCreateError(p, event.escrowId, event.pubkey, event.timestamp, event.chamaParent, event.chamaWitness, event.chamaCycle, eventIsSim(event.raw));
   if (chamaError) return err("INVALID_CHAMA_CREATE", chamaError, event.raw.id);
 
   // Validate required fields

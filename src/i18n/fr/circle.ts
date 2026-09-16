@@ -78,6 +78,7 @@ export const circle: Record<string, string> = {
   "circle.full": "Ce cercle n’a plus de place libre.",
   "circle.hostLocksLast": "L'hôte verrouille en dernier — votre part s'ouvre dès qu'un membre a verrouillé la sienne.",
   "circle.members": "Qui est là",
+  "circle.testDrive": "5 min · essai",
   "circle.roundOf": "Tour {n} sur {total}",
   "circle.payday": "La paie de {name}",
   "circle.yourPayday": "Votre paie !",

@@ -75,3 +75,13 @@ assert.equal(roundOutcomeAt(round, 3, 3, T + 604_800 + COLLECT_WINDOW_SEC), "ref
 assert.equal(roundOutcomeAt(round, 4, 3, T + 604_800), "release");
 assert.equal(roundOutcomeAt(round, 0, 0, T + 604_800), "refund", "a round expecting nobody can only refund");
 console.log("Rotation v2 core: all assertions passed.");
+
+// Canvas: sub-day test-drive rounds get a real (unquantized) fill window.
+import { circleCanvasRound } from "./canvas.js";
+import { validateCircleRound } from "./circle.js";
+const testDrive = circleCanvasRound({ shareSats: 1000, threshold: 2, cap: 3, durationSec: 300,
+  createdAt: T, creatorPubkey: HOST, community: "", mintUrl: "fed1sim", name: "Test drive" });
+assert.equal(testDrive.fillDeadlineSec, T + 120, "40% of five minutes, unquantized");
+assert.equal(testDrive.roundEndSec, T + 300);
+assert.equal(validateCircleRound(testDrive).length, 0, "a five-minute circle is structurally lawful");
+console.log("Sim canvas assertions passed.");

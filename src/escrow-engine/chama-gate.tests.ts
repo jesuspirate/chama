@@ -503,3 +503,14 @@ assert(!applyEvent(null, event(K.CREATE, { ...r1Payload, expirySeconds: 7200,
   assert(calls2.some(([id, o]) => id === p2.id && o === O.RELEASE), "the member watcher co-signs the payday instead");
 }
 console.log("Review-driven regression assertions passed.");
+
+// ── sim circles: a week in five minutes, mock money only ──────────────────
+{
+  const simPayload: CreatePayload = { ...r1Payload, expirySeconds: 300,
+    chamaCircle: { ...r1Payload.chamaCircle!, fillDeadlineSec: T + 120, roundEndSec: T + 300 } };
+  const simEvent = event(K.CREATE, simPayload, SELLER, "f8".repeat(32), T);
+  simEvent.raw.tags.push(["chama-sim", "v1"]);
+  assert(applyEvent(null, simEvent).ok, "a sim-tagged pot circle may compress a week into minutes");
+  assert(!applyEvent(null, event(K.CREATE, simPayload, SELLER, "f9".repeat(32), T)).ok, "the same shape without the sim tag stays floored — real sats keep the hour rule");
+}
+console.log("Sim-circle assertions passed.");
