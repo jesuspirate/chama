@@ -73,7 +73,7 @@ chama-pulse-log.md
 # Local agent memory + internal design briefs — NEVER pushed to the public repo.
 # Keep on disk for Claude/CC continuity; push only if explicitly needed.
 Codex.md
-PHILOSOPHY.md
+PHILOSOPHY-internal.md
 DECISIONS.md
 INVARIANTS.md
 BACKLOG.md
@@ -95,3 +95,4 @@ ncc-cache
 # Sandbox-session scratch (stale git locks moved aside by Claude's VM,
 # which lacks unlink permission) — never ship this.
 /_to_delete/
+docs/PHILOSOPHY.md
