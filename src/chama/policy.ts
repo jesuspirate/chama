@@ -207,3 +207,53 @@ export function shareCreatePayload(parent: EscrowState, nowSec: number,
     communityArbiters: [...parent.communityArbiters], bondedArbiters: [...(parent.bondedArbiters ?? [])],
     expirySeconds: circle.roundEndSec - nowSec, createdAt: nowSec };
 }
+
+/** Rotation share CREATE (writer). Throws with the human reason when the
+ *  caller has no lawful seat; the engine gate re-verifies everything. */
+export function rotationShareCreatePayload(parent: EscrowState, nowSec: number, buyerPubkey: string, cycle: ChamaCycleContext): CreatePayload {
+  const circle = circleFromEscrow(parent);
+  if (!circle || circle.pot !== "rotation-v2" || circle.roundIndex < 2) throw new Error("A rotation round parent is required");
+  const rot = rotationFromCycle(cycle);
+  if (typeof rot === "string") throw new Error(rot);
+  const collector = collectorForRound(rot.round1Id, rot.order, rot.round1.creatorPubkey, cycle.shares, circle.roundIndex);
+  if (!collector) throw new Error("No lawful collector for this round");
+  if (buyerPubkey.toLowerCase() === collector) throw new Error("The collector sits out their own round");
+  if (!rot.order.includes(buyerPubkey.toLowerCase())) throw new Error("Only sealed members lock rotation shares");
+  return { ...shareCreatePayload(parent, nowSec), chamaPolicy: "share-v2", sellerPubkey: collector };
+}
+
+/** The next chained round's deterministic id + CREATE payload, derived
+ *  entirely from the cycle (any member may publish it — spec decision 3:
+ *  the new race starts the moment the previous round ends). Returns a
+ *  human reason when no next round can lawfully open right now. */
+export function nextRotationRoundPayload(cycle: ChamaCycleContext, nowSec: number): { escrowId: string; payload: CreatePayload } | string {
+  const rot = rotationFromCycle(cycle);
+  if (typeof rot === "string") return rot;
+  const { round1Id, round1, order } = rot;
+  let last = 1;
+  for (const state of cycle.circles) {
+    const c = circleFromEscrow(state);
+    if (!c || c.pot !== "rotation-v2" || c.roundIndex < 2) continue;
+    if (state.id === roundCircleId(round1Id, c.roundIndex) && c.roundIndex > last) last = c.roundIndex;
+  }
+  const next = last + 1;
+  if (next > order.length + 1) return "The cycle is complete";
+  const duration = round1.roundEndSec - round1.createdAt;
+  const fillWindow = round1.fillDeadlineSec - round1.createdAt;
+  const start = round1.roundEndSec + (next - 2) * duration;
+  if (nowSec < start) return "The previous round has not ended";
+  if (nowSec >= start + fillWindow) return "The round's fill window has passed";
+  const round1State = cycle.circles.find(st => st.id === round1Id)!;
+  const original = round1State.eventChain[0].payload as CreatePayload;
+  return {
+    escrowId: roundCircleId(round1Id, next),
+    payload: { type: "escrow:create", description: round1.name, category: "chama",
+      chamaCircle: { shareMsats: round1.shareMsats, seatThreshold: order.length - 1, seatCap: order.length - 1,
+        unlisted: true, fillDeadlineSec: start + fillWindow, roundEndSec: start + duration,
+        roundIndex: next, prevCircleId: next === 2 ? round1Id : roundCircleId(round1Id, next - 1), pot: "rotation-v2" },
+      amountMsats: round1.shareMsats, mintUrl: round1.mintUrl, community: round1.community || undefined,
+      fed: original.fed, fedPrefix: original.fedPrefix, platformFeeBps: 0, platformFeePubkey: original.platformFeePubkey,
+      arbiterFeeMsats: 0, communityArbiters: [...round1State.communityArbiters], bondedArbiters: [...(round1State.bondedArbiters ?? [])],
+      expirySeconds: start + duration - nowSec, createdAt: nowSec },
+  };
+}

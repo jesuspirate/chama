@@ -1,4 +1,6 @@
 import { circleProgress } from "./circle.js";
+import { COLLECT_WINDOW_SEC } from "./rotation.js";
+import { CHAMA_ROTATION_ENABLED } from "../escrow-engine/experimental-escrow-features.js";
 import { circleFromEscrow } from "./policy.js";
 import type { CircleShareLock } from "./types.js";
 import { EscrowEventKind, EscrowStatus, Outcome, Role, type EscrowState } from "../escrow-engine/types.js";
@@ -34,6 +36,14 @@ export function createChamaRefundWatcher(deps: {
    *  is a real failed fill rather than a thin view. Absent → the
    *  conservative heuristic below decides. */
   viewComplete?: (circleId: string) => boolean;
+  /** Open the next collection round for a rotation cycle (deterministic id
+   *  — duplicate attempts are structurally harmless). Absent → rounds are
+   *  only opened by hand. */
+  openNextRound?: (roundId: string) => Promise<unknown>;
+  /** Writer flag override for tests; production callers leave it to the
+   *  flag file. Voting on EXISTING v2 shares is never flag-gated (the
+   *  flag-file doctrine: never strand recoverable money). */
+  rotationEnabled?: boolean;
   onError?: (id: string, error: unknown) => void;
 }) {
   let running = false;
@@ -62,6 +72,32 @@ export function createChamaRefundWatcher(deps: {
           if (!state || !canVote(state, pubkey, nowSec, Outcome.REFUND).canVote) continue;
           try { await deps.vote(id, Outcome.REFUND); }
           catch (error) { deps.onError?.(id, error); }
+        }
+        // Rotation cadence (decision 3): the moment a rotation round ends,
+        // any member's client opens the next one. Deterministic ids make
+        // simultaneous attempts collapse into one round.
+        if ((deps.rotationEnabled ?? CHAMA_ROTATION_ENABLED) && deps.openNextRound && circle.pot === "rotation-v2" && nowSec >= circle.roundEndSec
+            && !escrows.some(e => e.chamaCircle?.pot === "rotation-v2" && e.chamaCircle.prevCircleId === parent.id)) {
+          try { await deps.openNextRound(parent.id); }
+          catch (error) { deps.onError?.(parent.id, error); }
+        }
+      }
+      // Rotation shares: the payday and its lapse are mechanical. The vote
+      // path re-derives cycle evidence and its law refuses anything the
+      // evidence does not admit, so unlawful candidates die locally, cheap.
+      for (const e of escrows) {
+        if (e.chamaPolicy !== "share-v2" || !e.chamaCircle || e.resolvedOutcome != null) continue;
+        const role = ([Role.BUYER, Role.SELLER] as const).find(r => e.participants[r] === pubkey);
+        if (role === undefined || e.votes[role] !== undefined) continue;
+        if (!e.eventChain.some(ev => ev.kind === EscrowEventKind.LOCK)) continue;
+        const c = e.chamaCircle;
+        const candidates: Outcome[] = nowSec >= c.roundEndSec + COLLECT_WINDOW_SEC ? [Outcome.REFUND]
+          : nowSec >= c.roundEndSec ? [Outcome.RELEASE, Outcome.REFUND]
+          : nowSec >= c.fillDeadlineSec && deps.viewComplete?.(e.parent ?? "") === true ? [Outcome.REFUND]
+          : [];
+        for (const [index, want] of candidates.entries()) {
+          try { await deps.vote(e.id, want); break; }
+          catch (error) { if (index === candidates.length - 1) deps.onError?.(e.id, error); }
         }
       }
     } finally { running = false; }

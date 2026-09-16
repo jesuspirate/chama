@@ -1,4 +1,6 @@
-import { shareEscrowId, circleFromEscrow, shareCreatePayload } from "../chama/policy.js";
+import { shareEscrowId, circleFromEscrow, shareCreatePayload, rotationShareCreatePayload, nextRotationRoundPayload } from "../chama/policy.js";
+import type { CircleRound } from "../chama/types.js";
+import { CHAMA_ROTATION_ENABLED } from "./experimental-escrow-features.js";
 import {
   ackDurableClaim,
   defaultDurableClaimStore,
@@ -970,9 +972,32 @@ export class EscrowClient {
     }
     if (!warm) await this.loadChildren(parentId);
     const now = Math.floor(Date.now() / 1000);
+    // Rotation collection round: the seat law is the cycle's, not canTakeSeat's.
+    if (circle.pot === "rotation-v2" && circle.roundIndex >= 2) {
+      if (!CHAMA_ROTATION_ENABLED) throw new Error("Rotation collection is not enabled yet");
+      if (now >= circle.fillDeadlineSec) throw new Error("Cannot take a circle seat: closed");
+      const cycle = await this.resolveChamaCycle(parentId);
+      if (!cycle) throw new Error("Cannot take a circle seat: cycle unavailable");
+      return this.createEscrow({ ...rotationShareCreatePayload(parent, now, pubkey, cycle), escrowId: id });
+    }
     const seat = canTakeSeat(circle, sharesForCircle(this.states.values()), pubkey, now);
     if (!seat.ok) throw new Error(`Cannot take a circle seat: ${seat.reason}`);
     return this.createEscrow({ ...shareCreatePayload(parent, now, { buyerPubkey: pubkey, locks: sharesForCircle(this.states.values(), parentId) }), escrowId: id });
+  }
+
+  /** Open the next collection round (any sealed member; deterministic id
+   *  makes duplicates impossible). Returns null when no round can lawfully
+   *  open right now — the watcher calls this on a timer, so "not yet" and
+   *  "already open" are normal, quiet answers. */
+  async createNextRotationRound(anyRoundId: string): Promise<{ escrowId: string; state: EscrowState } | null> {
+    if (!CHAMA_ROTATION_ENABLED) return null;
+    const cycle = await this.resolveChamaCycle(anyRoundId);
+    if (!cycle) return null;
+    const built = nextRotationRoundPayload(cycle, Math.floor(Date.now() / 1000));
+    if (typeof built === "string") return null;
+    const existing = this.states.get(built.escrowId) ?? await this.loadEscrow(built.escrowId);
+    if (existing) return { escrowId: built.escrowId, state: existing };
+    return this.createEscrow({ ...built.payload, escrowId: built.escrowId });
   }
 
   private async resolveChamaParent(id: string): Promise<EscrowState | undefined> {
@@ -995,24 +1020,69 @@ export class EscrowClient {
   private async parseWithChamaContext(raw: NostrEvent, content: string) {
     let parent: EscrowState | undefined;
     let witness: EscrowState | undefined;
+    let cycle: { circles: EscrowState[]; shares: EscrowState[] } | undefined;
     if (raw.kind === EscrowEventKind.CREATE) {
       try {
         const payload = JSON.parse(content);
-        if (payload?.chamaPolicy === "share-v1" && typeof payload.parent === "string") {
+        if ((payload?.chamaPolicy === "share-v1" || payload?.chamaPolicy === "share-v2") && typeof payload.parent === "string") {
           parent = await this.resolveChamaParent(payload.parent);
+          const circle = parent && circleFromEscrow(parent);
           // v1.1 ring share: a non-creator witness must be proven by their own
           // locked share at its deterministic id (host-seat spec task 1 —
           // readers accept ring shares before any writer produces them).
-          const circle = parent && circleFromEscrow(parent);
-          if (circle && typeof payload.sellerPubkey === "string" && /^[0-9a-f]{64}$/.test(payload.sellerPubkey)
-              && payload.sellerPubkey !== circle.creatorPubkey) {
+          if (payload.chamaPolicy === "share-v1" && circle && typeof payload.sellerPubkey === "string"
+              && /^[0-9a-f]{64}$/.test(payload.sellerPubkey) && payload.sellerPubkey !== circle.creatorPubkey) {
             witness = await this.resolveRingWitness(payload.parent, payload.sellerPubkey, circle.roundIndex);
           }
+          // Rotation share: the collector derivation needs the whole cycle.
+          if (payload.chamaPolicy === "share-v2" && parent) cycle = await this.resolveChamaCycle(parent.id);
+        }
+        // Chained rotation round: its gate walks the chain back to round 1.
+        if (payload?.category === "chama" && payload?.chamaCircle?.pot === "rotation-v2"
+            && payload.chamaCircle.roundIndex >= 2 && typeof payload.chamaCircle.prevCircleId === "string") {
+          cycle = await this.resolveChamaCycle(payload.chamaCircle.prevCircleId);
         }
       } catch { /* Structural parser reports malformed JSON below. */ }
     }
     const id = raw.tags.find(t => t[0] === TAGS.ESCROW_ID)?.[1] ?? "";
-    return parseEscrowEvent(raw, content, true, { parent, witness, state: this.states.get(id) });
+    const state = this.states.get(id);
+    // Rotation share VOTE/RESOLVE: the outcome law needs fill evidence.
+    if (!cycle && state?.chamaPolicy === "share-v2" && state.parent
+        && (raw.kind === EscrowEventKind.VOTE || raw.kind === EscrowEventKind.RESOLVE)) {
+      cycle = await this.resolveChamaCycle(state.parent);
+    }
+    return parseEscrowEvent(raw, content, true, { parent, witness, cycle, state });
+  }
+
+  /** Rotation-cycle resolution stack — a chained round's CREATE parse needs
+   *  the PRIOR rounds, which loadEscrow resolves recursively; honest chains
+   *  terminate at round 1, and re-entry on the same round id means a
+   *  malicious loop, answered with undefined so the gate rejects. */
+  private readonly cycleResolutionStack = new Set<string>();
+
+  /** Resolve a rotation cycle (all round circles from the given round back
+   *  to round 1, plus every round's share children) from cache + relays.
+   *  Best effort: a missing link returns what was found — the gates then
+   *  reject for lack of evidence, which is the conservative side. */
+  private async resolveChamaCycle(roundId: string): Promise<{ circles: EscrowState[]; shares: EscrowState[] } | undefined> {
+    if (this.cycleResolutionStack.has(roundId)) return undefined;
+    this.cycleResolutionStack.add(roundId);
+    try {
+      const circles: EscrowState[] = [];
+      const shares: EscrowState[] = [];
+      let cursor: string | null = roundId;
+      for (let hops = 0; cursor && hops < 64; hops++) {
+        const state: EscrowState | undefined = this.states.get(cursor) ?? await this.resolveChamaParent(cursor) ?? undefined;
+        const circle: CircleRound | null = state ? circleFromEscrow(state) : null;
+        if (!state || !circle) break;
+        circles.push(state);
+        shares.push(...await this.loadChildren(state.id));
+        cursor = circle.roundIndex > 1 ? circle.prevCircleId : null;
+      }
+      return { circles, shares };
+    } finally {
+      this.cycleResolutionStack.delete(roundId);
+    }
   }
 
   /** Ring-witness loads in progress. An honest witness chain is a DAG ordered
@@ -1165,7 +1235,7 @@ export class EscrowClient {
     if (parent) {
       const existing = this.states.get(escrowId) ?? await this.loadEscrow(escrowId);
       if (existing) {
-        if (existing.chamaPolicy !== "share-v1" || existing.parent !== parent.id || existing.participants[Role.BUYER] !== pubkey) throw new Error("Circle seat id is occupied by a different escrow");
+        if (existing.chamaPolicy !== params.chamaPolicy || existing.parent !== parent.id || existing.participants[Role.BUYER] !== pubkey) throw new Error("Circle seat id is occupied by a different escrow");
         return { escrowId, state: existing };
       }
       if (params.subscription) throw new Error("Shares cannot subscribe");
@@ -1300,7 +1370,12 @@ export class EscrowClient {
     };
 
     const signed = await this.signWithSimTag(unsigned);
-    const parsed = parseEscrowEvent(signed, JSON.stringify(payload), true, { parent });
+    // Rotation CREATEs (share-v2, chained rounds) are context-gated: carry
+    // the locally resolved cycle so the pre-publish parse can judge them.
+    const cycleForParse = params.chamaPolicy === "share-v2" && parent ? await this.resolveChamaCycle(parent.id)
+      : params.category === "chama" && params.chamaCircle?.pot === "rotation-v2" && (params.chamaCircle.roundIndex ?? 1) >= 2 && params.chamaCircle.prevCircleId
+        ? await this.resolveChamaCycle(params.chamaCircle.prevCircleId) : undefined;
+    const parsed = parseEscrowEvent(signed, JSON.stringify(payload), true, { parent, cycle: cycleForParse });
     if (!parsed.ok) throw new Error(parsed.error.code === "INVALID_CHAMA_CREATE" ? parsed.error.message : `Local parse failed: ${parsed.error.message}`);
     const result = applyEvent(null, parsed.event);
     if (!result.ok) throw new Error(`Local apply failed: ${result.error.message}`);
@@ -1857,7 +1932,10 @@ export class EscrowClient {
       }
     }
 
-    const voteCheck = canVote(state, pubkey, undefined, outcome);
+    // Rotation shares: the deterministic-outcome law needs the cycle's fill
+    // evidence for anything beyond a lone REFUND vote.
+    const cycle = state.chamaPolicy === "share-v2" && state.parent ? await this.resolveChamaCycle(state.parent) : undefined;
+    const voteCheck = canVote(state, pubkey, undefined, outcome, cycle);
     if (!voteCheck.canVote) throw new Error(`Cannot vote: ${voteCheck.reason}`);
 
     const now = Math.floor(Date.now() / 1000);
@@ -1902,7 +1980,7 @@ export class EscrowClient {
     const signed = await this.signWithSimTag(unsigned);
     await this.relayManager.publish(signed);
 
-    const newState = this.applyLocally(escrowId, signed, payload);
+    const newState = this.applyLocally(escrowId, signed, payload, cycle);
 
     // Auto-resolve if 2-of-3 threshold is met.
     // Wrapped in try/catch — resolve failure must not break the vote.
@@ -3765,8 +3843,8 @@ export class EscrowClient {
     return [...new Set(recipients)];
   }
 
-  private applyLocally(escrowId: string, signed: NostrEvent, payload: EscrowPayload): EscrowState {
-    const parsed = parseEscrowEvent(signed, JSON.stringify(payload), true, { state: this.states.get(escrowId) });
+  private applyLocally(escrowId: string, signed: NostrEvent, payload: EscrowPayload, cycle?: { circles: EscrowState[]; shares: EscrowState[] }): EscrowState {
+    const parsed = parseEscrowEvent(signed, JSON.stringify(payload), true, { state: this.states.get(escrowId), cycle });
     if (!parsed.ok) throw new Error(`Local parse failed: ${parsed.error.message}`);
 
     const currentState = this.states.get(escrowId) || null;
@@ -3905,6 +3983,11 @@ export class EscrowClient {
 
     if (!outcome || !majority) return;
 
+    // Rotation shares: RESOLVE is never evidence-free — carry the cycle and
+    // let the reducer's law refuse anything the evidence does not admit.
+    const cycle = state.chamaPolicy === "share-v2" && state.parent ? await this.resolveChamaCycle(state.parent) : undefined;
+    if (state.chamaPolicy === "share-v2" && !cycle) return;
+
     // Publish RESOLVE event
     const pubkey = await this.getPubkey();
     const now = Math.floor(Date.now() / 1000);
@@ -3939,7 +4022,7 @@ export class EscrowClient {
     const signed = await this.signWithSimTag(unsigned);
     await this.relayManager.publish(signed);
 
-    this.applyLocally(escrowId, signed, payload);
+    this.applyLocally(escrowId, signed, payload, cycle);
   }
 
   // ── Release a subscription period ─────────────────────────────────────

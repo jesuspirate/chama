@@ -4,7 +4,7 @@ import { parseEscrowEvent } from "./event-parser.js";
 import { applyEvent, canVote, getWinner, replayEventChain } from "./state-machine.js";
 import { payoutRecipientFor } from "./recipients.js";
 import { oneSidedEscalationAt } from "./arbiter-substitution.js";
-import { shareEscrowId, shareCreatePayload } from "../chama/policy.js";
+import { shareEscrowId, shareCreatePayload, rotationShareCreatePayload, nextRotationRoundPayload } from "../chama/policy.js";
 import { roundCircleId } from "../chama/rotation.js";
 import { sharesForCircle, createChamaRefundWatcher } from "../chama/wiring.js";
 import { canTakeSeat, circleProgress } from "../chama/circle.js";
@@ -359,3 +359,40 @@ assert(!canVote(p1, BUYER, END + 300, O.RELEASE, cycleFull).canVote);
 assert(canVote(p1, BUYER, END2, O.RELEASE, cycleFull).canVote, "the collector may vote release at the payday");
 assert(!canVote(p1, MEMBER2, END2, O.REFUND, cycleFull).canVote);
 console.log("Rotation v2 outcome-law assertions passed.");
+
+// ── rotation v2 client wiring: builders + watcher ─────────────────────────
+const built3 = nextRotationRoundPayload({ circles: [r1, r2], shares: cycleFull.shares }, END2 + 5);
+assert(typeof built3 !== "string", "round 3 opens the moment round 2 ends");
+assert.equal(built3.escrowId, roundCircleId(P2, 3));
+assert.equal(built3.payload.chamaCircle!.prevCircleId, R2);
+assert.equal(built3.payload.chamaCircle!.roundEndSec, END2 + DUR, "the schedule stays anchored to round 1");
+const r3 = accepted(null, { ...event(K.CREATE, built3.payload, MEMBER2, built3.escrowId, END2 + 5), chamaCycle: cycleFull });
+const cycle3 = { circles: [r1, r2, r3], shares: cycleFull.shares };
+const pay3 = rotationShareCreatePayload(r3, END2 + 10, M3, cycle3);
+assert.equal(pay3.sellerPubkey, MEMBER2, "round 3's collector = fastest round-2 locker still owed");
+assert.throws(() => rotationShareCreatePayload(r3, END2 + 10, MEMBER2, cycle3), "the collector sits out at build time too");
+assert.throws(() => rotationShareCreatePayload(r3, END2 + 10, ARBITER, cycle3), "outsiders cannot build rotation shares");
+assert.equal(typeof nextRotationRoundPayload({ circles: [r1], shares: [c1, c2, c3] }, T + 100), "string", "no next round before round 1 ends");
+assert.equal(typeof nextRotationRoundPayload({ circles: [r1, r2], shares: cycleFull.shares }, END2 + WIN), "string", "a missed fill window never opens late");
+// The watcher services paydays mechanically and opens rounds on time.
+{
+  const calls: [string, O][] = [];
+  const watcher = createChamaRefundWatcher({ getEscrows: () => [p1], getPubkey: async () => MEMBER2,
+    vote: async (id: string, o: O) => { calls.push([id, o]); } });
+  await watcher(END2 + 5);
+  assert.deepEqual(calls, [[p1.id, O.RELEASE]], "the member co-signs the payday");
+  calls.length = 0;
+  await watcher(END + 500);
+  assert.deepEqual(calls, [] as [string, O][], "nothing to do while the round runs");
+  const opened: string[] = [];
+  const opener = createChamaRefundWatcher({ getEscrows: () => [r2, p1, p2], getPubkey: async () => M3,
+    vote: async (id: string, o: O) => { calls.push([id, o]); }, openNextRound: async id => { opened.push(id); }, rotationEnabled: true });
+  await opener(END2 + 5);
+  assert.deepEqual(opened, [r2.id], "any member's watcher opens the next round at roundEnd");
+  const openerOff = createChamaRefundWatcher({ getEscrows: () => [r2, p1, p2], getPubkey: async () => M3,
+    vote: async () => {}, openNextRound: async id => { opened.push(id); }, rotationEnabled: false });
+  opened.length = 0;
+  await openerOff(END2 + 5);
+  assert.deepEqual(opened, [] as string[], "the writer flag gates round opening, never share servicing");
+}
+console.log("Rotation v2 wiring assertions passed.");
