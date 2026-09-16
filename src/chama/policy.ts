@@ -186,7 +186,7 @@ export function chamaCreateError(p: CreatePayload, id: string, pubkey: string, a
  *  observed: their key share moves other people's money. */
 export type OutcomeJudgment = "observe-principal" | "observe-arbiter" | "intent" | "finalize";
 
-export function chamaOutcomeError(state: EscrowState, outcome: Outcome, at: number, cycle?: ChamaCycleContext, judgment: OutcomeJudgment = "intent"): string | null {
+export function chamaOutcomeError(state: EscrowState, outcome: Outcome, at: number, cycle?: ChamaCycleContext, judgment: OutcomeJudgment = "intent", evidence?: { locked: string[] }): string | null {
   if (!state.chamaPolicy) return null;
   if (state.chamaPolicy === "share-v1") return outcome === Outcome.REFUND ? null : "Shares only allow REFUND";
   if (outcome !== Outcome.REFUND && outcome !== Outcome.RELEASE) return "Rotation shares allow REFUND or RELEASE only";
@@ -196,11 +196,35 @@ export function chamaOutcomeError(state: EscrowState, outcome: Outcome, at: numb
   // accepted victimless case), so acceptance never depends on the
   // observer's view and honest clients converge.
   if (judgment === "observe-principal") return null;
-  if (!cycle) {
-    if (outcome === Outcome.REFUND && judgment === "intent") return null;
-    return "Rotation share resolution requires cycle context";
-  }
   const circle = state.chamaCircle!;
+  if (judgment === "observe-arbiter" || judgment === "finalize") {
+    // THE COMMITMENT (evidence-committed RESOLVE, spec bound 2, RESOLVED):
+    // arbiter votes and every resolution carry the fill evidence they
+    // settled on, and every replay judges THAT — never the replayer's own
+    // relay view. Withholding a lock can no longer fork honest clients:
+    // the settlement's meaning travels with the settlement. Fabricated
+    // evidence is 2-of-3 signed and attributable, moves only money a
+    // consenting principal's vote already offered, and is cross-checked
+    // against the sealed membership whenever the observer holds the cycle.
+    if (!evidence || !Array.isArray(evidence.locked)) return "Rotation share resolution must commit its fill evidence";
+    const entries = evidence.locked.map(m => typeof m === "string" ? m.toLowerCase() : "");
+    if (entries.length > 128 || entries.some(m => !/^[0-9a-f]{64}$/.test(m)) || new Set(entries).size !== entries.length) return "Malformed fill evidence";
+    if (cycle) {
+      const rot = rotationFromCycle(cycle, state.parent ? { id: state.parent, roundIndex: circle.roundIndex } : undefined);
+      if (typeof rot !== "string") {
+        const collector = collectorForRound(rot.round1Id, rot.order, rot.round1.creatorPubkey, cycle.shares, circle.roundIndex);
+        if (!collector || !state.parent || state.parent !== roundCircleId(rot.round1Id, circle.roundIndex)) return "Rotation share is not part of this cycle";
+        if (outcome === Outcome.RELEASE && state.participants[Role.SELLER]?.toLowerCase() !== collector) return "Share does not pay this round's collector";
+        if (entries.some(m => !rot.order.includes(m) || m === collector)) return "Fill evidence names a non-member";
+      }
+    }
+    const lawful = roundOutcomeAt(circle, entries.length, circle.seatThreshold, at);
+    if (outcome === Outcome.RELEASE) return lawful === "release" ? null : "Release is only lawful for a filled round at its payday";
+    return lawful === "refund" ? null : "Refund is not lawful while the round can still pay its collector";
+  }
+  // INTENT: strict, judged against the caller's own locally resolved view —
+  // never sign what your evidence cannot justify.
+  if (!cycle) return outcome === Outcome.REFUND ? null : "Rotation share resolution requires cycle context";
   const rot = rotationFromCycle(cycle, state.parent ? { id: state.parent, roundIndex: circle.roundIndex } : undefined);
   if (typeof rot === "string") return rot;
   const collector = collectorForRound(rot.round1Id, rot.order, rot.round1.creatorPubkey, cycle.shares, circle.roundIndex);
@@ -217,6 +241,19 @@ export function chamaOutcomeError(state: EscrowState, outcome: Outcome, at: numb
   const lawful = roundOutcomeAt(circle, lockedCount, expected.length, at);
   if (outcome === Outcome.RELEASE) return lawful === "release" ? null : "Release is only lawful for a filled round at its payday";
   return lawful === "refund" ? null : "Refund is not lawful while the round can still pay its collector";
+}
+
+/** Build the fill-evidence commitment for a rotation share from the
+ *  caller's resolved cycle: the round's LOCKed member pubkeys. */
+export function fillEvidenceFor(roundId: string, cycle: ChamaCycleContext): { locked: string[] } {
+  const locked = new Set<string>();
+  for (const e of cycle.shares) {
+    if (e.chamaPolicy !== "share-v2" || e.parent !== roundId) continue;
+    if (!e.eventChain.some(ev => ev.kind === EscrowEventKind.LOCK)) continue;
+    const m = e.participants[Role.BUYER]?.toLowerCase();
+    if (m) locked.add(m);
+  }
+  return { locked: [...locked].sort() };
 }
 
 /** Pre-spend gate shared by the native/browser bridge and regression tests. */

@@ -109,14 +109,18 @@ merely an order one — a late-published lock can flip a round from short
 to filled in later replays, and honest clients that settled on REFUND
 evidence diverge from clients hydrating after the reveal. Money stays
 safe on both forks (each fork pays only its own lawful recipient of that
-member's OWN sats), but chain convergence is view-relative. The complete
-fix is an EVIDENCE-COMMITTED RESOLVE (the resolver enumerates the fill
-evidence it settled on; replay judges against the commitment, not the
-replayer's view). REQUIRED BEFORE CHAMA_ROTATION_ENABLED FLIPS. Interim
-hardening already landed: principal VOTES are recorded context-free
-(chain convergence for votes), arbiter votes and every RESOLVE stay
-evidence-gated, and RELEASE re-checks seller == chain-derived collector
-at the vote law itself.
+member's OWN sats), but chain convergence is view-relative. RESOLVED (2026-09-16): the EVIDENCE-COMMITTED RESOLVE landed. Every
+share-v2 RESOLVE — and every arbiter VOTE — carries fillEvidence: the
+round's LOCKed member pubkeys the signer settled on. Replay judges the
+COMMITMENT (count vs the share's own seatThreshold + the clock), never
+the replayer's relay view, so an evidenced resolution validates with no
+observer context at all and honest clients converge regardless of what
+was withheld or revealed later. Fabricated evidence is 2-of-3 signed and
+attributable, can move only money a consenting principal's vote already
+offered, and is cross-checked against the sealed membership whenever the
+observer holds the cycle. Principal votes remain recorded context-free;
+RELEASE re-checks seller == chain-derived collector wherever the cycle
+is in view. The flag-flip precondition is met.
 
 ## Adversarial review outcomes (2026-09-16, all landed)
 

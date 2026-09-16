@@ -328,27 +328,34 @@ const v2vote = (st: EscrowState, role: R, pk: string, o: O, at: number, cyc?: ty
 // Principal votes are CHAIN: recorded context-free so honest clients
 // converge (review finding 6) — but INTENT stays strict, and nothing
 // finalizes early.
+const evFull = { locked: [MEMBER2, M3].sort() };
 const earlyVote = accepted(p1, v2vote(p1, R.SELLER, BUYER, O.RELEASE, END + 300, cycleFull));
 assert(!canVote(p1, BUYER, END + 300, O.RELEASE, cycleFull).canVote, "no honest client CASTS a release before roundEnd");
 assert(!applyEvent(accepted(earlyVote, v2vote(earlyVote, R.BUYER, MEMBER2, O.RELEASE, END + 301, cycleFull)),
-  event(K.RESOLVE, { type: "escrow:resolve", outcome: O.RELEASE, majority: [R.BUYER, R.SELLER], arbiterInvolved: false, resolvedAt: END + 302 }, MEMBER2, p1.id, END + 302, earlyVote)).ok,
-  "two early votes still cannot finalize before the payday");
+  event(K.RESOLVE, { type: "escrow:resolve", outcome: O.RELEASE, majority: [R.BUYER, R.SELLER], arbiterInvolved: false, fillEvidence: evFull, resolvedAt: END + 302 }, MEMBER2, p1.id, END + 302, earlyVote)).ok,
+  "two early votes still cannot finalize before the payday, even fully evidenced");
 assert(!canVote(p1, MEMBER2, FILL2 + 1, O.REFUND, cycleFull).canVote, "no honest client casts a refund on a filled round");
 // Arbiter votes stay strict even as observations: their key share moves
 // other people's money.
-assert(!applyEvent(p1, v2vote(p1, R.ARBITER, p1.participants[R.ARBITER]!, O.RELEASE, END + 300, cycleFull)).ok, "an arbiter release before the payday is rejected on sight");
-assert(!applyEvent(p1, v2vote(p1, R.ARBITER, p1.participants[R.ARBITER]!, O.RELEASE, END2, undefined)).ok, "an arbiter release without evidence is rejected on sight");
+assert(!applyEvent(p1, { ...v2vote(p1, R.ARBITER, p1.participants[R.ARBITER]!, O.RELEASE, END + 300, cycleFull), payload: { type: "escrow:vote", role: R.ARBITER, outcome: O.RELEASE, fillEvidence: evFull, votedAt: END + 300 } }).ok, "an arbiter release before the payday is rejected on sight");
+assert(!applyEvent(p1, v2vote(p1, R.ARBITER, p1.participants[R.ARBITER]!, O.RELEASE, END2, undefined)).ok, "an arbiter release without committed evidence is rejected on sight");
 // The payday: collector + member vote RELEASE, resolve, collector claims.
 const rv1 = accepted(p1, v2vote(p1, R.SELLER, BUYER, O.RELEASE, END2, cycleFull));
 const rv2 = accepted(rv1, v2vote(rv1, R.BUYER, MEMBER2, O.RELEASE, END2 + 1, cycleFull));
-const rres = accepted(rv2, { ...event(K.RESOLVE, { type: "escrow:resolve", outcome: O.RELEASE, majority: [R.BUYER, R.SELLER], arbiterInvolved: false, resolvedAt: END2 + 2 }, MEMBER2, p1.id, END2 + 2, rv2), chamaCycle: cycleFull });
+const rres = accepted(rv2, { ...event(K.RESOLVE, { type: "escrow:resolve", outcome: O.RELEASE, majority: [R.BUYER, R.SELLER], arbiterInvolved: false, fillEvidence: evFull, resolvedAt: END2 + 2 }, MEMBER2, p1.id, END2 + 2, rv2), chamaCycle: cycleFull });
+// THE COMMITMENT is the whole point: the same resolution validates with NO
+// cycle context at all — settlement carries its own meaning, so a client
+// hydrating from a thin relay converges on the same chain.
+assert(applyEvent(rv2, event(K.RESOLVE, { type: "escrow:resolve", outcome: O.RELEASE, majority: [R.BUYER, R.SELLER], arbiterInvolved: false, fillEvidence: evFull, resolvedAt: END2 + 2 }, MEMBER2, p1.id, END2 + 2, rv2)).ok, "an evidenced resolution needs no observer view");
+assert(!applyEvent(rv2, event(K.RESOLVE, { type: "escrow:resolve", outcome: O.RELEASE, majority: [R.BUYER, R.SELLER], arbiterInvolved: false, fillEvidence: { locked: [MEMBER2] }, resolvedAt: END2 + 2 }, MEMBER2, p1.id, END2 + 2, rv2)).ok, "short evidence cannot justify a release");
+assert(!applyEvent(rv2, { ...event(K.RESOLVE, { type: "escrow:resolve", outcome: O.RELEASE, majority: [R.BUYER, R.SELLER], arbiterInvolved: false, fillEvidence: { locked: [MEMBER2, ARBITER] }, resolvedAt: END2 + 2 }, MEMBER2, p1.id, END2 + 2, rv2), chamaCycle: cycleFull }).ok, "evidence naming a non-member dies when the observer holds the cycle");
 assert.equal(getWinner(rres)?.pubkey, BUYER, "the collector wins the pot");
 assert.equal(payoutRecipientFor(p1, O.RELEASE)?.pubkey, BUYER, "release pays the collector");
 assert.equal(payoutRecipientFor(p1, O.REFUND)?.pubkey, MEMBER2, "refund returns to the member");
 const rclaim = accepted(rres, event(K.CLAIM, { type: "escrow:claim", claimerRole: R.SELLER, notesHashVerification: "hash", claimedAt: END2 + 3 }, BUYER, p1.id, END2 + 3, rres));
 assert(replayEventChain(rclaim.eventChain).ok, "the full collection chain replays");
 // Resolution is never evidence-free, either outcome.
-assert(!applyEvent(rv2, event(K.RESOLVE, { type: "escrow:resolve", outcome: O.RELEASE, majority: [R.BUYER, R.SELLER], arbiterInvolved: false, resolvedAt: END2 + 2 }, MEMBER2, p1.id, END2 + 2, rv2)).ok, "resolve requires cycle context");
+assert(!applyEvent(rv2, event(K.RESOLVE, { type: "escrow:resolve", outcome: O.RELEASE, majority: [R.BUYER, R.SELLER], arbiterInvolved: false, resolvedAt: END2 + 2 }, MEMBER2, p1.id, END2 + 2, rv2)).ok, "resolve must commit its fill evidence");
 // A short round (M3 never locked): refund intent opens at the deadline, release never.
 assert(!canVote(p1, MEMBER2, END + 400, O.REFUND, cycleShort).canVote, "no refund cast while seats can still fill");
 assert(canVote(p1, MEMBER2, FILL2, O.REFUND, cycleShort).canVote, "failed fill refunds at the deadline");
@@ -363,7 +370,8 @@ assert(isPerformanceContest(rv1, END2 + 100), "a standing collector RELEASE is a
 assert(!isPerformanceContest(rv1, END2 + COLLECT_WINDOW_SEC), "the lapsed window ends the contest — healing may return the sats");
 // A lone REFUND vote is recordable without context but cannot finalize.
 const lone = accepted(p1, v2vote(p1, R.BUYER, MEMBER2, O.REFUND, FILL2 + 1));
-assert(!applyEvent(lone, event(K.RESOLVE, { type: "escrow:resolve", outcome: O.REFUND, majority: [R.BUYER, R.SELLER], arbiterInvolved: false, resolvedAt: FILL2 + 2 }, MEMBER2, p1.id, FILL2 + 2, lone)).ok, "context-free refund never finalizes");
+assert(!applyEvent(lone, event(K.RESOLVE, { type: "escrow:resolve", outcome: O.REFUND, majority: [R.BUYER, R.SELLER], arbiterInvolved: false, resolvedAt: FILL2 + 2 }, MEMBER2, p1.id, FILL2 + 2, lone)).ok, "evidence-free refund never finalizes");
+assert(!applyEvent(lone, event(K.RESOLVE, { type: "escrow:resolve", outcome: O.REFUND, majority: [R.BUYER, R.SELLER], arbiterInvolved: false, fillEvidence: evFull, resolvedAt: FILL2 + 2 }, MEMBER2, p1.id, FILL2 + 2, lone)).ok, "committed full evidence forbids refunding a filled round");
 // canVote mirrors the law.
 assert(!canVote(p1, BUYER, END + 300, O.RELEASE, cycleFull).canVote);
 assert(canVote(p1, BUYER, END2, O.RELEASE, cycleFull).canVote, "the collector may vote release at the payday");
@@ -422,7 +430,7 @@ const q2 = lock3(accepted(null, sv3(M3)), M3, END2 + 200);
 const cycle3Full = { circles: [r1, r2, r3], shares: [...cycleFull.shares, q1, q2] };
 const q1a = accepted(q1, v2vote(q1, R.SELLER, MEMBER2, O.RELEASE, END3, cycle3Full as typeof cycleFull));
 const q1b = accepted(q1a, v2vote(q1a, R.BUYER, BUYER, O.RELEASE, END3 + 1, cycle3Full as typeof cycleFull));
-const q1res = accepted(q1b, { ...event(K.RESOLVE, { type: "escrow:resolve", outcome: O.RELEASE, majority: [R.BUYER, R.SELLER], arbiterInvolved: false, resolvedAt: END3 + 2 }, BUYER, q1.id, END3 + 2, q1b), chamaCycle: cycle3Full });
+const q1res = accepted(q1b, { ...event(K.RESOLVE, { type: "escrow:resolve", outcome: O.RELEASE, majority: [R.BUYER, R.SELLER], arbiterInvolved: false, fillEvidence: { locked: [BUYER, M3].sort() }, resolvedAt: END3 + 2 }, BUYER, q1.id, END3 + 2, q1b), chamaCycle: cycle3Full });
 const q1c = accepted(q1res, event(K.CLAIM, { type: "escrow:claim", claimerRole: R.SELLER, notesHashVerification: "hash", claimedAt: END3 + 3 }, MEMBER2, q1.id, END3 + 3, q1res));
 const r3circle = circleFromEscrow(r3)!;
 {
@@ -450,7 +458,7 @@ const r3circle = circleFromEscrow(r3)!;
   const cycleShort3 = { circles: [r1, r2, r3], shares: [...cycleFull.shares, q2] };
   let qr = accepted(q2, v2vote(q2, R.BUYER, M3, O.REFUND, FILL3, cycleShort3 as typeof cycleFull));
   qr = accepted(qr, v2vote(qr, R.SELLER, MEMBER2, O.REFUND, FILL3 + 1, cycleShort3 as typeof cycleFull));
-  qr = accepted(qr, { ...event(K.RESOLVE, { type: "escrow:resolve", outcome: O.REFUND, majority: [R.BUYER, R.SELLER], arbiterInvolved: false, resolvedAt: FILL3 + 2 }, M3, q2.id, FILL3 + 2, qr), chamaCycle: cycleShort3 });
+  qr = accepted(qr, { ...event(K.RESOLVE, { type: "escrow:resolve", outcome: O.REFUND, majority: [R.BUYER, R.SELLER], arbiterInvolved: false, fillEvidence: { locked: [M3] }, resolvedAt: FILL3 + 2 }, M3, q2.id, FILL3 + 2, qr), chamaCycle: cycleShort3 });
   const view = [r1, r2, r3, c1, c2, c3, p1, p2, qr];
   const conduct = rotationConduct(view, BUYER, FILL3 + 10);
   assert(conduct.brokeAfterCollecting, "collected-then-absent in a real, short round is the mark");

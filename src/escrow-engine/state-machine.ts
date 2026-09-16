@@ -1175,7 +1175,7 @@ function handleLock(state: EscrowState, event: ParsedEscrowEvent<LockPayload>): 
 function handleVote(state: EscrowState, event: ParsedEscrowEvent<VotePayload>): TransitionResult {
   const p = event.payload;
   const voterIsPrincipal = event.pubkey === state.participants[Role.BUYER] || event.pubkey === state.participants[Role.SELLER];
-  const outcomeLaw = chamaOutcomeError(state, p.outcome, event.timestamp, event.chamaCycle, voterIsPrincipal ? "observe-principal" : "observe-arbiter");
+  const outcomeLaw = chamaOutcomeError(state, p.outcome, event.timestamp, event.chamaCycle, voterIsPrincipal ? "observe-principal" : "observe-arbiter", p.fillEvidence);
   if (outcomeLaw) return err("CHAMA_REFUND_ONLY", outcomeLaw, event.raw.id);
 
   // v0.1.66.26: accept EXPIRED in addition to LOCKED so post-expiry
@@ -1353,7 +1353,7 @@ function handleVote(state: EscrowState, event: ParsedEscrowEvent<VotePayload>): 
 
 function handleResolve(state: EscrowState, event: ParsedEscrowEvent<ResolvePayload>): TransitionResult {
   const p = event.payload;
-  const outcomeLaw = chamaOutcomeError(state, p.outcome, event.timestamp, event.chamaCycle, "finalize");
+  const outcomeLaw = chamaOutcomeError(state, p.outcome, event.timestamp, event.chamaCycle, "finalize", p.fillEvidence);
   if (outcomeLaw) return err("CHAMA_REFUND_ONLY", outcomeLaw, event.raw.id);
 
   // v0.1.66.26: accept EXPIRED in addition to LOCKED so healing votes
@@ -1751,7 +1751,8 @@ export function applyEvent(
   if (state.chamaPolicy && (event.kind === EscrowEventKind.VOTE || event.kind === EscrowEventKind.RESOLVE)) {
     const principal = event.pubkey === state.participants[Role.BUYER] || event.pubkey === state.participants[Role.SELLER];
     const law = chamaOutcomeError(state, (event.payload as VotePayload).outcome, event.timestamp, event.chamaCycle,
-      event.kind === EscrowEventKind.RESOLVE ? "finalize" : principal ? "observe-principal" : "observe-arbiter");
+      event.kind === EscrowEventKind.RESOLVE ? "finalize" : principal ? "observe-principal" : "observe-arbiter",
+      (event.payload as VotePayload).fillEvidence);
     if (law) return err("CHAMA_REFUND_ONLY", law, event.raw.id);
   }
 
