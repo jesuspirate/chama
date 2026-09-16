@@ -7,7 +7,7 @@ import { oneSidedEscalationAt } from "./arbiter-substitution.js";
 import { shareEscrowId, shareCreatePayload, rotationShareCreatePayload, nextRotationRoundPayload } from "../chama/policy.js";
 import { roundCircleId } from "../chama/rotation.js";
 import { sharesForCircle, createChamaRefundWatcher } from "../chama/wiring.js";
-import { canTakeSeat, circleProgress } from "../chama/circle.js";
+import { canTakeSeat, circleProgress, lockPunctuality } from "../chama/circle.js";
 import { circleFromEscrow } from "../chama/policy.js";
 import { shouldShowOnBrowse, needsYouReasonFor } from "../ui/decisions.js";
 const BUYER = "22".repeat(32), SELLER = "11".repeat(32), ARBITER = "33".repeat(32), BACKUP = "55".repeat(32), ID = "44".repeat(32);
@@ -396,3 +396,53 @@ assert.equal(typeof nextRotationRoundPayload({ circles: [r1, r2], shares: cycleF
   assert.deepEqual(opened, [] as string[], "the writer flag gates round opening, never share servicing");
 }
 console.log("Rotation v2 wiring assertions passed.");
+
+// ── standing: the sacrifice mint, total forfeiture, and the mark ──────────
+import { circleMemberStats, rotationConduct } from "../chama/stats.js";
+const R3 = built3.escrowId, END3 = END2 + DUR, FILL3 = END2 + WIN;
+const sv3 = (m: string, at = END2 + 40) => ({ ...event(K.CREATE,
+  { ...sharePayload, chamaPolicy: "share-v2" as const, parent: R3, sellerPubkey: MEMBER2, createdAt: at, expirySeconds: (END2 + DUR) - at },
+  m, shareEscrowId(R3, m, 3), at), chamaParent: r3, chamaCycle: cycle3 });
+const lock3 = (st: EscrowState, m: string, at: number) => accepted(st, { ...event(K.LOCK,
+  { ...lockPayload, buyerPubkey: m, lockedAt: at, arbiterPubkey: st.participants[R.ARBITER]!,
+    shares: [ { shareIndex: 0, encryptedFor: { [m]: "buyer" } }, { shareIndex: 1, encryptedFor: { [MEMBER2]: "seller" } },
+      { shareIndex: 2, encryptedFor: { [ARBITER]: "arbiter", [BACKUP]: "backup" } } ] }, m, st.id, at, st), chamaCycle: cycle3 });
+const q1 = lock3(accepted(null, sv3(BUYER)), BUYER, END2 + 100);
+const q2 = lock3(accepted(null, sv3(M3)), M3, END2 + 200);
+const cycle3Full = { circles: [r1, r2, r3], shares: [...cycleFull.shares, q1, q2] };
+const q1a = accepted(q1, v2vote(q1, R.SELLER, MEMBER2, O.RELEASE, END3, cycle3Full as typeof cycleFull));
+const q1b = accepted(q1a, v2vote(q1a, R.BUYER, BUYER, O.RELEASE, END3 + 1, cycle3Full as typeof cycleFull));
+const q1res = accepted(q1b, { ...event(K.RESOLVE, { type: "escrow:resolve", outcome: O.RELEASE, majority: [R.BUYER, R.SELLER], arbiterInvolved: false, resolvedAt: END3 + 2 }, BUYER, q1.id, END3 + 2, q1b), chamaCycle: cycle3Full });
+const q1c = accepted(q1res, event(K.CLAIM, { type: "escrow:claim", claimerRole: R.SELLER, notesHashVerification: "hash", claimedAt: END3 + 3 }, MEMBER2, q1.id, END3 + 3, q1res));
+const r3circle = circleFromEscrow(r3)!;
+{
+  // BUYER collected round 2, then kept locking: round 3's lock is the
+  // sacrifice round and mints at the MAXIMUM early bonus.
+  const view = [r1, r2, r3, c1, c2, c3, p1, p2, q1c, q2];
+  const conduct = rotationConduct(view, BUYER, END3 + 10);
+  assert.equal(conduct.collectedRounds, 1);
+  assert(conduct.sacrificeShareIds.has(q1.id), "the post-payday lock is a sacrifice lock");
+  assert(!conduct.brokeAfterCollecting);
+  const stats = circleMemberStats(view, BUYER, END3 + 10);
+  assert.equal(stats.completed, 1);
+  const expected = lockPunctuality(r3circle, END2 + 100).satDaysCommitted * 3;
+  assert(Math.abs(stats.standing - expected) < 1e-9, "sacrifice locks mint at max bonus regardless of lock time");
+  // MEMBER2's round-2 share (pre-collection) mints the standard weight.
+  const m2 = circleMemberStats([...view, rclaim], MEMBER2, END3 + 10);
+  const m2expected = lockPunctuality(circleFromEscrow(r2)!, END + 100).standingWeight;
+  assert(Math.abs(m2.standing - m2expected) < 1e-9, "pre-collection locks mint the standard weight");
+  assert(!("mark" in m2));
+}
+{
+  // BUYER collected round 2 and never locked round 3 while M3 did: total
+  // forfeiture + the mark. M3, who showed up, is untouched.
+  const view = [r1, r2, r3, c1, c2, c3, p1, p2, q2];
+  const conduct = rotationConduct(view, BUYER, FILL3 + 10);
+  assert(conduct.brokeAfterCollecting, "collected-then-absent in a real, short round is the mark");
+  const stats = circleMemberStats(view, BUYER, FILL3 + 10);
+  assert.equal(stats.standing, 0, "total forfeiture: everything zeroes at once");
+  assert("mark" in stats && (stats as { mark: { brokeAtSec: number } }).mark.brokeAtSec === FILL3);
+  assert(!rotationConduct(view, M3, FILL3 + 10).brokeAfterCollecting, "the member who showed up carries no mark");
+  assert(!rotationConduct(view, MEMBER2, FILL3 + 10).brokeAfterCollecting, "round 3's collector owes nothing to round 3");
+}
+console.log("Rotation v2 standing assertions passed.");
