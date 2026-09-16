@@ -82,6 +82,7 @@ export function circleSurfaceModel(
   shares: readonly CircleShareLock[],
   viewerPubkey: string,
   nowSec: number = Math.floor(Date.now() / 1000),
+  rotation?: { collector: string | null; sealed: readonly string[]; claimable: number },
 ): CircleSurfaceModel {
   const progress = circleProgress(circle, shares, nowSec);
   const seat = seatOf(circle, shares, viewerPubkey);
@@ -90,6 +91,7 @@ export function circleSurfaceModel(
     circle.creatorPubkey.trim().toLowerCase() === viewerPubkey.trim().toLowerCase();
 
   const seatsStillOpen = progress.seatsOpen === null || progress.seatsOpen > 0;
+  const viewer = viewerPubkey.trim().toLowerCase();
   const base = {
     status: progress.status,
     refusal: null as SeatRefusal | null,
@@ -103,6 +105,23 @@ export function circleSurfaceModel(
     secsToFillDeadline: progress.secsToFillDeadline,
     secsToRoundEnd: progress.secsToRoundEnd,
   };
+
+  // Rotation collection rounds (pot: rotation-v2, roundIndex ≥ 2) follow
+  // the cycle's law, not canTakeSeat's: seats belong to sealed members,
+  // the collector sits out, the payday is a collect, and there is no
+  // invite (rotation rounds are members-only by construction).
+  if (circle.pot === "rotation-v2" && circle.roundIndex >= 2 && rotation) {
+    const isCollector = rotation.collector !== null && rotation.collector === viewer;
+    if (progress.status === "filling") {
+      if (isCollector) return { ...base, move: rotation.claimable > 0 ? "collect" : "wait" };
+      if (seat?.status === "reserved" || (!seated && rotation.sealed.includes(viewer))) return { ...base, move: "lock" };
+      return { ...base, move: seated ? "wait" : "none" };
+    }
+    if (progress.status === "running") return { ...base, move: "wait" };
+    if (progress.status === "complete" && isCollector && rotation.claimable > 0) return { ...base, move: "collect" };
+    if ((progress.status === "refund-due" || progress.status === "complete") && seat?.readyToClaim) return { ...base, move: "collect" };
+    return { ...base, move: "none" };
+  }
 
   if (progress.status === "filling") {
     // A reserved seat is an unfunded one: the move is still "lock", because

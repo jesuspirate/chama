@@ -11,16 +11,20 @@ export function sharesForCircle(escrows: Iterable<EscrowState>, circleId?: strin
   const seen = new Set<string>();
   const result: CircleShareLock[] = [];
   for (const e of escrows) {
-    if (e.chamaPolicy !== "share-v1" || !e.parent || (circleId && e.parent !== circleId) || seen.has(e.id)) continue;
+    if ((e.chamaPolicy !== "share-v1" && e.chamaPolicy !== "share-v2") || !e.parent || (circleId && e.parent !== circleId) || seen.has(e.id)) continue;
     seen.add(e.id);
     const lock = e.eventChain.find(event => event.kind === EscrowEventKind.LOCK);
     const settled = e.resolvedOutcome === Outcome.REFUND && [EscrowStatus.APPROVED, EscrowStatus.CLAIMED, EscrowStatus.COMPLETED].includes(e.status);
-    // APPROVED is still owed: resolution does not prove redemption.
+    // APPROVED is still owed: resolution does not prove redemption. The
+    // same honesty for rotation paydays: RELEASE resolved is a promise,
+    // "paid" only once the collector actually claimed.
     const returned = settled && (e.status === EscrowStatus.CLAIMED || e.status === EscrowStatus.COMPLETED);
+    const paid = e.chamaPolicy === "share-v2" && e.resolvedOutcome === Outcome.RELEASE
+      && (e.status === EscrowStatus.CLAIMED || e.status === EscrowStatus.COMPLETED);
     result.push({ circleId: e.parent, memberPubkey: e.participants[Role.BUYER]!,
       escrowId: lock ? e.id : null, lockedAtSec: lock?.timestamp ?? null,
       readyToClaim: settled && e.status === EscrowStatus.APPROVED,
-      status: !lock ? "reserved" : returned
+      status: !lock ? "reserved" : paid ? "paid" : returned
         ? ((e.resolvedAt ?? e.claim.claimedAt ?? Infinity) < e.chamaCircle!.roundEndSec ? "refunded" : "returned") : "locked" });
   }
   return result;

@@ -104,7 +104,7 @@ export function circleProgress(
   const mine = circleLocks(circle, locks);
   // "returned" still counts as a seat that WAS locked — a completed round's
   // history must not read as an empty circle after healing runs.
-  const lockedSeats = mine.filter(l => l.status === "locked" || l.status === "returned");
+  const lockedSeats = mine.filter(l => l.status === "locked" || l.status === "returned" || l.status === "paid");
   const seatsLocked = lockedSeats.length;
   const seatsReserved = mine.filter(l => l.status === "reserved").length;
   const status = circleStatus(circle, locks, nowSec);

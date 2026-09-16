@@ -86,7 +86,9 @@ export interface CircleShareLock {
    *  merely reserved. Mirrors Chip In's pledged/locked honesty: reserved
    *  counts for nothing. */
   escrowId: string | null;
-  status: "reserved" | "locked" | "returned" | "refunded";
+  /** "paid" (rotation only): this share's sats reached the round's
+   *  collector — the member's obligation is complete. */
+  status: "reserved" | "locked" | "returned" | "refunded" | "paid";
   /** REFUND is resolved but redemption is not yet proven (escrow APPROVED):
    *  the member can collect NOW. Distinct from status — an approved share is
    *  still owed, so it stays "locked" until the sats actually move. */

@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react";
 import { generatedNameFor } from "../nostr-profiles.js";
+import { rotationView } from "../../chama/rotation.js";
+import { EscrowStatus, Outcome, Role } from "../../escrow-engine/types.js";
 import type { EscrowState } from "../../escrow-engine/types.js";
 import type { CircleRound } from "../../chama/types.js";
 import { circleFromEscrow } from "../../chama/policy.js";
@@ -34,7 +36,16 @@ export function CircleSurface({ parent, escrows, viewerPubkey, backLabel, childr
   const circle = circleFromEscrow(parent);
   if (!circle) return null;
   const shares = sharesForCircle(escrows.values(), circle.circleId);
-  const model = circleSurfaceModel(circle, shares, viewerPubkey, now);
+  const allStates = [...escrows.values()];
+  const rot = circle.pot === "rotation-v2" ? rotationView(allStates, circle.circleId, circle.roundIndex, circle.prevCircleId) : null;
+  const claimable = rot ? allStates.filter(e => e.parent === circle.circleId && e.chamaPolicy === "share-v2"
+    && e.participants[Role.SELLER]?.toLowerCase() === viewerPubkey.toLowerCase()
+    && e.resolvedOutcome === Outcome.RELEASE && e.status === EscrowStatus.APPROVED).length : 0;
+  const model = circleSurfaceModel(circle, shares, viewerPubkey, now,
+    rot ? { collector: rot.collector, sealed: rot.order, claimable } : undefined);
+  const nym = (pk: string) => generatedNameFor(pk, lang);
+  const isCollectionRound = rot !== null && circle.roundIndex >= 2;
+  const viewerIsCollector = isCollectionRound && rot!.collector === viewerPubkey.toLowerCase();
   const stats = circleMemberStats(escrows.values(), viewerPubkey, now);
   const date = (at: number) => new Date(at * 1000).toLocaleDateString(lang, { month: "short", day: "numeric" });
   const run = async (action: () => Promise<void>) => { if (busy) return; setBusy(true); setMessage(null); try { await action(); } catch (e) { setMessage(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); } };
@@ -54,14 +65,19 @@ export function CircleSurface({ parent, escrows, viewerPubkey, backLabel, childr
   return <section className="circle-surface" style={{ maxWidth: 640, margin: "0 auto", padding: "24px 18px 38px", color: T.text }}>
     <button type="button" data-chama-shortcut="back" onClick={onBack} style={{ background: "none", border: 0, color: T.muted, padding: "8px 0", cursor: "pointer" }}>‹ {backLabel}</button>
     <div style={{ display: "flex", alignItems: "center", gap: 9, color: T.accent, font: `700 11px ${T.mono}`, letterSpacing: 2 }}><VerticalIcon vertical="chama" size={30} />CHAMA</div>
-    <h1 style={{ fontSize: "clamp(32px, 6vw, 52px)", letterSpacing: "-.05em", margin: "10px 0 24px" }}>{circle.name}{circle.roundIndex > 1 && <span style={{ color: T.muted, fontWeight: 500 }}> · {t("circle.roundN", { n: circle.roundIndex })}</span>}</h1>
+    <h1 style={{ fontSize: "clamp(32px, 6vw, 52px)", letterSpacing: "-.05em", margin: "10px 0 8px" }}>{circle.name}{circle.roundIndex > 1 && <span style={{ color: T.muted, fontWeight: 500 }}> · {isCollectionRound ? t("circle.roundOf", { n: circle.roundIndex, total: rot!.totalRounds }) : t("circle.roundN", { n: circle.roundIndex })}</span>}</h1>
+    {isCollectionRound && rot!.collector && <p style={{ margin: "0 0 24px", color: T.accent, fontWeight: 700, fontSize: 17 }}>
+      {viewerIsCollector ? t("circle.yourPayday") : t("circle.payday", { name: nym(rot!.collector) })}
+      <span style={{ color: T.muted, fontWeight: 500 }}> · {t("circle.potPays", { amount: fmtSats(circle.shareMsats * circle.seatThreshold) })}</span>
+    </p>}
     <div style={{ background: T.card, border: `1px solid ${T.borderHi}`, borderRadius: 30, padding: "clamp(22px,4vw,36px)", textAlign: "center" }}>
       {childrenLoaded && <CircleSeatRing filled={model.seatsLocked} total={model.seatThreshold} potMsats={model.potMsats} targetMsats={circle.shareMsats * model.seatThreshold} />}
       <h2 aria-live="polite" style={{ fontSize: "clamp(22px,4vw,30px)", lineHeight: 1.2, marginBottom: 12 }}>{status}</h2>
       <p style={{ color: T.muted, fontFamily: T.mono, lineHeight: 1.6 }}>{t("circle.satsEach", { amount: fmtSats(circle.shareMsats) })}{model.status === "filling" && ` · ${t("circle.closesIn", { time: circleTimeText(model.secsToFillDeadline, t) })}`}</p>
       {model.status === "running" && <p style={{ color: T.accent }}>{t("circle.countdown", { time: circleTimeText(model.secsToRoundEnd, t) })}</p>}
       {(model.move === "returning" || model.move === "return-now") && <p>{t("circle.returning")}</p>}
-      {model.move === "collect" && <p style={{ color: T.accent, fontWeight: 700 }}>{t("circle.readyCollect")}</p>}
+      {model.move === "collect" && <p style={{ color: T.accent, fontWeight: 700 }}>{t(viewerIsCollector ? "circle.potReady" : "circle.readyCollect")}</p>}
+      {viewerIsCollector && model.move === "wait" && model.status === "filling" && <p style={{ color: T.muted }}>{t("circle.sitOut")}</p>}
       {model.refusal && <p>{t(model.refusal === "full" ? "circle.full" : model.refusal === "closed" ? "circle.closed" : model.refusal === "host-waits" ? "circle.hostLocksLast" : "circle.alreadySeated")}</p>}
       {model.status === "complete" && childrenLoaded && <>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 10, margin: "26px 0" }}>
@@ -72,6 +88,15 @@ export function CircleSurface({ parent, escrows, viewerPubkey, backLabel, childr
       {!childrenLoaded && <button type="button" onClick={() => void run(onRefresh)} disabled={busy}>{t("circle.retry")}</button>}
       {(message || loadError) && <p role="status" style={{ color: T.accent, lineHeight: 1.5 }}>{message ?? loadError}</p>}
     </div>
+    {rot !== null && rot.queue.length > 0 && <div style={{ marginTop: 26, background: T.card, border: `1px solid ${T.border}`, borderRadius: 22, padding: "18px 20px" }}>
+      <h3 style={{ margin: "0 0 6px", fontSize: 15, color: T.muted, letterSpacing: 1, textTransform: "uppercase" }}>{t("circle.queueTitle")}</h3>
+      <p style={{ margin: "0 0 12px", color: T.muted, fontSize: 13, lineHeight: 1.5 }}>{t("circle.raceHint")}</p>
+      {rot.queue.map(entry => <div key={entry.roundIndex} style={{ display: "flex", alignItems: "baseline", gap: 10, padding: "7px 0" }}>
+        <span style={{ color: T.muted, font: `600 12px ${T.mono}`, minWidth: 64 }}>{t("circle.roundN", { n: entry.roundIndex })}</span>
+        <strong style={{ flex: 1, fontSize: 15, color: entry.collector ? T.text : T.muted }}>{entry.collector ? nym(entry.collector) : t("circle.queueOpen")}</strong>
+        {entry.collector?.toLowerCase() === viewerPubkey.toLowerCase() && <small style={{ color: T.accent, fontFamily: T.mono }}>{t("circle.you")}</small>}
+      </div>)}
+    </div>}
     {childrenLoaded && shares.some(sh => sh.circleId === circle.circleId) && <div style={{ marginTop: 26, background: T.card, border: `1px solid ${T.border}`, borderRadius: 22, padding: "18px 20px" }}>
       <h3 style={{ margin: "0 0 12px", fontSize: 15, color: T.muted, letterSpacing: 1, textTransform: "uppercase" }}>{t("circle.members")}</h3>
       {shares.filter(sh => sh.circleId === circle.circleId)

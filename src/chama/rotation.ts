@@ -125,3 +125,42 @@ export function commitmentLocks(round1CircleId: string, shares: readonly EscrowS
   }
   return out;
 }
+
+/** Everything a rotation round's surface needs, derived from raw states
+ *  (no policy import — this stays the dependency floor). Works for the
+ *  commitment round too (roundIndex 1): collector null, queue provisional.
+ *  Null when the chain back to round 1 is not in view. */
+export interface RotationView {
+  round1Id: string;
+  order: string[];
+  totalRounds: number;
+  /** This round's collector (null for the commitment round). */
+  collector: string | null;
+  /** Provisional collectors for the remaining rounds, computed from locks
+   *  so far — the LIVE standings; entries go null where no race has run. */
+  queue: { roundIndex: number; collector: string | null }[];
+}
+
+export function rotationView(states: readonly EscrowState[], circleId: string, roundIndex: number, prevCircleId: string | null): RotationView | null {
+  const byId = new Map(states.map(s => [s.id, s]));
+  let round1Id: string | null = roundIndex === 1 ? circleId : null;
+  let cursor = prevCircleId;
+  for (let hops = 0; round1Id === null && cursor && hops < 64; hops++) {
+    const state = byId.get(cursor);
+    if (!state?.chamaCircle) return null;
+    if (state.chamaCircle.roundIndex === 1) { round1Id = state.id; break; }
+    cursor = state.chamaCircle.prevCircleId;
+  }
+  if (!round1Id) return null;
+  const round1 = byId.get(round1Id);
+  if (!round1) return null;
+  const host = round1.initiator.pubkey;
+  const order = rotationOrder({ circleId: round1Id, creatorPubkey: host }, commitmentLocks(round1Id, states));
+  const totalRounds = order.length + 1;
+  const collector = roundIndex >= 2 ? collectorForRound(round1Id, order, host, states, roundIndex) : null;
+  const queue: { roundIndex: number; collector: string | null }[] = [];
+  for (let k = Math.max(2, roundIndex + 1); k <= totalRounds; k++) {
+    queue.push({ roundIndex: k, collector: collectorForRound(round1Id, order, host, states, k) });
+  }
+  return { round1Id, order, totalRounds, collector, queue };
+}

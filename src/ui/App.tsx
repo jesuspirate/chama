@@ -3839,21 +3839,29 @@ export default function App() {
           }}
           onClaim={async () => {
             if (!requireOnline()) return;
-            const share = [...escrows.values()].find(e => e.parent === selected.id && e.chamaPolicy === "share-v1" && e.participants[Role.BUYER] === pubkey);
-            if (!share) return;
-            // Identical ClaimPayoutModal flow as every trade — aimed at the
-            // SHARE escrow. No arbiter-premium holdback: share fees are
-            // pinned to zero, the member gets back exactly what they locked.
-            await new Promise<void>((resolve) => {
-              setPendingClaim({
-                escrowId: share.id,
-                payoutMsats: share.amountMsats,
-                premiumMsats: 0,
-                tradeCommunity: share.community,
-                fiatCurrency: share.fiatCurrency,
-                resolve,
+            // Every share of this circle whose engine-computed winner is the
+            // viewer and whose payout is APPROVED: one refund share for a
+            // member, or all N-1 released shares for the round's collector —
+            // the pot arrives as sequential claims through the identical
+            // ClaimPayoutModal flow every trade uses. No arbiter-premium
+            // holdback: share fees are pinned to zero.
+            const claimables = [...escrows.values()].filter(e => e.parent === selected.id && e.chamaPolicy
+              && e.status === EscrowStatus.APPROVED && getWinner(e)?.pubkey === pubkey);
+            const fallback = claimables.length === 0
+              ? [...escrows.values()].find(e => e.parent === selected.id && e.chamaPolicy === "share-v1" && e.participants[Role.BUYER] === pubkey)
+              : undefined;
+            for (const share of claimables.length ? claimables : fallback ? [fallback] : []) {
+              await new Promise<void>((resolve) => {
+                setPendingClaim({
+                  escrowId: share.id,
+                  payoutMsats: share.amountMsats,
+                  premiumMsats: 0,
+                  tradeCommunity: share.community,
+                  fiatCurrency: share.fiatCurrency,
+                  resolve,
+                });
               });
-            });
+            }
             await refreshCircle(selected.id);
           }}
           onNextRound={circle => { setCircleInitial(nextRoundTemplate(circle, { circleId: "", startSec: Math.floor(Date.now() / 1000) })); setView("circle-create"); }} />
