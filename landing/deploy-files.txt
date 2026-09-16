@@ -24,6 +24,7 @@ icons/use-cases/work.svg
 icons/use-cases/work-dark.svg
 
 # Use-case scenes revealed by the tile flip
+img/p-chama-circle-v1.jpg
 img/p-p2p-v5.jpg
 img/p-billpay-v2.jpg
 img/p-stores-v4.jpg
