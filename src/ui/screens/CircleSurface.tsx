@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { generatedNameFor } from "../nostr-profiles.js";
 import type { EscrowState } from "../../escrow-engine/types.js";
 import type { CircleRound } from "../../chama/types.js";
 import { circleFromEscrow } from "../../chama/policy.js";
@@ -71,6 +72,19 @@ export function CircleSurface({ parent, escrows, viewerPubkey, backLabel, childr
       {!childrenLoaded && <button type="button" onClick={() => void run(onRefresh)} disabled={busy}>{t("circle.retry")}</button>}
       {(message || loadError) && <p role="status" style={{ color: T.accent, lineHeight: 1.5 }}>{message ?? loadError}</p>}
     </div>
+    {childrenLoaded && shares.some(sh => sh.circleId === circle.circleId) && <div style={{ marginTop: 26, background: T.card, border: `1px solid ${T.border}`, borderRadius: 22, padding: "18px 20px" }}>
+      <h3 style={{ margin: "0 0 12px", fontSize: 15, color: T.muted, letterSpacing: 1, textTransform: "uppercase" }}>{t("circle.members")}</h3>
+      {shares.filter(sh => sh.circleId === circle.circleId)
+        .sort((a, b) => (a.lockedAtSec ?? Infinity) - (b.lockedAtSec ?? Infinity))
+        .map((sh, index) => {
+          const you = sh.memberPubkey.toLowerCase() === viewerPubkey.toLowerCase();
+          return <div key={sh.memberPubkey} style={{ display: "flex", alignItems: "baseline", gap: 10, padding: "9px 0", borderTop: index ? `1px solid ${T.border}` : "none" }}>
+            <span style={{ color: T.muted, font: `600 12px ${T.mono}`, minWidth: 22 }}>{sh.lockedAtSec !== null ? `#${index + 1}` : "·"}</span>
+            <strong style={{ flex: 1, fontSize: 15 }}>{generatedNameFor(sh.memberPubkey, lang)}{you && <span style={{ color: T.accent, fontWeight: 600 }}> · {t("circle.you")}</span>}</strong>
+            <small style={{ color: sh.lockedAtSec !== null ? T.accent : T.muted, fontFamily: T.mono }}>{sh.lockedAtSec !== null ? t("circle.lockedOn", { date: date(sh.lockedAtSec) }) : t("circle.reservedSeat")}</small>
+          </div>;
+        })}
+    </div>}
     <p style={{ textAlign: "center", color: T.muted, lineHeight: 1.7, fontSize: 13, margin: "22px auto 0", maxWidth: 430 }}>{t("circle.footer")}</p>
   </section>;
 }

@@ -55,32 +55,65 @@ export function extractNostrProfileName(content: string): string | null {
 // The name is a nickname, never an identity claim: the key stays canonical
 // and visible where verification matters.
 
-const NAME_ADJECTIVES = [
-  "Amber", "Bold", "Brave", "Bright", "Calm", "Clever", "Cosmic", "Daring",
-  "Deft", "Fleet", "Gentle", "Golden", "Grand", "Happy", "Keen", "Kind",
-  "Lively", "Loyal", "Lucky", "Mellow", "Noble", "Patient", "Proud", "Quick",
-  "Quiet", "Solid", "Steady", "Sunny", "Swift", "True", "Warm", "Wise",
-] as const;
+// Localized nym tables (Jet, 2026-09-16: every language meets the same
+// creature in its own tongue — "Grand Paka" is "Grand Cat" is "Gato Grande"
+// is "Chat Grand"). Index-aligned across languages: the two hash picks are
+// the IDENTITY; the words are the rendering. Word order follows each
+// language (adjective-first in English, noun-first elsewhere).
+const NAME_ADJECTIVES: Record<NymLang, readonly string[]> = {
+  en: ["Amber", "Bold", "Brave", "Bright", "Calm", "Clever", "Cosmic", "Daring",
+    "Deft", "Fleet", "Gentle", "Golden", "Grand", "Happy", "Keen", "Kind",
+    "Lively", "Loyal", "Lucky", "Mellow", "Noble", "Patient", "Proud", "Quick",
+    "Quiet", "Solid", "Steady", "Sunny", "Swift", "True", "Warm", "Wise"],
+  es: ["Ámbar", "Audaz", "Valiente", "Brillante", "Sereno", "Listo", "Cósmico", "Osado",
+    "Hábil", "Veloz", "Gentil", "Dorado", "Grande", "Feliz", "Agudo", "Amable",
+    "Vivaz", "Leal", "Afortunado", "Suave", "Noble", "Paciente", "Orgulloso", "Rápido",
+    "Tranquilo", "Sólido", "Firme", "Radiante", "Ligero", "Sincero", "Cálido", "Sabio"],
+  fr: ["Ambré", "Hardi", "Brave", "Brillant", "Calme", "Malin", "Cosmique", "Audacieux",
+    "Adroit", "Leste", "Doux", "Doré", "Grand", "Joyeux", "Vif", "Bienveillant",
+    "Enjoué", "Loyal", "Chanceux", "Paisible", "Noble", "Patient", "Fier", "Rapide",
+    "Tranquille", "Solide", "Constant", "Rayonnant", "Prompt", "Sincère", "Chaleureux", "Sage"],
+  sw: ["Kaharabu", "Jasiri", "Shujaa", "Angavu", "Mtulivu", "Mwerevu", "Angani", "Hodari",
+    "Stadi", "Mwepesi", "Mpole", "Dhahabu", "Kuu", "Furaha", "Makini", "Karimu",
+    "Changamfu", "Mwaminifu", "Bahati", "Laini", "Adili", "Mvumilivu", "Fahari", "Chapchap",
+    "Kimya", "Imara", "Thabiti", "Jua", "Kasi", "Kweli", "Joto", "Busara"],
+};
 
-const NAME_ANIMALS = [
-  "Simba", "Twiga", "Tembo", "Chui", "Duma", "Nyati", "Kobe", "Kiboko",
-  "Kifaru", "Swala", "Mbuni", "Sungura", "Kanga", "Korongo", "Njiwa", "Tai",
-  "Kipepeo", "Nyuki", "Samaki", "Pomboo", "Kasa", "Kongoni", "Digidigi", "Kima",
-  "Ndovu", "Jogoo", "Mbega", "Chiriku", "Kunguru", "Mamba", "Paka", "Punda",
-] as const;
+const NAME_ANIMALS: Record<NymLang, readonly string[]> = {
+  en: ["Lion", "Giraffe", "Elephant", "Leopard", "Cheetah", "Buffalo", "Tortoise", "Hippo",
+    "Rhino", "Gazelle", "Ostrich", "Rabbit", "Guineafowl", "Crane", "Dove", "Eagle",
+    "Butterfly", "Bee", "Fish", "Dolphin", "Turtle", "Hartebeest", "Dikdik", "Monkey",
+    "Tusker", "Rooster", "Colobus", "Finch", "Crow", "Crocodile", "Cat", "Donkey"],
+  es: ["León", "Jirafa", "Elefante", "Leopardo", "Guepardo", "Búfalo", "Galápago", "Hipopótamo",
+    "Rinoceronte", "Gacela", "Avestruz", "Conejo", "Pintada", "Grulla", "Paloma", "Águila",
+    "Mariposa", "Abeja", "Pez", "Delfín", "Tortuga", "Antílope", "Dicdic", "Mono",
+    "Paquidermo", "Gallo", "Colobo", "Pinzón", "Cuervo", "Cocodrilo", "Gato", "Burro"],
+  fr: ["Lion", "Girafe", "Éléphant", "Léopard", "Guépard", "Buffle", "Tortue", "Hippopotame",
+    "Rhinocéros", "Gazelle", "Autruche", "Lapin", "Pintade", "Grue", "Colombe", "Aigle",
+    "Papillon", "Abeille", "Poisson", "Dauphin", "Caret", "Bubale", "Dikdik", "Singe",
+    "Pachyderme", "Coq", "Colobe", "Pinson", "Corbeau", "Crocodile", "Chat", "Âne"],
+  sw: ["Simba", "Twiga", "Tembo", "Chui", "Duma", "Nyati", "Kobe", "Kiboko",
+    "Kifaru", "Swala", "Mbuni", "Sungura", "Kanga", "Korongo", "Njiwa", "Tai",
+    "Kipepeo", "Nyuki", "Samaki", "Pomboo", "Kasa", "Kongoni", "Digidigi", "Kima",
+    "Ndovu", "Jogoo", "Mbega", "Chiriku", "Kunguru", "Mamba", "Paka", "Punda"],
+};
+
+export type NymLang = "en" | "es" | "fr" | "sw";
 
 /** Deterministic friendly name for any pubkey (FNV-1a over the lowercase
- *  key; two independent byte picks). Same input → same name on every device. */
-export function generatedNameFor(pubkey: string): string {
+ *  key; two independent byte picks). Same input → same CREATURE on every
+ *  device; the rendering follows the viewer's language so each circle
+ *  feels at home. Adjective-first in English, noun-first elsewhere. */
+export function generatedNameFor(pubkey: string, lang: NymLang = "en"): string {
   const key = pubkey.trim().toLowerCase();
   let hash = 0x811c9dc5;
   for (let i = 0; i < key.length; i++) {
     hash ^= key.charCodeAt(i);
     hash = Math.imul(hash, 0x01000193) >>> 0;
   }
-  const adjective = NAME_ADJECTIVES[hash & 31];
-  const animal = NAME_ANIMALS[(hash >>> 5) & 31];
-  return `${adjective} ${animal}`;
+  const adjective = NAME_ADJECTIVES[lang][hash & 31];
+  const animal = NAME_ANIMALS[lang][(hash >>> 5) & 31];
+  return lang === "en" ? `${adjective} ${animal}` : `${animal} ${adjective}`;
 }
 
 // ── Local self-chosen trade name ───────────────────────────────────────────

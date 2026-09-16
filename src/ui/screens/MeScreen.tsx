@@ -3034,10 +3034,10 @@ function NewListingNotificationsRow() {
  *  Stored per active npub on this device; empty falls back to the
  *  deterministic generated name every client derives from the pubkey. */
 function TradeNameRow({ pubkey }: { pubkey: string }) {
-  const { t } = useT();
+  const { t, lang } = useT();
   const [draft, setDraft] = useState<string>(() => readLocalTradeName() ?? "");
   const [savedTick, setSavedTick] = useState(false);
-  const generated = generatedNameFor(pubkey);
+  const generated = generatedNameFor(pubkey, lang);
   const save = () => {
     writeLocalTradeName(draft);
     setDraft(readLocalTradeName() ?? "");
