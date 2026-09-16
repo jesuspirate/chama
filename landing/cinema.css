@@ -10,9 +10,9 @@
 .nav.past-cinema .languages button { color: var(--muted); }
 .nav.past-cinema .languages button[aria-pressed=true] { color: var(--ink); }
 .nav.past-cinema .dark { background: var(--ink); color: var(--paper); }
-.cinema { height: 145svh; background: #15291f; }
+.cinema { height: 145svh; background: var(--paper); }
 .cinema-sticky { height: 100svh; min-height: 540px; position: sticky; top: 0; padding: var(--cinema-inset,0px); }
-.cinema-screen { position: relative; width: 100%; height: 100%; overflow: hidden; background: #15291f; border-radius: var(--cinema-radius,0px); }
+.cinema-screen { position: relative; width: 100%; height: 100%; overflow: hidden; background: #15291f; border-radius: var(--cinema-radius,0px); clip-path: inset(0 round var(--cinema-radius,0px)); isolation: isolate; }
 .cinema-poster, .cinema .hero-video { width: 100%; height: 100%; object-fit: cover; object-position: center; position: absolute; inset: 0; }
 .cinema .hero-video { opacity: 0; transition: opacity .5s; }
 .cinema .hero-video.is-playing { opacity: 1; }
@@ -32,7 +32,7 @@
 .scroll-stem { height: 28px; width: 28px; display: grid; place-items: center; border: 1px solid #fff8e960; border-radius: 50%; }
 .film-complete .scroll-stem { animation: scroll-nudge 1.8s ease-in-out 3; }
 @keyframes scroll-nudge { 50% { transform: translateY(5px); } }
-.film-progress { position: absolute; height: 2px; bottom: 0; left: 0; right: 0; background: #ffffff20; }
+.film-progress { position: absolute; height: 2px; bottom: 8px; left: max(12px,var(--cinema-radius,0px)); right: max(12px,var(--cinema-radius,0px)); border-radius: 2px; overflow: hidden; background: #ffffff20; }
 .film-progress span { display: block; width: var(--film-percent,0%); height: 100%; background: #f6ad54; }
 .story-bridge { min-height: 78svh; padding-block: 120px; display: flex; flex-direction: column; justify-content: center; text-align: center; align-items: center; }
 .story-bridge h2 { font-size: clamp(64px,8vw,120px); line-height: 1.06; }
@@ -194,3 +194,7 @@ html[data-theme=dark] .real-life{background:#1b211b}
 html[data-theme=dark] :is(.story-bridge h2 em,.chapter-number,.trust summary:after){color:#eab477}
 @media(max-width:760px){.nav-actions{gap:10px}.theme-toggle{width:32px;height:32px;font-size:18px}html[data-theme=dark] .journey-nav{background:#1b211b;border-color:var(--line)}html[data-theme=dark] .cinema h1 em{color:#eab477}.circle-art{position:relative;width:min(76vw,360px);height:auto;aspect-ratio:1;right:auto;top:auto;opacity:1;margin:55px auto 0}.circle-art i{transform:translate(-50%,-50%) rotate(calc(var(--i)*60deg)) translateY(clamp(-180px,-38vw,-110px))}.invitation .wrap{overflow:visible}}
 @media(prefers-reduced-motion:reduce){.button.enter,.button.enter::before{animation:none}}
+
+/* Clip the composited video to the same curve as its containing screen. */
+@media(min-width:761px){.cinema-poster,.cinema .hero-video{border-radius:inherit}}
+@media(max-width:760px),(prefers-reduced-motion:reduce){.cinema-screen{clip-path:none}}

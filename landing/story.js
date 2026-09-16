@@ -35,7 +35,7 @@ let explicitPlay = false;
 const autoAllowed = () => !mobile.matches && !reducedMotion.matches && !connection?.saveData;
 function filmLabels() {
   motionButton.textContent = word(finished ? 'replayFilm' : video.paused ? (started ? 'resumeFilm' : 'playFilm') : 'pauseFilm');
-  beat.textContent = word(video.currentTime < 4 ? 'beatGive' : video.currentTime < 9 ? 'beatReceive' : 'beatContinue');
+  beat.textContent = word(video.currentTime < 8 ? 'beatGive' : video.currentTime < 13 ? 'beatReceive' : 'beatContinue');
   screen.classList.toggle('film-running', !video.paused && video.currentTime > 1.1);
   screen.classList.toggle('film-complete', finished);
   screen.style.setProperty('--film-percent', `${video.duration ? 100 * video.currentTime / video.duration : 0}%`);

@@ -16,7 +16,7 @@ Rotating payouts are currently gated by `CHAMA_ROTATION_ENABLED = false`. The he
 
 The hero is a silent, 15-second Higgsfield film generated from the approved four-person circle artwork, followed by a Genjutsu correction of phone logos and chip markings. It shows contributions, a first recipient, and another handover. It is an illustrative film, not recorded application UI. The source uses 3:2 framing; desktop uses cover framing and mobile preserves the full view.
 
-Production video: `img/chama-circle-story-v3.mp4`, H.264, 1600 × 1066, 15.04 seconds, approximately 5.1 MB, no audio, fast-start metadata. The opening poster is extracted at 2.5 seconds. The closing photograph is a separately reviewed edit. Public-safe prompts are recorded alongside the assets.
+Production video: `img/chama-circle-story-v4.mp4`, H.264, 1600 × 1066, 15.04 seconds, approximately 2.3 MB, no audio, fast-start metadata. The opening poster is extracted at 1 second. The closing photograph is a separately reviewed edit. Public-safe prompts are recorded alongside the assets.
 
 Playback pauses outside the viewport and in hidden tabs, preserves an explicit pause, and never loops. Reduced-motion and data-saving preferences prevent automatic video loading. Manual playback remains available. Reduced motion also disables continuous scroll transformations. With JavaScript unavailable, still images and ordinary document chapters remain readable.
 
@@ -34,4 +34,8 @@ The animated example is explicitly cash for Bitcoin. Daniel is the Bitcoin selle
 
 The create-form circle mark is reused unchanged at the photographic conclusion. The Bitcoin mark in the diagram is the actual Bitcoin Core PNG; asset provenance is recorded in `icons/bitcoin-source.md`. Generated photographs use this logo as an image reference, with plain orange chips instead of repeated generated glyphs.
 
-Current assets supersede the earlier versions: `chama-circle-story-v3.mp4` (15.04 seconds, 1600 × 1066, about 5.1 MB), its `chama-circle-action-v3.jpg` poster, and `chama-circle-ending-v4.jpg` (1536 × 1024). Higgsfield Genjutsu corrected phone logos and chip markings while retaining the existing contribution and handover narrative. The closing still was edited with the built-in image tool. A duplicate front-camera cutout was caught during close-up review; the rejected intermediate still is not shipped. The accepted phone replacement was checked enlarged before integration.
+Current assets supersede the earlier versions: `chama-circle-story-v4.mp4` (15.04 seconds, 1600 × 1066, about 2.3 MB), its `chama-circle-action-v4.jpg` poster, and `chama-circle-ending-v8.jpg` (1536 × 1024). Higgsfield Kling 3.0 Pro regenerated the film between reviewed opening and closing frames, with metallic gold coins and five orange checked Circle seats on the stationary phone. The closing still was edited with the built-in image tool. A duplicate front-camera cutout was caught during close-up review; the rejected intermediate still is not shipped. The accepted phone replacement was checked enlarged before integration.
+
+## Hero continuity and framing
+
+The film uses one continuous fixed shot. Quarter-second phone crops across all 15 seconds retain the phone and five-seat screen; one-second full-frame review covers contributions and the collection. The closing photograph uses matching gold coins. The video and its container share a rounded clip, with the progress line inset to avoid cutting across lower corners. Desktop light/dark and mobile layouts were reviewed.
