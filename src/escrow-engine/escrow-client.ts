@@ -1118,6 +1118,7 @@ export class EscrowClient {
     getEscrows: () => this.states.values(), getPubkey: () => this.getPubkey(),
     vote: (id, outcome) => this.vote(id, outcome),
     viewComplete: (circleId) => this.chamaViewComplete.has(circleId),
+    openNextRound: (roundId) => this.createNextRotationRound(roundId),
     onError: (id, error) => console.debug(`[chama] refund remains pending for ${id}`, error),
   });
 
