@@ -1,17 +1,27 @@
-# A trade becomes a circle
+# It starts with people
 
-An editorial scrolling story for the public landing page: meet, agree, trade, gather. Warm paper, forest ink, amber accents, large type, and real-life photographic scenes keep the focus on people. Desktop chapters share one sticky picture; narrow screens place each picture in the reading flow. Scrolling remains native. The design uses one consistent palette instead of a theme switch.
+The opening is a film with a beginning, a handover, and a next turn. Desktop visitors enter a full-viewport scene. It plays once, holds its final frame, restores the headline, and invites a native scroll into the explanation. The scroll is never captured or delayed. Mobile places the headline above an inline, tap-to-play film; it does not download video automatically.
 
-The approved savings-circle artwork anchors the hero and the new 1200 × 630 social preview. The previous social banner is replaced in both Open Graph and Twitter metadata with a versioned JPEG.
+Meet → Agree → Trade is one continuous illustration: two people connect, their chosen arbiter joins, the agreement closes around locked sats, and settlement moves to the seller. The concluding photographic reveal, “And a circle begins,” returns to the same people and bowl as the opening. It is a consequence of the three steps, not a fourth step or a savings instruction manual.
 
-## Motion
+## References and story
 
-The hero uses a six-second Higgsfield Seedance 2.5 clip derived from the approved circle artwork, encoded as a 695 KB silent H.264 MP4. Playback is optional, pauses outside the viewport or in a hidden tab, and preserves manual pause. Reduced-motion and data-saving preferences prevent automatic loading. The still photograph remains available when JavaScript, autoplay, or video loading is unavailable.
+Reviewed the full scrolling journeys at [Strike](https://strike.me) and [Buzz](https://buzz.xyz). Strike connects a consistent dark visual world with product demonstrations, proof, and history. Buzz changes the color and scale of one recurring visual world, revealing its product before returning to its oversized identity. The relevant lesson is continuity and controlled reveals, not copying their artwork or layout.
 
-Video prompt: A quiet cinematic living photograph. Preserve the exact four friends, faces, clothes, courtyard, phones and woven bowl. Tiny smiles, subtle breathing, soft breeze in leaves, warm golden sunlight. Very slow camera push toward the group. Keep all faces and the bowl visible. Amber rim and teal phone edge glows stay steady. No talking, large gestures, extra people, text, cuts or morphing. End near the original composition for an atmospheric loop. Silent, no music or speech.
+The [FAO group savings resource book](https://www.fao.org/4/y4094e/y4094e04.htm) describes rotating contributions and the significance of receiving a pooled sum. [VICOBA field research](https://journals.openedition.org/anthropodev/846) describes a related but distinct accumulating savings-and-credit model. The film uses reciprocity as its human theme, not a claim that every savings tradition has identical rules.
 
-## Scope
+Rotating payouts are currently gated by `CHAMA_ROTATION_ENABLED = false`. The hero is explicitly labelled a vision of rotating savings, coming next. The trade chapters describe the existing escrow safeguards. No reputation scoring, arbiter certification, or new savings behavior is added by this PR.
 
-Only the landing page and its deploy manifest change. Existing FAQ pages, community links, sandbox and app destinations remain available. English, Spanish and French copy follows the same story. Savings-circle copy describes the currently shipped equal-share round; rotating payouts are not advertised as live.
+## Film and assets
 
-The asset manifest includes the current page assets and FAQ dependencies; unused experiments remain in the repository but are not shipped. Deploy through the documented `npm run ship -- --only landing` entry point.
+Higgsfield Kling 3.0 Pro, silent, 15 seconds, generated from the approved four-person circle artwork. Job: `f1bb715a-ce6a-4244-b28a-7249718776ae`. The result shows lit Bitcoin phone screens, symbolic orange tokens contributed to a bowl, a first recipient, then another handover. It is an illustrative film, not recorded application UI. The model retained the source's 3:2 framing despite the requested 16:9 ratio; desktop uses cover framing and mobile preserves the full 3:2 view.
+
+Production video: `img/chama-circle-story-v2.mp4`, H.264, 1600 × 1066, 15.04 seconds, approximately 6.2 MB, no audio, fast-start metadata. The opening poster is extracted at 2.5 seconds and the closing photograph at 13.9 seconds. No generative edits were made during encoding or frame extraction. The exact generation prompt is recorded alongside the asset.
+
+Playback pauses outside the viewport and in hidden tabs, preserves an explicit pause, and never loops. Reduced-motion and data-saving preferences prevent automatic video loading. Manual playback remains available. Reduced motion also disables continuous scroll transformations. With JavaScript unavailable, still images and ordinary document chapters remain readable.
+
+## Scope and shipping
+
+Only landing-page assets and presentation change. English, Spanish and French follow the same sequence. Existing FAQs, app and sandbox links, and community destinations are retained. The previously approved versioned social banner remains the replacement for the old live banner.
+
+The deploy manifest includes reviewed assets and FAQ dependencies. Application work remains separate. Deploy only through the documented `npm run ship -- --only landing` entry point; this PR does not deploy itself.
