@@ -133,6 +133,37 @@ a failed fill ENDS the cycle (no retry round) — remaining rounds never
 open, everyone's locked sats refund, the defaulter's standing takes the
 burn, everyone else's punctuality is minted.
 
+### The max penalty: post-collection default (decided 2026-09-16, Jet)
+
+A member who COLLECTED and then failed to lock in a later round of the
+same cycle gets the maximum consequence the system can inflict:
+
+1. TOTAL STANDING FORFEITURE — not a deduction: everything they ever
+   accumulated zeroes at once. Standing never goes negative (unchanged),
+   but it can be lost whole. Deterministic from chain facts alone:
+   collected in round r + a later round of the cycle failed + they are
+   among its missing lockers. No judgment, no arbiter, just arithmetic.
+2. THE MARK — zero standing alone would make them indistinguishable from
+   a newcomer, so clients also derive a distinct "collected, then broke
+   the circle" fact (with date) from the same chain evidence, surfaced to
+   hosts and members whenever that pubkey approaches a future circle.
+
+Asymmetric mercy, on purpose: a PRE-collection no-show forfeited their
+own payday and takes only the normal burn — they mostly punished
+themselves. The pot creates the duty; the max consequence sits exactly
+where the pot was taken. Non-custodial means sats can never be clawed
+back — standing and the mark are the whole lever, and a fresh npub
+escapes them only into newcomer coldness (no standing, no history, no
+vouchers) in invite-first circles.
+
+### Round 1 is the most load-bearing round (named 2026-09-16)
+
+The commitment round seals the member set, proves every member can lock,
+mints the first standing, bootstraps the witness ring, AND is heat one of
+the race — its lock order IS the round-2 queue. Pole position collects
+the first pot. Product copy: "the race starts the moment the circle
+opens." Never call it ceremonial.
+
 ### Standing is the collection-order collateral
 
 Nothing changes in the standing math; what changes is what it's FOR. The
