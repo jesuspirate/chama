@@ -26,3 +26,7 @@ img/p-p2p-v5.jpg
 img/p-stores-v4.jpg
 img/chama-community-threshold-v9.png
 icons/chama-circle-locked.svg
+
+claim.js
+img/chama-circle-story-v6.mp4
+img/chama-circle-action-v6.jpg

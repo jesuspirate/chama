@@ -233,3 +233,9 @@ html[data-theme=dark] .intent-card{background:#2a342a;border-color:#56634c}
 @media(max-width:1000px) and (min-width:761px){.claim-demo{right:4%;width:235px}.claim-device{padding:35px 18px 20px}.cinema-title{max-width:60%}.cinema h1{font-size:68px}}
 @media(max-width:760px){.intent-card{padding:11px 6px;border-radius:18px;top:65%}.mobile-coordination .intent-card strong{font-size:11px}.intent-card::before{top:-14px;width:8px;height:8px}.intent-card::after{top:-24px;width:4px;height:4px}.claim-demo{position:relative;right:auto;top:auto;transform:none;width:250px;margin:-25px auto 4px;z-index:2}.claim-device{min-height:0;padding:28px 22px 22px}.claim-preview{margin:15px 0}.claim-symbol{height:88px}.claim-symbol img{height:88px;width:88px}.claim-status{font-size:21px}.cinema-title{max-width:none;bottom:auto}.cinema h1{font-size:clamp(60px,12vw,92px)}}
 @media(prefers-reduced-motion:reduce){.claim-symbol img,.claim-tick{transition:none}.claim-action::after{animation:none!important}}
+
+/* Two moments: the human circle opens; the digital claim closes the story. */
+.circle-finale .claim-status{font:500 23px/1.2 'Manrope',sans-serif;letter-spacing:-.04em}
+.circle-finale .claim-demo{right:max(6%,24px)}
+@media(min-width:761px){.circle-finale-copy{padding-right:365px}.circle-finale-copy>h2{font-size:clamp(64px,6.7vw,108px)}.circle-finale-copy>.eyebrow{max-width:400px}.cinema-title{max-width:80%}}
+@media(max-width:760px){.circle-finale .claim-demo{right:auto;margin:36px auto 0}.circle-finale .claim-status{font-size:21px}}
