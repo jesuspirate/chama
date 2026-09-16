@@ -11,9 +11,11 @@ story-locales.js
 # Reviewed page assets
 icons/chama-mark-64.png
 icons/favicon.ico
+icons/bitcoin-official.png
+icons/chama-circle-dark.svg
 icons/og-image-circle-v10.jpg
-img/chama-circle-action-v2.jpg
-img/chama-circle-ending-v2.jpg
+img/chama-circle-action-v3.jpg
+img/chama-circle-ending-v4.jpg
 img/faq/faq-cancel.png
 img/faq/faq-chooser.png
 img/faq/faq-mpesa.png
@@ -23,4 +25,4 @@ img/p-billpay-v2.jpg
 img/p-chama-circle-v1.jpg
 img/p-p2p-v5.jpg
 img/p-stores-v4.jpg
-img/chama-circle-story-v2.mp4
+img/chama-circle-story-v3.mp4

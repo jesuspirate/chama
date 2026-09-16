@@ -9,7 +9,17 @@ const beat = document.querySelector('.film-beat');
 const journey = document.querySelector('.journey');
 const chapters = [...document.querySelectorAll('.journey-chapter')];
 const chapterLinks = [...document.querySelectorAll('.journey-nav a')];
-const status = document.querySelector('.journey-status');
+const mainArt = document.querySelector('.journey-art');
+document.documentElement.classList.add('has-story');
+const mobileArt = chapters.map(chapter => {
+  const frame = document.createElement('div');
+  frame.className = 'mobile-coordination';
+  frame.setAttribute('aria-hidden', 'true');
+  const art = mainArt.cloneNode(true);
+  frame.append(art);
+  chapter.append(frame);
+  return art;
+});
 const finale = document.querySelector('.circle-finale');
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 const mobile = matchMedia('(max-width: 760px)');
@@ -36,7 +46,7 @@ function setPhase(index) {
     if (i === index) link.setAttribute('aria-current', 'step');
     else link.removeAttribute('aria-current');
   });
-  status.textContent = word(['statusMeet', 'statusAgree', 'statusTrade'][index]);
+
 }
 function setLanguage(lang) {
   if (!copy[lang]) lang = 'en';
@@ -45,6 +55,7 @@ function setLanguage(lang) {
   document.querySelectorAll('[data-lang]').forEach(el => el.setAttribute('aria-pressed', String(el.dataset.lang === lang)));
   document.querySelectorAll('a[href^="faq"]').forEach(el => { el.href = lang === 'en' ? 'faq.html' : `faq.${lang}.html`; });
   setPhase(active);
+  updateStory();
   filmLabels();
   scheduleStory();
   try { localStorage.setItem('chama-landing-language', lang); } catch (_) { /* Optional storage. */ }
@@ -112,25 +123,45 @@ function updateStory() {
     if (d < distance) { closest = i; distance = d; }
   });
   if (closest !== active) setPhase(closest);
-  const agree = reducedMotion.matches ? Number(active >= 1) : clamp((h * .9 - rects[1].top) / (h * .65));
-  const trade = reducedMotion.matches ? Number(active === 2) : clamp((h * .85 - rects[2].top) / (h * .7));
-  const vars = {
-    '--arbiter-opacity': agree,
-    '--arbiter-y': `${-35 - 15 * agree}%`,
-    '--line-offset': 1000 * (1 - agree),
-    '--token-opacity': clamp(agree * 2),
-    '--token-x': `${50 + 30 * trade}%`,
-    '--lock-opacity': agree * (1 - clamp(trade * 3)),
-    '--bitcoin-opacity': clamp(trade * 3),
-    '--halo-opacity': clamp((trade - .6) * 2.5),
-    '--halo-scale': 1 + trade * .15,
-    '--orbit-angle': `${reducedMotion.matches ? 0 : (agree + trade) * 16}deg`,
-    '--journey-bg': `rgb(${236 - Math.round(trade * 8)} ${236 - Math.round(trade * 5)} ${223 - Math.round(trade * 7)})`
-  };
-  Object.entries(vars).forEach(([key, value]) => journey.style.setProperty(key, value));
+  const agree = reducedMotion.matches ? Number(active >= 1) : clamp((h * .3 - rects[1].top) / (h * .9));
+  const trade = reducedMotion.matches ? Number(active === 2) : clamp((h * .3 - rects[2].top) / (h * .75));
+  const meet = clamp((h * .9 - rects[0].top) / (h * .6));
+  drawCoordination(mainArt, meet, agree, trade);
+  mobileArt.forEach((art, i) => drawCoordination(art, 1, Number(i >= 1), Number(i === 2)));
+  journey.style.setProperty('--journey-bg', `rgb(${236 - Math.round(trade * 8)} ${236 - Math.round(trade * 5)} ${223 - Math.round(trade * 7)})`);
   const reveal = reducedMotion.matches ? 1 : clamp((h - finale.getBoundingClientRect().top) / (h * .85));
   finale.style.setProperty('--circle-aperture', `${18 + reveal * 92}%`);
   finale.style.setProperty('--circle-scale', 1.12 - reveal * .12);
+}
+// This example is Exchange: the seller funds sats; the buyer pays local money.
+// Both confirmations precede release. Chama's mark never represents custody.
+function drawCoordination(art, meet, agree, trade) {
+  const funding = clamp((agree - .35) / .4);
+  const locked = clamp((funding - .75) * 4);
+  const payment = clamp((trade - .05) / .35);
+  const sellerConfirm = clamp((trade - .43) / .07);
+  const buyerConfirm = clamp((trade - .53) / .07);
+  const release = clamp((trade - .65) / .23);
+  const received = clamp((trade - .9) / .1);
+  const values = {
+    '--meet-opacity': 1 - clamp(agree * 4),
+    '--match-offset': 1 - meet,
+    '--arbiter-opacity': clamp(agree * 3),
+    '--arbiter-offset': 1 - clamp(agree * 2),
+    '--agree-opacity': clamp(agree * 4) * (1 - clamp(trade * 6)),
+    '--cash-opacity': clamp(trade * 15) * (1 - clamp((trade - .42) * 12)),
+    '--cash-x': `${17.5 + 65 * payment}%`,
+    '--vault-opacity': locked * (1 - clamp((trade - .63) * 10)),
+    '--coin-opacity': trade > .6 ? clamp((trade - .63) * 15) * (1 - received) : clamp(funding * 5) * (1 - locked),
+    '--coin-x': `${trade > .6 ? 50 - 32.5 * release : 82.5 - 32.5 * funding}%`,
+    '--buyer-confirm': buyerConfirm,
+    '--seller-confirm': sellerConfirm,
+    '--received-opacity': received,
+    '--trade-routes': clamp(trade * 6)
+  };
+  Object.entries(values).forEach(([key,value]) => art.style.setProperty(key,value));
+  const key = trade > .9 ? 'statusTrade' : trade > .64 ? 'statusRelease' : trade > .43 ? 'statusConfirm' : trade > .02 ? 'statusPay' : agree > .3 ? 'statusAgree' : 'statusMeet';
+  art.querySelector('.journey-status').textContent = word(key);
 }
 function scheduleStory() { if (!scheduled) { scheduled = true; requestAnimationFrame(updateStory); } }
 addEventListener('scroll', scheduleStory, { passive: true });
