@@ -3,7 +3,10 @@ document.querySelectorAll('[data-copy]').forEach(el => { copy.en[el.dataset.copy
 const cinema = document.querySelector('.cinema');
 const screen = document.querySelector('.cinema-screen');
 const poster = document.querySelector('.cinema-poster');
-const video = document.querySelector('.hero-video');
+const claimDemo = document.querySelector('.claim-demo');
+const claimAction = document.querySelector('.claim-action');
+let elapsed = 0, running = false, filmFrame = 0, lastFrame = 0;
+const duration = 5;
 const motionButton = document.querySelector('.motion-toggle');
 const beat = document.querySelector('.film-beat');
 const journey = document.querySelector('.journey');
@@ -34,11 +37,16 @@ let inView = false;
 let explicitPlay = false;
 const autoAllowed = () => !mobile.matches && !reducedMotion.matches && !connection?.saveData;
 function filmLabels() {
-  motionButton.textContent = word(finished ? 'replayFilm' : video.paused ? (started ? 'resumeFilm' : 'playFilm') : 'pauseFilm');
-  beat.textContent = word(video.currentTime < 1.5 ? 'beatGive' : video.currentTime < 4.5 ? 'beatReceive' : 'beatContinue');
-  screen.classList.toggle('film-running', !video.paused && video.currentTime > 1.1);
+  motionButton.textContent = word(finished ? 'replayFilm' : !running ? (started ? 'resumeFilm' : 'playFilm') : 'pauseFilm');
+  const state = elapsed >= 3 ? 'received' : elapsed >= 1.8 ? 'claiming' : 'ready';
+  claimDemo.dataset.state = state;
+  claimDemo.querySelector('.claim-status').textContent = word(state === 'received' ? 'claimReceived' : state === 'claiming' ? 'claimPending' : 'claimReady');
+  claimDemo.querySelector('.claim-detail').textContent = word(state === 'received' ? 'claimDone' : 'claimUnlocked');
+  claimAction.textContent = word(state === 'received' ? 'replayFilm' : state === 'claiming' ? 'claimPending' : 'claimCollect');
+  claimAction.disabled = state === 'claiming';
+  beat.textContent = '';
   screen.classList.toggle('film-complete', finished);
-  screen.style.setProperty('--film-percent', `${video.duration ? 100 * video.currentTime / video.duration : 0}%`);
+  screen.style.setProperty('--film-percent', `${100 * elapsed / duration}%`);
 }
 function setPhase(index) {
   active = index;
@@ -61,40 +69,36 @@ function setLanguage(lang) {
   scheduleStory();
   try { localStorage.setItem('chama-landing-language', lang); } catch (_) { /* Optional storage. */ }
 }
-async function playFilm() {
-  if (!video.getAttribute('src')) { video.src = video.dataset.src; video.load(); }
-  try { await video.play(); } catch (_) { filmLabels(); /* The visible button remains available if autoplay is blocked. */ }
+function pauseFilm() {
+  running = false; cancelAnimationFrame(filmFrame); filmLabels();
+}
+function tickFilm(now) {
+  if (!running) return;
+  elapsed = Math.min(duration, elapsed + Math.min((now-lastFrame)/1000,.1));
+  lastFrame = now;
+  if (elapsed >= duration) { finished = true; running = false; }
+  filmLabels();
+  if (running) filmFrame = requestAnimationFrame(tickFilm);
+}
+function playFilm() {
+  if (running) return;
+  running = true; started = true; lastFrame = performance.now();
+  filmLabels(); filmFrame = requestAnimationFrame(tickFilm);
 }
 function syncFilm() {
-  if (!inView || document.hidden || userPaused || finished || (!explicitPlay && !autoAllowed())) {
-    video.pause();
-    filmLabels();
-    return;
-  }
-  void playFilm();
+  if (!inView || document.hidden || userPaused || finished || (!explicitPlay && !autoAllowed())) { pauseFilm(); return; }
+  playFilm();
 }
 motionButton.addEventListener('click', () => {
-  if (!video.paused) { userPaused = true; video.pause(); }
-  else {
-    if (finished) { video.currentTime = 0; finished = false; }
-    userPaused = false;
-    explicitPlay = true;
-    void playFilm();
-  }
+  if (running) { userPaused = true; pauseFilm(); }
+  else { if (finished) { elapsed = 0; finished = false; } userPaused = false; explicitPlay = true; playFilm(); }
 });
-video.addEventListener('playing', () => {
-  if (!inView || document.hidden || userPaused) { video.pause(); return; }
-  started = true;
-  video.classList.add('is-playing');
-  filmLabels();
-});
-video.addEventListener('pause', filmLabels);
-video.addEventListener('timeupdate', filmLabels);
-video.addEventListener('ended', () => { finished = true; filmLabels(); });
-video.addEventListener('error', () => {
-  video.classList.remove('is-playing');
-  screen.classList.remove('film-running');
-  motionButton.hidden = true;
+claimAction.addEventListener('click', () => {
+  if (elapsed >= 3) { elapsed = 0; finished = false; }
+  else elapsed = 1.8;
+  userPaused = false; explicitPlay = true;
+  if (reducedMotion.matches) { elapsed = duration; finished = true; pauseFilm(); }
+  else playFilm();
 });
 new IntersectionObserver(entries => {
   inView = entries[0].isIntersecting;

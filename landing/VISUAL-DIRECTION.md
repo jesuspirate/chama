@@ -43,3 +43,9 @@ The film uses one continuous fixed shot. Quarter-second phone crops across all 1
 ## Single-coin refinement
 
 Current hero: `chama-circle-story-v5.mp4`, six seconds, one large gold Bitcoin coin released within the first second, then basket collection and shared laughter. Poster: `chama-circle-action-v5.jpg`. This replaces the slow 15-second multi-coin contribution take. The phone retains the locked Circle. Agree begins animating while its chapter enters; duplicate agreement labels are removed and payment routes appear in sequence. The closing flag ring is oversized and cropped off the right edge behind the copy. “Good things start with people” replaces “human beginnings” in all three languages.
+
+## Digital-first audience note
+
+The intended demographic remains an open product question. Do not infer Bitcoin competence from age, or present older African people as the default target market. A contemporary adult cast is a creative hypothesis, not established market research. FinAccess 2021/2024 youth cohort work finds increasing digital connectivity and continued informal-finance use among younger adults; this supports testing a phone-first presentation, not claiming a Chama-specific audience profile. Source: https://www.fsdkenya.org/wp-content/uploads/2025/03/Youth-cohort-analysis-from-FinAccess.pdf
+
+Current hero and conclusion use `chama-digital-community-v1.jpg`. The physical basket and coin films are superseded. An authored, five-second phone illustration shows ready to claim → collect → received using the app’s “Collect your sats” action language. This depicts an already-ready claim with destination preparation omitted, not currently enabled rotating payouts. It pauses offscreen and in hidden tabs, respects reduced motion, and can be replayed or manually advanced. Intent cards appear as thought bubbles tied to Amina and Daniel.

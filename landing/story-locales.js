@@ -1,10 +1,10 @@
 // Static translations; English page copy is read from semantic HTML.
 const copy = {
   "en": {
-    "playFilm": "Play the story",
+    "playFilm": "Play the moment",
     "pauseFilm": "Pause",
     "resumeFilm": "Continue",
-    "replayFilm": "Watch again",
+    "replayFilm": "Replay the moment",
     "statusMeet": "A match that fits both people.",
     "statusAgree": "The seller locks the sats.",
     "statusTrade": "An exchange completed. A connection made.",
@@ -38,7 +38,15 @@ const copy = {
     "moneyReceived": "Payment received",
     "statusPay": "The buyer sends local money.",
     "statusConfirm": "Payment received. Both confirm.",
-    "statusRelease": "Sats are released to the buyer."
+    "statusRelease": "Sats are released to the buyer.",
+    "claimPreview": "ILLUSTRATED CLAIM",
+    "claimReady": "Ready to claim",
+    "claimUnlocked": "Your sats. Ready for you.",
+    "claimCollect": "Collect your sats",
+    "claimPending": "Claiming…",
+    "claimReceived": "Received",
+    "claimDone": "Back in your hands.",
+    "filmContext": "A digital circle. A shared commitment."
   },
   "es": {
     "skip": "Ir al contenido",
@@ -102,11 +110,11 @@ const copy = {
     "fediScan": "Escanea — únete a ambos espacios",
     "ethosLabel": "El ethos público · léelo en X",
     "findUs": "Encuéntranos en público",
-    "filmContext": "Una visión del ahorro rotativo · próximamente",
-    "playFilm": "Ver la historia",
+    "filmContext": "Un círculo digital. Un compromiso compartido.",
+    "playFilm": "Ver el momento",
     "pauseFilm": "Pausar",
     "resumeFilm": "Continuar",
-    "replayFilm": "Volver a ver",
+    "replayFilm": "Repetir el momento",
     "seeHow": "Descubre qué lo hace posible",
     "bridgeEyebrow": "TODO EMPIEZA CON LAS PERSONAS.",
     "bridgeTitle": "¿Qué hace<br><em>eso posible?</em>",
@@ -141,7 +149,14 @@ const copy = {
     "moneyReceived": "Pago recibido",
     "statusPay": "El comprador envía dinero local.",
     "statusConfirm": "Pago recibido. Ambos confirman.",
-    "statusRelease": "Los sats se liberan al comprador."
+    "statusRelease": "Los sats se liberan al comprador.",
+    "claimPreview": "COBRO ILUSTRADO",
+    "claimReady": "Listo para cobrar",
+    "claimUnlocked": "Tus sats. Listos para ti.",
+    "claimCollect": "Recoger tus sats",
+    "claimPending": "Cobrando…",
+    "claimReceived": "Recibido",
+    "claimDone": "De nuevo en tus manos."
   },
   "fr": {
     "skip": "Aller au contenu",
@@ -205,11 +220,11 @@ const copy = {
     "fediScan": "Scanner — rejoindre les deux espaces",
     "ethosLabel": "L’éthique publique · à lire sur X",
     "findUs": "Retrouvez-nous en public",
-    "filmContext": "Une vision de l’épargne tournante · à venir",
-    "playFilm": "Voir l’histoire",
+    "filmContext": "Un cercle numérique. Un engagement partagé.",
+    "playFilm": "Voir le moment",
     "pauseFilm": "Pause",
     "resumeFilm": "Continuer",
-    "replayFilm": "Revoir le film",
+    "replayFilm": "Revoir le moment",
     "seeHow": "Découvrez ce qui rend cela possible",
     "bridgeEyebrow": "TOUT COMMENCE PAR LES GENS.",
     "bridgeTitle": "Qu’est-ce qui rend<br><em>cela possible ?</em>",
@@ -244,6 +259,13 @@ const copy = {
     "moneyReceived": "Paiement reçu",
     "statusPay": "L’acheteur envoie la monnaie locale.",
     "statusConfirm": "Paiement reçu. Les deux confirment.",
-    "statusRelease": "Les sats sont libérés à l’acheteur."
+    "statusRelease": "Les sats sont libérés à l’acheteur.",
+    "claimPreview": "RETRAIT ILLUSTRÉ",
+    "claimReady": "Prêt à recevoir",
+    "claimUnlocked": "Vos sats vous attendent.",
+    "claimCollect": "Récupérer vos sats",
+    "claimPending": "Retrait en cours…",
+    "claimReceived": "Reçu",
+    "claimDone": "À nouveau entre vos mains."
   }
 };
