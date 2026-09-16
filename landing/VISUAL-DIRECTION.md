@@ -39,3 +39,7 @@ Current assets supersede the earlier versions: `chama-circle-story-v4.mp4` (15.0
 ## Hero continuity and framing
 
 The film uses one continuous fixed shot. Quarter-second phone crops across all 15 seconds retain the phone and five-seat screen; one-second full-frame review covers contributions and the collection. The closing photograph uses matching gold coins. The video and its container share a rounded clip, with the progress line inset to avoid cutting across lower corners. Desktop light/dark and mobile layouts were reviewed.
+
+## Single-coin refinement
+
+Current hero: `chama-circle-story-v5.mp4`, six seconds, one large gold Bitcoin coin released within the first second, then basket collection and shared laughter. Poster: `chama-circle-action-v5.jpg`. This replaces the slow 15-second multi-coin contribution take. The phone retains the locked Circle. Agree begins animating while its chapter enters; duplicate agreement labels are removed and payment routes appear in sequence. The closing flag ring is oversized and cropped off the right edge behind the copy. “Good things start with people” replaces “human beginnings” in all three languages.

@@ -35,7 +35,7 @@ let explicitPlay = false;
 const autoAllowed = () => !mobile.matches && !reducedMotion.matches && !connection?.saveData;
 function filmLabels() {
   motionButton.textContent = word(finished ? 'replayFilm' : video.paused ? (started ? 'resumeFilm' : 'playFilm') : 'pauseFilm');
-  beat.textContent = word(video.currentTime < 8 ? 'beatGive' : video.currentTime < 13 ? 'beatReceive' : 'beatContinue');
+  beat.textContent = word(video.currentTime < 1.5 ? 'beatGive' : video.currentTime < 4.5 ? 'beatReceive' : 'beatContinue');
   screen.classList.toggle('film-running', !video.paused && video.currentTime > 1.1);
   screen.classList.toggle('film-complete', finished);
   screen.style.setProperty('--film-percent', `${video.duration ? 100 * video.currentTime / video.duration : 0}%`);
@@ -124,7 +124,7 @@ function updateStory() {
     if (d < distance) { closest = i; distance = d; }
   });
   if (closest !== active) setPhase(closest);
-  const agree = reducedMotion.matches ? Number(active >= 1) : clamp((h * .3 - rects[1].top) / (h * .9));
+  const agree = reducedMotion.matches ? Number(active >= 1) : clamp((h * .85 - rects[1].top) / (h * .55));
   const trade = reducedMotion.matches ? Number(active === 2) : clamp((h * .3 - rects[2].top) / (h * .75));
   const meet = clamp((h * .9 - rects[0].top) / (h * .6));
   drawCoordination(mainArt, meet, agree, trade);
@@ -147,7 +147,10 @@ function drawCoordination(art, meet, agree, trade) {
   const values = {
     '--meet-opacity': 1 - clamp(agree * 4),
     '--match-offset': 1 - meet,
-    '--arbiter-opacity': clamp(agree * 3),
+    '--arbiter-opacity': clamp(agree * 2),
+    '--arbiter-rise': `${(1 - clamp(agree * 2)) * 28}px`,
+    '--coord-caption': 1 - clamp(agree * 3),
+    '--cash-route-opacity': clamp(trade * 6) * (1 - clamp((trade - .55) * 10)),
     '--arbiter-offset': 1 - clamp(agree * 2),
     '--agree-opacity': clamp(agree * 4) * (1 - clamp(trade * 6)),
     '--cash-opacity': clamp(trade * 15) * (1 - clamp((trade - .42) * 12)),

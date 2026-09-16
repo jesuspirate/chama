@@ -14,7 +14,7 @@ icons/favicon.ico
 icons/bitcoin-official.png
 icons/chama-circle-dark.svg
 icons/og-image-circle-v10.jpg
-img/chama-circle-action-v4.jpg
+img/chama-circle-action-v5.jpg
 img/chama-circle-ending-v8.jpg
 img/faq/faq-cancel.png
 img/faq/faq-chooser.png
@@ -25,5 +25,5 @@ img/p-billpay-v2.jpg
 img/p-chama-circle-v1.jpg
 img/p-p2p-v5.jpg
 img/p-stores-v4.jpg
-img/chama-circle-story-v4.mp4
+img/chama-circle-story-v5.mp4
 img/chama-community-threshold-v9.png
