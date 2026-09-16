@@ -103,6 +103,50 @@ the same exposure. Dashboards may expose relay receipt lag socially;
 small circles police the rest. Do not pretend the clock is stronger than
 it is anywhere in product copy.
 
+KNOWN BOUND 2 (adversarial review 2026-09-16, finding 3): WITHHOLDING a
+signed-but-unpublished LOCK is a fill-status and collector exposure, not
+merely an order one — a late-published lock can flip a round from short
+to filled in later replays, and honest clients that settled on REFUND
+evidence diverge from clients hydrating after the reveal. Money stays
+safe on both forks (each fork pays only its own lawful recipient of that
+member's OWN sats), but chain convergence is view-relative. The complete
+fix is an EVIDENCE-COMMITTED RESOLVE (the resolver enumerates the fill
+evidence it settled on; replay judges against the commitment, not the
+replayer's view). REQUIRED BEFORE CHAMA_ROTATION_ENABLED FLIPS. Interim
+hardening already landed: principal VOTES are recorded context-free
+(chain convergence for votes), arbiter votes and every RESOLVE stay
+evidence-gated, and RELEASE re-checks seller == chain-derived collector
+at the vote law itself.
+
+## Adversarial review outcomes (2026-09-16, all landed)
+
+- CRITICAL, fixed: chained rounds now pin communityArbiters,
+  bondedArbiters, fed and fedPrefix to round 1 — the round opener can no
+  longer choose who holds the third SSS key.
+- Fixed: the v1 dueBack watcher sweep skips rotation rounds (it would
+  have voted REFUND on filled rounds at the exact payday second); the
+  dedicated v2 pass owns them. The round opener also stops retrying once
+  a round failed or its successor's fill window is history.
+- Fixed: the vote law re-checks seller == collector on RELEASE (defense
+  in depth at every layer, not just CREATE).
+- Fixed: the MARK requires chain-positive failure proof — an early
+  REFUND resolution (2-of-3 signed, only lawful on a short round). An
+  eclipsed view of a filled round can no longer frame an innocent
+  member; equally, a defaulter escapes only if nobody else locked into
+  the doomed round (accepted, social-layer bound).
+- Fixed: decision 4's mint actually implemented — a member refunded out
+  of a failed fill mints the standard rate pro-rated to time held.
+- Fixed: a collector who voted RELEASE then vanished no longer freezes
+  the members' sats — the performance-contest suppression ends when the
+  collect window does (event-clock deterministic).
+- Fixed: rotationFromCycle anchors on the round 1 that PROVES the object
+  under validation, never relay-return order.
+- Fixed: pot circles require ≥1h fill and ≥1h run windows at round 1
+  (standing-farm floor).
+- Accepted (LOW): a RELEASE-approved-unclaimed pot reads "locked" in
+  member-centric share rows; the collector's own prompt keys off raw
+  escrow state (claimable) and is unaffected.
+
 ### The share, v2: the collector sits in the seller seat
 
 chamaPolicy "share-v2". In round r, every member EXCEPT the collector locks

@@ -71,7 +71,11 @@ export function createChamaRefundWatcher(deps: {
         const seen = shares.filter(share => share.circleId === parent.id).length;
         const trusted = deps.viewComplete?.(parent.id) === true;
         if (!trusted && seen < 2 && circle.seatThreshold > 1 && nowSec < circle.roundEndSec) continue;
-        for (const id of circleProgress(circle, shares, nowSec).dueBackEscrowIds) {
+        // Rotation collection rounds are OWNED by the v2 pass below — the v1
+        // dueBack sweep would otherwise vote REFUND on a filled round at the
+        // exact payday second (review finding 2), sabotaging the collect.
+        const rotationRound = circle.pot === "rotation-v2" && circle.roundIndex >= 2;
+        if (!rotationRound) for (const id of circleProgress(circle, shares, nowSec).dueBackEscrowIds) {
           const state = [...deps.getEscrows()].find(e => e.id === id);
           if (!state || !canVote(state, pubkey, nowSec, Outcome.REFUND).canVote) continue;
           try { await deps.vote(id, Outcome.REFUND); }
@@ -80,7 +84,11 @@ export function createChamaRefundWatcher(deps: {
         // Rotation cadence (decision 3): the moment a rotation round ends,
         // any member's client opens the next one. Deterministic ids make
         // simultaneous attempts collapse into one round.
+        const roundFilled = circle.seatThreshold > 0
+          && shares.filter(sh => sh.circleId === parent.id && sh.lockedAtSec !== null && sh.lockedAtSec < circle.fillDeadlineSec).length >= circle.seatThreshold;
         if ((deps.rotationEnabled ?? CHAMA_ROTATION_ENABLED) && deps.openNextRound && circle.pot === "rotation-v2" && nowSec >= circle.roundEndSec
+            && roundFilled // a failed fill ends the cycle; never spam a successor that cannot open
+            && nowSec < circle.roundEndSec + (circle.roundEndSec - circle.fillDeadlineSec) // stop once the successor's own fill window is history
             && !escrows.some(e => e.chamaCircle?.pot === "rotation-v2" && e.chamaCircle.prevCircleId === parent.id)) {
           try { await deps.openNextRound(parent.id); }
           catch (error) { deps.onError?.(parent.id, error); }

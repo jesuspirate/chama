@@ -325,12 +325,19 @@ const cycleFull = { circles: [r1, r2], shares: [c1, c2, c3, p1, p2] };
 const cycleShort = { circles: [r1, r2], shares: [c1, c2, c3, p1] };
 const v2vote = (st: EscrowState, role: R, pk: string, o: O, at: number, cyc?: typeof cycleFull) =>
   ({ ...event(K.VOTE, { type: "escrow:vote", role, outcome: o, votedAt: at }, pk, st.id, at, st), ...(cyc ? { chamaCycle: cyc } : {}) });
-// Before the payday: RELEASE is unlawful even with full evidence.
-assert(!applyEvent(p1, v2vote(p1, R.SELLER, BUYER, O.RELEASE, END + 300, cycleFull)).ok, "no release before roundEnd");
-// A filled, running round cannot refund out from under its collector.
-assert(!applyEvent(p1, v2vote(p1, R.BUYER, MEMBER2, O.REFUND, FILL2 + 1, cycleFull)).ok, "no refund of a filled round");
-// RELEASE without evidence is never lawful.
-assert(!applyEvent(p1, v2vote(p1, R.SELLER, BUYER, O.RELEASE, END2, undefined)).ok, "release requires cycle context");
+// Principal votes are CHAIN: recorded context-free so honest clients
+// converge (review finding 6) — but INTENT stays strict, and nothing
+// finalizes early.
+const earlyVote = accepted(p1, v2vote(p1, R.SELLER, BUYER, O.RELEASE, END + 300, cycleFull));
+assert(!canVote(p1, BUYER, END + 300, O.RELEASE, cycleFull).canVote, "no honest client CASTS a release before roundEnd");
+assert(!applyEvent(accepted(earlyVote, v2vote(earlyVote, R.BUYER, MEMBER2, O.RELEASE, END + 301, cycleFull)),
+  event(K.RESOLVE, { type: "escrow:resolve", outcome: O.RELEASE, majority: [R.BUYER, R.SELLER], arbiterInvolved: false, resolvedAt: END + 302 }, MEMBER2, p1.id, END + 302, earlyVote)).ok,
+  "two early votes still cannot finalize before the payday");
+assert(!canVote(p1, MEMBER2, FILL2 + 1, O.REFUND, cycleFull).canVote, "no honest client casts a refund on a filled round");
+// Arbiter votes stay strict even as observations: their key share moves
+// other people's money.
+assert(!applyEvent(p1, v2vote(p1, R.ARBITER, p1.participants[R.ARBITER]!, O.RELEASE, END + 300, cycleFull)).ok, "an arbiter release before the payday is rejected on sight");
+assert(!applyEvent(p1, v2vote(p1, R.ARBITER, p1.participants[R.ARBITER]!, O.RELEASE, END2, undefined)).ok, "an arbiter release without evidence is rejected on sight");
 // The payday: collector + member vote RELEASE, resolve, collector claims.
 const rv1 = accepted(p1, v2vote(p1, R.SELLER, BUYER, O.RELEASE, END2, cycleFull));
 const rv2 = accepted(rv1, v2vote(rv1, R.BUYER, MEMBER2, O.RELEASE, END2 + 1, cycleFull));
@@ -342,15 +349,18 @@ const rclaim = accepted(rres, event(K.CLAIM, { type: "escrow:claim", claimerRole
 assert(replayEventChain(rclaim.eventChain).ok, "the full collection chain replays");
 // Resolution is never evidence-free, either outcome.
 assert(!applyEvent(rv2, event(K.RESOLVE, { type: "escrow:resolve", outcome: O.RELEASE, majority: [R.BUYER, R.SELLER], arbiterInvolved: false, resolvedAt: END2 + 2 }, MEMBER2, p1.id, END2 + 2, rv2)).ok, "resolve requires cycle context");
-// A short round (M3 never locked): refund from the fill deadline, release never.
-assert(!applyEvent(p1, v2vote(p1, R.BUYER, MEMBER2, O.REFUND, END + 400, cycleShort)).ok, "no refund while seats can still fill");
-assert(accepted(p1, v2vote(p1, R.BUYER, MEMBER2, O.REFUND, FILL2, cycleShort)), "failed fill refunds at the deadline");
-assert(!applyEvent(p1, v2vote(p1, R.SELLER, BUYER, O.RELEASE, END2, cycleShort)).ok, "a short round never releases");
+// A short round (M3 never locked): refund intent opens at the deadline, release never.
+assert(!canVote(p1, MEMBER2, END + 400, O.REFUND, cycleShort).canVote, "no refund cast while seats can still fill");
+assert(canVote(p1, MEMBER2, FILL2, O.REFUND, cycleShort).canVote, "failed fill refunds at the deadline");
+assert(!canVote(p1, BUYER, END2, O.RELEASE, cycleShort).canVote, "a short round never releases");
 // The collect window lapses: the pot refunds back to the members.
 import { COLLECT_WINDOW_SEC } from "../chama/rotation.js";
-assert(!applyEvent(p1, v2vote(p1, R.BUYER, MEMBER2, O.REFUND, END2 + COLLECT_WINDOW_SEC - 1, cycleFull)).ok, "no refund inside the collect window");
-assert(accepted(p1, v2vote(p1, R.BUYER, MEMBER2, O.REFUND, END2 + COLLECT_WINDOW_SEC, cycleFull)), "an unclaimed pot refunds after the window");
-assert(!applyEvent(p1, v2vote(p1, R.SELLER, BUYER, O.RELEASE, END2 + COLLECT_WINDOW_SEC, cycleFull)).ok, "release lapses with the window");
+assert(!canVote(p1, MEMBER2, END2 + COLLECT_WINDOW_SEC - 1, O.REFUND, cycleFull).canVote, "no refund cast inside the collect window");
+assert(canVote(p1, MEMBER2, END2 + COLLECT_WINDOW_SEC, O.REFUND, cycleFull).canVote, "an unclaimed pot refunds after the window");
+assert(!canVote(p1, BUYER, END2 + COLLECT_WINDOW_SEC, O.RELEASE, cycleFull).canVote, "release lapses with the window");
+import { isPerformanceContest } from "./arbiter-substitution.js";
+assert(isPerformanceContest(rv1, END2 + 100), "a standing collector RELEASE is a live contest inside the window");
+assert(!isPerformanceContest(rv1, END2 + COLLECT_WINDOW_SEC), "the lapsed window ends the contest — healing may return the sats");
 // A lone REFUND vote is recordable without context but cannot finalize.
 const lone = accepted(p1, v2vote(p1, R.BUYER, MEMBER2, O.REFUND, FILL2 + 1));
 assert(!applyEvent(lone, event(K.RESOLVE, { type: "escrow:resolve", outcome: O.REFUND, majority: [R.BUYER, R.SELLER], arbiterInvolved: false, resolvedAt: FILL2 + 2 }, MEMBER2, p1.id, FILL2 + 2, lone)).ok, "context-free refund never finalizes");
@@ -434,9 +444,14 @@ const r3circle = circleFromEscrow(r3)!;
   assert(!("mark" in m2));
 }
 {
-  // BUYER collected round 2 and never locked round 3 while M3 did: total
-  // forfeiture + the mark. M3, who showed up, is untouched.
-  const view = [r1, r2, r3, c1, c2, c3, p1, p2, q2];
+  // BUYER collected round 2 and never locked round 3 while M3 did. The
+  // accusation demands chain-POSITIVE proof of failure: the round's early
+  // REFUND resolution (2-of-3 signed, only lawful on a short round).
+  const cycleShort3 = { circles: [r1, r2, r3], shares: [...cycleFull.shares, q2] };
+  let qr = accepted(q2, v2vote(q2, R.BUYER, M3, O.REFUND, FILL3, cycleShort3 as typeof cycleFull));
+  qr = accepted(qr, v2vote(qr, R.SELLER, MEMBER2, O.REFUND, FILL3 + 1, cycleShort3 as typeof cycleFull));
+  qr = accepted(qr, { ...event(K.RESOLVE, { type: "escrow:resolve", outcome: O.REFUND, majority: [R.BUYER, R.SELLER], arbiterInvolved: false, resolvedAt: FILL3 + 2 }, M3, q2.id, FILL3 + 2, qr), chamaCycle: cycleShort3 });
+  const view = [r1, r2, r3, c1, c2, c3, p1, p2, qr];
   const conduct = rotationConduct(view, BUYER, FILL3 + 10);
   assert(conduct.brokeAfterCollecting, "collected-then-absent in a real, short round is the mark");
   const stats = circleMemberStats(view, BUYER, FILL3 + 10);
@@ -444,5 +459,39 @@ const r3circle = circleFromEscrow(r3)!;
   assert("mark" in stats && (stats as { mark: { brokeAtSec: number } }).mark.brokeAtSec === FILL3);
   assert(!rotationConduct(view, M3, FILL3 + 10).brokeAfterCollecting, "the member who showed up carries no mark");
   assert(!rotationConduct(view, MEMBER2, FILL3 + 10).brokeAfterCollecting, "round 3's collector owes nothing to round 3");
+  // The eclipse defense (review finding 5): a withheld view of a round
+  // that has NO early refund resolution accuses nobody — an innocent
+  // member cannot be framed by hiding their lock.
+  const eclipsed = [r1, r2, r3, c1, c2, c3, p1, p2, q2];
+  assert(!rotationConduct(eclipsed, BUYER, FILL3 + 10).brokeAfterCollecting, "no refund proof, no mark — eclipse cannot frame the innocent");
+  // Decision 4: M3 locked into the round that died and got refunded — they
+  // mint the standing their sats actually sat for, not zero.
+  const qrClaimed = accepted(qr, event(K.CLAIM, { type: "escrow:claim", claimerRole: R.BUYER, notesHashVerification: "hash", claimedAt: FILL3 + 3 }, M3, q2.id, FILL3 + 3, qr));
+  const m3Stats = circleMemberStats([r1, r2, r3, c1, c2, c3, p1, p2, qrClaimed], M3, FILL3 + 10);
+  assert(m3Stats.standing > 0, "showing up for a failed round still mints the standard rate");
 }
 console.log("Rotation v2 standing assertions passed.");
+
+// ── review-driven regressions ─────────────────────────────────────────────
+// Finding 1 (CRITICAL): the round opener must not choose who holds the
+// third key — arbiter pool and federation pin to round 1.
+assert(!applyEvent(null, { ...event(K.CREATE, { ...r2Payload, communityArbiters: [ARBITER, "77".repeat(32)] }, M3, R2, END), chamaCycle: cycle }).ok,
+  "a swapped arbiter pool never opens a round");
+assert(!applyEvent(null, { ...event(K.CREATE, { ...r2Payload, communityArbiters: [ARBITER, BACKUP], bondedArbiters: [ARBITER] }, M3, R2, END), chamaCycle: cycle }).ok,
+  "a changed bonded set never opens a round");
+// Finding 10: pot circles need real durations — a seconds-long "cycle" is a
+// standing farm, not a savings circle.
+assert(!applyEvent(null, event(K.CREATE, { ...r1Payload, expirySeconds: 7200,
+  chamaCircle: { ...r1Payload.chamaCircle!, fillDeadlineSec: T + 60, roundEndSec: T + 7200 } }, SELLER, "f7".repeat(32), T)).ok,
+  "a one-minute fill window never opens a pot circle");
+// Finding 2: at the payday, the watcher services the collect — it never
+// refunds a filled rotation round out from under its collector.
+{
+  const calls2: [string, O][] = [];
+  const payday = createChamaRefundWatcher({ getEscrows: () => [r2, p1, p2], getPubkey: async () => M3,
+    vote: async (id: string, o: O) => { calls2.push([id, o]); }, rotationEnabled: true, openNextRound: async () => {} });
+  await payday(END2 + 5);
+  assert(calls2.every(([, o]) => o !== O.REFUND), "no watcher refunds a filled round at its payday");
+  assert(calls2.some(([id, o]) => id === p2.id && o === O.RELEASE), "the member watcher co-signs the payday instead");
+}
+console.log("Review-driven regression assertions passed.");

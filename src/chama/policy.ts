@@ -24,16 +24,22 @@ export interface ChamaCycleContext { circles: EscrowState[]; shares: EscrowState
  *  an error string, or the round-1 anchor + the rotation order. Everything
  *  downstream (round ids, collectors, seats) hangs off this one derivation,
  *  so every layer answers identically. */
-export function rotationFromCycle(cycle: ChamaCycleContext): { round1Id: string; round1: CircleRound; order: string[] } | string {
+export function rotationFromCycle(cycle: ChamaCycleContext, proves?: { id: string; roundIndex: number }): { round1Id: string; round1: CircleRound; order: string[] } | string {
+  let firstError: string | null = null;
   for (const state of cycle.circles) {
     const c = circleFromEscrow(state);
     if (!c || c.roundIndex !== 1 || c.pot !== "rotation-v2" || validateCircleRound(c).length) continue;
+    // When validating a specific round, only the anchor whose deterministic
+    // chain PRODUCES that round id may speak for it — a context that happens
+    // to contain some other cycle's round 1 must not decide this one
+    // (review finding 7: first-match made accept/reject relay-order-dependent).
+    if (proves && proves.roundIndex >= 2 && roundCircleId(state.id, proves.roundIndex) !== proves.id) continue;
     const order = rotationOrder({ circleId: state.id, creatorPubkey: c.creatorPubkey }, commitmentLocks(state.id, cycle.shares));
-    if (order.length < 3) return "A rotation needs at least three sealed members";
-    if (order.length < c.seatThreshold) return "The commitment round did not fill";
+    if (order.length < 3) { firstError = "A rotation needs at least three sealed members"; continue; }
+    if (order.length < c.seatThreshold) { firstError = "The commitment round did not fill"; continue; }
     return { round1Id: state.id, round1: c, order };
   }
-  return "Rotation cycle context must include a lawful round 1";
+  return firstError ?? "Rotation cycle context must include a lawful round 1";
 }
 
 /** The chained-round law (spec: One cycle = a commitment round + N
@@ -41,7 +47,7 @@ export function rotationFromCycle(cycle: ChamaCycleContext): { round1Id: string;
  *  and previous-round fill — all from locally resolved context. */
 function chainedRoundError(c: CircleRound, id: string, pubkey: string, at: number, cycle?: ChamaCycleContext): string | null {
   if (!cycle) return "A rotation round requires cycle context";
-  const rot = rotationFromCycle(cycle);
+  const rot = rotationFromCycle(cycle, { id, roundIndex: c.roundIndex });
   if (typeof rot === "string") return rot;
   const { round1Id, round1, order } = rot;
   if (id !== roundCircleId(round1Id, c.roundIndex)) return "Rotation round id must be deterministic";
@@ -89,7 +95,29 @@ export function chamaCreateError(p: CreatePayload, id: string, pubkey: string, a
     if (errors.length) return errors.join("; ");
     if (at + p.expirySeconds !== c.roundEndSec) return "Circle expiry must equal round end";
     if (c.pot !== undefined && c.pot !== "rotation-v2") return "Unknown circle pot policy";
-    if (c.pot === "rotation-v2" && c.roundIndex > 1) return chainedRoundError(c, id, pubkey, at, cycle);
+    if (c.pot === "rotation-v2") {
+      // The custody floor for the whole cycle, judged at ROUND 1 where the
+      // terms are set (a seconds-long "cycle" is a standing-farming machine,
+      // never a savings circle — review finding 10). Chained rounds inherit
+      // the schedule structurally, and a late-but-in-window publication of
+      // one must not be rejected for its shrunken remaining window.
+      if (c.roundIndex === 1 && (c.fillDeadlineSec - at < 3600 || c.roundEndSec - c.fillDeadlineSec < 3600)) return "Pot circles need at least an hour to fill and an hour to run";
+      if (c.roundIndex > 1) {
+        const chainError = chainedRoundError(c, id, pubkey, at, cycle);
+        if (chainError) return chainError;
+        // …and the ARBITER POOL + FEDERATION pinned to round 1 (review
+        // finding 1, CRITICAL): the third SSS key of every share seats from
+        // this pool, so an unpinned pool would let whoever publishes the
+        // round CREATE choose who holds the third key to everyone's sats.
+        const rot = rotationFromCycle(cycle!, { id, roundIndex: c.roundIndex });
+        if (typeof rot === "string") return rot;
+        const round1State = cycle!.circles.find(st => st.id === rot.round1Id)!;
+        const original = round1State.eventChain[0].payload as CreatePayload;
+        if (JSON.stringify(p.communityArbiters ?? []) !== JSON.stringify(round1State.communityArbiters)
+          || JSON.stringify(p.bondedArbiters ?? []) !== JSON.stringify(round1State.bondedArbiters ?? [])) return "Rotation rounds must keep the cycle's arbiter pool";
+        if (p.fed !== original.fed || p.fedPrefix !== original.fedPrefix) return "Rotation rounds must keep the cycle's federation";
+      }
+    }
     return null;
   }
   if (p.category !== "chama-share" || (p.chamaPolicy !== "share-v1" && p.chamaPolicy !== "share-v2") || p.chamaCircle !== undefined) return "Invalid share policy/category";
@@ -106,7 +134,7 @@ export function chamaCreateError(p: CreatePayload, id: string, pubkey: string, a
     // Rotation share: the seller seat is the round's collector — derived
     // from the chain, never trusted from the payload (spec: engine delta 1).
     if (!cycle) return "A rotation share requires cycle context";
-    const rot = rotationFromCycle(cycle);
+    const rot = rotationFromCycle(cycle, { id: parent.id, roundIndex: circle.roundIndex });
     if (typeof rot === "string") return rot;
     if (parent.id !== roundCircleId(rot.round1Id, circle.roundIndex)) return "Rotation share must sit in its cycle's round";
     const collector = collectorForRound(rot.round1Id, rot.order, rot.round1.creatorPubkey, cycle.shares, circle.roundIndex);
@@ -149,19 +177,38 @@ export function chamaCreateError(p: CreatePayload, id: string, pubkey: string, a
  *    alone, and the second voter or arbiter carries evidence).
  *  - RESOLVE requires context for BOTH outcomes: finalization is never
  *    evidence-free. */
-export function chamaOutcomeError(state: EscrowState, outcome: Outcome, at: number, cycle?: ChamaCycleContext, finalizing = false): string | null {
+/** How the caller relates to the event: OBSERVING someone else's signed
+ *  principal vote during replay (recorded context-free so every client
+ *  converges on the same chain — review finding 6), forming an INTENT to
+ *  cast one (strict: never sign what the evidence cannot justify), or
+ *  FINALIZING a resolution (strict both outcomes, and the payout target is
+ *  re-checked — review finding 4). Arbiter votes are strict even when
+ *  observed: their key share moves other people's money. */
+export type OutcomeJudgment = "observe-principal" | "observe-arbiter" | "intent" | "finalize";
+
+export function chamaOutcomeError(state: EscrowState, outcome: Outcome, at: number, cycle?: ChamaCycleContext, judgment: OutcomeJudgment = "intent"): string | null {
   if (!state.chamaPolicy) return null;
   if (state.chamaPolicy === "share-v1") return outcome === Outcome.REFUND ? null : "Shares only allow REFUND";
   if (outcome !== Outcome.REFUND && outcome !== Outcome.RELEASE) return "Rotation shares allow REFUND or RELEASE only";
+  // A principal's own signed vote is CHAIN, not judgment: both principals
+  // may record either outcome (a lone vote moves nothing, and a buyer
+  // handing their own key share to the collector early is the spec's
+  // accepted victimless case), so acceptance never depends on the
+  // observer's view and honest clients converge.
+  if (judgment === "observe-principal") return null;
   if (!cycle) {
-    if (outcome === Outcome.REFUND && !finalizing) return null;
+    if (outcome === Outcome.REFUND && judgment === "intent") return null;
     return "Rotation share resolution requires cycle context";
   }
-  const rot = rotationFromCycle(cycle);
-  if (typeof rot === "string") return rot;
   const circle = state.chamaCircle!;
+  const rot = rotationFromCycle(cycle, state.parent ? { id: state.parent, roundIndex: circle.roundIndex } : undefined);
+  if (typeof rot === "string") return rot;
   const collector = collectorForRound(rot.round1Id, rot.order, rot.round1.creatorPubkey, cycle.shares, circle.roundIndex);
   if (!collector || !state.parent || state.parent !== roundCircleId(rot.round1Id, circle.roundIndex)) return "Rotation share is not part of this cycle";
+  // Defense in depth on the one invariant that matters (review finding 4):
+  // lawfulness is judged for the round, but the sats go to the seller seat —
+  // so the seller seat must BE the chain-derived collector at this layer too.
+  if (outcome === Outcome.RELEASE && state.participants[Role.SELLER]?.toLowerCase() !== collector) return "Share does not pay this round's collector";
   const expected = rot.order.filter(m => m !== collector);
   const locked = new Set(cycle.shares
     .filter(e => e.chamaPolicy === "share-v2" && e.parent === state.parent && e.eventChain.some(ev => ev.kind === EscrowEventKind.LOCK))

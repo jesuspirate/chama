@@ -1174,7 +1174,8 @@ function handleLock(state: EscrowState, event: ParsedEscrowEvent<LockPayload>): 
 
 function handleVote(state: EscrowState, event: ParsedEscrowEvent<VotePayload>): TransitionResult {
   const p = event.payload;
-  const outcomeLaw = chamaOutcomeError(state, p.outcome, event.timestamp, event.chamaCycle);
+  const voterIsPrincipal = event.pubkey === state.participants[Role.BUYER] || event.pubkey === state.participants[Role.SELLER];
+  const outcomeLaw = chamaOutcomeError(state, p.outcome, event.timestamp, event.chamaCycle, voterIsPrincipal ? "observe-principal" : "observe-arbiter");
   if (outcomeLaw) return err("CHAMA_REFUND_ONLY", outcomeLaw, event.raw.id);
 
   // v0.1.66.26: accept EXPIRED in addition to LOCKED so post-expiry
@@ -1213,7 +1214,7 @@ function handleVote(state: EscrowState, event: ParsedEscrowEvent<VotePayload>): 
       // expiry auto-refund is suppressed (isPerformanceContest), so this ruling
       // is the resolution. Without this carve-out the constraint would force a
       // refund to a ghosting locker.
-      if (!isPerformanceContest(state) && p.outcome !== Outcome.REFUND) {
+      if (!isPerformanceContest(state, event.timestamp) && p.outcome !== Outcome.REFUND) {
         return err("INVALID_HEAL_OUTCOME",
           "Healing votes on an expired trade must be REFUND", event.raw.id);
       }
@@ -1352,7 +1353,7 @@ function handleVote(state: EscrowState, event: ParsedEscrowEvent<VotePayload>): 
 
 function handleResolve(state: EscrowState, event: ParsedEscrowEvent<ResolvePayload>): TransitionResult {
   const p = event.payload;
-  const outcomeLaw = chamaOutcomeError(state, p.outcome, event.timestamp, event.chamaCycle, true);
+  const outcomeLaw = chamaOutcomeError(state, p.outcome, event.timestamp, event.chamaCycle, "finalize");
   if (outcomeLaw) return err("CHAMA_REFUND_ONLY", outcomeLaw, event.raw.id);
 
   // v0.1.66.26: accept EXPIRED in addition to LOCKED so healing votes
@@ -1748,7 +1749,9 @@ export function applyEvent(
   }
 
   if (state.chamaPolicy && (event.kind === EscrowEventKind.VOTE || event.kind === EscrowEventKind.RESOLVE)) {
-    const law = chamaOutcomeError(state, (event.payload as VotePayload).outcome, event.timestamp, event.chamaCycle, event.kind === EscrowEventKind.RESOLVE);
+    const principal = event.pubkey === state.participants[Role.BUYER] || event.pubkey === state.participants[Role.SELLER];
+    const law = chamaOutcomeError(state, (event.payload as VotePayload).outcome, event.timestamp, event.chamaCycle,
+      event.kind === EscrowEventKind.RESOLVE ? "finalize" : principal ? "observe-principal" : "observe-arbiter");
     if (law) return err("CHAMA_REFUND_ONLY", law, event.raw.id);
   }
 
@@ -1971,7 +1974,7 @@ export function replayEventChain(events: ParsedEscrowEvent[]): TransitionResult 
 /** Check if a specific pubkey can vote in the current state */
 export function canVote(state: EscrowState, pubkey: string, nowSec?: number, outcome?: Outcome, cycle?: ChamaCycleContext): { canVote: boolean; reason?: string } {
   if (state.chamaPolicy && outcome !== undefined) {
-    const law = chamaOutcomeError(state, outcome, nowSec ?? Math.floor(Date.now() / 1000), cycle);
+    const law = chamaOutcomeError(state, outcome, nowSec ?? Math.floor(Date.now() / 1000), cycle, "intent");
     if (law) return { canVote: false, reason: law };
   }
   // v0.1.66.26: accept EXPIRED in addition to LOCKED. Mirrors

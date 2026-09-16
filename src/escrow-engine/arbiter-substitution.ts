@@ -26,6 +26,7 @@
 import { Role, EscrowEventKind, Outcome, type EscrowState, type VotePayload } from "./types.js";
 import { pickArbiterFromPool } from "../arbiters/pool.js";
 import { payoutRecipientFor } from "./recipients.js";
+import { COLLECT_WINDOW_SEC as ROTATION_COLLECT_WINDOW_SEC } from "../chama/rotation.js";
 
 /** Pool members who hold a copy of the arbiter share AND may vote: the
  *  assigned arbiter + 2 backups. Share-holding and vote-eligibility are capped
@@ -304,7 +305,7 @@ export function oneSidedEscalationAt(state: EscrowState): number | null {
  *  forever. Covers the one-sided case (locker silent) AND the two-sided
  *  RELEASE/REFUND split with an absent arbiter — the same theft. Pure over
  *  committed state. */
-export function isPerformanceContest(state: EscrowState): boolean {
+export function isPerformanceContest(state: EscrowState, nowSec: number = Math.floor(Date.now() / 1000)): boolean {
   // payoutRecipientFor is null only when a participant is unseated, which can
   // only happen pre-LOCK. Suppression is evaluated only post-LOCK (a contest
   // needs a recorded vote), so a null here is the honest "no contest" answer,
@@ -312,6 +313,12 @@ export function isPerformanceContest(state: EscrowState): boolean {
   const nonLocker = payoutRecipientFor(state, Outcome.RELEASE);
   if (!nonLocker || state.votes[nonLocker.role] !== Outcome.RELEASE) return false;
   if (state.votes[Role.ARBITER] === Outcome.REFUND) return false; // arbiter adjudicated against the claim
+  // Rotation shares: a collector who voted RELEASE and then vanished without
+  // claiming must not freeze the members' sats forever — once the collect
+  // window lapses the deterministic law has spoken (REFUND is the only
+  // lawful outcome) and the contest is over by construction (review finding 9).
+  if (state.chamaPolicy === "share-v2" && state.chamaCircle
+      && nowSec >= state.chamaCircle.roundEndSec + ROTATION_COLLECT_WINDOW_SEC) return false;
   return true;
 }
 

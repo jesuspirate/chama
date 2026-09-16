@@ -725,7 +725,9 @@ export function parseEscrowEvent(
     if (message) return { ok: false, error: { code: "INVALID_CHAMA_CREATE", message, eventId: raw.id } };
   }
   if (context?.state?.chamaPolicy && (kind === EscrowEventKind.VOTE || kind === EscrowEventKind.RESOLVE)) {
-    const law = chamaOutcomeError(context.state, (payload as VotePayload).outcome, raw.created_at, context.cycle, kind === EscrowEventKind.RESOLVE);
+    const principal = raw.pubkey === context.state.participants[Role.BUYER] || raw.pubkey === context.state.participants[Role.SELLER];
+    const law = chamaOutcomeError(context.state, (payload as VotePayload).outcome, raw.created_at, context.cycle,
+      kind === EscrowEventKind.RESOLVE ? "finalize" : principal ? "observe-principal" : "observe-arbiter");
     if (law) return { ok: false, error: { code: "CHAMA_REFUND_ONLY", message: law, eventId: raw.id } };
   }
 

@@ -60,11 +60,17 @@ export function rotationConduct(escrows: Iterable<EscrowState>, pubkey: string, 
       for (const e of roundShares) {
         if (e.participants[Role.BUYER]?.toLowerCase() === me) sacrificeShareIds.add(e.id);
       }
-    } else if (nowSec >= circle.fillDeadlineSec && othersLocked > 0 && othersLocked + 0 < circle.seatThreshold) {
-      // THE MARK (2026-09-16): I collected, a later round of MY cycle
-      // failed its fill, my lock is absent while others' locks prove the
-      // round was real. Deterministic accusation, no judgment anywhere.
-      brokeAtSec = brokeAtSec === null ? circle.fillDeadlineSec : Math.min(brokeAtSec, circle.fillDeadlineSec);
+    } else if (nowSec >= circle.fillDeadlineSec && othersLocked > 0 && othersLocked < circle.seatThreshold) {
+      // THE MARK (2026-09-16, hardened per review finding 5): absence of
+      // locks in MY view is not evidence of absence — an eclipsed view of a
+      // FILLED round would frame an innocent member. The accusation demands
+      // chain-POSITIVE proof the round really failed: an EARLY REFUND
+      // resolution on one of its shares (resolvedAt before roundEnd is only
+      // lawful for a short round, and it is 2-of-3 signed — a fact no
+      // withheld view can fabricate).
+      const provedShort = roundShares.some(e => e.resolvedOutcome === Outcome.REFUND
+        && e.resolvedAt !== null && e.resolvedAt !== undefined && e.resolvedAt < circle.roundEndSec);
+      if (provedShort) brokeAtSec = brokeAtSec === null ? circle.fillDeadlineSec : Math.min(brokeAtSec, circle.fillDeadlineSec);
     }
   }
   return { collectedRounds: collected.length, sacrificeShareIds, brokeAfterCollecting: brokeAtSec !== null, brokeAtSec };
@@ -92,12 +98,25 @@ export function circleMemberStats(escrows: Iterable<EscrowState>, pubkey: string
   for (const e of all) {
     if (e.chamaPolicy !== "share-v2" || !e.chamaCircle || !e.parent) continue;
     if (e.participants[Role.BUYER]?.toLowerCase() !== pubkey.toLowerCase()) continue;
-    if (e.resolvedOutcome !== Outcome.RELEASE || ![EscrowStatus.CLAIMED, EscrowStatus.COMPLETED].includes(e.status)) continue;
+    const settled = [EscrowStatus.CLAIMED, EscrowStatus.COMPLETED].includes(e.status);
+    if (!settled || (e.resolvedOutcome !== Outcome.RELEASE && e.resolvedOutcome !== Outcome.REFUND)) continue;
     const lock = e.eventChain.find(ev => ev.kind === EscrowEventKind.LOCK);
     if (!lock) continue;
     const parentState = all.find(st => st.id === e.parent);
     const roundCircle = parentState ? circleFromEscrow(parentState) : null;
     if (!roundCircle) continue; // punctuality needs the round's own clock
+    if (e.resolvedOutcome === Outcome.REFUND) {
+      // Decision 4 (review finding 8): a member who locked into a round
+      // that died earns exactly the standing their sats sat for — the
+      // standard rate, pro-rated to the time the money was actually held.
+      // The record must not treat those who showed up like those who
+      // didn't; no completed-round tally, no sweetener.
+      const heldUntil = Math.min(e.resolvedAt ?? roundCircle.roundEndSec, roundCircle.roundEndSec);
+      const base = lockPunctuality(roundCircle, lock.timestamp);
+      const heldFraction = Math.max(0, heldUntil - lock.timestamp) / Math.max(1, roundCircle.roundEndSec - lock.timestamp);
+      standing += base.standingWeight * heldFraction;
+      continue;
+    }
     completed++;
     if (lock.timestamp <= roundCircle.fillDeadlineSec) onTime++;
     const base = lockPunctuality(roundCircle, lock.timestamp);
