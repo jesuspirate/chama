@@ -53,3 +53,7 @@ Current hero and conclusion use `chama-digital-community-v1.jpg`. The physical b
 ## Both moments, with a static phone mark (September 16)
 
 The approved six-second single-coin film returns as the hero. A tracked screen replacement freezes the original five-orange-seat mark while preserving the original acting and phone hardware (see `img/chama-circle-film-v6.md`). The final caption explicitly says to keep locking sats for the next person after collecting, and remains in the film's context line after playback. The digital community scene and independent claim illustration now close the Circle section. Each plays once, pauses out of view, and supports replay; mobile and reduced-motion visitors start playback themselves. Hero captions are translated in English, Spanish, and French. The hero remains labeled as a future vision of rotating savings.
+
+### Phone stability correction
+
+v7 replaces v6's independently tracked screen with one rigid first-frame phone plate. The logo, screen and hardware move together on a smooth translation path, eliminating frame-to-frame corner jitter and relative artwork movement. Both narrative moments and the continuing-contribution message remain unchanged.

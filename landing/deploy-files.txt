@@ -28,5 +28,5 @@ img/chama-community-threshold-v9.png
 icons/chama-circle-locked.svg
 
 claim.js
-img/chama-circle-story-v6.mp4
-img/chama-circle-action-v6.jpg
+img/chama-circle-story-v7.mp4
+img/chama-circle-action-v7.jpg
