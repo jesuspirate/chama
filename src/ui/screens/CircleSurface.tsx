@@ -109,7 +109,8 @@ export function CircleSurface({ parent, escrows, viewerPubkey, backLabel, childr
             </svg>
           </div>}
       <h2 aria-live="polite" style={{ fontSize: "clamp(22px,4vw,30px)", lineHeight: 1.2, marginBottom: 12 }}>{status}</h2>
-      <p style={{ color: T.muted, fontFamily: T.mono, lineHeight: 1.6 }}>{t("circle.satsEach", { amount: fmtSats(circle.shareMsats) })}{model.status === "filling" && ` · ${t("circle.closesIn", { time: circleTimeText(model.secsToFillDeadline, t) })}`}</p>
+      <p style={{ color: T.muted, fontFamily: T.mono, lineHeight: 1.6, margin: 0 }}>{t("circle.satsEach", { amount: fmtSats(circle.shareMsats) })}</p>
+      {model.status === "filling" && <p style={{ color: T.muted, fontFamily: T.mono, lineHeight: 1.6, marginTop: 2 }}>{t("circle.closesIn", { time: circleTimeText(model.secsToFillDeadline, t) })}</p>}
       {model.status === "running" && <p style={{ color: T.accent }}>{t("circle.countdown", { time: circleTimeText(model.secsToRoundEnd, t) })}</p>}
       {(model.move === "returning" || model.move === "return-now") && <p>{t("circle.returning")}</p>}
       {model.move === "collect" && <p style={{ color: T.accent, fontWeight: 700 }}>{t(viewerIsCollector ? "circle.potReady" : "circle.readyCollect")}</p>}

@@ -914,6 +914,15 @@ export function AssistedCanvas({
           <em>{tr("canvas.chamaWantBadge")}</em>
         </button>
       )}
+      {/* Tease the road ahead: same Bitcoin mark as step 1, grayed, inert. */}
+      <div className="assisted-choice assisted-choice-wide assisted-choice-soon" aria-disabled="true">
+        <span className="assisted-glyph"><img src="/icons/bitcoin-mark-64.png" alt="" width={34} height={34} style={{ display: "block", filter: "grayscale(1)", opacity: .55 }} /></span>
+        <span className="assisted-wide-body">
+          <strong>{tr("canvas.xbtTease")}</strong>
+          <small>{tr("canvas.xbtTeaseDesc")}</small>
+        </span>
+        <em>{tr("canvas.comingSoon")}</em>
+      </div>
     </CanvasShell>;
   }
 
@@ -1085,6 +1094,9 @@ export function canvasCss() { return `
   .assisted-choice-wide strong{margin-top:0;font-size:20px}
   .assisted-choice-wide small{margin-top:4px}
   .assisted-choice-wide em{margin-top:0;margin-left:auto;flex-shrink:0}
+  .assisted-choice-soon{cursor:default;opacity:.62;margin-top:10px}
+  .assisted-choice-soon:hover{transform:none;border-color:${T.borderHi};box-shadow:none}
+  .assisted-choice-soon em{background:${T.border};color:${T.muted}}
   .assisted-choice strong{display:block;margin-top:clamp(10px,2vh,24px);font-size:22px}.assisted-choice small{display:block;margin-top:7px;color:${T.muted};line-height:1.45}.assisted-choice em{display:inline-block;margin-top:auto;padding-top:13px;padding:6px 8px;border-radius:999px;background:${T.greenDim};color:${T.green};font:700 9px/1 ${T.mono};font-style:normal;text-transform:uppercase;letter-spacing:.06em}
   .assisted-glyph{width:44px;height:44px;display:grid;place-items:center;color:${T.accent}}
   .assisted-glyph img{display:block;object-fit:contain}

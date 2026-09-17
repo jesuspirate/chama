@@ -1,5 +1,8 @@
 export const canvas: Record<string, string> = {
   "canvas.chamaWant": "Ziweke pamoja",
+  "canvas.xbtTease": "Bitcoin, njia nyingine",
+  "canvas.xbtTeaseDesc": "Hamisha sats kati ya ecash, Lightning na on-chain.",
+  "canvas.comingSoon": "Inakuja hivi karibuni",
   "canvas.chamaWantDesc": "Fungua duara la Chama — sehemu sawa, wote wanakamilisha au wote wanarejeshewa.",
   "canvas.chamaWantBadge": "JINA LENYEWE",
   "canvas.enterRailDetails": "Weka maelezo yako ya malipo ya {rail}.",
