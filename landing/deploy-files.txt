@@ -31,4 +31,4 @@ claim.js
 img/chama-circle-story-v7.mp4
 img/chama-circle-action-v7.jpg
 
-img/chama-community-banner-v1.png
+img/chama-community-banner-v2.png
