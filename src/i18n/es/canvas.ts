@@ -1,7 +1,8 @@
 export const canvas: Record<string, string> = {
   "canvas.chamaWant": "Ahorradlo juntos",
-  "canvas.xbtTease": "Bitcoin, otros rieles",
-  "canvas.xbtTeaseDesc": "Mueve sats entre ecash, Lightning y on-chain.",
+  "canvas.xbtTease": "XBT · Bitcoin",
+  "canvas.chamaJoin": "¿Ya invitado, o buscas uno? Únete a un círculo",
+  "canvas.xbtTeaseDesc": "Bitcoin, liquidado a tu manera: ecash, Lightning, on-chain.",
   "canvas.comingSoon": "Muy pronto",
   "canvas.chamaWantDesc": "Abre un círculo Chama — partes iguales, todos completan o todos reciben reembolso.",
   "canvas.chamaWantBadge": "EL HOMÓNIMO",

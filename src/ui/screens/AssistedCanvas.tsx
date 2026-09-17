@@ -914,6 +914,13 @@ export function AssistedCanvas({
           <em>{tr("canvas.chamaWantBadge")}</em>
         </button>
       )}
+      {/* Joining is as first-class as starting (Jet, 2026-09-17): open
+          circles live in Browse; "Just us" circles arrive by invite link. */}
+      {CHAMA_CIRCLES_ENABLED && (
+        <button type="button" className="assisted-join-link" onClick={() => onBrowse("chama")}>
+          {tr("canvas.chamaJoin")} →
+        </button>
+      )}
       {/* Tease the road ahead: same Bitcoin mark as step 1, grayed, inert. */}
       <div className="assisted-choice assisted-choice-wide assisted-choice-soon" aria-disabled="true">
         <span className="assisted-glyph"><img src="/icons/bitcoin-mark-64.png" alt="" width={34} height={34} style={{ display: "block", filter: "grayscale(1)", opacity: .55 }} /></span>
@@ -1094,6 +1101,8 @@ export function canvasCss() { return `
   .assisted-choice-wide strong{margin-top:0;font-size:20px}
   .assisted-choice-wide small{margin-top:4px}
   .assisted-choice-wide em{margin-top:0;margin-left:auto;flex-shrink:0}
+  .assisted-join-link{display:block;margin:10px 0 0 2px;background:none;border:0;padding:6px 0;color:${T.accent};font:600 14px ${T.sans};cursor:pointer;text-align:left}
+  .assisted-join-link:hover{text-decoration:underline}
   .assisted-choice-soon{cursor:default;opacity:.62;margin-top:10px}
   .assisted-choice-soon:hover{transform:none;border-color:${T.borderHi};box-shadow:none}
   .assisted-choice-soon em{background:${T.border};color:${T.muted}}

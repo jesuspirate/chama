@@ -2,8 +2,9 @@
 // (attention bell, offline bar). Extracted for 6.3.1 — EN is source of truth.
 export const canvas: Record<string, string> = {
   "canvas.chamaWant": "Save it together",
-  "canvas.xbtTease": "Bitcoin, other rails",
-  "canvas.xbtTeaseDesc": "Move sats between ecash, Lightning, and on-chain.",
+  "canvas.xbtTease": "XBT · Bitcoin",
+  "canvas.chamaJoin": "Already invited, or looking for one? Join a circle",
+  "canvas.xbtTeaseDesc": "Bitcoin, settled your way — ecash, Lightning, on-chain.",
   "canvas.comingSoon": "Coming soon",
   "canvas.chamaWantDesc": "Start a Chama circle — equal shares, everyone completes or everyone is refunded.",
   "canvas.chamaWantBadge": "THE NAMESAKE",

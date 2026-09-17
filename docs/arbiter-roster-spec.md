@@ -109,6 +109,18 @@ best options, move along:
    getchama.app — the recruiting surface for real-life conversations
    ("look yourself up").
 
+## Dispute-time doctrine (sealed 2026-09-17)
+
+Nobody negotiates well under a ticking clock — but a PAUSABLE timer hands
+a hostage-taker the perfect weapon (open a dispute, pause forever, the
+counterparty's money never comes home; absolute expiry is the one promise
+that makes escrow safe to enter). Therefore: the FIRST dispute vote on a
+trade auto-extends the outer deadline ONCE, by a fixed deterministic
+amount (proposed: +72h), capped, engine-law, zero discretion. Everyone
+gets air; nobody gets a hostage. Existing escalation clocks and arbiter
+grace windows keep working inside the extended window. Chama circles are
+untouched — the fixed round clock is their soul.
+
 Addenda (Jet, 2026-09-17):
 - CONSENT SURFACING: vouch weights, decay, and revocation history must be
   presented simply at every decision point — a user choosing an arbiter
