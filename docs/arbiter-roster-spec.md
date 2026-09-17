@@ -108,3 +108,17 @@ best options, move along:
 4. THE ROSTER LIVES IN BOTH PLACES: in-app, and as a public page on
    getchama.app — the recruiting surface for real-life conversations
    ("look yourself up").
+
+Addenda (Jet, 2026-09-17):
+- CONSENT SURFACING: vouch weights, decay, and revocation history must be
+  presented simply at every decision point — a user choosing an arbiter
+  makes a consensual, informed choice every time, for as long as they are
+  live in the app. Never a buried tooltip.
+- PREMIUM DOCTRINE: the arbiter is sold as INSURANCE, priced as a
+  deductible — premiums on DISPUTES ONLY. Today's protocol carries both
+  "ambient" (happy-path, paid at settlement) and "dispute" premium kinds;
+  when roster fees land, ambient premiums retire for roster-priced trades
+  and the dispute premium becomes the fee vehicle. Chama circle shares
+  stay zero-fee forever; ordinary trade DISPUTE fees are live machinery
+  today (arbiterFeeMsats + PREMIUM kind "dispute"), not something to
+  enable.
