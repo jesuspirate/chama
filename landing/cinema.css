@@ -300,3 +300,14 @@ html[data-theme=dark] .intent-card{background:#2a342a;border-color:#56634c}
 @media(prefers-reduced-motion:reduce){.film-complete .scroll-stem{animation:none}}
 
 @media(max-width:760px) and (prefers-reduced-motion:reduce){.cinema-still{inset:var(--mobile-video-top,0px) 0 auto;height:var(--mobile-video-height,250px);object-position:center}}
+
+/* Small pieces of the photograph settle gently; no circular wipe. */
+.circle-reveal{clip-path:none!important}
+.circle-reveal>img{transform:none!important}
+.circle-fragments{position:absolute;inset:0;width:100%;height:100%;display:none;pointer-events:none}
+.has-fragments>img{opacity:0}
+.has-fragments>.circle-fragments{display:block}
+.claim-brand{align-items:baseline}
+.claim-brand img{align-self:center}
+.claim-brand span{line-height:1;letter-spacing:0}
+@media(prefers-reduced-motion:reduce){.has-fragments>img{opacity:1}.circle-fragments{display:none!important}}

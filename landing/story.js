@@ -156,6 +156,58 @@ function sizeFilm() {
   screen.style.setProperty('--mobile-video-top', `${poster.offsetTop}px`);
   screen.style.setProperty('--mobile-video-height', `${poster.offsetHeight}px`);
 }
+// A restrained mosaic of the actual photograph settles into one intact image.
+const circleReveal = finale.querySelector('.circle-reveal');
+const circleImage = circleReveal.querySelector('img');
+const circleFragments = document.createElement('canvas');
+circleFragments.className = 'circle-fragments';
+circleFragments.setAttribute('aria-hidden', 'true');
+circleImage.after(circleFragments);
+const fragmentContext = circleFragments.getContext('2d');
+let lastFragmentFrame = '';
+circleImage.addEventListener('load', scheduleStory);
+function drawCircleFragments(progress) {
+  if (!fragmentContext || !circleImage.complete || !circleImage.naturalWidth) return;
+  if (reducedMotion.matches || progress >= .999) {
+    circleReveal.classList.remove('has-fragments');
+    lastFragmentFrame = '';
+    return;
+  }
+  const w = circleReveal.clientWidth, h = circleReveal.clientHeight;
+  if (!w || !h) return;
+  const ratio = Math.min(devicePixelRatio || 1, 1.5);
+  const key = `${w}:${h}:${progress.toFixed(4)}`;
+  if (lastFragmentFrame === key) return;
+  lastFragmentFrame = key;
+  circleReveal.classList.add('has-fragments');
+  if (circleFragments.width !== Math.round(w * ratio) || circleFragments.height !== Math.round(h * ratio)) {
+    circleFragments.width = Math.round(w * ratio);
+    circleFragments.height = Math.round(h * ratio);
+  }
+  const ctx = fragmentContext;
+  ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+  const cover = Math.max(w / circleImage.naturalWidth, h / circleImage.naturalHeight);
+  const sourceW = w / cover, sourceH = h / cover;
+  const sourceX = (circleImage.naturalWidth - sourceW) / 2;
+  const sourceY = (circleImage.naturalHeight - sourceH) / 2;
+  const cols = mobile.matches ? 9 : 18, rows = 12;
+  const tw = w / cols, th = h / rows;
+  for (let row = 0; row < rows; row++) for (let col = 0; col < cols; col++) {
+    const seed = ((col * 37 + row * 19) % 23) / 22;
+    const delay = .2 * seed + .12 * (1 - col / cols);
+    const t = clamp((progress - delay) / .65);
+    const remaining = (1 - t) ** 3;
+    const drift = (seed - .5) * 36;
+    ctx.save();
+    ctx.globalAlpha = clamp(t * 3);
+    ctx.translate((col + .5) * tw + drift * remaining, (row + .5) * th - (12 + seed * 24) * remaining);
+    ctx.rotate((seed - .5) * .12 * remaining);
+    ctx.drawImage(circleImage, sourceX + col * sourceW / cols, sourceY + row * sourceH / rows,
+      sourceW / cols, sourceH / rows, -tw / 2, -th / 2, tw + .5, th + .5);
+    ctx.restore();
+  }
+}
 function updateStory() {
   scheduled = false;
   const h = innerHeight;
@@ -178,8 +230,7 @@ function updateStory() {
   if (mobile.matches && reducedMotion.matches) mobileArt.forEach((art, i) => drawCoordination(art, 1, Number(i >= 1), Number(i === 2)));
   journey.style.setProperty('--journey-bg', `rgb(${236 - Math.round(trade * 8)} ${236 - Math.round(trade * 5)} ${223 - Math.round(trade * 7)})`);
   const reveal = reducedMotion.matches ? 1 : clamp((h - finale.getBoundingClientRect().top) / (h * .85));
-  finale.style.setProperty('--circle-aperture', `${18 + reveal * 92}%`);
-  finale.style.setProperty('--circle-scale', 1.12 - reveal * .12);
+  drawCircleFragments(reveal);
 }
 // This example is Exchange: the seller funds sats; the buyer pays local money.
 // Both confirmations precede release. Chama's mark never represents custody.
