@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { circleCanvasRound, circleCanvasErrors } from "./canvas.js";
+import { circleCanvasRound, circleCanvasErrors, circleInviteId } from "./canvas.js";
 import { nextRoundTemplate } from "./circle.js";
 import { circleSurfaceModel, circleCardModel } from "./surface.js";
 import { circleMemberStats } from "./stats.js";
@@ -9,6 +9,12 @@ import { circle as es } from "../i18n/es/circle.js";
 import { circle as fr } from "../i18n/fr/circle.js";
 import { circle as sw } from "../i18n/sw/circle.js";
 const T = 1900000000;
+assert.equal(circleInviteId(" https://getchama.app/?trade=sm_circle_123&sim=1 "), "sm_circle_123");
+assert.equal(circleInviteId("https://getchama.app/?escrowId=sm_circle_123"), "sm_circle_123");
+assert.equal(circleInviteId(" sm_circle_123 "), "sm_circle_123");
+for (const malformed of ["", "https://getchama.app/", "https://getchama.app/?trade=invalid", "https://getchama.app/?trade=sm_circle%20extra", "prefix sm_circle_123 suffix", "sm_circle!", "https://getchama.app/sm_circle_123"]) {
+  assert.equal(circleInviteId(malformed), null, malformed);
+}
 const input = { shareSats: 10000, threshold: 5, cap: null, createdAt: T, creatorPubkey: "host", community: "kenya", mintUrl: "fed1test", name: "Your Circle" };
 const round = circleCanvasRound(input);
 assert.deepEqual(circleCanvasErrors(round), []);

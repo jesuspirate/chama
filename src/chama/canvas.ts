@@ -1,6 +1,17 @@
 import { DEFAULT_ROUND_SEC, type CircleRound } from "./types.js";
 import { validateCircleRound } from "./circle.js";
 
+/** Accept a shared trade URL or a bare escrow id, never a partial match. */
+export function circleInviteId(value: string): string | null {
+  const raw = value.trim();
+  let id = raw;
+  try {
+    const url = new URL(raw);
+    id = url.searchParams.get("trade") ?? url.searchParams.get("escrowId") ?? "";
+  } catch { /* A bare escrow id does not need a URL. */ }
+  return /^sm_[a-z0-9_]+$/i.test(id) ? id : null;
+}
+
 export function circleCanvasRound(input: {
   shareSats: number; threshold: number; cap: number | null;
   durationSec?: number; createdAt: number; creatorPubkey: string;

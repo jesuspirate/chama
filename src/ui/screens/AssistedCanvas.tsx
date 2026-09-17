@@ -37,6 +37,7 @@ import { CHAMA_CIRCLES_ENABLED } from "../../escrow-engine/experimental-escrow-f
 import { T } from "../theme.js";
 import { profileNameFor } from "../nostr-profiles.js";
 import { translate, getCurrentLang } from "../../i18n/index.js";
+import { circleInviteId } from "../../chama/canvas.js";
 
 // Render-time translation (same pattern as decisions.ts) — module-level so the
 // pure copy helpers below (detailCopy, termsCopy, …) localize without threading
@@ -898,15 +899,12 @@ export function AssistedCanvas({
     // Joining is as first-class as starting (Jet, 2026-09-17). "Just us"
     // circles arrive by invite link; open circles list like any market.
     const openInvite = () => {
-      const raw = inviteDraft.trim();
-      let id: string | null = null;
-      try { id = new URL(raw).searchParams.get("trade") ?? new URL(raw).searchParams.get("escrowId"); } catch { /* not a URL */ }
-      if (!id) id = raw.match(/sm_[a-z0-9_]+/i)?.[0] ?? null;
+      const id = circleInviteId(inviteDraft);
       if (id && onOpenTrade) onOpenTrade(id);
       else setInviteError(true);
     };
     return <CanvasShell community={community} step={1} onExit={() => onBrowse("all")} onMoreOptions={onMoreOptions}>
-      <Back onClick={() => setSurface("want")}>{tr("canvas.changeWant")}</Back>
+      <Back onClick={() => setSurface("bring")}>{tr("common.back")}</Back>
       <Kicker>{tr("canvas.circleKicker")}</Kicker>
       <h1 style={headingStyle()}>{tr("canvas.circleTitle")}</h1>
       <p style={subStyle()}>{tr("canvas.circleSub")}</p>

@@ -296,6 +296,14 @@ assert(move(filling2, "a", FILL + MANUAL_REFUND_GRACE_SEC) === "return-now",
   "after the grace, the manual refund escape hatch appears");
 assert(move(filling2, "dora", FILL + 86_400) === "none",
   "someone with no seat in a failed circle is owed nothing and offered nothing");
+assert(move(filling2, "amina", FILL + 60) === "next-round",
+  "a host with no funded seat can retry a failed fill");
+assert(move([seat("amina", "locked")], "amina", FILL + 60) === "returning",
+  "a funded host must recover their share before retrying");
+assert(move([collectible(seat("amina", "locked"))], "amina", FILL + 60) === "collect",
+  "a host's available refund takes priority over retrying");
+assert(move([seat("amina", "refunded")], "amina", FILL + 60) === "next-round",
+  "a host can retry once their failed-fill refund is claimed");
 assert(move([seat("a", "returned"), seat("b", "returned"), seat("c", "returned")], "amina", END + 10) === "next-round",
   "a completed round offers the host the next pulse");
 assert(move([seat("a", "returned"), seat("b", "returned"), seat("c", "returned")], "a", END + 10) === "none",
