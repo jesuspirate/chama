@@ -900,17 +900,20 @@ export function AssistedCanvas({
       <p style={subStyle()}>{tr("canvas.onlyProtected")}</p>
       <div className="assisted-choice-grid two">
         {assistedWantChoices(bring).map(asset => <AssetCard key={asset} asset={asset} fiatCurrency={fiatCurrency} note={asset === "goods" ? offerLabel(goodsOffers) : tr("canvas.beFirstSide")} onClick={() => chooseWant(asset)} />)}
-        {/* The namesake gets a front door: bringing Bitcoin can also mean
-            saving it TOGETHER. Routes straight to the circle canvas. */}
-        {CHAMA_CIRCLES_ENABLED && onStartCircle && (
-          <button type="button" className="assisted-choice" onClick={onStartCircle}>
-            <span className="assisted-glyph"><VerticalIcon vertical="chama" size={40} /></span>
+      </div>
+      {/* The namesake gets a front door — but it is a FORK, not an answer to
+          "what in return", so it sits apart: a full-width strip under the
+          grid instead of an orphan card inside it (Jet, 2026-09-17). */}
+      {CHAMA_CIRCLES_ENABLED && onStartCircle && (
+        <button type="button" className="assisted-choice assisted-choice-wide" onClick={onStartCircle}>
+          <span className="assisted-glyph"><VerticalIcon vertical="chama" size={40} /></span>
+          <span className="assisted-wide-body">
             <strong>{tr("canvas.chamaWant")}</strong>
             <small>{tr("canvas.chamaWantDesc")}</small>
-            <em>{tr("canvas.chamaWantBadge")}</em>
-          </button>
-        )}
-      </div>
+          </span>
+          <em>{tr("canvas.chamaWantBadge")}</em>
+        </button>
+      )}
     </CanvasShell>;
   }
 
@@ -1077,6 +1080,11 @@ export function canvasCss() { return `
   .assisted-canvas-footer small{justify-self:end}.assisted-canvas-footer div{display:flex;gap:7px}.assisted-canvas-footer div span{width:7px;height:7px;border-radius:9px;background:${T.borderHi}}.assisted-canvas-footer div span.on{width:24px;background:${T.accent}}
   .assisted-choice-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin-top:clamp(14px,3vh,42px)}.assisted-choice-grid.two{grid-template-columns:repeat(2,minmax(0,1fr));max-width:800px}
   .assisted-choice{min-height:clamp(112px,16vh,155px);padding:clamp(14px,2vh,22px) 22px;border:1px solid ${T.borderHi};border-radius:23px;background:${T.card};color:${T.text};text-align:left;cursor:pointer;transition:.18s ease;display:flex;flex-direction:column;align-items:flex-start}.assisted-choice:hover{transform:translateY(-4px);border-color:${T.accent};box-shadow:0 22px 55px rgba(0,0,0,.15)}
+  .assisted-choice-wide{flex-direction:row;align-items:center;gap:18px;width:100%;max-width:800px;min-height:0;margin-top:14px;padding:clamp(14px,2vh,20px) 22px}
+  .assisted-choice-wide .assisted-wide-body{flex:1;display:flex;flex-direction:column}
+  .assisted-choice-wide strong{margin-top:0;font-size:20px}
+  .assisted-choice-wide small{margin-top:4px}
+  .assisted-choice-wide em{margin-top:0;margin-left:auto;flex-shrink:0}
   .assisted-choice strong{display:block;margin-top:clamp(10px,2vh,24px);font-size:22px}.assisted-choice small{display:block;margin-top:7px;color:${T.muted};line-height:1.45}.assisted-choice em{display:inline-block;margin-top:auto;padding-top:13px;padding:6px 8px;border-radius:999px;background:${T.greenDim};color:${T.green};font:700 9px/1 ${T.mono};font-style:normal;text-transform:uppercase;letter-spacing:.06em}
   .assisted-glyph{width:44px;height:44px;display:grid;place-items:center;color:${T.accent}}
   .assisted-glyph img{display:block;object-fit:contain}
