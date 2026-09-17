@@ -60,6 +60,7 @@ function setLanguage(lang) {
   filmLabels();
   syncThemeButton();
   document.dispatchEvent(new Event('chama-language'));
+  sizeFilm();
   scheduleStory();
   try { localStorage.setItem('chama-landing-language', lang); } catch (_) { /* Optional storage. */ }
 }
@@ -102,22 +103,27 @@ new IntersectionObserver(entries => {
   inView = entries[0].isIntersecting;
   syncFilm();
 }, { threshold: .15 }).observe(screen);
-reducedMotion.addEventListener('change', () => { explicitPlay = false; syncFilm(); scheduleStory(); });
+reducedMotion.addEventListener('change', () => { explicitPlay = false; sizeFilm(); syncFilm(); scheduleStory(); });
 mobile.addEventListener('change', () => { explicitPlay = false; syncFilm(); });
 connection?.addEventListener('change', syncFilm);
 document.addEventListener('visibilitychange', syncFilm);
 
 let scheduled = false;
+const coordinationFrames = new WeakMap();
+function sizeFilm() {
+  // Geometry only changes on resize/load, never during scrolling.
+  if (!mobile.matches || !reducedMotion.matches) return;
+  screen.style.setProperty('--mobile-video-top', `${poster.offsetTop}px`);
+  screen.style.setProperty('--mobile-video-height', `${poster.offsetHeight}px`);
+}
 function updateStory() {
   scheduled = false;
   const h = innerHeight;
   const heroRect = cinema.getBoundingClientRect();
   document.querySelector('.nav').classList.toggle('past-cinema', heroRect.bottom < 100);
-  // Keep the mobile video exactly aligned with its inline poster, including translated headlines.
-  screen.style.setProperty('--mobile-video-top', `${poster.offsetTop}px`);
-  screen.style.setProperty('--mobile-video-height', `${poster.offsetHeight}px`);
   const exit = reducedMotion.matches || mobile.matches ? 0 : clamp(-heroRect.top / (h * .45));
-  cinema.style.setProperty('--cinema-inset', `${exit * 30}px`);
+  // Scale the composited surface; do not resize and recrop a playing video.
+  cinema.style.setProperty('--cinema-scale', (1 - exit * 60 / innerWidth).toFixed(5));
   cinema.style.setProperty('--cinema-radius', `${exit * 18}px`);
   let closest = 0, distance = Infinity;
   const rects = chapters.map(chapter => chapter.getBoundingClientRect());
@@ -130,7 +136,7 @@ function updateStory() {
   const trade = reducedMotion.matches ? Number(active === 2) : clamp((h * (mobile.matches ? .5 : .3) - rects[2].top) / (h * (mobile.matches ? 1 : .75)));
   const meet = clamp((h * .9 - rects[0].top) / (h * .6));
   drawCoordination(mainArt, meet, agree, trade);
-  mobileArt.forEach((art, i) => drawCoordination(art, 1, Number(i >= 1), Number(i === 2)));
+  if (mobile.matches && reducedMotion.matches) mobileArt.forEach((art, i) => drawCoordination(art, 1, Number(i >= 1), Number(i === 2)));
   journey.style.setProperty('--journey-bg', `rgb(${236 - Math.round(trade * 8)} ${236 - Math.round(trade * 5)} ${223 - Math.round(trade * 7)})`);
   const reveal = reducedMotion.matches ? 1 : clamp((h - finale.getBoundingClientRect().top) / (h * .85));
   finale.style.setProperty('--circle-aperture', `${18 + reveal * 92}%`);
@@ -139,6 +145,9 @@ function updateStory() {
 // This example is Exchange: the seller funds sats; the buyer pays local money.
 // Both confirmations precede release. Chama's mark never represents custody.
 function drawCoordination(art, meet, agree, trade) {
+  const frame = `${meet.toFixed(4)}:${agree.toFixed(4)}:${trade.toFixed(4)}:${document.documentElement.lang}`;
+  if (coordinationFrames.get(art) === frame) return;
+  coordinationFrames.set(art, frame);
   const funding = clamp((agree - .35) / .4);
   const locked = clamp((funding - .75) * 4);
   const payment = clamp((trade - .05) / .35);
@@ -171,9 +180,9 @@ function drawCoordination(art, meet, agree, trade) {
 }
 function scheduleStory() { if (!scheduled) { scheduled = true; requestAnimationFrame(updateStory); } }
 addEventListener('scroll', scheduleStory, { passive: true });
-addEventListener('resize', scheduleStory);
-poster.addEventListener('load', scheduleStory);
-document.fonts?.ready.then(scheduleStory);
+addEventListener('resize', () => { sizeFilm(); scheduleStory(); });
+poster.addEventListener('load', () => { sizeFilm(); scheduleStory(); });
+document.fonts?.ready.then(() => { sizeFilm(); scheduleStory(); });
 document.querySelectorAll('[data-lang]').forEach(button => button.addEventListener('click', () => setLanguage(button.dataset.lang)));
 try { const saved = localStorage.getItem('chama-landing-language'); if (saved && copy[saved]) setLanguage(saved); } catch (_) { /* Readable without storage. */ }
 setPhase(0);
