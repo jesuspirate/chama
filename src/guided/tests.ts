@@ -15,6 +15,7 @@ import {
   routeCanvasIntent,
 } from "./canvas-routing.js";
 import type { GuidedTradeIntent } from "./types.js";
+import { groupBySettlementRail, railHeadersNeeded, settlementRailOf } from "../ui/settlement-rail.js";
 
 let passed = 0;
 let failed = 0;
@@ -470,6 +471,47 @@ console.log("\n── GUIDED DETERMINISTIC MATCHING ──");
     sell.candidates.length === 0 && sell.rejected[0]?.code === "UNSUPPORTED_DIRECTION",
     "does not pretend current seller listings can fulfill a sell-sats intent",
   );
+}
+
+
+// ── Runway #15: settlement-rail grouping ─────────────────────────────────────
+{
+  console.log("\nsettlement-rail grouping (runway #15):");
+  assert(settlementRailOf(undefined) === "ecash-ln", "absent escrowMode reads as the historical ecash default");
+  assert(settlementRailOf("ecash") === "ecash-ln", "ecash lands in the ecash/Lightning group");
+  assert(settlementRailOf("onchain") === "onchain", "onchain lands in the on-chain BTC group");
+  assert(settlementRailOf("liquid-l2") === "other", "an unrecognized rail is honestly 'other', never lumped with instant rails");
+
+  const items = [
+    { id: "a", escrowMode: "onchain" },
+    { id: "b", escrowMode: "ecash" },
+    { id: "c", escrowMode: undefined },
+    { id: "d", escrowMode: "weird" },
+    { id: "e", escrowMode: "onchain" },
+  ];
+  const groups = groupBySettlementRail(items, i => settlementRailOf(i.escrowMode));
+  assert(
+    groups.map(g => g.rail).join(",") === "ecash-ln,onchain,other",
+    "groups come out in the fixed rail order: ecash/LN, on-chain, other",
+  );
+  assert(
+    groups[0].items.map(i => i.id).join(",") === "b,c"
+      && groups[1].items.map(i => i.id).join(",") === "a,e",
+    "caller order (ranking) survives inside each group",
+  );
+  assert(railHeadersNeeded(groups), "mixed rails on one page always get named headers");
+
+  const ecashOnly = groupBySettlementRail(items.slice(1, 3), i => settlementRailOf(i.escrowMode));
+  assert(
+    ecashOnly.length === 1 && !railHeadersNeeded(ecashOnly),
+    "a single all-ecash group reads flat, as before (badges already say ecash)",
+  );
+  const onchainOnly = groupBySettlementRail([items[0]], i => settlementRailOf(i.escrowMode));
+  assert(
+    railHeadersNeeded(onchainOnly),
+    "a lone non-instant group still gets its header — an all-onchain shelf says so",
+  );
+  assert(groupBySettlementRail([], () => "ecash-ln" as const).length === 0, "no items → no groups, no headers");
 }
 
 console.log(`\nGuided results: ${passed} passed, ${failed} failed, ${passed + failed} total\n`);

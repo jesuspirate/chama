@@ -5,6 +5,8 @@ import { getCommunityBySlug, type Community } from "../../communities/registry.j
 import { T, ROLE_COLOR, BROWSE_CATS, inputStyle, fmtSats } from "../theme.js";
 import { CHAMA_CIRCLES_ENABLED } from "../../escrow-engine/experimental-escrow-features.js";
 import { TradeCard } from "../components/TradeCard.js";
+import { RailHeader } from "../components/RailHeader.js";
+import { groupBySettlementRail, railHeadersNeeded, settlementRailOf } from "../settlement-rail.js";
 import { VerticalIcon } from "../components/VerticalIcon.js";
 import { BOTTOM_NAV_HEIGHT } from "../components/BottomNav.js";
 import { ArbiterApplyForm } from "../components/ArbiterApplyForm.js";
@@ -230,6 +232,16 @@ export function BrowseView({
   const filteredNonMatchingListings = useMemo(
     () => routedNonMatching.filter((listing) => listingMatchesSearch(listing, search)),
     [routedNonMatching, search],
+  );
+  // Runway #15: settlement-rail grouping for the flat (per-category) lists.
+  // The "all" shelves group inside BrowseSection instead.
+  const matchingRailGroups = useMemo(
+    () => groupBySettlementRail(filteredMatchingListings, l => settlementRailOf(l.escrowMode)),
+    [filteredMatchingListings],
+  );
+  const nonMatchingRailGroups = useMemo(
+    () => groupBySettlementRail(filteredNonMatchingListings, l => settlementRailOf(l.escrowMode)),
+    [filteredNonMatchingListings],
   );
   const matchingSections = useMemo(
     () => groupListingsByVertical(filteredMatchingListings),
@@ -639,7 +651,13 @@ export function BrowseView({
                 ))
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                  {filteredMatchingListings.map((s, i) => (
+                  {/* Runway #15: results read in settlement-rail groups, never
+                      mixed flat, the moment more than one world is present. */}
+                  {matchingRailGroups.flatMap(group => [
+                    ...(railHeadersNeeded(matchingRailGroups)
+                      ? [<RailHeader key={`rail-${group.rail}`} rail={group.rail} count={group.items.length} />]
+                      : []),
+                    ...group.items.map((s, i) => (
                     <div key={s.id} style={{ animation: `fadeIn 0.4s ease ${i * 0.08}s both` }}>
                       <TradeCard
                         allEscrows={allEscrows}
@@ -658,7 +676,8 @@ export function BrowseView({
                         showCommunityChip={browseScope === "all"}
                       />
                     </div>
-                  ))}
+                    )),
+                  ])}
                 </div>
               )}
             </div>
@@ -705,7 +724,11 @@ export function BrowseView({
                 ))
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                  {filteredNonMatchingListings.map((s, i) => (
+                  {nonMatchingRailGroups.flatMap(group => [
+                    ...(railHeadersNeeded(nonMatchingRailGroups)
+                      ? [<RailHeader key={`rail-${group.rail}`} rail={group.rail} count={group.items.length} />]
+                      : []),
+                    ...group.items.map((s, i) => (
                     <div key={s.id} style={{ animation: `fadeIn 0.4s ease ${i * 0.08}s both` }}>
                       <TradeCard
                         allEscrows={allEscrows}
@@ -725,7 +748,8 @@ export function BrowseView({
                         showCommunityChip={browseScope === "all"}
                       />
                     </div>
-                  ))}
+                    )),
+                  ])}
                 </div>
               )}
             </>
@@ -1064,6 +1088,7 @@ function BrowseSection({
   showCommunityChip?: boolean;
 }) {
   const { t } = useT();
+  const railGroups = groupBySettlementRail(section.listings, l => settlementRailOf(l.escrowMode));
   return (
     <section style={{ marginBottom: 16 }}>
       <div style={{
@@ -1096,7 +1121,12 @@ function BrowseSection({
         </div>
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        {section.listings.map((s, i) => (
+        {/* Runway #15: inside a shelf too, rails never mix flat. */}
+        {railGroups.flatMap(group => [
+          ...(railHeadersNeeded(railGroups)
+            ? [<RailHeader key={`rail-${group.rail}`} rail={group.rail} count={group.items.length} />]
+            : []),
+          ...group.items.map((s, i) => (
           <div key={s.id} style={{ animation: `fadeIn 0.4s ease ${i * 0.08}s both` }}>
             <TradeCard
                         allEscrows={allEscrows}
@@ -1116,7 +1146,8 @@ function BrowseSection({
               showCommunityChip={showCommunityChip}
             />
           </div>
-        ))}
+          )),
+        ])}
       </div>
     </section>
   );

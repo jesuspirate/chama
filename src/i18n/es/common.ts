@@ -13,4 +13,7 @@ export const common: Record<string, string> = {
   "common.loading": "Cargando…",
   "common.soon": "Pronto",
   "common.waiting": "Esperando…",
+  "common.railEcashLn": "Ecash · Lightning",
+  "common.railOnchain": "BTC en cadena",
+  "common.railOther": "Otros",
 };

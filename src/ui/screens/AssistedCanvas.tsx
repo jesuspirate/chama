@@ -35,6 +35,8 @@ import { useFiatRates } from "../hooks/useFiatRates.js";
 import { VerticalIcon } from "../components/VerticalIcon.js";
 import { CHAMA_CIRCLES_ENABLED } from "../../escrow-engine/experimental-escrow-features.js";
 import { T } from "../theme.js";
+import { RailHeader } from "../components/RailHeader.js";
+import { groupBySettlementRail, railHeadersNeeded, settlementRailOf } from "../settlement-rail.js";
 import { profileNameFor } from "../nostr-profiles.js";
 import { translate, getCurrentLang } from "../../i18n/index.js";
 import { circleInviteId } from "../../chama/canvas.js";
@@ -774,12 +776,30 @@ export function AssistedCanvas({
       )}
       {error && !noMatches && !stillChecking && <ErrorBox>{error}</ErrorBox>}
       <div className="assisted-result-grid">
+        {/* Runway #15: results read in settlement-rail groups — ecash/LN,
+            on-chain BTC, other — never mixed flat. Ranking survives inside
+            each group (recommended first, then also-compatible). */}
         {isGoods
-          ? goodsMatches.map(match => <GoodsMatch key={match.listing.id} match={match} onOpen={() => onOpenTrade(match.listing.id)} />)
-          : <>
-              {recommended.map(({ candidate, labels }) => <Match key={`${candidate.listing.id}:${candidate.amountSats}`} candidate={candidate} labels={labels} onOpen={() => { setSelected(candidate); setSurface("review"); }} />)}
-              {alsoCompatible.map(candidate => <Match key={`${candidate.listing.id}:${candidate.amountSats}`} candidate={candidate} labels={[]} onOpen={() => { setSelected(candidate); setSurface("review"); }} />)}
-            </>}
+          ? (() => {
+              const groups = groupBySettlementRail(goodsMatches, m => settlementRailOf(m.listing.escrowMode));
+              const named = railHeadersNeeded(groups);
+              return groups.flatMap(group => [
+                ...(named ? [<RailHeader key={`rail-${group.rail}`} rail={group.rail} count={group.items.length} />] : []),
+                ...group.items.map(match => <GoodsMatch key={match.listing.id} match={match} onOpen={() => onOpenTrade(match.listing.id)} />),
+              ]);
+            })()
+          : (() => {
+              const ranked = [
+                ...recommended.map(({ candidate, labels }) => ({ candidate, labels })),
+                ...alsoCompatible.map(candidate => ({ candidate, labels: [] as string[] })),
+              ];
+              const groups = groupBySettlementRail(ranked, r => settlementRailOf(r.candidate.listing.escrowMode));
+              const named = railHeadersNeeded(groups);
+              return groups.flatMap(group => [
+                ...(named ? [<RailHeader key={`rail-${group.rail}`} rail={group.rail} count={group.items.length} />] : []),
+                ...group.items.map(({ candidate, labels }) => <Match key={`${candidate.listing.id}:${candidate.amountSats}`} candidate={candidate} labels={labels} onOpen={() => { setSelected(candidate); setSurface("review"); }} />),
+              ]);
+            })()}
       </div>
       {noMatches && !isGoods && matchWhy && (
         <div style={{ fontFamily: T.mono, fontSize: 11, color: T.muted, margin: "0 0 14px" }}>
