@@ -1,348 +1,81 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta name="description" content="Chama Help & FAQ — how to buy, sell, get paid, cash out to M-Pesa, stay safe, and trade peer-to-peer with your community. Non-custodial Bitcoin commerce.">
-<title>Chama — Help & FAQ</title>
-<link rel="icon" href="icons/chama-mark-64.png">
-<meta property="og:title" content="Chama — Help & FAQ">
-<meta property="og:description" content="How to trade peer-to-peer with your community, get paid, and cash out — in plain language.">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Chama — HELP &amp; FAQ</title>
+<meta name="description" content="Circles, trades, and the moment your sats come home. Answers for the people using Chama.">
+<meta name="theme-color" content="#f3f0e7">
+<link rel="canonical" href="https://chama.community/faq.html">
+<link rel="alternate" hreflang="en" href="https://chama.community/faq.html">
+<link rel="alternate" hreflang="es" href="https://chama.community/faq.es.html">
+<link rel="alternate" hreflang="fr" href="https://chama.community/faq.fr.html">
 <meta property="og:type" content="website">
+<meta property="og:title" content="Chama — HELP &amp; FAQ">
+<meta property="og:description" content="Circles, trades, and the moment your sats come home. Answers for the people using Chama.">
 <meta property="og:url" content="https://chama.community/faq.html">
+<meta property="og:image" content="https://chama.community/icons/og-image-people-v13.jpg">
+<link rel="icon" href="icons/favicon.ico">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-<style>
-*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
-:root{
-  --black:#0A0A0A;--surface:#0E0E10;--card:rgba(255,255,255,.035);--card2:rgba(255,255,255,.06);
-  --t1:#F5F5F7;--t2:#C7C7CC;--t3:#9A9AA0;--t4:#6E6E73;
-  --hairline:rgba(255,255,255,.10);--hairline2:rgba(255,255,255,.07);
-  --orange:#F7931A;--orange-l:#FFB340;--orange-d:#C76A00;
-  --purple:#BF5AF2;--teal:#2EE6D6;--teal-m:#12C7B7;
-  --r-card:20px;--r-ctl:14px;--r-pill:999px;
-  --sora:'Sora',-apple-system,sans-serif;
-  --sans:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',sans-serif;
-  --mono:'JetBrains Mono','SF Mono',monospace;
-  --weave:repeating-linear-gradient(135deg,var(--orange) 0 6px,var(--teal) 6px 12px,var(--purple) 12px 18px);
-}
-html{scroll-behavior:smooth;background:var(--black);color:var(--t1);-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;scroll-padding-top:84px}
-body{font-family:var(--sans);background:var(--black);line-height:1.65;overflow-x:hidden}
-a{color:var(--orange-l);text-decoration:none}
-a:hover{text-decoration:underline}
-.wrap{max-width:820px;margin:0 auto;padding:0 22px}
-
-/* NAV */
-nav{position:sticky;top:0;z-index:50;background:rgba(10,10,10,.78);backdrop-filter:saturate(160%) blur(14px);border-bottom:1px solid var(--hairline)}
-.nav-c{max-width:1100px;margin:0 auto;padding:13px 22px;display:flex;align-items:center;gap:18px}
-.nav-brand{display:flex;align-items:center;gap:9px;font-family:var(--sora);font-weight:700;color:var(--t1);font-size:17px}
-.nav-brand img{display:block}
-.nav-l{display:flex;gap:20px;margin-left:8px}
-.nav-l a{color:var(--t3);font-size:14px;font-weight:500}
-.nav-l a:hover{color:var(--t1);text-decoration:none}
-.nav-r{margin-left:auto;display:flex;align-items:center;gap:14px}
-.lang{display:flex;border:1px solid var(--hairline);border-radius:var(--r-pill);overflow:hidden}
-.lang a{padding:5px 11px;font-size:12px;font-weight:600;color:var(--t3);font-family:var(--mono)}
-.lang a.on{background:var(--card2);color:var(--t1)}
-.nav-open{display:inline-flex;align-items:center;gap:6px;background:var(--orange);color:#1a1206;font-weight:700;font-size:13.5px;padding:8px 15px;border-radius:var(--r-pill)}
-.nav-open:hover{background:var(--orange-l);text-decoration:none}
-@media(max-width:760px){.nav-l{display:none}}
-
-/* HERO */
-.faq-hero{padding:54px 0 26px;text-align:center;border-bottom:1px solid var(--hairline2)}
-.eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--orange-l);margin-bottom:14px}
-.faq-hero h1{font-family:var(--sora);font-weight:800;font-size:clamp(30px,6vw,46px);line-height:1.08;letter-spacing:-.02em}
-.grad{background:linear-gradient(100deg,var(--orange-l),var(--teal));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
-.faq-hero p{color:var(--t2);font-size:17px;max-width:620px;margin:16px auto 0}
-
-/* CALLOUT */
-.callout{position:relative;margin:30px 0 8px;padding:18px 20px 18px 22px;background:var(--card);border:1px solid var(--hairline);border-radius:var(--r-card);color:var(--t2);font-size:15.5px;overflow:hidden}
-.callout::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--weave)}
-.callout em{color:var(--t1);font-style:italic}
-
-/* JUMP NAV */
-.jump{display:flex;flex-wrap:wrap;gap:8px;margin:30px 0 8px}
-.jump a{font-size:13px;font-weight:600;color:var(--t2);background:var(--card);border:1px solid var(--hairline);padding:7px 13px;border-radius:var(--r-pill)}
-.jump a:hover{color:var(--t1);border-color:var(--orange-d);text-decoration:none}
-
-/* SECTIONS */
-section.faq{padding:38px 0 6px;border-top:1px solid var(--hairline2)}
-section.faq:first-of-type{border-top:0}
-.kick{display:flex;align-items:center;gap:9px;font-family:var(--mono);font-size:12px;letter-spacing:.13em;text-transform:uppercase;color:var(--orange-l);margin-bottom:6px}
-.kick .node{width:7px;height:7px;border-radius:50%;background:var(--orange)}
-section.faq>h2{font-family:var(--sora);font-weight:700;font-size:25px;letter-spacing:-.01em;margin-bottom:6px}
-.qa{padding:18px 0;border-top:1px solid var(--hairline2)}
-.qa:first-of-type{border-top:0}
-.qa h3{font-family:var(--sora);font-weight:600;font-size:18px;color:var(--t1);margin-bottom:8px}
-.qa p{color:var(--t2);font-size:15.5px}
-.qa p+p{margin-top:10px}
-.qa ul,.qa ol{margin:10px 0 0;padding-left:4px;list-style:none}
-.qa li{position:relative;padding-left:22px;color:var(--t2);font-size:15.5px;margin-bottom:8px}
-.qa ul li::before{content:"";position:absolute;left:2px;top:9px;width:6px;height:6px;border-radius:50%;background:var(--orange)}
-.qa ol{counter-reset:s}
-.qa ol li{counter-increment:s}
-.qa ol li::before{content:counter(s);position:absolute;left:0;top:0;line-height:25.6px;font-family:var(--mono);font-size:13px;font-weight:600;color:var(--orange-l)}
-.qa strong{color:var(--t1);font-weight:600}
-code{font-family:var(--mono);font-size:.84em;background:var(--card2);border:1px solid var(--hairline);border-radius:7px;padding:2px 6px;color:var(--teal);word-break:break-all}
-.tag{display:inline-block;font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:.06em;color:var(--orange-l);border:1px solid var(--orange-d);border-radius:var(--r-pill);padding:2px 9px;margin-bottom:8px}
-
-/* HELP CARD */
-.shots{display:flex;flex-wrap:wrap;gap:14px;margin:16px 0 6px}
-.shot{margin:0;flex:0 0 auto;max-width:224px}
-.shot img{display:block;width:100%;height:auto;border:1px solid var(--hairline);border-radius:14px;background:var(--surface)}
-.shot figcaption{margin-top:7px;font-size:12px;color:var(--t3);font-family:var(--mono);text-align:center}
-@media(max-width:520px){.shot{max-width:47%}}
-.help{margin:34px 0 0;padding:26px;text-align:center;background:var(--card);border:1px solid var(--hairline);border-radius:var(--r-card)}
-.help h2{font-family:var(--sora);font-weight:700;font-size:22px;margin-bottom:8px}
-.help p{color:var(--t2);font-size:15px;margin-bottom:4px}
-.tagline{margin-top:14px;font-family:var(--mono);font-size:12.5px;color:var(--t3);letter-spacing:.04em}
-
-/* FOOTER */
-footer{margin-top:46px;border-top:1px solid var(--hairline);padding:24px 0 40px}
-.ft{max-width:1100px;margin:0 auto;padding:0 22px;display:flex;flex-wrap:wrap;gap:14px;align-items:center;justify-content:space-between;color:var(--t4);font-size:13px}
-.ft-l{display:flex;align-items:center;gap:8px}
-.ft a{color:var(--t3)}
-</style>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script>try{const saved=localStorage.getItem('chama-theme');document.documentElement.dataset.theme=['dark','light'].includes(saved)?saved:(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light')}catch(_){document.documentElement.dataset.theme=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'}</script>
+<link rel="stylesheet" href="story.css">
+<link rel="stylesheet" href="faq.css?v=1">
+<script src="faq.js?v=1" defer></script>
 </head>
 <body>
-
-<nav>
-  <div class="nav-c">
-    <a href="/" class="nav-brand"><img src="icons/chama-mark-64.png" srcset="icons/chama-mark-64.png 1x, icons/chama-mark-128.png 2x" width="26" height="26" alt="">Chama</a>
-    <div class="nav-l">
-      <a href="/#trust">The weave</a>
-      <a href="/#products">Products</a>
-      <a href="/#communities">Communities</a>
-      <a href="/#protocol">Protocol</a>
-      <a href="https://github.com/jesuspirate/chama" target="_blank" rel="noopener">GitHub</a>
-    </div>
-    <div class="nav-r">
-      <div class="lang" role="group" aria-label="Language">
-        <a href="faq.html" class="on">EN</a>
-        <a href="faq.fr.html">FR</a>
-        <a href="faq.es.html">ES</a>
-      </div>
-      <a href="https://zapstore.dev/apps/app.chama.market" class="nav-open" target="_blank" rel="noopener">Get the app <span>→</span></a>
-    </div>
-  </div>
-</nav>
-
-<main class="wrap">
-
-  <div class="faq-hero">
-    <div class="eyebrow">Help &amp; FAQ</div>
-    <h1>Trade with your community.<br><span class="grad">Trust the math</span>, not a middleman.</h1>
-    <p>New to Chama? This is everything you need, in plain language — how to buy, sell, get paid, cash out, and stay safe.</p>
-  </div>
-
-  <div class="callout">
-    A <em>chama</em> is an East African savings circle — neighbours who pool what they have and settle on trust. Chama gives that same circle to the whole world, except here the trust is cryptographic. There is no company in the middle: just you, your counterparty, your community, and Nostr.
-  </div>
-
-  <nav class="jump" aria-label="Jump to">
-    <a href="#basics">The basics</a>
-    <a href="#start">Getting started</a>
-    <a href="#trade">Buying &amp; selling</a>
-    <a href="#money">Getting your money</a>
-    <a href="#safety">Account &amp; safety</a>
-    <a href="#trouble">Troubleshooting</a>
-    <a href="#glossary">Glossary</a>
-  </nav>
-
-  <section class="faq" id="basics">
-    <div class="kick"><span class="node"></span>The basics</div>
-    <h2>What Chama is</h2>
-    <div class="qa">
-      <h3>What is Chama?</h3>
-      <p>A peer-to-peer marketplace. You can buy and sell Bitcoin, goods, and services with people in your community. Every trade is protected by an <strong>escrow</strong> that no company can freeze, seize, or switch off — because there is no company in the middle.</p>
-    </div>
-    <div class="qa">
-      <h3>Do I need to know anything about Bitcoin?</h3>
-      <p>No. You pick your country and currency, you trade, and (in supported countries) your money can land straight in your mobile-money account like M-Pesa. Bitcoin is the plumbing; you don't have to think about it.</p>
-    </div>
-    <div class="qa">
-      <h3>Is Chama free? What does it cost?</h3>
-      <p>The app is free to download, and <strong>Chama itself takes no cut</strong> — it's non-custodial, so no company sits between you and your money. On a completed trade, a small <strong>0.5% insurance premium</strong> goes to the community <strong>arbiter</strong> who backs your trade (0.25% from each side), sent as ecash. It's included by default and you can turn it off before you settle. If a trade goes to an arbiter to settle a <strong>dispute</strong>, a small additional fee applies for that work. Sellers can also set their own <strong>premium</strong> on a listing (e.g. "+25%") — that's the seller's price, not a Chama fee — and you always see the final amount before you commit.</p>
-    </div>
-    <div class="qa">
-      <h3>Does Chama hold my money?</h3>
-      <p><strong>No.</strong> Chama never touches your money. Your funds sit in a shared escrow <strong>only while a trade is active</strong>, and they move to you the moment the trade settles. Between trades, your balance is zero by design — there's no wallet for anyone to drain.</p>
-    </div>
-  </section>
-
-  <section class="faq" id="start">
-    <div class="kick"><span class="node"></span>Getting started</div>
-    <h2>Set up &amp; sign in</h2>
-    <div class="qa">
-      <h3>How do I get Chama?</h3>
-      <ul>
-        <li><strong>Android:</strong> install from Zapstore → <a href="https://zapstore.dev/apps/app.chama.market" target="_blank" rel="noopener">zapstore.dev/apps/app.chama.market</a></li>
-        <li><strong>Web &amp; desktop:</strong> open <a href="https://getchama.app" target="_blank" rel="noopener">getchama.app</a> (also at chama.community)</li>
-      </ul>
-    </div>
-    <div class="qa">
-      <h3>How do I sign in?</h3>
-      <p>Chama uses a <strong>key</strong> as your account (the Nostr standard) — there's no email/password and no sign-up form. The app can create a key for you, or you can use your existing Nostr key. <strong>Write your key down and keep it safe</strong> (see "Back up your account" below) — it <em>is</em> your account.</p>
-    </div>
-    <div class="qa">
-      <h3>What is a "community" and how do I choose one?</h3>
-      <p>A community is your <strong>currency + country + flag</strong> — for example 🇰🇪 Kenya · KES, or 🇸🇳 Senegal · CFA. You pick yours the first time you sign in. It decides the currency your trades are priced in and the neighbours you trade with. You can switch communities later in <strong>Settings → Advanced</strong>, but you stay "home" by default. You can also peek at other communities while browsing.</p>
-    </div>
-  </section>
-
-  <section class="faq" id="trade">
-    <div class="kick"><span class="node"></span>Buying &amp; selling</div>
-    <h2>How a trade works</h2>
-    <div class="qa">
-      <h3>How do I buy something?</h3>
-      <ol>
-        <li>On <strong>Browse</strong>, tap a listing that interests you.</li>
-        <li>Tap <strong>Join as Buyer</strong> to reserve your spot (nothing moves yet).</li>
-        <li>Build your order / confirm the amount, then <strong>fund</strong> it — this locks your sats safely in escrow.</li>
-        <li>Pay the seller's fiat (e.g. M-Pesa, Airtel) the way the listing says, or receive your goods.</li>
-        <li>When you've got what you paid for, tap to <strong>release</strong> — the sats go to the seller. Done.</li>
-      </ol>
-    </div>
-    <div class="qa">
-      <h3>How do I sell something?</h3>
-      <ol>
-        <li>Tap <strong>Create</strong> and post a listing (Exchange / Market goods / Community Bill Pay), set your price and which payment methods you accept.</li>
-        <li>When a buyer joins and funds, the sats lock in escrow — you'll see "<strong>Sats locked in escrow</strong>."</li>
-        <li>Deliver the goods / send the agreed fiat, then tap <strong>Mark delivered</strong> (or "Mark sent") — that's your confirmation.</li>
-        <li>Once released, tap <strong>Claim</strong> to receive your sats — and cash out (see below).</li>
-      </ol>
-    </div>
-    <div class="qa">
-      <h3>What are the steps of a trade?</h3>
-      <p><strong>Reserved</strong> (someone joined) → <strong>Locked</strong> (sats funded into escrow) → the work happens (goods delivered / fiat sent) → <strong>Released</strong> (both sides agree) → <strong>Claim</strong> your payout → <strong>Settled.</strong> You can follow it on the trade's timeline, and chat with the other party at any time.</p>
-    </div>
-    <div class="qa">
-      <h3>How does the escrow keep me safe?</h3>
-      <p>When a trade is funded, the money is split so that <strong>two of the three</strong> people in the trade — you, your counterparty, and a community <strong>arbiter</strong> — must agree before it can move. No single person (and no company) can run off with it. Normally you and your counterparty simply agree and it settles; the arbiter only steps in if something goes wrong.</p>
-    </div>
-    <div class="qa">
-      <h3>What is an arbiter?</h3>
-      <p>A trusted member of your community who can help settle a trade <strong>only if there's a dispute</strong>. They can't take your money — they can only break a tie between buyer and seller. Arbiters build a reputation over time.</p>
-    </div>
-    <div class="qa">
-      <h3>What if something goes wrong / I have a dispute?</h3>
-      <p>If you and your counterparty disagree (e.g. goods never arrived), each of you casts your vote — <strong>release</strong> or <strong>refund</strong> — and explain why. If you clash, the arbiter is brought in to decide fairly. You're never left stuck.</p>
-    </div>
-    <div class="qa">
-      <h3>How do I cancel or back out?</h3>
-      <p>Before anything is funded, you can simply leave. After funding, backing out means casting a <strong>refund</strong> vote, which returns the sats to the right person (the arbiter is the backstop). Chama always shows you exactly where the money goes before you confirm.</p>
-      <figure class="shot" style="max-width:228px"><img src="img/faq/faq-cancel.png" alt="The back-out screen: confirm 'I did my part', or pick a refund reason" loading="lazy"><figcaption>Backing out — confirm, or pick a refund reason</figcaption></figure>
-    </div>
-  </section>
-
-  <section class="faq" id="money">
-    <div class="kick"><span class="node"></span>Getting your money</div>
-    <h2>Funding &amp; cashing out</h2>
-    <div class="qa">
-      <h3>Where do the sats come from to fund a trade?</h3>
-      <p>You fund with Bitcoin (sats) you already hold — for example from a Lightning wallet. Chama doesn't sell you Bitcoin inside the app. In a typical trade the <strong>cash side happens between you and your counterparty directly</strong> (you send them M-Pesa/Airtel as the listing says); Chama escrows the <strong>Bitcoin</strong> side.</p>
-    </div>
-    <div class="qa">
-      <h3>How do I get paid / cash out?</h3>
-      <p>When a trade is ready, tap <strong>Claim</strong> and choose where your money goes. Your options depend on your country:</p>
-      <ul>
-        <li>🇰🇪 <strong>Kenya — Cash out to M-Pesa (one tap).</strong> Enter your M-Pesa number and Kenyan shillings land on your phone in seconds.</li>
-        <li><strong>Other countries — local partner.</strong> Where a cash-out partner exists (e.g. Banxaas in Senegal), Chama opens their page so you can cash out there. More partners are coming.</li>
-        <li><strong>Lightning, anywhere.</strong> Send to any Lightning address, invoice, or connected wallet (NWC).</li>
-        <li><strong>On-chain Bitcoin.</strong> Paste a Bitcoin address (slower; network fees apply).</li>
-      </ul>
-    </div>
-    <div class="qa">
-      <span class="tag">Kenya · one tap</span>
-      <h3>How do I cash out to M-Pesa?</h3>
-      <ol>
-        <li>On a completed trade, tap <strong>Claim</strong>.</li>
-        <li>Choose <strong>Cash out to M-Pesa</strong>.</li>
-        <li>Enter your M-Pesa phone number (it's saved for next time).</li>
-        <li>Confirm — you'll see the approximate KES amount, and shillings arrive in seconds.</li>
-      </ol>
-      <div class="shots">
-        <figure class="shot"><img src="img/faq/faq-chooser.png" alt="The claim screen with 'Cash out to M-Pesa' as the first option" loading="lazy"><figcaption>1 · Pick "Cash out to M-Pesa"</figcaption></figure>
-        <figure class="shot"><img src="img/faq/faq-mpesa.png" alt="Entering an M-Pesa number, showing the approximate KES amount" loading="lazy"><figcaption>2 · Enter your number → KES arrives</figcaption></figure>
-      </div>
-      <p>No app to install, no account, no Bitcoin knowledge needed. (This uses Tando, a standards-based Lightning → M-Pesa bridge.)</p>
-      <p><strong>Heads-up — there's a per-transaction limit.</strong> M-Pesa cash-outs are capped per transfer; if your claim is over the limit, Chama shows you the maximum, so you can send a smaller amount or cash out over Lightning instead.</p>
-    </div>
-    <div class="qa">
-      <h3>Can I pay <em>into</em> a trade with M-Pesa (cash, not Bitcoin)?</h3>
-      <p>Not inside the app today. Cashing <strong>out</strong> to mobile money works in supported countries; cashing <strong>in</strong> (turning your mobile money into Bitcoin) is something you do beforehand with an outside service, or directly with your trading partner.</p>
-    </div>
-  </section>
-
-  <section class="faq" id="safety">
-    <div class="kick"><span class="node"></span>Account &amp; safety</div>
-    <h2>Keeping your money &amp; account safe</h2>
-    <div class="qa">
-      <h3>Is my money safe?</h3>
-      <p>Yes — your funds are protected by the two-of-three escrow and are only ever committed to a specific trade. Chama, and any "Chama" entity, <strong>cannot</strong> seize, freeze, or move them.</p>
-    </div>
-    <div class="qa">
-      <h3>Back up your account (important!)</h3>
-      <p>Your <strong>key</strong> is your account and your recovery path. If you lose your phone without a backup, you could lose access. So:</p>
-      <ul>
-        <li>When you sign in, <strong>save your key / recovery phrase</strong> somewhere safe and private (write it down offline; never share it).</li>
-        <li>Anyone with your key controls your account — treat it like cash.</li>
-      </ul>
-    </div>
-    <div class="qa">
-      <h3>Is Chama private?</h3>
-      <p>You don't give Chama an email, phone number, or ID to use it. Your identity is just your key. Be mindful that what you post publicly (listings, chat in a trade) is shared over the Nostr network.</p>
-    </div>
-  </section>
-
-  <section class="faq" id="trouble">
-    <div class="kick"><span class="node"></span>Troubleshooting</div>
-    <h2>Common questions</h2>
-    <div class="qa">
-      <h3>It says "Connecting…" or asks me to "Reconnect."</h3>
-      <p>Chama talks to the network over relays. On a weak connection a few can drop — tap <strong>Reconnect</strong>, or give it a moment; it reconnects on its own. Your trades and funds are never lost while this happens.</p>
-    </div>
-    <div class="qa">
-      <h3>I finished a trade but it says my claim "needs attention."</h3>
-      <p>Usually your money already arrived and the app just couldn't auto-confirm it — check your balance or your wallet. Chama keeps a backup copy of the note either way, so nothing is lost. If it's genuinely missing, the saved note is your recovery path.</p>
-    </div>
-    <div class="qa">
-      <h3>Funding or claiming failed.</h3>
-      <p>Nothing moves unless it fully succeeds — a failed attempt means <strong>no sats were sent.</strong> Wait a moment and try again; if a route stays slow, tap <strong>Reconnect</strong> first. On a brand-new install, if a first join hangs, make sure you have a stable connection and retry.</p>
-    </div>
-  </section>
-
-  <section class="faq" id="glossary">
-    <div class="kick"><span class="node"></span>Glossary</div>
-    <h2>Words you'll see</h2>
-    <div class="qa">
-      <ul>
-        <li><strong>Sats:</strong> the small unit of Bitcoin (1 Bitcoin = 100,000,000 sats). Prices in Chama show in your local currency too.</li>
-        <li><strong>Lightning:</strong> the fast, cheap Bitcoin payment network Chama uses to move sats.</li>
-        <li><strong>Escrow:</strong> a safe "holding" of funds during a trade, released only when the right people agree.</li>
-        <li><strong>Arbiter:</strong> a community member who can settle a disputed trade — never able to take your money.</li>
-        <li><strong>Key / npub:</strong> your account on Chama (and Nostr). Back it up.</li>
-        <li><strong>M-Pesa / Tando:</strong> mobile money (Kenya) and the bridge that turns your sats into M-Pesa cash.</li>
-      </ul>
-    </div>
-  </section>
-
-  <div class="help">
-    <h2>Still need a hand?</h2>
-    <p>Get the app: <a href="https://getchama.app" target="_blank" rel="noopener">getchama.app</a> · <a href="https://zapstore.dev/apps/app.chama.market" target="_blank" rel="noopener">Android (Zapstore)</a></p>
-    <p><a href="https://njump.me/npub1m7nypkfk259h5h0dqwj9px0pqq7nz0cs7gjdhr7g793wspskeavqrljsln" target="_blank" rel="noopener">Follow Chama on Nostr →</a><br><span style="font-size:13px;color:var(--t3)">or copy: <code>npub1m7nypkfk259h5h0dqwj9px0pqq7nz0cs7gjdhr7g793wspskeavqrljsln</code></span></p>
-    <div class="tagline">Trade with your community. Trust the math, not a middleman. ⚡🌍</div>
-  </div>
-
+<a class="skip" href="#main">Skip to content</a>
+<header class="nav">
+<a class="brand" href="/" aria-label="Chama"><img src="icons/chama-mark-64.png" width="36" height="36" alt="">chama<span class="brand-dot">●</span></a>
+<a class="home-link" href="/">← The story</a>
+<div class="nav-actions"><button class="theme-toggle" type="button" aria-label="Change color theme" aria-pressed="false" hidden>◐</button><nav class="faq-languages" aria-label="Language"><a href="faq.html" lang="en" aria-label="English" aria-current="page">EN</a><a href="faq.es.html" lang="es" aria-label="Español">ES</a><a href="faq.fr.html" lang="fr" aria-label="Français">FR</a></nav><a class="button enter nav-enter" href="https://getchama.app/">Enter Chama ↗</a></div>
+</header>
+<main class="wrap faq-wrap" id="main">
+<section class="faq-hero"><div><p class="eyebrow">HELP & FAQ</p><h1>A little clarity.<br><em>Before you begin.</em></h1><p class="faq-intro">Circles, trades, and the moment your sats come home. Answers for the people using Chama.</p></div><img src="img/p-chama-circle-v1.jpg" width="1600" height="1066" alt="" class="faq-art"></section>
+<div class="faq-note"><span aria-hidden="true">↗</span><p>Start small. Try the sandbox first, read the terms, and know who is on the other side before locking real sats.</p><a href="https://getchama.app/?sim=1">Try the sandbox →</a></div>
+<nav class="faq-jump" aria-label="HELP & FAQ"><a href="#basics"><span>01</span>The basics</a><a href="#start"><span>02</span>Getting started</a><a href="#circles"><span>03</span>Savings circles</a><a href="#trade"><span>04</span>Buying &amp; selling</a><a href="#money"><span>05</span>Funding &amp; claiming</a><a href="#safety"><span>06</span>Safety &amp; recovery</a></nav>
+<section class="faq-section" id="basics" aria-labelledby="basics-title"><div class="section-heading"><p class="eyebrow">01 / The basics</p><h2 id="basics-title">People first.</h2></div><div class="answers">
+<details class="qa" open><summary>What is Chama?</summary><div class="answer"><p>Chama helps people trade Bitcoin and local money, buy and sell goods, pay community bills, and form savings circles. You agree with other people; the software records the terms and coordinates escrow. There is no central Chama account server.</p></div></details>
+<details class="qa"><summary>Where do I use it?</summary><div class="answer"><p>Open <a href="https://getchama.app/">getchama.app</a> for the web app, get Android through <a href="https://zapstore.dev/apps/app.chama.market">Zapstore</a>, or find desktop builds on <a href="https://github.com/jesuspirate/chama/releases">GitHub Releases</a>. A StartOS package is also available. <a href="/">chama.community</a> is the public website, not your wallet.</p></div></details>
+<details class="qa"><summary>What does it cost?</summary><div class="answer"><p>Review the quote before committing. A seller’s premium is part of their price; federation, network, payout-provider, or dispute fees can also apply. Eligible trades offer an optional arbiter premium of 0.25% per side to the bonded arbiter seated in that trade, subject to a minimum note size. It is not a guarantee of reimbursement. The app shows the applicable amounts and choices.</p></div></details>
+</div>
+</section>
+<section class="faq-section" id="start" aria-labelledby="start-title"><div class="section-heading"><p class="eyebrow">02 / Getting started</p><h2 id="start-title">Bring your identity.</h2></div><div class="answers">
+<details class="qa" open><summary>How do I sign in?</summary><div class="answer"><p>Create a Nostr identity in the app or use an existing one. Your <strong>npub</strong> is public; your <strong>nsec</strong> is the secret signing key. Save the secret securely and never send it to a counterparty or someone offering support. There is no email password-reset service.</p></div></details>
+<details class="qa"><summary>What does my community change?</summary><div class="answer"><p>Your country and currency help organize prices, listings, and local payment methods. The federation is the separate service that issues the ecash used for a trade. An offer can use a different federation from yours; follow the app’s routing checks before funding it. Browsing elsewhere does not move your sats.</p></div></details>
+<details class="qa"><summary>Can I try Chama without real money?</summary><div class="answer"><p>Yes. Open the <a href="https://getchama.app/?sim=1">sandbox</a>. It uses a mock wallet, and its trades are separated from real-money trades. Circle test drives offer a ten-minute round: five minutes to gather members and five to run. Return to the normal app address for real trades. Sandbox sats have no monetary value.</p></div></details>
+</div>
+</section>
+<section class="faq-section" id="circles" aria-labelledby="circles-title"><div class="section-heading"><p class="eyebrow">03 / Savings circles</p><h2 id="circles-title">A promise, together.</h2></div><div class="answers">
+<details class="qa" open><summary>How do I start or join a circle?</summary><div class="answer"><p>Choose “Save it together” on the home canvas. Start a circle, paste an invite link, or browse open circles. Before joining, check the share amount, minimum membership, fill deadline, and end date. “Just us” circles are shared by invite and hidden from Browse; an invite is not a guarantee of confidentiality.</p></div></details>
+<details class="qa"><summary>What happens to my share today?</summary><div class="answer"><p>The current circle is <strong>fill-or-refund</strong>. Members lock equal shares. If enough members lock before the deadline, the round runs to its end; otherwise it fails to fill. In either case, each member’s share becomes refundable under the circle rules. Tap <strong>Claim</strong> when your refund is ready. Funding and payout fees can reduce what arrives in your external wallet.</p></div></details>
+<details class="qa"><summary>Does one person collect the whole pot?</summary><div class="answer"><p><strong>Not in the current release.</strong> Rotating collection is planned, with supporting protocol readers already in the code. Its creation flow and the host’s own seat remain disabled. Today the host organizes the circle and members recover their own shares. Starting another round does not enable rotating payouts.</p></div></details>
+<details class="qa"><summary>What happens after the round?</summary><div class="answer"><p>The roster shows who has claimed and who can claim. The host can prepare another round with the previous terms, or use “Run it again” after a failed fill. Check the new dates and share amount before publishing. Every new round needs new participation; an earlier lock does not fund it.</p></div></details>
+</div>
+</section>
+<section class="faq-section" id="trade" aria-labelledby="trade-title"><div class="section-heading"><p class="eyebrow">04 / Buying &amp; selling</p><h2 id="trade-title">Agree. Lock. Settle.</h2></div><div class="answers">
+<details class="qa" open><summary>How does a trade work?</summary><div class="answer"><p>Choose what you have and what you need, find an offer, and review the terms and arbiter together. The Bitcoin side is funded into escrow; the other payment or delivery happens as agreed between the parties. Confirm only what actually happened. A valid settlement is followed by a separate claim and payout step.</p></div></details>
+<details class="qa"><summary>Who can release or refund the escrow?</summary><div class="answer"><p>For a standard ecash trade, two of the three participants — buyer, seller, and the seated arbiter — must agree on a valid outcome. The arbiter cannot settle alone. Buyer and seller normally settle together; the arbiter can help with disagreement or protocol-defined expiry recovery. This does not guarantee honest delivery or eliminate collusion risk.</p></div></details>
+<details class="qa"><summary>Can I cancel after funding?</summary><div class="answer"><p>Before funding, cancellation does not require recovering locked sats. After funding, a refund needs the required agreement and a valid settlement. Requesting a refund is not the same as receiving one. Keep delivery and payment evidence, and use the trade’s dispute controls if the parties disagree.</p></div></details>
+<details class="qa"><summary>Is on-chain escrow the same as an on-chain payout?</summary><div class="answer"><p>No. An on-chain payout sends your claimed funds to a Bitcoin address. Optional on-chain escrow locks the trade itself in a Bitcoin output with cooperative, dispute, and timed refund paths. Confirmations and network fees apply; read the specific terms before choosing it.</p></div></details>
+</div>
+</section>
+<section class="faq-section" id="money" aria-labelledby="money-title"><div class="section-heading"><p class="eyebrow">05 / Funding &amp; claiming</p><h2 id="money-title">Finish the last step.</h2></div><div class="answers">
+<details class="qa" open><summary>How do I fund and claim?</summary><div class="answer"><p>Use the funding options shown for the trade. When settlement is ready, choose a supported claim destination: a Lightning invoice or address, a connected Nostr Wallet Connect wallet, an ecash export, or on-chain Bitcoin where available. A claim-ready status means there is still something to collect; it does not mean the destination has been paid.</p></div></details>
+<details class="qa"><summary>Can I receive local money, such as M-Pesa?</summary><div class="answer"><p>Where supported, the claim picker offers local payout services, including M-Pesa routes for Kenya. Availability, quotes, limits, fees, and delivery times depend on the provider. Some routes open a separate service. Check its terms and the final quote; local cash paid to a trading partner is separate from Bitcoin escrow funding.</p></div></details>
+<details class="qa"><summary>A payment timed out. Should I send it again?</summary><div class="answer"><p><strong>Do not assume a timeout means failure.</strong> Check the receiving wallet and let Chama reconcile the pending operation. A request can succeed even when its response is lost. Use the recovery or retry action the app offers after checking the status; do not create a second payment to “unstick” the first.</p></div></details>
+</div>
+</section>
+<section class="faq-section" id="safety" aria-labelledby="safety-title"><div class="section-heading"><p class="eyebrow">06 / Safety &amp; recovery</p><h2 id="safety-title">Keep what matters.</h2></div><div class="answers">
+<details class="qa" open><summary>Does my Nostr key back up my money?</summary><div class="answer"><p><strong>No.</strong> It restores your identity, not every piece of wallet data. Browser ecash is stored on that device; native clients and a StartOS bridge keep separate wallet state. Protect both your identity key and any exported ecash or recovery files. Do not clear site data, reinstall, or discard a wallet while funds or operations remain unresolved.</p></div></details>
+<details class="qa"><summary>Does Chama hold my money between trades?</summary><div class="answer"><p>Chama is designed for escrow and payout, not long-term savings in an app balance. But local wallets can hold funds, fee reserves, or unfinished claims between actions. Claim or export completed payouts promptly and verify their arrival. Fedimint ecash also depends on the chosen federation’s guardians and availability.</p></div></details>
+<details class="qa"><summary>What is public? What stays private?</summary><div class="answer"><p>Public listings and some event metadata travel over Nostr relays. Sensitive escrow payloads and trade chat use encryption, but that does not hide all participants, timing, or public activity. Share only the payment and delivery information needed. Relays, federations, and external payout providers have their own trust and availability boundaries.</p></div></details>
+<details class="qa"><summary>What if I lose connection or a claim needs attention?</summary><div class="answer"><p>Reconnect and inspect the existing trade and payout status. A slow relay can leave the view incomplete; an uncertain payout needs reconciliation. Keep the original device and recovery material. Before reporting a problem on <a href="https://github.com/jesuspirate/chama/issues">GitHub</a>, remove secret keys, bearer notes, payment credentials, and personal details.</p></div></details>
+</div>
+</section>
+<aside class="technical-card"><p class="eyebrow">UNDER THE HOOD</p><h2>Advanced technical overview</h2><p>Want to understand the protocol? Read about escrow, wallet storage, recovery, and which features are active today.</p><a class="text-link" href="https://github.com/jesuspirate/chama/blob/main/chama-technical-overview.pdf">PDF ↗</a></aside>
 </main>
-
-<footer>
-  <div class="ft">
-    <div class="ft-l"><img src="icons/chama-mark-64.png" width="18" height="18" alt="">Chama · est. block 934,669 · chama.community</div>
-    <div><a href="/">Home</a> · <a href="faq.fr.html">Français</a> · <a href="faq.es.html">Español</a> · <a href="https://github.com/jesuspirate/chama" target="_blank" rel="noopener">GitHub</a></div>
-  </div>
-</footer>
-
+<footer class="faq-footer wrap"><a class="brand" href="/">chama<span class="brand-dot">●</span></a><p>Trade with people, not platforms.</p><a href="https://github.com/jesuspirate/chama">GitHub ↗</a></footer>
 </body>
 </html>

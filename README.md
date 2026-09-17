@@ -31,6 +31,8 @@ Arbiters act only when the trading parties disagree or when an expired trade nee
 
 See [PHILOSOPHY.md](PHILOSOPHY.md) for the product boundaries and [chama-technical-overview.pdf](chama-technical-overview.pdf) for the protocol overview.
 
+The overview's editable source is [docs/technical-overview.md](docs/technical-overview.md). After updating it, regenerate the PDF with `python3 scripts/build-technical-overview.py` (requires ReportLab) and inspect the rendered pages.
+
 ## Where circles are going: the merry-go-round
 
 Savings circles shipped in v6.4 as fill-or-refund — everyone locks equal

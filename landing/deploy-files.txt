@@ -3,6 +3,8 @@ index.html
 faq.html
 faq.es.html
 faq.fr.html
+faq.css
+faq.js
 story.css
 cinema.css
 story.js

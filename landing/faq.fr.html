@@ -1,317 +1,81 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="fr">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta name="description" content="Aide & FAQ Chama — comment acheter, vendre, être payé, encaisser et échanger en pair-à-pair avec votre communauté. Commerce Bitcoin non-dépositaire.">
-<title>Chama — Aide & FAQ</title>
-<link rel="icon" href="icons/chama-mark-64.png">
-<meta property="og:title" content="Chama — Aide & FAQ">
-<meta property="og:description" content="Comment échanger en pair-à-pair avec votre communauté, être payé et encaisser — en mots simples.">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Chama — AIDE &amp; QUESTIONS</title>
+<meta name="description" content="Les cercles, les échanges et le retour de vos sats. Des réponses pour les personnes qui utilisent Chama.">
+<meta name="theme-color" content="#f3f0e7">
+<link rel="canonical" href="https://chama.community/faq.fr.html">
+<link rel="alternate" hreflang="en" href="https://chama.community/faq.html">
+<link rel="alternate" hreflang="es" href="https://chama.community/faq.es.html">
+<link rel="alternate" hreflang="fr" href="https://chama.community/faq.fr.html">
 <meta property="og:type" content="website">
+<meta property="og:title" content="Chama — AIDE &amp; QUESTIONS">
+<meta property="og:description" content="Les cercles, les échanges et le retour de vos sats. Des réponses pour les personnes qui utilisent Chama.">
 <meta property="og:url" content="https://chama.community/faq.fr.html">
+<meta property="og:image" content="https://chama.community/icons/og-image-people-v13.jpg">
+<link rel="icon" href="icons/favicon.ico">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-<style>
-*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
-:root{
-  --black:#0A0A0A;--surface:#0E0E10;--card:rgba(255,255,255,.035);--card2:rgba(255,255,255,.06);
-  --t1:#F5F5F7;--t2:#C7C7CC;--t3:#9A9AA0;--t4:#6E6E73;
-  --hairline:rgba(255,255,255,.10);--hairline2:rgba(255,255,255,.07);
-  --orange:#F7931A;--orange-l:#FFB340;--orange-d:#C76A00;
-  --purple:#BF5AF2;--teal:#2EE6D6;--teal-m:#12C7B7;
-  --r-card:20px;--r-ctl:14px;--r-pill:999px;
-  --sora:'Sora',-apple-system,sans-serif;
-  --sans:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',sans-serif;
-  --mono:'JetBrains Mono','SF Mono',monospace;
-  --weave:repeating-linear-gradient(135deg,var(--orange) 0 6px,var(--teal) 6px 12px,var(--purple) 12px 18px);
-}
-html{scroll-behavior:smooth;background:var(--black);color:var(--t1);-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;scroll-padding-top:84px}
-body{font-family:var(--sans);background:var(--black);line-height:1.65;overflow-x:hidden}
-a{color:var(--orange-l);text-decoration:none}
-a:hover{text-decoration:underline}
-.wrap{max-width:820px;margin:0 auto;padding:0 22px}
-nav{position:sticky;top:0;z-index:50;background:rgba(10,10,10,.78);backdrop-filter:saturate(160%) blur(14px);border-bottom:1px solid var(--hairline)}
-.nav-c{max-width:1100px;margin:0 auto;padding:13px 22px;display:flex;align-items:center;gap:18px}
-.nav-brand{display:flex;align-items:center;gap:9px;font-family:var(--sora);font-weight:700;color:var(--t1);font-size:17px}
-.nav-brand img{display:block}
-.nav-l{display:flex;gap:20px;margin-left:8px}
-.nav-l a{color:var(--t3);font-size:14px;font-weight:500}
-.nav-l a:hover{color:var(--t1);text-decoration:none}
-.nav-r{margin-left:auto;display:flex;align-items:center;gap:14px}
-.lang{display:flex;border:1px solid var(--hairline);border-radius:var(--r-pill);overflow:hidden}
-.lang a{padding:5px 11px;font-size:12px;font-weight:600;color:var(--t3);font-family:var(--mono)}
-.lang a.on{background:var(--card2);color:var(--t1)}
-.nav-open{display:inline-flex;align-items:center;gap:6px;background:var(--orange);color:#1a1206;font-weight:700;font-size:13.5px;padding:8px 15px;border-radius:var(--r-pill)}
-.nav-open:hover{background:var(--orange-l);text-decoration:none}
-@media(max-width:760px){.nav-l{display:none}}
-.faq-hero{padding:54px 0 26px;text-align:center;border-bottom:1px solid var(--hairline2)}
-.eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--orange-l);margin-bottom:14px}
-.faq-hero h1{font-family:var(--sora);font-weight:800;font-size:clamp(28px,5.6vw,44px);line-height:1.08;letter-spacing:-.02em}
-.grad{background:linear-gradient(100deg,var(--orange-l),var(--teal));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
-.faq-hero p{color:var(--t2);font-size:17px;max-width:640px;margin:16px auto 0}
-.callout{position:relative;margin:30px 0 8px;padding:18px 20px 18px 22px;background:var(--card);border:1px solid var(--hairline);border-radius:var(--r-card);color:var(--t2);font-size:15.5px;overflow:hidden}
-.callout::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--weave)}
-.callout em{color:var(--t1);font-style:italic}
-.jump{display:flex;flex-wrap:wrap;gap:8px;margin:30px 0 8px}
-.jump a{font-size:13px;font-weight:600;color:var(--t2);background:var(--card);border:1px solid var(--hairline);padding:7px 13px;border-radius:var(--r-pill)}
-.jump a:hover{color:var(--t1);border-color:var(--orange-d);text-decoration:none}
-section.faq{padding:38px 0 6px;border-top:1px solid var(--hairline2)}
-section.faq:first-of-type{border-top:0}
-.kick{display:flex;align-items:center;gap:9px;font-family:var(--mono);font-size:12px;letter-spacing:.13em;text-transform:uppercase;color:var(--orange-l);margin-bottom:6px}
-.kick .node{width:7px;height:7px;border-radius:50%;background:var(--orange)}
-section.faq>h2{font-family:var(--sora);font-weight:700;font-size:25px;letter-spacing:-.01em;margin-bottom:6px}
-.qa{padding:18px 0;border-top:1px solid var(--hairline2)}
-.qa:first-of-type{border-top:0}
-.qa h3{font-family:var(--sora);font-weight:600;font-size:18px;color:var(--t1);margin-bottom:8px}
-.qa p{color:var(--t2);font-size:15.5px}
-.qa p+p{margin-top:10px}
-.qa ul,.qa ol{margin:10px 0 0;padding-left:4px;list-style:none}
-.qa li{position:relative;padding-left:22px;color:var(--t2);font-size:15.5px;margin-bottom:8px}
-.qa ul li::before{content:"";position:absolute;left:2px;top:9px;width:6px;height:6px;border-radius:50%;background:var(--orange)}
-.qa ol{counter-reset:s}
-.qa ol li{counter-increment:s}
-.qa ol li::before{content:counter(s);position:absolute;left:0;top:0;line-height:25.6px;font-family:var(--mono);font-size:13px;font-weight:600;color:var(--orange-l)}
-.qa strong{color:var(--t1);font-weight:600}
-code{font-family:var(--mono);font-size:.84em;background:var(--card2);border:1px solid var(--hairline);border-radius:7px;padding:2px 6px;color:var(--teal);word-break:break-all}
-.tag{display:inline-block;font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:.06em;color:var(--orange-l);border:1px solid var(--orange-d);border-radius:var(--r-pill);padding:2px 9px;margin-bottom:8px}
-.shots{display:flex;flex-wrap:wrap;gap:14px;margin:16px 0 6px}
-.shot{margin:0;flex:0 0 auto;max-width:224px}
-.shot img{display:block;width:100%;height:auto;border:1px solid var(--hairline);border-radius:14px;background:var(--surface)}
-.shot figcaption{margin-top:7px;font-size:12px;color:var(--t3);font-family:var(--mono);text-align:center}
-@media(max-width:520px){.shot{max-width:47%}}
-.help{margin:34px 0 0;padding:26px;text-align:center;background:var(--card);border:1px solid var(--hairline);border-radius:var(--r-card)}
-.help h2{font-family:var(--sora);font-weight:700;font-size:22px;margin-bottom:8px}
-.help p{color:var(--t2);font-size:15px;margin-bottom:4px}
-.tagline{margin-top:14px;font-family:var(--mono);font-size:12.5px;color:var(--t3);letter-spacing:.04em}
-footer{margin-top:46px;border-top:1px solid var(--hairline);padding:24px 0 40px}
-.ft{max-width:1100px;margin:0 auto;padding:0 22px;display:flex;flex-wrap:wrap;gap:14px;align-items:center;justify-content:space-between;color:var(--t4);font-size:13px}
-.ft-l{display:flex;align-items:center;gap:8px}
-.ft a{color:var(--t3)}
-</style>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script>try{const saved=localStorage.getItem('chama-theme');document.documentElement.dataset.theme=['dark','light'].includes(saved)?saved:(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light')}catch(_){document.documentElement.dataset.theme=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'}</script>
+<link rel="stylesheet" href="story.css">
+<link rel="stylesheet" href="faq.css?v=1">
+<script src="faq.js?v=1" defer></script>
 </head>
 <body>
-
-<nav>
-  <div class="nav-c">
-    <a href="/" class="nav-brand"><img src="icons/chama-mark-64.png" srcset="icons/chama-mark-64.png 1x, icons/chama-mark-128.png 2x" width="26" height="26" alt="">Chama</a>
-    <div class="nav-l">
-      <a href="/#trust">Le tissage</a>
-      <a href="/#products">Produits</a>
-      <a href="/#communities">Communautés</a>
-      <a href="/#protocol">Protocole</a>
-      <a href="https://github.com/jesuspirate/chama" target="_blank" rel="noopener">GitHub</a>
-    </div>
-    <div class="nav-r">
-      <div class="lang" role="group" aria-label="Langue">
-        <a href="faq.html">EN</a>
-        <a href="faq.fr.html" class="on">FR</a>
-        <a href="faq.es.html">ES</a>
-      </div>
-      <a href="https://zapstore.dev/apps/app.chama.market" class="nav-open" target="_blank" rel="noopener">Obtenir l'app <span>→</span></a>
-    </div>
-  </div>
-</nav>
-
-<main class="wrap">
-
-  <div class="faq-hero">
-    <div class="eyebrow">Aide &amp; FAQ</div>
-    <h1>Échangez avec votre communauté.<br><span class="grad">Faites confiance aux maths</span>, pas à un intermédiaire.</h1>
-    <p>Nouveau sur Chama ? Voici l'essentiel, en mots simples — comment acheter, vendre, être payé, encaisser et rester en sécurité.</p>
-  </div>
-
-  <div class="callout">
-    Un <em>chama</em> est une tontine d'Afrique de l'Est — des voisins qui mettent en commun ce qu'ils ont et se font confiance pour régler les comptes. Chama offre ce même cercle au monde entier, sauf qu'ici la confiance est cryptographique. Il n'y a aucune entreprise au milieu : juste vous, votre interlocuteur, votre communauté et Nostr.
-  </div>
-
-  <nav class="jump" aria-label="Aller à">
-    <a href="#basics">L'essentiel</a>
-    <a href="#start">Pour commencer</a>
-    <a href="#trade">Acheter &amp; vendre</a>
-    <a href="#money">Récupérer votre argent</a>
-    <a href="#safety">Compte &amp; sécurité</a>
-    <a href="#trouble">Dépannage</a>
-    <a href="#glossary">Glossaire</a>
-  </nav>
-
-  <section class="faq" id="basics">
-    <div class="kick"><span class="node"></span>L'essentiel</div>
-    <h2>Ce qu'est Chama</h2>
-    <div class="qa">
-      <h3>Qu'est-ce que Chama ?</h3>
-      <p>Une place de marché pair-à-pair. Vous pouvez acheter et vendre des bitcoins, des biens et des services avec les gens de votre communauté. Chaque échange est protégé par une <strong>mise sous séquestre</strong> qu'aucune entreprise ne peut geler, saisir ou bloquer — car il n'y a aucune entreprise au milieu.</p>
-    </div>
-    <div class="qa">
-      <h3>Dois-je connaître le Bitcoin ?</h3>
-      <p>Non. Vous choisissez votre pays et votre monnaie, vous échangez, et (dans les pays pris en charge) votre argent peut arriver directement sur votre compte d'argent mobile. Le Bitcoin, c'est la tuyauterie ; vous n'avez pas à y penser.</p>
-    </div>
-    <div class="qa">
-      <h3>Chama est-il gratuit ? Quels sont les frais ?</h3>
-      <p>L'application est gratuite à télécharger, et <strong>Chama ne prélève aucune commission</strong> — elle est non-dépositaire, donc aucune entreprise ne se place entre vous et votre argent. Sur un échange abouti, une petite <strong>prime d'assurance de 0,5 %</strong> revient à l'<strong>arbitre</strong> de la communauté qui garantit votre échange (0,25 % de chaque côté), envoyée en ecash. Elle est incluse par défaut et vous pouvez la désactiver avant de conclure. Si un échange est tranché par un arbitre en cas de <strong>litige</strong>, de petits frais supplémentaires s'appliquent pour ce travail. Les vendeurs peuvent aussi fixer une <strong>prime</strong> sur une annonce (p. ex. « +25 % ») — c'est le prix du vendeur, pas un frais Chama — et vous voyez toujours le montant final avant de vous engager.</p>
-    </div>
-    <div class="qa">
-      <h3>Est-ce que Chama détient mon argent ?</h3>
-      <p><strong>Non.</strong> Chama ne touche jamais votre argent. Vos fonds restent sous séquestre <strong>uniquement pendant un échange actif</strong>, puis vous reviennent dès que l'échange est réglé. Entre deux échanges, votre solde est à zéro par conception — il n'y a aucun portefeuille à vider.</p>
-    </div>
-  </section>
-
-  <section class="faq" id="start">
-    <div class="kick"><span class="node"></span>Pour commencer</div>
-    <h2>Installation &amp; connexion</h2>
-    <div class="qa">
-      <h3>Comment obtenir Chama ?</h3>
-      <ul>
-        <li><strong>Android :</strong> installez depuis Zapstore → <a href="https://zapstore.dev/apps/app.chama.market" target="_blank" rel="noopener">zapstore.dev/apps/app.chama.market</a></li>
-        <li><strong>Web &amp; ordinateur :</strong> ouvrez <a href="https://getchama.app" target="_blank" rel="noopener">getchama.app</a> (aussi sur chama.community)</li>
-      </ul>
-    </div>
-    <div class="qa">
-      <h3>Comment me connecter ?</h3>
-      <p>Chama utilise une <strong>clé</strong> comme compte (le standard Nostr) — pas d'e-mail, pas de mot de passe, pas de formulaire d'inscription. L'application peut créer une clé pour vous, ou vous pouvez utiliser votre clé Nostr existante. <strong>Notez votre clé et gardez-la en lieu sûr</strong> (voir « Sauvegardez votre compte » ci-dessous) — c'est <em>elle</em>, votre compte.</p>
-    </div>
-    <div class="qa">
-      <h3>Qu'est-ce qu'une « communauté » et comment la choisir ?</h3>
-      <p>Une communauté, c'est votre <strong>monnaie + pays + drapeau</strong> — par exemple 🇸🇳 Sénégal · CFA, 🇨🇲 Cameroun · CFA, ou 🇰🇪 Kenya · KES. Vous choisissez la vôtre à la première connexion. Elle détermine la monnaie de vos échanges et les voisins avec qui vous échangez. Vous pouvez en changer plus tard dans <strong>Réglages → Avancé</strong>, mais vous restez « chez vous » par défaut.</p>
-    </div>
-  </section>
-
-  <section class="faq" id="trade">
-    <div class="kick"><span class="node"></span>Acheter &amp; vendre</div>
-    <h2>Comment se déroule un échange</h2>
-    <div class="qa">
-      <h3>Comment acheter ?</h3>
-      <ol>
-        <li>Dans <strong>Parcourir</strong>, touchez une annonce qui vous intéresse.</li>
-        <li>Touchez <strong>Rejoindre comme acheteur</strong> pour réserver votre place (rien ne bouge encore).</li>
-        <li>Composez votre commande / confirmez le montant, puis <strong>financez</strong> — vos sats sont alors verrouillés en toute sécurité sous séquestre.</li>
-        <li>Payez le vendeur en monnaie locale (p. ex. Orange Money, Wave, MoMo) comme l'indique l'annonce, ou recevez vos biens.</li>
-        <li>Quand vous avez reçu ce que vous avez payé, touchez <strong>libérer</strong> — les sats vont au vendeur. Terminé.</li>
-      </ol>
-    </div>
-    <div class="qa">
-      <h3>Comment vendre ?</h3>
-      <ol>
-        <li>Touchez <strong>Créer</strong> et publiez une annonce (Échange / Biens / Paiement de factures), fixez votre prix et les moyens de paiement acceptés.</li>
-        <li>Quand un acheteur rejoint et finance, les sats se verrouillent sous séquestre — vous verrez « <strong>Sats verrouillés sous séquestre</strong> ».</li>
-        <li>Livrez le bien / envoyez la monnaie convenue, puis touchez <strong>Marquer comme livré</strong> (ou « Marquer comme envoyé ») — c'est votre confirmation.</li>
-        <li>Une fois libéré, touchez <strong>Réclamer</strong> pour recevoir vos sats — et encaissez (voir plus bas).</li>
-      </ol>
-    </div>
-    <div class="qa">
-      <h3>Quelles sont les étapes d'un échange ?</h3>
-      <p><strong>Réservé</strong> (quelqu'un a rejoint) → <strong>Verrouillé</strong> (sats financés sous séquestre) → l'action se déroule (biens livrés / monnaie envoyée) → <strong>Libéré</strong> (les deux parties sont d'accord) → <strong>Réclamez</strong> votre versement → <strong>Réglé.</strong> Vous suivez tout sur la frise de l'échange, et pouvez discuter avec l'autre partie à tout moment.</p>
-    </div>
-    <div class="qa">
-      <h3>En quoi le séquestre me protège-t-il ?</h3>
-      <p>Quand un échange est financé, l'argent est réparti de sorte que <strong>deux des trois</strong> personnes de l'échange — vous, votre interlocuteur et un <strong>arbitre</strong> de la communauté — doivent être d'accord pour qu'il bouge. Personne seul (et aucune entreprise) ne peut partir avec. Normalement, vous et votre interlocuteur êtes simplement d'accord ; l'arbitre n'intervient qu'en cas de problème.</p>
-    </div>
-    <div class="qa">
-      <h3>Qu'est-ce qu'un arbitre ?</h3>
-      <p>Un membre de confiance de votre communauté qui aide à trancher un échange <strong>uniquement en cas de litige</strong>. Il ne peut pas prendre votre argent — il ne peut que départager acheteur et vendeur. Les arbitres bâtissent une réputation au fil du temps.</p>
-    </div>
-    <div class="qa">
-      <h3>Et si quelque chose tourne mal / en cas de litige ?</h3>
-      <p>Si vous et votre interlocuteur n'êtes pas d'accord (p. ex. un bien non reçu), chacun exprime son vote — <strong>libérer</strong> ou <strong>rembourser</strong> — en expliquant pourquoi. En cas de désaccord, l'arbitre intervient pour décider équitablement. Vous n'êtes jamais bloqué.</p>
-    </div>
-    <div class="qa">
-      <h3>Comment annuler ou me rétracter ?</h3>
-      <p>Tant que rien n'est financé, vous pouvez simplement partir. Après le financement, se rétracter revient à voter <strong>remboursement</strong>, qui renvoie les sats à la bonne personne (l'arbitre est le filet de sécurité). Chama vous montre toujours où va l'argent avant de confirmer.</p>
-    </div>
-  </section>
-
-  <section class="faq" id="money">
-    <div class="kick"><span class="node"></span>Récupérer votre argent</div>
-    <h2>Financer &amp; encaisser</h2>
-    <div class="qa">
-      <h3>D'où viennent les sats pour financer un échange ?</h3>
-      <p>Vous financez avec des bitcoins (sats) que vous détenez déjà — par exemple depuis un portefeuille Lightning. Chama ne vous vend pas de bitcoins dans l'application. Dans un échange typique, le <strong>côté monnaie se passe directement entre vous et votre interlocuteur</strong> (vous lui envoyez Orange Money/Wave/MoMo comme l'indique l'annonce) ; Chama met sous séquestre le côté <strong>Bitcoin</strong>.</p>
-    </div>
-    <div class="qa">
-      <h3>Comment être payé / encaisser ?</h3>
-      <p>Quand un échange est prêt, touchez <strong>Réclamer</strong> et choisissez où va votre argent. Les options dépendent de votre pays :</p>
-      <ul>
-        <li><strong>Partenaire local.</strong> Là où un partenaire d'encaissement existe (p. ex. Banxaas au Sénégal), Chama ouvre sa page pour que vous encaissiez chez lui. D'autres partenaires arrivent.</li>
-        <li>🇰🇪 <strong>Kenya — encaissement M-Pesa en un geste.</strong> Saisissez votre numéro M-Pesa et les shillings arrivent en quelques secondes. Le même encaissement instantané vers l'argent mobile (Orange Money, Wave, MoMo) <strong>arrive</strong> dans les pays francophones.</li>
-        <li><strong>Lightning, partout.</strong> Envoyez vers n'importe quelle adresse Lightning, facture, ou portefeuille connecté (NWC).</li>
-        <li><strong>Bitcoin on-chain.</strong> Collez une adresse Bitcoin (plus lent ; frais de réseau).</li>
-      </ul>
-    </div>
-    <div class="qa">
-      <h3>Puis-je <em>payer</em> un échange en argent mobile (pas en Bitcoin) ?</h3>
-      <p>Pas dans l'application pour l'instant. <strong>Encaisser</strong> vers l'argent mobile fonctionne dans les pays pris en charge ; <strong>convertir</strong> votre argent mobile en Bitcoin se fait au préalable avec un service externe, ou directement avec votre partenaire d'échange.</p>
-    </div>
-  </section>
-
-  <section class="faq" id="safety">
-    <div class="kick"><span class="node"></span>Compte &amp; sécurité</div>
-    <h2>Garder votre argent &amp; votre compte en sécurité</h2>
-    <div class="qa">
-      <h3>Mon argent est-il en sécurité ?</h3>
-      <p>Oui — vos fonds sont protégés par le séquestre « deux sur trois » et ne sont engagés que dans un échange précis. Chama, et toute entité « Chama », <strong>ne peut pas</strong> les saisir, les geler ni les déplacer.</p>
-    </div>
-    <div class="qa">
-      <h3>Sauvegardez votre compte (important !)</h3>
-      <p>Votre <strong>clé</strong> est votre compte et votre seul moyen de récupération. Si vous perdez votre téléphone sans sauvegarde, vous pourriez perdre l'accès. Donc :</p>
-      <ul>
-        <li>À la connexion, <strong>enregistrez votre clé / phrase de récupération</strong> en lieu sûr et privé (notez-la hors ligne ; ne la partagez jamais).</li>
-        <li>Quiconque détient votre clé contrôle votre compte — traitez-la comme de l'argent liquide.</li>
-      </ul>
-    </div>
-    <div class="qa">
-      <h3>Chama respecte-t-il ma vie privée ?</h3>
-      <p>Vous ne donnez à Chama ni e-mail, ni numéro, ni pièce d'identité. Votre identité, c'est juste votre clé. Gardez à l'esprit que ce que vous publiez publiquement (annonces, messages d'un échange) circule sur le réseau Nostr.</p>
-    </div>
-  </section>
-
-  <section class="faq" id="trouble">
-    <div class="kick"><span class="node"></span>Dépannage</div>
-    <h2>Questions fréquentes</h2>
-    <div class="qa">
-      <h3>Il affiche « Connexion… » ou demande de « Reconnecter ».</h3>
-      <p>Chama communique avec le réseau via des relais. Sur une connexion faible, quelques-uns peuvent tomber — touchez <strong>Reconnecter</strong>, ou patientez un instant ; il se reconnecte tout seul. Vos échanges et vos fonds ne sont jamais perdus pendant ce temps.</p>
-    </div>
-    <div class="qa">
-      <h3>J'ai terminé un échange mais il dit que ma réclamation « nécessite votre attention ».</h3>
-      <p>En général, votre argent est déjà arrivé et l'application n'a simplement pas pu le confirmer automatiquement — vérifiez votre solde ou votre portefeuille. Chama garde une copie de secours dans tous les cas, donc rien n'est perdu. Si l'argent manque réellement, la note enregistrée est votre voie de récupération.</p>
-    </div>
-    <div class="qa">
-      <h3>Le financement ou la réclamation a échoué.</h3>
-      <p>Rien ne bouge sans réussite complète — un échec signifie qu'<strong>aucun sat n'a été envoyé.</strong> Patientez puis réessayez ; si une voie reste lente, touchez d'abord <strong>Reconnecter</strong>. Sur une toute nouvelle installation, si une première connexion bloque, vérifiez votre réseau et réessayez.</p>
-    </div>
-  </section>
-
-  <section class="faq" id="glossary">
-    <div class="kick"><span class="node"></span>Glossaire</div>
-    <h2>Les mots que vous verrez</h2>
-    <div class="qa">
-      <ul>
-        <li><strong>Sats :</strong> la petite unité du Bitcoin (1 Bitcoin = 100 000 000 sats). Les prix s'affichent aussi dans votre monnaie locale.</li>
-        <li><strong>Lightning :</strong> le réseau de paiement Bitcoin rapide et bon marché que Chama utilise pour déplacer les sats.</li>
-        <li><strong>Séquestre :</strong> une « consignation » sûre des fonds pendant un échange, libérée seulement quand les bonnes personnes sont d'accord.</li>
-        <li><strong>Arbitre :</strong> un membre de la communauté qui peut trancher un échange en litige — sans jamais pouvoir prendre votre argent.</li>
-        <li><strong>Clé / npub :</strong> votre compte sur Chama (et Nostr). Sauvegardez-la.</li>
-        <li><strong>Argent mobile :</strong> Orange Money, Wave, MoMo, M-Pesa, etc. — selon votre pays.</li>
-      </ul>
-    </div>
-  </section>
-
-  <div class="help">
-    <h2>Besoin d'un coup de main ?</h2>
-    <p>Obtenez l'app : <a href="https://getchama.app" target="_blank" rel="noopener">getchama.app</a> · <a href="https://zapstore.dev/apps/app.chama.market" target="_blank" rel="noopener">Android (Zapstore)</a></p>
-    <p><a href="https://njump.me/npub1m7nypkfk259h5h0dqwj9px0pqq7nz0cs7gjdhr7g793wspskeavqrljsln" target="_blank" rel="noopener">Suivez Chama sur Nostr →</a><br><span style="font-size:13px;color:var(--t3)">ou copiez : <code>npub1m7nypkfk259h5h0dqwj9px0pqq7nz0cs7gjdhr7g793wspskeavqrljsln</code></span></p>
-    <div class="tagline">Échangez avec votre communauté. Faites confiance aux maths, pas à un intermédiaire. ⚡🌍</div>
-  </div>
-
+<a class="skip" href="#main">Aller au contenu</a>
+<header class="nav">
+<a class="brand" href="/" aria-label="Chama"><img src="icons/chama-mark-64.png" width="36" height="36" alt="">chama<span class="brand-dot">●</span></a>
+<a class="home-link" href="/">← L’histoire</a>
+<div class="nav-actions"><button class="theme-toggle" type="button" aria-label="Changer le thème" aria-pressed="false" hidden>◐</button><nav class="faq-languages" aria-label="Langue"><a href="faq.html" lang="en" aria-label="English">EN</a><a href="faq.es.html" lang="es" aria-label="Español">ES</a><a href="faq.fr.html" lang="fr" aria-label="Français" aria-current="page">FR</a></nav><a class="button enter nav-enter" href="https://getchama.app/">Entrer dans Chama ↗</a></div>
+</header>
+<main class="wrap faq-wrap" id="main">
+<section class="faq-hero"><div><p class="eyebrow">AIDE & QUESTIONS</p><h1>Quelques repères.<br><em>Avant de commencer.</em></h1><p class="faq-intro">Les cercles, les échanges et le retour de vos sats. Des réponses pour les personnes qui utilisent Chama.</p></div><img src="img/p-chama-circle-v1.jpg" width="1600" height="1066" alt="" class="faq-art"></section>
+<div class="faq-note"><span aria-hidden="true">↗</span><p>Commencez petit. Essayez le mode simulation, lisez les conditions et identifiez l’autre personne avant de verrouiller de vrais sats.</p><a href="https://getchama.app/?sim=1">Essayer la simulation →</a></div>
+<nav class="faq-jump" aria-label="AIDE & QUESTIONS"><a href="#basics"><span>01</span>Les bases</a><a href="#start"><span>02</span>Premiers pas</a><a href="#circles"><span>03</span>Cercles d’épargne</a><a href="#trade"><span>04</span>Acheter et vendre</a><a href="#money"><span>05</span>Financer et encaisser</a><a href="#safety"><span>06</span>Sécurité et récupération</a></nav>
+<section class="faq-section" id="basics" aria-labelledby="basics-title"><div class="section-heading"><p class="eyebrow">01 / Les bases</p><h2 id="basics-title">Les personnes d’abord.</h2></div><div class="answers">
+<details class="qa" open><summary>Qu’est-ce que Chama ?</summary><div class="answer"><p>Chama permet d’échanger du Bitcoin et de la monnaie locale, d’acheter et vendre des biens, de payer des factures communautaires et de former des cercles d’épargne. Les personnes conviennent des conditions ; le logiciel les enregistre et coordonne le séquestre. Il n’y a pas de serveur central de comptes Chama.</p></div></details>
+<details class="qa"><summary>Où l’utiliser ?</summary><div class="answer"><p>Ouvrez <a href="https://getchama.app/">getchama.app</a>, installez Android via <a href="https://zapstore.dev/apps/app.chama.market">Zapstore</a>, ou trouvez les versions de bureau dans les <a href="https://github.com/jesuspirate/chama/releases">publications GitHub</a>. Un paquet StartOS existe aussi. <a href="/">chama.community</a> est le site de présentation, pas votre portefeuille.</p></div></details>
+<details class="qa"><summary>Quels sont les frais ?</summary><div class="answer"><p>Vérifiez le devis avant de vous engager. La marge du vendeur fait partie de son prix ; des frais de fédération, de réseau, de prestataire ou de litige peuvent s’ajouter. Les échanges admissibles proposent une prime facultative de 0,25 % par partie à l’arbitre cautionné désigné, sous réserve d’un montant minimal de note. Ce n’est pas une garantie d’indemnisation. L’application indique les montants et choix applicables.</p></div></details>
+</div>
+</section>
+<section class="faq-section" id="start" aria-labelledby="start-title"><div class="section-heading"><p class="eyebrow">02 / Premiers pas</p><h2 id="start-title">Votre identité vous suit.</h2></div><div class="answers">
+<details class="qa" open><summary>Comment se connecter ?</summary><div class="answer"><p>Créez une identité Nostr ou utilisez la vôtre. Votre <strong>npub</strong> est public ; votre <strong>nsec</strong> est la clé secrète de signature. Conservez-la en sécurité et ne l’envoyez jamais à une contrepartie ni à une personne proposant de l’aide. Il n’existe pas de réinitialisation par e-mail.</p></div></details>
+<details class="qa"><summary>Que change ma communauté ?</summary><div class="answer"><p>Le pays et la monnaie organisent les prix, annonces et moyens de paiement locaux. La fédération est le service distinct qui émet l’ecash d’un échange. Une offre peut utiliser une autre fédération : suivez les vérifications de l’application avant de la financer. Explorer ailleurs ne déplace pas vos sats.</p></div></details>
+<details class="qa"><summary>Puis-je essayer sans argent réel ?</summary><div class="answer"><p>Oui, dans le <a href="https://getchama.app/?sim=1">mode simulation</a>. Il utilise un portefeuille fictif et sépare ses échanges des échanges réels. Un cercle d’essai dure dix minutes : cinq pour réunir les membres, cinq pour le tour. Revenez à l’adresse normale pour utiliser de vrais fonds. Les sats de simulation n’ont aucune valeur monétaire.</p></div></details>
+</div>
+</section>
+<section class="faq-section" id="circles" aria-labelledby="circles-title"><div class="section-heading"><p class="eyebrow">03 / Cercles d’épargne</p><h2 id="circles-title">Un engagement commun.</h2></div><div class="answers">
+<details class="qa" open><summary>Comment créer ou rejoindre un cercle ?</summary><div class="answer"><p>Choisissez « Épargnez-les ensemble » sur l’accueil. Créez un cercle, collez une invitation ou explorez les cercles ouverts. Vérifiez la part, le nombre minimal de membres et les dates de clôture et de fin. Les cercles entre proches sont partagés par invitation et absents de la liste publique ; une invitation ne garantit pas la confidentialité.</p></div></details>
+<details class="qa"><summary>Que devient ma part aujourd’hui ?</summary><div class="answer"><p>Le cercle actuel fonctionne selon la règle <strong>seuil atteint ou remboursement</strong>. Les membres verrouillent des parts égales. Si le seuil est atteint à temps, le tour se poursuit jusqu’à sa fin ; sinon, il échoue à se remplir. Dans les deux cas, chaque part devient remboursable selon les règles. Appuyez sur <strong>Encaisser</strong> lorsqu’elle est prête. Les frais d’entrée et de sortie peuvent réduire le montant reçu dans votre portefeuille externe.</p></div></details>
+<details class="qa"><summary>Une personne reçoit-elle toute la cagnotte ?</summary><div class="answer"><p><strong>Pas dans la version actuelle.</strong> La collecte tournante est prévue et ses lecteurs de protocole sont déjà dans le code. Sa création et la participation financière de l’hôte restent désactivées. Aujourd’hui, l’hôte organise le cercle et chaque membre récupère sa part. Ouvrir un autre tour n’active pas les versements tournants.</p></div></details>
+<details class="qa"><summary>Que se passe-t-il après le tour ?</summary><div class="answer"><p>La liste indique qui a encaissé et qui peut encaisser. L’hôte peut préparer un nouveau tour avec les conditions précédentes, ou relancer après un remplissage manqué. Vérifiez les dates et le montant avant publication. Chaque tour demande de nouvelles participations ; un ancien verrouillage ne le finance pas.</p></div></details>
+</div>
+</section>
+<section class="faq-section" id="trade" aria-labelledby="trade-title"><div class="section-heading"><p class="eyebrow">04 / Acheter et vendre</p><h2 id="trade-title">Convenir. Verrouiller. Régler.</h2></div><div class="answers">
+<details class="qa" open><summary>Comment se déroule un échange ?</summary><div class="answer"><p>Choisissez ce que vous avez et ce que vous cherchez, trouvez une offre et examinez ensemble les conditions et l’arbitre. Le Bitcoin est placé en séquestre ; l’autre paiement ou la livraison se fait comme convenu. Confirmez uniquement ce qui s’est réellement passé. Après un règlement valide, il reste à réclamer le versement et choisir sa destination.</p></div></details>
+<details class="qa"><summary>Qui peut libérer ou rembourser ?</summary><div class="answer"><p>Pour un échange ecash standard, deux des trois participants — acheteur, vendeur et arbitre désigné — doivent approuver une issue valide. L’arbitre ne peut pas régler seul. Les parties s’accordent généralement ; l’arbitre intervient en cas de désaccord ou pour la récupération à expiration prévue par le protocole. Cela ne garantit pas une livraison honnête et n’élimine pas le risque de collusion.</p></div></details>
+<details class="qa"><summary>Puis-je annuler après financement ?</summary><div class="answer"><p>Avant financement, annuler ne nécessite pas de récupérer des sats verrouillés. Après, un remboursement exige l’accord requis et un règlement valide. Le demander ne signifie pas l’avoir reçu. Gardez vos preuves de paiement et de livraison, et utilisez les commandes de litige en cas de désaccord.</p></div></details>
+<details class="qa"><summary>Le séquestre sur chaîne est-il un versement sur chaîne ?</summary><div class="answer"><p>Non. Un versement sur chaîne envoie les fonds réclamés à une adresse Bitcoin. Le séquestre sur chaîne facultatif verrouille l’échange dans une sortie Bitcoin avec des voies coopérative, de litige et de remboursement différé. Confirmations et frais réseau s’appliquent ; lisez les conditions avant de le choisir.</p></div></details>
+</div>
+</section>
+<section class="faq-section" id="money" aria-labelledby="money-title"><div class="section-heading"><p class="eyebrow">05 / Financer et encaisser</p><h2 id="money-title">Allez jusqu’au bout.</h2></div><div class="answers">
+<details class="qa" open><summary>Comment financer et encaisser ?</summary><div class="answer"><p>Utilisez les options proposées pour l’échange. Une fois le règlement prêt, choisissez une destination compatible : facture ou adresse Lightning, portefeuille Nostr Wallet Connect, export ecash ou Bitcoin sur chaîne lorsque disponible. Un versement prêt à réclamer n’est pas encore un paiement reçu à destination.</p></div></details>
+<details class="qa"><summary>Puis-je recevoir de la monnaie locale, comme M-Pesa ?</summary><div class="answer"><p>Lorsque disponibles, les destinations comprennent des services locaux, notamment M-Pesa au Kenya. Disponibilité, devis, plafonds, frais et délais dépendent du prestataire. Certaines routes ouvrent un service séparé. Consultez ses conditions et le devis final ; payer directement une contrepartie en monnaie locale est distinct du financement du Bitcoin en séquestre.</p></div></details>
+<details class="qa"><summary>Un paiement a expiré. Dois-je le renvoyer ?</summary><div class="answer"><p><strong>Un délai dépassé ne prouve pas un échec.</strong> Vérifiez le portefeuille destinataire et laissez Chama rapprocher l’opération en attente. Elle peut avoir réussi malgré une réponse perdue. Utilisez la récupération ou la relance proposée après vérification ; ne créez pas un second paiement pour débloquer le premier.</p></div></details>
+</div>
+</section>
+<section class="faq-section" id="safety" aria-labelledby="safety-title"><div class="section-heading"><p class="eyebrow">06 / Sécurité et récupération</p><h2 id="safety-title">Gardez l’essentiel.</h2></div><div class="answers">
+<details class="qa" open><summary>Ma clé Nostr sauvegarde-t-elle mon argent ?</summary><div class="answer"><p><strong>Non.</strong> Elle restaure votre identité, pas toutes les données du portefeuille. L’ecash du navigateur est stocké sur cet appareil ; les clients natifs et le pont StartOS conservent un état distinct. Protégez la clé ainsi que les notes ecash ou fichiers de récupération exportés. N’effacez pas les données, ne réinstallez pas et n’abandonnez pas un portefeuille tant que des fonds ou opérations restent en suspens.</p></div></details>
+<details class="qa"><summary>Chama garde-t-il des fonds entre les échanges ?</summary><div class="answer"><p>Chama sert au séquestre et au versement, pas à l’épargne durable dans un solde d’application. Mais le portefeuille local peut conserver des fonds, des réserves de frais ou des versements inachevés. Encaissez ou exportez rapidement et vérifiez la réception. L’ecash Fedimint dépend aussi des gardiens et de la disponibilité de la fédération choisie.</p></div></details>
+<details class="qa"><summary>Qu’est-ce qui est public ou privé ?</summary><div class="answer"><p>Les annonces et certaines métadonnées circulent sur les relais Nostr. Les données sensibles du séquestre et le chat sont chiffrés, sans masquer tous les participants, horaires ou activités publiques. Ne partagez que le nécessaire. Relais, fédérations et prestataires ont leurs propres limites de confiance et de disponibilité.</p></div></details>
+<details class="qa"><summary>Que faire en cas de déconnexion ou de versement à vérifier ?</summary><div class="answer"><p>Reconnectez-vous et examinez l’échange et le paiement existants. Un relais lent peut laisser une vue incomplète ; un paiement incertain doit être rapproché. Conservez l’appareil et les données de récupération. Avant un signalement sur <a href="https://github.com/jesuspirate/chama/issues">GitHub</a>, retirez clés secrètes, notes au porteur, identifiants de paiement et données personnelles.</p></div></details>
+</div>
+</section>
+<aside class="technical-card"><p class="eyebrow">SOUS LE CAPOT</p><h2>Présentation technique avancée</h2><p>Pour comprendre le protocole : séquestre, stockage, récupération et fonctions actives. Document en anglais.</p><a class="text-link" href="https://github.com/jesuspirate/chama/blob/main/chama-technical-overview.pdf">PDF ↗</a></aside>
 </main>
-
-<footer>
-  <div class="ft">
-    <div class="ft-l"><img src="icons/chama-mark-64.png" width="18" height="18" alt="">Chama · est. block 934,669 · chama.community</div>
-    <div><a href="/">Accueil</a> · <a href="faq.html">English</a> · <a href="faq.es.html">Español</a> · <a href="https://github.com/jesuspirate/chama" target="_blank" rel="noopener">GitHub</a></div>
-  </div>
-</footer>
-
+<footer class="faq-footer wrap"><a class="brand" href="/">chama<span class="brand-dot">●</span></a><p>Échangez avec des personnes, pas des plateformes.</p><a href="https://github.com/jesuspirate/chama">GitHub ↗</a></footer>
 </body>
 </html>

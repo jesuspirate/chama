@@ -1,0 +1,2 @@
+# Generated documents must not be treated as line-oriented text by Git.
+*.pdf binary
