@@ -1,0 +1,7 @@
+# Savings circle artwork
+
+Generated with the built-in image generation tool. Web delivery: `p-chama-circle-v1.jpg`, 960 × 640, JPEG quality 84. The scene illustrates equal peers saving together without depicting a rotating payout or promising returns.
+
+## Generation prompt
+
+Use case: photorealistic-natural. Create a cinematic editorial photograph for a community Bitcoin savings-circle feature card, landscape 3:2. Four adult friends of different ages gathered closely around a round wooden table in a lived-in East African courtyard at late golden hour. Candid warmth, natural faces, tactile fabrics, rich amber shadows, subtle grain, premium photographic realism. Two women and two men, all treated as equal peers. Each has their own small smartphone on the table near them; they smile and look toward each other. A modest handmade woven bowl sits at the shared center. A thin restrained warm amber neon contour traces only the rim of the bowl, with subtle teal contour highlights on the edges of the phones, expressing a circle of equal contributions. No banknotes, no piles of coins, no money being handed to one winner. Clear readable group composition at small card size; faces and central bowl inside the middle 80 percent. No text, no letters, no logos, no charts, no arrows, no magical floating objects, no extra limbs. The feeling is mutual trust and saving together, not wealth or charity.

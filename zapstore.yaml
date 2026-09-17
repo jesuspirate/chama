@@ -13,56 +13,37 @@ pubkey: npub1ytm3v8mkup6mnc9z2zjy0zz2czdsfd3kal7hcup6jgu5a5lm885qhup3z6
 release_notes: ./zapstore/release-notes.md
 
 name: Chama
-summary: Local money, Bitcoin rails — peer-to-peer commerce with community-backed escrow.
+summary: Trade Bitcoin and local money with people in your community.
 description: |
-  **Trade with your community. Trust the math, not a middleman.**
+  Chama helps you find people to trade Bitcoin and local money, pay bills,
+  or buy and sell goods.
 
-  Chama is a Nostr-native client for peer-to-peer commerce: exchange sats and
-  local money, pay community bills, or buy and sell in a community market without a
-  central Chama account server, custodial marketplace operator, or proprietary
-  social graph.
+  Choose what you have, what you need, and your payment method. Find a
+  matching offer, agree on the terms, and choose a community arbiter together.
 
-  A *chama* is an East African savings circle built on shared responsibility.
-  Chama carries that idea into open digital commerce. You choose your country,
-  currency, payment rails, counterparty, and community arbiter. Listings, chat,
-  reputation, and verifiable trade state travel over Nostr rather than through
-  a company-owned marketplace database.
+  Bitcoin is held in escrow during the trade. Two of the three participants
+  — buyer, seller, and arbiter — must agree to settle it. Chama cannot move
+  the funds on its own.
 
-  **Escrow belongs to the trade—not to Chama.** A funded ecash trade uses three
-  Shamir shares and a 2-of-3 outcome across buyer, seller, and arbiter. Ordinary
-  trades settle when the two parties agree. The arbiter acts only when they
-  disagree or when an expired trade needs a protocol-defined healing vote. No
-  single participant, arbiter, or Chama operator can move the sats alone.
+  Sign in with a Nostr identity. No email required. Try the sandbox before
+  using real sats.
 
-  **Chama is not a wallet.** Fedimint ecash is held only while a trade is active.
-  After settlement, claim promptly through the route that fits you: a Lightning
-  address or invoice, a connected Nostr Wallet Connect wallet, ecash export,
-  on-chain Bitcoin where available, or supported local cash-out rails such as
-  M-Pesa in Kenya. Your Nostr key restores your identity and trade history; it
-  does not recreate device-local bearer ecash.
-
-  **Built for commerce, not speculation:**
-
-  - Exchange Bitcoin and local currency using the payment methods people already use
-  - Buy or sell goods through community storefronts
-  - Coordinate community bill payments without a central collection account
-  - Stack toward a goal in a future release while keeping your keys and your sats
-  - Browse through a guided Chama assistant or open the full marketplace tools
-  - Build portable reputation from completed, cryptographically verifiable trades
-
-  **No Chama signup. No email. No KYC database.** Your Nostr identity is your
-  account, and encrypted trade coordination can travel across multiple relays.
-  Chama runs on the web, as an Android or desktop app, and as a self-hosted
-  StartOS service. Wallet storage follows the client you use, so preserve your
-  Nostr secret key and any exported bearer notes separately.
-
-  Local money. Bitcoin rails. Bring your keys—and bring your circle.
+  Keep your recovery key safe. It restores your identity, not ecash stored
+  on your device. Claim your sats after settlement.
 website: https://getchama.app
 icon: public/icons/android-chrome-512x512.png
 images:
-  - zapstore/screenshots/login-kenya.png
-  - zapstore/screenshots/market-east-africa.png
-  - zapstore/screenshots/trade-dashboard.png
+  - zapstore/screenshots/canvas-v6.png
+  - zapstore/screenshots/payment-methods-v6.png
+  - zapstore/screenshots/en-converter-usd-v6.png
+  - zapstore/screenshots/fr-canvas-eur-v6.png
+  - zapstore/screenshots/fr-converter-eur-v6.png
+  - zapstore/screenshots/es-converter-mxn-light-v6.png
+  - zapstore/screenshots/sw-converter-kes-v6.png
+  - zapstore/screenshots/en-planner-usd-v6.png
+  - zapstore/screenshots/sw-market-kes-v6.png
+  - zapstore/screenshots/fr-country-v6.png
+  - zapstore/screenshots/welcome-v6.png
 tags:
   - bitcoin
   - nostr
