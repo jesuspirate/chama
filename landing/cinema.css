@@ -309,7 +309,7 @@ html[data-theme=dark] .intent-card{background:#2a342a;border-color:#56634c}
 .chama-cursor{display:none;position:fixed;top:0;left:0;z-index:9999;width:16px;height:16px;border-radius:50%;background:#fff;pointer-events:none;opacity:0;mix-blend-mode:difference;transition:width .16s,height .16s,opacity .12s;will-change:transform}
 .chama-cursor.visible{opacity:1}.chama-cursor.active{width:28px;height:28px}
 @media(pointer:fine) and (hover:hover) and (prefers-reduced-motion:no-preference){.chama-cursor{display:block}.custom-pointer,.custom-pointer body,.custom-pointer a,.custom-pointer button{cursor:none!important}}
-.cinema-title s{text-decoration-thickness:1px;text-decoration-color:currentColor}
+.cinema-title s{text-decoration-thickness:1px;text-decoration-color:#ef4444}
 /* Original symbols return inside the same photo bounds. */
 .life-art{position:relative;display:block;width:100%;aspect-ratio:1.35;border:0;padding:0;border-radius:3px;background:#e3e8dc;overflow:hidden;color:#254434}
 .life-photo,.life-symbol{position:absolute;inset:0;display:grid;place-items:center;transition:opacity .22s ease}

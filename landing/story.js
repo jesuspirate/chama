@@ -69,7 +69,7 @@ function filmLabels() {
   beat.textContent = word(video.currentTime < 2 ? 'beatGive' : video.currentTime < 4 ? 'beatReceive' : 'beatContinue');
   screen.classList.toggle('film-running', !video.paused && video.currentTime > .35);
   screen.classList.toggle('film-complete', finished);
-  document.querySelector('.film-context').textContent = word(finished ? 'filmReminder' : 'filmContext');
+  document.querySelector('.film-context').textContent = finished ? '' : word('filmContext');
   paintFilmProgress();
 }
 function setPhase(index) {
