@@ -2,11 +2,11 @@
 // Chama — identity pin (browser / Fedi path)
 // ══════════════════════════════════════════════════════════════════════════
 //
-// On native (Capacitor / Tauri) the signed-in key is persisted by the shell
-// (saved nsec in secure Preferences) and restored deterministically on every
-// launch. The Fedi / browser path has NO app-side identity persistence:
-// `shouldPersistNsecInShell()` is false there, so the active npub is whatever
-// `window.nostr` hands back this session. If the Fedi runtime restores or
+// When the user signs in with an nsec, the shell persists it on every client
+// (runway #13: secure Preferences on native, localStorage in browsers) and
+// restores it deterministically on launch. The NIP-07 / Fedi path is
+// different: there the key never passes through the app at all, so the active
+// npub is whatever `window.nostr` hands back this session. If the Fedi runtime restores or
 // returns a different active account (or a transient value) between sign-ins,
 // the app would silently re-scope every per-npub store to the new key — the
 // observed "buyer/seller role pill flips between Fedi sign-ins" symptom, where

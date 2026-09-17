@@ -21,10 +21,10 @@
 // worth protecting: the app is installed, or this origin already holds Chama
 // state from a previous session.
 //
-// This does NOT keep anyone signed in. In a browser or PWA the nsec is never
-// written to disk at all — `shouldPersistNsecInShell()` is Capacitor-native or
-// Tauri only — so a fresh launch asks for the key by design, not by eviction.
-// Persisting storage protects the wallet and the history, not the login.
+// Runway #13 (2026-09-18): this now protects the LOGIN too. Every client —
+// browser and PWA included — keeps the nsec by default (localStorage here,
+// secure Preferences on native), with an explicit per-origin opt-out. So
+// persisting storage protects the wallet, the history, AND the kept key.
 
 const CHAMA_KEY_PREFIX = "chama_";
 

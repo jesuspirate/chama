@@ -101,6 +101,12 @@ export const app: Record<string, string> = {
   "app.joinedLabel": "¡Unido a {label}!",
   "app.joiningAsRole": "Uniéndote como {role}...",
   "app.joiningChama": "Uniéndote al Chama…",
+  "app.keyKeptTitle": "Tu llave se queda en este dispositivo",
+  "app.keyKeptBody": "Chama guard\u00f3 aqu\u00ed tu llave de recuperaci\u00f3n, as\u00ed la pr\u00f3xima vez inicias sesi\u00f3n autom\u00e1ticamente. \u00bfPrefieres pegarla t\u00fa mismo cada vez?",
+  "app.keyKeptKeep": "Mantener mi sesi\u00f3n",
+  "app.keyKeptForget": "No guardar mi llave aqu\u00ed",
+  "app.keyForgottenBody": "Listo \u2014 tu llave fue eliminada de este dispositivo. Tendr\u00e1s que pegarla cada vez que inicies sesi\u00f3n, as\u00ed que guarda bien tu propia copia.",
+  "app.keyForgottenOk": "Entendido",
   "app.keyScanned": "⚡ Llave escaneada — iniciando tu sesión.",
   "app.listingDeleted": "Anuncio eliminado.",
   "app.remoteBridgeRevoked":

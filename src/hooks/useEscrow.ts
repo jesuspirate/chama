@@ -1555,8 +1555,8 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       const pubkey = await signer.getPublicKey();
       signerRef.current = signer;
       // Stable identity. A fresh signer is built on every connect(), and on the
-      // Fedi/browser path the npub comes straight from window.nostr with no
-      // app-side persistence (shouldPersistNsecInShell() is false there). The
+      // NIP-07/Fedi path the npub comes straight from window.nostr with no
+      // app-side persistence (only nsec sign-ins are kept by the shell). The
       // signer already rejects garbage reads (normalizeSignerPubkey); this pins
       // the last-seen identity so a *valid but different* npub is treated as a
       // deliberate, CLEAN re-scope rather than a silent blend of two identities'

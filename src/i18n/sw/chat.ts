@@ -10,8 +10,6 @@ export const chat: Record<string, string> = {
   "chat.continueWithKey": "Endelea na ufunguo huu",
   "chat.copiedKey": "Imenakiliwa ✓",
   "chat.copyKey": "Nakili ufunguo",
-  "chat.copyDone": "Imenakiliwa — sasa ithibitishe hapa chini",
-  "chat.copyFirst": "Inakili kwanza ili kuendelea",
   "chat.couldNotAttachImage": "Imeshindikana kuambatisha picha hiyo",
   "chat.couldNotCreateKey": "Imeshindikana kuunda ufunguo",
   "chat.createMyAccount": "Unda akaunti yangu",
@@ -26,14 +24,14 @@ export const chat: Record<string, string> = {
   "chat.externalRoute": "Njia ya nje",
   "chat.footerGeneratedNative":
     "Imehifadhiwa kwenye kifaa hiki, imesimbwa — lakini tunza nakala yako mwenyewe pia, endapo utapoteza simu.",
-  "chat.footerGeneratedWeb":
-    "Chama haikutunzii hii — nakala uliyohifadhi ndiyo njia pekee ya kurudi ndani.",
+  "chat.footerGeneratedWeb": "Umehifadhiwa kwenye kifaa hiki \u2014 weka pia nakala yako mwenyewe, endapo utapoteza ufikiaji wa kivinjari hiki.",
   "chat.footerPasteNative":
     "Ufunguo wako wa urejeshaji unabaki kwenye kifaa hiki, umesimbwa kwenye hifadhi salama.",
-  "chat.footerPasteWeb": "Ufunguo wako wa urejeshaji unabaki kwenye kivinjari hiki.",
+  "chat.footerPasteWeb": "Ufunguo wako umehifadhiwa kwenye kifaa hiki, hivyo unabaki umeingia.",
   "chat.haveKey": "Tayari nina ufunguo",
   "chat.hide": "Ficha",
   "chat.imageReady": "Picha iko tayari",
+  "chat.keySavedHint": "Ufunguo wako umehifadhiwa kwenye kifaa hiki \u2014 Chama itakuingiza kiotomatiki wakati ujao.",
   "chat.keyChoiceFooter":
     "Chama inaunda ufunguo wa siri wa urejeshaji kwenye kifaa hiki. Uhifadhi mara moja ili uweze kurejesha akaunti yako baadaye.",
   "chat.keyOnlyAfter":
@@ -47,13 +45,10 @@ export const chat: Record<string, string> = {
   "chat.nowOn": "Sasa uko: ",
   "chat.pasteInvitePlaceholder": "…au bandika mwaliko wa fed1",
   "chat.pasteRecoveryKey": "Bandika ufunguo wa urejeshaji",
-  "chat.passwordManagerHint":
-    "Ukiendelea, kivinjari chako kinaweza kupendekeza kuhifadhi ufunguo huu kwenye kihifadhi-nywila chako.",
   "chat.roleArbiter": "Msuluhishi",
   "chat.roleBuyer": "Mnunuzi",
   "chat.roleSeller": "Muuzaji",
   "chat.roleUnknown": "Hajulikani",
-  "chat.savedIt": "Nimeuhifadhi",
   "chat.saveRecoveryKey": "Hifadhi ufunguo wako wa urejeshaji",
   "chat.send": "Tuma",
   "chat.show": "Onyesha",
@@ -71,10 +66,6 @@ export const chat: Record<string, string> = {
     "Hii inafuta faili la OPFS la Chama chako cha ndani na kujiunga upya na kipya. Ecash yoyote kwenye Chama cha sasa itakwama hadi urudi. Mbegu yako iliyohifadhiwa kwenye Nostr na historia ya biashara zinabaki salama.",
   "chat.typeMessagePlaceholder": "Andika ujumbe...",
   "chat.useExistingAccount": "Tumia akaunti iliyopo",
-  "chat.verifyKey": "Bandika ufunguo tena kuthibitisha hifadhi yako",
-  "chat.keyVerified": "Hifadhi imethibitishwa ✓",
-  "chat.verifyKeyPlaceholder": "Bandika ufunguo ulionakili",
   "chat.you": "Wewe",
   "chat.signingIn": "Inaingia\u2026",
-  "chat.saveOfferHint": "Meneja wako wa manenosiri anaweza kukupa sasa kuhifadhi ufunguo wako wa uokoaji \u2014 kubali ili uwe na nakala salama unayoweza kurejesha kutoka popote.",
 };

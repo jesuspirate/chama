@@ -11,8 +11,6 @@ export const chat: Record<string, string> = {
   "chat.continueWithKey": "Continuer avec cette clé",
   "chat.copiedKey": "Copié ✓",
   "chat.copyKey": "Copier la clé",
-  "chat.copyDone": "Copiée — vérifiez-la maintenant ci-dessous",
-  "chat.copyFirst": "Copiez-la pour continuer",
   "chat.couldNotAttachImage": "Impossible de joindre cette image",
   "chat.couldNotCreateKey": "Impossible de créer la clé",
   "chat.createMyAccount": "Créer mon compte",
@@ -27,14 +25,14 @@ export const chat: Record<string, string> = {
   "chat.externalRoute": "Route externe",
   "chat.footerGeneratedNative":
     "Enregistrée sur cet appareil, chiffrée — mais gardez aussi votre propre copie, au cas où vous perdriez le téléphone.",
-  "chat.footerGeneratedWeb":
-    "Chama ne la garde pas pour vous — votre copie sauvegardée est le seul moyen de revenir.",
+  "chat.footerGeneratedWeb": "Enregistr\u00e9e sur cet appareil \u2014 gardez aussi votre propre copie, au cas o\u00f9 vous perdriez l'acc\u00e8s \u00e0 ce navigateur.",
   "chat.footerPasteNative":
     "Votre clé de récupération reste sur cet appareil, chiffrée dans le stockage sécurisé.",
-  "chat.footerPasteWeb": "Votre clé de récupération reste dans ce navigateur.",
+  "chat.footerPasteWeb": "Votre cl\u00e9 est enregistr\u00e9e sur cet appareil, vous restez donc connect\u00e9.",
   "chat.haveKey": "J'ai déjà une clé",
   "chat.hide": "Masquer",
   "chat.imageReady": "Image prête",
+  "chat.keySavedHint": "Votre cl\u00e9 est enregistr\u00e9e sur cet appareil \u2014 Chama vous connectera automatiquement la prochaine fois.",
   "chat.keyChoiceFooter":
     "Chama crée une clé de récupération privée sur cet appareil. Sauvegardez-la une fois pour pouvoir restaurer votre compte plus tard.",
   "chat.keyOnlyAfter":
@@ -48,13 +46,10 @@ export const chat: Record<string, string> = {
   "chat.nowOn": "Maintenant sur : ",
   "chat.pasteInvitePlaceholder": "…ou collez une invitation fed1",
   "chat.pasteRecoveryKey": "Coller la clé de récupération",
-  "chat.passwordManagerHint":
-    "En continuant, votre navigateur peut proposer d'enregistrer cette clé dans votre gestionnaire de mots de passe.",
   "chat.roleArbiter": "Arbitre",
   "chat.roleBuyer": "Acheteur",
   "chat.roleSeller": "Vendeur",
   "chat.roleUnknown": "Inconnu",
-  "chat.savedIt": "Je l'ai sauvegardée",
   "chat.saveRecoveryKey": "Sauvegardez votre clé de récupération",
   "chat.send": "Envoyer",
   "chat.show": "Afficher",
@@ -72,10 +67,6 @@ export const chat: Record<string, string> = {
     "Ceci efface le fichier OPFS de votre Chama local et rejoint le nouveau. Tout ecash sur le Chama actuel restera bloqué jusqu'à ce que vous rebasculiez. Votre seed adossée à Nostr et votre historique d'échanges survivent.",
   "chat.typeMessagePlaceholder": "Écrivez un message...",
   "chat.useExistingAccount": "Utiliser un compte existant",
-  "chat.verifyKey": "Collez la clé pour confirmer votre sauvegarde",
-  "chat.keyVerified": "Sauvegarde vérifiée ✓",
-  "chat.verifyKeyPlaceholder": "Collez la clé copiée",
   "chat.you": "Vous",
   "chat.signingIn": "Connexion\u2026",
-  "chat.saveOfferHint": "Votre gestionnaire de mots de passe peut maintenant proposer d'enregistrer votre cl\u00e9 de r\u00e9cup\u00e9ration \u2014 acceptez pour garder une copie s\u00fbre, restaurable depuis n'importe o\u00f9.",
 };

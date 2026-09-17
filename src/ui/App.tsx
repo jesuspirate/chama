@@ -1,3 +1,4 @@
+import { saveNsecWithNotice, SAVED_NSEC_KEY, NSEC_ORIGIN_KEY, NSEC_KEEP_NOTICE_KEY } from "../storage/saved-nsec.js";
 import { resolveCreateMintUrl } from "./decisions.js";
 import { CircleCanvas } from "./screens/CircleCanvas.js";
 import { CircleSurface } from "./screens/CircleSurface.js";
@@ -346,11 +347,29 @@ type GivenRatingSlot = {
 
 const GIVEN_RATINGS_STORAGE_PREFIX = "chama_given_ratings_v1";
 const SWITCH_FEEDBACK_MIN_MS = 550;
-const SAVED_NSEC_KEY = "chama_saved_nsec";
-const NSEC_ORIGIN_KEY = "chama_nsec_origin";
+// ── nsec persistence (v6.4 runway #13, sealed 2026-09-18) ───────────────────
+// The app KEEPS the key by default on EVERY client — browser, PWA, the APKs,
+// Tauri, and the page a Start9 node serves (which is just a browser client).
+// The screen right after a fresh login says so (NsecKeepNotice below), and the
+// user must actively opt out there; the opt-out is remembered per-origin.
+// There is deliberately NO password-manager prompt of ours anywhere — a plain
+// copy button on the generated key is the whole external-backup story.
+const NSEC_OPTOUT_KEY = "chama_nsec_optout";
 
-function shouldPersistNsecInShell(): boolean {
-  return Capacitor.isNativePlatform() || isTauriRuntime();
+function nsecPersistenceOptedOut(): boolean {
+  try { return localStorage.getItem(NSEC_OPTOUT_KEY) === "1"; } catch { return false; }
+}
+
+function setNsecPersistenceOptOut(optOut: boolean): void {
+  try {
+    if (optOut) localStorage.setItem(NSEC_OPTOUT_KEY, "1");
+    else localStorage.removeItem(NSEC_OPTOUT_KEY);
+  } catch { /* storage unavailable — nothing would persist anyway */ }
+}
+
+/** Keep the key unless this origin's user has actively said no. */
+function shouldPersistNsec(): boolean {
+  return !nsecPersistenceOptedOut();
 }
 
 async function readSavedNsec(): Promise<string | null> {
@@ -358,30 +377,16 @@ async function readSavedNsec(): Promise<string | null> {
     const { value } = await Preferences.get({ key: SAVED_NSEC_KEY });
     return value?.trim() || null;
   }
-  if (isTauriRuntime()) {
-    try {
-      return localStorage.getItem(SAVED_NSEC_KEY)?.trim() || null;
-    } catch {
-      return null;
-    }
+  // Browser, PWA and Tauri all read the same per-origin local storage.
+  try {
+    return localStorage.getItem(SAVED_NSEC_KEY)?.trim() || null;
+  } catch {
+    return null;
   }
-  return null;
 }
 
 async function writeSavedNsec(nsec: string, origin: "generated" | "imported"): Promise<void> {
-  if (Capacitor.isNativePlatform()) {
-    await Preferences.set({ key: SAVED_NSEC_KEY, value: nsec });
-    await Preferences.set({ key: NSEC_ORIGIN_KEY, value: origin });
-    return;
-  }
-  if (isTauriRuntime()) {
-    try {
-      localStorage.setItem(SAVED_NSEC_KEY, nsec);
-      localStorage.setItem(NSEC_ORIGIN_KEY, origin);
-    } catch {
-      // Tauri desktop storage is a convenience cache; sign-in still works manually.
-    }
-  }
+  await saveNsecWithNotice(nsec, origin, localStorage, Capacitor.isNativePlatform() ? Preferences : undefined);
 }
 
 async function removeSavedNsec(): Promise<void> {
@@ -389,10 +394,97 @@ async function removeSavedNsec(): Promise<void> {
     try { await Preferences.remove({ key: SAVED_NSEC_KEY }); } catch {}
     try { await Preferences.remove({ key: NSEC_ORIGIN_KEY }); } catch {}
   }
-  if (isTauriRuntime()) {
-    try { localStorage.removeItem(SAVED_NSEC_KEY); } catch {}
-    try { localStorage.removeItem(NSEC_ORIGIN_KEY); } catch {}
-  }
+  try { localStorage.removeItem(SAVED_NSEC_KEY); } catch {}
+  try { localStorage.removeItem(NSEC_ORIGIN_KEY); } catch {}
+}
+
+
+// Post-login keep-notice (runway #13): shown ONCE per origin, on the first
+// screen after a login that saved the key. Default is keeping it; the user
+// must actively say no here to opt out.
+function NsecKeepNotice() {
+  const { t } = useT();
+  const [visible, setVisible] = useState(() => {
+    try { return localStorage.getItem(NSEC_KEEP_NOTICE_KEY) === "pending"; } catch { return false; }
+  });
+  const [forgotten, setForgotten] = useState(false);
+  if (!visible) return null;
+  const settle = () => {
+    try { localStorage.setItem(NSEC_KEEP_NOTICE_KEY, "done"); } catch {}
+    setVisible(false);
+  };
+  return (
+    <div style={{
+      position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 300,
+      display: "flex", justifyContent: "center", pointerEvents: "none",
+      padding: "0 12px calc(14px + env(safe-area-inset-bottom, 0px))",
+    }}>
+      <div style={{
+        pointerEvents: "auto", width: "100%", maxWidth: 440,
+        background: T.surface, border: `1px solid ${T.borderHi}`,
+        borderRadius: T.r, padding: 16,
+        boxShadow: "0 -6px 32px rgba(0,0,0,0.45)",
+      }}>
+        {!forgotten ? (
+          <>
+            <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 7 }}>
+              <span style={{ fontSize: 17, lineHeight: 1 }}>🔑</span>
+              <span style={{ fontSize: 14, fontWeight: 800, color: T.text, fontFamily: T.sans }}>
+                {t("app.keyKeptTitle")}
+              </span>
+            </div>
+            <div style={{ fontSize: 12.5, color: T.muted, fontFamily: T.sans, lineHeight: 1.55, marginBottom: 13 }}>
+              {t("app.keyKeptBody")}
+            </div>
+            <div style={{ display: "flex", gap: 9 }}>
+              <button
+                onClick={settle}
+                style={{
+                  flex: 1.4, padding: "11px 12px", borderRadius: T.rs,
+                  background: T.accent, border: "none", color: T.bg,
+                  fontFamily: T.sans, fontSize: 13, fontWeight: 800, cursor: "pointer",
+                }}
+              >
+                {t("app.keyKeptKeep")}
+              </button>
+              <button
+                onClick={() => {
+                  void removeSavedNsec();
+                  setNsecPersistenceOptOut(true);
+                  setForgotten(true);
+                }}
+                style={{
+                  flex: 1, padding: "11px 12px", borderRadius: T.rs,
+                  background: "transparent", border: `1px solid ${T.border}`,
+                  color: T.muted, fontFamily: T.sans, fontSize: 12, fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                {t("app.keyKeptForget")}
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div style={{ fontSize: 12.5, color: T.text, fontFamily: T.sans, lineHeight: 1.55, marginBottom: 12 }}>
+              {t("app.keyForgottenBody")}
+            </div>
+            <button
+              onClick={settle}
+              style={{
+                width: "100%", padding: "11px 12px", borderRadius: T.rs,
+                background: T.surface, border: `1px solid ${T.borderHi}`,
+                color: T.text, fontFamily: T.sans, fontSize: 13, fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              {t("app.keyForgottenOk")}
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
 }
 
 function givenRatingsStorageKey(pubkey: string): string {
@@ -1294,10 +1386,11 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [connected, pubkey]);
 
-  // Auto-login: in app shells, check for a saved nsec before showing login.
+  // Auto-login: every client keeps the key by default now, so check for a
+  // saved nsec before showing login — unless this origin opted out.
   useEffect(() => {
     if (autoLoginChecked || connected || loading || autoLoginStartedRef.current) return;
-    if (!shouldPersistNsecInShell()) { setAutoLoginChecked(true); return; }
+    if (!shouldPersistNsec()) { setAutoLoginChecked(true); return; }
     autoLoginStartedRef.current = true;
     (async () => {
       try {
@@ -2884,9 +2977,9 @@ export default function App() {
   };
 
   const [pendingSignOut, setPendingSignOut] = useState(false);
-  // Sign out is destructive (removeSavedNsec wipes the on-device key on
-  // native/Tauri; web drops the in-memory key on reload). Gate it behind a
-  // confirm so it's the last-chance backup reminder, not a silent one-tap wipe.
+  // Sign out is destructive (removeSavedNsec wipes the kept key on EVERY
+  // client now — browser local storage included). Gate it behind a confirm so
+  // it's the last-chance backup reminder, not a silent one-tap wipe.
   const handleSignOut = () => setPendingSignOut(true);
   const performSignOut = async () => {
     await removeSavedNsec();
@@ -2998,7 +3091,7 @@ export default function App() {
                   // rather than gate behind a dialog that never fires.
                   (window as any).__chama_connect_nsec = scanned;
                   // A scanned key is imported, never Chama-generated.
-                  if (shouldPersistNsecInShell()) {
+                  if (shouldPersistNsec()) {
                     try { await writeSavedNsec(scanned, "imported"); } catch {}
                   }
                   setToast({ message: t("app.keyScanned"), type: "success" });
@@ -3018,7 +3111,7 @@ export default function App() {
           onRequestHomeChange={() => setChangeHomeAfterConnect(true)}
           onConnectNsec={async (nsec: string, remember: boolean, wasGenerated: boolean) => {
             (window as any).__chama_connect_nsec = nsec;
-            if (remember && shouldPersistNsecInShell()) {
+            if (remember && shouldPersistNsec()) {
               try {
                 // v2.5: record key origin alongside the saved nsec so Me ›
                 // Advanced reveals the master key ONLY when Chama generated it
@@ -3053,6 +3146,7 @@ export default function App() {
       }}>
         <style>{globalCss()}</style>
         <SimModePill />
+        <NsecKeepNotice />
         {/* The picker only remains mounted until the identity choice is saved.
             Wallet initialization errors no longer clear that choice; they are
             handled from the signed-in shell's Chama bar. */}
@@ -3110,6 +3204,7 @@ export default function App() {
       {everOnline && (!connected || connectedRelays === 0) && <OfflineBar />}
       <SimModePill />
       <SimEntryModal />
+      <NsecKeepNotice />
 
       {toast && <Toast message={toast.message} type={toast.type} sticky={toast.sticky} dismissOnTap={toast.dismissOnTap} onDone={() => setToast(null)} />}
 

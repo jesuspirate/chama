@@ -99,6 +99,12 @@ export const app: Record<string, string> = {
   "app.joinedLabel": "Umejiunga {label}!",
   "app.joiningAsRole": "Inajiunga kama {role}...",
   "app.joiningChama": "Inajiunga na Chama…",
+  "app.keyKeptTitle": "Ufunguo wako unabaki kwenye kifaa hiki",
+  "app.keyKeptBody": "Chama imehifadhi ufunguo wako wa uokoaji hapa, hivyo wakati ujao utaingia kiotomatiki. Ungependa kuubandika mwenyewe kila mara badala yake?",
+  "app.keyKeptKeep": "Niendelee kuwa nimeingia",
+  "app.keyKeptForget": "Usihifadhi ufunguo wangu hapa",
+  "app.keyForgottenBody": "Imekamilika \u2014 ufunguo wako umeondolewa kwenye kifaa hiki. Utaubandika kila unapoingia, kwa hivyo tunza nakala yako mwenyewe salama.",
+  "app.keyForgottenOk": "Nimeelewa",
   "app.keyScanned": "⚡ Ufunguo umeskaniwa — inakuingiza.",
   "app.listingDeleted": "Tangazo limefutwa.",
   "app.remoteBridgeRevoked":

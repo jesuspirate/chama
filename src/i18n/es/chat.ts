@@ -11,8 +11,6 @@ export const chat: Record<string, string> = {
   "chat.continueWithKey": "Continuar con esta llave",
   "chat.copiedKey": "Copiada ✓",
   "chat.copyKey": "Copiar llave",
-  "chat.copyDone": "Copiada — ahora verifícala abajo",
-  "chat.copyFirst": "Cópiala para continuar",
   "chat.couldNotAttachImage": "No se pudo adjuntar esa imagen",
   "chat.couldNotCreateKey": "No se pudo crear la llave",
   "chat.createMyAccount": "Crear mi cuenta",
@@ -27,14 +25,14 @@ export const chat: Record<string, string> = {
   "chat.externalRoute": "Ruta externa",
   "chat.footerGeneratedNative":
     "Guardada en este dispositivo, cifrada — pero conserva también tu propia copia, por si pierdes el teléfono.",
-  "chat.footerGeneratedWeb":
-    "Chama no la guarda por ti — tu copia guardada es la única forma de volver a entrar.",
+  "chat.footerGeneratedWeb": "Guardada en este dispositivo \u2014 conserva tambi\u00e9n tu propia copia, por si pierdes acceso a este navegador.",
   "chat.footerPasteNative":
     "Tu llave de recuperación se queda en este dispositivo, cifrada en almacenamiento seguro.",
-  "chat.footerPasteWeb": "Tu llave de recuperación se queda en este navegador.",
+  "chat.footerPasteWeb": "Tu llave queda guardada en este dispositivo, as\u00ed sigues con la sesi\u00f3n iniciada.",
   "chat.haveKey": "Ya tengo una llave",
   "chat.hide": "Ocultar",
   "chat.imageReady": "Imagen lista",
+  "chat.keySavedHint": "Tu llave qued\u00f3 guardada en este dispositivo \u2014 Chama iniciar\u00e1 tu sesi\u00f3n autom\u00e1ticamente la pr\u00f3xima vez.",
   "chat.keyChoiceFooter":
     "Chama crea una llave de recuperación privada en este dispositivo. Guárdala una vez para poder restaurar tu cuenta después.",
   "chat.keyOnlyAfter":
@@ -48,13 +46,10 @@ export const chat: Record<string, string> = {
   "chat.nowOn": "Ahora en: ",
   "chat.pasteInvitePlaceholder": "…o pega una invitación fed1",
   "chat.pasteRecoveryKey": "Pegar llave de recuperación",
-  "chat.passwordManagerHint":
-    "Al continuar, tu navegador puede ofrecer guardar esta llave en tu gestor de contraseñas.",
   "chat.roleArbiter": "Árbitro",
   "chat.roleBuyer": "Comprador",
   "chat.roleSeller": "Vendedor",
   "chat.roleUnknown": "Desconocido",
-  "chat.savedIt": "Ya la guardé",
   "chat.saveRecoveryKey": "Guarda tu llave de recuperación",
   "chat.send": "Enviar",
   "chat.show": "Mostrar",
@@ -72,10 +67,6 @@ export const chat: Record<string, string> = {
     "Esto borra el archivo OPFS de tu Chama local y se une de nuevo al otro. Cualquier ecash en el Chama actual quedará varado hasta que regreses. Tu semilla respaldada en Nostr y tu historial de intercambios sobreviven.",
   "chat.typeMessagePlaceholder": "Escribe un mensaje...",
   "chat.useExistingAccount": "Usar una cuenta existente",
-  "chat.verifyKey": "Pega la llave para confirmar tu respaldo",
-  "chat.keyVerified": "Respaldo verificado ✓",
-  "chat.verifyKeyPlaceholder": "Pega la llave copiada",
   "chat.you": "Tú",
   "chat.signingIn": "Iniciando sesi\u00f3n\u2026",
-  "chat.saveOfferHint": "Tu gestor de contrase\u00f1as puede ofrecerte ahora guardar tu clave de recuperaci\u00f3n \u2014 ac\u00e9ptalo para conservar una copia segura que podr\u00e1s restaurar desde cualquier lugar.",
 };

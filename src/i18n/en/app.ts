@@ -113,6 +113,12 @@ export const app: Record<string, string> = {
   "app.joinedLabel": "Joined {label}!",
   "app.joiningAsRole": "Joining as {role}...",
   "app.joiningChama": "Joining Chama…",
+  "app.keyKeptTitle": "Your key stays on this device",
+  "app.keyKeptBody": "Chama saved your recovery key here, so next time you are signed in automatically. Prefer to paste it yourself each time instead?",
+  "app.keyKeptKeep": "Keep me signed in",
+  "app.keyKeptForget": "Don't keep my key here",
+  "app.keyForgottenBody": "Done \u2014 your key was removed from this device. You will paste it each time you sign in, so keep your own copy safe.",
+  "app.keyForgottenOk": "Got it",
   "app.keyScanned": "⚡ Key scanned — signing you in.",
   "app.listingDeleted": "Listing deleted.",
   // Shown once after a revoked friend-wallet token dropped this browser back

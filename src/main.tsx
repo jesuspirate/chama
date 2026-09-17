@@ -60,9 +60,10 @@ if ("serviceWorker" in navigator) {
 // skips a first-time visitor entirely (Firefox would prompt) and
 // short-circuits once the origin is already persistent. Never blocks render.
 //
-// This does not keep anyone signed in: in a browser or PWA the nsec is never
-// written to disk at all (see shouldPersistNsecInShell) — that is a separate,
-// deliberate decision.
+// Runway #13: this ALSO protects the login now. Every client keeps the nsec
+// by default (browser local storage / native Preferences, unless the user
+// opted out), so an evicted origin would lose the kept key along with the
+// wallet — one more reason persistent mode matters.
 void requestPersistentStorageIfWorthwhile().then((outcome) => {
   if (outcome === "denied") {
     console.warn(
