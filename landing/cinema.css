@@ -334,23 +334,20 @@ html[data-theme=dark] .life-symbol .symbol-light{display:none}html[data-theme=da
 .claim-demo[data-state=locked] .claim-tick{background:#f7931a;color:#17231a}
 .claim-demo[data-state=locked] .claim-tick svg path:last-child{opacity:1}
 .claim-demo[data-state=locking] .claim-action::after{content:'';position:absolute;inset:-5px;border:2px solid #ffbe6b;border-radius:30px;animation:claim-tap .5s ease-out both}
-/* One restrained return of the original worldwide home medley. */
-.community-medley{height:280px;overflow:hidden;display:grid;grid-template-rows:1fr 1fr;gap:10px;mask-image:linear-gradient(90deg,transparent,#000 5%,#000 95%,transparent)}
-.medley-row{display:flex;gap:10px;width:max-content;min-height:0;transform:translateX(calc(-1 * var(--medley-drift,0px)))}
-.medley-row.reverse{transform:translateX(calc(-180px + var(--medley-drift,0px)))}
-.medley-set{display:flex;gap:10px;min-height:0}
-.medley-set img{width:220px;height:135px;object-fit:cover;border-radius:5px;filter:saturate(.8)}
-.medley-set img:nth-child(3n){width:280px}
-.medley-caption{font:400 27px/1.4 'Manrope',sans-serif;letter-spacing:-.04em;margin-top:22px;margin-bottom:64px}
-@media(max-width:760px){.life-art{height:125px;aspect-ratio:auto}.community-medley{height:210px;gap:8px}.medley-set img{width:160px;height:101px}.medley-set img:nth-child(3n){width:205px}.medley-caption{font-size:22px;margin-bottom:40px}}
-@media(prefers-reduced-motion:reduce){.life-photo,.life-symbol,.lock-shackle,.claim-tick svg path{transition:none!important}}
-
-.medley-row{animation:medley-drift 100s linear infinite;animation-play-state:paused}
-.medley-row.reverse{animation-direction:reverse;animation-duration:115s}
+/* Worldwide homes continue directly beneath the flag-ring invitation. */
+.invitation{padding-bottom:0}
+.invitation>.community-medley{margin-top:52px;position:relative;z-index:1}
+.community-medley{height:280px;overflow:hidden;display:grid;grid-template-rows:1fr 1fr;gap:10px;mask-image:linear-gradient(90deg,transparent,#000 4%,#000 96%,transparent)}
+.medley-row{display:flex;gap:0;width:max-content;min-height:0;will-change:transform;backface-visibility:hidden;transform:translate3d(0,0,0);animation:medley-drift var(--medley-duration,100s) linear infinite;animation-play-state:paused}
+.medley-row.reverse{animation-direction:reverse}
+.medley-set{display:flex;flex:0 0 auto;gap:10px;min-height:0;padding-right:10px}
+.medley-set img{display:block;flex:0 0 220px;width:220px;max-width:none;height:135px;object-fit:cover;border-radius:5px}
+.medley-set img:nth-child(3n){flex-basis:280px;width:280px}
 .community-medley.is-moving .medley-row{animation-play-state:running}
-.community-medley:hover .medley-row{animation-play-state:paused}
-@keyframes medley-drift{from{transform:translateX(0)}to{transform:translateX(calc(-50% - 5px))}}
-.medley-caption{display:flex;justify-content:space-between;align-items:center;gap:20px}
-.medley-toggle{border:0;border-bottom:1px solid var(--line);padding:6px 0;background:transparent;color:var(--muted);font:inherit;font-size:11px;letter-spacing:0;white-space:nowrap}
+@keyframes medley-drift{from{transform:translate3d(0,0,0)}to{transform:translate3d(-50%,0,0)}}
+.medley-caption{display:flex;justify-content:space-between;align-items:center;gap:20px;font:400 27px/1.4 'Manrope',sans-serif;letter-spacing:-.04em;margin-top:22px;margin-bottom:0;padding-bottom:30px}
+.medley-toggle{border:0;border-bottom:1px solid #d3dbcc70;padding:6px 0;background:transparent;color:#d3dbcc;font:inherit;font-size:11px;letter-spacing:0;white-space:nowrap}
 .medley-toggle:focus-visible{outline:2px solid #f7931a;outline-offset:4px}
-@media(prefers-reduced-motion:reduce){.medley-row{animation:none!important}.medley-row.reverse{transform:translateX(-100px)}}
+.circle-art i:nth-of-type(5){transform:translate(-50%,-50%) rotate(240deg) translateY(calc(var(--ring-size) * -.38))}
+@media(max-width:760px){.life-art{height:125px;aspect-ratio:auto}.invitation>.community-medley{margin-top:36px}.community-medley{height:210px;gap:8px}.medley-set img{flex-basis:160px;width:160px;height:101px}.medley-set img:nth-child(3n){flex-basis:205px;width:205px}.medley-caption{font-size:22px;padding-bottom:24px}}
+@media(prefers-reduced-motion:reduce){.life-photo,.life-symbol,.lock-shackle,.claim-tick svg path{transition:none!important}.medley-row{animation:none!important;will-change:auto}.medley-row.reverse{transform:translate3d(-100px,0,0)}}

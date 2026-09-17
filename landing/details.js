@@ -44,9 +44,39 @@
 
   const medley = document.querySelector('.community-medley');
   const toggle = document.querySelector('.medley-toggle');
-  let medleyPaused = false, medleyVisible = false;
+  let medleyPaused = false, medleyVisible = false, medleyReady = false;
+  const rows = [...medley.querySelectorAll('.medley-row')];
+  const originals = rows.map(row => [...row.firstElementChild.children].map(image => image.cloneNode(true)));
+  let lastWidth = 0;
+  function sizeMedley() {
+    const width = medley.clientWidth;
+    if (!width || width === lastWidth) return;
+    lastWidth = width;
+    rows.forEach((row, index) => {
+      const first = row.firstElementChild;
+      first.replaceChildren(...originals[index].map(image => image.cloneNode(true)));
+      // One complete period must cover the viewport even at the wrap boundary.
+      while (first.getBoundingClientRect().width < width + 300) {
+        first.append(...originals[index].map(image => image.cloneNode(true)));
+      }
+      row.replaceChildren(first, first.cloneNode(true));
+      row.style.setProperty('--medley-duration', `${first.getBoundingClientRect().width / (index ? 16 : 18)}s`);
+    });
+  }
+  new ResizeObserver(sizeMedley).observe(medley);
+  async function prepareMedley() {
+    await Promise.all([...medley.querySelectorAll('img')].map(async image => {
+      image.loading = 'eager';
+      try { await image.decode(); } catch (_) { /* Keep the rest of the strip available. */ }
+    }));
+    sizeMedley(); medleyReady = true; syncMedley();
+  }
+  const prepareObserver = new IntersectionObserver(entries => {
+    if (entries[0].isIntersecting) { prepareObserver.disconnect(); void prepareMedley(); }
+  }, {rootMargin:'600px'});
+  prepareObserver.observe(medley);
   function syncMedley() {
-    medley.classList.toggle('is-moving', medleyVisible && !medleyPaused && !document.hidden && !reducedMotion.matches);
+    medley.classList.toggle('is-moving', medleyReady && medleyVisible && !medleyPaused && !document.hidden && !reducedMotion.matches);
     toggle.hidden = reducedMotion.matches;
     toggle.textContent = word(medleyPaused ? 'resumeImages' : 'pauseImages');
     toggle.setAttribute('aria-pressed', String(medleyPaused));
