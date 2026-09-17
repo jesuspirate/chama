@@ -13,7 +13,7 @@ export const canvas: Record<string, string> = {
   "canvas.circleOpen": "Open",
   "canvas.circleBadInvite": "That doesn't look like an invite link.",
   "canvas.circleBrowse": "See open circles",
-  "canvas.xbtTeaseDesc": "Bitcoin, settled your way — ecash, Lightning, on-chain.",
+  "canvas.xbtTeaseDesc": "A new market — only when it's truly ready.",
   "canvas.comingSoon": "Coming soon",
   "canvas.chamaWantDesc": "Start a Chama circle — equal shares, everyone completes or everyone is refunded.",
   "canvas.chamaWantBadge": "THE NAMESAKE",

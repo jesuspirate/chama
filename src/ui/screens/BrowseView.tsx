@@ -343,13 +343,15 @@ export function BrowseView({
           data-coach="fab-create"
           title={t("browse.createTrade")} aria-label={t("browse.createTrade")}
           style={{
-            width: 58, height: 58, borderRadius: "50%", flexShrink: 0,
+            // The canvas is the front door — the pencil earns front-door size
+            // (Jet, 2026-09-18).
+            width: 76, height: 76, borderRadius: "50%", flexShrink: 0,
             background: T.accent, border: "none", color: "#fff",
             cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
-            boxShadow: `0 8px 22px ${T.accent}66, 0 8px 20px rgba(0,0,0,0.5)`,
+            boxShadow: `0 10px 26px ${T.accent}66, 0 10px 24px rgba(0,0,0,0.5)`,
           }}
         >
-          <svg width="31" height="31" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2.1} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <svg width="41" height="41" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2.1} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4" />
             <path d="M13.5 6.5l4 4" />
           </svg>

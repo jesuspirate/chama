@@ -11,7 +11,7 @@ export const canvas: Record<string, string> = {
   "canvas.circleOpen": "Ouvrir",
   "canvas.circleBadInvite": "Cela ne ressemble pas à un lien d'invitation.",
   "canvas.circleBrowse": "Voir les cercles ouverts",
-  "canvas.xbtTeaseDesc": "Bitcoin, réglé à votre façon — ecash, Lightning, on-chain.",
+  "canvas.xbtTeaseDesc": "Un nouveau marché — seulement quand il sera vraiment prêt.",
   "canvas.comingSoon": "Bientôt",
   "canvas.chamaWantDesc": "Ouvrez un cercle Chama — parts égales, tout le monde termine ou tout le monde est remboursé.",
   "canvas.chamaWantBadge": "L'ÉPONYME",

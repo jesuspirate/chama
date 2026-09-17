@@ -945,17 +945,9 @@ export function AssistedCanvas({
       {/* The namesake gets a front door — but it is a FORK, not an answer to
           "what in return", so it sits apart: a full-width strip under the
           grid instead of an orphan card inside it (Jet, 2026-09-17). */}
-      {CHAMA_CIRCLES_ENABLED && onStartCircle && (
-        <button type="button" className="assisted-choice assisted-choice-wide" onClick={() => setSurface("circle")}>
-          <span className="assisted-glyph"><VerticalIcon vertical="chama" size={40} /></span>
-          <span className="assisted-wide-body">
-            <strong>{tr("canvas.chamaWant")}</strong>
-            <small>{tr("canvas.chamaWantDesc")}</small>
-          </span>
-          <em>{tr("canvas.chamaWantBadge")}</em>
-        </button>
-      )}
-      {/* Tease the road ahead: same Bitcoin mark as step 1, grayed, inert. */}
+      {/* Tease the road ahead: same Bitcoin mark as step 1, grayed, inert.
+          (The circle door moved to the top of Question 1 — the namesake
+          leads the whole canvas now.) */}
       <div className="assisted-choice assisted-choice-wide assisted-choice-soon" aria-disabled="true">
         <span className="assisted-glyph"><img src="/icons/bitcoin-mark-64.png" alt="" width={34} height={34} style={{ display: "block", filter: "grayscale(1)", opacity: .55 }} /></span>
         <span className="assisted-wide-body">
@@ -968,6 +960,20 @@ export function AssistedCanvas({
   }
 
   return <CanvasShell community={community} step={0} onExit={() => onBrowse("all")} onMoreOptions={onMoreOptions}>
+    {/* The namesake leads (Jet, 2026-09-18): circles are their own product,
+        so they sit ABOVE the trading question, split by a dotted seam —
+        one home, two doors. */}
+    {CHAMA_CIRCLES_ENABLED && onStartCircle && (
+      <button type="button" className="assisted-choice assisted-choice-wide" style={{ marginTop: 0 }} onClick={() => setSurface("circle")}>
+        <span className="assisted-glyph"><VerticalIcon vertical="chama" size={40} /></span>
+        <span className="assisted-wide-body">
+          <strong>{tr("canvas.chamaWant")}</strong>
+          <small>{tr("canvas.chamaWantDesc")}</small>
+        </span>
+        <em>{tr("canvas.chamaWantBadge")}</em>
+      </button>
+    )}
+    {CHAMA_CIRCLES_ENABLED && onStartCircle && <div className="assisted-seam" aria-hidden="true" />}
     <Kicker>{tr("canvas.oneThing")}</Kicker>
     <h1 style={headingStyle()}>{tr("canvas.whatHave")}</h1>
     <p style={subStyle()}>{tr("canvas.whatHaveSub")}</p>
@@ -1135,6 +1141,7 @@ export function canvasCss() { return `
   .assisted-choice-wide strong{margin-top:0;font-size:20px}
   .assisted-choice-wide small{margin-top:4px}
   .assisted-choice-wide em{margin-top:0;margin-left:auto;flex-shrink:0}
+  .assisted-seam{border-top:2px dotted ${T.borderHi};margin:clamp(18px,3vh,30px) 0 clamp(14px,2.5vh,24px)}
   .assisted-join-link{display:block;margin:10px 0 0 2px;background:none;border:0;padding:6px 0;color:${T.accent};font:600 14px ${T.sans};cursor:pointer;text-align:left}
   .assisted-join-link:hover{text-decoration:underline}
   .assisted-choice-soon{cursor:default;opacity:.62;margin-top:10px}

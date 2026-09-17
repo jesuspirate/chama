@@ -11,7 +11,7 @@ export const canvas: Record<string, string> = {
   "canvas.circleOpen": "Fungua",
   "canvas.circleBadInvite": "Hicho hakionekani kama kiungo cha mwaliko.",
   "canvas.circleBrowse": "Ona mizunguko iliyo wazi",
-  "canvas.xbtTeaseDesc": "Bitcoin, kwa njia yako — ecash, Lightning, on-chain.",
+  "canvas.xbtTeaseDesc": "Soko jipya — pale tu litakapokuwa tayari kweli.",
   "canvas.comingSoon": "Inakuja hivi karibuni",
   "canvas.chamaWantDesc": "Fungua duara la Chama — sehemu sawa, wote wanakamilisha au wote wanarejeshewa.",
   "canvas.chamaWantBadge": "JINA LENYEWE",
