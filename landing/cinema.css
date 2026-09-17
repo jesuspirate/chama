@@ -118,7 +118,7 @@
 }
 
 @media(max-width:760px) {
-.has-story .journey-chapter .mobile-scene{display:none}.mobile-coordination{display:block;position:relative;width:100%;height:370px;margin-top:24px}.mobile-coordination .journey-art{inset:0;width:100%;height:100%;max-height:none}.mobile-coordination .role{width:80px;height:80px}.mobile-coordination .role-portrait{width:70px;height:70px;border-width:3px}.mobile-coordination .person-name{top:73px;font-size:11px}.mobile-coordination .role small{top:90px;font-size:8px}.mobile-coordination .role-arbiter .role-portrait{width:60px;height:60px}.mobile-coordination .role-arbiter .person-name{top:62px}.mobile-coordination .role-arbiter small{top:77px}.mobile-coordination .coordinator{padding:7px}.mobile-coordination .coordinator img{width:30px;height:30px}.mobile-coordination .coordinator strong{font-size:16px}.mobile-coordination .coordinator small{display:none}.mobile-coordination .intent-card strong{font-size:12px}.mobile-coordination .intent-card small{font-size:8px}.mobile-coordination .intent-card{top:65%}.mobile-coordination .match-filters{gap:8px;font-size:8px;bottom:0}.mobile-coordination .agreement-note{font-size:9px;bottom:-9%;white-space:normal;width:90%;justify-content:center;text-align:center}.mobile-coordination .cash-transfer{padding:5px;gap:4px}.mobile-coordination .cash-transfer svg{width:25px;height:18px}.mobile-coordination .cash-transfer small{font-size:8px}.mobile-coordination .sats-transfer img{width:40px;height:40px}.mobile-coordination .escrow-vault{width:85px;height:65px}.mobile-coordination .escrow-vault span{font-size:8px}.mobile-coordination .agreement-pill{font-size:8px}.mobile-coordination .person-check{top:48px;right:0;width:21px;height:21px;font-size:11px}.mobile-coordination .received small{font-size:9px}.journey-chapter{padding-bottom:65px}.circle-emblem{width:70px;height:70px;margin-bottom:18px}
+.has-story .journey-chapter .mobile-scene{display:none}.mobile-coordination{display:block;position:relative;width:100%;height:370px;margin-top:24px}:is(.mobile-coordination,.journey-sticky) .journey-art{inset:0;width:100%;height:100%;max-height:none}:is(.mobile-coordination,.journey-sticky) .role{width:80px;height:80px}:is(.mobile-coordination,.journey-sticky) .role-portrait{width:70px;height:70px;border-width:3px}:is(.mobile-coordination,.journey-sticky) .person-name{top:73px;font-size:11px}:is(.mobile-coordination,.journey-sticky) .role small{top:90px;font-size:8px}:is(.mobile-coordination,.journey-sticky) .role-arbiter .role-portrait{width:60px;height:60px}:is(.mobile-coordination,.journey-sticky) .role-arbiter .person-name{top:62px}:is(.mobile-coordination,.journey-sticky) .role-arbiter small{top:77px}:is(.mobile-coordination,.journey-sticky) .coordinator{padding:7px}:is(.mobile-coordination,.journey-sticky) .coordinator img{width:30px;height:30px}:is(.mobile-coordination,.journey-sticky) .coordinator strong{font-size:16px}:is(.mobile-coordination,.journey-sticky) .coordinator small{display:none}:is(.mobile-coordination,.journey-sticky) .intent-card strong{font-size:12px}:is(.mobile-coordination,.journey-sticky) .intent-card small{font-size:8px}:is(.mobile-coordination,.journey-sticky) .intent-card{top:65%}:is(.mobile-coordination,.journey-sticky) .match-filters{gap:8px;font-size:8px;bottom:0}:is(.mobile-coordination,.journey-sticky) .agreement-note{font-size:9px;bottom:-9%;white-space:normal;width:90%;justify-content:center;text-align:center}:is(.mobile-coordination,.journey-sticky) .cash-transfer{padding:5px;gap:4px}:is(.mobile-coordination,.journey-sticky) .cash-transfer svg{width:25px;height:18px}:is(.mobile-coordination,.journey-sticky) .cash-transfer small{font-size:8px}:is(.mobile-coordination,.journey-sticky) .sats-transfer img{width:40px;height:40px}:is(.mobile-coordination,.journey-sticky) .escrow-vault{width:85px;height:65px}:is(.mobile-coordination,.journey-sticky) .escrow-vault span{font-size:8px}:is(.mobile-coordination,.journey-sticky) .agreement-pill{font-size:8px}:is(.mobile-coordination,.journey-sticky) .person-check{top:48px;right:0;width:21px;height:21px;font-size:11px}:is(.mobile-coordination,.journey-sticky) .received small{font-size:9px}.journey-chapter{padding-bottom:65px}.circle-emblem{width:70px;height:70px;margin-bottom:18px}
 }
 
 @media(max-width:760px){.chapter-copy{position:static}.journey-chapter{padding:55px 0 65px}}
@@ -231,7 +231,7 @@ html[data-theme=dark] .intent-card{background:#2a342a;border-color:#56634c}
 @keyframes claim-tap{from{opacity:1;transform:scale(.97)}to{opacity:0;transform:scale(1.12)}}
 .cinema-title{max-width:65%;bottom:17%}.cinema h1{font-size:clamp(64px,7.7vw,125px)}
 @media(max-width:1000px) and (min-width:761px){.claim-demo{right:4%;width:235px}.claim-device{padding:35px 18px 20px}.cinema-title{max-width:60%}.cinema h1{font-size:68px}}
-@media(max-width:760px){.intent-card{padding:11px 6px;border-radius:18px;top:65%}.mobile-coordination .intent-card strong{font-size:11px}.intent-card::before{top:-14px;width:8px;height:8px}.intent-card::after{top:-24px;width:4px;height:4px}.claim-demo{position:relative;right:auto;top:auto;transform:none;width:250px;margin:-25px auto 4px;z-index:2}.claim-device{min-height:0;padding:28px 22px 22px}.claim-preview{margin:15px 0}.claim-symbol{height:88px}.claim-symbol img{height:88px;width:88px}.claim-status{font-size:21px}.cinema-title{max-width:none;bottom:auto}.cinema h1{font-size:clamp(60px,12vw,92px)}}
+@media(max-width:760px){.intent-card{padding:11px 6px;border-radius:18px;top:65%}:is(.mobile-coordination,.journey-sticky) .intent-card strong{font-size:11px}.intent-card::before{top:-14px;width:8px;height:8px}.intent-card::after{top:-24px;width:4px;height:4px}.claim-demo{position:relative;right:auto;top:auto;transform:none;width:250px;margin:-25px auto 4px;z-index:2}.claim-device{min-height:0;padding:28px 22px 22px}.claim-preview{margin:15px 0}.claim-symbol{height:88px}.claim-symbol img{height:88px;width:88px}.claim-status{font-size:21px}.cinema-title{max-width:none;bottom:auto}.cinema h1{font-size:clamp(60px,12vw,92px)}}
 @media(prefers-reduced-motion:reduce){.claim-symbol img,.claim-tick{transition:none}.claim-action::after{animation:none!important}}
 
 /* Two moments: the human circle opens; the digital claim closes the story. */
@@ -239,3 +239,49 @@ html[data-theme=dark] .intent-card{background:#2a342a;border-color:#56634c}
 .circle-finale .claim-demo{right:max(6%,24px)}
 @media(min-width:761px){.circle-finale-copy{padding-right:365px}.circle-finale-copy>h2{font-size:clamp(64px,6.7vw,108px)}.circle-finale-copy>.eyebrow{max-width:400px}.cinema-title{max-width:80%}}
 @media(max-width:760px){.circle-finale .claim-demo{right:auto;margin:36px auto 0}.circle-finale .claim-status{font-size:21px}}
+
+/* Mobile carries the same continuous story, with a shared pinned stage. */
+.theme-toggle{padding:0;line-height:1;appearance:none;-webkit-appearance:none}
+.theme-toggle svg{display:block;width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+@media(max-width:760px){
+  :root{--nav-height:70px}
+  .nav{height:var(--nav-height);padding:0 16px;gap:8px;align-items:center}
+  .nav .brand{font-size:24px;letter-spacing:-1.3px;gap:6px;flex-shrink:0}
+  .nav .brand img{width:28px;height:28px}
+  .nav .brand-dot{display:block;font-size:8px;margin-left:-3px;margin-bottom:4px}
+  .nav-actions{gap:8px;align-items:center}.nav .theme-toggle{width:34px;height:34px}
+  .nav .languages button{padding:10px 3px;font-size:9px}.nav .nav-enter{padding:11px 12px;font-size:10px;white-space:nowrap}
+}
+@media(max-width:380px){.nav{padding-inline:10px}.nav .brand{font-size:21px}.nav .brand img{width:25px;height:25px}.nav-actions{gap:5px}.nav .nav-enter{padding:10px 8px}.nav .theme-toggle{width:30px;height:30px}}
+@media(max-width:760px) and (prefers-reduced-motion:no-preference){
+  .cinema{height:125svh}
+  .cinema-sticky{position:sticky;top:var(--nav-height);height:calc(100svh - var(--nav-height));min-height:480px}
+  .cinema-screen{display:block;height:100%;overflow:hidden;isolation:isolate}
+  .cinema-poster,.cinema .hero-video{position:absolute;inset:0;width:100%;height:100%;aspect-ratio:auto;object-fit:cover;object-position:52% center}
+  .cinema-shade{display:block;background:linear-gradient(180deg,#07150e10 35%,#07150ea6 85%)}
+  .cinema-title{position:absolute;left:22px;right:22px;bottom:170px;padding:0;color:#fff8e9;max-width:none;opacity:1!important;transition:opacity .5s}
+  .cinema h1{font-size:clamp(48px,13vw,78px)}.cinema h1 em{color:#f3c28c!important}
+  .cinema-title .eyebrow{font-size:8px;margin-bottom:16px}
+  .film-running .cinema-title{opacity:0!important}
+  .film-beat{display:block;bottom:180px;font-size:25px;line-height:1.25}
+  .cinema-bottom{position:absolute;bottom:64px;left:20px;right:20px;padding:0;min-height:60px;color:#fff8e9}
+  .cinema .motion-toggle{background:#10231ed9;color:#fff8e9}
+  .scroll-invitation{position:absolute;bottom:10px;left:0;right:0;padding:10px;min-height:44px;color:#fff8e9}
+  .scroll-stem{border-color:#fff8e970}.film-progress{display:block;bottom:0}
+  .has-story .journey-sticky{display:block;top:var(--nav-height);height:calc(100svh - var(--nav-height));min-height:0;margin-bottom:calc(-100svh + var(--nav-height));overflow:hidden}
+  .journey-sticky .journey-art{left:5%;right:auto;top:225px;width:90%;height:calc(100% - 265px);max-height:490px;min-height:290px}
+  .has-story .mobile-coordination{display:none}
+  .journey-nav{height:44px;margin-bottom:-44px;top:var(--nav-height)}
+  .journey-nav a{padding-block:10px}
+  .has-story .journey-chapter{min-height:155svh;padding:62px 0 calc(100svh - 245px)}
+  .has-story .chapter-copy{position:sticky;top:calc(var(--nav-height) + 58px);width:100%;max-width:none}
+  .chapter-number{margin:0 0 8px;font-size:9px}.chapter-copy h3{font-size:29px;line-height:1.08;margin:0 0 9px}
+  .chapter-copy>p:not(.chapter-number){font-size:12px;line-height:1.45;margin:0;max-width:340px}
+  .chapter-copy .chapter-caption{display:none}
+  .journey-sticky .agreement-note{bottom:-6%;font-size:9px}
+  .journey-sticky .intent-card{padding:8px 5px}.journey-sticky .intent-card strong{font-size:11px}
+  .circle-reveal{clip-path:circle(var(--circle-aperture,100%) at 68% 50%)!important}.circle-reveal>img{transform:scale(var(--circle-scale,1))!important}
+}
+@media(max-width:760px) and (max-height:700px) and (prefers-reduced-motion:no-preference){
+ .journey-sticky .journey-art{top:205px;height:calc(100% - 235px);min-height:270px}.chapter-copy h3{font-size:25px}.chapter-copy>p:not(.chapter-number){font-size:11px}
+}

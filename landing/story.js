@@ -32,7 +32,7 @@ let finished = false;
 let userPaused = false;
 let inView = false;
 let explicitPlay = false;
-const autoAllowed = () => !mobile.matches && !reducedMotion.matches && !connection?.saveData;
+const autoAllowed = () => !reducedMotion.matches && !connection?.saveData;
 function filmLabels() {
   motionButton.textContent = word(finished ? 'replayFilm' : video.paused ? (started ? 'resumeFilm' : 'playFilm') : 'pauseFilm');
   beat.textContent = word(video.currentTime < 1.7 ? 'beatGive' : video.currentTime < 3.6 ? 'beatReceive' : 'beatContinue');
@@ -126,8 +126,8 @@ function updateStory() {
     if (d < distance) { closest = i; distance = d; }
   });
   if (closest !== active) setPhase(closest);
-  const agree = reducedMotion.matches ? Number(active >= 1) : clamp((h * .85 - rects[1].top) / (h * .55));
-  const trade = reducedMotion.matches ? Number(active === 2) : clamp((h * .3 - rects[2].top) / (h * .75));
+  const agree = reducedMotion.matches ? Number(active >= 1) : clamp((h * (mobile.matches ? .6 : .85) - rects[1].top) / (h * (mobile.matches ? .7 : .55)));
+  const trade = reducedMotion.matches ? Number(active === 2) : clamp((h * (mobile.matches ? .5 : .3) - rects[2].top) / (h * (mobile.matches ? 1 : .75)));
   const meet = clamp((h * .9 - rects[0].top) / (h * .6));
   drawCoordination(mainArt, meet, agree, trade);
   mobileArt.forEach((art, i) => drawCoordination(art, 1, Number(i >= 1), Number(i === 2)));
@@ -187,7 +187,7 @@ function syncThemeButton(){
   const button=document.querySelector('.theme-toggle');
   button.setAttribute('aria-label',(labels[document.documentElement.lang]||labels.en)[Number(dark)]);
   button.setAttribute('aria-pressed',String(dark));
-  button.textContent=dark?'☀':'◐';
+  button.innerHTML=dark ? '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"/></svg>' : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 15.5A8.5 8.5 0 0 1 8.5 4 8.5 8.5 0 1 0 20 15.5Z"/></svg>';
   document.querySelector('meta[name="theme-color"]').content=dark?'#11100e':'#f3f0e7';
 }
 document.querySelector('.theme-toggle').addEventListener('click',()=>{

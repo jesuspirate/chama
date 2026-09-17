@@ -57,3 +57,9 @@ The approved six-second single-coin film returns as the hero. A tracked screen r
 ### Phone stability correction
 
 v7 replaces v6's independently tracked screen with one rigid first-frame phone plate. The logo, screen and hardware move together on a smooth translation path, eliminating frame-to-frame corner jitter and relative artwork movement. Both narrative moments and the continuing-contribution message remain unchanged.
+
+## Mobile scroll experience correction
+
+The earlier phone layout replaced the pinned trade sequence with three static diagrams and disabled automatic film playback. Mobile now retains one pinned diagram across Meet, Agree and Trade, with scroll-driven matching, arbiter entrance, funding, payment, confirmations and release. A full-height inline film leads into that sequence. Muted playback is attempted on mobile when motion/data preferences allow; the existing play button remains available when a browser blocks autoplay. Reduced-motion visitors retain the readable static chapters and manual playback.
+
+Theme controls now use fixed SVG sun/moon icons instead of platform-dependent Unicode emoji. Mobile header spacing, the orange brand dot, and monochrome external arrows are consistent in both themes. Mobile review at 390×844 verified live phase progression, both themes, settlement completion, no horizontal overflow and no console errors. The local Wi-Fi preview is refreshed; Sites publication remains intentionally paused following the user's local-only choice.
