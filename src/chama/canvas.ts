@@ -10,11 +10,12 @@ export function circleCanvasRound(input: {
 }): CircleRound {
   const duration = input.durationSec ?? DEFAULT_ROUND_SEC;
   // Day-scale rounds keep the day-quantized 40% fill window; sub-day rounds
-  // (sim-mode test drives — a week in five minutes) take 40% unquantized
-  // with a one-minute floor so the window is never empty.
+  // (sim-mode test drives) take HALF the round, floored at a minute — five
+  // REAL minutes to gather browser tabs on a ten-minute drive (Jet,
+  // 2026-09-18: 40% of five minutes was two, and two is not enough).
   const fillWindow = duration >= 86_400
     ? Math.round(duration * .4 / 86_400) * 86_400
-    : Math.max(60, Math.round(duration * .4));
+    : Math.max(60, Math.round(duration * .5));
   return { version: 1, circleId: "", creatorPubkey: input.creatorPubkey,
     community: input.community, mintUrl: input.mintUrl, name: input.name,
     ...(input.unlisted ? { unlisted: true } : {}),

@@ -79,9 +79,9 @@ console.log("Rotation v2 core: all assertions passed.");
 // Canvas: sub-day test-drive rounds get a real (unquantized) fill window.
 import { circleCanvasRound } from "./canvas.js";
 import { validateCircleRound } from "./circle.js";
-const testDrive = circleCanvasRound({ shareSats: 1000, threshold: 2, cap: 3, durationSec: 300,
+const testDrive = circleCanvasRound({ shareSats: 1000, threshold: 2, cap: 3, durationSec: 600,
   createdAt: T, creatorPubkey: HOST, community: "", mintUrl: "fed1sim", name: "Test drive" });
-assert.equal(testDrive.fillDeadlineSec, T + 120, "40% of five minutes, unquantized");
-assert.equal(testDrive.roundEndSec, T + 300);
+assert.equal(testDrive.fillDeadlineSec, T + 300, "half the drive is tab-gathering time");
+assert.equal(testDrive.roundEndSec, T + 600);
 assert.equal(validateCircleRound(testDrive).length, 0, "a five-minute circle is structurally lawful");
 console.log("Sim canvas assertions passed.");

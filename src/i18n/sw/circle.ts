@@ -78,7 +78,7 @@ export const circle: Record<string, string> = {
   "circle.full": "Duara hili halina nafasi wazi.",
   "circle.hostLocksLast": "Mwenyeji hufunga mwisho — fungu lako hufunguka mara mwanachama afungapo lake.",
   "circle.members": "Waliomo",
-  "circle.testDrive": "Dakika 5 · jaribio",
+  "circle.testDrive": "Dakika 10 · jaribio",
   "circle.roundOf": "Mzunguko {n} kati ya {total}",
   "circle.payday": "Siku ya malipo ya {name}",
   "circle.yourPayday": "Siku yako ya malipo!",
