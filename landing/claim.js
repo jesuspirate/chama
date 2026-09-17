@@ -4,12 +4,12 @@
   const action = demo.querySelector('.claim-action');
   let elapsed = 0, running = false, frame = 0, last = 0, visible = false, explicit = false;
   function labels() {
-    const state = elapsed >= 3 ? 'received' : elapsed >= 1.8 ? 'claiming' : 'ready';
+    const state = elapsed >= 3 ? 'locked' : elapsed >= 1.8 ? 'locking' : 'ready';
     demo.dataset.state = state;
-    demo.querySelector('.claim-status').textContent = word(state === 'received' ? 'claimReceived' : state === 'claiming' ? 'claimPending' : 'claimReady');
-    demo.querySelector('.claim-detail').textContent = word(state === 'received' ? 'claimDone' : 'claimUnlocked');
-    action.textContent = word(state === 'received' ? 'replayFilm' : state === 'claiming' ? 'claimPending' : 'claimCollect');
-    action.disabled = state === 'claiming';
+    demo.querySelector('.claim-status').textContent = word(state === 'locked' ? 'claimReceived' : state === 'locking' ? 'claimPending' : 'claimReady');
+    demo.querySelector('.claim-detail').textContent = word(state === 'locked' ? 'claimDone' : 'claimUnlocked');
+    action.textContent = word(state === 'locked' ? 'replayFilm' : state === 'locking' ? 'claimPending' : 'claimCollect');
+    action.disabled = state === 'locking';
   }
   function pause() { running = false; cancelAnimationFrame(frame); }
   function tick(now) {
