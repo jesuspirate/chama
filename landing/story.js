@@ -4,6 +4,10 @@ const cinema = document.querySelector('.cinema');
 const screen = document.querySelector('.cinema-screen');
 const poster = document.querySelector('.cinema-poster');
 const video = document.querySelector('.hero-video');
+const filmStill = document.createElement('canvas');
+filmStill.className = 'cinema-still';
+filmStill.setAttribute('aria-hidden', 'true');
+video.after(filmStill);
 const motionButton = document.querySelector('.motion-toggle');
 const beat = document.querySelector('.film-beat');
 const journey = document.querySelector('.journey');
@@ -33,13 +37,31 @@ let userPaused = false;
 let inView = false;
 let explicitPlay = false;
 const autoAllowed = () => !reducedMotion.matches && !connection?.saveData;
+let progressFrame = 0;
+function paintFilmProgress() {
+  screen.style.setProperty('--film-fraction', finished ? 1 : video.duration ? clamp(video.currentTime / video.duration) : 0);
+}
+function animateFilmProgress() {
+  cancelAnimationFrame(progressFrame);
+  paintFilmProgress();
+  progressFrame = !video.paused && !video.ended && !document.hidden ? requestAnimationFrame(animateFilmProgress) : 0;
+}
+function holdFinalFrame() {
+  // Preserve the exact decoded frame and crop, without a moving video layer.
+  filmStill.width = video.videoWidth;
+  filmStill.height = video.videoHeight;
+  const context = filmStill.getContext('2d');
+  if (!context || !filmStill.width) return;
+  context.drawImage(video, 0, 0);
+  screen.classList.add('film-still');
+}
 function filmLabels() {
   motionButton.textContent = word(finished ? 'replayFilm' : video.paused ? (started ? 'resumeFilm' : 'playFilm') : 'pauseFilm');
-  beat.textContent = word(video.currentTime < 1.7 ? 'beatGive' : video.currentTime < 3.6 ? 'beatReceive' : 'beatContinue');
+  beat.textContent = word(video.currentTime < 2 ? 'beatGive' : video.currentTime < 4 ? 'beatReceive' : 'beatContinue');
   screen.classList.toggle('film-running', !video.paused && video.currentTime > .35);
   screen.classList.toggle('film-complete', finished);
-  document.querySelector('.film-context').textContent = word(finished ? 'beatContinue' : 'filmContext');
-  screen.style.setProperty('--film-percent', `${video.duration ? 100 * video.currentTime / video.duration : 0}%`);
+  document.querySelector('.film-context').textContent = word(finished ? 'filmReminder' : 'filmContext');
+  paintFilmProgress();
 }
 function setPhase(index) {
   active = index;
@@ -79,7 +101,7 @@ function syncFilm() {
 motionButton.addEventListener('click', () => {
   if (!video.paused) { userPaused = true; video.pause(); }
   else {
-    if (finished) { video.currentTime = 0; finished = false; }
+    if (finished) { video.currentTime = 0; finished = false; screen.classList.remove('film-still'); }
     userPaused = false;
     explicitPlay = true;
     void playFilm();
@@ -89,11 +111,13 @@ video.addEventListener('playing', () => {
   if (!inView || document.hidden || userPaused) { video.pause(); return; }
   started = true;
   video.classList.add('is-playing');
+  animateFilmProgress();
   filmLabels();
 });
-video.addEventListener('pause', filmLabels);
+video.addEventListener('pause', () => { animateFilmProgress(); filmLabels(); });
+video.addEventListener('seeking', paintFilmProgress);
 video.addEventListener('timeupdate', filmLabels);
-video.addEventListener('ended', () => { finished = true; filmLabels(); });
+video.addEventListener('ended', () => { finished = true; holdFinalFrame(); animateFilmProgress(); filmLabels(); });
 video.addEventListener('error', () => {
   video.classList.remove('is-playing');
   screen.classList.remove('film-running');
@@ -110,6 +134,22 @@ document.addEventListener('visibilitychange', syncFilm);
 
 let scheduled = false;
 const coordinationFrames = new WeakMap();
+let exitFrame = 0, exitTarget = 0, exitPosition = 0, exitTime = 0;
+function paintHeroExit(time) {
+  const dt = Math.min(50, time - (exitTime || time - 16.67));
+  exitTime = time;
+  exitPosition += (exitTarget - exitPosition) * (1 - Math.exp(-dt / 65));
+  if (Math.abs(exitTarget - exitPosition) < .0001) exitPosition = exitTarget;
+  cinema.style.setProperty('--cinema-scale', 1 - exitPosition * 60 / innerWidth);
+  cinema.style.setProperty('--cinema-radius', `${exitPosition * 18}px`);
+  exitFrame = exitPosition !== exitTarget ? requestAnimationFrame(paintHeroExit) : 0;
+  if (!exitFrame) exitTime = 0;
+}
+function setHeroExit(value) {
+  exitTarget = value;
+  if (reducedMotion.matches || mobile.matches) exitPosition = value;
+  if (!exitFrame) exitFrame = requestAnimationFrame(paintHeroExit);
+}
 function sizeFilm() {
   // Geometry only changes on resize/load, never during scrolling.
   if (!mobile.matches || !reducedMotion.matches) return;
@@ -123,8 +163,7 @@ function updateStory() {
   document.querySelector('.nav').classList.toggle('past-cinema', heroRect.bottom < 100);
   const exit = reducedMotion.matches || mobile.matches ? 0 : clamp(-heroRect.top / (h * .45));
   // Scale the composited surface; do not resize and recrop a playing video.
-  cinema.style.setProperty('--cinema-scale', (1 - exit * 60 / innerWidth).toFixed(5));
-  cinema.style.setProperty('--cinema-radius', `${exit * 18}px`);
+  setHeroExit(exit);
   let closest = 0, distance = Infinity;
   const rects = chapters.map(chapter => chapter.getBoundingClientRect());
   rects.forEach((rect, i) => {

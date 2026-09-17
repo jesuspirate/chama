@@ -30,10 +30,10 @@
 .scroll-invitation { position: absolute; bottom: 28px; left: 50%; transform: translateX(-50%); color: #fff8e9; display: flex; align-items: center; gap: 20px; font-size: 11px; padding: 12px; opacity: .7; transition: opacity .6s; }
 .scroll-invitation:hover,.film-complete .scroll-invitation { opacity: 1; }
 .scroll-stem { height: 28px; width: 28px; display: grid; place-items: center; border: 1px solid #fff8e960; border-radius: 50%; }
-.film-complete .scroll-stem { animation: scroll-nudge 1.8s ease-in-out 3; }
-@keyframes scroll-nudge { 50% { transform: translateY(5px); } }
+.film-complete .scroll-stem { animation: scroll-nudge 1.5s ease-in-out infinite; }
+@keyframes scroll-nudge { 0%, 100% { transform: translateY(-3px); } 50% { transform: translateY(9px); } }
 .film-progress { position: absolute; height: 2px; bottom: 8px; left: max(12px,var(--cinema-radius,0px)); right: max(12px,var(--cinema-radius,0px)); border-radius: 2px; overflow: hidden; background: #ffffff20; }
-.film-progress span { display: block; width: var(--film-percent,0%); height: 100%; background: #f6ad54; }
+.film-progress span { display: block; width: 100%; height: 100%; background: #f6ad54; transform: scaleX(var(--film-fraction,0)); transform-origin: left; will-change: transform; }
 .story-bridge { min-height: 78svh; padding-block: 120px; display: flex; flex-direction: column; justify-content: center; text-align: center; align-items: center; }
 .story-bridge h2 { font-size: clamp(64px,8vw,120px); line-height: 1.06; }
 .story-bridge h2 em { color: #94522d; }
@@ -291,3 +291,12 @@ html[data-theme=dark] .intent-card{background:#2a342a;border-color:#56634c}
 .cinema-screen{transform:scale(var(--cinema-scale,1));transform-origin:50% 50%;will-change:transform;backface-visibility:hidden}
 .cinema .hero-video{backface-visibility:hidden;transform:translateZ(0)}
 @media(max-width:760px),(prefers-reduced-motion:reduce){.cinema-screen{transform:none;will-change:auto}}
+
+/* The completed film scrolls as one still surface, with identical cropping. */
+.cinema-still{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center;display:none;border-radius:inherit}
+.film-still .cinema-still{display:block}
+.cinema .film-still .hero-video{visibility:hidden;transition:none}
+@media(max-width:760px){.cinema-still{object-position:52% center}}
+@media(prefers-reduced-motion:reduce){.film-complete .scroll-stem{animation:none}}
+
+@media(max-width:760px) and (prefers-reduced-motion:reduce){.cinema-still{inset:var(--mobile-video-top,0px) 0 auto;height:var(--mobile-video-height,250px);object-position:center}}
