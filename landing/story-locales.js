@@ -1,13 +1,14 @@
 // Static translations; English page copy is read from semantic HTML.
 const copy = {
   "en": {
+    "buyerName": "Daneka", "sellerName": "Daniel", "arbiterName": "Grace",
     "pauseImages": "Pause images",
     "resumeImages": "Resume images",
     "homeMedley": "Everyone has a home.",
     "showFeatureIcon": "Show feature icon",
     "showFeaturePhoto": "Show feature photo",
     "playFilm": "Play the moment",
-    "pauseFilm": "Pause",
+    "pauseFilm": "Pause video",
     "resumeFilm": "Continue",
     "replayFilm": "Replay the moment",
     "statusMeet": "A match that fits both people.",
@@ -45,7 +46,7 @@ const copy = {
     "statusPay": "The buyer sends local money.",
     "statusConfirm": "Payment received. Both confirm.",
     "statusRelease": "Sats are released to the buyer.",
-    "claimPreview": "ILLUSTRATED LOCK",
+    "claimPreview": "ACTUAL APP · SIMULATED SATS",
     "claimReady": "Your turn to lock",
     "claimUnlocked": "Same share. Shared commitment.",
     "claimCollect": "Lock your sats",
@@ -55,6 +56,7 @@ const copy = {
     "filmContext": "A vision of rotating savings · coming next"
   },
   "es": {
+    "buyerName": "Daniela", "sellerName": "Diego", "arbiterName": "Graciela",
     "pauseImages": "Pausar imágenes",
     "resumeImages": "Reanudar imágenes",
     "homeMedley": "Todos tienen un hogar.",
@@ -123,7 +125,7 @@ const copy = {
     "findUs": "Encuéntranos en público",
     "filmContext": "Una visión del ahorro rotativo · próximamente",
     "playFilm": "Ver el momento",
-    "pauseFilm": "Pausar",
+    "pauseFilm": "Pausar vídeo",
     "resumeFilm": "Continuar",
     "replayFilm": "Repetir el momento",
     "seeHow": "Descubre qué lo hace posible",
@@ -162,7 +164,7 @@ const copy = {
     "statusPay": "El comprador envía dinero local.",
     "statusConfirm": "Pago recibido. Ambos confirman.",
     "statusRelease": "Los sats se liberan al comprador.",
-    "claimPreview": "BLOQUEO ILUSTRADO",
+    "claimPreview": "APP REAL · SATS SIMULADOS",
     "claimReady": "Tu turno de bloquear",
     "claimUnlocked": "La misma parte. Un compromiso común.",
     "claimCollect": "Bloquear tus sats",
@@ -171,6 +173,7 @@ const copy = {
     "claimDone": "Tu parte está comprometida."
   },
   "fr": {
+    "buyerName": "Danika", "sellerName": "G🏄", "arbiterName": "Grâce",
     "pauseImages": "Mettre en pause",
     "resumeImages": "Reprendre les images",
     "homeMedley": "Tout le monde a un foyer.",
@@ -239,7 +242,7 @@ const copy = {
     "findUs": "Retrouvez-nous en public",
     "filmContext": "Une vision de l’épargne tournante · à venir",
     "playFilm": "Voir le moment",
-    "pauseFilm": "Pause",
+    "pauseFilm": "Mettre en pause",
     "resumeFilm": "Continuer",
     "replayFilm": "Revoir le moment",
     "seeHow": "Découvrez ce qui rend cela possible",
@@ -278,7 +281,7 @@ const copy = {
     "statusPay": "L’acheteur envoie la monnaie locale.",
     "statusConfirm": "Paiement reçu. Les deux confirment.",
     "statusRelease": "Les sats sont libérés à l’acheteur.",
-    "claimPreview": "BLOCAGE ILLUSTRÉ",
+    "claimPreview": "VRAIE APP · SATS SIMULÉS",
     "claimReady": "À vous de bloquer",
     "claimUnlocked": "Même part. Engagement commun.",
     "claimCollect": "Bloquer vos sats",

@@ -42,7 +42,7 @@
 .bridge-next::after { content: '↓'; }
 .journey { position:relative;background:var(--journey-bg,#ececdf); }
 .journey-sticky { position:sticky;top:0;height:100svh;min-height:620px;margin-bottom:-100svh;overflow:hidden;pointer-events:none; }
-.journey-art { position:absolute;right:2%;top:15%;width:58%;height:78%;max-height:720px;--meet-opacity:1;--agree-opacity:0;--arbiter-opacity:0;--cash-opacity:0;--coin-opacity:0;--vault-opacity:0;--received-opacity:0;--buyer-confirm:0;--seller-confirm:0; }
+.journey-art { position:absolute;right:2%;top:15%;width:58%;height:78%;max-height:720px;--meet-opacity:1;--agree-opacity:0;--arbiter-opacity:0;--cash-opacity:0;--coin-opacity:0;--vault-opacity:0;--buyer-received:0;--seller-received:0; }
 .coord-orbit { position:absolute;width:88%;aspect-ratio:1;border:1px solid #7d8e712b;border-radius:50%;left:6%;top:0; }
 .coord-lines { position:absolute;inset:0;width:100%;height:100%;overflow:visible; }
 .match-line { stroke:#859b76;stroke-width:1.4;stroke-dasharray:1;stroke-dashoffset:var(--match-offset,0); }
@@ -57,7 +57,7 @@
 .portrait-buyer { background-position:8% 27%; }.portrait-seller { background-position:94% 28%; }.portrait-arbiter { background-position:65% 23%; }
 .role-arbiter .role-portrait { width:96px;height:96px; }.role-arbiter .person-name { top:100px; }.role-arbiter small { top:120px; }
 .person-check { position:absolute;right:7px;top:79px;width:27px;height:27px;background:#456644;color:#fff8e9;border:3px solid #ececdf;border-radius:50%;font-size:14px;display:grid;place-items:center; }
-.buyer-check { opacity:var(--buyer-confirm); }.seller-check { opacity:var(--seller-confirm); }
+.buyer-check { opacity:var(--buyer-received); }.seller-check { opacity:var(--seller-received); }
 .coordinator { position:absolute;left:50%;top:44.16%;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;padding:12px 10px;background:var(--journey-bg,#ececdf);border-radius:50%; }
 .coordinator img { width:45px;height:45px; }.coordinator strong { font-size:20px;letter-spacing:-.06em;line-height:1.3; }.coordinator small { font-size:9px;white-space:nowrap;color:#6c7863; }
 .intent-card { position:absolute;top:65%;width:32%;text-align:center;display:flex;flex-direction:column;gap:3px;opacity:var(--meet-opacity); }
@@ -65,11 +65,11 @@
 .match-filters { position:absolute;left:50%;bottom:4%;transform:translateX(-50%);display:flex;gap:14px;white-space:nowrap;opacity:var(--meet-opacity);font-size:10px;color:#54734b; }
 .agreement-pill { position:absolute;left:50%;top:62%;transform:translate(-50%,-50%);display:flex;gap:8px;color:#5e7453;font-size:11px;white-space:nowrap;opacity:var(--agree-opacity); }
 .cash-transfer { position:absolute;left:var(--cash-x,17.5%);top:60.83%;transform:translate(-50%,-50%);opacity:var(--cash-opacity);background:#e7eddf;border:1px solid #859b76;border-radius:9px;padding:7px 10px;display:flex;align-items:center;gap:8px; }
-.cash-transfer svg { width:36px;height:26px;stroke:#456044;stroke-width:1.5; }.cash-transfer small { white-space:nowrap;font-size:10px;color:#456044; }
+.cash-transfer svg { width:36px;height:26px;--cash-ink:#13120f;--cash-paper:#eee8dc;stroke:none; }.cash-transfer small { white-space:nowrap;font-size:10px;color:#456044; }
 .escrow-vault { position:absolute;left:50%;top:77.5%;transform:translate(-50%,-50%);height:94px;width:120px;display:flex;flex-direction:column;align-items:center;justify-content:center;border:1px solid #b3b89f;border-radius:14px;background:#eeeede;opacity:var(--vault-opacity); }
-.escrow-vault svg { width:32px;height:32px;stroke:#7c805d;stroke-width:2; }.escrow-vault span { font-size:10px;color:#697553; }.sats-transfer { position:absolute;left:var(--coin-x,82.5%);top:77.5%;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;opacity:var(--coin-opacity); }
+.escrow-vault svg { position:absolute;right:6px;top:4px;width:18px;height:18px;stroke:#7c805d;stroke-width:2; }.escrow-vault span { position:absolute;bottom:5px;font-size:10px;color:#697553; }.sats-transfer { position:absolute;left:var(--coin-x,82.5%);top:77.5%;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;opacity:var(--coin-opacity); }
 .sats-transfer img { width:52px;height:52px;object-fit:contain; }.sats-transfer small { font-size:10px;color:#8f632e; }
-.received { position:absolute;top:73%;width:32%;text-align:center;display:flex;flex-direction:column;align-items:center;gap:8px;opacity:var(--received-opacity); }.received-buyer { left:1.5%; }.received-seller { right:1.5%; }.received>span { width:30px;height:30px;border-radius:50%;background:#557148;color:#fff;display:grid;place-items:center; }.received small { font-size:12px;color:#435d39; }
+.received { position:absolute;top:73%;width:32%;text-align:center;display:flex;flex-direction:column;align-items:center;gap:8px; }.received-buyer { left:1.5%;opacity:var(--buyer-received); }.received-seller { right:1.5%;opacity:var(--seller-received); }.received>span { width:30px;height:30px;border-radius:50%;background:#557148;color:#fff;display:grid;place-items:center; }.received small { font-size:12px;color:#435d39; }
 .agreement-note { position:absolute;bottom:-4%;left:50%;transform:translateX(-50%);display:flex;gap:8px;align-items:center;font-size:11px;white-space:nowrap;color:#5c7053; }
 .note-dot { width:5px;height:5px;background:#a26c38;border-radius:50%; }
 .journey-nav { position:sticky;top:100px;z-index:5;display:flex;gap:28px;margin-left:var(--pad);height:40px;margin-bottom:-40px;width:fit-content; }
@@ -184,7 +184,7 @@ html[data-theme=dark] :is(.match-filters,.agreement-pill,.agreement-note,.receiv
 html[data-theme=dark] .journey-nav a{color:#abb8a0}
 html[data-theme=dark] .journey-nav [aria-current]{color:#f4f0e8}
 html[data-theme=dark] .cash-transfer{background:#2e3b2a}
-html[data-theme=dark] .cash-transfer svg{stroke:#c3d6b6}
+html[data-theme=dark] .cash-transfer svg{--cash-ink:#eee3d0;--cash-paper:#14110d}
 html[data-theme=dark] .cash-transfer small{color:#c3d6b6}
 html[data-theme=dark] .escrow-vault{background:#272b22;border-color:#687159}
 html[data-theme=dark] .escrow-vault svg{stroke:#c1caab}
@@ -312,15 +312,15 @@ html[data-theme=dark] .intent-card{background:#2a342a;border-color:#56634c}
 .cinema-title s{text-decoration-thickness:1px;text-decoration-color:currentColor}
 /* Original symbols return inside the same photo bounds. */
 .life-art{position:relative;display:block;width:100%;aspect-ratio:1.35;border:0;padding:0;border-radius:3px;background:#e3e8dc;overflow:hidden;color:#254434}
-.life-photo,.life-symbol{position:absolute;inset:0;display:grid;place-items:center;transition:opacity .22s ease,transform .35s ease}
+.life-photo,.life-symbol{position:absolute;inset:0;display:grid;place-items:center;transition:opacity .22s ease}
 .life-grid .life-photo img{width:100%;height:100%;aspect-ratio:auto;object-fit:cover}
-.life-symbol{opacity:0;transform:scale(.94)}
+.life-photo{opacity:0}.life-symbol{opacity:1;transform:none}
 .life-grid .life-symbol img,.life-symbol svg{width:68%;height:78%;aspect-ratio:auto;object-fit:contain;filter:none}
 .life-symbol svg{fill:none;stroke:currentColor;stroke-width:2.7;stroke-linecap:round;stroke-linejoin:round}
 .life-symbol .mass{fill:currentColor;stroke:none}.life-symbol .bitcoin-stamp-ring{fill:#f7931a;stroke:#e3e8dc;stroke-width:7}
 .life-symbol .symbol-dark{display:none}
-.life-art:is(.show-symbol,.hover-symbol) .life-photo{opacity:0;transform:scale(1.025)}
-.life-art:is(.show-symbol,.hover-symbol) .life-symbol{opacity:1;transform:none}
+.life-art:is(.show-photo,.hover-photo) .life-photo{opacity:1;transform:none}
+.life-art:is(.show-photo,.hover-photo) .life-symbol{opacity:0;transform:none}
 .life-art:focus-visible{outline:3px solid #f7931a;outline-offset:4px}
 html[data-theme=dark] .life-art{background:#23382d;color:#e8eddf}
 html[data-theme=dark] .life-symbol .symbol-light{display:none}html[data-theme=dark] .life-symbol .symbol-dark{display:block}
@@ -337,17 +337,55 @@ html[data-theme=dark] .life-symbol .symbol-light{display:none}html[data-theme=da
 /* Worldwide homes continue directly beneath the flag-ring invitation. */
 .invitation{padding-bottom:0}
 .invitation>.community-medley{margin-top:52px;position:relative;z-index:1}
-.community-medley{height:280px;overflow:hidden;display:grid;grid-template-rows:1fr 1fr;gap:10px;mask-image:linear-gradient(90deg,transparent,#000 4%,#000 96%,transparent)}
-.medley-row{display:flex;gap:0;width:max-content;min-height:0;will-change:transform;backface-visibility:hidden;transform:translate3d(0,0,0);animation:medley-drift var(--medley-duration,100s) linear infinite;animation-play-state:paused}
-.medley-row.reverse{animation-direction:reverse}
+.community-medley{height:280px;overflow:hidden;display:grid;grid-template-rows:1fr 1fr;gap:10px;position:relative;isolation:isolate;contain:layout paint}
+.medley-row{display:flex;gap:0;width:max-content;min-height:0;will-change:transform;backface-visibility:hidden;transform:translate3d(0,0,0);}
 .medley-set{display:flex;flex:0 0 auto;gap:10px;min-height:0;padding-right:10px}
 .medley-set img{display:block;flex:0 0 220px;width:220px;max-width:none;height:135px;object-fit:cover;border-radius:5px}
 .medley-set img:nth-child(3n){flex-basis:280px;width:280px}
-.community-medley.is-moving .medley-row{animation-play-state:running}
-@keyframes medley-drift{from{transform:translate3d(0,0,0)}to{transform:translate3d(-50%,0,0)}}
-.medley-caption{display:flex;justify-content:space-between;align-items:center;gap:20px;font:400 27px/1.4 'Manrope',sans-serif;letter-spacing:-.04em;margin-top:22px;margin-bottom:0;padding-bottom:30px}
+.medley-caption{display:flex;flex-direction:column;align-items:flex-start;gap:8px;font:400 27px/1.4 'Manrope',sans-serif;letter-spacing:-.04em;margin-top:22px;margin-bottom:0;padding-bottom:30px}
 .medley-toggle{border:0;border-bottom:1px solid #d3dbcc70;padding:6px 0;background:transparent;color:#d3dbcc;font:inherit;font-size:11px;letter-spacing:0;white-space:nowrap}
 .medley-toggle:focus-visible{outline:2px solid #f7931a;outline-offset:4px}
 .circle-art i:nth-of-type(5){transform:translate(-50%,-50%) rotate(240deg) translateY(calc(var(--ring-size) * -.38))}
 @media(max-width:760px){.life-art{height:125px;aspect-ratio:auto}.invitation>.community-medley{margin-top:36px}.community-medley{height:210px;gap:8px}.medley-set img{flex-basis:160px;width:160px;height:101px}.medley-set img:nth-child(3n){flex-basis:205px;width:205px}.medley-caption{font-size:22px;padding-bottom:24px}}
 @media(prefers-reduced-motion:reduce){.life-photo,.life-symbol,.lock-shackle,.claim-tick svg path{transition:none!important}.medley-row{animation:none!important;will-change:auto}.medley-row.reverse{transform:translate3d(-100px,0,0)}}
+
+@media(max-width:760px){.escrow-vault svg{width:14px;height:14px;top:2px;right:3px}.escrow-vault span{bottom:3px}}
+
+/* Match ROLE_COLOR in src/ui/theme.ts: buyer purple, seller orange, arbiter signal teal. */
+.role-buyer{--role-color:#bf5af2;--role-glow:#bf5af290;--role-halo:#bf5af245}
+.role-seller{--role-color:#f7931a;--role-glow:#f7931a90;--role-halo:#f7931a45}
+.role-arbiter{--role-color:#5ac8fa;--role-glow:#5ac8fa90;--role-halo:#5ac8fa45}
+.role .role-portrait{position:relative}
+.role .role-portrait::after{content:'';position:absolute;inset:-6px;border:6px solid var(--role-color);border-radius:50%;box-shadow:0 0 0 2px var(--role-halo),0 0 18px var(--role-glow),0 0 36px var(--role-halo);opacity:var(--exchange-focus,0);pointer-events:none}
+@media(max-width:760px){.role .role-portrait::after{inset:-4px;border-width:4px}}
+
+/* A neutral match ring precedes the role colors introduced by the agreement. */
+:is(.role-buyer,.role-seller) .role-portrait::before{content:'';position:absolute;inset:-6px;border:6px solid #fff;border-radius:50%;box-shadow:0 0 0 2px #fff;opacity:calc(1 - var(--exchange-focus,0));pointer-events:none}
+@media(max-width:760px){:is(.role-buyer,.role-seller) .role-portrait::before{inset:-4px;border-width:4px}}
+
+/* Stationary edge fades avoid masking the entire moving image strip. */
+.community-medley::before,.community-medley::after{content:"";position:absolute;top:0;bottom:0;width:4%;z-index:2;pointer-events:none}
+.community-medley::before{left:0;background:linear-gradient(90deg,#233c2f,transparent)}
+.community-medley::after{right:0;background:linear-gradient(270deg,#233c2f,transparent)}
+.life-art .life-photo,.life-art .life-symbol,.life-art img,.life-art svg{transform:none!important;transform-origin:center;backface-visibility:hidden}
+
+/* Real sim-mode capture, cropped below the safety banner; no invented transaction UI. */
+.app-lock-capture{margin:0}
+.app-lock-capture .claim-device{padding:34px 8px 8px;min-height:0;background:#0d0d12}
+.app-lock-capture .claim-brand{margin-bottom:16px}
+.app-lock-screen{display:block;width:100%;height:auto;border-radius:24px}
+.app-lock-capture figcaption{text-align:center;font-size:8px;letter-spacing:.1em;margin:12px 0;color:#f4f0e8;text-shadow:0 1px 4px #000}
+
+/* A lifted paper corner: photograph below, opaque symbol sheet, shaded reverse. */
+.life-art{--peel:clamp(32px,3.6vw,48px);--sheet:#e3e8dc;--fold-light:#fbfcf5;--fold-mid:#c7d2c1;--fold-edge:#a3b49c;isolation:isolate}
+html[data-theme=dark] .life-art{--sheet:#23382d;--fold-light:#728676;--fold-mid:#425c4b;--fold-edge:#1a2c22}
+.life-art .life-photo{opacity:1;clip-path:polygon(100% calc(100% - var(--peel)),100% 100%,calc(100% - var(--peel)) 100%)}
+.life-art:is(.show-photo,.hover-photo) .life-photo{clip-path:none}
+.life-art .life-symbol{background:var(--sheet);clip-path:polygon(0 0,100% 0,100% calc(100% - var(--peel)),calc(100% - var(--peel)) 100%,0 100%);transition:opacity .38s ease}
+.life-art::before,.life-art::after{content:'';position:absolute;right:0;bottom:0;width:var(--peel);height:var(--peel);pointer-events:none;transform-origin:0 0;transition:transform .45s cubic-bezier(.22,.75,.25,1),opacity .32s ease}
+.life-art::before{z-index:2;background:#07140dcc;clip-path:polygon(0 0,100% 0,0 100%);filter:blur(4px);transform:translate(3px,4px);opacity:.55}
+.life-art::after{z-index:3;clip-path:polygon(0 0,100% 0,0 100%);background:linear-gradient(135deg,var(--fold-edge) 0%,var(--fold-mid) 24%,var(--fold-light) 49%,var(--fold-mid) 75%,var(--fold-edge) 100%);border-radius:3px 0 0 0;filter:drop-shadow(2px 3px 2px #0005)}
+.life-art:is(.show-photo,.hover-photo) .life-symbol{opacity:0}
+.life-art:is(.show-photo,.hover-photo)::before{opacity:0;transform:translate(-12px,-12px) scale(1.3)}
+.life-art:is(.show-photo,.hover-photo)::after{opacity:0;transform:translate(-12px,-12px) rotate(-8deg) scale(1.3)}
+@media(prefers-reduced-motion:reduce){.life-art .life-symbol,.life-art::before,.life-art::after{transition:none}}

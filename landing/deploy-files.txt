@@ -32,3 +32,27 @@ img/chama-circle-story-v8.mp4
 img/chama-circle-action-v8.jpg
 
 img/chama-community-banner-v2.png
+
+# Actual sim-mode Circle lock capture
+img/circle-lock-app-v1.png
+
+# Previously approved live-page assets
+icons/use-cases/bill-pay-dark.svg
+icons/use-cases/bill-pay.svg
+icons/use-cases/store-dark.svg
+icons/use-cases/store.svg
+img/chama-circle-action-v13.jpg
+img/chama-circle-story-v13.mp4
+img/comm-home-andean-v1.jpg
+img/comm-home-caribbean-coastal-v1.jpg
+img/comm-home-east-africa-hillside-v1.jpg
+img/comm-home-france-city-v8.jpg
+img/comm-home-france-rural-v8.jpg
+img/comm-home-latin-hillside-v1.jpg
+img/comm-home-north-africa-courtyard-v1.jpg
+img/comm-home-river-stilt-v1.jpg
+img/comm-home-seasia-shophouse-v1.jpg
+img/comm-home-south-asia-lane-v1.jpg
+img/comm-home-us-city-v8.jpg
+img/comm-home-west-africa-v1.jpg
+details.js

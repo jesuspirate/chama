@@ -4,6 +4,15 @@ const cinema = document.querySelector('.cinema');
 const screen = document.querySelector('.cinema-screen');
 const poster = document.querySelector('.cinema-poster');
 const video = document.querySelector('.hero-video');
+const filmVersion = new URLSearchParams(location.search).get('film');
+const filmPlaylist = ['original', 'varied'].includes(filmVersion) ? [
+  'img/chama-circle-story-v13.mp4',
+  `img/circle-turns/collector-2${filmVersion === 'varied' ? '-v2' : ''}.mp4`,
+  `img/circle-turns/collector-3${filmVersion === 'varied' ? '-v2' : ''}.mp4`,
+  'img/circle-turns/collector-5.mp4'
+] : null;
+let filmIndex = 0;
+if (filmPlaylist) video.dataset.src = filmPlaylist[0];
 const filmStill = document.createElement('canvas');
 filmStill.className = 'cinema-still';
 filmStill.setAttribute('aria-hidden', 'true');
@@ -39,7 +48,7 @@ let explicitPlay = false;
 const autoAllowed = () => !reducedMotion.matches && !connection?.saveData;
 let progressFrame = 0;
 function paintFilmProgress() {
-  screen.style.setProperty('--film-fraction', finished ? 1 : video.duration ? clamp(video.currentTime / video.duration) : 0);
+  screen.style.setProperty('--film-fraction', finished ? 1 : video.duration ? (filmIndex + clamp(video.currentTime / video.duration)) / (filmPlaylist?.length || 1) : 0);
 }
 function animateFilmProgress() {
   cancelAnimationFrame(progressFrame);
@@ -110,6 +119,10 @@ motionButton.addEventListener('click', () => {
 video.addEventListener('playing', () => {
   if (!inView || document.hidden || userPaused) { video.pause(); return; }
   started = true;
+  if (filmPlaylist) {
+    if (video.requestVideoFrameCallback) video.requestVideoFrameCallback(() => screen.classList.remove('film-still'));
+    else screen.classList.remove('film-still');
+  }
   video.classList.add('is-playing');
   animateFilmProgress();
   filmLabels();
@@ -117,7 +130,17 @@ video.addEventListener('playing', () => {
 video.addEventListener('pause', () => { animateFilmProgress(); filmLabels(); });
 video.addEventListener('seeking', paintFilmProgress);
 video.addEventListener('timeupdate', filmLabels);
-video.addEventListener('ended', () => { finished = true; holdFinalFrame(); animateFilmProgress(); filmLabels(); });
+video.addEventListener('ended', () => {
+  holdFinalFrame();
+  if (filmPlaylist) {
+    filmIndex = (filmIndex + 1) % filmPlaylist.length;
+    video.src = filmPlaylist[filmIndex];
+    video.load();
+    syncFilm();
+  } else finished = true;
+  animateFilmProgress();
+  filmLabels();
+});
 video.addEventListener('error', () => {
   video.classList.remove('is-playing');
   screen.classList.remove('film-running');
@@ -182,39 +205,58 @@ function updateStory() {
   finale.style.setProperty('--circle-scale', 1.12 - reveal * .12);
 }
 // This example is Exchange: the seller funds sats; the buyer pays local money.
-// Both confirmations precede release. Chama's mark never represents custody.
+// Receipt badges follow each asset: fiat reaches Daniel first, then sats reach Daneka.
+// Chama's mark never represents custody.
 function drawCoordination(art, meet, agree, trade) {
-  const frame = `${meet.toFixed(4)}:${agree.toFixed(4)}:${trade.toFixed(4)}:${document.documentElement.lang}`;
+  const frame = `${art.clientWidth}:${art.clientHeight}:${meet.toFixed(4)}:${agree.toFixed(4)}:${trade.toFixed(4)}:${document.documentElement.lang}`;
   if (coordinationFrames.get(art) === frame) return;
   coordinationFrames.set(art, frame);
   const funding = clamp((agree - .35) / .4);
   const locked = clamp((funding - .75) * 4);
-  const payment = clamp((trade - .05) / .35);
-  const sellerConfirm = clamp((trade - .43) / .07);
-  const buyerConfirm = clamp((trade - .53) / .07);
+  // Emphasize the counterparties once the agreement settles, through completion.
+  const exchangeFocus = clamp((agree - .65) / .25);
+  const payment = clamp((trade - .2) / .22);
+  const sellerReceived = clamp((trade - .43) / .07);
   const release = clamp((trade - .65) / .23);
   const received = clamp((trade - .9) / .1);
   const values = {
+    '--exchange-focus': exchangeFocus,
     '--meet-opacity': 1 - clamp(agree * 4),
     '--match-offset': 1 - meet,
     '--arbiter-opacity': clamp(agree * 2),
     '--arbiter-rise': `${(1 - clamp(agree * 2)) * 28}px`,
     '--coord-caption': 1 - clamp(agree * 3),
-    '--cash-route-opacity': clamp(trade * 6) * (1 - clamp((trade - .55) * 10)),
+    '--cash-route-opacity': clamp((trade - .18) / .06) * (1 - clamp((trade - .55) * 10)),
     '--arbiter-offset': 1 - clamp(agree * 2),
     '--agree-opacity': clamp(agree * 4) * (1 - clamp(trade * 6)),
-    '--cash-opacity': clamp(trade * 15) * (1 - clamp((trade - .42) * 12)),
+    '--cash-opacity': clamp((trade - .18) / .04) * (1 - clamp((trade - .42) * 12)),
     '--cash-x': `${17.5 + 65 * payment}%`,
     '--vault-opacity': locked * (1 - clamp((trade - .63) * 10)),
-    '--coin-opacity': trade > .6 ? clamp((trade - .63) * 15) * (1 - received) : clamp(funding * 5) * (1 - locked),
+    '--coin-opacity': clamp(funding * 5) * (1 - received),
     '--coin-x': `${trade > .6 ? 50 - 32.5 * release : 82.5 - 32.5 * funding}%`,
-    '--buyer-confirm': buyerConfirm,
-    '--seller-confirm': sellerConfirm,
-    '--received-opacity': received,
+    '--buyer-received': received,
+    '--seller-received': sellerReceived,
     '--trade-routes': clamp(trade * 6)
   };
   Object.entries(values).forEach(([key,value]) => art.style.setProperty(key,value));
-  const key = trade > .9 ? 'statusTrade' : trade > .64 ? 'statusRelease' : trade > .43 ? 'statusConfirm' : trade > .02 ? 'statusPay' : agree > .3 ? 'statusAgree' : 'statusMeet';
+  // Clip center-to-center connectors to the actual circular portrait edges.
+  // DOM bounds already include the border; overlap its edge by one pixel.
+  const bounds = art.getBoundingClientRect();
+  const portraits = ['buyer', 'arbiter', 'seller'].map(role => art.querySelector(`.portrait-${role}`).getBoundingClientRect());
+  if (bounds.width && bounds.height) {
+    const point = (x, y) => `${(x - bounds.left) * 600 / bounds.width} ${(y - bounds.top) * 600 / bounds.height}`;
+    const edge = (a, b) => {
+      const ax = a.left + a.width / 2, ay = a.top + a.height / 2;
+      const dx = b.left + b.width / 2 - ax, dy = b.top + b.height / 2 - ay;
+      const radius = a.width / 2 - 1;
+      const distance = Math.hypot(dx, dy) || 1;
+      return point(ax + dx / distance * radius, ay + dy / distance * radius);
+    };
+    const [buyer, arbiter, seller] = portraits;
+    art.querySelector('.arbiter-lines').setAttribute('d', `M${edge(buyer, arbiter)}L${edge(arbiter, buyer)}M${edge(arbiter, seller)}L${edge(seller, arbiter)}`);
+  }
+
+  const key = trade > .9 ? 'statusTrade' : trade > .64 ? 'statusRelease' : trade > .43 ? 'statusConfirm' : trade > .18 ? 'statusPay' : agree > .3 ? 'statusAgree' : 'statusMeet';
   art.querySelector('.journey-status').textContent = word(key);
 }
 function scheduleStory() { if (!scheduled) { scheduled = true; requestAnimationFrame(updateStory); } }

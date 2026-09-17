@@ -30,7 +30,7 @@ The deploy manifest includes reviewed assets and FAQ dependencies. Application w
 
 Reviewed the current application philosophy and canvas at application commit `e8f44036`: `PHILOSOPHY.md`, `src/guided/canvas-routing.ts`, the assisted canvas, its English prompts, and create-form arbiter seating. The story starts from complementary needs, with amount, payment method and community compatibility. Named illustrative people remain the protagonists; Chama coordinates their match. A community arbiter joins through the eligible-pool rules, so the page does not promise an unrestricted mutual arbiter picker.
 
-The animated example is explicitly cash for Bitcoin. Daniel is the Bitcoin seller and locks sats. Amina is the Bitcoin buyer and sends local money. Payment and confirmations precede release of sats to Amina. Funding and release use a separate lower lane, away from the portraits and the Chama mark. The final receipts remain visible before the circle reveal. Mobile and reduced-motion visitors receive readable diagram states.
+The animated example is explicitly cash for Bitcoin. Daniel is the Bitcoin seller and locks sats. Daneka is the Bitcoin buyer and sends local money. Payment and confirmations precede release of sats to Daneka. Funding and release use a separate lower lane, away from the portraits and the Chama mark. The final receipts remain visible before the circle reveal. Mobile and reduced-motion visitors receive readable diagram states.
 
 The create-form circle mark is reused unchanged at the photographic conclusion. The Bitcoin mark in the diagram is the actual Bitcoin Core PNG; asset provenance is recorded in `icons/bitcoin-source.md`. Generated photographs use this logo as an image reference, with plain orange chips instead of repeated generated glyphs.
 
@@ -48,7 +48,7 @@ Current hero: `chama-circle-story-v5.mp4`, six seconds, one large gold Bitcoin c
 
 The intended demographic remains an open product question. Do not infer Bitcoin competence from age, or present older African people as the default target market. A contemporary adult cast is a creative hypothesis, not established market research. FinAccess 2021/2024 youth cohort work finds increasing digital connectivity and continued informal-finance use among younger adults; this supports testing a phone-first presentation, not claiming a Chama-specific audience profile. Source: https://www.fsdkenya.org/wp-content/uploads/2025/03/Youth-cohort-analysis-from-FinAccess.pdf
 
-Current hero and conclusion use `chama-digital-community-v1.jpg`. The physical basket and coin films are superseded. An authored, five-second phone illustration shows ready to claim → collect → received using the app’s “Collect your sats” action language. This depicts an already-ready claim with destination preparation omitted, not currently enabled rotating payouts. It pauses offscreen and in hidden tabs, respects reduced motion, and can be replayed or manually advanced. Intent cards appear as thought bubbles tied to Amina and Daniel.
+Current hero and conclusion use `chama-digital-community-v1.jpg`. The physical basket and coin films are superseded. An authored, five-second phone illustration shows ready to claim → collect → received using the app’s “Collect your sats” action language. This depicts an already-ready claim with destination preparation omitted, not currently enabled rotating payouts. It pauses offscreen and in hidden tabs, respects reduced motion, and can be replayed or manually advanced. Intent cards appear as thought bubbles tied to Daneka and Daniel.
 
 ## Both moments, with a static phone mark (September 16)
 
@@ -67,3 +67,23 @@ Theme controls now use fixed SVG sun/moon icons instead of platform-dependent Un
 ## Hero motion refinement
 
 The hero's retreat now uses a compositor scale instead of repeatedly changing container padding, which resized and recropped the playing video. Inline video measurements run on resize, image load and font readiness rather than every scroll frame. Hidden mobile diagrams are not animated during ordinary scrolling; unchanged coordination states skip redundant writes. Desktop and phone checks confirm stable video layout dimensions during scrolling (842×1137 and 390×774 respectively), with no console errors or horizontal overflow. No other narrative sections, copy, brand assets or theme styling changed in this refinement.
+
+
+## Logo-first cards and authentic Circle capture (revamp 39)
+Everyday cards now begin with the app symbols and reveal photography on hover/tap, with opacity-only transitions. The home medley decodes images before playback and translates by the exact width of one repeated set; resizing preserves playback phase.
+
+The finale uses `img/circle-lock-app-v1.png`, a real 390px-wide app capture taken after a separate simulated participant locked 10,000 fake sats in a five-seat circle. Only the app card is cropped into the phone; the red sim banner is outside the crop. The surrounding caption identifies simulated sats. This is a static capture of the completed lock, not a recording of the transition. No app or wallet behavior was changed. French seller pseudonym: G🏄.
+
+Film direction pending generation: keep the approved fourth man visibly consistent with the lower-left participant, give each collector a distinct lively reaction, composite four seats in rounds 1–4 and five when the younger friend joins. Week labels should be authored overlays, not generated text. No credits spent for this revision.
+
+
+## Revamp 40 follow-up (visual verification pending)
+Arbiter links now intersect each portrait along the center-to-center diagonal and meet the role border, rather than stopping eight pixels outside Grace's left/right midpoints. Coordinates are measured after current animation properties are applied. Everyday tiles have a 25px turned corner showing the photograph below the initial logo.
+
+Film expansion is deferred at the user's request. Reminder scheduled October 1, 2026. Round 1 is free by design; do not label the future collection films as five paid rounds starting at 1. Reconfirm labels beginning at round 2 before generation.
+
+The requested actual invite → lock → claim sequence remains unfinished. A real two-person five-minute simulated circle named “Our first circle” was created on BLF, both participants locked 10,000 fake sats, and screenshots of the real funding/lock celebration were recorded in `/private/tmp/chama-lock-record/`. Do not replace the current still with a pretend claim. Browser automatic approval review failed because its review model reached capacity, blocking both landing navigation and simulator inspection before the claim capture. The pending landing changes have syntax checks only, not visual approval.
+
+
+## Revamp 42 peel polish
+The tile corner now has a shaded paper underside, a soft shadow, and a lift-away transition; the symbols themselves remain stationary. Verified logo-first and photo-revealed states in the browser, in light and dark themes. Grace's connector endpoints now use the measured border-inclusive radius, overlapping by one pixel to avoid the remaining gap. The hero is unchanged. The actual claim recording remains a separate unfinished follow-up.

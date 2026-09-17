@@ -26,17 +26,17 @@
   const cards = [...document.querySelectorAll('.life-art')];
   function label(tile) {
     const title = tile.closest('article').querySelector('h3').textContent;
-    tile.setAttribute('aria-label', `${word(tile.classList.contains('show-symbol') ? 'showFeaturePhoto' : 'showFeatureIcon')}: ${title}`);
-    tile.setAttribute('aria-pressed', String(tile.classList.contains('show-symbol')));
+    tile.setAttribute('aria-label', `${word(tile.classList.contains('show-photo') ? 'showFeatureIcon' : 'showFeaturePhoto')}: ${title}`);
+    tile.setAttribute('aria-pressed', String(tile.classList.contains('show-photo')));
   }
   cards.forEach(tile => {
-    tile.addEventListener('click', () => { tile.classList.toggle('show-symbol'); label(tile); });
+    tile.addEventListener('click', () => { tile.classList.toggle('show-photo'); label(tile); });
     tile.addEventListener('pointerenter', event => {
-      if (event.pointerType === 'mouse') { tile.classList.add('hover-symbol'); }
+      if (event.pointerType === 'mouse') { tile.classList.add('hover-photo'); }
     });
-    tile.addEventListener('pointerleave', () => tile.classList.remove('hover-symbol'));
+    tile.addEventListener('pointerleave', () => tile.classList.remove('hover-photo'));
     tile.addEventListener('keydown', event => {
-      if (event.key === 'Escape') { tile.classList.remove('show-symbol','hover-symbol'); label(tile); }
+      if (event.key === 'Escape') { tile.classList.remove('show-photo','hover-photo'); label(tile); }
     });
     label(tile);
   });
@@ -47,36 +47,50 @@
   let medleyPaused = false, medleyVisible = false, medleyReady = false;
   const rows = [...medley.querySelectorAll('.medley-row')];
   const originals = rows.map(row => [...row.firstElementChild.children].map(image => image.cloneNode(true)));
-  let lastWidth = 0;
-  function sizeMedley() {
-    const width = medley.clientWidth;
+  let lastWidth = 0, sizing = 0;
+  const animations = [];
+  async function sizeMedley() {
+    const width = Math.round(medley.clientWidth);
     if (!width || width === lastWidth) return;
     lastWidth = width;
+    const generation = ++sizing;
+    medleyReady = false;
     rows.forEach((row, index) => {
+      animations[index]?.pause();
       const first = row.firstElementChild;
       first.replaceChildren(...originals[index].map(image => image.cloneNode(true)));
-      // One complete period must cover the viewport even at the wrap boundary.
-      while (first.getBoundingClientRect().width < width + 300) {
-        first.append(...originals[index].map(image => image.cloneNode(true)));
-      }
+      while (first.offsetWidth < width + 300) first.append(...originals[index].map(image => image.cloneNode(true)));
       row.replaceChildren(first, first.cloneNode(true));
-      row.style.setProperty('--medley-duration', `${first.getBoundingClientRect().width / (index ? 16 : 18)}s`);
     });
-  }
-  new ResizeObserver(sizeMedley).observe(medley);
-  async function prepareMedley() {
     await Promise.all([...medley.querySelectorAll('img')].map(async image => {
       image.loading = 'eager';
-      try { await image.decode(); } catch (_) { /* Keep the rest of the strip available. */ }
+      try { await image.decode(); } catch (_) {}
     }));
-    sizeMedley(); medleyReady = true; syncMedley();
+    if (generation !== sizing) return;
+    rows.forEach((row, index) => {
+      const previous = animations[index];
+      const progress = previous ? (Number(previous.currentTime) / previous.effect.getTiming().duration) % 1 : 0;
+      previous?.cancel();
+      const period = row.firstElementChild.getBoundingClientRect().width;
+      const duration = period / (index ? 26 : 28) * 1000;
+      const ends = index ? [-period, 0] : [0, -period];
+      const animation = row.animate(ends.map(x => ({transform:`translate3d(${x}px,0,0)`})), {duration, iterations:Infinity, easing:'linear'});
+      animation.pause();
+      animation.currentTime = progress * duration;
+      animations[index] = animation;
+    });
+    medleyReady = true;
+    syncMedley();
   }
+  new ResizeObserver(() => { void sizeMedley(); }).observe(medley);
+  async function prepareMedley() { await sizeMedley(); }
   const prepareObserver = new IntersectionObserver(entries => {
     if (entries[0].isIntersecting) { prepareObserver.disconnect(); void prepareMedley(); }
   }, {rootMargin:'600px'});
   prepareObserver.observe(medley);
   function syncMedley() {
-    medley.classList.toggle('is-moving', medleyReady && medleyVisible && !medleyPaused && !document.hidden && !reducedMotion.matches);
+    const moving = medleyReady && medleyVisible && !medleyPaused && !document.hidden && !reducedMotion.matches;
+    animations.forEach(animation => moving ? animation.play() : animation.pause());
     toggle.hidden = reducedMotion.matches;
     toggle.textContent = word(medleyPaused ? 'resumeImages' : 'pauseImages');
     toggle.setAttribute('aria-pressed', String(medleyPaused));
