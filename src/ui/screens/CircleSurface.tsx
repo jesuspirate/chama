@@ -64,7 +64,8 @@ export function CircleSurface({ parent, escrows, viewerPubkey, backLabel, childr
       : model.move === "invite" && !model.isHost ? t("circle.yourShareIn", { count: Math.max(0, model.seatThreshold - model.seatsLocked) }) : t("circle.seats", { filled: model.seatsLocked, total: model.seatThreshold })
     : model.status === "running" ? t("circle.backBy", { date: date(circle.roundEndSec) })
     : model.status === "refund-due" ? t("circle.failedFill") : t("circle.complete");
-  const moveKey = { lock: "circle.lock", invite: "circle.invite", collect: "circle.collect", "return-now": "circle.returnNow", "next-round": "circle.nextRound" } as const;
+  const moveKey = { lock: "circle.lock", invite: "circle.invite", collect: "circle.collect", "return-now": "circle.returnNow",
+    "next-round": model.status === "refund-due" ? "circle.runAgain" : "circle.nextRound" } as const;
   const action = model.move === "lock" ? onLock : model.move === "invite" ? invite : model.move === "collect" ? onClaim : model.move === "return-now" ? onReturn : model.move === "next-round" ? async () => onNextRound(circle) : null;
   return <section className="circle-surface" style={{ maxWidth: 640, margin: "0 auto", padding: "24px 18px 38px", color: T.text }}>
     <style>{`
@@ -146,7 +147,11 @@ export function CircleSurface({ parent, escrows, viewerPubkey, backLabel, childr
           return <div key={sh.memberPubkey} style={{ display: "flex", alignItems: "baseline", gap: 10, padding: "9px 0", borderTop: index ? `1px solid ${T.border}` : "none" }}>
             <span style={{ color: T.muted, font: `600 12px ${T.mono}`, minWidth: 22 }}>{sh.lockedAtSec !== null ? `#${index + 1}` : "·"}</span>
             <strong style={{ flex: 1, fontSize: 15 }}>{generatedNameFor(sh.memberPubkey, lang)}{you && <span style={{ color: T.accent, fontWeight: 600 }}> · {t("circle.you")}</span>}</strong>
-            <small style={{ color: sh.lockedAtSec !== null ? T.accent : T.muted, fontFamily: T.mono }}>{sh.lockedAtSec !== null ? t("circle.lockedOn", { date: date(sh.lockedAtSec) }) : t("circle.reservedSeat")}</small>
+            <small style={{ color: sh.lockedAtSec !== null ? T.accent : T.muted, fontFamily: T.mono }}>{
+              sh.status === "returned" || sh.status === "refunded" || sh.status === "paid" ? t("circle.claimedBadge")
+              : sh.readyToClaim ? t("circle.canClaimNow")
+              : sh.lockedAtSec !== null ? t("circle.lockedOn", { date: date(sh.lockedAtSec) })
+              : t("circle.reservedSeat")}</small>
           </div>;
         })}
     </div>}

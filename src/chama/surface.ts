@@ -155,7 +155,9 @@ export function circleSurfaceModel(
   }
 
   if (progress.status === "refund-due") {
-    if (seat?.status !== "locked") return { ...base, move: "none" };
+    // A failed fill should end in a smooth second try, not a dead end: the
+    // host re-forms the round in one tap (fast-tracked to review).
+    if (seat?.status !== "locked") return { ...base, move: isHost ? "next-round" : "none" };
     // Resolution already landed: the manual REFUND vote is moot — the only
     // thing left is to take the sats.
     if (seat.readyToClaim) return { ...base, move: "collect" };

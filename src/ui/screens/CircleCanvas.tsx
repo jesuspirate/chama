@@ -18,7 +18,10 @@ export function CircleCanvas({ viewerPubkey, community, mintUrl, initial, onBack
 }) {
   const { t, lang } = useT();
   const price = useBitcoinPrice(), rates = useFiatRates();
-  const [step, setStep] = useState(0);
+  // Fast track (Jet, 2026-09-18): a re-formed round arrives with everything
+  // already decided — open ON the review step ("Open Round N" is one tap),
+  // and Back walks into editing for anyone who wants changes.
+  const [step, setStep] = useState(initial ? 3 : 0);
   const [sats, setSats] = useState(String(initial ? initial.shareMsats / 1000 : 10000));
   const [threshold, setThreshold] = useState(initial?.seatThreshold ?? 5);
   // Jet's audience split (2026-09-15): the old screen asked a MARKET question
