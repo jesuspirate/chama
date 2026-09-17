@@ -1,6 +1,7 @@
 // Static translations; English page copy is read from semantic HTML.
 const copy = {
   "en": {
+    "bitcoinWhitepaper": "Bitcoin whitepaper",
     "buyerName": "Daneka", "sellerName": "Daniel", "arbiterName": "Grace",
     "pauseImages": "Pause images",
     "resumeImages": "Resume images",
@@ -55,6 +56,7 @@ const copy = {
     "filmContext": "A vision of rotating savings · coming next"
   },
   "es": {
+    "bitcoinWhitepaper": "Libro blanco de Bitcoin",
     "buyerName": "Daniela", "sellerName": "Diego", "arbiterName": "Graciela",
     "pauseImages": "Pausar imágenes",
     "resumeImages": "Reanudar imágenes",
@@ -171,6 +173,7 @@ const copy = {
     "claimDone": "Tu parte está comprometida."
   },
   "fr": {
+    "bitcoinWhitepaper": "Livre blanc de Bitcoin",
     "buyerName": "Danika", "sellerName": "G🏄", "arbiterName": "Grâce",
     "pauseImages": "Mettre en pause",
     "resumeImages": "Reprendre les images",
