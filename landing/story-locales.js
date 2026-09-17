@@ -174,7 +174,7 @@ const copy = {
   },
   "fr": {
     "bitcoinWhitepaper": "Livre blanc de Bitcoin",
-    "buyerName": "Danika", "sellerName": "G🏄", "arbiterName": "Grâce",
+    "buyerName": "Danika", "sellerName": "G🏄🏿", "arbiterName": "Grâce",
     "pauseImages": "Mettre en pause",
     "resumeImages": "Reprendre les images",
     "homeMedley": "Tout le monde a un foyer.",
