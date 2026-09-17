@@ -80,18 +80,31 @@ best options, move along:
 - Becoming an arbiter is a guided flow too: three questions (who are
   you, which communities, how much bond), publish, appear on the roster.
 
-## Open questions for Jet
+## Decisions (Jet, 2026-09-17 — all four sealed)
 
-1. Vouch revocation: silent expiry (vouches decay like standing) vs an
-   explicit un-vouch event (louder, more honest)? Recommended: explicit,
-   with decay as well.
-2. Should mutual selection allow a NON-bonded arbiter both parties trust
-   (pure social choice), or is a bond the floor even when chosen?
-   Recommended: bond floor stays — the roster's promise is that everyone
-   on it has skin in the game.
-3. Arbiter fees for chosen (non-pool) trade arbitration: keep zero, or
-   let the chosen arbiter publish a fee in their offer? (Chama shares
-   stay zero-fee regardless.)
-4. Does the roster live in-app only, or also as a public page on
-   getchama.app (great recruiting surface for your real-life
-   conversations: "look yourself up")?
+1. VOUCH LIFECYCLE: BOTH mechanisms. An explicit un-vouch event for
+   changed minds — loud, dated, and the "vouched March, revoked
+   September" history is itself roster information. Decay for absent
+   vouchers — weight fades with age unless re-signed, so a living
+   relationship stays heavy and a stale one thins out on its own.
+2. THE BOND STAYS, even for mutually chosen arbiters. Both principals
+   evaluate the whole record: bond, conduct, and the arbiter's own
+   standing as a circle member where applicable. And to be explicit:
+   arbiters are RECORDED, never rated. Trade 👍 is buyer↔seller by
+   construction, and no third rating box is added — a losing party would
+   one-star every honest ruling. The arbiter's reputation = healings
+   served (count + median latency), escalations answered vs slept
+   through, disputes resolved, bond size and age, own circle standing,
+   vouches by name. Conduct record + vouch graph, zero stars.
+3. FEES: PUBLISHED IN THE OFFER — the roster is a MARKETPLACE. "Come for
+   the sats, stay for the people" is the literal community recruiting
+   pitch. Fee is paid ON DISPUTE ONLY: the happy path costs nothing, the
+   arbiter earns exactly when they work. Rails: ecash/LN ride the
+   existing arbiterFeeMsats + PREMIUM settlement machinery (chama shares
+   stay pinned to zero forever). On-chain direction to explore: an
+   outcome-dependent fee output present in the dispute taproot leaf and
+   absent from the cooperative leaf (Jet's instinct, and exactly how
+   taproot wants outcome-based costs expressed).
+4. THE ROSTER LIVES IN BOTH PLACES: in-app, and as a public page on
+   getchama.app — the recruiting surface for real-life conversations
+   ("look yourself up").
