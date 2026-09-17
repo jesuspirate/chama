@@ -13,7 +13,7 @@ icons/chama-mark-64.png
 icons/favicon.ico
 icons/bitcoin-official.png
 icons/chama-circle-dark.svg
-icons/og-image-people-v11.jpg
+icons/og-image-people-v12.jpg
 img/chama-digital-community-v1.jpg
 img/faq/faq-cancel.png
 img/faq/faq-chooser.png
