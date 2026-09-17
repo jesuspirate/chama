@@ -44,7 +44,7 @@ import { translate, getCurrentLang } from "../../i18n/index.js";
 const tr = (key: string, params?: Record<string, string | number>) =>
   translate(getCurrentLang(), key, params);
 
-type Surface = "bring" | "want" | "detail" | "terms" | "rails" | "premium" | "matches" | "review" | "publish";
+type Surface = "bring" | "want" | "circle" | "detail" | "terms" | "rails" | "premium" | "matches" | "review" | "publish";
 
 /** A point-in-time snapshot of the canvas conversation, written on unmount and
  *  replayed on the next mount so opening a trade (or hopping tabs) and coming
@@ -133,6 +133,8 @@ export function AssistedCanvas({
     surface: rawResume.surface === "review" ? "matches" : rawResume.surface,
   });
   const [surface, setSurface] = useState<Surface>(resume?.surface ?? "bring");
+  const [inviteDraft, setInviteDraft] = useState("");
+  const [inviteError, setInviteError] = useState(false);
   const [bring, setBring] = useState<AssistedCanvasAsset | null>(resume?.bring ?? null);
   const [want, setWant] = useState<AssistedCanvasAsset | null>(resume?.want ?? null);
   const [detail, setDetail] = useState(resume?.detail ?? "");
@@ -892,6 +894,45 @@ export function AssistedCanvas({
     </CanvasShell>;
   }
 
+  if (surface === "circle") {
+    // Joining is as first-class as starting (Jet, 2026-09-17). "Just us"
+    // circles arrive by invite link; open circles list like any market.
+    const openInvite = () => {
+      const raw = inviteDraft.trim();
+      let id: string | null = null;
+      try { id = new URL(raw).searchParams.get("trade") ?? new URL(raw).searchParams.get("escrowId"); } catch { /* not a URL */ }
+      if (!id) id = raw.match(/sm_[a-z0-9_]+/i)?.[0] ?? null;
+      if (id && onOpenTrade) onOpenTrade(id);
+      else setInviteError(true);
+    };
+    return <CanvasShell community={community} step={1} onExit={() => onBrowse("all")} onMoreOptions={onMoreOptions}>
+      <Back onClick={() => setSurface("want")}>{tr("canvas.changeWant")}</Back>
+      <Kicker>{tr("canvas.circleKicker")}</Kicker>
+      <h1 style={headingStyle()}>{tr("canvas.circleTitle")}</h1>
+      <p style={subStyle()}>{tr("canvas.circleSub")}</p>
+      <button type="button" className="assisted-choice assisted-choice-wide" onClick={onStartCircle}>
+        <span className="assisted-glyph"><VerticalIcon vertical="chama" size={40} /></span>
+        <span className="assisted-wide-body">
+          <strong>{tr("canvas.circleStart")}</strong>
+          <small>{tr("canvas.circleStartDesc")}</small>
+        </span>
+      </button>
+      <div className="assisted-choice assisted-choice-wide" style={{ cursor: "default" }}>
+        <span className="assisted-wide-body">
+          <strong>{tr("canvas.circleInvited")}</strong>
+          <span style={{ display: "flex", gap: 10, marginTop: 10 }}>
+            <input value={inviteDraft} onChange={e => { setInviteDraft(e.target.value); setInviteError(false); }}
+              onKeyDown={e => { if (e.key === "Enter") openInvite(); }}
+              placeholder={tr("canvas.circlePaste")} style={{ flex: 1, minWidth: 0, padding: "12px 14px", borderRadius: 12, border: `1px solid ${T.borderHi}`, background: T.bg, color: T.text, font: `500 15px ${T.sans}` }} />
+            <button type="button" onClick={openInvite} disabled={!inviteDraft.trim()} style={{ padding: "0 20px", borderRadius: 12, border: 0, background: T.accent, color: T.bg, font: `700 15px ${T.sans}`, cursor: "pointer", opacity: inviteDraft.trim() ? 1 : .5 }}>{tr("canvas.circleOpen")}</button>
+          </span>
+          {inviteError && <small style={{ color: T.accent, marginTop: 8 }}>{tr("canvas.circleBadInvite")}</small>}
+        </span>
+      </div>
+      <button type="button" className="assisted-join-link" onClick={() => onBrowse("chama")}>{tr("canvas.circleBrowse")} →</button>
+    </CanvasShell>;
+  }
+
   if (surface === "want" && bring) {
     return <CanvasShell community={community} step={1} onExit={() => onBrowse("all")} onMoreOptions={onMoreOptions}>
       <Back onClick={() => setSurface("bring")}>{tr("canvas.changeHave")}</Back>
@@ -905,20 +946,13 @@ export function AssistedCanvas({
           "what in return", so it sits apart: a full-width strip under the
           grid instead of an orphan card inside it (Jet, 2026-09-17). */}
       {CHAMA_CIRCLES_ENABLED && onStartCircle && (
-        <button type="button" className="assisted-choice assisted-choice-wide" onClick={onStartCircle}>
+        <button type="button" className="assisted-choice assisted-choice-wide" onClick={() => setSurface("circle")}>
           <span className="assisted-glyph"><VerticalIcon vertical="chama" size={40} /></span>
           <span className="assisted-wide-body">
             <strong>{tr("canvas.chamaWant")}</strong>
             <small>{tr("canvas.chamaWantDesc")}</small>
           </span>
           <em>{tr("canvas.chamaWantBadge")}</em>
-        </button>
-      )}
-      {/* Joining is as first-class as starting (Jet, 2026-09-17): open
-          circles live in Browse; "Just us" circles arrive by invite link. */}
-      {CHAMA_CIRCLES_ENABLED && (
-        <button type="button" className="assisted-join-link" onClick={() => onBrowse("chama")}>
-          {tr("canvas.chamaJoin")} →
         </button>
       )}
       {/* Tease the road ahead: same Bitcoin mark as step 1, grayed, inert. */}
