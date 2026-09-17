@@ -727,7 +727,8 @@ export function parseEscrowEvent(
   if (context?.state?.chamaPolicy && (kind === EscrowEventKind.VOTE || kind === EscrowEventKind.RESOLVE)) {
     const principal = raw.pubkey === context.state.participants[Role.BUYER] || raw.pubkey === context.state.participants[Role.SELLER];
     const law = chamaOutcomeError(context.state, (payload as VotePayload).outcome, raw.created_at, context.cycle,
-      kind === EscrowEventKind.RESOLVE ? "finalize" : principal ? "observe-principal" : "observe-arbiter");
+      kind === EscrowEventKind.RESOLVE ? "finalize" : principal ? "observe-principal" : "observe-arbiter",
+      (payload as VotePayload).fillEvidence);
     if (law) return { ok: false, error: { code: "CHAMA_REFUND_ONLY", message: law, eventId: raw.id } };
   }
 

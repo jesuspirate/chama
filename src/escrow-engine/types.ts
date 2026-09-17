@@ -732,6 +732,12 @@ export interface VotePayload {
    *  on the expiry-heal auto-refund path (best-effort there; the funder already
    *  holds the minted token, so its vote-carried share is redundant). */
   shareEnvelope?: VoteShareEnvelope;
+  /** Rotation v2: the fill evidence this voter judged against — the round's
+   *  LOCKed member pubkeys as the voter observed them. REQUIRED on arbiter
+   *  votes for share-v2 escrows (their key share moves other people's
+   *  money, so their judgment must be committed and attributable, never
+   *  view-relative). Optional and advisory on principal votes. */
+  fillEvidence?: { locked: string[] };
   votedAt: number;
 }
 
@@ -743,6 +749,12 @@ export interface ResolvePayload {
   majority: [Role, Role];
   /** Was arbiter needed? */
   arbiterInvolved: boolean;
+  /** Rotation v2: THE COMMITMENT (evidence-committed RESOLVE, spec bound 2).
+   *  The resolver enumerates the round's LOCKed member pubkeys it settled
+   *  on; every replay judges the resolution against this commitment instead
+   *  of the replayer's own relay view, so honest clients converge no matter
+   *  what was withheld or revealed later. REQUIRED for share-v2. */
+  fillEvidence?: { locked: string[] };
   resolvedAt: number;
 }
 

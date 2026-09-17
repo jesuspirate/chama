@@ -1,4 +1,4 @@
-import { shareEscrowId, circleFromEscrow, shareCreatePayload, rotationShareCreatePayload, nextRotationRoundPayload } from "../chama/policy.js";
+import { shareEscrowId, circleFromEscrow, shareCreatePayload, rotationShareCreatePayload, nextRotationRoundPayload, fillEvidenceFor } from "../chama/policy.js";
 import type { CircleRound } from "../chama/types.js";
 import { CHAMA_ROTATION_ENABLED } from "./experimental-escrow-features.js";
 import {
@@ -1955,6 +1955,9 @@ export class EscrowClient {
       outcome,
       role,
       ...(shareEnvelope ? { shareEnvelope } : {}),
+      // Rotation shares: commit the fill evidence this vote judged against
+      // (required on arbiter votes; advisory on principals').
+      ...(cycle && state.parent ? { fillEvidence: fillEvidenceFor(state.parent, cycle) } : {}),
       votedAt: now,
     };
 
@@ -3999,6 +4002,9 @@ export class EscrowClient {
       outcome,
       majority,
       arbiterInvolved,
+      // THE COMMITMENT: the resolution carries the fill evidence it settled
+      // on, so every replay judges the same facts (spec bound 2, resolved).
+      ...(cycle && state.parent ? { fillEvidence: fillEvidenceFor(state.parent, cycle) } : {}),
       resolvedAt: now,
     };
 

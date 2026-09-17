@@ -80,7 +80,7 @@ for (let r = 2; r <= 5; r++) {
     const cyc = cycleCtx();
     let st = accepted(e, { ...event(K.VOTE, { type: "escrow:vote", role: R.SELLER, outcome: O.RELEASE, votedAt: payEnd }, collector, e.id, payEnd, e), chamaCycle: cyc });
     st = accepted(st, { ...event(K.VOTE, { type: "escrow:vote", role: R.BUYER, outcome: O.RELEASE, votedAt: payEnd + 1 }, e.participants[R.BUYER]!, e.id, payEnd + 1, st), chamaCycle: cyc });
-    st = accepted(st, { ...event(K.RESOLVE, { type: "escrow:resolve", outcome: O.RELEASE, majority: [R.BUYER, R.SELLER], arbiterInvolved: false, resolvedAt: payEnd + 2 }, collector, e.id, payEnd + 2, st), chamaCycle: cyc });
+    st = accepted(st, { ...event(K.RESOLVE, { type: "escrow:resolve", outcome: O.RELEASE, majority: [R.BUYER, R.SELLER], arbiterInvolved: false, fillEvidence: { locked: [...roundLockOrder[r]].sort() }, resolvedAt: payEnd + 2 }, collector, e.id, payEnd + 2, st), chamaCycle: cyc });
     st = accepted(st, event(K.CLAIM, { type: "escrow:claim", claimerRole: R.SELLER, notesHashVerification: "hash", claimedAt: payEnd + 3 }, collector, e.id, payEnd + 3, st));
     assert.equal(st.status, S.CLAIMED);
     states[i] = st;
