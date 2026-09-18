@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Role, type EscrowState } from "../../escrow-engine/types.js";
 import { ChamaLoader } from "../components/ChamaLoader.js";
 import {
@@ -36,6 +36,8 @@ import { VerticalIcon } from "../components/VerticalIcon.js";
 import { CHAMA_CIRCLES_ENABLED } from "../../escrow-engine/experimental-escrow-features.js";
 import { T } from "../theme.js";
 import { RailHeader } from "../components/RailHeader.js";
+import { TradeCard } from "../components/TradeCard.js";
+import { circleFromEscrow } from "../../chama/policy.js";
 import { groupBySettlementRail, railHeadersNeeded, settlementRailOf } from "../settlement-rail.js";
 import { profileNameFor } from "../nostr-profiles.js";
 import { translate, getCurrentLang } from "../../i18n/index.js";
@@ -89,6 +91,8 @@ export function AssistedCanvas({
   publishedInfo,
   onDismissPublished,
   resumeRef,
+  allEscrows,
+  circleChildrenLoaded,
 }: {
   listings: EscrowState[];
   stockByListing?: Map<string, number>;
@@ -108,6 +112,11 @@ export function AssistedCanvas({
   publishedInfo?: { label: string; escrowId?: string } | null;
   onDismissPublished?: () => void;
   resumeRef?: { current: AssistedCanvasResume | null };
+  /** Runway #11: the circle fork lists LIVE open circles like a market.
+   *  These feed the seat counts on those cards; optional so the canvas
+   *  degrades to honest open-seat labels without them. */
+  allEscrows?: EscrowState[];
+  circleChildrenLoaded?: ReadonlySet<string>;
 }) {
   const community = getCommunityBySlug(browseCommunity);
   const phoneExample = phonePlaceholderForCountryIso(community?.countries?.[0])
@@ -947,7 +956,41 @@ export function AssistedCanvas({
           {inviteError && <small style={{ color: T.accent, marginTop: 8 }}>{tr("canvas.circleBadInvite")}</small>}
         </span>
       </div>
-      <button type="button" className="assisted-join-link" onClick={() => onBrowse("chama")}>{tr("canvas.circleBrowse")} →</button>
+      {/* Runway #11: joining feels like a market — live open circles render
+          RIGHT HERE as cards (seats, share size, closes-in), the invite path
+          beside them, Browse only as the overflow. */}
+      {(() => {
+        const nowSec = Math.floor(Date.now() / 1000);
+        const open = listings
+          .map(l => ({ listing: l, circle: circleFromEscrow(l) }))
+          .filter(x => x.circle !== null && x.circle.unlisted !== true && x.circle.fillDeadlineSec > nowSec)
+          .sort((a, b) => a.circle!.fillDeadlineSec - b.circle!.fillDeadlineSec);
+        const shown = open.slice(0, 6);
+        return <>
+          <Kicker>{tr("canvas.circleLive", { count: open.length })}</Kicker>
+          {shown.length > 0 ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {shown.map(({ listing }) => (
+                <TradeCard
+                  key={listing.id}
+                  state={listing}
+                  pubkey={viewerPubkey}
+                  onSelect={() => onOpenTrade(listing.id)}
+                  allEscrows={allEscrows ?? listings}
+                  circleChildrenLoaded={circleChildrenLoaded}
+                />
+              ))}
+            </div>
+          ) : listingsLoading ? (
+            <div style={{ margin: "6px 0" }}><ChamaLoader size={26} label={tr("canvas.checkingLive")} /></div>
+          ) : (
+            <p style={{ ...subStyle(), margin: "4px 0 0" }}>{tr("canvas.circleNoneOpen")}</p>
+          )}
+          {open.length > shown.length && (
+            <button type="button" className="assisted-join-link" onClick={() => onBrowse("chama")}>{tr("canvas.circleBrowseMore", { count: open.length - shown.length })} →</button>
+          )}
+        </>;
+      })()}
     </CanvasShell>;
   }
 
@@ -1008,7 +1051,32 @@ export function AssistedCanvas({
 }
 
 function CanvasShell({ community: _community, step, onExit, onMoreOptions, children }: { community: ReturnType<typeof getCommunityBySlug>; step: number; onExit: () => void; onMoreOptions: () => void; children: ReactNode }) {
-  return <div className="assisted-canvas">
+  // Runway #6: stop guessing the surrounding chrome. The old hardcoded
+  // `100dvh - 360px` (mobile: 116px) held only while the header stack stayed
+  // under the guess — one banner away from the amount slide scrolling again.
+  // Measure instead: chrome above = this element's offset from the document
+  // top (header stack, price banner, WalletBar, ChamaBar, sim pill — whatever
+  // is actually mounted today); chrome below = the fixed bottom nav, live.
+  // Published as --assisted-chrome on the canvas root; the CSS falls back to
+  // the old guesses wherever measurement is unavailable.
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  useLayoutEffect(() => {
+    const el = rootRef.current;
+    if (!el || typeof window === "undefined") return;
+    const measure = () => {
+      // scrollY-corrected so a mid-scroll re-measure can't poison the value.
+      const top = Math.max(0, Math.round(el.getBoundingClientRect().top + window.scrollY));
+      const nav = document.querySelector<HTMLElement>("[data-chama-bottom-nav]");
+      const bottom = nav ? Math.round(nav.getBoundingClientRect().height) : 0;
+      el.style.setProperty("--assisted-chrome", `${top + bottom}px`);
+    };
+    measure();
+    const ro = typeof ResizeObserver === "function" ? new ResizeObserver(measure) : null;
+    ro?.observe(document.body);
+    window.addEventListener("resize", measure);
+    return () => { ro?.disconnect(); window.removeEventListener("resize", measure); };
+  }, []);
+  return <div ref={rootRef} className="assisted-canvas">
     <style>{canvasCss()}</style>
     {step === 0 && <button type="button" data-chama-shortcut="back" onClick={onExit} tabIndex={-1} aria-hidden="true" style={{ display: "none" }} />}
     <main className="assisted-canvas-main">{children}</main>
@@ -1147,7 +1215,7 @@ function bareInputStyle(): CSSProperties { return { minWidth: 0, flex: 1, border
 function amountLineStyle(): CSSProperties { return { display: "flex", alignItems: "baseline", gap: 12, paddingBottom: 15, borderBottom: `1px solid ${T.border}`, color: T.accent, fontFamily: T.mono, fontWeight: 700 }; }
 
 export function canvasCss() { return `
-  .assisted-canvas{min-height:calc(100dvh - 360px);display:grid;grid-template-rows:1fr auto;padding:clamp(14px,2.5vh,48px) clamp(22px,5vw,70px) 12px;animation:fadeIn .25s ease}
+  .assisted-canvas{min-height:calc(100dvh - var(--assisted-chrome, 360px));display:grid;grid-template-rows:1fr auto;padding:clamp(14px,2.5vh,48px) clamp(22px,5vw,70px) 12px;animation:fadeIn .25s ease}
   .assisted-canvas-main{width:100%;max-width:1080px;margin:0 auto;align-self:center}
   .assisted-canvas-footer{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:18px;color:${T.muted};font-size:12px}
   .assisted-canvas-footer button{justify-self:start;border:0;background:transparent;color:${T.muted};cursor:pointer}
@@ -1235,5 +1303,5 @@ export function canvasCss() { return `
     .assisted-choice-grid{margin-top:8px}
     .assisted-choice{min-height:88px}
   }
-  @media(max-width:760px){.assisted-canvas{min-height:calc(100dvh - 116px);padding:clamp(16px,2.5vh,48px) 18px 14px}.assisted-choice-grid,.assisted-choice-grid.two{grid-template-columns:1fr}.assisted-choice{min-height:120px}.assisted-choice strong{margin-top:18px}.assisted-result-grid{grid-template-columns:1fr}.assisted-rail-grid,.assisted-premium-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.assisted-canvas-footer{grid-template-columns:1fr auto}.assisted-canvas-footer small{display:none}}
+  @media(max-width:760px){.assisted-canvas{min-height:calc(100dvh - var(--assisted-chrome, 116px));padding:clamp(16px,2.5vh,48px) 18px 14px}.assisted-choice-grid,.assisted-choice-grid.two{grid-template-columns:1fr}.assisted-choice{min-height:120px}.assisted-choice strong{margin-top:18px}.assisted-result-grid{grid-template-columns:1fr}.assisted-rail-grid,.assisted-premium-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.assisted-canvas-footer{grid-template-columns:1fr auto}.assisted-canvas-footer small{display:none}}
 `; }

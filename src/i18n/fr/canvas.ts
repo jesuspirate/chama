@@ -10,7 +10,6 @@ export const canvas: Record<string, string> = {
   "canvas.circlePaste": "Collez-le ici",
   "canvas.circleOpen": "Ouvrir",
   "canvas.circleBadInvite": "Cela ne ressemble pas à un lien d'invitation.",
-  "canvas.circleBrowse": "Voir les cercles ouverts",
   "canvas.xbtTeaseDesc": "Un nouveau marché — seulement quand il sera vraiment prêt.",
   "canvas.comingSoon": "Bientôt",
   "canvas.chamaWantDesc": "Ouvrez un cercle Chama — parts égales, tout le monde termine ou tout le monde est remboursé.",
@@ -197,4 +196,7 @@ export const canvas: Record<string, string> = {
   "canvas.yourTrade": "Votre échange",
   "canvas.offlineBar": "Vous êtes hors ligne — reconnectez-vous avant d’échanger. Rien n’est publié tant que vous n’êtes pas de retour.",
   "canvas.offlineToast": "Vous êtes hors ligne — reconnectez-vous avant d’échanger.",
+  "canvas.circleLive": "Cercles ouverts · {count} en direct",
+  "canvas.circleNoneOpen": "Aucun ouvert pour l'instant — lancez-en un et soyez le premier.",
+  "canvas.circleBrowseMore": "Voir {count} de plus dans Parcourir",
 };

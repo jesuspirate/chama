@@ -1,4 +1,4 @@
-import { saveNsecWithNotice, SAVED_NSEC_KEY, NSEC_ORIGIN_KEY, NSEC_KEEP_NOTICE_KEY } from "../storage/saved-nsec.js";
+import { saveNsec, SAVED_NSEC_KEY, NSEC_ORIGIN_KEY } from "../storage/saved-nsec.js";
 import { resolveCreateMintUrl } from "./decisions.js";
 import { CircleCanvas } from "./screens/CircleCanvas.js";
 import { CircleSurface } from "./screens/CircleSurface.js";
@@ -347,31 +347,14 @@ type GivenRatingSlot = {
 
 const GIVEN_RATINGS_STORAGE_PREFIX = "chama_given_ratings_v1";
 const SWITCH_FEEDBACK_MIN_MS = 550;
-// ── nsec persistence (v6.4 runway #13, sealed 2026-09-18) ───────────────────
+// ── nsec persistence (v6.4 runway #13, revised 2026-09-19) ─────────────────
 // The app KEEPS the key by default on EVERY client — browser, PWA, the APKs,
 // Tauri, and the page a Start9 node serves (which is just a browser client).
-// The screen right after a fresh login says so (NsecKeepNotice below), and the
-// user must actively opt out there; the opt-out is remembered per-origin.
-// There is deliberately NO password-manager prompt of ours anywhere — a plain
-// copy button on the generated key is the whole external-backup story.
-const NSEC_OPTOUT_KEY = "chama_nsec_optout";
-
-function nsecPersistenceOptedOut(): boolean {
-  try { return localStorage.getItem(NSEC_OPTOUT_KEY) === "1"; } catch { return false; }
-}
-
-function setNsecPersistenceOptOut(optOut: boolean): void {
-  try {
-    if (optOut) localStorage.setItem(NSEC_OPTOUT_KEY, "1");
-    else localStorage.removeItem(NSEC_OPTOUT_KEY);
-  } catch { /* storage unavailable — nothing would persist anyway */ }
-}
-
-/** Keep the key unless this origin's user has actively said no. */
-function shouldPersistNsec(): boolean {
-  return !nsecPersistenceOptedOut();
-}
-
+// The opt-out is a pre-checked "keep me signed in" checkbox ON the login
+// screen itself (NsecLogin), so login lands straight on Browse — no notice
+// screen after, no opt-out to remember. Unchecked = that login is written
+// nowhere (and clears any stale kept key). No deterministic password-manager
+// SAVE prompt of ours; the paste field does accept manager AUTOFILL.
 async function readSavedNsec(): Promise<string | null> {
   if (Capacitor.isNativePlatform()) {
     const { value } = await Preferences.get({ key: SAVED_NSEC_KEY });
@@ -386,7 +369,7 @@ async function readSavedNsec(): Promise<string | null> {
 }
 
 async function writeSavedNsec(nsec: string, origin: "generated" | "imported"): Promise<void> {
-  await saveNsecWithNotice(nsec, origin, localStorage, Capacitor.isNativePlatform() ? Preferences : undefined);
+  await saveNsec(nsec, origin, localStorage, Capacitor.isNativePlatform() ? Preferences : undefined);
 }
 
 async function removeSavedNsec(): Promise<void> {
@@ -398,94 +381,6 @@ async function removeSavedNsec(): Promise<void> {
   try { localStorage.removeItem(NSEC_ORIGIN_KEY); } catch {}
 }
 
-
-// Post-login keep-notice (runway #13): shown ONCE per origin, on the first
-// screen after a login that saved the key. Default is keeping it; the user
-// must actively say no here to opt out.
-function NsecKeepNotice() {
-  const { t } = useT();
-  const [visible, setVisible] = useState(() => {
-    try { return localStorage.getItem(NSEC_KEEP_NOTICE_KEY) === "pending"; } catch { return false; }
-  });
-  const [forgotten, setForgotten] = useState(false);
-  if (!visible) return null;
-  const settle = () => {
-    try { localStorage.setItem(NSEC_KEEP_NOTICE_KEY, "done"); } catch {}
-    setVisible(false);
-  };
-  return (
-    <div style={{
-      position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 300,
-      display: "flex", justifyContent: "center", pointerEvents: "none",
-      padding: "0 12px calc(14px + env(safe-area-inset-bottom, 0px))",
-    }}>
-      <div style={{
-        pointerEvents: "auto", width: "100%", maxWidth: 440,
-        background: T.surface, border: `1px solid ${T.borderHi}`,
-        borderRadius: T.r, padding: 16,
-        boxShadow: "0 -6px 32px rgba(0,0,0,0.45)",
-      }}>
-        {!forgotten ? (
-          <>
-            <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 7 }}>
-              <span style={{ fontSize: 17, lineHeight: 1 }}>🔑</span>
-              <span style={{ fontSize: 14, fontWeight: 800, color: T.text, fontFamily: T.sans }}>
-                {t("app.keyKeptTitle")}
-              </span>
-            </div>
-            <div style={{ fontSize: 12.5, color: T.muted, fontFamily: T.sans, lineHeight: 1.55, marginBottom: 13 }}>
-              {t("app.keyKeptBody")}
-            </div>
-            <div style={{ display: "flex", gap: 9 }}>
-              <button
-                onClick={settle}
-                style={{
-                  flex: 1.4, padding: "11px 12px", borderRadius: T.rs,
-                  background: T.accent, border: "none", color: T.bg,
-                  fontFamily: T.sans, fontSize: 13, fontWeight: 800, cursor: "pointer",
-                }}
-              >
-                {t("app.keyKeptKeep")}
-              </button>
-              <button
-                onClick={() => {
-                  void removeSavedNsec();
-                  setNsecPersistenceOptOut(true);
-                  setForgotten(true);
-                }}
-                style={{
-                  flex: 1, padding: "11px 12px", borderRadius: T.rs,
-                  background: "transparent", border: `1px solid ${T.border}`,
-                  color: T.muted, fontFamily: T.sans, fontSize: 12, fontWeight: 700,
-                  cursor: "pointer",
-                }}
-              >
-                {t("app.keyKeptForget")}
-              </button>
-            </div>
-          </>
-        ) : (
-          <>
-            <div style={{ fontSize: 12.5, color: T.text, fontFamily: T.sans, lineHeight: 1.55, marginBottom: 12 }}>
-              {t("app.keyForgottenBody")}
-            </div>
-            <button
-              onClick={settle}
-              style={{
-                width: "100%", padding: "11px 12px", borderRadius: T.rs,
-                background: T.surface, border: `1px solid ${T.borderHi}`,
-                color: T.text, fontFamily: T.sans, fontSize: 13, fontWeight: 700,
-                cursor: "pointer",
-              }}
-            >
-              {t("app.keyForgottenOk")}
-            </button>
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
 
 function givenRatingsStorageKey(pubkey: string): string {
   return `${GIVEN_RATINGS_STORAGE_PREFIX}:${pubkey.toLowerCase()}`;
@@ -1390,7 +1285,6 @@ export default function App() {
   // saved nsec before showing login — unless this origin opted out.
   useEffect(() => {
     if (autoLoginChecked || connected || loading || autoLoginStartedRef.current) return;
-    if (!shouldPersistNsec()) { setAutoLoginChecked(true); return; }
     autoLoginStartedRef.current = true;
     (async () => {
       try {
@@ -3037,6 +2931,81 @@ export default function App() {
     setPendingDestroyConfirm: queueDestroyConfirm,
   });
 
+  // ── Runway #13: fast vs manual setup after nsec signup ────────────────────
+  // A fresh account never faces the 190-country globe by default. FAST goes
+  // straight through on the default community (BLF-backed) with zero further
+  // questions; MANUAL keeps every knob (the globe). And an invite link
+  // outranks both: the linked trade's own chain names its community, so the
+  // newcomer lands where the link pointed, home derived — never asked.
+  // Runway #13 (revised 2026-09-19): the fast route is a TOGGLE on the login
+  // screen, not a screen of its own — ConnectScreen hands its state in at
+  // sign-in and a newcomer who left it checked never meets the globe.
+  const fastSetupRequestedRef = useRef(false);
+  const fastSetupStartedRef = useRef(false);
+  const [fastSetupBusy, setFastSetupBusy] = useState(false);
+  const [bootInviteId] = useState<string | null>(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const id = params.get("escrowId") || params.get("trade");
+      return id && /^sm_[a-z0-9_]+$/i.test(id) ? id : null;
+    } catch { return null; }
+  });
+  const [inviteHomeState, setInviteHomeState] = useState<"idle" | "resolving" | "failed">("idle");
+  const inviteHomeAttemptedRef = useRef(false);
+  useEffect(() => {
+    if (!connected || !pubkey || !bootInviteId || changeHomeAfterConnect) return;
+    if (getUserCommunitySlugRaw() !== null) return; // returning user: nothing to derive
+    if (inviteHomeAttemptedRef.current) return;
+    inviteHomeAttemptedRef.current = true;
+    setInviteHomeState("resolving");
+    (async () => {
+      try {
+        const state = await actions.loadEscrow(bootInviteId, { repairFromCache: true });
+        const community = state?.community;
+        if (community && getCommunityBySlug(community)) {
+          const selection = handleSelectCommunity(community);
+          setNeedsHomePick(getUserCommunitySlugRaw() === null);
+          await selection;
+          setNeedsHomePick(getUserCommunitySlugRaw() === null);
+          if (getUserCommunitySlugRaw() !== null) return;
+        }
+        setInviteHomeState("failed");
+      } catch {
+        setInviteHomeState("failed");
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [connected, pubkey, bootInviteId, changeHomeAfterConnect]);
+
+  const fastSetup = async () => {
+    if (fastSetupStartedRef.current) return;
+    fastSetupStartedRef.current = true;
+    setFastSetupBusy(true);
+    try {
+      // Same contract as the globe's onSelect: the identity choice persists
+      // synchronously; wallet join may finish behind the shell.
+      const selection = handleSelectCommunity(DEFAULT_COMMUNITY_SLUG);
+      setNeedsHomePick(getUserCommunitySlugRaw() === null);
+      await selection;
+      setChangeHomeAfterConnect(false);
+      setNeedsHomePick(getUserCommunitySlugRaw() === null);
+    } finally {
+      setFastSetupBusy(false);
+    }
+  };
+
+  // The toggle's whole promise: signed in → straight to Browse. Fires once,
+  // only for a fresh account that asked for it, and never over an invite link
+  // (the invite names the home) or an explicit "change my home".
+  useEffect(() => {
+    if (!connected || !pubkey) return;
+    if (!fastSetupRequestedRef.current || fastSetupStartedRef.current) return;
+    if (changeHomeAfterConnect || bootInviteId) return;
+    if (getUserCommunitySlugRaw() !== null) return;
+    void fastSetup();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [connected, pubkey, changeHomeAfterConnect, bootInviteId]);
+
   const switchTab = (t: Tab) => {
     if (t === "browse") setView("browse");
     else if (t === "dashboard") setView("dashboard");
@@ -3091,9 +3060,7 @@ export default function App() {
                   // rather than gate behind a dialog that never fires.
                   (window as any).__chama_connect_nsec = scanned;
                   // A scanned key is imported, never Chama-generated.
-                  if (shouldPersistNsec()) {
-                    try { await writeSavedNsec(scanned, "imported"); } catch {}
-                  }
+                  try { await writeSavedNsec(scanned, "imported"); } catch {}
                   setToast({ message: t("app.keyScanned"), type: "success" });
                   actions.connect();
                 } else if (scanned.startsWith("nostrconnect://") || scanned.startsWith("bunker://")) {
@@ -3109,9 +3076,12 @@ export default function App() {
         <ConnectScreen
           onConnect={actions.connect}
           onRequestHomeChange={() => setChangeHomeAfterConnect(true)}
-          onConnectNsec={async (nsec: string, remember: boolean, wasGenerated: boolean) => {
+          onConnectNsec={async (nsec: string, remember: boolean, wasGenerated: boolean, fastSetupWanted?: boolean) => {
             (window as any).__chama_connect_nsec = nsec;
-            if (remember && shouldPersistNsec()) {
+            // Runway #13 (revised): the login screen's fast-route toggle. Read
+            // here and acted on once the npub is known (the effect above).
+            fastSetupRequestedRef.current = fastSetupWanted === true;
+            if (remember) {
               try {
                 // v2.5: record key origin alongside the saved nsec so Me ›
                 // Advanced reveals the master key ONLY when Chama generated it
@@ -3121,6 +3091,10 @@ export default function App() {
               } catch (e) {
                 console.warn("[chama] Failed to save nsec to secure storage:", e);
               }
+            } else {
+              // "Keep me signed in" unchecked: this login is written nowhere,
+              // and any stale kept key from an earlier login goes with it.
+              try { await removeSavedNsec(); } catch {}
             }
             actions.connect();
           }}
@@ -3146,11 +3120,30 @@ export default function App() {
       }}>
         <style>{globalCss()}</style>
         <SimModePill />
-        <NsecKeepNotice />
         {/* The picker only remains mounted until the identity choice is saved.
             Wallet initialization errors no longer clear that choice; they are
             handled from the signed-in shell's Chama bar. */}
         {toast && <Toast message={toast.message} type={toast.type} sticky={toast.sticky} dismissOnTap={toast.dismissOnTap} onDone={() => setToast(null)} />}
+        {bootInviteId && inviteHomeState === "resolving" && !changeHomeAfterConnect ? (
+          // Runway #13: the invite implies the home — nothing federation-shaped
+          // is ever shown to someone joining a friend's circle.
+          <div style={{ marginTop: "18vh", display: "grid", gap: 14, justifyItems: "center" }}>
+            <ChamaLoader size={40} label={t("app.openingInvite")} />
+            <div style={{ maxWidth: 300, fontSize: 13, color: T.muted, lineHeight: 1.6 }}>
+              {t("app.openingInviteSub")}
+            </div>
+          </div>
+        ) : fastSetupBusy || (fastSetupRequestedRef.current && !changeHomeAfterConnect && getUserCommunitySlugRaw() === null) ? (
+          // The fast-route toggle was left checked on the login screen: no
+          // fork, no globe, no questions — just a beat of honest feedback
+          // while the default market is joined behind it.
+          <div style={{ marginTop: "18vh", display: "grid", gap: 14, justifyItems: "center" }}>
+            <ChamaLoader size={40} label={t("app.fastSetupBusy")} />
+            <div style={{ maxWidth: 300, fontSize: 13, color: T.muted, lineHeight: 1.6 }}>
+              {t("app.fastSetupDesc")}
+            </div>
+          </div>
+        ) : (
         <GlobeCountryPicker
           onSelect={async (slug) => {
             // handleSelectCommunity persists the identity choice synchronously
@@ -3172,6 +3165,7 @@ export default function App() {
           bondedCountsGeneration={connectedRelays}
           livenessBlocksPerDay={BOND_LIVENESS_BLOCKS_PER_DAY}
         />
+        )}
       </div>
     );
   }
@@ -3204,7 +3198,6 @@ export default function App() {
       {everOnline && (!connected || connectedRelays === 0) && <OfflineBar />}
       <SimModePill />
       <SimEntryModal />
-      <NsecKeepNotice />
 
       {toast && <Toast message={toast.message} type={toast.type} sticky={toast.sticky} dismissOnTap={toast.dismissOnTap} onDone={() => setToast(null)} />}
 
@@ -3969,6 +3962,8 @@ export default function App() {
         <>
         <AssistedCanvas
           listings={allVisibleListings}
+          allEscrows={[...escrows.values()]}
+          circleChildrenLoaded={circleChildrenLoaded}
           stockByListing={stockByListing}
           browseCommunity={routeCommunitySlug}
           activeMintUrl={myActiveInvite}

@@ -48,4 +48,8 @@ export const notify: Record<string, string> = {
   "notify.selfTestBody":
     "If you can see this, OS notification delivery works on this build.",
   "notify.selfTestTitle": "Chama notifications OK",
+  "notify.circleSeatTitle": "🎪 A seat just filled",
+  "notify.circleSeatBody": "{circle}: {filled} of {total} seats are in. You lock last to seal the round.",
+  "notify.circleHostTurnTitle": "⚡ Your turn — you lock last",
+  "notify.circleHostTurnBody": "Everyone else is in on {circle}. Lock your seat to seal round {round} — until you do, the round can’t run.",
 };

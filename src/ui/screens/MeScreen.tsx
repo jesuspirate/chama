@@ -55,6 +55,7 @@ import {
 } from "../decisions.js";
 import { AttentionQueue } from "../components/AttentionQueue.js";
 import { latestParticipantTradePointer } from "../latest-trade.js";
+import { collapseCircleShares } from "../../chama/wiring.js";
 import { counterpartyToRate, type RatingThumb } from "../../reputation/ratings.js";
 import { RatingTap } from "../components/RatingTap.js";
 import {
@@ -2611,6 +2612,14 @@ function getSellerOrderState(
   trade: EscrowState,
   nowSec: number,
 ): "inventory" | "hold" | "ready" {
+  // Circles run their own clock: seats fill, the HOST locks LAST from the
+  // circle screen once the group is in. A member taking a seat registers as
+  // a buyer here, which read as "order finalized, waiting for your lock" on
+  // the host's Seller Dashboard while the circle was still filling (Jet,
+  // prod sighting 2026-09-18). Circles and shares stay in quiet inventory.
+  if (trade.category === "chama" || trade.chamaPolicy === "share-v1" || trade.chamaPolicy === "share-v2") {
+    return "inventory";
+  }
   const buyer = getEffectiveParticipantAt(trade, Role.BUYER, nowSec);
   if (!buyer) return "inventory";
   const hold = trade.joinHolds?.[Role.BUYER];
@@ -2697,12 +2706,14 @@ function buildMeTradeCounts(
   trades: EscrowState[],
   needsYou: EscrowState[],
 ): MeTradeCounts {
+  // Counts mirror what each view will actually show (runway #14: collapsed).
+  const collapsed = collapseCircleShares(trades);
   return {
-    all: trades.length,
+    all: collapsed.length,
     needs: needsYou.length,
-    live: trades.filter(isLiveTrade).length,
-    listings: trades.filter(isOpenListing).length,
-    done: trades.filter(isDoneTrade).length,
+    live: collapsed.filter(isLiveTrade).length,
+    listings: collapsed.filter(isOpenListing).length,
+    done: collapsed.filter(isDoneTrade).length,
   };
 }
 
@@ -2712,11 +2723,15 @@ function filterMeTrades(
   filter: MeTradeFilter,
 ): EscrowState[] {
   const needsYouIds = new Set(needsYou.map((trade) => trade.id));
+  // Runway #14: the "needs" view keeps every actionable trade (a share owed
+  // to YOU must stay tappable); every other view collapses to one card per
+  // circle — the parent carries the claim summary.
   if (filter === "needs") return trades.filter((trade) => needsYouIds.has(trade.id));
-  if (filter === "live") return trades.filter(isLiveTrade);
-  if (filter === "listings") return trades.filter(isOpenListing);
-  if (filter === "done") return trades.filter(isDoneTrade);
-  return trades;
+  const collapsed = collapseCircleShares(trades);
+  if (filter === "live") return collapsed.filter(isLiveTrade);
+  if (filter === "listings") return collapsed.filter(isOpenListing);
+  if (filter === "done") return collapsed.filter(isDoneTrade);
+  return collapsed;
 }
 
 function isLiveTrade(trade: EscrowState): boolean {

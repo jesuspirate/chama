@@ -85,7 +85,16 @@ export function ConnectScreen({
   onConnect, onConnectNsec, onRequestHomeChange, loading, error,
 }: {
   onConnect: () => void;
-  onConnectNsec: (nsec: string, remember: boolean, wasGenerated: boolean) => void | Promise<void>;
+  onConnectNsec: (
+    nsec: string,
+    remember: boolean,
+    wasGenerated: boolean,
+    /** Runway #13 (revised 2026-09-19): the fast route is a TOGGLE on this
+     *  screen, not a screen of its own — true means "set me up on the default
+     *  market and take me straight to Browse", so a newcomer never meets the
+     *  country globe. */
+    fastSetup?: boolean,
+  ) => void | Promise<void>;
   /** A pre-sign-in home is only a browser-wide display hint. Request the real
    *  picker after authentication, when the choice can be scoped to the npub. */
   onRequestHomeChange: () => void;
@@ -118,6 +127,17 @@ export function ConnectScreen({
   const [returningSignInAttempted, setReturningSignInAttempted] = useState(false);
   const [homeChangeRequested, setHomeChangeRequested] = useState(false);
   const homeCommunity = homeSlug ? getCommunityBySlug(homeSlug) : null;
+  // ONE set of sign-in options for the whole screen. Two NsecLogin instances
+  // live here (create + returning paste), and each used to draw its own
+  // "keep me signed in" box — two identical checkboxes on one screen (Jet,
+  // 2026-09-18). The state lives here now and both panels are controlled.
+  const [keepKey, setKeepKey] = useState(true);
+  // The fast route only means anything to someone with no market yet; a
+  // returning citizen already has a home and lands in it.
+  const isNewcomer = !homeSlug;
+  const [fastSetup, setFastSetup] = useState(true);
+  const submitNsec = (nsec: string, remember: boolean, wasGenerated: boolean) =>
+    onConnectNsec(nsec, remember, wasGenerated, isNewcomer ? fastSetup : false);
   // NIP-07 browser extension (Alby, nos2x, …). Only meaningful in a desktop
   // browser — native shells and the Fedi WebView don't inject window.nostr.
   const hasNostrExtension = typeof window !== "undefined" && !!(window as any).nostr;
@@ -242,7 +262,9 @@ export function ConnectScreen({
         ) : (
           <>
             <NsecLogin
-              onSubmit={onConnectNsec}
+              onSubmit={submitNsec}
+              keepKey={keepKey}
+              onKeepKeyChange={setKeepKey}
               friendly
               // Once "I'm a returning Chama citizen" reveals the paste box
               // below, the create-a-key footer no longer applies — swap in
@@ -281,7 +303,9 @@ export function ConnectScreen({
               // minimalPaste: just the field + Show; a valid paste (or Enter)
               // signs you in — no Continue button, no clutter.
               <NsecLogin
-                onSubmit={onConnectNsec}
+                onSubmit={submitNsec}
+                keepKey={keepKey}
+                onKeepKeyChange={setKeepKey}
                 defaultOpen
                 allowCreate={false}
                 minimalPaste
@@ -289,6 +313,29 @@ export function ConnectScreen({
               />
             )}
 
+            {/* The whole screen's sign-in options, once — keep the key, and
+                (for a newcomer) skip the market picker entirely. Both
+                pre-checked: the common path is one tap from here to Browse. */}
+            <div style={{
+              display: "grid", gap: 10, padding: "12px 14px",
+              background: T.surface, border: `1px solid ${T.border}`,
+              borderRadius: T.rs,
+            }}>
+              <OptionToggle
+                checked={keepKey}
+                onChange={setKeepKey}
+                label={t("chat.keepSignedIn")}
+                hint={keepKey ? t("chat.keepSignedInHintOn") : t("chat.keepSignedInHintOff")}
+              />
+              {isNewcomer && (
+                <OptionToggle
+                  checked={fastSetup}
+                  onChange={setFastSetup}
+                  label={t("connect.fastSetupToggle")}
+                  hint={fastSetup ? t("connect.fastSetupToggleOn") : t("connect.fastSetupToggleOff")}
+                />
+              )}
+            </div>
           </>
         )}
       </div>
@@ -462,6 +509,37 @@ function WelcomeIntro({ onContinue }: { onContinue: () => void }) {
         {t("connect.footerTagline")}
       </div>
     </>
+  );
+}
+
+/** One sign-in option: a checkbox with a label and a line that says, in plain
+ *  words, what each state means. Shared by the keep-my-key and fast-setup
+ *  toggles so the two read as one small set of choices, not as clutter. */
+function OptionToggle({ checked, onChange, label, hint }: {
+  checked: boolean;
+  onChange: (next: boolean) => void;
+  label: string;
+  hint: string;
+}) {
+  return (
+    <label style={{
+      display: "flex", alignItems: "flex-start", gap: 9, cursor: "pointer",
+      fontFamily: T.sans, fontSize: 12.5, color: T.text, userSelect: "none",
+      textAlign: "left",
+    }}>
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        style={{ width: 17, height: 17, accentColor: T.accent, cursor: "pointer", margin: "1px 0 0" }}
+      />
+      <span>
+        {label}
+        <span style={{ display: "block", fontSize: 10.5, color: T.muted, marginTop: 1, lineHeight: 1.45 }}>
+          {hint}
+        </span>
+      </span>
+    </label>
   );
 }
 

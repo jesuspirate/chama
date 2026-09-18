@@ -30,6 +30,20 @@ export function sharesForCircle(escrows: Iterable<EscrowState>, circleId?: strin
   return result;
 }
 
+/** Runway #14: My Trades shows ONE card per circle. A host's list holds the
+ *  parent circle PLUS every member share (the host is counterparty on each),
+ *  which reads as duplicates. Drop any share whose parent circle is itself in
+ *  the list — the parent card carries the claim summary, and the who-claimed
+ *  detail lives on the circle roster. A member whose list holds only their
+ *  share keeps it: one card either way. Pure, order-preserving. */
+export function collapseCircleShares(escrows: EscrowState[]): EscrowState[] {
+  const parents = new Set<string>();
+  for (const e of escrows) if (circleFromEscrow(e)) parents.add(e.id);
+  if (parents.size === 0) return escrows;
+  return escrows.filter(e =>
+    !((e.chamaPolicy === "share-v1" || e.chamaPolicy === "share-v2") && e.parent && parents.has(e.parent)));
+}
+
 /** Client orchestration. The publisher owns durable retry; failures remain eligible next pass. */
 export function createChamaRefundWatcher(deps: {
   getEscrows: () => Iterable<EscrowState>;

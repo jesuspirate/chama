@@ -24,14 +24,17 @@ export const chat: Record<string, string> = {
   "chat.externalRoute": "Njia ya nje",
   "chat.footerGeneratedNative":
     "Imehifadhiwa kwenye kifaa hiki, imesimbwa — lakini tunza nakala yako mwenyewe pia, endapo utapoteza simu.",
-  "chat.footerGeneratedWeb": "Umehifadhiwa kwenye kifaa hiki \u2014 weka pia nakala yako mwenyewe, endapo utapoteza ufikiaji wa kivinjari hiki.",
+  "chat.footerGeneratedWeb": "Tunza nakala yako mwenyewe salama — Chama haiwezi kurejesha ufunguo uliopotea.",
   "chat.footerPasteNative":
     "Ufunguo wako wa urejeshaji unabaki kwenye kifaa hiki, umesimbwa kwenye hifadhi salama.",
-  "chat.footerPasteWeb": "Ufunguo wako umehifadhiwa kwenye kifaa hiki, hivyo unabaki umeingia.",
+  "chat.footerPasteWeb": "Chama haioni kamwe ufunguo wako — unabaki kwenye kifaa hiki tu.",
   "chat.haveKey": "Tayari nina ufunguo",
   "chat.hide": "Ficha",
   "chat.imageReady": "Picha iko tayari",
   "chat.keySavedHint": "Ufunguo wako umehifadhiwa kwenye kifaa hiki \u2014 Chama itakuingiza kiotomatiki wakati ujao.",
+  "chat.keepSignedIn": "Niendelee kuwa nimeingia kwenye kifaa hiki",
+  "chat.keepSignedInHintOn": "Wakati ujao utaingia moja kwa moja — hakuna kubandika.",
+  "chat.keepSignedInHintOff": "Utabandika ufunguo wako kila unapoingia.",
   "chat.keyChoiceFooter":
     "Chama inaunda ufunguo wa siri wa urejeshaji kwenye kifaa hiki. Uhifadhi mara moja ili uweze kurejesha akaunti yako baadaye.",
   "chat.keyOnlyAfter":

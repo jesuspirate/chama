@@ -28,14 +28,17 @@ export const chat: Record<string, string> = {
   "chat.externalRoute": "External route",
   "chat.footerGeneratedNative":
     "Saved on this device, encrypted — but keep your own copy too, in case you lose the phone.",
-  "chat.footerGeneratedWeb": "Saved on this device \u2014 keep your own copy too, in case you lose access to this browser.",
+  "chat.footerGeneratedWeb": "Keep your own copy safe — Chama can't reset a lost key.",
   "chat.footerPasteNative":
     "Your recovery key stays on this device, encrypted in secure storage.",
-  "chat.footerPasteWeb": "Your key is saved on this device, so you stay signed in.",
+  "chat.footerPasteWeb": "Chama never sees your key — it stays on this device only.",
   "chat.haveKey": "I already have a key",
   "chat.hide": "Hide",
   "chat.imageReady": "Image ready",
   "chat.keySavedHint": "Your key is saved on this device \u2014 Chama will sign you in automatically next time.",
+  "chat.keepSignedIn": "Keep me signed in on this device",
+  "chat.keepSignedInHintOn": "You'll land straight in next time — no pasting.",
+  "chat.keepSignedInHintOff": "You'll paste your key every time you sign in.",
   "chat.keyChoiceFooter":
     "Chama creates a private recovery key on this device. Save it once so you can restore your account later.",
   "chat.keyOnlyAfter":

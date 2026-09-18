@@ -12,7 +12,6 @@ export const canvas: Record<string, string> = {
   "canvas.circlePaste": "Paste it here",
   "canvas.circleOpen": "Open",
   "canvas.circleBadInvite": "That doesn't look like an invite link.",
-  "canvas.circleBrowse": "See open circles",
   "canvas.xbtTeaseDesc": "A new market — only when it's truly ready.",
   "canvas.comingSoon": "Coming soon",
   "canvas.chamaWantDesc": "Start a Chama circle — equal shares, everyone completes or everyone is refunded.",
@@ -218,4 +217,7 @@ export const canvas: Record<string, string> = {
   // offline
   "canvas.offlineBar": "You’re offline — reconnect before trading. Nothing publishes until you’re back.",
   "canvas.offlineToast": "You're offline — reconnect before trading.",
+  "canvas.circleLive": "Open circles · {count} live",
+  "canvas.circleNoneOpen": "None open right now — start one and be the first.",
+  "canvas.circleBrowseMore": "See {count} more in Browse",
 };

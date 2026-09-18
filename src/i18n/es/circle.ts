@@ -105,4 +105,9 @@ export const circle: Record<string, string> = {
   "circle.fundingUnavailable": "Conéctate a la federación del círculo antes de aportar. Tu cartera actual se conserva.",
   "circle.minCaption": "La ronda avanza con",
   "circle.maxCaption": "Plazas m\u00e1ximas",
+  "circle.bySunday": "Para el domingo",
+  "circle.claimSummary": "{claimed} de {total} cobrados",
+  "circle.yourSeatClaimed": "tu asiento: cobrado ✓",
+  "circle.yourSeatClaimNow": "tu asiento: cobra ahora",
+  "circle.yourSeatLocked": "tu asiento: bloqueado",
 };

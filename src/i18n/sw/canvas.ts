@@ -10,7 +10,6 @@ export const canvas: Record<string, string> = {
   "canvas.circlePaste": "Bandika hapa",
   "canvas.circleOpen": "Fungua",
   "canvas.circleBadInvite": "Hicho hakionekani kama kiungo cha mwaliko.",
-  "canvas.circleBrowse": "Ona mizunguko iliyo wazi",
   "canvas.xbtTeaseDesc": "Soko jipya — pale tu litakapokuwa tayari kweli.",
   "canvas.comingSoon": "Inakuja hivi karibuni",
   "canvas.chamaWantDesc": "Fungua duara la Chama — sehemu sawa, wote wanakamilisha au wote wanarejeshewa.",
@@ -197,4 +196,7 @@ export const canvas: Record<string, string> = {
   "canvas.yourTrade": "Biashara yako",
   "canvas.offlineBar": "Uko nje ya mtandao — unganisha tena kabla ya kufanya biashara. Hakuna kinachochapishwa hadi urudi.",
   "canvas.offlineToast": "Uko nje ya mtandao — unganisha tena kabla ya kufanya biashara.",
+  "canvas.circleLive": "Mizunguko iliyo wazi · {count} moja kwa moja",
+  "canvas.circleNoneOpen": "Hakuna uliofunguliwa sasa — anzisha mmoja uwe wa kwanza.",
+  "canvas.circleBrowseMore": "Ona {count} zaidi katika Vinjari",
 };

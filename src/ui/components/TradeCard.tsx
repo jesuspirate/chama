@@ -95,13 +95,34 @@ export function TradeCard({
   const nowSec = Math.floor(Date.now() / 1000);
   const circle = circleFromEscrow(state);
   if (circle) {
-    const model = circleCardModel(circle, sharesForCircle(allEscrows ?? [], circle.circleId), nowSec,
+    const shares = sharesForCircle(allEscrows ?? [], circle.circleId);
+    const model = circleCardModel(circle, shares, nowSec,
       { childrenLoaded: circleChildrenLoaded?.has(circle.circleId) ? true : undefined });
+    // Runway #14: one card per circle, so THIS card carries the summary the
+    // collapsed share rows used to hint at — your seat's status, and how many
+    // members have taken their sats home. Who-claimed detail stays on the
+    // circle roster.
+    const lockedShares = shares.filter(sh => sh.escrowId !== null);
+    const isSettled = (st: typeof lockedShares[number]["status"]) =>
+      st === "returned" || st === "refunded" || st === "paid";
+    const claimedCount = lockedShares.filter(sh => isSettled(sh.status)).length;
+    const claimPhase = claimedCount > 0 || lockedShares.some(sh => sh.readyToClaim);
+    const mine = pubkey ? lockedShares.find(sh => sh.memberPubkey.toLowerCase() === pubkey.toLowerCase()) : undefined;
+    const mineText = mine
+      ? (isSettled(mine.status) ? t("circle.yourSeatClaimed")
+        : mine.readyToClaim ? t("circle.yourSeatClaimNow")
+        : t("circle.yourSeatLocked"))
+      : null;
+    const summaryText = [
+      claimPhase ? t("circle.claimSummary", { claimed: claimedCount, total: lockedShares.length }) : null,
+      mineText,
+    ].filter(Boolean).join(" · ");
     return <button type="button" onClick={onSelect} className="circle-browse-card" style={{ width: "100%", display: "flex", gap: 18, alignItems: "center", padding: "22px 20px", background: T.card, border: `1px solid ${T.border}`, borderRadius: T.r, color: T.text, textAlign: "left", cursor: "pointer" }}>
       <VerticalIcon vertical="chama" size={74} />
       <span style={{ display: "grid", gap: 7, minWidth: 0 }}><strong style={{ font: `750 21px ${T.sans}`, overflowWrap: "anywhere" }}>{circle.name}{circle.roundIndex > 1 ? ` · ${t("circle.roundN", { n: circle.roundIndex })}` : ""}</strong>
         <span style={{ color: T.accent, fontWeight: 700 }}>{t("circle.satsEach", { amount: fmtSats(model.shareMsats) })}</span>
         <span style={{ color: T.muted, font: `11px ${T.mono}`, lineHeight: 1.6 }}>{model.seatsLocked === null ? `· ${t("circle.open")}` : t("circle.seats", { filled: model.seatsLocked, total: model.seatThreshold })}<br />{model.secsToFillDeadline > 0 ? t("circle.closesIn", { time: circleTimeText(model.secsToFillDeadline, t) }) : t("circle.closed")}</span>
+        {summaryText && <span style={{ color: mine?.readyToClaim ? T.green : T.muted, font: `700 11px ${T.mono}` }}>{summaryText}</span>}
       </span><span style={{ marginLeft: "auto", color: T.accent }} aria-hidden="true">↗</span>
     </button>;
   }

@@ -345,6 +345,7 @@ import {
   buildArbiterApplicationEvent,
   collectArbiterApplications,
 } from "../arbiters/applications.js";
+import { circleLockContextFor } from "../chama/lock-notify.js";
 import { maybeNotifyTransition, maybeNotifyChatMessage, maybeNotifyBuyerInterest, maybeNotifyNewListing, maybeNotifySavedIntentMatch, maybeSendTradeDms } from "../notifications/notify-service.js";
 import { makeChainEventTagger } from "../notifications/watch-tags.js";
 import {
@@ -1452,7 +1453,24 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     // double-fires (even under StrictMode re-invokes) or blocks the update.
     const priorEscrow = stateRef.current?.escrows.get(escrowId);
     const notifyPubkey = stateRef.current?.pubkey;
-    maybeNotifyTransition(priorEscrow, escrowState, notifyPubkey, notifyLiveSinceRef.current);
+    // A circle seat locking is the host's cue (they lock LAST to seal the
+    // round), so that one transition carries circle context. Built only for a
+    // freshly-locked share — and over a view that already includes it, or the
+    // seat count would be one short.
+    const isFreshShareLock =
+      (escrowState.chamaPolicy === "share-v1" || escrowState.chamaPolicy === "share-v2")
+      && escrowState.status === EscrowStatus.LOCKED;
+    const circleLockCtx = isFreshShareLock
+      ? circleLockContextFor(
+          escrowState,
+          [
+            ...[...(stateRef.current?.escrows.values() ?? [])].filter(e => e.id !== escrowId),
+            escrowState,
+          ],
+          notifyPubkey,
+        )
+      : null;
+    maybeNotifyTransition(priorEscrow, escrowState, notifyPubkey, notifyLiveSinceRef.current, circleLockCtx);
 
     // Liquidity/attention (Part ①.3 + Part ②): pull the seller back the moment a
     // buyer shows interest (a pre-lock child order / a JOIN hold on their

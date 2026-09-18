@@ -51,4 +51,7 @@ export const connect: Record<string, string> = {
   "connect.waitingSigner": "Inasubiri kisaini chako...",
   "connect.welcomeHome": "Karibu nyumbani",
   "connect.yourChama": "Chama chako",
+  "connect.fastSetupToggle": "Niandalie soko langu",
+  "connect.fastSetupToggleOn": "Utaingia moja kwa moja — badilisha nchi yako wakati wowote kutoka Mimi.",
+  "connect.fastSetupToggleOff": "Utachagua nchi na sarafu yako baadaye.",
 };

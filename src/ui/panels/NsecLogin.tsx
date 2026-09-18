@@ -6,20 +6,16 @@ import { isTauriRuntime } from "../sign-in-environment.js";
 import { validateRecoveryKeyInput } from "../../escrow-engine/nsec-signer.js";
 import { useT } from "../../i18n/index.js";
 
-// ── v6.4 runway #13 (sealed 2026-09-18): the app keeps the key ──────────────
+// ── v6.4 runway #13 (revised 2026-09-19): the app keeps the key ────────────
 // Every client — browser, PWA, APK, Tauri, Start9's served page — persists the
-// nsec on login by default (the shell's writeSavedNsec), and the screen right
-// after login carries the keep-notice with the active opt-out. That retires
-// the whole v6.3.x password-manager apparatus that used to live here: the
-// deterministic credentials.store() call, the hidden username+password form
-// built to summon Safari/Bitwarden save sheets, the History push that released
-// WebKit's batched save decision, and the copy-then-re-paste backup
-// verification ritual. What remains is a plain copy button on the generated
-// key for whoever wants an external backup — nothing more, and deliberately
-// NO password-manager prompt of ours anywhere. The paste field is masked with
-// -webkit-text-security instead of type="password" (the codebase-verified
-// trick from the old verify field) precisely so no manager heuristic ever
-// attaches a save or strong-password sheet to it.
+// nsec on login by default. The opt-out lives HERE, as a pre-checked "keep me
+// signed in" checkbox on the login screen itself — no extra screen after
+// login; you land straight on Browse. The v6.3.x password-manager APPARATUS
+// stays retired (no credentials.store(), no hidden username+password form, no
+// History-push save trick, no copy-then-re-paste ritual), but the paste field
+// is a real current-password control again so a manager can FILL a key the
+// user saved themselves — import restored (Jet, 2026-09-18). The generated-key
+// flow stays manager-invisible: a plain copy button is its whole backup story.
 export function NsecLogin({
   onSubmit,
   defaultOpen = false,
@@ -28,6 +24,8 @@ export function NsecLogin({
   allowCreate = true,
   minimalPaste = false,
   autoFocusInput = false,
+  keepKey: keepKeyProp,
+  onKeepKeyChange,
   choiceFooter,
 }: {
   onSubmit: (nsec: string, remember: boolean, wasGenerated: boolean) => void | Promise<void>;
@@ -44,6 +42,12 @@ export function NsecLogin({
   minimalPaste?: boolean;
   /** Focus the recovery field when this instance mounts. */
   autoFocusInput?: boolean;
+  /** Controlled "keep me signed in" (ConnectScreen owns ONE toggle for the
+   *  whole screen, so the two NsecLogin instances can't each draw their own —
+   *  the duplicate boxes Jet caught, 2026-09-18). When provided, this panel
+   *  renders no checkbox of its own. */
+  keepKey?: boolean;
+  onKeepKeyChange?: (keep: boolean) => void;
   // Overrides the choice-mode footer copy. ConnectScreen swaps in
   // recovery-specific guidance once "I'm a returning Chama citizen" reveals
   // the paste box, so the "we'll create a key" line never sits above a box
@@ -57,9 +61,14 @@ export function NsecLogin({
     friendly ? "choice" : "paste",
   );
   const [nsecInput, setNsecInput] = useState("");
-  // Runway #13: the key is kept by default on EVERY client. The post-login
-  // keep-notice (App's NsecKeepNotice) is where the user actively opts out.
-  const remember = true;
+  // Runway #13 (revised): keep-by-default, opt-out on the login screen itself.
+  // Controlled by ConnectScreen where one toggle serves the whole screen;
+  // uncontrolled (with its own checkbox) for any standalone use.
+  const [keepKeyOwn, setKeepKeyOwn] = useState(true);
+  const controlledKeep = keepKeyProp !== undefined && onKeepKeyChange !== undefined;
+  const keepKey = controlledKeep ? keepKeyProp! : keepKeyOwn;
+  const setKeepKey = controlledKeep ? onKeepKeyChange! : setKeepKeyOwn;
+  const remember = keepKey;
   const [generatedNsec, setGeneratedNsec] = useState<string | null>(null);
   const [showKey, setShowKey] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -232,12 +241,14 @@ export function NsecLogin({
         fontFamily: T.mono, fontSize: 12,
       }}>
         <div>{t("chat.signingIn")}</div>
-        <div style={{
-          marginTop: 12, color: T.text, fontFamily: T.sans, fontSize: 13,
-          lineHeight: 1.5,
-        }}>
-          {t("chat.keySavedHint")}
-        </div>
+        {keepKey && (
+          <div style={{
+            marginTop: 12, color: T.text, fontFamily: T.sans, fontSize: 13,
+            lineHeight: 1.5,
+          }}>
+            {t("chat.keySavedHint")}
+          </div>
+        )}
       </div>
     );
   }
@@ -282,12 +293,14 @@ export function NsecLogin({
       {showPasteInput && (
         <>
           <input
-            /* Masked with -webkit-text-security instead of type="password":
-               a password-classified control is exactly what summons manager
-               save offers and iOS's strong-password sheet, and runway #13
-               wants NONE of that. The ignore attrs cover Bitwarden /
-               1Password / LastPass. */
-            name="nsec-recovery-key"
+            /* A real current-password control, so password managers OFFER TO
+               FILL a key the user saved themselves (import restored, Jet
+               2026-09-18). current-password never summons iOS's
+               strong-password sheet — that hijack rode new-password — and
+               with no username field and no credentials.store() there is no
+               deterministic save prompt of ours; anything beyond that is the
+               browser's own sign-in behavior. */
+            name="password"
             value={nsecInput}
             onChange={(e) => {
               setNsecInput(e.target.value);
@@ -298,11 +311,8 @@ export function NsecLogin({
             }}
             onKeyDown={(e) => e.key === "Enter" && void handleSubmit()}
             placeholder={t("chat.pasteRecoveryKey")}
-            type="text"
-            autoComplete="off"
-            data-bwignore="true"
-            data-1p-ignore="true"
-            data-lpignore="true"
+            type={showKey ? "text" : "password"}
+            autoComplete="current-password"
             autoCapitalize="off"
             autoCorrect="off"
             spellCheck={false}
@@ -313,7 +323,6 @@ export function NsecLogin({
               borderRadius: T.rs, color: T.text,
               fontFamily: T.mono, fontSize: 12, outline: "none",
               marginBottom: 8,
-              ...(showKey ? {} : ({ WebkitTextSecurity: "disc" } as React.CSSProperties)),
             }}
           />
           <div style={{
@@ -405,6 +414,28 @@ export function NsecLogin({
           />
         </div>
       )}
+
+      {/* Runway #13 (revised): the keep choice IS the login screen — one
+          pre-checked box, no screen after. Unchecking = paste-every-time.
+          Hidden when ConnectScreen owns the toggle for the whole screen. */}
+      {!controlledKeep && <label style={{
+        display: "flex", alignItems: "center", gap: 9, margin: "2px 0 12px",
+        cursor: "pointer", fontFamily: T.sans, fontSize: 12.5, color: T.text,
+        userSelect: "none",
+      }}>
+        <input
+          type="checkbox"
+          checked={keepKey}
+          onChange={e => setKeepKey(e.target.checked)}
+          style={{ width: 17, height: 17, accentColor: T.accent, cursor: "pointer", margin: 0 }}
+        />
+        <span>
+          {t("chat.keepSignedIn")}
+          <span style={{ display: "block", fontSize: 10.5, color: T.muted, marginTop: 1 }}>
+            {keepKey ? t("chat.keepSignedInHintOn") : t("chat.keepSignedInHintOff")}
+          </span>
+        </span>
+      </label>}
 
       {/* v2.5: minimalPaste (the returning-user box attached to "I'm a
           returning Chama citizen") drops the Continue button entirely —

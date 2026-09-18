@@ -33,4 +33,8 @@ export const notify: Record<string, string> = {
   "notify.selfTestBody":
     "Si vous voyez ceci, la livraison des notifications OS fonctionne sur cette version.",
   "notify.selfTestTitle": "Notifications Chama OK",
+  "notify.circleSeatTitle": "🎪 Une place vient d’être prise",
+  "notify.circleSeatBody": "{circle} : {filled} places sur {total} sont là. Vous verrouillez en dernier pour sceller le tour.",
+  "notify.circleHostTurnTitle": "⚡ À vous — vous verrouillez en dernier",
+  "notify.circleHostTurnBody": "Tout le monde est là sur {circle}. Verrouillez votre place pour sceller le tour {round} — sans cela, le tour ne peut pas partir.",
 };

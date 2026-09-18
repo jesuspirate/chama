@@ -32,6 +32,22 @@ function tradeDeepLink(id: string): string {
   return `https://getchama.app/?trade=${id}`;
 }
 
+/** Circle seat context for a share LOCK (runway: seal round 1). Built by
+ *  `circleLockContextFor` in src/chama/lock-notify.ts, which owns the circle
+ *  rules; this module owns only the copy and the dedup tag. */
+export interface CircleLockContext {
+  circleId: string;
+  circleName: string;
+  roundIndex: number;
+  /** Seats actually locked, including the one that just landed. */
+  lockedSeats: number;
+  seatTarget: number;
+  viewerIsHost: boolean;
+  /** Every OTHER seat is in and the host's own is not: the host locks last,
+   *  and until they do there is no round — and no round two. */
+  hostTurn: boolean;
+}
+
 export interface TradeNotification {
   escrowId: string;
   title: string;
@@ -92,6 +108,7 @@ export function notificationForTransition(
   next: EscrowState,
   userPubkey: string | null | undefined,
   liveSinceSec = Number.POSITIVE_INFINITY,
+  circle?: CircleLockContext | null,
 ): TradeNotification | null {
   if (!userPubkey) return null;
   const role = roleOf(next, userPubkey);
@@ -123,6 +140,38 @@ export function notificationForTransition(
   // exception above is intentionally freshness-gated because its routed JOIN is
   // often the first event that makes the trade discoverable to that arbiter.
   if (!prev) return null;
+
+  // 1a) A CIRCLE SEAT just locked → tell the HOST. The host locks LAST to seal
+  //     the round, so every member lock is their cue: without the host's lock
+  //     there is no round, and without a round there is no round two. Two
+  //     notes: quiet progress while seats are still filling, and a distinct
+  //     "your turn" the moment everyone else is in. Never fires for the
+  //     locker's own seat, and circles never fall through to the storefront
+  //     "new order" copy below.
+  if (circle && prev.status === EscrowStatus.CREATED && next.status === EscrowStatus.LOCKED
+      && circle.viewerIsHost && !samePubkey(next.participants[Role.BUYER], userPubkey)) {
+    const lang = getCurrentLang();
+    if (circle.hostTurn) {
+      return {
+        escrowId: circle.circleId,
+        title: translate(lang, "notify.circleHostTurnTitle"),
+        body: translate(lang, "notify.circleHostTurnBody", {
+          circle: circle.circleName, round: circle.roundIndex,
+        }),
+        // Per circle ROUND — the one moment that must never be missed.
+        tag: `${circle.circleId}:host-turn:${circle.roundIndex}`,
+      };
+    }
+    return {
+      escrowId: circle.circleId,
+      title: translate(lang, "notify.circleSeatTitle"),
+      body: translate(lang, "notify.circleSeatBody", {
+        circle: circle.circleName, filled: circle.lockedSeats, total: circle.seatTarget,
+      }),
+      // Per SEAT, so each member's lock buzzes exactly once.
+      tag: `${next.id}:circle-seat`,
+    };
+  }
 
   // 1) Sats just locked → tell the NON-locker (the counterparty whose turn it
   //    is). The locker did the action; they don't need telling.

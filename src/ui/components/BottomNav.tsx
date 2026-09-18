@@ -30,7 +30,7 @@ export function BottomNav({ active, onSelect, badges }: {
     { id: "me",        label: t("browse.navMe"),        icon: <NavGlyph kind="me" /> },
   ];
   return (
-    <div style={{
+    <div data-chama-bottom-nav style={{
       position: "fixed", bottom: 0, left: 0, right: 0,
       background: T.surface, borderTop: `1px solid ${T.border}`,
       display: "flex", justifyContent: "center",

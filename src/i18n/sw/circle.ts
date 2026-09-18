@@ -105,4 +105,9 @@ export const circle: Record<string, string> = {
   "circle.fundingUnavailable": "Unganisha na shirikisho la duara kabla ya kuchangia. Pochi yako ya sasa inahifadhiwa.",
   "circle.minCaption": "Raundi huanza kwa",
   "circle.maxCaption": "Viti vya juu",
+  "circle.bySunday": "Kufikia Jumapili",
+  "circle.claimSummary": "{claimed} kati ya {total} wamechukua",
+  "circle.yourSeatClaimed": "kiti chako: umechukua ✓",
+  "circle.yourSeatClaimNow": "kiti chako: chukua sasa",
+  "circle.yourSeatLocked": "kiti chako: kimefungwa",
 };

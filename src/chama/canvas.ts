@@ -36,6 +36,27 @@ export function circleCanvasRound(input: {
     prevCircleId: input.previous?.prevCircleId ?? null };
 }
 
+// Runway #9: the round clock is createdAt + duration, so a circle's payday is
+// its birthday — a Monday-night circle "everyone said completes Sunday"
+// honestly returns Monday night. If the pulse is "lock in the week, back by
+// Sunday", OFFER a duration that lands roundEnd on the next Sunday evening.
+// Pure and tz-explicit so it's testable: pass the viewer's offset (UI:
+// -new Date().getTimezoneOffset()). A Sunday closer than MIN_DAYS gives the
+// day-quantized fill window no room, so it rolls to the Sunday after. The
+// fixed-clock law is untouched — this is a default on offer, not a new rule.
+export const SUNDAY_SNAP_HOUR = 18; // 6 pm local — evening, unambiguous
+const SUNDAY_SNAP_MIN_SEC = 3 * 86_400;
+
+export function sundaySnapDurationSec(createdAt: number, tzOffsetMinutes: number): number {
+  const local = (createdAt + tzOffsetMinutes * 60) * 1000;
+  const d = new Date(local);
+  const daysToSunday = (7 - d.getUTCDay()) % 7; // 0 when today is Sunday
+  const target = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + daysToSunday, SUNDAY_SNAP_HOUR, 0, 0);
+  let duration = Math.round(target / 1000) - tzOffsetMinutes * 60 - createdAt;
+  while (duration < SUNDAY_SNAP_MIN_SEC) duration += 7 * 86_400;
+  return duration;
+}
+
 export function circleCanvasErrors(circle: CircleRound): string[] {
   return validateCircleRound(circle);
 }

@@ -14,6 +14,7 @@ import {
   buyerInterestNotificationFor, newListingNotificationFor,
   tradeDmNotificationFor, dmViewerRole, pendingOnchainArbiterPubkey,
   type TradeNotification, type DmNotifyPref,
+  type CircleLockContext,
 } from "./trade-notifications.js";
 import { Role, EscrowStatus } from "../escrow-engine/types.js";
 import { setPendingTradeDeepLink } from "./deep-link.js";
@@ -537,6 +538,7 @@ export function maybeNotifyTransition(
   next: EscrowState,
   userPubkey: string | null | undefined,
   liveSinceSec = Number.POSITIVE_INFINITY,
+  circle?: CircleLockContext | null,
 ): void {
   // Record the observed status FIRST — independent of the enable toggle and of
   // whether anything buzzes — so subsequent observations have a scoped status
@@ -557,7 +559,7 @@ export function maybeNotifyTransition(
   const effectivePrev = catchUpPrev(prev, next, seenBefore);
   const coldCatchup = !prev && effectivePrev !== undefined;
 
-  const n = notificationForTransition(effectivePrev, next, userPubkey, liveSinceSec);
+  const n = notificationForTransition(effectivePrev, next, userPubkey, liveSinceSec, circle);
   if (!n) return;
   if (readFiredTags().has(n.tag)) {
     notifyDebug(() => `skip (already fired) tag=${n.tag}`);

@@ -25,14 +25,17 @@ export const chat: Record<string, string> = {
   "chat.externalRoute": "Route externe",
   "chat.footerGeneratedNative":
     "Enregistrée sur cet appareil, chiffrée — mais gardez aussi votre propre copie, au cas où vous perdriez le téléphone.",
-  "chat.footerGeneratedWeb": "Enregistr\u00e9e sur cet appareil \u2014 gardez aussi votre propre copie, au cas o\u00f9 vous perdriez l'acc\u00e8s \u00e0 ce navigateur.",
+  "chat.footerGeneratedWeb": "Gardez bien votre propre copie — Chama ne peut pas réinitialiser une clé perdue.",
   "chat.footerPasteNative":
     "Votre clé de récupération reste sur cet appareil, chiffrée dans le stockage sécurisé.",
-  "chat.footerPasteWeb": "Votre cl\u00e9 est enregistr\u00e9e sur cet appareil, vous restez donc connect\u00e9.",
+  "chat.footerPasteWeb": "Chama ne voit jamais votre clé — elle reste uniquement sur cet appareil.",
   "chat.haveKey": "J'ai déjà une clé",
   "chat.hide": "Masquer",
   "chat.imageReady": "Image prête",
   "chat.keySavedHint": "Votre cl\u00e9 est enregistr\u00e9e sur cet appareil \u2014 Chama vous connectera automatiquement la prochaine fois.",
+  "chat.keepSignedIn": "Rester connecté sur cet appareil",
+  "chat.keepSignedInHintOn": "La prochaine fois, vous entrez directement — rien à coller.",
+  "chat.keepSignedInHintOff": "Vous collerez votre clé à chaque connexion.",
   "chat.keyChoiceFooter":
     "Chama crée une clé de récupération privée sur cet appareil. Sauvegardez-la une fois pour pouvoir restaurer votre compte plus tard.",
   "chat.keyOnlyAfter":

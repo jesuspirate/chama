@@ -53,4 +53,7 @@ export const connect: Record<string, string> = {
   "connect.waitingSigner": "Waiting for your signer...",
   "connect.welcomeHome": "Welcome home",
   "connect.yourChama": "Your Chama",
+  "connect.fastSetupToggle": "Set up my market for me",
+  "connect.fastSetupToggleOn": "You'll land straight in — change your country anytime from Me.",
+  "connect.fastSetupToggleOff": "You'll pick your country and currency next.",
 };

@@ -1,6 +1,9 @@
 import { sharesForCircle } from "./wiring.js";
-import { EscrowEventKind, EscrowStatus, Outcome, type EscrowState } from "../escrow-engine/types.js";
-import { circleCanvasRound } from "./canvas.js";
+import { EscrowEventKind, EscrowStatus, Outcome, Role, type EscrowState } from "../escrow-engine/types.js";
+import { circleCanvasRound, sundaySnapDurationSec, SUNDAY_SNAP_HOUR } from "./canvas.js";
+import { collapseCircleShares } from "./wiring.js";
+import { circleLockContextFor } from "./lock-notify.js";
+import { notificationForTransition } from "../notifications/trade-notifications.js";
 import {
   canTakeSeat,
   circleProgress,
@@ -346,6 +349,118 @@ assert(circleCardModel(CIRCLE, filling2, T0 + 10).seatsLocked === 2,
   "loaded children give the honest count");
 assert(circleCardModel(CIRCLE, filling2, T0 + 10, { childrenLoaded: false }).seatsLocked === null,
   "an explicitly-incomplete view stays humble even with shares in hand");
+
+console.log("\n── Chama circle: one card per circle (runway #14) ──");
+{
+  const parentId = CIRCLE.circleId;
+  const parent = { id: parentId, category: "chama", chamaCircle: CIRCLE,
+    initiator: { pubkey: CIRCLE.creatorPubkey }, community: CIRCLE.community,
+    mintUrl: CIRCLE.mintUrl, description: CIRCLE.name, createdAt: CIRCLE.createdAt } as unknown as EscrowState;
+  const share = (id: string) => ({ id, chamaPolicy: "share-v1", parent: parentId } as unknown as EscrowState);
+  const stranger = { id: "unrelated-trade" } as unknown as EscrowState;
+
+  const host = collapseCircleShares([parent, share("s1"), share("s2"), stranger]);
+  assert(host.length === 2 && host[0].id === parentId && host[1].id === "unrelated-trade",
+    "a host's list collapses parent + N shares to the parent card alone");
+
+  const member = collapseCircleShares([share("s1"), stranger]);
+  assert(member.length === 2,
+    "a member whose list lacks the parent keeps their share card — one card either way");
+
+  const orphan = collapseCircleShares([share("s1")]);
+  assert(orphan.length === 1, "a lone share never vanishes");
+  assert(collapseCircleShares([]).length === 0, "empty in, empty out");
+}
+
+console.log("\n── Chama circle: the host locks last — seat notifications ──");
+{
+  // The host (amina) seals the round by locking LAST. Every member seat that
+  // lands is their cue; the last one before theirs is unmissable.
+  const parent = { id: CIRCLE.circleId, category: "chama", chamaCircle: CIRCLE,
+    initiator: { pubkey: CIRCLE.creatorPubkey }, community: CIRCLE.community,
+    mintUrl: CIRCLE.mintUrl, description: CIRCLE.name, createdAt: CIRCLE.createdAt } as unknown as EscrowState;
+  const shareOf = (id: string, member: string, locked: boolean) => ({
+    id, chamaPolicy: "share-v1", parent: CIRCLE.circleId,
+    status: locked ? EscrowStatus.LOCKED : EscrowStatus.CREATED,
+    participants: { [Role.BUYER]: member, [Role.SELLER]: CIRCLE.creatorPubkey },
+    eventChain: locked ? [{ kind: EscrowEventKind.LOCK, timestamp: T0 + 60 }] : [],
+    claim: {},
+  } as unknown as EscrowState);
+
+  // seatThreshold is 3: two member seats + the host's.
+  const first = shareOf("s1", "bruno", true);
+  const ctxFirst = circleLockContextFor(first, [parent, first], CIRCLE.creatorPubkey);
+  assert(ctxFirst?.viewerIsHost === true && ctxFirst?.lockedSeats === 1 && ctxFirst?.hostTurn === false,
+    "the first seat gives the host quiet progress, not a false 'your turn'");
+
+  const second = shareOf("s2", "carla", true);
+  const ctxSecond = circleLockContextFor(second, [parent, first, second], CIRCLE.creatorPubkey);
+  assert(ctxSecond?.hostTurn === true && ctxSecond?.lockedSeats === 2,
+    "everyone else in → the host's turn: their lock is what seals the round");
+
+  const hostSeat = shareOf("s3", CIRCLE.creatorPubkey, true);
+  const ctxAfterHost = circleLockContextFor(second, [parent, first, second, hostSeat], CIRCLE.creatorPubkey);
+  assert(ctxAfterHost?.hostTurn === false,
+    "a host who already locked is never told it is their turn");
+
+  const ctxMember = circleLockContextFor(second, [parent, first, second], "bruno");
+  assert(ctxMember?.viewerIsHost === false && ctxMember?.hostTurn === false,
+    "members are not the ones who seal the round");
+
+  assert(circleLockContextFor(second, [first, second], CIRCLE.creatorPubkey) === null,
+    "a thin view without the circle parent invents nothing");
+  assert(circleLockContextFor(parent, [parent], CIRCLE.creatorPubkey) === null,
+    "the circle itself is not a seat lock");
+
+  // Copy + dedup: the host-turn notice is keyed per ROUND, seat progress per
+  // SEAT, and a circle never falls through to storefront 'new order' copy.
+  const prev = shareOf("s2", "carla", false);
+  const turn = notificationForTransition(prev, second, CIRCLE.creatorPubkey, 0, ctxSecond);
+  assert(turn?.tag === `${CIRCLE.circleId}:host-turn:1` && turn?.escrowId === CIRCLE.circleId,
+    "the your-turn buzz is one per round and opens the CIRCLE, not the share");
+  const progress = notificationForTransition(shareOf("s1", "bruno", false), first, CIRCLE.creatorPubkey, 0, ctxFirst);
+  assert(progress?.tag === "s1:circle-seat" && /1 of 3/.test(progress?.body ?? ""),
+    "seat progress buzzes once per seat and counts honestly");
+  const ownLock = notificationForTransition(shareOf("s3", CIRCLE.creatorPubkey, false), hostSeat, CIRCLE.creatorPubkey, 0,
+    circleLockContextFor(hostSeat, [parent, first, second, hostSeat], CIRCLE.creatorPubkey));
+  assert(ownLock === null || !ownLock.tag.includes("circle-seat"),
+    "the host's own lock never buzzes the host");
+}
+
+console.log("\n── Chama circle: the Sunday snap offer (runway #9) ──");
+{
+  // Mon 2026-09-14 21:25 UTC, viewer in UTC (offset 0): next Sunday 18:00 is
+  // 2026-09-20 18:00 UTC.
+  const mon = Math.floor(Date.UTC(2026, 8, 14, 21, 25, 0) / 1000);
+  const durMon = sundaySnapDurationSec(mon, 0);
+  const endMon = new Date((mon + durMon) * 1000);
+  assert(endMon.getUTCDay() === 0 && endMon.getUTCHours() === SUNDAY_SNAP_HOUR,
+    "a Monday-night circle offered the snap comes back Sunday 6 pm local");
+  assert(durMon > 3 * 86_400 && durMon < 7 * 86_400,
+    "the Monday snap lands inside the week (between 3 and 7 days out)");
+
+  // Sat 2026-09-19 12:00 UTC: tomorrow's Sunday is too tight for a
+  // day-quantized fill window — the offer rolls to the Sunday after.
+  const sat = Math.floor(Date.UTC(2026, 8, 19, 12, 0, 0) / 1000);
+  const durSat = sundaySnapDurationSec(sat, 0);
+  const endSat = new Date((sat + durSat) * 1000);
+  assert(endSat.getUTCDay() === 0 && durSat >= 3 * 86_400,
+    "a Saturday circle skips tomorrow's too-tight Sunday for the one after");
+
+  // Timezone honesty: the same instant in Nairobi (UTC+3) must land on
+  // Sunday 18:00 NAIROBI time, i.e. 15:00 UTC.
+  const durNairobi = sundaySnapDurationSec(mon, 180);
+  const endNairobi = new Date((mon + durNairobi) * 1000);
+  assert(endNairobi.getUTCDay() === 0 && endNairobi.getUTCHours() === SUNDAY_SNAP_HOUR - 3,
+    "the snap is Sunday evening in the VIEWER'S timezone, not UTC's");
+
+  // The offered duration produces a lawful round with a sane fill window.
+  const snapped = circleCanvasRound({ shareSats: 1000, threshold: 5, cap: 5, unlisted: true,
+    durationSec: durMon, createdAt: mon, creatorPubkey: "amina",
+    community: "tz-tzs", mintUrl: "fed1", name: "Mama Mboga" });
+  assert(validateCircleRound(snapped).length === 0 && snapped.fillDeadlineSec > mon,
+    "a Sunday-snapped round is lawful as generated");
+}
 
 console.log(`\nChama circle results: ${passed} passed, ${failed} failed\n`);
 if (failed > 0) process.exit(1);

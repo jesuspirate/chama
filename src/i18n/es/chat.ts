@@ -25,14 +25,17 @@ export const chat: Record<string, string> = {
   "chat.externalRoute": "Ruta externa",
   "chat.footerGeneratedNative":
     "Guardada en este dispositivo, cifrada — pero conserva también tu propia copia, por si pierdes el teléfono.",
-  "chat.footerGeneratedWeb": "Guardada en este dispositivo \u2014 conserva tambi\u00e9n tu propia copia, por si pierdes acceso a este navegador.",
+  "chat.footerGeneratedWeb": "Guarda bien tu propia copia — Chama no puede restablecer una llave perdida.",
   "chat.footerPasteNative":
     "Tu llave de recuperación se queda en este dispositivo, cifrada en almacenamiento seguro.",
-  "chat.footerPasteWeb": "Tu llave queda guardada en este dispositivo, as\u00ed sigues con la sesi\u00f3n iniciada.",
+  "chat.footerPasteWeb": "Chama nunca ve tu llave — se queda solo en este dispositivo.",
   "chat.haveKey": "Ya tengo una llave",
   "chat.hide": "Ocultar",
   "chat.imageReady": "Imagen lista",
   "chat.keySavedHint": "Tu llave qued\u00f3 guardada en este dispositivo \u2014 Chama iniciar\u00e1 tu sesi\u00f3n autom\u00e1ticamente la pr\u00f3xima vez.",
+  "chat.keepSignedIn": "Mantener mi sesión en este dispositivo",
+  "chat.keepSignedInHintOn": "La próxima vez entrarás directo — sin pegar nada.",
+  "chat.keepSignedInHintOff": "Pegarás tu llave cada vez que inicies sesión.",
   "chat.keyChoiceFooter":
     "Chama crea una llave de recuperación privada en este dispositivo. Guárdala una vez para poder restaurar tu cuenta después.",
   "chat.keyOnlyAfter":

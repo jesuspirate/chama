@@ -36,4 +36,8 @@ export const notify: Record<string, string> = {
   "notify.selfTestBody":
     "Ukiona hii, arifa za mfumo zinafanya kazi kwenye toleo hili.",
   "notify.selfTestTitle": "Arifa za Chama ziko sawa",
+  "notify.circleSeatTitle": "🎪 Kiti kimejaa",
+  "notify.circleSeatBody": "{circle}: viti {filled} kati ya {total} vimeingia. Wewe unafunga mwisho kufunga raundi.",
+  "notify.circleHostTurnTitle": "⚡ Zamu yako — unafunga mwisho",
+  "notify.circleHostTurnBody": "Wengine wote wameingia kwenye {circle}. Funga kiti chako kufunga raundi {round} — hadi ufanye hivyo, raundi haiwezi kuanza.",
 };

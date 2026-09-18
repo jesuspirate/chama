@@ -2,7 +2,7 @@ import { useState } from "react";
 import { isSimModeOn } from "../../sim/simMode.js";
 import type { CircleRound } from "../../chama/types.js";
 import { DEFAULT_ROUND_SEC } from "../../chama/types.js";
-import { circleCanvasRound, circleCanvasErrors } from "../../chama/canvas.js";
+import { circleCanvasRound, circleCanvasErrors, sundaySnapDurationSec } from "../../chama/canvas.js";
 import { Back, QuestionCard, Primary, headingStyle, subStyle, reviewStyle, canvasCss } from "./AssistedCanvas.js";
 import { VerticalIcon } from "../components/VerticalIcon.js";
 import { T } from "../theme.js";
@@ -37,6 +37,9 @@ export function CircleCanvas({ viewerPubkey, community, mintUrl, initial, onBack
   // default; a re-formed round inherits its lineage's name.
   const [name, setName] = useState(initial?.name ?? "");
   const [createdAt] = useState(() => Math.floor(Date.now() / 1000));
+  // Runway #9: payday = birthday, so OFFER landing the return on Sunday
+  // evening (the "lock in the week, back by Sunday" pulse) as one more chip.
+  const sundayDuration = sundaySnapDurationSec(createdAt, -new Date().getTimezoneOffset());
   const [busy, setBusy] = useState(false), [error, setError] = useState<string | null>(null);
   const round = circleCanvasRound({ shareSats: Number(sats), threshold, cap, durationSec: duration, createdAt,
     unlisted: audience === "friends",
@@ -85,7 +88,7 @@ export function CircleCanvas({ viewerPubkey, community, mintUrl, initial, onBack
           : t("circle.publicNote", { count: threshold })}</p>
       </QuestionCard></>}
       {step === 2 && <><p style={subStyle()}>{t("circle.twoWeekBound")}</p><QuestionCard>
-        <div className="circle-chips">{[7, 14].map(days => <button type="button" key={days} aria-pressed={duration === days * 86400} onClick={() => setDuration(days * 86400)}>{t(days === 7 ? "circle.oneWeek" : "circle.twoWeeks")}</button>)}{isSimModeOn() && <button type="button" aria-pressed={duration === 600} onClick={() => setDuration(600)}>{t("circle.testDrive")}</button>}</div>
+        <div className="circle-chips">{[7, 14].map(days => <button type="button" key={days} aria-pressed={duration === days * 86400} onClick={() => setDuration(days * 86400)}>{t(days === 7 ? "circle.oneWeek" : "circle.twoWeeks")}</button>)}<button type="button" aria-pressed={duration === sundayDuration} onClick={() => setDuration(sundayDuration)}>{t("circle.bySunday")}</button>{isSimModeOn() && <button type="button" aria-pressed={duration === 600} onClick={() => setDuration(600)}>{t("circle.testDrive")}</button>}</div>
         <h2>{t("circle.backBy", { date: date(round.roundEndSec) })}</h2><p className="circle-muted">{t("circle.closesDate", { date: date(round.fillDeadlineSec) })}</p>
       </QuestionCard></>}
       {step === 3 && <div style={reviewStyle()}>
