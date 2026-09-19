@@ -90,7 +90,9 @@ function isFediMiniAppRuntime(): boolean {
 }
 
 function escrowStorageKey(pubkey?: string | null): string {
-  return pubkey ? `${LEGACY_STORAGE_KEY}:${pubkey}` : LEGACY_STORAGE_KEY;
+  // Sim mode keeps its own id list: a sandbox trade must never be reloaded
+  // (or offered) in the real world, where every event backing it is dropped.
+  return worldScopedKey(pubkey ? `${LEGACY_STORAGE_KEY}:${pubkey}` : LEGACY_STORAGE_KEY);
 }
 
 function parseSavedEscrowIds(raw: string | null): string[] {
@@ -141,10 +143,11 @@ function removeEscrowId(id: string, pubkey?: string | null) {
 }
 
 const EXPIRED_UNFUNDED_KEY_PREFIX = "chama_expired_unfunded_v1:";
+const expiredUnfundedKey = (pubkey: string) => worldScopedKey(EXPIRED_UNFUNDED_KEY_PREFIX + pubkey);
 
 function getExpiredUnfundedIds(pubkey: string): Set<string> {
   try {
-    return new Set(parseSavedEscrowIds(localStorage.getItem(EXPIRED_UNFUNDED_KEY_PREFIX + pubkey)));
+    return new Set(parseSavedEscrowIds(localStorage.getItem(expiredUnfundedKey(pubkey))));
   } catch { return new Set(); }
 }
 
@@ -152,7 +155,7 @@ function rememberExpiredUnfundedId(id: string, pubkey: string): void {
   try {
     const ids = [...getExpiredUnfundedIds(pubkey)];
     if (!ids.includes(id)) ids.unshift(id);
-    localStorage.setItem(EXPIRED_UNFUNDED_KEY_PREFIX + pubkey, JSON.stringify(ids.slice(0, 200)));
+    localStorage.setItem(expiredUnfundedKey(pubkey), JSON.stringify(ids.slice(0, 200)));
     removeEscrowId(id, pubkey);
   } catch {}
 }
@@ -161,6 +164,7 @@ function rememberExpiredUnfundedId(id: string, pubkey: string): void {
 // forgotten-trades.ts).
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { isExpiredUnfundedListing } from "../escrow-engine/expired-listing.js";
 import {
   getForgottenEscrowIds,
   addForgottenEscrowId,
@@ -421,17 +425,13 @@ import {
   minimumLightningFundingMessage,
 } from "../payments/funding-limits.js";
 import { setLocalStorageUserScope } from "../storage/user-scope.js";
+import { worldScopedKey } from "../sim/sim-partition.js";
 import { reconcileIdentity } from "../storage/identity-pin.js";
-import { extractNostrProfileName, type NostrProfileNameMap } from "../ui/nostr-profiles.js";
+import { extractNostrProfileName, mergeProfileNameContent, type NostrProfileNameMap } from "../ui/nostr-profiles.js";
 
-function isExpiredUnfundedEscrow(escrowState: EscrowState, nowSec = Math.floor(Date.now() / 1000)): boolean {
-  return (
-    escrowState.status === EscrowStatus.CREATED
-    && typeof escrowState.expiresAt === "number"
-    && escrowState.expiresAt > 0
-    && nowSec > escrowState.expiresAt
-  );
-}
+/** Shared with the UI so "we dropped it" and "here is why it won't open" can
+ *  never drift apart (src/escrow-engine/expired-listing.ts). */
+const isExpiredUnfundedEscrow = isExpiredUnfundedListing;
 
 /** Max simultaneous loadEscrow re-heals. The Fedi webview enforces a low
  *  per-connection subscription cap; a flood of ~12 concurrent #d fetches trips
@@ -988,6 +988,9 @@ export interface UseEscrowActions {
   repostRecurringCbp: (escrowId: string) => Promise<{ escrowId: string; state: EscrowState }>;
   /** Fetch self-published kind:0 profile names for visible participants. */
   fetchNostrProfiles: (pubkeys: string[]) => Promise<NostrProfileNameMap>;
+  /** Publish the chosen display name as kind 0 (merged into any existing
+   *  profile), so a rename travels with the key. */
+  publishProfileName: (name: string) => Promise<void>;
   /** Trigger haptic feedback */
   vibrate: (pattern?: number | number[]) => void;
 
@@ -3422,6 +3425,36 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     return profiles;
   }, []);
 
+  /** Publish the user's chosen name as their Nostr profile (kind 0), so a
+   *  rename follows the KEY to every device and every client instead of
+   *  living in one browser. Merges into any existing kind-0 first: that event
+   *  is a whole replaceable document, so publishing a bare name would wipe a
+   *  picture/about/lud16 set elsewhere. Throws when the relays refuse, so the
+   *  caller can say "saved here, not published yet" honestly. */
+  const publishProfileName = useCallback(async (name: string): Promise<void> => {
+    const client = requireClient();
+    const signer = signerRef.current;
+    const pubkey = stateRef.current?.pubkey;
+    if (!signer || !pubkey) throw new Error("Not connected");
+    let existing: string | null = null;
+    try {
+      const events = await client.queryOnce({ kinds: [0], authors: [pubkey.toLowerCase()], limit: 4 }, 3_000);
+      const newest = [...events].sort((a, b) => (b.created_at ?? 0) - (a.created_at ?? 0))[0];
+      existing = newest?.content ?? null;
+    } catch {
+      // Couldn't read the old profile. Publishing now could clobber fields we
+      // never saw, so refuse rather than quietly shrink someone's profile.
+      throw new Error("Couldn't read your current profile — try again in a moment");
+    }
+    const signed = await signer.signEvent({
+      kind: 0,
+      created_at: Math.floor(Date.now() / 1000),
+      tags: [],
+      content: mergeProfileNameContent(existing, name),
+    } as any);
+    await client.publishRaw(signed);
+  }, []);
+
   // ── Fedimint actions ────────────────────────────────────────────────────
 
   const refreshBalance = useCallback(async () => {
@@ -5619,6 +5652,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     forgetEscrow,
     purchaseFromListing,
     fetchNostrProfiles,
+    publishProfileName,
     vibrate,
     initFedimint,
     setCustomInvite,

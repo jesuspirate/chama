@@ -279,4 +279,6 @@ export const claim: Record<string, string> = {
     "Fonctionne avec M-Pesa, Wave, Airtel Money, Orange Money, les virements bancaires mobiles et la plupart des portefeuilles sur téléphone.",
   "claim.youllReceiveMpesa": "Vous recevrez ≈ {estimate} sur M-Pesa.",
   "claim.yourPaymentId": "Votre identifiant de paiement",
+  "claim.titleTradeNotSynced": "Cet échange n’est pas entièrement synchronisé ici",
+  "claim.bodyTradeNotSynced": "Vos sats sont en sécurité et toujours à vous — rien n’a bougé. Cet appareil ne voit pas les données du verrouillage : les relais ont perdu cette partie de la chaîne. Réessayez. Si cela persiste, demandez à la personne qui a verrouillé les sats d’ouvrir cet échange, de déplier ⚙ en bas et d’appuyer sur Rediffuser — sa copie est ce qui remet la partie manquante.",
 };

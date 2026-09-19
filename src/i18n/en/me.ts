@@ -149,8 +149,8 @@ export const me: Record<string, string> = {
   "me.noRatingsYet":
     "No ratings yet — complete your first trade to start building reputation. Ratings unlock graduated capabilities like recurring payments.",
   "me.noTradesYet": "No trades yet. Browse listings to start one.",
-  "me.nostrNames": "Nostr names",
-  "me.nostrNamesHint": "Show profile names instead of npub IDs",
+  "me.nostrNames": "Look up real names",
+  "me.nostrNamesHint": "Ask relays for other people’s Nostr profile names. Off: everyone keeps their generated name, and no relay learns who you’re looking at.",
   "me.newListingNotifications": "New listings in my chama",
   "me.newListingNotificationsHint": "Buzz me when someone posts a new listing here",
   "me.nothingInView": "Nothing in this view right now.",
@@ -267,4 +267,11 @@ export const me: Record<string, string> = {
   "me.tradeNameHint": "Shown on your trades instead of your key. Leave empty to use your generated name: {name}.",
   "me.tradeNameSave": "Save",
   "me.tradeNameSaved": "Saved",
+  "me.tradeNamePublishing": "Publishing to your Nostr profile…",
+  "me.tradeNamePublished": "Published — this name now follows your key to any device.",
+  "me.tradeNameLocalOnly": "Saved on this device only — the relays refused the profile. Try again when you’re back online.",
+  "me.tabProfile": "Profile",
+  "me.profileKnownAs": "How others see you",
+  "me.profileKnownAsHint": "Anyone with profile names off sees your generated name: {name}. It never changes.",
+  "me.strandedSince": "Stranded since {date}",
 };

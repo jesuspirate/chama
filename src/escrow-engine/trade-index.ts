@@ -25,6 +25,7 @@ import {
   removeScopedStorageItem,
 } from "../storage/user-scope.js";
 import { EscrowEventKind, type EscrowState, EscrowStatus, Role } from "./types.js";
+import { worldScopedKey } from "../sim/sim-partition.js";
 
 /** Case-insensitive pubkey compare (hex npub). Local copy — `samePubkey` is a
  *  per-file helper across the codebase, not a shared export. */
@@ -32,8 +33,11 @@ function samePubkey(a?: string | null, b?: string | null): boolean {
   return !!a && !!b && a.toLowerCase() === b.toLowerCase();
 }
 
-/** Versioned, user-scoped localStorage key. */
-export const TRADE_INDEX_KEY = "chama_trade_index_v1";
+/** Versioned, user-scoped localStorage key. Sim mode appends its own suffix
+ *  (see sim/sim-partition.ts) so sandbox trades never enter real history. */
+export const TRADE_INDEX_BASE_KEY = "chama_trade_index_v1";
+export const TRADE_INDEX_KEY = TRADE_INDEX_BASE_KEY;
+const indexKey = () => worldScopedKey(TRADE_INDEX_BASE_KEY);
 
 /** Bound growth — evict the oldest-touched entries past this. Generous: a
  *  real user won't approach it; a heavy tester eventually rolls the tail. */
@@ -70,7 +74,7 @@ type Index = Record<string, TradeIndexEntry>;
 
 function load(): Index {
   try {
-    const raw = getScopedStorageItem(TRADE_INDEX_KEY);
+    const raw = getScopedStorageItem(indexKey());
     if (!raw) return {};
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed !== "object") return {};
@@ -83,7 +87,7 @@ function load(): Index {
 
 function save(idx: Index): void {
   try {
-    setScopedStorageItem(TRADE_INDEX_KEY, JSON.stringify(idx));
+    setScopedStorageItem(indexKey(), JSON.stringify(idx));
   } catch (e) {
     // Best-effort history. NEVER block a state update or a money path on it.
     console.warn("[chama] trade-index: save failed:", e);
@@ -242,7 +246,7 @@ export function removeTradeFromIndex(escrowId: string): void {
 /** Wipe the whole index. Tests + a future advanced-settings action only. */
 export function clearTradeIndex(): void {
   try {
-    removeScopedStorageItem(TRADE_INDEX_KEY);
+    removeScopedStorageItem(indexKey());
   } catch (e) {
     console.warn("[chama] trade-index: clear failed:", e);
   }

@@ -72,4 +72,5 @@ export const chat: Record<string, string> = {
   "chat.useExistingAccount": "Utiliser un compte existant",
   "chat.you": "Vous",
   "chat.signingIn": "Connexion\u2026",
+  "chat.saveOfferHint": "Votre gestionnaire de mots de passe peut proposer d’enregistrer cette clé — acceptez. C’est la seule copie qui peut retrouver votre compte sur un autre appareil.",
 };

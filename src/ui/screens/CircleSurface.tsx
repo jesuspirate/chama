@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { generatedNameFor } from "../nostr-profiles.js";
+import { generatedNameFor, profileNameFor, type NostrProfileNameMap } from "../nostr-profiles.js";
 import { rotationView } from "../../chama/rotation.js";
 import { EscrowStatus, Outcome, Role } from "../../escrow-engine/types.js";
 import type { EscrowState } from "../../escrow-engine/types.js";
@@ -20,9 +20,15 @@ export function circleTimeText(seconds: number, t: TFunc): string {
   return t("circle.minutes", { count: Math.max(0, Math.ceil(seconds / 60)) });
 }
 
-export function CircleSurface({ parent, escrows, viewerPubkey, backLabel, childrenLoaded, loadError, onBack, onLock, onReturn, onClaim, onNextRound, onRefresh }: {
+export function CircleSurface({ parent, escrows, viewerPubkey, backLabel, childrenLoaded, loadError, profileNames, kind0Enabled = false, onBack, onLock, onReturn, onClaim, onNextRound, onRefresh }: {
   parent: EscrowState; escrows: ReadonlyMap<string, EscrowState>; viewerPubkey: string;
-  backLabel: string; childrenLoaded: boolean; loadError?: string | null; onBack: () => void;
+  backLabel: string; childrenLoaded: boolean; loadError?: string | null;
+  /** Circles used to render the deterministic nym directly, which ignored a
+   *  user's own chosen name and every kind-0 profile — "circles doesn't care
+   *  about my new name" (Jet, 2026-09-18). Same name resolution as every
+   *  other surface now. */
+  profileNames?: NostrProfileNameMap; kind0Enabled?: boolean;
+  onBack: () => void;
   onLock: () => Promise<void>; onReturn: () => Promise<void>;
   /** REFUND resolved on the viewer's share: fire the SAME ClaimPayoutModal
    *  flow every trade uses, aimed at the share escrow. The last leg home. */
@@ -43,7 +49,18 @@ export function CircleSurface({ parent, escrows, viewerPubkey, backLabel, childr
     && e.resolvedOutcome === Outcome.RELEASE && e.status === EscrowStatus.APPROVED).length : 0;
   const model = circleSurfaceModel(circle, shares, viewerPubkey, now,
     rot ? { collector: rot.collector, sealed: rot.order, claimable } : undefined);
-  const nym = (pk: string) => generatedNameFor(pk, lang);
+  // A chosen name REPLACES the generated one (Jet, 2026-09-20: "if a user
+  // wants the new name they definitely don't want the generated name"). A
+  // nickname is the privacy-preserving choice precisely because the person
+  // picked it; the deterministic nym is the fallback for everyone who never
+  // chose, and it is identical on every client.
+  const nym = (pk: string) => profileNameFor(profileNames, pk, kind0Enabled, lang)
+    ?? generatedNameFor(pk, lang);
+  // Who hosts. The creator pubkey is already public in the circle's own chain
+  // event, so hiding it in the UI would only blind honest members — and the
+  // host is the one person everyone may need to nudge (they lock last, and
+  // they open the next round). Shown on every circle, public or private.
+  const viewerIsHost = circle.creatorPubkey.toLowerCase() === viewerPubkey.toLowerCase();
   const isCollectionRound = rot !== null && circle.roundIndex >= 2;
   const viewerIsCollector = isCollectionRound && rot!.collector === viewerPubkey.toLowerCase();
   const stats = circleMemberStats(escrows.values(), viewerPubkey, now);
@@ -94,6 +111,22 @@ export function CircleSurface({ parent, escrows, viewerPubkey, backLabel, childr
     <button type="button" data-chama-shortcut="back" onClick={onBack} style={{ background: "none", border: 0, color: T.muted, padding: "8px 0", cursor: "pointer" }}>‹ {backLabel}</button>
     <div style={{ display: "flex", alignItems: "center", gap: 9, color: T.accent, font: `700 11px ${T.mono}`, letterSpacing: 2 }}><VerticalIcon vertical="chama" size={30} />CHAMA</div>
     <h1 style={{ fontSize: "clamp(32px, 6vw, 52px)", letterSpacing: "-.05em", margin: "10px 0 8px" }}>{circle.name}{circle.roundIndex > 1 && <span style={{ color: T.muted, fontWeight: 500 }}> · {isCollectionRound ? t("circle.roundOf", { n: circle.roundIndex, total: rot!.totalRounds }) : t("circle.roundN", { n: circle.roundIndex })}</span>}</h1>
+    {viewerIsHost ? (
+      // The host's job is structural (they lock last, they open the next
+      // round), so it gets the weight of an instruction, not a footnote.
+      <p style={{
+        margin: "0 0 18px", display: "inline-flex", alignItems: "center", gap: 8,
+        padding: "7px 14px", borderRadius: 999,
+        background: T.accentDim, border: `1px solid ${T.accent}66`,
+        color: T.accent, font: `800 13px ${T.sans}`,
+      }}>
+        <span aria-hidden="true">★</span>{t("circle.youHost")}
+      </p>
+    ) : (
+      <p style={{ margin: "0 0 18px", color: T.muted, fontSize: 14 }}>
+        {t("circle.hostedBy", { name: nym(circle.creatorPubkey) })}
+      </p>
+    )}
     {isCollectionRound && rot!.collector && <p style={{ margin: "0 0 24px", color: T.accent, fontWeight: 700, fontSize: 17 }}>
       {viewerIsCollector ? t("circle.yourPayday") : t("circle.payday", { name: nym(rot!.collector) })}
       <span style={{ color: T.muted, fontWeight: 500 }}> · {t("circle.potPays", { amount: fmtSats(circle.shareMsats * circle.seatThreshold) })}</span>
@@ -146,7 +179,7 @@ export function CircleSurface({ parent, escrows, viewerPubkey, backLabel, childr
           const you = sh.memberPubkey.toLowerCase() === viewerPubkey.toLowerCase();
           return <div key={sh.memberPubkey} style={{ display: "flex", alignItems: "baseline", gap: 10, padding: "9px 0", borderTop: index ? `1px solid ${T.border}` : "none" }}>
             <span style={{ color: T.muted, font: `600 12px ${T.mono}`, minWidth: 22 }}>{sh.lockedAtSec !== null ? `#${index + 1}` : "·"}</span>
-            <strong style={{ flex: 1, fontSize: 15 }}>{generatedNameFor(sh.memberPubkey, lang)}{you && <span style={{ color: T.accent, fontWeight: 600 }}> · {t("circle.you")}</span>}</strong>
+            <strong style={{ flex: 1, fontSize: 15 }}>{nym(sh.memberPubkey)}{you && <span style={{ color: T.accent, fontWeight: 600 }}> · {t("circle.you")}</span>}{sh.memberPubkey.toLowerCase() === circle.creatorPubkey.toLowerCase() && <span style={{ marginLeft: 7, padding: "2px 7px", borderRadius: 999, background: `${T.purple}22`, color: T.purple, border: `1px solid ${T.purple}55`, font: `700 10px ${T.mono}`, textTransform: "uppercase", letterSpacing: .5 }}>{t("circle.hostBadge")}</span>}</strong>
             <small style={{ color: sh.lockedAtSec !== null ? T.accent : T.muted, fontFamily: T.mono }}>{
               sh.status === "returned" || sh.status === "refunded" || sh.status === "paid" ? t("circle.claimedBadge")
               : sh.readyToClaim ? t("circle.canClaimNow")

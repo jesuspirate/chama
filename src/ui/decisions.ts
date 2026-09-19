@@ -30,6 +30,7 @@ import {
   Outcome,
   TERMINAL_STATES,
   getEffectiveParticipantsAt,
+  getEffectiveParticipantAt,
   JOIN_HOLD_LOCK_GRACE_SECONDS,
 } from "../escrow-engine/types.js";
 import {
@@ -503,6 +504,21 @@ function isEffectiveBuyerOrSeller(e: EscrowState, userPubkey: string, nowSec: nu
   return p.buyer === userPubkey || p.seller === userPubkey;
 }
 
+/**
+ * In a circle, the host is counterparty (SELLER) on EVERY member's share —
+ * so summing "my active trades" over shares made the host's headline grow
+ * with the group: a 21-sat seat read as 42 the moment a second member locked
+ * (Jet, 2026-09-19: "doubled from 21 to 42 magically"). But the host's money
+ * at risk is their own seat, not everyone's. A circle share therefore counts
+ * only for the member who sits in it; the pot's fate is the circle's story,
+ * told on the circle screen.
+ */
+function isSomeoneElsesCircleSeat(e: EscrowState, userPubkey: string, nowSec: number): boolean {
+  if (e.chamaPolicy !== "share-v1" && e.chamaPolicy !== "share-v2") return false;
+  const member = getEffectiveParticipantAt(e, Role.BUYER, nowSec);
+  return !member || member.toLowerCase() !== userPubkey.toLowerCase();
+}
+
 export function hasActiveBuyerSellerCommitment(inputs: {
   escrows: Iterable<EscrowState>;
   userPubkey: string;
@@ -523,6 +539,18 @@ export function hasActiveBuyerSellerCommitment(inputs: {
  * the plural-aware ActiveTradePill copy ("1 active trade" vs "3 active
  * trades") now that multiple concurrent trades are allowed.
  */
+/** Exactly what the active-trade pill counts: a live buyer/seller commitment
+ *  of the viewer's own, circle seats belonging to other people excluded. */
+export function liveCommitmentForViewer(
+  e: EscrowState,
+  userPubkey: string,
+  nowSec: number,
+): boolean {
+  if (!isEffectiveBuyerOrSeller(e, userPubkey, nowSec)) return false;
+  if (!isLiveBuyerSellerCommitment(e, nowSec, userPubkey)) return false;
+  return !isSomeoneElsesCircleSeat(e, userPubkey, nowSec);
+}
+
 export function countActiveBuyerSellerCommitments(inputs: {
   escrows: Iterable<EscrowState>;
   userPubkey: string;
@@ -534,6 +562,7 @@ export function countActiveBuyerSellerCommitments(inputs: {
     const isBuyerOrSeller = isEffectiveBuyerOrSeller(e, inputs.userPubkey, nowSec);
     if (!isBuyerOrSeller) continue;
     if (!isLiveBuyerSellerCommitment(e, nowSec, inputs.userPubkey)) continue;
+    if (isSomeoneElsesCircleSeat(e, inputs.userPubkey, nowSec)) continue;
     n += 1;
   }
   return n;
@@ -564,6 +593,7 @@ export function sumActiveBuyerSellerTradeMsats(inputs: {
     const isBuyerOrSeller = isEffectiveBuyerOrSeller(e, inputs.userPubkey, nowSec);
     if (!isBuyerOrSeller) continue;
     if (!isLiveBuyerSellerCommitment(e, nowSec, inputs.userPubkey)) continue;
+    if (isSomeoneElsesCircleSeat(e, inputs.userPubkey, nowSec)) continue;
     sum += e.amountMsats;
   }
   return sum;
@@ -982,6 +1012,9 @@ export function activeCommittedMsats(inputs: {
     // Resolved for someone else → these sats are the winner's claim now, not
     // the viewer's escrow. The locker is released at RESOLVE.
     if (e.status === EscrowStatus.APPROVED && resolvedForSomeoneElse(e, inputs.userPubkey)) continue;
+    // Someone else's circle seat is their money, not mine — same rule the
+    // active-trade total follows, so the two headlines can never disagree.
+    if (isSomeoneElsesCircleSeat(e, inputs.userPubkey, nowSec)) continue;
     sum += e.amountMsats;
   }
   return sum;

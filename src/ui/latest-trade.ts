@@ -4,6 +4,7 @@ import {
   getEffectiveParticipantsAt,
   type EscrowState,
 } from "../escrow-engine/types.js";
+import { isLapsedWindowShopping } from "../escrow-engine/expired-listing.js";
 import {
   signedTradeActivityAt,
   signedTradeEnteredAt,
@@ -80,8 +81,14 @@ export function latestParticipantTradePointer(
     // Legacy summaries have no signed JOIN chronology. CREATE is deterministic;
     // updatedAt is only local hydration time and must never affect the hero.
     entry.enteredAt ?? entry.createdAt;
-  const remembered = archived.length > 0
-    ? [...archived].sort((a, b) =>
+  // Window shopping is not a trade. A remembered BUYER-role entry still at
+  // CREATED never locked: the hold lapsed (or the listing expired and was
+  // dropped), so the hero must not offer it as "your latest trade" and then
+  // fail to open it. Loaded holds are unaffected — a live one is a real
+  // participant and arrives through `trades`.
+  const openable = archived.filter(entry => !isLapsedWindowShopping(entry));
+  const remembered = openable.length > 0
+    ? [...openable].sort((a, b) =>
         rememberedEnteredAt(b) - rememberedEnteredAt(a) || b.id.localeCompare(a.id))[0]
     : null;
   if (!loaded) return remembered;

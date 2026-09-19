@@ -2320,11 +2320,28 @@ function TerminalPanel({
 
   if (terminal.kind === "claim-failed") {
     const settlementFailed = /reissue|consumed|settle/i.test(terminal.error);
-    title = settlementFailed ? t("claim.titleClaimDidNotSettle") : t("claim.titleCouldntRecoverShare");
-    subtitle = humanizedError;
-    tone = T.red;
-    toneDim = T.redDim;
-    icon = "✕";
+    // An INCOMPLETE CHAIN is not a settlement failure: no notes were touched,
+    // nothing moved, and the sats are still the winner's. It means this device
+    // cannot see the LOCK body (relays evicted it, or this client never held
+    // it). That is recoverable — by retrying after a cache repair, or by the
+    // counterparty opening the trade so their copy republishes — so it reads
+    // amber and offers Try again instead of a red dead end (Jet, 2026-09-20).
+    const incompleteChain = /not fully loaded|may be incomplete|no lock data|no shares available/i
+      .test(terminal.error);
+    if (incompleteChain) {
+      title = t("claim.titleTradeNotSynced");
+      subtitle = t("claim.bodyTradeNotSynced");
+      tone = T.amber;
+      toneDim = T.amberDim;
+      icon = "↻";
+      showRetry = true;
+    } else {
+      title = settlementFailed ? t("claim.titleClaimDidNotSettle") : t("claim.titleCouldntRecoverShare");
+      subtitle = humanizedError;
+      tone = T.red;
+      toneDim = T.redDim;
+      icon = "✕";
+    }
   } else if (terminal.kind === "claim-bridge-threw") {
     // v0.3.1 Phase 1: retry-able structural failure (FED_PROBE_FAILED
     // / FED_MISMATCH). Surface the actual underlying error and offer

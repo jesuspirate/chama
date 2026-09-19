@@ -834,7 +834,14 @@ export class EscrowFedimintBridge {
     // guard, so this cannot replace a newer state with a shorter relay view.
     if (!state.lock.notesHash || !state.lock.shares || state.lock.shares.size < 1) {
       try {
-        const rehydrated = await this.escrow.loadEscrow(escrowId);
+        // repairFromCache is opt-in for EXPLICIT opens only (see loadEscrow's
+        // contract) — and a claim tap is the most explicit action in the app:
+        // one trade, once, with money waiting on the answer. Relays evict old
+        // LOCK bodies; the durable IndexedDB cache is often the only place the
+        // hash and shares still exist, and without them the winner is told
+        // "no lock data" for sats that are genuinely theirs (Jet, 2026-09-20,
+        // on a ₿2,000 APPROVED trade from early September).
+        const rehydrated = await this.escrow.loadEscrow(escrowId, { repairFromCache: true });
         state = rehydrated ?? this.escrow.getState(escrowId) ?? state;
       } catch (error) {
         // Preserve the deterministic hard-failure below. Letting a relay-fetch

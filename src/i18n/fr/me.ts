@@ -153,9 +153,8 @@ export const me: Record<string, string> = {
     "Pas encore d'évaluations — terminez votre premier échange pour commencer à bâtir votre réputation. Les évaluations débloquent des capacités progressives comme les paiements récurrents.",
   "me.noTradesYet":
     "Pas encore d'échanges. Parcourez les annonces pour en démarrer un.",
-  "me.nostrNames": "Noms Nostr",
-  "me.nostrNamesHint":
-    "Afficher les noms de profil au lieu des identifiants npub",
+  "me.nostrNames": "Chercher les vrais noms",
+  "me.nostrNamesHint": "Demande aux relais les noms de profil des autres. Désactivé : chacun garde son nom généré et aucun relais n’apprend qui vous regardez.",
   "me.newListingNotifications": "Nouvelles annonces dans mon chama",
   "me.newListingNotificationsHint": "Me prévenir quand quelqu'un publie une nouvelle annonce ici",
   "me.nothingInView": "Rien dans cette vue pour le moment.",
@@ -273,4 +272,11 @@ export const me: Record<string, string> = {
   "me.tradeNameHint": "Affich\u00e9 sur vos \u00e9changes \u00e0 la place de votre cl\u00e9. Laissez vide pour utiliser votre nom g\u00e9n\u00e9r\u00e9 : {name}.",
   "me.tradeNameSave": "Enregistrer",
   "me.tradeNameSaved": "Enregistr\u00e9",
+  "me.tradeNamePublishing": "Publication sur votre profil Nostr…",
+  "me.tradeNamePublished": "Publié — ce nom suit votre clé sur tous vos appareils.",
+  "me.tradeNameLocalOnly": "Enregistré sur cet appareil seulement — les relais ont refusé le profil. Réessayez une fois en ligne.",
+  "me.tabProfile": "Profil",
+  "me.profileKnownAs": "Comment les autres vous voient",
+  "me.profileKnownAsHint": "Sans les noms de profil, on voit votre nom généré : {name}. Il ne change jamais.",
+  "me.strandedSince": "Bloqué depuis le {date}",
 };

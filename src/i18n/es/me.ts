@@ -146,8 +146,8 @@ export const me: Record<string, string> = {
   "me.noRatingsYet":
     "Aún sin evaluaciones — completa tu primer intercambio para empezar a construir reputación. Las evaluaciones desbloquean capacidades graduales como pagos recurrentes.",
   "me.noTradesYet": "Aún no hay intercambios. Explora los anuncios para empezar uno.",
-  "me.nostrNames": "Nombres de Nostr",
-  "me.nostrNamesHint": "Muestra nombres de perfil en lugar de IDs npub",
+  "me.nostrNames": "Buscar nombres reales",
+  "me.nostrNamesHint": "Pide a los relays los nombres de perfil de otros. Apagado: cada quien mantiene su nombre generado y ningún relay sabe a quién miras.",
   "me.newListingNotifications": "Nuevos anuncios en mi chama",
   "me.newListingNotificationsHint": "Avísame cuando alguien publique un anuncio nuevo aquí",
   "me.nothingInView": "Nada en esta vista por ahora.",
@@ -258,4 +258,11 @@ export const me: Record<string, string> = {
   "me.tradeNameHint": "Se muestra en tus operaciones en lugar de tu clave. D\u00e9jalo vac\u00edo para usar tu nombre generado: {name}.",
   "me.tradeNameSave": "Guardar",
   "me.tradeNameSaved": "Guardado",
+  "me.tradeNamePublishing": "Publicando en tu perfil de Nostr…",
+  "me.tradeNamePublished": "Publicado — este nombre te sigue con tu llave a cualquier dispositivo.",
+  "me.tradeNameLocalOnly": "Guardado solo en este dispositivo — los relays rechazaron el perfil. Inténtalo cuando vuelvas a estar en línea.",
+  "me.tabProfile": "Perfil",
+  "me.profileKnownAs": "Cómo te ven los demás",
+  "me.profileKnownAsHint": "Quien tenga los nombres de perfil desactivados ve tu nombre generado: {name}. Nunca cambia.",
+  "me.strandedSince": "Varado desde el {date}",
 };

@@ -117,11 +117,14 @@ export function generatedNameFor(pubkey: string, lang: NymLang = "en"): string {
 }
 
 // ── Local self-chosen trade name ───────────────────────────────────────────
-// A quick in-app username, stored per active npub on THIS device only — no
-// Nostr profile (kind-0) setup required. Because it never leaves the device,
-// only the owner sees it; everyone else sees the deterministic generated
-// name (or the kind-0 name when that opt-in is on). Publishing it via kind-0
-// from inside Chama is a later, separate feature.
+// The in-app username. It is stored per active npub on this device AND
+// published as a Nostr kind-0 profile, so it travels with the KEY rather
+// than with the browser — Jet, 2026-09-19: renaming on one device and seeing
+// the old nym on another made the rename "pointless". Publishing merges into
+// whatever kind-0 already exists (Primal, Damus, anywhere), because kind 0 is
+// a whole-document replaceable event: writing only a name would silently wipe
+// someone's picture, about and lud16. Never clobber a profile Chama did not
+// create.
 
 export const LOCAL_TRADE_NAME_KEY = "chama_trade_name_v1";
 const TRADE_NAME_MAX = 24;
@@ -138,6 +141,27 @@ export function readLocalTradeName(): string | null {
 
 export function writeLocalTradeName(raw: string): void {
   setScopedStorageItem(LOCAL_TRADE_NAME_KEY, sanitizeTradeName(raw));
+}
+
+/**
+ * The kind-0 content to publish for `name`, preserving every other field of
+ * an existing profile. Pure, so the "don't clobber someone's real profile"
+ * promise is testable: unknown keys survive, malformed or empty content
+ * yields a minimal profile, and both `name` and `display_name` are set so
+ * every Nostr client shows the same thing.
+ */
+export function mergeProfileNameContent(existingContent: string | null | undefined, name: string): string {
+  let base: Record<string, unknown> = {};
+  try {
+    const parsed = JSON.parse(existingContent ?? "");
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      base = parsed as Record<string, unknown>;
+    }
+  } catch {
+    // Unparseable profile: start clean rather than propagate garbage.
+  }
+  const clean = sanitizeTradeName(name);
+  return JSON.stringify({ ...base, name: clean, display_name: clean });
 }
 
 function isActiveUser(pubkey: string): boolean {
@@ -159,6 +183,9 @@ export function profileNameFor(
   profiles: NostrProfileNameMap | undefined,
   pubkey: string | null | undefined,
   enabled: boolean,
+  /** Language for the generated-name fallback, so a Kiswahili reader sees a
+   *  Kiswahili nym. Omitted keeps the historical default. */
+  lang?: NymLang,
 ): string | null {
   if (!pubkey) return null;
   if (isActiveUser(pubkey)) {
@@ -169,6 +196,6 @@ export function profileNameFor(
     const kind0 = profiles?.[pubkey.toLowerCase()];
     if (kind0) return kind0;
   }
-  return generatedNameFor(pubkey);
+  return generatedNameFor(pubkey, lang);
 }
 

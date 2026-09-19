@@ -229,6 +229,7 @@ export const app: Record<string, string> = {
   "edit.buyerHolding": "Un comprador está reservando esta oferta ahora mismo, al precio que vio. Espera unos minutos a que venza su reserva y luego edita.",
   "edit.blocked": "Esto no se puede editar — solo tus propios anuncios activos y sin financiar.",
   "edit.replacesNote": "Al guardar se vuelve a publicar tu oferta: recibe un ID nuevo y se retira la anterior.",
+  "app.listingExpired": "Esa oferta expiró antes de que alguien bloqueara — nunca se fondeó nada.",
   "app.openingTrade": "Abriendo operaci\u00f3n\u2026",
   "app.tradeOpenFailed": "No se pudo abrir esa operaci\u00f3n: los relays no la devolvieron. Int\u00e9ntalo de nuevo en un momento.",
 };

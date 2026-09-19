@@ -141,8 +141,8 @@ export const me: Record<string, string> = {
   "me.noRatingsYet":
     "Bado hakuna tathmini — kamilisha biashara yako ya kwanza kuanza kujenga sifa. Tathmini zinafungua uwezo wa hatua kwa hatua kama malipo yanayojirudia.",
   "me.noTradesYet": "Bado hakuna biashara. Vinjari matangazo kuanzisha moja.",
-  "me.nostrNames": "Majina ya Nostr",
-  "me.nostrNamesHint": "Onyesha majina ya wasifu badala ya vitambulisho vya npub",
+  "me.nostrNames": "Tafuta majina halisi",
+  "me.nostrNamesHint": "Uliza relays majina ya wasifu ya wengine. Ikizimwa: kila mtu anabaki na jina lililotengenezwa, na hakuna relay inayojua unamtazama nani.",
   "me.newListingNotifications": "Matangazo mapya katika chama changu",
   "me.newListingNotificationsHint": "Niamshe mtu anapoweka tangazo jipya hapa",
   "me.nothingInView": "Hakuna kitu katika mwonekano huu sasa.",
@@ -253,4 +253,11 @@ export const me: Record<string, string> = {
   "me.tradeNameHint": "Huonyeshwa kwenye biashara zako badala ya ufunguo wako. Acha wazi kutumia jina lako lililotengenezwa: {name}.",
   "me.tradeNameSave": "Hifadhi",
   "me.tradeNameSaved": "Imehifadhiwa",
+  "me.tradeNamePublishing": "Inachapisha kwenye wasifu wako wa Nostr…",
+  "me.tradeNamePublished": "Imechapishwa — jina hili sasa linafuata ufunguo wako kwenye kifaa chochote.",
+  "me.tradeNameLocalOnly": "Imehifadhiwa kwenye kifaa hiki tu — relays zilikataa wasifu. Jaribu tena ukiwa mtandaoni.",
+  "me.tabProfile": "Wasifu",
+  "me.profileKnownAs": "Jinsi wengine wanavyokuona",
+  "me.profileKnownAsHint": "Mtu aliyezima majina ya wasifu anaona jina lako lililotengenezwa: {name}. Halibadiliki kamwe.",
+  "me.strandedSince": "Imekwama tangu {date}",
 };

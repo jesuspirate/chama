@@ -93,9 +93,11 @@ import {
   setTradeDmPref,
 } from "../../notifications/notify-service.js";
 import { TradeCard } from "../components/TradeCard.js";
+import { type AmountDisplayMode } from "../amount-display.js";
+import { AmountDisplayProvider, TradeAmount } from "../components/TradeAmount.js";
 import { BitcoinAmount } from "../components/BitcoinAmount.js";
 import type { TradeIndexEntry } from "../../escrow-engine/trade-index.js";
-import { readKind0Toggle, writeKind0Toggle, readLocalTradeName, writeLocalTradeName, sanitizeTradeName, generatedNameFor } from "../nostr-profiles.js";
+import { readKind0Toggle, writeKind0Toggle, readLocalTradeName, writeLocalTradeName, sanitizeTradeName, generatedNameFor, type NostrProfileNameMap } from "../nostr-profiles.js";
 import { backgroundPushEnabled, enableBackgroundPush, disableBackgroundPush } from "../../notifications/watch-tags.js";
 import { isWebPushSupported, iosNeedsInstallForPush } from "../../notifications/web-push-client.js";
 
@@ -114,6 +116,8 @@ const ME_TRADE_FILTERS: { id: MeTradeFilter; labelKey: string }[] = [
 export function MeScreen({
   pubkey,
   kind0Enabled,
+  profileNames,
+  requestTab,
   onKind0EnabledChange,
   themeMode,
   onThemeModeChange,
@@ -126,6 +130,9 @@ export function MeScreen({
   ratings,
   onOpenTrade,
   onRefreshTrades,
+  onPublishProfileName,
+  amountDisplayMode = "sats",
+  quoteCurrency,
   onSellerEditListing,
   onSellerDeleteListing,
   onOpenSavedHandles,
@@ -155,6 +162,14 @@ export function MeScreen({
 }: {
   pubkey: string;
   kind0Enabled?: boolean;
+  /** Fetched kind-0 display names. Me used to render every counterparty as
+   *  their generated nym because the map never reached it (Jet, 2026-09-20:
+   *  "I see their Quick Dikdik again, no rename reach those"). */
+  profileNames?: NostrProfileNameMap;
+  /** Which pill to land on. Coming back from a Wallet sub-panel must return
+   *  to WALLET, not to the default tab (Jet, 2026-09-20). Carries a nonce so
+   *  asking for the SAME tab twice still lands. */
+  requestTab?: { tab: "trades" | "sats" | "seller" | "arbiter" | "profile" | "community" | "settings" | "live-trades"; n: number };
   onKind0EnabledChange?: (enabled: boolean) => void;
   /** #50 dark/light theming — current mode + setter (App owns the state). */
   themeMode?: ThemeMode;
@@ -186,6 +201,14 @@ export function MeScreen({
    *  hydrates any trades missing from the local list. Returns how many were
    *  added (for a toast). */
   onRefreshTrades?: () => Promise<number> | void;
+  /** The shell's sats/fiat toggle. Me used to ignore it, so flipping the big
+   *  header switch changed Browse but left every past trade in sats (Jet,
+   *  2026-09-19). Threaded through to the trade cards and the queues. */
+  amountDisplayMode?: AmountDisplayMode;
+  quoteCurrency?: string | null;
+  /** Publish the chosen profile name as kind 0, so a rename follows the key
+   *  rather than the browser. Absent ⇒ the name stays device-local. */
+  onPublishProfileName?: (name: string) => Promise<void>;
   onSellerEditListing?: (id: string) => void;
   onSellerDeleteListing?: (id: string) => void | Promise<void>;
   onOpenSavedHandles: () => void;
@@ -250,11 +273,12 @@ export function MeScreen({
    *  re-opening the trade retries with a fresh budget). */
   stuckNativeLocks?: PendingNativeLock[];
 }) {
-  const { t } = useT();
+  const { t, lang } = useT();
   const npubShort = pubkey.slice(0, 8) + "…" + pubkey.slice(-4);
   const [localKind0On, setLocalKind0On] = useState<boolean>(() => readKind0Toggle(pubkey));
   const kind0On = kind0Enabled ?? localKind0On;
   const [tradeFilter, setTradeFilter] = useState<MeTradeFilter>("all");
+  const [pillTargetAt, setPillTargetAt] = useState(0);
   useEffect(() => {
     setLocalKind0On(readKind0Toggle(pubkey));
   }, [pubkey]);
@@ -417,12 +441,27 @@ export function MeScreen({
   const hasSellerDashboard = dashboard.sellerOpen.length > 0 || dashboard.sellerLive.length > 0;
   // v6.3 approved redesign: Browse-style pill tabs replace the accordions.
   // Money-safety cards stay ABOVE the tabs — never hidden behind one.
-  const [meTab, setMeTab] = useState<"trades" | "sats" | "arbiter" | "profile" | "settings">("trades");
+  const [meTab, setMeTab] = useState<"trades" | "sats" | "seller" | "arbiter" | "profile" | "community" | "settings">("trades");
   // Perceived tap latency fix (Jet, v6.3.3 — worst on iOS PWA): the pills
   // render from meTab and flip color the instant React commits the click,
   // while the SECTIONS below render from this deferred value, so unmounting
   // a long trade list and mounting Settings happens in a non-blocking pass
   // instead of holding the tap's frame hostage.
+  useEffect(() => {
+    if (!requestTab) return;
+    // "live-trades" is a destination, not a tab: land on Trades with the Live
+    // filter already applied, which is what the active-trade pill promises.
+    if (requestTab.tab === "live-trades") {
+      setMeTab("trades");
+      setTradeFilter("live");
+      // Glow the live rows for a beat: together they ARE the amount the pill
+      // quoted, so highlighting all of them is the honest answer to "which
+      // trade?" — picking one would be a guess.
+      setPillTargetAt(Date.now());
+      return;
+    }
+    setMeTab(requestTab.tab);
+  }, [requestTab?.tab, requestTab?.n]);
   const shownTab = useDeferredValue(meTab);
   const hasVisibleMoneyAction =
     loudClaims.length > 0
@@ -432,6 +471,7 @@ export function MeScreen({
     || Boolean(pendingEcashExport && onWithdrawEcash);
 
   return (
+    <AmountDisplayProvider value={{ mode: amountDisplayMode, currency: quoteCurrency ?? null }}>
     <div style={{ padding: 16, maxWidth: 760, margin: "0 auto" }}>
       {/* Profile header — HIDDEN (Jetty 2026-07-15): Me is "what needs attention
           + settings" right now, not a profile space, so we reclaim this real
@@ -581,6 +621,19 @@ export function MeScreen({
             <BitcoinAmount sats={Math.floor(entry.amountMsats / 1000)} size={13} gap={4} glyphScale={1.18} color={T.text} glyphColor={T.muted} />
             {" "}{probedConsumed ? t("me.probedConsumedBody") : t("me.checkOtherDeviceBody")}
           </div>
+          {/* WHEN this was stashed. These cards are kept on purpose as
+              evidence (v6.0 staged-settlement work: historical cases are
+              never rewritten as recovered), so the date is what tells you
+              whether you are looking at an old scar or a new wound. */}
+          {entry.createdAt > 0 && (
+            <div style={{ fontSize: 11, color: T.muted, fontFamily: T.mono, marginBottom: 12 }}>
+              {t("me.strandedSince", {
+                date: new Date(entry.createdAt).toLocaleDateString(lang, {
+                  year: "numeric", month: "short", day: "numeric",
+                }),
+              })}
+            </div>
+          )}
           {/* The unprobed card's whole claim is an inference; the probe is the
               only thing that can settle it. Once it HAS been settled, offering
               to probe again is offering to re-ask a question already answered
@@ -819,8 +872,10 @@ export function MeScreen({
         {([
           ["trades", t("me.accMyTrades"), myTrades.length || undefined],
           ["sats", t("me.tabSats"), undefined],
+          ...(hasSellerDashboard ? [["seller", t("me.sellerDashboard"), (dashboard.sellerOpen.length + dashboard.sellerLive.length) || undefined] as const] : []),
           ...(dashboard.arbiterVisible ? [["arbiter", t("me.accArbiter"), dashboard.arbiterDisputes.length || undefined] as const] : []),
-          ["profile", t("me.tabCommunity"), undefined],
+          ["profile", t("me.tabProfile"), undefined],
+          ["community", t("me.tabCommunity"), undefined],
           ["settings", t("me.accSettings"), undefined],
         ] as Array<readonly [typeof meTab, string, number | undefined]>).map(([key, label, count]) => {
           const on = meTab === key;
@@ -846,22 +901,20 @@ export function MeScreen({
       </div>
 
       {/* ── TRADES — settlements ledger + seller queue + full history ─── */}
+      {/* Selling has its own pill now (Jet, 2026-09-20: "so it's not in the
+          way of legit simple trades") — the same treatment the arbiter view
+          already had. Trades is history; Seller is inventory and orders. */}
+      {shownTab === "seller" && !hydratingTrades && hasSellerDashboard && (
+        <SellerDashboardPanel
+          dashboard={dashboard}
+          onOpenTrade={onOpenTrade}
+          onSellerEditListing={onSellerEditListing}
+          onSellerDeleteListing={onSellerDeleteListing}
+        />
+      )}
+
       {shownTab === "trades" && !hydratingTrades && <>
-        {hasSellerDashboard && (
-          <Accordion
-            title={t("me.sellerDashboard")}
-            count={(dashboard.sellerOpen.length + dashboard.sellerLive.length) || undefined}
-            defaultOpen={dashboard.sellerLive.length > 0}
-          >
-            <SellerDashboardPanel
-              dashboard={dashboard}
-              onOpenTrade={onOpenTrade}
-              onSellerEditListing={onSellerEditListing}
-              onSellerDeleteListing={onSellerDeleteListing}
-            />
-          </Accordion>
-        )}
-        <div style={{ marginTop: hasSellerDashboard ? 16 : 0 }}>
+        <div>
           <MeTradeHistory
             trades={visibleTrades}
             totalCount={myTrades.length}
@@ -875,6 +928,11 @@ export function MeScreen({
             myGivenRatings={myGivenRatings}
             archivedTrades={archivedTrades}
             onOpenArchivedTrade={onOpenArchivedTrade}
+            amountDisplayMode={amountDisplayMode}
+            quoteCurrency={quoteCurrency}
+            profileNames={profileNames}
+            kind0Enabled={kind0On}
+            highlightLive={pillTargetAt}
           />
         </div>
       </>}
@@ -903,60 +961,51 @@ export function MeScreen({
       )}
 
       {/* ── SETTINGS ────────────────────────────────────────────── */}
+      {/* ── PROFILE (Jet, 2026-09-19) ─────────────────────────────────────
+          Changing your name is about to be common, so identity gets its own
+          home instead of sitting on top of the notification rows: the name
+          (published to your key), who everyone else sees you as, and the two
+          presentation choices that are also "you" — appearance and language.
+          Everything that is a SETTING (notifications, bonds, advanced, sign
+          out) stays in Settings. */}
+      {shownTab === "profile" && <>
+        <div style={{
+          background: T.card, border: `1px solid ${T.border}`,
+          borderRadius: T.r, padding: 0, overflow: "hidden",
+        }}>
+          <TradeNameRow pubkey={pubkey} onPublishName={onPublishProfileName} />
+          <div style={{ padding: "14px 16px", borderBottom: `1px solid ${T.border}` }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: T.text, fontFamily: T.sans }}>
+              {t("me.profileKnownAs")}
+            </div>
+            <div style={{ fontSize: 11, color: T.muted, fontFamily: T.mono, marginTop: 2, lineHeight: 1.5 }}>
+              {t("me.profileKnownAsHint", { name: generatedNameFor(pubkey, lang) })}
+            </div>
+            <div style={{
+              marginTop: 8, fontFamily: T.mono, fontSize: 11, color: T.muted,
+              wordBreak: "break-all" as const,
+            }}>
+              {npubShort}
+            </div>
+          </div>
+          {themeMode && onThemeModeChange && <AppearanceRow themeMode={themeMode} onThemeModeChange={onThemeModeChange} />}
+          <LanguageRow />
+          <NostrNamesRow on={kind0On} onToggle={() => setKind0On(!kind0On)} />
+        </div>
+      </>}
+
       {shownTab === "settings" && <>
         <div style={{
           background: T.card, border: `1px solid ${T.border}`,
           borderRadius: T.r, padding: 0, overflow: "hidden",
         }}>
-          {/* Jet 6.3.3: profile name leads the settings — identity first,
-              not buried under the notification rows. */}
-          <TradeNameRow pubkey={pubkey} />
-          {themeMode && onThemeModeChange && (
-            <div style={{
-              display: "flex", alignItems: "center", justifyContent: "space-between",
-              gap: 10, padding: "14px 16px", borderBottom: `1px solid ${T.border}`,
-            }}>
-              <div>
-                <div style={{ fontSize: 13, fontWeight: 600, color: T.text, fontFamily: T.sans }}>
-                  {t("me.appearance")}
-                </div>
-                <div style={{ fontSize: 11, color: T.muted, fontFamily: T.mono, marginTop: 2 }}>
-                  {t("me.appearanceHint")}
-                </div>
-              </div>
-              <div style={{ display: "flex", gap: 4 }}>
-                {(["dark", "light", "system"] as ThemeMode[]).map(mode => {
-                  const active = themeMode === mode;
-                  const label = mode === "system" ? t("me.auto") : mode === "dark" ? t("me.dark") : t("me.light");
-                  return (
-                    <button
-                      key={mode}
-                      type="button"
-                      aria-pressed={active}
-                      onClick={() => onThemeModeChange(mode)}
-                      style={{
-                        padding: "6px 10px", borderRadius: 999,
-                        border: `1px solid ${active ? T.accent + "66" : T.border}`,
-                        background: active ? T.accentDim : T.surface,
-                        color: active ? T.accent : T.muted,
-                        fontFamily: T.mono, fontSize: 10, fontWeight: 800,
-                        cursor: "pointer",
-                      }}
-                    >
-                      {label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-          <LanguageRow />
+          {/* Identity moved to its own Profile tab (Jet, 2026-09-19);
+              Settings is now only settings. */}
           <NotificationsRow />
           <BackgroundPushRow />
           <DmNotificationsRow />
           <CounterpartyDmRow />
           <NewListingNotificationsRow />
-          <NostrNamesRow on={kind0On} onToggle={() => setKind0On(!kind0On)} />
           {SHOW_BOND_CEREMONY && onOpenBondCeremony && (
             <SettingsRow label={t("me.postYourBond")} hint={t("me.postYourBondHint")} onClick={onOpenBondCeremony} />
           )}
@@ -976,7 +1025,7 @@ export function MeScreen({
       {/* ── COMMUNITY — the chama switcher, alone. Ratings live on the
           Dashboard; the identity hex lives in the top banner; sign out lives
           in Settings. */}
-      {shownTab === "profile" && <>
+      {shownTab === "community" && <>
         {onSelectCommunity && (
           <YourChamaCard
             communitySlug={communitySlug ?? null}
@@ -988,6 +1037,7 @@ export function MeScreen({
         )}
       </>}
     </div>
+    </AmountDisplayProvider>
   );
 }
 
@@ -1067,6 +1117,11 @@ function MeTradeHistory({
   myGivenRatings,
   archivedTrades,
   onOpenArchivedTrade,
+  amountDisplayMode,
+  quoteCurrency,
+  profileNames,
+  kind0Enabled,
+  highlightLive,
 }: {
   trades: EscrowState[];
   totalCount: number;
@@ -1083,6 +1138,14 @@ function MeTradeHistory({
    *  silently shrinks; tapping rehydrates from the community relay. */
   archivedTrades?: TradeIndexEntry[];
   onOpenArchivedTrade?: (id: string) => void;
+  /** The shell's sats/fiat toggle, so history answers it too. */
+  amountDisplayMode?: AmountDisplayMode;
+  quoteCurrency?: string | null;
+  profileNames?: NostrProfileNameMap;
+  kind0Enabled?: boolean;
+  /** Timestamp of the last "show me what the pill meant" request; non-zero
+   *  briefly rings the live rows. */
+  highlightLive?: number;
 }) {
   const { t } = useT();
   const activeFilterKey = ME_TRADE_FILTERS.find((filter) => filter.id === activeFilter)?.labelKey ?? "me.filterAll";
@@ -1215,8 +1278,12 @@ function MeTradeHistory({
               ? (myGivenRatings ?? []).some(r => r.tradeId === s.id && r.ratee === ratee.toLowerCase())
               : false;
             return (
-              <div key={s.id} style={{ animation: `fadeIn 0.4s ease ${i * 0.05}s both` }}>
-                <TradeCard state={s} pubkey={pubkey} onSelect={() => onOpenTrade(s.id)} />
+              <div
+                key={s.id}
+                className={highlightLive && activeFilter === "live" ? "chama-pill-target" : undefined}
+                style={{ animation: `fadeIn 0.4s ease ${i * 0.05}s both` }}
+              >
+                <TradeCard state={s} pubkey={pubkey} onSelect={() => onOpenTrade(s.id)} amountDisplayMode={amountDisplayMode} quoteCurrency={quoteCurrency} profileNames={profileNames} kind0Enabled={kind0Enabled} />
                 {/* Safety net Jetty asked for: rate the counterparty straight from
                     history (👍/👎) if you forgot or backed out of the trade. */}
                 {ratee && !alreadyRated && onRateCounterparty && (
@@ -1322,7 +1389,7 @@ function ArchivedTradeRow({
         </div>
       </div>
       <div style={{ flexShrink: 0, textAlign: "right" as const }}>
-        <BitcoinAmount msats={entry.amountMsats} size={13} gap={3} glyphScale={1.15} color={T.text} glyphColor={T.muted} />
+        <TradeAmount msats={entry.amountMsats} size={13} color={T.text} />
       </div>
       <span aria-hidden="true" style={{ flexShrink: 0, color: T.muted, opacity: 0.6, fontFamily: T.mono, fontSize: 12 }}>›</span>
     </div>
@@ -1677,13 +1744,7 @@ function SellerQueueItem({
         <div style={{
           flexShrink: 0,
         }}>
-          <BitcoinAmount
-            msats={trade.amountMsats}
-            size={12}
-            color={sellerQueueTone(queue)}
-            gap={4}
-            glyphScale={1.18}
-          />
+          <TradeAmount msats={trade.amountMsats} size={12} color={sellerQueueTone(queue)} />
         </div>
       </div>
       <div style={{
@@ -1996,13 +2057,7 @@ function ArbiterQueueItem({
         <div style={{
           flexShrink: 0,
         }}>
-          <BitcoinAmount
-            msats={trade.amountMsats}
-            size={12}
-            color={tone}
-            gap={4}
-            glyphScale={1.18}
-          />
+          <TradeAmount msats={trade.amountMsats} size={12} color={tone} />
         </div>
       </div>
 
@@ -2608,10 +2663,39 @@ function buildMeDashboard(
   };
 }
 
+/** How long a buyer seat WITHOUT a recorded hold stays credible. Generous
+ *  enough that a real buyer who joined before holds existed can still come
+ *  back the same day; decisive enough that a ghost clears. */
+const UNHELD_ORDER_GRACE_SEC = 86_400;
+
+function isStaleUnheldOrder(trade: EscrowState, nowSec: number): boolean {
+  if (trade.status !== EscrowStatus.CREATED) return false;
+  if (!trade.participants[Role.BUYER]) return false;
+  if (trade.joinHolds?.[Role.BUYER]) return false; // a real reservation expires on its own
+  if (trade.tranchePlan) return false;             // a signed plan freezes the seats on purpose
+  const joinedAt = trade.eventChain
+    .filter(event => event.kind === EscrowEventKind.JOIN)
+    .reduce((newest, event) => Math.max(newest, event.timestamp ?? 0), 0);
+  // No JOIN in view: the seat may predate what this client can replay, so
+  // fall back to the listing's own age rather than guessing it is live.
+  const since = joinedAt > 0 ? joinedAt : trade.createdAt;
+  return since > 0 && nowSec > since + UNHELD_ORDER_GRACE_SEC;
+}
+
 function getSellerOrderState(
   trade: EscrowState,
   nowSec: number,
 ): "inventory" | "hold" | "ready" {
+  // ── Ghost guard (Jet, 2026-09-19: "I caught ghost trades again") ─────────
+  // A CREATED listing whose buyer seat has NO recorded reservation never
+  // lapses: getEffectiveParticipantAt only expires a seat it can find a hold
+  // for. So a legacy or partial JOIN pins a listing in the READY queue
+  // forever — "order finalized · waiting for your lock" on a buyer who left
+  // long ago. Age those seats out from the JOIN itself; a real buyer has a
+  // hold (or comes back inside the day), a ghost never does. Display-layer
+  // only: the chain is untouched, the listing simply returns to stock where
+  // it can be edited or deleted.
+  if (isStaleUnheldOrder(trade, nowSec)) return "inventory";
   // Circles run their own clock: seats fill, the HOST locks LAST from the
   // circle screen once the group is in. A member taking a seat registers as
   // a buyer here, which read as "order finalized, waiting for your lock" on
@@ -3045,19 +3129,79 @@ function NewListingNotificationsRow() {
   );
 }
 
+/** Appearance lives with identity now (Profile tab): dark / light / auto. */
+function AppearanceRow({ themeMode, onThemeModeChange }: {
+  themeMode: ThemeMode;
+  onThemeModeChange: (mode: ThemeMode) => void;
+}) {
+  const { t } = useT();
+  return (
+    <div style={{
+      display: "flex", alignItems: "center", justifyContent: "space-between",
+      gap: 10, padding: "14px 16px", borderBottom: `1px solid ${T.border}`,
+    }}>
+      <div>
+        <div style={{ fontSize: 13, fontWeight: 600, color: T.text, fontFamily: T.sans }}>
+          {t("me.appearance")}
+        </div>
+        <div style={{ fontSize: 11, color: T.muted, fontFamily: T.mono, marginTop: 2 }}>
+          {t("me.appearanceHint")}
+        </div>
+      </div>
+      <div style={{ display: "flex", gap: 4 }}>
+        {(["dark", "light", "system"] as ThemeMode[]).map(mode => {
+          const active = themeMode === mode;
+          const label = mode === "system" ? t("me.auto") : mode === "dark" ? t("me.dark") : t("me.light");
+          return (
+            <button
+              key={mode}
+              type="button"
+              aria-pressed={active}
+              onClick={() => onThemeModeChange(mode)}
+              style={{
+                padding: "7px 11px", borderRadius: 999, cursor: "pointer",
+                border: `1px solid ${active ? T.accent : T.border}`,
+                background: active ? T.accentDim : "transparent",
+                color: active ? T.accent : T.muted,
+                fontFamily: T.mono, fontSize: 11, fontWeight: 700,
+              }}
+            >
+              {label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 /** v6.3.1: quick in-app trade name — no Nostr profile setup required.
  *  Stored per active npub on this device; empty falls back to the
  *  deterministic generated name every client derives from the pubkey. */
-function TradeNameRow({ pubkey }: { pubkey: string }) {
+function TradeNameRow({ pubkey, onPublishName }: {
+  pubkey: string;
+  /** Publishes the name as kind 0 so it travels with the KEY, not the browser
+   *  (Jet, 2026-09-19: a device-only rename is "pointless"). */
+  onPublishName?: (name: string) => Promise<void>;
+}) {
   const { t, lang } = useT();
   const [draft, setDraft] = useState<string>(() => readLocalTradeName() ?? "");
   const [savedTick, setSavedTick] = useState(false);
+  const [publishState, setPublishState] = useState<"idle" | "publishing" | "published" | "local-only">("idle");
   const generated = generatedNameFor(pubkey, lang);
   const save = () => {
+    // Write locally FIRST so the name is never lost to a relay problem, then
+    // publish. Failure downgrades honestly to "this device only".
     writeLocalTradeName(draft);
-    setDraft(readLocalTradeName() ?? "");
+    const saved = readLocalTradeName() ?? "";
+    setDraft(saved);
     setSavedTick(true);
     setTimeout(() => setSavedTick(false), 2000);
+    if (!onPublishName || !saved) { setPublishState("idle"); return; }
+    setPublishState("publishing");
+    void onPublishName(saved)
+      .then(() => setPublishState("published"))
+      .catch(() => setPublishState("local-only"));
   };
   return (
     <div style={{ padding: "14px 16px", borderBottom: `1px solid ${T.border}` }}>
@@ -3067,6 +3211,16 @@ function TradeNameRow({ pubkey }: { pubkey: string }) {
       <div style={{ fontSize: 11, color: T.muted, fontFamily: T.mono, marginTop: 2 }}>
         {t("me.tradeNameHint", { name: generated })}
       </div>
+      {publishState !== "idle" && (
+        <div style={{
+          fontSize: 11, marginTop: 6, fontFamily: T.mono, lineHeight: 1.5,
+          color: publishState === "local-only" ? T.amber : publishState === "published" ? T.green : T.muted,
+        }}>
+          {t(publishState === "publishing" ? "me.tradeNamePublishing"
+            : publishState === "published" ? "me.tradeNamePublished"
+            : "me.tradeNameLocalOnly")}
+        </div>
+      )}
       <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
         <input
           value={draft}

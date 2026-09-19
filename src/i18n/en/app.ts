@@ -249,6 +249,7 @@ export const app: Record<string, string> = {
   "edit.buyerHolding": "A buyer is holding this offer right now, at the price they saw. Wait a few minutes for their hold to lapse, then edit.",
   "edit.blocked": "This can't be edited — only your own live, unfunded listings.",
   "edit.replacesNote": "Saving republishes your offer, so it gets a new listing ID and the old one is removed.",
+  "app.listingExpired": "That listing expired before anyone locked — nothing was ever funded.",
   "app.openingTrade": "Opening trade\u2026",
   "app.tradeOpenFailed": "Couldn't open that trade \u2014 the relays didn't return it. Try again in a moment.",
 };

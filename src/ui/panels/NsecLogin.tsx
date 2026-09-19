@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Capacitor } from "@capacitor/core";
 import { T } from "../theme.js";
 import { CopyButton } from "../components/CopyButton.js";
@@ -10,12 +10,15 @@ import { useT } from "../../i18n/index.js";
 // Every client — browser, PWA, APK, Tauri, Start9's served page — persists the
 // nsec on login by default. The opt-out lives HERE, as a pre-checked "keep me
 // signed in" checkbox on the login screen itself — no extra screen after
-// login; you land straight on Browse. The v6.3.x password-manager APPARATUS
-// stays retired (no credentials.store(), no hidden username+password form, no
-// History-push save trick, no copy-then-re-paste ritual), but the paste field
-// is a real current-password control again so a manager can FILL a key the
-// user saved themselves — import restored (Jet, 2026-09-18). The generated-key
-// flow stays manager-invisible: a plain copy button is its whole backup story.
+// login; you land straight on Browse. The copy-then-re-paste ritual stays
+// retired, and the paste field is a real current-password control so a manager
+// can FILL a key the user saved themselves — import restored (Jet, 2026-09-18).
+// The v6.3.x SAVE apparatus is back for exactly one moment: the instant Chama
+// generates a brand-new key (Jet, 2026-09-19 — "it's our last shot"; the app is
+// non-custodial and may never raise the key again). That moment gets
+// credentials.store() on Chromium and the credential pair + unmount + same-URL
+// History push WebKit needs. Nothing else prompts: pasting a key you already
+// have never offers to save it.
 export function NsecLogin({
   onSubmit,
   defaultOpen = false,
@@ -78,6 +81,29 @@ export function NsecLogin({
   // signing-in placeholder while the shell boots the wallet behind it.
   const [handoffDone, setHandoffDone] = useState(false);
   const autoSubmittedKeyRef = useRef<string | null>(null);
+  // The npub labels the saved credential so a manager entry reads as an
+  // account, not an opaque secret. Kept in a ref too: managers inspect the
+  // form at SUBMIT time, which can precede React's next render.
+  const credentialUsernameRef = useRef<HTMLInputElement | null>(null);
+  const [credentialUsername, setCredentialUsername] = useState("Chama Nostr account");
+  // Chromium exposes the Credential Management API; WebKit does not. Where it
+  // exists we save through it EXCLUSIVELY — rendering the WebKit-heuristic
+  // fields too made Android show TWO Bitwarden prompts at once (Jet's
+  // GrapheneOS recording, v6.3.1).
+  const supportsCredentialStore =
+    typeof (globalThis as any).PasswordCredential === "function"
+    && !!(navigator as any).credentials?.store;
+
+  const identifyCredential = async (secretKey: Uint8Array): Promise<string> => {
+    const [{ getPublicKey }, { nip19 }] = await Promise.all([
+      import("nostr-tools/pure"),
+      import("nostr-tools"),
+    ]);
+    const username = nip19.npubEncode(getPublicKey(secretKey));
+    setCredentialUsername(username);
+    if (credentialUsernameRef.current) credentialUsernameRef.current.value = username;
+    return username;
+  };
 
   const handleGenerate = async () => {
     setMode("create");
@@ -91,6 +117,7 @@ export function NsecLogin({
       ]);
       const secretKey = generateSecretKey();
       const nsec = nip19.nsecEncode(secretKey);
+      await identifyCredential(secretKey);
       setNsecInput(nsec);
       setGeneratedNsec(nsec);
       setShowKey(true);
@@ -113,8 +140,38 @@ export function NsecLogin({
     // generated keys get the master-key reveal in Me › Advanced). The
     // submitted key matching the just-generated one is the signal.
     const wasGenerated = generatedNsec !== null && nsecInput.trim() === generatedNsec;
+
+    // ── The one save offer we make (creation only) ──────────────────────
+    // Two engines, two contracts. Chromium/Android WebView store the pair
+    // explicitly — no heuristics. iOS/macOS Safari has no credentials.store and
+    // decides to offer a save when a submitted form's credential fields LEAVE
+    // the DOM or the page navigates; handoffDone unmounts them immediately and
+    // the same-URL History push below is the SPA-legal "login succeeded"
+    // signal WebKit actually releases the offer on (field-verified, v6.3.2).
+    // A refusal never blocks sign-in, and a PASTED key never reaches here.
+    if (wasGenerated) {
+      const username = await identifyCredential(validated.secretKey);
+      try {
+        const CredCtor = (globalThis as any).PasswordCredential;
+        if (CredCtor && (navigator as any).credentials?.store) {
+          await (navigator as any).credentials.store(new CredCtor({
+            id: username,
+            name: "Chama recovery key",
+            password: nsecInput.trim(),
+          }));
+        }
+      } catch {
+        // Optional enhancement only.
+      }
+    }
+
     (document.activeElement as HTMLElement | null)?.blur?.();
     setHandoffDone(true);
+    if (wasGenerated) {
+      try {
+        history.pushState({ chamaSignedIn: true }, "", window.location.href);
+      } catch { /* cosmetic only */ }
+    }
     try {
       await onSubmit(nsecInput.trim(), remember, wasGenerated);
     } catch (e: any) {
@@ -241,7 +298,15 @@ export function NsecLogin({
         fontFamily: T.mono, fontSize: 12,
       }}>
         <div>{t("chat.signingIn")}</div>
-        {keepKey && (
+        {generatedActive && (
+          <div style={{
+            marginTop: 12, color: T.text, fontFamily: T.sans, fontSize: 13,
+            lineHeight: 1.5,
+          }}>
+            {t("chat.saveOfferHint")}
+          </div>
+        )}
+        {keepKey && !generatedActive && (
           <div style={{
             marginTop: 12, color: T.text, fontFamily: T.sans, fontSize: 13,
             lineHeight: 1.5,
@@ -262,6 +327,41 @@ export function NsecLogin({
       autoComplete="off"
       style={{ marginTop: isNative ? 0 : 8, width: "100%", maxWidth: 360 }}
     >
+      {/* Creation-only credential pair. A real username/password pair at
+          submit time is the contract browser and Android WebView autofill
+          use; the npub labels the saved account without exposing the nsec
+          twice. Visually hidden, never type="hidden" (managers ignore hidden
+          credential controls) and never focusable (so iOS's strong-password
+          sheet can't attach). Rendered ONLY while a freshly generated key is
+          on screen, so the paste path stays free of save prompts — and only
+          where credentials.store() is absent, because rendering both made
+          Android fire two prompts at once. */}
+      {generatedActive && !supportsCredentialStore && (
+        <>
+          <input
+            ref={credentialUsernameRef}
+            name="username"
+            value={credentialUsername}
+            readOnly
+            autoComplete="username"
+            aria-label="Nostr public account"
+            tabIndex={-1}
+            style={HIDDEN_CREDENTIAL_STYLE}
+          />
+          {!showPasteInput && (
+            <input
+              name="password"
+              type="password"
+              value={nsecInput}
+              readOnly
+              autoComplete="new-password"
+              aria-hidden="true"
+              tabIndex={-1}
+              style={HIDDEN_CREDENTIAL_STYLE}
+            />
+          )}
+        </>
+      )}
       {isNative && (
         <div style={{
           fontSize: 10, color: T.muted, fontFamily: T.mono,
@@ -477,6 +577,13 @@ export function NsecLogin({
     </form>
   );
 }
+
+/** Visually hidden, but a REAL control — password managers skip
+ *  display:none / type=hidden credential fields. */
+const HIDDEN_CREDENTIAL_STYLE: CSSProperties = {
+  position: "absolute", width: 1, height: 1, padding: 0, margin: -1,
+  overflow: "hidden", clip: "rect(0, 0, 0, 0)", whiteSpace: "nowrap", border: 0,
+};
 
 function InlineError({ children }: { children: string }) {
   return (

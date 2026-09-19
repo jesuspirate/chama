@@ -1,5 +1,7 @@
 import { saveNsec, SAVED_NSEC_KEY, NSEC_ORIGIN_KEY } from "../storage/saved-nsec.js";
-import { resolveCreateMintUrl } from "./decisions.js";
+import { resolveCreateMintUrl,
+  liveCommitmentForViewer,
+} from "./decisions.js";
 import { CircleCanvas } from "./screens/CircleCanvas.js";
 import { CircleSurface } from "./screens/CircleSurface.js";
 import { circleFromEscrow } from "../chama/policy.js";
@@ -160,6 +162,7 @@ import { Toast } from "./components/Toast.js";
 import { BitcoinAmount } from "./components/BitcoinAmount.js";
 import { VerticalIcon } from "./components/VerticalIcon.js";
 import { ChamaLoader } from "./components/ChamaLoader.js";
+import { isExpiredUnfundedListing } from "../escrow-engine/expired-listing.js";
 import { BottomNav, BOTTOM_NAV_HEIGHT, type Tab } from "./components/BottomNav.js";
 import { CoachMarkTour, readCoachSeen, type CoachStep } from "./components/CoachMarkTour.js";
 import { ActiveTradePill } from "./components/ActiveTradePill.js";
@@ -501,6 +504,15 @@ export default function App() {
   // Canvas conversation snapshot — lets back-from-a-trade land on the match
   // results the user left, instead of resetting to "What are you bringing?".
   const canvasResumeRef = useRef<AssistedCanvasResume | null>(null);
+  // Which Me pill to land on when a sub-view hands control back. Bumped with
+  // a nonce so returning to the SAME tab twice still registers.
+  // Small, read-mostly surfaces open IN FRONT of the screen instead of
+  // replacing it (Jet, 2026-09-20). Nothing navigates, so nothing has to
+  // guess where "back" goes.
+  const [walletOverlay, setWalletOverlay] = useState<null | "lightning">(null);
+  const [meRequestTabRaw, setMeRequestTabRaw] = useState<{ tab: "sats" | "settings" | "live-trades"; n: number } | null>(null);
+  const setMeRequestTab = (tab: "sats" | "settings" | "live-trades") =>
+    setMeRequestTabRaw(prev => ({ tab, n: (prev?.n ?? 0) + 1 }));
 
   const [{
     connected,
@@ -1807,6 +1819,14 @@ export default function App() {
   const hasActiveCommitment = pubkey
     ? hasActiveBuyerSellerCommitment({ escrows: escrows.values(), userPubkey: pubkey, nowSec: now })
     : false;
+  // Legacy route: anything still navigating to the old page lands on Me with
+  // the overlay up, so this surface has exactly one appearance.
+  useEffect(() => {
+    if (view !== "payout-destinations") return;
+    setWalletOverlay("lightning");
+    setView("me");
+  }, [view]);
+
   const activeCommitmentCount = pubkey
     ? countActiveBuyerSellerCommitments({ escrows: escrows.values(), userPubkey: pubkey, nowSec: now })
     : 0;
@@ -2548,7 +2568,20 @@ export default function App() {
       setDetailBackView(safeBackView);
       setSelectedId(id);
       setView("detail");
-      actions.loadEscrow(id).catch((e: any) => {
+      actions.loadEscrow(id).then((loaded) => {
+        // The load can SUCCEED and still leave nothing to show: an expired,
+        // never-funded listing is dropped from local state on arrival, so the
+        // detail view would wait on an escrow that is never coming (Jet,
+        // 2026-09-18: "stuck on Opening trade forever"). Say what happened.
+        if (!loaded || isExpiredUnfundedListing(loaded)) {
+          setToast({
+            message: loaded ? t("app.listingExpired") : t("app.tradeOpenFailed"),
+            type: "info",
+          });
+          setSelectedId(null);
+          setView(safeBackView);
+        }
+      }).catch((e: any) => {
         console.debug(
           "[chama] background refetch on openEscrow failed:",
           e?.message || e,
@@ -3176,7 +3209,11 @@ export default function App() {
   // v6.3: the Pulse dashboard and tabbed Me own their inner readable widths
   // (1080 / 760, centered) — the 520 shell clamp made both render as a crammed
   // phone column on desktop.
-  const wideOwnWidthMode = view === "dashboard" || view === "me";
+  // Browse owns its readable width too (Jet, 2026-09-20: "that's the only OG
+  // screen left") — the 520 shell clamp made a desktop viewport render the
+  // market as a phone column with dark gutters, while Me and the Dashboard
+  // already breathed.
+  const wideOwnWidthMode = view === "dashboard" || view === "me" || view === "browse";
   const activeTab = detailMode ? TAB_FOR_VIEW[detailBackView] : TAB_FOR_VIEW[view];
   const effectiveShellPaddingBottom = detailMode ? 0 : shellPaddingBottom;
 
@@ -3200,6 +3237,9 @@ export default function App() {
       <SimEntryModal />
 
       {toast && <Toast message={toast.message} type={toast.type} sticky={toast.sticky} dismissOnTap={toast.dismissOnTap} onDone={() => setToast(null)} />}
+      {walletOverlay === "lightning" && (
+        <PayoutDestinationsPanel onClose={() => setWalletOverlay(null)} />
+      )}
 
       {!detailMode && (
         <>
@@ -3302,6 +3342,18 @@ export default function App() {
               title: t("app.recoverSatsTitle"),
               traceContext: recoveryTraceContext,
             })}
+            onTapInTrade={() => {
+              // One live trade → open it. Several → the live list, which is the
+              // only honest answer to "which one?". Either way the amount in
+              // that pill stops being a mystery (Jet, 2026-09-20).
+              const live = pubkey
+                ? [...escrows.values()].filter(e =>
+                    liveCommitmentForViewer(e, pubkey, now))
+                : [];
+              if (live.length === 1) { openEscrow(live[0].id); return; }
+              setMeRequestTab("live-trades");
+              setView("me");
+            }}
             showReconnect={getUserCommunitySlugRaw() !== null || !!(storedActiveInvite || liveActiveInvite)}
             onInit={() => {
               // Reconnect does two jobs: re-probe backed-off/abandoned relays
@@ -3896,6 +3948,7 @@ export default function App() {
       ) : (view === "circle" || view === "detail" && !!selected && (selected.category === "chama" || selected.chamaPolicy === "share-v1")) ? (
         selected && circleFromEscrow(selected) ? <CircleSurface key={selected.id} parent={selected} escrows={escrows} viewerPubkey={pubkey!}
           childrenLoaded={circleChildrenLoaded.has(selected.id)} loadError={circleLoadError}
+          profileNames={nostrProfiles} kind0Enabled={kind0Enabled}
           backLabel={detailBackView === "me" ? t("browse.navMe") : detailBackView === "dashboard" ? t("browse.navDashboard") : detailBackView === "guided" ? t("lts.backHome") : t("browse.navBrowse")}
           onBack={() => { ++circleRouteRequest.current; setView(detailBackView); setSelectedId(null); maybeSnapBackHome(); }}
           onRefresh={() => refreshCircle(selected.id)}
@@ -4528,6 +4581,8 @@ export default function App() {
           <MeScreen
             pubkey={pubkey!}
             kind0Enabled={kind0Enabled}
+            profileNames={nostrProfiles}
+            requestTab={meRequestTabRaw ?? undefined}
             onKind0EnabledChange={setKind0Enabled}
             themeMode={themeMode}
             onThemeModeChange={setThemeMode}
@@ -4551,6 +4606,9 @@ export default function App() {
               traceContext: recoveryTraceContext,
             })}
             onOpenTrade={(id) => openEscrow(id, "me")}
+            amountDisplayMode={amountDisplayMode}
+            quoteCurrency={getCommunityBySlug(routeCommunitySlug)?.currency ?? null}
+            onPublishProfileName={actions.publishProfileName}
             onRefreshTrades={async () => {
               const added = await actions.refreshMyTrades();
               setToast({
@@ -4566,7 +4624,7 @@ export default function App() {
             onSellerEditListing={editSellerListing}
             onSellerDeleteListing={deleteSellerListing}
             onOpenSavedHandles={() => setView("saved-handles")}
-            onOpenPayoutDestinations={() => setView("payout-destinations")}
+            onOpenPayoutDestinations={() => setWalletOverlay("lightning")}
             unfundedListingCount={clearableListings.length}
             onClearUnfundedListings={() => setShowClearListings(true)}
             onOpenAdvanced={() => { setAdvancedFocusNwc(false); setView("advanced"); }}
@@ -4597,26 +4655,14 @@ export default function App() {
           )}
           <SavedHandlesPanel
             communitySlug={actions.getCommunity()}
-            onClose={() => setView("me")}
+            backLabel={t("me.tabSats")}
+            onClose={() => { setMeRequestTab("sats"); setView("me"); }}
           />
         </div>
       ) : view === "payout-destinations" ? (
-        <div style={{ animation: "fadeIn 0.3s ease" }}>
-          {visibleAttentionTrade && (
-            <ActiveTradePill
-              trade={visibleAttentionTrade}
-              activeTradeCount={activeCommitmentCount}
-              activeTradeMsats={activeTradeMsats}
-              actionMode={attentionActionMode}
-              actionCount={needsYouCount}
-              communityLabel={attentionCommunityLabel}
-              onTap={() => openEscrow(visibleAttentionTrade.id)}
-            />
-          )}
-          <PayoutDestinationsPanel
-            onClose={() => setView("me")}
-          />
-        </div>
+        // Legacy route: anything still navigating here lands on Me with the
+        // overlay open, so there is exactly one way this surface looks.
+        <div style={{ animation: "fadeIn 0.3s ease" }} />
       ) : view === "help" ? (
         <div style={{ animation: "fadeIn 0.3s ease" }}>
           <HelpScreen onBack={() => setView("me")} />
@@ -4755,14 +4801,33 @@ export default function App() {
               onLoadById={async (id) => {
                 try {
                   setToast({ message: t("app.loadingFromRelays"), type: "info" });
-                  const state = await actions.loadEscrow(id);
+                  // Pasting an ID is the single most explicit open in the app
+                  // — someone typed it in on purpose — so it gets the durable
+                  // cache as well as the relays.
+                  const state = await actions.loadEscrow(id, { repairFromCache: true });
                   if (state) {
                     setToast({ message: t("app.tradeLoaded"), type: "success" });
                     setDetailBackView("browse");
                     setSelectedId(id);
                     setView("detail");
                   } else {
-                    setToast({ message: t("app.tradeNotFound"), type: "error" });
+                    // "Not found" hid three different failures behind one
+                    // sentence (Jet, 2026-09-20: the counterparty re-published
+                    // 6/6 events and this side still said not-found, with no
+                    // way to tell whether the relays were empty, the events
+                    // unreadable, or the chain unreplayable). Name which.
+                    const failure = actions.getLoadFailure(id);
+                    const code = failure?.reason === "chain-incomplete" && failure.code
+                      ? ` (${failure.code})`
+                      : "";
+                    setToast({
+                      message: failure?.reason === "chain-incomplete"
+                        ? t("app.archivedIncomplete") + code
+                        : failure?.reason === "undecryptable"
+                          ? t("app.archivedUnreadable")
+                          : t("app.tradeNotFound"),
+                      type: "error",
+                    });
                   }
                 } catch (e: any) {
                   setToast({ message: e.message || t("app.loadFailed"), type: "error" });
@@ -4946,6 +5011,20 @@ export default function App() {
 // a module-scope capture would go stale when the palette swaps (#50). Called
 // per render so it always reflects the active theme.
 const globalCss = () => `
+  /* The escrow pill states a number; landing on Me, the trades that MAKE that
+     number briefly glow, so "which one is it talking about?" stops being a
+     guessing game (Jet, 2026-09-20). Fades on its own — a permanent
+     highlight would just be another thing competing for attention. */
+  @keyframes chamaPillTarget {
+    0%   { box-shadow: 0 0 0 0 rgba(247,147,26,0.55); }
+    35%  { box-shadow: 0 0 0 4px rgba(247,147,26,0.30); }
+    100% { box-shadow: 0 0 0 0 rgba(247,147,26,0); }
+  }
+  .chama-pill-target { border-radius: 18px; animation: chamaPillTarget 2.6s ease-out 2; }
+  @media (prefers-reduced-motion: reduce) {
+    .chama-pill-target { animation: none; box-shadow: 0 0 0 2px rgba(247,147,26,0.45); }
+  }
+
   /* Fonts are self-hosted via /fonts/fonts.css (linked in index.html, loaded
      before the bundle) — DM Sans + JetBrains Mono, offline/native-safe. The old
      Google Fonts @import lived here but was a render-blocking CDN call that

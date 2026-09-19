@@ -159,7 +159,10 @@ function displayNetworkLabels(keys: readonly string[]): string[] {
 // default for mobile money, while app, wallet, and mobile-bank identifiers use
 // the searchable rail picker below. Handles are still private by default and
 // only become public when the rail explicitly allows that opt-in path.
-export function SavedHandlesPanel({ communitySlug, onClose }: {
+export function SavedHandlesPanel({ communitySlug, onClose, backLabel }: {
+  /** What tapping back returns to, named. A bare × left people guessing
+   *  where they would land (and landed them somewhere else entirely). */
+  backLabel?: string;
   communitySlug: string;
   onClose: () => void;
 }) {
@@ -352,17 +355,21 @@ export function SavedHandlesPanel({ communitySlug, onClose }: {
 
   return (
     <div style={{ padding: 16, maxWidth: 560, margin: "0 auto" }}>
-      <div style={{
-        display: "flex", justifyContent: "space-between",
-        alignItems: "center", marginBottom: 18,
-      }}>
+      <button
+        type="button"
+        data-chama-shortcut="back"
+        onClick={onClose}
+        style={{
+          background: "none", border: 0, padding: "6px 0 10px",
+          color: T.muted, fontFamily: T.sans, fontSize: 13, cursor: "pointer",
+        }}
+      >
+        ‹ {backLabel ?? t("common.back")}
+      </button>
+      <div style={{ marginBottom: 18 }}>
         <span style={{ fontSize: 18, fontWeight: 700, color: T.text, fontFamily: T.sans }}>
           {t("claim.paymentMethods")}
         </span>
-        <button onClick={onClose} style={{
-          background: "none", border: "none",
-          color: T.muted, fontSize: 20, cursor: "pointer",
-        }}>×</button>
       </div>
 
       <div style={{

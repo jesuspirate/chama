@@ -265,7 +265,9 @@ export function BrowseView({
   }, [matchingListings, nonMatchingListings, resumePubkey]);
 
   return (
-    <div style={{ padding: 16 }}>
+    // Same readable column as Me: wide enough to use a desktop, capped so a
+    // listing row never becomes a stretched line of text.
+    <div style={{ padding: 16, maxWidth: 760, margin: "0 auto" }}>
       {resumePubkey && (
         <WorkerResume
           pubkey={resumePubkey}
@@ -489,7 +491,13 @@ export function BrowseView({
                 setBrowseCategory(active ? "all" : c.id);
               }}
               style={{
-                order: c.id === "all" ? 0 : 2,
+                // Pole position (Jet, 2026-09-18): a vertical with something
+                // LIVE in it leads the row; empty ones fall in behind. The
+                // chip row scrolls horizontally, so a single open circle used
+                // to sit off-screen to the right while four empty verticals
+                // held the visible space. Flex order only — no DOM reshuffle,
+                // and BROWSE_CATS order still decides ties inside each group.
+                order: c.id === "all" ? 0 : count > 0 ? 1 : 2,
                 flexShrink: 0,
                 padding: "7px 11px", borderRadius: 18,
                 background: active ? T.accentDim : T.surface,
@@ -863,6 +871,9 @@ interface BrowseListingSection {
   listings: EscrowState[];
 }
 
+/** Shelves in pole-position order: the vertical holding the most live offers
+ *  leads (ties keep BROWSE_CATS order), and empty ones were already dropped.
+ *  Same instinct as the chip row — what is alive is what you see first. */
 function groupListingsByVertical(listings: EscrowState[]): BrowseListingSection[] {
   return BROWSE_CATS
     .filter(c => c.id !== "all" && (CHAMA_CIRCLES_ENABLED || c.id !== "chama"))
@@ -876,7 +887,11 @@ function groupListingsByVertical(listings: EscrowState[]): BrowseListingSection[
             ? listing.category === "marketplace" && !isWorkListing(listing)
             : listing.category === c.id),
     }))
-    .filter(section => section.listings.length > 0);
+    .filter(section => section.listings.length > 0)
+    .map((section, index) => ({ section, index }))
+    .sort((a, b) =>
+      b.section.listings.length - a.section.listings.length || a.index - b.index)
+    .map(({ section }) => section);
 }
 
 function countListingsByCategory(

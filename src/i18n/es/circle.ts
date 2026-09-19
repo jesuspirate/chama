@@ -110,4 +110,7 @@ export const circle: Record<string, string> = {
   "circle.yourSeatClaimed": "tu asiento: cobrado ✓",
   "circle.yourSeatClaimNow": "tu asiento: cobra ahora",
   "circle.yourSeatLocked": "tu asiento: bloqueado",
+  "circle.hostBadge": "anfitrión",
+  "circle.youHost": "Tú eres el anfitrión de este círculo.",
+  "circle.hostedBy": "Anfitrión: {name}",
 };

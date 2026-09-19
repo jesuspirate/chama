@@ -32,6 +32,7 @@ export function ChamaBar({
   fedimint,
   chamaLabel,
   onTapStranded,
+  onTapInTrade,
   onInit,
   showReconnect,
   communitySlug,
@@ -45,6 +46,8 @@ export function ChamaBar({
    *  CTA. No-op for the in-trade and ready labels (those aren't
    *  tappable). */
   onTapStranded: () => void;
+  /** Open whatever the in-trade pill is talking about. */
+  onTapInTrade?: () => void;
   /** Fires for the v0.2.0 not-joined Reconnect AND for the v0.3.1
    *  Phase 3 "⚠ Chama unreachable" Reconnect (same dispatch — both
    *  call initFedimint() with no args, which uses the stored custom
@@ -126,6 +129,7 @@ export function ChamaBar({
         <ChamaBarLabelPill
           label={chamaLabel}
           onTapStranded={onTapStranded}
+          onTapInTrade={onTapInTrade}
           onTapUnreachable={onInit}
         />
       ) : fedimint.busy ? (
@@ -156,10 +160,14 @@ function communityChamaBarLabel(community: Community): string {
 }
 
 function ChamaBarLabelPill({
-  label, onTapStranded, onTapUnreachable,
+  label, onTapStranded, onTapUnreachable, onTapInTrade,
 }: {
   label: ChamaBarLabel;
   onTapStranded: () => void;
+  /** The in-trade pill states an amount; until now it was inert, so
+   *  "what IS that 2,000 sats?" had no answer (Jet, 2026-09-20). Tapping it
+   *  opens the trade — or the live list when several are running. */
+  onTapInTrade?: () => void;
   /** v0.3.1 Phase 3: tap handler for the "⚠ Chama unreachable"
    *  variant. Wired to initFedimint() at the parent (same dispatch
    *  as the not-joined Reconnect button). */
@@ -212,14 +220,20 @@ function ChamaBarLabelPill({
       ? t("recovery.activeTradeOne")
       : t("recovery.activeTradeMany", { count: label.activeTradeCount.toLocaleString() });
     return (
-      <span style={{
-        padding: "5px 12px", borderRadius: 20,
-        background: T.accentDim, border: `1px solid ${T.accent}66`,
-        color: T.accent, fontFamily: T.mono, fontSize: 10, fontWeight: 700,
-        letterSpacing: 0.3, whiteSpace: "nowrap",
-      }}>
-        {t("recovery.barInTradeBefore", { trades: tradeCopy })} <BitcoinAmount sats={label.sats} size={10} gap={3} glyphScale={1.2} color="inherit" glyphColor="inherit" /> {t("recovery.barInTradeAfter")}
-      </span>
+      <button
+        type="button"
+        onClick={onTapInTrade}
+        disabled={!onTapInTrade}
+        style={{
+          padding: "5px 12px", borderRadius: 20,
+          background: T.accentDim, border: `1px solid ${T.accent}66`,
+          color: T.accent, fontFamily: T.mono, fontSize: 10, fontWeight: 700,
+          letterSpacing: 0.3, whiteSpace: "nowrap",
+          cursor: onTapInTrade ? "pointer" : "default",
+        }}
+      >
+        {t("recovery.barInTradeBefore", { trades: tradeCopy })} <BitcoinAmount sats={label.sats} size={10} gap={3} glyphScale={1.2} color="inherit" glyphColor="inherit" /> {t("recovery.barInTradeAfter")}{onTapInTrade ? " ›" : ""}
+      </button>
     );
   }
   // stranded — tappable, amber, points at recovery

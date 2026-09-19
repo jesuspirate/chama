@@ -21,6 +21,7 @@ import {
 import { needsYouReasonFor } from "../decisions.js";
 import { T } from "../theme.js";
 import { BitcoinAmount } from "./BitcoinAmount.js";
+import { TradeAmount } from "./TradeAmount.js";
 import { VerticalIcon } from "./VerticalIcon.js";
 import type { LatestTradePointer } from "../latest-trade.js";
 import {
@@ -102,7 +103,7 @@ export function AttentionQueue({
                 {t("me.latestTrade")}
               </span>
             </span>
-            <BitcoinAmount msats={latestTrade.amountMsats} size={13} gap={3} glyphScale={1.15} color={T.text} glyphColor={T.muted} />
+            <TradeAmount msats={latestTrade.amountMsats} size={13} color={T.text} />
             <span aria-hidden="true" style={{ color: T.muted, opacity: 0.6, fontFamily: T.mono, fontSize: 13 }}>›</span>
           </button>
         )}
@@ -244,7 +245,7 @@ function AttentionCard({
           </div>
         </div>
         <div style={{ flexShrink: 0, textAlign: "right" as const }}>
-          <BitcoinAmount msats={trade.amountMsats} size={13} gap={3} glyphScale={1.15} color={tone} glyphColor={T.muted} />
+          <TradeAmount msats={trade.amountMsats} size={13} color={tone} />
           {pinned && (
             <div style={{ marginTop: 4, fontSize: 10, color: T.accent }} title={t("me.pinned")}>📌</div>
           )}

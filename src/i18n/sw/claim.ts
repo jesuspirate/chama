@@ -262,4 +262,6 @@ export const claim: Record<string, string> = {
     "Inafanya kazi kwa M-Pesa, Wave, Airtel Money, Orange Money, uhamisho wa benki wa simu, na pochi nyingi za simu.",
   "claim.youllReceiveMpesa": "Utapokea ≈ {estimate} kwenye M-Pesa.",
   "claim.yourPaymentId": "Kitambulisho chako cha malipo",
+  "claim.titleTradeNotSynced": "Biashara hii haijasawazishwa hapa",
+  "claim.bodyTradeNotSynced": "Sats zako ziko salama na bado ni zako — hakuna kilichohama. Kifaa hiki hakioni taarifa za kufunga: relays zimepoteza sehemu hiyo ya mnyororo. Jaribu tena. Ikiendelea kushindwa, muombe aliyefunga sats afungue biashara hii, apanue ⚙ chini na abonyeze Tangaza upya — nakala yake ndiyo inarudisha sehemu iliyokosekana.",
 };

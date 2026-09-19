@@ -72,4 +72,5 @@ export const chat: Record<string, string> = {
   "chat.useExistingAccount": "Usar una cuenta existente",
   "chat.you": "Tú",
   "chat.signingIn": "Iniciando sesi\u00f3n\u2026",
+  "chat.saveOfferHint": "Tu gestor de contraseñas puede ofrecerte guardar esta llave — acepta. Es la única copia que puede recuperar tu cuenta en otro dispositivo.",
 };

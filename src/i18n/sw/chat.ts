@@ -71,4 +71,5 @@ export const chat: Record<string, string> = {
   "chat.useExistingAccount": "Tumia akaunti iliyopo",
   "chat.you": "Wewe",
   "chat.signingIn": "Inaingia\u2026",
+  "chat.saveOfferHint": "Meneja wako wa manenosiri anaweza kukuomba kuhifadhi ufunguo huu — kubali. Ndiyo nakala pekee inayoweza kurudisha akaunti yako kwenye kifaa kingine.",
 };

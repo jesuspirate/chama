@@ -110,4 +110,7 @@ export const circle: Record<string, string> = {
   "circle.yourSeatClaimed": "kiti chako: umechukua ✓",
   "circle.yourSeatClaimNow": "kiti chako: chukua sasa",
   "circle.yourSeatLocked": "kiti chako: kimefungwa",
+  "circle.hostBadge": "mwenyeji",
+  "circle.youHost": "Wewe ni mwenyeji wa mzunguko huu.",
+  "circle.hostedBy": "Mwenyeji: {name}",
 };

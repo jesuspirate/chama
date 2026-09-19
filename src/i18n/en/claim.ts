@@ -270,4 +270,6 @@ export const claim: Record<string, string> = {
     "Works for M-Pesa, Wave, Airtel Money, Orange Money, mobile bank transfers, and most phone-based wallets.",
   "claim.youllReceiveMpesa": "You'll receive ≈ {estimate} to M-Pesa.",
   "claim.yourPaymentId": "Your payment ID",
+  "claim.titleTradeNotSynced": "This trade isn’t fully synced here",
+  "claim.bodyTradeNotSynced": "Your sats are safe and still yours — nothing moved. This device can’t see the lock details: the relays dropped that part of the chain. Try again. If it keeps failing, ask whoever locked the sats to open this trade, expand ⚙ at the bottom and tap Re-broadcast — their copy is what puts the missing part back.",
 };

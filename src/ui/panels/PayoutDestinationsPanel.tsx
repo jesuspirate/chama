@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { T } from "../theme.js";
+import { useT } from "../../i18n/index.js";
+import { OverlaySheet } from "../components/OverlaySheet.js";
 import {
   type PayoutDestination,
   listPayoutDestinations,
@@ -12,6 +14,7 @@ import {
 export function PayoutDestinationsPanel({ onClose }: {
   onClose: () => void;
 }) {
+  const { t } = useT();
   const [destinations, setDestinations] = useState<PayoutDestination[]>(
     () => listPayoutDestinations(),
   );
@@ -22,28 +25,15 @@ export function PayoutDestinationsPanel({ onClose }: {
   };
 
   return (
-    <div style={{ padding: 16, maxWidth: 560, margin: "0 auto" }}>
-      <div style={{
-        display: "flex", justifyContent: "space-between",
-        alignItems: "center", marginBottom: 20,
-      }}>
-        <span style={{ fontSize: 18, fontWeight: 700, color: T.text, fontFamily: T.sans }}>
-          Lightning Addresses
-        </span>
-        <button onClick={onClose} style={{
-          background: "none", border: "none",
-          color: T.muted, fontSize: 20, cursor: "pointer",
-        }}>×</button>
-      </div>
-
-      <div style={{
-        fontSize: 11, color: T.muted, fontFamily: T.mono,
-        marginBottom: 16, lineHeight: 1.5,
-      }}>
-        Saved Lightning Addresses for claims and recovery. These stay local
-        to this browser and are never shown to a trade counterparty.
-      </div>
-
+    // Shown in front of Me, not instead of it (Jet, 2026-09-20): closing
+    // lands you exactly where you were, and the × that used to throw people
+    // back to the wrong tab is gone. Copy comes from i18n now — this panel
+    // was hardcoded English while its translations sat unused.
+    <OverlaySheet
+      title={t("claim.lightningAddresses")}
+      subtitle={t("claim.lightningAddressesBody")}
+      onClose={onClose}
+    >
       {destinations.length === 0 ? (
         <div style={{
           padding: 24, textAlign: "center", borderRadius: T.r,
@@ -51,13 +41,12 @@ export function PayoutDestinationsPanel({ onClose }: {
           color: T.muted, fontFamily: T.mono, fontSize: 12,
           lineHeight: 1.5,
         }}>
-          No Lightning Addresses saved yet. Use Claim or Recover and choose
-          remember.
+          {t("claim.noLightningAddresses")}
         </div>
       ) : (
         <div>
           <div style={{ fontSize: 9, color: T.muted, fontFamily: T.mono, letterSpacing: 1, marginBottom: 8 }}>
-            SAVED ADDRESSES
+            {t("claim.savedAddresses")}
           </div>
           {destinations.map((destination, i) => (
             <div key={destination.id} style={{
@@ -89,11 +78,11 @@ export function PayoutDestinationsPanel({ onClose }: {
                   color: T.red, fontFamily: T.mono, fontSize: 10,
                   cursor: "pointer", padding: "0 4px", flexShrink: 0,
                 }}
-              >Delete</button>
+              >{t("me.delete")}</button>
             </div>
           ))}
         </div>
       )}
-    </div>
+    </OverlaySheet>
   );
 }

@@ -75,4 +75,5 @@ export const chat: Record<string, string> = {
   "chat.useExistingAccount": "Use an existing account",
   "chat.you": "You",
   "chat.signingIn": "Signing in\u2026",
+  "chat.saveOfferHint": "Your password manager may now offer to save this key — say yes. It is the one copy that can bring your account back on a new device.",
 };
