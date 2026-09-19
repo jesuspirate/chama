@@ -14,7 +14,7 @@ export function ChamaLoader({ size = 30, label }: { size?: number; label?: strin
       aria-label={label ?? translate(getCurrentLang(), "common.loading")}
       style={{ display: "inline-flex", alignItems: "center", gap: 11 }}
     >
-      <img className="chama-loader-motion" src="/icons/chama-color-cycle-boot-hd-v6.png"
+      <img className="chama-loader-motion" src="/icons/chama-color-cycle-boot-hd-v7.png"
         width={size} height={size} alt="" decoding="async" />
       <img className="chama-loader-static" src="/icons/chama-woven-trust-mark-transparent-64.png"
         width={size} height={size} alt="" decoding="async" />
