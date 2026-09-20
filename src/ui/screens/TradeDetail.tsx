@@ -1,3 +1,7 @@
+import { ReplayNotes } from "../components/ReplayNotes.js";
+import { arbiterRecord } from "../../arbiters/record.js";
+import { ArbiterRecordCard } from "../components/ArbiterRecordCard.js";
+import { ListingBody } from "../components/ListingBody.js";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   type EscrowState,
@@ -1653,6 +1657,11 @@ export function TradeDetail({
           {!isCreatedReservation && <Badge status={statusKey} />}
         </div>
       </div>
+
+        {state.status === EscrowStatus.CREATED && (participants[Role.ARBITER] || previewArbiterPk) && <ArbiterRecordCard record={arbiterRecord(
+          participants[Role.ARBITER] || previewArbiterPk!, knownTrades ?? [state], seatedBond ? [seatedBond] : [],
+          new Map(), Math.floor(Date.now() / 1000), bondTipHeight,
+        )} />}
 
       {TRADE_SLICING_ENABLED && trancheGateNow && (
         <TranchePlanStrip
@@ -3334,6 +3343,8 @@ export function TradeDetail({
             }}>
               {heroMetaParts.join(" · ")}
             </div>
+            {state.body && <ListingBody body={state.body} />}
+            <ReplayNotes notes={state.replayNotes} />
             {state.category === "marketplace" && sellerPubkey && (
               <div style={{
                 display: "inline-flex",

@@ -253,6 +253,8 @@ function validateCreatePayload(data: unknown): data is CreatePayload {
   return (
     d.type === "escrow:create" &&
     typeof d.description === "string" &&
+    (d.title === undefined || (typeof d.title === "string" && d.title.length <= 160)) &&
+    (d.body === undefined || (typeof d.body === "string" && d.body.length <= 8000)) &&
     typeof d.amountMsats === "number" && d.amountMsats > 0 &&
     isOptionalFiniteNumber(d.fiatAmount) &&
     (d.fiatCurrency === undefined || typeof d.fiatCurrency === "string") &&

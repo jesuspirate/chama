@@ -6458,6 +6458,62 @@ console.log("\n── REPLAY (atomic minimum: CREATE → LOCK → … with NO JO
   }
 }
 
+// Rich listing content survives wire parsing and replay without changing cards.
+{
+  const event = createEvent();
+  const body = "A".repeat(3000) + "\n<script>not executable</script>";
+  const payload = { ...event.payload, title: "Short title", body };
+  const raw = { ...event.raw, content: JSON.stringify(payload) };
+  const parsed = parseEscrowEvent(raw, raw.content, true);
+  assert(parsed.ok, "rich listing parses a 3000-character body from wire JSON");
+  if (parsed.ok) {
+    const replay = replayEventChain([parsed.event]);
+    if (assertOk(replay, "rich listing replays on a cold reader")) {
+      assert(replay.state.body === body, "listing body round trips without truncation");
+      assert(replay.state.description === "Short title", "cards retain only the short title");
+    }
+  }
+  assert(!parseEscrowEvent(raw, JSON.stringify({...payload, body: "x".repeat(8001)}), true).ok,
+    "attacker-controlled oversized body is rejected at the wire boundary");
+}
+
+// A single global priority wins every combination of actionable/active/recovery.
+for (const needs of [0, 2]) for (const active of [0, 200000]) for (const balance of [0, 50000000]) {
+  const label = decideChamaBarLabel({needsYouCount:needs, activeCommittedMsats:active,
+    balanceMsats:balance, hasActiveBuyerSellerCommitment:active > 0});
+  assert(label.kind === (needs ? "needs-you" : active ? "in-trade" : balance ? "stranded" : "ready"),
+    `one attention priority needs=${needs} active=${active} recovery=${balance}`);
+}
+
+// Replay tolerates redundant advisory history, never invalid money steps.
+{
+  const create = createEvent();
+  const lock = lockEvent(create.raw.id);
+  const buyer = voteEvent(Role.BUYER, BUYER_PK, Outcome.RELEASE, lock.raw.id);
+  const seller = voteEvent(Role.SELLER, SELLER_PK, Outcome.RELEASE, buyer.raw.id);
+  const resolve = resolveEvent(Outcome.RELEASE, [Role.BUYER, Role.SELLER], false, seller.raw.id);
+  const duplicateVote = voteEvent(Role.BUYER, BUYER_PK, Outcome.RELEASE, resolve.raw.id);
+  const duplicateResolve = resolveEvent(Outcome.RELEASE, [Role.BUYER, Role.SELLER], false, resolve.raw.id);
+  const base = [create, lock, buyer, seller, resolve];
+  const replay = replayEventChain([...base, duplicateVote, duplicateResolve]);
+  if (assertOk(replay, "late vote and second resolution do not abandon a funded chain")) {
+    assert(replay.state.status === EscrowStatus.APPROVED, "duplicate replay retains committed result");
+    assert(replay.state.replayNotes?.length === 2, "every skipped transition reaches state notes");
+    assert(replay.state.replayNotes?.[0].eventId === duplicateVote.raw.id, "skip names exact vote");
+    assert(replay.state.replayNotes?.[1].eventId === duplicateResolve.raw.id, "skip names exact resolution");
+  }
+  assert(!replayEventChain([...base, lockEvent(resolve.raw.id)]).ok, "invalid LOCK fails replay");
+  assert(!replayEventChain([create, claimEvent(Role.BUYER, BUYER_PK, create.raw.id)]).ok, "invalid CLAIM fails replay");
+  const claim = claimEvent(Role.BUYER, BUYER_PK, resolve.raw.id);
+  const complete = completeEvent(claim.raw.id);
+  assert(!replayEventChain([...base, claim, complete, claimEvent(Role.BUYER, BUYER_PK, complete.raw.id)]).ok,
+    "terminal-state CLAIM is still strict");
+  assert(replayEventChain([...base, claim, claim]).ok, "identical signed CLAIM redelivery remains idempotent");
+  assert(!replayEventChain([create, buyer]).ok, "missing LOCK is not hidden by advisory skip policy");
+  assert(!replayEventChain([...base, resolveEvent(Outcome.REFUND, [Role.BUYER, Role.SELLER], false, resolve.raw.id)]).ok,
+    "contradictory resolution cannot be skipped as a duplicate");
+}
+
 // ── 10. EVENT PARSER ──────────────────────────────────────────────────────
 console.log("\n── EVENT PARSER ──");
 {
@@ -12631,6 +12687,7 @@ console.log("\n── claim incomplete-LOCK rehydrate ──");
     const bridge = new EscrowFedimintBridge(
       {
         getState: () => incompleteApproved,
+        getLastLoadFailure: () => null,
         loadEscrow: async () => {
           loadCalls++;
           return incompleteApproved;
@@ -12652,6 +12709,7 @@ console.log("\n── claim incomplete-LOCK rehydrate ──");
     const fetchFailureBridge = new EscrowFedimintBridge(
       {
         getState: () => incompleteApproved,
+        getLastLoadFailure: () => null,
         loadEscrow: async () => {
           failedLoadCalls++;
           throw new Error("relay temporarily unavailable");
@@ -22819,14 +22877,12 @@ console.log("\n── Trade notifications (notificationForTransition) ──");
   });
   assert(pendingOnchainArbiterPubkey(afterOnchainBuyer) === ARB,
     "On-chain buyer JOIN resolves exactly one deterministic pending arbiter");
-  assert(notificationForTransition(beforeOnchainBuyer, afterOnchainBuyer, ARB)?.tag
-    === "sm_notif_demo_0001:arbiter-key",
-  "The selected pre-lock arbiter is buzzed when their key becomes necessary");
+  assert(notificationForTransition(beforeOnchainBuyer, afterOnchainBuyer, ARB) === null,
+  "Pool selection without commitment does not summon an arbiter");
   assert(notificationForTransition(beforeOnchainBuyer, afterOnchainBuyer, STRANGER) === null,
     "A non-selected pool outsider is not buzzed for the arbiter key");
-  assert(notificationForTransition(null, afterOnchainBuyer, ARB, 999)?.tag
-    === "sm_notif_demo_0001:arbiter-key",
-  "A freshly routed JOIN buzzes the arbiter even when CREATE was never locally visible");
+  assert(notificationForTransition(null, afterOnchainBuyer, ARB, 999) === null,
+  "Fresh hydration of an unseated pool arbiter stays quiet");
   assert(notificationForTransition(null, afterOnchainBuyer, ARB, 1_001) === null,
     "A historical routed JOIN stays silent on first observation");
 
@@ -23823,6 +23879,44 @@ console.log("\n── ESCROW CLIENT — Browse listing hydration ──");
       JSON.stringify([...offered]));
 
     repairClient.disconnect();
+
+    // Successful hot-cache replay also heals on explicit open, not only a
+    // failed replay rescued from IndexedDB. No money operation is invoked.
+    FakeWebSocket.instances = [];
+    const hotClient = new EscrowClient(fakeSigner, {
+      relays: ["wss://relay.chama.community"],
+      wsImpl: FakeWebSocket as unknown as typeof WebSocket, verifyEvent: () => true,
+    });
+    hotClient.connect();
+    const hotSocket = FakeWebSocket.instances[0]!;
+    hotSocket.onopen?.({} as Event);
+    const answerHot = async (events: ParsedEscrowEvent[]) => {
+      await waitUntil(() => hotSocket.sent.some(raw => JSON.parse(raw)[0] === "REQ"));
+      const request = hotSocket.sent.map(raw => JSON.parse(raw))
+        .filter(msg => msg[0] === "REQ" && String(msg[1]).startsWith("sm_fetch_")).at(-1)!;
+      for (const event of events) hotSocket.emit(["EVENT", request[1], rawFromParsed(event)]);
+      hotSocket.emit(["EOSE", request[1]]);
+      return request;
+    };
+    const seed = hotClient.loadEscrow(ESCROW_ID);
+    await answerHot([create, lock, voteBuyer, voteSeller, resolve, claim, complete]);
+    await seed;
+    const open = hotClient.loadEscrow(ESCROW_ID, { repairFromCache: true });
+    const openRequest = await answerHot(holed);
+    assert(openRequest[2].since === undefined, "explicit open reads full relay history even with a hot cursor");
+    assert((await open)?.status === EscrowStatus.COMPLETED, "hot replay succeeds before backfill");
+    const hotOffered = new Set<string>();
+    for (let i = 0; i < 60 && hotOffered.size < missingIds.size; i++) {
+      for (const raw of hotSocket.sent) {
+        const msg = JSON.parse(raw);
+        if (msg[0] !== "EVENT" || hotOffered.has(msg[1]?.id)) continue;
+        hotOffered.add(msg[1].id); hotSocket.emit(["OK", msg[1].id, true, ""]);
+      }
+      await new Promise(r => setTimeout(r, 5));
+    }
+    assert(hotOffered.size === missingIds.size && [...hotOffered].every(id => missingIds.has(id)),
+      "successful explicit hot-cache open republishes exactly the missing events");
+    hotClient.disconnect();
     await cacheMod.clearEventCache();
   }
 

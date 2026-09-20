@@ -1,3 +1,4 @@
+import { isNativePushSupported, ensureNativePush, nativeWatchTags, disableNativePush } from "./native-push.js";
 // ══════════════════════════════════════════════════════════════════════════
 // A6 web push client — opt-in, closed-app wake-ups for the PWA / getchama.app
 // ══════════════════════════════════════════════════════════════════════════
@@ -28,9 +29,9 @@ export const WEB_PUSH_UNREGISTER_URL = "https://push.chama.community/unregister"
 
 // ── Capability + permission ────────────────────────────────────────────────
 
-/** True only where the browser can actually deliver a background push. */
+/** True where a browser or native Android transport is available. */
 export function isWebPushSupported(): boolean {
-  return (
+  return isNativePushSupported() || (
     typeof navigator !== "undefined" &&
     "serviceWorker" in navigator &&
     typeof window !== "undefined" &&
@@ -60,7 +61,7 @@ export function iosNeedsInstallForPush(): boolean {
 }
 
 export function webPushPermission(): NotificationPermission | "unsupported" {
-  if (!isWebPushSupported()) return "unsupported";
+  if (isNativePushSupported() || !isWebPushSupported()) return "unsupported";
   return Notification.permission;
 }
 
@@ -138,7 +139,8 @@ function urlBase64ToUint8Array(base64: string): Uint8Array<ArrayBuffer> {
  * Returns null when unsupported, denied, on an iOS tab, or when no VAPID key is
  * configured yet — never throws, so a caller can treat null as "not available".
  */
-export async function ensureWebPushSubscription(): Promise<PushSubscription | null> {
+export async function ensureWebPushSubscription(): Promise<PushSubscription | { native: true } | null> {
+  if (isNativePushSupported()) return await ensureNativePush(WEB_PUSH_VAPID_PUBLIC) ? { native: true } : null;
   try {
     if (!isWebPushSupported() || iosNeedsInstallForPush()) return null;
     if (!WEB_PUSH_VAPID_PUBLIC) return null; // P2 not deployed yet — no-op cleanly
@@ -170,8 +172,9 @@ export async function ensureWebPushSubscription(): Promise<PushSubscription | nu
  */
 export async function registerWatchTags(tags: readonly string[]): Promise<boolean> {
   if (tags.length === 0) return true;
+  if (isNativePushSupported()) return nativeWatchTags(tags);
   const subscription = await ensureWebPushSubscription();
-  if (!subscription) return false;
+  if (!subscription || "native" in subscription) return false;
   try {
     const res = await fetch(WEB_PUSH_REGISTER_URL, {
       method: "POST",
@@ -189,6 +192,7 @@ export async function registerWatchTags(tags: readonly string[]): Promise<boolea
 /** Drop watch-tags (e.g. on trade COMPLETE / forget). Best-effort. */
 export async function unregisterWatchTags(tags: readonly string[]): Promise<boolean> {
   if (tags.length === 0) return true;
+  if (isNativePushSupported()) return nativeWatchTags(tags, true);
   try {
     const registration = await navigator.serviceWorker.ready;
     const subscription = await registration.pushManager.getSubscription();
@@ -208,6 +212,7 @@ export async function unregisterWatchTags(tags: readonly string[]): Promise<bool
 
 /** Tear down the subscription entirely (user turns background wake-ups off). */
 export async function disableWebPush(): Promise<void> {
+  if (isNativePushSupported()) return disableNativePush();
   try {
     const registration = await navigator.serviceWorker.ready;
     const subscription = await registration.pushManager.getSubscription();

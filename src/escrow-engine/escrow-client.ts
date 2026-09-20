@@ -1145,6 +1145,8 @@ export class EscrowClient {
 
   async createEscrow(params: {
     description: string;
+    title?: string;
+    body?: string;
     listingKind?: CreatePayload["listingKind"];
     imageDataUrl?: string;
     imageUrls?: string[];
@@ -1265,6 +1267,8 @@ export class EscrowClient {
     const payload: CreatePayload = {
       type: "escrow:create",
       description: params.description,
+      title: params.title,
+      body: params.body,
       listingKind: params.listingKind,
       imageDataUrl: params.imageDataUrl,
       imageUrls: params.imageUrls,
@@ -1419,6 +1423,8 @@ export class EscrowClient {
           periodAmountMsats: params.subscription.periodAmountMsats,
           periodDurationSeconds: params.subscription.periodDurationSeconds,
           description: params.description,
+      title: params.title,
+      body: params.body,
           startsAt: subNow,
         };
         const subContent = JSON.stringify(subPayload);
@@ -1477,6 +1483,8 @@ export class EscrowClient {
 
     const baseParams = {
       description: parent.description,
+      title: parent.title,
+      body: parent.body,
       listingKind: parent.listingKind,
       imageDataUrl: parent.imageDataUrl,
       imageUrls: parent.imageUrls,
@@ -2762,11 +2770,11 @@ export class EscrowClient {
     if (existing) {
       existing.diagnostic.coalesced();
       // A background generation already running can't satisfy a caller who
-      // asked for repair: it will stop at the same holed chain. Join it (no
-      // duplicate fetch), then repair only if it actually came back empty.
+      // asked for repair and retention checking. Join it first, then run a
+      // full explicit-open read even if the cached replay succeeded.
       if (repairFromCache && !existing.repairFromCache) {
-        return existing.promise.then((state) =>
-          state ?? this.loadEscrow(escrowId, { repairFromCache: true }),
+        return existing.promise.then(() =>
+          this.loadEscrow(escrowId, { repairFromCache: true }),
         );
       }
       return existing.promise;
@@ -2817,7 +2825,8 @@ export class EscrowClient {
       cachedRawEvents,
       current?.chatMessages.map(message => message.raw) ?? [],
     );
-    const since = escrowDeltaSince(cursorEvents);
+    // An explicit open needs a full answer to compare local history with relays.
+    const since = repairFromCache ? undefined : escrowDeltaSince(cursorEvents);
     const fetchStarted = globalThis.performance?.now?.() ?? Date.now();
     const fetchedRawEvents = await this.relayManager.fetchEscrowEvents(
       escrowId,
@@ -2982,7 +2991,7 @@ export class EscrowClient {
     // during the discovery flood — re-creating the launch-freeze exposure the
     // `rawEvents.length === 0` gate exists to prevent. Boot stays relay-only
     // and fast; the repair happens when the user actually opens the trade.
-    let repairedFromCache = false;
+
     if (!outcome.ok && repairFromCache && !durableTried) {
       durableTried = true;
       const durable = await getCachedEvents(escrowId);
@@ -2996,7 +3005,6 @@ export class EscrowClient {
         const repaired = await runReplay(merged, `${completenessAttempt}-cache`);
         if (repaired.ok) {
           rawEvents = merged;
-          repairedFromCache = true;
           outcome = repaired;
         }
       }
@@ -3028,7 +3036,7 @@ export class EscrowClient {
     // Only on a full (cursor-less) fetch, where "the relay didn't return it"
     // actually means "the relay doesn't have it". Fire-and-forget.
     if (
-      repairedFromCache &&
+      repairFromCache &&
       since === undefined &&
       shouldBackfillNow({
         alreadyBackfilled: this._backfilledEscrows.has(escrowId),

@@ -23,6 +23,8 @@ import crypto from "node:crypto";
 import webpush from "web-push";
 import { SimplePool, useWebSocketImplementation } from "nostr-tools/pool";
 import WebSocket from "ws";
+import { validSubscription, endpointKeyOf, createFcmSender } from "./delivery.mjs";
+import { freshWake } from "./wake-policy.mjs";
 
 useWebSocketImplementation(WebSocket);
 
@@ -49,6 +51,11 @@ const STORE_PATH = process.env.STORE_PATH ||
 const KIND_LO = 38100, KIND_HI = 38199;
 const CHAMA_KINDS = Array.from({ length: KIND_HI - KIND_LO + 1 }, (_, i) => KIND_LO + i);
 
+const PUSH_ENDPOINT_HOSTS = (process.env.PUSH_ENDPOINT_HOSTS || "").split(",").map(s => s.trim()).filter(Boolean);
+const sendFcm = createFcmSender(process.env.FCM_SERVICE_ACCOUNT_FILE);
+const connectedAt = Date.now();
+const seenEventIds = new Set();
+
 const REG_TTL_MS = 30 * 24 * 3600 * 1000;   // registrations expire after 30 days idle
 const COLLAPSE_MS = 5000;                    // one wake per (tag,endpoint) per 5s
 const MAX_TAGS_PER_REGISTER = 200;           // abuse cap
@@ -70,21 +77,17 @@ const byTag = new Map();
 const tagsByEndpoint = new Map();
 const lastSent = new Map(); // `${tag} ${endpointKey}` -> ms
 
-function endpointKeyOf(subscription) {
-  return String(subscription?.endpoint || "");
-}
-
-function addRegistration(subscription, tags) {
+function addRegistration(subscription, tags, stored = null) {
   const key = endpointKeyOf(subscription);
   if (!key) return 0;
-  const expiresAt = Date.now() + REG_TTL_MS;
+  const expiresAt = stored?.expiresAt ?? Date.now() + REG_TTL_MS;
   let added = 0;
   const set = tagsByEndpoint.get(key) || new Set();
   for (const tag of tags) {
     let m = byTag.get(tag);
     if (!m) { m = new Map(); byTag.set(tag, m); }
     if (!m.has(key)) added++;
-    m.set(key, { subscription, expiresAt });
+    m.set(key, { subscription, expiresAt, registeredAt: m.get(key)?.registeredAt ?? stored?.registeredAt ?? Date.now() });
     set.add(tag);
   }
   tagsByEndpoint.set(key, set);
@@ -133,7 +136,7 @@ function persist() {
       for (const [key, rec] of m) {
         if (seen.has(key)) continue;
         seen.add(key);
-        rows.push({ subscription: rec.subscription, tags: [...(tagsByEndpoint.get(key) || [])], expiresAt: rec.expiresAt });
+        rows.push({ subscription: rec.subscription, tags: [...(tagsByEndpoint.get(key) || [])], expiresAt: rec.expiresAt, registeredAt: rec.registeredAt });
       }
     }
     fs.writeFileSync(STORE_PATH, JSON.stringify({ v: 1, rows }), "utf8");
@@ -146,25 +149,30 @@ function loadStore() {
     const { rows } = JSON.parse(fs.readFileSync(STORE_PATH, "utf8"));
     const now = Date.now();
     for (const row of rows || []) {
-      if (!row?.subscription || row.expiresAt <= now) continue;
-      addRegistration(row.subscription, row.tags || []);
+      if (!validSubscription(row?.subscription, PUSH_ENDPOINT_HOSTS) || row.expiresAt <= now || !validTags(row.tags)) continue;
+      addRegistration(row.subscription, row.tags, row);
     }
     console.log(`[watcher] loaded ${tagsByEndpoint.size} endpoint(s), ${byTag.size} tag(s)`);
   } catch (e) { console.warn("[watcher] load failed:", e.message); }
 }
 
 // ── Delivery ───────────────────────────────────────────────────────────────
-async function wake(tag) {
+async function wake(tag, createdAt) {
   const m = byTag.get(tag);
   if (!m) return;
   const now = Date.now();
   for (const [key, rec] of m) {
+    if (rec.expiresAt <= now || !freshWake(createdAt, connectedAt, rec.registeredAt, now)) continue;
     const dedupKey = `${tag} ${key}`;
     if (now - (lastSent.get(dedupKey) || 0) < COLLAPSE_MS) continue;
     lastSent.set(dedupKey, now);
     try {
       // Empty payload = opaque wake. TTL short: a stale wake helps no one.
-      await webpush.sendNotification(rec.subscription, "", { TTL: 120, urgency: "high" });
+      if (rec.subscription.transport === "fcm") await sendFcm(rec.subscription);
+      else {
+        const payload = rec.subscription.transport === "unifiedpush" ? JSON.stringify({ wake: 1, sentAt: now }) : "";
+        await webpush.sendNotification(rec.subscription, payload, { TTL: 120, urgency: "high", timeout: 10_000 });
+      }
     } catch (err) {
       const code = err?.statusCode;
       if (code === 404 || code === 410) pruneEndpoint(key); // dead endpoint
@@ -185,17 +193,20 @@ function startNostr() {
   const sinceSec = Math.floor(Date.now() / 1000); // only new transitions
   sub = pool.subscribeMany(RELAYS, [{ kinds: CHAMA_KINDS, since: sinceSec }], {
     onevent(evt) {
+      if (!freshWake(evt.created_at, connectedAt, 0) || seenEventIds.has(evt.id)) return;
+      seenEventIds.add(evt.id);
+      if (seenEventIds.size > 10_000) seenEventIds.delete(seenEventIds.values().next().value);
       const tags = evt.tags;
       const isParentListingCreate = evt.kind === 38100
         && !tags.some(t => t[0] === "parent" && t[1]);
       for (let i = 0; i < tags.length; i++) {
         const t = tags[i];
-        if (t[0] === "w" && t[1]) void wake(t[1]);
+        if (t[0] === "w" && t[1]) void wake(t[1], evt.created_at);
         // S4.2: only a public parent CREATE is a new listing. JOIN/LOCK/chat/
         // settlement events and child purchases also carry community context;
         // waking saved-intent users for those would be noisy and misleading.
         else if (isParentListingCreate && t[0] === "community" && t[1]) {
-          void wake(communityWakeTag(t[1]));
+          void wake(communityWakeTag(t[1]), evt.created_at);
         }
       }
     },
@@ -237,9 +248,6 @@ function validTags(v) {
   return Array.isArray(v) && v.length > 0 && v.length <= MAX_TAGS_PER_REGISTER &&
     v.every(t => typeof t === "string" && t.length > 0 && t.length <= 64);
 }
-function validSubscription(s) {
-  return s && typeof s.endpoint === "string" && /^https:\/\//.test(s.endpoint);
-}
 
 const server = http.createServer(async (req, res) => {
   const origin = req.headers.origin;
@@ -256,7 +264,10 @@ const server = http.createServer(async (req, res) => {
     if (!rateOk(ip)) { res.writeHead(429); return res.end("slow down"); }
     let body;
     try { body = await readJson(req); } catch { res.writeHead(400); return res.end("bad body"); }
-    if (!validSubscription(body.endpoint) || !validTags(body.tags)) { res.writeHead(400); return res.end("bad fields"); }
+    if (!validSubscription(body.endpoint, PUSH_ENDPOINT_HOSTS) || !validTags(body.tags)) { res.writeHead(400); return res.end("bad fields"); }
+    if (req.url === "/register" && body.endpoint.transport === "fcm" && !process.env.FCM_SERVICE_ACCOUNT_FILE) {
+      res.writeHead(503); return res.end("transport unavailable");
+    }
     if (req.url === "/register") addRegistration(body.endpoint, body.tags);
     else removeRegistration(body.endpoint, body.tags);
     persist();

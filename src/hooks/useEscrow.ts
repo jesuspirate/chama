@@ -1,3 +1,6 @@
+import { parseAvatar, saveAvatar, type Avatar } from "../ui/avatars.js";
+import { notificationWindowAllows } from "../notifications/quiet-window.js";
+import { latestNotificationActivityAt, debugQuietNotification } from "../notifications/notify-service.js";
 import { getCurrentLang, translate } from "../i18n/index.js";
 // ══════════════════════════════════════════════════════════════════════════
 // useEscrow — React hook connecting UI to the Nostr escrow engine
@@ -991,6 +994,7 @@ export interface UseEscrowActions {
   /** Publish the chosen display name as kind 0 (merged into any existing
    *  profile), so a rename travels with the key. */
   publishProfileName: (name: string) => Promise<void>;
+  publishProfileAvatar: (avatar: Avatar) => Promise<void>;
   /** Trigger haptic feedback */
   vibrate: (pattern?: number | number[]) => void;
 
@@ -1350,7 +1354,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
   // analogue of the transition core's prev-must-be-non-null rule) so a cold-boot
   // replay of old listings/holds never storms. Set at connect; read in
   // updateEscrow, which is a []-dep callback with no access to the closure.
-  const notifyLiveSinceRef = useRef<number>(Math.floor(Date.now() / 1000));
+  const notifyLiveSinceRef = useRef<number>(Number.POSITIVE_INFINITY);
   // PR 5: federation health cache. Mirrored into React state for the UI;
   // the ref is the source of truth read inside createFundingInvoice so
   // we don't depend on the latest closure of `state`.
@@ -1473,16 +1477,24 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
           notifyPubkey,
         )
       : null;
-    maybeNotifyTransition(priorEscrow, escrowState, notifyPubkey, notifyLiveSinceRef.current, circleLockCtx);
+    const notificationAllowed = notificationWindowAllows({
+      connectedAt: notifyLiveSinceRef.current, now: Math.floor(Date.now() / 1000),
+      signedAt: latestNotificationActivityAt(escrowState), state: escrowState, viewer: notifyPubkey,
+    });
+    if (!notificationAllowed) debugQuietNotification(escrowId);
+    if (notificationAllowed) {
+      maybeNotifyTransition(priorEscrow, escrowState, notifyPubkey, notifyLiveSinceRef.current, circleLockCtx);
 
-    // Liquidity/attention (Part ①.3 + Part ②): pull the seller back the moment a
-    // buyer shows interest (a pre-lock child order / a JOIN hold on their
-    // listing), and buzz opted-in users on a fresh home-chama listing. Both are
-    // enable-gated, opt-in-gated, backlog-guarded (notifyLiveSinceRef), and
-    // deduped internally, so they never block the update or double-fire.
-    maybeNotifyBuyerInterest(priorEscrow, escrowState, notifyPubkey, notifyLiveSinceRef.current);
-    maybeNotifyNewListing(priorEscrow, escrowState, notifyPubkey, notifyLiveSinceRef.current);
-    maybeNotifySavedIntentMatch(priorEscrow, escrowState, notifyPubkey, notifyLiveSinceRef.current);
+      // Liquidity/attention (Part ①.3 + Part ②): pull the seller back the moment a
+      // buyer shows interest (a pre-lock child order / a JOIN hold on their
+      // listing), and buzz opted-in users on a fresh home-chama listing. Both are
+      // enable-gated, opt-in-gated, backlog-guarded (notifyLiveSinceRef), and
+      // deduped internally, so they never block the update or double-fire.
+      maybeNotifyBuyerInterest(priorEscrow, escrowState, notifyPubkey, notifyLiveSinceRef.current);
+      maybeNotifyNewListing(priorEscrow, escrowState, notifyPubkey, notifyLiveSinceRef.current);
+      maybeNotifySavedIntentMatch(priorEscrow, escrowState, notifyPubkey, notifyLiveSinceRef.current);
+    }
+
 
     // #79: Nostr-native "email alert" — when THIS client caused a trade-critical
     // transition, DM the counterparty so their external Nostr client (Damus/
@@ -1629,11 +1641,16 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
           // Chat messages are embedded in escrow state via the engine.
           // Force React re-render with the updated chatMessages.
           updateEscrow(id, chatClient.getState(id)!);
-          vibrate([20, 30, 20]);
           // OS-buzz the inbound message per the DM preference (auto = arbiters
           // only). The pure decision + delivery live in notify-service.
           const s = chatClient.getState(id);
-          if (s) maybeNotifyChatMessage(s, msg, pubkey, chatNotifyLiveSince);
+          if (s && msg.pubkey.toLowerCase() !== pubkey.toLowerCase() && notificationWindowAllows({
+            connectedAt: chatNotifyLiveSince, now: Math.floor(Date.now() / 1000),
+            signedAt: msg.timestamp, state: s, viewer: pubkey,
+          })) {
+            vibrate([20, 30, 20]);
+            maybeNotifyChatMessage(s, msg, pubkey, chatNotifyLiveSince);
+          } else debugQuietNotification(id);
         },
         onValidationError: (id, error, eventId) => {
           console.debug(`[escrow] Validation error on ${id}: ${error} (event: ${eventId})`);
@@ -1726,7 +1743,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
         ...(identityChanged ? { escrows: new Map() } : {}),
       }));
 
-      vibrate([50, 30, 50]); // Connected haptic
+      // Connecting/hydrating is not a trade event: quiet sign-in stays quiet.
 
       // Start periodic balance refresh — every 30 seconds
       const balanceInterval = setInterval(() => {
@@ -3414,10 +3431,16 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     );
 
     const profiles: NostrProfileNameMap = {};
+    const seenAuthors = new Set<string>();
     const newestFirst = [...events].sort((a, b) => (b.created_at ?? 0) - (a.created_at ?? 0));
     for (const event of newestFirst) {
       const author = event.pubkey?.toLowerCase();
-      if (!author || profiles[author]) continue;
+      if (!author || seenAuthors.has(author)) continue;
+      seenAuthors.add(author);
+      try {
+        const avatar = parseAvatar(JSON.parse(event.content).chama_avatar);
+        if (avatar) saveAvatar(author, avatar);
+      } catch { /* malformed profile */ }
       const name = extractNostrProfileName(event.content ?? "");
       if (name) profiles[author] = name;
     }
@@ -3452,6 +3475,22 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       tags: [],
       content: mergeProfileNameContent(existing, name),
     } as any);
+    await client.publishRaw(signed);
+  }, []);
+
+  const publishProfileAvatar = useCallback(async (avatar: Avatar): Promise<void> => {
+    const safe = parseAvatar(avatar);
+    const client = requireClient();
+    const signer = signerRef.current;
+    const pubkey = stateRef.current?.pubkey;
+    if (!safe || !signer || !pubkey) throw new Error("Invalid avatar or disconnected");
+    const events = await client.queryOnce({ kinds: [0], authors: [pubkey], limit: 4 }, 3000);
+    const newest = [...events].sort((a,b) => b.created_at - a.created_at)[0];
+    const content = newest ? JSON.parse(newest.content) : {};
+    if (!content || typeof content !== "object" || Array.isArray(content)) throw new Error("Invalid profile");
+    saveAvatar(pubkey, safe);
+    const signed = await signer.signEvent({kind:0, created_at:Math.floor(Date.now()/1000), tags:[],
+      content:JSON.stringify({...content, picture:safe.animated, chama_avatar:safe})} as any);
     await client.publishRaw(signed);
   }, []);
 
@@ -5653,6 +5692,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     purchaseFromListing,
     fetchNostrProfiles,
     publishProfileName,
+    publishProfileAvatar,
     vibrate,
     initFedimint,
     setCustomInvite,

@@ -1,5 +1,11 @@
 // fr/trade — Session B fills this from src/i18n/en/trade.ts (key set must match EXACTLY).
 export const trade: Record<string, string> = {
+  "trade.arbiterRecordLiveness": "Arbitres avec dépôt actif vérifié dans cet historique : {count}",
+  "trade.arbiterRecord": "Historique de l’arbitre",
+  "trade.arbiterConduct": "Conduite observée, sans preuve d’identité ni d’indépendance. Un historique vide signifie nouveau ou non observé.",
+  "trade.arbiterRecordStats": "Récupérations : {healings} · Litiges votés : {disputes} · Réponse médiane : {latency} · Ancienneté du dépôt (blocs) : {tenure} · Dernière activité signée : {seen}",
+  "trade.arbiterRecordSample": "Échantillon local : {count} échanges. Bénéficiaire le plus favorisé : {top} sur {rulings} décisions.",
+  "trade.replayNotes": "Historique reconstruit avec {count} événements ignorés",
   "trade.accepts": "ACCEPTE",
   "trade.ackTapAgain": "{ack} — touchez encore pour confirmer",
   "trade.addHandle": "+ Ajouter",

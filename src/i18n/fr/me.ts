@@ -1,5 +1,7 @@
 // fr/me — Session B fills this from src/i18n/en/me.ts (key set must match EXACTLY).
 export const me: Record<string, string> = {
+  "me.avatarUpload": "Avatar (GIF, PNG, WebP ou JPEG ; 48 Ko maximum)",
+  "me.avatarFailed": "Enregistrement et publication impossibles. Utilisez une image de 48 Ko et 2048 × 2048 maximum, puis réessayez.",
   "me.hydratingTrades": "Vérification de l’historique complet de vos échanges…",
   // Permanence de la boutique (#49) Niveau 1 — carte « votre boutique a expiré ».
   "me.storeLapsedTitleOne": "Votre boutique a expiré",
@@ -158,6 +160,9 @@ export const me: Record<string, string> = {
   "me.newListingNotifications": "Nouvelles annonces dans mon chama",
   "me.newListingNotificationsHint": "Me prévenir quand quelqu'un publie une nouvelle annonce ici",
   "me.nothingInView": "Rien dans cette vue pour le moment.",
+  "me.bgPushNativeSetup": "Installez un distributeur UnifiedPush pour les alertes en arrière-plan.",
+  "me.bgPushFcm": "Les alertes utilisent Firebase Cloud Messaging.",
+  "me.bgPushUnified": "Les alertes utilisent votre distributeur UnifiedPush.",
   "me.bgPush": "Alertes en arrière-plan",
   "me.bgPushHint": "Réveillez-moi pour les actions d’échange même quand Chama est complètement fermée",
   "me.bgPushInstall": "Ajoutez d’abord Chama à votre écran d’accueil pour recevoir les alertes sur iPhone",

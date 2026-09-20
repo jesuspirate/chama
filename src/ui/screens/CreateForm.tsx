@@ -155,6 +155,7 @@ const VERTICALS: { id: string; labelKey: string; descriptionKey: string; comingS
 interface FormState {
   listingMode: ListingMode;
   desc: string;
+  body: string;
   /** Product cover for a single listing, or the one storefront cover/logo. */
   imageDataUrl: string;
   /** Ordered single-listing gallery, or a one-entry storefront cover. */
@@ -1077,6 +1078,7 @@ export function emptyCreateFormState(currency = "USD"): FormState {
   return {
     listingMode: "single",
     desc: "",
+    body: "",
     imageDataUrl: "",
     imageUrls: [],
     sats: "",
@@ -1499,6 +1501,8 @@ export function CreateForm({
         : null;
       const params: any = {
         description,
+        title: description.slice(0, 160),
+        body: form.body || undefined,
         amountMsats,
         fiatAmount: vertical !== "work" && !hasMenu && form.fiat ? parseFloat(form.fiat) : undefined,
         fiatCurrency: vertical !== "work" && !hasMenu && form.fiat ? form.cur : undefined,
@@ -2644,11 +2648,16 @@ function Step2({
         <div style={{ fontSize: 11, color: T.muted, fontFamily: T.mono, marginBottom: 6 }}>
           {descriptionLabel(vertical, usingMenu)}
         </div>
-        <input value={form.desc} onChange={e => set("desc", e.target.value)}
+        <input maxLength={160} value={form.desc} onChange={e => set("desc", e.target.value)}
           data-create-focus="description"
           onKeyDown={event => focusNextImportant(event, "description")}
           placeholder={descriptionPlaceholder(vertical, usingMenu)}
           style={inputStyle} />
+        <label style={{ display: "block", marginTop: 12 }}>
+          {t("create.listingBody")}
+          <textarea value={form.body ?? ""} maxLength={8000} rows={6}
+            onChange={e => set("body", e.target.value)} style={inputStyle} />
+        </label>
       </div>
       )}
 
@@ -3888,9 +3897,14 @@ function Step3({
         <div style={{ fontSize: 11, color: T.muted, fontFamily: T.mono, marginBottom: 6 }}>
           {descriptionLabel(vertical, hasMenu)}
         </div>
-        <input value={form.desc} onChange={e => set("desc", e.target.value)}
+        <input maxLength={160} value={form.desc} onChange={e => set("desc", e.target.value)}
           placeholder={descriptionPlaceholder(vertical, hasMenu)}
           style={inputStyle} />
+        <label style={{ display: "block", marginTop: 12 }}>
+          {t("create.listingBody")}
+          <textarea value={form.body ?? ""} maxLength={8000} rows={6}
+            onChange={e => set("body", e.target.value)} style={inputStyle} />
+        </label>
       </div>
       )}
 

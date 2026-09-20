@@ -39,6 +39,7 @@ public class MainActivity extends BridgeActivity {
         supportRequestWindowFeature(Window.FEATURE_NO_TITLE);
         getWindow().setBackgroundDrawable(new ColorDrawable(Color.rgb(5, 5, 10)));
         clearWebViewCacheAfterAppUpdate();
+        registerPlugin(ChamaPushPlugin.class);
         super.onCreate(savedInstanceState);
         getWindow().setBackgroundDrawable(new ColorDrawable(Color.rgb(5, 5, 10)));
         getWindow().setStatusBarColor(Color.rgb(5, 5, 10));
@@ -53,8 +54,16 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onResume() {
         super.onResume();
+        ChamaPushStore.foreground = true;
+        ChamaPushStore.retry(getApplicationContext());
         fedimintBridgeStopping = false;
         startFedimintBridge();
+    }
+
+    @Override
+    public void onPause() {
+        ChamaPushStore.foreground = false;
+        super.onPause();
     }
 
     @Override

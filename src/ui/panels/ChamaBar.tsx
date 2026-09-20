@@ -174,6 +174,11 @@ function ChamaBarLabelPill({
   onTapUnreachable: () => void;
 }) {
   const { t } = useT();
+  if (label.kind === "needs-you") return <button type="button" onClick={onTapInTrade}
+    style={{ padding: "5px 12px", borderRadius: 20, background: T.amberDim,
+      border: `1px solid ${T.amber}66`, color: T.amber, cursor: "pointer" }}>
+    {t("recovery.barNeedsYou", { count: label.count })} ›
+  </button>;
   if (label.kind === "checking") {
     return (
       <span style={{
@@ -226,8 +231,8 @@ function ChamaBarLabelPill({
         disabled={!onTapInTrade}
         style={{
           padding: "5px 12px", borderRadius: 20,
-          background: T.accentDim, border: `1px solid ${T.accent}66`,
-          color: T.accent, fontFamily: T.mono, fontSize: 10, fontWeight: 700,
+          background: T.purple + "18", border: `1px solid ${T.purple}66`,
+          color: T.purple, fontFamily: T.mono, fontSize: 10, fontWeight: 700,
           letterSpacing: 0.3, whiteSpace: "nowrap",
           cursor: onTapInTrade ? "pointer" : "default",
         }}

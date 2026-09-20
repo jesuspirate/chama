@@ -2,6 +2,12 @@
 // extraction sweep). Keys prefixed "trade.", alphabetized. `ns*` keys are the
 // detailNextStep action-card matrix (kicker/title/body cells).
 export const trade: Record<string, string> = {
+  "trade.arbiterRecordLiveness": "Verified active bonded arbiters in this record: {count}",
+  "trade.arbiterRecord": "Arbiter record",
+  "trade.arbiterConduct": "Observed conduct, not proof of identity or independence. An empty record means new or not observed.",
+  "trade.arbiterRecordStats": "Healings: {healings} · Disputes voted: {disputes} · Median response: {latency} · Bond tenure (blocks): {tenure} · Last signed activity: {seen}",
+  "trade.arbiterRecordSample": "Local sample: {count} trades. Most favoured recipient: {top} of {rulings} rulings.",
+  "trade.replayNotes": "History rebuilt with {count} ignored events",
   "trade.accepts": "ACCEPTS",
   "trade.ackTapAgain": "{ack} — tap again to confirm",
   "trade.addHandle": "+ Add",

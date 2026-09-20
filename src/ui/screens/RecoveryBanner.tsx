@@ -94,8 +94,8 @@ export function RecoveryBanner({
       <div style={{
         // fundsReturned is a CALM recovery (your own money came back), not a
         // failure to repair — soft surface + accent border, no amber alarm.
-        background: fundsReturned ? T.surface : T.amberDim,
-        border: `1px solid ${fundsReturned ? `${T.accent}55` : `${T.amber}66`}`,
+        background: T.surface,
+        border: `1px solid ${T.border}`,
         borderRadius: T.r, padding: 20, marginBottom: 16,
       }}>
         {/* v0.3.0: failure-mode small-caps header. "Continue your trade"
@@ -107,15 +107,13 @@ export function RecoveryBanner({
         <div style={{
           display: "flex", alignItems: "center", gap: 8,
           fontSize: 10, fontWeight: 700,
-          color: fundsReturned ? T.accent : T.amber, fontFamily: T.mono,
+          color: T.muted, fontFamily: T.mono,
           letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 12,
         }}>
           {!fundsReturned && (
             <span style={{
               width: 8, height: 8, borderRadius: "50%",
-              background: T.amber,
-              boxShadow: `0 0 8px ${T.amber}88`,
-              animation: "pulse 2s ease-in-out infinite",
+              background: T.muted,
             }} />
           )}
           {fundsReturned ? t("recovery.fundsReturnedTag") : t("recovery.tradeNeedsAttention")}

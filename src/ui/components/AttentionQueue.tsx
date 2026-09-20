@@ -64,8 +64,7 @@ export function AttentionQueue({
   if (ordered.length === 0) {
     return (
       <div style={{
-        background: T.card, border: `1px solid ${T.border}`,
-        borderRadius: T.r, padding: 20, marginBottom: 16,
+        padding: "8px 0", marginBottom: 16,
       }}>
         <div style={{
           display: "flex", alignItems: "center", gap: 10,
@@ -118,15 +117,15 @@ export function AttentionQueue({
         gap: 12, marginBottom: 10,
       }}>
         <div style={{
-          fontSize: 11, fontWeight: 700, color: T.accent, fontFamily: T.mono,
+          fontSize: 11, fontWeight: 700, color: T.muted, fontFamily: T.mono,
           letterSpacing: 1, textTransform: "uppercase",
         }}>
           {t("me.attentionTitle")}
         </div>
         <span style={{
-          fontFamily: T.mono, color: T.accent, fontSize: 10, fontWeight: 900,
+          fontFamily: T.mono, color: T.muted, fontSize: 10, fontWeight: 900,
           padding: "4px 8px", borderRadius: 999,
-          background: T.accentDim, border: `1px solid ${T.accent}44`,
+          background: "transparent", border: "none",
         }}>
           {t("me.needsYouCount", { count: ordered.length })}
         </span>
@@ -215,9 +214,9 @@ function AttentionCard({
 
   return (
     <div style={{
-      background: T.card, border: `1px solid ${tone}55`,
+      background: T.card, border: `1px solid ${T.border}`,
       borderRadius: T.r, padding: 16,
-      boxShadow: `0 0 24px ${tone}14`,
+
     }}>
       <div style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 12 }}>
         <VerticalIcon vertical={trade.category} size={28} fallback="📦" />

@@ -1,4 +1,5 @@
 export const create: Record<string, string> = {
+  "create.listingBody": "Maelezo — aya, orodha, **nzito**, *italiki*, [maandishi](https://…)",
   "create.recurringToggleLabel": "Inajirudia kila mwezi",
   "create.publishingTitle": "Inachapisha ofa yako…",
   "create.publishingSub": "Inaiweka hai katika jamii yako. Hii inachukua muda mfupi tu.",

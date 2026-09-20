@@ -1,4 +1,6 @@
 export const me: Record<string, string> = {
+  "me.avatarUpload": "Picha ya wasifu (GIF, PNG, WebP au JPEG; hadi KB 48)",
+  "me.avatarFailed": "Imeshindwa kuhifadhi na kuchapisha picha. Tumia picha hadi KB 48 na 2048 × 2048, kisha jaribu tena.",
   "me.hydratingTrades": "Inakagua historia yako kamili ya biashara…",
   "me.storeLapsedTitleOne": "Duka lako limepitwa na muda",
   "me.storeLapsedTitleMany": "Maduka yako {count} yamepitwa na muda",
@@ -148,6 +150,9 @@ export const me: Record<string, string> = {
   "me.nothingInView": "Hakuna kitu katika mwonekano huu sasa.",
   "me.notifications": "Arifa",
   "me.notificationsHint": "Imefungwa · dai tayari · mizozo · imekamilika",
+  "me.bgPushNativeSetup": "Sakinisha kisambazaji cha UnifiedPush kupokea arifa chinichini.",
+  "me.bgPushFcm": "Arifa hutumia Firebase Cloud Messaging.",
+  "me.bgPushUnified": "Arifa hutumia kisambazaji chako cha UnifiedPush.",
   "me.bgPush": "Arifa za nyuma",
   "me.bgPushHint": "Niamshe kwa hatua za biashara hata Chama ikiwa imefungwa kabisa",
   "me.bgPushInstall": "Ongeza Chama kwenye skrini yako ya nyumbani kwanza kupata arifa kwenye iPhone",

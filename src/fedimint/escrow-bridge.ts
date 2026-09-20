@@ -871,11 +871,15 @@ export class EscrowFedimintBridge {
     }
 
     if (!state.lock.notesHash) {
-      throw new Error("No lock data available — escrow may not be fully loaded");
+      const failure = this.escrow.getLastLoadFailure(escrowId);
+      const detail = failure?.code ? ` (${failure.code}${failure.eventId ? ` · ${failure.eventId}` : ""})` : "";
+      throw new Error("No lock data available — escrow may not be fully loaded" + detail);
     }
 
     if (!state.lock.shares || state.lock.shares.size < 1) {
-      throw new Error("No shares available — state may be incomplete");
+      const failure = this.escrow.getLastLoadFailure(escrowId);
+      const detail = failure?.code ? ` (${failure.code}${failure.eventId ? ` · ${failure.eventId}` : ""})` : "";
+      throw new Error("No shares available — state may be incomplete" + detail);
     }
 
     // NIP-44 decrypt needs the sender's pubkey. LOCK shares were encrypted by

@@ -66,7 +66,7 @@ function roleOf(state: EscrowState, pubkey: string): Role | null {
   if (samePubkey(state.participants[Role.SELLER], pubkey)) return Role.SELLER;
   if (samePubkey(state.participants[Role.ARBITER], pubkey)) return Role.ARBITER;
   if (samePubkey(state.actingArbiter, pubkey)) return Role.ARBITER;
-  if (state.communityArbiters?.some(a => samePubkey(a, pubkey))) return Role.ARBITER;
+
   return null;
 }
 

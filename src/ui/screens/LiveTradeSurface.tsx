@@ -1,3 +1,7 @@
+import { ReplayNotes } from "../components/ReplayNotes.js";
+import { TradeArbiterRecord } from "../components/TradeArbiterRecord.js";
+import type { VerifiedBond } from "../../bond-multisig/bond-announcement.js";
+import { ListingBody } from "../components/ListingBody.js";
 import { useRef, useState } from "react";
 import { EscrowStatus, Outcome, Role, selectedMenuItemsTotalMsats, getEffectiveParticipantsAt, type EscrowState, type SelectedMenuItem } from "../../escrow-engine/types.js";
 import { decideVotePrompt, preLockDeadline, tradeRoomPresence, type RoomPresence } from "../decisions.js";
@@ -48,6 +52,7 @@ const samePubkey = (a?: string | null, b?: string | null): boolean =>
 
 export function LiveTradeSurface({
   state,
+  knownTrades = [], fetchCommunityBonds,
   pubkey,
   onBack,
   backLabel,
@@ -68,6 +73,8 @@ export function LiveTradeSurface({
   onAmountDisplayModeChange,
 }: {
   state: EscrowState;
+  knownTrades?: readonly EscrowState[];
+  fetchCommunityBonds?: (community: string) => Promise<VerifiedBond[]>;
   pubkey: string;
   onBack: () => void;
   /** v6.3: the back button names its destination (Browse / Me / Dashboard) so
@@ -525,7 +532,7 @@ export function LiveTradeSurface({
           </Decision>
         );
       }
-      return <Waiting message={state.resolvedOutcome === Outcome.RELEASE ? tr("lts.resolvedReleased") : tr("lts.resolvedRefunded")} />;
+      return <Waiting message={state.resolvedOutcome === Outcome.RELEASE ? tr("lts.resolvedReleased") : tr("trade.nsRefundedBackTo", { party: tr(winner?.role === Role.SELLER ? "trade.sellerNoun" : "trade.buyerNoun") })} />;
     }
 
     if (status === EscrowStatus.CLAIMED) {
@@ -710,7 +717,16 @@ export function LiveTradeSurface({
               tall phase (reason chips, slice chooser) scrolls instead of
               clipping at the top the way justify-content:center would. */}
           <div className="lts-decision-well">
+            {state.status === EscrowStatus.CREATED && <>
+              <TradeArbiterRecord state={state} trades={knownTrades} fetchBonds={fetchCommunityBonds} />
+              {state.body && <ListingBody body={state.body} />}
+            </>}
+            <ReplayNotes notes={state.replayNotes} />
             {renderDecision()}
+            {state.status !== EscrowStatus.CREATED && state.body && <details style={{ marginTop: 16 }}>
+              <summary>{state.description}</summary>
+              <ListingBody body={state.body} />
+            </details>}
             <div style={{ marginTop: 20, paddingTop: 16, borderTop: `1px solid ${T.border}` }}>
               <MoreOptions onClick={onOpenFullView} label={tr("lts.moreOptions")} />
             </div>

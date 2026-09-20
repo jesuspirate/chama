@@ -1,5 +1,6 @@
 // fr/recovery — Session B fills this from src/i18n/en/recovery.ts (key set must match EXACTLY).
 export const recovery: Record<string, string> = {
+  "recovery.barNeedsYou": "À vous d’agir : {count}",
   "recovery.barCheckingTrades": "Vérification de vos échanges…",
   "recovery.exportClearError": "Chama n’a pas pu terminer l’effacement de cet export. La copie de récupération reste conservée.",
   "recovery.exportClearing": "Finalisation sécurisée…",

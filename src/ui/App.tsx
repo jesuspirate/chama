@@ -165,7 +165,6 @@ import { ChamaLoader } from "./components/ChamaLoader.js";
 import { isExpiredUnfundedListing } from "../escrow-engine/expired-listing.js";
 import { BottomNav, BOTTOM_NAV_HEIGHT, type Tab } from "./components/BottomNav.js";
 import { CoachMarkTour, readCoachSeen, type CoachStep } from "./components/CoachMarkTour.js";
-import { ActiveTradePill } from "./components/ActiveTradePill.js";
 import { BitcoinPricePill } from "./components/BitcoinPricePill.js";
 import { useDesktopNavigationShortcuts } from "./hooks/useDesktopNavigationShortcuts.js";
 import { RecoveryBanner } from "./screens/RecoveryBanner.js";
@@ -245,7 +244,7 @@ import {
   isTauriRuntime,
   shouldApplyCssSafeAreaInsets,
 } from "./sign-in-environment.js";
-import { readKind0Toggle, type NostrProfileNameMap } from "./nostr-profiles.js";
+import { readKind0Toggle, readLocalTradeName, writeLocalTradeName, type NostrProfileNameMap } from "./nostr-profiles.js";
 import { isWorkListing } from "./work-resume.js";
 import {
   readAmountDisplayMode,
@@ -2450,6 +2449,24 @@ export default function App() {
   const profilePubkeyKey = profilePubkeys.join(",");
 
   useEffect(() => {
+    if (!connected || !pubkey || connectedRelays === 0 || readLocalTradeName()) return;
+    let cancelled = false;
+    void actions.fetchNostrProfiles([pubkey]).then(names => {
+      if (cancelled || readLocalTradeName()) return;
+      const name = names[pubkey.toLowerCase()];
+      if (!name) return;
+      writeLocalTradeName(name);
+      setNostrProfiles(prev => ({ ...prev, ...names }));
+      window.dispatchEvent(new Event("chama-profile-name-adopted"));
+    }).catch(() => {});
+    return () => { cancelled = true; };
+    // Own profile lookup extends this identity; the other-people lookup toggle
+    // does not gate fetching the user's own name. Never overwrite a local edit.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [connected, pubkey, connectedRelays]);
+
+
+  useEffect(() => {
     if (!kind0Enabled || !connected || connectedRelays === 0 || profilePubkeys.length === 0) return;
     let cancelled = false;
 
@@ -2568,7 +2585,7 @@ export default function App() {
       setDetailBackView(safeBackView);
       setSelectedId(id);
       setView("detail");
-      actions.loadEscrow(id).then((loaded) => {
+      actions.loadEscrow(id, { repairFromCache: true }).then((loaded) => {
         // The load can SUCCEED and still leave nothing to show: an expired,
         // never-funded listing is dropped from local state on arrival, so the
         // detail view would wait on an escrow that is never coming (Jet,
@@ -2619,7 +2636,7 @@ export default function App() {
       setDetailBackView(safeBackView);
       setSelectedId(id);
       setView("detail");
-      actions.loadEscrow(id).catch((e: any) => {
+      actions.loadEscrow(id, { repairFromCache: true }).catch((e: any) => {
         console.debug(
           "[chama] background refetch on openEscrow failed:",
           e?.message || e,
@@ -2660,7 +2677,7 @@ export default function App() {
     // Always background-refetch so the detail screen sees fresh state
     // by the time it renders. Mirrors the pre-v0.2.0 behavior.
     if (!TRULY_TERMINAL_STATES.has(local.status)) {
-      actions.loadEscrow(id).catch((e: any) => {
+      actions.loadEscrow(id, { repairFromCache: true }).catch((e: any) => {
         console.debug(
           "[chama] background refetch on openEscrow failed:",
           e?.message || e,
@@ -2787,7 +2804,7 @@ export default function App() {
     // 2026-08-19 investigation down the wrong path for hours. Terse and
     // technical on purpose: it is a handle for a bug report, not an explanation.
     const code = failure?.reason === "chain-incomplete" && failure.code
-      ? ` (${failure.code})`
+      ? ` (${failure.code}${failure.eventId ? ` · ${failure.eventId}` : ""})`
       : "";
     const message = timedOut
       ? t("app.archivedStillLoading")
@@ -3319,6 +3336,7 @@ export default function App() {
               hasActiveBuyerSellerCommitment: hasActiveCommitment,
               activeCommittedMsats: committedMsats,
               activeTradeCount: activeCommitmentCount,
+              needsYouCount,
               // v0.3.1 Phase 3: bootProbeState routes the "unreachable"
               // ChamaBar variant. Failed → "⚠ Chama unreachable ·
               // Reconnect →"; pending/ok pass through to the existing
@@ -3343,6 +3361,9 @@ export default function App() {
               traceContext: recoveryTraceContext,
             })}
             onTapInTrade={() => {
+              if (needsYouTrades.length === 1) { openEscrow(needsYouTrades[0].id); return; }
+              if (needsYouTrades.length > 1) { setView("me"); return; }
+
               // One live trade → open it. Several → the live list, which is the
               // only honest answer to "which one?". Either way the amount in
               // that pill stops being a mystery (Jet, 2026-09-20).
@@ -4064,6 +4085,8 @@ export default function App() {
           {LIVE_TRADE_SURFACE_ENABLED && !expertTradeView ? (
             <LiveTradeSurface
               key={`lts:${selected.id}`}
+              knownTrades={knownTradesForConcentration}
+              fetchCommunityBonds={actions.fetchCommunityBonds}
               state={selected}
               pubkey={pubkey!}
               onBack={() => { setView(detailBackView); setSelectedId(null); maybeSnapBackHome(); }}
@@ -4474,17 +4497,7 @@ export default function App() {
           {/* v0.6.5: Create no longer hard-blocks on active trades.
               The pill stays as the informational "you have N active
               trades" reminder; the form is always available below. */}
-          {visibleAttentionTrade && (
-            <ActiveTradePill
-              trade={visibleAttentionTrade}
-              activeTradeCount={activeCommitmentCount}
-              activeTradeMsats={activeTradeMsats}
-              actionMode={attentionActionMode}
-              actionCount={needsYouCount}
-              communityLabel={attentionCommunityLabel}
-              onTap={() => openEscrow(visibleAttentionTrade.id)}
-            />
-          )}
+
           {nativeLockResume && (
             <PendingLockCard
               entry={nativeLockResume}
@@ -4541,6 +4554,7 @@ export default function App() {
         // bond, chama liveness, and trade stats, composed from data the app
         // already has. Replaces the v4.2.1 "coming soon" placeholder.
         <DashboardScreen
+          knownTrades={knownTradesForConcentration}
           pubkey={pubkey!}
           ratings={myRatings}
           myTrades={myTrades}
@@ -4552,21 +4566,12 @@ export default function App() {
           balanceMsats={fedimint.balanceMsats ?? 0}
           onWithdrawEcash={() => setShowEcashExport(true)}
           fetchMyBonds={actions.fetchMyBonds}
+          fetchCommunityBonds={actions.fetchCommunityBonds}
           getBondChainTip={actions.getBondChainTip}
         />
       ) : view === "me" ? (
         <div style={{ animation: "fadeIn 0.3s ease" }}>
-          {visibleAttentionTrade && (
-            <ActiveTradePill
-              trade={visibleAttentionTrade}
-              activeTradeCount={activeCommitmentCount}
-              activeTradeMsats={activeTradeMsats}
-              actionMode={attentionActionMode}
-              actionCount={needsYouCount}
-              communityLabel={attentionCommunityLabel}
-              onTap={() => openEscrow(visibleAttentionTrade.id)}
-            />
-          )}
+
           <LapsedStoreCard
             listings={lapsedListings}
             bonded={sellerBonded}
@@ -4609,6 +4614,7 @@ export default function App() {
             amountDisplayMode={amountDisplayMode}
             quoteCurrency={getCommunityBySlug(routeCommunitySlug)?.currency ?? null}
             onPublishProfileName={actions.publishProfileName}
+            onPublishProfileAvatar={actions.publishProfileAvatar}
             onRefreshTrades={async () => {
               const added = await actions.refreshMyTrades();
               setToast({
@@ -4642,17 +4648,7 @@ export default function App() {
         </div>
       ) : view === "saved-handles" ? (
         <div style={{ animation: "fadeIn 0.3s ease" }}>
-          {visibleAttentionTrade && (
-            <ActiveTradePill
-              trade={visibleAttentionTrade}
-              activeTradeCount={activeCommitmentCount}
-              activeTradeMsats={activeTradeMsats}
-              actionMode={attentionActionMode}
-              actionCount={needsYouCount}
-              communityLabel={attentionCommunityLabel}
-              onTap={() => openEscrow(visibleAttentionTrade.id)}
-            />
-          )}
+
           <SavedHandlesPanel
             communitySlug={actions.getCommunity()}
             backLabel={t("me.tabSats")}
@@ -4669,17 +4665,7 @@ export default function App() {
         </div>
       ) : view === "advanced" ? (
         <div style={{ animation: "fadeIn 0.3s ease" }}>
-          {visibleAttentionTrade && (
-            <ActiveTradePill
-              trade={visibleAttentionTrade}
-              activeTradeCount={activeCommitmentCount}
-              activeTradeMsats={activeTradeMsats}
-              actionMode={attentionActionMode}
-              actionCount={needsYouCount}
-              communityLabel={attentionCommunityLabel}
-              onTap={() => openEscrow(visibleAttentionTrade.id)}
-            />
-          )}
+
           <SettingsAdvanced
             fedimint={fedimint}
             loadActiveRecoveryKey={actions.exportActiveRecoveryKey}
@@ -4726,17 +4712,7 @@ export default function App() {
         </div>
       ) : (
         <>
-          {visibleAttentionTrade && (
-            <ActiveTradePill
-              trade={visibleAttentionTrade}
-              activeTradeCount={activeCommitmentCount}
-              activeTradeMsats={activeTradeMsats}
-              actionMode={attentionActionMode}
-              actionCount={needsYouCount}
-              communityLabel={attentionCommunityLabel}
-              onTap={() => openEscrow(visibleAttentionTrade.id)}
-            />
-          )}
+
           {nativeLockResume && (
             <PendingLockCard
               entry={nativeLockResume}
@@ -4818,7 +4794,7 @@ export default function App() {
                     // unreadable, or the chain unreplayable). Name which.
                     const failure = actions.getLoadFailure(id);
                     const code = failure?.reason === "chain-incomplete" && failure.code
-                      ? ` (${failure.code})`
+                      ? ` (${failure.code}${failure.eventId ? ` · ${failure.eventId}` : ""})`
                       : "";
                     setToast({
                       message: failure?.reason === "chain-incomplete"
@@ -4838,7 +4814,7 @@ export default function App() {
         </>
       )}
 
-      {!detailMode && <BottomNav active={activeTab} onSelect={switchTab} badges={{ me: myTradesLoading ? 0 : needsYouCount }} />}
+      {!detailMode && <BottomNav active={activeTab} onSelect={switchTab} badges={{}} />}
 
       {/* v4.1 C1: one-time post-sign-in tour. Only on the Browse home screen
           (FABs mounted), never over the create sheet or a detail view. */}

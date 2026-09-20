@@ -1,0 +1,14 @@
+import assert from 'node:assert/strict';
+import { safeAvatarSource, parseAvatar } from './avatars.js';
+for (const value of ['https://tracker.example/pixel.gif','//tracker.example','data:image/svg+xml;base64,PHN2Zz4=','javascript:alert(1)','data:image/gif;base64,'+'A'.repeat(70000)]) assert.equal(safeAvatarSource(value),false);
+assert.equal(safeAvatarSource('data:image/gif;base64,R0lGODlhAQABAAAAACw='),true);
+assert.equal(parseAvatar({animated:'data:image/gif;base64,R0lG',still:'https://tracker.example/fallback.png'}),null);
+const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aV1sAAAAASUVORK5CYII=';
+assert.ok(parseAvatar({animated:'data:image/gif;base64,R0lG',still:png}));
+assert.equal(parseAvatar({animated:png,still:'data:image/webp;base64,UklGRg=='}),null);
+assert.equal(parseAvatar({animated:png,still:'data:image/png;base64,iVBORw=='}),null);
+const raw = Buffer.from(png.split(',')[1], 'base64');
+const apngChunk = Buffer.alloc(20); apngChunk.writeUInt32BE(8); apngChunk.write('acTL',4);
+const apng = 'data:image/png;base64,' + Buffer.concat([raw.subarray(0,33),apngChunk,raw.subarray(33)]).toString('base64');
+assert.equal(parseAvatar({animated:apng,still:apng}),null);
+console.log('Avatar sources: embedded raster allowlist, fallback and size limits passed');

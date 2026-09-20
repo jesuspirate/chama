@@ -2330,7 +2330,7 @@ function TerminalPanel({
       .test(terminal.error);
     if (incompleteChain) {
       title = t("claim.titleTradeNotSynced");
-      subtitle = t("claim.bodyTradeNotSynced");
+      subtitle = t("claim.bodyTradeNotSynced") + (terminal.error.match(/ \([A-Z_]+(?: · [^)]*)?\)$/)?.[0] ?? "");
       tone = T.amber;
       toneDim = T.amberDim;
       icon = "↻";

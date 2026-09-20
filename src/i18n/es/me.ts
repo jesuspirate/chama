@@ -1,5 +1,7 @@
 // es/me — Session C fills this from src/i18n/en/me.ts (key set must match EXACTLY).
 export const me: Record<string, string> = {
+  "me.avatarUpload": "Avatar (GIF, PNG, WebP o JPEG; hasta 48 KB)",
+  "me.avatarFailed": "No se pudo guardar y publicar. Usa una imagen de hasta 48 KB y 2048 × 2048 e inténtalo de nuevo.",
   "me.hydratingTrades": "Comprobando tu historial completo de operaciones…",
   // Permanencia de la tienda (#49) Nivel 1 — tarjeta «tu tienda venció».
   "me.storeLapsedTitleOne": "Tu tienda venció",
@@ -151,6 +153,9 @@ export const me: Record<string, string> = {
   "me.newListingNotifications": "Nuevos anuncios en mi chama",
   "me.newListingNotificationsHint": "Avísame cuando alguien publique un anuncio nuevo aquí",
   "me.nothingInView": "Nada en esta vista por ahora.",
+  "me.bgPushNativeSetup": "Instala un distribuidor UnifiedPush para recibir alertas en segundo plano.",
+  "me.bgPushFcm": "Las alertas usan Firebase Cloud Messaging.",
+  "me.bgPushUnified": "Las alertas usan tu distribuidor UnifiedPush.",
   "me.bgPush": "Alertas en segundo plano",
   "me.bgPushHint": "Avísame de acciones de operaciones incluso con Chama totalmente cerrada",
   "me.bgPushInstall": "Añade Chama a tu pantalla de inicio primero para recibir alertas en iPhone",

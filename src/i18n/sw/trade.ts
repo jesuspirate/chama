@@ -1,4 +1,10 @@
 export const trade: Record<string, string> = {
+  "trade.arbiterRecordLiveness": "Wasuluhishi wenye dhamana hai iliyothibitishwa katika rekodi hii: {count}",
+  "trade.arbiterRecord": "Rekodi ya msuluhishi",
+  "trade.arbiterConduct": "Tabia iliyoonekana, si uthibitisho wa utambulisho au uhuru. Rekodi tupu ina maana mpya au haijaonekana.",
+  "trade.arbiterRecordStats": "Urejeshaji: {healings} · Migogoro iliyopigiwa kura: {disputes} · Muda wa kati wa kujibu: {latency} · Umri wa dhamana (bloku): {tenure} · Shughuli ya mwisho iliyosainiwa: {seen}",
+  "trade.arbiterRecordSample": "Sampuli ya hapa: biashara {count}. Mpokeaji aliyependelewa zaidi: {top} kati ya maamuzi {rulings}.",
+  "trade.replayNotes": "Historia imejengwa upya huku matukio {count} yakipuuzwa",
   "trade.accepts": "INAKUBALI",
   "trade.ackTapAgain": "{ack} — gusa tena kuthibitisha",
   "trade.addHandle": "+ Ongeza",

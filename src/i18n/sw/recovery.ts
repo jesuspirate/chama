@@ -1,4 +1,5 @@
 export const recovery: Record<string, string> = {
+  "recovery.barNeedsYou": "Zinakuhitaji: {count}",
   "recovery.barCheckingTrades": "Inakagua biashara zako…",
   "recovery.exportClearError": "Chama haikuweza kumaliza kufuta uhamishaji huu. Nakala ya urejeshaji bado imetunzwa.",
   "recovery.exportClearing": "Inamaliza salama…",

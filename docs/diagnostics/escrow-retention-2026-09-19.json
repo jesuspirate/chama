@@ -1,0 +1,595 @@
+{
+  "probe": "chama-retention-probe-7a64744b-59af-4c18-929e-7dc11b786ce3",
+  "author": "50710ba5e8c1fe09b602d19966b9e6240c2a976468a3caec84db1c05c933058f",
+  "older": "de1ca907a5b84259d679d6c0a1b1c6b30bc655b3c9c800035dfcae0e7a404ff6",
+  "newer": "8834f9cc6f67779f9b1c213c500d9054b7c957a7f0abed261d7c2efd063d16ad",
+  "results": [
+    {
+      "relay": "wss://relay.chama.community",
+      "verdict": "BOTH_RETAINED",
+      "eose": true,
+      "acknowledgements": {
+        "f908da214e7a0ae47c111c453bc8ea8d74ebc156d27548fb7bb988a1802b69b4": {
+          "accepted": true,
+          "message": ""
+        },
+        "8834f9cc6f67779f9b1c213c500d9054b7c957a7f0abed261d7c2efd063d16ad": {
+          "accepted": true,
+          "message": ""
+        },
+        "23744d733936ea0919f98687fd4b7237e77b9e448d6c98bf49465d938647fe6e": {
+          "accepted": true,
+          "message": ""
+        },
+        "b4726a73d55e7c1cd4f36de571414df8d77f994e050c0d0b325d4ba83851a4ce": {
+          "accepted": true,
+          "message": ""
+        },
+        "ac0561198ef4314c1847ac4cbd9d5d10616fd8505c2f2d0d777106e5f6f67db6": {
+          "accepted": true,
+          "message": ""
+        },
+        "50525869e790d2f459e72fa6d4735e11a900d7d3c56b82ab432c83d40486d13d": {
+          "accepted": true,
+          "message": ""
+        },
+        "9d74a99c9542ab896ba96310bf870649c0681877e99e796828fe2e0904e15976": {
+          "accepted": true,
+          "message": ""
+        },
+        "de1ca907a5b84259d679d6c0a1b1c6b30bc655b3c9c800035dfcae0e7a404ff6": {
+          "accepted": true,
+          "message": ""
+        },
+        "a5049f0d2106d8b289ead39f3613a74f9e4fff831b9cdb90fe60e2b5f0a0d148": {
+          "accepted": true,
+          "message": ""
+        },
+        "61884f3aef33c9d688c1299d2e9705dff7382fbf51ce15b5b1d99fbc5e1b685a": {
+          "accepted": true,
+          "message": ""
+        }
+      },
+      "returned": [
+        {
+          "id": "8834f9cc6f67779f9b1c213c500d9054b7c957a7f0abed261d7c2efd063d16ad",
+          "kind": 38103,
+          "created_at": 1789841855
+        },
+        {
+          "id": "b4726a73d55e7c1cd4f36de571414df8d77f994e050c0d0b325d4ba83851a4ce",
+          "kind": 38108,
+          "created_at": 1789841853
+        },
+        {
+          "id": "ac0561198ef4314c1847ac4cbd9d5d10616fd8505c2f2d0d777106e5f6f67db6",
+          "kind": 38107,
+          "created_at": 1789841852
+        },
+        {
+          "id": "61884f3aef33c9d688c1299d2e9705dff7382fbf51ce15b5b1d99fbc5e1b685a",
+          "kind": 38106,
+          "created_at": 1789841851
+        },
+        {
+          "id": "a5049f0d2106d8b289ead39f3613a74f9e4fff831b9cdb90fe60e2b5f0a0d148",
+          "kind": 38105,
+          "created_at": 1789841850
+        },
+        {
+          "id": "23744d733936ea0919f98687fd4b7237e77b9e448d6c98bf49465d938647fe6e",
+          "kind": 38104,
+          "created_at": 1789841849
+        },
+        {
+          "id": "de1ca907a5b84259d679d6c0a1b1c6b30bc655b3c9c800035dfcae0e7a404ff6",
+          "kind": 38103,
+          "created_at": 1789841848
+        },
+        {
+          "id": "9d74a99c9542ab896ba96310bf870649c0681877e99e796828fe2e0904e15976",
+          "kind": 38102,
+          "created_at": 1789841847
+        },
+        {
+          "id": "50525869e790d2f459e72fa6d4735e11a900d7d3c56b82ab432c83d40486d13d",
+          "kind": 38101,
+          "created_at": 1789841846
+        },
+        {
+          "id": "f908da214e7a0ae47c111c453bc8ea8d74ebc156d27548fb7bb988a1802b69b4",
+          "kind": 38100,
+          "created_at": 1789841845
+        }
+      ],
+      "missing": []
+    },
+    {
+      "relay": "wss://relay.damus.io",
+      "verdict": "INCONCLUSIVE",
+      "eose": true,
+      "acknowledgements": {
+        "f908da214e7a0ae47c111c453bc8ea8d74ebc156d27548fb7bb988a1802b69b4": {
+          "accepted": true,
+          "message": ""
+        },
+        "61884f3aef33c9d688c1299d2e9705dff7382fbf51ce15b5b1d99fbc5e1b685a": {
+          "accepted": false,
+          "message": "rate-limited: you are noting too much"
+        },
+        "ac0561198ef4314c1847ac4cbd9d5d10616fd8505c2f2d0d777106e5f6f67db6": {
+          "accepted": false,
+          "message": "rate-limited: you are noting too much"
+        },
+        "b4726a73d55e7c1cd4f36de571414df8d77f994e050c0d0b325d4ba83851a4ce": {
+          "accepted": false,
+          "message": "banned: too many rate-limit violations, try again later"
+        },
+        "50525869e790d2f459e72fa6d4735e11a900d7d3c56b82ab432c83d40486d13d": {
+          "accepted": true,
+          "message": ""
+        },
+        "9d74a99c9542ab896ba96310bf870649c0681877e99e796828fe2e0904e15976": {
+          "accepted": true,
+          "message": ""
+        },
+        "de1ca907a5b84259d679d6c0a1b1c6b30bc655b3c9c800035dfcae0e7a404ff6": {
+          "accepted": true,
+          "message": ""
+        },
+        "23744d733936ea0919f98687fd4b7237e77b9e448d6c98bf49465d938647fe6e": {
+          "accepted": true,
+          "message": ""
+        },
+        "a5049f0d2106d8b289ead39f3613a74f9e4fff831b9cdb90fe60e2b5f0a0d148": {
+          "accepted": true,
+          "message": ""
+        },
+        "8834f9cc6f67779f9b1c213c500d9054b7c957a7f0abed261d7c2efd063d16ad": {
+          "accepted": false,
+          "message": "banned: too many rate-limit violations, try again later"
+        }
+      },
+      "returned": [
+        {
+          "id": "a5049f0d2106d8b289ead39f3613a74f9e4fff831b9cdb90fe60e2b5f0a0d148",
+          "kind": 38105,
+          "created_at": 1789841850
+        },
+        {
+          "id": "23744d733936ea0919f98687fd4b7237e77b9e448d6c98bf49465d938647fe6e",
+          "kind": 38104,
+          "created_at": 1789841849
+        },
+        {
+          "id": "de1ca907a5b84259d679d6c0a1b1c6b30bc655b3c9c800035dfcae0e7a404ff6",
+          "kind": 38103,
+          "created_at": 1789841848
+        },
+        {
+          "id": "9d74a99c9542ab896ba96310bf870649c0681877e99e796828fe2e0904e15976",
+          "kind": 38102,
+          "created_at": 1789841847
+        },
+        {
+          "id": "50525869e790d2f459e72fa6d4735e11a900d7d3c56b82ab432c83d40486d13d",
+          "kind": 38101,
+          "created_at": 1789841846
+        },
+        {
+          "id": "f908da214e7a0ae47c111c453bc8ea8d74ebc156d27548fb7bb988a1802b69b4",
+          "kind": 38100,
+          "created_at": 1789841845
+        }
+      ],
+      "missing": [
+        {
+          "id": "61884f3aef33c9d688c1299d2e9705dff7382fbf51ce15b5b1d99fbc5e1b685a",
+          "kind": 38106
+        },
+        {
+          "id": "ac0561198ef4314c1847ac4cbd9d5d10616fd8505c2f2d0d777106e5f6f67db6",
+          "kind": 38107
+        },
+        {
+          "id": "b4726a73d55e7c1cd4f36de571414df8d77f994e050c0d0b325d4ba83851a4ce",
+          "kind": 38108
+        },
+        {
+          "id": "8834f9cc6f67779f9b1c213c500d9054b7c957a7f0abed261d7c2efd063d16ad",
+          "kind": 38103
+        }
+      ]
+    },
+    {
+      "relay": "wss://relay.primal.net",
+      "verdict": "REPLACEMENT_OBSERVED",
+      "eose": true,
+      "acknowledgements": {
+        "f908da214e7a0ae47c111c453bc8ea8d74ebc156d27548fb7bb988a1802b69b4": {
+          "accepted": true,
+          "message": ""
+        },
+        "50525869e790d2f459e72fa6d4735e11a900d7d3c56b82ab432c83d40486d13d": {
+          "accepted": true,
+          "message": ""
+        },
+        "9d74a99c9542ab896ba96310bf870649c0681877e99e796828fe2e0904e15976": {
+          "accepted": true,
+          "message": ""
+        },
+        "de1ca907a5b84259d679d6c0a1b1c6b30bc655b3c9c800035dfcae0e7a404ff6": {
+          "accepted": true,
+          "message": ""
+        },
+        "23744d733936ea0919f98687fd4b7237e77b9e448d6c98bf49465d938647fe6e": {
+          "accepted": true,
+          "message": ""
+        },
+        "a5049f0d2106d8b289ead39f3613a74f9e4fff831b9cdb90fe60e2b5f0a0d148": {
+          "accepted": true,
+          "message": ""
+        },
+        "61884f3aef33c9d688c1299d2e9705dff7382fbf51ce15b5b1d99fbc5e1b685a": {
+          "accepted": true,
+          "message": ""
+        },
+        "ac0561198ef4314c1847ac4cbd9d5d10616fd8505c2f2d0d777106e5f6f67db6": {
+          "accepted": true,
+          "message": ""
+        },
+        "b4726a73d55e7c1cd4f36de571414df8d77f994e050c0d0b325d4ba83851a4ce": {
+          "accepted": true,
+          "message": ""
+        },
+        "8834f9cc6f67779f9b1c213c500d9054b7c957a7f0abed261d7c2efd063d16ad": {
+          "accepted": true,
+          "message": ""
+        }
+      },
+      "returned": [
+        {
+          "id": "8834f9cc6f67779f9b1c213c500d9054b7c957a7f0abed261d7c2efd063d16ad",
+          "kind": 38103,
+          "created_at": 1789841855
+        },
+        {
+          "id": "b4726a73d55e7c1cd4f36de571414df8d77f994e050c0d0b325d4ba83851a4ce",
+          "kind": 38108,
+          "created_at": 1789841853
+        },
+        {
+          "id": "ac0561198ef4314c1847ac4cbd9d5d10616fd8505c2f2d0d777106e5f6f67db6",
+          "kind": 38107,
+          "created_at": 1789841852
+        },
+        {
+          "id": "61884f3aef33c9d688c1299d2e9705dff7382fbf51ce15b5b1d99fbc5e1b685a",
+          "kind": 38106,
+          "created_at": 1789841851
+        },
+        {
+          "id": "a5049f0d2106d8b289ead39f3613a74f9e4fff831b9cdb90fe60e2b5f0a0d148",
+          "kind": 38105,
+          "created_at": 1789841850
+        },
+        {
+          "id": "23744d733936ea0919f98687fd4b7237e77b9e448d6c98bf49465d938647fe6e",
+          "kind": 38104,
+          "created_at": 1789841849
+        },
+        {
+          "id": "9d74a99c9542ab896ba96310bf870649c0681877e99e796828fe2e0904e15976",
+          "kind": 38102,
+          "created_at": 1789841847
+        },
+        {
+          "id": "50525869e790d2f459e72fa6d4735e11a900d7d3c56b82ab432c83d40486d13d",
+          "kind": 38101,
+          "created_at": 1789841846
+        },
+        {
+          "id": "f908da214e7a0ae47c111c453bc8ea8d74ebc156d27548fb7bb988a1802b69b4",
+          "kind": 38100,
+          "created_at": 1789841845
+        }
+      ],
+      "missing": [
+        {
+          "id": "de1ca907a5b84259d679d6c0a1b1c6b30bc655b3c9c800035dfcae0e7a404ff6",
+          "kind": 38103
+        }
+      ]
+    },
+    {
+      "relay": "wss://nos.lol",
+      "verdict": "REPLACEMENT_OBSERVED",
+      "eose": true,
+      "acknowledgements": {
+        "f908da214e7a0ae47c111c453bc8ea8d74ebc156d27548fb7bb988a1802b69b4": {
+          "accepted": true,
+          "message": ""
+        },
+        "50525869e790d2f459e72fa6d4735e11a900d7d3c56b82ab432c83d40486d13d": {
+          "accepted": true,
+          "message": ""
+        },
+        "9d74a99c9542ab896ba96310bf870649c0681877e99e796828fe2e0904e15976": {
+          "accepted": true,
+          "message": ""
+        },
+        "de1ca907a5b84259d679d6c0a1b1c6b30bc655b3c9c800035dfcae0e7a404ff6": {
+          "accepted": true,
+          "message": ""
+        },
+        "23744d733936ea0919f98687fd4b7237e77b9e448d6c98bf49465d938647fe6e": {
+          "accepted": true,
+          "message": ""
+        },
+        "a5049f0d2106d8b289ead39f3613a74f9e4fff831b9cdb90fe60e2b5f0a0d148": {
+          "accepted": true,
+          "message": ""
+        },
+        "61884f3aef33c9d688c1299d2e9705dff7382fbf51ce15b5b1d99fbc5e1b685a": {
+          "accepted": true,
+          "message": ""
+        },
+        "ac0561198ef4314c1847ac4cbd9d5d10616fd8505c2f2d0d777106e5f6f67db6": {
+          "accepted": true,
+          "message": ""
+        },
+        "b4726a73d55e7c1cd4f36de571414df8d77f994e050c0d0b325d4ba83851a4ce": {
+          "accepted": true,
+          "message": ""
+        },
+        "8834f9cc6f67779f9b1c213c500d9054b7c957a7f0abed261d7c2efd063d16ad": {
+          "accepted": true,
+          "message": ""
+        }
+      },
+      "returned": [
+        {
+          "id": "8834f9cc6f67779f9b1c213c500d9054b7c957a7f0abed261d7c2efd063d16ad",
+          "kind": 38103,
+          "created_at": 1789841855
+        },
+        {
+          "id": "b4726a73d55e7c1cd4f36de571414df8d77f994e050c0d0b325d4ba83851a4ce",
+          "kind": 38108,
+          "created_at": 1789841853
+        },
+        {
+          "id": "ac0561198ef4314c1847ac4cbd9d5d10616fd8505c2f2d0d777106e5f6f67db6",
+          "kind": 38107,
+          "created_at": 1789841852
+        },
+        {
+          "id": "61884f3aef33c9d688c1299d2e9705dff7382fbf51ce15b5b1d99fbc5e1b685a",
+          "kind": 38106,
+          "created_at": 1789841851
+        },
+        {
+          "id": "a5049f0d2106d8b289ead39f3613a74f9e4fff831b9cdb90fe60e2b5f0a0d148",
+          "kind": 38105,
+          "created_at": 1789841850
+        },
+        {
+          "id": "23744d733936ea0919f98687fd4b7237e77b9e448d6c98bf49465d938647fe6e",
+          "kind": 38104,
+          "created_at": 1789841849
+        },
+        {
+          "id": "9d74a99c9542ab896ba96310bf870649c0681877e99e796828fe2e0904e15976",
+          "kind": 38102,
+          "created_at": 1789841847
+        },
+        {
+          "id": "50525869e790d2f459e72fa6d4735e11a900d7d3c56b82ab432c83d40486d13d",
+          "kind": 38101,
+          "created_at": 1789841846
+        },
+        {
+          "id": "f908da214e7a0ae47c111c453bc8ea8d74ebc156d27548fb7bb988a1802b69b4",
+          "kind": 38100,
+          "created_at": 1789841845
+        }
+      ],
+      "missing": [
+        {
+          "id": "de1ca907a5b84259d679d6c0a1b1c6b30bc655b3c9c800035dfcae0e7a404ff6",
+          "kind": 38103
+        }
+      ]
+    },
+    {
+      "relay": "wss://nostr.mom",
+      "verdict": "REPLACEMENT_OBSERVED",
+      "eose": true,
+      "acknowledgements": {
+        "f908da214e7a0ae47c111c453bc8ea8d74ebc156d27548fb7bb988a1802b69b4": {
+          "accepted": true,
+          "message": ""
+        },
+        "50525869e790d2f459e72fa6d4735e11a900d7d3c56b82ab432c83d40486d13d": {
+          "accepted": true,
+          "message": ""
+        },
+        "9d74a99c9542ab896ba96310bf870649c0681877e99e796828fe2e0904e15976": {
+          "accepted": true,
+          "message": ""
+        },
+        "de1ca907a5b84259d679d6c0a1b1c6b30bc655b3c9c800035dfcae0e7a404ff6": {
+          "accepted": true,
+          "message": ""
+        },
+        "23744d733936ea0919f98687fd4b7237e77b9e448d6c98bf49465d938647fe6e": {
+          "accepted": true,
+          "message": ""
+        },
+        "a5049f0d2106d8b289ead39f3613a74f9e4fff831b9cdb90fe60e2b5f0a0d148": {
+          "accepted": true,
+          "message": ""
+        },
+        "61884f3aef33c9d688c1299d2e9705dff7382fbf51ce15b5b1d99fbc5e1b685a": {
+          "accepted": true,
+          "message": ""
+        },
+        "ac0561198ef4314c1847ac4cbd9d5d10616fd8505c2f2d0d777106e5f6f67db6": {
+          "accepted": true,
+          "message": ""
+        },
+        "b4726a73d55e7c1cd4f36de571414df8d77f994e050c0d0b325d4ba83851a4ce": {
+          "accepted": true,
+          "message": ""
+        },
+        "8834f9cc6f67779f9b1c213c500d9054b7c957a7f0abed261d7c2efd063d16ad": {
+          "accepted": true,
+          "message": ""
+        }
+      },
+      "returned": [
+        {
+          "id": "8834f9cc6f67779f9b1c213c500d9054b7c957a7f0abed261d7c2efd063d16ad",
+          "kind": 38103,
+          "created_at": 1789841855
+        },
+        {
+          "id": "b4726a73d55e7c1cd4f36de571414df8d77f994e050c0d0b325d4ba83851a4ce",
+          "kind": 38108,
+          "created_at": 1789841853
+        },
+        {
+          "id": "ac0561198ef4314c1847ac4cbd9d5d10616fd8505c2f2d0d777106e5f6f67db6",
+          "kind": 38107,
+          "created_at": 1789841852
+        },
+        {
+          "id": "61884f3aef33c9d688c1299d2e9705dff7382fbf51ce15b5b1d99fbc5e1b685a",
+          "kind": 38106,
+          "created_at": 1789841851
+        },
+        {
+          "id": "a5049f0d2106d8b289ead39f3613a74f9e4fff831b9cdb90fe60e2b5f0a0d148",
+          "kind": 38105,
+          "created_at": 1789841850
+        },
+        {
+          "id": "23744d733936ea0919f98687fd4b7237e77b9e448d6c98bf49465d938647fe6e",
+          "kind": 38104,
+          "created_at": 1789841849
+        },
+        {
+          "id": "9d74a99c9542ab896ba96310bf870649c0681877e99e796828fe2e0904e15976",
+          "kind": 38102,
+          "created_at": 1789841847
+        },
+        {
+          "id": "50525869e790d2f459e72fa6d4735e11a900d7d3c56b82ab432c83d40486d13d",
+          "kind": 38101,
+          "created_at": 1789841846
+        },
+        {
+          "id": "f908da214e7a0ae47c111c453bc8ea8d74ebc156d27548fb7bb988a1802b69b4",
+          "kind": 38100,
+          "created_at": 1789841845
+        }
+      ],
+      "missing": [
+        {
+          "id": "de1ca907a5b84259d679d6c0a1b1c6b30bc655b3c9c800035dfcae0e7a404ff6",
+          "kind": 38103
+        }
+      ]
+    },
+    {
+      "relay": "wss://nostr.land",
+      "verdict": "INCONCLUSIVE",
+      "eose": true,
+      "acknowledgements": {
+        "f908da214e7a0ae47c111c453bc8ea8d74ebc156d27548fb7bb988a1802b69b4": {
+          "accepted": false,
+          "message": "restricted: Pay on https://nostr.land for access."
+        },
+        "8834f9cc6f67779f9b1c213c500d9054b7c957a7f0abed261d7c2efd063d16ad": {
+          "accepted": false,
+          "message": "restricted: Pay on https://nostr.land for access."
+        },
+        "a5049f0d2106d8b289ead39f3613a74f9e4fff831b9cdb90fe60e2b5f0a0d148": {
+          "accepted": false,
+          "message": "restricted: Pay on https://nostr.land for access."
+        },
+        "61884f3aef33c9d688c1299d2e9705dff7382fbf51ce15b5b1d99fbc5e1b685a": {
+          "accepted": false,
+          "message": "restricted: Pay on https://nostr.land for access."
+        },
+        "23744d733936ea0919f98687fd4b7237e77b9e448d6c98bf49465d938647fe6e": {
+          "accepted": false,
+          "message": "restricted: Pay on https://nostr.land for access."
+        },
+        "b4726a73d55e7c1cd4f36de571414df8d77f994e050c0d0b325d4ba83851a4ce": {
+          "accepted": false,
+          "message": "restricted: Pay on https://nostr.land for access."
+        },
+        "9d74a99c9542ab896ba96310bf870649c0681877e99e796828fe2e0904e15976": {
+          "accepted": false,
+          "message": "restricted: Pay on https://nostr.land for access."
+        },
+        "de1ca907a5b84259d679d6c0a1b1c6b30bc655b3c9c800035dfcae0e7a404ff6": {
+          "accepted": false,
+          "message": "restricted: Pay on https://nostr.land for access."
+        },
+        "ac0561198ef4314c1847ac4cbd9d5d10616fd8505c2f2d0d777106e5f6f67db6": {
+          "accepted": false,
+          "message": "restricted: Pay on https://nostr.land for access."
+        },
+        "50525869e790d2f459e72fa6d4735e11a900d7d3c56b82ab432c83d40486d13d": {
+          "accepted": false,
+          "message": "restricted: Pay on https://nostr.land for access."
+        }
+      },
+      "returned": [],
+      "missing": [
+        {
+          "id": "f908da214e7a0ae47c111c453bc8ea8d74ebc156d27548fb7bb988a1802b69b4",
+          "kind": 38100
+        },
+        {
+          "id": "50525869e790d2f459e72fa6d4735e11a900d7d3c56b82ab432c83d40486d13d",
+          "kind": 38101
+        },
+        {
+          "id": "9d74a99c9542ab896ba96310bf870649c0681877e99e796828fe2e0904e15976",
+          "kind": 38102
+        },
+        {
+          "id": "de1ca907a5b84259d679d6c0a1b1c6b30bc655b3c9c800035dfcae0e7a404ff6",
+          "kind": 38103
+        },
+        {
+          "id": "23744d733936ea0919f98687fd4b7237e77b9e448d6c98bf49465d938647fe6e",
+          "kind": 38104
+        },
+        {
+          "id": "a5049f0d2106d8b289ead39f3613a74f9e4fff831b9cdb90fe60e2b5f0a0d148",
+          "kind": 38105
+        },
+        {
+          "id": "61884f3aef33c9d688c1299d2e9705dff7382fbf51ce15b5b1d99fbc5e1b685a",
+          "kind": 38106
+        },
+        {
+          "id": "ac0561198ef4314c1847ac4cbd9d5d10616fd8505c2f2d0d777106e5f6f67db6",
+          "kind": 38107
+        },
+        {
+          "id": "b4726a73d55e7c1cd4f36de571414df8d77f994e050c0d0b325d4ba83851a4ce",
+          "kind": 38108
+        },
+        {
+          "id": "8834f9cc6f67779f9b1c213c500d9054b7c957a7f0abed261d7c2efd063d16ad",
+          "kind": 38103
+        }
+      ]
+    }
+  ]
+}

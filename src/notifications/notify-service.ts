@@ -369,7 +369,7 @@ export function latestNotificationActivityAt(state: EscrowState): number {
 }
 
 export function isFreshNotificationActivity(state: EscrowState, liveSinceSec: number): boolean {
-  return latestNotificationActivityAt(state) >= liveSinceSec;
+  return latestNotificationActivityAt(state) > liveSinceSec;
 }
 
 // ── Permission ───────────────────────────────────────────────────────────────
@@ -769,4 +769,9 @@ export async function sendNotificationSelfTest(): Promise<boolean> {
   const delivered = allowed ? await deliver(n) : false;
   notifyDebug(() => `self-test done allowed=${allowed} — no buzz on Tauri/macOS ⇒ dev posts as "Terminal" / unsigned prod is dropped (not an app bug)`);
   return delivered;
+}
+
+/** Keep quiet-window denials discoverable in field diagnostics. */
+export function debugQuietNotification(escrowId: string): void {
+  notifyDebug(() => `skip quiet-window/history trade=${escrowId}`);
 }

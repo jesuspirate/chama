@@ -336,6 +336,8 @@ export interface CreatePayload {
    *  receives) while rendering and syndicating as a labor listing. */
   listingKind?: WorkListingKind;
   description: string;
+  title?: string;
+  body?: string;
   /** Product photo for a single marketplace listing. */
   imageDataUrl?: string;
   /** Ordered gallery. imageDataUrl remains the backwards-compatible cover. */
@@ -975,13 +977,24 @@ export interface ParsedEscrowEvent<T extends EscrowPayload = EscrowPayload> {
 // ── Escrow State (reconstructed from event chain) ─────────────────────────
 // This is the "database row" but built entirely from replaying Nostr events.
 
+export interface ReplayNote {
+  eventId: string;
+  kind: EscrowEventKind;
+  code: string;
+  message: string;
+}
+
 export interface EscrowState {
+  /** Rejected advisory transitions retained for an honest reconstruction report. */
+  replayNotes?: ReplayNote[];
   /** Unique escrow identifier (d-tag value) */
   id: string;
   /** Current status */
   status: EscrowStatus;
-  /** Trade description */
+  /** Short card title; legacy description remains the fallback. */
   description: string;
+  title?: string;
+  body?: string;
   /** Optional public product treatment. Absent keeps every historical listing
    *  byte-for-byte on its existing marketplace presentation. */
   listingKind?: WorkListingKind;

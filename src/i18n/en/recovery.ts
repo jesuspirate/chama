@@ -3,6 +3,7 @@
 // EcashExportModal, ChamaBar). ⚠ This copy was tuned calm-vs-alarm — the
 // English here must stay byte-identical to the shipped v5 wording.
 export const recovery: Record<string, string> = {
+  "recovery.barNeedsYou": "Needs you: {count}",
   "recovery.barCheckingTrades": "Checking your trades…",
   "recovery.exportClearError": "Chama couldn't finish clearing this export. The recovery copy is still kept.",
   "recovery.exportClearing": "Finishing safely…",

@@ -392,7 +392,9 @@ function handleCreate(event: ParsedEscrowEvent<CreatePayload>): TransitionResult
   const state: EscrowState = {
     id: event.escrowId,
     status: EscrowStatus.CREATED,
-    description: p.description,
+    description: p.title || p.description,
+    title: p.title,
+    body: p.body,
     ...(p.listingKind ? { listingKind: p.listingKind } : {}),
     ...(p.category === "marketplace" && p.imageDataUrl ? { imageDataUrl: p.imageDataUrl } : {}),
     ...(p.category === "marketplace" && p.imageUrls?.length ? { imageUrls: [...p.imageUrls] } : {}),
@@ -1922,17 +1924,35 @@ export function replayEventChain(events: ParsedEscrowEvent[]): TransitionResult 
   for (const event of events) {
     const result = applyEvent(state, event);
     if (!result.ok) {
-      // Skip benign duplicates silently
-      if (benignCodes.has(result.error.code)) {
-        continue;
+      // Never let a generic duplicate/terminal error forgive a funds transition.
+      // Re-delivery of the identical signed ID already succeeds in applyEvent.
+      if ([EscrowEventKind.LOCK, EscrowEventKind.CLAIM,
+           EscrowEventKind.SUBSCRIBE, EscrowEventKind.PERIOD_RELEASE].includes(event.kind)) {
+        return result;
       }
-      // INVALID_STATE on RESOLVE/COMPLETE/CLAIM is also benign
-      // (duplicate auto-resolve from multiple browsers)
-      if (result.error.code === "INVALID_STATE" && state &&
-          [EscrowEventKind.RESOLVE, EscrowEventKind.COMPLETE, EscrowEventKind.CLAIM]
-            .includes(event.kind)) {
-        continue;
+      const note = () => {
+        if (state) state = { ...state, replayNotes: [...(state.replayNotes ?? []), {
+          eventId: event.raw.id, kind: event.kind,
+          code: result.error.code, message: result.error.message,
+        }] };
+      };
+      // A repeated RESOLVE is redundant only when it agrees with the committed
+      // result. Missing threshold/evidence and contradictory outcomes stay strict.
+      const redundantResolve = event.kind === EscrowEventKind.RESOLVE && state
+        && state.resolvedOutcome === (event.payload as ResolvePayload).outcome
+        && (result.error.code === "INVALID_STATE" || result.error.code === "TERMINAL_STATE");
+      if (event.kind === EscrowEventKind.RESOLVE) {
+        if (redundantResolve) { note(); continue; }
+        return result;
       }
+      if (benignCodes.has(result.error.code)) { note(); continue; }
+      // Late acknowledgements/votes cannot change committed custody. A missing
+      // LOCK is not a late vote: retain its failure instead of disguising a hole.
+      if (result.error.code === "INVALID_STATE" && state && (
+        event.kind === EscrowEventKind.JOIN ||
+        (event.kind === EscrowEventKind.VOTE && state.eventChain.some(e => e.kind === EscrowEventKind.LOCK)) ||
+        event.kind === EscrowEventKind.COMPLETE
+      )) { note(); continue; }
       // COMPLETE is advisory for on-chain escrow: the payout exists on-chain
       // independently of this marker. A relay can return COMPLETE without the
       // linked auxiliary SETTLEMENT proof (or with only a partial revision).
@@ -1943,22 +1963,22 @@ export function replayEventChain(events: ParsedEscrowEvent[]): TransitionResult 
           && result.error.code === "INVALID_SETTLEMENT_PROOF"
           && state?.status === EscrowStatus.APPROVED
           && !!state.lock.onchain) {
-        continue;
+        note(); continue;
       }
       // CHAT is auxiliary state, not the escrow's money/state chain. A legacy
       // or malicious nonparticipant chat must not make the CREATE/JOIN/LOCK
       // history unloadable from relays; keep rejecting it on live send/apply,
       // but skip it during full-chain replay.
       if (event.kind === EscrowEventKind.CHAT && result.error.code === "NOT_PARTICIPANT") {
-        continue;
+        note(); continue;
       }
       // Same for PREMIUM — auxiliary, a bad one must never brick replay.
       if (event.kind === EscrowEventKind.PREMIUM && result.error.code === "NOT_PARTICIPANT") {
-        continue;
+        note(); continue;
       }
       // Same for SETTLEMENT — hostile transport must not poison consensus replay.
       if (event.kind === EscrowEventKind.SETTLEMENT && result.error.code === "NOT_PARTICIPANT") {
-        continue;
+        note(); continue;
       }
       // Real error — fail the replay
       return result;

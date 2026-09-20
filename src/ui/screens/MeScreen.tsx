@@ -1,3 +1,6 @@
+import { nativePushStatus, type NativePushStatus } from "../../notifications/native-push.js";
+import { avatarFromFile, type Avatar } from "../avatars.js";
+import { ProfileAvatar } from "../components/ProfileAvatar.js";
 // ══════════════════════════════════════════════════════════════════════════
 // Chama — Me screen (v0.2.0 Phase 6 skeleton population)
 // ══════════════════════════════════════════════════════════════════════════
@@ -131,6 +134,7 @@ export function MeScreen({
   onOpenTrade,
   onRefreshTrades,
   onPublishProfileName,
+  onPublishProfileAvatar,
   amountDisplayMode = "sats",
   quoteCurrency,
   onSellerEditListing,
@@ -209,6 +213,7 @@ export function MeScreen({
   /** Publish the chosen profile name as kind 0, so a rename follows the key
    *  rather than the browser. Absent ⇒ the name stays device-local. */
   onPublishProfileName?: (name: string) => Promise<void>;
+  onPublishProfileAvatar?: (avatar: Avatar) => Promise<void>;
   onSellerEditListing?: (id: string) => void;
   onSellerDeleteListing?: (id: string) => void | Promise<void>;
   onOpenSavedHandles: () => void;
@@ -973,7 +978,7 @@ export function MeScreen({
           background: T.card, border: `1px solid ${T.border}`,
           borderRadius: T.r, padding: 0, overflow: "hidden",
         }}>
-          <TradeNameRow pubkey={pubkey} onPublishName={onPublishProfileName} />
+          <TradeNameRow pubkey={pubkey} onPublishName={onPublishProfileName} onPublishAvatar={onPublishProfileAvatar} />
           <div style={{ padding: "14px 16px", borderBottom: `1px solid ${T.border}` }}>
             <div style={{ fontSize: 13, fontWeight: 600, color: T.text, fontFamily: T.sans }}>
               {t("me.profileKnownAs")}
@@ -1483,7 +1488,7 @@ function SellerDashboardPanel({
         <DashboardMetric
           label={t("me.queueReady")}
           value={dashboard.sellerReadyToLock.length}
-          tone={T.accent}
+          tone={T.muted}
           active={queue === "ready"}
           onClick={() => {
             if (dashboard.sellerReadyToLock.length === 0) return;
@@ -1493,7 +1498,7 @@ function SellerDashboardPanel({
         <DashboardMetric
           label={t("me.queueHolds")}
           value={dashboard.sellerWindowShoppers.length}
-          tone={T.amber}
+          tone={T.muted}
           active={queue === "holds"}
           onClick={() => {
             if (dashboard.sellerWindowShoppers.length === 0) return;
@@ -1503,7 +1508,7 @@ function SellerDashboardPanel({
         <DashboardMetric
           label={t("me.queueLive")}
           value={dashboard.sellerLive.length}
-          tone={T.purple}
+          tone={T.muted}
           active={queue === "live"}
           onClick={() => {
             if (dashboard.sellerLive.length === 0) return;
@@ -1513,7 +1518,7 @@ function SellerDashboardPanel({
         <DashboardMetric
           label={t("me.queueStock")}
           value={dashboard.sellerInventory.length}
-          tone={T.green}
+          tone={T.muted}
           active={queue === "stock"}
           onClick={() => {
             if (dashboard.sellerInventory.length === 0) return;
@@ -1635,7 +1640,7 @@ function SellerQueueList({
   return (
     <div style={{
       background: T.surface,
-      border: `1px solid ${tone}44`,
+      border: `1px solid ${T.border}`,
       borderRadius: T.rs,
       overflow: "hidden",
     }}>
@@ -1649,7 +1654,7 @@ function SellerQueueList({
       }}>
         <div style={{
           fontFamily: T.mono,
-          color: tone,
+          color: T.muted,
           fontSize: 10,
           fontWeight: 900,
           textTransform: "uppercase",
@@ -2904,6 +2909,8 @@ function NotificationsRow() {
 
 function BackgroundPushRow() {
   const { t } = useT();
+  const [nativeStatus, setNativeStatus] = useState<NativePushStatus | null>(null);
+  useEffect(() => { void nativePushStatus().then(setNativeStatus); }, []);
   const supported = isWebPushSupported();
   const needsInstall = iosNeedsInstallForPush();
   const [on, setOn] = useState<boolean>(() => backgroundPushEnabled());
@@ -2931,9 +2938,12 @@ function BackgroundPushRow() {
   };
 
   const hint =
-    needsInstall ? t("me.bgPushInstall")
+    nativeStatus?.lane === "unavailable" ? t("me.bgPushNativeSetup")
+    : needsInstall ? t("me.bgPushInstall")
     : !supported ? t("me.bgPushUnsupported")
     : blocked ? t("me.bgPushBlocked")
+    : nativeStatus?.lane === "fcm" ? t("me.bgPushFcm")
+    : nativeStatus?.lane === "unifiedpush" ? t("me.bgPushUnified")
     : t("me.bgPushHint");
 
   return (
@@ -3178,7 +3188,8 @@ function AppearanceRow({ themeMode, onThemeModeChange }: {
 /** v6.3.1: quick in-app trade name — no Nostr profile setup required.
  *  Stored per active npub on this device; empty falls back to the
  *  deterministic generated name every client derives from the pubkey. */
-function TradeNameRow({ pubkey, onPublishName }: {
+function TradeNameRow({ pubkey, onPublishName, onPublishAvatar }: {
+  onPublishAvatar?: (avatar: Avatar) => Promise<void>;
   pubkey: string;
   /** Publishes the name as kind 0 so it travels with the KEY, not the browser
    *  (Jet, 2026-09-19: a device-only rename is "pointless"). */
@@ -3188,6 +3199,12 @@ function TradeNameRow({ pubkey, onPublishName }: {
   const [draft, setDraft] = useState<string>(() => readLocalTradeName() ?? "");
   const [savedTick, setSavedTick] = useState(false);
   const [publishState, setPublishState] = useState<"idle" | "publishing" | "published" | "local-only">("idle");
+  useEffect(() => {
+    const adopt = () => setDraft(previous => previous || readLocalTradeName() || "");
+    window.addEventListener("chama-profile-name-adopted", adopt);
+    return () => window.removeEventListener("chama-profile-name-adopted", adopt);
+  }, [pubkey]);
+  const [avatarError, setAvatarError] = useState(false);
   const generated = generatedNameFor(pubkey, lang);
   const save = () => {
     // Write locally FIRST so the name is never lost to a relay problem, then
@@ -3206,6 +3223,16 @@ function TradeNameRow({ pubkey, onPublishName }: {
   return (
     <div style={{ padding: "14px 16px", borderBottom: `1px solid ${T.border}` }}>
       <div style={{ fontSize: 13, fontWeight: 600, color: T.text, fontFamily: T.sans }}>
+        <ProfileAvatar pubkey={pubkey} fallback={null} />
+        {onPublishAvatar && <label style={{ display: "block" }}>{t("me.avatarUpload")}
+          <input type="file" accept="image/gif,image/png,image/webp,image/jpeg" onChange={async event => {
+            const file = event.target.files?.[0]; if (!file) return;
+            setAvatarError(false);
+            try { await onPublishAvatar(await avatarFromFile(file)); }
+            catch { setAvatarError(true); }
+          }} />
+          {avatarError && <span>{t("me.avatarFailed")}</span>}
+        </label>}
         {t("me.tradeName")}
       </div>
       <div style={{ fontSize: 11, color: T.muted, fontFamily: T.mono, marginTop: 2 }}>

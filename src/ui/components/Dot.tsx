@@ -1,3 +1,4 @@
+import { ProfileAvatar } from "./ProfileAvatar.js";
 import { T, ROLE_COLOR, ROLE_ICON } from "../theme.js";
 
 export function Dot({ role, pk, isYou, voted, outcome, autoAssigned, displayName, onClick }: {
@@ -45,7 +46,7 @@ export function Dot({ role, pk, isYou, voted, outcome, autoAssigned, displayName
         fontFamily: T.mono, position: "relative",
         cursor: clickable ? "pointer" : "default",
       }}>
-        {ROLE_ICON[role as keyof typeof ROLE_ICON] || "?"}
+        <ProfileAvatar pubkey={pk} fallback={ROLE_ICON[role as keyof typeof ROLE_ICON] || "?"} />
         {voted && (
           <div style={{
             position: "absolute", bottom: -2, right: -2,

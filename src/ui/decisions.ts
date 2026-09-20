@@ -1050,6 +1050,7 @@ export function activeCommittedMsats(inputs: {
 // and the UI is fine with the (brief) optimistic rendering during it.
 
 export type ChamaBarLabel =
+  | { kind: "needs-you"; count: number }
   | { kind: "checking" }
   | { kind: "ready" }
   | { kind: "in-trade"; sats: number; activeTradeCount: number }
@@ -1057,6 +1058,7 @@ export type ChamaBarLabel =
   | { kind: "unreachable" };
 
 export function decideChamaBarLabel(opts: {
+  needsYouCount?: number;
   balanceMsats: number;
   hasActiveBuyerSellerCommitment: boolean;
   /** v0.3.1 Phase 3 — when "failed", overrides all other kinds and
@@ -1097,6 +1099,7 @@ export function decideChamaBarLabel(opts: {
   hasPendingClaimPayout?: boolean;
 }): ChamaBarLabel {
   if (opts.bootProbeState === "failed") return { kind: "unreachable" };
+  if ((opts.needsYouCount ?? 0) > 0) return { kind: "needs-you", count: opts.needsYouCount! };
   const activeTradeCount = Math.max(1, opts.activeTradeCount ?? 1);
   // Floor to whole sats — the bar always speaks in sats, never msats.
   const sats = Math.floor(opts.balanceMsats / 1000);

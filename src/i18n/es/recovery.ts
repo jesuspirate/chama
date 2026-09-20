@@ -1,5 +1,6 @@
 // es/recovery — Session C fills this from src/i18n/en/recovery.ts (key set must match EXACTLY).
 export const recovery: Record<string, string> = {
+  "recovery.barNeedsYou": "Te necesitan: {count}",
   "recovery.barCheckingTrades": "Comprobando tus operaciones…",
   "recovery.exportClearError": "Chama no pudo terminar de borrar esta exportación. La copia de recuperación sigue guardada.",
   "recovery.exportClearing": "Finalizando con seguridad…",

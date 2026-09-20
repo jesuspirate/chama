@@ -1,5 +1,6 @@
 // es/create — Session C fills this from src/i18n/en/create.ts (key set must match EXACTLY).
 export const create: Record<string, string> = {
+  "create.listingBody": "Descripción — párrafos, listas, **negrita**, *cursiva*, [texto](https://…)",
   // CBP mensual — interruptor de factura recurrente (solo pago de facturas).
   "create.recurringToggleLabel": "Mensual recurrente",
   "create.recurringToggleHint": "Vuelve a publicar esta factura en tu comunidad cada mes mientras estás en línea. Sin fianza — detenlo cuando quieras desde Yo.",

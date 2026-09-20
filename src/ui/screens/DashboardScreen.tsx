@@ -1,3 +1,5 @@
+import { arbiterRecord } from "../../arbiters/record.js";
+import { ArbiterRecordCard } from "../components/ArbiterRecordCard.js";
 // ══════════════════════════════════════════════════════════════════════════
 // Chama — Dashboard (v6.3 "Pulse" — approved design 2026-09-05)
 // ══════════════════════════════════════════════════════════════════════════
@@ -47,6 +49,7 @@ export function DashboardScreen({
   pubkey,
   ratings,
   myTrades,
+  knownTrades,
   communitySlug,
   loadLiveness,
   livenessBlocksPerDay = 144,
@@ -55,11 +58,13 @@ export function DashboardScreen({
   balanceMsats = 0,
   onWithdrawEcash,
   fetchMyBonds,
+  fetchCommunityBonds,
   getBondChainTip,
 }: {
   pubkey: string;
   ratings: AggregateRatings | null;
   myTrades: EscrowState[];
+  knownTrades?: readonly EscrowState[];
   communitySlug?: string | null;
   loadLiveness?: (slug: string, signal?: AbortSignal) => Promise<ChamaLiveness | null>;
   livenessBlocksPerDay?: number;
@@ -68,6 +73,7 @@ export function DashboardScreen({
   balanceMsats?: number;
   onWithdrawEcash?: () => void;
   fetchMyBonds?: () => Promise<VerifiedBond[]>;
+  fetchCommunityBonds?: (community: string) => Promise<VerifiedBond[]>;
   getBondChainTip?: () => Promise<number>;
 }) {
   const { t } = useT();
@@ -167,6 +173,13 @@ export function DashboardScreen({
     [bonds, bondTip],
   );
 
+  const [rosterBonds, setRosterBonds] = useState<VerifiedBond[]>([]);
+  useEffect(() => {
+    let cancelled = false; setRosterBonds([]);
+    if (communitySlug && fetchCommunityBonds) void fetchCommunityBonds(communitySlug)
+      .then(value => { if (!cancelled) setRosterBonds(value); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [communitySlug, fetchCommunityBonds]);
   const [announcedBonds, setAnnouncedBonds] = useState<VerifiedBond[]>([]);
   useEffect(() => {
     if (!fetchMyBonds) return;
@@ -208,6 +221,14 @@ export function DashboardScreen({
         @media(max-width:560px){.dash-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}}
       `}</style>
 
+      {announcedBonds.some(b => b.funded && b.active) && <ArbiterRecordCard expanded record={arbiterRecord(
+        pubkey, knownTrades ?? myTrades, announcedBonds, new Map(ratings ? [[pubkey, ratings]] : []), nowSec, bondTip, livenessBlocksPerDay,
+      )} />}
+      {rosterBonds.length > 0 && <details>
+        <summary>{t("trade.arbiterRecord")}</summary>
+        {[...new Set(rosterBonds.filter(b => b.funded && b.active).map(b => b.npub))].map(key =>
+          <ArbiterRecordCard key={key} record={arbiterRecord(key, knownTrades ?? myTrades, rosterBonds, new Map(), nowSec, bondTip, livenessBlocksPerDay)} />)}
+      </details>}
       {/* Header: kicker + title + window pills + converter */}
       <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 12, marginBottom: 14, flexWrap: "wrap" }}>
         <div>

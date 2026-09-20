@@ -3,6 +3,8 @@
 // pre-extraction JSX. Before/After pairs wrap a mid-sentence <BitcoinAmount>
 // component; xxxOne/xxxMany are the plural pairs (see picker.matchOne/Many).
 export const me: Record<string, string> = {
+  "me.avatarUpload": "Avatar (GIF, PNG, WebP or JPEG; up to 48 KB)",
+  "me.avatarFailed": "Could not save and publish the avatar. Use an image up to 48 KB and 2048 × 2048, then retry.",
   "me.hydratingTrades": "Checking your complete trade history…",
   // Store permanence (#49) Tier 1 — "your store lapsed — renew?" card.
   "me.storeLapsedTitleOne": "Your store lapsed",
@@ -156,6 +158,9 @@ export const me: Record<string, string> = {
   "me.nothingInView": "Nothing in this view right now.",
   "me.notifications": "Notifications",
   "me.notificationsHint": "Locked · claim ready · disputes · settled",
+  "me.bgPushNativeSetup": "Install a UnifiedPush distributor to receive background alerts.",
+  "me.bgPushFcm": "Background alerts use Firebase Cloud Messaging.",
+  "me.bgPushUnified": "Background alerts use your UnifiedPush distributor.",
   "me.bgPush": "Background alerts",
   "me.bgPushHint": "Wake me for trade actions even when Chama is fully closed",
   "me.bgPushInstall": "Add Chama to your Home Screen first to get alerts on iPhone",

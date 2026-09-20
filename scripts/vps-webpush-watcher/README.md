@@ -84,3 +84,50 @@ curl -s -o /dev/null -w '%{http_code}\n' -X POST https://push.chama.community/re
 - **Relay dependency:** the watcher is only as live as its relay subscriptions.
   It reconnects via nostr-tools' SimplePool; if you run a second relay, add it to
   `CHAMA_RELAYS` so a single relay outage isn't a silent notification outage.
+
+
+## Android transports (v6.5)
+
+Deploy this watcher together with the quiet-sign-in client and native receivers.
+The old empty Web Push wake remains compatible with PWA clients. Android uses:
+
+- `transport: "unifiedpush"` with the connector’s HTTPS endpoint and Web Push
+  keys. The watcher encrypts `{wake: 1, sentAt: <milliseconds>}` with VAPID.
+- `transport: "fcm"` with an opaque device token. Set `FCM_SERVICE_ACCOUNT_FILE`
+  to a protected server-side JSON service-account file authorized to send for the
+  matching Firebase project. The watcher obtains short-lived OAuth credentials
+  and sends data-only messages, never Firebase display-notification payloads.
+
+Build the APK with the Firebase Android app’s public `google-services.json` for
+`app.chama.market` to enable FCM. Do not put service-account/private keys in the
+APK or this repository. Without Firebase configuration, UnifiedPush still works
+with an installed distributor. Both transports require the user to enable alerts.
+
+`PUSH_ENDPOINT_HOSTS` is a comma-separated list of additional exact trusted HTTPS
+push hosts. Defaults allow `ntfy.sh`, `fcm.googleapis.com`,
+`updates.push.services.mozilla.com` and `web.push.apple.com`. Add a self-hosted
+UnifiedPush server explicitly; do not accept arbitrary registration-supplied hosts
+or wildcards. These hosts are trusted egress destinations, must remain publicly
+routed, and must not resolve to internal services. Redirects are not a supported
+endpoint configuration. Registration carries endpoint capabilities and opaque tags,
+never account keys, trade identifiers or event content. Protect the registration
+store as bearer-capability material.
+
+The watcher now checks signed timestamps itself instead of trusting relay filters.
+Events at/before startup or registration, more than 120 seconds old, or in the
+future do not wake a device. Relay duplicate IDs are suppressed. Registration
+expiry survives restart. Native receivers reject stale payloads, suppress wakes
+while foregrounded, and display only generic copy. Network registration is best
+effort and retried on app resume; endpoint delivery and force-stopped-app behavior
+must be checked on the actual OS/distributor. No background trade signing occurs.
+
+Run `node scripts/vps-webpush-watcher/wake-policy.tests.mjs` from the repository
+root for timestamp, endpoint validation and mocked FCM transport checks. Android
+policy tests run with `cd android && ./gradlew :app:testDebugUnitTest` using JDK 21.
+Before declaring shipped, record an app-closed fresh-event wake and a historical
+replay non-wake on both a no-Play-services device and a Play-services device, plus
+permission denial, opt-out, endpoint rotation and notification-tap reopening.
+
+API references: [UnifiedPush connector](https://unifiedpush.org/kdoc/connector/org.unifiedpush.android.connector/-unified-push/),
+[UnifiedPush service](https://unifiedpush.org/kdoc/connector/org.unifiedpush.android.connector/-push-service/),
+[Firebase receive messages](https://firebase.google.com/docs/cloud-messaging/android/receive-messages).
