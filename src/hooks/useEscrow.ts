@@ -1683,6 +1683,13 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
             }
           }, 250);
         },
+        onMoneyPublishAcknowledged: (entry) => {
+          if (entry.type === "premium" && entry.amountMsats) {
+            recordPremiumPaid(entry.escrowId, entry.amountMsats, entry.operationId);
+          } else if (entry.type === "lock") {
+            void bridgeRef.current?.settlePendingNativeLock(entry.escrowId, { ignoreAttemptCap: true });
+          }
+        },
       };
 
       client = new EscrowClient(signer, {
@@ -1765,6 +1772,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
         // keeps re-offering un-acked CLAIMs until the preferred relay takes
         // them (v6.4 runway item 1 — the zombie-claim factory).
         void escrowClient.drainDurableClaims().catch(() => {});
+        void escrowClient.drainDurableMoneyPublishes(now).catch(() => {});
         for (const [escrowId, escrowState] of (escrowClient as any).states || []) {
           const isStuckLocked =
             escrowState.status === "LOCKED" && now > escrowState.expiresAt;
@@ -5489,6 +5497,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       recordPremiumPaid(escrowId, decision.amountMsats);
       return;
     }
+    const premiumSpentAtMs = Date.now();
     recordPremiumSending(escrowId, decision.amountMsats);
     let spent: { oobNotes: string; operationId?: string };
     try {
@@ -5508,19 +5517,24 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       return;
     }
     try {
-      await client.sendPremium(escrowId, {
+      const custodyDurability = await client.sendPremium(escrowId, {
         amountSats: decision.amountSats,
         oobNotes: spent.oobNotes,
         federationId: fedimint.getFederationId() ?? undefined,
         noteKind: "ambient",
+        spentAt: Math.floor(premiumSpentAtMs / 1000),
+        liveUntil: Math.floor(premiumSpentAtMs / 1000) + PREMIUM_SPEND_TRY_CANCEL_SECS,
+        operationId: spent.operationId,
       });
+      if (custodyDurability === "acknowledged") {
+        recordPremiumPaid(escrowId, decision.amountMsats, spent.operationId);
+      }
     } catch (e) {
       // Spent but unpublished: KEEP the "sending" record (re-spend guard);
       // the note auto-refunds to us at the horizon. Never re-pay here.
       console.warn("[chama] arbiter premium: publish failed (note auto-refunds):", e);
       return;
     }
-    recordPremiumPaid(escrowId, decision.amountMsats, spent.operationId);
     refreshBalanceRef.current?.().catch(() => {});
   };
 

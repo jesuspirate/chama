@@ -991,6 +991,14 @@ export interface EscrowState {
   id: string;
   /** Current status */
   status: EscrowStatus;
+  /** Local-only transport warning for a money-bearing event. This is overlaid
+   *  from the publishing device's durable journals and is never consensus
+   *  state. */
+  custodyNotice?: {
+    eventType: "lock" | "premium";
+    status: "pending" | "expired-unacked" | "acknowledged-with-rejection";
+    message: string;
+  };
   /** Short card title; legacy description remains the fallback. */
   description: string;
   title?: string;
@@ -1135,6 +1143,15 @@ export interface EscrowState {
   lock: {
     notesHash: string | null;
     lockedAt: number | null;
+    /** Local custody transport state for the signed ecash LOCK. This is not
+     *  consensus data: relay replay defaults to acknowledged, while the
+     *  publishing device may overlay pending/expired-unacked from its durable
+     *  money journal. */
+    custodyDurability?: "acknowledged" | "pending" | "expired-unacked";
+    /** One human-visible transport diagnostic. Raw relay rejection text is
+     *  retained here on the publishing device instead of disappearing into
+     *  console output. */
+    custodyDiagnostic?: string;
     /** Encrypted SSS shares, keyed by share index (stringified). Under the
      *  legacy policy each entry's encryptedFor holds all three participants;
      *  under holder-only-v1 each entry holds only its assigned holder. */

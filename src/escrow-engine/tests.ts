@@ -9730,6 +9730,26 @@ import {
   DURABLE_CLAIM_MAX_AGE_SEC,
   MAX_DURABLE_CLAIMS,
 } from "./durable-claim-queue.js";
+import {
+  acknowledgeDurableMoneyPublish,
+  moneyDiagnosticForEscrow,
+  enqueueDurableMoneyPublish,
+  formatCustodyDiagnostic,
+  isMoneyBearingEvent,
+  publishableMoneyEntries,
+  quarantineExpiredMoneyPublishes,
+  readDurableMoneyDiagnostics,
+  readDurableMoneyPublishes,
+  recordDurableMoneyDiagnostic,
+  recordDurableMoneyPublishFailure,
+  resolveDurableMoneyPublishesForEscrow,
+  type DurableMoneyPublishStore,
+} from "./durable-money-publish.js";
+import {
+  assertSignedEventFitsWire,
+  MAX_SIGNED_EVENT_FRAME_BYTES,
+  signedEventFrameBytes,
+} from "./wire-size.js";
 // BP_FEDERATION_INVITE / BLF_FEDERATION_INVITE already imported above
 // from federation-config (which re-exports from federation-invites).
 
@@ -11076,8 +11096,20 @@ console.log("\n── Native lock crash-safety: pending-native-locks (#37) ─�
     drainPendingNativeLocks,
     summarizeNativeLocksForUi,
     withNativeLockFlow,
+    shouldClearNativeLockAfterPublish,
   } = await import("../fedimint/pending-native-locks.js");
   void PENDING_NATIVE_LOCKS_KEY;
+
+  assert(!shouldClearNativeLockAfterPublish({
+    committedNotesHash: "same",
+    expectedNotesHash: "same",
+    custodyDurability: "pending",
+  }), "a locally-applied zero-ACK LOCK cannot clear the bearer stash on notesHash alone");
+  assert(shouldClearNativeLockAfterPublish({
+    committedNotesHash: "same",
+    expectedNotesHash: "same",
+    custodyDurability: "acknowledged",
+  }), "matching notesHash plus a positive relay ACK clears the bearer stash");
 
   const FED = "fed_native_1";
   const NOTES = "native-oob-notes";
@@ -11119,6 +11151,8 @@ console.log("\n── Native lock crash-safety: pending-native-locks (#37) ─�
     e = getPendingNativeLock("t1")!;
     assert(e.stage === "spent" && e.oobNotes === NOTES && e.operationId === "op1",
       "native-lock lifecycle: spent upgrade persists the notes + operation id");
+    assert(typeof e.spentAt === "number" && e.spentAt >= intentCreatedAt,
+      "native-lock lifecycle: spent upgrade records the bearer-note horizon anchor");
     assert(e.createdAt === intentCreatedAt,
       "native-lock lifecycle: spent upgrade preserves the intent's createdAt");
     markNativeLockPublishAttempted("t1");
@@ -11164,6 +11198,21 @@ console.log("\n── Native lock crash-safety: pending-native-locks (#37) ─�
       "native-lock recovery: NEVER re-absorbs notes a live LOCK committed");
     assert(getPendingNativeLock("t3") === null,
       "native-lock recovery: committed entry is cleared");
+  }
+
+  // 4. Decision table — a DIFFERENT lock owns the chain ⇒ our notes re-absorb.
+  {
+    clearAllPendingNativeLocks();
+    upgradeNativeLockToSpent({ escrowId: "t3_pending", oobNotes: NOTES, amountMsats: AMOUNT, federationId: FED });
+    markNativeLockPublishAttempted("t3_pending");
+    const state = createdState(`sha256(${NOTES})`);
+    state.lock.custodyDurability = "pending";
+    const { deps, calls } = makeDeps({ state });
+    const outcome = await recoverPendingNativeLock(getPendingNativeLock("t3_pending")!, deps);
+    assert(outcome === "kept" && calls.redeem.length === 0,
+      "native-lock recovery: a locally applied pending LOCK neither clears nor re-absorbs its notes");
+    assert(getPendingNativeLock("t3_pending") !== null,
+      "native-lock recovery: pending relay custody keeps the bearer-note stash");
   }
 
   // 4. Decision table — a DIFFERENT lock owns the chain ⇒ our notes re-absorb.
@@ -27497,6 +27546,123 @@ console.log("\n── DURABLE CLAIM QUEUE ──");
   enqueueDurableClaim(broken, ev("fresh"), "esc_f", NOW);
   assert(readDurableClaims(broken, NOW).length === 1,
     "and the queue heals itself on the next enqueue");
+}
+
+console.log("\n── DURABLE MONEY PUBLISH ──");
+{
+  const NOW = 1_900_000_000;
+  const mem = (): DurableMoneyPublishStore & { raw(): string | null } => {
+    let value: string | null = null;
+    return { get: () => value, set: next => { value = next; }, raw: () => value };
+  };
+  const event = (id: string, kind = EscrowEventKind.LOCK, content = JSON.stringify({ type: "escrow:lock", shares: [{}] })) => ({
+    id, kind, content, created_at: NOW, tags: [], pubkey: "p", sig: "s",
+  } as unknown as NostrEvent);
+  const entry = (id: string, spentAt = NOW, liveUntil = NOW + 100) => ({
+    event: event(id), escrowId: `esc_${id}`, type: "lock" as const, spentAt, liveUntil,
+  });
+
+  assert(isMoneyBearingEvent(event("lock")), "an ecash LOCK with shares is money-bearing");
+  assert(!isMoneyBearingEvent(event("onchain", EscrowEventKind.LOCK, JSON.stringify({ type: "escrow:lock", shares: [] }))),
+    "an on-chain LOCK without bearer shares is not classified as money-bearing");
+  assert(isMoneyBearingEvent(event("premium", EscrowEventKind.PREMIUM, JSON.stringify({ type: "escrow:premium", noteEnvelope: { encryptedFor: {} } }))),
+    "a PREMIUM envelope is money-bearing");
+  assert(!isMoneyBearingEvent(event("claim", EscrowEventKind.CLAIM, JSON.stringify({ type: "escrow:claim" }))),
+    "CLAIM is excluded because relay publication precedes redemption");
+
+  const store = mem();
+  enqueueDurableMoneyPublish(store, entry("m1"));
+  assert(readDurableMoneyPublishes(store)[0]?.event.id === "m1",
+    "the signed money event is persisted before the first relay attempt");
+  recordDurableMoneyPublishFailure(store, "m1", "relay.example: blocked");
+  assert(formatCustodyDiagnostic(readDurableMoneyPublishes(store)[0]!).includes("blocked"),
+    "relay rejection text survives in the human-visible custody diagnostic");
+  const diagnosticStore = mem();
+  recordDurableMoneyDiagnostic(diagnosticStore, {
+    eventId: "m1",
+    escrowId: "esc_m1",
+    type: "lock",
+    message: "relay.example: blocked",
+    recordedAt: NOW,
+  });
+  recordDurableMoneyDiagnostic(diagnosticStore, {
+    eventId: "m1",
+    escrowId: "esc_m1",
+    type: "lock",
+    message: "duplicate should not replace the first rejection",
+    recordedAt: NOW + 1,
+  });
+  assert(readDurableMoneyDiagnostics(diagnosticStore).length === 1
+    && moneyDiagnosticForEscrow(diagnosticStore, "esc_m1")?.message === "relay.example: blocked",
+    "a relay rejection persists once per event after the retry entry retires");
+  acknowledgeDurableMoneyPublish(store, "m1");
+  assert(readDurableMoneyPublishes(store).length === 0,
+    "any positive relay ACK retires the active money entry");
+  let refusedRetirement = false;
+  const stuckRetirement = mem();
+  enqueueDurableMoneyPublish(stuckRetirement, entry("stuck_ack"));
+  const stuckRaw = stuckRetirement.raw();
+  try {
+    acknowledgeDurableMoneyPublish({ get: () => stuckRaw, set: () => {} }, "stuck_ack");
+  } catch {
+    refusedRetirement = true;
+  }
+  assert(refusedRetirement,
+    "an ACK cannot falsely retire a money entry when durable storage refuses the delete");
+
+  const unbounded = mem();
+  for (let i = 0; i < 225; i++) enqueueDurableMoneyPublish(unbounded, entry(`cap_${i}`));
+  assert(readDurableMoneyPublishes(unbounded).length === 225,
+    "money entries never fall off the ordinary republish cap");
+
+  const horizon = mem();
+  enqueueDurableMoneyPublish(horizon, entry("horizon", NOW, NOW + 10));
+  assert(publishableMoneyEntries(horizon, NOW + 9).length === 1,
+    "a live unacked money event remains publishable");
+  const quarantined = quarantineExpiredMoneyPublishes(horizon, NOW + 10);
+  assert(quarantined.length === 1
+    && readDurableMoneyPublishes(horizon)[0]?.status === "expired-unacked"
+    && publishableMoneyEntries(horizon, NOW + 10).length === 0,
+    "the spend-anchored horizon quarantines without deleting or retransmitting dead notes");
+  assert(acknowledgeDurableMoneyPublish(horizon, "horizon") === null
+    && readDurableMoneyPublishes(horizon)[0]?.status === "expired-unacked",
+    "a post-horizon relay ACK cannot mark ambiguous refunded notes acknowledged or paid");
+  const expiredPremium = mem();
+  enqueueDurableMoneyPublish(expiredPremium, {
+    event: event("premium_horizon", EscrowEventKind.PREMIUM, JSON.stringify({
+      type: "escrow:premium",
+      noteEnvelope: { encryptedFor: {} },
+    })),
+    escrowId: "esc_premium_horizon",
+    type: "premium",
+    spentAt: NOW,
+    liveUntil: NOW + 10,
+  });
+  quarantineExpiredMoneyPublishes(expiredPremium, NOW + 10);
+  assert(acknowledgeDurableMoneyPublish(expiredPremium, "premium_horizon") === null
+    && readDurableMoneyPublishes(expiredPremium)[0]?.status === "expired-unacked",
+    "an expired PREMIUM observed on a relay cannot advance the payer ledger to paid");
+  assert(resolveDurableMoneyPublishesForEscrow(horizon, "esc_horizon", "lock").length === 1
+    && readDurableMoneyPublishes(horizon).length === 0,
+    "positive recovery resolution retires quarantined evidence instead of silently aging it out");
+
+  let refused = false;
+  try {
+    enqueueDurableMoneyPublish({ get: () => null, set: () => {} }, entry("lost"));
+  } catch {
+    refused = true;
+  }
+  assert(refused, "an unwritable money journal fails closed before relay publish");
+
+  const base = { kind: EscrowEventKind.LOCK, created_at: NOW, tags: [], content: "" };
+  const overhead = signedEventFrameBytes(base);
+  const exact = { ...base, content: "x".repeat(MAX_SIGNED_EVENT_FRAME_BYTES - overhead) };
+  assert(signedEventFrameBytes(exact) === MAX_SIGNED_EVENT_FRAME_BYTES,
+    "the pre-sign estimator measures the exact serialized EVENT frame boundary");
+  assertSignedEventFitsWire(exact);
+  let oversized = false;
+  try { assertSignedEventFitsWire({ ...exact, content: exact.content + "🐝" }); } catch { oversized = true; }
+  assert(oversized, "a multibyte payload over the wire ceiling is rejected before signing");
 }
 
 // ══════════════════════════════════════════════════════════════════════════

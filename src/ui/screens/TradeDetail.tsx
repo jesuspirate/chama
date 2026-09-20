@@ -4508,6 +4508,28 @@ export function TradeDetail({
 
 
 
+      {state.custodyNotice && (
+        <div style={{
+          marginTop: 14,
+          padding: "12px 14px",
+          borderRadius: T.rs,
+          border: `1px solid ${T.amber}66`,
+          background: `${T.amber}14`,
+          color: T.text,
+        }}>
+          <div style={{ color: T.amber, fontWeight: 800, fontSize: 12, marginBottom: 5 }}>
+            {state.custodyNotice.status === "expired-unacked"
+              ? t("trade.custodyExpiredTitle")
+              : state.custodyNotice.status === "acknowledged-with-rejection"
+                ? t("trade.custodyRejectionTitle")
+                : t("trade.custodyPendingTitle")}
+          </div>
+          <div style={{ color: T.muted, fontSize: 11, lineHeight: 1.5, wordBreak: "break-word" }}>
+            {state.custodyNotice.message || t("trade.custodyPendingBody")}
+          </div>
+        </div>
+      )}
+
       {/* Revealed payment handle for the trade's three participants. */}
       {state.status === EscrowStatus.LOCKED && state.lock.handle && (
         <div style={{

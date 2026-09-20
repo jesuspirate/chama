@@ -149,6 +149,9 @@ export interface PendingNativeLock {
   lockOpts?: PendingNativeLockOpts;
   /** When the entry was first written (Unix ms). */
   createdAt: number;
+  /** When the bearer-note spend completed and was synchronously stashed.
+   *  Absent on legacy entries, which conservatively fall back to createdAt. */
+  spentAt?: number;
   /** Re-absorb attempts (incremented only by recovery). */
   attempts: number;
   /** Last recovery error, if any. */
@@ -303,6 +306,7 @@ export function upgradeNativeLockToSpent(input: {
     spendTimeoutSecs: input.spendTimeoutSecs ?? existing?.spendTimeoutSecs,
     lockOpts: compactLockOpts(input.lockOpts ?? existing?.lockOpts),
     createdAt: existing?.createdAt ?? Date.now(),
+    spentAt: existing?.spentAt ?? Date.now(),
     attempts: 0,
   };
   saveStash(stash);
@@ -458,6 +462,15 @@ export type NativeLockRecoveryOutcome =
    *  Unknown ⇒ refuse (v0.1.76). */
   | "kept";
 
+export function shouldClearNativeLockAfterPublish(input: {
+  committedNotesHash: string | null | undefined;
+  expectedNotesHash: string;
+  custodyDurability: "acknowledged" | "pending" | "expired-unacked" | undefined;
+}): boolean {
+  return input.committedNotesHash === input.expectedNotesHash
+    && input.custodyDurability === "acknowledged";
+}
+
 const ALREADY_SPENT_SUBSTRINGS = [
   "already spent",
   "already redeemed",
@@ -551,6 +564,15 @@ export async function recoverPendingNativeLock(
         return "kept";
       }
       if (committedHash === ourHash) {
+        if (state.lock?.custodyDurability === "pending"
+          || state.lock?.custodyDurability === "expired-unacked") {
+          noteKept(
+            entry.escrowId,
+            `LOCK is only locally applied (${state.lock.custodyDurability}); awaiting relay custody`,
+            { bumpAttempts: false },
+          );
+          return "kept";
+        }
         // Our crash-window publish actually landed: the escrow owns these
         // notes now. Re-absorbing would hollow our OWN live trade.
         clearPendingNativeLock(entry.escrowId);

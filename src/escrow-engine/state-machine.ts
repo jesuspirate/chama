@@ -451,6 +451,8 @@ function handleCreate(event: ParsedEscrowEvent<CreatePayload>): TransitionResult
     lock: {
       notesHash: null,
       lockedAt: null,
+      custodyDurability: undefined,
+      custodyDiagnostic: undefined,
       shares: new Map(),
       handle: null,
       selectedItems: undefined,
@@ -1099,6 +1101,8 @@ function handleLock(state: EscrowState, event: ParsedEscrowEvent<LockPayload>): 
   next.status = EscrowStatus.LOCKED;
   next.amountMsats = expectedLockAmountMsats;
   next.lock.notesHash = p.notesHash;
+  next.lock.custodyDurability = "acknowledged";
+  next.lock.custodyDiagnostic = undefined;
   // Tier 2.1: carry the on-chain terms so every client can recompute the address
   // and confirm the deposit itself. Absent on an ecash lock — byte-identical.
   if (p.onchain) next.lock.onchain = { ...p.onchain };

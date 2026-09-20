@@ -34,6 +34,7 @@ import {
   getPendingNativeLock,
   markNativeLockPublishAttempted,
   recoverPendingNativeLock,
+  shouldClearNativeLockAfterPublish,
   stashNativeLockIntent,
   upgradeNativeLockToSpent,
   withNativeLockFlow,
@@ -396,6 +397,16 @@ export class EscrowFedimintBridge {
       }
     }
 
+    const pending = getPendingNativeLock(escrowId);
+    const custody = pending && pending.stage !== "intent" && pending.oobNotes
+      ? {
+          spentAt: Math.floor((pending.spentAt ?? pending.createdAt) / 1000),
+          liveUntil: Math.floor((pending.spentAt ?? pending.createdAt) / 1000) + (pending.spendTimeoutSecs ?? LOCK_SPEND_TRY_CANCEL_SECS),
+          amountMsats: pending.amountMsats,
+          operationId: pending.operationId,
+        }
+      : undefined;
+
     return this.escrow.lockEscrow(escrowId, {
       notesHash: lockBundle.notesHash,
       shares,
@@ -413,6 +424,7 @@ export class EscrowFedimintBridge {
       handle,
       rail,
       handleNetworks,
+      ...(custody ? { custody } : {}),
     });
   }
 
@@ -481,7 +493,17 @@ export class EscrowFedimintBridge {
     if (!this.nativeLockGuardOn()) return "none";
     const prior = getPendingNativeLock(escrowId);
     if (!prior || prior.stage === "intent") return "none";
-    return recoverPendingNativeLock(prior, this.nativeLockRecoveryDeps(), opts);
+    const outcome = await recoverPendingNativeLock(prior, this.nativeLockRecoveryDeps(), opts);
+    if (outcome === "cleared-committed"
+      || outcome === "reabsorbed"
+      || outcome === "cleared-dead-notes") {
+      this.escrow.resolveDurableMoneyPublish(
+        escrowId,
+        "lock",
+        outcome === "cleared-committed",
+      );
+    }
+    return outcome;
   }
 
   /**
@@ -649,18 +671,21 @@ export class EscrowFedimintBridge {
     );
 
     if (guardOn) markNativeLockPublishAttempted(escrowId);
-    // On a publish throw the entry stays `publish-attempted` and we rethrow:
-    // deliberately NO inline re-absorb here — right after a failed publish,
-    // a relay that timed out may still have taken the LOCK frame, so the
-    // "no LOCK exists" read is not yet trustworthy. The next Fund tap or
-    // the next boot drain settles it once relay state is readable.
+    // The durable publisher returns `pending` on zero ACK instead of throwing.
+    // Deliberately NO inline re-absorb here: a relay that timed out may still
+    // have taken the LOCK frame, so the next Fund tap or boot drain settles the
+    // stash only after relay state is readable.
     const resultState = await this.publishLockBundle(
       escrowId, context.state, lockBundle, context, opts,
     );
 
     if (guardOn) {
-      if (resultState?.lock?.notesHash === lockBundle.notesHash) {
-        // Positive confirmation — the LOCK committed OUR notes.
+      if (shouldClearNativeLockAfterPublish({
+        committedNotesHash: resultState?.lock?.notesHash,
+        expectedNotesHash: lockBundle.notesHash,
+        custodyDurability: resultState?.lock?.custodyDurability,
+      })) {
+        // Positive relay confirmation — the LOCK committed OUR notes.
         clearPendingNativeLock(escrowId);
       } else {
         // Stale-suppression resolve or a competing lock committed different
@@ -770,7 +795,11 @@ export class EscrowFedimintBridge {
     const resultState = await this.publishLockBundle(
       escrowId, context.state, lockBundle, context, opts,
     );
-    if (guardOn && resultState?.lock?.notesHash === lockBundle.notesHash) {
+    if (guardOn && shouldClearNativeLockAfterPublish({
+      committedNotesHash: resultState?.lock?.notesHash,
+      expectedNotesHash: lockBundle.notesHash,
+      custodyDurability: resultState?.lock?.custodyDurability,
+    })) {
       clearPendingNativeLock(escrowId);
     }
     return resultState;

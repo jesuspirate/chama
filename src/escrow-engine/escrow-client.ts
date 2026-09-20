@@ -7,6 +7,24 @@ import {
   enqueueDurableClaim,
   readDurableClaims,
 } from "./durable-claim-queue.js";
+import {
+  acknowledgeDurableMoneyPublish,
+  defaultDurableMoneyDiagnosticStore,
+  defaultDurableMoneyPublishStore,
+  enqueueDurableMoneyPublish,
+  formatCustodyDiagnostic,
+  moneyDiagnosticForEscrow,
+  moneyEntryForEscrow,
+  publishableMoneyEntries,
+  quarantineExpiredMoneyPublishes,
+  recordDurableMoneyDiagnostic,
+  recordDurableMoneyPublishFailure,
+  resolveDurableMoneyPublishesForEscrow,
+  type CustodyDurability,
+  type DurableMoneyPublishEntry,
+  type MoneyEventType,
+} from "./durable-money-publish.js";
+import { assertSignedEventFitsWire } from "./wire-size.js";
 import { canTakeSeat } from "../chama/circle.js";
 import { sharesForCircle, createChamaRefundWatcher } from "../chama/wiring.js";
 // ══════════════════════════════════════════════════════════════════════════
@@ -200,6 +218,9 @@ export interface EscrowClientCallbacks {
   /** The initial public-listing subscription reached EOSE quorum. CREATEs
    *  already received may still be undergoing full-chain hydration. */
   onPublicListingsSettled?: () => void;
+  /** A previously-pending bearer event received its first positive relay ACK.
+   *  The app uses this to advance the existing premium/native-lock journal. */
+  onMoneyPublishAcknowledged?: (entry: DurableMoneyPublishEntry) => void;
 }
 
 function statusProgressRank(status: EscrowStatus): number {
@@ -528,6 +549,10 @@ export class EscrowClient {
 
   /** Last touch per hot raw chain, driving evict-oldest once over cap. */
   private rawEventsTouchedAt: Map<string, number> = new Map();
+  /** Session context survives first-ACK queue retirement long enough to show
+   *  late straggler rejection text in the one trade-level diagnostic. */
+  private moneyPublishContext = new Map<string, { escrowId: string; type: MoneyEventType }>();
+  private shownRelayRejections = new Set<string>();
 
   /** Active subscriptions */
   private subscriptions: Map<string, string> = new Map(); // label → subId
@@ -601,6 +626,9 @@ export class EscrowClient {
           }
         },
         onError: (err, relay) => console.warn(`[relay] ${relay}: ${err.message}`),
+        onOk: (eventId, accepted, message, relayUrl) => {
+          this.handleMoneyPublishOk(eventId, accepted, message, relayUrl);
+        },
         onEose: (subscriptionId, relayUrl) => {
           if (
             subscriptionId !== this.publicListingsSubId
@@ -642,6 +670,7 @@ export class EscrowClient {
     // re-offer anything a previous session redeemed but never landed on the
     // preferred relay. The 60s heartbeat (useEscrow) keeps retrying after.
     setTimeout(() => { void this.drainDurableClaims().catch(() => {}); }, 5_000);
+    setTimeout(() => { void this.drainDurableMoneyPublishes().catch(() => {}); }, 5_000);
   }
 
   /** #79 — send one trade-critical alert DM over NIP-17 (kind-4 fallback for
@@ -821,6 +850,7 @@ export class EscrowClient {
         if (wake && wake.length) unsigned = { ...unsigned, tags: [...unsigned.tags, ...wake] };
       } catch { /* swallow — publishing the trade event matters, the wake does not */ }
     }
+    assertSignedEventFitsWire(unsigned);
     return this.signer.signEvent(unsigned);
   }
 
@@ -1763,6 +1793,14 @@ export class EscrowClient {
      *  signed LOCK so backup eligibility replays identically everywhere.
      *  Absent ⇒ legacy 4h default. */
     substitutionGraceSeconds?: number;
+    /** Spend-clock metadata from the authoritative bearer-note journal.
+     *  Absent for on-chain/sim locks; real ecash callers must pass it. */
+    custody?: {
+      spentAt: number;
+      liveUntil: number;
+      amountMsats: number;
+      operationId?: string;
+    };
   }): Promise<EscrowState> {
     const state = this.states.get(escrowId);
     if (!state) throw new Error(`Escrow ${escrowId} not loaded`);
@@ -1863,7 +1901,13 @@ export class EscrowClient {
       if (!checked.ok) throw new Error(`Invalid share LOCK: ${checked.error.message}`);
     }
 
-    await this.relayManager.publish(signed);
+    const publishOutcome = params.custody && !params.onchain
+      ? await this.publishDurableMoney(signed, {
+          escrowId,
+          type: "lock",
+          ...params.custody,
+        })
+      : { custodyDurability: "acknowledged" as const };
 
     // For local apply, we have the cleartext in scope — synthesize a
     // payload that includes BOTH the envelope (for wire fidelity in
@@ -1880,6 +1924,14 @@ export class EscrowClient {
         : {}),
     };
     const lockResult = this.applyLocally(escrowId, signed, localPayload);
+    lockResult.lock.custodyDurability = publishOutcome.custodyDurability;
+    if (publishOutcome.custodyDurability !== "acknowledged") {
+      const entry = moneyEntryForEscrow(defaultDurableMoneyPublishStore(), escrowId, "lock");
+      lockResult.lock.custodyDiagnostic = entry
+        ? formatCustodyDiagnostic(entry)
+        : publishOutcome.error;
+      this.callbacks.onStateUpdate?.(escrowId, lockResult);
+    }
 
     return lockResult;
   }
@@ -2085,6 +2137,246 @@ export class EscrowClient {
     for (const entry of unacked) {
       if (this.relayManager.wasAcceptedByPreferred(entry.event.id)) ackDurableClaim(store, entry.event.id);
     }
+  }
+
+  private applyMoneyCustodyOverlay(state: EscrowState): EscrowState {
+    try {
+      const store = defaultDurableMoneyPublishStore();
+      const entry = moneyEntryForEscrow(store, state.id, "lock")
+        ?? moneyEntryForEscrow(store, state.id, "premium");
+      if (entry) {
+        const message = formatCustodyDiagnostic(entry);
+        state.custodyNotice = { eventType: entry.type, status: entry.status, message };
+        if (entry.type === "lock") {
+          state.lock.custodyDurability = entry.status;
+          state.lock.custodyDiagnostic = message;
+        }
+        return state;
+      }
+      const diagnostic = moneyDiagnosticForEscrow(defaultDurableMoneyDiagnosticStore(), state.id);
+      if (diagnostic) {
+        state.custodyNotice = {
+          eventType: diagnostic.type,
+          status: "acknowledged-with-rejection",
+          message: diagnostic.message,
+        };
+        if (diagnostic.type === "lock") state.lock.custodyDiagnostic = diagnostic.message;
+      } else {
+        if (state.custodyNotice?.status === "pending"
+          || state.custodyNotice?.status === "expired-unacked") {
+          state.custodyNotice = undefined;
+        }
+        if (state.lock.custodyDurability === "pending"
+          || state.lock.custodyDurability === "expired-unacked") {
+          state.lock.custodyDurability = "acknowledged";
+          state.lock.custodyDiagnostic = undefined;
+        }
+      }
+    } catch (error) {
+      state.lock.custodyDiagnostic = error instanceof Error ? error.message : String(error);
+    }
+    return state;
+  }
+
+  private surfaceMoneyDiagnostic(entry: DurableMoneyPublishEntry, message?: string): void {
+    const state = this.states.get(entry.escrowId);
+    if (!state) return;
+    const diagnostic = message || formatCustodyDiagnostic(entry);
+    state.custodyNotice = {
+      eventType: entry.type,
+      status: entry.status,
+      message: diagnostic,
+    };
+    if (entry.type === "lock") {
+      state.lock.custodyDurability = entry.status;
+      state.lock.custodyDiagnostic = diagnostic;
+    }
+    this.callbacks.onStateUpdate?.(entry.escrowId, state);
+  }
+
+  private acknowledgeRelayObservedMoneyEvents(
+    escrowId: string,
+    fetchedEvents: NostrEvent[],
+    state: EscrowState,
+  ): void {
+    const fetchedIds = new Set(fetchedEvents.map(event => event.id));
+    const store = defaultDurableMoneyPublishStore();
+    for (const type of ["lock", "premium"] as const) {
+      const pending = moneyEntryForEscrow(store, escrowId, type);
+      if (!pending || !fetchedIds.has(pending.event.id)) continue;
+      const acknowledged = acknowledgeDurableMoneyPublish(store, pending.event.id);
+      if (!acknowledged) continue;
+      this.callbacks.onMoneyPublishAcknowledged?.(acknowledged);
+      const rejection = acknowledged.rejectionMessages?.[0];
+      if (rejection) {
+        recordDurableMoneyDiagnostic(defaultDurableMoneyDiagnosticStore(), {
+          eventId: acknowledged.event.id,
+          escrowId,
+          type,
+          message: rejection,
+        });
+        state.custodyNotice = {
+          eventType: type,
+          status: "acknowledged-with-rejection",
+          message: rejection,
+        };
+      }
+      if (type === "lock") {
+        state.lock.custodyDurability = "acknowledged";
+        state.lock.custodyDiagnostic = rejection;
+      }
+    }
+  }
+
+  private handleMoneyPublishOk(
+    eventId: string,
+    accepted: boolean,
+    message: string,
+    relayUrl: string,
+  ): void {
+    const context = this.moneyPublishContext.get(eventId);
+    if (!context) return;
+    const store = defaultDurableMoneyPublishStore();
+    try {
+      if (accepted) {
+        const entry = acknowledgeDurableMoneyPublish(store, eventId);
+        if (!entry) return;
+        this.moneyPublishContext.delete(eventId);
+        this.callbacks.onMoneyPublishAcknowledged?.(entry);
+        const rejection = entry?.rejectionMessages?.[0];
+        if (rejection) {
+          recordDurableMoneyDiagnostic(defaultDurableMoneyDiagnosticStore(), {
+            eventId,
+            escrowId: context.escrowId,
+            type: context.type,
+            message: rejection,
+          });
+        }
+        const state = this.states.get(context.escrowId);
+        if (state) {
+          if (rejection) {
+            state.custodyNotice = {
+              eventType: context.type,
+              status: "acknowledged-with-rejection",
+              message: rejection,
+            };
+          } else if (state.custodyNotice?.eventType === context.type) {
+            state.custodyNotice = undefined;
+          }
+          if (context.type === "lock") {
+            state.lock.custodyDurability = "acknowledged";
+            state.lock.custodyDiagnostic = rejection;
+          }
+          this.callbacks.onStateUpdate?.(context.escrowId, state);
+        }
+        return;
+      }
+      const clean = message.trim() || "Relay rejected the event without an explanation.";
+      const diagnostic = `${relayUrl}: ${clean}`;
+      const dedupeKey = `${eventId}:${relayUrl}:${clean}`;
+      if (this.shownRelayRejections.has(dedupeKey)) return;
+      this.shownRelayRejections.add(dedupeKey);
+      const entry = recordDurableMoneyPublishFailure(store, eventId, diagnostic);
+      if (entry) {
+        this.surfaceMoneyDiagnostic(entry);
+      } else {
+        recordDurableMoneyDiagnostic(defaultDurableMoneyDiagnosticStore(), {
+          eventId,
+          escrowId: context.escrowId,
+          type: context.type,
+          message: diagnostic,
+        });
+        const state = this.states.get(context.escrowId);
+        if (state) {
+          state.custodyNotice = {
+            eventType: context.type,
+            status: "acknowledged-with-rejection",
+            message: diagnostic,
+          };
+          if (context.type === "lock") state.lock.custodyDiagnostic = diagnostic;
+          this.callbacks.onStateUpdate?.(context.escrowId, state);
+        }
+      }
+    } catch (error) {
+      console.warn("[chama] durable money ACK handling failed:", error);
+    }
+  }
+
+  private async publishDurableMoney(
+    event: NostrEvent,
+    input: {
+      escrowId: string;
+      type: MoneyEventType;
+      spentAt: number;
+      liveUntil: number;
+      amountMsats?: number;
+      operationId?: string;
+    },
+  ): Promise<{ custodyDurability: CustodyDurability; error?: string }> {
+    const expectedKind = input.type === "lock" ? EscrowEventKind.LOCK : EscrowEventKind.PREMIUM;
+    if (event.kind !== expectedKind) {
+      throw new Error(`Durable ${input.type} publish received unexpected event kind ${event.kind}`);
+    }
+    const store = defaultDurableMoneyPublishStore();
+    const entry = enqueueDurableMoneyPublish(store, { event, ...input });
+    this.moneyPublishContext.set(event.id, { escrowId: input.escrowId, type: input.type });
+    try {
+      await this.relayManager.publish(event);
+      const acknowledged = acknowledgeDurableMoneyPublish(store, event.id);
+      if (acknowledged) this.moneyPublishContext.delete(event.id);
+      return { custodyDurability: "acknowledged" };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const failed = recordDurableMoneyPublishFailure(store, event.id, message) ?? entry;
+      this.surfaceMoneyDiagnostic(failed);
+      return { custodyDurability: failed.status, error: message };
+    }
+  }
+
+  async drainDurableMoneyPublishes(
+    nowSec: number = Math.floor(Date.now() / 1000),
+  ): Promise<void> {
+    const store = defaultDurableMoneyPublishStore();
+    for (const entry of quarantineExpiredMoneyPublishes(store, nowSec)) {
+      this.moneyPublishContext.set(entry.event.id, { escrowId: entry.escrowId, type: entry.type });
+      this.surfaceMoneyDiagnostic(entry);
+    }
+    for (const entry of publishableMoneyEntries(store, nowSec)) {
+      this.moneyPublishContext.set(entry.event.id, { escrowId: entry.escrowId, type: entry.type });
+      try {
+        await this.relayManager.publish(entry.event);
+        const acknowledged = acknowledgeDurableMoneyPublish(store, entry.event.id);
+        if (acknowledged) {
+          this.moneyPublishContext.delete(entry.event.id);
+          this.callbacks.onMoneyPublishAcknowledged?.(acknowledged);
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        const failed = recordDurableMoneyPublishFailure(store, entry.event.id, message);
+        if (failed) this.surfaceMoneyDiagnostic(failed);
+      }
+    }
+  }
+
+  resolveDurableMoneyPublish(
+    escrowId: string,
+    type: MoneyEventType,
+    acknowledged: boolean,
+  ): void {
+    const resolved = resolveDurableMoneyPublishesForEscrow(
+      defaultDurableMoneyPublishStore(),
+      escrowId,
+      type,
+    );
+    for (const entry of resolved) this.moneyPublishContext.delete(entry.event.id);
+    const state = this.states.get(escrowId);
+    if (!state) return;
+    if (state.custodyNotice?.eventType === type) state.custodyNotice = undefined;
+    if (type === "lock" && acknowledged) {
+      state.lock.custodyDurability = "acknowledged";
+      state.lock.custodyDiagnostic = undefined;
+    }
+    this.callbacks.onStateUpdate?.(escrowId, state);
   }
 
   // ── Complete (winner confirms settlement finalized) ─────────────────────
@@ -2332,8 +2624,16 @@ export class EscrowClient {
    */
   async sendPremium(
     escrowId: string,
-    input: { amountSats: number; oobNotes: string; federationId?: string; noteKind?: "ambient" | "dispute" },
-  ): Promise<void> {
+    input: {
+      amountSats: number;
+      oobNotes: string;
+      federationId?: string;
+      noteKind?: "ambient" | "dispute";
+      spentAt: number;
+      liveUntil: number;
+      operationId?: string;
+    },
+  ): Promise<CustodyDurability> {
     const state = this.states.get(escrowId);
     if (!state) throw new Error(`Escrow ${escrowId} not loaded`);
 
@@ -2386,7 +2686,14 @@ export class EscrowClient {
     };
 
     const signed = await this.signWithSimTag(unsigned);
-    await this.relayManager.publish(signed);
+    const publishOutcome = await this.publishDurableMoney(signed, {
+      escrowId,
+      type: "premium",
+      spentAt: input.spentAt,
+      liveUntil: input.liveUntil,
+      amountMsats: input.amountSats * 1_000,
+      operationId: input.operationId,
+    });
 
     // Apply locally + durably cache the raw. PREMIUM is not in eventChain,
     // so (like CHAT) this local write is the only cache entry for our own
@@ -2405,6 +2712,7 @@ export class EscrowClient {
         }
       }
     }
+    return publishOutcome.custodyDurability;
   }
 
   /**
@@ -2531,11 +2839,14 @@ export class EscrowClient {
   // ══════════════════════════════════════════════════════════════════════════
 
   getState(escrowId: string): EscrowState | null {
-    return this.states.get(escrowId) || null;
+    const state = this.states.get(escrowId);
+    return state ? this.applyMoneyCustodyOverlay(state) : null;
   }
 
   getAllStates(): Map<string, EscrowState> {
-    return new Map(this.states);
+    return new Map(
+      [...this.states.entries()].map(([id, state]) => [id, this.applyMoneyCustodyOverlay(state)]),
+    );
   }
 
   /** Content-free memory counters for the offline production-topology profiler.
@@ -3023,6 +3334,7 @@ export class EscrowClient {
     }
     const result = { ok: true as const, state: outcome.state };
     this.clearLoadFailure(escrowId);
+    this.acknowledgeRelayObservedMoneyEvents(escrowId, fetchedRawEvents, result.state);
 
     // The relays are missing history this device still holds. Hand it back:
     // escrow events are signed and self-authenticating, so re-publishing them
@@ -3122,6 +3434,7 @@ export class EscrowClient {
       result.state.status,
     );
     stripParsedChatCiphertext(result.state);
+    this.applyMoneyCustodyOverlay(result.state);
     this.states.set(escrowId, result.state);
     this.setHotRawEvents(escrowId, compactHotRawEvents(rawEvents));
 
