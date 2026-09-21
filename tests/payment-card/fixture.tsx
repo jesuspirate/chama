@@ -1,3 +1,7 @@
+import { MeScreen } from '../../src/ui/screens/MeScreen';
+import { ChatPanel } from '../../src/ui/panels/ChatPanel';
+import { stashPendingRedemption, markPoisoned } from '../../src/fedimint/pending-redemptions';
+import { setLocalStorageUserScope } from '../../src/storage/user-scope';
 import React, { useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { PaymentCard } from '../../src/ui/components/PaymentCard';
@@ -9,7 +13,7 @@ import { LangProvider, useT } from '../../src/i18n';
 import { T, applyThemeMode } from '../../src/ui/theme';
 import { TradeDetail } from '../../src/ui/screens/TradeDetail';
 import { applyEvent } from '../../src/escrow-engine/state-machine';
-import { EscrowEventKind, EscrowStatus, Outcome } from '../../src/escrow-engine/types';
+import { EscrowEventKind, EscrowStatus, Outcome, Role } from '../../src/escrow-engine/types';
 import jsQR from 'jsqr';
 const payload = 'lightning:CHAMA-TEST-ONLY-DO-NOT-PAY-' + '0123456789ABCDEF'.repeat(12);
 (window as any).jsQR = jsQR;
@@ -24,13 +28,31 @@ const created = applyEvent(null, { kind: EscrowEventKind.CREATE, escrowId: 'sm_s
 if (!created.ok) throw new Error(created.error.message);
 const summary = {...created.state, provenance:'summary' as const, status:EscrowStatus.APPROVED, resolvedOutcome:Outcome.REFUND,
   participants:{seller,buyer,arbiter}, eventChain:[]};
+if(new URLSearchParams(location.search).has('attention')) {
+ setLocalStorageUserScope('attention-fixture');
+ for(const [id,amount] of [['one',2000000],['two',1000000]] as const) {
+  stashPendingRedemption({escrowId:id,oobNotes:`TEST-${id}`,notesHash:'test',amountMsats:amount});markPoisoned(id,'Test-only retry exhaustion');
+ }
+}
+const tapped: string[]=[];
+(window as any).tapped=tapped;
+const tap=(id:string)=>{tapped.push(id);};
+const noop=()=>{};
 function Fixture() {
   const { t } = useT();
+  const [relay,setRelay]=useState(false);
+  (window as any).setRelay=setRelay;
   const [phase, setPhase] = useState('waiting');
   (window as any).setPhase = setPhase;
   const [balance, setBalance] = useState(0);
   (window as any).credit = () => setBalance(10000000);
   (window as any).expected = {summary:t('trade.historyUnverified'),outcome:t('trade.nsRefundedSatsBack'),claim:t('trade.claimSats')};
+  if (new URLSearchParams(location.search).has('attention')) return <MeScreen pubkey={seller} myTrades={[]} ratings={null}
+    needsYouTrades={[created.state]} suppressAttentionCount balanceMsats={3000000} hasActiveCommitment={false}
+    onOpenTrade={id=>tap(`trade:${id}`)} onOpenSavedHandles={noop} onOpenPayoutDestinations={noop} onOpenAdvanced={noop} onOpenHelp={noop}
+    onRecoverSats={()=>tap('recover')} onWithdrawEcash={()=>tap('export')} onSignOut={noop} onExportStrandedClaim={e=>tap(`claim:${e.escrowId}`)}
+    stuckNativeLocks={[{escrowId:'stuck',amountMsats:1500000,createdAt:1,lastError:'test'} as any]}/>;
+  if (new URLSearchParams(location.search).has('chat')) return <ChatPanel state={created.state} myRole={Role.SELLER} onSend={noop} preferredRelayConnected={relay}/>;
   if (new URLSearchParams(location.search).has('summary')) return <TradeDetail state={summary} pubkey={buyer} homeCommunity={null}
     bootProbeFailed={false} receiveUnavailable={false} fundingInProgress={false} onBack={()=>{}} onVote={async()=>{}}
     onClaim={async()=>{throw new Error('summary must not claim')}} onJoin={async()=>{}} onLock={async()=>{}}

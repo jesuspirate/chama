@@ -241,11 +241,12 @@ async function prepareChatImage(file: File): Promise<ChatImageAttachment> {
   throw new Error("That image is too large for encrypted chat. Try a tighter screenshot.");
 }
 
-export function ChatPanel({ state, myRole, onSend, embedded = false, hideHeader = false, fill = false, systemBubbles = [], ratingCta = null }: {
+export function ChatPanel({ state, myRole, onSend, preferredRelayConnected = false, embedded = false, hideHeader = false, fill = false, systemBubbles = [], ratingCta = null }: {
   state: EscrowState;
   myRole: Role | null;
   onSend: (message: SendChatInput) => void;
   embedded?: boolean;
+  preferredRelayConnected?: boolean;
   /** v4.1 ratings-in-chat: the SAME one-tap counterparty RatingTap, surfaced at the
    *  END of the chat feed at settlement (where the user actually is). Null = hide;
    *  it shares myGivenRatings with the Parties + Me copies, so a tap anywhere
@@ -503,6 +504,7 @@ export function ChatPanel({ state, myRole, onSend, embedded = false, hideHeader 
           // push the Send button out of view.
           minWidth: 0,
         }}>
+          {!preferredRelayConnected && <p data-chat-retention-note style={{ margin: 0, color: T.muted, fontSize: 11, lineHeight: 1.4 }}>{t("chat.evidenceRelayNote")}</p>}
           {attachment && (
             <div style={{
               display: "flex", alignItems: "center", gap: 10,

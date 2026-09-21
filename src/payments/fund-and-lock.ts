@@ -1,3 +1,4 @@
+import type { FundingInvoiceJournal } from "./abandoned-invoices.js";
 // ══════════════════════════════════════════════════════════════════════════
 // Chama — Atomic fund-and-lock orchestrator (v0.3.0 Phase 2)
 // ══════════════════════════════════════════════════════════════════════════
@@ -464,6 +465,8 @@ export interface RunFundAndLockDeps {
 }
 
 export interface RunFundAndLockOpts extends RunFundAndLockDeps {
+  /** Production supplies a durable identity/federation-scoped receive journal. */
+  invoiceJournal?: FundingInvoiceJournal;
   /** Trade ID being funded. */
   escrowId: string;
   /** Trade amount in msats. */
@@ -500,7 +503,34 @@ export interface RunFundAndLockOpts extends RunFundAndLockDeps {
  *  Callers (the AtomicFundingModal via useEscrow) get phase events for
  *  granular UI updates; the return value is just the terminal kind for
  *  post-modal navigation. */
-export async function runFundAndLock(
+export async function runFundAndLock(opts: RunFundAndLockOpts): Promise<FundAndLockTerminal> {
+  let locked = false;
+  let operationId: string | undefined;
+  try {
+    const result = await runFundAndLockWatched({
+      ...opts,
+      createFundingInvoice: (amount, description, onState, onGateway) =>
+        opts.createFundingInvoice(amount, description, onState, gateway => {
+          operationId = gateway.operationId;
+          onGateway?.(gateway);
+        }).then(invoice => {
+          // Attached to the original promise, not just the timeout race: a
+          // late invoice is recorded even after this flow stopped watching.
+          opts.invoiceJournal?.record(invoice, operationId);
+          return invoice;
+        }),
+    });
+    locked = result.kind === "locked";
+    return result;
+  } finally {
+    // Never throw after a potentially committed LOCK. The pre-display record
+    // remains if updating its observation fails; no custody fact is invented.
+    try { opts.invoiceJournal?.stop(locked); }
+    catch (error) { console.error("Funding invoice observation could not be updated; original journal retained", error); }
+  }
+}
+
+async function runFundAndLockWatched(
   opts: RunFundAndLockOpts,
 ): Promise<FundAndLockTerminal> {
   const emit = (p: FundAndLockPhase) => opts.onPhase(p);

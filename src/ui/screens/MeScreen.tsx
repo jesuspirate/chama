@@ -1,4 +1,4 @@
-import { canOfferClaim } from "../decisions.js";
+import { canOfferClaim, selectMoneySafetyFocus, type MoneySafetyEntry } from "../decisions.js";
 import { nativePushStatus, type NativePushStatus } from "../../notifications/native-push.js";
 import { avatarFromFile, type Avatar } from "../avatars.js";
 import { ProfileAvatar } from "../components/ProfileAvatar.js";
@@ -130,6 +130,7 @@ export function MeScreen({
   hydratingTrades = false,
   allTrades,
   needsYouTrades,
+  suppressAttentionCount = false,
   archivedTrades,
   onOpenArchivedTrade,
   ratings,
@@ -188,6 +189,7 @@ export function MeScreen({
   /** Canonical urgency-ranked queue from App. Includes chain-verified pending
    *  on-chain payouts in addition to ordinary reducer-derived work. */
   needsYouTrades?: EscrowState[];
+  suppressAttentionCount?: boolean;
   /** Durable-index trades not currently loaded — the loss-proof "earlier
    *  trades" tail of the history list. Absent ⇒ section omitted. */
   archivedTrades?: TradeIndexEntry[];
@@ -411,6 +413,15 @@ export function MeScreen({
       </button>
     );
   };
+  const moneyEntries: MoneySafetyEntry[] = [
+    ...(onExportStrandedClaim ? loudClaims.map(e => ({ kind: "stranded-claim" as const, key: `claim:${e.escrowId}`, ...e })) : []),
+    ...calmClaims.map(e => ({ ...e, kind: "unresolved-credit" as const, key: `credit:${e.escrowId}` })),
+    ...(showLocalRecovery && !isSmallLeftover ? [{ kind: "leftover" as const, key: "leftover", amountMsats: balanceMsats, createdAt: 0 }] : []),
+    ...(stuckNativeLocks ?? []).map(e => ({ ...e, kind: "lock-recovery" as const, key: `lock:${e.escrowId}` })),
+    ...(pendingEcashExport && onWithdrawEcash ? [{ ...pendingEcashExport, kind: "pending-ecash-export" as const, key: "export" }] : []),
+  ];
+  const safety = selectMoneySafetyFocus(moneyEntries);
+  const isFocus = (key: string) => safety.focus?.key === key;
   const isClaimPayoutRecovery = !isSmallLeftover && Boolean(satsTrace?.escrowId);
   const traceCopy = describeSatsTrace(satsTrace ?? null);
   // Minute-coarse clock so the memos below have a stable key: these
@@ -565,6 +576,7 @@ export function MeScreen({
           onOpenTrade={onOpenTrade}
           latestTrade={latestTrade}
           suppressEmptyState={hasVisibleMoneyAction}
+          suppressCount={suppressAttentionCount}
         />
       )}
 
@@ -573,6 +585,7 @@ export function MeScreen({
           money-critical, so they sit right under the hero — never hidden in a
           closed accordion. */}
 
+      <div data-money-safety-focus={safety.focus?.key} data-tone={safety.focusTone ?? undefined}>
       {/* v3.4.0 C13 — stranded claim notes. INVARIANT(stranded-notes-surfaced):
           a bearer note the drain gave up on gets a persistent, actionable
           alarm — not a console line. Tap → EcashExportModal (preset mode)
@@ -580,7 +593,7 @@ export function MeScreen({
       {/* LOUD: poisoned / retries-exhausted — the bearer note is (or may be)
           LIVE money the drain couldn't redeem. Stays a red, tap-to-export alarm;
           never balance-downgraded. */}
-      {onExportStrandedClaim && loudClaims.map((entry) => (
+      {onExportStrandedClaim && loudClaims.filter(e => isFocus(`claim:${e.escrowId}`)).map((entry) => (
         <div
           key={entry.escrowId}
           onClick={() => onExportStrandedClaim(entry)}
@@ -624,7 +637,7 @@ export function MeScreen({
           rescue) but this wallet is short. Honest, dismissible nudge; the note
           is archived (kept) on dismiss. The balance-covered case never reaches
           here — it auto-reconciles silently. */}
-      {calmClaims.map((entry) => {
+      {calmClaims.filter(e => isFocus(`credit:${e.escrowId}`)).map((entry) => {
         // Two different states share this card, and only one has been tested.
         // Unprobed: where the sats went is NOT established — the copy names no
         // cause and points at the probe (the reabsorb CTA) as the way to find
@@ -715,7 +728,7 @@ export function MeScreen({
           so it stays hidden and silently accumulates until it crosses the threshold,
           when this card (and its fee-free ecash exit) reappears. A pending minted
           ecash note still shows below regardless. */}
-      {showLocalRecovery && !isSmallLeftover && (
+      {isFocus("leftover") && (
         <div style={{
           background: isClaimPayoutRecovery ? T.amberDim : T.card,
           border: `1px solid ${isSmallLeftover ? T.border : T.amber}`,
@@ -811,7 +824,7 @@ export function MeScreen({
           re-opening the trade and tapping Fund/Finish retries recovery with
           a fresh budget. Deliberately NOT the loud red treatment — the
           value is bearer notes in localStorage, not maybe-live claim money. */}
-      {stuckNativeLocks && stuckNativeLocks.length > 0 && stuckNativeLocks.map((entry) => (
+      {stuckNativeLocks && stuckNativeLocks.length > 0 && stuckNativeLocks.filter(e => isFocus(`lock:${e.escrowId}`)).map((entry) => (
         <div key={entry.escrowId} style={{
           background: T.card, border: `1px solid ${T.amber}55`,
           borderRadius: T.r, padding: 16, marginBottom: 16,
@@ -851,16 +864,16 @@ export function MeScreen({
       {/* v2.4 #56 — pending ecash export re-entry. After generating a note the
           balance reads 0, so the SATS RECOVERY card hides; this is how the user
           gets back to the bearer note they minted until they confirm import. */}
-      {pendingEcashExport && onWithdrawEcash && (
+      {isFocus("export") && pendingEcashExport && onWithdrawEcash && (
         <div
           onClick={onWithdrawEcash}
           style={{
-            background: T.tealDim, border: `1px solid ${T.teal}66`,
+            background: T.amberDim, border: `1px solid ${T.amber}66`,
             borderRadius: T.r, padding: 20, marginBottom: 16, cursor: "pointer",
           }}
         >
           <div style={{
-            fontSize: 11, fontWeight: 600, color: T.teal,
+            fontSize: 11, fontWeight: 600, color: T.amber,
             fontFamily: T.mono, letterSpacing: 1, marginBottom: 8,
           }}>
             {t("me.pendingEcashExportTitle")}
@@ -887,12 +900,39 @@ export function MeScreen({
                   context: "pending-export",
                   escrowId: pendingEcashExport.escrowId,
                 },
-                { label: t("me.reabsorbCancelCta"), accent: T.teal },
+                { label: t("me.reabsorbCancelCta"), accent: T.amber },
               )}
             </div>
           )}
         </div>
       )}
+
+      </div>
+      {safety.quiet.length > 0 && <div data-money-safety-quiet data-tone={safety.quietTone} style={{ border: `1px solid ${T.border}`, borderRadius: T.r, marginBottom: 16 }}>
+        <div style={{ padding: "12px 14px", color: T.muted, font: `700 10px ${T.mono}`, textTransform: "uppercase", letterSpacing: 1 }}>{t("me.moneySafetyOther")}</div>
+        {safety.quiet.map(item => {
+          const claim = [...loudClaims, ...calmClaims].find(e => e.escrowId === item.escrowId);
+          const title = item.kind === "stranded-claim" ? t("me.strandedClaimTitle")
+            : item.kind === "unresolved-credit" ? t(claim?.probeVerdict === "consumed-uncredited" ? "me.probedConsumedTitle" : "me.checkOtherDeviceTitle")
+            : item.kind === "leftover" ? t("me.satsRecoveryTitle")
+            : item.kind === "lock-recovery" ? t("me.lockRecoveryPausedTitle") : t("me.pendingEcashExportTitle");
+          const open = () => {
+            if ((item.kind === "stranded-claim" || item.kind === "unresolved-credit") && claim) onExportStrandedClaim?.(claim);
+            else if (item.kind === "leftover") { if (recoverWorthwhile) onRecoverSats(); else onWithdrawEcash?.(); }
+            else if (item.kind === "lock-recovery") onOpenTrade(item.escrowId!);
+            else if (item.kind === "pending-ecash-export") onWithdrawEcash?.();
+          };
+          return <div key={item.key} data-money-safety-row={item.key} style={{ borderTop: `1px solid ${T.border}`, padding: "10px 14px" }}>
+            <button type="button" onClick={open} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", minHeight: 44, padding: 0, border: 0, background: "none", color: T.text, textAlign: "left", cursor: "pointer" }}>
+              <span style={{ flex: 1, minWidth: 0 }}>{title}</span><BitcoinAmount msats={item.amountMsats} size={12} color={T.text} glyphColor={T.muted}/><span aria-hidden="true">›</span>
+            </button>
+            {onReabsorbBearerNotes && claim && (item.kind === "stranded-claim" || item.kind === "unresolved-credit" && claim.probeVerdict !== "consumed-uncredited") && reabsorbButton({ oobNotes: claim.oobNotes, expectedMsats: claim.amountMsats, context: "stranded-claim", escrowId: claim.escrowId }, { label: t("me.reabsorbCta"), accent: T.muted })}
+            {item.kind === "unresolved-credit" && <button type="button" onClick={() => dismissClaim(item.escrowId!)} style={{ background: "none", border: 0, minHeight: 40, color: T.muted, cursor: "pointer" }}>{t("me.dismiss")}</button>}
+            {item.kind === "leftover" && onWithdrawEcash && <button type="button" onClick={onWithdrawEcash} style={{ background: "none", border: 0, minHeight: 40, color: T.muted, cursor: "pointer" }}>{t("me.withdrawEcash")}</button>}
+            {item.kind === "pending-ecash-export" && pendingEcashExport && onReabsorbBearerNotes && reabsorbButton({ oobNotes: pendingEcashExport.notes, expectedMsats: pendingEcashExport.amountMsats, context: "pending-export", escrowId: pendingEcashExport.escrowId }, { label: t("me.reabsorbCancelCta"), accent: T.muted })}
+          </div>;
+        })}
+      </div>}
 
       {/* ── PILL TABS (v6.3) — the whole Me surface behind five Browse-style
           pills. Trades is home; Sats holds the money utilities; Arbiter shows

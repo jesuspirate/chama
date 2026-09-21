@@ -1,4 +1,5 @@
 export const me: Record<string, string> = {
+  "me.moneySafetyOther": "Hatua nyingine za fedha",
   "me.avatarUpload": "Picha ya wasifu (GIF, PNG, WebP au JPEG; hadi KB 48)",
   "me.avatarFailed": "Imeshindwa kuhifadhi na kuchapisha picha. Tumia picha hadi KB 48 na 2048 × 2048, kisha jaribu tena.",
   "me.hydratingTrades": "Inakagua historia yako kamili ya biashara…",

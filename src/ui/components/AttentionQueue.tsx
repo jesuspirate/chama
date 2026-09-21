@@ -41,6 +41,7 @@ export function AttentionQueue({
   onOpenTrade,
   latestTrade,
   suppressEmptyState = false,
+  suppressCount = false,
 }: {
   /** Urgency-ranked needs-you trades (selectNeedsYouTrades output). */
   ranked: EscrowState[];
@@ -52,6 +53,7 @@ export function AttentionQueue({
   /** Money-safety actions live directly below this trade queue. When one is
    *  visible, do not contradict it with the broad "all caught up" empty copy. */
   suppressEmptyState?: boolean;
+  suppressCount?: boolean;
 }) {
   const { t } = useT();
   // Bump to re-read the triage store after a pin/snooze mutation.
@@ -122,13 +124,13 @@ export function AttentionQueue({
         }}>
           {t("me.attentionTitle")}
         </div>
-        <span style={{
+        {!suppressCount && <span style={{
           fontFamily: T.mono, color: T.muted, fontSize: 10, fontWeight: 900,
           padding: "4px 8px", borderRadius: 999,
           background: "transparent", border: "none",
         }}>
           {t("me.needsYouCount", { count: ordered.length })}
-        </span>
+        </span>}
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }} data-tick={tick}>
         {ordered.map((trade) => (

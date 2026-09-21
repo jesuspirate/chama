@@ -1,4 +1,5 @@
 export const chat: Record<string, string> = {
+  "chat.evidenceRelayNote": "Relay ya jumuiya haijaunganishwa. Hifadhi ushahidi wako wa asili; relay za umma huenda zisihifadhi mazungumzo yote.",
   "chat.altChatAttachment": "kiambatisho cha mazungumzo",
   "chat.altSelectedReceipt": "risiti iliyochaguliwa",
   "chat.attachTitle": "Ambatisha picha ya risiti",

@@ -30,7 +30,7 @@ import {
   TRULY_TERMINAL_STATES,
   getEffectiveParticipantsAt,
 } from "../escrow-engine/types.js";
-import { DEFAULT_RELAYS } from "../escrow-engine/default-relays.js";
+import { DEFAULT_RELAYS, CHAMA_RELAY } from "../escrow-engine/default-relays.js";
 import { getWinner } from "../escrow-engine/state-machine.js";
 import { remainingStock, isSoldOut, overcommittedChildren, isLiveChildOrder, isActiveChildOrder } from "../escrow-engine/storefront.js";
 import { unreadChatForTrade } from "../chat/unread.js";
@@ -3240,6 +3240,19 @@ export default function App() {
   const wideOwnWidthMode = view === "dashboard" || view === "me" || view === "browse";
   const activeTab = detailMode ? TAB_FOR_VIEW[detailBackView] : TAB_FOR_VIEW[view];
   const effectiveShellPaddingBottom = detailMode ? 0 : shellPaddingBottom;
+  const chamaBarLabel: ReturnType<typeof decideChamaBarLabel> = (myTradesLoading || publicListingsLoading)
+    ? { kind: "ready" }
+    : decideChamaBarLabel({
+      balanceMsats: fedimint.balanceMsats ?? 0,
+      hasActiveBuyerSellerCommitment: hasActiveCommitment,
+      activeCommittedMsats: committedMsats,
+      activeTradeCount: activeCommitmentCount,
+      needsYouCount,
+      bootProbeState: fedimint.bootProbeState,
+      simModeOn: simOn,
+      hasPendingNativeLock,
+      hasPendingClaimPayout,
+    });
 
   return (
     <div style={{
@@ -3329,33 +3342,7 @@ export default function App() {
           <ChamaBar
             fedimint={fedimint}
             communitySlug={routeCommunitySlug}
-            chamaLabel={(myTradesLoading || publicListingsLoading)
-              ? { kind: "ready" }
-              : decideChamaBarLabel({
-              balanceMsats: fedimint.balanceMsats ?? 0,
-              hasActiveBuyerSellerCommitment: hasActiveCommitment,
-              activeCommittedMsats: committedMsats,
-              activeTradeCount: activeCommitmentCount,
-              needsYouCount,
-              // v0.3.1 Phase 3: bootProbeState routes the "unreachable"
-              // ChamaBar variant. Failed → "⚠ Chama unreachable ·
-              // Reconnect →"; pending/ok pass through to the existing
-              // three-state decision. Same source of truth gates
-              // TradeDetail's Fund + Claim buttons (see TradeDetail
-              // mount below).
-              bootProbeState: fedimint.bootProbeState,
-              // Phase 1: suppress the "stranded → ⚠ Recover" alarm pill on
-              // intentional sim manual-fund balances — the sibling
-              // shouldShowRecoveryBanner is gated the same way. simOn is in
-              // scope here (declared above the connected render).
-              simModeOn: simOn,
-              // #37: same suppressor as the banner — the pill one-taps into
-              // the drain modal, which must not fire on a recoverable lock.
-              hasPendingNativeLock,
-              // Stranded-payout recovery: same rule while an unfinished
-              // claim payout owns the balance story.
-              hasPendingClaimPayout,
-              })}
+            chamaLabel={chamaBarLabel}
             onTapStranded={() => setPendingRecovery({
               title: t("app.recoverSatsTitle"),
               traceContext: recoveryTraceContext,
@@ -4109,6 +4096,7 @@ export default function App() {
                 },
               )}
               onConfirmPayout={(escrowId) => { void actions.reattachPayout(escrowId); }}
+              preferredRelayConnected={relayStatuses.get(CHAMA_RELAY) === "connected"}
               onSendChat={(message) => {
                 actions.sendChat(selectedId!, message).catch((e: any) =>
                   setToast({ message: e.message || t("app.sendFailed"), type: "error" }));
@@ -4198,6 +4186,7 @@ export default function App() {
                 setToast({ message: e.message || t("app.releaseFailed"), type: "error" });
               }
             }}
+            preferredRelayConnected={relayStatuses.get(CHAMA_RELAY) === "connected"}
             onSendChat={(message) => {
               actions.sendChat(selectedId!, message).catch((e: any) =>
                 setToast({ message: e.message || t("app.sendFailed"), type: "error" })
@@ -4596,6 +4585,7 @@ export default function App() {
             hydratingTrades={myTradesLoading}
             allTrades={visibleTrades}
             needsYouTrades={needsYouTrades}
+            suppressAttentionCount={chamaBarLabel.kind === "needs-you"}
             archivedTrades={archivedTrades}
             onOpenArchivedTrade={openArchivedTrade}
             ratings={myRatings}

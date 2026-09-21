@@ -1,3 +1,4 @@
+import { CHAMA_RELAY } from "./default-relays.js";
 // ══════════════════════════════════════════════════════════════════════════
 // Chama Nostr Escrow Engine — Relay Manager
 // ══════════════════════════════════════════════════════════════════════════
@@ -136,7 +137,7 @@ const MAX_RETRY_MS = 60_000;
 const PUBLISH_TIMEOUT_MS = 8_000;
 const PUBLISH_CONNECT_WAIT_MS = 8_000;
 const PUBLISH_CONNECT_POLL_MS = 250;
-const PREFERRED_RELAY_URL = "wss://relay.chama.community";
+const PREFERRED_RELAY_URL = CHAMA_RELAY;
 const PREFERRED_RELAY_ACK_GRACE_MS = 1_500;
 // Webview-safe fetch quorum. A one-shot REQ must not resolve against a single
 // fast relay while the rest are still handshaking — iOS in-app browser / Fedi

@@ -58,7 +58,6 @@ export const lts: Record<string, string> = {
   "lts.claim": "Réclamer",
   "lts.claimFullView": "Réclamer dans la vue complète",
   "lts.resolvedReleased": "Résolu — fonds libérés à l’acheteur.",
-  "lts.resolvedRefunded": "Résolu — fonds remboursés au vendeur.",
   "lts.payoutReachedQ": "Le paiement est-il arrivé dans votre portefeuille ?",
   "lts.confirmClose": "Confirmez pour clore l’échange.",
   "lts.payoutMissing": "Rien reçu ? Réessayez ou récupérez dans la vue complète",

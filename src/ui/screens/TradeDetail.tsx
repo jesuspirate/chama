@@ -160,7 +160,7 @@ export function TradeDetail({
   state, pubkey, homeCommunity, bootProbeFailed, receiveUnavailable, fundingInProgress,
   claimBlockedReason, amountDisplayMode = "sats", onAmountDisplayModeChange, kind0Enabled = false, profileNames,
   disableNwc = false, forceClaimMethodChooser = false, onBack, onVote, onClaim, onJoin, onLock, onLockDirectNwc, onClaimDirectNwc, onConfirmPayout,
-  onSendChat, onReleasePeriod, onOpenSettings, onOpenNwcSettings,
+  onSendChat, preferredRelayConnected = false, onReleasePeriod, onOpenSettings, onOpenNwcSettings,
   onPrewarmFunding, onRebroadcast, onForget, onPurchase, onCancelDraftOrder, stockLeft, isOversoldOrder = false,
   onRateCounterparty, myGivenRatings, fetchRatingSummary, fetchCommunityBonds, knownTrades, onStartNextTranche, onchainFundingPlan, onPublishOnchainLock, onPrepareOnchainSettlement, onSignOnchainSettlement, onFinalizeOnchainSettlement, onScanMyOnchainPayouts, onSweepOnchainPayout,
   onStartEcashSlicePlan,
@@ -284,6 +284,7 @@ export function TradeDetail({
    *  opened, so a stuck refund/claim flips to done on view. */
   onConfirmPayout?: (escrowId: string) => void;
   onPrewarmFunding?: () => void | Promise<void>;
+  preferredRelayConnected?: boolean;
   onSendChat: (message: string | { message: string; attachments?: ChatImageAttachment[] }) => void;
   onReleasePeriod?: (periodIndex: number) => void | Promise<void>;
   onOpenSettings?: () => void;
@@ -3261,7 +3262,7 @@ export function TradeDetail({
           {/* pane 0 — Chat (living feed: messages + system event bubbles) */}
           <div className="td-pane" style={TD_PANE_STYLE}>
             {myRole ? (
-              <ChatPanel state={state} myRole={myRole} onSend={onSendChat} embedded hideHeader fill systemBubbles={livingChatBubbles} ratingCta={chatRatingCta} />
+              <ChatPanel preferredRelayConnected={preferredRelayConnected} state={state} myRole={myRole} onSend={onSendChat} embedded hideHeader fill systemBubbles={livingChatBubbles} ratingCta={chatRatingCta} />
             ) : (
               <div style={TD_PANE_PLACEHOLDER}>
                 {t("trade.chatPlaceholder")}

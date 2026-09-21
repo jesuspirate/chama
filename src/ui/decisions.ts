@@ -1116,6 +1116,36 @@ export type ChamaBarLabel =
   | { kind: "stranded"; sats: number }
   | { kind: "unreachable" };
 
+/** Local money-safety records, distinct from the chain-derived trade queue.
+ * Timestamps are milliseconds. Stable input order breaks exact ties. */
+export type MoneySafetyEntry = {
+  key: string;
+  escrowId?: string;
+  amountMsats: number;
+  createdAt: number;
+  kind: "stranded-claim" | "unresolved-credit" | "leftover" | "lock-recovery" | "pending-ecash-export";
+};
+export function selectMoneySafetyFocus(entries: readonly MoneySafetyEntry[]) {
+  const rank = (e: MoneySafetyEntry) => {
+    switch (e.kind) {
+      case "stranded-claim": return 0;
+      case "leftover": return e.amountMsats >= MAIN_SURFACE_RECOVERY_MIN_SATS * 1000 ? 1 : 4;
+      case "lock-recovery": return 2;
+      case "unresolved-credit": return 3;
+      case "pending-ecash-export": return 4;
+    }
+  };
+  const ordered = [...entries].sort((a, b) => rank(a) - rank(b)
+    || b.amountMsats - a.amountMsats || a.createdAt - b.createdAt);
+  const focus = ordered[0] ?? null;
+  return {
+    focus,
+    quiet: ordered.slice(1),
+    focusTone: focus ? (focus.kind === "stranded-claim" ? "red" : "amber") : null,
+    quietTone: "muted" as const,
+  };
+}
+
 export function decideChamaBarLabel(opts: {
   needsYouCount?: number;
   balanceMsats: number;

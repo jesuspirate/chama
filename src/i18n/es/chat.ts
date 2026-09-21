@@ -1,5 +1,6 @@
 // es/chat — Session C fills this from src/i18n/en/chat.ts (key set must match EXACTLY).
 export const chat: Record<string, string> = {
+  "chat.evidenceRelayNote": "El relay de la comunidad está desconectado. Guarda las pruebas originales; los relays públicos pueden no conservar todo el chat.",
   "chat.altChatAttachment": "adjunto del chat",
   "chat.altSelectedReceipt": "recibo seleccionado",
   "chat.attachTitle": "Adjuntar imagen del recibo",

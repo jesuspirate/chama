@@ -3,6 +3,7 @@
 // pre-extraction JSX. Before/After pairs wrap a mid-sentence <BitcoinAmount>
 // component; xxxOne/xxxMany are the plural pairs (see picker.matchOne/Many).
 export const me: Record<string, string> = {
+  "me.moneySafetyOther": "Other money actions",
   "me.avatarUpload": "Avatar (GIF, PNG, WebP or JPEG; up to 48 KB)",
   "me.avatarFailed": "Could not save and publish the avatar. Use an image up to 48 KB and 2048 × 2048, then retry.",
   "me.hydratingTrades": "Checking your complete trade history…",

@@ -58,7 +58,6 @@ export const lts: Record<string, string> = {
   "lts.claim": "Dai",
   "lts.claimFullView": "Dai kwenye mwonekano kamili",
   "lts.resolvedReleased": "Imeamuliwa — fedha zimetolewa kwa mnunuzi.",
-  "lts.resolvedRefunded": "Imeamuliwa — fedha zimerejeshwa kwa muuzaji.",
   "lts.payoutReachedQ": "Malipo yamefika kwenye pochi yako?",
   "lts.confirmClose": "Thibitisha kufunga biashara.",
   "lts.payoutMissing": "Hazijafika? Jaribu tena au rejesha kwenye mwonekano kamili",

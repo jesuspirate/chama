@@ -3,6 +3,7 @@
 // via props), SwitchFederationPanel. Before/Bold/After triples wrap styled
 // spans mid-sentence — translate each triple as ONE sentence.
 export const chat: Record<string, string> = {
+  "chat.evidenceRelayNote": "The community relay is disconnected. Keep your original evidence; public relays may not retain the full chat.",
   "chat.altChatAttachment": "chat attachment",
   "chat.altSelectedReceipt": "selected receipt",
   "chat.attachTitle": "Attach receipt image",

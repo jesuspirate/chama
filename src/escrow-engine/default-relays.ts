@@ -23,7 +23,7 @@
 // Chama's own production relay (khatru). Writes restricted
 // to Chama's event kinds, reads open; stores every event and never collapses chat
 // (escrow/chat live in the addressable 38xxx range).
-const CHAMA_RELAY = "wss://relay.chama.community";
+export const CHAMA_RELAY = "wss://relay.chama.community";
 
 const PUBLIC_RELAYS: string[] = [
   "wss://relay.damus.io",

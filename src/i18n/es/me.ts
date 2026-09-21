@@ -1,5 +1,6 @@
 // es/me — Session C fills this from src/i18n/en/me.ts (key set must match EXACTLY).
 export const me: Record<string, string> = {
+  "me.moneySafetyOther": "Otras acciones con fondos",
   "me.avatarUpload": "Avatar (GIF, PNG, WebP o JPEG; hasta 48 KB)",
   "me.avatarFailed": "No se pudo guardar y publicar. Usa una imagen de hasta 48 KB y 2048 × 2048 e inténtalo de nuevo.",
   "me.hydratingTrades": "Comprobando tu historial completo de operaciones…",

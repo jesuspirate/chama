@@ -87,4 +87,21 @@ try {
  assert.equal(await page.evaluate(()=>document.body.textContent.includes(window.expected.outcome)),false,'summary must not assert refund outcome');
  assert.equal(await page.evaluate(()=>[...document.querySelectorAll('button')].some(b=>b.textContent.trim()===window.expected.claim)),false,'summary must not render Claim CTA');
  console.log('PASS actual trade detail: summary copy replaces outcome and Claim CTA is absent');
+ await page.setViewport({width:390,height:1000,deviceScaleFactor:1});
+ await page.goto(`${base}/tests/payment-card/index.html?attention=1`);
+ await page.waitForSelector('[data-money-safety-focus]');
+ assert.equal((await page.$$('[data-money-safety-focus]')).length,1);
+ assert.equal((await page.$$('[data-money-safety-row]')).length,3);
+ assert.equal(await page.$eval('[data-money-safety-quiet]',e=>e.dataset.tone),'muted');
+ const visibleGlows=await page.$$eval('[data-money-safety-focus] *, [data-money-safety-quiet] *',els=>els.filter(e=>getComputedStyle(e).boxShadow!=='none').length);
+ assert.equal(visibleGlows,1,'exactly one money-safety glow at 390px');
+ for(const key of ['claim:two','leftover','lock:stuck']) await page.click(`[data-money-safety-row="${key}"] > button`);
+ assert.deepEqual(await page.evaluate(()=>window.tapped),['claim:two','recover','trade:stuck'],'quiet rows call their existing handlers directly');
+ await page.screenshot({path:'/tmp/chama-attention-live-390.png',fullPage:true});
+ console.log('PASS Me: one glow, three quiet rows, each action reachable in one tap');
+ await page.goto(`${base}/tests/payment-card/index.html?chat=1`);
+ await page.waitForSelector('[data-chat-retention-note]');
+ await page.evaluate(()=>window.setRelay(true));
+ await page.waitForFunction(()=>!document.querySelector('[data-chat-retention-note]'));
+ console.log('PASS chat: retention note follows preferred relay connection');
 } finally { await browser.close(); }

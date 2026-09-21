@@ -65,7 +65,7 @@ export function LiveTradeSurface({
   onLock,
   onConfirmPayout,
   onJoin,
-  onSendChat,
+  onSendChat, preferredRelayConnected = false,
   onRateCounterparty,
   myGivenRatings = [],
   fundingInProgress = false,
@@ -94,6 +94,7 @@ export function LiveTradeSurface({
    *  (exchange-bracket) listing passes the chosen order along. */
   onJoin?: (role: Role, joinOpts?: { selectedItems?: SelectedMenuItem[]; amountMsats?: number; orderFinalized?: boolean }) => void | Promise<void>;
   onConfirmPayout?: (escrowId: string) => void;
+  preferredRelayConnected?: boolean;
   onSendChat: Parameters<typeof ChatPanel>[0]["onSend"];
   onRateCounterparty?: (tradeId: string, ratee: string, thumb: RatingThumb) => Promise<void>;
   myGivenRatings?: Array<{ tradeId: string; ratee: string; thumb: RatingThumb }>;
@@ -749,7 +750,7 @@ export function LiveTradeSurface({
           </div>
         </div>
         <div className="lts-pane lts-chat">
-          <ChatPanel state={state} myRole={myRole} onSend={onSendChat} embedded fill hideHeader />
+          <ChatPanel preferredRelayConnected={preferredRelayConnected} state={state} myRole={myRole} onSend={onSendChat} embedded fill hideHeader />
         </div>
       </div>
     </div>

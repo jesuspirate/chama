@@ -60,7 +60,6 @@ export const lts: Record<string, string> = {
   "lts.claim": "Claim",
   "lts.claimFullView": "Claim in the full view",
   "lts.resolvedReleased": "Resolved — funds released to the buyer.",
-  "lts.resolvedRefunded": "Resolved — funds refunded to the seller.",
   "lts.payoutReachedQ": "Did the payout reach your wallet?",
   "lts.confirmClose": "Confirm to close out the trade.",
   "lts.payoutMissing": "Didn't arrive? Retry or recover in the full view",

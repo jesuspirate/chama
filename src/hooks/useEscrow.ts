@@ -1,3 +1,4 @@
+import { createFundingInvoiceJournal } from "../payments/abandoned-invoices.js";
 import { parseAvatar, saveAvatar, type Avatar } from "../ui/avatars.js";
 import { notificationWindowAllows } from "../notifications/quiet-window.js";
 import { latestNotificationActivityAt, debugQuietNotification } from "../notifications/notify-service.js";
@@ -4921,7 +4922,13 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       // amount + premium; the lock spend is decoupled (escrow-bridge
       // recomputes state.amountMsats), so the premium stays behind as the
       // wallet residue the settle-time sweep spends to the arbiter.
+      const invoiceJournal = isSimModeOn() ? undefined : createFundingInvoiceJournal({
+        escrowId,
+        amountMsats: opts.amountMsats + premiumMsats,
+        federationId: fedimint.getFederationId() ?? "",
+      });
       const result = await runFundAndLock({
+        invoiceJournal,
         escrowId,
         amountMsats: opts.amountMsats + premiumMsats,
         description: opts.description,
