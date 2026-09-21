@@ -2,6 +2,9 @@
 // extraction sweep). Keys prefixed "trade.", alphabetized. `ns*` keys are the
 // detailNextStep action-card matrix (kicker/title/body cells).
 export const trade: Record<string, string> = {
+  "trade.partyObserved": "Actividad firmada observada en {count} intercambios en este dispositivo. Sin historial, se desconoce.",
+  "trade.savedSummary": "Guardado en este dispositivo",
+  "trade.historyUnverified": "Historial del intercambio sin verificar",
   "trade.arbiterRecordLiveness": "Árbitros con garantía activa verificada en este registro: {count}",
   "trade.arbiterRecord": "Historial del árbitro",
   "trade.arbiterConduct": "Conducta observada, no prueba de identidad ni independencia. Un historial vacío significa nuevo o no observado.",

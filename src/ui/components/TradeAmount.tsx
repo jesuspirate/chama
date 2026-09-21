@@ -1,4 +1,4 @@
-import { createContext, useContext } from "react";
+import { createContext, useContext, useState } from "react";
 import { BitcoinAmount } from "./BitcoinAmount.js";
 import { formatEstimatedFiatForMsats, type AmountDisplayMode } from "../amount-display.js";
 import { useBitcoinPrice } from "../hooks/useBitcoinPrice.js";
@@ -26,14 +26,18 @@ const AmountDisplayContext = createContext<AmountDisplayPreference>({ mode: "sat
 
 export const AmountDisplayProvider = AmountDisplayContext.Provider;
 
-export function TradeAmount({ msats, size = 13, color = T.text, gap = 3, glyphScale = 1.15 }: {
+export function TradeAmount({ msats, size = 13, color = T.text, gap = 3, glyphScale = 1.15, interactive = false }: {
   msats: number;
+  interactive?: boolean;
   size?: number;
   color?: string;
   gap?: number;
   glyphScale?: number;
 }) {
-  const { mode, currency } = useContext(AmountDisplayContext);
+  const preference = useContext(AmountDisplayContext);
+  const [override, setOverride] = useState<AmountDisplayMode | null>(null);
+  const mode = override ?? preference.mode;
+  const currency = preference.currency;
   const price = useBitcoinPrice();
   const rates = useFiatRates();
   const fiat = mode === "fiat"
@@ -42,14 +46,8 @@ export function TradeAmount({ msats, size = 13, color = T.text, gap = 3, glyphSc
         usdPerBtc: price.usd, usdFiatRates: rates.rates,
       })
     : null;
-  if (fiat) {
-    return (
-      <span style={{ fontFamily: T.mono, fontSize: size, fontWeight: 700, color, whiteSpace: "nowrap" }}>
-        {fiat}
-      </span>
-    );
-  }
-  return (
-    <BitcoinAmount msats={msats} size={size} gap={gap} glyphScale={glyphScale} color={color} glyphColor={T.muted} />
-  );
+  const content = fiat ? <span style={{ fontFamily: T.mono, fontSize: size, fontWeight: 700, color, whiteSpace: "nowrap" }}>{fiat}</span>
+    : <BitcoinAmount msats={msats} size={size} gap={gap} glyphScale={glyphScale} color={color} glyphColor={T.muted} />;
+  return interactive ? <button type="button" onClick={() => setOverride(mode === "sats" ? "fiat" : "sats")}
+    style={{ minHeight: 44, background: "none", border: 0, padding: 0, color, cursor: "pointer" }}>{content}</button> : content;
 }

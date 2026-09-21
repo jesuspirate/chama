@@ -1,3 +1,4 @@
+import { canOfferClaim } from "../decisions.js";
 import { nativePushStatus, type NativePushStatus } from "../../notifications/native-push.js";
 import { avatarFromFile, type Avatar } from "../avatars.js";
 import { ProfileAvatar } from "../components/ProfileAvatar.js";
@@ -23,7 +24,7 @@ import { ProfileAvatar } from "../components/ProfileAvatar.js";
 // "Chama doesn't manage your Nostr profile" educational copy so the
 // doctrine is visible from day one.
 
-import { useState, useEffect, useMemo, useDeferredValue } from "react";
+import { useState, useEffect, useMemo, useRef, useDeferredValue } from "react";
 import { useT, translate, getCurrentLang } from "../../i18n/index.js";
 import { LanguageRow } from "../components/LanguagePills.js";
 import {
@@ -51,6 +52,7 @@ import { getCommunityBySlug } from "../../communities/registry.js";
 import { countryMatchesSearch, countrySubline, resolveCountryCommunitySlug } from "../../communities/country-resolve.js";
 import { getAllPickerCountries } from "../../communities/countries.js";
 import {
+  liveCommitmentForViewer,
   MAIN_SURFACE_RECOVERY_MIN_SATS,
   formatStepInCountdown,
   selectNeedsYouTrades,
@@ -58,7 +60,7 @@ import {
 } from "../decisions.js";
 import { AttentionQueue } from "../components/AttentionQueue.js";
 import { latestParticipantTradePointer } from "../latest-trade.js";
-import { collapseCircleShares } from "../../chama/wiring.js";
+import { buildMeTradeCounts, filterMeTrades, type MeTradeFilter, type MeTradeCounts } from "../me-trade-filters.js";
 import { counterpartyToRate, type RatingThumb } from "../../reputation/ratings.js";
 import { RatingTap } from "../components/RatingTap.js";
 import {
@@ -104,7 +106,7 @@ import { readKind0Toggle, writeKind0Toggle, readLocalTradeName, writeLocalTradeN
 import { backgroundPushEnabled, enableBackgroundPush, disableBackgroundPush } from "../../notifications/watch-tags.js";
 import { isWebPushSupported, iosNeedsInstallForPush } from "../../notifications/web-push-client.js";
 
-type MeTradeFilter = "all" | "needs" | "live" | "listings" | "done";
+
 
 // i18n: labels are DICTIONARY KEYS resolved with t() at render (module-level
 // constants can't call hooks). The `id` values are compared — never translated.
@@ -416,9 +418,31 @@ export function MeScreen({
   // render made each tab-pill tap visibly laggy on phones (v6.3.1 field
   // report). Nothing here needs sub-minute freshness.
   const nowSec = Math.floor(Date.now() / 60_000) * 60;
-  const dashboard = useMemo(
+  const rawDashboard = useMemo(
     () => buildMeDashboard(myTrades, allTrades ?? myTrades, pubkey, nowSec),
     [myTrades, allTrades, pubkey, nowSec],
+  );
+  // `arbiterVisible` turns on when the viewer appears in any hydrated trade's
+  // `communityArbiters` pool — and `allTrades` grows, shrinks and reshuffles
+  // continuously while Browse and history stream in. So the Arbiter tab blinked
+  // in and out of the row about once a second (Jet, 2026-09-21), moving every
+  // tab beside it each time.
+  //
+  // A navigation affordance is not allowed to flicker. Latch it for the session:
+  // once this account has been seen as an arbiter, the tab stays. Cleared when
+  // the key changes, because then it is a different person.
+  const arbiterSeenFor = useRef<string | null>(null);
+  const arbiterEverVisible = useRef(false);
+  if (arbiterSeenFor.current !== pubkey) {
+    arbiterSeenFor.current = pubkey;
+    arbiterEverVisible.current = false;
+  }
+  if (rawDashboard.arbiterVisible) arbiterEverVisible.current = true;
+  const dashboard = useMemo(
+    () => (rawDashboard.arbiterVisible === arbiterEverVisible.current
+      ? rawDashboard
+      : { ...rawDashboard, arbiterVisible: arbiterEverVisible.current }),
+    [rawDashboard, arbiterEverVisible.current],
   );
   // App owns the canonical attention queue because it merges reducer-derived
   // work with chain-verified pending on-chain payouts. Keep the Me hero, Needs
@@ -1107,7 +1131,7 @@ function Accordion({
   );
 }
 
-type MeTradeCounts = Record<MeTradeFilter, number>;
+
 
 function MeTradeHistory({
   trades,
@@ -1282,11 +1306,29 @@ function MeTradeHistory({
             const alreadyRated = ratee
               ? (myGivenRatings ?? []).some(r => r.tradeId === s.id && r.ratee === ratee.toLowerCase())
               : false;
+            // The pill's number is the sum of the viewer's live commitments,
+            // which is narrower than this tab. So ring exactly those rows:
+            // the tab stays a complete list of what is in flight, and the
+            // glow answers "which of these is the pill talking about?".
+            const ringing = Boolean(highlightLive)
+              && activeFilter === "live"
+              && liveCommitmentForViewer(s, pubkey, Math.floor(Date.now() / 1000));
             return (
               <div
-                key={s.id}
-                className={highlightLive && activeFilter === "live" ? "chama-pill-target" : undefined}
-                style={{ animation: `fadeIn 0.4s ease ${i * 0.05}s both` }}
+                /* The pill's glow never fired: this row's INLINE animation
+                   (fadeIn) outranks the .chama-pill-target class rule, so the
+                   ring was declared and then immediately overridden. Compose
+                   both on the inline property instead, and key the row on the
+                   request timestamp so a SECOND tap of the pill remounts it
+                   and replays the ring rather than finding the class already
+                   applied and doing nothing. */
+                key={ringing ? `${s.id}:${highlightLive}` : s.id}
+                className={ringing ? "chama-pill-target" : undefined}
+                style={{
+                  animation: ringing
+                    ? `fadeIn 0.4s ease ${i * 0.05}s both, chamaPillTarget 2.6s ease-out ${i * 0.05}s 2`
+                    : `fadeIn 0.4s ease ${i * 0.05}s both`,
+                }}
               >
                 <TradeCard state={s} pubkey={pubkey} onSelect={() => onOpenTrade(s.id)} amountDisplayMode={amountDisplayMode} quoteCurrency={quoteCurrency} profileNames={profileNames} kind0Enabled={kind0Enabled} />
                 {/* Safety net Jetty asked for: rate the counterparty straight from
@@ -2759,7 +2801,7 @@ function getUserRoleForTrade(
 
 function tradeNeedsUser(trade: EscrowState, pubkey: string, role: Role | null): boolean {
   if (trade.status === EscrowStatus.APPROVED) {
-    return getWinner(trade)?.pubkey === pubkey;
+    return canOfferClaim(trade) && getWinner(trade)?.pubkey === pubkey;
   }
   if (trade.status !== EscrowStatus.LOCKED || role === null) return false;
   if ((role === Role.BUYER || role === Role.SELLER) && !trade.votes[role]) return true;
@@ -2789,58 +2831,6 @@ function isArbiterSettledTrade(trade: EscrowState): boolean {
 function shortPubkey(pubkey: string | null | undefined): string {
   if (!pubkey) return translate(getCurrentLang(), "me.emptyPubkey");
   return pubkey.slice(0, 6) + "…";
-}
-
-function buildMeTradeCounts(
-  trades: EscrowState[],
-  needsYou: EscrowState[],
-): MeTradeCounts {
-  // Counts mirror what each view will actually show (runway #14: collapsed).
-  const collapsed = collapseCircleShares(trades);
-  return {
-    all: collapsed.length,
-    needs: needsYou.length,
-    live: collapsed.filter(isLiveTrade).length,
-    listings: collapsed.filter(isOpenListing).length,
-    done: collapsed.filter(isDoneTrade).length,
-  };
-}
-
-function filterMeTrades(
-  trades: EscrowState[],
-  needsYou: EscrowState[],
-  filter: MeTradeFilter,
-): EscrowState[] {
-  const needsYouIds = new Set(needsYou.map((trade) => trade.id));
-  // Runway #14: the "needs" view keeps every actionable trade (a share owed
-  // to YOU must stay tappable); every other view collapses to one card per
-  // circle — the parent carries the claim summary.
-  if (filter === "needs") return trades.filter((trade) => needsYouIds.has(trade.id));
-  const collapsed = collapseCircleShares(trades);
-  if (filter === "live") return collapsed.filter(isLiveTrade);
-  if (filter === "listings") return collapsed.filter(isOpenListing);
-  if (filter === "done") return collapsed.filter(isDoneTrade);
-  return collapsed;
-}
-
-function isLiveTrade(trade: EscrowState): boolean {
-  return (
-    trade.status === EscrowStatus.LOCKED ||
-    trade.status === EscrowStatus.APPROVED ||
-    trade.status === EscrowStatus.CLAIMED
-  );
-}
-
-function isOpenListing(trade: EscrowState): boolean {
-  return trade.status === EscrowStatus.CREATED;
-}
-
-function isDoneTrade(trade: EscrowState): boolean {
-  return (
-    trade.status === EscrowStatus.COMPLETED ||
-    trade.status === EscrowStatus.EXPIRED ||
-    trade.status === EscrowStatus.CANCELLED
-  );
 }
 
 // #88: single on/off for trade-event notifications (locked / claim ready /

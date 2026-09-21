@@ -7,6 +7,20 @@
 // half. The exact TZS amount / agent number / USSD code arrive as {params}
 // — never hardcode them in a translation.
 export const fund: Record<string, string> = {
+  "payment.switchPending": "This wallet cannot cancel a live invoice. Wait for it to expire before switching; the new amount may change. Do not pay an old invoice after switching.",
+  "payment.lightning": "Lightning",
+  "payment.onchain": "On-chain",
+  "payment.ecash": "Ecash",
+  "payment.rail": "Payment method",
+  "payment.openWith": "Open with…",
+  "payment.details": "Details",
+  "payment.shareFailed": "Could not open the share sheet. You can copy instead.",
+  "payment.switchTitle": "Switch payment method?",
+  "payment.keepLightning": "Keep Lightning",
+  "payment.switch": "Switch",
+  "payment.tradeAmount": "Trade amount",
+  "payment.fee": "Fee",
+  "payment.total": "Total to send",
   "fund.addAnotherNwcWallet": "Add another NWC wallet",
   "fund.amountSats": "AMOUNT (SATS)",
   "fund.approveInFediAfter":

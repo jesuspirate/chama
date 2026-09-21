@@ -477,6 +477,51 @@ function resolvedForSomeoneElse(e: EscrowState, viewerPubkey: string | undefined
   return !!winner && winner.pubkey !== viewerPubkey;
 }
 
+/**
+ * Is there evidence IN THIS STATE that sats were ever locked?
+ *
+ * Status alone is not evidence. A trade whose chain cannot be rebuilt on this
+ * device falls back to its locally-saved summary, and that summary carries a
+ * status and an amount with no chain behind them. `EVENT_KIND_TRANSITIONS`
+ * only reaches APPROVED from LOCKED, so a summary reading APPROVED asserts a
+ * LOCK that may never have existed.
+ *
+ * It did not, for sm_mtnxzb5y_zpepqcpj (Jet, 2026-09-21): six relays hold
+ * CREATE, JOIN, CANCEL, two VOTEs and two RESOLVEs and no LOCK, the buyer's
+ * own re-broadcast published 6/6 events without one, and the card still read
+ * "Refunded — your sats are back" over a ₿2,000 Claim button while the escrow
+ * pill counted those sats as committed.
+ *
+ * So money surfaces ask for the LOCK itself: the event in the rebuilt chain,
+ * or the lockedAt timestamp it wrote. No evidence ⇒ no sats in escrow, no claim, and
+ * nothing added to a headline. The trade stays fully visible and readable —
+ * this gates money claims, not history.
+ */
+/** Legacy/unmarked objects cannot establish a successful reconstruction. */
+export function stateProvenance(state: EscrowState): "replayed" | "summary" {
+  return state.provenance ?? "summary";
+}
+
+export function canOfferClaim(state: EscrowState): boolean {
+  return stateProvenance(state) === "replayed" && hasLockEvidence(state);
+}
+
+export function needsTradeHistory(state: EscrowState): boolean {
+  return stateProvenance(state) === "summary" ||
+    ([EscrowStatus.LOCKED, EscrowStatus.APPROVED, EscrowStatus.CLAIMED, EscrowStatus.COMPLETED].includes(state.status) && !hasLockEvidence(state));
+}
+
+export function hasLockEvidence(e: EscrowState): boolean {
+  // A retained snapshot is not a successful replay, even if it remembers a timestamp.
+  if (e.provenance === "summary") return false;
+  if (e.eventChain?.some(event => event.kind === EscrowEventKind.LOCK)) return true;
+  // `lockedAt` is what the reducer stamps when a LOCK applies, whatever the
+  // mode. notesHash alone is the wrong witness: an ON-CHAIN lock carries an
+  // empty hash and no shares by construction, so testing it would have zeroed
+  // every on-chain escrow.
+  return typeof e.lock?.lockedAt === "number" && e.lock.lockedAt > 0;
+}
+
 function isLiveBuyerSellerCommitment(e: EscrowState, nowSec: number, viewerPubkey?: string): boolean {
   if (TERMINAL_STATES.has(e.status)) return false;
   // Resolved in someone else's favor → my commitment is over; only the
@@ -493,9 +538,20 @@ function isLiveBuyerSellerCommitment(e: EscrowState, nowSec: number, viewerPubke
   // APPROVED flows where sats are already in escrow or ready to claim.
   if (e.status === EscrowStatus.CREATED) return false;
   if (e.status !== EscrowStatus.LOCKED && e.status !== EscrowStatus.APPROVED) return false;
-  if (isPastEscrowDeadline(e, nowSec)) {
-    return false;
-  }
+  // A status without a LOCK behind it is a summary, not an escrow.
+  if (!hasLockEvidence(e)) return false;
+  // The deadline retires a LOCKED trade only. An APPROVED one past its window
+  // is still the viewer's money — the outcome is decided and the payout is
+  // waiting to be claimed — which is precisely the trade whose card reads
+  // "Ready to claim" beside an "Expired" badge.
+  //
+  // This used to retire BOTH, while `activeCommittedMsats` retired only
+  // LOCKED. So the count said zero while the sats said two thousand, and
+  // `decideChamaBarLabel`'s `Math.max(1, …)` quietly rounded the count back
+  // up to one. Three surfaces, three answers, and a clamp hiding the gap:
+  // the pill read "1 active trade · ₿2,000", the row it meant never glowed
+  // because it wasn't in anybody's live set (Jet, 2026-09-21).
+  if (e.status === EscrowStatus.LOCKED && isPastEscrowDeadline(e, nowSec)) return false;
   return true;
 }
 
@@ -642,6 +698,7 @@ function needsYouReason(
 
   // Claim owed — resolved in my favor, the payout is mine to take.
   if (e.status === EscrowStatus.APPROVED) {
+    if (!hasLockEvidence(e)) return null;
     const winner = payoutRecipientFor(e, e.resolvedOutcome ?? Outcome.RELEASE);
     if (!winner || !samePk(winner.pubkey, userPubkey)) return null;
     // Hydration can momentarily replay a RESOLVE before its LOCK body, and old
@@ -1008,6 +1065,8 @@ export function activeCommittedMsats(inputs: {
     const isBuyerOrSeller = isEffectiveBuyerOrSeller(e, inputs.userPubkey, nowSec);
     if (!isBuyerOrSeller) continue;
     if (e.status !== EscrowStatus.LOCKED && e.status !== EscrowStatus.APPROVED) continue;
+    // Never sum an amount the chain cannot vouch for. See hasLockEvidence.
+    if (!hasLockEvidence(e)) continue;
     if (e.status === EscrowStatus.LOCKED && isPastEscrowDeadline(e, nowSec)) continue;
     // Resolved for someone else → these sats are the winner's claim now, not
     // the viewer's escrow. The locker is released at RESOLVE.
@@ -1841,6 +1900,7 @@ export function tradeRoomPresence(
   state: EscrowState,
   viewerPubkey: string,
   nowSec: number = Math.floor(Date.now() / 1000),
+  roles: readonly Role[] = [Role.BUYER, Role.SELLER],
 ): RoomPresence[] {
   const lastSeen = new Map<string, number>();
   const note = (pk: string | null | undefined, at: number) => {
@@ -1864,7 +1924,7 @@ export function tradeRoomPresence(
   // a phantom person in the strip — the exact class of lie the pre-lock
   // clock fix removes from the countdowns.
   const effective = getEffectiveParticipantsAt(state, nowSec);
-  return ([Role.BUYER, Role.SELLER] as const).map((role): RoomPresence => {
+  return roles.map((role): RoomPresence => {
     const pk = effective[role] ?? null;
     if (!pk) {
       return { role, pubkey: null, isYou: false, signal: "empty", lastSeenAgoSec: null, ready: false };

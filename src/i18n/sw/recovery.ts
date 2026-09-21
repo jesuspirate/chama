@@ -23,6 +23,7 @@ export const recovery: Record<string, string> = {
     "Una uhakika? Chama itaisahau noti hii — gusa tena tu ikiwa imehifadhiwa",
   "recovery.exportClearCta": "Nimeiingiza — futa",
   "recovery.exportCopyCta": "Nakili ecash",
+  "recovery.exportOpenInFedi": "Fungua katika Fedi",
   "recovery.exportQrAlt": "Msimbo wa QR wa ecash unaobadilika kwa Fedi",
   "recovery.exportQrHelp": "Ndani ya Fedi, skani hadi upau wa maendeleo ukamilike. Kama Fedi bado inajiunga au inarejesha shirikisho hili, maliza hilo kwanza (zima na uwashe Fedi likikwama), kisha fungua tena uhamishaji huu unaosubiri na uskani tena.",
   "recovery.exportErrorTitle": "Imeshindikana kuunda noti",

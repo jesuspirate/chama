@@ -1,5 +1,20 @@
 // es/fund — Session C fills this from src/i18n/en/fund.ts (key set must match EXACTLY).
 export const fund: Record<string, string> = {
+  "payment.switchPending": "Este monedero no puede cancelar una factura activa. Espera a que caduque antes de cambiar; el nuevo importe puede variar. No pagues una factura anterior después de cambiar.",
+  "payment.lightning": "Lightning",
+  "payment.onchain": "En cadena",
+  "payment.ecash": "Ecash",
+  "payment.rail": "Método de pago",
+  "payment.openWith": "Abrir con…",
+  "payment.details": "Detalles",
+  "payment.shareFailed": "No se pudo abrir el menú para compartir. Puedes copiar.",
+  "payment.switchTitle": "¿Cambiar método de pago?",
+  "payment.keepLightning": "Mantener Lightning",
+  "payment.switch": "Cambiar",
+  "payment.tradeAmount": "Importe del intercambio",
+  "payment.fee": "Comisión",
+  "payment.total": "Total a enviar",
+
   "fund.addAnotherNwcWallet": "Agregar otra billetera NWC",
   "fund.amountSats": "MONTO (SATS)",
   "fund.approveInFediAfter":

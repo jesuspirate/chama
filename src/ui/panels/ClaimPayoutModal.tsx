@@ -1,3 +1,5 @@
+import { TradeAmount } from "../components/TradeAmount.js";
+import { PaymentRails, PaymentButton, type PaymentRail } from "../components/PaymentCard.js";
 // ══════════════════════════════════════════════════════════════════════════
 // Chama — ClaimPayoutModal (v0.3.0 send-side atomic flow)
 // ══════════════════════════════════════════════════════════════════════════
@@ -599,7 +601,7 @@ export function ClaimPayoutModal({
           {stage.kind === "terminal" && !retryProbing && (
             <button onClick={() => onClose(stage.terminal)} style={{
               background: "none", border: "none", color: T.muted,
-              fontFamily: T.mono, fontSize: 18, cursor: "pointer", padding: 0, lineHeight: 1,
+              fontFamily: T.mono, fontSize: 18, cursor: "pointer", padding: 0, lineHeight: 1, minWidth: 44, minHeight: 44,
             }}>×</button>
           )}
         </div>
@@ -679,6 +681,7 @@ function ClaimMethodChooser({
   onCancel: () => void;
 }) {
   const { t } = useT();
+  const [rail, setRail] = useState<PaymentRail>("lightning");
   // Single-column layout once external swaps or native offramps are
   // surfaced (they have taller cards with flag + status badge); two-column
   // when only the built-in Lightning + Onchain methods are available.
@@ -700,7 +703,7 @@ function ClaimMethodChooser({
         onClick={(e) => e.stopPropagation()}
         style={{
           background: T.card, border: `1px solid ${T.borderHi}`,
-          borderRadius: T.r, padding: 24, maxWidth: 420, width: "100%",
+          borderRadius: T.r, padding: "20px 16px", maxWidth: 420, width: "100%", maxHeight: "92dvh", overflowY: "auto", boxSizing: "border-box",
         }}
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
@@ -709,12 +712,12 @@ function ClaimMethodChooser({
               {t("claim.claimKicker")}
             </div>
             <div style={{ fontSize: 22, fontWeight: 800, color: T.text, fontFamily: T.mono, letterSpacing: 0 }}>
-              <BitcoinAmount sats={payoutSats} size={22} gap={6} glyphScale={1.2} color={T.text} glyphColor={T.muted} />
+              <TradeAmount msats={(rail === "ecash" ? ecashPayoutSats : payoutSats) * 1000} size={22} interactive />
             </div>
           </div>
           <button onClick={onCancel} style={{
             background: "none", border: "none", color: T.muted,
-            fontFamily: T.mono, fontSize: 18, cursor: "pointer", padding: 0, lineHeight: 1,
+            fontFamily: T.mono, fontSize: 18, cursor: "pointer", padding: 0, lineHeight: 1, minWidth: 44, minHeight: 44,
           }}>×</button>
         </div>
         <div style={{
@@ -807,38 +810,14 @@ function ClaimMethodChooser({
           </details>
         )}
 
+        <PaymentRails rail={rail} onSelect={setRail} />
+        <p style={{ color: T.muted, fontSize: 12, lineHeight: 1.5 }}>{t(rail === "ecash" ? "claim.ecashMethodBlurb" : rail === "onchain" ? "claim.onchainBlurb" : "claim.bestPathLn")}</p>
+        <PaymentButton tier={rail === "ecash" ? "primary" : "raised"} style={{ width: "100%", marginBottom: 12 }} onClick={() => rail === "ecash" ? onSelectEcash() : onSelect({ kind: rail })}>
+          {rail === "ecash" ? t("claim.ecashMethod") : rail === "onchain" ? t("claim.methodOnchainSlow") : t("claim.lnFast")}
+        </PaymentButton>
+        {hasTallCards && <details><summary style={{ minHeight: 44, color: T.muted }}>{t("payment.details")}</summary>
         <div style={{ display: "grid", gridTemplateColumns: methodGridColumns, gap: 10 }}>
-          <button
-            onClick={onSelectEcash}
-            style={{
-              minHeight: methodMinHeight, padding: 12, borderRadius: T.r,
-              background: T.purpleDim, border: `1px solid ${T.purple}66`,
-              color: T.text, cursor: "pointer", textAlign: "left",
-            }}
-          >
-            <div style={{ fontSize: 20, marginBottom: 8 }}>▦</div>
-            <div style={{
-              fontSize: 12, fontWeight: 800, color: T.purple,
-              fontFamily: T.mono, marginBottom: 6, textTransform: "uppercase",
-            }}>
-              {t("claim.ecashMethod")}
-            </div>
-            <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono, lineHeight: 1.45 }}>
-              {t("claim.ecashMethodBlurb")}
-            </div>
-            {ecashPayoutSats !== payoutSats && (
-              <div style={{ marginTop: 6 }}>
-                <BitcoinAmount
-                  sats={ecashPayoutSats}
-                  size={11}
-                  gap={4}
-                  glyphScale={1.18}
-                  color={T.purple}
-                  glyphColor={T.muted}
-                />
-              </div>
-            )}
-          </button>
+
           {/* Tando — Kenya's lead cash-out. Native one-tap M-Pesa offramp
               (LUD-16 Lightning Address `<phone>@bitcoin.co.ke`), not a
               redirect. Rendered first for Kenyan claims. */}
@@ -1003,40 +982,8 @@ function ClaimMethodChooser({
               </button>
             );
           })}
-          <button
-            onClick={() => onSelect({ kind: "lightning" })}
-            style={{
-              minHeight: methodMinHeight, padding: 12, borderRadius: T.r,
-              background: T.accentDim, border: `1px solid ${T.accent}66`,
-              color: T.text, cursor: "pointer", textAlign: "left",
-            }}
-          >
-            <div style={{ fontSize: 20, marginBottom: 8 }}>⚡</div>
-            <div style={{ fontSize: 12, fontWeight: 800, color: T.accent, fontFamily: T.mono, marginBottom: 6 }}>
-              {t("claim.lnFast")}
-            </div>
-            <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono, lineHeight: 1.45 }}>
-              {t("claim.bestPathLn")}
-            </div>
-          </button>
-          <button
-            onClick={() => onSelect({ kind: "onchain" })}
-            style={{
-              minHeight: methodMinHeight, padding: 12, borderRadius: T.r,
-              background: T.amberDim, border: `1px solid ${T.amber}66`,
-              color: T.text, cursor: "pointer", textAlign: "left",
-              gridColumn: hasTallCards ? undefined : "1 / -1",
-            }}
-          >
-            <div style={{ fontSize: 20, marginBottom: 8 }}>₿</div>
-            <div style={{ fontSize: 12, fontWeight: 800, color: T.amber, fontFamily: T.mono, marginBottom: 6 }}>
-              {t("claim.methodOnchainSlow")}
-            </div>
-            <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono, lineHeight: 1.45 }}>
-              {t("claim.onchainBlurb")}
-            </div>
-          </button>
-        </div>
+
+        </div></details>}
       </div>
     </div>
   );
@@ -1093,7 +1040,7 @@ function ExternalSwapRedirectPicker({
         onClick={(e) => e.stopPropagation()}
         style={{
           background: T.card, border: `1px solid ${T.borderHi}`,
-          borderRadius: T.r, padding: 24, maxWidth: 420, width: "100%",
+          borderRadius: T.r, padding: "20px 16px", maxWidth: 420, width: "100%", maxHeight: "92dvh", overflowY: "auto", boxSizing: "border-box",
         }}
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
@@ -1107,7 +1054,7 @@ function ExternalSwapRedirectPicker({
           </div>
           <button onClick={onCancel} style={{
             background: "none", border: "none", color: T.muted,
-            fontFamily: T.mono, fontSize: 18, cursor: "pointer", padding: 0, lineHeight: 1,
+            fontFamily: T.mono, fontSize: 18, cursor: "pointer", padding: 0, lineHeight: 1, minWidth: 44, minHeight: 44,
           }}>×</button>
         </div>
 
@@ -1338,7 +1285,7 @@ function TandoMpesaPicker({
         onClick={(e) => e.stopPropagation()}
         style={{
           background: T.card, border: `1px solid ${T.borderHi}`,
-          borderRadius: T.r, padding: 24, maxWidth: 420, width: "100%",
+          borderRadius: T.r, padding: "20px 16px", maxWidth: 420, width: "100%", maxHeight: "92dvh", overflowY: "auto", boxSizing: "border-box",
         }}
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
@@ -1352,7 +1299,7 @@ function TandoMpesaPicker({
           </div>
           <button onClick={onCancel} style={{
             background: "none", border: "none", color: T.muted,
-            fontFamily: T.mono, fontSize: 18, cursor: "pointer", padding: 0, lineHeight: 1,
+            fontFamily: T.mono, fontSize: 18, cursor: "pointer", padding: 0, lineHeight: 1, minWidth: 44, minHeight: 44,
           }}>×</button>
         </div>
 
@@ -1587,7 +1534,7 @@ function ChapsmartMpesaPicker({
         onClick={(e) => e.stopPropagation()}
         style={{
           background: T.card, border: `1px solid ${T.borderHi}`,
-          borderRadius: T.r, padding: 24, maxWidth: 420, width: "100%",
+          borderRadius: T.r, padding: "20px 16px", maxWidth: 420, width: "100%", maxHeight: "92dvh", overflowY: "auto", boxSizing: "border-box",
         }}
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
@@ -1601,7 +1548,7 @@ function ChapsmartMpesaPicker({
           </div>
           <button onClick={onCancel} style={{
             background: "none", border: "none", color: T.muted,
-            fontFamily: T.mono, fontSize: 18, cursor: "pointer", padding: 0, lineHeight: 1,
+            fontFamily: T.mono, fontSize: 18, cursor: "pointer", padding: 0, lineHeight: 1, minWidth: 44, minHeight: 44,
           }}>×</button>
         </div>
 
@@ -1842,7 +1789,7 @@ function StrikeUsdPicker({
         onClick={(e) => e.stopPropagation()}
         style={{
           background: T.card, border: `1px solid ${T.borderHi}`,
-          borderRadius: T.r, padding: 24, maxWidth: 420, width: "100%",
+          borderRadius: T.r, padding: "20px 16px", maxWidth: 420, width: "100%", maxHeight: "92dvh", overflowY: "auto", boxSizing: "border-box",
         }}
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
@@ -1856,7 +1803,7 @@ function StrikeUsdPicker({
           </div>
           <button onClick={onCancel} style={{
             background: "none", border: "none", color: T.muted,
-            fontFamily: T.mono, fontSize: 18, cursor: "pointer", padding: 0, lineHeight: 1,
+            fontFamily: T.mono, fontSize: 18, cursor: "pointer", padding: 0, lineHeight: 1, minWidth: 44, minHeight: 44,
           }}>×</button>
         </div>
 
@@ -2089,7 +2036,7 @@ function OnchainPayoutPicker({
         onClick={(e) => e.stopPropagation()}
         style={{
           background: T.card, border: `1px solid ${T.borderHi}`,
-          borderRadius: T.r, padding: 24, maxWidth: 420, width: "100%",
+          borderRadius: T.r, padding: "20px 16px", maxWidth: 420, width: "100%", maxHeight: "92dvh", overflowY: "auto", boxSizing: "border-box",
         }}
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
@@ -2103,7 +2050,7 @@ function OnchainPayoutPicker({
           </div>
           <button onClick={onCancel} style={{
             background: "none", border: "none", color: T.muted,
-            fontFamily: T.mono, fontSize: 18, cursor: "pointer", padding: 0, lineHeight: 1,
+            fontFamily: T.mono, fontSize: 18, cursor: "pointer", padding: 0, lineHeight: 1, minWidth: 44, minHeight: 44,
           }}>×</button>
         </div>
         <div style={{

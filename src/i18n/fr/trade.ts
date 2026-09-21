@@ -1,5 +1,8 @@
 // fr/trade — Session B fills this from src/i18n/en/trade.ts (key set must match EXACTLY).
 export const trade: Record<string, string> = {
+  "trade.partyObserved": "Activité signée observée dans {count} échanges sur cet appareil. Sans historique, la conduite est inconnue.",
+  "trade.savedSummary": "Enregistré sur cet appareil",
+  "trade.historyUnverified": "Historique de l’échange non vérifié",
   "trade.arbiterRecordLiveness": "Arbitres avec dépôt actif vérifié dans cet historique : {count}",
   "trade.arbiterRecord": "Historique de l’arbitre",
   "trade.arbiterConduct": "Conduite observée, sans preuve d’identité ni d’indépendance. Un historique vide signifie nouveau ou non observé.",

@@ -1,6 +1,6 @@
 {
-  "name": "Chama",
-  "short_name": "Chama",
+  "name": "chama",
+  "short_name": "chama",
   "description": "Bitcoin commerce for communities — non-custodial, Nostr-native.",
   "start_url": "/",
   "display": "standalone",

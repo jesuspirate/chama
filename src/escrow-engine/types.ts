@@ -982,9 +982,17 @@ export interface ReplayNote {
   kind: EscrowEventKind;
   code: string;
   message: string;
+  /** True when this skip is EXPECTED rather than evidence of damage: a
+   *  duplicate JOIN, or a repeated RESOLVE that agrees with the committed
+   *  outcome. Both parties auto-publish RESOLVE once two votes land, so a
+   *  healthy settled trade normally carries one. Surfaces must not raise an
+   *  alarm about these; a genuinely refused transition has benign unset. */
+  benign?: boolean;
 }
 
 export interface EscrowState {
+  /** Device-local construction provenance; never consensus data. */
+  provenance?: "replayed" | "summary";
   /** Rejected advisory transitions retained for an honest reconstruction report. */
   replayNotes?: ReplayNote[];
   /** Unique escrow identifier (d-tag value) */

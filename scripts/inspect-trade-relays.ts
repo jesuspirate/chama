@@ -13,10 +13,18 @@
  */
 import WebSocket from 'ws';
 import { DEFAULT_RELAYS } from '../src/escrow-engine/default-relays.js';
+import { parseEscrowEvent } from '../src/escrow-engine/event-parser.js';
+import { applyEvent } from '../src/escrow-engine/state-machine.js';
+import { EscrowEventKind } from '../src/escrow-engine/types.js';
+import type { EscrowState } from '../src/escrow-engine/types.js';
 
+// Names come from EscrowEventKind in src/escrow-engine/types.ts. Getting these
+// wrong is not cosmetic: an earlier revision labelled 38107 CHAT, and a CANCEL
+// then read as idle chatter in the one report meant to explain a stuck trade.
 const KIND_NAMES: Record<number, string> = {
   38100: 'CREATE', 38101: 'JOIN', 38102: 'LOCK', 38103: 'VOTE', 38104: 'RESOLVE',
-  38105: 'CLAIM', 38106: 'COMPLETE', 38107: 'CHAT', 38108: 'AUX',
+  38105: 'CLAIM', 38106: 'COMPLETE', 38107: 'CANCEL', 38108: 'CHAT',
+  38111: 'SUBSCRIBE', 38112: 'PERIOD_RELEASE', 38113: 'PREMIUM',
 };
 const KINDS = Object.keys(KIND_NAMES).map(Number);
 const TIMEOUT_MS = 8_000;
@@ -27,6 +35,9 @@ if (!tradeId || !/^sm_[a-z0-9_]+$/i.test(tradeId)) {
   process.exit(1);
 }
 const relays = [...new Set([...DEFAULT_RELAYS, ...process.argv.slice(3)])];
+
+/** Raw signed events, kept so the replay pass can run the real parser. */
+const rawEvents = new Map<string, unknown>();
 
 interface Found { kind: number; id: string; created_at: number; pubkey: string; tags: string[][]; bytes: number }
 type Filter = Record<string, unknown>;
@@ -59,6 +70,7 @@ function askRelay(url: string, filter: Filter = { kinds: KINDS, '#d': [tradeId] 
       if (!Array.isArray(msg)) return;
       if (msg[0] === 'EVENT' && msg[2]) {
         const e = msg[2] as Found;
+        if (!rawEvents.has(e.id)) rawEvents.set(e.id, msg[2]);
         events.push({
           kind: e.kind, id: e.id, created_at: e.created_at, pubkey: e.pubkey,
           tags: Array.isArray(e.tags) ? e.tags : [],
@@ -134,7 +146,7 @@ if (!everywhere.has(38102) && everywhere.has(38100)) {
   console.log('    with backfill-on-open, or use the trade timeline\'s Re-broadcast.');
 }
 for (const [kind, ids] of everywhere) {
-  if (ids.size > 1 && kind !== 38103 && kind !== 38107) {
+  if (ids.size > 1 && kind !== 38103 && kind !== 38108) {
     console.log(`\n  note: ${ids.size} distinct ${KIND_NAMES[kind]} events exist. Duplicates are`);
     console.log('    normal for VOTE/CHAT; elsewhere they may explain a replay refusal.');
   }
@@ -222,5 +234,74 @@ if (!everywhere.has(38102) && lockAuthors.length > 0) {
   console.log('\n  A row of 0 everywhere means no LOCK this author ever signed survives —');
   console.log('  a publish-path fault. Surviving LOCKs elsewhere make it trade-specific,');
   console.log('  and their byte sizes tell you what this pool accepts.');
+}
+console.log('');
+
+
+// ══════════════════════════════════════════════════════════════════════════
+// Pass 3 — replay what the relays hold, through the real reducer
+// ══════════════════════════════════════════════════════════════════════════
+//
+// A matrix says which events survive; the chain view says how they point at
+// each other. Neither says whether the surviving chain REPLAYS, or where it
+// stops. That is the question behind every "history couldn't be rebuilt"
+// toast, and it is answerable here: same parser, same state machine, same
+// order the client would use.
+//
+// VOTE and RESOLVE are per-recipient ciphertext and this script holds no
+// participant key, so those are reported as UNREADABLE rather than guessed
+// at. CREATE, JOIN, LOCK and CANCEL are plaintext on the wire and replay
+// exactly as a client would apply them — which is enough to answer the only
+// question that matters here: does the chain ever leave CREATED, and if so,
+// on which event.
+
+console.log('Replay of the relay-held chain (same parser, same reducer):\n');
+let state: EscrowState | null = null;
+let stopped = false;
+for (const e of chain) {
+  const name = String(KIND_NAMES[e.kind] ?? e.kind).padEnd(9);
+  const short = e.id.slice(0, 8);
+  const raw = rawEvents.get(e.id) as { content?: string } | undefined;
+  if (!raw) { console.log(`  ${name}${short}  — raw event not retained`); continue; }
+  const readable = e.kind === EscrowEventKind.CREATE
+    || e.kind === EscrowEventKind.JOIN
+    || e.kind === EscrowEventKind.LOCK
+    || e.kind === EscrowEventKind.CANCEL;
+  if (!readable) {
+    console.log(`  ${name}${short}  UNREADABLE here (encrypted to participants) — replay stops being decisive past this point`);
+    stopped = true;
+    break;
+  }
+  const parsed = parseEscrowEvent(raw as never, String(raw.content ?? ''), true, state ? { state } : undefined);
+  if (!parsed.ok) {
+    const e2 = (parsed as { error: { code: string; message: string } }).error;
+    console.log(`  ${name}${short}  PARSE FAILED · ${e2.code} · ${e2.message}`);
+    stopped = true;
+    break;
+  }
+  const applied = applyEvent(state, parsed.event);
+  if (!applied.ok) {
+    const e3 = (applied as { error: { code: string; message: string } }).error;
+    console.log(`  ${name}${short}  REFUSED · ${e3.code} · ${e3.message}`);
+    console.log(`      state before this event: ${state ? state.status : '(none)'}`);
+    stopped = true;
+    break;
+  }
+  state = applied.state;
+  console.log(`  ${name}${short}  → ${state.status}${state.lock?.lockedAt ? `  (lockedAt ${state.lock.lockedAt})` : ''}`);
+}
+
+if (!stopped && state) {
+  console.log(`\n  Replayed to ${state.status}.`);
+}
+if (state) {
+  const locked = chain.some(e => e.kind === EscrowEventKind.LOCK);
+  console.log(`\n  LOCK in the relay-held chain: ${locked ? 'yes' : 'NO'}`);
+  console.log(`  lock.lockedAt after replay   : ${state.lock?.lockedAt ?? 'not set'}`);
+  if (!locked) {
+    console.log('\n  With no LOCK, the only transition out of CREATED is missing. Any');
+    console.log('  event whose refusal names a non-CREATED state is therefore telling');
+    console.log("  you that SOME device's chain has a LOCK this pool does not.");
+  }
 }
 console.log('');

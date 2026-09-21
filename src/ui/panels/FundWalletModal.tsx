@@ -1,8 +1,10 @@
-import { useState, useEffect, lazy, Suspense, type WheelEvent } from "react";
+import { PaymentCard, PaymentButton, PaymentRails } from "../components/PaymentCard.js";
+import { useState, useEffect, type WheelEvent } from "react";
 import { T, inputStyle } from "../theme.js";
 import { useT } from "../../i18n/index.js";
 import { BitcoinAmount } from "../components/BitcoinAmount.js";
 import { CopyButton } from "../components/CopyButton.js";
+import { Wordmark } from "../components/Wordmark.js";
 import { isSimModeOn, setSimMode } from "../../sim/simMode.js";
 import { makeLightningInvoiceQrPayload } from "../../payments/lightning-qr.js";
 import {
@@ -50,7 +52,6 @@ function readManualFundStash(): EcashExport | null {
   }
 }
 
-const QRCode = lazy(() => import("../QRCode.js"));
 
 function blurNumberInputOnWheel(e: WheelEvent<HTMLInputElement>) {
   e.currentTarget.blur();
@@ -294,13 +295,13 @@ export function FundWalletModal({ onClose, onCreateInvoice, onPayInvoice, onSpen
     }}>
       <div onClick={(e) => e.stopPropagation()} style={{
         background: T.card, border: `1px solid ${T.borderHi}`, borderRadius: T.r,
-        padding: 24, maxWidth: 420, width: "100%",
+        padding: "20px 16px", maxWidth: 420, width: "100%", maxHeight: "92dvh", overflowY: "auto", boxSizing: "border-box",
       }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-          <div style={{ fontSize: 14, fontWeight: 700, color: T.text, fontFamily: T.sans }}>Chama</div>
+          <Wordmark size={17} markSize={20} />
           <button onClick={onClose} style={{
             background: "none", border: "none", color: T.muted,
-            fontFamily: T.mono, fontSize: 18, cursor: "pointer", padding: 0, lineHeight: 1,
+            fontFamily: T.mono, fontSize: 18, cursor: "pointer", padding: 0, lineHeight: 1, minWidth: 44, minHeight: 44,
           }}>×</button>
         </div>
 
@@ -311,10 +312,7 @@ export function FundWalletModal({ onClose, onCreateInvoice, onPayInvoice, onSpen
 
         {/* RECEIVE */}
         {tab === "receive" && !invoice && (<>
-          <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-            <button onClick={() => { setReceiveType("lightning"); setErr(null); setSuccess(null); }} style={{ flex: 1, padding: "6px 0", borderRadius: T.rs, border: receiveType === "lightning" ? `1px solid ${T.accent}` : `1px solid ${T.border}`, background: receiveType === "lightning" ? T.accentDim : T.surface, color: receiveType === "lightning" ? T.accent : T.muted, fontFamily: T.mono, fontSize: 10, cursor: "pointer" }}>Lightning</button>
-            <button onClick={() => { setReceiveType("ecash"); setErr(null); setSuccess(null); }} style={{ flex: 1, padding: "6px 0", borderRadius: T.rs, border: receiveType === "ecash" ? `1px solid ${T.amber}` : `1px solid ${T.border}`, background: receiveType === "ecash" ? T.amberDim : T.surface, color: receiveType === "ecash" ? T.amber : T.muted, fontFamily: T.mono, fontSize: 10, cursor: "pointer" }}>{t("fund.ecash")}</button>
-          </div>
+          <PaymentRails rail={receiveType} rails={["lightning", "ecash"]} onSelect={rail => { if (rail !== "onchain") setReceiveType(rail); setErr(null); setSuccess(null); }} />
 
           {receiveType === "lightning" && (<>
             <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono, marginBottom: 4, letterSpacing: 1 }}>{t("fund.amountSats")}</div>
@@ -355,94 +353,15 @@ export function FundWalletModal({ onClose, onCreateInvoice, onPayInvoice, onSpen
           </>)}
         </>)}
 
-        {tab === "receive" && invoice && received && (
-          <div style={{
-            padding: "32px 16px", textAlign: "center",
-            background: T.greenDim, border: `1px solid ${T.green}66`,
-            borderRadius: T.r, animation: "fadeIn 0.3s ease",
-          }}>
-            <div style={{ fontSize: 48, marginBottom: 12 }}>✓</div>
-            <div style={{ fontSize: 14, fontWeight: 700, color: T.green, fontFamily: T.sans, marginBottom: 6 }}>
-              {t("fund.paymentReceived")}
-            </div>
-            <div style={{ fontSize: 22, fontWeight: 800, color: T.text, fontFamily: T.mono, letterSpacing: -0.5 }}>
-              +<BitcoinAmount sats={expectedMsats / 1000} size={22} gap={6} glyphScale={1.18} color={T.text} glyphColor={T.muted} />
-            </div>
-            <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono, marginTop: 12 }}>
-              {t("fund.balanceUpdatedClosing")}
-            </div>
-          </div>
-        )}
-        {tab === "receive" && invoice && !received && (<>
-          <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono, marginBottom: 8, letterSpacing: 1, textAlign: "center" }}>{t("fund.scanOrCopyToPay")}</div>
-          <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}>
-            <Suspense fallback={<div style={{ width: 280, height: 280, background: "#fff", borderRadius: T.rs }} />}>
-              <QRCode
-                data={makeLightningInvoiceQrPayload(invoice)}
-                size={280}
-                fgColor="#050505"
-                bgColor="#ffffff"
-                margin={4}
-                alt={t("fund.lightningQrAlt")}
-              />
-            </Suspense>
-          </div>
-          {(() => {
-            const remaining = invoiceExpiresAt ? Math.max(0, invoiceExpiresAt - nowTick) : 0;
-            const mins = Math.floor(remaining / 60);
-            const secs = remaining % 60;
-            const expired = invoiceExpiresAt !== null && remaining === 0;
-            return (
-              <div style={{
-                display: "flex", alignItems: "center", justifyContent: "center",
-                gap: 8, marginBottom: 12, padding: "6px 12px",
-                borderRadius: T.rs,
-                background: expired ? T.redDim : T.surface,
-                border: `1px solid ${expired ? T.red + "44" : T.border}`,
-              }}>
-                {!expired && (
-                  <div style={{
-                    width: 8, height: 8, borderRadius: "50%",
-                    background: T.accent, animation: "pulse 1.4s ease-in-out infinite",
-                  }} />
-                )}
-                <span style={{
-                  fontSize: 10, fontFamily: T.mono,
-                  color: expired ? T.red : T.muted, letterSpacing: 0.5,
-                }}>
-                  {expired
-                    ? t("fund.invoiceExpiredGenerateNew")
-                    : t("fund.waitingForPayment", { time: `${mins}:${secs.toString().padStart(2, "0")}` })}
-                </span>
-              </div>
-            );
-          })()}
-          <div style={{ padding: 8, marginBottom: 12, borderRadius: T.rs, background: T.surface, border: `1px solid ${T.border}`, fontFamily: T.mono, fontSize: 8, color: T.muted, wordBreak: "break-all", maxHeight: 60, overflowY: "auto", textAlign: "center" }}>{invoice}</div>
-          {/* v0.4.2 sim-mode honest disclosure (Pillar 2.7). Sim invoices
-              auto-settle 3-8s after creation regardless of whether the
-              user does anything with the QR. Without this notice, users
-              report confusion when the balance credits after they've
-              dismissed the modal without action. Amber matches the
-              SIM MODE pill's warning palette. */}
-          {isSimModeOn() && (
-            <div style={{
-              padding: "8px 12px", marginBottom: 12, borderRadius: T.rs,
-              background: T.amberDim, border: `1px solid ${T.amber}55`,
-              fontFamily: T.mono, fontSize: 10, color: T.amber,
-              lineHeight: 1.5, textAlign: "center",
-            }}>
-              {t("fund.simAutoCredit")}<br />
-              {t("fund.simDoNotFund")}
-            </div>
-          )}
-          <CopyButton value={invoice} label={t("fund.copyInvoice")} copiedLabel={t("common.copied")} style={{ width: "100%", padding: "10px 16px", borderRadius: T.rs, background: T.accentDim, border: `1px solid ${T.accent}44`, color: T.accent, fontFamily: T.mono, fontSize: 11, fontWeight: 700, cursor: "pointer", marginBottom: 8 }} />
-          <button onClick={() => {
-            setInvoice(null);
-            setBalanceAtInvoice(null);
-            setExpectedMsats(0);
-            setInvoiceExpiresAt(null);
-          }} style={{ width: "100%", padding: "10px 16px", borderRadius: T.rs, background: T.surface, border: `1px solid ${T.border}`, color: T.muted, fontFamily: T.mono, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>{t("fund.newInvoice")}</button>
-        </>)}
+        {tab === "receive" && invoice && <PaymentCard
+          amountMsats={expectedMsats} rail="lightning" data={makeLightningInvoiceQrPayload(invoice)} copyValue={invoice}
+          motion={received}
+          status={received ? t("fund.paymentReceived") : invoiceExpiresAt !== null && invoiceExpiresAt <= nowTick
+            ? t("fund.invoiceExpiredGenerateNew") : t("fund.waitingForPayment", { time: `${Math.floor(Math.max(0, (invoiceExpiresAt ?? nowTick) - nowTick) / 60)}:${(Math.max(0, (invoiceExpiresAt ?? nowTick) - nowTick) % 60).toString().padStart(2, "0")}` })}
+          helper={received ? t("fund.balanceUpdatedClosing") : isSimModeOn() ? <>{t("fund.simAutoCredit")} {t("fund.simDoNotFund")}</> : t("fund.scanOrCopyToPay")}
+          actions={!received && invoiceExpiresAt !== null && invoiceExpiresAt <= nowTick && <PaymentButton tier="quiet" onClick={() => {
+            setInvoice(null); setBalanceAtInvoice(null); setExpectedMsats(0); setInvoiceExpiresAt(null);
+          }}>{t("fund.newInvoice")}</PaymentButton>} />}
 
         {/* SEND */}
         {/* Uncollected ecash from a previous visit. Bearer notes that were

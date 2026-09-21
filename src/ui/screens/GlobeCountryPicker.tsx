@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { rankCountries } from "../../communities/country-search.js";
 import { T } from "../theme.js";
 import { BrandHeader } from "../components/BrandHeader.js";
 import { GlobeHero } from "../components/GlobeHero.js";
@@ -231,12 +232,10 @@ export function GlobeCountryPicker({ onSelect, loadLiveness, loadBondedCounts, b
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected]);
 
-  const q = query.trim().toLowerCase();
-  const results = q
-    ? countries.filter(
-        (c) => c.name.toLowerCase().includes(q) || c.code.toLowerCase() === q,
-      )
-    : [];
+  // Ranked, not merely filtered: "us" must land on the United States rather
+  // than on Belarus, and "uk" has to find a country whose ISO code is GB.
+  const q = query.trim();
+  const results = rankCountries(countries, query);
 
   const openCountry = (c: PickerCountry) => {
     // N-chama drill-down: ≥2 named chamas (real OR available) → disambiguate,

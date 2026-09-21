@@ -82,7 +82,9 @@ const seat = (id: string, member: string) => ({
   id, chamaPolicy: "share-v1", parent: "circle_1",
   status: EscrowStatus.LOCKED, amountMsats: 21_000,
   participants: { [Role.BUYER]: member, [Role.SELLER]: HOST },
-  eventChain: [], joinHolds: {}, votes: {}, claim: {}, lock: {},
+  // A LOCKED seat carries the stamp the reducer writes on a real lock;
+  // money surfaces require that witness now, not just a status.
+  eventChain: [], joinHolds: {}, votes: {}, claim: {}, lock: { lockedAt: NOW - 50 },
   communityArbiters: [], expiresAt: NOW + 86_400, createdAt: NOW - 100,
 } as unknown as EscrowState);
 

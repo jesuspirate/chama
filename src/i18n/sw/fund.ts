@@ -1,4 +1,19 @@
 export const fund: Record<string, string> = {
+  "payment.switchPending": "Pochi hii haiwezi kughairi ankara hai. Subiri iishe muda kabla ya kubadili; kiasi kipya kinaweza kubadilika. Usilipe ankara ya zamani baada ya kubadili.",
+  "payment.lightning": "Lightning",
+  "payment.onchain": "Mnyororo",
+  "payment.ecash": "Ecash",
+  "payment.rail": "Njia ya malipo",
+  "payment.openWith": "Fungua kwa…",
+  "payment.details": "Maelezo",
+  "payment.shareFailed": "Imeshindikana kufungua menyu ya kushiriki. Unaweza kunakili.",
+  "payment.switchTitle": "Badili njia ya malipo?",
+  "payment.keepLightning": "Endelea na Lightning",
+  "payment.switch": "Badili",
+  "payment.tradeAmount": "Kiasi cha biashara",
+  "payment.fee": "Ada",
+  "payment.total": "Jumla ya kutuma",
+
   "fund.addAnotherNwcWallet": "Ongeza pochi nyingine ya NWC",
   "fund.amountSats": "KIASI (SATS)",
   "fund.approveInFediAfter":

@@ -24,6 +24,7 @@ export const recovery: Record<string, string> = {
     "¿Seguro? Chama olvidará esta nota — toca de nuevo solo si la guardaste",
   "recovery.exportClearCta": "Ya la importé — borrar",
   "recovery.exportCopyCta": "Copiar ecash",
+  "recovery.exportOpenInFedi": "Abrir en Fedi",
   "recovery.exportQrAlt": "Código QR animado de ecash para Fedi",
   "recovery.exportQrHelp": "En Fedi, escanea hasta que termine la barra. Si Fedi aún está uniéndose o recuperando esta federación, termina eso primero (reinicia Fedi si se bloquea), vuelve a abrir esta exportación pendiente y escanea otra vez.",
   "recovery.exportErrorTitle": "No se pudo generar la nota",

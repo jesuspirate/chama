@@ -1,3 +1,6 @@
+import { OverlaySheet } from "../components/OverlaySheet.js";
+import { canOfferClaim, needsTradeHistory } from "../decisions.js";
+import { CopyButton } from "../components/CopyButton.js";
 import { ReplayNotes } from "../components/ReplayNotes.js";
 import { TradeArbiterRecord } from "../components/TradeArbiterRecord.js";
 import type { VerifiedBond } from "../../bond-multisig/bond-announcement.js";
@@ -8,7 +11,7 @@ import { decideVotePrompt, preLockDeadline, tradeRoomPresence, type RoomPresence
 import { profileNameFor, type NostrProfileNameMap } from "../nostr-profiles.js";
 import { BitcoinPricePill } from "../components/BitcoinPricePill.js";
 import { getCommunityBySlug } from "../../communities/registry.js";
-import { ROLE_COLOR } from "../theme.js";
+import { ROLE_COLOR, TRINITY_RING_ORDER } from "../theme.js";
 import { getWinner } from "../../escrow-engine/state-machine.js";
 import { expectedLockerRole } from "../../escrow-engine/lock-custody.js";
 import { GUIDED_SLICE_CHOICE_ENABLED } from "../../escrow-engine/experimental-escrow-features.js";
@@ -124,6 +127,7 @@ export function LiveTradeSurface({
   // Range (exchange-bracket) join: the buyer's chosen sats amount, as typed.
   // Empty ⇒ the bracket minimum.
   const [joinSats, setJoinSats] = useState("");
+  const [party, setParty] = useState<RoomPresence | null>(null);
   const [shareCopied, setShareCopied] = useState(false);
   const armTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -176,7 +180,7 @@ export function LiveTradeSurface({
     ? "marketplace"
     : state.category;
   const winner = getWinner(state);
-  const iAmWinner = !!winner && samePubkey(winner.pubkey, pubkey);
+  const iAmWinner = canOfferClaim(state) && !!winner && samePubkey(winner.pubkey, pubkey);
   const counterparty =
     myRole === Role.BUYER ? participants[Role.SELLER]
     : myRole === Role.SELLER ? participants[Role.BUYER]
@@ -188,6 +192,11 @@ export function LiveTradeSurface({
 
   // ── The single decision, per state × role ──────────────────────────────
   function renderDecision() {
+    if (needsTradeHistory(state)) return <Decision q={tr("trade.historyUnverified")} sub={tr("app.archivedIncomplete")}>
+      <CopyButton value={state.id} label={state.id} />
+      <MoreOptions onClick={onOpenFullView} label={tr("trade.resendHeal")} />
+    </Decision>;
+
     const status = state.status;
 
     if (status === EscrowStatus.CREATED) {
@@ -610,7 +619,7 @@ export function LiveTradeSurface({
         }
         .lts-room{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
           padding:8px 16px;border-bottom:1px solid ${T.border};background:${T.bg}}
-        .lts-room-people{display:flex;align-items:center;gap:8px;min-width:0;flex:1 1 auto}
+        .lts-room-people{display:flex;flex-wrap:wrap;align-items:center;gap:8px;min-width:0;flex:1 1 auto}
         @keyframes ltsHere{0%,100%{opacity:1}50%{opacity:.35}}
         @media (prefers-reduced-motion:reduce){.lts-here-dot{animation:none!important}}
         @keyframes ltsPulse{0%,100%{box-shadow:0 0 0 0 ${T.amber}00}50%{box-shadow:0 0 0 4px ${T.amber}33}}
@@ -684,10 +693,16 @@ export function LiveTradeSurface({
           color: T.muted, background: T.surface, border: `1px solid ${T.border}`,
           padding: "3px 9px", borderRadius: 999,
         }}>
-          {state.status}
+          {needsTradeHistory(state) ? tr("trade.savedSummary") : state.status}
         </span>
       </div>
 
+      {party?.pubkey && <OverlaySheet title={profileNameFor(profileNames, party.pubkey, kind0Enabled) ?? tr("trade.participants")} subtitle={party.pubkey} onClose={() => setParty(null)}>
+        <CopyButton value={party.pubkey} />
+        {party.role === Role.ARBITER ? <TradeArbiterRecord state={state} trades={knownTrades} fetchBonds={fetchCommunityBonds} />
+          : <p>{tr("trade.partyObserved", { count: knownTrades.filter(trade => trade.eventChain.some(event => event.pubkey === party.pubkey)).length })}</p>}
+        <p>{tr("trade.arbiterConduct")}</p>
+      </OverlaySheet>}
       {/* The room strip. PHILOSOPHY.md rule 1 — "trade with people, not
           platforms": you should always be able to see WHO is across from you
           and whether they are actually there, and (Jet, 6.3) the price you
@@ -695,10 +710,11 @@ export function LiveTradeSurface({
           Presence is evidence-derived only (see tradeRoomPresence). */}
       <div className="lts-room">
         <div className="lts-room-people">
-          {tradeRoomPresence(state, pubkey).map(person => (
+          {tradeRoomPresence(state, pubkey, undefined, TRINITY_RING_ORDER).map(person => (
             <PersonChip
               key={person.role}
               person={person}
+              onClick={() => setParty(person)}
               name={person.isYou
                 ? tr("lts.roomYou")
                 : profileNameFor(profileNames, person.pubkey, kind0Enabled)}
@@ -744,7 +760,7 @@ export function LiveTradeSurface({
 
 /** One person in the room. The dot carries the sacred role colour; it only
  *  breathes when we have real evidence they are here right now. */
-function PersonChip({ person, name }: { person: RoomPresence; name: string | null }) {
+function PersonChip({ person, name, onClick }: { person: RoomPresence; name: string | null; onClick: () => void }) {
   const color = ROLE_COLOR[person.role as keyof typeof ROLE_COLOR] ?? T.muted;
   if (!person.pubkey) {
     return (
@@ -767,7 +783,7 @@ function PersonChip({ person, name }: { person: RoomPresence; name: string | nul
     : person.signal === "recent" ? tr("lts.justHere")
     : tr("lts.roomQuiet");
   return (
-    <span style={{
+    <button type="button" onClick={onClick} style={{ minHeight: 44, cursor: "pointer",
       display: "inline-flex", alignItems: "center", gap: 6, minWidth: 0,
       fontFamily: T.mono, fontSize: 11,
       background: T.surface, border: `1px solid ${person.ready ? `${T.green}44` : T.border}`,
@@ -790,7 +806,7 @@ function PersonChip({ person, name }: { person: RoomPresence; name: string | nul
       <span style={{ color: person.ready ? T.green : T.muted, flexShrink: 0 }}>
         · {person.ready ? tr("lts.roomReady") : sub}
       </span>
-    </span>
+    </button>
   );
 }
 

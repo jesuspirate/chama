@@ -390,6 +390,7 @@ function handleCreate(event: ParsedEscrowEvent<CreatePayload>): TransitionResult
   const items = p.items?.map(cloneMenuItem);
 
   const state: EscrowState = {
+    provenance: "replayed",
     id: event.escrowId,
     status: EscrowStatus.CREATED,
     description: p.title || p.description,
@@ -1934,10 +1935,11 @@ export function replayEventChain(events: ParsedEscrowEvent[]): TransitionResult 
            EscrowEventKind.SUBSCRIBE, EscrowEventKind.PERIOD_RELEASE].includes(event.kind)) {
         return result;
       }
-      const note = () => {
+      const note = (benign = false) => {
         if (state) state = { ...state, replayNotes: [...(state.replayNotes ?? []), {
           eventId: event.raw.id, kind: event.kind,
           code: result.error.code, message: result.error.message,
+          ...(benign ? { benign: true } : {}),
         }] };
       };
       // A repeated RESOLVE is redundant only when it agrees with the committed
@@ -1946,10 +1948,10 @@ export function replayEventChain(events: ParsedEscrowEvent[]): TransitionResult 
         && state.resolvedOutcome === (event.payload as ResolvePayload).outcome
         && (result.error.code === "INVALID_STATE" || result.error.code === "TERMINAL_STATE");
       if (event.kind === EscrowEventKind.RESOLVE) {
-        if (redundantResolve) { note(); continue; }
+        if (redundantResolve) { note(true); continue; }
         return result;
       }
-      if (benignCodes.has(result.error.code)) { note(); continue; }
+      if (benignCodes.has(result.error.code)) { note(true); continue; }
       // Late acknowledgements/votes cannot change committed custody. A missing
       // LOCK is not a late vote: retain its failure instead of disguising a hole.
       if (result.error.code === "INVALID_STATE" && state && (

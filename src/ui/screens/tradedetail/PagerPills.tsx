@@ -12,8 +12,11 @@
 import { T } from "../../theme.js";
 import { useT } from "../../../i18n/index.js";
 
-export function PagerPills({ tabs, active, onSelect, badges }: {
+export function PagerPills({ tabs, active, onSelect, badges, icons, chevrons = true, label }: {
   tabs: string[];
+  icons?: React.ReactNode[];
+  chevrons?: boolean;
+  label?: string;
   /** Index of the live pane (driven by the pager's scroll position). */
   active: number;
   onSelect: (index: number) => void;
@@ -29,7 +32,7 @@ export function PagerPills({ tabs, active, onSelect, badges }: {
       display: "flex", alignItems: "center", justifyContent: "center",
       gap: 8, padding: "2px 0 9px", flex: "0 0 auto",
     }}>
-      <button
+      {chevrons && <button
         type="button"
         aria-label={t("trade.prevPaneAria")}
         disabled={clamped === 0}
@@ -41,16 +44,16 @@ export function PagerPills({ tabs, active, onSelect, badges }: {
           cursor: clamped === 0 ? "default" : "pointer",
           animation: clamped === 0 ? "none" : "pagerNudgeL 2.6s ease-in-out infinite",
         }}
-      >‹</button>
+      >‹</button>}
 
       <div
         role="tablist"
-        aria-label={t("trade.tradePanesAria")}
+        aria-label={label ?? t("trade.tradePanesAria")}
         style={{
           position: "relative",
-          display: "grid", gridTemplateColumns: `repeat(${n}, 1fr)`,
+          display: "grid", gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))`,
           background: T.surface, border: `1px solid ${T.border}`,
-          borderRadius: 999, padding: 4, minWidth: 248, maxWidth: 360, flex: "0 1 auto",
+          borderRadius: 999, padding: 4, minWidth: 0, width: "100%", maxWidth: 360, flex: "0 1 auto",
         }}
       >
         {/* Sliding indicator — one button-width wide, translated by whole
@@ -78,15 +81,16 @@ export function PagerPills({ tabs, active, onSelect, badges }: {
               style={{
                 position: "relative", zIndex: 1,
                 background: "transparent", border: "none",
-                padding: "7px 10px", borderRadius: 999,
+                padding: "7px 8px", minHeight: 44, borderRadius: 999,
                 cursor: "pointer",
                 fontFamily: T.sans, fontSize: 12, fontWeight: 700,
                 color: on ? T.text : T.muted,
                 transition: "color .2s",
-                whiteSpace: "nowrap",
+                whiteSpace: chevrons ? "nowrap" : "normal",
+                overflowWrap: "anywhere", minWidth: 0,
               }}
             >
-              {label}
+              {icons?.[i] && <span aria-hidden="true" style={{ opacity: on ? 1 : .5, marginRight: chevrons ? 5 : 0, display: chevrons ? "inline" : "block", transition: "opacity .2s" }}>{icons[i]}</span>}{label}
               {badge > 0 && (
                 <span aria-label={t("trade.unreadAria", { count: badge })} style={{
                   position: "absolute", top: 0, right: 2,
@@ -103,7 +107,7 @@ export function PagerPills({ tabs, active, onSelect, badges }: {
         })}
       </div>
 
-      <button
+      {chevrons && <button
         type="button"
         aria-label={t("trade.nextPaneAria")}
         disabled={clamped === n - 1}
@@ -115,7 +119,7 @@ export function PagerPills({ tabs, active, onSelect, badges }: {
           cursor: clamped === n - 1 ? "default" : "pointer",
           animation: clamped === n - 1 ? "none" : "pagerNudgeR 2.6s ease-in-out infinite",
         }}
-      >›</button>
+      >›</button>}
     </div>
   );
 }

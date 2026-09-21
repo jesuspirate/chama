@@ -2,7 +2,9 @@
 // QR Code Component — uses 'qrcode' npm package for real scannable output
 // ══════════════════════════════════════════════════════════════════════════
 
-import { useState, useEffect, type CSSProperties } from "react";
+import { useState, useEffect } from "react";
+import { T } from "./theme.js";
+import { ChamaLoader } from "./components/ChamaLoader.js";
 
 interface QRCodeProps {
   data: string | string[];
@@ -13,6 +15,7 @@ interface QRCodeProps {
   alt?: string;
   errorCorrectionLevel?: "L" | "M" | "Q" | "H";
   showLogo?: boolean;
+  logo?: "static" | "motion";
   /** Frame cadence for qrloop/multipart data. Fedi uses 100 ms natively. */
   frameIntervalMs?: number;
 }
@@ -22,63 +25,21 @@ export function QRCode({
   size = 220,
   fgColor = "#050505",
   bgColor = "#ffffff",
-  margin = 2,
+  margin = 4,
   alt = "QR code",
   errorCorrectionLevel = "H",
   showLogo = true,
+  logo = "static",
   frameIntervalMs = 100,
 }: QRCodeProps) {
   const [dataUrls, setDataUrls] = useState<string[]>([]);
   const [activeFrame, setActiveFrame] = useState(0);
   const [error, setError] = useState(false);
-  const shellPad = Math.round(Math.min(16, Math.max(10, size * 0.055)));
+  const shellPad = 22;
   const shellSize = size + shellPad * 2;
-  const cornerSize = Math.round(Math.min(34, Math.max(22, size * 0.12)));
-  const cornerStroke = Math.max(2, Math.round(size * 0.011));
   const logoIslandSize = Math.round(Math.min(40, Math.max(26, size * 0.14)));
   const logoSize = Math.round(logoIslandSize * 0.76);
   const canShowLogo = showLogo && errorCorrectionLevel !== "L" && size >= 180;
-  const cornerBase: CSSProperties = {
-    position: "absolute",
-    width: cornerSize,
-    height: cornerSize,
-    pointerEvents: "none",
-    filter: "drop-shadow(0 0 10px rgba(46,230,214,.28))",
-  };
-  const corners: CSSProperties[] = [
-    {
-      ...cornerBase,
-      left: 0,
-      top: 0,
-      borderLeft: `${cornerStroke}px solid #F7931A`,
-      borderTop: `${cornerStroke}px solid #F7931A`,
-      borderTopLeftRadius: 10,
-    },
-    {
-      ...cornerBase,
-      right: 0,
-      top: 0,
-      borderRight: `${cornerStroke}px solid #2EE6D6`,
-      borderTop: `${cornerStroke}px solid #2EE6D6`,
-      borderTopRightRadius: 10,
-    },
-    {
-      ...cornerBase,
-      left: 0,
-      bottom: 0,
-      borderLeft: `${cornerStroke}px solid #BF5AF2`,
-      borderBottom: `${cornerStroke}px solid #BF5AF2`,
-      borderBottomLeftRadius: 10,
-    },
-    {
-      ...cornerBase,
-      right: 0,
-      bottom: 0,
-      borderRight: `${cornerStroke}px solid #F7931A`,
-      borderBottom: `${cornerStroke}px solid #F7931A`,
-      borderBottomRightRadius: 10,
-    },
-  ];
 
   useEffect(() => {
     let cancelled = false;
@@ -174,13 +135,17 @@ export function QRCode({
         alignItems: "center",
         justifyContent: "center",
         borderRadius: 18,
-        background:
-          "radial-gradient(circle at 30% 20%, rgba(46,230,214,.10), transparent 48%), rgba(10,10,10,.30)",
+        maxWidth: "100%",
       }}
     >
-      {corners.map((style, index) => (
-        <span key={index} aria-hidden="true" style={style} />
-      ))}
+      <svg aria-hidden="true" width={shellSize} height={shellSize} viewBox={`0 0 ${shellSize} ${shellSize}`}
+        style={{ position: "absolute", inset: 0, pointerEvents: "none", filter: `drop-shadow(0 0 8px ${T.tealDim})` }}
+        fill="none" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+        <path stroke="#F7931A" d="M 38 2 H 18 A 16 16 0 0 0 2 18 V 38" />
+        <path stroke="#2EE6D6" d={`M ${shellSize-38} 2 H ${shellSize-18} A 16 16 0 0 1 ${shellSize-2} 18 V 38`} />
+        <path stroke="#BF5AF2" d={`M 2 ${shellSize-38} V ${shellSize-18} A 16 16 0 0 0 18 ${shellSize-2} H 38`} />
+        <path stroke="#F7931A" d={`M ${shellSize-38} ${shellSize-2} H ${shellSize-18} A 16 16 0 0 0 ${shellSize-2} ${shellSize-18} V ${shellSize-38}`} />
+      </svg>
       <img
         src={dataUrl}
         alt={dataUrls.length > 1 ? `${alt} — frame ${activeFrame + 1} of ${dataUrls.length}` : alt}
@@ -191,7 +156,7 @@ export function QRCode({
           height: size,
           borderRadius: 12,
           background: bgColor,
-          boxShadow: "0 12px 34px rgba(0,0,0,.24), 0 0 0 1px rgba(255,255,255,.92)",
+          boxShadow: `0 8px 24px ${T.border}`,
         }}
       />
       {canShowLogo && (
@@ -210,16 +175,16 @@ export function QRCode({
             borderRadius: "50%",
             background: "#ffffff",
             border: "1px solid rgba(10,10,10,.10)",
-            boxShadow: "0 5px 16px rgba(0,0,0,.24), 0 0 0 2px rgba(255,255,255,.92)",
+            boxShadow: `0 3px 10px ${T.border}`,
           }}
         >
-          <img
+          {logo === "motion" ? <ChamaLoader size={logoSize} /> : <img
             src="/icons/chama-woven-trust-mark-transparent-64.png"
             alt=""
             width={logoSize}
             height={logoSize}
             style={{ display: "block", width: logoSize, height: logoSize }}
-          />
+          />}
         </span>
       )}
     </div>

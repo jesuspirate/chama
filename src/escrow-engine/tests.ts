@@ -1280,6 +1280,7 @@ console.log("── CREATE ──");
 
   if (assertOk(result, "CREATE bootstraps initial state")) {
     const s = result.state;
+    assert(s.provenance === "replayed", "Reducer construction stamps replayed provenance");
     assert(s.status === EscrowStatus.CREATED, "Status is CREATED");
     assert(s.id === ESCROW_ID, "Escrow ID set correctly");
     assert(s.participants[Role.SELLER] === SELLER_PK, "Seller is initiator");
@@ -12337,7 +12338,10 @@ console.log("\n── hasActiveBuyerSellerCommitment + findActiveTrade ──");
     createdAt: Math.floor(Date.now() / 1000),
     eventChain: [],
     chatMessages: [],
-    lock: { handle: null },
+    // A LOCKED fixture carries what the reducer stamps on a real lock:
+    // money surfaces now require that witness rather than trusting a
+    // status, so a lock-shaped fixture has to be lock-shaped.
+    lock: { handle: null, lockedAt: Math.floor(Date.now() / 1000) },
     ...overrides,
   } as EscrowState);
 
@@ -13115,7 +13119,10 @@ console.log("\n── shouldShowRecoveryBanner + identifyStrandedEcashSource ─
     createdAt: 1000,
     eventChain: [],
     chatMessages: [],
-    lock: { handle: null },
+    // A LOCKED fixture carries what the reducer stamps on a real lock:
+    // money surfaces now require that witness rather than trusting a
+    // status, so a lock-shaped fixture has to be lock-shaped.
+    lock: { handle: null, lockedAt: Math.floor(Date.now() / 1000) },
     ...overrides,
   } as EscrowState);
 
@@ -13222,7 +13229,10 @@ console.log("\n── PENDING CLAIM PAYOUTS (stranded-payout recovery) ──");
     createdAt: 1000,
     eventChain: [],
     chatMessages: [],
-    lock: { handle: null },
+    // A LOCKED fixture carries what the reducer stamps on a real lock:
+    // money surfaces now require that witness rather than trusting a
+    // status, so a lock-shaped fixture has to be lock-shaped.
+    lock: { handle: null, lockedAt: Math.floor(Date.now() / 1000) },
     ...overrides,
   } as EscrowState);
 
@@ -13697,7 +13707,10 @@ console.log("\n── decideArbiterWarning ──");
     createdAt: 1000,
     eventChain: [],
     chatMessages: [],
-    lock: { handle: null },
+    // A LOCKED fixture carries what the reducer stamps on a real lock:
+    // money surfaces now require that witness rather than trusting a
+    // status, so a lock-shaped fixture has to be lock-shaped.
+    lock: { handle: null, lockedAt: Math.floor(Date.now() / 1000) },
     ...overrides,
   } as EscrowState);
 
@@ -18917,7 +18930,10 @@ console.log("\n── CHAMA BAR LABEL ──");
     completedAt: null, cancelledAt: null, claim: null,
     fees: { platformBps: 50, platformPubkey: me, arbiterFeeMsats: 0 },
     expiresAt, createdAt: 0, eventChain: [], chatMessages: [],
-    lock: { handle: null },
+    // A LOCKED fixture carries what the reducer stamps on a real lock:
+    // money surfaces now require that witness rather than trusting a
+    // status, so a lock-shaped fixture has to be lock-shaped.
+    lock: { handle: null, lockedAt: Math.floor(Date.now() / 1000) },
   } as unknown as EscrowState);
   const me = "user_pubkey";
   assert(
@@ -23308,12 +23324,17 @@ console.log("\n── Liquidity & attention (buyerInterest / newListing / needsY
     participants: { [Role.BUYER]: BUYER, [Role.SELLER]: SELLER, [Role.ARBITER]: ARB },
     votes: { [Role.BUYER]: Outcome.RELEASE, [Role.SELLER]: Outcome.RELEASE }, expiresAt: nowSec + 9000,
     lock: {
+      lockedAt: nowSec - 30,
       notesHash: "ab".repeat(32),
       shares: new Map([
         ["1", { encryptedFor: {} }],
         ["2", { encryptedFor: {} }],
       ]),
     } as any });
+  assert(needsYouReasonFor({ ...claim, provenance: "summary" }, SELLER, nowSec) === null,
+    "needs-you: a retained summary with a remembered lock timestamp never promises a claim");
+  assert(needsYouReasonFor({ ...claim, lock: { ...claim.lock, lockedAt: null }, eventChain: [] }, SELLER, nowSec) === null,
+    "needs-you: notesHash and shares without a lock witness never promise a claim");
   const vote = mk({ id: "t_vote", status: EscrowStatus.LOCKED,
     participants: { [Role.BUYER]: BUYER, [Role.SELLER]: SELLER, [Role.ARBITER]: ARB },
     votes: {}, expiresAt: nowSec + 9000 });
@@ -23874,10 +23895,17 @@ console.log("\n── ESCROW CLIENT — Browse listing hydration ──");
       repairSocket.emit(["EOSE", sub]);
     };
 
+    const summaryBase = applyEvent(null, create);
+    if (!summaryBase.ok) throw new Error("summary fixture CREATE failed");
+    (repairClient as any).states.set(ESCROW_ID, {
+      ...summaryBase.state, status: EscrowStatus.APPROVED, eventChain: [], provenance: undefined,
+    });
     const holedLoad = repairClient.loadEscrow(ESCROW_ID);
     await answerFetch(holed);
     const holedState = await holedLoad;
     const holedFailure = repairClient.getLastLoadFailure(ESCROW_ID);
+    assert(repairClient.getState(ESCROW_ID)?.provenance === "summary",
+      "chain-repair: a retained local summary is explicitly unverified after replay failure");
     assert(holedState === null,
       "chain-repair: a relay chain missing its VOTEs can't replay (unchanged)");
     assert(holedFailure?.reason === "chain-incomplete"
@@ -23905,6 +23933,7 @@ console.log("\n── ESCROW CLIENT — Browse listing hydration ──");
     const repairedLoad = repairClient.loadEscrow(ESCROW_ID, { repairFromCache: true });
     await answerFetch(holed);
     const repairedState = await repairedLoad;
+    assert(repairedState?.provenance === "replayed", "chain-repair: successful reconstruction replaces summary provenance");
     assert(repairedState?.status === EscrowStatus.COMPLETED,
       "chain-repair: the durable cache fills the relay's gap and the trade opens again");
     assert(repairClient.getLastLoadFailure(ESCROW_ID) === null,

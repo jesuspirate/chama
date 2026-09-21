@@ -1,3 +1,5 @@
+import { PaymentButton } from "../components/PaymentCard.js";
+import { OverlaySheet } from "../components/OverlaySheet.js";
 import { ReplayNotes } from "../components/ReplayNotes.js";
 import { arbiterRecord } from "../../arbiters/record.js";
 import { ArbiterRecordCard } from "../components/ArbiterRecordCard.js";
@@ -41,7 +43,7 @@ import {
 import { listingPremiumLine } from "../listing-metrics.js";
 import { useBitcoinPrice } from "../hooks/useBitcoinPrice.js";
 import { useFiatRates } from "../hooks/useFiatRates.js";
-import { decideTradeDetailFraming, decideVotePrompt } from "../decisions.js";
+import { canOfferClaim, needsTradeHistory, decideTradeDetailFraming, decideVotePrompt } from "../decisions.js";
 import { VerticalIcon } from "../components/VerticalIcon.js";
 import {
   pickArbiterFromPool,
@@ -707,7 +709,7 @@ export function TradeDetail({
   }, [state, bondedNpubs, verifiedBonded]);
   const votePrompt = decideVotePrompt(state, pubkey, participants);
   const winner = getWinner(state);
-  const iAmWinner = samePubkey(winner?.pubkey, pubkey);
+  const iAmWinner = canOfferClaim(state) && samePubkey(winner?.pubkey, pubkey);
   const claimRetryBlocked =
     state.status === EscrowStatus.CLAIMED &&
     !!claimBlockedReason &&
@@ -725,7 +727,7 @@ export function TradeDetail({
     state.status === EscrowStatus.CLAIMED && !claimRetryBlocked
     && (payoutRecordStatus === "submitted" || payoutRecordStatus === "settled");
   const statusKey = claimRetryBlocked ? "CLAIM_FAILED" : state.status;
-  const s = STATUS[statusKey] || STATUS.CREATED;
+  const s = needsTradeHistory(state) ? { ...STATUS.CREATED, l: "trade.savedSummary" } : STATUS[statusKey] || STATUS.CREATED;
 
   const expectedLocker = state.category === "marketplace" ? Role.BUYER
     : state.category === "lending" ? Role.SELLER
@@ -1654,10 +1656,19 @@ export function TradeDetail({
             onAmountModeChange={onAmountDisplayModeChange}
             quoteCurrency={homeQuoteCurrency}
           />
-          {!isCreatedReservation && <Badge status={statusKey} />}
+          {!isCreatedReservation && (needsTradeHistory(state) ? <span style={{ color: T.muted, fontSize: 11 }}>{t("trade.savedSummary")}</span> : <Badge status={statusKey} />)}
         </div>
       </div>
 
+        {repFor && <OverlaySheet title={profileNameFor(profileNames, repFor, kind0Enabled) ?? t("trade.participants")}
+          subtitle={repFor} onClose={() => setRepFor(null)}>
+          <CopyButton value={repFor} />
+          <p>{t("trade.partyObserved", { count: (knownTrades ?? [state]).filter(trade => trade.eventChain.some(event => event.pubkey === repFor)).length })}</p>
+          {fetchRatingSummary && <ReputationReadout pubkey={repFor}
+            name={profileNameFor(profileNames, repFor, kind0Enabled)} fetchSummary={fetchRatingSummary} />}
+          {(repFor === participants[Role.ARBITER] || repFor === previewArbiterPk) &&
+            <ArbiterRecordCard expanded record={arbiterRecord(repFor, knownTrades ?? [state], seatedBond ? [seatedBond] : [], new Map(), nowSec)} />}
+        </OverlaySheet>}
         {state.status === EscrowStatus.CREATED && (participants[Role.ARBITER] || previewArbiterPk) && <ArbiterRecordCard record={arbiterRecord(
           participants[Role.ARBITER] || previewArbiterPk!, knownTrades ?? [state], seatedBond ? [seatedBond] : [],
           new Map(), Math.floor(Date.now() / 1000), bondTipHeight,
@@ -2068,6 +2079,22 @@ export function TradeDetail({
               marginTop: 8,
             }}>
               {nextStep.body}
+            </div>
+          )}
+          {needsTradeHistory(state) && (
+            <div style={{ marginTop: 12, overflowWrap: "anywhere" }}>
+              <CopyButton value={state.id} label={state.id} style={{ minHeight: 44 }} />
+              {onRebroadcast && <button type="button" disabled={rebroadcasting}
+                style={{ minHeight: 44, marginTop: 8 }}
+                onClick={async () => {
+                  setRebroadcasting(true);
+                  try {
+                    const { published, total } = await onRebroadcast(state.id);
+                    setRebroadcastResult(t("trade.republished", { published, total }));
+                  } catch (error) { setRebroadcastResult(String(error)); }
+                  finally { setRebroadcasting(false); }
+                }}>{t("trade.resendHeal")}</button>}
+              <div role="status">{rebroadcastResult}</div>
             </div>
           )}
           {isReservedDetails && liveJoinHold && (
@@ -2874,7 +2901,7 @@ export function TradeDetail({
                 />
               )}
 
-              <button
+              <PaymentButton tier="primary"
                 disabled={claiming || directNwcClaimPhase !== null || bootProbeFailed || claimRetryBlocked || payoutConfirming}
                 onClick={async () => {
                   // v1.2.4: direct-NWC claim path. Saved NWC wallet skips
@@ -2899,19 +2926,7 @@ export function TradeDetail({
                     setClaiming(false);
                   }
                 }}
-                style={{
-                  width: "100%", padding: "18px", borderRadius: T.rs,
-                  background: claimRetryBlocked
-                    ? T.redDim
-                    : claiming || directNwcClaimPhase !== null || bootProbeFailed
-                    ? T.surface
-                    : `linear-gradient(135deg, ${T.accent}, ${T.amber})`,
-                  border: claimRetryBlocked ? `1px solid ${T.red}55` : "none",
-                  color: claimRetryBlocked ? T.red : claiming || directNwcClaimPhase !== null || bootProbeFailed ? T.muted : T.bg,
-                  fontFamily: T.mono, fontSize: 15, fontWeight: 800,
-                  cursor: claiming || directNwcClaimPhase !== null || bootProbeFailed || claimRetryBlocked ? "default" : "pointer", letterSpacing: 1,
-                  animation: (claiming || directNwcClaimPhase !== null || bootProbeFailed || claimRetryBlocked) ? "none" : "pulse 2s ease-in-out infinite",
-                }}>
+                style={{ width: "100%", fontSize: 15 }}>
                 {directNwcClaimPhase
                   ? directNwcClaimPhase
                   : payoutConfirming
@@ -2925,7 +2940,7 @@ export function TradeDetail({
                         ? t("trade.retryClaimVia", { wallet: activeNwc.label })
                         : t("trade.claimSatsVia", { wallet: activeNwc.label }))
                     : state.status === EscrowStatus.CLAIMED ? t("trade.retryClaim") : t("trade.claimSats")}
-              </button>
+              </PaymentButton>
               {/* v1.2.4: same indeterminate progress strip under the
                   Claim button while the direct-NWC claim is mid-action.
                   Mirror of the Fund strip — purely cosmetic, since the
@@ -4228,11 +4243,12 @@ export function TradeDetail({
                 );
               })}
             </div>
-            <div style={{ minWidth: 0, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            <div style={{ minWidth: 0, flex: 1 }}>
               <span style={{ fontFamily: T.mono, fontSize: 11, fontWeight: 700 }}>
-                <span style={{ color: ROLE_COLOR.buyer }}>{dealBuyerName ?? "Buyer"}</span>
+                <button type="button" onClick={e => { e.stopPropagation(); if (participants.buyer) setRepFor(participants.buyer); }} style={{ background: "none", border: 0, color: ROLE_COLOR.buyer, minHeight: 44, cursor: "pointer" }}>{dealBuyerName ?? t("trade.buyer")}</button>
                 <span style={{ color: T.muted }}> ⇄ </span>
-                <span style={{ color: ROLE_COLOR.seller }}>{dealSellerName ?? "Seller"}</span>
+                <button type="button" onClick={e => { e.stopPropagation(); if (participants.seller) setRepFor(participants.seller); }} style={{ background: "none", border: 0, color: ROLE_COLOR.seller, minHeight: 44, cursor: "pointer" }}>{dealSellerName ?? t("trade.seller")}</button>
+                <button type="button" onClick={e => { e.stopPropagation(); const key = participants.arbiter ?? previewArbiterPk; if (key) setRepFor(key); }} style={{ background: "none", border: 0, color: ROLE_COLOR.arbiter, minHeight: 44, cursor: "pointer" }}>{t("trade.roleArbiter")}</button>
               </span>
               <span style={{ fontFamily: T.sans, fontSize: 11, color: T.muted }}> · {state.description || tradeRoomTitle}</span>
             </div>
@@ -4303,19 +4319,14 @@ export function TradeDetail({
                 isYou={myRole === role}
                 voted={!!state.votes[role]} outcome={state.votes[role]}
                 autoAssigned={isAutoArbiter}
-                onClick={fetchRatingSummary && dotPk ? () => setRepFor(prev => prev === dotPk ? null : dotPk) : undefined}
+                onClick={dotPk ? () => setRepFor(dotPk) : undefined}
                 displayName={profileNameFor(profileNames, dotPk, kind0Enabled)} />
             );
           })}
         </div>
         {/* v3.1.1 (#2): tap a filled avatar above → its verified reputation. */}
-        {repFor && fetchRatingSummary && (
-          <ReputationReadout
-            pubkey={repFor}
-            name={profileNameFor(profileNames, repFor, kind0Enabled)}
-            fetchSummary={fetchRatingSummary}
-          />
-        )}
+
+
 
         {/* v2.7: the trust story + B/A/S legend. Plain-language "why this is
             safe" at the moment it matters, decoding the three coloured dots
@@ -5164,7 +5175,7 @@ const TD_PANE_PLACEHOLDER: React.CSSProperties = {
 
 type DetailNextStepTone = "accent" | "green" | "red" | "purple" | "teal";
 
-function detailNextStep({
+export function detailNextStep({
   t,
   state,
   myRole,
@@ -5216,6 +5227,10 @@ function detailNextStep({
   color: string;
   amountMsats: number | null;
 } {
+  if (needsTradeHistory(state)) return {
+    kicker: t("trade.savedSummary"), title: t("trade.historyUnverified"),
+    body: t("app.archivedIncomplete"), tone: "purple", color: T.muted, amountMsats: null,
+  };
   // v3.2 prototype matrix: role × state cells. Everything below derives from
   // state + myRole — dispute = both outcomes on record, unresolved.
   const voteValues = Object.values(state.votes);

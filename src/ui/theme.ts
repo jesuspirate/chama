@@ -54,6 +54,8 @@ export const T = {
   r: 12, rs: 8,
   mono: "'JetBrains Mono','SF Mono','Fira Code',monospace",
   sans: "'DM Sans',-apple-system,sans-serif",
+  /** Logotype only — the landing page's wordmark face. Not for body copy. */
+  display: "'Manrope','DM Sans',-apple-system,sans-serif",
 };
 
 export function normalizeThemeMode(value: unknown): ThemeMode {

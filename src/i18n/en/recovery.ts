@@ -27,6 +27,7 @@ export const recovery: Record<string, string> = {
     "Sure? Chama will forget this note — tap again only if it's saved",
   "recovery.exportClearCta": "I've imported it — clear",
   "recovery.exportCopyCta": "Copy ecash",
+  "recovery.exportOpenInFedi": "Open in Fedi",
   "recovery.exportQrAlt": "Animated ecash QR code for Fedi",
   "recovery.exportQrHelp": "In Fedi, scan until the progress bar completes. If Fedi is still joining or recovering this federation, finish that first (restart Fedi if it stalls), then reopen this pending export and scan again.",
   "recovery.exportErrorTitle": "Couldn't generate the note",

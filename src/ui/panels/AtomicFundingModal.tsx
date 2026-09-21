@@ -1,3 +1,5 @@
+import { PaymentCard, PaymentButton, PaymentRails, type PaymentRail } from "../components/PaymentCard.js";
+import { TradeAmount } from "../components/TradeAmount.js";
 // ══════════════════════════════════════════════════════════════════════════
 // Chama — AtomicFundingModal (v0.3.0 receive-side atomic flow)
 // ══════════════════════════════════════════════════════════════════════════
@@ -14,7 +16,7 @@
 // Phase orchestration lives in src/payments/fund-and-lock.ts. This file
 // is the React shell that renders phase transitions.
 
-import { useEffect, useRef, useState, lazy, Suspense } from "react";
+import { useEffect, useRef, useState } from "react";
 import { T, inputStyle } from "../theme.js";
 import { useT } from "../../i18n/index.js";
 import { CopyButton } from "../components/CopyButton.js";
@@ -54,13 +56,13 @@ import {
   type ChapsmartBuyQuote,
 } from "../../payments/chapsmart-onramp.js";
 import type { OnchainInfo } from "../../fedimint/fedimint-client.js";
-import type { SelectedMenuItem } from "../../escrow-engine/types.js";
+import type { EscrowState, SelectedMenuItem } from "../../escrow-engine/types.js";
 
-const QRCode = lazy(() => import("../QRCode.js"));
 
 export interface AtomicFundingModalProps {
   /** Trade ID being funded. Passed through to fundAndLock. */
   escrowId: string;
+  custodyNotice?: EscrowState["custodyNotice"];
   /** Exact trade amount in millisatoshis. */
   amountMsats: number;
   /** E1.1 arbiter insurance: extra msats folded into the funding invoice
@@ -180,7 +182,7 @@ export function AtomicFundingModal({
   disableNwc = false,
   browserLightningBlocked = false,
   browserLightningProbeArmed = false,
-  onClose,
+  onClose, custodyNotice,
 }: AtomicFundingModalProps) {
   const { t } = useT();
   const amountSats = Math.floor(amountMsats / 1000);
@@ -188,6 +190,9 @@ export function AtomicFundingModal({
   // the total the payer will actually see in their wallet.
   const insuranceSats = Math.floor(Math.max(0, premiumMsats) / 1000);
   const totalSats = amountSats + insuranceSats;
+  const [request, setRequest] = useState<{ rail: "lightning" | "onchain"; data: string; value: string; sats: number; expiresAt?: number; fee?: number; finality?: number; gateway?: FundingGatewayInfo } | null>(null);
+  const [initialRail, setInitialRail] = useState<PaymentRail>("lightning");
+  const [switchRequested, setSwitchRequested] = useState<PaymentRail | null>(null);
   const [phase, setPhase] = useState<ModalPhase>({ kind: "choose-method" });
   const [fundingMethod, setFundingMethod] = useState<"lightning" | "onchain" | "nwc" | "ecash" | null>(null);
   const [ecashInput, setEcashInput] = useState("");
@@ -275,6 +280,7 @@ export function AtomicFundingModal({
           // strictly via the closed-over ctrl.signal.
           if (ctrl.signal.aborted) return;
           if (p.kind === "invoice-created") {
+            setRequest({ rail: "lightning", data: makeLightningInvoiceQrPayload(p.bolt11), value: p.bolt11, sats: totalSats, expiresAt: p.expiresAt, gateway: p.gateway });
             lastBolt11 = p.bolt11;
             lastExpiresAt = p.expiresAt;
             lastGateway = p.gateway;
@@ -303,6 +309,7 @@ export function AtomicFundingModal({
             return;
           }
           if (p.kind === "onchain-address-created" || p.kind === "awaiting-onchain-confirmations") {
+            setRequest({ rail: "onchain", data: makeBitcoinUri(p.address, p.depositAmountSats), value: p.address, sats: p.depositAmountSats, fee: p.pegInFeeSats, finality: p.finalityDelay });
             setPhase({
               kind: "awaiting-onchain-confirmations",
               address: p.address,
@@ -339,6 +346,7 @@ export function AtomicFundingModal({
             return;
           }
           if (p.kind === "mint-confirming") {
+            setMpesaOpen(false);
             if (lastBolt11 && lastExpiresAt) {
               setPhase({
                 kind: "mint-confirming",
@@ -390,6 +398,7 @@ export function AtomicFundingModal({
     };
 
     run().catch((e) => {
+      if (ctrl.signal.aborted) return;
       // runFundAndLock catches its own errors; this is defensive.
       setPhase({ kind: "lock-failed", error: (e as Error).message || t("fund.unexpectedError") });
     });
@@ -420,6 +429,7 @@ export function AtomicFundingModal({
   };
 
   const handleRegenerate = () => {
+    setRequest(null);
     setFundingMethod(null);
     setSelectedNwcConnection(null);
     setPhase({ kind: "choose-method" });
@@ -497,7 +507,7 @@ export function AtomicFundingModal({
     }}>
       <div onClick={(e) => e.stopPropagation()} style={{
         background: T.card, border: `1px solid ${T.borderHi}`, borderRadius: T.r,
-        padding: 24, maxWidth: 420, width: "100%",
+        padding: "20px 16px", maxWidth: 420, width: "100%", maxHeight: "92dvh", overflowY: "auto", boxSizing: "border-box",
       }}>
         {/* Header — amount is the eyebrow, label is the title */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
@@ -506,7 +516,7 @@ export function AtomicFundingModal({
               {ctaLabel.toUpperCase()}
             </div>
             <div style={{ fontSize: 22, fontWeight: 800, color: T.text, fontFamily: T.mono, letterSpacing: -0.5 }}>
-              <BitcoinAmount sats={totalSats} size={22} gap={6} glyphScale={1.2} color={T.text} glyphColor={T.muted} />
+              {!request && <TradeAmount msats={totalSats * 1000} size={22} interactive />}
             </div>
             {insuranceSats > 0 && (
               <div style={{ fontSize: 9.5, color: T.muted, fontFamily: T.mono, marginTop: 4, display: "flex", alignItems: "baseline", gap: 4 }}>
@@ -516,12 +526,13 @@ export function AtomicFundingModal({
           </div>
           <button type="button" onClick={handleCancel} style={{
             background: "none", border: "none", color: T.muted,
-            fontFamily: T.mono, fontSize: 18, cursor: "pointer", padding: 0, lineHeight: 1,
+            fontFamily: T.mono, fontSize: 18, cursor: "pointer", padding: 0, lineHeight: 1, minWidth: 44, minHeight: 44,
           }}>×</button>
         </div>
 
         {phase.kind === "choose-method" && (
           <FundingMethodChooser
+            initialRail={initialRail}
             amountSats={amountSats}
             onchainInfoState={onchainInfoState}
             onSelect={handleSelectMethod}
@@ -540,6 +551,42 @@ export function AtomicFundingModal({
           />
         )}
 
+        {request && !mpesaOpen ? <>
+          <PaymentCard amountMsats={request.sats * 1000} rail={request.rail}
+            rails={phase.kind === "awaiting-payment" || phase.kind === "expired" ? ["lightning", "onchain", "ecash"] : [request.rail]}
+            onRail={rail => { if (rail !== request.rail) setSwitchRequested(rail); }}
+            data={request.data} copyValue={request.value}
+            motion={["mint-confirming", "mint-confirming-slow", "payment-confirmed", "locking"].includes(phase.kind)}
+            status={custodyNotice ? <>{t(custodyNotice.status === "expired-unacked" ? "trade.custodyExpiredTitle" : custodyNotice.status === "acknowledged-with-rejection" ? "trade.custodyRejectionTitle" : "trade.custodyPendingTitle")}<br />{custodyNotice.message || t("trade.custodyPendingBody")}</>
+              : phase.kind === "receive-rejected" ? phase.reason
+              : phase.kind === "lock-failed" ? phase.error
+              : phase.kind === "expired" ? t("fund.invoiceExpired")
+              : phase.kind === "locking" ? t("fund.locking")
+              : phase.kind === "locked" ? t("fund.paymentReceived")
+              : phase.kind === "awaiting-onchain-confirmations" ? t("fund.waitingConfirmations", { count: request.finality ?? 0 })
+              : phase.kind === "awaiting-payment" ? t("fund.waitingForPayment", { time: `${Math.floor(Math.max(0, (request.expiresAt ?? now) - now) / 60000)}:${Math.floor(Math.max(0, (request.expiresAt ?? now) - now) / 1000 % 60).toString().padStart(2, "0")}` })
+              : t("fund.confirmingFederation")}
+            helper={isSimModeOn() ? <>{t("fund.simAutoCredit")} {t("fund.simDoNotFund")}</> : request.rail === "onchain" ? t("fund.onchainSlowPath") : t("fund.scanOrCopyToPay")}
+            details={<><div>{t("payment.tradeAmount")}: <TradeAmount msats={amountMsats} /></div>
+              <div>{t("payment.fee")}: <TradeAmount msats={(request.fee ?? 0) * 1000 + premiumMsats} /></div>
+              <div>{t("payment.total")}: <TradeAmount msats={request.sats * 1000} /></div>
+              {request.gateway && <div>{t("fund.viaGateway")} {request.gateway.alias || request.gateway.id}{!request.gateway.provenPayable && <div>{t("fund.gatewayUnproven")}</div>}</div>}
+            </>}
+            actions={<>{phase.kind === "expired" && <PaymentButton onClick={handleRegenerate}>{t("fund.newInvoice")}</PaymentButton>}
+              {phase.kind === "mint-timeout" && <MintTimeoutState busy={tryLockBusy} onTryLockNow={handleTryLockNow} onCancel={handleCancel} />}
+              {mpesaAvailable && phase.kind === "awaiting-payment" && <PaymentButton onClick={() => setMpesaOpen(true)}>{t("fund.fundWithMpesa")}</PaymentButton>}</>} />
+          {switchRequested && <div role="dialog" aria-label={t("payment.switchTitle")} style={{ padding: 14, border: `1px solid ${T.borderHi}`, borderRadius: 16 }}>
+            <p>{t("payment.switchPending")}</p>
+            <div style={{ display: "flex", gap: 8 }}>
+              <PaymentButton tier="quiet" onClick={() => setSwitchRequested(null)}>{t("payment.keepLightning")}</PaymentButton>
+              <PaymentButton tier="primary" disabled={phase.kind !== "expired"} onClick={() => {
+                const rail = switchRequested; setSwitchRequested(null); setRequest(null); abortRef.current?.abort();
+                if (rail === "ecash") { setInitialRail("ecash"); setFundingMethod(null); setPhase({ kind: "choose-method" }); }
+                else handleSelectMethod(rail);
+              }}>{t("payment.switch")}</PaymentButton>
+            </div>
+          </div>}
+        </> : <>
         {phase.kind === "creating-invoice" && <CreatingInvoice slow={false} />}
 
         {phase.kind === "creating-invoice-slow" && (
@@ -577,6 +624,7 @@ export function AtomicFundingModal({
             />
           ) : (
             <InvoiceDisplay
+              amountSats={totalSats}
               bolt11={phase.bolt11}
               expiresAt={phase.expiresAt}
               now={now}
@@ -634,6 +682,7 @@ export function AtomicFundingModal({
           />
         )}
 
+        </>}
         {/* v0.6.5: explicit no-op for the `aborted` phase. Pre-this-fix
             phase=aborted had no render branch, so any stray aborted
             event from a torn-down StrictMode first-mount left the modal
@@ -666,6 +715,7 @@ export function AtomicFundingModal({
 // ── Sub-components ──────────────────────────────────────────────────────
 
 function FundingMethodChooser({
+  initialRail = "lightning",
   amountSats,
   onchainInfoState,
   onSelect,
@@ -682,6 +732,7 @@ function FundingMethodChooser({
   browserLightningBlocked,
   browserNwcBlocked,
 }: {
+  initialRail?: PaymentRail;
   amountSats: number;
   onchainInfoState:
     | { kind: "loading" }
@@ -702,6 +753,7 @@ function FundingMethodChooser({
   browserNwcBlocked?: boolean;
 }) {
   const { t } = useT();
+  const [rail, setRail] = useState<PaymentRail>(initialRail);
   const onchainGate = (() => {
     if (onchainInfoState.kind === "loading") {
       return {
@@ -749,7 +801,6 @@ function FundingMethodChooser({
   // route through the federation's gateway. Warn + steer to on-chain (which is
   // available here whenever onchainGate is not disabled). Never hard-blocks.
   const largeAmount = amountSats > MAX_LN_FUNDING_SATS;
-  const onchainSteerable = largeAmount && !onchainGate.disabled;
 
   if (disableNwc) {
     return (
@@ -896,7 +947,8 @@ function FundingMethodChooser({
         </details>
       )}
 
-      <details style={{ marginBottom: 12 }}>
+      <PaymentRails rail={rail} onSelect={setRail} />
+      {rail === "ecash" && <details open style={{ marginBottom: 12 }}>
         <summary style={{
           padding: "10px 12px", borderRadius: T.rs, cursor: "pointer",
           background: T.tealDim, border: `1px solid ${T.teal}66`,
@@ -922,92 +974,14 @@ function FundingMethodChooser({
             spellCheck={false}
             style={{ ...inputStyle, resize: "vertical", minHeight: 72, marginBottom: 8, fontSize: 10 }}
           />
-          <button
-            type="button"
-            disabled={!ecashInput.trim()}
-            onClick={onSelectEcash}
-            style={{
-              width: "100%", padding: "11px 12px", borderRadius: T.rs,
-              background: ecashInput.trim() ? T.teal : T.card,
-              border: `1px solid ${ecashInput.trim() ? T.teal : T.border}`,
-              color: ecashInput.trim() ? "#000" : T.muted,
-              fontFamily: T.mono, fontSize: 11, fontWeight: 900,
-              cursor: ecashInput.trim() ? "pointer" : "not-allowed",
-            }}
-          >
-            {t("fund.lockWithEcash")}
-          </button>
+          <PaymentButton tier="primary" tone="teal" disabled={!ecashInput.trim()} onClick={onSelectEcash} style={{ width: "100%" }}>{t("fund.lockWithEcash")}</PaymentButton>
         </div>
-      </details>
+      </details>}
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-        <button
-          type="button"
-          disabled={lightningDisabled}
-          onClick={() => onSelect("lightning")}
-          style={{
-            minHeight: 118, padding: 12, borderRadius: T.r,
-            background: T.accentDim, border: `1px solid ${T.accent}66`,
-            color: T.text,
-            cursor: lightningDisabled ? "not-allowed" : "pointer",
-            textAlign: "left",
-            // #65: de-emphasize LN above the routing ceiling (still tappable —
-            // never hard-blocked; the user may proceed at their own risk).
-            opacity: lightningDisabled ? 0.45 : onchainSteerable ? 0.6 : 1,
-          }}
-        >
-          <div style={{ fontSize: 20, marginBottom: 8 }}>⚡</div>
-          <div style={{ fontSize: 12, fontWeight: 800, color: T.accent, fontFamily: T.mono, marginBottom: 6 }}>
-            {t("fund.lnFast")}
-          </div>
-          <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono, lineHeight: 1.45 }}>
-            {browserLightningBlocked
-              ? t("fund.browserLightningBlockedShort")
-              : lightningTooSmall
-              ? minimumLightningFundingMessage()
-              : t("fund.bestForAlmostEveryone")}
-          </div>
-        </button>
-        <button
-          type="button"
-          onClick={() => onSelect("onchain")}
-          disabled={onchainGate.disabled}
-          style={{
-            minHeight: 118, padding: 12, borderRadius: T.r,
-            background: T.amberDim,
-            border: `${onchainSteerable ? 2 : 1}px solid ${T.amber}${onchainSteerable ? "" : "66"}`,
-            color: T.text,
-            cursor: onchainGate.disabled ? "not-allowed" : "pointer",
-            opacity: onchainGate.disabled ? 0.55 : 1,
-            textAlign: "left",
-          }}
-        >
-          <div style={{ fontSize: 20, marginBottom: 8 }}>₿</div>
-          <div style={{ fontSize: 12, fontWeight: 800, color: T.amber, fontFamily: T.mono, marginBottom: 6 }}>
-            {t("fund.onchainSlow")}
-            {onchainSteerable && (
-              <span style={{
-                marginLeft: 6, padding: "1px 5px", borderRadius: T.rs,
-                background: T.amber, color: "#000", fontSize: 8,
-                fontWeight: 900, letterSpacing: 0.5,
-              }}>
-                {t("fund.recommended")}
-              </span>
-            )}
-          </div>
-          <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono, lineHeight: 1.45 }}>
-            {onchainGate.detail}
-          </div>
-          {typeof onchainGate.pegInFeeSats === "number" && (
-            <div style={{
-              marginTop: 8, fontSize: 9, color: T.amber,
-              fontFamily: T.mono, lineHeight: 1.35,
-            }}>
-              {t("fund.federationDepositFeeBefore")} <BitcoinAmount sats={onchainGate.pegInFeeSats} size={9} gap={3} glyphScale={1.18} color={T.amber} glyphColor={T.amber} />
-            </div>
-          )}
-        </button>
-      </div>
+      {rail === "lightning" && <><p style={{ color: T.muted, fontSize: 12 }}>{browserLightningBlocked ? t("fund.browserLightningBlockedShort") : lightningTooSmall ? minimumLightningFundingMessage() : t("fund.bestForAlmostEveryone")}</p>
+        <PaymentButton disabled={lightningDisabled} onClick={() => onSelect("lightning")}>{t("fund.lnFast")}</PaymentButton></>}
+      {rail === "onchain" && <><p style={{ color: T.muted, fontSize: 12 }}>{onchainGate.detail}</p>
+        <PaymentButton disabled={onchainGate.disabled} onClick={() => onSelect("onchain")}>{t("fund.onchainSlow")}</PaymentButton></>}
       <div style={{
         marginTop: 12, padding: "8px 10px", borderRadius: T.rs,
         background: T.surface, border: `1px solid ${T.border}`,
@@ -1115,10 +1089,6 @@ function makeBitcoinUri(address: string, amountSats: number): string {
   return btcAmount ? `bitcoin:${address}?amount=${btcAmount}` : `bitcoin:${address}`;
 }
 
-function formatBtcDecimal(sats: number): string {
-  return `${(sats / 100_000_000).toFixed(8)} BTC`;
-}
-
 function OnchainAddressDisplay({
   address,
   amountSats,
@@ -1133,132 +1103,14 @@ function OnchainAddressDisplay({
   finalityDelay: number;
 }) {
   const { t } = useT();
-  const [amountUnit, setAmountUnit] = useState<"btc" | "sats">("btc");
-  const qrPayload = makeBitcoinUri(address, depositAmountSats);
-  const totalPrimary = amountUnit === "btc"
-    ? formatBtcDecimal(depositAmountSats)
-    : `${depositAmountSats.toLocaleString()} sats`;
-  const totalSecondary = amountUnit === "btc"
-    ? `${depositAmountSats.toLocaleString()} sats`
-    : formatBtcDecimal(depositAmountSats);
-  return (
-    <>
-      <div style={{
-        fontSize: 9, color: T.amber, fontFamily: T.mono,
-        letterSpacing: 0, marginBottom: 8, textAlign: "center",
-      }}>
-        {t("fund.onchainSlowPath")}
-      </div>
-      <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}>
-        <Suspense fallback={<div style={{ width: 280, height: 280, background: "#fff", borderRadius: T.rs }} />}>
-          <QRCode
-            data={qrPayload}
-            size={280}
-            fgColor="#050505"
-            bgColor="#ffffff"
-            margin={4}
-            alt={t("fund.onchainQrAlt")}
-          />
-        </Suspense>
-      </div>
-      <div style={{
-        padding: 12, marginBottom: 12, borderRadius: T.rs,
-        background: T.amberDim, border: `1px solid ${T.amber}55`,
-      }}>
-        <div style={{
-          display: "flex", alignItems: "center", justifyContent: "space-between",
-          gap: 10, marginBottom: 8,
-        }}>
-          <div style={{
-            fontSize: 9, color: T.amber, fontFamily: T.mono,
-            letterSpacing: 1, fontWeight: 800,
-          }}>
-            {t("fund.qrIncludesFullTotal")}
-          </div>
-          <div style={{
-            display: "inline-flex", padding: 2, borderRadius: T.rs,
-            background: T.surface, border: `1px solid ${T.border}`,
-            flexShrink: 0,
-          }}>
-            {(["btc", "sats"] as const).map((unit) => (
-              <button
-                key={unit}
-                onClick={() => setAmountUnit(unit)}
-                style={{
-                  padding: "4px 8px", borderRadius: Math.max(4, T.rs - 2),
-                  background: amountUnit === unit ? T.amber : "transparent",
-                  border: "none",
-                  color: amountUnit === unit ? "#000" : T.muted,
-                  fontFamily: T.mono, fontSize: 9, fontWeight: 900,
-                  cursor: "pointer",
-                }}
-              >
-                {unit === "btc" ? "BTC" : "sats"}
-              </button>
-            ))}
-          </div>
-        </div>
-        <div style={{
-          color: T.text, fontFamily: T.mono, fontSize: 20,
-          fontWeight: 900, lineHeight: 1.1, marginBottom: 4,
-          overflowWrap: "anywhere",
-        }}>
-          {totalPrimary}
-        </div>
-        <div style={{
-          color: T.muted, fontFamily: T.mono, fontSize: 10,
-          lineHeight: 1.45,
-        }}>
-          {totalSecondary} · trade {amountSats.toLocaleString()} sats + federation fee {pegInFeeSats.toLocaleString()} sats
-        </div>
-      </div>
-      <div style={{
-        display: "flex", alignItems: "center", justifyContent: "center",
-        gap: 8, marginBottom: 12, padding: "6px 12px",
-        borderRadius: T.rs,
-        background: T.amberDim,
-        border: `1px solid ${T.amber}44`,
-      }}>
-        <div style={{
-          width: 8, height: 8, borderRadius: "50%",
-          background: T.amber,
-          animation: "pulse 1.4s ease-in-out infinite",
-        }} />
-        <span style={{ fontSize: 10, fontFamily: T.mono, color: T.amber, letterSpacing: 0 }}>
-          {t("fund.waitingConfirmations", { count: finalityDelay })}
-        </span>
-      </div>
-      <div style={{
-        padding: 8, marginBottom: 12, borderRadius: T.rs,
-        background: T.surface, border: `1px solid ${T.border}`,
-        fontFamily: T.mono, fontSize: 9, color: T.muted,
-        wordBreak: "break-all", maxHeight: 72, overflowY: "auto", textAlign: "center",
-      }}>
-        {address}
-      </div>
-      <div style={{
-        padding: "8px 10px", marginBottom: 12, borderRadius: T.rs,
-        background: T.amberDim, border: `1px solid ${T.amber}44`,
-        fontFamily: T.mono, fontSize: 10, color: T.amber,
-        lineHeight: 1.45, textAlign: "center",
-      }}>
-        {t("fund.onchainScanBefore")} <BitcoinAmount sats={depositAmountSats} size={10} gap={4} glyphScale={1.18} color={T.amber} glyphColor={T.amber} /> {t("fund.onchainScanMid1")}{" "}
-        <BitcoinAmount sats={amountSats} size={10} gap={4} glyphScale={1.18} color={T.amber} glyphColor={T.amber} /> {t("fund.onchainScanMid2")}{" "}
-        <BitcoinAmount sats={pegInFeeSats} size={10} gap={4} glyphScale={1.18} color={T.amber} glyphColor={T.amber} /> {t("fund.onchainScanAfter")}
-      </div>
-      <CopyButton
-        value={address}
-        label={t("fund.copyAddress")}
-        copiedLabel={t("common.copied")}
-        style={{
-          width: "100%", padding: "10px 16px", borderRadius: T.rs,
-          background: T.amberDim, border: `1px solid ${T.amber}55`,
-          color: T.amber, fontFamily: T.mono, fontSize: 11, fontWeight: 700,
-          cursor: "pointer",
-        }}
-      />
-    </>
-  );
+  return <PaymentCard amountMsats={depositAmountSats * 1000} rail="onchain"
+    data={makeBitcoinUri(address, depositAmountSats)} copyValue={address}
+    status={t("fund.waitingConfirmations", { count: finalityDelay })}
+    helper={t("fund.onchainSlowPath")}
+    details={<><div>{t("payment.tradeAmount")}: <TradeAmount msats={amountSats * 1000} /></div>
+      <div>{t("payment.fee")}: <TradeAmount msats={pegInFeeSats * 1000} /></div>
+      <div>{t("payment.total")}: <TradeAmount msats={depositAmountSats * 1000} /></div>
+      <div>{address}</div></>} />;
 }
 
 function RequestingFediEcash({
@@ -1407,9 +1259,10 @@ function PayingWithNwc({ amountSats }: { amountSats: number }) {
 }
 
 function InvoiceDisplay({
-  bolt11, expiresAt, now, phaseKind, onFundWithMpesa, gateway,
+  bolt11, expiresAt, now, phaseKind, onFundWithMpesa, gateway, amountSats,
 }: {
   bolt11: string;
+  amountSats: number;
   expiresAt: number;
   now: number;
   phaseKind: "awaiting-payment" | "mint-confirming";
@@ -1426,133 +1279,12 @@ function InvoiceDisplay({
   const secs = remainingSec % 60;
   const isMintConfirming = phaseKind === "mint-confirming";
   const qrPayload = makeLightningInvoiceQrPayload(bolt11);
-  const [routeOpen, setRouteOpen] = useState(false);
-
-  return (
-    <>
-      <div style={{
-        fontSize: 9, color: T.muted, fontFamily: T.mono, letterSpacing: 1,
-        marginBottom: 8, textAlign: "center",
-      }}>
-        {isMintConfirming ? t("fund.paymentDetected") : t("fund.scanOrCopyToPay")}
-      </div>
-      <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}>
-        <Suspense fallback={<div style={{ width: 280, height: 280, background: "#fff", borderRadius: T.rs }} />}>
-          <QRCode
-            data={qrPayload}
-            size={280}
-            fgColor="#050505"
-            bgColor="#ffffff"
-            margin={4}
-            alt={t("fund.lightningQrAlt")}
-          />
-        </Suspense>
-      </div>
-      <div style={{
-        display: "flex", alignItems: "center", justifyContent: "center",
-        gap: 8, marginBottom: 12, padding: "6px 12px",
-        borderRadius: T.rs,
-        background: isMintConfirming ? T.amberDim : T.surface,
-        border: `1px solid ${isMintConfirming ? T.amber + "44" : T.border}`,
-      }}>
-        <div style={{
-          width: 8, height: 8, borderRadius: "50%",
-          background: isMintConfirming ? T.amber : T.accent,
-          animation: "pulse 1.4s ease-in-out infinite",
-        }} />
-        <span style={{
-          fontSize: 10, fontFamily: T.mono,
-          color: isMintConfirming ? T.amber : T.muted, letterSpacing: 0.5,
-        }}>
-          {isMintConfirming
-            ? t("fund.confirmingFederation")
-            : t("fund.waitingForPayment", { time: `${mins}:${secs.toString().padStart(2, "0")}` })}
-        </span>
-      </div>
-      <div style={{
-        padding: 8, marginBottom: 12, borderRadius: T.rs,
-        background: T.surface, border: `1px solid ${T.border}`,
-        fontFamily: T.mono, fontSize: 8, color: T.muted,
-        wordBreak: "break-all", maxHeight: 60, overflowY: "auto", textAlign: "center",
-      }}>{bolt11}</div>
-      {/* v0.4.2 sim mode hotfix round 3: honest auto-credit disclosure.
-          This is the atomic-funding modal — the centerpiece of every
-          listing-tap flow — so the notice is required here, not just
-          on the manual-fund surface. Conditional ONLY on isSimModeOn();
-          no other state gates the disclosure. Amber matches the
-          SIM MODE pill warning palette (Pillar 2.7). */}
-      {isSimModeOn() && (
-        <div style={{
-          padding: "8px 12px", marginBottom: 12, borderRadius: T.rs,
-          background: T.amberDim, border: `1px solid ${T.amber}55`,
-          fontFamily: T.mono, fontSize: 10, color: T.amber,
-          lineHeight: 1.5, textAlign: "center",
-        }}>
-          {t("fund.simAutoCredit")}<br />
-          {t("fund.simDoNotFund")}
-        </div>
-      )}
-      <CopyButton
-        value={bolt11}
-        label={t("fund.copyInvoice")}
-        copiedLabel={t("common.copied")}
-        style={{
-          width: "100%", padding: "10px 16px", borderRadius: T.rs,
-          background: T.accentDim, border: `1px solid ${T.accent}44`,
-          color: T.accent, fontFamily: T.mono, fontSize: 11, fontWeight: 700,
-          cursor: "pointer",
-        }}
-      />
-      {gateway && !isMintConfirming && (
-        // Which Lightning gateway minted this invoice — the single route a payer
-        // may use. Almost nobody needs it, so it stays collapsed; it earns its
-        // place only when a payment isn't arriving, and then it's the first
-        // useful fact (a gateway can serve its API perfectly while being
-        // unroutable, which reads to the payer as "no route"). One tap away
-        // beats buried in Settings, which is far from the moment of need.
-        <div style={{ marginTop: 10 }}>
-          <button
-            onClick={() => setRouteOpen(open => !open)}
-            style={{
-              width: "100%", padding: "4px 0", background: "transparent",
-              border: "none", color: T.muted, fontFamily: T.mono,
-              fontSize: 8.5, letterSpacing: 0.8, cursor: "pointer",
-              textAlign: "center", opacity: 0.75,
-            }}
-            aria-expanded={routeOpen}
-          >
-            {routeOpen ? "▾" : "▸"} {t("fund.paymentRoute")}
-          </button>
-          {routeOpen && (
-            <div style={{
-              fontSize: 9, fontFamily: T.mono, letterSpacing: 0.5,
-              textAlign: "center", lineHeight: 1.6, paddingTop: 2,
-              color: gateway.provenPayable ? T.muted : T.amber,
-            }}>
-              {t("fund.viaGateway")} {gateway.alias || gateway.id.slice(0, 12)}
-              {!gateway.provenPayable && (
-                <><br />{t("fund.gatewayUnproven")}</>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-      {onFundWithMpesa && (
-        <button
-          onClick={onFundWithMpesa}
-          style={{
-            width: "100%", marginTop: 8, padding: "10px 16px",
-            borderRadius: T.rs, background: T.tealDim,
-            border: `1px solid ${T.teal}66`, color: T.teal,
-            fontFamily: T.mono, fontSize: 11, fontWeight: 700,
-            cursor: "pointer",
-          }}
-        >
-          {t("fund.fundWithMpesa")}
-        </button>
-      )}
-    </>
-  );
+  return <PaymentCard amountMsats={amountSats * 1000} rail="lightning" data={qrPayload} copyValue={bolt11}
+    motion={isMintConfirming}
+    status={isMintConfirming ? t("fund.confirmingFederation") : t("fund.waitingForPayment", { time: `${mins}:${secs.toString().padStart(2, "0")}` })}
+    helper={isSimModeOn() ? <>{t("fund.simAutoCredit")} {t("fund.simDoNotFund")}</> : t("fund.scanOrCopyToPay")}
+    details={gateway && <>{t("fund.viaGateway")} {gateway.alias || gateway.id.slice(0, 12)}{!gateway.provenPayable && <div>{t("fund.gatewayUnproven")}</div>}</>}
+    actions={onFundWithMpesa && <PaymentButton onClick={onFundWithMpesa}>{t("fund.fundWithMpesa")}</PaymentButton>} />;
 }
 
 // ── ChapSmart M-Pesa on-ramp sub-flow ────────────────────────────────────

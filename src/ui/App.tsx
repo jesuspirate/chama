@@ -159,6 +159,7 @@ import {
   strandedSourceExplainsBalance,
 } from "./decisions.js";
 import { Toast } from "./components/Toast.js";
+import { Wordmark } from "./components/Wordmark.js";
 import { BitcoinAmount } from "./components/BitcoinAmount.js";
 import { VerticalIcon } from "./components/VerticalIcon.js";
 import { ChamaLoader } from "./components/ChamaLoader.js";
@@ -1826,8 +1827,14 @@ export default function App() {
     setView("me");
   }, [view]);
 
+  // One source of trades for the pill and for Me. These three readings used
+  // to count over the RAW escrow map while the Me tabs render `myTrades`
+  // (participant-seated, minus superseded retired listings) — so the pill
+  // could quote a trade no tab could show, which is exactly what Jet saw:
+  // "1 active trade · ₿2,000" above a Live list with nothing in it. A number
+  // the user cannot tap through to is worse than no number.
   const activeCommitmentCount = pubkey
-    ? countActiveBuyerSellerCommitments({ escrows: escrows.values(), userPubkey: pubkey, nowSec: now })
+    ? countActiveBuyerSellerCommitments({ escrows: myTrades, userPubkey: pubkey, nowSec: now })
     : 0;
   // Arbiter earnings are intentionally federation-bound and preserved in
   // separate stores. This flag only comes from a real locked bond; buyers,
@@ -1840,14 +1847,14 @@ export default function App() {
   // activeCommittedMsats below (LOCKED+APPROVED only, "actually in
   // escrow" — ChamaBar's reading).
   const activeTradeMsats = pubkey
-    ? sumActiveBuyerSellerTradeMsats({ escrows: escrows.values(), userPubkey: pubkey, nowSec: now })
+    ? sumActiveBuyerSellerTradeMsats({ escrows: myTrades, userPubkey: pubkey, nowSec: now })
     : 0;
   // v0.4.2 hotfix round 3: msats locked in active escrows where the
   // user is buyer/seller. Drives the ChamaBar "X sats in escrow" pill
   // during LOCKED state, when balance is correctly 0 (ecash spent
   // into SSS shares) but the commitment is still live.
   const committedMsats = pubkey
-    ? activeCommittedMsats({ escrows: escrows.values(), userPubkey: pubkey, nowSec: now })
+    ? activeCommittedMsats({ escrows: myTrades, userPubkey: pubkey, nowSec: now })
     : 0;
 
   // Part ① — liquidity/attention: the trades needing the user to act right now,
@@ -3266,16 +3273,9 @@ export default function App() {
             display: "flex", justifyContent: "space-between", alignItems: "center",
           }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <img
-                src="/icons/chama-woven-trust-mark-transparent-64.png"
-                alt="Chama"
-                width={32}
-                height={32}
-                style={{ display: "block", flexShrink: 0 }}
-              />
               <div>
-                <div style={{ fontSize: 16, fontWeight: 700, fontFamily: T.mono, letterSpacing: -0.5 }}>Chama</div>
-                <div style={{ fontSize: 9, color: T.muted, fontFamily: T.mono, letterSpacing: 1.5, textTransform: "uppercase" }}>
+                <Wordmark />
+                <div style={{ fontSize: 9, color: T.muted, fontFamily: T.mono, letterSpacing: 1.5, textTransform: "uppercase", paddingLeft: 34, marginTop: 3 }}>
                   {defaultCurrencyForCommunity(routeCommunitySlug)} · {t("app.headerTagline")}
                 </div>
               </div>
@@ -3478,6 +3478,7 @@ export default function App() {
           gated) Sandbox-mode path. */}
       {pendingFundAndLock && (
         <AtomicFundingModal
+          custodyNotice={escrows.get(pendingFundAndLock.escrowId)?.custodyNotice}
           escrowId={pendingFundAndLock.escrowId}
           amountMsats={pendingFundAndLock.amountMsats}
           premiumMsats={pendingFundAndLock.premiumMsats ?? 0}

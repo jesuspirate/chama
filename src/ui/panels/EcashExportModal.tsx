@@ -1,3 +1,4 @@
+import { PaymentCard, PaymentButton } from "../components/PaymentCard.js";
 // ══════════════════════════════════════════════════════════════════════════
 // Chama — EcashExportModal (v2.4, #56 "withdraw as ecash, no LN fees")
 // ══════════════════════════════════════════════════════════════════════════
@@ -17,8 +18,8 @@ import { useMemo, useState } from "react";
 import { T } from "../theme.js";
 import { useT } from "../../i18n/index.js";
 import { BitcoinAmount } from "../components/BitcoinAmount.js";
-import { CopyButton } from "../components/CopyButton.js";
-import { QRCode } from "../QRCode.js";
+import { fediEcashLink } from "../../payments/fedi-link.js";
+import { openExternalUrl } from "../open-url.js";
 import { ecashToQrFrames } from "../../payments/ecash-qr.js";
 import {
   assertEcashExportWritable,
@@ -87,8 +88,8 @@ export function EcashExportModal({
   const [clearing, setClearing] = useState(false);
 
   const sats = Math.floor(Math.max(0, balanceMsats) / 1000);
-  const exportedSats = Math.floor(Math.max(0, exportedMsats) / 1000);
   const qrFrames = useMemo(() => ecashToQrFrames(notes), [notes]);
+  const fediLink = useMemo(() => fediEcashLink(notes), [notes]);
 
   const generate = async () => {
     setPhase("generating");
@@ -155,7 +156,7 @@ export function EcashExportModal({
         onClick={(e) => e.stopPropagation()}
         style={{
           background: T.card, border: `1px solid ${T.borderHi}`, borderRadius: T.r,
-          padding: 24, maxWidth: 440, width: "100%",
+          padding: "20px 16px", boxSizing: "border-box", maxWidth: 440, width: "100%",
           maxHeight: "88vh", overflowY: "auto",
         }}
       >
@@ -165,13 +166,13 @@ export function EcashExportModal({
               {preset ? preset.headline : t("recovery.exportHeadline")}
             </div>
             <div style={{ fontSize: 22, fontWeight: 800, color: T.text, fontFamily: T.mono }}>
-              <BitcoinAmount sats={phase === "ready" ? exportedSats : sats} size={22} gap={6} glyphScale={1.2} color={T.text} glyphColor={T.muted} />
+              {phase !== "ready" && <BitcoinAmount sats={sats} size={22} gap={6} glyphScale={1.2} color={T.text} glyphColor={T.muted} />}
             </div>
           </div>
           {phase !== "generating" && (
             <button onClick={onClose} style={{
               background: "none", border: "none", color: T.muted,
-              fontFamily: T.mono, fontSize: 18, cursor: "pointer", padding: 0, lineHeight: 1,
+              fontFamily: T.mono, fontSize: 18, cursor: "pointer", padding: 0, lineHeight: 1, minWidth: 44, minHeight: 44,
             }}>×</button>
           )}
         </div>
@@ -222,73 +223,26 @@ export function EcashExportModal({
 
         {phase === "ready" && (
           <>
-            <div style={{
-              padding: "9px 11px", borderRadius: T.rs, marginBottom: 12,
-              background: preset ? T.amberDim : T.greenDim,
-              border: `1px solid ${preset ? T.amber : T.green}44`,
-              color: preset ? T.amber : T.green,
-              fontFamily: T.mono, fontSize: 10, lineHeight: 1.55,
-            }}>
-              {preset
-                ? preset.body
-                : t("recovery.exportReadyBody", { federation: federationLabel })}
-            </div>
+            <PaymentCard amountMsats={exportedMsats} rail="ecash" data={qrFrames} ecash copyValue={notes}
+              status={preset ? preset.body : t("recovery.exportReadyBody", { federation: federationLabel })}
+              helper={t("recovery.exportQrHelp")}
+              actions={fediLink && <PaymentButton onClick={() => { void openExternalUrl(fediLink); }}>{t("recovery.exportOpenInFedi")}</PaymentButton>} />
 
-            <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}>
-              <QRCode
-                data={qrFrames}
-                size={240}
-                margin={4}
-                errorCorrectionLevel="L"
-                showLogo={false}
-                alt={t("recovery.exportQrAlt")}
-              />
-            </div>
-
-            <div style={{
-              margin: "-4px 0 12px", textAlign: "center", color: T.muted,
-              fontFamily: T.mono, fontSize: 9, lineHeight: 1.45,
-            }}>
-              {t("recovery.exportQrHelp")}
-            </div>
-
-            <div style={{
-              padding: "10px 12px", borderRadius: T.rs, marginBottom: 12,
-              background: T.bg, border: `1px solid ${T.border}`,
-              color: T.muted, fontFamily: T.mono, fontSize: 9, lineHeight: 1.4,
-              wordBreak: "break-all" as const, maxHeight: 96, overflowY: "auto",
-            }}>
-              {notes}
-            </div>
-
-            <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-              <CopyButton
-                value={notes}
-                label={t("recovery.exportCopyCta")}
-                copiedLabel={t("common.copied")}
-                style={{
-                  flex: 1, padding: "11px 12px", borderRadius: T.rs,
-                  background: T.accent, border: `1px solid ${T.accent}`, color: "#000",
-                  fontFamily: T.mono, fontSize: 12, fontWeight: 800, cursor: "pointer",
-                }}
-              />
-            </div>
-
-            <button
+            <PaymentButton tier="quiet"
               onClick={onClose}
               style={{
-                width: "100%", padding: "9px 12px", borderRadius: T.rs, marginBottom: 18,
+                width: "100%", padding: "9px 12px", borderRadius: 999, marginBottom: 18,
                 background: "none", border: `1px solid ${T.border}`, color: T.muted,
                 fontFamily: T.mono, fontSize: 11, fontWeight: 700, cursor: "pointer",
               }}
             >
               {t("recovery.exportKeepPending")}
-            </button>
-            <button
+            </PaymentButton>
+            <PaymentButton tier="quiet"
               onClick={() => { void dismissConfirmed(); }}
               disabled={clearing}
               style={{
-                width: "100%", padding: "8px 12px", borderRadius: T.rs,
+                width: "100%", padding: "8px 12px", borderRadius: 999,
                 background: confirmClear ? T.amber : "transparent",
                 border: `1px solid ${confirmClear ? T.amber : T.border}`,
                 color: confirmClear ? "#000" : T.muted,
@@ -301,7 +255,7 @@ export function EcashExportModal({
                 : confirmClear
                 ? t("recovery.exportClearConfirm")
                 : t("recovery.exportClearCta")}
-            </button>
+            </PaymentButton>
           </>
         )}
 

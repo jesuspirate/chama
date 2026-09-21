@@ -1,4 +1,7 @@
 export const trade: Record<string, string> = {
+  "trade.partyObserved": "Shughuli zilizosainiwa zimeonekana katika biashara {count} kwenye kifaa hiki. Bila historia, mwenendo haujulikani.",
+  "trade.savedSummary": "Imehifadhiwa kwenye kifaa hiki",
+  "trade.historyUnverified": "Historia ya biashara haijathibitishwa",
   "trade.arbiterRecordLiveness": "Wasuluhishi wenye dhamana hai iliyothibitishwa katika rekodi hii: {count}",
   "trade.arbiterRecord": "Rekodi ya msuluhishi",
   "trade.arbiterConduct": "Tabia iliyoonekana, si uthibitisho wa utambulisho au uhuru. Rekodi tupu ina maana mpya au haijaonekana.",

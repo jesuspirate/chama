@@ -3323,6 +3323,12 @@ export class EscrowClient {
 
     if (!outcome.ok) {
       this.recordLoadFailure(escrowId, outcome.failure);
+      // Keep the readable local snapshot, explicitly demoted until replay succeeds.
+      if (current) {
+        const summary: EscrowState = { ...current, provenance: "summary" };
+        this.states.set(escrowId, summary);
+        this.callbacks.onStateUpdate?.(escrowId, summary);
+      }
       if (outcome.failure.reason === "chain-incomplete") {
         this.callbacks.onValidationError?.(escrowId, outcome.failure.message ?? "", outcome.failure.eventId);
       }

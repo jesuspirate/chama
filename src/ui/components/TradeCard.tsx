@@ -1,3 +1,4 @@
+import { needsTradeHistory } from "../decisions.js";
 import { circleFromEscrow } from "../../chama/policy.js";
 import { sharesForCircle } from "../../chama/wiring.js";
 import { circleCardModel } from "../../chama/surface.js";
@@ -147,7 +148,7 @@ export function TradeCard({
         <span style={{ color: T.accent, fontWeight: 700 }}>{viewerIsMember
           ? t("circle.yourShare", { amount: fmtSats(state.amountMsats) })
           : t("circle.memberShare", { name: profileNameFor(profileNames, memberPk, kind0Enabled) ?? "…", amount: fmtSats(state.amountMsats) })}</span>
-        <span style={{ justifySelf: "start", fontSize: 10, padding: "3px 8px", borderRadius: 999, background: st.bg, color: st.c, border: `1px solid ${st.c}55`, fontFamily: T.mono, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5 }}>{t(st.l)}</span>
+        <span style={{ justifySelf: "start", fontSize: 10, padding: "3px 8px", borderRadius: 999, background: st.bg, color: st.c, border: `1px solid ${st.c}55`, fontFamily: T.mono, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5 }}>{t(needsTradeHistory(state) ? "trade.savedSummary" : st.l)}</span>
       </span>
       <span style={{ marginLeft: "auto", color: T.accent }} aria-hidden="true">↗</span>
     </button>;
@@ -953,6 +954,7 @@ function paymentMethodsSummary(methods: string[] | undefined): string | null {
 }
 
 function compactStatusLabel(state: EscrowState, nowSec: number, viewerPubkey: string | undefined, t: TFunc): string {
+  if (needsTradeHistory(state)) return t("trade.savedSummary");
   const { status } = state;
   if (
     status === EscrowStatus.CREATED &&
