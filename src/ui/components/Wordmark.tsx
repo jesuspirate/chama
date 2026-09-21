@@ -14,7 +14,7 @@ import { T } from "../theme.js";
  * resolves to #c47308, within a hair of the landing's ink, while dark mode
  * gets the full #f7931a it needs to carry on #0a0a0f.
  */
-export function Wordmark({ size = 24, markSize = 28 }: { size?: number; markSize?: number }) {
+export function Wordmark({ size = 24, markSize = 28, showMark = true }: { size?: number; markSize?: number; showMark?: boolean }) {
   return (
     <span
       style={{
@@ -29,13 +29,13 @@ export function Wordmark({ size = 24, markSize = 28 }: { size?: number; markSize
         color: T.text,
       }}
     >
-      <img
+      {showMark && <img
         src="/icons/chama-woven-trust-mark-transparent-64.png"
         alt="Chama"
         width={markSize}
         height={markSize}
         style={{ display: "block", flexShrink: 0, objectFit: "contain" }}
-      />
+      />}
       <span>chama</span>
       <span
         aria-hidden="true"

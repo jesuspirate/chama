@@ -102,12 +102,12 @@ export function VerticalIcon({
     // fetch, so the circle icon visibly popped in a beat after the baked
     // inline marks around it. 1.2KB of paths costs nothing inline and
     // renders in the same frame as everything else.
-    const ink = theme === "dark" ? "#eee3d0" : "#13120f";
+    const ink = theme === "dark" ? "#ffffff" : "#13120f";
     const paper = theme === "dark" ? "#14110d" : "#eee8dc";
     return (
       <span style={common} aria-hidden="true">
         <svg viewBox="0 0 240 240" width={size} height={size} fill="none" style={{ display: "block", overflow: "visible" }}>
-          <circle cx="120" cy="120" r="76" stroke={ink} strokeOpacity=".24" strokeWidth="9" />
+          <circle cx="120" cy="120" r="76" stroke={ink} strokeOpacity=".85" strokeWidth="9" />
           <path d="M120 44 A76 76 0 1 1 75.33 181.49" stroke="#f7931a" strokeWidth="9" strokeLinecap="round" />
           <circle cx="120" cy="44" r="18" fill="#f7931a" />
           <path d="m112 44 5.5 6 11-13" stroke="#13120f" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
@@ -115,9 +115,9 @@ export function VerticalIcon({
           <path d="m184.28 96.51 5.5 6 11-13" stroke="#13120f" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
           <circle cx="164.67" cy="181.49" r="18" fill="#f7931a" />
           <path d="m156.67 181.49 5.5 6 11-13" stroke="#13120f" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
-          <circle cx="75.33" cy="181.49" r="17" fill={paper} stroke={ink} strokeWidth="3.5" strokeDasharray="5 5" />
-          <circle cx="47.72" cy="96.51" r="17" fill={paper} stroke={ink} strokeWidth="3.5" strokeDasharray="5 5" />
-          <circle cx="120" cy="120" r="29" stroke={ink} strokeWidth="5" />
+          <circle cx="75.33" cy="181.49" r="17" fill={paper} stroke={ink} strokeWidth="9" />
+          <circle cx="47.72" cy="96.51" r="17" fill={paper} stroke={ink} strokeWidth="9" />
+          <circle cx="120" cy="120" r="29" stroke={ink} strokeWidth="7" />
           <path d="M109 113h22m-22 8h22m-22 8h22" stroke="#f7931a" strokeWidth="4" strokeLinecap="round" />
         </svg>
       </span>

@@ -1,3 +1,4 @@
+import { Wordmark } from "./Wordmark.js";
 import { T } from "../theme.js";
 
 // The Woven Trust lockup + tagline shown at the top of every onboarding
@@ -32,20 +33,15 @@ export function BrandHeader() {
           }}
         />
         <div style={{ minWidth: 0, textAlign: "left" }}>
-          <div style={{
-            color: T.text, fontFamily: T.sans, fontSize: 27,
-            fontWeight: 800, lineHeight: 1, letterSpacing: -1.2,
-          }}>
-            Chama
-          </div>
+          <Wordmark size={27} showMark={false} />
           <div style={{
             display: "flex", alignItems: "center", gap: 7,
             marginTop: 12, color: T.muted, fontFamily: T.sans,
             fontSize: 7.5, fontWeight: 700, letterSpacing: 1.25,
             textTransform: "uppercase", whiteSpace: "nowrap",
           }}>
-            <span>community</span><span style={{ color: T.accent }}>●</span>
-            <span>trust</span><span style={{ color: T.teal }}>●</span>
+            <span>community</span><span aria-hidden="true" style={{ fontSize: 5, opacity: 0.65 }}>●</span>
+            <span>trust</span><span aria-hidden="true" style={{ fontSize: 5, opacity: 0.65 }}>●</span>
             <span>reputation</span>
           </div>
         </div>
