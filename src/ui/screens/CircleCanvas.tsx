@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useCanvasViewport } from "../hooks/useCanvasViewport.js";
+import { useEffect, useState } from "react";
 import { isSimModeOn } from "../../sim/simMode.js";
 import type { CircleRound } from "../../chama/types.js";
 import { DEFAULT_ROUND_SEC } from "../../chama/types.js";
@@ -17,11 +18,16 @@ export function CircleCanvas({ viewerPubkey, community, mintUrl, initial, onBack
   onBack: () => void; onPublish: (round: CircleRound) => Promise<void>;
 }) {
   const { t, lang } = useT();
+  const rootRef = useCanvasViewport<HTMLElement>();
   const price = useBitcoinPrice(), rates = useFiatRates();
   // Fast track (Jet, 2026-09-18): a re-formed round arrives with everything
   // already decided — open ON the review step ("Open Round N" is one tap),
   // and Back walks into editing for anyone who wants changes.
   const [step, setStep] = useState(initial ? 3 : 0);
+  useEffect(() => {
+    const main = rootRef.current?.querySelector(".assisted-canvas-main");
+    if (main) main.scrollTop = 0;
+  }, [step]);
   const [sats, setSats] = useState(String(initial ? initial.shareMsats / 1000 : 10000));
   const [threshold, setThreshold] = useState(initial?.seatThreshold ?? 5);
   // Jet's audience split (2026-09-15): the old screen asked a MARKET question
@@ -50,9 +56,9 @@ export function CircleCanvas({ viewerPubkey, community, mintUrl, initial, onBack
   const quote = formatEstimatedFiatForMsats({ amountMsats: round.shareMsats, currency: defaultCurrencyForCommunity(community), usdPerBtc: price.usd, usdFiatRates: rates.rates });
   const publish = async () => { if (busy) return; setBusy(true); setError(null); try { await onPublish(round); } catch (e) { setError(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); } };
   const titles = ["circle.amountQuestion", "circle.seatsQuestion", "circle.endQuestion", "circle.reviewQuestion"];
-  return <section className="assisted-canvas circle-canvas" aria-label={t("circle.createTitle")}>
+  return <section ref={rootRef} className="assisted-canvas circle-canvas" aria-label={t("circle.createTitle")}>
     <style>{canvasCss()}{circleCss()}</style>
-    <div className="assisted-canvas-main">
+    <div className="assisted-canvas-main"><div className="circle-canvas-content">
       <Back onClick={step ? () => setStep(step - 1) : onBack}>{t("common.back")}</Back>
       <div className="circle-eyebrow"><VerticalIcon vertical="chama" size={32} />{t("circle.createTitle")}</div>
       <h1 style={headingStyle()}>{t(titles[step])}</h1>
@@ -91,7 +97,7 @@ export function CircleCanvas({ viewerPubkey, community, mintUrl, initial, onBack
         <div className="circle-chips">{[7, 14].map(days => <button type="button" key={days} aria-pressed={duration === days * 86400} onClick={() => setDuration(days * 86400)}>{t(days === 7 ? "circle.oneWeek" : "circle.twoWeeks")}</button>)}<button type="button" aria-pressed={duration === sundayDuration} onClick={() => setDuration(sundayDuration)}>{t("circle.bySunday")}</button>{isSimModeOn() && <button type="button" aria-pressed={duration === 600} onClick={() => setDuration(600)}>{t("circle.testDrive")}</button>}</div>
         <h2>{t("circle.backBy", { date: date(round.roundEndSec) })}</h2><p className="circle-muted">{t("circle.closesDate", { date: date(round.fillDeadlineSec) })}</p>
       </QuestionCard></>}
-      {step === 3 && <div style={reviewStyle()}>
+      {step === 3 && <div className="circle-review-card" style={reviewStyle()}>
         <label className="circle-name">
           <span className="circle-caption">{t("circle.nameLabel")}</span>
           <input value={name} placeholder={t("circle.defaultName")} maxLength={48}
@@ -104,14 +110,31 @@ export function CircleCanvas({ viewerPubkey, community, mintUrl, initial, onBack
         <div><dt>{t("circle.fillsBy")}</dt><dd>{date(round.fillDeadlineSec)}</dd></div><div><dt>{t("circle.returnDate")}</dt><dd>{date(round.roundEndSec)}</dd></div>
       </dl><p>{t("circle.promise", { date: date(round.fillDeadlineSec) })}</p><p className="circle-host-note">{t("circle.hostNote")}</p></div>}
       {error && <p role="alert" style={{ color: T.red }}>{error}</p>}
-      <div style={{ margin: "clamp(12px, 2.6vh, 24px) 0" }}><Primary disabled={busy || !validAmount || !validSeats || (step === 3 && circleCanvasErrors(round).length > 0)} onClick={step === 3 ? () => void publish() : () => setStep(step + 1)}>{t(busy ? "circle.publishing" : step === 3 ? "circle.openCircle" : "circle.continue")}</Primary></div>
-    </div>
+    </div></div>
+      <div className="circle-canvas-action"><Primary disabled={busy || !validAmount || !validSeats || (step === 3 && circleCanvasErrors(round).length > 0)} onClick={step === 3 ? () => void publish() : () => setStep(step + 1)}>{t(busy ? "circle.publishing" : step === 3 ? "circle.openCircle" : "circle.continue")}</Primary></div>
     <footer className="assisted-canvas-footer"><span>{t("circle.noMoneyYet")}</span><div aria-label={t("circle.step", { current: step + 1, total: 4 })}>{titles.map((key, i) => <span key={key} className={i === step ? "on" : ""} />)}</div><small>{step + 1} / 4</small></footer>
   </section>;
 }
 
 export function circleCss() { return `
-.circle-canvas{min-height:calc(100dvh - 210px)}
+/* Share the measured chrome budget with the other verticals. Keep the
+   action and progress in view; only genuinely tall question content scrolls. */
+.circle-canvas{height:calc(100dvh - var(--assisted-chrome, 210px));min-height:0;grid-template-rows:minmax(0,1fr) auto auto;gap:12px;box-sizing:border-box}
+.circle-canvas .assisted-canvas-main{min-height:0;overflow-y:auto;align-self:stretch;display:flex;flex-direction:column;scrollbar-gutter:stable}
+.circle-canvas-content{margin-block:auto;min-width:0;padding:2px}
+.circle-canvas-action{width:100%;max-width:1080px;margin:0 auto}
+.circle-canvas-action .assisted-primary{margin-top:0;min-height:44px}
+.circle-canvas .circle-muted{margin:8px 0;font-size:13px}
+.circle-canvas .circle-review{font-size:14px}
+.circle-canvas .circle-name input{box-sizing:border-box}
+@media(max-height:850px){
+ .circle-canvas .circle-chips{gap:6px}
+ .circle-canvas .circle-chips button{padding:8px 14px;min-height:44px}
+ .circle-canvas .circle-stepper{margin:4px 0 8px}
+ .circle-canvas .circle-chips+.circle-caption{margin-top:12px}
+ .circle-canvas .circle-review div{padding:7px 0}
+}
+
 .circle-caption{margin:0 0 6px;}.circle-chips+.circle-caption{margin-top:clamp(18px,3vh,30px)}
 .circle-caption{color:${T.muted};font:700 10px/1.4 ${T.mono};letter-spacing:.14em;text-transform:uppercase}.circle-eyebrow{display:flex;align-items:center;gap:10px;color:${T.accent};font:700 11px ${T.mono};letter-spacing:.14em;text-transform:uppercase}
 .circle-chips{display:flex;flex-wrap:wrap;gap:10px}.circle-chips button,.circle-stepper button{padding:12px 22px;min-height:46px;border-radius:999px;border:1px solid ${T.borderHi};background:${T.bg};color:${T.text};font:700 15px ${T.sans};cursor:pointer}.circle-chips button[aria-pressed=true]{background:${T.accentDim};border-color:${T.accent};color:${T.accent}}
@@ -119,5 +142,10 @@ export function circleCss() { return `
 .circle-stepper{display:flex;align-items:center;justify-content:center;gap:32px;margin:clamp(4px,1vh,8px) 0 clamp(14px,3vh,30px)}.circle-stepper output{font:650 clamp(44px,7vh,64px) ${T.sans}}.circle-stepper button:disabled{opacity:.4}.circle-cap{display:flex;align-items:center;gap:14px;margin-top:20px}.circle-cap input{width:90px;padding:10px;border:1px solid ${T.borderHi};border-radius:10px;background:${T.bg};color:${T.text};font:600 20px ${T.sans}}
 .circle-name{display:block;margin-bottom:clamp(10px,1.8vh,16px)}.circle-name input{width:100%;padding:12px 14px;border:1px solid ${T.borderHi};border-radius:12px;background:${T.bg};color:${T.text};font:650 20px ${T.sans};outline:none}.circle-name input:focus{border-color:${T.accent}}
 .circle-review{margin:0}.circle-review div{display:flex;justify-content:space-between;gap:24px;padding:clamp(9px,1.6vh,14px) 0;border-bottom:1px solid ${T.border}}.circle-review dt{color:${T.muted}}.circle-review dd{margin:0;text-align:right;font-weight:700}.circle-host-note{color:${T.muted};font-size:13px;line-height:1.6;padding-top:10px}.circle-canvas button:focus-visible{outline:3px solid ${T.accent};outline-offset:3px}
+@media(min-width:900px){
+ .circle-review-card{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0 24px}
+ .circle-review-card .circle-review{grid-column:2;grid-row:1 / 4}
+ .circle-review-card>p{font-size:14px;line-height:1.5;margin:8px 0}
+}
 @media(max-width:600px){.circle-canvas{padding:22px 18px 16px}.circle-canvas .assisted-canvas-footer{grid-template-columns:1fr auto}.circle-canvas .assisted-canvas-footer small{display:none}}
 `; }

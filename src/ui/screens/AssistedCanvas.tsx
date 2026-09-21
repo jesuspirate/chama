@@ -1,4 +1,5 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useCanvasViewport } from "../hooks/useCanvasViewport.js";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Role, type EscrowState } from "../../escrow-engine/types.js";
 import { ChamaLoader } from "../components/ChamaLoader.js";
 import {
@@ -1051,31 +1052,7 @@ export function AssistedCanvas({
 }
 
 function CanvasShell({ community: _community, step, onExit, onMoreOptions, children }: { community: ReturnType<typeof getCommunityBySlug>; step: number; onExit: () => void; onMoreOptions: () => void; children: ReactNode }) {
-  // Runway #6: stop guessing the surrounding chrome. The old hardcoded
-  // `100dvh - 360px` (mobile: 116px) held only while the header stack stayed
-  // under the guess — one banner away from the amount slide scrolling again.
-  // Measure instead: chrome above = this element's offset from the document
-  // top (header stack, price banner, WalletBar, ChamaBar, sim pill — whatever
-  // is actually mounted today); chrome below = the fixed bottom nav, live.
-  // Published as --assisted-chrome on the canvas root; the CSS falls back to
-  // the old guesses wherever measurement is unavailable.
-  const rootRef = useRef<HTMLDivElement | null>(null);
-  useLayoutEffect(() => {
-    const el = rootRef.current;
-    if (!el || typeof window === "undefined") return;
-    const measure = () => {
-      // scrollY-corrected so a mid-scroll re-measure can't poison the value.
-      const top = Math.max(0, Math.round(el.getBoundingClientRect().top + window.scrollY));
-      const nav = document.querySelector<HTMLElement>("[data-chama-bottom-nav]");
-      const bottom = nav ? Math.round(nav.getBoundingClientRect().height) : 0;
-      el.style.setProperty("--assisted-chrome", `${top + bottom}px`);
-    };
-    measure();
-    const ro = typeof ResizeObserver === "function" ? new ResizeObserver(measure) : null;
-    ro?.observe(document.body);
-    window.addEventListener("resize", measure);
-    return () => { ro?.disconnect(); window.removeEventListener("resize", measure); };
-  }, []);
+  const rootRef = useCanvasViewport();
   return <div ref={rootRef} className="assisted-canvas">
     <style>{canvasCss()}</style>
     {step === 0 && <button type="button" data-chama-shortcut="back" onClick={onExit} tabIndex={-1} aria-hidden="true" style={{ display: "none" }} />}
