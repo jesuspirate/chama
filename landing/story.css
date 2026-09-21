@@ -1,5 +1,6 @@
 :root {
   --paper:#f3f0e7;
+  --dot:#c47308;
   --ink:#202b25;
   --muted:#667067;
   --orange:#f6a23b;
@@ -87,11 +88,13 @@ a:focus-visible,button:focus-visible,summary:focus-visible {
   object-fit:contain
 }
 .brand-dot {
-  font-size:10px;
-  color:#c65b17;
-  margin-left:-4px;
-  align-self:flex-end;
-  margin-bottom:5px
+  display:inline-block;
+  width:9px;
+  height:9px;
+  border-radius:50%;
+  background:var(--dot);
+  vertical-align:baseline;
+  margin-left:3px
 }
 .nav nav,.nav-actions,.languages {
   display:flex;
@@ -772,7 +775,8 @@ footer {
     height:29px
   }
   .brand-dot {
-    display:none
+    width:8px;
+    height:8px
   }
   .nav-actions {
     gap:12px

@@ -1,20 +1,13 @@
 import { T } from "../theme.js";
 
 /**
- * The Chama logotype, matched to the landing page's `.brand` rule
- * (landing/story.css): the woven-trust mark, the lowercase wordmark in
- * Manrope 800 with tight tracking, and the orange dot riding the baseline.
- *
- * Proportions follow the landing's own compact treatment (cinema.css, the
- * ≤600px nav): 28px mark, 24px type, -1.3px tracking, an 8px dot nudged
- * -3px left and 4px up. The app is a phone-width surface, so that is the
- * variant that belongs here rather than the 31px desktop one.
- *
- * The dot takes T.accent rather than the landing's fixed #c65b17: light mode
- * resolves to #c47308, within a hair of the landing's ink, while dark mode
- * gets the full #f7931a it needs to carry on #0a0a0f.
+ * Lowercase Manrope wordmark with a drawn orange dot in the text flow.
+ * The dot scales at 30% of the type size (minimum 5px), sits on its baseline,
+ * and uses the same light/dark accent inks as the landing's --dot token.
+ * Keeping it inside the text span avoids flex gaps and font-dependent glyphs.
  */
 export function Wordmark({ size = 24, markSize = 28, showMark = true }: { size?: number; markSize?: number; showMark?: boolean }) {
+  const dot = Math.max(5, Math.round(size * 0.30));
   return (
     <span
       style={{
@@ -36,18 +29,20 @@ export function Wordmark({ size = 24, markSize = 28, showMark = true }: { size?:
         height={markSize}
         style={{ display: "block", flexShrink: 0, objectFit: "contain" }}
       />}
-      <span>chama</span>
-      <span
-        aria-hidden="true"
-        style={{
-          fontSize: Math.max(6, Math.round(size / 3)),
-          color: T.accent,
-          alignSelf: "flex-end",
-          marginLeft: -Math.round(size / 8),
-          marginBottom: Math.round(size / 6),
-        }}
-      >
-        ●
+      <span>
+        chama
+        <span
+          aria-hidden="true"
+          style={{
+            display: "inline-block",
+            width: dot,
+            height: dot,
+            borderRadius: "50%",
+            background: T.accent,
+            verticalAlign: "baseline",
+            marginLeft: Math.round(size * 0.10),
+          }}
+        />
       </span>
     </span>
   );
