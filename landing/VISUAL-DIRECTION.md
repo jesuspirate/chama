@@ -1,5 +1,12 @@
 # It starts with people
 
+> This document records successive design revisions, including superseded assets.
+> Older stills, films, and their provenance notes were moved to the local review
+> archive at `outputs/design-review-archive/2026-09-21/`. Resolve historical paths
+> through [the archive inventory](../assets/landing/archive-inventory.json);
+> the archive binaries are intentionally not committed. The current shipping
+> asset list is [deploy-files.txt](deploy-files.txt).
+
 The opening is a film with a beginning, a handover, and a next turn. Desktop visitors enter a full-viewport scene. It plays once, holds its final frame, restores the headline, and invites a native scroll into the explanation. The scroll is never captured or delayed. Mobile places the headline above an inline, tap-to-play film; it does not download video automatically.
 
 Meet → Agree → Trade is one continuous illustration: two people connect, a community arbiter joins, the seller locks sats, the buyer sends local money, and confirmations release the sats to the buyer. The concluding photographic reveal, “And a circle begins,” returns to the same people and bowl as the opening. It is a consequence of the three steps, not a fourth step or a savings instruction manual.
