@@ -62,4 +62,6 @@ if [ "$public_bytes" -gt "$public_limit" ]; then
   fail "tracked public/ assets total ${public_mib} MiB (limit: 20 MiB)"
 fi
 
+node scripts/check-landing-deploy.mjs
+
 echo "✅ Repository hygiene check passed."

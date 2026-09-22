@@ -30,8 +30,12 @@ def save(path, size, fraction=1, background=None):
 
 
 for folder in ['public/icons', 'landing/icons']:
-    for file in (ROOT/folder).glob('favicon-*x*.png'):
-        save(file.relative_to(ROOT), int(file.stem.split('-')[1].split('x')[0]))
+    # The landing uses only the multi-size ICO. App PNG sizes also serve
+    # notification and desktop packaging consumers; do not discover outputs
+    # by globbing files left behind by a previous export.
+    if folder == 'public/icons':
+        for size in [16,32,48,96,128,192,256,512]:
+            save(f'{folder}/favicon-{size}x{size}.png',size)
     render(256).save(ROOT/folder/'favicon.ico', sizes=[(s,s) for s in [16,24,32,48,64,128,256]])
     # Ordinary installed icons keep the requested dark plate. Maskable has
     # its own extra inset so an OS circle/squircle cannot crop the rings.
@@ -45,8 +49,7 @@ save('public/icons/chama-mark-256.png',256)
 save('public/icons/chama-woven-trust-mark-transparent-64.png',64)
 for size in [64,128,256,512,1024]:
     save(f'public/icons/profile-pics/chama-profile-mark-black-{size}.png',size,1,'#000000')
-for size in [64,128,256,512,1024]:
-    save(f'landing/icons/chama-mark-{size}.png',size)
+save('landing/icons/chama-mark-64.png',64)
 save('icon.png',512)
 save('src-tauri/icons/icon.png',1024)
 render(1024).save(ROOT/'src-tauri/icons/icon.icns')

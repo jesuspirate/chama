@@ -1,0 +1,818 @@
+{
+  "archive_root": "outputs/design-review-archive/2026-09-21",
+  "source_commit": "9f7be5a7533cc1e843ba0ddc4ed18e91ee3c2e80",
+  "entries": [
+    {
+      "source": "chama-market-source.jpg",
+      "archive": "chama-market-source.jpg",
+      "tracked_before": true,
+      "bytes": 419369,
+      "sha256": "69c584db7de4958736c2e2cb39790aee71784b135cc69506a50bd90551896bee"
+    },
+    {
+      "source": "landing/icons/chama-mark-1024.png",
+      "archive": "landing/icons/chama-mark-1024.png",
+      "tracked_before": true,
+      "bytes": 735476,
+      "sha256": "4d58ad62ac7eee590e97a3153d4901b7bc2693d294d6f394353abe3726a759e8"
+    },
+    {
+      "source": "landing/icons/chama-mark-128.png",
+      "archive": "landing/icons/chama-mark-128.png",
+      "tracked_before": true,
+      "bytes": 18320,
+      "sha256": "68f33a77d672775dc3f454c3c3a4fc7f42538be788c76ad697c00656c908fa56"
+    },
+    {
+      "source": "landing/icons/chama-mark-256.png",
+      "archive": "landing/icons/chama-mark-256.png",
+      "tracked_before": true,
+      "bytes": 53758,
+      "sha256": "a4d87303489b29fbcc0fe690469f0cf165d4c4ff05d9d384b4baf1e49c58dc2d"
+    },
+    {
+      "source": "landing/icons/chama-mark-512.png",
+      "archive": "landing/icons/chama-mark-512.png",
+      "tracked_before": true,
+      "bytes": 183673,
+      "sha256": "b6559308109080f3a90921b16e24893473b82d1efd957aefca0eeb69f7f37e2b"
+    },
+    {
+      "source": "landing/icons/favicon-128x128.png",
+      "archive": "landing/icons/favicon-128x128.png",
+      "tracked_before": true,
+      "bytes": 18320,
+      "sha256": "68f33a77d672775dc3f454c3c3a4fc7f42538be788c76ad697c00656c908fa56"
+    },
+    {
+      "source": "landing/icons/favicon-16x16.png",
+      "archive": "landing/icons/favicon-16x16.png",
+      "tracked_before": true,
+      "bytes": 867,
+      "sha256": "bf4a6bc9b8b8420013758e98164d0ab4bac09bd7a95e6c45f5998cc41be30417"
+    },
+    {
+      "source": "landing/icons/favicon-180x180.png",
+      "archive": "landing/icons/favicon-180x180.png",
+      "tracked_before": true,
+      "bytes": 30942,
+      "sha256": "3b9bf9299362062e90ec555b08c3726e28cb1f2ee0561862b6d7c1cbc9cdaacc"
+    },
+    {
+      "source": "landing/icons/favicon-192x192.png",
+      "archive": "landing/icons/favicon-192x192.png",
+      "tracked_before": true,
+      "bytes": 34121,
+      "sha256": "037d2bc86ec1282e0e19f7561c0113ba8c731a0b2fd886d984fd40cdfb60286e"
+    },
+    {
+      "source": "landing/icons/favicon-256x256.png",
+      "archive": "landing/icons/favicon-256x256.png",
+      "tracked_before": true,
+      "bytes": 53758,
+      "sha256": "a4d87303489b29fbcc0fe690469f0cf165d4c4ff05d9d384b4baf1e49c58dc2d"
+    },
+    {
+      "source": "landing/icons/favicon-32x32.png",
+      "archive": "landing/icons/favicon-32x32.png",
+      "tracked_before": true,
+      "bytes": 2397,
+      "sha256": "d731cc6a966ea0a0068077a3f66a0895566d3b6ae15cb7ca57e95a9bb384cf2d"
+    },
+    {
+      "source": "landing/icons/favicon-48x48.png",
+      "archive": "landing/icons/favicon-48x48.png",
+      "tracked_before": true,
+      "bytes": 4281,
+      "sha256": "bb6406963f7c80a4c7b1e85912902df8e26166ed295e0f46af84275c5e7eda08"
+    },
+    {
+      "source": "landing/icons/favicon-512x512.png",
+      "archive": "landing/icons/favicon-512x512.png",
+      "tracked_before": true,
+      "bytes": 183673,
+      "sha256": "b6559308109080f3a90921b16e24893473b82d1efd957aefca0eeb69f7f37e2b"
+    },
+    {
+      "source": "landing/icons/favicon-64x64.png",
+      "archive": "landing/icons/favicon-64x64.png",
+      "tracked_before": true,
+      "bytes": 6546,
+      "sha256": "46e7cb0c279a7fbf13f43708ca6068aa51ed3706e726ae75c6fe6f5e73e8f915"
+    },
+    {
+      "source": "landing/icons/favicon-96x96.png",
+      "archive": "landing/icons/favicon-96x96.png",
+      "tracked_before": true,
+      "bytes": 11864,
+      "sha256": "fc1d8cfd1eaaab3e962e979575851cf11a9fa818b4953899551117f4b594757d"
+    },
+    {
+      "source": "landing/img/.DS_Store",
+      "archive": "landing/img/.DS_Store",
+      "tracked_before": false,
+      "bytes": 10244,
+      "sha256": "f6a4dd3f10a69d7e061235e2b813ecc66e3cf503f9b14a467d033003082587ab"
+    },
+    {
+      "source": "landing/img/chama-circle-action-v10.jpg",
+      "archive": "landing/img/chama-circle-action-v10.jpg",
+      "tracked_before": true,
+      "bytes": 211733,
+      "sha256": "ce873e264805fea3d4741f0e03efd6738b91c0d3dd9669be0ff36271590f8fef"
+    },
+    {
+      "source": "landing/img/chama-circle-action-v11.jpg",
+      "archive": "landing/img/chama-circle-action-v11.jpg",
+      "tracked_before": true,
+      "bytes": 211723,
+      "sha256": "7d393892ea82e1a935288aa8c989acca7a7983eadcdad467d38a4e512d74072d"
+    },
+    {
+      "source": "landing/img/chama-circle-action-v12.jpg",
+      "archive": "landing/img/chama-circle-action-v12.jpg",
+      "tracked_before": true,
+      "bytes": 211879,
+      "sha256": "9ff2fd2a9b9f670a8d8ed00eab79961f1b766f4204eaaf439ae0cc522213ade5"
+    },
+    {
+      "source": "landing/img/chama-circle-action-v2.jpg",
+      "archive": "landing/img/chama-circle-action-v2.jpg",
+      "tracked_before": true,
+      "bytes": 194337,
+      "sha256": "640c60de9220f5162dfdc41974005c5ed1289cb5dd7d2ddb0c9dfbb0e6da5061"
+    },
+    {
+      "source": "landing/img/chama-circle-action-v3.jpg",
+      "archive": "landing/img/chama-circle-action-v3.jpg",
+      "tracked_before": true,
+      "bytes": 193517,
+      "sha256": "5443f54cd94e6f82a98ba75eabf5af78b63ed9b4cf58c49fa738b1f721a15dc0"
+    },
+    {
+      "source": "landing/img/chama-circle-action-v4.jpg",
+      "archive": "landing/img/chama-circle-action-v4.jpg",
+      "tracked_before": true,
+      "bytes": 256571,
+      "sha256": "741a88ef2e5bdfe5aeaa1e2f320002182d41086fd1de0b38f16173d5a3c6dff8"
+    },
+    {
+      "source": "landing/img/chama-circle-action-v5.jpg",
+      "archive": "landing/img/chama-circle-action-v5.jpg",
+      "tracked_before": true,
+      "bytes": 238992,
+      "sha256": "b4848122df9c6bc8311f6139c058b2bf40b08a2dbe67d9af81d539fcb1a86e50"
+    },
+    {
+      "source": "landing/img/chama-circle-action-v6.jpg",
+      "archive": "landing/img/chama-circle-action-v6.jpg",
+      "tracked_before": true,
+      "bytes": 211226,
+      "sha256": "769ce3aef9a4fb04e116d254e384e35bff6c1ffbe245d90c0c4e434aedf41efa"
+    },
+    {
+      "source": "landing/img/chama-circle-action-v7.jpg",
+      "archive": "landing/img/chama-circle-action-v7.jpg",
+      "tracked_before": true,
+      "bytes": 213614,
+      "sha256": "58c1f13fc9994f1dbfcf77782c078260190628ef728c255e08715605ce33fb69"
+    },
+    {
+      "source": "landing/img/chama-circle-action-v9.jpg",
+      "archive": "landing/img/chama-circle-action-v9.jpg",
+      "tracked_before": true,
+      "bytes": 211721,
+      "sha256": "ecb178b63cee0d9386bae2aae8d12e006664fa4a153d5fe270eed70fd94c2274"
+    },
+    {
+      "source": "landing/img/chama-circle-ending-v2.jpg",
+      "archive": "landing/img/chama-circle-ending-v2.jpg",
+      "tracked_before": true,
+      "bytes": 188599,
+      "sha256": "164f8d393f0056da0e861d9b3a4d225c8ef93eb1b7f6943956381069023afad8"
+    },
+    {
+      "source": "landing/img/chama-circle-ending-v4.jpg",
+      "archive": "landing/img/chama-circle-ending-v4.jpg",
+      "tracked_before": true,
+      "bytes": 255871,
+      "sha256": "abedcf88460ca0dcf5d2c6b4a09ed43ecad5f679ae7e0d1bdaab065722f5eaf1"
+    },
+    {
+      "source": "landing/img/chama-circle-ending-v4.md",
+      "archive": "landing/img/chama-circle-ending-v4.md",
+      "tracked_before": true,
+      "bytes": 862,
+      "sha256": "dc154690da40e7bab048f213b14babf5490bfec5ad2b2421eee2967810f28dce"
+    },
+    {
+      "source": "landing/img/chama-circle-ending-v7.jpg",
+      "archive": "landing/img/chama-circle-ending-v7.jpg",
+      "tracked_before": true,
+      "bytes": 277943,
+      "sha256": "5693bd8dd74b98a71d43e5b47c94e873ded080ea492df0e69afb5573507b6af9"
+    },
+    {
+      "source": "landing/img/chama-circle-ending-v7.md",
+      "archive": "landing/img/chama-circle-ending-v7.md",
+      "tracked_before": true,
+      "bytes": 815,
+      "sha256": "cb6905c88edbe50324098cd97d11cc1f37f0ef018c81634564b8a131d4d61f81"
+    },
+    {
+      "source": "landing/img/chama-circle-ending-v8.jpg",
+      "archive": "landing/img/chama-circle-ending-v8.jpg",
+      "tracked_before": true,
+      "bytes": 291417,
+      "sha256": "84bb5f80e5a351643a564901e4631aa4ec44faf183542e5d235d4bc8e183fe26"
+    },
+    {
+      "source": "landing/img/chama-circle-film-opening-v4.jpg",
+      "archive": "landing/img/chama-circle-film-opening-v4.jpg",
+      "tracked_before": true,
+      "bytes": 330560,
+      "sha256": "09360bb4ab2427d96a32fd6ac19571c1d327d4522a2b23fbcab1c898049455b5"
+    },
+    {
+      "source": "landing/img/chama-circle-film-opening-v5.jpg",
+      "archive": "landing/img/chama-circle-film-opening-v5.jpg",
+      "tracked_before": true,
+      "bytes": 337809,
+      "sha256": "21c25ed35d455aacddbdf50e1129b128815150bd3edb088cdafd41265f0eb6a3"
+    },
+    {
+      "source": "landing/img/chama-circle-film-v10.md",
+      "archive": "landing/img/chama-circle-film-v10.md",
+      "tracked_before": true,
+      "bytes": 470,
+      "sha256": "0c2b7e5ed6c34049f1c722c8f360fa664f3e9282f8a40f3be697e438f77cb444"
+    },
+    {
+      "source": "landing/img/chama-circle-film-v11.md",
+      "archive": "landing/img/chama-circle-film-v11.md",
+      "tracked_before": true,
+      "bytes": 501,
+      "sha256": "a4fc1e1fd1da3bbac0f3d4a08e2533e524d4d5f6901855c421140926b2af6683"
+    },
+    {
+      "source": "landing/img/chama-circle-film-v12.md",
+      "archive": "landing/img/chama-circle-film-v12.md",
+      "tracked_before": true,
+      "bytes": 981,
+      "sha256": "c79e4dfdbbcfaa162f8da6a6b8d6302e3cc93bf080dfb9efaefb4df0c7e64566"
+    },
+    {
+      "source": "landing/img/chama-circle-film-v13.md",
+      "archive": "landing/img/chama-circle-film-v13.md",
+      "tracked_before": true,
+      "bytes": 960,
+      "sha256": "bddcac1bb71ca32680e9d3a8de300ff4d64ee721893dd18e8af5f9dbdea2996a"
+    },
+    {
+      "source": "landing/img/chama-circle-film-v4.md",
+      "archive": "landing/img/chama-circle-film-v4.md",
+      "tracked_before": true,
+      "bytes": 996,
+      "sha256": "e052d1d0eca2c7376fa24d68b10117bdcf878b5a404f583e51c2b5b3bd1ffecf"
+    },
+    {
+      "source": "landing/img/chama-circle-film-v5.md",
+      "archive": "landing/img/chama-circle-film-v5.md",
+      "tracked_before": true,
+      "bytes": 906,
+      "sha256": "64e0001536dc48e6059d3166d13288cb9e9b3aa14586d2c6c86cd82ed991d4ac"
+    },
+    {
+      "source": "landing/img/chama-circle-film-v6.md",
+      "archive": "landing/img/chama-circle-film-v6.md",
+      "tracked_before": true,
+      "bytes": 887,
+      "sha256": "464883bd307ba13138dd7f3d31a5da4fbaf24112464e1e77c10f80f022fc7732"
+    },
+    {
+      "source": "landing/img/chama-circle-film-v7.md",
+      "archive": "landing/img/chama-circle-film-v7.md",
+      "tracked_before": true,
+      "bytes": 877,
+      "sha256": "4bf18a90d464a4215aabecb18f2313595802efa14671a18a5eb9ed3dc710c2d2"
+    },
+    {
+      "source": "landing/img/chama-circle-film-v8.md",
+      "archive": "landing/img/chama-circle-film-v8.md",
+      "tracked_before": true,
+      "bytes": 1266,
+      "sha256": "88afea8bcb9e797bef97c94dd6eb31b0cab8f4de06b7d50749e93bb9ce0af955"
+    },
+    {
+      "source": "landing/img/chama-circle-film-v9.md",
+      "archive": "landing/img/chama-circle-film-v9.md",
+      "tracked_before": true,
+      "bytes": 770,
+      "sha256": "12bbfe2456a0b84e335b8708c57a7d3f72682db295409a716fb27446e699b5bc"
+    },
+    {
+      "source": "landing/img/chama-circle-hero-v1.jpg",
+      "archive": "landing/img/chama-circle-hero-v1.jpg",
+      "tracked_before": true,
+      "bytes": 557025,
+      "sha256": "04b0cc9b64697d6772c57a5dd30365cc590718cd3611df5d36e0368c7e31a3fa"
+    },
+    {
+      "source": "landing/img/chama-circle-motion-v1.mp4",
+      "archive": "landing/img/chama-circle-motion-v1.mp4",
+      "tracked_before": true,
+      "bytes": 711239,
+      "sha256": "6ec5a3eb35e0bfee7fc21b80c14fa7e36106993a995b9031c265fb5ec43fdafe"
+    },
+    {
+      "source": "landing/img/chama-circle-story-v10.mp4",
+      "archive": "landing/img/chama-circle-story-v10.mp4",
+      "tracked_before": true,
+      "bytes": 2483251,
+      "sha256": "738d5d592a37a47e8db9441a42693c9c6c91be875468ceceae58c8acb57eb835"
+    },
+    {
+      "source": "landing/img/chama-circle-story-v11.mp4",
+      "archive": "landing/img/chama-circle-story-v11.mp4",
+      "tracked_before": true,
+      "bytes": 2471388,
+      "sha256": "cd82e795c3cc4f8623f2a42d0f234450ec56cbf01ecdcbf78e81d108e72c0023"
+    },
+    {
+      "source": "landing/img/chama-circle-story-v12.mp4",
+      "archive": "landing/img/chama-circle-story-v12.mp4",
+      "tracked_before": true,
+      "bytes": 3097300,
+      "sha256": "0189280a358274dba14dba6fe7d3c5fad0113cd1153f8edc29e0bb437b5cc83e"
+    },
+    {
+      "source": "landing/img/chama-circle-story-v2.md",
+      "archive": "landing/img/chama-circle-story-v2.md",
+      "tracked_before": true,
+      "bytes": 2281,
+      "sha256": "e26d72121caeecdc60a9225080faa95724dfaeadf4e67dede405da61fd6d16dd"
+    },
+    {
+      "source": "landing/img/chama-circle-story-v2.mp4",
+      "archive": "landing/img/chama-circle-story-v2.mp4",
+      "tracked_before": true,
+      "bytes": 6184331,
+      "sha256": "2dc11a093602c07c3f4b7e46b295c2e489bd03e040cad04c71cf8fceeb3d8f06"
+    },
+    {
+      "source": "landing/img/chama-circle-story-v3.md",
+      "archive": "landing/img/chama-circle-story-v3.md",
+      "tracked_before": true,
+      "bytes": 636,
+      "sha256": "adf356f590c183eaf37ad132ffc56cbd420b6a3ffbad0df7a18bf5ba16cb7068"
+    },
+    {
+      "source": "landing/img/chama-circle-story-v3.mp4",
+      "archive": "landing/img/chama-circle-story-v3.mp4",
+      "tracked_before": true,
+      "bytes": 5131959,
+      "sha256": "b3dd4cb0a7e45cacf4e3cc0cc84dedd8b9f33808d7041453a28b550e1010b2e6"
+    },
+    {
+      "source": "landing/img/chama-circle-story-v4.mp4",
+      "archive": "landing/img/chama-circle-story-v4.mp4",
+      "tracked_before": true,
+      "bytes": 2260427,
+      "sha256": "b983b1c60ed78900e1e15d34fde49e6dbb72a8df5dad4b437bab0676e92108fb"
+    },
+    {
+      "source": "landing/img/chama-circle-story-v5.mp4",
+      "archive": "landing/img/chama-circle-story-v5.mp4",
+      "tracked_before": true,
+      "bytes": 1665009,
+      "sha256": "fd4c3f3fe92f84d56c6f6e28253e07254ce32361e3920641f93bf172b5ccecdb"
+    },
+    {
+      "source": "landing/img/chama-circle-story-v6.mp4",
+      "archive": "landing/img/chama-circle-story-v6.mp4",
+      "tracked_before": true,
+      "bytes": 2144659,
+      "sha256": "fdaa7cab3b0f25d604b9a3fb3593e0130a2dce668f540a57fe993a1699a89b07"
+    },
+    {
+      "source": "landing/img/chama-circle-story-v7.mp4",
+      "archive": "landing/img/chama-circle-story-v7.mp4",
+      "tracked_before": true,
+      "bytes": 2456809,
+      "sha256": "172b95df90be3516450102b4ac7ea52a3189c4767ccfd7022a3bacfdacbc536d"
+    },
+    {
+      "source": "landing/img/chama-circle-story-v9.mp4",
+      "archive": "landing/img/chama-circle-story-v9.mp4",
+      "tracked_before": true,
+      "bytes": 2448373,
+      "sha256": "ca99f03846ca8483e1bfddc8d3ddb293413033b44c768e34dc0e8c0b3b03c4cd"
+    },
+    {
+      "source": "landing/img/chama-community-banner-v1.md",
+      "archive": "landing/img/chama-community-banner-v1.md",
+      "tracked_before": true,
+      "bytes": 1025,
+      "sha256": "fd0f9ae27d5221156b5fe04e1ddbf8595f2c3319a851a61cf0c3faca26bfe87f"
+    },
+    {
+      "source": "landing/img/chama-community-banner-v1.png",
+      "archive": "landing/img/chama-community-banner-v1.png",
+      "tracked_before": true,
+      "bytes": 1932946,
+      "sha256": "301a417221504b0e24b3ffbb0296d58c4ab77f3c13054dd837b5f90fb4a0f161"
+    },
+    {
+      "source": "landing/img/chama-community-banner-v2.md",
+      "archive": "landing/img/chama-community-banner-v2.md",
+      "tracked_before": true,
+      "bytes": 933,
+      "sha256": "f4ffee22e7c8a28ca416787e612fe653c687a04c9472d0c7734de375bfc1af80"
+    },
+    {
+      "source": "landing/img/chama-community-market-social-v2.jpg",
+      "archive": "landing/img/chama-community-market-social-v2.jpg",
+      "tracked_before": true,
+      "bytes": 418872,
+      "sha256": "7e80b822ea2fd80d8500a5c14a6d24b047e9a239791cf272226c0ea4e16cce53"
+    },
+    {
+      "source": "landing/img/chama-community-market-social-v3.jpg",
+      "archive": "landing/img/chama-community-market-social-v3.jpg",
+      "tracked_before": true,
+      "bytes": 418503,
+      "sha256": "c9f8e72925fad68a42b9784e8133cb343f42baf919887a5e2a1837b950e1e200"
+    },
+    {
+      "source": "landing/img/chama-community-market-social.jpg",
+      "archive": "landing/img/chama-community-market-social.jpg",
+      "tracked_before": true,
+      "bytes": 423162,
+      "sha256": "673081fff073d74ed7972c6e3a539ba899c6e081f7979d77510cce44dadc54d8"
+    },
+    {
+      "source": "landing/img/chama-community-threshold-v2.png",
+      "archive": "landing/img/chama-community-threshold-v2.png",
+      "tracked_before": false,
+      "bytes": 2239685,
+      "sha256": "da117752f834cb8b94a192a5d3419911fd46d6205c44d83f579e1d352b44fa0a"
+    },
+    {
+      "source": "landing/img/chama-community-threshold-v3-hd.png",
+      "archive": "landing/img/chama-community-threshold-v3-hd.png",
+      "tracked_before": false,
+      "bytes": 7159107,
+      "sha256": "117951171919d6ae0e2710f83fbcbadf28fc5a6feee44d0643bcf3fb6d0579bf"
+    },
+    {
+      "source": "landing/img/chama-community-threshold-v3.png",
+      "archive": "landing/img/chama-community-threshold-v3.png",
+      "tracked_before": false,
+      "bytes": 2133816,
+      "sha256": "b1342d9956513de6442d6426a9548061ab31d8f2617e216ab20b1629dedcc4b4"
+    },
+    {
+      "source": "landing/img/chama-community-threshold-v9-hd.png",
+      "archive": "landing/img/chama-community-threshold-v9-hd.png",
+      "tracked_before": true,
+      "bytes": 3149236,
+      "sha256": "6049641bf8c45ed5a798d80850bebf079f551112345bcf1a448baa556307a83e"
+    },
+    {
+      "source": "landing/img/chama-digital-community-v1.md",
+      "archive": "landing/img/chama-digital-community-v1.md",
+      "tracked_before": true,
+      "bytes": 629,
+      "sha256": "1a9b9ca5c22a4e8a123112cd6dab8a031959cd947234f5f4f35580a8a336037a"
+    },
+    {
+      "source": "landing/img/comm-home-us-rural-v8.jpg",
+      "archive": "landing/img/comm-home-us-rural-v8.jpg",
+      "tracked_before": true,
+      "bytes": 126389,
+      "sha256": "3f2b2dc8c4418c18b8ae445d85dcffb8965b8d8377f10a509a7ddb515606b4d1"
+    },
+    {
+      "source": "landing/img/faq/.DS_Store",
+      "archive": "landing/img/faq/.DS_Store",
+      "tracked_before": false,
+      "bytes": 6148,
+      "sha256": "e056dbb1d7bac05a28e1df943276a97ee41ff1dd71e49a36b84e08c52492e902"
+    },
+    {
+      "source": "landing/img/hero-lightning-fissure-v4.svg",
+      "archive": "landing/img/hero-lightning-fissure-v4.svg",
+      "tracked_before": false,
+      "bytes": 2498,
+      "sha256": "e595f6903eae63bb1f06b6761c3ed39d582cb1a4b77941519619008ee1df528a"
+    },
+    {
+      "source": "landing/img/hero-lightning-neon-v6.svg",
+      "archive": "landing/img/hero-lightning-neon-v6.svg",
+      "tracked_before": false,
+      "bytes": 1707,
+      "sha256": "184e4eee0b893459440980ef40aa06b8bef039a44859d6802330dbfc00ec4872"
+    },
+    {
+      "source": "landing/img/hero-lightning-portal-v3.svg",
+      "archive": "landing/img/hero-lightning-portal-v3.svg",
+      "tracked_before": false,
+      "bytes": 2745,
+      "sha256": "cf2f6eba37f542a87d66ae523d2bb80e74277386fcd8dcc06b93f6e5fe38164f"
+    },
+    {
+      "source": "landing/img/hero-lightning-rift-v2.svg",
+      "archive": "landing/img/hero-lightning-rift-v2.svg",
+      "tracked_before": false,
+      "bytes": 2713,
+      "sha256": "65e7fb4f625b21f0b3078f3ba051a681c31b4410660514cbc9a6a397ad479372"
+    },
+    {
+      "source": "landing/img/hero-lightning-signal-v5.svg",
+      "archive": "landing/img/hero-lightning-signal-v5.svg",
+      "tracked_before": false,
+      "bytes": 2662,
+      "sha256": "d1912a55b4b4dd987be1914f38c4841ac86a9cb0db15f6494c99f7b3f2e6d0e0"
+    },
+    {
+      "source": "landing/img/hero-one-trade-community-africa-day-clean-v3.jpg",
+      "archive": "landing/img/hero-one-trade-community-africa-day-clean-v3.jpg",
+      "tracked_before": false,
+      "bytes": 443446,
+      "sha256": "fdd027e040651fccca02350b4fd8e9818e85cbdc76ae501e1fe75673e7391c2f"
+    },
+    {
+      "source": "landing/img/hero-one-trade-community-africa-day-v1.jpg",
+      "archive": "landing/img/hero-one-trade-community-africa-day-v1.jpg",
+      "tracked_before": false,
+      "bytes": 439597,
+      "sha256": "9041df50acbf3983f37b97b6a429848101a35a8f20aafd57b12b27e88cff0e90"
+    },
+    {
+      "source": "landing/img/hero-one-trade-community-africa-day-v2.jpg",
+      "archive": "landing/img/hero-one-trade-community-africa-day-v2.jpg",
+      "tracked_before": false,
+      "bytes": 613684,
+      "sha256": "f0d805984063a8657bafa288ed73bf22066bbb8df8da0dbb764666583531fafe"
+    },
+    {
+      "source": "landing/img/hero-one-trade-community-africa-dusk-clean-v3.jpg",
+      "archive": "landing/img/hero-one-trade-community-africa-dusk-clean-v3.jpg",
+      "tracked_before": false,
+      "bytes": 358233,
+      "sha256": "21946893d09a711793ace9bbf925dff66f3648ec19e3fea69fa22417fdf70346"
+    },
+    {
+      "source": "landing/img/hero-one-trade-community-africa-dusk-v2.jpg",
+      "archive": "landing/img/hero-one-trade-community-africa-dusk-v2.jpg",
+      "tracked_before": false,
+      "bytes": 550892,
+      "sha256": "5bc3815f43baf29eb1027724fad271d7dcbda53e65289b93f7b7713308a6b72f"
+    },
+    {
+      "source": "landing/img/hero-one-trade-community-asia-day-clean-v2.jpg",
+      "archive": "landing/img/hero-one-trade-community-asia-day-clean-v2.jpg",
+      "tracked_before": false,
+      "bytes": 404383,
+      "sha256": "cd26b0d8aabf07401d4b3444a4ef68ef55e0ce328dbe6b02a2fa992a45248306"
+    },
+    {
+      "source": "landing/img/hero-one-trade-community-asia-day-v1.jpg",
+      "archive": "landing/img/hero-one-trade-community-asia-day-v1.jpg",
+      "tracked_before": false,
+      "bytes": 463733,
+      "sha256": "d688cb5ce04e8be5331371e8f77ae7d9888872555b83d308ce35d8e3cd29707e"
+    },
+    {
+      "source": "landing/img/hero-one-trade-community-asia-dusk-clean-v2.jpg",
+      "archive": "landing/img/hero-one-trade-community-asia-dusk-clean-v2.jpg",
+      "tracked_before": false,
+      "bytes": 338519,
+      "sha256": "a2dd457a0d87e3e538ad5f28a75b48b8c398d89fa10ae378ec5cd680ace5b4eb"
+    },
+    {
+      "source": "landing/img/hero-one-trade-community-asia-v1.jpg",
+      "archive": "landing/img/hero-one-trade-community-asia-v1.jpg",
+      "tracked_before": false,
+      "bytes": 570741,
+      "sha256": "a8e0b909cdbae6c841b21d89315132a06d9d7e344dfbb7d7f7bed12d72f68e54"
+    },
+    {
+      "source": "landing/img/hero-one-trade-community-latin-day-clean-v3.jpg",
+      "archive": "landing/img/hero-one-trade-community-latin-day-clean-v3.jpg",
+      "tracked_before": false,
+      "bytes": 455264,
+      "sha256": "394f582d663a7020d5cc2523cce6858cd2610194ab3a885da244c702818276e1"
+    },
+    {
+      "source": "landing/img/hero-one-trade-community-latin-day-v1.jpg",
+      "archive": "landing/img/hero-one-trade-community-latin-day-v1.jpg",
+      "tracked_before": false,
+      "bytes": 509698,
+      "sha256": "c6cac33ad3506402372bace61d68396a3543c329f1d72f96f3ccd4d239328409"
+    },
+    {
+      "source": "landing/img/hero-one-trade-community-latin-day-v2.jpg",
+      "archive": "landing/img/hero-one-trade-community-latin-day-v2.jpg",
+      "tracked_before": false,
+      "bytes": 653683,
+      "sha256": "77ef4481fca5d368e037158cbfa0ce2e1a39a415886a36c351a21d9ff06d46ff"
+    },
+    {
+      "source": "landing/img/hero-one-trade-community-latin-dusk-clean-v3.jpg",
+      "archive": "landing/img/hero-one-trade-community-latin-dusk-clean-v3.jpg",
+      "tracked_before": false,
+      "bytes": 354992,
+      "sha256": "79875d25d29aa19ddc8ee1ac42882068b3677fee4133bba32a1cd151eeba5185"
+    },
+    {
+      "source": "landing/img/hero-one-trade-community-latin-dusk-v2.jpg",
+      "archive": "landing/img/hero-one-trade-community-latin-dusk-v2.jpg",
+      "tracked_before": false,
+      "bytes": 562720,
+      "sha256": "c93b1225b7e38f73ffad44729a93e9003991a7ac08e6620f38450bb6ac57dfc4"
+    },
+    {
+      "source": "landing/img/hero-one-trade-community-latin-v1.jpg",
+      "archive": "landing/img/hero-one-trade-community-latin-v1.jpg",
+      "tracked_before": false,
+      "bytes": 571251,
+      "sha256": "d5d7566e275c4691f45829c569d752701c7a8ef53a99cee261a1192251c1da29"
+    },
+    {
+      "source": "landing/img/hero-one-trade-community-v1.jpg",
+      "archive": "landing/img/hero-one-trade-community-v1.jpg",
+      "tracked_before": true,
+      "bytes": 497467,
+      "sha256": "d2e67cee303bf27544aed2e831a84768eb4bbf34a03084fa059d711a630ae831"
+    },
+    {
+      "source": "landing/img/hero-one-trade-community-v2.jpg",
+      "archive": "landing/img/hero-one-trade-community-v2.jpg",
+      "tracked_before": true,
+      "bytes": 515343,
+      "sha256": "c343c55dd3c9a22291828f5c55f386ec5d7097b7f7b176eb87f5e318481df076"
+    },
+    {
+      "source": "landing/img/hero-one-trade-community-v3.jpg",
+      "archive": "landing/img/hero-one-trade-community-v3.jpg",
+      "tracked_before": false,
+      "bytes": 535057,
+      "sha256": "53b82663dfd9cf65642c29b5bdc3c6e94e671d42e91303e0310b1ea26717ae52"
+    },
+    {
+      "source": "landing/img/p-chama-circle-v1.md",
+      "archive": "landing/img/p-chama-circle-v1.md",
+      "tracked_before": true,
+      "bytes": 1404,
+      "sha256": "4376337068acd808144043e06f75903ddf210106996cbcf0a7534c501a3feaec"
+    },
+    {
+      "source": "landing/img/p-chipin-v24.jpg",
+      "archive": "landing/img/p-chipin-v24.jpg",
+      "tracked_before": true,
+      "bytes": 204707,
+      "sha256": "4d76946500d7adf17b3399ba6b7f0972fa9c2dfe99990108bc9cb0283fd710b8"
+    },
+    {
+      "source": "landing/img/p-chipin-v25-higgsfield-neon.png",
+      "archive": "landing/img/p-chipin-v25-higgsfield-neon.png",
+      "tracked_before": false,
+      "bytes": 8018150,
+      "sha256": "bc4c6a58d4a79b56278f9386ce6cbc3a1fc79f5f69a37896c04a835b3cdf94e5"
+    },
+    {
+      "source": "landing/img/p-chipin-v26-higgsfield-hands.png",
+      "archive": "landing/img/p-chipin-v26-higgsfield-hands.png",
+      "tracked_before": false,
+      "bytes": 7972100,
+      "sha256": "7c284be17a9b0cf78cb14e20bc6f44289b48bb13ce4d83abfa29d3bb936bf1e9"
+    },
+    {
+      "source": "landing/img/p-chipin-v27-higgsfield-hands-clean.jpg",
+      "archive": "landing/img/p-chipin-v27-higgsfield-hands-clean.jpg",
+      "tracked_before": true,
+      "bytes": 270929,
+      "sha256": "0025a0f0e42bf95076d06a47fc262bb35d9ee3ee6594f736b1514420bd6a6def"
+    },
+    {
+      "source": "landing/img/p-chipin-v27-higgsfield-hands-clean.png",
+      "archive": "landing/img/p-chipin-v27-higgsfield-hands-clean.png",
+      "tracked_before": false,
+      "bytes": 7958093,
+      "sha256": "f24ae9cf82936edaa116ade538099372bc9eaac5e42eeb285beeb84d9d7c3190"
+    },
+    {
+      "source": "landing/img/p-chipin-v28-hands-precise.png",
+      "archive": "landing/img/p-chipin-v28-hands-precise.png",
+      "tracked_before": false,
+      "bytes": 6514402,
+      "sha256": "615304aeaf5583d2329a2671e3660900dc4505c0c2099fa1a2552e352aab7270"
+    },
+    {
+      "source": "landing/img/p-chipin-v29-hands-clean.jpg",
+      "archive": "landing/img/p-chipin-v29-hands-clean.jpg",
+      "tracked_before": false,
+      "bytes": 267782,
+      "sha256": "cfb1822372abf09c1720ed2c1752dfd805ebb5f5ff8d1e93f1d69a3611404c40"
+    },
+    {
+      "source": "landing/img/p-chipin-v29-hands-clean.png",
+      "archive": "landing/img/p-chipin-v29-hands-clean.png",
+      "tracked_before": false,
+      "bytes": 6504877,
+      "sha256": "f8fcd22d72d8b8900d4bf42c3dd4ca066294f08864f526027c48520ce6235f60"
+    },
+    {
+      "source": "landing/img/p-stack-v19.jpg",
+      "archive": "landing/img/p-stack-v19.jpg",
+      "tracked_before": true,
+      "bytes": 161939,
+      "sha256": "3546fb4caa3cf4ad33beeb8f92f59554b1d4a562f7878df246473b2042bb629e"
+    },
+    {
+      "source": "landing/img/p-stack-v20-higgsfield-neon.png",
+      "archive": "landing/img/p-stack-v20-higgsfield-neon.png",
+      "tracked_before": false,
+      "bytes": 7493221,
+      "sha256": "bbc907d2604dd4346bf809dcad141db56bdf6b882232edca66bfa47b307f1b1b"
+    },
+    {
+      "source": "landing/img/p-stack-v21-higgsfield-independent.png",
+      "archive": "landing/img/p-stack-v21-higgsfield-independent.png",
+      "tracked_before": false,
+      "bytes": 7445883,
+      "sha256": "31d3e54bd513dd1b0227b2689ded40013c8ac34edae681a7523882852334e89b"
+    },
+    {
+      "source": "landing/img/p-stack-v22-higgsfield-independent-clean.jpg",
+      "archive": "landing/img/p-stack-v22-higgsfield-independent-clean.jpg",
+      "tracked_before": true,
+      "bytes": 210090,
+      "sha256": "5399e040824e3d05dcf58719f93bea875a672d4dbc27f664f34d4c61065a92b8"
+    },
+    {
+      "source": "landing/img/p-stack-v22-higgsfield-independent-clean.png",
+      "archive": "landing/img/p-stack-v22-higgsfield-independent-clean.png",
+      "tracked_before": false,
+      "bytes": 7467047,
+      "sha256": "01dcfbae0f4891af30c8936e962458c125a8f591f6e2adb095817dac7cee1085"
+    },
+    {
+      "source": "landing/img/p-work-v24.jpg",
+      "archive": "landing/img/p-work-v24.jpg",
+      "tracked_before": true,
+      "bytes": 156293,
+      "sha256": "3100ad2d28afb292b7d9dd2d7571adce2d9f642db9ceedb7def8cb4ef2715a75"
+    },
+    {
+      "source": "landing/img/p-work-v25-neon-blue.png",
+      "archive": "landing/img/p-work-v25-neon-blue.png",
+      "tracked_before": false,
+      "bytes": 357829,
+      "sha256": "388bb045412b438639c522e4df9fcac67da37b451193e71c888dc7c47ac7e886"
+    },
+    {
+      "source": "landing/img/p-work-v26-neon-blue.png",
+      "archive": "landing/img/p-work-v26-neon-blue.png",
+      "tracked_before": false,
+      "bytes": 355967,
+      "sha256": "f8139c254d314af3571fe0be201f557281301e7cc5fdba29fd22fefe06cf83b5"
+    },
+    {
+      "source": "landing/img/p-work-v27-neon-teal-approved.jpg",
+      "archive": "landing/img/p-work-v27-neon-teal-approved.jpg",
+      "tracked_before": true,
+      "bytes": 227170,
+      "sha256": "4dd2337bd0fc7a61fff91e54ae26bc439e84a459e72a0d1129354dff8840a527"
+    },
+    {
+      "source": "landing/img/role-arbiter-bitcoin-action-v18.png",
+      "archive": "landing/img/role-arbiter-bitcoin-action-v18.png",
+      "tracked_before": true,
+      "bytes": 832444,
+      "sha256": "ba1109c656a8edfce1c83fec847cdd1cde28a0ee909723ab71caaba2085ce0ba"
+    },
+    {
+      "source": "landing/img/role-buyer-bitcoin-action-v17.png",
+      "archive": "landing/img/role-buyer-bitcoin-action-v17.png",
+      "tracked_before": true,
+      "bytes": 853532,
+      "sha256": "876facf9106510af3ad07fb6234ec0005ae4b0b37e2bc56b9679142338590e82"
+    },
+    {
+      "source": "landing/img/role-seller-bitcoin-action-v17.png",
+      "archive": "landing/img/role-seller-bitcoin-action-v17.png",
+      "tracked_before": true,
+      "bytes": 788200,
+      "sha256": "926753e2f66877ce14ba8b90874358b522593f38e6c7c5aff6b8c3c0ae353f26"
+    },
+    {
+      "source": "public/chama-unbreakable-link.png",
+      "archive": "public/chama-unbreakable-link.png",
+      "tracked_before": true,
+      "bytes": 2182276,
+      "sha256": "ec5fe85e333a708fb2e71fa08bd778ef8cb72be3a119fc6565e3d212c2b60aa0"
+    }
+  ]
+}

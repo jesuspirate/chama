@@ -8,8 +8,8 @@
 # via `git stash push -u -- landing/` — so this manifest sync is how it goes live.
 #
 # Only the reviewed files in landing/deploy-files.txt are staged and synced.
-# The design-working directory may retain old hero/banner experiments without
-# sending them. rsync transfers only changed bytes and removes files that are no
+# Keep hero/banner experiments under ignored outputs/; tracked landing/img
+# files must belong to this manifest. rsync transfers changed bytes and removes files that are no
 # longer in the live manifest, so the VPS directory stays an exact deploy copy.
 #
 # Usage:

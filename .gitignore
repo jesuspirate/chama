@@ -44,10 +44,43 @@ outputs/
 # scratch dir (agent session) — not source
 tmp/
 
-# Generated image iterations are local working material by default. Existing
-# reviewed assets remain tracked; promote a new production asset explicitly by
-# adding it to landing/deploy-files.txt and staging it with `git add -f`.
+# Generated image iterations belong under outputs/. Landing image exceptions
+# below match deploy-files.txt; the deployment/hygiene gate rejects extra
+# tracked images. Other icon assets still require explicit reviewed promotion.
+# BEGIN landing deployment image allowlist
 /landing/img/**
+!/landing/img/faq/
+!/landing/img/chama-circle-action-v13.jpg
+!/landing/img/chama-circle-action-v8.jpg
+!/landing/img/chama-circle-story-v13.mp4
+!/landing/img/chama-circle-story-v8.mp4
+!/landing/img/chama-community-banner-v2.png
+!/landing/img/chama-community-banner.png
+!/landing/img/chama-community-threshold-v9.png
+!/landing/img/chama-digital-community-v1.jpg
+!/landing/img/circle-lock-app-v1.png
+!/landing/img/comm-home-andean-v1.jpg
+!/landing/img/comm-home-caribbean-coastal-v1.jpg
+!/landing/img/comm-home-east-africa-hillside-v1.jpg
+!/landing/img/comm-home-france-city-v8.jpg
+!/landing/img/comm-home-france-rural-v8.jpg
+!/landing/img/comm-home-latin-hillside-v1.jpg
+!/landing/img/comm-home-north-africa-courtyard-v1.jpg
+!/landing/img/comm-home-river-stilt-v1.jpg
+!/landing/img/comm-home-seasia-shophouse-v1.jpg
+!/landing/img/comm-home-south-asia-lane-v1.jpg
+!/landing/img/comm-home-us-city-v8.jpg
+!/landing/img/comm-home-west-africa-v1.jpg
+!/landing/img/faq/faq-cancel.png
+!/landing/img/faq/faq-chooser.png
+!/landing/img/faq/faq-mpesa.png
+!/landing/img/fedi-qr.png
+!/landing/img/nostr-ostrich-footer-v1.png
+!/landing/img/p-billpay-v2.jpg
+!/landing/img/p-chama-circle-v1.jpg
+!/landing/img/p-p2p-v5.jpg
+!/landing/img/p-stores-v4.jpg
+# END landing deployment image allowlist
 /landing/icons/**
 /public/icons/**
 

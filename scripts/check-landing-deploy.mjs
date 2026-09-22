@@ -35,9 +35,33 @@ const untrackedManifestFiles = entries.filter((entry) => !tracked.has(entry));
 if (untrackedManifestFiles.length) {
   console.error(
     `Landing deploy manifest names files that are not tracked by Git:\n${untrackedManifestFiles.join("\n")}\n` +
-      "Promote each reviewed asset with: git add -f landing/<file>",
+      "Promote reviewed assets explicitly; img/ files also need an exact .gitignore exception.",
   );
   process.exit(1);
+}
+
+// Keep design iterations out of the tracked image tree as well as the VPS.
+// An ignore rule alone cannot protect files that were already tracked.
+const designLeftovers = [...tracked].filter((entry) => entry.startsWith("img/") && !manifest.has(entry));
+if (designLeftovers.length) {
+  console.error(`Archive landing design files outside the deployment manifest:\n${designLeftovers.join("\n")}`);
+  process.exit(1);
+}
+
+// Reviewed deployment images must be ordinary addable files, rather than
+// relying on a force-add that could accidentally promote a whole draft folder.
+const deployedImages = entries.filter((entry) => entry.startsWith("img/"));
+try {
+  const ignored = execFileSync("git", ["check-ignore", "--no-index", "--stdin"], {
+    cwd: repoRoot, encoding: "utf8",
+    input: deployedImages.map((entry) => `landing/${entry}`).join("\n") + "\n",
+  }).trim();
+  if (ignored) {
+    console.error(`Add exact .gitignore exceptions for deployed images:\n${ignored}`);
+    process.exit(1);
+  }
+} catch (error) {
+  if (error.status !== 1) throw error; // 1 means no ignored files.
 }
 
 const references = new Set();
