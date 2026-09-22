@@ -10,6 +10,10 @@
 // Activation
 // ──────────
 //   ?sim=1  → turn sim mode on for this app session
+//   ?sim=1&onchain=slow       → delayed on-chain deposit (default)
+//   ?sim=1&onchain=instant    → immediate, zero-fee legacy demo
+//   ?sim=1&onchain=stuck      → deposit remains pending until cleanup
+//   ?sim=1&onchain=underpaid  → deposit below the federation minimum
 //   ?sim=0  → turn sim mode off
 //
 // There is no UI toggle. The URL flag is the public entry point. A normal
@@ -131,4 +135,10 @@ export function shouldDropForSimPolicy(event: { tags: string[][] }): boolean {
   const evtSim = eventIsSim(event);
   const localSim = isSimModeOn();
   return evtSim !== localSim;
+}
+
+export type SimOnchainMode = "slow" | "instant" | "stuck" | "underpaid";
+export function simOnchainMode(search = typeof window === "undefined" ? "" : window.location.search): SimOnchainMode {
+  const mode = new URLSearchParams(search).get("onchain");
+  return mode === "instant" || mode === "stuck" || mode === "underpaid" ? mode : "slow";
 }

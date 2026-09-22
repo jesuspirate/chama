@@ -1,3 +1,4 @@
+import { NEVER_EXPIRES } from "./types.js";
 import { chamaCreateError, chamaOutcomeError, type ChamaCycleContext } from "../chama/policy.js";
 import { eventIsSim } from "../sim/simMode.js";
 // ══════════════════════════════════════════════════════════════════════════
@@ -530,7 +531,7 @@ function handlePlanStart(state: EscrowState, event: ParsedEscrowEvent<PlanStartP
   next.participants[Role.ARBITER] = p.arbiterPubkey;
   next.tranchePlan = { ...p, tranches: p.tranches.map(row => ({ ...row })), eventId: event.raw.id };
   // The parent is now a persistent manifest/room, not a fundable listing.
-  next.expiresAt = Number.MAX_SAFE_INTEGER;
+  next.expiresAt = NEVER_EXPIRES;
   next.eventChain.push(event);
   return { ok: true, state: next };
 }

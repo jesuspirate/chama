@@ -1,5 +1,8 @@
 // es/fund — Session C fills this from src/i18n/en/fund.ts (key set must match EXACTLY).
 export const fund: Record<string, string> = {
+  "fund.simOnchainDeposit": "Cadena simulada: las confirmaciones se aceleran. No se usa bitcoin real.",
+  "fund.simOnchainStuck": "Cadena simulada: este depósito seguirá pendiente hasta que salgas.",
+  "fund.simDepositUnderpaid": "El depósito simulado está por debajo del mínimo. No se abonaron sats. Reinicia con onchain=slow para ensayar un depósito completo.",
   "fund.notStartedTitle": "La financiación no ha comenzado",
   "fund.notStartedBody": "No se ha creado ninguna factura nueva ni se han gastado sats en este intento de financiación.",
   "fund.storageUnavailable": "Esta ventana no puede usar el almacenamiento del sitio. La navegación privada o los permisos pueden estar bloqueándolo. Abre Chama en una ventana normal o en la aplicación instalada y vuelve a intentarlo. No borres los datos existentes de la cartera.",

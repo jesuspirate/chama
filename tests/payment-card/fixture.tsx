@@ -1,9 +1,12 @@
+import { createSimWallet } from "../../src/sim/sim-wallet";
+import { simOnchainMode } from "../../src/sim/simMode";
+import { TradeCard } from "../../src/ui/components/TradeCard";
 import { createFundingInvoiceJournal, fundingStorageFailure } from '../../src/payments/abandoned-invoices';
 import { MeScreen } from '../../src/ui/screens/MeScreen';
 import { ChatPanel } from '../../src/ui/panels/ChatPanel';
 import { stashPendingRedemption, markPoisoned } from '../../src/fedimint/pending-redemptions';
 import { setLocalStorageUserScope } from '../../src/storage/user-scope';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import { PaymentCard } from '../../src/ui/components/PaymentCard';
 import { AtomicFundingModal } from '../../src/ui/panels/AtomicFundingModal';
@@ -39,6 +42,31 @@ const tapped: string[]=[];
 (window as any).tapped=tapped;
 const tap=(id:string)=>{tapped.push(id);};
 const noop=()=>{};
+function SimOnchainFixture() {
+ const [wallet] = useState(() => createSimWallet({npub:null,onchainMode:simOnchainMode()}));
+ useEffect(() => () => { void wallet.cleanup(); },[wallet]);
+ return <AtomicFundingModal escrowId="SIM-ONCHAIN-FIXTURE" amountMsats={2000000} ctaLabel="Test"
+  getOnchainInfo={()=>wallet.onchain.getInfo()} lockAndPublish={async()=>{}} onClose={()=>{(window as any).simClosed=true;}}
+  fundAndLock={async (_id,opts)=>{
+   await wallet.open(); await wallet.joinFederation('sim');
+   const info=await wallet.onchain.getInfo();
+   const deposit=await wallet.onchain.createDepositAddress({chama_amount_msats:2000000});
+   const phase={address:deposit.address,operationId:deposit.operationId,finalityDelay:info.finalityDelay,pegInFeeSats:info.pegInFeeSats,depositAmountSats:2000+info.pegInFeeSats,minimumDepositSats:info.minimumDepositSats};
+   opts.onPhase({kind:'onchain-address-created',...phase});
+   (window as any).depositStates=[];
+   wallet.onchain.subscribeDeposit(deposit.operationId,p=>{
+    (window as any).depositStates.push(p);
+    if(p.status!=='pending') opts.onPhase({kind:'awaiting-onchain-confirmations',...phase});
+   });
+   opts.signal?.addEventListener('abort',()=>{void wallet.cleanup();},{once:true});
+   await wallet.onchain.awaitDeposit(deposit.operationId);
+   opts.onPhase({kind:'onchain-deposit-confirmed'});
+   opts.onPhase({kind:'locking'});
+   // Test boundary: real sim net credit and spend; no relay event is published.
+   (window as any).simLockedNotes=await wallet.mint.spendNotes(2000000);
+   return {kind:'locked', amountMsats:2000000} as any;
+  }}/>
+}
 function Fixture() {
   const { t } = useT();
   const [relay,setRelay]=useState(false);
@@ -49,6 +77,8 @@ function Fixture() {
   (window as any).credit = () => setBalance(10000000);
   (window as any).storageCopy={title:t('fund.notStartedTitle'),body:t('fund.notStartedBody'),blocked:t('fund.storageUnavailable'),corrupt:t('fund.historyUnreadable'),failed:t('fund.lockFailed')};
   (window as any).expected = {summary:t('trade.historyUnverified'),outcome:t('trade.nsRefundedSatsBack'),claim:t('trade.claimSats')};
+  if (new URLSearchParams(location.search).has('simchain')) return <SimOnchainFixture/>;
+  if (new URLSearchParams(location.search).has('market')) return <main style={{padding:24,background:T.bg,minHeight:'100vh'}}><TradeCard state={{...created.state,description:'uga – 1KG',expiresAt: new URLSearchParams(location.search).has('persistent') ? Number.MAX_SAFE_INTEGER : created.state.expiresAt,participants:{seller},provenance:'chain'}} pubkey={seller} onSelect={()=>{}}/></main>;
   if (new URLSearchParams(location.search).has('attention')) return <MeScreen pubkey={seller} myTrades={[]} ratings={null}
     needsYouTrades={[created.state]} suppressAttentionCount balanceMsats={3000000} hasActiveCommitment={false}
     onOpenTrade={id=>tap(`trade:${id}`)} onOpenSavedHandles={noop} onOpenPayoutDestinations={noop} onOpenAdvanced={noop} onOpenHelp={noop}

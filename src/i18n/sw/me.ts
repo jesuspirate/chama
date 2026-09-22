@@ -1,4 +1,5 @@
 export const me: Record<string, string> = {
+  "me.arbiterSeatConflict": "Majukumu yanakinzana: umeorodheshwa kama mshiriki wa biashara na mwamuzi. Biashara hii haiwezi kuonekana kwenye orodha yako ya uamuzi. Ifungue ukague washiriki.",
   "me.moneySafetyOther": "Hatua nyingine za fedha",
   "me.avatarUpload": "Picha ya wasifu (GIF, PNG, WebP au JPEG; hadi KB 48)",
   "me.avatarFailed": "Imeshindwa kuhifadhi na kuchapisha picha. Tumia picha hadi KB 48 na 2048 × 2048, kisha jaribu tena.",

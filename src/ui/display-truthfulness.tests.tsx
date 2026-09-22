@@ -1,0 +1,36 @@
+import assert from 'node:assert/strict';
+import React from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { CountdownTimer } from './components/CountdownTimer.js';
+import { LangProvider } from '../i18n/index.js';
+import { preLockDeadline, arbiterWatchEligibility } from './decisions.js';
+import { NEVER_EXPIRES, EscrowStatus, Role, type EscrowState } from '../escrow-engine/types.js';
+import { cacheNostrProfileNames, readNostrProfileCache, readKind0Toggle, writeKind0Toggle, profileNameFor, KIND0_TOGGLE_KEY_PREFIX } from './nostr-profiles.js';
+const me='a'.repeat(64), other='b'.repeat(64), arbiter='c'.repeat(64);
+const now=Math.floor(Date.now()/1000);
+const trade={status:EscrowStatus.CREATED,expiresAt:NEVER_EXPIRES,tranchePlan:{},participants:{buyer:me,seller:other,arbiter},communityArbiters:[me,arbiter],initiator:{pubkey:other,role:Role.SELLER}} as unknown as EscrowState;
+assert.equal(preLockDeadline(trade,now),null,'A persistent room has no listing countdown');
+for (const deadline of [NEVER_EXPIRES,Infinity,NaN,now+366*86400,0]) {
+ assert.equal(renderToStaticMarkup(<LangProvider><CountdownTimer expiresAt={deadline}/></LangProvider>),'','An invalid or unbounded deadline renders no timer');
+}
+assert.ok(renderToStaticMarkup(<LangProvider><CountdownTimer expiresAt={now+60}/></LangProvider>).includes('s'),'An ordinary deadline still renders');
+assert.equal(arbiterWatchEligibility(trade,me,now).watches,false,'A pool member cannot watch their own purchase');
+assert.equal(arbiterWatchEligibility(trade,other,now).watches,false,'A seller cannot watch their own sale');
+assert.equal(arbiterWatchEligibility(trade,arbiter,now).watches,true,'An independent assigned arbiter watches');
+const backup='d'.repeat(64);
+assert.equal(arbiterWatchEligibility({...trade,communityArbiters:[backup]},backup,now).watches,true,'An independent pool backup watches');
+const conflict=arbiterWatchEligibility({...trade,participants:{...trade.participants,arbiter:me}},me,now);
+assert.equal(conflict.conflict,true,'A dual seat must be reported as a fault');assert.equal(conflict.watches,false);
+const values=new Map<string,string>();
+Object.defineProperty(globalThis,'localStorage',{configurable:true,value:{getItem:(k:string)=>values.get(k)??null,setItem:(k:string,v:string)=>values.set(k,v),removeItem:(k:string)=>values.delete(k)}});
+values.set(KIND0_TOGGLE_KEY_PREFIX+me,'1');
+assert.equal(readKind0Toggle(me),true,'Existing identity preference migrates');
+assert.equal(readKind0Toggle(other),false,'A second identity never inherits that preference');
+cacheNostrProfileNames(me,{[other]:'Bestie'});
+assert.equal(profileNameFor(readNostrProfileCache(me),other,true),'Bestie','A cold render has the cached name before a fetch');
+assert.deepEqual(readNostrProfileCache(other),{},'Names remain scoped to the viewer');
+assert.ok(profileNameFor({},other,true),'A cache miss has a generated name');
+writeKind0Toggle(me,false);assert.deepEqual(readNostrProfileCache(me),{});
+cacheNostrProfileNames(me,{[other]:'late response'});
+writeKind0Toggle(me,true);assert.deepEqual(readNostrProfileCache(me),{},'Turning lookup off deletes names and rejects late fetches');
+console.log('PASS display truthfulness: deadline rendering, independent arbiter seats, scoped name cache');

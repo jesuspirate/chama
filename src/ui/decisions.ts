@@ -1,3 +1,4 @@
+import { NEVER_EXPIRES } from "../escrow-engine/types.js";
 // ══════════════════════════════════════════════════════════════════════════
 // Chama — Pure UI decision helpers
 // ══════════════════════════════════════════════════════════════════════════
@@ -2008,7 +2009,7 @@ export function preLockDeadline(
 ): PreLockDeadline | null {
   if (state.status !== EscrowStatus.CREATED) return null;
 
-  const listingAt = state.expiresAt > 0 ? state.expiresAt : null;
+  const listingAt = Number.isFinite(state.expiresAt) && state.expiresAt > 0 && state.expiresAt !== NEVER_EXPIRES ? state.expiresAt : null;
 
   // A signed PLAN_START freezes all three seats for the parent room's
   // lifetime (getEffectiveParticipantAt), so no hold can lapse there.
@@ -2253,4 +2254,17 @@ export function decideArbiterWarning(inputs: ArbiterWarningInputs): ArbiterWarni
     counterpartyB: e.participants.seller ?? "",
     createdAt: e.createdAt,
   };
+}
+
+/** Inspect seats independently: a role selector hides malformed dual assignments. */
+export function arbiterWatchEligibility(state: EscrowState, pubkey: string, nowSec: number) {
+  const key = pubkey.toLowerCase();
+  const seats = getEffectiveParticipantsAt(state, nowSec);
+  const matches = (pk?: string | null) => pk?.toLowerCase() === key;
+  const principal = matches(seats[Role.BUYER]) || matches(seats[Role.SELLER])
+    || matches(state.participants[Role.BUYER]) || matches(state.participants[Role.SELLER])
+    || ((state.initiator?.role === Role.BUYER || state.initiator?.role === Role.SELLER) && matches(state.initiator.pubkey));
+  const assigned = matches(seats[Role.ARBITER]) || matches(state.participants[Role.ARBITER]);
+  const pool = state.communityArbiters.some(matches);
+  return { assigned, pool, conflict: assigned && principal, watches: !principal && (assigned || pool) };
 }

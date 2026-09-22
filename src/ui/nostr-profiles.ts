@@ -1,28 +1,61 @@
-import { getLocalStorageUserScope, getScopedStorageItem, setScopedStorageItem } from "../storage/user-scope.js";
+import { scopedStorageKey, getLocalStorageUserScope, getScopedStorageItem, setScopedStorageItem } from "../storage/user-scope.js";
 
 export const KIND0_TOGGLE_KEY_PREFIX = "chama_fetch_kind0_enabled_";
 
 export type NostrProfileNameMap = Record<string, string>;
 
+const KIND0_TOGGLE_KEY = "chama_fetch_kind0_enabled_v2";
+export const PROFILE_CACHE_KEY = "chama_nostr_names_v1";
+
 export function readKind0Toggle(pubkey: string | null | undefined): boolean {
   if (!pubkey) return false;
   try {
-    if (typeof localStorage === "undefined") return false;
-    return localStorage.getItem(KIND0_TOGGLE_KEY_PREFIX + pubkey) === "1";
-  } catch {
-    return false;
-  }
+    const key = scopedStorageKey(KIND0_TOGGLE_KEY, pubkey);
+    const current = localStorage.getItem(key);
+    if (current !== null) return current === "1";
+    // The legacy preference already belonged to this pubkey. Migrate only it.
+    const legacy = KIND0_TOGGLE_KEY_PREFIX + pubkey.toLowerCase();
+    const enabled = localStorage.getItem(legacy) === "1";
+    localStorage.setItem(key, enabled ? "1" : "0");
+    localStorage.removeItem(legacy);
+    return enabled;
+  } catch { return false; }
 }
 
 export function writeKind0Toggle(pubkey: string | null | undefined, on: boolean): void {
   if (!pubkey) return;
   try {
-    if (typeof localStorage === "undefined") return;
-    if (on) localStorage.setItem(KIND0_TOGGLE_KEY_PREFIX + pubkey, "1");
-    else localStorage.removeItem(KIND0_TOGGLE_KEY_PREFIX + pubkey);
-  } catch {
-    // best-effort preference
+    localStorage.setItem(scopedStorageKey(KIND0_TOGGLE_KEY, pubkey), on ? "1" : "0");
+    localStorage.removeItem(KIND0_TOGGLE_KEY_PREFIX + pubkey.toLowerCase());
+  } catch { /* preference is best effort */ }
+  if (!on) {
+    try { localStorage.removeItem(scopedStorageKey(PROFILE_CACHE_KEY, pubkey)); } catch { /* unavailable */ }
   }
+}
+
+export function readNostrProfileCache(pubkey: string | null | undefined): NostrProfileNameMap {
+  if (!pubkey || !readKind0Toggle(pubkey)) return {};
+  try {
+    const entries = JSON.parse(localStorage.getItem(scopedStorageKey(PROFILE_CACHE_KEY, pubkey)) ?? "{}");
+    return Object.fromEntries(Object.entries(entries).flatMap(([key, value]: [string, any]) =>
+      /^[0-9a-f]{64}$/.test(key) && typeof value?.name === "string" && value.name.trim()
+        && Number.isFinite(value.fetchedAt) ? [[key, value.name.slice(0, 80)]] : []));
+  } catch { return {}; }
+}
+
+export function cacheNostrProfileNames(pubkey: string, names: NostrProfileNameMap): void {
+  if (!readKind0Toggle(pubkey)) return;
+  try {
+    const key = scopedStorageKey(PROFILE_CACHE_KEY, pubkey);
+    let old: Record<string, { name: string; fetchedAt: number }> = {};
+    try { old = JSON.parse(localStorage.getItem(key) ?? "{}"); } catch { /* rebuild corrupt cache */ }
+    const merged = Object.fromEntries(Object.entries(readNostrProfileCache(pubkey)).map(([pk, name]) =>
+      [pk, { name, fetchedAt: old?.[pk]?.fetchedAt ?? Date.now() }]));
+    for (const [pk, name] of Object.entries(names)) {
+      if (/^[0-9a-f]{64}$/.test(pk) && name.trim()) merged[pk] = { name: name.slice(0, 80), fetchedAt: Date.now() };
+    }
+    localStorage.setItem(key, JSON.stringify(merged));
+  } catch { /* cached public names must not block the app */ }
 }
 
 export function extractNostrProfileName(content: string): string | null {

@@ -82,6 +82,43 @@ try {
    console.log(`PASS ${surface}: real modal at 320px`);
  }
 
+ for (const mode of ['slow','stuck']) {
+   await page.goto(`${base}/tests/payment-card/index.html?sim=1&simchain=1&onchain=${mode}`);
+   await page.waitForSelector('[role=tab]');
+   await page.click('[role=tab]:nth-of-type(2)');
+   await page.waitForSelector('button.payment-button:not([disabled])');
+   await page.click('button.payment-button:not([disabled])');
+   await page.waitForSelector('.payment-card img[src^="data:"]');
+   assert.ok((await page.$eval('.payment-card',e=>e.textContent)).includes('3,000'),'sim deposit asks for principal plus real fixture fee');
+   await page.click('.payment-card details summary');
+   assert.ok((await page.$eval('.payment-card details',e=>e.textContent)).includes('1,000'),'nonzero deposit fee is visible');
+   await page.click('.payment-card details summary');
+   const size=()=>page.$eval('.payment-card',e=>({height:e.getBoundingClientRect().height,top:e.getBoundingClientRect().top}));
+   const initial=await size();
+   if(mode==='slow') {
+     await page.waitForFunction(()=>window.depositStates.some(p=>p.status==='confirming'));
+     assert.deepEqual(await size(),initial,'on-chain stages preserve card geometry');
+     await page.screenshot({path:'/tmp/chama-sim-onchain-confirming.png',fullPage:true});
+   } else {
+     await new Promise(r=>setTimeout(r,3000));
+     assert.deepEqual(await page.evaluate(()=>window.depositStates.map(p=>p.status)),['pending']);
+     assert.deepEqual(await size(),initial);
+   }
+   assert.equal((await page.$$('[role=tab]')).length,1,'An issued address exposes only its current rail');
+   assert.equal(await page.$('[role=dialog]'),null,'No new rail is offered after address creation');
+   if(mode==='slow') await page.waitForFunction(()=>!!window.simLockedNotes,{timeout:60000});
+   console.log(`PASS sim onchain ${mode}: nonzero total/fee, stable card, no rail switch${mode==='slow'?', net deposit funds simulated lock':''}`);
+ }
+ for(const theme of ['light','dark']) {
+   await page.goto(`${base}/tests/payment-card/index.html?market=1&theme=${theme}`);
+   await page.waitForSelector('[data-store-watermark]');
+   assert.equal(await page.$eval('[data-store-watermark]',e=>getComputedStyle(e).mixBlendMode),theme==='light'?'normal':'screen');
+   if(theme==='light') assert.equal(await page.$eval('[data-store-watermark]',e=>getComputedStyle(e).maskPosition),'calc(100% - 20px) 50%','The emblem remains on the right, clear of the title');
+   await page.screenshot({path:`/tmp/chama-market-${theme}.png`,fullPage:true});
+ }
+ await page.goto(`${base}/tests/payment-card/index.html?market=1&persistent=1`);
+ await page.waitForSelector('[data-store-watermark]');
+ assert.equal(await page.evaluate(()=>/\d{10,}h/.test(document.body.textContent)),false,'Persistent storefronts cannot print a sentinel hour count');
  await page.goto(`${base}/tests/payment-card/index.html?summary=1`);
  await page.waitForFunction(()=>document.body.textContent.includes(window.expected.summary));
  assert.equal(await page.evaluate(()=>document.body.textContent.includes(window.expected.outcome)),false,'summary must not assert refund outcome');

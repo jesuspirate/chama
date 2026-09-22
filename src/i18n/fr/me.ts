@@ -1,5 +1,6 @@
 // fr/me — Session B fills this from src/i18n/en/me.ts (key set must match EXACTLY).
 export const me: Record<string, string> = {
+  "me.arbiterSeatConflict": "Rôles incompatibles : vous êtes à la fois partie à cet échange et arbitre. Cet échange ne peut pas figurer dans votre file d’arbitrage. Ouvrez-le pour vérifier les participants.",
   "me.moneySafetyOther": "Autres actions sur les fonds",
   "me.avatarUpload": "Avatar (GIF, PNG, WebP ou JPEG ; 48 Ko maximum)",
   "me.avatarFailed": "Enregistrement et publication impossibles. Utilisez une image de 48 Ko et 2048 × 2048 maximum, puis réessayez.",

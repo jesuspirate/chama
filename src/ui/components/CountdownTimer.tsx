@@ -2,6 +2,10 @@ import { useState, useEffect } from "react";
 import { T } from "../theme.js";
 import { useT } from "../../i18n/index.js";
 
+export function isCountdownDeadline(expiresAt: number, now: number): boolean {
+  return Number.isFinite(expiresAt) && expiresAt > 0 && expiresAt - now <= 365 * 86400;
+}
+
 export function CountdownTimer({
   expiresAt,
   label,
@@ -12,11 +16,14 @@ export function CountdownTimer({
   const { t } = useT();
   const [now, setNow] = useState(Math.floor(Date.now() / 1000));
 
+  const valid = isCountdownDeadline(expiresAt, now);
   useEffect(() => {
+    if (!valid) return;
     const interval = setInterval(() => setNow(Math.floor(Date.now() / 1000)), 1000);
     return () => clearInterval(interval);
-  }, []);
+  }, [valid]);
 
+  if (!valid) return null;
   const remaining = expiresAt - now;
   if (remaining <= 0) {
     // v0.1.66.29: only the outer guard's skip-list keeps this from

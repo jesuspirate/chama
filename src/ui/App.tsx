@@ -245,7 +245,7 @@ import {
   isTauriRuntime,
   shouldApplyCssSafeAreaInsets,
 } from "./sign-in-environment.js";
-import { readKind0Toggle, readLocalTradeName, writeLocalTradeName, type NostrProfileNameMap } from "./nostr-profiles.js";
+import { cacheNostrProfileNames, readNostrProfileCache, writeKind0Toggle, readKind0Toggle, readLocalTradeName, writeLocalTradeName, type NostrProfileNameMap } from "./nostr-profiles.js";
 import { isWorkListing } from "./work-resume.js";
 import {
   readAmountDisplayMode,
@@ -950,8 +950,20 @@ export default function App() {
   // same-session re-fires).
   const premiumPaySweptRef = useRef<Set<string>>(new Set());
   const premiumRedeemSweptRef = useRef<Set<string>>(new Set());
-  const [kind0Enabled, setKind0Enabled] = useState(false);
-  const [nostrProfiles, setNostrProfiles] = useState<NostrProfileNameMap>({});
+  const [kind0Enabled, setKind0Enabled] = useState(() => readKind0Toggle(pubkey));
+  const [nostrProfiles, setNostrProfiles] = useState<NostrProfileNameMap>(() => readNostrProfileCache(pubkey));
+  const [profileOwner, setProfileOwner] = useState(pubkey);
+  // Reset during render so an identity change never paints another user's cache.
+  if (profileOwner !== pubkey) {
+    setProfileOwner(pubkey);
+    setKind0Enabled(readKind0Toggle(pubkey));
+    setNostrProfiles(readNostrProfileCache(pubkey));
+  }
+  const changeKind0Enabled = (enabled: boolean) => {
+    writeKind0Toggle(pubkey, enabled);
+    setKind0Enabled(enabled);
+    setNostrProfiles(enabled ? readNostrProfileCache(pubkey) : {});
+  };
   const [amountDisplayMode, setAmountDisplayModeState] = useState<AmountDisplayMode>(readAmountDisplayMode);
   const setAmountDisplayMode = (mode: AmountDisplayMode) => {
     setAmountDisplayModeState(mode);
@@ -2474,12 +2486,13 @@ export default function App() {
 
 
   useEffect(() => {
-    if (!kind0Enabled || !connected || connectedRelays === 0 || profilePubkeys.length === 0) return;
+    if (!pubkey || !kind0Enabled || !connected || connectedRelays === 0 || profilePubkeys.length === 0) return;
     let cancelled = false;
 
     actions.fetchNostrProfiles(profilePubkeys)
       .then(names => {
-        if (cancelled || Object.keys(names).length === 0) return;
+        if (cancelled || !readKind0Toggle(pubkey) || Object.keys(names).length === 0) return;
+        cacheNostrProfileNames(pubkey, names);
         setNostrProfiles(prev => ({ ...prev, ...names }));
       })
       .catch(err => {
@@ -2490,7 +2503,7 @@ export default function App() {
     // actions is intentionally omitted: the hook returns a fresh object
     // each render, while the fetch target is fully captured by the key.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [kind0Enabled, connected, connectedRelays, profilePubkeyKey]);
+  }, [pubkey, kind0Enabled, connected, connectedRelays, profilePubkeyKey]);
 
   const queueDestroyConfirm = (request: PendingDestroyConfirm | null) => {
     if (!request) {
@@ -4578,7 +4591,7 @@ export default function App() {
             kind0Enabled={kind0Enabled}
             profileNames={nostrProfiles}
             requestTab={meRequestTabRaw ?? undefined}
-            onKind0EnabledChange={setKind0Enabled}
+            onKind0EnabledChange={changeKind0Enabled}
             themeMode={themeMode}
             onThemeModeChange={setThemeMode}
             myTrades={myTrades}

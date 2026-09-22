@@ -7,6 +7,9 @@
 // half. The exact TZS amount / agent number / USSD code arrive as {params}
 // — never hardcode them in a translation.
 export const fund: Record<string, string> = {
+  "fund.simOnchainDeposit": "Simulated chain: confirmations are accelerated. No real bitcoin is used.",
+  "fund.simOnchainStuck": "Simulated chain: this deposit will stay pending until you leave.",
+  "fund.simDepositUnderpaid": "Simulated deposit is below the minimum. No sats were credited. Restart with onchain=slow to rehearse a full deposit.",
   "fund.notStartedTitle": "Funding has not started",
   "fund.notStartedBody": "No new invoice was created and no sats were spent on this funding attempt.",
   "fund.storageUnavailable": "This window cannot use site storage. Private browsing or site-data permissions may be blocking it. Open Chama in a normal window or the installed app, then retry. Do not clear any existing wallet data.",

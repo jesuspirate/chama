@@ -1,3 +1,6 @@
+/** Persistent manifest deadline; never render as a countdown. */
+export const NEVER_EXPIRES = Number.MAX_SAFE_INTEGER;
+
 import type { CircleRound } from "../chama/types.js";
 // ══════════════════════════════════════════════════════════════════════════
 // Chama Nostr Escrow Engine — Types & Constants

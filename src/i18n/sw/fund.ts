@@ -1,4 +1,7 @@
 export const fund: Record<string, string> = {
+  "fund.simOnchainDeposit": "Mnyororo wa majaribio: uthibitisho umeharakishwa. Bitcoin halisi haitumiki.",
+  "fund.simOnchainStuck": "Mnyororo wa majaribio: amana hii itasubiri hadi utakapoondoka.",
+  "fund.simDepositUnderpaid": "Amana ya majaribio iko chini ya kiwango cha chini. Hakuna sats zilizowekwa. Anza tena kwa onchain=slow kujaribu amana kamili.",
   "fund.notStartedTitle": "Ufadhili haujaanza",
   "fund.notStartedBody": "Hakuna ankara mpya iliyoundwa wala sats zilizotumika katika jaribio hili la ufadhili.",
   "fund.storageUnavailable": "Dirisha hili haliwezi kutumia hifadhi ya tovuti. Huenda hali ya faragha au ruhusa za data za tovuti zinaizuia. Fungua Chama katika dirisha la kawaida au programu iliyosakinishwa, kisha ujaribu tena. Usifute data iliyopo ya pochi.",

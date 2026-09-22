@@ -1,4 +1,4 @@
-import { canOfferClaim, selectMoneySafetyFocus, type MoneySafetyEntry } from "../decisions.js";
+import { arbiterWatchEligibility, canOfferClaim, selectMoneySafetyFocus, type MoneySafetyEntry } from "../decisions.js";
 import { nativePushStatus, type NativePushStatus } from "../../notifications/native-push.js";
 import { avatarFromFile, type Avatar } from "../avatars.js";
 import { ProfileAvatar } from "../components/ProfileAvatar.js";
@@ -1494,6 +1494,7 @@ type MeDashboardModel = {
   arbiterVisible: boolean;
   arbiterDisputes: EscrowState[];
   arbiterWatching: EscrowState[];
+  arbiterConflicts: EscrowState[];
   arbiterSettled: EscrowState[];
 };
 
@@ -1926,6 +1927,9 @@ function ArbiterDashboardPanel({
       paddingTop: 14,
       borderTop: `1px solid ${T.border}`,
     }}>
+      {dashboard.arbiterConflicts.map(trade => <div key={trade.id} role="alert" style={{ color: T.red, border: `1px solid ${T.red}`, padding: 12, marginBottom: 12 }}>
+        {t("me.arbiterSeatConflict")} <button onClick={() => onOpenTrade(trade.id)}>{trade.id}</button>
+      </div>)}
       <div style={{
         display: "flex", alignItems: "center", justifyContent: "space-between",
         gap: 12, marginBottom: 10,
@@ -2644,17 +2648,16 @@ function buildMeDashboard(
   const sellerReadyToLock: EscrowState[] = [];
   const arbiterDisputes: EscrowState[] = [];
   const arbiterWatching: EscrowState[] = [];
+  const arbiterConflicts: EscrowState[] = [];
   const arbiterSettled: EscrowState[] = [];
   let arbiterVisible = BLF_OFFICIAL_ARBITERS.includes(lowerPubkey);
 
   for (const trade of allTrades) {
-    const isPoolArbiter = trade.communityArbiters.some((pk) => pk.toLowerCase() === lowerPubkey);
-    if (isPoolArbiter) {
-      arbiterVisible = true;
-    }
-    const role = getUserRoleForTrade(trade, pubkey, nowSec);
-    const isAssignedArbiter = role === Role.ARBITER;
-    const watchesAsArbiter = isAssignedArbiter || isPoolArbiter;
+    const eligibility = arbiterWatchEligibility(trade, pubkey, nowSec);
+    const isAssignedArbiter = eligibility.assigned;
+    if (eligibility.pool || isAssignedArbiter) arbiterVisible = true;
+    if (eligibility.conflict) arbiterConflicts.push(trade);
+    const watchesAsArbiter = eligibility.watches;
 
     if (watchesAsArbiter) {
       // Arbiter substitution: a pool BACKUP also lands in "needs" on a
@@ -2746,6 +2749,7 @@ function buildMeDashboard(
     arbiterVisible,
     arbiterDisputes,
     arbiterWatching,
+    arbiterConflicts,
     arbiterSettled,
   };
 }

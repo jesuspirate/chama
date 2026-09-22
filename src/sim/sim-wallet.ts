@@ -24,7 +24,9 @@
 // sim session — they encode the amount and a counter, parseable in
 // plaintext. Do not connect a real federation client to these strings.
 
-import type { IFedimintWallet } from "../fedimint/fedimint-client.js";
+import { simOnchainMode, type SimOnchainMode } from "./simMode.js";
+import { translate, getCurrentLang } from "../i18n/index.js";
+import type { OnchainDepositSettled, IFedimintWallet } from "../fedimint/fedimint-client.js";
 import { randomId } from "../storage/random-id.js";
 
 // ── Constants ─────────────────────────────────────────────────────────────
@@ -141,10 +143,40 @@ export interface CreateSimWalletOptions {
   /** Hex pubkey of the active signer. Used to key persistent state so
    *  multiple identities in the same browser don't share a sim balance. */
   npub: string | null;
+  onchainMode?: SimOnchainMode;
 }
 
-export function createSimWallet(opts: CreateSimWalletOptions = { npub: null }): IFedimintWallet {
+// Recorded in native/fedimint-bridge/NOTES.md (2026-05-24): BLF/GBF
+// finality 10, Fedimint deposit fee 1000 (minimum = fee + 1), and a GBF
+// withdrawal quote of 521 sats. Fixed rehearsal values, not live fee quotes.
+export const SIM_ONCHAIN_INFO = { network: "simnet", finalityDelay: 10,
+  pegInFeeSats: 1000, pegOutFeeSats: 521, minimumDepositSats: 1001 };
+export class SimDepositUnderpaidError extends Error {
+  readonly code = "SIM_DEPOSIT_UNDERPAID";
+  constructor(readonly amountSats: number, readonly minimumSats: number) { super(translate(getCurrentLang(), "fund.simDepositUnderpaid")); this.name = "SimDepositUnderpaidError"; }
+}
+export type SimDepositProgress = { status: "pending" | "mempool" | "confirming" | "confirmed" | "underpaid"; confirmations: number; required: number };
+export type SimWallet = IFedimintWallet & { onchain: NonNullable<IFedimintWallet["onchain"]> & {
+  subscribeDeposit(operationId: string, callback: (progress: SimDepositProgress) => void): () => void;
+}};
+
+export function createSimWallet(opts: CreateSimWalletOptions = { npub: null }): SimWallet {
   const npub = opts.npub;
+  const mode = opts.onchainMode ?? simOnchainMode();
+  const info = mode === "instant" ? { ...SIM_ONCHAIN_INFO, finalityDelay: 0, pegInFeeSats: 0, pegOutFeeSats: 0, minimumDepositSats: 0 } : SIM_ONCHAIN_INFO;
+  let disposed = false;
+  const waits = new Map<symbol, { timer?: ReturnType<typeof setTimeout>; cancel: () => void }>();
+  const pause = (indefinite = false): Promise<boolean> => new Promise(resolve => {
+    if (disposed) { resolve(false); return; }
+    const key = Symbol();
+    const finish = (ok: boolean) => { waits.delete(key); resolve(ok); };
+    const entry: { timer?: ReturnType<typeof setTimeout>; cancel: () => void } = { cancel: () => finish(false) };
+    waits.set(key, entry);
+    if (!indefinite) entry.timer = setTimeout(() => finish(true), MIN_DELAY_MS + Math.floor(Math.random() * (MAX_DELAY_MS - MIN_DELAY_MS)));
+  });
+  const deposits = new Map<string, { amountSats: number; progress: SimDepositProgress;
+    listeners: Set<(p: SimDepositProgress) => void>; result?: Promise<OnchainDepositSettled> }>();
+
   const state = loadState(npub);
   let open = false;
   const subscribers = new Set<(balance: number) => void>();
@@ -301,37 +333,59 @@ export function createSimWallet(opts: CreateSimWalletOptions = { npub: null }): 
       },
     },
 
-    // On-chain support — REAL feature (TZS off-ramp pays out to a BTC address).
-    // The sim mocks it exactly like the LN payInvoice leg: `withdraw` DRAINS the
-    // balance and succeeds, so an on-chain payout in sim behaves identically to a
-    // Lightning one (no phantom leftover). The deposit-side methods are stubs (sim
-    // funding is via the LN invoice); they exist only to satisfy the interface.
+    // Simulation only: no chain or external service is contacted.
     onchain: {
-      async getInfo() {
-        return { network: "simnet", finalityDelay: 0, pegInFeeSats: 0, pegOutFeeSats: 0, minimumDepositSats: 0 };
+      async getInfo() { return { ...info }; },
+      async createDepositAddress(meta) {
+        if (disposed) throw new Error("Sim wallet closed");
+        const requested = Number(meta?.chama_amount_msats ?? 2_000_000) / 1000;
+        const amountSats = mode === "underpaid" ? info.minimumDepositSats - 1 : Math.floor(requested) + info.pegInFeeSats;
+        const operationId = `sim_deposit_${randomId(12)}`;
+        deposits.set(operationId, { amountSats, progress: { status: "pending", confirmations: 0, required: info.finalityDelay }, listeners: new Set() });
+        return { operationId, address: `bcrt1qsim${randomId(20)}`, finalityDelay: info.finalityDelay };
       },
-      async createDepositAddress() {
-        return { operationId: `sim_op_${Date.now()}`, address: `bcrt1qsim${randomId(20)}`, finalityDelay: 0 };
+      subscribeDeposit(operationId, callback) {
+        const deposit = deposits.get(operationId);
+        if (!deposit) throw new Error("Unknown simulated deposit");
+        deposit.listeners.add(callback); callback({ ...deposit.progress });
+        return () => { deposit.listeners.delete(callback); };
       },
-      async awaitDeposit(operationId: string) {
-        return { status: "confirmed", operationId };
+      async awaitDeposit(operationId) {
+        const deposit = deposits.get(operationId);
+        if (!deposit || disposed) throw new Error("Unknown or closed simulated deposit");
+        if (!deposit.result) deposit.result = (async () => {
+          const update = (status: SimDepositProgress["status"], confirmations = 0) => {
+            deposit.progress = { status, confirmations, required: info.finalityDelay };
+            for (const cb of deposit.listeners) { try { cb({ ...deposit.progress }); } catch {} }
+          };
+          const step = async (forever = false) => {
+            if (!await pause(forever)) throw new Error("Sim deposit cancelled during cleanup");
+          };
+          if (mode === "stuck") await step(true); // no polling timer
+          if (mode !== "instant") {
+            await step(); update("mempool");
+            if (deposit.amountSats < info.minimumDepositSats) { update("underpaid"); throw new SimDepositUnderpaidError(deposit.amountSats, info.minimumDepositSats); }
+            for (let n = 1; n <= info.finalityDelay; n++) { await step(); update("confirming", n); }
+            await step();
+          }
+          if (disposed) throw new Error("Sim wallet closed");
+          state.balanceMsats += Math.max(0, deposit.amountSats - info.pegInFeeSats) * 1000;
+          persist(); notifyBalance(); update("confirmed", info.finalityDelay);
+          return { status: "confirmed", operationId, amountSats: deposit.amountSats };
+        })();
+        return deposit.result;
       },
-      async getWithdrawFees(_address: string, amountSats: number) {
-        return { amountSats, feesSats: 0, totalSats: amountSats };
+      async getWithdrawFees(_address, amountSats) {
+        return { amountSats, feesSats: info.pegOutFeeSats, totalSats: amountSats + info.pegOutFeeSats };
       },
-      async withdraw(_address: string, amountSats: number) {
-        await simDelay();
-        const debit = amountSats * 1000;
-        if (debit > state.balanceMsats) {
-          throw new Error(
-            `Sim wallet: insufficient balance for on-chain payout ` +
-            `(have ${state.balanceMsats} msat, need ${debit} msat).`
-          );
-        }
-        state.balanceMsats -= debit;
-        persist();
-        notifyBalance();
-        return { operationId: `sim_onchain_${Date.now()}_${randomId(6)}`, status: "confirmed", txid: `sim${randomId(24)}`, feesSats: 0 };
+      async withdraw(_address, amountSats, options) {
+        const debit = (amountSats + info.pegOutFeeSats) * 1000;
+        if (!Number.isSafeInteger(amountSats) || !Number.isSafeInteger(debit) || amountSats <= 0 || debit > state.balanceMsats) throw new Error("Sim wallet: insufficient balance for on-chain payout including fees");
+        if (mode !== "instant" && !await pause()) throw new Error("Sim wallet closed");
+        if (disposed) throw new Error("Sim wallet closed");
+        if (debit > state.balanceMsats) throw new Error("Sim wallet: balance changed before on-chain payout");
+        state.balanceMsats -= debit; persist(); notifyBalance();
+        return { operationId: `sim_onchain_${randomId(12)}`, status: mode !== "instant" && options?.wait === false ? "pending" : "confirmed", txid: `sim${randomId(24)}`, feesSats: info.pegOutFeeSats };
       },
     },
 
@@ -341,6 +395,11 @@ export function createSimWallet(opts: CreateSimWalletOptions = { npub: null }): 
     },
 
     async cleanup() {
+      disposed = true;
+      for (const wait of waits.values()) { if (wait.timer !== undefined) clearTimeout(wait.timer); wait.cancel(); }
+      waits.clear();
+      for (const deposit of deposits.values()) deposit.listeners.clear();
+      deposits.clear();
       // v0.4.2 hotfix round 2/3: cancel pending invoice auto-credit
       // timers so a stale funding invoice doesn't fire post-cleanup
       // and stamp a phantom balance into a freshly-reset wallet.

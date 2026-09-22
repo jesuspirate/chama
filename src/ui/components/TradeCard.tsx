@@ -1,3 +1,4 @@
+import { isCountdownDeadline } from "./CountdownTimer.js";
 import { needsTradeHistory } from "../decisions.js";
 import { circleFromEscrow } from "../../chama/policy.js";
 import { sharesForCircle } from "../../chama/wiring.js";
@@ -14,7 +15,7 @@ import {
 } from "../../escrow-engine/types.js";
 import { getCommunityBySlug, flagEmojiForCountry } from "../../communities/registry.js";
 import { pickPreferredArbiter } from "../../arbiters/pool.js";
-import { T, ROLE_COLOR, ROLE_ICON, STATUS, TRINITY_RING_ORDER, fmtSats } from "../theme.js";
+import { activeResolvedTheme, T, ROLE_COLOR, ROLE_ICON, STATUS, TRINITY_RING_ORDER, fmtSats } from "../theme.js";
 import { copyTextRobust } from "./CopyButton.js";
 import { listingPremiumLine } from "../listing-metrics.js";
 import { unreadChatForTrade } from "../../chat/unread.js";
@@ -316,20 +317,26 @@ export function TradeCard({
       {/* Storefront media stays on own-route Store/Exchange-menu tiles. External
           amber cards remain compact so route context stays the strongest signal. */}
       {isStorefrontTile && storefrontImages.length === 0 && (
-        <div aria-hidden="true" style={{
+        <div data-store-watermark aria-hidden="true" style={{
           position: "absolute", inset: 0, zIndex: -1,
           backgroundImage: `url(${STORE_WATERMARK})`,
           backgroundRepeat: "no-repeat",
           // Storefront-with-₿ emblem in the tile's right zone, vertically centred
           // and clear of the left-aligned title/price. Fixed size so it reads the
           // same on wide and narrow cards. The asset's dark field is already
-          // transparent, so contrast() now just punches up the neon; `screen`
-          // lets only the storefront (and the Bitcoin glyph) glow over the card.
+          // mostly transparent. Dark mode screens away the remaining dark
+          // matte; light mode uses luminance as an ink mask to avoid a halo.
           backgroundPosition: "right 20px center",
           backgroundSize: "auto 128px",
           filter: "contrast(1.4)",
           mixBlendMode: "screen",
           opacity: 0.65,
+          ...(activeResolvedTheme() === "light" ? {
+            backgroundImage: "none", backgroundColor: T.accent,
+            maskImage: `url(${STORE_WATERMARK})`, maskMode: "luminance" as const,
+            maskRepeat: "no-repeat", maskPosition: "calc(100% - 20px) 50%",
+            maskSize: "auto 128px", filter: "none", mixBlendMode: "normal" as const,
+          } : {}),
           pointerEvents: "none",
         }} />
       )}
@@ -1061,7 +1068,7 @@ function compactJoinHoldRemaining(state: EscrowState, nowSec: number, t: TFunc):
 }
 
 function compactTimeRemaining(state: EscrowState, nowSec: number, t: TFunc): { label: string; tone: string } | null {
-  if (!state.expiresAt) return null;
+  if (!isCountdownDeadline(state.expiresAt, nowSec)) return null;
   if (
     state.status === EscrowStatus.COMPLETED
     || state.status === EscrowStatus.CANCELLED

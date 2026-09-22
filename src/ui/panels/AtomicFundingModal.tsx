@@ -1,3 +1,4 @@
+import { simOnchainMode } from "../../sim/simMode.js";
 import { PaymentCard, PaymentButton, PaymentRails, type PaymentRail } from "../components/PaymentCard.js";
 import { fundingStorageFailure, type FundingStorageKey } from "../../payments/abandoned-invoices.js";
 import { TradeAmount } from "../components/TradeAmount.js";
@@ -570,7 +571,7 @@ export function AtomicFundingModal({
               : phase.kind === "awaiting-onchain-confirmations" ? t("fund.waitingConfirmations", { count: request.finality ?? 0 })
               : phase.kind === "awaiting-payment" ? t("fund.waitingForPayment", { time: `${Math.floor(Math.max(0, (request.expiresAt ?? now) - now) / 60000)}:${Math.floor(Math.max(0, (request.expiresAt ?? now) - now) / 1000 % 60).toString().padStart(2, "0")}` })
               : t("fund.confirmingFederation")}
-            helper={isSimModeOn() ? <>{t("fund.simAutoCredit")} {t("fund.simDoNotFund")}</> : request.rail === "onchain" ? t("fund.onchainSlowPath") : t("fund.scanOrCopyToPay")}
+            helper={isSimModeOn() ? <>{t(request.rail === "onchain" ? (simOnchainMode() === "stuck" ? "fund.simOnchainStuck" : "fund.simOnchainDeposit") : "fund.simAutoCredit")} {t("fund.simDoNotFund")}</> : request.rail === "onchain" ? t("fund.onchainSlowPath") : t("fund.scanOrCopyToPay")}
             details={<><div>{t("payment.tradeAmount")}: <TradeAmount msats={amountMsats} /></div>
               <div>{t("payment.fee")}: <TradeAmount msats={(request.fee ?? 0) * 1000 + premiumMsats} /></div>
               <div>{t("payment.total")}: <TradeAmount msats={request.sats * 1000} /></div>
