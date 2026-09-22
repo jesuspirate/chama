@@ -1,4 +1,4 @@
-import { createFundingInvoiceJournal } from "../payments/abandoned-invoices.js";
+import { createFundingInvoiceJournal, fundingStorageFailure } from "../payments/abandoned-invoices.js";
 import { parseAvatar, saveAvatar, type Avatar } from "../ui/avatars.js";
 import { notificationWindowAllows } from "../notifications/quiet-window.js";
 import { latestNotificationActivityAt, debugQuietNotification } from "../notifications/notify-service.js";
@@ -4974,6 +4974,8 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       return result;
     } catch (e: unknown) {
       const err = describeError(e, "Funding failed");
+      const storageFailure = fundingStorageFailure(e);
+      if (storageFailure) { opts.onPhase(storageFailure); return storageFailure; }
       opts.onPhase({ kind: "lock-failed", error: err });
       return { kind: "lock-failed", error: err };
     } finally {

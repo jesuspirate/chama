@@ -1,6 +1,21 @@
 import { getLocalStorageUserScope, scopedStorageKey } from '../storage/user-scope.js';
 
 export const ABANDONED_INVOICES_KEY = 'chama_abandoned_invoices_v1';
+export type FundingStorageKey = 'fund.storageUnavailable' | 'fund.historyUnreadable' | 'fund.historyUnwritable' | 'fund.contextUnavailable';
+export class FundingStorageError extends Error {
+  constructor(public readonly key: FundingStorageKey, public readonly beforeInvoice: boolean) {
+    super(key);
+    this.name = 'FundingStorageError';
+  }
+}
+
+/** Only the factory's preflight can assert that no invoice was issued. */
+export function fundingStorageFailure(error: unknown) {
+  if (!(error instanceof FundingStorageError)) return null;
+  return error.beforeInvoice
+    ? { kind: 'funding-not-started' as const, reason: error.key }
+    : { kind: 'lock-failed' as const, error: error.key, errorKey: error.key };
+}
 export interface RecordedFundingInvoice {
   invoice: string;
   operationId?: string;
@@ -24,30 +39,48 @@ export function createFundingInvoiceJournal(input: {
 }): FundingInvoiceJournal {
   const scope = getLocalStorageUserScope();
   if (!input.federationId || !input.escrowId || !Number.isSafeInteger(input.amountMsats) || input.amountMsats <= 0) {
-    throw new Error('Cannot safely identify the funding invoice before creation');
+    throw new FundingStorageError('fund.contextUnavailable', true);
   }
-  if (!scope || typeof localStorage === 'undefined') throw new Error('Cannot safely record the funding invoice on this device');
-  const storage = localStorage;
+  if (!scope) throw new FundingStorageError('fund.contextUnavailable', true);
+  let storage: Storage;
+  try {
+    storage = globalThis.localStorage;
+    if (!storage) throw new Error();
+  } catch { throw new FundingStorageError('fund.storageUnavailable', true); }
+  let beforeInvoice = true;
+  const fail = (key: FundingStorageKey): never => { throw new FundingStorageError(key, beforeInvoice); };
+  const storageFailure = (error: unknown, fallback: FundingStorageKey): never =>
+    fail((error as { name?: string })?.name === 'SecurityError' ? 'fund.storageUnavailable' : fallback);
   const key = scopedStorageKey(ABANDONED_INVOICES_KEY, scope);
   const read = (): RecordedFundingInvoice[] => {
-    const raw = storage.getItem(key);
+    let raw: string | null;
+    try { raw = storage.getItem(key); }
+    catch (error) { return storageFailure(error, 'fund.historyUnreadable'); }
     if (raw === null) return [];
-    const parsed: unknown = JSON.parse(raw);
+    let parsed: unknown;
+    try { parsed = JSON.parse(raw); }
+    catch { return fail('fund.historyUnreadable'); }
     if (!Array.isArray(parsed) || parsed.some(e => !e || typeof e.invoice !== 'string'
       || typeof e.escrowId !== 'string' || typeof e.federationId !== 'string'
       || typeof e.createdAt !== 'number' || typeof e.amountMsats !== 'number'
       || !['watching','abandoned','lock-observed'].includes(e.state))) {
-      throw new Error('Funding invoice history is unreadable; keep this device data intact');
+      return fail('fund.historyUnreadable');
     }
     return parsed;
   };
   const write = (entries: RecordedFundingInvoice[]) => {
     const json = JSON.stringify(entries);
-    storage.setItem(key, json);
-    if (storage.getItem(key) !== json) throw new Error('Funding invoice history could not be saved');
+    try {
+      storage.setItem(key, json);
+      if (storage.getItem(key) !== json) fail('fund.historyUnwritable');
+    } catch (error) {
+      if (error instanceof FundingStorageError) throw error;
+      storageFailure(error, 'fund.historyUnwritable');
+    }
   };
   // Refuse before invoice creation if storage is blocked/corrupt.
   write(read());
+  beforeInvoice = false;
   const recorded = new Set<string>();
   let stopped: boolean | undefined;
   return {

@@ -104,4 +104,27 @@ try {
  await page.evaluate(()=>window.setRelay(true));
  await page.waitForFunction(()=>!document.querySelector('[data-chat-retention-note]'));
  console.log('PASS chat: retention note follows preferred relay connection');
+ for (const [lang,cause,mapped] of [['fr','blocked',false],['sw','blocked',true],['fr','corrupt',true],['sw','corrupt',false]]) {
+   const storagePage=await browser.newPage();
+   await storagePage.setViewport({width:320,height:900});
+   await storagePage.evaluateOnNewDocument(lang=>localStorage.setItem('chama_lang',lang),lang);
+   await storagePage.goto(`${base}/tests/payment-card/index.html?storage=${cause}${mapped?'&mapped=1':''}`);
+   await storagePage.waitForSelector('button.payment-button:not([disabled])');
+   await storagePage.click('button.payment-button:not([disabled])');
+   await storagePage.waitForSelector('[data-funding-preflight]');
+   const result=await storagePage.evaluate(()=>({copy:window.storageCopy,text:document.querySelector('[data-funding-preflight]').textContent,calls:window.invoiceCalls,overflow:document.documentElement.scrollWidth>innerWidth}));
+   assert.ok(result.text.includes(result.copy.title));assert.ok(result.text.includes(result.copy.body));
+   assert.ok(result.text.includes(result.copy[cause]));assert.equal(result.calls,0);
+   assert.equal(result.overflow,false);
+   assert.equal(await storagePage.$('.payment-card img[src^="data:"]'),null,'no invoice is shown after preflight refusal');
+   await storagePage.screenshot({path:`/tmp/chama-funding-storage-${lang}-${cause}.png`,fullPage:true});
+   await storagePage.click('[data-funding-preflight] button:first-of-type');
+   await storagePage.waitForSelector('[role=tab]');
+   await storagePage.click('button.payment-button:not([disabled])');
+   await storagePage.waitForSelector('[data-funding-preflight]');
+   await storagePage.click('[data-funding-preflight] button:last-of-type');
+   assert.equal(await storagePage.evaluate(()=>window.fundingClosed),true,'cancel remains reachable');
+   await storagePage.close();
+   console.log(`PASS ${lang} storage ${cause}: preflight remedy, no invoice, retry and cancel (${mapped?'hook phase':'rejected action'})`);
+ }
 } finally { await browser.close(); }

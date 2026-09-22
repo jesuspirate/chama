@@ -1,4 +1,4 @@
-import type { FundingInvoiceJournal } from "./abandoned-invoices.js";
+import { fundingStorageFailure, type FundingInvoiceJournal, type FundingStorageKey } from "./abandoned-invoices.js";
 // ══════════════════════════════════════════════════════════════════════════
 // Chama — Atomic fund-and-lock orchestrator (v0.3.0 Phase 2)
 // ══════════════════════════════════════════════════════════════════════════
@@ -176,7 +176,8 @@ export type FundAndLockPhase =
   | FundingPhase
   | { kind: "locking" }
   | { kind: "locked" }
-  | { kind: "lock-failed"; error: string };
+  | { kind: "funding-not-started"; reason: FundingStorageKey }
+  | { kind: "lock-failed"; error: string; errorKey?: FundingStorageKey };
 
 /** Terminal phase kinds — pollForFunding / runFundAndLock resolve to one
  *  of these. */
@@ -190,7 +191,8 @@ export type FundAndLockTerminal =
   | { kind: "expired" }
   | { kind: "mint-timeout" }
   | { kind: "aborted" }
-  | { kind: "lock-failed"; error: string };
+  | { kind: "funding-not-started"; reason: FundingStorageKey }
+  | { kind: "lock-failed"; error: string; errorKey?: FundingStorageKey };
 
 // ── Tunables ─────────────────────────────────────────────────────────────
 
@@ -700,6 +702,8 @@ async function runFundAndLockWatched(
     emit({ kind: "receive-watch-ready" });
   } catch (e: any) {
     const err = e?.message || "Couldn't create funding invoice";
+    const storageFailure = fundingStorageFailure(e);
+    if (storageFailure) { emit(storageFailure); return storageFailure; }
     emit({ kind: "lock-failed", error: err });
     return { kind: "lock-failed", error: err };
   } finally {

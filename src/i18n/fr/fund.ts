@@ -3,6 +3,13 @@
 // byte-identical to EN; only the En halves are translated. Exact TZS amount /
 // agent number / USSD code arrive as {params}.
 export const fund: Record<string, string> = {
+  "fund.notStartedTitle": "Le financement n’a pas commencé",
+  "fund.notStartedBody": "Aucune nouvelle facture n’a été créée et aucun sat n’a été dépensé lors de cette tentative de financement.",
+  "fund.storageUnavailable": "Cette fenêtre ne peut pas utiliser le stockage du site. La navigation privée ou les autorisations peuvent le bloquer. Ouvrez Chama dans une fenêtre normale ou dans l’application installée, puis réessayez. Ne supprimez pas les données existantes du portefeuille.",
+  "fund.historyUnreadable": "Chama ne peut pas lire l’historique de financement de cet appareil. Ne supprimez pas les données de ce site : elles peuvent contenir des traces de fonds. Conservez cet appareil et contactez l’assistance avant de réessayer.",
+  "fund.historyUnwritable": "Chama ne peut pas enregistrer l’historique de financement sur cet appareil. Vérifiez l’espace disponible et les autorisations de stockage du site, puis réessayez. Ne supprimez pas les données du site : elles peuvent contenir des traces de fonds.",
+  "fund.contextUnavailable": "Chama n’a pas pu vérifier le compte, la communauté ou le montant de ce paiement. Reconnectez-vous à votre Chama et vérifiez le montant avant de réessayer. Ne supprimez pas les données du site.",
+
   "payment.switchPending": "Ce portefeuille ne peut pas annuler une facture active. Attendez son expiration avant de changer ; le nouveau montant peut varier. Ne payez pas l’ancienne facture après le changement.",
   "payment.lightning": "Lightning",
   "payment.onchain": "Sur chaîne",

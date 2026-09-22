@@ -1,4 +1,11 @@
 export const fund: Record<string, string> = {
+  "fund.notStartedTitle": "Ufadhili haujaanza",
+  "fund.notStartedBody": "Hakuna ankara mpya iliyoundwa wala sats zilizotumika katika jaribio hili la ufadhili.",
+  "fund.storageUnavailable": "Dirisha hili haliwezi kutumia hifadhi ya tovuti. Huenda hali ya faragha au ruhusa za data za tovuti zinaizuia. Fungua Chama katika dirisha la kawaida au programu iliyosakinishwa, kisha ujaribu tena. Usifute data iliyopo ya pochi.",
+  "fund.historyUnreadable": "Chama haiwezi kusoma historia ya ufadhili ya kifaa hiki. Usifute data za tovuti hii: zinaweza kuwa na rekodi za fedha. Hifadhi kifaa hiki na uwasiliane na usaidizi kabla ya kujaribu tena.",
+  "fund.historyUnwritable": "Chama haiwezi kuhifadhi historia ya ufadhili kwenye kifaa hiki. Kagua nafasi ya hifadhi na ruhusa za data za tovuti, kisha ujaribu tena. Usifute data za tovuti hii: zinaweza kuwa na rekodi za fedha.",
+  "fund.contextUnavailable": "Chama haikuweza kuthibitisha akaunti, jumuiya au kiasi cha malipo haya. Unganisha tena kwenye Chama yako na ukague kiasi kabla ya kujaribu tena. Usifute data za tovuti hii.",
+
   "payment.switchPending": "Pochi hii haiwezi kughairi ankara hai. Subiri iishe muda kabla ya kubadili; kiasi kipya kinaweza kubadilika. Usilipe ankara ya zamani baada ya kubadili.",
   "payment.lightning": "Lightning",
   "payment.onchain": "Mnyororo",

@@ -1,3 +1,4 @@
+import { createFundingInvoiceJournal, fundingStorageFailure } from '../../src/payments/abandoned-invoices';
 import { MeScreen } from '../../src/ui/screens/MeScreen';
 import { ChatPanel } from '../../src/ui/panels/ChatPanel';
 import { stashPendingRedemption, markPoisoned } from '../../src/fedimint/pending-redemptions';
@@ -46,6 +47,7 @@ function Fixture() {
   (window as any).setPhase = setPhase;
   const [balance, setBalance] = useState(0);
   (window as any).credit = () => setBalance(10000000);
+  (window as any).storageCopy={title:t('fund.notStartedTitle'),body:t('fund.notStartedBody'),blocked:t('fund.storageUnavailable'),corrupt:t('fund.historyUnreadable'),failed:t('fund.lockFailed')};
   (window as any).expected = {summary:t('trade.historyUnverified'),outcome:t('trade.nsRefundedSatsBack'),claim:t('trade.claimSats')};
   if (new URLSearchParams(location.search).has('attention')) return <MeScreen pubkey={seller} myTrades={[]} ratings={null}
     needsYouTrades={[created.state]} suppressAttentionCount balanceMsats={3000000} hasActiveCommitment={false}
@@ -63,9 +65,27 @@ function Fixture() {
   if (new URLSearchParams(location.search).has('ecash')) return <EcashExportModal balanceMsats={2000000} federationLabel="TEST ONLY"
     spendNotes={async () => ''} onClose={() => {}} preset={{ notes: 'fedimint' + 'a1b2c3d4'.repeat(30), amountMsats: 2000000,
       headline: 'TEST ONLY', body: t('recovery.exportReadyBody', {federation:'TEST ONLY'}), onConfirmCleared: () => {} }} />;
-  if (new URLSearchParams(location.search).has('atomic')) return <AtomicFundingModal escrowId="TEST-ONLY" amountMsats={2000000}
+  if (new URLSearchParams(location.search).has('storage') || new URLSearchParams(location.search).has('atomic')) return <AtomicFundingModal escrowId="TEST-ONLY" amountMsats={2000000}
     ctaLabel="Test" getOnchainInfo={async () => ({ pegInFeeSats: 100, minimumDepositSats: 1, finalityDelay: 1 } as any)}
-    lockAndPublish={async () => {}} onClose={() => {}} fundAndLock={async (_id, opts) => {
+    lockAndPublish={async () => {}} onClose={() => {(window as any).fundingClosed=true;}} fundAndLock={async (_id, opts) => {
+      if (new URLSearchParams(location.search).has('storage')) {
+        setLocalStorageUserScope('funding-storage-fixture');
+        (window as any).invoiceCalls=0;
+        const cause=new URLSearchParams(location.search).get('storage');
+        if(cause==='corrupt') window.localStorage.setItem('chama_abandoned_invoices_v1:funding-storage-fixture','{broken');
+        else Object.defineProperty(window,'localStorage',{configurable:true,get(){throw new DOMException('blocked','SecurityError');}});
+        try {
+          createFundingInvoiceJournal({escrowId:_id,amountMsats:2000000,federationId:'test-only'});
+          (window as any).invoiceCalls++;
+          throw Error('Storage preflight must refuse before reaching invoice creation');
+        } catch(error) {
+          if(new URLSearchParams(location.search).has('mapped')) {
+            const failure=fundingStorageFailure(error);
+            if(failure) {opts.onPhase(failure);return failure;}
+          }
+          throw error;
+        }
+      }
       emit = opts.onPhase;
       if (opts.fundingMethod === 'onchain') opts.onPhase({kind:'onchain-address-created', address:'tb1q-test-only-do-not-send-funds-000000', depositAmountSats:2100, pegInFeeSats:100, finalityDelay:3, minimumDepositSats:1, operationId:'test'} as any);
       else opts.onPhase({ kind: 'invoice-created', bolt11: payload.slice(10), expiresAt: Date.now() + 600000 } as any);

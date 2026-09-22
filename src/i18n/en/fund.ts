@@ -7,6 +7,13 @@
 // half. The exact TZS amount / agent number / USSD code arrive as {params}
 // — never hardcode them in a translation.
 export const fund: Record<string, string> = {
+  "fund.notStartedTitle": "Funding has not started",
+  "fund.notStartedBody": "No new invoice was created and no sats were spent on this funding attempt.",
+  "fund.storageUnavailable": "This window cannot use site storage. Private browsing or site-data permissions may be blocking it. Open Chama in a normal window or the installed app, then retry. Do not clear any existing wallet data.",
+  "fund.historyUnreadable": "Chama cannot read this device’s funding history. Do not clear this site’s data: it may contain records of money. Keep this device and contact support before trying again.",
+  "fund.historyUnwritable": "Chama cannot save funding history on this device. Check available storage space and site-data permissions, then retry. Do not clear this site’s data: it may contain records of money.",
+  "fund.contextUnavailable": "Chama could not verify the account, community, or amount for this payment. Reconnect to your Chama and check the amount before retrying. Do not clear this site’s data.",
+
   "payment.switchPending": "This wallet cannot cancel a live invoice. Wait for it to expire before switching; the new amount may change. Do not pay an old invoice after switching.",
   "payment.lightning": "Lightning",
   "payment.onchain": "On-chain",

@@ -1,5 +1,12 @@
 // es/fund — Session C fills this from src/i18n/en/fund.ts (key set must match EXACTLY).
 export const fund: Record<string, string> = {
+  "fund.notStartedTitle": "La financiación no ha comenzado",
+  "fund.notStartedBody": "No se ha creado ninguna factura nueva ni se han gastado sats en este intento de financiación.",
+  "fund.storageUnavailable": "Esta ventana no puede usar el almacenamiento del sitio. La navegación privada o los permisos pueden estar bloqueándolo. Abre Chama en una ventana normal o en la aplicación instalada y vuelve a intentarlo. No borres los datos existentes de la cartera.",
+  "fund.historyUnreadable": "Chama no puede leer el historial de financiación de este dispositivo. No borres los datos de este sitio: pueden contener registros de dinero. Conserva este dispositivo y contacta con soporte antes de volver a intentarlo.",
+  "fund.historyUnwritable": "Chama no puede guardar el historial de financiación en este dispositivo. Comprueba el espacio disponible y los permisos de almacenamiento del sitio y vuelve a intentarlo. No borres los datos del sitio: pueden contener registros de dinero.",
+  "fund.contextUnavailable": "Chama no pudo verificar la cuenta, la comunidad o el importe de este pago. Vuelve a conectarte a tu Chama y comprueba el importe antes de reintentar. No borres los datos del sitio.",
+
   "payment.switchPending": "Este monedero no puede cancelar una factura activa. Espera a que caduque antes de cambiar; el nuevo importe puede variar. No pagues una factura anterior después de cambiar.",
   "payment.lightning": "Lightning",
   "payment.onchain": "En cadena",

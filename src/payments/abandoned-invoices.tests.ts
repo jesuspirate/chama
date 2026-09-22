@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { ABANDONED_INVOICES_KEY, createFundingInvoiceJournal } from './abandoned-invoices.js';
+import { ABANDONED_INVOICES_KEY, createFundingInvoiceJournal, FundingStorageError, fundingStorageFailure } from './abandoned-invoices.js';
 import { runFundAndLock } from './fund-and-lock.js';
 import { scopedStorageKey, setLocalStorageUserScope } from '../storage/user-scope.js';
 const values=new Map<string,string>();
@@ -52,3 +52,29 @@ values.delete(key);
 Object.defineProperty(globalThis,'localStorage',{value:{...storage,setItem(){throw Error('quota');}}});
 assert.throws(()=>createFundingInvoiceJournal(input),'storage refusal blocks invoice creation before the wallet is called');
 console.log('Abandoned invoices: abort, operation identity, reload, account isolation, late resolution, crash record, and fail-closed storage passed.');
+
+// Production uses this classifier at both the hook and modal boundaries.
+const expectPreflight = (key: string, work: () => unknown) => assert.throws(work, error => {
+ assert.ok(error instanceof FundingStorageError);
+ assert.deepEqual(fundingStorageFailure(error), {kind:'funding-not-started',reason:key});
+ return true;
+});
+expectPreflight('fund.historyUnwritable',()=>createFundingInvoiceJournal(input));
+Object.defineProperty(globalThis,'localStorage',{get(){throw new DOMException('blocked','SecurityError');}});
+expectPreflight('fund.storageUnavailable',()=>createFundingInvoiceJournal(input));
+Object.defineProperty(globalThis,'localStorage',{value:storage});
+values.set(key,'{broken');
+expectPreflight('fund.historyUnreadable',()=>createFundingInvoiceJournal(input));
+assert.equal(values.get(key),'{broken','unreadable data stays intact while its localized remedy is shown');
+values.delete(key);
+expectPreflight('fund.contextUnavailable',()=>createFundingInvoiceJournal({...input,federationId:''}));
+const afterCreation=createFundingInvoiceJournal(input);
+Object.defineProperty(storage,'setItem',{value(){throw new DOMException('quota','QuotaExceededError');},configurable:true});
+assert.throws(()=>afterCreation.record('ALREADY-ISSUED'),error=>{
+ assert.ok(error instanceof FundingStorageError);
+ assert.equal(error.beforeInvoice,false);
+ assert.equal(fundingStorageFailure(error)?.kind,'lock-failed','storage failure after invoice creation must never claim funding has not started');
+ return true;
+});
+assert.equal(fundingStorageFailure(new Error('ordinary lock failure')),null);
+console.log('Funding storage copy: blocked access, quota, corrupt history, missing context, and pre/post-invoice phase boundary passed.');

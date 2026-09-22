@@ -1,4 +1,5 @@
 import { PaymentCard, PaymentButton, PaymentRails, type PaymentRail } from "../components/PaymentCard.js";
+import { fundingStorageFailure, type FundingStorageKey } from "../../payments/abandoned-invoices.js";
 import { TradeAmount } from "../components/TradeAmount.js";
 // ══════════════════════════════════════════════════════════════════════════
 // Chama — AtomicFundingModal (v0.3.0 receive-side atomic flow)
@@ -163,7 +164,8 @@ type ModalPhase =
   | { kind: "expired" }
   | { kind: "mint-timeout" }
   | { kind: "aborted" }
-  | { kind: "lock-failed"; error: string };
+  | { kind: "funding-not-started"; reason: FundingStorageKey }
+  | { kind: "lock-failed"; error: string; errorKey?: FundingStorageKey };
 
 export function AtomicFundingModal({
   escrowId,
@@ -399,6 +401,8 @@ export function AtomicFundingModal({
 
     run().catch((e) => {
       if (ctrl.signal.aborted) return;
+      const storageFailure = fundingStorageFailure(e);
+      if (storageFailure) { setPhase(storageFailure); return; }
       // runFundAndLock catches its own errors; this is defensive.
       setPhase({ kind: "lock-failed", error: (e as Error).message || t("fund.unexpectedError") });
     });
@@ -559,7 +563,7 @@ export function AtomicFundingModal({
             motion={["mint-confirming", "mint-confirming-slow", "payment-confirmed", "locking"].includes(phase.kind)}
             status={custodyNotice ? <>{t(custodyNotice.status === "expired-unacked" ? "trade.custodyExpiredTitle" : custodyNotice.status === "acknowledged-with-rejection" ? "trade.custodyRejectionTitle" : "trade.custodyPendingTitle")}<br />{custodyNotice.message || t("trade.custodyPendingBody")}</>
               : phase.kind === "receive-rejected" ? phase.reason
-              : phase.kind === "lock-failed" ? phase.error
+              : phase.kind === "lock-failed" ? (phase.errorKey ? t(phase.errorKey) : phase.error)
               : phase.kind === "expired" ? t("fund.invoiceExpired")
               : phase.kind === "locking" ? t("fund.locking")
               : phase.kind === "locked" ? t("fund.paymentReceived")
@@ -675,9 +679,20 @@ export function AtomicFundingModal({
           />
         )}
 
+        {phase.kind === "funding-not-started" && (
+          <div data-funding-preflight role="alert" style={{ padding: 20, fontFamily: T.sans, fontSize: 14, lineHeight: 1.5, color: T.text, background: T.surface, border: `1px solid ${T.border}`, borderRadius: T.r }}>
+            <h3 style={{ marginTop: 0 }}>{t("fund.notStartedTitle")}</h3>
+            <p>{t("fund.notStartedBody")}</p>
+            <p>{t(phase.reason)}</p>
+            <div style={{ display: "flex", gap: 12 }}>
+              <PaymentButton onClick={handleRegenerate}>{t("fund.tryAgain")}</PaymentButton>
+              <PaymentButton onClick={handleCancel}>{t("common.cancel")}</PaymentButton>
+            </div>
+          </div>
+        )}
         {phase.kind === "lock-failed" && (
           <LockFailedState
-            error={phase.error}
+            error={phase.errorKey ? t(phase.errorKey) : phase.error}
             onCancel={() => onClose(phase)}
           />
         )}
