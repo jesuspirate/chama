@@ -6,10 +6,9 @@
  * and prints a kind-by-relay matrix. Nothing is published, no key is read,
  * no wallet is touched — this only answers "who still has what".
  *
- * Written 2026-09-20 for `sm_mtnxzb5y_zpepqcpj`, a settled trade whose buyer
- * cannot claim because replay fails with INVALID_STATE. The community relay's
- * measured response had no LOCK. This tells you whether ANY relay still does
- * — i.e. whether the sats are recoverable and from where.
+ * Written 2026-09-20 for `sm_mtnxzb5y_zpepqcpj`. Later replay showed
+ * CREATE → JOIN → CANCEL, no LOCK: the apparent claim came from a saved
+ * summary. This measures relay-held events, not proof of recoverable funds.
  */
 import WebSocket from 'ws';
 import { DEFAULT_RELAYS } from '../src/escrow-engine/default-relays.js';
@@ -299,9 +298,9 @@ if (state) {
   console.log(`\n  LOCK in the relay-held chain: ${locked ? 'yes' : 'NO'}`);
   console.log(`  lock.lockedAt after replay   : ${state.lock?.lockedAt ?? 'not set'}`);
   if (!locked) {
-    console.log('\n  With no LOCK, the only transition out of CREATED is missing. Any');
-    console.log('  event whose refusal names a non-CREATED state is therefore telling');
-    console.log("  you that SOME device's chain has a LOCK this pool does not.");
+    console.log('\n  No LOCK was observed in the relay-held chain. This does not prove');
+    console.log('  a LOCK exists on another device or that any funds are recoverable.');
+    console.log('  Compare the replayed state with any saved-summary display.');
   }
 }
 console.log('');
