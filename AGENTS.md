@@ -18,6 +18,34 @@ This is the authoritative Chama application repository. It contains the web/PWA 
 - Buyer, seller, and arbiter decisions must come from committed escrow state. Historical community-pool membership alone is not a current obligation.
 - Update regression coverage for wallet storage, federation routing, encryption, escrow voting, claims, and recovery behavior.
 
+## Release notes
+
+Two audiences, two documents. Do not write one and trim it into the other.
+
+`chama-vX.Y.Z_release_notes` is the long form: the commit message and the
+GitHub release body. It is read by people who want to know how Chama works.
+Mechanism, measurement, incidents and limits belong there, stated plainly.
+
+`chama-vX.Y.Z_zapstore_notes` is a card on a phone, read by someone deciding
+whether to tap Update. It gets **only what changes their experience**, and
+nothing else. Not what we built — what is different for them.
+
+Apply this test to every line before it ships:
+
+- Can a reader tell what is different FOR THEM, without knowing how Chama
+  is built? If not, cut the line.
+- Does the line need a word the user has never seen in the app — journal,
+  replay, provenance, summary, relay, addressable, refactor, migration? If
+  yes, it is a long-form line wearing an emoji. Cut it or say the effect
+  instead.
+- Is it a bug they never met, an incident they never saw, or an internal
+  cleanup? Cut it. They do not need our history to decide about an update.
+- Would they notice if we said nothing? If no, say nothing.
+
+Fewer, stronger lines. Four that land beat nine that fill. The card is not
+a changelog and it is not a receipt for our effort.
+
+
 ## Verification
 
 Use the application commands in this repository:
