@@ -15,7 +15,7 @@ icons/chama-mark-64.png
 icons/favicon.ico
 icons/bitcoin-official.png
 icons/chama-circle-dark.svg
-icons/og-image-people-v13.jpg
+icons/chama-social-people.png
 img/chama-digital-community-v1.jpg
 img/faq/faq-cancel.png
 img/faq/faq-chooser.png
@@ -33,7 +33,7 @@ claim.js
 img/chama-circle-story-v8.mp4
 img/chama-circle-action-v8.jpg
 
-img/chama-community-banner-v2.png
+img/chama-community-banner.png
 
 # Actual sim-mode Circle lock capture
 img/circle-lock-app-v1.png
@@ -58,3 +58,7 @@ img/comm-home-south-asia-lane-v1.jpg
 img/comm-home-us-city-v8.jpg
 img/comm-home-west-africa-v1.jpg
 details.js
+
+# Compatibility for cached pages/shared URLs; these contain the approved mark.
+icons/og-image-people-v13.jpg
+img/chama-community-banner-v2.png

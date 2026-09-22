@@ -23,7 +23,7 @@ export function Wordmark({ size = 24, markSize = 28, showMark = true }: { size?:
       }}
     >
       {showMark && <img
-        src="/icons/chama-woven-trust-mark-transparent-64.png"
+        src="/icons/chama-mark-256.png?v=approved-star-20260921"
         alt="Chama"
         width={markSize}
         height={markSize}

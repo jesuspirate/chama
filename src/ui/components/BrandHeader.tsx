@@ -19,7 +19,7 @@ export function BrandHeader() {
         }}
       >
         <img
-          src="/icons/favicon-192x192.png"
+          src="/icons/favicon-192x192.png?v=approved-star-20260921"
           alt=""
           width={78}
           height={78}

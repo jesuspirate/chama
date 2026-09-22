@@ -1,0 +1,1767 @@
+{
+  "archive_root": "outputs/logo-review-archive/2026-09-21",
+  "note": "Local review archive, excluded from app/release payloads. Nothing deleted. Original published assets also remain in Git history. Independent checkout and migration backups are untouched.",
+  "approved_master": {
+    "path": "assets/brand/chama-mark-master.png",
+    "sha256": "7ddc50529eb113a7ad211923c79d6430ffa4fc6bd21efb549eff6084aaa94bef"
+  },
+  "entries": [
+    {
+      "source": "android/app/src/main/res/drawable-land-hdpi/splash.png",
+      "archive": "previous-committed/android/app/src/main/res/drawable-land-hdpi/splash.png",
+      "kind": "HEAD before promotion",
+      "bytes": 118090,
+      "sha256": "1b7b5b5a4a6d62e03d56e00195c2d0691b7da405aed83e29906a79d4c7cb499c"
+    },
+    {
+      "source": "android/app/src/main/res/drawable-land-mdpi/splash.png",
+      "archive": "previous-committed/android/app/src/main/res/drawable-land-mdpi/splash.png",
+      "kind": "HEAD before promotion",
+      "bytes": 22318,
+      "sha256": "9dc70f15d8fef8cedb4a75e03644a015274f598ab1cb371f518df879a459e352"
+    },
+    {
+      "source": "android/app/src/main/res/drawable-land-xhdpi/splash.png",
+      "archive": "previous-committed/android/app/src/main/res/drawable-land-xhdpi/splash.png",
+      "kind": "HEAD before promotion",
+      "bytes": 61749,
+      "sha256": "1ad9b9c2e35e9ccdcc00b03bdcc5c3447c604528acb1e982572553c4d83fc83e"
+    },
+    {
+      "source": "android/app/src/main/res/drawable-land-xxhdpi/splash.png",
+      "archive": "previous-committed/android/app/src/main/res/drawable-land-xxhdpi/splash.png",
+      "kind": "HEAD before promotion",
+      "bytes": 99272,
+      "sha256": "a4a26c62a3807338d6af04d54a015ee1df6452bc7a9c2062f4f1fd69aee8ccfa"
+    },
+    {
+      "source": "android/app/src/main/res/drawable-land-xxxhdpi/splash.png",
+      "archive": "previous-committed/android/app/src/main/res/drawable-land-xxxhdpi/splash.png",
+      "kind": "HEAD before promotion",
+      "bytes": 157338,
+      "sha256": "ce98d0d6675ae5a2a751df1e856795fb9d815c089715e5b99c54caafd5867e78"
+    },
+    {
+      "source": "android/app/src/main/res/drawable-nodpi/chama_splash_lockup.png",
+      "archive": "previous-committed/android/app/src/main/res/drawable-nodpi/chama_splash_lockup.png",
+      "kind": "HEAD before promotion",
+      "bytes": 596675,
+      "sha256": "d4591bee93eb07991064c378886f2599c8d5cfb97d3516a5a4cbf794cea50ba9"
+    },
+    {
+      "source": "android/app/src/main/res/drawable-nodpi/chama_splash_lockup.png",
+      "archive": "superseded-v7-draft/android/app/src/main/res/drawable-nodpi/chama_splash_lockup.png",
+      "kind": "unapproved animation-frame draft",
+      "bytes": 369818,
+      "sha256": "e22c3734e469b8337ee7653f45e801d2ebe9c79ef7cefc2739af5d0b76b4a2eb"
+    },
+    {
+      "source": "android/app/src/main/res/drawable-nodpi/chama_splash_mark.png",
+      "archive": "previous-committed/android/app/src/main/res/drawable-nodpi/chama_splash_mark.png",
+      "kind": "HEAD before promotion",
+      "bytes": 713085,
+      "sha256": "92af8e88640e6874cbc6a62d11084cf0ecd161ee72578b22fd08d25652b87c50"
+    },
+    {
+      "source": "android/app/src/main/res/drawable-nodpi/chama_splash_mark.png",
+      "archive": "superseded-v7-draft/android/app/src/main/res/drawable-nodpi/chama_splash_mark.png",
+      "kind": "unapproved animation-frame draft",
+      "bytes": 383017,
+      "sha256": "a95b8127bce8d4ae042ab5a326a79fae8044d5948810b47d2848ddf7672289cd"
+    },
+    {
+      "source": "android/app/src/main/res/drawable-port-hdpi/splash.png",
+      "archive": "previous-committed/android/app/src/main/res/drawable-port-hdpi/splash.png",
+      "kind": "HEAD before promotion",
+      "bytes": 34094,
+      "sha256": "cdc20ef1711712ce2b47f0ea6eb5aad7be23345d1b64ae2c2279ef5b866f9217"
+    },
+    {
+      "source": "android/app/src/main/res/drawable-port-mdpi/splash.png",
+      "archive": "previous-committed/android/app/src/main/res/drawable-port-mdpi/splash.png",
+      "kind": "HEAD before promotion",
+      "bytes": 17766,
+      "sha256": "b914c37b9d73342d8f0055517b18ea3a60e2e3fda2888b37b526562438205dc8"
+    },
+    {
+      "source": "android/app/src/main/res/drawable-port-xhdpi/splash.png",
+      "archive": "previous-committed/android/app/src/main/res/drawable-port-xhdpi/splash.png",
+      "kind": "HEAD before promotion",
+      "bytes": 67175,
+      "sha256": "30ad56f165ca0804168f5375fb0ccdd50aff41a491cb5944d15927df21c7d2ce"
+    },
+    {
+      "source": "android/app/src/main/res/drawable-port-xxhdpi/splash.png",
+      "archive": "previous-committed/android/app/src/main/res/drawable-port-xxhdpi/splash.png",
+      "kind": "HEAD before promotion",
+      "bytes": 108844,
+      "sha256": "4187882436665b0578011402c28f820e142fc7d2641fd329c17013f0e41a4703"
+    },
+    {
+      "source": "android/app/src/main/res/drawable-port-xxxhdpi/splash.png",
+      "archive": "previous-committed/android/app/src/main/res/drawable-port-xxxhdpi/splash.png",
+      "kind": "HEAD before promotion",
+      "bytes": 167680,
+      "sha256": "ba0c0c9e97aa823d371ff978c18dae12738236e4df947dd2ce3b6c631737603c"
+    },
+    {
+      "source": "android/app/src/main/res/drawable/splash.png",
+      "archive": "previous-committed/android/app/src/main/res/drawable/splash.png",
+      "kind": "HEAD before promotion",
+      "bytes": 118090,
+      "sha256": "1b7b5b5a4a6d62e03d56e00195c2d0691b7da405aed83e29906a79d4c7cb499c"
+    },
+    {
+      "source": "android/app/src/main/res/mipmap-hdpi/ic_launcher.png",
+      "archive": "previous-committed/android/app/src/main/res/mipmap-hdpi/ic_launcher.png",
+      "kind": "HEAD before promotion",
+      "bytes": 3811,
+      "sha256": "b35f9e5ef68598e29d9bdd16c3697cbfd475f3a93a0caf90e77427092b4e8b3b"
+    },
+    {
+      "source": "android/app/src/main/res/mipmap-hdpi/ic_launcher.png",
+      "archive": "superseded-v7-draft/android/app/src/main/res/mipmap-hdpi/ic_launcher.png",
+      "kind": "unapproved animation-frame draft",
+      "bytes": 4958,
+      "sha256": "28d575bdef5a2cbfa22ec01ee554aba6ee73c0239a6f09ed03b5723b78d97709"
+    },
+    {
+      "source": "android/app/src/main/res/mipmap-hdpi/ic_launcher_foreground.png",
+      "archive": "previous-committed/android/app/src/main/res/mipmap-hdpi/ic_launcher_foreground.png",
+      "kind": "HEAD before promotion",
+      "bytes": 3811,
+      "sha256": "b35f9e5ef68598e29d9bdd16c3697cbfd475f3a93a0caf90e77427092b4e8b3b"
+    },
+    {
+      "source": "android/app/src/main/res/mipmap-hdpi/ic_launcher_foreground.png",
+      "archive": "superseded-v7-draft/android/app/src/main/res/mipmap-hdpi/ic_launcher_foreground.png",
+      "kind": "unapproved animation-frame draft",
+      "bytes": 4639,
+      "sha256": "adbaca320b754caa8cc83517f0f76f80cec49f8d40a1f40275ac6c90179f94b1"
+    },
+    {
+      "source": "android/app/src/main/res/mipmap-hdpi/ic_launcher_round.png",
+      "archive": "previous-committed/android/app/src/main/res/mipmap-hdpi/ic_launcher_round.png",
+      "kind": "HEAD before promotion",
+      "bytes": 3811,
+      "sha256": "b35f9e5ef68598e29d9bdd16c3697cbfd475f3a93a0caf90e77427092b4e8b3b"
+    },
+    {
+      "source": "android/app/src/main/res/mipmap-hdpi/ic_launcher_round.png",
+      "archive": "superseded-v7-draft/android/app/src/main/res/mipmap-hdpi/ic_launcher_round.png",
+      "kind": "unapproved animation-frame draft",
+      "bytes": 4958,
+      "sha256": "28d575bdef5a2cbfa22ec01ee554aba6ee73c0239a6f09ed03b5723b78d97709"
+    },
+    {
+      "source": "android/app/src/main/res/mipmap-mdpi/ic_launcher.png",
+      "archive": "previous-committed/android/app/src/main/res/mipmap-mdpi/ic_launcher.png",
+      "kind": "HEAD before promotion",
+      "bytes": 2331,
+      "sha256": "512e5b4a7c7ec88683e7bfb86a975f2bbc289f1f4a6cd56d83ad12854fe2b3bc"
+    },
+    {
+      "source": "android/app/src/main/res/mipmap-mdpi/ic_launcher.png",
+      "archive": "superseded-v7-draft/android/app/src/main/res/mipmap-mdpi/ic_launcher.png",
+      "kind": "unapproved animation-frame draft",
+      "bytes": 2791,
+      "sha256": "6840a1e115729f7618a0f8313e42c4bc01821074f55ef2c4b46bb9bb680a3f62"
+    },
+    {
+      "source": "android/app/src/main/res/mipmap-mdpi/ic_launcher_foreground.png",
+      "archive": "previous-committed/android/app/src/main/res/mipmap-mdpi/ic_launcher_foreground.png",
+      "kind": "HEAD before promotion",
+      "bytes": 2331,
+      "sha256": "512e5b4a7c7ec88683e7bfb86a975f2bbc289f1f4a6cd56d83ad12854fe2b3bc"
+    },
+    {
+      "source": "android/app/src/main/res/mipmap-mdpi/ic_launcher_foreground.png",
+      "archive": "superseded-v7-draft/android/app/src/main/res/mipmap-mdpi/ic_launcher_foreground.png",
+      "kind": "unapproved animation-frame draft",
+      "bytes": 2707,
+      "sha256": "9723b077487aa8a6990892b378076710ece3acc44f764d5aa75da7f286fad447"
+    },
+    {
+      "source": "android/app/src/main/res/mipmap-mdpi/ic_launcher_round.png",
+      "archive": "previous-committed/android/app/src/main/res/mipmap-mdpi/ic_launcher_round.png",
+      "kind": "HEAD before promotion",
+      "bytes": 2331,
+      "sha256": "512e5b4a7c7ec88683e7bfb86a975f2bbc289f1f4a6cd56d83ad12854fe2b3bc"
+    },
+    {
+      "source": "android/app/src/main/res/mipmap-mdpi/ic_launcher_round.png",
+      "archive": "superseded-v7-draft/android/app/src/main/res/mipmap-mdpi/ic_launcher_round.png",
+      "kind": "unapproved animation-frame draft",
+      "bytes": 2791,
+      "sha256": "6840a1e115729f7618a0f8313e42c4bc01821074f55ef2c4b46bb9bb680a3f62"
+    },
+    {
+      "source": "android/app/src/main/res/mipmap-xhdpi/ic_launcher.png",
+      "archive": "previous-committed/android/app/src/main/res/mipmap-xhdpi/ic_launcher.png",
+      "kind": "HEAD before promotion",
+      "bytes": 6081,
+      "sha256": "2e003826f9518d158f11fb603b8eaa862638041476092cb37a48748307189639"
+    },
+    {
+      "source": "android/app/src/main/res/mipmap-xhdpi/ic_launcher.png",
+      "archive": "superseded-v7-draft/android/app/src/main/res/mipmap-xhdpi/ic_launcher.png",
+      "kind": "unapproved animation-frame draft",
+      "bytes": 7375,
+      "sha256": "5ad5bb1d806ffeffdc0d5680a748f146875953ad01913349bbd57cb239a6b7d5"
+    },
+    {
+      "source": "android/app/src/main/res/mipmap-xhdpi/ic_launcher_foreground.png",
+      "archive": "previous-committed/android/app/src/main/res/mipmap-xhdpi/ic_launcher_foreground.png",
+      "kind": "HEAD before promotion",
+      "bytes": 6081,
+      "sha256": "2e003826f9518d158f11fb603b8eaa862638041476092cb37a48748307189639"
+    },
+    {
+      "source": "android/app/src/main/res/mipmap-xhdpi/ic_launcher_foreground.png",
+      "archive": "superseded-v7-draft/android/app/src/main/res/mipmap-xhdpi/ic_launcher_foreground.png",
+      "kind": "unapproved animation-frame draft",
+      "bytes": 6843,
+      "sha256": "89f48b51ea0e384298e88198bbe71b082983c6fc25f8455ab959fc10123188dd"
+    },
+    {
+      "source": "android/app/src/main/res/mipmap-xhdpi/ic_launcher_round.png",
+      "archive": "previous-committed/android/app/src/main/res/mipmap-xhdpi/ic_launcher_round.png",
+      "kind": "HEAD before promotion",
+      "bytes": 6081,
+      "sha256": "2e003826f9518d158f11fb603b8eaa862638041476092cb37a48748307189639"
+    },
+    {
+      "source": "android/app/src/main/res/mipmap-xhdpi/ic_launcher_round.png",
+      "archive": "superseded-v7-draft/android/app/src/main/res/mipmap-xhdpi/ic_launcher_round.png",
+      "kind": "unapproved animation-frame draft",
+      "bytes": 7375,
+      "sha256": "5ad5bb1d806ffeffdc0d5680a748f146875953ad01913349bbd57cb239a6b7d5"
+    },
+    {
+      "source": "android/app/src/main/res/mipmap-xxhdpi/ic_launcher.png",
+      "archive": "previous-committed/android/app/src/main/res/mipmap-xxhdpi/ic_launcher.png",
+      "kind": "HEAD before promotion",
+      "bytes": 11274,
+      "sha256": "ca03f67ef0ccbbca291a134dc2abc68a87856c05a5d5276f82e4e1f822c69f19"
+    },
+    {
+      "source": "android/app/src/main/res/mipmap-xxhdpi/ic_launcher.png",
+      "archive": "superseded-v7-draft/android/app/src/main/res/mipmap-xxhdpi/ic_launcher.png",
+      "kind": "unapproved animation-frame draft",
+      "bytes": 13494,
+      "sha256": "c430292214d2e341a86f081857c12e545eadc04c2b1825b73fbda87a536cdc92"
+    },
+    {
+      "source": "android/app/src/main/res/mipmap-xxhdpi/ic_launcher_foreground.png",
+      "archive": "previous-committed/android/app/src/main/res/mipmap-xxhdpi/ic_launcher_foreground.png",
+      "kind": "HEAD before promotion",
+      "bytes": 11274,
+      "sha256": "ca03f67ef0ccbbca291a134dc2abc68a87856c05a5d5276f82e4e1f822c69f19"
+    },
+    {
+      "source": "android/app/src/main/res/mipmap-xxhdpi/ic_launcher_foreground.png",
+      "archive": "superseded-v7-draft/android/app/src/main/res/mipmap-xxhdpi/ic_launcher_foreground.png",
+      "kind": "unapproved animation-frame draft",
+      "bytes": 11931,
+      "sha256": "1e2d3c6255e564acd8cc5cc79444f2405a0a6e2f6def1c6749aea4d1989a3021"
+    },
+    {
+      "source": "android/app/src/main/res/mipmap-xxhdpi/ic_launcher_round.png",
+      "archive": "previous-committed/android/app/src/main/res/mipmap-xxhdpi/ic_launcher_round.png",
+      "kind": "HEAD before promotion",
+      "bytes": 11274,
+      "sha256": "ca03f67ef0ccbbca291a134dc2abc68a87856c05a5d5276f82e4e1f822c69f19"
+    },
+    {
+      "source": "android/app/src/main/res/mipmap-xxhdpi/ic_launcher_round.png",
+      "archive": "superseded-v7-draft/android/app/src/main/res/mipmap-xxhdpi/ic_launcher_round.png",
+      "kind": "unapproved animation-frame draft",
+      "bytes": 13494,
+      "sha256": "c430292214d2e341a86f081857c12e545eadc04c2b1825b73fbda87a536cdc92"
+    },
+    {
+      "source": "android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png",
+      "archive": "previous-committed/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png",
+      "kind": "HEAD before promotion",
+      "bytes": 19281,
+      "sha256": "be65836d8f45b17ac41a070db167f654ed321a6de3d57a303c27bedb965f4b7e"
+    },
+    {
+      "source": "android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png",
+      "archive": "superseded-v7-draft/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png",
+      "kind": "unapproved animation-frame draft",
+      "bytes": 21513,
+      "sha256": "83ff8460026ad251e1694c43e18e9b7ea12fb2141238adb811bfbc83bdd54d01"
+    },
+    {
+      "source": "android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_foreground.png",
+      "archive": "previous-committed/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_foreground.png",
+      "kind": "HEAD before promotion",
+      "bytes": 19281,
+      "sha256": "be65836d8f45b17ac41a070db167f654ed321a6de3d57a303c27bedb965f4b7e"
+    },
+    {
+      "source": "android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_foreground.png",
+      "archive": "superseded-v7-draft/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_foreground.png",
+      "kind": "unapproved animation-frame draft",
+      "bytes": 18338,
+      "sha256": "652ccc8ad895684fe8ac94e50db81b8c22ecf1f44c8e85785ede87d608c98aed"
+    },
+    {
+      "source": "android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.png",
+      "archive": "previous-committed/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.png",
+      "kind": "HEAD before promotion",
+      "bytes": 19281,
+      "sha256": "be65836d8f45b17ac41a070db167f654ed321a6de3d57a303c27bedb965f4b7e"
+    },
+    {
+      "source": "android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.png",
+      "archive": "superseded-v7-draft/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.png",
+      "kind": "unapproved animation-frame draft",
+      "bytes": 21513,
+      "sha256": "83ff8460026ad251e1694c43e18e9b7ea12fb2141238adb811bfbc83bdd54d01"
+    },
+    {
+      "source": "icon.png",
+      "archive": "previous-committed/icon.png",
+      "kind": "HEAD before promotion",
+      "bytes": 208229,
+      "sha256": "5507456782feed7769015ea249568858d9f19aabde846a4ecb35cd767a8caa22"
+    },
+    {
+      "source": "icon.png",
+      "archive": "superseded-v7-draft/icon.png",
+      "kind": "unapproved animation-frame draft",
+      "bytes": 140659,
+      "sha256": "56c57d553152e1114bf2478528a0bcb3c5adb90dc8da94c574786d770f89ad73"
+    },
+    {
+      "source": "landing/icons/android-chrome-192x192.png",
+      "archive": "previous-committed/landing/icons/android-chrome-192x192.png",
+      "kind": "HEAD before promotion",
+      "bytes": 21822,
+      "sha256": "d4b1911082613087617988effffb57f44cd44081a283d399022ee46dbc368d45"
+    },
+    {
+      "source": "landing/icons/android-chrome-192x192.png",
+      "archive": "superseded-v7-draft/landing/icons/android-chrome-192x192.png",
+      "kind": "unapproved animation-frame draft",
+      "bytes": 21513,
+      "sha256": "83ff8460026ad251e1694c43e18e9b7ea12fb2141238adb811bfbc83bdd54d01"
+    },
+    {
+      "source": "landing/icons/android-chrome-512x512.png",
+      "archive": "previous-committed/landing/icons/android-chrome-512x512.png",
+      "kind": "HEAD before promotion",
+      "bytes": 125503,
+      "sha256": "caf3a7290f1695d9783fb60a2d4555a41156cbdf62f248aae21f3b21a77fa44e"
+    },
+    {
+      "source": "landing/icons/android-chrome-512x512.png",
+      "archive": "superseded-v7-draft/landing/icons/android-chrome-512x512.png",
+      "kind": "unapproved animation-frame draft",
+      "bytes": 96606,
+      "sha256": "9aa65e0b8cbbe3d35cc010e9a0bba969f8f31d681336de7534444c2fc95a055e"
+    },
+    {
+      "source": "landing/icons/apple-touch-icon.png",
+      "archive": "previous-committed/landing/icons/apple-touch-icon.png",
+      "kind": "HEAD before promotion",
+      "bytes": 19547,
+      "sha256": "10c9821c00f8d889160a9883054a4e8d2a2006d25bb1e7bd969c854f14cee08f"
+    },
+    {
+      "source": "landing/icons/apple-touch-icon.png",
+      "archive": "superseded-v7-draft/landing/icons/apple-touch-icon.png",
+      "kind": "unapproved animation-frame draft",
+      "bytes": 16891,
+      "sha256": "ed7120f44f4d346d279d90f2784fe6a7ef185c9925614750269f67aea5fb93eb"
+    },
+    {
+      "source": "landing/icons/chama-color-cycle-hd-v3.gif",
+      "archive": "previous-committed/landing/icons/chama-color-cycle-hd-v3.gif",
+      "kind": "HEAD before promotion",
+      "bytes": 908215,
+      "sha256": "4e06c802f3971f591054e6c30cd16da0329855d4739af2a02aa50798825014e7"
+    },
+    {
+      "source": "landing/icons/chama-mark-1024.png",
+      "archive": "previous-committed/landing/icons/chama-mark-1024.png",
+      "kind": "HEAD before promotion",
+      "bytes": 713085,
+      "sha256": "92af8e88640e6874cbc6a62d11084cf0ecd161ee72578b22fd08d25652b87c50"
+    },
+    {
+      "source": "landing/icons/chama-mark-1024.png",
+      "archive": "superseded-v7-draft/landing/icons/chama-mark-1024.png",
+      "kind": "unapproved animation-frame draft",
+      "bytes": 383017,
+      "sha256": "a95b8127bce8d4ae042ab5a326a79fae8044d5948810b47d2848ddf7672289cd"
+    },
+    {
+      "source": "landing/icons/chama-mark-128.png",
+      "archive": "previous-committed/landing/icons/chama-mark-128.png",
+      "kind": "HEAD before promotion",
+      "bytes": 18039,
+      "sha256": "0ac1a853adb60322fab9e8d72acbba9f260229adf57932013ee5635521bc1001"
+    },
+    {
+      "source": "landing/icons/chama-mark-128.png",
+      "archive": "superseded-v7-draft/landing/icons/chama-mark-128.png",
+      "kind": "unapproved animation-frame draft",
+      "bytes": 16572,
+      "sha256": "aa553ece027ddd29e168948a784d33e3658bcfc7c5f34b33926a353b32fd1345"
+    },
+    {
+      "source": "landing/icons/chama-mark-256.png",
+      "archive": "previous-committed/landing/icons/chama-mark-256.png",
+      "kind": "HEAD before promotion",
+      "bytes": 55935,
+      "sha256": "8ccd35322ccf515b702b80efb7021943b803cec53ab791df48bda2cabfe31925"
+    },
+    {
+      "source": "landing/icons/chama-mark-256.png",
+      "archive": "superseded-v7-draft/landing/icons/chama-mark-256.png",
+      "kind": "unapproved animation-frame draft",
+      "bytes": 44650,
+      "sha256": "ea168b5874c356fea098a422e539f6e7abe8defb0dbb384d88c4f57b81f81b89"
+    },
+    {
+      "source": "landing/icons/chama-mark-512.png",
+      "archive": "previous-committed/landing/icons/chama-mark-512.png",
+      "kind": "HEAD before promotion",
+      "bytes": 202057,
+      "sha256": "962c8d947168f2c745424ed935e0c01d21cda1dd5828cc77c5a75c9d3c7de40d"
+    },
+    {
+      "source": "landing/icons/chama-mark-512.png",
+      "archive": "superseded-v7-draft/landing/icons/chama-mark-512.png",
+      "kind": "unapproved animation-frame draft",
+      "bytes": 140659,
+      "sha256": "56c57d553152e1114bf2478528a0bcb3c5adb90dc8da94c574786d770f89ad73"
+    },
+    {
+      "source": "landing/icons/chama-mark-64.png",
+      "archive": "previous-committed/landing/icons/chama-mark-64.png",
+      "kind": "HEAD before promotion",
+      "bytes": 6440,
+      "sha256": "133fe7ddf633b3366bfeaba8e3bf9ff8f635a42ecd3c03253f30726627fd2102"
+    },
+    {
+      "source": "landing/icons/chama-mark-64.png",
+      "archive": "superseded-v7-draft/landing/icons/chama-mark-64.png",
+      "kind": "unapproved animation-frame draft",
+      "bytes": 6225,
+      "sha256": "343adc8b37ce7d605e6b5212d9d87f5d01a3e2189c7e5e7989dc9bdf0b77df3b"
+    },
+    {
+      "source": "landing/icons/chama-woven-branch-actions.gif",
+      "archive": "previous-committed/landing/icons/chama-woven-branch-actions.gif",
+      "kind": "HEAD before promotion",
+      "bytes": 1535113,
+      "sha256": "82e57507a721896639bcf6cd29bfc04ee0f1d64e2ad0daa6cb36bcfd46671f03"
+    },
+    {
+      "source": "landing/icons/favicon-128x128.png",
+      "archive": "previous-committed/landing/icons/favicon-128x128.png",
+      "kind": "HEAD before promotion",
+      "bytes": 11516,
+      "sha256": "52c1c3260cb0b6f7bc2922743be793d1b7f145e6494b73b6a6c01cd648ff4cb6"
+    },
+    {
+      "source": "landing/icons/favicon-128x128.png",
+      "archive": "superseded-v7-draft/landing/icons/favicon-128x128.png",
+      "kind": "unapproved animation-frame draft",
+      "bytes": 16572,
+      "sha256": "aa553ece027ddd29e168948a784d33e3658bcfc7c5f34b33926a353b32fd1345"
+    },
+    {
+      "source": "landing/icons/favicon-16x16.png",
+      "archive": "previous-committed/landing/icons/favicon-16x16.png",
+      "kind": "HEAD before promotion",
+      "bytes": 618,
+      "sha256": "a1c60b84251b38c5f6fa1ba1b5e7cb5f7e2e7362f09b87a46c8412cae378876c"
+    },
+    {
+      "source": "landing/icons/favicon-16x16.png",
+      "archive": "superseded-v7-draft/landing/icons/favicon-16x16.png",
+      "kind": "unapproved animation-frame draft",
+      "bytes": 879,
+      "sha256": "ea113fba991c7d05efde6eba8690ec4e96a780aba87d0313dd4110ffb53a9cbd"
+    },
+    {
+      "source": "landing/icons/favicon-180x180.png",
+      "archive": "previous-committed/landing/icons/favicon-180x180.png",
+      "kind": "HEAD before promotion",
+      "bytes": 19547,
+      "sha256": "10c9821c00f8d889160a9883054a4e8d2a2006d25bb1e7bd969c854f14cee08f"
+    },
+    {
+      "source": "landing/icons/favicon-180x180.png",
+      "archive": "superseded-v7-draft/landing/icons/favicon-180x180.png",
+      "kind": "unapproved animation-frame draft",
+      "bytes": 28498,
+      "sha256": "f35bb7a0d4b3da4d0e4bf65ae8dfa67532c29c8be93653f61af497d32a275f7f"
+    },
+    {
+      "source": "landing/icons/favicon-192x192.png",
+      "archive": "previous-committed/landing/icons/favicon-192x192.png",
+      "kind": "HEAD before promotion",
+      "bytes": 21822,
+      "sha256": "d4b1911082613087617988effffb57f44cd44081a283d399022ee46dbc368d45"
+    },
+    {
+      "source": "landing/icons/favicon-192x192.png",
+      "archive": "superseded-v7-draft/landing/icons/favicon-192x192.png",
+      "kind": "unapproved animation-frame draft",
+      "bytes": 31850,
+      "sha256": "7f060db3007c94982c333fcbb81711523c203879250fcb6566da35cb548bf41f"
+    },
+    {
+      "source": "landing/icons/favicon-256x256.png",
+      "archive": "previous-committed/landing/icons/favicon-256x256.png",
+      "kind": "HEAD before promotion",
+      "bytes": 34994,
+      "sha256": "7dc64ffd3bff5edf735fe99ba39098b56f721c674cad285f51cd76eb50fdbeea"
+    },
+    {
+      "source": "landing/icons/favicon-256x256.png",
+      "archive": "superseded-v7-draft/landing/icons/favicon-256x256.png",
+      "kind": "unapproved animation-frame draft",
+      "bytes": 44650,
+      "sha256": "ea168b5874c356fea098a422e539f6e7abe8defb0dbb384d88c4f57b81f81b89"
+    },
+    {
+      "source": "landing/icons/favicon-32x32.png",
+      "archive": "previous-committed/landing/icons/favicon-32x32.png",
+      "kind": "HEAD before promotion",
+      "bytes": 1571,
+      "sha256": "135e569f1e6dd0180f9cb39f662dea006bf2c4e103fb60bd86af9090dcb73a15"
+    },
+    {
+      "source": "landing/icons/favicon-32x32.png",
+      "archive": "superseded-v7-draft/landing/icons/favicon-32x32.png",
+      "kind": "unapproved animation-frame draft",
+      "bytes": 2413,
+      "sha256": "82e5a07a9c4f7ed8bd9a0d673fe9a026eec4270ba081d0de0a5beb82cbc1dfff"
+    },
+    {
+      "source": "landing/icons/favicon-48x48.png",
+      "archive": "previous-committed/landing/icons/favicon-48x48.png",
+      "kind": "HEAD before promotion",
+      "bytes": 2792,
+      "sha256": "75d670e6a2584e3a6352d984b18be82b9f96ff3fadb18d5de859adca164e47ff"
+    },
+    {
+      "source": "landing/icons/favicon-48x48.png",
+      "archive": "superseded-v7-draft/landing/icons/favicon-48x48.png",
+      "kind": "unapproved animation-frame draft",
+      "bytes": 4199,
+      "sha256": "81c413f1134fc5fa0dfc40abeed55dd2311c9d431ae4ee91fc4c38387718c40d"
+    },
+    {
+      "source": "landing/icons/favicon-512x512.png",
+      "archive": "previous-committed/landing/icons/favicon-512x512.png",
+      "kind": "HEAD before promotion",
+      "bytes": 125503,
+      "sha256": "caf3a7290f1695d9783fb60a2d4555a41156cbdf62f248aae21f3b21a77fa44e"
+    },
+    {
+      "source": "landing/icons/favicon-512x512.png",
+      "archive": "superseded-v7-draft/landing/icons/favicon-512x512.png",
+      "kind": "unapproved animation-frame draft",
+      "bytes": 140659,
+      "sha256": "56c57d553152e1114bf2478528a0bcb3c5adb90dc8da94c574786d770f89ad73"
+    },
+    {
+      "source": "landing/icons/favicon-64x64.png",
+      "archive": "previous-committed/landing/icons/favicon-64x64.png",
+      "kind": "HEAD before promotion",
+      "bytes": 4174,
+      "sha256": "43c5b5d97b82bf588a4ad1b21a5f7de7957e98fc7771fde00ea2ff580500cf7e"
+    },
+    {
+      "source": "landing/icons/favicon-64x64.png",
+      "archive": "superseded-v7-draft/landing/icons/favicon-64x64.png",
+      "kind": "unapproved animation-frame draft",
+      "bytes": 6225,
+      "sha256": "343adc8b37ce7d605e6b5212d9d87f5d01a3e2189c7e5e7989dc9bdf0b77df3b"
+    },
+    {
+      "source": "landing/icons/favicon-96x96.png",
+      "archive": "previous-committed/landing/icons/favicon-96x96.png",
+      "kind": "HEAD before promotion",
+      "bytes": 8457,
+      "sha256": "f9c23dff5ef10150a70bfc87f67a8c50afd6b43a3120dfea8023125fff77b5d9"
+    },
+    {
+      "source": "landing/icons/favicon-96x96.png",
+      "archive": "superseded-v7-draft/landing/icons/favicon-96x96.png",
+      "kind": "unapproved animation-frame draft",
+      "bytes": 10980,
+      "sha256": "a625a9faecca93600a1df5a969f2e31210f47d235ef049025c001853085e99dd"
+    },
+    {
+      "source": "landing/icons/favicon.ico",
+      "archive": "previous-committed/landing/icons/favicon.ico",
+      "kind": "HEAD before promotion",
+      "bytes": 1571,
+      "sha256": "135e569f1e6dd0180f9cb39f662dea006bf2c4e103fb60bd86af9090dcb73a15"
+    },
+    {
+      "source": "landing/icons/favicon.ico",
+      "archive": "superseded-v7-draft/landing/icons/favicon.ico",
+      "kind": "unapproved animation-frame draft",
+      "bytes": 77023,
+      "sha256": "925e94022d6ef0e2599fd7dbde9090334caccd0ed477b53828e1556ba8b94046"
+    },
+    {
+      "source": "landing/icons/og-image-people-v13.jpg",
+      "archive": "previous-committed/landing/icons/og-image-people-v13.jpg",
+      "kind": "HEAD before promotion",
+      "bytes": 213625,
+      "sha256": "7b48841118d8fcc0237ba9d10ed2328829280146a2b8556b26f901ab7308fa62"
+    },
+    {
+      "source": "public/icons/android-chrome-192x192.png",
+      "archive": "previous-committed/public/icons/android-chrome-192x192.png",
+      "kind": "HEAD before promotion",
+      "bytes": 34181,
+      "sha256": "a5bf21f8831f885b7ba0afc50d934b47f4268135a038b8b0a07b7eb646640211"
+    },
+    {
+      "source": "public/icons/android-chrome-192x192.png",
+      "archive": "superseded-v7-draft/public/icons/android-chrome-192x192.png",
+      "kind": "unapproved animation-frame draft",
+      "bytes": 21513,
+      "sha256": "83ff8460026ad251e1694c43e18e9b7ea12fb2141238adb811bfbc83bdd54d01"
+    },
+    {
+      "source": "public/icons/android-chrome-512x512.png",
+      "archive": "previous-committed/public/icons/android-chrome-512x512.png",
+      "kind": "HEAD before promotion",
+      "bytes": 202057,
+      "sha256": "962c8d947168f2c745424ed935e0c01d21cda1dd5828cc77c5a75c9d3c7de40d"
+    },
+    {
+      "source": "public/icons/android-chrome-512x512.png",
+      "archive": "superseded-v7-draft/public/icons/android-chrome-512x512.png",
+      "kind": "unapproved animation-frame draft",
+      "bytes": 96606,
+      "sha256": "9aa65e0b8cbbe3d35cc010e9a0bba969f8f31d681336de7534444c2fc95a055e"
+    },
+    {
+      "source": "public/icons/apple-touch-icon.png",
+      "archive": "previous-committed/public/icons/apple-touch-icon.png",
+      "kind": "HEAD before promotion",
+      "bytes": 59178,
+      "sha256": "51d495aa1e2517015b05a7ff24314322a66ec3766b97691d314b1fadeb3e9a0c"
+    },
+    {
+      "source": "public/icons/apple-touch-icon.png",
+      "archive": "superseded-v7-draft/public/icons/apple-touch-icon.png",
+      "kind": "unapproved animation-frame draft",
+      "bytes": 16891,
+      "sha256": "ed7120f44f4d346d279d90f2784fe6a7ef185c9925614750269f67aea5fb93eb"
+    },
+    {
+      "source": "public/icons/chama-color-cycle-boot-hd-v6.png",
+      "archive": "previous-committed/public/icons/chama-color-cycle-boot-hd-v6.png",
+      "kind": "HEAD before promotion",
+      "bytes": 423591,
+      "sha256": "4838789e6595370793254a6fd9bf74baa4a29efa9eb75c49757c9c33a57ab528"
+    },
+    {
+      "source": "public/icons/chama-color-cycle-boot-hd-v7.png",
+      "archive": "previous-committed/public/icons/chama-color-cycle-boot-hd-v7.png",
+      "kind": "HEAD before promotion",
+      "bytes": 405644,
+      "sha256": "790bbd7309b90c437d7b54a0bc780d9f5ad9bcf205ddb7e03ff1f533a95d391d"
+    },
+    {
+      "source": "public/icons/chama-nostr-banner-1500x500.png",
+      "archive": "previous-committed/public/icons/chama-nostr-banner-1500x500.png",
+      "kind": "HEAD before promotion",
+      "bytes": 642906,
+      "sha256": "bdc994641d1df7068b78816912f78cefe89db8cf700312c67179bf51c6600d2e"
+    },
+    {
+      "source": "public/icons/chama-nostr-banner.png",
+      "archive": "previous-committed/public/icons/chama-nostr-banner.png",
+      "kind": "HEAD before promotion",
+      "bytes": 1708075,
+      "sha256": "9d91052e5d2d3f669a693ccd0ad69365872417e37a5e5d3bd320a59e5b88d1db"
+    },
+    {
+      "source": "public/icons/chama-nostr-banner.svg",
+      "archive": "previous-committed/public/icons/chama-nostr-banner.svg",
+      "kind": "HEAD before promotion",
+      "bytes": 4600,
+      "sha256": "3620ab16d89ecc3d774dfda1ff45e6c7bace3ed1bc69da1c6520d93eab8350df"
+    },
+    {
+      "source": "public/icons/chama-woven-trust-lockup-horizontal.svg",
+      "archive": "previous-committed/public/icons/chama-woven-trust-lockup-horizontal.svg",
+      "kind": "HEAD before promotion",
+      "bytes": 2221554,
+      "sha256": "eb2e1f884b10ce61206be99aff3a5222713ab7c54c8f4dc71348f7ffe2af86d9"
+    },
+    {
+      "source": "public/icons/chama-woven-trust-mark-transparent-64.png",
+      "archive": "previous-committed/public/icons/chama-woven-trust-mark-transparent-64.png",
+      "kind": "HEAD before promotion",
+      "bytes": 6440,
+      "sha256": "133fe7ddf633b3366bfeaba8e3bf9ff8f635a42ecd3c03253f30726627fd2102"
+    },
+    {
+      "source": "public/icons/chama-woven-trust-mark-transparent-64.png",
+      "archive": "superseded-v7-draft/public/icons/chama-woven-trust-mark-transparent-64.png",
+      "kind": "unapproved animation-frame draft",
+      "bytes": 6225,
+      "sha256": "343adc8b37ce7d605e6b5212d9d87f5d01a3e2189c7e5e7989dc9bdf0b77df3b"
+    },
+    {
+      "source": "public/icons/favicon-128x128.png",
+      "archive": "previous-committed/public/icons/favicon-128x128.png",
+      "kind": "HEAD before promotion",
+      "bytes": 16899,
+      "sha256": "d0617cfde9ce7e226044d515ad664e04e7c8550afb1c06b69b96e8bdaab1251b"
+    },
+    {
+      "source": "public/icons/favicon-128x128.png",
+      "archive": "superseded-v7-draft/public/icons/favicon-128x128.png",
+      "kind": "unapproved animation-frame draft",
+      "bytes": 16572,
+      "sha256": "aa553ece027ddd29e168948a784d33e3658bcfc7c5f34b33926a353b32fd1345"
+    },
+    {
+      "source": "public/icons/favicon-16x16.png",
+      "archive": "previous-committed/public/icons/favicon-16x16.png",
+      "kind": "HEAD before promotion",
+      "bytes": 860,
+      "sha256": "ad96ef6a7b9ef2ad1d1a27015715f2e0e346c1b2578d78f9a8a42462fc55cacb"
+    },
+    {
+      "source": "public/icons/favicon-16x16.png",
+      "archive": "superseded-v7-draft/public/icons/favicon-16x16.png",
+      "kind": "unapproved animation-frame draft",
+      "bytes": 879,
+      "sha256": "ea113fba991c7d05efde6eba8690ec4e96a780aba87d0313dd4110ffb53a9cbd"
+    },
+    {
+      "source": "public/icons/favicon-192x192.png",
+      "archive": "previous-committed/public/icons/favicon-192x192.png",
+      "kind": "HEAD before promotion",
+      "bytes": 34181,
+      "sha256": "a5bf21f8831f885b7ba0afc50d934b47f4268135a038b8b0a07b7eb646640211"
+    },
+    {
+      "source": "public/icons/favicon-192x192.png",
+      "archive": "superseded-v7-draft/public/icons/favicon-192x192.png",
+      "kind": "unapproved animation-frame draft",
+      "bytes": 31850,
+      "sha256": "7f060db3007c94982c333fcbb81711523c203879250fcb6566da35cb548bf41f"
+    },
+    {
+      "source": "public/icons/favicon-256x256.png",
+      "archive": "previous-committed/public/icons/favicon-256x256.png",
+      "kind": "HEAD before promotion",
+      "bytes": 52105,
+      "sha256": "3f49f05f063b9aab2c5492f6ece8f4786af94142863a8ff9fb68c3b52f1ea349"
+    },
+    {
+      "source": "public/icons/favicon-256x256.png",
+      "archive": "superseded-v7-draft/public/icons/favicon-256x256.png",
+      "kind": "unapproved animation-frame draft",
+      "bytes": 44650,
+      "sha256": "ea168b5874c356fea098a422e539f6e7abe8defb0dbb384d88c4f57b81f81b89"
+    },
+    {
+      "source": "public/icons/favicon-32x32.png",
+      "archive": "previous-committed/public/icons/favicon-32x32.png",
+      "kind": "HEAD before promotion",
+      "bytes": 2377,
+      "sha256": "f9252618f8fb700738c269caeb766bf0e9fba5545ecddc7b49136d21a3c77da3"
+    },
+    {
+      "source": "public/icons/favicon-32x32.png",
+      "archive": "superseded-v7-draft/public/icons/favicon-32x32.png",
+      "kind": "unapproved animation-frame draft",
+      "bytes": 2413,
+      "sha256": "82e5a07a9c4f7ed8bd9a0d673fe9a026eec4270ba081d0de0a5beb82cbc1dfff"
+    },
+    {
+      "source": "public/icons/favicon-48x48.png",
+      "archive": "previous-committed/public/icons/favicon-48x48.png",
+      "kind": "HEAD before promotion",
+      "bytes": 4253,
+      "sha256": "dd9eae929b630e3f728b3e89171d3cffa56373083d197d5c1d04db5a6ba5b547"
+    },
+    {
+      "source": "public/icons/favicon-48x48.png",
+      "archive": "superseded-v7-draft/public/icons/favicon-48x48.png",
+      "kind": "unapproved animation-frame draft",
+      "bytes": 4199,
+      "sha256": "81c413f1134fc5fa0dfc40abeed55dd2311c9d431ae4ee91fc4c38387718c40d"
+    },
+    {
+      "source": "public/icons/favicon-512x512.png",
+      "archive": "previous-committed/public/icons/favicon-512x512.png",
+      "kind": "HEAD before promotion",
+      "bytes": 202057,
+      "sha256": "962c8d947168f2c745424ed935e0c01d21cda1dd5828cc77c5a75c9d3c7de40d"
+    },
+    {
+      "source": "public/icons/favicon-512x512.png",
+      "archive": "superseded-v7-draft/public/icons/favicon-512x512.png",
+      "kind": "unapproved animation-frame draft",
+      "bytes": 140659,
+      "sha256": "56c57d553152e1114bf2478528a0bcb3c5adb90dc8da94c574786d770f89ad73"
+    },
+    {
+      "source": "public/icons/favicon-96x96.png",
+      "archive": "previous-committed/public/icons/favicon-96x96.png",
+      "kind": "HEAD before promotion",
+      "bytes": 11545,
+      "sha256": "afeb520fbb5283f225b50cf591208e8d07005ac3178e192c76b2040d78e7a540"
+    },
+    {
+      "source": "public/icons/favicon-96x96.png",
+      "archive": "superseded-v7-draft/public/icons/favicon-96x96.png",
+      "kind": "unapproved animation-frame draft",
+      "bytes": 10980,
+      "sha256": "a625a9faecca93600a1df5a969f2e31210f47d235ef049025c001853085e99dd"
+    },
+    {
+      "source": "public/icons/favicon.ico",
+      "archive": "previous-committed/public/icons/favicon.ico",
+      "kind": "HEAD before promotion",
+      "bytes": 7544,
+      "sha256": "d859c25fe81b5a2d4d9b98429881fcb0a7a500a6456cfef69c0548cadb6235d3"
+    },
+    {
+      "source": "public/icons/favicon.ico",
+      "archive": "superseded-v7-draft/public/icons/favicon.ico",
+      "kind": "unapproved animation-frame draft",
+      "bytes": 77023,
+      "sha256": "925e94022d6ef0e2599fd7dbde9090334caccd0ed477b53828e1556ba8b94046"
+    },
+    {
+      "source": "public/icons/getchama-social-exchange-v1.png",
+      "archive": "previous-committed/public/icons/getchama-social-exchange-v1.png",
+      "kind": "HEAD before promotion",
+      "bytes": 661490,
+      "sha256": "a33ae02ad0557897cf320e0cbb71e4e399d3c9ca9ab44916f3f282f1be917d79"
+    },
+    {
+      "source": "public/icons/profile-pics/chama-profile-mark-black-1024.png",
+      "archive": "previous-committed/public/icons/profile-pics/chama-profile-mark-black-1024.png",
+      "kind": "HEAD before promotion",
+      "bytes": 573064,
+      "sha256": "f24b58c5a9cee9bad8977d9bc0773daeb9ecc8fb3b1fb1f4dfdcca134da12b6e"
+    },
+    {
+      "source": "public/icons/profile-pics/chama-profile-mark-black-128.png",
+      "archive": "previous-committed/public/icons/profile-pics/chama-profile-mark-black-128.png",
+      "kind": "HEAD before promotion",
+      "bytes": 14569,
+      "sha256": "e23bbbf01a22bdc64303ea04f5c6ee2e5c56724a2ab2b76c48130272977a399e"
+    },
+    {
+      "source": "public/icons/profile-pics/chama-profile-mark-black-256.png",
+      "archive": "previous-committed/public/icons/profile-pics/chama-profile-mark-black-256.png",
+      "kind": "HEAD before promotion",
+      "bytes": 49135,
+      "sha256": "4a933dd7a1aaef71b325c6c34dd304c93694de0c7967538c4cd39357a488988b"
+    },
+    {
+      "source": "public/icons/profile-pics/chama-profile-mark-black-512.png",
+      "archive": "previous-committed/public/icons/profile-pics/chama-profile-mark-black-512.png",
+      "kind": "HEAD before promotion",
+      "bytes": 178880,
+      "sha256": "0957f154fb9732c75680563483a7ba8ab76475a4d0d8978906a2c1e5fc6bace3"
+    },
+    {
+      "source": "public/icons/profile-pics/chama-profile-mark-black-64.png",
+      "archive": "previous-committed/public/icons/profile-pics/chama-profile-mark-black-64.png",
+      "kind": "HEAD before promotion",
+      "bytes": 4495,
+      "sha256": "7693c1371222f987f0f77b695f7593ed71db1fca389386d2b5f8bdacabe1b740"
+    },
+    {
+      "source": "src-tauri/icons/icon.icns",
+      "archive": "previous-committed/src-tauri/icons/icon.icns",
+      "kind": "HEAD before promotion",
+      "bytes": 323960,
+      "sha256": "50c4580bd9a2af173fa4f8b801a0cba651ad0083888669b31ae225ec9cb1f826"
+    },
+    {
+      "source": "src-tauri/icons/icon.icns",
+      "archive": "superseded-v7-draft/src-tauri/icons/icon.icns",
+      "kind": "unapproved animation-frame draft",
+      "bytes": 798229,
+      "sha256": "cb9345bcbcdc8b1ae5ef77976af57e2921f2b0f8a4a615ec48ef21e12a0b83a2"
+    },
+    {
+      "source": "src-tauri/icons/icon.png",
+      "archive": "previous-committed/src-tauri/icons/icon.png",
+      "kind": "HEAD before promotion",
+      "bytes": 730620,
+      "sha256": "110a455dbc79e264300d16d6d49cf727891fead76638b2eb285cc191a6e6c963"
+    },
+    {
+      "source": "src-tauri/icons/icon.png",
+      "archive": "superseded-v7-draft/src-tauri/icons/icon.png",
+      "kind": "unapproved animation-frame draft",
+      "bytes": 383017,
+      "sha256": "a95b8127bce8d4ae042ab5a326a79fae8044d5948810b47d2848ddf7672289cd"
+    },
+    {
+      "source": "public/icons/chama-color-cycle-boot-hd-v6.png",
+      "archive": "removed-from-shipping/public/icons/chama-color-cycle-boot-hd-v6.png",
+      "kind": "unused asset removed from shipping",
+      "bytes": 423591,
+      "sha256": "4838789e6595370793254a6fd9bf74baa4a29efa9eb75c49757c9c33a57ab528"
+    },
+    {
+      "source": "public/icons/chama-color-cycle-boot-hd-v5.png",
+      "archive": "removed-from-shipping/public/icons/chama-color-cycle-boot-hd-v5.png",
+      "kind": "unused asset removed from shipping",
+      "bytes": 442404,
+      "sha256": "a274aa26ddf901c2877eddbced26f2f1a44eb5e1006abec58c8fbbbda64cf5c2"
+    },
+    {
+      "source": "public/icons/chama-woven-trust-mark-transparent-64.png",
+      "archive": "removed-from-shipping/public/icons/chama-woven-trust-mark-transparent-64.png",
+      "kind": "unused asset removed from shipping",
+      "bytes": 6225,
+      "sha256": "343adc8b37ce7d605e6b5212d9d87f5d01a3e2189c7e5e7989dc9bdf0b77df3b"
+    },
+    {
+      "source": "landing/icons/chama-woven-branch-actions.gif",
+      "archive": "removed-from-shipping/landing/icons/chama-woven-branch-actions.gif",
+      "kind": "unused asset removed from shipping",
+      "bytes": 1535113,
+      "sha256": "82e57507a721896639bcf6cd29bfc04ee0f1d64e2ad0daa6cb36bcfd46671f03"
+    },
+    {
+      "source": "landing/icons/chama-color-cycle-hd-v3.gif",
+      "archive": "removed-from-shipping/landing/icons/chama-color-cycle-hd-v3.gif",
+      "kind": "unused asset removed from shipping",
+      "bytes": 908215,
+      "sha256": "4e06c802f3971f591054e6c30cd16da0329855d4739af2a02aa50798825014e7"
+    },
+    {
+      "source": "public/icons/chama-nostr-banner.png",
+      "archive": "removed-from-shipping/public/icons/chama-nostr-banner.png",
+      "kind": "unused asset removed from shipping",
+      "bytes": 1708075,
+      "sha256": "9d91052e5d2d3f669a693ccd0ad69365872417e37a5e5d3bd320a59e5b88d1db"
+    },
+    {
+      "source": "public/icons/chama-nostr-banner-1500x500.png",
+      "archive": "removed-from-shipping/public/icons/chama-nostr-banner-1500x500.png",
+      "kind": "unused asset removed from shipping",
+      "bytes": 642906,
+      "sha256": "bdc994641d1df7068b78816912f78cefe89db8cf700312c67179bf51c6600d2e"
+    },
+    {
+      "source": "public/icons/chama-nostr-banner.svg",
+      "archive": "removed-from-shipping/public/icons/chama-nostr-banner.svg",
+      "kind": "unused asset removed from shipping",
+      "bytes": 4600,
+      "sha256": "3620ab16d89ecc3d774dfda1ff45e6c7bace3ed1bc69da1c6520d93eab8350df"
+    },
+    {
+      "source": "public/icons/chama-woven-trust-lockup-horizontal.svg",
+      "archive": "removed-from-shipping/public/icons/chama-woven-trust-lockup-horizontal.svg",
+      "kind": "unused asset removed from shipping",
+      "bytes": 2221554,
+      "sha256": "eb2e1f884b10ce61206be99aff3a5222713ab7c54c8f4dc71348f7ffe2af86d9"
+    },
+    {
+      "source": "android/app/src/main/res/drawable-port-xxxhdpi/splash.png",
+      "archive": "removed-from-shipping/android/app/src/main/res/drawable-port-xxxhdpi/splash.png",
+      "kind": "unused asset removed from shipping",
+      "bytes": 167680,
+      "sha256": "ba0c0c9e97aa823d371ff978c18dae12738236e4df947dd2ce3b6c631737603c"
+    },
+    {
+      "source": "android/app/src/main/res/drawable-land-xhdpi/splash.png",
+      "archive": "removed-from-shipping/android/app/src/main/res/drawable-land-xhdpi/splash.png",
+      "kind": "unused asset removed from shipping",
+      "bytes": 61749,
+      "sha256": "1ad9b9c2e35e9ccdcc00b03bdcc5c3447c604528acb1e982572553c4d83fc83e"
+    },
+    {
+      "source": "android/app/src/main/res/drawable/splash.png",
+      "archive": "removed-from-shipping/android/app/src/main/res/drawable/splash.png",
+      "kind": "unused asset removed from shipping",
+      "bytes": 118090,
+      "sha256": "1b7b5b5a4a6d62e03d56e00195c2d0691b7da405aed83e29906a79d4c7cb499c"
+    },
+    {
+      "source": "android/app/src/main/res/drawable-port-hdpi/splash.png",
+      "archive": "removed-from-shipping/android/app/src/main/res/drawable-port-hdpi/splash.png",
+      "kind": "unused asset removed from shipping",
+      "bytes": 34094,
+      "sha256": "cdc20ef1711712ce2b47f0ea6eb5aad7be23345d1b64ae2c2279ef5b866f9217"
+    },
+    {
+      "source": "android/app/src/main/res/drawable-port-mdpi/splash.png",
+      "archive": "removed-from-shipping/android/app/src/main/res/drawable-port-mdpi/splash.png",
+      "kind": "unused asset removed from shipping",
+      "bytes": 17766,
+      "sha256": "b914c37b9d73342d8f0055517b18ea3a60e2e3fda2888b37b526562438205dc8"
+    },
+    {
+      "source": "android/app/src/main/res/drawable-land-mdpi/splash.png",
+      "archive": "removed-from-shipping/android/app/src/main/res/drawable-land-mdpi/splash.png",
+      "kind": "unused asset removed from shipping",
+      "bytes": 22318,
+      "sha256": "9dc70f15d8fef8cedb4a75e03644a015274f598ab1cb371f518df879a459e352"
+    },
+    {
+      "source": "android/app/src/main/res/drawable-land-hdpi/splash.png",
+      "archive": "removed-from-shipping/android/app/src/main/res/drawable-land-hdpi/splash.png",
+      "kind": "unused asset removed from shipping",
+      "bytes": 118090,
+      "sha256": "1b7b5b5a4a6d62e03d56e00195c2d0691b7da405aed83e29906a79d4c7cb499c"
+    },
+    {
+      "source": "android/app/src/main/res/drawable-land-xxhdpi/splash.png",
+      "archive": "removed-from-shipping/android/app/src/main/res/drawable-land-xxhdpi/splash.png",
+      "kind": "unused asset removed from shipping",
+      "bytes": 99272,
+      "sha256": "a4a26c62a3807338d6af04d54a015ee1df6452bc7a9c2062f4f1fd69aee8ccfa"
+    },
+    {
+      "source": "android/app/src/main/res/drawable-port-xxhdpi/splash.png",
+      "archive": "removed-from-shipping/android/app/src/main/res/drawable-port-xxhdpi/splash.png",
+      "kind": "unused asset removed from shipping",
+      "bytes": 108844,
+      "sha256": "4187882436665b0578011402c28f820e142fc7d2641fd329c17013f0e41a4703"
+    },
+    {
+      "source": "android/app/src/main/res/drawable-port-xhdpi/splash.png",
+      "archive": "removed-from-shipping/android/app/src/main/res/drawable-port-xhdpi/splash.png",
+      "kind": "unused asset removed from shipping",
+      "bytes": 67175,
+      "sha256": "30ad56f165ca0804168f5375fb0ccdd50aff41a491cb5944d15927df21c7d2ce"
+    },
+    {
+      "source": "android/app/src/main/res/drawable-land-xxxhdpi/splash.png",
+      "archive": "removed-from-shipping/android/app/src/main/res/drawable-land-xxxhdpi/splash.png",
+      "kind": "unused asset removed from shipping",
+      "bytes": 157338,
+      "sha256": "ce98d0d6675ae5a2a751df1e856795fb9d815c089715e5b99c54caafd5867e78"
+    },
+    {
+      "source": "outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-c-glyph.svg",
+      "archive": "earlier-designs/outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-c-glyph.svg",
+      "kind": "earlier design collection",
+      "bytes": 1318,
+      "sha256": "01e2e0e22674e5058b7e7a7dcfcbad77eb01c3fe8e23945fc2baf801a62c7cdb"
+    },
+    {
+      "source": "outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-lockup-horizontal-dark.png",
+      "archive": "earlier-designs/outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-lockup-horizontal-dark.png",
+      "kind": "earlier design collection",
+      "bytes": 384312,
+      "sha256": "84cdc8bbdfee9c5ab307f2421e9bb895d40ed854582fb9ac9c33c2e9122c6af7"
+    },
+    {
+      "source": "outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-lockup-stacked-transparent.png",
+      "archive": "earlier-designs/outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-lockup-stacked-transparent.png",
+      "kind": "earlier design collection",
+      "bytes": 596675,
+      "sha256": "d4591bee93eb07991064c378886f2599c8d5cfb97d3516a5a4cbf794cea50ba9"
+    },
+    {
+      "source": "outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-logo-lockup-black-uhd-3840x2160.png",
+      "archive": "earlier-designs/outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-logo-lockup-black-uhd-3840x2160.png",
+      "kind": "earlier design collection",
+      "bytes": 651224,
+      "sha256": "431cf285d9b787062aa0a75573d494f6466d63afce311aefa6a00a4c38bc6f2c"
+    },
+    {
+      "source": "outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-social-card-official.png",
+      "archive": "earlier-designs/outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-social-card-official.png",
+      "kind": "earlier design collection",
+      "bytes": 627699,
+      "sha256": "a46f66498d9c8c4114e9663e1691608c2895ac2ad7bd002cfb12bf0800f2539e"
+    },
+    {
+      "source": "outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-wordmark.svg",
+      "archive": "earlier-designs/outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-wordmark.svg",
+      "kind": "earlier design collection",
+      "bytes": 1509,
+      "sha256": "851d62145691e1062efe94aa4cbcb9ccf22990d37daf750bd509dd36223aab89"
+    },
+    {
+      "source": "outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-woven-branch-actions.gif",
+      "archive": "earlier-designs/outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-woven-branch-actions.gif",
+      "kind": "earlier design collection",
+      "bytes": 1535113,
+      "sha256": "82e57507a721896639bcf6cd29bfc04ee0f1d64e2ad0daa6cb36bcfd46671f03"
+    },
+    {
+      "source": "outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-woven-branch-actions.png",
+      "archive": "earlier-designs/outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-woven-branch-actions.png",
+      "kind": "earlier design collection",
+      "bytes": 6137954,
+      "sha256": "9cbd305ce8bb685e4087188b5d6e3f1b5290fd2bd88784a37f6dc8d42065c405"
+    },
+    {
+      "source": "outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-woven-trust-mark-master-dark.png",
+      "archive": "earlier-designs/outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-woven-trust-mark-master-dark.png",
+      "kind": "earlier design collection",
+      "bytes": 1480031,
+      "sha256": "104570ea75ff9df16f353239d01f5d2fcb71d3582a46ffb5bea46da6b4ac7390"
+    },
+    {
+      "source": "outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-woven-trust-mark-master-transparent.png",
+      "archive": "earlier-designs/outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-woven-trust-mark-master-transparent.png",
+      "kind": "earlier design collection",
+      "bytes": 1665468,
+      "sha256": "2181cac099ceca2265215427fed6aa2a12e33fdee00c720a2b848d92824df2ea"
+    },
+    {
+      "source": "outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-woven-trust-mark-transparent-1024.png",
+      "archive": "earlier-designs/outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-woven-trust-mark-transparent-1024.png",
+      "kind": "earlier design collection",
+      "bytes": 713085,
+      "sha256": "92af8e88640e6874cbc6a62d11084cf0ecd161ee72578b22fd08d25652b87c50"
+    },
+    {
+      "source": "outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-woven-trust-mark-transparent-128.png",
+      "archive": "earlier-designs/outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-woven-trust-mark-transparent-128.png",
+      "kind": "earlier design collection",
+      "bytes": 18039,
+      "sha256": "0ac1a853adb60322fab9e8d72acbba9f260229adf57932013ee5635521bc1001"
+    },
+    {
+      "source": "outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-woven-trust-mark-transparent-152.png",
+      "archive": "earlier-designs/outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-woven-trust-mark-transparent-152.png",
+      "kind": "earlier design collection",
+      "bytes": 23533,
+      "sha256": "d1f3d59eaa9131031b7791508cfa691efec0633db26b6826bcf5e09ebff3bcb9"
+    },
+    {
+      "source": "outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-woven-trust-mark-transparent-16.png",
+      "archive": "earlier-designs/outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-woven-trust-mark-transparent-16.png",
+      "kind": "earlier design collection",
+      "bytes": 860,
+      "sha256": "ad96ef6a7b9ef2ad1d1a27015715f2e0e346c1b2578d78f9a8a42462fc55cacb"
+    },
+    {
+      "source": "outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-woven-trust-mark-transparent-167.png",
+      "archive": "earlier-designs/outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-woven-trust-mark-transparent-167.png",
+      "kind": "earlier design collection",
+      "bytes": 27235,
+      "sha256": "bf0620d61f485af531ffe1e2028738663ff02359b005ac394e45fad7c0031978"
+    },
+    {
+      "source": "outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-woven-trust-mark-transparent-180.png",
+      "archive": "earlier-designs/outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-woven-trust-mark-transparent-180.png",
+      "kind": "earlier design collection",
+      "bytes": 30694,
+      "sha256": "bd98f3eb9085e89148854e4362b5458e5432e1527e881dae9aec8351f9d8951d"
+    },
+    {
+      "source": "outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-woven-trust-mark-transparent-192.png",
+      "archive": "earlier-designs/outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-woven-trust-mark-transparent-192.png",
+      "kind": "earlier design collection",
+      "bytes": 34181,
+      "sha256": "a5bf21f8831f885b7ba0afc50d934b47f4268135a038b8b0a07b7eb646640211"
+    },
+    {
+      "source": "outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-woven-trust-mark-transparent-256.png",
+      "archive": "earlier-designs/outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-woven-trust-mark-transparent-256.png",
+      "kind": "earlier design collection",
+      "bytes": 55935,
+      "sha256": "8ccd35322ccf515b702b80efb7021943b803cec53ab791df48bda2cabfe31925"
+    },
+    {
+      "source": "outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-woven-trust-mark-transparent-32.png",
+      "archive": "earlier-designs/outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-woven-trust-mark-transparent-32.png",
+      "kind": "earlier design collection",
+      "bytes": 2377,
+      "sha256": "f9252618f8fb700738c269caeb766bf0e9fba5545ecddc7b49136d21a3c77da3"
+    },
+    {
+      "source": "outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-woven-trust-mark-transparent-384.png",
+      "archive": "earlier-designs/outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-woven-trust-mark-transparent-384.png",
+      "kind": "earlier design collection",
+      "bytes": 116448,
+      "sha256": "09474a439612438b2195a2ee5e8d9478c0b862a1571c09dea585c8beaf830b89"
+    },
+    {
+      "source": "outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-woven-trust-mark-transparent-48.png",
+      "archive": "earlier-designs/outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-woven-trust-mark-transparent-48.png",
+      "kind": "earlier design collection",
+      "bytes": 4253,
+      "sha256": "dd9eae929b630e3f728b3e89171d3cffa56373083d197d5c1d04db5a6ba5b547"
+    },
+    {
+      "source": "outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-woven-trust-mark-transparent-512.png",
+      "archive": "earlier-designs/outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-woven-trust-mark-transparent-512.png",
+      "kind": "earlier design collection",
+      "bytes": 202057,
+      "sha256": "962c8d947168f2c745424ed935e0c01d21cda1dd5828cc77c5a75c9d3c7de40d"
+    },
+    {
+      "source": "outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-2x.png",
+      "archive": "earlier-designs/outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-2x.png",
+      "kind": "earlier design collection",
+      "bytes": 1629637,
+      "sha256": "80579cc0d9c266eef20912635cccfa6ca9cd87c27c51944b8a1b867553d4afb7"
+    },
+    {
+      "source": "outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v1.png",
+      "archive": "earlier-designs/outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v1.png",
+      "kind": "earlier design collection",
+      "bytes": 724970,
+      "sha256": "f252a55965688a6074a631cba482d0e58e95fdb04a7344002db3ef4052927092"
+    },
+    {
+      "source": "outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v10-2x.png",
+      "archive": "earlier-designs/outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v10-2x.png",
+      "kind": "earlier design collection",
+      "bytes": 2717349,
+      "sha256": "3f815055f8e6babdd8c4609eb555359337c9b8c16f65b67369e05131e6447e48"
+    },
+    {
+      "source": "outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v10.png",
+      "archive": "earlier-designs/outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v10.png",
+      "kind": "earlier design collection",
+      "bytes": 881946,
+      "sha256": "0e3b70e1809882e51a0fb697f71d5f2d1403b75756884001c8960645734655f2"
+    },
+    {
+      "source": "outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v11-2x.png",
+      "archive": "earlier-designs/outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v11-2x.png",
+      "kind": "earlier design collection",
+      "bytes": 2497466,
+      "sha256": "5c5c2b27120ae7fc87a8ea6a3f08a9b63144e6a89d756810f63338ab78c8aea8"
+    },
+    {
+      "source": "outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v11.png",
+      "archive": "earlier-designs/outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v11.png",
+      "kind": "earlier design collection",
+      "bytes": 814921,
+      "sha256": "bec4f63430401309d4d8ab281ebc545be055a79dad7ceba4cec400dccc4bcc6e"
+    },
+    {
+      "source": "outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v12-2x.png",
+      "archive": "earlier-designs/outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v12-2x.png",
+      "kind": "earlier design collection",
+      "bytes": 2508713,
+      "sha256": "357dfbf14f0546ec7e839d7f01f014d7ed9c48294788041cb0d9aaaf7b1881a7"
+    },
+    {
+      "source": "outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v12.png",
+      "archive": "earlier-designs/outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v12.png",
+      "kind": "earlier design collection",
+      "bytes": 818576,
+      "sha256": "f58d4ed2835188f999aed380113b6986700015a5d96c5cd138f360f7ad2fa72c"
+    },
+    {
+      "source": "outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v13-2x.png",
+      "archive": "earlier-designs/outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v13-2x.png",
+      "kind": "earlier design collection",
+      "bytes": 2494984,
+      "sha256": "e6593a0a8a5e8cd5c2fa2260317854448a7c6fd86a3b5a78c3225e94dbec0aeb"
+    },
+    {
+      "source": "outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v13.png",
+      "archive": "earlier-designs/outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v13.png",
+      "kind": "earlier design collection",
+      "bytes": 817472,
+      "sha256": "6e6320bca128aaf3a032502132217592aba2caf3f9d0816dd5e8cf42caa53d11"
+    },
+    {
+      "source": "outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v14-2x.png",
+      "archive": "earlier-designs/outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v14-2x.png",
+      "kind": "earlier design collection",
+      "bytes": 2626483,
+      "sha256": "aa9e35ebca81f6081a6c2a733fe28d2ae40fbff3b939ad53964c5de4ecd3de7f"
+    },
+    {
+      "source": "outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v14.png",
+      "archive": "earlier-designs/outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v14.png",
+      "kind": "earlier design collection",
+      "bytes": 867863,
+      "sha256": "c9b519782e35b90b50f49dff097b92f80552a1e72ac93ef00c89ac79877da2be"
+    },
+    {
+      "source": "outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v15-2x.png",
+      "archive": "earlier-designs/outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v15-2x.png",
+      "kind": "earlier design collection",
+      "bytes": 2575893,
+      "sha256": "8e284f78f813acf74043f2f6a840bdfe02e969dd5edbebc257535e71cee4a736"
+    },
+    {
+      "source": "outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v15.png",
+      "archive": "earlier-designs/outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v15.png",
+      "kind": "earlier design collection",
+      "bytes": 848697,
+      "sha256": "80ae0acb42ccffd7b7681ff3a627e1bd9093041c4c3906ca2bdcf956553e103f"
+    },
+    {
+      "source": "outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v16-2x.png",
+      "archive": "earlier-designs/outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v16-2x.png",
+      "kind": "earlier design collection",
+      "bytes": 1781944,
+      "sha256": "f5bcfd4370378742b7f680c292c2b4fe02f206c148bb22736eaccfff4521bc2a"
+    },
+    {
+      "source": "outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v16.png",
+      "archive": "earlier-designs/outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v16.png",
+      "kind": "earlier design collection",
+      "bytes": 671023,
+      "sha256": "5daa05e86941e972017e04cd5ac458a964998431db24f560b7065bd268ae4f59"
+    },
+    {
+      "source": "outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v17-2x.png",
+      "archive": "earlier-designs/outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v17-2x.png",
+      "kind": "earlier design collection",
+      "bytes": 1889930,
+      "sha256": "4de58ebd838a75170bda900fb7335c6e79d418e495a93f98bf241426494e852d"
+    },
+    {
+      "source": "outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v17.png",
+      "archive": "earlier-designs/outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v17.png",
+      "kind": "earlier design collection",
+      "bytes": 719347,
+      "sha256": "f8196cbd613d472d9a7e5563eefdc0f92d75ed673713c150fbe6cbc2ecfabdfb"
+    },
+    {
+      "source": "outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v18-2x.png",
+      "archive": "earlier-designs/outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v18-2x.png",
+      "kind": "earlier design collection",
+      "bytes": 1508866,
+      "sha256": "5799c8dcd732d92de26bb8b3e4fa8c6c7504485ba236f84921e552329aec4f21"
+    },
+    {
+      "source": "outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v18.png",
+      "archive": "earlier-designs/outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v18.png",
+      "kind": "earlier design collection",
+      "bytes": 566368,
+      "sha256": "d1c2f334da09006c29db573073eb4d79b9be526b339f9c405b2de8817b83f067"
+    },
+    {
+      "source": "outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v19-2x.png",
+      "archive": "earlier-designs/outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v19-2x.png",
+      "kind": "earlier design collection",
+      "bytes": 1639178,
+      "sha256": "2613c8f482da60c6283c819d6eba71b05ec1c4ab2b2568e73eaa141a45e9f7b6"
+    },
+    {
+      "source": "outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v19.png",
+      "archive": "earlier-designs/outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v19.png",
+      "kind": "earlier design collection",
+      "bytes": 603626,
+      "sha256": "bfa3de9834b884b05da36e19dfb486afea67953d2cc67f5d523f091b1d1260cf"
+    },
+    {
+      "source": "outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v2-2x.png",
+      "archive": "earlier-designs/outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v2-2x.png",
+      "kind": "earlier design collection",
+      "bytes": 2497051,
+      "sha256": "b3892444f4a9d86701156267a77f29d798a444d106af55dc4cd37abb1bd7decd"
+    },
+    {
+      "source": "outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v2.png",
+      "archive": "earlier-designs/outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v2.png",
+      "kind": "earlier design collection",
+      "bytes": 825546,
+      "sha256": "46beef57a8e5cbf6f7773e4d7dd5ee408961d01521264224cb8f9ed266871b9e"
+    },
+    {
+      "source": "outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v20-2x.png",
+      "archive": "earlier-designs/outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v20-2x.png",
+      "kind": "earlier design collection",
+      "bytes": 1629637,
+      "sha256": "80579cc0d9c266eef20912635cccfa6ca9cd87c27c51944b8a1b867553d4afb7"
+    },
+    {
+      "source": "outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v20.png",
+      "archive": "earlier-designs/outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v20.png",
+      "kind": "earlier design collection",
+      "bytes": 596916,
+      "sha256": "7e5a53aa7108b4133e30b51b0bac0e14d8cd24d244a39ab0844ce67599b9c3da"
+    },
+    {
+      "source": "outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v3-2x.png",
+      "archive": "earlier-designs/outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v3-2x.png",
+      "kind": "earlier design collection",
+      "bytes": 2485342,
+      "sha256": "55ee009ca8ee45aed7b53fea6d2fd80b854be5ff211cfcc978c562dfbba31893"
+    },
+    {
+      "source": "outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v3.png",
+      "archive": "earlier-designs/outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v3.png",
+      "kind": "earlier design collection",
+      "bytes": 811683,
+      "sha256": "40eb951bb7bad56b6ff4f50562c3840c6013f4903b600b56a1b940ff81278695"
+    },
+    {
+      "source": "outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v3a.png",
+      "archive": "earlier-designs/outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v3a.png",
+      "kind": "earlier design collection",
+      "bytes": 840920,
+      "sha256": "f789188e38cd63d65d38b7ffbe9bdaf3a100490783fa353bcdbb20c39c679ffb"
+    },
+    {
+      "source": "outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v3b.png",
+      "archive": "earlier-designs/outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v3b.png",
+      "kind": "earlier design collection",
+      "bytes": 830820,
+      "sha256": "80ea0516e2452fdd523b93ff99739d257943c9ab4fd594c60dbe7b20e7029cb6"
+    },
+    {
+      "source": "outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v3c.png",
+      "archive": "earlier-designs/outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v3c.png",
+      "kind": "earlier design collection",
+      "bytes": 846197,
+      "sha256": "e7f1664de44abab3dd6b4742f1f9b235c8ea8346ade129c9220c8f3648504c43"
+    },
+    {
+      "source": "outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v3d.png",
+      "archive": "earlier-designs/outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v3d.png",
+      "kind": "earlier design collection",
+      "bytes": 811683,
+      "sha256": "40eb951bb7bad56b6ff4f50562c3840c6013f4903b600b56a1b940ff81278695"
+    },
+    {
+      "source": "outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v4-2x.png",
+      "archive": "earlier-designs/outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v4-2x.png",
+      "kind": "earlier design collection",
+      "bytes": 3085099,
+      "sha256": "a7f18a0578e856a377b7a3554812a5dd5464f5a1cccc86e2cec2e18e12a82ee5"
+    },
+    {
+      "source": "outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v4.png",
+      "archive": "earlier-designs/outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v4.png",
+      "kind": "earlier design collection",
+      "bytes": 971005,
+      "sha256": "445a8ae0c3c209a3c30d182836743e633a9c51a6d5c33ad124a46fc2b7ec7919"
+    },
+    {
+      "source": "outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v4a.png",
+      "archive": "earlier-designs/outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v4a.png",
+      "kind": "earlier design collection",
+      "bytes": 983432,
+      "sha256": "331204f8b378135cac896778df2c084787dcd62130269f4b11bd610e1c2a380e"
+    },
+    {
+      "source": "outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v4b.png",
+      "archive": "earlier-designs/outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v4b.png",
+      "kind": "earlier design collection",
+      "bytes": 992575,
+      "sha256": "282fd5ab4efd6b734523149aceaf81d2b4e4342fbeebb6133b159d86c5d336ff"
+    },
+    {
+      "source": "outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v4c.png",
+      "archive": "earlier-designs/outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v4c.png",
+      "kind": "earlier design collection",
+      "bytes": 998550,
+      "sha256": "df403592f873660e66b3e06e271dabe993bb1ad7f297222da473c2bd1e671e8d"
+    },
+    {
+      "source": "outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v4d.png",
+      "archive": "earlier-designs/outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v4d.png",
+      "kind": "earlier design collection",
+      "bytes": 971005,
+      "sha256": "445a8ae0c3c209a3c30d182836743e633a9c51a6d5c33ad124a46fc2b7ec7919"
+    },
+    {
+      "source": "outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v5-2x.png",
+      "archive": "earlier-designs/outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v5-2x.png",
+      "kind": "earlier design collection",
+      "bytes": 3225249,
+      "sha256": "771253dc167a3409457b9a6b84ca40b649a5d92994650317300c0926eaf39a67"
+    },
+    {
+      "source": "outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v5.png",
+      "archive": "earlier-designs/outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v5.png",
+      "kind": "earlier design collection",
+      "bytes": 1004261,
+      "sha256": "2e4d8e5a662e422ca782f6e23b5f5ab5ae25cdd0647a4ee39d4ac25cc7674eea"
+    },
+    {
+      "source": "outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v5a.png",
+      "archive": "earlier-designs/outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v5a.png",
+      "kind": "earlier design collection",
+      "bytes": 1008186,
+      "sha256": "6cc35f4d28c6064a139465f25c6f74a8db137b06afff6c922ab8489eb6123b39"
+    },
+    {
+      "source": "outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v5b.png",
+      "archive": "earlier-designs/outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v5b.png",
+      "kind": "earlier design collection",
+      "bytes": 1004268,
+      "sha256": "185caacf5e34cbb1d9c6f448edb3b4f1aca56df6981483b5b641f21df3ab55c4"
+    },
+    {
+      "source": "outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v5c.png",
+      "archive": "earlier-designs/outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v5c.png",
+      "kind": "earlier design collection",
+      "bytes": 1014136,
+      "sha256": "20add728c9550017a725b42890ff8769a9cae8f6b97fd5a8f7f71f7e8f09f71a"
+    },
+    {
+      "source": "outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v6-2x.png",
+      "archive": "earlier-designs/outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v6-2x.png",
+      "kind": "earlier design collection",
+      "bytes": 2738162,
+      "sha256": "36d6aff0e1bc975605f93cd0a6da3033c19f5629b6646648c05a2f70e17c9a31"
+    },
+    {
+      "source": "outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v6.png",
+      "archive": "earlier-designs/outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v6.png",
+      "kind": "earlier design collection",
+      "bytes": 895117,
+      "sha256": "4081cb4806b1447dcecedf658c5e0591dac431aa4012d4be5183672f6c37d077"
+    },
+    {
+      "source": "outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v7-2x.png",
+      "archive": "earlier-designs/outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v7-2x.png",
+      "kind": "earlier design collection",
+      "bytes": 2731090,
+      "sha256": "0dd8c483d5ebd874618a3d48562ab4f3f81d2acce443c530e41f105377789e47"
+    },
+    {
+      "source": "outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v7.png",
+      "archive": "earlier-designs/outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v7.png",
+      "kind": "earlier design collection",
+      "bytes": 893304,
+      "sha256": "66513fd51ac255f8ebbdb39eddec98d94e62950df65942b74bac7d35a9d2556c"
+    },
+    {
+      "source": "outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v8-2x.png",
+      "archive": "earlier-designs/outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v8-2x.png",
+      "kind": "earlier design collection",
+      "bytes": 2709871,
+      "sha256": "6443bd818ece777ee543466d015cc70b235a943e3988bd7e3724caf6e000cb4d"
+    },
+    {
+      "source": "outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v8.png",
+      "archive": "earlier-designs/outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v8.png",
+      "kind": "earlier design collection",
+      "bytes": 886643,
+      "sha256": "2054527aeeb1436b35cf33e5573666bca880199680f123c3243227427db292f8"
+    },
+    {
+      "source": "outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v9-2x.png",
+      "archive": "earlier-designs/outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v9-2x.png",
+      "kind": "earlier design collection",
+      "bytes": 3144661,
+      "sha256": "5fbd696b68a7a7bab1a8845d524fe14b2f42e800d5424e9d6f74c91f1b416886"
+    },
+    {
+      "source": "outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v9.png",
+      "archive": "earlier-designs/outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner-v9.png",
+      "kind": "earlier design collection",
+      "bytes": 974883,
+      "sha256": "ac3a79f044fe2156d52e5876c1e83e4265e8fd2cb8638be2290834a5e77d1fcd"
+    },
+    {
+      "source": "outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner.png",
+      "archive": "earlier-designs/outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/chama-x-profile-banner.png",
+      "kind": "earlier design collection",
+      "bytes": 596916,
+      "sha256": "7e5a53aa7108b4133e30b51b0bac0e14d8cd24d244a39ab0844ce67599b9c3da"
+    },
+    {
+      "source": "outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/favicon-128x128.png",
+      "archive": "earlier-designs/outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/favicon-128x128.png",
+      "kind": "earlier design collection",
+      "bytes": 18039,
+      "sha256": "0ac1a853adb60322fab9e8d72acbba9f260229adf57932013ee5635521bc1001"
+    },
+    {
+      "source": "outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/favicon-180x180.png",
+      "archive": "earlier-designs/outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/favicon-180x180.png",
+      "kind": "earlier design collection",
+      "bytes": 30694,
+      "sha256": "bd98f3eb9085e89148854e4362b5458e5432e1527e881dae9aec8351f9d8951d"
+    },
+    {
+      "source": "outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/favicon-256x256.png",
+      "archive": "earlier-designs/outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/favicon-256x256.png",
+      "kind": "earlier design collection",
+      "bytes": 55935,
+      "sha256": "8ccd35322ccf515b702b80efb7021943b803cec53ab791df48bda2cabfe31925"
+    },
+    {
+      "source": "outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/favicon-64x64.png",
+      "archive": "earlier-designs/outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/favicon-64x64.png",
+      "kind": "earlier design collection",
+      "bytes": 6440,
+      "sha256": "133fe7ddf633b3366bfeaba8e3bf9ff8f635a42ecd3c03253f30726627fd2102"
+    },
+    {
+      "source": "outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/getchama-exchange-banner-1500x500.png",
+      "archive": "earlier-designs/outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/getchama-exchange-banner-1500x500.png",
+      "kind": "earlier design collection",
+      "bytes": 671023,
+      "sha256": "5daa05e86941e972017e04cd5ac458a964998431db24f560b7065bd268ae4f59"
+    },
+    {
+      "source": "outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/getchama-exchange-banner.png",
+      "archive": "earlier-designs/outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/getchama-exchange-banner.png",
+      "kind": "earlier design collection",
+      "bytes": 1781944,
+      "sha256": "f5bcfd4370378742b7f680c292c2b4fe02f206c148bb22736eaccfff4521bc2a"
+    },
+    {
+      "source": "outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/getchama-og-banner-exchange-v1.png",
+      "archive": "earlier-designs/outputs/archive/repo-cleanup-2026-07-13/design/brand-assets/icons-archive/getchama-og-banner-exchange-v1.png",
+      "kind": "earlier design collection",
+      "bytes": 708902,
+      "sha256": "af862d0450c2d849c4233d627cd026c1851c7708455e18cf68e68a0e1363c08b"
+    },
+    {
+      "source": "design/brand-assets/icons-archive/og-banner.png",
+      "archive": "earlier-designs/design/brand-assets/icons-archive/og-banner.png",
+      "kind": "earlier design collection",
+      "bytes": 708902,
+      "sha256": "af862d0450c2d849c4233d627cd026c1851c7708455e18cf68e68a0e1363c08b"
+    },
+    {
+      "source": "design/brand-assets/icons-archive/profile-pics/chama-profile-pics-black.zip",
+      "archive": "earlier-designs/design/brand-assets/icons-archive/profile-pics/chama-profile-pics-black.zip",
+      "kind": "earlier design collection",
+      "bytes": 796971,
+      "sha256": "7308adf61c6c6f4eec7de6dcac347f8676967a9b80e587a238f8ca50b0b7d51e"
+    },
+    {
+      "source": "design/brand-assets/landing-archive/icons/og-banner.png",
+      "archive": "earlier-designs/design/brand-assets/landing-archive/icons/og-banner.png",
+      "kind": "earlier design collection",
+      "bytes": 672210,
+      "sha256": "8dd7ef99b1a7acbbf069b5404e62a97b3b5e428888f03dc62c12d826b3735717"
+    },
+    {
+      "source": "design/brand-assets/landing-archive/icons/og-image-1200x630.png",
+      "archive": "earlier-designs/design/brand-assets/landing-archive/icons/og-image-1200x630.png",
+      "kind": "earlier design collection",
+      "bytes": 627699,
+      "sha256": "a46f66498d9c8c4114e9663e1691608c2895ac2ad7bd002cfb12bf0800f2539e"
+    },
+    {
+      "source": "outputs/brand-review/README.md",
+      "archive": "earlier-designs/outputs/brand-review/README.md",
+      "kind": "earlier design collection",
+      "bytes": 962,
+      "sha256": "64dd34dd8e14773f7c9a00634b3e6c28b0cc0840208fab247b8acfa6c5a831b2"
+    },
+    {
+      "source": "outputs/brand-review/chama-original-1024.png",
+      "archive": "earlier-designs/outputs/brand-review/chama-original-1024.png",
+      "kind": "earlier design collection",
+      "bytes": 713085,
+      "sha256": "92af8e88640e6874cbc6a62d11084cf0ecd161ee72578b22fd08d25652b87c50"
+    },
+    {
+      "source": "outputs/brand-review/chama-original-colours-clean-star-candidate.png",
+      "archive": "earlier-designs/outputs/brand-review/chama-original-colours-clean-star-candidate.png",
+      "kind": "earlier design collection",
+      "bytes": 1048061,
+      "sha256": "7ddc50529eb113a7ad211923c79d6430ffa4fc6bd21efb549eff6084aaa94bef"
+    },
+    {
+      "source": "outputs/brand-review/comparison-original-colours.png",
+      "archive": "earlier-designs/outputs/brand-review/comparison-original-colours.png",
+      "kind": "earlier design collection",
+      "bytes": 198602,
+      "sha256": "6d4612d65b9d89f838dad32564d13c9790e79b20c828c30438c07b5a8d24d2fe"
+    },
+    {
+      "source": "public/icons/getchama-social-exchange-v1.png",
+      "archive": "removed-from-shipping/public/icons/getchama-social-exchange-v1.png",
+      "kind": "superseded share composition",
+      "bytes": 661490,
+      "sha256": "a33ae02ad0557897cf320e0cbb71e4e399d3c9ca9ab44916f3f282f1be917d79"
+    },
+    {
+      "source": "landing/icons/og-image-social-v7.png",
+      "archive": "removed-from-shipping/landing/icons/og-image-social-v7.png",
+      "kind": "superseded share composition",
+      "bytes": 627699,
+      "sha256": "a46f66498d9c8c4114e9663e1691608c2895ac2ad7bd002cfb12bf0800f2539e"
+    },
+    {
+      "source": "landing/icons/og-image-people-v11.md",
+      "archive": "removed-from-shipping/landing/icons/og-image-people-v11.md",
+      "kind": "superseded share composition",
+      "bytes": 756,
+      "sha256": "c8c4f59687b3f7c4a6c1223631cd9603d8a9b3f4890059f3fc07e81a6adb7673"
+    },
+    {
+      "source": "landing/icons/og-image-circle-v10.md",
+      "archive": "removed-from-shipping/landing/icons/og-image-circle-v10.md",
+      "kind": "superseded share composition",
+      "bytes": 1113,
+      "sha256": "4962b560100c785ac1660d8790e21170c570c974765ae565bb0e9da134a2d24d"
+    },
+    {
+      "source": "landing/icons/og-image-social-v10.png",
+      "archive": "removed-from-shipping/landing/icons/og-image-social-v10.png",
+      "kind": "superseded share composition",
+      "bytes": 863711,
+      "sha256": "85ad61620782d0e59f62be4d3fa857fa35bedb62600291a2b896495d304e7547"
+    },
+    {
+      "source": "landing/icons/og-image-people-v13.jpg",
+      "archive": "removed-from-shipping/landing/icons/og-image-people-v13.jpg",
+      "kind": "superseded share composition",
+      "bytes": 213625,
+      "sha256": "7b48841118d8fcc0237ba9d10ed2328829280146a2b8556b26f901ab7308fa62"
+    },
+    {
+      "source": "landing/icons/og-image-people-v12.jpg",
+      "archive": "removed-from-shipping/landing/icons/og-image-people-v12.jpg",
+      "kind": "superseded share composition",
+      "bytes": 215977,
+      "sha256": "155bd1ad2dbd3eccb6f5611f37e9f190c44dced79639b5d11b7b666fc3309405"
+    },
+    {
+      "source": "landing/icons/og-image-people-v11.jpg",
+      "archive": "removed-from-shipping/landing/icons/og-image-people-v11.jpg",
+      "kind": "superseded share composition",
+      "bytes": 215994,
+      "sha256": "d90e8eb9ad3b6d9fc629b52bcea47e2c1967b9abf6de941b4c2c6c67c5e17663"
+    },
+    {
+      "source": "landing/icons/og-image-circle-v10.jpg",
+      "archive": "removed-from-shipping/landing/icons/og-image-circle-v10.jpg",
+      "kind": "superseded share composition",
+      "bytes": 280380,
+      "sha256": "956e14866f01db82aae759748c739345471316f3d0853fcf512563833817fccd"
+    },
+    {
+      "source": "landing/icons/og-image-social-v9.png",
+      "archive": "removed-from-shipping/landing/icons/og-image-social-v9.png",
+      "kind": "superseded share composition",
+      "bytes": 693286,
+      "sha256": "eafcafe337c0950e61dd86b031e225e5b2af13b389812f2f12ea60da3223bdff"
+    },
+    {
+      "source": "landing/icons/og-image-social-v8.png",
+      "archive": "removed-from-shipping/landing/icons/og-image-social-v8.png",
+      "kind": "superseded share composition",
+      "bytes": 745804,
+      "sha256": "250cf00024c3e2cb05df4c71828a6b23a5ea1d798c78de799b066a7063fd1fc7"
+    },
+    {
+      "source": "landing/img/chama-community-banner-v2.png",
+      "archive": "removed-from-shipping/landing/img/chama-community-banner-v2.png",
+      "kind": "superseded community banner",
+      "bytes": 3545142,
+      "sha256": "86c14c6ba083fb494983d86bacf73e438a155f78fc67d339a03d2ca30902e3dd"
+    }
+  ]
+}

@@ -479,8 +479,8 @@ async function deliver(n: TradeNotification): Promise<boolean> {
         await registration.showNotification(n.title, {
           body: n.body,
           tag: n.tag,
-          icon: "/icons/android-chrome-192x192.png",
-          badge: "/icons/favicon-96x96.png",
+          icon: "/icons/android-chrome-192x192.png?v=approved-star-20260921",
+          badge: "/icons/favicon-96x96.png?v=approved-star-20260921",
           data: { escrowId: n.escrowId },
         });
         return true;

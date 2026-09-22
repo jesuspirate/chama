@@ -16,7 +16,7 @@ export function ChamaLoader({ size = 30, label }: { size?: number; label?: strin
     >
       <img className="chama-loader-motion" src="/icons/chama-color-cycle-boot-hd-v7.png"
         width={size} height={size} alt="" decoding="async" />
-      <img className="chama-loader-static" src="/icons/chama-woven-trust-mark-transparent-64.png"
+      <img className="chama-loader-static" src="/icons/chama-mark-256.png?v=approved-star-20260921"
         width={size} height={size} alt="" decoding="async" />
       {label && <span style={{ fontFamily: T.mono, fontSize: 12, color: T.muted }}>{label}</span>}
     </span>

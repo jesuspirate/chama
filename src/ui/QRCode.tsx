@@ -179,7 +179,7 @@ export function QRCode({
           }}
         >
           {logo === "motion" ? <ChamaLoader size={logoSize} /> : <img
-            src="/icons/chama-woven-trust-mark-transparent-64.png"
+            src="/icons/chama-mark-256.png?v=approved-star-20260921"
             alt=""
             width={logoSize}
             height={logoSize}
