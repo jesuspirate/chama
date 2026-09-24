@@ -7,6 +7,21 @@
 // half. The exact TZS amount / agent number / USSD code arrive as {params}
 // — never hardcode them in a translation.
 export const fund: Record<string, string> = {
+  "fund.depositWaiting": "Waiting for your transaction.",
+  "fund.depositSeen": "Transaction seen: {amount} sats. Waiting for {count} confirmations — usually about {minutes} minutes.",
+  "fund.depositConfirmed": "Confirmed. Locking your sats now.",
+  "fund.depositFailedNext": "Check your wallet before trying again.",
+  "fund.invoiceFailedPlain": "Couldn't create a payment request right now. Nothing was taken.",
+  "fund.tryAgain": "Try again",
+  "fund.staleInvoice": "Paid an older request by mistake? It lands in your wallet.",
+  "fund.onchainMinimum": "On-chain minimum",
+  "fund.short": "Short",
+  "fund.useLightning": "Use Lightning",
+
+  "fund.lockBalance": "Lock from your balance",
+  "fund.useBalance": "Use ₿ {amount} of your ₿ {balance}",
+  "fund.useBalanceWithInsurance": "Use ₿ {amount} of your ₿ {balance} — {trade} for the trade, {insurance} insurance.",
+
   "fund.simOnchainDeposit": "Simulated chain: confirmations are accelerated. No real bitcoin is used.",
   "fund.simOnchainStuck": "Simulated chain: this deposit will stay pending until you leave.",
   "fund.simDepositUnderpaid": "Simulated deposit is below the minimum. No sats were credited. Restart with onchain=slow to rehearse a full deposit.",
@@ -178,7 +193,7 @@ export const fund: Record<string, string> = {
   "fund.onchainSlow": "ONCHAIN · SLOW",
   "fund.onchainSlowPath": "ONCHAIN FUNDING · SLOW PATH",
   "fund.onchainTotalBreakdown": "{total} · trade {trade} sats + federation fee {fee} sats",
-  "fund.onchainUnavailable": "Onchain unavailable until federation fees load.",
+  "fund.onchainUnavailable": "Couldn't check on-chain fees right now.",
   "fund.online": "Online",
   "fund.openSimDemo": "Open sim demo",
   "fund.pasteEcashNotes": "PASTE ECASH NOTES",
@@ -226,7 +241,6 @@ export const fund: Record<string, string> = {
   "fund.insuranceBefore": "includes 🛡",
   "fund.insuranceAfter": "arbiter insurance (0.25%)",
   "fund.tradeLiveClosing": "Trade is live · closing…",
-  "fund.tryAgain": "Try again",
   "fund.tryLockNow": "Try LOCK now",
   "fund.unexpectedError": "Unexpected error",
   "fund.useFediWalletBefore": "Use Fedi wallet ·",

@@ -1,5 +1,20 @@
 // es/fund — Session C fills this from src/i18n/en/fund.ts (key set must match EXACTLY).
 export const fund: Record<string, string> = {
+  "fund.depositWaiting": "Esperando tu transacción.",
+  "fund.depositSeen": "Transacción detectada: {amount} sats. Esperando {count} confirmaciones — unos {minutes} minutos.",
+  "fund.depositConfirmed": "Confirmado. Bloqueando tus sats.",
+  "fund.depositFailedNext": "Revisa tu cartera antes de volver a intentarlo.",
+  "fund.invoiceFailedPlain": "No se pudo crear una solicitud de pago. No se ha cobrado nada.",
+  "fund.tryAgain": "Intentar de nuevo",
+  "fund.staleInvoice": "¿Pagaste una solicitud anterior por error? Llega a tu cartera.",
+  "fund.onchainMinimum": "Mínimo en cadena",
+  "fund.short": "Faltan",
+  "fund.useLightning": "Usar Lightning",
+
+  "fund.lockBalance": "Bloquear desde tu saldo",
+  "fund.useBalance": "Usa ₿ {amount} de tus ₿ {balance}",
+  "fund.useBalanceWithInsurance": "Usa ₿ {amount} de tus ₿ {balance} — {trade} para el intercambio, {insurance} de seguro.",
+
   "fund.simOnchainDeposit": "Cadena simulada: las confirmaciones se aceleran. No se usa bitcoin real.",
   "fund.simOnchainStuck": "Cadena simulada: este depósito seguirá pendiente hasta que salgas.",
   "fund.simDepositUnderpaid": "El depósito simulado está por debajo del mínimo. No se abonaron sats. Reinicia con onchain=slow para ensayar un depósito completo.",
@@ -172,7 +187,7 @@ export const fund: Record<string, string> = {
   "fund.onchainSlow": "EN CADENA · LENTO",
   "fund.onchainSlowPath": "FINANCIAMIENTO EN CADENA · RUTA LENTA",
   "fund.onchainTotalBreakdown": "{total} · intercambio {trade} sats + comisión de federación {fee} sats",
-  "fund.onchainUnavailable": "En cadena no disponible hasta que carguen las comisiones de la federación.",
+  "fund.onchainUnavailable": "No se pudieron consultar las comisiones en cadena.",
   "fund.online": "En línea",
   "fund.openSimDemo": "Abrir demo sim",
   "fund.pasteEcashNotes": "PEGA NOTAS DE ECASH",
@@ -220,7 +235,6 @@ export const fund: Record<string, string> = {
   "fund.insuranceBefore": "incluye 🛡",
   "fund.insuranceAfter": "de seguro del árbitro (0,25 %)",
   "fund.tradeLiveClosing": "El intercambio está activo · cerrando…",
-  "fund.tryAgain": "Inténtalo de nuevo",
   "fund.tryLockNow": "Probar LOCK ahora",
   "fund.unexpectedError": "Error inesperado",
   "fund.useFediWalletBefore": "Usar billetera Fedi ·",

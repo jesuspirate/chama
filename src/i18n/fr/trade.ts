@@ -1,5 +1,12 @@
 // fr/trade — Session B fills this from src/i18n/en/trade.ts (key set must match EXACTLY).
 export const trade: Record<string, string> = {
+  "trade.responseHours": "{count} heures",
+  "trade.responseDays": "{count} jours",
+  "trade.arbiterNoStake": "{name} n’a pas encore de sats en garantie.",
+  "trade.arbiterVerdict": "{name} a {amount} sats en garantie et a réglé {count} litiges.",
+  "trade.arbiterResponse": "Répond habituellement sous {time}.",
+  "trade.deviceSample": "D’après ce que cet appareil a observé.",
+
   "trade.partyObserved": "Activité signée observée dans {count} échanges sur cet appareil. Sans historique, la conduite est inconnue.",
   "trade.savedSummary": "Enregistré sur cet appareil",
   "trade.historyUnverified": "Historique de l’échange non vérifié",

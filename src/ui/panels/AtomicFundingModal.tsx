@@ -1,3 +1,5 @@
+import { fundingPremiumMsats } from "../../payments/funding-premium.js";
+import { errorText } from "../../payments/error-text.js";
 import { simOnchainMode } from "../../sim/simMode.js";
 import { PaymentCard, PaymentButton, PaymentRails, type PaymentRail } from "../components/PaymentCard.js";
 import { fundingStorageFailure, type FundingStorageKey } from "../../payments/abandoned-invoices.js";
@@ -57,7 +59,7 @@ import {
   CHAPSMART_MPESA_USSD,
   type ChapsmartBuyQuote,
 } from "../../payments/chapsmart-onramp.js";
-import type { OnchainInfo } from "../../fedimint/fedimint-client.js";
+import type { OnchainDepositProgress, OnchainInfo } from "../../fedimint/fedimint-client.js";
 import type { EscrowState, SelectedMenuItem } from "../../escrow-engine/types.js";
 
 
@@ -98,7 +100,7 @@ export interface AtomicFundingModalProps {
       amountMsats: number;
       premiumMsats?: number;
       description: string;
-      fundingMethod?: "lightning" | "onchain" | "nwc" | "ecash";
+      fundingMethod?: "lightning" | "onchain" | "nwc" | "ecash" | "balance";
       ecashNotes?: string;
       nwcConnectionString?: string;
       rememberNwc?: boolean;
@@ -110,6 +112,9 @@ export interface AtomicFundingModalProps {
   ) => Promise<FundAndLockTerminal>;
   /** Reads federation wallet-module onchain fees before showing the slow path. */
   getOnchainInfo: () => Promise<OnchainInfo>;
+  subscribeDeposit?: (operationId: string, cb: (progress: OnchainDepositProgress) => void) => () => void;
+  supportsOnchain?: boolean;
+  spendableMsats?: number;
   /** Bound to actions.lockAndPublish — used for the "Try LOCK now"
    *  retry path on mint-timeout (balance landed, but watchdog gave up
    *  on the mint settling within 60s). */
@@ -166,12 +171,12 @@ type ModalPhase =
   | { kind: "mint-timeout" }
   | { kind: "aborted" }
   | { kind: "funding-not-started"; reason: FundingStorageKey }
-  | { kind: "lock-failed"; error: string; errorKey?: FundingStorageKey };
+  | { kind: "lock-failed"; error: string; errorKey?: FundingStorageKey; invoiceFailed?: boolean };
 
 export function AtomicFundingModal({
   escrowId,
   amountMsats,
-  premiumMsats = 0,
+  premiumMsats: requestedPremiumMsats = 0,
   ctaLabel,
   savedHandleId,
   selectedItems,
@@ -181,6 +186,9 @@ export function AtomicFundingModal({
   tradeCategory,
   fundAndLock,
   getOnchainInfo,
+  subscribeDeposit,
+  spendableMsats = 0,
+  supportsOnchain = false,
   lockAndPublish,
   disableNwc = false,
   browserLightningBlocked = false,
@@ -188,6 +196,9 @@ export function AtomicFundingModal({
   onClose, custodyNotice,
 }: AtomicFundingModalProps) {
   const { t } = useT();
+  const premiumMsats = fundingPremiumMsats(requestedPremiumMsats);
+  const requiredMsats = amountMsats + premiumMsats;
+  const hasBalance = Number.isSafeInteger(requiredMsats) && amountMsats > 0 && spendableMsats >= requiredMsats;
   const amountSats = Math.floor(amountMsats / 1000);
   // E1.1: the invoice/deposit ask = trade + insurance; the header shows
   // the total the payer will actually see in their wallet.
@@ -196,8 +207,11 @@ export function AtomicFundingModal({
   const [request, setRequest] = useState<{ rail: "lightning" | "onchain"; data: string; value: string; sats: number; expiresAt?: number; fee?: number; finality?: number; gateway?: FundingGatewayInfo } | null>(null);
   const [initialRail, setInitialRail] = useState<PaymentRail>("lightning");
   const [switchRequested, setSwitchRequested] = useState<PaymentRail | null>(null);
-  const [phase, setPhase] = useState<ModalPhase>({ kind: "choose-method" });
-  const [fundingMethod, setFundingMethod] = useState<"lightning" | "onchain" | "nwc" | "ecash" | null>(null);
+  const autoLightning = !disableNwc && !hasBalance
+    && (!browserLightningBlocked || browserLightningProbeArmed)
+    && (isSimModeOn() || amountSats >= MIN_REAL_LIGHTNING_FUNDING_SATS);
+  const [phase, setPhase] = useState<ModalPhase>({ kind: autoLightning ? "creating-invoice" : "choose-method" });
+  const [fundingMethod, setFundingMethod] = useState<"lightning" | "onchain" | "nwc" | "ecash" | "balance" | null>(autoLightning ? "lightning" : null);
   const [ecashInput, setEcashInput] = useState("");
   const [savedNwcConnections, setSavedNwcConnections] = useState<SavedNwcConnection[]>(
     () => disableNwc ? [] : listSavedNwcConnections(),
@@ -212,6 +226,14 @@ export function AtomicFundingModal({
   >({ kind: "loading" });
   const [retryToken, setRetryToken] = useState(0);
   const [tryLockBusy, setTryLockBusy] = useState(false);
+  const [depositProgress, setDepositProgress] = useState<OnchainDepositProgress | null>(null);
+  const depositOperation = phase.kind === "awaiting-onchain-confirmations" ? phase.operationId : null;
+  const subscribeDepositRef = useRef(subscribeDeposit);
+  subscribeDepositRef.current = subscribeDeposit;
+  useEffect(() => {
+    setDepositProgress(null);
+    if (depositOperation && subscribeDepositRef.current) return subscribeDepositRef.current(depositOperation, setDepositProgress);
+  }, [depositOperation]);
   // ChapSmart M-Pesa on-ramp sub-flow (TZ only, non-Exchange, off in sim).
   // ChapSmart pays the SAME displayed BOLT11 — the receive-watcher and LOCK
   // flow underneath are untouched; this is purely an alternate payer UX.
@@ -227,6 +249,7 @@ export function AtomicFundingModal({
   useEffect(() => {
     let cancelled = false;
     setOnchainInfoState({ kind: "loading" });
+    if (!supportsOnchain) return;
     getOnchainInfo()
       .then((info) => {
         if (!cancelled) setOnchainInfoState({ kind: "ready", info });
@@ -235,17 +258,17 @@ export function AtomicFundingModal({
         if (!cancelled) {
           setOnchainInfoState({
             kind: "error",
-            error: e?.message || "Onchain funding unavailable",
+            error: errorText(e, "Onchain funding unavailable"),
           });
         }
       });
     return () => {
       cancelled = true;
     };
-    // Read once per modal open. The funding action re-checks this before
+    // Read once per capability change. The funding action re-checks this before
     // allocating an address, so this surface is only the UX gate.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [supportsOnchain]);
 
   // Phase-driven main loop. Re-runs when the user taps "Generate new
   // invoice" (retryToken increments). Aborts on unmount.
@@ -405,7 +428,7 @@ export function AtomicFundingModal({
       const storageFailure = fundingStorageFailure(e);
       if (storageFailure) { setPhase(storageFailure); return; }
       // runFundAndLock catches its own errors; this is defensive.
-      setPhase({ kind: "lock-failed", error: (e as Error).message || t("fund.unexpectedError") });
+      setPhase({ kind: "lock-failed", error: errorText(e, t("fund.unexpectedError")) });
     });
 
     return () => {
@@ -435,9 +458,9 @@ export function AtomicFundingModal({
 
   const handleRegenerate = () => {
     setRequest(null);
-    setFundingMethod(null);
+    setFundingMethod(autoLightning ? "lightning" : null);
     setSelectedNwcConnection(null);
-    setPhase({ kind: "choose-method" });
+    setPhase({ kind: autoLightning ? "creating-invoice" : "choose-method" });
     setRetryToken((t) => t + 1);
   };
 
@@ -450,13 +473,17 @@ export function AtomicFundingModal({
       !isSimModeOn() &&
       amountSats < MIN_REAL_LIGHTNING_FUNDING_SATS
     ) return;
-    if (method === "onchain" && onchainInfoState.kind !== "ready") return;
+    if (method === "onchain" && onchainInfoState.kind !== "ready") {
+      setInitialRail("onchain"); setFundingMethod(null); setPhase({ kind: "choose-method" }); return;
+    }
     if (method === "onchain" && onchainInfoState.kind === "ready") {
       const minimumDepositSats = Math.max(
         1,
         Math.trunc(onchainInfoState.info.minimumDepositSats || onchainInfoState.info.pegInFeeSats + 1),
       );
-      if (amountSats < minimumDepositSats) return;
+      if (amountSats < minimumDepositSats) {
+        setInitialRail("onchain"); setFundingMethod(null); setPhase({ kind: "choose-method" }); return;
+      }
     }
     setFundingMethod(method);
     setPhase(
@@ -491,7 +518,7 @@ export function AtomicFundingModal({
       setPhase({ kind: "locked" });
       setTimeout(() => onClose({ kind: "locked" }), 1200);
     } catch (e: any) {
-      setPhase({ kind: "lock-failed", error: e?.message || t("fund.lockFailedFallback") });
+      setPhase({ kind: "lock-failed", error: errorText(e, t("fund.lockFailedFallback")) });
     } finally {
       setTryLockBusy(false);
     }
@@ -535,10 +562,15 @@ export function AtomicFundingModal({
           }}>×</button>
         </div>
 
+        {phase.kind === "choose-method" && hasBalance && <div style={{ marginBottom: 16 }}>
+          <p>{t(premiumMsats > 0 ? "fund.useBalanceWithInsurance" : "fund.useBalance", { amount: totalSats.toLocaleString(), trade: amountSats.toLocaleString(), insurance: insuranceSats.toLocaleString(), balance: Math.floor(spendableMsats / 1000).toLocaleString() })}</p>
+          <PaymentButton tier="primary" onClick={() => { setPhase({ kind: "locking" }); setFundingMethod("balance"); }}>{t("fund.lockBalance")}</PaymentButton>
+        </div>}
         {phase.kind === "choose-method" && (
           <FundingMethodChooser
             initialRail={initialRail}
             amountSats={amountSats}
+            supportsOnchain={supportsOnchain}
             onchainInfoState={onchainInfoState}
             onSelect={handleSelectMethod}
             savedNwcConnections={disableNwc ? [] : savedNwcConnections}
@@ -558,7 +590,7 @@ export function AtomicFundingModal({
 
         {request && !mpesaOpen ? <>
           <PaymentCard amountMsats={request.sats * 1000} rail={request.rail}
-            rails={phase.kind === "awaiting-payment" || phase.kind === "expired" ? ["lightning", "onchain", "ecash"] : [request.rail]}
+            rails={phase.kind === "awaiting-payment" || phase.kind === "expired" ? (supportsOnchain ? ["lightning", "onchain", "ecash"] : ["lightning", "ecash"]) : [request.rail]}
             onRail={rail => { if (rail !== request.rail) setSwitchRequested(rail); }}
             data={request.data} copyValue={request.value}
             motion={["mint-confirming", "mint-confirming-slow", "payment-confirmed", "locking"].includes(phase.kind)}
@@ -568,13 +600,11 @@ export function AtomicFundingModal({
               : phase.kind === "expired" ? t("fund.invoiceExpired")
               : phase.kind === "locking" ? t("fund.locking")
               : phase.kind === "locked" ? t("fund.paymentReceived")
-              : phase.kind === "awaiting-onchain-confirmations" ? t("fund.waitingConfirmations", { count: request.finality ?? 0 })
+              : phase.kind === "awaiting-onchain-confirmations" ? (depositProgress ? <DepositProgressLine progress={depositProgress} finality={request.finality ?? 0} /> : t("fund.waitingConfirmations", { count: request.finality ?? 0 }))
               : phase.kind === "awaiting-payment" ? t("fund.waitingForPayment", { time: `${Math.floor(Math.max(0, (request.expiresAt ?? now) - now) / 60000)}:${Math.floor(Math.max(0, (request.expiresAt ?? now) - now) / 1000 % 60).toString().padStart(2, "0")}` })
               : t("fund.confirmingFederation")}
-            helper={isSimModeOn() ? <>{t(request.rail === "onchain" ? (simOnchainMode() === "stuck" ? "fund.simOnchainStuck" : "fund.simOnchainDeposit") : "fund.simAutoCredit")} {t("fund.simDoNotFund")}</> : request.rail === "onchain" ? t("fund.onchainSlowPath") : t("fund.scanOrCopyToPay")}
-            details={<><div>{t("payment.tradeAmount")}: <TradeAmount msats={amountMsats} /></div>
-              <div>{t("payment.fee")}: <TradeAmount msats={(request.fee ?? 0) * 1000 + premiumMsats} /></div>
-              <div>{t("payment.total")}: <TradeAmount msats={request.sats * 1000} /></div>
+            helper={isSimModeOn() ? <>{t(request.rail === "onchain" ? (simOnchainMode() === "stuck" ? "fund.simOnchainStuck" : "fund.simOnchainDeposit") : "fund.simAutoCredit")} {t("fund.simDoNotFund")}</> : request.rail === "onchain" ? t("fund.onchainSlowPath") : t("fund.staleInvoice")}
+            details={<><FundingCheckout tradeSats={amountSats} feeSats={(request.fee ?? 0) + premiumMsats / 1000} />
               {request.gateway && <div>{t("fund.viaGateway")} {request.gateway.alias || request.gateway.id}{!request.gateway.provenPayable && <div>{t("fund.gatewayUnproven")}</div>}</div>}
             </>}
             actions={<>{phase.kind === "expired" && <PaymentButton onClick={handleRegenerate}>{t("fund.newInvoice")}</PaymentButton>}
@@ -694,6 +724,8 @@ export function AtomicFundingModal({
         {phase.kind === "lock-failed" && (
           <LockFailedState
             error={phase.errorKey ? t(phase.errorKey) : phase.error}
+            invoiceFailed={phase.invoiceFailed}
+            onRetry={handleRegenerate}
             onCancel={() => onClose(phase)}
           />
         )}
@@ -731,6 +763,7 @@ export function AtomicFundingModal({
 // ── Sub-components ──────────────────────────────────────────────────────
 
 function FundingMethodChooser({
+  supportsOnchain = false,
   initialRail = "lightning",
   amountSats,
   onchainInfoState,
@@ -748,6 +781,7 @@ function FundingMethodChooser({
   browserLightningBlocked,
   browserNwcBlocked,
 }: {
+  supportsOnchain?: boolean;
   initialRail?: PaymentRail;
   amountSats: number;
   onchainInfoState:
@@ -796,14 +830,14 @@ function FundingMethodChooser({
     if (amountSats < minimumDepositSats) {
       return {
         disabled: true,
-        detail: <>{t("fund.onchainMinBefore")} <BitcoinAmount sats={minimumDepositSats} size={10} gap={3} glyphScale={1.18} color={T.muted} glyphColor={T.muted} />{t("fund.onchainMinAfter")}</>,
+        detail: <FundingCheckout tradeSats={amountSats} feeSats={pegInFeeSats} minimumSats={minimumDepositSats} />,
         pegInFeeSats,
         depositAmountSats: undefined,
       };
     }
     return {
       disabled: false,
-      detail: <>{t("fund.onchainSendBefore")} <BitcoinAmount sats={amountSats + pegInFeeSats} size={10} gap={3} glyphScale={1.18} color={T.muted} glyphColor={T.muted} /> {t("fund.onchainSendAfter")}</>,
+      detail: <FundingCheckout tradeSats={amountSats} feeSats={pegInFeeSats} />,
       pegInFeeSats,
       depositAmountSats: amountSats + pegInFeeSats,
     };
@@ -963,7 +997,7 @@ function FundingMethodChooser({
         </details>
       )}
 
-      <PaymentRails rail={rail} onSelect={setRail} />
+      <PaymentRails rail={rail} rails={supportsOnchain ? ["lightning", "onchain", "ecash"] : ["lightning", "ecash"]} onSelect={setRail} />
       {rail === "ecash" && <details open style={{ marginBottom: 12 }}>
         <summary style={{
           padding: "10px 12px", borderRadius: T.rs, cursor: "pointer",
@@ -996,8 +1030,10 @@ function FundingMethodChooser({
 
       {rail === "lightning" && <><p style={{ color: T.muted, fontSize: 12 }}>{browserLightningBlocked ? t("fund.browserLightningBlockedShort") : lightningTooSmall ? minimumLightningFundingMessage() : t("fund.bestForAlmostEveryone")}</p>
         <PaymentButton disabled={lightningDisabled} onClick={() => onSelect("lightning")}>{t("fund.lnFast")}</PaymentButton></>}
-      {rail === "onchain" && <><p style={{ color: T.muted, fontSize: 12 }}>{onchainGate.detail}</p>
-        <PaymentButton disabled={onchainGate.disabled} onClick={() => onSelect("onchain")}>{t("fund.onchainSlow")}</PaymentButton></>}
+      {rail === "onchain" && <><div style={{ color: T.muted, fontSize: 12 }}>{onchainGate.detail}</div>
+        {onchainInfoState.kind === "ready" && onchainGate.disabled
+          ? <PaymentButton onClick={() => { setRail("lightning"); onSelect("lightning"); }}>{t("fund.useLightning")}</PaymentButton>
+          : <PaymentButton disabled={onchainGate.disabled} onClick={() => onSelect("onchain")}>{t("fund.onchainSlow")}</PaymentButton>}</>}
       <div style={{
         marginTop: 12, padding: "8px 10px", borderRadius: T.rs,
         background: T.surface, border: `1px solid ${T.border}`,
@@ -1298,7 +1334,7 @@ function InvoiceDisplay({
   return <PaymentCard amountMsats={amountSats * 1000} rail="lightning" data={qrPayload} copyValue={bolt11}
     motion={isMintConfirming}
     status={isMintConfirming ? t("fund.confirmingFederation") : t("fund.waitingForPayment", { time: `${mins}:${secs.toString().padStart(2, "0")}` })}
-    helper={isSimModeOn() ? <>{t("fund.simAutoCredit")} {t("fund.simDoNotFund")}</> : t("fund.scanOrCopyToPay")}
+    helper={isSimModeOn() ? <>{t("fund.simAutoCredit")} {t("fund.simDoNotFund")}</> : t("fund.staleInvoice")}
     details={gateway && <>{t("fund.viaGateway")} {gateway.alias || gateway.id.slice(0, 12)}{!gateway.provenPayable && <div>{t("fund.gatewayUnproven")}</div>}</>}
     actions={onFundWithMpesa && <PaymentButton onClick={onFundWithMpesa}>{t("fund.fundWithMpesa")}</PaymentButton>} />;
 }
@@ -1868,8 +1904,8 @@ function MintTimeoutState({
 }
 
 function LockFailedState({
-  error, onCancel,
-}: { error: string; onCancel: () => void }) {
+  error, onCancel, onRetry, invoiceFailed,
+}: { error: string; onCancel: () => void; onRetry?: () => void; invoiceFailed?: boolean }) {
   const { t } = useT();
   const isNativeBridgeUnavailable =
     /native_fedimint_bridge_unavailable|Native Fedimint bridge is enabled but unreachable/i.test(error);
@@ -1881,7 +1917,7 @@ function LockFailedState({
     /Federation didn't accept the payment|canceled:|claim_rejected|before Chama received ecash/i.test(error);
   const diagnostics = extractChamaDiagnostics(error);
   const showSimFallback = isWalletVerifiableGatewayError && !isNativeBridgeUnavailable && !isSimModeOn();
-  const title = isNativeBridgeUnavailable
+  const title = invoiceFailed ? t("fund.invoiceFailedPlain") : isNativeBridgeUnavailable
     ? t("fund.nativeBridgeUnavailableTitle")
     : isWalletVerifiableGatewayError || isReceiveRoutePaused
     ? t("fund.fundingUnavailableTitle")
@@ -1909,6 +1945,7 @@ function LockFailedState({
           {detail}
         </div>
       </div>
+      {onRetry && <PaymentButton onClick={onRetry}>{t("fund.tryAgain")}</PaymentButton>}
       {diagnostics && (
         <CopyButton
           value={diagnostics}
@@ -1979,4 +2016,24 @@ function openSimDemo(): void {
   } catch {
     window.location.reload();
   }
+}
+
+export function DepositProgressLine({ progress, finality }: { progress: OnchainDepositProgress; finality: number }) {
+  const { t } = useT();
+  const message = progress.status === "waiting" ? t("fund.depositWaiting")
+    : progress.status === "seen" ? t("fund.depositSeen", { amount: progress.btcDeposited?.toLocaleString() ?? "—", count: finality, minutes: finality * 10 })
+    : progress.status === "failed" ? `${progress.error ?? t("fund.unexpectedError")} ${t("fund.depositFailedNext")}`
+    : t("fund.depositConfirmed");
+  return <span data-deposit-status={progress.status} style={{ display: "block", minHeight: 54 }}>{message}</span>;
+}
+
+export function FundingCheckout({ tradeSats, feeSats, minimumSats }: { tradeSats: number; feeSats: number; minimumSats?: number }) {
+  const { t } = useT();
+  const short = minimumSats !== undefined && tradeSats < minimumSats;
+  return <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "8px 24px", padding: "12px 0", fontSize: 12 }}>
+    <span style={{ color: short ? T.red : T.text }}>{t("payment.tradeAmount")}</span><span style={{ color: short ? T.red : T.text, textAlign: "right" }}>{tradeSats.toLocaleString()}</span>
+    <span>{t(short ? "fund.onchainMinimum" : "payment.fee")}</span><span style={{ textAlign: "right" }}>{(short ? minimumSats! : feeSats).toLocaleString()}</span>
+    <span style={{ borderTop: `1px solid ${T.border}`, paddingTop: 8, color: short ? T.red : T.text }}>{t(short ? "fund.short" : "payment.total")}</span>
+    <span style={{ borderTop: `1px solid ${T.border}`, paddingTop: 8, textAlign: "right", color: short ? T.red : T.text }}>{short ? `−${(minimumSats! - tradeSats).toLocaleString()}` : (tradeSats + feeSats).toLocaleString()}</span>
+  </div>;
 }

@@ -1,4 +1,11 @@
 export const trade: Record<string, string> = {
+  "trade.responseHours": "saa {count}",
+  "trade.responseDays": "siku {count}",
+  "trade.arbiterNoStake": "{name} bado hana sats zilizowekwa dhamana.",
+  "trade.arbiterVerdict": "{name} ameweka sats {amount} dhamana na amesuluhisha migogoro {count}.",
+  "trade.arbiterResponse": "Kwa kawaida hujibu ndani ya {time}.",
+  "trade.deviceSample": "Kulingana na kilichoonekana kwenye kifaa hiki.",
+
   "trade.partyObserved": "Shughuli zilizosainiwa zimeonekana katika biashara {count} kwenye kifaa hiki. Bila historia, mwenendo haujulikani.",
   "trade.savedSummary": "Imehifadhiwa kwenye kifaa hiki",
   "trade.historyUnverified": "Historia ya biashara haijathibitishwa",

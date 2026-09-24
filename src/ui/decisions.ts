@@ -2268,3 +2268,35 @@ export function arbiterWatchEligibility(state: EscrowState, pubkey: string, nowS
   const pool = state.communityArbiters.some(matches);
   return { assigned, pool, conflict: assigned && principal, watches: !principal && (assigned || pool) };
 }
+
+/** A lapsed CREATED seat cannot authorize funding or hide the join action. */
+export function effectiveViewerRole(state: EscrowState, pubkey: string, nowSec = Math.floor(Date.now() / 1000)): Role | null {
+  return participantRoleForPubkey(state, pubkey, getEffectiveParticipantsAt(state, nowSec));
+}
+
+/** Unknown earmarks own the whole balance until recovery resolves them. */
+export function spendableBalanceMsats(balance: number, pendingLocks: readonly (number | null | undefined)[], pendingPayouts: readonly (number | null | undefined)[]): number {
+  if (!Number.isSafeInteger(balance) || balance < 0) return 0;
+  let remaining = balance;
+  for (const amount of [...pendingLocks, ...pendingPayouts]) {
+    if (amount == null || !Number.isSafeInteger(amount) || amount < 0) return 0;
+    remaining = Math.max(0, remaining - amount);
+  }
+  return remaining;
+}
+
+/** Unlike alert suppression, ownership of unfinished payouts never ages out. */
+export function payoutEarmarks(escrows: Iterable<EscrowState>, pubkey: string, federationId: string | null,
+  getRecord: (id: string) => { status: string } | null): (number | undefined)[] {
+  return [...escrows].filter(e => e.status === EscrowStatus.CLAIMED
+    && latestUserClaimAtSec(e, pubkey) !== null
+    && (!escrowFedId(e) || !federationId || escrowFedId(e) === normalizeFedId(federationId))
+    && getRecord(e.id)?.status !== "settled").map(e => e.amountMsats);
+}
+
+export function canLockFromBalance(state: EscrowState | null | undefined, spendable: number, amountMsats: number, premiumMsats = 0): boolean {
+  const required = amountMsats + premiumMsats;
+  return state?.status === EscrowStatus.CREATED && Number.isSafeInteger(amountMsats) && amountMsats > 0
+    && Number.isSafeInteger(premiumMsats) && premiumMsats >= 0 && Number.isSafeInteger(required)
+    && Number.isSafeInteger(spendable) && spendable >= required;
+}

@@ -1,3 +1,4 @@
+import { Wordmark } from "../components/Wordmark.js";
 import { OverlaySheet } from "../components/OverlaySheet.js";
 import { canOfferClaim, needsTradeHistory } from "../decisions.js";
 import { CopyButton } from "../components/CopyButton.js";
@@ -5,9 +6,9 @@ import { ReplayNotes } from "../components/ReplayNotes.js";
 import { TradeArbiterRecord } from "../components/TradeArbiterRecord.js";
 import type { VerifiedBond } from "../../bond-multisig/bond-announcement.js";
 import { ListingBody } from "../components/ListingBody.js";
-import { useRef, useState } from "react";
-import { EscrowStatus, Outcome, Role, selectedMenuItemsTotalMsats, getEffectiveParticipantsAt, type EscrowState, type SelectedMenuItem } from "../../escrow-engine/types.js";
-import { decideVotePrompt, preLockDeadline, tradeRoomPresence, type RoomPresence } from "../decisions.js";
+import { useEffect, useRef, useState } from "react";
+import { EscrowStatus, Outcome, Role, JOIN_HOLD_LOCK_GRACE_SECONDS, selectedMenuItemsTotalMsats, getEffectiveParticipantsAt, type EscrowState, type SelectedMenuItem } from "../../escrow-engine/types.js";
+import { effectiveViewerRole, decideVotePrompt, preLockDeadline, tradeRoomPresence, type RoomPresence } from "../decisions.js";
 import { profileNameFor, type NostrProfileNameMap } from "../nostr-profiles.js";
 import { BitcoinPricePill } from "../components/BitcoinPricePill.js";
 import { getCommunityBySlug } from "../../communities/registry.js";
@@ -63,6 +64,8 @@ export function LiveTradeSurface({
   onVote,
   onClaim,
   onLock,
+  onRepost,
+  onHome,
   onConfirmPayout,
   onJoin,
   onSendChat, preferredRelayConnected = false,
@@ -92,6 +95,8 @@ export function LiveTradeSurface({
   onLock?: (opts?: { savedHandleId?: string; selectedItems?: SelectedMenuItem[]; amountMsats?: number }) => Promise<void>;
   /** Seat the viewer into the trade's open slot (guided join). A range
    *  (exchange-bracket) listing passes the chosen order along. */
+  onHome?: () => void;
+  onRepost?: () => Promise<void>;
   onJoin?: (role: Role, joinOpts?: { selectedItems?: SelectedMenuItem[]; amountMsats?: number; orderFinalized?: boolean }) => void | Promise<void>;
   onConfirmPayout?: (escrowId: string) => void;
   preferredRelayConnected?: boolean;
@@ -109,12 +114,26 @@ export function LiveTradeSurface({
   amountDisplayMode?: Parameters<typeof BitcoinPricePill>[0]["amountMode"];
   onAmountDisplayModeChange?: (mode: NonNullable<Parameters<typeof BitcoinPricePill>[0]["amountMode"]>) => void;
 }) {
-  const participants = state.participants;
-  const myRole: Role | null =
-    samePubkey(participants[Role.BUYER], pubkey) ? Role.BUYER
-    : samePubkey(participants[Role.SELLER], pubkey) ? Role.SELLER
-    : samePubkey(participants[Role.ARBITER], pubkey) ? Role.ARBITER
-    : null;
+  const [nowSec, setNowSec] = useState(() => Math.floor(Date.now() / 1000));
+  useEffect(() => {
+    const now = Math.floor(Date.now() / 1000);
+    setNowSec(now);
+    if (state.status !== EscrowStatus.CREATED || state.tranchePlan) return;
+    const deadlines = [Role.BUYER, Role.SELLER].flatMap(role => {
+      const hold = state.joinHolds?.[role];
+      return hold && hold.pubkey === state.participants[role] ? [hold.expiresAt + JOIN_HOLD_LOCK_GRACE_SECONDS] : [];
+    });
+    const lastDeadline = Math.max(0, ...deadlines);
+    if (lastDeadline <= now) return;
+    const timer = setInterval(() => {
+      const current = Math.floor(Date.now() / 1000);
+      setNowSec(current);
+      if (current >= lastDeadline) clearInterval(timer);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [state.status, state.tranchePlan, state.joinHolds, state.participants]);
+  const participants = getEffectiveParticipantsAt(state, nowSec);
+  const myRole = effectiveViewerRole(state, pubkey, nowSec);
 
   const [busy, setBusy] = useState(false);
   const [armed, setArmed] = useState<Outcome | null>(null);
@@ -164,7 +183,7 @@ export function LiveTradeSurface({
   const communityCurrency = getCommunityBySlug(state.community)?.currency ?? null;
   // The honest pre-lock clock: a CREATED trade dies when a seat lapses, not
   // when the listing expires. See preLockDeadline().
-  const preLock = preLockDeadline(state);
+  const preLock = preLockDeadline(state, nowSec);
   const buyerHold = state.joinHolds?.[Role.BUYER];
   const orderItems = buyerHold?.selectedItems;
   const orderMsats = buyerHold?.amountMsats
@@ -198,6 +217,9 @@ export function LiveTradeSurface({
       <MoreOptions onClick={onOpenFullView} label={tr("trade.resendHeal")} />
     </Decision>;
 
+    if (state.status === EscrowStatus.EXPIRED && !state.lock?.notesHash && state.lock?.lockedAt == null && state.initiator.pubkey === pubkey && onRepost) {
+      return <Decision q={tr("lts.listingExpired")}><PrimaryButton disabled={busy} onClick={() => run(onRepost)} label={tr("lts.postAgain")} /></Decision>;
+    }
     const status = state.status;
 
     if (status === EscrowStatus.CREATED) {
@@ -206,7 +228,15 @@ export function LiveTradeSurface({
       // (anyone). This is the OPPOSITE asymmetry from who votes first.
       const funderRole = expectedLockerRole(state.category);
       const iAmFunder = funderRole ? myRole === funderRole : myRole != null;
-      if (iAmFunder) {
+      if (preLock?.lapsed && samePubkey(state.participants[funderRole ?? Role.SELLER], pubkey)) {
+        return <Decision q={tr("lts.funderLapsed")}>
+          {onRepost && state.initiator.pubkey === pubkey
+            ? <PrimaryButton disabled={busy} onClick={() => run(onRepost)} label={tr("lts.postAgain")} />
+            : <PrimaryButton disabled={busy} onClick={() => run(() => onJoin?.(funderRole ?? Role.SELLER))} label={tr("lts.joinAgain")} />}
+          <MoreOptions onClick={onBack} label={tr("lts.otherOffers")} />
+        </Decision>;
+      }
+      if (iAmFunder && !preLock?.lapsed) {
         // Fiat trades reveal the locker's payment details inside the LOCK
         // payload (NIP-44, participants only) — where the fiat lands on
         // Exchange, the account the volunteer pays on Bill Pay. The full view
@@ -286,9 +316,12 @@ export function LiveTradeSurface({
           </Waiting>
         );
       }
+      if (preLock?.kind === "listing" && preLock.lapsed) {
+        return <Waiting message={tr("lts.listingExpired")}><MoreOptions onClick={onBack} label={tr("lts.otherOffers")} /></Waiting>;
+      }
       // Unseated viewer (opened from a match): seat inline into the open slot,
       // then the surface re-renders to the waiting/lock state — no full-view bounce.
-      const seats = getEffectiveParticipantsAt(state);
+      const seats = getEffectiveParticipantsAt(state, nowSec);
       const openRole = !seats[Role.BUYER] ? Role.BUYER
         : !seats[Role.SELLER] ? Role.SELLER : null;
       // Slicing chunks the UNSECURED, irreversible leg so only 1/N is ever at
@@ -301,7 +334,8 @@ export function LiveTradeSurface({
           // released per milestone) — a single physical good can't be sliced.
           || (state.category === "marketplace" && state.fulfillment !== "physical"));
       return (
-        <Decision q={tr("lts.joinQ")} sub={tr("lts.joinSub")}>
+        <Decision q={tr("lts.joinQ")} sub={tr(preLock?.lapsed ? "lts.joinerLapsed" : "lts.joinSub")} >
+          {preLock?.lapsed && <MoreOptions onClick={onBack} label={tr("lts.otherOffers")} />}
           {sliceEligible && (
             <div style={{ marginBottom: 6 }}>
               <div style={{ fontSize: 12.5, color: T.muted, marginBottom: 8 }}>
@@ -388,7 +422,7 @@ export function LiveTradeSurface({
                       amountMsats: chosenMsats,
                       orderFinalized: true,
                     }))}
-                    label={tr("lts.agreeJoin")}
+                    label={tr(preLock?.lapsed ? "lts.joinAgain" : "lts.agreeJoin")}
                   />
                   <MoreOptions onClick={onOpenFullView} label={tr("lts.reviewTermsFirst")} />
                 </>
@@ -396,7 +430,7 @@ export function LiveTradeSurface({
             }
             return (
               <>
-                <PrimaryButton disabled={busy} onClick={() => run(() => onJoin(openRole))} label={tr("lts.agreeJoin")} />
+                <PrimaryButton disabled={busy} onClick={() => run(() => onJoin(openRole))} label={tr(preLock?.lapsed ? "lts.joinAgain" : "lts.agreeJoin")} />
                 <MoreOptions onClick={onOpenFullView} label={tr("lts.reviewTermsFirst")} />
               </>
             );
@@ -651,6 +685,7 @@ export function LiveTradeSurface({
         </div>
       </div>
 
+      {onHome && <button type="button" onClick={onHome} aria-label={tr("lts.backHome")} style={{ background: "none", border: 0, padding: "8px 16px", cursor: "pointer", alignSelf: "flex-start" }}><Wordmark /></button>}
       {/* Header */}
       <div style={{
         display: "flex", alignItems: "center", gap: 12, padding: "12px 16px",
@@ -700,7 +735,7 @@ export function LiveTradeSurface({
 
       {party?.pubkey && <OverlaySheet title={profileNameFor(profileNames, party.pubkey, kind0Enabled) ?? tr("trade.participants")} subtitle={party.pubkey} onClose={() => setParty(null)}>
         <CopyButton value={party.pubkey} />
-        {party.role === Role.ARBITER ? <TradeArbiterRecord state={state} trades={knownTrades} fetchBonds={fetchCommunityBonds} />
+        {party.role === Role.ARBITER ? <TradeArbiterRecord profileNames={profileNames} kind0Enabled={kind0Enabled} state={state} trades={knownTrades} fetchBonds={fetchCommunityBonds} />
           : <p>{tr("trade.partyObserved", { count: knownTrades.filter(trade => trade.eventChain.some(event => event.pubkey === party.pubkey)).length })}</p>}
         <p>{tr("trade.arbiterConduct")}</p>
       </OverlaySheet>}
@@ -735,7 +770,7 @@ export function LiveTradeSurface({
               clipping at the top the way justify-content:center would. */}
           <div className="lts-decision-well">
             {state.status === EscrowStatus.CREATED && <>
-              <TradeArbiterRecord state={state} trades={knownTrades} fetchBonds={fetchCommunityBonds} />
+              <TradeArbiterRecord profileNames={profileNames} kind0Enabled={kind0Enabled} state={state} trades={knownTrades} fetchBonds={fetchCommunityBonds} />
               {state.body && <ListingBody body={state.body} />}
             </>}
             <ReplayNotes notes={state.replayNotes} />

@@ -1,3 +1,4 @@
+import { errorText } from "./error-text.js";
 // ══════════════════════════════════════════════════════════════════════════
 // Chama — LNURL-pay resolver for Lightning Address claim destinations
 // ══════════════════════════════════════════════════════════════════════════
@@ -276,7 +277,7 @@ export async function fetchLnurlPayMetadataUrl(
   } catch (e: any) {
     throw new LnurlError(
       "LnurlDnsError",
-      `Couldn't reach ${label}: ${e?.message || "network error"}`,
+      `Couldn't reach ${label}: ${errorText(e, "network error")}`,
     );
   }
   if (!res.ok) {
@@ -352,7 +353,7 @@ export async function requestLnurlInvoice(
   } catch (e: any) {
     throw new LnurlError(
       "LnurlDnsError",
-      `LNURL callback unreachable: ${e?.message || "network error"}`,
+      `LNURL callback unreachable: ${errorText(e, "network error")}`,
     );
   }
   if (!res.ok) {

@@ -26,7 +26,7 @@
 
 import { simOnchainMode, type SimOnchainMode } from "./simMode.js";
 import { translate, getCurrentLang } from "../i18n/index.js";
-import type { OnchainDepositSettled, IFedimintWallet } from "../fedimint/fedimint-client.js";
+import type { OnchainDepositProgress, OnchainDepositSettled, IFedimintWallet } from "../fedimint/fedimint-client.js";
 import { randomId } from "../storage/random-id.js";
 
 // ── Constants ─────────────────────────────────────────────────────────────
@@ -155,10 +155,7 @@ export class SimDepositUnderpaidError extends Error {
   readonly code = "SIM_DEPOSIT_UNDERPAID";
   constructor(readonly amountSats: number, readonly minimumSats: number) { super(translate(getCurrentLang(), "fund.simDepositUnderpaid")); this.name = "SimDepositUnderpaidError"; }
 }
-export type SimDepositProgress = { status: "pending" | "mempool" | "confirming" | "confirmed" | "underpaid"; confirmations: number; required: number };
-export type SimWallet = IFedimintWallet & { onchain: NonNullable<IFedimintWallet["onchain"]> & {
-  subscribeDeposit(operationId: string, callback: (progress: SimDepositProgress) => void): () => void;
-}};
+export type SimWallet = IFedimintWallet & { onchain: NonNullable<IFedimintWallet["onchain"]> };
 
 export function createSimWallet(opts: CreateSimWalletOptions = { npub: null }): SimWallet {
   const npub = opts.npub;
@@ -174,8 +171,8 @@ export function createSimWallet(opts: CreateSimWalletOptions = { npub: null }): 
     waits.set(key, entry);
     if (!indefinite) entry.timer = setTimeout(() => finish(true), MIN_DELAY_MS + Math.floor(Math.random() * (MAX_DELAY_MS - MIN_DELAY_MS)));
   });
-  const deposits = new Map<string, { amountSats: number; progress: SimDepositProgress;
-    listeners: Set<(p: SimDepositProgress) => void>; result?: Promise<OnchainDepositSettled> }>();
+  const deposits = new Map<string, { amountSats: number; progress: OnchainDepositProgress;
+    listeners: Set<(p: OnchainDepositProgress) => void>; result?: Promise<OnchainDepositSettled> }>();
 
   const state = loadState(npub);
   let open = false;
@@ -341,7 +338,7 @@ export function createSimWallet(opts: CreateSimWalletOptions = { npub: null }): 
         const requested = Number(meta?.chama_amount_msats ?? 2_000_000) / 1000;
         const amountSats = mode === "underpaid" ? info.minimumDepositSats - 1 : Math.floor(requested) + info.pegInFeeSats;
         const operationId = `sim_deposit_${randomId(12)}`;
-        deposits.set(operationId, { amountSats, progress: { status: "pending", confirmations: 0, required: info.finalityDelay }, listeners: new Set() });
+        deposits.set(operationId, { amountSats, progress: { status: "waiting" }, listeners: new Set() });
         return { operationId, address: `bcrt1qsim${randomId(20)}`, finalityDelay: info.finalityDelay };
       },
       subscribeDeposit(operationId, callback) {
@@ -354,8 +351,8 @@ export function createSimWallet(opts: CreateSimWalletOptions = { npub: null }): 
         const deposit = deposits.get(operationId);
         if (!deposit || disposed) throw new Error("Unknown or closed simulated deposit");
         if (!deposit.result) deposit.result = (async () => {
-          const update = (status: SimDepositProgress["status"], confirmations = 0) => {
-            deposit.progress = { status, confirmations, required: info.finalityDelay };
+          const update = (status: OnchainDepositProgress["status"], error?: string) => {
+            deposit.progress = { status, ...(status !== "waiting" ? { btcDeposited: deposit.amountSats, outpoint: `${operationId}:0` } : {}), ...(error ? { error } : {}) };
             for (const cb of deposit.listeners) { try { cb({ ...deposit.progress }); } catch {} }
           };
           const step = async (forever = false) => {
@@ -363,15 +360,16 @@ export function createSimWallet(opts: CreateSimWalletOptions = { npub: null }): 
           };
           if (mode === "stuck") await step(true); // no polling timer
           if (mode !== "instant") {
-            await step(); update("mempool");
-            if (deposit.amountSats < info.minimumDepositSats) { update("underpaid"); throw new SimDepositUnderpaidError(deposit.amountSats, info.minimumDepositSats); }
-            for (let n = 1; n <= info.finalityDelay; n++) { await step(); update("confirming", n); }
+            await step(); update("seen");
+            if (deposit.amountSats < info.minimumDepositSats) { update("failed", new SimDepositUnderpaidError(deposit.amountSats, info.minimumDepositSats).message); throw new SimDepositUnderpaidError(deposit.amountSats, info.minimumDepositSats); }
+            for (let n = 1; n <= info.finalityDelay; n++) await step();
+            update("confirmed");
             await step();
           }
           if (disposed) throw new Error("Sim wallet closed");
           state.balanceMsats += Math.max(0, deposit.amountSats - info.pegInFeeSats) * 1000;
-          persist(); notifyBalance(); update("confirmed", info.finalityDelay);
-          return { status: "confirmed", operationId, amountSats: deposit.amountSats };
+          persist(); notifyBalance(); update("claimed");
+          return { status: "claimed", operationId, amountSats: deposit.amountSats, outpoint: `${operationId}:0` };
         })();
         return deposit.result;
       },

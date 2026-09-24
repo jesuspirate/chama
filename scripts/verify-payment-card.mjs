@@ -37,7 +37,6 @@ try {
  }
  await page.goto(`${base}/tests/payment-card/index.html?atomic=1`);
  await page.waitForSelector('[role=tab]');
- await page.evaluate(()=>document.querySelector('button.payment-button:not([disabled])').click());
  await page.waitForSelector('.payment-card img[src^="data:"]');
  await page.click('[role=tab]:nth-of-type(2)');
  assert.equal(await page.$eval('[role=dialog] button.payment-button:last-child', e=>e.disabled),true,'live invoice switch must not abandon a payable invoice');
@@ -55,15 +54,24 @@ try {
  assert.equal(await page.$eval('.chama-loader-static',e=>getComputedStyle(e).display),'block');
  await page.goto(`${base}/tests/payment-card/index.html?atomic=1`);
  await page.waitForSelector('[role=tab]');
+ await page.evaluate(()=>window.phase('expired'));
  await page.click('[role=tab]:nth-of-type(2)');
- await page.waitForSelector('button.payment-button:not([disabled])');
- await page.click('button.payment-button:not([disabled])');
+ await page.click('[role=dialog] button.payment-button:last-child');
  await page.waitForSelector('.payment-card img[src^="data:"]');
  assert.ok((await page.$eval('.payment-card',e=>e.textContent)).includes('2,100'),'onchain headline includes fee');
  await page.click('.payment-card details summary');
  assert.ok((await page.$eval('.payment-card details',e=>e.textContent)).includes('2,000'),'details retain trade amount');
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth),320);
  console.log('PASS onchain: send total includes fee, details retain principal, no 320px overflow');
+ await page.goto(`${base}/tests/payment-card/index.html?atomic=1&underfloor=1&sim=1`);
+ await page.waitForSelector('.payment-card');
+ await page.evaluate(()=>window.phase('expired'));
+ await page.click('[role=tab]:nth-of-type(2)');
+ await page.click('[role=dialog] button.payment-button:last-child');
+ await page.waitForFunction(()=>document.body.textContent.includes('−901'));
+ assert.equal(await page.$('.payment-card img'),null);
+ assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth),320);
+ console.log('PASS native on-chain product floor: 100 + minimum 1,001 yields red shortfall 901 and Lightning action');
  for (const surface of ['wallet','ecash']) {
    await page.goto(`${base}/tests/payment-card/index.html?${surface}=1`);
    if (surface==='wallet') {
@@ -84,10 +92,7 @@ try {
 
  for (const mode of ['slow','stuck']) {
    await page.goto(`${base}/tests/payment-card/index.html?sim=1&simchain=1&onchain=${mode}`);
-   await page.waitForSelector('[role=tab]');
-   await page.click('[role=tab]:nth-of-type(2)');
-   await page.waitForSelector('button.payment-button:not([disabled])');
-   await page.click('button.payment-button:not([disabled])');
+
    await page.waitForSelector('.payment-card img[src^="data:"]');
    assert.ok((await page.$eval('.payment-card',e=>e.textContent)).includes('3,000'),'sim deposit asks for principal plus real fixture fee');
    await page.click('.payment-card details summary');
@@ -96,12 +101,12 @@ try {
    const size=()=>page.$eval('.payment-card',e=>({height:e.getBoundingClientRect().height,top:e.getBoundingClientRect().top}));
    const initial=await size();
    if(mode==='slow') {
-     await page.waitForFunction(()=>window.depositStates.some(p=>p.status==='confirming'));
+     await page.waitForFunction(()=>window.depositStates.some(p=>p.status==='seen'));
      assert.deepEqual(await size(),initial,'on-chain stages preserve card geometry');
      await page.screenshot({path:'/tmp/chama-sim-onchain-confirming.png',fullPage:true});
    } else {
      await new Promise(r=>setTimeout(r,3000));
-     assert.deepEqual(await page.evaluate(()=>window.depositStates.map(p=>p.status)),['pending']);
+     assert.deepEqual(await page.evaluate(()=>window.depositStates.map(p=>p.status)),['waiting']);
      assert.deepEqual(await size(),initial);
    }
    assert.equal((await page.$$('[role=tab]')).length,1,'An issued address exposes only its current rail');
@@ -146,8 +151,7 @@ try {
    await storagePage.setViewport({width:320,height:900});
    await storagePage.evaluateOnNewDocument(lang=>localStorage.setItem('chama_lang',lang),lang);
    await storagePage.goto(`${base}/tests/payment-card/index.html?storage=${cause}${mapped?'&mapped=1':''}`);
-   await storagePage.waitForSelector('button.payment-button:not([disabled])');
-   await storagePage.click('button.payment-button:not([disabled])');
+
    await storagePage.waitForSelector('[data-funding-preflight]');
    const result=await storagePage.evaluate(()=>({copy:window.storageCopy,text:document.querySelector('[data-funding-preflight]').textContent,calls:window.invoiceCalls,overflow:document.documentElement.scrollWidth>innerWidth}));
    assert.ok(result.text.includes(result.copy.title));assert.ok(result.text.includes(result.copy.body));
@@ -156,8 +160,6 @@ try {
    assert.equal(await storagePage.$('.payment-card img[src^="data:"]'),null,'no invoice is shown after preflight refusal');
    await storagePage.screenshot({path:`/tmp/chama-funding-storage-${lang}-${cause}.png`,fullPage:true});
    await storagePage.click('[data-funding-preflight] button:first-of-type');
-   await storagePage.waitForSelector('[role=tab]');
-   await storagePage.click('button.payment-button:not([disabled])');
    await storagePage.waitForSelector('[data-funding-preflight]');
    await storagePage.click('[data-funding-preflight] button:last-of-type');
    assert.equal(await storagePage.evaluate(()=>window.fundingClosed),true,'cancel remains reachable');

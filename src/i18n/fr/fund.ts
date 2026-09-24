@@ -3,6 +3,21 @@
 // byte-identical to EN; only the En halves are translated. Exact TZS amount /
 // agent number / USSD code arrive as {params}.
 export const fund: Record<string, string> = {
+  "fund.depositWaiting": "En attente de votre transaction.",
+  "fund.depositSeen": "Transaction détectée : {amount} sats. En attente de {count} confirmations — environ {minutes} minutes.",
+  "fund.depositConfirmed": "Confirmé. Verrouillage de vos sats.",
+  "fund.depositFailedNext": "Vérifiez votre portefeuille avant de réessayer.",
+  "fund.invoiceFailedPlain": "Impossible de créer une demande de paiement pour le moment. Rien n’a été prélevé.",
+  "fund.tryAgain": "Réessayer",
+  "fund.staleInvoice": "Vous avez payé une ancienne demande par erreur ? Les sats arrivent dans votre portefeuille.",
+  "fund.onchainMinimum": "Minimum sur la chaîne",
+  "fund.short": "Manque",
+  "fund.useLightning": "Utiliser Lightning",
+
+  "fund.lockBalance": "Verrouiller depuis votre solde",
+  "fund.useBalance": "Utilisez ₿ {amount} sur vos ₿ {balance}",
+  "fund.useBalanceWithInsurance": "Utilisez ₿ {amount} sur vos ₿ {balance} — {trade} pour l’échange, {insurance} d’assurance.",
+
   "fund.simOnchainDeposit": "Chaîne simulée : les confirmations sont accélérées. Aucun bitcoin réel n’est utilisé.",
   "fund.simOnchainStuck": "Chaîne simulée : ce dépôt restera en attente jusqu’à votre départ.",
   "fund.simDepositUnderpaid": "Le dépôt simulé est inférieur au minimum. Aucun sat n’a été crédité. Redémarrez avec onchain=slow pour tester un dépôt complet.",
@@ -183,8 +198,7 @@ export const fund: Record<string, string> = {
   "fund.onchainSlowPath": "FINANCEMENT ONCHAIN · CHEMIN LENT",
   "fund.onchainTotalBreakdown":
     "{total} · échange {trade} sats + frais de fédération {fee} sats",
-  "fund.onchainUnavailable":
-    "Onchain indisponible tant que les frais de la fédération ne sont pas chargés.",
+  "fund.onchainUnavailable": "Impossible de vérifier les frais sur la chaîne pour le moment.",
   "fund.online": "En ligne",
   "fund.openSimDemo": "Ouvrir la démo sim",
   "fund.pasteEcashNotes": "COLLER DES NOTES ECASH",
@@ -232,7 +246,6 @@ export const fund: Record<string, string> = {
   "fund.insuranceBefore": "dont 🛡",
   "fund.insuranceAfter": "d’assurance arbitre (0,25 %)",
   "fund.tradeLiveClosing": "L'échange est en cours · fermeture…",
-  "fund.tryAgain": "Réessayer",
   "fund.tryLockNow": "Tenter le LOCK maintenant",
   "fund.unexpectedError": "Erreur inattendue",
   "fund.useFediWalletBefore": "Utiliser le portefeuille Fedi ·",

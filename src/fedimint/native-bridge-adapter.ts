@@ -10,6 +10,7 @@ import type {
   InvoiceGatewayInfo,
   LnReceiveStateKind,
   OnchainDepositAddress,
+  OnchainDepositProgress,
   OnchainDepositSettled,
   OnchainInfo,
   OnchainWithdrawFees,
@@ -792,6 +793,7 @@ export class NativeBridgeWallet implements IFedimintWallet {
   private inviteCode: string | null = null;
   private lastBalanceMsats = 0;
   private balanceSubscribers = new Set<(balance: number) => void>();
+  private depositPolls = new Set<() => void>();
   private balancePoll: ReturnType<typeof setInterval> | null = null;
 
   constructor(baseUrl = getNativeBridgeUrl()) {
@@ -1226,6 +1228,25 @@ export class NativeBridgeWallet implements IFedimintWallet {
       };
     },
 
+    subscribeDeposit: (operationId: string, cb: (progress: OnchainDepositProgress) => void): (() => void) => {
+      let stopped = false;
+      const controller = new AbortController();
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const stop = () => { stopped = true; controller.abort(); clearTimeout(timer); this.depositPolls.delete(stop); };
+      this.depositPolls.add(stop);
+      const poll = async () => {
+        try {
+          const progress = await this.request<OnchainDepositProgress>(`/onchain/deposit-status?operationId=${encodeURIComponent(operationId)}`, { signal: controller.signal });
+          if (stopped) return;
+          cb(progress);
+          if (progress.status === "claimed" || progress.status === "failed") { stop(); return; }
+        } catch { /* A transient status-read failure is not a failed deposit. */ }
+        if (!stopped) timer = setTimeout(poll, 3000);
+      };
+      void poll();
+      return stop;
+    },
+
     awaitDeposit: async (operationId: string): Promise<OnchainDepositSettled> => {
       const result = await this.request<NativeOnchainDepositSettledResponse>(
         "/onchain/await-deposit",
@@ -1328,6 +1349,7 @@ export class NativeBridgeWallet implements IFedimintWallet {
   };
 
   async cleanup(): Promise<void> {
+    for (const stop of this.depositPolls) stop();
     if (this.balancePoll !== null) {
       clearInterval(this.balancePoll);
       this.balancePoll = null;

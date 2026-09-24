@@ -1668,9 +1668,9 @@ export function TradeDetail({
           {fetchRatingSummary && <ReputationReadout pubkey={repFor}
             name={profileNameFor(profileNames, repFor, kind0Enabled)} fetchSummary={fetchRatingSummary} />}
           {(repFor === participants[Role.ARBITER] || repFor === previewArbiterPk) &&
-            <ArbiterRecordCard expanded record={arbiterRecord(repFor, knownTrades ?? [state], seatedBond ? [seatedBond] : [], new Map(), nowSec)} />}
+            <ArbiterRecordCard profileNames={profileNames} kind0Enabled={kind0Enabled} expanded record={arbiterRecord(repFor, knownTrades ?? [state], seatedBond ? [seatedBond] : [], new Map(), nowSec)} />}
         </OverlaySheet>}
-        {state.status === EscrowStatus.CREATED && (participants[Role.ARBITER] || previewArbiterPk) && <ArbiterRecordCard record={arbiterRecord(
+        {state.status === EscrowStatus.CREATED && (participants[Role.ARBITER] || previewArbiterPk) && <ArbiterRecordCard profileNames={profileNames} kind0Enabled={kind0Enabled} record={arbiterRecord(
           participants[Role.ARBITER] || previewArbiterPk!, knownTrades ?? [state], seatedBond ? [seatedBond] : [],
           new Map(), Math.floor(Date.now() / 1000), bondTipHeight,
         )} />}

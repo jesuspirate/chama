@@ -1,6 +1,12 @@
 // LiveTradeSurface — the guided question-based live-trade room.
 // Extracted for 6.3.1 — EN is source of truth.
 export const lts: Record<string, string> = {
+  "lts.funderLapsed": "You didn't lock in time, so your offer went back to the market. Nothing was taken.",
+  "lts.joinerLapsed": "The other person didn't lock in time. You can join again, or pick another offer.",
+  "lts.postAgain": "Post it again",
+  "lts.joinAgain": "Join again",
+  "lts.otherOffers": "See other offers",
+
   "lts.lockQ": "Lock {amount} to start this trade?",
   "lts.lockSub": "The sats sit in 2-of-3 escrow until you both confirm.",
   "lts.locking": "Locking…",

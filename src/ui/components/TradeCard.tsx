@@ -1,3 +1,5 @@
+import { hasMissedBuyerLock, isRenewalPaused } from "../../escrow-engine/listing-renewal-age.js";
+import { listingIdentityKey } from "../../escrow-engine/listing-renewal-ledger.js";
 import { isCountdownDeadline } from "./CountdownTimer.js";
 import { needsTradeHistory } from "../decisions.js";
 import { circleFromEscrow } from "../../chama/policy.js";
@@ -303,6 +305,9 @@ export function TradeCard({
       overflow: "hidden",
       position: "relative", isolation: "isolate",
     }}>
+      {state.status === EscrowStatus.CREATED && state.category === "p2p-trade" && state.initiator.pubkey === pubkey && <p style={{ color: T.muted, fontSize: 11 }}>
+        {t(hasMissedBuyerLock(state, nowSec) || isRenewalPaused(listingIdentityKey(state), state.initiator.pubkey) ? "canvas.renewPaused" : "canvas.staysLive")}
+      </p>}
       {combinedUnread > 0 && (
         <span aria-label={combinedUnread === 1 ? t("card.unreadMessageOne") : t("card.unreadMessageMany", { count: combinedUnread })} style={{
           position: "absolute", top: 8, right: 8, zIndex: 2,

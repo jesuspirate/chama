@@ -1,3 +1,6 @@
+import { fundingPremiumMsats } from "../payments/funding-premium.js";
+import { nativeLockEarmarks } from "../fedimint/pending-native-locks.js";
+import { spendableBalanceMsats, payoutEarmarks, canLockFromBalance } from "./decisions.js";
 import { saveNsec, SAVED_NSEC_KEY, NSEC_ORIGIN_KEY } from "../storage/saved-nsec.js";
 import { resolveCreateMintUrl,
   liveCommitmentForViewer,
@@ -57,6 +60,7 @@ import {
   isSellerOwnedListing,
   listingNeverFunded,
   resolveRenewalPolicy,
+  sessionAllowsAutoRenew,
 } from "../escrow-engine/listing-renewal.js";
 import { listCommitmentBonds } from "../bond-multisig/commitment-store.js";
 import {
@@ -66,6 +70,9 @@ import {
   listingIdentityKey,
 } from "../escrow-engine/listing-renewal-ledger.js";
 import {
+  hasMissedBuyerLock,
+  markMissedLock,
+  isRenewalPaused,
   bumpAutoRenewCount,
   getAutoRenewCount,
   isManuallyKept,
@@ -585,6 +592,8 @@ export default function App() {
   // canvas too — the old "browse" default is why a seller who opened their
   // trade through a path that never set this got thrown into the OG Browse
   // list after voting (Jet, 2026-09-07, prod 6.3).
+  const [detailReturnsHome, setDetailReturnsHome] = useState(true);
+  const [canvasHomeKey, setCanvasHomeKey] = useState(0);
   const [detailBackView, setDetailBackView] = useState<View>("guided");
   // LiveTradeSurface (flag-gated): the guided question/vote view of a live
   // trade. "More options" flips to the full TradeDetail for this trade only;
@@ -1625,8 +1634,8 @@ export default function App() {
       // A MANUAL renew is a deliberate "keep this store alive" — mark the
       // offer's lineage kept so the auto-renew age-out cap never lapses it.
       const src = escrows.get(id);
-      if (src) markManuallyKept(listingIdentityKey(src));
       const { escrowId } = await actions.renewListing(id);
+      if (src) markManuallyKept(listingIdentityKey(src), pubkey ?? undefined);
       markRetired(id); // durably supersede the old lapsed source
       setToast({ message: t("me.storeRenewed"), type: "success" });
       openEscrow(escrowId, "me");
@@ -1683,19 +1692,20 @@ export default function App() {
     return () => { cancelled = true; };
   }, [connected, pubkey, browseCommunity]);
 
-  // Tier 1 auto-renew (online-gated, bonded-only): while the seller's client is
-  // connected, re-publish their about-to-lapse / just-lapsed UNFUNDED stores so
-  // the shopfront never disappears between buyers. DECIDED: requires the seller
-  // online (a vanished owner's store SHOULD lapse — auto-renew is a liveness
-  // signal). Unbonded sellers get manual renew only, so this no-ops for them.
+  // Online presence renews eligible offers. Store alone requires a bond and
+  // its opt-in; missed buyer locks pause a lineage until a manual renewal.
   useEffect(() => {
     // A locally journaled+broadcast direct rollover gets a tightly bounded
     // storefront-only bridge while its replacement waits for 1 confirmation.
     // It never flows into the verified bond pool used for arbiter privileges.
     const storeBondContinuity = sellerBonded || hasPendingStoreRollover(listCommitmentBonds(), bondTip, Date.now());
-    // Keep-my-offers-live is a bonded-seller privilege. If the active bond is
-    // absent, the control is hidden and this background path is inert.
-    if (!connected || !pubkey || !sellerBonded || !storeAutoRenewEnabled) return;
+    // A fresh signed CREATE requires an online seller.
+    if (!connected || !pubkey) return;
+    for (const listing of escrows.values()) {
+      if (listing.initiator.pubkey === pubkey && !getRetiredIds().has(listing.id) && hasMissedBuyerLock(listing, now)) {
+        markMissedLock(listingIdentityKey(listing), pubkey);
+      }
+    }
     // Persistent retired ledger is the cross-reload guard; autoRenewedRef stays
     // the in-session guard on top. Cap per pass so a pathological state can't
     // burst dozens of relay publishes on one load — the rest resolve next pass.
@@ -1703,6 +1713,7 @@ export default function App() {
       escrows.values(), pubkey, now, getRetiredIds(), { bonded: storeBondContinuity },
     )
       .filter((l) => !autoRenewedRef.current.has(l.id))
+      .filter(l => sessionAllowsAutoRenew(l, { connected, pubkey, bonded: sellerBonded, storeEnabled: storeAutoRenewEnabled, paused: hasMissedBuyerLock(l, now) || isRenewalPaused(listingIdentityKey(l), pubkey) }))
       // Age-out (#82): stop auto-renewing an abandoned/test offer once its
       // lineage has hit the cap with no buyer interest. A listing that ever had
       // a JOIN/hold, or that the seller manually renewed, is exempt and stays.
@@ -2021,6 +2032,9 @@ export default function App() {
         currentFederationId: fedimint.federationId,
       })
     : { suppressRecovery: false, card: null, entries: [] };
+  const walletSpendableMsats = spendableBalanceMsats(fedimint.balanceMsats ?? 0,
+    (!isSimModeOn() && !isTestnetMode() ? nativeLockEarmarks(fedimint.federationId) : []),
+    pubkey && !myTradesLoading && !claimPayoutInProgress ? payoutEarmarks(escrows.values(), pubkey, fedimint.federationId, getPayoutRecord) : [undefined]);
   const hasPendingClaimPayout = pendingPayoutSummary.suppressRecovery;
   // Display-side staleness filter, mirroring nativeLockResume: only card a
   // trade that's still CLAIMED locally (the summary reads the same map, so
@@ -2582,6 +2596,7 @@ export default function App() {
     const local = escrows.get(id);
     const nextBackView = returnTo ?? ((view === "detail" || view === "circle") ? detailBackView : view);
     const safeBackView = (nextBackView === "detail" || nextBackView === "circle") ? "guided" : nextBackView;
+    if (safeBackView === "guided" && returnTo !== "guided" && view !== "detail" && view !== "circle") setDetailReturnsHome(true);
 
     if (local?.category === "chama" || local?.chamaPolicy === "share-v1") {
       const parentId = local.chamaPolicy ? local.parent! : local.id;
@@ -3076,8 +3091,15 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [connected, pubkey, changeHomeAfterConnect, bootInviteId]);
 
+  const guidedHome = () => {
+    canvasResumeRef.current = null;
+    setCanvasPublished(null);
+    setSelectedId(null);
+    setCanvasHomeKey(k => k + 1);
+    setView("guided");
+  };
   const switchTab = (t: Tab) => {
-    if (t === "browse") setView("browse");
+    if (t === "browse") { if (view === "browse" || view === "guided") guidedHome(); else setView("browse"); }
     else if (t === "dashboard") setView("dashboard");
     else if (t === "me") setView("me");
     // V3 #75: leaving a visited trade via the bottom nav counts as backing
@@ -3291,6 +3313,9 @@ export default function App() {
         <PayoutDestinationsPanel onClose={() => setWalletOverlay(null)} />
       )}
 
+      {detailMode && (view !== "detail" || expertTradeView || !LIVE_TRADE_SURFACE_ENABLED) && <div style={{ padding: "8px 16px" }}>
+        <button type="button" aria-label={t("lts.backHome")} onClick={guidedHome} style={{ background: "none", border: 0, padding: 0, cursor: "pointer" }}><Wordmark /></button>
+      </div>}
       {!detailMode && (
         <>
           {/* Header */}
@@ -3300,7 +3325,7 @@ export default function App() {
           }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <div>
-                <Wordmark />
+                <button type="button" aria-label={t("lts.backHome")} onClick={guidedHome} style={{ background: "none", border: 0, padding: 0, cursor: "pointer" }}><Wordmark /></button>
                 <div style={{ fontSize: 9, color: T.muted, fontFamily: T.mono, letterSpacing: 1.5, textTransform: "uppercase", paddingLeft: 34, marginTop: 3 }}>
                   {defaultCurrencyForCommunity(routeCommunitySlug)} · {t("app.headerTagline")}
                 </div>
@@ -3490,6 +3515,9 @@ export default function App() {
           fiatCurrency={pendingFundAndLock.fiatCurrency}
           tradeCategory={pendingFundAndLock.tradeCategory}
           fundAndLock={actions.fundAndLock}
+          spendableMsats={canLockFromBalance(escrows.get(pendingFundAndLock.escrowId), walletSpendableMsats, pendingFundAndLock.amountMsats, fundingPremiumMsats(pendingFundAndLock.premiumMsats)) ? walletSpendableMsats : 0}
+          supportsOnchain={actions.supportsOnchain()}
+          subscribeDeposit={actions.subscribeDeposit}
           getOnchainInfo={actions.getOnchainInfo}
           lockAndPublish={actions.lockAndPublish}
           disableNwc={fediWebView}
@@ -3971,7 +3999,7 @@ export default function App() {
         selected && circleFromEscrow(selected) ? <CircleSurface key={selected.id} parent={selected} escrows={escrows} viewerPubkey={pubkey!}
           childrenLoaded={circleChildrenLoaded.has(selected.id)} loadError={circleLoadError}
           profileNames={nostrProfiles} kind0Enabled={kind0Enabled}
-          backLabel={detailBackView === "me" ? t("browse.navMe") : detailBackView === "dashboard" ? t("browse.navDashboard") : detailBackView === "guided" ? t("lts.backHome") : t("browse.navBrowse")}
+          backLabel={detailBackView === "me" ? t("browse.navMe") : detailBackView === "dashboard" ? t("browse.navDashboard") : detailBackView === "guided" ? t(detailReturnsHome ? "lts.backHome" : "canvas.backOffers") : t("browse.navBrowse")}
           onBack={() => { ++circleRouteRequest.current; setView(detailBackView); setSelectedId(null); maybeSnapBackHome(); }}
           onRefresh={() => refreshCircle(selected.id)}
           onLock={async () => {
@@ -4036,6 +4064,7 @@ export default function App() {
       ) : view === "guided" ? (
         <>
         <AssistedCanvas
+          key={canvasHomeKey}
           listings={allVisibleListings}
           allEscrows={[...escrows.values()]}
           circleChildrenLoaded={circleChildrenLoaded}
@@ -4058,7 +4087,7 @@ export default function App() {
             setCreateCanvasIntent(null);
             setCreateOverlayOpen(true);
           }}
-          onOpenTrade={(id) => openEscrow(id, "guided")}
+          onOpenTrade={(id) => { setDetailReturnsHome(false); openEscrow(id, "guided"); }}
           onStartCircle={openCircleCanvas}
           publishedInfo={canvasPublished}
           onDismissPublished={() => setCanvasPublished(null)}
@@ -4069,7 +4098,7 @@ export default function App() {
             trade={visibleAttentionTrade}
             needsYouCount={needsYouCount}
             actionMode={attentionActionMode}
-            onTap={() => openEscrow(visibleAttentionTrade.id, "guided")}
+            onTap={() => { setDetailReturnsHome(true); openEscrow(visibleAttentionTrade.id, "guided"); }}
           />
         )}
         </>
@@ -4080,7 +4109,7 @@ export default function App() {
           // a chat pager that flexes to take the leftover room, and the timeline
           // glued to the bottom. It scrolls only when a tall phase truly needs
           // it. Subtract the top chrome (safe-area / sim pill) the shell pads for.
-          height: `calc(100dvh - ${typeof shellPaddingTop === "number" ? `${shellPaddingTop}px` : shellPaddingTop} - ${simOn ? `${SIM_PILL_HEIGHT}px` : "0px"} - env(safe-area-inset-bottom, 0px))`,
+          height: `calc(100dvh - ${expertTradeView || !LIVE_TRADE_SURFACE_ENABLED ? "44px" : "0px"} - ${typeof shellPaddingTop === "number" ? `${shellPaddingTop}px` : shellPaddingTop} - ${simOn ? `${SIM_PILL_HEIGHT}px` : "0px"} - env(safe-area-inset-bottom, 0px))`,
           display: "flex", flexDirection: "column", minHeight: 0,
         }}>
           {LIVE_TRADE_SURFACE_ENABLED && !expertTradeView ? (
@@ -4090,14 +4119,16 @@ export default function App() {
               fetchCommunityBonds={actions.fetchCommunityBonds}
               state={selected}
               pubkey={pubkey!}
-              onBack={() => { setView(detailBackView); setSelectedId(null); maybeSnapBackHome(); }}
+              onBack={() => { if (detailBackView === "guided" && detailReturnsHome) guidedHome(); else { setView(detailBackView); setSelectedId(null); } maybeSnapBackHome(); }}
               backLabel={
                 detailBackView === "me" ? t("browse.navMe")
                 : detailBackView === "dashboard" ? t("browse.navDashboard")
-                : detailBackView === "guided" ? t("lts.backHome")
+                : detailBackView === "guided" ? t(detailReturnsHome ? "lts.backHome" : "canvas.backOffers")
                 : t("browse.navBrowse")
               }
               onOpenFullView={() => setExpertTradeView(true)}
+              onHome={guidedHome}
+              onRepost={() => renewListing(selected.id)}
               onLock={tradeOnLock}
               onClaim={tradeOnClaim}
               onJoin={tradeOnJoin}
@@ -4166,7 +4197,7 @@ export default function App() {
               !fediWebView
               && !isNativeBridgeModeOn()
             }
-            onBack={() => { setView(detailBackView); setSelectedId(null); maybeSnapBackHome(); }}
+            onBack={() => { if (detailBackView === "guided" && detailReturnsHome) guidedHome(); else { setView(detailBackView); setSelectedId(null); } maybeSnapBackHome(); }}
             onVote={(outcome) => actions.vote(selectedId!, outcome).then(
               () => setToast({ message: t("app.votedOutcome", { outcome }), type: "success" }),
               (e: any) => {

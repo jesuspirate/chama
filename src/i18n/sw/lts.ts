@@ -1,4 +1,10 @@
 export const lts: Record<string, string> = {
+  "lts.funderLapsed": "Hukufunga kwa wakati, kwa hivyo ofa yako imerudi sokoni. Hakuna kilichochukuliwa.",
+  "lts.joinerLapsed": "Mtu mwingine hakufunga kwa wakati. Unaweza kujiunga tena au kuchagua ofa nyingine.",
+  "lts.postAgain": "Chapisha tena",
+  "lts.joinAgain": "Jiunge tena",
+  "lts.otherOffers": "Angalia ofa nyingine",
+
   "lts.lockQ": "Ufunge {amount} kuanzisha biashara hii?",
   "lts.lockSub": "Sats zinakaa kwenye escrow ya 2-kati-ya-3 hadi nyote wawili mthibitishe.",
   "lts.locking": "Inafunga…",

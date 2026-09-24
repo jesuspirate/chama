@@ -2,6 +2,13 @@
 // extraction sweep). Keys prefixed "trade.", alphabetized. `ns*` keys are the
 // detailNextStep action-card matrix (kicker/title/body cells).
 export const trade: Record<string, string> = {
+  "trade.responseHours": "{count} hours",
+  "trade.responseDays": "{count} days",
+  "trade.arbiterNoStake": "{name} has nothing at stake yet.",
+  "trade.arbiterVerdict": "{name} has {amount} sats at stake and has settled {count} disputes.",
+  "trade.arbiterResponse": "Usually replies within {time}.",
+  "trade.deviceSample": "From what this device has seen.",
+
   "trade.partyObserved": "Signed activity observed in {count} trades on this device. No history means unknown.",
   "trade.savedSummary": "Saved on this device",
   "trade.historyUnverified": "Trade history unverified",

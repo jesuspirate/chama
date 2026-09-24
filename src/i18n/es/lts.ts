@@ -1,4 +1,10 @@
 export const lts: Record<string, string> = {
+  "lts.funderLapsed": "No bloqueaste a tiempo y tu oferta volvió al mercado. No se ha cobrado nada.",
+  "lts.joinerLapsed": "La otra persona no bloqueó a tiempo. Puedes unirte de nuevo o elegir otra oferta.",
+  "lts.postAgain": "Publicar de nuevo",
+  "lts.joinAgain": "Unirme de nuevo",
+  "lts.otherOffers": "Ver otras ofertas",
+
   "lts.lockQ": "¿Bloquear {amount} para iniciar esta operación?",
   "lts.lockSub": "Los sats quedan en escrow 2-de-3 hasta que ambos confirmen.",
   "lts.locking": "Bloqueando…",

@@ -1012,6 +1012,7 @@ export function MeScreen({
           background: T.card, border: `1px solid ${T.border}`,
           borderRadius: T.r, padding: 0, overflow: "hidden",
         }}>
+          <WalletBalance balanceMsats={balanceMsats} />
           {onWithdrawEcash && (
             <SettingsRow label={t("me.withdrawEcash")} hint={t("me.withdrawEcashBackupHint")} onClick={onWithdrawEcash} />
           )}
@@ -3378,4 +3379,9 @@ function SettingsRow({ label, hint, onClick, danger }: {
       <span style={{ color: T.muted, fontSize: 16 }}>›</span>
     </button>
   );
+}
+
+export function WalletBalance({ balanceMsats }: { balanceMsats: number }) {
+  const { t } = useT();
+  return <div data-wallet-balance style={{ padding: 16, color: T.text }}>{t("me.walletBalance")} <TradeAmount msats={balanceMsats} interactive /></div>;
 }

@@ -1,3 +1,4 @@
+import { errorText } from "./error-text.js";
 // ══════════════════════════════════════════════════════════════════════════
 // Chama — Atomic claim-and-payout orchestrator (v0.3.0 Phase 3)
 // ══════════════════════════════════════════════════════════════════════════
@@ -564,11 +565,11 @@ export async function runClaimAndPayout(
     } catch (e: any) {
       moneyLog("CLAIM-COMPLETE-OUT", {
         escrowId: opts.escrowId, result: "error", via,
-        errMsg: (e?.message || String(e)).slice(0, 120),
+        errMsg: (errorText(e)).slice(0, 120),
       });
       claimTrace("orchestrator-complete-out", {
         escrowId: opts.escrowId, result: "error", via,
-        errMsg: (e?.message || String(e)).slice(0, 120),
+        errMsg: (errorText(e)).slice(0, 120),
       });
       // Advisory protocol event only; the user already has their sats.
     }
@@ -924,12 +925,12 @@ export async function runClaimAndPayout(
       moneyLog("CLAIM-STASH-RESERVE", {
         escrowId: opts.escrowId,
         result: "error",
-        errMsg: (e?.message || String(e)).slice(0, 120),
+        errMsg: (errorText(e)).slice(0, 120),
       });
       claimTrace("orchestrator-stash-reserve", {
         escrowId: opts.escrowId,
         result: "error",
-        errMsg: (e?.message || String(e)).slice(0, 120),
+        errMsg: (errorText(e)).slice(0, 120),
       });
     }
   }

@@ -1,3 +1,4 @@
+import { errorText } from "./error-text.js";
 import { fundingStorageFailure, type FundingInvoiceJournal, type FundingStorageKey } from "./abandoned-invoices.js";
 // ══════════════════════════════════════════════════════════════════════════
 // Chama — Atomic fund-and-lock orchestrator (v0.3.0 Phase 2)
@@ -177,7 +178,7 @@ export type FundAndLockPhase =
   | { kind: "locking" }
   | { kind: "locked" }
   | { kind: "funding-not-started"; reason: FundingStorageKey }
-  | { kind: "lock-failed"; error: string; errorKey?: FundingStorageKey };
+  | { kind: "lock-failed"; error: string; errorKey?: FundingStorageKey; invoiceFailed?: boolean };
 
 /** Terminal phase kinds — pollForFunding / runFundAndLock resolve to one
  *  of these. */
@@ -192,7 +193,7 @@ export type FundAndLockTerminal =
   | { kind: "mint-timeout" }
   | { kind: "aborted" }
   | { kind: "funding-not-started"; reason: FundingStorageKey }
-  | { kind: "lock-failed"; error: string; errorKey?: FundingStorageKey };
+  | { kind: "lock-failed"; error: string; errorKey?: FundingStorageKey; invoiceFailed?: boolean };
 
 // ── Tunables ─────────────────────────────────────────────────────────────
 
@@ -553,7 +554,7 @@ async function runFundAndLockWatched(
   try {
     baseline = await opts.getBalance();
   } catch (e: any) {
-    const err = e?.message || "Couldn't read wallet balance";
+    const err = errorText(e, "Couldn't read wallet balance");
     emit({ kind: "lock-failed", error: err });
     return { kind: "lock-failed", error: err };
   }
@@ -701,11 +702,12 @@ async function runFundAndLockWatched(
     await receiveWatchReadyPromise;
     emit({ kind: "receive-watch-ready" });
   } catch (e: any) {
-    const err = e?.message || "Couldn't create funding invoice";
+    console.error("[chama] funding invoice failed:", e);
+    const err = errorText(e, "Couldn't create funding invoice");
     const storageFailure = fundingStorageFailure(e);
     if (storageFailure) { emit(storageFailure); return storageFailure; }
-    emit({ kind: "lock-failed", error: err });
-    return { kind: "lock-failed", error: err };
+    emit({ kind: "lock-failed", error: err, invoiceFailed: true });
+    return { kind: "lock-failed", error: err, invoiceFailed: true };
   } finally {
     if (slowWarnTimer) clearTimeout(slowWarnTimer);
     if (hardTimeoutTimer) clearTimeout(hardTimeoutTimer);
@@ -720,7 +722,7 @@ async function runFundAndLockWatched(
     try {
       await opts.autoPayInvoice(bolt11);
     } catch (e: any) {
-      const err = e?.message || "NWC wallet could not pay the funding invoice";
+      const err = errorText(e, "NWC wallet could not pay the funding invoice");
       emit({ kind: "lock-failed", error: err });
       return { kind: "lock-failed", error: err };
     }
@@ -816,7 +818,7 @@ async function runFundAndLockWatched(
     emit({ kind: "locked" });
     return { kind: "locked" };
   } catch (e: any) {
-    const err = e?.message || "LOCK failed";
+    const err = errorText(e, "LOCK failed");
     try {
       const balance = await opts.getBalance();
       if (balance > baseline) {

@@ -1,4 +1,10 @@
 export const lts: Record<string, string> = {
+  "lts.funderLapsed": "Vous n’avez pas verrouillé à temps : votre offre est retournée au marché. Rien n’a été prélevé.",
+  "lts.joinerLapsed": "L’autre personne n’a pas verrouillé à temps. Vous pouvez rejoindre à nouveau ou choisir une autre offre.",
+  "lts.postAgain": "Publier à nouveau",
+  "lts.joinAgain": "Rejoindre à nouveau",
+  "lts.otherOffers": "Voir les autres offres",
+
   "lts.lockQ": "Verrouiller {amount} pour démarrer cet échange ?",
   "lts.lockSub": "Les sats restent en séquestre 2-sur-3 jusqu’à votre double confirmation.",
   "lts.locking": "Verrouillage…",

@@ -316,6 +316,7 @@ struct Bridge {
     /// Which gateway minted each outstanding receive, so a settlement can be
     /// credited back to it. Entries are dropped as they settle.
     receive_gateways: Arc<Mutex<HashMap<OperationId, PublicKey>>>,
+    deposit_status: Arc<Mutex<HashMap<OperationId, serde_json::Value>>>,
 }
 
 /// What a gateway has actually done for us.
@@ -661,6 +662,7 @@ async fn main() -> Result<()> {
         last_good_gateway: Arc::new(Mutex::new(None)),
         gateway_health: Arc::new(Mutex::new(GatewayHealthStore::default())),
         receive_gateways: Arc::new(Mutex::new(HashMap::new())),
+        deposit_status: Arc::new(Mutex::new(HashMap::new())),
     };
 
     bridge.log_effective_config();
@@ -857,6 +859,7 @@ impl Bridge {
             last_good_gateway: self.last_good_gateway.clone(),
             gateway_health: self.gateway_health.clone(),
             receive_gateways: self.receive_gateways.clone(),
+            deposit_status: self.deposit_status.clone(),
         }
     }
 
@@ -1970,6 +1973,7 @@ impl Bridge {
             .await
             .context("failed to allocate safe on-chain deposit address")?;
 
+        self.deposit_status.lock().await.insert(operation_id, json!({ "status": "waiting" }));
         Ok(OnchainDepositAddressOutput {
             operation_id,
             address: address.to_string(),
@@ -1991,6 +1995,18 @@ impl Bridge {
             .into_stream();
 
         while let Some(update) = updates.next().await {
+            let progress = match &update {
+                DepositStateV2::WaitingForTransaction => json!({"status": "waiting"}),
+                DepositStateV2::WaitingForConfirmation { btc_deposited, btc_out_point } =>
+                    json!({"status": "seen", "btcDeposited": btc_deposited.to_sat(), "outpoint": btc_out_point.to_string()}),
+                DepositStateV2::Confirmed { btc_deposited, btc_out_point } =>
+                    json!({"status": "confirmed", "btcDeposited": btc_deposited.to_sat(), "outpoint": btc_out_point.to_string()}),
+                DepositStateV2::Claimed { btc_deposited, btc_out_point } =>
+                    json!({"status": "claimed", "btcDeposited": btc_deposited.to_sat(), "outpoint": btc_out_point.to_string()}),
+                DepositStateV2::Failed(error) => json!({"status": "failed", "error": error}),
+            };
+            self.deposit_status.lock().await.insert(operation_id, progress);
+
             match update {
                 DepositStateV2::Claimed {
                     btc_deposited,
@@ -2416,6 +2432,7 @@ async fn serve_bridge(
             post(api_onchain_deposit_address),
         )
         .route("/onchain/await-deposit", post(api_await_onchain_deposit))
+        .route("/onchain/deposit-status", get(api_onchain_deposit_status))
         .route("/onchain/withdraw-fees", post(api_onchain_withdraw_fees))
         .route("/onchain/withdraw", post(api_onchain_withdraw))
         // Auth wraps every route (including /health — it leaks federation
@@ -2807,6 +2824,19 @@ async fn api_onchain_deposit_address(
 ) -> Result<Json<OnchainDepositAddressOutput>, ApiError> {
     let client = state.client().await?;
     Ok(Json(state.bridge.onchain_deposit_address(&client).await?))
+}
+
+async fn api_onchain_deposit_status(
+    State(state): State<AppState>,
+    Query(req): Query<AwaitOnchainDepositRequest>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let client = state.client().await?;
+    // Check membership in the active wallet, including after a federation switch.
+    client.operation_log().get_operation(req.operation_id).await
+        .ok_or_else(|| anyhow::anyhow!("unknown deposit operation"))?;
+    let status = state.bridge.deposit_status.lock().await.get(&req.operation_id).cloned()
+        .ok_or_else(|| anyhow::anyhow!("deposit status not available; resume awaiting this deposit"))?;
+    Ok(Json(status))
 }
 
 async fn api_await_onchain_deposit(

@@ -287,7 +287,7 @@ export function buyerInterestNotificationFor(
   if (next.status !== EscrowStatus.CREATED) return null;
 
   const id = next.id;
-  const label = shortId(id);
+  const label = next.title || next.description;
   const lang = getCurrentLang();
   const build = (tag: string): TradeNotification => ({
     escrowId: id,

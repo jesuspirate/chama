@@ -1,3 +1,8 @@
+import { fundingPremiumMsats } from "../payments/funding-premium.js";
+import { nativeLockEarmarks } from "../fedimint/pending-native-locks.js";
+import { lockFromBalance } from "../payments/lock-from-balance.js";
+import { spendableBalanceMsats, payoutEarmarks } from "../ui/decisions.js";
+import { errorText } from "../payments/error-text.js";
 import { createFundingInvoiceJournal, fundingStorageFailure } from "../payments/abandoned-invoices.js";
 import { parseAvatar, saveAvatar, type Avatar } from "../ui/avatars.js";
 import { notificationWindowAllows } from "../notifications/quiet-window.js";
@@ -75,17 +80,6 @@ async function resolveLineageTenure(
   }
 }
 
-function describeError(error: unknown, fallback: string): string {
-  if (typeof error === "string" && error.trim()) return error.trim();
-  if (error instanceof Error && error.message.trim()) return error.message.trim();
-  if (error && typeof error === "object") {
-    try {
-      const json = JSON.stringify(error);
-      if (json && json !== "{}") return json;
-    } catch {}
-  }
-  return fallback;
-}
 
 function isFediMiniAppRuntime(): boolean {
   if (typeof window !== "undefined" && Boolean((window as any).fediInternal)) return true;
@@ -1066,7 +1060,7 @@ export interface UseEscrowActions {
       /** E1.1: arbiter-insurance msats folded into the invoice only. */
       premiumMsats?: number;
       description: string;
-      fundingMethod?: "lightning" | "onchain" | "nwc" | "ecash";
+      fundingMethod?: "lightning" | "onchain" | "nwc" | "ecash" | "balance";
       ecashNotes?: string;
       nwcConnectionString?: string;
       rememberNwc?: boolean;
@@ -1097,6 +1091,8 @@ export interface UseEscrowActions {
     input: import("../fedimint/reabsorb-bearer-notes.js").ReabsorbInput,
   ) => Promise<import("../fedimint/reabsorb-bearer-notes.js").ReabsorbResult>;
   /** Read federation wallet-module onchain fees and confirmation policy. */
+  subscribeDeposit: (operationId: string, cb: (progress: import("../fedimint/fedimint-client.js").OnchainDepositProgress) => void) => () => void;
+  supportsOnchain: () => boolean;
   getOnchainInfo: () => Promise<OnchainInfo>;
   /**
    * v0.3.1 Phase 1: explicit federation probe. Returns
@@ -1359,6 +1355,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
   // PR 5: federation health cache. Mirrored into React state for the UI;
   // the ref is the source of truth read inside createFundingInvoice so
   // we don't depend on the latest closure of `state`.
+  const balanceLockBusy = useRef(false);
   const healthRef = useRef<{ ok: boolean | null; at: number | null }>({ ok: null, at: null });
   // PR 5: latest state mirror. Lets callbacks read current values
   // (e.g. federationName for error copy) without re-creating the
@@ -2343,7 +2340,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       // same-role duplicate JOIN echoes. Opposite-role self-joins must
       // surface as real errors; otherwise a seller can tap "Join as Buyer"
       // and see a false-success path on their own listing.
-      const msg = e?.message || "";
+      const msg = errorText(e, "");
       const latest = client.getState(escrowId);
       const currentPubkey = stateRef.current?.pubkey ?? null;
       const alreadyInRequestedRole =
@@ -2411,7 +2408,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       refreshBalanceRef.current?.().catch(() => {});
       return result;
     } catch (e: any) {
-      const msg = e?.message || "";
+      const msg = errorText(e, "");
       if (msg.includes("Cannot LOCK") || msg.includes("TERMINAL")) {
         console.debug("[chama] Lock suppressed:", msg);
         return client.getState(escrowId)!;
@@ -2437,7 +2434,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       refreshBalanceRef.current?.().catch(() => {});
       return result;
     } catch (e: any) {
-      const msg = e?.message || "";
+      const msg = errorText(e, "");
       if (msg.includes("Cannot LOCK") || msg.includes("TERMINAL")) {
         console.debug("[chama] Lock suppressed:", msg);
         return client.getState(escrowId)!;
@@ -2606,7 +2603,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       finishWhenBalanceConfirms(false);
       return result;
     } catch (e: any) {
-      const msg = e?.message || String(e);
+      const msg = errorText(e);
 
       // A published CLAIM is not proof that the wallet received the ecash.
       // The bridge marks terminal mint outcomes separately; propagate those
@@ -2726,7 +2723,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       // real publish error. State-machine semantics are unchanged:
       // the duplicate/stale event was rejected, and the caller can
       // still recover the current state via getState if needed.
-      const msg = e?.message || "";
+      const msg = errorText(e, "");
       if (msg.includes("already voted") || msg.includes("Cannot vote") ||
           msg.includes("TERMINAL") || msg.includes("not LOCKED")) {
         console.debug("[chama] Vote suppressed:", msg);
@@ -4489,14 +4486,10 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       updateFedimint({ lastHealthOk: true, lastHealthAt: receiveOkAt });
       return invoice;
     } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
-      const receiveFailedAt = Date.now();
-      healthRef.current = { ok: false, at: receiveFailedAt };
-      updateFedimint({
-        lastHealthOk: false,
-        lastHealthAt: receiveFailedAt,
-        error: message,
-      });
+      // A refused invoice is not evidence that the federation is unreachable.
+      // Invalidate the probe cache so the next attempt checks actual health.
+      healthRef.current = { ok: null, at: null };
+      updateFedimint({ error: errorText(e), lastHealthOk: null, lastHealthAt: null });
       throw e;
     }
   }, [markFedimintWalletNotReady, updateFedimint]);
@@ -4513,12 +4506,12 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       /** E1.1 arbiter insurance: extra msats folded into the funding
        *  invoice ON TOP of amountMsats so the wallet retains the funder's
        *  0.25% premium after the lock spend (which independently consumes
-       *  state.amountMsats). Never enters the lock, the #37 intent stash,
-       *  or the direct-lock balance gate. Ignored on the Fedi-internal
+       *  state.amountMsats). Required alongside the trade for balance funding,
+       *  but never enters the lock or the #37 intent stash. Ignored on the Fedi-internal
        *  path (exact-amount — a bump there would over-fund the escrow). */
       premiumMsats?: number;
       description: string;
-      fundingMethod?: "lightning" | "onchain" | "nwc" | "ecash";
+      fundingMethod?: "lightning" | "onchain" | "nwc" | "ecash" | "balance";
       ecashNotes?: string;
       nwcConnectionString?: string;
       rememberNwc?: boolean;
@@ -4544,7 +4537,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     if (
       !isSimModeOn() &&
       !isTestnetMode() &&
-      opts.amountMsats < minimumRealFundingMsatsForMethod(opts.fundingMethod)
+      opts.amountMsats < minimumRealFundingMsatsForMethod(opts.fundingMethod === "balance" ? "ecash" : opts.fundingMethod)
     ) {
       const err = opts.fundingMethod === "ecash" || opts.fundingMethod === "onchain"
         ? `${minimumAtomicFundingMessage()} Enter a positive amount for a real escrow.`
@@ -4561,7 +4554,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     try {
       ({ buyerPubkey: fundingBuyerPubkey } = await requireBridge().preflightLock(escrowId));
     } catch (e) {
-      const err = describeError(e, "This trade is not ready to fund");
+      const err = errorText(e, "This trade is not ready to fund");
       opts.onPhase({ kind: "lock-failed", error: err });
       return { kind: "lock-failed", error: err };
     }
@@ -4613,6 +4606,34 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       ? prev
       : { ...prev, fundingInProgress: true });
     try {
+      const premiumMsats = fundingPremiumMsats(opts.premiumMsats);
+      if (opts.fundingMethod === "balance") {
+        if (balanceLockBusy.current) {
+          const terminal = { kind: "lock-failed" as const, error: "Another balance lock is still running. Try again when it finishes." };
+          opts.onPhase(terminal); return terminal;
+        }
+        balanceLockBusy.current = true;
+        try {
+          return await lockFromBalance({
+            amountMsats: opts.amountMsats, premiumMsats, signal: opts.signal, onPhase: opts.onPhase,
+            readSpendable: async () => {
+              const balance = await fedimint.getBalance();
+              const fed = fedimint.getFederationId();
+              const locks = isSimModeOn() || isTestnetMode() ? [] : nativeLockEarmarks(fed);
+              const current = stateRef.current;
+              const payouts = current?.pubkey && !current.myTradesLoading && !current.claimPayoutInProgress ? payoutEarmarks(current.escrows.values(), current.pubkey, fed, getPayoutRecord) : [undefined];
+              return spendableBalanceMsats(balance, locks, payouts);
+            },
+            getTrade: () => requireClient().getState(escrowId),
+            actualAmount: trade => trade.items?.length
+              ? (opts.selectedItems ?? []).reduce((sum, item) => sum + item.amountMsats * item.quantity, 0)
+              : trade.amountMsats,
+            lock: () => lockAndPublishAction(escrowId, {
+              savedHandleId: opts.savedHandleId, selectedItems: opts.selectedItems, buyerPubkey: fundingBuyerPubkey,
+            }),
+          });
+        } finally { balanceLockBusy.current = false; }
+      }
       if (hasFediInternalGenerateEcash()) {
         // Fedi Mini-App funding is atomic via stash + re-absorb: ecash spent
         // out of Fedi is committed only once the LOCK publishes with our
@@ -4792,12 +4813,6 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
         }
       }
 
-      // E1.1: sanitize the insurance bump once. Whole msats, never
-      // negative, zero in sim/testnet (the premium sweep no-ops there).
-      const premiumMsats = (!isSimModeOn() && !isTestnetMode())
-        ? Math.max(0, Math.floor(opts.premiumMsats ?? 0))
-        : 0;
-
       if (opts.fundingMethod === "onchain") {
         const meta = buildChamaOperationMeta({
           flow: "fund_receive",
@@ -4973,7 +4988,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       }
       return result;
     } catch (e: unknown) {
-      const err = describeError(e, "Funding failed");
+      const err = errorText(e, "Funding failed");
       const storageFailure = fundingStorageFailure(e);
       if (storageFailure) { opts.onPhase(storageFailure); return storageFailure; }
       opts.onPhase({ kind: "lock-failed", error: err });
@@ -5098,7 +5113,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       bridge = requireBridge();
       client = requireClient();
     } catch (e: any) {
-      const err = e?.message || "Fedimint wallet not ready";
+      const err = errorText(e, "Fedimint wallet not ready");
       args.onPhase({ kind: "claim-bridge-threw", error: err });
       return { kind: "claim-bridge-threw", error: err };
     }
@@ -5121,7 +5136,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
           args.onPhase({ kind: "done" });
           return { kind: "done" };
         } catch (e: any) {
-          const msg = e?.message || String(e);
+          const msg = errorText(e);
           if (isStaleClaim(msg)) {
             console.debug("[chama] Fedi claim suppressed (stale):", msg);
             args.onPhase({ kind: "done" });
@@ -5261,7 +5276,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
               ? await claimIntoBrowserWalletSafely(id)
               : await bridge.claimAndRedeem(id, { clearPendingOnRedeem: false });
           } catch (e: any) {
-            const msg = e?.message || String(e);
+            const msg = errorText(e);
             if (isStaleClaim(msg)) {
               console.debug("[chama] Claim suppressed (stale):", msg);
               return client.getState(id)!;
@@ -6663,6 +6678,8 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       refreshBalanceRef.current?.().catch(() => {});
       return result;
     },
+    subscribeDeposit: (operationId, cb) => fedimintRef.current?.subscribeDeposit(operationId, cb) ?? (() => {}),
+    supportsOnchain: () => fedimintRef.current?.supportsOnchain() ?? false,
     getOnchainInfo: async () => {
       const fedimint = fedimintRef.current;
       if (!fedimint || !fedimint.isInitialized() || !fedimint.isJoined()) {
@@ -6699,7 +6716,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
         });
         return { ok: true as const };
       } catch (e: any) {
-        const message = e?.message || "Federation unreachable";
+        const message = errorText(e, "Federation unreachable");
         if (/FedimintClient not initialized/i.test(message)) {
           markFedimintWalletNotReady();
           return { ok: false as const, error: FEDIMINT_WALLET_NOT_READY };

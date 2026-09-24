@@ -46,6 +46,7 @@ function SimOnchainFixture() {
  const [wallet] = useState(() => createSimWallet({npub:null,onchainMode:simOnchainMode()}));
  useEffect(() => () => { void wallet.cleanup(); },[wallet]);
  return <AtomicFundingModal escrowId="SIM-ONCHAIN-FIXTURE" amountMsats={2000000} ctaLabel="Test"
+  supportsOnchain subscribeDeposit={wallet.onchain.subscribeDeposit}
   getOnchainInfo={()=>wallet.onchain.getInfo()} lockAndPublish={async()=>{}} onClose={()=>{(window as any).simClosed=true;}}
   fundAndLock={async (_id,opts)=>{
    await wallet.open(); await wallet.joinFederation('sim');
@@ -54,9 +55,9 @@ function SimOnchainFixture() {
    const phase={address:deposit.address,operationId:deposit.operationId,finalityDelay:info.finalityDelay,pegInFeeSats:info.pegInFeeSats,depositAmountSats:2000+info.pegInFeeSats,minimumDepositSats:info.minimumDepositSats};
    opts.onPhase({kind:'onchain-address-created',...phase});
    (window as any).depositStates=[];
-   wallet.onchain.subscribeDeposit(deposit.operationId,p=>{
+   wallet.onchain.subscribeDeposit!(deposit.operationId,p=>{
     (window as any).depositStates.push(p);
-    if(p.status!=='pending') opts.onPhase({kind:'awaiting-onchain-confirmations',...phase});
+    if(p.status!=='waiting') opts.onPhase({kind:'awaiting-onchain-confirmations',...phase});
    });
    opts.signal?.addEventListener('abort',()=>{void wallet.cleanup();},{once:true});
    await wallet.onchain.awaitDeposit(deposit.operationId);
@@ -95,8 +96,8 @@ function Fixture() {
   if (new URLSearchParams(location.search).has('ecash')) return <EcashExportModal balanceMsats={2000000} federationLabel="TEST ONLY"
     spendNotes={async () => ''} onClose={() => {}} preset={{ notes: 'fedimint' + 'a1b2c3d4'.repeat(30), amountMsats: 2000000,
       headline: 'TEST ONLY', body: t('recovery.exportReadyBody', {federation:'TEST ONLY'}), onConfirmCleared: () => {} }} />;
-  if (new URLSearchParams(location.search).has('storage') || new URLSearchParams(location.search).has('atomic')) return <AtomicFundingModal escrowId="TEST-ONLY" amountMsats={2000000}
-    ctaLabel="Test" getOnchainInfo={async () => ({ pegInFeeSats: 100, minimumDepositSats: 1, finalityDelay: 1 } as any)}
+  if (new URLSearchParams(location.search).has('storage') || new URLSearchParams(location.search).has('atomic')) return <AtomicFundingModal escrowId="TEST-ONLY" amountMsats={new URLSearchParams(location.search).has("underfloor")?100000:2000000}
+    supportsOnchain ctaLabel="Test" getOnchainInfo={async () => ({ pegInFeeSats: new URLSearchParams(location.search).has("underfloor")?1000:100, minimumDepositSats: new URLSearchParams(location.search).has("underfloor")?1001:1, finalityDelay: 1 } as any)}
     lockAndPublish={async () => {}} onClose={() => {(window as any).fundingClosed=true;}} fundAndLock={async (_id, opts) => {
       if (new URLSearchParams(location.search).has('storage')) {
         setLocalStorageUserScope('funding-storage-fixture');

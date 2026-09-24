@@ -71,7 +71,7 @@ export function PaymentCard({ amountMsats, rail, rails, onRail, data, copyValue,
   return <section ref={ref} className="payment-card" style={{ color: T.text, minWidth: 0, width: "100%", fontFamily: T.sans,
     "--payment-glow": T.accentDim, "--payment-focus": T.accent } as React.CSSProperties}>
     <style>{`
-      .payment-card{display:grid;grid-template-rows:58px 64px 284px 78px 100px auto}
+      .payment-card{display:grid;grid-template-rows:64px 284px 58px 78px 100px auto}
       .payment-card>*{min-width:0;box-sizing:border-box}
       .payment-button{box-shadow:inset 0 1px 0 #ffffff24,0 1px 0 #0006,0 2px 3px #0003,0 7px 16px #0002;transition:transform .12s,box-shadow .12s}
       .payment-button:active{transform:translateY(1px);box-shadow:inset 0 1px 0 #ffffff24,0 1px 2px #0003}
@@ -83,11 +83,11 @@ export function PaymentCard({ amountMsats, rail, rails, onRail, data, copyValue,
       @keyframes payment-ring{0%{box-shadow:0 0 0 0 var(--payment-glow)}55%{box-shadow:0 0 0 9px transparent}100%{box-shadow:none}}
       @media(prefers-reduced-motion:reduce){.payment-card *,.payment-button{animation:none!important;transition:none!important}.payment-copy:after{display:none}}
     `}</style>
-    <PaymentRails rail={rail} rails={rails ?? [rail]} onSelect={onRail} />
     <div style={{ textAlign: "center", alignSelf: "center" }}><TradeAmount msats={amountMsats} size={28} interactive color={T.accent} /></div>
     <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
       {data ? <QRCode data={data} size={size} logo={motion ? "motion" : "static"} errorCorrectionLevel={ecash ? "L" : "H"} showLogo={!ecash} /> : actions}
     </div>
+    <PaymentRails rail={rail} rails={rails ?? [rail]} onSelect={onRail} />
     <div role="status" style={{ textAlign: "center", alignSelf: "stretch", overflowY: "auto", padding: "10px 4px", fontSize: 12, lineHeight: 1.5 }}>{status}</div>
     <div style={{ display: "grid", gap: 6, alignContent: "start", textAlign: "center", fontSize: 11, color: T.muted }}>
       {copyValue && <PaymentCopyChip value={copyValue} address={rail === "onchain"} />}<div style={{ maxHeight: 50, overflowY: "auto", lineHeight: 1.5 }}>{helper}</div>

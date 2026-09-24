@@ -24,7 +24,7 @@
 
 import type { EscrowState } from "./types.js";
 import { listingIdentityKey } from "./listing-renewal-ledger.js";
-import { Role } from "./types.js";
+import { EscrowStatus, JOIN_HOLD_LOCK_GRACE_SECONDS, Role } from "./types.js";
 
 const AGE_KEY = "chama_listing_autorenew_age_v1";
 /** Bounded — evict the oldest-touched entries when exceeded. */
@@ -38,6 +38,7 @@ export const MAX_AUTO_RENEW_CYCLES = 7;
 interface AgeRecord {
   /** How many times this lineage has been AUTO-renewed. */
   count: number;
+  missedLock?: boolean;
   /** True once the seller MANUALLY renewed — exempts it from the cap. */
   manuallyKept?: boolean;
   /** Last touch (for eviction ordering). */
@@ -59,6 +60,7 @@ function readStore(): AgeStore {
         const r = v as AgeRecord;
         out[k] = {
           count: r.count,
+          missedLock: r.missedLock === true,
           ...(r.manuallyKept ? { manuallyKept: true } : {}),
           updatedAt: typeof r.updatedAt === "number" ? r.updatedAt : 0,
         };
@@ -101,6 +103,7 @@ export function bumpAutoRenewCount(key: string): void {
   const prev = store[key];
   store[key] = {
     count: (prev?.count ?? 0) + 1,
+    missedLock: prev?.missedLock,
     ...(prev?.manuallyKept ? { manuallyKept: true } : {}),
     updatedAt: Date.now(),
   };
@@ -110,10 +113,11 @@ export function bumpAutoRenewCount(key: string): void {
 /** Mark a lineage MANUALLY KEPT — resets its auto-renew count to 0 and exempts
  *  it from the age-out cap, so a store the seller deliberately renews stays
  *  alive. Idempotent. */
-export function markManuallyKept(key: string): void {
+export function markManuallyKept(key: string, owner?: string): void {
   if (!key) return;
   const store = readStore();
   store[key] = { count: 0, manuallyKept: true, updatedAt: Date.now() };
+  if (owner) delete store[`${key}\u0000paused:${owner.toLowerCase()}`];
   writeStore(store);
 }
 
@@ -154,4 +158,23 @@ export function shouldAgeOutListing(opts: {
 }): boolean {
   if (opts.hasBuyerInterest) return false;
   return hasAgedOut(opts.autoRenewCount, opts.manuallyKept, opts.cap);
+}
+
+/** A buyer waited through the funding deadline; no background renewal is consent to try again. */
+export function hasMissedBuyerLock(state: EscrowState, nowSec: number): boolean {
+  if (state.status !== EscrowStatus.CREATED || state.lock?.notesHash || state.lock?.lockedAt != null || state.tranchePlan) return false;
+  if (state.category !== "p2p-trade" && state.category !== "bill-pay") return false;
+  const buyer = state.joinHolds?.[Role.BUYER];
+  return !!buyer && buyer.pubkey === state.participants[Role.BUYER]
+    && buyer.expiresAt + JOIN_HOLD_LOCK_GRACE_SECONDS <= nowSec;
+}
+export function isRenewalPaused(key: string, owner?: string): boolean {
+  return readStore()[owner ? `${key}\u0000paused:${owner.toLowerCase()}` : key]?.missedLock === true;
+}
+export function markMissedLock(key: string, owner?: string): void {
+  if (owner) key = `${key}\u0000paused:${owner.toLowerCase()}`;
+  const store = readStore();
+  if (store[key]?.missedLock) return;
+  store[key] = { ...store[key], count: store[key]?.count ?? 0, missedLock: true, updatedAt: Date.now() };
+  writeStore(store);
 }

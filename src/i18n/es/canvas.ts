@@ -1,5 +1,9 @@
 export const canvas: Record<string, string> = {
-  "canvas.chamaWant": "Ahorradlo juntos",
+  "canvas.backOffers": "Ofertas",
+  "canvas.staysLive": "Sigue activa mientras usas Chama. Si te ausentas un día, se pausa.",
+  "canvas.renewPaused": "En pausa: un comprador esperó y no bloqueaste. Renueva para mostrarla de nuevo.",
+
+  "canvas.chamaWant": "Círculos",
   "canvas.xbtTease": "XBT · Bitcoin",
   "canvas.circleKicker": "CÍRCULOS DE AHORRO",
   "canvas.circleTitle": "¿Crear uno o unirte?",

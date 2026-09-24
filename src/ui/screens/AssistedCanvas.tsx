@@ -145,7 +145,7 @@ export function AssistedCanvas({
     matchWhy: null,
     surface: rawResume.surface === "review" ? "matches" : rawResume.surface,
   });
-  const [surface, setSurface] = useState<Surface>(resume?.surface ?? "bring");
+  const [surface, setSurface] = useState<Surface>(resume?.surface === "review" ? "matches" : resume?.surface ?? "bring");
   const [inviteDraft, setInviteDraft] = useState("");
   const [inviteError, setInviteError] = useState(false);
   const [bring, setBring] = useState<AssistedCanvasAsset | null>(resume?.bring ?? null);
@@ -472,7 +472,7 @@ export function AssistedCanvas({
           : inputs;
         const result = matchGuidedListings(validated.value, inputsForAmount, { viewerPubkey, limit: 20 });
         for (const candidate of result.candidates) {
-          const key = `${candidate.listing.id}:${candidate.selectedItem?.itemId ?? "single"}:${candidate.amountSats}`;
+          const key = candidate.listing.id;
           if (!deduped.has(key)) deduped.set(key, candidate);
         }
         // The amount varies per candidate, so a persistent NON-amount code is the
@@ -617,8 +617,8 @@ export function AssistedCanvas({
   // NARROWS what is already on screen.
   const budgetNow = positiveNumber(detail);
   const visibleMatches = useMemo(
-    () => matches.filter(candidate =>
-      budgetNow === null || !candidate.fiatQuote || candidate.fiatQuote.amount <= budgetNow),
+    () => [...new Map(matches.filter(candidate =>
+      budgetNow === null || !candidate.fiatQuote || candidate.fiatQuote.amount <= budgetNow).map(candidate => [candidate.listing.id, candidate])).values()],
     [matches, detail],
   );
   const recommendations = recommendGuidedCandidates(visibleMatches, fiatCurrency);
@@ -639,6 +639,7 @@ export function AssistedCanvas({
         <ReviewRow label={tr("canvas.statusLabel")} value={tr("canvas.statusPublished")} />
         <ReviewRow label={tr("canvas.whatsNext")} value={tr("canvas.whatsNextValue")} last />
       </div>
+      {publishedInfo.escrowId && (allEscrows ?? listings).find(l => l.id === publishedInfo.escrowId)?.category === "p2p-trade" && <p>{tr("canvas.staysLive")}</p>}
       {publishedInfo.escrowId && (
         <div className="assisted-linky" style={{ marginBottom: 4 }}>
           <button
@@ -720,9 +721,9 @@ export function AssistedCanvas({
     // Loading is not failure: while the relays are still hydrating (or a search
     // is in flight) with nothing to show yet, spin calmly instead of the red box.
     const stillChecking = !isGoods && (matching || listingsLoading) && visibleMatches.length === 0;
-    const shownKeys = new Set(recommended.map(({ candidate }) => `${candidate.listing.id}:${candidate.amountSats}`));
+    const shownKeys = new Set(recommended.map(({ candidate }) => candidate.listing.id));
     const alsoCompatible = visibleMatches
-      .filter(c => !shownKeys.has(`${c.listing.id}:${c.amountSats}`))
+      .filter(c => !shownKeys.has(c.listing.id))
       .slice(0, 8);
     const noMatches = !matching && !listingsLoading && (isGoods ? goodsMatches.length === 0 : visibleMatches.length === 0);
     return <CanvasShell community={community} step={3} onExit={() => onBrowse("all")} onMoreOptions={onMoreOptions}>
@@ -780,8 +781,8 @@ export function AssistedCanvas({
         </div>
       )}
       {stillChecking && (
-        <div style={{ margin: "2px 0 20px" }}>
-          <ChamaLoader size={32} label={tr("canvas.checkingLive")} />
+        <div style={{ minHeight: 180, display: "grid", placeItems: "center", margin: "2px 0 20px" }}>
+          <ChamaLoader size={64} label={tr("canvas.checkingLive")} />
         </div>
       )}
       {error && !noMatches && !stillChecking && <ErrorBox>{error}</ErrorBox>}
@@ -807,7 +808,7 @@ export function AssistedCanvas({
               const named = railHeadersNeeded(groups);
               return groups.flatMap(group => [
                 ...(named ? [<RailHeader key={`rail-${group.rail}`} rail={group.rail} count={group.items.length} />] : []),
-                ...group.items.map(({ candidate, labels }) => <Match key={`${candidate.listing.id}:${candidate.amountSats}`} candidate={candidate} labels={labels} onOpen={() => { setSelected(candidate); setSurface("review"); }} />),
+                ...group.items.map(({ candidate, labels }) => <Match key={candidate.listing.id} candidate={candidate} labels={labels} onOpen={() => { setSelected(candidate); setSurface("review"); }} />),
               ]);
             })()}
       </div>
@@ -1108,9 +1109,15 @@ function Safety({ children }: { children: ReactNode }) { return <div style={{ ma
 function ErrorBox({ children }: { children: ReactNode }) { return <div style={{ marginTop: 16, padding: "12px 14px", borderRadius: T.r, color: T.red, background: T.redDim, border: `1px solid ${T.red}44` }}>{children}</div>; }
 
 function Match({ candidate, labels, onOpen }: { candidate: GuidedMatchCandidate; labels: string[]; onOpen: () => void }) {
+  const bracket = candidate.listing.items?.find(item => item.kind === "exchange-bracket");
+  const low = bracket ? (bracket.minAmountMsats ?? bracket.amountMsats) / 1000 : candidate.amountSats;
+  const high = bracket ? (bracket.maxAmountMsats ?? bracket.amountMsats) / 1000 : candidate.amountSats;
+  const sats = low === high ? low.toLocaleString() : `${low.toLocaleString()}–${high.toLocaleString()}`;
+  const quote = candidate.fiatQuote;
+  const fiat = quote ? (low === high ? quote.amount.toLocaleString() : `${(quote.amount * low / candidate.amountSats).toLocaleString(undefined, { maximumFractionDigits: 2 })}–${(quote.amount * high / candidate.amountSats).toLocaleString(undefined, { maximumFractionDigits: 2 })}`) + ` ${quote.currency}` : tr("canvas.askSeller");
   return <button type="button" className="assisted-match" onClick={onOpen}>
     <div className="assisted-tags">{labels.map(label => <span key={label}>{label}</span>)}</div>
-    <div className="assisted-match-row"><div><strong>{candidate.amountSats.toLocaleString()} sats</strong><small>{candidate.listing.description}</small></div><b>{candidate.fiatQuote ? `${candidate.fiatQuote.amount.toLocaleString()} ${candidate.fiatQuote.currency}` : tr("canvas.askSeller")}</b></div>
+    <div className="assisted-match-row"><div><strong>{sats} sats</strong><small>{candidate.listing.description}</small></div><b>{fiat}</b></div>
     <div className="assisted-match-foot"><span>{getRailByKey(candidate.paymentRail)?.displayName ?? candidate.paymentRail}</span><b>{tr("canvas.review")}</b></div>
   </button>;
 }
@@ -1165,7 +1172,7 @@ function uniqueCandidates(lanes: Array<[string, GuidedMatchCandidate | null]>) {
   const out = new Map<string, { candidate: GuidedMatchCandidate; labels: string[] }>();
   for (const [label, candidate] of lanes) {
     if (!candidate) continue;
-    const key = `${candidate.listing.id}:${candidate.amountSats}`;
+    const key = candidate.listing.id;
     const current = out.get(key);
     if (current) current.labels.push(label); else out.set(key, { candidate, labels: [label] });
   }

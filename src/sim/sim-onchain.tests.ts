@@ -16,7 +16,7 @@ try {
   const info=await wallet.onchain.getInfo();
   if(mode!=='instant') assert.deepEqual(info,SIM_ONCHAIN_INFO);
   const deposit=await wallet.onchain.createDepositAddress({chama_amount_msats:2_000_000});
-  const seen:string[]=[];const unsubscribe=wallet.onchain.subscribeDeposit(deposit.operationId,p=>seen.push(`${p.status}:${p.confirmations}`));
+  const seen:string[]=[];const unsubscribe=wallet.onchain.subscribeDeposit!(deposit.operationId,p=>{ assert.equal(p.confirmations, undefined); seen.push(p.status); });
   let result:any, error:any;
   const done=wallet.onchain.awaitDeposit(deposit.operationId).then(r=>result=r,e=>error=e);
   if(mode==='stuck'){
@@ -27,9 +27,9 @@ try {
    await done;
    if(mode==='underpaid'){assert.ok(error instanceof SimDepositUnderpaidError);assert.ok(error.amountSats < error.minimumSats);assert.equal(await wallet.balance.getBalance(),0);}
    else {
-    assert.equal(result.status,'confirmed');assert.equal(await wallet.balance.getBalance(),2_000_000,'Deposit credits net amount exactly once');
+    assert.equal(result.status,'claimed');assert.equal(await wallet.balance.getBalance(),2_000_000,'Deposit credits net amount exactly once');
     await wallet.onchain.awaitDeposit(deposit.operationId);assert.equal(await wallet.balance.getBalance(),2_000_000);
-    if(mode==='slow'){assert.ok(seen.includes('mempool:0'));assert.ok(seen.includes('confirming:1'));assert.ok(seen.includes('confirming:10'));}
+    if(mode==='slow'){assert.deepEqual(seen,['waiting','seen','confirmed','claimed']);}
     const quote=await wallet.onchain.getWithdrawFees('sim',1000);assert.equal(quote.totalSats,1000+info.pegOutFeeSats);
     const payout=wallet.onchain.withdraw('sim',1000,{wait:false});await tick();assert.equal((await payout).status,mode==='instant'?'confirmed':'pending');
     assert.equal(await wallet.balance.getBalance(),(1000-info.pegOutFeeSats)*1000,'Withdrawal debits principal plus fee');

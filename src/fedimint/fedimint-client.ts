@@ -1,3 +1,4 @@
+import { errorText } from "../payments/error-text.js";
 // ══════════════════════════════════════════════════════════════════════════
 // Chama Nostr Escrow Engine — Fedimint Client (Browser WASM)
 // ══════════════════════════════════════════════════════════════════════════
@@ -68,6 +69,14 @@ export interface OnchainDepositAddress {
   address: string;
   tweakIdx?: unknown;
   finalityDelay: number;
+}
+
+export interface OnchainDepositProgress {
+  status: "waiting" | "seen" | "confirmed" | "claimed" | "failed";
+  btcDeposited?: number;
+  outpoint?: string;
+  error?: string;
+  confirmations?: number;
 }
 
 export interface OnchainDepositSettled {
@@ -195,6 +204,7 @@ export interface IFedimintWallet {
   onchain?: {
     getInfo(): Promise<OnchainInfo>;
     createDepositAddress(meta?: ChamaOperationMeta): Promise<OnchainDepositAddress>;
+    subscribeDeposit?(operationId: string, cb: (progress: OnchainDepositProgress) => void): () => void;
     awaitDeposit(operationId: string): Promise<OnchainDepositSettled>;
     getWithdrawFees(address: string, amountSats: number): Promise<OnchainWithdrawFees>;
     withdraw(
@@ -680,6 +690,12 @@ export class FedimintClient {
     if (!this.wallet) throw new Error("FedimintClient not initialized — call init() first");
     return this.wallet;
   }
+
+  subscribeDeposit(operationId: string, cb: (progress: OnchainDepositProgress) => void): () => void {
+    return this.wallet?.onchain?.subscribeDeposit?.(operationId, cb) ?? (() => {});
+  }
+
+  supportsOnchain(): boolean { return !!this.wallet?.onchain; }
 
   private requireOnchainWallet(): NonNullable<IFedimintWallet["onchain"]> {
     const wallet = this.requireWallet();
@@ -1275,7 +1291,7 @@ export class FedimintClient {
         result: "error",
         balanceBefore,
         balanceAfter,
-        errMsg: (e?.message || String(e)).slice(0, 120),
+        errMsg: (errorText(e)).slice(0, 120),
       });
       throw e;
     }

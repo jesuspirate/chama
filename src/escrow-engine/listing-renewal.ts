@@ -1,3 +1,4 @@
+import { hasMissedBuyerLock } from "./listing-renewal-age.js";
 // ══════════════════════════════════════════════════════════════════════════
 // Chama — Store permanence (#49) Tier 1 + Tier 3: renewable listings
 // ══════════════════════════════════════════════════════════════════════════
@@ -344,7 +345,7 @@ export function canManuallyRenewListing(
     resolveRenewalPolicy(state).renewable &&
     isSellerOwnedListing(state, userPubkey) &&
     listingNeverFunded(state) &&
-    nowSec >= state.expiresAt - RENEW_LEAD_SECONDS
+    (nowSec >= state.expiresAt - RENEW_LEAD_SECONDS || hasMissedBuyerLock(state, nowSec))
   );
 }
 
@@ -496,4 +497,11 @@ export function buildRenewCreateParams(state: EscrowState): RenewCreateParams {
         }
       : {}),
   };
+}
+
+/** The app's session gate; only Store consults the seller's opt-in. */
+export function sessionAllowsAutoRenew(state: EscrowState, opts: { connected: boolean; pubkey: string | null; bonded: boolean; storeEnabled: boolean; paused: boolean }): boolean {
+  if (!opts.connected || !opts.pubkey || opts.paused) return false;
+  const policy = resolveRenewalPolicy(state, { bonded: opts.bonded });
+  return policy.autoRenew && (policy.lane !== "store" || (opts.bonded && opts.storeEnabled));
 }

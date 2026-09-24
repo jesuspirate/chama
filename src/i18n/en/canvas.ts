@@ -1,7 +1,11 @@
 // AssistedCanvas (the guided create/browse canvas) + its satellite components
 // (attention bell, offline bar). Extracted for 6.3.1 — EN is source of truth.
 export const canvas: Record<string, string> = {
-  "canvas.chamaWant": "Save it together",
+  "canvas.backOffers": "Offers",
+  "canvas.staysLive": "Stays live while you use Chama. If you're away a day, it pauses.",
+  "canvas.renewPaused": "Paused — a buyer waited and you didn't lock. Renew to show it again.",
+
+  "canvas.chamaWant": "Circles",
   "canvas.xbtTease": "XBT · Bitcoin",
   "canvas.circleKicker": "SAVINGS CIRCLES",
   "canvas.circleTitle": "Start one, or join one?",

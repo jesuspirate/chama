@@ -1,5 +1,9 @@
 export const canvas: Record<string, string> = {
-  "canvas.chamaWant": "Ziweke pamoja",
+  "canvas.backOffers": "Ofa",
+  "canvas.staysLive": "Inabaki hai unapotumia Chama. Ukikosekana siku moja, inasitishwa.",
+  "canvas.renewPaused": "Imesitishwa — mnunuzi alisubiri na hukufunga. Sasisha ili ionekane tena.",
+
+  "canvas.chamaWant": "Mizunguko",
   "canvas.xbtTease": "XBT · Bitcoin",
   "canvas.circleKicker": "MIZUNGUKO YA AKIBA",
   "canvas.circleTitle": "Anzisha, au jiunge?",

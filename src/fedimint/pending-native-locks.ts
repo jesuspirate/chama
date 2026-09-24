@@ -855,3 +855,19 @@ export function summarizeNativeLocksForUi(
     stuck,
   };
 }
+
+/** Funding must never interpret unreadable ownership records as an empty wallet reservation. */
+export function nativeLockEarmarks(federationId: string | null): (number | undefined)[] {
+  try {
+    const raw = getStrictScopedStorageItem(PENDING_NATIVE_LOCKS_KEY);
+    if (!raw) return [];
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return [undefined];
+    return Object.values(parsed).flatMap((entry: unknown) => {
+      if (!entry || typeof entry !== "object") return [undefined];
+      const lock = entry as Partial<PendingNativeLock>;
+      if (lock.federationId && federationId && lock.federationId !== federationId) return [];
+      return [lock.amountMsats];
+    });
+  } catch { return [undefined]; }
+}
