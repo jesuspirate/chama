@@ -12,7 +12,7 @@ try{
   for(const frame of page.frames().slice(1)) layouts.push(await frame.$eval('[role=tab]',e=>({height:e.getBoundingClientRect().height,radius:getComputedStyle(e).borderRadius,icon:getComputedStyle(e.querySelector('span')).display})));
   for(const layout of layouts){assert.equal(layout.height,44);assert.equal(layout.radius,'999px');assert.equal(layout.icon,'inline');}
   await page.evaluate(()=>window.scrollTo(0,0));
-  await page.screenshot({path:`docs/verification/brief11-pagers-${theme}.png`,fullPage:true});
+  if (!process.env.CHAMA_SKIP_PAGER_SCREENSHOTS) await page.screenshot({path:`docs/verification/brief11-pagers-${theme}.png`,fullPage:true});
   await page.setViewport({width:390,height:844});await page.goto(`${base}/tests/brief11/?panel=claim&zero=1&theme=${theme}`);
   await page.waitForFunction(()=>document.body.textContent.includes("Lightning isn’t available"));
   assert.equal(await page.$eval('[data-funding-rail=lightning]',e=>e.disabled),true);
@@ -20,5 +20,15 @@ try{
   assert.ok(!(await page.evaluate(()=>document.body.textContent)).includes('saved@strike.me'));
   await page.click('button.payment-button');await page.waitForFunction(()=>window.claimKind==='ecash');
  }
+ await page.goto(`${base}/tests/brief11/?panel=navigation`);
+ await page.waitForFunction(()=>[...document.querySelectorAll('button')].some(b=>b.textContent.includes('‹ Offers')));
+ await page.evaluate(()=>window.navigationStatus('LOCKED'));
+ assert.ok(await page.evaluate(()=>[...document.querySelectorAll('button')].some(b=>b.textContent.includes('‹ Offers'))));
+ await page.evaluate(()=>window.navigationStatus('COMPLETED'));
+ await page.waitForFunction(()=>[...document.querySelectorAll('button')].some(b=>b.textContent.includes('‹ Home')));
+ await page.evaluate(()=>[...document.querySelectorAll('button')].find(b=>b.textContent.includes('‹ Home')).click());
+ await page.waitForSelector('.assisted-choice');
+ assert.equal(await page.evaluate(()=>window.navigationReset),true);
+ console.log('PASS brief 12: CREATED/LOCKED show Offers; COMPLETED shows Home and clears the saved search');
  console.log('PASS brief 11: shared inline pagers at 390px in dark/light; zero-gateway claim opens ecash and hides saved Lightning destinations');
 }finally{await browser.close();}

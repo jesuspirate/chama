@@ -2300,3 +2300,9 @@ export function canLockFromBalance(state: EscrowState | null | undefined, spenda
     && Number.isSafeInteger(premiumMsats) && premiumMsats >= 0 && Number.isSafeInteger(required)
     && Number.isSafeInteger(spendable) && spendable >= required;
 }
+
+/** Back navigation only: expiry may still have money-recovery work to do. */
+export function tradeDetailReturnsHome(state: EscrowState | null | undefined, openedFromHome: boolean, payoutSettled = false): boolean {
+  return openedFromHome || !!state && (TERMINAL_STATES.has(state.status)
+    || state.status === EscrowStatus.CLAIMED && state.resolvedOutcome === Outcome.REFUND && payoutSettled);
+}

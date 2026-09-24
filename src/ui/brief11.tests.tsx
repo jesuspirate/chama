@@ -1,3 +1,4 @@
+import { tradeDetailReturnsHome } from "./decisions.js";
 import assert from 'node:assert/strict';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -36,3 +37,15 @@ savePreferredRails(['strike','cash-app']);
 setLocalStorageUserScope(seller);assert.deepEqual(listSavedHandles(),[]);assert.deepEqual(readPreferredRails(),[]);
 setLocalStorageUserScope(buyer);assert.equal(listSavedHandles()[0].handle,'legacy-name');assert.deepEqual(readPreferredRails(),['strike','cash-app']);
 console.log('PASS brief 11: eight voter directions, participant-only payment details, names default/opt-out, scoped handle migration and method preferences');
+
+for (const status of [EscrowStatus.CREATED, EscrowStatus.LOCKED, EscrowStatus.APPROVED, EscrowStatus.CLAIMED]) {
+ const state = { status, resolvedOutcome: Outcome.REFUND } as EscrowState;
+ assert.equal(tradeDetailReturnsHome(state,false),false,`${status} keeps Offers before settlement`);
+ assert.equal(tradeDetailReturnsHome(state,true),true,'Home-opened trades still go Home');
+}
+for (const status of [EscrowStatus.COMPLETED, EscrowStatus.CANCELLED, EscrowStatus.EXPIRED]) {
+ assert.equal(tradeDetailReturnsHome({status} as EscrowState,false),true,`${status} goes Home`);
+}
+assert.equal(tradeDetailReturnsHome({status:EscrowStatus.CLAIMED,resolvedOutcome:Outcome.REFUND} as EscrowState,false,true),true,'Confirmed refund payout goes Home before COMPLETE arrives');
+assert.equal(tradeDetailReturnsHome(null,false),false);
+console.log('PASS brief 12: active offers retain navigation, terminal trades and settled refunds return Home');

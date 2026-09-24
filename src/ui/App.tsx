@@ -1,3 +1,4 @@
+import { tradeDetailReturnsHome } from "./decisions.js";
 import { fundingPremiumMsats } from "../payments/funding-premium.js";
 import { nativeLockEarmarks } from "../fedimint/pending-native-locks.js";
 import { spendableBalanceMsats, payoutEarmarks, canLockFromBalance } from "./decisions.js";
@@ -592,7 +593,7 @@ export default function App() {
   // canvas too — the old "browse" default is why a seller who opened their
   // trade through a path that never set this got thrown into the OG Browse
   // list after voting (Jet, 2026-09-07, prod 6.3).
-  const [detailReturnsHome, setDetailReturnsHome] = useState(true);
+  const [detailOpenedFromHome, setDetailReturnsHome] = useState(true);
   const [canvasHomeKey, setCanvasHomeKey] = useState(0);
   const [detailBackView, setDetailBackView] = useState<View>("guided");
   // LiveTradeSurface (flag-gated): the guided question/vote view of a live
@@ -2450,6 +2451,7 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visibleListings.length, visibleListings.map(l => l.id).join(",")]);
   const selected = selectedId ? escrows.get(selectedId) : null;
+  const detailReturnsHome = tradeDetailReturnsHome(selected, detailOpenedFromHome, !!selected && getPayoutRecord(selected.id)?.status === "settled");
   const sellerManagedListing = sellerManageId ? escrows.get(sellerManageId) ?? null : null;
   const selectedPoisonedClaimReason = selected
     ? listPendingRedemptions().find(entry =>
@@ -3097,6 +3099,12 @@ export default function App() {
     setSelectedId(null);
     setCanvasHomeKey(k => k + 1);
     setView("guided");
+  };
+  const backFromTrade = () => {
+    ++circleRouteRequest.current;
+    if (detailBackView === "guided" && detailReturnsHome) guidedHome();
+    else { setView(detailBackView); setSelectedId(null); }
+    maybeSnapBackHome();
   };
   const switchTab = (t: Tab) => {
     if (t === "browse") { if (view === "browse" || view === "guided") guidedHome(); else setView("browse"); }
@@ -4003,7 +4011,7 @@ export default function App() {
           childrenLoaded={circleChildrenLoaded.has(selected.id)} loadError={circleLoadError}
           profileNames={nostrProfiles} kind0Enabled={kind0Enabled}
           backLabel={detailBackView === "me" ? t("browse.navMe") : detailBackView === "dashboard" ? t("browse.navDashboard") : detailBackView === "guided" ? t(detailReturnsHome ? "lts.backHome" : "canvas.backOffers") : t("browse.navBrowse")}
-          onBack={() => { ++circleRouteRequest.current; setView(detailBackView); setSelectedId(null); maybeSnapBackHome(); }}
+          onBack={backFromTrade}
           onRefresh={() => refreshCircle(selected.id)}
           onLock={async () => {
             const effect = decideListingTapEffect({ listing: { mintUrl: selected.mintUrl, community: selected.community },
@@ -4123,7 +4131,7 @@ export default function App() {
               fetchCommunityBonds={actions.fetchCommunityBonds}
               state={selected}
               pubkey={pubkey!}
-              onBack={() => { if (detailBackView === "guided" && detailReturnsHome) guidedHome(); else { setView(detailBackView); setSelectedId(null); } maybeSnapBackHome(); }}
+              onBack={backFromTrade}
               backLabel={
                 detailBackView === "me" ? t("browse.navMe")
                 : detailBackView === "dashboard" ? t("browse.navDashboard")
@@ -4201,7 +4209,7 @@ export default function App() {
               !fediWebView
               && !isNativeBridgeModeOn()
             }
-            onBack={() => { if (detailBackView === "guided" && detailReturnsHome) guidedHome(); else { setView(detailBackView); setSelectedId(null); } maybeSnapBackHome(); }}
+            onBack={backFromTrade}
             onVote={(outcome) => actions.vote(selectedId!, outcome).then(
               () => setToast({ message: t("app.votedOutcome", { outcome }), type: "success" }),
               (e: any) => {
