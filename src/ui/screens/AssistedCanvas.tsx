@@ -1,3 +1,4 @@
+import { readPreferredRails, savePreferredRails } from "../../payments/preferred-rails.js";
 import { useCanvasViewport } from "../hooks/useCanvasViewport.js";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Role, type EscrowState } from "../../escrow-engine/types.js";
@@ -40,7 +41,7 @@ import { RailHeader } from "../components/RailHeader.js";
 import { TradeCard } from "../components/TradeCard.js";
 import { circleFromEscrow } from "../../chama/policy.js";
 import { groupBySettlementRail, railHeadersNeeded, settlementRailOf } from "../settlement-rail.js";
-import { profileNameFor } from "../nostr-profiles.js";
+import { profileNameFor, type NostrProfileNameMap } from "../nostr-profiles.js";
 import { translate, getCurrentLang } from "../../i18n/index.js";
 import { circleInviteId } from "../../chama/canvas.js";
 
@@ -77,6 +78,7 @@ export interface AssistedCanvasResume {
 const CANVAS_RESUME_MAX_AGE_MS = 10 * 60 * 1000;
 
 export function AssistedCanvas({
+  profileNames, kind0Enabled = true,
   listings,
   stockByListing,
   browseCommunity,
@@ -95,6 +97,8 @@ export function AssistedCanvas({
   allEscrows,
   circleChildrenLoaded,
 }: {
+  profileNames?: NostrProfileNameMap;
+  kind0Enabled?: boolean;
   listings: EscrowState[];
   stockByListing?: Map<string, number>;
   browseCommunity: string;
@@ -154,7 +158,7 @@ export function AssistedCanvas({
   // Second half of the Exchange sell RANGE (min = detail, max = detailMax).
   const [detailMax, setDetailMax] = useState(resume?.detailMax ?? "");
   const [terms, setTerms] = useState(resume?.terms ?? "");
-  const [paymentRails, setPaymentRails] = useState<string[]>(resume?.paymentRails ?? []);
+  const [paymentRails, setPaymentRails] = useState<string[]>(resume?.paymentRails ?? readPreferredRails());
   // Why the nearest offers were rejected (debug + honest no-match copy).
   const [matchWhy, setMatchWhy] = useState<string | null>(resume?.matchWhy ?? null);
   const [matching, setMatching] = useState(false);
@@ -252,10 +256,13 @@ export function AssistedCanvas({
     }
   };
 
-  const toggleRail = (key: string) => setPaymentRails(current => current.includes(key) ? current.filter(k => k !== key) : [...current, key]);
+  const toggleRail = (key: string) => setPaymentRails(current => {
+    const next = current.includes(key) ? current.filter(k => k !== key) : [...current, key];
+    savePreferredRails(next); return next;
+  });
   const routeLabel = bring && want ? `${assetLabel(bring, fiatCurrency)} → ${assetLabel(want, fiatCurrency)}` : "";
   const resetForward = () => {
-    setDetail(""); setDetailMax(""); setTerms(""); setPaymentRails([]); setError(null);
+    setDetail(""); setDetailMax(""); setTerms(""); setPaymentRails(readPreferredRails()); setError(null);
     setMatches([]); setGoodsMatches([]); setSelected(null); setNotified(false);
     setPremiumBps(0); setPremiumMode("preset"); setPremiumInput("");
   };
@@ -707,7 +714,7 @@ export function AssistedCanvas({
         <ReviewRow label={tr("canvas.youReceive")} value={tr("canvas.satsValue", { amount: selected.amountSats.toLocaleString() })} />
         <ReviewRow label={tr("canvas.youPay")} value={selected.fiatQuote ? `${selected.fiatQuote.amount.toLocaleString()} ${selected.fiatQuote.currency}` : tr("canvas.confirmWithSeller")} />
         <ReviewRow label={tr("canvas.paymentMethod")} value={getRailByKey(selected.paymentRail)?.displayName ?? selected.paymentRail} />
-        <ReviewRow label={tr("canvas.seller")} value={profileNameFor(undefined, selected.sellerPubkey, false) ?? shortKey(selected.sellerPubkey)} last />
+        <ReviewRow label={tr("canvas.seller")} value={profileNameFor(profileNames, selected.sellerPubkey, kind0Enabled) ?? shortKey(selected.sellerPubkey)} last />
       </div>
       <Primary onClick={() => onOpenTrade(selected.listing.id)}>{tr("canvas.reviewFullTrade")}</Primary>
       <Safety>{tr("canvas.reviewSafety")}</Safety>
@@ -767,22 +774,13 @@ export function AssistedCanvas({
               cursor: matching ? "default" : "pointer",
             }}
           >
-            {matching ? (
+            {stillChecking || matching ? (
               <span style={{ display: "inline-flex", alignItems: "center", gap: 7 }}>
-                <span style={{
-                  width: 12, height: 12, borderRadius: "50%",
-                  border: `2px solid ${T.accent}`, borderTopColor: "transparent",
-                  animation: "spin 0.8s linear infinite",
-                }} />
+                <ChamaLoader size={20} />
                 {tr("canvas.searching")}
               </span>
             ) : tr("canvas.searchAgain")}
           </button>
-        </div>
-      )}
-      {stillChecking && (
-        <div style={{ minHeight: 180, display: "grid", placeItems: "center", margin: "2px 0 20px" }}>
-          <ChamaLoader size={64} label={tr("canvas.checkingLive")} />
         </div>
       )}
       {error && !noMatches && !stillChecking && <ErrorBox>{error}</ErrorBox>}
@@ -796,7 +794,7 @@ export function AssistedCanvas({
               const named = railHeadersNeeded(groups);
               return groups.flatMap(group => [
                 ...(named ? [<RailHeader key={`rail-${group.rail}`} rail={group.rail} count={group.items.length} />] : []),
-                ...group.items.map(match => <GoodsMatch key={match.listing.id} match={match} onOpen={() => onOpenTrade(match.listing.id)} />),
+                ...group.items.map(match => <GoodsMatch profileNames={profileNames} kind0Enabled={kind0Enabled} key={match.listing.id} match={match} onOpen={() => onOpenTrade(match.listing.id)} />),
               ]);
             })()
           : (() => {
@@ -887,7 +885,7 @@ export function AssistedCanvas({
         ) : (
           <div style={amountLineStyle()}><input autoFocus inputMode="numeric" value={terms} onChange={event => setTerms(digitsOnly(event.target.value))} placeholder="50,000" style={bareInputStyle()} /><span>SATS</span></div>
         )}
-        <Primary disabled={!termsValid || matching} onClick={() => void finishRoute()}>{matching ? tr("canvas.checkingOffersBtn") : termsConfig.action}</Primary>
+        <Primary disabled={!termsValid || matching} onClick={() => void finishRoute()}>{matching ? <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><ChamaLoader size={20} />{tr("canvas.checkingOffersBtn")}</span> : termsConfig.action}</Primary>
       </QuestionCard>
       {error && <ErrorBox>{error}</ErrorBox>}
     </CanvasShell>;
@@ -1122,12 +1120,12 @@ function Match({ candidate, labels, onOpen }: { candidate: GuidedMatchCandidate;
   </button>;
 }
 
-function GoodsMatch({ match, onOpen }: { match: MarketMatch; onOpen: () => void }) {
+function GoodsMatch({ match, onOpen, profileNames, kind0Enabled }: { profileNames?: NostrProfileNameMap; kind0Enabled: boolean; match: MarketMatch; onOpen: () => void }) {
   const { listing } = match;
   const seller = listing.participants[Role.SELLER] ?? listing.initiator?.pubkey ?? tr("canvas.seller");
   return <button type="button" className="assisted-match" onClick={onOpen}>
     <div className="assisted-tags">{match.reasons.slice(0, 2).map(reason => <span key={reason}>{marketReasonLabel(reason, match.overBudgetSats)}</span>)}</div>
-    <div className="assisted-match-row"><div><strong>{match.matchedItem?.label ?? listing.description}</strong><small>{match.matchedItem ? listing.description : (profileNameFor(undefined, seller, false) ?? shortKey(seller))}</small></div><b>{tr("canvas.satsValue", { amount: match.amountSats.toLocaleString() })}</b></div>
+    <div className="assisted-match-row"><div><strong>{match.matchedItem?.label ?? listing.description}</strong><small>{match.matchedItem ? listing.description : (profileNameFor(profileNames, seller, kind0Enabled) ?? shortKey(seller))}</small></div><b>{tr("canvas.satsValue", { amount: match.amountSats.toLocaleString() })}</b></div>
     <div className="assisted-match-foot"><span>{tr("canvas.inYourChama")}</span><b>{tr("canvas.review")}</b></div>
   </button>;
 }

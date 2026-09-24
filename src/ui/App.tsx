@@ -2468,7 +2468,7 @@ export default function App() {
       if (pk && /^[0-9a-f]{64}$/.test(pk)) keys.add(pk);
     };
 
-    for (const trade of visibleTrades) {
+    for (const trade of [...visibleTrades, ...allVisibleListings]) {
       add(trade.initiator.pubkey);
       for (const role of TRINITY_RING_ORDER) {
         add(getEffectiveParticipantsAt(trade, now)[role]);
@@ -2478,7 +2478,7 @@ export default function App() {
     }
 
     return Array.from(keys).sort();
-  }, [visibleTrades, now]);
+  }, [visibleTrades, allVisibleListings, now]);
   const profilePubkeyKey = profilePubkeys.join(",");
 
   useEffect(() => {
@@ -3708,6 +3708,8 @@ export default function App() {
 
       {pendingClaim && (
         <ClaimPayoutModal
+          getLightningGatewayCount={actions.getLightningGatewayCount}
+          onWithdrawEcash={() => { setPendingClaim(null); setShowEcashExport(true); }}
           escrowId={pendingClaim.escrowId}
           payoutMsats={pendingClaim.payoutMsats}
           premiumMsats={pendingClaim.premiumMsats ?? 0}
@@ -4065,6 +4067,7 @@ export default function App() {
       ) : view === "guided" ? (
         <>
         <AssistedCanvas
+          profileNames={nostrProfiles} kind0Enabled={kind0Enabled}
           key={canvasHomeKey}
           listings={allVisibleListings}
           allEscrows={[...escrows.values()]}

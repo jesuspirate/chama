@@ -596,15 +596,10 @@ export function AtomicFundingModal({
       }}>
         {/* Header — amount is the eyebrow, label is the title */}
         {!disableNwc && <div data-funding-rails aria-hidden={!railsVisible} style={{ marginBottom: 16, visibility: railsVisible ? "visible" : "hidden" }}>
-          <div role="tablist" aria-label={t("payment.rail")} style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-            {(["lightning", "onchain", "ecash"] as const).filter(rail => !request || request.rail !== "onchain" || rail === "onchain").map(rail => {
-              const reason = rail === "lightning" ? lightningReason : rail === "onchain" && !supportsOnchain ? t("fund.onchainAppOnly") : undefined;
-              return <button key={rail} data-funding-rail={rail} role="tab" aria-selected={(request?.rail ?? initialRail) === rail} disabled={!!reason || gatewayChecking}
-                onClick={() => chooseRail(rail)} style={{ flex: 1, minWidth: 80, minHeight: 44, padding: 8, borderRadius: 12, background: (request?.rail ?? initialRail) === rail ? T.accentDim : T.surface, color: reason ? T.muted : T.text, border: `1px solid ${T.border}` }}>
-                {t(`payment.${rail}`)}{reason && <small style={{ display: "block", fontSize: 10, lineHeight: 1.4 }}>{reason}</small>}
-              </button>;
-            })}
-          </div>
+          <PaymentRails rail={request?.rail ?? initialRail}
+            rails={request?.rail === "onchain" ? ["onchain"] : ["lightning", "onchain", "ecash"]}
+            disabledReasons={{ lightning: lightningReason, onchain: !supportsOnchain ? t("fund.onchainAppOnly") : gatewayChecking ? t("fund.checkingGateways") : undefined, ecash: gatewayChecking ? t("fund.checkingGateways") : undefined }}
+            onSelect={chooseRail} />
           {(!request || request.rail !== "onchain") && <button type="button" disabled={!hasBalance} onClick={() => {
             if (request || ["creating-invoice", "creating-invoice-slow", "creating-onchain-address"].includes(phase.kind)) { setSwitchRequested("balance"); return; }
             abortRef.current?.abort(); setFundingMethod(null); setPhase({ kind: "choose-method" });

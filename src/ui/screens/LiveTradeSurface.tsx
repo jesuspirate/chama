@@ -1,3 +1,5 @@
+import { payoutRecipientFor } from "../../escrow-engine/recipients.js";
+import { handleDisplayForViewer } from "../../payments/saved-handles.js";
 import { Wordmark } from "../components/Wordmark.js";
 import { OverlaySheet } from "../components/OverlaySheet.js";
 import { canOfferClaim, needsTradeHistory } from "../decisions.js";
@@ -207,6 +209,12 @@ export function LiveTradeSurface({
     : null;
   const alreadyRated = !!counterparty
     && myGivenRatings.some(r => r.tradeId === state.id && samePubkey(r.ratee, counterparty));
+
+  const releaseRecipient = payoutRecipientFor(state, Outcome.RELEASE);
+  const releaseToMe = samePubkey(releaseRecipient?.pubkey, pubkey);
+  const releaseName = profileNameFor(profileNames, releaseToMe ? counterparty : releaseRecipient?.pubkey, kind0Enabled) ?? tr("trade.participants");
+  const releaseSub = tr(releaseToMe ? "lts.releaseToYou" : "lts.releaseToName", { name: releaseName, amount: amountLabel });
+  const lockerName = profileNameFor(profileNames, payoutRecipientFor(state, Outcome.REFUND)?.pubkey, kind0Enabled) ?? tr("trade.participants");
 
   const REFUND_REASONS = [tr("lts.reasonNotArrived"), tr("lts.reasonWrongAmount"), tr("lts.reasonChangedMind")];
 
@@ -453,7 +461,7 @@ export function LiveTradeSurface({
       // back-out. Render a single primary + a quiet cancel, not two co-equal.
       if (vp.firstVote) {
         return (
-          <Decision q={deedQuestion(state, myRole)} sub={tr("lts.confirmReleases", { amount: amountLabel })}>
+          <Decision q={deedQuestion(state, myRole)} sub={releaseSub}>
             <PrimaryButton
               disabled={busy}
               tone="release"
@@ -517,7 +525,7 @@ export function LiveTradeSurface({
       const showRelease = outcomes.includes(Outcome.RELEASE);
       const showRefund = outcomes.includes(Outcome.REFUND);
       return (
-        <Decision q={receiptQuestion(state, myRole)} sub={tr("lts.whereGo", { amount: amountLabel })}>
+        <Decision q={receiptQuestion(state, myRole)} sub={releaseSub}>
           {showRelease && (
             <VoteButton
               tone="release"
@@ -775,6 +783,15 @@ export function LiveTradeSurface({
             </>}
             <ReplayNotes notes={state.replayNotes} />
             {renderDecision()}
+            {state.status === EscrowStatus.LOCKED && myRole && state.lock.handle && <details style={{ marginTop: 16 }}>
+              <summary style={{ minHeight: 44, cursor: "pointer", color: T.muted }}>{tr("lts.howToPay", { name: lockerName })}</summary>
+              <div style={{ padding: 12, overflowWrap: "anywhere", background: T.surface, borderRadius: 12 }}>
+                <div>{getRailByKey(state.lock.handle.rail)?.displayName ?? state.lock.handle.rail}</div>
+                <div>{handleDisplayForViewer(state.lock.handle.value, true)}</div>
+                <CopyButton value={state.lock.handle.value} />
+                <div>{state.lock.handle.networks?.map(key => getRailByKey(key)?.displayName ?? key).join(" · ")}</div>
+              </div>
+            </details>}
             {state.status !== EscrowStatus.CREATED && state.body && <details style={{ marginTop: 16 }}>
               <summary>{state.description}</summary>
               <ListingBody body={state.body} />

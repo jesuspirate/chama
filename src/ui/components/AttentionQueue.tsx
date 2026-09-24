@@ -1,3 +1,4 @@
+import { profileNameFor, type NostrProfileNameMap } from "../nostr-profiles.js";
 // ══════════════════════════════════════════════════════════════════════════
 // Chama — AttentionQueue (the Me-screen hero)
 // ══════════════════════════════════════════════════════════════════════════
@@ -36,6 +37,7 @@ import {
 } from "../attention-triage.js";
 
 export function AttentionQueue({
+  profileNames, kind0Enabled = true,
   ranked,
   pubkey,
   onOpenTrade,
@@ -43,6 +45,8 @@ export function AttentionQueue({
   suppressEmptyState = false,
   suppressCount = false,
 }: {
+  profileNames?: NostrProfileNameMap;
+  kind0Enabled?: boolean;
   /** Urgency-ranked needs-you trades (selectNeedsYouTrades output). */
   ranked: EscrowState[];
   pubkey: string;
@@ -135,6 +139,7 @@ export function AttentionQueue({
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }} data-tick={tick}>
         {ordered.map((trade) => (
           <AttentionCard
+            profileNames={profileNames} kind0Enabled={kind0Enabled}
             key={trade.id}
             trade={trade}
             pubkey={pubkey}
@@ -179,11 +184,14 @@ function HoldCountdown({ expirySec }: { expirySec: number }) {
 }
 
 function AttentionCard({
+  profileNames, kind0Enabled,
   trade,
   pubkey,
   onOpenTrade,
   onChanged,
 }: {
+  profileNames?: NostrProfileNameMap;
+  kind0Enabled: boolean;
   trade: EscrowState;
   pubkey: string;
   onOpenTrade: (id: string) => void;
@@ -235,7 +243,7 @@ function AttentionCard({
               marginTop: 3, fontFamily: T.mono, fontSize: 10, color: T.muted,
               overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const,
             }}>
-              {t("me.withCounterparty", { who: counterparty.slice(0, 6) + "…" })}
+              {t("me.withCounterparty", { who: profileNameFor(profileNames, counterparty, kind0Enabled) ?? "…" })}
             </div>
           )}
           <div style={{

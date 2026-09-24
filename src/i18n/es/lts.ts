@@ -1,4 +1,7 @@
 export const lts: Record<string, string> = {
+  "lts.releaseToYou": "Cuando {name} confirme, recibirás {amount}.",
+  "lts.releaseToName": "Confirma y se liberarán {amount} a {name}.",
+  "lts.howToPay": "Cómo pagar a {name}",
   "lts.funderLapsed": "No bloqueaste a tiempo y tu oferta volvió al mercado. No se ha cobrado nada.",
   "lts.joinerLapsed": "La otra persona no bloqueó a tiempo. Puedes unirte de nuevo o elegir otra oferta.",
   "lts.postAgain": "Publicar de nuevo",

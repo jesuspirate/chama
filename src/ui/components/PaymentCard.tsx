@@ -8,13 +8,16 @@ import { copyTextRobust } from "./CopyButton.js";
 
 export type PaymentRail = "lightning" | "onchain" | "ecash";
 const icons = { lightning: "⚡", onchain: "🔗", ecash: "🥜" };
-export function PaymentRails({ rail, rails = ["lightning", "onchain", "ecash"], onSelect }: {
+export function PaymentRails({ rail, rails = ["lightning", "onchain", "ecash"], onSelect, disabledReasons }: {
+  disabledReasons?: Partial<Record<PaymentRail, string>>;
   rail: PaymentRail; rails?: PaymentRail[]; onSelect?: (rail: PaymentRail) => void;
 }) {
   const { t } = useT();
-  return <PagerPills tabs={rails.map(r => t(`payment.${r}`))} icons={rails.map(r => icons[r])}
+  return <><PagerPills disabled={rails.map(r => !!disabledReasons?.[r])} tabIds={rails} tabs={rails.map(r => t(`payment.${r}`))} icons={rails.map(r => icons[r])}
     active={Math.max(0, rails.indexOf(rail))} chevrons={false} label={t("payment.rail")}
-    onSelect={i => onSelect?.(rails[i])} />;
+    onSelect={i => { if (!disabledReasons?.[rails[i]]) onSelect?.(rails[i]); }} />
+    {rails.filter(r => disabledReasons?.[r]).map(r => <div key={r} style={{ fontSize: 11, color: T.muted, lineHeight: 1.4, marginBottom: 4 }}>{t(`payment.${r}`)}: {disabledReasons?.[r]}</div>)}
+  </>;
 }
 
 export function PaymentButton({ tier = "raised", tone = "accent", style, ...props }: ButtonHTMLAttributes<HTMLButtonElement> & {

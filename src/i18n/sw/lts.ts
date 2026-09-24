@@ -1,4 +1,7 @@
 export const lts: Record<string, string> = {
+  "lts.releaseToYou": "{name} akithibitisha, utapokea {amount}.",
+  "lts.releaseToName": "Thibitisha ili {amount} zitumwe kwa {name}.",
+  "lts.howToPay": "Jinsi ya kumlipa {name}",
   "lts.funderLapsed": "Hukufunga kwa wakati, kwa hivyo ofa yako imerudi sokoni. Hakuna kilichochukuliwa.",
   "lts.joinerLapsed": "Mtu mwingine hakufunga kwa wakati. Unaweza kujiunga tena au kuchagua ofa nyingine.",
   "lts.postAgain": "Chapisha tena",

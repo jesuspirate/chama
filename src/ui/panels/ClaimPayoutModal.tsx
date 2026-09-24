@@ -91,6 +91,8 @@ import type {
 import { EcashExportModal } from "./EcashExportModal.js";
 
 export interface ClaimPayoutModalProps {
+  getLightningGatewayCount?: () => Promise<number | null>;
+  onWithdrawEcash?: () => void;
   /** Trade ID being claimed. Passed through to claimAndPayout. */
   escrowId: string;
   /** Post-escrow-fee payout amount in millisatoshis. claimAndPayout
@@ -180,6 +182,7 @@ interface DispatchArgs {
 }
 
 export function ClaimPayoutModal({
+  getLightningGatewayCount, onWithdrawEcash,
   escrowId,
   payoutMsats,
   premiumMsats = 0,
@@ -207,6 +210,17 @@ export function ClaimPayoutModal({
   // Quote it separately: a bearer note pays no outbound Lightning fee, so the
   // reserve baked into `payoutSats` is money the user actually gets.
   const ecashPayoutSats = claimPayoutSats(effectiveMsats, "ecash");
+  const [gatewayChecking, setGatewayChecking] = useState(!!getLightningGatewayCount && claimTarget !== "ecash");
+  const [gatewayCount, setGatewayCount] = useState<number | null>(null);
+  useEffect(() => {
+    if (!getLightningGatewayCount || claimTarget === "ecash") return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout>;
+    void Promise.race([getLightningGatewayCount(), new Promise<null>(resolve => { timer = setTimeout(() => resolve(null), 8000); })])
+      .catch(() => null).then(count => { clearTimeout(timer); if (!cancelled) { setGatewayCount(count); setGatewayChecking(false); } });
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, []);
+  const lightningReason = gatewayChecking ? t("fund.checkingGateways") : gatewayCount === 0 ? t("fund.noGateways") : undefined;
   const [stage, setStage] = useState<Stage>({ kind: "picking" });
   const [payoutMethod, setPayoutMethod] = useState<PayoutMethod | null>(null);
   // Retry state: when a retryable terminal is up, the "Try again"
@@ -454,6 +468,7 @@ export function ClaimPayoutModal({
       );
       return (
         <ClaimMethodChooser
+          lightningReason={lightningReason}
           payoutSats={payoutSats}
           ecashPayoutSats={ecashPayoutSats}
           externalSwaps={externalSwaps}
@@ -619,6 +634,8 @@ export function ClaimPayoutModal({
           />
         )}
 
+        {stage.kind === "terminal" && stage.terminal.kind === "payout-failed" && onWithdrawEcash && lastDispatchRef.current?.payoutKind !== "ecash" &&
+          <PaymentButton onClick={onWithdrawEcash}>{t("claim.ecashMethod")}</PaymentButton>}
         {stage.kind === "terminal" && (
           <TerminalPanel
             terminal={stage.terminal}
@@ -635,6 +652,7 @@ export function ClaimPayoutModal({
 }
 
 function ClaimMethodChooser({
+  lightningReason,
   payoutSats,
   ecashPayoutSats,
   externalSwaps,
@@ -649,6 +667,7 @@ function ClaimMethodChooser({
   onSelectSavedNwc,
   onCancel,
 }: {
+  lightningReason?: string;
   /** The headline quote, net of the outbound Lightning fee reserve — right for
    *  every method on this screen EXCEPT the bearer-note export. */
   payoutSats: number;
@@ -682,13 +701,14 @@ function ClaimMethodChooser({
 }) {
   const { t } = useT();
   const [rail, setRail] = useState<PaymentRail>("lightning");
+  useEffect(() => { if (lightningReason && lightningReason !== t("fund.checkingGateways")) setRail("ecash"); }, [lightningReason]);
   // Single-column layout once external swaps or native offramps are
   // surfaced (they have taller cards with flag + status badge); two-column
   // when only the built-in Lightning + Onchain methods are available.
   const hasTallCards = externalSwaps.length > 0 || tandoEligible || chapsmartEligible || strikeEligible;
   const methodGridColumns = hasTallCards ? "1fr" : "1fr 1fr";
   const methodMinHeight = hasTallCards ? 92 : 118;
-  const showSavedStrike = strikeEligible && savedStrikeDestinations.length > 0;
+  const showSavedStrike = !lightningReason && rail === "lightning" && strikeEligible && savedStrikeDestinations.length > 0;
 
   return (
     <div
@@ -773,7 +793,7 @@ function ClaimMethodChooser({
         )}
 
         {/* NWC is an expert shortcut: present but deliberately quiet. */}
-        {savedNwcConnections.length > 0 && (
+        {!lightningReason && rail === "lightning" && savedNwcConnections.length > 0 && (
           <details style={{ marginBottom: 12 }}>
             <summary style={{ color: T.muted, fontFamily: T.mono, fontSize: 9, cursor: "pointer" }}>
               NWC · {savedNwcConnections.length}
@@ -810,12 +830,12 @@ function ClaimMethodChooser({
           </details>
         )}
 
-        <PaymentRails rail={rail} onSelect={setRail} />
+        <PaymentRails rail={rail} disabledReasons={{ lightning: lightningReason }} onSelect={setRail} />
         <p style={{ color: T.muted, fontSize: 12, lineHeight: 1.5 }}>{t(rail === "ecash" ? "claim.ecashMethodBlurb" : rail === "onchain" ? "claim.onchainBlurb" : "claim.bestPathLn")}</p>
-        <PaymentButton tier={rail === "ecash" ? "primary" : "raised"} style={{ width: "100%", marginBottom: 12 }} onClick={() => rail === "ecash" ? onSelectEcash() : onSelect({ kind: rail })}>
+        <PaymentButton disabled={rail === "lightning" && !!lightningReason} tier={rail === "ecash" ? "primary" : "raised"} style={{ width: "100%", marginBottom: 12 }} onClick={() => rail === "ecash" ? onSelectEcash() : onSelect({ kind: rail })}>
           {rail === "ecash" ? t("claim.ecashMethod") : rail === "onchain" ? t("claim.methodOnchainSlow") : t("claim.lnFast")}
         </PaymentButton>
-        {hasTallCards && <details><summary style={{ minHeight: 44, color: T.muted }}>{t("payment.details")}</summary>
+        {hasTallCards && !lightningReason && <details><summary style={{ minHeight: 44, color: T.muted }}>{t("payment.details")}</summary>
         <div style={{ display: "grid", gridTemplateColumns: methodGridColumns, gap: 10 }}>
 
           {/* Tando — Kenya's lead cash-out. Native one-tap M-Pesa offramp

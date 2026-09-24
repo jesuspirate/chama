@@ -4,7 +4,7 @@ export const KIND0_TOGGLE_KEY_PREFIX = "chama_fetch_kind0_enabled_";
 
 export type NostrProfileNameMap = Record<string, string>;
 
-const KIND0_TOGGLE_KEY = "chama_fetch_kind0_enabled_v2";
+const KIND0_TOGGLE_KEY = "chama_fetch_kind0_enabled_v3";
 export const PROFILE_CACHE_KEY = "chama_nostr_names_v1";
 
 export function readKind0Toggle(pubkey: string | null | undefined): boolean {
@@ -13,13 +13,9 @@ export function readKind0Toggle(pubkey: string | null | undefined): boolean {
     const key = scopedStorageKey(KIND0_TOGGLE_KEY, pubkey);
     const current = localStorage.getItem(key);
     if (current !== null) return current === "1";
-    // The legacy preference already belonged to this pubkey. Migrate only it.
-    const legacy = KIND0_TOGGLE_KEY_PREFIX + pubkey.toLowerCase();
-    const enabled = localStorage.getItem(legacy) === "1";
-    localStorage.setItem(key, enabled ? "1" : "0");
-    localStorage.removeItem(legacy);
-    return enabled;
-  } catch { return false; }
+    // Earlier keys cannot distinguish untouched defaults from an opt-out.
+    return true;
+  } catch { return true; }
 }
 
 export function writeKind0Toggle(pubkey: string | null | undefined, on: boolean): void {

@@ -12,8 +12,10 @@
 import { T } from "../../theme.js";
 import { useT } from "../../../i18n/index.js";
 
-export function PagerPills({ tabs, active, onSelect, badges, icons, chevrons = true, label }: {
+export function PagerPills({ tabs, active, onSelect, badges, icons, disabled, tabIds, chevrons = true, label }: {
   tabs: string[];
+  disabled?: boolean[];
+  tabIds?: string[];
   icons?: React.ReactNode[];
   chevrons?: boolean;
   label?: string;
@@ -77,20 +79,23 @@ export function PagerPills({ tabs, active, onSelect, badges, icons, chevrons = t
               type="button"
               role="tab"
               aria-selected={on}
+              disabled={disabled?.[i]}
+              data-funding-rail={tabIds?.[i]}
               onClick={() => onSelect(i)}
               style={{
                 position: "relative", zIndex: 1,
                 background: "transparent", border: "none",
-                padding: "7px 8px", minHeight: 44, borderRadius: 999,
-                cursor: "pointer",
+                padding: "7px 4px", minHeight: 44, borderRadius: 999,
+                cursor: disabled?.[i] ? "default" : "pointer",
+                opacity: disabled?.[i] ? .5 : 1,
                 fontFamily: T.sans, fontSize: 12, fontWeight: 700,
                 color: on ? T.text : T.muted,
                 transition: "color .2s",
-                whiteSpace: chevrons ? "nowrap" : "normal",
+                whiteSpace: "nowrap",
                 overflowWrap: "anywhere", minWidth: 0,
               }}
             >
-              {icons?.[i] && <span aria-hidden="true" style={{ opacity: on ? 1 : .5, marginRight: chevrons ? 5 : 0, display: chevrons ? "inline" : "block", transition: "opacity .2s" }}>{icons[i]}</span>}{label}
+              {icons?.[i] && <span aria-hidden="true" style={{ opacity: on ? 1 : .5, marginRight: 5, display: "inline", transition: "opacity .2s" }}>{icons[i]}</span>}{label}
               {badge > 0 && (
                 <span aria-label={t("trade.unreadAria", { count: badge })} style={{
                   position: "absolute", top: 0, right: 2,

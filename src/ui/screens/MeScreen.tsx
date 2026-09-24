@@ -571,6 +571,7 @@ export function MeScreen({
         </div>
       ) : (
         <AttentionQueue
+          profileNames={profileNames} kind0Enabled={kind0Enabled}
           ranked={rankedNeedsYou}
           pubkey={pubkey}
           onOpenTrade={onOpenTrade}
