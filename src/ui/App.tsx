@@ -3516,6 +3516,7 @@ export default function App() {
           tradeCategory={pendingFundAndLock.tradeCategory}
           fundAndLock={actions.fundAndLock}
           spendableMsats={canLockFromBalance(escrows.get(pendingFundAndLock.escrowId), walletSpendableMsats, pendingFundAndLock.amountMsats, fundingPremiumMsats(pendingFundAndLock.premiumMsats)) ? walletSpendableMsats : 0}
+          getLightningGatewayCount={actions.getLightningGatewayCount}
           supportsOnchain={actions.supportsOnchain()}
           subscribeDeposit={actions.subscribeDeposit}
           getOnchainInfo={actions.getOnchainInfo}

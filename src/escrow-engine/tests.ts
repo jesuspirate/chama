@@ -20735,6 +20735,22 @@ console.log("\n── REAL SDK ADAPTER — Lightning receive watcher ──");
     };
   }
 
+  {
+    const h = makeRealWallet();
+    const order: string[] = [];
+    h.real.lightning.updateGatewayCache = async () => { order.push("refresh"); };
+    h.real.lightning.listGateways = async () => { order.push("list"); return []; };
+    const wallet = adaptRealWallet(h.real as any);
+    assert(await wallet.lightning.getGatewayCount!() === 0, "Funding preflight reports zero registered gateways");
+    assert(order.join(",") === "refresh,list", "Gateway preflight refreshes before reading without creating an invoice");
+    h.real.lightning.listGateways = async () => [{ info: {} }, { info: {} }] as any;
+    assert(await wallet.lightning.getGatewayCount!() === 2, "Gateway preflight preserves the registered count");
+    h.real.lightning.listGateways = async () => { throw new Error("offline"); };
+    let failed = false;
+    try { await wallet.lightning.getGatewayCount!(); } catch { failed = true; }
+    assert(failed, "An unavailable gateway query is not reported as zero gateways");
+  }
+
   // The adapter must forward the safe lock horizon verbatim. If this ever
   // regresses to the old 90-day value, the guard refuses before any note moves.
   {

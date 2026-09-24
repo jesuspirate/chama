@@ -2688,6 +2688,11 @@ export function adaptRealWallet(
     },
 
     lightning: {
+      async getGatewayCount() {
+        if (!real.lightning.listGateways) return null;
+        await real.lightning.updateGatewayCache?.();
+        return (await real.lightning.listGateways()).length;
+      },
       async createInvoice(
         amountMsats: number,
         description: string,

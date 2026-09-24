@@ -1092,6 +1092,7 @@ export interface UseEscrowActions {
   ) => Promise<import("../fedimint/reabsorb-bearer-notes.js").ReabsorbResult>;
   /** Read federation wallet-module onchain fees and confirmation policy. */
   subscribeDeposit: (operationId: string, cb: (progress: import("../fedimint/fedimint-client.js").OnchainDepositProgress) => void) => () => void;
+  getLightningGatewayCount: () => Promise<number | null>;
   supportsOnchain: () => boolean;
   getOnchainInfo: () => Promise<OnchainInfo>;
   /**
@@ -6679,6 +6680,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       return result;
     },
     subscribeDeposit: (operationId, cb) => fedimintRef.current?.subscribeDeposit(operationId, cb) ?? (() => {}),
+    getLightningGatewayCount: () => fedimintRef.current?.getLightningGatewayCount() ?? Promise.resolve(null),
     supportsOnchain: () => fedimintRef.current?.supportsOnchain() ?? false,
     getOnchainInfo: async () => {
       const fedimint = fedimintRef.current;

@@ -11,6 +11,11 @@ export const fund: Record<string, string> = {
   "fund.useLightning": "Tumia Lightning",
 
   "fund.lockBalance": "Funga kutoka salio lako",
+  "fund.checkingGateways": "Tunaangalia Lightning…",
+  "fund.noGateways": "Lightning haipatikani katika jumuiya hii kwa sasa",
+  "fund.railUnavailable": "Haipatikani kwa sasa",
+  "fund.onchainAppOnly": "Uwekaji on-chain unapatikana kwenye programu ya Chama",
+  "fund.balanceInsufficient": "Salio: sats zinazopatikana hazitoshi",
   "fund.useBalance": "Tumia ₿ {amount} kati ya ₿ {balance} zako",
   "fund.useBalanceWithInsurance": "Tumia ₿ {amount} kati ya ₿ {balance} zako — {trade} kwa biashara, {insurance} kwa bima.",
 

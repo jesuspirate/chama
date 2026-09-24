@@ -174,6 +174,7 @@ export interface IFedimintWallet {
   };
 
   lightning: {
+    getGatewayCount?(): Promise<number | null>;
     /** Create a Lightning invoice to receive sats into the federation.
      *  v0.6.5: `onReceiveState` is fired on every state transition of
      *  the underlying SDK receive operation (created → funded →
@@ -405,6 +406,10 @@ export interface FedimintInitOptions {
 // ══════════════════════════════════════════════════════════════════════════
 
 export class FedimintClient {
+  async getLightningGatewayCount(): Promise<number | null> {
+    return this.wallet?.lightning.getGatewayCount?.() ?? null;
+  }
+
   private wallet: IFedimintWallet | null = null;
   private callbacks: FedimintClientCallbacks;
   private balanceUnsubscribe: (() => void) | null = null;

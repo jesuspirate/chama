@@ -1006,6 +1006,11 @@ export class NativeBridgeWallet implements IFedimintWallet {
   };
 
   lightning = {
+    getGatewayCount: async (): Promise<number | null> => {
+      await this.ensureBridgeReady();
+      const result = await this.request<{ gateway_count: number }>("/gateways");
+      return Number.isSafeInteger(result.gateway_count) && result.gateway_count >= 0 ? result.gateway_count : null;
+    },
     createInvoice: async (
       amountMsats: number,
       description: string,

@@ -55,8 +55,8 @@ export function OpenWith({ value }: { value: string }) {
 }
 
 /** Fixed payment regions: state changes never move the code or copy target. */
-export function PaymentCard({ amountMsats, rail, rails, onRail, data, copyValue, status, helper, details, actions, motion = false, ecash = false }: {
-  amountMsats: number; rail: PaymentRail; rails?: PaymentRail[]; onRail?: (rail: PaymentRail) => void;
+export function PaymentCard({ hideRails = false, amountMsats, rail, rails, onRail, data, copyValue, status, helper, details, actions, motion = false, ecash = false }: {
+  hideRails?: boolean; amountMsats: number; rail: PaymentRail; rails?: PaymentRail[]; onRail?: (rail: PaymentRail) => void;
   data?: string | string[]; copyValue?: string; status: ReactNode; helper?: ReactNode; details?: ReactNode; actions?: ReactNode;
   motion?: boolean; ecash?: boolean;
 }) {
@@ -69,7 +69,7 @@ export function PaymentCard({ amountMsats, rail, rails, onRail, data, copyValue,
     observer.observe(ref.current); return () => observer.disconnect();
   }, []);
   return <section ref={ref} className="payment-card" style={{ color: T.text, minWidth: 0, width: "100%", fontFamily: T.sans,
-    "--payment-glow": T.accentDim, "--payment-focus": T.accent } as React.CSSProperties}>
+    gridTemplateRows: hideRails ? "64px 284px 0px 78px 100px auto" : undefined, "--payment-glow": T.accentDim, "--payment-focus": T.accent } as React.CSSProperties}>
     <style>{`
       .payment-card{display:grid;grid-template-rows:64px 284px 58px 78px 100px auto}
       .payment-card>*{min-width:0;box-sizing:border-box}
@@ -87,7 +87,7 @@ export function PaymentCard({ amountMsats, rail, rails, onRail, data, copyValue,
     <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
       {data ? <QRCode data={data} size={size} logo={motion ? "motion" : "static"} errorCorrectionLevel={ecash ? "L" : "H"} showLogo={!ecash} /> : actions}
     </div>
-    <PaymentRails rail={rail} rails={rails ?? [rail]} onSelect={onRail} />
+    {hideRails ? <div /> : <PaymentRails rail={rail} rails={rails ?? [rail]} onSelect={onRail} />}
     <div role="status" style={{ textAlign: "center", alignSelf: "stretch", overflowY: "auto", padding: "10px 4px", fontSize: 12, lineHeight: 1.5 }}>{status}</div>
     <div style={{ display: "grid", gap: 6, alignContent: "start", textAlign: "center", fontSize: 11, color: T.muted }}>
       {copyValue && <PaymentCopyChip value={copyValue} address={rail === "onchain"} />}<div style={{ maxHeight: 50, overflowY: "auto", lineHeight: 1.5 }}>{helper}</div>

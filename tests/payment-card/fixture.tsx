@@ -42,6 +42,27 @@ const tapped: string[]=[];
 (window as any).tapped=tapped;
 const tap=(id:string)=>{tapped.push(id);};
 const noop=()=>{};
+function RailsFixture() {
+ const params=new URLSearchParams(location.search);
+ const mode=params.get('rails');
+ (window as any).railCalls ??= [];
+ return <AtomicFundingModal escrowId="rails-test" amountMsats={2000000} ctaLabel="Test"
+  getLightningGatewayCount={async()=>mode==='zero'?0:1}
+  supportsOnchain={params.has('native')} spendableMsats={params.has('balance')?3000000:0}
+  getOnchainInfo={async()=>({pegInFeeSats:100,minimumDepositSats:101,finalityDelay:3,network:'bitcoin'} as any)}
+  lockAndPublish={async()=>{}} onClose={()=>{}}
+  fundAndLock={async(_id,opts)=>{
+    (window as any).railCalls.push(opts.fundingMethod);
+    if(opts.fundingMethod==='lightning') {
+      if(mode==='fail') { const failure={kind:'lock-failed' as const,error:'No gateways available',invoiceFailed:true};opts.onPhase(failure);return failure; }
+      opts.onPhase({kind:'creating-invoice'});
+      (window as any).issueInvoice=()=>opts.onPhase({kind:'invoice-created',bolt11:payload.slice(10),expiresAt:Date.now()+600000});
+      return new Promise(()=>{});
+    }
+    if(opts.fundingMethod==='ecash') {opts.onPhase({kind:'locked'});return {kind:'locked'};}
+    opts.onPhase({kind:'creating-onchain-address'});return new Promise(()=>{});
+  }}/>
+}
 function SimOnchainFixture() {
  const [wallet] = useState(() => createSimWallet({npub:null,onchainMode:simOnchainMode()}));
  useEffect(() => () => { void wallet.cleanup(); },[wallet]);
@@ -130,4 +151,4 @@ function Fixture() {
   </main>;
 }
 applyThemeMode(new URLSearchParams(location.search).get('theme') === 'light' ? 'light' : 'dark');
-createRoot(document.getElementById('root')!).render(<LangProvider><Fixture /></LangProvider>);
+createRoot(document.getElementById('root')!).render(<LangProvider>{new URLSearchParams(location.search).has("rails") ? <RailsFixture/> : <Fixture />}</LangProvider>);

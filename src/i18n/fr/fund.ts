@@ -15,6 +15,11 @@ export const fund: Record<string, string> = {
   "fund.useLightning": "Utiliser Lightning",
 
   "fund.lockBalance": "Verrouiller depuis votre solde",
+  "fund.checkingGateways": "Vérification de Lightning…",
+  "fund.noGateways": "Lightning n’est pas disponible dans cette communauté actuellement",
+  "fund.railUnavailable": "Indisponible pour le moment",
+  "fund.onchainAppOnly": "Les dépôts on-chain fonctionnent dans l’application Chama",
+  "fund.balanceInsufficient": "Solde : pas assez de sats disponibles",
   "fund.useBalance": "Utilisez ₿ {amount} sur vos ₿ {balance}",
   "fund.useBalanceWithInsurance": "Utilisez ₿ {amount} sur vos ₿ {balance} — {trade} pour l’échange, {insurance} d’assurance.",
 

@@ -113,6 +113,7 @@ export interface AtomicFundingModalProps {
   /** Reads federation wallet-module onchain fees before showing the slow path. */
   getOnchainInfo: () => Promise<OnchainInfo>;
   subscribeDeposit?: (operationId: string, cb: (progress: OnchainDepositProgress) => void) => () => void;
+  getLightningGatewayCount?: () => Promise<number | null>;
   supportsOnchain?: boolean;
   spendableMsats?: number;
   /** Bound to actions.lockAndPublish — used for the "Try LOCK now"
@@ -188,6 +189,7 @@ export function AtomicFundingModal({
   getOnchainInfo,
   subscribeDeposit,
   spendableMsats = 0,
+  getLightningGatewayCount,
   supportsOnchain = false,
   lockAndPublish,
   disableNwc = false,
@@ -206,8 +208,12 @@ export function AtomicFundingModal({
   const totalSats = amountSats + insuranceSats;
   const [request, setRequest] = useState<{ rail: "lightning" | "onchain"; data: string; value: string; sats: number; expiresAt?: number; fee?: number; finality?: number; gateway?: FundingGatewayInfo } | null>(null);
   const [initialRail, setInitialRail] = useState<PaymentRail>("lightning");
-  const [switchRequested, setSwitchRequested] = useState<PaymentRail | null>(null);
-  const autoLightning = !disableNwc && !hasBalance
+  const [paymentDetected, setPaymentDetected] = useState(false);
+  const [invoiceUnavailable, setInvoiceUnavailable] = useState(false);
+  const [gatewayCount, setGatewayCount] = useState<number | null>(null);
+  const [gatewayChecking, setGatewayChecking] = useState(!!getLightningGatewayCount && !disableNwc && !isSimModeOn());
+  const [switchRequested, setSwitchRequested] = useState<PaymentRail | "balance" | null>(null);
+  const autoLightning = !gatewayChecking && gatewayCount !== 0 && !disableNwc && !hasBalance
     && (!browserLightningBlocked || browserLightningProbeArmed)
     && (isSimModeOn() || amountSats >= MIN_REAL_LIGHTNING_FUNDING_SATS);
   const [phase, setPhase] = useState<ModalPhase>({ kind: autoLightning ? "creating-invoice" : "choose-method" });
@@ -270,6 +276,29 @@ export function AtomicFundingModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supportsOnchain]);
 
+  useEffect(() => {
+    if (!getLightningGatewayCount || disableNwc || isSimModeOn()) return;
+    let cancelled = false;
+    // A failed/slow preflight is unknown, never evidence of zero gateways.
+    let timer: ReturnType<typeof setTimeout>;
+    void Promise.race([
+      getLightningGatewayCount(),
+      new Promise<null>(resolve => { timer = setTimeout(() => resolve(null), 8000); }),
+    ]).catch(() => null).then(count => {
+      clearTimeout(timer);
+      if (cancelled) return;
+      setGatewayCount(count); setGatewayChecking(false);
+      if (hasBalance) return;
+      if (count === 0 || browserLightningBlocked && !browserLightningProbeArmed || !isSimModeOn() && amountSats < MIN_REAL_LIGHTNING_FUNDING_SATS) {
+        setInitialRail("ecash");
+      } else {
+        setFundingMethod("lightning"); setPhase({ kind: "creating-invoice" });
+      }
+    });
+    return () => { cancelled = true; clearTimeout(timer); };
+    // The card is scoped to one funding attempt; do not restart on parent renders.
+  }, []);
+
   // Phase-driven main loop. Re-runs when the user taps "Generate new
   // invoice" (retryToken increments). Aborts on unmount.
   useEffect(() => {
@@ -305,6 +334,7 @@ export function AtomicFundingModal({
           // black. The fix scopes phase events to the live run
           // strictly via the closed-over ctrl.signal.
           if (ctrl.signal.aborted) return;
+          if (["mint-confirming", "mint-confirming-slow", "payment-confirmed", "onchain-deposit-confirmed", "locking", "locked", "fedi-ecash-created"].includes(p.kind)) setPaymentDetected(true);
           if (p.kind === "invoice-created") {
             setRequest({ rail: "lightning", data: makeLightningInvoiceQrPayload(p.bolt11), value: p.bolt11, sats: totalSats, expiresAt: p.expiresAt, gateway: p.gateway });
             lastBolt11 = p.bolt11;
@@ -401,6 +431,7 @@ export function AtomicFundingModal({
           }
           // payment-confirmed / locking / locked / expired / mint-timeout
           // / aborted / lock-failed all map directly.
+          if (p.kind === "lock-failed" && p.invoiceFailed) { setInvoiceUnavailable(true); setSwitchRequested(null); }
           setPhase(p as ModalPhase);
         },
       });
@@ -467,7 +498,7 @@ export function AtomicFundingModal({
   const manualLightningBlocked = browserLightningBlocked && !browserLightningProbeArmed;
 
   const handleSelectMethod = (method: "lightning" | "onchain") => {
-    if (method === "lightning" && manualLightningBlocked) return;
+    if (method === "lightning" && (manualLightningBlocked || gatewayChecking || gatewayCount === 0 || invoiceUnavailable)) return;
     if (
       method === "lightning" &&
       !isSimModeOn() &&
@@ -494,7 +525,7 @@ export function AtomicFundingModal({
   };
 
   const handleSelectNwc = (connectionString: string, remember: boolean) => {
-    if (browserLightningBlocked) return;
+    if (browserLightningBlocked || gatewayChecking || gatewayCount === 0 || invoiceUnavailable) return;
     if (!isSimModeOn() && amountSats < MIN_REAL_LIGHTNING_FUNDING_SATS) return;
     if (!isNwcConnectionString(connectionString)) return;
     setSelectedNwcConnection(connectionString.trim());
@@ -525,6 +556,28 @@ export function AtomicFundingModal({
   };
 
 
+  const invoiceFailed = phase.kind === "lock-failed" && phase.invoiceFailed === true;
+  const lightningReason = gatewayChecking ? t("fund.checkingGateways")
+    : gatewayCount === 0 ? t("fund.noGateways")
+    : invoiceUnavailable ? t("fund.railUnavailable")
+    : manualLightningBlocked ? t("fund.browserLightningBlockedShort")
+    : !isSimModeOn() && amountSats < MIN_REAL_LIGHTNING_FUNDING_SATS ? minimumLightningFundingMessage() : undefined;
+  const railsVisible = !paymentDetected && !["mint-confirming", "mint-confirming-slow", "payment-confirmed", "locking", "locked", "mint-timeout", "receive-rejected", "paying-with-nwc", "requesting-fedi-ecash", "fedi-ecash-created"].includes(phase.kind);
+  const chooseRail = (rail: PaymentRail) => {
+    if (gatewayChecking) return;
+    if (request || ["creating-invoice", "creating-invoice-slow", "creating-onchain-address"].includes(phase.kind)) {
+      if (rail !== (request?.rail ?? fundingMethod)) setSwitchRequested(rail);
+      return;
+    }
+    abortRef.current?.abort(); setFundingMethod(null); setInitialRail(rail); setPhase({ kind: "choose-method" });
+  };
+  const retryLightning = () => {
+    if (request || !(phase.kind === "choose-method" || invoiceFailed)) return;
+    abortRef.current?.abort(); setRequest(null); setGatewayCount(null); setInvoiceUnavailable(false);
+    setInitialRail("lightning"); setFundingMethod("lightning");
+    setPhase({ kind: "creating-invoice" }); setRetryToken(value => value + 1);
+  };
+
   return (
     <div onClick={handleCancel} style={{
       // v0.6.5: 0xee alpha (≈93%) instead of 0xcc (80%). On first-fire
@@ -542,6 +595,30 @@ export function AtomicFundingModal({
         padding: "20px 16px", maxWidth: 420, width: "100%", maxHeight: "92dvh", overflowY: "auto", boxSizing: "border-box",
       }}>
         {/* Header — amount is the eyebrow, label is the title */}
+        {!disableNwc && <div data-funding-rails aria-hidden={!railsVisible} style={{ marginBottom: 16, visibility: railsVisible ? "visible" : "hidden" }}>
+          <div role="tablist" aria-label={t("payment.rail")} style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+            {(["lightning", "onchain", "ecash"] as const).filter(rail => !request || request.rail !== "onchain" || rail === "onchain").map(rail => {
+              const reason = rail === "lightning" ? lightningReason : rail === "onchain" && !supportsOnchain ? t("fund.onchainAppOnly") : undefined;
+              return <button key={rail} data-funding-rail={rail} role="tab" aria-selected={(request?.rail ?? initialRail) === rail} disabled={!!reason || gatewayChecking}
+                onClick={() => chooseRail(rail)} style={{ flex: 1, minWidth: 80, minHeight: 44, padding: 8, borderRadius: 12, background: (request?.rail ?? initialRail) === rail ? T.accentDim : T.surface, color: reason ? T.muted : T.text, border: `1px solid ${T.border}` }}>
+                {t(`payment.${rail}`)}{reason && <small style={{ display: "block", fontSize: 10, lineHeight: 1.4 }}>{reason}</small>}
+              </button>;
+            })}
+          </div>
+          {(!request || request.rail !== "onchain") && <button type="button" disabled={!hasBalance} onClick={() => {
+            if (request || ["creating-invoice", "creating-invoice-slow", "creating-onchain-address"].includes(phase.kind)) { setSwitchRequested("balance"); return; }
+            abortRef.current?.abort(); setFundingMethod(null); setPhase({ kind: "choose-method" });
+          }} style={{ background: "none", color: T.muted, border: 0, minHeight: 44 }}>
+            {hasBalance ? t("fund.lockBalance") : t("fund.balanceInsufficient")}
+          </button>}
+        </div>}
+        {invoiceUnavailable && phase.kind === "choose-method" && !request && !paymentDetected && <button type="button" onClick={retryLightning} style={{ background: "none", border: 0, color: T.muted, textDecoration: "underline", minHeight: 44 }}>{t("fund.tryAgain")}</button>}
+        {invoiceFailed && <div role="alert" style={{ marginBottom: 12 }}>
+          <p>{t("fund.invoiceFailedPlain")}</p>
+          {/No gateways available/i.test(phase.error) && <p>{t("fund.noGateways")}</p>}
+          <small style={{ overflowWrap: "anywhere" }}>{phase.error}</small>
+          <div><button type="button" onClick={retryLightning} style={{ background: "none", border: 0, color: T.muted, textDecoration: "underline", minHeight: 44 }}>{t("fund.tryAgain")}</button></div>
+        </div>}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
           <div>
             <div style={{ fontSize: 9, color: T.muted, fontFamily: T.mono, letterSpacing: 1, marginBottom: 4 }}>
@@ -562,13 +639,16 @@ export function AtomicFundingModal({
           }}>×</button>
         </div>
 
-        {phase.kind === "choose-method" && hasBalance && <div style={{ marginBottom: 16 }}>
+        {(phase.kind === "choose-method" || invoiceFailed) && hasBalance && <div style={{ marginBottom: 16 }}>
           <p>{t(premiumMsats > 0 ? "fund.useBalanceWithInsurance" : "fund.useBalance", { amount: totalSats.toLocaleString(), trade: amountSats.toLocaleString(), insurance: insuranceSats.toLocaleString(), balance: Math.floor(spendableMsats / 1000).toLocaleString() })}</p>
           <PaymentButton tier="primary" onClick={() => { setPhase({ kind: "locking" }); setFundingMethod("balance"); }}>{t("fund.lockBalance")}</PaymentButton>
         </div>}
-        {phase.kind === "choose-method" && (
+        {(phase.kind === "choose-method" || invoiceFailed) && !gatewayChecking && (
           <FundingMethodChooser
-            initialRail={initialRail}
+            key={invoiceFailed ? "failed" : initialRail}
+            hideRails
+            lightningReason={lightningReason}
+            initialRail={invoiceFailed ? "ecash" : initialRail}
             amountSats={amountSats}
             supportsOnchain={supportsOnchain}
             onchainInfoState={onchainInfoState}
@@ -589,7 +669,7 @@ export function AtomicFundingModal({
         )}
 
         {request && !mpesaOpen ? <>
-          <PaymentCard amountMsats={request.sats * 1000} rail={request.rail}
+          <PaymentCard hideRails amountMsats={request.sats * 1000} rail={request.rail}
             rails={phase.kind === "awaiting-payment" || phase.kind === "expired" ? (supportsOnchain ? ["lightning", "onchain", "ecash"] : ["lightning", "ecash"]) : [request.rail]}
             onRail={rail => { if (rail !== request.rail) setSwitchRequested(rail); }}
             data={request.data} copyValue={request.value}
@@ -610,17 +690,7 @@ export function AtomicFundingModal({
             actions={<>{phase.kind === "expired" && <PaymentButton onClick={handleRegenerate}>{t("fund.newInvoice")}</PaymentButton>}
               {phase.kind === "mint-timeout" && <MintTimeoutState busy={tryLockBusy} onTryLockNow={handleTryLockNow} onCancel={handleCancel} />}
               {mpesaAvailable && phase.kind === "awaiting-payment" && <PaymentButton onClick={() => setMpesaOpen(true)}>{t("fund.fundWithMpesa")}</PaymentButton>}</>} />
-          {switchRequested && <div role="dialog" aria-label={t("payment.switchTitle")} style={{ padding: 14, border: `1px solid ${T.borderHi}`, borderRadius: 16 }}>
-            <p>{t("payment.switchPending")}</p>
-            <div style={{ display: "flex", gap: 8 }}>
-              <PaymentButton tier="quiet" onClick={() => setSwitchRequested(null)}>{t("payment.keepLightning")}</PaymentButton>
-              <PaymentButton tier="primary" disabled={phase.kind !== "expired"} onClick={() => {
-                const rail = switchRequested; setSwitchRequested(null); setRequest(null); abortRef.current?.abort();
-                if (rail === "ecash") { setInitialRail("ecash"); setFundingMethod(null); setPhase({ kind: "choose-method" }); }
-                else handleSelectMethod(rail);
-              }}>{t("payment.switch")}</PaymentButton>
-            </div>
-          </div>}
+
         </> : <>
         {phase.kind === "creating-invoice" && <CreatingInvoice slow={false} />}
 
@@ -721,7 +791,7 @@ export function AtomicFundingModal({
             </div>
           </div>
         )}
-        {phase.kind === "lock-failed" && (
+        {phase.kind === "lock-failed" && !invoiceFailed && (
           <LockFailedState
             error={phase.errorKey ? t(phase.errorKey) : phase.error}
             invoiceFailed={phase.invoiceFailed}
@@ -731,6 +801,18 @@ export function AtomicFundingModal({
         )}
 
         </>}
+          {switchRequested && <div role="dialog" aria-label={t("payment.switchTitle")} style={{ padding: 14, border: `1px solid ${T.borderHi}`, borderRadius: 16 }}>
+            <p>{t("payment.switchPending")}</p>
+            <div style={{ display: "flex", gap: 8 }}>
+              <PaymentButton tier="quiet" onClick={() => setSwitchRequested(null)}>{t("payment.keepLightning")}</PaymentButton>
+              <PaymentButton tier="primary" disabled={phase.kind !== "expired"} onClick={() => {
+                const rail = switchRequested; setSwitchRequested(null); setRequest(null); abortRef.current?.abort();
+                if (rail === "ecash") { setInitialRail("ecash"); setFundingMethod(null); setPhase({ kind: "choose-method" }); }
+                else if (rail === "balance") { setFundingMethod(null); setPhase({ kind: "choose-method" }); }
+                else handleSelectMethod(rail);
+              }}>{t("payment.switch")}</PaymentButton>
+            </div>
+          </div>}
         {/* v0.6.5: explicit no-op for the `aborted` phase. Pre-this-fix
             phase=aborted had no render branch, so any stray aborted
             event from a torn-down StrictMode first-mount left the modal
@@ -763,6 +845,8 @@ export function AtomicFundingModal({
 // ── Sub-components ──────────────────────────────────────────────────────
 
 function FundingMethodChooser({
+  hideRails = false,
+  lightningReason,
   supportsOnchain = false,
   initialRail = "lightning",
   amountSats,
@@ -782,6 +866,8 @@ function FundingMethodChooser({
   browserNwcBlocked,
 }: {
   supportsOnchain?: boolean;
+  hideRails?: boolean;
+  lightningReason?: string;
   initialRail?: PaymentRail;
   amountSats: number;
   onchainInfoState:
@@ -845,8 +931,8 @@ function FundingMethodChooser({
   const nwcReady = isNwcConnectionString(nwcInput);
   const lightningTooSmall =
     !isSimModeOn() && amountSats < MIN_REAL_LIGHTNING_FUNDING_SATS;
-  const lightningDisabled = lightningTooSmall || browserLightningBlocked;
-  const nwcDisabled = lightningTooSmall || browserNwcBlocked;
+  const lightningDisabled = lightningTooSmall || browserLightningBlocked || !!lightningReason;
+  const nwcDisabled = lightningTooSmall || browserNwcBlocked || !!lightningReason;
   // #65: above the LN routing ceiling, a single Lightning payment likely won't
   // route through the federation's gateway. Warn + steer to on-chain (which is
   // available here whenever onchainGate is not disabled). Never hard-blocks.
@@ -997,7 +1083,7 @@ function FundingMethodChooser({
         </details>
       )}
 
-      <PaymentRails rail={rail} rails={supportsOnchain ? ["lightning", "onchain", "ecash"] : ["lightning", "ecash"]} onSelect={setRail} />
+      {!hideRails && <PaymentRails rail={rail} rails={supportsOnchain ? ["lightning", "onchain", "ecash"] : ["lightning", "ecash"]} onSelect={setRail} />}
       {rail === "ecash" && <details open style={{ marginBottom: 12 }}>
         <summary style={{
           padding: "10px 12px", borderRadius: T.rs, cursor: "pointer",
@@ -1028,11 +1114,11 @@ function FundingMethodChooser({
         </div>
       </details>}
 
-      {rail === "lightning" && <><p style={{ color: T.muted, fontSize: 12 }}>{browserLightningBlocked ? t("fund.browserLightningBlockedShort") : lightningTooSmall ? minimumLightningFundingMessage() : t("fund.bestForAlmostEveryone")}</p>
+      {rail === "lightning" && <><p style={{ color: T.muted, fontSize: 12 }}>{lightningReason ?? (browserLightningBlocked ? t("fund.browserLightningBlockedShort") : lightningTooSmall ? minimumLightningFundingMessage() : t("fund.bestForAlmostEveryone"))}</p>
         <PaymentButton disabled={lightningDisabled} onClick={() => onSelect("lightning")}>{t("fund.lnFast")}</PaymentButton></>}
       {rail === "onchain" && <><div style={{ color: T.muted, fontSize: 12 }}>{onchainGate.detail}</div>
         {onchainInfoState.kind === "ready" && onchainGate.disabled
-          ? <PaymentButton onClick={() => { setRail("lightning"); onSelect("lightning"); }}>{t("fund.useLightning")}</PaymentButton>
+          ? <PaymentButton disabled={lightningDisabled} onClick={() => { setRail("lightning"); onSelect("lightning"); }}>{t("fund.useLightning")}</PaymentButton>
           : <PaymentButton disabled={onchainGate.disabled} onClick={() => onSelect("onchain")}>{t("fund.onchainSlow")}</PaymentButton>}</>}
       <div style={{
         marginTop: 12, padding: "8px 10px", borderRadius: T.rs,
