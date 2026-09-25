@@ -9,6 +9,7 @@ import {
   countCounterDemand,
   inferredAssistedWant,
   matchGuidedListings,
+  rankGuidedCandidates,
   matchMarketListings,
   recommendGuidedCandidates,
   validateGuidedTradeIntent,
@@ -501,7 +502,7 @@ export function AssistedCanvas({
         }));
         ranked = ranked.map(candidate => ({ ...candidate, ratings: ratings.get(candidate.sellerPubkey) }));
       }
-      setMatches(ranked);
+      setMatches(rankGuidedCandidates(ranked));
       if (ranked.length === 0) {
         const labelFor: Record<string, string> = {
           PAYMENT_RAIL_MISMATCH: tr("canvas.rejPaymentRail"), COMMUNITY_MISMATCH: tr("canvas.rejCommunity"),
@@ -712,9 +713,9 @@ export function AssistedCanvas({
       <p style={subStyle()}>{tr("canvas.reviewMatchSub")}</p>
       <div style={reviewStyle()}>
         <ReviewRow label={tr("canvas.youReceive")} value={tr("canvas.satsValue", { amount: selected.amountSats.toLocaleString() })} />
-        <ReviewRow label={tr("canvas.youPay")} value={selected.fiatQuote ? `${selected.fiatQuote.amount.toLocaleString()} ${selected.fiatQuote.currency}` : tr("canvas.confirmWithSeller")} />
+        <ReviewRow label={tr(selected.listing.category === "bill-pay" ? "canvas.youPayBill" : "canvas.youPay")} value={[selected.fiatQuote ? `${selected.fiatQuote.amount.toLocaleString()} ${selected.fiatQuote.currency}` : tr("canvas.confirmWithSeller"), ...(selected.listing.category === "bill-pay" ? [selected.sourceMenuItem?.label ?? selected.listing.description] : [])].join(" · ")} />
         <ReviewRow label={tr("canvas.paymentMethod")} value={getRailByKey(selected.paymentRail)?.displayName ?? selected.paymentRail} />
-        <ReviewRow label={tr("canvas.seller")} value={profileNameFor(profileNames, selected.sellerPubkey, kind0Enabled) ?? shortKey(selected.sellerPubkey)} last />
+        <ReviewRow label={tr(selected.listing.category === "bill-pay" ? "canvas.billOwner" : "canvas.seller")} value={profileNameFor(profileNames, selected.sellerPubkey, kind0Enabled) ?? shortKey(selected.sellerPubkey)} last />
       </div>
       <Primary onClick={() => onOpenTrade(selected.listing.id)}>{tr("canvas.reviewFullTrade")}</Primary>
       <Safety>{tr("canvas.reviewSafety")}</Safety>
@@ -736,7 +737,7 @@ export function AssistedCanvas({
     return <CanvasShell community={community} step={3} onExit={() => onBrowse("all")} onMoreOptions={onMoreOptions}>
       <Back onClick={() => setSurface("terms")}>{tr("canvas.changeLast")}</Back>
       <Kicker>{isGoods ? tr("canvas.availableNow", { count: goodsMatches.length }) : tr("canvas.compatibleOffers", { count: visibleMatches.length })}</Kicker>
-      <h1 style={headingStyle()}>{noMatches ? tr("canvas.noMatchTitle") : isGoods ? tr("canvas.goodsTitle") : tr("canvas.chooseTitle")}</h1>
+      <h1 style={headingStyle()}>{noMatches ? tr("canvas.noMatchTitle") : isGoods ? tr("canvas.goodsTitle") : tr(guidedChooseTitleKey(visibleMatches))}</h1>
       <p style={subStyle()}>{noMatches ? tr("canvas.noMatchSub") : isGoods ? tr("canvas.goodsSub") : tr("canvas.chooseSub")}</p>
       {!isGoods && (
         <div style={{ ...amountLineStyle(), marginBottom: 18, flexWrap: "wrap" }}>
@@ -1106,16 +1107,22 @@ export function Primary({ children, onClick, disabled = false }: { children: Rea
 function Safety({ children }: { children: ReactNode }) { return <div style={{ marginTop: 14, color: T.muted, fontSize: 12, lineHeight: 1.5 }}>{children}</div>; }
 function ErrorBox({ children }: { children: ReactNode }) { return <div style={{ marginTop: 16, padding: "12px 14px", borderRadius: T.r, color: T.red, background: T.redDim, border: `1px solid ${T.red}44` }}>{children}</div>; }
 
-function Match({ candidate, labels, onOpen }: { candidate: GuidedMatchCandidate; labels: string[]; onOpen: () => void }) {
+export function guidedChooseTitleKey(candidates: readonly GuidedMatchCandidate[]) {
+  return candidates.some(candidate => candidate.listing.category === "bill-pay") ? "canvas.chooseMixedTitle" : "canvas.chooseTitle";
+}
+
+export function Match({ candidate, labels, onOpen }: { candidate: GuidedMatchCandidate; labels: string[]; onOpen: () => void }) {
   const bracket = candidate.listing.items?.find(item => item.kind === "exchange-bracket");
   const low = bracket ? (bracket.minAmountMsats ?? bracket.amountMsats) / 1000 : candidate.amountSats;
   const high = bracket ? (bracket.maxAmountMsats ?? bracket.amountMsats) / 1000 : candidate.amountSats;
   const sats = low === high ? low.toLocaleString() : `${low.toLocaleString()}–${high.toLocaleString()}`;
   const quote = candidate.fiatQuote;
   const fiat = quote ? (low === high ? quote.amount.toLocaleString() : `${(quote.amount * low / candidate.amountSats).toLocaleString(undefined, { maximumFractionDigits: 2 })}–${(quote.amount * high / candidate.amountSats).toLocaleString(undefined, { maximumFractionDigits: 2 })}`) + ` ${quote.currency}` : tr("canvas.askSeller");
+  const isBill = candidate.listing.category === "bill-pay";
+  const bill = candidate.sourceMenuItem?.label ?? candidate.listing.description;
   return <button type="button" className="assisted-match" onClick={onOpen}>
     <div className="assisted-tags">{labels.map(label => <span key={label}>{label}</span>)}</div>
-    <div className="assisted-match-row"><div><strong>{sats} sats</strong><small>{candidate.listing.description}</small></div><b>{fiat}</b></div>
+    <div className="assisted-match-row"><div><strong>{isBill ? tr("canvas.payBillTitle", { fiat, bill }) : `${sats} sats`}</strong><small>{candidate.listing.description}</small></div><b>{isBill ? tr("canvas.getSats", { amount: candidate.amountSats.toLocaleString() }) : fiat}</b></div>
     <div className="assisted-match-foot"><span>{getRailByKey(candidate.paymentRail)?.displayName ?? candidate.paymentRail}</span><b>{tr("canvas.review")}</b></div>
   </button>;
 }

@@ -103,9 +103,9 @@ function reputationScore(ratings: Eligible["ratings"]): number {
   return Math.round(SCORE.reputation * positiveRatio * confidence);
 }
 
-function priceScores(eligible: readonly Eligible[]): Map<string, number> {
+function priceScores(eligible: readonly Pick<GuidedMatchCandidate, "listing" | "fiatQuote" | "amountSats">[]): Map<string, number> {
   const result = new Map<string, number>();
-  const groups = new Map<string, Eligible[]>();
+  const groups = new Map<string, Pick<GuidedMatchCandidate, "listing" | "fiatQuote" | "amountSats">[]>();
   for (const candidate of eligible) {
     if (!candidate.fiatQuote) continue;
     const group = groups.get(candidate.fiatQuote.currency) ?? [];
@@ -113,13 +113,13 @@ function priceScores(eligible: readonly Eligible[]): Map<string, number> {
     groups.set(candidate.fiatQuote.currency, group);
   }
   for (const group of groups.values()) {
-    const prices = group.map(candidate => candidate.fiatQuote!.amount);
+    const prices = group.map(candidate => candidate.fiatQuote!.amount / candidate.amountSats);
     const low = Math.min(...prices);
     const high = Math.max(...prices);
     for (const candidate of group) {
       const score = high === low
         ? SCORE.price
-        : Math.round(SCORE.price * (high - candidate.fiatQuote!.amount) / (high - low));
+        : Math.round(SCORE.price * (high - candidate.fiatQuote!.amount / candidate.amountSats) / (high - low));
       result.set(candidate.listing.id, score);
     }
   }
@@ -271,12 +271,30 @@ export function matchGuidedListings(
     return { ...publicCandidate, reasons, score };
   }).sort((a, b) =>
     b.score.total - a.score.total
-    || (a.fiatQuote?.amount ?? Number.POSITIVE_INFINITY)
-      - (b.fiatQuote?.amount ?? Number.POSITIVE_INFINITY)
+    || (a.fiatQuote?.currency === b.fiatQuote?.currency
+      ? (a.fiatQuote?.amount ?? Infinity) / a.amountSats - (b.fiatQuote?.amount ?? Infinity) / b.amountSats : 0)
     || a.listing.id.localeCompare(b.listing.id)
   );
 
   return { candidates: candidates.slice(0, limit), rejected };
+}
+
+/** Re-score the combined results after searches at different sat amounts. */
+export function rankGuidedCandidates(candidates: readonly GuidedMatchCandidate[]): GuidedMatchCandidate[] {
+  const prices = priceScores(candidates);
+  return candidates.map(candidate => {
+    const price = prices.get(candidate.listing.id) ?? 0;
+    const reputation = reputationScore(candidate.ratings);
+    const score = { ...candidate.score, price, reputation,
+      total: candidate.score.total - candidate.score.price - candidate.score.reputation + price + reputation };
+    const reasons: GuidedMatchReason[] = candidate.reasons.filter(reason => reason !== "lowest_fiat_quote" && reason !== "positive_trade_history");
+    if (price === SCORE.price && candidate.fiatQuote) reasons.push("lowest_fiat_quote");
+    if (reputation > 0) reasons.push("positive_trade_history");
+    return { ...candidate, score, reasons };
+  }).sort((a, b) => b.score.total - a.score.total
+    || (a.fiatQuote?.currency === b.fiatQuote?.currency
+      ? (a.fiatQuote?.amount ?? Infinity) / a.amountSats - (b.fiatQuote?.amount ?? Infinity) / b.amountSats : 0)
+    || a.listing.id.localeCompare(b.listing.id));
 }
 
 /** Derive human-readable recommendation lanes without manufacturing weaker
@@ -286,15 +304,16 @@ export function recommendGuidedCandidates(
   candidates: readonly GuidedMatchCandidate[],
   fiatCurrency?: string,
 ): GuidedRecommendations {
-  const bestOverall = candidates[0] ?? null;
+  const sellers = candidates.filter(candidate => candidate.listing.category === "p2p-trade");
+  const bestOverall = sellers[0] ?? candidates[0] ?? null;
   const currency = fiatCurrency?.toUpperCase()
     ?? bestOverall?.fiatQuote?.currency
     ?? candidates.find(candidate => candidate.fiatQuote)?.fiatQuote?.currency;
   const priced = currency
-    ? candidates.filter(candidate => candidate.fiatQuote?.currency === currency)
+    ? sellers.filter(candidate => candidate.fiatQuote?.currency === currency)
     : [];
   const lowestPrice = [...priced].sort((a, b) =>
-    a.fiatQuote!.amount - b.fiatQuote!.amount
+    a.fiatQuote!.amount / a.amountSats - b.fiatQuote!.amount / b.amountSats
     || b.score.total - a.score.total
     || a.listing.id.localeCompare(b.listing.id)
   )[0] ?? null;
