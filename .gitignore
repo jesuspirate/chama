@@ -129,3 +129,6 @@ ncc-cache
 # which lacks unlink permission) — never ship this.
 /_to_delete/
 docs/PHILOSOPHY.md
+
+# Throwaway signet escrow harness keys and local transaction journal
+scripts/.mutinynet-escrow-*.json

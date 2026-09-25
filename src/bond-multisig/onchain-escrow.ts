@@ -48,6 +48,7 @@
 //
 // PURE: no relays, no wallet, no network. Builds and verifies scripts only.
 
+import { tapLeafHash } from "@scure/btc-signer/payment.js";
 import * as btc from "@scure/btc-signer";
 import { NUMS_INTERNAL_KEY, SIGNET, MAINNET, type BtcNetwork } from "./multisig.js";
 
@@ -378,12 +379,16 @@ export function leafWitnessFor(
   const found = leaves.find((l) => hex(l.script) === hex(script));
   if (!found) throw new Error(`${leaf} leaf missing from the recomputed tree`);
 
-  const sigs = tx.getInput(index).tapScriptSig ?? [];
+  const leafHash = hex(tapLeafHash(script));
+  const sigs = (tx.getInput(index).tapScriptSig ?? []).filter(([meta]) => hex(meta.leafHash) === leafHash);
   if (sigs.length === 0) throw new Error(`${leaf} input is not signed yet`);
 
   if (leaf === "refund") {
     // Single-signer leaf: one signature, then script + control block.
-    return [sigs[0][1], script, found.controlBlock];
+    const funder = escrow.params.funder === "buyer" ? escrow.params.buyerXonly : escrow.params.sellerXonly;
+    const signature = sigs.find(([meta]) => hex(meta.pubKey) === hex(funder));
+    if (!signature) throw new Error("Missing funder refund signature");
+    return [signature[1], script, found.controlBlock];
   }
 
   // CHECKSIGADD leaves: one slot per key, in reverse key order.

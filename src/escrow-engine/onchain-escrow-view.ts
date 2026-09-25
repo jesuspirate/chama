@@ -25,6 +25,7 @@ export type OnchainStage =
   /** Address known; waiting for the funder to send and for confirmation. */
   | "awaiting-funding"
   /** Funded and locked. The trade is live. */
+  | "checking-deposit"
   | "locked"
   /** Both sides agreed; a settlement transaction can be built. */
   | "settling"
@@ -76,6 +77,7 @@ function funderRole(category: string): Role | null {
  */
 export function deriveOnchainView(params: {
   state: EscrowState;
+  depositVerified?: boolean;
   viewerRole: Role | null;
   /** The address THIS client recomputed, or null when it could not. */
   recomputedAddress: string | null;
@@ -98,6 +100,7 @@ export function deriveOnchainView(params: {
 
   const stage: OnchainStage =
     settled ? "done"
+      : (locked || state.onchainRefundClaimed) && params.depositVerified !== true ? "checking-deposit"
       : approved ? "settling"
         : locked ? "locked"
           : recomputedAddress ? "awaiting-funding"
@@ -132,6 +135,7 @@ function blockerLabel(code: string): string {
     case "missing-seller-key": return "waiting-for-seller";
     case "invalid-key": return "bad-key";
     case "keys-not-distinct": return "duplicate-keys";
+    case "funding-terms": return "funding-terms";
     case "bad-refund-height": return "bad-terms";
     default: return "not-ready";
   }

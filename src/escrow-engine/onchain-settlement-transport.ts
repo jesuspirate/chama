@@ -3,7 +3,7 @@ import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import * as btc from "@scure/btc-signer";
 import { tapLeafHash } from "@scure/btc-signer/payment.js";
 import { schnorr } from "@noble/curves/secp256k1.js";
-import { Role, type OnchainLockTerms, type ParsedEscrowEvent, type SettlementPayload } from "./types.js";
+import { Role, type OnchainFundingTerms, type OnchainLockTerms, type ParsedEscrowEvent, type SettlementPayload } from "./types.js";
 import { finalizeSettlement, verifySettlementPsbt, type SettlementExpectation } from "../bond-multisig/onchain-escrow-settle.js";
 import { buildOnchainEscrow, LEAF_SPEND_VSIZE, type OnchainEscrow } from "../bond-multisig/onchain-escrow.js";
 import { MAINNET, SIGNET } from "../bond-multisig/multisig.js";
@@ -97,7 +97,7 @@ export function hasValidSettlementSignatureForRole(
   psbt: string,
   escrow: OnchainEscrow,
   role: Role.BUYER | Role.SELLER | Role.ARBITER,
-  leafName: "coop" | "dispute",
+  leafName: "coop" | "dispute" | "refund",
 ): boolean {
   try {
     const tx = btc.Transaction.fromPSBT(base64.decode(psbt), {
@@ -302,7 +302,7 @@ export function finalArbiterSettlementProof(
 export function settlementBuildFeeSats(
   feeRateSatsPerVb: bigint,
   numInputs: number,
-  leaf: "coop" | "dispute" = "coop",
+  leaf: "coop" | "dispute" | "refund" = "coop",
 ): bigint {
   if (numInputs < 1) throw new Error("Settlement requires at least one input");
   const extraInputs = BigInt(numInputs - 1) * 58n;
@@ -320,4 +320,60 @@ export function signingKeyMatchesRole(
     : role === Role.SELLER ? terms.sellerXonly
       : role === Role.ARBITER ? (terms.arbiterXonly ?? null) : null;
   return committed !== null && bytesToHex(derivedXonly).toLowerCase() === committed.toLowerCase();
+}
+
+/** A refund COMPLETE is advisory until its transaction is observed on-chain.
+ * Replay verifies the funder's signature and exact CLTV/destination, never a
+ * counterparty's assertion that the timeout moved anybody else's money. */
+export function finalRefundSettlementProof(message: ParsedEscrowEvent<SettlementPayload>, terms: OnchainFundingTerms) {
+  if (!message.payload.final || message.payload.leaf !== "refund" || message.payload.role !== terms.funder) return null;
+  try {
+    const network = terms.network === "mainnet" ? MAINNET : SIGNET;
+    const escrow = buildOnchainEscrow({ ...terms, buyerXonly: hexToBytes(terms.buyerXonly),
+      sellerXonly: hexToBytes(terms.sellerXonly), arbiterXonly: hexToBytes(terms.arbiterXonly), network });
+    if (escrow.address !== terms.address) return null;
+    const tx = btc.Transaction.fromPSBT(base64.decode(message.payload.psbt), { allowUnknown: true, allowUnknownOutputs: true });
+    const utxos = Array.from({ length: tx.inputsLength }, (_, i) => {
+      const input = tx.getInput(i);
+      if (!input.txid || input.index === undefined || !input.witnessUtxo) throw new Error("Incomplete input");
+      return { txid: bytesToHex(input.txid), index: input.index, amountSats: input.witnessUtxo.amount };
+    });
+    const role = terms.funder === "buyer" ? Role.BUYER : Role.SELLER;
+    const destination = btc.p2tr(hexToBytes(terms[`${terms.funder}Xonly`]), undefined, network).address!;
+    if (!verifySettlementPsbt(message.payload.psbt, { escrow, utxos, destination, network,
+      leaf: "refund", tipHeight: terms.refundLockUntil,
+      maxFeeSats: utxos.reduce((s, u) => s + u.amountSats, 0n) }).ok) return null;
+    if (!hasValidSettlementSignatureForRole(message.payload.psbt, escrow, role, "refund")) return null;
+    const rawTx = finalizeSettlement([message.payload.psbt], { escrow, leaf: "refund" });
+    return { txid: tx.id, rawTx, inputs: utxos.map(({ txid, index }) => ({ txid, index })) };
+  } catch { return null; }
+}
+
+/** Signed refund journals alone are not proof of a spend: a funder can sign
+ * the future CLTV transaction immediately. Observe every input spent by the
+ * exact journaled txid and that transaction confirmed before saying done. */
+export async function observedRefundSpend(
+  terms: OnchainFundingTerms,
+  messages: readonly ParsedEscrowEvent<SettlementPayload>[],
+  fetchJson: (path: string) => Promise<any>,
+): Promise<{ txid: string; confirmed: boolean } | null> {
+  const seen = new Set<string>();
+  for (const message of [...messages].reverse()) {
+    const proof = finalRefundSettlementProof(message, terms);
+    if (!proof || seen.has(proof.txid)) continue;
+    seen.add(proof.txid);
+    const outspends = await Promise.all(proof.inputs.map(input => fetchJson(`/tx/${input.txid}/outspend/${input.index}`)));
+    if (adoptedExpectedSettlementTxid(proof.txid, outspends) !== proof.txid) continue;
+    const tx = await fetchJson(`/tx/${proof.txid}`);
+    if (typeof tx?.status?.confirmed === "boolean") return { txid: proof.txid, confirmed: tx.status.confirmed };
+  }
+  return null;
+}
+
+export async function confirmedRefundTxid(
+  terms: OnchainFundingTerms, messages: readonly ParsedEscrowEvent<SettlementPayload>[],
+  fetchJson: (path: string) => Promise<any>,
+): Promise<string | null> {
+  const spend = await observedRefundSpend(terms, messages, fetchJson);
+  return spend?.confirmed ? spend.txid : null;
 }

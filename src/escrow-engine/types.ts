@@ -387,6 +387,7 @@ export interface CreatePayload {
    *  trade). Stamped at CREATE so a client can refuse BEFORE funding — see
    *  EscrowMode. */
   escrowMode?: EscrowMode;
+  onchainNetwork?: "mainnet" | "signet";
   /** v6.0: the settlement-policy vocabulary, signed at CREATE. Must AGREE with
    *  `escrowMode` (sibling gate, SETTLEMENT_POLICY_MODE_MISMATCH). Absent ⇒
    *  the mode's default policy (legacy trades stay readable). */
@@ -468,6 +469,7 @@ export interface CreatePayload {
  *  buyerPubkey / arbiterPubkey, but is not required to — LOCK is
  *  self-describing. */
 export interface JoinPayload {
+  fundingTerms?: OnchainFundingTerms;
   type: "escrow:join";
   role: Role;
   /** Tier 2.1: this party's on-chain escrow key (32-byte x-only, hex).
@@ -594,7 +596,21 @@ export type EscrowMode = "ecash" | "onchain";
  *  claimed one (`onchainEscrowAddressMatches`). So this is not "trust me, the
  *  money is at X" — it is "here is how to derive X yourself", and a tampered
  *  field produces a different address rather than a stolen payment. */
-export interface OnchainLockTerms {
+/** Funder-signed JOIN freezes this descriptor before anybody sees an address. */
+export interface OnchainFundingTerms {
+  address: string;
+  buyerXonly: string;
+  sellerXonly: string;
+  arbiterXonly: string;
+  funder: "buyer" | "seller";
+  refundLockUntil: number;
+  disputeCsvBlocks: number;
+  network: "mainnet" | "signet";
+  /** Authenticated by the arbiter, never by the funder claiming its key. */
+  arbiterBond?: NostrEvent;
+}
+
+export interface OnchainLockTerms extends OnchainFundingTerms {
   /** The escrow address. ADVISORY — always recomputed, never trusted. */
   address: string;
   /** Funding outpoint, so any client can confirm the deposit itself. */
@@ -861,7 +877,7 @@ export interface SettlementPayload {
   /** Base64 PSBT. It is untrusted wire input until locally recomputed and
    *  verified against the trade's own on-chain terms. */
   psbt: string;
-  leaf: "coop" | "arbiter";
+  leaf: "coop" | "arbiter" | "refund";
   role: Role;
   /** True only when the PSBT contains enough signatures to finalize. */
   final?: boolean;
@@ -1060,6 +1076,7 @@ export interface EscrowState {
   /** Where this trade's escrow lives. Defaulted to "ecash" by the reducer, so
    *  readers never have to handle undefined. */
   escrowMode: EscrowMode;
+  onchainNetwork?: "mainnet" | "signet";
   /** v6.0: the signed settlement policy. Defaulted from `escrowMode` when the
    *  CREATE omitted it, so readers never handle undefined. */
   settlementPolicy: string;
@@ -1068,6 +1085,9 @@ export interface EscrowState {
   /** Tier 2.1: each party's published on-chain escrow key, by role. All three
    *  are needed before an escrow address exists. */
   escrowKeys?: Partial<Record<Role, string>>;
+  onchainFundingTerms?: OnchainFundingTerms;
+  /** Advisory refund journal marker; only a verified chain spend means done. */
+  onchainRefundClaimed?: boolean;
   /** Fedimint mint URL / invite code */
   mintUrl: string;
 
@@ -1269,7 +1289,7 @@ export function getEffectiveParticipantAt(
   if (!pubkey) return null;
   // A signed PLAN_START freezes all three seats for the lifetime of the
   // persistent parent room; the original buyer reservation no longer lapses.
-  if (state.tranchePlan) return pubkey;
+  if (state.tranchePlan || state.onchainFundingTerms) return pubkey;
   if (state.status !== EscrowStatus.CREATED) return pubkey;
 
   const hold = state.joinHolds?.[role];

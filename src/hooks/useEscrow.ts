@@ -1,3 +1,6 @@
+import { findEscrowFundingUtxos, deriveCommittedBondKey, escrowDepositWindowSafe } from "../bond-multisig/onchain-escrow-funding.js";
+import { finalRefundSettlementProof, observedRefundSpend } from "../escrow-engine/onchain-settlement-transport.js";
+import { fundingArbiter, fundingTermsError, onchainLockError, onchainFunder } from "../escrow-engine/onchain-funding-terms.js";
 import { fundingPremiumMsats } from "../payments/funding-premium.js";
 import { nativeLockEarmarks } from "../fedimint/pending-native-locks.js";
 import { lockFromBalance } from "../payments/lock-from-balance.js";
@@ -275,7 +278,7 @@ import { findBondFundingUtxos, esploraFetcher, defaultEsploraBase, defaultMinCon
 import { verifyBondLineage, tenureStartHeight } from "../bond-multisig/bond-lineage.js";
 import { deriveEscrowSigningKey, resolveFundingPlan, verifyFunding, buildOnchainLockTerms } from "../bond-multisig/onchain-escrow-funding.js";
 import { DISPUTE_CSV_BLOCKS, REFUND_CLTV_BLOCKS, ESCROW_NETWORK, ESCROW_NETWORK_LABEL, buildOnchainEscrow } from "../bond-multisig/onchain-escrow.js";
-import { buildSettlementPsbt, coSignSettlement, disputeWindow, verifySettlementPsbt, settlementFeeCeilingSats, type SettlementCheck } from "../bond-multisig/onchain-escrow-settle.js";
+import { buildSettlementPsbt, finalizeSettlement, coSignSettlement, disputeWindow, verifySettlementPsbt, settlementFeeCeilingSats, type SettlementCheck } from "../bond-multisig/onchain-escrow-settle.js";
 import { aggregateOnchainPayoutBalance, buildOnchainPayoutSweep, payoutCandidatesFor, scanOnchainPayout, type OnchainPayout } from "../bond-multisig/onchain-payout-wallet.js";
 import { getWinner } from "../escrow-engine/state-machine.js";
 import { adoptedExpectedSettlementTxid, adoptedSettlementTxid, finalArbiterSettlementProof, finalCoopSettlementProof, finalizableArbiterSettlement, finalizableCoopSettlement, hasValidSettlementSignatureForRole, selectVerifiedArbiterSettlement, selectVerifiedCoopSettlement, settlementBuildFeeSats, settlementUnsignedId, signingKeyMatchesRole } from "../escrow-engine/onchain-settlement-transport.js";
@@ -961,8 +964,13 @@ export interface UseEscrowActions {
   /** Tier 2.1 — the on-chain escrow plumbing. Every one recomputes the address
    *  locally; none of them trusts a wire-supplied one. */
   myEscrowKey: (escrowId: string) => Promise<{ priv: Uint8Array; xonly: Uint8Array; path: string }>;
+  prepareOnchainFunding: (escrowId: string) => Promise<void>;
+  refundOnchainEscrow: (escrowId: string) => Promise<{ txid: string }>;
+  onchainRefundAvailable: (escrowId: string) => Promise<boolean>;
   onchainFundingPlan: (escrowId: string) => ReturnType<typeof resolveFundingPlan>;
   checkOnchainFunding: (escrowId: string) => Promise<{
+    refundVerified?: boolean;
+    refundPending?: boolean;
     plan: ReturnType<typeof resolveFundingPlan>;
     verdict: ReturnType<typeof verifyFunding> | null;
   }>;
@@ -2178,21 +2186,6 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     lastDiscoveryRelayCountRef.current = 0;
   }, []);
 
-  // ⚠ The refund leaf's CLTV is an ABSOLUTE height, so it must be resolved from
-  // a live tip. Held in a ref (not state) because it feeds a pure recompute, and
-  // a re-render mid-derivation must never change the address under a user who is
-  // looking at it. Zero until a tip is read, which reads as "bad-refund-height"
-  // — a blocker, not a wrong address.
-  const onchainRefundHeightRef = useRef(0);
-  useEffect(() => {
-    if (!state.connected) return;
-    let cancelled = false;
-    void esploraTipHeight(esploraFetcher(defaultEsploraBase(ESCROW_NETWORK), { network: ESCROW_NETWORK }))
-      .then((tip) => { if (!cancelled && tip > 0) onchainRefundHeightRef.current = tip + REFUND_CLTV_BLOCKS; })
-      .catch(() => { /* no tip ⇒ no on-chain address; the blocker says so */ });
-    return () => { cancelled = true; };
-  }, [state.connected]);
-
   const myEscrowKey = useCallback(async (escrowId: string) => {
     const client = requireClient();
     const signer = signerRef.current;
@@ -2867,35 +2860,57 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     const client = requireClient();
     const state = client.getState(escrowId);
     if (!state) throw new Error("Escrow not loaded");
-    const keys = state.escrowKeys ?? {};
-
-    // ⭐ An AUTO-SEATED arbiter never publishes a JOIN, so they never publish an
-    // escrow key — and without it the address can never be computed and the
-    // trade waits forever. Their BOND key is already public, already
-    // chain-verified, and already something they can sign with, so it stands in.
-    // Consequence, stated plainly: an on-chain escrow requires a BONDED arbiter.
-    // That is a reasonable bar for a 100k+ trade and matches the bond's role
-    // everywhere else as the licence to arbitrate.
-    let arbiterXonly = keys[Role.ARBITER] ?? null;
-    const seatedArbiter = state.participants[Role.ARBITER];
-    if (!arbiterXonly && seatedArbiter && state.community) {
-      const cached = readCachedCommunityBonds(state.community) ?? [];
-      const theirs = cached.find(
-        (b) => b.npub.toLowerCase() === seatedArbiter.toLowerCase() && b.funded && b.active,
-      );
-      arbiterXonly = theirs?.ownerXonly ?? null;
+    const terms = state.onchainFundingTerms;
+    if (!terms) {
+      const arbiter = fundingArbiter(state);
+      const cached = state.community ? readCachedCommunityBonds(state.community) ?? [] : [];
+      const bond = cached.find(b => b.npub === arbiter && b.funded && b.active);
+      // Missing-key prompts remain reachable; zero height deliberately makes
+      // an address impossible until the funder's signed terms arrive.
+      return resolveFundingPlan({ buyerXonly: state.escrowKeys?.[Role.BUYER], sellerXonly: state.escrowKeys?.[Role.SELLER],
+        arbiterXonly: state.escrowKeys?.[Role.ARBITER] ?? bond?.ownerXonly, funder: onchainFunder(state),
+        refundLockUntil: 0, disputeCsvBlocks: DISPUTE_CSV_BLOCKS, network: ESCROW_NETWORK });
     }
+    if (fundingTermsError(state, terms, Math.floor(Date.now() / 1000))) {
+      return { ready: false as const, blockers: ["invalid-key" as const] };
+    }
+    if (terms.network !== ESCROW_NETWORK_LABEL) throw new Error("Wrong Bitcoin network");
+    return resolveFundingPlan({ ...terms, network: ESCROW_NETWORK });
+  }, []);
 
-    return resolveFundingPlan({
-      buyerXonly: keys[Role.BUYER] ?? null,
-      sellerXonly: keys[Role.SELLER] ?? null,
-      arbiterXonly,
-      funder: (state.category === "marketplace" || state.chamaPolicy) ? "buyer" : "seller",
-      refundLockUntil: state.lock.onchain?.refundLockUntil
-        ?? (onchainRefundHeightRef.current || 0),
-      disputeCsvBlocks: DISPUTE_CSV_BLOCKS,
-      network: ESCROW_NETWORK,
-    });
+  const prepareOnchainFunding = useCallback(async (escrowId: string) => {
+    const client = requireClient();
+    const trade = client.getState(escrowId);
+    if (!trade || trade.escrowMode !== "onchain") throw new Error("Not an on-chain trade");
+    if (trade.onchainFundingTerms) return;
+    const role = onchainFunder(trade);
+    if (trade.participants[role] !== await client.getPubkey()) throw new Error("Only the funder can commit funding terms");
+    const fetchJson = esploraFetcher(defaultEsploraBase(ESCROW_NETWORK), { network: ESCROW_NETWORK });
+    const tip = await esploraTipHeight(fetchJson);
+    const keys = trade.escrowKeys ?? {};
+    let arbiterBond;
+    let arbiterXonly = keys[Role.ARBITER];
+    if (!arbiterXonly) {
+      const events = await client.queryOnce({ kinds: [ARBITER_BOND_ANNOUNCEMENT_KIND],
+        authors: [fundingArbiter(trade)!], "#d": [trade.community!] } as any, 6000);
+      const announcement = selectLatestAnnouncements(events as any).find(a => a.npub === fundingArbiter(trade));
+      const bond = announcement && await verifyBondAnnouncement(announcement, { network: ESCROW_NETWORK, fetchJson, tipHeight: tip });
+      if (!bond?.funded || !bond.active || !bond.signedEvent) throw new Error("The arbiter's signed, funded bond could not be verified");
+      arbiterXonly = bond.ownerXonly;
+      arbiterBond = bond.signedEvent;
+    }
+    const plan = resolveFundingPlan({ buyerXonly: keys[Role.BUYER], sellerXonly: keys[Role.SELLER],
+      arbiterXonly, funder: role, refundLockUntil: tip + REFUND_CLTV_BLOCKS,
+      disputeCsvBlocks: DISPUTE_CSV_BLOCKS, network: ESCROW_NETWORK });
+    if (!plan.ready) throw new Error("Waiting for the participants' published keys");
+    // The address is returned to the UI only AFTER this signed JOIN is published.
+    await client.joinEscrow(escrowId, role, { fundingTerms: {
+      address: plan.address, buyerXonly: msBytesToHexLocal(plan.params.buyerXonly),
+      sellerXonly: msBytesToHexLocal(plan.params.sellerXonly), arbiterXonly: msBytesToHexLocal(plan.params.arbiterXonly),
+      funder: role, refundLockUntil: plan.params.refundLockUntil,
+      disputeCsvBlocks: DISPUTE_CSV_BLOCKS, network: ESCROW_NETWORK_LABEL,
+      ...(arbiterBond ? { arbiterBond } : {}),
+    } });
   }, []);
 
   /** Ask the chain whether the escrow is funded, at OUR recomputed address. */
@@ -2906,17 +2921,39 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     const plan = onchainFundingPlan(escrowId);
     if (!plan.ready) return { plan, verdict: null as null | ReturnType<typeof verifyFunding> };
     const fetchJson = esploraFetcher(defaultEsploraBase(ESCROW_NETWORK), { network: ESCROW_NETWORK });
-    const found = await findBondFundingUtxos({
+    const tipHeight = await esploraTipHeight(fetchJson);
+    // A signed future refund is not a completed refund. Verify the actual
+    // confirmed spend before letting either room call it done.
+    const refundSpend = await observedRefundSpend(state.onchainFundingTerms!, state.settlements ?? [], fetchJson);
+    if (refundSpend) return { plan, verdict: null, refundVerified: refundSpend.confirmed, refundPending: !refundSpend.confirmed, tipHeight };
+    if (tipHeight >= state.onchainFundingTerms!.refundLockUntil) throw new Error("The deposit's refund deadline has passed; do not send the counterpayment");
+    if (state.lock.onchain) {
+      const invalid = onchainLockError(state, state.lock.onchain, Math.floor(Date.now() / 1000));
+      if (invalid) throw new Error(invalid);
+    }
+    // Bond ownership was authenticated by the frozen signed announcement.
+    // Do not require its deposit to remain unspent: renewal/reclaim cannot
+    // change the key that owns this already-created escrow or stop settlement.
+    const found = await findEscrowFundingUtxos({ network: ESCROW_NETWORK,
       address: plan.address,
       fetchJson,
       minConfs: defaultMinConfs(ESCROW_NETWORK),
     });
+    if (found.length && !escrowDepositWindowSafe({ refundLockUntil: state.onchainFundingTerms!.refundLockUntil,
+      fundingHeights: found.map(f => f.blockHeight!), tipHeight,
+      awaitingCounterpayment: state.status !== EscrowStatus.APPROVED && state.status !== EscrowStatus.CLAIMED && state.status !== EscrowStatus.COMPLETED })) {
+      throw new Error("The deposit's refund deadline is too close for safe counterpayment. Use the on-chain recovery controls.");
+    }
     const verdict = verifyFunding({
       utxos: found.map((f) => f.utxo),
       expectedSats: BigInt(Math.floor(state.amountMsats / 1000)),
       minConfs: defaultMinConfs(ESCROW_NETWORK),
     });
-    return { plan, verdict };
+    // The named outpoint must really be among the confirmed outputs; totals
+    // may include several deposits, as settlement sweeps them all.
+    if (state.lock.onchain && !found.some(f => f.utxo.txid === state.lock.onchain!.fundingTxid
+      && f.utxo.index === state.lock.onchain!.fundingVout)) throw new Error("Committed funding output is unavailable");
+    return { plan, verdict, tipHeight };
   }, [onchainFundingPlan]);
 
   /** Publish the on-chain LOCK once the deposit is confirmed.
@@ -2980,7 +3017,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     const winnerXonly = winner.role === Role.BUYER ? t.buyerXonly : t.sellerXonly;
     const destination = btcSigner.p2tr(hexToBytes(winnerXonly), undefined, ESCROW_NETWORK).address!;
     const fetchJson = esploraFetcher(defaultEsploraBase(ESCROW_NETWORK), { network: ESCROW_NETWORK });
-    const found = await findBondFundingUtxos({
+    const found = await findEscrowFundingUtxos({ network: ESCROW_NETWORK,
       address: escrow.address, fetchJson, minConfs: defaultMinConfs(ESCROW_NETWORK),
     });
     const utxos = found.map(f => f.utxo);
@@ -3009,6 +3046,58 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       },
     };
   }, []);
+
+  const onchainRefundAvailable = useCallback(async (escrowId: string) => {
+    const trade = requireClient().getState(escrowId);
+    if (!trade?.onchainFundingTerms || trade.status === EscrowStatus.COMPLETED) return false;
+    const tip = await esploraTipHeight(esploraFetcher(defaultEsploraBase(ESCROW_NETWORK), { network: ESCROW_NETWORK }));
+    return tip >= trade.onchainFundingTerms.refundLockUntil;
+  }, []);
+
+  const refundOnchainEscrow = useCallback(async (escrowId: string) => {
+    const client = requireClient();
+    const trade = client.getState(escrowId);
+    const terms = trade?.onchainFundingTerms;
+    if (!trade || !terms) throw new Error("No committed on-chain funding terms");
+    const role = onchainFunder(trade);
+    if (trade.participants[role] !== await client.getPubkey()) throw new Error("Only the funder can refund this deposit");
+    const invalid = fundingTermsError(trade, terms, Math.floor(Date.now() / 1000));
+    if (invalid || terms.network !== ESCROW_NETWORK_LABEL) throw new Error(invalid ?? "Wrong Bitcoin network");
+    const fetchJson = esploraFetcher(defaultEsploraBase(ESCROW_NETWORK), { network: ESCROW_NETWORK });
+    const tipHeight = await esploraTipHeight(fetchJson);
+    if (tipHeight < terms.refundLockUntil) throw new Error(`Refund unlocks at block ${terms.refundLockUntil}`);
+    // Recover broadcast → COMPLETE failures using the exact journaled txid.
+    for (const message of [...(trade.settlements ?? [])].reverse()) {
+      const proof = finalRefundSettlementProof(message, terms);
+      if (!proof) continue;
+      const outspends = await Promise.all(proof.inputs.map(input => fetchJson(`/tx/${input.txid}/outspend/${input.index}`)));
+      if (adoptedExpectedSettlementTxid(proof.txid, outspends) === proof.txid) {
+        await client.completeOnchain(escrowId, message.raw.id);
+        return { txid: proof.txid };
+      }
+    }
+    const escrow = buildOnchainEscrow({ ...terms, buyerXonly: hexToBytes(terms.buyerXonly),
+      sellerXonly: hexToBytes(terms.sellerXonly), arbiterXonly: hexToBytes(terms.arbiterXonly), network: ESCROW_NETWORK });
+    const found = await findEscrowFundingUtxos({ network: ESCROW_NETWORK, address: escrow.address, fetchJson, minConfs: defaultMinConfs(ESCROW_NETWORK) });
+    const utxos = found.map(f => f.utxo);
+    if (!utxos.length) throw new Error("No confirmed deposit available to refund");
+    const key = await myEscrowKey(escrowId);
+    if (!signingKeyMatchesRole(key.xonly, role, terms)) throw new Error("This device's seed does not own the committed funder key");
+    const destination = btcSigner.p2tr(key.xonly, undefined, ESCROW_NETWORK).address!;
+    const feeRate = await esploraRecommendedFeeRate(fetchJson, { floorPerVb: 2n });
+    const expectation = { escrow, utxos, destination, leaf: "refund" as const, tipHeight,
+      network: ESCROW_NETWORK, maxFeeSats: settlementFeeCeilingSats("refund", feeRate, utxos.length) };
+    const psbt = buildSettlementPsbt({ ...expectation, feeSats: settlementBuildFeeSats(feeRate, utxos.length, "refund"),
+      lockTime: terms.refundLockUntil });
+    const check = verifySettlementPsbt(psbt, expectation);
+    if (!check.ok) throw new Error(check.failures.join("; "));
+    const signed = coSignSettlement(psbt, key.priv);
+    const rawTx = finalizeSettlement([signed], { escrow, leaf: "refund" });
+    const proof = await client.sendSettlement(escrowId, { psbt: signed, role, leaf: "refund", final: true });
+    const txid = await esploraBroadcast(defaultEsploraBase(ESCROW_NETWORK), rawTx);
+    await client.completeOnchain(escrowId, proof.raw.id);
+    return { txid };
+  }, [myEscrowKey]);
 
   const prepareOnchainSettlement = useCallback(async (escrowId: string) => {
     const initial = requireClient().getState(escrowId);
@@ -3189,7 +3278,12 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     if (prepared.signedByMe) {
       throw new Error("You already signed this settlement. Waiting for the other signer.");
     }
-    const key = await myEscrowKey(escrowId);
+    let key = await myEscrowKey(escrowId);
+    if (role === Role.ARBITER && !signingKeyMatchesRole(key.xonly, role, ctx.trade.lock.onchain!)) {
+      const words = await getOrCreateSeed(ctx.client, signerRef.current!);
+      key = deriveCommittedBondKey(Array.isArray(words) ? words.join(" ") : String(words),
+        ctx.trade.lock.onchain!.arbiterXonly, listCommitmentBonds(), ESCROW_NETWORK);
+    }
     if (!signingKeyMatchesRole(key.xonly, role, ctx.trade.lock.onchain!)) {
       throw new Error("This device's derived escrow key does not match the key committed for your role.");
     }
@@ -5697,6 +5791,9 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     startEcashSlicePlan,
     myEscrowKey,
     onchainFundingPlan,
+    prepareOnchainFunding,
+    refundOnchainEscrow,
+    onchainRefundAvailable,
     checkOnchainFunding,
     publishOnchainLock,
     prepareOnchainSettlement,

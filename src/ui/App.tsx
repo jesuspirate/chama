@@ -4127,6 +4127,7 @@ export default function App() {
           {LIVE_TRADE_SURFACE_ENABLED && !expertTradeView ? (
             <LiveTradeSurface
               key={`lts:${selected.id}`}
+              onCheckOnchainFunding={actions.checkOnchainFunding}
               knownTrades={knownTradesForConcentration}
               fetchCommunityBonds={actions.fetchCommunityBonds}
               state={selected}
@@ -4189,6 +4190,10 @@ export default function App() {
             knownTrades={knownTradesForConcentration}
             onStartNextTranche={TRADE_SLICING_ENABLED ? handleStartNextTranche : undefined}
             onchainFundingPlan={actions.onchainFundingPlan}
+            onPrepareOnchainFunding={actions.prepareOnchainFunding}
+            onCheckOnchainFunding={actions.checkOnchainFunding}
+            onRefundOnchainEscrow={actions.refundOnchainEscrow}
+            onOnchainRefundAvailable={actions.onchainRefundAvailable}
             onPublishOnchainLock={actions.publishOnchainLock}
             onPrepareOnchainSettlement={actions.prepareOnchainSettlement}
             onSignOnchainSettlement={actions.signOnchainSettlement}

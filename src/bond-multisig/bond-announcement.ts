@@ -178,6 +178,7 @@ export interface BondAnnouncementPayload {
 
 /** A parsed, signature-verified announcement (NOT yet chain-verified). */
 export interface ParsedBondAnnouncement {
+  signedEvent?: NostrEvent;
   npub: string;
   community: string;
   ownerXonly: string;
@@ -272,8 +273,12 @@ export function parseBondAnnouncementEvent(
   if (p.network !== "signet" && p.network !== "mainnet") return null;
   if (typeof p.address !== "string" || !p.address) return null;
   const verify = options?.verifyEvent ?? (verifyNostrEventSignature as unknown as (e: NostrEvent) => boolean);
-  if (!verify(event)) return null;
+  // Do not inherit nostr-tools' cached verification symbol from a mutable
+  // object: nested funding evidence must verify its current signed bytes.
+  if (!verify({ id: event.id, pubkey: event.pubkey, kind: event.kind,
+    created_at: event.created_at, tags: event.tags, content: event.content, sig: event.sig })) return null;
   return {
+    signedEvent: event,
     npub: signer,
     community: p.community.trim(),
     ownerXonly,
@@ -289,6 +294,7 @@ export function parseBondAnnouncementEvent(
 }
 
 export interface VerifiedBond {
+  signedEvent?: NostrEvent;
   npub: string;
   community: string;
   /** The LOCALLY-recomputed address (never the wire's). */
@@ -373,6 +379,7 @@ export async function verifyBondAnnouncement(
   const fundedAtHeight = heights.length > 0 ? Math.min(...heights) : undefined;
   const earliest = utxos.find((u) => u.blockHeight === fundedAtHeight) ?? utxos[0];
   return {
+    signedEvent: parsed.signedEvent,
     npub: parsed.npub,
     community: parsed.community,
     address: recomputed,

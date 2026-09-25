@@ -164,6 +164,12 @@ export function buildSettlementPsbt(params: {
       );
     }
   }
+  if (params.leaf === "refund") {
+    if (params.lockTime !== escrow.params.refundLockUntil
+      || !Number.isInteger(params.tipHeight) || params.tipHeight! < escrow.params.refundLockUntil) {
+      throw new Error("Refund requires the committed CLTV height and a mature chain tip");
+    }
+  }
   const spend = taprootFor(escrow);
   const tx = new btc.Transaction({
     allowUnknown: true,
@@ -242,7 +248,8 @@ export interface SettlementExpectation {
   network?: BtcNetwork;
   /** Expected spending branch. Dispute wire traffic must prove the exact
    *  block-based BIP68 sequence; an honest builder is not enough. */
-  leaf?: "coop" | "dispute";
+  leaf?: SettlementLeaf;
+  tipHeight?: number;
 }
 
 export interface SettlementCheck {
@@ -301,6 +308,7 @@ export function verifySettlementPsbt(
     if (inp.sighashType !== undefined && inp.sighashType !== 0) {
       fail(`input ${i} sighashType ${inp.sighashType} — only SIGHASH_DEFAULT (0) is allowed`);
     }
+    if (expect.leaf === "refund" && inp.sequence !== SEQUENCE_FINAL_MINUS_ONE) fail(`input ${i} has wrong refund sequence`);
     if (expect.leaf === "dispute") {
       const required = sequenceForLeaf("dispute", expect.escrow.params.disputeCsvBlocks ?? 0);
       const sequence = inp.sequence ?? 0xffffffff;
@@ -310,6 +318,12 @@ export function verifySettlementPsbt(
     }
     inSum += match.amountSats;
   }
+
+  if (expect.leaf === "refund") {
+    if (tx.lockTime !== expect.escrow.params.refundLockUntil) fail("Wrong refund locktime");
+    if (!Number.isInteger(expect.tipHeight) || expect.tipHeight! < expect.escrow.params.refundLockUntil) fail("Refund is not mature");
+  }
+  if (seen.size !== known.size) fail("Settlement must spend every known escrow output");
 
   // ── Outputs: exactly one, to the locally-resolved winner ──
   if (tx.outputsLength !== 1) {

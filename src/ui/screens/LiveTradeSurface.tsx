@@ -63,6 +63,7 @@ export function LiveTradeSurface({
   onBack,
   backLabel,
   onOpenFullView,
+  onCheckOnchainFunding,
   onVote,
   onClaim,
   onLock,
@@ -90,6 +91,7 @@ export function LiveTradeSurface({
   backLabel?: string;
   /** Opens the full TradeDetail (unchanged) for everything past the happy path. */
   onOpenFullView: () => void;
+  onCheckOnchainFunding?: (id: string) => Promise<{ verdict: { funded: boolean } | null; refundVerified?: boolean; refundPending?: boolean }>;
   onVote: (outcome: Outcome) => Promise<void>;
   /** Modal-driven money paths. Optional: when a caller hasn't wired them yet,
    *  the Fund / Claim surfaces defer to the full view via onOpenFullView. */
@@ -117,6 +119,26 @@ export function LiveTradeSurface({
   onAmountDisplayModeChange?: (mode: NonNullable<Parameters<typeof BitcoinPricePill>[0]["amountMode"]>) => void;
 }) {
   const [nowSec, setNowSec] = useState(() => Math.floor(Date.now() / 1000));
+  const [verifiedRefund, setVerifiedRefund] = useState<string | null>(null);
+  const [verifiedDeposit, setVerifiedDeposit] = useState<string | null>(null);
+  const [depositError, setDepositError] = useState<string | null>(null);
+  const depositIdentity = JSON.stringify([state.id, state.lock.onchain, state.onchainRefundClaimed]);
+  const requiresDepositCheck = state.escrowMode === "onchain" && (!!state.lock.onchain || !!state.onchainRefundClaimed) && state.status !== EscrowStatus.COMPLETED;
+  useEffect(() => {
+    if (!requiresDepositCheck) return;
+    let cancelled = false;
+    const check = async () => {
+      try {
+        const result = await onCheckOnchainFunding?.(state.id);
+        if (!cancelled) { setVerifiedDeposit(result?.verdict?.funded ? depositIdentity : null); setVerifiedRefund(result?.refundVerified ? depositIdentity : null); setDepositError(result?.refundPending ? "Refund broadcast; waiting for blockchain confirmation." : null); }
+      } catch (error) {
+        if (!cancelled) { setVerifiedDeposit(null); setVerifiedRefund(null); setDepositError(error instanceof Error ? error.message : String(error)); }
+      }
+    };
+    void check();
+    const timer = setInterval(() => { void check(); }, 30000);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, [requiresDepositCheck, state.id, depositIdentity, onCheckOnchainFunding]);
   useEffect(() => {
     const now = Math.floor(Date.now() / 1000);
     setNowSec(now);
@@ -630,6 +652,22 @@ export function LiveTradeSurface({
     // CANCELLED / anything terminal-else
     return <Waiting message={tr("lts.tradeClosed")} />;
   }
+
+  if (verifiedRefund === depositIdentity) return (
+    <div style={{ padding: 24 }}>
+      <p role="status">Refund confirmed on the blockchain.</p>
+      <button onClick={onHome ?? onBack}>Home</button>
+      <button onClick={onOpenFullView}>Open on-chain controls</button>
+    </div>
+  );
+  if (requiresDepositCheck && verifiedDeposit !== depositIdentity) return (
+    <div style={{ padding: 24 }}>
+      <button onClick={onBack}>{backLabel ?? "Back"}</button>
+      <p role="status">Checking the deposit on the blockchain…</p>
+      {depositError && <p>{depositError}</p>}
+      <button onClick={onOpenFullView}>Open on-chain controls</button>
+    </div>
+  );
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0, background: T.bg, paddingBottom: 12 }}>

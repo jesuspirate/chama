@@ -1,3 +1,5 @@
+import { finalRefundSettlementProof } from "./onchain-settlement-transport.js";
+import { fundingArbiter, fundingTermsError, onchainLockError, onchainFunder } from "./onchain-funding-terms.js";
 import { NEVER_EXPIRES } from "./types.js";
 import { chamaCreateError, chamaOutcomeError, type ChamaCycleContext } from "../chama/policy.js";
 import { eventIsSim } from "../sim/simMode.js";
@@ -418,6 +420,7 @@ function handleCreate(event: ParsedEscrowEvent<CreatePayload>): TransitionResult
     // Defaulted so no reader ever handles undefined; absent ⇒ every historical trade.
     // `mode` was resolved during the v6.0 gate above and is identical to this.
     escrowMode: mode,
+    onchainNetwork: p.onchainNetwork ?? "mainnet",
     settlementPolicy: p.settlementPolicy ?? defaultSettlementPolicy(mode),
     ...(p.sliceCount !== undefined ? { sliceCount: p.sliceCount } : {}),
     // Tier 2.1: the creator never JOINs, so their escrow key rides in CREATE.
@@ -612,6 +615,27 @@ function handleJoin(state: EscrowState, event: ParsedEscrowEvent<JoinPayload>): 
     return err("INVALID_STATE", `Cannot JOIN in state ${state.status}`, event.raw.id);
   }
 
+  if (p.fundingTerms) {
+    if (state.onchainFundingTerms) return err("FUNDING_TERMS_FROZEN", "Funding terms cannot be replaced", event.raw.id);
+    const role = onchainFunder(state);
+    if (p.role !== role || getEffectiveParticipantAt(state, role, event.timestamp) !== event.pubkey) {
+      return err("INVALID_FUNDING_TERMS", "Only the seated funder may publish funding terms", event.raw.id);
+    }
+    const invalid = fundingTermsError(state, p.fundingTerms, event.timestamp);
+    if (invalid) return err("INVALID_FUNDING_TERMS", invalid, event.raw.id);
+    const next = cloneState(state);
+    next.onchainFundingTerms = structuredClone(p.fundingTerms);
+    next.participants[Role.ARBITER] = fundingArbiter(state);
+    // Once an address is exposed it may receive funds at any time. Keep the
+    // descriptor and its seats reachable through the last-resort refund.
+    next.tradeTimeoutSeconds = tradeTimeoutSecondsFor(state);
+    next.listingExpiresAt = state.listingExpiresAt ?? state.expiresAt;
+    next.expiresAt = NEVER_EXPIRES;
+    next.eventChain.push(event);
+    return { ok: true, state: next };
+  }
+  if (state.onchainFundingTerms) return err("FUNDING_TERMS_FROZEN", "Funding seats and keys cannot change", event.raw.id);
+
   // Can't join as the initiator's role (that slot is already filled by CREATE)
   if (p.role === state.initiator.role) {
     return err("ROLE_CONFLICT", `Cannot join as ${p.role} — that's the initiator's role`, event.raw.id);
@@ -737,6 +761,8 @@ function handleJoin(state: EscrowState, event: ParsedEscrowEvent<JoinPayload>): 
   // Tier 2.1: record this party's on-chain escrow key. All three are needed
   // before an escrow ADDRESS can exist, which is why the arbiter must JOIN
   // before an on-chain trade can be funded at all.
+  next.escrowKeys = { ...(next.escrowKeys ?? {}) };
+  delete next.escrowKeys[p.role];
   if (p.escrowXonly) {
     next.escrowKeys = { ...(next.escrowKeys ?? {}), [p.role]: p.escrowXonly.toLowerCase() };
   }
@@ -915,6 +941,11 @@ function handleLock(state: EscrowState, event: ParsedEscrowEvent<LockPayload>): 
   // guessing which half was meant. Same reasoning as ESCROW_MODE_MISMATCH
   // below — under-reading strands a trade, over-reading strands a person.
   if (p.onchain) {
+    const invalid = onchainLockError(state, p.onchain, event.timestamp);
+    if (invalid) return err("INVALID_ONCHAIN_LOCK", invalid, event.raw.id);
+    if (p.buyerPubkey !== state.participants[Role.BUYER] || p.arbiterPubkey !== state.participants[Role.ARBITER]) {
+      return err("INVALID_ONCHAIN_LOCK", "LOCK changed frozen participants", event.raw.id);
+    }
     if (p.shares && p.shares.length > 0) {
       return err("INVALID_SHARES",
         "An on-chain LOCK must not carry SSS shares — there are no notes to split",
@@ -1463,6 +1494,20 @@ function handleClaim(state: EscrowState, event: ParsedEscrowEvent<ClaimPayload>)
 // Final confirmation — ecash has been redeemed.
 
 function handleComplete(state: EscrowState, event: ParsedEscrowEvent<CompletePayload>): TransitionResult {
+  const refundId = event.raw.tags.find(tag => tag[0] === "settlement")?.[1];
+  const refund = state.settlements?.find(e => e.raw.id === refundId);
+  if (refund?.payload.leaf === "refund") {
+    const terms = state.onchainFundingTerms;
+    if (!terms || event.pubkey !== state.participants[onchainFunder(state)]
+      || !finalRefundSettlementProof(refund, terms)) return err("INVALID_SETTLEMENT_PROOF", "Invalid funder refund proof", event.raw.id);
+    const next = cloneState(state);
+    // A funder can pre-sign a future refund today. Its Nostr marker must not
+    // terminate voting/arbitration before Bitcoin actually spends the deposit.
+    // Clients verify the outspend before displaying the refund as complete.
+    next.onchainRefundClaimed = true;
+    next.eventChain.push(event);
+    return { ok: true, state: next };
+  }
   const directOnchain = state.status === EscrowStatus.APPROVED && !!state.lock.onchain;
   if (state.status !== EscrowStatus.CLAIMED && !directOnchain) {
     return err("INVALID_STATE", `Cannot COMPLETE in state ${state.status}`, event.raw.id);
@@ -1503,6 +1548,7 @@ function handleComplete(state: EscrowState, event: ParsedEscrowEvent<CompletePay
 // Cancel before lock. Only initiator can cancel, and only before LOCKED.
 
 function handleCancel(state: EscrowState, event: ParsedEscrowEvent<CancelPayload>): TransitionResult {
+  if (state.onchainFundingTerms) return err("FUNDING_TERMS_FROZEN", "Use the on-chain refund after its deadline", event.raw.id);
   const p = event.payload;
 
   if (state.status !== EscrowStatus.CREATED) {
@@ -1819,7 +1865,7 @@ export function applyEvent(
   //     keep the original flip-and-return behavior.
   const activatesDeferredTranche = state.tranche
     && (event.kind === EscrowEventKind.LOCK || event.kind === EscrowEventKind.CHILD_KEY);
-  if (!activatesDeferredTranche && event.timestamp > state.expiresAt && state.status !== EscrowStatus.APPROVED && state.status !== EscrowStatus.CLAIMED) {
+  if (!(event.kind === EscrowEventKind.COMPLETE && state.onchainFundingTerms) && !activatesDeferredTranche && event.timestamp > state.expiresAt && state.status !== EscrowStatus.APPROVED && state.status !== EscrowStatus.CLAIMED) {
     if (state.status === EscrowStatus.EXPIRED) {
       // Already expired — fall through to dispatch (healing path).
     } else if (event.kind === EscrowEventKind.VOTE) {

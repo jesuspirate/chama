@@ -1,3 +1,4 @@
+import { finalRefundSettlementProof } from "./onchain-settlement-transport.js";
 import { shareEscrowId, circleFromEscrow, shareCreatePayload, rotationShareCreatePayload, nextRotationRoundPayload, fillEvidenceFor } from "../chama/policy.js";
 import type { CircleRound } from "../chama/types.js";
 import { CHAMA_ROTATION_ENABLED } from "./experimental-escrow-features.js";
@@ -1210,6 +1211,7 @@ export class EscrowClient {
      *  ⚠ Stamped at CREATE on purpose — a client must be able to refuse a
      *  substrate it does not understand BEFORE it funds anything. */
     escrowMode?: EscrowMode;
+    onchainNetwork?: "mainnet" | "signet";
     /** v6.0 signed settlement policy. Must agree with escrowMode. */
     settlementPolicy?: string;
     /** v6.0 whole-plan ecash slice count. Parent CREATE only. */
@@ -1326,6 +1328,7 @@ export class EscrowClient {
       ...(params.settlementPolicy ? { settlementPolicy: params.settlementPolicy } : {}),
       ...(params.sliceCount !== undefined ? { sliceCount: params.sliceCount } : {}),
       ...(escrowXonly ? { escrowXonly } : {}),
+      ...(params.escrowMode === "onchain" ? { onchainNetwork: params.onchainNetwork ?? "mainnet" } : {}),
       mintUrl: params.mintUrl,
       platformFeeBps: params.chamaPolicy ? 0 : this.config.defaultPlatformFeeBps!,
       platformFeePubkey: this.config.platformFeePubkey || pubkey,
@@ -1631,7 +1634,7 @@ export class EscrowClient {
   async joinEscrow(
     escrowId: string,
     role: Role,
-    opts: { selectedItems?: SelectedMenuItem[]; amountMsats?: number; orderFinalized?: boolean; escrowXonly?: string } = {},
+    opts: { selectedItems?: SelectedMenuItem[]; amountMsats?: number; orderFinalized?: boolean; escrowXonly?: string; fundingTerms?: JoinPayload["fundingTerms"] } = {},
   ): Promise<EscrowState> {
     const state = this.states.get(escrowId);
     if (!state) throw new Error(`Escrow ${escrowId} not loaded`);
@@ -1642,7 +1645,7 @@ export class EscrowClient {
       existingRole === role &&
       (
         (!!opts.selectedItems && opts.selectedItems.length > 0) ||
-        opts.orderFinalized === true
+        opts.orderFinalized === true || !!opts.fundingTerms
       );
     if (existingRole && !isOrderUpdate) {
       const err: any = new Error(
@@ -1704,6 +1707,7 @@ export class EscrowClient {
       // be computed. Only present on an on-chain trade — an ecash JOIN stays
       // byte-identical.
       ...(opts.escrowXonly ? { escrowXonly: opts.escrowXonly } : {}),
+      ...(opts.fundingTerms ? { fundingTerms: opts.fundingTerms } : {}),
     };
 
     // JOIN content is PLAINTEXT — who joined is public info.
@@ -1740,7 +1744,8 @@ export class EscrowClient {
     };
 
     const signed = await this.signWithSimTag(unsigned);
-    await this.relayManager.publish(signed);
+    const published = await this.relayManager.publish(signed);
+    if (opts.fundingTerms && published.accepted < 1) throw new Error("Funding terms were not acknowledged by a relay; no deposit address is available");
 
     // JOIN is ACK-only in the atomic-funding model: it records the
     // joiner's pubkey on the chain but does not trigger any state
@@ -2442,7 +2447,10 @@ export class EscrowClient {
   async completeOnchain(escrowId: string, settlementProofEventId: string): Promise<EscrowState> {
     const state = this.states.get(escrowId);
     if (!state) throw new Error(`Escrow ${escrowId} not loaded`);
-    if (!state.lock.onchain || state.status !== EscrowStatus.APPROVED) {
+    const refundMessage = state.settlements?.find(e => e.raw.id === settlementProofEventId && e.payload.leaf === "refund");
+    const refund = refundMessage && state.onchainFundingTerms
+      && finalRefundSettlementProof(refundMessage, state.onchainFundingTerms);
+    if (!refund && (!state.lock.onchain || state.status !== EscrowStatus.APPROVED)) {
       throw new Error(`Cannot complete on-chain escrow in state ${state.status}`);
     }
     const pubkey = await this.getPubkey();
@@ -2451,11 +2459,11 @@ export class EscrowClient {
     const winnerRole = winner?.role === Role.BUYER || winner?.role === Role.SELLER ? winner.role : null;
     const requiresArbiter = !!state.resolvedMajority?.includes(Role.ARBITER);
     const cooperative = !!(!requiresArbiter && settlementProof && winnerRole
-      && finalCoopSettlementProof(settlementProof, state.lock.onchain, winnerRole));
+      && finalCoopSettlementProof(settlementProof, state.lock.onchain!, winnerRole));
     const arbitrated = !!(requiresArbiter
       && settlementProof && winnerRole
-      && finalArbiterSettlementProof(settlementProof, state.lock.onchain, winnerRole));
-    const authorized = cooperative
+      && finalArbiterSettlementProof(settlementProof, state.lock.onchain!, winnerRole));
+    const authorized = refund ? pubkey === state.participants[state.onchainFundingTerms!.funder as Role] : cooperative
       ? pubkey === state.participants[Role.BUYER] || pubkey === state.participants[Role.SELLER]
       : arbitrated && (pubkey === state.participants[winnerRole!] || pubkey === state.participants[Role.ARBITER]);
     if (!authorized) {

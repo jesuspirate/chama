@@ -35,6 +35,7 @@ export const BONDED_POOL_CACHE_MAX_COMMUNITIES = 50;
 
 /** VerifiedBond with the bigint sats fields as decimal strings. */
 interface SerializedBond {
+  signedEvent?: VerifiedBond["signedEvent"];
   npub: string;
   community: string;
   address: string;
@@ -97,6 +98,7 @@ function saveCache(store: CacheStore): void {
 
 function serializeBond(b: VerifiedBond): SerializedBond {
   return {
+    signedEvent: b.signedEvent,
     npub: b.npub,
     community: b.community,
     address: b.address,
@@ -125,6 +127,7 @@ function deserializeBond(s: SerializedBond): VerifiedBond | null {
     if (typeof s?.npub !== "string" || typeof s.community !== "string") return null;
     if (typeof s.address !== "string" || !Number.isFinite(s.lockUntil)) return null;
     return {
+      signedEvent: s.signedEvent,
       npub: s.npub,
       community: s.community,
       address: s.address,

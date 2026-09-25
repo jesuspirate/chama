@@ -25,6 +25,10 @@ for(const category of ['p2p-trade','bill-pay','marketplace','lending']) {
   assert.ok(html.includes(first?'come to you.':`release to ${profiles[recipient.pubkey]}.`),`${category} ${viewer}: correct release direction`);
   assert.ok(html.includes('How to pay') && html.includes('PRIVATE-HANDLE'));
  }
+ const unchecked = { ...trade, escrowMode: 'onchain', lock: { ...trade.lock, onchain: { address: 'untrusted' } } } as unknown as EscrowState;
+ const uncheckedHtml=renderToStaticMarkup(<LangProvider><LiveTradeSurface state={unchecked} pubkey={buyer} onBack={()=>{}} onOpenFullView={()=>{}} onVote={async()=>{}} onSendChat={async()=>{}} /></LangProvider>);
+ assert.ok(uncheckedHtml.includes('Checking the deposit on the blockchain'));
+ assert.ok(!uncheckedHtml.includes('How to pay') && !uncheckedHtml.includes('PRIVATE-HANDLE'), 'On-chain guided room withholds payment instructions before independent verification');
  const publicHtml=renderToStaticMarkup(<LangProvider><LiveTradeSurface state={trade} pubkey={'d'.repeat(64)} onBack={()=>{}} onOpenFullView={()=>{}} onVote={async()=>{}} onSendChat={async()=>{}} /></LangProvider>);
  assert.ok(!publicHtml.includes('PRIVATE-HANDLE'),'Unseated viewers never receive handle markup');
 }

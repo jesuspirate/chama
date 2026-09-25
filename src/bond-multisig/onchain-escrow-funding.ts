@@ -1,3 +1,5 @@
+import { deriveBondSigningKey } from "./commitment-bond.js";
+import type { CommitmentRecord } from "./commitment-store.js";
 // ══════════════════════════════════════════════════════════════════════════
 // Chama — on-chain escrow: keys, funding, and the LOCK terms (Tier 2.1, S3)
 // ══════════════════════════════════════════════════════════════════════════
@@ -15,7 +17,7 @@ import { mnemonicToSeedSync } from "@scure/bip39";
 import { HDKey } from "@scure/bip32";
 import * as btc from "@scure/btc-signer";
 import { SIGNET, type BtcNetwork, type BondUtxo } from "./multisig.js";
-import { buildOnchainEscrow, type OnchainEscrowParams } from "./onchain-escrow.js";
+import { buildOnchainEscrow, REFUND_CLTV_BLOCKS, DISPUTE_CSV_BLOCKS, type OnchainEscrowParams } from "./onchain-escrow.js";
 
 // ── 1. Keys ────────────────────────────────────────────────────────────────
 //
@@ -258,4 +260,61 @@ export function buildOnchainLockTerms(
     disputeCsvBlocks: p.disputeCsvBlocks ?? 0,
     network,
   };
+}
+
+/** Strict escrow read: verify exact script, value, confirmation depth and
+ * unspent outpoint against the transaction, not only the address listing. */
+export async function findEscrowFundingUtxos(params: {
+  address: string; network: BtcNetwork;
+  fetchJson: import("./fund-watcher.js").EsploraFetch; minConfs: number;
+}): Promise<import("./fund-watcher.js").BondFunding[]> {
+  const tip = Number(await params.fetchJson("/blocks/tip/height"));
+  if (!Number.isInteger(tip) || tip <= 0) throw new Error("Unknown chain tip");
+  const expected = bytesToHex(btc.OutScript.encode(btc.Address(params.network).decode(params.address)));
+  const rows = await params.fetchJson(`/address/${params.address}/utxo`);
+  if (!Array.isArray(rows)) throw new Error("Invalid deposit response");
+  const found: import("./fund-watcher.js").BondFunding[] = [];
+  const seen = new Set<string>();
+  for (const row of rows) {
+    if (!/^[0-9a-f]{64}$/.test(row?.txid) || !Number.isInteger(row.vout) || row.vout < 0) continue;
+    if (seen.has(`${row.txid}:${row.vout}`)) continue;
+    seen.add(`${row.txid}:${row.vout}`);
+    const tx = await params.fetchJson(`/tx/${row.txid}`);
+    const height = tx?.status?.block_height;
+    const output = tx?.vout?.[row.vout];
+    if (tx?.status?.confirmed !== true || !Number.isInteger(height) || height <= 0
+      || tip - height + 1 < Math.max(1, params.minConfs)) continue;
+    if (output?.scriptpubkey !== expected || !Number.isSafeInteger(output.value)
+      || output.value <= 0 || output.value !== row.value) continue;
+    const outspend = await params.fetchJson(`/tx/${row.txid}/outspend/${row.vout}`);
+    if (outspend?.spent !== false) continue;
+    found.push({ utxo: { txid: row.txid, index: row.vout, amountSats: BigInt(output.value) },
+      fundingScript: hexToBytes(expected), blockHeight: height });
+  }
+  return found;
+}
+
+/** Resolve a committed auto-arbiter key through the device's preserved bond
+ * index. Never guess index zero or sign with a different account's key. */
+export function deriveCommittedBondKey(mnemonic: string, committedXonly: string,
+  records: readonly CommitmentRecord[], network: BtcNetwork) {
+  const record = records.find(b => bytesToHex(b.bond.ownerXonly) === committedXonly);
+  if (!record) throw new Error("Committed arbiter key is missing from this device's commitment store");
+  const key = deriveBondSigningKey(mnemonic, { network, index: record.keyIndex ?? 0 });
+  if (bytesToHex(key.xonly) !== committedXonly) throw new Error("Device seed does not own the committed arbiter bond key");
+  return key;
+}
+
+/** A malicious funder must not replace the promised month with an immediate
+ * unilateral refund. Permit at most the existing one-day dispute window for
+ * the deposit to confirm after address preparation; otherwise prepare a new
+ * trade. Re-check the remaining dispute window before counterpayment. */
+export function escrowDepositWindowSafe(params: {
+  refundLockUntil: number; fundingHeights: readonly number[]; tipHeight: number; awaitingCounterpayment: boolean;
+}): boolean {
+  if (!params.fundingHeights.length || !Number.isInteger(params.tipHeight)) return false;
+  if (params.fundingHeights.some(h => !Number.isInteger(h) || h <= 0 || h > params.tipHeight)) return false;
+  const newest = Math.max(...params.fundingHeights);
+  return params.refundLockUntil >= newest + REFUND_CLTV_BLOCKS - DISPUTE_CSV_BLOCKS
+    && params.refundLockUntil > params.tipHeight + (params.awaitingCounterpayment ? DISPUTE_CSV_BLOCKS : 0);
 }

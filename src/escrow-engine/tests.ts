@@ -2393,6 +2393,7 @@ console.log("\n── ATOMIC LOCK (CREATED → LOCKED, no FUNDED hop) ──");
       "UI: in Stores the roles invert — the buyer funds");
 
     const locked = deriveOnchainView({
+      depositVerified: true,
       state: {
         ...base, status: EscrowStatus.LOCKED,
         lock: { lockedAt: NOW_S, notesHash: null, onchain: { fundingTxid: "f".repeat(64), amountSats: "150000" } },
@@ -26254,7 +26255,7 @@ console.log("\n── ARBITER PREMIUM (compute + kind 38113 + ledger) ──");
     "S7a: parser accepts a well-formed kind-38114 settlement payload");
   const badSettlement = parseEscrowEvent(
     rawSettlement,
-    JSON.stringify({ ...settlementPayload, leaf: "refund" }),
+    JSON.stringify({ ...settlementPayload, leaf: "unknown" }),
     true,
   );
   assert(!badSettlement.ok,
@@ -26424,18 +26425,40 @@ console.log("\n── ARBITER PREMIUM (compute + kind 38113 + ledger) ──");
   // auxiliary final SETTLEMENT journal. Live application must still reject the
   // marker, but cold replay must retain the last verified APPROVED on-chain
   // state so the winner-output recovery scan can find the funded trade.
-  const replayCreateBase = createEvent({ escrowMode: "onchain" });
+  const replayCreateBase = createEvent({ escrowMode: "onchain", communityArbiters: [ARBITER_PK] });
   const replayCreate = makeParsedEvent(EscrowEventKind.CREATE, SELLER_PK, {
-    ...replayCreateBase.payload,
+    ...replayCreateBase.payload, onchainNetwork: "signet",
     escrowXonly: Buffer.from(sX).toString("hex"),
   });
-  const replayLockBase = lockEvent(replayCreate.raw.id);
+  const replayBuyerJoin = joinEvent(Role.BUYER, BUYER_PK, replayCreate.raw.id);
+  replayBuyerJoin.payload.escrowXonly = Buffer.from(bX).toString("hex");
+  // Auto-seating records no escrow key; fixture uses an arbiter-authored JOIN
+  // before the buyer so the fallback bond announcement is unnecessary here.
+  const replayArbiterJoin = joinEvent(Role.ARBITER, ARBITER_PK, replayCreate.raw.id);
+  replayArbiterJoin.payload.escrowXonly = Buffer.from(aX).toString("hex");
+  replayBuyerJoin.prevEventId = replayArbiterJoin.raw.id;
+  const replayTerms = makeParsedEvent(EscrowEventKind.JOIN, SELLER_PK, {
+    type: "escrow:join", role: Role.SELLER, joinedAt: NOW + eventCounter,
+    fundingTerms: onchainApproved.lock.onchain!,
+  }, replayBuyerJoin.raw.id);
+  const beforeTerms = replayEventChain([replayCreate, replayArbiterJoin, replayBuyerJoin]);
+  if (!beforeTerms.ok) throw new Error(`attack fixture failed: ${beforeTerms.error.message}`);
+  const secondSellerKey = btcMs.utils.pubSchnorr(new Uint8Array(32).fill(14));
+  const maliciousEscrow = onchain.buildOnchainEscrow({ ...testEscrow.params, buyerXonly: secondSellerKey });
+  const maliciousTerms = { ...onchainApproved.lock.onchain!,
+    buyerXonly: Buffer.from(secondSellerKey).toString("hex"), address: maliciousEscrow.address };
+  assertErr(applyEvent(beforeTerms.state, { ...replayTerms, payload: { ...replayTerms.payload, fundingTerms: maliciousTerms } }),
+    "INVALID_FUNDING_TERMS", "649/1b: cannot stamp a second seller-owned key in the buyer seat");
+  const committed = applyEvent(beforeTerms.state, replayTerms);
+  if (!committed.ok) throw new Error(`funding commitment fixture failed: ${committed.error.message}`);
+  const replayLockBase = lockEvent(replayTerms.raw.id);
   const replayLock = makeParsedEvent(EscrowEventKind.LOCK, SELLER_PK, {
-    ...replayLockBase.payload,
-    notesHash: "",
-    shares: [],
-    onchain: onchainApproved.lock.onchain!,
-  }, replayCreate.raw.id);
+    ...replayLockBase.payload, notesHash: "", shares: [], onchain: onchainApproved.lock.onchain!,
+  }, replayTerms.raw.id);
+  const maliciousLock = { ...replayLock, payload: { ...replayLock.payload, onchain: maliciousTerms } };
+  assertErr(applyEvent(committed.state, maliciousLock), "INVALID_ONCHAIN_LOCK",
+    "649/1b: reject funder substituting its second key in the counterparty seat");
+
   const replayBuyerVote = voteEvent(Role.BUYER, BUYER_PK, Outcome.RELEASE, replayLock.raw.id);
   const replaySellerVote = voteEvent(Role.SELLER, SELLER_PK, Outcome.RELEASE, replayBuyerVote.raw.id);
   const replayResolve = resolveEvent(
@@ -26449,7 +26472,7 @@ console.log("\n── ARBITER PREMIUM (compute + kind 38113 + ledger) ──");
     completedAt: NOW + eventCounter,
   }, replayResolve.raw.id);
   const replayWithoutProof = replayEventChain([
-    replayCreate,
+    replayCreate, replayArbiterJoin, replayBuyerJoin, replayTerms,
     replayLock,
     replayBuyerVote,
     replaySellerVote,

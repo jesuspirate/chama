@@ -37,8 +37,12 @@ export function OnchainEscrowPanel({
   fundingNote,
   onPublishKey,
   publishing,
+  onPrepareFunding, onRefund, refunding,
 }: {
   view: OnchainEscrowView;
+  onPrepareFunding?: () => void;
+  onRefund?: () => void;
+  refunding?: boolean;
   /** Shown plainly. A signet address on a mainnet trade must be obvious. */
   network: "mainnet" | "signet";
   /** Result of `verifySettlementPsbt`. Null while nothing is pending. */
@@ -83,6 +87,13 @@ export function OnchainEscrowPanel({
         )}
       </div>
 
+      {onPrepareFunding && <button type="button" onClick={onPrepareFunding} disabled={checking}>
+        {checking ? "Preparing…" : "Prepare deposit address"}
+      </button>}
+      {onRefund && <button type="button" onClick={onRefund} disabled={refunding}>
+        {refunding ? "Refunding…" : "Refund to my on-chain wallet"}
+      </button>}
+      {view.stage === "checking-deposit" && <p role="status">Checking the deposit on the blockchain…</p>}
       {view.stage === "awaiting-keys" && (
         <div style={{ fontSize: 12, color: T.muted, lineHeight: 1.55 }}>
           {/* ⭐ The arbiter sees what they must DO, not what everyone is waiting
@@ -116,7 +127,7 @@ export function OnchainEscrowPanel({
               {/* Naming the blocker is the whole point — "not ready" alone makes a
                   user either wait forever or fund something they shouldn't. */}
               {view.blockers.map((b) => (
-                <div key={b} style={{ marginBottom: 4 }}>• {t(`onchain.blocker.${b}`)}</div>
+                <div key={b} style={{ marginBottom: 4 }}>• {b === "funding-terms" ? "Waiting for the funder to prepare the deposit address." : t(`onchain.blocker.${b}`)}</div>
               ))}
               <div style={{ marginTop: 6, fontSize: 11, opacity: 0.85 }}>
                 {t("onchain.awaitingKeysWhy")}

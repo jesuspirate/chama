@@ -199,6 +199,7 @@ function getPrevEventId(tags: string[][]): string | null {
 function validateCreatePayload(data: unknown): data is CreatePayload {
   const d = data as Record<string, unknown>;
   if (!validEscrowXonly(d.escrowXonly)) return false;
+  if (d.onchainNetwork !== undefined && d.onchainNetwork !== "mainnet" && d.onchainNetwork !== "signet") return false;
   if (d.listingKind !== undefined && d.listingKind !== "work" && d.listingKind !== "work-request") return false;
   if (d.imageDataUrl !== undefined && !isSupportedListingImageRef(d.imageDataUrl)) return false;
   if (d.imageUrls !== undefined && !areSupportedListingImageRefs(d.imageUrls)) return false;
@@ -271,6 +272,9 @@ function validateCreatePayload(data: unknown): data is CreatePayload {
 function validateJoinPayload(data: unknown): data is JoinPayload {
   const d = data as Record<string, unknown>;
   if (!validateJoinEscrowKey(d)) return false;
+  if (d.fundingTerms !== undefined && !isValidOnchainLockTermsShape({
+    ...(d.fundingTerms as object), fundingTxid: "00".repeat(32), fundingVout: 0, amountSats: "1",
+  })) return false;
   if (!validateSelectedMenuItems(d.selectedItems)) return false;
   if (d.amountMsats !== undefined && (typeof d.amountMsats !== "number" || d.amountMsats <= 0)) {
     return false;
@@ -551,7 +555,7 @@ function validateSettlementPayload(data: unknown): data is SettlementPayload {
   return (
     d.type === "escrow:settlement" &&
     typeof d.psbt === "string" && d.psbt.length > 0 &&
-    (d.leaf === "coop" || d.leaf === "arbiter") &&
+    (d.leaf === "coop" || d.leaf === "arbiter" || d.leaf === "refund") &&
     typeof d.role === "string" && Object.values(Role).includes(d.role as Role) &&
     (d.final === undefined || typeof d.final === "boolean")
   );

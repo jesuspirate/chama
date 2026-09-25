@@ -35,8 +35,13 @@ export function payoutCandidateFor(
   state: EscrowState,
   viewerPubkey: string,
 ): OnchainPayoutCandidate | null {
-  const terms = state.lock.onchain;
-  const winner = getWinner(state);
+  const terms = state.lock.onchain ?? state.onchainFundingTerms;
+  // A per-trade principal output belongs to that principal regardless of
+  // whether a relay retained the refund/COMPLETE journal. Scan each viewer's
+  // own frozen key so a broadcast-before-journal crash cannot hide a refund.
+  const ownRole = state.participants[Role.BUYER] === viewerPubkey ? Role.BUYER
+    : state.participants[Role.SELLER] === viewerPubkey ? Role.SELLER : null;
+  const winner = state.onchainFundingTerms && ownRole ? { role: ownRole } : getWinner(state);
   if (!terms || !winner || (winner.role !== Role.BUYER && winner.role !== Role.SELLER)) return null;
   if (state.participants[winner.role] !== viewerPubkey) return null;
   const xonly = winner.role === Role.BUYER ? terms.buyerXonly : terms.sellerXonly;

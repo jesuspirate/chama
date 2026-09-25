@@ -162,7 +162,7 @@ export function TradeDetail({
   disableNwc = false, forceClaimMethodChooser = false, onBack, onVote, onClaim, onJoin, onLock, onLockDirectNwc, onClaimDirectNwc, onConfirmPayout,
   onSendChat, preferredRelayConnected = false, onReleasePeriod, onOpenSettings, onOpenNwcSettings,
   onPrewarmFunding, onRebroadcast, onForget, onPurchase, onCancelDraftOrder, stockLeft, isOversoldOrder = false,
-  onRateCounterparty, myGivenRatings, fetchRatingSummary, fetchCommunityBonds, knownTrades, onStartNextTranche, onchainFundingPlan, onPublishOnchainLock, onPrepareOnchainSettlement, onSignOnchainSettlement, onFinalizeOnchainSettlement, onScanMyOnchainPayouts, onSweepOnchainPayout,
+  onRateCounterparty, myGivenRatings, fetchRatingSummary, fetchCommunityBonds, knownTrades, onStartNextTranche, onchainFundingPlan, onPrepareOnchainFunding, onCheckOnchainFunding, onRefundOnchainEscrow, onOnchainRefundAvailable, onPublishOnchainLock, onPrepareOnchainSettlement, onSignOnchainSettlement, onFinalizeOnchainSettlement, onScanMyOnchainPayouts, onSweepOnchainPayout,
   onStartEcashSlicePlan,
   liveChildOrders, pendingChildOrders, onOpenChild,
 }: {
@@ -229,6 +229,10 @@ export function TradeDetail({
   /** v6.0: seller freezes the signed plan after buyer + arbiter are seated. */
   onStartEcashSlicePlan?: (parentId: string) => Promise<unknown>;
   /** Tier 2.1: recompute this trade's escrow address from published keys. */
+  onPrepareOnchainFunding?: (id: string) => Promise<void>;
+  onCheckOnchainFunding?: (id: string) => Promise<{ verdict: { funded: boolean } | null; refundVerified?: boolean; refundPending?: boolean }>;
+  onRefundOnchainEscrow?: (id: string) => Promise<{ txid: string }>;
+  onOnchainRefundAvailable?: (id: string) => Promise<boolean>;
   onchainFundingPlan?: (escrowId: string) => { ready: boolean; address?: string; blockers?: readonly string[] };
   /** Tier 2.1: publish the on-chain LOCK once the deposit confirms. */
   onPublishOnchainLock?: (escrowId: string) => Promise<unknown>;
@@ -827,6 +831,38 @@ export function TradeDetail({
   // Computed AFTER `onchainNeedsMyArbiterKey` on purpose: the view needs to know
   // whether the viewer is the party the trade is stalled on, and that answer
   // depends on the deterministic arbiter pick resolved just above.
+  const [verifiedRefund, setVerifiedRefund] = useState<string | null>(null);
+  const [verifiedDeposit, setVerifiedDeposit] = useState<string | null>(null);
+  const [refundAvailable, setRefundAvailable] = useState(false);
+  const [refunding, setRefunding] = useState(false);
+  const depositIdentity = JSON.stringify([state.id, state.lock.onchain, state.onchainRefundClaimed]);
+  useEffect(() => {
+    if (state.escrowMode !== "onchain" || !state.onchainFundingTerms) return;
+    let cancelled = false;
+    const check = async () => {
+      try {
+        const ready = await onOnchainRefundAvailable?.(state.id);
+        if (!cancelled) setRefundAvailable(ready === true);
+      } catch { if (!cancelled) setRefundAvailable(false); }
+      if ((!state.lock.onchain && !state.onchainRefundClaimed) || state.status === EscrowStatus.COMPLETED) return;
+      try {
+        const result = await onCheckOnchainFunding?.(state.id);
+        if (!cancelled) { setVerifiedDeposit(result?.verdict?.funded ? depositIdentity : null); setVerifiedRefund(result?.refundVerified ? depositIdentity : null); if (result?.refundPending) setFundingNote("Refund broadcast; waiting for blockchain confirmation."); }
+      } catch (error) {
+        if (!cancelled) { setVerifiedDeposit(null); setVerifiedRefund(null); setFundingNote(error instanceof Error ? error.message : String(error)); }
+      }
+    };
+    void check();
+    const timer = setInterval(() => { void check(); }, 30000);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, [state.id, state.onchainFundingTerms, depositIdentity, state.status, onCheckOnchainFunding, onOnchainRefundAvailable]);
+  const runRefund = () => {
+    if (!onRefundOnchainEscrow || refunding) return;
+    setRefunding(true);
+    void onRefundOnchainEscrow(state.id).then(({ txid }) => setFundingNote(`Refund broadcast: ${txid}`))
+      .catch(error => setFundingNote(error instanceof Error ? error.message : String(error)))
+      .finally(() => setRefunding(false));
+  };
   const onchainView = useMemo(() => {
     if ((state.escrowMode ?? "ecash") !== "onchain") return null;
     let plan: { ready: boolean; address?: string; blockers?: readonly string[] } | null = null;
@@ -834,8 +870,9 @@ export function TradeDetail({
     return deriveOnchainView({
       state,
       viewerRole: myRole,
+      depositVerified: verifiedDeposit === depositIdentity,
       recomputedAddress: plan?.ready ? (plan.address ?? null) : null,
-      blockers: plan?.ready ? [] : (plan?.blockers ?? ["not-ready"]),
+      blockers: plan?.ready ? [] : (plan?.blockers ?? ["not-ready"]).map(b => !state.onchainFundingTerms && b === "bad-refund-height" ? "funding-terms" : b),
       viewerIsPendingArbiter: onchainNeedsMyArbiterKey,
     });
     // ⚠ `verifiedBonded` is in the deps for a REASON that is not obvious.
@@ -848,7 +885,7 @@ export function TradeDetail({
     // bond that has been live and announced for minutes. Re-running when the
     // verified set arrives is what turns the blocker into an address.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state, myRole, onchainFundingPlan, onchainNeedsMyArbiterKey, verifiedBonded]);
+  }, [state, myRole, onchainFundingPlan, onchainNeedsMyArbiterKey, verifiedBonded, verifiedDeposit, depositIdentity]);
 
   useEffect(() => {
     const arbitrated = !!state.resolvedMajority?.includes(Role.ARBITER);
@@ -1583,6 +1620,29 @@ export function TradeDetail({
       })()
     : null;
 
+  if (verifiedRefund === depositIdentity) return (
+    <div className="trade-detail-shell" style={{ padding: 24 }}>
+      <button onClick={onBack}>{t("common.back")}</button>
+      <p role="status">Refund confirmed on the blockchain.</p>
+      {onchainView?.viewerFunds && onScanMyOnchainPayouts && onSweepOnchainPayout && <OnchainPayoutRecoveryCard
+        escrowId={state.id} credited={defaultCreditObserver()(state)} embedded
+        scan={onScanMyOnchainPayouts} sweep={onSweepOnchainPayout} />}
+    </div>
+  );
+  if (onchainView?.stage === "checking-deposit") return (
+    <div className="trade-detail-shell" style={{ padding: 24 }}>
+      <button onClick={onBack}>{t("common.back")}</button>
+      <p role="status">Checking the deposit on the blockchain…</p>
+      {fundingNote && <p>{fundingNote}</p>}
+      {state.status === EscrowStatus.APPROVED && onFinalizeOnchainSettlement && <button onClick={() => {
+        void onFinalizeOnchainSettlement(state.id).catch(error => setFundingNote(error instanceof Error ? error.message : String(error)));
+      }}>Check settlement recovery</button>}
+      {refundAvailable && onchainView.viewerFunds && <button disabled={refunding} onClick={runRefund}>
+        {refunding ? "Refunding…" : "Refund to my on-chain wallet"}
+      </button>}
+    </div>
+  );
+
   return (
     <div className="trade-detail-shell">
       <div className="trade-live-head" style={{
@@ -2108,8 +2168,8 @@ export function TradeDetail({
           )}
 
           {state.status === EscrowStatus.COMPLETED
-            && getWinner(state)?.pubkey === pubkey
-            && state.lock.onchain
+            && (getWinner(state)?.pubkey === pubkey || (state.onchainRefundClaimed && state.participants[state.onchainFundingTerms!.funder as Role] === pubkey))
+            && (state.lock.onchain || state.onchainFundingTerms)
             && onScanMyOnchainPayouts
             && onSweepOnchainPayout && (
               <OnchainPayoutRecoveryCard
@@ -2161,6 +2221,13 @@ export function TradeDetail({
             && (
               <OnchainEscrowPanel
                 view={onchainView}
+                onPrepareFunding={!state.onchainFundingTerms && onchainView.viewerFunds && participants.buyer && participants.seller && onPrepareOnchainFunding ? () => {
+                  setCheckingFunding(true);
+                  void onPrepareOnchainFunding(state.id).catch(error => setFundingNote(error instanceof Error ? error.message : String(error)))
+                    .finally(() => setCheckingFunding(false));
+                } : undefined}
+                onRefund={refundAvailable && onchainView.viewerFunds ? runRefund : undefined}
+                refunding={refunding}
                 network={ESCROW_NETWORK_LABEL}
                 settlementCheck={settlementCheck}
                 signing={settlementSigning}
