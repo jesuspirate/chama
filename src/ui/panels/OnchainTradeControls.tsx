@@ -1,3 +1,6 @@
+import { settlementUnsignedId } from "../../escrow-engine/onchain-settlement-transport.js";
+import { winnerSettlementChoice } from "../../escrow-engine/onchain-settlement-choice.js";
+import { profileNameFor, type NostrProfileNameMap } from "../nostr-profiles.js";
 import { useEffect, useRef, useState } from "react";
 import { EscrowStatus, Role, getEffectiveParticipantsAt, type EscrowState } from "../../escrow-engine/types.js";
 import { getWinner } from "../../escrow-engine/state-machine.js";
@@ -24,6 +27,7 @@ export interface OnchainTradeActions {
   onPublishOnchainLock?: (id: string) => Promise<unknown>;
   onOnchainRefundAvailable?: (id: string) => Promise<boolean>;
   onRefundOnchainEscrow?: (id: string) => Promise<{ txid: string }>;
+  onCheckOnchainSettlement?: (id: string) => Promise<{ psbt: string; check: SettlementCheck; signedByMe: boolean }>;
   onPrepareOnchainSettlement?: (id: string, address?: string) => Promise<{ psbt: string; check: SettlementCheck; signedByMe: boolean }>;
   onSignOnchainSettlement?: (id: string) => Promise<{ psbt: string; check: SettlementCheck }>;
   onFinalizeOnchainSettlement?: (id: string) => Promise<{ status: "waiting" | "broadcast" | "adopted"; txid?: string }>;
@@ -34,7 +38,7 @@ export interface OnchainTradeActions {
 
 /** Shared funding/settlement controller for the guided overlay and full room.
  * Every money action uses the same independently verifying escrow actions. */
-export function OnchainTradeControls({ state, pubkey, ...actions }: OnchainTradeActions & { state: EscrowState; pubkey: string }) {
+export function OnchainTradeControls({ state, pubkey, profileNames, kind0Enabled = false, ...actions }: OnchainTradeActions & { state: EscrowState; pubkey: string; profileNames?: NostrProfileNameMap; kind0Enabled?: boolean }) {
   const { t } = useT();
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
@@ -43,6 +47,7 @@ export function OnchainTradeControls({ state, pubkey, ...actions }: OnchainTrade
   const [refunded, setRefunded] = useState(false);
   const [refundAvailable, setRefundAvailable] = useState(false);
   const [check, setCheck] = useState<SettlementCheck | null>(null);
+  const [checkedChoice, setCheckedChoice] = useState<string | null>(null);
   const [signed, setSigned] = useState(false);
   const [address, setAddress] = useState("");
   const [, refreshBonds] = useState(0);
@@ -61,6 +66,8 @@ export function OnchainTradeControls({ state, pubkey, ...actions }: OnchainTrade
     blockers: plan?.ready ? [] : (plan?.blockers ?? ["not-ready"]).map(b => !state.onchainFundingTerms && b === "bad-refund-height" ? "funding-terms" : b),
     viewerIsPendingArbiter: pendingArbiter });
   const winner = getWinner(state);
+  const choice = winnerSettlementChoice(state);
+  const winnerName = profileNameFor(profileNames, winner?.pubkey, kind0Enabled) ?? "the winner";
   const approved = state.status === EscrowStatus.APPROVED || state.status === EscrowStatus.CLAIMED;
   const eligibleSigner = state.resolvedMajority?.includes(Role.ARBITER)
     ? role === Role.ARBITER || (!!role && role === winner?.role)
@@ -93,14 +100,14 @@ export function OnchainTradeControls({ state, pubkey, ...actions }: OnchainTrade
   }, [state.id, identity, state.status]);
   useEffect(() => {
     const generation = ++prepareGeneration.current;
-    setCheck(null); setSigned(false);
-    if (!view.canSettle || !eligibleSigner || !actions.onPrepareOnchainSettlement) return;
+    setCheck(null); setCheckedChoice(null); setSigned(false);
+    if (!view.canSettle || !eligibleSigner || !choice || !actions.onCheckOnchainSettlement) return;
     let cancelled = false;
-    void actions.onPrepareOnchainSettlement(state.id).then(result => {
-      if (!cancelled && prepareGeneration.current === generation) { setCheck(result.check); setSigned(result.signedByMe); }
+    void actions.onCheckOnchainSettlement(state.id).then(result => {
+      if (!cancelled && prepareGeneration.current === generation) { setCheck(result.check); setCheckedChoice(settlementUnsignedId(result.psbt)); setSigned(result.signedByMe); }
     }).catch(error => { if (!cancelled && prepareGeneration.current === generation) setCheck({ ok: false, failures: [String(error instanceof Error ? error.message : error)] }); });
     return () => { cancelled = true; };
-  }, [state.id, state.settlements?.length, view.canSettle, eligibleSigner, actions.onPrepareOnchainSettlement]);
+  }, [state.id, state.settlements?.length, view.canSettle, eligibleSigner, choice?.id, actions.onCheckOnchainSettlement]);
   useEffect(() => {
     const count = state.settlements?.length ?? 0;
     const attempt = `${state.id}:${count}`;
@@ -124,15 +131,23 @@ export function OnchainTradeControls({ state, pubkey, ...actions }: OnchainTrade
   if (refunded) return <div><p role="status">Refund confirmed on Bitcoin.</p>{recovery}</div>;
   return <div>
     {recovery}
-    {view.canSettle && role === winner?.role && actions.onPrepareOnchainSettlement && <div style={{ margin: "12px 0", display: "grid", gap: 8 }}>
+    {view.canSettle && role === winner?.role && !choice?.locked && actions.onPrepareOnchainSettlement && <div style={{ margin: "12px 0", display: "grid", gap: 8 }}>
       <label htmlFor={`payout-${state.id}`} style={{ color: T.text, fontSize: 13 }}>{t("onchain.directPayoutLabel")}</label>
       <input id={`payout-${state.id}`} value={address} onChange={event => setAddress(event.target.value)} placeholder={t("onchain.directPayoutPlaceholder")} style={{ ...inputStyle, width: "100%", minHeight: 44 }} />
       <button type="button" disabled={busy || !address.trim()} style={{ ...buttonStyle, opacity: busy || !address.trim() ? 0.5 : 1 }} onClick={() => void run(async () => {
-        ++prepareGeneration.current; setCheck(null); setSigned(false);
-        const result = await actions.onPrepareOnchainSettlement!(state.id, address.trim()); setCheck(result.check); setSigned(result.signedByMe);
+        ++prepareGeneration.current; setCheck(null); setCheckedChoice(null); setSigned(false);
+        const result = await actions.onPrepareOnchainSettlement!(state.id, address.trim()); setCheck(result.check); setCheckedChoice(settlementUnsignedId(result.psbt)); setSigned(result.signedByMe);
       })}>{t("onchain.directPayoutUse")}</button>
+      <button type="button" disabled={busy} style={buttonStyle} onClick={() => void run(async () => {
+        ++prepareGeneration.current; setCheck(null); setCheckedChoice(null); setSigned(false);
+        const result = await actions.onPrepareOnchainSettlement!(state.id); setCheck(result.check); setCheckedChoice(settlementUnsignedId(result.psbt)); setSigned(result.signedByMe);
+      })}>Send to my Chama key instead</button>
     </div>}
-    <OnchainEscrowPanel view={view} network={ESCROW_NETWORK_LABEL} settlementCheck={check} signing={busy} signedByViewer={signed}
+    {view.canSettle && !choice && role !== winner?.role && <p role="status">Waiting for {winnerName} to choose where the sats go.</p>}
+    {view.canSettle && choice && <p style={{ color: T.muted, overflowWrap: "anywhere" }}>Payout address: {choice.destination}
+      {choice.locked && <><br />The other signer has signed. The destination is fixed.</>}</p>}
+    {(!view.canSettle || choice) && <>
+    <OnchainEscrowPanel view={view} network={ESCROW_NETWORK_LABEL} settlementCheck={checkedChoice === choice?.id ? check : check?.ok === false ? check : null} signing={busy} signedByViewer={signed}
       checking={busy} fundingNote={note} depositStatus={depositStatus} publishing={busy} refunding={busy}
       onPrepareFunding={!state.onchainFundingTerms && view.viewerFunds && participants.buyer && participants.seller && actions.onPrepareOnchainFunding
         ? () => void run(() => actions.onPrepareOnchainFunding!(state.id)) : undefined}
@@ -146,10 +161,11 @@ export function OnchainTradeControls({ state, pubkey, ...actions }: OnchainTrade
         const result = await actions.onRefundOnchainEscrow!(state.id); setNote(`Refund broadcast: ${result.txid}`);
       }) : undefined}
       onSign={eligibleSigner && actions.onSignOnchainSettlement ? () => void run(async () => {
-        const result = await actions.onSignOnchainSettlement!(state.id); setCheck(result.check); setSigned(result.check.ok);
+        const result = await actions.onSignOnchainSettlement!(state.id); setCheck(result.check); setCheckedChoice(settlementUnsignedId(result.psbt)); setSigned(result.check.ok);
       }) : undefined}
       onPublishKey={actions.onPublishArbiterKey ? () => void run(async () => actions.onPublishArbiterKey!()) : undefined} />
-    {approved && actions.onFinalizeOnchainSettlement && <button type="button" style={buttonStyle} disabled={busy} onClick={() => void run(() => actions.onFinalizeOnchainSettlement!(state.id))}>Check settlement</button>}
+    </>}
+    {approved && (choice || state.settlements?.some(message => message.payload.final)) && actions.onFinalizeOnchainSettlement && <button type="button" style={buttonStyle} disabled={busy} onClick={() => void run(() => actions.onFinalizeOnchainSettlement!(state.id))}>Check settlement</button>}
     {note && view.stage !== "awaiting-funding" && view.stage !== "awaiting-keys" && <p role="status" style={{ color: T.muted }}>{note}</p>}
   </div>;
 }

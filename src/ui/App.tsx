@@ -625,6 +625,7 @@ export default function App() {
 
   // Claim, lifted so LiveTradeSurface fires the IDENTICAL ClaimPayoutModal flow.
   const tradeOnClaim = async (): Promise<void> => {
+    if (!selected || selected.escrowMode === "onchain") return;
     if (!requireOnline()) return;
               // v0.3.0 Phase 3: open ClaimPayoutModal instead of
               // dispatching claimAndRedeem directly. In browsers this
@@ -697,6 +698,7 @@ export default function App() {
   const tradeOnLock = async (
     lockOpts: { savedHandleId?: string; selectedItems?: SelectedMenuItem[]; amountMsats?: number } = {},
   ): Promise<void> => {
+    if (!selected || selected.escrowMode === "onchain") return;
     if (!requireOnline()) return;
               const savedHandleId = lockOpts.savedHandleId;
               const selectedItems = lockOpts.selectedItems;
@@ -3520,7 +3522,7 @@ export default function App() {
           FundWalletModal-then-Fund two-step on the production funding
           path. FundWalletModal stays mounted above for the (Phase 5-
           gated) Sandbox-mode path. */}
-      {pendingFundAndLock && (
+      {pendingFundAndLock && escrows.get(pendingFundAndLock.escrowId)?.escrowMode !== "onchain" && (
         <AtomicFundingModal
           custodyNotice={escrows.get(pendingFundAndLock.escrowId)?.custodyNotice}
           escrowId={pendingFundAndLock.escrowId}
@@ -3725,7 +3727,7 @@ export default function App() {
         </div>
       )}
 
-      {pendingClaim && (
+      {pendingClaim && escrows.get(pendingClaim.escrowId)?.escrowMode !== "onchain" && (
         <ClaimPayoutModal
           getLightningGatewayCount={actions.getLightningGatewayCount}
           onWithdrawEcash={() => { setPendingClaim(null); setShowEcashExport(true); }}
@@ -4149,6 +4151,7 @@ export default function App() {
                 onOnchainRefundAvailable: actions.onchainRefundAvailable,
                 onRefundOnchainEscrow: actions.refundOnchainEscrow,
                 onPrepareOnchainSettlement: actions.prepareOnchainSettlement,
+                onCheckOnchainSettlement: actions.checkOnchainSettlement,
                 onSignOnchainSettlement: actions.signOnchainSettlement,
                 onFinalizeOnchainSettlement: actions.finalizeOnchainSettlement,
                 onPublishArbiterKey: () => actions.joinEscrow(selected.id, Role.ARBITER),
@@ -4226,6 +4229,7 @@ export default function App() {
             onOnchainRefundAvailable={actions.onchainRefundAvailable}
             onPublishOnchainLock={actions.publishOnchainLock}
             onPrepareOnchainSettlement={actions.prepareOnchainSettlement}
+            onCheckOnchainSettlement={actions.checkOnchainSettlement}
             onSignOnchainSettlement={actions.signOnchainSettlement}
             onFinalizeOnchainSettlement={actions.finalizeOnchainSettlement}
             onScanMyOnchainPayouts={refreshOnchainPayoutAttention}

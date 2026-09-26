@@ -169,7 +169,7 @@ export function LiveTradeSurface({
   const [busy, setBusy] = useState(false);
   const [onchainOpen, setOnchainOpen] = useState(false);
   useEffect(() => { setOnchainOpen(false); }, [state.id, state.status]);
-  const onchainControls = <OnchainTradeControls state={state} pubkey={pubkey} {...onchainActions} />;
+  const onchainControls = <OnchainTradeControls state={state} pubkey={pubkey} profileNames={profileNames} kind0Enabled={kind0Enabled} {...onchainActions} />;
   const onchainOverlay = onchainOpen ? <OverlaySheet title="On-chain trade" onClose={() => setOnchainOpen(false)}>{onchainControls}</OverlaySheet> : null;
   const [armed, setArmed] = useState<Outcome | null>(null);
   // Cancel-with-reason (Jet 2026-09-05): a cancel/refund vote NEVER fires

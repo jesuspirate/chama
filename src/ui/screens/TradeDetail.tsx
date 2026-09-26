@@ -162,7 +162,7 @@ export function TradeDetail({
   disableNwc = false, forceClaimMethodChooser = false, onBack, onVote, onClaim, onJoin, onLock, onLockDirectNwc, onClaimDirectNwc, onConfirmPayout,
   onSendChat, preferredRelayConnected = false, onReleasePeriod, onOpenSettings, onOpenNwcSettings,
   onPrewarmFunding, onRebroadcast, onForget, onPurchase, onCancelDraftOrder, stockLeft, isOversoldOrder = false,
-  onRateCounterparty, myGivenRatings, fetchRatingSummary, fetchCommunityBonds, knownTrades, onStartNextTranche, onchainFundingPlan, onPrepareOnchainFunding, onCheckOnchainFunding, onRefundOnchainEscrow, onOnchainRefundAvailable, onPublishOnchainLock, onPrepareOnchainSettlement, onSignOnchainSettlement, onFinalizeOnchainSettlement, onScanMyOnchainPayouts, onSweepOnchainPayout,
+  onRateCounterparty, myGivenRatings, fetchRatingSummary, fetchCommunityBonds, knownTrades, onStartNextTranche, onchainFundingPlan, onPrepareOnchainFunding, onCheckOnchainFunding, onRefundOnchainEscrow, onOnchainRefundAvailable, onPublishOnchainLock, onCheckOnchainSettlement, onPrepareOnchainSettlement, onSignOnchainSettlement, onFinalizeOnchainSettlement, onScanMyOnchainPayouts, onSweepOnchainPayout,
   onStartEcashSlicePlan,
   liveChildOrders, pendingChildOrders, onOpenChild,
 }: {
@@ -236,6 +236,7 @@ export function TradeDetail({
   onchainFundingPlan?: (escrowId: string) => { ready: boolean; address?: string; blockers?: readonly string[] };
   /** Tier 2.1: publish the on-chain LOCK once the deposit confirms. */
   onPublishOnchainLock?: (escrowId: string) => Promise<unknown>;
+  onCheckOnchainSettlement?: (id: string) => Promise<{ psbt: string; check: SettlementCheck; signedByMe: boolean }>;
   onPrepareOnchainSettlement?: (escrowId: string, payoutAddress?: string) => Promise<{ psbt: string; check: SettlementCheck; signedByMe: boolean }>;
   onSignOnchainSettlement?: (escrowId: string) => Promise<{ psbt: string; check: SettlementCheck }>;
   onFinalizeOnchainSettlement?: (escrowId: string) => Promise<{ status: "waiting" | "broadcast" | "adopted"; txid?: string }>;
@@ -1568,7 +1569,8 @@ export function TradeDetail({
       <button onClick={onBack}>{t("common.back")}</button>
       <p role="status">Checking the deposit on the blockchain…</p>
       {fundingNote && <p>{fundingNote}</p>}
-      <OnchainTradeControls state={state} pubkey={pubkey}
+      <OnchainTradeControls state={state} pubkey={pubkey} profileNames={profileNames} kind0Enabled={kind0Enabled}
+                onCheckOnchainSettlement={onCheckOnchainSettlement}
                 fetchCommunityBonds={fetchCommunityBonds} onchainFundingPlan={onchainFundingPlan}
                 onPrepareOnchainFunding={onPrepareOnchainFunding} onCheckOnchainFunding={onCheckOnchainFunding}
                 onPublishOnchainLock={onPublishOnchainLock} onOnchainRefundAvailable={onOnchainRefundAvailable}
@@ -2157,7 +2159,8 @@ export function TradeDetail({
               coins there until the CLTV refund. The ecash branch always carried
               this guard; it was dropped when the panel moved here. */}
           {onchainView && (myRole || onchainNeedsMyArbiterKey) && <div id="onchain-funding-panel">
-              <OnchainTradeControls state={state} pubkey={pubkey}
+              <OnchainTradeControls state={state} pubkey={pubkey} profileNames={profileNames} kind0Enabled={kind0Enabled}
+                onCheckOnchainSettlement={onCheckOnchainSettlement}
                 fetchCommunityBonds={fetchCommunityBonds} onchainFundingPlan={onchainFundingPlan}
                 onPrepareOnchainFunding={onPrepareOnchainFunding} onCheckOnchainFunding={onCheckOnchainFunding}
                 onPublishOnchainLock={onPublishOnchainLock} onOnchainRefundAvailable={onOnchainRefundAvailable}

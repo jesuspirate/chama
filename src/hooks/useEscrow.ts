@@ -1,3 +1,4 @@
+import { winnerSettlementChoice, assertWinnerMayChoose } from "../escrow-engine/onchain-settlement-choice.js";
 import { findEscrowFundingUtxos, deriveCommittedBondKey, escrowDepositWindowSafe } from "../bond-multisig/onchain-escrow-funding.js";
 import { finalRefundSettlementProof, observedRefundSpend } from "../escrow-engine/onchain-settlement-transport.js";
 import { fundingArbiter, fundingTermsError, onchainLockError, onchainFunder } from "../escrow-engine/onchain-funding-terms.js";
@@ -979,6 +980,7 @@ export interface UseEscrowActions {
   }>;
   publishOnchainLock: (escrowId: string) => Promise<EscrowState>;
   /** Build (if absent), publish, and locally verify the cooperative PSBT. */
+  checkOnchainSettlement: (escrowId: string) => Promise<{ psbt: string; check: SettlementCheck; signedByMe: boolean }>;
   prepareOnchainSettlement: (escrowId: string, payoutAddress?: string) => Promise<{ psbt: string; check: SettlementCheck; signedByMe: boolean }>;
   /** Re-verify, add this participant's signature, and publish the revision. */
   signOnchainSettlement: (escrowId: string) => Promise<{ psbt: string; check: SettlementCheck }>;
@@ -3060,10 +3062,8 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     if (!winner) throw new Error("No approved payout winner.");
     const winnerXonly = winner.role === Role.BUYER ? t.buyerXonly : t.sellerXonly;
     const fallbackDestination = btcSigner.p2tr(hexToBytes(winnerXonly), undefined, ESCROW_NETWORK).address!;
-    const winnerProposal = [...(trade.settlements ?? [])].reverse().find(message =>
-      message.pubkey === winner.pubkey && message.payload.role === winner.role
-      && message.payload.payoutAddress && message.payload.leaf === (leaf === "dispute" ? "arbiter" : "coop"));
-    const destination = requestedAddress?.trim() || winnerProposal?.payload.payoutAddress || fallbackDestination;
+    const choice = winnerSettlementChoice(trade);
+    const destination = requestedAddress?.trim() || choice?.destination || fallbackDestination;
     try { btcSigner.Address(ESCROW_NETWORK).decode(destination); }
     catch { throw new Error("The on-chain payout address is invalid for this Bitcoin network."); }
     const fetchJson = esploraFetcher(defaultEsploraBase(ESCROW_NETWORK), { network: ESCROW_NETWORK });
@@ -3149,49 +3149,55 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     return { txid };
   }, [myEscrowKey]);
 
-  const prepareOnchainSettlement = useCallback(async (escrowId: string, payoutAddress?: string) => {
-    const initial = requireClient().getState(escrowId);
-    const arbitrated = !!initial?.resolvedMajority?.includes(Role.ARBITER);
-    const leaf = arbitrated ? "dispute" : "coop";
-    const wireLeaf = arbitrated ? "arbiter" : "coop";
-    const ctx = await onchainSettlementContext(escrowId, leaf, payoutAddress);
-    const winner = getWinner(ctx.trade);
-    if (payoutAddress && ctx.trade.participants[winner!.role] !== await ctx.client.getPubkey()) {
-      throw new Error("Only the winner can choose a direct payout address.");
-    }
-    let psbt = (arbitrated
-      ? selectVerifiedArbiterSettlement(ctx.trade.settlements ?? [], ctx.expectation)
-      : selectVerifiedCoopSettlement(ctx.trade.settlements ?? [], ctx.expectation)) ?? undefined;
-    if (!psbt) {
-      psbt = buildSettlementPsbt({
-        escrow: ctx.escrow, utxos: ctx.utxos, destination: ctx.destination,
-        feeSats: ctx.feeSats, leaf,
-        fundingHeight: ctx.fundingHeight, tipHeight: ctx.tipHeight,
-      });
-      const pubkey = await ctx.client.getPubkey();
-      const role = Object.values(Role).find(r => ctx.trade.participants[r] === pubkey);
-      const eligible = arbitrated
-        ? role === Role.ARBITER || role === winner?.role
-        : role === Role.BUYER || role === Role.SELLER;
-      if (!eligible || !role) {
-        throw new Error(arbitrated
-          ? "Only the resolved winner or assigned arbiter can build arbitration settlement."
-          : "Only buyer or seller can build cooperative settlement.");
-      }
-      await ctx.client.sendSettlement(escrowId, { psbt, leaf: wireLeaf, role,
-        ...(payoutAddress ? { payoutAddress: ctx.destination } : {}) });
-    }
+  /** Read-only: opening a trade must never publish a payout proposal. */
+  const checkOnchainSettlement = useCallback(async (escrowId: string) => {
+    const trade = requireClient().getState(escrowId);
+    if (!trade) throw new Error("Escrow not loaded");
+    const choice = winnerSettlementChoice(trade);
+    if (!choice) throw new Error("Waiting for the winner to choose where the sats go.");
+    const arbitrated = !!trade.resolvedMajority?.includes(Role.ARBITER);
+    const ctx = await onchainSettlementContext(escrowId, arbitrated ? "dispute" : "coop");
+    const psbt = (arbitrated ? selectVerifiedArbiterSettlement : selectVerifiedCoopSettlement)(choice.messages, ctx.expectation);
+    if (!psbt) throw new Error("The chosen payout no longer passes the settlement checks.");
     const pubkey = await ctx.client.getPubkey();
-    const myRole = Object.values(Role).find(r => ctx.trade.participants[r] === pubkey);
-    const signedByMe = (myRole === Role.BUYER || myRole === Role.SELLER || myRole === Role.ARBITER)
-      && hasValidSettlementSignatureForRole(
-        psbt,
-        ctx.escrow,
-        myRole,
-        arbitrated ? "dispute" : "coop",
-      );
+    const role = Object.values(Role).find(r => ctx.trade.participants[r] === pubkey);
+    const signedByMe = !!role && choice.messages.some(m => hasValidSettlementSignatureForRole(m.payload.psbt, ctx.escrow, role, arbitrated ? "dispute" : "coop"));
     return { psbt, check: verifySettlementPsbt(psbt, ctx.expectation), signedByMe };
   }, [onchainSettlementContext]);
+
+  const settlementPrepareInFlight = useRef(new Map<string, Promise<{ psbt: string; check: SettlementCheck; signedByMe: boolean }>>());
+  const prepareOnchainSettlement = useCallback((escrowId: string, payoutAddress?: string) => {
+    const pending = settlementPrepareInFlight.current.get(escrowId);
+    if (pending) return pending;
+    const work = (async () => {
+      const client = requireClient();
+      const initial = client.getState(escrowId);
+      if (!initial || getWinner(initial)?.pubkey !== await client.getPubkey()) throw new Error("Only the winner can choose where the sats go.");
+      const arbitrated = !!initial.resolvedMajority?.includes(Role.ARBITER);
+      // An explicit fallback click is distinct from reusing an existing direct address.
+      const terms = initial.lock.onchain;
+      if (!terms) throw new Error("This trade has no on-chain lock terms.");
+      const winner = getWinner(initial)!;
+      const fallback = btcSigner.p2tr(hexToBytes(winner.role === Role.BUYER ? terms.buyerXonly : terms.sellerXonly), undefined, ESCROW_NETWORK).address!;
+      const destination = payoutAddress?.trim() || fallback;
+      assertWinnerMayChoose(initial, await client.getPubkey(), destination);
+      const ctx = await onchainSettlementContext(escrowId, arbitrated ? "dispute" : "coop", destination);
+      const current = client.getState(escrowId)!;
+      assertWinnerMayChoose(current, await client.getPubkey(), destination);
+      const choice = winnerSettlementChoice(current);
+      if (choice?.destination === destination) return checkOnchainSettlement(escrowId);
+      const psbt = buildSettlementPsbt({ escrow: ctx.escrow, utxos: ctx.utxos, destination,
+        feeSats: ctx.feeSats, leaf: arbitrated ? "dispute" : "coop",
+        fundingHeight: ctx.fundingHeight, tipHeight: ctx.tipHeight });
+      const check = verifySettlementPsbt(psbt, ctx.expectation);
+      if (!check.ok) throw new Error(check.failures.join("; "));
+      await client.sendSettlement(escrowId, { psbt, leaf: arbitrated ? "arbiter" : "coop", role: winner.role, payoutAddress: destination });
+      return { psbt, check, signedByMe: false };
+    })();
+    settlementPrepareInFlight.current.set(escrowId, work);
+    void work.finally(() => settlementPrepareInFlight.current.delete(escrowId)).catch(() => {});
+    return work;
+  }, [onchainSettlementContext, checkOnchainSettlement]);
 
   const finalizeOnchainSettlement = useCallback(async (escrowId: string) => {
     // Recovery must run before UTXO discovery: after a successful broadcast the
@@ -3272,9 +3278,11 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     const adopted = await adoptObservedSpend(currentProof?.txid, recoveryProof?.message.raw.id);
     if (adopted) return { status: "adopted" as const, txid: adopted };
 
+    const choice = winnerSettlementChoice(ctx.trade);
+    if (!choice) return { status: "waiting" as const };
     const finalizable = arbitrated
-      ? finalizableArbiterSettlement(ctx.trade.settlements ?? [], ctx.expectation, ctx.escrow, recoveryWinnerRole!)
-      : finalizableCoopSettlement(ctx.trade.settlements ?? [], ctx.expectation);
+      ? finalizableArbiterSettlement(choice.messages, ctx.expectation, ctx.escrow, recoveryWinnerRole!)
+      : finalizableCoopSettlement(choice.messages, ctx.expectation);
     if (!finalizable) return { status: "waiting" as const };
     const pubkey = await ctx.client.getPubkey();
     const role = Object.values(Role).find(r => ctx.trade.participants[r] === pubkey);
@@ -3314,7 +3322,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     // Re-fetch the tip and re-run disputeWindow immediately before signing.
     // A checklist rendered earlier is never authority for a CSV spend.
     const ctx = await onchainSettlementContext(escrowId, arbitrated ? "dispute" : "coop");
-    const prepared = await prepareOnchainSettlement(escrowId);
+    const prepared = await checkOnchainSettlement(escrowId);
     if (!prepared.check.ok) {
       throw new Error(`Settlement verification failed: ${prepared.check.failures.join("; ")}`);
     }
@@ -3341,6 +3349,9 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     if (!signingKeyMatchesRole(key.xonly, role, ctx.trade.lock.onchain!)) {
       throw new Error("This device's derived escrow key does not match the key committed for your role.");
     }
+    if (winnerSettlementChoice(ctx.client.getState(escrowId)!)?.id !== settlementUnsignedId(prepared.psbt)) {
+      throw new Error("The winner changed the payout. Review the new destination before signing.");
+    }
     const signedPsbt = coSignSettlement(prepared.psbt, key.priv);
     // Verify the exact revision again after signing; signatures must not be
     // allowed to smuggle a different transaction through the UI gate.
@@ -3349,7 +3360,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     await ctx.client.sendSettlement(escrowId, { psbt: signedPsbt, leaf: arbitrated ? "arbiter" : "coop", role });
     await finalizeOnchainSettlement(escrowId);
     return { psbt: signedPsbt, check };
-  }, [finalizeOnchainSettlement, myEscrowKey, onchainSettlementContext, prepareOnchainSettlement]);
+  }, [finalizeOnchainSettlement, myEscrowKey, onchainSettlementContext, checkOnchainSettlement]);
 
   const scanMyOnchainPayouts = useCallback(async () => {
     const current = stateRef.current;
@@ -5855,6 +5866,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     checkOnchainFunding,
     publishOnchainLock,
     prepareOnchainSettlement,
+    checkOnchainSettlement,
     signOnchainSettlement,
     finalizeOnchainSettlement,
     scanMyOnchainPayouts,
