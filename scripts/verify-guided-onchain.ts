@@ -2,6 +2,7 @@
  * Run CHAMA_TEST_BROWSER=/path/to/chromium npx tsx scripts/verify-guided-onchain.ts. */
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
+import { readFile } from 'node:fs/promises';
 import { build } from 'esbuild';
 import puppeteer from 'puppeteer-core';
 import * as btc from '@scure/btc-signer';
@@ -15,6 +16,7 @@ const payoutPsbt=buildSettlementPsbt({escrow:fixture.escrow,utxos:[{txid:'11'.re
 const bundle = await build({ bundle: true, write: false, format: 'iife', jsx: 'automatic', define: { 'process.env.NODE_ENV': '"test"', 'import.meta.env': '{}' },
   stdin: { resolveDir: process.cwd(), loader: 'tsx', contents: `
 import React from 'react'; import { createRoot } from 'react-dom/client';
+import { AssistedCanvas } from './src/ui/screens/AssistedCanvas';
 import { ClaimPayoutModal } from './src/ui/panels/ClaimPayoutModal';
 import { TradeDetail } from './src/ui/screens/TradeDetail';
 import { LiveTradeSurface } from './src/ui/screens/LiveTradeSurface';
@@ -53,6 +55,8 @@ window.scenario=(stage,role='seller',pass=true)=>{viewer=keys[role]; valid=pass;
  lock:stage==='created'||stage==='funding'?base.lock:{...base.lock,lockedAt:Math.floor(Date.now()/1000),onchain:{...terms,amountSats:'100000',fundingTxid:'11'.repeat(32),fundingVout:0}},
  resolvedOutcome:stage==='approved'||stage==='done'?Outcome.RELEASE:undefined,
  resolvedMajority:stage==='approved'||stage==='done'?['buyer','seller']:undefined}; render();};
+window.canvasScenario=(loading,publicLoading)=>root.render(<LangProvider><AssistedCanvas listings={[]} browseCommunity="us-usd" viewerPubkey={keys.buyer}
+ tradesLoading={loading} listingsLoading={publicLoading} onBrowse={()=>{}} onCreate={()=>{}} onMoreOptions={()=>{}} onOpenTrade={()=>{}} /></LangProvider>);
 window.claimScenario=(currency='USD',gateway=1)=>root.render(<LangProvider><ClaimPayoutModal key={currency+gateway}
  escrowId="cash-out-test" payoutMsats={100_000_000} fiatCurrency={currency}
  savedDestinations={[{id:'saved',address:'me@example.com',createdAt:0}]}
@@ -90,7 +94,13 @@ window.testAvatars=async()=>{
 };
 window.fund=()=>{funded=true;}; window.scenario('created');
 ` } });
-const server = createServer((_req,res) => res.end('<!doctype html><style>*{box-sizing:border-box}body{margin:0}</style><div id="root"></div>'));
+const server = createServer(async (req,res) => {
+  const path=new URL(req.url??'/', 'http://localhost').pathname;
+  if (['/icons/chama-color-cycle-boot-hd-v7.png','/icons/chama-mark-256.png'].includes(path)) {
+    res.setHeader('Content-Type','image/png'); res.end(await readFile('public'+path)); return;
+  }
+  res.end('<!doctype html><style>*{box-sizing:border-box}body{margin:0}.chama-loader-static{display:none}</style><div id="root"></div>');
+});
 await new Promise<void>(resolve => server.listen(0,'127.0.0.1',resolve));
 let browser;
 try {
@@ -171,12 +181,22 @@ try {
     assert.equal(await page.$('details'),null,'cash-out never hides in Details');
   }
   await page.evaluate(()=>(window as any).claimScenario('USD',0));
-  await page.waitForFunction(()=>[...document.querySelectorAll('button')].filter(b=>b.textContent?.includes('Strike')).every(b=>b.disabled));
+  await page.waitForSelector('section[aria-label="Cash out in USD"]');
+  await page.waitForFunction(()=>[...document.querySelectorAll('button')].some(b=>b.textContent?.includes('Strike')&&b.disabled));
   assert.ok(await page.$('section[aria-label="Cash out in USD"]'));
   await page.evaluate(()=>(window as any).claimScenario('USD',1));
+  if (process.env.CHAMA_TEST_SCREENSHOT) await page.screenshot({path:'/tmp/chama-brief07-claim.png'});
   await click('me@example.com');
   await page.waitForFunction(()=>[...document.querySelectorAll('input')].some(input=>input.value==='me@example.com'));
   console.log('PASS claim cash-out cards visible by currency, gateway gating, Your wallets and saved address confirmation');
+  await page.evaluate(()=>(window as any).canvasScenario(true,false));
+  await page.waitForSelector('.assisted-trade-sync');
+  const box=await page.$eval('.assisted-trade-sync',el=>({left:el.getBoundingClientRect().left,right:el.getBoundingClientRect().right,top:el.getBoundingClientRect().top}));
+  assert.ok(box.left>300 && box.right<=390 && box.top>=0,'loader sits in the top-right of the phone canvas');
+  if (process.env.CHAMA_TEST_SCREENSHOT) await page.screenshot({path:'/tmp/chama-brief07-sync.png'});
+  await page.evaluate(()=>(window as any).canvasScenario(false,true));
+  await page.waitForFunction(()=>!document.querySelector('.assisted-trade-sync'));
+  console.log('PASS initial trade sync loader: top-right on mobile; hidden during subsequent listing refresh');
   assert.deepEqual(errors,[]);
   console.log('PASS guided on-chain overlay, read-only buyer, fiat vote, failed-check signing gate, signing and payout recovery');
 } finally { await browser?.close(); server.closeAllConnections(); server.close(); }

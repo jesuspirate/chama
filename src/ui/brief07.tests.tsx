@@ -22,3 +22,15 @@ assert.match(saved,/<section aria-label="Cash out in USD"[\s\S]*?@me/);
 const checking=render({fiatCurrency:'USD',getLightningGatewayCount:async()=>0});
 assert.match(checking,/Cash out in USD/);assert.match(checking,/<button[^>]*disabled=""[^>]*>[\s\S]*?Strike/);
 console.log('PASS claim cash-out sections: USD/KES/TZS, trade context, visible cards, saved wallets and unavailable gateway gate');
+
+// Initial participant history owns this indicator. A public listing refresh
+// alone must not bring it back after Me has finished loading the user's trades.
+const { AssistedCanvas } = await import('./screens/AssistedCanvas.js');
+const canvas=(tradesLoading:boolean,listingsLoading:boolean)=>renderToStaticMarkup(<LangProvider><AssistedCanvas
+ listings={[]} browseCommunity="us-usd" viewerPubkey={'a'.repeat(64)} listingsLoading={listingsLoading} tradesLoading={tradesLoading}
+ onBrowse={()=>{}} onCreate={()=>{}} onMoreOptions={()=>{}} onOpenTrade={()=>{}} /></LangProvider>);
+assert.match(canvas(true,false),/<div class="assisted-trade-sync" role="status"/);
+assert.match(canvas(true,true),/chama-loader-motion/);
+assert.doesNotMatch(canvas(false,true),/<div class="assisted-trade-sync"/);
+assert.doesNotMatch(canvas(false,false),/<div class="assisted-trade-sync"/);
+console.log('PASS guided sync indicator: initial participant sync only, independent of public refresh');

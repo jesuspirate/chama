@@ -4098,6 +4098,7 @@ export default function App() {
           activeMintUrl={myActiveInvite}
           viewerPubkey={pubkey!}
           listingsLoading={publicListingsLoading}
+          tradesLoading={myTradesLoading}
           fetchRatingSummary={actions.fetchRatingSummary}
           onBrowse={(category) => {
             setBrowseCategory(category);
