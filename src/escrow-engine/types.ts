@@ -390,6 +390,8 @@ export interface CreatePayload {
    *  EscrowMode. */
   escrowMode?: EscrowMode;
   onchainNetwork?: "mainnet" | "signet";
+  /** Principal RELEASE carries its payout proposal/signature in the same event. */
+  onchainAtomicRelease?: boolean;
   /** v6.0: the settlement-policy vocabulary, signed at CREATE. Must AGREE with
    *  `escrowMode` (sibling gate, SETTLEMENT_POLICY_MODE_MISMATCH). Absent ⇒
    *  the mode's default policy (legacy trades stay readable). */
@@ -745,6 +747,7 @@ export interface VoteShareEnvelope {
 
 /** Content of a VOTE event */
 export interface VotePayload {
+  onchainRelease?: SettlementPayload;
   type: "escrow:vote";
   outcome: Outcome;
   role: Role;
@@ -1082,6 +1085,8 @@ export interface EscrowState {
    *  readers never have to handle undefined. */
   escrowMode: EscrowMode;
   onchainNetwork?: "mainnet" | "signet";
+  /** Principal RELEASE carries its payout proposal/signature in the same event. */
+  onchainAtomicRelease?: boolean;
   /** v6.0: the signed settlement policy. Defaulted from `escrowMode` when the
    *  CREATE omitted it, so readers never handle undefined. */
   settlementPolicy: string;

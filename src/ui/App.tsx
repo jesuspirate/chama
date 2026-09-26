@@ -4180,7 +4180,7 @@ export default function App() {
               onLock={tradeOnLock}
               onClaim={tradeOnClaim}
               onJoin={tradeOnJoin}
-              onVote={(outcome) => actions.vote(selectedId!, outcome).then(
+              onVote={(outcome, payoutAddress) => actions.vote(selectedId!, outcome, payoutAddress).then(
                 () => setToast({ message: t("app.votedOutcome", { outcome }), type: "success" }),
                 (e: any) => {
                   if (e?.voteSuppressed) { setToast({ message: e?.message || t("app.voteAlreadyRecorded"), type: "info" }); return; }
@@ -4253,7 +4253,7 @@ export default function App() {
               && !isNativeBridgeModeOn()
             }
             onBack={backFromTrade}
-            onVote={(outcome) => actions.vote(selectedId!, outcome).then(
+            onVote={(outcome, payoutAddress) => actions.vote(selectedId!, outcome, payoutAddress).then(
               () => setToast({ message: t("app.votedOutcome", { outcome }), type: "success" }),
               (e: any) => {
                 // v1.2.2 vote-freeze fix: distinguish "your vote was

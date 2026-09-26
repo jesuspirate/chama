@@ -199,6 +199,7 @@ function getPrevEventId(tags: string[][]): string | null {
 function validateCreatePayload(data: unknown): data is CreatePayload {
   const d = data as Record<string, unknown>;
   if (!validEscrowXonly(d.escrowXonly)) return false;
+  if (d.onchainAtomicRelease !== undefined && typeof d.onchainAtomicRelease !== "boolean") return false;
   if (d.onchainNetwork !== undefined && d.onchainNetwork !== "mainnet" && d.onchainNetwork !== "signet") return false;
   if (d.listingKind !== undefined && d.listingKind !== "work" && d.listingKind !== "work-request") return false;
   if (d.imageDataUrl !== undefined && !isSupportedListingImageRef(d.imageDataUrl)) return false;
@@ -455,6 +456,7 @@ function isValidVoteShareEnvelopeShape(v: unknown): boolean {
 
 function validateVotePayload(data: unknown): data is VotePayload {
   const d = data as Record<string, unknown>;
+  if (d.onchainRelease !== undefined && !validateSettlementPayload(d.onchainRelease)) return false;
   if (d.shareEnvelope !== undefined && !isValidVoteShareEnvelopeShape(d.shareEnvelope)) return false;
   return (
     d.type === "escrow:vote" &&

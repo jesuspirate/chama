@@ -83,7 +83,7 @@ import { bondTenureBlocks, tenureDays, tenureTier, verifiedBondTenureBlocks, bon
 import { viewerIsExposedByLock, lockerRoleOf } from "../../escrow-engine/lock-custody.js";
 import { verifyBondedStamp, stampIsForged } from "../../arbiters/bonded-stamp.js";
 import { OnchainTradeControls } from "../panels/OnchainTradeControls.js";
-import { payoutUsesTradeKey } from "../../escrow-engine/onchain-settlement-choice.js";
+import { payoutUsesTradeKey, settlementWinner } from "../../escrow-engine/onchain-settlement-choice.js";
 import { OnchainPayoutRecoveryCard } from "../panels/OnchainPayoutRecoveryCard.js";
 import type { OnchainPayout } from "../../bond-multisig/onchain-payout-wallet.js";
 import { deriveOnchainView } from "../../escrow-engine/onchain-escrow-view.js";
@@ -211,7 +211,7 @@ export function TradeDetail({
   // return type encouraged a fire-and-forget call that re-enabled the
   // button on a 1 s setTimeout even though the real publish takes
   // 8–16 s, making the screen look frozen.
-  onVote: (outcome: Outcome) => Promise<void>;
+  onVote: (outcome: Outcome, payoutAddress?: string) => Promise<void>;
   onClaim: () => Promise<void>;
   /** Reputation (kind:38123): one-tap rate the counterparty on a settled trade. */
   onRateCounterparty?: (tradeId: string, ratee: string, thumb: RatingThumb) => Promise<void>;
@@ -1573,7 +1573,7 @@ export function TradeDetail({
       <button onClick={onBack}>{t("common.back")}</button>
       <p role="status">Checking the deposit on the blockchain…</p>
       {fundingNote && <p>{fundingNote}</p>}
-      <OnchainTradeControls state={state} pubkey={pubkey} profileNames={profileNames} kind0Enabled={kind0Enabled}
+      <OnchainTradeControls onReleaseWithPayout={address => onVote(Outcome.RELEASE, address)} state={state} pubkey={pubkey} profileNames={profileNames} kind0Enabled={kind0Enabled}
                 onchainObservation={onchainObservation}
                 onOpenExplorerSettings={onOpenExplorerSettings}
                 onCheckOnchainSettlement={onCheckOnchainSettlement}
@@ -2166,7 +2166,7 @@ export function TradeDetail({
               coins there until the CLTV refund. The ecash branch always carried
               this guard; it was dropped when the panel moved here. */}
           {onchainView && (myRole || onchainNeedsMyArbiterKey) && <div id="onchain-funding-panel">
-              <OnchainTradeControls state={state} pubkey={pubkey} profileNames={profileNames} kind0Enabled={kind0Enabled}
+              <OnchainTradeControls onReleaseWithPayout={address => onVote(Outcome.RELEASE, address)} state={state} pubkey={pubkey} profileNames={profileNames} kind0Enabled={kind0Enabled}
                 onchainObservation={onchainObservation}
                 onOpenExplorerSettings={onOpenExplorerSettings}
                 onCheckOnchainSettlement={onCheckOnchainSettlement}
@@ -2457,7 +2457,8 @@ export function TradeDetail({
             // in the rare case it reaches them, still sees both to decide). Refunding
             // the right order is what protects everyone.
             const isOversoldVoterView = isOversoldOrder && voteRole !== Role.ARBITER;
-            const showRelease = votePrompt.outcomes.includes(Outcome.RELEASE) && !isOversoldVoterView;
+            const showRelease = votePrompt.outcomes.includes(Outcome.RELEASE) && !isOversoldVoterView
+              && !(state.lock.onchain && settlementWinner(state)?.pubkey === pubkey);
             const showRefund = votePrompt.outcomes.includes(Outcome.REFUND);
             // v3.5 (C1/C7): the PERFORMER — the non-locker whom RELEASE pays —
             // is the party a colluding arbiter can rob (locker + arbiter hold

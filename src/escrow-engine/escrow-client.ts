@@ -1330,7 +1330,7 @@ export class EscrowClient {
       ...(params.tranche ? { tranche: params.tranche } : {}),
       // Tier 2.1: only emit the field when it says something other than the
       // default, so an ordinary ecash CREATE stays byte-identical on the wire.
-      ...(params.escrowMode === "onchain" ? { escrowMode: "onchain" as const } : {}),
+      ...(params.escrowMode === "onchain" ? { escrowMode: "onchain" as const, onchainAtomicRelease: true } : {}),
       ...(params.settlementPolicy ? { settlementPolicy: params.settlementPolicy } : {}),
       ...(params.sliceCount !== undefined ? { sliceCount: params.sliceCount } : {}),
       ...(escrowXonly ? { escrowXonly } : {}),
@@ -1987,7 +1987,7 @@ export class EscrowClient {
     }
   }
 
-  async vote(escrowId: string, outcome: Outcome): Promise<EscrowState> {
+  async vote(escrowId: string, outcome: Outcome, onchainRelease?: SettlementPayload): Promise<EscrowState> {
     const state = this.states.get(escrowId);
     if (!state) throw new Error(`Escrow ${escrowId} not loaded`);
 
@@ -2021,7 +2021,10 @@ export class EscrowClient {
     // share redundant — refinement #3).
     const shareEnvelope = await this.buildVoteShareEnvelope(state, role, pubkey, outcome);
 
+    if (state.lock.onchain && outcome === Outcome.RELEASE && role !== Role.ARBITER && !onchainRelease)
+      throw new Error("Choose or sign the payout before confirming this on-chain trade.");
     const payload: VotePayload = {
+      ...(onchainRelease ? { onchainRelease } : {}),
       type: "escrow:vote",
       outcome,
       role,
@@ -2053,6 +2056,10 @@ export class EscrowClient {
     };
 
     const signed = await this.signWithSimTag(unsigned);
+    const parsedVote = parseEscrowEvent(signed, JSON.stringify(payload), true);
+    if (!parsedVote.ok) throw new Error(parsedVote.error.message);
+    const checkedVote = applyEvent(this.states.get(escrowId)!, parsedVote.event);
+    if (!checkedVote.ok) throw new Error(checkedVote.error.message);
     await this.relayManager.publish(signed);
 
     const newState = this.applyLocally(escrowId, signed, payload, cycle);

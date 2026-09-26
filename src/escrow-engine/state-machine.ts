@@ -1,3 +1,4 @@
+import { atomicReleaseError, voteSettlement } from "./onchain-settlement-choice.js";
 import { finalRefundSettlementProof } from "./onchain-settlement-transport.js";
 import { fundingArbiter, fundingTermsError, onchainLockError, onchainFunder } from "./onchain-funding-terms.js";
 import { NEVER_EXPIRES } from "./types.js";
@@ -421,6 +422,7 @@ function handleCreate(event: ParsedEscrowEvent<CreatePayload>): TransitionResult
     // `mode` was resolved during the v6.0 gate above and is identical to this.
     escrowMode: mode,
     onchainNetwork: p.onchainNetwork ?? "mainnet",
+    onchainAtomicRelease: p.onchainAtomicRelease,
     settlementPolicy: p.settlementPolicy ?? defaultSettlementPolicy(mode),
     ...(p.sliceCount !== undefined ? { sliceCount: p.sliceCount } : {}),
     // Tier 2.1: the creator never JOINs, so their escrow key rides in CREATE.
@@ -1217,6 +1219,10 @@ function handleLock(state: EscrowState, event: ParsedEscrowEvent<LockPayload>): 
 
 function handleVote(state: EscrowState, event: ParsedEscrowEvent<VotePayload>): TransitionResult {
   const p = event.payload;
+  try {
+    const invalid = atomicReleaseError(state, event);
+    if (invalid) return err("INVALID_SETTLEMENT_PROOF", invalid, event.raw.id);
+  } catch { return err("INVALID_SETTLEMENT_PROOF", "Invalid vote-carried payout", event.raw.id); }
   const voterIsPrincipal = event.pubkey === state.participants[Role.BUYER] || event.pubkey === state.participants[Role.SELLER];
   const outcomeLaw = chamaOutcomeError(state, p.outcome, event.timestamp, event.chamaCycle, voterIsPrincipal ? "observe-principal" : "observe-arbiter", p.fillEvidence);
   if (outcomeLaw) return err("CHAMA_REFUND_ONLY", outcomeLaw, event.raw.id);
@@ -1355,6 +1361,8 @@ function handleVote(state: EscrowState, event: ParsedEscrowEvent<VotePayload>): 
   }
 
   const next = cloneState(state);
+  const payout = voteSettlement(event);
+  if (payout) next.settlements = [...(next.settlements ?? []), payout];
   next.eventChain.push(event);
   if (voterRole === Role.ARBITER && state.lock.arbiterPoolShare) {
     // Pooled-share lock: derive the ARBITER slot from ALL arbiter votes in the

@@ -1,7 +1,8 @@
+import type { SettlementPayload } from "../escrow-engine/types.js";
 import { SETTLEMENT_EXPLORER_TIMEOUT_MS } from '../bond-multisig/fund-watcher.js';
 import { observeOnchainAttention, type OnchainObservation } from '../escrow-engine/onchain-attention.js';
 import { maybeNotifyOnchainAttention } from '../notifications/notify-service.js';
-import { winnerSettlementChoice, assertWinnerMayChoose } from "../escrow-engine/onchain-settlement-choice.js";
+import { settlementWinner, winnerSettlementChoice, assertWinnerMayChoose } from "../escrow-engine/onchain-settlement-choice.js";
 import { findEscrowFundingUtxos, deriveCommittedBondKey, escrowDepositWindowSafe } from "../bond-multisig/onchain-escrow-funding.js";
 import { finalRefundSettlementProof, observedRefundSpend } from "../escrow-engine/onchain-settlement-transport.js";
 import { fundingArbiter, fundingTermsError, onchainLockError, onchainFunder } from "../escrow-engine/onchain-funding-terms.js";
@@ -842,7 +843,7 @@ export interface UseEscrowActions {
     selectedItems?: SelectedMenuItem[];
   }) => Promise<EscrowState>;
   /** Cast a vote */
-  vote: (escrowId: string, outcome: Outcome) => Promise<EscrowState>;
+  vote: (escrowId: string, outcome: Outcome, payoutAddress?: string) => Promise<EscrowState>;
   /**
    * Claim ecash as the winner — leaves sats in the user's Chama wallet.
    * Runs the full real-Fedimint flow:
@@ -2719,10 +2720,16 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
   // Forward-reference refreshBalance from within lock/claim actions
   const refreshBalanceRef = useRef<(() => Promise<void>) | null>(null);
 
-  const voteAction = useCallback(async (escrowId: string, outcome: Outcome) => {
+  const atomicReleaseRef = useRef<((id: string, address?: string) => Promise<SettlementPayload>) | null>(null);
+  const voteAction = useCallback(async (escrowId: string, outcome: Outcome, payoutAddress?: string) => {
     const client = requireClient();
     try {
-      const result = await client.vote(escrowId, outcome);
+      const trade = client.getState(escrowId);
+      const viewer = await client.getPubkey();
+      const principal = trade && (trade.participants.buyer === viewer || trade.participants.seller === viewer);
+      const payout = trade?.lock.onchain && principal && outcome === Outcome.RELEASE
+        ? await atomicReleaseRef.current!(escrowId, payoutAddress) : undefined;
+      const result = await client.vote(escrowId, outcome, payout);
       vibrate(outcome === Outcome.RELEASE ? [80, 40, 80] : [60, 30, 60, 30, 60]);
       return result;
     } catch (e: any) {
@@ -3090,7 +3097,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     const client = requireClient();
     const trade = client.getState(escrowId);
     if (!trade?.lock.onchain) throw new Error("This trade has no on-chain lock terms.");
-    if (trade.status !== EscrowStatus.APPROVED && trade.status !== EscrowStatus.CLAIMED
+    if (trade.status !== EscrowStatus.LOCKED && trade.status !== EscrowStatus.APPROVED && trade.status !== EscrowStatus.CLAIMED
       && trade.status !== EscrowStatus.COMPLETED) {
       throw new Error("Settlement is available only after the outcome is approved.");
     }
@@ -3102,12 +3109,12 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       network: ESCROW_NETWORK,
     });
     if (escrow.address !== t.address) throw new Error("On-chain lock address failed local recomputation.");
-    const winner = getWinner(trade);
-    if (!winner) throw new Error("No approved payout winner.");
+    const winner = settlementWinner(trade);
+    if (!winner) throw new Error("No payout winner.");
     const winnerXonly = winner.role === Role.BUYER ? t.buyerXonly : t.sellerXonly;
     const fallbackDestination = btcSigner.p2tr(hexToBytes(winnerXonly), undefined, ESCROW_NETWORK).address!;
     const choice = winnerSettlementChoice(trade);
-    const destination = requestedAddress?.trim() || choice?.destination || fallbackDestination;
+    const destination = requestedAddress === undefined ? choice?.destination || fallbackDestination : requestedAddress.trim() || fallbackDestination;
     try { btcSigner.Address(ESCROW_NETWORK).decode(destination); }
     catch { throw new Error("The on-chain payout address is invalid for this Bitcoin network."); }
     const fetchJson = esploraFetcher(defaultEsploraBase(ESCROW_NETWORK), { network: ESCROW_NETWORK, timeoutMs: SETTLEMENT_EXPLORER_TIMEOUT_MS });
@@ -3216,12 +3223,12 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     const work = (async () => {
       const client = requireClient();
       const initial = client.getState(escrowId);
-      if (!initial || getWinner(initial)?.pubkey !== await client.getPubkey()) throw new Error("Only the winner can choose where the sats go.");
+      if (!initial || settlementWinner(initial)?.pubkey !== await client.getPubkey()) throw new Error("Only the winner can choose where the sats go.");
       const arbitrated = !!initial.resolvedMajority?.includes(Role.ARBITER);
       // An explicit fallback click is distinct from reusing an existing direct address.
       const terms = initial.lock.onchain;
       if (!terms) throw new Error("This trade has no on-chain lock terms.");
-      const winner = getWinner(initial)!;
+      const winner = settlementWinner(initial)!;
       const fallback = btcSigner.p2tr(hexToBytes(winner.role === Role.BUYER ? terms.buyerXonly : terms.sellerXonly), undefined, ESCROW_NETWORK).address!;
       const destination = payoutAddress?.trim() || fallback;
       assertWinnerMayChoose(initial, await client.getPubkey(), destination);
@@ -3405,6 +3412,50 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     await finalizeOnchainSettlement(escrowId);
     return { psbt: signedPsbt, check };
   }, [finalizeOnchainSettlement, myEscrowKey, onchainSettlementContext, checkOnchainSettlement]);
+
+  atomicReleaseRef.current = async (escrowId, requestedAddress) => {
+    const client = requireClient(), trade = client.getState(escrowId);
+    if (!trade?.lock.onchain) throw new Error("No committed on-chain deposit.");
+    const winner = settlementWinner(trade), pubkey = await client.getPubkey();
+    const role = Object.values(Role).find(r => trade.participants[r] === pubkey);
+    if (!winner || !role || role === Role.ARBITER) throw new Error("Only a trade participant can confirm.");
+    const ctx = await onchainSettlementContext(escrowId, "coop", requestedAddress);
+    if (role === winner.role) {
+      const existing = winnerSettlementChoice(trade);
+      if (existing?.locked && existing.destination !== ctx.destination) throw new Error("The signed destination cannot change.");
+      const psbt = existing?.destination === ctx.destination ? existing.proposal.payload.psbt
+        : buildSettlementPsbt({ escrow: ctx.escrow, utxos: ctx.utxos, destination: ctx.destination, feeSats: ctx.feeSats });
+      const check = verifySettlementPsbt(psbt, ctx.expectation);
+      if (!check.ok) throw new Error(check.failures.join("; "));
+      return { type: "escrow:settlement", psbt, leaf: "coop", role, payoutAddress: ctx.destination };
+    }
+    const choice = winnerSettlementChoice(client.getState(escrowId)!);
+    if (!choice) throw new Error("The recipient must choose where the sats go before you confirm.");
+    const check = verifySettlementPsbt(choice.proposal.payload.psbt, ctx.expectation);
+    if (!check.ok) throw new Error(check.failures.join("; "));
+    const key = await myEscrowKey(escrowId);
+    if (!signingKeyMatchesRole(key.xonly, role, trade.lock.onchain)) throw new Error("This device cannot sign for the committed escrow key.");
+    const psbt = coSignSettlement(choice.proposal.payload.psbt, key.priv);
+    if (winnerSettlementChoice(client.getState(escrowId)!)?.id !== choice.id) throw new Error("The destination changed. Check it again before confirming.");
+    return { type: "escrow:settlement", psbt, leaf: "coop", role };
+  };
+
+  const autoPayoutInFlight = useRef(new Set<string>());
+  const autoPayoutAttempted = useRef(new Set<string>());
+  useEffect(() => {
+    if (!state.pubkey) return;
+    for (const trade of state.escrows.values()) {
+      if (trade.status !== EscrowStatus.APPROVED || getWinner(trade)?.pubkey !== state.pubkey || !trade.lock.onchain) continue;
+      const choice = winnerSettlementChoice(trade);
+      if (!choice?.locked) continue;
+      const attempt = `${trade.id}:${choice.id}`;
+      if (autoPayoutInFlight.current.has(trade.id) || autoPayoutAttempted.current.has(attempt)) continue;
+      autoPayoutAttempted.current.add(attempt); autoPayoutInFlight.current.add(trade.id);
+      void signOnchainSettlement(trade.id).catch(error => {
+        console.warn("[chama] Automatic payout needs a retry:", error);
+      }).finally(() => autoPayoutInFlight.current.delete(trade.id));
+    }
+  }, [state.escrows, state.pubkey, signOnchainSettlement]);
 
   const scanMyOnchainPayouts = useCallback(async () => {
     const current = stateRef.current;

@@ -1,3 +1,4 @@
+import { settlementWinner } from "../../escrow-engine/onchain-settlement-choice.js";
 import { payoutRecipientFor } from "../../escrow-engine/recipients.js";
 import { handleDisplayForViewer } from "../../payments/saved-handles.js";
 import { ProfileAvatar } from "../components/ProfileAvatar.js";
@@ -98,7 +99,7 @@ export function LiveTradeSurface({
   onOpenFullView: (section?: "onchain-funding") => void;
   onCheckOnchainFunding?: (id: string) => Promise<{ depositStatus: "waiting" | "seen" | "confirmed"; verdict: { funded: boolean } | null; refundVerified?: boolean; refundPending?: boolean }>;
   onchainActions?: OnchainTradeActions;
-  onVote: (outcome: Outcome) => Promise<void>;
+  onVote: (outcome: Outcome, payoutAddress?: string) => Promise<void>;
   /** Modal-driven money paths. Optional: when a caller hasn't wired them yet,
    *  the Fund / Claim surfaces defer to the full view via onOpenFullView. */
   onClaim?: () => Promise<void>;
@@ -169,7 +170,7 @@ export function LiveTradeSurface({
   const [busy, setBusy] = useState(false);
   const [onchainOpen, setOnchainOpen] = useState(false);
   useEffect(() => { setOnchainOpen(false); }, [state.id, state.status]);
-  const onchainControls = <OnchainTradeControls state={state} pubkey={pubkey} profileNames={profileNames} kind0Enabled={kind0Enabled} {...onchainActions} />;
+  const onchainControls = <OnchainTradeControls onReleaseWithPayout={address => onVote(Outcome.RELEASE, address)} state={state} pubkey={pubkey} profileNames={profileNames} kind0Enabled={kind0Enabled} {...onchainActions} />;
   const onchainOverlay = onchainOpen ? <OverlaySheet title="On-chain trade" onClose={() => setOnchainOpen(false)}>{onchainControls}</OverlaySheet> : null;
   const [armed, setArmed] = useState<Outcome | null>(null);
   // Cancel-with-reason (Jet 2026-09-05): a cancel/refund vote NEVER fires
@@ -502,6 +503,9 @@ export function LiveTradeSurface({
       }
       if (vp.kind === "none") {
         return <Waiting message={tr("lts.nothingNeeded")} />;
+      }
+      if (state.lock.onchain && settlementWinner(state)?.pubkey === pubkey && vp.outcomes.includes(Outcome.RELEASE)) {
+        return <Decision q={deedQuestion(state, myRole)} sub={releaseSub}>{onchainControls}</Decision>;
       }
       // vp.kind === "buttons"
       const outcomes = vp.outcomes;

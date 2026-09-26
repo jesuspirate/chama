@@ -2,10 +2,10 @@ import { onchainAttention, type OnchainObservation } from '../../escrow-engine/o
 import { EsploraUnavailableError } from '../../bond-multisig/fund-watcher.js';
 import { EXPLORER_RETRY_MESSAGE, explorerRetryDelay, retryExplorerRead } from '../../bond-multisig/explorer-retry.js';
 import { settlementUnsignedId } from "../../escrow-engine/onchain-settlement-transport.js";
-import { payoutUsesTradeKey, winnerSettlementChoice } from "../../escrow-engine/onchain-settlement-choice.js";
+import { payoutUsesTradeKey, settlementWinner, winnerSettlementChoice } from "../../escrow-engine/onchain-settlement-choice.js";
 import { profileNameFor, type NostrProfileNameMap } from "../nostr-profiles.js";
 import { useEffect, useRef, useState } from "react";
-import { EscrowStatus, Role, getEffectiveParticipantsAt, type EscrowState } from "../../escrow-engine/types.js";
+import { EscrowStatus, Outcome, Role, getEffectiveParticipantsAt, type EscrowState } from "../../escrow-engine/types.js";
 import { getWinner } from "../../escrow-engine/state-machine.js";
 import { fundingArbiter } from "../../escrow-engine/onchain-funding-terms.js";
 import { deriveOnchainView } from "../../escrow-engine/onchain-escrow-view.js";
@@ -21,6 +21,7 @@ import type { ComponentProps } from "react";
 import { OnchainEscrowPanel } from "./OnchainEscrowPanel.js";
 
 export interface OnchainTradeActions {
+  onReleaseWithPayout?: (address?: string) => Promise<void>;
   onchainObservation?: OnchainObservation;
   onOpenExplorerSettings?: () => void;
   fetchCommunityBonds?: (community: string) => Promise<VerifiedBond[]>;
@@ -78,7 +79,8 @@ export function OnchainTradeControls({ state, pubkey, profileNames, kind0Enabled
     view.payoutTxid ??= actions.onchainObservation.payout.txid;
     view.payoutAddress ??= actions.onchainObservation.payout.destination;
   }
-  const winner = getWinner(state);
+  const winner = settlementWinner(state);
+  const choosingWithVote = state.status === EscrowStatus.LOCKED && role === winner?.role && state.votes[role] === undefined && !!actions.onReleaseWithPayout;
   const choice = winnerSettlementChoice(state);
   const winnerName = profileNameFor(profileNames, winner?.pubkey, kind0Enabled) ?? "the winner";
   const approved = state.status === EscrowStatus.APPROVED || state.status === EscrowStatus.CLAIMED;
@@ -176,17 +178,19 @@ export function OnchainTradeControls({ state, pubkey, profileNames, kind0Enabled
       <p>{Object.entries(explorerFailures).some(([source,failed]) => source !== 'action' && failed) ? EXPLORER_RETRY_MESSAGE : "The block explorer did not answer. Try again."}</p>
       {actions.onOpenExplorerSettings && <button type="button" onClick={actions.onOpenExplorerSettings} style={buttonStyle}>Choose another block explorer</button>}
     </div>}
-    {view.canSettle && role === winner?.role && !choice?.locked && actions.onPrepareOnchainSettlement && <div style={{ margin: "12px 0", display: "grid", gap: 8 }}>
+    {(choosingWithVote || (view.canSettle && role === winner?.role && !choice?.locked && actions.onPrepareOnchainSettlement)) && <div style={{ margin: "12px 0", display: "grid", gap: 8 }}>
       <label htmlFor={`payout-${state.id}`} style={{ color: T.text, fontSize: 13 }}>{t("onchain.directPayoutLabel")}</label>
       <input id={`payout-${state.id}`} value={address} onChange={event => setAddress(event.target.value)} placeholder={t("onchain.directPayoutPlaceholder")} style={{ ...inputStyle, width: "100%", minHeight: 44 }} />
       <button type="button" disabled={busy || !address.trim()} style={{ ...buttonStyle, opacity: busy || !address.trim() ? 0.5 : 1 }} onClick={() => void run(async () => {
+        if (choosingWithVote) { await actions.onReleaseWithPayout!(address.trim()); return; }
         ++prepareGeneration.current; setCheck(null); setCheckedChoice(null); setSigned(false);
         const result = await actions.onPrepareOnchainSettlement!(state.id, address.trim()); setCheck(result.check); setCheckedChoice(settlementUnsignedId(result.psbt)); setSigned(result.signedByMe);
-      })}>{t("onchain.directPayoutUse")}</button>
+      })}>{choosingWithVote ? "Confirm · receive at this address" : t("onchain.directPayoutUse")}</button>
       <button type="button" disabled={busy} style={buttonStyle} onClick={() => void run(async () => {
+        if (choosingWithVote) { await actions.onReleaseWithPayout!(""); return; }
         ++prepareGeneration.current; setCheck(null); setCheckedChoice(null); setSigned(false);
         const result = await actions.onPrepareOnchainSettlement!(state.id); setCheck(result.check); setCheckedChoice(settlementUnsignedId(result.psbt)); setSigned(result.signedByMe);
-      })}>Send to my Chama key instead</button>
+      })}>{choosingWithVote ? "Confirm · receive in Chama" : "Send to my Chama key instead"}</button>
     </div>}
     {view.canSettle && !choice && role !== winner?.role && <p role="status">Waiting for {winnerName} to choose where the sats go.</p>}
     {view.canSettle && choice && <p style={{ color: T.muted, overflowWrap: "anywhere" }}>Payout address: {choice.destination}
