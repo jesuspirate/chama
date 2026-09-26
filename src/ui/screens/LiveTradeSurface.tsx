@@ -90,8 +90,8 @@ export function LiveTradeSurface({
    *  the user always knows where "back" lands. Falls back to "Trades". */
   backLabel?: string;
   /** Opens the full TradeDetail (unchanged) for everything past the happy path. */
-  onOpenFullView: () => void;
-  onCheckOnchainFunding?: (id: string) => Promise<{ verdict: { funded: boolean } | null; refundVerified?: boolean; refundPending?: boolean }>;
+  onOpenFullView: (section?: "onchain-funding") => void;
+  onCheckOnchainFunding?: (id: string) => Promise<{ depositStatus: "waiting" | "seen" | "confirmed"; verdict: { funded: boolean } | null; refundVerified?: boolean; refundPending?: boolean }>;
   onVote: (outcome: Outcome) => Promise<void>;
   /** Modal-driven money paths. Optional: when a caller hasn't wired them yet,
    *  the Fund / Claim surfaces defer to the full view via onOpenFullView. */
@@ -122,17 +122,18 @@ export function LiveTradeSurface({
   const [verifiedRefund, setVerifiedRefund] = useState<string | null>(null);
   const [verifiedDeposit, setVerifiedDeposit] = useState<string | null>(null);
   const [depositError, setDepositError] = useState<string | null>(null);
+  const [depositStatus, setDepositStatus] = useState<"waiting" | "seen" | "confirmed">("waiting");
   const depositIdentity = JSON.stringify([state.id, state.lock.onchain, state.onchainRefundClaimed]);
-  const requiresDepositCheck = state.escrowMode === "onchain" && (!!state.lock.onchain || !!state.onchainRefundClaimed) && state.status !== EscrowStatus.COMPLETED;
+  const requiresDepositCheck = state.escrowMode === "onchain" && (!!state.onchainFundingTerms || !!state.lock.onchain || !!state.onchainRefundClaimed) && state.status !== EscrowStatus.COMPLETED;
   useEffect(() => {
     if (!requiresDepositCheck) return;
     let cancelled = false;
     const check = async () => {
       try {
         const result = await onCheckOnchainFunding?.(state.id);
-        if (!cancelled) { setVerifiedDeposit(result?.verdict?.funded ? depositIdentity : null); setVerifiedRefund(result?.refundVerified ? depositIdentity : null); setDepositError(result?.refundPending ? "Refund broadcast; waiting for blockchain confirmation." : null); }
+        if (!cancelled) { setDepositStatus(result?.depositStatus ?? "waiting"); setVerifiedDeposit(result?.verdict?.funded ? depositIdentity : null); setVerifiedRefund(result?.refundVerified ? depositIdentity : null); setDepositError(result?.refundPending ? "Refund broadcast; waiting for blockchain confirmation." : null); }
       } catch (error) {
-        if (!cancelled) { setVerifiedDeposit(null); setVerifiedRefund(null); setDepositError(error instanceof Error ? error.message : String(error)); }
+        if (!cancelled) { setDepositStatus("waiting"); setVerifiedDeposit(null); setVerifiedRefund(null); setDepositError(error instanceof Error ? error.message : String(error)); }
       }
     };
     void check();
@@ -267,6 +268,11 @@ export function LiveTradeSurface({
         </Decision>;
       }
       if (iAmFunder && !preLock?.lapsed) {
+        if (state.escrowMode === "onchain") return (
+          <Decision q="Fund this trade on Bitcoin" sub="Prepare the deposit address and send the exact amount from an on-chain wallet.">
+            <PrimaryButton onClick={() => onOpenFullView("onchain-funding")} label="Open on-chain funding" />
+          </Decision>
+        );
         // Fiat trades reveal the locker's payment details inside the LOCK
         // payload (NIP-44, participants only) — where the fiat lands on
         // Exchange, the account the volunteer pays on Bill Pay. The full view
@@ -338,8 +344,18 @@ export function LiveTradeSurface({
             />
           );
         }
+        const funderName = profileNameFor(profileNames, participants[funderRole ?? Role.SELLER], kind0Enabled) ?? roleLabel(funderRole);
+        const onchainWaiting = state.escrowMode === "onchain" && state.onchainFundingTerms
+          ? depositStatus === "confirmed" && verifiedDeposit === depositIdentity
+            ? `${funderName}'s deposit is confirmed on Bitcoin. It becomes the lock the next time ${funderName} opens Chama.`
+            : depositStatus === "seen"
+              ? `${funderName}'s deposit is on Bitcoin, waiting for confirmation.`
+              : depositError ? `Could not check the Bitcoin deposit: ${depositError}`
+                : `Waiting for ${funderName}'s deposit on Bitcoin…`
+          : null;
         return (
-          <Waiting message={tr("lts.waitingLock", { role: roleLabel(funderRole) })}>
+          <Waiting message={onchainWaiting ?? tr("lts.waitingLock", { role: roleLabel(funderRole) })}>
+            {state.escrowMode === "onchain" && <MoreOptions onClick={() => onOpenFullView("onchain-funding")} label="Open on-chain deposit details" />}
             {preLock && (
               <CountdownTimer expiresAt={preLock.at} label={tr("lts.forRoleLock", { role: roleLabel(funderRole) })} />
             )}
@@ -657,15 +673,15 @@ export function LiveTradeSurface({
     <div style={{ padding: 24 }}>
       <p role="status">Refund confirmed on the blockchain.</p>
       <button onClick={onHome ?? onBack}>Home</button>
-      <button onClick={onOpenFullView}>Open on-chain controls</button>
+      <button onClick={() => onOpenFullView("onchain-funding")}>Open on-chain controls</button>
     </div>
   );
-  if (requiresDepositCheck && verifiedDeposit !== depositIdentity) return (
+  if (requiresDepositCheck && (state.lock.onchain || state.onchainRefundClaimed) && verifiedDeposit !== depositIdentity) return (
     <div style={{ padding: 24 }}>
       <button onClick={onBack}>{backLabel ?? "Back"}</button>
       <p role="status">Checking the deposit on the blockchain…</p>
       {depositError && <p>{depositError}</p>}
-      <button onClick={onOpenFullView}>Open on-chain controls</button>
+      <button onClick={() => onOpenFullView("onchain-funding")}>Open on-chain controls</button>
     </div>
   );
 

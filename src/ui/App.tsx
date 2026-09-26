@@ -600,7 +600,17 @@ export default function App() {
   // trade. "More options" flips to the full TradeDetail for this trade only;
   // reset when the open trade changes so each trade starts guided.
   const [expertTradeView, setExpertTradeView] = useState(false);
+  const [focusOnchainFunding, setFocusOnchainFunding] = useState(false);
   useEffect(() => { setExpertTradeView(false); }, [selectedId]);
+  useEffect(() => { setFocusOnchainFunding(false); }, [selectedId]);
+  useEffect(() => {
+    if (!expertTradeView || !focusOnchainFunding) return;
+    const frame = requestAnimationFrame(() => {
+      document.getElementById("onchain-funding-panel")?.scrollIntoView({ block: "center" });
+      setFocusOnchainFunding(false);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [expertTradeView, focusOnchainFunding]);
 
   // Offline guard: no publish/money action should fire when we have no relays —
   // otherwise the user works through the whole flow and only fails at the end.
@@ -4139,7 +4149,10 @@ export default function App() {
                 : detailBackView === "guided" ? t(detailReturnsHome ? "lts.backHome" : "canvas.backOffers")
                 : t("browse.navBrowse")
               }
-              onOpenFullView={() => setExpertTradeView(true)}
+              onOpenFullView={(section) => {
+                setFocusOnchainFunding(section === "onchain-funding");
+                setExpertTradeView(true);
+              }}
               onHome={guidedHome}
               onRepost={() => renewListing(selected.id)}
               onLock={tradeOnLock}

@@ -2240,6 +2240,7 @@ export function TradeDetail({
                 }}>{t("onchain.directPayoutUse")}</button>
                 {directPayoutError && <p role="alert">{directPayoutError}</p>}
               </div>}
+              <div id="onchain-funding-panel" style={{ scrollMarginBlock: 24 }}>
               <OnchainEscrowPanel
                 view={onchainView}
                 onPrepareFunding={!state.onchainFundingTerms && onchainView.viewerFunds && participants.buyer && participants.seller && onPrepareOnchainFunding ? () => {
@@ -2294,6 +2295,7 @@ export function TradeDetail({
                 }}
                 publishing={publishingKey}
               />
+              </div>
               </>
           )}
           {state.status === EscrowStatus.CREATED

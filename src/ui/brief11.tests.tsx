@@ -14,6 +14,13 @@ const values=new Map<string,string>();
 Object.defineProperty(globalThis,'localStorage',{configurable:true,value:{getItem:(k:string)=>values.get(k)??null,setItem:(k:string,v:string)=>values.set(k,v),removeItem:(k:string)=>values.delete(k)}});
 const buyer='b'.repeat(64),seller='a'.repeat(64),arbiter='c'.repeat(64);
 const profiles={[buyer]:'Bestie',[seller]:'Jetty',[arbiter]:'Judge'};
+const onchainCreated={provenance:'chain',id:'onchain-created',category:'p2p-trade',status:EscrowStatus.CREATED,escrowMode:'onchain',amountMsats:30_000_000,description:'Bitcoin offer',createdAt:Date.now()/1000,expiresAt:Date.now()/1000+86400,
+ participants:{buyer,seller,arbiter},initiator:{pubkey:seller},lock:{notesHash:null,lockedAt:null},votes:{},eventChain:[],chatMessages:[],communityArbiters:[arbiter]} as unknown as EscrowState;
+const onchainSellerHtml=renderToStaticMarkup(<LangProvider><LiveTradeSurface state={onchainCreated} pubkey={seller} onBack={()=>{}} onOpenFullView={()=>{}} onLock={async()=>{ throw new Error('ecash funding must not open'); }} onVote={async()=>{}} onSendChat={async()=>{}} /></LangProvider>);
+assert.match(onchainSellerHtml,/Open on-chain funding/);
+assert.doesNotMatch(onchainSellerHtml,/Fund &amp; lock|Fund & lock|insurance/,'on-chain simple view never offers the ecash funding action');
+const onchainBuyerHtml=renderToStaticMarkup(<LangProvider><LiveTradeSurface state={{...onchainCreated,onchainFundingTerms:{}} as EscrowState} pubkey={buyer} profileNames={profiles} kind0Enabled onBack={()=>{}} onOpenFullView={()=>{}} onVote={async()=>{}} onSendChat={async()=>{}} /></LangProvider>);
+assert.match(onchainBuyerHtml,/Waiting for Jetty&#x27;s deposit on Bitcoin/);
 for(const category of ['p2p-trade','bill-pay','marketplace','lending']) {
  const trade={provenance:'chain',id:'test',category,status:EscrowStatus.LOCKED,amountMsats:1000000,description:'Test',createdAt:Date.now()/1000,expiresAt:Date.now()/1000+86400,
  participants:{buyer,seller,arbiter},lock:{notesHash:'locked',lockedAt:Date.now()/1000,handle:{rail:'strike',value:'PRIVATE-HANDLE',networks:['strike']}},votes:{},eventChain:[],chatMessages:[],communityArbiters:[arbiter]} as unknown as EscrowState;
