@@ -17,6 +17,7 @@ const bundle = await build({ bundle: true, write: false, format: 'iife', jsx: 'a
   stdin: { resolveDir: process.cwd(), loader: 'tsx', contents: `
 import React from 'react'; import { createRoot } from 'react-dom/client';
 import { AssistedCanvas } from './src/ui/screens/AssistedCanvas';
+import { EsploraUnavailableError } from './src/bond-multisig/fund-watcher';
 import { ClaimPayoutModal } from './src/ui/panels/ClaimPayoutModal';
 import { TradeDetail } from './src/ui/screens/TradeDetail';
 import { LiveTradeSurface } from './src/ui/screens/LiveTradeSurface';
@@ -26,21 +27,24 @@ import { EscrowStatus, Outcome } from './src/escrow-engine/types';
 const base = ${JSON.stringify(fixture.state)};
 const terms = ${JSON.stringify(fixture.terms)};
 const keys = ${JSON.stringify(fixture.pks)};
-let fullView=false;
+let fullView=false, explorerDown=false, finalizeDown=false;
+window.explorerDown=(value)=>{explorerDown=value;};
+window.finalizeDown=(value)=>{finalizeDown=value;};
 const proposal={pubkey:keys.buyer,payload:{type:"escrow:settlement",role:"buyer",leaf:"coop",psbt:${JSON.stringify(payoutPsbt)},payoutAddress:${JSON.stringify(payoutAddress)}},raw:{id:"proposal"}};
 let state = base, viewer = keys.seller, funded = false, valid = true;
-const calls = window.calls = { full:0, prepare:0, lock:0, sign:0, vote:0, claim:0, payout:0, draft:0, ecashFund:0 };
+const calls = window.calls = { checks:0,finalizes:0,settings:0, full:0, prepare:0, lock:0, sign:0, vote:0, claim:0, payout:0, draft:0, ecashFund:0 };
 const root = createRoot(document.getElementById('root'));
 const check = async () => ({depositStatus: funded ? 'confirmed' : 'waiting', verdict: {funded}});
 const actions = {
+ onOpenExplorerSettings: () => {calls.settings++;},
  onchainFundingPlan: () => state.onchainFundingTerms ? {ready:true,address:terms.address} : {ready:false,blockers:['funding-terms']},
  onPrepareOnchainFunding: async () => {calls.prepare++; state={...state,onchainFundingTerms:terms}; render();},
  onCheckOnchainFunding: check,
  onPublishOnchainLock: async () => {calls.lock++; window.scenario('locked',viewer===keys.seller?'seller':'buyer');},
- onCheckOnchainSettlement: async () => ({psbt:proposal.payload.psbt,check:{ok:valid,failures:valid?[]:['tampered output']},signedByMe:false}),
+ onCheckOnchainSettlement: async () => {calls.checks++;if(explorerDown)throw new EsploraUnavailableError(['test'],[Error('timeout')]);return {psbt:proposal.payload.psbt,check:{ok:valid,failures:valid?[]:['tampered output']},signedByMe:false};},
  onPrepareOnchainSettlement: async () => {calls.draft++;state={...state,settlements:[proposal]};render();return actions.onCheckOnchainSettlement();},
  onSignOnchainSettlement: async () => {calls.sign++; return {psbt:proposal.payload.psbt,check:{ok:true,failures:[]}};},
- onFinalizeOnchainSettlement: async () => ({status:'waiting'}),
+ onFinalizeOnchainSettlement: async () => {calls.finalizes++;if(finalizeDown)throw new EsploraUnavailableError(['test'],[Error('timeout')]);return {status:'waiting'};},
  onScanMyOnchainPayouts: async () => {calls.payout++; return {payouts:[],balanceSats:0n};},
  onSweepOnchainPayout: async () => {throw Error('not used');}
 };
@@ -160,6 +164,26 @@ try {
     await page.waitForFunction(() => document.body.innerText.includes('deposit address') || document.body.innerText.includes('funding'));
     assert.equal(await page.evaluate(()=>(window as any).calls.ecashFund),0,'on-chain never uses the ecash funding handler in either view');
   }
+  for (const full of [false,true]) {
+    await page.evaluate(full=>{(window as any).fullView(full);(window as any).explorerDown(true);(window as any).scenario('approved','seller');(window as any).receiveProposal();},full);
+    await page.waitForFunction(()=>document.body.innerText.includes("block explorer didn't answer"));
+    assert.equal(await page.evaluate(()=>document.body.innerText.includes("doesn't match the trade")),false,'timeout is not a mismatch');
+    assert.equal(await page.evaluate(()=>[...document.querySelectorAll('button')].some(b=>b.textContent?.includes('Sign the payout')&&!b.disabled)),false,'timeout cannot enable signing');
+    await click('Choose another block explorer');
+    const before=await page.evaluate(()=>(window as any).calls.checks);
+    await page.evaluate(()=>(window as any).explorerDown(false));
+    await page.waitForFunction(before=>(window as any).calls.checks>before,{timeout:12_000},before);
+    await page.waitForFunction(()=>[...document.querySelectorAll('button')].some(b=>b.textContent?.includes('Sign the payout')&&!b.disabled));
+    await page.evaluate(()=>{(window as any).finalizeDown(true);});
+    await click('Check settlement');
+    await page.waitForFunction(()=>document.body.innerText.includes("block explorer didn't answer"));
+    const finalizes=await page.evaluate(()=>(window as any).calls.finalizes);
+    await page.evaluate(()=>(window as any).finalizeDown(false));
+    await page.waitForFunction(before=>(window as any).calls.finalizes>before,{timeout:12_000},finalizes);
+    await page.waitForFunction(()=>!document.body.innerText.includes("block explorer didn't answer"));
+  }
+  assert.equal(await page.evaluate(()=>(window as any).calls.settings),2,'both layouts expose explorer settings');
+  console.log('PASS timeout copy, disabled signing, automatic retry, manual settlement retry and explorer settings in both layouts');
   await page.evaluate(()=>(window as any).fullView(false));
   await page.evaluate(() => (window as any).scenario('done','buyer'));
   await page.waitForFunction(() => (window as any).calls.payout>0);

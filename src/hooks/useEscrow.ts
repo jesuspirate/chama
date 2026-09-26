@@ -1,3 +1,4 @@
+import { SETTLEMENT_EXPLORER_TIMEOUT_MS } from '../bond-multisig/fund-watcher.js';
 import { observeOnchainAttention, type OnchainObservation } from '../escrow-engine/onchain-attention.js';
 import { maybeNotifyOnchainAttention } from '../notifications/notify-service.js';
 import { winnerSettlementChoice, assertWinnerMayChoose } from "../escrow-engine/onchain-settlement-choice.js";
@@ -2937,7 +2938,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     if (!state) throw new Error("Escrow not loaded");
     const plan = onchainFundingPlan(escrowId);
     if (!plan.ready) return { plan, verdict: null as null | ReturnType<typeof verifyFunding>, depositStatus: "waiting" as const };
-    const fetchJson = esploraFetcher(defaultEsploraBase(ESCROW_NETWORK), { network: ESCROW_NETWORK });
+    const fetchJson = esploraFetcher(defaultEsploraBase(ESCROW_NETWORK), { network: ESCROW_NETWORK, timeoutMs: SETTLEMENT_EXPLORER_TIMEOUT_MS });
     const tipHeight = await esploraTipHeight(fetchJson);
     // A signed future refund is not a completed refund. Verify the actual
     // confirmed spend before letting either room call it done.
@@ -3065,7 +3066,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
           if (!trade.onchainFundingTerms || known?.payout?.confirmed || known?.refundSpent) continue;
           try {
             const observation = await observeOnchainAttention(trade,
-              esploraFetcher(defaultEsploraBase(ESCROW_NETWORK), {network:ESCROW_NETWORK, timeoutMs:20_000}));
+              esploraFetcher(defaultEsploraBase(ESCROW_NETWORK), {network:ESCROW_NETWORK, timeoutMs:SETTLEMENT_EXPLORER_TIMEOUT_MS}));
             if (stopped || stateRef.current?.pubkey !== viewer) return;
             setState(current => ({...current, onchainObservations: new Map(current.onchainObservations).set(trade.id, observation)}));
             const latest = stateRef.current?.escrows.get(trade.id);
@@ -3106,7 +3107,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     const destination = requestedAddress?.trim() || choice?.destination || fallbackDestination;
     try { btcSigner.Address(ESCROW_NETWORK).decode(destination); }
     catch { throw new Error("The on-chain payout address is invalid for this Bitcoin network."); }
-    const fetchJson = esploraFetcher(defaultEsploraBase(ESCROW_NETWORK), { network: ESCROW_NETWORK });
+    const fetchJson = esploraFetcher(defaultEsploraBase(ESCROW_NETWORK), { network: ESCROW_NETWORK, timeoutMs: SETTLEMENT_EXPLORER_TIMEOUT_MS });
     const found = await findEscrowFundingUtxos({ network: ESCROW_NETWORK,
       address: escrow.address, fetchJson, minConfs: defaultMinConfs(ESCROW_NETWORK),
     });
@@ -3140,7 +3141,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
   const onchainRefundAvailable = useCallback(async (escrowId: string) => {
     const trade = requireClient().getState(escrowId);
     if (!trade?.onchainFundingTerms || trade.status === EscrowStatus.COMPLETED) return false;
-    const tip = await esploraTipHeight(esploraFetcher(defaultEsploraBase(ESCROW_NETWORK), { network: ESCROW_NETWORK }));
+    const tip = await esploraTipHeight(esploraFetcher(defaultEsploraBase(ESCROW_NETWORK), { network: ESCROW_NETWORK, timeoutMs: SETTLEMENT_EXPLORER_TIMEOUT_MS }));
     return tip >= trade.onchainFundingTerms.refundLockUntil;
   }, []);
 
@@ -3153,7 +3154,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     if (trade.participants[role] !== await client.getPubkey()) throw new Error("Only the funder can refund this deposit");
     const invalid = fundingTermsError(trade, terms, Math.floor(Date.now() / 1000));
     if (invalid || terms.network !== ESCROW_NETWORK_LABEL) throw new Error(invalid ?? "Wrong Bitcoin network");
-    const fetchJson = esploraFetcher(defaultEsploraBase(ESCROW_NETWORK), { network: ESCROW_NETWORK });
+    const fetchJson = esploraFetcher(defaultEsploraBase(ESCROW_NETWORK), { network: ESCROW_NETWORK, timeoutMs: SETTLEMENT_EXPLORER_TIMEOUT_MS });
     const tipHeight = await esploraTipHeight(fetchJson);
     if (tipHeight < terms.refundLockUntil) throw new Error(`Refund unlocks at block ${terms.refundLockUntil}`);
     // Recover broadcast → COMPLETE failures using the exact journaled txid.
@@ -3260,7 +3261,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     if (recoveryEscrow.address !== recoveryTerms.address) {
       throw new Error("On-chain lock address failed local recomputation.");
     }
-    const recoveryFetch = esploraFetcher(defaultEsploraBase(ESCROW_NETWORK), { network: ESCROW_NETWORK });
+    const recoveryFetch = esploraFetcher(defaultEsploraBase(ESCROW_NETWORK), { network: ESCROW_NETWORK, timeoutMs: SETTLEMENT_EXPLORER_TIMEOUT_MS });
     const recoveryWinner = getWinner(recoveryTrade);
     const recoveryWinnerRole = recoveryWinner?.role === Role.BUYER || recoveryWinner?.role === Role.SELLER
       ? recoveryWinner.role

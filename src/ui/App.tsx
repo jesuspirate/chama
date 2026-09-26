@@ -586,6 +586,7 @@ export default function App() {
   const [canvasPublished, setCanvasPublished] = useState<{ label: string; escrowId?: string } | null>(null);
   // When the Advanced screen is opened from the trade-page NWC "Change" link,
   // land focused on the NWC wallets section instead of the top of the page.
+  const [advancedFocusExplorer, setAdvancedFocusExplorer] = useState(false);
   const [advancedFocusNwc, setAdvancedFocusNwc] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [sellerManageId, setSellerManageId] = useState<string | null>(null);
@@ -4145,6 +4146,7 @@ export default function App() {
               historyReloading={reloadingEscrows.has(selected.id)}
               onCheckOnchainFunding={actions.checkOnchainFunding}
               onchainActions={{
+                onOpenExplorerSettings: () => { setAdvancedFocusExplorer(true); setView("advanced"); },
                 fetchCommunityBonds: actions.fetchCommunityBonds,
                 onchainFundingPlan: actions.onchainFundingPlan,
                 onPrepareOnchainFunding: actions.prepareOnchainFunding,
@@ -4231,6 +4233,7 @@ export default function App() {
             onOnchainRefundAvailable={actions.onchainRefundAvailable}
             onPublishOnchainLock={actions.publishOnchainLock}
             onPrepareOnchainSettlement={actions.prepareOnchainSettlement}
+            onOpenExplorerSettings={() => { setAdvancedFocusExplorer(true); setView("advanced"); }}
             onCheckOnchainSettlement={actions.checkOnchainSettlement}
             onSignOnchainSettlement={actions.signOnchainSettlement}
             onFinalizeOnchainSettlement={actions.finalizeOnchainSettlement}
@@ -4759,6 +4762,7 @@ export default function App() {
           <SettingsAdvanced
             fedimint={fedimint}
             loadActiveRecoveryKey={actions.exportActiveRecoveryKey}
+            focusExplorer={advancedFocusExplorer}
             focusNwc={advancedFocusNwc}
             onBack={() => setView("me")}
             onSandboxFund={() => setShowFundModal(true)}

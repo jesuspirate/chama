@@ -1,3 +1,5 @@
+import { EsploraUnavailableError } from '../../bond-multisig/fund-watcher.js';
+import { EXPLORER_RETRY_MESSAGE, explorerRetryDelay, retryExplorerRead } from '../../bond-multisig/explorer-retry.js';
 import { settlementUnsignedId } from "../../escrow-engine/onchain-settlement-transport.js";
 import { winnerSettlementChoice } from "../../escrow-engine/onchain-settlement-choice.js";
 import { profileNameFor, type NostrProfileNameMap } from "../nostr-profiles.js";
@@ -18,6 +20,7 @@ import type { ComponentProps } from "react";
 import { OnchainEscrowPanel } from "./OnchainEscrowPanel.js";
 
 export interface OnchainTradeActions {
+  onOpenExplorerSettings?: () => void;
   fetchCommunityBonds?: (community: string) => Promise<VerifiedBond[]>;
   onchainFundingPlan?: (id: string) => { ready: boolean; address?: string; blockers?: readonly string[] };
   onPrepareOnchainFunding?: (id: string) => Promise<void>;
@@ -53,7 +56,10 @@ export function OnchainTradeControls({ state, pubkey, profileNames, kind0Enabled
   const [, refreshBonds] = useState(0);
   const busyRef = useRef(false);
   const prepareGeneration = useRef(0);
-  const finalizeAttempt = useRef("");
+  const [finalizeNonce, retryFinalize] = useState(0);
+  const [explorerFailures, setExplorerFailures] = useState<Record<string, boolean>>({});
+  const markExplorer = (source: string, failed: boolean) => setExplorerFailures(current => current[source] === failed ? current : {...current, [source]:failed});
+  const unavailable = Object.values(explorerFailures).some(Boolean);
   const latest = useRef(actions); latest.current = actions;
   const participants = getEffectiveParticipantsAt(state, Math.floor(Date.now()/1000));
   const role = effectiveViewerRole(state, pubkey);
@@ -81,45 +87,69 @@ export function OnchainTradeControls({ state, pubkey, profileNames, kind0Enabled
   }, [state.community]);
   useEffect(() => {
     if (!state.onchainFundingTerms || state.status === EscrowStatus.COMPLETED) return;
-    let cancelled = false;
+    let cancelled = false, attempt = 0;
+    let timer: ReturnType<typeof setTimeout>;
     const poll = async () => {
+      let delay = 30_000;
       try {
         const result = await latest.current.onCheckOnchainFunding?.(state.id);
         if (cancelled) return;
+        markExplorer('funding', false); attempt = 0;
         setVerified(result?.verdict?.funded ? identity : null);
         setRefunded(result?.refundVerified === true);
         setDepositStatus(result?.verdict?.funded ? "confirmed" : result?.depositStatus === "seen" ? "seen" : "waiting");
         setNote(result?.refundPending ? "Refund broadcast; waiting for blockchain confirmation."
           : result?.verdict?.reason === "underfunded" ? `The escrow holds ${result.verdict.amountSats} sats, less than the trade's ${result.verdict.expectedSats}.` : null);
-      } catch (error) { if (!cancelled) { setVerified(null); setRefunded(false); setDepositStatus("waiting"); setNote(String(error instanceof Error ? error.message : error)); } }
+      } catch (error) { if (!cancelled) {
+        setVerified(null); setRefunded(false); setDepositStatus("waiting");
+        markExplorer('funding', error instanceof EsploraUnavailableError);
+        if (error instanceof EsploraUnavailableError) delay = explorerRetryDelay(attempt++);
+        else setNote(String(error instanceof Error ? error.message : error));
+      } }
       try { const ready = await latest.current.onOnchainRefundAvailable?.(state.id); if (!cancelled) setRefundAvailable(ready === true); }
       catch { if (!cancelled) setRefundAvailable(false); }
+      if (!cancelled) timer = setTimeout(() => void poll(), delay);
     };
-    void poll(); const timer = setInterval(() => void poll(), 30_000);
-    return () => { cancelled = true; clearInterval(timer); };
+    void poll();
+    return () => { cancelled = true; clearTimeout(timer); };
   }, [state.id, identity, state.status]);
   useEffect(() => {
     const generation = ++prepareGeneration.current;
     setCheck(null); setCheckedChoice(null); setSigned(false);
     if (!view.canSettle || !eligibleSigner || !choice || !actions.onCheckOnchainSettlement) return;
-    let cancelled = false;
-    void actions.onCheckOnchainSettlement(state.id).then(result => {
-      if (!cancelled && prepareGeneration.current === generation) { setCheck(result.check); setCheckedChoice(settlementUnsignedId(result.psbt)); setSigned(result.signedByMe); }
-    }).catch(error => { if (!cancelled && prepareGeneration.current === generation) setCheck({ ok: false, failures: [String(error instanceof Error ? error.message : error)] }); });
-    return () => { cancelled = true; };
+    return retryExplorerRead({
+      read: () => actions.onCheckOnchainSettlement!(state.id),
+      success: result => {
+        if (prepareGeneration.current !== generation) return;
+        markExplorer('settlement', false); setCheck(result.check); setCheckedChoice(settlementUnsignedId(result.psbt)); setSigned(result.signedByMe);
+      },
+      failure: error => {
+        if (prepareGeneration.current !== generation) return;
+        setCheck(null); setCheckedChoice(null);
+        markExplorer('settlement', error instanceof EsploraUnavailableError);
+        if (!(error instanceof EsploraUnavailableError)) setNote(String(error instanceof Error ? error.message : error));
+      },
+    });
   }, [state.id, state.settlements?.length, view.canSettle, eligibleSigner, choice?.id, actions.onCheckOnchainSettlement]);
   useEffect(() => {
-    const count = state.settlements?.length ?? 0;
-    const attempt = `${state.id}:${count}`;
-    // A spent deposit may mean the other signer broadcast. The action checks
-    // outspends before adopting completion, even while the UI checks funding.
-    if (!approved || !eligibleSigner || !count || finalizeAttempt.current === attempt) return;
-    finalizeAttempt.current = attempt;
-    void actions.onFinalizeOnchainSettlement?.(state.id).catch(error => setNote(String(error instanceof Error ? error.message : error)));
-  }, [state.id, state.settlements?.length, approved, eligibleSigner, actions.onFinalizeOnchainSettlement]);
+    if (!approved || !eligibleSigner || !state.settlements?.length || !actions.onFinalizeOnchainSettlement) return;
+    // Finalization already verifies and adopts an existing spend before any
+    // idempotent rebroadcast. Retrying never creates a choice or a signature.
+    return retryExplorerRead({
+      read: () => actions.onFinalizeOnchainSettlement!(state.id),
+      success: result => { markExplorer('finalize', false); if (result.status !== 'waiting') setNote('Payout sent · waiting for confirmation'); },
+      failure: error => {
+        markExplorer('finalize', error instanceof EsploraUnavailableError);
+        if (!(error instanceof EsploraUnavailableError)) setNote(String(error instanceof Error ? error.message : error));
+      },
+    });
+  }, [state.id, state.settlements?.length, approved, eligibleSigner, actions.onFinalizeOnchainSettlement, finalizeNonce]);
   const run = async (action: () => Promise<unknown>) => {
-    if (busyRef.current) return; busyRef.current = true; setBusy(true); setNote(null);
-    try { await action(); } catch (error) { setNote(String(error instanceof Error ? error.message : error)); }
+    if (busyRef.current) return; busyRef.current = true; setBusy(true); setNote(null); markExplorer("action", false);
+    try { await action(); } catch (error) {
+      markExplorer("action", error instanceof EsploraUnavailableError);
+      setNote(error instanceof EsploraUnavailableError ? "The block explorer did not answer. Try the action again." : String(error instanceof Error ? error.message : error));
+    }
     finally { busyRef.current = false; setBusy(false); }
   };
   const buttonStyle = { padding: "12px 14px", minHeight: 44, borderRadius: T.rs, border: `1px solid ${T.borderHi}`,
@@ -131,6 +161,10 @@ export function OnchainTradeControls({ state, pubkey, profileNames, kind0Enabled
   if (refunded) return <div><p role="status">Refund confirmed on Bitcoin.</p>{recovery}</div>;
   return <div>
     {recovery}
+    {unavailable && <div role="status" style={{color:T.muted, margin:'12px 0'}}>
+      <p>{Object.entries(explorerFailures).some(([source,failed]) => source !== 'action' && failed) ? EXPLORER_RETRY_MESSAGE : "The block explorer did not answer. Try again."}</p>
+      {actions.onOpenExplorerSettings && <button type="button" onClick={actions.onOpenExplorerSettings} style={buttonStyle}>Choose another block explorer</button>}
+    </div>}
     {view.canSettle && role === winner?.role && !choice?.locked && actions.onPrepareOnchainSettlement && <div style={{ margin: "12px 0", display: "grid", gap: 8 }}>
       <label htmlFor={`payout-${state.id}`} style={{ color: T.text, fontSize: 13 }}>{t("onchain.directPayoutLabel")}</label>
       <input id={`payout-${state.id}`} value={address} onChange={event => setAddress(event.target.value)} placeholder={t("onchain.directPayoutPlaceholder")} style={{ ...inputStyle, width: "100%", minHeight: 44 }} />
@@ -147,7 +181,7 @@ export function OnchainTradeControls({ state, pubkey, profileNames, kind0Enabled
     {view.canSettle && choice && <p style={{ color: T.muted, overflowWrap: "anywhere" }}>Payout address: {choice.destination}
       {choice.locked && <><br />The other signer has signed. The destination is fixed.</>}</p>}
     {(!view.canSettle || choice) && <>
-    <OnchainEscrowPanel view={view} network={ESCROW_NETWORK_LABEL} settlementCheck={checkedChoice === choice?.id ? check : check?.ok === false ? check : null} signing={busy} signedByViewer={signed}
+    <OnchainEscrowPanel settlementUnavailable={unavailable} view={view} network={ESCROW_NETWORK_LABEL} settlementCheck={unavailable ? null : checkedChoice === choice?.id ? check : check?.ok === false ? check : null} signing={busy} signedByViewer={signed}
       checking={busy} fundingNote={note} depositStatus={depositStatus} publishing={busy} refunding={busy}
       onPrepareFunding={!state.onchainFundingTerms && view.viewerFunds && participants.buyer && participants.seller && actions.onPrepareOnchainFunding
         ? () => void run(() => actions.onPrepareOnchainFunding!(state.id)) : undefined}
@@ -165,7 +199,7 @@ export function OnchainTradeControls({ state, pubkey, profileNames, kind0Enabled
       }) : undefined}
       onPublishKey={actions.onPublishArbiterKey ? () => void run(async () => actions.onPublishArbiterKey!()) : undefined} />
     </>}
-    {approved && (choice || state.settlements?.some(message => message.payload.final)) && actions.onFinalizeOnchainSettlement && <button type="button" style={buttonStyle} disabled={busy} onClick={() => void run(() => actions.onFinalizeOnchainSettlement!(state.id))}>Check settlement</button>}
+    {approved && (choice || state.settlements?.some(message => message.payload.final)) && actions.onFinalizeOnchainSettlement && <button type="button" style={buttonStyle} disabled={busy} onClick={() => { markExplorer("finalize", false); retryFinalize(n => n + 1); }}>Check settlement</button>}
     {note && view.stage !== "awaiting-funding" && view.stage !== "awaiting-keys" && <p role="status" style={{ color: T.muted }}>{note}</p>}
   </div>;
 }

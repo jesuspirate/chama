@@ -55,6 +55,15 @@ export function defaultMinConfs(network: BtcNetwork): number {
   return network === SIGNET ? 1 : 1;
 }
 
+/** Transport failure is not a failed settlement checklist. */
+export class EsploraUnavailableError extends Error {
+  constructor(readonly hosts: readonly string[], readonly causes: readonly unknown[]) {
+    super(`Block explorer unavailable: ${causes.map(e => e instanceof Error ? e.message : String(e)).join('; ')}`);
+    this.name = 'EsploraUnavailableError';
+  }
+}
+export const SETTLEMENT_EXPLORER_TIMEOUT_MS = 20_000;
+
 /** Build a deadline-bound `fetch`-backed EsploraFetch for the app (throws on
  * non-2xx). An overall generation signal may cancel every chain read together. */
 export function esploraFetcher(
@@ -91,7 +100,7 @@ export function esploraFetcher(
     // silent zero. Hedge only the SHIPPED mainnet endpoint; a user-selected
     // explorer remains authoritative and is never bypassed behind their back.
     const candidates = opts.network !== SIGNET && normalizedBase === builtinMainnet
-      ? [normalizedBase, "https://blockstream.info/api"]
+      ? [normalizedBase, "https://blockstream.info/api", "https://mempool.emzy.de/api"]
       : [normalizedBase];
 
     const controllers = candidates.map(() => new AbortController());
@@ -99,26 +108,29 @@ export function esploraFetcher(
     let completed = 0;
     let fallbackTimer: ReturnType<typeof setTimeout> | null = null;
     const errors: unknown[] = [];
+    const started = new Set<number>();
 
     return new Promise<any>((resolve, reject) => {
       const finishFailure = (index: number, error: unknown) => {
         errors[index] = error;
         completed += 1;
         if (winner) return;
+        console.warn(`[chama] Block explorer ${new URL(candidates[index]).host} failed`, error instanceof Error ? error.name : 'request failed');
         // A fast explicit failure should not wait for the hedge delay.
         if (index === 0 && candidates.length > 1 && fallbackTimer) {
           clearTimeout(fallbackTimer);
           fallbackTimer = null;
-          launch(1);
+          candidates.forEach((_, i) => { if (i > 0) launch(i); });
         }
         if (completed >= candidates.length) {
-          reject(errors.find(Boolean) ?? new Error(`Esplora unavailable for ${path}`));
+          reject(opts.signal?.aborted ? opts.signal.reason : new EsploraUnavailableError(candidates, errors));
         }
       };
 
       const launch = (index: number) => {
         const controller = controllers[index];
-        if (!controller || winner) return;
+        if (!controller || winner || started.has(index)) return;
+        started.add(index);
         const timeout = setTimeout(
           () => controller.abort(new DOMException("Esplora request timed out", "TimeoutError")),
           opts.timeoutMs ?? 8_000,
@@ -156,7 +168,7 @@ export function esploraFetcher(
         // doubling routine explorer traffic.
         fallbackTimer = setTimeout(() => {
           fallbackTimer = null;
-          launch(1);
+          candidates.forEach((_, i) => { if (i > 0) launch(i); });
         }, 600);
       }
     });

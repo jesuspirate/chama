@@ -31,6 +31,7 @@ export function OnchainEscrowPanel({
   view,
   network,
   settlementCheck,
+  settlementUnavailable = false,
   signing,
   signedByViewer,
   onSign,
@@ -50,6 +51,7 @@ export function OnchainEscrowPanel({
   network: "mainnet" | "signet";
   /** Result of `verifySettlementPsbt`. Null while nothing is pending. */
   settlementCheck?: SettlementCheck | null;
+  settlementUnavailable?: boolean;
   signing?: boolean;
   signedByViewer?: boolean;
   onSign?: () => void;
@@ -266,7 +268,7 @@ export function OnchainEscrowPanel({
           this client yet. Saying so plainly beats an idle screen: the winner is
           otherwise left staring at "settling" with no idea whether they are
           waiting on the network, the counterparty, or a bug. */}
-      {view.canSettle && !settlementCheck && (
+      {view.canSettle && !settlementCheck && !settlementUnavailable && (
         <div style={{
           marginTop: 10, padding: "9px 11px", borderRadius: T.rs,
           background: T.surface, border: `1px solid ${T.border}`,

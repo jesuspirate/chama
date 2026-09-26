@@ -1,3 +1,4 @@
+import { BlockExplorerSetting } from '../panels/BlockExplorerSetting.js';
 import { useState, useEffect, useRef, type ReactNode } from "react";
 import { type FedimintState } from "../../hooks/useEscrow.js";
 import { T, inputStyle } from "../theme.js";
@@ -62,6 +63,7 @@ export function SettingsAdvanced({
   onResetLocalWallet,
   onSandboxFund,
   focusNwc = false,
+  focusExplorer = false,
   communitySlug,
   userPubkey,
   onPublishRoster,
@@ -96,6 +98,7 @@ export function SettingsAdvanced({
   /** When true (arrived via the "Change" link on the trade-page NWC banner),
    *  open expanded on the NWC wallets section and scroll it into view. */
   focusNwc?: boolean;
+  focusExplorer?: boolean;
   /** v0.3.0 Phase 5: opens FundWalletModal — the only remaining
    *  callsite of that surface in production. Reachable only when
    *  Power-user mode is on. The label on the button below carries the
@@ -332,6 +335,8 @@ export function SettingsAdvanced({
       {(powerUserOn || isDev) && (
         <RemoteBridgeCard />
       )}
+
+      <BlockExplorerSetting focus={focusExplorer} />
 
       <StewardRosterCard
         communitySlug={communitySlug ?? null}
