@@ -804,7 +804,7 @@ export function AssistedCanvas({
               const groups = groupBySettlementRail(goodsMatches, m => settlementRailOf(m.listing.escrowMode));
               const named = railHeadersNeeded(groups);
               return groups.flatMap(group => [
-                ...(named ? [<RailHeader key={`rail-${group.rail}`} rail={group.rail} count={group.items.length} />] : []),
+                ...(named ? [<RailHeader key={`rail-${group.rail}`} rail={group.rail} count={group.items.length} showRule={false} />] : []),
                 ...group.items.map(match => <GoodsMatch profileNames={profileNames} kind0Enabled={kind0Enabled} key={match.listing.id} match={match} onOpen={() => onOpenTrade(match.listing.id)} />),
               ]);
             })()
@@ -816,7 +816,7 @@ export function AssistedCanvas({
               const groups = groupBySettlementRail(ranked, r => settlementRailOf(r.candidate.listing.escrowMode));
               const named = railHeadersNeeded(groups);
               return groups.flatMap(group => [
-                ...(named ? [<RailHeader key={`rail-${group.rail}`} rail={group.rail} count={group.items.length} />] : []),
+                ...(named ? [<RailHeader key={`rail-${group.rail}`} rail={group.rail} count={group.items.length} showRule={false} />] : []),
                 ...group.items.map(({ candidate, labels }) => <Match key={candidate.listing.id} candidate={candidate} labels={labels} onOpen={() => { setSelected(candidate); setSurface("review"); }} />),
               ]);
             })()}

@@ -11,7 +11,7 @@ const RAIL_GLYPH: Record<SettlementRail, string> = {
   "other": "◇",
 };
 
-export function RailHeader({ rail, count }: { rail: SettlementRail; count?: number }) {
+export function RailHeader({ rail, count, showRule = true }: { rail: SettlementRail; count?: number; showRule?: boolean }) {
   const { t } = useT();
   return (
     <div style={{
@@ -27,7 +27,7 @@ export function RailHeader({ rail, count }: { rail: SettlementRail; count?: numb
       {typeof count === "number" && (
         <span style={{ fontWeight: 500, color: T.muted }}>· {count}</span>
       )}
-      <span style={{ flex: 1, height: 1, background: T.border }} />
+      {showRule && <span style={{ flex: 1, height: 1, background: T.border }} />}
     </div>
   );
 }
