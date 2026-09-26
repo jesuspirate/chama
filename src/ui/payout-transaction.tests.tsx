@@ -1,3 +1,4 @@
+import { ConductFactLines } from "./components/ConductFacts.js";
 import assert from 'node:assert/strict';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { LangProvider } from '../i18n/index.js';
@@ -23,3 +24,8 @@ for(const confirmed of [false,true]) {
  assert.match(text,confirmed?/Payout confirmed · 29,838 sats to bc1ql3…xshj/:/Payout sent · waiting for confirmation/);
 }
 console.log('PASS payout transaction identity: first six/last four, full title and copy value, independent deposit link, confirmed and pending notification copy');
+
+const conductHtml=renderToStaticMarkup(<ConductFactLines record={{marks:2,complete:true,trades:[],standing:{sellerSpeed:{medianSeconds:120,samples:3},arbiterSpeed:null,settledTrades:3,bonded:{sats:'100000',days:12},newHere:false}}} />);
+assert.ok(conductHtml.indexOf('Made a buyer wait')<conductHtml.indexOf('Signs within'));
+assert.match(conductHtml,/median of 3/);assert.match(conductHtml,/Bonded 100,000 sats for 12 days/);assert.match(conductHtml,/3 trades settled on chain/);
+assert.match(renderToStaticMarkup(<ConductFactLines record={{marks:0,complete:false,trades:[]}} />),/Public history unavailable/);

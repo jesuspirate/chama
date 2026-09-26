@@ -1,3 +1,5 @@
+import { conductStanding, type BondConductProof } from "../escrow-engine/conduct-standing.js";
+import { SIGNET as PUBLIC_SIGNET } from "../bond-multisig/multisig.js";
 import { replayPublicConduct, readConductSpend, publicConductRecord, type PublicConductRecord } from "../escrow-engine/public-conduct.js";
 import { stalledPayoutEligibility } from "../escrow-engine/onchain-stalled.js";
 import type { SettlementPayload } from "../escrow-engine/types.js";
@@ -3488,12 +3490,31 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
         const trade = replayPublicConduct(read.events);
         if (!trade || !Object.values(trade.participants).includes(pubkey)) { complete=false; continue; }
         if (!trade.lock.onchain) continue;
-        const network = trade.lock.onchain.network === "mainnet" ? btcSigner.NETWORK : ESCROW_NETWORK;
+        const network = trade.lock.onchain.network === "mainnet" ? btcSigner.NETWORK : PUBLIC_SIGNET;
         const spend = await readConductSpend(trade,esploraFetcher(defaultEsploraBase(network),{network})).catch(()=>null);
         trades.push({state:trade,spend});
       } catch { complete=false; }
     }
-    return publicConductRecord(pubkey,trades,complete);
+    const record = publicConductRecord(pubkey,trades,complete);
+    const bondProofs: BondConductProof[] = [];
+    let bondsKnown = false;
+    try {
+      const read = await client.queryPublicConduct({kinds:[ARBITER_BOND_ANNOUNCEMENT_KIND],authors:[pubkey],limit:500});
+      bondsKnown = read.complete && read.events.length<500;
+      for (const announcement of selectLatestAnnouncements(read.events)) {
+        if (announcement.npub !== pubkey) continue;
+        const network = announcement.network === "mainnet" ? BOND_NETWORK : PUBLIC_SIGNET;
+        const fetchJson = esploraFetcher(defaultEsploraBase(network),{network});
+        const tipHeight = await esploraTipHeight(fetchJson);
+        const bond = await verifyBondAnnouncement(announcement,{network,fetchJson,tipHeight});
+        if (!bond) { bondsKnown=false; continue; }
+        const tx = bond.fundingTxid ? await fetchJson(`/tx/${bond.fundingTxid}`) : null;
+        const blocks = await fetchJson('/blocks');
+        bondProofs.push({bond,fundedAtTime:Number.isSafeInteger(tx?.status?.block_time)?tx.status.block_time:null,
+          tipTime:Array.isArray(blocks) && Number.isSafeInteger(blocks[0]?.timestamp)?blocks[0].timestamp:null});
+      }
+    } catch { bondsKnown=false; }
+    return {...record,standing:conductStanding(pubkey,record,bondProofs,bondsKnown)};
   }, []);
 
   const scanMyOnchainPayouts = useCallback(async () => {

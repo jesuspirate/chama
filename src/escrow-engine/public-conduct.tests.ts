@@ -55,3 +55,40 @@ assert.equal(replayPublicConduct(events.map(e=>({...e,sig:'00'.repeat(64)}))),nu
 assert.deepEqual(publicConductTags({...state!,onchainPublicConduct:undefined},{type:'escrow:vote',role:Role.SELLER,outcome:Outcome.RELEASE,votedAt:clock}),[],'legacy private history is never disclosed');
 assert.deepEqual(publicConductTags(state!,{type:'escrow:chat',message:'secret',sentAt:clock} as EscrowPayload),[]);
 console.log('PASS public conduct: signed outsider replay, both orderings, actual confirmed leaf, no forged/self-reported facts, unknown reads, legacy privacy');
+
+// Standing: every sample is bounded by a signed counterparty reference.
+const { conductStanding } = await import('./conduct-standing.js');
+const completedState=state! as EscrowState;
+const paid=completedState.eventChain.find(e=>e.kind===Kind.VOTE && e.pubkey===f.pks.buyer)!;
+const records=[60,120,360].map((delay,index)=>{
+ const response=f.event(Kind.SETTLEMENT,'seller',{type:'escrow:settlement',psbt:coSignSettlement(coop,keys.seller),leaf:'coop',role:Role.SELLER});
+ response.timestamp=paid.timestamp+delay;response.prevEventId=paid.raw.id;
+ return {state:{...completedState,id:`sample-${index}`,settlementStalled:undefined,settlements:[response as any]},spend:{txid,confirmed:true,leaf:'coop' as const}};
+});
+for(const ordering of [records,[...records].reverse()]) {
+ const record=publicConductRecord(f.pks.seller,ordering,true);
+ const standing=conductStanding(f.pks.seller,record,[],true);
+ assert.deepEqual(standing.sellerSpeed,{medianSeconds:120,samples:3});
+ assert.equal(standing.settledTrades,3);
+ assert.equal(conductStanding(f.pks.seller,publicConductRecord(f.pks.seller,ordering.slice(0,2),true),[],true).sellerSpeed,null,'requires three samples');
+ assert.equal(conductStanding(f.pks.seller,{...record,complete:false},[],true).settledTrades,null,'partial history is unknown, not zero');
+ const unbound=ordering.map(row=>({...row,state:{...row.state,settlements:row.state.settlements!.map(e=>({...e,prevEventId:null}))}}));
+ assert.equal(conductStanding(f.pks.seller,publicConductRecord(f.pks.seller,unbound,true),[],true).sellerSpeed,null,'no timing without a signed reference');
+}
+const empty=publicConductRecord(f.pks.seller,[],true);
+assert.equal(conductStanding(f.pks.seller,empty,[],true).newHere,true);
+assert.equal(conductStanding(f.pks.seller,{...empty,complete:false},[],true).newHere,false);
+const bond={npub:f.pks.seller,address:'verified-address',funded:true,active:true,actualSats:100000n} as import('../bond-multisig/bond-announcement.js').VerifiedBond;
+const bondProof={bond,fundedAtTime:100,tipTime:100+12*86400};
+assert.deepEqual(conductStanding(f.pks.seller,empty,[bondProof,bondProof],true).bonded,{sats:'100000',days:12},'same bond advertised twice counts once');
+assert.equal(conductStanding(f.pks.seller,empty,[{...bondProof,fundedAtTime:null}],true).bonded,null,'unknown funding time is not zero days');
+console.log('PASS public standing: bounded signed speed, median minimum, ordering, unknown history, dated and deduplicated bonds, new-key distinction');
+const arbitration=[30,180,300].map((delay,index)=>{
+ const bv=f.event(Kind.VOTE,'buyer',{type:'escrow:vote',role:Role.BUYER,outcome:Outcome.RELEASE,votedAt:1});
+ const sv=f.event(Kind.VOTE,'seller',{type:'escrow:vote',role:Role.SELLER,outcome:Outcome.REFUND,votedAt:1});
+ const av=f.event(Kind.VOTE,'arbiter',{type:'escrow:vote',role:Role.ARBITER,outcome:Outcome.RELEASE,votedAt:1});
+ av.timestamp=sv.timestamp+delay;av.prevEventId=sv.raw.id;
+ return {state:{...completedState,id:`arb-${index}`,eventChain:[av,bv,sv]},spend:{txid,confirmed:true,leaf:'dispute' as const}};
+});
+assert.deepEqual(conductStanding(f.pks.arbiter,publicConductRecord(f.pks.arbiter,arbitration,true),[],true).arbiterSpeed,{medianSeconds:180,samples:3});
+assert.deepEqual(conductStanding(f.pks.arbiter,publicConductRecord(f.pks.arbiter,[...arbitration].reverse(),true),[],true).arbiterSpeed,{medianSeconds:180,samples:3});

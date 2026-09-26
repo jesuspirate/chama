@@ -826,7 +826,7 @@ export function LiveTradeSurface({
         <ConductFacts pubkey={party.pubkey} />
         <CopyButton value={party.pubkey} />
         {party.role === Role.ARBITER ? <TradeArbiterRecord profileNames={profileNames} kind0Enabled={kind0Enabled} state={state} trades={knownTrades} fetchBonds={fetchCommunityBonds} />
-          : <p>{tr("trade.partyObserved", { count: knownTrades.filter(trade => trade.eventChain.some(event => event.pubkey === party.pubkey)).length })}</p>}
+          : null}
         <p>{tr("trade.arbiterConduct")}</p>
       </OverlaySheet>}
       {/* The room strip. PHILOSOPHY.md rule 1 — "trade with people, not
@@ -921,7 +921,7 @@ function PersonChip({ person, name, onClick }: { person: RoomPresence; name: str
     : tr("lts.roomQuiet");
   return (
     <button type="button" onClick={onClick} style={{ minHeight: 44, cursor: "pointer",
-      display: "inline-flex", alignItems: "center", gap: 6, minWidth: 0,
+      display: "inline-flex", alignItems: "center", flexWrap: "wrap", gap: 6, minWidth: 0, maxWidth: "100%",
       fontFamily: T.mono, fontSize: 11,
       background: T.surface, border: `1px solid ${person.ready ? `${T.green}44` : T.border}`,
       borderRadius: 999, padding: "4px 10px",

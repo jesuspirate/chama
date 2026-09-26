@@ -22,3 +22,17 @@ Discovery is bounded at 100 trades and 500 events per read. Timeouts, truncated
 reads, missing public history and unknown chain reads are reported as incomplete.
 A positive verified mark is still shown as “at least N” when other history is
 unknown. Incomplete history never becomes a zero count or an endorsement.
+
+Standing uses this same public replay. Seller speed is the median from a buyer's
+signed RELEASE to the seller's valid Bitcoin signature; arbiter speed is the
+median from the second disagreeing principal vote to the arbiter's signed vote.
+Responses must reference the earlier event directly or through the signed
+chain. These are event-timestamp measurements, not a trusted relay receipt
+clock. Fewer than three samples or incomplete history suppresses the median.
+
+Bond amounts come from verified active deposits, deduplicated by address. Age
+uses the confirmed funding transaction's block time and the explorer tip's block
+time. Missing timestamps suppress the age. Settled counts require confirmed
+cooperative/dispute spends. A completed, empty public discovery with no bond
+history says “New here”; failed or private history says “Public history
+unavailable.” No ratings or local observed-trade counts enter these facts.

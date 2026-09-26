@@ -2819,6 +2819,7 @@ export class EscrowClient {
       tags: [
         [TAGS.ESCROW_ID, escrowId],
         [TAGS.TYPE, "escrow:settlement"],
+        ...(state.onchainPublicConduct && state.eventChain.at(-1) ? [["conduct-after", state.eventChain.at(-1)!.raw.id]] : []),
         ...publicConductTags(state, payload),
         ...recipients.map(pk => [TAGS.PARTICIPANT, pk]),
       ],

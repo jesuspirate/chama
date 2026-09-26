@@ -1141,7 +1141,7 @@ export function Match({ candidate, labels, onOpen }: { candidate: GuidedMatchCan
   const bill = candidate.sourceMenuItem?.label ?? candidate.listing.description;
   return <button type="button" className="assisted-match" onClick={onOpen}>
     <div className="assisted-tags">{labels.map(label => <span key={label}>{label}</span>)}</div>
-    <ConductFacts pubkey={candidate.listing.initiator.pubkey} />
+    <ConductFacts pubkey={candidate.sellerPubkey} />
     <div className="assisted-match-row"><div><strong>{isBill ? tr("canvas.payBillTitle", { fiat, bill }) : `${sats} sats`}</strong><small>{candidate.listing.description}</small></div><b>{isBill ? tr("canvas.getSats", { amount: candidate.amountSats.toLocaleString() }) : fiat}</b></div>
     <div className="assisted-match-foot"><span>{getRailByKey(candidate.paymentRail)?.displayName ?? candidate.paymentRail}</span><b>{tr("canvas.review")}</b></div>
   </button>;

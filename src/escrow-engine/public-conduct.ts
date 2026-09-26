@@ -48,7 +48,7 @@ export interface ConductSpend {
   leaf: 'coop' | 'dispute' | 'other' | 'unspent';
 }
 export interface ConductTrade { state: EscrowState; spend: ConductSpend | null; }
-export interface PublicConductRecord { marks: number; complete: boolean; trades: ConductTrade[]; }
+export interface PublicConductRecord { standing?: import("./conduct-standing.js").ConductStanding; marks: number; complete: boolean; trades: ConductTrade[]; }
 
 export async function readConductSpend(state: EscrowState, fetchJson: EsploraFetch): Promise<ConductSpend | null> {
   const terms=state.lock.onchain, winner=getWinner(state);
@@ -76,7 +76,7 @@ export async function readConductSpend(state: EscrowState, fetchJson: EsploraFet
 /** Positive marks survive incomplete unrelated history; absence is unknown.
  * No wall clock, ratings, expiration, author-claimed counts or local summaries. */
 export function publicConductRecord(pubkey: string, trades: readonly ConductTrade[], complete: boolean): PublicConductRecord {
-  const unique=[...new Map([...trades].sort((a,b)=>a.state.id.localeCompare(b.state.id)).map(t=>[t.state.id,t])).values()];
+  const unique=[...new Map([...trades].filter(t=>Object.values(t.state.participants).includes(pubkey)).sort((a,b)=>a.state.id.localeCompare(b.state.id)).map(t=>[t.state.id,t])).values()];
   const marked=new Set<string>();
   for (const {state,spend} of unique) {
     if (!spend?.confirmed || spend.leaf!=='dispute') continue;

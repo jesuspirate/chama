@@ -1672,7 +1672,7 @@ export function TradeDetail({
           subtitle={repFor} onClose={() => setRepFor(null)}>
           <ConductFacts pubkey={repFor} />
           <CopyButton value={repFor} />
-          <p>{t("trade.partyObserved", { count: (knownTrades ?? [state]).filter(trade => trade.eventChain.some(event => event.pubkey === repFor)).length })}</p>
+
           {fetchRatingSummary && <ReputationReadout pubkey={repFor}
             name={profileNameFor(profileNames, repFor, kind0Enabled)} fetchSummary={fetchRatingSummary} />}
           {(repFor === participants[Role.ARBITER] || repFor === previewArbiterPk) &&

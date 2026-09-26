@@ -10,7 +10,7 @@ export function ArbiterRecordCard({ record, profileNames, kind0Enabled = false }
   // A partial local trade history cannot support a shared reputation claim.
   // Only the independently verified, funded and active bond is shown here.
   return <div style={{ border: `1px solid ${T.border}`, borderRadius: 12, padding: 12, margin: '12px 0',
-    display: 'flex', alignItems: 'center', gap: 8, color: record.bondSats === 0n ? T.muted : T.text }}>
+    display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, color: record.bondSats === 0n ? T.muted : T.text }}>
     <ConductFacts pubkey={record.pubkey} />
     <ProfileAvatar pubkey={record.pubkey} fallback={null} size={24} />
     <span>{record.bondSats === 0n
