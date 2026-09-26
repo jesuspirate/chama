@@ -182,6 +182,7 @@ export function OnchainTradeControls({ state, pubkey, profileNames, kind0Enabled
         scan={actions.onScanMyOnchainPayouts} sweep={actions.onSweepOnchainPayout} /> : null;
   if (refunded) return <div><p role="status">Refund confirmed on Bitcoin.</p>{recovery}</div>;
   return <div>
+    {state.onchainPublicConduct && state.status === EscrowStatus.CREATED && <p style={{color:T.muted}}>On-chain confirmations and payout signatures are public, verifiable conduct. Chat and payment details stay private.</p>}
     {recovery}
     {role === winner?.role && state.status !== EscrowStatus.COMPLETED && refundHeight && <p style={{color:T.muted}}>
       This must settle before {estimate ? `${estimate} (estimated; block ${refundHeight})` : `block ${refundHeight} (date estimate unavailable)`}; after that the sats can go back to the funder.

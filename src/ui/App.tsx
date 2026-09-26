@@ -1,3 +1,4 @@
+import { ConductProvider } from "./components/ConductFacts.js";
 import { tradeDetailReturnsHome } from "./decisions.js";
 import { fundingPremiumMsats } from "../payments/funding-premium.js";
 import { nativeLockEarmarks } from "../fedimint/pending-native-locks.js";
@@ -3311,7 +3312,7 @@ export default function App() {
     });
 
   return (
-    <div style={{
+    <ConductProvider load={actions.fetchPublicConduct}><div style={{
       background: T.bg, color: T.text, minHeight: "100dvh",
       // v2.7 Stage 4: detail mode widens to 1120 so TradeDetail's built-in
       // ≥980px two-column layout (listing pane + sticky trade-room/chat) can
@@ -5071,7 +5072,7 @@ export default function App() {
         </>
       )}
 
-    </div>
+    </div></ConductProvider>
   );
 }
 

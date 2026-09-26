@@ -1,3 +1,4 @@
+import { replayPublicConduct, readConductSpend, publicConductRecord, type PublicConductRecord } from "../escrow-engine/public-conduct.js";
 import { stalledPayoutEligibility } from "../escrow-engine/onchain-stalled.js";
 import type { SettlementPayload } from "../escrow-engine/types.js";
 import { SETTLEMENT_EXPLORER_TIMEOUT_MS } from '../bond-multisig/fund-watcher.js';
@@ -987,6 +988,7 @@ export interface UseEscrowActions {
   publishOnchainLock: (escrowId: string) => Promise<EscrowState>;
   /** Build (if absent), publish, and locally verify the cooperative PSBT. */
   checkOnchainSettlement: (escrowId: string) => Promise<{ psbt: string; check: SettlementCheck; signedByMe: boolean }>;
+  fetchPublicConduct: (pubkey: string) => Promise<PublicConductRecord>;
   requestStalledOnchainPayout: (escrowId: string) => Promise<void>;
   prepareOnchainSettlement: (escrowId: string, payoutAddress?: string) => Promise<{ psbt: string; check: SettlementCheck; signedByMe: boolean }>;
   /** Re-verify, add this participant's signature, and publish the revision. */
@@ -3470,6 +3472,29 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       }).finally(() => autoPayoutInFlight.current.delete(trade.id));
     }
   }, [state.escrows, state.pubkey, signOnchainSettlement, checkOnchainSettlement, finalizeOnchainSettlement]);
+
+  const fetchPublicConduct = useCallback(async (pubkey: string): Promise<PublicConductRecord> => {
+    const client = requireClient();
+    const kinds = Object.values(EscrowEventKind).filter(v=>typeof v === "number") as number[];
+    const reads = await Promise.all([client.queryPublicConduct({kinds,authors:[pubkey],limit:500}),client.queryPublicConduct({kinds,"#p":[pubkey],limit:500})]);
+    let complete = reads.every(r=>r.complete && r.events.length<500);
+    const ids = [...new Set(reads.flatMap(r=>r.events).map(e=>e.tags.find(t=>t[0]==="d")?.[1]).filter((id):id is string=>!!id))].sort();
+    if (ids.length>100) complete=false;
+    const trades: PublicConductRecord["trades"] = [];
+    for (const id of ids.slice(0,100)) {
+      try {
+        const read = await client.queryPublicConduct({kinds,"#d":[id],limit:500});
+        complete &&= read.complete && read.events.length<500;
+        const trade = replayPublicConduct(read.events);
+        if (!trade || !Object.values(trade.participants).includes(pubkey)) { complete=false; continue; }
+        if (!trade.lock.onchain) continue;
+        const network = trade.lock.onchain.network === "mainnet" ? btcSigner.NETWORK : ESCROW_NETWORK;
+        const spend = await readConductSpend(trade,esploraFetcher(defaultEsploraBase(network),{network})).catch(()=>null);
+        trades.push({state:trade,spend});
+      } catch { complete=false; }
+    }
+    return publicConductRecord(pubkey,trades,complete);
+  }, []);
 
   const scanMyOnchainPayouts = useCallback(async () => {
     const current = stateRef.current;
@@ -5974,6 +5999,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     onchainRefundAvailable,
     checkOnchainFunding,
     publishOnchainLock,
+    fetchPublicConduct,
     requestStalledOnchainPayout,
     prepareOnchainSettlement,
     checkOnchainSettlement,

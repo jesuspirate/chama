@@ -1,3 +1,4 @@
+import { ConductFacts } from "./ConductFacts.js";
 import { hasMissedBuyerLock, isRenewalPaused } from "../../escrow-engine/listing-renewal-age.js";
 import { listingIdentityKey } from "../../escrow-engine/listing-renewal-ledger.js";
 import { isCountdownDeadline } from "./CountdownTimer.js";
@@ -586,6 +587,7 @@ export function TradeCard({
             </div>
           )}
 
+          <ConductFacts pubkey={state.initiator.pubkey} />
           <TradeIdLine id={state.id} />
           <TradeTimeLine createdAt={state.createdAt} />
 

@@ -1,3 +1,4 @@
+import { ConductFacts } from "../components/ConductFacts.js";
 import type { OnchainObservation } from '../../escrow-engine/onchain-attention.js';
 import { PaymentButton } from "../components/PaymentCard.js";
 import { OverlaySheet } from "../components/OverlaySheet.js";
@@ -1669,6 +1670,7 @@ export function TradeDetail({
 
         {repFor && <OverlaySheet title={profileNameFor(profileNames, repFor, kind0Enabled) ?? t("trade.participants")}
           subtitle={repFor} onClose={() => setRepFor(null)}>
+          <ConductFacts pubkey={repFor} />
           <CopyButton value={repFor} />
           <p>{t("trade.partyObserved", { count: (knownTrades ?? [state]).filter(trade => trade.eventChain.some(event => event.pubkey === repFor)).length })}</p>
           {fetchRatingSummary && <ReputationReadout pubkey={repFor}
@@ -4226,10 +4228,10 @@ export function TradeDetail({
             </div>
             <div style={{ minWidth: 0, flex: 1 }}>
               <span style={{ fontFamily: T.mono, fontSize: 11, fontWeight: 700 }}>
-                <button type="button" onClick={e => { e.stopPropagation(); if (participants.buyer) setRepFor(participants.buyer); }} style={{ background: "none", border: 0, color: ROLE_COLOR.buyer, minHeight: 44, cursor: "pointer" }}>{dealBuyerName ?? t("trade.buyer")}</button>
+                <button type="button" onClick={e => { e.stopPropagation(); if (participants.buyer) setRepFor(participants.buyer); }} style={{ background: "none", border: 0, color: ROLE_COLOR.buyer, minHeight: 44, cursor: "pointer" }}><ConductFacts pubkey={participants.buyer} />{dealBuyerName ?? t("trade.buyer")}</button>
                 <span style={{ color: T.muted }}> ⇄ </span>
-                <button type="button" onClick={e => { e.stopPropagation(); if (participants.seller) setRepFor(participants.seller); }} style={{ background: "none", border: 0, color: ROLE_COLOR.seller, minHeight: 44, cursor: "pointer" }}>{dealSellerName ?? t("trade.seller")}</button>
-                <button type="button" onClick={e => { e.stopPropagation(); const key = participants.arbiter ?? previewArbiterPk; if (key) setRepFor(key); }} style={{ background: "none", border: 0, color: ROLE_COLOR.arbiter, minHeight: 44, cursor: "pointer" }}>{t("trade.roleArbiter")}</button>
+                <button type="button" onClick={e => { e.stopPropagation(); if (participants.seller) setRepFor(participants.seller); }} style={{ background: "none", border: 0, color: ROLE_COLOR.seller, minHeight: 44, cursor: "pointer" }}><ConductFacts pubkey={participants.seller} />{dealSellerName ?? t("trade.seller")}</button>
+                <button type="button" onClick={e => { e.stopPropagation(); const key = participants.arbiter ?? previewArbiterPk; if (key) setRepFor(key); }} style={{ background: "none", border: 0, color: ROLE_COLOR.arbiter, minHeight: 44, cursor: "pointer" }}><ConductFacts pubkey={participants.arbiter ?? previewArbiterPk} />{t("trade.roleArbiter")}</button>
               </span>
               <span style={{ fontFamily: T.sans, fontSize: 11, color: T.muted }}> · {state.description || tradeRoomTitle}</span>
             </div>
@@ -4295,13 +4297,13 @@ export function TradeDetail({
             const isAutoArbiter = role === Role.ARBITER && !realPk && !!previewArbiterPk;
             const dotPk = realPk ?? (isAutoArbiter ? previewArbiterPk : null);
             return (
-              <Dot key={role} role={role}
+              <div key={role}><ConductFacts pubkey={dotPk} /><Dot role={role}
                 pk={dotPk}
                 isYou={myRole === role}
                 voted={!!state.votes[role]} outcome={state.votes[role]}
                 autoAssigned={isAutoArbiter}
                 onClick={dotPk ? () => setRepFor(dotPk) : undefined}
-                displayName={profileNameFor(profileNames, dotPk, kind0Enabled)} />
+                displayName={profileNameFor(profileNames, dotPk, kind0Enabled)} /></div>
             );
           })}
         </div>

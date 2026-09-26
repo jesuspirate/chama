@@ -1,3 +1,4 @@
+import { ConductFacts } from "../components/ConductFacts.js";
 import { readPreferredRails, savePreferredRails } from "../../payments/preferred-rails.js";
 import { useCanvasViewport } from "../hooks/useCanvasViewport.js";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
@@ -1140,6 +1141,7 @@ export function Match({ candidate, labels, onOpen }: { candidate: GuidedMatchCan
   const bill = candidate.sourceMenuItem?.label ?? candidate.listing.description;
   return <button type="button" className="assisted-match" onClick={onOpen}>
     <div className="assisted-tags">{labels.map(label => <span key={label}>{label}</span>)}</div>
+    <ConductFacts pubkey={candidate.listing.initiator.pubkey} />
     <div className="assisted-match-row"><div><strong>{isBill ? tr("canvas.payBillTitle", { fiat, bill }) : `${sats} sats`}</strong><small>{candidate.listing.description}</small></div><b>{isBill ? tr("canvas.getSats", { amount: candidate.amountSats.toLocaleString() }) : fiat}</b></div>
     <div className="assisted-match-foot"><span>{getRailByKey(candidate.paymentRail)?.displayName ?? candidate.paymentRail}</span><b>{tr("canvas.review")}</b></div>
   </button>;
@@ -1150,6 +1152,7 @@ function GoodsMatch({ match, onOpen, profileNames, kind0Enabled }: { profileName
   const seller = listing.participants[Role.SELLER] ?? listing.initiator?.pubkey ?? tr("canvas.seller");
   return <button type="button" className="assisted-match" onClick={onOpen}>
     <div className="assisted-tags">{match.reasons.slice(0, 2).map(reason => <span key={reason}>{marketReasonLabel(reason, match.overBudgetSats)}</span>)}</div>
+    <ConductFacts pubkey={seller} />
     <div className="assisted-match-row"><div><strong>{match.matchedItem?.label ?? listing.description}</strong><small>{match.matchedItem ? listing.description : (profileNameFor(profileNames, seller, kind0Enabled) ?? shortKey(seller))}</small></div><b>{tr("canvas.satsValue", { amount: match.amountSats.toLocaleString() })}</b></div>
     <div className="assisted-match-foot"><span>{tr("canvas.inYourChama")}</span><b>{tr("canvas.review")}</b></div>
   </button>;

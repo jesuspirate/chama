@@ -1,3 +1,4 @@
+import { ConductFacts } from "../components/ConductFacts.js";
 import { settlementWinner } from "../../escrow-engine/onchain-settlement-choice.js";
 import { payoutRecipientFor } from "../../escrow-engine/recipients.js";
 import { handleDisplayForViewer } from "../../payments/saved-handles.js";
@@ -822,6 +823,7 @@ export function LiveTradeSurface({
       </div>
 
       {party?.pubkey && <OverlaySheet title={profileNameFor(profileNames, party.pubkey, kind0Enabled) ?? tr("trade.participants")} subtitle={party.pubkey} onClose={() => setParty(null)}>
+        <ConductFacts pubkey={party.pubkey} />
         <CopyButton value={party.pubkey} />
         {party.role === Role.ARBITER ? <TradeArbiterRecord profileNames={profileNames} kind0Enabled={kind0Enabled} state={state} trades={knownTrades} fetchBonds={fetchCommunityBonds} />
           : <p>{tr("trade.partyObserved", { count: knownTrades.filter(trade => trade.eventChain.some(event => event.pubkey === party.pubkey)).length })}</p>}
@@ -924,6 +926,7 @@ function PersonChip({ person, name, onClick }: { person: RoomPresence; name: str
       background: T.surface, border: `1px solid ${person.ready ? `${T.green}44` : T.border}`,
       borderRadius: 999, padding: "4px 10px",
     }}>
+      <ConductFacts pubkey={person.pubkey} />
       <ProfileAvatar pubkey={person.pubkey} fallback={null} size={24} />
       <span
         className={here ? "lts-here-dot" : undefined}

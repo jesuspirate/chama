@@ -1,3 +1,4 @@
+import { publicConductTags } from "./public-conduct.js";
 import type { SettlementStalledPayload } from "./types.js";
 import { finalRefundSettlementProof } from "./onchain-settlement-transport.js";
 import { chamaClientTag, isChamaClientTagKind } from "./client-tag.js";
@@ -903,6 +904,12 @@ export class EscrowClient {
    * One-shot query for events matching a filter. Resolves after EOSE
    * from all connected relays, or after the timeout.
    */
+  async queryPublicConduct(filter: import("./relay-manager.js").NostrFilter) {
+    const probe = new FetchProbe("public-conduct", "public evidence");
+    const events = await this.relayManager.fetchOnce(filter, 8_000, probe);
+    return { events, complete: probe.snapshot(events.length).resolvedBy === "eose" };
+  }
+
   async queryOnce(
     filter: import("./relay-manager.js").NostrFilter,
     timeoutMs = 5_000,
@@ -1331,7 +1338,7 @@ export class EscrowClient {
       ...(params.tranche ? { tranche: params.tranche } : {}),
       // Tier 2.1: only emit the field when it says something other than the
       // default, so an ordinary ecash CREATE stays byte-identical on the wire.
-      ...(params.escrowMode === "onchain" ? { escrowMode: "onchain" as const, onchainAtomicRelease: true } : {}),
+      ...(params.escrowMode === "onchain" ? { escrowMode: "onchain" as const, onchainAtomicRelease: true, onchainPublicConduct: true } : {}),
       ...(params.settlementPolicy ? { settlementPolicy: params.settlementPolicy } : {}),
       ...(params.sliceCount !== undefined ? { sliceCount: params.sliceCount } : {}),
       ...(escrowXonly ? { escrowXonly } : {}),
@@ -2052,6 +2059,7 @@ export class EscrowClient {
         [TAGS.ESCROW_ID, escrowId],
         [TAGS.PREV_EVENT, lastEventId, "", "reply"],
         [TAGS.TYPE, "escrow:vote"],
+        ...publicConductTags(state, payload),
       ],
       content,
     };
@@ -2773,7 +2781,7 @@ export class EscrowClient {
     const payload: SettlementStalledPayload = { type: "escrow:settlement_stalled", proposalId, payout };
     const content = JSON.stringify(await createEnvelope(JSON.stringify(payload), this.envelopeRecipients(state), (pt, pk) => this.signer.nip44Encrypt(pt, pk)));
     const signed = await this.signWithSimTag({ kind: EscrowEventKind.SETTLEMENT_STALLED, created_at: Math.floor(Date.now()/1000),
-      tags: [[TAGS.ESCROW_ID, escrowId], [TAGS.TYPE, payload.type], [TAGS.PREV_EVENT, state.eventChain.at(-1)!.raw.id, "", "reply"]], content });
+      tags: [[TAGS.ESCROW_ID, escrowId], [TAGS.TYPE, payload.type], [TAGS.PREV_EVENT, state.eventChain.at(-1)!.raw.id, "", "reply"], ...publicConductTags(state, payload)], content });
     const parsed = parseEscrowEvent(signed, JSON.stringify(payload), true);
     if (!parsed.ok) throw new Error(parsed.error.message);
     const checked = applyEvent(this.states.get(escrowId)!, parsed.event);
@@ -2811,6 +2819,7 @@ export class EscrowClient {
       tags: [
         [TAGS.ESCROW_ID, escrowId],
         [TAGS.TYPE, "escrow:settlement"],
+        ...publicConductTags(state, payload),
         ...recipients.map(pk => [TAGS.PARTICIPANT, pk]),
       ],
       content: JSON.stringify(envelope),
@@ -4402,6 +4411,7 @@ export class EscrowClient {
         [TAGS.ESCROW_ID, escrowId],
         [TAGS.PREV_EVENT, lastEventId, "", "reply"],
         [TAGS.TYPE, "escrow:resolve"],
+        ...publicConductTags(state, payload),
       ],
       content,
     };

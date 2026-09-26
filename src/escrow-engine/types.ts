@@ -394,6 +394,8 @@ export interface CreatePayload {
   onchainNetwork?: "mainnet" | "signet";
   /** Principal RELEASE carries its payout proposal/signature in the same event. */
   onchainAtomicRelease?: boolean;
+  /** New trades publish minimal, signed on-chain conduct facts. */
+  onchainPublicConduct?: boolean;
   /** v6.0: the settlement-policy vocabulary, signed at CREATE. Must AGREE with
    *  `escrowMode` (sibling gate, SETTLEMENT_POLICY_MODE_MISMATCH). Absent ⇒
    *  the mode's default policy (legacy trades stay readable). */
@@ -1096,6 +1098,8 @@ export interface EscrowState {
   onchainNetwork?: "mainnet" | "signet";
   /** Principal RELEASE carries its payout proposal/signature in the same event. */
   onchainAtomicRelease?: boolean;
+  /** New trades publish minimal, signed on-chain conduct facts. */
+  onchainPublicConduct?: boolean;
   /** v6.0: the signed settlement policy. Defaulted from `escrowMode` when the
    *  CREATE omitted it, so readers never handle undefined. */
   settlementPolicy: string;

@@ -201,6 +201,7 @@ function getPrevEventId(tags: string[][]): string | null {
 function validateCreatePayload(data: unknown): data is CreatePayload {
   const d = data as Record<string, unknown>;
   if (!validEscrowXonly(d.escrowXonly)) return false;
+  if (d.onchainPublicConduct !== undefined && typeof d.onchainPublicConduct !== "boolean") return false;
   if (d.onchainAtomicRelease !== undefined && typeof d.onchainAtomicRelease !== "boolean") return false;
   if (d.onchainNetwork !== undefined && d.onchainNetwork !== "mainnet" && d.onchainNetwork !== "signet") return false;
   if (d.listingKind !== undefined && d.listingKind !== "work" && d.listingKind !== "work-request") return false;

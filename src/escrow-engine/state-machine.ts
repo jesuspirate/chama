@@ -425,6 +425,7 @@ function handleCreate(event: ParsedEscrowEvent<CreatePayload>): TransitionResult
     escrowMode: mode,
     onchainNetwork: p.onchainNetwork ?? "mainnet",
     onchainAtomicRelease: p.onchainAtomicRelease,
+    onchainPublicConduct: p.onchainPublicConduct,
     settlementPolicy: p.settlementPolicy ?? defaultSettlementPolicy(mode),
     ...(p.sliceCount !== undefined ? { sliceCount: p.sliceCount } : {}),
     // Tier 2.1: the creator never JOINs, so their escrow key rides in CREATE.
