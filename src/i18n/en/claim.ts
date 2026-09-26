@@ -67,7 +67,7 @@ export const claim: Record<string, string> = {
     "Claim could not start. Reconnect your Chama and try again.",
   "claim.errDestinationMustBeText": "Destination must be text",
   "claim.errEnterDestination":
-    "Enter a Lightning Address (you@wallet.app) or paste a BOLT11 invoice or NWC connection",
+    "Enter a Lightning Address or LNURL receive code, or paste a BOLT11 invoice or NWC connection",
   "claim.errEnterPhone": "Enter a phone number",
   "claim.errEnterValidKenyanNumber":
     "Enter a valid Kenyan M-Pesa number, e.g. 0712 345 678.",
@@ -81,8 +81,9 @@ export const claim: Record<string, string> = {
   "claim.errNwcRelayUnreachable": "Couldn't reach that NWC relay. {message}",
   "claim.errNwcUnexpected":
     "NWC wallet returned an unexpected response. {message}",
-  "claim.errRawLnurl":
-    "Raw LNURL isn't supported here. Use a Lightning Address, BOLT11 invoice, or NWC connection.",
+  "claim.errLnurlWithdraw": "This code is for taking sats out, not receiving them. In Fedi, use Receive → LNURL.",
+  "claim.errLnurlBrowserCors": "This receive code's server doesn't allow browser requests — paste a Lightning invoice instead, or claim in the Chama app.",
+  "claim.scanReceiveCode": "Scan receive code",
   "claim.errResolveDestination": "Couldn't resolve destination",
   "claim.errSaveMethodFailed": "Failed to save payment method",
   "claim.errSavePhoneFailed": "Failed to save phone number",
@@ -215,7 +216,7 @@ export const claim: Record<string, string> = {
   "claim.sendOnceDontSave": "Send once — don't save",
   "claim.sendToAddressAfter": "to your Lightning address",
   "claim.sendToAddressBefore": "Send",
-  "claim.sendToLightningAddress": "SEND TO LIGHTNING ADDRESS",
+  "claim.sendToLightningAddress": "SEND TO LIGHTNING ADDRESS OR RECEIVE CODE",
   "claim.sendToWalletAfter": "to your Lightning wallet",
   "claim.sendToWalletBefore": "Send",
   "claim.sendingToWalletCaps": "SENDING TO YOUR WALLET…",

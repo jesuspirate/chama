@@ -26,7 +26,7 @@ export const PAYOUT_DESTINATIONS_BACKUP_STORAGE_KEY = "chama_payout_destinations
 
 export interface PayoutDestination {
   id: string;
-  /** Lightning Address, normalized lowercase. */
+  /** Lightning Address or raw LNURL-pay code, normalized lowercase. */
   address: string;
   /** Unix seconds — first saved. */
   createdAt: number;
@@ -128,7 +128,14 @@ function writeRaw(
 }
 
 function normalizeAddress(address: string): string {
-  return address.trim().toLowerCase();
+  return address.trim().replace(/^lightning:/i, "").toLowerCase();
+}
+
+/** Keep long LNURLs recognizable without exposing the full receive code. */
+export function displayPayoutDestination(address: string): string {
+  const value = normalizeAddress(address);
+  return value.startsWith("lnurl1") && value.length > 16
+    ? `${value.slice(0, 9)}…${value.slice(-3)}` : value;
 }
 
 /** One-time lazy migration from pre-v0.6.3 saved_handles rows where
@@ -194,7 +201,7 @@ export function deletePayoutDestination(id: string): void {
 export function addOrTouchPayoutDestination(address: string): PayoutDestination {
   const normalized = normalizeAddress(address);
   if (!normalized) {
-    throw new Error("Lightning Address cannot be empty");
+    throw new Error("Payout destination cannot be empty");
   }
 
   migrateLegacyLightningHandles();

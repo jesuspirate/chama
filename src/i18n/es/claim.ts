@@ -61,7 +61,7 @@ export const claim: Record<string, string> = {
     "No se pudo iniciar el cobro. Reconecta tu Chama e inténtalo de nuevo.",
   "claim.errDestinationMustBeText": "El destino debe ser texto",
   "claim.errEnterDestination":
-    "Ingresa una dirección Lightning (tu@billetera.app) o pega una factura BOLT11 o conexión NWC",
+    "Ingresa una dirección Lightning o un código LNURL para recibir, o pega una factura BOLT11 o conexión NWC",
   "claim.errEnterPhone": "Ingresa un número de teléfono",
   "claim.errEnterValidKenyanNumber":
     "Ingresa un número M-Pesa keniano válido, p. ej. 0712 345 678.",
@@ -75,8 +75,9 @@ export const claim: Record<string, string> = {
   "claim.errNwcRelayUnreachable": "No pudimos conectar con ese relay NWC. {message}",
   "claim.errNwcUnexpected":
     "La billetera NWC devolvió una respuesta inesperada. {message}",
-  "claim.errRawLnurl":
-    "Aquí no se admite LNURL en crudo. Usa una dirección Lightning, factura BOLT11 o conexión NWC.",
+  "claim.errLnurlWithdraw": "Este código es para sacar sats, no para recibirlos. En Fedi, usa Recibir → LNURL.",
+  "claim.errLnurlBrowserCors": "El servidor de este código no permite solicitudes del navegador. Pega una factura Lightning o reclama en la app Chama.",
+  "claim.scanReceiveCode": "Escanear código de recepción",
   "claim.errResolveDestination": "No se pudo resolver el destino",
   "claim.errSaveMethodFailed": "No se pudo guardar el método de pago",
   "claim.errSavePhoneFailed": "No se pudo guardar el número de teléfono",
@@ -209,7 +210,7 @@ export const claim: Record<string, string> = {
   "claim.sendOnceDontSave": "Enviar una vez — no guardar",
   "claim.sendToAddressAfter": "a tu dirección Lightning",
   "claim.sendToAddressBefore": "Enviar",
-  "claim.sendToLightningAddress": "ENVIAR A DIRECCIÓN LIGHTNING",
+  "claim.sendToLightningAddress": "ENVIAR A DIRECCIÓN O CÓDIGO DE RECEPCIÓN",
   "claim.sendToWalletAfter": "a tu billetera Lightning",
   "claim.sendToWalletBefore": "Enviar",
   "claim.sendingToWalletCaps": "ENVIANDO A TU BILLETERA…",

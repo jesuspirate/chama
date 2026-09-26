@@ -46,6 +46,7 @@ export const onchain: Record<string, string> = {
   "onchain.feeUnavailable": "Consultando comisiones actuales…",
   "onchain.waitingDeposit": "Esperando el depósito",
   "onchain.seenMempool": "Depósito visto; esperando confirmación",
+  "onchain.depositConfirmed": "Depósito confirmado",
   "onchain.oneConfirmation": "Se requiere una confirmación",
   "onchain.premiumUnpaid": "Chama no registra el pago de la prima del árbitro en este intercambio en cadena. Consúltalo con el árbitro.",
   "onchain.directPayoutLabel": "Pagar al ganador directamente a una dirección Bitcoin",

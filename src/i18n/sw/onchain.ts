@@ -47,6 +47,7 @@ export const onchain: Record<string, string> = {
   "onchain.feeUnavailable": "Inaangalia ada za sasa…",
   "onchain.waitingDeposit": "Inasubiri amana",
   "onchain.seenMempool": "Amana imeonekana; inasubiri uthibitisho",
+  "onchain.depositConfirmed": "Amana imethibitishwa",
   "onchain.oneConfirmation": "Uthibitisho mmoja unahitajika",
   "onchain.premiumUnpaid": "Chama haina rekodi ya malipo ya ada ya msuluhishi kwa biashara hii ya mnyororo. Muulize msuluhishi.",
   "onchain.directPayoutLabel": "Mlipe mshindi moja kwa moja kwa anwani ya Bitcoin",

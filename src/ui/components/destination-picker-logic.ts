@@ -18,7 +18,7 @@
 //   Tier 3 — BOLT11 or NWC paste (under "More options")
 
 import type { PayoutDestination } from "../../payments/payout-destinations.js";
-import { isLightningAddress } from "../../payments/lnurl.js";
+import { isLightningAddress, isRawLnurl } from "../../payments/lnurl.js";
 import { isNwcConnectionString } from "../../payments/nwc.js";
 import { translate, getCurrentLang } from "../../i18n/index.js";
 
@@ -57,6 +57,7 @@ export function decoratePayoutDestinationsForPicker(
  *  AND surface a useful error instantly without a network round-trip. */
 export type InputClassification =
   | { kind: "lightning-address"; address: string }
+  | { kind: "lnurl"; lnurl: string }
   | { kind: "bolt11"; bolt11: string }
   | { kind: "nwc"; connectionString: string }
   | { kind: "empty" }
@@ -81,11 +82,8 @@ export function classifyDestinationInput(raw: string): InputClassification {
   if (isNwcConnectionString(payment)) {
     return { kind: "nwc", connectionString: payment };
   }
-  if (/^lnurl/i.test(payment)) {
-    return {
-      kind: "invalid",
-      reason: translate(getCurrentLang(), "claim.errRawLnurl"),
-    };
+  if (isRawLnurl(payment)) {
+    return { kind: "lnurl", lnurl: payment.toLowerCase() };
   }
   // BOLT11 starts with "ln" + bech32 hrp prefix (lnbc, lntb, lnbcrt, etc.)
   // The leading prefix is enough to disambiguate from an email-style
@@ -187,14 +185,20 @@ export function decideDispatch(inputs: DispatchInputs): DispatchResult {
       },
     };
   }
+  if (inputs.bolt11PasteInput?.kind === "lnurl") {
+    return {
+      ok: true,
+      decision: { tier: "typed-address", addressUsed: inputs.bolt11PasteInput.lnurl, saveAfter: inputs.saveToggleOn },
+    };
+  }
   // Tier 2: typed input. Accept either kind detected.
   if (inputs.typedInput) {
-    if (inputs.typedInput.kind === "lightning-address") {
+    if (inputs.typedInput.kind === "lightning-address" || inputs.typedInput.kind === "lnurl") {
       return {
         ok: true,
         decision: {
           tier: "typed-address",
-          addressUsed: inputs.typedInput.address,
+          addressUsed: inputs.typedInput.kind === "lnurl" ? inputs.typedInput.lnurl : inputs.typedInput.address,
           saveAfter: inputs.saveToggleOn,
         },
       };

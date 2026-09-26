@@ -230,7 +230,7 @@ export function TradeDetail({
   onStartEcashSlicePlan?: (parentId: string) => Promise<unknown>;
   /** Tier 2.1: recompute this trade's escrow address from published keys. */
   onPrepareOnchainFunding?: (id: string) => Promise<void>;
-  onCheckOnchainFunding?: (id: string) => Promise<{ verdict: { funded: boolean } | null; refundVerified?: boolean; refundPending?: boolean }>;
+  onCheckOnchainFunding?: (id: string) => Promise<{ depositStatus: "waiting" | "seen" | "confirmed"; verdict: { funded: boolean; reason?: string; amountSats?: bigint; expectedSats?: bigint } | null; refundVerified?: boolean; refundPending?: boolean }>;
   onRefundOnchainEscrow?: (id: string) => Promise<{ txid: string }>;
   onOnchainRefundAvailable?: (id: string) => Promise<boolean>;
   onchainFundingPlan?: (escrowId: string) => { ready: boolean; address?: string; blockers?: readonly string[] };
@@ -570,6 +570,8 @@ export function TradeDetail({
   // — those messages already say the one thing the user needs.
   const [checkingFunding, setCheckingFunding] = useState(false);
   const [fundingNote, setFundingNote] = useState<string | null>(null);
+  const [depositStatus, setDepositStatus] = useState<"waiting" | "seen" | "confirmed">("waiting");
+  useEffect(() => { setDepositStatus("waiting"); setFundingNote(null); }, [state.id]);
   /** The arbiter publishing their escrow key. Shares `fundingNote` for its
    *  refusals — one place the panel reports what went wrong. */
   const [publishingKey, setPublishingKey] = useState(false);
@@ -2268,15 +2270,21 @@ export function TradeDetail({
                     }))
                     .finally(() => setSettlementSigning(false));
                 } : undefined}
-                onCheckFunding={onPublishOnchainLock && onchainView.viewerFunds && participants.buyer ? () => {
+                onCheckFunding={onCheckOnchainFunding && onPublishOnchainLock && onchainView.viewerFunds && participants.buyer ? () => {
                   setCheckingFunding(true);
                   setFundingNote(null);
-                  void Promise.resolve(onPublishOnchainLock(state.id))
+                  void Promise.resolve(onCheckOnchainFunding(state.id))
+                    .then(async ({ depositStatus: observed, verdict }) => {
+                      setDepositStatus(observed);
+                      if (verdict?.funded) await onPublishOnchainLock(state.id);
+                      else if (verdict?.reason === "underfunded") setFundingNote(`The escrow holds ${verdict.amountSats} sats, less than the trade's ${verdict.expectedSats}.`);
+                    })
                     .catch((e: any) => setFundingNote(e?.message ?? String(e)))
                     .finally(() => setCheckingFunding(false));
                 } : undefined}
                 checking={checkingFunding}
                 fundingNote={fundingNote}
+                depositStatus={depositStatus}
                 onPublishKey={() => {
                   setPublishingKey(true);
                   setFundingNote(null);

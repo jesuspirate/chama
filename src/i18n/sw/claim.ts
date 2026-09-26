@@ -59,7 +59,7 @@ export const claim: Record<string, string> = {
     "Dai halikuweza kuanza. Unganisha tena Chama chako kisha ujaribu upya.",
   "claim.errDestinationMustBeText": "Marudio lazima yawe maandishi",
   "claim.errEnterDestination":
-    "Weka Anwani ya Lightning (wewe@pochi.app) au bandika ankara ya BOLT11 au muunganisho wa NWC",
+    "Weka Anwani ya Lightning au msimbo wa LNURL wa kupokea, au bandika ankara ya BOLT11 au muunganisho wa NWC",
   "claim.errEnterPhone": "Weka namba ya simu",
   "claim.errEnterValidKenyanNumber":
     "Weka namba halali ya M-Pesa ya Kenya, mfano 0712 345 678.",
@@ -73,8 +73,9 @@ export const claim: Record<string, string> = {
   "claim.errNwcRelayUnreachable": "Imeshindikana kufikia relay hiyo ya NWC. {message}",
   "claim.errNwcUnexpected":
     "Pochi ya NWC imerudisha jibu lisilotarajiwa. {message}",
-  "claim.errRawLnurl":
-    "LNURL ghafi haitumiki hapa. Tumia Anwani ya Lightning, ankara ya BOLT11, au muunganisho wa NWC.",
+  "claim.errLnurlWithdraw": "Msimbo huu ni wa kutoa sats, si kuzipokea. Katika Fedi, tumia Pokea → LNURL.",
+  "claim.errLnurlBrowserCors": "Seva ya msimbo huu hairuhusu maombi ya kivinjari. Bandika ankara ya Lightning au dai katika programu ya Chama.",
+  "claim.scanReceiveCode": "Changanua msimbo wa kupokea",
   "claim.errResolveDestination": "Imeshindikana kutafsiri marudio",
   "claim.errSaveMethodFailed": "Imeshindikana kuhifadhi njia ya malipo",
   "claim.errSavePhoneFailed": "Imeshindikana kuhifadhi namba ya simu",
@@ -207,7 +208,7 @@ export const claim: Record<string, string> = {
   "claim.sendOnceDontSave": "Tuma mara moja — usihifadhi",
   "claim.sendToAddressAfter": "kwenye anwani yako ya Lightning",
   "claim.sendToAddressBefore": "Tuma",
-  "claim.sendToLightningAddress": "TUMA KWENYE ANWANI YA LIGHTNING",
+  "claim.sendToLightningAddress": "TUMA KWENYE ANWANI AU MSIMBO WA KUPOKEA",
   "claim.sendToWalletAfter": "kwenye pochi yako ya Lightning",
   "claim.sendToWalletBefore": "Tuma",
   "claim.sendingToWalletCaps": "INATUMA KWENYE POCHI YAKO…",

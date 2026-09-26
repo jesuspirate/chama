@@ -386,6 +386,7 @@ import {
   listPayoutDestinations,
   deletePayoutDestination,
   migrateLegacyLightningHandles,
+  displayPayoutDestination,
   type PayoutDestination,
 } from "../payments/payout-destinations.js";
 import {
@@ -508,7 +509,7 @@ import {
   pickArbiterFromPool as pickArbiterFromPoolV35,
 } from "../arbiters/pool.js";
 import * as btcMs from "@scure/btc-signer";
-import { base64 as msBase64 } from "@scure/base";
+import { base64 as msBase64, bech32 } from "@scure/base";
 import { hexToBytes as msHexToBytes, bytesToHex as msBytesToHex } from "@noble/hashes/utils.js";
 import {
   buildBondMultisig, recomputeAddress, buildReturnPsbt, coSignPsbt,
@@ -13993,6 +13994,13 @@ console.log("\n── LNURL PARSER ──");
 // concurrent-safe.
 console.log("\n── LNURL RESOLVER ──");
 {
+  const invoiceTime = Math.floor(Date.now() / 1000);
+  const invoiceFor = (amountSats: number, timestamp = invoiceTime) => {
+    const timeWords = Array.from({ length: 7 }, (_, i) => Math.floor(timestamp / 32 ** (6 - i)) % 32);
+    // The wallet verifies the signature at payment; these fixtures exercise
+    // the BOLT11 envelope, amount and expiry returned by the LNURL server.
+    return bech32.encode(`lnbc${amountSats * 10}n`, [...timeWords, ...Array(104).fill(0)], 5000);
+  };
   const okMetadata = (overrides: Partial<any> = {}) => ({
     callback: "https://phoenix.app/lnurlp/alice/callback",
     minSendable: 1000,
@@ -14018,7 +14026,7 @@ console.log("\n── LNURL RESOLVER ──");
       if (String(url).includes("/.well-known/lnurlp/")) {
         return jsonResponse(okMetadata());
       }
-      return jsonResponse({ pr: "lnbc500n1pfakeinvoice", routes: [] });
+      return jsonResponse({ pr: invoiceFor(5000), routes: [] });
     }) as any;
 
     const meta = await fetchLnurlPayMetadata("alice@phoenix.app", mockFetch);
@@ -14030,7 +14038,7 @@ console.log("\n── LNURL RESOLVER ──");
       "Metadata tag pinned to payRequest");
 
     const bolt11 = await requestLnurlInvoice(meta, 5000, mockFetch);
-    assert(bolt11 === "lnbc500n1pfakeinvoice",
+    assert(bolt11 === invoiceFor(5000),
       "Callback returns BOLT11 invoice string");
     assert(calls[0].endsWith("/.well-known/lnurlp/alice"),
       "Metadata URL uses .well-known/lnurlp path");
@@ -14044,12 +14052,12 @@ console.log("\n── LNURL RESOLVER ──");
       if (String(url).includes("/.well-known/lnurlp/")) {
         return jsonResponse(okMetadata());
       }
-      return jsonResponse({ pr: "lnbc1000n1pchainedok" });
+      return jsonResponse({ pr: invoiceFor(1000) });
     }) as any;
     const bolt11 = await resolveLightningAddressToInvoice(
       "alice@phoenix.app", 1000, mockFetch,
     );
-    assert(bolt11 === "lnbc1000n1pchainedok",
+    assert(bolt11 === invoiceFor(1000),
       "resolveLightningAddressToInvoice chains metadata + callback");
   }
 
@@ -14079,10 +14087,10 @@ console.log("\n── LNURL RESOLVER ──");
       if (String(url) === "https://phoenix.app/lnurlp/alice") {
         return jsonResponse(okMetadata({ callback: "https://phoenix.app/lnurlp/alice/callback" }));
       }
-      return jsonResponse({ pr: "lnbc2500n1prawlnurl" });
+      return jsonResponse({ pr: invoiceFor(2500) });
     }) as any;
     const bolt11 = await resolveRawLnurlToInvoice(rawLnurl, 2500, mockFetch);
-    assert(bolt11 === "lnbc2500n1prawlnurl",
+    assert(bolt11 === invoiceFor(2500),
       "resolveRawLnurlToInvoice decodes raw LNURL and requests amount");
     assert(calls[0] === "https://phoenix.app/lnurlp/alice",
       "Raw LNURL metadata URL was fetched");
@@ -14091,6 +14099,28 @@ console.log("\n── LNURL RESOLVER ──");
   }
 
   // DNS / network error
+  {
+    const rawLnurl = "lnurl1dp68gurn8ghj7urgdajku6tc9eshqup0d3h82unvwqhkzmrfvdjsr5eqhc";
+    const mockFetch: typeof fetch = (async (url: any) => String(url).includes("/callback")
+      ? jsonResponse({ pr: invoiceFor(2500) }) : jsonResponse(okMetadata())) as any;
+    assert(await resolveRawLnurlToInvoice(`LIGHTNING:${rawLnurl.toUpperCase()}`, 2500, mockFetch) === invoiceFor(2500),
+      "Uppercase LIGHTNING:LNURL receive QR resolves for the exact amount");
+  }
+  {
+    const mockFetch: typeof fetch = (async () => jsonResponse({ pr: invoiceFor(2000) })) as any;
+    let code = "";
+    try { await requestLnurlInvoice(okMetadata() as any, 2500, mockFetch); }
+    catch (e) { if (e instanceof LnurlError) code = e.code; }
+    assert(code === "LnurlMalformedError", "Wrong-amount LNURL invoice is refused before payment");
+  }
+  {
+    const mockFetch: typeof fetch = (async () => jsonResponse({ pr: invoiceFor(2500, invoiceTime - 7200) })) as any;
+    let code = "";
+    try { await requestLnurlInvoice(okMetadata() as any, 2500, mockFetch); }
+    catch (e) { if (e instanceof LnurlError) code = e.code; }
+    assert(code === "LnurlMalformedError", "Expired LNURL invoice is refused before payment");
+  }
+
   {
     const mockFetch: typeof fetch = (async () => {
       throw new TypeError("Failed to fetch");
@@ -14166,8 +14196,8 @@ console.log("\n── LNURL RESOLVER ──");
     let code = "";
     try { await fetchLnurlPayMetadata("alice@phoenix.app", mockFetch); }
     catch (e) { if (e instanceof LnurlError) code = e.code; }
-    assert(code === "LnurlMalformedError",
-      "Wrong tag (not payRequest) surfaces as LnurlMalformedError");
+    assert(code === "LnurlWithdrawRequestError",
+      "LNURL-withdraw is refused with its own receive-code error");
   }
 
   // Amount out of range — synchronous, no fetch issued
@@ -15169,6 +15199,16 @@ console.log("\n── PAYOUT DESTINATIONS — Lightning Address store ──");
 }
 
 // ── 36. DESTINATION PICKER — pure decision logic (v0.3.0 Phase 1) ───────
+{
+  (globalThis as any).localStorage.clear();
+  const lnurl = "lnurl1dp68gurn8ghj7urgdajku6tc9eshqup0d3h82unvwqhkzmrfvdjsr5eqhc";
+  const saved = addOrTouchPayoutDestination(`LIGHTNING:${lnurl.toUpperCase()}`);
+  assert(saved.address === lnurl && listPayoutDestinations()[0]?.address === lnurl,
+    "Saved LNURL receive code round-trips with normalized casing");
+  assert(displayPayoutDestination(saved.address) === `${lnurl.slice(0, 9)}…${lnurl.slice(-3)}`,
+    "Saved LNURL displays shortened, never in full");
+}
+
 //
 // Tests the pure helpers in destination-picker-logic.ts. Component-level
 // rendering is exercised transitively by phases 3, 4 (claim, recovery,
@@ -15234,11 +15274,16 @@ console.log("\n── DESTINATION PICKER — logic ──");
 
   const rawLnurl = "lnurl1dp68gurn8ghj7urgdajku6tc9eshqup0d3h82unvwqhkzmrfvdjsr5eqhc";
   const lnurlClass = classifyDestinationInput(rawLnurl);
-  assert(lnurlClass.kind === "invalid" && /Raw LNURL/.test(lnurlClass.reason),
-    "Raw LNURL paste is rejected from the payout picker");
-  const lnurlUriClass = classifyDestinationInput(`lightning:${rawLnurl}`);
-  assert(lnurlUriClass.kind === "invalid",
-    "lightning:LNURL URI is rejected from the payout picker");
+  assert(lnurlClass.kind === "lnurl" && lnurlClass.lnurl === rawLnurl,
+    "Raw LNURL paste is accepted as a receive destination");
+  const lnurlUriClass = classifyDestinationInput(`LIGHTNING:${rawLnurl.toUpperCase()}`);
+  assert(lnurlUriClass.kind === "lnurl" && lnurlUriClass.lnurl === rawLnurl,
+    "Uppercase LIGHTNING:LNURL QR is accepted");
+  const lnurlDecision = decideDispatch({
+    typedInput: { kind: "empty" }, bolt11PasteInput: lnurlUriClass, saveToggleOn: true,
+  });
+  assert(lnurlDecision.ok && lnurlDecision.decision.addressUsed === rawLnurl && lnurlDecision.decision.saveAfter,
+    "LNURL entered in advanced paste field resolves and can be saved");
   const nwcString = `nostr+walletconnect://${"b".repeat(64)}?relay=wss%3A%2F%2Frelay.example.com&secret=${"1".repeat(64)}`;
   const nwcClass = classifyDestinationInput(nwcString);
   assert(nwcClass.kind === "nwc" && nwcClass.connectionString === nwcString,

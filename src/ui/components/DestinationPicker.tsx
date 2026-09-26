@@ -24,12 +24,14 @@
 // The picker handles Lightning Address LNURL-pay resolution and NWC
 // make_invoice resolution internally; the consumer only sees BOLT11.
 
-import { useMemo, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode } from "react";
+import { lazy, Suspense, useMemo, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode } from "react";
+import { Capacitor } from "@capacitor/core";
 import { T, inputStyle } from "../theme.js";
-import type { PayoutDestination } from "../../payments/payout-destinations.js";
+import { displayPayoutDestination, type PayoutDestination } from "../../payments/payout-destinations.js";
 import type { SavedNwcConnection } from "../../payments/nwc-connections.js";
 import {
   resolveLightningAddressToInvoice,
+  resolveRawLnurlToInvoice,
   LnurlError,
 } from "../../payments/lnurl.js";
 import { resolveNwcConnectionToInvoice, NwcError } from "../../payments/nwc.js";
@@ -40,6 +42,16 @@ import {
 } from "./destination-picker-logic.js";
 import { BitcoinAmount } from "./BitcoinAmount.js";
 import { useT, translate, getCurrentLang } from "../../i18n/index.js";
+import { isTauriRuntime } from "../sign-in-environment.js";
+
+const QRScanner = lazy(() => import("../QRScanner.js"));
+
+function resolveReceiveCode(value: string, amountSats: number): Promise<string> {
+  const input = classifyDestinationInput(value);
+  return input.kind === "lnurl"
+    ? resolveRawLnurlToInvoice(input.lnurl, amountSats)
+    : resolveLightningAddressToInvoice(value, amountSats);
+}
 
 export interface DestinationPickerResolveOpts {
   /** Whether the consumer should call addOrTouchPayoutDestination. */
@@ -93,6 +105,7 @@ export function DestinationPicker({
   const [rememberNwc, setRememberNwc] = useState(true);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [scannerOpen, setScannerOpen] = useState(false);
 
   const typedInput = useMemo(() => classifyDestinationInput(typed), [typed]);
   const bolt11PasteInput = useMemo(
@@ -117,13 +130,13 @@ export function DestinationPicker({
     setErr(null);
     setBusy(true);
     try {
-      const invoice = await resolveLightningAddressToInvoice(
+      const invoice = await resolveReceiveCode(
         destination.address,
         amountSats,
       );
       onResolve(invoice, { saveAfter: true, addressUsed: destination.address });
     } catch (e) {
-      setErr(formatLnurlError(e));
+      setErr(formatLnurlError(e, classifyDestinationInput(destination.address).kind === "lnurl"));
     } finally {
       setBusy(false);
     }
@@ -192,7 +205,7 @@ export function DestinationPicker({
       }
       // typed-address path
       const address = decision.decision.addressUsed!;
-      const invoice = await resolveLightningAddressToInvoice(
+      const invoice = await resolveReceiveCode(
         address,
         amountSats,
       );
@@ -201,7 +214,7 @@ export function DestinationPicker({
         addressUsed: address,
       });
     } catch (e) {
-      setErr(formatLnurlError(e));
+      setErr(formatLnurlError(e, classifyDestinationInput(decision.decision.addressUsed ?? "").kind === "lnurl"));
     } finally {
       setBusy(false);
     }
@@ -229,9 +242,9 @@ export function DestinationPicker({
   const handleAdvancedPaste = (e: ClipboardEvent<HTMLTextAreaElement>) => {
     const text = e.clipboardData.getData("text");
     const pasted = classifyDestinationInput(text);
-    if (pasted.kind === "lightning-address") {
+    if (pasted.kind === "lightning-address" || pasted.kind === "lnurl") {
       e.preventDefault();
-      setTyped(pasted.address);
+      setTyped(pasted.kind === "lnurl" ? pasted.lnurl : pasted.address);
       setBolt11("");
       setShowAdvanced(false);
       setErr(null);
@@ -350,7 +363,7 @@ export function DestinationPicker({
                         color: T.text, fontFamily: T.mono, fontSize: 11,
                         overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                       }}>
-                        {destination.address}
+                        {displayPayoutDestination(destination.address)}
                       </span>
                     </span>
                     {isDefault && (
@@ -408,13 +421,13 @@ export function DestinationPicker({
           </div>
         )}
 
-        {/* Tier 2: typed Lightning Address */}
+        {/* Tier 2: typed Lightning Address or LNURL-pay receive code */}
         <div style={{ fontSize: 9, color: T.muted, fontFamily: T.mono, marginBottom: 6, letterSpacing: 1 }}>
           {(decoratedRows.length > 0 || savedNwcConnections.length > 0) ? t("claim.orSendNewAddress") : t("claim.sendToLightningAddress")}
         </div>
         <input
           type="text"
-          inputMode="email"
+          inputMode="text"
           autoCapitalize="none"
           autoCorrect="off"
           spellCheck={false}
@@ -422,10 +435,29 @@ export function DestinationPicker({
           onChange={(e) => { setTyped(e.target.value); setErr(null); }}
           onPaste={handleTypedPaste}
           onKeyDown={commitOnEnter}
-          placeholder="you@yourwallet.app"
+          placeholder="you@wallet.app or lnurl1…"
           disabled={busy}
           style={{ ...inputStyle, marginBottom: 10 }}
         />
+        <button type="button" disabled={busy} onClick={() => setScannerOpen(true)} style={{
+          background: T.surface, border: `1px solid ${T.border}`, borderRadius: T.rs,
+          padding: "8px 10px", color: T.text, marginBottom: 10, cursor: "pointer",
+        }}>{t("claim.scanReceiveCode")}</button>
+        {scannerOpen && <Suspense fallback={null}><QRScanner
+          onClose={() => setScannerOpen(false)}
+          onScan={(scanned) => {
+            setScannerOpen(false);
+            const input = classifyDestinationInput(scanned);
+            if (input.kind === "lnurl" || input.kind === "lightning-address") {
+              setTyped(input.kind === "lnurl" ? input.lnurl : input.address);
+              setBolt11("");
+              setShowAdvanced(false);
+              setErr(null);
+            } else if (input.kind === "bolt11") {
+              setTyped(""); setBolt11(input.bolt11); setShowAdvanced(true); setErr(null);
+            } else setErr(input.kind === "invalid" ? input.reason : t("claim.errEnterDestination"));
+          }}
+        /></Suspense>}
 
         {!showAdvanced && renderActionButtons(10)}
 
@@ -492,13 +524,17 @@ export function DestinationPicker({
   );
 }
 
-function formatLnurlError(e: unknown): string {
+function formatLnurlError(e: unknown, rawLnurl = false): string {
   if (e instanceof LnurlError) {
     switch (e.code) {
       case "LnurlParseError":
         return e.message;
       case "LnurlDnsError":
-        return translate(getCurrentLang(), "claim.errWalletServerUnreachable", { message: e.message });
+        return rawLnurl && typeof window !== "undefined" && !Capacitor.isNativePlatform() && !isTauriRuntime()
+          ? translate(getCurrentLang(), "claim.errLnurlBrowserCors")
+          : translate(getCurrentLang(), "claim.errWalletServerUnreachable", { message: e.message });
+      case "LnurlWithdrawRequestError":
+        return translate(getCurrentLang(), "claim.errLnurlWithdraw");
       case "LnurlServerError":
         return translate(getCurrentLang(), "claim.errWalletServerUnhappy", { message: e.message });
       case "LnurlMalformedError":

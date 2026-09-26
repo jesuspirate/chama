@@ -969,6 +969,7 @@ export interface UseEscrowActions {
   onchainRefundAvailable: (escrowId: string) => Promise<boolean>;
   onchainFundingPlan: (escrowId: string) => ReturnType<typeof resolveFundingPlan>;
   checkOnchainFunding: (escrowId: string) => Promise<{
+    depositStatus: "waiting" | "seen" | "confirmed";
     refundVerified?: boolean;
     refundPending?: boolean;
     plan: ReturnType<typeof resolveFundingPlan>;
@@ -2919,13 +2920,13 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     const state = client.getState(escrowId);
     if (!state) throw new Error("Escrow not loaded");
     const plan = onchainFundingPlan(escrowId);
-    if (!plan.ready) return { plan, verdict: null as null | ReturnType<typeof verifyFunding> };
+    if (!plan.ready) return { plan, verdict: null as null | ReturnType<typeof verifyFunding>, depositStatus: "waiting" as const };
     const fetchJson = esploraFetcher(defaultEsploraBase(ESCROW_NETWORK), { network: ESCROW_NETWORK });
     const tipHeight = await esploraTipHeight(fetchJson);
     // A signed future refund is not a completed refund. Verify the actual
     // confirmed spend before letting either room call it done.
     const refundSpend = await observedRefundSpend(state.onchainFundingTerms!, state.settlements ?? [], fetchJson);
-    if (refundSpend) return { plan, verdict: null, refundVerified: refundSpend.confirmed, refundPending: !refundSpend.confirmed, tipHeight };
+    if (refundSpend) return { plan, verdict: null, refundVerified: refundSpend.confirmed, refundPending: !refundSpend.confirmed, tipHeight, depositStatus: "confirmed" as const };
     if (tipHeight >= state.onchainFundingTerms!.refundLockUntil) throw new Error("The deposit's refund deadline has passed; do not send the counterpayment");
     if (state.lock.onchain) {
       const invalid = onchainLockError(state, state.lock.onchain, Math.floor(Date.now() / 1000));
@@ -2942,7 +2943,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     if (found.length === 0) {
       const pending = await fetchJson(`/address/${plan.address}/utxo`);
       if (Array.isArray(pending) && pending.some(row => row?.status?.confirmed === false)) {
-        throw new Error("Deposit seen in mempool; waiting for one confirmation.");
+        return { plan, verdict: null, tipHeight, depositStatus: "seen" as const };
       }
     }
     if (found.length && !escrowDepositWindowSafe({ refundLockUntil: state.onchainFundingTerms!.refundLockUntil,
@@ -2959,7 +2960,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     // may include several deposits, as settlement sweeps them all.
     if (state.lock.onchain && !found.some(f => f.utxo.txid === state.lock.onchain!.fundingTxid
       && f.utxo.index === state.lock.onchain!.fundingVout)) throw new Error("Committed funding output is unavailable");
-    return { plan, verdict, tipHeight };
+    return { plan, verdict, tipHeight, depositStatus: found.length ? "confirmed" as const : "waiting" as const };
   }, [onchainFundingPlan]);
 
   /** Publish the on-chain LOCK once the deposit is confirmed.
@@ -2975,13 +2976,13 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     if ((state.escrowMode ?? "ecash") !== "onchain") {
       throw new Error("This trade is not an on-chain escrow.");
     }
-    const { plan, verdict } = await checkOnchainFunding(escrowId);
+    const { plan, verdict, depositStatus } = await checkOnchainFunding(escrowId);
     if (!plan.ready) throw new Error("The escrow address isn't ready — a key is still missing.");
     if (!verdict?.funded) {
       throw new Error(
         verdict?.reason === "underfunded"
           ? `The escrow holds ${verdict.amountSats} sats, less than the trade's ${verdict.expectedSats}.`
-          : verdict?.reason === "unconfirmed"
+          : depositStatus === "seen" || verdict?.reason === "unconfirmed"
             ? "The deposit is still confirming."
             : "No confirmed deposit at the escrow address yet.",
       );

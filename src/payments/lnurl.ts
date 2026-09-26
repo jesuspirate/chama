@@ -1,4 +1,5 @@
 import { errorText } from "./error-text.js";
+import { decodeBolt11Payment, isBolt11PaymentInfo } from "./bolt11.js";
 // ══════════════════════════════════════════════════════════════════════════
 // Chama — LNURL-pay resolver for Lightning Address claim destinations
 // ══════════════════════════════════════════════════════════════════════════
@@ -44,7 +45,9 @@ export type LnurlErrorCode =
    *  LNURL-pay schema. Includes "tag != payRequest" and missing fields. */
   | "LnurlMalformedError"
   /** Requested amount fell outside the recipient's minSendable/maxSendable. */
-  | "LnurlAmountOutOfRangeError";
+  | "LnurlAmountOutOfRangeError"
+  /** A receive destination must not be an LNURL-withdraw request. */
+  | "LnurlWithdrawRequestError";
 
 /** Parsed Lightning Address. */
 export interface LightningAddressParts {
@@ -295,6 +298,9 @@ export async function fetchLnurlPayMetadataUrl(
       `${label} returned non-JSON metadata`,
     );
   }
+  if (body?.tag === "withdrawRequest") {
+    throw new LnurlError("LnurlWithdrawRequestError", "LNURL-withdraw cannot receive a claim");
+  }
   // LNURL convention: `status: "ERROR"` with a `reason` field.
   if (body && body.status === "ERROR") {
     throw new LnurlError(
@@ -379,11 +385,18 @@ export async function requestLnurlInvoice(
         : "LNURL callback returned an error",
     );
   }
-  if (typeof body?.pr !== "string" || !/^lnbc/i.test(body.pr)) {
+  if (typeof body?.pr !== "string" || !isBolt11PaymentInfo(body.pr)) {
     throw new LnurlError(
       "LnurlMalformedError",
       "LNURL callback didn't return a BOLT11 invoice",
     );
+  }
+  const decoded = decodeBolt11Payment(body.pr);
+  if (!decoded || decoded.amountMsats !== amountMsats) {
+    throw new LnurlError("LnurlMalformedError", "LNURL callback returned an invoice for the wrong amount");
+  }
+  if (decoded.expiresAt <= Math.floor(Date.now() / 1000)) {
+    throw new LnurlError("LnurlMalformedError", "LNURL callback returned an expired invoice");
   }
   return body.pr;
 }

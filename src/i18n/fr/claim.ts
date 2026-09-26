@@ -63,7 +63,7 @@ export const claim: Record<string, string> = {
     "La réclamation n'a pas pu démarrer. Reconnectez votre Chama et réessayez.",
   "claim.errDestinationMustBeText": "La destination doit être du texte",
   "claim.errEnterDestination":
-    "Entrez une adresse Lightning (vous@wallet.app) ou collez une facture BOLT11 ou une connexion NWC",
+    "Entrez une adresse Lightning ou un code LNURL de réception, ou collez une facture BOLT11 ou une connexion NWC",
   "claim.errEnterPhone": "Entrez un numéro de téléphone",
   "claim.errEnterValidKenyanNumber":
     "Entrez un numéro M-Pesa kényan valide, ex. 0712 345 678.",
@@ -79,8 +79,9 @@ export const claim: Record<string, string> = {
   "claim.errNwcRelayUnreachable": "Impossible de joindre ce relais NWC. {message}",
   "claim.errNwcUnexpected":
     "Le portefeuille NWC a renvoyé une réponse inattendue. {message}",
-  "claim.errRawLnurl":
-    "Le LNURL brut n'est pas pris en charge ici. Utilisez une adresse Lightning, une facture BOLT11 ou une connexion NWC.",
+  "claim.errLnurlWithdraw": "Ce code sert à retirer des sats, pas à en recevoir. Dans Fedi, utilisez Recevoir → LNURL.",
+  "claim.errLnurlBrowserCors": "Le serveur de ce code refuse les requêtes du navigateur. Collez une facture Lightning ou réclamez dans l’app Chama.",
+  "claim.scanReceiveCode": "Scanner un code de réception",
   "claim.errResolveDestination": "Impossible de résoudre la destination",
   "claim.errSaveMethodFailed": "Échec de l'enregistrement du moyen de paiement",
   "claim.errSavePhoneFailed": "Échec de l'enregistrement du numéro de téléphone",
@@ -221,7 +222,7 @@ export const claim: Record<string, string> = {
   "claim.sendOnceDontSave": "Envoyer une fois — sans enregistrer",
   "claim.sendToAddressAfter": "vers votre adresse Lightning",
   "claim.sendToAddressBefore": "Envoyer",
-  "claim.sendToLightningAddress": "ENVOYER VERS UNE ADRESSE LIGHTNING",
+  "claim.sendToLightningAddress": "ENVOYER VERS UNE ADRESSE OU UN CODE DE RÉCEPTION",
   "claim.sendToWalletAfter": "vers votre portefeuille Lightning",
   "claim.sendToWalletBefore": "Envoyer",
   "claim.sendingToWalletCaps": "ENVOI VERS VOTRE PORTEFEUILLE…",

@@ -37,6 +37,7 @@ export function OnchainEscrowPanel({
   onCheckFunding,
   checking,
   fundingNote,
+  depositStatus = "waiting",
   onPublishKey,
   publishing,
   onPrepareFunding, onRefund, refunding,
@@ -59,6 +60,7 @@ export function OnchainEscrowPanel({
   checking?: boolean;
   /** Result of the last check, in the user's words. */
   fundingNote?: string | null;
+  depositStatus?: "waiting" | "seen" | "confirmed";
   /** ⭐ Publish the viewer's own escrow key. Shown ONLY to the arbiter this
    *  trade is waiting on — the address needs all three keys, and an arbiter who
    *  is never asked will never guess that the trade is stalled on them. */
@@ -183,8 +185,9 @@ export function OnchainEscrowPanel({
             </div>
           )}
           <div role="status" style={{ fontSize: 11, color: T.muted }}>
-            {fundingNote?.toLowerCase().includes("confirm") ? t("onchain.seenMempool") : t("onchain.waitingDeposit")}
-            {" · "}{t("onchain.oneConfirmation")}
+            {t(depositStatus === "seen" ? "onchain.seenMempool"
+              : depositStatus === "confirmed" ? "onchain.depositConfirmed" : "onchain.waitingDeposit")}
+            {depositStatus !== "confirmed" && <> · {t("onchain.oneConfirmation")}</>}
           </div>
           {/* The address is derived, so anyone can check it. Saying so is what
               makes "don't trust an address from a wire" actionable rather than
