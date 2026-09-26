@@ -81,11 +81,10 @@ import { BitcoinAmount } from "../components/BitcoinAmount.js";
 import { bondTenureBlocks, tenureDays, tenureTier, verifiedBondTenureBlocks, bondCohort } from "../../arbiters/live-chama.js";
 import { viewerIsExposedByLock, lockerRoleOf } from "../../escrow-engine/lock-custody.js";
 import { verifyBondedStamp, stampIsForged } from "../../arbiters/bonded-stamp.js";
-import { OnchainEscrowPanel } from "../panels/OnchainEscrowPanel.js";
+import { OnchainTradeControls } from "../panels/OnchainTradeControls.js";
 import { OnchainPayoutRecoveryCard } from "../panels/OnchainPayoutRecoveryCard.js";
 import type { OnchainPayout } from "../../bond-multisig/onchain-payout-wallet.js";
 import { deriveOnchainView } from "../../escrow-engine/onchain-escrow-view.js";
-import { ESCROW_NETWORK_LABEL } from "../../bond-multisig/onchain-escrow.js";
 import { TranchePlanStrip } from "../components/TranchePlanStrip.js";
 import { autoAdvanceOnchainTrancheKey, trancheGate } from "../../escrow-engine/tranche.js";
 import { deriveSlicePlan } from "../../escrow-engine/slice-policy.js";
@@ -570,19 +569,8 @@ export function TradeDetail({
   // On-chain funding: the funder taps "I've sent it", we re-read the chain and
   // LOCK. Any refusal (no deposit, still confirming, short) is surfaced VERBATIM
   // — those messages already say the one thing the user needs.
-  const [checkingFunding, setCheckingFunding] = useState(false);
   const [fundingNote, setFundingNote] = useState<string | null>(null);
-  const [depositStatus, setDepositStatus] = useState<"waiting" | "seen" | "confirmed">("waiting");
-  useEffect(() => { setDepositStatus("waiting"); setFundingNote(null); }, [state.id]);
-  /** The arbiter publishing their escrow key. Shares `fundingNote` for its
-   *  refusals — one place the panel reports what went wrong. */
-  const [publishingKey, setPublishingKey] = useState(false);
-  const [settlementCheck, setSettlementCheck] = useState<SettlementCheck | null>(null);
-  const [settlementSignedByMe, setSettlementSignedByMe] = useState(false);
-  const settlementFinalizeAttemptRef = useRef<string | null>(null);
-  const [settlementSigning, setSettlementSigning] = useState(false);
-  const [directPayoutAddress, setDirectPayoutAddress] = useState("");
-  const [directPayoutError, setDirectPayoutError] = useState<string | null>(null);
+
   const trancheGateNow = useMemo(() => {
     if (!TRADE_SLICING_ENABLED || !state.tranche) return null;
     return trancheGate({
@@ -841,21 +829,15 @@ export function TradeDetail({
   // depends on the deterministic arbiter pick resolved just above.
   const [verifiedRefund, setVerifiedRefund] = useState<string | null>(null);
   const [verifiedDeposit, setVerifiedDeposit] = useState<string | null>(null);
-  const [refundAvailable, setRefundAvailable] = useState(false);
-  const [refunding, setRefunding] = useState(false);
-  const depositIdentity = JSON.stringify([state.id, state.lock.onchain, state.onchainRefundClaimed]);
+  const depositIdentity = JSON.stringify([state.id, state.lock.onchain, state.onchainFundingTerms, state.onchainRefundClaimed]);
   useEffect(() => {
     if (state.escrowMode !== "onchain" || !state.onchainFundingTerms) return;
     let cancelled = false;
     const check = async () => {
-      try {
-        const ready = await onOnchainRefundAvailable?.(state.id);
-        if (!cancelled) setRefundAvailable(ready === true);
-      } catch { if (!cancelled) setRefundAvailable(false); }
-      if (state.status === EscrowStatus.COMPLETED) return;
+      if ((!state.lock.onchain && !state.onchainRefundClaimed) || state.status === EscrowStatus.COMPLETED) return;
       try {
         const result = await onCheckOnchainFunding?.(state.id);
-        if (!cancelled) { setDepositStatus(result?.depositStatus === "confirmed" && !result?.verdict?.funded ? "waiting" : result?.depositStatus ?? "waiting"); setVerifiedDeposit(result?.verdict?.funded ? depositIdentity : null); setVerifiedRefund(result?.refundVerified ? depositIdentity : null); if (result?.refundPending) setFundingNote("Refund broadcast; waiting for blockchain confirmation."); }
+        if (!cancelled) { setVerifiedDeposit(result?.verdict?.funded ? depositIdentity : null); setVerifiedRefund(result?.refundVerified ? depositIdentity : null); if (result?.refundPending) setFundingNote("Refund broadcast; waiting for blockchain confirmation."); }
       } catch (error) {
         if (!cancelled) { setVerifiedDeposit(null); setVerifiedRefund(null); setFundingNote(error instanceof Error ? error.message : String(error)); }
       }
@@ -864,13 +846,6 @@ export function TradeDetail({
     const timer = setInterval(() => { void check(); }, 30000);
     return () => { cancelled = true; clearInterval(timer); };
   }, [state.id, state.onchainFundingTerms, depositIdentity, state.status, onCheckOnchainFunding, onOnchainRefundAvailable]);
-  const runRefund = () => {
-    if (!onRefundOnchainEscrow || refunding) return;
-    setRefunding(true);
-    void onRefundOnchainEscrow(state.id).then(({ txid }) => setFundingNote(`Refund broadcast: ${txid}`))
-      .catch(error => setFundingNote(error instanceof Error ? error.message : String(error)))
-      .finally(() => setRefunding(false));
-  };
   const onchainView = useMemo(() => {
     if ((state.escrowMode ?? "ecash") !== "onchain") return null;
     let plan: { ready: boolean; address?: string; blockers?: readonly string[] } | null = null;
@@ -894,55 +869,6 @@ export function TradeDetail({
     // verified set arrives is what turns the blocker into an address.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state, myRole, onchainFundingPlan, onchainNeedsMyArbiterKey, verifiedBonded, verifiedDeposit, depositIdentity]);
-
-  useEffect(() => {
-    const arbitrated = !!state.resolvedMajority?.includes(Role.ARBITER);
-    const winnerRole = getWinner(state)?.role;
-    const eligibleSigner = arbitrated
-      ? myRole === Role.ARBITER || myRole === winnerRole
-      : myRole === Role.BUYER || myRole === Role.SELLER;
-    if (!onchainView?.canSettle || !onPrepareOnchainSettlement || !eligibleSigner) {
-      setSettlementCheck(null);
-      setSettlementSignedByMe(false);
-      return;
-    }
-    let cancelled = false;
-    void onPrepareOnchainSettlement(state.id).then(
-      ({ check, signedByMe }) => {
-        if (!cancelled) {
-          setSettlementCheck(check);
-          setSettlementSignedByMe(signedByMe);
-        }
-      },
-      (error) => {
-        if (!cancelled) setSettlementCheck({
-          ok: false,
-          failures: [error instanceof Error ? error.message : String(error)],
-        });
-      },
-    );
-    return () => { cancelled = true; };
-  }, [state.id, state.status, state.settlements?.length, myRole, onchainView?.canSettle, onPrepareOnchainSettlement]);
-
-  // Relay arrival can complete a pair of independently signed revisions even
-  // when neither signer currently holds the other's PSBT in their click path.
-  // Attempt once per observed revision count; the action itself rechecks chain
-  // outspends first and is therefore safe across tabs/reloads.
-  useEffect(() => {
-    const arbitrated = !!state.resolvedMajority?.includes(Role.ARBITER);
-    const winnerRole = getWinner(state)?.role;
-    const eligibleSigner = arbitrated
-      ? myRole === Role.ARBITER || myRole === winnerRole
-      : myRole === Role.BUYER || myRole === Role.SELLER;
-    const count = state.settlements?.length ?? 0;
-    if (!eligibleSigner || !onchainView?.canSettle || !onFinalizeOnchainSettlement || count === 0) return;
-    const attempt = `${state.id}:${count}`;
-    if (settlementFinalizeAttemptRef.current === attempt) return;
-    settlementFinalizeAttemptRef.current = attempt;
-    void onFinalizeOnchainSettlement(state.id).catch(error => {
-      console.warn("[chama] automatic on-chain settlement finalization failed:", error);
-    });
-  }, [state.id, state.settlements?.length, myRole, onchainView?.canSettle, onFinalizeOnchainSettlement]);
 
   const canJoinAsBuyer = !participants.buyer;
   const canJoinAsSeller = !participants.seller;
@@ -1642,12 +1568,13 @@ export function TradeDetail({
       <button onClick={onBack}>{t("common.back")}</button>
       <p role="status">Checking the deposit on the blockchain…</p>
       {fundingNote && <p>{fundingNote}</p>}
-      {state.status === EscrowStatus.APPROVED && onFinalizeOnchainSettlement && <button onClick={() => {
-        void onFinalizeOnchainSettlement(state.id).catch(error => setFundingNote(error instanceof Error ? error.message : String(error)));
-      }}>Check settlement recovery</button>}
-      {refundAvailable && onchainView.viewerFunds && <button disabled={refunding} onClick={runRefund}>
-        {refunding ? "Refunding…" : "Refund to my on-chain wallet"}
-      </button>}
+      <OnchainTradeControls state={state} pubkey={pubkey}
+                fetchCommunityBonds={fetchCommunityBonds} onchainFundingPlan={onchainFundingPlan}
+                onPrepareOnchainFunding={onPrepareOnchainFunding} onCheckOnchainFunding={onCheckOnchainFunding}
+                onPublishOnchainLock={onPublishOnchainLock} onOnchainRefundAvailable={onOnchainRefundAvailable}
+                onRefundOnchainEscrow={onRefundOnchainEscrow} onPrepareOnchainSettlement={onPrepareOnchainSettlement}
+                onSignOnchainSettlement={onSignOnchainSettlement} onFinalizeOnchainSettlement={onFinalizeOnchainSettlement}
+                onPublishArbiterKey={() => onJoin(Role.ARBITER)} />
     </div>
   );
 
@@ -2229,79 +2156,15 @@ export function TradeDetail({
               send real sats to an address they then cannot lock, leaving the
               coins there until the CLTV refund. The ecash branch always carried
               this guard; it was dropped when the panel moved here. */}
-          {onchainView
-            && (myRole || onchainNeedsMyArbiterKey)
-            && (
-              <>
-              {onchainView.canSettle && myRole === getWinner(state)?.role && onPrepareOnchainSettlement && <div style={{ marginBottom: 12 }}>
-                <label htmlFor="direct-onchain-payout">{t("onchain.directPayoutLabel")}</label>
-                <input id="direct-onchain-payout" value={directPayoutAddress} onChange={event => setDirectPayoutAddress(event.target.value)} placeholder={t("onchain.directPayoutPlaceholder")} style={{ width: "100%" }} />
-                <button type="button" disabled={!directPayoutAddress.trim()} onClick={() => {
-                  setDirectPayoutError(null);
-                  void onPrepareOnchainSettlement(state.id, directPayoutAddress.trim())
-                    .then(({ check }) => { if (!check.ok) setDirectPayoutError(check.failures.join("; ")); })
-                    .catch(error => setDirectPayoutError(error instanceof Error ? error.message : String(error)));
-                }}>{t("onchain.directPayoutUse")}</button>
-                {directPayoutError && <p role="alert">{directPayoutError}</p>}
-              </div>}
-              <div id="onchain-funding-panel" style={{ scrollMarginBlock: 24 }}>
-              <OnchainEscrowPanel
-                view={onchainView}
-                onPrepareFunding={!state.onchainFundingTerms && onchainView.viewerFunds && participants.buyer && participants.seller && onPrepareOnchainFunding ? () => {
-                  setCheckingFunding(true);
-                  void onPrepareOnchainFunding(state.id).catch(error => setFundingNote(error instanceof Error ? error.message : String(error)))
-                    .finally(() => setCheckingFunding(false));
-                } : undefined}
-                onRefund={refundAvailable && onchainView.viewerFunds ? runRefund : undefined}
-                refunding={refunding}
-                network={ESCROW_NETWORK_LABEL}
-                settlementCheck={settlementCheck}
-                signing={settlementSigning}
-                signedByViewer={settlementSignedByMe}
-                onSign={onSignOnchainSettlement && (
-                  state.resolvedMajority?.includes(Role.ARBITER)
-                    ? myRole === Role.ARBITER || myRole === getWinner(state)?.role
-                    : myRole === Role.BUYER || myRole === Role.SELLER
-                ) ? () => {
-                  setSettlementSigning(true);
-                  void onSignOnchainSettlement(state.id)
-                    .then(({ check }) => {
-                      setSettlementCheck(check);
-                      setSettlementSignedByMe(true);
-                    })
-                    .catch((error) => setSettlementCheck({
-                      ok: false,
-                      failures: [error instanceof Error ? error.message : String(error)],
-                    }))
-                    .finally(() => setSettlementSigning(false));
-                } : undefined}
-                onCheckFunding={onCheckOnchainFunding && onPublishOnchainLock && onchainView.viewerFunds && participants.buyer ? () => {
-                  setCheckingFunding(true);
-                  setFundingNote(null);
-                  void Promise.resolve(onCheckOnchainFunding(state.id))
-                    .then(async ({ depositStatus: observed, verdict }) => {
-                      setDepositStatus(observed);
-                      if (verdict?.funded) await onPublishOnchainLock(state.id);
-                      else if (verdict?.reason === "underfunded") setFundingNote(`The escrow holds ${verdict.amountSats} sats, less than the trade's ${verdict.expectedSats}.`);
-                    })
-                    .catch((e: any) => setFundingNote(e?.message ?? String(e)))
-                    .finally(() => setCheckingFunding(false));
-                } : undefined}
-                checking={checkingFunding}
-                fundingNote={fundingNote}
-                depositStatus={depositStatus}
-                onPublishKey={() => {
-                  setPublishingKey(true);
-                  setFundingNote(null);
-                  void Promise.resolve(onJoin(Role.ARBITER))
-                    .catch((e: any) => setFundingNote(e?.message ?? String(e)))
-                    .finally(() => setPublishingKey(false));
-                }}
-                publishing={publishingKey}
-              />
-              </div>
-              </>
-          )}
+          {onchainView && (myRole || onchainNeedsMyArbiterKey) && <div id="onchain-funding-panel">
+              <OnchainTradeControls state={state} pubkey={pubkey}
+                fetchCommunityBonds={fetchCommunityBonds} onchainFundingPlan={onchainFundingPlan}
+                onPrepareOnchainFunding={onPrepareOnchainFunding} onCheckOnchainFunding={onCheckOnchainFunding}
+                onPublishOnchainLock={onPublishOnchainLock} onOnchainRefundAvailable={onOnchainRefundAvailable}
+                onRefundOnchainEscrow={onRefundOnchainEscrow} onPrepareOnchainSettlement={onPrepareOnchainSettlement}
+                onSignOnchainSettlement={onSignOnchainSettlement} onFinalizeOnchainSettlement={onFinalizeOnchainSettlement}
+                onPublishArbiterKey={() => onJoin(Role.ARBITER)} />
+          </div>}
           {state.status === EscrowStatus.CREATED
             && myRole
             && canILock

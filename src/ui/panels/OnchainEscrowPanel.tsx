@@ -24,7 +24,7 @@ import { BitcoinAmount } from "../components/BitcoinAmount.js";
 import { CopyButton } from "../components/CopyButton.js";
 import { T } from "../theme.js";
 import { MAINNET, SIGNET } from "../../bond-multisig/multisig.js";
-import { esploraTransactionUrl } from "../../bond-multisig/esplora-config.js";
+import { esploraTransactionUrl, esploraAddressUrl } from "../../bond-multisig/esplora-config.js";
 import { openExternalUrl } from "../open-url.js";
 
 export function OnchainEscrowPanel({
@@ -180,6 +180,11 @@ export function OnchainEscrowPanel({
               wordBreak: "break-all", lineHeight: 1.45, marginBottom: 6,
             }}>{view.address}</div>
             <CopyButton value={view.address} label={t("onchain.copyAddress")} />
+            <a href={esploraAddressUrl(btcNetwork, view.address)} target="_blank" rel="noreferrer noopener"
+              onClick={event => { event.preventDefault(); void openExternalUrl(esploraAddressUrl(btcNetwork, view.address!)); }}
+              style={{ display: "block", marginTop: 8, color: T.muted, fontSize: 11 }}>
+              {t("onchain.viewOnChain")} ↗
+            </a>
           </div>
           {view.expectedSats !== null && (
             <div style={{ fontSize: 12, color: T.text, marginBottom: 6 }}>
@@ -298,14 +303,14 @@ export function OnchainEscrowPanel({
           <button
             type="button"
             onClick={onSign}
-            disabled={!mayEnableSignButton(settlementCheck) || signing || signedByViewer}
+            disabled={!onSign || !mayEnableSignButton(settlementCheck) || signing || signedByViewer}
             style={{
               width: "100%", padding: "12px 14px", borderRadius: T.rs,
-              background: mayEnableSignButton(settlementCheck) && !signing && !signedByViewer ? `${T.accent}1f` : T.surface,
-              border: `1px solid ${mayEnableSignButton(settlementCheck) && !signing && !signedByViewer ? T.accent : T.border}`,
-              color: mayEnableSignButton(settlementCheck) && !signing && !signedByViewer ? T.accent : T.muted,
+              background: onSign && mayEnableSignButton(settlementCheck) && !signing && !signedByViewer ? `${T.accent}1f` : T.surface,
+              border: `1px solid ${onSign && mayEnableSignButton(settlementCheck) && !signing && !signedByViewer ? T.accent : T.border}`,
+              color: onSign && mayEnableSignButton(settlementCheck) && !signing && !signedByViewer ? T.accent : T.muted,
               fontFamily: T.sans, fontSize: 14, fontWeight: 800,
-              cursor: mayEnableSignButton(settlementCheck) && !signing && !signedByViewer ? "pointer" : "not-allowed",
+              cursor: onSign && mayEnableSignButton(settlementCheck) && !signing && !signedByViewer ? "pointer" : "not-allowed",
             }}
           >
             {signing ? t("onchain.signing")

@@ -21,3 +21,17 @@ assert.match(render("confirmed", null), /Deposit confirmed/);
 const buyerHtml = renderToStaticMarkup(<LangProvider><OnchainEscrowPanel view={{ ...view, viewerFunds: false }} network="mainnet" depositStatus="confirmed" /></LangProvider>);
 assert.match(buyerHtml, /next time they open Chama/);
 console.log("Brief 04 on-chain funding status: waiting, seen and confirmed are explicit");
+
+// Both guided and full trade controls render this panel. Read-only buyers get
+// the independently derived address/history, never a fund or signing action.
+assert.match(buyerHtml, /\/address\/bc1ptestaddress/);
+assert.doesNotMatch(buyerHtml, /I have sent it/);
+for (const ok of [true, false]) for (const canSign of [true, false]) {
+  const html = renderToStaticMarkup(<LangProvider><OnchainEscrowPanel
+    view={{ ...view, stage: 'settling', canSettle: true }} network="mainnet"
+    settlementCheck={{ ok, failures: ok ? [] : ['changed destination'] }}
+    onSign={canSign ? () => {} : undefined} /></LangProvider>);
+  const sign = html.match(/<button[^>]*>Sign the payout<\/button>/)?.[0];
+  assert.ok(sign);
+  assert.equal(sign.includes('disabled'), !ok || !canSign, 'signing needs a passed check and an eligible signer');
+}

@@ -2,6 +2,7 @@ import { payoutRecipientFor } from "../../escrow-engine/recipients.js";
 import { handleDisplayForViewer } from "../../payments/saved-handles.js";
 import { Wordmark } from "../components/Wordmark.js";
 import { OverlaySheet } from "../components/OverlaySheet.js";
+import { OnchainTradeControls, type OnchainTradeActions } from "../panels/OnchainTradeControls.js";
 import { canOfferClaim, needsTradeHistory } from "../decisions.js";
 import { CopyButton } from "../components/CopyButton.js";
 import { ReplayNotes } from "../components/ReplayNotes.js";
@@ -65,6 +66,7 @@ export function LiveTradeSurface({
   backLabel,
   onOpenFullView,
   onCheckOnchainFunding,
+  onchainActions,
   onVote,
   onClaim,
   onLock,
@@ -94,6 +96,7 @@ export function LiveTradeSurface({
   /** Opens the full TradeDetail (unchanged) for everything past the happy path. */
   onOpenFullView: (section?: "onchain-funding") => void;
   onCheckOnchainFunding?: (id: string) => Promise<{ depositStatus: "waiting" | "seen" | "confirmed"; verdict: { funded: boolean } | null; refundVerified?: boolean; refundPending?: boolean }>;
+  onchainActions?: OnchainTradeActions;
   onVote: (outcome: Outcome) => Promise<void>;
   /** Modal-driven money paths. Optional: when a caller hasn't wired them yet,
    *  the Fund / Claim surfaces defer to the full view via onOpenFullView. */
@@ -125,7 +128,7 @@ export function LiveTradeSurface({
   const [verifiedDeposit, setVerifiedDeposit] = useState<string | null>(null);
   const [depositError, setDepositError] = useState<string | null>(null);
   const [depositStatus, setDepositStatus] = useState<"waiting" | "seen" | "confirmed">("waiting");
-  const depositIdentity = JSON.stringify([state.id, state.lock.onchain, state.onchainRefundClaimed]);
+  const depositIdentity = JSON.stringify([state.id, state.lock.onchain, state.onchainFundingTerms, state.onchainRefundClaimed]);
   const requiresDepositCheck = state.escrowMode === "onchain" && (!!state.onchainFundingTerms || !!state.lock.onchain || !!state.onchainRefundClaimed) && state.status !== EscrowStatus.COMPLETED;
   useEffect(() => {
     if (!requiresDepositCheck) return;
@@ -163,6 +166,10 @@ export function LiveTradeSurface({
   const myRole = effectiveViewerRole(state, pubkey, nowSec);
 
   const [busy, setBusy] = useState(false);
+  const [onchainOpen, setOnchainOpen] = useState(false);
+  useEffect(() => { setOnchainOpen(false); }, [state.id, state.status]);
+  const onchainControls = <OnchainTradeControls state={state} pubkey={pubkey} {...onchainActions} />;
+  const onchainOverlay = onchainOpen ? <OverlaySheet title="On-chain trade" onClose={() => setOnchainOpen(false)}>{onchainControls}</OverlaySheet> : null;
   const [armed, setArmed] = useState<Outcome | null>(null);
   // Cancel-with-reason (Jet 2026-09-05): a cancel/refund vote NEVER fires
   // without a reason chip — the reason lands in the trade chat so the other
@@ -272,7 +279,7 @@ export function LiveTradeSurface({
       if (iAmFunder && !preLock?.lapsed) {
         if (state.escrowMode === "onchain") return (
           <Decision q="Fund this trade on Bitcoin" sub="Prepare the deposit address and send the exact amount from an on-chain wallet.">
-            <PrimaryButton onClick={() => onOpenFullView("onchain-funding")} label="Open on-chain funding" />
+            <PrimaryButton onClick={() => setOnchainOpen(true)} label="Open on-chain funding" />
           </Decision>
         );
         // Fiat trades reveal the locker's payment details inside the LOCK
@@ -357,7 +364,7 @@ export function LiveTradeSurface({
           : null;
         return (
           <Waiting message={onchainWaiting ?? tr("lts.waitingLock", { role: roleLabel(funderRole) })}>
-            {state.escrowMode === "onchain" && <MoreOptions onClick={() => onOpenFullView("onchain-funding")} label="Open on-chain deposit details" />}
+            {state.escrowMode === "onchain" && <MoreOptions onClick={() => setOnchainOpen(true)} label="Open on-chain deposit details" />}
             {preLock && (
               <CountdownTimer expiresAt={preLock.at} label={tr("lts.forRoleLock", { role: roleLabel(funderRole) })} />
             )}
@@ -609,6 +616,9 @@ export function LiveTradeSurface({
       );
     }
 
+    if (state.escrowMode === "onchain" && (status === EscrowStatus.APPROVED || status === EscrowStatus.CLAIMED)) {
+      return <Decision q="Finish the Bitcoin settlement" sub="Review and sign the agreed payout.">{onchainControls}</Decision>;
+    }
     if (status === EscrowStatus.APPROVED) {
       if (iAmWinner) {
         return (
@@ -642,6 +652,7 @@ export function LiveTradeSurface({
     if (status === EscrowStatus.COMPLETED) {
       return (
         <Decision q={tr("lts.howWasTrading")} sub={tr("lts.ratingFeeds")}>
+          {state.escrowMode === "onchain" && onchainControls}
           {counterparty && onRateCounterparty && !alreadyRated ? (
             <div style={{ display: "flex", gap: 10 }}>
               {(["up", "down"] as RatingThumb[]).map(thumb => (
@@ -677,7 +688,8 @@ export function LiveTradeSurface({
       <ReplayNotes notes={state.replayNotes} />
       <p role="status">Refund confirmed on the blockchain.</p>
       <button onClick={onHome ?? onBack}>Home</button>
-      <button onClick={() => onOpenFullView("onchain-funding")}>Open on-chain controls</button>
+      <button onClick={() => setOnchainOpen(true)}>Open on-chain controls</button>
+      {onchainOverlay}
     </div>
   );
   if (requiresDepositCheck && (state.lock.onchain || state.onchainRefundClaimed) && verifiedDeposit !== depositIdentity) return (
@@ -687,12 +699,15 @@ export function LiveTradeSurface({
       <ReplayNotes notes={state.replayNotes} />
       <p role="status">Checking the deposit on the blockchain…</p>
       {depositError && <p>{depositError}</p>}
-      <button onClick={() => onOpenFullView("onchain-funding")}>Open on-chain controls</button>
+      {(state.status === EscrowStatus.APPROVED || state.status === EscrowStatus.CLAIMED) ? onchainControls
+        : <button onClick={() => setOnchainOpen(true)}>Open on-chain controls</button>}
+      {onchainOverlay}
     </div>
   );
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0, background: T.bg, paddingBottom: 12 }}>
+      {onchainOverlay}
       <style>{`
         .lts-grid{display:grid;grid-template-columns:.95fr 1.12fr;gap:1px;background:${T.border};flex:1;min-height:0}
         .lts-pane{background:${T.surface};min-height:0;display:flex;flex-direction:column;overflow:hidden}
@@ -844,6 +859,7 @@ export function LiveTradeSurface({
             <ReplayNotes notes={state.replayNotes} />
             {historyReloading && <p role="status">Refreshing this trade's history…</p>}
             {renderDecision()}
+            {state.escrowMode === "onchain" && state.status === EscrowStatus.LOCKED && <MoreOptions onClick={() => setOnchainOpen(true)} label="Open on-chain deposit details" />}
             {state.status === EscrowStatus.LOCKED && myRole && state.lock.handle && <details style={{ marginTop: 16 }}>
               <summary style={{ minHeight: 44, cursor: "pointer", color: T.muted }}>{tr("lts.howToPay", { name: lockerName })}</summary>
               <div style={{ padding: 12, overflowWrap: "anywhere", background: T.surface, borderRadius: 12 }}>

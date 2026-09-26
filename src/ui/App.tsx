@@ -4140,6 +4140,21 @@ export default function App() {
               key={`lts:${selected.id}`}
               historyReloading={reloadingEscrows.has(selected.id)}
               onCheckOnchainFunding={actions.checkOnchainFunding}
+              onchainActions={{
+                fetchCommunityBonds: actions.fetchCommunityBonds,
+                onchainFundingPlan: actions.onchainFundingPlan,
+                onPrepareOnchainFunding: actions.prepareOnchainFunding,
+                onCheckOnchainFunding: actions.checkOnchainFunding,
+                onPublishOnchainLock: actions.publishOnchainLock,
+                onOnchainRefundAvailable: actions.onchainRefundAvailable,
+                onRefundOnchainEscrow: actions.refundOnchainEscrow,
+                onPrepareOnchainSettlement: actions.prepareOnchainSettlement,
+                onSignOnchainSettlement: actions.signOnchainSettlement,
+                onFinalizeOnchainSettlement: actions.finalizeOnchainSettlement,
+                onPublishArbiterKey: () => actions.joinEscrow(selected.id, Role.ARBITER),
+                onScanMyOnchainPayouts: refreshOnchainPayoutAttention,
+                onSweepOnchainPayout: actions.sweepOnchainPayout,
+              }}
               knownTrades={knownTradesForConcentration}
               fetchCommunityBonds={actions.fetchCommunityBonds}
               state={selected}

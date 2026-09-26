@@ -193,3 +193,9 @@ export function esploraTransactionUrl(network: BtcNetwork, txid: string): string
 export function usingCustomEsplora(network: BtcNetwork): boolean {
   return readEsploraOverride(network) !== null;
 }
+
+/** Address history uses the same configured network and explorer as checks. */
+export function esploraAddressUrl(network: BtcNetwork, address: string): string {
+  const base = resolveEsploraBase(network).replace(/\/api$/i, "");
+  return `${base}/address/${encodeURIComponent(address)}`;
+}

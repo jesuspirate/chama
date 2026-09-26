@@ -1,0 +1,155 @@
+import { useEffect, useRef, useState } from "react";
+import { EscrowStatus, Role, getEffectiveParticipantsAt, type EscrowState } from "../../escrow-engine/types.js";
+import { getWinner } from "../../escrow-engine/state-machine.js";
+import { fundingArbiter } from "../../escrow-engine/onchain-funding-terms.js";
+import { deriveOnchainView } from "../../escrow-engine/onchain-escrow-view.js";
+import type { SettlementCheck } from "../../bond-multisig/onchain-escrow-settle.js";
+import type { VerifiedBond } from "../../bond-multisig/bond-announcement.js";
+import { ESCROW_NETWORK_LABEL } from "../../bond-multisig/onchain-escrow.js";
+import { effectiveViewerRole } from "../decisions.js";
+import { T, inputStyle } from "../theme.js";
+import { useT } from "../../i18n/index.js";
+import { defaultCreditObserver } from "../../payments/claim-credit-ledger.js";
+import { OnchainPayoutRecoveryCard } from "./OnchainPayoutRecoveryCard.js";
+import type { ComponentProps } from "react";
+import { OnchainEscrowPanel } from "./OnchainEscrowPanel.js";
+
+export interface OnchainTradeActions {
+  fetchCommunityBonds?: (community: string) => Promise<VerifiedBond[]>;
+  onchainFundingPlan?: (id: string) => { ready: boolean; address?: string; blockers?: readonly string[] };
+  onPrepareOnchainFunding?: (id: string) => Promise<void>;
+  onCheckOnchainFunding?: (id: string) => Promise<{ depositStatus: "waiting" | "seen" | "confirmed";
+    verdict: { funded: boolean; reason?: string; amountSats?: bigint; expectedSats?: bigint } | null;
+    refundVerified?: boolean; refundPending?: boolean }>;
+  onPublishOnchainLock?: (id: string) => Promise<unknown>;
+  onOnchainRefundAvailable?: (id: string) => Promise<boolean>;
+  onRefundOnchainEscrow?: (id: string) => Promise<{ txid: string }>;
+  onPrepareOnchainSettlement?: (id: string, address?: string) => Promise<{ psbt: string; check: SettlementCheck; signedByMe: boolean }>;
+  onSignOnchainSettlement?: (id: string) => Promise<{ psbt: string; check: SettlementCheck }>;
+  onFinalizeOnchainSettlement?: (id: string) => Promise<{ status: "waiting" | "broadcast" | "adopted"; txid?: string }>;
+  onScanMyOnchainPayouts?: ComponentProps<typeof OnchainPayoutRecoveryCard>["scan"];
+  onSweepOnchainPayout?: ComponentProps<typeof OnchainPayoutRecoveryCard>["sweep"];
+  onPublishArbiterKey?: () => void | Promise<unknown>;
+}
+
+/** Shared funding/settlement controller for the guided overlay and full room.
+ * Every money action uses the same independently verifying escrow actions. */
+export function OnchainTradeControls({ state, pubkey, ...actions }: OnchainTradeActions & { state: EscrowState; pubkey: string }) {
+  const { t } = useT();
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  const [depositStatus, setDepositStatus] = useState<"waiting" | "seen" | "confirmed">("waiting");
+  const [verified, setVerified] = useState<string | null>(null);
+  const [refunded, setRefunded] = useState(false);
+  const [refundAvailable, setRefundAvailable] = useState(false);
+  const [check, setCheck] = useState<SettlementCheck | null>(null);
+  const [signed, setSigned] = useState(false);
+  const [address, setAddress] = useState("");
+  const [, refreshBonds] = useState(0);
+  const busyRef = useRef(false);
+  const prepareGeneration = useRef(0);
+  const finalizeAttempt = useRef("");
+  const latest = useRef(actions); latest.current = actions;
+  const participants = getEffectiveParticipantsAt(state, Math.floor(Date.now()/1000));
+  const role = effectiveViewerRole(state, pubkey);
+  const identity = JSON.stringify([state.id, state.lock.onchain, state.onchainFundingTerms, state.onchainRefundClaimed]);
+  const pendingArbiter = fundingArbiter(state) === pubkey && !state.escrowKeys?.[Role.ARBITER];
+  let plan: ReturnType<NonNullable<OnchainTradeActions["onchainFundingPlan"]>> | null = null;
+  try { plan = actions.onchainFundingPlan?.(state.id) ?? null; } catch { /* no address until locally ready */ }
+  const view = deriveOnchainView({ state, viewerRole: role, depositVerified: verified === identity,
+    recomputedAddress: plan?.ready ? plan.address ?? null : null,
+    blockers: plan?.ready ? [] : (plan?.blockers ?? ["not-ready"]).map(b => !state.onchainFundingTerms && b === "bad-refund-height" ? "funding-terms" : b),
+    viewerIsPendingArbiter: pendingArbiter });
+  const winner = getWinner(state);
+  const approved = state.status === EscrowStatus.APPROVED || state.status === EscrowStatus.CLAIMED;
+  const eligibleSigner = state.resolvedMajority?.includes(Role.ARBITER)
+    ? role === Role.ARBITER || (!!role && role === winner?.role)
+    : role === Role.BUYER || role === Role.SELLER;
+
+  useEffect(() => {
+    let cancelled = false;
+    if (state.community) void latest.current.fetchCommunityBonds?.(state.community)
+      .then(() => { if (!cancelled) refreshBonds(n => n + 1); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [state.community]);
+  useEffect(() => {
+    if (!state.onchainFundingTerms || state.status === EscrowStatus.COMPLETED) return;
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const result = await latest.current.onCheckOnchainFunding?.(state.id);
+        if (cancelled) return;
+        setVerified(result?.verdict?.funded ? identity : null);
+        setRefunded(result?.refundVerified === true);
+        setDepositStatus(result?.verdict?.funded ? "confirmed" : result?.depositStatus === "seen" ? "seen" : "waiting");
+        setNote(result?.refundPending ? "Refund broadcast; waiting for blockchain confirmation."
+          : result?.verdict?.reason === "underfunded" ? `The escrow holds ${result.verdict.amountSats} sats, less than the trade's ${result.verdict.expectedSats}.` : null);
+      } catch (error) { if (!cancelled) { setVerified(null); setRefunded(false); setDepositStatus("waiting"); setNote(String(error instanceof Error ? error.message : error)); } }
+      try { const ready = await latest.current.onOnchainRefundAvailable?.(state.id); if (!cancelled) setRefundAvailable(ready === true); }
+      catch { if (!cancelled) setRefundAvailable(false); }
+    };
+    void poll(); const timer = setInterval(() => void poll(), 30_000);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, [state.id, identity, state.status]);
+  useEffect(() => {
+    const generation = ++prepareGeneration.current;
+    setCheck(null); setSigned(false);
+    if (!view.canSettle || !eligibleSigner || !actions.onPrepareOnchainSettlement) return;
+    let cancelled = false;
+    void actions.onPrepareOnchainSettlement(state.id).then(result => {
+      if (!cancelled && prepareGeneration.current === generation) { setCheck(result.check); setSigned(result.signedByMe); }
+    }).catch(error => { if (!cancelled && prepareGeneration.current === generation) setCheck({ ok: false, failures: [String(error instanceof Error ? error.message : error)] }); });
+    return () => { cancelled = true; };
+  }, [state.id, state.settlements?.length, view.canSettle, eligibleSigner, actions.onPrepareOnchainSettlement]);
+  useEffect(() => {
+    const count = state.settlements?.length ?? 0;
+    const attempt = `${state.id}:${count}`;
+    // A spent deposit may mean the other signer broadcast. The action checks
+    // outspends before adopting completion, even while the UI checks funding.
+    if (!approved || !eligibleSigner || !count || finalizeAttempt.current === attempt) return;
+    finalizeAttempt.current = attempt;
+    void actions.onFinalizeOnchainSettlement?.(state.id).catch(error => setNote(String(error instanceof Error ? error.message : error)));
+  }, [state.id, state.settlements?.length, approved, eligibleSigner, actions.onFinalizeOnchainSettlement]);
+  const run = async (action: () => Promise<unknown>) => {
+    if (busyRef.current) return; busyRef.current = true; setBusy(true); setNote(null);
+    try { await action(); } catch (error) { setNote(String(error instanceof Error ? error.message : error)); }
+    finally { busyRef.current = false; setBusy(false); }
+  };
+  const buttonStyle = { padding: "12px 14px", minHeight: 44, borderRadius: T.rs, border: `1px solid ${T.borderHi}`,
+    background: T.surface, color: T.text, fontFamily: T.sans, fontWeight: 700, cursor: "pointer" };
+  const recovery = actions.onScanMyOnchainPayouts && actions.onSweepOnchainPayout
+    && ((refunded && view.viewerFunds) || (state.status === EscrowStatus.COMPLETED && winner?.pubkey === pubkey))
+    ? <OnchainPayoutRecoveryCard escrowId={state.id} credited={defaultCreditObserver()(state)} embedded
+        scan={actions.onScanMyOnchainPayouts} sweep={actions.onSweepOnchainPayout} /> : null;
+  if (refunded) return <div><p role="status">Refund confirmed on Bitcoin.</p>{recovery}</div>;
+  return <div>
+    {recovery}
+    {view.canSettle && role === winner?.role && actions.onPrepareOnchainSettlement && <div style={{ margin: "12px 0", display: "grid", gap: 8 }}>
+      <label htmlFor={`payout-${state.id}`} style={{ color: T.text, fontSize: 13 }}>{t("onchain.directPayoutLabel")}</label>
+      <input id={`payout-${state.id}`} value={address} onChange={event => setAddress(event.target.value)} placeholder={t("onchain.directPayoutPlaceholder")} style={{ ...inputStyle, width: "100%", minHeight: 44 }} />
+      <button type="button" disabled={busy || !address.trim()} style={{ ...buttonStyle, opacity: busy || !address.trim() ? 0.5 : 1 }} onClick={() => void run(async () => {
+        ++prepareGeneration.current; setCheck(null); setSigned(false);
+        const result = await actions.onPrepareOnchainSettlement!(state.id, address.trim()); setCheck(result.check); setSigned(result.signedByMe);
+      })}>{t("onchain.directPayoutUse")}</button>
+    </div>}
+    <OnchainEscrowPanel view={view} network={ESCROW_NETWORK_LABEL} settlementCheck={check} signing={busy} signedByViewer={signed}
+      checking={busy} fundingNote={note} depositStatus={depositStatus} publishing={busy} refunding={busy}
+      onPrepareFunding={!state.onchainFundingTerms && view.viewerFunds && participants.buyer && participants.seller && actions.onPrepareOnchainFunding
+        ? () => void run(() => actions.onPrepareOnchainFunding!(state.id)) : undefined}
+      onCheckFunding={view.viewerFunds && participants.buyer && actions.onCheckOnchainFunding && actions.onPublishOnchainLock ? () => void run(async () => {
+        const result = await actions.onCheckOnchainFunding!(state.id);
+        setDepositStatus(result.verdict?.funded ? "confirmed" : result.depositStatus === "seen" ? "seen" : "waiting");
+        if (result.verdict?.funded) await actions.onPublishOnchainLock!(state.id);
+        else if (result.verdict?.reason === "underfunded") setNote(`The escrow holds ${result.verdict.amountSats} sats, less than the trade's ${result.verdict.expectedSats}.`);
+      }) : undefined}
+      onRefund={refundAvailable && view.viewerFunds && actions.onRefundOnchainEscrow ? () => void run(async () => {
+        const result = await actions.onRefundOnchainEscrow!(state.id); setNote(`Refund broadcast: ${result.txid}`);
+      }) : undefined}
+      onSign={eligibleSigner && actions.onSignOnchainSettlement ? () => void run(async () => {
+        const result = await actions.onSignOnchainSettlement!(state.id); setCheck(result.check); setSigned(result.check.ok);
+      }) : undefined}
+      onPublishKey={actions.onPublishArbiterKey ? () => void run(async () => actions.onPublishArbiterKey!()) : undefined} />
+    {approved && actions.onFinalizeOnchainSettlement && <button type="button" style={buttonStyle} disabled={busy} onClick={() => void run(() => actions.onFinalizeOnchainSettlement!(state.id))}>Check settlement</button>}
+    {note && view.stage !== "awaiting-funding" && view.stage !== "awaiting-keys" && <p role="status" style={{ color: T.muted }}>{note}</p>}
+  </div>;
+}
