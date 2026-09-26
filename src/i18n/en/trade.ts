@@ -15,7 +15,7 @@ export const trade: Record<string, string> = {
   "trade.arbiterRecordLiveness": "Verified active bonded arbiters in this record: {count}",
   "trade.arbiterRecord": "Arbiter record",
   "trade.arbiterConduct": "Observed conduct, not proof of identity or independence. An empty record means new or not observed.",
-  "trade.arbiterRecordStats": "Healings: {healings} · Disputes voted: {disputes} · Median response: {latency} · Bond tenure (blocks): {tenure} · Last signed activity: {seen}",
+  "trade.arbiterRecordStats": "Healings: {healings} · Disputes voted: {disputes} · Bond tenure (blocks): {tenure} · Last signed activity: {seen}",
   "trade.arbiterRecordSample": "Local sample: {count} trades. Most favoured recipient: {top} of {rulings} rulings.",
   "trade.replayNotes": "History rebuilt with {count} ignored events",
   "trade.accepts": "ACCEPTS",

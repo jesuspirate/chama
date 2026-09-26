@@ -6510,7 +6510,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
         await resolveLineageTenure(verified, fetchJson);
         if (verified.length > 0) {
           writeCachedCommunityBonds(community, verified);
-          return verified;
+          return readCachedCommunityBonds(community) ?? verified;
         }
         // Empty after the retry: either genuinely bond-less or a flap that
         // outlived the retry. Prefer recent verified truth while it's fresh.

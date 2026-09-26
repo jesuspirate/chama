@@ -59,6 +59,7 @@ import {
 import { isArbiterNoShow, isPerformanceContest } from "../../escrow-engine/arbiter-substitution.js";
 import { bondedArbitersForCommunity } from "../../arbiters/live-chama.js";
 import type { VerifiedBond } from "../../bond-multisig/bond-announcement.js";
+import { readCachedCommunityBonds } from "../../arbiters/bonded-pool-cache.js";
 import { defaultEsploraBase, esploraFetcher, esploraTipHeight } from "../../bond-multisig/fund-watcher.js";
 import { MAINNET as BOND_NETWORK } from "../../bond-multisig/multisig.js";
 import { counterpartyToRate, type RatingThumb, type AggregateRatings } from "../../reputation/ratings.js";
@@ -541,14 +542,15 @@ export function TradeDetail({
   // arbiters so provenance recognizes a seated bonded arbiter (green, not
   // "unrecognized"). Fetch-once per community, fail-soft (empty ⇒ roster+device
   // trust only). Keyed on the slug; the fetcher reads the live client internally.
-  const [bondedNpubs, setBondedNpubs] = useState<string[]>([]);
+  const initialBonds = useMemo(() => state.community ? readCachedCommunityBonds(state.community, Date.now(), true) ?? [] : [], [state.community]);
+  const [bondedNpubs, setBondedNpubs] = useState<string[]>(() => bondedArbitersForCommunity(initialBonds));
   // null until a chain-verified read lands. Distinct from [] ("checked, and
   // this community has no bonded arbiters") — see arbiters/bonded-stamp.ts.
-  const [verifiedBonded, setVerifiedBonded] = useState<string[] | null>(null);
+  const [verifiedBonded, setVerifiedBonded] = useState<string[] | null>(() => initialBonds.length ? bondedArbitersForCommunity(initialBonds) : null);
   // The seated arbiter's own verified bond, kept for the arbiter card: tenure
   // (funding block height) and the funding outpoint, so a counterparty can
   // check the commitment in a block explorer instead of trusting this screen.
-  const [seatedBond, setSeatedBond] = useState<VerifiedBond | null>(null);
+  const [seatedBond, setSeatedBond] = useState<VerifiedBond | null>(() => initialBonds.find(b => b.npub === state.participants[Role.ARBITER] && b.funded && b.active) ?? null);
   const [bondTipHeight, setBondTipHeight] = useState<number | null>(null);
   // A1b: how many OTHER bonds were announced in this community the same week as
   // the seated arbiter's. Derived from the bonds already fetched — no extra
@@ -622,15 +624,17 @@ export function TradeDetail({
     return arbiterRulingConcentration(knownTrades, seatedArbiterPk);
   }, [knownTrades, seatedArbiterPk]);
   useEffect(() => {
-    setBondedNpubs([]);
-    setVerifiedBonded(null);
-    setSeatedBond(null);
+    const cached = state.community ? readCachedCommunityBonds(state.community, Date.now(), true) ?? [] : [];
+    setBondedNpubs(bondedArbitersForCommunity(cached));
+    setVerifiedBonded(cached.length ? bondedArbitersForCommunity(cached) : null);
+    setSeatedBond(cached.find(b => b.npub === state.participants[Role.ARBITER] && b.funded && b.active) ?? null);
     setCohortPeers(null);
     if (!fetchCommunityBonds || !state.community) return;
     let cancelled = false;
     fetchCommunityBonds(state.community)
       .then((bonds) => {
         if (cancelled) return;
+        if (!bonds.length) return;
         const verified = bondedArbitersForCommunity(bonds);
         setBondedNpubs(verified);
         setVerifiedBonded(verified);

@@ -25,6 +25,7 @@ import { countArbiterNoShows } from "../../escrow-engine/arbiter-substitution.js
 import type { ChamaLiveness } from "../../arbiters/live-chama.js";
 import { listCommitmentBonds } from "../../bond-multisig/commitment-store.js";
 import type { VerifiedBond } from "../../bond-multisig/bond-announcement.js";
+import { readCachedCommunityBonds } from "../../arbiters/bonded-pool-cache.js";
 import { mergeDashboardBonds } from "../../bond-multisig/dashboard-bonds.js";
 import { summarizeArbiterEarnings } from "../../arbiters/arbiter-earnings.js";
 import { SHOW_BOND_CEREMONY } from "../panels/BondCeremonyModal.js";
@@ -173,19 +174,20 @@ export function DashboardScreen({
     [bonds, bondTip],
   );
 
-  const [rosterBonds, setRosterBonds] = useState<VerifiedBond[]>([]);
+  const [rosterBonds, setRosterBonds] = useState<VerifiedBond[]>(() => communitySlug ? readCachedCommunityBonds(communitySlug, Date.now(), true) ?? [] : []);
   useEffect(() => {
-    let cancelled = false; setRosterBonds([]);
+    let cancelled = false; setRosterBonds(communitySlug ? readCachedCommunityBonds(communitySlug, Date.now(), true) ?? [] : []);
     if (communitySlug && fetchCommunityBonds) void fetchCommunityBonds(communitySlug)
-      .then(value => { if (!cancelled) setRosterBonds(value); }).catch(() => {});
+      .then(value => { if (!cancelled && value.length) setRosterBonds(value); }).catch(() => {});
     return () => { cancelled = true; };
   }, [communitySlug, fetchCommunityBonds]);
-  const [announcedBonds, setAnnouncedBonds] = useState<VerifiedBond[]>([]);
+  const [announcedBonds, setAnnouncedBonds] = useState<VerifiedBond[]>(() =>
+    communitySlug ? (readCachedCommunityBonds(communitySlug, Date.now(), true) ?? []).filter(b => b.npub.toLowerCase() === pubkey.toLowerCase()) : []);
   useEffect(() => {
     if (!fetchMyBonds) return;
     let cancelled = false;
     void fetchMyBonds()
-      .then((v) => { if (!cancelled) setAnnouncedBonds(v); })
+      .then((v) => { if (!cancelled && v.length) setAnnouncedBonds(v); })
       .catch(() => { /* fail-soft: keep local bonds only */ });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps

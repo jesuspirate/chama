@@ -166,7 +166,13 @@ export function writeCachedCommunityBonds(
 ): void {
   if (!community || bonds.length === 0) return;
   const store = loadCache();
-  store[community] = { verifiedAt: nowMs, bonds: bonds.map(serializeBond) };
+  // A relay or explorer can return only part of the roster. A new verification
+  // replaces that arbiter's older proof (including a verified spent/expired
+  // result); absence from a partial read is not evidence that a bond vanished.
+  const prior = readCachedCommunityBonds(community, nowMs, true) ?? [];
+  const byArbiter = new Map(prior.map(b => [b.npub.toLowerCase(), b]));
+  for (const bond of bonds) byArbiter.set(bond.npub.toLowerCase(), bond);
+  store[community] = { verifiedAt: nowMs, bonds: [...byArbiter.values()].map(serializeBond) };
   saveCache(store);
 }
 
@@ -178,10 +184,11 @@ export function writeCachedCommunityBonds(
 export function readCachedCommunityBonds(
   community: string,
   nowMs = Date.now(),
+  allowStale = false,
 ): VerifiedBond[] | null {
   const entry = loadCache()[community];
   if (!entry || !Number.isFinite(entry.verifiedAt)) return null;
-  if (nowMs - entry.verifiedAt > BONDED_POOL_CACHE_TTL_MS) return null;
+  if (!allowStale && nowMs - entry.verifiedAt > BONDED_POOL_CACHE_TTL_MS) return null;
   if (!Array.isArray(entry.bonds)) return null;
   const bonds: VerifiedBond[] = [];
   for (const s of entry.bonds) {

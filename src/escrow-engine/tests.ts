@@ -26937,8 +26937,17 @@ console.log("\n── #62 REDEEM-PROBE + BONDED-POOL CACHE ──");
   assert(
     cache.readCachedCommunityBonds("tz-tzs", T0 + 180_000)?.length === 1,
     "cache: an EMPTY result is never written — a flap can't clobber known-good bonds");
+  const secondBond = { ...bond, npub: "npub1second", address: "bc1psecond" };
+  cache.writeCachedCommunityBonds("tz-tzs", [secondBond], T0 + 180_000);
+  assert(cache.readCachedCommunityBonds("tz-tzs", T0 + 180_001)?.length === 2,
+    "cache: a partial verified read retains another arbiter's last chain proof");
+  cache.writeCachedCommunityBonds("tz-tzs", [{ ...bond, funded: false, active: false, actualSats: 0n }], T0 + 240_000);
+  assert(cache.readCachedCommunityBonds("tz-tzs", T0 + 240_001)?.find(b => b.npub === bond.npub)?.funded === false,
+    "cache: newer verified spent proof replaces prior stake");
+  assert(cache.readCachedCommunityBonds("tz-tzs", T0 + 240_000 + cache.BONDED_POOL_CACHE_TTL_MS + 1, true)?.length === 2,
+    "cache: display may retain last verified roster after money-path TTL");
   assert(
-    cache.readCachedCommunityBonds("tz-tzs", T0 + cache.BONDED_POOL_CACHE_TTL_MS + 1) === null,
+    cache.readCachedCommunityBonds("tz-tzs", T0 + 240_000 + cache.BONDED_POOL_CACHE_TTL_MS + 1) === null,
     "cache: past the TTL the entry is stale → null (caller goes live-or-nothing)");
   assert(cache.readCachedCommunityBonds("ke-kes", T0) === null,
     "cache: unknown community → null");
