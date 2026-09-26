@@ -7,8 +7,8 @@ export const me: Record<string, string> = {
 
   "me.arbiterSeatConflict": "Conflicting trade roles: you are listed as both a trader and the arbiter. This trade cannot appear in your arbiter queue. Open it to review the participants.",
   "me.moneySafetyOther": "Other money actions",
-  "me.avatarUpload": "Avatar (GIF, PNG, WebP or JPEG; up to 48 KB)",
-  "me.avatarFailed": "Could not save and publish the avatar. Use an image up to 48 KB and 2048 × 2048, then retry.",
+  "me.avatarUpload": "Profile photo (automatically cropped and compressed)",
+  "me.avatarFailed": "Could not save and publish the photo. Try a GIF, PNG, WebP or JPEG image.",
   "me.hydratingTrades": "Checking your complete trade history…",
   // Store permanence (#49) Tier 1 — "your store lapsed — renew?" card.
   "me.storeLapsedTitleOne": "Your store lapsed",

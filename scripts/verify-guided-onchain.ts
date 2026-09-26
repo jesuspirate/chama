@@ -13,6 +13,7 @@ const bundle = await build({ bundle: true, write: false, format: 'iife', jsx: 'a
 import React from 'react'; import { createRoot } from 'react-dom/client';
 import { LiveTradeSurface } from './src/ui/screens/LiveTradeSurface';
 import { LangProvider } from './src/i18n';
+import { avatarFromFile, parseAvatar, saveAvatar } from './src/ui/avatars';
 import { EscrowStatus, Outcome } from './src/escrow-engine/types';
 const base = ${JSON.stringify(fixture.state)};
 const terms = ${JSON.stringify(fixture.terms)};
@@ -41,9 +42,38 @@ window.scenario=(stage,role='seller',pass=true)=>{viewer=keys[role]; valid=pass;
  lock:stage==='created'||stage==='funding'?base.lock:{...base.lock,lockedAt:Math.floor(Date.now()/1000),onchain:{...terms,amountSats:'100000',fundingTxid:'11'.repeat(32),fundingVout:0}},
  resolvedOutcome:stage==='approved'||stage==='done'?Outcome.RELEASE:undefined,
  resolvedMajority:stage==='approved'||stage==='done'?['buyer','seller']:undefined}; render();};
+window.testAvatars=async()=>{
+ const canvas=document.createElement('canvas'); canvas.width=2400; canvas.height=1600;
+ const ctx=canvas.getContext('2d'); const pixels=ctx.createImageData(2400,1600);
+ let seed=17;
+ for(let y=0;y<1600;y++) for(let x=0;x<2400;x++) {
+   seed=(Math.imul(seed,1664525)+1013904223)>>>0;
+   const i=(y*2400+x)*4, center=x>=400&&x<2000;
+   pixels.data[i]=center?seed%80:255; pixels.data[i+1]=center?150+seed%106:0;
+   pixels.data[i+2]=center?(seed>>>8)%80:0; pixels.data[i+3]=255;
+ }
+ ctx.putImageData(pixels,0,0);
+ const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));
+ const file=new File([blob],'large.png',{type:'image/png'});
+ const webp=await avatarFromFile(file);
+ const original=HTMLCanvasElement.prototype.toDataURL;
+ let jpeg;
+ try {HTMLCanvasElement.prototype.toDataURL=function(type,q){return original.call(this,type==='image/webp'?'image/png':type,q);}; jpeg=await avatarFromFile(file);}
+ finally {HTMLCanvasElement.prototype.toDataURL=original;}
+ const inspect=async avatar=>{
+   if(!parseAvatar(avatar)) throw Error('Compressed avatar rejected');
+   const img=new Image(); img.src=avatar.still; await img.decode();
+   const out=document.createElement('canvas');out.width=256;out.height=256;
+   const c=out.getContext('2d');c.drawImage(img,0,0);
+   const corner=Array.from(c.getImageData(0,0,1,1).data);
+   return {size:atob(avatar.still.split(',')[1]).length,width:img.naturalWidth,height:img.naturalHeight,corner};
+ };
+ saveAvatar(keys.buyer,webp);saveAvatar(keys.seller,jpeg);
+ return {input:file.size,webp:await inspect(webp),jpeg:await inspect(jpeg),fallback:jpeg.still.startsWith('data:image/jpeg;')};
+};
 window.fund=()=>{funded=true;}; window.scenario('created');
 ` } });
-const server = createServer((_req,res) => res.end('<!doctype html><div id="root"></div>'));
+const server = createServer((_req,res) => res.end('<!doctype html><style>*{box-sizing:border-box}body{margin:0}</style><div id="root"></div>'));
 await new Promise<void>(resolve => server.listen(0,'127.0.0.1',resolve));
 let browser;
 try {
@@ -84,6 +114,18 @@ try {
   assert.equal(await page.evaluate(() => (window as any).calls.claim),0);
   await page.evaluate(() => (window as any).scenario('done','buyer'));
   await page.waitForFunction(() => (window as any).calls.payout>0);
+  const avatars = await page.evaluate(() => (window as any).testAvatars());
+  assert.ok(avatars.input>48*1024);
+  assert.equal(avatars.fallback,true);
+  for(const output of [avatars.webp,avatars.jpeg]) {
+    assert.ok(output.size<=40*1024); assert.equal(output.width,256); assert.equal(output.height,256);
+    assert.ok(output.corner[1]>output.corner[0], 'cover crop removes the red side bars');
+  }
+  await page.setViewport({width:390,height:844});
+  await page.waitForFunction(() => document.querySelectorAll('.lts-room img').length>=2);
+  assert.equal(await page.evaluate(() => [...document.querySelectorAll('.lts-room button')].some(el=>el.getBoundingClientRect().right>window.innerWidth)),false,'seat chips and avatars fit mobile width');
+  if (process.env.CHAMA_TEST_SCREENSHOT) await page.screenshot({path:process.env.CHAMA_TEST_SCREENSHOT as `${string}.png`});
+  console.log('PASS large profile image compression, 256px cover crop, JPEG fallback and mobile seat avatars', avatars);
   assert.deepEqual(errors,[]);
   console.log('PASS guided on-chain overlay, read-only buyer, fiat vote, failed-check signing gate, signing and payout recovery');
 } finally { await browser?.close(); server.closeAllConnections(); server.close(); }

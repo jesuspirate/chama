@@ -1,5 +1,6 @@
 import { payoutRecipientFor } from "../../escrow-engine/recipients.js";
 import { handleDisplayForViewer } from "../../payments/saved-handles.js";
+import { ProfileAvatar } from "../components/ProfileAvatar.js";
 import { Wordmark } from "../components/Wordmark.js";
 import { OverlaySheet } from "../components/OverlaySheet.js";
 import { OnchainTradeControls, type OnchainTradeActions } from "../panels/OnchainTradeControls.js";
@@ -919,6 +920,7 @@ function PersonChip({ person, name, onClick }: { person: RoomPresence; name: str
       background: T.surface, border: `1px solid ${person.ready ? `${T.green}44` : T.border}`,
       borderRadius: 999, padding: "4px 10px",
     }}>
+      <ProfileAvatar pubkey={person.pubkey} fallback={null} size={24} />
       <span
         className={here ? "lts-here-dot" : undefined}
         style={{

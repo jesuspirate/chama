@@ -4,8 +4,8 @@ export const me: Record<string, string> = {
 
   "me.arbiterSeatConflict": "Rôles incompatibles : vous êtes à la fois partie à cet échange et arbitre. Cet échange ne peut pas figurer dans votre file d’arbitrage. Ouvrez-le pour vérifier les participants.",
   "me.moneySafetyOther": "Autres actions sur les fonds",
-  "me.avatarUpload": "Avatar (GIF, PNG, WebP ou JPEG ; 48 Ko maximum)",
-  "me.avatarFailed": "Enregistrement et publication impossibles. Utilisez une image de 48 Ko et 2048 × 2048 maximum, puis réessayez.",
+  "me.avatarUpload": "Photo de profil (recadrée et compressée automatiquement)",
+  "me.avatarFailed": "Impossible d’enregistrer et de publier la photo. Essayez une image GIF, PNG, WebP ou JPEG.",
   "me.hydratingTrades": "Vérification de l’historique complet de vos échanges…",
   // Permanence de la boutique (#49) Niveau 1 — carte « votre boutique a expiré ».
   "me.storeLapsedTitleOne": "Votre boutique a expiré",

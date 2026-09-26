@@ -4,8 +4,8 @@ export const me: Record<string, string> = {
 
   "me.arbiterSeatConflict": "Roles incompatibles: figuras como parte del intercambio y como árbitro. Este intercambio no puede aparecer en tu cola de arbitraje. Ábrelo para revisar los participantes.",
   "me.moneySafetyOther": "Otras acciones con fondos",
-  "me.avatarUpload": "Avatar (GIF, PNG, WebP o JPEG; hasta 48 KB)",
-  "me.avatarFailed": "No se pudo guardar y publicar. Usa una imagen de hasta 48 KB y 2048 × 2048 e inténtalo de nuevo.",
+  "me.avatarUpload": "Foto de perfil (se recorta y comprime automáticamente)",
+  "me.avatarFailed": "No se pudo guardar y publicar la foto. Prueba una imagen GIF, PNG, WebP o JPEG.",
   "me.hydratingTrades": "Comprobando tu historial completo de operaciones…",
   // Permanencia de la tienda (#49) Nivel 1 — tarjeta «tu tienda venció».
   "me.storeLapsedTitleOne": "Tu tienda venció",
