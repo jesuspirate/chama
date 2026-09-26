@@ -58,6 +58,16 @@ self.addEventListener("notificationclick", (event) => {
   const escrowId = event.notification.data && event.notification.data.escrowId;
   const target = escrowId ? `/?trade=${encodeURIComponent(escrowId)}` : "/";
   event.waitUntil((async () => {
+    const payout = event.notification.data;
+    if (payout && /^[0-9a-f]{64}$/i.test(payout.payoutTxid || "") && ["mainnet", "signet"].includes(payout.payoutNetwork)) {
+      // Delivery records the user's configured explorer; the worker cannot
+      // read the per-user localStorage setting on a cold notification tap.
+      const configured = typeof payout.payoutUrl === "string"
+        && /^https?:\/\/[^\s?#]+\/tx\/[0-9a-f]{64}$/i.test(payout.payoutUrl)
+        && payout.payoutUrl.endsWith(`/tx/${payout.payoutTxid}`);
+      return self.clients.openWindow(configured ? payout.payoutUrl
+        : `https://${payout.payoutNetwork === "signet" ? "mutinynet.com" : "mempool.space"}/tx/${payout.payoutTxid}`);
+    }
     const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
     const existing = windows[0];
     if (existing) {

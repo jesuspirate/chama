@@ -38,8 +38,8 @@ export function onchainAttention(state: EscrowState, viewer: string, observation
   if (observation?.payout && principal) {
     const p = observation.payout;
     return p.confirmed
-      ? result(`confirmed:${p.txid}`, `Done · ${Number(p.sats).toLocaleString('en-US')} sats to ${p.destination.slice(0, 12)}…`, false)
-      : result(`broadcast:${p.txid}`, 'Payout sent · waiting for confirmation', false);
+      ? result(`confirmed:${p.txid}`, `Payout confirmed · ${Number(p.sats).toLocaleString('en-US')} sats to ${p.destination.slice(0, 12)}…`, false)
+      : result(`broadcast:${p.txid}`, `Payout sent · waiting for confirmation · ${p.txid.slice(0, 8)}…`, false);
   }
   if (observation?.refundSpent) return null;
   if (observation?.refundAvailable) return role === funder ? result('refund', 'Your refund is available') : null;
@@ -84,6 +84,12 @@ export function onchainAttention(state: EscrowState, viewer: string, observation
 /** Read only: require the verified final transaction and every spent input
  * before calling a payout sent; a relay COMPLETE alone is not confirmation. */
 export async function observeOnchainAttention(state: EscrowState, fetchJson: EsploraFetch): Promise<OnchainObservation> {
+  if (state.onchainPayoutTxid && state.onchainPayoutAddress && state.onchainPayoutSats) {
+    const status = await fetchJson(`/tx/${state.onchainPayoutTxid}/status`);
+    if (typeof status?.confirmed !== 'boolean') throw Error('Invalid payout status');
+    return { payout: { txid: state.onchainPayoutTxid, confirmed: status.confirmed,
+      sats: state.onchainPayoutSats, destination: state.onchainPayoutAddress } };
+  }
   const terms = state.onchainFundingTerms;
   if (!terms) return {};
   const winner = getWinner(state);

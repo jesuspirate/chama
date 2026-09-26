@@ -1,3 +1,15 @@
+import { esploraTransactionUrl } from "../bond-multisig/esplora-config.js";
+import { MAINNET, SIGNET } from "../bond-multisig/multisig.js";
+import { openExternalUrl } from "../ui/open-url.js";
+
+export function openNotificationPayout(extra: unknown): boolean {
+  const value = extra as { payoutTxid?: unknown; payoutNetwork?: unknown } | null;
+  if (typeof value?.payoutTxid !== "string" || !/^[0-9a-f]{64}$/i.test(value.payoutTxid)
+    || (value.payoutNetwork !== "mainnet" && value.payoutNetwork !== "signet")) return false;
+  void openExternalUrl(esploraTransactionUrl(value.payoutNetwork === "mainnet" ? MAINNET : SIGNET, value.payoutTxid));
+  return true;
+}
+
 // ══════════════════════════════════════════════════════════════════════════
 // Notification deep-links — carry a tapped notification to its trade
 // ══════════════════════════════════════════════════════════════════════════
@@ -75,7 +87,7 @@ function extractEscrowId(extra: unknown): string | null {
 export function handleWebNotificationClickMessage(data: unknown): void {
   const message = data as { type?: unknown; escrowId?: unknown } | null | undefined;
   if (message?.type !== "chama:notificationclick") return;
-  setPendingTradeDeepLink(extractEscrowId(message));
+  if (!openNotificationPayout(message)) setPendingTradeDeepLink(extractEscrowId(message));
 }
 
 let registered = false;
@@ -99,7 +111,7 @@ export function registerNotificationTapHandlers(): () => void {
         const { LocalNotifications } = await import("@capacitor/local-notifications");
         const handle = await LocalNotifications.addListener(
           "localNotificationActionPerformed",
-          (action) => setPendingTradeDeepLink(extractEscrowId(action?.notification?.extra)),
+          (action) => { if (!openNotificationPayout(action?.notification?.extra)) setPendingTradeDeepLink(extractEscrowId(action?.notification?.extra)); },
         );
         disposers.push(() => { try { void handle.remove(); } catch { /* ignore */ } });
       } catch { /* plugin unavailable; ignore */ }
@@ -111,7 +123,7 @@ export function registerNotificationTapHandlers(): () => void {
         const handle = await mod.onAction((notification) => {
           // Primary: the escrowId we stamped into `extra`. Fallback (desktop
           // click delivered without a payload): land on the active trade.
-          setPendingTradeDeepLink(extractEscrowId(notification?.extra) ?? LATEST_ACTIONABLE);
+          if (!openNotificationPayout(notification?.extra)) setPendingTradeDeepLink(extractEscrowId(notification?.extra) ?? LATEST_ACTIONABLE);
         });
         disposers.push(() => { try { void handle.unregister(); } catch { /* ignore */ } });
       } catch { /* plugin unavailable; ignore */ }

@@ -1093,6 +1093,10 @@ export interface EscrowState {
   onchainFundingTerms?: OnchainFundingTerms;
   /** Advisory refund journal marker; only a verified chain spend means done. */
   onchainRefundClaimed?: boolean;
+  /** Verified final settlement facts, reconstructed from signed events. */
+  onchainPayoutTxid?: string;
+  onchainPayoutAddress?: string;
+  onchainPayoutSats?: string;
   /** Fedimint mint URL / invite code */
   mintUrl: string;
 

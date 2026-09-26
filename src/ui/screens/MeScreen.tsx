@@ -1377,6 +1377,11 @@ function MeTradeHistory({
                 }}
               >
                 <TradeCard state={s} pubkey={pubkey} onSelect={() => onOpenTrade(s.id)} amountDisplayMode={amountDisplayMode} quoteCurrency={quoteCurrency} profileNames={profileNames} kind0Enabled={kind0Enabled} />
+                {s.status === EscrowStatus.COMPLETED && s.escrowMode === "onchain" && s.onchainPayoutTxid && (
+                  <div style={{ color: T.muted, fontSize: 11, fontFamily: T.mono, padding: "4px 12px" }}>
+                    Payout · {s.onchainPayoutTxid.slice(0, 8)}…
+                  </div>
+                )}
                 {/* Safety net Jetty asked for: rate the counterparty straight from
                     history (👍/👎) if you forgot or backed out of the trade. */}
                 {ratee && !alreadyRated && onRateCounterparty && (

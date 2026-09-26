@@ -1,3 +1,4 @@
+import { pollPayoutRecovery } from "./payout-poll.js";
 import assert from 'node:assert/strict';
 import { esploraFetcher, esploraBroadcast, EsploraUnavailableError, SETTLEMENT_EXPLORER_TIMEOUT_MS } from './fund-watcher.js';
 import { MAINNET, SIGNET } from './multisig.js';
@@ -35,3 +36,21 @@ retryExplorerRead({read:async()=>{throw Error('Wrong destination');},success:()=
 let resolveLate!:(value:number)=>void;
 const stop=retryExplorerRead({read:()=>new Promise<number>(r=>resolveLate=r),success:()=>assert.fail('Unmounted result applied'),failure:()=>assert.fail()});stop();resolveLate(1);await flush();
 console.log('PASS explorer failures: third hedge, per-host logs, custom/signet isolation, all-host timeout, capped retry, real mismatch and unmount cancellation');
+
+// Recovery polling: monotonic backoff, minute floor, spendable and cleanup stop.
+for (const completed of [false, true]) {
+  const delays: number[] = [];
+  let queued: (() => void) | undefined;
+  let spendable = false;
+  let cleared = false;
+  const stop = pollPayoutRecovery({ completed, read: async () => spendable,
+    schedule: (run, delay) => { queued = run; delays.push(delay); return 1 as unknown as ReturnType<typeof setTimeout>; },
+    clear: () => { cleared = true; queued = undefined; },
+  });
+  for (let i = 0; i < 4; i++) { const run = queued!; queued = undefined; run(); await Promise.resolve(); await Promise.resolve(); }
+  assert.deepEqual(delays, completed ? [60000,60000,60000,60000,60000] : [3000,10000,30000,60000,60000]);
+  spendable = true;
+  const run = queued!; queued = undefined; run(); await Promise.resolve(); await Promise.resolve();
+  assert.equal(queued, undefined, 'spendable output stops retries');
+  stop(); assert.equal(cleared, true, 'confirmation/unmount cancels the timer');
+}

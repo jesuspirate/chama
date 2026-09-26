@@ -44,6 +44,8 @@ export interface OnchainEscrowView {
   viewerFunds: boolean;
   /** Explorer link for the funding transaction, once known. */
   fundingTxid: string | null;
+  payoutTxid: string | null;
+  payoutAddress: string | null;
   /** Whether the appeal window still blocks arbitration, and for how long. */
   appealWindow: { open: boolean; blocksRemaining: number } | null;
   /** ⚠ Advisory only. A UI must gate its sign button on a PASSED CHECKLIST, not
@@ -116,6 +118,8 @@ export function deriveOnchainView(params: {
     blockers: stage === "awaiting-keys" ? blockers : [],
     viewerFunds: funder !== null && viewerRole === funder,
     fundingTxid: terms?.fundingTxid ?? null,
+    payoutTxid: state.onchainPayoutTxid ?? null,
+    payoutAddress: state.onchainPayoutAddress ?? null,
     appealWindow: params.appealWindow ?? null,
     canSettle: stage === "settling",
     // Only while the arbiter's key is the thing actually missing. Prompting an

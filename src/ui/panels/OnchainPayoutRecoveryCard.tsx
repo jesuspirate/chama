@@ -1,3 +1,4 @@
+import { pollPayoutRecovery } from "../../bond-multisig/payout-poll.js";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { OnchainPayout } from "../../bond-multisig/onchain-payout-wallet.js";
 import { BitcoinAmount } from "../components/BitcoinAmount.js";
@@ -16,6 +17,8 @@ export function OnchainPayoutRecoveryCard({
   escrowId,
   credited,
   embedded = false,
+  completed = false,
+  payoutConfirmed = false,
   scan,
   sweep,
 }: {
@@ -24,6 +27,8 @@ export function OnchainPayoutRecoveryCard({
   credited: boolean;
   /** Render as part of the surrounding action card instead of a nested card. */
   embedded?: boolean;
+  completed?: boolean;
+  payoutConfirmed?: boolean;
   scan: () => Promise<ScanResult>;
   sweep: (escrowId: string, destination: string) => Promise<{
     txid: string; sentSats: bigint; feeSats: bigint;
@@ -39,41 +44,38 @@ export function OnchainPayoutRecoveryCard({
     txid: string; sentSats: bigint; feeSats: bigint; network: BtcNetwork;
   } | null>(null);
   const scanInFlightRef = useRef(false);
+  const latestScan = useRef(scan);
+  latestScan.current = scan;
   const payout = result?.payouts.find(item => item.escrowId === escrowId) ?? null;
 
+  const spendable = !!payout && payout.balanceSats > 0n && !payout.hasUnconfirmed;
+
   const refresh = useCallback(async () => {
-    if (scanInFlightRef.current) return;
+    if (scanInFlightRef.current) return false;
     scanInFlightRef.current = true;
-    setLoading(true);
+    // Preserve the previous result during background refreshes.
     setMessage(null);
     try {
-      setResult(await scan());
+      const next = await latestScan.current();
+      setResult(next);
+      return next.payouts.some(item => item.escrowId === escrowId && item.balanceSats > 0n && !item.hasUnconfirmed);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : String(error));
+      return false;
     } finally {
       scanInFlightRef.current = false;
       setLoading(false);
     }
-  }, [scan]);
+  }, [escrowId]);
 
   useEffect(() => {
     if (!credited) void refresh();
   }, [credited, escrowId, refresh]);
 
-  // COMPLETE can arrive a few seconds before the explorer reports the newly
-  // confirmed winner output. The first version scanned once, hid on zero, and
-  // never tried again until the user backed out and reopened the trade. Poll
-  // only while the output is absent; stop immediately once it is spendable.
   useEffect(() => {
-    if (credited || sent || (payout && payout.balanceSats > 0n)) return;
-    const retry = () => { void refresh(); };
-    const timer = window.setInterval(retry, 3_000);
-    window.addEventListener("focus", retry);
-    return () => {
-      window.clearInterval(timer);
-      window.removeEventListener("focus", retry);
-    };
-  }, [credited, payout, refresh, sent]);
+    if (credited || sent || payoutConfirmed || spendable) return;
+    return pollPayoutRecovery({ completed, read: refresh });
+  }, [credited, spendable, refresh, sent, completed, payoutConfirmed]);
 
   if (credited && !sent) return null;
 
@@ -90,7 +92,7 @@ export function OnchainPayoutRecoveryCard({
       <div style={{ color: T.green, fontSize: 12.5, fontWeight: 800, marginBottom: 7 }}>
         {t("onchain.payoutTitle")}
       </div>
-      {loading || (!payout && !message && !sent) ? (
+      {loading && !result && !sent ? (
         <div style={{ color: T.muted, fontSize: 12 }}>{t("onchain.payoutChecking")}</div>
       ) : payout && payout.balanceSats > 0n ? (
         <>
@@ -132,7 +134,7 @@ export function OnchainPayoutRecoveryCard({
                 setSent({ txid, sentSats, feeSats, network });
                 setLoading(true);
                 try {
-                  setResult(await scan());
+                  setResult(await latestScan.current());
                 } catch { /* the sent transaction link remains the source of truth */ }
                 finally { setLoading(false); }
               }).catch(error => setMessage(error instanceof Error ? error.message : String(error)))
@@ -147,7 +149,7 @@ export function OnchainPayoutRecoveryCard({
             }}
           >{busy ? t("onchain.payoutSending") : t(payout.hasUnconfirmed ? "onchain.payoutSpeedUp" : "onchain.payoutSend")}</button>
         </>
-      ) : null}
+      ) : !sent && !message ? <div style={{ color: T.muted, fontSize: 12 }}>No spendable payout found yet.</div> : null}
       {message && (
         <div style={{ marginTop: 8, color: T.muted, fontSize: 11, lineHeight: 1.5, wordBreak: "break-word" }}>
           {message}

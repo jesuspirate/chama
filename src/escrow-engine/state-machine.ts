@@ -1515,7 +1515,8 @@ function handleComplete(state: EscrowState, event: ParsedEscrowEvent<CompletePay
   if (state.status !== EscrowStatus.CLAIMED && !directOnchain) {
     return err("INVALID_STATE", `Cannot COMPLETE in state ${state.status}`, event.raw.id);
   }
-  if (directOnchain) {
+  let payoutProof: ReturnType<typeof finalCoopSettlementProof> = null;
+  if (state.lock.onchain) {
     const sender = event.raw.pubkey;
     const proofEventId = event.raw.tags.find(tag => tag[0] === "settlement")?.[1];
     const proofEvent = state.settlements?.find(message => message.raw.id === proofEventId);
@@ -1524,14 +1525,15 @@ function handleComplete(state: EscrowState, event: ParsedEscrowEvent<CompletePay
       ? winner.role
       : null;
     const requiresArbiter = !!state.resolvedMajority?.includes(Role.ARBITER);
-    const cooperative = !!(!requiresArbiter && proofEvent && winnerRole && state.lock.onchain
+    const cooperative = (!requiresArbiter && proofEvent && winnerRole && state.lock.onchain
       && finalCoopSettlementProof(proofEvent, state.lock.onchain, winnerRole, state.settlements, winner?.pubkey));
-    const arbitrated = !!(requiresArbiter
+    const arbitrated = (requiresArbiter
       && proofEvent && winnerRole && state.lock.onchain
       && finalArbiterSettlementProof(proofEvent, state.lock.onchain, winnerRole, state.settlements, winner?.pubkey));
     const authorized = cooperative
       ? sender === state.participants[Role.BUYER] || sender === state.participants[Role.SELLER]
       : arbitrated && (sender === state.participants[winnerRole] || sender === state.participants[Role.ARBITER]);
+    payoutProof = cooperative || arbitrated || null;
     if (!authorized) {
       return err("INVALID_SETTLEMENT_PROOF",
         "On-chain COMPLETE must link a fully signed settlement for this escrow",
@@ -1542,6 +1544,11 @@ function handleComplete(state: EscrowState, event: ParsedEscrowEvent<CompletePay
   const next = cloneState(state);
   next.status = EscrowStatus.COMPLETED;
   next.completedAt = event.payload.completedAt;
+  if (payoutProof) {
+    next.onchainPayoutTxid = payoutProof.txid;
+    next.onchainPayoutAddress = payoutProof.destination;
+    next.onchainPayoutSats = payoutProof.sats;
+  }
   next.eventChain.push(event);
 
   return { ok: true, state: next };

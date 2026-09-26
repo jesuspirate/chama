@@ -237,6 +237,11 @@ export function OnchainEscrowPanel({
               : view.stage === "settling" ? t("onchain.settlingBody")
                 : t("onchain.lockedBody")}
           </div>
+          {(view.stage === "settling" || view.stage === "done") && view.payoutTxid && (
+            <a href={esploraTransactionUrl(btcNetwork, view.payoutTxid)} target="_blank" rel="noreferrer noopener"
+              onClick={event => { event.preventDefault(); void openExternalUrl(esploraTransactionUrl(btcNetwork, view.payoutTxid!)); }}
+              style={{ color: T.text, marginRight: 12 }}>{t("onchain.viewOnChain")} ↗</a>
+          )}
           {view.fundingTxid && (
             <a
               href={esploraTransactionUrl(btcNetwork, view.fundingTxid)}
@@ -247,7 +252,7 @@ export function OnchainEscrowPanel({
                 void openExternalUrl(esploraTransactionUrl(btcNetwork, view.fundingTxid!));
               }}
               style={{ color: T.muted, fontSize: 10.5, textDecoration: "underline" }}
-            >{t("onchain.viewOnChain")} ↗</a>
+            >Deposit ↗</a>
           )}
         </div>
       )}

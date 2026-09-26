@@ -2,7 +2,7 @@ import { onchainAttention, type OnchainObservation } from '../../escrow-engine/o
 import { EsploraUnavailableError } from '../../bond-multisig/fund-watcher.js';
 import { EXPLORER_RETRY_MESSAGE, explorerRetryDelay, retryExplorerRead } from '../../bond-multisig/explorer-retry.js';
 import { settlementUnsignedId } from "../../escrow-engine/onchain-settlement-transport.js";
-import { winnerSettlementChoice } from "../../escrow-engine/onchain-settlement-choice.js";
+import { payoutUsesTradeKey, winnerSettlementChoice } from "../../escrow-engine/onchain-settlement-choice.js";
 import { profileNameFor, type NostrProfileNameMap } from "../nostr-profiles.js";
 import { useEffect, useRef, useState } from "react";
 import { EscrowStatus, Role, getEffectiveParticipantsAt, type EscrowState } from "../../escrow-engine/types.js";
@@ -74,6 +74,10 @@ export function OnchainTradeControls({ state, pubkey, profileNames, kind0Enabled
     recomputedAddress: plan?.ready ? plan.address ?? null : null,
     blockers: plan?.ready ? [] : (plan?.blockers ?? ["not-ready"]).map(b => !state.onchainFundingTerms && b === "bad-refund-height" ? "funding-terms" : b),
     viewerIsPendingArbiter: pendingArbiter });
+  if (actions.onchainObservation?.payout) {
+    view.payoutTxid ??= actions.onchainObservation.payout.txid;
+    view.payoutAddress ??= actions.onchainObservation.payout.destination;
+  }
   const winner = getWinner(state);
   const choice = winnerSettlementChoice(state);
   const winnerName = profileNameFor(profileNames, winner?.pubkey, kind0Enabled) ?? "the winner";
@@ -158,14 +162,15 @@ export function OnchainTradeControls({ state, pubkey, profileNames, kind0Enabled
   const buttonStyle = { padding: "12px 14px", minHeight: 44, borderRadius: T.rs, border: `1px solid ${T.borderHi}`,
     background: T.surface, color: T.text, fontFamily: T.sans, fontWeight: 700, cursor: "pointer" };
   const recovery = actions.onScanMyOnchainPayouts && actions.onSweepOnchainPayout
-    && ((refunded && view.viewerFunds) || (state.status === EscrowStatus.COMPLETED && winner?.pubkey === pubkey))
+    && ((refunded && view.viewerFunds) || (state.status === EscrowStatus.COMPLETED && winner?.pubkey === pubkey && payoutUsesTradeKey(state)))
     ? <OnchainPayoutRecoveryCard escrowId={state.id} credited={defaultCreditObserver()(state)} embedded
+        completed={state.status === EscrowStatus.COMPLETED} payoutConfirmed={actions.onchainObservation?.payout?.confirmed}
         scan={actions.onScanMyOnchainPayouts} sweep={actions.onSweepOnchainPayout} /> : null;
   if (refunded) return <div><p role="status">Refund confirmed on Bitcoin.</p>{recovery}</div>;
   return <div>
     {recovery}
-    {(actions.onchainObservation?.payout || state.status === EscrowStatus.COMPLETED) && <p role="status" style={{color:T.muted}}>
-      {actions.onchainObservation?.payout ? onchainAttention(state, pubkey, actions.onchainObservation)?.text : 'Checking the payout on the blockchain…'}
+    {(actions.onchainObservation?.payout || state.onchainPayoutTxid) && <p role="status" style={{color:T.muted}}>
+      {actions.onchainObservation?.payout ? onchainAttention(state, pubkey, actions.onchainObservation)?.text : state.onchainPayoutTxid ? `Payout sent · waiting for confirmation · ${state.onchainPayoutTxid.slice(0, 8)}…` : null}
     </p>}
     {unavailable && <div role="status" style={{color:T.muted, margin:'12px 0'}}>
       <p>{Object.entries(explorerFailures).some(([source,failed]) => source !== 'action' && failed) ? EXPLORER_RETRY_MESSAGE : "The block explorer did not answer. Try again."}</p>

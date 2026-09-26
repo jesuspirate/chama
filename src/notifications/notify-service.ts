@@ -1,3 +1,5 @@
+import { esploraTransactionUrl } from "../bond-multisig/esplora-config.js";
+import { MAINNET, SIGNET } from "../bond-multisig/multisig.js";
 import { onchainAttention, type OnchainObservation } from '../escrow-engine/onchain-attention.js';
 // ══════════════════════════════════════════════════════════════════════════
 // Notify service — side effects around the pure notification core (#88)
@@ -18,7 +20,7 @@ import {
   type CircleLockContext,
 } from "./trade-notifications.js";
 import { Role, EscrowStatus } from "../escrow-engine/types.js";
-import { setPendingTradeDeepLink } from "./deep-link.js";
+import { openNotificationPayout, setPendingTradeDeepLink } from "./deep-link.js";
 import { translate, getCurrentLang } from "../i18n/index.js";
 import {
   getScopedStorageItem,
@@ -438,7 +440,7 @@ async function deliver(n: TradeNotification): Promise<boolean> {
           title: n.title,
           body: n.body,
           ...(tradeChannelReady ? { channelId: tradeChannelId } : {}),
-          extra: { escrowId: n.escrowId },
+          extra: { escrowId: n.escrowId, ...(n.payoutTxid ? { payoutTxid: n.payoutTxid, payoutNetwork: n.payoutNetwork } : {}) },
         }],
       });
       notifyDebug(() => `capacitor scheduled tag=${n.tag}`);
@@ -455,7 +457,7 @@ async function deliver(n: TradeNotification): Promise<boolean> {
       // capability/registration/serialize failure (otherwise swallowed). A
       // resolved IPC with no visible buzz on macOS means the gate is the OS
       // layer (dev → "Terminal"; unsigned prod → dropped), NOT the app.
-      const opts = { title: n.title, body: n.body, extra: { escrowId: n.escrowId } };
+      const opts = { title: n.title, body: n.body, extra: { escrowId: n.escrowId, ...(n.payoutTxid ? { payoutTxid: n.payoutTxid, payoutNetwork: n.payoutNetwork } : {}) } };
       const internals = (globalThis as {
         __TAURI_INTERNALS__?: { invoke?: (cmd: string, args?: unknown) => Promise<unknown> };
       }).__TAURI_INTERNALS__;
@@ -483,7 +485,8 @@ async function deliver(n: TradeNotification): Promise<boolean> {
           tag: n.tag,
           icon: "/icons/android-chrome-192x192.png?v=approved-star-20260921",
           badge: "/icons/favicon-96x96.png?v=approved-star-20260921",
-          data: { escrowId: n.escrowId },
+          data: { escrowId: n.escrowId, ...(n.payoutTxid ? { payoutTxid: n.payoutTxid, payoutNetwork: n.payoutNetwork,
+            payoutUrl: esploraTransactionUrl(n.payoutNetwork === "signet" ? SIGNET : MAINNET, n.payoutTxid) } : {}) },
         });
         return true;
       }
@@ -493,7 +496,7 @@ async function deliver(n: TradeNotification): Promise<boolean> {
       // web Notification API carries no custom payload).
       notif.onclick = () => {
         try { globalThis.focus?.(); } catch { /* ignore */ }
-        setPendingTradeDeepLink(n.escrowId);
+        if (!openNotificationPayout(n)) setPendingTradeDeepLink(n.escrowId);
         try { notif.close(); } catch { /* ignore */ }
       };
       return true;
@@ -787,5 +790,5 @@ export function maybeNotifyOnchainAttention(state: EscrowState, viewer: string, 
   if (!action) return;
   const tag = `${state.id}:onchain:${action.key}`;
   if (readFiredTags().has(tag)) return;
-  deliverOnce({escrowId:state.id, title:action.actionable ? 'Your trade needs you' : 'Trade payout', body:action.text, tag}, 'onchain attention');
+  deliverOnce({escrowId:state.id, title:action.actionable ? 'Your trade needs you' : 'Trade payout', body:action.text, tag, ...(!action.actionable && observation?.payout ? { payoutTxid: observation.payout.txid, payoutNetwork: state.lock.onchain?.network } : {})}, 'onchain attention');
 }

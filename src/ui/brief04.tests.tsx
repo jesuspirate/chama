@@ -6,7 +6,7 @@ import type { OnchainEscrowView } from "../escrow-engine/onchain-escrow-view.js"
 
 const view: OnchainEscrowView = {
   stage: "awaiting-funding", address: "bc1ptestaddress", expectedSats: 100_000n,
-  blockers: [], viewerFunds: true, fundingTxid: null, appealWindow: null,
+  blockers: [], viewerFunds: true, fundingTxid: null, payoutTxid: null, payoutAddress: null, appealWindow: null,
   canSettle: false, viewerMustPublishKey: false,
 };
 const render = (depositStatus: "waiting" | "seen" | "confirmed", fundingNote: string | null) =>

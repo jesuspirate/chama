@@ -26625,6 +26625,18 @@ console.log("\n── ARBITER PREMIUM (compute + kind 38113 + ledger) ──");
   const directResult = applyEvent(journaled.state, linkedComplete);
   assert(directResult.ok && directResult.state.status === EscrowStatus.COMPLETED,
     "S7c: linked fully signed cooperative proof authorizes on-chain COMPLETE during replay");
+  const replayComplete = {
+    ...replayUnlinkedComplete,
+    raw: { ...replayUnlinkedComplete.raw, tags: [...replayUnlinkedComplete.raw.tags, ["settlement", finalJournal.raw.id]] },
+  };
+  const replayWithPayout = replayEventChain([
+    replayCreate, replayArbiterJoin, replayBuyerJoin, replayTerms, replayLock,
+    replayBuyerVote, replaySellerVote, replayResolve, finalJournal, replayComplete,
+  ]);
+  assert(replayWithPayout.ok && replayWithPayout.state.status === EscrowStatus.COMPLETED
+    && replayWithPayout.state.onchainPayoutTxid === btcMs.Transaction.fromPSBT(msBase64.decode(finalizable.psbt), { allowUnknown: true, allowUnknownOutputs: true }).id
+    && replayWithPayout.state.onchainPayoutAddress === winnerAddress,
+    "649/09: full replay retains the final payout txid and winner destination");
   const sameSecondFinal = {
     ...finalJournal,
     timestamp: linkedComplete.timestamp,

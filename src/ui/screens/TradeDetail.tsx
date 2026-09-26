@@ -83,6 +83,7 @@ import { bondTenureBlocks, tenureDays, tenureTier, verifiedBondTenureBlocks, bon
 import { viewerIsExposedByLock, lockerRoleOf } from "../../escrow-engine/lock-custody.js";
 import { verifyBondedStamp, stampIsForged } from "../../arbiters/bonded-stamp.js";
 import { OnchainTradeControls } from "../panels/OnchainTradeControls.js";
+import { payoutUsesTradeKey } from "../../escrow-engine/onchain-settlement-choice.js";
 import { OnchainPayoutRecoveryCard } from "../panels/OnchainPayoutRecoveryCard.js";
 import type { OnchainPayout } from "../../bond-multisig/onchain-payout-wallet.js";
 import { deriveOnchainView } from "../../escrow-engine/onchain-escrow-view.js";
@@ -835,7 +836,7 @@ export function TradeDetail({
   const [verifiedDeposit, setVerifiedDeposit] = useState<string | null>(null);
   const depositIdentity = JSON.stringify([state.id, state.lock.onchain, state.onchainFundingTerms, state.onchainRefundClaimed]);
   useEffect(() => {
-    if (state.escrowMode !== "onchain" || !state.onchainFundingTerms) return;
+    if (state.escrowMode !== "onchain" || !state.onchainFundingTerms || state.status === EscrowStatus.COMPLETED) return;
     let cancelled = false;
     const check = async () => {
       if ((!state.lock.onchain && !state.onchainRefundClaimed) || state.status === EscrowStatus.COMPLETED) return;
@@ -2115,12 +2116,13 @@ export function TradeDetail({
           )}
 
           {state.status === EscrowStatus.COMPLETED
-            && (getWinner(state)?.pubkey === pubkey || (state.onchainRefundClaimed && state.participants[state.onchainFundingTerms!.funder as Role] === pubkey))
+            && ((getWinner(state)?.pubkey === pubkey && payoutUsesTradeKey(state)) || (state.onchainRefundClaimed && state.participants[state.onchainFundingTerms!.funder as Role] === pubkey))
             && (state.lock.onchain || state.onchainFundingTerms)
             && onScanMyOnchainPayouts
             && onSweepOnchainPayout && (
               <OnchainPayoutRecoveryCard
                 escrowId={state.id}
+                completed payoutConfirmed={onchainObservation?.payout?.confirmed}
                 credited={defaultCreditObserver()(state)}
                 embedded
                 scan={onScanMyOnchainPayouts}

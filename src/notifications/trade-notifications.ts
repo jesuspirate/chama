@@ -50,6 +50,8 @@ export interface CircleLockContext {
 }
 
 export interface TradeNotification {
+  payoutTxid?: string;
+  payoutNetwork?: "mainnet" | "signet";
   escrowId: string;
   title: string;
   body: string;

@@ -56,3 +56,13 @@ export function assertWinnerMayChoose(state: EscrowState, pubkey: string, destin
   const choice=winnerSettlementChoice(state);
   if (choice?.locked && choice.destination!==destination) throw Error('The other signer has already signed. The payout destination cannot change.');
 }
+
+/** Only the winner's per-trade output belongs to the recovery wallet. */
+export function payoutUsesTradeKey(state: EscrowState): boolean {
+  const terms = state.lock.onchain, winner = getWinner(state);
+  if (!terms || !winner || winner.role === Role.ARBITER) return false;
+  const destination = state.onchainPayoutAddress ?? winnerSettlementChoice(state)?.destination;
+  if (!destination) return true; // Older trades without a direct choice.
+  const key = winner.role === Role.BUYER ? terms.buyerXonly : terms.sellerXonly;
+  return destination === btc.p2tr(hexToBytes(key), undefined, terms.network === 'mainnet' ? MAINNET : SIGNET).address;
+}

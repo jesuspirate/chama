@@ -7,7 +7,7 @@ import {
 } from "./deep-link.js";
 
 type NotificationClickHandler = (event: {
-  notification: { data?: { escrowId?: string }; close: () => void };
+  notification: { data?: { escrowId?: string; payoutTxid?: string; payoutNetwork?: string; payoutUrl?: string }; close: () => void };
   waitUntil: (work: Promise<unknown>) => void;
 }) => void;
 
@@ -34,7 +34,7 @@ function loadServiceWorker(windows: Array<Record<string, unknown>>) {
   runInNewContext(source, { self, encodeURIComponent });
   assert.ok(clickHandler, "service worker registers notificationclick");
   return {
-    fire(data?: { escrowId?: string }) {
+    fire(data?: { escrowId?: string; payoutTxid?: string; payoutNetwork?: string; payoutUrl?: string }) {
       let closed = false;
       let completion: Promise<unknown> | null = null;
       clickHandler!({
@@ -89,3 +89,17 @@ await generic.fire();
 assert.equal(JSON.stringify(genericMessages), JSON.stringify([{ type: "chama:notificationclick", escrowId: null }]));
 
 console.log("  ✓ warm taps preserve the document; cold taps retain URL routing");
+
+const payoutWorker = loadServiceWorker([]);
+await payoutWorker.fire({ escrowId: 'sm_trade_123', payoutTxid: 'ab'.repeat(32), payoutNetwork: 'mainnet' });
+assert.equal(payoutWorker.openedTarget, `https://mempool.space/tx/${'ab'.repeat(32)}`);
+const invalidPayoutWorker = loadServiceWorker([]);
+await invalidPayoutWorker.fire({ escrowId: 'sm_trade_123', payoutTxid: 'not-a-txid', payoutNetwork: 'mainnet' });
+assert.equal(invalidPayoutWorker.openedTarget, '/?trade=sm_trade_123');
+
+const customPayoutWorker = loadServiceWorker([]);
+await customPayoutWorker.fire({ payoutTxid: 'ab'.repeat(32), payoutNetwork: 'signet', payoutUrl: `http://my-explorer.local/tx/${'ab'.repeat(32)}` });
+assert.equal(customPayoutWorker.openedTarget, `http://my-explorer.local/tx/${'ab'.repeat(32)}`);
+const unsafePayoutWorker = loadServiceWorker([]);
+await unsafePayoutWorker.fire({ payoutTxid: 'ab'.repeat(32), payoutNetwork: 'signet', payoutUrl: 'javascript:alert(1)' });
+assert.equal(unsafePayoutWorker.openedTarget, `https://mutinynet.com/tx/${'ab'.repeat(32)}`);

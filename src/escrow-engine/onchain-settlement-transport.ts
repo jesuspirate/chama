@@ -242,7 +242,7 @@ export function finalCoopSettlementProof(
   winnerRole: Role.BUYER | Role.SELLER,
   settlements: readonly ParsedEscrowEvent<SettlementPayload>[] = [],
   winnerPubkey?: string,
-): { txid: string; inputs: Array<{ txid: string; index: number }> } | null {
+): { txid: string; destination: string; sats: string; inputs: Array<{ txid: string; index: number }> } | null {
   if (!message.payload.final || message.payload.leaf !== "coop") return null;
   try {
     const network = terms.network === "mainnet" ? MAINNET : SIGNET;
@@ -278,7 +278,7 @@ export function finalCoopSettlementProof(
     }).ok) return null;
     finalizeSettlement([message.payload.psbt]);
     return {
-      txid: settlementUnsignedId(message.payload.psbt),
+      txid: settlementUnsignedId(message.payload.psbt), destination, sats: tx.getOutput(0).amount!.toString(),
       inputs: utxos.map(({ txid, index }) => ({ txid, index })),
     };
   } catch {
@@ -292,7 +292,7 @@ export function finalArbiterSettlementProof(
   winnerRole: Role.BUYER | Role.SELLER,
   settlements: readonly ParsedEscrowEvent<SettlementPayload>[] = [],
   winnerPubkey?: string,
-): { txid: string; inputs: Array<{ txid: string; index: number }> } | null {
+): { txid: string; destination: string; sats: string; inputs: Array<{ txid: string; index: number }> } | null {
   if (!message.payload.final || message.payload.leaf !== "arbiter") return null;
   try {
     const network = terms.network === "mainnet" ? MAINNET : SIGNET;
@@ -320,7 +320,7 @@ export function finalArbiterSettlementProof(
     }).ok) return null;
     if (!hasValidDisputeSignatures(message.payload.psbt, escrow, winnerRole)) return null;
     finalizeSettlement([message.payload.psbt], { escrow, leaf: "dispute" });
-    return { txid: settlementUnsignedId(message.payload.psbt), inputs: utxos.map(({ txid, index }) => ({ txid, index })) };
+    return { txid: settlementUnsignedId(message.payload.psbt), destination, sats: tx.getOutput(0).amount!.toString(), inputs: utxos.map(({ txid, index }) => ({ txid, index })) };
   } catch { return null; }
 }
 

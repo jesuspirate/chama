@@ -3081,7 +3081,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       } finally { running = false; }
     };
     void scan();
-    const timer = setInterval(() => void scan(), 30_000);
+    const timer = setInterval(() => void scan(), 60_000);
     return () => { stopped = true; clearInterval(timer); };
   }, [state.connected, state.pubkey, state.myTradesLoading]);
 
