@@ -1,3 +1,4 @@
+import { stalledPayoutEligibility } from "./onchain-stalled.js";
 import { hexToBytes } from '@noble/hashes/utils.js';
 import { base64 } from '@scure/base';
 import * as btc from '@scure/btc-signer';
@@ -13,6 +14,8 @@ import { EscrowStatus, Outcome, Role, type EscrowState } from './types.js';
 
 /** Device observations, never reducer input or signed trade facts. */
 export interface OnchainObservation {
+  tipHeight?: number;
+  tipObservedAt?: number;
   deposit?: 'waiting' | 'seen' | 'confirmed';
   depositSafe?: boolean;
   remainingSats?: number;
@@ -64,9 +67,11 @@ export function onchainAttention(state: EscrowState, viewer: string, observation
     }
   }
   if (state.status !== EscrowStatus.APPROVED || !state.lock.onchain) return null;
+  const stalled = stalledPayoutEligibility(state, Math.floor(Date.now()/1000));
+  if (stalled?.ready && stalled.winner.pubkey === viewer) return result('stalled-payout', 'Ask the arbiter to finish your agreed payout');
   const winner = getWinner(state);
   if (!winner) return null;
-  const other = state.resolvedMajority?.includes(Role.ARBITER) ? Role.ARBITER : winner.role === Role.BUYER ? Role.SELLER : Role.BUYER;
+  const other = (state.settlementStalled || state.resolvedMajority?.includes(Role.ARBITER)) ? Role.ARBITER : winner.role === Role.BUYER ? Role.SELLER : Role.BUYER;
   if (role !== winner.role && role !== other) return null;
   const choice = winnerSettlementChoice(state);
   if (!choice) return role === winner.role ? result('choose', 'Choose where your sats go, then sign') : null;
@@ -95,7 +100,7 @@ export async function observeOnchainAttention(state: EscrowState, fetchJson: Esp
   const winner = getWinner(state);
   if (state.lock.onchain && winner && winner.role !== Role.ARBITER) {
     for (const message of [...(state.settlements ?? [])].reverse()) {
-      const proof = (state.resolvedMajority?.includes(Role.ARBITER) ? finalArbiterSettlementProof : finalCoopSettlementProof)(message, state.lock.onchain, winner.role, state.settlements, winner.pubkey);
+      const proof = ((state.settlementStalled || state.resolvedMajority?.includes(Role.ARBITER)) ? finalArbiterSettlementProof : finalCoopSettlementProof)(message, state.lock.onchain, winner.role, state.settlements, winner.pubkey);
       if (!proof) continue;
       const spends = await Promise.all(proof.inputs.map(i => fetchJson(`/tx/${i.txid}/outspend/${i.index}`)));
       if (!spends.every(s => s?.spent && s.txid === proof.txid)) continue;
@@ -117,6 +122,7 @@ export async function observeOnchainAttention(state: EscrowState, fetchJson: Esp
   const required = Math.floor((state.joinHolds?.buyer?.amountMsats ?? state.amountMsats) / 1000);
   const received = rows.filter(r => Number.isSafeInteger(r?.value) && r.value > 0).reduce((sum, r) => sum + r.value, 0);
   return {
+    tipHeight: tip, tipObservedAt: Math.floor(Date.now()/1000),
     remainingSats: Math.max(0, required - received),
     deposit: total >= required ? 'confirmed' : received >= required ? 'seen' : 'waiting',
     depositSafe: total >= required && !!state.lock.onchain

@@ -1,3 +1,4 @@
+import { stalledPayoutEligibility } from "../escrow-engine/onchain-stalled.js";
 import type { SettlementPayload } from "../escrow-engine/types.js";
 import { SETTLEMENT_EXPLORER_TIMEOUT_MS } from '../bond-multisig/fund-watcher.js';
 import { observeOnchainAttention, type OnchainObservation } from '../escrow-engine/onchain-attention.js';
@@ -986,6 +987,7 @@ export interface UseEscrowActions {
   publishOnchainLock: (escrowId: string) => Promise<EscrowState>;
   /** Build (if absent), publish, and locally verify the cooperative PSBT. */
   checkOnchainSettlement: (escrowId: string) => Promise<{ psbt: string; check: SettlementCheck; signedByMe: boolean }>;
+  requestStalledOnchainPayout: (escrowId: string) => Promise<void>;
   prepareOnchainSettlement: (escrowId: string, payoutAddress?: string) => Promise<{ psbt: string; check: SettlementCheck; signedByMe: boolean }>;
   /** Re-verify, add this participant's signature, and publish the revision. */
   signOnchainSettlement: (escrowId: string) => Promise<{ psbt: string; check: SettlementCheck }>;
@@ -3206,7 +3208,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     if (!trade) throw new Error("Escrow not loaded");
     const choice = winnerSettlementChoice(trade);
     if (!choice) throw new Error("Waiting for the winner to choose where the sats go.");
-    const arbitrated = !!trade.resolvedMajority?.includes(Role.ARBITER);
+    const arbitrated = !!(trade.settlementStalled || trade.resolvedMajority?.includes(Role.ARBITER));
     const ctx = await onchainSettlementContext(escrowId, arbitrated ? "dispute" : "coop");
     const psbt = (arbitrated ? selectVerifiedArbiterSettlement : selectVerifiedCoopSettlement)(choice.messages, ctx.expectation);
     if (!psbt) throw new Error("The chosen payout no longer passes the settlement checks.");
@@ -3214,6 +3216,18 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     const role = Object.values(Role).find(r => ctx.trade.participants[r] === pubkey);
     const signedByMe = !!role && choice.messages.some(m => hasValidSettlementSignatureForRole(m.payload.psbt, ctx.escrow, role, arbitrated ? "dispute" : "coop"));
     return { psbt, check: verifySettlementPsbt(psbt, ctx.expectation), signedByMe };
+  }, [onchainSettlementContext]);
+
+  const requestStalledOnchainPayout = useCallback(async (escrowId: string) => {
+    const client = requireClient(), trade = client.getState(escrowId);
+    const eligible = trade && stalledPayoutEligibility(trade, Math.floor(Date.now()/1000));
+    if (!eligible?.ready || eligible.winner.pubkey !== await client.getPubkey()) throw new Error("The arbiter can be asked 24 hours after approval if the other signer is still absent.");
+    const ctx = await onchainSettlementContext(escrowId, "dispute", eligible.choice.destination);
+    const psbt = buildSettlementPsbt({escrow:ctx.escrow,utxos:ctx.utxos,destination:ctx.destination,feeSats:ctx.feeSats,leaf:"dispute",fundingHeight:ctx.fundingHeight,tipHeight:ctx.tipHeight});
+    const check = verifySettlementPsbt(psbt,ctx.expectation);
+    if (!check.ok) throw new Error(check.failures.join("; "));
+    await client.requestStalledSettlement(escrowId, eligible.choice.proposal.raw.id,
+      {type:"escrow:settlement",psbt,leaf:"arbiter",role:eligible.winner.role,payoutAddress:ctx.destination});
   }, [onchainSettlementContext]);
 
   const settlementPrepareInFlight = useRef(new Map<string, Promise<{ psbt: string; check: SettlementCheck; signedByMe: boolean }>>());
@@ -3224,7 +3238,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       const client = requireClient();
       const initial = client.getState(escrowId);
       if (!initial || settlementWinner(initial)?.pubkey !== await client.getPubkey()) throw new Error("Only the winner can choose where the sats go.");
-      const arbitrated = !!initial.resolvedMajority?.includes(Role.ARBITER);
+      const arbitrated = !!(initial.settlementStalled || initial.resolvedMajority?.includes(Role.ARBITER));
       // An explicit fallback click is distinct from reusing an existing direct address.
       const terms = initial.lock.onchain;
       if (!terms) throw new Error("This trade has no on-chain lock terms.");
@@ -3276,7 +3290,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     const recoveryWinnerRole = recoveryWinner?.role === Role.BUYER || recoveryWinner?.role === Role.SELLER
       ? recoveryWinner.role
       : null;
-    const arbitrated = !!recoveryTrade.resolvedMajority?.includes(Role.ARBITER);
+    const arbitrated = !!(recoveryTrade.settlementStalled || recoveryTrade.resolvedMajority?.includes(Role.ARBITER));
     const recoveryProof = recoveryWinnerRole
       ? [...(recoveryTrade.settlements ?? [])].reverse().map(message => ({
           message,
@@ -3369,7 +3383,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
 
   const signOnchainSettlement = useCallback(async (escrowId: string) => {
     const initial = requireClient().getState(escrowId);
-    const arbitrated = !!initial?.resolvedMajority?.includes(Role.ARBITER);
+    const arbitrated = !!(initial?.settlementStalled || initial?.resolvedMajority?.includes(Role.ARBITER));
     // Re-fetch the tip and re-run disputeWindow immediately before signing.
     // A checklist rendered earlier is never authority for a CSV spend.
     const ctx = await onchainSettlementContext(escrowId, arbitrated ? "dispute" : "coop");
@@ -3451,11 +3465,11 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       const attempt = `${trade.id}:${choice.id}`;
       if (autoPayoutInFlight.current.has(trade.id) || autoPayoutAttempted.current.has(attempt)) continue;
       autoPayoutAttempted.current.add(attempt); autoPayoutInFlight.current.add(trade.id);
-      void signOnchainSettlement(trade.id).catch(error => {
+      void checkOnchainSettlement(trade.id).then(async prepared => { if (prepared.signedByMe) await finalizeOnchainSettlement(trade.id); else await signOnchainSettlement(trade.id); }).catch(error => {
         console.warn("[chama] Automatic payout needs a retry:", error);
       }).finally(() => autoPayoutInFlight.current.delete(trade.id));
     }
-  }, [state.escrows, state.pubkey, signOnchainSettlement]);
+  }, [state.escrows, state.pubkey, signOnchainSettlement, checkOnchainSettlement, finalizeOnchainSettlement]);
 
   const scanMyOnchainPayouts = useCallback(async () => {
     const current = stateRef.current;
@@ -5960,6 +5974,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     onchainRefundAvailable,
     checkOnchainFunding,
     publishOnchainLock,
+    requestStalledOnchainPayout,
     prepareOnchainSettlement,
     checkOnchainSettlement,
     signOnchainSettlement,

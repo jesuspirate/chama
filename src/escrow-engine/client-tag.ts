@@ -6,5 +6,5 @@ export function chamaClientTag(version: string = typeof __APP_VERSION__ === "und
 }
 
 export function isChamaClientTagKind(kind: number): boolean {
-  return (kind >= 38100 && kind <= 38116) || kind === 38135;
+  return (kind >= 38100 && kind <= 38117) || kind === 38135;
 }

@@ -168,6 +168,8 @@ export enum EscrowEventKind {
   PLAN_START = 38115,
   /** Publish a pre-seated participant's per-child on-chain key. */
   CHILD_KEY = 38116,
+  /** Winner requests co-signing of an already agreed, stalled payout. */
+  SETTLEMENT_STALLED = 38117,
 }
 
 // ── Valid State Transitions ───────────────────────────────────────────────
@@ -877,6 +879,12 @@ export interface PremiumPayload {
 /** Content of a SETTLEMENT event (kind 38114). The whole payload is carried
  *  inside the client's per-recipient NIP-44 envelope; the parser only sees it
  *  after local decryption. */
+export interface SettlementStalledPayload {
+  type: "escrow:settlement_stalled";
+  proposalId: string;
+  payout: SettlementPayload;
+}
+
 export interface SettlementPayload {
   type: "escrow:settlement";
   /** Base64 PSBT. It is untrusted wire input until locally recomputed and
@@ -946,6 +954,7 @@ export interface SubscriptionMeta {
 // ── Union type for all payloads ───────────────────────────────────────────
 
 export type EscrowPayload =
+  | SettlementStalledPayload
   | CreatePayload
   | JoinPayload
   | LockPayload
@@ -1100,6 +1109,7 @@ export interface EscrowState {
   onchainRefundClaimed?: boolean;
   /** Verified final settlement facts, reconstructed from signed events. */
   onchainPayoutTxid?: string;
+  settlementStalled?: { requestedAt: number; proposalId: string; destination: string };
   onchainPayoutAddress?: string;
   onchainPayoutSats?: string;
   /** Fedimint mint URL / invite code */

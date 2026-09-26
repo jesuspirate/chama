@@ -1,3 +1,4 @@
+import type { SettlementStalledPayload } from "./types.js";
 import { finalRefundSettlementProof } from "./onchain-settlement-transport.js";
 import { chamaClientTag, isChamaClientTagKind } from "./client-tag.js";
 import { shareEscrowId, circleFromEscrow, shareCreatePayload, rotationShareCreatePayload, nextRotationRoundPayload, fillEvidenceFor } from "../chama/policy.js";
@@ -2470,7 +2471,7 @@ export class EscrowClient {
     const settlementProof = state.settlements?.find(message => message.raw.id === settlementProofEventId);
     const winner = getWinner(state);
     const winnerRole = winner?.role === Role.BUYER || winner?.role === Role.SELLER ? winner.role : null;
-    const requiresArbiter = !!state.resolvedMajority?.includes(Role.ARBITER);
+    const requiresArbiter = !!(state.settlementStalled || state.resolvedMajority?.includes(Role.ARBITER));
     const cooperative = !!(!requiresArbiter && settlementProof && winnerRole
       && finalCoopSettlementProof(settlementProof, state.lock.onchain!, winnerRole, state.settlements, winner?.pubkey));
     const arbitrated = !!(requiresArbiter
@@ -2766,6 +2767,21 @@ export class EscrowClient {
   /** Publish a PSBT revision to every named participant AND the sender.
    *  The self slot is load-bearing: without it, the author cannot decrypt
    *  their own relay event after a reload. */
+  async requestStalledSettlement(escrowId: string, proposalId: string, payout: SettlementPayload): Promise<EscrowState> {
+    const state = this.states.get(escrowId);
+    if (!state) throw new Error("Trade is not loaded.");
+    const payload: SettlementStalledPayload = { type: "escrow:settlement_stalled", proposalId, payout };
+    const content = JSON.stringify(await createEnvelope(JSON.stringify(payload), this.envelopeRecipients(state), (pt, pk) => this.signer.nip44Encrypt(pt, pk)));
+    const signed = await this.signWithSimTag({ kind: EscrowEventKind.SETTLEMENT_STALLED, created_at: Math.floor(Date.now()/1000),
+      tags: [[TAGS.ESCROW_ID, escrowId], [TAGS.TYPE, payload.type], [TAGS.PREV_EVENT, state.eventChain.at(-1)!.raw.id, "", "reply"]], content });
+    const parsed = parseEscrowEvent(signed, JSON.stringify(payload), true);
+    if (!parsed.ok) throw new Error(parsed.error.message);
+    const checked = applyEvent(this.states.get(escrowId)!, parsed.event);
+    if (!checked.ok) throw new Error(checked.error.message);
+    await this.relayManager.publish(signed);
+    return this.applyLocally(escrowId, signed, payload);
+  }
+
   async sendSettlement(
     escrowId: string,
     input: Omit<SettlementPayload, "type">,

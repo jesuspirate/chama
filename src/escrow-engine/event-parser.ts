@@ -35,6 +35,7 @@ import {
   type ChatPayload,
   type PremiumPayload,
   type SettlementPayload,
+  type SettlementStalledPayload,
   type HandleEnvelope,
   type SubscribePayload,
   type PeriodReleasePayload,
@@ -64,6 +65,7 @@ const KIND_TO_TYPE: Record<number, string> = {
   [EscrowEventKind.CHAT]:     "escrow:chat",
   [EscrowEventKind.PREMIUM]:  "escrow:premium",
   [EscrowEventKind.SETTLEMENT]: "escrow:settlement",
+  [EscrowEventKind.SETTLEMENT_STALLED]: "escrow:settlement_stalled",
   [EscrowEventKind.SUBSCRIBE]:      "escrow:subscribe",
   [EscrowEventKind.PERIOD_RELEASE]: "escrow:period_release",
   [EscrowEventKind.PLAN_START]: "escrow:plan_start",
@@ -630,6 +632,10 @@ const PAYLOAD_VALIDATORS: Record<number, (data: unknown) => boolean> = {
   [EscrowEventKind.CHAT]:     validateChatPayload,
   [EscrowEventKind.PREMIUM]:  validatePremiumPayload,
   [EscrowEventKind.SETTLEMENT]: validateSettlementPayload,
+  [EscrowEventKind.SETTLEMENT_STALLED]: (data: unknown): data is SettlementStalledPayload => {
+    const d = data as SettlementStalledPayload;
+    return d.type === "escrow:settlement_stalled" && typeof d.proposalId === "string" && HEX64_RE.test(d.proposalId) && validateSettlementPayload(d.payout);
+  },
   [EscrowEventKind.SUBSCRIBE]:      validateSubscribePayload,
   [EscrowEventKind.PERIOD_RELEASE]: validatePeriodReleasePayload,
   [EscrowEventKind.PLAN_START]: validatePlanStartPayload,
@@ -819,6 +825,7 @@ export function sortEventChain(events: ParsedEscrowEvent[]): ParsedEscrowEvent[]
       38102: 3,  // LOCK
       38103: 4,  // VOTE
       38104: 5,  // RESOLVE
+    38117: 5.5, // Stalled payout request follows approval, before completion
       38105: 6,  // CLAIM
       38106: 7,  // COMPLETE
       38107: 8,  // CANCEL
@@ -858,6 +865,7 @@ export function sortEventChain(events: ParsedEscrowEvent[]): ParsedEscrowEvent[]
     38103: 4,  // VOTE
     38112: 4,  // PERIOD_RELEASE
     38104: 5,  // RESOLVE
+    38117: 5.5, // Stalled payout request follows approval, before completion
     38105: 6,  // CLAIM
     38106: 7,  // COMPLETE
     38107: 8,  // CANCEL
@@ -885,6 +893,18 @@ export function sortEventChain(events: ParsedEscrowEvent[]): ParsedEscrowEvent[]
       }
     }
     all.splice(insertIdx, 0, chat);
+  }
+
+  // Evaluate a stalled request against all transport already signed by its
+  // timestamp, independent of relay arrival order (including same-second data).
+  for (const request of all.filter(e => e.kind === EscrowEventKind.SETTLEMENT_STALLED)) {
+    const prior = all.filter(e => e.kind === EscrowEventKind.SETTLEMENT && e.timestamp <= request.timestamp)
+      .sort((a, b) => a.timestamp - b.timestamp || a.raw.id.localeCompare(b.raw.id));
+    for (const message of prior) {
+      const index = all.indexOf(message);
+      all.splice(index, 1);
+      all.splice(all.indexOf(request), 0, message);
+    }
   }
 
   // A direct on-chain COMPLETE carries an explicit settlement-proof tag. The

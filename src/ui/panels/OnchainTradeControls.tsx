@@ -1,3 +1,4 @@
+import { stalledPayoutEligibility } from "../../escrow-engine/onchain-stalled.js";
 import { onchainAttention, type OnchainObservation } from '../../escrow-engine/onchain-attention.js';
 import { EsploraUnavailableError } from '../../bond-multisig/fund-watcher.js';
 import { EXPLORER_RETRY_MESSAGE, explorerRetryDelay, retryExplorerRead } from '../../bond-multisig/explorer-retry.js';
@@ -21,6 +22,7 @@ import type { ComponentProps } from "react";
 import { OnchainEscrowPanel } from "./OnchainEscrowPanel.js";
 
 export interface OnchainTradeActions {
+  onRequestStalledPayout?: (id: string) => Promise<void>;
   onReleaseWithPayout?: (address?: string) => Promise<void>;
   onchainObservation?: OnchainObservation;
   onOpenExplorerSettings?: () => void;
@@ -47,6 +49,8 @@ export interface OnchainTradeActions {
 export function OnchainTradeControls({ state, pubkey, profileNames, kind0Enabled = false, ...actions }: OnchainTradeActions & { state: EscrowState; pubkey: string; profileNames?: NostrProfileNameMap; kind0Enabled?: boolean }) {
   const { t } = useT();
   const [busy, setBusy] = useState(false);
+  const [now, setNow] = useState(() => Math.floor(Date.now()/1000));
+  useEffect(() => { if (state.status !== EscrowStatus.APPROVED) return; const timer = setInterval(() => setNow(Math.floor(Date.now()/1000)), 60_000); return () => clearInterval(timer); }, [state.status]);
   const [note, setNote] = useState<string | null>(null);
   const [depositStatus, setDepositStatus] = useState<"waiting" | "seen" | "confirmed">("waiting");
   const [verified, setVerified] = useState<string | null>(null);
@@ -82,9 +86,16 @@ export function OnchainTradeControls({ state, pubkey, profileNames, kind0Enabled
   const winner = settlementWinner(state);
   const choosingWithVote = state.status === EscrowStatus.LOCKED && role === winner?.role && state.votes[role] === undefined && !!actions.onReleaseWithPayout;
   const choice = winnerSettlementChoice(state);
+  const stalled = stalledPayoutEligibility(state, now);
+  const waitingName = profileNameFor(profileNames, stalled ? state.participants[stalled.other] : null, kind0Enabled) ?? "the other participant";
+  const remaining = stalled ? Math.max(0, stalled.availableAt - now) : 0;
+  const refundHeight = state.lock.onchain?.refundLockUntil;
+  const tip = actions.onchainObservation?.tipHeight;
+  const estimate = tip !== undefined && refundHeight !== undefined
+    ? new Date(((actions.onchainObservation?.tipObservedAt ?? now) + (refundHeight - tip) * 600) * 1000).toLocaleDateString() : null;
   const winnerName = profileNameFor(profileNames, winner?.pubkey, kind0Enabled) ?? "the winner";
   const approved = state.status === EscrowStatus.APPROVED || state.status === EscrowStatus.CLAIMED;
-  const eligibleSigner = state.resolvedMajority?.includes(Role.ARBITER)
+  const eligibleSigner = (state.settlementStalled || state.resolvedMajority?.includes(Role.ARBITER))
     ? role === Role.ARBITER || (!!role && role === winner?.role)
     : role === Role.BUYER || role === Role.SELLER;
 
@@ -171,6 +182,16 @@ export function OnchainTradeControls({ state, pubkey, profileNames, kind0Enabled
   if (refunded) return <div><p role="status">Refund confirmed on Bitcoin.</p>{recovery}</div>;
   return <div>
     {recovery}
+    {role === winner?.role && state.status !== EscrowStatus.COMPLETED && refundHeight && <p style={{color:T.muted}}>
+      This must settle before {estimate ? `${estimate} (estimated; block ${refundHeight})` : `block ${refundHeight} (date estimate unavailable)`}; after that the sats can go back to the funder.
+    </p>}
+    {stalled && role === winner?.role && <div style={{color:T.muted}}>
+      <p>If {waitingName} doesn't sign within 24 h you can ask the arbiter.
+        {!stalled.ready && ` ${Math.floor(remaining/3600)} h ${Math.ceil((remaining%3600)/60)} min remaining.`}</p>
+      {stalled.ready && actions.onRequestStalledPayout && <button type="button" style={buttonStyle} disabled={busy}
+        onClick={() => void run(() => actions.onRequestStalledPayout!(state.id))}>Ask the arbiter to finish the payout</button>}
+    </div>}
+    {state.settlementStalled && <p style={{color:T.muted}}>The arbiter has been asked to finish the agreed payout.</p>}
     {(actions.onchainObservation?.payout || state.onchainPayoutTxid) && <p role="status" style={{color:T.muted}}>
       {actions.onchainObservation?.payout ? onchainAttention(state, pubkey, actions.onchainObservation)?.text : state.onchainPayoutTxid ? `Payout sent · waiting for confirmation · ${state.onchainPayoutTxid.slice(0, 8)}…` : null}
     </p>}

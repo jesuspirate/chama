@@ -1,4 +1,6 @@
-import { atomicReleaseError, voteSettlement } from "./onchain-settlement-choice.js";
+import { stalledPayoutEligibility } from "./onchain-stalled.js";
+import type { SettlementStalledPayload } from "./types.js";
+import { atomicReleaseError, voteSettlement, winnerSettlementChoice } from "./onchain-settlement-choice.js";
 import { finalRefundSettlementProof } from "./onchain-settlement-transport.js";
 import { fundingArbiter, fundingTermsError, onchainLockError, onchainFunder } from "./onchain-funding-terms.js";
 import { NEVER_EXPIRES } from "./types.js";
@@ -1501,6 +1503,23 @@ function handleClaim(state: EscrowState, event: ParsedEscrowEvent<ClaimPayload>)
   return { ok: true, state: next };
 }
 
+function handleSettlementStalled(state: EscrowState, event: ParsedEscrowEvent<SettlementStalledPayload>): TransitionResult {
+  const eligible = stalledPayoutEligibility(state, event.timestamp);
+  if (!eligible?.ready || event.pubkey !== eligible.winner.pubkey || event.payload.proposalId !== eligible.choice.proposal.raw.id)
+    return err("INVALID_SETTLEMENT_PROOF", "Only the winner can request a stalled payout after 24 hours without a counter-signature.", event.raw.id);
+  const payout = event.payload.payout;
+  if (payout.role !== eligible.winner.role || payout.leaf !== "arbiter" || payout.final || payout.payoutAddress !== eligible.choice.destination)
+    return err("INVALID_SETTLEMENT_PROOF", "The request must preserve the agreed winner and destination.", event.raw.id);
+  const next = cloneState(state);
+  next.settlementStalled = { requestedAt: event.timestamp, proposalId: event.payload.proposalId, destination: eligible.choice.destination };
+  next.settlements = [...(next.settlements ?? []), { ...event, payload: payout }];
+  const choice = winnerSettlementChoice(next);
+  if (!choice || choice.proposal.raw.id !== event.raw.id)
+    return err("INVALID_SETTLEMENT_PROOF", "Invalid dispute payout transaction.", event.raw.id);
+  next.eventChain.push(event);
+  return { ok: true, state: next };
+}
+
 // ── COMPLETE ──────────────────────────────────────────────────────────────
 // Final confirmation — ecash has been redeemed.
 
@@ -1532,7 +1551,7 @@ function handleComplete(state: EscrowState, event: ParsedEscrowEvent<CompletePay
     const winnerRole = winner?.role === Role.BUYER || winner?.role === Role.SELLER
       ? winner.role
       : null;
-    const requiresArbiter = !!state.resolvedMajority?.includes(Role.ARBITER);
+    const requiresArbiter = !!(state.settlementStalled || state.resolvedMajority?.includes(Role.ARBITER));
     const cooperative = (!requiresArbiter && proofEvent && winnerRole && state.lock.onchain
       && finalCoopSettlementProof(proofEvent, state.lock.onchain, winnerRole, state.settlements, winner?.pubkey));
     const arbitrated = (requiresArbiter
@@ -1925,6 +1944,8 @@ export function applyEvent(
       return handleJoin(state, event as ParsedEscrowEvent<JoinPayload>);
     case EscrowEventKind.LOCK:
       return handleLock(state, event as ParsedEscrowEvent<LockPayload>);
+    case EscrowEventKind.SETTLEMENT_STALLED:
+      return handleSettlementStalled(state, event as ParsedEscrowEvent<SettlementStalledPayload>);
     case EscrowEventKind.VOTE:
       return handleVote(state, event as ParsedEscrowEvent<VotePayload>);
     case EscrowEventKind.RESOLVE:

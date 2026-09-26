@@ -22,7 +22,7 @@ export function winnerSettlementChoice(state: EscrowState) {
   const escrow = buildOnchainEscrow({...terms, buyerXonly:hexToBytes(terms.buyerXonly),
     sellerXonly:hexToBytes(terms.sellerXonly),arbiterXonly:hexToBytes(terms.arbiterXonly),network});
   if (escrow.address !== terms.address) return null;
-  const arbitrated = state.resolvedMajority?.includes(Role.ARBITER);
+  const arbitrated = (state.settlementStalled || state.resolvedMajority?.includes(Role.ARBITER));
   const leaf = arbitrated ? 'dispute' : 'coop';
   const wireLeaf = arbitrated ? 'arbiter' : 'coop';
   const otherRole = arbitrated ? Role.ARBITER : winner.role === Role.BUYER ? Role.SELLER : Role.BUYER;
@@ -36,6 +36,7 @@ export function winnerSettlementChoice(state: EscrowState) {
       const id = settlementUnsignedId(proposal.payload.psbt);
       if (seen.has(id)) continue;
       const destination = proposal.payload.payoutAddress || fallback;
+      if (state.settlementStalled && destination !== state.settlementStalled.destination) continue;
       const tx = btc.Transaction.fromPSBT(base64.decode(proposal.payload.psbt),{allowUnknown:true,allowUnknownOutputs:true});
       const utxos = Array.from({length:tx.inputsLength},(_,i)=>{
         const input=tx.getInput(i);

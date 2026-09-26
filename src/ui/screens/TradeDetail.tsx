@@ -164,7 +164,7 @@ export function TradeDetail({
   disableNwc = false, forceClaimMethodChooser = false, onBack, onVote, onClaim, onJoin, onLock, onLockDirectNwc, onClaimDirectNwc, onConfirmPayout,
   onSendChat, preferredRelayConnected = false, onReleasePeriod, onOpenSettings, onOpenNwcSettings,
   onPrewarmFunding, onRebroadcast, onForget, onPurchase, onCancelDraftOrder, stockLeft, isOversoldOrder = false,
-  onRateCounterparty, myGivenRatings, fetchRatingSummary, fetchCommunityBonds, knownTrades, onStartNextTranche, onchainFundingPlan, onPrepareOnchainFunding, onCheckOnchainFunding, onRefundOnchainEscrow, onOnchainRefundAvailable, onPublishOnchainLock, onCheckOnchainSettlement, onOpenExplorerSettings, onchainObservation, onPrepareOnchainSettlement, onSignOnchainSettlement, onFinalizeOnchainSettlement, onScanMyOnchainPayouts, onSweepOnchainPayout,
+  onRateCounterparty, myGivenRatings, fetchRatingSummary, fetchCommunityBonds, knownTrades, onStartNextTranche, onchainFundingPlan, onPrepareOnchainFunding, onCheckOnchainFunding, onRefundOnchainEscrow, onOnchainRefundAvailable, onPublishOnchainLock, onCheckOnchainSettlement, onOpenExplorerSettings, onchainObservation, onRequestStalledPayout, onPrepareOnchainSettlement, onSignOnchainSettlement, onFinalizeOnchainSettlement, onScanMyOnchainPayouts, onSweepOnchainPayout,
   onStartEcashSlicePlan,
   liveChildOrders, pendingChildOrders, onOpenChild,
 }: {
@@ -241,6 +241,7 @@ export function TradeDetail({
   onchainObservation?: OnchainObservation;
   onOpenExplorerSettings?: () => void;
   onCheckOnchainSettlement?: (id: string) => Promise<{ psbt: string; check: SettlementCheck; signedByMe: boolean }>;
+  onRequestStalledPayout?: (id: string) => Promise<void>;
   onPrepareOnchainSettlement?: (escrowId: string, payoutAddress?: string) => Promise<{ psbt: string; check: SettlementCheck; signedByMe: boolean }>;
   onSignOnchainSettlement?: (escrowId: string) => Promise<{ psbt: string; check: SettlementCheck }>;
   onFinalizeOnchainSettlement?: (escrowId: string) => Promise<{ status: "waiting" | "broadcast" | "adopted"; txid?: string }>;
@@ -1574,6 +1575,7 @@ export function TradeDetail({
       <p role="status">Checking the deposit on the blockchain…</p>
       {fundingNote && <p>{fundingNote}</p>}
       <OnchainTradeControls onReleaseWithPayout={address => onVote(Outcome.RELEASE, address)} state={state} pubkey={pubkey} profileNames={profileNames} kind0Enabled={kind0Enabled}
+                onRequestStalledPayout={onRequestStalledPayout}
                 onchainObservation={onchainObservation}
                 onOpenExplorerSettings={onOpenExplorerSettings}
                 onCheckOnchainSettlement={onCheckOnchainSettlement}
@@ -2167,6 +2169,7 @@ export function TradeDetail({
               this guard; it was dropped when the panel moved here. */}
           {onchainView && (myRole || onchainNeedsMyArbiterKey) && <div id="onchain-funding-panel">
               <OnchainTradeControls onReleaseWithPayout={address => onVote(Outcome.RELEASE, address)} state={state} pubkey={pubkey} profileNames={profileNames} kind0Enabled={kind0Enabled}
+                onRequestStalledPayout={onRequestStalledPayout}
                 onchainObservation={onchainObservation}
                 onOpenExplorerSettings={onOpenExplorerSettings}
                 onCheckOnchainSettlement={onCheckOnchainSettlement}
