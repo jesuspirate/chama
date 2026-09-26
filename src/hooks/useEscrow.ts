@@ -274,12 +274,12 @@ import {
 } from "../fedimint/native-bridge-adapter.js";
 // ── Arbiter bond (sealed v1: single-key timelock COMMITMENT) ──────────────────
 import * as btcSigner from "@scure/btc-signer";
-import { findBondFundingUtxos, esploraFetcher, defaultEsploraBase, defaultMinConfs, esploraTipHeight, esploraBroadcast, esploraOutspend, esploraRecommendedFeeRate, type EsploraFetch } from "../bond-multisig/fund-watcher.js";
+import { findBondFundingUtxos, esploraFetcher, defaultEsploraBase, defaultMinConfs, esploraTipHeight, esploraBroadcast, esploraOutspend, esploraRecommendedFeeRate, esploraRequiredFeeRate, type EsploraFetch } from "../bond-multisig/fund-watcher.js";
 import { verifyBondLineage, tenureStartHeight } from "../bond-multisig/bond-lineage.js";
 import { deriveEscrowSigningKey, resolveFundingPlan, verifyFunding, buildOnchainLockTerms } from "../bond-multisig/onchain-escrow-funding.js";
 import { DISPUTE_CSV_BLOCKS, REFUND_CLTV_BLOCKS, ESCROW_NETWORK, ESCROW_NETWORK_LABEL, buildOnchainEscrow } from "../bond-multisig/onchain-escrow.js";
 import { buildSettlementPsbt, finalizeSettlement, coSignSettlement, disputeWindow, verifySettlementPsbt, settlementFeeCeilingSats, type SettlementCheck } from "../bond-multisig/onchain-escrow-settle.js";
-import { aggregateOnchainPayoutBalance, buildOnchainPayoutSweep, payoutCandidatesFor, scanOnchainPayout, type OnchainPayout } from "../bond-multisig/onchain-payout-wallet.js";
+import { aggregateOnchainPayoutBalance, buildOnchainPayoutSweep, payoutCandidateFor, payoutCandidatesFor, scanOnchainPayout, type OnchainPayout } from "../bond-multisig/onchain-payout-wallet.js";
 import { getWinner } from "../escrow-engine/state-machine.js";
 import { adoptedExpectedSettlementTxid, adoptedSettlementTxid, finalArbiterSettlementProof, finalCoopSettlementProof, finalizableArbiterSettlement, finalizableCoopSettlement, hasValidSettlementSignatureForRole, selectVerifiedArbiterSettlement, selectVerifiedCoopSettlement, settlementBuildFeeSats, settlementUnsignedId, signingKeyMatchesRole } from "../escrow-engine/onchain-settlement-transport.js";
 import {
@@ -976,7 +976,7 @@ export interface UseEscrowActions {
   }>;
   publishOnchainLock: (escrowId: string) => Promise<EscrowState>;
   /** Build (if absent), publish, and locally verify the cooperative PSBT. */
-  prepareOnchainSettlement: (escrowId: string) => Promise<{ psbt: string; check: SettlementCheck; signedByMe: boolean }>;
+  prepareOnchainSettlement: (escrowId: string, payoutAddress?: string) => Promise<{ psbt: string; check: SettlementCheck; signedByMe: boolean }>;
   /** Re-verify, add this participant's signature, and publish the revision. */
   signOnchainSettlement: (escrowId: string) => Promise<{ psbt: string; check: SettlementCheck }>;
   /** Finalize/broadcast once two signatures exist, or adopt an observed spend. */
@@ -2237,8 +2237,8 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       ...(params.expirySeconds === undefined && expiryOverride !== null
         ? { expirySeconds: expiryOverride }
         : {}),
-      fedPrefix: fedTags.fedPrefix,
-      fed: fedTags.fed,
+      fedPrefix: params.escrowMode === "onchain" ? undefined : fedTags.fedPrefix,
+      fed: params.escrowMode === "onchain" ? undefined : fedTags.fed,
       // Tier 2.1: derive the creator's escrow key from the REAL escrow id, which
       // only exists inside createEscrow. Per-trade keys, no commingling.
       ...((params as { escrowMode?: string }).escrowMode === "onchain"
@@ -2292,7 +2292,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     // trade's real stamped fed — this guard is a real-money protection, so
     // skipping it in sim is what lets a full sim trade (join → lock → settle)
     // complete end-to-end. #35: sim e2e was silently broken here.
-    if (expectedFed && fedimintRef.current && !isSimModeOn()) {
+    if (state?.escrowMode !== "onchain" && expectedFed && fedimintRef.current && !isSimModeOn()) {
       const walletFed = fedimintRef.current.getFederationId();
       if (walletFed && walletFed !== expectedFed) {
         const err: any = new Error(
@@ -2939,6 +2939,12 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       fetchJson,
       minConfs: defaultMinConfs(ESCROW_NETWORK),
     });
+    if (found.length === 0) {
+      const pending = await fetchJson(`/address/${plan.address}/utxo`);
+      if (Array.isArray(pending) && pending.some(row => row?.status?.confirmed === false)) {
+        throw new Error("Deposit seen in mempool; waiting for one confirmation.");
+      }
+    }
     if (found.length && !escrowDepositWindowSafe({ refundLockUntil: state.onchainFundingTerms!.refundLockUntil,
       fundingHeights: found.map(f => f.blockHeight!), tipHeight,
       awaitingCounterpayment: state.status !== EscrowStatus.APPROVED && state.status !== EscrowStatus.CLAIMED && state.status !== EscrowStatus.COMPLETED })) {
@@ -2946,7 +2952,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     }
     const verdict = verifyFunding({
       utxos: found.map((f) => f.utxo),
-      expectedSats: BigInt(Math.floor(state.amountMsats / 1000)),
+      expectedSats: BigInt(Math.floor((state.joinHolds?.[Role.BUYER]?.amountMsats ?? state.amountMsats) / 1000)),
       minConfs: defaultMinConfs(ESCROW_NETWORK),
     });
     // The named outpoint must really be among the confirmed outputs; totals
@@ -2988,7 +2994,8 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       notesHash: "",
       shares: [],
       onchain: terms,
-      sellerReceivesMsats: state.amountMsats - state.fees.arbiterMsats,
+      selectedItems: state.joinHolds?.[Role.BUYER]?.selectedItems,
+      sellerReceivesMsats: (state.joinHolds?.[Role.BUYER]?.amountMsats ?? state.amountMsats) - state.fees.arbiterMsats,
       arbiterFeeMsats: state.fees.arbiterMsats,
       buyerPubkey,
       arbiterPubkey,
@@ -2996,7 +3003,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
   }, [checkOnchainFunding]);
 
   /** Recompute every security-sensitive settlement input locally. */
-  const onchainSettlementContext = useCallback(async (escrowId: string, leaf: "coop" | "dispute" = "coop") => {
+  const onchainSettlementContext = useCallback(async (escrowId: string, leaf: "coop" | "dispute" = "coop", requestedAddress?: string) => {
     const client = requireClient();
     const trade = client.getState(escrowId);
     if (!trade?.lock.onchain) throw new Error("This trade has no on-chain lock terms.");
@@ -3015,14 +3022,20 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     const winner = getWinner(trade);
     if (!winner) throw new Error("No approved payout winner.");
     const winnerXonly = winner.role === Role.BUYER ? t.buyerXonly : t.sellerXonly;
-    const destination = btcSigner.p2tr(hexToBytes(winnerXonly), undefined, ESCROW_NETWORK).address!;
+    const fallbackDestination = btcSigner.p2tr(hexToBytes(winnerXonly), undefined, ESCROW_NETWORK).address!;
+    const winnerProposal = [...(trade.settlements ?? [])].reverse().find(message =>
+      message.pubkey === winner.pubkey && message.payload.role === winner.role
+      && message.payload.payoutAddress && message.payload.leaf === (leaf === "dispute" ? "arbiter" : "coop"));
+    const destination = requestedAddress?.trim() || winnerProposal?.payload.payoutAddress || fallbackDestination;
+    try { btcSigner.Address(ESCROW_NETWORK).decode(destination); }
+    catch { throw new Error("The on-chain payout address is invalid for this Bitcoin network."); }
     const fetchJson = esploraFetcher(defaultEsploraBase(ESCROW_NETWORK), { network: ESCROW_NETWORK });
     const found = await findEscrowFundingUtxos({ network: ESCROW_NETWORK,
       address: escrow.address, fetchJson, minConfs: defaultMinConfs(ESCROW_NETWORK),
     });
     const utxos = found.map(f => f.utxo);
     if (utxos.length === 0) throw new Error("No confirmed escrow outputs are available to settle.");
-    const feeRate = await esploraRecommendedFeeRate(fetchJson, { floorPerVb: 2n });
+    const feeRate = await esploraRequiredFeeRate(fetchJson);
     let fundingHeight: number | undefined;
     let tipHeight: number | undefined;
     if (leaf === "dispute") {
@@ -3084,7 +3097,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     const key = await myEscrowKey(escrowId);
     if (!signingKeyMatchesRole(key.xonly, role, terms)) throw new Error("This device's seed does not own the committed funder key");
     const destination = btcSigner.p2tr(key.xonly, undefined, ESCROW_NETWORK).address!;
-    const feeRate = await esploraRecommendedFeeRate(fetchJson, { floorPerVb: 2n });
+    const feeRate = await esploraRequiredFeeRate(fetchJson);
     const expectation = { escrow, utxos, destination, leaf: "refund" as const, tipHeight,
       network: ESCROW_NETWORK, maxFeeSats: settlementFeeCeilingSats("refund", feeRate, utxos.length) };
     const psbt = buildSettlementPsbt({ ...expectation, feeSats: settlementBuildFeeSats(feeRate, utxos.length, "refund"),
@@ -3099,13 +3112,16 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     return { txid };
   }, [myEscrowKey]);
 
-  const prepareOnchainSettlement = useCallback(async (escrowId: string) => {
+  const prepareOnchainSettlement = useCallback(async (escrowId: string, payoutAddress?: string) => {
     const initial = requireClient().getState(escrowId);
     const arbitrated = !!initial?.resolvedMajority?.includes(Role.ARBITER);
     const leaf = arbitrated ? "dispute" : "coop";
     const wireLeaf = arbitrated ? "arbiter" : "coop";
-    const ctx = await onchainSettlementContext(escrowId, leaf);
+    const ctx = await onchainSettlementContext(escrowId, leaf, payoutAddress);
     const winner = getWinner(ctx.trade);
+    if (payoutAddress && ctx.trade.participants[winner!.role] !== await ctx.client.getPubkey()) {
+      throw new Error("Only the winner can choose a direct payout address.");
+    }
     let psbt = (arbitrated
       ? selectVerifiedArbiterSettlement(ctx.trade.settlements ?? [], ctx.expectation)
       : selectVerifiedCoopSettlement(ctx.trade.settlements ?? [], ctx.expectation)) ?? undefined;
@@ -3125,7 +3141,8 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
           ? "Only the resolved winner or assigned arbiter can build arbitration settlement."
           : "Only buyer or seller can build cooperative settlement.");
       }
-      await ctx.client.sendSettlement(escrowId, { psbt, leaf: wireLeaf, role });
+      await ctx.client.sendSettlement(escrowId, { psbt, leaf: wireLeaf, role,
+        ...(payoutAddress ? { payoutAddress: ctx.destination } : {}) });
     }
     const pubkey = await ctx.client.getPubkey();
     const myRole = Object.values(Role).find(r => ctx.trade.participants[r] === pubkey);
@@ -3170,8 +3187,8 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       ? [...(recoveryTrade.settlements ?? [])].reverse().map(message => ({
           message,
           proof: arbitrated
-            ? finalArbiterSettlementProof(message, recoveryTerms, recoveryWinnerRole)
-            : finalCoopSettlementProof(message, recoveryTerms, recoveryWinnerRole),
+            ? finalArbiterSettlementProof(message, recoveryTerms, recoveryWinnerRole, recoveryTrade.settlements, recoveryWinner?.pubkey)
+            : finalCoopSettlementProof(message, recoveryTerms, recoveryWinnerRole, recoveryTrade.settlements, recoveryWinner?.pubkey),
         })).find(candidate => candidate.proof !== null)
       : undefined;
     const committedOutspend = await esploraOutspend(
@@ -3304,7 +3321,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     const candidates = payoutCandidatesFor([...(current?.escrows.values() ?? [])], pubkey);
     const payouts = await Promise.all(candidates.map(candidate => {
       const fetchJson = esploraFetcher(defaultEsploraBase(candidate.network), { network: candidate.network });
-      return scanOnchainPayout(candidate, fetchJson);
+      return scanOnchainPayout(candidate, fetchJson, true);
     }));
     return { payouts, balanceSats: aggregateOnchainPayoutBalance(payouts) };
   }, []);
@@ -3321,10 +3338,14 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     const network = trade.lock.onchain?.network === "mainnet" ? (btcSigner.NETWORK as typeof ESCROW_NETWORK) : ESCROW_NETWORK;
     const base = defaultEsploraBase(network);
     const fetchJson = esploraFetcher(base, { network });
-    const feeRate = await esploraRecommendedFeeRate(fetchJson, { floorPerVb: 2n });
+    const liveRate = await esploraRequiredFeeRate(fetchJson);
+    const candidate = payoutCandidateFor(trade, pubkey);
+    if (!candidate) throw new Error("This identity has no payout key for the trade.");
+    const pendingPayout = await scanOnchainPayout(candidate, fetchJson, true);
+    const feeRate = pendingPayout.hasUnconfirmed ? liveRate * 3n : liveRate;
     const built = await buildOnchainPayoutSweep({
       state: trade, viewerPubkey: pubkey, mnemonic, destination,
-      fetchJson, feeRateSatsPerVb: feeRate,
+      fetchJson, feeRateSatsPerVb: feeRate, includeUnconfirmed: true,
     });
     const txid = await esploraBroadcast(base, built.rawTx);
     // Tranche progression requires local proof that the winner received this

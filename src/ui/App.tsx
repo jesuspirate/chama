@@ -4595,6 +4595,7 @@ export default function App() {
               amountDisplayMode={amountDisplayMode}
               communitySlug={browseCommunity}
               fetchCommunityBonds={actions.fetchCommunityBonds}
+              allTrades={knownTradesForConcentration}
               fetchFaultExcludedArbiters={actions.fetchFaultExcludedArbiters}
               authorizeImageUpload={actions.authorizeImageUpload}
             />
@@ -5019,6 +5020,7 @@ export default function App() {
               amountDisplayMode={amountDisplayMode}
               communitySlug={browseCommunity}
               fetchCommunityBonds={actions.fetchCommunityBonds}
+              allTrades={knownTradesForConcentration}
               fetchFaultExcludedArbiters={actions.fetchFaultExcludedArbiters}
               authorizeImageUpload={actions.authorizeImageUpload}
               initialCanvasIntent={createCanvasIntent}

@@ -27,6 +27,7 @@ export interface OnchainPayoutCandidate {
 export interface OnchainPayout extends OnchainPayoutCandidate {
   utxos: BondUtxo[];
   balanceSats: bigint;
+  hasUnconfirmed: boolean;
 }
 
 /** Pure recovery index. It intentionally includes APPROVED/CLAIMED trades: a
@@ -71,25 +72,30 @@ export function payoutCandidatesFor(
 export async function scanOnchainPayout(
   candidate: OnchainPayoutCandidate,
   fetchJson: EsploraFetch,
+  includeUnconfirmed = false,
 ): Promise<OnchainPayout> {
   const raw = await fetchJson(`/address/${candidate.address}/utxo`);
   const spend = btc.p2tr(hexToBytes(candidate.xonly), undefined, candidate.network);
   const expectedScript = bytesToHex(spend.script).toLowerCase();
   const utxos: BondUtxo[] = [];
+  let hasUnconfirmed = false;
   if (Array.isArray(raw)) {
     for (const row of raw) {
-      if (row?.status?.confirmed !== true || typeof row?.value !== "number" || row.value <= 0) continue;
+      if ((row?.status?.confirmed !== true && !(includeUnconfirmed && row?.status?.confirmed === false))
+        || typeof row?.value !== "number" || row.value <= 0) continue;
       if (typeof row.txid !== "string" || !/^[0-9a-f]{64}$/i.test(row.txid)) continue;
       if (!Number.isInteger(row.vout) || row.vout < 0) continue;
       const tx = await fetchJson(`/tx/${row.txid}`);
       const actual = tx?.vout?.[row.vout]?.scriptpubkey;
       if (typeof actual !== "string" || actual.toLowerCase() !== expectedScript) continue;
+      if (row.status.confirmed === false) hasUnconfirmed = true;
       utxos.push({ txid: row.txid.toLowerCase(), index: row.vout, amountSats: BigInt(row.value) });
     }
   }
   return {
     ...candidate,
     utxos,
+    hasUnconfirmed,
     balanceSats: utxos.reduce((sum, utxo) => sum + utxo.amountSats, 0n),
   };
 }
@@ -113,6 +119,7 @@ export async function buildOnchainPayoutSweep(params: {
   destination: string;
   fetchJson: EsploraFetch;
   feeRateSatsPerVb: bigint;
+  includeUnconfirmed?: boolean;
 }): Promise<{ rawTx: string; payout: OnchainPayout; feeSats: bigint; sendSats: bigint }> {
   const candidate = payoutCandidateFor(params.state, params.viewerPubkey);
   if (!candidate) throw new Error("This trade has no recoverable on-chain payout for this identity.");
@@ -120,7 +127,7 @@ export async function buildOnchainPayoutSweep(params: {
   if (bytesToHex(key.xonly).toLowerCase() !== candidate.xonly.toLowerCase()) {
     throw new Error("This Chama seed does not control the winner key committed in this trade.");
   }
-  const payout = await scanOnchainPayout(candidate, params.fetchJson);
+  const payout = await scanOnchainPayout(candidate, params.fetchJson, params.includeUnconfirmed ?? false);
   if (payout.utxos.length === 0) throw new Error("No confirmed, unspent winner output is available.");
   const feeSats = payoutSweepFeeSats(params.feeRateSatsPerVb, payout.utxos.length);
   const sendSats = payout.balanceSats - feeSats;

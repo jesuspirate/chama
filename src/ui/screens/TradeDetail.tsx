@@ -236,7 +236,7 @@ export function TradeDetail({
   onchainFundingPlan?: (escrowId: string) => { ready: boolean; address?: string; blockers?: readonly string[] };
   /** Tier 2.1: publish the on-chain LOCK once the deposit confirms. */
   onPublishOnchainLock?: (escrowId: string) => Promise<unknown>;
-  onPrepareOnchainSettlement?: (escrowId: string) => Promise<{ psbt: string; check: SettlementCheck; signedByMe: boolean }>;
+  onPrepareOnchainSettlement?: (escrowId: string, payoutAddress?: string) => Promise<{ psbt: string; check: SettlementCheck; signedByMe: boolean }>;
   onSignOnchainSettlement?: (escrowId: string) => Promise<{ psbt: string; check: SettlementCheck }>;
   onFinalizeOnchainSettlement?: (escrowId: string) => Promise<{ status: "waiting" | "broadcast" | "adopted"; txid?: string }>;
   onScanMyOnchainPayouts?: () => Promise<{ payouts: OnchainPayout[]; balanceSats: bigint }>;
@@ -577,6 +577,8 @@ export function TradeDetail({
   const [settlementSignedByMe, setSettlementSignedByMe] = useState(false);
   const settlementFinalizeAttemptRef = useRef<string | null>(null);
   const [settlementSigning, setSettlementSigning] = useState(false);
+  const [directPayoutAddress, setDirectPayoutAddress] = useState("");
+  const [directPayoutError, setDirectPayoutError] = useState<string | null>(null);
   const trancheGateNow = useMemo(() => {
     if (!TRADE_SLICING_ENABLED || !state.tranche) return null;
     return trancheGate({
@@ -1718,6 +1720,7 @@ export function TradeDetail({
             quoteCurrency={homeQuoteCurrency}
           />
           {!isCreatedReservation && (needsTradeHistory(state) ? <span style={{ color: T.muted, fontSize: 11 }}>{t("trade.savedSummary")}</span> : <Badge status={statusKey} />)}
+          <span style={{ color: T.muted, fontSize: 11 }}>{t(state.escrowMode === "onchain" ? "onchain.modeOnchain" : "onchain.modeEcash")}</span>
         </div>
       </div>
 
@@ -1730,10 +1733,14 @@ export function TradeDetail({
           {(repFor === participants[Role.ARBITER] || repFor === previewArbiterPk) &&
             <ArbiterRecordCard profileNames={profileNames} kind0Enabled={kind0Enabled} expanded record={arbiterRecord(repFor, knownTrades ?? [state], seatedBond ? [seatedBond] : [], new Map(), nowSec)} />}
         </OverlaySheet>}
-        {state.status === EscrowStatus.CREATED && (participants[Role.ARBITER] || previewArbiterPk) && <ArbiterRecordCard profileNames={profileNames} kind0Enabled={kind0Enabled} record={arbiterRecord(
+      {state.status === EscrowStatus.CREATED && (participants[Role.ARBITER] || previewArbiterPk) && <ArbiterRecordCard profileNames={profileNames} kind0Enabled={kind0Enabled} record={arbiterRecord(
           participants[Role.ARBITER] || previewArbiterPk!, knownTrades ?? [state], seatedBond ? [seatedBond] : [],
           new Map(), Math.floor(Date.now() / 1000), bondTipHeight,
         )} />}
+      {state.escrowMode === "onchain" && state.status === EscrowStatus.COMPLETED
+        && (state.premiumNotes?.length ?? 0) === 0 && <p role="status" style={{ color: T.amber, fontSize: 12 }}>
+          {t("onchain.premiumUnpaid")}
+        </p>}
 
       {TRADE_SLICING_ENABLED && trancheGateNow && (
         <TranchePlanStrip
@@ -2219,6 +2226,18 @@ export function TradeDetail({
           {onchainView
             && (myRole || onchainNeedsMyArbiterKey)
             && (
+              <>
+              {onchainView.canSettle && myRole === getWinner(state)?.role && onPrepareOnchainSettlement && <div style={{ marginBottom: 12 }}>
+                <label htmlFor="direct-onchain-payout">{t("onchain.directPayoutLabel")}</label>
+                <input id="direct-onchain-payout" value={directPayoutAddress} onChange={event => setDirectPayoutAddress(event.target.value)} placeholder={t("onchain.directPayoutPlaceholder")} style={{ width: "100%" }} />
+                <button type="button" disabled={!directPayoutAddress.trim()} onClick={() => {
+                  setDirectPayoutError(null);
+                  void onPrepareOnchainSettlement(state.id, directPayoutAddress.trim())
+                    .then(({ check }) => { if (!check.ok) setDirectPayoutError(check.failures.join("; ")); })
+                    .catch(error => setDirectPayoutError(error instanceof Error ? error.message : String(error)));
+                }}>{t("onchain.directPayoutUse")}</button>
+                {directPayoutError && <p role="alert">{directPayoutError}</p>}
+              </div>}
               <OnchainEscrowPanel
                 view={onchainView}
                 onPrepareFunding={!state.onchainFundingTerms && onchainView.viewerFunds && participants.buyer && participants.seller && onPrepareOnchainFunding ? () => {
@@ -2267,6 +2286,7 @@ export function TradeDetail({
                 }}
                 publishing={publishingKey}
               />
+              </>
           )}
           {state.status === EscrowStatus.CREATED
             && myRole

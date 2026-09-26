@@ -15,6 +15,8 @@
 //     signatures, never what they authorise.
 
 import { useT } from "../../i18n/index.js";
+import { useEffect, useRef } from "react";
+import { QRCode } from "../QRCode.js";
 import type { OnchainEscrowView } from "../../escrow-engine/onchain-escrow-view.js";
 import { mayEnableSignButton } from "../../escrow-engine/onchain-escrow-view.js";
 import type { SettlementCheck } from "../../bond-multisig/onchain-escrow-settle.js";
@@ -65,6 +67,17 @@ export function OnchainEscrowPanel({
 }) {
   const { t } = useT();
   const btcNetwork = network === "signet" ? SIGNET : MAINNET;
+  const checkRef = useRef(onCheckFunding);
+  checkRef.current = onCheckFunding;
+  useEffect(() => {
+    if (view.stage !== "awaiting-funding" || !view.viewerFunds || !onCheckFunding) return;
+    const timer = setInterval(() => checkRef.current?.(), 20_000);
+    return () => clearInterval(timer);
+  }, [view.stage, view.viewerFunds, !!onCheckFunding]);
+  const amount = view.expectedSats;
+  const uri = view.address && amount !== null
+    ? `bitcoin:${view.address}?amount=${amount / 100_000_000n}.${(amount % 100_000_000n).toString().padStart(8, "0")}`
+    : null;
 
   return (
     <div style={{
@@ -146,6 +159,7 @@ export function OnchainEscrowPanel({
 
       {view.stage === "awaiting-funding" && view.address && (
         <>
+          {uri && <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}><QRCode data={uri} size={210} alt={t("onchain.addressLabel")} /></div>}
           <div style={{ fontSize: 12, color: T.muted, lineHeight: 1.55, marginBottom: 8 }}>
             {view.viewerFunds ? t("onchain.fundBody") : t("onchain.awaitFundingBody")}
           </div>
@@ -168,6 +182,10 @@ export function OnchainEscrowPanel({
               <BitcoinAmount sats={Number(view.expectedSats)} size={13} gap={3} />
             </div>
           )}
+          <div role="status" style={{ fontSize: 11, color: T.muted }}>
+            {fundingNote?.toLowerCase().includes("confirm") ? t("onchain.seenMempool") : t("onchain.waitingDeposit")}
+            {" · "}{t("onchain.oneConfirmation")}
+          </div>
           {/* The address is derived, so anyone can check it. Saying so is what
               makes "don't trust an address from a wire" actionable rather than
               a slogan. */}

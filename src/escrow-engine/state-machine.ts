@@ -293,7 +293,7 @@ function handleCreate(event: ParsedEscrowEvent<CreatePayload>): TransitionResult
   if (!p.description || p.amountMsats <= 0) {
     return err("INVALID_CREATE", "CREATE requires description and positive amount", event.raw.id);
   }
-  if (!p.mintUrl) {
+  if (!p.mintUrl && p.escrowMode !== "onchain") {
     return err("INVALID_CREATE", "CREATE requires a mint URL / federation invite", event.raw.id);
   }
   if (p.expirySeconds <= 0) {
@@ -1081,6 +1081,9 @@ function handleLock(state: EscrowState, event: ParsedEscrowEvent<LockPayload>): 
       event.raw.id,
     );
   }
+  if (p.onchain && BigInt(p.onchain.amountSats) * 1000n < BigInt(expectedLockAmountMsats)) {
+    return err("INVALID_ONCHAIN_LOCK", "Deposit is below the selected order amount", event.raw.id);
+  }
 
   // Current browser/Fedi milestone: 2-way amount sum.
   // Platform/ambient fee policy is no longer part of LOCK math. The
@@ -1522,10 +1525,10 @@ function handleComplete(state: EscrowState, event: ParsedEscrowEvent<CompletePay
       : null;
     const requiresArbiter = !!state.resolvedMajority?.includes(Role.ARBITER);
     const cooperative = !!(!requiresArbiter && proofEvent && winnerRole && state.lock.onchain
-      && finalCoopSettlementProof(proofEvent, state.lock.onchain, winnerRole));
+      && finalCoopSettlementProof(proofEvent, state.lock.onchain, winnerRole, state.settlements, winner?.pubkey));
     const arbitrated = !!(requiresArbiter
       && proofEvent && winnerRole && state.lock.onchain
-      && finalArbiterSettlementProof(proofEvent, state.lock.onchain, winnerRole));
+      && finalArbiterSettlementProof(proofEvent, state.lock.onchain, winnerRole, state.settlements, winner?.pubkey));
     const authorized = cooperative
       ? sender === state.participants[Role.BUYER] || sender === state.participants[Role.SELLER]
       : arbitrated && (sender === state.participants[winnerRole] || sender === state.participants[Role.ARBITER]);

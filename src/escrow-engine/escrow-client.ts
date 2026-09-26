@@ -2459,10 +2459,10 @@ export class EscrowClient {
     const winnerRole = winner?.role === Role.BUYER || winner?.role === Role.SELLER ? winner.role : null;
     const requiresArbiter = !!state.resolvedMajority?.includes(Role.ARBITER);
     const cooperative = !!(!requiresArbiter && settlementProof && winnerRole
-      && finalCoopSettlementProof(settlementProof, state.lock.onchain!, winnerRole));
+      && finalCoopSettlementProof(settlementProof, state.lock.onchain!, winnerRole, state.settlements, winner?.pubkey));
     const arbitrated = !!(requiresArbiter
       && settlementProof && winnerRole
-      && finalArbiterSettlementProof(settlementProof, state.lock.onchain!, winnerRole));
+      && finalArbiterSettlementProof(settlementProof, state.lock.onchain!, winnerRole, state.settlements, winner?.pubkey));
     const authorized = refund ? pubkey === state.participants[state.onchainFundingTerms!.funder as Role] : cooperative
       ? pubkey === state.participants[Role.BUYER] || pubkey === state.participants[Role.SELLER]
       : arbitrated && (pubkey === state.participants[winnerRole!] || pubkey === state.participants[Role.ARBITER]);

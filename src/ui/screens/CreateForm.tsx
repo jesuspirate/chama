@@ -34,7 +34,7 @@
 
 import { useState, useEffect, useRef, type KeyboardEvent, type WheelEvent } from "react";
 import { useT, translate, getCurrentLang } from "../../i18n/index.js";
-import { type MenuItem } from "../../escrow-engine/types.js";
+import { type EscrowState, type MenuItem } from "../../escrow-engine/types.js";
 import { randomId } from "../../storage/random-id.js";
 import { categoryAllowsFulfillmentChoice, type Fulfillment } from "../../labels/vote-labels.js";
 import { getCommunityBySlug, communityForInvite, DEFAULT_COMMUNITY_SLUG } from "../../communities/registry.js";
@@ -47,7 +47,8 @@ import {
   SETTLEMENT_POLICY_ECASH_SLICES,
   SETTLEMENT_POLICY_ONCHAIN_FULL,
 } from "../../escrow-engine/slice-policy.js";
-import { onchainEscrowAvailable, DEFAULT_ESCROW_MODE, ESCROW_NETWORK_LABEL } from "../../bond-multisig/onchain-escrow.js";
+import { onchainEscrowAvailable, defaultEscrowModeForAmount, ONCHAIN_ESCROW_MINIMUM_SATS, ESCROW_NETWORK_LABEL } from "../../bond-multisig/onchain-escrow.js";
+import { OnchainFeeCheckout, useOnchainFeeRate } from "../components/OnchainFeeCheckout.js";
 import {
   TRADE_SLICING_ENABLED,
   CHAMA_CIRCLES_ENABLED,
@@ -60,7 +61,7 @@ import {
 import { defaultCurrencyForCommunity } from "../../communities/currency.js";
 import { getTrustedArbiterPool } from "../../arbiters/pool.js";
 import { ARBITER_FAULT_READS_ENABLED } from "../../arbiters/arbiter-fault.js";
-import { assignableBondedArbiters } from "../../arbiters/exposure.js";
+import { assignableBondedArbiters, getOpenBondedTrades, sumOpenExposure } from "../../arbiters/exposure.js";
 import { sellerIsBonded, resolveListingTenure } from "../../escrow-engine/listing-renewal.js";
 import type { VerifiedBond } from "../../bond-multisig/bond-announcement.js";
 import { type ArbiterWarning, displayCounterpartyName, resolveCreateMintUrl } from "../decisions.js";
@@ -402,7 +403,7 @@ function normalizeFormState(raw: any, currency = "USD"): FormState {
     workSide: raw.workSide === "work-request" ? "work-request" : "work",
     workCategory: typeof raw.workCategory === "string" ? raw.workCategory : "",
     trancheCount: TRADE_SLICING_ENABLED && typeof raw.trancheCount === "number" ? raw.trancheCount : 1,
-    escrowMode: raw.escrowMode === "onchain" || raw.escrowMode === "ecash" ? raw.escrowMode : DEFAULT_ESCROW_MODE,
+    escrowMode: raw.escrowMode === "onchain" || raw.escrowMode === "ecash" ? raw.escrowMode : undefined,
     recurringCbp: raw.recurringCbp === true,
     stock: typeof raw.stock === "string" || typeof raw.stock === "number" ? String(raw.stock) : "",
     paymentMethods: Array.isArray(raw.paymentMethods)
@@ -1096,7 +1097,7 @@ export function emptyCreateFormState(currency = "USD"): FormState {
     workSide: "work",
     workCategory: "",
     trancheCount: TRADE_SLICING_ENABLED ? 2 : 1,
-    escrowMode: DEFAULT_ESCROW_MODE,
+    escrowMode: undefined,
     recurringCbp: false,
   };
 }
@@ -1111,6 +1112,7 @@ export function CreateForm({
   fetchFaultExcludedArbiters,
   authorizeImageUpload,
   initialCanvasIntent,
+  allTrades = [],
 }: {
   onCreateCircle: () => void;
   onCreate: (params: any) => void;
@@ -1145,6 +1147,8 @@ export function CreateForm({
   /** Assisted Chama may carry already-entered ordinary fields into this
    *  existing review flow. It never bypasses validation or publication. */
   initialCanvasIntent?: CanvasCreatePrefill | null;
+  /** Known open trades determine how much of each arbiter bond remains free. */
+  allTrades?: readonly EscrowState[];
 }) {
   const { t } = useT();
   // Resolve community context for the listing. Read once at mount;
@@ -1209,6 +1213,7 @@ export function CreateForm({
       paymentMethods: initialCanvasIntent.paymentMethods?.filter(Boolean) ?? initial.paymentMethods,
       premium: initialCanvasIntent.premiumBps !== undefined ? String(initialCanvasIntent.premiumBps / 100) : initial.premium,
       stock: initialCanvasIntent.stock !== undefined ? String(initialCanvasIntent.stock) : initial.stock,
+      escrowMode: initialCanvasIntent.escrowMode,
       // Exchange range → one exchange-bracket menu item [min..max]. Publishes
       // through the exact same menu-mode assembly the full editor uses.
       ...(initialCanvasIntent.vertical === "p2p-trade"
@@ -1353,6 +1358,11 @@ export function CreateForm({
     const totalSats = effectiveListingSats(form, vertical);
     const paymentMethodsOk = !categoryUsesPaymentRails(vertical) || form.paymentMethods.length > 0;
     const stockOk = vertical !== "marketplace" || hasMenu || parseOptionalPositiveInt(form.stock ?? "") !== undefined;
+    const escrowMode = form.escrowMode ?? defaultEscrowModeForAmount(BigInt(Math.max(0, Math.floor(totalSats))));
+    if (escrowMode === "onchain" && !onchainEscrowAvailable(BigInt(Math.max(0, Math.floor(totalSats))))) {
+      setPublishError(t("onchain.minimumAmount", { amount: Number(ONCHAIN_ESCROW_MINIMUM_SATS).toLocaleString() }));
+      return "invalid";
+    }
     if (
       (!description && descriptionRequired(vertical, hasMenu)) ||
       (!hasMenu && !form.sats.trim()) ||
@@ -1439,7 +1449,7 @@ export function CreateForm({
        *  the bond's role everywhere else as the licence to arbitrate, and a
        *  reasonable bar at these sizes. */
       let onchainCapableArbiters: string[] = [];
-      const wantsOnchain = (form.escrowMode ?? DEFAULT_ESCROW_MODE) === "onchain";
+      const wantsOnchain = escrowMode === "onchain";
       let bonds = trustSnapshot?.community === effectiveCommunity && trustSnapshot.bondsReady
         ? trustSnapshot.bonds
         : [];
@@ -1453,11 +1463,16 @@ export function CreateForm({
         } catch { /* the explicit no-capable-arbiter blocker below owns copy */ }
       }
       const activeBonds = bonds.filter(b => b.funded && b.active);
-      bondedPool = assignableBondedArbiters({ bonds: activeBonds, tradeMsats: amountMsats, allTrades: [] });
+      // A range's address is amount-independent, but its arbiter must cover
+      // the largest order a buyer can actually choose, not the listing floor.
+      const coverageMsats = wantsOnchain && hasMenu
+        ? menuItems.reduce((sum, item) => sum + (item.maxAmountMsats ?? item.amountMsats) * (item.maxQuantity ?? 1), 0)
+        : amountMsats;
+      bondedPool = assignableBondedArbiters({ bonds: activeBonds, tradeMsats: coverageMsats, allTrades });
       const keyed = new Set(
         activeBonds.filter((b) => !!b.ownerXonly).map((b) => b.npub.toLowerCase()),
       );
-      onchainCapableArbiters = bondedPool.filter((pk) => keyed.has(pk.toLowerCase()));
+      onchainCapableArbiters = bondedPool.filter((pk) => keyed.has(pk.toLowerCase()) && pk.toLowerCase() !== (userPubkey ?? "").toLowerCase());
       // Fault-attested arbiters (kind 38136) lose the seat — but only as a
       // PREFERENCE. getTrustedArbiterPool drops the soft exclusion entirely if
       // honouring it would leave nobody assignable, so an attestation can
@@ -1484,14 +1499,19 @@ export function CreateForm({
       // Refuse rather than publish a dead listing. The seller finds out here,
       // in one sentence, instead of after a buyer has reserved it.
       if (wantsOnchain && communityArbiters.length === 0) {
-        setPublishError(t("onchain.noCapableArbiter"));
+        const largest = activeBonds
+          .filter(b => b.ownerXonly && b.npub.toLowerCase() !== (userPubkey ?? "").toLowerCase())
+          .reduce((max, b) => {
+            const freeMsats = Number(b.actualSats) * 1000 - sumOpenExposure(getOpenBondedTrades(b.npub, allTrades));
+            return Math.max(max, Math.floor(Math.max(0, freeMsats) / 1000));
+          }, 0);
+        setPublishError(t("onchain.noCapableArbiter", { amount: largest.toLocaleString() }));
         setSubmitting(false);
         return "error";
       }
       // Only DIVISIBLE value can be tranched. A single physical item cannot
       // be delivered in quarters, so Stores are excluded — the honest answer
       // there is holding the value somewhere no single party can reach.
-      const escrowMode = form.escrowMode ?? DEFAULT_ESCROW_MODE;
       const requestedSliceCount = TRADE_SLICING_ENABLED
         && escrowMode === "ecash" && TRANCHEABLE_VERTICALS.has(vertical) && !hasMenu
         ? Math.max(1, Math.floor(form.trancheCount ?? 2))
@@ -1543,7 +1563,7 @@ export function CreateForm({
           : SETTLEMENT_POLICY_ECASH_SLICES,
         ...(slicePlan ? { sliceCount: slicePlan.sliceCount } : {}),
         fulfillment: vertical === "work" ? "service" : vertical === "marketplace" ? form.fulfillment : undefined,
-        mintUrl,
+        mintUrl: escrowMode === "onchain" ? "" : mintUrl,
         communityArbiters: communityArbiters.length > 0 ? communityArbiters : undefined,
         // 2B prefer-bonded: stamp the funded bonded subset (∩ the final pool) into
         // CREATE so every client replays the SAME preferred seat (the reducer
@@ -1731,8 +1751,9 @@ export function CreateForm({
           homeCommunity={homeCommunity}
           firstPublishDone={hasFirstPublishedBefore(userPubkey)}
           submitting={submitting}
+          publishBlocked={!!publishError}
           amountDisplayMode={amountDisplayMode}
-          onBack={() => setStep(2)}
+          onBack={() => { setPublishError(null); setStep(2); }}
           onPublish={handlePublish}
           onSaveDraft={() => {
             writeDraft({ vertical, formState: form, savedAt: Date.now() });
@@ -2244,6 +2265,7 @@ function Step2({
 }) {
   const { t } = useT();
   const btcPrice = useBitcoinPrice();
+  const onchainFee = useOnchainFeeRate();
   const fiatRates = useFiatRates();
   const [paymentRailQuery, setPaymentRailQuery] = useState("");
   // v2.5: inline photo-upload error. window.alert is a silent no-op in the
@@ -2750,17 +2772,9 @@ function Step2({
         </div>
       )}
 
-      {/* Tier 2.1 — where the sats sit. OPT-IN above the threshold (Jetty's
-          call): people who want on-chain will choose it, people trading small
-          amounts should not be pushed into a miner fee.
-
-          ⚠ COPY RULE, and it is deliberate: state what each option DOES and do
-          not editorialise. No "fast here, slow there" — that frames one choice
-          as the mistake. Both lines say the same kinds of thing (speed, cost,
-          privacy, who can take it back) and let the user weigh them. The
-          ecash line names the funder-clawback plainly, because a user choosing
-          between two escrows deserves to know the difference that matters. */}
-      {onchainEscrowAvailable(BigInt(Math.max(0, Math.floor(totalSats)))) && !usingMenu && (
+      {/* Every menu item must meet the on-chain floor; the minimum sets the
+          default and the buyer's selected amount sets the actual LOCK. */}
+      {onchainEscrowAvailable(BigInt(Math.max(0, Math.floor(totalSats)))) && (
         <div style={{ marginBottom: 16 }}>
           <div style={{ fontSize: 11, color: T.muted, fontFamily: T.mono, marginBottom: 6 }}>
             {t("onchain.modeLabel")}
@@ -2770,7 +2784,7 @@ function Step2({
               { id: "ecash", label: t("onchain.modeEcash"), body: t("onchain.modeEcashBody"), icon: "⚡" },
               { id: "onchain", label: t("onchain.modeOnchain"), body: t("onchain.modeOnchainBody"), icon: "⛓" },
             ] as const).map((opt) => {
-              const on = (form.escrowMode ?? DEFAULT_ESCROW_MODE) === opt.id;
+              const on = (form.escrowMode ?? defaultEscrowModeForAmount(BigInt(Math.max(0, Math.floor(totalSats))))) === opt.id;
               return (
                 <button
                   key={opt.id}
@@ -2806,6 +2820,8 @@ function Step2({
               );
             })}
           </div>
+          {(form.escrowMode ?? defaultEscrowModeForAmount(BigInt(Math.max(0, Math.floor(totalSats))))) === "onchain"
+            && <OnchainFeeCheckout amountSats={totalSats} rate={onchainFee.rate} />}
         </div>
       )}
 
@@ -2816,7 +2832,7 @@ function Step2({
           once. That is stated in sats rather than as "1/4", because a fraction
           is not a loss a person can feel. */}
       {TRADE_SLICING_ENABLED
-        && (form.escrowMode ?? DEFAULT_ESCROW_MODE) === "ecash"
+        && (form.escrowMode ?? defaultEscrowModeForAmount(BigInt(Math.max(0, Math.floor(totalSats))))) === "ecash"
         && TRANCHEABLE_VERTICALS.has(vertical) && !usingMenu
         && trancheSplitAvailable(totalSats * 1000) && (() => {
         // Only offer counts whose slices clear MIN_TRANCHE_SATS. Splitting a
@@ -3794,7 +3810,7 @@ function Step3({
   vertical, form, setForm,
   homeCommunity,
   firstPublishDone,
-  submitting,
+  submitting, publishBlocked,
   amountDisplayMode,
   onBack, onPublish, onSaveDraft,
 }: {
@@ -3804,6 +3820,7 @@ function Step3({
   homeCommunity: ReturnType<typeof getCommunityBySlug>;
   firstPublishDone: boolean;
   submitting: boolean;
+  publishBlocked: boolean;
   amountDisplayMode: AmountDisplayMode;
   onBack: () => void;
   onPublish: () => void;
@@ -4138,15 +4155,15 @@ function Step3({
         </button>
         <button
           onClick={onPublish}
-          disabled={!ready || submitting}
+          disabled={!ready || submitting || publishBlocked}
           style={{
             flex: 2, padding: "14px",
-            background: ready && !submitting ? T.accent : T.surface,
-            border: ready && !submitting ? "none" : `1px solid ${T.border}`,
+            background: ready && !submitting && !publishBlocked ? T.accent : T.surface,
+            border: ready && !submitting && !publishBlocked ? "none" : `1px solid ${T.border}`,
             borderRadius: T.rs,
-            color: ready && !submitting ? T.bg : T.muted,
+            color: ready && !submitting && !publishBlocked ? T.bg : T.muted,
             fontFamily: T.mono, fontSize: 14, fontWeight: 800,
-            cursor: ready && !submitting ? "pointer" : "default",
+            cursor: ready && !submitting && !publishBlocked ? "pointer" : "default",
             letterSpacing: 0.5,
           }}
         >

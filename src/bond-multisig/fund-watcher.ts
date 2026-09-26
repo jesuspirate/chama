@@ -192,6 +192,16 @@ export async function esploraRecommendedFeeRate(
   }
 }
 
+/** Settlement must not silently use a stale minimum when the fee API fails. */
+export async function esploraRequiredFeeRate(fetchJson: EsploraFetch): Promise<bigint> {
+  const r = await fetchJson("/v1/fees/recommended");
+  const raw = r?.hourFee ?? r?.halfHourFee ?? r?.economyFee;
+  if (typeof raw !== "number" || !Number.isFinite(raw) || raw <= 0) {
+    throw new Error("Current Bitcoin fees are unavailable. Try settlement again when the fee estimate returns.");
+  }
+  return BigInt(Math.ceil(raw));
+}
+
 /** Broadcast a raw tx hex to Esplora; returns the txid, or throws with the node's
  *  rejection reason (e.g. a CLTV "Locktime requirement not satisfied" before term). */
 export async function esploraBroadcast(base: string, rawHex: string): Promise<string> {

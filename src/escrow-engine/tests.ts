@@ -2323,9 +2323,9 @@ console.log("\n── ATOMIC LOCK (CREATED → LOCKED, no FUNDED hop) ──");
       "escrow network: and it is not signet while that is true");
     const { DEFAULT_ESCROW_MODE } = await import("../bond-multisig/onchain-escrow.js");
     assert(DEFAULT_ESCROW_MODE === "ecash",
-      "⭐ escrow network: a MAINNET build defaults new qualifying listings to ECASH — on-chain is opt-in so a user is never moved onto a fee-paying, confirmation-waiting substrate without choosing it");
+      "⭐ escrow network: an amountless MAINNET draft starts ecash; the posted amount controls preselection");
     assert((ESCROW_NETWORK === SIGNET) === (DEFAULT_ESCROW_MODE === "onchain"),
-      "⭐ escrow network: the default is DERIVED from the network, so flipping to MAINNET restores ecash-by-default automatically — no second switch to remember");
+      "⭐ escrow network: the amountless draft fallback is derived from the network");
     assert((ESCROW_NETWORK === SIGNET) === (ESCROW_NETWORK_LABEL === "signet"),
       "⭐ escrow network: the LOCK's network label is derived from the switch, so the two can never disagree — a cross-network address must never validate");
   }
@@ -2780,9 +2780,15 @@ console.log("\n── ATOMIC LOCK (CREATED → LOCKED, no FUNDED hop) ──");
     try { buildDisputeLeaf(BX, SX, AX, 70_000); } catch { badCsv = true; }
     assert(badCsv, "onchain: the CSV window is bounds-checked");
 
-    assert(onchainEscrowAvailable(100_000n) && !onchainEscrowAvailable(99_999n)
-      && ONCHAIN_ESCROW_THRESHOLD_SATS === 100_000n,
-      "onchain: the threshold gate opens at 100k sats (from Chama's own measured round-trip cost)");
+    const { defaultEscrowModeForAmount, ONCHAIN_ESCROW_MINIMUM_SATS } = await import("../bond-multisig/onchain-escrow.js");
+    assert(!onchainEscrowAvailable(24_999n) && onchainEscrowAvailable(25_000n)
+      && onchainEscrowAvailable(99_999n) && onchainEscrowAvailable(100_000n)
+      && ONCHAIN_ESCROW_MINIMUM_SATS === 25_000n && ONCHAIN_ESCROW_THRESHOLD_SATS === 100_000n
+      && defaultEscrowModeForAmount(24_999n) === "ecash"
+      && defaultEscrowModeForAmount(25_000n) === "ecash"
+      && defaultEscrowModeForAmount(99_999n) === "ecash"
+      && defaultEscrowModeForAmount(100_000n) === "onchain",
+      "onchain: offered from 25k sats and preselected at 100k sats");
     assert(REFUND_CLTV_BLOCKS === 4320,
       "onchain: the refund leaf matures at ~30 days — a SECURITY parameter (how long before the funder's unilateral exit returns), not a convenience one");
 

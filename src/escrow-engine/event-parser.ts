@@ -285,6 +285,7 @@ function validateJoinPayload(data: unknown): data is JoinPayload {
   return (
     d.type === "escrow:join" &&
     typeof d.role === "string" && Object.values(Role).includes(d.role as Role) &&
+    (d.payoutAddress === undefined || (typeof d.payoutAddress === "string" && d.payoutAddress.length <= 100)) &&
     typeof d.joinedAt === "number" &&
     (d.holdExpiresAt === undefined || typeof d.holdExpiresAt === "number")
   );

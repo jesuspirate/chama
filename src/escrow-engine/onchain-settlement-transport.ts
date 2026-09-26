@@ -211,6 +211,27 @@ export function finalizableArbiterSettlement(
   return null;
 }
 
+/** Accept a direct payout only if the winner authored the same unsigned
+ * transaction before it was finalized. A counterparty cannot redirect it. */
+function authorizedDirectPayout(
+  finalMessage: ParsedEscrowEvent<SettlementPayload>,
+  settlements: readonly ParsedEscrowEvent<SettlementPayload>[],
+  winnerRole: Role.BUYER | Role.SELLER,
+  winnerPubkey?: string,
+): string | null {
+  if (!winnerPubkey) return null;
+  const id = settlementUnsignedId(finalMessage.payload.psbt);
+  for (const message of settlements) {
+    try {
+      if (message.pubkey === winnerPubkey && message.payload.role === winnerRole
+        && message.payload.payoutAddress && settlementUnsignedId(message.payload.psbt) === id) {
+        return message.payload.payoutAddress;
+      }
+    } catch { /* malformed proposal */ }
+  }
+  return null;
+}
+
 /** Replay-verifiable authorization carried by a final cooperative journal.
  *  This does not claim the transaction was mined; it proves both keys committed
  *  in the escrow cooperatively signed the exact escrow-script spend to the
@@ -219,6 +240,8 @@ export function finalCoopSettlementProof(
   message: ParsedEscrowEvent<SettlementPayload>,
   terms: OnchainLockTerms,
   winnerRole: Role.BUYER | Role.SELLER,
+  settlements: readonly ParsedEscrowEvent<SettlementPayload>[] = [],
+  winnerPubkey?: string,
 ): { txid: string; inputs: Array<{ txid: string; index: number }> } | null {
   if (!message.payload.final || message.payload.leaf !== "coop") return null;
   try {
@@ -247,7 +270,8 @@ export function finalCoopSettlementProof(
     if (!utxos.some(utxo => utxo.txid === terms.fundingTxid
       && utxo.index === terms.fundingVout)) return null;
     const winnerXonly = winnerRole === Role.BUYER ? terms.buyerXonly : terms.sellerXonly;
-    const destination = btc.p2tr(hexToBytes(winnerXonly), undefined, network).address!;
+    const destination = authorizedDirectPayout(message, settlements, winnerRole, winnerPubkey)
+      ?? btc.p2tr(hexToBytes(winnerXonly), undefined, network).address!;
     const total = utxos.reduce((sum, utxo) => sum + utxo.amountSats, 0n);
     if (!verifySettlementPsbt(message.payload.psbt, {
       escrow, utxos, destination, maxFeeSats: total, network,
@@ -266,6 +290,8 @@ export function finalArbiterSettlementProof(
   message: ParsedEscrowEvent<SettlementPayload>,
   terms: OnchainLockTerms,
   winnerRole: Role.BUYER | Role.SELLER,
+  settlements: readonly ParsedEscrowEvent<SettlementPayload>[] = [],
+  winnerPubkey?: string,
 ): { txid: string; inputs: Array<{ txid: string; index: number }> } | null {
   if (!message.payload.final || message.payload.leaf !== "arbiter") return null;
   try {
@@ -286,7 +312,8 @@ export function finalArbiterSettlementProof(
     });
     if (!utxos.some(u => u.txid === terms.fundingTxid && u.index === terms.fundingVout)) return null;
     const winnerXonly = winnerRole === Role.BUYER ? terms.buyerXonly : terms.sellerXonly;
-    const destination = btc.p2tr(hexToBytes(winnerXonly), undefined, network).address!;
+    const destination = authorizedDirectPayout(message, settlements, winnerRole, winnerPubkey)
+      ?? btc.p2tr(hexToBytes(winnerXonly), undefined, network).address!;
     const total = utxos.reduce((sum, u) => sum + u.amountSats, 0n);
     if (!verifySettlementPsbt(message.payload.psbt, {
       escrow, utxos, destination, maxFeeSats: total, network, leaf: "dispute",

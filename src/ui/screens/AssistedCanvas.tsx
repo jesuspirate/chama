@@ -42,6 +42,8 @@ import { RailHeader } from "../components/RailHeader.js";
 import { TradeCard } from "../components/TradeCard.js";
 import { circleFromEscrow } from "../../chama/policy.js";
 import { groupBySettlementRail, railHeadersNeeded, settlementRailOf } from "../settlement-rail.js";
+import { defaultEscrowModeForAmount, onchainEscrowAvailable } from "../../bond-multisig/onchain-escrow.js";
+import { OnchainFeeCheckout, useOnchainFeeRate } from "../components/OnchainFeeCheckout.js";
 import { profileNameFor, type NostrProfileNameMap } from "../nostr-profiles.js";
 import { translate, getCurrentLang } from "../../i18n/index.js";
 import { circleInviteId } from "../../chama/canvas.js";
@@ -129,6 +131,7 @@ export function AssistedCanvas({
     ?? "+1 555 555 5555";
   const fiatCurrency = defaultCurrencyForCommunity(browseCommunity);
   const btcPrice = useBitcoinPrice();
+  const onchainFee = useOnchainFeeRate();
   const fiatRates = useFiatRates();
   // Replay the last snapshot so back-from-a-trade lands on the same step —
   // usually the match results — instead of a blank canvas. The SEARCH itself
@@ -172,6 +175,7 @@ export function AssistedCanvas({
   const [savedHandlesRevision, setSavedHandlesRevision] = useState(0);
   const [notified, setNotified] = useState(false);
   const [premiumBps, setPremiumBps] = useState(resume?.premiumBps ?? 0);
+  const [escrowChoice, setEscrowChoice] = useState<"ecash" | "onchain" | null>(null);
   const [shareCopied, setShareCopied] = useState(false);
   const [premiumMode, setPremiumMode] = useState<"preset" | "custom">(resume?.premiumMode ?? "preset");
   const [premiumInput, setPremiumInput] = useState(resume?.premiumInput ?? "");
@@ -570,11 +574,16 @@ export function AssistedCanvas({
       })
     : null;
 
+  const offeredSats = fiatBring ? estimatedSats ?? 0
+    : bring === "goods" ? positiveNumber(terms) ?? 0 : positiveNumber(detail) ?? 0;
+  const escrowMode = escrowChoice ?? defaultEscrowModeForAmount(BigInt(Math.max(0, Math.floor(offeredSats))));
+
   const openPreparedOffer = () => {
     if (!bring || !want) return;
     if (bring === "bill") {
       onCreate({
         vertical: "bill-pay",
+        escrowMode,
         emphasizePremium: true,
         emphasizePaymentMethods: true,
         fiatAmount: positiveNumber(detail) ?? undefined,
@@ -588,11 +597,12 @@ export function AssistedCanvas({
       return;
     }
     if (bring === "goods") {
-      onCreate({ vertical: "marketplace", description: detail.trim(), amountSats: positiveNumber(terms) ?? undefined, stock: 1, autoPublish: true });
+      onCreate({ vertical: "marketplace", description: detail.trim(), amountSats: positiveNumber(terms) ?? undefined, stock: 1, escrowMode, autoPublish: true });
       return;
     }
     onCreate({
       vertical: "p2p-trade",
+      escrowMode,
       emphasizePremium: bring === "sats" && want === "cash",
       amountSats: positiveNumber(detail) ?? undefined,
       ...(sellRange && rangeMax !== null ? { maxAmountSats: rangeMax } : {}),
@@ -840,6 +850,13 @@ export function AssistedCanvas({
         />
         {bring === "bill" && estimatedSats && <ReviewRow label={tr("canvas.bitcoinOffered")} value={tr("canvas.aboutSats", { amount: estimatedSats.toLocaleString() })} />}
         {bring === "sats" && <ReviewRow label={tr("canvas.receiveThrough")} value={paymentRailLabels(effectiveRails)} />}
+        {onchainEscrowAvailable(BigInt(Math.max(0, Math.floor(offeredSats)))) && <div role="group" aria-label={tr("onchain.modeLabel")} style={{ display: "flex", gap: 8, marginTop: 12 }}>
+          {(["onchain", "ecash"] as const).map(mode => <button key={mode} type="button" aria-pressed={escrowMode === mode} onClick={() => setEscrowChoice(mode)} style={{ flex: 1, padding: 10, borderRadius: 12, border: `1px solid ${escrowMode === mode ? T.accent : T.border}`, background: escrowMode === mode ? T.accentDim : T.card, color: T.text }}>
+            {tr(mode === "onchain" ? "onchain.modeOnchain" : "onchain.modeEcash")}
+          </button>)}
+        </div>}
+        {escrowMode === "onchain" && onchainEscrowAvailable(BigInt(Math.max(0, Math.floor(offeredSats))))
+          && <OnchainFeeCheckout amountSats={offeredSats} rate={onchainFee.rate} />}
         {((bring === "sats" && want === "cash") || bring === "bill") && <ReviewRow label={bring === "bill" ? tr("canvas.volunteerBonus") : tr("canvas.yourRate")} value={premiumBps === 0 ? tr("canvas.marketRate") : `+${(premiumBps / 100).toLocaleString()}%`} />}
         <ReviewRow label={tr("canvas.visibleIn")} value={community?.displayName ?? browseCommunity} last />
       </div>

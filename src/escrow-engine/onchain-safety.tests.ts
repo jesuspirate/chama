@@ -11,8 +11,10 @@ import { buildOnchainEscrow } from '../bond-multisig/onchain-escrow.js';
 import { deriveEscrowSigningKey, deriveCommittedBondKey, findEscrowFundingUtxos, escrowDepositWindowSafe } from '../bond-multisig/onchain-escrow-funding.js';
 import { buildCommitmentBond, deriveBondSigningKey } from '../bond-multisig/commitment-bond.js';
 import { SIGNET } from '../bond-multisig/multisig.js';
+import { esploraRequiredFeeRate } from '../bond-multisig/fund-watcher.js';
+import { scanOnchainPayout } from '../bond-multisig/onchain-payout-wallet.js';
 import { buildSettlementPsbt, coSignSettlement, finalizeSettlement, verifySettlementPsbt } from '../bond-multisig/onchain-escrow-settle.js';
-import { finalRefundSettlementProof, confirmedRefundTxid, hasValidSettlementSignatureForRole } from './onchain-settlement-transport.js';
+import { finalRefundSettlementProof, finalCoopSettlementProof, confirmedRefundTxid, hasValidSettlementSignatureForRole } from './onchain-settlement-transport.js';
 
 const WORDS = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 const b = deriveEscrowSigningKey(WORDS, 'buyer', { network: SIGNET });
@@ -53,6 +55,23 @@ const lockTerms = { ...fixture.terms, amountSats: '100000', fundingTxid: '11'.re
 const lock = fixture.event(Kind.LOCK, 'seller', { type: 'escrow:lock', notesHash: '', shares: [],
   onchain: lockTerms, buyerPubkey: fixture.pks.buyer, arbiterPubkey: fixture.pks.arbiter,
   sellerReceivesMsats: 100000000, arbiterFeeMsats: 0, lockedAt: Date.now() / 1000 });
+const selectedRange = [{ itemId: 'range', label: 'Sats for sale', kind: 'exchange-bracket' as const,
+  amountMsats: 150000000, quantity: 1 }];
+const rangeState = { ...fixture.state,
+  items: [{ id: 'range', label: 'Sats for sale', kind: 'exchange-bracket' as const,
+    amountMsats: 100000000, minAmountMsats: 100000000, maxAmountMsats: 200000000 }],
+  joinHolds: { [Role.BUYER]: { pubkey: fixture.pks.buyer, joinedAt: lock.timestamp - 60,
+    expiresAt: lock.timestamp + 600, orderFinalizedAt: lock.timestamp - 30,
+    selectedItems: selectedRange, amountMsats: 150000000 } },
+} as typeof fixture.state;
+const rangeLock = { ...lock, payload: { ...lock.payload, selectedItems: selectedRange,
+  onchain: { ...lockTerms, amountSats: '150000' }, sellerReceivesMsats: 150000000 } } as typeof lock;
+const rangeApplied = applyEvent(rangeState, rangeLock);
+assert(rangeApplied.ok, `ranged on-chain JOIN → LOCK chooses 150k: ${rangeApplied.ok ? '' : rangeApplied.error.message}`);
+if (rangeApplied.ok) assert.equal(rangeApplied.state.amountMsats, 150000000);
+assert.equal(applyEvent(rangeState, { ...rangeLock, payload: { ...rangeLock.payload,
+  onchain: { ...lockTerms, amountSats: '100000' } } } as typeof rangeLock).ok, false,
+  'LOCK cannot deposit only the 100k listing minimum for a 150k chosen order');
 for (const mutation of [badTerms, { buyerXonly: bytesToHex(attacker) }, { sellerXonly: bytesToHex(attacker) },
   { arbiterXonly: bytesToHex(attacker) }, { address: attackTree.address }, { refundLockUntil: 2000001 },
   { network: 'mainnet' }, { disputeCsvBlocks: 0 }, { funder: 'buyer' }, { amountSats: '99999' }]) {
@@ -84,6 +103,16 @@ assert.notDeepEqual(deriveEscrowSigningKey(WORDS, fixture.state.id, { network: S
 
 const utxos = [{ txid: lockTerms.fundingTxid, index: 0, amountSats: 100000n }];
 const buyerDestination = btc.p2tr(b.xonly, undefined, SIGNET).address!;
+const directDestination = btc.p2tr(attacker, undefined, SIGNET).address!;
+const directPsbt = buildSettlementPsbt({ escrow: fixture.escrow, utxos, destination: directDestination, feeSats: 1000n });
+const directSigned = coSignSettlement(coSignSettlement(directPsbt, b.priv), s.priv);
+const directProposal = fixture.event(Kind.SETTLEMENT, 'buyer', { type: 'escrow:settlement', leaf: 'coop', role: Role.BUYER, payoutAddress: directDestination, psbt: directPsbt });
+const directFinal = fixture.event(Kind.SETTLEMENT, 'seller', { type: 'escrow:settlement', leaf: 'coop', role: Role.SELLER, final: true, psbt: directSigned });
+assert(finalCoopSettlementProof(directFinal as any, lockTerms, Role.BUYER, [directProposal as any, directFinal as any], directProposal.pubkey));
+assert.equal(finalCoopSettlementProof(directFinal as any, lockTerms, Role.BUYER, [directFinal as any], directProposal.pubkey), null,
+  'A counterparty cannot redirect payout without the winner-authored proposal');
+const wrongAuthor = fixture.event(Kind.SETTLEMENT, 'seller', { type: 'escrow:settlement', leaf: 'coop', role: Role.BUYER, payoutAddress: directDestination, psbt: directPsbt });
+assert.equal(finalCoopSettlementProof(directFinal as any, lockTerms, Role.BUYER, [wrongAuthor as any, directFinal as any], directProposal.pubkey), null);
 const funderDestination = btc.p2tr(s.xonly, undefined, SIGNET).address!;
 for (const leaf of ['coop', 'dispute', 'refund'] as const) {
   const destination = leaf === 'refund' ? funderDestination : buyerDestination;
@@ -158,3 +187,16 @@ console.log('on-chain safety: signed commitments, substitution rejection, recipi
 assert(escrowDepositWindowSafe({ refundLockUntil: 5320, fundingHeights: [1001], tipHeight: 1001, awaitingCounterpayment: true }));
 assert(!escrowDepositWindowSafe({ refundLockUntil: 1002, fundingHeights: [1001], tipHeight: 1001, awaitingCounterpayment: true }), 'malicious immediate-refund terms cannot enable counterpayment');
 assert(!escrowDepositWindowSafe({ refundLockUntil: 5320, fundingHeights: [1001], tipHeight: 5200, awaitingCounterpayment: true }), 'counterpayment requires a remaining dispute window');
+assert.equal(await esploraRequiredFeeRate(async () => ({ hourFee: 5 })), 5n);
+await assert.rejects(() => esploraRequiredFeeRate(async () => { throw new Error('offline'); }));
+await assert.rejects(() => esploraRequiredFeeRate(async () => ({})));
+const pendingCandidate = { escrowId: 'pending', role: Role.BUYER as const,
+  address: buyerDestination, xonly: bytesToHex(b.xonly), network: SIGNET };
+const pendingScript = bytesToHex(btc.p2tr(b.xonly, undefined, SIGNET).script);
+const pendingFetch = async (path: string) => path.endsWith('/utxo')
+  ? [{ txid: 'ab'.repeat(32), vout: 0, value: 100000, status: { confirmed: false } }]
+  : { vout: [{ scriptpubkey: pendingScript }] };
+assert.equal((await scanOnchainPayout(pendingCandidate, pendingFetch)).balanceSats, 0n);
+const pendingPayout = await scanOnchainPayout(pendingCandidate, pendingFetch, true);
+assert.equal(pendingPayout.balanceSats, 100000n);
+assert.equal(pendingPayout.hasUnconfirmed, true);

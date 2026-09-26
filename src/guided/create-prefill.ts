@@ -5,6 +5,7 @@
  * again before emitting an escrow event. */
 export interface CanvasCreatePrefill {
   vertical: "p2p-trade" | "bill-pay" | "marketplace";
+  escrowMode?: "ecash" | "onchain";
   /** The assisted route is publishing a sats-for-local-money offer or a bill
    *  request. Create should surface the remaining pricing judgment—the
    *  Exchange premium or Community Bill Pay volunteer bonus—instead of

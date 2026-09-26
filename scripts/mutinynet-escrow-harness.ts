@@ -49,7 +49,7 @@ else {
   if (command !== 'init') throw new Error('Run init first; existing keys are never silently replaced');
   const height = await tip();
   keys = { buyer: generateMnemonic(wordlist), seller: generateMnemonic(wordlist), arbiter: generateMnemonic(wordlist),
-    createdTip: height, refundHeight: height + 20 };
+    createdTip: height, refundHeight: height + 60 };
   fs.writeFileSync(keyfile, JSON.stringify(keys), { mode: 0o600, flag: 'wx' });
 }
 const results: Partial<Record<Case, Result>> = fs.existsSync(journalFile) ? JSON.parse(fs.readFileSync(journalFile, 'utf8')) : {};

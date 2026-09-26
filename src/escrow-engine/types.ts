@@ -879,6 +879,9 @@ export interface SettlementPayload {
   psbt: string;
   leaf: "coop" | "arbiter" | "refund";
   role: Role;
+  /** Winner-authored destination choice for direct on-chain payout. The
+   *  receiving client still checks the full PSBT against this address. */
+  payoutAddress?: string;
   /** True only when the PSBT contains enough signatures to finalize. */
   final?: boolean;
 }

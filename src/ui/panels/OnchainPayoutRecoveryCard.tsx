@@ -95,7 +95,7 @@ export function OnchainPayoutRecoveryCard({
       ) : payout && payout.balanceSats > 0n ? (
         <>
           <div style={{ color: T.text, fontSize: 14, fontWeight: 800, marginBottom: 4 }}>
-            <BitcoinAmount sats={Number(payout.balanceSats)} size={15} gap={3} /> {t("onchain.payoutSpendable")}
+            <BitcoinAmount sats={Number(payout.balanceSats)} size={15} gap={3} /> {t(payout.hasUnconfirmed ? "onchain.payoutPending" : "onchain.payoutSpendable")}
           </div>
           <div style={{ color: T.muted, fontSize: 11.5, lineHeight: 1.5, marginBottom: 9 }}>
             {result && result.payouts.filter(item => item.balanceSats > 0n).length > 1
@@ -145,7 +145,7 @@ export function OnchainPayoutRecoveryCard({
               color: busy || !destination.trim() ? T.muted : T.green,
               fontWeight: 800, cursor: busy || !destination.trim() ? "not-allowed" : "pointer",
             }}
-          >{busy ? t("onchain.payoutSending") : t("onchain.payoutSend")}</button>
+          >{busy ? t("onchain.payoutSending") : t(payout.hasUnconfirmed ? "onchain.payoutSpeedUp" : "onchain.payoutSend")}</button>
         </>
       ) : null}
       {message && (

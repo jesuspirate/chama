@@ -75,19 +75,8 @@ export const ESCROW_NETWORK: BtcNetwork = MAINNET;
 export const ESCROW_NETWORK_LABEL: "mainnet" | "signet" =
   ESCROW_NETWORK === SIGNET ? "signet" : "mainnet";
 
-/** ⭐ Which escrow a qualifying new listing defaults to.
- *
- *  ON A SIGNET BUILD THIS DEFAULTS TO ON-CHAIN, and that is deliberate rather
- *  than a shortcut. A signet escrow network means this build exists to exercise
- *  the on-chain path; if the picker still defaults to ecash, every listing a
- *  tester creates silently uses the OTHER substrate, looks identical, and the
- *  time is spent discovering that rather than testing. Defaulting to the thing
- *  under test is what makes a test build a test build.
- *
- *  On MAINNET this stays "ecash" — Jetty's call that on-chain is opt-in, and a
- *  user must never be moved onto a fee-paying, confirmation-waiting substrate
- *  without choosing it. So the one-line flip to MAINNET also restores the
- *  opt-in default automatically; there is no second switch to remember. */
+/** Fallback for drafts with no priced amount yet. Once there is an amount,
+ * defaultEscrowModeForAmount makes the actual offer recommendation. */
 export const DEFAULT_ESCROW_MODE: "ecash" | "onchain" =
   ESCROW_NETWORK === SIGNET ? "onchain" : "ecash";
 
@@ -98,6 +87,13 @@ export const DEFAULT_ESCROW_MODE: "ecash" | "onchain" =
  *  ⚠ NOT the same as `HIGH_VALUE_CONSENT_MSATS` (2,000 sats), which is a
  *  consent prompt, not an escrow-substrate decision. */
 export const ONCHAIN_ESCROW_THRESHOLD_SATS = 100_000n;
+export const ONCHAIN_ESCROW_MINIMUM_SATS = 25_000n;
+
+export function defaultEscrowModeForAmount(amountSats: bigint): "ecash" | "onchain" {
+  return amountSats >= ONCHAIN_ESCROW_MINIMUM_SATS
+    && (ESCROW_NETWORK === SIGNET || amountSats >= ONCHAIN_ESCROW_THRESHOLD_SATS)
+    ? "onchain" : "ecash";
+}
 
 /** CLTV term for the REFUND leaf, in blocks (~30 days at 10-minute blocks).
  *
@@ -307,15 +303,14 @@ export function onchainEscrowAddressMatches(
   }
 }
 
-/** Should this trade use the chain rather than ecash? Advisory: the brief's
- *  decision 3 is that on-chain is OPT-IN above the threshold, so this answers
- *  "is it offered", never "is it forced".
+/** Whether on-chain is offered. The 100k recommendation is separate from the
+ * hard 25k floor; the person may choose ecash at any amount.
  *
  *  ⚠ Copy rule, per Jetty: the offer must NOT editorialise ("fast here, slow
  *  there"). State what each does and let the user choose. */
 export function onchainEscrowAvailable(
   amountSats: bigint,
-  thresholdSats: bigint = ONCHAIN_ESCROW_THRESHOLD_SATS,
+  thresholdSats: bigint = ONCHAIN_ESCROW_MINIMUM_SATS,
 ): boolean {
   return amountSats >= thresholdSats;
 }

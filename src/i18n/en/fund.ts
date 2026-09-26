@@ -22,7 +22,7 @@ export const fund: Record<string, string> = {
   "fund.checkingGateways": "Checking Lightning availability…",
   "fund.noGateways": "Lightning isn’t available in this community right now",
   "fund.railUnavailable": "Unavailable right now",
-  "fund.onchainAppOnly": "On-chain funding works in the Chama app",
+  "fund.onchainAppOnly": "Direct on-chain is chosen when the offer is posted",
   "fund.balanceInsufficient": "Balance: not enough spendable sats",
   "fund.useBalance": "Use ₿ {amount} of your ₿ {balance}",
   "fund.useBalanceWithInsurance": "Use ₿ {amount} of your ₿ {balance} — {trade} for the trade, {insurance} insurance.",

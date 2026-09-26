@@ -111,7 +111,8 @@ export function deriveOnchainView(params: {
     // ⚠ Deliberately NOT `terms.address`. The wire's address is advisory; if we
     // could not recompute it ourselves we show none and the user funds nothing.
     address: recomputedAddress,
-    expectedSats: terms ? BigInt(terms.amountSats) : BigInt(Math.floor(state.amountMsats / 1000)),
+    expectedSats: terms ? BigInt(terms.amountSats)
+      : BigInt(Math.floor((state.joinHolds?.[Role.BUYER]?.amountMsats ?? state.amountMsats) / 1000)),
     blockers: stage === "awaiting-keys" ? blockers : [],
     viewerFunds: funder !== null && viewerRole === funder,
     fundingTxid: terms?.fundingTxid ?? null,
