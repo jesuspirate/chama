@@ -1,3 +1,4 @@
+import { onchainAttention, type OnchainObservation } from '../escrow-engine/onchain-attention.js';
 // ══════════════════════════════════════════════════════════════════════════
 // Notify service — side effects around the pure notification core (#88)
 // ══════════════════════════════════════════════════════════════════════════
@@ -362,6 +363,7 @@ export function latestNotificationActivityAt(state: EscrowState): number {
     state.completedAt ?? 0,
     state.cancelledAt ?? 0,
     ...(state.eventChain ?? []).map(event => event.timestamp),
+    ...(state.settlements ?? []).map(event => event.timestamp),
     ...Object.values(state.joinHolds ?? {}).map(hold => hold?.joinedAt ?? 0),
   ];
   if (state.status === EscrowStatus.EXPIRED) moments.push(state.expiresAt);
@@ -774,4 +776,16 @@ export async function sendNotificationSelfTest(): Promise<boolean> {
 /** Keep quiet-window denials discoverable in field diagnostics. */
 export function debugQuietNotification(escrowId: string): void {
   notifyDebug(() => `skip quiet-window/history trade=${escrowId}`);
+}
+
+/** Active on-chain work must survive a reload. Unlike historical ecash status
+ * catch-up, this is a current action (or freshly chain-verified payout), after
+ * participant hydration. The same scoped persisted tags cover every platform. */
+export function maybeNotifyOnchainAttention(state: EscrowState, viewer: string, observation?: OnchainObservation): void {
+  if (!notificationsEnabled()) return;
+  const action = onchainAttention(state, viewer, observation);
+  if (!action) return;
+  const tag = `${state.id}:onchain:${action.key}`;
+  if (readFiredTags().has(tag)) return;
+  deliverOnce({escrowId:state.id, title:action.actionable ? 'Your trade needs you' : 'Trade payout', body:action.text, tag}, 'onchain attention');
 }

@@ -533,6 +533,7 @@ export default function App() {
     loading,
     publicListingsLoading,
     myTradesLoading,
+    onchainObservations,
     earningsRevision,
     fedimint,
     fundingInProgress,
@@ -1952,7 +1953,7 @@ export default function App() {
     for (const c of listClaimCredits()) settledClaimIds.add(c.escrowId);
   }
   const ordinaryNeedsYouTrades = pubkey
-    ? selectNeedsYouTrades({ escrows: escrows.values(), userPubkey: pubkey, nowSec: now, settledClaimIds })
+    ? selectNeedsYouTrades({ escrows: escrows.values(), userPubkey: pubkey, nowSec: now, settledClaimIds, onchainObservations })
     : [];
   const needsYouTrades = mergeOnchainPayoutAttention({
     needsYou: ordinaryNeedsYouTrades,
@@ -4682,6 +4683,7 @@ export default function App() {
             hydratingTrades={myTradesLoading}
             allTrades={visibleTrades}
             needsYouTrades={needsYouTrades}
+            onchainObservations={onchainObservations}
             suppressAttentionCount={chamaBarLabel.kind === "needs-you"}
             archivedTrades={archivedTrades}
             onOpenArchivedTrade={openArchivedTrade}

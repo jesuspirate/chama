@@ -1,3 +1,4 @@
+import { onchainAttention } from '../escrow-engine/onchain-attention.js';
 // ══════════════════════════════════════════════════════════════════════════
 // Trade notifications — the pure "should this transition buzz the user?" core
 // ══════════════════════════════════════════════════════════════════════════
@@ -111,6 +112,14 @@ export function notificationForTransition(
   circle?: CircleLockContext | null,
 ): TradeNotification | null {
   if (!userPubkey) return null;
+  if (next.escrowMode === 'onchain' && prev) {
+    const action = onchainAttention(next, userPubkey);
+    if (action && action.key !== onchainAttention(prev, userPubkey)?.key) return {
+      escrowId: next.id, title: 'Your trade needs you', body: action.text, tag: `${next.id}:onchain:${action.key}`,
+    };
+    // Broadcast and confirmation are verified separately against the chain.
+    if ([EscrowStatus.APPROVED, EscrowStatus.COMPLETED].includes(next.status)) return null;
+  }
   const role = roleOf(next, userPubkey);
   if (!role) return null; // not a party to this trade
   const id = next.id;

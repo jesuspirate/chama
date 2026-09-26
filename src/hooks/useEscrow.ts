@@ -1,3 +1,5 @@
+import { observeOnchainAttention, type OnchainObservation } from '../escrow-engine/onchain-attention.js';
+import { maybeNotifyOnchainAttention } from '../notifications/notify-service.js';
 import { winnerSettlementChoice, assertWinnerMayChoose } from "../escrow-engine/onchain-settlement-choice.js";
 import { findEscrowFundingUtxos, deriveCommittedBondKey, escrowDepositWindowSafe } from "../bond-multisig/onchain-escrow-funding.js";
 import { finalRefundSettlementProof, observedRefundSpend } from "../escrow-engine/onchain-settlement-transport.js";
@@ -766,6 +768,7 @@ export interface UseEscrowState {
   /** All loaded escrow states */
   escrows: Map<string, EscrowState>;
   reloadingEscrows: Set<string>;
+  onchainObservations?: ReadonlyMap<string, OnchainObservation>;
   /** Relay connection statuses */
   relayStatuses: Map<string, string>;
   /** Number of connected relays */
@@ -1401,6 +1404,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     connected: false,
     pubkey: null,
     escrows: new Map(),
+    onchainObservations: new Map(),
     reloadingEscrows: new Set(),
     relayStatuses: new Map(),
     connectedRelays: 0,
@@ -2020,6 +2024,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       connected: false,
       pubkey: null,
       escrows: new Map(),
+    onchainObservations: new Map(),
       reloadingEscrows: new Set(),
       relayStatuses: new Map(),
       connectedRelays: 0,
@@ -3040,6 +3045,41 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     const timer = setInterval(scan, 30_000);
     return () => clearInterval(timer);
   }, [state.connected, state.pubkey, state.connectedRelays, state.escrows, checkOnchainFunding, publishOnchainLock]);
+
+  // Observe every loaded on-chain trade even when its room is closed. Keep
+  // explorer observations out of consensus state and discard stale sessions.
+  useEffect(() => {
+    if (!state.connected || !state.pubkey || state.myTradesLoading) return;
+    const viewer = state.pubkey;
+    let stopped = false;
+    let running = false;
+    const scan = async () => {
+      if (running) return;
+      running = true;
+      try {
+        for (const trade of stateRef.current?.escrows.values() ?? []) {
+          if (stopped) return;
+          if (trade.escrowMode !== 'onchain' || !Object.values(trade.participants).includes(viewer)) continue;
+          const known = stateRef.current?.onchainObservations?.get(trade.id);
+          maybeNotifyOnchainAttention(trade, viewer, known);
+          if (!trade.onchainFundingTerms || known?.payout?.confirmed || known?.refundSpent) continue;
+          try {
+            const observation = await observeOnchainAttention(trade,
+              esploraFetcher(defaultEsploraBase(ESCROW_NETWORK), {network:ESCROW_NETWORK, timeoutMs:20_000}));
+            if (stopped || stateRef.current?.pubkey !== viewer) return;
+            setState(current => ({...current, onchainObservations: new Map(current.onchainObservations).set(trade.id, observation)}));
+            const latest = stateRef.current?.escrows.get(trade.id);
+            if (latest) maybeNotifyOnchainAttention(latest, viewer, observation);
+          } catch (error) {
+            console.warn(`[chama] Could not check on-chain attention for ${trade.id}:`, error);
+          }
+        }
+      } finally { running = false; }
+    };
+    void scan();
+    const timer = setInterval(() => void scan(), 30_000);
+    return () => { stopped = true; clearInterval(timer); };
+  }, [state.connected, state.pubkey, state.myTradesLoading]);
 
   /** Recompute every security-sensitive settlement input locally. */
   const onchainSettlementContext = useCallback(async (escrowId: string, leaf: "coop" | "dispute" = "coop", requestedAddress?: string) => {

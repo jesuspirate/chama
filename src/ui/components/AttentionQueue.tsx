@@ -1,3 +1,4 @@
+import { onchainAttention, type OnchainObservation } from '../../escrow-engine/onchain-attention.js';
 import { profileNameFor, type NostrProfileNameMap } from "../nostr-profiles.js";
 // ══════════════════════════════════════════════════════════════════════════
 // Chama — AttentionQueue (the Me-screen hero)
@@ -39,6 +40,7 @@ import {
 export function AttentionQueue({
   profileNames, kind0Enabled = true,
   ranked,
+  onchainObservations,
   pubkey,
   onOpenTrade,
   latestTrade,
@@ -49,6 +51,7 @@ export function AttentionQueue({
   kind0Enabled?: boolean;
   /** Urgency-ranked needs-you trades (selectNeedsYouTrades output). */
   ranked: EscrowState[];
+  onchainObservations?: ReadonlyMap<string, OnchainObservation>;
   pubkey: string;
   onOpenTrade: (id: string) => void;
   /** Shown under the "all caught up" line when nothing needs action — a calm
@@ -142,6 +145,7 @@ export function AttentionQueue({
             profileNames={profileNames} kind0Enabled={kind0Enabled}
             key={trade.id}
             trade={trade}
+            observation={onchainObservations?.get(trade.id)}
             pubkey={pubkey}
             onOpenTrade={onOpenTrade}
             onChanged={() => bump((n) => n + 1)}
@@ -189,6 +193,7 @@ function AttentionCard({
   pubkey,
   onOpenTrade,
   onChanged,
+  observation,
 }: {
   profileNames?: NostrProfileNameMap;
   kind0Enabled: boolean;
@@ -196,15 +201,17 @@ function AttentionCard({
   pubkey: string;
   onOpenTrade: (id: string) => void;
   onChanged: () => void;
+  observation?: OnchainObservation;
 }) {
   const { t } = useT();
   const reason = needsYouReasonFor(trade, pubkey);
-  const owed = reason === "claim" ? t("me.owedClaim")
+  const onchain = onchainAttention(trade, pubkey, observation);
+  const owed = onchain?.text ?? (reason === "claim" ? t("me.owedClaim")
     : reason === "dispute" ? t("me.owedDispute")
     : reason === "vote" ? t("me.owedVote")
     : reason === "arbiter-key" ? t("onchain.publishMyKey")
     : reason === "waiting" ? t("me.owedWaiting")
-    : t("me.owedGeneric");
+    : t("me.owedGeneric"));
   const tone = reason === "claim" ? T.accent
     : reason === "dispute" ? T.red
     : reason === "vote" ? T.purple

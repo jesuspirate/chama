@@ -1,3 +1,4 @@
+import type { OnchainObservation } from '../../escrow-engine/onchain-attention.js';
 import { arbiterWatchEligibility, canOfferClaim, selectMoneySafetyFocus, type MoneySafetyEntry } from "../decisions.js";
 import { nativePushStatus, type NativePushStatus } from "../../notifications/native-push.js";
 import { avatarFromFile, type Avatar } from "../avatars.js";
@@ -130,6 +131,7 @@ export function MeScreen({
   hydratingTrades = false,
   allTrades,
   needsYouTrades,
+  onchainObservations,
   suppressAttentionCount = false,
   archivedTrades,
   onOpenArchivedTrade,
@@ -189,6 +191,7 @@ export function MeScreen({
   /** Canonical urgency-ranked queue from App. Includes chain-verified pending
    *  on-chain payouts in addition to ordinary reducer-derived work. */
   needsYouTrades?: EscrowState[];
+  onchainObservations?: ReadonlyMap<string, OnchainObservation>;
   suppressAttentionCount?: boolean;
   /** Durable-index trades not currently loaded — the loss-proof "earlier
    *  trades" tail of the history list. Absent ⇒ section omitted. */
@@ -573,6 +576,7 @@ export function MeScreen({
         <AttentionQueue
           profileNames={profileNames} kind0Enabled={kind0Enabled}
           ranked={rankedNeedsYou}
+          onchainObservations={onchainObservations}
           pubkey={pubkey}
           onOpenTrade={onOpenTrade}
           latestTrade={latestTrade}

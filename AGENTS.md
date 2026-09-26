@@ -65,3 +65,8 @@ npm run build
 For an existing version, `npm run ship -- --only <target>` must be used for channel-specific work. The available targets and their isolation guarantees are documented in `docs/RELEASING.md`; do not hand-compose partial release commands when a target exists.
 
 StartOS package tags (`vX.Y.Z_<revision>`) are created only in `chama-startos`. After an application release, update that repository by checking its `chama/` submodule out at the new signed tag and changing its StartOS version metadata. Never merge application commits into a packaging fork.
+
+## Skills (read before UI work)
+
+- `.agents/skills/chama-bar/SKILL.md` — the top status bar is the one always-
+  visible signal; loading, "needs you" and warnings go through it.

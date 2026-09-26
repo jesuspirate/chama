@@ -1,3 +1,4 @@
+import { onchainAttention, type OnchainObservation } from '../escrow-engine/onchain-attention.js';
 import { NEVER_EXPIRES } from "../escrow-engine/types.js";
 // ══════════════════════════════════════════════════════════════════════════
 // Chama — Pure UI decision helpers
@@ -670,6 +671,7 @@ export function sumActiveBuyerSellerTradeMsats(inputs: {
 
 /** Higher = more urgent; drives both the ordering and the pill's tap target. */
 const NEEDS_YOU_RANK = {
+  onchain: 4,
   claim: 4,   // APPROVED and I'm the winner — sats ready to claim
   dispute: 3, // I'm the arbiter and a dispute is open, my ruling owed
   vote: 2,    // LOCKED and I'm buyer/seller without my vote (incl. an order to deliver)
@@ -687,7 +689,11 @@ function needsYouReason(
   userPubkey: string,
   nowSec: number,
   settledClaimIds?: ReadonlySet<string>,
+  observation?: OnchainObservation,
 ): keyof typeof NEEDS_YOU_RANK | null {
+  if (observation?.payout || observation?.refundSpent || (e.status === EscrowStatus.CREATED && observation?.deposit === 'seen')) return null;
+  if (onchainAttention(e, userPubkey, observation)?.actionable) return 'onchain';
+  if (observation?.refundAvailable) return null;
   // Quiet while filling/running. At the fill deadline cross-circle orchestration
   // supplies the first REFUND vote; a lone share cannot infer failed fill.
   if (e.chamaPolicy && e.status !== EscrowStatus.APPROVED && nowSec < e.expiresAt
@@ -884,13 +890,14 @@ export function selectNeedsYouTrades(inputs: {
   /** Escrow ids whose payout this device already redeemed (claim-credit
    *  ledger ∪ pending-redemption stash) — suppresses zombie "claim" replays. */
   settledClaimIds?: ReadonlySet<string>;
+  onchainObservations?: ReadonlyMap<string, OnchainObservation>;
 }): EscrowState[] {
   const nowSec = inputs.nowSec ?? Math.floor(Date.now() / 1000);
   const ranked: { trade: EscrowState; rank: number }[] = [];
   const seen = new Set<string>();
   for (const e of inputs.escrows) {
     if (seen.has(e.id)) continue;
-    const reason = needsYouReason(e, inputs.userPubkey, nowSec, inputs.settledClaimIds);
+    const reason = needsYouReason(e, inputs.userPubkey, nowSec, inputs.settledClaimIds, inputs.onchainObservations?.get(e.id));
     if (!reason) continue;
     seen.add(e.id);
     ranked.push({ trade: e, rank: NEEDS_YOU_RANK[reason] });
@@ -952,7 +959,7 @@ export function needsYouReasonFor(
   userPubkey: string,
   nowSec: number = Math.floor(Date.now() / 1000),
   settledClaimIds?: ReadonlySet<string>,
-): "claim" | "dispute" | "vote" | "arbiter-key" | "waiting" | null {
+): "claim" | "dispute" | "vote" | "arbiter-key" | "waiting" | "onchain" | null {
   return needsYouReason(e, userPubkey, nowSec, settledClaimIds);
 }
 
@@ -962,6 +969,7 @@ export function countNeedsYou(inputs: {
   userPubkey: string;
   nowSec?: number;
   settledClaimIds?: ReadonlySet<string>;
+  onchainObservations?: ReadonlyMap<string, OnchainObservation>;
 }): number {
   return selectNeedsYouTrades(inputs).length;
 }
