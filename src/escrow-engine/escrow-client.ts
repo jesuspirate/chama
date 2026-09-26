@@ -1,4 +1,5 @@
 import { finalRefundSettlementProof } from "./onchain-settlement-transport.js";
+import { chamaClientTag, isChamaClientTagKind } from "./client-tag.js";
 import { shareEscrowId, circleFromEscrow, shareCreatePayload, rotationShareCreatePayload, nextRotationRoundPayload, fillEvidenceFor } from "../chama/policy.js";
 import type { CircleRound } from "../chama/types.js";
 import { CHAMA_ROTATION_ENABLED } from "./experimental-escrow-features.js";
@@ -828,8 +829,8 @@ export class EscrowClient {
   }
 
   /**
-   * v0.4.2 sim mode: sign an event, but first stamp a `chama-sim` tag
-   * if sim mode is active. The tag rides on every event the escrow
+   * Stamp advisory client/version metadata on escrow kinds and a `chama-sim`
+   * tag when sim mode is active. The sim tag rides on every event the escrow
    * engine publishes so the receive side can isolate sim trades from
    * real ones cleanly (see handleIncomingEvent below for the drop
    * policy). Callers that previously used `this.signer.signEvent` for
@@ -838,6 +839,9 @@ export class EscrowClient {
    * touch the trade chain and don't need the tag.
    */
   private async signWithSimTag(unsigned: UnsignedEvent): Promise<NostrEvent> {
+    if (isChamaClientTagKind(unsigned.kind)) {
+      unsigned = { ...unsigned, tags: [...unsigned.tags, chamaClientTag()] };
+    }
     const simTag = simTagOrNull();
     if (simTag) {
       unsigned = { ...unsigned, tags: [...unsigned.tags, simTag] };

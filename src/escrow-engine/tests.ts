@@ -4869,6 +4869,8 @@ console.log("\n── Bond announcement (kind 38135, chain-verifiable) ──");
   const signed = finalizeEvent(buildBondAnnouncementEvent({
     pubkey: npub, community, ownerXonly, lockUntil: T, amountSats: 50_000n, network: MS_NET, address: bond.address,
   }), sk) as unknown as NostrEvent;
+  assert(signed.tags.some(tag => tag[0] === TAGS.CLIENT && tag[1] === "chama" && !!tag[2]),
+    "bondann: signed 38135 carries the Chama client/version tag");
   const parsed = parseBondAnnouncementEvent(signed);
   assert(parsed !== null && parsed.npub === npub && parsed.lockUntil === T && parsed.claimedSats === 50_000n && parsed.community === community,
     "bondann: build→sign→parse round-trips");
@@ -6673,6 +6675,51 @@ console.log("\n── EVENT PARSER ──");
 }
 
 // ── 11. CHAIN SORTING ────────────────────────────────────────────────────
+// Client tags are signed outer metadata. The event publisher stamps escrow
+// kinds, while both new and old (even malformed-tag) chains replay alike.
+{
+  const signed: NostrEvent[] = [];
+  const client = new EscrowClient({
+    async getPublicKey() { return SELLER_PK; },
+    async signEvent(event: UnsignedEvent) {
+      const result = { ...event, id: `client_tag_${signed.length}`, pubkey: SELLER_PK, sig: "sig" } as NostrEvent;
+      signed.push(result);
+      return result;
+    },
+    async nip44Encrypt(plaintext: string) { return plaintext; },
+    async nip44Decrypt(ciphertext: string) { return ciphertext; },
+  }, { relays: [] });
+  for (const kind of [EscrowEventKind.CREATE, EscrowEventKind.JOIN, EscrowEventKind.LOCK, 30402]) {
+    await (client as any).signWithSimTag({ kind, created_at: NOW, tags: [], content: "{}" });
+  }
+  assert(signed.slice(0, 3).every(event => event.tags.some(tag => tag[0] === TAGS.CLIENT && tag[1] === "chama" && !!tag[2])),
+    "Published CREATE, JOIN and LOCK carry the signed Chama client/version tag");
+  assert(!signed[3].tags.some(tag => tag[0] === TAGS.CLIENT), "NIP-99 classifieds do not inherit the escrow client tag");
+
+  const create = createEvent();
+  const join = joinEvent(Role.BUYER, BUYER_PK, create.raw.id);
+  const lock = lockEvent(join.raw.id);
+  const chain = [create, join, lock];
+  const tagged = chain.map(event => ({ ...event, raw: { ...event.raw, tags: [...event.raw.tags, [TAGS.CLIENT, "chama", "6.4.10"]] } }));
+  const malformed = chain.map(event => ({ ...event, raw: { ...event.raw, tags: [...event.raw.tags, [TAGS.CLIENT, "???"]] } }));
+  const oldResult = replayEventChain(chain);
+  const taggedResult = replayEventChain(tagged);
+  const malformedResult = replayEventChain(malformed);
+  const consensus = (state: EscrowState) => JSON.stringify({
+    ...state,
+    // Event history deliberately retains the signed raw event. Strip only the
+    // advisory tag when comparing consensus state across old/new publishers.
+    eventChain: state.eventChain.map(event => ({ ...event, raw: {
+      ...event.raw, tags: event.raw.tags.filter(tag => tag[0] !== TAGS.CLIENT),
+    } })),
+  });
+  assert(oldResult.ok && taggedResult.ok && malformedResult.ok && consensus(oldResult.state) === consensus(taggedResult.state)
+    && consensus(oldResult.state) === consensus(malformedResult.state),
+  "Untagged, tagged and malformed-client-tag chains produce identical consensus state");
+  const raw = { ...create.raw, content: JSON.stringify(create.payload), tags: [...create.raw.tags, [TAGS.CLIENT, "???"]] };
+  assert(parseEscrowEvent(raw, raw.content, true).ok, "Malformed client tag does not reject a valid escrow event");
+}
+
 console.log("\n── CHAIN SORTING ──");
 {
   eventCounter = 300;

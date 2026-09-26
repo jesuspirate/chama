@@ -203,6 +203,8 @@ export const EVENT_KIND_TRANSITIONS: ReadonlyMap<EscrowEventKind, { from: Escrow
 // ── Nostr Event Tag Constants ─────────────────────────────────────────────
 
 export const TAGS = {
+  /** Advisory client/version metadata; never part of escrow consensus. */
+  CLIENT: "client",
   /** Escrow identifier (d-tag for filtering) */
   ESCROW_ID: "d",
   /** Participant pubkey */

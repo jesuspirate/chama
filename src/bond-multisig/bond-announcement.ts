@@ -30,6 +30,7 @@ import { buildCommitmentBond } from "./commitment-bond.js";
 import { findBondFundingUtxos, defaultMinConfs, type EsploraFetch } from "./fund-watcher.js";
 import { SIGNET, type BtcNetwork } from "./multisig.js";
 import type { NostrEvent } from "../escrow-engine/types.js";
+import { chamaClientTag } from "../escrow-engine/client-tag.js";
 
 export const ARBITER_BOND_ANNOUNCEMENT_KIND = 38135;
 export const ARBITER_BOND_ANNOUNCEMENT_TYPE = "chama:commitment-bond";
@@ -246,6 +247,7 @@ export function buildBondAnnouncementEvent(params: {
       ["d", community], // one current announcement per (arbiter, community); #d = liveness query
       ["t", ARBITER_BOND_ANNOUNCEMENT_TYPE],
       ["c", community],
+      chamaClientTag(),
     ],
     content: JSON.stringify(payload),
   };
