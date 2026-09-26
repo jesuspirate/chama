@@ -369,6 +369,16 @@ console.log("\n── GUIDED DETERMINISTIC MATCHING ──");
       && bracketResult.candidates[0]?.reasons.includes("amount_in_range"),
     "maps a requested amount inside an existing exchange bracket to a lock-compatible selection",
   );
+  const onchainResult = matchGuidedListings(INTENT, [
+    { listing: listing("onchain", { escrowMode: "onchain", mintUrl: "" }) },
+  ], { nowSec: NOW });
+  assert(
+    onchainResult.candidates.length === 1
+      && onchainResult.candidates[0].score.federation === 0
+      && !onchainResult.candidates[0].reasons.includes("same_federation")
+      && !onchainResult.rejected.some(value => value.code === "FEDERATION_MISMATCH"),
+    "on-chain offers match a viewer's federation without claiming a federation advantage",
+  );
 
   const bill: MenuItem = {
     id: "electricity",

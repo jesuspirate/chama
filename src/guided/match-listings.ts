@@ -136,7 +136,7 @@ function candidateScore(
     amountFit: candidate.amountReason === "exact_amount" ? SCORE.exactAmount : SCORE.rangedAmount,
     paymentRail: SCORE.paymentRail,
     community: intent.community ? SCORE.community : 0,
-    federation: intent.mintUrl ? SCORE.federation : 0,
+    federation: intent.mintUrl && candidate.listing.escrowMode !== "onchain" ? SCORE.federation : 0,
     price,
     reputation: reputationScore(candidate.ratings),
     total: 0,
@@ -196,7 +196,7 @@ export function matchGuidedListings(
     if (!code && intent.community && !sameText(listing.community, intent.community)) {
       code = "COMMUNITY_MISMATCH";
     }
-    if (!code && intent.mintUrl && listing.mintUrl !== intent.mintUrl) {
+    if (!code && listing.escrowMode !== "onchain" && intent.mintUrl && listing.mintUrl !== intent.mintUrl) {
       code = "FEDERATION_MISMATCH";
     }
 
@@ -264,7 +264,7 @@ export function matchGuidedListings(
       "compatible_payment_rail",
     ];
     if (intent.community) reasons.push("same_community");
-    if (intent.mintUrl) reasons.push("same_federation");
+    if (intent.mintUrl && candidate.listing.escrowMode !== "onchain") reasons.push("same_federation");
     if (score.price === SCORE.price && candidate.fiatQuote) reasons.push("lowest_fiat_quote");
     if (score.reputation > 0) reasons.push("positive_trade_history");
     const { amountReason: _amountReason, ...publicCandidate } = candidate;
