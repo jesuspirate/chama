@@ -1,3 +1,4 @@
+import { payoutStatusText } from "./onchain-payout-text.js";
 import { stalledPayoutEligibility } from "./onchain-stalled.js";
 import { hexToBytes } from '@noble/hashes/utils.js';
 import { base64 } from '@scure/base';
@@ -40,9 +41,7 @@ export function onchainAttention(state: EscrowState, viewer: string, observation
   const result = (key: string, text: string, actionable = true) => ({key, text, actionable});
   if (observation?.payout && principal) {
     const p = observation.payout;
-    return p.confirmed
-      ? result(`confirmed:${p.txid}`, `Payout confirmed · ${Number(p.sats).toLocaleString('en-US')} sats to ${p.destination.slice(0, 12)}…`, false)
-      : result(`broadcast:${p.txid}`, `Payout sent · waiting for confirmation · ${p.txid.slice(0, 8)}…`, false);
+    return result(`${p.confirmed ? 'confirmed' : 'broadcast'}:${p.txid}`, payoutStatusText(p), false);
   }
   if (observation?.refundSpent) return null;
   if (observation?.refundAvailable) return role === funder ? result('refund', 'Your refund is available') : null;

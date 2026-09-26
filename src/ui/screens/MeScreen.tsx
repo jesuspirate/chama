@@ -1,3 +1,5 @@
+import { PayoutTransactionDetails } from "../components/PayoutTransactionDetails.js";
+import { MAINNET, SIGNET } from "../../bond-multisig/multisig.js";
 import type { OnchainObservation } from '../../escrow-engine/onchain-attention.js';
 import { arbiterWatchEligibility, canOfferClaim, selectMoneySafetyFocus, type MoneySafetyEntry } from "../decisions.js";
 import { nativePushStatus, type NativePushStatus } from "../../notifications/native-push.js";
@@ -1379,7 +1381,7 @@ function MeTradeHistory({
                 <TradeCard state={s} pubkey={pubkey} onSelect={() => onOpenTrade(s.id)} amountDisplayMode={amountDisplayMode} quoteCurrency={quoteCurrency} profileNames={profileNames} kind0Enabled={kind0Enabled} />
                 {s.status === EscrowStatus.COMPLETED && s.escrowMode === "onchain" && s.onchainPayoutTxid && (
                   <div style={{ color: T.muted, fontSize: 11, fontFamily: T.mono, padding: "4px 12px" }}>
-                    Payout · {s.onchainPayoutTxid.slice(0, 8)}…
+                    <PayoutTransactionDetails txid={s.onchainPayoutTxid} depositTxid={s.lock.onchain?.fundingTxid} network={s.lock.onchain?.network === "signet" ? SIGNET : MAINNET} />
                   </div>
                 )}
                 {/* Safety net Jetty asked for: rate the counterparty straight from

@@ -1,3 +1,4 @@
+import { payoutStatusText } from "../../escrow-engine/onchain-payout-text.js";
 import { stalledPayoutEligibility } from "../../escrow-engine/onchain-stalled.js";
 import { onchainAttention, type OnchainObservation } from '../../escrow-engine/onchain-attention.js';
 import { EsploraUnavailableError } from '../../bond-multisig/fund-watcher.js';
@@ -193,7 +194,7 @@ export function OnchainTradeControls({ state, pubkey, profileNames, kind0Enabled
     </div>}
     {state.settlementStalled && <p style={{color:T.muted}}>The arbiter has been asked to finish the agreed payout.</p>}
     {(actions.onchainObservation?.payout || state.onchainPayoutTxid) && <p role="status" style={{color:T.muted}}>
-      {actions.onchainObservation?.payout ? onchainAttention(state, pubkey, actions.onchainObservation)?.text : state.onchainPayoutTxid ? `Payout sent · waiting for confirmation · ${state.onchainPayoutTxid.slice(0, 8)}…` : null}
+      {actions.onchainObservation?.payout ? payoutStatusText(actions.onchainObservation.payout, false) : state.onchainPayoutTxid ? 'Payout sent · waiting for confirmation' : null}
     </p>}
     {unavailable && <div role="status" style={{color:T.muted, margin:'12px 0'}}>
       <p>{Object.entries(explorerFailures).some(([source,failed]) => source !== 'action' && failed) ? EXPLORER_RETRY_MESSAGE : "The block explorer did not answer. Try again."}</p>
