@@ -764,6 +764,7 @@ export interface UseEscrowState {
   pubkey: string | null;
   /** All loaded escrow states */
   escrows: Map<string, EscrowState>;
+  reloadingEscrows: Set<string>;
   /** Relay connection statuses */
   relayStatuses: Map<string, string>;
   /** Number of connected relays */
@@ -1398,6 +1399,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     connected: false,
     pubkey: null,
     escrows: new Map(),
+    reloadingEscrows: new Set(),
     relayStatuses: new Map(),
     connectedRelays: 0,
     error: null,
@@ -1644,6 +1646,11 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
 
       const callbacks: EscrowClientCallbacks = {
         onStateUpdate: (id, s) => updateEscrow(id, s),
+        onHistoryReload: (id, loading) => setState(prev => {
+          const reloadingEscrows = new Set(prev.reloadingEscrows);
+          if (loading) reloadingEscrows.add(id); else reloadingEscrows.delete(id);
+          return { ...prev, reloadingEscrows };
+        }),
         onChatMessage: (id, msg) => {
           const chatClient = clientRef.current;
           if (!chatClient) return;
@@ -2011,6 +2018,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       connected: false,
       pubkey: null,
       escrows: new Map(),
+      reloadingEscrows: new Set(),
       relayStatuses: new Map(),
       connectedRelays: 0,
       error: null,

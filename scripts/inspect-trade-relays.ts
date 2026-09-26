@@ -14,7 +14,8 @@ import WebSocket from 'ws';
 import { DEFAULT_RELAYS } from '../src/escrow-engine/default-relays.js';
 import { parseEscrowEvent } from '../src/escrow-engine/event-parser.js';
 import { applyEvent } from '../src/escrow-engine/state-machine.js';
-import { EscrowEventKind } from '../src/escrow-engine/types.js';
+import { EscrowEventKind, Role, getEffectiveParticipantAt } from '../src/escrow-engine/types.js';
+import { fundingArbiter, fundingTermsError } from '../src/escrow-engine/onchain-funding-terms.js';
 import type { EscrowState } from '../src/escrow-engine/types.js';
 
 // Names come from EscrowEventKind in src/escrow-engine/types.ts. Getting these
@@ -277,6 +278,14 @@ for (const e of chain) {
     console.log(`  ${name}${short}  PARSE FAILED · ${e2.code} · ${e2.message}`);
     stopped = true;
     break;
+  }
+  if (state && parsed.event.kind === EscrowEventKind.JOIN && parsed.event.payload.type === 'escrow:join' && parsed.event.payload.fundingTerms) {
+    const terms = parsed.event.payload.fundingTerms;
+    console.log(`      funding terms at signed timestamp ${new Date(parsed.event.timestamp * 1000).toISOString()}`);
+    for (const role of [Role.BUYER, Role.SELLER] as const) {
+      console.log(`      ${role}: seated=${!!getEffectiveParticipantAt(state, role, parsed.event.timestamp)}, published key matches=${state.escrowKeys?.[role] === terms[`${role}Xonly`]}, hold expires=${state.joinHolds?.[role]?.expiresAt ?? 'no hold'}`);
+    }
+    console.log(`      arbiter pick=${fundingArbiter(state)?.slice(0, 8)}, terms gate=${fundingTermsError(state, terms, parsed.event.timestamp) ?? 'PASS'}`);
   }
   const applied = applyEvent(state, parsed.event);
   if (!applied.ok) {

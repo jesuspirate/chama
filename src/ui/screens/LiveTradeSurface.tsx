@@ -58,6 +58,7 @@ const samePubkey = (a?: string | null, b?: string | null): boolean =>
 
 export function LiveTradeSurface({
   state,
+  historyReloading = false,
   knownTrades = [], fetchCommunityBonds,
   pubkey,
   onBack,
@@ -82,6 +83,7 @@ export function LiveTradeSurface({
   onAmountDisplayModeChange,
 }: {
   state: EscrowState;
+  historyReloading?: boolean;
   knownTrades?: readonly EscrowState[];
   fetchCommunityBonds?: (community: string) => Promise<VerifiedBond[]>;
   pubkey: string;
@@ -671,6 +673,8 @@ export function LiveTradeSurface({
 
   if (verifiedRefund === depositIdentity) return (
     <div style={{ padding: 24 }}>
+      {historyReloading && <p role="status">Refreshing this trade's history…</p>}
+      <ReplayNotes notes={state.replayNotes} />
       <p role="status">Refund confirmed on the blockchain.</p>
       <button onClick={onHome ?? onBack}>Home</button>
       <button onClick={() => onOpenFullView("onchain-funding")}>Open on-chain controls</button>
@@ -679,6 +683,8 @@ export function LiveTradeSurface({
   if (requiresDepositCheck && (state.lock.onchain || state.onchainRefundClaimed) && verifiedDeposit !== depositIdentity) return (
     <div style={{ padding: 24 }}>
       <button onClick={onBack}>{backLabel ?? "Back"}</button>
+      {historyReloading && <p role="status">Refreshing this trade's history…</p>}
+      <ReplayNotes notes={state.replayNotes} />
       <p role="status">Checking the deposit on the blockchain…</p>
       {depositError && <p>{depositError}</p>}
       <button onClick={() => onOpenFullView("onchain-funding")}>Open on-chain controls</button>
@@ -836,6 +842,7 @@ export function LiveTradeSurface({
               {state.body && <ListingBody body={state.body} />}
             </>}
             <ReplayNotes notes={state.replayNotes} />
+            {historyReloading && <p role="status">Refreshing this trade's history…</p>}
             {renderDecision()}
             {state.status === EscrowStatus.LOCKED && myRole && state.lock.handle && <details style={{ marginTop: 16 }}>
               <summary style={{ minHeight: 44, cursor: "pointer", color: T.muted }}>{tr("lts.howToPay", { name: lockerName })}</summary>

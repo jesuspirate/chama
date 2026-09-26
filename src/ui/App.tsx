@@ -526,6 +526,7 @@ export default function App() {
     connected,
     pubkey,
     escrows,
+    reloadingEscrows,
     relayStatuses,
     connectedRelays,
     error,
@@ -4137,6 +4138,7 @@ export default function App() {
           {LIVE_TRADE_SURFACE_ENABLED && !expertTradeView ? (
             <LiveTradeSurface
               key={`lts:${selected.id}`}
+              historyReloading={reloadingEscrows.has(selected.id)}
               onCheckOnchainFunding={actions.checkOnchainFunding}
               knownTrades={knownTradesForConcentration}
               fetchCommunityBonds={actions.fetchCommunityBonds}

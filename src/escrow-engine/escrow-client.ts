@@ -212,6 +212,7 @@ export interface EscrowClientCallbacks {
   onChatMessage?: (escrowId: string, message: ParsedEscrowEvent<ChatPayload>) => void;
   /** Called when an event fails validation */
   onValidationError?: (escrowId: string, error: string, eventId?: string) => void;
+  onHistoryReload?: (escrowId: string, loading: boolean) => void;
   /** Called when relay connectivity changes */
   onRelayStatus?: (relayUrl: string, status: string) => void;
   /** Number of public CREATE chains currently being verified before they are
@@ -523,6 +524,7 @@ export class EscrowClient {
     /** Whether this generation may fall back to the durable cache on a failed
      *  replay. A background generation can't satisfy a repair-wanting caller. */
     repairFromCache: boolean;
+    fullHistory: boolean;
   }> = new Map();
   /** Backfill bookkeeping: which trades already handed their recovered events
    *  back this session, and when the last batch went out. Republishing is
@@ -3086,9 +3088,10 @@ export class EscrowClient {
    */
   loadEscrow(
     escrowId: string,
-    opts: { repairFromCache?: boolean } = {},
+    opts: { repairFromCache?: boolean; fullHistory?: boolean } = {},
   ): Promise<EscrowState | null> {
     const repairFromCache = opts.repairFromCache === true;
+    const fullHistory = repairFromCache || opts.fullHistory === true;
     const existing = this._loadEscrowInFlight.get(escrowId);
     if (existing) {
       existing.diagnostic.coalesced();
@@ -3100,11 +3103,14 @@ export class EscrowClient {
           this.loadEscrow(escrowId, { repairFromCache: true }),
         );
       }
+      if (fullHistory && !existing.fullHistory) {
+        return existing.promise.then(() => this.loadEscrow(escrowId, { fullHistory: true }));
+      }
       return existing.promise;
     }
 
     const diagnostic = beginHydrationDiagnostic(escrowId);
-    const promise = this.loadEscrowAttempt(escrowId, 0, diagnostic, repairFromCache)
+    const promise = this.loadEscrowAttempt(escrowId, 0, diagnostic, repairFromCache, fullHistory)
       .then((state) => {
         const failure = state ? null : this.getLastLoadFailure(escrowId);
         diagnostic.finish(state
@@ -3123,7 +3129,7 @@ export class EscrowClient {
           this._loadEscrowInFlight.delete(escrowId);
         }
       });
-    this._loadEscrowInFlight.set(escrowId, { promise, diagnostic, repairFromCache });
+    this._loadEscrowInFlight.set(escrowId, { promise, diagnostic, repairFromCache, fullHistory });
     return promise;
   }
 
@@ -3134,6 +3140,7 @@ export class EscrowClient {
     completenessAttempt: number,
     diagnostic: HydrationDiagnosticRun,
     repairFromCache = false,
+    fullHistory = false,
   ): Promise<EscrowState | null> {
     const current = this.states.get(escrowId);
     const cachedRawEvents = mergeRawEventsById(
@@ -3149,7 +3156,7 @@ export class EscrowClient {
       current?.chatMessages.map(message => message.raw) ?? [],
     );
     // An explicit open needs a full answer to compare local history with relays.
-    const since = repairFromCache ? undefined : escrowDeltaSince(cursorEvents);
+    const since = fullHistory ? undefined : escrowDeltaSince(cursorEvents);
     const fetchStarted = globalThis.performance?.now?.() ?? Date.now();
     const fetchedRawEvents = await this.relayManager.fetchEscrowEvents(
       escrowId,
@@ -3412,7 +3419,7 @@ export class EscrowClient {
       const merged = new Map((this.rawEvents.get(escrowId) ?? []).map(e => [e.id, e]));
       for (const e of rawEvents) merged.set(e.id, e);
       this.setHotRawEvents(escrowId, compactHotRawEvents([...merged.values()]));
-      return this.loadEscrowAttempt(escrowId, completenessAttempt + 1, diagnostic, repairFromCache);
+      return this.loadEscrowAttempt(escrowId, completenessAttempt + 1, diagnostic, repairFromCache, fullHistory);
     }
 
     if (isPartialReplayDowngrade(current, result.state)) {
@@ -3669,7 +3676,8 @@ export class EscrowClient {
     } else if (result.error.code === "NO_STATE") {
       // Event arrived for an escrow we haven't loaded — buffer it
       this.bufferEvent(escrowId, event, relayUrl);
-    } else if (["INVALID_STATE", "NOT_PARTICIPANT", "THRESHOLD_NOT_MET"].includes(result.error.code)) {
+    } else if (["INVALID_STATE", "NOT_PARTICIPANT", "THRESHOLD_NOT_MET"].includes(result.error.code)
+      || (currentState?.escrowMode === "onchain" && ["INVALID_ONCHAIN_LOCK", "FUNDING_TERMS_FROZEN", "INVALID_FUNDING_TERMS", "ARBITER_PUBKEY_MISMATCH", "MISSING_ARBITER_PUBKEY"].includes(result.error.code))) {
       // Out-of-order event — reload full state from relays
       // This is more reliable than buffering because it fetches ALL events,
       // sorts by chain order, and replays the complete sequence.
@@ -3678,6 +3686,14 @@ export class EscrowClient {
       // a JOIN reports a genuine participant's event this way, and the reload is
       // exactly what heals it. The storm risk is handled by backoff, not by
       // dropping the healing path.
+      if (currentState) {
+        const noted = { ...currentState, replayNotes: [...(currentState.replayNotes ?? []).filter(note => note.eventId !== event.id), {
+          eventId: event.id, kind: parsed.kind, code: result.error.code, message: result.error.message,
+        }].slice(-50) };
+        this.states.set(escrowId, noted);
+        this.callbacks.onStateUpdate?.(escrowId, noted);
+      }
+      console.debug(`[escrow] Rejected event ${event.id.slice(0, 8)} for ${escrowId}: ${result.error.code}: ${result.error.message}`);
       this.scheduleOutOfOrderReload(escrowId, event.id, result.error.code);
     } else {
       // Permanent rejection (DUPLICATE_CREATE, ALREADY_VOTED, etc.) — just log
@@ -3711,6 +3727,7 @@ export class EscrowClient {
     }
 
     this._reloading.add(escrowId);
+    this.callbacks.onHistoryReload?.(escrowId, true);
     this._reloadHistory.set(escrowId, {
       attempts: history.attempts + 1,
       lastAt: Date.now(),
@@ -3720,7 +3737,7 @@ export class EscrowClient {
     setTimeout(async () => {
       const before = this.states.get(escrowId)?.eventChain.length ?? 0;
       try {
-        await this.loadEscrow(escrowId);
+        await this.loadEscrow(escrowId, { fullHistory: true });
         console.debug(`[escrow] Reloaded ${escrowId} from relays — state is now ${this.states.get(escrowId)?.status}`);
         // A reload that actually brought new chain events in was the right call
         // — this trade was genuinely behind, not storming. Clear its backoff so
@@ -3732,6 +3749,7 @@ export class EscrowClient {
         console.warn(`[escrow] Reload failed for ${escrowId}:`, e);
       } finally {
         this._reloading.delete(escrowId);
+        this.callbacks.onHistoryReload?.(escrowId, false);
       }
     }, OUT_OF_ORDER_RELOAD_DELAY_MS);
   }
