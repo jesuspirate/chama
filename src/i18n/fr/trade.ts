@@ -2,8 +2,8 @@
 export const trade: Record<string, string> = {
   "trade.responseHours": "{count} heures",
   "trade.responseDays": "{count} jours",
-  "trade.arbiterNoStake": "{name} n’a pas encore de sats en garantie.",
-  "trade.arbiterVerdict": "{name} a {amount} sats en garantie et a réglé {count} litiges.",
+  "trade.arbiterNoStake": "Aucun dépôt de garantie vérifié trouvé pour {name}.",
+  "trade.arbiterVerdict": "{name} a {amount} sats en garantie.",
   "trade.arbiterResponse": "Répond habituellement sous {time}.",
   "trade.deviceSample": "D’après ce que cet appareil a observé.",
 

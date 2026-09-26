@@ -1,8 +1,8 @@
 export const trade: Record<string, string> = {
   "trade.responseHours": "saa {count}",
   "trade.responseDays": "siku {count}",
-  "trade.arbiterNoStake": "{name} bado hana sats zilizowekwa dhamana.",
-  "trade.arbiterVerdict": "{name} ameweka sats {amount} dhamana na amesuluhisha migogoro {count}.",
+  "trade.arbiterNoStake": "Hakuna dhamana iliyothibitishwa iliyopatikana kwa {name}.",
+  "trade.arbiterVerdict": "{name} ameweka sats {amount} dhamana.",
   "trade.arbiterResponse": "Kwa kawaida hujibu ndani ya {time}.",
   "trade.deviceSample": "Kulingana na kilichoonekana kwenye kifaa hiki.",
 
