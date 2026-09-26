@@ -25,8 +25,8 @@ const TOGGLE_CSS = `
 }
 .chama-price-btn { transition: transform .14s cubic-bezier(.34,1.56,.64,1), box-shadow .2s ease; }
 .chama-price-btn:active { transform: scale(.98); }
-.chama-price-swap { transition: color .3s ease, opacity .3s ease; }
-.chama-price-rocker-knob { transition: transform .24s cubic-bezier(.34,1.56,.64,1), background .2s ease, box-shadow .2s ease; }
+.chama-price-swap { transition: opacity .3s ease; }
+.chama-price-rocker-knob { transition: transform .24s cubic-bezier(.34,1.56,.64,1); }
 .chama-price-pop { animation: chamaPricePop .3s cubic-bezier(.34,1.56,.64,1); transform-origin: center; }
 @media (prefers-reduced-motion: reduce) { .chama-price-pop { animation: none; } }
 `;
@@ -198,13 +198,11 @@ export function BitcoinPricePill({
             gap: 10,
             padding: "9px 12px",
             borderRadius: T.r,
-            border: `1px solid ${stale ? T.borderHi : T.green + "55"}`,
-            background: stale
-              ? `linear-gradient(135deg, ${T.surface}, ${T.card})`
-              : `linear-gradient(135deg, ${T.greenDim}, ${T.surface} 48%, ${T.accentDim})`,
+            border: `1px solid ${T.green}55`,
+            background: `linear-gradient(135deg, ${T.greenDim}, ${T.surface} 48%, ${T.accentDim})`,
             color: T.text,
             cursor: "pointer",
-            boxShadow: stale ? "none" : `0 0 26px ${T.green}12`,
+            boxShadow: `0 0 26px ${T.green}12`,
           }}
         >
           <span aria-hidden="true" style={{
@@ -284,14 +282,12 @@ export function BitcoinPricePill({
             gap: 6,
             padding: "13px 16px",
             borderRadius: T.r,
-            border: `1px solid ${stale ? T.borderHi : T.green + "55"}`,
-            background: stale
-              ? `linear-gradient(135deg, ${T.surface}, ${T.card})`
-              : `linear-gradient(135deg, ${T.greenDim}, ${T.surface} 48%, ${T.accentDim})`,
+            border: `1px solid ${T.green}55`,
+            background: `linear-gradient(135deg, ${T.greenDim}, ${T.surface} 48%, ${T.accentDim})`,
             color: T.text,
             textAlign: "left",
             cursor: "pointer",
-            boxShadow: stale ? "none" : `0 0 26px ${T.green}12`,
+            boxShadow: `0 0 26px ${T.green}12`,
           }}
         >
           {/* One clean exchange line. The values remain plain; the physical
@@ -427,10 +423,8 @@ export function BitcoinPricePill({
           gap: 12,
           padding: "14px 16px",
           borderRadius: T.r,
-          border: `1px solid ${stale ? T.borderHi : T.green + "55"}`,
-          background: stale
-            ? `linear-gradient(135deg, ${T.surface}, ${T.card})`
-            : `linear-gradient(135deg, ${T.greenDim}, ${T.surface} 48%, ${T.accentDim})`,
+          border: `1px solid ${T.green}55`,
+          background: `linear-gradient(135deg, ${T.greenDim}, ${T.surface} 48%, ${T.accentDim})`,
           color: T.text,
         }}
       >
