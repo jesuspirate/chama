@@ -1,6 +1,7 @@
 import { findEscrowFundingUtxos, deriveCommittedBondKey, escrowDepositWindowSafe } from "../bond-multisig/onchain-escrow-funding.js";
 import { finalRefundSettlementProof, observedRefundSpend } from "../escrow-engine/onchain-settlement-transport.js";
 import { fundingArbiter, fundingTermsError, onchainLockError, onchainFunder } from "../escrow-engine/onchain-funding-terms.js";
+import { pendingOnchainLockRecoveries } from "../escrow-engine/onchain-lock-recovery.js";
 import { fundingPremiumMsats } from "../payments/funding-premium.js";
 import { nativeLockEarmarks } from "../fedimint/pending-native-locks.js";
 import { lockFromBalance } from "../payments/lock-from-balance.js";
@@ -3002,6 +3003,33 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       arbiterPubkey,
     });
   }, [checkOnchainFunding]);
+
+  // Reconcile committed deposits after launch and as discovered trades arrive.
+  // The funder may have sent from another wallet and closed this app before
+  // confirmation; keeping this inside the trade page would strand the buyer.
+  const lockRecoveryInFlight = useRef(new Set<string>());
+  const lockRecoveryNextCheck = useRef(new Map<string, number>());
+  useEffect(() => {
+    if (!state.connected || !state.pubkey || state.connectedRelays < 1) return;
+    const scan = () => {
+      const current = stateRef.current;
+      if (!current?.pubkey || !current.connected || current.connectedRelays < 1) return;
+      for (const id of pendingOnchainLockRecoveries(current.escrows.values(), current.pubkey)) {
+        const now = Date.now();
+        if (lockRecoveryInFlight.current.has(id) || (lockRecoveryNextCheck.current.get(id) ?? 0) > now) continue;
+        lockRecoveryNextCheck.current.set(id, now + 30_000);
+        lockRecoveryInFlight.current.add(id);
+        void checkOnchainFunding(id).then(({ verdict }) =>
+          verdict?.funded ? publishOnchainLock(id) : undefined,
+        ).catch(error => {
+          console.warn(`[chama] on-chain lock recovery for ${id} will retry:`, error);
+        }).finally(() => lockRecoveryInFlight.current.delete(id));
+      }
+    };
+    scan();
+    const timer = setInterval(scan, 30_000);
+    return () => clearInterval(timer);
+  }, [state.connected, state.pubkey, state.connectedRelays, state.escrows, checkOnchainFunding, publishOnchainLock]);
 
   /** Recompute every security-sensitive settlement input locally. */
   const onchainSettlementContext = useCallback(async (escrowId: string, leaf: "coop" | "dispute" = "coop", requestedAddress?: string) => {

@@ -7,6 +7,7 @@ import { safetyFixture } from '../../scripts/lib/escrow-safety-fixture.js';
 import { applyEvent, replayEventChain } from './state-machine.js';
 import { EscrowEventKind as Kind, EscrowStatus, Role, getEffectiveParticipantAt, type LockPayload } from './types.js';
 import { deriveOnchainView } from './onchain-escrow-view.js';
+import { pendingOnchainLockRecoveries } from './onchain-lock-recovery.js';
 import { buildOnchainEscrow } from '../bond-multisig/onchain-escrow.js';
 import { deriveEscrowSigningKey, deriveCommittedBondKey, findEscrowFundingUtxos, escrowDepositWindowSafe } from '../bond-multisig/onchain-escrow-funding.js';
 import { buildCommitmentBond, deriveBondSigningKey } from '../bond-multisig/commitment-bond.js';
@@ -45,6 +46,9 @@ for (const bond of [
   assert.equal(applyEvent(fixture.state, { ...event, payload: { ...event.payload, fundingTerms: { ...fixture.terms, arbiterBond: bond } } } as typeof event).ok, false);
 }
 fixture.apply(e);
+assert.deepEqual(pendingOnchainLockRecoveries([fixture.state], fixture.pks.seller), [fixture.state.id]);
+assert.deepEqual(pendingOnchainLockRecoveries([fixture.state], fixture.pks.buyer), [], 'buyer cannot publish funder LOCK on launch');
+assert.deepEqual(pendingOnchainLockRecoveries([{ ...fixture.state, lock: { ...fixture.state.lock, lockedAt: 123 } }], fixture.pks.seller), [], 'already locked trade is not retried');
 const committedAddress = fixture.state.onchainFundingTerms!.address;
 const reloaded = replayEventChain(fixture.events);
 assert(reloaded.ok);

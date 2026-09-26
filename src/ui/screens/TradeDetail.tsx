@@ -852,10 +852,10 @@ export function TradeDetail({
         const ready = await onOnchainRefundAvailable?.(state.id);
         if (!cancelled) setRefundAvailable(ready === true);
       } catch { if (!cancelled) setRefundAvailable(false); }
-      if ((!state.lock.onchain && !state.onchainRefundClaimed) || state.status === EscrowStatus.COMPLETED) return;
+      if (state.status === EscrowStatus.COMPLETED) return;
       try {
         const result = await onCheckOnchainFunding?.(state.id);
-        if (!cancelled) { setVerifiedDeposit(result?.verdict?.funded ? depositIdentity : null); setVerifiedRefund(result?.refundVerified ? depositIdentity : null); if (result?.refundPending) setFundingNote("Refund broadcast; waiting for blockchain confirmation."); }
+        if (!cancelled) { setDepositStatus(result?.depositStatus === "confirmed" && !result?.verdict?.funded ? "waiting" : result?.depositStatus ?? "waiting"); setVerifiedDeposit(result?.verdict?.funded ? depositIdentity : null); setVerifiedRefund(result?.refundVerified ? depositIdentity : null); if (result?.refundPending) setFundingNote("Refund broadcast; waiting for blockchain confirmation."); }
       } catch (error) {
         if (!cancelled) { setVerifiedDeposit(null); setVerifiedRefund(null); setFundingNote(error instanceof Error ? error.message : String(error)); }
       }

@@ -161,6 +161,9 @@ export function OnchainEscrowPanel({
 
       {view.stage === "awaiting-funding" && view.address && (
         <>
+          {!view.viewerFunds && depositStatus === "confirmed" && (
+            <p role="status">The funder's deposit is confirmed on Bitcoin. It becomes the lock the next time they open Chama.</p>
+          )}
           {uri && <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}><QRCode data={uri} size={210} alt={t("onchain.addressLabel")} /></div>}
           <div style={{ fontSize: 12, color: T.muted, lineHeight: 1.55, marginBottom: 8 }}>
             {view.viewerFunds ? t("onchain.fundBody") : t("onchain.awaitFundingBody")}
