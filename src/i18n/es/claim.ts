@@ -1,5 +1,7 @@
 // es/claim — Session C fills this from src/i18n/en/claim.ts (key set must match EXACTLY).
 export const claim: Record<string, string> = {
+  "claim.cashOutCurrency": "Retirar en {currency}",
+  "claim.yourWallets": "Tus billeteras",
   "claim.ecashMethod": "Ecash · sin comisiones",
   "claim.ecashMethodBlurb": "Cobra como nota al portador lista para Fedi. Chama guarda una copia de recuperación hasta que confirmes la importación.",
   "claim.ecashReadyHeadline": "COBRO LISTO · IMPORTAR ECASH",

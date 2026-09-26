@@ -15,6 +15,7 @@ const payoutPsbt=buildSettlementPsbt({escrow:fixture.escrow,utxos:[{txid:'11'.re
 const bundle = await build({ bundle: true, write: false, format: 'iife', jsx: 'automatic', define: { 'process.env.NODE_ENV': '"test"', 'import.meta.env': '{}' },
   stdin: { resolveDir: process.cwd(), loader: 'tsx', contents: `
 import React from 'react'; import { createRoot } from 'react-dom/client';
+import { ClaimPayoutModal } from './src/ui/panels/ClaimPayoutModal';
 import { TradeDetail } from './src/ui/screens/TradeDetail';
 import { LiveTradeSurface } from './src/ui/screens/LiveTradeSurface';
 import { LangProvider } from './src/i18n';
@@ -52,6 +53,12 @@ window.scenario=(stage,role='seller',pass=true)=>{viewer=keys[role]; valid=pass;
  lock:stage==='created'||stage==='funding'?base.lock:{...base.lock,lockedAt:Math.floor(Date.now()/1000),onchain:{...terms,amountSats:'100000',fundingTxid:'11'.repeat(32),fundingVout:0}},
  resolvedOutcome:stage==='approved'||stage==='done'?Outcome.RELEASE:undefined,
  resolvedMajority:stage==='approved'||stage==='done'?['buyer','seller']:undefined}; render();};
+window.claimScenario=(currency='USD',gateway=1)=>root.render(<LangProvider><ClaimPayoutModal key={currency+gateway}
+ escrowId="cash-out-test" payoutMsats={100_000_000} fiatCurrency={currency}
+ savedDestinations={[{id:'saved',address:'me@example.com',createdAt:0}]}
+ savedNwcConnections={[{id:'nwc',label:'My wallet',connectionString:'nostr+walletconnect://test',createdAt:0}]}
+ getLightningGatewayCount={async()=>gateway} claimAndPayout={async()=>{throw Error('Unexpected payment');}}
+ confirmClaimEcashExport={async()=>{}} probeFederation={async()=>({ok:true})} onClose={()=>{}} /></LangProvider>);
 window.testAvatars=async()=>{
  const canvas=document.createElement('canvas'); canvas.width=2400; canvas.height=1600;
  const ctx=canvas.getContext('2d'); const pixels=ctx.createImageData(2400,1600);
@@ -158,6 +165,18 @@ try {
   assert.equal(await page.evaluate(() => [...document.querySelectorAll('.lts-room button')].some(el=>el.getBoundingClientRect().right>window.innerWidth)),false,'seat chips and avatars fit mobile width');
   if (process.env.CHAMA_TEST_SCREENSHOT) await page.screenshot({path:process.env.CHAMA_TEST_SCREENSHOT as `${string}.png`});
   console.log('PASS large profile image compression, 256px cover crop, JPEG fallback and mobile seat avatars', avatars);
+  for(const currency of ['USD','KES','TZS']) {
+    await page.evaluate(currency=>(window as any).claimScenario(currency),currency);
+    await page.waitForSelector('section[aria-label="Cash out in '+currency+'"]');
+    assert.equal(await page.$('details'),null,'cash-out never hides in Details');
+  }
+  await page.evaluate(()=>(window as any).claimScenario('USD',0));
+  await page.waitForFunction(()=>[...document.querySelectorAll('button')].filter(b=>b.textContent?.includes('Strike')).every(b=>b.disabled));
+  assert.ok(await page.$('section[aria-label="Cash out in USD"]'));
+  await page.evaluate(()=>(window as any).claimScenario('USD',1));
+  await click('me@example.com');
+  await page.waitForFunction(()=>[...document.querySelectorAll('input')].some(input=>input.value==='me@example.com'));
+  console.log('PASS claim cash-out cards visible by currency, gateway gating, Your wallets and saved address confirmation');
   assert.deepEqual(errors,[]);
   console.log('PASS guided on-chain overlay, read-only buyer, fiat vote, failed-check signing gate, signing and payout recovery');
 } finally { await browser?.close(); server.closeAllConnections(); server.close(); }

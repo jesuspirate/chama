@@ -70,6 +70,8 @@ export interface DestinationPickerProps {
   /** Exact amount the consumer needs to receive. Passed into LNURL
    *  metadata validation and into the callback URL. */
   amountSats: number;
+  /** Prefill from a saved wallet; still requires the usual confirmation. */
+  initialAddress?: string;
   /** Lightning Address payout destinations previously saved by the user.
    *  Caller fetches these via listPayoutDestinations(). */
   savedDestinations: PayoutDestination[];
@@ -90,6 +92,7 @@ export interface DestinationPickerProps {
 
 export function DestinationPicker({
   amountSats,
+  initialAddress = "",
   savedDestinations,
   savedNwcConnections = [],
   title,
@@ -99,7 +102,7 @@ export function DestinationPicker({
   topSlot,
 }: DestinationPickerProps) {
   const { t } = useT();
-  const [typed, setTyped] = useState("");
+  const [typed, setTyped] = useState(initialAddress);
   const [bolt11, setBolt11] = useState("");
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [rememberNwc, setRememberNwc] = useState(true);

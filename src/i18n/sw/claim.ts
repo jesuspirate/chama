@@ -1,4 +1,6 @@
 export const claim: Record<string, string> = {
+  "claim.cashOutCurrency": "Toa pesa kwa {currency}",
+  "claim.yourWallets": "Pochi zako",
   "claim.ecashMethod": "Ecash · bila ada",
   "claim.ecashMethodBlurb": "Dai kama noti ya mkononi tayari kwa Fedi. Chama inatunza nakala ya urejeshaji hadi uthibitishe uingizaji.",
   "claim.ecashReadyHeadline": "DAI TAYARI · INGIZA ECASH",

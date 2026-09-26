@@ -1,3 +1,4 @@
+import { getCommunityBySlug } from "../../communities/registry.js";
 import { TradeAmount } from "../components/TradeAmount.js";
 import { PaymentRails, PaymentButton, type PaymentRail } from "../components/PaymentCard.js";
 // ══════════════════════════════════════════════════════════════════════════
@@ -160,7 +161,7 @@ type Stage =
 // US `<username>@strike.me`), or an external offramp-redirect provider drawn
 // from `external-swap-registry.ts` (Banxaas / Bitika / Bitzed).
 type PayoutMethod =
-  | { kind: "lightning" }
+  | { kind: "lightning"; initialAddress?: string }
   | { kind: "onchain" }
   | { kind: "ecash" }
   | { kind: "tando" }
@@ -244,6 +245,7 @@ export function ClaimPayoutModal({
     const matches = getExternalSwapsForContext({ homeCommunity, tradeCommunity, fiatCurrency });
     const seen = new Set<string>();
     return matches.filter((m) => {
+      if (m.provider.status !== "enabled") return false;
       if (seen.has(m.provider.id)) return false;
       seen.add(m.provider.id);
       return true;
@@ -475,6 +477,10 @@ export function ClaimPayoutModal({
           tandoEligible={tandoEligible}
           chapsmartEligible={chapsmartEligible}
           strikeEligible={strikeEligible}
+          cashOutCurrency={fiatCurrency?.trim().toUpperCase()
+            || getCommunityBySlug(tradeCommunity ?? homeCommunity ?? "")?.currency
+            || (tandoEligible ? "KES" : chapsmartEligible ? "TZS" : strikeEligible ? "USD" : externalSwaps[0]?.provider.currency ?? "")}
+          savedWalletDestinations={savedDestinations.filter(d => !isStrikeLightningAddress(d.address) && !isTandoLightningAddress(d.address) && !isChapsmartLightningAddress(d.address))}
           savedStrikeDestinations={savedStrikeDestinations}
           savedNwcConnections={savedNwcConnections}
           onSelect={setPayoutMethod}
@@ -557,6 +563,7 @@ export function ClaimPayoutModal({
     return (
       <DestinationPicker
         amountSats={payoutSats}
+        initialAddress={payoutMethod.kind === "lightning" ? payoutMethod.initialAddress : undefined}
         savedDestinations={savedDestinations}
         savedNwcConnections={savedNwcConnections}
         title={t("claim.claimYourSats")}
@@ -660,6 +667,7 @@ function ClaimMethodChooser({
   chapsmartEligible,
   strikeEligible,
   savedStrikeDestinations,
+  savedWalletDestinations, cashOutCurrency,
   savedNwcConnections,
   onSelect,
   onSelectEcash,
@@ -687,6 +695,8 @@ function ClaimMethodChooser({
   strikeEligible: boolean;
   /** Previously-used Strike addresses (from payout destinations). Shown as
    *  NWC-style CLAIM → quick-picks when strikeEligible. */
+  cashOutCurrency: string;
+  savedWalletDestinations: PayoutDestination[];
   savedStrikeDestinations: PayoutDestination[];
   /** v1.2.5: saved NWC connections, promoted to top-level quick-pick
    *  buttons here just like AtomicFundingModal does on the funding
@@ -708,7 +718,7 @@ function ClaimMethodChooser({
   const hasTallCards = externalSwaps.length > 0 || tandoEligible || chapsmartEligible || strikeEligible;
   const methodGridColumns = hasTallCards ? "1fr" : "1fr 1fr";
   const methodMinHeight = hasTallCards ? 92 : 118;
-  const showSavedStrike = !lightningReason && rail === "lightning" && strikeEligible && savedStrikeDestinations.length > 0;
+  const showSavedStrike = strikeEligible && savedStrikeDestinations.length > 0;
 
   return (
     <div
@@ -747,6 +757,59 @@ function ClaimMethodChooser({
           {t("claim.chooseWhere")}
         </div>
 
+        {(savedNwcConnections.length > 0 || savedWalletDestinations.length > 0) && (
+          <section aria-label={t("claim.yourWallets")} style={{ marginBottom: 16 }}>
+            <h3 style={{ color: T.text, fontFamily: T.sans, fontSize: 14 }}>{t("claim.yourWallets")}</h3>
+            <div style={{ display: "grid", gap: 6 }}>
+              {savedWalletDestinations.map(destination => <button key={destination.id} disabled={!!lightningReason}
+                onClick={() => onSelect({ kind: "lightning", initialAddress: destination.address })}
+                style={{ padding: "12px 14px", minHeight: 44, borderRadius: T.r, border: `1px solid ${T.borderHi}`,
+                  background: T.surface, color: T.text, textAlign: "left", overflowWrap: "anywhere", opacity: lightningReason ? 0.5 : 1 }}>
+                {destination.address}
+              </button>)}
+            </div>
+            <div style={{ display: "grid", gap: 6, marginTop: 8 }}>
+              {savedNwcConnections.map((connection) => (
+                <button
+                  key={connection.id}
+                  disabled={!!lightningReason}
+                    onClick={() => onSelectSavedNwc(connection)}
+                  style={{
+                    width: "100%", padding: "12px 14px", borderRadius: T.r,
+                    background: T.accentDim, border: `1px solid ${T.accent}66`,
+                    color: T.text, fontFamily: T.mono, fontSize: 12,
+                    cursor: lightningReason ? "not-allowed" : "pointer", opacity: lightningReason ? 0.5 : 1, display: "flex",
+                    justifyContent: "space-between", alignItems: "center",
+                    gap: 12,
+                  }}
+                >
+                  <span style={{
+                    overflow: "hidden", textOverflow: "ellipsis",
+                    whiteSpace: "nowrap", fontWeight: 600,
+                  }}>
+                    {connection.label}
+                  </span>
+                  <span style={{
+                    color: T.accent, flexShrink: 0, fontSize: 9,
+                    fontWeight: 800, letterSpacing: 1,
+                  }}>
+                    {t("claim.claimArrow")}
+                  </span>
+                </button>
+              ))}
+            </div>
+            {lightningReason && <p role="status" style={{ color: T.muted, fontSize: 12 }}>{lightningReason}</p>}
+          </section>
+        )}
+
+        <PaymentRails rail={rail} disabledReasons={{ lightning: lightningReason }} onSelect={setRail} />
+        <p style={{ color: T.muted, fontSize: 12, lineHeight: 1.5 }}>{t(rail === "ecash" ? "claim.ecashMethodBlurb" : rail === "onchain" ? "claim.onchainBlurb" : "claim.bestPathLn")}</p>
+        <PaymentButton disabled={rail === "lightning" && !!lightningReason} tier={rail === "ecash" ? "primary" : "raised"} style={{ width: "100%", marginBottom: 12 }} onClick={() => rail === "ecash" ? onSelectEcash() : onSelect({ kind: rail })}>
+          {rail === "ecash" ? t("claim.ecashMethod") : rail === "onchain" ? t("claim.methodOnchainSlow") : t("claim.lnFast")}
+        </PaymentButton>
+        {hasTallCards && <section aria-label={t("claim.cashOutCurrency", { currency: cashOutCurrency })}>
+        <h3 style={{ fontSize: 14, color: T.text, fontFamily: T.sans }}>{t("claim.cashOutCurrency", { currency: cashOutCurrency })}</h3>
+        {lightningReason && <p role="status" style={{ color: T.muted, fontSize: 12 }}>{lightningReason}</p>}
         {/* Saved Strike — opens the guided cash-out picker prefilled, rather
             than auto-sending past the Cash receive confirmation. */}
         {showSavedStrike && (
@@ -763,12 +826,13 @@ function ClaimMethodChooser({
                 return (
                   <button
                     key={dest.id}
+                    disabled={!!lightningReason}
                     onClick={() => onSelectSavedStrike(dest.address)}
                     style={{
                       width: "100%", padding: "12px 14px", borderRadius: T.r,
                       background: T.greenDim, border: `1px solid ${T.green}66`,
                       color: T.text, fontFamily: T.mono, fontSize: 12,
-                      cursor: "pointer", display: "flex",
+                      cursor: lightningReason ? "not-allowed" : "pointer", opacity: lightningReason ? 0.5 : 1, display: "flex",
                       justifyContent: "space-between", alignItems: "center",
                       gap: 12,
                     }}
@@ -792,50 +856,7 @@ function ClaimMethodChooser({
           </div>
         )}
 
-        {/* NWC is an expert shortcut: present but deliberately quiet. */}
-        {!lightningReason && rail === "lightning" && savedNwcConnections.length > 0 && (
-          <details style={{ marginBottom: 12 }}>
-            <summary style={{ color: T.muted, fontFamily: T.mono, fontSize: 9, cursor: "pointer" }}>
-              NWC · {savedNwcConnections.length}
-            </summary>
-            <div style={{ display: "grid", gap: 6, marginTop: 8 }}>
-              {savedNwcConnections.map((connection) => (
-                <button
-                  key={connection.id}
-                  onClick={() => onSelectSavedNwc(connection)}
-                  style={{
-                    width: "100%", padding: "12px 14px", borderRadius: T.r,
-                    background: T.accentDim, border: `1px solid ${T.accent}66`,
-                    color: T.text, fontFamily: T.mono, fontSize: 12,
-                    cursor: "pointer", display: "flex",
-                    justifyContent: "space-between", alignItems: "center",
-                    gap: 12,
-                  }}
-                >
-                  <span style={{
-                    overflow: "hidden", textOverflow: "ellipsis",
-                    whiteSpace: "nowrap", fontWeight: 600,
-                  }}>
-                    {connection.label}
-                  </span>
-                  <span style={{
-                    color: T.accent, flexShrink: 0, fontSize: 9,
-                    fontWeight: 800, letterSpacing: 1,
-                  }}>
-                    {t("claim.claimArrow")}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </details>
-        )}
 
-        <PaymentRails rail={rail} disabledReasons={{ lightning: lightningReason }} onSelect={setRail} />
-        <p style={{ color: T.muted, fontSize: 12, lineHeight: 1.5 }}>{t(rail === "ecash" ? "claim.ecashMethodBlurb" : rail === "onchain" ? "claim.onchainBlurb" : "claim.bestPathLn")}</p>
-        <PaymentButton disabled={rail === "lightning" && !!lightningReason} tier={rail === "ecash" ? "primary" : "raised"} style={{ width: "100%", marginBottom: 12 }} onClick={() => rail === "ecash" ? onSelectEcash() : onSelect({ kind: rail })}>
-          {rail === "ecash" ? t("claim.ecashMethod") : rail === "onchain" ? t("claim.methodOnchainSlow") : t("claim.lnFast")}
-        </PaymentButton>
-        {hasTallCards && !lightningReason && <details><summary style={{ minHeight: 44, color: T.muted }}>{t("payment.details")}</summary>
         <div style={{ display: "grid", gridTemplateColumns: methodGridColumns, gap: 10 }}>
 
           {/* Tando — Kenya's lead cash-out. Native one-tap M-Pesa offramp
@@ -843,11 +864,12 @@ function ClaimMethodChooser({
               redirect. Rendered first for Kenyan claims. */}
           {tandoEligible && (
             <button
-              onClick={() => onSelect({ kind: "tando" })}
+              disabled={!!lightningReason}
+                    onClick={() => onSelect({ kind: "tando" })}
               style={{
                 minHeight: methodMinHeight, padding: 12, borderRadius: T.r,
                 background: T.greenDim, border: `1px solid ${T.green}66`,
-                color: T.text, cursor: "pointer", textAlign: "left",
+                color: T.text, cursor: lightningReason ? "not-allowed" : "pointer", opacity: lightningReason ? 0.5 : 1, textAlign: "left",
               }}
             >
               <div style={{
@@ -879,11 +901,12 @@ function ClaimMethodChooser({
               redirect. The Tando mirror; rendered first for Tanzanian claims. */}
           {chapsmartEligible && (
             <button
-              onClick={() => onSelect({ kind: "chapsmart" })}
+              disabled={!!lightningReason}
+                    onClick={() => onSelect({ kind: "chapsmart" })}
               style={{
                 minHeight: methodMinHeight, padding: 12, borderRadius: T.r,
                 background: T.greenDim, border: `1px solid ${T.green}66`,
-                color: T.text, cursor: "pointer", textAlign: "left",
+                color: T.text, cursor: lightningReason ? "not-allowed" : "pointer", opacity: lightningReason ? 0.5 : 1, textAlign: "left",
               }}
             >
               <div style={{
@@ -913,11 +936,12 @@ function ClaimMethodChooser({
           {/* Strike — guided USD cash-out through username@strike.me. */}
           {strikeEligible && (
             <button
-              onClick={() => onSelect({ kind: "strike" })}
+              disabled={!!lightningReason}
+                    onClick={() => onSelect({ kind: "strike" })}
               style={{
                 minHeight: methodMinHeight, padding: 12, borderRadius: T.r,
                 background: T.greenDim, border: `1px solid ${T.green}66`,
-                color: T.text, cursor: "pointer", textAlign: "left",
+                color: T.text, cursor: lightningReason ? "not-allowed" : "pointer", opacity: lightningReason ? 0.5 : 1, textAlign: "left",
               }}
             >
               <div style={{
@@ -963,11 +987,12 @@ function ClaimMethodChooser({
             return (
               <button
                 key={`${provider.id}|${provider.communitySlug}`}
-                onClick={() => onSelect({ kind: "external", match })}
+                disabled={!!lightningReason}
+                    onClick={() => onSelect({ kind: "external", match })}
                 style={{
                   minHeight: methodMinHeight, padding: 12, borderRadius: T.r,
                   background: accentBg, border: `1px solid ${accentBorder}`,
-                  color: T.text, cursor: "pointer", textAlign: "left",
+                  color: T.text, cursor: lightningReason ? "not-allowed" : "pointer", opacity: lightningReason ? 0.5 : 1, textAlign: "left",
                 }}
               >
                 <div style={{
@@ -1003,7 +1028,7 @@ function ClaimMethodChooser({
             );
           })}
 
-        </div></details>}
+        </div></section>}
       </div>
     </div>
   );
