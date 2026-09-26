@@ -1,24 +1,21 @@
-import { T } from "../theme.js";
-import { translate, getCurrentLang } from "../../i18n/index.js";
+import { T } from '../theme.js';
+import { translate, getCurrentLang } from '../../i18n/index.js';
 
-/**
- * The boot color-cycle Chama mark, packaged as a reusable inline loading
- * indicator — the same animated PNG the app opens with, so "loading" looks
- * like Chama everywhere instead of a generic ring. Falls back to the static
- * woven-trust mark under prefers-reduced-motion (classes swapped in globalCss).
- */
-export function ChamaLoader({ size = 30, label }: { size?: number; label?: string }) {
-  return (
-    <span
-      role="status"
-      aria-label={label ?? translate(getCurrentLang(), "common.loading")}
-      style={{ display: "inline-flex", alignItems: "center", gap: 11 }}
-    >
-      <img className="chama-loader-motion" src="/icons/chama-color-cycle-boot-hd-v7.png"
-        width={size} height={size} alt="" decoding="async" />
-      <img className="chama-loader-static" src="/icons/chama-mark-256.png?v=approved-star-20260921"
-        width={size} height={size} alt="" decoding="async" />
-      {label && <span style={{ fontFamily: T.mono, fontSize: 12, color: T.muted }}>{label}</span>}
-    </span>
-  );
+/** A resolution-independent orange dot with a smooth orbit. No image download,
+ * frame stepping or downsampled boot animation at small sizes. */
+export function ChamaLoader({size = 24, label}: {size?: number; label?: string}) {
+  return <span role="status" aria-label={label ?? translate(getCurrentLang(), 'common.loading')}
+    style={{display:'inline-flex',alignItems:'center',gap:7,whiteSpace:'nowrap',color:T.accent}}>
+    <style>{`
+      @keyframes chamaLoaderOrbit { to { transform: rotate(360deg); } }
+      .chama-loader-orbit { transform-origin: 12px 12px; animation: chamaLoaderOrbit 1.1s linear infinite; }
+      @media (prefers-reduced-motion: reduce) { .chama-loader-orbit { animation: none; } }
+    `}</style>
+    <svg className="chama-loader-vector" width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true" style={{display:'block',flexShrink:0}}>
+      <circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="2" opacity="0.18" />
+      <path className="chama-loader-orbit" d="M12 4a8 8 0 0 1 8 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      <circle cx="12" cy="12" r="2.5" fill="currentColor" />
+    </svg>
+    {label && <span style={{fontFamily:T.mono,fontSize:12,color:T.muted}}>{label}</span>}
+  </span>;
 }

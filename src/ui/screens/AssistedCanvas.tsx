@@ -88,7 +88,6 @@ export function AssistedCanvas({
   activeMintUrl,
   viewerPubkey,
   listingsLoading,
-  tradesLoading = false,
   fetchRatingSummary,
   onBrowse,
   onCreate,
@@ -110,7 +109,6 @@ export function AssistedCanvas({
   viewerPubkey: string;
   listingsLoading: boolean;
   /** Same initial participant sync used by Me; not public/background refresh. */
-  tradesLoading?: boolean;
   fetchRatingSummary?: (ratee: string) => Promise<AggregateRatings>;
   onBrowse: (category: string) => void;
   onCreate: (intent: CanvasCreatePrefill) => void;
@@ -652,7 +650,7 @@ export function AssistedCanvas({
   ]);
 
   if (publishedInfo) {
-    return <CanvasShell tradesLoading={tradesLoading} community={community} step={3} onExit={() => { onDismissPublished?.(); onBrowse("all"); }} onMoreOptions={onMoreOptions}>
+    return <CanvasShell community={community} step={3} onExit={() => { onDismissPublished?.(); onBrowse("all"); }} onMoreOptions={onMoreOptions}>
       <Kicker>{tr("canvas.liveKicker")}</Kicker>
       <h1 style={headingStyle()}>{tr("canvas.liveTitle")}</h1>
       <p style={subStyle()}>{tr("canvas.liveSub")}</p>
@@ -681,7 +679,7 @@ export function AssistedCanvas({
   }
 
   if (surface === "rails") {
-    return <CanvasShell tradesLoading={tradesLoading} community={community} step={3} onExit={() => onBrowse("all")} onMoreOptions={onMoreOptions}>
+    return <CanvasShell community={community} step={3} onExit={() => onBrowse("all")} onMoreOptions={onMoreOptions}>
       <Back onClick={() => setSurface("terms")}>{tr("canvas.changeLast")}</Back>
       <Kicker>{tr("canvas.acceptedPayment")}</Kicker>
       <RouteCue>{routeLabel}</RouteCue>
@@ -698,7 +696,7 @@ export function AssistedCanvas({
 
   if (surface === "premium") {
     const isBill = bring === "bill";
-    return <CanvasShell tradesLoading={tradesLoading} community={community} step={3} onExit={() => onBrowse("all")} onMoreOptions={onMoreOptions}>
+    return <CanvasShell community={community} step={3} onExit={() => onBrowse("all")} onMoreOptions={onMoreOptions}>
       <Back onClick={() => setSurface(bring === "bill" ? "rails" : "terms")}>{tr("canvas.changeLast")}</Back>
       <Kicker>{isBill ? tr("canvas.volunteerBonus") : tr("canvas.yourRate")}</Kicker>
       <RouteCue>{routeLabel}</RouteCue>
@@ -719,7 +717,7 @@ export function AssistedCanvas({
   }
 
   if (surface === "review" && selected) {
-    return <CanvasShell tradesLoading={tradesLoading} community={community} step={3} onExit={() => onBrowse("all")} onMoreOptions={onMoreOptions}>
+    return <CanvasShell community={community} step={3} onExit={() => onBrowse("all")} onMoreOptions={onMoreOptions}>
       <Back onClick={() => setSurface("matches")}>{tr("canvas.backToMatches")}</Back>
       <Kicker>{tr("canvas.exactPreview")}</Kicker>
       <h1 style={headingStyle()}>{tr("canvas.reviewMatch")}</h1>
@@ -747,7 +745,7 @@ export function AssistedCanvas({
       .filter(c => !shownKeys.has(c.listing.id))
       .slice(0, 8);
     const noMatches = !matching && !listingsLoading && (isGoods ? goodsMatches.length === 0 : visibleMatches.length === 0);
-    return <CanvasShell tradesLoading={tradesLoading} community={community} step={3} onExit={() => onBrowse("all")} onMoreOptions={onMoreOptions}>
+    return <CanvasShell community={community} step={3} onExit={() => onBrowse("all")} onMoreOptions={onMoreOptions}>
       <Back onClick={() => setSurface("terms")}>{tr("canvas.changeLast")}</Back>
       <Kicker>{isGoods ? tr("canvas.availableNow", { count: goodsMatches.length }) : tr("canvas.compatibleOffers", { count: visibleMatches.length })}</Kicker>
       <h1 style={headingStyle()}>{noMatches ? tr("canvas.noMatchTitle") : isGoods ? tr("canvas.goodsTitle") : tr(guidedChooseTitleKey(visibleMatches))}</h1>
@@ -834,7 +832,7 @@ export function AssistedCanvas({
   }
 
   if (surface === "publish") {
-    return <CanvasShell tradesLoading={tradesLoading} community={community} step={3} onExit={() => onBrowse("all")} onMoreOptions={onMoreOptions}>
+    return <CanvasShell community={community} step={3} onExit={() => onBrowse("all")} onMoreOptions={onMoreOptions}>
       <Back onClick={() => setSurface((bring === "sats" && want === "cash") || bring === "bill" ? "premium" : "terms")}>{tr("canvas.changeLast")}</Back>
       <Kicker>{tr("canvas.firstSide")}</Kicker>
       <RouteCue>{routeLabel}</RouteCue>
@@ -869,7 +867,7 @@ export function AssistedCanvas({
   }
 
   if (surface === "terms") {
-    return <CanvasShell tradesLoading={tradesLoading} community={community} step={3} onExit={() => onBrowse("all")} onMoreOptions={onMoreOptions}>
+    return <CanvasShell community={community} step={3} onExit={() => onBrowse("all")} onMoreOptions={onMoreOptions}>
       <Back onClick={() => setSurface("detail")}>{tr("canvas.changeLast")}</Back>
       <Kicker>{tr("canvas.lastDetail")}</Kicker>
       <RouteCue>{routeLabel}</RouteCue>
@@ -913,7 +911,7 @@ export function AssistedCanvas({
   }
 
   if (surface === "detail") {
-    return <CanvasShell tradesLoading={tradesLoading} community={community} step={2} onExit={() => onBrowse("all")} onMoreOptions={onMoreOptions}>
+    return <CanvasShell community={community} step={2} onExit={() => onBrowse("all")} onMoreOptions={onMoreOptions}>
       <Back onClick={() => setSurface(bring === "sats" ? "want" : "bring")}>
         {bring === "sats" ? tr("canvas.changeWant") : tr("canvas.changeHave")}
       </Back>
@@ -953,7 +951,7 @@ export function AssistedCanvas({
       if (id && onOpenTrade) onOpenTrade(id);
       else setInviteError(true);
     };
-    return <CanvasShell tradesLoading={tradesLoading} community={community} step={1} onExit={() => onBrowse("all")} onMoreOptions={onMoreOptions}>
+    return <CanvasShell community={community} step={1} onExit={() => onBrowse("all")} onMoreOptions={onMoreOptions}>
       <Back onClick={() => setSurface("bring")}>{tr("common.back")}</Back>
       <Kicker>{tr("canvas.circleKicker")}</Kicker>
       <h1 style={headingStyle()}>{tr("canvas.circleTitle")}</h1>
@@ -1016,7 +1014,7 @@ export function AssistedCanvas({
   }
 
   if (surface === "want" && bring) {
-    return <CanvasShell tradesLoading={tradesLoading} community={community} step={1} onExit={() => onBrowse("all")} onMoreOptions={onMoreOptions}>
+    return <CanvasShell community={community} step={1} onExit={() => onBrowse("all")} onMoreOptions={onMoreOptions}>
       <Back onClick={() => setSurface("bring")}>{tr("canvas.changeHave")}</Back>
       <Kicker>{tr("canvas.haveBitcoin")}</Kicker>
       <h1 style={headingStyle()}>{tr("canvas.whatInReturn")}</h1>
@@ -1041,7 +1039,7 @@ export function AssistedCanvas({
     </CanvasShell>;
   }
 
-  return <CanvasShell tradesLoading={tradesLoading} community={community} step={0} onExit={() => onBrowse("all")} onMoreOptions={onMoreOptions}>
+  return <CanvasShell community={community} step={0} onExit={() => onBrowse("all")} onMoreOptions={onMoreOptions}>
     {/* The namesake leads (Jet, 2026-09-18): circles are their own product,
         so they sit ABOVE the trading question, split by a dotted seam —
         one home, two doors. */}
@@ -1071,13 +1069,10 @@ export function AssistedCanvas({
   </CanvasShell>;
 }
 
-function CanvasShell({ tradesLoading, community: _community, step, onExit, onMoreOptions, children }: { tradesLoading: boolean; community: ReturnType<typeof getCommunityBySlug>; step: number; onExit: () => void; onMoreOptions: () => void; children: ReactNode }) {
+function CanvasShell({ community: _community, step, onExit, onMoreOptions, children }: { community: ReturnType<typeof getCommunityBySlug>; step: number; onExit: () => void; onMoreOptions: () => void; children: ReactNode }) {
   const rootRef = useCanvasViewport();
   return <div ref={rootRef} className="assisted-canvas">
     <style>{canvasCss()}</style>
-    {tradesLoading && <div className="assisted-trade-sync" role="status" aria-label={tr("me.hydratingTrades")} title={tr("me.hydratingTrades")}>
-      <span aria-hidden="true"><ChamaLoader size={20} /></span>
-    </div>}
     {step === 0 && <button type="button" data-chama-shortcut="back" onClick={onExit} tabIndex={-1} aria-hidden="true" style={{ display: "none" }} />}
     <main className="assisted-canvas-main">{children}</main>
     <footer className="assisted-canvas-footer">
@@ -1227,7 +1222,6 @@ function bareInputStyle(): CSSProperties { return { minWidth: 0, flex: 1, border
 function amountLineStyle(): CSSProperties { return { display: "flex", alignItems: "baseline", gap: 12, paddingBottom: 15, borderBottom: `1px solid ${T.border}`, color: T.accent, fontFamily: T.mono, fontWeight: 700 }; }
 
 export function canvasCss() { return `
-  .assisted-trade-sync{position:absolute;top:12px;right:18px;line-height:0}
   .assisted-canvas{position:relative;min-height:calc(100dvh - var(--assisted-chrome, 360px));display:grid;grid-template-rows:1fr auto;padding:clamp(14px,2.5vh,48px) clamp(22px,5vw,70px) 12px;animation:fadeIn .25s ease}
   .assisted-canvas-main{width:100%;max-width:1080px;margin:0 auto;align-self:center}
   .assisted-canvas-footer{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:18px;color:${T.muted};font-size:12px}

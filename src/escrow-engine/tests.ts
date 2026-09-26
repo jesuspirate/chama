@@ -18970,8 +18970,8 @@ console.log("\n── CHAMA BAR LABEL ──");
       hasActiveBuyerSellerCommitment: true,
       activeCommittedMsats: 50_000_000,
     });
-    assert(r.kind === "in-trade" && (r as any).sats === 50_000,
-      "activeCommittedMsats takes precedence: show locked 50k, not wallet 30k");
+    assert(r.kind === "stranded" && (r as any).sats === 30_000,
+      "Recoverable wallet sats outrank the passive in-trade label");
   }
 
   // bootProbeState=failed still overrides committed amount — Reconnect

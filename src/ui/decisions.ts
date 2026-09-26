@@ -1120,6 +1120,7 @@ export function activeCommittedMsats(inputs: {
 export type ChamaBarLabel =
   | { kind: "needs-you"; count: number }
   | { kind: "checking" }
+  | { kind: "syncing" }
   | { kind: "ready" }
   | { kind: "in-trade"; sats: number; activeTradeCount: number }
   | { kind: "stranded"; sats: number }
@@ -1156,6 +1157,7 @@ export function selectMoneySafetyFocus(entries: readonly MoneySafetyEntry[]) {
 }
 
 export function decideChamaBarLabel(opts: {
+  myTradesLoading?: boolean;
   needsYouCount?: number;
   balanceMsats: number;
   hasActiveBuyerSellerCommitment: boolean;
@@ -1205,7 +1207,6 @@ export function decideChamaBarLabel(opts: {
   // amount as the in-trade pill. CREATED listings are intentionally not
   // enough to explain a wallet balance: no money has moved yet.
   const committedSats = Math.floor((opts.activeCommittedMsats ?? 0) / 1000);
-  if (committedSats > 0) return { kind: "in-trade", sats: committedSats, activeTradeCount };
   if (
     !opts.simModeOn &&
     !opts.hasPendingNativeLock &&
@@ -1213,6 +1214,8 @@ export function decideChamaBarLabel(opts: {
     sats > 0 &&
     sats >= MAIN_SURFACE_RECOVERY_MIN_SATS
   ) return { kind: "stranded", sats };
+  if (committedSats > 0) return { kind: "in-trade", sats: committedSats, activeTradeCount };
+  if (opts.myTradesLoading) return { kind: "syncing" };
   return { kind: "ready" };
 }
 

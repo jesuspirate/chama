@@ -1,3 +1,4 @@
+import { ChamaLoader } from '../components/ChamaLoader.js';
 // ══════════════════════════════════════════════════════════════════════════
 // Chama — ChamaBar (v0.3.0 Phase 5; renamed from FedimintBar)
 // ══════════════════════════════════════════════════════════════════════════
@@ -125,7 +126,7 @@ export function ChamaBar({
           Reconnect — both fire onInit). The pill IS the Reconnect
           CTA; no parallel "Reconnect" button is added elsewhere in
           the app per the Phase 3 directive. */}
-      {fedimint.joined ? (
+      {fedimint.joined || chamaLabel.kind !== "ready" ? (
         <ChamaBarLabelPill
           label={chamaLabel}
           onTapStranded={onTapStranded}
@@ -179,6 +180,7 @@ function ChamaBarLabelPill({
       border: `1px solid ${T.amber}66`, color: T.amber, cursor: "pointer" }}>
     {t("recovery.barNeedsYou", { count: label.count })} ›
   </button>;
+  if (label.kind === "syncing") return <ChamaLoader size={18} label={t("me.syncing")} />;
   if (label.kind === "checking") {
     return (
       <span style={{

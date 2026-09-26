@@ -17,6 +17,8 @@ const bundle = await build({ bundle: true, write: false, format: 'iife', jsx: 'a
   stdin: { resolveDir: process.cwd(), loader: 'tsx', contents: `
 import React from 'react'; import { createRoot } from 'react-dom/client';
 import { AssistedCanvas } from './src/ui/screens/AssistedCanvas';
+import { ChamaBar } from './src/ui/panels/ChamaBar';
+import { decideChamaBarLabel } from './src/ui/decisions';
 import { EsploraUnavailableError } from './src/bond-multisig/fund-watcher';
 import { ClaimPayoutModal } from './src/ui/panels/ClaimPayoutModal';
 import { TradeDetail } from './src/ui/screens/TradeDetail';
@@ -59,8 +61,10 @@ window.scenario=(stage,role='seller',pass=true)=>{viewer=keys[role]; valid=pass;
  lock:stage==='created'||stage==='funding'?base.lock:{...base.lock,lockedAt:Math.floor(Date.now()/1000),onchain:{...terms,amountSats:'100000',fundingTxid:'11'.repeat(32),fundingVout:0}},
  resolvedOutcome:stage==='approved'||stage==='done'?Outcome.RELEASE:undefined,
  resolvedMajority:stage==='approved'||stage==='done'?['buyer','seller']:undefined}; render();};
-window.canvasScenario=(loading,publicLoading)=>root.render(<LangProvider><AssistedCanvas listings={[]} browseCommunity="us-usd" viewerPubkey={keys.buyer}
- tradesLoading={loading} listingsLoading={publicLoading} onBrowse={()=>{}} onCreate={()=>{}} onMoreOptions={()=>{}} onOpenTrade={()=>{}} /></LangProvider>);
+window.canvasScenario=(loading,publicLoading)=>root.render(<LangProvider><ChamaBar fedimint={{joined:true,federationName:'Chama'}}
+ chamaLabel={decideChamaBarLabel({myTradesLoading:loading,balanceMsats:0,hasActiveBuyerSellerCommitment:false})} onTapStranded={()=>{}} onInit={()=>{}} showReconnect={false}/>
+ <AssistedCanvas listings={[]} browseCommunity="us-usd" viewerPubkey={keys.buyer}
+ listingsLoading={publicLoading} onBrowse={()=>{}} onCreate={()=>{}} onMoreOptions={()=>{}} onOpenTrade={()=>{}} /></LangProvider>);
 window.claimScenario=(currency='USD',gateway=1)=>root.render(<LangProvider><ClaimPayoutModal key={currency+gateway}
  escrowId="cash-out-test" payoutMsats={100_000_000} fiatCurrency={currency}
  savedDestinations={[{id:'saved',address:'me@example.com',createdAt:0}]}
@@ -213,14 +217,19 @@ try {
   await click('me@example.com');
   await page.waitForFunction(()=>[...document.querySelectorAll('input')].some(input=>input.value==='me@example.com'));
   console.log('PASS claim cash-out cards visible by currency, gateway gating, Your wallets and saved address confirmation');
+  await page.setViewport({width:390,height:844,deviceScaleFactor:3});
   await page.evaluate(()=>(window as any).canvasScenario(true,false));
-  await page.waitForSelector('.assisted-trade-sync');
-  const box=await page.$eval('.assisted-trade-sync',el=>({left:el.getBoundingClientRect().left,right:el.getBoundingClientRect().right,top:el.getBoundingClientRect().top}));
-  assert.ok(box.left>300 && box.right<=390 && box.top>=0,'loader sits in the top-right of the phone canvas');
-  if (process.env.CHAMA_TEST_SCREENSHOT) await page.screenshot({path:'/tmp/chama-brief07-sync.png'});
+  await page.waitForSelector('.chama-loader-vector');
+  const box=await page.$eval('.chama-loader-vector',el=>({left:el.getBoundingClientRect().left,right:el.getBoundingClientRect().right,top:el.getBoundingClientRect().top}));
+  assert.ok(box.right<=390 && box.top>=0 && box.top<60,'vector loader sits inside the phone status bar');
+  assert.equal(await page.$('.assisted-trade-sync'),null);
+  assert.equal(await page.$eval('.chama-loader-orbit',el=>getComputedStyle(el).animationName),'chamaLoaderOrbit');
+  await page.screenshot({path:'/tmp/chama-brief08-sync.png'});
+  await page.emulateMediaFeatures([{name:'prefers-reduced-motion',value:'reduce'}]);
+  assert.equal(await page.$eval('.chama-loader-orbit',el=>getComputedStyle(el).animationName),'none');
   await page.evaluate(()=>(window as any).canvasScenario(false,true));
-  await page.waitForFunction(()=>!document.querySelector('.assisted-trade-sync'));
-  console.log('PASS initial trade sync loader: top-right on mobile; hidden during subsequent listing refresh');
+  await page.waitForFunction(()=>!document.querySelector('.chama-loader-vector'));
+  console.log('PASS initial sync in bar at phone 3x density, sharp SVG, smooth animation, reduced motion and no background-refresh loader');
   assert.deepEqual(errors,[]);
   console.log('PASS guided on-chain overlay, read-only buyer, fiat vote, failed-check signing gate, signing and payout recovery');
 } finally { await browser?.close(); server.closeAllConnections(); server.close(); }

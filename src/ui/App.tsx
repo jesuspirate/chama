@@ -1963,10 +1963,9 @@ export default function App() {
   });
   const needsYouCount = needsYouTrades.length;
   const attentionTrade = needsYouTrades[0] ?? activeTrade;
-  // Participant discovery hydrates incrementally. A partial set makes the
-  // orange summary count/amount visibly count down, so keep it neutral until
-  // the initial saved-ID + relay pass is complete.
-  const visibleAttentionTrade = myTradesLoading ? null : attentionTrade;
+  // Known work stays actionable during hydration; syncing only fills the
+  // bar when no higher-priority state is known yet.
+  const visibleAttentionTrade = attentionTrade;
   const attentionActionMode = needsYouCount > 0;
   // Step 4: the attention pill routes to the most urgent needs-you trade
   // (needsYouTrades[0]), which is often NOT the trade on screen. Name its
@@ -3298,9 +3297,8 @@ export default function App() {
   const wideOwnWidthMode = view === "dashboard" || view === "me" || view === "browse";
   const activeTab = detailMode ? TAB_FOR_VIEW[detailBackView] : TAB_FOR_VIEW[view];
   const effectiveShellPaddingBottom = detailMode ? 0 : shellPaddingBottom;
-  const chamaBarLabel: ReturnType<typeof decideChamaBarLabel> = (myTradesLoading || publicListingsLoading)
-    ? { kind: "ready" }
-    : decideChamaBarLabel({
+  const chamaBarLabel = decideChamaBarLabel({
+      myTradesLoading,
       balanceMsats: fedimint.balanceMsats ?? 0,
       hasActiveBuyerSellerCommitment: hasActiveCommitment,
       activeCommittedMsats: committedMsats,
@@ -4100,7 +4098,6 @@ export default function App() {
           activeMintUrl={myActiveInvite}
           viewerPubkey={pubkey!}
           listingsLoading={publicListingsLoading}
-          tradesLoading={myTradesLoading}
           fetchRatingSummary={actions.fetchRatingSummary}
           onBrowse={(category) => {
             setBrowseCategory(category);
@@ -5153,14 +5150,6 @@ const globalCss = () => `
      (which overflows and summons a scrollbar) no longer nudges the centered
      column sideways. */
   html{scrollbar-gutter:stable}html,body,#root{background:${T.bg}}
-  /* Reusable boot-mark loader: animated color-cycle by default, static woven
-     mark under reduced motion. */
-  .chama-loader-motion{display:block}
-  .chama-loader-static{display:none}
-  @media (prefers-reduced-motion: reduce){
-    .chama-loader-motion{display:none!important}
-    .chama-loader-static{display:block!important}
-  }
   /* v2.5 polish: kill the browser's default tap-highlight (the blue/grey
      flash on Android taps) and the default blue focus halo on buttons/links.
      Keep accessibility intact: a subtle Chama focus ring still shows for
