@@ -1,3 +1,7 @@
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { OnchainTradeControls } from '../ui/panels/OnchainTradeControls.js';
+import { LangProvider } from '../i18n/index.js';
 import assert from 'node:assert/strict';
 import * as btc from '@scure/btc-signer';
 import { base64 } from '@scure/base';
@@ -20,7 +24,7 @@ function check(state:EscrowState, viewer:string, key:string, observation?:Onchai
  assert.equal(onchainAttention(state,viewer,observation)?.key,key);
  assert.equal(selectNeedsYouTrades({escrows:[state],userPubkey:viewer,onchainObservations:new Map([[state.id,observation??{}]])})[0]?.id,state.id);
 }
-check(created,f.pks.seller,'deposit');check(created,f.pks.seller,'lock',{deposit:'confirmed'});
+check(created,f.pks.seller,'deposit-check');check(created,f.pks.seller,'deposit',{deposit:'waiting',remainingSats:100000});check(created,f.pks.seller,'lock',{deposit:'confirmed'});
 check(locked,f.pks.buyer,'pay',{depositSafe:true});assert.match(onchainAttention(locked,f.pks.buyer,{depositSafe:true})!.text,/25.96 USD via Strike/);
 check(paid,f.pks.seller,'confirm-paid');check(approved,f.pks.buyer,'choose');
 assert.equal(needsYouReasonFor(approved,f.pks.seller),null,'other signer waits for winner destination');
@@ -45,11 +49,15 @@ for(const leaf of ['coop','dispute'] as const){
  const signedBuyer=coSignSettlement(psbt,buyer),signedOther=coSignSettlement(psbt,leaf==='coop'?seller:arbiter);
  const partial={...offered,settlements:[proposal,event(other,signedOther)]};
  assert.equal(onchainAttention(partial,f.pks[other]),null);assert.ok(onchainAttention(partial,f.pks.buyer));
+ const readyToSend={...partial,settlements:[...partial.settlements,event('buyer',signedBuyer)]};
+ for (const pk of [f.pks.buyer,f.pks[other]]) assert.match(onchainAttention(readyToSend,pk)!.key,/^send:/,'both signed but not broadcast remains actionable after a crash');
  const final=event('buyer',base64.encode(btc.PSBTCombine([base64.decode(signedBuyer),base64.decode(signedOther)])),true);
  const done={...offered,status:EscrowStatus.COMPLETED,settlements:[proposal,final]};
  const txid=btc.Transaction.fromPSBT(base64.decode(psbt),{allowUnknown:true,allowUnknownOutputs:true}).id;
  for (const confirmed of [false,true]) {
   const obs=await observeOnchainAttention(done,async path=>{assert.match(path,/outspend/);return {spent:true,txid,status:{confirmed}};});
+  const html=renderToStaticMarkup(createElement(LangProvider, null, createElement(OnchainTradeControls,{state:done,pubkey:f.pks.buyer,onchainObservation:obs})));
+  assert.match(html,confirmed ? /Done · 99,500 sats/ : /Payout sent · waiting for confirmation/);
   assert.equal(obs.payout?.sats,'99500');assert.equal(obs.payout?.destination,destination);
   for(const pk of [f.pks.buyer,f.pks.seller]) {
    assert.equal(onchainAttention(done,pk,obs)?.actionable,false);
@@ -64,3 +72,9 @@ const refunded={refundSpent:true};assert.equal(onchainAttention(locked,f.pks.sel
 const observation=await observeOnchainAttention(created,async path=>path==='/blocks/tip/height'?2_000_001:[{value:100000,status:{confirmed:true}}]);
 assert.equal(observation.refundAvailable,true);
 console.log('PASS on-chain attention: deposit, lock, pay, confirm, choose, real coop/dispute signatures, verified broadcast/confirmation, refund, outsiders, freshness and duplicate transitions');
+
+const partialDeposit=await observeOnchainAttention(created,async path=>path==='/blocks/tip/height'?1_999_000:[{value:40000,status:{confirmed:true}}]);
+assert.equal(partialDeposit.remainingSats,60000);
+assert.match(onchainAttention(created,f.pks.seller,partialDeposit)!.text,/Send 60,000 more sats/);
+check(created,f.pks.seller,'top-up:60000',partialDeposit);
+assert.equal(selectNeedsYouTrades({escrows:[created],userPubkey:f.pks.seller,onchainObservations:new Map([[created.id,{deposit:'seen',remainingSats:0}]])}).length,0,'pending full deposit never asks for a second payment');

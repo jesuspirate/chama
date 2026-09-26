@@ -6492,7 +6492,7 @@ console.log("\n── REPLAY (atomic minimum: CREATE → LOCK → … with NO JO
 for (const needs of [0, 2]) for (const active of [0, 200000]) for (const balance of [0, 50000000]) {
   const label = decideChamaBarLabel({needsYouCount:needs, activeCommittedMsats:active,
     balanceMsats:balance, hasActiveBuyerSellerCommitment:active > 0});
-  assert(label.kind === (needs ? "needs-you" : active ? "in-trade" : balance ? "stranded" : "ready"),
+  assert(label.kind === (needs ? "needs-you" : balance ? "stranded" : active ? "in-trade" : "ready"),
     `one attention priority needs=${needs} active=${active} recovery=${balance}`);
 }
 

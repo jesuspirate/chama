@@ -1,3 +1,4 @@
+import type { OnchainObservation } from '../../escrow-engine/onchain-attention.js';
 import { PaymentButton } from "../components/PaymentCard.js";
 import { OverlaySheet } from "../components/OverlaySheet.js";
 import { ReplayNotes } from "../components/ReplayNotes.js";
@@ -162,7 +163,7 @@ export function TradeDetail({
   disableNwc = false, forceClaimMethodChooser = false, onBack, onVote, onClaim, onJoin, onLock, onLockDirectNwc, onClaimDirectNwc, onConfirmPayout,
   onSendChat, preferredRelayConnected = false, onReleasePeriod, onOpenSettings, onOpenNwcSettings,
   onPrewarmFunding, onRebroadcast, onForget, onPurchase, onCancelDraftOrder, stockLeft, isOversoldOrder = false,
-  onRateCounterparty, myGivenRatings, fetchRatingSummary, fetchCommunityBonds, knownTrades, onStartNextTranche, onchainFundingPlan, onPrepareOnchainFunding, onCheckOnchainFunding, onRefundOnchainEscrow, onOnchainRefundAvailable, onPublishOnchainLock, onCheckOnchainSettlement, onOpenExplorerSettings, onPrepareOnchainSettlement, onSignOnchainSettlement, onFinalizeOnchainSettlement, onScanMyOnchainPayouts, onSweepOnchainPayout,
+  onRateCounterparty, myGivenRatings, fetchRatingSummary, fetchCommunityBonds, knownTrades, onStartNextTranche, onchainFundingPlan, onPrepareOnchainFunding, onCheckOnchainFunding, onRefundOnchainEscrow, onOnchainRefundAvailable, onPublishOnchainLock, onCheckOnchainSettlement, onOpenExplorerSettings, onchainObservation, onPrepareOnchainSettlement, onSignOnchainSettlement, onFinalizeOnchainSettlement, onScanMyOnchainPayouts, onSweepOnchainPayout,
   onStartEcashSlicePlan,
   liveChildOrders, pendingChildOrders, onOpenChild,
 }: {
@@ -236,6 +237,7 @@ export function TradeDetail({
   onchainFundingPlan?: (escrowId: string) => { ready: boolean; address?: string; blockers?: readonly string[] };
   /** Tier 2.1: publish the on-chain LOCK once the deposit confirms. */
   onPublishOnchainLock?: (escrowId: string) => Promise<unknown>;
+  onchainObservation?: OnchainObservation;
   onOpenExplorerSettings?: () => void;
   onCheckOnchainSettlement?: (id: string) => Promise<{ psbt: string; check: SettlementCheck; signedByMe: boolean }>;
   onPrepareOnchainSettlement?: (escrowId: string, payoutAddress?: string) => Promise<{ psbt: string; check: SettlementCheck; signedByMe: boolean }>;
@@ -1571,6 +1573,7 @@ export function TradeDetail({
       <p role="status">Checking the deposit on the blockchain…</p>
       {fundingNote && <p>{fundingNote}</p>}
       <OnchainTradeControls state={state} pubkey={pubkey} profileNames={profileNames} kind0Enabled={kind0Enabled}
+                onchainObservation={onchainObservation}
                 onOpenExplorerSettings={onOpenExplorerSettings}
                 onCheckOnchainSettlement={onCheckOnchainSettlement}
                 fetchCommunityBonds={fetchCommunityBonds} onchainFundingPlan={onchainFundingPlan}
@@ -2162,6 +2165,7 @@ export function TradeDetail({
               this guard; it was dropped when the panel moved here. */}
           {onchainView && (myRole || onchainNeedsMyArbiterKey) && <div id="onchain-funding-panel">
               <OnchainTradeControls state={state} pubkey={pubkey} profileNames={profileNames} kind0Enabled={kind0Enabled}
+                onchainObservation={onchainObservation}
                 onOpenExplorerSettings={onOpenExplorerSettings}
                 onCheckOnchainSettlement={onCheckOnchainSettlement}
                 fetchCommunityBonds={fetchCommunityBonds} onchainFundingPlan={onchainFundingPlan}

@@ -15,6 +15,7 @@ import { EscrowStatus, Outcome, Role, type EscrowState } from './types.js';
 export interface OnchainObservation {
   deposit?: 'waiting' | 'seen' | 'confirmed';
   depositSafe?: boolean;
+  remainingSats?: number;
   refundAvailable?: boolean;
   refundSpent?: boolean;
   payout?: { txid: string; confirmed: boolean; sats: string; destination: string };
@@ -43,9 +44,12 @@ export function onchainAttention(state: EscrowState, viewer: string, observation
   if (observation?.refundSpent) return null;
   if (observation?.refundAvailable) return role === funder ? result('refund', 'Your refund is available') : null;
   if (state.status === EscrowStatus.CREATED && state.onchainFundingTerms && role === funder) {
+    if (!observation?.deposit) return result('deposit-check', 'Open the trade to check the deposit');
     if (observation?.deposit === 'confirmed') return result('lock', 'Your deposit is confirmed — open the trade to lock it');
     if (observation?.deposit === 'seen') return null;
-    return result('deposit', `Send ${Math.floor((state.joinHolds?.buyer?.amountMsats ?? state.amountMsats) / 1000).toLocaleString('en-US')} sats to the escrow address`);
+    const required = Math.floor((state.joinHolds?.buyer?.amountMsats ?? state.amountMsats) / 1000);
+    const remaining = observation.remainingSats ?? required;
+    return result(remaining < required ? `top-up:${remaining}` : 'deposit', `Send ${remaining.toLocaleString('en-US')}${remaining < required ? ' more' : ''} sats to the escrow address`);
   }
   if (state.status === EscrowStatus.LOCKED) {
     if (funder === Role.SELLER && role === Role.BUYER && state.votes[role] === undefined) {
@@ -69,7 +73,11 @@ export function onchainAttention(state: EscrowState, viewer: string, observation
   const terms = state.lock.onchain;
   const escrow = buildOnchainEscrow({...terms, buyerXonly: hexToBytes(terms.buyerXonly), sellerXonly: hexToBytes(terms.sellerXonly), arbiterXonly: hexToBytes(terms.arbiterXonly), network: terms.network === 'mainnet' ? MAINNET : SIGNET});
   const leaf = other === Role.ARBITER ? 'dispute' : 'coop';
-  if (choice.messages.some(m => hasValidSettlementSignatureForRole(m.payload.psbt, escrow, role, leaf))) return null;
+  const signed = (signer: Role) => choice.messages.some(m => hasValidSettlementSignatureForRole(m.payload.psbt, escrow, signer, leaf));
+  // A crash after the second signature but before broadcast must not strand
+  // a fully signed payout with both people told they have nothing left to do.
+  if (signed(winner.role) && signed(other)) return result(`send:${choice.id}`, 'Open the trade to send the signed payout');
+  if (signed(role)) return null;
   return result(`sign:${choice.id}`, role === winner.role ? 'Sign to receive your sats' : 'Sign the payout to the winner');
 }
 
@@ -101,8 +109,10 @@ export async function observeOnchainAttention(state: EscrowState, fetchJson: Esp
   const funded = rows.filter(r => r?.status?.confirmed && Number.isSafeInteger(r.value) && r.value > 0);
   const total = funded.reduce((sum, r) => sum + r.value, 0);
   const required = Math.floor((state.joinHolds?.buyer?.amountMsats ?? state.amountMsats) / 1000);
+  const received = rows.filter(r => Number.isSafeInteger(r?.value) && r.value > 0).reduce((sum, r) => sum + r.value, 0);
   return {
-    deposit: total >= required ? 'confirmed' : rows.filter(r => r?.value > 0).reduce((sum, r) => sum + r.value, 0) >= required ? 'seen' : 'waiting',
+    remainingSats: Math.max(0, required - received),
+    deposit: total >= required ? 'confirmed' : received >= required ? 'seen' : 'waiting',
     depositSafe: total >= required && !!state.lock.onchain
       && funded.some(r => r.txid === state.lock.onchain!.fundingTxid && r.vout === state.lock.onchain!.fundingVout)
       && funded.every(r => Number.isSafeInteger(r.status.block_height))

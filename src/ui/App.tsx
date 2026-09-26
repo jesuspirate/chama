@@ -4143,6 +4143,7 @@ export default function App() {
               historyReloading={reloadingEscrows.has(selected.id)}
               onCheckOnchainFunding={actions.checkOnchainFunding}
               onchainActions={{
+                onchainObservation: onchainObservations?.get(selected.id),
                 onOpenExplorerSettings: () => { setAdvancedFocusExplorer(true); setView("advanced"); },
                 fetchCommunityBonds: actions.fetchCommunityBonds,
                 onchainFundingPlan: actions.onchainFundingPlan,
@@ -4230,6 +4231,7 @@ export default function App() {
             onOnchainRefundAvailable={actions.onchainRefundAvailable}
             onPublishOnchainLock={actions.publishOnchainLock}
             onPrepareOnchainSettlement={actions.prepareOnchainSettlement}
+            onchainObservation={onchainObservations?.get(selected.id)}
             onOpenExplorerSettings={() => { setAdvancedFocusExplorer(true); setView("advanced"); }}
             onCheckOnchainSettlement={actions.checkOnchainSettlement}
             onSignOnchainSettlement={actions.signOnchainSettlement}

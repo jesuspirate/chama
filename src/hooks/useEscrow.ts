@@ -3058,11 +3058,14 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       if (running) return;
       running = true;
       try {
-        for (const trade of stateRef.current?.escrows.values() ?? []) {
+        const trades = [...(stateRef.current?.escrows.values() ?? [])]
+          .filter(trade => trade.escrowMode === 'onchain' && Object.values(trade.participants).includes(viewer))
+          .sort((a, b) => Number(a.status === EscrowStatus.COMPLETED) - Number(b.status === EscrowStatus.COMPLETED));
+        // Never hold a live signature alert behind a slow history explorer read.
+        for (const trade of trades) maybeNotifyOnchainAttention(trade, viewer, stateRef.current?.onchainObservations?.get(trade.id));
+        for (const trade of trades) {
           if (stopped) return;
-          if (trade.escrowMode !== 'onchain' || !Object.values(trade.participants).includes(viewer)) continue;
           const known = stateRef.current?.onchainObservations?.get(trade.id);
-          maybeNotifyOnchainAttention(trade, viewer, known);
           if (!trade.onchainFundingTerms || known?.payout?.confirmed || known?.refundSpent) continue;
           try {
             const observation = await observeOnchainAttention(trade,

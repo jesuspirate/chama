@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { esploraFetcher, EsploraUnavailableError, SETTLEMENT_EXPLORER_TIMEOUT_MS } from './fund-watcher.js';
+import { esploraFetcher, esploraBroadcast, EsploraUnavailableError, SETTLEMENT_EXPLORER_TIMEOUT_MS } from './fund-watcher.js';
 import { MAINNET, SIGNET } from './multisig.js';
 import { explorerRetryDelay, retryExplorerRead } from './explorer-retry.js';
 assert.equal(SETTLEMENT_EXPLORER_TIMEOUT_MS,20_000);
@@ -20,6 +20,10 @@ try {
  assert.deepEqual(hosts,['mutinynet.com']);
  globalThis.fetch=((url,opts)=>new Promise((_resolve,reject)=>{hosts.push(new URL(String(url)).host);opts?.signal?.addEventListener('abort',()=>reject(opts.signal!.reason));})) as typeof fetch;
  await assert.rejects(esploraFetcher('https://mempool.space/api',{network:MAINNET,timeoutMs:5})('/blocks/tip/height'),error=>error instanceof EsploraUnavailableError&&error.hosts.length===3);
+ globalThis.fetch=(async(_url,opts)=>{assert.ok(opts?.signal,'broadcast must have a deadline');throw new TypeError('offline');}) as typeof fetch;
+ await assert.rejects(esploraBroadcast('https://private.example/api','test-only'),EsploraUnavailableError);
+ globalThis.fetch=async()=>new Response('Locktime requirement not satisfied',{status:400});
+ await assert.rejects(esploraBroadcast('https://private.example/api','test-only'),error=>error instanceof Error && !(error instanceof EsploraUnavailableError) && /Locktime/.test(error.message));
 } finally {globalThis.fetch=originalFetch;console.warn=originalWarn;}
 const queue:Array<()=>void>=[],delays:number[]=[];
 let attempts=0,success=0,failures=0;

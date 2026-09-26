@@ -1,3 +1,4 @@
+import { onchainAttention, type OnchainObservation } from '../../escrow-engine/onchain-attention.js';
 import { EsploraUnavailableError } from '../../bond-multisig/fund-watcher.js';
 import { EXPLORER_RETRY_MESSAGE, explorerRetryDelay, retryExplorerRead } from '../../bond-multisig/explorer-retry.js';
 import { settlementUnsignedId } from "../../escrow-engine/onchain-settlement-transport.js";
@@ -20,6 +21,7 @@ import type { ComponentProps } from "react";
 import { OnchainEscrowPanel } from "./OnchainEscrowPanel.js";
 
 export interface OnchainTradeActions {
+  onchainObservation?: OnchainObservation;
   onOpenExplorerSettings?: () => void;
   fetchCommunityBonds?: (community: string) => Promise<VerifiedBond[]>;
   onchainFundingPlan?: (id: string) => { ready: boolean; address?: string; blockers?: readonly string[] };
@@ -60,6 +62,7 @@ export function OnchainTradeControls({ state, pubkey, profileNames, kind0Enabled
   const [explorerFailures, setExplorerFailures] = useState<Record<string, boolean>>({});
   const markExplorer = (source: string, failed: boolean) => setExplorerFailures(current => current[source] === failed ? current : {...current, [source]:failed});
   const unavailable = Object.values(explorerFailures).some(Boolean);
+  useEffect(() => { setExplorerFailures({}); setNote(null); setAddress(""); }, [state.id]);
   const latest = useRef(actions); latest.current = actions;
   const participants = getEffectiveParticipantsAt(state, Math.floor(Date.now()/1000));
   const role = effectiveViewerRole(state, pubkey);
@@ -161,6 +164,9 @@ export function OnchainTradeControls({ state, pubkey, profileNames, kind0Enabled
   if (refunded) return <div><p role="status">Refund confirmed on Bitcoin.</p>{recovery}</div>;
   return <div>
     {recovery}
+    {(actions.onchainObservation?.payout || state.status === EscrowStatus.COMPLETED) && <p role="status" style={{color:T.muted}}>
+      {actions.onchainObservation?.payout ? onchainAttention(state, pubkey, actions.onchainObservation)?.text : 'Checking the payout on the blockchain…'}
+    </p>}
     {unavailable && <div role="status" style={{color:T.muted, margin:'12px 0'}}>
       <p>{Object.entries(explorerFailures).some(([source,failed]) => source !== 'action' && failed) ? EXPLORER_RETRY_MESSAGE : "The block explorer did not answer. Try again."}</p>
       {actions.onOpenExplorerSettings && <button type="button" onClick={actions.onOpenExplorerSettings} style={buttonStyle}>Choose another block explorer</button>}

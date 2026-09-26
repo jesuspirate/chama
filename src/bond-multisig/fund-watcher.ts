@@ -217,9 +217,23 @@ export async function esploraRequiredFeeRate(fetchJson: EsploraFetch): Promise<b
 /** Broadcast a raw tx hex to Esplora; returns the txid, or throws with the node's
  *  rejection reason (e.g. a CLTV "Locktime requirement not satisfied" before term). */
 export async function esploraBroadcast(base: string, rawHex: string): Promise<string> {
-  const res = await fetch(`${base}/tx`, { method: "POST", headers: { "Content-Type": "text/plain" }, body: rawHex });
-  const body = await res.text();
-  if (!res.ok) throw new Error(body || `broadcast failed (${res.status})`);
+  let res: Response, body: string;
+  try {
+    res = await fetch(`${base}/tx`, { method: "POST", headers: { "Content-Type": "text/plain" }, body: rawHex,
+      signal: AbortSignal.timeout(SETTLEMENT_EXPLORER_TIMEOUT_MS) });
+    body = await res.text();
+  } catch (error) {
+    console.warn(`[chama] Block explorer ${new URL(base).host} failed during broadcast`);
+    throw new EsploraUnavailableError([base], [error]);
+  }
+  if (!res.ok) {
+    const error = new Error(body || `broadcast failed (${res.status})`);
+    if (res.status >= 500) {
+      console.warn(`[chama] Block explorer ${new URL(base).host} failed during broadcast (${res.status})`);
+      throw new EsploraUnavailableError([base], [error]);
+    }
+    throw error; // a node's transaction rejection is not an availability failure
+  }
   return body;
 }
 
