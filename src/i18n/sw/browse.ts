@@ -59,6 +59,7 @@ export const browse: Record<string, string> = {
   "browse.scopeLocal": "Chama changu",
   "browse.scopeAll": "Zote",
   "browse.sort": "PANGA",
+  "browse.sortDefault": "Chaguo-msingi",
   "browse.sortCheapest": "Nafuu zaidi",
   "browse.sortNewest": "Mpya zaidi",
   "browse.verifyingOffers": "Inakagua ofa wazi…",

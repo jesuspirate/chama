@@ -25,11 +25,11 @@ import { isWorkListing } from "../work-resume.js";
 // and all arbiter code stay intact; this just gates the FAB entry point. Flip
 // back to true when the bond (Phase 2A) lands and the leader pitch is real.
 const SHOW_ARBITER_FAB = false;
-// v2 intentionally resets the launch defaults once: local Chama + cheapest.
+// v2 intentionally resets the launch defaults once: local Chama + grouped categories.
 const BROWSE_SCOPE_KEY = "chama_browse_scope_v2";
 const BROWSE_SORT_KEY = "chama_browse_sort_v2";
 type BrowseScope = "local" | "all";
-type BrowseSort = "cheapest" | "newest";
+type BrowseSort = "default" | "cheapest" | "newest";
 
 // ⭐ Per-npub, like every other Chama preference. These two used to read and
 // write RAW localStorage, so a second identity on the same device inherited the
@@ -38,7 +38,7 @@ type BrowseSort = "cheapest" | "newest";
 // value onto the signed-in npub on first read, so nobody loses the setting they
 // already chose; a different identity then starts from the defaults.
 //
-// ⚠ The DEFAULTS below are correct and deliberate: local Chama + cheapest. A
+// ⚠ The DEFAULTS below are correct and deliberate: local Chama + grouped categories. A
 // report of "Browse defaults to All" is a persisted tap, not a wrong default —
 // do not "fix" it here.
 //
@@ -55,9 +55,9 @@ function getBrowseScope(): BrowseScope {
 function getBrowseSort(): BrowseSort {
   try {
     const stored = getScopedStorageItem(BROWSE_SORT_KEY);
-    if (stored === "cheapest" || stored === "newest") return stored;
-    return "cheapest";
-  } catch { return "cheapest"; }
+    if (stored === "default" || stored === "cheapest" || stored === "newest") return stored;
+    return "default";
+  } catch { return "default"; }
 }
 
 function persistBrowsePreference(key: string, value: string): void {
@@ -207,7 +207,7 @@ export function BrowseView({
     [nonMatchingListings, pubkey, showOwn],
   );
   const routedMatching = useMemo(
-    () => browseSort === "cheapest"
+    () => browseSort === "default" ? ownFilteredMatching : browseSort === "cheapest"
       ? sortListingsCheapestFirst(ownFilteredMatching)
       : sortListingsNewestFirst(ownFilteredMatching),
     [browseSort, ownFilteredMatching],
@@ -215,7 +215,7 @@ export function BrowseView({
   const routedNonMatching = useMemo(
     () => browseScope === "local"
       ? []
-      : browseSort === "cheapest"
+      : browseSort === "default" ? ownFilteredNonMatching : browseSort === "cheapest"
         ? sortListingsCheapestFirst(ownFilteredNonMatching)
         : sortListingsNewestFirst(ownFilteredNonMatching),
     [browseScope, browseSort, ownFilteredNonMatching],
@@ -233,6 +233,13 @@ export function BrowseView({
     () => routedNonMatching.filter((listing) => listingMatchesSearch(listing, search)),
     [routedNonMatching, search],
   );
+  // Explicit orders span every visible category AND route. Grouping after
+  // sorting would silently undo the user's choice (even one card per category).
+  const orderedVisibleListings = useMemo(() => {
+    const visible = [...filteredMatchingListings, ...filteredNonMatchingListings];
+    return browseSort === "cheapest" ? sortListingsCheapestFirst(visible) : sortListingsNewestFirst(visible);
+  }, [browseSort, filteredMatchingListings, filteredNonMatchingListings]);
+  const nonMatchingIds = new Set(filteredNonMatchingListings.map(listing => listing.id));
   // Runway #15: settlement-rail grouping for the flat (per-category) lists.
   // The "all" shelves group inside BrowseSection instead.
   const matchingRailGroups = useMemo(
@@ -464,7 +471,7 @@ export function BrowseView({
         <BrowsePreferenceControl
           label={t("browse.sort")}
           value={browseSort}
-          options={[["cheapest", t("browse.sortCheapest")], ["newest", t("browse.sortNewest")]]}
+          options={[["default", t("browse.sortDefault")], ["cheapest", t("browse.sortCheapest")], ["newest", t("browse.sortNewest")]]}
           onChange={(value) => setBrowseSort(value as BrowseSort)}
         />
       </div>
@@ -632,6 +639,21 @@ export function BrowseView({
                 : t("browse.pickChama")}
             </div>
           )}
+        </div>
+      ) : browseSort !== "default" ? (
+        <div data-browse-order={browseSort} style={{display:"flex",flexDirection:"column",gap:10}}>
+          {orderedVisibleListings.map(listing => <div key={listing.id} data-listing-id={listing.id}>
+            <TradeCard state={listing} pubkey={pubkey} allEscrows={allEscrows}
+              circleChildrenLoaded={circleChildrenLoaded}
+              onSelect={() => onOpenEscrow(listing.id)}
+              variant={nonMatchingIds.has(listing.id) ? "non-matching" : "matching"}
+              kind0Enabled={kind0Enabled} profileNames={profileNames}
+              amountDisplayMode={amountDisplayMode} quoteCurrency={quoteCurrency}
+              stockLeft={stockByListing?.get(listing.id)}
+              orderIndicator={orderIndicatorByListing?.get(listing.id)}
+              onResumeOrder={onOpenEscrow} onOpenWorkerProfile={setResumePubkey}
+              showCommunityChip={browseScope === "all"} />
+          </div>)}
         </div>
       ) : (
         <>

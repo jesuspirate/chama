@@ -18,6 +18,8 @@ const bundle = await build({ bundle: true, write: false, format: 'iife', jsx: 'a
 import React from 'react'; import { createRoot } from 'react-dom/client';
 import { AssistedCanvas } from './src/ui/screens/AssistedCanvas';
 import { ChamaBar } from './src/ui/panels/ChamaBar';
+import { BrowseView } from './src/ui/screens/BrowseView';
+import { setScopedStorageItem } from './src/storage/user-scope';
 import { decideChamaBarLabel } from './src/ui/decisions';
 import { EsploraUnavailableError } from './src/bond-multisig/fund-watcher';
 import { ClaimPayoutModal } from './src/ui/panels/ClaimPayoutModal';
@@ -65,6 +67,13 @@ window.canvasScenario=(loading,publicLoading)=>root.render(<LangProvider><ChamaB
  chamaLabel={decideChamaBarLabel({myTradesLoading:loading,balanceMsats:0,hasActiveBuyerSellerCommitment:false})} onTapStranded={()=>{}} onInit={()=>{}} showReconnect={false}/>
  <AssistedCanvas listings={[]} browseCommunity="us-usd" viewerPubkey={keys.buyer}
  listingsLoading={publicLoading} onBrowse={()=>{}} onCreate={()=>{}} onMoreOptions={()=>{}} onOpenTrade={()=>{}} /></LangProvider>);
+window.browseScenario=()=>{setScopedStorageItem('chama_browse_scope_v2','all');setScopedStorageItem('chama_browse_sort_v2','default');
+const listings=[{...base,id:'store',category:'marketplace',description:'Store offer',fiatAmount:1,fiatCurrency:'USD',createdAt:100},
+{...base,id:'exchange',category:'p2p-trade',description:'Exchange offer',fiatAmount:3,fiatCurrency:'USD',createdAt:300},
+{...base,id:'bill',category:'bill-pay',description:'Bill offer',fiatAmount:2,fiatCurrency:'USD',createdAt:200}];
+root.render(<LangProvider><BrowseView browseCategory="all" setBrowseCategory={()=>{}} browseCommunity="us-usd" amountDisplayMode="sats"
+matchingListings={listings.slice(0,2)} nonMatchingListings={listings.slice(2)} pubkey={'f'.repeat(64)} fedimintJoined={true} listingsLoading={false} isFirstTime={false}
+onPasteCustomInvite={()=>{}} onOpenEscrow={()=>{}} onLoadById={()=>{}} onCreate={()=>{}} onApplyAsArbiter={async()=>{}} /></LangProvider>);};
 window.claimScenario=(currency='USD',gateway=1)=>root.render(<LangProvider><ClaimPayoutModal key={currency+gateway}
  escrowId="cash-out-test" payoutMsats={100_000_000} fiatCurrency={currency}
  savedDestinations={[{id:'saved',address:'me@example.com',createdAt:0}]}
@@ -104,10 +113,14 @@ window.fund=()=>{funded=true;}; window.scenario('created');
 ` } });
 const server = createServer(async (req,res) => {
   const path=new URL(req.url??'/', 'http://localhost').pathname;
-  if (['/icons/chama-color-cycle-boot-hd-v7.png','/icons/chama-mark-256.png'].includes(path)) {
-    res.setHeader('Content-Type','image/png'); res.end(await readFile('public'+path)); return;
+  if (path.startsWith('/icons/') || path.startsWith('/fonts/')) {
+    try {
+      const type=path.endsWith('.svg')?'image/svg+xml':path.endsWith('.css')?'text/css':path.endsWith('.woff2')?'font/woff2':'image/png';
+      res.setHeader('Content-Type',type);res.end(await readFile('public'+path));
+    } catch {res.statusCode=404;res.end();}
+    return;
   }
-  res.end('<!doctype html><style>*{box-sizing:border-box}body{margin:0}.chama-loader-static{display:none}</style><div id="root"></div>');
+  res.end('<!doctype html><link rel="stylesheet" href="/fonts/fonts.css"><style>*{box-sizing:border-box}body{margin:0}</style><div id="root"></div>');
 });
 await new Promise<void>(resolve => server.listen(0,'127.0.0.1',resolve));
 let browser;
@@ -230,6 +243,13 @@ try {
   await page.evaluate(()=>(window as any).canvasScenario(false,true));
   await page.waitForFunction(()=>!document.querySelector('.chama-loader-vector'));
   console.log('PASS initial sync in bar at phone 3x density, sharp SVG, smooth animation, reduced motion and no background-refresh loader');
+  await page.evaluate(()=>(window as any).browseScenario());
+  await click('Cheapest');
+  const order=()=>page.$$eval('[data-browse-order] > [data-listing-id]',els=>els.map(el=>el.getAttribute('data-listing-id')));
+  assert.deepEqual(await order(),['store','bill','exchange']);
+  await click('Newest');assert.deepEqual(await order(),['exchange','bill','store']);
+  await click('Default');await page.waitForFunction(()=>!document.querySelector('[data-browse-order]'));
+  console.log('PASS classic Browse controls reorder one card per category across routes and restore grouping');
   assert.deepEqual(errors,[]);
   console.log('PASS guided on-chain overlay, read-only buyer, fiat vote, failed-check signing gate, signing and payout recovery');
 } finally { await browser?.close(); server.closeAllConnections(); server.close(); }

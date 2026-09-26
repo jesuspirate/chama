@@ -62,6 +62,7 @@ export const browse: Record<string, string> = {
   "browse.scopeLocal": "My Chama",
   "browse.scopeAll": "All",
   "browse.sort": "ORDER",
+  "browse.sortDefault": "Default",
   "browse.sortCheapest": "Cheapest",
   "browse.sortNewest": "Newest",
   "browse.verifyingOffers": "Checking open offers…",
