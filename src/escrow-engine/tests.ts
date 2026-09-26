@@ -26946,6 +26946,9 @@ console.log("\n── #62 REDEEM-PROBE + BONDED-POOL CACHE ──");
     "cache: newer verified spent proof replaces prior stake");
   assert(cache.readCachedCommunityBonds("tz-tzs", T0 + 240_000 + cache.BONDED_POOL_CACHE_TTL_MS + 1, true)?.length === 2,
     "cache: display may retain last verified roster after money-path TTL");
+  const partlyFresh = cache.readCachedCommunityBonds("tz-tzs", T0 + cache.BONDED_POOL_CACHE_TTL_MS + 210_000);
+  assert(partlyFresh?.length === 1 && partlyFresh[0].npub === bond.npub,
+    "cache: an untouched arbiter does not inherit another arbiter's refreshed TTL");
   assert(
     cache.readCachedCommunityBonds("tz-tzs", T0 + 240_000 + cache.BONDED_POOL_CACHE_TTL_MS + 1) === null,
     "cache: past the TTL the entry is stale → null (caller goes live-or-nothing)");

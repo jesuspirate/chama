@@ -35,6 +35,7 @@ export const BONDED_POOL_CACHE_MAX_COMMUNITIES = 50;
 
 /** VerifiedBond with the bigint sats fields as decimal strings. */
 interface SerializedBond {
+  verifiedAt?: number;
   signedEvent?: VerifiedBond["signedEvent"];
   npub: string;
   community: string;
@@ -169,10 +170,17 @@ export function writeCachedCommunityBonds(
   // A relay or explorer can return only part of the roster. A new verification
   // replaces that arbiter's older proof (including a verified spent/expired
   // result); absence from a partial read is not evidence that a bond vanished.
-  const prior = readCachedCommunityBonds(community, nowMs, true) ?? [];
-  const byArbiter = new Map(prior.map(b => [b.npub.toLowerCase(), b]));
-  for (const bond of bonds) byArbiter.set(bond.npub.toLowerCase(), bond);
-  store[community] = { verifiedAt: nowMs, bonds: [...byArbiter.values()].map(serializeBond) };
+  const prior = store[community];
+  const byArbiter = new Map<string, SerializedBond>();
+  for (const old of Array.isArray(prior?.bonds) ? prior.bonds : []) {
+    if (deserializeBond(old)) byArbiter.set(old.npub.toLowerCase(), {
+      ...old, verifiedAt: old.verifiedAt ?? prior.verifiedAt,
+    });
+  }
+  for (const bond of bonds) byArbiter.set(bond.npub.toLowerCase(), {
+    ...serializeBond(bond), verifiedAt: nowMs,
+  });
+  store[community] = { verifiedAt: nowMs, bonds: [...byArbiter.values()] };
   saveCache(store);
 }
 
@@ -188,13 +196,12 @@ export function readCachedCommunityBonds(
 ): VerifiedBond[] | null {
   const entry = loadCache()[community];
   if (!entry || !Number.isFinite(entry.verifiedAt)) return null;
-  if (!allowStale && nowMs - entry.verifiedAt > BONDED_POOL_CACHE_TTL_MS) return null;
   if (!Array.isArray(entry.bonds)) return null;
   const bonds: VerifiedBond[] = [];
   for (const s of entry.bonds) {
     const b = deserializeBond(s);
     if (!b) return null; // one bad record ⇒ distrust the whole entry
-    bonds.push(b);
+    if (allowStale || nowMs - (s.verifiedAt ?? entry.verifiedAt) <= BONDED_POOL_CACHE_TTL_MS) bonds.push(b);
   }
   return bonds.length > 0 ? bonds : null;
 }
