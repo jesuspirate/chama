@@ -70,3 +70,5 @@ StartOS package tags (`vX.Y.Z_<revision>`) are created only in `chama-startos`. 
 
 - `.agents/skills/chama-bar/SKILL.md` — the top status bar is the one always-
   visible signal; loading, "needs you" and warnings go through it.
+- `.agents/skills/proof-of-conduct/SKILL.md` — reputation is verifiable
+  conduct only; read before any number shown next to a person.
