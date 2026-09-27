@@ -1,3 +1,4 @@
+import { RangeFiat } from "../components/RangeFiat.js";
 // ══════════════════════════════════════════════════════════════════════════
 // Chama — Create wizard (v0.2.0 item 5 + items 7, 10)
 // ══════════════════════════════════════════════════════════════════════════
@@ -3475,7 +3476,7 @@ function Step2({
                     placeholder={menuPlaceholderForVertical(vertical, index)}
                     style={{ ...inputStyle, flex: 1, minWidth: 0 }}
                   />
-                  <input
+                  <div><input
                     type="number"
                     onWheel={releaseNumberWheel}
                     autoFocus={index === 0}
@@ -3486,8 +3487,10 @@ function Step2({
                     placeholder={vertical === "p2p-trade" ? t("create.minSatsPlaceholder") : vertical === "lending" ? t("create.principalPlaceholder") : "sats"}
                     style={{ ...inputStyle, width: 92 }}
                   />
+                    {vertical === "p2p-trade" && <RangeFiat min={Number(item.sats) || null} currency={form.cur} usdPerBtc={btcPrice.usd} usdFiatRates={fiatRates.rates} />}
+                  </div>
                   {vertical === "p2p-trade" && (
-                    <input
+                    <div><input
                       type="number"
                       onWheel={releaseNumberWheel}
                       value={item.maxSats}
@@ -3495,6 +3498,8 @@ function Step2({
                       placeholder={t("create.maxPlaceholder")}
                       style={{ ...inputStyle, width: 92 }}
                     />
+                    {vertical === "p2p-trade" && <RangeFiat min={Number(item.maxSats) || null} currency={form.cur} usdPerBtc={btcPrice.usd} usdFiatRates={fiatRates.rates} />}
+                  </div>
                   )}
                 </div>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>

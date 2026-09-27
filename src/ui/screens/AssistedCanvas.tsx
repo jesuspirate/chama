@@ -1,3 +1,4 @@
+import { RangeFiat } from "../components/RangeFiat.js";
 import { ConductFacts } from "../components/ConductFacts.js";
 import { readPreferredRails, savePreferredRails } from "../../payments/preferred-rails.js";
 import { useCanvasViewport } from "../hooks/useCanvasViewport.js";
@@ -576,6 +577,8 @@ export function AssistedCanvas({
       })
     : null;
 
+  const fiatQuote = { currency: fiatCurrency, usdPerBtc: btcPrice.usd, usdFiatRates: fiatRates.rates };
+
   const offeredSats = fiatBring ? estimatedSats ?? 0
     : bring === "goods" ? positiveNumber(terms) ?? 0 : positiveNumber(detail) ?? 0;
   const escrowMode = escrowChoice ?? defaultEscrowModeForAmount(BigInt(Math.max(0, Math.floor(offeredSats))));
@@ -850,6 +853,7 @@ export function AssistedCanvas({
               ? tr("canvas.satsRangeValue", { min: (rangeMin ?? 0).toLocaleString(), max: rangeMax.toLocaleString() })
               : tr("canvas.satsValue", { amount: (positiveNumber(bring === "goods" ? terms : detail) ?? 0).toLocaleString() })}
         />
+        {sellRange && <RangeFiat min={rangeMin} max={rangeMax} {...fiatQuote} />}
         {bring === "bill" && estimatedSats && <ReviewRow label={tr("canvas.bitcoinOffered")} value={tr("canvas.aboutSats", { amount: estimatedSats.toLocaleString() })} />}
         {bring === "sats" && <ReviewRow label={tr("canvas.receiveThrough")} value={paymentRailLabels(effectiveRails)} />}
         {onchainEscrowAvailable(BigInt(Math.max(0, Math.floor(offeredSats)))) && <div role="group" aria-label={tr("onchain.modeLabel")} style={{ display: "flex", gap: 8, marginTop: 12 }}>
@@ -926,9 +930,13 @@ export function AssistedCanvas({
         ) : sellRange ? (
           <div style={{ ...amountLineStyle(), flexWrap: "wrap" }}>
             <span>{tr("canvas.rangeFrom")}</span>
-            <input autoFocus inputMode="numeric" value={detail} onChange={event => setDetail(digitsOnly(event.target.value))} placeholder="10,000" aria-label={tr("canvas.rangeMinAria")} style={{ ...bareInputStyle(), flex: "0 1 auto", width: `${Math.max(detail.length, 6) + 0.5}ch`, textAlign: "center", borderBottom: `3px dashed ${T.accent}88`, paddingBottom: 2 }} />
+            <div><input autoFocus inputMode="numeric" value={detail} onChange={event => setDetail(digitsOnly(event.target.value))} placeholder="10,000" aria-label={tr("canvas.rangeMinAria")} style={{ ...bareInputStyle(), flex: "0 1 auto", width: `${Math.max(detail.length, 6) + 0.5}ch`, textAlign: "center", borderBottom: `3px dashed ${T.accent}88`, paddingBottom: 2 }} />
+              <RangeFiat min={rangeMin} {...fiatQuote} />
+            </div>
             <span>{tr("canvas.rangeTo")}</span>
-            <input inputMode="numeric" value={detailMax} onChange={event => setDetailMax(digitsOnly(event.target.value))} placeholder="100,000" aria-label={tr("canvas.rangeMaxAria")} style={{ ...bareInputStyle(), flex: "0 1 auto", width: `${Math.max(detailMax.length, 7) + 0.5}ch`, textAlign: "center", borderBottom: `3px dashed ${T.accent}88`, paddingBottom: 2 }} />
+            <div><input inputMode="numeric" value={detailMax} onChange={event => setDetailMax(digitsOnly(event.target.value))} placeholder="100,000" aria-label={tr("canvas.rangeMaxAria")} style={{ ...bareInputStyle(), flex: "0 1 auto", width: `${Math.max(detailMax.length, 7) + 0.5}ch`, textAlign: "center", borderBottom: `3px dashed ${T.accent}88`, paddingBottom: 2 }} />
+              <RangeFiat min={rangeMax} {...fiatQuote} />
+            </div>
             <span>SATS</span>
           </div>
         ) : (
