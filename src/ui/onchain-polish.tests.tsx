@@ -36,3 +36,16 @@ assert.equal(presence().signal,'seated');
 state.participants.arbiter=null;state.communityArbiters=[];state.bondedArbiters=[];
 assert.equal(presence().signal,'empty');
 console.log('PASS assigned arbiter matches record, is not ready, becomes seated, and empty pool stays open');
+
+import { translate, LANGS } from '../i18n/index.js';
+for (const lang of LANGS) {
+  const one=translate(lang,'trade.bondedForDaysOne',{count:1});
+  const many=translate(lang,'trade.bondedForDaysMany',{count:2});
+  assert.ok(one.includes('1') && many.includes('2'));
+  assert.ok(!one.includes('trade.') && !many.includes('trade.'));
+  if (lang==='en') {assert.equal(one,'bonded 1 day');assert.equal(many,'bonded 2 days');}
+  if (lang==='fr') {assert.match(one,/1 jour$/);assert.match(many,/2 jours$/);}
+  if (lang==='es') {assert.match(one,/1 día$/);assert.match(many,/2 días$/);}
+  assert.ok(translate(lang,'trade.bondedAmountDaysOne',{amount:'100,000',count:1}).includes('100,000'));
+}
+console.log('PASS bond day plurals in English, French, Spanish and Swahili');

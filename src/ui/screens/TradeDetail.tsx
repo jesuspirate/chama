@@ -4848,7 +4848,7 @@ function ArbiterCommitmentCard({ bond, tipHeight, cohortPeers, concentration }: 
       </div>
       <div>
         <BitcoinAmount sats={Number(bond.actualSats)} size={12} gap={3} glyphScale={1.1} />
-        {days !== null && <span style={{ color: T.muted }}> · {t("trade.bondedForDays", { count: days })}</span>}
+        {days !== null && <span style={{ color: T.muted }}> · {t(days === 1 ? "trade.bondedForDaysOne" : "trade.bondedForDaysMany", { count: days })}</span>}
       </div>
       {/* Renewals are stated as a COUNT, never as a virtue. "Kept going through
           4 renewals" is a fact about time; "trusted arbiter" would be Chama

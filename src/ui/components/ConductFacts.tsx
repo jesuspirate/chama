@@ -1,3 +1,4 @@
+import { useT } from "../../i18n/index.js";
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { PublicConductRecord } from '../../escrow-engine/public-conduct.js';
 import { T } from '../theme.js';
@@ -42,6 +43,7 @@ export function ConductFacts({pubkey, showEmpty = false}: {pubkey?:string|null; 
 }
 
 export function ConductFactLines({record, showEmpty = false}: {record:PublicConductRecord; showEmpty?:boolean}) {
+  const { t } = useT();
   const standing=record.standing;
   const hasFacts = record.marks > 0 || standing?.sellerSpeed || standing?.arbiterSpeed
     || standing?.bonded || (standing?.settledTrades ?? 0) > 0;
@@ -53,7 +55,7 @@ export function ConductFactLines({record, showEmpty = false}: {record:PublicCond
     </span>}
     {standing?.sellerSpeed && <span style={{display:'block'}}>Signs within {duration(standing.sellerSpeed.medianSeconds)} (median of {standing.sellerSpeed.samples})</span>}
     {standing?.arbiterSpeed && <span style={{display:'block'}}>Rules within {duration(standing.arbiterSpeed.medianSeconds)} (median of {standing.arbiterSpeed.samples})</span>}
-    {standing?.bonded && <span style={{display:'block'}}>Bonded {Number(standing.bonded.sats).toLocaleString('en-US')} sats for {standing.bonded.days} days</span>}
+    {standing?.bonded && <span style={{display:'block'}}>{t(standing.bonded.days === 1 ? "trade.bondedAmountDaysOne" : "trade.bondedAmountDaysMany", { amount: Number(standing.bonded.sats).toLocaleString(), count: standing.bonded.days })}</span>}
     {standing?.settledTrades != null && standing.settledTrades>0 && <span style={{display:'block'}}>{standing.settledTrades} trades settled on chain</span>}
   </span>;
 }
