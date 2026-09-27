@@ -384,10 +384,12 @@ export function LiveTradeSurface({
           : null;
         return (
           <Waiting message={onchainWaiting ?? tr("lts.waitingLock", { role: roleLabel(funderRole) })}>
-            {state.escrowMode === "onchain" && <MoreOptions onClick={() => setOnchainOpen(true)} label="Open on-chain deposit details" />}
-            {preLock && (
-              <CountdownTimer expiresAt={preLock.at} label={tr("lts.forRoleLock", { role: roleLabel(funderRole) })} />
-            )}
+            <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: "12px 20px" }}>
+              {state.escrowMode === "onchain" && <MoreOptions onClick={() => setOnchainOpen(true)} label="Open on-chain deposit details" />}
+              {preLock && (
+                <CountdownTimer expiresAt={preLock.at} label={tr("lts.forRoleLock", { role: roleLabel(funderRole) })} />
+              )}
+            </div>
           </Waiting>
         );
       }
