@@ -1,0 +1,12 @@
+import assert from 'node:assert/strict';
+import { guidedEscrowAmounts } from './guided-escrow.js';
+assert.equal(guidedEscrowAmounts(21, 60000, null).available, true);
+assert.equal(guidedEscrowAmounts(21, 60000, null).mode, 'ecash');
+assert.equal(guidedEscrowAmounts(21, 60000, 'onchain').invalidMinimum, true);
+assert.equal(guidedEscrowAmounts(25000, 60000, 'onchain').invalidMinimum, false);
+assert.equal(guidedEscrowAmounts(100000, 200000, null).mode, 'onchain');
+assert.equal(guidedEscrowAmounts(25000, 200000, null).mode, 'ecash');
+assert.equal(guidedEscrowAmounts(21, 24999, null).available, false);
+assert.equal(guidedEscrowAmounts(21, 25000, null).available, true);
+assert.equal(guidedEscrowAmounts(21, 60000, 'onchain').amountSats, 60000);
+console.log('PASS guided range rail thresholds, defaults, minimum and fee amount');

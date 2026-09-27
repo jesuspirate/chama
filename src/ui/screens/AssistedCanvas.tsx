@@ -44,7 +44,7 @@ import { RailHeader } from "../components/RailHeader.js";
 import { TradeCard } from "../components/TradeCard.js";
 import { circleFromEscrow } from "../../chama/policy.js";
 import { groupBySettlementRail, railHeadersNeeded, settlementRailOf } from "../settlement-rail.js";
-import { defaultEscrowModeForAmount, onchainEscrowAvailable } from "../../bond-multisig/onchain-escrow.js";
+import { guidedEscrowAmounts } from "../guided-escrow.js";
 import { OnchainFeeCheckout, useOnchainFeeRate } from "../components/OnchainFeeCheckout.js";
 import { profileNameFor, type NostrProfileNameMap } from "../nostr-profiles.js";
 import { translate, getCurrentLang } from "../../i18n/index.js";
@@ -581,10 +581,17 @@ export function AssistedCanvas({
 
   const offeredSats = fiatBring ? estimatedSats ?? 0
     : bring === "goods" ? positiveNumber(terms) ?? 0 : positiveNumber(detail) ?? 0;
-  const escrowMode = escrowChoice ?? defaultEscrowModeForAmount(BigInt(Math.max(0, Math.floor(offeredSats))));
+  const escrow = guidedEscrowAmounts(offeredSats, sellRange ? rangeMax ?? 0 : offeredSats, escrowChoice);
+  const escrowMode = escrow.mode;
+  const minimumMessage = "On-chain needs at least 25,000 sats per trade — raise the low end or choose Chama ecash";
+  const railChoice = escrow.available && <div role="group" aria-label={tr("onchain.modeLabel")} style={{ display: "flex", gap: 8, marginTop: 12 }}>
+    {(["onchain", "ecash"] as const).map(mode => <button key={mode} type="button" aria-pressed={escrowMode === mode} onClick={() => setEscrowChoice(mode)} style={{ flex: 1, padding: 10, borderRadius: 12, border: `1px solid ${escrowMode === mode ? T.accent : T.border}`, background: escrowMode === mode ? T.accentDim : T.card, color: T.text }}>
+      {tr(mode === "onchain" ? "onchain.modeOnchain" : "onchain.modeEcash")}
+    </button>)}
+  </div>;
 
   const openPreparedOffer = () => {
-    if (!bring || !want) return;
+    if (!bring || !want || escrow.invalidMinimum) return;
     if (bring === "bill") {
       onCreate({
         vertical: "bill-pay",
@@ -856,17 +863,14 @@ export function AssistedCanvas({
         {sellRange && <RangeFiat min={rangeMin} max={rangeMax} {...fiatQuote} />}
         {bring === "bill" && estimatedSats && <ReviewRow label={tr("canvas.bitcoinOffered")} value={tr("canvas.aboutSats", { amount: estimatedSats.toLocaleString() })} />}
         {bring === "sats" && <ReviewRow label={tr("canvas.receiveThrough")} value={paymentRailLabels(effectiveRails)} />}
-        {onchainEscrowAvailable(BigInt(Math.max(0, Math.floor(offeredSats)))) && <div role="group" aria-label={tr("onchain.modeLabel")} style={{ display: "flex", gap: 8, marginTop: 12 }}>
-          {(["onchain", "ecash"] as const).map(mode => <button key={mode} type="button" aria-pressed={escrowMode === mode} onClick={() => setEscrowChoice(mode)} style={{ flex: 1, padding: 10, borderRadius: 12, border: `1px solid ${escrowMode === mode ? T.accent : T.border}`, background: escrowMode === mode ? T.accentDim : T.card, color: T.text }}>
-            {tr(mode === "onchain" ? "onchain.modeOnchain" : "onchain.modeEcash")}
-          </button>)}
-        </div>}
-        {escrowMode === "onchain" && onchainEscrowAvailable(BigInt(Math.max(0, Math.floor(offeredSats))))
-          && <OnchainFeeCheckout amountSats={offeredSats} rate={onchainFee.rate} />}
+        {railChoice}
+        {escrow.invalidMinimum && <div style={{ color: T.amber, marginTop: 8 }}>{minimumMessage} <button type="button" onClick={() => setSurface("detail")}>Change amount</button></div>}
+        {escrowMode === "onchain" && escrow.available
+          && <OnchainFeeCheckout amountSats={escrow.amountSats} rate={onchainFee.rate} />}
         {((bring === "sats" && want === "cash") || bring === "bill") && <ReviewRow label={bring === "bill" ? tr("canvas.volunteerBonus") : tr("canvas.yourRate")} value={premiumBps === 0 ? tr("canvas.marketRate") : `+${(premiumBps / 100).toLocaleString()}%`} />}
         <ReviewRow label={tr("canvas.visibleIn")} value={community?.displayName ?? browseCommunity} last />
       </div>
-      <Primary onClick={openPreparedOffer}>{tr("canvas.publishIt")}</Primary>
+      <Primary disabled={escrow.invalidMinimum} onClick={openPreparedOffer}>{tr("canvas.publishIt")}</Primary>
       <Safety>{tr("canvas.publishSafety")}</Safety>
     </CanvasShell>;
   }
@@ -932,6 +936,7 @@ export function AssistedCanvas({
             <span>{tr("canvas.rangeFrom")}</span>
             <div><input autoFocus inputMode="numeric" value={detail} onChange={event => setDetail(digitsOnly(event.target.value))} placeholder="10,000" aria-label={tr("canvas.rangeMinAria")} style={{ ...bareInputStyle(), flex: "0 1 auto", width: `${Math.max(detail.length, 6) + 0.5}ch`, textAlign: "center", borderBottom: `3px dashed ${T.accent}88`, paddingBottom: 2 }} />
               <RangeFiat min={rangeMin} {...fiatQuote} />
+              {escrow.invalidMinimum && <div style={{ color: T.amber, fontSize: 12, maxWidth: 240 }}>{minimumMessage}</div>}
             </div>
             <span>{tr("canvas.rangeTo")}</span>
             <div><input inputMode="numeric" value={detailMax} onChange={event => setDetailMax(digitsOnly(event.target.value))} placeholder="100,000" aria-label={tr("canvas.rangeMaxAria")} style={{ ...bareInputStyle(), flex: "0 1 auto", width: `${Math.max(detailMax.length, 7) + 0.5}ch`, textAlign: "center", borderBottom: `3px dashed ${T.accent}88`, paddingBottom: 2 }} />
@@ -942,11 +947,12 @@ export function AssistedCanvas({
         ) : (
           <div style={amountLineStyle()}><span>{detailConfig.prefix}</span><input autoFocus inputMode={fiatBring ? "decimal" : "numeric"} value={detail} onChange={event => setDetail(numberText(event.target.value, fiatBring))} placeholder={fiatBring ? "50.00" : "50,000"} style={bareInputStyle()} /><span>{detailConfig.suffix}</span></div>
         )}
+        {sellRange && railChoice}
         {sellRange && (
           <div style={{ color: T.muted, marginTop: 12, fontSize: 13 }}>{tr("canvas.rangeWhy")}</div>
         )}
         {estimatedSats && <div style={{ color: T.muted, marginTop: 12, fontSize: 13 }}>{tr("canvas.aboutSatsRate", { amount: estimatedSats.toLocaleString() })}</div>}
-        <Primary disabled={!detailValid} onClick={continueFromDetail}>{tr("canvas.continue")}</Primary>
+        <Primary disabled={!detailValid || escrow.invalidMinimum} onClick={continueFromDetail}>{tr("canvas.continue")}</Primary>
       </QuestionCard>
       {error && <ErrorBox>{error}</ErrorBox>}
     </CanvasShell>;
