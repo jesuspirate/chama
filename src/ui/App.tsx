@@ -5024,8 +5024,8 @@ export default function App() {
             // instead of an unblurrable black void. Only the drafts list grows
             // the content, so cap at the viewport (minus top+bottom blur margin)
             // and let extra drafts scroll inside.
-            position: "fixed", left: 0, right: 0, top: 40,
-            zIndex: 9995, maxWidth: 520, margin: "0 auto",
+            position: "fixed", left: 0, right: 0, top: 0, bottom: 0, height: "fit-content",
+            zIndex: 9995, maxWidth: 520, margin: "auto",
             maxHeight: "calc(100dvh - 80px)",
             background: T.bg, borderRadius: 18,
             border: `1px solid ${T.border}`,
