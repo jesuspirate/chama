@@ -180,11 +180,11 @@ export function LiveTradeSurface({
       && myRole === (state.onchainFundingTerms?.funder ?? expectedLockerRole(state.category))) setOnchainOpen(true);
   }, [state.id, state.status, participants.buyer, participants.seller, myRole]);
   const onchainOverlay = onchainOpen ? state.status === EscrowStatus.CREATED
-    ? <FundingModalShell label={state.description || "Fund trade"} onClose={() => setOnchainOpen(false)}>
+    ? <FundingModalShell label={state.title || state.description || "Fund trade"} onClose={() => setOnchainOpen(false)}>
         <PaymentRails rail="onchain" disabledReasons={{ lightning: "This trade is held on Bitcoin", ecash: "This trade is held on Bitcoin" }} />
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "16px 0" }}>
           <div><BitcoinAmount msats={state.joinHolds?.buyer?.amountMsats ?? state.amountMsats} size={14} />
-            <h2 style={{ color: T.text, fontSize: 20, margin: "6px 0", overflowWrap: "anywhere" }}>{state.description || "Fund trade"}</h2></div>
+            <h2 style={{ color: T.text, fontSize: 20, margin: "6px 0", overflowWrap: "anywhere" }}>{state.title || state.description || "Fund trade"}</h2></div>
           <button type="button" aria-label="Close" onClick={() => setOnchainOpen(false)} style={{ background: "none", border: 0, color: T.muted, minWidth: 44, minHeight: 44, fontSize: 20 }}>×</button>
         </div>
         {onchainControls}

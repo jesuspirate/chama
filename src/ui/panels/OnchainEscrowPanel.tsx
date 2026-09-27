@@ -1,3 +1,5 @@
+import { esploraAddressUrl } from "../../bond-multisig/esplora-config.js";
+import { openExternalUrl } from "../open-url.js";
 import { PaymentButton, PaymentCopyChip } from "../components/PaymentCard.js";
 import { FundingNote } from "../components/FundingModalShell.js";
 import { PayoutTransactionDetails } from "../components/PayoutTransactionDetails.js";
@@ -23,12 +25,8 @@ import { QRCode } from "../QRCode.js";
 import type { OnchainEscrowView } from "../../escrow-engine/onchain-escrow-view.js";
 import { mayEnableSignButton } from "../../escrow-engine/onchain-escrow-view.js";
 import type { SettlementCheck } from "../../bond-multisig/onchain-escrow-settle.js";
-import { BitcoinAmount } from "../components/BitcoinAmount.js";
-import { CopyButton } from "../components/CopyButton.js";
 import { T } from "../theme.js";
 import { MAINNET, SIGNET } from "../../bond-multisig/multisig.js";
-import { esploraTransactionUrl, esploraAddressUrl } from "../../bond-multisig/esplora-config.js";
-import { openExternalUrl } from "../open-url.js";
 
 export function OnchainEscrowPanel({
   view,
@@ -91,7 +89,7 @@ export function OnchainEscrowPanel({
       marginBottom: 12,
       fontFamily: T.sans,
     }}>
-      {view.stage !== "awaiting-funding" && <div style={{
+      {(view.stage !== "awaiting-funding" || network === "signet") && <div style={{
         display: "flex", alignItems: "center", gap: 8, marginBottom: 8,
         fontSize: 12.5, fontWeight: 800, color: T.accent,
       }}>
@@ -165,10 +163,10 @@ export function OnchainEscrowPanel({
       )}
 
       {view.stage === "awaiting-funding" && view.address && <>
-        <p style={{ textAlign: "center" }}>{view.viewerFunds ? "Send" : "Waiting for the funder to send"} {Number(view.expectedSats).toLocaleString()} sats to this address</p>
+        <p style={{ textAlign: "center" }}>{view.viewerFunds && depositStatus === "waiting" ? "Send" : "Deposit:"} {Number(view.expectedSats).toLocaleString()} sats{view.viewerFunds && depositStatus === "waiting" ? " to this address" : ""}</p>
         {uri && <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}><QRCode data={uri} size={210} logo="static" errorCorrectionLevel="H" alt={t("onchain.addressLabel")} /></div>}
         <PaymentCopyChip value={view.address} address />
-        <p role="status" style={{ color: T.muted, fontSize: 12, textAlign: "center" }}>Locks after 1 confirmation · {t(depositStatus === "seen" ? "onchain.seenMempool" : depositStatus === "confirmed" ? "onchain.depositConfirmed" : "onchain.waitingDeposit")}</p>
+        <p role="status" style={{ color: T.muted, fontSize: 12, textAlign: "center" }}>{depositStatus !== "confirmed" && "Locks after 1 confirmation · "}{t(depositStatus === "seen" ? "onchain.seenMempool" : depositStatus === "confirmed" ? "onchain.depositConfirmed" : "onchain.waitingDeposit")}{!view.viewerFunds && depositStatus === "confirmed" && " · Locks when the funder next opens Chama"}</p>
         {view.viewerFunds && onCheckFunding && <PaymentButton disabled={checking} onClick={onCheckFunding} style={{ width: "100%" }}>
           {checking && <span className="funding-check-spinner" aria-hidden="true" style={{ display: "inline-block", width: 12, height: 12, border: "2px solid currentColor", borderTopColor: "transparent", borderRadius: "50%", animation: "funding-check-spin 1s linear infinite", marginRight: 8 }} />}
           {checking ? t("onchain.checking") : t("onchain.iveSentIt")}
@@ -177,6 +175,9 @@ export function OnchainEscrowPanel({
         <details style={{ marginTop: 12, fontSize: 12, color: T.muted }}>
           <summary style={{ minHeight: 44, cursor: "pointer" }}>Why this address is safe</summary>
           Your app built this address from the trade's terms; it didn't take it from anyone. Confirmations and payout signatures are public; chat and payment details stay private.
+          <a href={esploraAddressUrl(btcNetwork, view.address)} target="_blank" rel="noreferrer noopener"
+            onClick={event => { event.preventDefault(); void openExternalUrl(esploraAddressUrl(btcNetwork, view.address!)); }}
+            style={{ display: "block", marginTop: 8, color: T.muted }}>{t("onchain.viewOnChain")} ↗</a>
         </details>
       </>}
 

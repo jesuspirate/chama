@@ -19,7 +19,7 @@ assert.doesNotMatch(waiting, /Deposit seen; waiting for confirmation/);
 assert.match(render("seen", null), /Deposit seen; waiting for confirmation/);
 assert.match(render("confirmed", null), /Deposit confirmed/);
 const buyerHtml = renderToStaticMarkup(<LangProvider><OnchainEscrowPanel view={{ ...view, viewerFunds: false }} network="mainnet" depositStatus="confirmed" /></LangProvider>);
-assert.match(buyerHtml, /next time they open Chama/);
+assert.match(buyerHtml, /funder next opens Chama/);
 console.log("Brief 04 on-chain funding status: waiting, seen and confirmed are explicit");
 
 // Both guided and full trade controls render this panel. Read-only buyers get

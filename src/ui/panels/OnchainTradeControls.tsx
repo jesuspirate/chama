@@ -184,11 +184,11 @@ export function OnchainTradeControls({ state, pubkey, profileNames, kind0Enabled
     }
     finally { busyRef.current = false; setBusy(false); }
   };
-  const prepareFunding = () => prepareFundingOnce(`${pubkey}:${state.id}`, async () => {
+  const prepareFunding = async () => {
     setPrepareFailed(false);
-    try { await latest.current.onPrepareOnchainFunding!(state.id); }
+    try { await prepareFundingOnce(`${pubkey}:${state.id}`, () => latest.current.onPrepareOnchainFunding!(state.id)); }
     catch (error) { setPrepareFailed(true); throw error; }
-  });
+  };
   useEffect(() => {
     if (state.status !== EscrowStatus.CREATED || state.onchainFundingTerms || !view.viewerFunds
       || !participants.buyer || !participants.seller || !actions.onPrepareOnchainFunding) return;

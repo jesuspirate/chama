@@ -49,3 +49,4 @@ for (const lang of LANGS) {
   assert.ok(translate(lang,'trade.bondedAmountDaysOne',{amount:'100,000',count:1}).includes('100,000'));
 }
 console.log('PASS bond day plurals in English, French, Spanish and Swahili');
+assert.match(renderToStaticMarkup(<LangProvider><OnchainEscrowPanel view={view} network="signet" /></LangProvider>), /SIGNET/i, 'test-network label stays visible beside the funding QR');
