@@ -28,7 +28,7 @@ export function ConductProvider({load,children}: {load:Load;children:ReactNode})
   },[]);
   return <Context.Provider value={get}>{children}</Context.Provider>;
 }
-export function ConductFacts({pubkey}: {pubkey?:string|null}) {
+export function ConductFacts({pubkey, showEmpty = false}: {pubkey?:string|null; showEmpty?:boolean}) {
   const load=useContext(Context);
   const [record,setRecord]=useState<PublicConductRecord|null>(null);
   useEffect(()=>{
@@ -38,11 +38,14 @@ export function ConductFacts({pubkey}: {pubkey?:string|null}) {
     const timer=setInterval(refresh,60_000);
     return ()=>{stopped=true;clearInterval(timer);};
   },[load,pubkey]);
-  return record ? <ConductFactLines record={record} /> : null;
+  return record ? <ConductFactLines record={record} showEmpty={showEmpty} /> : showEmpty ? <span>No public history yet.</span> : null;
 }
 
-export function ConductFactLines({record}: {record:PublicConductRecord}) {
+export function ConductFactLines({record, showEmpty = false}: {record:PublicConductRecord; showEmpty?:boolean}) {
   const standing=record.standing;
+  const hasFacts = record.marks > 0 || standing?.sellerSpeed || standing?.arbiterSpeed
+    || standing?.bonded || (standing?.settledTrades ?? 0) > 0;
+  if (!hasFacts) return showEmpty ? <span>No public history yet.</span> : null;
   const duration=(seconds:number)=>seconds<60?`${Math.ceil(seconds)} seconds`:seconds<3600?`${Math.ceil(seconds/60)} minutes`:`${Math.round(seconds/360)/10} hours`;
   return <span style={{display:'block',flexBasis:'100%',minWidth:0,overflowWrap:'anywhere',whiteSpace:'normal',fontSize:11,lineHeight:1.4,color:T.muted}}>
     {record.marks>0 && <span style={{display:'block',color:T.red,fontSize:12,fontWeight:700}}>
@@ -52,7 +55,5 @@ export function ConductFactLines({record}: {record:PublicConductRecord}) {
     {standing?.arbiterSpeed && <span style={{display:'block'}}>Rules within {duration(standing.arbiterSpeed.medianSeconds)} (median of {standing.arbiterSpeed.samples})</span>}
     {standing?.bonded && <span style={{display:'block'}}>Bonded {Number(standing.bonded.sats).toLocaleString('en-US')} sats for {standing.bonded.days} days</span>}
     {standing?.settledTrades != null && standing.settledTrades>0 && <span style={{display:'block'}}>{standing.settledTrades} trades settled on chain</span>}
-    {standing?.newHere && <span>New here · no history yet.</span>}
-    {!record.complete && record.marks===0 && !standing?.bonded && <span>Public history unavailable.</span>}
   </span>;
 }

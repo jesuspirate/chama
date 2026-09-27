@@ -10,6 +10,6 @@ assert.match(render(bonded), /100,000 sats at stake/);
 assert.equal(render(bonded), render({...bonded,disputes:99,healings:7,medianResponseSec:12,lastSeen:999,observedTrades:200}),
   'Different device-local histories must not produce different arbiter claims');
 assert.doesNotMatch(render(bonded), /disputes|Healings|Last signed|this device|replies|<details/);
-assert.match(render(), /No verified bond found/);
+assert.match(render(), /has no bond/);
 assert.doesNotMatch(render(), /nothing at stake/);
 console.log('PASS arbiter display: verified bond only; local history cannot change the card');

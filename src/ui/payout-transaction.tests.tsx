@@ -28,4 +28,6 @@ console.log('PASS payout transaction identity: first six/last four, full title a
 const conductHtml=renderToStaticMarkup(<ConductFactLines record={{marks:2,complete:true,trades:[],standing:{sellerSpeed:{medianSeconds:120,samples:3},arbiterSpeed:null,settledTrades:3,bonded:{sats:'100000',days:12},newHere:false}}} />);
 assert.ok(conductHtml.indexOf('Made a buyer wait')<conductHtml.indexOf('Signs within'));
 assert.match(conductHtml,/median of 3/);assert.match(conductHtml,/Bonded 100,000 sats for 12 days/);assert.match(conductHtml,/3 trades settled on chain/);
-assert.match(renderToStaticMarkup(<ConductFactLines record={{marks:0,complete:false,trades:[]}} />),/Public history unavailable/);
+assert.equal(renderToStaticMarkup(<ConductFactLines record={{marks:0,complete:false,trades:[]}} />), '');
+assert.equal(renderToStaticMarkup(<ConductFactLines record={{marks:0,complete:true,trades:[]}} />), '');
+assert.match(renderToStaticMarkup(<ConductFactLines record={{marks:0,complete:false,trades:[]}} showEmpty />), /No public history yet/);
