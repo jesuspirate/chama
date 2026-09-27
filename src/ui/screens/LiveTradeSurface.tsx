@@ -760,7 +760,7 @@ export function LiveTradeSurface({
         }
         .lts-room{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
           padding:8px 16px;border-bottom:1px solid ${T.border};background:${T.bg}}
-        .lts-room-people{display:flex;flex-wrap:wrap;align-items:center;gap:8px;min-width:0;flex:1 1 auto}
+        .lts-room-people{display:flex;flex-wrap:wrap;align-items:flex-start;gap:8px;min-width:0;flex:1 1 auto}
         @keyframes ltsHere{0%,100%{opacity:1}50%{opacity:.35}}
         @media (prefers-reduced-motion:reduce){.lts-here-dot{animation:none!important}}
         @keyframes ltsPulse{0%,100%{box-shadow:0 0 0 0 ${T.amber}00}50%{box-shadow:0 0 0 4px ${T.amber}33}}
@@ -939,29 +939,30 @@ function PersonChip({ person, name, onClick }: { person: RoomPresence; name: str
     : tr("lts.roomQuiet");
   return (
     <button type="button" onClick={onClick} style={{ minHeight: 44, cursor: "pointer",
-      display: "inline-flex", alignItems: "center", flexWrap: "wrap", gap: 6, minWidth: 0, maxWidth: "100%",
-      fontFamily: T.mono, fontSize: 11,
-      background: T.surface, border: `1px solid ${person.ready ? `${T.green}44` : T.border}`,
-      borderRadius: 999, padding: "4px 10px",
+      display: "grid", gridTemplateColumns: "24px minmax(0, 1fr)", alignItems: "start", gap: 9,
+      minWidth: 0, maxWidth: "100%", textAlign: "left", fontFamily: T.sans, fontSize: 12,
+      background: T.surface, border: `1px solid ${T.border}`,
+      borderRadius: 14, padding: "9px 12px",
     }}>
-      <ConductFacts pubkey={person.pubkey} />
-      <ProfileAvatar pubkey={person.pubkey} fallback={null} size={24} />
-      <span
-        className={here ? "lts-here-dot" : undefined}
-        style={{
-          width: 7, height: 7, borderRadius: "50%", background: color, flexShrink: 0,
-          opacity: here ? 1 : 0.5,
+      <span style={{ position: "relative", display: "block", marginTop: 1 }}>
+        <ProfileAvatar pubkey={person.pubkey} fallback={null} size={24} />
+        <span className={here ? "lts-here-dot" : undefined} style={{
+          position: "absolute", right: -2, bottom: -1, width: 7, height: 7,
+          borderRadius: "50%", background: color, border: `2px solid ${T.surface}`,
           animation: here ? "ltsHere 2s ease-in-out infinite" : undefined,
-        }}
-      />
-      <span style={{
-        color: person.signal === "assigned" ? T.muted : T.text, fontWeight: 700, maxWidth: 116,
-        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-      }}>
-        {name ?? tr("lts.roomSomeone")}
+        }} />
       </span>
-      <span style={{ color: person.ready ? T.green : T.muted, flexShrink: 0 }}>
-        · {person.ready ? tr("lts.roomReady") : sub}
+      <span style={{ display: "grid", gap: 3, minWidth: 0 }}>
+        <span style={{ display: "flex", alignItems: "baseline", flexWrap: "wrap", gap: "2px 6px", minWidth: 0 }}>
+          <span style={{ color: person.signal === "assigned" ? T.muted : T.text, fontWeight: 700,
+            overflowWrap: "anywhere", minWidth: 0 }}>
+            {name ?? tr("lts.roomSomeone")}
+          </span>
+          <span style={{ color: person.ready ? T.green : T.muted, fontSize: 10, whiteSpace: "nowrap" }}>
+            · {person.ready ? tr("lts.roomReady") : sub}
+          </span>
+        </span>
+        <ConductFacts pubkey={person.pubkey} />
       </span>
     </button>
   );
