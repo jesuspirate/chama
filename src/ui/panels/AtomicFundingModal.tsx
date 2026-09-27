@@ -1,3 +1,4 @@
+import { FundingModalShell, FundingNote } from "../components/FundingModalShell.js";
 import { fundingPremiumMsats } from "../../payments/funding-premium.js";
 import { errorText } from "../../payments/error-text.js";
 import { simOnchainMode } from "../../sim/simMode.js";
@@ -579,21 +580,7 @@ export function AtomicFundingModal({
   };
 
   return (
-    <div onClick={handleCancel} style={{
-      // v0.6.5: 0xee alpha (≈93%) instead of 0xcc (80%). On first-fire
-      // the modal can sit on the CreatingInvoice spinner for a few
-      // seconds while the WASM client and federation warm up; with
-      // the looser backdrop the TradeDetail page behind it (including
-      // the Fund button's transient "Funding…" label) was visually
-      // bleeding through and reading like a glitch.
-      position: "fixed", inset: 0, background: "#000e", zIndex: 9998,
-      display: "flex", alignItems: "center", justifyContent: "center",
-      padding: 16, animation: "fadeIn 0.2s ease",
-    }}>
-      <div onClick={(e) => e.stopPropagation()} style={{
-        background: T.card, border: `1px solid ${T.borderHi}`, borderRadius: T.r,
-        padding: "20px 16px", maxWidth: 420, width: "100%", maxHeight: "92dvh", overflowY: "auto", boxSizing: "border-box",
-      }}>
+    <FundingModalShell onClose={handleCancel}>
         {/* Header — amount is the eyebrow, label is the title */}
         {!disableNwc && <div data-funding-rails aria-hidden={!railsVisible} style={{ marginBottom: 16, visibility: railsVisible ? "visible" : "hidden" }}>
           <PaymentRails rail={request?.rail ?? initialRail}
@@ -608,12 +595,12 @@ export function AtomicFundingModal({
           </button>}
         </div>}
         {invoiceUnavailable && phase.kind === "choose-method" && !request && !paymentDetected && <button type="button" onClick={retryLightning} style={{ background: "none", border: 0, color: T.muted, textDecoration: "underline", minHeight: 44 }}>{t("fund.tryAgain")}</button>}
-        {invoiceFailed && <div role="alert" style={{ marginBottom: 12 }}>
+        {invoiceFailed && <FundingNote>
           <p>{t("fund.invoiceFailedPlain")}</p>
           {/No gateways available/i.test(phase.error) && <p>{t("fund.noGateways")}</p>}
           <small style={{ overflowWrap: "anywhere" }}>{phase.error}</small>
           <div><button type="button" onClick={retryLightning} style={{ background: "none", border: 0, color: T.muted, textDecoration: "underline", minHeight: 44 }}>{t("fund.tryAgain")}</button></div>
-        </div>}
+        </FundingNote>}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
           <div>
             <div style={{ fontSize: 9, color: T.muted, fontFamily: T.mono, letterSpacing: 1, marginBottom: 4 }}>
@@ -832,8 +819,7 @@ export function AtomicFundingModal({
             </div>
           </div>
         )}
-      </div>
-    </div>
+    </FundingModalShell>
   );
 }
 

@@ -1,3 +1,6 @@
+import { FundingModalShell } from "../components/FundingModalShell.js";
+import { PaymentRails } from "../components/PaymentCard.js";
+import { BitcoinAmount } from "../components/BitcoinAmount.js";
 import { ConductFacts } from "../components/ConductFacts.js";
 import { settlementWinner } from "../../escrow-engine/onchain-settlement-choice.js";
 import { payoutRecipientFor } from "../../escrow-engine/recipients.js";
@@ -172,7 +175,21 @@ export function LiveTradeSurface({
   const [onchainOpen, setOnchainOpen] = useState(false);
   useEffect(() => { setOnchainOpen(false); }, [state.id, state.status]);
   const onchainControls = <OnchainTradeControls onReleaseWithPayout={address => onVote(Outcome.RELEASE, address)} state={state} pubkey={pubkey} profileNames={profileNames} kind0Enabled={kind0Enabled} {...onchainActions} />;
-  const onchainOverlay = onchainOpen ? <OverlaySheet title="On-chain trade" onClose={() => setOnchainOpen(false)}>{onchainControls}</OverlaySheet> : null;
+  useEffect(() => {
+    if (state.escrowMode === "onchain" && state.status === EscrowStatus.CREATED && participants.buyer && participants.seller
+      && myRole === (state.onchainFundingTerms?.funder ?? expectedLockerRole(state.category))) setOnchainOpen(true);
+  }, [state.id, state.status, participants.buyer, participants.seller, myRole]);
+  const onchainOverlay = onchainOpen ? state.status === EscrowStatus.CREATED
+    ? <FundingModalShell label={state.description || "Fund trade"} onClose={() => setOnchainOpen(false)}>
+        <PaymentRails rail="onchain" disabledReasons={{ lightning: "This trade is held on Bitcoin", ecash: "This trade is held on Bitcoin" }} />
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "16px 0" }}>
+          <div><BitcoinAmount msats={state.joinHolds?.buyer?.amountMsats ?? state.amountMsats} size={14} />
+            <h2 style={{ color: T.text, fontSize: 20, margin: "6px 0", overflowWrap: "anywhere" }}>{state.description || "Fund trade"}</h2></div>
+          <button type="button" aria-label="Close" onClick={() => setOnchainOpen(false)} style={{ background: "none", border: 0, color: T.muted, minWidth: 44, minHeight: 44, fontSize: 20 }}>×</button>
+        </div>
+        {onchainControls}
+      </FundingModalShell>
+    : <OverlaySheet title="On-chain trade" onClose={() => setOnchainOpen(false)}>{onchainControls}</OverlaySheet> : null;
   const [armed, setArmed] = useState<Outcome | null>(null);
   // Cancel-with-reason (Jet 2026-09-05): a cancel/refund vote NEVER fires
   // without a reason chip — the reason lands in the trade chat so the other

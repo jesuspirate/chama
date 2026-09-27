@@ -45,10 +45,21 @@ export interface OnchainTradeActions {
   onPublishArbiterKey?: () => void | Promise<unknown>;
 }
 
+const preparingFunding = new Map<string, Promise<void>>();
+export function prepareFundingOnce(key: string, prepare: () => Promise<void>): Promise<void> {
+  const pending = preparingFunding.get(key);
+  if (pending) return pending;
+  const promise = Promise.resolve().then(prepare).finally(() => { preparingFunding.delete(key); });
+  preparingFunding.set(key, promise);
+  return promise;
+}
+
 /** Shared funding/settlement controller for the guided overlay and full room.
  * Every money action uses the same independently verifying escrow actions. */
 export function OnchainTradeControls({ state, pubkey, profileNames, kind0Enabled = false, ...actions }: OnchainTradeActions & { state: EscrowState; pubkey: string; profileNames?: NostrProfileNameMap; kind0Enabled?: boolean }) {
   const { t } = useT();
+  const attemptedFunding = useRef<string | null>(null);
+  const [prepareFailed, setPrepareFailed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [now, setNow] = useState(() => Math.floor(Date.now()/1000));
   useEffect(() => { if (state.status !== EscrowStatus.APPROVED) return; const timer = setInterval(() => setNow(Math.floor(Date.now()/1000)), 60_000); return () => clearInterval(timer); }, [state.status]);
@@ -173,6 +184,19 @@ export function OnchainTradeControls({ state, pubkey, profileNames, kind0Enabled
     }
     finally { busyRef.current = false; setBusy(false); }
   };
+  const prepareFunding = () => prepareFundingOnce(`${pubkey}:${state.id}`, async () => {
+    setPrepareFailed(false);
+    try { await latest.current.onPrepareOnchainFunding!(state.id); }
+    catch (error) { setPrepareFailed(true); throw error; }
+  });
+  useEffect(() => {
+    if (state.status !== EscrowStatus.CREATED || state.onchainFundingTerms || !view.viewerFunds
+      || !participants.buyer || !participants.seller || !actions.onPrepareOnchainFunding) return;
+    const key = JSON.stringify([state.id, participants.buyer, participants.seller, state.escrowKeys]);
+    if (attemptedFunding.current === key) return;
+    attemptedFunding.current = key;
+    void run(prepareFunding);
+  }, [state.id, state.status, state.onchainFundingTerms, view.viewerFunds, participants.buyer, participants.seller, state.escrowKeys]);
   const buttonStyle = { padding: "12px 14px", minHeight: 44, borderRadius: T.rs, border: `1px solid ${T.borderHi}`,
     background: T.surface, color: T.text, fontFamily: T.sans, fontWeight: 700, cursor: "pointer" };
   const recovery = actions.onScanMyOnchainPayouts && actions.onSweepOnchainPayout
@@ -182,7 +206,6 @@ export function OnchainTradeControls({ state, pubkey, profileNames, kind0Enabled
         scan={actions.onScanMyOnchainPayouts} sweep={actions.onSweepOnchainPayout} /> : null;
   if (refunded) return <div><p role="status">Refund confirmed on Bitcoin.</p>{recovery}</div>;
   return <div>
-    {state.onchainPublicConduct && state.status === EscrowStatus.CREATED && <p style={{color:T.muted}}>On-chain confirmations and payout signatures are public, verifiable conduct. Chat and payment details stay private.</p>}
     {recovery}
     {role === winner?.role && state.status !== EscrowStatus.COMPLETED && refundHeight && <p style={{color:T.muted}}>
       This must settle before {estimate ? `${estimate} (estimated; block ${refundHeight})` : `block ${refundHeight} (date estimate unavailable)`}; after that the sats can go back to the funder.
@@ -197,7 +220,7 @@ export function OnchainTradeControls({ state, pubkey, profileNames, kind0Enabled
     {(actions.onchainObservation?.payout || state.onchainPayoutTxid) && <p role="status" style={{color:T.muted}}>
       {actions.onchainObservation?.payout ? payoutStatusText(actions.onchainObservation.payout, false) : state.onchainPayoutTxid ? 'Payout sent · waiting for confirmation' : null}
     </p>}
-    {unavailable && <div role="status" style={{color:T.muted, margin:'12px 0'}}>
+    {unavailable && state.status !== EscrowStatus.CREATED && <div role="status" style={{color:T.muted, margin:'12px 0'}}>
       <p>{Object.entries(explorerFailures).some(([source,failed]) => source !== 'action' && failed) ? EXPLORER_RETRY_MESSAGE : "The block explorer did not answer. Try again."}</p>
       {actions.onOpenExplorerSettings && <button type="button" onClick={actions.onOpenExplorerSettings} style={buttonStyle}>Choose another block explorer</button>}
     </div>}
@@ -220,9 +243,9 @@ export function OnchainTradeControls({ state, pubkey, profileNames, kind0Enabled
       {choice.locked && <><br />The other signer has signed. The destination is fixed.</>}</p>}
     {(!view.canSettle || choice) && <>
     <OnchainEscrowPanel settlementUnavailable={unavailable} view={view} network={ESCROW_NETWORK_LABEL} settlementCheck={unavailable ? null : checkedChoice === choice?.id ? check : check?.ok === false ? check : null} signing={busy} signedByViewer={signed}
-      checking={busy} fundingNote={note} depositStatus={depositStatus} publishing={busy} refunding={busy}
-      onPrepareFunding={!state.onchainFundingTerms && view.viewerFunds && participants.buyer && participants.seller && actions.onPrepareOnchainFunding
-        ? () => void run(() => actions.onPrepareOnchainFunding!(state.id)) : undefined}
+      checking={busy} fundingNote={state.onchainFundingTerms && unavailable && state.status === EscrowStatus.CREATED ? "Couldn’t check the deposit yet — retrying" : note} depositStatus={depositStatus} publishing={busy} refunding={busy}
+      onPrepareFunding={prepareFailed && !state.onchainFundingTerms && view.viewerFunds && participants.buyer && participants.seller && actions.onPrepareOnchainFunding
+        ? () => void run(prepareFunding) : undefined}
       onCheckFunding={view.viewerFunds && participants.buyer && actions.onCheckOnchainFunding && actions.onPublishOnchainLock ? () => void run(async () => {
         const result = await actions.onCheckOnchainFunding!(state.id);
         setDepositStatus(result.verdict?.funded ? "confirmed" : result.depositStatus === "seen" ? "seen" : "waiting");

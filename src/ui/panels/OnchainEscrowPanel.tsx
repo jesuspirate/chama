@@ -1,3 +1,5 @@
+import { PaymentButton, PaymentCopyChip } from "../components/PaymentCard.js";
+import { FundingNote } from "../components/FundingModalShell.js";
 import { PayoutTransactionDetails } from "../components/PayoutTransactionDetails.js";
 // ══════════════════════════════════════════════════════════════════════════
 // Chama — the on-chain escrow surface (Tier 2.1 UI)
@@ -86,11 +88,10 @@ export function OnchainEscrowPanel({
 
   return (
     <div style={{
-      padding: "12px 14px", marginBottom: 12, borderRadius: T.rs,
-      background: `${T.accent}0e`, border: `1px solid ${T.accent}40`,
+      marginBottom: 12,
       fontFamily: T.sans,
     }}>
-      <div style={{
+      {view.stage !== "awaiting-funding" && <div style={{
         display: "flex", alignItems: "center", gap: 8, marginBottom: 8,
         fontSize: 12.5, fontWeight: 800, color: T.accent,
       }}>
@@ -103,11 +104,12 @@ export function OnchainEscrowPanel({
             color: T.amber, fontFamily: T.mono, fontSize: 9.5, fontWeight: 800,
           }}>{t("onchain.signetBadge")}</span>
         )}
-      </div>
+      </div>}
 
-      {onPrepareFunding && <button type="button" onClick={onPrepareFunding} disabled={checking}>
-        {checking ? "Preparing…" : "Prepare deposit address"}
-      </button>}
+      <style>{`@keyframes funding-check-spin{to{transform:rotate(360deg)}}@media(prefers-reduced-motion:reduce){.funding-check-spinner{animation:none!important}}`}</style>
+      {onPrepareFunding && <PaymentButton onClick={onPrepareFunding} disabled={checking}>
+        {checking ? "Preparing…" : "Try preparing the address again"}
+      </PaymentButton>}
       {onRefund && <button type="button" onClick={onRefund} disabled={refunding}>
         {refunding ? "Refunding…" : "Refund to my on-chain wallet"}
       </button>}
@@ -145,7 +147,7 @@ export function OnchainEscrowPanel({
               {/* Naming the blocker is the whole point — "not ready" alone makes a
                   user either wait forever or fund something they shouldn't. */}
               {view.blockers.map((b) => (
-                <div key={b} style={{ marginBottom: 4 }}>• {b === "funding-terms" ? "Waiting for the funder to prepare the deposit address." : t(`onchain.blocker.${b}`)}</div>
+                <div key={b} style={{ marginBottom: 4 }}>• {b === "funding-terms" ? (view.viewerFunds ? checking ? "Preparing the deposit address…" : "The deposit address is not ready yet." : "Waiting for the deposit address.") : t(`onchain.blocker.${b}`)}</div>
               ))}
               <div style={{ marginTop: 6, fontSize: 11, opacity: 0.85 }}>
                 {t("onchain.awaitingKeysWhy")}
@@ -162,74 +164,21 @@ export function OnchainEscrowPanel({
         </div>
       )}
 
-      {view.stage === "awaiting-funding" && view.address && (
-        <>
-          {!view.viewerFunds && depositStatus === "confirmed" && (
-            <p role="status">The funder's deposit is confirmed on Bitcoin. It becomes the lock the next time they open Chama.</p>
-          )}
-          {uri && <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}><QRCode data={uri} size={210} alt={t("onchain.addressLabel")} /></div>}
-          <div style={{ fontSize: 12, color: T.muted, lineHeight: 1.55, marginBottom: 8 }}>
-            {view.viewerFunds ? t("onchain.fundBody") : t("onchain.awaitFundingBody")}
-          </div>
-          <div style={{
-            padding: "9px 11px", borderRadius: T.rs, background: T.surface,
-            border: `1px solid ${T.border}`, marginBottom: 8,
-          }}>
-            <div style={{ fontSize: 9, color: T.muted, fontFamily: T.mono, letterSpacing: 1, marginBottom: 4 }}>
-              {t("onchain.addressLabel")}
-            </div>
-            <div style={{
-              fontFamily: T.mono, fontSize: 11.5, color: T.text,
-              wordBreak: "break-all", lineHeight: 1.45, marginBottom: 6,
-            }}>{view.address}</div>
-            <CopyButton value={view.address} label={t("onchain.copyAddress")} />
-            <a href={esploraAddressUrl(btcNetwork, view.address)} target="_blank" rel="noreferrer noopener"
-              onClick={event => { event.preventDefault(); void openExternalUrl(esploraAddressUrl(btcNetwork, view.address!)); }}
-              style={{ display: "block", marginTop: 8, color: T.muted, fontSize: 11 }}>
-              {t("onchain.viewOnChain")} ↗
-            </a>
-          </div>
-          {view.expectedSats !== null && (
-            <div style={{ fontSize: 12, color: T.text, marginBottom: 6 }}>
-              {t("onchain.sendExactly")}{" "}
-              <BitcoinAmount sats={Number(view.expectedSats)} size={13} gap={3} />
-            </div>
-          )}
-          <div role="status" style={{ fontSize: 11, color: T.muted }}>
-            {t(depositStatus === "seen" ? "onchain.seenMempool"
-              : depositStatus === "confirmed" ? "onchain.depositConfirmed" : "onchain.waitingDeposit")}
-            {depositStatus !== "confirmed" && <> · {t("onchain.oneConfirmation")}</>}
-          </div>
-          {/* The address is derived, so anyone can check it. Saying so is what
-              makes "don't trust an address from a wire" actionable rather than
-              a slogan. */}
-          <div style={{ fontSize: 10.5, color: T.muted, lineHeight: 1.5 }}>
-            {t("onchain.recomputedNote")}
-          </div>
-          {fundingNote && (
-            <div style={{
-              marginTop: 8, padding: "8px 10px", borderRadius: T.rs,
-              background: `${T.amber}10`, border: `1px solid ${T.amber}33`,
-              color: T.amber, fontSize: 11.5, lineHeight: 1.5,
-            }}>{fundingNote}</div>
-          )}
-          {view.viewerFunds && onCheckFunding && (
-            <button
-              type="button"
-              onClick={onCheckFunding}
-              disabled={checking}
-              style={{
-                marginTop: 10, width: "100%", padding: "12px 14px", borderRadius: T.rs,
-                background: checking ? T.surface : `${T.accent}1f`,
-                border: `1px solid ${checking ? T.border : T.accent}`,
-                color: checking ? T.muted : T.accent,
-                fontFamily: T.sans, fontSize: 14, fontWeight: 800,
-                cursor: checking ? "default" : "pointer",
-              }}
-            >{checking ? t("onchain.checking") : t("onchain.iveSentIt")}</button>
-          )}
-        </>
-      )}
+      {view.stage === "awaiting-funding" && view.address && <>
+        <p style={{ textAlign: "center" }}>{view.viewerFunds ? "Send" : "Waiting for the funder to send"} {Number(view.expectedSats).toLocaleString()} sats to this address</p>
+        {uri && <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}><QRCode data={uri} size={210} logo="static" errorCorrectionLevel="H" alt={t("onchain.addressLabel")} /></div>}
+        <PaymentCopyChip value={view.address} address />
+        <p role="status" style={{ color: T.muted, fontSize: 12, textAlign: "center" }}>Locks after 1 confirmation · {t(depositStatus === "seen" ? "onchain.seenMempool" : depositStatus === "confirmed" ? "onchain.depositConfirmed" : "onchain.waitingDeposit")}</p>
+        {view.viewerFunds && onCheckFunding && <PaymentButton disabled={checking} onClick={onCheckFunding} style={{ width: "100%" }}>
+          {checking && <span className="funding-check-spinner" aria-hidden="true" style={{ display: "inline-block", width: 12, height: 12, border: "2px solid currentColor", borderTopColor: "transparent", borderRadius: "50%", animation: "funding-check-spin 1s linear infinite", marginRight: 8 }} />}
+          {checking ? t("onchain.checking") : t("onchain.iveSentIt")}
+        </PaymentButton>}
+        <FundingNote>{fundingNote}</FundingNote>
+        <details style={{ marginTop: 12, fontSize: 12, color: T.muted }}>
+          <summary style={{ minHeight: 44, cursor: "pointer" }}>Why this address is safe</summary>
+          Your app built this address from the trade's terms; it didn't take it from anyone. Confirmations and payout signatures are public; chat and payment details stay private.
+        </details>
+      </>}
 
       {(view.stage === "locked" || view.stage === "settling" || view.stage === "done") && (
         <div style={{ fontSize: 12, color: T.muted, lineHeight: 1.55 }}>
