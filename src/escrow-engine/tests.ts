@@ -738,6 +738,8 @@ import {
   BONDS_ENFORCED,
   getArbiterBond,
   getOpenBondedTrades,
+  tradesWithUnspentExposure,
+  sumOpenExposure,
   liveCapacity,
   classifyArbiterCapacity,
   canAssignArbiter,
@@ -25663,24 +25665,31 @@ console.log("\n── EXPOSURE LEDGER (§8): floor, caps, tiers, consent gate �
 
   // Aggregate cap across MULTIPLE chamas.
   const openA = mkTrade("t-A", 60_000_000, EscrowStatus.LOCKED, ARB, "ke-kes");
-  const openB = mkTrade("t-B", 60_000_000, EscrowStatus.CREATED, ARB, "sn-cfa");
+  const openB = mkTrade("t-B", 60_000_000, EscrowStatus.APPROVED, ARB, "sn-cfa");
   assert(classifyArbiterCapacity({ tradeMsats: 40_000_000, bond: bond(150_000_000), openTrades: [openA, openB] }).tier === "over-capacity",
     "aggregate cap: Σ(open across chamas) + new > bond ⇒ over-capacity");
   assert(classifyArbiterCapacity({ tradeMsats: 30_000_000, bond: bond(150_000_000), openTrades: [openA, openB] }).tier === "covered",
     "aggregate cap: Σ(open) + new EQUAL to the bond is covered (≤)");
 
-  // getOpenBondedTrades: global, ≥floor, seated-only, settled excluded, EXPIRED counts.
+  // getOpenBondedTrades: global, ≥floor, seated-only, unfunded and settled excluded.
   const settled = mkTrade("t-done", 80_000_000, EscrowStatus.COMPLETED, ARB);
   const cancelled = mkTrade("t-x", 80_000_000, EscrowStatus.CANCELLED, ARB);
   const expiredTrade = mkTrade("t-exp", 80_000_000, EscrowStatus.EXPIRED, ARB);
   const tiny = mkTrade("t-tiny", UNBONDED_FLOOR_MSATS - 1, EscrowStatus.LOCKED, ARB);
   const otherArb = mkTrade("t-other", 80_000_000, EscrowStatus.LOCKED, ARBITER2_PK);
-  const all = [openA, openB, settled, cancelled, expiredTrade, tiny, otherArb];
+  const created = mkTrade("range-unfunded", 100_000_000, EscrowStatus.CREATED);
+  const all = [created, openA, openB, settled, cancelled, expiredTrade, tiny, otherArb];
+  assert(getOpenBondedTrades(ARB, [created]).length === 0, "unfunded range maximum does not reserve capacity");
+  assert(sumOpenExposure(getOpenBondedTrades(ARB, [{ ...created, status: EscrowStatus.LOCKED, amountMsats: 27_000_000 }])) === 27_000_000, "locked range counts only its chosen amount");
+  const deposited = { ...created, escrowMode: "onchain", status: EscrowStatus.COMPLETED, lock: { onchain: { fundingTxid: "ab".repeat(32), fundingVout: 0 } } } as unknown as EscrowState;
+  assert((await tradesWithUnspentExposure([deposited], async () => ({ spent: false }))).length === 1, "on-chain COMPLETE without spend retains capacity");
+  assert((await tradesWithUnspentExposure([deposited], async () => ({ spent: true }))).length === 0, "spent deposit releases capacity");
+  assert((await tradesWithUnspentExposure([deposited], async () => { throw Error("offline"); })).length === 1, "failed chain read retains capacity");
   const open = getOpenBondedTrades(ARB, all);
-  assert(open.map((t) => t.id).sort().join(",") === ["t-A", "t-B", "t-exp"].sort().join(","),
-    "getOpenBondedTrades: keeps open ≥floor seated-by-ARB (incl EXPIRED), drops settled/sub-floor/other-arbiter");
-  assert(open.some((t) => t.id === "t-exp"),
-    "EXPIRED still exposes the arbiter (funds at stake) — it counts against capacity");
+  assert(open.map((t) => t.id).sort().join(",") === ["t-A", "t-B"].sort().join(","),
+    "getOpenBondedTrades: keeps open ≥floor seated-by-ARB drops expired/settled/sub-floor/other-arbiter");
+  assert(!open.some((t) => t.id === "t-exp"),
+    "EXPIRED listings do not consume capacity");
   assert(!open.some((t) => t.id === "t-done" || t.id === "t-x"),
     "settled (COMPLETED/CANCELLED) trades do not count against capacity");
   const openExcl = getOpenBondedTrades(ARB, all, { excludeId: "t-A" });

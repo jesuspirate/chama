@@ -61,7 +61,10 @@ import {
 import { defaultCurrencyForCommunity } from "../../communities/currency.js";
 import { getTrustedArbiterPool } from "../../arbiters/pool.js";
 import { ARBITER_FAULT_READS_ENABLED } from "../../arbiters/arbiter-fault.js";
-import { assignableBondedArbiters, getOpenBondedTrades, sumOpenExposure } from "../../arbiters/exposure.js";
+import { defaultEsploraBase, esploraFetcher } from "../../bond-multisig/fund-watcher.js";
+import { readNostrProfileCache } from "../nostr-profiles.js";
+import { MAINNET, SIGNET } from "../../bond-multisig/multisig.js";
+import { tradesWithUnspentExposure, assignableBondedArbiters, getOpenBondedTrades, sumOpenExposure } from "../../arbiters/exposure.js";
 import { sellerIsBonded, resolveListingTenure } from "../../escrow-engine/listing-renewal.js";
 import type { VerifiedBond } from "../../bond-multisig/bond-announcement.js";
 import { type ArbiterWarning, displayCounterpartyName, resolveCreateMintUrl } from "../decisions.js";
@@ -1468,7 +1471,13 @@ export function CreateForm({
       const coverageMsats = wantsOnchain && hasMenu
         ? menuItems.reduce((sum, item) => sum + (item.maxAmountMsats ?? item.amountMsats) * (item.maxQuantity ?? 1), 0)
         : amountMsats;
-      bondedPool = assignableBondedArbiters({ bonds: activeBonds, tradeMsats: coverageMsats, allTrades });
+      // A relay COMPLETE or pre-signed refund is not proof of an outspend.
+      // Failed chain reads retain exposure until a later successful read.
+      const exposureTrades = await tradesWithUnspentExposure(allTrades, async deposit => {
+        const network = deposit.network === "signet" ? SIGNET : MAINNET;
+        return esploraFetcher(defaultEsploraBase(network), { network })(`/tx/${deposit.fundingTxid}/outspend/${deposit.fundingVout}`);
+      });
+      bondedPool = assignableBondedArbiters({ bonds: activeBonds, tradeMsats: coverageMsats, allTrades: exposureTrades });
       const keyed = new Set(
         activeBonds.filter((b) => !!b.ownerXonly).map((b) => b.npub.toLowerCase()),
       );
@@ -1502,10 +1511,16 @@ export function CreateForm({
         const largest = activeBonds
           .filter(b => b.ownerXonly && b.npub.toLowerCase() !== (userPubkey ?? "").toLowerCase())
           .reduce((max, b) => {
-            const freeMsats = Number(b.actualSats) * 1000 - sumOpenExposure(getOpenBondedTrades(b.npub, allTrades));
+            const freeMsats = Number(b.actualSats) * 1000 - sumOpenExposure(getOpenBondedTrades(b.npub, exposureTrades));
             return Math.max(max, Math.floor(Math.max(0, freeMsats) / 1000));
           }, 0);
-        setPublishError(t("onchain.noCapableArbiter", { amount: largest.toLocaleString() }));
+        const covering = activeBonds.filter(b => b.ownerXonly && b.npub.toLowerCase() !== (userPubkey ?? "").toLowerCase()).flatMap(b => {
+          const trades = getOpenBondedTrades(b.npub, exposureTrades);
+          if (!trades.length) return [];
+          const name = displayCounterpartyName({ npub: b.npub, fetchKind0Enabled: true, kind0Name: readNostrProfileCache(userPubkey)[b.npub] ?? null });
+          return [`${name}'s bond is covering: ${trades.map(trade => `${Math.floor(trade.amountMsats / 1000).toLocaleString()} sats (trade …${trade.id.slice(-6)}, ${trade.status.toLowerCase()})`).join(", ")}.`];
+        });
+        setPublishError([t("onchain.noCapableArbiter", { amount: largest.toLocaleString() }), ...covering].join(" "));
         setSubmitting(false);
         return "error";
       }

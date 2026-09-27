@@ -28,8 +28,8 @@
 // Phase 2 flips the switch when real bonds + the SSS-lock land (§3). Bonds are
 // UNBACKED claims until then (see bonds.ts).
 
-import { Role, TRULY_TERMINAL_STATES } from "../escrow-engine/types.js";
-import type { EscrowState, NostrEvent } from "../escrow-engine/types.js";
+import { Role, EscrowStatus } from "../escrow-engine/types.js";
+import type { EscrowState, NostrEvent, OnchainLockTerms } from "../escrow-engine/types.js";
 import { selectLatestBond } from "./bonds.js";
 import type { ArbiterBond } from "./bonds.js";
 
@@ -137,13 +137,13 @@ export function getArbiterBond(
   return selectLatestBond(npub, bondEvents, now, options);
 }
 
-/** Does this trade still EXPOSE its arbiter? Open = NOT truly-terminal.
- *  COMPLETED / CANCELLED are settled (funds done); EXPIRED is NOT — an expired
- *  LOCKED trade still has ecash at stake and can heal, so it keeps counting.
- *  Uses the exported TRULY_TERMINAL_STATES (the pure equivalent of the hook's
- *  private isSettledStatus), keeping this module free of React/hook imports. */
+/** Only committed money consumes capacity. A signed refund marker alone is
+ * not a chain spend; callers may exclude a deposit only after verifying it. */
 export function isOpenExposure(state: EscrowState): boolean {
-  return !TRULY_TERMINAL_STATES.has(state.status);
+  if (state.escrowMode === "onchain") return !!state.lock?.onchain;
+  return state.status === EscrowStatus.LOCKED
+    || state.status === EscrowStatus.APPROVED
+    || state.status === EscrowStatus.CLAIMED;
 }
 
 /** Every OPEN bonded trade (amount ≥ the unbonded floor) where `npub` is the
@@ -342,4 +342,22 @@ export function assignablePool(pool: readonly string[], ctx: PoolCapacityContext
     return !norm || !over.has(norm);
   });
   return filtered.length > 0 ? filtered : [...pool];
+}
+
+/** Only a successful chain read releases a committed on-chain deposit. */
+export async function tradesWithUnspentExposure(
+  trades: readonly EscrowState[],
+  readOutspend: (deposit: OnchainLockTerms) => Promise<{ spent?: boolean }>,
+): Promise<EscrowState[]> {
+  const result: EscrowState[] = [];
+  for (const trade of trades) {
+    if (!isOpenExposure(trade)) continue;
+    if (trade.escrowMode === "onchain" && trade.lock?.onchain) {
+      try {
+        if ((await readOutspend(trade.lock.onchain))?.spent === true) continue;
+      } catch { /* unavailable is unknown, never free capacity */ }
+    }
+    result.push(trade);
+  }
+  return result;
 }
