@@ -915,7 +915,7 @@ export function LiveTradeSurface({
 /** One person in the room. The dot carries the sacred role colour; it only
  *  breathes when we have real evidence they are here right now. */
 function PersonChip({ person, name, onClick }: { person: RoomPresence; name: string | null; onClick: () => void }) {
-  const color = ROLE_COLOR[person.role as keyof typeof ROLE_COLOR] ?? T.muted;
+  const color = person.signal === "assigned" ? T.muted : ROLE_COLOR[person.role as keyof typeof ROLE_COLOR] ?? T.muted;
   if (!person.pubkey) {
     return (
       <span style={{
@@ -933,7 +933,8 @@ function PersonChip({ person, name, onClick }: { person: RoomPresence; name: str
   }
   const here = person.signal === "active";
   const sub =
-    person.signal === "active" ? tr("lts.hereNow")
+    person.signal === "assigned" ? tr("lts.assigned")
+    : person.signal === "active" ? tr("lts.hereNow")
     : person.signal === "recent" ? tr("lts.justHere")
     : tr("lts.roomQuiet");
   return (
@@ -954,7 +955,7 @@ function PersonChip({ person, name, onClick }: { person: RoomPresence; name: str
         }}
       />
       <span style={{
-        color: T.text, fontWeight: 700, maxWidth: 116,
+        color: person.signal === "assigned" ? T.muted : T.text, fontWeight: 700, maxWidth: 116,
         overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
       }}>
         {name ?? tr("lts.roomSomeone")}

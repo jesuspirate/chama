@@ -22,3 +22,17 @@ await Promise.resolve(); assert.equal(calls,1); finish(); await Promise.all([fir
 await assert.rejects(prepareFundingOnce('trade',async()=>{throw Error('offline');}));
 await prepareFundingOnce('trade',async()=>{calls++;}); assert.equal(calls,2,'manual retry works after failure');
 console.log('PASS on-chain funding card: shared shell, address survives timeout, read-only mode, deduplicated preparation and retry');
+
+import { tradeRoomPresence } from './decisions.js';
+import { displayedTradeArbiter } from '../arbiters/trade-arbiter.js';
+import { EscrowStatus, Role, type EscrowState } from '../escrow-engine/types.js';
+const arbiter='c'.repeat(64), buyer='b'.repeat(64), seller='a'.repeat(64);
+const state={id:'assignment', status:EscrowStatus.CREATED, category:'p2p-trade', participants:{buyer,seller,arbiter:null}, communityArbiters:[arbiter], bondedArbiters:[arbiter], eventChain:[],chatMessages:[]} as unknown as EscrowState;
+const presence=()=>tradeRoomPresence(state,seller,123,[Role.ARBITER])[0];
+assert.equal(presence().pubkey,displayedTradeArbiter(state));
+assert.equal(presence().signal,'assigned'); assert.equal(presence().ready,false);
+state.participants.arbiter=arbiter;
+assert.equal(presence().signal,'seated');
+state.participants.arbiter=null;state.communityArbiters=[];state.bondedArbiters=[];
+assert.equal(presence().signal,'empty');
+console.log('PASS assigned arbiter matches record, is not ready, becomes seated, and empty pool stays open');

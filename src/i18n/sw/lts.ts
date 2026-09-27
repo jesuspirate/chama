@@ -22,6 +22,7 @@ export const lts: Record<string, string> = {
   "lts.roomQuiet": "kimya",
   "lts.hereNow": "yupo sasa",
   "lts.justHere": "alikuwepo punde",
+  "lts.assigned": "ameteuliwa",
   "lts.seatOpen": "nafasi wazi",
   "lts.toLockSeat": "kufunga kabla nafasi yako haijaachiliwa",
   "lts.seatLapsed": "Nafasi yako imeachiliwa — tangazo hili limerudi kwenye Vinjari. Hakuna kilichofungwa, kwa hivyo hakuna kilicho hatarini.",

@@ -1,7 +1,7 @@
 import type { NostrProfileNameMap } from '../nostr-profiles.js';
 import { useEffect, useState } from 'react';
 import { Role, type EscrowState } from '../../escrow-engine/types.js';
-import { pickPreferredArbiter } from '../../arbiters/pool.js';
+import { displayedTradeArbiter } from '../../arbiters/trade-arbiter.js';
 import { arbiterRecord } from '../../arbiters/record.js';
 import type { VerifiedBond } from '../../bond-multisig/bond-announcement.js';
 import { readCachedCommunityBonds } from '../../arbiters/bonded-pool-cache.js';
@@ -9,8 +9,7 @@ import { ArbiterRecordCard } from './ArbiterRecordCard.js';
 export function TradeArbiterRecord({state, trades, fetchBonds, profileNames, kind0Enabled}: {state: EscrowState; trades: readonly EscrowState[];
   fetchBonds?: (community: string) => Promise<VerifiedBond[]>; profileNames?: NostrProfileNameMap; kind0Enabled?: boolean}) {
   const [bonds,setBonds] = useState<VerifiedBond[]>(() => state.community ? readCachedCommunityBonds(state.community, Date.now(), true) ?? [] : []);
-  const key = state.participants[Role.ARBITER] ?? pickPreferredArbiter(state.communityArbiters,state.bondedArbiters,state.id,
-    [state.participants[Role.BUYER],state.participants[Role.SELLER]].filter((p): p is string => !!p));
+  const key = displayedTradeArbiter(state);
   useEffect(() => {
     let cancelled = false;
     setBonds(state.community ? readCachedCommunityBonds(state.community, Date.now(), true) ?? [] : []);

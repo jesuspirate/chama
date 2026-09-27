@@ -1,3 +1,4 @@
+import { displayedTradeArbiter } from "../arbiters/trade-arbiter.js";
 import { onchainAttention, type OnchainObservation } from '../escrow-engine/onchain-attention.js';
 import { NEVER_EXPIRES } from "../escrow-engine/types.js";
 // ══════════════════════════════════════════════════════════════════════════
@@ -1908,6 +1909,7 @@ export function formatStepInCountdown(seconds: number): string {
 // two minutes ago. Nothing here guesses.
 
 export type RoomPresenceSignal =
+  | "assigned"
   /** Published something in the last two minutes — they are here now. */
   | "active"
   /** Published within the last quarter hour — they were just here. */
@@ -1969,6 +1971,8 @@ export function tradeRoomPresence(
   return roles.map((role): RoomPresence => {
     const pk = effective[role] ?? null;
     if (!pk) {
+      const assigned = role === Role.ARBITER ? displayedTradeArbiter(state) : null;
+      if (assigned) return { role, pubkey: assigned, isYou: assigned.toLowerCase() === viewerPubkey.toLowerCase(), signal: "assigned", lastSeenAgoSec: null, ready: false };
       return { role, pubkey: null, isYou: false, signal: "empty", lastSeenAgoSec: null, ready: false };
     }
     const seenAt = lastSeen.get(pk.toLowerCase());

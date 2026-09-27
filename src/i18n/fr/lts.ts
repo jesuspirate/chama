@@ -24,6 +24,7 @@ export const lts: Record<string, string> = {
   "lts.roomQuiet": "silencieux",
   "lts.hereNow": "ici maintenant",
   "lts.justHere": "était là à l’instant",
+  "lts.assigned": "désigné",
   "lts.seatOpen": "place libre",
   "lts.toLockSeat": "pour verrouiller avant que votre place ne soit libérée",
   "lts.seatLapsed": "Votre place a été libérée — cette annonce est de retour dans Parcourir. Rien n’a été verrouillé, donc rien n’est en jeu.",
