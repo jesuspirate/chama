@@ -63,7 +63,7 @@ export function OpenWith({ value }: { value: string }) {
   }); }}>{t("payment.openWith")}</PaymentButton>{error && <span role="status">{error}</span>}</>;
 }
 
-/** Fixed payment regions: state changes never move the code or copy target. */
+/** Reserve payment regions while allowing wallet-link feedback to fit below the code. */
 export function PaymentCard({ hideRails = false, amountMsats, rail, rails, onRail, data, copyValue, status, helper, details, actions, motion = false, ecash = false }: {
   hideRails?: boolean; amountMsats: number; rail: PaymentRail; rails?: PaymentRail[]; onRail?: (rail: PaymentRail) => void;
   data?: string | string[]; copyValue?: string; status: ReactNode; helper?: ReactNode; details?: ReactNode; actions?: ReactNode;
@@ -80,9 +80,9 @@ export function PaymentCard({ hideRails = false, amountMsats, rail, rails, onRai
   const uri = typeof data === 'string' && rail !== 'ecash' ? walletUri(data, rail) : undefined;
   const qr = data ? <QRCode data={data} size={size} logo={motion ? "motion" : "static"} errorCorrectionLevel={ecash ? "L" : "H"} showLogo={!ecash} /> : null;
   return <section ref={ref} className="payment-card" style={{ color: T.text, minWidth: 0, width: "100%", fontFamily: T.sans,
-    gridTemplateRows: hideRails ? "64px 284px 0px 78px 100px auto" : undefined, "--payment-glow": T.accentDim, "--payment-focus": T.accent } as React.CSSProperties}>
+    gridTemplateRows: hideRails ? "64px minmax(284px, auto) 0px 78px 100px auto" : undefined, "--payment-glow": T.accentDim, "--payment-focus": T.accent } as React.CSSProperties}>
     <style>{`
-      .payment-card{display:grid;grid-template-rows:64px 284px 58px 78px 100px auto}
+      .payment-card{display:grid;grid-template-rows:64px minmax(284px,auto) 58px 78px 100px auto}
       .payment-card>*{min-width:0;box-sizing:border-box}
       .payment-button{box-shadow:inset 0 1px 0 #ffffff24,0 1px 0 #0006,0 2px 3px #0003,0 7px 16px #0002;transition:transform .12s,box-shadow .12s}
       .payment-button:active{transform:translateY(1px);box-shadow:inset 0 1px 0 #ffffff24,0 1px 2px #0003}
