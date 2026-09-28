@@ -134,7 +134,7 @@ export const fund: Record<string, string> = {
   "fund.invoiceExpiredGenerateNew": "Facture expirée — générez-en une nouvelle",
   "fund.invoiceExpiresIn": "la facture expire {time}",
   "fund.lightningQrAlt": "QR code de la facture Lightning",
-  "fund.lnFast": "LN · RAPIDE",
+  "fund.lnFast": "Obtenir une facture Lightning",
   "fund.largeAmountTitle": "Montant élevé",
   "fund.largeAmountBody":
     "C'est un gros paiement — le Lightning risque de ne pas l'acheminer de façon fiable. Financez plutôt en on-chain (recommandé ci-dessous).",
@@ -200,7 +200,7 @@ export const fund: Record<string, string> = {
   "fund.onchainSendAfter":
     "au total ; le portefeuille ajoute les frais de minage.",
   "fund.onchainSendBefore": "Envoyez",
-  "fund.onchainSlow": "ONCHAIN · LENT",
+  "fund.onchainSlow": "Obtenir une adresse Bitcoin",
   "fund.onchainSlowPath": "FINANCEMENT ONCHAIN · CHEMIN LENT",
   "fund.onchainTotalBreakdown":
     "{total} · échange {trade} sats + frais de fédération {fee} sats",

@@ -31,3 +31,23 @@ assert.match(conductHtml,/median of 3/);assert.match(conductHtml,/Bonded 100,000
 assert.equal(renderToStaticMarkup(<ConductFactLines record={{marks:0,complete:false,trades:[]}} />), '');
 assert.equal(renderToStaticMarkup(<ConductFactLines record={{marks:0,complete:true,trades:[]}} />), '');
 assert.match(renderToStaticMarkup(<ConductFactLines record={{marks:0,complete:false,trades:[]}} showEmpty />), /No public history yet/);
+
+// Rendering a quote must never request an invoice or dispatch a claim.
+const { ClaimMethodChooser } = await import('./panels/ClaimPayoutModal.js');
+const { DestinationPicker } = await import('./components/DestinationPicker.js');
+const unexpected = () => { throw new Error('Rendering dispatched a payment'); };
+const chooserHtml = renderToStaticMarkup(<LangProvider><ClaimMethodChooser
+  payoutSats={196} ecashPayoutSats={200} externalSwaps={[]} tandoEligible={false}
+  chapsmartEligible={false} strikeEligible={false} savedStrikeDestinations={[]}
+  savedWalletDestinations={[]} savedNwcConnections={[]} cashOutCurrency="USD"
+  onSelect={unexpected} onSelectEcash={unexpected} onSelectSavedStrike={unexpected}
+  onSelectSavedWallet={unexpected} onSelectSavedNwc={unexpected} onCancel={unexpected}
+/></LangProvider>);
+assert.match(chooserHtml, /See all Lightning options/);
+assert.doesNotMatch(chooserHtml, /LN · FAST|ONCHAIN · SLOW/);
+const destinationHtml = renderToStaticMarkup(<LangProvider><DestinationPicker amountSats={196}
+  initialAddress="bitcrazy@getalby.com" savedDestinations={[]} savedNwcConnections={[]}
+  title="Claim" onResolve={unexpected} onCancel={unexpected} /></LangProvider>);
+assert.match(destinationHtml, /Send 196 sats to bitcrazy@getalby.com/);
+assert.match(destinationHtml, /save address/);
+console.log('PASS claim action labels: net payout and destination, explicit saving, no render-time dispatch');

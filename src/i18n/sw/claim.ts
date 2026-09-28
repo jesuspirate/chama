@@ -1,7 +1,13 @@
 export const claim: Record<string, string> = {
+  "claim.lightningOptions": "Ona chaguo zote za Lightning",
+  "claim.pasteBitcoin": "Bandika anwani ya Bitcoin",
+  "claim.sendTo": "Tuma sats {amount} kwa {destination}",
+  "claim.saveAddressHint": "hifadhi anwani",
+  "claim.railTiming": "Lightning · sekunde · Bitcoin · ~saa 1 · Ecash · bila ada",
+
   "claim.cashOutCurrency": "Toa pesa kwa {currency}",
   "claim.yourWallets": "Pochi zako",
-  "claim.ecashMethod": "Ecash · bila ada",
+  "claim.ecashMethod": "Pata noti ya ecash",
   "claim.ecashMethodBlurb": "Dai kama noti ya mkononi tayari kwa Fedi. Chama inatunza nakala ya urejeshaji hadi uthibitishe uingizaji.",
   "claim.ecashReadyHeadline": "DAI TAYARI · INGIZA ECASH",
   "claim.ecashReadyBody": "Skani hii kwa Fedi, kisha thibitisha tu baada ya Fedi kuonyesha sats. Chama inaiweka noti hii ya mkononi ikirejesheka hadi uidhinishe.",

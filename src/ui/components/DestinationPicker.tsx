@@ -46,7 +46,7 @@ import { isTauriRuntime } from "../sign-in-environment.js";
 
 const QRScanner = lazy(() => import("../QRScanner.js"));
 
-function resolveReceiveCode(value: string, amountSats: number): Promise<string> {
+export function resolveReceiveCode(value: string, amountSats: number): Promise<string> {
   const input = classifyDestinationInput(value);
   return input.kind === "lnurl"
     ? resolveRawLnurlToInvoice(input.lnurl, amountSats)
@@ -266,7 +266,7 @@ export function DestinationPicker({
       : dispatchPreview.ok && dispatchPreview.decision.tier === "pasted-nwc"
         ? <>{t("claim.nwcInvoiceBefore")} {submitAmount}</>
         : dispatchPreview.ok && dispatchPreview.decision.tier === "typed-address"
-          ? <>{t("claim.saveAndSendBefore")} {submitAmount}</>
+          ? <>{t("claim.sendTo", { amount: amountSats.toLocaleString(), destination: typed.trim() })} · {t("claim.saveAddressHint")}</>
           : <>{t("claim.submitSendBefore")} {submitAmount} →</>;
 
   const renderPrimarySubmitButton = (marginBottom = 10, saveAfterOverride = true) => (

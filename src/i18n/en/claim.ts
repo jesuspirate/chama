@@ -7,9 +7,15 @@
 // sits mid-sentence — translators translate BOTH halves as one sentence.
 // Keys with {param} placeholders must keep the placeholders intact.
 export const claim: Record<string, string> = {
+  "claim.lightningOptions": "See all Lightning options",
+  "claim.pasteBitcoin": "Paste a Bitcoin address",
+  "claim.sendTo": "Send {amount} sats to {destination}",
+  "claim.saveAddressHint": "save address",
+  "claim.railTiming": "Lightning · seconds · Bitcoin · ~1 hour · Ecash · no fee",
+
   "claim.cashOutCurrency": "Cash out in {currency}",
   "claim.yourWallets": "Your wallets",
-  "claim.ecashMethod": "Ecash · no fees",
+  "claim.ecashMethod": "Get an ecash note",
   "claim.ecashMethodBlurb": "Claim as a Fedi-ready bearer note. Chama keeps a recovery copy until you confirm the import.",
   "claim.ecashReadyHeadline": "CLAIM READY · IMPORT ECASH",
   "claim.ecashReadyBody": "Scan this with Fedi, then confirm only after Fedi shows the sats. Chama keeps this exact bearer note recoverable until you approve.",

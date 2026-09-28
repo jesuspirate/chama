@@ -125,7 +125,7 @@ export const fund: Record<string, string> = {
   "fund.invoiceExpiredGenerateNew": "Ankara imeisha muda — unda mpya",
   "fund.invoiceExpiresIn": "ankara inaisha {time}",
   "fund.lightningQrAlt": "Msimbo wa QR wa ankara ya Lightning",
-  "fund.lnFast": "LN · HARAKA",
+  "fund.lnFast": "Pata ankara ya Lightning",
   "fund.largeAmountTitle": "Kiasi kikubwa",
   "fund.largeAmountBody":
     "Haya ni malipo makubwa — huenda Lightning isiyapitishe kwa uhakika. Gharamia kwenye mnyororo badala yake (inapendekezwa hapa chini).",
@@ -189,7 +189,7 @@ export const fund: Record<string, string> = {
   "fund.onchainScanMid2": "biashara +",
   "fund.onchainSendAfter": "jumla; pochi inaongeza ada ya mchimbaji.",
   "fund.onchainSendBefore": "Tuma",
-  "fund.onchainSlow": "MNYORORO · POLEPOLE",
+  "fund.onchainSlow": "Pata anwani ya Bitcoin",
   "fund.onchainSlowPath": "UGHARAMIAJI WA MNYORORO · NJIA YA POLEPOLE",
   "fund.onchainTotalBreakdown": "{total} · biashara sats {trade} + ada ya shirikisho sats {fee}",
   "fund.onchainUnavailable": "Hatukuweza kuangalia ada za on-chain sasa.",

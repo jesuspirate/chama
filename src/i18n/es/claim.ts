@@ -1,8 +1,14 @@
 // es/claim — Session C fills this from src/i18n/en/claim.ts (key set must match EXACTLY).
 export const claim: Record<string, string> = {
+  "claim.lightningOptions": "Ver todas las opciones Lightning",
+  "claim.pasteBitcoin": "Pegar una dirección Bitcoin",
+  "claim.sendTo": "Enviar {amount} sats a {destination}",
+  "claim.saveAddressHint": "guardar dirección",
+  "claim.railTiming": "Lightning · segundos · Bitcoin · ~1 hora · Ecash · sin comisión",
+
   "claim.cashOutCurrency": "Retirar en {currency}",
   "claim.yourWallets": "Tus billeteras",
-  "claim.ecashMethod": "Ecash · sin comisiones",
+  "claim.ecashMethod": "Obtener una nota ecash",
   "claim.ecashMethodBlurb": "Cobra como nota al portador lista para Fedi. Chama guarda una copia de recuperación hasta que confirmes la importación.",
   "claim.ecashReadyHeadline": "COBRO LISTO · IMPORTAR ECASH",
   "claim.ecashReadyBody": "Escanea con Fedi y confirma solo cuando Fedi muestre los sats. Chama mantiene recuperable esta nota exacta hasta que lo apruebes.",

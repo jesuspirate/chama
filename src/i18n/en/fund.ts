@@ -132,7 +132,7 @@ export const fund: Record<string, string> = {
   "fund.invoiceExpiredGenerateNew": "Invoice expired — generate a new one",
   "fund.invoiceExpiresIn": "invoice expires {time}",
   "fund.lightningQrAlt": "Lightning invoice QR code",
-  "fund.lnFast": "LN · FAST",
+  "fund.lnFast": "Get a Lightning invoice",
   "fund.largeAmountTitle": "Large amount",
   "fund.largeAmountBody":
     "This is a big payment — Lightning may not route it reliably. Fund on-chain instead (recommended below).",
@@ -196,7 +196,7 @@ export const fund: Record<string, string> = {
   "fund.onchainScanMid2": "trade +",
   "fund.onchainSendAfter": "total; wallet adds miner fee.",
   "fund.onchainSendBefore": "Send",
-  "fund.onchainSlow": "ONCHAIN · SLOW",
+  "fund.onchainSlow": "Get a Bitcoin address",
   "fund.onchainSlowPath": "ONCHAIN FUNDING · SLOW PATH",
   "fund.onchainTotalBreakdown": "{total} · trade {trade} sats + federation fee {fee} sats",
   "fund.onchainUnavailable": "Couldn't check on-chain fees right now.",
