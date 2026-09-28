@@ -645,7 +645,6 @@ import {
   needsYouReasonFor,
   selectNeedsYouTrades,
   countNeedsYou,
-  canInspectTradeWithoutFederationSwitch,
 } from "../ui/decisions.js";
 import {
   estimateFiatForMsats,
@@ -23490,12 +23489,6 @@ console.log("\n── Liquidity & attention (buyerInterest / newListing / needsY
   };
   assert(needsYouReasonFor(expiredPerformanceContest, SELLER, nowSec) === "vote",
     "needs-you: a standing performance claim remains a real human-attention item");
-  assert(canInspectTradeWithoutFederationSwitch(EscrowStatus.LOCKED) === true
-    && canInspectTradeWithoutFederationSwitch(EscrowStatus.EXPIRED) === true,
-  "trade routing: locked and expired rooms can be inspected without switching bearer wallets");
-  assert(canInspectTradeWithoutFederationSwitch(EscrowStatus.CREATED) === false
-    && canInspectTradeWithoutFederationSwitch(EscrowStatus.APPROVED) === false,
-  "trade routing: funding and claim-capable states retain federation routing");
   // Arbiter attention must match the actual vote surface. Browse/history can
   // hydrate trades containing an entire historical community pool; membership
   // by itself must never inflate the Me badge or Guided Home queue.

@@ -2296,41 +2296,8 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     }
     const client = requireClient();
 
-    // v0.4.4 federation gate (fed-ID equality) ─────────────────────────
-    // Pre-flight: if the trade's CREATE event carries a `fed` tag
-    // (federation ID hex), compare it to the joiner's wallet federation.
-    // Refuse the join on mismatch BEFORE any money operation.
-    //
-    // The v0.1.72-era fedPrefix gate spent 1 sat as a probe to extract
-    // a 10-char identifier — incompatible with v0.1.76 Option B
-    // ("wallets always at 0 between trades"). The fed-ID is captured
-    // from the running client at init and surfaced into CREATE via
-    // deriveCreateFedTags; no spend needed.
-    //
-    // Legacy trades without payload.fed: allow the join. The LOCK gate
-    // (escrow-bridge.lockAndPublish) remains the load-bearing
-    // money-move defense — it gates on the same fed-ID.
-    const state = client.getState(escrowId);
-    const createEvent = state?.eventChain?.[0];
-    const expectedFed = effectiveCreateFederationId(createEvent?.payload as any);
-
-    // Sim mode has fake federations (SIM_FEDERATION_ID) that never equal a
-    // trade's real stamped fed — this guard is a real-money protection, so
-    // skipping it in sim is what lets a full sim trade (join → lock → settle)
-    // complete end-to-end. #35: sim e2e was silently broken here.
-    if (state?.escrowMode !== "onchain" && expectedFed && fedimintRef.current && !isSimModeOn()) {
-      const walletFed = fedimintRef.current.getFederationId();
-      if (walletFed && walletFed !== expectedFed) {
-        const err: any = new Error(
-          `This trade lives in a different Chama than your wallet is on. ` +
-            `Switch to the trade's Chama to continue — your sats stay safe.`
-        );
-        err.code = "FED_MISMATCH";
-        err.expected = expectedFed;
-        err.got = walletFed;
-        throw err;
-      }
-    }
+    // JOIN signs a seat reservation. Federation equality belongs at the
+    // actual ecash funding/claim boundary, never at joining or chatting.
 
     try {
       // Tier 2.1: an on-chain trade needs every party's escrow key before its

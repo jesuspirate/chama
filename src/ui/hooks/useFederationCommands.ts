@@ -35,6 +35,7 @@ import {
 
 export interface FederationCommandsDeps {
   fedimint: FedimintState;
+  walletAvailable?: boolean;
   actions: UseEscrowActions;
   /** V3 #72: live buyer/seller commitments — a manual switch is blocked
    *  while any are open (balance alone is blind during LOCKED). */
@@ -64,11 +65,17 @@ export interface FederationCommands {
 
 export function useFederationCommands(deps: FederationCommandsDeps): FederationCommands {
   const {
-    fedimint, actions, activeCommitmentCount, preservesFederationBalances = false,
+    fedimint, actions, activeCommitmentCount, preservesFederationBalances = false, walletAvailable = true,
     setToast, setBrowseCommunity, setPendingDestroyConfirm,
   } = deps;
 
   const handleSelectCommunity: (slug: string) => Promise<void> = async (slug) => {
+    if (!walletAvailable) {
+      actions.setCommunity(slug);
+      setBrowseCommunity(slug);
+      actions.setCustomInvite("");
+      return;
+    }
     // Capture previous state BEFORE any mutation so we can revert on
     // switch failure. We track the RAW community (null for first-timers)
     // separately from the resolution-flavored fallback — without that

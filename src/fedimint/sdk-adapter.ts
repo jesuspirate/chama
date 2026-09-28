@@ -1,3 +1,4 @@
+import { browserWalletStorageError } from "./browser-capabilities.js";
 // ══════════════════════════════════════════════════════════════════════════
 // Chama — @fedimint/core SDK Adapter
 // ══════════════════════════════════════════════════════════════════════════
@@ -3287,22 +3288,8 @@ export async function preloadRealWalletRuntime(): Promise<{
 export async function createRealWallet(
   opts: CreateRealWalletOptions = {}
 ): Promise<IFedimintWallet> {
-  // Pre-flight OPFS. The wasm worker persists via navigator.storage
-  // .getDirectory(), which browsers expose ONLY in secure contexts (https or
-  // localhost). On a bare-IP http origin — a LAN dev test from a phone — the
-  // API is simply undefined and the worker died with the raw "undefined is
-  // not an object" toast plus an infinite Reconnect loop (Jet's 6.3.1 phone
-  // test). Fail here, once, with a message that names the actual problem.
-  if (
-    typeof navigator === "undefined" ||
-    !navigator.storage ||
-    typeof navigator.storage.getDirectory !== "function"
-  ) {
-    const insecure = typeof window !== "undefined" && window.isSecureContext === false;
-    throw new Error(insecure
-      ? "This address isn't a secure connection (https or localhost), so the wallet can't store data here. Browsing and trades are viewable; wallet features need a secure address."
-      : "This browser does not support the wallet's storage (OPFS). Try a recent Chrome, Edge, or Safari build.");
-  }
+  const storageError = browserWalletStorageError();
+  if (storageError) throw new Error(storageError);
   const { acquireBrowserRuntimeLease } = await import("./browser-runtime-lease.js");
   // Keyed by storageScope — the SAME value that picks the OPFS wallet file
   // below — so the lease refuses exactly the runtimes that would fight over

@@ -845,15 +845,6 @@ function needsYouReason(
   return null;
 }
 
-/** Viewing or voting on a post-lock trade is Nostr state work; it must not
- * switch the browser's bearer-ecash wallet merely to open the room. Funding
- * and claiming retain their existing route requirements. */
-export function canInspectTradeWithoutFederationSwitch(
-  status: EscrowStatus,
-): boolean {
-  return status === EscrowStatus.LOCKED || status === EscrowStatus.EXPIRED;
-}
-
 function getRoleKey(isBuyer: boolean): Role {
   return isBuyer ? Role.BUYER : Role.SELLER;
 }

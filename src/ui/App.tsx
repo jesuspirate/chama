@@ -1,3 +1,4 @@
+import { browserWalletStorageError } from "../fedimint/browser-capabilities.js";
 import { useVisualViewport } from './useVisualViewport.js';
 import { cacheNativeWake } from '../notifications/native-push.js';
 import { ConductProvider } from "./components/ConductFacts.js";
@@ -159,7 +160,6 @@ import {
   mergeOnchainPayoutAttention,
   selectNeedsYouTrades,
   needsYouReasonFor,
-  canInspectTradeWithoutFederationSwitch,
   shouldOpenSellerListingManagement,
   identifyStrandedEcashSource,
   isMidFunding,
@@ -629,10 +629,48 @@ export default function App() {
     return true;
   };
 
+  // Ecash custody still requires the trade's federation, even when its final
+  // destination is a Lightning invoice. Never switch a funded wallet on navigation.
+  const ensureTradeWallet = async (trade: EscrowState): Promise<boolean> => {
+    if (trade.escrowMode === "onchain") return true;
+    if (midFunding) {
+      setToast({ message: t("app.anotherFundingInProgress"), type: "error" });
+      return false;
+    }
+    try {
+      if (!isNativeBridgeModeOn() && !fediWebView && !simOn && !isTestnetMode()) {
+        const storageError = browserWalletStorageError();
+        if (storageError) throw new Error(storageError);
+      }
+      const effect = decideListingTapEffect({
+        listing: { mintUrl: trade.mintUrl, community: trade.community,
+          fedId: (trade.eventChain[0]?.payload as { fed?: string } | undefined)?.fed ?? null },
+        currentInvite: liveActiveInvite,
+        balanceMsats: preservesArbiterFederationBalances ? 0 : (fedimint.balanceMsats ?? 0),
+        activeCommitmentCount,
+      });
+      if (effect.kind === "blocked-active-commitment") throw new Error(t("app.listingOtherChama"));
+      if (effect.kind === "destroy-confirm") {
+        queueDestroyConfirm({ invite: effect.targetInvite, label: effect.displayName,
+          balanceMsats: effect.balanceMsats, activeInvite: effect.currentInvite, navigateToEscrowAfter: trade.id });
+        return false;
+      }
+      if (effect.kind === "switch-silent") {
+        if (fedimint.federationId) await actions.switchFederation(effect.targetInvite);
+        else await actions.initFedimint(effect.targetInvite);
+        visitedForeignFedRef.current = true;
+      } else if (!fedimint.joined) await actions.initFedimint();
+      return true;
+    } catch (error: any) {
+      setToast({ message: error?.message || t("app.couldntReconnect"), type: "error" });
+      return false;
+    }
+  };
+
   // Claim, lifted so LiveTradeSurface fires the IDENTICAL ClaimPayoutModal flow.
   const tradeOnClaim = async (): Promise<void> => {
     if (!selected || selected.escrowMode === "onchain") return;
-    if (!requireOnline()) return;
+    if (!requireOnline() || !await ensureTradeWallet(selected)) return;
               // v0.3.0 Phase 3: open ClaimPayoutModal instead of
               // dispatching claimAndRedeem directly. In browsers this
               // can still route through a payout destination; inside
@@ -708,10 +746,7 @@ export default function App() {
     if (!requireOnline()) return;
               const savedHandleId = lockOpts.savedHandleId;
               const selectedItems = lockOpts.selectedItems;
-              if (!fedimint.joined) {
-                setToast({ message: t("app.joinChamaFirst"), type: "error" });
-                return;
-              }
+              if (!await ensureTradeWallet(selected)) return;
               // v0.6.5: the only Fund gate is mid-funding — multiple
               // concurrent trades are fine, but two concurrent atomic
               // funding flows would race the shared OPFS wallet.
@@ -1382,6 +1417,7 @@ export default function App() {
 
   useEffect(() => {
     if (!connected || autoInitDone) return;
+    if (!isNativeBridgeModeOn() && !fediWebView && !simOn && !isTestnetMode() && browserWalletStorageError()) return;
     // `connected` flips true synchronously when client.connect() is
     // dispatched, but relay WebSocket handshakes happen async. Firing
     // initFedimint with zero connected relays drives getOrCreateSeed
@@ -2694,131 +2730,16 @@ export default function App() {
       return;
     }
 
-    // LOCKED/EXPIRED rooms are safe to inspect and vote on without touching
-    // the active Fedimint wallet. Forcing federation-following here made an
-    // arbiter switch wallets just to read an old dispute; legacy routes then
-    // hit the non-destructive mismatch guard and every attention card became
-    // impossible to open. Money-moving states still use the route logic below.
-    if (canInspectTradeWithoutFederationSwitch(local.status)) {
-      setDetailBackView(safeBackView);
-      setSelectedId(id);
-      setView("detail");
-      actions.loadEscrow(id, { repairFromCache: true }).catch((e: any) => {
-        console.debug(
-          "[chama] background refetch on openEscrow failed:",
-          e?.message || e,
-        );
-        // The loading surface below (view "detail" with no local copy yet)
-        // would otherwise spin forever on a trade the relays can't return.
-        setToast({ message: t("app.tradeOpenFailed"), type: "error" });
-        setSelectedId(null);
-        setView(safeBackView);
-      });
-      return;
-    }
-
-    const effect = decideListingTapEffect({
-      listing: {
-        mintUrl: local.mintUrl,
-        community: local.community,
-        fedId: (local.eventChain[0]?.payload as { fed?: string } | undefined)?.fed ?? null,
-      },
-      currentInvite: liveActiveInvite,
-      balanceMsats: preservesArbiterFederationBalances
-        ? 0
-        : (fedimint.balanceMsats ?? 0),
-      activeCommitmentCount,
-    });
-
-    // V3 #72 (listing-tap face of the same gate): a foreign-route listing
-    // would silently switch the wallet's fed — never out from under a live
-    // trade. Matching listings fall through untouched.
-    if (effect.kind === "blocked-active-commitment") {
-      setToast({
-        message: t("app.listingOtherChama"),
-        type: "info",
-      });
-      return;
-    }
-
-    // Always background-refetch so the detail screen sees fresh state
-    // by the time it renders. Mirrors the pre-v0.2.0 behavior.
+    // Opening any trade is read-only Nostr work. Wallet routing happens only
+    // when the user funds or redeems ecash, including CREATED and APPROVED.
+    setDetailBackView(safeBackView);
+    setSelectedId(id);
+    setView("detail");
     if (!TRULY_TERMINAL_STATES.has(local.status)) {
-      actions.loadEscrow(id, { repairFromCache: true }).catch((e: any) => {
-        console.debug(
-          "[chama] background refetch on openEscrow failed:",
-          e?.message || e,
-        );
+      void actions.loadEscrow(id, { repairFromCache: true }).catch(error => {
+        console.debug("[chama] trade refresh failed:", error);
       });
     }
-
-    if (effect.kind === "matching") {
-      setDetailBackView(safeBackView);
-      setSelectedId(id);
-      setView("detail");
-      return;
-    }
-
-    if (effect.kind === "switch-silent") {
-      // A jump to a trade in another community — frame the overlay as opening
-      // that trade there, not as switching the trade you were on.
-      setSwitchingToCommunity({ displayName: effect.displayName, forTrade: true });
-      setToast({ message: t("app.switchingForTrade", { name: effect.displayName }), type: "info" });
-      (async () => {
-        const switchStartedAt = Date.now();
-        try {
-          if (fedimint.federationId) {
-            await actions.switchFederation(effect.targetInvite);
-          } else {
-            await actions.initFedimint(effect.targetInvite);
-          }
-          // V3 #75: this was a listing-tap VISIT — identity stays home, only
-          // the wallet's fed moved. Remember it so backing out of the detail
-          // view can snap the wallet back to the home fed (unless a live
-          // commitment has anchored the user here by then).
-          visitedForeignFedRef.current = true;
-          setDetailBackView(safeBackView);
-          setSelectedId(id);
-          setView("detail");
-          setToast({ message: t("app.onForTrade", { name: effect.displayName }), type: "success" });
-        } catch (e: any) {
-          if (e?.code === "RECONCILE_REFUSED_NONZERO_BALANCE"
-            || e?.code === "SWITCH_REFUSED_NONZERO_BALANCE") {
-            // Race: balance was zero at decision time, became non-zero
-            // before the switch landed. Surface the modal with the
-            // navigate-after target so confirm-then-navigate still works.
-            queueDestroyConfirm({
-              invite: effect.targetInvite,
-              label: effect.displayName,
-              balanceMsats: e.balanceMsats || 0,
-              activeInvite: e.previousActiveInvite || liveActiveInvite || "",
-              navigateToEscrowAfter: id,
-            });
-          } else {
-            setToast({
-              message: e?.message || t("app.couldntSwitchTo", { label: effect.displayName }),
-              type: "error",
-            });
-          }
-        } finally {
-          await waitForSwitchFeedback(switchStartedAt);
-          setSwitchingToCommunity(null);
-        }
-      })();
-      return;
-    }
-
-    // destroy-confirm — funds at risk on user's current fed, surface
-    // the modal. After confirm, the switch happens AND we navigate to
-    // the listing detail (per v0.2.0 spec the listing-tap user intent
-    // carries through the modal).
-    queueDestroyConfirm({
-      invite: effect.targetInvite,
-      label: effect.displayName,
-      balanceMsats: effect.balanceMsats,
-      activeInvite: effect.currentInvite,
-      navigateToEscrowAfter: id,
-    });
   };
 
   // Open a durable-index "Earlier trade" whose chain isn't loaded. Unlike
@@ -3039,6 +2960,7 @@ export default function App() {
   };
 
   const { handleSelectCommunity, handlePasteCustomInvite } = useFederationCommands({
+    walletAvailable: isNativeBridgeModeOn() || hasFediInternalEcash() || isSimModeOn() || isTestnetMode() || !browserWalletStorageError(),
     fedimint,
     actions,
     activeCommitmentCount,
@@ -4410,10 +4332,7 @@ export default function App() {
                 });
                 return { ok: false, error: "NWC disabled in Fedi" };
               }
-              if (!fedimint.joined) {
-                setToast({ message: t("app.joinChamaFirst"), type: "error" });
-                return { ok: false, error: "Join a Chama first" };
-              }
+              if (!selected || !await ensureTradeWallet(selected)) return { ok: false, error: "Wallet unavailable" };
               if (midFunding) {
                 setToast({
                   message: t("app.anotherFundingInProgress"),
@@ -4515,6 +4434,7 @@ export default function App() {
               if (!selected) return { ok: false, error: "No selected trade" };
               const winner = getWinner(selected);
               if (!winner) return { ok: false, error: "No winner yet" };
+              if (!await ensureTradeWallet(selected)) return { ok: false, error: "Wallet unavailable" };
               const payoutMsats = selected.amountMsats;
               // E1.1: same insurance holdback as the ClaimPayoutModal path.
               const nwcClaimDecision = (!isSimModeOn() && !isTestnetMode() && pubkey)
