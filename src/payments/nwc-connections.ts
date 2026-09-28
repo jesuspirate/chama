@@ -64,7 +64,7 @@ function normalizeEntry(entry: SavedNwcConnection): SavedNwcConnection | null {
     return {
       ...entry,
       connectionString,
-      label: entry.label.trim() || labelForConnection(connectionString),
+      label: entry.label.trim().slice(0, 64) || labelForConnection(connectionString),
       walletPubkey: parsed.walletPubkey,
       relayCount: parsed.relays.length,
     };
@@ -149,6 +149,7 @@ export function listSavedNwcConnections(): SavedNwcConnection[] {
 
 export function deleteSavedNwcConnection(id: string): void {
   writeRaw(readRaw().filter(c => c.id !== id), { allowEmptyOverwrite: true });
+  if (typeof window !== "undefined") window.dispatchEvent(new Event("chama:saved-wallets"));
 }
 
 export function addOrTouchSavedNwcConnection(connectionString: string): SavedNwcConnection {
@@ -168,7 +169,7 @@ export function addOrTouchSavedNwcConnection(connectionString: string): SavedNwc
     const next: SavedNwcConnection = {
       ...connections[idx],
       connectionString: normalized,
-      label: parsed.lud16 || connections[idx].label || labelForConnection(normalized),
+      label: connections[idx].label || parsed.lud16 || labelForConnection(normalized),
       walletPubkey: parsed.walletPubkey,
       relayCount: parsed.relays.length,
       lastUsedAt: nowSec,
@@ -189,4 +190,14 @@ export function addOrTouchSavedNwcConnection(connectionString: string): SavedNwc
   };
   writeRaw([entry, ...connections]);
   return entry;
+}
+
+export function renameSavedNwcConnection(id: string, label: string): void {
+  writeRaw(readRaw().map(connection => connection.id === id
+    ? { ...connection, label: label.trim().slice(0, 64) || labelForConnection(connection.connectionString) } : connection));
+  if (typeof window !== "undefined") window.dispatchEvent(new Event("chama:saved-wallets"));
+}
+/** Identify the connection without printing its bearer secret in a wallet row. */
+export function displayNwcConnection(connection: SavedNwcConnection): string {
+  return `nostr+walletconnect://${connection.walletPubkey.slice(0, 8)}…${connection.walletPubkey.slice(-8)}`;
 }

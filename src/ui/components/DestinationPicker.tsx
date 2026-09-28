@@ -27,7 +27,7 @@
 import { lazy, Suspense, useMemo, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode } from "react";
 import { Capacitor } from "@capacitor/core";
 import { T, inputStyle } from "../theme.js";
-import { displayPayoutDestination, type PayoutDestination } from "../../payments/payout-destinations.js";
+import { displayPayoutDestination, payoutDestinationLabel, type PayoutDestination } from "../../payments/payout-destinations.js";
 import type { SavedNwcConnection } from "../../payments/nwc-connections.js";
 import {
   resolveLightningAddressToInvoice,
@@ -366,7 +366,8 @@ export function DestinationPicker({
                         color: T.text, fontFamily: T.mono, fontSize: 11,
                         overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                       }}>
-                        {displayPayoutDestination(destination.address)}
+                        {payoutDestinationLabel(destination)}
+                        {destination.label && <span style={{ display: "block", color: T.muted, fontSize: 10 }}>{displayPayoutDestination(destination.address)}</span>}
                       </span>
                     </span>
                     {isDefault && (

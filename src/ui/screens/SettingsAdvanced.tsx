@@ -1,3 +1,4 @@
+import { SavedWalletRow } from "../components/SavedWalletRow.js";
 import { BlockExplorerSetting } from '../panels/BlockExplorerSetting.js';
 import { useState, useEffect, useRef, type ReactNode } from "react";
 import { type FedimintState } from "../../hooks/useEscrow.js";
@@ -13,7 +14,7 @@ import { normalizeTrustedArbiterInput, readVerifiedRosterPool } from "../../arbi
 import { isNwcConnectionString } from "../../payments/nwc.js";
 import {
   addOrTouchSavedNwcConnection,
-  deleteSavedNwcConnection,
+  deleteSavedNwcConnection, renameSavedNwcConnection, displayNwcConnection,
   listSavedNwcConnections,
   type SavedNwcConnection,
 } from "../../payments/nwc-connections.js";
@@ -319,6 +320,7 @@ export function SettingsAdvanced({
             onInput={setNwcInput}
             onSave={handleSaveNwc}
             onDelete={handleDeleteNwc}
+            onRename={(id, label) => { renameSavedNwcConnection(id, label); refreshNwcConnections(); }}
           />
         )}
       </div>
@@ -606,7 +608,7 @@ function NwcManager({
   inputReady,
   onInput,
   onSave,
-  onDelete,
+  onDelete, onRename,
 }: {
   saved: SavedNwcConnection[];
   input: string;
@@ -615,6 +617,7 @@ function NwcManager({
   onInput: (value: string) => void;
   onSave: () => void;
   onDelete: (id: string) => void;
+  onRename: (id: string, label: string) => void;
 }) {
   return (
     <div style={{
@@ -685,59 +688,8 @@ function NwcManager({
           }}>
             SAVED
           </div>
-          {saved.map((connection) => (
-            <div
-              key={connection.id}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: 10,
-                padding: "10px 12px",
-                background: T.surface,
-                border: `1px solid ${T.border}`,
-                borderRadius: T.rs,
-                marginBottom: 6,
-              }}
-            >
-              <div style={{ minWidth: 0 }}>
-                <div style={{
-                  color: T.text,
-                  fontFamily: T.mono,
-                  fontSize: 11,
-                  fontWeight: 800,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}>
-                  {connection.label}
-                </div>
-                <div style={{
-                  color: T.muted,
-                  fontFamily: T.mono,
-                  fontSize: 9,
-                  marginTop: 3,
-                }}>
-                  {connection.relayCount} relay{connection.relayCount === 1 ? "" : "s"} · {connection.walletPubkey.slice(0, 8)}
-                </div>
-              </div>
-              <button
-                onClick={() => onDelete(connection.id)}
-                style={{
-                  background: "none",
-                  border: "none",
-                  color: T.red,
-                  fontFamily: T.mono,
-                  fontSize: 10,
-                  cursor: "pointer",
-                  padding: "4px 0",
-                  flexShrink: 0,
-                }}
-              >
-                Delete
-              </button>
-            </div>
-          ))}
+          {saved.map(connection => <SavedWalletRow key={connection.id} label={connection.label}
+            detail={displayNwcConnection(connection)} onRename={label => onRename(connection.id, label)} onRemove={() => onDelete(connection.id)} />)}
         </div>
       )}
 

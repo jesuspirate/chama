@@ -1,3 +1,4 @@
+import { SavedWalletRow } from "../components/SavedWalletRow.js";
 import { getCommunityBySlug } from "../../communities/registry.js";
 import { TradeAmount } from "../components/TradeAmount.js";
 import { PaymentRails, PaymentButton, type PaymentRail } from "../components/PaymentCard.js";
@@ -32,9 +33,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { T, inputStyle } from "../theme.js";
 import { DestinationPicker, resolveReceiveCode } from "../components/DestinationPicker.js";
 import { BitcoinAmount } from "../components/BitcoinAmount.js";
-import { displayPayoutDestination, type PayoutDestination } from "../../payments/payout-destinations.js";
+import { displayPayoutDestination, payoutDestinationLabel, renamePayoutDestination, deletePayoutDestination, listPayoutDestinations, type PayoutDestination } from "../../payments/payout-destinations.js";
 import {
-  addOrTouchSavedNwcConnection,
+  addOrTouchSavedNwcConnection, renameSavedNwcConnection, deleteSavedNwcConnection, displayNwcConnection, listSavedNwcConnections,
   type SavedNwcConnection,
 } from "../../payments/nwc-connections.js";
 import {
@@ -182,13 +183,15 @@ interface DispatchArgs {
   saveNwcAfter?: boolean;
 }
 
+const EMPTY_SAVED_NWC: SavedNwcConnection[] = [];
+
 export function ClaimPayoutModal({
   getLightningGatewayCount, onWithdrawEcash,
   escrowId,
   payoutMsats,
   premiumMsats = 0,
-  savedDestinations,
-  savedNwcConnections = [],
+  savedDestinations: initialDestinations,
+  savedNwcConnections: initialConnections = EMPTY_SAVED_NWC,
   homeCommunity,
   tradeCommunity,
   fiatCurrency,
@@ -198,6 +201,16 @@ export function ClaimPayoutModal({
   probeFederation,
   onClose,
 }: ClaimPayoutModalProps) {
+  const [savedDestinations, setSavedDestinations] = useState(initialDestinations);
+  const [savedNwcConnections, setSavedNwcConnections] = useState(initialConnections);
+  useEffect(() => setSavedDestinations(initialDestinations), [initialDestinations]);
+  useEffect(() => setSavedNwcConnections(initialConnections), [initialConnections]);
+  useEffect(() => {
+    const refresh = () => { setSavedDestinations(listPayoutDestinations()); setSavedNwcConnections(listSavedNwcConnections()); };
+    window.addEventListener("chama:saved-wallets", refresh);
+    return () => window.removeEventListener("chama:saved-wallets", refresh);
+  }, []);
+
   const { t } = useT();
   // E1.1: quote from the premium-reduced amount. The full claim still
   // lands in the wallet; the gap (insurance + unspent fee reserve) stays
@@ -724,6 +737,10 @@ export function ClaimMethodChooser({
 }) {
   const { t } = useT();
   const [rail, setRail] = useState<PaymentRail>("lightning");
+  const [walletDestinations, setWalletDestinations] = useState(savedWalletDestinations);
+  const [walletConnections, setWalletConnections] = useState(savedNwcConnections);
+  useEffect(() => setWalletDestinations(savedWalletDestinations), [savedWalletDestinations]);
+  useEffect(() => setWalletConnections(savedNwcConnections), [savedNwcConnections]);
   const [selected, setSelected] = useState<{ kind: "address"; wallet: PayoutDestination } | { kind: "nwc"; wallet: SavedNwcConnection } | null>(null);
   useEffect(() => { if (lightningReason && lightningReason !== t("fund.checkingGateways")) setRail("ecash"); }, [lightningReason]);
   // Single-column layout once external swaps or native offramps are
@@ -771,48 +788,40 @@ export function ClaimMethodChooser({
           {t("claim.chooseWhere")}
         </div>
 
-        {(savedNwcConnections.length > 0 || savedWalletDestinations.length > 0) && (
+        {(walletConnections.length > 0 || walletDestinations.length > 0) && (
           <section aria-label={t("claim.yourWallets")} style={{ marginBottom: 16 }}>
             <h3 style={{ color: T.text, fontFamily: T.sans, fontSize: 14 }}>{t("claim.yourWallets")}</h3>
             <div style={{ display: "grid", gap: 6 }}>
-              {savedWalletDestinations.map(destination => <button key={destination.id} disabled={!!lightningReason}
-                aria-pressed={selected?.kind === "address" && selected.wallet.id === destination.id}
-                onClick={() => { setRail("lightning"); setSelected({ kind: "address", wallet: destination }); }}
-                style={{ padding: "12px 14px", minHeight: 44, borderRadius: T.r, border: `1px solid ${T.borderHi}`,
-                  background: T.surface, color: T.text, textAlign: "left", overflowWrap: "anywhere", opacity: lightningReason ? 0.5 : 1 }}>
-                {destination.address} {selected?.kind === "address" && selected.wallet.id === destination.id ? "✓" : ""}
-              </button>)}
-            </div>
-            <div style={{ display: "grid", gap: 6, marginTop: 8 }}>
-              {savedNwcConnections.map((connection) => (
-                <button
-                  key={connection.id}
-                  disabled={!!lightningReason}
-                    aria-pressed={selected?.kind === "nwc" && selected.wallet.id === connection.id}
-                    onClick={() => { setRail("lightning"); setSelected({ kind: "nwc", wallet: connection }); }}
-                  style={{
-                    width: "100%", padding: "12px 14px", borderRadius: T.r,
-                    background: T.accentDim, border: `1px solid ${T.accent}66`,
-                    color: T.text, fontFamily: T.mono, fontSize: 12,
-                    cursor: lightningReason ? "not-allowed" : "pointer", opacity: lightningReason ? 0.5 : 1, display: "flex",
-                    justifyContent: "space-between", alignItems: "center",
-                    gap: 12,
-                  }}
-                >
-                  <span style={{
-                    overflow: "hidden", textOverflow: "ellipsis",
-                    whiteSpace: "nowrap", fontWeight: 600,
-                  }}>
-                    {connection.label}
-                  </span>
-                  <span style={{
-                    color: T.accent, flexShrink: 0, fontSize: 9,
-                    fontWeight: 800, letterSpacing: 1,
-                  }}>
-                    {selected?.kind === "nwc" && selected.wallet.id === connection.id ? "✓" : ""}
-                  </span>
-                </button>
-              ))}
+              {walletDestinations.map(destination => <SavedWalletRow key={destination.id}
+                label={payoutDestinationLabel(destination)} detail={destination.label ? destination.address : displayPayoutDestination(destination.address)} disabled={!!lightningReason}
+                selected={selected?.kind === "address" && selected.wallet.id === destination.id}
+                onSelect={() => { setRail("lightning"); setSelected({ kind: "address", wallet: destination }); }}
+                onRename={label => {
+                  renamePayoutDestination(destination.id, label);
+                  const updated = { ...destination, label: label.trim().slice(0, 64) || undefined };
+                  setWalletDestinations(rows => rows.map(row => row.id === destination.id ? updated : row));
+                  if (selected?.kind === "address" && selected.wallet.id === destination.id) setSelected({ kind: "address", wallet: updated });
+                }}
+                onRemove={() => {
+                  deletePayoutDestination(destination.id);
+                  setWalletDestinations(rows => rows.filter(row => row.id !== destination.id));
+                  if (selected?.kind === "address" && selected.wallet.id === destination.id) setSelected(null);
+                }} />)}
+              {walletConnections.map(connection => <SavedWalletRow key={connection.id}
+                label={connection.label} detail={displayNwcConnection(connection)} disabled={!!lightningReason}
+                selected={selected?.kind === "nwc" && selected.wallet.id === connection.id}
+                onSelect={() => { setRail("lightning"); setSelected({ kind: "nwc", wallet: connection }); }}
+                onRename={label => {
+                  renameSavedNwcConnection(connection.id, label);
+                  const updated = { ...connection, label: label.trim().slice(0, 64) || `NWC ${connection.walletPubkey.slice(0, 8)}` };
+                  setWalletConnections(rows => rows.map(row => row.id === connection.id ? updated : row));
+                  if (selected?.kind === "nwc" && selected.wallet.id === connection.id) setSelected({ kind: "nwc", wallet: updated });
+                }}
+                onRemove={() => {
+                  deleteSavedNwcConnection(connection.id);
+                  setWalletConnections(rows => rows.filter(row => row.id !== connection.id));
+                  if (selected?.kind === "nwc" && selected.wallet.id === connection.id) setSelected(null);
+                }} />)}
             </div>
             {lightningReason && <p role="status" style={{ color: T.muted, fontSize: 12 }}>{lightningReason}</p>}
           </section>
@@ -821,7 +830,7 @@ export function ClaimMethodChooser({
         <PaymentRails rail={rail} disabledReasons={{ lightning: lightningReason }} onSelect={setRail} />
         <p style={{ color: T.muted, fontSize: 12, lineHeight: 1.5 }}>{t("claim.railTiming")}</p>
         <PaymentButton disabled={rail === "lightning" && !!lightningReason} tier={rail === "ecash" ? "primary" : "raised"} style={{ width: "100%", marginBottom: 12 }} onClick={() => rail === "ecash" ? onSelectEcash() : rail === "lightning" && selected ? selected.kind === "address" ? onSelectSavedWallet(selected.wallet) : onSelectSavedNwc(selected.wallet) : onSelect({ kind: rail })}>
-          {rail === "ecash" ? t("claim.ecashMethod") : rail === "onchain" ? t("claim.pasteBitcoin") : selected ? t("claim.sendTo", { amount: payoutSats.toLocaleString(), destination: selected.kind === "address" ? displayPayoutDestination(selected.wallet.address) : selected.wallet.label }) : t("claim.lightningOptions")}
+          {rail === "ecash" ? t("claim.ecashMethod") : rail === "onchain" ? t("claim.pasteBitcoin") : selected ? t("claim.sendTo", { amount: payoutSats.toLocaleString(), destination: selected.kind === "address" ? payoutDestinationLabel(selected.wallet) : selected.wallet.label }) : t("claim.lightningOptions")}
         </PaymentButton>
         {rail === "lightning" && selected && <PaymentButton disabled={!!lightningReason} onClick={() => onSelect({ kind: "lightning" })} style={{ width: "100%", marginBottom: 12 }}>{t("claim.lightningOptions")}</PaymentButton>}
         {hasTallCards && <section aria-label={t("claim.cashOutCurrency", { currency: cashOutCurrency })}>

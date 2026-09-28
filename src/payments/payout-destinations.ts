@@ -28,6 +28,8 @@ export interface PayoutDestination {
   id: string;
   /** Lightning Address or raw LNURL-pay code, normalized lowercase. */
   address: string;
+  /** Optional device-local name; never a payment destination. */
+  label?: string;
   /** Unix seconds — first saved. */
   createdAt: number;
   /** Unix seconds — last successful claim/recovery use. */
@@ -63,6 +65,7 @@ function normalizeDestination(destination: PayoutDestination): PayoutDestination
   return {
     ...destination,
     address: normalizeAddress(destination.address),
+    label: typeof destination.label === "string" ? destination.label.trim().slice(0, 64) || undefined : undefined,
   };
 }
 
@@ -194,6 +197,7 @@ export function listPayoutDestinations(): PayoutDestination[] {
 export function deletePayoutDestination(id: string): void {
   migrateLegacyLightningHandles();
   writeRaw(readRaw().filter(d => d.id !== id), { allowEmptyOverwrite: true });
+  if (typeof window !== "undefined") window.dispatchEvent(new Event("chama:saved-wallets"));
 }
 
 /** Idempotent save/touch for a Lightning Address used as a payout
@@ -223,4 +227,14 @@ export function addOrTouchPayoutDestination(address: string): PayoutDestination 
   };
   writeRaw([entry, ...destinations]);
   return entry;
+}
+
+export function renamePayoutDestination(id: string, label: string): void {
+  migrateLegacyLightningHandles();
+  writeRaw(readRaw().map(destination => destination.id === id
+    ? { ...destination, label: label.trim().slice(0, 64) || undefined } : destination));
+  if (typeof window !== "undefined") window.dispatchEvent(new Event("chama:saved-wallets"));
+}
+export function payoutDestinationLabel(destination: PayoutDestination): string {
+  return destination.label || displayPayoutDestination(destination.address);
 }

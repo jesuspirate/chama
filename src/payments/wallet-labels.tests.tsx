@@ -1,0 +1,37 @@
+import assert from 'node:assert/strict';
+import React from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { addOrTouchPayoutDestination, renamePayoutDestination, deletePayoutDestination, listPayoutDestinations, payoutDestinationLabel } from './payout-destinations.js';
+import { addOrTouchSavedNwcConnection, renameSavedNwcConnection, listSavedNwcConnections, deleteSavedNwcConnection, displayNwcConnection } from './nwc-connections.js';
+import { setLocalStorageUserScope } from '../storage/user-scope.js';
+import { SavedWalletRow } from '../ui/components/SavedWalletRow.js';
+const values = new Map<string,string>();
+Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: {
+ getItem: (k: string) => values.get(k) ?? null, setItem: (k: string,v: string) => values.set(k,v), removeItem: (k: string) => values.delete(k),
+} });
+setLocalStorageUserScope('wallet-label-test');
+const lnurl = 'lnurl1' + 'a'.repeat(90) + 'xyz';
+const destination = addOrTouchPayoutDestination(lnurl);
+assert.equal(payoutDestinationLabel(destination), 'lnurl1aaa…xyz');
+renamePayoutDestination(destination.id, ' Fedi ');
+assert.equal(payoutDestinationLabel(listPayoutDestinations()[0]), 'Fedi');
+assert.equal(addOrTouchPayoutDestination(lnurl).label, 'Fedi', 'reuse preserves a chosen name');
+assert.equal(listPayoutDestinations()[0].address, lnurl);
+const uri = `nostr+walletconnect://${'a'.repeat(64)}?relay=wss%3A%2F%2Frelay.example.com&secret=${'b'.repeat(64)}&lud16=old%40example.com`;
+const connection = addOrTouchSavedNwcConnection(uri);
+renameSavedNwcConnection(connection.id, 'Zeus at home');
+assert.equal(addOrTouchSavedNwcConnection(uri).label, 'Zeus at home', 'lud16 never overwrites the chosen name');
+assert.equal(listSavedNwcConnections()[0].connectionString, uri, 'rename does not alter credentials');
+const html = renderToStaticMarkup(<SavedWalletRow label="Zeus at home" detail={displayNwcConnection(connection)} onRename={() => {}} onRemove={() => {}} />);
+assert.match(html, /Zeus at home/); assert.match(html, /Rename/); assert.match(html, /Remove/);
+assert.doesNotMatch(html, /secret=|bbbbbbbb/);
+renamePayoutDestination(destination.id, '');
+assert.equal(payoutDestinationLabel(listPayoutDestinations()[0]), 'lnurl1aaa…xyz');
+renameSavedNwcConnection(connection.id, '');
+assert.equal(listSavedNwcConnections()[0].label, 'old@example.com');
+setLocalStorageUserScope('other-wallet-user');
+assert.deepEqual(listPayoutDestinations(), []); assert.deepEqual(listSavedNwcConnections(), []);
+setLocalStorageUserScope('wallet-label-test');
+deletePayoutDestination(destination.id); deleteSavedNwcConnection(connection.id);
+assert.deepEqual(listPayoutDestinations(), []); assert.deepEqual(listSavedNwcConnections(), [], 'backups do not resurrect removed connections');
+console.log('PASS saved wallet labels, clearing, reuse, credential preservation, identity isolation and removal');
