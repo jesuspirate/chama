@@ -32,7 +32,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { T, inputStyle } from "../theme.js";
 import { DestinationPicker, resolveReceiveCode } from "../components/DestinationPicker.js";
 import { BitcoinAmount } from "../components/BitcoinAmount.js";
-import type { PayoutDestination } from "../../payments/payout-destinations.js";
+import { displayPayoutDestination, type PayoutDestination } from "../../payments/payout-destinations.js";
 import {
   addOrTouchSavedNwcConnection,
   type SavedNwcConnection,
@@ -340,7 +340,7 @@ export function ClaimPayoutModal({
 
   // v1.2.5: claim-side NWC quick-pick. Mirrors the funding modal's
   // saved-NWC top-level button — one tap on a saved wallet, the
-  // chooser resolves an invoice via NWC's make_invoice, then dispatches
+  // confirmed chooser action resolves an invoice via NWC's make_invoice, then dispatches
   // the claim. The spinner appears immediately so the user sees that
   // something is happening during the relay round-trip.
   const dispatchSavedWalletClaim = async (destination: PayoutDestination) => {
@@ -349,7 +349,7 @@ export function ClaimPayoutModal({
       const invoice = await resolveReceiveCode(destination.address, payoutSats);
       resolveDestination(invoice, { saveAfter: true, addressUsed: destination.address });
     } catch (e: any) {
-      setStage({ kind: "terminal", terminal: { kind: "claim-failed", error: e?.message || t("claim.errNwcNoInvoice") } });
+      setStage({ kind: "terminal", terminal: { kind: "claim-failed", error: e?.message || t("claim.errResolveDestination") } });
     }
   };
 
@@ -713,7 +713,7 @@ export function ClaimMethodChooser({
   /** v1.2.5: saved NWC connections, promoted to top-level quick-pick
    *  buttons here just like AtomicFundingModal does on the funding
    *  side. A returning user with a saved wallet can claim straight
-   *  to it in one tap — no detour through LN → DestinationPicker. */
+   *  to it after selection — no detour through LN → DestinationPicker. */
   savedNwcConnections: SavedNwcConnection[];
   onSelect: (method: PayoutMethod) => void;
   onSelectEcash: () => void;
@@ -821,7 +821,7 @@ export function ClaimMethodChooser({
         <PaymentRails rail={rail} disabledReasons={{ lightning: lightningReason }} onSelect={setRail} />
         <p style={{ color: T.muted, fontSize: 12, lineHeight: 1.5 }}>{t("claim.railTiming")}</p>
         <PaymentButton disabled={rail === "lightning" && !!lightningReason} tier={rail === "ecash" ? "primary" : "raised"} style={{ width: "100%", marginBottom: 12 }} onClick={() => rail === "ecash" ? onSelectEcash() : rail === "lightning" && selected ? selected.kind === "address" ? onSelectSavedWallet(selected.wallet) : onSelectSavedNwc(selected.wallet) : onSelect({ kind: rail })}>
-          {rail === "ecash" ? t("claim.ecashMethod") : rail === "onchain" ? t("claim.pasteBitcoin") : selected ? t("claim.sendTo", { amount: payoutSats.toLocaleString(), destination: selected.kind === "address" ? selected.wallet.address : selected.wallet.label }) : t("claim.lightningOptions")}
+          {rail === "ecash" ? t("claim.ecashMethod") : rail === "onchain" ? t("claim.pasteBitcoin") : selected ? t("claim.sendTo", { amount: payoutSats.toLocaleString(), destination: selected.kind === "address" ? displayPayoutDestination(selected.wallet.address) : selected.wallet.label }) : t("claim.lightningOptions")}
         </PaymentButton>
         {rail === "lightning" && selected && <PaymentButton disabled={!!lightningReason} onClick={() => onSelect({ kind: "lightning" })} style={{ width: "100%", marginBottom: 12 }}>{t("claim.lightningOptions")}</PaymentButton>}
         {hasTallCards && <section aria-label={t("claim.cashOutCurrency", { currency: cashOutCurrency })}>

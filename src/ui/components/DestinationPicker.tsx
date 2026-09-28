@@ -266,7 +266,7 @@ export function DestinationPicker({
       : dispatchPreview.ok && dispatchPreview.decision.tier === "pasted-nwc"
         ? <>{t("claim.nwcInvoiceBefore")} {submitAmount}</>
         : dispatchPreview.ok && dispatchPreview.decision.tier === "typed-address"
-          ? <>{t("claim.sendTo", { amount: amountSats.toLocaleString(), destination: typed.trim() })} · {t("claim.saveAddressHint")}</>
+          ? <>{t("claim.sendTo", { amount: amountSats.toLocaleString(), destination: displayPayoutDestination(dispatchPreview.decision.addressUsed!) })} · {t("claim.saveAddressHint")}</>
           : <>{t("claim.submitSendBefore")} {submitAmount} →</>;
 
   const renderPrimarySubmitButton = (marginBottom = 10, saveAfterOverride = true) => (

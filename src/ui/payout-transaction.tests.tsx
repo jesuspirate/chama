@@ -51,3 +51,8 @@ const destinationHtml = renderToStaticMarkup(<LangProvider><DestinationPicker am
 assert.match(destinationHtml, /Send 196 sats to bitcrazy@getalby.com/);
 assert.match(destinationHtml, /save address/);
 console.log('PASS claim action labels: net payout and destination, explicit saving, no render-time dispatch');
+
+const lnurlHtml = renderToStaticMarkup(<LangProvider><DestinationPicker amountSats={196}
+  initialAddress="lnurl1dp68gurn8ghj7urgdajku6tc9eshqup0d3h82unvwqhkzmrfvdjsr5eqhc"
+  savedDestinations={[]} savedNwcConnections={[]} title="Claim" onResolve={unexpected} onCancel={unexpected} /></LangProvider>);
+assert.match(lnurlHtml, /Send 196 sats to lnurl1dp6…qhc/);
