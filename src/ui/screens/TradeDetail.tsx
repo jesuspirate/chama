@@ -4485,7 +4485,7 @@ export function TradeDetail({
 
 
 
-      {state.custodyNotice && (
+      {state.custodyNotice && state.custodyNotice.status !== "acknowledged-with-rejection" && (
         <div style={{
           marginTop: 14,
           padding: "12px 14px",
@@ -4497,9 +4497,7 @@ export function TradeDetail({
           <div style={{ color: T.amber, fontWeight: 800, fontSize: 12, marginBottom: 5 }}>
             {state.custodyNotice.status === "expired-unacked"
               ? t("trade.custodyExpiredTitle")
-              : state.custodyNotice.status === "acknowledged-with-rejection"
-                ? t("trade.custodyRejectionTitle")
-                : t("trade.custodyPendingTitle")}
+              : t("trade.custodyPendingTitle")}
           </div>
           <div style={{ color: T.muted, fontSize: 11, lineHeight: 1.5, wordBreak: "break-word" }}>
             {state.custodyNotice.message || t("trade.custodyPendingBody")}

@@ -557,6 +557,7 @@ export class EscrowClient {
   private rawEventsTouchedAt: Map<string, number> = new Map();
   /** Session context survives first-ACK queue retirement long enough to show
    *  late straggler rejection text in the one trade-level diagnostic. */
+  private moneyPublishesInFlight = new Set<string>();
   private moneyPublishContext = new Map<string, { escrowId: string; type: MoneyEventType }>();
   private shownRelayRejections = new Set<string>();
 
@@ -2172,6 +2173,10 @@ export class EscrowClient {
       const entry = moneyEntryForEscrow(store, state.id, "lock")
         ?? moneyEntryForEscrow(store, state.id, "premium");
       if (entry) {
+        if (entry.status === "pending" && this.moneyPublishesInFlight.has(entry.event.id)) {
+          if (state.custodyNotice?.eventType === entry.type) state.custodyNotice = undefined;
+          return state;
+        }
         const message = formatCustodyDiagnostic(entry);
         state.custodyNotice = { eventType: entry.type, status: entry.status, message };
         if (entry.type === "lock") {
@@ -2182,11 +2187,9 @@ export class EscrowClient {
       }
       const diagnostic = moneyDiagnosticForEscrow(defaultDurableMoneyDiagnosticStore(), state.id);
       if (diagnostic) {
-        state.custodyNotice = {
-          eventType: diagnostic.type,
-          status: "acknowledged-with-rejection",
-          message: diagnostic.message,
-        };
+        // An ACK retired the pending event. Keep transport diagnostics out
+        // of the trade's action surface once any relay has accepted it.
+        if (state.custodyNotice?.eventType === diagnostic.type) state.custodyNotice = undefined;
         if (diagnostic.type === "lock") state.lock.custodyDiagnostic = diagnostic.message;
       } else {
         if (state.custodyNotice?.status === "pending"
@@ -2242,11 +2245,7 @@ export class EscrowClient {
           type,
           message: rejection,
         });
-        state.custodyNotice = {
-          eventType: type,
-          status: "acknowledged-with-rejection",
-          message: rejection,
-        };
+        if (state.custodyNotice?.eventType === type) state.custodyNotice = undefined;
       }
       if (type === "lock") {
         state.lock.custodyDurability = "acknowledged";
@@ -2281,13 +2280,7 @@ export class EscrowClient {
         }
         const state = this.states.get(context.escrowId);
         if (state) {
-          if (rejection) {
-            state.custodyNotice = {
-              eventType: context.type,
-              status: "acknowledged-with-rejection",
-              message: rejection,
-            };
-          } else if (state.custodyNotice?.eventType === context.type) {
+          if (state.custodyNotice?.eventType === context.type) {
             state.custodyNotice = undefined;
           }
           if (context.type === "lock") {
@@ -2304,9 +2297,7 @@ export class EscrowClient {
       if (this.shownRelayRejections.has(dedupeKey)) return;
       this.shownRelayRejections.add(dedupeKey);
       const entry = recordDurableMoneyPublishFailure(store, eventId, diagnostic);
-      if (entry) {
-        this.surfaceMoneyDiagnostic(entry);
-      } else {
+      if (!entry) {
         recordDurableMoneyDiagnostic(defaultDurableMoneyDiagnosticStore(), {
           eventId,
           escrowId: context.escrowId,
@@ -2315,11 +2306,7 @@ export class EscrowClient {
         });
         const state = this.states.get(context.escrowId);
         if (state) {
-          state.custodyNotice = {
-            eventType: context.type,
-            status: "acknowledged-with-rejection",
-            message: diagnostic,
-          };
+          if (state.custodyNotice?.eventType === context.type) state.custodyNotice = undefined;
           if (context.type === "lock") state.lock.custodyDiagnostic = diagnostic;
           this.callbacks.onStateUpdate?.(context.escrowId, state);
         }
@@ -2347,6 +2334,7 @@ export class EscrowClient {
     const store = defaultDurableMoneyPublishStore();
     const entry = enqueueDurableMoneyPublish(store, { event, ...input });
     this.moneyPublishContext.set(event.id, { escrowId: input.escrowId, type: input.type });
+    this.moneyPublishesInFlight.add(event.id);
     try {
       await this.relayManager.publish(event);
       const acknowledged = acknowledgeDurableMoneyPublish(store, event.id);
@@ -2355,9 +2343,9 @@ export class EscrowClient {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const failed = recordDurableMoneyPublishFailure(store, event.id, message) ?? entry;
-      this.surfaceMoneyDiagnostic(failed);
+      this.surfaceMoneyDiagnostic(failed, "Couldn’t send this trade update. It is saved on this device and will retry automatically. You can also reopen the trade and retry.");
       return { custodyDurability: failed.status, error: message };
-    }
+    } finally { this.moneyPublishesInFlight.delete(event.id); }
   }
 
   async drainDurableMoneyPublishes(
@@ -2369,6 +2357,8 @@ export class EscrowClient {
       this.surfaceMoneyDiagnostic(entry);
     }
     for (const entry of publishableMoneyEntries(store, nowSec)) {
+      if (this.moneyPublishesInFlight.has(entry.event.id)) continue;
+      this.moneyPublishesInFlight.add(entry.event.id);
       this.moneyPublishContext.set(entry.event.id, { escrowId: entry.escrowId, type: entry.type });
       try {
         await this.relayManager.publish(entry.event);
@@ -2381,7 +2371,7 @@ export class EscrowClient {
         const message = error instanceof Error ? error.message : String(error);
         const failed = recordDurableMoneyPublishFailure(store, entry.event.id, message);
         if (failed) this.surfaceMoneyDiagnostic(failed);
-      }
+      } finally { this.moneyPublishesInFlight.delete(entry.event.id); }
     }
   }
 

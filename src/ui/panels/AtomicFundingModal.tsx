@@ -656,7 +656,7 @@ export function AtomicFundingModal({
             onRail={rail => { if (rail !== request.rail) setSwitchRequested(rail); }}
             data={request.data} copyValue={request.value}
             motion={["mint-confirming", "mint-confirming-slow", "payment-confirmed", "locking"].includes(phase.kind)}
-            status={custodyNotice ? <>{t(custodyNotice.status === "expired-unacked" ? "trade.custodyExpiredTitle" : custodyNotice.status === "acknowledged-with-rejection" ? "trade.custodyRejectionTitle" : "trade.custodyPendingTitle")}<br />{custodyNotice.message || t("trade.custodyPendingBody")}</>
+            status={custodyNotice && custodyNotice.status !== "acknowledged-with-rejection" ? <>{t(custodyNotice.status === "expired-unacked" ? "trade.custodyExpiredTitle" : "trade.custodyPendingTitle")}<br />{custodyNotice.message || t("trade.custodyPendingBody")}</>
               : phase.kind === "receive-rejected" ? phase.reason
               : phase.kind === "lock-failed" ? (phase.errorKey ? t(phase.errorKey) : phase.error)
               : phase.kind === "expired" ? t("fund.invoiceExpired")
