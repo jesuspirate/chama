@@ -6,6 +6,21 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 
 @CapacitorPlugin(name = "ChamaDevice")
 public class ChamaDevicePlugin extends Plugin {
+    @PluginMethod public void payment(PluginCall call) {
+        String uri = call.getString("uri", "");
+        if (!uri.matches("(?i)^(lightning|bitcoin):[^\\s]+$")) { call.reject("Invalid payment link"); return; }
+        boolean share = call.getBoolean("share", false);
+        getActivity().runOnUiThread(() -> {
+            try {
+                android.content.Intent target = share
+                    ? new android.content.Intent(android.content.Intent.ACTION_SEND).setType("text/plain").putExtra(android.content.Intent.EXTRA_TEXT, uri)
+                    : new android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(uri));
+                getActivity().startActivity(android.content.Intent.createChooser(target, null));
+                call.resolve();
+            } catch (Exception e) { call.reject("No wallet available"); }
+        });
+    }
+
     @PluginMethod public void setTheme(PluginCall call) {
         String color = call.getString("color", "#05050a");
         try {

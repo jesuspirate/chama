@@ -1,3 +1,5 @@
+import { walletUri, nativeWalletLinks } from '../../payments/wallet-link.js';
+import { PaymentTarget, usePaymentTarget } from './PaymentTarget.js';
 import { useEffect, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from "react";
 import { T } from "../theme.js";
 import { useT } from "../../i18n/index.js";
@@ -31,20 +33,22 @@ export function PaymentButton({ tier = "raised", tone = "accent", style, ...prop
       ...style }} /></>;
 }
 
-export function PaymentCopyChip({ value, address = false }: { value: string; address?: boolean }) {
+export function PaymentCopyChip({ value, address = false, uri }: { value: string; address?: boolean; uri?: string }) {
   const { t } = useT();
   const [copied, setCopied] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout>>();
   useEffect(() => () => clearTimeout(timer.current), []);
+  const {failed, handlers} = usePaymentTarget(uri ?? (address ? walletUri(value, 'onchain') : undefined), () => {
+    copyTextRobust(value); setCopied(true); clearTimeout(timer.current); timer.current = setTimeout(() => setCopied(false), 1600);
+  });
   const label = value.length > 24 ? `${value.slice(0, address ? 6 : 12)}…${value.slice(address ? -6 : -12)}` : value;
-  return <button type="button" className={`payment-copy ${copied ? "is-copied" : ""}`} title={value}
+  return <><button {...handlers} type="button" className={`payment-copy ${copied ? "is-copied" : ""}`} title={value}
     aria-label={copied ? t("common.copied") : `${t("common.copy")} ${value}`}
-    onClick={() => { copyTextRobust(value); setCopied(true); clearTimeout(timer.current); timer.current = setTimeout(() => setCopied(false), 1600); }}
     style={{ position: "relative", isolation: "isolate", overflow: "hidden", width: "100%", minHeight: 44,
       borderRadius: 999, border: `1px solid ${copied ? T.accent : T.borderHi}`, background: T.surface,
       color: copied ? T.accent : T.text, font: `700 11px ${T.mono}`, cursor: "pointer", padding: "10px 12px" }}>
     <span aria-hidden="true">{copied ? "✓" : "⧉"} </span><span role="status">{copied ? t("common.copied") : label}</span>
-  </button>;
+  </button>{failed && <div role="status">{t('payment.walletFailed')} <button type="button" onClick={()=>copyTextRobust(value)}>{t('common.copy')}</button></div>}</>;
 }
 
 export function OpenWith({ value }: { value: string }) {
@@ -71,6 +75,8 @@ export function PaymentCard({ hideRails = false, amountMsats, rail, rails, onRai
     const observer = new ResizeObserver(entries => setSize(Math.max(120, Math.min(240, Math.floor(entries[0].contentRect.width - 44)))));
     observer.observe(ref.current); return () => observer.disconnect();
   }, []);
+  const uri = typeof data === 'string' && rail !== 'ecash' ? walletUri(data, rail) : undefined;
+  const qr = data ? <QRCode data={data} size={size} logo={motion ? "motion" : "static"} errorCorrectionLevel={ecash ? "L" : "H"} showLogo={!ecash} /> : null;
   return <section ref={ref} className="payment-card" style={{ color: T.text, minWidth: 0, width: "100%", fontFamily: T.sans,
     gridTemplateRows: hideRails ? "64px 284px 0px 78px 100px auto" : undefined, "--payment-glow": T.accentDim, "--payment-focus": T.accent } as React.CSSProperties}>
     <style>{`
@@ -88,15 +94,15 @@ export function PaymentCard({ hideRails = false, amountMsats, rail, rails, onRai
     `}</style>
     <div style={{ textAlign: "center", alignSelf: "center" }}><TradeAmount msats={amountMsats} size={28} interactive color={T.accent} /></div>
     <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
-      {data ? <QRCode data={data} size={size} logo={motion ? "motion" : "static"} errorCorrectionLevel={ecash ? "L" : "H"} showLogo={!ecash} /> : actions}
+      {data ? uri ? <PaymentTarget uri={uri} copyValue={copyValue ?? String(data)}>{qr}</PaymentTarget> : qr : actions}
     </div>
     {hideRails ? <div /> : <PaymentRails rail={rail} rails={rails ?? [rail]} onSelect={onRail} />}
     <div role="status" style={{ textAlign: "center", alignSelf: "stretch", overflowY: "auto", padding: "10px 4px", fontSize: 12, lineHeight: 1.5 }}>{status}</div>
     <div style={{ display: "grid", gap: 6, alignContent: "start", textAlign: "center", fontSize: 11, color: T.muted }}>
-      {copyValue && <PaymentCopyChip value={copyValue} address={rail === "onchain"} />}<div style={{ maxHeight: 50, overflowY: "auto", lineHeight: 1.5 }}>{helper}</div>
+      {copyValue && <PaymentCopyChip value={copyValue} address={rail === "onchain"} uri={uri} />}<div style={{ maxHeight: 50, overflowY: "auto", lineHeight: 1.5 }}>{helper}</div>
     </div>
     <div style={{ display: "grid", gap: 10, paddingTop: 8 }}>
-      {data && typeof data === "string" && <OpenWith value={data} />}{data && actions}
+      {!nativeWalletLinks() && data && typeof data === "string" && <OpenWith value={data} />}{data && actions}
       {details && <details><summary style={{ minHeight: 44, cursor: "pointer", paddingTop: 12 }}>{t("payment.details")}</summary><div style={{ fontSize: 12, lineHeight: 1.6, overflowWrap: "anywhere" }}>{details}</div></details>}
     </div>
   </section>;

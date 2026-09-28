@@ -1,3 +1,4 @@
+import { PaymentTarget } from '../components/PaymentTarget.js';
 import { esploraAddressUrl } from "../../bond-multisig/esplora-config.js";
 import { openExternalUrl } from "../open-url.js";
 import { PaymentButton, PaymentCopyChip } from "../components/PaymentCard.js";
@@ -164,8 +165,8 @@ export function OnchainEscrowPanel({
 
       {view.stage === "awaiting-funding" && view.address && <>
         <p style={{ textAlign: "center" }}>{view.viewerFunds && depositStatus === "waiting" ? "Send" : "Deposit:"} {Number(view.expectedSats).toLocaleString()} sats{view.viewerFunds && depositStatus === "waiting" ? " to this address" : ""}</p>
-        {uri && <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}><QRCode data={uri} size={210} logo="static" errorCorrectionLevel="H" alt={t("onchain.addressLabel")} /></div>}
-        <PaymentCopyChip value={view.address} address />
+        {uri && <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}><PaymentTarget uri={uri} copyValue={view.address ?? uri}><QRCode data={uri} size={210} logo="static" errorCorrectionLevel="H" alt={t("onchain.addressLabel")} /></PaymentTarget></div>}
+        <PaymentCopyChip value={view.address} address uri={uri ?? undefined} />
         <p role="status" style={{ color: T.muted, fontSize: 12, textAlign: "center" }}>{depositStatus !== "confirmed" && "Locks after 1 confirmation · "}{t(depositStatus === "seen" ? "onchain.seenMempool" : depositStatus === "confirmed" ? "onchain.depositConfirmed" : "onchain.waitingDeposit")}{!view.viewerFunds && depositStatus === "confirmed" && " · Locks when the funder next opens Chama"}</p>
         {view.viewerFunds && onCheckFunding && <PaymentButton disabled={checking} onClick={onCheckFunding} style={{ width: "100%" }}>
           {checking && <span className="funding-check-spinner" aria-hidden="true" style={{ display: "inline-block", width: 12, height: 12, border: "2px solid currentColor", borderTopColor: "transparent", borderRadius: "50%", animation: "funding-check-spin 1s linear infinite", marginRight: 8 }} />}

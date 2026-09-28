@@ -42,6 +42,7 @@ export const fund: Record<string, string> = {
   "payment.onchain": "On-chain",
   "payment.ecash": "Ecash",
   "payment.rail": "Payment method",
+  "payment.walletFailed": "Could not open a wallet. You can copy the payment instead.",
   "payment.openWith": "Open with…",
   "payment.details": "Details",
   "payment.shareFailed": "Could not open the share sheet. You can copy instead.",
