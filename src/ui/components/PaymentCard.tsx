@@ -47,7 +47,7 @@ export function PaymentCopyChip({ value, address = false, uri }: { value: string
     style={{ position: "relative", isolation: "isolate", overflow: "hidden", width: "100%", minHeight: 44,
       borderRadius: 999, border: `1px solid ${copied ? T.accent : T.borderHi}`, background: T.surface,
       color: copied ? T.accent : T.text, font: `700 11px ${T.mono}`, cursor: "pointer", padding: "10px 12px" }}>
-    <span aria-hidden="true">{copied ? "✓" : "⧉"} </span><span role="status">{copied ? t("common.copied") : label}</span>
+    {!copied && <span aria-hidden="true">⧉ </span>}<span role="status">{copied ? t("common.copied") : label}</span>
   </button>{failed && <div role="status">{t('payment.walletFailed')} <button type="button" onClick={()=>copyTextRobust(value)}>{t('common.copy')}</button></div>}</>;
 }
 
