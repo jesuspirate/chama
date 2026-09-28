@@ -15,7 +15,7 @@ export function ProfileAvatar({ pubkey, fallback, size = 36 }: { pubkey: string 
   useEffect(() => setFailures(0), [pubkey]);
   const avatar = pubkey ? readAvatar(pubkey) : null;
   void revision;
-  // The role dot supplies colour; an absent photo stays neutral in both themes.
+  // General profile fallback; seat callers supply their role-specific mark.
   const placeholder = <span aria-hidden="true" style={{
     display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
     width: size, height: size, flexShrink: 0, boxSizing: 'border-box',

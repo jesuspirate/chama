@@ -1,3 +1,4 @@
+import { RoleAvatar } from "./RoleAvatar.js";
 import { onchainAttention, type OnchainObservation } from '../../escrow-engine/onchain-attention.js';
 import { profileNameFor, type NostrProfileNameMap } from "../nostr-profiles.js";
 // ══════════════════════════════════════════════════════════════════════════
@@ -247,10 +248,11 @@ function AttentionCard({
           </div>
           {counterparty && (
             <div style={{
-              marginTop: 3, fontFamily: T.mono, fontSize: 10, color: T.muted,
+              display: "flex", alignItems: "center", gap: 6, marginTop: 3, fontFamily: T.mono, fontSize: 10, color: T.muted,
               overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const,
             }}>
-              {t("me.withCounterparty", { who: profileNameFor(profileNames, counterparty, kind0Enabled) ?? "…" })}
+              <RoleAvatar role={counterparty === participants[Role.BUYER] ? Role.BUYER : Role.SELLER} pubkey={counterparty} />
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{t("me.withCounterparty", { who: profileNameFor(profileNames, counterparty, kind0Enabled) ?? "…" })}</span>
             </div>
           )}
           <div style={{

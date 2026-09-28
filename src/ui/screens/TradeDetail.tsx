@@ -1,3 +1,4 @@
+import { RoleAvatar } from "../components/RoleAvatar.js";
 import { ConductFacts } from "../components/ConductFacts.js";
 import type { OnchainObservation } from '../../escrow-engine/onchain-attention.js';
 import { PaymentButton } from "../components/PaymentCard.js";
@@ -4208,30 +4209,12 @@ export function TradeDetail({
             cursor: "pointer", padding: "11px 14px",
             display: "flex", alignItems: "center", gap: 10,
           }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 3, flexShrink: 0 }}>
-              {TRINITY_RING_ORDER.map(role => {
-                // 3.5.1 #8a: mirror the trinity ring — an auto-assigned arbiter
-                // (effective participant, or the pool preview pre-lock) fills
-                // its dot too, so these small header dots don't read "arbiter
-                // not joined" while the ring shows it joined.
-                const dotFilled = role === Role.ARBITER
-                  ? !!(participants[Role.ARBITER] ?? previewArbiterPk)
-                  : !!participants[role];
-                return (
-                  <span key={role} style={{
-                    width: 8, height: 8, borderRadius: "50%",
-                    background: dotFilled ? ROLE_COLOR[role as keyof typeof ROLE_COLOR] : "transparent",
-                    border: `1.5px solid ${ROLE_COLOR[role as keyof typeof ROLE_COLOR]}${dotFilled ? "" : "66"}`,
-                  }} />
-                );
-              })}
-            </div>
             <div style={{ minWidth: 0, flex: 1 }}>
               <span style={{ fontFamily: T.mono, fontSize: 11, fontWeight: 700 }}>
-                <button type="button" onClick={e => { e.stopPropagation(); if (participants.buyer) setRepFor(participants.buyer); }} style={{ background: "none", border: 0, color: ROLE_COLOR.buyer, minHeight: 44, cursor: "pointer" }}><ConductFacts pubkey={participants.buyer} />{dealBuyerName ?? t("trade.buyer")}</button>
+                <button type="button" onClick={e => { e.stopPropagation(); if (participants.buyer) setRepFor(participants.buyer); }} style={{ background: "none", border: 0, color: ROLE_COLOR.buyer, minHeight: 44, cursor: "pointer" }}><RoleAvatar role="buyer" pubkey={participants.buyer ?? null} /> <ConductFacts pubkey={participants.buyer} />{dealBuyerName ?? t("trade.buyer")}</button>
                 <span style={{ color: T.muted }}> ⇄ </span>
-                <button type="button" onClick={e => { e.stopPropagation(); if (participants.seller) setRepFor(participants.seller); }} style={{ background: "none", border: 0, color: ROLE_COLOR.seller, minHeight: 44, cursor: "pointer" }}><ConductFacts pubkey={participants.seller} />{dealSellerName ?? t("trade.seller")}</button>
-                <button type="button" onClick={e => { e.stopPropagation(); const key = participants.arbiter ?? previewArbiterPk; if (key) setRepFor(key); }} style={{ background: "none", border: 0, color: ROLE_COLOR.arbiter, minHeight: 44, cursor: "pointer" }}><ConductFacts pubkey={participants.arbiter ?? previewArbiterPk} />{t("trade.roleArbiter")}</button>
+                <button type="button" onClick={e => { e.stopPropagation(); if (participants.seller) setRepFor(participants.seller); }} style={{ background: "none", border: 0, color: ROLE_COLOR.seller, minHeight: 44, cursor: "pointer" }}><RoleAvatar role="seller" pubkey={participants.seller ?? null} /> <ConductFacts pubkey={participants.seller} />{dealSellerName ?? t("trade.seller")}</button>
+                <button type="button" onClick={e => { e.stopPropagation(); const key = participants.arbiter ?? previewArbiterPk; if (key) setRepFor(key); }} style={{ background: "none", border: 0, color: ROLE_COLOR.arbiter, minHeight: 44, cursor: "pointer" }}><RoleAvatar role="arbiter" pubkey={participants.arbiter ?? previewArbiterPk ?? null} /> <ConductFacts pubkey={participants.arbiter ?? previewArbiterPk} />{t("trade.roleArbiter")}</button>
               </span>
               <span style={{ fontFamily: T.sans, fontSize: 11, color: T.muted }}> · {state.description || tradeRoomTitle}</span>
             </div>

@@ -6,7 +6,7 @@ import { ConductFacts } from "../components/ConductFacts.js";
 import { settlementWinner } from "../../escrow-engine/onchain-settlement-choice.js";
 import { payoutRecipientFor } from "../../escrow-engine/recipients.js";
 import { handleDisplayForViewer } from "../../payments/saved-handles.js";
-import { ProfileAvatar } from "../components/ProfileAvatar.js";
+import { RoleAvatar } from "../components/RoleAvatar.js";
 import { Wordmark } from "../components/Wordmark.js";
 import { OverlaySheet } from "../components/OverlaySheet.js";
 import { OnchainTradeControls, type OnchainTradeActions } from "../panels/OnchainTradeControls.js";
@@ -22,7 +22,7 @@ import { effectiveViewerRole, decideVotePrompt, preLockDeadline, tradeRoomPresen
 import { profileNameFor, type NostrProfileNameMap } from "../nostr-profiles.js";
 import { BitcoinPricePill } from "../components/BitcoinPricePill.js";
 import { getCommunityBySlug } from "../../communities/registry.js";
-import { ROLE_COLOR, TRINITY_RING_ORDER } from "../theme.js";
+import { TRINITY_RING_ORDER } from "../theme.js";
 import { getWinner } from "../../escrow-engine/state-machine.js";
 import { expectedLockerRole } from "../../escrow-engine/lock-custody.js";
 import { GUIDED_SLICE_CHOICE_ENABLED } from "../../escrow-engine/experimental-escrow-features.js";
@@ -748,8 +748,6 @@ export function LiveTradeSurface({
         .lts-room{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
           padding:8px 16px;border-bottom:1px solid ${T.border};background:${T.bg}}
         .lts-room-people{display:flex;flex-wrap:wrap;align-items:flex-start;gap:8px;min-width:0;flex:1 1 auto}
-        @keyframes ltsHere{0%,100%{opacity:1}50%{opacity:.35}}
-        @media (prefers-reduced-motion:reduce){.lts-here-dot{animation:none!important}}
         @keyframes ltsPulse{0%,100%{box-shadow:0 0 0 0 ${T.amber}00}50%{box-shadow:0 0 0 4px ${T.amber}33}}
       `}</style>
 
@@ -902,10 +900,8 @@ export function LiveTradeSurface({
 
 // ── Small presentational helpers ─────────────────────────────────────────
 
-/** One person in the room. The dot carries the sacred role colour; it only
- *  breathes when we have real evidence they are here right now. */
+/** The ring identifies the seat; presence stays in the text beside it. */
 function PersonChip({ person, name, onClick }: { person: RoomPresence; name: string | null; onClick: () => void }) {
-  const color = person.signal === "assigned" ? T.muted : ROLE_COLOR[person.role as keyof typeof ROLE_COLOR] ?? T.muted;
   if (!person.pubkey) {
     return (
       <span style={{
@@ -913,15 +909,11 @@ function PersonChip({ person, name, onClick }: { person: RoomPresence; name: str
         fontFamily: T.mono, fontSize: 11, color: T.muted,
         border: `1px dashed ${T.border}`, borderRadius: 999, padding: "4px 10px",
       }}>
-        <span style={{
-          width: 7, height: 7, borderRadius: "50%",
-          border: `1px solid ${T.border}`,
-        }} />
+        <RoleAvatar role={person.role} pubkey={null} />
         {tr("lts.seatOpen")}
       </span>
     );
   }
-  const here = person.signal === "active";
   const sub =
     person.signal === "assigned" ? tr("lts.assigned")
     : person.signal === "active" ? tr("lts.hereNow")
@@ -934,14 +926,7 @@ function PersonChip({ person, name, onClick }: { person: RoomPresence; name: str
       background: T.surface, border: `1px solid ${T.border}`,
       borderRadius: 14, padding: "9px 12px",
     }}>
-      <span style={{ position: "relative", display: "block", marginTop: 1 }}>
-        <ProfileAvatar pubkey={person.pubkey} fallback={null} size={24} />
-        <span className={here ? "lts-here-dot" : undefined} style={{
-          position: "absolute", right: -2, bottom: -1, width: 7, height: 7,
-          borderRadius: "50%", background: color, border: `2px solid ${T.surface}`,
-          animation: here ? "ltsHere 2s ease-in-out infinite" : undefined,
-        }} />
-      </span>
+      <RoleAvatar role={person.role} pubkey={person.pubkey} />
       <span style={{ display: "grid", gap: 3, minWidth: 0 }}>
         <span style={{ display: "flex", alignItems: "baseline", flexWrap: "wrap", gap: "2px 6px", minWidth: 0 }}>
           <span style={{ color: person.signal === "assigned" ? T.muted : T.text, fontWeight: 700,

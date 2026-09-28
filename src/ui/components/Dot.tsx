@@ -1,5 +1,5 @@
-import { ProfileAvatar } from "./ProfileAvatar.js";
-import { T, ROLE_COLOR, ROLE_ICON } from "../theme.js";
+import { RoleAvatar } from "./RoleAvatar.js";
+import { T, ROLE_COLOR } from "../theme.js";
 
 export function Dot({ role, pk, isYou, voted, outcome, autoAssigned, displayName, onClick }: {
   role: string; pk: string | null; isYou: boolean; voted: boolean; outcome?: string;
@@ -10,16 +10,14 @@ export function Dot({ role, pk, isYou, voted, outcome, autoAssigned, displayName
    *  LOCK will pick) rather than a confirmed JOIN. Renders solid so the
    *  Trinity Ring reads as "two of three filled" instead of stranding
    *  the slot empty for trades whose communities have a recruited
-   *  arbiter pool, but uses a dimmer fill + "auto" label so it remains
-   *  visually distinguishable from a JOINed participant. */
+   *  arbiter pool, but uses an "auto" label so it remains
+   *  visually distinguishable from a JOINed participant. The shared role
+   *  ring stays full strength; the Auto label identifies the preview. */
   autoAssigned?: boolean;
   displayName?: string | null;
 }) {
   const c = ROLE_COLOR[role as keyof typeof ROLE_COLOR] || T.muted;
   const filled = !!pk;
-  const fillBg = filled ? (autoAssigned ? `${c}14` : `${c}22`) : T.surface;
-  const borderStyle = filled ? "solid" : "dashed";
-  const borderColor = filled ? c : T.border;
   const label = isYou
     ? (displayName ? `You · ${displayName}` : "You")
     : pk
@@ -37,16 +35,13 @@ export function Dot({ role, pk, isYou, voted, outcome, autoAssigned, displayName
         title={clickable ? "See reputation" : undefined}
         style={{
         width: 36, height: 36, borderRadius: "50%",
-        background: fillBg,
-        border: `1.5px ${borderStyle} ${borderColor}`,
         display: "flex", alignItems: "center", justifyContent: "center",
         fontSize: 13, fontWeight: 700,
         color: filled ? c : T.muted,
-        opacity: autoAssigned ? 0.78 : 1,
         fontFamily: T.mono, position: "relative",
         cursor: clickable ? "pointer" : "default",
       }}>
-        <ProfileAvatar pubkey={pk} fallback={ROLE_ICON[role as keyof typeof ROLE_ICON] || "?"} />
+        <RoleAvatar role={role} pubkey={pk} size={36} />
         {voted && (
           <div style={{
             position: "absolute", bottom: -2, right: -2,

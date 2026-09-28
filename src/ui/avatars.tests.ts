@@ -44,3 +44,25 @@ assert.deepEqual(qualities,[.82,.72,.62]);
 assert.equal(compressed.animated,compressed.still);
 assert.equal(closed,1);
 console.log('Avatar compression: large input, cover crop, quality retries and static fallback checks passed');
+
+// Every seat uses the same ring, including unknown photos and open seats.
+const { createElement } = await import('react');
+const { renderToStaticMarkup } = await import('react-dom/server');
+const { RoleAvatar } = await import('./components/RoleAvatar.js');
+const { ROLE_COLOR, applyThemeMode } = await import('./theme.js');
+for (const mode of ['light', 'dark'] as const) {
+  applyThemeMode(mode);
+  for (const role of ['buyer', 'seller', 'arbiter'] as const) {
+    for (const size of [24, 36]) {
+      const open = renderToStaticMarkup(createElement(RoleAvatar, { role, pubkey: null, size }));
+      assert.ok(open.includes(`border:2px dashed ${ROLE_COLOR[role]}`));
+      assert.ok(open.includes('background:transparent'));
+      assert.ok(!open.includes('mask-image'));
+      const occupied = renderToStaticMarkup(createElement(RoleAvatar, { role, pubkey: 'missing', size }));
+      assert.ok(occupied.includes(`border:2px solid ${ROLE_COLOR[role]}`));
+      assert.ok(occupied.includes('chama-mark-256.png'));
+      assert.ok(!occupied.includes('<svg'));
+    }
+  }
+}
+console.log('PASS role avatars: open and occupied seats retain role rings and mark fallback in both themes');
