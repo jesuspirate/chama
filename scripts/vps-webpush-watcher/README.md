@@ -131,3 +131,13 @@ permission denial, opt-out, endpoint rotation and notification-tap reopening.
 API references: [UnifiedPush connector](https://unifiedpush.org/kdoc/connector/org.unifiedpush.android.connector/-unified-push/),
 [UnifiedPush service](https://unifiedpush.org/kdoc/connector/org.unifiedpush.android.connector/-push-service/),
 [Firebase receive messages](https://firebase.google.com/docs/cloud-messaging/android/receive-messages).
+
+## Native delivery test
+
+`POST /test` accepts `{ endpoint, nonce }`, where endpoint exactly matches an
+unexpired registration and nonce is 32 lowercase hex characters. It sends an
+opaque test wake through the registered transport. HTTP 204 means the transport
+accepted the request, **not** that the phone received it. Native Settings waits
+up to 30 seconds for that nonce in the receiver. Tests are limited to one per
+endpoint per 30 seconds, in addition to the API IP limit. Nonces are not persisted
+by the watcher. Force stop blocks receipt; reopen Chama before testing.

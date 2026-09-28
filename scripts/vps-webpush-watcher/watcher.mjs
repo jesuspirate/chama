@@ -259,6 +259,31 @@ const server = http.createServer(async (req, res) => {
     return res.end(JSON.stringify({ ok: true, endpoints: tagsByEndpoint.size, tags: byTag.size, relays: RELAYS.length }));
   }
 
+  if (req.method === "POST" && req.url === "/test") {
+    const ip = String(req.headers["x-forwarded-for"] || req.socket.remoteAddress).split(",")[0];
+    if (!rateOk(ip)) { res.writeHead(429); return res.end(); }
+    let body;
+    try { body = await readJson(req); } catch { res.writeHead(400); return res.end(); }
+    if (!validSubscription(body.endpoint, PUSH_ENDPOINT_HOSTS) || !/^[a-f0-9]{32}$/.test(body.nonce || "")) {
+      res.writeHead(400); return res.end();
+    }
+    const key = endpointKeyOf(body.endpoint);
+    const rec = [...(tagsByEndpoint.get(key) || [])].map(tag => byTag.get(tag)?.get(key))
+      .find(r => r?.expiresAt > Date.now() && JSON.stringify(r.subscription) === JSON.stringify(body.endpoint));
+    if (!rec) { res.writeHead(404); return res.end(); }
+    const cooldown = `test ${key}`;
+    if (Date.now() - (lastSent.get(cooldown) || 0) < 30_000) { res.writeHead(429); return res.end(); }
+    lastSent.set(cooldown, Date.now());
+    try {
+      if (rec.subscription.transport === "fcm") await sendFcm(rec.subscription, body.nonce);
+      else await webpush.sendNotification(rec.subscription,
+        JSON.stringify({ wake: 1, sentAt: Date.now(), test: body.nonce }),
+        { TTL: 30, urgency: "high", timeout: 10_000 });
+      res.writeHead(204);
+    } catch { res.writeHead(502); }
+    return res.end();
+  }
+
   if (req.method === "POST" && (req.url === "/register" || req.url === "/unregister")) {
     const ip = (req.headers["x-forwarded-for"] || req.socket.remoteAddress || "").toString().split(",")[0].trim();
     if (!rateOk(ip)) { res.writeHead(429); return res.end("slow down"); }

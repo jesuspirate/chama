@@ -15,6 +15,6 @@ public class ChamaFcmService extends FirebaseMessagingService {
         if (!"1".equals(message.getData().get("wake"))) return;
         if (!"fcm".equals(ChamaPushStore.prefs(this).getString("lane", ""))) return;
         if (!ChamaWakePolicy.fresh(message.getSentTime(), System.currentTimeMillis())) return;
-        ChamaPushStore.wake(this);
+        if (!ChamaPushStore.testReply(this, message.getData().get("test"))) ChamaPushStore.wake(this);
     }
 }

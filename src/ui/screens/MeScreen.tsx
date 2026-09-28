@@ -2,7 +2,7 @@ import { PayoutTransactionDetails } from "../components/PayoutTransactionDetails
 import { MAINNET, SIGNET } from "../../bond-multisig/multisig.js";
 import type { OnchainObservation } from '../../escrow-engine/onchain-attention.js';
 import { arbiterWatchEligibility, canOfferClaim, selectMoneySafetyFocus, type MoneySafetyEntry } from "../decisions.js";
-import { nativePushStatus, type NativePushStatus } from "../../notifications/native-push.js";
+import { testNativePush, nativePushStatus, type NativePushStatus } from "../../notifications/native-push.js";
 import { avatarFromFile, type Avatar } from "../avatars.js";
 import { ProfileAvatar } from "../components/ProfileAvatar.js";
 // ══════════════════════════════════════════════════════════════════════════
@@ -2955,6 +2955,7 @@ function NotificationsRow() {
 }
 
 function BackgroundPushRow() {
+  const [testState, setTestState] = useState<"idle" | "waiting" | "received" | "failed">("idle");
   const { t } = useT();
   const [nativeStatus, setNativeStatus] = useState<NativePushStatus | null>(null);
   useEffect(() => { void nativePushStatus().then(setNativeStatus); }, []);
@@ -3005,6 +3006,16 @@ function BackgroundPushRow() {
         </div>
         <div style={{ fontSize: 11, color: T.muted, fontFamily: T.mono, marginTop: 2 }}>
           {hint}
+          {nativeStatus && <p>{t("me.bgPushForceStop")}</p>}
+          {nativeStatus?.ntfy && <p>{t("me.bgPushNtfy")}</p>}
+          {nativeStatus && on && <>
+            <button type="button" disabled={testState === "waiting"} onClick={() => {
+              setTestState("waiting");
+              void Promise.race([testNativePush(), new Promise<boolean>(resolve => setTimeout(() => resolve(false), 30_000))])
+                .then(ok => setTestState(ok ? "received" : "failed"));
+            }}>{t("me.bgPushTest")}</button>
+            <div role="status">{testState === "waiting" ? t("me.bgPushTesting") : testState === "received" ? t("me.bgPushReceived") : testState === "failed" ? t("me.bgPushNoReply") : ""}</div>
+          </>}
         </div>
       </div>
       <button

@@ -31,9 +31,22 @@ public class ChamaPushPlugin extends Plugin {
     @PluginMethod public void status(PluginCall call) {
         JSObject result = new JSObject();
         result.put("lane", lane());
+        result.put("testReceived", ChamaPushStore.prefs(getContext()).getString("testReceived", ""));
+        try {
+            result.put("ntfy", new JSONObject(ChamaPushStore.prefs(getContext()).getString("endpoint", "{}"))
+                .optString("endpoint").startsWith("https://ntfy.sh/"));
+        } catch (Exception ignored) { }
         result.put("ready", !ChamaPushStore.prefs(getContext()).getString("endpoint", "").isEmpty());
         result.put("registered", ChamaPushStore.prefs(getContext()).getBoolean("registered", false));
         call.resolve(result);
+    }
+
+    @PluginMethod public void test(PluginCall call) {
+        if (!ChamaPushStore.enabled(getContext())) { call.reject("Alerts are off"); return; }
+        String nonce = java.util.UUID.randomUUID().toString().replace("-", "");
+        ChamaPushStore.prefs(getContext()).edit().putString("testPending", nonce).remove("testReceived").apply();
+        ChamaPushStore.test(getContext(), nonce);
+        JSObject result = new JSObject(); result.put("nonce", nonce); call.resolve(result);
     }
 
     @PluginMethod public void enable(PluginCall call) {

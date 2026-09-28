@@ -52,12 +52,12 @@ export function createFcmSender(credentialsPath, fetchImpl = fetch) {
     })();
     try { return await pending; } finally { pending = null; }
   }
-  return async (subscription) => {
+  return async (subscription, testNonce) => {
     const bearer = await accessToken();
     const response = await fetchImpl(`https://fcm.googleapis.com/v1/projects/${account.project_id}/messages:send`, {
       method: "POST", redirect: "error", signal: AbortSignal.timeout(10_000),
       headers: { authorization: `Bearer ${bearer}`, "content-type": "application/json" },
-      body: JSON.stringify({ message: { token: subscription.token, data: { wake: "1" },
+      body: JSON.stringify({ message: { token: subscription.token, data: { wake: "1", ...(testNonce ? { test: testNonce } : {}) },
         android: { priority: "high", ttl: "120s", collapse_key: "chama-wake" } } }),
     });
     if (!response.ok) {

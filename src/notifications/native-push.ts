@@ -1,7 +1,8 @@
 import { Capacitor, registerPlugin } from "@capacitor/core";
 
-export type NativePushStatus = { lane: "fcm" | "unifiedpush" | "unavailable"; ready: boolean; registered: boolean };
+export type NativePushStatus = { lane: "fcm" | "unifiedpush" | "unavailable"; ready: boolean; registered: boolean; ntfy?: boolean; testReceived?: string };
 interface NativePushPlugin {
+  test(): Promise<{ nonce: string }>;
   status(): Promise<NativePushStatus>;
   enable(options: { vapid: string }): Promise<void>;
   register(options: { tags: readonly string[] }): Promise<void>;
@@ -38,3 +39,15 @@ export async function nativeWatchTags(tags: readonly string[], remove = false): 
   catch { return false; }
 }
 export async function disableNativePush(): Promise<void> { await native.disable().catch(() => {}); }
+
+export async function testNativePush(): Promise<boolean> {
+  const deadline = Date.now() + 29_000;
+  try {
+    const { nonce } = await native.test();
+    while (Date.now() < deadline) {
+      if ((await native.status()).testReceived === nonce) return true;
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+  } catch { /* A missing reply is not success. */ }
+  return false;
+}

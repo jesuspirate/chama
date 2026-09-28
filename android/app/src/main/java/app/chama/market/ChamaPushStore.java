@@ -82,6 +82,31 @@ final class ChamaPushStore {
         });
     }
 
+    static void test(Context c, String nonce) {
+        IO.execute(() -> {
+            HttpURLConnection conn = null;
+            try {
+                JSONObject endpoint = new JSONObject(prefs(c).getString("endpoint", ""));
+                JSONObject body = new JSONObject().put("endpoint", endpoint).put("nonce", nonce);
+                conn = (HttpURLConnection) new URL("https://push.chama.community/test").openConnection();
+                conn.setConnectTimeout(5000); conn.setReadTimeout(20000);
+                conn.setInstanceFollowRedirects(false);
+                conn.setRequestMethod("POST"); conn.setDoOutput(true);
+                conn.setRequestProperty("Content-Type", "application/json");
+                try (var out = conn.getOutputStream()) { out.write(body.toString().getBytes(StandardCharsets.UTF_8)); }
+                conn.getResponseCode(); // Delivery is acknowledged only by the receiving service.
+            } catch (Exception ignored) { }
+            finally { if (conn != null) conn.disconnect(); }
+        });
+    }
+
+    static boolean testReply(Context c, String nonce) {
+        if (nonce == null || nonce.isEmpty()) return false;
+        if (enabled(c) && nonce.equals(prefs(c).getString("testPending", "")))
+            prefs(c).edit().putString("testReceived", nonce).apply();
+        return true; // Test payloads never become trade notifications.
+    }
+
     /** An opaque wake promises no outcome. Opening the app replays signed state. */
     static synchronized void wake(Context c) {
         long now = System.currentTimeMillis();
