@@ -1,3 +1,4 @@
+import { syncNativeAppearance } from './native-appearance.js';
 // ══════════════════════════════════════════════════════════════════════════
 // Chama — Design tokens + small format helpers
 // ══════════════════════════════════════════════════════════════════════════
@@ -105,6 +106,7 @@ export function applyThemeMode(mode: ThemeMode): void {
   resolvedTheme = resolveThemeMode(mode);
   Object.assign(T, resolvedTheme === "light" ? LIGHT : DARK);
   refreshThemeDerived();
+  syncNativeAppearance(resolvedTheme, T.bg);
   try {
     const doc = globalThis.document;
     if (doc) {

@@ -35,6 +35,7 @@
     "@capacitor/haptics": "^8.0.2",
     "@capacitor/local-notifications": "^8.2.0",
     "@capacitor/preferences": "^8.0.1",
+    "@capacitor/status-bar": "^8.0.3",
     "@fedimint/core": "0.0.0-canary-c65cc1396f26b1b6593c3fae6ac0e820d96a4a10",
     "@fedimint/fedimint-client-wasm-bundler": "0.0.0-canary-c65cc1396f26b1b6593c3fae6ac0e820d96a4a10",
     "@fedimint/transport-web": "0.0.0-canary-c65cc1396f26b1b6593c3fae6ac0e820d96a4a10",
