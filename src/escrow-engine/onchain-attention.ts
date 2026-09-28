@@ -16,6 +16,7 @@ import { EscrowStatus, Outcome, Role, type EscrowState } from './types.js';
 /** Device observations, never reducer input or signed trade facts. */
 export interface OnchainObservation {
   tipHeight?: number;
+  fundingHeight?: number;
   tipObservedAt?: number;
   deposit?: 'waiting' | 'seen' | 'confirmed';
   depositSafe?: boolean;
@@ -121,6 +122,7 @@ export async function observeOnchainAttention(state: EscrowState, fetchJson: Esp
   const required = Math.floor((state.joinHolds?.buyer?.amountMsats ?? state.amountMsats) / 1000);
   const received = rows.filter(r => Number.isSafeInteger(r?.value) && r.value > 0).reduce((sum, r) => sum + r.value, 0);
   return {
+    fundingHeight: funded.length && funded.every(r => Number.isSafeInteger(r.status.block_height)) ? Math.max(...funded.map(r => r.status.block_height)) : undefined,
     tipHeight: tip, tipObservedAt: Math.floor(Date.now()/1000),
     remainingSats: Math.max(0, required - received),
     deposit: total >= required ? 'confirmed' : received >= required ? 'seen' : 'waiting',

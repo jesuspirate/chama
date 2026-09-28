@@ -1,3 +1,4 @@
+import { tradeClock, tradeClockText } from '../trade-clock.js';
 import { FundingModalShell } from "../components/FundingModalShell.js";
 import { PaymentRails } from "../components/PaymentCard.js";
 import { BitcoinAmount } from "../components/BitcoinAmount.js";
@@ -27,7 +28,6 @@ import { expectedLockerRole } from "../../escrow-engine/lock-custody.js";
 import { GUIDED_SLICE_CHOICE_ENABLED } from "../../escrow-engine/experimental-escrow-features.js";
 import { T, CAT_LABEL, fmtSats } from "../theme.js";
 import { ChatPanel } from "../panels/ChatPanel.js";
-import { CountdownTimer } from "../components/CountdownTimer.js";
 import type { RatingThumb } from "../../reputation/ratings.js";
 import { translate, getCurrentLang } from "../../i18n/index.js";
 import { shareTradeLink } from "../share-link.js";
@@ -154,20 +154,9 @@ export function LiveTradeSurface({
   useEffect(() => {
     const now = Math.floor(Date.now() / 1000);
     setNowSec(now);
-    if (state.status !== EscrowStatus.CREATED || state.tranchePlan) return;
-    const deadlines = [Role.BUYER, Role.SELLER].flatMap(role => {
-      const hold = state.joinHolds?.[role];
-      return hold && hold.pubkey === state.participants[role] ? [hold.expiresAt + JOIN_HOLD_LOCK_GRACE_SECONDS] : [];
-    });
-    const lastDeadline = Math.max(0, ...deadlines);
-    if (lastDeadline <= now) return;
-    const timer = setInterval(() => {
-      const current = Math.floor(Date.now() / 1000);
-      setNowSec(current);
-      if (current >= lastDeadline) clearInterval(timer);
-    }, 1000);
+    const timer = setInterval(() => setNowSec(Math.floor(Date.now() / 1000)), 1000);
     return () => clearInterval(timer);
-  }, [state.status, state.tranchePlan, state.joinHolds, state.participants]);
+  }, [state.id]);
   const participants = getEffectiveParticipantsAt(state, nowSec);
   const myRole = effectiveViewerRole(state, pubkey, nowSec);
 
@@ -238,6 +227,9 @@ export function LiveTradeSurface({
   // The honest pre-lock clock: a CREATED trade dies when a seat lapses, not
   // when the listing expires. See preLockDeadline().
   const preLock = preLockDeadline(state, nowSec);
+  const clock = tradeClock(state, nowSec, onchainActions?.onchainObservation);
+  const clockText = clock && tradeClockText(clock, nowSec, role =>
+    profileNameFor(profileNames, state.participants[role], kind0Enabled) ?? roleLabel(role));
   const buyerHold = state.joinHolds?.[Role.BUYER];
   const orderItems = buyerHold?.selectedItems;
   const orderMsats = buyerHold?.amountMsats
@@ -345,14 +337,6 @@ export function LiveTradeSurface({
             ) : (
               <MoreOptions onClick={onOpenFullView} label={tr("lts.fundFullView", { amount: amountLabel })} />
             )}
-            {preLock && !preLock.lapsed && (
-              <div style={{ marginTop: 4 }}>
-                <CountdownTimer
-                  expiresAt={preLock.at}
-                  label={tr(preLock.kind === "hold" ? "lts.toLockSeat" : "lts.toLockExpires")}
-                />
-              </div>
-            )}
             {preLock?.lapsed && (
               <Hint>{tr(preLock.kind === "hold" ? "lts.seatLapsed" : "lts.listingExpired")}</Hint>
             )}
@@ -386,9 +370,7 @@ export function LiveTradeSurface({
           <Waiting message={onchainWaiting ?? tr("lts.waitingLock", { role: roleLabel(funderRole) })}>
             <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: "12px 20px" }}>
               {state.escrowMode === "onchain" && <MoreOptions onClick={() => setOnchainOpen(true)} label="Open on-chain deposit details" />}
-              {preLock && (
-                <CountdownTimer expiresAt={preLock.at} label={tr("lts.forRoleLock", { role: roleLabel(funderRole) })} />
-              )}
+
             </div>
           </Waiting>
         );
@@ -871,6 +853,7 @@ export function LiveTradeSurface({
           ))}
         </div>
       </div>
+      {clockText && <div className="lts-clock" style={{ padding: '6px 16px', fontSize: 12, color: T.muted, textAlign: 'center' }}>{clockText}</div>}
 
       </div>
       {/* Decision left · chat right (decision on top on phones; an unseated
