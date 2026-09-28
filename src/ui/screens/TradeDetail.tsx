@@ -148,8 +148,8 @@ const samePubkey = (a?: string | null, b?: string | null): boolean =>
 // show the action headline + primary button (the top zone scrolls internally
 // past that). These are CSS hard limits the drag can never cross, so a stored
 // split fraction, however extreme, can't collapse either zone.
-const SPLIT_FLOOR_TOP = "clamp(120px, 20dvh, 300px)";
-const SPLIT_FLOOR_BOTTOM = "clamp(140px, 22dvh, 340px)";
+const SPLIT_FLOOR_TOP = "clamp(60px, calc(var(--chama-viewport-height, 100dvh) * .2), 300px)";
+const SPLIT_FLOOR_BOTTOM = "clamp(120px, calc(var(--chama-viewport-height, 100dvh) * .22), 340px)";
 
 // Shared inline-style fragments (exact duplicates factored out — no visual
 // change; each was byte-identical at 2+ call sites in this file).

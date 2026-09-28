@@ -285,6 +285,16 @@ export function ChatPanel({ state, myRole, onSend, preferredRelayConnected = fal
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [state.chatMessages.length, hasRatingCta]);
 
+  const revealLastMessage = () => {
+    const end = chatEndRef.current;
+    if (end?.parentElement) end.parentElement.scrollTop = end.parentElement.scrollHeight;
+  };
+  useEffect(() => {
+    const resized = () => requestAnimationFrame(revealLastMessage);
+    window.visualViewport?.addEventListener('resize', resized);
+    return () => window.visualViewport?.removeEventListener('resize', resized);
+  }, []);
+
   const handleSend = async () => {
     const text = msg.trim();
     if ((!text && !attachment) || !myRole || sending) return;
@@ -583,6 +593,8 @@ export function ChatPanel({ state, myRole, onSend, preferredRelayConnected = fal
               {imageBusy ? "..." : "+"}
             </button>
             <input
+              data-chat-composer
+              onFocus={() => requestAnimationFrame(revealLastMessage)}
               value={msg}
               onChange={e => setMsg(e.target.value)}
               onKeyDown={e => e.key === "Enter" && !e.shiftKey && handleSend()}

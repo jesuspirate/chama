@@ -1,3 +1,4 @@
+import { useVisualViewport } from './useVisualViewport.js';
 import { cacheNativeWake } from '../notifications/native-push.js';
 import { ConductProvider } from "./components/ConductFacts.js";
 import { tradeDetailReturnsHome } from "./decisions.js";
@@ -504,6 +505,7 @@ function nativeBridgePortLabel(): string | null {
 }
 
 export default function App() {
+  useVisualViewport();
   useDesktopNavigationShortcuts();
   const { t } = useT();
   // Toast state needs to be declared before the hook since we pass
@@ -4143,7 +4145,7 @@ export default function App() {
           // a chat pager that flexes to take the leftover room, and the timeline
           // glued to the bottom. It scrolls only when a tall phase truly needs
           // it. Subtract the top chrome (safe-area / sim pill) the shell pads for.
-          height: `calc(100dvh - ${expertTradeView || !LIVE_TRADE_SURFACE_ENABLED ? "44px" : "0px"} - ${typeof shellPaddingTop === "number" ? `${shellPaddingTop}px` : shellPaddingTop} - ${simOn ? `${SIM_PILL_HEIGHT}px` : "0px"} - env(safe-area-inset-bottom, 0px))`,
+          height: `calc(var(--chama-viewport-height, 100dvh) - ${expertTradeView || !LIVE_TRADE_SURFACE_ENABLED ? "44px" : "0px"} - ${typeof shellPaddingTop === "number" ? `${shellPaddingTop}px` : shellPaddingTop} - ${simOn ? `${SIM_PILL_HEIGHT}px` : "0px"} - env(safe-area-inset-bottom, 0px))`,
           display: "flex", flexDirection: "column", minHeight: 0,
         }}>
           {LIVE_TRADE_SURFACE_ENABLED && !expertTradeView ? (

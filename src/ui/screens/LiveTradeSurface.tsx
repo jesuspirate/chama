@@ -747,7 +747,10 @@ export function LiveTradeSurface({
              clipped the decision text and exposed the grid's border-colored
              background as a dead band between the panes (Jet's 6.3 phone
              screenshot). 52dvh is definite everywhere. */
-          .lts-votes{max-height:52dvh}
+          .lts-votes{max-height:calc(var(--chama-viewport-height, 100dvh) * .52)}
+          [data-chat-focused] .lts-header{max-height:35%;overflow-y:auto;flex-shrink:1}
+          [data-chat-focused] .lts-grid{grid-template-rows:minmax(0, .3fr) minmax(100px, 1fr)}
+          [data-chat-focused] .lts-votes{max-height:none;padding:8px 12px}
           .lts-grid.lts-prejoin .lts-chat{display:none}
           .lts-grid.lts-prejoin{grid-template-rows:1fr}
         }
@@ -773,6 +776,7 @@ export function LiveTradeSurface({
           Convert, and the trade room all speak the one number, no squinting.
           The header (and its back button) sits BELOW it, closer to the thumb:
           nobody stretches to the top-left corner just to go back. */}
+      <div className="lts-header" style={{ flexShrink: 0 }}>
       <div className="lts-price-hero">
         <div className="lts-hero-full">
           <BitcoinPricePill
@@ -868,6 +872,7 @@ export function LiveTradeSurface({
         </div>
       </div>
 
+      </div>
       {/* Decision left · chat right (decision on top on phones; an unseated
           phone viewer sees only the join question — chat appears once seated) */}
       <div className={`lts-grid${myRole === null && state.status === EscrowStatus.CREATED ? " lts-prejoin" : ""}`}>
