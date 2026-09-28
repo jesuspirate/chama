@@ -282,7 +282,8 @@ export function ChatPanel({ state, myRole, onSend, preferredRelayConnected = fal
   // length-keyed deps miss it and the CTA lands below the fold; key on its presence too.
   const hasRatingCta = Boolean(ratingCta);
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    const feed = chatEndRef.current?.parentElement;
+    if (feed) feed.scrollTo({ top: feed.scrollHeight, behavior: "smooth" });
   }, [state.chatMessages.length, hasRatingCta]);
 
   const revealLastMessage = () => {
@@ -290,9 +291,18 @@ export function ChatPanel({ state, myRole, onSend, preferredRelayConnected = fal
     if (end?.parentElement) end.parentElement.scrollTop = end.parentElement.scrollHeight;
   };
   useEffect(() => {
-    const resized = () => requestAnimationFrame(revealLastMessage);
+    let frame = 0;
+    const resized = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => { frame = requestAnimationFrame(revealLastMessage); });
+    };
     window.visualViewport?.addEventListener('resize', resized);
-    return () => window.visualViewport?.removeEventListener('resize', resized);
+    window.visualViewport?.addEventListener('scroll', resized);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.visualViewport?.removeEventListener('resize', resized);
+      window.visualViewport?.removeEventListener('scroll', resized);
+    };
   }, []);
 
   const handleSend = async () => {
@@ -371,7 +381,7 @@ export function ChatPanel({ state, myRole, onSend, preferredRelayConnected = fal
       {/* Messages — the living feed: human bubbles + system event bubbles. */}
       <div style={{
         ...(fill ? { flex: 1, minHeight: 0 } : { maxHeight: embedded ? 340 : 280 }),
-        overflowY: "auto",
+        overflowY: "auto", overscrollBehavior: "contain",
         padding: embedded ? "14px 14px" : "12px 16px",
         display: "flex", flexDirection: "column", gap: 10,
       }}>

@@ -19,7 +19,22 @@
         -moz-osx-font-smoothing: grayscale;
       }
       html, body { height: 100%; }
-      body { overscroll-behavior: none; }
+      body { overscroll-behavior: contain; }
+      @media (max-width: 767px) {
+        html[data-chat-focused], html[data-chat-focused] body { overflow: hidden; }
+        [data-chat-focused] [data-trade-room] {
+          position: fixed;
+          top: var(--chama-viewport-top, 0px);
+          left: var(--chama-viewport-left, 0px);
+          width: var(--chama-viewport-width, 100%);
+          height: var(--chama-viewport-height, 100dvh) !important;
+          padding-top: env(safe-area-inset-top, 0px);
+          z-index: 40;
+          animation: none !important;
+          overscroll-behavior: contain;
+        }
+        input[data-chat-composer] { font-size: 16px !important; }
+      }
     </style>
     <!-- #50 theming: apply the persisted (or OS) light mode to the boot
          background BEFORE the bundle loads, so light users never get a dark

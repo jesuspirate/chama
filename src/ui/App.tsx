@@ -4066,7 +4066,7 @@ export default function App() {
         )}
         </>
       ) : view === "detail" && selected ? (
-        <div style={{
+        <div data-trade-room style={{
           animation: "fadeIn 0.3s ease",
           // Fill the viewport so the trade screen is ONE window — fixed top,
           // a chat pager that flexes to take the leftover room, and the timeline
