@@ -2,9 +2,15 @@
 // to land directly on a listing — App already consumes `?trade=sm_...` on boot
 // (one-shot, address cleaned after open), so sharing is just building the URL.
 
-export function tradeShareUrl(escrowId: string): string {
-  const here = new URL(window.location.href);
-  return `${here.origin}${here.pathname}?trade=${escrowId}`;
+export function tradeShareUrl(escrowId: string, href = window.location.href): string {
+  const here = new URL(href);
+  const host = here.hostname.toLowerCase().replace(/\.$/, "");
+  const privateHost = host === "localhost" || host.endsWith(".localhost")
+    || host === "127.0.0.1" || host === "[::1]"
+    || host.endsWith(".local") || host.endsWith(".onion");
+  const publicWeb = ["https:", "http:"].includes(here.protocol) && !privateHost;
+  const base = publicWeb ? `${here.origin}${here.pathname}` : "https://getchama.app/";
+  return `${base}?trade=${encodeURIComponent(escrowId)}`;
 }
 
 /** Native share sheet where the platform has one; clipboard everywhere else.
