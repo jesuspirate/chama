@@ -8,7 +8,7 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 public class ChamaDevicePlugin extends Plugin {
     @PluginMethod public void payment(PluginCall call) {
         String uri = call.getString("uri", "");
-        if (!uri.matches("(?i)^(lightning|bitcoin):[^\\s]+$")) { call.reject("Invalid payment link"); return; }
+        if (!ChamaPaymentPolicy.validUri(uri)) { call.reject("Invalid payment link"); return; }
         boolean share = call.getBoolean("share", false);
         getActivity().runOnUiThread(() -> {
             try {
