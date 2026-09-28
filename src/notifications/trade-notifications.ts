@@ -1,3 +1,5 @@
+import { readNostrProfileCache } from '../ui/nostr-profiles.js';
+import { getWinner } from '../escrow-engine/state-machine.js';
 import { onchainAttention } from '../escrow-engine/onchain-attention.js';
 // ══════════════════════════════════════════════════════════════════════════
 // Trade notifications — the pure "should this transition buzz the user?" core
@@ -26,6 +28,14 @@ import {
 import { payoutRecipientFor } from "../escrow-engine/recipients.js";
 import { pickPreferredArbiter } from "../arbiters/pool.js";
 import { translate, getCurrentLang } from "../i18n/index.js";
+
+/** Same named payout prompt in foreground and read-only background delivery. */
+export function onchainNotificationBody(state: EscrowState, viewer: string, text: string, names = readNostrProfileCache(viewer)): string {
+  if (text !== 'Sign the payout to the winner') return text;
+  const winner = getWinner(state);
+  const name = winner && names[winner.pubkey];
+  return name ? `Sign the payout to ${name}` : text;
+}
 
 /** getchama.app deep link for a trade, safe to drop into a plaintext external DM.
  *  Mirrors App's `?trade=<id>` / `?escrowId=<id>` URL open path. */
@@ -117,7 +127,7 @@ export function notificationForTransition(
   if (next.escrowMode === 'onchain' && prev) {
     const action = onchainAttention(next, userPubkey);
     if (action && action.key !== onchainAttention(prev, userPubkey)?.key) return {
-      escrowId: next.id, title: 'Your trade needs you', body: action.text, tag: `${next.id}:onchain:${action.key}`,
+      escrowId: next.id, title: 'Your trade needs you', body: onchainNotificationBody(next, userPubkey, action.text), tag: `${next.id}:onchain:${action.key}`,
     };
     // Broadcast and confirmation are verified separately against the chain.
     if ([EscrowStatus.APPROVED, EscrowStatus.COMPLETED].includes(next.status)) return null;

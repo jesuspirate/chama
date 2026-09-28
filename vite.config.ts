@@ -32,6 +32,7 @@ export default defineConfig({
   },
   build: {
     target: "esnext",
+    rollupOptions: { input: { main: "index.html", wake: "wake.html" } },
     outDir: "dist",
   },
   server: {

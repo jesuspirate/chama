@@ -108,7 +108,30 @@ final class ChamaPushStore {
     }
 
     /** An opaque wake promises no outcome. Opening the app replays signed state. */
-    static synchronized void wake(Context c) {
+    static void wake(Context c) {
+        if (ChamaWakePolicy.mayDisplay(enabled(c), foreground, prefs(c).getLong("lastWake", 0), System.currentTimeMillis()))
+            ChamaWakeWorker.enqueue(c);
+    }
+
+    static boolean postTrade(Context c, JSONObject note) throws Exception {
+        if (!enabled(c) || foreground || !NotificationManagerCompat.from(c).areNotificationsEnabled()) return false;
+        String trade = note.getString("escrowId");
+        if (!trade.matches("(?i)sm_[a-z0-9_]+")) return false;
+        int id = trade.hashCode();
+        c.getSystemService(NotificationManager.class).createNotificationChannel(
+            new NotificationChannel("chama_activity", "Chama", NotificationManager.IMPORTANCE_DEFAULT));
+        Intent intent = new Intent(c, MainActivity.class)
+            .setAction(Intent.ACTION_VIEW).setData(android.net.Uri.parse("https://getchama.app/?trade=" + trade))
+            .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        PendingIntent open = PendingIntent.getActivity(c, id, intent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        NotificationManagerCompat.from(c).notify(id, new NotificationCompat.Builder(c, "chama_activity")
+            .setSmallIcon(R.drawable.ic_chama_notification).setContentTitle(note.getString("title"))
+            .setContentText(note.getString("body")).setStyle(new NotificationCompat.BigTextStyle().bigText(note.getString("body")))
+            .setContentIntent(open).setGroup("chama_trades").setAutoCancel(true).build());
+        return true;
+    }
+
+    static synchronized void genericWake(Context c) {
         long now = System.currentTimeMillis();
         if (!ChamaWakePolicy.mayDisplay(enabled(c), foreground, prefs(c).getLong("lastWake", 0), now)) return;
         if (!NotificationManagerCompat.from(c).areNotificationsEnabled()) return;

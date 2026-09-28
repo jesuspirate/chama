@@ -41,6 +41,34 @@ public class ChamaPushPlugin extends Plugin {
         call.resolve(result);
     }
 
+    private String pendingTrade;
+    @Override public void load() { readTradeIntent(getActivity().getIntent()); }
+    @Override protected void handleOnNewIntent(android.content.Intent intent) { readTradeIntent(intent); }
+    private void readTradeIntent(android.content.Intent intent) {
+        if (intent == null || intent.getData() == null) return;
+        String trade = intent.getData().getQueryParameter("trade");
+        if (trade == null || !trade.matches("(?i)sm_[a-z0-9_]+")) return;
+        pendingTrade = trade;
+        JSObject result = new JSObject(); result.put("trade", trade);
+        notifyListeners("tradeOpened", result, true);
+    }
+    @PluginMethod public void takeTrade(PluginCall call) {
+        JSObject result = new JSObject(); result.put("trade", pendingTrade); pendingTrade = null; call.resolve(result);
+    }
+
+    @PluginMethod public void snapshot(PluginCall call) {
+        String next = call.getString("snapshot", "");
+        android.content.SharedPreferences prefs = ChamaPushStore.prefs(getContext());
+        android.content.SharedPreferences.Editor edit = prefs.edit().putString("snapshot", next);
+        try {
+            String oldKey = new JSONObject(prefs.getString("snapshot", "{}")).optString("pubkey");
+            String newKey = next.isEmpty() ? "" : new JSONObject(next).optString("pubkey");
+            if (!oldKey.equals(newKey)) edit.remove("lastWake").remove("wakeFired");
+        } catch (Exception ignored) { edit.remove("lastWake").remove("wakeFired"); }
+        edit.apply();
+        call.resolve();
+    }
+
     @PluginMethod public void test(PluginCall call) {
         if (!ChamaPushStore.enabled(getContext())) { call.reject("Alerts are off"); return; }
         String nonce = java.util.UUID.randomUUID().toString().replace("-", "");

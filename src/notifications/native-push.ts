@@ -2,6 +2,9 @@ import { Capacitor, registerPlugin } from "@capacitor/core";
 
 export type NativePushStatus = { lane: "fcm" | "unifiedpush" | "unavailable"; ready: boolean; registered: boolean; ntfy?: boolean; testReceived?: string };
 interface NativePushPlugin {
+  takeTrade(): Promise<{ trade: string | null }>;
+  addListener(name: 'tradeOpened', callback: (event: {trade: string}) => void): Promise<import('@capacitor/core').PluginListenerHandle>;
+  snapshot(options: { snapshot: string }): Promise<void>;
   test(): Promise<{ nonce: string }>;
   status(): Promise<NativePushStatus>;
   enable(options: { vapid: string }): Promise<void>;
@@ -50,4 +53,15 @@ export async function testNativePush(): Promise<boolean> {
     }
   } catch { /* A missing reply is not success. */ }
   return false;
+}
+
+export async function cacheNativeWake(snapshot: import('./wake-replay.js').WakeSnapshot | null): Promise<void> {
+  if (isNativePushSupported()) await native.snapshot({ snapshot: snapshot ? JSON.stringify(snapshot) : '' }).catch(() => {});
+}
+
+export async function listenNativeWakeTap(receive: (trade: string | null) => void): Promise<() => void> {
+  if (!isNativePushSupported()) return () => {};
+  const listener = await native.addListener('tradeOpened', event => { receive(event.trade); void native.takeTrade(); });
+  receive((await native.takeTrade()).trade);
+  return () => { void listener.remove(); };
 }

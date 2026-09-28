@@ -1,3 +1,4 @@
+import { cacheNativeWake } from '../notifications/native-push.js';
 import { ConductProvider } from "./components/ConductFacts.js";
 import { tradeDetailReturnsHome } from "./decisions.js";
 import { fundingPremiumMsats } from "../payments/funding-premium.js";
@@ -1549,6 +1550,13 @@ export default function App() {
   // Participant history must not inherit Browse's seven-day retention filter:
   // completed payouts remain recoverable on a fresh/cross-device client.
   const myTrades = participantTradeHistory(escrows.values(), pubkey, now, retiredIds);
+  useEffect(() => {
+    if (pubkey && myTradesLoading) return;
+    void cacheNativeWake(pubkey ? { pubkey, relays: DEFAULT_RELAYS, names: readNostrProfileCache(pubkey),
+      events: [...escrows.values()].filter(e => Object.values(e.participants).includes(pubkey) || e.actingArbiter === pubkey)
+        .flatMap(e => e.eventChain.map(event => event.raw)) } : null);
+  }, [pubkey, escrows, myTradesLoading]);
+
 
   // Loss-proof history: durable-index trades whose chain isn't loaded this
   // session (relay eviction / pre-community-relay / never-locked). Excludes

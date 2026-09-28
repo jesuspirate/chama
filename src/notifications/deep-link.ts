@@ -1,3 +1,4 @@
+import { listenNativeWakeTap } from './native-push.js';
 import { esploraTransactionUrl } from "../bond-multisig/esplora-config.js";
 import { MAINNET, SIGNET } from "../bond-multisig/multisig.js";
 import { openExternalUrl } from "../ui/open-url.js";
@@ -106,6 +107,7 @@ export function registerNotificationTapHandlers(): () => void {
   const disposers: Array<() => void> = [];
 
   if (isCapacitorNative()) {
+    void listenNativeWakeTap(setPendingTradeDeepLink).then(dispose => disposers.push(dispose)).catch(() => {});
     void (async () => {
       try {
         const { LocalNotifications } = await import("@capacitor/local-notifications");
