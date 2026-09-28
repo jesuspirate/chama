@@ -141,3 +141,8 @@ accepted the request, **not** that the phone received it. Native Settings waits
 up to 30 seconds for that nonce in the receiver. Tests are limited to one per
 endpoint per 30 seconds, in addition to the API IP limit. Nonces are not persisted
 by the watcher. Force stop blocks receipt; reopen Chama before testing.
+
+`/health` also reports `connectedRelays` and `relayReady` (the subscription has
+received EOSE). Check both after deployment; HTTP health alone does not prove a
+valid relay subscription. `relay-subscription.tests.mjs` verifies the actual
+Nostr REQ filter shape against a local WebSocket relay with the pinned library.

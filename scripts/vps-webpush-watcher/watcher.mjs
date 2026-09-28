@@ -24,6 +24,7 @@ import webpush from "web-push";
 import { SimplePool, useWebSocketImplementation } from "nostr-tools/pool";
 import WebSocket from "ws";
 import { validSubscription, endpointKeyOf, createFcmSender } from "./delivery.mjs";
+import { subscribeWakeBand } from "./relay-subscription.mjs";
 import { freshWake } from "./wake-policy.mjs";
 
 useWebSocketImplementation(WebSocket);
@@ -188,10 +189,11 @@ async function wake(tag, createdAt) {
 // thrash the relay. We only ever MATCH on tags; we never store the event.
 const pool = new SimplePool();
 let sub = null;
+let relayReady = false;
 
 function startNostr() {
   const sinceSec = Math.floor(Date.now() / 1000); // only new transitions
-  sub = pool.subscribeMany(RELAYS, [{ kinds: CHAMA_KINDS, since: sinceSec }], {
+  sub = subscribeWakeBand(pool, RELAYS, CHAMA_KINDS, sinceSec, {
     onevent(evt) {
       if (!freshWake(evt.created_at, connectedAt, 0) || seenEventIds.has(evt.id)) return;
       seenEventIds.add(evt.id);
@@ -210,7 +212,7 @@ function startNostr() {
         }
       }
     },
-    oneose() { /* live tail continues */ },
+    oneose() { relayReady = true; /* live tail continues */ },
   });
   console.log(`[watcher] subscribed to ${RELAYS.length} relay(s), kinds ${KIND_LO}-${KIND_HI}`);
 }
@@ -256,7 +258,7 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === "GET" && req.url === "/health") {
     res.writeHead(200, { "content-type": "application/json" });
-    return res.end(JSON.stringify({ ok: true, endpoints: tagsByEndpoint.size, tags: byTag.size, relays: RELAYS.length }));
+    return res.end(JSON.stringify({ ok: true, endpoints: tagsByEndpoint.size, tags: byTag.size, relays: RELAYS.length, connectedRelays: [...pool.listConnectionStatus().values()].filter(Boolean).length, relayReady }));
   }
 
   if (req.method === "POST" && req.url === "/test") {
