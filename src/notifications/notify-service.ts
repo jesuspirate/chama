@@ -13,7 +13,7 @@ import { onchainAttention, type OnchainObservation } from '../escrow-engine/onch
 // wrapped so a notification failure can NEVER break the trade flow.
 
 import {
-  notificationForTransition, chatNotificationFor,
+  onchainNotificationBody, notificationForTransition, chatNotificationFor,
   buyerInterestNotificationFor, newListingNotificationFor,
   tradeDmNotificationFor, dmViewerRole, pendingOnchainArbiterPubkey,
   type TradeNotification, type DmNotifyPref,
@@ -790,5 +790,5 @@ export function maybeNotifyOnchainAttention(state: EscrowState, viewer: string, 
   if (!action) return;
   const tag = `${state.id}:onchain:${action.key}`;
   if (readFiredTags().has(tag)) return;
-  deliverOnce({escrowId:state.id, title:action.actionable ? 'Your trade needs you' : 'Trade payout', body:action.text, tag, ...(!action.actionable && observation?.payout ? { payoutTxid: observation.payout.txid, payoutNetwork: state.lock.onchain?.network } : {})}, 'onchain attention');
+  deliverOnce({escrowId:state.id, title:action.actionable ? 'Your trade needs you' : 'Trade payout', body:onchainNotificationBody(state, viewer, action.text), tag, ...(!action.actionable && observation?.payout ? { payoutTxid: observation.payout.txid, payoutNetwork: state.lock.onchain?.network } : {})}, 'onchain attention');
 }

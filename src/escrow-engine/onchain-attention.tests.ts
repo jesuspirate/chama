@@ -1,4 +1,4 @@
-import { wakeNotification } from '../notifications/wake-replay.js';
+import { selectWakeNotifications, wakeNotification } from '../notifications/wake-replay.js';
 import { applyEvent } from './state-machine.js';
 import { deriveOnchainView } from './onchain-escrow-view.js';
 import { payoutUsesTradeKey } from './onchain-settlement-choice.js';
@@ -47,6 +47,10 @@ for(const leaf of ['coop','dispute'] as const) for (const direct of [false, true
  const action=onchainAttention(offered,f.pks[other])!;
  assert.equal(wakeNotification(offered, state, f.pks[other], {[f.pks.buyer]:'Bestie'})?.body, 'Sign the payout to Bestie');
  assert.equal(wakeNotification(offered, state, 'stranger'), null);
+ const snapshot={pubkey:f.pks[other],events:[],relays:[],names:{[f.pks.buyer]:'Bestie'}};
+ const wake=selectWakeNotifications([offered],new Map([[state.id,state]]),snapshot,proposal.timestamp*1000,[]);
+ assert.equal(wake[0]?.body,'Sign the payout to Bestie','auxiliary settlement in the last-wake second is fresh');
+ assert.equal(selectWakeNotifications([offered],new Map(),snapshot,proposal.timestamp*1000,[wake[0].tag]).length,0,'repeated wake stays silent');
  check(offered,f.pks[other],action.key);assert.match(action.key,/sign:/);
  assert.ok(notificationForTransition(state,offered,f.pks[other]),'proposal arrival buzzes even though status stays APPROVED');
  assert.ok(latestNotificationActivityAt(offered)>=proposal.timestamp,'settlement transport is fresh activity');

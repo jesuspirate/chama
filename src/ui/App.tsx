@@ -1555,8 +1555,10 @@ export default function App() {
   useEffect(() => {
     if (pubkey && myTradesLoading) return;
     void cacheNativeWake(pubkey ? { pubkey, relays: DEFAULT_RELAYS, names: readNostrProfileCache(pubkey),
+      settledClaimIds: [...listPendingRedemptions().map(r => r.escrowId), ...listClaimCredits().map(r => r.escrowId)],
+      fired: (() => { try { return JSON.parse(localStorage.getItem(`chama_notifications_fired_v1:${pubkey}`) ?? '[]'); } catch { return []; } })(),
       events: [...escrows.values()].filter(e => Object.values(e.participants).includes(pubkey) || e.actingArbiter === pubkey)
-        .flatMap(e => e.eventChain.map(event => event.raw)) } : null);
+        .flatMap(e => [...e.eventChain, ...(e.settlements ?? [])].map(event => event.raw)) } : null);
   }, [pubkey, escrows, myTradesLoading]);
 
 

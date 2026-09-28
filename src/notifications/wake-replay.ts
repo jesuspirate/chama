@@ -7,9 +7,9 @@ import { onchainAttention } from '../escrow-engine/onchain-attention.js';
 import { onchainNotificationBody, notificationForTransition, type TradeNotification } from './trade-notifications.js';
 import type { NostrEvent, EscrowState } from '../escrow-engine/types.js';
 
-export interface WakeSnapshot { pubkey: string; events: NostrEvent[]; relays: string[]; names?: Record<string, string>; }
-export function wakeNotification(state: EscrowState, previous: EscrowState | null, pubkey: string, names?: Record<string, string>): TradeNotification | null {
-  const reason = needsYouReasonFor(state, pubkey);
+export interface WakeSnapshot { pubkey: string; events: NostrEvent[]; relays: string[]; names?: Record<string, string>; settledClaimIds?: string[]; fired?: string[]; }
+export function wakeNotification(state: EscrowState, previous: EscrowState | null, pubkey: string, names?: Record<string, string>, settledClaimIds?: ReadonlySet<string>): TradeNotification | null {
+  const reason = needsYouReasonFor(state, pubkey, undefined, settledClaimIds);
   if (!reason) return null;
   const action = onchainAttention(state, pubkey);
   if (action) return { escrowId: state.id, title: 'Your trade needs you', body: onchainNotificationBody(state, pubkey, action.text, names), tag: `${state.id}:onchain:${action.key}` };
@@ -19,6 +19,16 @@ export function wakeNotification(state: EscrowState, previous: EscrowState | nul
       'arbiter-key': 'Open the trade to publish your escrow key', waiting: 'A buyer is waiting for you', onchain: 'Open the trade' })[reason],
     tag: `${state.id}:wake:${reason}:${state.eventChain.at(-1)?.raw.id}`,
   };
+}
+
+export function selectWakeNotifications(next: Iterable<EscrowState>, old: Map<string, EscrowState>, snapshot: WakeSnapshot, lastWake: number, fired: readonly string[]): TradeNotification[] {
+  const seen = new Set([...fired, ...(snapshot.fired ?? [])]);
+  return [...next].flatMap(state => {
+    const activity = [...state.eventChain, ...(state.settlements ?? [])];
+    if (!activity.some(e => e.timestamp >= Math.floor(lastWake / 1000))) return [];
+    const note = wakeNotification(state, old.get(state.id) ?? null, snapshot.pubkey, snapshot.names, new Set(snapshot.settledClaimIds));
+    return note && !seen.has(note.tag) ? [note] : [];
+  });
 }
 
 export function replayWake(events: NostrEvent[], pubkey: string, nsec: string): Map<string, EscrowState> {
@@ -60,6 +70,7 @@ export async function fetchWakeEvents(snapshot: WakeSnapshot): Promise<NostrEven
   const ids = [...new Set(snapshot.events.flatMap(e => e.tags.filter(t => t[0] === 'd').map(t => t[1])))];
   const replies = await Promise.allSettled(snapshot.relays.map(url => new Promise<NostrEvent[]>((resolve, reject) => {
     const socket = new WebSocket(url), events: NostrEvent[] = [];
+    let fetchingRoots = false;
     const timer = setTimeout(() => { socket.close(); reject(Error('Relay timeout')); }, 5000);
     const end = (error?: Error) => { clearTimeout(timer); socket.close(); error ? reject(error) : resolve(events); };
     socket.onopen = () => socket.send(JSON.stringify(['REQ', 'wake',
@@ -72,7 +83,14 @@ export async function fetchWakeEvents(snapshot: WakeSnapshot): Promise<NostrEven
         const value = JSON.parse(message.data);
         if (value[1] !== 'wake') return;
         if (value[0] === 'EVENT' && events.length < 10000) events.push(value[2]);
-        if (value[0] === 'EOSE') end();
+        if (value[0] === 'EOSE') {
+          const roots = new Set([...snapshot.events, ...events].filter(e => e.kind === 38100).flatMap(e => e.tags.filter(t => t[0] === 'd').map(t => t[1])));
+          const missing = [...new Set(events.flatMap(e => e.tags.filter(t => t[0] === 'd' && !roots.has(t[1])).map(t => t[1])))];
+          if (!fetchingRoots && missing.length) {
+            fetchingRoots = true;
+            socket.send(JSON.stringify(['REQ', 'wake', { '#d': missing }]));
+          } else end();
+        }
         if (value[0] === 'CLOSED') end(Error('Relay refused query'));
       } catch { end(Error('Invalid relay response')); }
     };
