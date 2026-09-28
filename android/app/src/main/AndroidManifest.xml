@@ -7,6 +7,11 @@
 
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <queries>
+        <intent><action android:name="android.intent.action.VIEW" /><data android:scheme="lightning" /></intent>
+        <intent><action android:name="android.intent.action.VIEW" /><data android:scheme="bitcoin" /></intent>
+    </queries>
+
     <application
         android:allowBackup="false"
         android:fullBackupContent="false"

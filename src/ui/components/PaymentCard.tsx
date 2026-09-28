@@ -6,7 +6,7 @@ import { useT } from "../../i18n/index.js";
 import { TradeAmount } from "./TradeAmount.js";
 import { QRCode } from "../QRCode.js";
 import { PagerPills } from "../screens/tradedetail/PagerPills.js";
-import { copyTextRobust } from "./CopyButton.js";
+import { copyTextRobust, copyTextConfirmed } from "./CopyButton.js";
 
 export type PaymentRail = "lightning" | "onchain" | "ecash";
 const icons = { lightning: "⚡", onchain: "🔗", ecash: "🥜" };
@@ -38,8 +38,10 @@ export function PaymentCopyChip({ value, address = false, uri }: { value: string
   const [copied, setCopied] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout>>();
   useEffect(() => () => clearTimeout(timer.current), []);
-  const {failed, handlers} = usePaymentTarget(uri ?? (address ? walletUri(value, 'onchain') : undefined), () => {
-    copyTextRobust(value); setCopied(true); clearTimeout(timer.current); timer.current = setTimeout(() => setCopied(false), 1600);
+  const {failed, handlers} = usePaymentTarget(uri ?? (address ? walletUri(value, 'onchain') : undefined), async () => {
+    const ok = await copyTextConfirmed(value);
+    setCopied(ok); clearTimeout(timer.current); timer.current = setTimeout(() => setCopied(false), 1600);
+    return ok;
   });
   const label = value.length > 24 ? `${value.slice(0, address ? 6 : 12)}…${value.slice(address ? -6 : -12)}` : value;
   return <><button {...handlers} type="button" className={`payment-copy ${copied ? "is-copied" : ""}`} title={value}
@@ -48,7 +50,7 @@ export function PaymentCopyChip({ value, address = false, uri }: { value: string
       borderRadius: 999, border: `1px solid ${copied ? T.accent : T.borderHi}`, background: T.surface,
       color: copied ? T.accent : T.text, font: `700 11px ${T.mono}`, cursor: "pointer", padding: "10px 12px" }}>
     {!copied && <span aria-hidden="true">⧉ </span>}<span role="status">{copied ? t("common.copied") : label}</span>
-  </button>{failed && <div role="status">{t('payment.walletFailed')} <button type="button" onClick={()=>copyTextRobust(value)}>{t('common.copy')}</button></div>}</>;
+  </button>{failed && <div role="status">{failed}</div>}</>;
 }
 
 export function OpenWith({ value }: { value: string }) {

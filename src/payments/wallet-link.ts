@@ -10,3 +10,13 @@ export async function openWalletLink(uri: string, share = false): Promise<void> 
   if (!/^(lightning|bitcoin):\S+$/i.test(uri)) throw Error('Invalid payment link');
   await nativeDevice.payment({ uri, share });
 }
+
+export async function openWalletOrCopy(uri: string, copy: () => Promise<boolean>, open = openWalletLink): Promise<string | null> {
+  try { await open(uri); return null; }
+  catch {
+    const rail = uri.toLowerCase().startsWith('lightning:') ? 'Lightning' : 'Bitcoin';
+    return await copy()
+      ? `Copied — no wallet on this phone opens ${rail} links`
+      : `No wallet on this phone opens ${rail} links. Copy the payment details manually.`;
+  }
+}

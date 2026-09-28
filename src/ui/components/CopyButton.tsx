@@ -16,7 +16,13 @@ export function copyTextRobust(text: string): void {
   } catch { /* fall through */ }
   execCommandCopy(text);
 }
-function execCommandCopy(text: string): void {
+/** Used when the UI promises that a failed wallet handoff was copied. */
+export async function copyTextConfirmed(text: string): Promise<boolean> {
+  try { if (navigator.clipboard?.writeText) { await navigator.clipboard.writeText(text); return true; } }
+  catch { /* Try the legacy clipboard API below. */ }
+  return execCommandCopy(text);
+}
+function execCommandCopy(text: string): boolean {
   try {
     const ta = document.createElement("textarea");
     ta.value = text;
@@ -26,9 +32,10 @@ function execCommandCopy(text: string): void {
     document.body.appendChild(ta);
     ta.focus();
     ta.select();
-    document.execCommand("copy");
+    const copied = document.execCommand("copy");
     document.body.removeChild(ta);
-  } catch { /* user can still hand-select the visible text */ }
+    return copied;
+  } catch { return false; }
 }
 
 // A copy button that actually FEELS alive: on click it copies, then swaps to

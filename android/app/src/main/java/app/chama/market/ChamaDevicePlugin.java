@@ -15,6 +15,10 @@ public class ChamaDevicePlugin extends Plugin {
                 android.content.Intent target = share
                     ? new android.content.Intent(android.content.Intent.ACTION_SEND).setType("text/plain").putExtra(android.content.Intent.EXTRA_TEXT, uri)
                     : new android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(uri));
+                if (!share && target.resolveActivity(getContext().getPackageManager()) == null) {
+                    call.reject("No wallet available", "NO_WALLET");
+                    return;
+                }
                 getActivity().startActivity(android.content.Intent.createChooser(target, null));
                 call.resolve();
             } catch (Exception e) { call.reject("No wallet available"); }
