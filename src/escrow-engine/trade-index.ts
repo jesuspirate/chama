@@ -124,6 +124,14 @@ export function userRoleInTrade(state: EscrowState, userPubkey: string | null): 
   return null;
 }
 
+/** The CREATE event owns the date; cached summaries can carry a refresh time. */
+export function signedTradeCreatedAt(state: EscrowState): number {
+  const create = state.eventChain.find(event => event.kind === EscrowEventKind.CREATE);
+  const signed = create?.raw.created_at;
+  return typeof signed === "number" && Number.isFinite(signed) && signed > 0
+    ? signed : Number.isFinite(state.createdAt) && state.createdAt > 0 ? state.createdAt : 0;
+}
+
 /** Latest signed trade activity, independent of local hydration time. */
 export function signedTradeActivityAt(state: EscrowState): number {
   return Math.max(
@@ -171,7 +179,7 @@ export function deriveTradeIndexEntry(
     counterparty,
     description: state.description,
     lastStatus: state.status,
-    createdAt: state.createdAt,
+    createdAt: signedTradeCreatedAt(state),
     lastActivityAt: signedTradeActivityAt(state),
     enteredAt: signedTradeEnteredAt(state),
     updatedAt: nowMs,
@@ -195,8 +203,10 @@ export function recordTradeToIndex(
     if (statusRank(prev.lastStatus) > statusRank(entry.lastStatus)) {
       entry.lastStatus = prev.lastStatus;
     }
-    // Preserve the first-seen createdAt (a later replay may carry 0/stale).
-    if (prev.createdAt > 0) entry.createdAt = prev.createdAt;
+    // A signed CREATE repairs an old cached date. Only preserve first-seen
+    // history when this partial snapshot cannot establish the original date.
+    if (!state.eventChain.some(event => event.kind === EscrowEventKind.CREATE)
+      && prev.createdAt > 0) entry.createdAt = prev.createdAt;
     // A partial replay cannot make remembered signed activity move backward.
     entry.lastActivityAt = Math.max(
       prev.lastActivityAt ?? prev.createdAt ?? 0,

@@ -1,3 +1,4 @@
+import { signedTradeCreatedAt } from "../../escrow-engine/trade-index.js";
 import { ConductFacts } from "./ConductFacts.js";
 import { hasMissedBuyerLock, isRenewalPaused } from "../../escrow-engine/listing-renewal-age.js";
 import { listingIdentityKey } from "../../escrow-engine/listing-renewal-ledger.js";
@@ -589,7 +590,7 @@ export function TradeCard({
 
           <ConductFacts pubkey={state.initiator.pubkey} />
           <TradeIdLine id={state.id} />
-          <TradeTimeLine createdAt={state.createdAt} />
+          <TradeTimeLine createdAt={signedTradeCreatedAt(state)} />
 
           {sellerContextLine && (
             <div style={{
@@ -792,7 +793,7 @@ function TradeTimeLine({ createdAt }: { createdAt: number }) {
       marginTop: -4, marginBottom: 10,
       color: T.text, fontFamily: T.mono, fontSize: 12, fontWeight: 600, lineHeight: 1.4,
     }}>
-      {when}
+      <time dateTime={new Date(createdAt * 1000).toISOString()}>{when}</time>
     </div>
   );
 }
