@@ -1,3 +1,4 @@
+import { isLateOnchainDeposit, preLockDeadline } from "../escrow-engine/types.js";
 import { conductStanding, type BondConductProof } from "../escrow-engine/conduct-standing.js";
 import { SIGNET as PUBLIC_SIGNET } from "../bond-multisig/multisig.js";
 import { replayPublicConduct, readConductSpend, publicConductRecord, type PublicConductRecord } from "../escrow-engine/public-conduct.js";
@@ -2914,6 +2915,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     const trade = client.getState(escrowId);
     if (!trade || trade.escrowMode !== "onchain") throw new Error("Not an on-chain trade");
     if (trade.onchainFundingTerms) return;
+    if (preLockDeadline(trade)?.lapsed) throw new Error("The lock window ended. Post the offer again to use a new address.");
     const role = onchainFunder(trade);
     if (trade.participants[role] !== await client.getPubkey()) throw new Error("Only the funder can commit funding terms");
     const fetchJson = esploraFetcher(defaultEsploraBase(ESCROW_NETWORK), { network: ESCROW_NETWORK });
@@ -2950,13 +2952,17 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     const state = client.getState(escrowId);
     if (!state) throw new Error("Escrow not loaded");
     const plan = onchainFundingPlan(escrowId);
-    if (!plan.ready) return { plan, verdict: null as null | ReturnType<typeof verifyFunding>, depositStatus: "waiting" as const };
+    const observation = await observeOnchainAttention(state,
+      esploraFetcher(defaultEsploraBase(ESCROW_NETWORK), {network:ESCROW_NETWORK, timeoutMs:SETTLEMENT_EXPLORER_TIMEOUT_MS}),
+      stateRef.current?.onchainObservations?.get(escrowId));
+    setState(current => ({...current, onchainObservations: new Map(current.onchainObservations).set(escrowId, observation)}));
+    if (!plan.ready) return { observation, plan, verdict: null as null | ReturnType<typeof verifyFunding>, depositStatus: "waiting" as const };
     const fetchJson = esploraFetcher(defaultEsploraBase(ESCROW_NETWORK), { network: ESCROW_NETWORK, timeoutMs: SETTLEMENT_EXPLORER_TIMEOUT_MS });
     const tipHeight = await esploraTipHeight(fetchJson);
     // A signed future refund is not a completed refund. Verify the actual
     // confirmed spend before letting either room call it done.
     const refundSpend = await observedRefundSpend(state.onchainFundingTerms!, state.settlements ?? [], fetchJson);
-    if (refundSpend) return { plan, verdict: null, refundVerified: refundSpend.confirmed, refundPending: !refundSpend.confirmed, tipHeight, depositStatus: "confirmed" as const };
+    if (refundSpend) return { observation, plan, verdict: null, refundVerified: refundSpend.confirmed, refundPending: !refundSpend.confirmed, tipHeight, depositStatus: "confirmed" as const };
     if (tipHeight >= state.onchainFundingTerms!.refundLockUntil) throw new Error("The deposit's refund deadline has passed; do not send the counterpayment");
     if (state.lock.onchain) {
       const invalid = onchainLockError(state, state.lock.onchain, Math.floor(Date.now() / 1000));
@@ -2973,7 +2979,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     if (found.length === 0) {
       const pending = await fetchJson(`/address/${plan.address}/utxo`);
       if (Array.isArray(pending) && pending.some(row => row?.status?.confirmed === false)) {
-        return { plan, verdict: null, tipHeight, depositStatus: "seen" as const };
+        return { observation, plan, verdict: null, tipHeight, depositStatus: "seen" as const };
       }
     }
     if (found.length && !escrowDepositWindowSafe({ refundLockUntil: state.onchainFundingTerms!.refundLockUntil,
@@ -2990,7 +2996,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     // may include several deposits, as settlement sweeps them all.
     if (state.lock.onchain && !found.some(f => f.utxo.txid === state.lock.onchain!.fundingTxid
       && f.utxo.index === state.lock.onchain!.fundingVout)) throw new Error("Committed funding output is unavailable");
-    return { plan, verdict, tipHeight, depositStatus: found.length ? "confirmed" as const : "waiting" as const };
+    return { observation, plan, verdict, tipHeight, depositStatus: found.length ? "confirmed" as const : "waiting" as const };
   }, [onchainFundingPlan]);
 
   /** Publish the on-chain LOCK once the deposit is confirmed.
@@ -3006,7 +3012,8 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     if ((state.escrowMode ?? "ecash") !== "onchain") {
       throw new Error("This trade is not an on-chain escrow.");
     }
-    const { plan, verdict, depositStatus } = await checkOnchainFunding(escrowId);
+    const { plan, verdict, depositStatus, observation } = await checkOnchainFunding(escrowId);
+    if (isLateOnchainDeposit(state, observation)) throw new Error("A deposit reached a lapsed trade — recover it using the refund controls.");
     if (!plan.ready) throw new Error("The escrow address isn't ready — a key is still missing.");
     if (!verdict?.funded) {
       throw new Error(
@@ -3082,7 +3089,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
           if (!trade.onchainFundingTerms || known?.payout?.confirmed || known?.refundSpent) continue;
           try {
             const observation = await observeOnchainAttention(trade,
-              esploraFetcher(defaultEsploraBase(ESCROW_NETWORK), {network:ESCROW_NETWORK, timeoutMs:SETTLEMENT_EXPLORER_TIMEOUT_MS}));
+              esploraFetcher(defaultEsploraBase(ESCROW_NETWORK), {network:ESCROW_NETWORK, timeoutMs:SETTLEMENT_EXPLORER_TIMEOUT_MS}), known);
             if (stopped || stateRef.current?.pubkey !== viewer) return;
             setState(current => ({...current, onchainObservations: new Map(current.onchainObservations).set(trade.id, observation)}));
             const latest = stateRef.current?.escrows.get(trade.id);

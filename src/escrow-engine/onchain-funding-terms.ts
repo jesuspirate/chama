@@ -26,7 +26,7 @@ export function fundingTermsError(state: EscrowState, terms: OnchainFundingTerms
     if (terms.funder !== onchainFunder(state)) return 'Wrong funder';
     if (terms.disputeCsvBlocks !== DISPUTE_CSV_BLOCKS) return 'Wrong dispute delay';
     for (const role of [Role.BUYER, Role.SELLER] as const) {
-      if (!getEffectiveParticipantAt(state, role, at)) return `Missing ${role}`;
+      if (!(state.onchainFundingTerms ? state.participants[role] : getEffectiveParticipantAt(state, role, at))) return `Missing ${role}`;
       if (!state.escrowKeys?.[role] || terms[`${role}Xonly`] !== state.escrowKeys[role]) return `Unpublished ${role} key`;
     }
     const arbiter = fundingArbiter(state);

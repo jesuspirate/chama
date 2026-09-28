@@ -1,11 +1,11 @@
-import { EscrowStatus, Role, NEVER_EXPIRES, type EscrowState } from '../escrow-engine/types.js';
+import { EscrowStatus, Role, NEVER_EXPIRES, hasObservedOnchainDeposit, isLateOnchainDeposit, type EscrowState } from '../escrow-engine/types.js';
 import { preLockDeadline } from './decisions.js';
 import { disputeStartAt, substitutionEligibleAt } from '../escrow-engine/arbiter-substitution.js';
 import { expectedLockerRole } from '../escrow-engine/lock-custody.js';
 import type { OnchainObservation } from '../escrow-engine/onchain-attention.js';
 
 export type TradeClock = { kind: 'lock' | 'listing' | 'pay' | 'perform' | 'confirm' | 'dispute'; at: number; role?: Role }
-  | { kind: 'confirmation' }
+  | { kind: 'confirmation' | 'lock-ready' }
   | { kind: 'refund' | 'appeal'; height: number; tip?: number };
 /** No viewer or local arrival time: all parties use the same committed deadline. */
 export function tradeClock(state: EscrowState, now: number, chain?: OnchainObservation): TradeClock | null {
@@ -13,8 +13,14 @@ export function tradeClock(state: EscrowState, now: number, chain?: OnchainObser
   const terms = state.lock?.onchain ?? state.onchainFundingTerms;
   const funder = (terms?.funder ?? expectedLockerRole(state.category)) as Role;
   const refund = (): TradeClock | null => terms ? { kind: 'refund', height: terms.refundLockUntil, tip: chain?.tipHeight } : null;
+  if (state.status === EscrowStatus.CREATED && terms && !hasObservedOnchainDeposit(chain)) {
+    const deadline = preLockDeadline(state, now);
+    return deadline ? {kind: deadline.kind === "hold" ? "lock" : "listing", at: deadline.at, role: funder} : null;
+  }
+  if (isLateOnchainDeposit(state, chain, now)) return refund();
   if (terms && chain?.tipHeight !== undefined && chain.tipHeight >= terms.refundLockUntil) return refund();
   if (state.status === EscrowStatus.CREATED) {
+    if (terms && chain?.deposit === 'confirmed') return { kind: 'lock-ready' };
     if (terms && chain?.deposit === 'seen') return { kind: 'confirmation' };
     const deadline = preLockDeadline(state, now);
     return deadline ? { kind: deadline.kind === 'hold' ? 'lock' : 'listing', at: deadline.at, role: funder } : null;
@@ -43,6 +49,7 @@ export function clockDuration(seconds: number): string {
   return minutes >= 60 ? `${Math.floor(minutes / 60)}h ${minutes % 60}m` : `${minutes}m`;
 }
 export function tradeClockText(clock: TradeClock, now: number, name: (role: Role) => string): string {
+  if (clock.kind === 'lock-ready') return 'Deposit confirmed · ready to lock';
   if (clock.kind === 'confirmation') return 'Locks after 1 confirmation';
   if (clock.kind === 'refund' || clock.kind === 'appeal') {
     const approximate = clock.tip === undefined ? '' : ` (≈ ${Math.max(0, Math.ceil((clock.height - clock.tip) / 144))} days)`;

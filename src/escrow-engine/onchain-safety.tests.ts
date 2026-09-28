@@ -53,7 +53,8 @@ const committedAddress = fixture.state.onchainFundingTerms!.address;
 const reloaded = replayEventChain(fixture.events);
 assert(reloaded.ok);
 assert.equal(reloaded.state.onchainFundingTerms!.address, committedAddress);
-assert.equal(getEffectiveParticipantAt(reloaded.state, Role.BUYER, 9999999999), fixture.pks.buyer);
+assert.equal(getEffectiveParticipantAt(reloaded.state, Role.BUYER, 9999999999), null, 'unfunded terms cannot freeze an expired seat');
+assert.equal(getEffectiveParticipantAt(reloaded.state, Role.BUYER, 9999999999, { observation: {deposit:'seen'} }), fixture.pks.buyer, 'real deposits retain committed seats');
 assert.equal(applyEvent(fixture.state, termsEvent()).ok, false, 'refund height cannot be recommitted');
 const lockTerms = { ...fixture.terms, amountSats: '100000', fundingTxid: '11'.repeat(32), fundingVout: 0 };
 const lock = fixture.event(Kind.LOCK, 'seller', { type: 'escrow:lock', notesHash: '', shares: [],
@@ -89,6 +90,13 @@ const signedMaliciousLock = fixture.event(Kind.LOCK, 'seller', {
   ...lock.payload, onchain: { ...lockTerms, ...badTerms },
 } as LockPayload);
 assert.equal(applyEvent(fixture.state, signedMaliciousLock).ok, false, 'authentic funder signature cannot authorize the counterparty key');
+// A real LOCK still replays against the original committed keys after the hold
+// lapses. The publishing client separately verifies chain funding and arrival.
+const afterHold = {...fixture.state, joinHolds:{...fixture.state.joinHolds,
+  buyer:{...fixture.state.joinHolds!.buyer!, expiresAt:lock.timestamp-1000}}};
+assert.ok(applyEvent(afterHold,lock).ok, 'confirmation after hold expiry retains the committed LOCK path');
+assert.equal(applyEvent(afterHold,{...lock,payload:{...(lock.payload as LockPayload),buyerPubkey:'ab'.repeat(32)}}).ok,false,
+  'released seat cannot substitute a new buyer into the old address');
 fixture.apply(lock);
 assert.equal(fixture.state.status, EscrowStatus.LOCKED);
 for (const status of [EscrowStatus.LOCKED, EscrowStatus.APPROVED]) {

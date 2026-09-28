@@ -1,3 +1,4 @@
+import { preLockDeadline, isLateOnchainDeposit, hasObservedOnchainDeposit } from "../../escrow-engine/types.js";
 import { payoutStatusText } from "../../escrow-engine/onchain-payout-text.js";
 import { stalledPayoutEligibility } from "../../escrow-engine/onchain-stalled.js";
 import { onchainAttention, type OnchainObservation } from '../../escrow-engine/onchain-attention.js';
@@ -81,8 +82,12 @@ export function OnchainTradeControls({ state, pubkey, profileNames, kind0Enabled
   const unavailable = Object.values(explorerFailures).some(Boolean);
   useEffect(() => { setExplorerFailures({}); setNote(null); setAddress(""); }, [state.id]);
   const latest = useRef(actions); latest.current = actions;
-  const participants = getEffectiveParticipantsAt(state, Math.floor(Date.now()/1000));
-  const role = effectiveViewerRole(state, pubkey);
+  const participants = getEffectiveParticipantsAt(state, Math.floor(Date.now()/1000), actions.onchainObservation);
+  const role = effectiveViewerRole(state, pubkey, now, actions.onchainObservation)
+    ?? (state.onchainFundingTerms ? Object.values(Role).find(r => state.participants[r] === pubkey) ?? null : null);
+  const lapsed = !!preLockDeadline(state, now)?.lapsed;
+  const lateDeposit = isLateOnchainDeposit(state, actions.onchainObservation, now);
+  const retired = lapsed && (!hasObservedOnchainDeposit(actions.onchainObservation) || lateDeposit);
   const identity = JSON.stringify([state.id, state.lock.onchain, state.onchainFundingTerms, state.onchainRefundClaimed]);
   const pendingArbiter = fundingArbiter(state) === pubkey && !state.escrowKeys?.[Role.ARBITER];
   let plan: ReturnType<NonNullable<OnchainTradeActions["onchainFundingPlan"]>> | null = null;
@@ -190,13 +195,13 @@ export function OnchainTradeControls({ state, pubkey, profileNames, kind0Enabled
     catch (error) { setPrepareFailed(true); throw error; }
   };
   useEffect(() => {
-    if (state.status !== EscrowStatus.CREATED || state.onchainFundingTerms || !view.viewerFunds
+    if (lapsed || state.status !== EscrowStatus.CREATED || state.onchainFundingTerms || !view.viewerFunds
       || !participants.buyer || !participants.seller || !actions.onPrepareOnchainFunding) return;
     const key = JSON.stringify([state.id, participants.buyer, participants.seller, state.escrowKeys]);
     if (attemptedFunding.current === key) return;
     attemptedFunding.current = key;
     void run(prepareFunding);
-  }, [state.id, state.status, state.onchainFundingTerms, view.viewerFunds, participants.buyer, participants.seller, state.escrowKeys]);
+  }, [lapsed, state.id, state.status, state.onchainFundingTerms, view.viewerFunds, participants.buyer, participants.seller, state.escrowKeys]);
   const buttonStyle = { padding: "12px 14px", minHeight: 44, borderRadius: T.rs, border: `1px solid ${T.borderHi}`,
     background: T.surface, color: T.text, fontFamily: T.sans, fontWeight: 700, cursor: "pointer" };
   const recovery = actions.onScanMyOnchainPayouts && actions.onSweepOnchainPayout
@@ -242,7 +247,15 @@ export function OnchainTradeControls({ state, pubkey, profileNames, kind0Enabled
     {view.canSettle && choice && <p style={{ color: T.muted, overflowWrap: "anywhere" }}>Payout address: {choice.destination}
       {choice.locked && <><br />The other signer has signed. The destination is fixed.</>}</p>}
     {(!view.canSettle || choice) && <>
-    <OnchainEscrowPanel settlementUnavailable={unavailable} view={view} network={ESCROW_NETWORK_LABEL} settlementCheck={unavailable ? null : checkedChoice === choice?.id ? check : check?.ok === false ? check : null} signing={busy} signedByViewer={signed}
+    {retired ? <div>
+      <p>{lateDeposit ? "A deposit reached a lapsed trade — recover it" : "The lock window ended. This address is retired; do not send a deposit."}</p>
+      {lateDeposit && view.viewerFunds && <>
+        <p>{refundAvailable ? "Your refund is available." : `Recovery opens at Bitcoin block ${state.onchainFundingTerms!.refundLockUntil}.`}</p>
+        {refundAvailable && actions.onRefundOnchainEscrow && <button type="button" style={buttonStyle} disabled={busy} onClick={() => void run(async () => {
+          const result = await actions.onRefundOnchainEscrow!(state.id); setNote(`Refund broadcast: ${result.txid}`);
+        })}>Recover deposit</button>}
+      </>}
+    </div> : <OnchainEscrowPanel settlementUnavailable={unavailable} view={view} network={ESCROW_NETWORK_LABEL} settlementCheck={unavailable ? null : checkedChoice === choice?.id ? check : check?.ok === false ? check : null} signing={busy} signedByViewer={signed}
       checking={busy} fundingNote={state.onchainFundingTerms && unavailable && state.status === EscrowStatus.CREATED ? "Couldn’t check the deposit yet — retrying" : note} depositStatus={depositStatus} publishing={busy} refunding={busy}
       onPrepareFunding={prepareFailed && !state.onchainFundingTerms && view.viewerFunds && participants.buyer && participants.seller && actions.onPrepareOnchainFunding
         ? () => void run(prepareFunding) : undefined}
@@ -258,9 +271,9 @@ export function OnchainTradeControls({ state, pubkey, profileNames, kind0Enabled
       onSign={eligibleSigner && actions.onSignOnchainSettlement ? () => void run(async () => {
         const result = await actions.onSignOnchainSettlement!(state.id); setCheck(result.check); setCheckedChoice(settlementUnsignedId(result.psbt)); setSigned(result.check.ok);
       }) : undefined}
-      onPublishKey={actions.onPublishArbiterKey ? () => void run(async () => actions.onPublishArbiterKey!()) : undefined} />
+      onPublishKey={actions.onPublishArbiterKey ? () => void run(async () => actions.onPublishArbiterKey!()) : undefined} />}
     </>}
     {approved && (choice || state.settlements?.some(message => message.payload.final)) && actions.onFinalizeOnchainSettlement && <button type="button" style={buttonStyle} disabled={busy} onClick={() => { markExplorer("finalize", false); retryFinalize(n => n + 1); }}>Check settlement</button>}
-    {note && view.stage !== "awaiting-funding" && view.stage !== "awaiting-keys" && <p role="status" style={{ color: T.muted }}>{note}</p>}
+    {note && (retired || (view.stage !== "awaiting-funding" && view.stage !== "awaiting-keys")) && <p role="status" style={{ color: T.muted }}>{note}</p>}
   </div>;
 }

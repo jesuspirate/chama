@@ -851,7 +851,9 @@ function handleLock(state: EscrowState, event: ParsedEscrowEvent<LockPayload>): 
   // The locker must be the seller's pubkey (or buyer for marketplace) —
   // they're a participant from the moment CREATE published, so getRole
   // works without any prior JOIN.
-  const lockerRole = getActiveRole(state, event.pubkey, event.timestamp);
+  const lockerRole = state.onchainFundingTerms && p.onchain
+    ? Object.values(Role).find(role => state.participants[role] === event.pubkey)
+    : getActiveRole(state, event.pubkey, event.timestamp);
   if (!lockerRole) {
     return err("NOT_PARTICIPANT", "Locker is not a participant", event.raw.id);
   }
@@ -888,7 +890,7 @@ function handleLock(state: EscrowState, event: ParsedEscrowEvent<LockPayload>): 
   }
 
   // If buyer JOINed earlier as ACK, LOCK's buyerPubkey must agree.
-  const joinedBuyer = getEffectiveParticipantAt(state, Role.BUYER, event.timestamp, { includeLockGrace: true });
+  const joinedBuyer = state.onchainFundingTerms ? state.participants[Role.BUYER] : getEffectiveParticipantAt(state, Role.BUYER, event.timestamp, { includeLockGrace: true });
   if (joinedBuyer && joinedBuyer !== p.buyerPubkey) {
     return err("BUYER_PUBKEY_MISMATCH",
       `LOCK buyerPubkey ${p.buyerPubkey.slice(0, 8)}… disagrees with prior JOIN ${joinedBuyer.slice(0, 8)}…`,
@@ -897,7 +899,7 @@ function handleLock(state: EscrowState, event: ParsedEscrowEvent<LockPayload>): 
   }
 
   // Same for arbiter.
-  const joinedArbiter = getEffectiveParticipantAt(state, Role.ARBITER, event.timestamp, { includeLockGrace: true });
+  const joinedArbiter = state.onchainFundingTerms ? state.participants[Role.ARBITER] : getEffectiveParticipantAt(state, Role.ARBITER, event.timestamp, { includeLockGrace: true });
   if (joinedArbiter && joinedArbiter !== p.arbiterPubkey) {
     return err("ARBITER_PUBKEY_MISMATCH",
       `LOCK arbiterPubkey ${p.arbiterPubkey.slice(0, 8)}… disagrees with prior JOIN ${joinedArbiter.slice(0, 8)}…`,

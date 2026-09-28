@@ -205,7 +205,7 @@ function AttentionCard({
   observation?: OnchainObservation;
 }) {
   const { t } = useT();
-  const reason = needsYouReasonFor(trade, pubkey);
+  const reason = needsYouReasonFor(trade, pubkey, undefined, undefined, observation);
   const onchain = onchainAttention(trade, pubkey, observation);
   const owed = onchain?.text ?? (reason === "claim" ? t("me.owedClaim")
     : reason === "dispute" ? t("me.owedDispute")

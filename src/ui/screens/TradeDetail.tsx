@@ -516,7 +516,7 @@ export function TradeDetail({
   const selectionMatchesSavedOrder = selectedOrderKey.length > 0 && selectedOrderKey === savedOrderKey;
   const savedOrderFinalizedAt = state.joinHolds?.[menuSelectorRole]?.orderFinalizedAt ?? null;
   const savedOrderFinalized = !!savedOrderFinalizedAt;
-  const participants = getEffectiveParticipantsAt(state, nowSec);
+  const participants = getEffectiveParticipantsAt(state, nowSec, onchainObservation);
   const myRole = samePubkey(participants.buyer, pubkey) ? Role.BUYER
     : samePubkey(participants.seller, pubkey) ? Role.SELLER
     : samePubkey(participants.arbiter, pubkey) ? Role.ARBITER : null;

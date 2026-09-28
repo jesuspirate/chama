@@ -1,3 +1,4 @@
+import { hasObservedOnchainDeposit } from "../../escrow-engine/types.js";
 import { tradeClock, tradeClockText } from '../trade-clock.js';
 import { FundingModalShell } from "../components/FundingModalShell.js";
 import { PaymentRails } from "../components/PaymentCard.js";
@@ -157,8 +158,8 @@ export function LiveTradeSurface({
     const timer = setInterval(() => setNowSec(Math.floor(Date.now() / 1000)), 1000);
     return () => clearInterval(timer);
   }, [state.id]);
-  const participants = getEffectiveParticipantsAt(state, nowSec);
-  const myRole = effectiveViewerRole(state, pubkey, nowSec);
+  const participants = getEffectiveParticipantsAt(state, nowSec, onchainActions?.onchainObservation);
+  const myRole = effectiveViewerRole(state, pubkey, nowSec, onchainActions?.onchainObservation);
 
   const [busy, setBusy] = useState(false);
   const [onchainOpen, setOnchainOpen] = useState(false);
@@ -269,12 +270,15 @@ export function LiveTradeSurface({
       <MoreOptions onClick={onOpenFullView} label={tr("trade.resendHeal")} />
     </Decision>;
 
+    if (state.status === EscrowStatus.EXPIRED && state.onchainFundingTerms && hasObservedOnchainDeposit(onchainActions?.onchainObservation)) return onchainControls;
     if (state.status === EscrowStatus.EXPIRED && !state.lock?.notesHash && state.lock?.lockedAt == null && state.initiator.pubkey === pubkey && onRepost) {
       return <Decision q={tr("lts.listingExpired")}><PrimaryButton disabled={busy} onClick={() => run(onRepost)} label={tr("lts.postAgain")} /></Decision>;
     }
     const status = state.status;
 
     if (status === EscrowStatus.CREATED) {
+      // A funded address always keeps its recovery/deposit controls reachable.
+      if (state.onchainFundingTerms && hasObservedOnchainDeposit(onchainActions?.onchainObservation)) return onchainControls;
       // Who funds is category-dependent and reducer-enforced (WRONG_LOCKER):
       // marketplace → buyer; p2p-trade / bill-pay / lending → seller; null → raw
       // (anyone). This is the OPPOSITE asymmetry from who votes first.
@@ -380,7 +384,7 @@ export function LiveTradeSurface({
       }
       // Unseated viewer (opened from a match): seat inline into the open slot,
       // then the surface re-renders to the waiting/lock state — no full-view bounce.
-      const seats = getEffectiveParticipantsAt(state, nowSec);
+      const seats = getEffectiveParticipantsAt(state, nowSec, onchainActions?.onchainObservation);
       const openRole = !seats[Role.BUYER] ? Role.BUYER
         : !seats[Role.SELLER] ? Role.SELLER : null;
       // Slicing chunks the UNSECURED, irreversible leg so only 1/N is ever at
@@ -839,7 +843,7 @@ export function LiveTradeSurface({
           Presence is evidence-derived only (see tradeRoomPresence). */}
       <div className="lts-room">
         <div className="lts-room-people">
-          {tradeRoomPresence(state, pubkey, undefined, TRINITY_RING_ORDER).map(person => (
+          {tradeRoomPresence(state, pubkey, nowSec, TRINITY_RING_ORDER, onchainActions?.onchainObservation).map(person => (
             <PersonChip
               key={person.role}
               person={person}

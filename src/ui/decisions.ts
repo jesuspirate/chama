@@ -1,3 +1,4 @@
+import { preLockDeadline } from "../escrow-engine/types.js";
 import { displayedTradeArbiter } from "../arbiters/trade-arbiter.js";
 import { onchainAttention, type OnchainObservation } from '../escrow-engine/onchain-attention.js';
 import { NEVER_EXPIRES } from "../escrow-engine/types.js";
@@ -692,8 +693,9 @@ function needsYouReason(
   settledClaimIds?: ReadonlySet<string>,
   observation?: OnchainObservation,
 ): keyof typeof NEEDS_YOU_RANK | null {
-  if (observation?.payout || observation?.refundSpent || (e.status === EscrowStatus.CREATED && observation?.deposit === 'seen')) return null;
-  if (onchainAttention(e, userPubkey, observation)?.actionable) return 'onchain';
+  if (observation?.payout || observation?.refundSpent) return null;
+  if (onchainAttention(e, userPubkey, observation, nowSec)?.actionable) return 'onchain';
+  if (e.status === EscrowStatus.CREATED && (preLockDeadline(e, nowSec)?.lapsed || observation?.deposit === 'seen')) return null;
   if (observation?.refundAvailable) return null;
   // Quiet while filling/running. At the fill deadline cross-circle orchestration
   // supplies the first REFUND vote; a lone share cannot infer failed fill.
@@ -960,8 +962,9 @@ export function needsYouReasonFor(
   userPubkey: string,
   nowSec: number = Math.floor(Date.now() / 1000),
   settledClaimIds?: ReadonlySet<string>,
+  observation?: OnchainObservation,
 ): "claim" | "dispute" | "vote" | "arbiter-key" | "waiting" | "onchain" | null {
-  return needsYouReason(e, userPubkey, nowSec, settledClaimIds);
+  return needsYouReason(e, userPubkey, nowSec, settledClaimIds, observation);
 }
 
 /** Count of trades needing the user's action — the Me-tab red badge. */
@@ -1945,6 +1948,7 @@ export function tradeRoomPresence(
   viewerPubkey: string,
   nowSec: number = Math.floor(Date.now() / 1000),
   roles: readonly Role[] = [Role.BUYER, Role.SELLER],
+  observation?: OnchainObservation,
 ): RoomPresence[] {
   const lastSeen = new Map<string, number>();
   const note = (pk: string | null | undefined, at: number) => {
@@ -1967,7 +1971,7 @@ export function tradeRoomPresence(
   // the room any more, and showing their name (let alone "ready") would put
   // a phantom person in the strip — the exact class of lie the pre-lock
   // clock fix removes from the countdowns.
-  const effective = getEffectiveParticipantsAt(state, nowSec);
+  const effective = getEffectiveParticipantsAt(state, nowSec, observation);
   return roles.map((role): RoomPresence => {
     const pk = effective[role] ?? null;
     if (!pk) {
@@ -2008,49 +2012,7 @@ export function tradeRoomPresence(
 // countdown on a trade that went back to Browse an hour ago. Lock time first,
 // trade time only once the sats are actually locked.
 
-export type PreLockDeadline = {
-  /** Unix seconds this CREATED trade stops being viable for this viewer. */
-  at: number;
-  /** "hold" = a seat lapses first; "listing" = the listing simply expires. */
-  kind: "hold" | "listing";
-  /** Already past — render the lapsed state, never a running countdown. */
-  lapsed: boolean;
-};
-
-/** The honest deadline on a CREATED trade. Null when nothing bounds it. */
-export function preLockDeadline(
-  state: EscrowState,
-  nowSec: number = Math.floor(Date.now() / 1000),
-): PreLockDeadline | null {
-  if (state.status !== EscrowStatus.CREATED) return null;
-
-  const listingAt = Number.isFinite(state.expiresAt) && state.expiresAt > 0 && state.expiresAt !== NEVER_EXPIRES ? state.expiresAt : null;
-
-  // A signed PLAN_START freezes all three seats for the parent room's
-  // lifetime (getEffectiveParticipantAt), so no hold can lapse there.
-  let holdAt: number | null = null;
-  if (!state.tranchePlan) {
-    for (const role of [Role.BUYER, Role.SELLER] as const) {
-      const hold = state.joinHolds?.[role];
-      // A hold only binds the seat it actually holds: a stale hold left by a
-      // joiner who already lapsed says nothing about the current occupant.
-      if (!hold || hold.pubkey !== state.participants[role]) continue;
-      const lapseAt = hold.expiresAt + JOIN_HOLD_LOCK_GRACE_SECONDS;
-      holdAt = holdAt === null ? lapseAt : Math.min(holdAt, lapseAt);
-    }
-  }
-
-  if (holdAt === null && listingAt === null) return null;
-  const at =
-    holdAt === null ? (listingAt as number)
-    : listingAt === null ? holdAt
-    : Math.min(holdAt, listingAt);
-  return {
-    at,
-    kind: holdAt !== null && at === holdAt ? "hold" : "listing",
-    lapsed: at <= nowSec,
-  };
-}
+export { preLockDeadline, type PreLockDeadline } from "../escrow-engine/types.js";
 
 export function decideVotePrompt(
   state: EscrowState,
@@ -2285,8 +2247,8 @@ export function arbiterWatchEligibility(state: EscrowState, pubkey: string, nowS
 }
 
 /** A lapsed CREATED seat cannot authorize funding or hide the join action. */
-export function effectiveViewerRole(state: EscrowState, pubkey: string, nowSec = Math.floor(Date.now() / 1000)): Role | null {
-  return participantRoleForPubkey(state, pubkey, getEffectiveParticipantsAt(state, nowSec));
+export function effectiveViewerRole(state: EscrowState, pubkey: string, nowSec = Math.floor(Date.now() / 1000), observation?: OnchainObservation): Role | null {
+  return participantRoleForPubkey(state, pubkey, getEffectiveParticipantsAt(state, nowSec, observation));
 }
 
 /** Unknown earmarks own the whole balance until recovery resolves them. */

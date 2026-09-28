@@ -108,3 +108,60 @@ assert.equal(partialDeposit.remainingSats,60000);
 assert.match(onchainAttention(created,f.pks.seller,partialDeposit)!.text,/Send 60,000 more sats/);
 check(created,f.pks.seller,'top-up:60000',partialDeposit);
 assert.equal(selectNeedsYouTrades({escrows:[created],userPubkey:f.pks.seller,onchainObservations:new Map([[created.id,{deposit:'seen',remainingSats:0}]])}).length,0,'pending full deposit never asks for a second payment');
+
+// Brief 03: empty lapsed rooms are ordinary history, not forever attention.
+const { preLockDeadline, getEffectiveParticipantsAt, isLateOnchainDeposit } = await import('./types.js');
+const { shouldShowOnBrowse } = await import('../ui/decisions.js');
+const now = Math.floor(Date.now()/1000);
+const lapsed: EscrowState = {...created, joinHolds:{...created.joinHolds,
+  buyer:{...created.joinHolds!.buyer!, pubkey:f.pks.buyer, expiresAt:now-1000}}, expiresAt:now+3600};
+const deadline = preLockDeadline(lapsed,now)!;
+assert.ok(deadline.lapsed);
+for (const observation of [undefined, {deposit:'waiting' as const,receivedSats:0}]) {
+  for (const viewer of [f.pks.buyer,f.pks.seller,f.pks.arbiter]) {
+    assert.equal(needsYouReasonFor(lapsed,viewer,now,undefined,observation),null);
+    assert.equal(selectNeedsYouTrades({escrows:[lapsed],userPubkey:viewer,nowSec:now,onchainObservations:new Map([[lapsed.id,observation??{}]])}).length,0);
+  }
+  assert.equal(getEffectiveParticipantsAt(lapsed,now,observation).buyer,null);
+}
+assert.ok(shouldShowOnBrowse({escrow:lapsed,browseCategory:'p2p-trade',nowSec:now}));
+for (const deposit of ['seen','confirmed','waiting'] as const) {
+  const observation:OnchainObservation={deposit,receivedSats:deposit==='waiting'?1:100000,depositSeenAt:now};
+  assert.equal(onchainAttention(lapsed,f.pks.seller,observation,now)?.key,'lapsed-deposit');
+  assert.equal(onchainAttention(lapsed,f.pks.buyer,observation,now),null);
+  assert.equal(needsYouReasonFor(lapsed,f.pks.seller,now,undefined,observation),'onchain');
+  assert.equal(getEffectiveParticipantsAt(lapsed,now,observation).buyer,f.pks.buyer);
+  assert.ok(isLateOnchainDeposit(lapsed,observation,now));
+  const html=renderToStaticMarkup(createElement(LangProvider,null,createElement(OnchainTradeControls,{state:lapsed,pubkey:f.pks.seller,onchainObservation:observation})));
+  assert.match(html,/A deposit reached a lapsed trade/);
+  assert.doesNotMatch(html,/bitcoin:|Check deposit|Send.*to this address/);
+}
+const timely:OnchainObservation={deposit:'seen',receivedSats:100000,depositSeenAt:deadline.at-1};
+assert.equal(isLateOnchainDeposit(lapsed,timely,now),false);
+assert.equal(onchainAttention(lapsed,f.pks.seller,timely,now),null);
+assert.equal(onchainAttention(lapsed,f.pks.seller,{...timely,deposit:'confirmed'},now)?.key,'lock');
+assert.equal(getEffectiveParticipantsAt(lapsed,now,timely).buyer,f.pks.buyer);
+const emptyHtml=renderToStaticMarkup(createElement(LangProvider,null,createElement(OnchainTradeControls,{state:lapsed,pubkey:f.pks.seller,onchainObservation:{deposit:'waiting',receivedSats:0}})));
+assert.match(emptyHtml,/address is retired/);assert.doesNotMatch(emptyHtml,/bitcoin:/);
+const observedPartial=await observeOnchainAttention(lapsed,async path=>path==='/blocks/tip/height'?1_999_000:[{value:1,status:{confirmed:false}}]);
+assert.equal(observedPartial.receivedSats,1);
+assert.ok(isLateOnchainDeposit(lapsed,observedPartial,now+1));
+const preserved=await observeOnchainAttention(lapsed,async path=>path==='/blocks/tip/height'?1_999_000:[{value:100000,status:{confirmed:true,block_time:now}}],timely);
+assert.equal(preserved.depositSeenAt,timely.depositSeenAt,'confirmation does not forget an on-time mempool observation');
+const ecashLapsed={...lapsed,escrowMode:'ecash' as const,onchainFundingTerms:undefined};
+assert.equal(needsYouReasonFor(ecashLapsed,f.pks.buyer,now),null);
+assert.equal(needsYouReasonFor(ecashLapsed,f.pks.seller,now),null);
+console.log('PASS lapsed locks: empty quiet/browsable/released, late partial and full deposits recoverable, timely deposits frozen, retired address never offered');
+
+const expiredUnfunded={...lapsed,status:EscrowStatus.EXPIRED};
+assert.equal(onchainAttention(expiredUnfunded,f.pks.seller,{deposit:'waiting'},now),null);
+assert.equal(onchainAttention(expiredUnfunded,f.pks.seller,{deposit:'seen',depositSeenAt:now},now)?.key,'lapsed-deposit');
+const { LiveTradeSurface } = await import('../ui/screens/LiveTradeSurface.js');
+const room = (observation?:OnchainObservation) => renderToStaticMarkup(createElement(LangProvider,null,createElement(LiveTradeSurface,{
+ state:lapsed,pubkey:f.pks.seller,onBack:()=>{},onOpenFullView:()=>{},onRepost:async()=>{},onVote:async()=>{},onSendChat:async()=>{},
+ onchainActions:{onchainObservation:observation},
+})));
+assert.match(room({deposit:'waiting',receivedSats:0}),/Nothing was taken/);
+assert.match(room({deposit:'seen',receivedSats:100000,depositSeenAt:now}),/A deposit reached a lapsed trade/);
+assert.doesNotMatch(room({deposit:'seen',receivedSats:100000,depositSeenAt:now}),/Nothing was taken/);
+assert.doesNotMatch(room(timely),/Nothing was taken|lock window ended/i);

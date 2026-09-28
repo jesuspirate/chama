@@ -1311,15 +1311,16 @@ export function getEffectiveParticipantAt(
   state: EscrowState,
   role: Role,
   atSec = Math.floor(Date.now() / 1000),
-  opts: { includeLockGrace?: boolean } = {},
+  opts: { includeLockGrace?: boolean; observation?: FundingObservation } = {},
 ): string | null {
   const pubkey = state.participants[role];
   if (!pubkey) return null;
   // A signed PLAN_START freezes all three seats for the lifetime of the
-  // persistent parent room; the original buyer reservation no longer lapses.
-  if (state.tranchePlan || state.onchainFundingTerms) return pubkey;
-  if (state.status !== EscrowStatus.CREATED) return pubkey;
+  // persistent parent room; funding terms alone do not freeze seats.
+  if (state.tranchePlan || (state.onchainFundingTerms && hasObservedOnchainDeposit(opts.observation))) return pubkey;
+  if (state.status !== EscrowStatus.CREATED && !(state.status === EscrowStatus.EXPIRED && state.onchainFundingTerms && state.lock.lockedAt == null && !state.lock.onchain)) return pubkey;
 
+  if (state.onchainFundingTerms && preLockDeadline(state, atSec)?.lapsed && role !== state.initiator.role) return null;
   const hold = state.joinHolds?.[role];
   if (!hold || hold.pubkey !== pubkey) return pubkey;
 
@@ -1330,11 +1331,12 @@ export function getEffectiveParticipantAt(
 export function getEffectiveParticipantsAt(
   state: EscrowState,
   atSec = Math.floor(Date.now() / 1000),
+  observation?: FundingObservation,
 ): EscrowState["participants"] {
   return {
-    [Role.BUYER]: getEffectiveParticipantAt(state, Role.BUYER, atSec),
-    [Role.SELLER]: getEffectiveParticipantAt(state, Role.SELLER, atSec),
-    [Role.ARBITER]: getEffectiveParticipantAt(state, Role.ARBITER, atSec),
+    [Role.BUYER]: getEffectiveParticipantAt(state, Role.BUYER, atSec, { observation }),
+    [Role.SELLER]: getEffectiveParticipantAt(state, Role.SELLER, atSec, { observation }),
+    [Role.ARBITER]: getEffectiveParticipantAt(state, Role.ARBITER, atSec, { observation }),
   };
 }
 
@@ -1365,3 +1367,64 @@ export interface ValidationError {
 export type ValidationResult =
   | { valid: true }
   | { valid: false; error: ValidationError };
+
+export type PreLockDeadline = {
+  /** Unix seconds this CREATED trade stops being viable for this viewer. */
+  at: number;
+  /** "hold" = a seat lapses first; "listing" = the listing simply expires. */
+  kind: "hold" | "listing";
+  /** Already past — render the lapsed state, never a running countdown. */
+  lapsed: boolean;
+};
+
+/** The honest deadline on a CREATED trade. Null when nothing bounds it. */
+export function preLockDeadline(
+  state: EscrowState,
+  nowSec: number = Math.floor(Date.now() / 1000),
+): PreLockDeadline | null {
+  if (state.status !== EscrowStatus.CREATED && !(state.status === EscrowStatus.EXPIRED && state.onchainFundingTerms && state.lock.lockedAt == null && !state.lock.onchain)) return null;
+
+  const listingAt = Number.isFinite(state.expiresAt) && state.expiresAt > 0 && state.expiresAt !== NEVER_EXPIRES ? state.expiresAt : null;
+
+  // A signed PLAN_START freezes all three seats for the parent room's
+  // lifetime (getEffectiveParticipantAt), so no hold can lapse there.
+  let holdAt: number | null = null;
+  if (!state.tranchePlan) {
+    for (const role of [Role.BUYER, Role.SELLER] as const) {
+      const hold = state.joinHolds?.[role];
+      // A hold only binds the seat it actually holds: a stale hold left by a
+      // joiner who already lapsed says nothing about the current occupant.
+      if (!hold || hold.pubkey !== state.participants[role]) continue;
+      const lapseAt = hold.expiresAt + JOIN_HOLD_LOCK_GRACE_SECONDS;
+      holdAt = holdAt === null ? lapseAt : Math.min(holdAt, lapseAt);
+    }
+  }
+
+  if (holdAt === null && listingAt === null) return null;
+  const at =
+    holdAt === null ? (listingAt as number)
+    : listingAt === null ? holdAt
+    : Math.min(holdAt, listingAt);
+  return {
+    at,
+    kind: holdAt !== null && at === holdAt ? "hold" : "listing",
+    lapsed: at <= nowSec,
+  };
+}
+
+/** Chain observations affect seat presentation, never signed replay state. */
+export interface FundingObservation {
+  deposit?: 'waiting' | 'seen' | 'confirmed';
+  receivedSats?: number;
+  depositSeenAt?: number;
+  refundSpent?: boolean;
+}
+export function hasObservedOnchainDeposit(observation?: FundingObservation): boolean {
+  return !observation?.refundSpent && (observation?.deposit === 'seen' || observation?.deposit === 'confirmed' || (observation?.receivedSats ?? 0) > 0);
+}
+/** Unknown arrival time after lapse is recovery-only; never solicit more money. */
+export function isLateOnchainDeposit(state: EscrowState, observation?: FundingObservation, nowSec = Math.floor(Date.now()/1000)): boolean {
+  const deadline = preLockDeadline(state, nowSec);
+  return !!state.onchainFundingTerms && !!deadline?.lapsed && hasObservedOnchainDeposit(observation)
+    && (observation?.depositSeenAt === undefined || observation.depositSeenAt >= deadline.at);
+}

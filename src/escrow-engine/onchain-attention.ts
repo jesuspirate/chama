@@ -11,10 +11,10 @@ import { onchainFunder } from './onchain-funding-terms.js';
 import { winnerSettlementChoice } from './onchain-settlement-choice.js';
 import { finalArbiterSettlementProof, finalCoopSettlementProof, hasValidSettlementSignatureForRole, observedRefundSpend } from './onchain-settlement-transport.js';
 import { getWinner } from './state-machine.js';
-import { EscrowStatus, Outcome, Role, type EscrowState } from './types.js';
+import { EscrowStatus, Outcome, Role, preLockDeadline, hasObservedOnchainDeposit, isLateOnchainDeposit, type FundingObservation, type EscrowState } from './types.js';
 
 /** Device observations, never reducer input or signed trade facts. */
-export interface OnchainObservation {
+export interface OnchainObservation extends FundingObservation {
   tipHeight?: number;
   fundingHeight?: number;
   tipObservedAt?: number;
@@ -32,7 +32,7 @@ export interface OnchainAttention {
 }
 
 /** One source for the attention bar/queue and every notification delivery. */
-export function onchainAttention(state: EscrowState, viewer: string, observation?: OnchainObservation): OnchainAttention | null {
+export function onchainAttention(state: EscrowState, viewer: string, observation?: OnchainObservation, nowSec = Math.floor(Date.now()/1000)): OnchainAttention | null {
   if (state.escrowMode !== 'onchain') return null;
   const role = Object.values(Role).find(r => state.participants[r] === viewer)
     ?? (state.actingArbiter === viewer ? Role.ARBITER : undefined);
@@ -45,6 +45,11 @@ export function onchainAttention(state: EscrowState, viewer: string, observation
     return result(`${p.confirmed ? 'confirmed' : 'broadcast'}:${p.txid}`, payoutStatusText(p), false);
   }
   if (observation?.refundSpent) return null;
+  if (preLockDeadline(state, nowSec)?.lapsed) {
+    if (!hasObservedOnchainDeposit(observation)) return null;
+    if (isLateOnchainDeposit(state, observation, nowSec)) return role === funder
+      ? result('lapsed-deposit', 'A deposit reached a lapsed trade — recover it') : null;
+  }
   if (observation?.refundAvailable) return role === funder ? result('refund', 'Your refund is available') : null;
   if (state.status === EscrowStatus.CREATED && state.onchainFundingTerms && role === funder) {
     if (!observation?.deposit) return result('deposit-check', 'Open the trade to check the deposit');
@@ -88,7 +93,7 @@ export function onchainAttention(state: EscrowState, viewer: string, observation
 
 /** Read only: require the verified final transaction and every spent input
  * before calling a payout sent; a relay COMPLETE alone is not confirmation. */
-export async function observeOnchainAttention(state: EscrowState, fetchJson: EsploraFetch): Promise<OnchainObservation> {
+export async function observeOnchainAttention(state: EscrowState, fetchJson: EsploraFetch, previous?: OnchainObservation): Promise<OnchainObservation> {
   if (state.onchainPayoutTxid && state.onchainPayoutAddress && state.onchainPayoutSats) {
     const status = await fetchJson(`/tx/${state.onchainPayoutTxid}/status`);
     if (typeof status?.confirmed !== 'boolean') throw Error('Invalid payout status');
@@ -121,7 +126,11 @@ export async function observeOnchainAttention(state: EscrowState, fetchJson: Esp
   const total = funded.reduce((sum, r) => sum + r.value, 0);
   const required = Math.floor((state.joinHolds?.buyer?.amountMsats ?? state.amountMsats) / 1000);
   const received = rows.filter(r => Number.isSafeInteger(r?.value) && r.value > 0).reduce((sum, r) => sum + r.value, 0);
+  const depositTimes = rows.filter(r => Number.isSafeInteger(r?.value) && r.value > 0)
+    .map(r => r.status?.block_time).filter(t => Number.isSafeInteger(t) && t > 0);
   return {
+    receivedSats: received,
+    depositSeenAt: received > 0 ? Math.min(previous?.depositSeenAt ?? Infinity, ...depositTimes, Math.floor(Date.now()/1000)) : undefined,
     fundingHeight: funded.length && funded.every(r => Number.isSafeInteger(r.status.block_height)) ? Math.max(...funded.map(r => r.status.block_height)) : undefined,
     tipHeight: tip, tipObservedAt: Math.floor(Date.now()/1000),
     remainingSats: Math.max(0, required - received),
