@@ -24,7 +24,7 @@ public class ChamaUnifiedPushService extends PushService {
         try {
             JSONObject payload = new JSONObject(new String(message.getContent(), java.nio.charset.StandardCharsets.UTF_8));
             if (payload.optInt("wake") == 1 && ChamaWakePolicy.fresh(payload.getLong("sentAt"), System.currentTimeMillis())) {
-                if (!ChamaPushStore.testReply(this, payload.optString("test"))) ChamaPushStore.wake(this);
+                if (!ChamaPushStore.testReply(this, payload.optString("test"), "unifiedpush")) ChamaPushStore.wake(this, "unifiedpush");
             }
         } catch (Exception ignored) { /* Invalid/legacy unauthenticated wake: stay quiet. */ }
     }

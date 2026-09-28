@@ -14,14 +14,22 @@ import java.util.concurrent.atomic.AtomicBoolean;
 /** A separate, read-only JS entry point. Never creates MainActivity or the wallet bridge. */
 public class ChamaWakeWorker extends Worker {
     public ChamaWakeWorker(@NonNull Context context, @NonNull WorkerParameters params) { super(context, params); }
-    static void enqueue(Context context) {
-        OneTimeWorkRequest.Builder request = new OneTimeWorkRequest.Builder(ChamaWakeWorker.class);
+    static void enqueue(Context context, String wake) {
+        OneTimeWorkRequest.Builder request = new OneTimeWorkRequest.Builder(ChamaWakeWorker.class)
+            .setInputData(new Data.Builder().putString("wake", wake).build())
+            .setBackoffCriteria(BackoffPolicy.LINEAR, 10, TimeUnit.SECONDS);
         if (android.os.Build.VERSION.SDK_INT >= 31) request.setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST);
-        WorkManager.getInstance(context).enqueueUniqueWork("chama-wake", ExistingWorkPolicy.KEEP, request.build());
+        WorkManager.getInstance(context).enqueueUniqueWork("chama-wake", ExistingWorkPolicy.APPEND_OR_REPLACE, request.build());
     }
     @NonNull @Override public Result doWork() {
         Context c = getApplicationContext();
-        if (!ChamaPushStore.enabled(c) || ChamaPushStore.foreground) return Result.success();
+        String wake = getInputData().getString("wake");
+        String verdict = ChamaPushStore.policy(c, false, 0);
+        if (!"shown".equals(verdict)) {
+            ChamaPushStore.log(c, wake, verdict, "not run", null, null);
+            return Result.success();
+        }
+        ChamaPushStore.log(c, wake, "pending", "running", null, null);
         long started = System.currentTimeMillis();
         Handler main = new Handler(Looper.getMainLooper());
         CountDownLatch done = new CountDownLatch(1);
@@ -66,22 +74,37 @@ public class ChamaWakeWorker extends Worker {
             });
             done.await(Math.max(1, 7800 - (System.currentTimeMillis() - started)), TimeUnit.MILLISECONDS);
             finished.set(true);
-            if (!ChamaPushStore.enabled(c) || ChamaPushStore.foreground
-                || !snapshot.equals(ChamaPushStore.prefs(c).getString("snapshot", ""))) return Result.success();
+            verdict = ChamaPushStore.policy(c, false, 0);
+            if (!"shown".equals(verdict) || !snapshot.equals(ChamaPushStore.prefs(c).getString("snapshot", ""))) {
+                ChamaPushStore.log(c, wake, "shown".equals(verdict) ? "cancelled" : verdict, "app state changed", null, null);
+                return Result.success();
+            }
             JSONObject output = result[0] == null ? null : new JSONObject(result[0]);
-            if (output == null || output.optBoolean("failed")) ChamaPushStore.genericWake(c);
+            if (output == null || output.optBoolean("failed")) {
+                ChamaPushStore.log(c, wake, null, output == null ? "timeout" : "replay failed", null, null);
+                ChamaPushStore.genericWake(c, wake);
+            }
             else {
                 JSONArray notes = output.getJSONArray("notifications");
                 JSONArray fired = new JSONArray(ChamaPushStore.prefs(c).getString("wakeFired", "[]"));
+                ChamaPushStore.log(c, wake, "nothing-new", notes.length() == 0 ? "nothing new" : notes.length() + " alert(s) found", null, null);
+                boolean retry = false;
                 for (int i = 0; i < notes.length(); i++) {
                     JSONObject note = notes.getJSONObject(i);
-                    if (ChamaPushStore.postTrade(c, note)) fired.put(note.getString("tag"));
+                    String posted = ChamaPushStore.postTrade(c, wake, note);
+                    if ("shown".equals(posted)) fired.put(note.getString("tag"));
+                    if ("rate-limited".equals(posted)) retry = true;
                 }
                 JSONArray bounded = new JSONArray();
                 for (int i = Math.max(0, fired.length() - 500); i < fired.length(); i++) bounded.put(fired.get(i));
-                ChamaPushStore.prefs(c).edit().putString("wakeFired", bounded.toString()).putLong("lastWake", started).apply();
+                ChamaPushStore.prefs(c).edit().putString("wakeFired", bounded.toString()).apply();
+                if (retry) return Result.retry();
+                ChamaPushStore.prefs(c).edit().putLong("lastWake", started).apply();
             }
-        } catch (Exception e) { ChamaPushStore.genericWake(c); }
+        } catch (Exception e) {
+            ChamaPushStore.log(c, wake, null, "replay failed", null, null);
+            ChamaPushStore.genericWake(c, wake);
+        }
         finally {
             finished.set(true);
             main.post(() -> { if (view[0] != null) { view[0].removeJavascriptInterface("ChamaWake"); view[0].destroy(); } });

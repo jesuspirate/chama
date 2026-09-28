@@ -134,6 +134,7 @@ export function dmNotifyPref(): DmNotifyPref {
 export function setDmNotifyPref(pref: DmNotifyPref): void {
   try {
     globalThis.localStorage?.setItem(DM_PREF_KEY, pref);
+    if (typeof window !== "undefined") window.dispatchEvent(new Event("chama:notification-preferences"));
   } catch {
     /* cosmetic preference; ignore storage failure */
   }

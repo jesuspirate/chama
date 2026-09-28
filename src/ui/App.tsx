@@ -26,7 +26,7 @@ import {
   onTradeDeepLink,
   LATEST_ACTIONABLE,
 } from "../notifications/deep-link.js";
-import { notifySelfTest } from "../notifications/notify-service.js";
+import { dmNotifyPref, notifySelfTest } from "../notifications/notify-service.js";
 import type { AggregateRatings, RatingThumb } from "../reputation/ratings.js";
 import {
   type EscrowState,
@@ -1554,11 +1554,14 @@ export default function App() {
   const myTrades = participantTradeHistory(escrows.values(), pubkey, now, retiredIds);
   useEffect(() => {
     if (pubkey && myTradesLoading) return;
-    void cacheNativeWake(pubkey ? { pubkey, relays: DEFAULT_RELAYS, names: readNostrProfileCache(pubkey),
+    const cacheWake = () => { void cacheNativeWake(pubkey ? { pubkey, cachedAt: Date.now(), dmNotifyPref: dmNotifyPref(), relays: DEFAULT_RELAYS, names: readNostrProfileCache(pubkey),
       settledClaimIds: [...listPendingRedemptions().map(r => r.escrowId), ...listClaimCredits().map(r => r.escrowId)],
       fired: (() => { try { return JSON.parse(localStorage.getItem(`chama_notifications_fired_v1:${pubkey}`) ?? '[]'); } catch { return []; } })(),
       events: [...escrows.values()].filter(e => Object.values(e.participants).includes(pubkey) || e.actingArbiter === pubkey)
-        .flatMap(e => [...e.eventChain, ...(e.settlements ?? [])].map(event => event.raw)) } : null);
+        .flatMap(e => [...e.eventChain, ...e.chatMessages, ...(e.settlements ?? [])].map(event => event.raw)) } : null); };
+    cacheWake();
+    window.addEventListener("chama:notification-preferences", cacheWake);
+    return () => window.removeEventListener("chama:notification-preferences", cacheWake);
   }, [pubkey, escrows, myTradesLoading]);
 
 

@@ -42,6 +42,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(ChamaPushPlugin.class);
         registerPlugin(ChamaDevicePlugin.class);
         super.onCreate(savedInstanceState);
+        ChamaPushStore.activity = new java.lang.ref.WeakReference<>(this);
         getWindow().setBackgroundDrawable(new ColorDrawable(Color.rgb(5, 5, 10)));
         getWindow().setStatusBarColor(Color.rgb(5, 5, 10));
         getWindow().setNavigationBarColor(Color.rgb(5, 5, 10));
@@ -56,16 +57,9 @@ public class MainActivity extends BridgeActivity {
     public void onResume() {
         super.onResume();
         if (bridge != null) bridge.triggerWindowJSEvent("chama:resume");
-        ChamaPushStore.foreground = true;
         ChamaPushStore.retry(getApplicationContext());
         fedimintBridgeStopping = false;
         startFedimintBridge();
-    }
-
-    @Override
-    public void onPause() {
-        ChamaPushStore.foreground = false;
-        super.onPause();
     }
 
     @Override

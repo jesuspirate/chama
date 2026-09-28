@@ -2958,7 +2958,13 @@ function BackgroundPushRow() {
   const [testState, setTestState] = useState<"idle" | "waiting" | "received" | "failed">("idle");
   const { t } = useT();
   const [nativeStatus, setNativeStatus] = useState<NativePushStatus | null>(null);
-  useEffect(() => { void nativePushStatus().then(setNativeStatus); }, []);
+  useEffect(() => {
+    let active = true;
+    const refresh = () => { void nativePushStatus().then(status => { if (active) setNativeStatus(status); }); };
+    refresh();
+    const timer = setInterval(refresh, 2000);
+    return () => { active = false; clearInterval(timer); };
+  }, []);
   const supported = isWebPushSupported();
   const needsInstall = iosNeedsInstallForPush();
   const [on, setOn] = useState<boolean>(() => backgroundPushEnabled());
@@ -3008,6 +3014,20 @@ function BackgroundPushRow() {
           {hint}
           {nativeStatus && <p>{t("me.bgPushForceStop")}</p>}
           {nativeStatus?.ntfy && <p>{t("me.bgPushNtfy")}</p>}
+          {nativeStatus && <details style={{ margin: "8px 0", overflowWrap: "anywhere" }}>
+            <summary>Alert log</summary>
+            <p>Last 20 wakes on this device. Notifications: {nativeStatus.notificationsEnabled ? "allowed" : "disabled"}; Chama activity channel: {nativeStatus.channelEnabled ? "allowed" : "muted"}.</p>
+            {!nativeStatus.alertLog?.length && <p>No alerts received yet.</p>}
+            <ol style={{ paddingLeft: 18 }}>
+              {[...(nativeStatus.alertLog ?? [])].reverse().map(entry => <li key={entry.id} style={{ marginBottom: 10 }}>
+                <time dateTime={new Date(entry.time).toISOString()}>{new Date(entry.time).toLocaleString()}</time>
+                {` · ${entry.transport} · ${entry.verdict} · ${entry.job}`}
+                {entry.notificationsEnabled === false && <div>Android notifications were disabled.</div>}
+                {entry.channelEnabled === false && <div>Chama activity channel was muted.</div>}
+                {entry.posts.map((post, i) => <div key={i}>{post.reason}: {post.verdict}{post.notificationId != null ? ` · notification ${post.notificationId}` : " · no notification posted"}</div>)}
+              </li>)}
+            </ol>
+          </details>}
           {nativeStatus && on && <>
             <button type="button" disabled={testState === "waiting"} onClick={() => {
               setTestState("waiting");

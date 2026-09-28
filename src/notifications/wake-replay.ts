@@ -4,16 +4,18 @@ import { parseEscrowEvent, sortEventChain } from '../escrow-engine/event-parser.
 import { replayEventChain } from '../escrow-engine/state-machine.js';
 import { needsYouReasonFor } from '../ui/decisions.js';
 import { onchainAttention } from '../escrow-engine/onchain-attention.js';
-import { onchainNotificationBody, notificationForTransition, type TradeNotification } from './trade-notifications.js';
+import { chatNotificationFor, onchainNotificationBody, notificationForTransition, type DmNotifyPref, type TradeNotification } from './trade-notifications.js';
 import type { NostrEvent, EscrowState } from '../escrow-engine/types.js';
 
-export interface WakeSnapshot { pubkey: string; events: NostrEvent[]; relays: string[]; names?: Record<string, string>; settledClaimIds?: string[]; fired?: string[]; }
+export interface WakeSnapshot { pubkey: string; events: NostrEvent[]; relays: string[]; names?: Record<string, string>; settledClaimIds?: string[]; fired?: string[]; dmNotifyPref?: DmNotifyPref; cachedAt?: number; }
 export function wakeNotification(state: EscrowState, previous: EscrowState | null, pubkey: string, names?: Record<string, string>, settledClaimIds?: ReadonlySet<string>): TradeNotification | null {
   const reason = needsYouReasonFor(state, pubkey, undefined, settledClaimIds);
-  if (!reason) return null;
   const action = onchainAttention(state, pubkey);
-  if (action) return { escrowId: state.id, title: 'Your trade needs you', body: onchainNotificationBody(state, pubkey, action.text, names), tag: `${state.id}:onchain:${action.key}` };
-  return notificationForTransition(previous, state, pubkey) ?? {
+  if (action && reason) return { escrowId: state.id, title: 'Your trade needs you', body: onchainNotificationBody(state, pubkey, action.text, names), tag: `${state.id}:onchain:${action.key}` };
+  const transition = notificationForTransition(previous, state, pubkey);
+  if (transition && !(transition.tag.endsWith(':approved') && settledClaimIds?.has(state.id))) return transition;
+  if (!reason) return null;
+  return {
     escrowId: state.id, title: 'Your trade needs you',
     body: ({ claim: 'Claim your sats', dispute: 'A dispute needs your reply', vote: 'Confirm the trade',
       'arbiter-key': 'Open the trade to publish your escrow key', waiting: 'A buyer is waiting for you', onchain: 'Open the trade' })[reason],
@@ -24,10 +26,15 @@ export function wakeNotification(state: EscrowState, previous: EscrowState | nul
 export function selectWakeNotifications(next: Iterable<EscrowState>, old: Map<string, EscrowState>, snapshot: WakeSnapshot, lastWake: number, fired: readonly string[]): TradeNotification[] {
   const seen = new Set([...fired, ...(snapshot.fired ?? [])]);
   return [...next].flatMap(state => {
-    const activity = [...state.eventChain, ...(state.settlements ?? [])];
+    const activity = [...state.eventChain, ...state.chatMessages, ...(state.settlements ?? [])];
     if (!activity.some(e => e.timestamp >= Math.floor(lastWake / 1000))) return [];
     const note = wakeNotification(state, old.get(state.id) ?? null, snapshot.pubkey, snapshot.names, new Set(snapshot.settledClaimIds));
-    return note && !seen.has(note.tag) ? [note] : [];
+    const cached = new Set(snapshot.events.map(event => event.id));
+    const chats = state.chatMessages.filter(message => !cached.has(message.raw.id))
+      .map(message => chatNotificationFor(state, message, snapshot.pubkey, snapshot.dmNotifyPref ?? 'auto',
+        Math.floor((snapshot.cachedAt ?? lastWake) / 1000)))
+      .filter((chat): chat is TradeNotification => !!chat);
+    return [...(note ? [note] : []), ...chats].filter(note => !seen.has(note.tag));
   });
 }
 

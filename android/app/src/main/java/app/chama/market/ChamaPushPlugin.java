@@ -31,6 +31,9 @@ public class ChamaPushPlugin extends Plugin {
     @PluginMethod public void status(PluginCall call) {
         JSObject result = new JSObject();
         result.put("lane", lane());
+        result.put("alertLog", ChamaPushStore.alertLog(getContext()));
+        result.put("notificationsEnabled", androidx.core.app.NotificationManagerCompat.from(getContext()).areNotificationsEnabled());
+        result.put("channelEnabled", ChamaPushStore.channelEnabled(getContext()));
         result.put("testReceived", ChamaPushStore.prefs(getContext()).getString("testReceived", ""));
         try {
             result.put("ntfy", new JSONObject(ChamaPushStore.prefs(getContext()).getString("endpoint", "{}"))
