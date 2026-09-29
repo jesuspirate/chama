@@ -34,6 +34,8 @@ public class ChamaPushPlugin extends Plugin {
         result.put("alertLog", ChamaPushStore.alertLog(getContext()));
         result.put("notificationsEnabled", androidx.core.app.NotificationManagerCompat.from(getContext()).areNotificationsEnabled());
         result.put("channelEnabled", ChamaPushStore.channelEnabled(getContext()));
+        result.put("testHttpStatus", ChamaPushStore.prefs(getContext()).getInt("testHttpStatus", 0));
+        result.put("testHttpNonce", ChamaPushStore.prefs(getContext()).getString("testHttpNonce", ""));
         result.put("testReceived", ChamaPushStore.prefs(getContext()).getString("testReceived", ""));
         try {
             result.put("ntfy", new JSONObject(ChamaPushStore.prefs(getContext()).getString("endpoint", "{}"))
@@ -75,7 +77,7 @@ public class ChamaPushPlugin extends Plugin {
     @PluginMethod public void test(PluginCall call) {
         if (!ChamaPushStore.enabled(getContext())) { call.reject("Alerts are off"); return; }
         String nonce = java.util.UUID.randomUUID().toString().replace("-", "");
-        ChamaPushStore.prefs(getContext()).edit().putString("testPending", nonce).remove("testReceived").apply();
+        ChamaPushStore.prefs(getContext()).edit().putString("testPending", nonce).remove("testReceived").remove("testHttpStatus").remove("testHttpNonce").apply();
         ChamaPushStore.test(getContext(), nonce);
         JSObject result = new JSObject(); result.put("nonce", nonce); call.resolve(result);
     }
@@ -94,7 +96,11 @@ public class ChamaPushPlugin extends Plugin {
     private void subscribe(PluginCall call) {
         String transport = lane();
         if (transport.equals("unavailable")) { call.reject("Install a UnifiedPush distributor or configure Firebase with Play services"); return; }
+        if (!transport.equals(ChamaPushStore.prefs(getContext()).getString("lane", ""))) {
+            ChamaPushStore.prefs(getContext()).edit().remove("endpoint").apply();
+        }
         ChamaPushStore.prefs(getContext()).edit().putBoolean("enabled", true).putString("lane", transport).apply();
+        ChamaPushStore.retry(getContext());
         if (transport.equals("fcm")) {
             FirebaseMessaging.getInstance().setAutoInitEnabled(true);
             FirebaseMessaging.getInstance().getToken().addOnCompleteListener(task -> {
@@ -126,13 +132,9 @@ public class ChamaPushPlugin extends Plugin {
     }
 
     @PluginMethod public void disable(PluginCall call) {
-        String oldLane = ChamaPushStore.prefs(getContext()).getString("lane", "");
+        // Keep the distributor subscription/token for a later enable. The store
+        // removes server watches and all delivery paths honor enabled=false.
         ChamaPushStore.disable(getContext());
-        if (oldLane.equals("unifiedpush")) UnifiedPush.unregister(getContext(), INSTANCE_DEFAULT);
-        if (oldLane.equals("fcm") && !FirebaseApp.getApps(getContext()).isEmpty()) {
-            FirebaseMessaging.getInstance().setAutoInitEnabled(false);
-            FirebaseMessaging.getInstance().deleteToken();
-        }
         call.resolve();
     }
 }

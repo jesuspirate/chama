@@ -18,7 +18,7 @@
 //   need no separate participant enumeration off EscrowState.
 
 import { deriveWatchTag, deriveCommunityWakeTag, registerWatchTags, ensureWebPushSubscription, disableWebPush } from "./web-push-client.js";
-import { TAGS } from "../escrow-engine/types.js";
+import { TAGS, TRULY_TERMINAL_STATES, type EscrowState } from "../escrow-engine/types.js";
 import type { Signer, UnsignedEvent } from "../escrow-engine/escrow-client.js";
 
 // Device-scoped opt-in. Default OFF: nothing about the trade path changes until
@@ -41,6 +41,8 @@ export async function enableBackgroundPush(): Promise<boolean> {
   setEnabledFlag(true);
   const sub = await ensureWebPushSubscription();
   if (!sub) { setEnabledFlag(false); return false; }
+  await registerWatchTags([]);
+  window.dispatchEvent(new Event("chama:background-push-enabled"));
   return true;
 }
 
@@ -99,4 +101,27 @@ export async function registerCommunityWake(slug: string): Promise<void> {
   if (!s) return;
   try { await registerWatchTags([await deriveCommunityWakeTag(s)]); }
   catch { /* best-effort */ }
+}
+
+/** Derive watches from committed participants, including trades made on another device. */
+export async function openTradeWatchTags(signer: Signer, trades: Iterable<EscrowState>): Promise<string[]> {
+  if (!signer.conversationKey) return [];
+  const me = await signer.getPublicKey();
+  const tags = new Set<string>();
+  for (const trade of trades) {
+    const participants = Object.values(trade.participants);
+    if (trade.provenance === "summary" || TRULY_TERMINAL_STATES.has(trade.status) || !participants.includes(me)) continue;
+    for (const peer of new Set(participants)) {
+      if (!peer || peer === me) continue;
+      try { tags.add(await deriveWatchTag(await signer.conversationKey(peer), trade.id, 0)); }
+      catch { /* A signer failure must not block the other trades. */ }
+    }
+  }
+  return [...tags];
+}
+
+export async function seedOpenTradeWatches(signer: Signer, trades: Iterable<EscrowState>): Promise<void> {
+  if (!backgroundPushEnabled()) return;
+  const tags = await openTradeWatchTags(signer, trades);
+  if (backgroundPushEnabled()) await registerWatchTags(tags);
 }

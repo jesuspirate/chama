@@ -171,7 +171,6 @@ export async function ensureWebPushSubscription(): Promise<PushSubscription | { 
  * network error resolves false, never throws.
  */
 export async function registerWatchTags(tags: readonly string[]): Promise<boolean> {
-  if (tags.length === 0) return true;
   if (isNativePushSupported()) return nativeWatchTags(tags);
   const subscription = await ensureWebPushSubscription();
   if (!subscription || "native" in subscription) return false;

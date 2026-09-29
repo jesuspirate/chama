@@ -363,7 +363,7 @@ import {
 } from "../arbiters/applications.js";
 import { circleLockContextFor } from "../chama/lock-notify.js";
 import { maybeNotifyTransition, maybeNotifyChatMessage, maybeNotifyBuyerInterest, maybeNotifyNewListing, maybeNotifySavedIntentMatch, maybeSendTradeDms } from "../notifications/notify-service.js";
-import { makeChainEventTagger } from "../notifications/watch-tags.js";
+import { makeChainEventTagger, seedOpenTradeWatches } from "../notifications/watch-tags.js";
 import {
   RATING_KIND,
   buildRatingEvent,
@@ -3006,6 +3006,22 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       arbiterPubkey,
     });
   }, [checkOnchainFunding]);
+
+  // Seed on launch, discovery and enable, without requiring an own publish.
+  useEffect(() => {
+    if (!state.connected || !state.pubkey) return;
+    const seed = () => {
+      const signer = signerRef.current;
+      if (signer) void seedOpenTradeWatches(signer, stateRef.current?.escrows.values() ?? []).catch(() => {});
+    };
+    seed();
+    window.addEventListener("chama:background-push-enabled", seed);
+    window.addEventListener("chama:resume", seed);
+    return () => {
+      window.removeEventListener("chama:background-push-enabled", seed);
+      window.removeEventListener("chama:resume", seed);
+    };
+  }, [state.connected, state.pubkey, state.escrows]);
 
   // Reconcile committed deposits after launch and as discovered trades arrive.
   // The funder may have sent from another wallet and closed this app before

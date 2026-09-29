@@ -114,7 +114,9 @@ final class ChamaPushStore {
             }
         }
         String log = alertLog(c).toString();
-        prefs(c).edit().clear().putString("alertLog", log).apply();
+        String lane = prefs(c).getString("lane", "");
+        prefs(c).edit().clear().putString("alertLog", log)
+            .putString("endpoint", endpoint).putString("lane", lane).apply();
         send(c, "unregister", endpoint, tags);
         NotificationManagerCompat.from(c).cancel(6501);
     }
@@ -124,7 +126,7 @@ final class ChamaPushStore {
     }
 
     private static void send(Context c, String action, String endpoint, String tags) {
-        if (endpoint.isEmpty() || tags.equals("[]")) return;
+        if (endpoint.isEmpty()) return;
         IO.execute(() -> {
             HttpURLConnection conn = null;
             try {
@@ -144,6 +146,7 @@ final class ChamaPushStore {
     }
 
     static void test(Context c, String nonce) {
+        String wake = beginWake(c, prefs(c).getString("lane", ""));
         IO.execute(() -> {
             HttpURLConnection conn = null;
             try {
@@ -155,8 +158,14 @@ final class ChamaPushStore {
                 conn.setRequestMethod("POST"); conn.setDoOutput(true);
                 conn.setRequestProperty("Content-Type", "application/json");
                 try (var out = conn.getOutputStream()) { out.write(body.toString().getBytes(StandardCharsets.UTF_8)); }
-                conn.getResponseCode(); // Delivery is acknowledged only by the receiving service.
-            } catch (Exception ignored) { }
+                int code = conn.getResponseCode();
+                prefs(c).edit().putInt("testHttpStatus", code).putString("testHttpNonce", nonce).apply();
+                log(c, wake, code >= 200 && code < 300 ? "sent" : "failed", "test HTTP " + code, null, null);
+                // HTTP success is not delivery; only the receiving service acknowledges it.
+            } catch (Exception ignored) {
+                prefs(c).edit().putInt("testHttpStatus", 0).putString("testHttpNonce", nonce).apply();
+                log(c, wake, "failed", "test network error (no HTTP response)", null, null);
+            }
             finally { if (conn != null) conn.disconnect(); }
         });
     }

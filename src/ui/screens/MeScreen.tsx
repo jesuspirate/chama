@@ -3034,7 +3034,7 @@ function BackgroundPushRow() {
               void Promise.race([testNativePush(), new Promise<boolean>(resolve => setTimeout(() => resolve(false), 30_000))])
                 .then(ok => setTestState(ok ? "received" : "failed"));
             }}>{t("me.bgPushTest")}</button>
-            <div role="status">{testState === "waiting" ? t("me.bgPushTesting") : testState === "received" ? t("me.bgPushReceived") : testState === "failed" ? t("me.bgPushNoReply") : ""}</div>
+            <div role="status">{testState === "waiting" ? t("me.bgPushTesting") : testState === "received" ? t("me.bgPushReceived") : testState === "failed" ? (nativeStatus.testHttpStatus && nativeStatus.testHttpStatus >= 400 ? "Alert server rejected the test" : t("me.bgPushNoReply")) : ""}{testState !== "idle" && nativeStatus.testHttpNonce && ` · ${nativeStatus.testHttpStatus ? `HTTP ${nativeStatus.testHttpStatus}` : "No HTTP response"}`}</div>
           </>}
         </div>
       </div>

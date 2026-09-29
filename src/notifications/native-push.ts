@@ -5,7 +5,7 @@ export interface NativeAlertLogEntry {
   notificationsEnabled?: boolean; channelEnabled?: boolean;
   posts: { reason: string; verdict: string; notificationId: number | null }[];
 }
-export type NativePushStatus = { lane: "fcm" | "unifiedpush" | "unavailable"; ready: boolean; registered: boolean; ntfy?: boolean; testReceived?: string; alertLog?: NativeAlertLogEntry[]; notificationsEnabled?: boolean; channelEnabled?: boolean };
+export type NativePushStatus = { lane: "fcm" | "unifiedpush" | "unavailable"; ready: boolean; registered: boolean; ntfy?: boolean; testReceived?: string; testHttpStatus?: number; testHttpNonce?: string; alertLog?: NativeAlertLogEntry[]; notificationsEnabled?: boolean; channelEnabled?: boolean };
 interface NativePushPlugin {
   takeTrade(): Promise<{ trade: string | null }>;
   addListener(name: 'tradeOpened', callback: (event: {trade: string}) => void): Promise<import('@capacitor/core').PluginListenerHandle>;
@@ -53,7 +53,9 @@ export async function testNativePush(): Promise<boolean> {
   try {
     const { nonce } = await native.test();
     while (Date.now() < deadline) {
-      if ((await native.status()).testReceived === nonce) return true;
+      const status = await native.status();
+      if (status.testReceived === nonce) return true;
+      if (status.testHttpNonce === nonce && !(status.testHttpStatus! >= 200 && status.testHttpStatus! < 300)) return false;
       await new Promise(resolve => setTimeout(resolve, 500));
     }
   } catch { /* A missing reply is not success. */ }
