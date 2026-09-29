@@ -108,6 +108,7 @@ async function recoverFailedLock(
   emit: (p: FundAndLockPhase) => void,
 ): Promise<FundAndLockTerminal> {
   const recovered = await reabsorb();
+  originalError = originalError.replace(/Local apply failed:[\s\S]*/, "This trade could no longer be locked.");
   const err = recovered
     ? `${originalError} Your sats were returned to your Fedi wallet.`
     : `${originalError} Your sats are saved — Chama will return them to your Fedi wallet next time you open it.`;

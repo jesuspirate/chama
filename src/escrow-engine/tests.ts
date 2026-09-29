@@ -15970,8 +15970,8 @@ console.log("\n── RUN FUND AND LOCK ──");
     assert(terminal.kind === "lock-failed",
       "Balance landed but lock threw → terminal lock-failed");
     if (terminal.kind === "lock-failed") {
-      assert(/FED_MISMATCH/.test(terminal.error),
-        "lock-failed terminal carries the underlying error message");
+      assert(/in your Chama wallet, not in escrow/.test(terminal.error) && !/FED_MISMATCH/.test(terminal.error),
+        "Paid LOCK failure explains wallet custody without leaking reducer diagnostics");
     }
     assert(wallet.calls.lockAndPublish === 1,
       "LOCK was attempted (not silently skipped)");
@@ -20669,6 +20669,7 @@ console.log("\n── REAL SDK ADAPTER — Lightning receive watcher ──");
     const calls = {
       createInvoice: 0,
       createInvoiceGatewayId: "",
+      invoiceExpirySeconds: undefined as number | undefined,
       payInvoice: 0,
       payInvoiceGatewayId: "",
       updateGatewayCache: 0,
@@ -20754,6 +20755,7 @@ console.log("\n── REAL SDK ADAPTER — Lightning receive watcher ──");
           gatewayInfo?: { gateway_id?: string },
         ) {
           calls.createInvoice++;
+          calls.invoiceExpirySeconds = _expiryTime;
           calls.createInvoiceGatewayId = gatewayInfo?.gateway_id ?? "";
           return { invoice: "lnbc100n1pchama", operation_id: "ln_op_123" };
         },
@@ -20866,6 +20868,14 @@ console.log("\n── REAL SDK ADAPTER — Lightning receive watcher ──");
     let failed = false;
     try { await wallet.lightning.getGatewayCount!(); } catch { failed = true; }
     assert(failed, "An unavailable gateway query is not reported as zero gateways");
+  }
+
+  {
+    const h = makeRealWallet();
+    const wallet = adaptRealWallet(h.real as any);
+    await wallet.lightning.createInvoice(170_000, "seat-bound", undefined, undefined, 255);
+    assert(h.calls.invoiceExpirySeconds === 255, "Browser adapter forwards the seat-bound invoice expiry to Fedimint");
+    h.claim();
   }
 
   // The adapter must forward the safe lock horizon verbatim. If this ever

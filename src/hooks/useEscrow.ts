@@ -1,4 +1,6 @@
-import { isLateOnchainDeposit, preLockDeadline } from "../escrow-engine/types.js";
+import { assertOnchainFundingWindow, fundingInvoiceSeconds, assertFundingInvoiceWithinSeat } from "../payments/seat-funding.js";
+import { recordPaidLockRecovery, assertPaidLockRecoveryWritable } from "../payments/paid-lock-recovery.js";
+import { isLateOnchainDeposit, preLockDeadline, JOIN_HOLD_LOCK_GRACE_SECONDS } from "../escrow-engine/types.js";
 import { conductStanding, type BondConductProof } from "../escrow-engine/conduct-standing.js";
 import { SIGNET as PUBLIC_SIGNET } from "../bond-multisig/multisig.js";
 import { replayPublicConduct, readConductSpend, publicConductRecord, type PublicConductRecord } from "../escrow-engine/public-conduct.js";
@@ -2882,6 +2884,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     const client = requireClient();
     const trade = client.getState(escrowId);
     if (!trade || trade.escrowMode !== "onchain") throw new Error("Not an on-chain trade");
+    assertOnchainFundingWindow(trade);
     if (trade.onchainFundingTerms) return;
     if (preLockDeadline(trade)?.lapsed) throw new Error("The lock window ended. Post the offer again to use a new address.");
     const role = onchainFunder(trade);
@@ -2904,6 +2907,9 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       arbiterXonly, funder: role, refundLockUntil: tip + REFUND_CLTV_BLOCKS,
       disputeCsvBlocks: DISPUTE_CSV_BLOCKS, network: ESCROW_NETWORK });
     if (!plan.ready) throw new Error("Waiting for the participants' published keys");
+    const current = client.getState(escrowId);
+    if (current !== trade) throw new Error("The order changed while preparing the deposit. Reopen it before paying.");
+    assertOnchainFundingWindow(current);
     // The address is returned to the UI only AFTER this signed JOIN is published.
     await client.joinEscrow(escrowId, role, { fundingTerms: {
       address: plan.address, buyerXonly: msBytesToHexLocal(plan.params.buyerXonly),
@@ -4749,6 +4755,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     onReceiveState?: (kind: LnReceiveStateKind) => void,
     meta?: ChamaOperationMeta,
     onGateway?: (gateway: InvoiceGatewayInfo) => void,
+    expirySeconds?: number,
   ) => {
     const fedimint = fedimintRef.current;
     if (!fedimint || !fedimint.isInitialized() || !fedimint.isJoined()) {
@@ -4789,7 +4796,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
 
     try {
       const invoice = await fedimint.createInvoice(
-        amountMsats, description, onReceiveState, meta, onGateway,
+        amountMsats, description, onReceiveState, meta, onGateway, expirySeconds,
       );
       const receiveOkAt = Date.now();
       healthRef.current = { ok: true, at: receiveOkAt };
@@ -4861,8 +4868,19 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     // buyer replaced them meanwhile. This is a money-path preflight: no buyer
     // means no invoice and therefore no sats can leave Alby first.
     let fundingBuyerPubkey: string;
+    let seatDeadline: number | undefined;
+    let onchainBaselineMsats: number | undefined;
+    const walletFailureReason = () => {
+      const trade = requireClient().getState(escrowId);
+      if (!trade || trade.status !== EscrowStatus.CREATED) return "The listing is no longer open.";
+      if (Object.values(trade.joinHolds ?? {}).some(hold => hold && (hold.expiresAt + JOIN_HOLD_LOCK_GRACE_SECONDS) * 1000 <= Date.now())) return "The buyer's seat lapsed.";
+      return "The order or participants changed before it could lock.";
+    };
     try {
-      ({ buyerPubkey: fundingBuyerPubkey } = await requireBridge().preflightLock(escrowId));
+      ({ buyerPubkey: fundingBuyerPubkey, seatDeadline } = await requireBridge().preflightLock(escrowId, { selectedItems: opts.selectedItems }));
+      fundingInvoiceSeconds(seatDeadline);
+      if (!isSimModeOn()) assertPaidLockRecoveryWritable();
+      if (opts.fundingMethod === "onchain") assertOnchainFundingWindow(requireClient().getState(escrowId)!);
     } catch (e) {
       const err = errorText(e, "This trade is not ready to fund");
       opts.onPhase({ kind: "lock-failed", error: err });
@@ -4960,7 +4978,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
           selectedItems: opts.selectedItems,
           onPhase: opts.onPhase,
           signal: opts.signal,
-          preflight: async () => {}, // outer preflight pinned the buyer before funding
+          preflight: async () => { await requireBridge().preflightLock(escrowId, {selectedItems: opts.selectedItems, buyerPubkey: fundingBuyerPubkey}); },
           generateEcash: (amountMsats, memo) => generateFediEcash(amountMsats, memo),
           // Re-absorb WITHOUT expectedMsats — re-absorbing the exact notes we
           // generated is exact, and passing it risks a receive-then-throw that
@@ -5150,6 +5168,9 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
         // sweep just finds no residue and retries another day).
         const depositAmountSats = amountSats + pegInFeeSats + Math.floor(premiumMsats / 1000);
         const baselineMsats = await fedimint.getBalance();
+        onchainBaselineMsats = baselineMsats;
+        await requireBridge().preflightLock(escrowId, { selectedItems: opts.selectedItems, buyerPubkey: fundingBuyerPubkey });
+        assertOnchainFundingWindow(requireClient().getState(escrowId)!);
         const deposit = await fedimint.createOnchainDepositAddress(meta);
         if (opts.signal?.aborted) {
           opts.onPhase({ kind: "aborted" });
@@ -5230,11 +5251,13 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
         }
 
         opts.onPhase({ kind: "locking" });
-        await lockAndPublishAction(escrowId, {
+        await requireBridge().preflightLock(escrowId, {selectedItems: opts.selectedItems, buyerPubkey: fundingBuyerPubkey});
+        const locked = await lockAndPublishAction(escrowId, {
           savedHandleId: opts.savedHandleId,
           selectedItems: opts.selectedItems,
           buyerPubkey: fundingBuyerPubkey,
         });
+        if (!locked?.lock?.notesHash) throw new Error("LOCK did not commit");
         opts.onPhase({ kind: "locked" });
         return { kind: "locked" };
       }
@@ -5254,14 +5277,18 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       });
       const result = await runFundAndLock({
         invoiceJournal,
+        seatDeadline,
+        onPaidLockRefused: amount => recordPaidLockRecovery(escrowId, fedimint.getFederationId() ?? "", amount,
+          walletFailureReason()),
         escrowId,
         amountMsats: opts.amountMsats + premiumMsats,
         description: opts.description,
         savedHandleId: opts.savedHandleId,
         selectedItems: opts.selectedItems,
         getBalance: () => fedimint.getBalance(),
-        createFundingInvoice: (amountMsats, description, onReceiveState, onGateway) =>
-          createFundingInvoice(
+        createFundingInvoice: async (amountMsats, description, onReceiveState, onGateway, expirySeconds) => {
+          const fresh = await requireBridge().preflightLock(escrowId, { selectedItems: opts.selectedItems, buyerPubkey: fundingBuyerPubkey });
+          const invoice = await createFundingInvoice(
             amountMsats,
             description,
             onReceiveState,
@@ -5271,18 +5298,31 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
               amountMsats,
             }),
             onGateway,
-          ),
+            Math.max(1, Math.min(expirySeconds ?? 900, fundingInvoiceSeconds(fresh.seatDeadline)) - 45),
+          );
+          if (!isSimModeOn() && fresh.seatDeadline !== undefined) {
+            // A slow gateway or old sidecar may ignore the requested expiry.
+            // Verify the actual BOLT11 before showing it or handing it to NWC.
+            invoiceJournal?.record(invoice);
+            assertFundingInvoiceWithinSeat(invoice, fresh.seatDeadline);
+          }
+          return invoice;
+        },
         autoPayInvoice: opts.fundingMethod === "nwc"
           ? async (bolt11) => {
               const connectionString = opts.nwcConnectionString?.trim();
               if (!connectionString) throw new Error("Paste an NWC connection");
+              await requireBridge().preflightLock(escrowId, {selectedItems: opts.selectedItems, buyerPubkey: fundingBuyerPubkey});
+              fundingInvoiceSeconds(seatDeadline);
               await payInvoiceWithNwc(connectionString, bolt11);
             }
           : undefined,
-        lockAndPublish: (id, lockOpts) => lockAndPublishAction(id, {
-          ...lockOpts,
-          buyerPubkey: fundingBuyerPubkey,
-        }),
+        lockAndPublish: async (id, lockOpts) => {
+          await requireBridge().preflightLock(id, { ...lockOpts, buyerPubkey: fundingBuyerPubkey });
+          const locked = await lockAndPublishAction(id, { ...lockOpts, buyerPubkey: fundingBuyerPubkey });
+          if (!locked?.lock?.notesHash) throw new Error("LOCK did not commit");
+          return locked;
+        },
         onPhase: opts.onPhase,
         signal: opts.signal,
       });
@@ -5298,7 +5338,11 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       }
       return result;
     } catch (e: unknown) {
-      const err = errorText(e, "Funding failed");
+      let err = errorText(e, "Funding failed");
+      if (onchainBaselineMsats !== undefined) {
+        const balance = await fedimint.getBalance().catch(() => onchainBaselineMsats!);
+        if (balance - onchainBaselineMsats >= opts.amountMsats) err = recordPaidLockRecovery(escrowId, fedimint.getFederationId() ?? "", balance - onchainBaselineMsats, walletFailureReason());
+      }
       const storageFailure = fundingStorageFailure(e);
       if (storageFailure) { opts.onPhase(storageFailure); return storageFailure; }
       opts.onPhase({ kind: "lock-failed", error: err });

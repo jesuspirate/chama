@@ -1,3 +1,4 @@
+import { listPaidLockRecoveries } from "../../payments/paid-lock-recovery.js";
 import { RoleAvatar } from "../components/RoleAvatar.js";
 import { ConductFacts } from "../components/ConductFacts.js";
 import type { OnchainObservation } from '../../escrow-engine/onchain-attention.js';
@@ -4485,6 +4486,7 @@ export function TradeDetail({
 
 
 
+      {listPaidLockRecoveries().filter(row => row.escrowId === state.id).map(row => <p key={row.createdAt} data-lock-recovery>{row.message}</p>)}
       {state.custodyNotice && state.custodyNotice.status !== "acknowledged-with-rejection" && (
         <div style={{
           marginTop: 14,

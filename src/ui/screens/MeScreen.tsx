@@ -1,3 +1,4 @@
+import { listPaidLockRecoveries, acknowledgePaidLockRecoveries } from "../../payments/paid-lock-recovery.js";
 import { hasVerifiedTradeCreate } from "../../escrow-engine/trade-index.js";
 import { UnverifiedHistory } from "../components/UnverifiedHistory.js";
 import { PayoutTransactionDetails } from "../components/PayoutTransactionDetails.js";
@@ -156,6 +157,7 @@ export function MeScreen({
   onOpenHelp,
   balanceMsats,
   hasActiveCommitment,
+  paidLockFederationId,
   satsTrace,
   onRecoverSats,
   onWithdrawEcash,
@@ -238,6 +240,7 @@ export function MeScreen({
   onOpenHelp: () => void;
   balanceMsats: number;
   hasActiveCommitment: boolean;
+  paidLockFederationId?: string;
   satsTrace?: SatsTraceEntry | null;
   onRecoverSats: () => void;
   /** v2.4 #56 — open the "withdraw as ecash" (fee-free Fedimint note) flow. */
@@ -421,7 +424,10 @@ export function MeScreen({
       </button>
     );
   };
+  const paidLockRows = listPaidLockRecoveries().filter(row => row.federationId === paidLockFederationId);
+
   const moneyEntries: MoneySafetyEntry[] = [
+    ...paidLockRows.map(row => ({ ...row, key: `paid-lock:${row.escrowId}` })),
     ...(onExportStrandedClaim ? loudClaims.map(e => ({ kind: "stranded-claim" as const, key: `claim:${e.escrowId}`, ...e })) : []),
     ...calmClaims.map(e => ({ ...e, kind: "unresolved-credit" as const, key: `credit:${e.escrowId}` })),
     ...(showLocalRecovery && !isSmallLeftover ? [{ kind: "leftover" as const, key: "leftover", amountMsats: balanceMsats, createdAt: 0 }] : []),
@@ -490,6 +496,7 @@ export function MeScreen({
   // v6.3 approved redesign: Browse-style pill tabs replace the accordions.
   // Money-safety cards stay ABOVE the tabs — never hidden behind one.
   const [meTab, setMeTab] = useState<"trades" | "sats" | "seller" | "arbiter" | "profile" | "community" | "settings">("trades");
+
   // Perceived tap latency fix (Jet, v6.3.3 — worst on iOS PWA): the pills
   // render from meTab and flip color the instant React commits the click,
   // while the SECTIONS below render from this deferred value, so unmounting
@@ -511,6 +518,9 @@ export function MeScreen({
     setMeTab(requestTab.tab);
   }, [requestTab?.tab, requestTab?.n]);
   const shownTab = useDeferredValue(meTab);
+  useEffect(() => {
+    if (shownTab === "sats" && paidLockFederationId) acknowledgePaidLockRecoveries(paidLockFederationId, balanceMsats);
+  }, [shownTab, paidLockFederationId, balanceMsats, paidLockRows.filter(row => !row.seen).map(row => row.escrowId).join(",")]);
   const hasVisibleMoneyAction =
     loudClaims.length > 0
     || calmClaims.length > 0
@@ -829,6 +839,7 @@ export function MeScreen({
         </div>
       )}
 
+      {paidLockRows.map(row => <p key={row.createdAt} data-paid-lock-recovery>{row.message}</p>)}
       {/* #37 — lock-recovery entries whose automatic retries were exhausted.
           Calm + informational (the notes are kept safe, nothing is lost):
           re-opening the trade and tapping Fund/Finish retries recovery with

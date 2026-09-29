@@ -1,3 +1,5 @@
+import { decodeBolt11Payment } from "./bolt11.js";
+import { fundingInvoiceSeconds } from "./seat-funding.js";
 import { errorText } from "./error-text.js";
 import { fundingStorageFailure, type FundingInvoiceJournal, type FundingStorageKey } from "./abandoned-invoices.js";
 // ══════════════════════════════════════════════════════════════════════════
@@ -454,6 +456,7 @@ export interface RunFundAndLockDeps {
     /** Reports the Lightning gateway that minted the invoice. Optional so
      *  wallets that can't say (browser SDK, mock, sim) simply never call it. */
     onGateway?: (gateway: FundingGatewayInfo) => void,
+    expirySeconds?: number,
   ) => Promise<string>;
   /** Optional auto-payer for generated funding invoices, e.g. NWC
    *  pay_invoice. When set, runFundAndLock still creates the Fedimint
@@ -470,6 +473,8 @@ export interface RunFundAndLockDeps {
 export interface RunFundAndLockOpts extends RunFundAndLockDeps {
   /** Production supplies a durable identity/federation-scoped receive journal. */
   invoiceJournal?: FundingInvoiceJournal;
+  seatDeadline?: number;
+  onPaidLockRefused?: (amountMsats: number) => string;
   /** Trade ID being funded. */
   escrowId: string;
   /** Trade amount in msats. */
@@ -512,11 +517,11 @@ export async function runFundAndLock(opts: RunFundAndLockOpts): Promise<FundAndL
   try {
     const result = await runFundAndLockWatched({
       ...opts,
-      createFundingInvoice: (amount, description, onState, onGateway) =>
+      createFundingInvoice: (amount, description, onState, onGateway, expirySeconds) =>
         opts.createFundingInvoice(amount, description, onState, gateway => {
           operationId = gateway.operationId;
           onGateway?.(gateway);
-        }).then(invoice => {
+        }, expirySeconds).then(invoice => {
           // Attached to the original promise, not just the timeout race: a
           // late invoice is recorded even after this flow stopped watching.
           opts.invoiceJournal?.record(invoice, operationId);
@@ -536,7 +541,11 @@ export async function runFundAndLock(opts: RunFundAndLockOpts): Promise<FundAndL
 async function runFundAndLockWatched(
   opts: RunFundAndLockOpts,
 ): Promise<FundAndLockTerminal> {
-  const emit = (p: FundAndLockPhase) => opts.onPhase(p);
+  let stoppedWithoutLock = false;
+  const emit = (p: FundAndLockPhase) => {
+    if (["expired", "aborted", "mint-timeout", "lock-failed"].includes(p.kind)) stoppedWithoutLock = true;
+    opts.onPhase(p);
+  };
 
   emit({ kind: "creating-invoice" });
   if (opts.signal?.aborted) {
@@ -609,6 +618,14 @@ async function runFundAndLockWatched(
   let receiveFailureDiagnostic: Record<string, unknown> | undefined;
   const watchAbort = new AbortController();
   const onReceiveState = (kind: LnReceiveWatchKind) => {
+    if (kind === "claimed" && stoppedWithoutLock && opts.onPaidLockRefused) {
+      void opts.getBalance().then(balance => {
+        if (balance - baseline >= opts.amountMsats) {
+          const error = opts.onPaidLockRefused!(balance - baseline);
+          emit({kind: "lock-failed", error});
+        }
+      }).catch(error => console.error("Late receive recovery could not be recorded", error));
+    }
     if (typeof kind === "object" && "canceled" in kind) {
       // Already overridden — keep the first reason; subsequent
       // events from the SDK after a cancel are no-ops anyway.
@@ -674,12 +691,14 @@ async function runFundAndLockWatched(
         ));
       }, invoiceTimeoutMs);
     });
+    const expirySeconds = fundingInvoiceSeconds(opts.seatDeadline, (opts.now ?? defaultNow)(), Math.floor((opts.paymentDeadlineMs ?? DEFAULT_PAYMENT_DEADLINE_MS) / 1000));
     bolt11 = await Promise.race([
       opts.createFundingInvoice(
         opts.amountMsats,
         opts.description,
         onReceiveState,
         (gateway) => { fundingGateway = gateway; },
+        expirySeconds,
       ),
       timeoutPromise,
     ]);
@@ -713,8 +732,9 @@ async function runFundAndLockWatched(
     if (hardTimeoutTimer) clearTimeout(hardTimeoutTimer);
     if (receiveWatchReadyTimer) clearTimeout(receiveWatchReadyTimer);
   }
-  const expiresAt = (opts.now ?? defaultNow)() +
-    (opts.paymentDeadlineMs ?? DEFAULT_PAYMENT_DEADLINE_MS);
+  const invoiceExpiry = decodeBolt11Payment(bolt11)?.expiresAt;
+  const expiresAt = Math.min(invoiceExpiry === undefined ? Infinity : invoiceExpiry * 1000, (opts.now ?? defaultNow)() + (opts.paymentDeadlineMs ?? DEFAULT_PAYMENT_DEADLINE_MS),
+    opts.seatDeadline === undefined ? Infinity : (opts.seatDeadline - 60) * 1000);
   emit({ kind: "invoice-created", bolt11, expiresAt, gateway: fundingGateway });
 
   if (opts.autoPayInvoice) {
@@ -754,7 +774,7 @@ async function runFundAndLockWatched(
       emit(p);
     },
     signal: watchAbort.signal,
-    paymentDeadlineMs: opts.paymentDeadlineMs,
+    paymentDeadlineMs: Math.max(0, expiresAt - (opts.now ?? defaultNow)()),
     mintConfirmTimeoutMs: opts.mintConfirmTimeoutMs,
     mintSlowWarnMs: opts.mintSlowWarnMs,
     pollIntervalMs: opts.pollIntervalMs,
@@ -818,14 +838,15 @@ async function runFundAndLockWatched(
     emit({ kind: "locked" });
     return { kind: "locked" };
   } catch (e: any) {
-    const err = errorText(e, "LOCK failed");
+    let err = "This trade could not lock. Check Wallet before trying again; any spent notes remain in recovery.";
     try {
       const balance = await opts.getBalance();
-      if (balance > baseline) {
+      if (balance - baseline >= opts.amountMsats) {
+        err = opts.onPaidLockRefused?.(balance - baseline) ?? `Your ${Math.floor((balance - baseline) / 1000)} sats are in your Chama wallet, not in escrow. Reopen the trade before trying again.`;
         recordSatsTrace({
           source: "funding",
           escrowId: opts.escrowId,
-          amountMsats: opts.amountMsats,
+          amountMsats: balance - baseline,
           balanceMsats: balance,
           reason: "lock-failed-after-funding",
         });

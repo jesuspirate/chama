@@ -1,3 +1,4 @@
+import { SEAT_LAPSED_COPY } from "../../payments/seat-funding.js";
 import { CardBack } from "../components/CardBack.js";
 import { FundingModalShell, FundingNote } from "../components/FundingModalShell.js";
 import { fundingPremiumMsats } from "../../payments/funding-premium.js";
@@ -68,6 +69,8 @@ import type { EscrowState, SelectedMenuItem } from "../../escrow-engine/types.js
 export interface AtomicFundingModalProps {
   /** Trade ID being funded. Passed through to fundAndLock. */
   escrowId: string;
+  seatDeadline?: number;
+  onPostAgain?: () => void;
   custodyNotice?: EscrowState["custodyNotice"];
   /** Exact trade amount in millisatoshis. */
   amountMsats: number;
@@ -140,6 +143,16 @@ export interface AtomicFundingModalProps {
   onClose: (terminal: FundAndLockTerminal) => void;
 }
 
+export function SeatFundingClosed({ deadline, now, onWait, onPostAgain }: {
+  deadline: number; now: number; onWait: () => void; onPostAgain?: () => void;
+}) {
+  return <div data-seat-funding-closed><p>{now >= deadline * 1000 ? SEAT_LAPSED_COPY
+    : "The payment window closed before the seat lapsed. Wait for the buyer to rejoin before paying."}</p>
+    <PaymentButton onClick={onWait}>Wait for them to rejoin</PaymentButton>
+    {onPostAgain && <PaymentButton onClick={onPostAgain}>Post it again</PaymentButton>}
+  </div>;
+}
+
 type ModalPhase =
   | { kind: "choose-method" }
   | { kind: "creating-invoice" }
@@ -178,6 +191,8 @@ type ModalPhase =
 
 export function AtomicFundingModal({
   escrowId,
+  seatDeadline,
+  onPostAgain,
   amountMsats,
   premiumMsats: requestedPremiumMsats = 0,
   ctaLabel,
@@ -435,6 +450,7 @@ export function AtomicFundingModal({
           // payment-confirmed / locking / locked / expired / mint-timeout
           // / aborted / lock-failed all map directly.
           if (p.kind === "lock-failed" && p.invoiceFailed) { setInvoiceUnavailable(true); setSwitchRequested(null); }
+          if (p.kind === "expired") { setRequest(null); setMpesaOpen(false); }
           setPhase(p as ModalPhase);
         },
       });
@@ -476,7 +492,7 @@ export function AtomicFundingModal({
     if (
       phase.kind !== "awaiting-payment" &&
       phase.kind !== "mint-confirming" &&
-      phase.kind !== "mint-confirming-slow"
+      phase.kind !== "mint-confirming-slow" && phase.kind !== "expired"
     ) {
       return;
     }
@@ -669,7 +685,7 @@ export function AtomicFundingModal({
               : phase.kind === "locking" ? t("fund.locking")
               : phase.kind === "locked" ? t("fund.paymentReceived")
               : phase.kind === "awaiting-onchain-confirmations" ? (depositProgress ? <DepositProgressLine progress={depositProgress} finality={request.finality ?? 0} /> : t("fund.waitingConfirmations", { count: request.finality ?? 0 }))
-              : phase.kind === "awaiting-payment" ? t("fund.waitingForPayment", { time: `${Math.floor(Math.max(0, (request.expiresAt ?? now) - now) / 60000)}:${Math.floor(Math.max(0, (request.expiresAt ?? now) - now) / 1000 % 60).toString().padStart(2, "0")}` })
+              : phase.kind === "awaiting-payment" ? `${seatDeadline ? "The buyer's seat holds for" : "Pay within"} ${Math.floor(Math.max(0, (seatDeadline ? seatDeadline * 1000 : request.expiresAt ?? now) - now) / 60000)}:${Math.floor(Math.max(0, (seatDeadline ? seatDeadline * 1000 : request.expiresAt ?? now) - now) / 1000 % 60).toString().padStart(2, "0")} — pay before then`
               : t("fund.confirmingFederation")}
             helper={isSimModeOn() ? <>{t(request.rail === "onchain" ? (simOnchainMode() === "stuck" ? "fund.simOnchainStuck" : "fund.simOnchainDeposit") : "fund.simAutoCredit")} {t("fund.simDoNotFund")}</> : request.rail === "onchain" ? t("fund.onchainSlowPath") : t("fund.staleInvoice")}
             details={<><FundingCheckout tradeSats={amountSats} feeSats={(request.fee ?? 0) + premiumMsats / 1000} />
@@ -754,10 +770,7 @@ export function AtomicFundingModal({
         {phase.kind === "locked" && <LockedSuccess amountSats={amountSats} />}
 
         {phase.kind === "expired" && (
-          <ExpiredState
-            onRegenerate={handleRegenerate}
-            onCancel={handleCancel}
-          />
+          seatDeadline ? <SeatFundingClosed deadline={seatDeadline} now={now} onWait={handleCancel} onPostAgain={onPostAgain ? () => { handleCancel(); onPostAgain(); } : undefined} /> : <ExpiredState onRegenerate={handleRegenerate} onCancel={handleCancel} />
         )}
 
         {phase.kind === "mint-timeout" && (

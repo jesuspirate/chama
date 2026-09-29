@@ -1016,6 +1016,7 @@ export class NativeBridgeWallet implements IFedimintWallet {
       description: string,
       onReceiveState?: (kind: LnReceiveStateKind) => void,
       _meta?: ChamaOperationMeta,
+      expirySeconds?: number,
     ): Promise<{ invoice: string; operationId: string; gateway?: InvoiceGatewayInfo }> => {
       onReceiveState?.("created");
       await this.ensureBridgeReady();
@@ -1024,6 +1025,7 @@ export class NativeBridgeWallet implements IFedimintWallet {
         body: {
           amountMsats,
           description,
+          expiryTime: expirySeconds,
         },
       });
       const operationId = readOperationId(result);

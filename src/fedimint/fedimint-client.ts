@@ -186,6 +186,7 @@ export interface IFedimintWallet {
       description: string,
       onReceiveState?: (kind: LnReceiveStateKind) => void,
       meta?: ChamaOperationMeta,
+      expirySeconds?: number,
     ): Promise<{ invoice: string; operationId: string; gateway?: InvoiceGatewayInfo }>;
     /** Pay a Lightning invoice from federation balance */
     payInvoice(bolt11: string, meta?: ChamaOperationMeta): Promise<{ operationId: string }>;
@@ -1246,6 +1247,7 @@ export class FedimintClient {
     // Reported rather than returned so every existing caller keeps taking a
     // plain BOLT11 string back.
     onGateway?: (gateway: InvoiceGatewayInfo) => void,
+    expirySeconds?: number,
   ): Promise<string> {
     const wallet = this.requireWallet();
     const result = await wallet.lightning.createInvoice(
@@ -1253,6 +1255,7 @@ export class FedimintClient {
       description,
       onReceiveState,
       meta,
+      expirySeconds,
     );
     if (result.gateway) onGateway?.(result.gateway);
     return result.invoice;

@@ -53,8 +53,11 @@ import {
   Outcome,
   getEffectiveParticipantAt,
   selectedMenuItemsTotalMsats,
+  preLockDeadline,
+  type ParsedEscrowEvent,
+  type LockPayload,
 } from "../escrow-engine/types.js";
-import { getWinner, payoutRecipientFor } from "../escrow-engine/state-machine.js";
+import { applyEvent, getWinner, payoutRecipientFor } from "../escrow-engine/state-machine.js";
 import {
   HOLDER_ONLY_SHARE_POLICY,
   holderRoleForShareIndex,
@@ -274,6 +277,7 @@ export class EscrowFedimintBridge {
     }
 
     const nowSec = Math.floor(Date.now() / 1000);
+    if (preLockDeadline(state, nowSec)?.lapsed) throw new Error("The buyer's seat or listing lapsed. Post it again or wait for the buyer to rejoin.");
     const buyerPubkey = resolveLockBuyerPubkey(state, nowSec, opts.buyerPubkey);
     if (!buyerPubkey) {
       throw new Error(
@@ -318,6 +322,31 @@ export class EscrowFedimintBridge {
       );
     }
 
+    const lockerPubkey = await this.escrow.getPubkey();
+    // Async probes may have allowed a JOIN/CANCEL to replace this state.
+    if (this.escrow.getState(escrowId) !== state) return this.prepareLockContext(escrowId, opts);
+    const timestamp = Math.floor(Date.now() / 1000);
+    if (preLockDeadline(state, timestamp)?.lapsed) throw new Error("The buyer's seat or listing lapsed. Post it again or wait for the buyer to rejoin.");
+    const amount = amountMsatsForLock(state, opts.selectedItems);
+    const payload: LockPayload = {
+      type: "escrow:lock", lockedAt: timestamp, buyerPubkey, arbiterPubkey,
+      notesHash: "preflight", sharePolicy: HOLDER_ONLY_SHARE_POLICY, arbiterPoolShare: true,
+      shares: [[buyerPubkey], [sellerPk], arbiterPriorityOrder(state)].map((holders, shareIndex) => ({
+        shareIndex, encryptedFor: Object.fromEntries(holders.map(key => [key, "preflight"])) })),
+      sellerReceivesMsats: amount - state.fees.arbiterMsats,
+      arbiterFeeMsats: state.fees.arbiterMsats, selectedItems: opts.selectedItems,
+    };
+    // Use the reducer itself, with inert share placeholders; never spend or publish.
+    const event = { kind: EscrowEventKind.LOCK, timestamp, pubkey: lockerPubkey,
+      escrowId, payload, prevEventId: state.eventChain.at(-1)?.raw.id ?? null,
+      raw: { id: "funding-preflight", tags: [], pubkey: lockerPubkey, created_at: timestamp, kind: EscrowEventKind.LOCK, content: "", sig: "" } } as ParsedEscrowEvent<LockPayload>;
+    const checked = applyEvent(state, event);
+    if (!checked.ok || checked.state.status !== EscrowStatus.LOCKED) {
+      const error = new Error(!checked.ok && checked.error.code === "ORDER_NOT_FINALIZED"
+        ? "The buyer must finalize their order again before you pay."
+        : "This trade is not ready to lock. Reopen it before paying.");
+      throw error;
+    }
     return { state, buyerPubkey, sellerPk, arbiterPubkey, expectedFed: expectedFed ?? null };
   }
 
@@ -700,9 +729,9 @@ export class EscrowFedimintBridge {
     return resultState;
   }
 
-  async preflightLock(escrowId: string): Promise<{ buyerPubkey: string }> {
-    const { buyerPubkey } = await this.prepareLockContext(escrowId);
-    return { buyerPubkey };
+  async preflightLock(escrowId: string, opts: LockOptions = {}): Promise<{ buyerPubkey: string; seatDeadline?: number }> {
+    const { buyerPubkey, state } = await this.prepareLockContext(escrowId, opts);
+    return { buyerPubkey, seatDeadline: preLockDeadline(state)?.at };
   }
 
   async lockAndPublishWithEcash(escrowId: string, oobNotes: string, opts: LockOptions = {}): Promise<EscrowState> {

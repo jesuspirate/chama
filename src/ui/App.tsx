@@ -1,3 +1,5 @@
+import { listPaidLockRecoveries } from "../payments/paid-lock-recovery.js";
+import { fundingSeatDeadline } from "../payments/seat-funding.js";
 import { hasVerifiedTradeCreate } from "../escrow-engine/trade-index.js";
 import { browserWalletStorageError } from "../fedimint/browser-capabilities.js";
 import { useVisualViewport } from './useVisualViewport.js';
@@ -522,6 +524,7 @@ export default function App() {
   // Small, read-mostly surfaces open IN FRONT of the screen instead of
   // replacing it (Jet, 2026-09-20). Nothing navigates, so nothing has to
   // guess where "back" goes.
+  const [, setStateRefreshTick] = useState(0);
   const [walletOverlay, setWalletOverlay] = useState<null | "lightning">(null);
   const [meRequestTabRaw, setMeRequestTabRaw] = useState<{ tab: "sats" | "settings" | "live-trades"; n: number } | null>(null);
   const setMeRequestTab = (tab: "sats" | "settings" | "live-trades") =>
@@ -2253,6 +2256,14 @@ export default function App() {
     hasPendingClaimPayout,
   });
   const walletBalanceMsats = fedimint.balanceMsats ?? 0;
+  const paidLockRecoveries = listPaidLockRecoveries().filter(row => row.federationId === fedimint.federationId);
+  const unseenPaidLockMsats = paidLockRecoveries.filter(row => !row.seen).reduce((sum, row) => sum + row.amountMsats, 0);
+  useEffect(() => {
+    const refresh = () => setStateRefreshTick(n => n + 1);
+    window.addEventListener('chama:paid-lock-recovery', refresh);
+    return () => window.removeEventListener('chama:paid-lock-recovery', refresh);
+  }, []);
+
   // #37: the pending-lock gate also stops the WRONG durable attribution —
   // without it, the effect below persists an "inferred-from-claim-history"
   // sats-trace naming an unrelated old claim for a balance that actually
@@ -3243,6 +3254,7 @@ export default function App() {
       activeCommittedMsats: committedMsats,
       activeTradeCount: activeCommitmentCount,
       needsYouCount,
+      paidLockRecoveryMsats: unseenPaidLockMsats,
       bootProbeState: fedimint.bootProbeState,
       simModeOn: simOn,
       hasPendingNativeLock,
@@ -3341,7 +3353,7 @@ export default function App() {
             fedimint={fedimint}
             communitySlug={routeCommunitySlug}
             chamaLabel={chamaBarLabel}
-            onTapStranded={() => setPendingRecovery({
+            onTapStranded={() => unseenPaidLockMsats > 0 ? (setMeRequestTab("sats"), setView("me")) : setPendingRecovery({
               title: t("app.recoverSatsTitle"),
               traceContext: recoveryTraceContext,
             })}
@@ -3463,6 +3475,8 @@ export default function App() {
           gated) Sandbox-mode path. */}
       {pendingFundAndLock && escrows.get(pendingFundAndLock.escrowId)?.escrowMode !== "onchain" && (
         <AtomicFundingModal
+          onPostAgain={() => setView("create")}
+          seatDeadline={escrows.get(pendingFundAndLock.escrowId) ? fundingSeatDeadline(escrows.get(pendingFundAndLock.escrowId)!) : undefined}
           custodyNotice={escrows.get(pendingFundAndLock.escrowId)?.custodyNotice}
           escrowId={pendingFundAndLock.escrowId}
           amountMsats={pendingFundAndLock.amountMsats}
@@ -4633,6 +4647,7 @@ export default function App() {
             myGivenRatings={myGivenRatings}
             balanceMsats={fedimint.balanceMsats ?? 0}
             hasActiveCommitment={hasActiveCommitment}
+            paidLockFederationId={fedimint.federationId ?? undefined}
             satsTrace={displayedSatsTrace}
             hasPendingNativeLock={hasPendingNativeLock}
             hasPendingClaimPayout={hasPendingClaimPayout}

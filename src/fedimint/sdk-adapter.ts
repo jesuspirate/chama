@@ -2699,12 +2699,13 @@ export function adaptRealWallet(
         description: string,
         onReceiveState?: (kind: LnReceiveStateKind) => void,
         meta?: ChamaOperationMeta,
+        expirySeconds?: number,
       ) {
         const gateway = await getTrustedLightningGateway("receive", amountMsats);
         const result = await real.lightning.createInvoice(
           amountMsats,
           description,
-          undefined,
+          expirySeconds,
           gateway,
           meta ?? {},
         );

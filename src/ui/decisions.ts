@@ -1152,6 +1152,7 @@ export function selectMoneySafetyFocus(entries: readonly MoneySafetyEntry[]) {
 }
 
 export function decideChamaBarLabel(opts: {
+  paidLockRecoveryMsats?: number;
   myTradesLoading?: boolean;
   needsYouCount?: number;
   balanceMsats: number;
@@ -1195,6 +1196,7 @@ export function decideChamaBarLabel(opts: {
 }): ChamaBarLabel {
   if (opts.bootProbeState === "failed") return { kind: "unreachable" };
   if ((opts.needsYouCount ?? 0) > 0) return { kind: "needs-you", count: opts.needsYouCount! };
+  if (!opts.simModeOn && (opts.paidLockRecoveryMsats ?? 0) > 0) return { kind: "stranded", sats: Math.floor(opts.paidLockRecoveryMsats! / 1000) };
   const activeTradeCount = Math.max(1, opts.activeTradeCount ?? 1);
   // Floor to whole sats — the bar always speaks in sats, never msats.
   const sats = Math.floor(opts.balanceMsats / 1000);
