@@ -2015,6 +2015,7 @@ export function replayEventChain(events: ParsedEscrowEvent[]): TransitionResult 
     "ARBITER_POOL_EMPTY", "ARBITER_NOT_IN_POOL",
   ]);
 
+  const availableIds = new Set(events.map(event => event.raw.id));
   for (const event of events) {
     const result = applyEvent(state, event);
     if (!result.ok) {
@@ -2047,7 +2048,7 @@ export function replayEventChain(events: ParsedEscrowEvent[]): TransitionResult 
         event.kind === EscrowEventKind.JOIN ||
         (event.kind === EscrowEventKind.VOTE && state.eventChain.some(e => e.kind === EscrowEventKind.LOCK)) ||
         event.kind === EscrowEventKind.COMPLETE
-      )) { note(); continue; }
+      )) { note(true); continue; }
       // COMPLETE is advisory for on-chain escrow: the payout exists on-chain
       // independently of this marker. A relay can return COMPLETE without the
       // linked auxiliary SETTLEMENT proof (or with only a partial revision).
@@ -2064,8 +2065,8 @@ export function replayEventChain(events: ParsedEscrowEvent[]): TransitionResult 
       // or malicious nonparticipant chat must not make the CREATE/JOIN/LOCK
       // history unloadable from relays; keep rejecting it on live send/apply,
       // but skip it during full-chain replay.
-      if (event.kind === EscrowEventKind.CHAT && result.error.code === "NOT_PARTICIPANT") {
-        note(); continue;
+      if (event.kind === EscrowEventKind.CHAT) {
+        note(result.error.code === "TRADE_CLOSED" || result.error.code === "TERMINAL_STATE"); continue;
       }
       // Same for PREMIUM — auxiliary, a bad one must never brick replay.
       if (event.kind === EscrowEventKind.PREMIUM && result.error.code === "NOT_PARTICIPANT") {
@@ -2077,6 +2078,14 @@ export function replayEventChain(events: ParsedEscrowEvent[]): TransitionResult 
       }
       // Real error — fail the replay
       return result;
+    }
+    // A rejected advisory event needs no predecessor. An accepted state
+    // custody transition does: never certify a funds chain with a missing link.
+    // Legacy JOIN branches can reference orphaned acknowledgements; their
+    // participant/role checks are independently validated by the reducer.
+    if (event.kind !== EscrowEventKind.JOIN && event.prevEventId && !availableIds.has(event.prevEventId)
+        && result.state.eventChain.some(e => e.raw.id === event.raw.id)) {
+      return err("MISSING_PREDECESSOR", "A state event's predecessor is missing", event.raw.id);
     }
     state = result.state;
   }

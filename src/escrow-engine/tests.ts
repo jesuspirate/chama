@@ -1,3 +1,4 @@
+import { needsTradeHistory } from "../ui/decisions.js";
 // ══════════════════════════════════════════════════════════════════════════
 // Chama Escrow Engine — Test Suite (PR 1 atomic funding + PR 2 community)
 // ══════════════════════════════════════════════════════════════════════════
@@ -6520,6 +6521,22 @@ for (const needs of [0, 2]) for (const active of [0, 200000]) for (const balance
   const complete = completeEvent(claim.raw.id);
   assert(!replayEventChain([...base, claim, complete, claimEvent(Role.BUYER, BUYER_PK, complete.raw.id)]).ok,
     "terminal-state CLAIM is still strict");
+  const lateChat = makeParsedEvent(EscrowEventKind.CHAT, BUYER_PK, {
+    type: "escrow:chat", message: "Thanks", sentAt: NOW, senderRole: Role.BUYER,
+  }, complete.raw.id);
+  const afterClose = replayEventChain([...base, claim, complete, lateChat,
+    completeEvent(complete.raw.id), voteEvent(Role.ARBITER, ARBITER_PK, Outcome.REFUND, complete.raw.id)]);
+  if (assertOk(afterClose, "late chat, second COMPLETE and arbiter vote retain the trade")) {
+    assert(afterClose.state.status === EscrowStatus.COMPLETED, "late events preserve completion");
+    assert(afterClose.state.replayNotes?.length === 3, "late events become notes");
+    assert(!needsTradeHistory(afterClose.state), "room opens from intact history");
+  }
+  const expired = { ...create, payload: { ...create.payload, expirySeconds: 1 } };
+  const expiredChat = { ...lateChat, timestamp: NOW + 10 };
+  const expiredReplay = replayEventChain([expired, expiredChat, { ...expiredChat, raw: { ...expiredChat.raw, id: "late-again" } }]);
+  assert(expiredReplay.ok, "TRADE_CLOSED chat after expiry does not poison replay");
+  assert(!replayEventChain([create, { ...lock, prevEventId: "missing-predecessor" }]).ok,
+    "missing signed predecessor cannot establish a rebuilt money chain");
   assert(replayEventChain([...base, claim, claim]).ok, "identical signed CLAIM redelivery remains idempotent");
   assert(!replayEventChain([create, buyer]).ok, "missing LOCK is not hidden by advisory skip policy");
   assert(!replayEventChain([...base, resolveEvent(Outcome.REFUND, [Role.BUYER, Role.SELLER], false, resolve.raw.id)]).ok,
