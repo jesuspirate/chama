@@ -1,3 +1,5 @@
+import { CardBack } from "../components/CardBack.js";
+import { useCardDraft, type CardDraft } from "../hooks/useCardDraft.js";
 import { SavedWalletRow } from "../components/SavedWalletRow.js";
 import { getCommunityBySlug } from "../../communities/registry.js";
 import { TradeAmount } from "../components/TradeAmount.js";
@@ -235,6 +237,7 @@ export function ClaimPayoutModal({
     return () => { cancelled = true; clearTimeout(timer); };
   }, []);
   const lightningReason = gatewayChecking ? t("fund.checkingGateways") : gatewayCount === 0 ? t("fund.noGateways") : undefined;
+  const draft = useRef<CardDraft>({}).current;
   const [stage, setStage] = useState<Stage>({ kind: "picking" });
   const [payoutMethod, setPayoutMethod] = useState<PayoutMethod | null>(null);
   // Retry state: when a retryable terminal is up, the "Try again"
@@ -465,6 +468,7 @@ export function ClaimPayoutModal({
             await confirmClaimEcashExport(escrowId);
           },
         }}
+        onBack={() => { setStage({ kind: "picking" }); setPayoutMethod(null); }}
         closeAfterConfirm={() => onClose({ kind: "done" })}
         onClose={() => onClose(undefined)}
       />
@@ -493,6 +497,7 @@ export function ClaimPayoutModal({
       );
       return (
         <ClaimMethodChooser
+          draft={draft}
           lightningReason={lightningReason}
           payoutSats={payoutSats}
           ecashPayoutSats={ecashPayoutSats}
@@ -519,6 +524,7 @@ export function ClaimPayoutModal({
     if (payoutMethod.kind === "tando") {
       return (
         <TandoMpesaPicker
+          draft={draft}
           payoutSats={payoutSats}
           reserveSats={reserveSats}
           savedDestinations={savedDestinations}
@@ -533,6 +539,7 @@ export function ClaimPayoutModal({
     if (payoutMethod.kind === "chapsmart") {
       return (
         <ChapsmartMpesaPicker
+          draft={draft}
           payoutSats={payoutSats}
           reserveSats={reserveSats}
           savedDestinations={savedDestinations}
@@ -547,6 +554,7 @@ export function ClaimPayoutModal({
     if (payoutMethod.kind === "strike") {
       return (
         <StrikeUsdPicker
+          draft={draft}
           payoutSats={payoutSats}
           reserveSats={reserveSats}
           savedDestinations={savedDestinations}
@@ -562,6 +570,7 @@ export function ClaimPayoutModal({
     if (payoutMethod.kind === "external") {
       return (
         <ExternalSwapRedirectPicker
+          draft={draft}
           match={payoutMethod.match}
           payoutSats={payoutSats}
           reserveSats={reserveSats}
@@ -575,6 +584,7 @@ export function ClaimPayoutModal({
     if (payoutMethod.kind === "onchain") {
       return (
         <OnchainPayoutPicker
+          draft={draft}
           payoutSats={payoutSats}
           onResolve={resolveOnchainAddress}
           onBack={() => setPayoutMethod(null)}
@@ -586,6 +596,8 @@ export function ClaimPayoutModal({
     // payoutMethod.kind === "lightning"
     return (
       <DestinationPicker
+        draft={draft}
+        onBack={() => setPayoutMethod(null)}
         amountSats={payoutSats}
         initialAddress={payoutMethod.kind === "lightning" ? payoutMethod.initialAddress : undefined}
         savedDestinations={savedDestinations}
@@ -644,6 +656,7 @@ export function ClaimPayoutModal({
               <BitcoinAmount sats={payoutSats} size={22} gap={6} glyphScale={1.2} color={T.text} glyphColor={T.muted} />
             </div>
           </div>
+          <CardBack disabled={stage.kind !== "terminal" || retryProbing || stage.terminal.kind === "payout-confirming" || stage.terminal.kind === "done"} onClick={() => setStage({ kind: "picking" })} />
           {stage.kind === "terminal" && !retryProbing && (
             <button onClick={() => onClose(stage.terminal)} style={{
               background: "none", border: "none", color: T.muted,
@@ -683,6 +696,7 @@ export function ClaimPayoutModal({
 }
 
 export function ClaimMethodChooser({
+  draft,
   lightningReason,
   payoutSats,
   ecashPayoutSats,
@@ -700,6 +714,7 @@ export function ClaimMethodChooser({
   onSelectSavedWallet,
   onCancel,
 }: {
+  draft?: CardDraft;
   lightningReason?: string;
   /** The headline quote, net of the outbound Lightning fee reserve — right for
    *  every method on this screen EXCEPT the bearer-note export. */
@@ -736,7 +751,7 @@ export function ClaimMethodChooser({
   onCancel: () => void;
 }) {
   const { t } = useT();
-  const [rail, setRail] = useState<PaymentRail>("lightning");
+  const [rail, setRail] = useCardDraft<PaymentRail>(draft, "rail", "lightning");
   const [walletDestinations, setWalletDestinations] = useState(savedWalletDestinations);
   const [walletConnections, setWalletConnections] = useState(savedNwcConnections);
   useEffect(() => setWalletDestinations(savedWalletDestinations), [savedWalletDestinations]);
@@ -1068,6 +1083,7 @@ function normalizeBolt11Input(input: string): string {
 }
 
 function ExternalSwapRedirectPicker({
+  draft,
   match,
   payoutSats,
   reserveSats,
@@ -1075,6 +1091,7 @@ function ExternalSwapRedirectPicker({
   onBack,
   onCancel,
 }: {
+  draft?: CardDraft;
   match: ExternalSwapMatch;
   payoutSats: number;
   reserveSats: number;
@@ -1093,7 +1110,7 @@ function ExternalSwapRedirectPicker({
     country: { displayName: provider.countryName, flagEmoji: provider.flagEmoji },
     status: provider.status,
   };
-  const [invoice, setInvoice] = useState("");
+  const [invoice, setInvoice] = useCardDraft<string>(draft, `external-${match.provider.id}`, "");
   const normalizedInvoice = normalizeBolt11Input(invoice);
   const looksLikeBolt11 = /^ln(bc|bcrt|tb)[a-z0-9]+$/i.test(normalizedInvoice);
   const isLive = availability.status === "enabled";
@@ -1123,6 +1140,7 @@ function ExternalSwapRedirectPicker({
               <BitcoinAmount sats={payoutSats} size={22} gap={6} glyphScale={1.2} color={T.text} glyphColor={T.muted} />
             </div>
           </div>
+          <CardBack onClick={onBack} />
           <button onClick={onCancel} style={{
             background: "none", border: "none", color: T.muted,
             fontFamily: T.mono, fontSize: 18, cursor: "pointer", padding: 0, lineHeight: 1, minWidth: 44, minHeight: 44,
@@ -1229,17 +1247,6 @@ function ExternalSwapRedirectPicker({
           </>
         )}
 
-        <button
-          onClick={onBack}
-          style={{
-            width: "100%", padding: "10px 16px", borderRadius: T.rs,
-            background: T.surface, border: `1px solid ${T.border}`,
-            color: T.muted, fontFamily: T.mono, fontSize: 11,
-            fontWeight: 700, cursor: "pointer",
-          }}
-        >
-          {t("common.back")}
-        </button>
       </div>
     </div>
   );
@@ -1276,6 +1283,7 @@ function formatTandoLnurlError(e: unknown): string {
 }
 
 function TandoMpesaPicker({
+  draft,
   payoutSats,
   reserveSats,
   savedDestinations,
@@ -1283,6 +1291,7 @@ function TandoMpesaPicker({
   onBack,
   onCancel,
 }: {
+  draft?: CardDraft;
   payoutSats: number;
   reserveSats: number;
   savedDestinations: PayoutDestination[];
@@ -1303,7 +1312,7 @@ function TandoMpesaPicker({
     return tando ? tandoMsisdnFromAddress(tando.address) : null;
   }, [savedDestinations]);
 
-  const [phone, setPhone] = useState(() =>
+  const [phone, setPhone] = useCardDraft<string>(draft, "tandoPhone", () =>
     lastSavedMsisdn ? formatKenyanMsisdnDisplay(lastSavedMsisdn) : "");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -1368,6 +1377,7 @@ function TandoMpesaPicker({
               <BitcoinAmount sats={payoutSats} size={22} gap={6} glyphScale={1.2} color={T.text} glyphColor={T.muted} />
             </div>
           </div>
+          <CardBack onClick={onBack} disabled={busy} />
           <button onClick={onCancel} style={{
             background: "none", border: "none", color: T.muted,
             fontFamily: T.mono, fontSize: 18, cursor: "pointer", padding: 0, lineHeight: 1, minWidth: 44, minHeight: 44,
@@ -1479,18 +1489,6 @@ function TandoMpesaPicker({
           </div>
         )}
 
-        <button
-          onClick={onBack}
-          disabled={busy}
-          style={{
-            width: "100%", padding: "10px 16px", borderRadius: T.rs,
-            background: T.surface, border: `1px solid ${T.border}`,
-            color: T.muted, fontFamily: T.mono, fontSize: 11,
-            fontWeight: 700, cursor: busy ? "not-allowed" : "pointer",
-          }}
-        >
-          {t("common.back")}
-        </button>
       </div>
     </div>
   );
@@ -1527,6 +1525,7 @@ function formatChapsmartLnurlError(e: unknown): string {
 }
 
 function ChapsmartMpesaPicker({
+  draft,
   payoutSats,
   reserveSats,
   savedDestinations,
@@ -1534,6 +1533,7 @@ function ChapsmartMpesaPicker({
   onBack,
   onCancel,
 }: {
+  draft?: CardDraft;
   payoutSats: number;
   reserveSats: number;
   savedDestinations: PayoutDestination[];
@@ -1554,7 +1554,7 @@ function ChapsmartMpesaPicker({
     return cs ? chapsmartMsisdnFromAddress(cs.address) : null;
   }, [savedDestinations]);
 
-  const [phone, setPhone] = useState(() =>
+  const [phone, setPhone] = useCardDraft<string>(draft, "chapsmartPhone", () =>
     lastSavedMsisdn ? formatTanzanianMsisdnDisplay(lastSavedMsisdn) : "");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -1617,6 +1617,7 @@ function ChapsmartMpesaPicker({
               <BitcoinAmount sats={payoutSats} size={22} gap={6} glyphScale={1.2} color={T.text} glyphColor={T.muted} />
             </div>
           </div>
+          <CardBack onClick={onBack} disabled={busy} />
           <button onClick={onCancel} style={{
             background: "none", border: "none", color: T.muted,
             fontFamily: T.mono, fontSize: 18, cursor: "pointer", padding: 0, lineHeight: 1, minWidth: 44, minHeight: 44,
@@ -1728,18 +1729,6 @@ function ChapsmartMpesaPicker({
           </div>
         )}
 
-        <button
-          onClick={onBack}
-          disabled={busy}
-          style={{
-            width: "100%", padding: "10px 16px", borderRadius: T.rs,
-            background: T.surface, border: `1px solid ${T.border}`,
-            color: T.muted, fontFamily: T.mono, fontSize: 11,
-            fontWeight: 700, cursor: busy ? "not-allowed" : "pointer",
-          }}
-        >
-          {t("common.back")}
-        </button>
       </div>
     </div>
   );
@@ -1774,6 +1763,7 @@ function formatStrikeLnurlError(e: unknown): string {
 }
 
 function StrikeUsdPicker({
+  draft,
   payoutSats,
   reserveSats,
   savedDestinations,
@@ -1782,6 +1772,7 @@ function StrikeUsdPicker({
   onBack,
   onCancel,
 }: {
+  draft?: CardDraft;
   payoutSats: number;
   reserveSats: number;
   savedDestinations: PayoutDestination[];
@@ -1808,10 +1799,10 @@ function StrikeUsdPicker({
     return selected ?? lastSavedUsername ?? "";
   }, [initialAddress, lastSavedUsername]);
 
-  const [username, setUsername] = useState(() => initialUsername);
+  const [username, setUsername] = useCardDraft<string>(draft, "strikeUsername", () => initialUsername);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const [cashReady, setCashReady] = useState(false);
+  const [cashReady, setCashReady] = useCardDraft<boolean>(draft, "strikeCashReady", false);
 
   const completedAddress = buildStrikeLightningAddress(username);
   const valid = completedAddress !== null;
@@ -1872,6 +1863,7 @@ function StrikeUsdPicker({
               <BitcoinAmount sats={payoutSats} size={22} gap={6} glyphScale={1.2} color={T.text} glyphColor={T.muted} />
             </div>
           </div>
+          <CardBack onClick={onBack} disabled={busy} />
           <button onClick={onCancel} style={{
             background: "none", border: "none", color: T.muted,
             fontFamily: T.mono, fontSize: 18, cursor: "pointer", padding: 0, lineHeight: 1, minWidth: 44, minHeight: 44,
@@ -2061,36 +2053,26 @@ function StrikeUsdPicker({
           </div>
         )}
 
-        <button
-          onClick={onBack}
-          disabled={busy}
-          style={{
-            width: "100%", padding: "10px 16px", borderRadius: T.rs,
-            background: T.surface, border: `1px solid ${T.border}`,
-            color: T.muted, fontFamily: T.mono, fontSize: 11,
-            fontWeight: 700, cursor: busy ? "not-allowed" : "pointer",
-          }}
-        >
-          {t("common.back")}
-        </button>
       </div>
     </div>
   );
 }
 
 function OnchainPayoutPicker({
+  draft,
   payoutSats,
   onResolve,
   onBack,
   onCancel,
 }: {
+  draft?: CardDraft;
   payoutSats: number;
   onResolve: (address: string) => void;
   onBack: () => void;
   onCancel: () => void;
 }) {
   const { t } = useT();
-  const [address, setAddress] = useState("");
+  const [address, setAddress] = useCardDraft<string>(draft, "onchainAddress", "");
   const trimmed = address.trim();
   const looksLikeBitcoinAddress = /^(bc1|[13])[a-zA-HJ-NP-Z0-9]{20,}$/i.test(trimmed);
 
@@ -2119,6 +2101,7 @@ function OnchainPayoutPicker({
               <BitcoinAmount sats={payoutSats} size={22} gap={6} glyphScale={1.2} color={T.text} glyphColor={T.muted} />
             </div>
           </div>
+          <CardBack onClick={onBack} />
           <button onClick={onCancel} style={{
             background: "none", border: "none", color: T.muted,
             fontFamily: T.mono, fontSize: 18, cursor: "pointer", padding: 0, lineHeight: 1, minWidth: 44, minHeight: 44,
@@ -2159,17 +2142,6 @@ function OnchainPayoutPicker({
           }}
         >
           {looksLikeBitcoinAddress ? t("claim.sendTo", { amount: payoutSats.toLocaleString(), destination: `${trimmed.slice(0, 10)}…${trimmed.slice(-6)}` }) : t("claim.pasteBitcoin")}
-        </button>
-        <button
-          onClick={onBack}
-          style={{
-            width: "100%", padding: "10px 16px", borderRadius: T.rs,
-            background: T.surface, border: `1px solid ${T.border}`,
-            color: T.muted, fontFamily: T.mono, fontSize: 11, fontWeight: 700,
-            cursor: "pointer",
-          }}
-        >
-          {t("common.back")}
         </button>
       </div>
     </div>

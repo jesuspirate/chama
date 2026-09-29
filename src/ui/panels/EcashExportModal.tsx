@@ -1,3 +1,4 @@
+import { CardBack } from "../components/CardBack.js";
 import { PaymentCard, PaymentButton } from "../components/PaymentCard.js";
 // ══════════════════════════════════════════════════════════════════════════
 // Chama — EcashExportModal (v2.4, #56 "withdraw as ecash, no LN fees")
@@ -38,7 +39,7 @@ export function EcashExportModal({
   onExported,
   onConfirmCleared,
   closeAfterConfirm,
-  onClose,
+  onClose, onBack,
   preset,
 }: {
   /** Full local balance to export, in msats. */
@@ -58,6 +59,7 @@ export function EcashExportModal({
   /** Override the normal dismiss callback after a successful confirmation. */
   closeAfterConfirm?: () => void;
   onClose: () => void;
+  onBack?: () => void;
   /** v3.4.0 C13 — show an EXISTING bearer note (a stranded claim stash
    *  entry) instead of spending balance into a fresh one. The modal
    *  opens straight on the ready phase with QR + copy; the two-tap
@@ -169,6 +171,7 @@ export function EcashExportModal({
               {phase !== "ready" && <BitcoinAmount sats={sats} size={22} gap={6} glyphScale={1.2} color={T.text} glyphColor={T.muted} />}
             </div>
           </div>
+          {onBack && <CardBack onClick={() => confirmClear ? setConfirmClear(false) : onBack()} disabled={clearing || phase === "generating"} />}
           {phase !== "generating" && (
             <button onClick={onClose} style={{
               background: "none", border: "none", color: T.muted,

@@ -1,3 +1,5 @@
+import { CardBack } from "./CardBack.js";
+import { useCardDraft, type CardDraft } from "../hooks/useCardDraft.js";
 // ══════════════════════════════════════════════════════════════════════════
 // Chama — DestinationPicker (v0.3.0 send-side affordance)
 // ══════════════════════════════════════════════════════════════════════════
@@ -67,6 +69,8 @@ export interface DestinationPickerResolveOpts {
 }
 
 export interface DestinationPickerProps {
+  draft?: CardDraft;
+  onBack?: () => void;
   /** Exact amount the consumer needs to receive. Passed into LNURL
    *  metadata validation and into the callback URL. */
   amountSats: number;
@@ -91,6 +95,7 @@ export interface DestinationPickerProps {
 }
 
 export function DestinationPicker({
+  draft, onBack,
   amountSats,
   initialAddress = "",
   savedDestinations,
@@ -102,10 +107,10 @@ export function DestinationPicker({
   topSlot,
 }: DestinationPickerProps) {
   const { t } = useT();
-  const [typed, setTyped] = useState(initialAddress);
-  const [bolt11, setBolt11] = useState("");
-  const [showAdvanced, setShowAdvanced] = useState(false);
-  const [rememberNwc, setRememberNwc] = useState(true);
+  const [typed, setTyped] = useCardDraft<string>(draft, "lightning-typed", initialAddress);
+  const [bolt11, setBolt11] = useCardDraft<string>(draft, "lightning-bolt11", "");
+  const [showAdvanced, setShowAdvanced] = useCardDraft<boolean>(draft, "lightning-showAdvanced", false);
+  const [rememberNwc, setRememberNwc] = useCardDraft<boolean>(draft, "lightning-rememberNwc", true);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [scannerOpen, setScannerOpen] = useState(false);
@@ -325,6 +330,7 @@ export function DestinationPicker({
           <div style={{ fontSize: 14, fontWeight: 700, color: T.text, fontFamily: T.sans }}>
             {title}
           </div>
+          {onBack && <CardBack onClick={onBack} disabled={busy} />}
           <button onClick={onCancel} style={{
             background: "none", border: "none", color: T.muted,
             fontFamily: T.mono, fontSize: 18, cursor: "pointer", padding: 0, lineHeight: 1,

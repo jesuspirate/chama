@@ -1,3 +1,4 @@
+import { CardBack } from "../components/CardBack.js";
 import { FundingModalShell, FundingNote } from "../components/FundingModalShell.js";
 import { fundingPremiumMsats } from "../../payments/funding-premium.js";
 import { errorText } from "../../payments/error-text.js";
@@ -207,6 +208,7 @@ export function AtomicFundingModal({
   // the total the payer will actually see in their wallet.
   const insuranceSats = Math.floor(Math.max(0, premiumMsats) / 1000);
   const totalSats = amountSats + insuranceSats;
+  const [showFundingChoices, setShowFundingChoices] = useState(false);
   const [request, setRequest] = useState<{ rail: "lightning" | "onchain"; data: string; value: string; sats: number; expiresAt?: number; fee?: number; finality?: number; gateway?: FundingGatewayInfo } | null>(null);
   const [initialRail, setInitialRail] = useState<PaymentRail>("lightning");
   const [paymentDetected, setPaymentDetected] = useState(false);
@@ -565,6 +567,7 @@ export function AtomicFundingModal({
     : !isSimModeOn() && amountSats < MIN_REAL_LIGHTNING_FUNDING_SATS ? minimumLightningFundingMessage() : undefined;
   const railsVisible = !paymentDetected && !["mint-confirming", "mint-confirming-slow", "payment-confirmed", "locking", "locked", "mint-timeout", "receive-rejected", "paying-with-nwc", "requesting-fedi-ecash", "fedi-ecash-created"].includes(phase.kind);
   const chooseRail = (rail: PaymentRail) => {
+    setShowFundingChoices(false);
     if (gatewayChecking) return;
     if (request || ["creating-invoice", "creating-invoice-slow", "creating-onchain-address"].includes(phase.kind)) {
       if (rail !== (request?.rail ?? fundingMethod)) setSwitchRequested(rail);
@@ -602,6 +605,7 @@ export function AtomicFundingModal({
           <div><button type="button" onClick={retryLightning} style={{ background: "none", border: 0, color: T.muted, textDecoration: "underline", minHeight: 44 }}>{t("fund.tryAgain")}</button></div>
         </FundingNote>}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
+          {!showFundingChoices && <CardBack disabled={!railsVisible} onClick={() => mpesaOpen ? setMpesaOpen(false) : setShowFundingChoices(true)} />}
           <div>
             <div style={{ fontSize: 9, color: T.muted, fontFamily: T.mono, letterSpacing: 1, marginBottom: 4 }}>
               {ctaLabel.toUpperCase()}
@@ -621,6 +625,8 @@ export function AtomicFundingModal({
           }}>×</button>
         </div>
 
+        {showFundingChoices && railsVisible && <PaymentButton tier="quiet" onClick={() => setShowFundingChoices(false)}>{request ? "Show payment request" : "Continue"}</PaymentButton>}
+        <div style={{ display: showFundingChoices && railsVisible ? "none" : undefined }}>
         {(phase.kind === "choose-method" || invoiceFailed) && hasBalance && <div style={{ marginBottom: 16 }}>
           <p>{t(premiumMsats > 0 ? "fund.useBalanceWithInsurance" : "fund.useBalance", { amount: totalSats.toLocaleString(), trade: amountSats.toLocaleString(), insurance: insuranceSats.toLocaleString(), balance: Math.floor(spendableMsats / 1000).toLocaleString() })}</p>
           <PaymentButton tier="primary" onClick={() => { setPhase({ kind: "locking" }); setFundingMethod("balance"); }}>{t("fund.lockBalance")}</PaymentButton>
@@ -819,6 +825,7 @@ export function AtomicFundingModal({
             </div>
           </div>
         )}
+        </div>
     </FundingModalShell>
   );
 }
