@@ -164,7 +164,7 @@ const textLinkButtonStyle: React.CSSProperties = { background: "none", border: "
 export function TradeDetail({
   state, pubkey, homeCommunity, bootProbeFailed, receiveUnavailable, fundingInProgress,
   claimBlockedReason, amountDisplayMode = "sats", onAmountDisplayModeChange, kind0Enabled = false, profileNames,
-  disableNwc = false, forceClaimMethodChooser = false, onBack, onVote, onClaim, onJoin, onLock, onLockDirectNwc, onClaimDirectNwc, onConfirmPayout,
+  disableNwc = false, forceClaimMethodChooser = false, onBack, onVote, onClaim, onJoin, onLock, onLockDirectNwc, onReclaimRejectedLock, onClaimDirectNwc, onConfirmPayout,
   onSendChat, preferredRelayConnected = false, onReleasePeriod, onOpenSettings, onOpenNwcSettings,
   onPrewarmFunding, onRebroadcast, onForget, onPurchase, onCancelDraftOrder, stockLeft, isOversoldOrder = false,
   onRateCounterparty, myGivenRatings, fetchRatingSummary, fetchCommunityBonds, knownTrades, onStartNextTranche, onchainFundingPlan, onPrepareOnchainFunding, onCheckOnchainFunding, onRefundOnchainEscrow, onOnchainRefundAvailable, onPublishOnchainLock, onCheckOnchainSettlement, onOpenExplorerSettings, onchainObservation, onRequestStalledPayout, onPrepareOnchainSettlement, onSignOnchainSettlement, onFinalizeOnchainSettlement, onScanMyOnchainPayouts, onSweepOnchainPayout,
@@ -261,6 +261,7 @@ export function TradeDetail({
     role: Role,
     opts?: { selectedItems?: SelectedMenuItem[]; amountMsats?: number; orderFinalized?: boolean },
   ) => void | Promise<void>;
+  onReclaimRejectedLock?: (id: string) => Promise<void>;
   onLock: (opts?: {
     savedHandleId?: string;
     selectedItems?: SelectedMenuItem[];
@@ -1593,6 +1594,9 @@ export function TradeDetail({
 
   return (
     <div className="trade-detail-shell">
+      {state.rejectedLockRecovery?.pubkey === pubkey && !state.lock.notesHash && onReclaimRejectedLock &&
+        <RejectedLockRefund amountMsats={state.rejectedLockRecovery.amountMsats} onReclaim={() => onReclaimRejectedLock(state.id)} />}
+
       <div className="trade-live-head" style={{
         display: "grid",
         gridTemplateColumns: "42px minmax(0,1fr) auto",
@@ -6116,4 +6120,18 @@ function menuMetaLine(item: {
   if (item.aprBps) parts.push(t("trade.aprLabel", { rate: (item.aprBps / 100).toLocaleString(undefined, { maximumFractionDigits: 2 }) }));
   if (item.trustTier) parts.push(t("trade.tierLabel", { tier: item.trustTier }));
   return parts.length > 0 ? parts.join(" · ") : null;
+}
+
+export function RejectedLockRefund({amountMsats, onReclaim}: {amountMsats: number; onReclaim: () => Promise<void>}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const sats = Math.floor(amountMsats / 1000);
+  return <div style={{padding: 14, marginBottom: 12, borderRadius: T.rs, border: `1px solid ${T.amber}`}}>
+    <p>This lock didn't reach the trade — the buyer's seat had lapsed. Take your {sats} sats back.</p>
+    <button disabled={busy} onClick={() => {
+      setBusy(true); setError(null);
+      void onReclaim().catch(e => setError(e instanceof Error ? e.message : String(e))).finally(() => setBusy(false));
+    }}>{busy ? "Taking your sats back…" : `Take your ${sats} sats back`}</button>
+    {error && <p role="alert">{error}</p>}
+  </div>;
 }

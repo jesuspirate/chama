@@ -21,7 +21,8 @@ export function isExpiredUnfundedListing(
   nowSec: number = Math.floor(Date.now() / 1000),
 ): boolean {
   return (
-    state.status === EscrowStatus.CREATED
+    !state.rejectedLockRecovery
+    && state.status === EscrowStatus.CREATED
     && typeof state.expiresAt === "number"
     && state.expiresAt > 0
     && nowSec > state.expiresAt

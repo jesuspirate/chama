@@ -17,7 +17,8 @@ export function wakeNotification(state: EscrowState, previous: EscrowState | nul
   if (!reason) return null;
   return {
     escrowId: state.id, title: 'Your trade needs you',
-    body: ({ claim: 'Claim your sats', dispute: 'A dispute needs your reply', vote: 'Confirm the trade',
+    body: ({ 'funding-refund': 'Take your funding back',
+      claim: 'Claim your sats', dispute: 'A dispute needs your reply', vote: 'Confirm the trade',
       'arbiter-key': 'Open the trade to publish your escrow key', waiting: 'A buyer is waiting for you', onchain: 'Open the trade' })[reason],
     tag: `${state.id}:wake:${reason}:${state.eventChain.at(-1)?.raw.id}`,
   };

@@ -506,7 +506,7 @@ function isNotesDeadError(e: unknown): boolean {
 export async function recoverPendingNativeLock(
   entry: PendingNativeLock,
   deps: NativeLockRecoveryDeps,
-  opts: { ignoreAttemptCap?: boolean } = {},
+  opts: { ignoreAttemptCap?: boolean; reclaimRejected?: boolean } = {},
 ): Promise<NativeLockRecoveryOutcome> {
   const now = deps.now?.() ?? Date.now();
 
@@ -585,6 +585,18 @@ export async function recoverPendingNativeLock(
       return reabsorb(entry, deps, state);
     }
 
+    // A positively refused signed LOCK is separate from an incomplete read.
+    // Keep it for the explicit room action; automatic drain must not take it.
+    if (state.rejectedLocks?.length) {
+      const ourHash = await deps.hashNotes(entry.oobNotes);
+      const refused = state.rejectedLocks.some(row => row.code === "ORDER_NOT_FINALIZED"
+        && row.event.payload.notesHash === ourHash && !row.event.payload.onchain);
+      if (refused && !state.claim.claimedAt && state.provenance !== "summary") {
+        if (!opts.reclaimRejected) return "kept";
+        return reabsorb(entry, deps, state, true);
+      }
+    }
+
     // No LOCK in the fetched chain (CREATED / CANCELLED / EXPIRED).
     if (entry.stage === "spent") {
       // The publish never even started — provably unpublished.
@@ -606,6 +618,7 @@ async function reabsorb(
   entry: PendingNativeLock,
   deps: NativeLockRecoveryDeps,
   state: EscrowState,
+  requireConfirmedCredit = false,
 ): Promise<NativeLockRecoveryOutcome> {
   // Bump attempts BEFORE the try so attempts that crash mid-redeem count.
   // Identity-guarded: never mutate a successor entry (different notes).
@@ -630,7 +643,9 @@ async function reabsorb(
     try {
       deps.recordReabsorbedResidue?.({ escrowId: entry.escrowId, amountMsats: entry.amountMsats });
     } catch { /* best-effort breadcrumb — never block recovery */ }
-    if (tradeStillLockable(state, now)) {
+    if (requireConfirmedCredit) {
+      clearPendingNativeLockMatching(entry.escrowId, entry.oobNotes!);
+    } else if (tradeStillLockable(state, now)) {
       downgradeReabsorbedToIntent(entry, now);
       console.info(
         `[chama] native-lock recovery: re-absorbed ${entry.amountMsats / 1000} sats for ${entry.escrowId} ` +
@@ -645,7 +660,7 @@ async function reabsorb(
     }
     return "reabsorbed";
   } catch (e) {
-    if (isNotesDeadError(e)) {
+    if (isNotesDeadError(e) && !requireConfirmedCredit) {
       // No LOCK of ours exists (checked above) and the mint reports the
       // notes consumed ⇒ our own auto-refund / prior re-absorb landed.
       clearPendingNativeLockMatching(entry.escrowId, entry.oobNotes!);

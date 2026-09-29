@@ -207,7 +207,8 @@ function AttentionCard({
   const { t } = useT();
   const reason = needsYouReasonFor(trade, pubkey, undefined, undefined, observation);
   const onchain = onchainAttention(trade, pubkey, observation);
-  const owed = onchain?.text ?? (reason === "claim" ? t("me.owedClaim")
+  const owed = onchain?.text ?? (reason === "funding-refund" ? `Take your ${Math.floor((trade.rejectedLockRecovery?.amountMsats ?? 0) / 1000)} sats back`
+    : reason === "claim" ? t("me.owedClaim")
     : reason === "dispute" ? t("me.owedDispute")
     : reason === "vote" ? t("me.owedVote")
     : reason === "arbiter-key" ? t("onchain.publishMyKey")

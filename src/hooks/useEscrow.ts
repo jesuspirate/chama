@@ -1,3 +1,4 @@
+import { rejectedLockRecovery } from "../fedimint/rejected-lock-recovery.js";
 import { assertOnchainFundingWindow, fundingInvoiceSeconds, assertFundingInvoiceWithinSeat } from "../payments/seat-funding.js";
 import { recordPaidLockRecovery, assertPaidLockRecoveryWritable } from "../payments/paid-lock-recovery.js";
 import { isLateOnchainDeposit, preLockDeadline, JOIN_HOLD_LOCK_GRACE_SECONDS } from "../escrow-engine/types.js";
@@ -1107,6 +1108,7 @@ export interface UseEscrowActions {
     meta?: ChamaOperationMeta,
     includeInvite?: boolean,
   ) => Promise<string>;
+  reclaimRejectedLock: (escrowId: string) => Promise<void>;
   redeemEcash: (oobNotes: string, meta?: ChamaOperationMeta) => Promise<void>;
   /** 6.0.2 liveness probe. Ask the federation whether a bearer note is live
    *  by TAKING it: `recovered` puts the sats in this balance, `dead` is the
@@ -1460,6 +1462,8 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     // loaded at connect with the reliable pubkey, so this works even before
     // state.pubkey re-renders. Loading it by ID un-forgets it (see loadEscrow).
     if (forgottenIdsRef.current.has(escrowId)) return;
+    escrowState.rejectedLockRecovery = rejectedLockRecovery(escrowState,
+      getPendingNativeLock(escrowId), stateRef.current?.pubkey);
     // Durable trade-history index: remember every trade the user is a party to
     // from this central chokepoint, so My Trades survives relay eviction / a
     // chain that can't rehydrate (loss-proof history). No-op for non-parties;
@@ -7025,6 +7029,21 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       const bridge = requireBridge();
       await bridge.redeemEcash(oobNotes, meta);
       refreshBalanceRef.current?.().catch(() => {});
+    },
+    reclaimRejectedLock: async (id: string) => {
+      const bridge = requireBridge();
+      const client = clientRef.current!;
+      const verified = await client.loadEscrow(id);
+      const owner = await client.getPubkey();
+      if (!verified || !rejectedLockRecovery(verified, getPendingNativeLock(id), owner)) {
+        throw new Error("Chama cannot yet verify this funding refund. The saved sats have been kept.");
+      }
+      const outcome = await bridge.settlePendingNativeLock(id, {ignoreAttemptCap: true, reclaimRejected: true});
+      if (outcome !== "reabsorbed") {
+        throw new Error("Chama could not confirm the wallet credit. The recovery record has been kept; check Wallet and retry.");
+      }
+      await refreshBalanceRef.current?.();
+      updateEscrow(id, client.getState(id)!);
     },
     reabsorbBearerNotes: async (
       input: import("../fedimint/reabsorb-bearer-notes.js").ReabsorbInput,

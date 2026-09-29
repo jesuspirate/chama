@@ -506,7 +506,7 @@ export class EscrowFedimintBridge {
    */
   async settlePendingNativeLock(
     escrowId: string,
-    opts: { ignoreAttemptCap?: boolean } = { ignoreAttemptCap: true },
+    opts: { ignoreAttemptCap?: boolean; reclaimRejected?: boolean } = { ignoreAttemptCap: true },
   ): Promise<NativeLockRecoveryOutcome | "none"> {
     return withNativeLockFlow(escrowId, () =>
       this.settlePendingNativeLockInner(escrowId, opts),
@@ -517,7 +517,7 @@ export class EscrowFedimintBridge {
    *  (lockAndPublish's inner flow) or via the locked wrapper above. */
   private async settlePendingNativeLockInner(
     escrowId: string,
-    opts: { ignoreAttemptCap?: boolean },
+    opts: { ignoreAttemptCap?: boolean; reclaimRejected?: boolean },
   ): Promise<NativeLockRecoveryOutcome | "none"> {
     if (!this.nativeLockGuardOn()) return "none";
     const prior = getPendingNativeLock(escrowId);

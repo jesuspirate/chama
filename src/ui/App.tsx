@@ -4158,6 +4158,7 @@ export default function App() {
             />
           ) : (
           <TradeDetail
+            onReclaimRejectedLock={actions.reclaimRejectedLock}
             key={`${selected.id}:${(() => {
               const p = getEffectiveParticipantsAt(selected, Math.floor(Date.now() / 1000));
               return p.buyer === pubkey ? "buyer"

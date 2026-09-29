@@ -673,6 +673,7 @@ export function sumActiveBuyerSellerTradeMsats(inputs: {
 
 /** Higher = more urgent; drives both the ordering and the pill's tap target. */
 const NEEDS_YOU_RANK = {
+  "funding-refund": 5,
   onchain: 4,
   claim: 4,   // APPROVED and I'm the winner — sats ready to claim
   dispute: 3, // I'm the arbiter and a dispute is open, my ruling owed
@@ -693,6 +694,7 @@ function needsYouReason(
   settledClaimIds?: ReadonlySet<string>,
   observation?: OnchainObservation,
 ): keyof typeof NEEDS_YOU_RANK | null {
+  if (e.rejectedLockRecovery?.pubkey === userPubkey && !e.lock.notesHash) return 'funding-refund';
   if (observation?.payout || observation?.refundSpent) return null;
   if (onchainAttention(e, userPubkey, observation, nowSec)?.actionable) return 'onchain';
   if (e.status === EscrowStatus.CREATED && (preLockDeadline(e, nowSec)?.lapsed || observation?.deposit === 'seen')) return null;
@@ -954,7 +956,7 @@ export function needsYouReasonFor(
   nowSec: number = Math.floor(Date.now() / 1000),
   settledClaimIds?: ReadonlySet<string>,
   observation?: OnchainObservation,
-): "claim" | "dispute" | "vote" | "arbiter-key" | "waiting" | "onchain" | null {
+): "claim" | "dispute" | "vote" | "arbiter-key" | "waiting" | "onchain" | "funding-refund" | null {
   return needsYouReason(e, userPubkey, nowSec, settledClaimIds, observation);
 }
 
