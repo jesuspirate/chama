@@ -155,3 +155,12 @@ by the watcher. Force stop blocks receipt; reopen Chama before testing.
 received EOSE). Check both after deployment; HTTP health alone does not prove a
 valid relay subscription. `relay-subscription.tests.mjs` verifies the actual
 Nostr REQ filter shape against a local WebSocket relay with the pinned library.
+
+Creator watches register the public community tag before a buyer pair exists.
+The watcher routes parent listing CREATE **and JOIN** events carrying that
+community to registered watches. JOIN/CHAT also carry pair tags for seated peers;
+CHAT, LOCK and settlement do not generate community wakes. The receive-side
+replay decides whether the opaque wake needs a notification. These broad
+community wakes also reach saved-search subscribers, whose replay may be silent.
+`endpoint-registration.tests.mjs` verifies an actual signed JOIN delivered by a
+local WebSocket relay produces an opaque wake at a registered community endpoint.

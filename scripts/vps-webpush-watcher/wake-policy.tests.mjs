@@ -55,3 +55,11 @@ try {
   await assert.rejects(send(fcm), e => e.statusCode === 410);
 } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 console.log("Native wake transport: freshness, endpoint policy, FCM authentication/data-only delivery and dead-token handling passed");
+
+const {communityWakeSlugs} = await import('./wake-policy.mjs');
+assert.deepEqual(communityWakeSlugs({kind:38101,tags:[['community','us-blf']]}), ['us-blf']);
+assert.deepEqual(communityWakeSlugs({kind:38100,tags:[['community','us-blf']]}), ['us-blf']);
+for (const kind of [38102,38109,38114]) assert.deepEqual(communityWakeSlugs({kind,tags:[['community','us-blf']]}), []);
+assert.deepEqual(communityWakeSlugs({kind:38101,tags:[['community','us-blf'],['parent','listing']]}), []);
+assert.deepEqual(communityWakeSlugs({kind:38101,tags:[]}), []);
+console.log('PASS creator community wake on parent CREATE and JOIN, excluding children and chat/lock/settlement');

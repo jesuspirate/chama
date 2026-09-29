@@ -18,7 +18,7 @@
 //   also seed from EscrowState when a peer joins before we publish anything.
 
 import { deriveWatchTag, deriveCommunityWakeTag, registerWatchTags, ensureWebPushSubscription, disableWebPush } from "./web-push-client.js";
-import { TAGS, TRULY_TERMINAL_STATES, type EscrowState } from "../escrow-engine/types.js";
+import { EscrowEventKind, EscrowStatus, TAGS, TRULY_TERMINAL_STATES, type EscrowState } from "../escrow-engine/types.js";
 import type { Signer, UnsignedEvent } from "../escrow-engine/escrow-client.js";
 
 // Device-scoped opt-in for receiving background alerts, default OFF.
@@ -60,6 +60,13 @@ export async function disableBackgroundPush(): Promise<void> {
  */
 export function makeChainEventTagger(signer: Signer, register = registerWatchTags): (unsigned: UnsignedEvent) => Promise<string[][]> {
   return async (unsigned: UnsignedEvent): Promise<string[][]> => {
+    // A creator cannot know a buyer pair before the first JOIN. Register the
+    // listing's community at CREATE so a closed phone can receive that JOIN.
+    const community = unsigned.tags.find(t => t[0] === TAGS.COMMUNITY)?.[1];
+    if (backgroundPushEnabled() && unsigned.kind === EscrowEventKind.CREATE && community
+        && !unsigned.tags.some(t => t[0] === TAGS.PARENT && t[1])) {
+      try { await register([await deriveCommunityWakeTag(community)]); } catch { /* best-effort */ }
+    }
     const conv = signer.conversationKey;
     if (!conv) return []; // remote signer (bunker/extension): no local ECDH → skip
 
@@ -103,12 +110,16 @@ export async function registerCommunityWake(slug: string): Promise<void> {
 
 /** Derive watches from committed participants, including trades made on another device. */
 export async function openTradeWatchTags(signer: Signer, trades: Iterable<EscrowState>): Promise<string[]> {
-  if (!signer.conversationKey) return [];
   const me = await signer.getPublicKey();
   const tags = new Set<string>();
   for (const trade of trades) {
     const participants = Object.values(trade.participants);
     if (trade.provenance === "summary" || TRULY_TERMINAL_STATES.has(trade.status) || !participants.includes(me)) continue;
+    if (trade.status === EscrowStatus.CREATED && trade.initiator?.pubkey === me
+        && trade.community && !trade.parent && (!trade.expiresAt || trade.expiresAt > Date.now() / 1000)) {
+      tags.add(await deriveCommunityWakeTag(trade.community));
+    }
+    if (!signer.conversationKey) continue;
     for (const peer of new Set(participants)) {
       if (!peer || peer === me) continue;
       try { tags.add(await deriveWatchTag(await signer.conversationKey(peer), trade.id, 0)); }

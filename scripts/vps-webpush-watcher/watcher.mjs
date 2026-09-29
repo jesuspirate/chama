@@ -25,7 +25,7 @@ import { SimplePool, useWebSocketImplementation } from "nostr-tools/pool";
 import WebSocket from "ws";
 import { validSubscription, endpointKeyOf, createFcmSender } from "./delivery.mjs";
 import { subscribeWakeBand } from "./relay-subscription.mjs";
-import { freshWake } from "./wake-policy.mjs";
+import { freshWake, communityWakeSlugs } from "./wake-policy.mjs";
 
 useWebSocketImplementation(WebSocket);
 
@@ -202,17 +202,11 @@ function startNostr() {
       seenEventIds.add(evt.id);
       if (seenEventIds.size > 10_000) seenEventIds.delete(seenEventIds.values().next().value);
       const tags = evt.tags;
-      const isParentListingCreate = evt.kind === 38100
-        && !tags.some(t => t[0] === "parent" && t[1]);
-      for (let i = 0; i < tags.length; i++) {
-        const t = tags[i];
-        if (t[0] === "w" && t[1]) void wake(t[1], evt.created_at);
-        // S4.2: only a public parent CREATE is a new listing. JOIN/LOCK/chat/
-        // settlement events and child purchases also carry community context;
-        // waking saved-intent users for those would be noisy and misleading.
-        else if (isParentListingCreate && t[0] === "community" && t[1]) {
-          void wake(communityWakeTag(t[1]), evt.created_at);
-        }
+      for (const tag of tags) {
+        if (tag[0] === "w" && tag[1]) void wake(tag[1], evt.created_at);
+      }
+      for (const slug of communityWakeSlugs(evt)) {
+        void wake(communityWakeTag(slug), evt.created_at);
       }
     },
     oneose() { relayReady = true; /* live tail continues */ },

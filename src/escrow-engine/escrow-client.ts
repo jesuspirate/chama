@@ -1735,7 +1735,9 @@ export class EscrowClient {
         [TAGS.ESCROW_ID, escrowId],
         [TAGS.PREV_EVENT, lastEventId, "", "reply"],
         [TAGS.TYPE, "escrow:join"],
-        [TAGS.PARTICIPANT, pubkey],
+        ...[...new Set([pubkey, ...Object.values(state.participants)].filter((pk): pk is string => !!pk))]
+          .map(pk => [TAGS.PARTICIPANT, pk]),
+        ...(state.community ? [[TAGS.COMMUNITY, state.community]] : []),
         // Tier 2.1 discovery: once the buyer is known, so is the exact
         // deterministic bonded arbiter whose key the on-chain address needs.
         // Tagging that pubkey makes the pre-lock trade relay-discoverable to
@@ -2584,6 +2586,8 @@ export class EscrowClient {
       tags: [
         [TAGS.ESCROW_ID, escrowId],
         [TAGS.TYPE, "escrow:chat"],
+        ...[...new Set(Object.values(state.participants).filter((pk): pk is string => !!pk))]
+          .map(pk => [TAGS.PARTICIPANT, pk]),
       ],
       content,
     };

@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
+import {finalizeEvent} from 'nostr-tools/pure';
 import { mkdtemp, writeFile, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -11,17 +13,20 @@ import { WebSocketServer } from 'ws';
 // mocked; no phone, production credentials or external relay is contacted.
 const temp = await mkdtemp(path.join(tmpdir(), 'chama-endpoint-test-'));
 const store = path.join(temp, 'registrations.json');
+const wakes = path.join(temp, 'wakes.jsonl');
+const subscriptions = new Map();
 const relay = new WebSocketServer({ host: '127.0.0.1', port: 0 });
 await once(relay, 'listening');
 relay.on('connection', socket => socket.on('message', data => {
   const msg = JSON.parse(String(data));
-  if (msg[0] === 'REQ') socket.send(JSON.stringify(['EOSE', msg[1]]));
+  if (msg[0] === 'REQ') { subscriptions.set(socket,msg[1]); socket.send(JSON.stringify(['EOSE', msg[1]])); }
 }));
 const mock = pathToFileURL(path.join(temp, 'push.mjs')).href;
-await writeFile(path.join(temp, 'push.mjs'), `export default {
+await writeFile(path.join(temp, 'push.mjs'), `import {appendFile} from 'node:fs/promises'; export default {
   setVapidDetails() {},
   async sendNotification(subscription, payload) {
-    if (!JSON.parse(payload).test) throw Error('Expected test wake');
+    if (!JSON.parse(payload).test && !JSON.parse(payload).wake) throw Error('Expected opaque wake');
+    await appendFile(${JSON.stringify(wakes)}, payload + '\\n');
   }
 };`);
 await writeFile(path.join(temp, 'loader.mjs'), `export async function resolve(specifier, context, next) {
@@ -72,6 +77,24 @@ try {
   assert.equal(health.tags, 0);
   assert.equal(await post('test', testBody), 204, 'endpoint-only registration reaches mocked transport');
   assert.equal(await post('test', testBody), 429, 'delivery test cooldown is retained');
+  const communityTag = crypto.createHash('sha256').update('chama:community-wake:v1:us-blf').digest('base64url').slice(0,16);
+  assert.equal(await post('register', {endpoint,tags:[communityTag]}),204);
+  const before = (await readFile(wakes,'utf8')).trim().split('\n').length;
+  // Move to the next signed second: freshness excludes pre-registration events.
+  await new Promise(resolve=>setTimeout(resolve,1100));
+  const join = finalizeEvent({kind:38101,created_at:Math.floor(Date.now()/1000),tags:[['d','test-listing'],['community','us-blf']],content:'public test JOIN'},new Uint8Array(32).fill(44));
+  for (const [socket,id] of subscriptions) if (socket.readyState===1) socket.send(JSON.stringify(['EVENT',id,join]));
+  let wakeRows = [];
+  for (let i=0;i<20;i++) {
+    wakeRows = (await readFile(wakes,'utf8')).trim().split('\n').map(row=>JSON.parse(row));
+    if (wakeRows.length>before) break;
+    await new Promise(resolve=>setTimeout(resolve,100));
+  }
+  assert.equal(wakeRows.length,before+1,'actual watcher JOIN wakes registered creator community');
+  assert.equal(wakeRows.at(-1).wake,1);
+  assert.equal(wakeRows.at(-1).escrowId,undefined,'wake contains no trade details');
+  assert.equal(await post('unregister',{endpoint,tags:[communityTag]}),204);
+  assert.equal(await post('register',{endpoint,tags:[]}),204);
   const saved = JSON.parse(await readFile(store, 'utf8'));
   assert.deepEqual(saved.rows[0].tags, []);
   await stop();
@@ -94,7 +117,7 @@ try {
   await writeFile(store, JSON.stringify(saved));
   await start();
   assert.equal(await post('test', testBody), 404, 'expired endpoint-only records are not restored');
-  console.log('PASS endpoint-only HTTP registration, delivery, persistence, expiry, unregister and tag cap');
+  console.log('PASS actual signed JOIN community wake; endpoint-only registration, delivery, persistence, expiry, unregister and tag cap');
 } finally {
   await stop();
   for (const socket of relay.clients) socket.terminate();
