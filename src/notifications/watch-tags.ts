@@ -6,23 +6,22 @@
 //
 // Turns an escrow-chain publish into a wake for the sleeping counterparty, and
 // (symmetrically) registers this device to be woken when THEY act. It hangs off
-// exactly one seam: an injected `chainEventTagger` on the EscrowClient. When
-// background push is OFF (the default), the tagger returns [] immediately, so
-// the engine's signing path is byte-identical to today.
+// an injected `chainEventTagger` on the EscrowClient. Outgoing tags wake the
+// OTHER device regardless of this device's preference. The local preference
+// controls registration only. Committed state updates also seed watches.
 //
 // ⭐ The symmetry that keeps this tiny: the watch-tag for a pair is
 //   deriveWatchTag(conversationKey(me, them), escrowId) — and conversationKey is
 //   ECDH, so THEY compute the exact same value. One tag per pair per trade.
 //   That single value is BOTH what I attach (to wake them) AND what I register
 //   (to be woken by them). So the tagger can register as a side-effect and we
-//   need no separate participant enumeration off EscrowState.
+//   also seed from EscrowState when a peer joins before we publish anything.
 
 import { deriveWatchTag, deriveCommunityWakeTag, registerWatchTags, ensureWebPushSubscription, disableWebPush } from "./web-push-client.js";
 import { TAGS, TRULY_TERMINAL_STATES, type EscrowState } from "../escrow-engine/types.js";
 import type { Signer, UnsignedEvent } from "../escrow-engine/escrow-client.js";
 
-// Device-scoped opt-in. Default OFF: nothing about the trade path changes until
-// the user turns background push on (the P4 toggle calls enableBackgroundPush).
+// Device-scoped opt-in for receiving background alerts, default OFF.
 const BG_PUSH_KEY = "chama_bg_push_enabled";
 
 export function backgroundPushEnabled(): boolean {
@@ -31,7 +30,7 @@ export function backgroundPushEnabled(): boolean {
 
 function setEnabledFlag(on: boolean): void {
   try { if (on) localStorage.setItem(BG_PUSH_KEY, "1"); else localStorage.removeItem(BG_PUSH_KEY); }
-  catch { /* private-mode etc.; the tagger simply stays a no-op */ }
+  catch { /* private-mode etc.; receiving alerts stays off */ }
 }
 
 /** Turn background push on: flip the flag and warm the push subscription so the
@@ -59,9 +58,8 @@ export async function disableBackgroundPush(): Promise<void> {
  * tags for this device (so their later actions wake us), and returns them to
  * be appended as `["w", tag]` (so this action wakes them). All best-effort.
  */
-export function makeChainEventTagger(signer: Signer): (unsigned: UnsignedEvent) => Promise<string[][]> {
+export function makeChainEventTagger(signer: Signer, register = registerWatchTags): (unsigned: UnsignedEvent) => Promise<string[][]> {
   return async (unsigned: UnsignedEvent): Promise<string[][]> => {
-    if (!backgroundPushEnabled()) return [];
     const conv = signer.conversationKey;
     if (!conv) return []; // remote signer (bunker/extension): no local ECDH → skip
 
@@ -88,7 +86,7 @@ export function makeChainEventTagger(signer: Signer): (unsigned: UnsignedEvent) 
     }
     // Symmetric: register the same tags for THIS device so the peer's future
     // actions wake us. Fire-and-forget; a down watcher just means no wake.
-    if (toRegister.length) void registerWatchTags(toRegister);
+    if (backgroundPushEnabled() && toRegister.length) void register(toRegister).catch(() => {});
     return wTags;
   };
 }
@@ -120,8 +118,8 @@ export async function openTradeWatchTags(signer: Signer, trades: Iterable<Escrow
   return [...tags];
 }
 
-export async function seedOpenTradeWatches(signer: Signer, trades: Iterable<EscrowState>): Promise<void> {
+export async function seedOpenTradeWatches(signer: Signer, trades: Iterable<EscrowState>, register = registerWatchTags): Promise<void> {
   if (!backgroundPushEnabled()) return;
   const tags = await openTradeWatchTags(signer, trades);
-  if (backgroundPushEnabled()) await registerWatchTags(tags);
+  if (backgroundPushEnabled()) await register(tags);
 }
