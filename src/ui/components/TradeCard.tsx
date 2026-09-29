@@ -12,6 +12,7 @@ import { useState } from "react";
 import {
   type EscrowState,
   EscrowStatus,
+  EscrowEventKind,
   Role,
   getEffectiveParticipantAt,
   getEffectiveParticipantsAt,
@@ -224,7 +225,10 @@ export function TradeCard({
   const fiatLine = state.fiatAmount != null && state.fiatCurrency
     ? formatFiatAmount(state.fiatAmount, state.fiatCurrency)
     : null;
-  const menuItems = state.items ?? [];
+  const chosenAmount = chosenTradeAmountMsats(state);
+  const cardAmountMsats = chosenAmount ?? state.amountMsats;
+  // The listing menu remains in room details; a chosen order has one price.
+  const menuItems = chosenAmount === null ? state.items ?? [] : [];
   const hasMenu = menuItems.length > 0;
   const isStorefrontTile = !!sellerPubkey
     && !isAmber
@@ -236,7 +240,7 @@ export function TradeCard({
   const exchangeBrackets = state.category === "p2p-trade"
     ? exchangeBracketLabels(menuItems)
     : [];
-  const satsLabel = exchangeRange ? satsRangeLabel(exchangeRange) : fmtSats(state.amountMsats);
+  const satsLabel = exchangeRange ? satsRangeLabel(exchangeRange) : fmtSats(cardAmountMsats);
   const storefrontImages = isStorefrontTile
     ? [
         ...(state.imageUrls?.length ? state.imageUrls : state.imageDataUrl ? [state.imageDataUrl] : []),
@@ -265,7 +269,7 @@ export function TradeCard({
       : null);
   const estimatedFiatPrimary = (quoteViewerFiat || !fiatPrimary) && estimatedCurrency
     ? estimatedFiatPrimaryLabel({
-        amountMsats: state.amountMsats,
+        amountMsats: cardAmountMsats,
         currency: estimatedCurrency,
         exchangeRange,
         menuItems,
@@ -634,7 +638,7 @@ export function TradeCard({
               ) : exchangeRange ? (
                 <BitcoinAmount label={satsRangeLabel(exchangeRange)} size={24} />
               ) : (
-                <BitcoinAmount msats={state.amountMsats} size={24} />
+                <BitcoinAmount msats={cardAmountMsats} size={24} />
               )}
             </span>
             {secondaryLine && (
@@ -924,6 +928,15 @@ function estimatedFiatRangeLabel({
   const minLabel = formatFiatAmount(min, currency);
   const maxLabel = formatFiatAmount(max, currency);
   return minLabel === maxLabel ? minLabel : `${minLabel}-${maxLabel.replace(`${currency} `, "")}`;
+}
+
+/** The reducer's LOCK amount wins, otherwise use its finalized JOIN order. */
+export function chosenTradeAmountMsats(state: EscrowState): number | null {
+  if (state.eventChain.some(event => event.kind === EscrowEventKind.LOCK)) return state.amountMsats;
+  const role = state.category === "lending" ? Role.SELLER : Role.BUYER;
+  const order = state.joinHolds?.[role];
+  if (order?.orderFinalizedAt && order.amountMsats && order.amountMsats > 0) return order.amountMsats;
+  return null;
 }
 
 function exchangeBracketRange(items: NonNullable<EscrowState["items"]>): { minMsats: number; maxMsats: number } | null {
