@@ -212,6 +212,7 @@ import { retireListing } from "../escrow-engine/listing-renewal-ledger.js";
 import { trancheGate, tranchesForPlan, buildNextTrancheParams } from "../escrow-engine/tranche.js";
 import { MAX_SLICE_EXPOSURE_MSATS } from "../escrow-engine/slice-policy.js";
 import { TRADE_SLICING_ENABLED } from "../escrow-engine/experimental-escrow-features.js";
+import { publishDeliveredClaim } from "../payments/delivered-claim.js";
 import { defaultCreditObserver, recordClaimCredit } from "../payments/claim-credit-ledger.js";
 import {
   canEditListing,
@@ -5334,6 +5335,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       return;
     }
     const completeIfClaimed = async () => {
+      await publishDeliveredClaim(client, escrowId);
       const st0 = client.getState(escrowId);
       if (st0 && st0.status === EscrowStatus.CLAIMED) {
         try { await client.complete(escrowId); } catch (e) {
@@ -5439,7 +5441,8 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       if (hasFediInternalEcash()) {
         args.onPhase({ kind: "claiming" });
         try {
-          await bridge.claimAndReceiveFedi(escrowId, { clearPendingOnRedeem: true });
+          await bridge.claimAndReceiveFedi(escrowId, { clearPendingOnRedeem: true, deferClaim: true });
+          await publishDeliveredClaim(client, escrowId);
           await client.complete(escrowId);
           refreshBalanceRef.current?.().catch(() => {});
           args.onPhase({ kind: "done" });
@@ -5463,13 +5466,9 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       const { runClaimAndPayout } = await import("../payments/claim-and-payout.js");
       const onchainAddress = args.onchainAddress?.trim();
       const payoutKind = args.payoutKind ?? (onchainAddress ? "onchain" : "lightning");
-      // Browser Lightning and onchain claims are deliberately two-stage. The field-proven
-      // sequence is: persist the exact reconstructed bearer note, publish
-      // CLAIM, reabsorb that exact note with a strict balance bracket, then
-      // dispatch the selected outbound payment. Never return to the older
-      // one-step claimAndRedeem path that could consume the note without
-      // proving local credit. Onchain shares the proven custody boundary; only
-      // its already-tested federation peg-out runs after that proof.
+      // Persist the exact reconstructed bearer note, prove local credit, then
+      // dispatch the payout. CLAIM belongs after delivery, never QR preview
+      // or the intermediate wallet credit.
 
       const persistDirectClaimExport = async (id: string) => {
         const existing = assertEcashExportWritable(id);
@@ -5500,8 +5499,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
           ) {
             throw new Error("Chama couldn't verify the ecash recovery copy. No claim was published.");
           }
-        });
-        markClaimEcashExportPublished(id);
+        }, { deferClaim: true });
         return {
           ...getEcashExport()!,
           notes: exported.notes,
@@ -5540,7 +5538,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
                 ? "This claim note belongs to a different federation. Switch to that federation and retry; the recovery copy is still saved."
                 : "Chama could not determine whether the claim note reached this wallet. The recovery copy is still saved and no Lightning payout was attempted.",
         );
-        error.claimPublished = true;
+        error.claimPrepared = true;
         if (result.outcome === "consumed-uncredited") {
           recordConsumedUncreditedNote({
             oobNotes: pending.notes,
@@ -5583,7 +5581,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
           try {
             return !isNativeBridgeModeOn() && (payoutKind === "lightning" || payoutKind === "onchain")
               ? await claimIntoBrowserWalletSafely(id)
-              : await bridge.claimAndRedeem(id, { clearPendingOnRedeem: false });
+              : await bridge.claimAndRedeem(id, { clearPendingOnRedeem: false, deferClaim: true });
           } catch (e: any) {
             const msg = errorText(e);
             if (isStaleClaim(msg)) {
@@ -5600,6 +5598,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
             }
           : undefined,
         completeClaim: async (id: string) => {
+          await publishDeliveredClaim(client, id);
           await client.complete(id);
         },
         clearPendingRedemption,
@@ -5736,10 +5735,11 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     if (!hasClaimExport) {
       throw new Error("This claim's pending ecash recovery copy was not found. Nothing was cleared.");
     }
-    if (pending.claimPublished === false) {
-      throw new Error("This claim has not reached the relays yet. Reopen the trade and tap Claim to repair it before confirming import.");
-    }
     const client = requireClient();
+    // Confirmation is the delivery boundary. Keep the recovery record if
+    // publication fails so a retry can finish without creating another note.
+    await publishDeliveredClaim(client, escrowId);
+    markClaimEcashExportPublished(escrowId);
     try {
       await client.complete(escrowId);
       const st = client.getState(escrowId);

@@ -836,6 +836,8 @@ export class EscrowFedimintBridge {
     escrowId: string,
     opts: {
       clearPendingOnRedeem?: boolean;
+      /** Payout coordinator publishes CLAIM only after external delivery. */
+      deferClaim?: boolean;
       redeemWith?: "browser-sdk" | "fedi-internal" | "external-ecash";
       /** Persist the reconstructed bearer note before CLAIM is published.
        *  Required for external-ecash; the callback must throw unless the
@@ -1014,20 +1016,9 @@ export class EscrowFedimintBridge {
       });
     }
 
-    // v0.1.63: Publish CLAIM before redeem
-    // ──────────────────────────────────────
-    // The chain-correctness move. Reconstructing the notes + matching the
-    // hash is already cryptographic proof that the winner has the ecash.
-    // Publish CLAIM on the strength of that proof so the Nostr event chain
-    // reflects reality *now*, even if the federation redeem is slow.
-    //
-    // Order is:
-    //   1. reconstruct + verify (deterministic, local, fast)
-    //   2. publish CLAIM       (chain is now correct)
-    //   3. redeemWithRetry     (settle the wallet)
-    //
-    // If step 3 hard-fails, we throw a marked error so the hook can
-    // route to the "watching" UI state instead of red-toasting.
+    // Reconstruction verifies ownership without moving funds. Payout callers
+    // defer CLAIM until delivery; direct wallet callers retain their existing
+    // claim/redeem contract.
 
     // C15 (v3.4.0): try EVERY candidate envelope before giving up. Each
     // attempt is local (Shamir combine + hash check + parse) — no
@@ -1085,9 +1076,8 @@ export class EscrowFedimintBridge {
     // Browser-safe claim payout: the reconstructed OOB note already IS the
     // winner's sats. Do not consume it in a browser mint reissue merely to
     // mint another OOB note immediately afterwards. Persist the exact bearer
-    // note first, then publish CLAIM. A crash before publish leaves a harmless
-    // resumable export; a crash after publish still leaves the money-bearing
-    // string recoverable from the export journal.
+    // note first. With deferClaim, return the preview without publishing:
+    // import confirmation owns CLAIM, and closing preserves the exact note.
     if (opts.redeemWith === "external-ecash") {
       if (!opts.stashExternalEcash) {
         throw new Error("Direct ecash claim has no durable recovery journal. No claim was published.");
@@ -1109,7 +1099,7 @@ export class EscrowFedimintBridge {
         amountMsats: state.amountMsats,
         notesHash,
         stash: opts.stashExternalEcash,
-        publish: () => existingClaim
+        publish: () => opts.deferClaim || existingClaim
           ? Promise.resolve(state)
           : this.escrow.claim(escrowId, notesHash),
       });
@@ -1228,7 +1218,7 @@ export class EscrowFedimintBridge {
       existingClaim: Boolean(existingClaim),
       notesHashPrefix: notesHash.slice(0, 16),
     });
-    const stateAfterClaim = existingClaim
+    const stateAfterClaim = opts.deferClaim || existingClaim
       ? state
       : await this.escrow.claim(escrowId, notesHash);
 
@@ -1318,7 +1308,8 @@ export class EscrowFedimintBridge {
         "Claim published to relays, but ecash redeem failed: " +
           (redeemErr instanceof Error ? redeemErr.message : String(redeemErr))
       );
-      (wrapped as any).claimPublished = true;
+      (wrapped as any).claimPublished = !opts.deferClaim;
+      (wrapped as any).claimPrepared = true;
       if (
         opts.redeemWith === "fedi-internal" ||
         redeemCode === "MINT_REISSUE_FAILED" ||
@@ -1343,7 +1334,7 @@ export class EscrowFedimintBridge {
 
   async claimAndReceiveFedi(
     escrowId: string,
-    opts: { clearPendingOnRedeem?: boolean } = {},
+    opts: { clearPendingOnRedeem?: boolean; deferClaim?: boolean } = {},
   ): Promise<EscrowState> {
     return this.claimAndRedeem(escrowId, {
       ...opts,
@@ -1358,9 +1349,11 @@ export class EscrowFedimintBridge {
       amountMsats: number;
       notesHash: string;
     }) => void,
+    opts: { deferClaim?: boolean } = {},
   ): Promise<{ state: EscrowState; notes: string; amountMsats: number; notesHash: string }> {
     let exported: { notes: string; amountMsats: number; notesHash: string } | null = null;
     const state = await this.claimAndRedeem(escrowId, {
+      deferClaim: opts.deferClaim,
       redeemWith: "external-ecash",
       stashExternalEcash: (input) => {
         stash(input);

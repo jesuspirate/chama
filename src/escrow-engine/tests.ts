@@ -16851,7 +16851,7 @@ console.log("\n── RUN CLAIM AND PAYOUT ──");
       "Restart never reconstructs or spends again when a claim export is pending");
   }
 
-  // ── Crash in stash→publish seam: retry CLAIM before showing note ──
+  // ── Preview / restart: retain note without publishing CLAIM ──
   {
     let directClaims = 0;
     const terminal = await runClaimAndPayout({
@@ -16875,8 +16875,8 @@ console.log("\n── RUN CLAIM AND PAYOUT ──");
       addOrTouchLightningHandle: () => {},
       onPhase: () => {},
     });
-    assert(directClaims === 1 && terminal.kind === "ecash-ready",
-      "An unpublished recovery copy retries the direct CLAIM boundary before becoming ready");
+    assert(directClaims === 0 && terminal.kind === "ecash-ready",
+      "An unpublished recovery copy resumes without publishing CLAIM or minting");
   }
 
   // ── Sequencing: payInvoice never called before claim confirms ───────

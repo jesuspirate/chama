@@ -520,7 +520,7 @@ export async function runClaimAndPayout(
   if (opts.payoutKind === "ecash") {
     try {
       const pending = opts.prepareEcashExport?.() ?? null;
-      if (pending && pending.claimPublished !== false) {
+      if (pending) {
         emit({ kind: "ecash-ready", ...pending });
         return { kind: "ecash-ready", ...pending };
       }
@@ -786,7 +786,7 @@ export async function runClaimAndPayout(
     // but the wallet may ALREADY hold the credit from a previous attempt
     // whose confirm window expired before settlement — the cover check
     // below decides. Only a non-covering balance keeps this terminal.
-    if (e?.claimPublished && e?.settlementFailed) {
+    if ((e?.claimPublished || e?.claimPrepared) && e?.settlementFailed) {
       claimTrace("orchestrator-claim-settle-failed", {
         escrowId: opts.escrowId,
         errMsg: error.slice(0, 120),
@@ -794,7 +794,7 @@ export async function runClaimAndPayout(
       settlementFailedHard = true;
       settlementFailedError = error;
       // Fall through to the settlement verdict below (poll skipped).
-    } else if (e?.claimPublished) {
+    } else if (e?.claimPublished || e?.claimPrepared) {
       // CLAIM already hit relays, but redeem/balance settlement is still
       // uncertain. This is not a hard claim failure; continue into the
       // balance-confirming watchdog. If the balance lands, payout proceeds.

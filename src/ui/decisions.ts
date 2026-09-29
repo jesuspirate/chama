@@ -1529,8 +1529,10 @@ export function selectPayoutReattachTargets(inputs: {
 }): string[] {
   const targets: string[] = [];
   for (const e of inputs.escrows) {
-    if (e.status !== EscrowStatus.CLAIMED) continue;
-    if (latestUserClaimAtSec(e, inputs.userPubkey) === null) continue;
+    if (e.status !== EscrowStatus.CLAIMED && e.status !== EscrowStatus.APPROVED) continue;
+    if (e.status === EscrowStatus.CLAIMED) {
+      if (latestUserClaimAtSec(e, inputs.userPubkey) === null) continue;
+    } else if (!e.resolvedOutcome || payoutRecipientFor(e, e.resolvedOutcome)?.pubkey !== inputs.userPubkey) continue;
     if (!inputs.getPayoutRecord(e.id)) continue;
     targets.push(e.id);
   }

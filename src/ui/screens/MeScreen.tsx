@@ -329,12 +329,7 @@ export function MeScreen({
   // imported). Surfaced even when the balance reads 0, so the user can always
   // get back to the bearer note they minted.
   const pendingEcashExportRecord = getEcashExport();
-  // A claim note is saved before its CLAIM relay event. If that publish was
-  // interrupted, keep the bearer string protected but do not present it as a
-  // finished payout; reopening Claim repairs the event first.
-  const pendingEcashExport = pendingEcashExportRecord?.claimPublished === false
-    ? null
-    : pendingEcashExportRecord;
+  const pendingEcashExport = pendingEcashExportRecord;
   // v3.4.0 C13 — claims whose bearer notes automatic retry gave up on.
   // These sit in clearable localStorage while the chain reads COMPLETED;
   // without a loud surface, a data-clear or federation switch destroys

@@ -1,3 +1,4 @@
+import { getEcashExport } from "../../payments/ecash-exports.js";
 import { hasObservedOnchainDeposit } from "../../escrow-engine/types.js";
 import { tradeClock, tradeClockText } from '../trade-clock.js';
 import { FundingModalShell } from "../components/FundingModalShell.js";
@@ -629,6 +630,13 @@ export function LiveTradeSurface({
 
     if (state.escrowMode === "onchain" && (status === EscrowStatus.APPROVED || status === EscrowStatus.CLAIMED)) {
       return <Decision q="Finish the Bitcoin settlement" sub="Review and sign the agreed payout.">{onchainControls}</Decision>;
+    }
+    const pendingNote = getEcashExport();
+    if (iAmWinner && (status === EscrowStatus.APPROVED || status === EscrowStatus.CLAIMED)
+      && pendingNote?.source === "claim" && pendingNote.escrowId === state.id) {
+      return <Decision q="An ecash note is waiting — open Claim to show it again" sub="Confirm only after importing it into your wallet.">
+        <PrimaryButton disabled={busy} onClick={() => onClaim ? run(() => onClaim()) : onOpenFullView()} label={tr("lts.claim")} />
+      </Decision>;
     }
     if (status === EscrowStatus.APPROVED) {
       if (iAmWinner) {

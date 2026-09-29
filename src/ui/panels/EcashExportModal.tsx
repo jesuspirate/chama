@@ -77,7 +77,7 @@ export function EcashExportModal({
   // Resume a prior unconfirmed export if one is stashed (the balance may now
   // read 0, so this modal is the only way back to it).
   const rawStashed = preset ? null : getEcashExport();
-  const stashed = rawStashed?.claimPublished === false ? null : rawStashed;
+  const stashed = rawStashed;
   const [phase, setPhase] = useState<Phase>(preset || stashed ? "ready" : "intro");
   const [notes, setNotes] = useState<string>(preset?.notes ?? stashed?.notes ?? "");
   const [exportedMsats, setExportedMsats] = useState<number>(

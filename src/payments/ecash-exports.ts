@@ -42,7 +42,7 @@ export interface EcashExport {
   escrowId?: string;
   /** Claim exports are stashed before CLAIM publication. `false` means the
    *  bearer note is protected but must not yet be presented as a completed
-   *  payout; the next Claim attempt repairs the relay event first. */
+   *  payout. Import confirmation publishes CLAIM; previewing does not. */
   claimPublished?: boolean;
 }
 
