@@ -46,3 +46,24 @@ assert.doesNotMatch(chosenHtml, /60,000/);
 const openHtml = renderToStaticMarkup(<LangProvider><TradeCard state={ranged} pubkey="buyer" onSelect={() => {}} /></LangProvider>);
 assert.match(openHtml, /21-60,000/);
 console.log('PASS cards show the chosen JOIN or LOCK amount and retain unchosen listing ranges');
+
+const { finalizeEvent } = await import('nostr-tools/pure');
+const { hasVerifiedTradeCreate } = await import('../escrow-engine/trade-index.js');
+const { UnverifiedHistory } = await import('./components/UnverifiedHistory.js');
+const signedCreate = finalizeEvent({ kind: EscrowEventKind.CREATE, created_at: original,
+  content: '{}', tags: [['d', state.id]] }, new Uint8Array(32).fill(8));
+const verifiable = { ...state, provenance: 'replayed', eventChain: [
+  { kind: EscrowEventKind.CREATE, timestamp: original, raw: signedCreate },
+] } as unknown as EscrowState;
+assert.equal(hasVerifiedTradeCreate(verifiable), true);
+assert.equal(hasVerifiedTradeCreate(state), false, 'summary-only fossil is not a trade row');
+assert.equal(hasVerifiedTradeCreate({ ...verifiable, provenance: 'summary' }), false);
+assert.equal(hasVerifiedTradeCreate({ ...verifiable, id: 'another-trade' }), false, 'CREATE must belong to this trade');
+assert.equal(hasVerifiedTradeCreate({ ...verifiable, eventChain: [{ ...verifiable.eventChain[0], raw: JSON.parse(JSON.stringify({ ...signedCreate, sig: '0'.repeat(128) })) }] }), false, 'invalid signature stays unverified');
+const missingHtml = renderToStaticMarkup(<UnverifiedHistory ids={['sm_fossil']} onOpen={() => {}} />);
+assert.match(missingHtml, /Unverified history \(1\)/);
+assert.match(missingHtml, /This device has no signed record of this trade/);
+assert.match(missingHtml, /older than what relays keep/);
+assert.doesNotMatch(missingHtml, /<time|dateTime|sats|0\/3|COMPLETED|<details[^>]*open/);
+assert.deepEqual([state, verifiable].filter(hasVerifiedTradeCreate).map(trade => trade.id), [state.id], 'only verified rows enter counts');
+console.log('PASS signed CREATE gates trade rows; unverified history is collapsed and carries no date, amount or status');

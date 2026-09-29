@@ -19,6 +19,7 @@
 // Loss-proofing only goes FORWARD: this can't resurrect trades whose events
 // were already gone before the index existed. It stops the bleed from here.
 
+import { verifyEvent } from "nostr-tools/pure";
 import {
   getScopedStorageItem,
   setScopedStorageItem,
@@ -122,6 +123,14 @@ export function userRoleInTrade(state: EscrowState, userPubkey: string | null): 
   // (e.g. an open listing the user created).
   if (samePubkey(state.initiator?.pubkey, userPubkey)) return state.initiator.role;
   return null;
+}
+
+/** A cached summary cannot establish history, even if it remembers a date. */
+export function hasVerifiedTradeCreate(state: EscrowState): boolean {
+  if (state.provenance === "summary") return false;
+  const create = state.eventChain.find(event => event.kind === EscrowEventKind.CREATE)?.raw;
+  if (!create || create.kind !== EscrowEventKind.CREATE || !create.tags?.some(tag => tag[0] === "d" && tag[1] === state.id)) return false;
+  try { return verifyEvent(create); } catch { return false; }
 }
 
 /** The CREATE event owns the date; cached summaries can carry a refresh time. */

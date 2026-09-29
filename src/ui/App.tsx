@@ -1,3 +1,4 @@
+import { hasVerifiedTradeCreate } from "../escrow-engine/trade-index.js";
 import { browserWalletStorageError } from "../fedimint/browser-capabilities.js";
 import { useVisualViewport } from './useVisualViewport.js';
 import { cacheNativeWake } from '../notifications/native-push.js';
@@ -2451,7 +2452,7 @@ export default function App() {
     // reach them from Me and the shared link (openEscrow by id). Best-effort
     // discoverability, not secrecy — the events are on public relays.
     !(s.category === "chama" && s.chamaCircle?.unlisted) &&
-    shouldShowOnBrowse({ escrow: s, browseCategory: "all", nowSec: now, isSoldOut: listingSoldOut(s) })
+    hasVerifiedTradeCreate(s) && shouldShowOnBrowse({ escrow: s, browseCategory: "all", nowSec: now, isSoldOut: listingSoldOut(s) })
   );
   const visibleListings = allVisibleListings.filter(s =>
     shouldShowOnBrowse({ escrow: s, browseCategory, nowSec: now, isSoldOut: listingSoldOut(s) })

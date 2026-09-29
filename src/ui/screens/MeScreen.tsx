@@ -1,3 +1,5 @@
+import { hasVerifiedTradeCreate } from "../../escrow-engine/trade-index.js";
+import { UnverifiedHistory } from "../components/UnverifiedHistory.js";
 import { PayoutTransactionDetails } from "../components/PayoutTransactionDetails.js";
 import { MAINNET, SIGNET } from "../../bond-multisig/multisig.js";
 import type { OnchainObservation } from '../../escrow-engine/onchain-attention.js';
@@ -129,7 +131,7 @@ export function MeScreen({
   onKind0EnabledChange,
   themeMode,
   onThemeModeChange,
-  myTrades,
+  myTrades: discoveredTrades,
   hydratingTrades = false,
   allTrades,
   needsYouTrades,
@@ -288,6 +290,12 @@ export function MeScreen({
   stuckNativeLocks?: PendingNativeLock[];
 }) {
   const { t, lang } = useT();
+  const myTrades = useMemo(() => discoveredTrades.filter(hasVerifiedTradeCreate), [discoveredTrades]);
+  const unverifiedIds = useMemo(() => {
+    const verifiedIds = new Set(myTrades.map(trade => trade.id));
+    return [...new Set([...discoveredTrades.map(trade => trade.id), ...(archivedTrades ?? []).map(trade => trade.id)])]
+      .filter(id => !verifiedIds.has(id));
+  }, [discoveredTrades, myTrades, archivedTrades]);
   const npubShort = pubkey.slice(0, 8) + "…" + pubkey.slice(-4);
   const [localKind0On, setLocalKind0On] = useState<boolean>(() => readKind0Toggle(pubkey));
   const kind0On = kind0Enabled ?? localKind0On;
@@ -467,8 +475,8 @@ export function MeScreen({
   // (The fallback lacks App's zombie-claim suppression set — it exists only
   // for standalone/test callers; the app always passes needsYouTrades.)
   const rankedNeedsYou = useMemo(
-    () => needsYouTrades
-      ?? selectNeedsYouTrades({ escrows: allTrades ?? myTrades, userPubkey: pubkey, nowSec }),
+    () => (needsYouTrades
+      ?? selectNeedsYouTrades({ escrows: allTrades ?? myTrades, userPubkey: pubkey, nowSec })).filter(hasVerifiedTradeCreate),
     [needsYouTrades, allTrades, myTrades, pubkey, nowSec],
   );
   const tradeCounts = useMemo(
@@ -480,7 +488,7 @@ export function MeScreen({
     [myTrades, rankedNeedsYou, tradeFilter],
   );
   const latestTrade = useMemo(
-    () => latestParticipantTradePointer(myTrades, archivedTrades),
+    () => latestParticipantTradePointer(myTrades, []),
     [myTrades, archivedTrades],
   );
   const hasSellerDashboard = dashboard.sellerOpen.length > 0 || dashboard.sellerLive.length > 0;
@@ -1002,7 +1010,7 @@ export function MeScreen({
             onRefreshTrades={onRefreshTrades}
             onRateCounterparty={onRateCounterparty}
             myGivenRatings={myGivenRatings}
-            archivedTrades={archivedTrades}
+            unverifiedIds={unverifiedIds}
             onOpenArchivedTrade={onOpenArchivedTrade}
             amountDisplayMode={amountDisplayMode}
             quoteCurrency={quoteCurrency}
@@ -1192,7 +1200,7 @@ function MeTradeHistory({
   onRefreshTrades,
   onRateCounterparty,
   myGivenRatings,
-  archivedTrades,
+  unverifiedIds,
   onOpenArchivedTrade,
   amountDisplayMode,
   quoteCurrency,
@@ -1210,10 +1218,7 @@ function MeTradeHistory({
   onRefreshTrades?: () => Promise<number> | void;
   onRateCounterparty?: (tradeId: string, ratee: string, thumb: RatingThumb) => Promise<void>;
   myGivenRatings?: Array<{ tradeId: string; ratee: string; thumb: RatingThumb }>;
-  /** Durable-index trades NOT currently loaded (chain couldn't rehydrate this
-   *  session). Rendered as compact "earlier trades" rows so history never
-   *  silently shrinks; tapping rehydrates from the community relay. */
-  archivedTrades?: TradeIndexEntry[];
+  unverifiedIds?: string[];
   onOpenArchivedTrade?: (id: string) => void;
   /** The shell's sats/fiat toggle, so history answers it too. */
   amountDisplayMode?: AmountDisplayMode;
@@ -1395,107 +1400,11 @@ function MeTradeHistory({
         </div>
       )}
 
-      {/* Loss-proof history: trades remembered in the durable index that the
-          relays couldn't rebuild this session. Only under "All" (the full
-          history view); compact rows, tappable to attempt rehydration. */}
-      {activeFilter === "all" && (archivedTrades?.length ?? 0) > 0 && (
-        <div style={{ marginTop: trades.length > 0 ? 16 : 0 }}>
-          <div style={{
-            fontSize: 9, fontWeight: 700, color: T.muted, fontFamily: T.mono,
-            letterSpacing: 1, textTransform: "uppercase", marginBottom: 8,
-            display: "flex", alignItems: "center", gap: 8,
-          }}>
-            <span>{t("me.earlierTrades")}</span>
-            <span style={{ flex: 1, height: 1, background: T.border }} />
-            <span style={{ opacity: 0.7 }}>{t("me.fromHistory", { count: archivedTrades!.length })}</span>
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            {archivedTrades!.map((e) => (
-              <ArchivedTradeRow
-                key={e.id}
-                entry={e}
-                onOpen={() => (onOpenArchivedTrade ?? onOpenTrade)(e.id)}
-              />
-            ))}
-          </div>
-          <div style={{
-            marginTop: 8, fontSize: 9, color: T.muted, fontFamily: T.mono,
-            lineHeight: 1.5, opacity: 0.7,
-          }}>
-            {t("me.rememberedOnDevice")}
-          </div>
-        </div>
-      )}
+      <UnverifiedHistory ids={unverifiedIds ?? []} onOpen={onOpenArchivedTrade ?? onOpenTrade} />
+
     </section>
   );
 }
-
-/** Compact row for a durable-index trade the relays couldn't rebuild. Shows
- *  the anchors needed to audit it — date, amount, last-known status, id — and
- *  rehydrates the full chain on tap (openEscrow background-loads by id). */
-function ArchivedTradeRow({
-  entry,
-  onOpen,
-}: {
-  entry: TradeIndexEntry;
-  onOpen: () => void;
-}) {
-  const { t } = useT();
-  const when = entry.createdAt > 0
-    ? new Date(entry.createdAt * 1000).toLocaleString(undefined, {
-        month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit",
-      })
-    : "—";
-  // The compared values ("p2p-trade" etc.) are category ids — data, never
-  // translated; only the displayed labels go through the dictionary.
-  const cat = entry.category === "p2p-trade" ? t("me.categoryExchange")
-    : entry.category === "bill-pay" ? t("me.categoryBillPay")
-    : entry.category === "marketplace" ? t("me.categoryMarket")
-    : entry.category === "lending" ? t("me.categoryLending")
-    : entry.category;
-  const statusLabel = entry.lastStatus.charAt(0) + entry.lastStatus.slice(1).toLowerCase();
-  return (
-    <div
-      onClick={onOpen}
-      title={t("me.tapToReload")}
-      style={{
-        display: "flex", alignItems: "center", gap: 8, cursor: "pointer",
-        padding: "9px 11px", background: T.surface,
-        border: `1px solid ${T.border}`, borderRadius: T.rs,
-      }}
-    >
-      <div style={{ minWidth: 0, flex: 1 }}>
-        <div style={{
-          display: "flex", alignItems: "center", gap: 6, marginBottom: 3,
-        }}>
-          <span style={{ fontFamily: T.sans, fontSize: 12, color: T.text, fontWeight: 600 }}>
-            {cat}
-          </span>
-          <span style={{ fontFamily: T.mono, fontSize: 10, color: T.muted }}>
-            · {statusLabel}
-          </span>
-        </div>
-        {/* Date prominent (its own line, real weight) — the key audit anchor. */}
-        <div style={{
-          fontFamily: T.mono, fontSize: 12, color: T.text, fontWeight: 600, marginBottom: 2,
-        }}>
-          {when}
-        </div>
-        <div style={{
-          fontFamily: T.mono, fontSize: 9, color: T.muted,
-          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const,
-        }}>
-          {entry.id}
-        </div>
-      </div>
-      <div style={{ flexShrink: 0, textAlign: "right" as const }}>
-        <TradeAmount msats={entry.amountMsats} size={13} color={T.text} />
-      </div>
-      <span aria-hidden="true" style={{ flexShrink: 0, color: T.muted, opacity: 0.6, fontFamily: T.mono, fontSize: 12 }}>›</span>
-    </div>
-  );
-}
-
 
 type MeDashboardModel = {
   needsYou: EscrowState[];
