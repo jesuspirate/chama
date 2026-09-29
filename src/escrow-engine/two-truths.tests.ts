@@ -21,6 +21,7 @@ export const chain = evidence.events.map(e => {
   return parsed.event;
 });
 assert.equal(chain.length, 7);
+assert.equal(replayEventChain(sortEventChain(chain.filter(e => e.kind !== K.JOIN))).ok, false, 'missing JOIN is not positive evidence of a lapsed seat');
 const lock = chain.find(e => e.kind === K.LOCK)!;
 const chronological = [...chain].sort((a,b) => a.timestamp-b.timestamp);
 let state: EscrowState | null = null;

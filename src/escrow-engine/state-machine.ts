@@ -2027,7 +2027,11 @@ export function replayEventChain(events: ParsedEscrowEvent[]): TransitionResult 
       if (state && event.kind === EscrowEventKind.LOCK
           && result.error.code === "ORDER_NOT_FINALIZED"
           && !(event.payload as LockPayload).onchain
-          && (!event.prevEventId || availableIds.has(event.prevEventId))) {
+          // Missing JOIN/order evidence is a partial read, not proof of lapse.
+          && state.joinHolds?.[menuSelectorRoleFor(state.category)]?.eventId === event.prevEventId
+          && state.joinHolds![menuSelectorRoleFor(state.category)]!.joinedAt <= event.timestamp
+          && state.joinHolds![menuSelectorRoleFor(state.category)]!.expiresAt + JOIN_HOLD_LOCK_GRACE_SECONDS <= event.timestamp
+          && !!event.prevEventId && availableIds.has(event.prevEventId)) {
         state = { ...(state as EscrowState), rejectedLocks: [...(state.rejectedLocks ?? []), {
           event: event as ParsedEscrowEvent<LockPayload>, code: "ORDER_NOT_FINALIZED",
         }], replayNotes: [...(state.replayNotes ?? []), {
