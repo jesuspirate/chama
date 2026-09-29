@@ -475,6 +475,15 @@ export class EscrowFedimintBridge {
       loadEscrow: (id) => this.escrow.loadEscrow(id),
       getConnectedRelayCount: () => this.escrow.getConnectedRelayCount(),
       redeemNotes: (notes) => this.fedimint.redeemWithRetry(notes),
+      redeemRejectedNotes: async (entry) => {
+        const credit = await reabsorbBearerNotes(this.fedimint, {
+          oobNotes: entry.oobNotes!, expectedMsats: entry.amountMsats,
+          escrowId: entry.escrowId, context: "rejected-lock",
+        });
+        if (credit.outcome !== "recovered") {
+          throw new Error("Chama could not verify the refunded sats in Wallet. Saved funding kept.");
+        }
+      },
       currentFederationId: () => this.fedimint.getFederationId(),
       hashNotes,
       // Re-absorb story-loss fix: leave a durable "your funding came back"

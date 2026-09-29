@@ -79,6 +79,7 @@ import { buildChamaOperationMeta } from "../payments/sats-trace.js";
 /** Which surface asked. Carried into the operation meta for forensics, and
  *  used only for logging — the probe behaves identically for all of them. */
 export type ReabsorbContext =
+  | "rejected-lock"
   /** The teal PENDING ECASH EXPORT card: a note we minted and handed out. */
   | "pending-export"
   /** A pending-redemption stash entry automatic retry gave up on. */

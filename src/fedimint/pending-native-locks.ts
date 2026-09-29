@@ -432,6 +432,8 @@ export interface NativeLockRecoveryDeps {
    *  fedimint.redeemWithRetry (mint-mutex + already-spent classification
    *  live there). */
   redeemNotes(oobNotes: string): Promise<void>;
+  /** Refused LOCK refund requires measured wallet credit, not legacy retry success. */
+  redeemRejectedNotes?(entry: PendingNativeLock): Promise<void>;
   /** The wallet's CURRENT federation id (cached, no network). */
   currentFederationId(): string | null;
   /** SHA-256 hex of a notes string — the LOCK's notesHash function. */
@@ -629,7 +631,12 @@ async function reabsorb(
     saveStash(stash);
   }
   try {
-    await deps.redeemNotes(entry.oobNotes!);
+    if (requireConfirmedCredit) {
+      if (!deps.redeemRejectedNotes) throw new Error("Wallet credit verification is unavailable; saved funding kept.");
+      await deps.redeemRejectedNotes(entry);
+    } else {
+      await deps.redeemNotes(entry.oobNotes!);
+    }
     // The notes are back in the wallet. Two futures for that restored
     // balance, decided by whether the trade can still be locked:
     //   • lockable (CREATED, not past deadline) → downgrade to a fresh

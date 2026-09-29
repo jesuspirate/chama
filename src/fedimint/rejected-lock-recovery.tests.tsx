@@ -38,16 +38,33 @@ assert.match(html, /Take your 170 sats back/);
 assert.match(html, /buyer&#x27;s seat had lapsed/);
 let balance = 4000, calls = 0;
 const deps = {loadEscrow: async()=>state, getConnectedRelayCount:()=>1, currentFederationId:()=> 'test-fed', hashNotes,
- redeemNotes:async(n:string)=>{assert.equal(n,notes);calls++;balance+=170000;}, now:()=>1790900000000};
+ redeemNotes:async()=>{throw Error('legacy success is not a credit receipt');},
+ redeemRejectedNotes:async(e:typeof entry)=>{assert.equal(e.oobNotes,notes);calls++;balance+=170000;}, now:()=>1790900000000};
 assert.equal(await recoverPendingNativeLock(entry,deps), 'kept', 'background drain waits for explicit reclaim');
 assert.equal(calls,0);
 assert.equal(await recoverPendingNativeLock(entry,{...deps,currentFederationId:()=> 'other'}, {reclaimRejected:true}), 'kept');
 assert.equal(await recoverPendingNativeLock(entry,{...deps,loadEscrow:async()=>({...state,rejectedLocks:undefined})}, {reclaimRejected:true}), 'kept', 'mere relay absence never refunds');
-assert.equal(await recoverPendingNativeLock(entry,{...deps,redeemNotes:async()=>{throw Error('already spent');}}, {reclaimRejected:true}), 'kept', 'dead-note error alone cannot prove wallet credit');
+assert.equal(await recoverPendingNativeLock(entry,{...deps,redeemRejectedNotes:async()=>{throw Error('already spent');}}, {reclaimRejected:true}), 'kept', 'dead-note error alone cannot prove wallet credit');
 assert(getPendingNativeLock(state.id)?.oobNotes);
+assert.equal(await recoverPendingNativeLock(entry,{...deps,redeemRejectedNotes:undefined}, {reclaimRejected:true}), 'kept', 'legacy retry success cannot substitute for measured credit');
 assert.equal(await recoverPendingNativeLock(entry,deps,{reclaimRejected:true}), 'reabsorbed');
 assert.equal(balance,174000); assert.equal(calls,1); assert.equal(getPendingNativeLock(state.id),null);
 state.rejectedLockRecovery = rejectedLockRecovery(state,getPendingNativeLock(state.id),owner);
 assert.equal(state.rejectedLockRecovery,undefined);
 assert.notEqual(needsYouReasonFor(state, owner,1790900000),'funding-refund');
 console.log('PASS refused LOCK funding: exact saved notes, needs-you, explicit refund, wallet credit and fail-closed evidence gates.');
+
+// Exercise the bridge binding and existing credit bracket, not only an injected
+// recovery callback: a clean reissue resolve without a balance delta stays closed.
+const {EscrowFedimintBridge} = await import('./escrow-bridge.js');
+let verifiedBalance = 4000, creditOnRedeem = false;
+const wallet = {getFederationId:()=> 'test-fed', parseNotes:async()=>({totalAmount:170000,federationId:'test-fed'}),
+  getBalance:async()=>verifiedBalance, redeemWithRetry:async()=>{if(creditOnRedeem) verifiedBalance+=170000;}};
+const bridge = new EscrowFedimintBridge({} as any,wallet as any,{} as any);
+const credit = bridge.nativeLockRecoveryDeps().redeemRejectedNotes!;
+await assert.rejects(credit(entry),/could not verify/);
+assert.equal(verifiedBalance,4000);
+creditOnRedeem=true;
+await credit(entry);
+assert.equal(verifiedBalance,174000);
+console.log('PASS actual bridge refund binding demands the exact 170-sat wallet credit.');
