@@ -8,12 +8,12 @@ import { EscrowEventKind as K, EscrowStatus, Role, type EscrowState } from './ty
 const firstJoin = evidence.events.find(e => e.kind === K.JOIN)!;
 const seller = evidence.events[0].pubkey;
 const buyer = firstJoin.pubkey;
-const arbiter = evidence.events[0].payload!.communityArbiters![1];
+const arbiter = (evidence.events[0].payload as any).communityArbiters[1];
 export const chain = evidence.events.map(e => {
   const payload = e.payload ?? (e.kind === K.LOCK ? {
     type: 'escrow:lock', notesHash: 'modeled-notes-hash', buyerPubkey: buyer, arbiterPubkey: arbiter,
     sellerReceivesMsats: 170000, arbiterFeeMsats: 0, lockedAt: e.created_at,
-    selectedItems: firstJoin.payload!.selectedItems,
+    selectedItems: (firstJoin.payload as any).selectedItems,
     sharePolicy: 'holder-only-v1', shares: [buyer, seller, arbiter].map((pk, shareIndex) => ({shareIndex, encryptedFor: {[pk]: 'modeled-ciphertext'}})),
   } : {type: 'escrow:chat', message: 'Modeled encrypted chat', senderRole: e.pubkey === buyer ? Role.BUYER : Role.SELLER, sentAt: e.created_at});
   const parsed = parseEscrowEvent({...e, content: '', sig: ''}, JSON.stringify(payload), true);
@@ -31,8 +31,17 @@ const refused = applyEvent(state, lock);
 assert(!refused.ok && refused.error.code === 'ORDER_NOT_FINALIZED');
 const replay = replayEventChain(sortEventChain(chain));
 assert(replay.ok, replay.ok ? '' : replay.error.code);
-// Baseline report test proves the defect before the fix. The fix replaces this
-// with CREATED + the second hold + a quarantined rejected LOCK assertion.
-assert.equal(replay.state.status, EscrowStatus.LOCKED);
-assert.equal(replay.state.amountMsats, 170000);
-console.log('Confirmed: live signed-time apply refuses LOCK; global JOIN-first replay accepts it.');
+assert.equal(replay.state.status, EscrowStatus.CREATED);
+assert.equal(replay.state.joinHolds?.buyer?.joinedAt, 1790721367);
+assert.equal(replay.state.lock.notesHash, null);
+assert.equal(replay.state.rejectedLocks?.[0].event.raw.id, lock.raw.id);
+assert(!replay.state.eventChain.some(e => e.kind === K.LOCK));
+assert.equal(applyEvent(replay.state, lock).ok, false, 'a future hold cannot authorize the earlier LOCK live either');
+for (const events of [chain, [...chain].reverse(), [chain[6], ...chain.slice(0, 6)]]) {
+  const r = replayEventChain(sortEventChain(events));
+  assert(r.ok && r.state.status === EscrowStatus.CREATED);
+  assert.equal(r.state.joinHolds?.buyer?.joinedAt, 1790721367);
+}
+const {sumActiveBuyerSellerTradeMsats} = await import('../ui/decisions.js');
+assert.equal(sumActiveBuyerSellerTradeMsats({escrows: [replay.state], userPubkey: seller, nowSec: 1790721400}), 0);
+console.log('PASS: signed-time replay keeps second hold, quarantines late LOCK, and counts zero escrow sats.');

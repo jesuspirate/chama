@@ -1060,7 +1060,9 @@ function handleLock(state: EscrowState, event: ParsedEscrowEvent<LockPayload>): 
       if (
         !finalizedHold ||
         finalizedHold.expiresAt + JOIN_HOLD_LOCK_GRACE_SECONDS <= event.timestamp ||
-        !finalizedHold.orderFinalizedAt
+        !finalizedHold.orderFinalizedAt ||
+        finalizedHold.joinedAt > event.timestamp ||
+        finalizedHold.orderFinalizedAt > event.timestamp
       ) {
         return err(
           "ORDER_NOT_FINALIZED",
@@ -2019,6 +2021,21 @@ export function replayEventChain(events: ParsedEscrowEvent[]): TransitionResult 
   for (const event of events) {
     const result = applyEvent(state, event);
     if (!result.ok) {
+      // Positive signed-time refusal, not absence from a partial relay read.
+      // Preserve the notes reference for the funder's recovery, never as escrow.
+      // Other funds errors (including claims) remain strict below.
+      if (state && event.kind === EscrowEventKind.LOCK
+          && result.error.code === "ORDER_NOT_FINALIZED"
+          && !(event.payload as LockPayload).onchain
+          && (!event.prevEventId || availableIds.has(event.prevEventId))) {
+        state = { ...(state as EscrowState), rejectedLocks: [...(state.rejectedLocks ?? []), {
+          event: event as ParsedEscrowEvent<LockPayload>, code: "ORDER_NOT_FINALIZED",
+        }], replayNotes: [...(state.replayNotes ?? []), {
+          eventId: event.raw.id, kind: event.kind, code: result.error.code,
+          message: result.error.message,
+        }] };
+        continue;
+      }
       // Never let a generic duplicate/terminal error forgive a funds transition.
       // Re-delivery of the identical signed ID already succeeds in applyEvent.
       if ([EscrowEventKind.LOCK, EscrowEventKind.CLAIM,

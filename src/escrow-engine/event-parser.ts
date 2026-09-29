@@ -790,97 +790,25 @@ export function sortEventChain(events: ParsedEscrowEvent[]): ParsedEscrowEvent[]
   const stateEvents = events.filter(e => !isAux(e));
   const chatEvents = events.filter(isAux);
 
-  // Find the root (CREATE event — no prevEventId)
-  const root = stateEvents.find(e => e.prevEventId === null);
-  if (!root) {
-    // Fallback: sort by timestamp
-    return [...events].sort((a, b) => a.timestamp - b.timestamp);
+  // Causal parents first; among available branches use signed time, never
+  // global event kind. A future JOIN must not renew a seat for an earlier LOCK.
+  const priority: Record<number, number> = {38100: 0, 38111: 1, 38101: 2,
+    38102: 3, 38103: 4, 38112: 4, 38104: 5, 38117: 5.5,
+    38105: 6, 38106: 7, 38107: 8};
+  const remaining = new Map(stateEvents.map(event => [event.raw.id, event]));
+  const sorted: ParsedEscrowEvent[] = [];
+  const compare = (a: ParsedEscrowEvent, b: ParsedEscrowEvent) =>
+    a.timestamp - b.timestamp || (priority[a.kind] ?? 99) - (priority[b.kind] ?? 99)
+      || a.raw.id.localeCompare(b.raw.id);
+  while (remaining.size) {
+    const ready = [...remaining.values()].filter(event =>
+      !event.prevEventId || !remaining.has(event.prevEventId)).sort(compare);
+    // Cycles remain strict reducer/predecessor failures, with deterministic order.
+    const next = ready.find(event => event.kind === EscrowEventKind.CREATE)
+      ?? ready[0] ?? [...remaining.values()].sort(compare)[0];
+    sorted.push(next);
+    remaining.delete(next.raw.id);
   }
-
-  // Build adjacency: eventId → next events (multiple events can reference same prev)
-  const byPrevId = new Map<string, ParsedEscrowEvent[]>();
-  for (const event of stateEvents) {
-    if (event.prevEventId) {
-      const existing = byPrevId.get(event.prevEventId) || [];
-      existing.push(event);
-      byPrevId.set(event.prevEventId, existing);
-    }
-  }
-
-  // BFS walk the chain — handles branches (e.g. two VOTEs referencing same LOCK)
-  const sorted: ParsedEscrowEvent[] = [root];
-  const visited = new Set<string>([root.raw.id]);
-  const queue: ParsedEscrowEvent[] = [root];
-
-  while (queue.length > 0) {
-    const current = queue.shift()!;
-    const children = byPrevId.get(current.raw.id) || [];
-    // Sort children by kind priority first (state machine order), then timestamp.
-    // JOIN sits before LOCK so that when both arrive close together the ACK
-    // is recorded first — but JOIN no longer gates LOCK, so out-of-order
-    // delivery is harmless; LOCK validates participants from its own payload.
-    const KIND_PRIORITY: Record<number, number> = {
-      38100: 0,  // CREATE
-      38111: 1,  // SUBSCRIBE
-      38101: 2,  // JOIN (ACK)
-      38102: 3,  // LOCK
-      38103: 4,  // VOTE
-      38104: 5,  // RESOLVE
-    38117: 5.5, // Stalled payout request follows approval, before completion
-      38105: 6,  // CLAIM
-      38106: 7,  // COMPLETE
-      38107: 8,  // CANCEL
-      38112: 4,  // PERIOD_RELEASE (same level as VOTE)
-    };
-    children.sort((a, b) => {
-      const pa = KIND_PRIORITY[a.kind] ?? 99;
-      const pb = KIND_PRIORITY[b.kind] ?? 99;
-      if (pa !== pb) return pa - pb;
-      return a.timestamp - b.timestamp;
-    });
-    for (const child of children) {
-      if (!visited.has(child.raw.id)) {
-        sorted.push(child);
-        visited.add(child.raw.id);
-        queue.push(child);
-      }
-    }
-  }
-
-  // Add any state events not reached by chain walk (shouldn't happen in valid chains)
-  for (const event of stateEvents) {
-    if (!visited.has(event.raw.id)) {
-      sorted.push(event);
-    }
-  }
-
-  // Second pass: global kind-priority sort to fix cross-branch misordering.
-  // The BFS handles siblings correctly but events referencing different parents
-  // can end up in wrong global order (e.g. CLAIM before LOCK).
-  // Stable sort preserves BFS order for same-kind events.
-  const GLOBAL_KIND_ORDER: Record<number, number> = {
-    38100: 0,  // CREATE
-    38111: 1,  // SUBSCRIBE
-    38101: 2,  // JOIN (ACK)
-    38102: 3,  // LOCK
-    38103: 4,  // VOTE
-    38112: 4,  // PERIOD_RELEASE
-    38104: 5,  // RESOLVE
-    38117: 5.5, // Stalled payout request follows approval, before completion
-    38105: 6,  // CLAIM
-    38106: 7,  // COMPLETE
-    38107: 8,  // CANCEL
-  };
-  sorted.sort((a, b) => {
-    const pa = GLOBAL_KIND_ORDER[a.kind] ?? 99;
-    const pb = GLOBAL_KIND_ORDER[b.kind] ?? 99;
-    if (pa !== pb) return pa - pb;
-    // Relay arrival order is not stable across relays. Orphaned same-kind
-    // branches (notably repeated JOIN holds that reference chat/old branch tips)
-    // must still replay chronologically so expired holds can be replaced by the
-    // newest valid JOIN.
-    return a.timestamp - b.timestamp;
-  });
 
   // Interleave chat events by timestamp
   const all = [...sorted];

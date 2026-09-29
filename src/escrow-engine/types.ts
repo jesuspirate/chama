@@ -1031,6 +1031,8 @@ export interface ReplayNote {
 export interface EscrowState {
   /** Device-local construction provenance; never consensus data. */
   provenance?: "replayed" | "summary";
+  /** Positively refused signed ecash LOCKs, outside committed custody. */
+  rejectedLocks?: { event: ParsedEscrowEvent<LockPayload>; code: "ORDER_NOT_FINALIZED" }[];
   /** Rejected advisory transitions retained for an honest reconstruction report. */
   replayNotes?: ReplayNote[];
   /** Unique escrow identifier (d-tag value) */
