@@ -42,6 +42,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(ChamaPushPlugin.class);
         registerPlugin(ChamaDevicePlugin.class);
         super.onCreate(savedInstanceState);
+        applySelectionTheme(getSharedPreferences(PREFS_NAME, MODE_PRIVATE).getBoolean("lightTheme", false));
         ChamaPushStore.activity = new java.lang.ref.WeakReference<>(this);
         getWindow().setBackgroundDrawable(new ColorDrawable(Color.rgb(5, 5, 10)));
         getWindow().setStatusBarColor(Color.rgb(5, 5, 10));
@@ -66,6 +67,41 @@ public class MainActivity extends BridgeActivity {
     public void onDestroy() {
         stopFedimintBridge();
         super.onDestroy();
+    }
+
+    private android.view.ActionMode selectionActionMode;
+    private Boolean selectionLight;
+
+    /** Match native selection controls to the app, independent of system night mode. */
+    void applySelectionTheme(boolean light) {
+        if (selectionLight != null && selectionLight == light) return;
+        if (selectionActionMode != null) selectionActionMode.finish();
+        int overlay = light ? R.style.ChamaSelectionLight : R.style.ChamaSelectionDark;
+        getTheme().applyStyle(overlay, true);
+        getWindow().getContext().getTheme().applyStyle(overlay, true);
+        if (bridge != null && bridge.getWebView() != null) {
+            bridge.getWebView().getContext().getTheme().applyStyle(overlay, true);
+        }
+        selectionLight = light;
+        getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit().putBoolean("lightTheme", light).apply();
+    }
+
+    @Override public void onActionModeStarted(android.view.ActionMode mode) {
+        super.onActionModeStarted(mode);
+        selectionActionMode = mode;
+    }
+
+    @Override public void onActionModeFinished(android.view.ActionMode mode) {
+        if (selectionActionMode == mode) selectionActionMode = null;
+        super.onActionModeFinished(mode);
+    }
+
+    @Override public void onConfigurationChanged(android.content.res.Configuration config) {
+        super.onConfigurationChanged(config);
+        // AppCompat may reapply DayNight after a system-theme change.
+        boolean light = getSharedPreferences(PREFS_NAME, MODE_PRIVATE).getBoolean("lightTheme", false);
+        selectionLight = null;
+        applySelectionTheme(light);
     }
 
     private synchronized void startFedimintBridge() {

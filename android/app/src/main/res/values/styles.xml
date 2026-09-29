@@ -51,4 +51,18 @@
         <item name="android:windowLightNavigationBar">false</item>
         <item name="android:forceDarkAllowed">false</item>
     </style>
+    <!-- FloatingToolbar reads android:isLightTheme from the WebView/window
+         context. Explicit overlays prevent the OS night mode overriding Chama. -->
+    <style name="ChamaSelectionLight" parent="">
+        <item name="android:isLightTheme">true</item>
+        <item name="isLightTheme">true</item>
+        <item name="android:actionModeStyle">@android:style/Widget.Material.Light.ActionMode</item>
+        <item name="actionModeStyle">@style/Widget.AppCompat.ActionMode</item>
+    </style>
+    <style name="ChamaSelectionDark" parent="">
+        <item name="android:isLightTheme">false</item>
+        <item name="isLightTheme">false</item>
+        <item name="android:actionModeStyle">@android:style/Widget.Material.ActionMode</item>
+        <item name="actionModeStyle">@style/Widget.AppCompat.ActionMode</item>
+    </style>
 </resources>

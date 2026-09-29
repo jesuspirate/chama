@@ -27,9 +27,11 @@ public class ChamaDevicePlugin extends Plugin {
 
     @PluginMethod public void setTheme(PluginCall call) {
         String color = call.getString("color", "#05050a");
+        boolean light = "light".equals(call.getString("theme", "dark"));
         try {
             int value = Color.parseColor(color);
             getActivity().runOnUiThread(() -> {
+                ((MainActivity) getActivity()).applySelectionTheme(light);
                 getActivity().getWindow().setNavigationBarColor(value);
                 getActivity().getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(value));
                 call.resolve();

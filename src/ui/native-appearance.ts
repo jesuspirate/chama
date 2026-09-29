@@ -7,7 +7,7 @@ let background = '#05050a';
 export function syncNativeAppearance(next: 'light' | 'dark', color: string): void {
   theme = next; background = color;
   if (Capacitor.getPlatform() !== 'android') return;
-  void nativeDevice.setTheme({color: background}).catch(() => {});
+  void nativeDevice.setTheme({color: background, theme}).catch(() => {});
   void StatusBar.setStyle({ style: theme === 'light' ? Style.Light : Style.Dark }).catch(() => {});
   void StatusBar.setBackgroundColor({ color: background }).catch(() => {});
   void SystemBars.setStyle({ bar: SystemBarType.NavigationBar,
