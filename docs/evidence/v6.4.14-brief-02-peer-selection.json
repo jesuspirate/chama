@@ -1,0 +1,51 @@
+{
+  "note": "Dummy conversation keys test peer selection only; no production ECDH keys were read.",
+  "results": [
+    {
+      "id": "3f9ecfd8a335e2c595813d7f616cea29dab0fe131b82e78b94c74451b0d4702c",
+      "kind": 38101,
+      "peerDerivations": 0,
+      "wakeTagsReturned": 0
+    },
+    {
+      "id": "f01fe196c18ab214e136bbb7bf94844f8da8e2f7d603562e6c5fcb2531c6ef7c",
+      "kind": 38108,
+      "peerDerivations": 0,
+      "wakeTagsReturned": 0
+    },
+    {
+      "id": "787114746fd2b77643f6e6979063429f9421ea5e70c789f53800fd4150c2d5f1",
+      "kind": 38108,
+      "peerDerivations": 0,
+      "wakeTagsReturned": 0
+    },
+    {
+      "id": "84a9df23a01a240ae11336833608f2052e18b7323392127ccebcc2561a2550af",
+      "kind": 38108,
+      "peerDerivations": 0,
+      "wakeTagsReturned": 0
+    },
+    {
+      "id": "42be4fa023271591d975e8619d5e98aa2b4438a01f2b393a9dcf05c9907fff5c",
+      "kind": 38102,
+      "peerDerivations": 2,
+      "wakeTagsReturned": 2
+    },
+    {
+      "id": "4742fbf6845b1581bb8ce01b54b3e746054a3501e1f3732cd084275dec4045aa",
+      "kind": 38101,
+      "peerDerivations": 0,
+      "wakeTagsReturned": 0
+    }
+  ],
+  "createdCheck": {
+    "tagCount": 0,
+    "peerDerivations": 0
+  },
+  "joinedCheck": {
+    "tagCount": 1,
+    "peerDerivations": 1
+  },
+  "community": "us-blf",
+  "communityTag": "pJrL9SDSgkIASUGA"
+}

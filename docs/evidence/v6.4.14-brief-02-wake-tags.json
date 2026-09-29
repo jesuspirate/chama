@@ -1,0 +1,301 @@
+{
+  "queriedAt": "2026-09-29T23:05:21.188Z",
+  "trade": "sm_mun8x4s2_4g6x53c8",
+  "results": [
+    {
+      "url": "wss://relay.chama.community",
+      "eose": true
+    },
+    {
+      "url": "wss://relay.damus.io",
+      "eose": true
+    },
+    {
+      "url": "wss://relay.primal.net",
+      "eose": false,
+      "error": "timeout"
+    },
+    {
+      "url": "wss://nos.lol",
+      "eose": false,
+      "error": "timeout"
+    },
+    {
+      "url": "wss://nostr.mom",
+      "eose": false,
+      "error": "timeout"
+    },
+    {
+      "url": "wss://nostr.land",
+      "eose": true
+    }
+  ],
+  "events": [
+    {
+      "id": "f40b3f38ae14e5e4a26ef6f221a4edeb2c7b318209dfb5b4e8e81d0e3c9bcad0",
+      "kind": 38100,
+      "created_at": 1790720785,
+      "pubkey": "22f7161f76e075b9e0a250a447884ac09b04b636effd7c703a92394ed3fb39e8",
+      "tags": [
+        [
+          "d",
+          "sm_mun8x4s2_4g6x53c8"
+        ],
+        [
+          "t",
+          "escrow:create"
+        ],
+        [
+          "amount",
+          "50000"
+        ],
+        [
+          "mint",
+          "fed11qgqyj3mfwfhksw309ajrwvmxvenxgvpkvyursenxxvur2c3sv4jkxdfcxf3kgdmyvs6nzcehvc6xzctzxumrxdmr89jnwdtpv5enqwtpxqmrsvfh89skxv34qqqjpzytwrkr28r8mjas4ej467utd7excr7fapj7ukgc4ugacm6nu2u73k7ram"
+        ],
+        [
+          "cat",
+          "p2p-trade"
+        ],
+        [
+          "community",
+          "us-blf"
+        ],
+        [
+          "fulfillment",
+          "service"
+        ],
+        [
+          "fed",
+          "888b70ec351c67dcbb0ae655d7b8b6fb26c0fc9e865ee5918af11dc6f53e2b9e"
+        ],
+        [
+          "client",
+          "chama",
+          "6.4.14"
+        ]
+      ],
+      "verified": true,
+      "relays": [
+        "wss://relay.chama.community"
+      ],
+      "listing": {
+        "community": "us-blf",
+        "category": "p2p-trade",
+        "createdAt": 1790720785,
+        "expirySeconds": 86400
+      }
+    },
+    {
+      "id": "3f9ecfd8a335e2c595813d7f616cea29dab0fe131b82e78b94c74451b0d4702c",
+      "kind": 38101,
+      "created_at": 1790720821,
+      "pubkey": "e2ae2beaf55b932c965543e436a5be400e6248f2bdcea4f82cb46f724ac2c3f9",
+      "tags": [
+        [
+          "d",
+          "sm_mun8x4s2_4g6x53c8"
+        ],
+        [
+          "e",
+          "f40b3f38ae14e5e4a26ef6f221a4edeb2c7b318209dfb5b4e8e81d0e3c9bcad0",
+          "",
+          "reply"
+        ],
+        [
+          "t",
+          "escrow:join"
+        ],
+        [
+          "p",
+          "e2ae2beaf55b932c965543e436a5be400e6248f2bdcea4f82cb46f724ac2c3f9"
+        ],
+        [
+          "client",
+          "chama",
+          "6.4.14"
+        ]
+      ],
+      "verified": true,
+      "relays": [
+        "wss://relay.chama.community"
+      ],
+      "join": {
+        "role": "buyer",
+        "joinedAt": 1790720821,
+        "holdExpiresAt": 1790721121,
+        "amountMsats": 170000,
+        "orderFinalizedAt": 1790720821
+      }
+    },
+    {
+      "id": "f01fe196c18ab214e136bbb7bf94844f8da8e2f7d603562e6c5fcb2531c6ef7c",
+      "kind": 38108,
+      "created_at": 1790720846,
+      "pubkey": "e2ae2beaf55b932c965543e436a5be400e6248f2bdcea4f82cb46f724ac2c3f9",
+      "tags": [
+        [
+          "d",
+          "sm_mun8x4s2_4g6x53c8"
+        ],
+        [
+          "t",
+          "escrow:chat"
+        ],
+        [
+          "client",
+          "chama",
+          "6.4.14"
+        ]
+      ],
+      "verified": true,
+      "relays": [
+        "wss://relay.chama.community"
+      ]
+    },
+    {
+      "id": "787114746fd2b77643f6e6979063429f9421ea5e70c789f53800fd4150c2d5f1",
+      "kind": 38108,
+      "created_at": 1790720859,
+      "pubkey": "e2ae2beaf55b932c965543e436a5be400e6248f2bdcea4f82cb46f724ac2c3f9",
+      "tags": [
+        [
+          "d",
+          "sm_mun8x4s2_4g6x53c8"
+        ],
+        [
+          "t",
+          "escrow:chat"
+        ],
+        [
+          "client",
+          "chama",
+          "6.4.14"
+        ]
+      ],
+      "verified": true,
+      "relays": [
+        "wss://relay.chama.community"
+      ]
+    },
+    {
+      "id": "84a9df23a01a240ae11336833608f2052e18b7323392127ccebcc2561a2550af",
+      "kind": 38108,
+      "created_at": 1790720863,
+      "pubkey": "e2ae2beaf55b932c965543e436a5be400e6248f2bdcea4f82cb46f724ac2c3f9",
+      "tags": [
+        [
+          "d",
+          "sm_mun8x4s2_4g6x53c8"
+        ],
+        [
+          "t",
+          "escrow:chat"
+        ],
+        [
+          "client",
+          "chama",
+          "6.4.14"
+        ]
+      ],
+      "verified": true,
+      "relays": [
+        "wss://relay.chama.community"
+      ]
+    },
+    {
+      "id": "42be4fa023271591d975e8619d5e98aa2b4438a01f2b393a9dcf05c9907fff5c",
+      "kind": 38102,
+      "created_at": 1790721293,
+      "pubkey": "22f7161f76e075b9e0a250a447884ac09b04b636effd7c703a92394ed3fb39e8",
+      "tags": [
+        [
+          "d",
+          "sm_mun8x4s2_4g6x53c8"
+        ],
+        [
+          "e",
+          "3f9ecfd8a335e2c595813d7f616cea29dab0fe131b82e78b94c74451b0d4702c",
+          "",
+          "reply"
+        ],
+        [
+          "t",
+          "escrow:lock"
+        ],
+        [
+          "p",
+          "e2ae2beaf55b932c965543e436a5be400e6248f2bdcea4f82cb46f724ac2c3f9"
+        ],
+        [
+          "p",
+          "22f7161f76e075b9e0a250a447884ac09b04b636effd7c703a92394ed3fb39e8"
+        ],
+        [
+          "p",
+          "59f0660b34dd48f9dfac5d973b77774a75af057ea3a261214ac5cdccd5d24440"
+        ],
+        [
+          "client",
+          "chama",
+          "6.4.14"
+        ],
+        [
+          "w",
+          "yVYmRjGuSahT7Lwg"
+        ],
+        [
+          "w",
+          "q0mDf6AZB-dJc60m"
+        ]
+      ],
+      "verified": true,
+      "relays": [
+        "wss://relay.chama.community"
+      ]
+    },
+    {
+      "id": "4742fbf6845b1581bb8ce01b54b3e746054a3501e1f3732cd084275dec4045aa",
+      "kind": 38101,
+      "created_at": 1790721367,
+      "pubkey": "e2ae2beaf55b932c965543e436a5be400e6248f2bdcea4f82cb46f724ac2c3f9",
+      "tags": [
+        [
+          "d",
+          "sm_mun8x4s2_4g6x53c8"
+        ],
+        [
+          "e",
+          "3f9ecfd8a335e2c595813d7f616cea29dab0fe131b82e78b94c74451b0d4702c",
+          "",
+          "reply"
+        ],
+        [
+          "t",
+          "escrow:join"
+        ],
+        [
+          "p",
+          "e2ae2beaf55b932c965543e436a5be400e6248f2bdcea4f82cb46f724ac2c3f9"
+        ],
+        [
+          "client",
+          "chama",
+          "6.4.14"
+        ]
+      ],
+      "verified": true,
+      "relays": [
+        "wss://relay.chama.community"
+      ],
+      "join": {
+        "role": "buyer",
+        "joinedAt": 1790721367,
+        "holdExpiresAt": 1790721667,
+        "amountMsats": 170000,
+        "orderFinalizedAt": 1790721367
+      }
+    }
+  ],
+  "method": "Read-only Nostr REQ for kinds 38100, 38101, 38102, 38108 and #d sm_mun8x4s2_4g6x53c8; verifyEvent checked each raw signed event before extracting public tags. No chat or LOCK body decryption."
+}

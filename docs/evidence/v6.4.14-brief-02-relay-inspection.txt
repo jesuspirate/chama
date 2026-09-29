@@ -1,0 +1,42 @@
+
+Trade sm_mun8x4s2_4g6x53c8
+
+relay                        CREATE   JOIN     LOCK     VOTE     RESOLVE  CLAIM    COMPLETE CANCEL   CHAT     SUBSCRIBEPERIOD_RELEASEPREMIUM  
+----------------------------------------------------------------------------------------------------------------------------------------------
+wss://relay.chama.community  ✓        ✓2       ✓        ·        ·        ·        ·        ·        ✓3       ·        ·        ·        
+wss://relay.damus.io         ·        ·        ·        ·        ·        ·        ·        ·        ·        ·        ·        ·        
+wss://relay.primal.net       ·        ·        ·        ·        ·        ·        ·        ·        ·        ·        ·        ·          ← timeout
+wss://nos.lol                ·        ·        ·        ·        ·        ·        ·        ·        ·        ·        ·        ·          ← timeout
+wss://nostr.mom              ·        ·        ·        ·        ·        ·        ·        ·        ·        ·        ·        ·          ← timeout
+wss://nostr.land             ·        ·        ·        ·        ·        ·        ·        ·        ·        ·        ·        ·        
+
+What this means:
+  (3 of 6 relays did not answer; absence below
+   means absent from the ones that DID.)
+  present on at least one relay : CREATE, JOIN, LOCK, CHAT
+  found on NO relay             : VOTE, RESOLVE, CLAIM, COMPLETE, CANCEL, SUBSCRIBE, PERIOD_RELEASE, PREMIUM
+
+  note: 2 distinct JOIN events exist. Duplicates are
+    normal for VOTE/CHAT; elsewhere they may explain a replay refusal.
+
+Chain as the relays hold it (oldest first):
+
+  2026-09-29 22:26:25  CREATE   f40b3f38  by 22f7161f    1925B  (root)
+  2026-09-29 22:27:01  JOIN     3f9ecfd8  by e2ae2bea     962B  → f40b3f38
+  2026-09-29 22:27:26  CHAT     f01fe196  by e2ae2bea     989B  (root)
+  2026-09-29 22:27:39  CHAT     78711474  by e2ae2bea     989B  (root)
+  2026-09-29 22:27:43  CHAT     84a9df23  by e2ae2bea     989B  (root)
+  2026-09-29 22:34:53  LOCK     42be4fa0  by 22f7161f   13207B  → 3f9ecfd8
+  2026-09-29 22:36:07  JOIN     4742fbf6  by e2ae2bea     962B  → 3f9ecfd8
+
+  2 distinct author(s): 22f7161f, e2ae2bea
+
+Replay of the relay-held chain (same parser, same reducer):
+
+  CREATE   f40b3f38  → CREATED
+  JOIN     3f9ecfd8  → CREATED
+  CHAT     f01fe196  UNREADABLE here (encrypted to participants) — replay stops being decisive past this point
+
+  LOCK in the relay-held chain: yes
+  lock.lockedAt after replay   : not set
+
