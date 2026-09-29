@@ -5,6 +5,13 @@ const screen = document.querySelector('.cinema-screen');
 const poster = document.querySelector('.cinema-poster');
 const video = document.querySelector('.hero-video');
 const filmVersion = new URLSearchParams(location.search).get('film');
+// ?hero=classic brings back the photographed film, which stays in img/.
+const classicHero = new URLSearchParams(location.search).get('hero') === 'classic' || Boolean(filmVersion);
+if (classicHero) {
+  document.documentElement.classList.add('hero-classic');
+  video.dataset.src = 'img/chama-circle-story-v13.mp4';
+  poster.src = 'img/chama-circle-action-v13.jpg';
+}
 const filmPlaylist = ['original', 'varied'].includes(filmVersion) ? [
   'img/chama-circle-story-v13.mp4',
   `img/circle-turns/collector-2${filmVersion === 'varied' ? '-v2' : ''}.mp4`,
@@ -46,6 +53,22 @@ let userPaused = false;
 let inView = false;
 let explicitPlay = false;
 const autoAllowed = () => !reducedMotion.matches && !connection?.saveData;
+// Names and captions are part of the picture, so the film is rendered once per
+// language and framing. A change mid-film resumes from the same moment.
+function retargetFilm() {
+  if (classicHero) return;
+  const framing = mobile.matches && !reducedMotion.matches ? 'tall' : 'wide';
+  const base = `img/chama-film-${framing}-${copy[document.documentElement.lang] ? document.documentElement.lang : 'en'}`;
+  if (video.dataset.src === `${base}.mp4` && poster.getAttribute('src') === `${base}.jpg`) return;
+  video.dataset.src = `${base}.mp4`;
+  poster.src = `${base}.jpg`;
+  if (!video.getAttribute('src')) return;
+  const moment = video.currentTime;
+  video.src = video.dataset.src;
+  video.addEventListener('loadedmetadata', () => { if (!finished) video.currentTime = Math.min(moment, video.duration || moment); syncFilm(); }, { once: true });
+  video.load();
+}
+retargetFilm();
 let progressFrame = 0;
 function paintFilmProgress() {
   screen.style.setProperty('--film-fraction', finished ? 1 : video.duration ? (filmIndex + clamp(video.currentTime / video.duration)) / (filmPlaylist?.length || 1) : 0);
@@ -86,6 +109,7 @@ function setLanguage(lang) {
   document.querySelectorAll('[data-copy]').forEach(el => { el.innerHTML = word(el.dataset.copy); });
   document.querySelectorAll('[data-lang]').forEach(el => el.setAttribute('aria-pressed', String(el.dataset.lang === lang)));
   document.querySelectorAll('a[href^="faq"]').forEach(el => { el.href = lang === 'en' ? 'faq.html' : `faq.${lang}.html`; });
+  retargetFilm();
   setPhase(active);
   updateStory();
   filmLabels();
@@ -150,8 +174,8 @@ new IntersectionObserver(entries => {
   inView = entries[0].isIntersecting;
   syncFilm();
 }, { threshold: .15 }).observe(screen);
-reducedMotion.addEventListener('change', () => { explicitPlay = false; sizeFilm(); syncFilm(); scheduleStory(); });
-mobile.addEventListener('change', () => { explicitPlay = false; syncFilm(); });
+reducedMotion.addEventListener('change', () => { explicitPlay = false; retargetFilm(); sizeFilm(); syncFilm(); scheduleStory(); });
+mobile.addEventListener('change', () => { explicitPlay = false; retargetFilm(); syncFilm(); });
 connection?.addEventListener('change', syncFilm);
 document.addEventListener('visibilitychange', syncFilm);
 

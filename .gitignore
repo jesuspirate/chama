@@ -80,6 +80,18 @@ tmp/
 !/landing/img/p-chama-circle-v1.jpg
 !/landing/img/p-p2p-v5.jpg
 !/landing/img/p-stores-v4.jpg
+!/landing/img/chama-film-wide-en.mp4
+!/landing/img/chama-film-wide-en.jpg
+!/landing/img/chama-film-wide-es.mp4
+!/landing/img/chama-film-wide-es.jpg
+!/landing/img/chama-film-wide-fr.mp4
+!/landing/img/chama-film-wide-fr.jpg
+!/landing/img/chama-film-tall-en.mp4
+!/landing/img/chama-film-tall-en.jpg
+!/landing/img/chama-film-tall-es.mp4
+!/landing/img/chama-film-tall-es.jpg
+!/landing/img/chama-film-tall-fr.mp4
+!/landing/img/chama-film-tall-fr.jpg
 # END landing deployment image allowlist
 /landing/icons/**
 /public/icons/**

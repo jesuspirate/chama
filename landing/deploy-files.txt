@@ -9,6 +9,8 @@ story.css
 cinema.css
 story.js
 story-locales.js
+experience.css
+experience.js
 
 # Reviewed page assets
 icons/chama-mark-64.png
@@ -62,3 +64,20 @@ details.js
 # Compatibility for cached pages/shared URLs; these contain the approved mark.
 icons/og-image-people-v13.jpg
 img/chama-community-banner-v2.png
+
+# Hero film, one render per framing and language. The photographed film
+# (chama-circle-story-v13) stays above and returns with ?hero=classic.
+img/chama-film-wide-en.mp4
+img/chama-film-wide-en.jpg
+img/chama-film-wide-es.mp4
+img/chama-film-wide-es.jpg
+img/chama-film-wide-fr.mp4
+img/chama-film-wide-fr.jpg
+img/chama-film-tall-en.mp4
+img/chama-film-tall-en.jpg
+img/chama-film-tall-es.mp4
+img/chama-film-tall-es.jpg
+img/chama-film-tall-fr.mp4
+img/chama-film-tall-fr.jpg
+icons/use-cases/chama.svg
+icons/use-cases/chama-dark.svg

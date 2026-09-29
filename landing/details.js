@@ -71,8 +71,10 @@
       const previous = animations[index];
       const progress = previous ? (Number(previous.currentTime) / previous.effect.getTiming().duration) % 1 : 0;
       previous?.cancel();
-      const period = row.firstElementChild.getBoundingClientRect().width;
-      const duration = period / (index ? 26 : 28) * 1000;
+      // 30px/s lands on whole device pixels each frame at 60 and 120Hz.
+      // Speeds between refresh steps made the rows hitch several times a second.
+      const period = Math.round(row.firstElementChild.getBoundingClientRect().width);
+      const duration = period / 30 * 1000;
       const ends = index ? [-period, 0] : [0, -period];
       const animation = row.animate(ends.map(x => ({transform:`translate3d(${x}px,0,0)`})), {duration, iterations:Infinity, easing:'linear'});
       animation.pause();

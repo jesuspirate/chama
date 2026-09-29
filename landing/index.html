@@ -29,9 +29,10 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="preload" as="image" href="img/chama-circle-action-v13.jpg" fetchpriority="high">
+  <link rel="preload" as="image" href="img/chama-film-wide-en.jpg" media="(min-width:761px)" fetchpriority="high">
   <link rel="stylesheet" href="story.css">
   <link rel="stylesheet" href="cinema.css?v=46">
+  <link rel="stylesheet" href="experience.css?v=6">
   <noscript><style>.cinema{height:auto}.cinema-sticky{position:relative;height:85svh}.journey-sticky{display:none}.journey-chapter{min-height:0;padding-block:55px}.chapter-copy{max-width:600px;width:100%}.mobile-scene{display:block;width:100%;max-width:600px;margin-top:30px}.motion-toggle{display:none!important}</style></noscript>
 </head>
 <body>
@@ -42,29 +43,43 @@
     <nav aria-label="Primary"><a href="#how" data-copy="navStory">The story</a><a href="#uses" data-copy="navLife">Real life</a><a href="#trust" data-copy="navTrust">Why it’s safe</a></nav>
     <div class="nav-actions"><button class="theme-toggle" type="button" aria-label="Use dark mode" aria-pressed="false">◐</button><div class="languages" aria-label="Language"><button type="button" data-lang="en" aria-pressed="true">EN</button><button type="button" data-lang="es" aria-pressed="false">ES</button><button type="button" data-lang="fr" aria-pressed="false">FR</button></div><a class="button enter nav-enter" href="https://getchama.app/" data-copy="enter">Enter Chama ↗︎</a></div>
   </header>
+  <div class="cut" aria-hidden="true"><img src="icons/chama-mark-64.png?v=approved-star-20260921" width="54" height="54" alt=""></div>
+  <div class="thread-bar" aria-hidden="true"><span></span></div>
+  <nav class="thread" aria-label="Chapters">
+    <span class="thread-line" aria-hidden="true"><span></span></span>
+    <a href="#top"><i aria-hidden="true"></i><span data-copy="railPeople">People</span></a>
+    <a href="#meet"><i aria-hidden="true"></i><span data-copy="meetLabel">Meet</span></a>
+    <a href="#agree"><i aria-hidden="true"></i><span data-copy="agreeLabel">Agree</span></a>
+    <a href="#trade"><i aria-hidden="true"></i><span data-copy="tradeLabel">Trade</span></a>
+    <a href="#circle"><i aria-hidden="true"></i><span data-copy="railCircle">Circle</span></a>
+    <a href="#name"><i aria-hidden="true"></i><span data-copy="railName">The name</span></a>
+    <a href="#uses"><i aria-hidden="true"></i><span data-copy="railLife">Everyday</span></a>
+    <a href="#trust"><i aria-hidden="true"></i><span data-copy="railTrust">Safeguards</span></a>
+    <a href="#closing"><i aria-hidden="true"></i><span data-copy="railHome">Your place</span></a>
+  </nav>
   <main id="main">
     <section class="cinema" id="top" aria-labelledby="hero-title">
       <div class="cinema-sticky">
         <div class="cinema-screen">
-          <img class="cinema-poster" src="img/chama-circle-action-v13.jpg" width="1600" height="1066" alt="A circle contributes while its next recipient prepares to collect" fetchpriority="high">
-          <video class="hero-video" data-src="img/chama-circle-story-v13.mp4" muted playsinline preload="none" aria-label="A circle contributes, one person collects, and everyone keeps contributing"></video>
+          <img class="cinema-poster" src="img/chama-film-wide-en.jpg" width="1920" height="1080" alt="Five people seated around a shared pot, each one marked as having collected" fetchpriority="high">
+          <video class="hero-video" data-src="img/chama-film-wide-en.mp4" muted playsinline preload="none" aria-label="Two people trade with a community arbiter, a circle of five forms and pays each member in turn, and many circles become a community"></video>
           <div class="cinema-shade"></div>
           <div class="cinema-title"><p class="eyebrow" data-copy="heroEyebrow">TRADE WITH PEOPLE. <s>NOT PLATFORMS.</s></p><h1 id="hero-title" data-copy="heroTitle">It starts<br>with <em>people.</em></h1></div>
           <p class="film-beat" aria-hidden="true"></p>
           <div class="cinema-bottom"><span class="film-context" data-copy="filmContext">A vision of rotating savings · coming next</span><button class="motion-toggle" type="button" data-copy="playFilm">Play the moment</button></div>
-          <a class="scroll-invitation" href="#how"><span data-copy="seeHow">See what makes it possible</span><span class="scroll-stem" aria-hidden="true">↓</span></a>
+          <a class="scroll-invitation" href="#how"><span data-copy="seeHow">See it step by step</span><span class="scroll-stem" aria-hidden="true">↓</span></a>
           <div class="film-progress" aria-hidden="true"><span></span></div>
         </div>
       </div>
     </section>
-    <section class="story-bridge wrap" id="how" aria-labelledby="bridge-title"><p class="eyebrow" data-copy="bridgeEyebrow">GOOD THINGS START WITH PEOPLE.</p><h2 id="bridge-title" data-copy="bridgeTitle">What makes<br><em>that possible?</em></h2><p data-copy="bridgeBody">Chama coordinates. People make it happen.</p><a class="bridge-next" href="#meet" data-copy="meetLabel">Meet</a></section>
+    <section class="story-bridge wrap" id="how" aria-labelledby="bridge-title"><p class="eyebrow" data-copy="bridgeEyebrow">NOW, AT YOUR PACE.</p><h2 id="bridge-title" data-copy="bridgeTitle">One trade,<br><em>step by step.</em></h2><p data-copy="bridgeBody">Chama coordinates. People make it happen.</p><a class="bridge-next" href="#meet" data-copy="meetLabel">Meet</a></section>
     <section class="journey" aria-label="Meet, agree, trade">
       <div class="journey-sticky" aria-hidden="true">
         <div class="journey-art stage-meet">
           <div class="coord-orbit"></div>
           <svg class="coord-lines" viewBox="0 0 600 600" preserveAspectRatio="none" fill="none"><path class="match-line" pathLength="1" d="M105 265H495"/><path class="arbiter-lines" pathLength="1" d="M105 265L300 80L495 265"/><path class="money-route" d="M105 365H495m-8-5 8 5-8 5"/><path class="sats-route" d="M495 465H105m8-5-8 5 8 5"/></svg>
           <div class="role role-buyer"><div class="role-portrait portrait-buyer"></div><span class="person-name" data-copy="buyerName">Daneka</span><small data-copy="satsBuyer">Bitcoin buyer</small><b class="person-check buyer-check">✓</b></div>
-          <div class="role role-seller"><div class="role-portrait portrait-seller"></div><span class="person-name" data-copy="sellerName">Daniel</span><small data-copy="satsSeller">Bitcoin seller</small><b class="person-check seller-check">✓</b></div>
+          <div class="role role-seller"><div class="role-portrait portrait-seller"></div><span class="person-name" data-copy="sellerName">G🏄🏿</span><small data-copy="satsSeller">Bitcoin seller</small><b class="person-check seller-check">✓</b></div>
           <div class="role role-arbiter"><div class="role-portrait portrait-arbiter"></div><span class="person-name" data-copy="arbiterName">Grace</span><small data-copy="communityArbiter">Community arbiter</small></div>
           <div class="coordinator"><img src="icons/chama-mark-64.png?v=approved-star-20260921" width="52" height="52" alt=""><strong>chama</strong><small data-copy="coordinates">Coordinates the match</small></div>
           <div class="intent-card intent-buyer"><small data-copy="iHave">I have</small><strong data-copy="localMoney">Local money</strong><span>↓</span><small data-copy="iWant">I want</small><strong data-copy="bitcoin">Bitcoin</strong></div>
@@ -86,18 +101,64 @@
     </section>
     <section class="circle-finale" id="circle" aria-labelledby="circle-title"><div class="circle-reveal"><img src="img/chama-digital-community-v1.jpg" width="1536" height="1024" alt="Friends sharing a moment while using Chama on their phones" loading="lazy"><div class="circle-finale-shade"></div></div><div class="circle-finale-copy wrap"><img class="circle-emblem" src="icons/chama-circle-dark.svg" width="90" height="90" alt="" aria-hidden="true"><p class="eyebrow" data-copy="circleEyebrow">ONE EXCHANGE BECOMES A CONNECTION.</p><h2 id="circle-title" data-copy="circleTitle">And a circle<br><em>begins.</em></h2><p data-copy="circleBody">People you can trade with.<br>People you come back to.</p><a class="text-link" href="https://getchama.app/"><span data-copy="circleLink">Find your people</span><span aria-hidden="true">↗︎</span></a></div>          <figure class="claim-demo app-lock-capture" aria-label="Actual Chama app: simulated share locked">
             <div class="claim-device"><div class="claim-speaker" aria-hidden="true"></div>
-              <div class="claim-brand"><img src="icons/chama-mark-64.png?v=approved-star-20260921" width="26" height="26" alt="">chama<span>●</span></div>
+              <div class="claim-brand"><img src="icons/chama-mark-64.png?v=approved-star-20260921" width="26" height="26" alt=""><span class="brand-word">chama<span class="brand-dot" aria-hidden="true"></span></span></div>
               <img class="app-lock-screen" src="img/circle-lock-app-v1.png" width="356" height="547" alt="Actual Chama app showing 10,000 simulated sats locked, one checked seat, and four seats remaining." loading="lazy">
             </div>
             <figcaption data-copy="claimPreview">ACTUAL APP · SIMULATED SATS</figcaption>
           </figure>
 </section>
-    <section class="real-life" id="uses" aria-labelledby="life-title"><div class="wrap"><div class="life-heading"><div><p class="eyebrow" data-copy="lifeEyebrow">BITCOIN, OUT IN THE WORLD</p><h2 id="life-title" data-copy="lifeTitle">For the everyday.<br><em>And what comes next.</em></h2></div><div class="life-aside"><p data-copy="lifeIntro">One way to trade.<br>So many reasons to.</p><a class="text-link" href="https://getchama.app/" data-copy="checkAvailability">Check availability →</a></div></div><div class="life-grid">
-      <article><button class="life-art" type="button" aria-pressed="false" aria-label="Show feature icon" data-feature="0"><span class="life-photo"><img src="img/p-p2p-v5.jpg" width="560" height="380" alt="Two people swapping cash and sats" loading="lazy"></span><span class="life-symbol" aria-hidden="true"><svg viewBox="0 0 240 180"><path class="mass" d="M28 24h122V8l62 38-62 38V68H28V24Zm184 132H90v16l-62-38 62-38v16h122v44Z"/><circle class="bitcoin-stamp-ring" cx="120" cy="90" r="39"/><image href="icons/bitcoin-official.png" x="86" y="56" width="68" height="68" preserveAspectRatio="xMidYMid meet" aria-hidden="true"/></svg></span></button><div class="life-card"><span>01</span><h3 data-copy="useSwap">Swap sats and cash</h3><p data-copy="useSwapBody">Food, fares, and everyday cash.</p></div></article>
-      <article><button class="life-art" type="button" aria-pressed="false" aria-label="Show feature icon" data-feature="1"><span class="life-photo"><img src="img/p-billpay-v2.jpg" width="560" height="380" alt="A household paying a bill together" loading="lazy"></span><span class="life-symbol" aria-hidden="true"><img class="symbol-light" src="icons/use-cases/bill-pay.svg" alt=""><img class="symbol-dark" src="icons/use-cases/bill-pay-dark.svg" alt=""></span></button><div class="life-card"><span>02</span><h3 data-copy="useBills">Pay a bill</h3><p data-copy="useBillsBody">Rent, utilities, care, and obligations.</p></div></article>
-      <article><button class="life-art" type="button" aria-pressed="false" aria-label="Show feature icon" data-feature="2"><span class="life-photo"><img src="img/p-stores-v4.jpg" width="560" height="380" alt="A local market seller making a sale" loading="lazy"></span><span class="life-symbol" aria-hidden="true"><img class="symbol-light" src="icons/use-cases/store.svg" alt=""><img class="symbol-dark" src="icons/use-cases/store-dark.svg" alt=""></span></button><div class="life-card"><span>03</span><h3 data-copy="useShop">Buy and sell</h3><p data-copy="useShopBody">Groceries, bicycles, cars, even a home.</p></div></article>
+    <section class="name" id="name" aria-labelledby="name-title">
+      <div class="wrap name-grid">
+        <div class="name-copy">
+          <p class="eyebrow" data-copy="nameEyebrow">THE NAME</p>
+          <h2 class="name-word" id="name-title" lang="sw"><span class="name-syllable">cha</span><span class="name-dot" aria-hidden="true"></span><span class="name-syllable">ma</span></h2>
+          <p class="name-meta"><span lang="sw">/ˈtʃɑ.mɑ/</span><span data-copy="nameMeta">Swahili · noun</span></p>
+          <p class="name-def" data-copy="nameDef">A group of people who save together, and show up for each other.</p>
+          <p class="name-body" data-copy="nameBody">Long before apps, neighbors pooled what they had and took turns receiving it. No bank. No platform. People who kept their word.</p>
+          <dl class="name-horizon">
+            <div><dt data-copy="nameNowLabel">Open today</dt><dd data-copy="nameNow">Savings circles. Everyone locks an equal share, and everyone’s exact sats come back.</dd></div>
+            <div><dt data-copy="nameNextLabel">Coming next</dt><dd data-copy="nameNext">Turns. Each round, one member collects the whole pot, until everyone has.</dd></div>
+            <div class="name-rule"><dt data-copy="nameRuleLabel">Every round</dt><dd data-copy="nameRule">All or nothing. If even one seat doesn’t lock in time, the round refunds automatically and everyone’s exact sats come back.</dd></div>
+          </dl>
+        </div>
+        <figure class="ring" data-step="rest" aria-label="Five seats around a shared pot">
+          <div class="ring-stage" aria-hidden="true">
+            <svg class="ring-track" viewBox="0 0 200 200" fill="none"><circle cx="100" cy="100" r="76"/><circle class="ring-fill" cx="100" cy="100" r="76" pathLength="1" transform="rotate(-90 100 100)"/></svg>
+            <div class="ring-pot"><img src="icons/bitcoin-official.png" width="56" height="56" alt="" loading="lazy"></div>
+            <div class="ring-seat" style="--i:0"><span class="ring-face face-one"></span><b class="ring-tick">✓</b></div>
+            <div class="ring-seat" style="--i:1"><span class="ring-face face-two"></span><b class="ring-tick">✓</b></div>
+            <div class="ring-seat" style="--i:2"><span class="ring-face face-three"></span><b class="ring-tick">✓</b></div>
+            <div class="ring-seat" style="--i:3"><span class="ring-face face-four"></span><b class="ring-tick">✓</b></div>
+            <div class="ring-seat ring-you" style="--i:4"><span class="ring-face"><span data-copy="ringYou">You</span></span><b class="ring-tick">✓</b></div>
+            <i class="ring-coin" style="--i:0"></i><i class="ring-coin" style="--i:1"></i><i class="ring-coin" style="--i:2"></i><i class="ring-coin" style="--i:3"></i><i class="ring-coin" style="--i:4"></i>
+            <i class="ring-payout"></i>
+          </div>
+          <figcaption><span class="ring-caption" data-copy="ringGather">A circle fills, seat by seat.</span><small data-copy="filmContext">A vision of rotating savings · coming next</small></figcaption>
+        </figure>
+      </div>
+    </section>
+    <section class="real-life" id="uses" aria-labelledby="life-title"><div class="wrap"><div class="life-heading"><div><p class="eyebrow" data-copy="lifeEyebrow">BITCOIN, OUT IN THE WORLD</p><h2 id="life-title" data-copy="lifeTitle">For the everyday.<br><em>Week after week.</em></h2></div><div class="life-aside"><p data-copy="lifeIntro">One way to trade.<br>So many reasons to.</p><a class="text-link" href="https://getchama.app/" data-copy="checkAvailability">Check availability →</a></div></div><div class="life-grid">
+      <article><button class="life-art" type="button" aria-pressed="false" aria-label="Show feature icon" data-feature="0"><span class="life-photo"><img src="img/p-chama-circle-v1.jpg" width="960" height="640" alt="Four people around a table with a shared basket" loading="lazy"></span><span class="life-symbol" aria-hidden="true"><img class="symbol-light" src="icons/use-cases/chama.svg" alt=""><img class="symbol-dark" src="icons/use-cases/chama-dark.svg" alt=""></span></button><div class="life-card"><span>01</span><h3 data-copy="useCircle">Save together</h3><p data-copy="useCircleBody">A circle with people you trust.</p></div></article>
+      <article><button class="life-art" type="button" aria-pressed="false" aria-label="Show feature icon" data-feature="1"><span class="life-photo"><img src="img/p-p2p-v5.jpg" width="560" height="380" alt="Two people swapping cash and sats" loading="lazy"></span><span class="life-symbol" aria-hidden="true"><svg viewBox="0 0 240 180"><path class="mass" d="M28 24h122V8l62 38-62 38V68H28V24Zm184 132H90v16l-62-38 62-38v16h122v44Z"/><circle class="bitcoin-stamp-ring" cx="120" cy="90" r="39"/><image href="icons/bitcoin-official.png" x="86" y="56" width="68" height="68" preserveAspectRatio="xMidYMid meet" aria-hidden="true"/></svg></span></button><div class="life-card"><span>02</span><h3 data-copy="useSwap">Swap sats and cash</h3><p data-copy="useSwapBody">Food, fares, and everyday cash.</p></div></article>
+      <article><button class="life-art" type="button" aria-pressed="false" aria-label="Show feature icon" data-feature="2"><span class="life-photo"><img src="img/p-billpay-v2.jpg" width="560" height="380" alt="A household paying a bill together" loading="lazy"></span><span class="life-symbol" aria-hidden="true"><img class="symbol-light" src="icons/use-cases/bill-pay.svg" alt=""><img class="symbol-dark" src="icons/use-cases/bill-pay-dark.svg" alt=""></span></button><div class="life-card"><span>03</span><h3 data-copy="useBills">Pay a bill</h3><p data-copy="useBillsBody">Rent, utilities, care, and obligations.</p></div></article>
+      <article><button class="life-art" type="button" aria-pressed="false" aria-label="Show feature icon" data-feature="3"><span class="life-photo"><img src="img/p-stores-v4.jpg" width="560" height="380" alt="A local market seller making a sale" loading="lazy"></span><span class="life-symbol" aria-hidden="true"><img class="symbol-light" src="icons/use-cases/store.svg" alt=""><img class="symbol-dark" src="icons/use-cases/store-dark.svg" alt=""></span></button><div class="life-card"><span>04</span><h3 data-copy="useShop">Buy and sell</h3><p data-copy="useShopBody">Groceries, bicycles, cars, even a home.</p></div></article>
     </div></div></section>
-    <section class="trust wrap" id="trust" aria-labelledby="trust-title"><div><p class="eyebrow" data-copy="trustEyebrow">THE SOFTWARE STEPS BACK</p><h2 id="trust-title" data-copy="trustHeading">Your trade.<br><em>Never our money.</em></h2><p class="trust-intro" data-copy="trustSummary">Chama connects the people and the agreement. It cannot take your sats or settle a trade on its own.</p><a class="text-link" href="faq.html" data-faq><span data-copy="trustLink">A closer look at the safeguards</span><span aria-hidden="true">↗︎</span></a></div><div class="trust-list"><details open><summary data-copy="trustOne">Two signatures. One settlement.</summary><p data-copy="trustOneBody">Buyer, seller, and arbiter each have a role. Two of the three must agree to settle an escrow trade.</p></details><details><summary data-copy="trustTwo">The terms come first.</summary><p data-copy="trustTwoBody">Know the amount, the conditions, and the arbiter before you lock sats. Start in the sandbox to learn the flow.</p></details><details><summary data-copy="trustThree">Open for anyone to inspect.</summary><p><span data-copy="trustThreeBody">The code and the rules are public.</span> <a href="https://github.com/jesuspirate/chama" data-copy="viewCode">Read the code ↗︎</a></p></details></div></section>
+    <section class="trust wrap" id="trust" aria-labelledby="trust-title"><div><p class="eyebrow" data-copy="trustEyebrow">THE SOFTWARE STEPS BACK</p><h2 id="trust-title" data-copy="trustHeading">Your trade.<br><em>Never our money.</em></h2><p class="trust-intro" data-copy="trustSummary">Chama connects the people and the agreement. It cannot take your sats or settle a trade on its own.</p><a class="text-link" href="faq.html" data-faq><span data-copy="trustLink">A closer look at the safeguards</span><span aria-hidden="true">↗︎</span></a></div><div class="keys" data-pair="none">
+        <div class="keys-stage">
+          <svg class="keys-lines" viewBox="0 0 300 270" fill="none" aria-hidden="true"><path class="keys-line line-buyer-arbiter" d="M52 206 150 48"/><path class="keys-line line-seller-arbiter" d="M248 206 150 48"/><path class="keys-line line-buyer-seller" d="M52 206H248"/></svg>
+          <button class="key key-arbiter" type="button" data-key="arbiter" aria-pressed="false"><span class="key-face role-portrait portrait-arbiter"></span><b data-copy="arbiterName">Grace</b><small data-copy="communityArbiter">Community arbiter</small></button>
+          <button class="key key-buyer" type="button" data-key="buyer" aria-pressed="false"><span class="key-face role-portrait portrait-buyer"></span><b data-copy="buyerName">Daneka</b><small data-copy="satsBuyer">Bitcoin buyer</small></button>
+          <button class="key key-seller" type="button" data-key="seller" aria-pressed="false"><span class="key-face role-portrait portrait-seller"></span><b data-copy="sellerName">G🏄🏿</b><small data-copy="satsSeller">Bitcoin seller</small></button>
+          <div class="keys-lock" aria-hidden="true"><svg viewBox="0 0 40 40" fill="none"><rect x="10" y="18" width="20" height="16" rx="4"/><path class="keys-shackle" d="M14 18v-6a6 6 0 0 1 12 0v6"/></svg></div>
+        </div>
+        <p class="keys-caption" data-copy="keysNone">Three people. It takes any two.</p>
+        <p class="keys-chama"><img src="icons/chama-mark-64.png?v=approved-star-20260921" width="22" height="22" alt=""><span data-copy="keysChama">Chama has no vote.</span></p>
+      </div><div class="trust-list"><details open><summary data-copy="trustOne">Two signatures. One settlement.</summary><p data-copy="trustOneBody">Buyer, seller, and arbiter each have a role. Two of the three must agree to settle an escrow trade.</p></details><details><summary data-copy="trustTwo">The terms come first.</summary><p data-copy="trustTwoBody">Know the amount, the conditions, and the arbiter before you lock sats. Start in the sandbox to learn the flow.</p></details><details><summary data-copy="trustThree">Open for anyone to inspect.</summary><p><span data-copy="trustThreeBody">The code and the rules are public.</span> <a href="https://github.com/jesuspirate/chama" data-copy="viewCode">Read the code ↗︎</a></p></details></div><ul class="facts">
+        <li><strong>2<span>/</span>3</strong><span data-copy="factTwo">people must agree before sats move</span></li>
+        <li><strong>0</strong><span data-copy="factZero">sats Chama can move on its own</span></li>
+        <li><strong>4</strong><span data-copy="factFour">ways in: web, Android, desktop, your own server</span></li>
+        <li><strong>MIT</strong><span data-copy="factOpen">open source, for anyone to read</span></li>
+      </ul></section>
     <section class="invitation" id="closing"><div class="wrap"><p class="eyebrow" data-copy="closingEyebrow">THERE’S A PLACE FOR YOU HERE</p><h2 data-copy="closingHeading">Come for a trade.<br><em>Stay for the people.</em></h2><p data-copy="closingIntro">Try a complete trade in the sandbox.<br>No real sats. Just a first step.</p><a class="button cream" href="https://getchama.app/?sim=1"><span data-copy="tryDemo">Try it for yourself</span><span aria-hidden="true">↗︎</span></a><a class="button enter quiet-link" href="https://getchama.app/" data-copy="alreadyReady">Already at home here? Enter Chama ↗︎</a><div class="circle-art" aria-hidden="true"><img src="img/chama-community-threshold-v9.png" width="1100" height="1100" loading="lazy" alt=""><i></i><i></i><i></i><i></i><i></i><i></i></div></div><div class="community-medley" aria-hidden="true"><div class="medley-row"><div class="medley-set"><img src="img/comm-home-west-africa-v1.jpg" alt="" loading="lazy" decoding="async"><img src="img/comm-home-us-city-v8.jpg" alt="" loading="lazy" decoding="async"><img src="img/comm-home-south-asia-lane-v1.jpg" alt="" loading="lazy" decoding="async"><img src="img/comm-home-france-rural-v8.jpg" alt="" loading="lazy" decoding="async"><img src="img/comm-home-caribbean-coastal-v1.jpg" alt="" loading="lazy" decoding="async"><img src="img/comm-home-east-africa-hillside-v1.jpg" alt="" loading="lazy" decoding="async"></div><div class="medley-set"><img src="img/comm-home-west-africa-v1.jpg" alt="" loading="lazy" decoding="async"><img src="img/comm-home-us-city-v8.jpg" alt="" loading="lazy" decoding="async"><img src="img/comm-home-south-asia-lane-v1.jpg" alt="" loading="lazy" decoding="async"><img src="img/comm-home-france-rural-v8.jpg" alt="" loading="lazy" decoding="async"><img src="img/comm-home-caribbean-coastal-v1.jpg" alt="" loading="lazy" decoding="async"><img src="img/comm-home-east-africa-hillside-v1.jpg" alt="" loading="lazy" decoding="async"></div></div><div class="medley-row reverse"><div class="medley-set"><img src="img/comm-home-seasia-shophouse-v1.jpg" alt="" loading="lazy" decoding="async"><img src="img/comm-home-latin-hillside-v1.jpg" alt="" loading="lazy" decoding="async"><img src="img/comm-home-north-africa-courtyard-v1.jpg" alt="" loading="lazy" decoding="async"><img src="img/comm-home-france-city-v8.jpg" alt="" loading="lazy" decoding="async"><img src="img/comm-home-river-stilt-v1.jpg" alt="" loading="lazy" decoding="async"><img src="img/comm-home-andean-v1.jpg" alt="" loading="lazy" decoding="async"></div><div class="medley-set"><img src="img/comm-home-seasia-shophouse-v1.jpg" alt="" loading="lazy" decoding="async"><img src="img/comm-home-latin-hillside-v1.jpg" alt="" loading="lazy" decoding="async"><img src="img/comm-home-north-africa-courtyard-v1.jpg" alt="" loading="lazy" decoding="async"><img src="img/comm-home-france-city-v8.jpg" alt="" loading="lazy" decoding="async"><img src="img/comm-home-river-stilt-v1.jpg" alt="" loading="lazy" decoding="async"><img src="img/comm-home-andean-v1.jpg" alt="" loading="lazy" decoding="async"></div></div></div><div class="medley-caption wrap"><span data-copy="homeMedley">Everyone has a home.</span><button class="medley-toggle" type="button" aria-pressed="false">Pause images</button></div></section>
     <section class="community" id="community">
       <div class="wrap community-card reveal">
@@ -118,26 +179,44 @@
     </section>
   </main>
   <footer>
-    <div class="wrap footer-shell">
-      <div class="footer-brand">
-        <a class="brand" href="#top"><img src="icons/chama-mark-64.png?v=approved-star-20260921" alt="">Chama</a>
-        <a class="ethos" href="https://x.com/getchama_app/status/2077491057613549686" target="_blank" rel="noopener"><small data-copy="ethosLabel">The public ethos · read on X</small><strong>The Missing Human Layer of Bitcoin</strong><span>“When a community moves together, no one has to stand alone.” →</span></a>
-      </div>
-      <div class="chama-public-presence">
-        <div class="chama-public-title" data-copy="findUs">Find us in public</div>
-        <div class="chama-public-grid">
-          <a class="chama-public-link" href="https://x.com/getchama_app" target="_blank" rel="me noopener"><span class="chama-public-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M18.9 2H22l-6.77 7.74L23.2 22h-6.24l-4.89-6.4L6.48 22H3.36l7.26-8.3L2.98 2h6.4l4.42 5.84L18.9 2Zm-1.1 17.84h1.73L8.44 4.05H6.58L17.8 19.84Z"/></svg></span><span><small>X</small>@getchama_app</span></a>
-          <a class="chama-public-link" href="https://primal.net/chama" target="_blank" rel="me noopener"><span class="chama-public-icon"><img src="img/nostr-ostrich-footer-v1.png" alt=""></span><span><small>Nostr</small>chama@primal.net</span></a>
-          <a class="chama-public-link" href="https://t.me/getchama" target="_blank" rel="me noopener"><span class="chama-public-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M21.7 3.1 18.5 20c-.24 1.2-.88 1.5-1.78.93l-4.87-3.59-2.35 2.26c-.26.26-.48.48-.98.48l.35-4.96 9.02-8.15c.39-.35-.09-.55-.61-.2L6.13 13.8 1.33 12.3C.29 11.98.27 11.26 1.55 10.76L20.3 3.53c.87-.32 1.63.2 1.4-.43Z"/></svg></span><span><small>Telegram</small>@getchama</span></a>
-          <a class="chama-public-link" href="mailto:getchama@proton.me"><span class="chama-public-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M3 5.5h18v13H3zM4 7l8 6 8-6"/></svg></span><span><small>Email</small>getchama@proton.me</span></a>
+    <div class="wrap">
+      <div class="foot-top">
+        <div class="foot-brand">
+          <a class="brand" href="#top" aria-label="Chama home"><img src="icons/chama-mark-64.png?v=approved-star-20260921" alt=""><span class="brand-word">chama<span class="brand-dot" aria-hidden="true"></span></span></a>
+          <p class="foot-line" data-copy="footLine">Trade with people, not platforms.</p>
+          <a class="ethos" href="https://x.com/getchama_app/status/2077491057613549686" target="_blank" rel="noopener"><small data-copy="ethosLabel">The public ethos · read on X</small><strong>The Missing Human Layer of Bitcoin</strong><span>“When a community moves together, no one has to stand alone.” →</span></a>
         </div>
-        <div class="chama-footer-links"><a href="faq.html">FAQ</a><a href="https://bitcoin.org/bitcoin.pdf" target="_blank" rel="noopener" data-copy="bitcoinWhitepaper">Bitcoin whitepaper</a><a href="https://github.com/jesuspirate/chama/blob/main/chama-technical-overview.pdf" target="_blank" rel="noopener">Technical overview</a><a href="https://github.com/jesuspirate/chama" target="_blank" rel="noopener">GitHub</a><a href="https://zapstore.dev/apps/app.chama.market" target="_blank" rel="noopener">App</a></div>
+        <nav class="foot-col" aria-labelledby="foot-chama">
+          <h2 class="foot-head" id="foot-chama">Chama</h2>
+          <a href="https://getchama.app/" data-copy="footEnter">Enter Chama</a>
+          <a href="https://getchama.app/?sim=1" data-copy="footSandbox">Try the sandbox</a>
+          <a href="https://zapstore.dev/apps/app.chama.market" target="_blank" rel="noopener" data-copy="footApp">Android app</a>
+          <a href="faq.html">FAQ</a>
+          <a href="https://github.com/jesuspirate/chama/blob/main/chama-technical-overview.pdf" target="_blank" rel="noopener" data-copy="footTech">Technical overview</a>
+          <a href="https://github.com/jesuspirate/chama" target="_blank" rel="noopener" data-copy="footCode">Source code</a>
+        </nav>
+        <nav class="foot-col" aria-labelledby="foot-learn">
+          <h2 class="foot-head" id="foot-learn" data-copy="footLearn">Learn Bitcoin</h2>
+          <a href="https://learnmeabitcoin.com/" target="_blank" rel="noopener">Learn Me A Bitcoin</a>
+          <a href="https://planb.academy/" target="_blank" rel="noopener">Plan ₿ Academy</a>
+          <a href="https://yzer.io/" target="_blank" rel="noopener">Yzer</a>
+          <a href="https://bitcoin.org/bitcoin.pdf" target="_blank" rel="noopener" data-copy="bitcoinWhitepaper">Bitcoin whitepaper</a>
+        </nav>
+        <nav class="foot-col foot-social" aria-labelledby="foot-find">
+          <h2 class="foot-head" id="foot-find" data-copy="findUs">Find us in public</h2>
+          <a href="https://x.com/getchama_app" target="_blank" rel="me noopener"><i><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M18.9 2H22l-6.77 7.74L23.2 22h-6.24l-4.89-6.4L6.48 22H3.36l7.26-8.3L2.98 2h6.4l4.42 5.84L18.9 2Zm-1.1 17.84h1.73L8.44 4.05H6.58L17.8 19.84Z"/></svg></i><span><small>X</small>@getchama_app</span></a>
+          <a href="https://primal.net/chama" target="_blank" rel="me noopener"><i><img src="img/nostr-ostrich-footer-v1.png" alt=""></i><span><small>Nostr</small>chama@primal.net</span></a>
+          <a href="https://t.me/getchama" target="_blank" rel="me noopener"><i><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M21.7 3.1 18.5 20c-.24 1.2-.88 1.5-1.78.93l-4.87-3.59-2.35 2.26c-.26.26-.48.48-.98.48l.35-4.96 9.02-8.15c.39-.35-.09-.55-.61-.2L6.13 13.8 1.33 12.3C.29 11.98.27 11.26 1.55 10.76L20.3 3.53c.87-.32 1.63.2 1.4-.43Z"/></svg></i><span><small>Telegram</small>@getchama</span></a>
+          <a href="mailto:getchama@proton.me"><i><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M3 5.5h18v13H3zM4 7l8 6 8-6"/></svg></i><span><small>Email</small>getchama@proton.me</span></a>
+        </nav>
       </div>
+      <div class="foot-base"><span data-copy="footBase">Open source. MIT licensed.</span><a href="#top" data-copy="footTop">Back to top</a></div>
     </div>
   </footer>
 
-  <script src="story-locales.js?v=46"></script>
-  <script src="story.js?v=45"></script>
-  <script src="details.js?v=45"></script>
+  <script src="story-locales.js?v=52"></script>
+  <script src="story.js?v=46"></script>
+  <script src="details.js?v=46"></script>
+  <script src="experience.js?v=5"></script>
 </body>
 </html>

@@ -94,3 +94,54 @@ The requested actual invite → lock → claim sequence remains unfinished. A re
 
 ## Revamp 42 peel polish
 The tile corner now has a shaded paper underside, a soft shadow, and a lift-away transition; the symbols themselves remain stationary. Verified logo-first and photo-revealed states in the browser, in light and dark themes. Grace's connector endpoints now use the measured border-inclusive radius, overlapping by one pixel to avoid the remaining gap. The hero is unchanged. The actual claim recording remains a separate unfinished follow-up.
+
+
+## Experience layer (revamp 47, pending review)
+The hero film, the Meet → Agree → Trade sequence, the circle reveal, the everyday tiles and the closing are unchanged. `experience.css` and `experience.js` are additive: removing the two tags restores revamp 46 exactly. Native scrolling is still never intercepted.
+
+Added: a chapter thread (right-edge rail from 1100px, a progress line under the header below that); line-by-line headline reveals and single-use entrance reveals, released after they finish so hover states are untouched; a section on the name, with a five-seat circle that fills, contributes and pays one seat per turn; an interactive two-of-three explanation in the safeguards, reusing Daneka, Daniel and Grace; four plain facts. Fixed: trade chapter copy no longer slides under the chapter nav at the end of the sequence.
+
+Claims added by this revision, each to be confirmed before shipping: savings circles are open today and return everyone's exact sats; rotating turns are coming next (the circle keeps the existing "vision of rotating savings" label and shows no round numbers); any two of buyer, seller and arbiter settle a trade and Chama has no vote; Chama runs on web, Android, desktop and StartOS; the code is MIT licensed.
+
+Reduced motion shows every section in its finished state, with the circle full and one settled pair. Without JavaScript the new sections render as static content. English, Spanish and French are complete; the Spanish and French lines are new and need a native read. Verified at 375×812, 1024×768 and 1360×800, light and dark, with no console errors or horizontal overflow.
+
+### Revamp 47 review round (2026-09-29)
+The circle now shows the rule, not only the happy path: every round each seat locks again, the locked sats wait on the ring, and only a full round pays out. Alternate circles fall one seat short in their third round; the waiting seats are refunded and the circle ends, matching the rotation spec's atomic rounds. The same rule is stated in copy beneath the definition, so it does not depend on watching the animation. A seat that has collected carries the Bitcoin logo, not a typed character.
+
+Also in this round: the footer wordmark matches the header (lowercase, orange dot); the name's reveal mask no longer clips the final letter; everyday tiles use the section's own colour in both themes; both carousel rows move at 30px/s, which lands on whole device pixels per frame at 60 and 120Hz (26 and 28px/s did not, and hitched several times a second).
+
+A coded hero film draft lives outside the deploy tree in `outputs/hero-film/` (canvas, deterministic per frame, EN/ES/FR captions, MP4 export through `export.mjs`). It is a proposal only; the approved hero film is unchanged.
+
+### Revamp 47, second review round (2026-09-29)
+One marker per seat. A seat shows a tick while its share is locked; once that seat has collected, the same marker becomes the Bitcoin logo and stays. Sats are no longer parked on the ring: they appear only in motion, into the pot or back to their seats on a refund. The refund round is unchanged. The hero film draft follows the same rule.
+
+The phone mock in the circle reveal now carries the header's wordmark (same weight, same orange dot) in place of a typed bullet.
+
+## Revamp 48: the drawn hero film (pending review)
+The hero is now a drawn film, not a photographed one: one continuous pull-back from two people, to a trade with a community arbiter, to a circle of five, to a field of circles that keeps turning. It is code (`outputs/hero-film/film.js`), rendered to video once per language and framing because names and captions are part of the picture: `img/chama-film-{wide,tall}-{en,es,fr}.mp4` with a matching `.jpg` poster. `story.js` picks the file from the page language and the viewport, and resumes from the same moment when either changes. Desktop shows the 16:9 frame whole; phones get a 9:16 framing of the same film. The hero cut ends on the living field with no title of its own, so the page's headline returns over it.
+
+The photographed film is kept. `img/chama-circle-story-v13.mp4` and its poster remain in the deploy manifest, and `?hero=classic` plays it with its original captions. To go back for good, set `classicHero` to true in `story.js`.
+
+After the first circle completes the circle does not stop: a new one starts at once, and the neighbouring circles keep paying out. Six short tags name what a payout becomes (a debt paid off, school fees, a trip home, a first car, a home, a fresh start).
+
+The price display copies the app's hero price pill and replays BTC/USD for a closed decade, January 2016 to December 2025, first day of each month, from the blockchain.com market price chart (read 2026-09-29). It includes the falls. It is labelled as past prices and not a promise. It deliberately shows no invented or projected prices: the circle brief's rule is "No price promises. Ever." A closed decade also never goes stale, because it never claims to be today.
+
+Names: English keeps Daneka, G🏄🏿 and Grace. Spanish is Marisol, Ramón and Esperanza. French is Nadège, Basile and Félicité.
+
+Also in this revision: "For the everyday. Week after week."; a fourth everyday tile, circles first ("Save together"); each part of the page makes one entrance when it comes into view and re-arms once it has left; moving between chapters from the thread or the header is a cut (a brief dip to paper, then the chapter's entrance) and never a long scroll.
+
+### Bridge copy (revamp 48)
+The old bridge asked "What makes that possible?", which set up the trade explanation after a film that showed only a savings circle. The drawn film already shows the trade, so the bridge now says the repeat is deliberate: "Now, at your pace. One trade, step by step." The film tells the whole story once, quickly; the scroll sequence tells the trade again at the reader's speed, with the detail the film skips.
+
+### Footer and preview server (revamp 48)
+The footer is now a conventional one: brand, line and ethos on the left, then three plain columns (Chama, Learn Bitcoin, Find us in public) and a base line. Learn Bitcoin links to Learn Me A Bitcoin, Plan ₿ Academy (planb.academy), Yzer and the whitepaper; each address was checked on 2026-09-29. Mi Primer Bitcoin is left out for now (its address redirects to es.myfirstbitcoin.io).
+
+The local preview now runs `.claude/serve-landing.mjs`, which answers Range requests. Python's `http.server` does not, so a language switch restarted the film from zero in preview. With Range support the film resumes from the same moment, as it will behind Caddy.
+
+### Final review before shipping revamp 48 (2026-09-29)
+Checked by script in a headless browser: markup balance, duplicate ids, in-page anchors, every copy key in English, Spanish and French, every local file referenced by pages, styles and scripts, the deploy manifest, and every external link. Then the whole page was walked in three languages at 340, 375, 820, 1360 and 1920 pixels, light and dark, with motion reduced, with JavaScript off, and with `?hero=classic`: no script errors, no failed files, no sideways overflow, nothing left hidden on screen.
+
+One fault found and fixed: with motion reduced on a phone the hero is a paper page with an inline still, and the new film background had turned that page dark under dark text. The dark surface now applies only where the film fills the hero.
+
+Known and left alone: `?film=original|varied` in `story.js` names files under `img/circle-turns/` that are not in the tree (older experiment, not reachable from the page); on a phone with JavaScript off the hero shows the wide still, cropped.
+
