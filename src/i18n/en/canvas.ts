@@ -80,6 +80,7 @@ export const canvas: Record<string, string> = {
   "canvas.reviewMatch": "Review this match.",
   "canvas.reviewMatchSub": "Nothing has been joined, signed, or funded.",
   "canvas.youReceive": "You receive",
+  "canvas.fromOfferBracket": "from a {min}–{max} sats offer",
   "canvas.youPay": "You pay",
   "canvas.satsValue": "{amount} sats",
   "canvas.confirmWithSeller": "Confirm with seller",

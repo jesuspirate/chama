@@ -3,7 +3,7 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { EscrowStatus, Role, type EscrowState } from "../escrow-engine/types.js";
 import { matchGuidedListings, rankGuidedCandidates, recommendGuidedCandidates } from "../guided/match-listings.js";
-import { Match, guidedChooseTitleKey } from "./screens/AssistedCanvas.js";
+import { Match, MatchReviewAmount, guidedChooseTitleKey } from "./screens/AssistedCanvas.js";
 
 // Exercise the actual per-amount searches that the guided canvas merges.
 function offer(id: string, sats: number, fiat: number, currency = "USD", category = "p2p-trade") {
@@ -59,3 +59,11 @@ assert.equal(guidedChooseTitleKey([]), "canvas.chooseTitle");
 const bracket = { ...b, listing: { ...b.listing, items: [{ id: "range", label: "Sats", kind: "exchange-bracket" as const, amountMsats: 3183000, minAmountMsats: 1000000, maxAmountMsats: 5000000 }] } };
 assert.equal(recommendGuidedCandidates([a, bracket], "USD").lowestPrice?.listing.id, "b", "range price uses the candidate amount, as the card does");
 console.log("PASS guided offer truth: unit prices, currencies, lanes, bill copy, visible-result heading, and ranges");
+
+const rangeCandidate = { ...a, amountSats: 500, listing: { ...a.listing, items: [{ id: 'range', label: 'Sats', kind: 'exchange-bracket' as const, amountMsats: 21_000, minAmountMsats: 21_000, maxAmountMsats: 60_000_000 }] } };
+const reviewAmount = renderToStaticMarkup(<MatchReviewAmount candidate={rangeCandidate} />);
+assert.ok(reviewAmount.includes('500 sats'));
+assert.ok(reviewAmount.includes('from a 21–60,000 sats offer'));
+assert.ok(reviewAmount.indexOf('500 sats') < reviewAmount.indexOf('from a'));
+assert.ok(!renderToStaticMarkup(<MatchReviewAmount candidate={a} />).includes('from a'));
+console.log('PASS review shows chosen amount first and original offer bracket underneath');

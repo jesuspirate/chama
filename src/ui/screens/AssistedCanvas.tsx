@@ -734,7 +734,7 @@ export function AssistedCanvas({
       <h1 style={headingStyle()}>{tr("canvas.reviewMatch")}</h1>
       <p style={subStyle()}>{tr("canvas.reviewMatchSub")}</p>
       <div style={reviewStyle()}>
-        <ReviewRow label={tr("canvas.youReceive")} value={tr("canvas.satsValue", { amount: selected.amountSats.toLocaleString() })} />
+        <MatchReviewAmount candidate={selected} />
         <ReviewRow label={tr(selected.listing.category === "bill-pay" ? "canvas.youPayBill" : "canvas.youPay")} value={[selected.fiatQuote ? `${selected.fiatQuote.amount.toLocaleString()} ${selected.fiatQuote.currency}` : tr("canvas.confirmWithSeller"), ...(selected.listing.category === "bill-pay" ? [selected.sourceMenuItem?.label ?? selected.listing.description] : [])].join(" · ")} />
         <ReviewRow label={tr("canvas.paymentMethod")} value={getRailByKey(selected.paymentRail)?.displayName ?? selected.paymentRail} />
         <ReviewRow label={tr(selected.listing.category === "bill-pay" ? "canvas.billOwner" : "canvas.seller")} value={profileNameFor(profileNames, selected.sellerPubkey, kind0Enabled) ?? shortKey(selected.sellerPubkey)} last />
@@ -1184,6 +1184,18 @@ function NoMatchRetention({ notified, summary, onNotify, onWiden }: { notified: 
     </div>
   </div>;
 }
+export function MatchReviewAmount({ candidate }: { candidate: GuidedMatchCandidate }) {
+  const bracket = candidate.listing.items?.find(item => item.kind === "exchange-bracket");
+  const low = bracket ? (bracket.minAmountMsats ?? bracket.amountMsats) / 1000 : null;
+  const high = bracket ? (bracket.maxAmountMsats ?? bracket.amountMsats) / 1000 : null;
+  return <>
+    <ReviewRow label={tr("canvas.youReceive")} value={tr("canvas.satsValue", { amount: candidate.amountSats.toLocaleString() })} />
+    {low !== null && high !== null && low < high && <div style={{ color: T.muted, fontSize: 12, textAlign: "right", padding: "8px 0" }}>
+      {tr("canvas.fromOfferBracket", { min: low.toLocaleString(), max: high.toLocaleString() })}
+    </div>}
+  </>;
+}
+
 function ReviewRow({ label, value, last = false }: { label: string; value: string; last?: boolean }) { return <div style={{ display: "flex", justifyContent: "space-between", gap: 20, padding: "clamp(10px, 1.6vh, 15px) 0", borderBottom: last ? 0 : `1px solid ${T.border}` }}><span style={{ color: T.muted }}>{label}</span><strong style={{ textAlign: "right" }}>{value}</strong></div>; }
 
 function detailCopy(bring: AssistedCanvasAsset | null, want: AssistedCanvasAsset | null, currency: string) {
