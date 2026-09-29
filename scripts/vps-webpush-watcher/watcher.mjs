@@ -76,12 +76,16 @@ function communityWakeTag(slug) {
 // ── Store: tag -> Map(endpointKey -> { subscription, expiresAt }) ──────────
 const byTag = new Map();
 const tagsByEndpoint = new Map();
+// Endpoints exist independently of watches so a fresh enable can receive /test.
+const byEndpoint = new Map();
 const lastSent = new Map(); // `${tag} ${endpointKey}` -> ms
 
 function addRegistration(subscription, tags, stored = null) {
   const key = endpointKeyOf(subscription);
   if (!key) return 0;
   const expiresAt = stored?.expiresAt ?? Date.now() + REG_TTL_MS;
+  const previous = byEndpoint.get(key);
+  byEndpoint.set(key, { subscription, expiresAt, registeredAt: previous?.registeredAt ?? stored?.registeredAt ?? Date.now() });
   let added = 0;
   const set = tagsByEndpoint.get(key) || new Set();
   for (const tag of tags) {
@@ -104,7 +108,7 @@ function removeRegistration(subscription, tags) {
     if (m) { m.delete(key); if (m.size === 0) byTag.delete(tag); }
     set?.delete(tag);
   }
-  if (set && set.size === 0) tagsByEndpoint.delete(key);
+  if (set && set.size === 0) { tagsByEndpoint.delete(key); byEndpoint.delete(key); }
 }
 
 function pruneEndpoint(key) {
@@ -115,6 +119,7 @@ function pruneEndpoint(key) {
     if (m) { m.delete(key); if (m.size === 0) byTag.delete(tag); }
   }
   tagsByEndpoint.delete(key);
+  byEndpoint.delete(key);
 }
 
 function expireSweep() {
@@ -125,6 +130,9 @@ function expireSweep() {
     }
     if (m.size === 0) byTag.delete(tag);
   }
+  for (const [key, rec] of byEndpoint) {
+    if (rec.expiresAt <= now) pruneEndpoint(key);
+  }
   persist();
 }
 
@@ -132,13 +140,8 @@ function expireSweep() {
 function persist() {
   try {
     const rows = [];
-    const seen = new Set();
-    for (const m of byTag.values()) {
-      for (const [key, rec] of m) {
-        if (seen.has(key)) continue;
-        seen.add(key);
-        rows.push({ subscription: rec.subscription, tags: [...(tagsByEndpoint.get(key) || [])], expiresAt: rec.expiresAt, registeredAt: rec.registeredAt });
-      }
+    for (const [key, rec] of byEndpoint) {
+      rows.push({ subscription: rec.subscription, tags: [...(tagsByEndpoint.get(key) || [])], expiresAt: rec.expiresAt, registeredAt: rec.registeredAt });
     }
     fs.writeFileSync(STORE_PATH, JSON.stringify({ v: 1, rows }), "utf8");
   } catch (e) { console.warn("[watcher] persist failed:", e.message); }
@@ -247,7 +250,7 @@ function readJson(req) {
 }
 
 function validTags(v) {
-  return Array.isArray(v) && v.length > 0 && v.length <= MAX_TAGS_PER_REGISTER &&
+  return Array.isArray(v) && v.length <= MAX_TAGS_PER_REGISTER &&
     v.every(t => typeof t === "string" && t.length > 0 && t.length <= 64);
 }
 
@@ -270,9 +273,10 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(400); return res.end();
     }
     const key = endpointKeyOf(body.endpoint);
-    const rec = [...(tagsByEndpoint.get(key) || [])].map(tag => byTag.get(tag)?.get(key))
-      .find(r => r?.expiresAt > Date.now() && JSON.stringify(r.subscription) === JSON.stringify(body.endpoint));
-    if (!rec) { res.writeHead(404); return res.end(); }
+    const rec = byEndpoint.get(key);
+    if (!rec || rec.expiresAt <= Date.now() || JSON.stringify(rec.subscription) !== JSON.stringify(body.endpoint)) {
+      res.writeHead(404); return res.end();
+    }
     const cooldown = `test ${key}`;
     if (Date.now() - (lastSent.get(cooldown) || 0) < 30_000) { res.writeHead(429); return res.end(); }
     lastSent.set(cooldown, Date.now());
@@ -308,7 +312,7 @@ const server = http.createServer(async (req, res) => {
 loadStore();
 startNostr();
 setInterval(expireSweep, 3600 * 1000).unref();
-server.listen(PORT, BIND, () => console.log(`[watcher] listening on ${BIND}:${PORT}`));
+server.listen(PORT, BIND, () => console.log(`[watcher] listening on ${BIND}:${server.address().port}`));
 
 function shutdown() { try { sub?.close(); } catch {} try { pool.close(RELAYS); } catch {} persist(); process.exit(0); }
 process.on("SIGINT", shutdown);

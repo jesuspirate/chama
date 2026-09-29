@@ -135,8 +135,17 @@ API references: [UnifiedPush connector](https://unifiedpush.org/kdoc/connector/o
 ## Native delivery test
 
 `POST /test` accepts `{ endpoint, nonce }`, where endpoint exactly matches an
-unexpired registration and nonce is 32 lowercase hex characters. It sends an
-opaque test wake through the registered transport. HTTP 204 means the transport
+unexpired registration and nonce is 32 lowercase hex characters. A fresh enable
+can register `{ endpoint, tags: [] }`: the endpoint-only record persists across
+restarts and supports `/test` before any trade tags exist. Register still accepts
+at most 200 tags; empty registration refreshes an endpoint without clearing its
+existing watches. Empty unregister removes an endpoint-only record. Expiry and
+last-watch removal also remove the endpoint record.
+
+`node scripts/vps-webpush-watcher/endpoint-registration.tests.mjs` tests the real
+HTTP server and persistence against a local relay with mocked outbound delivery.
+
+The watcher sends an opaque test wake through the registered transport. HTTP 204 means the transport
 accepted the request, **not** that the phone received it. Native Settings waits
 up to 30 seconds for that nonce in the receiver. Tests are limited to one per
 endpoint per 30 seconds, in addition to the API IP limit. Nonces are not persisted
