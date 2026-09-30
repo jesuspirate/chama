@@ -1,5 +1,8 @@
 // es/fund — Session C fills this from src/i18n/en/fund.ts (key set must match EXACTLY).
 export const fund: Record<string, string> = {
+  "fund.railLocked": "Fijado en {rail} mientras esta factura esté abierta — vuelve atrás para elegir otra vía.",
+  "fund.ecashNeedsBalance": "necesita {amount} sats disponibles, tienes {balance}",
+  "fund.railLockedOnly": "Fijado en {rail} mientras esta factura esté abierta.",
   "fund.depositWaiting": "Esperando tu transacción.",
   "fund.depositSeen": "Transacción detectada: {amount} sats. Esperando {count} confirmaciones — unos {minutes} minutos.",
   "fund.depositConfirmed": "Confirmado. Bloqueando tus sats.",
@@ -15,7 +18,7 @@ export const fund: Record<string, string> = {
   "fund.checkingGateways": "Comprobando Lightning…",
   "fund.noGateways": "Lightning no está disponible en esta comunidad ahora",
   "fund.railUnavailable": "No disponible ahora",
-  "fund.onchainAppOnly": "El depósito directo en cadena se elige al publicar la oferta",
+  "fund.onchainAppOnly": "Los depósitos en cadena necesitan la app Chama",
   "fund.balanceInsufficient": "Saldo: no hay suficientes sats disponibles",
   "fund.useBalance": "Usa ₿ {amount} de tus ₿ {balance}",
   "fund.useBalanceWithInsurance": "Usa ₿ {amount} de tus ₿ {balance} — {trade} para el intercambio, {insurance} de seguro.",

@@ -7,6 +7,8 @@
 // half. The exact TZS amount / agent number / USSD code arrive as {params}
 // — never hardcode them in a translation.
 export const fund: Record<string, string> = {
+  "fund.railLockedOnly": "Locked to {rail} while this invoice is open.",
+  "fund.ecashNeedsBalance": "needs {amount} spendable sats, you have {balance}",
   "fund.railLocked": "Locked to {rail} while this invoice is open — Back to choose another rail.",
   "fund.depositWaiting": "Waiting for your transaction.",
   "fund.depositSeen": "Transaction seen: {amount} sats. Waiting for {count} confirmations — usually about {minutes} minutes.",
@@ -23,7 +25,7 @@ export const fund: Record<string, string> = {
   "fund.checkingGateways": "Checking Lightning availability…",
   "fund.noGateways": "Lightning isn’t available in this community right now",
   "fund.railUnavailable": "Unavailable right now",
-  "fund.onchainAppOnly": "Direct on-chain is chosen when the offer is posted",
+  "fund.onchainAppOnly": "On-chain deposits need the Chama app",
   "fund.balanceInsufficient": "Balance: not enough spendable sats",
   "fund.useBalance": "Use ₿ {amount} of your ₿ {balance}",
   "fund.useBalanceWithInsurance": "Use ₿ {amount} of your ₿ {balance} — {trade} for the trade, {insurance} insurance.",

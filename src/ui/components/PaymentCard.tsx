@@ -10,8 +10,9 @@ import { copyTextRobust, copyTextConfirmed } from "./CopyButton.js";
 
 export type PaymentRail = "lightning" | "onchain" | "ecash";
 const icons = { lightning: "⚡", onchain: "🔗", ecash: "🥜" };
-export function PaymentRails({ rail, rails = ["lightning", "onchain", "ecash"], onSelect, disabledReasons, lockedRail }: {
+export function PaymentRails({ rail, rails = ["lightning", "onchain", "ecash"], onSelect, disabledReasons, lockedRail, alternativeRailAvailable }: {
   lockedRail?: PaymentRail;
+  alternativeRailAvailable?: boolean;
   disabledReasons?: Partial<Record<PaymentRail, string>>;
   rail: PaymentRail; rails?: PaymentRail[]; onSelect?: (rail: PaymentRail) => void;
 }) {
@@ -20,8 +21,8 @@ export function PaymentRails({ rail, rails = ["lightning", "onchain", "ecash"], 
   return <><PagerPills disabled={rails.map(disabled)} tabIds={rails} tabs={rails.map(r => t(`payment.${r}`))} icons={rails.map(r => icons[r])}
     active={Math.max(0, rails.indexOf(rail))} chevrons={false} label={t("payment.rail")}
     onSelect={i => { if (!disabled(rails[i])) onSelect?.(rails[i]); }} />
-    {lockedRail && <div style={{ fontSize: 11, color: T.muted, lineHeight: 1.4, marginBottom: 4 }}>{t("fund.railLocked", { rail: t(`payment.${lockedRail}`) })}</div>}
-    {rails.filter(r => disabledReasons?.[r] && (!lockedRail || r === lockedRail)).map(r => <div key={r} style={{ fontSize: 11, color: T.muted, lineHeight: 1.4, marginBottom: 4 }}>{t(`payment.${r}`)}: {disabledReasons?.[r]}</div>)}
+    {lockedRail && <div style={{ fontSize: 11, color: T.muted, lineHeight: 1.4, marginBottom: 4 }}>{t((alternativeRailAvailable ?? rails.some(r => r !== lockedRail && !disabledReasons?.[r])) ? "fund.railLocked" : "fund.railLockedOnly", { rail: t(`payment.${lockedRail}`) })}</div>}
+    {rails.filter(r => disabledReasons?.[r]).map(r => <div key={r} style={{ fontSize: 11, color: T.muted, lineHeight: 1.4, marginBottom: 4 }}>{t(`payment.${r}`)}: {disabledReasons?.[r]}</div>)}
   </>;
 }
 

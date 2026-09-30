@@ -1,4 +1,7 @@
 export const fund: Record<string, string> = {
+  "fund.railLocked": "Imefungwa kwa {rail} wakati ankara hii iko wazi — rudi kuchagua njia nyingine.",
+  "fund.ecashNeedsBalance": "inahitaji sats {amount} zinazoweza kutumika, una {balance}",
+  "fund.railLockedOnly": "Imefungwa kwa {rail} wakati ankara hii iko wazi.",
   "fund.depositWaiting": "Tunasubiri muamala wako.",
   "fund.depositSeen": "Muamala umeonekana: sats {amount}. Tunasubiri uthibitisho {count} — kwa kawaida dakika {minutes}.",
   "fund.depositConfirmed": "Imethibitishwa. Tunafunga sats zako sasa.",
@@ -14,7 +17,7 @@ export const fund: Record<string, string> = {
   "fund.checkingGateways": "Tunaangalia Lightning…",
   "fund.noGateways": "Lightning haipatikani katika jumuiya hii kwa sasa",
   "fund.railUnavailable": "Haipatikani kwa sasa",
-  "fund.onchainAppOnly": "Escrow ya moja kwa moja kwenye mnyororo huchaguliwa ofa inapochapishwa",
+  "fund.onchainAppOnly": "Amana za kwenye mnyororo zinahitaji programu ya Chama",
   "fund.balanceInsufficient": "Salio: sats zinazopatikana hazitoshi",
   "fund.useBalance": "Tumia ₿ {amount} kati ya ₿ {balance} zako",
   "fund.useBalanceWithInsurance": "Tumia ₿ {amount} kati ya ₿ {balance} zako — {trade} kwa biashara, {insurance} kwa bima.",

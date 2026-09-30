@@ -133,3 +133,20 @@ const {keepLapsedOfferForPresence} = await import('../escrow-engine/listing-rene
 assert(keepLapsedOfferForPresence({...trade, category:'marketplace'}, 'seller'), 'returning owner retains lapsed renewal source');
 assert.equal(keepLapsedOfferForPresence({...trade, category:'marketplace'}, 'buyer'), false);
 assert.equal(keepLapsedOfferForPresence({...trade, category:'marketplace', status:EscrowStatus.CANCELLED}, 'seller'), false);
+
+const noAlternative = renderToStaticMarkup(<PaymentRails rail="lightning" lockedRail="lightning"
+  disabledReasons={{onchain:'On-chain deposits need the Chama app', ecash:'needs 1,200 spendable sats, you have 4'}} />);
+assert.match(noAlternative, /Locked to Lightning while this invoice is open\./);
+assert.doesNotMatch(noAlternative, /Back to choose another rail/);
+assert.match(noAlternative, /On-chain deposits need the Chama app/);
+assert.match(noAlternative, /needs 1,200 spendable sats, you have 4/);
+
+const fundingProps = {
+  escrowId:'rail-visibility', amountMsats:1_200_000, ctaLabel:'Fund escrow',
+  fundAndLock:async()=>({kind:'aborted' as const}), getOnchainInfo:async()=>({} as any),
+  lockAndPublish:async()=>{}, onClose:()=>{},
+};
+assert.doesNotMatch(renderToStaticMarkup(<AtomicFundingModal {...fundingProps} spendableMsats={4_000} />),
+  /data-funding-rails/, 'browser with insufficient balance hides the single-rail row');
+assert.match(renderToStaticMarkup(<AtomicFundingModal {...fundingProps} spendableMsats={1_200_000} />),
+  /data-funding-rails/, 'spendable wallet balance supplies a real alternative');

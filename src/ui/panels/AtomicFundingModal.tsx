@@ -582,6 +582,13 @@ export function AtomicFundingModal({
     : invoiceUnavailable ? t("fund.railUnavailable")
     : manualLightningBlocked ? t("fund.browserLightningBlockedShort")
     : !isSimModeOn() && amountSats < MIN_REAL_LIGHTNING_FUNDING_SATS ? minimumLightningFundingMessage() : undefined;
+  const onchainMinimum = onchainInfoState.kind === "ready"
+    ? Math.max(1, Math.trunc(onchainInfoState.info.minimumDepositSats || onchainInfoState.info.pegInFeeSats + 1)) : undefined;
+  const onchainReason = !supportsOnchain ? t("fund.onchainAppOnly")
+    : onchainInfoState.kind === "loading" ? t("fund.checkingOnchainFee")
+    : onchainInfoState.kind === "error" ? t("fund.onchainUnavailable")
+    : onchainMinimum !== undefined && amountSats < onchainMinimum ? `${t("fund.onchainMinimum")} · ${onchainMinimum.toLocaleString()} sats` : undefined;
+  const alternativeRailAvailable = request?.rail !== "onchain" && (!onchainReason || hasBalance || !!ecashInput.trim());
   const railsVisible = !paymentDetected && !["mint-confirming", "mint-confirming-slow", "payment-confirmed", "locking", "locked", "mint-timeout", "receive-rejected", "paying-with-nwc", "requesting-fedi-ecash", "fedi-ecash-created"].includes(phase.kind);
   const chooseRail = (rail: PaymentRail) => {
     setShowFundingChoices(false);
@@ -607,16 +614,16 @@ export function AtomicFundingModal({
   return (
     <FundingModalShell onClose={handleCancel}>
         {/* Header — amount is the eyebrow, label is the title */}
-        {!disableNwc && <div data-funding-rails aria-hidden={!railsVisible} style={{ marginBottom: 16, visibility: railsVisible ? "visible" : "hidden" }}>
-          <PaymentRails lockedRail={request?.rail ?? (["creating-invoice", "creating-invoice-slow"].includes(phase.kind) ? "lightning" : phase.kind === "creating-onchain-address" ? "onchain" : undefined)} rail={request?.rail ?? initialRail}
+        {!disableNwc && alternativeRailAvailable && <div data-funding-rails aria-hidden={!railsVisible} style={{ marginBottom: 16, visibility: railsVisible ? "visible" : "hidden" }}>
+          <PaymentRails alternativeRailAvailable={alternativeRailAvailable} lockedRail={request?.rail ?? (["creating-invoice", "creating-invoice-slow"].includes(phase.kind) ? "lightning" : phase.kind === "creating-onchain-address" ? "onchain" : undefined)} rail={request?.rail ?? initialRail}
             rails={request?.rail === "onchain" ? ["onchain"] : ["lightning", "onchain", "ecash"]}
-            disabledReasons={{ lightning: lightningReason, onchain: !supportsOnchain ? t("fund.onchainAppOnly") : gatewayChecking ? t("fund.checkingGateways") : undefined, ecash: gatewayChecking ? t("fund.checkingGateways") : undefined }}
+            disabledReasons={{ lightning: lightningReason, onchain: onchainReason, ecash: gatewayChecking ? t("fund.checkingGateways") : request && !hasBalance && !ecashInput.trim() ? t("fund.ecashNeedsBalance", {amount: totalSats.toLocaleString(), balance: Math.floor(spendableMsats / 1000).toLocaleString()}) : undefined }}
             onSelect={chooseRail} />
           {(!request || request.rail !== "onchain") && <button type="button" disabled={!hasBalance || !!request} onClick={() => {
             if (request || ["creating-invoice", "creating-invoice-slow", "creating-onchain-address"].includes(phase.kind)) { setSwitchRequested("balance"); return; }
             abortRef.current?.abort(); setFundingMethod(null); setPhase({ kind: "choose-method" });
           }} style={{ background: "none", color: T.muted, border: 0, minHeight: 44 }}>
-            {hasBalance ? t("fund.lockBalance") : t("fund.balanceInsufficient")}
+            {hasBalance ? t("fund.lockBalance") : t("fund.ecashNeedsBalance", {amount: totalSats.toLocaleString(), balance: Math.floor(spendableMsats / 1000).toLocaleString()})}
           </button>}
         </div>}
         {invoiceUnavailable && phase.kind === "choose-method" && !request && !paymentDetected && <button type="button" onClick={retryLightning} style={{ background: "none", border: 0, color: T.muted, textDecoration: "underline", minHeight: 44 }}>{t("fund.tryAgain")}</button>}

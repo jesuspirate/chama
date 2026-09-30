@@ -3,6 +3,9 @@
 // byte-identical to EN; only the En halves are translated. Exact TZS amount /
 // agent number / USSD code arrive as {params}.
 export const fund: Record<string, string> = {
+  "fund.railLocked": "Fixé sur {rail} tant que cette facture est ouverte — revenez en arrière pour choisir une autre méthode.",
+  "fund.ecashNeedsBalance": "nécessite {amount} sats disponibles, vous en avez {balance}",
+  "fund.railLockedOnly": "Fixé sur {rail} tant que cette facture est ouverte.",
   "fund.depositWaiting": "En attente de votre transaction.",
   "fund.depositSeen": "Transaction détectée : {amount} sats. En attente de {count} confirmations — environ {minutes} minutes.",
   "fund.depositConfirmed": "Confirmé. Verrouillage de vos sats.",
@@ -18,7 +21,7 @@ export const fund: Record<string, string> = {
   "fund.checkingGateways": "Vérification de Lightning…",
   "fund.noGateways": "Lightning n’est pas disponible dans cette communauté actuellement",
   "fund.railUnavailable": "Indisponible pour le moment",
-  "fund.onchainAppOnly": "Le séquestre direct sur chaîne est choisi lors de la publication de l’offre",
+  "fund.onchainAppOnly": "Les dépôts sur chaîne nécessitent l’application Chama",
   "fund.balanceInsufficient": "Solde : pas assez de sats disponibles",
   "fund.useBalance": "Utilisez ₿ {amount} sur vos ₿ {balance}",
   "fund.useBalanceWithInsurance": "Utilisez ₿ {amount} sur vos ₿ {balance} — {trade} pour l’échange, {insurance} d’assurance.",
