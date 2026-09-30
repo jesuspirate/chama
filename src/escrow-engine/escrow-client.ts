@@ -318,8 +318,11 @@ export function selectHotRawEvictions(
   return evictable.slice(0, overflow).map(entry => entry.id);
 }
 
-function isPartialReplayDowngrade(current: EscrowState | undefined, incoming: EscrowState): boolean {
+export function isPartialReplayDowngrade(current: EscrowState | undefined, incoming: EscrowState): boolean {
   if (!current) return false;
+  // Replay positively refused the old LOCK; this is a correction, not a
+  // missing-history downgrade. Never restore its stale committed custody.
+  if (incoming.rejectedLocks?.some(row => current.eventChain.some(event => event.raw.id === row.event.raw.id))) return false;
   if (isTerminalStatus(incoming.status)) return false;
   if (statusProgressRank(incoming.status) < statusProgressRank(current.status)) return true;
   if (incoming.status !== current.status) return false;

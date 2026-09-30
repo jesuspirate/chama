@@ -1,3 +1,4 @@
+import { RejectedLockRefund } from "../components/RejectedLockRefund.js";
 import { getEcashExport } from "../../payments/ecash-exports.js";
 import { hasObservedOnchainDeposit } from "../../escrow-engine/types.js";
 import { tradeClock, tradeClockText } from '../trade-clock.js';
@@ -78,6 +79,7 @@ export function LiveTradeSurface({
   onVote,
   onClaim,
   onLock,
+  onReclaimRejectedLock,
   onRepost,
   onHome,
   onConfirmPayout,
@@ -109,6 +111,7 @@ export function LiveTradeSurface({
   /** Modal-driven money paths. Optional: when a caller hasn't wired them yet,
    *  the Fund / Claim surfaces defer to the full view via onOpenFullView. */
   onClaim?: () => Promise<void>;
+  onReclaimRejectedLock?: (id: string) => Promise<void>;
   onLock?: (opts?: { savedHandleId?: string; selectedItems?: SelectedMenuItem[]; amountMsats?: number }) => Promise<void>;
   /** Seat the viewer into the trade's open slot (guided join). A range
    *  (exchange-bracket) listing passes the chosen order along. */
@@ -236,7 +239,7 @@ export function LiveTradeSurface({
   const orderItems = buyerHold?.selectedItems;
   const orderMsats = buyerHold?.amountMsats
     ?? (orderItems?.length ? selectedMenuItemsTotalMsats(orderItems) : undefined);
-  const effectiveMsats = state.status === EscrowStatus.CREATED && orderMsats ? orderMsats : state.amountMsats;
+  const effectiveMsats = !state.lock.notesHash && buyerHold?.orderFinalizedAt && orderMsats ? orderMsats : state.amountMsats;
   const amountLabel = tr("lts.satsAmount", { amount: fmtSats(effectiveMsats) });
   const catLabel = CAT_LABEL[state.category] ?? state.category;
   // The vertical speaks through its MARK, not a word (Jet, 6.3.4 review):
@@ -698,7 +701,7 @@ export function LiveTradeSurface({
     }
 
     // CANCELLED / anything terminal-else
-    return <Waiting message={tr("lts.tradeClosed")} />;
+    return <Waiting message={state.rejectedLocks?.length ? "Trade closed. The refused lock was not committed to escrow." : tr("lts.tradeClosed")} />;
   }
 
   if (verifiedRefund === depositIdentity) return (
@@ -726,6 +729,10 @@ export function LiveTradeSurface({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0, background: T.bg, paddingBottom: 12 }}>
+      {state.rejectedLockRecovery?.pubkey === pubkey && onReclaimRejectedLock &&
+        <RejectedLockRefund amountMsats={state.rejectedLockRecovery.amountMsats} onReclaim={() => onReclaimRejectedLock(state.id)} />}
+      {!state.rejectedLockRecovery && state.rejectedLocks?.some(row => row.event.pubkey === pubkey) &&
+        <p>Chama can't find the note for this lock on this device.</p>}
       {onchainOverlay}
       <style>{`
         .lts-grid{display:grid;grid-template-columns:.95fr 1.12fr;gap:1px;background:${T.border};flex:1;min-height:0}

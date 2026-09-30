@@ -694,7 +694,7 @@ function needsYouReason(
   settledClaimIds?: ReadonlySet<string>,
   observation?: OnchainObservation,
 ): keyof typeof NEEDS_YOU_RANK | null {
-  if (e.rejectedLockRecovery?.pubkey === userPubkey && !e.lock.notesHash) return 'funding-refund';
+  if (e.rejectedLockRecovery?.pubkey === userPubkey) return 'funding-refund';
   if (observation?.payout || observation?.refundSpent) return null;
   if (onchainAttention(e, userPubkey, observation, nowSec)?.actionable) return 'onchain';
   if (e.status === EscrowStatus.CREATED && (preLockDeadline(e, nowSec)?.lapsed || observation?.deposit === 'seen')) return null;

@@ -593,7 +593,7 @@ export async function recoverPendingNativeLock(
       const ourHash = await deps.hashNotes(entry.oobNotes);
       const refused = state.rejectedLocks.some(row => row.code === "ORDER_NOT_FINALIZED"
         && row.event.payload.notesHash === ourHash && !row.event.payload.onchain);
-      if (refused && !state.claim.claimedAt && state.provenance !== "summary") {
+      if (refused && !state.claim.claimedAt) {
         if (!opts.reclaimRejected) return "kept";
         return reabsorb(entry, deps, state, true);
       }

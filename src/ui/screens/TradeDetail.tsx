@@ -1,3 +1,5 @@
+import { RejectedLockRefund } from "../components/RejectedLockRefund.js";
+export { RejectedLockRefund } from "../components/RejectedLockRefund.js";
 import { listPaidLockRecoveries } from "../../payments/paid-lock-recovery.js";
 import { RoleAvatar } from "../components/RoleAvatar.js";
 import { ConductFacts } from "../components/ConductFacts.js";
@@ -1076,7 +1078,7 @@ export function TradeDetail({
     ? state.amountMsats * buyQtyClamped
     : null;
   const nextStepDisplayAmountMsats = storefrontSelectionAmountMsats ?? nextStep.amountMsats;
-  const heroAmountMsats = nextStepDisplayAmountMsats ?? (menuDisplayAmountMsats || state.amountMsats);
+  const heroAmountMsats = (savedOrderFinalized && !state.lock.notesHash && savedOrderAmountMsats) || nextStepDisplayAmountMsats || menuDisplayAmountMsats || state.amountMsats;
   const exactHeroFiatBase = detailHeroFiatAmount({
     state,
     selectedMenuItems,
@@ -1594,9 +1596,11 @@ export function TradeDetail({
 
   return (
     <div className="trade-detail-shell">
-      {state.rejectedLockRecovery?.pubkey === pubkey && !state.lock.notesHash && onReclaimRejectedLock &&
+      {state.rejectedLockRecovery?.pubkey === pubkey && onReclaimRejectedLock &&
         <RejectedLockRefund amountMsats={state.rejectedLockRecovery.amountMsats} onReclaim={() => onReclaimRejectedLock(state.id)} />}
 
+      {!state.rejectedLockRecovery && state.rejectedLocks?.some(row => row.event.pubkey === pubkey) &&
+        <p>Chama can't find the note for this lock on this device.</p>}
       <div className="trade-live-head" style={{
         display: "grid",
         gridTemplateColumns: "42px minmax(0,1fr) auto",
@@ -3416,7 +3420,7 @@ export function TradeDetail({
                 ? menuSelectionHint(state.category, t)
                 : (
                   <BitcoinAmount
-                    msats={state.status === EscrowStatus.CREATED ? (menuDisplayAmountMsats || lockAmountMsats) : state.amountMsats}
+                    msats={savedOrderFinalized && !state.lock.notesHash && savedOrderAmountMsats ? savedOrderAmountMsats : state.status === EscrowStatus.CREATED ? (menuDisplayAmountMsats || lockAmountMsats) : state.amountMsats}
                     size={13}
                     gap={4}
                     glyphScale={1.18}
@@ -6122,16 +6126,3 @@ function menuMetaLine(item: {
   return parts.length > 0 ? parts.join(" · ") : null;
 }
 
-export function RejectedLockRefund({amountMsats, onReclaim}: {amountMsats: number; onReclaim: () => Promise<void>}) {
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const sats = Math.floor(amountMsats / 1000);
-  return <div style={{padding: 14, marginBottom: 12, borderRadius: T.rs, border: `1px solid ${T.amber}`}}>
-    <p>This lock didn't reach the trade — the buyer's seat had lapsed. Take your {sats} sats back.</p>
-    <button disabled={busy} onClick={() => {
-      setBusy(true); setError(null);
-      void onReclaim().catch(e => setError(e instanceof Error ? e.message : String(e))).finally(() => setBusy(false));
-    }}>{busy ? "Taking your sats back…" : `Take your ${sats} sats back`}</button>
-    {error && <p role="alert">{error}</p>}
-  </div>;
-}

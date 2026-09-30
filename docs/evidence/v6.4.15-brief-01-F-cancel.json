@@ -1,0 +1,32 @@
+{
+  "verified": true,
+  "event": {
+    "kind": 38107,
+    "id": "43cc9eb50ca4401067c56a8a01a50ba275d72380122ebfcaa90b446d0c3d4a9f",
+    "pubkey": "22f7161f76e075b9e0a250a447884ac09b04b636effd7c703a92394ed3fb39e8",
+    "created_at": 1790730146,
+    "tags": [
+      [
+        "d",
+        "sm_mun8x4s2_4g6x53c8"
+      ],
+      [
+        "e",
+        "4742fbf6845b1581bb8ce01b54b3e746054a3501e1f3732cd084275dec4045aa",
+        "",
+        "reply"
+      ],
+      [
+        "t",
+        "escrow:cancel"
+      ],
+      [
+        "client",
+        "chama",
+        "6.4.15"
+      ]
+    ],
+    "content": "{\"type\":\"escrow:cancel\",\"cancellerRole\":\"seller\",\"reason\":\"seller_deleted_listing\",\"cancelledAt\":1790730146}",
+    "sig": "28e1af6a9f5bfc887a75c2bb0c3eeb3953ff15c974c93afe7003752331dc94054449d97087221203c0cf82d0cdf099adb4ca2d1c728ea83964481fec4326dc97"
+  }
+}

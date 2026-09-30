@@ -27,7 +27,13 @@ const entry = getPendingNativeLock(state.id)!;
 state.rejectedLockRecovery = rejectedLockRecovery(state, entry, owner);
 assert(state.rejectedLockRecovery);
 assert.equal(rejectedLockRecovery(state, entry, state.participants[Role.BUYER]), undefined);
-assert.equal(rejectedLockRecovery({...state, provenance:'summary'}, entry, owner), undefined);
+assert(rejectedLockRecovery({...state, provenance:'summary'}, entry, owner), 'retained positive refusal remains recovery evidence regardless of display provenance');
+for (const status of ['CREATED', 'CANCELLED', 'EXPIRED'] as const) {
+  assert(rejectedLockRecovery({...state, status: status as any}, entry, owner));
+}
+const {isPartialReplayDowngrade} = await import('../escrow-engine/escrow-client.js');
+assert.equal(isPartialReplayDowngrade({...state, status: 'LOCKED' as any, eventChain: [...state.eventChain, lock]}, state), false, 'quarantined LOCK corrects stale cache');
+assert.equal(isPartialReplayDowngrade({...state, status: 'LOCKED' as any}, {...state, rejectedLocks: []}), true, 'mere absence still preserves known custody');
 assert.equal(rejectedLockRecovery(state, {...entry,oobNotes:'different-notes'}, owner), undefined);
 assert.equal(needsYouReasonFor(state, owner, 1790900000), 'funding-refund');
 assert.equal(isExpiredUnfundedListing(state, 1790900000), false, 'expired listing keeps recoverable funding visible');
@@ -36,6 +42,14 @@ assert.deepEqual(decideChamaBarLabel({needsYouCount:urgent.length, balanceMsats:
 const html = renderToStaticMarkup(createElement(RejectedLockRefund, {amountMsats:170000,onReclaim:async()=>{}}));
 assert.match(html, /Take your 170 sats back/);
 assert.match(html, /buyer&#x27;s seat had lapsed/);
+const { LiveTradeSurface } = await import('../ui/screens/LiveTradeSurface.js');
+const room = renderToStaticMarkup(createElement(LiveTradeSurface, {
+  state: {...state, status: 'CANCELLED' as any}, pubkey: owner,
+  onBack: () => {}, onOpenFullView: () => {}, onVote: async () => {},
+  onSendChat: async () => {}, onReclaimRejectedLock: async () => {},
+}));
+assert.match(room, /Take your 170 sats back/);
+assert.doesNotMatch(room, /Nothing was locked/);
 let balance = 4000, calls = 0;
 const deps = {loadEscrow: async()=>state, getConnectedRelayCount:()=>1, currentFederationId:()=> 'test-fed', hashNotes,
  redeemNotes:async()=>{throw Error('legacy success is not a credit receipt');},

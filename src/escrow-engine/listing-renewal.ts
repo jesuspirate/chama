@@ -153,6 +153,7 @@ export function isSellerOwnedListing(state: EscrowState, userPubkey: string | nu
  *  settled trade are excluded — we never resurrect those. */
 export function listingNeverFunded(state: EscrowState): boolean {
   return (
+    !state.rejectedLocks?.length &&
     state.lock.lockedAt === null &&
     state.lock.notesHash === null &&
     (state.status === EscrowStatus.CREATED || state.status === EscrowStatus.EXPIRED)

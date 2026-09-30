@@ -4105,6 +4105,7 @@ export default function App() {
         }}>
           {LIVE_TRADE_SURFACE_ENABLED && !expertTradeView ? (
             <LiveTradeSurface
+              onReclaimRejectedLock={actions.reclaimRejectedLock}
               key={`lts:${selected.id}`}
               historyReloading={reloadingEscrows.has(selected.id)}
               onCheckOnchainFunding={actions.checkOnchainFunding}

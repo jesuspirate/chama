@@ -1911,6 +1911,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
             escrowState.status === "CREATED" &&
             nowSec > escrowState.expiresAt &&
             isInitiator &&
+            !escrowState.rejectedLocks?.some((row: NonNullable<EscrowState["rejectedLocks"]>[number]) => row.event.pubkey === myPubkey) &&
             !alreadyAttempted(escrowId, "cancel")
           ) {
             markAttempted(escrowId, "cancel");
