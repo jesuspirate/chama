@@ -115,3 +115,23 @@ assert(returned);
 assert.equal(fedi.kind, 'lock-failed');
 if (fedi.kind === 'lock-failed') { assert.doesNotMatch(fedi.error, /Local apply failed|ORDER_NOT_FINALIZED/); assert.match(fedi.error, /returned to your Fedi wallet/); }
 console.log('PASS closed card rendering and Fedi refused-LOCK custody copy');
+
+for (const funded of [false, true]) {
+  let time = 0;
+  const seen: any[] = [];
+  const terminal = await runFundAndLock({escrowId: 'sm_timeout_' + funded, amountMsats:170000, description:'timeout', seatDeadline:360,
+    getBalance:async()=>0,
+    createFundingInvoice:async(_a,_d, cb)=> {cb?.('created'); if(funded) cb?.('funded'); cb?.({canceled:{reason:'timeout'}}); return 'timeout-invoice';},
+    lockAndPublish:async()=>{throw Error('must not lock');}, onPhase:p=>seen.push(p),
+    now:()=>time, sleep:async ms=>{time+=ms;}, pollIntervalMs:1000});
+  assert.equal(terminal.kind, 'lock-failed');
+  if (terminal.kind === 'lock-failed') {
+    if (!funded) {
+      assert.equal(terminal.error, 'This invoice expired with your seat. Nothing was paid. Join again to get a fresh one.');
+      assert.doesNotMatch(terminal.error, /Do not pay|Chama diagnostics/);
+    } else assert.match(terminal.error, /Do not pay another invoice/);
+  }
+}
+const {fundingDiagnostics} = await import('./funding-diagnostics.js');
+assert(fundingDiagnostics().some(row => row.reason === 'timeout'), 'paid receive rejection retains its diagnostic object');
+console.log('PASS unpaid seat timeout is calm; attempted payment rejection preserves warning and diagnostics');

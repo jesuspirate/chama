@@ -4,6 +4,8 @@
 // agent number / USSD code arrive as {params}.
 export const fund: Record<string, string> = {
   "fund.railLocked": "Fixé sur {rail} tant que cette facture est ouverte — revenez en arrière pour choisir une autre méthode.",
+  "fund.invoiceSeatExpiredBody": "Cette facture a expiré avec votre place. Rien n’a été payé. Rejoignez à nouveau pour en obtenir une autre.",
+  "fund.invoiceSeatExpiredTitle": "Facture expirée",
   "fund.ecashNeedsBalance": "nécessite {amount} sats disponibles, vous en avez {balance}",
   "fund.railLockedOnly": "Fixé sur {rail} tant que cette facture est ouverte.",
   "fund.depositWaiting": "En attente de votre transaction.",
@@ -85,7 +87,7 @@ export const fund: Record<string, string> = {
   "fund.confirmingFederation": "Confirmation avec la fédération…",
   "fund.copyAddress": "Copier l'adresse",
   "fund.copyAgentNumber": "Copier le numéro d'agent · {agent}",
-  "fund.copyDiagnostics": "Copier le diagnostic Fedimint",
+  "fund.copyDiagnostics": "Copier le diagnostic",
   "fund.copyEcashNotes": "Copier les notes ecash",
   "fund.copyInvoice": "Copier la facture",
   "fund.copyReceiveFailure": "Copier l'échec de réception",

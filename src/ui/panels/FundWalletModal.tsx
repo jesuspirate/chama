@@ -446,7 +446,7 @@ export function FundWalletModal({ onClose, onCreateInvoice, onPayInvoice, onSpen
                 ? t("fund.nativeBridgeUnavailableShort")
                 : gatewayTrustError
                 ? t("fund.sdkGatewayShort")
-                : err}
+                : err.split("Chama diagnostics:")[0].trim()}
             </div>
             {diagnostics && (
               <CopyButton

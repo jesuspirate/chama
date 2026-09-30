@@ -1,5 +1,7 @@
 export const fund: Record<string, string> = {
   "fund.railLocked": "Imefungwa kwa {rail} wakati ankara hii iko wazi — rudi kuchagua njia nyingine.",
+  "fund.invoiceSeatExpiredBody": "Ankara hii imeisha muda pamoja na nafasi yako. Hakuna kilicholipwa. Jiunge tena kupata mpya.",
+  "fund.invoiceSeatExpiredTitle": "Ankara imeisha muda",
   "fund.ecashNeedsBalance": "inahitaji sats {amount} zinazoweza kutumika, una {balance}",
   "fund.railLockedOnly": "Imefungwa kwa {rail} wakati ankara hii iko wazi.",
   "fund.depositWaiting": "Tunasubiri muamala wako.",
@@ -78,7 +80,7 @@ export const fund: Record<string, string> = {
   "fund.confirmingFederation": "Inathibitisha na shirikisho…",
   "fund.copyAddress": "Nakili anwani",
   "fund.copyAgentNumber": "Nakili namba ya wakala · {agent}",
-  "fund.copyDiagnostics": "Nakili uchunguzi wa Fedimint",
+  "fund.copyDiagnostics": "Nakili uchunguzi",
   "fund.copyEcashNotes": "Nakili noti za ecash",
   "fund.copyInvoice": "Nakili ankara",
   "fund.copyReceiveFailure": "Nakili hitilafu ya kupokea",

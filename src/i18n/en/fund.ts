@@ -9,6 +9,8 @@
 export const fund: Record<string, string> = {
   "fund.railLockedOnly": "Locked to {rail} while this invoice is open.",
   "fund.ecashNeedsBalance": "needs {amount} spendable sats, you have {balance}",
+  "fund.invoiceSeatExpiredTitle": "Invoice expired",
+  "fund.invoiceSeatExpiredBody": "This invoice expired with your seat. Nothing was paid. Join again to get a fresh one.",
   "fund.railLocked": "Locked to {rail} while this invoice is open — Back to choose another rail.",
   "fund.depositWaiting": "Waiting for your transaction.",
   "fund.depositSeen": "Transaction seen: {amount} sats. Waiting for {count} confirmations — usually about {minutes} minutes.",
@@ -85,7 +87,7 @@ export const fund: Record<string, string> = {
   "fund.confirmingFederation": "Confirming with the federation…",
   "fund.copyAddress": "Copy address",
   "fund.copyAgentNumber": "Copy agent number · {agent}",
-  "fund.copyDiagnostics": "Copy Fedimint diagnostics",
+  "fund.copyDiagnostics": "Copy diagnostics",
   "fund.copyEcashNotes": "Copy ecash notes",
   "fund.copyInvoice": "Copy invoice",
   "fund.copyReceiveFailure": "Copy receive failure",

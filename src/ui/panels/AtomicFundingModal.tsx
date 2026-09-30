@@ -451,6 +451,7 @@ export function AtomicFundingModal({
           // payment-confirmed / locking / locked / expired / mint-timeout
           // / aborted / lock-failed all map directly.
           if (p.kind === "lock-failed" && p.invoiceFailed) { setInvoiceUnavailable(true); setSwitchRequested(null); }
+          if (p.kind === "lock-failed") setRequest(null);
           if (p.kind === "expired") { setRequest(null); setMpesaOpen(false); }
           setPhase(p as ModalPhase);
         },
@@ -693,7 +694,7 @@ export function AtomicFundingModal({
             motion={["mint-confirming", "mint-confirming-slow", "payment-confirmed", "locking"].includes(phase.kind)}
             status={custodyNotice && custodyNotice.status !== "acknowledged-with-rejection" ? <>{t(custodyNotice.status === "expired-unacked" ? "trade.custodyExpiredTitle" : "trade.custodyPendingTitle")}<br />{custodyNotice.message || t("trade.custodyPendingBody")}</>
               : phase.kind === "receive-rejected" ? phase.reason
-              : phase.kind === "lock-failed" ? (phase.errorKey ? t(phase.errorKey) : phase.error)
+              : phase.kind === "lock-failed" ? (phase.errorKey ? t(phase.errorKey) : phase.error.split("Chama diagnostics:")[0].trim())
               : phase.kind === "expired" ? t("fund.invoiceExpired")
               : phase.kind === "locking" ? t("fund.locking")
               : phase.kind === "locked" ? t("fund.paymentReceived")
@@ -2003,7 +2004,7 @@ function MintTimeoutState({
   );
 }
 
-function LockFailedState({
+export function LockFailedState({
   error, onCancel, onRetry, invoiceFailed,
 }: { error: string; onCancel: () => void; onRetry?: () => void; invoiceFailed?: boolean }) {
   const { t } = useT();
@@ -2017,28 +2018,29 @@ function LockFailedState({
     /Federation didn't accept the payment|canceled:|claim_rejected|before Chama received ecash/i.test(error);
   const diagnostics = extractChamaDiagnostics(error);
   const showSimFallback = isWalletVerifiableGatewayError && !isNativeBridgeUnavailable && !isSimModeOn();
-  const title = invoiceFailed ? t("fund.invoiceFailedPlain") : isNativeBridgeUnavailable
+  const seatExpired = error.startsWith("This invoice expired with your seat.");
+  const title = seatExpired ? t("fund.invoiceSeatExpiredTitle") : invoiceFailed ? t("fund.invoiceFailedPlain") : isNativeBridgeUnavailable
     ? t("fund.nativeBridgeUnavailableTitle")
     : isWalletVerifiableGatewayError || isReceiveRoutePaused
     ? t("fund.fundingUnavailableTitle")
     : isReceiveRejection
       ? t("fund.receiveRejectedTitle")
     : t("fund.lockFailedTitle");
-  const detail = isNativeBridgeUnavailable
+  const detail = seatExpired ? t("fund.invoiceSeatExpiredBody") : isNativeBridgeUnavailable
     ? t("fund.nativeBridgeUnavailableBody")
     : isWalletVerifiableGatewayError
     ? t("fund.sdkGatewayBody")
-    : error;
+    : error.split("Chama diagnostics:")[0].trim();
 
   return (
     <div>
       <div style={{
         padding: "20px 16px", textAlign: "center",
-        background: T.redDim, border: `1px solid ${T.red}66`, borderRadius: T.r,
+        background: seatExpired ? T.surface : T.redDim, border: `1px solid ${seatExpired ? T.border : T.red + "66"}`, borderRadius: T.r,
         marginBottom: 12,
       }}>
-        <div style={{ fontSize: 24, marginBottom: 8 }}>✕</div>
-        <div style={{ fontSize: 12, fontWeight: 700, color: T.red, fontFamily: T.sans, marginBottom: 4 }}>
+        <div style={{ fontSize: 24, marginBottom: 8 }}>{seatExpired ? "⌛" : "✕"}</div>
+        <div style={{ fontSize: 12, fontWeight: 700, color: seatExpired ? T.text : T.red, fontFamily: T.sans, marginBottom: 4 }}>
           {title}
         </div>
         <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono, wordBreak: "break-word" }}>

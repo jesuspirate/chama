@@ -141,6 +141,16 @@ assert.doesNotMatch(noAlternative, /Back to choose another rail/);
 assert.match(noAlternative, /On-chain deposits need the Chama app/);
 assert.match(noAlternative, /needs 1,200 spendable sats, you have 4/);
 
+const {LockFailedState} = await import('./panels/AtomicFundingModal.js');
+const calmExpiry = renderToStaticMarkup(<LockFailedState error="This invoice expired with your seat. Nothing was paid. Join again to get a fresh one." onCancel={()=>{}} />);
+assert.match(calmExpiry,/Invoice expired/);
+assert.match(calmExpiry,/Nothing was paid/);
+assert.doesNotMatch(calmExpiry,/Do not pay another invoice|Receive rejected/);
+const rejectedReceive = renderToStaticMarkup(<LockFailedState error={'Federation didn\'t accept the payment. Do not pay another invoice.\nChama diagnostics: {"issue":"test-diagnostic-never-inline"}'} onCancel={()=>{}} />);
+assert.match(rejectedReceive,/Do not pay another invoice/);
+assert.match(rejectedReceive,/Copy diagnostics/);
+assert.doesNotMatch(rejectedReceive,/test-diagnostic-never-inline|Chama diagnostics:/);
+
 const fundingProps = {
   escrowId:'rail-visibility', amountMsats:1_200_000, ctaLabel:'Fund escrow',
   fundAndLock:async()=>({kind:'aborted' as const}), getOnchainInfo:async()=>({} as any),

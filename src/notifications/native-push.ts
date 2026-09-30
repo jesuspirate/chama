@@ -1,6 +1,7 @@
 import { Capacitor, registerPlugin } from "@capacitor/core";
 
 export interface NativeAlertLogEntry {
+  diagnostic?: Record<string, unknown>;
   id: string; time: number; transport: string; verdict: string; job: string;
   foregroundBranch?: string; tradeCount?: number; matchedTags?: string[]; jobResult?: string; elapsedMs?: number;
   notificationsEnabled?: boolean; channelEnabled?: boolean;
@@ -8,6 +9,7 @@ export interface NativeAlertLogEntry {
 }
 export type NativePushStatus = { registerHttpStatus?: number; registeredTags?: string[]; lane: "fcm" | "unifiedpush" | "unavailable"; ready: boolean; registered: boolean; ntfy?: boolean; testReceived?: string; testHttpStatus?: number; testHttpNonce?: string; alertLog?: NativeAlertLogEntry[]; notificationsEnabled?: boolean; channelEnabled?: boolean };
 interface NativePushPlugin {
+  diagnostic(options: { diagnostic: string }): Promise<void>;
   clearTrade(options: { trade: string }): Promise<void>;
   takeTrade(): Promise<{ trade: string | null }>;
   addListener(name: 'tradeOpened', callback: (event: {trade: string}) => void): Promise<import('@capacitor/core').PluginListenerHandle>;
@@ -79,3 +81,7 @@ export async function clearNativeTradeAlerts(trade: string): Promise<void> {
   if (isNativePushSupported()) await native.clearTrade({trade}).catch(() => {});
 }
 
+/** Funding diagnostics share the device's alert log, without entering UI copy. */
+export async function recordNativeFundingDiagnostic(diagnostic: Record<string, unknown>): Promise<void> {
+  if (isNativePushSupported()) await native.diagnostic({diagnostic: JSON.stringify(diagnostic)}).catch(() => {});
+}

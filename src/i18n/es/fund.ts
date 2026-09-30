@@ -1,6 +1,8 @@
 // es/fund — Session C fills this from src/i18n/en/fund.ts (key set must match EXACTLY).
 export const fund: Record<string, string> = {
   "fund.railLocked": "Fijado en {rail} mientras esta factura esté abierta — vuelve atrás para elegir otra vía.",
+  "fund.invoiceSeatExpiredBody": "Esta factura venció con tu plaza. No se pagó nada. Únete de nuevo para obtener otra.",
+  "fund.invoiceSeatExpiredTitle": "Factura vencida",
   "fund.ecashNeedsBalance": "necesita {amount} sats disponibles, tienes {balance}",
   "fund.railLockedOnly": "Fijado en {rail} mientras esta factura esté abierta.",
   "fund.depositWaiting": "Esperando tu transacción.",
@@ -79,7 +81,7 @@ export const fund: Record<string, string> = {
   "fund.confirmingFederation": "Confirmando con la federación…",
   "fund.copyAddress": "Copiar dirección",
   "fund.copyAgentNumber": "Copiar número de agente · {agent}",
-  "fund.copyDiagnostics": "Copiar diagnóstico de Fedimint",
+  "fund.copyDiagnostics": "Copiar diagnóstico",
   "fund.copyEcashNotes": "Copiar notas de ecash",
   "fund.copyInvoice": "Copiar factura",
   "fund.copyReceiveFailure": "Copiar el error de recepción",

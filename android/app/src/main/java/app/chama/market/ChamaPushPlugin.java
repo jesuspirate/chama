@@ -64,6 +64,22 @@ public class ChamaPushPlugin extends Plugin {
         JSObject result = new JSObject(); result.put("trade", pendingTrade); pendingTrade = null; call.resolve(result);
     }
 
+    @PluginMethod public void diagnostic(PluginCall call) {
+        try {
+            JSONObject detail = new JSONObject(call.getString("diagnostic", "{}"));
+            synchronized (ChamaPushStore.class) {
+                String id = ChamaPushStore.beginWake(getContext(), "funding");
+                org.json.JSONArray rows = ChamaPushStore.alertLog(getContext());
+                for (int i = 0; i < rows.length(); i++) {
+                    JSONObject row = rows.getJSONObject(i);
+                    if (id.equals(row.optString("id"))) row.put("diagnostic", detail).put("verdict", "recorded").put("job", "funding receive");
+                }
+                ChamaPushStore.prefs(getContext()).edit().putString("alertLog", rows.toString()).apply();
+            }
+            call.resolve();
+        } catch (Exception e) { call.reject("Invalid diagnostics"); }
+    }
+
     @PluginMethod public void clearTrade(PluginCall call) {
         String trade = call.getString("trade", "");
         if (!trade.matches("(?i)sm_[a-z0-9_]+")) { call.reject("Invalid trade"); return; }

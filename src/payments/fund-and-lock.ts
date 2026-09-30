@@ -1,3 +1,4 @@
+import { recordFundingDiagnostic } from "./funding-diagnostics.js";
 import { decodeBolt11Payment } from "./bolt11.js";
 import { fundingInvoiceSeconds } from "./seat-funding.js";
 import { errorText } from "./error-text.js";
@@ -113,6 +114,7 @@ function receiveRejectedMessage(
         ? "Browser Lightning receives for this federation are paused for six hours; no gateway fault is asserted."
         : "No automatic federation-route pause was applied for this reason.",
   };
+  recordFundingDiagnostic(diagnostic);
   return `${message}\n\nChama diagnostics:\n${JSON.stringify(diagnostic, null, 2)}`;
 }
 
@@ -613,6 +615,7 @@ async function runFundAndLockWatched(
   // terminal. After `funded`, keep polling for actual balance credit during
   // a short grace window; the balance gate still decides whether we can LOCK.
   let mintConfirmingEmittedByWatch = false;
+  let paymentAttempted = false;
   let watchOverride: FundAndLockTerminal | null = null;
   let postFundedCancelReason: string | null = null;
   let receiveFailureDiagnostic: Record<string, unknown> | undefined;
@@ -643,7 +646,13 @@ async function runFundAndLockWatched(
         }
         return;
       }
-      if (reason === "expired") {
+      if (reason === "timeout" && !paymentAttempted && opts.seatDeadline !== undefined) {
+        recordFundingDiagnostic({issue:"seat_invoice_expired", escrowId:opts.escrowId, reason, receiveOperation:receiveFailureDiagnostic ?? null});
+        const error = "This invoice expired with your seat. Nothing was paid. Join again to get a fresh one.";
+        watchOverride = { kind: "lock-failed", error };
+        emit(watchOverride);
+        finishReceiveWatchReady(new Error(error));
+      } else if (reason === "expired") {
         watchOverride = { kind: "expired" };
         emit({ kind: "expired" });
         finishReceiveWatchReady(new Error("Lightning invoice expired"));
@@ -738,6 +747,7 @@ async function runFundAndLockWatched(
   emit({ kind: "invoice-created", bolt11, expiresAt, gateway: fundingGateway });
 
   if (opts.autoPayInvoice) {
+    paymentAttempted = true;
     emit({ kind: "paying-with-nwc" });
     try {
       await opts.autoPayInvoice(bolt11);
