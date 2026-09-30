@@ -14,8 +14,8 @@ const original=Object.getOwnPropertyDescriptor(globalThis,'localStorage'),data=n
 Object.defineProperty(globalThis,'localStorage',{configurable:true,value:{getItem:(k:string)=>data.get(k)??null,setItem:(k:string,v:string)=>data.set(k,v),removeItem:(k:string)=>data.delete(k)}});
 try {
  setLocalStorageUserScope('viewer');
- const render=()=>renderToStaticMarkup(<LangProvider><BrowseView browseCategory="all" setBrowseCategory={()=>{}} browseCommunity="us-usd" amountDisplayMode="sats"
- matchingListings={[exchange,store]} nonMatchingListings={[bill,foreign]} pubkey={'f'.repeat(64)} fedimintJoined={true} listingsLoading={false} isFirstTime={false}
+ const render=(local=[exchange,store], category="all")=>renderToStaticMarkup(<LangProvider><BrowseView browseCategory={category} setBrowseCategory={()=>{}} browseCommunity="us-usd" amountDisplayMode="sats"
+ matchingListings={local} nonMatchingListings={[bill,foreign]} pubkey={'f'.repeat(64)} fedimintJoined={true} listingsLoading={false} isFirstTime={false}
  onPasteCustomInvite={()=>{}} onOpenEscrow={()=>{}} onLoadById={()=>{}} onCreate={()=>{}} onApplyAsArbiter={async()=>{}} /></LangProvider>);
  setScopedStorageItem('chama_browse_scope_v2','all');
  assert.doesNotMatch(render(),/data-browse-order=/,'unsaved default keeps groups');
@@ -27,8 +27,23 @@ try {
   assert.deepEqual([...html.matchAll(/data-listing-id="([^"]+)"/g)].map(m=>m[1]),expected,'one card per vertical still reorders across routes');
   for(const badge of ['Store','Exchange','Bill']) assert.match(html,new RegExp(badge),'card keeps its vertical identity');
  }
+ const allChips = render();
+ assert.match(allChips, /data-browse-category="bill-pay" data-count="1"/);
  setScopedStorageItem('chama_browse_scope_v2','local');
  assert.deepEqual([...render().matchAll(/data-listing-id="([^"]+)"/g)].map(m=>m[1]),['exchange','store'],'sort respects local filter');
+ const localChips = render();
+ assert.match(localChips, /data-browse-category="bill-pay" data-count="0"/);
+ assert.match(localChips, /data-browse-category="mine" data-count="0"/);
+ assert.match(localChips, /data-browse-category="marketplace" data-count="1"/);
+ assert.match(localChips, /data-browse-category="p2p-trade" data-count="1"/);
+ const mine = {...store,id:'mine',participants:{...store.participants,seller:'f'.repeat(64)}};
+ const withMine = render([exchange,store,mine]);
+ const chipSum = [...withMine.matchAll(/data-browse-category="[^"]+" data-count="(\d+)"/g)].reduce((sum,m)=>sum+Number(m[1]),0);
+ assert.equal(chipSum,3,'Mine and public verticals partition My Chama listings');
+ assert.match(withMine,/data-browse-category="mine" data-count="1"/);
+ const selectedShelf = render([exchange,store], 'marketplace');
+ assert.match(selectedShelf,/data-browse-category="p2p-trade" data-count="1"/,'selected category never changes the sibling shelf count');
+ assert.deepEqual([...selectedShelf.matchAll(/data-listing-id="([^"]+)"/g)].map(m=>m[1]),['store']);
  setScopedStorageItem('chama_browse_sort_v2','default');assert.doesNotMatch(render(),/data-browse-order=/,'default restores grouping');
  setLocalStorageUserScope('other-user');assert.doesNotMatch(render(),/data-browse-order=/,'sort does not bleed across identities');
 } finally {setLocalStorageUserScope(null);if(original)Object.defineProperty(globalThis,'localStorage',original);else delete (globalThis as any).localStorage;}
@@ -38,3 +53,4 @@ const { filterListingsByCurrency } = await import('./listing-currency.js');
 assert.deepEqual(filterListingsByCurrency([exchange, foreign] as any, 'USD').map(l => l.id), ['exchange']);
 assert.deepEqual(filterListingsByCurrency([exchange, foreign] as any, 'USD', true).map(l => l.id), ['foreign-eur']);
 assert.equal(filterListingsByCurrency([{...foreign,fiatCurrency:undefined,community:'ke-kes'}] as any,'USD').length, 0, 'premium quotes cannot be relabeled with viewer currency');
+

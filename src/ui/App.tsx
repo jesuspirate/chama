@@ -2431,18 +2431,6 @@ export default function App() {
       for (const c of overcommittedChildren(parentState, kids)) oversoldChildIds.add(c.id);
     }
   }
-  const browseCategoryCounts = BROWSE_CATS.reduce((acc, cat) => {
-    acc[cat.id] = cat.id === "all"
-      ? allVisibleListings.length
-      : allVisibleListings.filter(listing =>
-          cat.id === "work"
-            ? isWorkListing(listing)
-            : cat.id === "marketplace"
-              ? listing.category === "marketplace" && !isWorkListing(listing)
-              : listing.category === cat.id
-        ).length;
-    return acc;
-  }, {} as Record<string, number>);
   const listingMatchesRoute = (s: EscrowState) => listingMatchesActiveRoute({
     listingMintUrl: s.mintUrl,
     listingFedId: (s.eventChain[0]?.payload as { fed?: string } | undefined)?.fed ?? null,
@@ -4742,11 +4730,10 @@ export default function App() {
               setBrowseCategory={setBrowseCategory}
               browseCommunity={routeCommunitySlug}
               amountDisplayMode={amountDisplayMode}
-              matchingListings={matchingListings}
-              nonMatchingListings={nonMatchingListings}
+              matchingListings={allVisibleListings.filter(listingMatchesRoute)}
+              nonMatchingListings={allVisibleListings.filter(s => !listingMatchesRoute(s))}
               stockByListing={stockByListing}
               orderIndicatorByListing={listingOrderIndicator}
-              categoryCounts={browseCategoryCounts}
               fedimintJoined={fedimint.joined}
               listingsLoading={publicListingsLoading}
               isFirstTime={getUserCommunitySlugRaw() === null}

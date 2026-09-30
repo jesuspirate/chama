@@ -105,7 +105,6 @@ export function BrowseView({
   matchingListings: suppliedMatching, nonMatchingListings: suppliedNonMatching, allEscrows, circleChildrenLoaded,
   stockByListing,
   orderIndicatorByListing,
-  categoryCounts,
   fedimintJoined, listingsLoading, pubkey,
   kind0Enabled = false, profileNames,
   isFirstTime, onPasteCustomInvite,
@@ -126,7 +125,6 @@ export function BrowseView({
   /** #70 per-parent live child-order count + aggregated unread chat, so a
    *  seller's storefront card surfaces ALL its orders, not just its own chat. */
   orderIndicatorByListing?: Map<string, { orders: number; unread: number; viewerOrderId?: string }>;
-  categoryCounts?: Record<string, number>;
   fedimintJoined: boolean;
   listingsLoading: boolean;
   pubkey: string;
@@ -146,8 +144,6 @@ export function BrowseView({
   const viewerCurrency = defaultCurrencyForCommunity(browseCommunity);
   const matchingListings = useMemo(() => filterListingsByCurrency(suppliedMatching, viewerCurrency, otherCurrencies), [suppliedMatching, viewerCurrency, otherCurrencies]);
   const nonMatchingListings = useMemo(() => filterListingsByCurrency(suppliedNonMatching, viewerCurrency, otherCurrencies), [suppliedNonMatching, viewerCurrency, otherCurrencies]);
-  const otherCurrencyCount = [...suppliedMatching, ...suppliedNonMatching]
-    .filter(listing => !listingMatchesCurrency(listing, viewerCurrency)) .length;
   const { t } = useT();
   const [showAdvancedTools, setShowAdvancedTools] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -193,18 +189,25 @@ export function BrowseView({
 
   // Own-listing hide (default) happens BEFORE search/section grouping so counts
   // and empty-states reflect what the viewer actually sees.
-  const ownListingCount = useMemo(
-    () => countOwnListings(matchingListings, pubkey) + countOwnListings(nonMatchingListings, pubkey),
-    [matchingListings, nonMatchingListings, pubkey],
-  );
+  const search = searchQuery.trim().toLowerCase();
+  const otherCurrencyCount = (browseScope === "local" ? suppliedMatching : [...suppliedMatching, ...suppliedNonMatching])
+    .filter(l => !listingMatchesCurrency(l, viewerCurrency) && listingMatchesSearch(l, search)).length;
+  const scopedMatching = matchingListings.filter(l => listingMatchesSearch(l, search));
+  const scopedNonMatching = nonMatchingListings.filter(l => listingMatchesSearch(l, search));
+  const hasOwnListings = countOwnListings(matchingListings, pubkey) + countOwnListings(nonMatchingListings, pubkey) > 0;
+  const ownListingCount = countOwnListings(scopedMatching, pubkey)
+    + (browseScope === "all" ? countOwnListings(scopedNonMatching, pubkey) : 0);
+  const categoryMatching = filterOwnListings(scopedMatching, pubkey, false);
+  const categoryNonMatching = browseScope === "all" ? filterOwnListings(scopedNonMatching, pubkey, false) : [];
+
   // A persisted Mine preference should not strand a returning user on an empty
   // feed. Wait until discovery settles, then fall back to All when they own 0.
   useEffect(() => {
-    if (!listingsLoading && showOwn && ownListingCount === 0) {
+    if (!listingsLoading && showOwn && !hasOwnListings) {
       setShowOwnState(false);
       setBrowseShowOwn(false);
     }
-  }, [listingsLoading, showOwn, ownListingCount]);
+  }, [listingsLoading, showOwn, hasOwnListings]);
   const ownHiddenCount = showOwn ? 0 : ownListingCount;
   const ownFilteredMatching = useMemo(
     () => filterOwnListings(matchingListings, pubkey, showOwn),
@@ -228,19 +231,18 @@ export function BrowseView({
         : sortListingsNewestFirst(ownFilteredNonMatching),
     [browseScope, browseSort, ownFilteredNonMatching],
   );
-  const localScopeCount = ownFilteredMatching.length;
-  const allScopeCount = ownFilteredMatching.length + ownFilteredNonMatching.length;
+  const localScopeCount = scopedMatching.length;
+  const allScopeCount = localScopeCount + scopedNonMatching.length;
   const totalListings = routedMatching.length + routedNonMatching.length;
   const homeCommunity = getCommunityBySlug(browseCommunity);
   useEffect(() => setOtherCurrencies(false), [browseCommunity, pubkey]);
-  const search = searchQuery.trim().toLowerCase();
   const filteredMatchingListings = useMemo(
-    () => routedMatching.filter((listing) => listingMatchesSearch(listing, search)),
-    [routedMatching, search],
+    () => routedMatching.filter((listing) => listingMatchesSearch(listing, search) && (showOwn || browseCategory === "all" || countListingsByCategory([listing], [], browseCategory) > 0)),
+    [routedMatching, search, browseCategory, showOwn],
   );
   const filteredNonMatchingListings = useMemo(
-    () => routedNonMatching.filter((listing) => listingMatchesSearch(listing, search)),
-    [routedNonMatching, search],
+    () => routedNonMatching.filter((listing) => listingMatchesSearch(listing, search) && (showOwn || browseCategory === "all" || countListingsByCategory([listing], [], browseCategory) > 0)),
+    [routedNonMatching, search, browseCategory, showOwn],
   );
   // Explicit orders span every visible category AND route. Grouping after
   // sorting would silently undo the user's choice (even one card per category).
@@ -499,7 +501,7 @@ export function BrowseView({
         WebkitOverflowScrolling: "touch" as const,
         paddingBottom: 2,
       }}>
-        {(ownListingCount > 0 || showOwn) && (
+        {(
           <button
             type="button"
             onClick={() => {
@@ -516,9 +518,11 @@ export function BrowseView({
                 setBrowseCategory("all");
               }
             }}
+            data-browse-category="mine" data-count={ownListingCount}
             aria-pressed={showOwn}
             style={{
               order: -1,
+              opacity: ownListingCount === 0 ? 0.45 : 1,
               flexShrink: 0,
               padding: "7px 11px", borderRadius: 18,
               background: showOwn ? T.accentDim : T.surface,
@@ -542,26 +546,18 @@ export function BrowseView({
         )}
         {BROWSE_CATS.filter(c => c.id !== "all" && (CHAMA_CIRCLES_ENABLED || c.id !== "chama")).map(c => {
           const active = !showOwn && browseCategory === c.id;
-          // #75: counts must reflect what the viewer actually SEES — the
-          // own-hidden + retired filtering already applied to ownFiltered* — not
-          // the raw prop (which still counts own/hidden listings). Fall back to
-          // the prop only when no viewer-scoped set is available.
-          const count = countListingsByCategory(routedMatching, routedNonMatching, c.id);
+          // Mine and the public shelves partition the scoped search results.
+          const count = countListingsByCategory(categoryMatching, categoryNonMatching, c.id);
           return (
             <button
-              key={c.id}
+              key={c.id} data-browse-category={c.id} data-count={count}
               onClick={() => {
                 if (showOwn) toggleShowOwn();
                 setBrowseCategory(active ? "all" : c.id);
               }}
               style={{
-                // Pole position (Jet, 2026-09-18): a vertical with something
-                // LIVE in it leads the row; empty ones fall in behind. The
-                // chip row scrolls horizontally, so a single open circle used
-                // to sit off-screen to the right while four empty verticals
-                // held the visible space. Flex order only — no DOM reshuffle,
-                // and BROWSE_CATS order still decides ties inside each group.
-                order: c.id === "all" ? 0 : count > 0 ? 1 : 2,
+                order: 1,
+                opacity: count === 0 ? 0.45 : 1,
                 flexShrink: 0,
                 padding: "7px 11px", borderRadius: 18,
                 background: active ? T.accentDim : T.surface,
@@ -870,7 +866,7 @@ function browseCommunityButtonLabel(community: Community): string {
     : community.displayName;
 }
 
-function listingMatchesSearch(listing: EscrowState, query: string): boolean {
+export function listingMatchesSearch(listing: EscrowState, query: string): boolean {
   if (!query) return true;
   const community = listing.community ? getCommunityBySlug(listing.community) : null;
   const haystack = [

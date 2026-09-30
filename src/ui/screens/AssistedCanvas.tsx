@@ -755,9 +755,7 @@ export function AssistedCanvas({
     // is in flight) with nothing to show yet, spin calmly instead of the red box.
     const stillChecking = !isGoods && (matching || listingsLoading) && visibleMatches.length === 0;
     const shownKeys = new Set(recommended.map(({ candidate }) => candidate.listing.id));
-    const alsoCompatible = visibleMatches
-      .filter(c => !shownKeys.has(c.listing.id))
-      .slice(0, 8);
+    const alsoCompatible = visibleMatches.filter(c => !shownKeys.has(c.listing.id));
     const noMatches = !matching && !listingsLoading && (isGoods ? goodsMatches.length === 0 : visibleMatches.length === 0);
     return <CanvasShell community={community} step={3} onExit={() => onBrowse("all")} onMoreOptions={onMoreOptions}>
       <Back onClick={() => setSurface("terms")}>{tr("canvas.changeLast")}</Back>
