@@ -89,10 +89,10 @@ curl -s -o /dev/null -w '%{http_code}\n' -X POST https://push.chama.community/re
 ## Android transports (v6.5)
 
 Deploy this watcher together with the quiet-sign-in client and native receivers.
-The old empty Web Push wake remains compatible with PWA clients. Android uses:
+Tagged Web Push wakes remain compatible with PWA clients that ignore opaque hints. Android uses:
 
 - `transport: "unifiedpush"` with the connector’s HTTPS endpoint and Web Push
-  keys. The watcher encrypts `{wake: 1, sentAt: <milliseconds>}` with VAPID.
+  keys. The watcher encrypts `{wake: 1, sentAt: <milliseconds>, tags: [<opaque tag>]}` with VAPID.
 - `transport: "fcm"` with an opaque device token. Set `FCM_SERVICE_ACCOUNT_FILE`
   to a protected server-side JSON service-account file authorized to send for the
   matching Firebase project. The watcher obtains short-lived OAuth credentials
@@ -117,7 +117,7 @@ The watcher now checks signed timestamps itself instead of trusting relay filter
 Events at/before startup or registration, more than 120 seconds old, or in the
 future do not wake a device. Relay duplicate IDs are suppressed. Registration
 expiry survives restart. Native receivers reject stale payloads, suppress wakes
-while foregrounded, and display only generic copy. Network registration is best
+while foregrounded, and replay locally to select notification copy. Network registration is best
 effort and retried on app resume; endpoint delivery and force-stopped-app behavior
 must be checked on the actual OS/distributor. No background trade signing occurs.
 
