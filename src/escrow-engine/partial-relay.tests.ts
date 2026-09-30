@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { finalizeEvent, getPublicKey } from 'nostr-tools/pure';
+import { finalizeEvent, getPublicKey, verifyEvent } from 'nostr-tools/pure';
 import { EscrowClient } from './escrow-client.js';
 import { EscrowEventKind, type NostrEvent } from './types.js';
 import { enqueueDurableMoneyPublish, defaultDurableMoneyPublishStore, readDurableMoneyPublishes } from './durable-money-publish.js';
@@ -16,7 +16,7 @@ class Socket {
     const message = JSON.parse(s);
     if (message[0] !== 'EVENT') return;
     this.sent.push(message[1]);
-    if (message[1].kind === EscrowEventKind.CREATE) queueMicrotask(() => this.ack(message[1].id, true));
+    if ([EscrowEventKind.CREATE, EscrowEventKind.CANCEL].includes(message[1].kind)) queueMicrotask(() => this.ack(message[1].id, true));
   }
   ack(id: string, accepted: boolean) { this.onmessage?.({ data: JSON.stringify(['OK', id, accepted, accepted ? 'saved' : 'blocked']) } as MessageEvent); }
   close() {}
@@ -50,6 +50,28 @@ try {
       assert.equal(client.getState(escrowId)?.custodyNotice, undefined, 'an accepted update has no rejection warning');
       assert.equal(readDurableMoneyPublishes(store).length, 0);
     }
+  }
+  const {deleteListings} = await import('./delete-listings.js');
+  const {parseEscrowEvent, sortEventChain} = await import('./event-parser.js');
+  const {replayEventChain} = await import('./state-machine.js');
+  const {shouldShowOnBrowse} = await import('../ui/decisions.js');
+  const ids = [escrowId];
+  for (let i = 0; i < 2; i++) ids.push((await client.createEscrow({category:'p2p-trade', description:`Delete ${i}`,
+    amountMsats:1000000, mintUrl:'test', arbiterFeeMsats:0, communityArbiters:[]})).escrowId);
+  const retired: string[] = [];
+  await deleteListings(ids, (id,reason) => client.cancel(id,reason), id => retired.push(id));
+  assert.deepEqual(retired, ids);
+  const cancels = Socket.all[0].sent.filter(e => e.kind === EscrowEventKind.CANCEL);
+  assert.equal(cancels.length, ids.length, 'N listings publish N signed CANCELs');
+  for (const id of ids) {
+    const raw = Socket.all[0].sent.filter(e => [EscrowEventKind.CREATE,EscrowEventKind.CANCEL].includes(e.kind)
+      && e.tags.some(t => t[0] === 'd' && t[1] === id));
+    assert(raw.every(e => verifyEvent(e as any)));
+    const parsed = raw.map(e => {const r=parseEscrowEvent(e,e.content); assert(r.ok); return r.event;});
+    const remote = replayEventChain(sortEventChain(parsed)); assert(remote.ok);
+    assert.equal(remote.state.status, 'CANCELLED');
+    assert.equal(shouldShowOnBrowse({escrow:remote.state,browseCategory:'all',nowSec:now}),false,
+      'second device drops cancelled offers without the local retirement ledger');
   }
   console.log('PASS mixed relay acceptance stays quiet; zero accepts preserves retry and custody');
 } finally { client.disconnect(); }

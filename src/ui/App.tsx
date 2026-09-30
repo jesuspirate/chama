@@ -1677,7 +1677,7 @@ export default function App() {
   // the wall of stale/abandoned/test listings. Publish each cancellation before
   // retiring locally so every device sees the same deletion.
   const clearableListings = pubkey
-    ? ownUnfundedListings(escrows.values(), pubkey, retiredIds)
+    ? ownUnfundedListings(escrows.values(), pubkey)
     : [];
   // A1b: the trades this device knows, for the seated arbiter's ruling
   // concentration on TradeDetail. Materialized once per escrow-map change so
