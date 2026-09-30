@@ -8,6 +8,7 @@ export interface NativeAlertLogEntry {
 }
 export type NativePushStatus = { registerHttpStatus?: number; registeredTags?: string[]; lane: "fcm" | "unifiedpush" | "unavailable"; ready: boolean; registered: boolean; ntfy?: boolean; testReceived?: string; testHttpStatus?: number; testHttpNonce?: string; alertLog?: NativeAlertLogEntry[]; notificationsEnabled?: boolean; channelEnabled?: boolean };
 interface NativePushPlugin {
+  clearTrade(options: { trade: string }): Promise<void>;
   takeTrade(): Promise<{ trade: string | null }>;
   addListener(name: 'tradeOpened', callback: (event: {trade: string}) => void): Promise<import('@capacitor/core').PluginListenerHandle>;
   snapshot(options: { snapshot: string }): Promise<void>;
@@ -73,3 +74,8 @@ export async function listenNativeWakeTap(receive: (trade: string | null) => voi
   receive((await native.takeTrade()).trade);
   return () => { void listener.remove(); };
 }
+
+export async function clearNativeTradeAlerts(trade: string): Promise<void> {
+  if (isNativePushSupported()) await native.clearTrade({trade}).catch(() => {});
+}
+

@@ -18,6 +18,9 @@ final class ChamaWakePolicy {
         if (reason.startsWith("wake:")) return reason.split(":")[1];
         return reason;
     }
+    static boolean replacesState(String trade, String tag, String group) {
+        return !trade.isEmpty() && group.isEmpty() && !reason(trade, tag).equals("chat");
+    }
     static int notificationId(String trade, String tag) {
         return (trade + ":" + reason(trade, tag)).hashCode();
     }

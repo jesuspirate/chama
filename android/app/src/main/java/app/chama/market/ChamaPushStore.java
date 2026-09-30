@@ -7,6 +7,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import androidx.core.app.NotificationCompat;
+import androidx.core.app.Person;
 import androidx.core.app.NotificationManagerCompat;
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -219,7 +220,15 @@ final class ChamaPushStore {
     static String postTrade(Context c, String wake, JSONObject note) throws Exception {
         String trade = note.getString("escrowId");
         if (!trade.matches("(?i)sm_[a-z0-9_]+")) return "invalid";
-        return post(c, wake, trade, note.getString("tag"), note.getString("title"), note.getString("body"), false, note.optString("group", ""));
+        return post(c, wake, trade, note.getString("tag"), note.getString("title"), note.getString("body"), false, note.optString("group", ""), note);
+    }
+
+    static synchronized void clearTrade(Context c, String trade) {
+        NotificationManagerCompat manager = NotificationManagerCompat.from(c);
+        int state = prefs(c).getInt("tradeNote:" + trade, 0);
+        if (state != 0) manager.cancel(state);
+        manager.cancel(ChamaWakePolicy.notificationId(trade, trade + ":chat:read"));
+        prefs(c).edit().remove("tradeNote:" + trade).remove("tradeChat:" + trade).apply();
     }
 
     static void genericWake(Context c, String wake) {
@@ -230,10 +239,13 @@ final class ChamaPushStore {
         return post(c, wake, trade, tag, title, body, test, "");
     }
     private static String post(Context c, String wake, String trade, String tag, String title, String body, boolean test, String group) {
+        return post(c, wake, trade, tag, title, body, test, group, null);
+    }
+    private static synchronized String post(Context c, String wake, String trade, String tag, String title, String body, boolean test, String group, JSONObject note) {
         int id = ChamaWakePolicy.notificationId(trade, tag);
         String reason = ChamaWakePolicy.reason(trade, tag);
         String key = "posted:" + id;
-        String verdict = policy(c, test, prefs(c).getLong(key, 0));
+        String verdict = policy(c, test, trade.isEmpty() ? prefs(c).getLong(key, 0) : 0);
         if (!"shown".equals(verdict)) { log(c, wake, verdict, null, null, reason); return verdict; }
         if (android.os.Build.VERSION.SDK_INT >= 26) c.getSystemService(NotificationManager.class).createNotificationChannel(
             new NotificationChannel("chama_activity", "Chama", NotificationManager.IMPORTANCE_DEFAULT));
@@ -242,15 +254,35 @@ final class ChamaPushStore {
         PendingIntent open = PendingIntent.getActivity(c, id, intent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         try {
             NotificationManagerCompat manager = NotificationManagerCompat.from(c);
-            manager.notify(id, new NotificationCompat.Builder(c, "chama_activity")
+            boolean chat = reason.equals("chat");
+            String notificationGroup = group.isEmpty() && !trade.isEmpty() ? "chama-trade:" + trade : group;
+            NotificationCompat.Builder builder = new NotificationCompat.Builder(c, "chama_activity")
                 .setSmallIcon(R.drawable.ic_chama_notification).setContentTitle(title)
                 .setContentText(body).setStyle(new NotificationCompat.BigTextStyle().bigText(body))
-                .setGroup(group.isEmpty() ? null : group).setContentIntent(open).setAutoCancel(true).setOnlyAlertOnce(false).build());
+                .setGroup(notificationGroup.isEmpty() ? null : notificationGroup).setContentIntent(open)
+                .setAutoCancel(true).setOnlyAlertOnce(false);
+            if (chat && note != null) {
+                JSONArray lines;
+                try { lines = new JSONArray(prefs(c).getString("tradeChat:" + trade, "[]")); }
+                catch (Exception e) { lines = new JSONArray(); }
+                JSONArray bounded = new JSONArray();
+                for (int i = Math.max(0, lines.length() - 9); i < lines.length(); i++) bounded.put(lines.opt(i));
+                bounded.put(new JSONObject().put("sender", note.optString("sender", "Your trading partner"))
+                    .put("text", note.optString("message", body)).put("time", note.optLong("sentAt", System.currentTimeMillis())));
+                NotificationCompat.MessagingStyle style = new NotificationCompat.MessagingStyle(new Person.Builder().setName("You").build());
+                for (int i = 0; i < bounded.length(); i++) {
+                    JSONObject line = bounded.getJSONObject(i);
+                    style.addMessage(line.getString("text"), line.getLong("time"), new Person.Builder().setName(line.getString("sender")).build());
+                }
+                builder.setStyle(style);
+                prefs(c).edit().putString("tradeChat:" + trade, bounded.toString()).apply();
+            }
+            manager.notify(id, builder.build());
             if (!group.isEmpty()) manager.notify(group.hashCode(), new NotificationCompat.Builder(c, "chama_activity")
                 .setSmallIcon(R.drawable.ic_chama_notification).setContentTitle("New listings")
                 .setContentText("New offers in your community").setGroup(group).setGroupSummary(true)
                 .setContentIntent(open).setAutoCancel(true).setOnlyAlertOnce(true).build());
-            if (!trade.isEmpty()) {
+            if (ChamaWakePolicy.replacesState(trade, tag, group)) {
                 int previous = prefs(c).getInt("tradeNote:" + trade, id);
                 if (previous != id) manager.cancel(previous);
                 prefs(c).edit().putInt("tradeNote:" + trade, id).apply();
@@ -258,6 +290,9 @@ final class ChamaPushStore {
             prefs(c).edit().putLong(key, System.currentTimeMillis()).apply();
             log(c, wake, "shown", null, id, reason);
             return "shown";
+        } catch (org.json.JSONException e) {
+            log(c, wake, "failed", null, null, reason);
+            return "failed";
         } catch (SecurityException e) {
             log(c, wake, "notifications-disabled", null, null, reason);
             return "notifications-disabled";

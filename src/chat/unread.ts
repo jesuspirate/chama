@@ -10,6 +10,7 @@
 // fired-tags. Failures are swallowed: read-tracking is cosmetic and must never
 // stand between a user and their trade.
 
+import { clearNativeTradeAlerts } from "../notifications/native-push.js";
 import type { EscrowState, Role } from "../escrow-engine/types.js";
 
 type ChatMessage = EscrowState["chatMessages"][number];
@@ -53,6 +54,7 @@ export function getLastReadChatAt(tradeId: string): number {
  *  rewinds the mark, so a stale call can't resurrect already-read messages.
  *  Returns the effective mark after the call. */
 export function markChatRead(tradeId: string, at: number = Math.floor(Date.now() / 1000)): number {
+  void clearNativeTradeAlerts(tradeId);
   const map = readMap();
   const prev = map[tradeId] ?? 0;
   if (at <= prev) return prev;

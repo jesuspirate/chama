@@ -18,6 +18,13 @@ public class ChamaWakePolicyTest {
         assertEquals("shown", ChamaWakePolicy.verdict(true, true, true, true, 199_999, 200_000));
         assertEquals("notifications-disabled", ChamaWakePolicy.verdict(true, true, false, true, 0, 200_000));
     }
+    @Test public void chatsAndListingsNeverReplaceTradeState() {
+        assertTrue(ChamaWakePolicy.replacesState("sm_a", "sm_a:locked", ""));
+        assertTrue(ChamaWakePolicy.replacesState("sm_a", "sm_a:approved", ""));
+        assertFalse(ChamaWakePolicy.replacesState("sm_a", "sm_a:chat:first", ""));
+        assertFalse(ChamaWakePolicy.replacesState("sm_a", "sm_a:chat:second", ""));
+        assertFalse(ChamaWakePolicy.replacesState("sm_a", "sm_a:newlisting", "chama-listings:blf"));
+    }
     @Test public void burstsAreLimitedPerTradeAndReason() {
         int lock = ChamaWakePolicy.notificationId("sm_a", "sm_a:locked");
         int chat = ChamaWakePolicy.notificationId("sm_a", "sm_a:chat:event1");

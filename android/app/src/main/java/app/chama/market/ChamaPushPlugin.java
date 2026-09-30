@@ -64,6 +64,13 @@ public class ChamaPushPlugin extends Plugin {
         JSObject result = new JSObject(); result.put("trade", pendingTrade); pendingTrade = null; call.resolve(result);
     }
 
+    @PluginMethod public void clearTrade(PluginCall call) {
+        String trade = call.getString("trade", "");
+        if (!trade.matches("(?i)sm_[a-z0-9_]+")) { call.reject("Invalid trade"); return; }
+        ChamaPushStore.clearTrade(getContext(), trade);
+        call.resolve();
+    }
+
     @PluginMethod public void snapshot(PluginCall call) {
         synchronized (ChamaPushStore.class) {
         String next = call.getString("snapshot", "");
