@@ -1458,6 +1458,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
 
   // ── State updater helpers ───────────────────────────────────────────────
 
+  const rejectedRecoveryInFlight = useRef(new Set<string>());
   const updateEscrow = useCallback((escrowId: string, escrowState: EscrowState) => {
     // A locally-forgotten ghost stays gone: don't let the Browse/public-
     // listings feed (or any re-delivery) re-add it after a restart. The ref is
@@ -1466,6 +1467,20 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     if (forgottenIdsRef.current.has(escrowId)) return;
     escrowState.rejectedLockRecovery = rejectedLockRecovery(escrowState,
       getPendingNativeLock(escrowId), stateRef.current?.pubkey);
+    if (escrowState.rejectedLockRecovery && bridgeRef.current && !rejectedRecoveryInFlight.current.has(escrowId)) {
+      rejectedRecoveryInFlight.current.add(escrowId);
+      void bridgeRef.current.settlePendingNativeLock(escrowId, {ignoreAttemptCap: false}).then(() => {
+        setState(prev => {
+          const current = prev.escrows.get(escrowId);
+          if (!current) return prev;
+          const escrows = new Map(prev.escrows);
+          escrows.set(escrowId, {...current, rejectedLockRecovery: rejectedLockRecovery(current, getPendingNativeLock(escrowId), prev.pubkey)});
+          return {...prev, escrows};
+        });
+        void refreshBalanceRef.current?.();
+      }).catch(error => console.warn("Automatic refused-lock recovery kept the saved note", error))
+        .finally(() => rejectedRecoveryInFlight.current.delete(escrowId));
+    }
     // Durable trade-history index: remember every trade the user is a party to
     // from this central chokepoint, so My Trades survives relay eviction / a
     // chain that can't rehydrate (loss-proof history). No-op for non-parties;

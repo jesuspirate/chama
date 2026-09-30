@@ -255,6 +255,12 @@ export function stashNativeLockIntent(input: {
     );
     return;
   }
+  try {
+    const key = "chama_reabsorbed_locks_v1";
+    const receipts = JSON.parse(getStrictScopedStorageItem(key) || "{}");
+    delete receipts[input.escrowId];
+    setStrictScopedStorageItem(key, JSON.stringify(receipts));
+  } catch { /* display only */ }
   stash[input.escrowId] = {
     escrowId: input.escrowId,
     stage: "intent",
@@ -588,13 +594,12 @@ export async function recoverPendingNativeLock(
     }
 
     // A positively refused signed LOCK is separate from an incomplete read.
-    // Keep it for the explicit room action; automatic drain must not take it.
+    // Reabsorb automatically, but only with measured wallet credit.
     if (state.rejectedLocks?.length) {
       const ourHash = await deps.hashNotes(entry.oobNotes);
       const refused = state.rejectedLocks.some(row => row.code === "ORDER_NOT_FINALIZED"
         && row.event.payload.notesHash === ourHash && !row.event.payload.onchain);
       if (refused && !state.claim.claimedAt) {
-        if (!opts.reclaimRejected) return "kept";
         return reabsorb(entry, deps, state, true);
       }
     }
@@ -651,6 +656,12 @@ async function reabsorb(
       deps.recordReabsorbedResidue?.({ escrowId: entry.escrowId, amountMsats: entry.amountMsats });
     } catch { /* best-effort breadcrumb — never block recovery */ }
     if (requireConfirmedCredit) {
+      try {
+        const key = "chama_reabsorbed_locks_v1";
+        const receipts = JSON.parse(getStrictScopedStorageItem(key) || "{}");
+        receipts[entry.escrowId] = entry.amountMsats;
+        setStrictScopedStorageItem(key, JSON.stringify(receipts));
+      } catch { /* Credit is proven even when the display receipt cannot be saved. */ }
       clearPendingNativeLockMatching(entry.escrowId, entry.oobNotes!);
     } else if (tradeStillLockable(state, now)) {
       downgradeReabsorbedToIntent(entry, now);
@@ -892,4 +903,10 @@ export function nativeLockEarmarks(federationId: string | null): (number | undef
       return [lock.amountMsats];
     });
   } catch { return [undefined]; }
+}
+
+/** Display receipt only; never evidence authorizing a wallet mutation. */
+export function reabsorbedLockAmount(escrowId: string): number | undefined {
+  try { return JSON.parse(getStrictScopedStorageItem("chama_reabsorbed_locks_v1") || "{}")[escrowId]; }
+  catch { return undefined; }
 }

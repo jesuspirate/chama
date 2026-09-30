@@ -1,4 +1,5 @@
 export const trade: Record<string, string> = {
+  "trade.lockReabsorbed": "Sats zako {amount} zimerudi kwenye pochi yako.",
   "trade.responseHours": "saa {count}",
   "trade.responseDays": "siku {count}",
   "trade.arbiterNoStake": "Hakuna dhamana iliyothibitishwa iliyopatikana kwa {name}.",

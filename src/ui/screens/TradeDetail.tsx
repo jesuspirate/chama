@@ -1,3 +1,4 @@
+import { reabsorbedLockAmount } from "../../fedimint/pending-native-locks.js";
 import { RejectedLockRefund } from "../components/RejectedLockRefund.js";
 export { RejectedLockRefund } from "../components/RejectedLockRefund.js";
 import { listPaidLockRecoveries } from "../../payments/paid-lock-recovery.js";
@@ -1599,7 +1600,8 @@ export function TradeDetail({
       {state.rejectedLockRecovery?.pubkey === pubkey && onReclaimRejectedLock &&
         <RejectedLockRefund amountMsats={state.rejectedLockRecovery.amountMsats} onReclaim={() => onReclaimRejectedLock(state.id)} />}
 
-      {!state.rejectedLockRecovery && state.rejectedLocks?.some(row => row.event.pubkey === pubkey) &&
+      {reabsorbedLockAmount(state.id) && <p>{t("trade.lockReabsorbed", {amount:Math.floor(reabsorbedLockAmount(state.id)! / 1000).toLocaleString()})}</p>}
+      {!reabsorbedLockAmount(state.id) && !state.rejectedLockRecovery && state.rejectedLocks?.some(row => row.event.pubkey === pubkey) &&
         <p>Chama can't find the note for this lock on this device.</p>}
       <div className="trade-live-head" style={{
         display: "grid",

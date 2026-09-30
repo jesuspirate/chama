@@ -2,6 +2,7 @@
 // extraction sweep). Keys prefixed "trade.", alphabetized. `ns*` keys are the
 // detailNextStep action-card matrix (kicker/title/body cells).
 export const trade: Record<string, string> = {
+  "trade.lockReabsorbed": "Your {amount} sats are back in your wallet.",
   "trade.responseHours": "{count} hours",
   "trade.responseDays": "{count} days",
   "trade.arbiterNoStake": "{name} has no bond",

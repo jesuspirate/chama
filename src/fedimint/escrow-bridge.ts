@@ -564,11 +564,17 @@ export class EscrowFedimintBridge {
     // Whole flow under the per-escrow mutex: recovery (settle/drain) can
     // never interleave with the spend→publish→confirm window of a LIVE
     // lock for the same trade (review F7/F11/F15).
-    return withNativeLockFlow(escrowId, () => this.lockAndPublishInner(escrowId, opts));
+    return withNativeLockFlow(escrowId, async () => {
+      try { return await this.lockAndPublishInner(escrowId, opts); }
+      catch (error) {
+        if (this.nativeLockGuardOn()) await this.settlePendingNativeLockInner(escrowId, {ignoreAttemptCap: true}).catch(() => {});
+        throw error;
+      }
+    });
   }
 
   private async lockAndPublishInner(escrowId: string, opts: LockOptions = {}): Promise<EscrowState> {
-    const context = await this.prepareLockContext(escrowId, opts);
+    let context = await this.prepareLockContext(escrowId, opts);
     const amountMsats = amountMsatsForLock(context.state, opts.selectedItems);
     const meta = buildChamaOperationMeta({
       flow: "lock_spend",
@@ -702,6 +708,9 @@ export class EscrowFedimintBridge {
       }
     }
 
+    // Spending/probing can outlast the seat. Recheck before splitting notes.
+    context = await this.prepareLockContext(escrowId, opts);
+    if (amountMsatsForLock(context.state, opts.selectedItems) !== amountMsats) throw new Error("The order amount changed. Reopen it before locking.");
     const lockBundle = await this.fedimint.buildEscrowLockBundle(
       spend.oobNotes,
       amountMsats,
@@ -713,12 +722,14 @@ export class EscrowFedimintBridge {
     // Deliberately NO inline re-absorb here: a relay that timed out may still
     // have taken the LOCK frame, so the next Fund tap or boot drain settles the
     // stash only after relay state is readable.
-    const resultState = await this.publishLockBundle(
+    let resultState = await this.publishLockBundle(
       escrowId, context.state, lockBundle, context, opts,
     );
 
     if (guardOn) {
-      if (shouldClearNativeLockAfterPublish({
+      const replayed = await this.escrow.loadEscrow(escrowId);
+      resultState = replayed ?? resultState;
+      if (replayed && shouldClearNativeLockAfterPublish({
         committedNotesHash: resultState?.lock?.notesHash,
         expectedNotesHash: lockBundle.notesHash,
         custodyDurability: resultState?.lock?.custodyDurability,
@@ -729,10 +740,7 @@ export class EscrowFedimintBridge {
         // Stale-suppression resolve or a competing lock committed different
         // notes: ours are NOT in escrow. Keep the entry; recovery re-absorbs
         // when provably safe.
-        console.warn(
-          `[chama] lockAndPublish: LOCK did not commit our notes for ${escrowId} ` +
-          `— stash entry kept for recovery`
-        );
+        await this.settlePendingNativeLockInner(escrowId, {ignoreAttemptCap: true});
       }
     }
     return resultState;
@@ -750,7 +758,7 @@ export class EscrowFedimintBridge {
   }
 
   private async lockAndPublishWithEcashInner(escrowId: string, oobNotes: string, opts: LockOptions = {}): Promise<EscrowState> {
-    const context = await this.prepareLockContext(escrowId, opts);
+    let context = await this.prepareLockContext(escrowId, opts);
     const amountMsats = amountMsatsForLock(context.state, opts.selectedItems);
     const guardOn = this.nativeLockGuardOn();
     const lockOpts = {
@@ -797,6 +805,8 @@ export class EscrowFedimintBridge {
 
     // Parse and validate federation + exact amount BEFORE taking custody in
     // Chama's recovery stash. An invalid paste remains solely in Fedi.
+    context = await this.prepareLockContext(escrowId, opts);
+    if (amountMsatsForLock(context.state, opts.selectedItems) !== amountMsats) throw new Error("The order amount changed. Reopen it before locking.");
     const lockBundle = await this.fedimint.createEscrowLockFromNotes(
       oobNotes,
       amountMsats,
@@ -830,15 +840,19 @@ export class EscrowFedimintBridge {
       markNativeLockPublishAttempted(escrowId);
     }
 
-    const resultState = await this.publishLockBundle(
+    let resultState = await this.publishLockBundle(
       escrowId, context.state, lockBundle, context, opts,
     );
-    if (guardOn && shouldClearNativeLockAfterPublish({
+    const replayed = guardOn ? await this.escrow.loadEscrow(escrowId) : null;
+    resultState = replayed ?? resultState;
+    if (guardOn && replayed && shouldClearNativeLockAfterPublish({
       committedNotesHash: resultState?.lock?.notesHash,
       expectedNotesHash: lockBundle.notesHash,
       custodyDurability: resultState?.lock?.custodyDurability,
     })) {
       clearPendingNativeLock(escrowId);
+    } else if (guardOn && replayed?.rejectedLocks?.length) {
+      await this.settlePendingNativeLockInner(escrowId, {ignoreAttemptCap: true});
     }
     return resultState;
   }

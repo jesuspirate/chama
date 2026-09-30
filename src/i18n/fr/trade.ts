@@ -1,5 +1,6 @@
 // fr/trade — Session B fills this from src/i18n/en/trade.ts (key set must match EXACTLY).
 export const trade: Record<string, string> = {
+  "trade.lockReabsorbed": "Vos {amount} sats sont de retour dans votre portefeuille.",
   "trade.responseHours": "{count} heures",
   "trade.responseDays": "{count} jours",
   "trade.arbiterNoStake": "Aucun dépôt de garantie vérifié trouvé pour {name}.",

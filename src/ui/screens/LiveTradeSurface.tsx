@@ -1,3 +1,4 @@
+import { reabsorbedLockAmount } from "../../fedimint/pending-native-locks.js";
 import { RejectedLockRefund } from "../components/RejectedLockRefund.js";
 import { getEcashExport } from "../../payments/ecash-exports.js";
 import { hasObservedOnchainDeposit } from "../../escrow-engine/types.js";
@@ -731,7 +732,8 @@ export function LiveTradeSurface({
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0, background: T.bg, paddingBottom: 12 }}>
       {state.rejectedLockRecovery?.pubkey === pubkey && onReclaimRejectedLock &&
         <RejectedLockRefund amountMsats={state.rejectedLockRecovery.amountMsats} onReclaim={() => onReclaimRejectedLock(state.id)} />}
-      {!state.rejectedLockRecovery && state.rejectedLocks?.some(row => row.event.pubkey === pubkey) &&
+      {reabsorbedLockAmount(state.id) && <p>{tr("trade.lockReabsorbed", {amount:Math.floor(reabsorbedLockAmount(state.id)! / 1000).toLocaleString()})}</p>}
+      {!reabsorbedLockAmount(state.id) && !state.rejectedLockRecovery && state.rejectedLocks?.some(row => row.event.pubkey === pubkey) &&
         <p>Chama can't find the note for this lock on this device.</p>}
       {onchainOverlay}
       <style>{`
