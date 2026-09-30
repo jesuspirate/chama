@@ -1,0 +1,230 @@
+{
+  "relay": "wss://relay.chama.community",
+  "window": "2026-09-29 21:25–21:45 America/New_York",
+  "events": [
+    {
+      "id": "bfbdb203b694290866ea3ec81121b659f4245d3e358d379a84d79ffc7cbc7296",
+      "kind": 38108,
+      "pubkey": "e2ae2beaf55b932c965543e436a5be400e6248f2bdcea4f82cb46f724ac2c3f9",
+      "created_at": 1790731965,
+      "tags": [
+        [
+          "d",
+          "sm_muneobrj_9lpkpr2v"
+        ],
+        [
+          "t",
+          "escrow:chat"
+        ],
+        [
+          "p",
+          "e2ae2beaf55b932c965543e436a5be400e6248f2bdcea4f82cb46f724ac2c3f9"
+        ],
+        [
+          "p",
+          "22f7161f76e075b9e0a250a447884ac09b04b636effd7c703a92394ed3fb39e8"
+        ],
+        [
+          "client",
+          "chama",
+          "6.4.15"
+        ],
+        [
+          "w",
+          "Y45MTRdPcIuvi0_P"
+        ]
+      ],
+      "verified": true
+    },
+    {
+      "id": "41f936a5cff14536bca7496b51df18270f655a3a5ea08d926931554932a04400",
+      "kind": 38108,
+      "pubkey": "e2ae2beaf55b932c965543e436a5be400e6248f2bdcea4f82cb46f724ac2c3f9",
+      "created_at": 1790731963,
+      "tags": [
+        [
+          "d",
+          "sm_muneobrj_9lpkpr2v"
+        ],
+        [
+          "t",
+          "escrow:chat"
+        ],
+        [
+          "p",
+          "e2ae2beaf55b932c965543e436a5be400e6248f2bdcea4f82cb46f724ac2c3f9"
+        ],
+        [
+          "p",
+          "22f7161f76e075b9e0a250a447884ac09b04b636effd7c703a92394ed3fb39e8"
+        ],
+        [
+          "client",
+          "chama",
+          "6.4.15"
+        ],
+        [
+          "w",
+          "Y45MTRdPcIuvi0_P"
+        ]
+      ],
+      "verified": true
+    },
+    {
+      "id": "ca10373f01dac8e4bf1d20a85ed46059f1ea324c81e3ce96b45d49b10dc57f4a",
+      "kind": 38108,
+      "pubkey": "e2ae2beaf55b932c965543e436a5be400e6248f2bdcea4f82cb46f724ac2c3f9",
+      "created_at": 1790731959,
+      "tags": [
+        [
+          "d",
+          "sm_muneobrj_9lpkpr2v"
+        ],
+        [
+          "t",
+          "escrow:chat"
+        ],
+        [
+          "p",
+          "e2ae2beaf55b932c965543e436a5be400e6248f2bdcea4f82cb46f724ac2c3f9"
+        ],
+        [
+          "p",
+          "22f7161f76e075b9e0a250a447884ac09b04b636effd7c703a92394ed3fb39e8"
+        ],
+        [
+          "client",
+          "chama",
+          "6.4.15"
+        ],
+        [
+          "w",
+          "Y45MTRdPcIuvi0_P"
+        ]
+      ],
+      "verified": true
+    },
+    {
+      "id": "4728340412f646186ad4f60d8788d8f9db80076436b07d6df7bf4630925bd907",
+      "kind": 38108,
+      "pubkey": "e2ae2beaf55b932c965543e436a5be400e6248f2bdcea4f82cb46f724ac2c3f9",
+      "created_at": 1790731939,
+      "tags": [
+        [
+          "d",
+          "sm_muneobrj_9lpkpr2v"
+        ],
+        [
+          "t",
+          "escrow:chat"
+        ],
+        [
+          "p",
+          "e2ae2beaf55b932c965543e436a5be400e6248f2bdcea4f82cb46f724ac2c3f9"
+        ],
+        [
+          "p",
+          "22f7161f76e075b9e0a250a447884ac09b04b636effd7c703a92394ed3fb39e8"
+        ],
+        [
+          "client",
+          "chama",
+          "6.4.15"
+        ],
+        [
+          "w",
+          "Y45MTRdPcIuvi0_P"
+        ]
+      ],
+      "verified": true
+    },
+    {
+      "id": "a43726e45f8c5085a23912ecb53a93d556092920f8950604b141cc63e1257ab2",
+      "kind": 38101,
+      "pubkey": "e2ae2beaf55b932c965543e436a5be400e6248f2bdcea4f82cb46f724ac2c3f9",
+      "created_at": 1790731896,
+      "tags": [
+        [
+          "d",
+          "sm_muneobrj_9lpkpr2v"
+        ],
+        [
+          "e",
+          "434a1f13fe82b7eee993c4c526b97f6bc2f54490d677d932c06e13f5673bff7b",
+          "",
+          "reply"
+        ],
+        [
+          "t",
+          "escrow:join"
+        ],
+        [
+          "p",
+          "e2ae2beaf55b932c965543e436a5be400e6248f2bdcea4f82cb46f724ac2c3f9"
+        ],
+        [
+          "p",
+          "22f7161f76e075b9e0a250a447884ac09b04b636effd7c703a92394ed3fb39e8"
+        ],
+        [
+          "community",
+          "ci-xof"
+        ],
+        [
+          "client",
+          "chama",
+          "6.4.15"
+        ],
+        [
+          "w",
+          "Y45MTRdPcIuvi0_P"
+        ]
+      ],
+      "verified": true
+    },
+    {
+      "id": "d56cc2d2a8e61583b2100e944557155ec022e4a7aa4e109c2b4403d88939a4f8",
+      "kind": 38101,
+      "pubkey": "e2ae2beaf55b932c965543e436a5be400e6248f2bdcea4f82cb46f724ac2c3f9",
+      "created_at": 1790731709,
+      "tags": [
+        [
+          "d",
+          "sm_muneonox_azl7ifcr"
+        ],
+        [
+          "e",
+          "34a0ba371ffd40cdf030b60dc16a2add39c94ce0884d65450c0380aee7cbe34f",
+          "",
+          "reply"
+        ],
+        [
+          "t",
+          "escrow:join"
+        ],
+        [
+          "p",
+          "e2ae2beaf55b932c965543e436a5be400e6248f2bdcea4f82cb46f724ac2c3f9"
+        ],
+        [
+          "p",
+          "22f7161f76e075b9e0a250a447884ac09b04b636effd7c703a92394ed3fb39e8"
+        ],
+        [
+          "community",
+          "ci-xof"
+        ],
+        [
+          "client",
+          "chama",
+          "6.4.15"
+        ],
+        [
+          "w",
+          "NiBiwG5vQ8R3coyr"
+        ]
+      ],
+      "verified": true
+    }
+  ]
+}
