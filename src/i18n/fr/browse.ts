@@ -1,5 +1,6 @@
 // fr/browse — Session B fills this from src/i18n/en/browse.ts (key set must match EXACTLY).
 export const browse: Record<string, string> = {
+  "browse.copyDiagnostics": "Copier le diagnostic de Parcourir",
   "browse.advancedFooterLine1": "Événements : kinds 38100-38108 · SSS 2-sur-3",
   "browse.advancedFooterLine2": "Chiffré NIP-44 · relecture par relais · aucune garde serveur",
   "browse.advancedTools": "Outils avancés",

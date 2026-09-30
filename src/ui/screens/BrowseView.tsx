@@ -1,3 +1,5 @@
+import { browseDiagnostics, type BrowseDiagnosticsContext } from "../browse-diagnostics.js";
+import { CopyButton } from "../components/CopyButton.js";
 import { filterListingsByCurrency, listingMatchesCurrency } from "../listing-currency.js";
 import { defaultCurrencyForCommunity } from "../../communities/currency.js";
 import { useMemo, useState, useEffect } from "react";
@@ -103,6 +105,7 @@ export function BrowseView({
   browseCommunity,
   amountDisplayMode,
   matchingListings: suppliedMatching, nonMatchingListings: suppliedNonMatching, allEscrows, circleChildrenLoaded,
+  diagnosticsContext,
   stockByListing,
   orderIndicatorByListing,
   fedimintJoined, listingsLoading, pubkey,
@@ -112,6 +115,7 @@ export function BrowseView({
   fetchRatingSummary,
   onCreate, onApplyAsArbiter,
 }: {
+  diagnosticsContext?: BrowseDiagnosticsContext;
   browseCategory: string;
   setBrowseCategory: (s: string) => void;
   browseCommunity: string;
@@ -816,6 +820,13 @@ export function BrowseView({
             marginTop: 10, padding: 12, background: T.surface,
             borderRadius: T.rs, border: `1px solid ${T.border}`,
           }}>
+            {diagnosticsContext && <CopyButton label={t("browse.copyDiagnostics")} copiedLabel={t("common.copied")}
+              value={JSON.stringify(browseDiagnostics({...diagnosticsContext, viewer:pubkey, community:browseCommunity,
+                currency:viewerCurrency, scope:browseScope, category:browseCategory, search:searchQuery,
+                otherCurrencies, mine:showOwn, states:allEscrows ?? [...suppliedMatching,...suppliedNonMatching],
+                visibleIds:new Set([...filteredMatchingListings,...filteredNonMatchingListings].map(l=>l.id)),
+                matchingIds:new Set(suppliedMatching.map(l=>l.id)), currencyIds:new Set([...matchingListings,...nonMatchingListings].map(l=>l.id)),
+                searchIds:new Set([...scopedMatching,...scopedNonMatching].map(l=>l.id))}),null,2)} />}
             {isFirstTime && (
               <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
                 <input

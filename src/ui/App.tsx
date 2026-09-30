@@ -2,7 +2,7 @@ import { buildWakeIndex } from "../notifications/wake-index.js";
 import { deleteListings } from "../escrow-engine/delete-listings.js";
 import { listPaidLockRecoveries } from "../payments/paid-lock-recovery.js";
 import { fundingSeatDeadline } from "../payments/seat-funding.js";
-import { hasVerifiedTradeCreate } from "../escrow-engine/trade-index.js";
+import { listTradeIndex, hasVerifiedTradeCreate } from "../escrow-engine/trade-index.js";
 import { browserWalletStorageError } from "../fedimint/browser-capabilities.js";
 import { useVisualViewport } from './useVisualViewport.js';
 import { cacheNativeWake } from '../notifications/native-push.js';
@@ -4725,6 +4725,9 @@ export default function App() {
           ) : (
             <BrowseView
               allEscrows={[...escrows.values()]}
+              diagnosticsContext={{clock:now, relays:[...relayStatuses.keys()], knownIds:listTradeIndex().map(e=>e.id),
+                excludedReasons:Object.fromEntries([...escrows.values()].filter(s=>!allVisibleListings.some(l=>l.id===s.id)).map(s=>[s.id,
+                  !hasVerifiedTradeCreate(s) ? "not-fetched" : "hidden"]))}}
               circleChildrenLoaded={circleChildrenLoaded}
               browseCategory={browseCategory}
               setBrowseCategory={setBrowseCategory}

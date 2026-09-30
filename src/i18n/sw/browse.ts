@@ -1,4 +1,5 @@
 export const browse: Record<string, string> = {
+  "browse.copyDiagnostics": "Nakili uchunguzi wa Vinjari",
   "browse.advancedFooterLine1": "Matukio: aina 38100-38108 · 2-kati-ya-3 SSS",
   "browse.advancedFooterLine2": "Imesimbwa kwa NIP-44 · marudio ya relay · hakuna seva inayoshikilia",
   "browse.advancedTools": "Zana za kina",

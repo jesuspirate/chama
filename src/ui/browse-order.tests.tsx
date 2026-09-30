@@ -54,3 +54,37 @@ assert.deepEqual(filterListingsByCurrency([exchange, foreign] as any, 'USD').map
 assert.deepEqual(filterListingsByCurrency([exchange, foreign] as any, 'USD', true).map(l => l.id), ['foreign-eur']);
 assert.equal(filterListingsByCurrency([{...foreign,fiatCurrency:undefined,community:'ke-kes'}] as any,'USD').length, 0, 'premium quotes cannot be relabeled with viewer currency');
 
+const {browseDiagnostics} = await import('./browse-diagnostics.js');
+const {EscrowStatus, EscrowEventKind} = await import('../escrow-engine/types.js');
+const viewer = 'f'.repeat(64);
+const rows = [
+ {...store,id:'included',expiresAt:900},
+ {...store,id:'owned',expiresAt:900,participants:{...store.participants,seller:viewer}},
+ {...store,id:'outside',expiresAt:900},
+ {...store,id:'currency',expiresAt:900},
+ {...store,id:'search',expiresAt:900},
+ {...store,id:'hidden',expiresAt:900},
+ {...store,id:'category',expiresAt:900},
+ {...store,id:'cancelled',status:EscrowStatus.CANCELLED,expiresAt:900,
+  eventChain:[{kind:EscrowEventKind.CREATE,timestamp:100},{kind:EscrowEventKind.CANCEL,timestamp:400}]},
+ {...store,id:'lapsed',status:EscrowStatus.CREATED,expiresAt:499},
+] as any;
+const diagnostic = browseDiagnostics({viewer,community:'us-usd',currency:'USD',scope:'local',category:'marketplace',
+ search:'offer',mine:false,otherCurrencies:false,clock:500,relays:['wss://relay.example'],knownIds:['unknown'],
+ states:rows,excludedReasons:{hidden:'hidden'},visibleIds:new Set(['included']),
+ matchingIds:new Set(['included','currency','search','category']),
+ currencyIds:new Set(['included','search','category']),searchIds:new Set(['included','category'])});
+assert.match(diagnostic.viewer!, /^npub1/);
+const byId = new Map(diagnostic.listings.map(row=>[row.id,row]));
+for (const [id,reason] of Object.entries({owned:'mine',outside:'community',currency:'currency',search:'search',
+ hidden:'hidden',category:'category',cancelled:'cancelled@400',lapsed:'presence-lapsed@499',unknown:'not-fetched'})) {
+ assert.deepEqual(byId.get(id)?.reasons,[reason]);
+ assert.equal(byId.get(id)?.included,false);
+}
+assert.equal(byId.get('included')?.included,true);
+assert.equal(byId.get('cancelled')?.createAt,100);
+assert.equal(byId.get('cancelled')?.cancelAt,400);
+assert.equal(byId.get('unknown')?.createAt,null,'unfetched ids never invent timestamps');
+assert.doesNotMatch(JSON.stringify(diagnostic),/Store offer|description|content|participants|amountMsats|ecash/,
+ 'export contains no listing bodies, identities of counterparties, or wallet notes');
+console.log('PASS Browse diagnostics: known ids, exact filter reasons, timestamps, and content-free export');
