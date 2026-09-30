@@ -128,3 +128,8 @@ for (const rail of ['onchain','ecash']) {
   assert(button?.includes('pointer-events:none'));
 }
 assert.match(lockedRails, /Locked to Lightning while this invoice is open — Back to choose another rail/);
+
+const {keepLapsedOfferForPresence} = await import('../escrow-engine/listing-renewal.js');
+assert(keepLapsedOfferForPresence({...trade, category:'marketplace'}, 'seller'), 'returning owner retains lapsed renewal source');
+assert.equal(keepLapsedOfferForPresence({...trade, category:'marketplace'}, 'buyer'), false);
+assert.equal(keepLapsedOfferForPresence({...trade, category:'marketplace', status:EscrowStatus.CANCELLED}, 'seller'), false);

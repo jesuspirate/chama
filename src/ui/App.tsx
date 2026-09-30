@@ -1723,6 +1723,8 @@ export default function App() {
       // lineage has hit the cap with no buyer interest. A listing that ever had
       // a JOIN/hold, or that the seller manually renewed, is exempt and stays.
       .filter((l) => {
+        // The explicit presence preference keeps stores live while used.
+        if (resolveRenewalPolicy(l).lane === "store") return true;
         const key = listingIdentityKey(l);
         return !shouldAgeOutListing({
           autoRenewCount: getAutoRenewCount(key),

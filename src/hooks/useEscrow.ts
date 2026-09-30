@@ -208,6 +208,7 @@ import {
 import { listTradeIndex, recordTradeToIndex, removeTradeFromIndex } from "../escrow-engine/trade-index.js";
 import {
   canManuallyRenewListing,
+  keepLapsedOfferForPresence,
   buildRenewCreateParams,
   isSellerOwnedListing,
 } from "../escrow-engine/listing-renewal.js";
@@ -447,7 +448,8 @@ import { extractNostrProfileName, mergeProfileNameContent, type NostrProfileName
 
 /** Shared with the UI so "we dropped it" and "here is why it won't open" can
  *  never drift apart (src/escrow-engine/expired-listing.ts). */
-const isExpiredUnfundedEscrow = isExpiredUnfundedListing;
+const isExpiredUnfundedEscrow = (state: EscrowState, owner?: string | null) =>
+  isExpiredUnfundedListing(state) && !keepLapsedOfferForPresence(state, owner);
 
 /** Max simultaneous loadEscrow re-heals. The Fedi webview enforces a low
  *  per-connection subscription cap; a flood of ~12 concurrent #d fetches trips
@@ -581,7 +583,7 @@ async function discoverAndLoadMyTrades(
       const cls: HydrateIdDiag["cls"] = wasKnown ? "known" : "fresh";
       try {
         const loaded = await client.loadEscrow(id);
-        if (loaded && isExpiredUnfundedEscrow(loaded)) {
+        if (loaded && isExpiredUnfundedEscrow(loaded, pubkey)) {
           // Genuinely never-funded + past expiry (status CREATED) — drop it.
           // A stuck EXPIRED/LOCKED trade is NOT CREATED, so this never eats a
           // real trade being healed. `done` — nothing to retry.
@@ -629,7 +631,7 @@ async function discoverAndLoadMyTrades(
       try {
         const reloaded = await client.loadEscrow(r.id);
         const cls: HydrateIdDiag["cls"] = r.wasKnown ? "known" : "fresh";
-        const expiredUnfunded = !!reloaded && isExpiredUnfundedEscrow(reloaded);
+        const expiredUnfunded = !!reloaded && isExpiredUnfundedEscrow(reloaded, pubkey);
         if (expiredUnfunded) {
           (client as any).states?.delete?.(r.id);
           (client as any).rawEvents?.delete?.(r.id);
@@ -1470,7 +1472,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     // never blocks the state update. Recorded BEFORE the expired-unfunded hide
     // so an expired listing still shows in history (it's the user's own).
     try { recordTradeToIndex(escrowState, stateRef.current?.pubkey ?? null); } catch {}
-    if (isExpiredUnfundedEscrow(escrowState)) {
+    if (isExpiredUnfundedEscrow(escrowState, stateRef.current?.pubkey)) {
       setState(prev => {
         if (!prev.escrows.has(escrowId)) return prev;
         const next = new Map(prev.escrows);
@@ -1960,7 +1962,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
         await mapPool(prioritizedSavedIds.slice(0, MAX_SAVED_ESCROW_IDS), HEAL_CONCURRENCY, async (id) => {
           try {
             const loaded = await connectedClient.loadEscrow(id);
-            if (loaded && isExpiredUnfundedEscrow(loaded)) {
+            if (loaded && isExpiredUnfundedEscrow(loaded, pubkey)) {
               (connectedClient as any).states?.delete?.(id);
               (connectedClient as any).rawEvents?.delete?.(id);
               rememberExpiredUnfundedId(id, pubkey);

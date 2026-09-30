@@ -500,3 +500,10 @@ export function sessionAllowsAutoRenew(state: EscrowState, opts: { connected: bo
   const policy = resolveRenewalPolicy(state, { bonded: opts.bonded });
   return policy.autoRenew && opts.storeEnabled;
 }
+
+/** Retain an owner's lapsed source so returning online can renew it. Browse
+ * still checks its deadline. Foreign window-shopping remains discardable. */
+export function keepLapsedOfferForPresence(state: EscrowState, pubkey: string | null | undefined): boolean {
+  return isSellerOwnedListing(state, pubkey ?? null) && listingNeverFunded(state)
+    && resolveRenewalPolicy(state).renewable;
+}
