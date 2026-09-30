@@ -118,3 +118,13 @@ for (const category of ['p2p-trade', 'marketplace', 'bill-pay'] as const) {
   assert.equal(sessionAllowsAutoRenew({...trade, category}, {...session, connected:false}), false);
   assert.equal(sessionAllowsAutoRenew({...trade, category}, {...session, paused:true}), false);
 }
+
+const {PaymentRails} = await import('./components/PaymentCard.js');
+const lockedRails = renderToStaticMarkup(<PaymentRails rail="lightning" lockedRail="lightning" onSelect={() => {}} />);
+for (const rail of ['onchain','ecash']) {
+  const button = lockedRails.match(new RegExp(`<button[^>]*data-funding-rail="${rail}"[^>]*>`))?.[0];
+  assert(button?.includes('disabled=""'));
+  assert(button?.includes('opacity:0.4'));
+  assert(button?.includes('pointer-events:none'));
+}
+assert.match(lockedRails, /Locked to Lightning while this invoice is open — Back to choose another rail/);

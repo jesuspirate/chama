@@ -225,7 +225,8 @@ export function AtomicFundingModal({
   const totalSats = amountSats + insuranceSats;
   const [showFundingChoices, setShowFundingChoices] = useState(false);
   const [request, setRequest] = useState<{ rail: "lightning" | "onchain"; data: string; value: string; sats: number; expiresAt?: number; fee?: number; finality?: number; gateway?: FundingGatewayInfo } | null>(null);
-  const [initialRail, setInitialRail] = useState<PaymentRail>("lightning");
+  const [initialRail, setInitialRail] = useState<PaymentRail>(() =>
+    browserLightningBlocked && !browserLightningProbeArmed || !isSimModeOn() && amountSats < MIN_REAL_LIGHTNING_FUNDING_SATS ? "ecash" : "lightning");
   const [paymentDetected, setPaymentDetected] = useState(false);
   const [invoiceUnavailable, setInvoiceUnavailable] = useState(false);
   const [gatewayCount, setGatewayCount] = useState<number | null>(null);
@@ -598,15 +599,20 @@ export function AtomicFundingModal({
     setPhase({ kind: "creating-invoice" }); setRetryToken(value => value + 1);
   };
 
+  // The gateway preflight chooses the initial rail before the card paints.
+  if (gatewayChecking) return <FundingModalShell onClose={handleCancel}>
+    <FundingNote>{t("fund.checkingGateways")}</FundingNote>
+  </FundingModalShell>;
+
   return (
     <FundingModalShell onClose={handleCancel}>
         {/* Header — amount is the eyebrow, label is the title */}
         {!disableNwc && <div data-funding-rails aria-hidden={!railsVisible} style={{ marginBottom: 16, visibility: railsVisible ? "visible" : "hidden" }}>
-          <PaymentRails rail={request?.rail ?? initialRail}
+          <PaymentRails lockedRail={request?.rail ?? (["creating-invoice", "creating-invoice-slow"].includes(phase.kind) ? "lightning" : phase.kind === "creating-onchain-address" ? "onchain" : undefined)} rail={request?.rail ?? initialRail}
             rails={request?.rail === "onchain" ? ["onchain"] : ["lightning", "onchain", "ecash"]}
             disabledReasons={{ lightning: lightningReason, onchain: !supportsOnchain ? t("fund.onchainAppOnly") : gatewayChecking ? t("fund.checkingGateways") : undefined, ecash: gatewayChecking ? t("fund.checkingGateways") : undefined }}
             onSelect={chooseRail} />
-          {(!request || request.rail !== "onchain") && <button type="button" disabled={!hasBalance} onClick={() => {
+          {(!request || request.rail !== "onchain") && <button type="button" disabled={!hasBalance || !!request} onClick={() => {
             if (request || ["creating-invoice", "creating-invoice-slow", "creating-onchain-address"].includes(phase.kind)) { setSwitchRequested("balance"); return; }
             abortRef.current?.abort(); setFundingMethod(null); setPhase({ kind: "choose-method" });
           }} style={{ background: "none", color: T.muted, border: 0, minHeight: 44 }}>
@@ -1085,7 +1091,6 @@ function FundingMethodChooser({
       )}
 
       {!hideRails && <PaymentRails rail={rail} rails={supportsOnchain ? ["lightning", "onchain", "ecash"] : ["lightning", "ecash"]} onSelect={setRail} />}
-      <p style={{ color: T.muted, fontSize: 12, lineHeight: 1.5 }}>{t("claim.railTiming")}</p>
       {rail === "ecash" && <details open style={{ marginBottom: 12 }}>
         <summary style={{
           padding: "10px 12px", borderRadius: T.rs, cursor: "pointer",

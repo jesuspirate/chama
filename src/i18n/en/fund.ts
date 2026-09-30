@@ -7,6 +7,7 @@
 // half. The exact TZS amount / agent number / USSD code arrive as {params}
 // — never hardcode them in a translation.
 export const fund: Record<string, string> = {
+  "fund.railLocked": "Locked to {rail} while this invoice is open — Back to choose another rail.",
   "fund.depositWaiting": "Waiting for your transaction.",
   "fund.depositSeen": "Transaction seen: {amount} sats. Waiting for {count} confirmations — usually about {minutes} minutes.",
   "fund.depositConfirmed": "Confirmed. Locking your sats now.",
