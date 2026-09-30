@@ -1,4 +1,5 @@
 import { readNostrProfileCache } from '../ui/nostr-profiles.js';
+import { expectedLockerRole } from "../escrow-engine/lock-custody.js";
 import { getWinner } from '../escrow-engine/state-machine.js';
 import { onchainAttention } from '../escrow-engine/onchain-attention.js';
 // ══════════════════════════════════════════════════════════════════════════
@@ -22,7 +23,7 @@ import { onchainAttention } from '../escrow-engine/onchain-attention.js';
 
 import {
   EscrowStatus, Role, Outcome,
-  getEffectiveParticipantsAt,
+  getEffectiveParticipantsAt, selectedMenuItemsTotalMsats,
   type EscrowState, type ChatPayload, type ParsedEscrowEvent,
 } from "../escrow-engine/types.js";
 import { payoutRecipientFor } from "../escrow-engine/recipients.js";
@@ -61,6 +62,9 @@ export interface CircleLockContext {
 
 export interface TradeNotification {
   group?: string;
+  sender?: string;
+  message?: string;
+  sentAt?: number;
   payoutTxid?: string;
   payoutNetwork?: "mainnet" | "signet";
   escrowId: string;
@@ -113,6 +117,21 @@ export function pendingOnchainArbiterPubkey(state: EscrowState): string | null {
   ) ?? null;
 }
 
+/** A JOIN tells the listing owner whose turn funding belongs to. */
+export function joinedListingNotification(prev: EscrowState | null | undefined, next: EscrowState, viewer: string, names = readNostrProfileCache(viewer)): TradeNotification | null {
+  const hold = next.joinHolds?.[Role.BUYER];
+  const role = roleOf(next, viewer);
+  if (next.status !== EscrowStatus.CREATED || role !== Role.SELLER || !hold
+      || hold.eventId === prev?.joinHolds?.[Role.BUYER]?.eventId) return null;
+  const locks = expectedLockerRole(next.category) === role;
+  const lang = getCurrentLang();
+  const name = names[hold.pubkey] || translate(lang, 'notify.buyerFallback');
+  const amount = hold.amountMsats || selectedMenuItemsTotalMsats(hold.selectedItems ?? []) || next.amountMsats;
+  return { escrowId: next.id, title: translate(lang, locks ? 'notify.listingNeedsYou' : 'notify.listingTitle'),
+    body: translate(lang, locks ? 'notify.joinedLockerBody' : 'notify.joinedWaitingBody', {who:name, amount:Math.floor(amount / 1000).toLocaleString('en-US')}),
+    tag: `${next.id}:joined:${hold.eventId}` };
+}
+
 /**
  * The notification (if any) to fire for one escrow transitioning prev → next,
  * from the perspective of `userPubkey`. Pure; null when nothing should buzz.
@@ -123,6 +142,7 @@ export function notificationForTransition(
   userPubkey: string | null | undefined,
   liveSinceSec = Number.POSITIVE_INFINITY,
   circle?: CircleLockContext | null,
+  names = userPubkey ? readNostrProfileCache(userPubkey) : {},
 ): TradeNotification | null {
   if (!userPubkey) return null;
   if (next.escrowMode === 'onchain' && prev) {
@@ -136,7 +156,7 @@ export function notificationForTransition(
   const role = roleOf(next, userPubkey);
   if (!role) return null; // not a party to this trade
   const id = next.id;
-  const label = shortId(id);
+  const label = translate(getCurrentLang(), "notify.tradeLabel", {amount:Math.floor(next.amountMsats / 1000).toLocaleString("en-US")});
 
   // 0) A buyer just took an on-chain trade → summon the ONE deterministic
   // bonded arbiter whose public key is required before an address can exist.
@@ -162,6 +182,8 @@ export function notificationForTransition(
   // exception above is intentionally freshness-gated because its routed JOIN is
   // often the first event that makes the trade discoverable to that arbiter.
   if (!prev) return null;
+  const joined = joinedListingNotification(prev, next, userPubkey, names);
+  if (joined) return joined;
 
   // 1a) A CIRCLE SEAT just locked → tell the HOST. The host locks LAST to seal
   //     the round, so every member lock is their cue: without the host's lock
@@ -209,7 +231,11 @@ export function notificationForTransition(
       return {
         escrowId: id,
         title: translate(getCurrentLang(), isChildOrder ? "notify.newOrderTitle" : "notify.lockedTitle"),
-        body: translate(getCurrentLang(), isChildOrder ? "notify.newOrderBody" : "notify.lockedBody", { label }),
+        body: translate(getCurrentLang(), "notify.namedLockedBody", {
+          who: names[next.participants[expectedLockerRole(next.category) ?? Role.SELLER] ?? ""] || translate(getCurrentLang(), "notify.partnerFallback"),
+          amount: Math.floor((selectedMenuItemsTotalMsats(next.lock?.selectedItems ?? []) || next.amountMsats) / 1000).toLocaleString("en-US"),
+          action: translate(getCurrentLang(), next.category === "marketplace" ? "notify.lockedMarketAction" : next.category === "bill-pay" ? "notify.lockedBillAction" : "notify.lockedExchangeAction"),
+        }),
         tag: `${id}:locked`,
       };
     }
@@ -332,7 +358,7 @@ export function buyerInterestNotificationFor(
   const prevHold = prev?.joinHolds?.[Role.BUYER];
   if (prevHold && samePubkey(prevHold.pubkey, hold.pubkey)) return null; // already saw this buyer
   // Tag by buyer so a different buyer joining later re-buzzes (fire-once per buyer).
-  return build(`${id}:interest:${hold.pubkey.toLowerCase()}`);
+  return joinedListingNotification(prev, next, userPubkey);
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -435,7 +461,7 @@ export function chatNotificationFor(
   if (pref === "auto" && myRole !== Role.ARBITER) return null; // role default: arbiters only
 
   const id = state.id;
-  const label = shortId(id);
+  const label = translate(getCurrentLang(), "notify.tradeLabel", {amount:Math.floor(state.amountMsats / 1000).toLocaleString("en-US")});
   const senderRole = participantRoleAt(state, message.pubkey, message.timestamp)
     ?? message.payload.senderRole;
   const lang = getCurrentLang();
@@ -449,6 +475,8 @@ export function chatNotificationFor(
     // the notification says who + which trade, the tap opens it to read.
     body: translate(lang, "notify.chatBody", { who, label }),
     tag: `${id}:chat:${message.raw.id}`,
+    sender: readNostrProfileCache(userPubkey)[message.pubkey] || who,
+    message: message.payload.message || translate(lang, "notify.photoFallback"), sentAt: message.timestamp * 1000,
   };
 }
 

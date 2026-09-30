@@ -796,16 +796,11 @@ function needsYouReason(
   }
 
   if (e.status === EscrowStatus.CREATED) {
-    // A pre-lock CHILD order is a buyer-created draft on my storefront: the
-    // buyer is seated directly (no JOIN hold), so the hold-based branch below
-    // never fires and the seller got no persistent signal — only a live OS
-    // buzz that can't catch up on cold boot. Surface it as "waiting" so a
-    // reserved-but-unfunded order lands in the seller's Me-tab attention set
-    // (and the pill), the same pull a single-listing JOIN gives. Seller-only,
-    // and dropped once the child passes its own deadline.
+    // A directly seated child order still needs its funder. Market buyers
+    // fund; their sellers wait until there is a committed LOCK.
     if (
       e.parent !== undefined
-      && isSeller
+      && ((isSeller && expectedLockerRole(e.category) === Role.SELLER) || (isBuyer && expectedLockerRole(e.category) === Role.BUYER))
       && !isPastEscrowDeadline(e, nowSec)
     ) return "waiting";
 
@@ -841,7 +836,7 @@ function needsYouReason(
       ) return "arbiter-key";
 
       // Buyer waiting on my open listing — a live JOIN hold I should respond to.
-      if (isSeller) return "waiting";
+      if (isSeller && lockerRole === Role.SELLER) return "waiting";
     }
   }
   return null;

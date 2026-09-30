@@ -23421,13 +23421,13 @@ console.log("\n── Liquidity & attention (buyerInterest / newListing / needsY
   // Case B: a JOIN hold lands on my own single listing → seller buzzes (per buyer).
   const held = mk({ joinHolds: { [Role.BUYER]: { role: Role.BUYER, pubkey: BUYER, joinedAt: LIVE + 10, expiresAt: LIVE + 9000, eventId: "j1" } } });
   const iB = buyerInterestNotificationFor(mk({}), held, SELLER, LIVE);
-  assert(iB?.tag === `sm_liq_0001:interest:${BUYER}`, "buyer-interest: a JOIN hold buzzes the seller, tagged by buyer");
+  assert(iB?.tag === `sm_liq_0001:joined:j1`, "buyer-interest: a JOIN hold buzzes the seller, tagged by the signed hold");
   // Same buyer already held in prev → no re-buzz.
   assert(buyerInterestNotificationFor(held, held, SELLER, LIVE) === null,
     "buyer-interest: the same buyer's hold doesn't re-buzz");
   // A different buyer re-buzzes (fire-once per buyer).
   const held2 = mk({ joinHolds: { [Role.BUYER]: { role: Role.BUYER, pubkey: BUYER2, joinedAt: LIVE + 20, expiresAt: LIVE + 9000, eventId: "j2" } } });
-  assert(buyerInterestNotificationFor(held, held2, SELLER, LIVE)?.tag === `sm_liq_0001:interest:${BUYER2}`,
+  assert(buyerInterestNotificationFor(held, held2, SELLER, LIVE)?.tag === `sm_liq_0001:joined:j2`,
     "buyer-interest: a different buyer's hold re-buzzes");
   // Backlog hold (joinedAt < live-since) stays silent.
   const oldHold = mk({ joinHolds: { [Role.BUYER]: { role: Role.BUYER, pubkey: BUYER, joinedAt: LIVE - 5, expiresAt: LIVE + 9000, eventId: "j3" } } });
@@ -23481,9 +23481,9 @@ console.log("\n── Liquidity & attention (buyerInterest / newListing / needsY
   const vote = mk({ id: "t_vote", status: EscrowStatus.LOCKED,
     participants: { [Role.BUYER]: BUYER, [Role.SELLER]: SELLER, [Role.ARBITER]: ARB },
     votes: {}, expiresAt: nowSec + 9000 });
-  const waiting = mk({ id: "t_wait", status: EscrowStatus.CREATED,
+  const waiting = mk({ category: "p2p-trade", id: "t_wait", status: EscrowStatus.CREATED,
     joinHolds: { [Role.BUYER]: { role: Role.BUYER, pubkey: BUYER, joinedAt: nowSec - 5, expiresAt: nowSec + 9000, eventId: "jw" } } });
-  const arbiterKey = mk({ id: "t_arbiter_key", status: EscrowStatus.CREATED, escrowMode: "onchain",
+  const arbiterKey = mk({ category: "p2p-trade", id: "t_arbiter_key", status: EscrowStatus.CREATED, escrowMode: "onchain",
     participants: { [Role.BUYER]: BUYER, [Role.SELLER]: SELLER, [Role.ARBITER]: null },
     communityArbiters: [ARB], bondedArbiters: [ARB], escrowKeys: {},
     joinHolds: { [Role.BUYER]: { role: Role.BUYER, pubkey: BUYER, joinedAt: nowSec - 5, expiresAt: nowSec + 9000, eventId: "jak" } } });
@@ -23614,13 +23614,13 @@ console.log("\n── Liquidity & attention (buyerInterest / newListing / needsY
     "needs-you: a non-selected pool outsider is not shown the arbiter key action");
   // Pre-lock CHILD order: a buyer reserved a multi-unit storefront but hasn't
   // funded. No JOIN hold (the buyer is seated directly), so only the parent-ref
-  // branch summons the seller — with cold-boot catch-up the OS buzz can't give.
+  // branch summons its buyer to fund, with cold-boot catch-up.
   const pendingChild = mk({ id: "t_pending_child", parent: "t_parent", expiresAt: nowSec + 9000,
     participants: { [Role.BUYER]: BUYER, [Role.SELLER]: SELLER, [Role.ARBITER]: null } });
-  assert(needsYouReasonFor(pendingChild, SELLER, nowSec) === "waiting",
-    "needs-you: a pre-lock (unfunded) child order summons the seller as waiting");
-  assert(needsYouReasonFor(pendingChild, BUYER, nowSec) === null,
-    "needs-you: the buyer who drafted the child order is not the one it summons");
+  assert(needsYouReasonFor(pendingChild, SELLER, nowSec) === null,
+    "needs-you: Market seller waits until the buyer funds the child order");
+  assert(needsYouReasonFor(pendingChild, BUYER, nowSec) === "waiting",
+    "needs-you: the buyer who drafted a Market order must fund it");
   assert(needsYouReasonFor(pendingChild, STRANGER, nowSec) === null,
     "needs-you: a non-participant sees no attention for someone else's draft order");
   assert(needsYouReasonFor({ ...pendingChild, expiresAt: nowSec - 1 }, SELLER, nowSec) === null,

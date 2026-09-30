@@ -145,3 +145,50 @@ try {
   await assert.rejects(runWakeJob({snapshot:badInput,nsec:nip19.nsecEncode(new Uint8Array(32).fill(99)),tags:[pair],lastWake:0,fired:[]}),/Identity changed/);
 } finally {sellerClient.disconnect();buyerClient.disconnect();}
 console.log('PASS sixty-trade targeted wake: exact delta, named JOIN, learned peer watch, decrypted queued CHAT, unrelated broken history and identity guard');
+
+// Signed JOINs: Market waits on the buyer; Exchange and Bill Pay wait on seller.
+const { notificationForTransition } = await import('./trade-notifications.js');
+const { needsYouReasonFor } = await import('../ui/decisions.js');
+for (const category of ['p2p-trade', 'bill-pay', 'marketplace']) {
+  const start = signed.length;
+  const sc = makeClient(sellerSigner), bc = makeClient(buyerSigner);
+  try {
+    const initial = (await sc.createEscrow({category, description:'Seat notification test', amountMsats:1200000,
+      mintUrl:'test-only', community:'us-blf', communityArbiters:[]})).state;
+    (bc as any).states.set(initial.id, initial);
+    await bc.joinEscrow(initial.id, Role.BUYER, {amountMsats:1200000, orderFinalized:true});
+    const states = replayWake(signed.slice(start).filter(e => e.kind === Kind.CREATE || e.kind === Kind.JOIN), sellerKey, nip19.nsecEncode(sellerSecret));
+    const joined = states.get(initial.id)!;
+    assert(joined);
+    const names = {[buyerKey]:'Bestie'};
+    const foreground = notificationForTransition(initial, joined, sellerKey, undefined, undefined, names)!;
+    const background = wakeNotification(joined, initial, sellerKey, names)!;
+    assert.equal(background.body, foreground.body);
+    assert.equal(background.title, category === 'marketplace' ? 'Your listing' : 'Your listing needs you');
+    assert.match(background.body, /Bestie joined your 1,200-sat offer/);
+    assert.match(background.body, category === 'marketplace' ? /waiting for them to lock/ : /lock it/);
+    assert.equal(notificationForTransition(initial, joined, buyerKey), null, 'own JOIN does not buzz the buyer');
+    assert.equal(notificationForTransition(initial, joined, fixture.pks.arbiter), null, 'ecash JOIN does not summon an arbiter');
+    assert.equal(wakeNotification(joined, initial, fixture.pks.arbiter), null);
+    if (category === 'marketplace') assert.equal(needsYouReasonFor(joined, sellerKey), null, 'Market seller is not needs-you before buyer funds');
+  } finally {sc.disconnect(); bc.disconnect();}
+}
+console.log('PASS signed JOIN notification roles for Exchange, Bill Pay and Market');
+
+const {translate} = await import('../i18n/index.js');
+const {notify:englishNotify} = await import('../i18n/en/notify.js');
+for (const lang of ['es','fr','sw'] as const) {
+ const {notify:localNotify} = await import(`../i18n/${lang}/notify.js`);
+ for (const key of ['notify.namedLockedBody','notify.listingNeedsYou','notify.listingTitle','notify.tradeLabel',
+  'notify.joinedLockerBody','notify.joinedWaitingBody','notify.lockedMarketAction','notify.lockedBillAction',
+  'notify.lockedExchangeAction','notify.partnerFallback','notify.buyerFallback','notify.photoFallback']) {
+  assert.ok(localNotify[key], `${lang} has ${key}`);
+ }
+ for (const key of ['notify.joinedLockerBody','notify.joinedWaitingBody','notify.lockedMarketAction',
+ 'notify.lockedBillAction','notify.lockedExchangeAction','notify.partnerFallback','notify.buyerFallback','notify.photoFallback']) {
+  assert.notEqual(translate(lang,key),englishNotify[key], `${lang} translates ${key}`);
+ }
+}
+assert.equal(translate('en','notify.chatBody',{who:'Bestie',label:translate('en','notify.tradeLabel',{amount:'1,200'})}),
+ 'Bestie messaged you on your 1,200-sat trade.');
+console.log('PASS notification translations: new strings in all four languages and amount-label grammar');

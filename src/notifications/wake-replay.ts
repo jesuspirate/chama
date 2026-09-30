@@ -1,3 +1,4 @@
+import { translate, getCurrentLang } from "../i18n/index.js";
 import { buildWakeIndex } from "./wake-index.js";
 import { hmac } from "@noble/hashes/hmac.js";
 import { sha256 } from "@noble/hashes/sha2.js";
@@ -8,7 +9,7 @@ import { parseEscrowEvent, sortEventChain } from '../escrow-engine/event-parser.
 import { replayEventChain } from '../escrow-engine/state-machine.js';
 import { needsYouReasonFor } from '../ui/decisions.js';
 import { onchainAttention } from '../escrow-engine/onchain-attention.js';
-import { newListingNotificationFor, chatNotificationFor, onchainNotificationBody, notificationForTransition, type DmNotifyPref, type TradeNotification } from './trade-notifications.js';
+import { joinedListingNotification, newListingNotificationFor, chatNotificationFor, onchainNotificationBody, notificationForTransition, type DmNotifyPref, type TradeNotification } from './trade-notifications.js';
 import { Role, EscrowStatus, selectedMenuItemsTotalMsats, type NostrEvent, type EscrowState } from '../escrow-engine/types.js';
 
 export interface WakeSnapshot { pubkey: string; events: NostrEvent[]; relays: string[]; names?: Record<string, string>; settledClaimIds?: string[]; fired?: string[]; dmNotifyPref?: DmNotifyPref; cachedAt?: number; watchTrades?: Record<string, string[]>; watchCommunities?: Record<string, string>; homeCommunity?: string; newListings?: { enabled: boolean; verticals: "all" | string[] }; }
@@ -16,15 +17,9 @@ export function wakeNotification(state: EscrowState, previous: EscrowState | nul
   const reason = needsYouReasonFor(state, pubkey, undefined, settledClaimIds);
   const action = onchainAttention(state, pubkey);
   if (action && reason) return { escrowId: state.id, title: 'Your trade needs you', body: onchainNotificationBody(state, pubkey, action.text, names), tag: `${state.id}:onchain:${action.key}` };
-  const hold = state.joinHolds?.[Role.BUYER];
-  if (reason === 'waiting' && hold && hold.eventId !== previous?.joinHolds?.[Role.BUYER]?.eventId) {
-    const name = names?.[hold.pubkey] || 'A buyer';
-    const amount = hold.amountMsats || selectedMenuItemsTotalMsats(hold.selectedItems ?? []) || state.amountMsats;
-    return { escrowId: state.id, title: 'Your listing needs you',
-      body: `${name} joined your ${Math.floor(amount / 1000)}-sat offer — lock it`,
-      tag: `${state.id}:joined:${hold.eventId}` };
-  }
-  const transition = notificationForTransition(previous, state, pubkey);
+  const joined = joinedListingNotification(previous, state, pubkey, names);
+  if (joined) return joined;
+  const transition = notificationForTransition(previous, state, pubkey, undefined, undefined, names);
   if (transition && !(transition.tag.endsWith(':approved') && settledClaimIds?.has(state.id))) return transition;
   if (!reason) return null;
   return {
@@ -51,7 +46,7 @@ export function selectWakeNotifications(next: Iterable<EscrowState>, old: Map<st
       .filter((chat): chat is TradeNotification => !!chat)
       .map(chat => {
         const message = state.chatMessages.find(m => chat.tag.endsWith(m.raw.id))!;
-        return { ...chat, body: `${snapshot.names?.[message.pubkey] || 'Your trading partner'}: ${message.payload.message || 'Sent a photo'}` };
+        return { ...chat, sender: snapshot.names?.[message.pubkey] || translate(getCurrentLang(), "notify.partnerFallback"), body: `${snapshot.names?.[message.pubkey] || translate(getCurrentLang(), "notify.partnerFallback")}: ${message.payload.message || translate(getCurrentLang(), "notify.photoFallback")}` };
       });
     const root = state.eventChain.find(e => e.kind === 38100);
     const listing = snapshot.newListings?.enabled && root && !root.raw.tags.some(t => t[0] === 'renewal')
