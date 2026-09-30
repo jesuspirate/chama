@@ -2160,8 +2160,8 @@ console.log("\n── ATOMIC LOCK (CREATED → LOCKED, no FUNDED hop) ──");
       "⭐ A2: Bill Pay auto-renews with NO bond (a bill is a recurring obligation)");
     // Stores are the exception, and keep the bond gate: it is the one lane where
     // a seller can mint genuinely-distinct offers all day.
-    assert(!canRenewListing(listing, SELLER_PK, lapsedAt, undefined, { bonded: false }),
-      "⭐ A2: an UNBONDED store still does not auto-renew — manual only, unchanged");
+    assert(canRenewListing(listing, SELLER_PK, lapsedAt, undefined, { bonded: false }),
+      "⭐ A2: an unbonded store renews under the same presence policy");
     assert(canRenewListing(listing, SELLER_PK, lapsedAt, undefined, { bonded: true }),
       "A2: a bonded store auto-renews, exactly as in Tier 3");
     assert(lapsedRenewableListings([
@@ -2251,8 +2251,8 @@ console.log("\n── ATOMIC LOCK (CREATED → LOCKED, no FUNDED hop) ──");
   assert(workPolicy.maxAutoRenewCycles >= 30,
     "⭐ A2: the age-out cap follows the HORIZON — the Stores-era cap of 7 would have killed every Work offer after a week");
   const storeUnbonded = resolveRenewalPolicy({ category: "marketplace" } as EscrowState, { bonded: false });
-  assert(storeUnbonded.renewable && !storeUnbonded.autoRenew && storeUnbonded.requiresBond,
-    "⭐ A2: an unbonded store is RENEWABLE (manually) but not AUTO-renewable — the two predicates must stay distinct");
+  assert(storeUnbonded.renewable && storeUnbonded.autoRenew && !storeUnbonded.requiresBond,
+    "⭐ A2: an unbonded store has the same renewal policy as other offers");
   // ── A3: editing a listing is a REPLACEMENT, not a mutation ────────────────
   {
     const {
@@ -3270,8 +3270,8 @@ console.log("\n── ATOMIC LOCK (CREATED → LOCKED, no FUNDED hop) ──");
   const unbondedT = resolveListingTenure({ bonded: false });
   assert(bondedT.autoRenew && bondedT.maxTenureSeconds === BONDED_TENURE_SECONDS,
     "store: bonded ⇒ auto-renew + 7-day store horizon");
-  assert(!unbondedT.autoRenew && unbondedT.maxTenureSeconds === UNBONDED_TENURE_SECONDS,
-    "store: unbonded ⇒ manual renew only + 24h horizon");
+  assert(unbondedT.autoRenew && unbondedT.maxTenureSeconds === BONDED_TENURE_SECONDS,
+    "store: unbonded presence has the same horizon");
   const graceOwner = btcMs.utils.pubSchnorr(btcMs.utils.randomPrivateKeyBytes());
   const oldGraceBond = buildCommitmentBond(graceOwner, 900_000, MS_MAINNET);
   const nextGraceBond = buildCommitmentBond(graceOwner, 901_008, MS_MAINNET);

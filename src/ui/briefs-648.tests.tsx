@@ -81,10 +81,10 @@ assert.ok(balanceModal(100_000,0).includes('Use ₿ 100 of your ₿ 100'));
 for (const [error,expected] of [[new Error('gateway minimum'),'gateway minimum'],['worker failed','worker failed'],[{error:'refused'},'refused'],[{reason:'busy'},'busy'],[{code:5},'{"code":5}']] as const) assert.equal(errorText(error),expected);
 const circular:any={};circular.self=circular;assert.equal(errorText(circular,'fallback'),'fallback');
 assert.equal(canRenewListing(trade,'seller',now),true,'Unbonded Exchange can renew');
-const session={connected:true,pubkey:'seller',bonded:false,storeEnabled:false,paused:false};
+const session={connected:true,pubkey:'seller',bonded:false,storeEnabled:true,paused:false};
 assert.equal(sessionAllowsAutoRenew(trade,session),true);
 assert.equal(sessionAllowsAutoRenew(trade,{...session,connected:false}),false);
-assert.equal(sessionAllowsAutoRenew({...trade,category:'marketplace'},session),false);
+assert.equal(sessionAllowsAutoRenew({...trade,category:'marketplace'},session),true);
 assert.equal(hasMissedBuyerLock(trade,now+JOIN_HOLD_LOCK_GRACE_SECONDS),true);
 assert.equal(hasMissedBuyerLock({...trade,lock:{...trade.lock,notesHash:'funded'}},now),false);
 const key=listingIdentityKey(trade);markMissedLock(key, "seller");assert.equal(isRenewalPaused(key, "seller"),true);
@@ -112,3 +112,9 @@ const rejected = await runFundAndLock({escrowId:'failure',amountMsats:100000,des
  createFundingInvoice:async()=>{throw 'gateway refused this amount';}, lockAndPublish:async()=>{throw Error('must not lock');},onPhase:()=>{}});
 assert.equal(rejected.kind,'lock-failed');
 if(rejected.kind==='lock-failed') {assert.equal(rejected.error,'gateway refused this amount');assert.equal(rejected.invoiceFailed,true);}
+
+for (const category of ['p2p-trade', 'marketplace', 'bill-pay'] as const) {
+  assert.equal(sessionAllowsAutoRenew({...trade, category}, {...session, storeEnabled:false}), false);
+  assert.equal(sessionAllowsAutoRenew({...trade, category}, {...session, connected:false}), false);
+  assert.equal(sessionAllowsAutoRenew({...trade, category}, {...session, paused:true}), false);
+}

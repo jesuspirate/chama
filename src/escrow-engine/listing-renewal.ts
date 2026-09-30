@@ -19,13 +19,8 @@ import { hasMissedBuyerLock } from "./listing-renewal-age.js";
 // the actual `createEscrow` re-publish; App wires the online-gated auto-renew
 // and the manual "your store lapsed — renew?" card.
 //
-// Tier 3 (bond-gated tenure): a chain-verified bonded seller (funded + active
-// 38135 ≥ a floor) gets AUTO-RENEW (the store persists while they're online)
-// and a longer store horizon; an unbonded seller gets the 24h default with
-// MANUAL renew only. The bond is a "storefront license" — symmetry with the
-// arbiter "earnings license". Crucially the bond buys auto-renew + horizon, it
-// does NOT buy a longer lock: every re-published CREATE keeps the same short
-// (24h) expiry, so an individual locked trade always times out at ~24h.
+// Storefronts use the same online presence preference as other offers.
+// Bonds never control renewal or extend a funded trade's timeout.
 
 import { EscrowStatus, Role, type EscrowState, type WorkListingKind } from "./types.js";
 import type { VerifiedBond } from "../bond-multisig/bond-announcement.js";
@@ -129,8 +124,8 @@ export interface ListingTenure {
  *  untouched (permanence via renewal, never via longer locks). */
 export function resolveListingTenure(opts: { bonded: boolean }): ListingTenure {
   return {
-    autoRenew: opts.bonded,
-    maxTenureSeconds: opts.bonded ? BONDED_TENURE_SECONDS : UNBONDED_TENURE_SECONDS,
+    autoRenew: true,
+    maxTenureSeconds: BONDED_TENURE_SECONDS,
     bonded: opts.bonded,
   };
 }
@@ -276,11 +271,10 @@ export function resolveRenewalPolicy(
         maxAutoRenewCycles: cyclesFor(EXCHANGE_TENURE_SECONDS),
       };
     case "store": {
-      // Unchanged from Tier 3: the bond buys auto-renew + the longer horizon,
-      // never a longer lock. Unbonded stores keep 24h + manual renew.
+      // Presence has the same horizon for every seller, independent of bonds.
       const tenure = resolveListingTenure({ bonded: opts.bonded });
       return {
-        lane, renewable: true, autoRenew: tenure.autoRenew, requiresBond: true,
+        lane, renewable: true, autoRenew: tenure.autoRenew, requiresBond: false,
         maxTenureSeconds: tenure.maxTenureSeconds,
         maxAutoRenewCycles: cyclesFor(tenure.maxTenureSeconds),
       };
@@ -500,9 +494,9 @@ export function buildRenewCreateParams(state: EscrowState): RenewCreateParams {
   };
 }
 
-/** The app's session gate; only Store consults the seller's opt-in. */
+/** One session preference covers every renewable offer. */
 export function sessionAllowsAutoRenew(state: EscrowState, opts: { connected: boolean; pubkey: string | null; bonded: boolean; storeEnabled: boolean; paused: boolean }): boolean {
   if (!opts.connected || !opts.pubkey || opts.paused) return false;
   const policy = resolveRenewalPolicy(state, { bonded: opts.bonded });
-  return policy.autoRenew && (policy.lane !== "store" || (opts.bonded && opts.storeEnabled));
+  return policy.autoRenew && opts.storeEnabled;
 }

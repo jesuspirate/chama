@@ -1617,54 +1617,7 @@ export default function App() {
         .filter((entry) => !retiredTradeIndexEntryIsStillSuperseded(entry, retiredIds))
     : [];
 
-  // ── Store permanence (#49) ─────────────────────────────────────────────
-  // Tier 1: the seller's own STOREFRONTS that lapsed UNFUNDED — feed the manual
-  // "your store lapsed — renew?" card. Exchange/Work/Bill renewal stays in its
-  // own lane and is never mislabeled as a Store here.
-  const rawLapsedListings = pubkey
-    ? lapsedRenewableListings(escrows.values(), pubkey, now, retiredIds)
-    : [];
   const [renewingId, setRenewingId] = useState<string | null>(null);
-  // Tier 3: is the signed-in seller chain-verified bonded (funded+active 38135
-  // ≥ floor) in their home community? Gates auto-renew (bonded ⇒ store persists
-  // while online; unbonded ⇒ manual renew only) and the card's copy. Resolved
-  // once per connect via the existing fetchCommunityBonds/esplora path.
-  const [sellerBonded, setSellerBonded] = useState(false);
-  const [bondTip, setBondTip] = useState<number | null>(null);
-  const lapsedStoreSnoozeKey = pubkey
-    ? `chama_lapsed_store_snooze_v1_${pubkey.toLowerCase()}`
-    : null;
-  const [lapsedStoreSnoozeUntil, setLapsedStoreSnoozeUntil] = useState(0);
-  useEffect(() => {
-    if (!lapsedStoreSnoozeKey || typeof localStorage === "undefined") {
-      setLapsedStoreSnoozeUntil(0);
-      return;
-    }
-    try {
-      const value = Number(localStorage.getItem(lapsedStoreSnoozeKey) ?? 0);
-      setLapsedStoreSnoozeUntil(Number.isFinite(value) ? value : 0);
-    } catch {
-      setLapsedStoreSnoozeUntil(0);
-    }
-  }, [lapsedStoreSnoozeKey]);
-  const snoozeLapsedStores = () => {
-    if (!lapsedStoreSnoozeKey) return;
-    const until = Date.now() + 24 * 60 * 60 * 1000;
-    try { localStorage.setItem(lapsedStoreSnoozeKey, String(until)); } catch {}
-    setLapsedStoreSnoozeUntil(until);
-  };
-  // A Store is a bonded storefront privilege. Keep its old lapsed offers out
-  // of Me while the commitment bond is inactive; they reappear automatically
-  // when the verified bond returns. Non-store renewal lanes keep their own
-  // existing policy. A bonded seller can snooze the resurfaced reminder 24h.
-  const lapsedListings = rawLapsedListings.filter((listing) => {
-    if (myTradesLoading) return false;
-    return lapsedRenewalReminderVisible(listing, {
-      bonded: sellerBonded,
-      snoozedUntilMs: lapsedStoreSnoozeUntil,
-      nowMs: Date.now(),
-    });
-  });
   // Store renewal is an explicit, per-identity preference. Older builds
   // silently treated every bonded seller as opted in; defaulting OFF makes the
   // behavior visible and consensual while leaving manual renewal untouched.
@@ -1744,38 +1697,13 @@ export default function App() {
     }
   };
 
-  // Tier 3 bond resolution: chain-verify the seller's own bond once per connect
-  // (fail-soft — any hiccup leaves them unbonded ⇒ manual renew only).
-  useEffect(() => {
-    if (!connected || !pubkey || !browseCommunity) { setSellerBonded(false); setBondTip(null); return; }
-    // Never carry a previous identity/community's positive bond result across
-    // the live verification window. Present-tense storefront privileges fail
-    // closed; the assignment cache is intentionally not authoritative here.
-    setSellerBonded(false);
-    setBondTip(null);
-    let cancelled = false;
-    void (async () => {
-      try {
-        const [bonds, tip] = await Promise.all([
-          actions.fetchCommunityBonds(browseCommunity, { allowCachedFallback: false }),
-          actions.getBondChainTip(),
-        ]);
-        if (!cancelled) {
-          setSellerBonded(sellerIsBonded(bonds, pubkey, tip));
-          setBondTip(tip);
-        }
-      } catch { if (!cancelled) setSellerBonded(false); }
-    })();
-    return () => { cancelled = true; };
-  }, [connected, pubkey, browseCommunity]);
-
   // Online presence renews eligible offers. Store alone requires a bond and
   // its opt-in; missed buyer locks pause a lineage until a manual renewal.
   useEffect(() => {
     // A locally journaled+broadcast direct rollover gets a tightly bounded
     // storefront-only bridge while its replacement waits for 1 confirmation.
     // It never flows into the verified bond pool used for arbiter privileges.
-    const storeBondContinuity = sellerBonded || hasPendingStoreRollover(listCommitmentBonds(), bondTip, Date.now());
+    const storeBondContinuity = false; // Presence, not a bond, controls store renewal.
     // A fresh signed CREATE requires an online seller.
     if (!connected || !pubkey) return;
     for (const listing of escrows.values()) {
@@ -1790,7 +1718,7 @@ export default function App() {
       escrows.values(), pubkey, now, getRetiredIds(), { bonded: storeBondContinuity },
     )
       .filter((l) => !autoRenewedRef.current.has(l.id))
-      .filter(l => sessionAllowsAutoRenew(l, { connected, pubkey, bonded: sellerBonded, storeEnabled: storeAutoRenewEnabled, paused: hasMissedBuyerLock(l, now) || isRenewalPaused(listingIdentityKey(l), pubkey) }))
+      .filter(l => sessionAllowsAutoRenew(l, { connected, pubkey, bonded: false, storeEnabled: storeAutoRenewEnabled, paused: hasMissedBuyerLock(l, now) || isRenewalPaused(listingIdentityKey(l), pubkey) }))
       // Age-out (#82): stop auto-renewing an abandoned/test offer once its
       // lineage has hit the cap with no buyer interest. A listing that ever had
       // a JOIN/hold, or that the seller manually renewed, is exempt and stays.
@@ -1816,7 +1744,7 @@ export default function App() {
           console.warn("[chama] auto-renew failed:", l.id, e?.message || e);
         });
     }
-  }, [connected, pubkey, sellerBonded, bondTip, storeAutoRenewEnabled, escrows, now]);
+  }, [connected, pubkey, storeAutoRenewEnabled, escrows, now]);
 
   const cancellingDuplicatesRef = useRef(new Set<string>());
 
@@ -4630,16 +4558,7 @@ export default function App() {
       ) : view === "me" ? (
         <div style={{ animation: "fadeIn 0.3s ease" }}>
 
-          <LapsedStoreCard
-            listings={lapsedListings}
-            bonded={sellerBonded}
-            showAutoRenew={sellerBonded}
-            autoRenewEnabled={storeAutoRenewEnabled}
-            onAutoRenewChange={changeStoreAutoRenew}
-            renewingId={renewingId}
-            onRenew={renewListing}
-            onSnooze={snoozeLapsedStores}
-          />
+          <LapsedStoreCard autoRenewEnabled={storeAutoRenewEnabled} onAutoRenewChange={changeStoreAutoRenew} />
           {!myTradesLoading && <RecurringBillCard series={recurringSeries} onStop={cancelRecurring} />}
           <MeScreen
             pubkey={pubkey!}
