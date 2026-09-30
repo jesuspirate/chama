@@ -483,6 +483,47 @@ export function BrowseView({
         WebkitOverflowScrolling: "touch" as const,
         paddingBottom: 2,
       }}>
+        {(ownListingCount > 0 || showOwn) && (
+          <button
+            type="button"
+            onClick={() => {
+              // The chip advertises toggle semantics (aria-pressed, and it lights
+              // up like the category chips beside it), so a second tap has to turn
+              // owner mode OFF. Turning it on stashes the shelf we came from;
+              // turning it off restores it.
+              if (showOwn) {
+                toggleShowOwn();
+                setBrowseCategory(categoryBeforeOwn);
+              } else {
+                setCategoryBeforeOwn(browseCategory);
+                toggleShowOwn();
+                setBrowseCategory("all");
+              }
+            }}
+            aria-pressed={showOwn}
+            style={{
+              order: -1,
+              flexShrink: 0,
+              padding: "7px 11px", borderRadius: 18,
+              background: showOwn ? T.accentDim : T.surface,
+              border: `1px solid ${showOwn ? T.accent + "66" : T.border}`,
+              color: showOwn ? T.accent : T.muted,
+              fontFamily: T.mono, fontSize: 11, fontWeight: 700,
+              cursor: "pointer", transition: "all 0.15s",
+              whiteSpace: "nowrap" as const, letterSpacing: 0,
+              display: "inline-flex", alignItems: "center", gap: 6,
+            }}
+          >
+            <span>★</span>
+            <span>{t("browse.mine")}</span>
+            <span style={{
+              color: showOwn ? T.bg : T.muted,
+              background: showOwn ? T.accent : T.card,
+              border: `1px solid ${showOwn ? T.accent : T.border}`,
+              borderRadius: 999, padding: "1px 5px", fontSize: 9, lineHeight: 1.2,
+            }}>{ownListingCount}</span>
+          </button>
+        )}
         {BROWSE_CATS.filter(c => c.id !== "all" && (CHAMA_CIRCLES_ENABLED || c.id !== "chama")).map(c => {
           const active = !showOwn && browseCategory === c.id;
           // #75: counts must reflect what the viewer actually SEES — the
@@ -533,47 +574,7 @@ export function BrowseView({
             </button>
           );
         })}
-        {(ownListingCount > 0 || showOwn) && (
-          <button
-            type="button"
-            onClick={() => {
-              // The chip advertises toggle semantics (aria-pressed, and it lights
-              // up like the category chips beside it), so a second tap has to turn
-              // owner mode OFF. Turning it on stashes the shelf we came from;
-              // turning it off restores it.
-              if (showOwn) {
-                toggleShowOwn();
-                setBrowseCategory(categoryBeforeOwn);
-              } else {
-                setCategoryBeforeOwn(browseCategory);
-                toggleShowOwn();
-                setBrowseCategory("all");
-              }
-            }}
-            aria-pressed={showOwn}
-            style={{
-              order: 1,
-              flexShrink: 0,
-              padding: "7px 11px", borderRadius: 18,
-              background: showOwn ? T.accentDim : T.surface,
-              border: `1px solid ${showOwn ? T.accent + "66" : T.border}`,
-              color: showOwn ? T.accent : T.muted,
-              fontFamily: T.mono, fontSize: 11, fontWeight: 700,
-              cursor: "pointer", transition: "all 0.15s",
-              whiteSpace: "nowrap" as const, letterSpacing: 0,
-              display: "inline-flex", alignItems: "center", gap: 6,
-            }}
-          >
-            <span>★</span>
-            <span>{t("browse.mine")}</span>
-            <span style={{
-              color: showOwn ? T.bg : T.muted,
-              background: showOwn ? T.accent : T.card,
-              border: `1px solid ${showOwn ? T.accent : T.border}`,
-              borderRadius: 999, padding: "1px 5px", fontSize: 9, lineHeight: 1.2,
-            }}>{ownListingCount}</span>
-          </button>
-        )}
+
       </div>
 
       {search && totalListings > 0 && filteredTotal === 0 && (
