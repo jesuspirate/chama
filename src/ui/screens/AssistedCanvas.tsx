@@ -1,3 +1,4 @@
+import { filterListingsByCurrency, listingMatchesCurrency } from "../listing-currency.js";
 import { RangeFiat } from "../components/RangeFiat.js";
 import { ConductFacts } from "../components/ConductFacts.js";
 import { readPreferredRails, savePreferredRails } from "../../payments/preferred-rails.js";
@@ -84,7 +85,7 @@ const CANVAS_RESUME_MAX_AGE_MS = 10 * 60 * 1000;
 
 export function AssistedCanvas({
   profileNames, kind0Enabled = true,
-  listings,
+  listings: suppliedListings,
   stockByListing,
   browseCommunity,
   activeMintUrl,
@@ -133,6 +134,7 @@ export function AssistedCanvas({
   const phoneExample = phonePlaceholderForCountryIso(community?.countries?.[0])
     ?? "+1 555 555 5555";
   const fiatCurrency = defaultCurrencyForCommunity(browseCommunity);
+  const listings = useMemo(() => filterListingsByCurrency(suppliedListings, fiatCurrency), [suppliedListings, fiatCurrency]);
   const btcPrice = useBitcoinPrice();
   const onchainFee = useOnchainFeeRate();
   const fiatRates = useFiatRates();
@@ -171,7 +173,8 @@ export function AssistedCanvas({
   const [matching, setMatching] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [matches, setMatches] = useState<GuidedMatchCandidate[]>(resume?.matches ?? []);
-  const [goodsMatches, setGoodsMatches] = useState<MarketMatch[]>(resume?.goodsMatches ?? []);
+  const [storedGoodsMatches, setGoodsMatches] = useState<MarketMatch[]>(resume?.goodsMatches ?? []);
+  const goodsMatches = useMemo(() => storedGoodsMatches.filter(candidate => listingMatchesCurrency(candidate.listing, fiatCurrency)), [storedGoodsMatches, fiatCurrency]);
   const [selected, setSelected] = useState<GuidedMatchCandidate | null>(null);
   const [paymentDetailDrafts, setPaymentDetailDrafts] = useState<Record<string, string>>({});
   const [paymentDetailError, setPaymentDetailError] = useState<string | null>(null);
@@ -647,9 +650,9 @@ export function AssistedCanvas({
   // NARROWS what is already on screen.
   const budgetNow = positiveNumber(detail);
   const visibleMatches = useMemo(
-    () => [...new Map(matches.filter(candidate =>
+    () => [...new Map(matches.filter(candidate => listingMatchesCurrency(candidate.listing, fiatCurrency)).filter(candidate =>
       budgetNow === null || !candidate.fiatQuote || candidate.fiatQuote.amount <= budgetNow).map(candidate => [candidate.listing.id, candidate])).values()],
-    [matches, detail],
+    [matches, detail, fiatCurrency],
   );
   const recommendations = recommendGuidedCandidates(visibleMatches, fiatCurrency);
   const billOpportunity = visibleMatches.find(candidate => candidate.listing.category === "bill-pay") ?? null;

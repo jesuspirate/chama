@@ -1,3 +1,5 @@
+import { filterListingsByCurrency, listingMatchesCurrency } from "../listing-currency.js";
+import { defaultCurrencyForCommunity } from "../../communities/currency.js";
 import { useMemo, useState, useEffect } from "react";
 import { getScopedStorageItem, setScopedStorageItem } from "../../storage/user-scope.js";
 import { type EscrowState } from "../../escrow-engine/types.js";
@@ -100,7 +102,7 @@ export function BrowseView({
   browseCategory, setBrowseCategory,
   browseCommunity,
   amountDisplayMode,
-  matchingListings, nonMatchingListings, allEscrows, circleChildrenLoaded,
+  matchingListings: suppliedMatching, nonMatchingListings: suppliedNonMatching, allEscrows, circleChildrenLoaded,
   stockByListing,
   orderIndicatorByListing,
   categoryCounts,
@@ -140,6 +142,12 @@ export function BrowseView({
   onCreate: () => void;
   onApplyAsArbiter: (community: string, statement: string) => Promise<void>;
 }) {
+  const [otherCurrencies, setOtherCurrencies] = useState(false);
+  const viewerCurrency = defaultCurrencyForCommunity(browseCommunity);
+  const matchingListings = useMemo(() => filterListingsByCurrency(suppliedMatching, viewerCurrency, otherCurrencies), [suppliedMatching, viewerCurrency, otherCurrencies]);
+  const nonMatchingListings = useMemo(() => filterListingsByCurrency(suppliedNonMatching, viewerCurrency, otherCurrencies), [suppliedNonMatching, viewerCurrency, otherCurrencies]);
+  const otherCurrencyCount = [...suppliedMatching, ...suppliedNonMatching]
+    .filter(listing => !listingMatchesCurrency(listing, viewerCurrency)) .length;
   const { t } = useT();
   const [showAdvancedTools, setShowAdvancedTools] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -224,6 +232,7 @@ export function BrowseView({
   const allScopeCount = ownFilteredMatching.length + ownFilteredNonMatching.length;
   const totalListings = routedMatching.length + routedNonMatching.length;
   const homeCommunity = getCommunityBySlug(browseCommunity);
+  useEffect(() => setOtherCurrencies(false), [browseCommunity, pubkey]);
   const search = searchQuery.trim().toLowerCase();
   const filteredMatchingListings = useMemo(
     () => routedMatching.filter((listing) => listingMatchesSearch(listing, search)),
@@ -459,6 +468,13 @@ export function BrowseView({
         </label>
       </div>
 
+      {(otherCurrencyCount > 0 || otherCurrencies) && <button type="button" aria-pressed={otherCurrencies}
+        onClick={() => setOtherCurrencies(value => !value)}
+        style={{ marginBottom: 12, padding: "7px 11px", borderRadius: 18, cursor: "pointer",
+          background: otherCurrencies ? T.accentDim : T.surface, color: otherCurrencies ? T.accent : T.muted,
+          border: `1px solid ${T.border}`, fontFamily: T.mono, fontSize: 11 }}>
+        {t("browse.otherCurrencies", { count: otherCurrencyCount })}
+      </button>}
       <div style={{
         display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12,
       }} data-coach="browse-preferences">

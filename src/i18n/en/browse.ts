@@ -2,6 +2,7 @@
 // (LoadTradeInput, BrowserSupportBanner, HelpTip, CopyButton, BitcoinPricePill,
 // QRScanner). Keys prefixed "browse." — see src/i18n/en/connect.ts for the pattern.
 export const browse: Record<string, string> = {
+  "browse.otherCurrencies": "Other currencies · {count}",
   "browse.advancedFooterLine1": "Events: kinds 38100-38108 · 2-of-3 SSS",
   "browse.advancedFooterLine2": "NIP-44 encrypted · relay replay · no server custody",
   "browse.advancedTools": "Advanced tools",
