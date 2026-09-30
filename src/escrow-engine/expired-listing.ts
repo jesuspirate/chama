@@ -22,6 +22,7 @@ export function isExpiredUnfundedListing(
 ): boolean {
   return (
     !state.rejectedLockRecovery
+    && !state.rejectedLocks?.length
     && state.status === EscrowStatus.CREATED
     && typeof state.expiresAt === "number"
     && state.expiresAt > 0

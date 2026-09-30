@@ -37,6 +37,7 @@ assert.equal(isPartialReplayDowngrade({...state, status: 'LOCKED' as any}, {...s
 assert.equal(rejectedLockRecovery(state, {...entry,oobNotes:'different-notes'}, owner), undefined);
 assert.equal(needsYouReasonFor(state, owner, 1790900000), 'funding-refund');
 assert.equal(isExpiredUnfundedListing(state, 1790900000), false, 'expired listing keeps recoverable funding visible');
+assert.equal(isExpiredUnfundedListing({...state,rejectedLockRecovery:undefined}, 1790900000), false, 'missing-note room remains visible from the quarantined witness');
 const urgent = selectNeedsYouTrades({escrows:[state], userPubkey:owner, nowSec:1790900000});
 assert.deepEqual(decideChamaBarLabel({needsYouCount:urgent.length, balanceMsats:4000, hasActiveBuyerSellerCommitment:false}), {kind:'needs-you',count:1});
 const html = renderToStaticMarkup(createElement(RejectedLockRefund, {amountMsats:170000,onReclaim:async()=>{}}));
