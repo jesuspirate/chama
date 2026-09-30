@@ -160,3 +160,48 @@ assert.doesNotMatch(renderToStaticMarkup(<AtomicFundingModal {...fundingProps} s
   /data-funding-rails/, 'browser with insufficient balance hides the single-rail row');
 assert.match(renderToStaticMarkup(<AtomicFundingModal {...fundingProps} spendableMsats={1_200_000} />),
   /data-funding-rails/, 'spendable wallet balance supplies a real alternative');
+
+// H: the same Bitcoin transport has three different destinations for custody.
+const directRail = renderToStaticMarkup(<PaymentRails rail="onchain" onchainContext={{kind:'bitcoin'}}
+ disabledReasons={{lightning:'This trade is held on Bitcoin.',ecash:'This trade is held on Bitcoin.'}} />);
+assert.match(directRail, /data-funding-rail="onchain"[^>]*>.*Bitcoin<\/button>/);
+assert.match(directRail, /Held on Bitcoin · 2-of-3 · no custodian/);
+assert.doesNotMatch(directRail, /Deposit to/);
+const nativeFunding = renderToStaticMarkup(<AtomicFundingModal {...fundingProps} supportsOnchain
+ federationName="Bitcoin Life Federation" spendableMsats={1_200_000} />);
+assert.match(nativeFunding, /Deposit to Bitcoin Life Federation/);
+assert.doesNotMatch(nativeFunding, /data-funding-rail="onchain"[^>]*>.*>Bitcoin<\/button>/,
+ 'native ecash funding never uses the direct Bitcoin rail label');
+const browserFunding = renderToStaticMarkup(<AtomicFundingModal {...fundingProps}
+ federationName="Bitcoin Life Federation" spendableMsats={1_200_000} />);
+assert.doesNotMatch(browserFunding, /data-funding-rail="onchain"|Deposit to/,
+ 'browser never offers a federation deposit rail');
+const {OnchainAddressDisplay} = await import('./panels/AtomicFundingModal.js');
+const depositCard = renderToStaticMarkup(<OnchainAddressDisplay federationName="Bitcoin Life Federation"
+ address="bc1-test-only" amountSats={1_200} depositAmountSats={1_215} pegInFeeSats={15} finalityDelay={10} />);
+assert.match(depositCard, /Deposit to Bitcoin Life Federation/);
+assert.match(depositCard, /fee 15 sats · becomes ecash after 10 confirmations/);
+assert.doesNotMatch(depositCard, /Held on Bitcoin|>Bitcoin<\/button>/);
+const {OnchainPayoutPicker,ClaimMethodChooser} = await import('./panels/ClaimPayoutModal.js');
+const withdrawal = renderToStaticMarkup(<OnchainPayoutPicker federationName="Bitcoin Life Federation"
+ pegOutFeeSats={25} payoutSats={1_200} onResolve={()=>{}} onBack={()=>{}} onCancel={()=>{}} />);
+assert.match(withdrawal, /Withdraw from Bitcoin Life Federation to a bitcoin address/);
+assert.match(withdrawal, /Peg-out fee 25 sats/);
+assert.match(withdrawal, /ONCHAIN CLAIM/);
+assert.match(withdrawal, /Slow path. Paste a fresh bitcoin address/,'claim blurb stays unchanged');
+const chooser = renderToStaticMarkup(<ClaimMethodChooser federationName="Bitcoin Life Federation" pegOutFeeSats={25}
+ payoutSats={1_200} ecashPayoutSats={1_200} externalSwaps={[]} tandoEligible={false} chapsmartEligible={false}
+ strikeEligible={false} savedStrikeDestinations={[]} savedWalletDestinations={[]} savedNwcConnections={[]}
+ cashOutCurrency="USD" onSelect={()=>{}} onSelectEcash={()=>{}} onSelectSavedStrike={()=>{}}
+ onSelectSavedNwc={()=>{}} onSelectSavedWallet={()=>{}} onCancel={()=>{}} />);
+assert.match(chooser, /Withdraw from Bitcoin Life Federation to a bitcoin address/);
+assert.doesNotMatch(chooser, /Deposit to/);
+for (const lang of ['en','es','fr','sw'] as const) {
+ const {fund} = await import(`../i18n/${lang}/fund.js`);
+ for (const key of ['payment.bitcoin','payment.bitcoinHeld','payment.bitcoinOnly','payment.federationDeposit',
+ 'payment.depositTerms','payment.federationWithdrawal','payment.pegOutFee','payment.pegOutFeeUnavailable']) {
+  assert.ok(fund[key], `${lang} translates ${key}`);
+ }
+ assert.equal(fund['payment.onchain'],undefined,'ambiguous rail key is retired');
+}
+console.log('PASS H: Bitcoin escrow, native federation deposits, browser hiding, withdrawals, fees and four languages');

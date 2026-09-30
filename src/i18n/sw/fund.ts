@@ -1,4 +1,14 @@
 export const fund: Record<string, string> = {
+  "payment.bitcoinMinimum": "Escrow ya Bitcoin inahitaji angalau sats 25,000 kwa biashara — ongeza kiwango cha chini au chagua ecash ya Chama",
+  "payment.bitcoin": "Bitcoin",
+  "payment.bitcoinHeld": "Zinahifadhiwa kwenye Bitcoin · 2 kati ya 3 · hakuna mtunzaji.",
+  "payment.bitcoinOnly": "Biashara hii inahifadhiwa kwenye Bitcoin.",
+  "payment.federationDeposit": "Weka kwenye {federation}",
+  "payment.depositTerms": "ada ya sats {fee} · zinakuwa ecash baada ya uthibitisho {confirmations}",
+  "payment.federationWithdrawal": "Toa kutoka {federation} kwenda anwani ya bitcoin",
+  "payment.pegOutFee": "Ada ya kutoa: sats {fee}",
+  "payment.pegOutFeeUnavailable": "Ada ya kutoa haipatikani kwa sasa",
+
   "fund.railLocked": "Imefungwa kwa {rail} wakati ankara hii iko wazi — rudi kuchagua njia nyingine.",
   "fund.invoiceSeatExpiredBody": "Ankara hii imeisha muda pamoja na nafasi yako. Hakuna kilicholipwa. Jiunge tena kupata mpya.",
   "fund.invoiceSeatExpiredTitle": "Ankara imeisha muda",
@@ -36,7 +46,6 @@ export const fund: Record<string, string> = {
 
   "payment.switchPending": "Pochi hii haiwezi kughairi ankara hai. Subiri iishe muda kabla ya kubadili; kiasi kipya kinaweza kubadilika. Usilipe ankara ya zamani baada ya kubadili.",
   "payment.lightning": "Lightning",
-  "payment.onchain": "Mnyororo",
   "payment.ecash": "Ecash",
   "payment.rail": "Njia ya malipo",
   "payment.walletFailed": "Imeshindikana kufungua pochi. Unaweza kunakili malipo.",

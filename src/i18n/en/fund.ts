@@ -7,6 +7,16 @@
 // half. The exact TZS amount / agent number / USSD code arrive as {params}
 // — never hardcode them in a translation.
 export const fund: Record<string, string> = {
+  "payment.bitcoinMinimum": "Bitcoin escrow needs at least 25,000 sats per trade — raise the low end or choose Chama ecash",
+  "payment.bitcoin": "Bitcoin",
+  "payment.bitcoinHeld": "Held on Bitcoin · 2-of-3 · no custodian.",
+  "payment.bitcoinOnly": "This trade is held on Bitcoin.",
+  "payment.federationDeposit": "Deposit to {federation}",
+  "payment.depositTerms": "fee {fee} sats · becomes ecash after {confirmations} confirmations",
+  "payment.federationWithdrawal": "Withdraw from {federation} to a bitcoin address",
+  "payment.pegOutFee": "Peg-out fee {fee} sats",
+  "payment.pegOutFeeUnavailable": "Peg-out fee unavailable right now",
+
   "fund.railLockedOnly": "Locked to {rail} while this invoice is open.",
   "fund.ecashNeedsBalance": "needs {amount} spendable sats, you have {balance}",
   "fund.invoiceSeatExpiredTitle": "Invoice expired",
@@ -44,7 +54,6 @@ export const fund: Record<string, string> = {
 
   "payment.switchPending": "This wallet cannot cancel a live invoice. Wait for it to expire before switching; the new amount may change. Do not pay an old invoice after switching.",
   "payment.lightning": "Lightning",
-  "payment.onchain": "On-chain",
   "payment.ecash": "Ecash",
   "payment.rail": "Payment method",
   "payment.walletFailed": "Could not open a wallet. You can copy the payment instead.",

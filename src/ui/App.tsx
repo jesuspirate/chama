@@ -3410,7 +3410,7 @@ export default function App() {
           path. FundWalletModal stays mounted above for the (Phase 5-
           gated) Sandbox-mode path. */}
       {pendingFundAndLock && escrows.get(pendingFundAndLock.escrowId)?.escrowMode !== "onchain" && (
-        <AtomicFundingModal
+        <AtomicFundingModal federationName={fedimint.federationName ?? undefined}
           onPostAgain={() => setView("create")}
           seatDeadline={escrows.get(pendingFundAndLock.escrowId) ? fundingSeatDeadline(escrows.get(pendingFundAndLock.escrowId)!) : undefined}
           custodyNotice={escrows.get(pendingFundAndLock.escrowId)?.custodyNotice}
@@ -3617,7 +3617,8 @@ export default function App() {
       )}
 
       {pendingClaim && escrows.get(pendingClaim.escrowId)?.escrowMode !== "onchain" && (
-        <ClaimPayoutModal
+        <ClaimPayoutModal federationName={fedimint.federationName ?? undefined}
+          getOnchainInfo={actions.supportsOnchain() ? actions.getOnchainInfo : undefined}
           getLightningGatewayCount={actions.getLightningGatewayCount}
           onWithdrawEcash={() => { setPendingClaim(null); setShowEcashExport(true); }}
           escrowId={pendingClaim.escrowId}

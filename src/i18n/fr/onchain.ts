@@ -1,6 +1,6 @@
 // fr/onchain — Tier 2.1: the on-chain escrow surface.
 export const onchain: Record<string, string> = {
-  "onchain.title": "Gardé on-chain",
+  "onchain.title": "Bitcoin",
   "onchain.signetBadge": "SIGNET — PIÈCES DE TEST",
   "onchain.blocker.waiting-for-arbiter": "En attente que l'arbitre publie sa clé de séquestre.",
   "onchain.blocker.waiting-for-buyer": "En attente que l'acheteur publie sa clé de séquestre.",
@@ -29,8 +29,8 @@ export const onchain: Record<string, string> = {
   "onchain.modeLabel": "OÙ SE TROUVENT LES SATS",
   "onchain.modeEcash": "Dans Chama",
   "onchain.modeEcashBody": "Instantané, sans frais, privé. Celui qui finance peut les reprendre avant que vous ne réclamiez.",
-  "onchain.modeOnchain": "Sur Bitcoin",
-  "onchain.modeOnchainBody": "Une confirmation, des frais de mineur, public. Personne ne peut les reprendre — deux des trois doivent signer.",
+  "onchain.modeOnchain": "Bitcoin",
+  "onchain.modeOnchainBody": "Sur Bitcoin · 2 sur 3 · sans dépositaire.",
   "onchain.modeHint": "Disponible à partir de {min} sats.",
   "onchain.fundOnchainBody": "Cet échange est gardé sur Bitcoin, pas dans Chama. Utilisez l'adresse ci-dessus depuis n'importe quel portefeuille — il se verrouille après 1 confirmation.",
   "onchain.fundOnchainTitle": "Envoyez-le à l'adresse du séquestre.",
@@ -49,7 +49,7 @@ export const onchain: Record<string, string> = {
   "onchain.depositConfirmed": "Dépôt confirmé",
   "onchain.oneConfirmation": "Une confirmation est requise",
   "onchain.premiumUnpaid": "Chama ne trouve aucun paiement de la prime de l’arbitre pour cet échange sur chaîne. Vérifiez auprès de l’arbitre.",
-  "onchain.directPayoutLabel": "Payer directement le gagnant à une adresse Bitcoin",
+  "onchain.directPayoutLabel": "Adresse de paiement",
   "onchain.directPayoutPlaceholder": "Adresse Bitcoin (facultative)",
   "onchain.directPayoutUse": "Utiliser cette adresse de paiement",
   "onchain.payoutPending": "en attente de confirmation",

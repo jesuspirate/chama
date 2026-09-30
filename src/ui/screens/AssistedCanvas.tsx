@@ -586,10 +586,11 @@ export function AssistedCanvas({
     : bring === "goods" ? positiveNumber(terms) ?? 0 : positiveNumber(detail) ?? 0;
   const escrow = guidedEscrowAmounts(offeredSats, sellRange ? rangeMax ?? 0 : offeredSats, escrowChoice);
   const escrowMode = escrow.mode;
-  const minimumMessage = "On-chain needs at least 25,000 sats per trade — raise the low end or choose Chama ecash";
+  const minimumMessage = tr("payment.bitcoinMinimum");
   const railChoice = escrow.available && <div role="group" aria-label={tr("onchain.modeLabel")} style={{ display: "flex", gap: 8, marginTop: 12 }}>
     {(["onchain", "ecash"] as const).map(mode => <button key={mode} type="button" aria-pressed={escrowMode === mode} onClick={() => setEscrowChoice(mode)} style={{ flex: 1, padding: 10, borderRadius: 12, border: `1px solid ${escrowMode === mode ? T.accent : T.border}`, background: escrowMode === mode ? T.accentDim : T.card, color: T.text }}>
-      {tr(mode === "onchain" ? "onchain.modeOnchain" : "onchain.modeEcash")}
+      {tr(mode === "onchain" ? "payment.bitcoin" : "onchain.modeEcash")}
+      {mode === "onchain" && <div style={{fontSize:11, color:T.muted, marginTop:6}}>{tr("payment.bitcoinHeld")}</div>}
     </button>)}
   </div>;
 

@@ -3,6 +3,16 @@
 // byte-identical to EN; only the En halves are translated. Exact TZS amount /
 // agent number / USSD code arrive as {params}.
 export const fund: Record<string, string> = {
+  "payment.bitcoinMinimum": "Le séquestre Bitcoin nécessite au moins 25 000 sats par échange — augmentez le minimum ou choisissez l’ecash Chama",
+  "payment.bitcoin": "Bitcoin",
+  "payment.bitcoinHeld": "Sur Bitcoin · 2 sur 3 · sans dépositaire.",
+  "payment.bitcoinOnly": "Cet échange est détenu sur Bitcoin.",
+  "payment.federationDeposit": "Déposer dans {federation}",
+  "payment.depositTerms": "frais de {fee} sats · devient de l’ecash après {confirmations} confirmations",
+  "payment.federationWithdrawal": "Retirer de {federation} vers une adresse bitcoin",
+  "payment.pegOutFee": "Frais de retrait : {fee} sats",
+  "payment.pegOutFeeUnavailable": "Frais de retrait indisponibles pour le moment",
+
   "fund.railLocked": "Fixé sur {rail} tant que cette facture est ouverte — revenez en arrière pour choisir une autre méthode.",
   "fund.invoiceSeatExpiredBody": "Cette facture a expiré avec votre place. Rien n’a été payé. Rejoignez à nouveau pour en obtenir une autre.",
   "fund.invoiceSeatExpiredTitle": "Facture expirée",
@@ -40,7 +50,6 @@ export const fund: Record<string, string> = {
 
   "payment.switchPending": "Ce portefeuille ne peut pas annuler une facture active. Attendez son expiration avant de changer ; le nouveau montant peut varier. Ne payez pas l’ancienne facture après le changement.",
   "payment.lightning": "Lightning",
-  "payment.onchain": "Sur chaîne",
   "payment.ecash": "Ecash",
   "payment.rail": "Mode de paiement",
   "payment.walletFailed": "Impossible d’ouvrir un portefeuille. Vous pouvez copier le paiement.",

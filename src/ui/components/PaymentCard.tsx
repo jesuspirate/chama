@@ -9,8 +9,13 @@ import { PagerPills } from "../screens/tradedetail/PagerPills.js";
 import { copyTextRobust, copyTextConfirmed } from "./CopyButton.js";
 
 export type PaymentRail = "lightning" | "onchain" | "ecash";
+export type OnchainRailContext =
+  | { kind: "bitcoin" }
+  | { kind: "deposit"; federation: string; pegInFeeSats?: number; finalityDelay?: number }
+  | { kind: "withdrawal"; federation: string; pegOutFeeSats?: number };
 const icons = { lightning: "⚡", onchain: "🔗", ecash: "🥜" };
-export function PaymentRails({ rail, rails = ["lightning", "onchain", "ecash"], onSelect, disabledReasons, lockedRail, alternativeRailAvailable }: {
+export function PaymentRails({ rail, rails = ["lightning", "onchain", "ecash"], onSelect, disabledReasons, lockedRail, alternativeRailAvailable, onchainContext = {kind:"bitcoin"} }: {
+  onchainContext?: OnchainRailContext;
   lockedRail?: PaymentRail;
   alternativeRailAvailable?: boolean;
   disabledReasons?: Partial<Record<PaymentRail, string>>;
@@ -18,11 +23,19 @@ export function PaymentRails({ rail, rails = ["lightning", "onchain", "ecash"], 
 }) {
   const { t } = useT();
   const disabled = (r: PaymentRail) => !!disabledReasons?.[r] || !!lockedRail && r !== lockedRail;
-  return <><PagerPills disabled={rails.map(disabled)} tabIds={rails} tabs={rails.map(r => t(`payment.${r}`))} icons={rails.map(r => icons[r])}
+  const railLabel = (r: PaymentRail) => r !== "onchain" ? t(`payment.${r}`)
+    : onchainContext.kind === "bitcoin" ? t("payment.bitcoin")
+    : t(onchainContext.kind === "deposit" ? "payment.federationDeposit" : "payment.federationWithdrawal", {federation:onchainContext.federation});
+  const onchainDetail = onchainContext.kind === "bitcoin" ? t("payment.bitcoinHeld")
+    : onchainContext.kind === "deposit" ? onchainContext.pegInFeeSats !== undefined && onchainContext.finalityDelay !== undefined
+      ? t("payment.depositTerms", {fee:onchainContext.pegInFeeSats, confirmations:onchainContext.finalityDelay}) : t("fund.checkingOnchainFee")
+    : onchainContext.pegOutFeeSats !== undefined ? t("payment.pegOutFee", {fee:onchainContext.pegOutFeeSats}) : t("payment.pegOutFeeUnavailable");
+  return <><PagerPills wrapLabels disabled={rails.map(disabled)} tabIds={rails} tabs={rails.map(railLabel)} icons={rails.map(r => icons[r])}
     active={Math.max(0, rails.indexOf(rail))} chevrons={false} label={t("payment.rail")}
     onSelect={i => { if (!disabled(rails[i])) onSelect?.(rails[i]); }} />
-    {lockedRail && <div style={{ fontSize: 11, color: T.muted, lineHeight: 1.4, marginBottom: 4 }}>{t((alternativeRailAvailable ?? rails.some(r => r !== lockedRail && !disabledReasons?.[r])) ? "fund.railLocked" : "fund.railLockedOnly", { rail: t(`payment.${lockedRail}`) })}</div>}
-    {rails.filter(r => disabledReasons?.[r]).map(r => <div key={r} style={{ fontSize: 11, color: T.muted, lineHeight: 1.4, marginBottom: 4 }}>{t(`payment.${r}`)}: {disabledReasons?.[r]}</div>)}
+    {rails.includes("onchain") && <div data-onchain-purpose={onchainContext.kind} style={{fontSize:11, color:T.muted, lineHeight:1.5, marginBottom:6}}>{onchainDetail}</div>}
+    {lockedRail && <div style={{ fontSize: 11, color: T.muted, lineHeight: 1.4, marginBottom: 4 }}>{t((alternativeRailAvailable ?? rails.some(r => r !== lockedRail && !disabledReasons?.[r])) ? "fund.railLocked" : "fund.railLockedOnly", { rail: railLabel(lockedRail) })}</div>}
+    {rails.filter(r => disabledReasons?.[r]).map(r => <div key={r} style={{ fontSize: 11, color: T.muted, lineHeight: 1.4, marginBottom: 4 }}>{railLabel(r)}: {disabledReasons?.[r]}</div>)}
   </>;
 }
 
@@ -68,7 +81,8 @@ export function OpenWith({ value }: { value: string }) {
 }
 
 /** Reserve payment regions while allowing wallet-link feedback to fit below the code. */
-export function PaymentCard({ hideRails = false, amountMsats, rail, rails, onRail, data, copyValue, status, helper, details, actions, motion = false, ecash = false }: {
+export function PaymentCard({ hideRails = false, amountMsats, rail, rails, onRail, data, copyValue, status, helper, details, actions, motion = false, ecash = false, onchainContext }: {
+  onchainContext?: OnchainRailContext;
   hideRails?: boolean; amountMsats: number; rail: PaymentRail; rails?: PaymentRail[]; onRail?: (rail: PaymentRail) => void;
   data?: string | string[]; copyValue?: string; status: ReactNode; helper?: ReactNode; details?: ReactNode; actions?: ReactNode;
   motion?: boolean; ecash?: boolean;
@@ -86,7 +100,7 @@ export function PaymentCard({ hideRails = false, amountMsats, rail, rails, onRai
   return <section ref={ref} className="payment-card" style={{ color: T.text, minWidth: 0, width: "100%", fontFamily: T.sans,
     gridTemplateRows: hideRails ? "64px minmax(284px, auto) 0px 78px 100px auto" : undefined, "--payment-glow": T.accentDim, "--payment-focus": T.accent } as React.CSSProperties}>
     <style>{`
-      .payment-card{display:grid;grid-template-rows:64px minmax(284px,auto) 58px 78px 100px auto}
+      .payment-card{display:grid;grid-template-rows:64px minmax(284px,auto) minmax(58px,auto) 78px 100px auto}
       .payment-card>*{min-width:0;box-sizing:border-box}
       .payment-button{box-shadow:inset 0 1px 0 #ffffff24,0 1px 0 #0006,0 2px 3px #0003,0 7px 16px #0002;transition:transform .12s,box-shadow .12s}
       .payment-button:active{transform:translateY(1px);box-shadow:inset 0 1px 0 #ffffff24,0 1px 2px #0003}
@@ -102,7 +116,7 @@ export function PaymentCard({ hideRails = false, amountMsats, rail, rails, onRai
     <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
       {data ? uri ? <PaymentTarget uri={uri} copyValue={copyValue ?? String(data)}>{qr}</PaymentTarget> : qr : actions}
     </div>
-    {hideRails ? <div /> : <PaymentRails rail={rail} rails={rails ?? [rail]} onSelect={onRail} />}
+    {hideRails ? <div /> : <div><PaymentRails rail={rail} rails={rails ?? [rail]} onSelect={onRail} onchainContext={onchainContext} /></div>}
     <div role="status" style={{ textAlign: "center", alignSelf: "stretch", overflowY: "auto", padding: "10px 4px", fontSize: 12, lineHeight: 1.5 }}>{status}</div>
     <div style={{ display: "grid", gap: 6, alignContent: "start", textAlign: "center", fontSize: 11, color: T.muted }}>
       {copyValue && <PaymentCopyChip value={copyValue} address={rail === "onchain"} uri={uri} />}<div style={{ maxHeight: 50, overflowY: "auto", lineHeight: 1.5 }}>{helper}</div>

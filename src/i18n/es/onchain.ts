@@ -1,6 +1,6 @@
 // es/onchain — Tier 2.1: the on-chain escrow surface.
 export const onchain: Record<string, string> = {
-  "onchain.title": "Guardado on-chain",
+  "onchain.title": "Bitcoin",
   "onchain.signetBadge": "SIGNET — MONEDAS DE PRUEBA",
   "onchain.blocker.waiting-for-arbiter": "Esperando que el árbitro publique su llave de custodia.",
   "onchain.blocker.waiting-for-buyer": "Esperando que el comprador publique su llave de custodia.",
@@ -29,8 +29,8 @@ export const onchain: Record<string, string> = {
   "onchain.modeLabel": "DÓNDE ESTÁN LOS SATS",
   "onchain.modeEcash": "En Chama",
   "onchain.modeEcashBody": "Instantáneo, sin comisión, privado. Quien lo financia puede recuperarlo antes de que cobres.",
-  "onchain.modeOnchain": "En Bitcoin",
-  "onchain.modeOnchainBody": "Una confirmación, comisión de minero, público. Nadie puede recuperarlo — dos de tres deben firmar.",
+  "onchain.modeOnchain": "Bitcoin",
+  "onchain.modeOnchainBody": "En Bitcoin · 2 de 3 · sin custodio.",
   "onchain.modeHint": "Disponible en intercambios desde {min} sats.",
   "onchain.fundOnchainBody": "Este intercambio se guarda en Bitcoin, no en Chama. Usa la dirección de arriba desde cualquier billetera — se bloquea tras 1 confirmación.",
   "onchain.fundOnchainTitle": "Envíalo a la dirección de custodia.",
@@ -49,7 +49,7 @@ export const onchain: Record<string, string> = {
   "onchain.depositConfirmed": "Depósito confirmado",
   "onchain.oneConfirmation": "Se requiere una confirmación",
   "onchain.premiumUnpaid": "Chama no registra el pago de la prima del árbitro en este intercambio en cadena. Consúltalo con el árbitro.",
-  "onchain.directPayoutLabel": "Pagar al ganador directamente a una dirección Bitcoin",
+  "onchain.directPayoutLabel": "Dirección de pago",
   "onchain.directPayoutPlaceholder": "Dirección Bitcoin (opcional)",
   "onchain.directPayoutUse": "Usar esta dirección de cobro",
   "onchain.payoutPending": "pendientes de confirmación",

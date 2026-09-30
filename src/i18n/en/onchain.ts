@@ -1,6 +1,6 @@
 // en/onchain — Tier 2.1: the on-chain escrow surface.
 export const onchain: Record<string, string> = {
-  "onchain.title": "Held on-chain",
+  "onchain.title": "Bitcoin",
   "onchain.signetBadge": "SIGNET — TEST COINS",
   "onchain.blocker.waiting-for-arbiter": "Waiting for the arbiter to publish their escrow key.",
   "onchain.blocker.waiting-for-buyer": "Waiting for the buyer to publish their escrow key.",
@@ -29,8 +29,8 @@ export const onchain: Record<string, string> = {
   "onchain.modeLabel": "WHERE THE SATS SIT",
   "onchain.modeEcash": "In Chama",
   "onchain.modeEcashBody": "Instant, no fee, private. The person who funds it can take it back before you claim.",
-  "onchain.modeOnchain": "On Bitcoin",
-  "onchain.modeOnchainBody": "One confirmation, a miner fee, public. Nobody can take it back — two of three must sign.",
+  "onchain.modeOnchain": "Bitcoin",
+  "onchain.modeOnchainBody": "Held on Bitcoin · 2-of-3 · no custodian.",
   "onchain.modeHint": "Available on trades of {min} sats and up.",
   "onchain.fundOnchainBody": "This trade is held on Bitcoin, not in Chama. Use the address above from any wallet — it locks after 1 confirmation.",
   "onchain.fundOnchainTitle": "Send it to the escrow address.",
@@ -51,7 +51,7 @@ export const onchain: Record<string, string> = {
   "onchain.depositConfirmed": "Deposit confirmed",
   "onchain.oneConfirmation": "One confirmation is required",
   "onchain.premiumUnpaid": "Chama has no record of the arbiter premium being paid for this on-chain trade. Check with the arbiter.",
-  "onchain.directPayoutLabel": "Pay the winner directly to a Bitcoin address",
+  "onchain.directPayoutLabel": "Payout address",
   "onchain.directPayoutPlaceholder": "Bitcoin address (optional)",
   "onchain.directPayoutUse": "Use this payout address",
   "onchain.payoutPending": "awaiting confirmation",

@@ -69,6 +69,7 @@ import type { EscrowState, SelectedMenuItem } from "../../escrow-engine/types.js
 export interface AtomicFundingModalProps {
   /** Trade ID being funded. Passed through to fundAndLock. */
   escrowId: string;
+  federationName?: string;
   seatDeadline?: number;
   onPostAgain?: () => void;
   custodyNotice?: EscrowState["custodyNotice"];
@@ -191,6 +192,7 @@ type ModalPhase =
 
 export function AtomicFundingModal({
   escrowId,
+  federationName,
   seatDeadline,
   onPostAgain,
   amountMsats,
@@ -215,6 +217,8 @@ export function AtomicFundingModal({
   onClose, custodyNotice,
 }: AtomicFundingModalProps) {
   const { t } = useT();
+  const federation = federationName || t("claim.yourFederation");
+  const depositContext = {kind:"deposit" as const, federation};
   const premiumMsats = fundingPremiumMsats(requestedPremiumMsats);
   const requiredMsats = amountMsats + premiumMsats;
   const hasBalance = Number.isSafeInteger(requiredMsats) && amountMsats > 0 && spendableMsats >= requiredMsats;
@@ -616,8 +620,8 @@ export function AtomicFundingModal({
     <FundingModalShell onClose={handleCancel}>
         {/* Header — amount is the eyebrow, label is the title */}
         {!disableNwc && alternativeRailAvailable && <div data-funding-rails aria-hidden={!railsVisible} style={{ marginBottom: 16, visibility: railsVisible ? "visible" : "hidden" }}>
-          <PaymentRails alternativeRailAvailable={alternativeRailAvailable} lockedRail={request?.rail ?? (["creating-invoice", "creating-invoice-slow"].includes(phase.kind) ? "lightning" : phase.kind === "creating-onchain-address" ? "onchain" : undefined)} rail={request?.rail ?? initialRail}
-            rails={request?.rail === "onchain" ? ["onchain"] : ["lightning", "onchain", "ecash"]}
+          <PaymentRails onchainContext={{...depositContext, ...(onchainInfoState.kind === "ready" ? onchainInfoState.info : {})}} alternativeRailAvailable={alternativeRailAvailable} lockedRail={request?.rail ?? (["creating-invoice", "creating-invoice-slow"].includes(phase.kind) ? "lightning" : phase.kind === "creating-onchain-address" ? "onchain" : undefined)} rail={request?.rail ?? initialRail}
+            rails={request?.rail === "onchain" ? ["onchain"] : supportsOnchain ? ["lightning", "onchain", "ecash"] : ["lightning", "ecash"]}
             disabledReasons={{ lightning: lightningReason, onchain: onchainReason, ecash: gatewayChecking ? t("fund.checkingGateways") : request && !hasBalance && !ecashInput.trim() ? t("fund.ecashNeedsBalance", {amount: totalSats.toLocaleString(), balance: Math.floor(spendableMsats / 1000).toLocaleString()}) : undefined }}
             onSelect={chooseRail} />
           {(!request || request.rail !== "onchain") && <button type="button" disabled={!hasBalance || !!request} onClick={() => {
@@ -665,6 +669,7 @@ export function AtomicFundingModal({
           <FundingMethodChooser
             key={invoiceFailed ? "failed" : initialRail}
             hideRails
+            federationName={federation}
             lightningReason={lightningReason}
             initialRail={invoiceFailed ? "ecash" : initialRail}
             amountSats={amountSats}
@@ -687,12 +692,12 @@ export function AtomicFundingModal({
         )}
 
         {request && !mpesaOpen ? <>
-          <PaymentCard hideRails amountMsats={request.sats * 1000} rail={request.rail}
+          <PaymentCard onchainContext={depositContext} hideRails amountMsats={request.sats * 1000} rail={request.rail}
             rails={phase.kind === "awaiting-payment" || phase.kind === "expired" ? (supportsOnchain ? ["lightning", "onchain", "ecash"] : ["lightning", "ecash"]) : [request.rail]}
             onRail={rail => { if (rail !== request.rail) setSwitchRequested(rail); }}
             data={request.data} copyValue={request.value}
             motion={["mint-confirming", "mint-confirming-slow", "payment-confirmed", "locking"].includes(phase.kind)}
-            status={custodyNotice && custodyNotice.status !== "acknowledged-with-rejection" ? <>{t(custodyNotice.status === "expired-unacked" ? "trade.custodyExpiredTitle" : "trade.custodyPendingTitle")}<br />{custodyNotice.message || t("trade.custodyPendingBody")}</>
+            status={<>{request.rail === "onchain" && <div>{t("payment.federationDeposit", {federation})}</div>}{custodyNotice && custodyNotice.status !== "acknowledged-with-rejection" ? <>{t(custodyNotice.status === "expired-unacked" ? "trade.custodyExpiredTitle" : "trade.custodyPendingTitle")}<br />{custodyNotice.message || t("trade.custodyPendingBody")}</>
               : phase.kind === "receive-rejected" ? phase.reason
               : phase.kind === "lock-failed" ? (phase.errorKey ? t(phase.errorKey) : phase.error.split("Chama diagnostics:")[0].trim())
               : phase.kind === "expired" ? t("fund.invoiceExpired")
@@ -700,8 +705,8 @@ export function AtomicFundingModal({
               : phase.kind === "locked" ? t("fund.paymentReceived")
               : phase.kind === "awaiting-onchain-confirmations" ? (depositProgress ? <DepositProgressLine progress={depositProgress} finality={request.finality ?? 0} /> : t("fund.waitingConfirmations", { count: request.finality ?? 0 }))
               : phase.kind === "awaiting-payment" ? `${seatDeadline ? "The buyer's seat holds for" : "Pay within"} ${Math.floor(Math.max(0, (seatDeadline ? seatDeadline * 1000 : request.expiresAt ?? now) - now) / 60000)}:${Math.floor(Math.max(0, (seatDeadline ? seatDeadline * 1000 : request.expiresAt ?? now) - now) / 1000 % 60).toString().padStart(2, "0")} — pay before then`
-              : t("fund.confirmingFederation")}
-            helper={isSimModeOn() ? <>{t(request.rail === "onchain" ? (simOnchainMode() === "stuck" ? "fund.simOnchainStuck" : "fund.simOnchainDeposit") : "fund.simAutoCredit")} {t("fund.simDoNotFund")}</> : request.rail === "onchain" ? t("fund.onchainSlowPath") : t("fund.staleInvoice")}
+              : t("fund.confirmingFederation")}</>}
+            helper={isSimModeOn() ? <>{t(request.rail === "onchain" ? (simOnchainMode() === "stuck" ? "fund.simOnchainStuck" : "fund.simOnchainDeposit") : "fund.simAutoCredit")} {t("fund.simDoNotFund")}</> : request.rail === "onchain" ? request.fee !== undefined && request.finality !== undefined ? t("payment.depositTerms", {fee:request.fee, confirmations:request.finality}) : t("fund.checkingOnchainFee") : t("fund.staleInvoice")}
             details={<><FundingCheckout tradeSats={amountSats} feeSats={(request.fee ?? 0) + premiumMsats / 1000} />
               {request.gateway && <div>{t("fund.viaGateway")} {request.gateway.alias || request.gateway.id}{!request.gateway.provenPayable && <div>{t("fund.gatewayUnproven")}</div>}</div>}
             </>}
@@ -723,7 +728,7 @@ export function AtomicFundingModal({
         {phase.kind === "creating-onchain-address" && <CreatingOnchainAddress />}
 
         {phase.kind === "awaiting-onchain-confirmations" && (
-          <OnchainAddressDisplay
+          <OnchainAddressDisplay federationName={federation}
             address={phase.address}
             amountSats={amountSats}
             depositAmountSats={phase.depositAmountSats}
@@ -860,6 +865,7 @@ export function AtomicFundingModal({
 // ── Sub-components ──────────────────────────────────────────────────────
 
 function FundingMethodChooser({
+  federationName,
   hideRails = false,
   lightningReason,
   supportsOnchain = false,
@@ -881,6 +887,7 @@ function FundingMethodChooser({
   browserNwcBlocked,
 }: {
   supportsOnchain?: boolean;
+  federationName?: string;
   hideRails?: boolean;
   lightningReason?: string;
   initialRail?: PaymentRail;
@@ -1098,7 +1105,7 @@ function FundingMethodChooser({
         </details>
       )}
 
-      {!hideRails && <PaymentRails rail={rail} rails={supportsOnchain ? ["lightning", "onchain", "ecash"] : ["lightning", "ecash"]} onSelect={setRail} />}
+      {!hideRails && <PaymentRails onchainContext={{kind:"deposit", federation:federationName || t("claim.yourFederation"), ...(onchainInfoState.kind === "ready" ? onchainInfoState.info : {})}} rail={rail} rails={supportsOnchain ? ["lightning", "onchain", "ecash"] : ["lightning", "ecash"]} onSelect={setRail} />}
       {rail === "ecash" && <details open style={{ marginBottom: 12 }}>
         <summary style={{
           padding: "10px 12px", borderRadius: T.rs, cursor: "pointer",
@@ -1134,7 +1141,7 @@ function FundingMethodChooser({
       {rail === "onchain" && <><div style={{ color: T.muted, fontSize: 12 }}>{onchainGate.detail}</div>
         {onchainInfoState.kind === "ready" && onchainGate.disabled
           ? <PaymentButton disabled={lightningDisabled} onClick={() => { setRail("lightning"); onSelect("lightning"); }}>{t("fund.useLightning")}</PaymentButton>
-          : <PaymentButton disabled={onchainGate.disabled} onClick={() => onSelect("onchain")}>{t("fund.onchainSlow")}</PaymentButton>}</>}
+          : <PaymentButton disabled={onchainGate.disabled} onClick={() => onSelect("onchain")}>{t("payment.federationDeposit", {federation:federationName || t("claim.yourFederation")})}</PaymentButton>}</>}
       <div style={{
         marginTop: 12, padding: "8px 10px", borderRadius: T.rs,
         background: T.surface, border: `1px solid ${T.border}`,
@@ -1242,13 +1249,15 @@ function makeBitcoinUri(address: string, amountSats: number): string {
   return btcAmount ? `bitcoin:${address}?amount=${btcAmount}` : `bitcoin:${address}`;
 }
 
-function OnchainAddressDisplay({
+export function OnchainAddressDisplay({
+  federationName,
   address,
   amountSats,
   depositAmountSats,
   pegInFeeSats,
   finalityDelay,
 }: {
+  federationName: string;
   address: string;
   amountSats: number;
   depositAmountSats: number;
@@ -1256,7 +1265,7 @@ function OnchainAddressDisplay({
   finalityDelay: number;
 }) {
   const { t } = useT();
-  return <PaymentCard amountMsats={depositAmountSats * 1000} rail="onchain"
+  return <PaymentCard onchainContext={{kind:"deposit", federation:federationName, pegInFeeSats, finalityDelay}} amountMsats={depositAmountSats * 1000} rail="onchain"
     data={makeBitcoinUri(address, depositAmountSats)} copyValue={address}
     status={t("fund.waitingConfirmations", { count: finalityDelay })}
     helper={t("fund.onchainSlowPath")}

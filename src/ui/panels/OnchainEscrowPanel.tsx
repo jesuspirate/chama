@@ -105,6 +105,8 @@ export function OnchainEscrowPanel({
         )}
       </div>}
 
+      <div style={{fontSize:11, color:T.muted, lineHeight:1.5, marginBottom:8}}>{t("payment.bitcoinHeld")}</div>
+
       <style>{`@keyframes funding-check-spin{to{transform:rotate(360deg)}}@media(prefers-reduced-motion:reduce){.funding-check-spinner{animation:none!important}}`}</style>
       {onPrepareFunding && <PaymentButton onClick={onPrepareFunding} disabled={checking}>
         {checking ? "Preparing…" : "Try preparing the address again"}

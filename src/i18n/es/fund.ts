@@ -1,5 +1,15 @@
 // es/fund — Session C fills this from src/i18n/en/fund.ts (key set must match EXACTLY).
 export const fund: Record<string, string> = {
+  "payment.bitcoinMinimum": "La custodia en Bitcoin requiere al menos 25.000 sats por intercambio — sube el mínimo o elige ecash de Chama",
+  "payment.bitcoin": "Bitcoin",
+  "payment.bitcoinHeld": "En Bitcoin · 2 de 3 · sin custodio.",
+  "payment.bitcoinOnly": "Este intercambio se mantiene en Bitcoin.",
+  "payment.federationDeposit": "Depositar en {federation}",
+  "payment.depositTerms": "comisión de {fee} sats · se convierte en ecash tras {confirmations} confirmaciones",
+  "payment.federationWithdrawal": "Retirar de {federation} a una dirección bitcoin",
+  "payment.pegOutFee": "Comisión de retirada: {fee} sats",
+  "payment.pegOutFeeUnavailable": "La comisión de retirada no está disponible ahora",
+
   "fund.railLocked": "Fijado en {rail} mientras esta factura esté abierta — vuelve atrás para elegir otra vía.",
   "fund.invoiceSeatExpiredBody": "Esta factura venció con tu plaza. No se pagó nada. Únete de nuevo para obtener otra.",
   "fund.invoiceSeatExpiredTitle": "Factura vencida",
@@ -37,7 +47,6 @@ export const fund: Record<string, string> = {
 
   "payment.switchPending": "Este monedero no puede cancelar una factura activa. Espera a que caduque antes de cambiar; el nuevo importe puede variar. No pagues una factura anterior después de cambiar.",
   "payment.lightning": "Lightning",
-  "payment.onchain": "En cadena",
   "payment.ecash": "Ecash",
   "payment.rail": "Método de pago",
   "payment.walletFailed": "No se pudo abrir una cartera. Puedes copiar el pago.",

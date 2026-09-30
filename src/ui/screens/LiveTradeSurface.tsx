@@ -176,7 +176,7 @@ export function LiveTradeSurface({
   }, [state.id, state.status, participants.buyer, participants.seller, myRole]);
   const onchainOverlay = onchainOpen ? state.status === EscrowStatus.CREATED
     ? <FundingModalShell label={state.title || state.description || "Fund trade"} onClose={() => setOnchainOpen(false)}>
-        <PaymentRails rail="onchain" disabledReasons={{ lightning: "This trade is held on Bitcoin", ecash: "This trade is held on Bitcoin" }} />
+        <PaymentRails rail="onchain" onchainContext={{kind:"bitcoin"}} disabledReasons={{ lightning: tr("payment.bitcoinOnly"), ecash: tr("payment.bitcoinOnly") }} />
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "16px 0" }}>
           <div><BitcoinAmount msats={state.joinHolds?.buyer?.amountMsats ?? state.amountMsats} size={14} />
             <h2 style={{ color: T.text, fontSize: 20, margin: "6px 0", overflowWrap: "anywhere" }}>{state.title || state.description || "Fund trade"}</h2></div>
@@ -184,7 +184,7 @@ export function LiveTradeSurface({
         </div>
         {onchainControls}
       </FundingModalShell>
-    : <OverlaySheet title="On-chain trade" onClose={() => setOnchainOpen(false)}>{onchainControls}</OverlaySheet> : null;
+    : <OverlaySheet title={tr("payment.bitcoin")} onClose={() => setOnchainOpen(false)}>{onchainControls}</OverlaySheet> : null;
   const [armed, setArmed] = useState<Outcome | null>(null);
   // Cancel-with-reason (Jet 2026-09-05): a cancel/refund vote NEVER fires
   // without a reason chip — the reason lands in the trade chat so the other

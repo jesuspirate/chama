@@ -1,3 +1,4 @@
+import type { OnchainInfo } from "../../fedimint/fedimint-client.js";
 import { CardBack } from "../components/CardBack.js";
 import { useCardDraft, type CardDraft } from "../hooks/useCardDraft.js";
 import { SavedWalletRow } from "../components/SavedWalletRow.js";
@@ -95,6 +96,8 @@ import type {
 import { EcashExportModal } from "./EcashExportModal.js";
 
 export interface ClaimPayoutModalProps {
+  federationName?: string;
+  getOnchainInfo?: () => Promise<OnchainInfo>;
   getLightningGatewayCount?: () => Promise<number | null>;
   onWithdrawEcash?: () => void;
   /** Trade ID being claimed. Passed through to claimAndPayout. */
@@ -188,6 +191,7 @@ interface DispatchArgs {
 const EMPTY_SAVED_NWC: SavedNwcConnection[] = [];
 
 export function ClaimPayoutModal({
+  federationName, getOnchainInfo,
   getLightningGatewayCount, onWithdrawEcash,
   escrowId,
   payoutMsats,
@@ -214,6 +218,16 @@ export function ClaimPayoutModal({
   }, []);
 
   const { t } = useT();
+  const federation = federationName || t("claim.yourFederation");
+  const [pegOutFeeSats, setPegOutFeeSats] = useState<number>();
+  useEffect(() => {
+    let cancelled = false;
+    setPegOutFeeSats(undefined);
+    if (getOnchainInfo) void getOnchainInfo().then(info => {
+      if (!cancelled && Number.isSafeInteger(info.pegOutFeeSats) && info.pegOutFeeSats >= 0) setPegOutFeeSats(info.pegOutFeeSats);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [getOnchainInfo, federation]);
   // E1.1: quote from the premium-reduced amount. The full claim still
   // lands in the wallet; the gap (insurance + unspent fee reserve) stays
   // behind for the settle-time premium sweep.
@@ -496,7 +510,7 @@ export function ClaimPayoutModal({
         isStrikeLightningAddress(d.address),
       );
       return (
-        <ClaimMethodChooser
+        <ClaimMethodChooser federationName={federation} pegOutFeeSats={pegOutFeeSats}
           draft={draft}
           lightningReason={lightningReason}
           payoutSats={payoutSats}
@@ -583,7 +597,7 @@ export function ClaimPayoutModal({
 
     if (payoutMethod.kind === "onchain") {
       return (
-        <OnchainPayoutPicker
+        <OnchainPayoutPicker federationName={federation} pegOutFeeSats={pegOutFeeSats}
           draft={draft}
           payoutSats={payoutSats}
           onResolve={resolveOnchainAddress}
@@ -696,6 +710,7 @@ export function ClaimPayoutModal({
 }
 
 export function ClaimMethodChooser({
+  federationName, pegOutFeeSats,
   draft,
   lightningReason,
   payoutSats,
@@ -715,6 +730,8 @@ export function ClaimMethodChooser({
   onCancel,
 }: {
   draft?: CardDraft;
+  federationName?: string;
+  pegOutFeeSats?: number;
   lightningReason?: string;
   /** The headline quote, net of the outbound Lightning fee reserve — right for
    *  every method on this screen EXCEPT the bearer-note export. */
@@ -842,7 +859,7 @@ export function ClaimMethodChooser({
           </section>
         )}
 
-        <PaymentRails rail={rail} disabledReasons={{ lightning: lightningReason }} onSelect={setRail} />
+        <PaymentRails onchainContext={{kind:"withdrawal", federation:federationName || t("claim.yourFederation"), pegOutFeeSats}} rail={rail} disabledReasons={{ lightning: lightningReason }} onSelect={setRail} />
         <p style={{ color: T.muted, fontSize: 12, lineHeight: 1.5 }}>{t("claim.railTiming")}</p>
         <PaymentButton disabled={rail === "lightning" && !!lightningReason} tier={rail === "ecash" ? "primary" : "raised"} style={{ width: "100%", marginBottom: 12 }} onClick={() => rail === "ecash" ? onSelectEcash() : rail === "lightning" && selected ? selected.kind === "address" ? onSelectSavedWallet(selected.wallet) : onSelectSavedNwc(selected.wallet) : onSelect({ kind: rail })}>
           {rail === "ecash" ? t("claim.ecashMethod") : rail === "onchain" ? t("claim.pasteBitcoin") : selected ? t("claim.sendTo", { amount: payoutSats.toLocaleString(), destination: selected.kind === "address" ? payoutDestinationLabel(selected.wallet) : selected.wallet.label }) : t("claim.lightningOptions")}
@@ -2058,13 +2075,16 @@ function StrikeUsdPicker({
   );
 }
 
-function OnchainPayoutPicker({
+export function OnchainPayoutPicker({
+  federationName, pegOutFeeSats,
   draft,
   payoutSats,
   onResolve,
   onBack,
   onCancel,
 }: {
+  federationName?: string;
+  pegOutFeeSats?: number;
   draft?: CardDraft;
   payoutSats: number;
   onResolve: (address: string) => void;
@@ -2113,6 +2133,8 @@ function OnchainPayoutPicker({
           color: T.amber, fontFamily: T.mono, fontSize: 10,
           lineHeight: 1.5, marginBottom: 12,
         }}>
+          <div>{t("payment.federationWithdrawal", {federation:federationName || t("claim.yourFederation")})}</div>
+          <div>{pegOutFeeSats !== undefined ? t("payment.pegOutFee", {fee:pegOutFeeSats}) : t("payment.pegOutFeeUnavailable")}</div>
           {t("claim.onchainSlowPath")}
         </div>
         <textarea

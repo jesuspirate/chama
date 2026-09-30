@@ -12,7 +12,8 @@
 import { T } from "../../theme.js";
 import { useT } from "../../../i18n/index.js";
 
-export function PagerPills({ tabs, active, onSelect, badges, icons, disabled, tabIds, chevrons = true, label }: {
+export function PagerPills({ tabs, active, onSelect, badges, icons, disabled, tabIds, chevrons = true, label, wrapLabels = false }: {
+  wrapLabels?: boolean;
   tabs: string[];
   disabled?: boolean[];
   tabIds?: string[];
@@ -92,7 +93,7 @@ export function PagerPills({ tabs, active, onSelect, badges, icons, disabled, ta
                 fontFamily: T.sans, fontSize: 12, fontWeight: 700,
                 color: on ? T.text : T.muted,
                 transition: "color .2s",
-                whiteSpace: "nowrap",
+                whiteSpace: wrapLabels ? "normal" : "nowrap",
                 overflowWrap: "anywhere", minWidth: 0,
               }}
             >
