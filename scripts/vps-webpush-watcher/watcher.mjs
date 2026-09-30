@@ -4,7 +4,7 @@
 //
 // The one job: stay subscribed to the Chama Nostr band while every client is
 // closed, and when a state event carries a registered opaque watch-tag, send an
-// EMPTY web-push wake-up to the endpoints that registered it. That's all.
+// opaque tagged wake-up to the endpoints that registered it. That's all.
 //
 // ⭐ THE INVARIANT (non-negotiable): this process learns nothing linkable.
 //    It stores only { opaque watch-tag -> [ push endpoint ] }. No pubkey, no
@@ -159,6 +159,17 @@ function loadStore() {
   } catch (e) { console.warn("[watcher] load failed:", e.message); }
 }
 
+// Keep a bounded owner-readable copy beside the store when journal access
+// is restricted. These lines contain only short opaque tags, never endpoints.
+function logWake(line) {
+  console.log(line);
+  try {
+    const file = path.join(path.dirname(STORE_PATH), "wake-delivery.log");
+    if (fs.existsSync(file) && fs.statSync(file).size >= 1024 * 1024) fs.renameSync(file, `${file}.1`);
+    fs.appendFileSync(file, `${new Date().toISOString()} ${line}\n`, { mode: 0o600 });
+  } catch { console.warn("[watcher] delivery log unavailable"); }
+}
+
 // ── Delivery ───────────────────────────────────────────────────────────────
 async function wake(tag, createdAt, eventId) {
   const m = byTag.get(tag);
@@ -177,9 +188,9 @@ async function wake(tag, createdAt, eventId) {
         const payload = JSON.stringify({ wake: 1, sentAt: now, tags: [tag] });
         await webpush.sendNotification(rec.subscription, payload, { TTL: 120, urgency: "high", timeout: 10_000 });
       }
-      console.log(`wake ${tag.slice(0, 7)} ${rec.subscription.transport || "webpush"} sent ${Date.now() - now}ms`);
+      logWake(`wake ${tag.slice(0, 7)} ${rec.subscription.transport || "webpush"} sent ${Date.now() - now}ms`);
     } catch (err) {
-      console.log(`wake ${tag.slice(0, 7)} ${rec.subscription.transport || "webpush"} failed ${Date.now() - now}ms`);
+      logWake(`wake ${tag.slice(0, 7)} ${rec.subscription.transport || "webpush"} failed ${Date.now() - now}ms`);
       const code = err?.statusCode;
       if (code === 404 || code === 410) pruneEndpoint(key); // dead endpoint
       else console.warn("[watcher] push send error status:", code || "?");

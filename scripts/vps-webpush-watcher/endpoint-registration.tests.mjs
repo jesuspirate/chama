@@ -94,6 +94,7 @@ try {
   assert.equal(wakeRows.at(-1).wake,1);
   assert.equal(wakeRows.at(-1).escrowId,undefined,'wake contains no trade details');
   assert.deepEqual(wakeRows.at(-1).tags,[communityTag]);
+  assert.match(await readFile(path.join(temp,'wake-delivery.log'),'utf8'), new RegExp(`wake ${communityTag.slice(0,7)} unifiedpush sent [0-9]+ms`));
   const chats = ['first','second'].map(content => finalizeEvent({kind:38108,created_at:Math.floor(Date.now()/1000),tags:[['d','test-listing'],['w',communityTag]],content},new Uint8Array(32).fill(44)));
   for (const [socket,id] of subscriptions) if (socket.readyState===1) for (const chat of chats) socket.send(JSON.stringify(['EVENT',id,chat]));
   for (let i=0;i<20;i++) {

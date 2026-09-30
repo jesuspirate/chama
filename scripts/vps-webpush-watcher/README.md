@@ -164,3 +164,13 @@ replay decides whether the opaque wake needs a notification. These broad
 community wakes also reach saved-search subscribers, whose replay may be silent.
 `endpoint-registration.tests.mjs` verifies an actual signed JOIN delivered by a
 local WebSocket relay produces an opaque wake at a registered community endpoint.
+
+## Tagged wake delivery diagnostics
+
+Every ordinary transport wake includes the matched opaque `tags` array.
+Distinct signed events are delivered independently; only duplicate event
+delivery to the same endpoint is suppressed. FCM has no shared collapse key.
+Send results print `wake <tag prefix> <transport> <sent|failed> <ms>ms`.
+The same lines, with UTC timestamps, are retained in owner-readable
+`wake-delivery.log` beside the registration store, capped at 1 MiB plus one
+rotated copy. They contain no endpoint, trade ID, message, or wallet data.
