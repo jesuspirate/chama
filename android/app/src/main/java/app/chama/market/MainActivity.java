@@ -43,7 +43,6 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(ChamaDevicePlugin.class);
         super.onCreate(savedInstanceState);
         applySelectionTheme(getSharedPreferences(PREFS_NAME, MODE_PRIVATE).getBoolean("lightTheme", false));
-        ChamaPushStore.activity = new java.lang.ref.WeakReference<>(this);
         getWindow().setBackgroundDrawable(new ColorDrawable(Color.rgb(5, 5, 10)));
         getWindow().setStatusBarColor(Color.rgb(5, 5, 10));
         getWindow().setNavigationBarColor(Color.rgb(5, 5, 10));
@@ -54,9 +53,26 @@ public class MainActivity extends BridgeActivity {
         startFedimintBridge();
     }
 
+    @Override public void onStart() {
+        super.onStart();
+        ChamaPushStore.activityStarted = true;
+        ChamaPushStore.foregroundBranch = "started";
+    }
+    @Override public void onPause() {
+        ChamaPushStore.foregroundBranch = "started";
+        super.onPause();
+    }
+    @Override public void onStop() {
+        ChamaPushStore.activityStarted = false;
+        ChamaPushStore.foregroundBranch = "no activity";
+        super.onStop();
+    }
+
     @Override
     public void onResume() {
         super.onResume();
+        ChamaPushStore.activityStarted = true;
+        ChamaPushStore.foregroundBranch = "resumed";
         if (bridge != null) bridge.triggerWindowJSEvent("chama:resume");
         ChamaPushStore.retry(getApplicationContext());
         fedimintBridgeStopping = false;
@@ -65,6 +81,8 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     public void onDestroy() {
+        ChamaPushStore.activityStarted = false;
+        ChamaPushStore.foregroundBranch = "no activity";
         stopFedimintBridge();
         super.onDestroy();
     }

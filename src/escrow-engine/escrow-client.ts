@@ -1194,6 +1194,8 @@ export class EscrowClient {
 
   async createEscrow(params: {
     description: string;
+    /** Signed advisory marker: presence renewal is not new supply. */
+    renewalOf?: string;
     title?: string;
     body?: string;
     listingKind?: CreatePayload["listingKind"];
@@ -1379,6 +1381,7 @@ export class EscrowClient {
       tags: [
         [TAGS.ESCROW_ID, escrowId],
         [TAGS.TYPE, "escrow:create"],
+        ...(params.renewalOf ? [["renewal", params.renewalOf]] : []),
         [TAGS.AMOUNT, String(params.amountMsats)],
         [TAGS.MINT, params.mintUrl],
         ...(params.fiatCurrency ? [[TAGS.CURRENCY, params.fiatCurrency]] : []),

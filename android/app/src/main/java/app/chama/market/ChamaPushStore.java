@@ -18,18 +18,10 @@ import java.util.concurrent.Executors;
 
 /** Device-local registration, replay diagnostics and notification delivery. */
 final class ChamaPushStore {
-    static volatile java.lang.ref.WeakReference<MainActivity> activity = new java.lang.ref.WeakReference<>(null);
-    static boolean foreground() {
-        java.util.concurrent.FutureTask<Boolean> read = new java.util.concurrent.FutureTask<>(() -> {
-            MainActivity current = activity.get();
-            return current != null && !current.isDestroyed()
-                && current.getLifecycle().getCurrentState().isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED);
-        });
-        if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) read.run();
-        else new android.os.Handler(android.os.Looper.getMainLooper()).post(read);
-        try { return read.get(2, java.util.concurrent.TimeUnit.SECONDS); }
-        catch (Exception e) { return true; } // Cannot establish background: do not double-alert.
-    }
+    // Written by activity lifecycle callbacks; cold pushes never wait for WebView startup.
+    static volatile boolean activityStarted = false;
+    static volatile String foregroundBranch = "no activity";
+    static boolean foreground() { return activityStarted; }
 
     static synchronized JSONArray alertLog(Context c) {
         try { return new JSONArray(prefs(c).getString("alertLog", "[]")); }
@@ -39,10 +31,10 @@ final class ChamaPushStore {
         String id = java.util.UUID.randomUUID().toString();
         try {
             JSONArray rows = alertLog(c), bounded = new JSONArray();
-            for (int i = Math.max(0, rows.length() - 19); i < rows.length(); i++) bounded.put(rows.get(i));
+            for (int i = Math.max(0, rows.length() - 49); i < rows.length(); i++) bounded.put(rows.get(i));
             bounded.put(new JSONObject().put("id", id).put("time", System.currentTimeMillis())
                 .put("transport", transport).put("verdict", "pending").put("job", "queued")
-                .put("posts", new JSONArray()));
+                .put("foregroundBranch", foregroundBranch).put("posts", new JSONArray()));
             prefs(c).edit().putString("alertLog", bounded.toString()).apply();
         } catch (Exception ignored) { }
         return id;
@@ -59,7 +51,28 @@ final class ChamaPushStore {
                     .put("verdict", verdict).put("notificationId", postedId == null ? JSONObject.NULL : postedId));
                 row.put("notificationsEnabled", NotificationManagerCompat.from(c).areNotificationsEnabled());
                 row.put("channelEnabled", channelEnabled(c));
+                row.put("foregroundBranch", foregroundBranch);
             }
+            prefs(c).edit().putString("alertLog", rows.toString()).apply();
+        } catch (Exception ignored) { }
+    }
+    static synchronized void jobDetails(Context c, String wake, JSONArray tags, String result, long elapsedMs) {
+        try {
+            JSONArray rows = alertLog(c);
+            for (int i = 0; i < rows.length(); i++) {
+                JSONObject row = rows.getJSONObject(i);
+                if (!wake.equals(row.optString("id"))) continue;
+                if (tags != null) row.put("matchedTags", tags);
+                if (result != null) row.put("jobResult", result);
+                row.put("elapsedMs", elapsedMs);
+            }
+            prefs(c).edit().putString("alertLog", rows.toString()).apply();
+        } catch (Exception ignored) { }
+    }
+    static synchronized void tradeCount(Context c, String wake, int count) {
+        try {
+            JSONArray rows = alertLog(c);
+            for (int i = 0; i < rows.length(); i++) if (wake.equals(rows.getJSONObject(i).optString("id"))) rows.getJSONObject(i).put("tradeCount", count);
             prefs(c).edit().putString("alertLog", rows.toString()).apply();
         } catch (Exception ignored) { }
     }
@@ -138,9 +151,11 @@ final class ChamaPushStore {
                 conn.setRequestProperty("Content-Type", "application/json");
                 try (var out = conn.getOutputStream()) { out.write(body.toString().getBytes(StandardCharsets.UTF_8)); }
                 int code = conn.getResponseCode();
-                prefs(c).edit().putBoolean("registered", code >= 200 && code < 300 && action.equals("register")).apply();
+                SharedPreferences.Editor registration = prefs(c).edit().putInt("registerHttpStatus", code).putBoolean("registered", code >= 200 && code < 300 && action.equals("register"));
+                if (code >= 200 && code < 300 && action.equals("register")) registration.putString("registeredTags", tags);
+                registration.apply();
             } catch (Exception ignored) {
-                prefs(c).edit().putBoolean("registered", false).apply();
+                prefs(c).edit().putInt("registerHttpStatus", 0).putBoolean("registered", false).apply();
             } finally { if (conn != null) conn.disconnect(); }
         });
     }
@@ -182,17 +197,29 @@ final class ChamaPushStore {
     }
 
     /** Queue every wake: KEEP would discard changes arriving during an in-flight replay. */
-    static void wake(Context c, String transport) {
-        String wake = beginWake(c, transport);
+    static void wake(Context c, String transport, JSONArray incoming) {
+        wake(c, transport, incoming, beginWake(c, transport));
+    }
+    static void wake(Context c, String transport, JSONArray incoming, String wake) {
+        JSONArray tags = new JSONArray();
+        if (incoming != null) {
+            if (incoming.length() > 20) return;
+            for (int i = 0; i < incoming.length(); i++) {
+                String tag = incoming.optString(i);
+                if (!tag.matches("[A-Za-z0-9_-]{1,64}")) return;
+                tags.put(tag);
+            }
+        }
+        jobDetails(c, wake, tags, "queued", 0);
         String verdict = policy(c, false, 0);
         if (!"shown".equals(verdict)) { log(c, wake, verdict, "not run", null, null); return; }
-        ChamaWakeWorker.enqueue(c, wake);
+        ChamaWakeWorker.enqueue(c, wake, tags);
     }
 
     static String postTrade(Context c, String wake, JSONObject note) throws Exception {
         String trade = note.getString("escrowId");
         if (!trade.matches("(?i)sm_[a-z0-9_]+")) return "invalid";
-        return post(c, wake, trade, note.getString("tag"), note.getString("title"), note.getString("body"), false);
+        return post(c, wake, trade, note.getString("tag"), note.getString("title"), note.getString("body"), false, note.optString("group", ""));
     }
 
     static void genericWake(Context c, String wake) {
@@ -200,6 +227,9 @@ final class ChamaPushStore {
     }
 
     private static String post(Context c, String wake, String trade, String tag, String title, String body, boolean test) {
+        return post(c, wake, trade, tag, title, body, test, "");
+    }
+    private static String post(Context c, String wake, String trade, String tag, String title, String body, boolean test, String group) {
         int id = ChamaWakePolicy.notificationId(trade, tag);
         String reason = ChamaWakePolicy.reason(trade, tag);
         String key = "posted:" + id;
@@ -215,7 +245,11 @@ final class ChamaPushStore {
             manager.notify(id, new NotificationCompat.Builder(c, "chama_activity")
                 .setSmallIcon(R.drawable.ic_chama_notification).setContentTitle(title)
                 .setContentText(body).setStyle(new NotificationCompat.BigTextStyle().bigText(body))
-                .setContentIntent(open).setAutoCancel(true).setOnlyAlertOnce(false).build());
+                .setGroup(group.isEmpty() ? null : group).setContentIntent(open).setAutoCancel(true).setOnlyAlertOnce(false).build());
+            if (!group.isEmpty()) manager.notify(group.hashCode(), new NotificationCompat.Builder(c, "chama_activity")
+                .setSmallIcon(R.drawable.ic_chama_notification).setContentTitle("New listings")
+                .setContentText("New offers in your community").setGroup(group).setGroupSummary(true)
+                .setContentIntent(open).setAutoCancel(true).setOnlyAlertOnce(true).build());
             if (!trade.isEmpty()) {
                 int previous = prefs(c).getInt("tradeNote:" + trade, id);
                 if (previous != id) manager.cancel(previous);

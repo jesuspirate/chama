@@ -13,6 +13,7 @@ final class ChamaWakePolicy {
     static String reason(String trade, String tag) {
         String reason = tag.startsWith(trade + ":") ? tag.substring(trade.length() + 1) : tag;
         // Chat event IDs and wake event IDs deduplicate replay, not notification slots.
+        if (reason.startsWith("joined:")) return "joined";
         if (reason.startsWith("chat:")) return "chat";
         if (reason.startsWith("wake:")) return reason.split(":")[1];
         return reason;

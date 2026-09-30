@@ -58,7 +58,6 @@ const connectedAt = Date.now();
 const seenEventIds = new Set();
 
 const REG_TTL_MS = 30 * 24 * 3600 * 1000;   // registrations expire after 30 days idle
-const COLLAPSE_MS = 5000;                    // one wake per (tag,endpoint) per 5s
 const MAX_TAGS_PER_REGISTER = 200;           // abuse cap
 const MAX_BODY_BYTES = 16 * 1024;
 
@@ -78,7 +77,7 @@ const byTag = new Map();
 const tagsByEndpoint = new Map();
 // Endpoints exist independently of watches so a fresh enable can receive /test.
 const byEndpoint = new Map();
-const lastSent = new Map(); // `${tag} ${endpointKey}` -> ms
+const lastSent = new Map(); // event + endpoint delivery dedup, plus endpoint test cooldown
 
 function addRegistration(subscription, tags, stored = null) {
   const key = endpointKeyOf(subscription);
@@ -161,23 +160,26 @@ function loadStore() {
 }
 
 // ── Delivery ───────────────────────────────────────────────────────────────
-async function wake(tag, createdAt) {
+async function wake(tag, createdAt, eventId) {
   const m = byTag.get(tag);
   if (!m) return;
   const now = Date.now();
   for (const [key, rec] of m) {
     if (rec.expiresAt <= now || !freshWake(createdAt, connectedAt, rec.registeredAt, now)) continue;
-    const dedupKey = `${tag} ${key}`;
-    if (now - (lastSent.get(dedupKey) || 0) < COLLAPSE_MS) continue;
+    const dedupKey = `${eventId} ${key}`;
+    if (lastSent.has(dedupKey)) continue;
     lastSent.set(dedupKey, now);
+    if (lastSent.size > 10000) lastSent.delete(lastSent.keys().next().value);
     try {
-      // Empty payload = opaque wake. TTL short: a stale wake helps no one.
-      if (rec.subscription.transport === "fcm") await sendFcm(rec.subscription);
+      // Payload contains only the registered opaque tag and freshness time.
+      if (rec.subscription.transport === "fcm") await sendFcm(rec.subscription, undefined, [tag]);
       else {
-        const payload = rec.subscription.transport === "unifiedpush" ? JSON.stringify({ wake: 1, sentAt: now }) : "";
+        const payload = JSON.stringify({ wake: 1, sentAt: now, tags: [tag] });
         await webpush.sendNotification(rec.subscription, payload, { TTL: 120, urgency: "high", timeout: 10_000 });
       }
+      console.log(`wake ${tag.slice(0, 7)} ${rec.subscription.transport || "webpush"} sent ${Date.now() - now}ms`);
     } catch (err) {
+      console.log(`wake ${tag.slice(0, 7)} ${rec.subscription.transport || "webpush"} failed ${Date.now() - now}ms`);
       const code = err?.statusCode;
       if (code === 404 || code === 410) pruneEndpoint(key); // dead endpoint
       else console.warn("[watcher] push send error status:", code || "?");
@@ -203,10 +205,10 @@ function startNostr() {
       if (seenEventIds.size > 10_000) seenEventIds.delete(seenEventIds.values().next().value);
       const tags = evt.tags;
       for (const tag of tags) {
-        if (tag[0] === "w" && tag[1]) void wake(tag[1], evt.created_at);
+        if (tag[0] === "w" && tag[1]) void wake(tag[1], evt.created_at, evt.id);
       }
       for (const slug of communityWakeSlugs(evt)) {
-        void wake(communityWakeTag(slug), evt.created_at);
+        void wake(communityWakeTag(slug), evt.created_at, evt.id);
       }
     },
     oneose() { relayReady = true; /* live tail continues */ },

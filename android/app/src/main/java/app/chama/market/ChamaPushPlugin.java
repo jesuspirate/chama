@@ -32,6 +32,9 @@ public class ChamaPushPlugin extends Plugin {
         JSObject result = new JSObject();
         result.put("lane", lane());
         result.put("alertLog", ChamaPushStore.alertLog(getContext()));
+        result.put("registerHttpStatus", ChamaPushStore.prefs(getContext()).getInt("registerHttpStatus", 0));
+        try { result.put("registeredTags", new org.json.JSONArray(ChamaPushStore.prefs(getContext()).getString("registeredTags", "[]"))); }
+        catch (Exception ignored) { result.put("registeredTags", new org.json.JSONArray()); }
         result.put("notificationsEnabled", androidx.core.app.NotificationManagerCompat.from(getContext()).areNotificationsEnabled());
         result.put("channelEnabled", ChamaPushStore.channelEnabled(getContext()));
         result.put("testHttpStatus", ChamaPushStore.prefs(getContext()).getInt("testHttpStatus", 0));
@@ -62,6 +65,7 @@ public class ChamaPushPlugin extends Plugin {
     }
 
     @PluginMethod public void snapshot(PluginCall call) {
+        synchronized (ChamaPushStore.class) {
         String next = call.getString("snapshot", "");
         android.content.SharedPreferences prefs = ChamaPushStore.prefs(getContext());
         android.content.SharedPreferences.Editor edit = prefs.edit().putString("snapshot", next);
@@ -72,6 +76,7 @@ public class ChamaPushPlugin extends Plugin {
         } catch (Exception ignored) { edit.remove("lastWake").remove("wakeFired"); }
         edit.apply();
         call.resolve();
+        }
     }
 
     @PluginMethod public void test(PluginCall call) {

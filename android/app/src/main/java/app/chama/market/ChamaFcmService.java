@@ -3,6 +3,7 @@ package app.chama.market;
 import com.google.firebase.messaging.FirebaseMessagingService;
 import com.google.firebase.messaging.RemoteMessage;
 import org.json.JSONObject;
+import org.json.JSONArray;
 
 public class ChamaFcmService extends FirebaseMessagingService {
     @Override public void onNewToken(String token) {
@@ -15,6 +16,9 @@ public class ChamaFcmService extends FirebaseMessagingService {
         if (!"1".equals(message.getData().get("wake"))) return;
         if (!"fcm".equals(ChamaPushStore.prefs(this).getString("lane", ""))) return;
         if (!ChamaWakePolicy.fresh(message.getSentTime(), System.currentTimeMillis())) return;
-        if (!ChamaPushStore.testReply(this, message.getData().get("test"), "fcm")) ChamaPushStore.wake(this, "fcm");
+        try {
+            JSONArray tags = new JSONArray(message.getData().getOrDefault("tags", "[]"));
+            if (!ChamaPushStore.testReply(this, message.getData().get("test"), "fcm")) ChamaPushStore.wake(this, "fcm", tags);
+        } catch (Exception ignored) { /* Malformed opaque tags: stay quiet. */ }
     }
 }

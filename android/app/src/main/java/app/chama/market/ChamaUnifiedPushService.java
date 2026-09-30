@@ -19,14 +19,22 @@ public class ChamaUnifiedPushService extends PushService {
         } catch (Exception ignored) { }
     }
     @Override public void onMessage(PushMessage message, String instance) {
+        String receipt = ChamaPushStore.beginWake(this, "unifiedpush");
+        android.util.Log.i("ChamaPush", "UnifiedPush receipt");
         if (!INSTANCE_DEFAULT.equals(instance) || !message.getDecrypted()
-            || !"unifiedpush".equals(ChamaPushStore.prefs(this).getString("lane", ""))) return;
+            || !"unifiedpush".equals(ChamaPushStore.prefs(this).getString("lane", ""))) {
+            ChamaPushStore.log(this, receipt, "ignored", "inactive lane or unauthenticated receipt", null, null);
+            return;
+        }
         try {
             JSONObject payload = new JSONObject(new String(message.getContent(), java.nio.charset.StandardCharsets.UTF_8));
+            ChamaPushStore.jobDetails(this, receipt, payload.optJSONArray("tags"), "received", 0);
+            org.json.JSONArray matched = payload.optJSONArray("tags");
+            android.util.Log.i("ChamaPush", "UnifiedPush tag " + (matched == null ? "none" : matched.optString(0).substring(0, Math.min(7, matched.optString(0).length()))));
             if (payload.optInt("wake") == 1 && ChamaWakePolicy.fresh(payload.getLong("sentAt"), System.currentTimeMillis())) {
-                if (!ChamaPushStore.testReply(this, payload.optString("test"), "unifiedpush")) ChamaPushStore.wake(this, "unifiedpush");
-            }
-        } catch (Exception ignored) { /* Invalid/legacy unauthenticated wake: stay quiet. */ }
+                if (!ChamaPushStore.testReply(this, payload.optString("test"), "unifiedpush")) ChamaPushStore.wake(this, "unifiedpush", payload.optJSONArray("tags"), receipt);
+            } else ChamaPushStore.log(this, receipt, "ignored", "invalid or stale payload", null, null);
+        } catch (Exception ignored) { ChamaPushStore.log(this, receipt, "ignored", "invalid payload", null, null); }
     }
     @Override public void onRegistrationFailed(FailedReason reason, String instance) {
         if (INSTANCE_DEFAULT.equals(instance)) ChamaPushStore.prefs(this).edit().remove("endpoint").putBoolean("registered", false).apply();

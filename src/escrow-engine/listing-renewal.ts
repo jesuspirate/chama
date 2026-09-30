@@ -423,6 +423,7 @@ export function autoRenewableListings(
  *  short default a fresh publish uses, so the renewed store's timeout stays
  *  ~24h. No `parent`/`claimedQuantity` (a storefront is never a child). */
 export interface RenewCreateParams {
+  renewalOf?: string;
   description: string;
   listingKind?: WorkListingKind;
   imageDataUrl?: string;
@@ -459,6 +460,7 @@ export function buildRenewCreateParams(state: EscrowState): RenewCreateParams {
     throw new Error("buildRenewCreateParams: a child order is not a renewable listing");
   }
   return {
+    renewalOf: state.id,
     description: state.description,
     ...(state.listingKind ? { listingKind: state.listingKind } : {}),
     ...(state.imageDataUrl ? { imageDataUrl: state.imageDataUrl } : {}),

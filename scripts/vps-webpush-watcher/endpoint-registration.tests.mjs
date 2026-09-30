@@ -93,6 +93,19 @@ try {
   assert.equal(wakeRows.length,before+1,'actual watcher JOIN wakes registered creator community');
   assert.equal(wakeRows.at(-1).wake,1);
   assert.equal(wakeRows.at(-1).escrowId,undefined,'wake contains no trade details');
+  assert.deepEqual(wakeRows.at(-1).tags,[communityTag]);
+  const chats = ['first','second'].map(content => finalizeEvent({kind:38108,created_at:Math.floor(Date.now()/1000),tags:[['d','test-listing'],['w',communityTag]],content},new Uint8Array(32).fill(44)));
+  for (const [socket,id] of subscriptions) if (socket.readyState===1) for (const chat of chats) socket.send(JSON.stringify(['EVENT',id,chat]));
+  for (let i=0;i<20;i++) {
+    wakeRows = (await readFile(wakes,'utf8')).trim().split('\n').map(row=>JSON.parse(row));
+    if (wakeRows.length===before+3) break;
+    await new Promise(resolve=>setTimeout(resolve,100));
+  }
+  assert.equal(wakeRows.length,before+3,'distinct CHATs within five seconds both wake after JOIN');
+  const renewal = finalizeEvent({kind:38100,created_at:Math.floor(Date.now()/1000),tags:[['d','test-renewal'],['community','us-blf'],['renewal','test-listing']],content:'renew'},new Uint8Array(32).fill(44));
+  for (const [socket,id] of subscriptions) if (socket.readyState===1) { socket.send(JSON.stringify(['EVENT',id,chats[0]])); socket.send(JSON.stringify(['EVENT',id,renewal])); }
+  await new Promise(resolve=>setTimeout(resolve,150));
+  assert.equal((await readFile(wakes,'utf8')).trim().split('\n').length,before+3,'relay duplicates and renewal stay quiet');
   assert.equal(await post('unregister',{endpoint,tags:[communityTag]}),204);
   assert.equal(await post('register',{endpoint,tags:[]}),204);
   const saved = JSON.parse(await readFile(store, 'utf8'));

@@ -27,6 +27,7 @@ public class ChamaWakePolicyTest {
         assertNotEquals(chat, approve);
         assertNotEquals(lock, other);
         assertEquals(chat, ChamaWakePolicy.notificationId("sm_a", "sm_a:chat:event2"));
+        assertEquals(ChamaWakePolicy.notificationId("sm_a", "sm_a:joined:one"), ChamaWakePolicy.notificationId("sm_a", "sm_a:joined:two"));
         java.util.Map<Integer, Long> posted = new java.util.HashMap<>();
         posted.put(lock, 199_000L);
         assertEquals("rate-limited", ChamaWakePolicy.verdict(true, false, true, false, posted.get(lock), 200_000));

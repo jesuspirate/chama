@@ -44,13 +44,15 @@ try {
     assert.equal(url, "https://fcm.googleapis.com/v1/projects/chama-test/messages:send");
     const body = JSON.parse(opts.body);
     assert.equal(body.message.notification, undefined); // SDK cannot bypass our native policy
-    assert.deepEqual(body.message.data, { wake: "1" });
+    assert.deepEqual(body.message.data, sends === 3 ? { wake: "1", tags: JSON.stringify(["opaque-tag"]) } : { wake: "1" });
+    assert.equal(body.message.android.collapse_key, undefined);
     assert.equal(body.message.android.ttl, "120s");
     assert.equal(opts.headers.authorization, "Bearer test-token");
     return expired ? { ok: false, status: 404, json: async () => ({ error: { details: [{ errorCode: "UNREGISTERED" }] } }) } : { ok: true };
   });
   await send(fcm); await send(fcm);
-  assert.equal(authCalls, 1); assert.equal(sends, 2);
+  await send(fcm, undefined, ["opaque-tag"]);
+  assert.equal(authCalls, 1); assert.equal(sends, 3);
   expired = true;
   await assert.rejects(send(fcm), e => e.statusCode === 410);
 } finally { fs.rmSync(dir, { recursive: true, force: true }); }
@@ -63,3 +65,5 @@ for (const kind of [38102,38109,38114]) assert.deepEqual(communityWakeSlugs({kin
 assert.deepEqual(communityWakeSlugs({kind:38101,tags:[['community','us-blf'],['parent','listing']]}), []);
 assert.deepEqual(communityWakeSlugs({kind:38101,tags:[]}), []);
 console.log('PASS creator community wake on parent CREATE and JOIN, excluding children and chat/lock/settlement');
+
+assert.deepEqual(communityWakeSlugs({kind:38100,tags:[["community","us-blf"],["renewal","sm_old"]]}), []);

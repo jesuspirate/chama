@@ -1,12 +1,15 @@
-import { fetchWakeEvents, replayWake, selectWakeNotifications, type WakeSnapshot } from './wake-replay.js';
+import { runWakeJob, type WakeInput } from './wake-replay.js';
 declare const ChamaWake: { input(): string; finish(result: string): void };
 (async () => {
+  const started = Date.now();
   try {
-    const input = JSON.parse(ChamaWake.input()) as { snapshot: WakeSnapshot; nsec: string; lastWake: number; fired: string[] };
-    const old = replayWake(input.snapshot.events, input.snapshot.pubkey, input.nsec);
-    const fresh = await fetchWakeEvents(input.snapshot);
-    const next = replayWake([...input.snapshot.events, ...fresh], input.snapshot.pubkey, input.nsec);
-    const notifications = selectWakeNotifications(next.values(), old, input.snapshot, input.lastWake, input.fired);
-    ChamaWake.finish(JSON.stringify({ notifications }));
-  } catch { ChamaWake.finish('{"failed":true}'); }
+    const input = JSON.parse(ChamaWake.input()) as WakeInput;
+    const result = await runWakeJob(input);
+    ChamaWake.finish(JSON.stringify({ ...result, elapsedMs: Date.now() - started }));
+  } catch (error) {
+    // The replay helpers use content-free messages; never log plaintext or keys.
+    const reason = error instanceof Error && /^(Identity changed|No local decryption key|No relay replied|Incomplete trade: [A-Z_]+)$/.test(error.message)
+      ? error.message : 'Replay or decryption error';
+    ChamaWake.finish(JSON.stringify({ failed: true, result: reason, elapsedMs: Date.now() - started }));
+  }
 })();

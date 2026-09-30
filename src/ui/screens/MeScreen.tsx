@@ -2931,12 +2931,14 @@ function BackgroundPushRow() {
           {nativeStatus?.ntfy && <p>{t("me.bgPushNtfy")}</p>}
           {nativeStatus && <details style={{ margin: "8px 0", overflowWrap: "anywhere" }}>
             <summary>Alert log</summary>
-            <p>Last 20 wakes on this device. Notifications: {nativeStatus.notificationsEnabled ? "allowed" : "disabled"}; Chama activity channel: {nativeStatus.channelEnabled ? "allowed" : "muted"}.</p>
+            <p>Last 50 wakes on this device. Notifications: {nativeStatus.notificationsEnabled ? "allowed" : "disabled"}; Chama activity channel: {nativeStatus.channelEnabled ? "allowed" : "muted"}.</p>
+            <p>Registered tags ({nativeStatus.registeredTags?.length ?? 0}), HTTP {nativeStatus.registerHttpStatus || "no response"}: {nativeStatus.registeredTags?.length ? nativeStatus.registeredTags.map(tag => tag.slice(0, 8)).join(", ") : "none recorded"}.</p>
             {!nativeStatus.alertLog?.length && <p>No alerts received yet.</p>}
             <ol style={{ paddingLeft: 18 }}>
               {[...(nativeStatus.alertLog ?? [])].reverse().map(entry => <li key={entry.id} style={{ marginBottom: 10 }}>
                 <time dateTime={new Date(entry.time).toISOString()}>{new Date(entry.time).toLocaleString()}</time>
                 {` · ${entry.transport} · ${entry.verdict} · ${entry.job}`}
+                <div>{entry.foregroundBranch ? `${entry.foregroundBranch} · ` : ""}{entry.tradeCount != null ? `${entry.tradeCount} trades · ` : ""}Matched tag: {entry.matchedTags?.length ? entry.matchedTags.map(tag => tag.slice(0, 8)).join(", ") : "not recorded"}{entry.elapsedMs != null ? ` · ${entry.elapsedMs} ms` : ""}{entry.jobResult ? ` · ${entry.jobResult}` : ""}</div>
                 {entry.notificationsEnabled === false && <div>Android notifications were disabled.</div>}
                 {entry.channelEnabled === false && <div>Chama activity channel was muted.</div>}
                 {entry.posts.map((post, i) => <div key={i}>{post.reason}: {post.verdict}{post.notificationId != null ? ` · notification ${post.notificationId}` : " · no notification posted"}</div>)}

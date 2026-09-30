@@ -2,10 +2,11 @@ import { Capacitor, registerPlugin } from "@capacitor/core";
 
 export interface NativeAlertLogEntry {
   id: string; time: number; transport: string; verdict: string; job: string;
+  foregroundBranch?: string; tradeCount?: number; matchedTags?: string[]; jobResult?: string; elapsedMs?: number;
   notificationsEnabled?: boolean; channelEnabled?: boolean;
   posts: { reason: string; verdict: string; notificationId: number | null }[];
 }
-export type NativePushStatus = { lane: "fcm" | "unifiedpush" | "unavailable"; ready: boolean; registered: boolean; ntfy?: boolean; testReceived?: string; testHttpStatus?: number; testHttpNonce?: string; alertLog?: NativeAlertLogEntry[]; notificationsEnabled?: boolean; channelEnabled?: boolean };
+export type NativePushStatus = { registerHttpStatus?: number; registeredTags?: string[]; lane: "fcm" | "unifiedpush" | "unavailable"; ready: boolean; registered: boolean; ntfy?: boolean; testReceived?: string; testHttpStatus?: number; testHttpNonce?: string; alertLog?: NativeAlertLogEntry[]; notificationsEnabled?: boolean; channelEnabled?: boolean };
 interface NativePushPlugin {
   takeTrade(): Promise<{ trade: string | null }>;
   addListener(name: 'tradeOpened', callback: (event: {trade: string}) => void): Promise<import('@capacitor/core').PluginListenerHandle>;

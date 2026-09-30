@@ -60,6 +60,7 @@ export interface CircleLockContext {
 }
 
 export interface TradeNotification {
+  group?: string;
   payoutTxid?: string;
   payoutNetwork?: "mainnet" | "signet";
   escrowId: string;
@@ -368,6 +369,7 @@ export function newListingNotificationFor(
   if (next.createdAt < liveSinceSec) return null;         // backlog guard
   if (roleOf(next, userPubkey) !== null) return null;     // not mine
 
+  if ((next.eventChain ?? []).some(e => e.kind === 38100 && e.raw.tags.some(t => t[0] === 'renewal'))) return null;
   const lang = getCurrentLang();
   return {
     escrowId: next.id,

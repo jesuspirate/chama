@@ -19,7 +19,7 @@ self.addEventListener("activate", (event) => {
 // text stays generic for privacy and because the VPS has nothing specific to say.
 self.addEventListener("push", (event) => {
   let body = "A new offer appeared. Open Chama to check your match.";
-  // Tolerate (and ignore) any payload: a well-behaved watcher sends none, but a
+  // The watcher sends opaque matched tags and freshness time; a
   // future opaque hint must never leak content onto the lock screen.
   try {
     if (event.data) {
