@@ -111,3 +111,16 @@ assert.equal(
 );
 
 console.log("Circle-seat exposure regressions passed.");
+
+// Deleting N offers publishes N cancellations before their local hides. A
+// failed publish leaves that listing and all later ones available for retry.
+const { deleteListings } = await import('./delete-listings.js');
+const operations: string[] = [];
+assert.equal(await deleteListings(['a', 'b', 'c'], async id => {
+  operations.push(`cancel:${id}`);
+}, id => operations.push(`retire:${id}`)), 3);
+assert.deepEqual(operations, ['cancel:a', 'retire:a', 'cancel:b', 'retire:b', 'cancel:c', 'retire:c']);
+operations.length = 0;
+await assert.rejects(deleteListings(['a', 'b'], async () => { throw Error('relay refused'); },
+  id => operations.push(id)), /relay refused/);
+assert.deepEqual(operations, []);

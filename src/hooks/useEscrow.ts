@@ -3657,12 +3657,11 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     const params = buildEditCreateParams(state, edits);
     const created = await createEscrow(params as Parameters<EscrowClient["createEscrow"]>[0]);
 
-    // Retire locally FIRST so the old listing leaves this seller's own surfaces
-    // (and can never be auto-renewed) even if the CANCEL publish fails.
-    retireListing(escrowId);
+    // Retirement follows a published cancellation; failed deletion stays visible.
     let oldCancelled = false;
     try {
       await client.cancel(escrowId, "seller_edited_listing");
+      retireListing(escrowId);
       oldCancelled = true;
     } catch (e) {
       console.warn("[chama] edit: the replacement published but cancelling the old listing failed:", e);

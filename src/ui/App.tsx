@@ -1,3 +1,4 @@
+import { deleteListings } from "../escrow-engine/delete-listings.js";
 import { listPaidLockRecoveries } from "../payments/paid-lock-recovery.js";
 import { fundingSeatDeadline } from "../payments/seat-funding.js";
 import { hasVerifiedTradeCreate } from "../escrow-engine/trade-index.js";
@@ -1183,6 +1184,7 @@ export default function App() {
     pendingDeleteRef.current = null;
     try {
       await actions.cancel(id, "seller_deleted_listing");
+      markRetired(id);
       setSellerManageId(null);
       setToast({ message: t("app.listingDeleted"), type: "success" });
     } catch (e: any) {
@@ -1719,9 +1721,8 @@ export default function App() {
   };
 
   // "Clear my unfunded listings" (#82): the seller's own never-funded offers —
-  // the wall of stale/abandoned/test listings. Retiring them drops them from
-  // Browse/Me immediately and they lapse for everyone within ~24h (no CANCEL
-  // write-burst). Only touches the user's OWN unfunded listings.
+  // the wall of stale/abandoned/test listings. Publish each cancellation before
+  // retiring locally so every device sees the same deletion.
   const clearableListings = pubkey
     ? ownUnfundedListings(escrows.values(), pubkey, retiredIds)
     : [];
@@ -1732,11 +1733,15 @@ export default function App() {
   const knownTradesForConcentration = useMemo(() => [...escrows.values()], [escrows]);
 
   const [showClearListings, setShowClearListings] = useState(false);
-  const clearUnfundedListings = () => {
-    for (const s of clearableListings) retireListing(s.id);
-    setRetiredTick((n) => n + 1);
-    setShowClearListings(false);
-    setToast({ message: t("me.listingsCleared", { count: clearableListings.length }), type: "success" });
+  const clearUnfundedListings = async () => {
+    let cleared = 0;
+    try {
+      cleared = await deleteListings(clearableListings.map(listing => listing.id), actions.cancel, markRetired);
+      setShowClearListings(false);
+      setToast({ message: t("me.listingsCleared", { count: cleared }), type: "success" });
+    } catch (error: any) {
+      setToast({ message: error?.message || t("app.couldntDeleteListing"), type: "error" });
+    }
   };
 
   // Tier 3 bond resolution: chain-verify the seller's own bond once per connect
@@ -1813,6 +1818,8 @@ export default function App() {
     }
   }, [connected, pubkey, sellerBonded, bondTip, storeAutoRenewEnabled, escrows, now]);
 
+  const cancellingDuplicatesRef = useRef(new Set<string>());
+
   // One-time dedupe (#74/#75): collapse an existing pile of accidental renewals
   // (the pre-fix +N-per-open duplication) down to one live listing per unique
   // offer. Retire ALL-BUT-THE-NEWEST of each identity group among the seller's
@@ -1834,8 +1841,14 @@ export default function App() {
     );
     const superseded = supersededListingIds(ownUnfunded);
     if (superseded.length === 0) return;
-    for (const id of superseded) retireListing(id);
-    setRetiredTick((n) => n + 1);
+    for (const id of superseded) {
+      if (cancellingDuplicatesRef.current.has(id)) continue;
+      cancellingDuplicatesRef.current.add(id);
+      void actions.cancel(id, "seller_duplicate_listing")
+        .then(() => markRetired(id))
+        .catch(error => console.warn("[chama] duplicate cancellation failed", id, error))
+        .finally(() => cancellingDuplicatesRef.current.delete(id));
+    }
   }, [connected, pubkey, escrows]);
 
   // ── Monthly CBP recurrence ─────────────────────────────────────────────
