@@ -1,4 +1,9 @@
 export const fund: Record<string, string> = {
+  "payment.withdrawalUnavailable": "Zinatoka kwenye shirikisho kupitia mnyororo · ada haipatikani sasa · ~saa 1",
+  "payment.withdrawalLine": "Zinatoka kwenye shirikisho kupitia mnyororo · ada ~sats {fee} · ~saa 1",
+  "payment.depositLine": "Weka kwenye {federation} · ada sats {fee} · uthibitisho {confirmations}",
+  "payment.onchain": "Mnyororo",
+  "payment.deposit": "Weka",
   "payment.bitcoinMinimum": "Escrow ya Bitcoin inahitaji angalau sats 25,000 kwa biashara — ongeza kiwango cha chini au chagua ecash ya Chama",
   "payment.bitcoin": "Bitcoin",
   "payment.bitcoinHeld": "Zinahifadhiwa kwenye Bitcoin · 2 kati ya 3 · hakuna mtunzaji.",

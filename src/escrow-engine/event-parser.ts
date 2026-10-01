@@ -223,6 +223,7 @@ function validateCreatePayload(data: unknown): data is CreatePayload {
   if (d.community !== undefined && (typeof d.community !== "string" || d.community.length === 0)) {
     return false;
   }
+  if (d.delivery !== undefined && !["ship","meet","service","digital"].includes(d.delivery as string)) return false;
   // PR 2: fulfillment is optional — handleCreate normalizes it. When
   // present it must be one of the three known values.
   if (d.fulfillment !== undefined

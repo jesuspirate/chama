@@ -1,5 +1,6 @@
 // fr/common — Session B fills this from src/i18n/en/common.ts (key set must match EXACTLY).
 export const common: Record<string, string> = {
+  "common.retry": "Réessayer",
   "common.back": "Retour",
   "common.cancel": "Annuler",
   "common.close": "Fermer",

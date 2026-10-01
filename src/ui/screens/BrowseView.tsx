@@ -203,6 +203,9 @@ export function BrowseView({
     + (browseScope === "all" ? countOwnListings(scopedNonMatching, pubkey) : 0);
   const categoryMatching = filterOwnListings(scopedMatching, pubkey, false);
   const categoryNonMatching = browseScope === "all" ? filterOwnListings(scopedNonMatching, pubkey, false) : [];
+  const visibleCategoryChips = BROWSE_CATS.filter(c => c.id !== "all" && (CHAMA_CIRCLES_ENABLED || c.id !== "chama"))
+    .filter(c => countListingsByCategory(categoryMatching, categoryNonMatching, c.id) > 0);
+  const showCategoryChips = visibleCategoryChips.length + (ownListingCount > 0 ? 1 : 0) > 1;
 
   // A persisted Mine preference should not strand a returning user on an empty
   // feed. Wait until discovery settles, then fall back to All when they own 0.
@@ -498,14 +501,16 @@ export function BrowseView({
         />
       </div>
 
-      <div style={{
+      {browseScope === "all" && <p style={{fontSize:11, color:T.muted, marginTop:0}}>{t("browse.allExcludesMine")}</p>}
+
+      {showCategoryChips && <div data-browse-category-row style={{
         display: "flex", gap: 6, marginBottom: 12,
         overflowX: "auto",
         scrollbarWidth: "none" as const,
         WebkitOverflowScrolling: "touch" as const,
         paddingBottom: 2,
       }}>
-        {(
+        {ownListingCount > 0 && (
           <button
             type="button"
             onClick={() => {
@@ -526,7 +531,6 @@ export function BrowseView({
             aria-pressed={showOwn}
             style={{
               order: -1,
-              opacity: ownListingCount === 0 ? 0.45 : 1,
               flexShrink: 0,
               padding: "7px 11px", borderRadius: 18,
               background: showOwn ? T.accentDim : T.surface,
@@ -548,7 +552,7 @@ export function BrowseView({
             }}>{ownListingCount}</span>
           </button>
         )}
-        {BROWSE_CATS.filter(c => c.id !== "all" && (CHAMA_CIRCLES_ENABLED || c.id !== "chama")).map(c => {
+        {visibleCategoryChips.map(c => {
           const active = !showOwn && browseCategory === c.id;
           // Mine and the public shelves partition the scoped search results.
           const count = countListingsByCategory(categoryMatching, categoryNonMatching, c.id);
@@ -561,7 +565,6 @@ export function BrowseView({
               }}
               style={{
                 order: 1,
-                opacity: count === 0 ? 0.45 : 1,
                 flexShrink: 0,
                 padding: "7px 11px", borderRadius: 18,
                 background: active ? T.accentDim : T.surface,
@@ -591,7 +594,7 @@ export function BrowseView({
           );
         })}
 
-      </div>
+      </div>}
 
       {search && totalListings > 0 && filteredTotal === 0 && (
         <div style={{

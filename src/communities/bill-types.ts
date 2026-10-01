@@ -33,14 +33,14 @@ function billLabel(bt: BillType): string {
 
 // 🇰🇪 Kenya — Nairobi-first (Jetty to confirm the exact set on-device).
 const KENYA: BillType[] = [
-  { id: "electricity-kplc", label: "Electricity — KPLC", icon: "⚡" },
+  { id: "electricity-kplc", label: "Electricity — KPLC", labelKey:"create.billElectricityKplc", icon: "⚡" },
   { id: "water",            label: "Water",              labelKey: "create.billWater",      icon: "💧" },
   { id: "school-fees",      label: "School fees",        labelKey: "create.billSchoolFees", icon: "🎓" },
   { id: "rent",             label: "Rent",               labelKey: "create.billRent",       icon: "🏠" },
-  { id: "tv",               label: "TV (DSTV/GOtv/Zuku)", icon: "📺" },
+  { id: "tv",               label: "TV (DSTV/GOtv/Zuku)", labelKey:"create.billTv", icon: "📺" },
   { id: "internet",         label: "Internet / fibre",   labelKey: "create.billInternet",   icon: "🌐" },
   { id: "airtime-data",     label: "Airtime & data",     labelKey: "create.billAirtime",    icon: "📱" },
-  { id: "health-sha",       label: "Health — SHA/SHIF",  icon: "🛡️" },
+  { id: "health-sha",       label: "Health — SHA/SHIF", labelKey:"create.billHealthSha", icon: "🛡️" },
   { id: "cooking-gas",      label: "Cooking gas (LPG)",  labelKey: "create.billCookingGas", icon: "🔥" },
   { id: "other",            label: "Other",              labelKey: "create.billOther",      icon: "🧾" },
 ];

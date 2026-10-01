@@ -1,3 +1,4 @@
+import { marketDelivery } from "../../labels/market-delivery.js";
 import { reabsorbedLockAmount } from "../../fedimint/pending-native-locks.js";
 import { RejectedLockRefund } from "../components/RejectedLockRefund.js";
 import { getEcashExport } from "../../payments/ecash-exports.js";
@@ -176,7 +177,7 @@ export function LiveTradeSurface({
   }, [state.id, state.status, participants.buyer, participants.seller, myRole]);
   const onchainOverlay = onchainOpen ? state.status === EscrowStatus.CREATED
     ? <FundingModalShell label={state.title || state.description || "Fund trade"} onClose={() => setOnchainOpen(false)}>
-        <PaymentRails rail="onchain" onchainContext={{kind:"bitcoin"}} disabledReasons={{ lightning: tr("payment.bitcoinOnly"), ecash: tr("payment.bitcoinOnly") }} />
+        <PaymentRails rail="onchain" rails={["onchain"]} onchainContext={{kind:"bitcoin"}} disabledReasons={{ lightning: tr("payment.bitcoinOnly"), ecash: tr("payment.bitcoinOnly") }} />
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "16px 0" }}>
           <div><BitcoinAmount msats={state.joinHolds?.buyer?.amountMsats ?? state.amountMsats} size={14} />
             <h2 style={{ color: T.text, fontSize: 20, margin: "6px 0", overflowWrap: "anywhere" }}>{state.title || state.description || "Fund trade"}</h2></div>
@@ -529,7 +530,7 @@ export function LiveTradeSurface({
               disabled={busy}
               tone="release"
               onClick={() => run(() => onVote(Outcome.RELEASE))}
-              label={tr("lts.yesConfirm")}
+              label={tr(state.category === "marketplace" ? `lts.mark${marketDelivery(state)}` : "lts.yesConfirm")}
             />
             {cancelOpen ? (
               <div>
@@ -657,7 +658,10 @@ export function LiveTradeSurface({
           </Decision>
         );
       }
-      return <Waiting message={state.resolvedOutcome === Outcome.RELEASE ? tr("lts.resolvedReleased") : tr("trade.nsRefundedBackTo", { party: tr(winner?.role === Role.SELLER ? "trade.sellerNoun" : "trade.buyerNoun") })} />;
+      const recipient = payoutRecipientFor(state, state.resolvedOutcome ?? Outcome.RELEASE);
+      const recipientName = samePubkey(recipient?.pubkey, pubkey) ? tr("trade.you")
+        : profileNameFor(profileNames, recipient?.pubkey, kind0Enabled) ?? roleLabel(recipient?.role ?? null);
+      return <Waiting message={tr("lts.resolvedTo", {amount:fmtSats(effectiveMsats), name:recipientName})} />;
     }
 
     if (status === EscrowStatus.CLAIMED) {
@@ -1063,14 +1067,14 @@ function roleLabel(role: Role | null): string {
 }
 function deedQuestion(state: EscrowState, _role: Role | null): string {
   switch (state.category) {
-    case "marketplace": return tr("lts.deedMarket");
+    case "marketplace": return tr(`lts.deed${marketDelivery(state)}`);
     case "bill-pay": return tr("lts.deedBill");
     default: return tr("lts.deedDefault");
   }
 }
 function receiptQuestion(state: EscrowState, _role: Role | null): string {
   switch (state.category) {
-    case "marketplace": return tr("lts.receiptMarket");
+    case "marketplace": return tr(`lts.receipt${marketDelivery(state)}`);
     case "bill-pay": return tr("lts.receiptBill");
     default: return tr("lts.receiptDefault");
   }

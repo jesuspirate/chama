@@ -1,5 +1,11 @@
 // fr/create — Session B fills this from src/i18n/en/create.ts (key set must match EXACTLY).
 export const create: Record<string, string> = {
+  "create.reviewManually": "Vérifier vous-même",
+  "create.publishingSub": "Votre offre va être publiée. Patientez un instant.",
+  "create.publishingTitle": "Publication en cours",
+  "create.billHealthSha": "Santé — SHA/SHIF",
+  "create.billTv": "Télévision (DSTV/GOtv/Zuku)",
+  "create.billElectricityKplc": "Électricité — KPLC",
   "create.listingBody": "Description — paragraphes, listes, **gras**, *italique*, [texte](https://…)",
   // CBP mensuel — bascule facture récurrente (paiement de factures uniquement).
   "create.recurringToggleLabel": "Mensuel récurrent",

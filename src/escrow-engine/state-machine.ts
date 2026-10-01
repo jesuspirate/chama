@@ -385,7 +385,7 @@ function handleCreate(event: ParsedEscrowEvent<CreatePayload>): TransitionResult
   // for a p2p-trade, replay normalizes it.
   const fulfillment: "physical" | "service" | "digital" =
     p.category === "marketplace"
-      ? (p.fulfillment ?? "physical")
+      ? (p.delivery ? (p.delivery === "service" || p.delivery === "digital" ? p.delivery : "physical") : (p.fulfillment ?? "physical"))
       : "service";
 
   if (p.chamaPolicy) {
@@ -415,6 +415,7 @@ function handleCreate(event: ParsedEscrowEvent<CreatePayload>): TransitionResult
     paymentMethods: normalizePaymentMethods(p.paymentMethods),
     items,
     fulfillment,
+    ...(p.category === "marketplace" && p.delivery ? {delivery:p.delivery} : {}),
     community: p.community ?? null,
     country: p.country ?? null,
     billType: p.billType ?? null,

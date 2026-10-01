@@ -1,6 +1,19 @@
 // LiveTradeSurface — the guided question-based live-trade room.
 // Extracted for 6.3.1 — EN is source of truth.
 export const lts: Record<string, string> = {
+  "lts.markdigital": "Mark it sent",
+  "lts.markservice": "Mark it done",
+  "lts.markmeet": "Mark it done",
+  "lts.markship": "Mark it sent",
+  "lts.receiptdigital": "Did you receive the file as agreed?",
+  "lts.receiptservice": "Was the work done as agreed?",
+  "lts.receiptmeet": "Did you receive it as agreed?",
+  "lts.receiptship": "Did the item arrive as described?",
+  "lts.deeddigital": "Did you deliver the file?",
+  "lts.deedservice": "Did you do the work?",
+  "lts.deedmeet": "Did you hand it over?",
+  "lts.deedship": "Did you ship the item?",
+  "lts.resolvedTo": "Resolved — {amount} sats go to {name}",
   "lts.releaseToYou": "Once {name} confirms, the {amount} come to you.",
   "lts.releaseToName": "Confirm and the {amount} release to {name}.",
   "lts.howToPay": "How to pay {name}",

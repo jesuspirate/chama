@@ -25,15 +25,16 @@ export function PaymentRails({ rail, rails = ["lightning", "onchain", "ecash"], 
   const disabled = (r: PaymentRail) => !!disabledReasons?.[r] || !!lockedRail && r !== lockedRail;
   const railLabel = (r: PaymentRail) => r !== "onchain" ? t(`payment.${r}`)
     : onchainContext.kind === "bitcoin" ? t("payment.bitcoin")
-    : t(onchainContext.kind === "deposit" ? "payment.federationDeposit" : "payment.federationWithdrawal", {federation:onchainContext.federation});
+    : t(onchainContext.kind === "deposit" ? "payment.deposit" : "payment.onchain");
   const onchainDetail = onchainContext.kind === "bitcoin" ? t("payment.bitcoinHeld")
     : onchainContext.kind === "deposit" ? onchainContext.pegInFeeSats !== undefined && onchainContext.finalityDelay !== undefined
-      ? t("payment.depositTerms", {fee:onchainContext.pegInFeeSats, confirmations:onchainContext.finalityDelay}) : t("fund.checkingOnchainFee")
-    : onchainContext.pegOutFeeSats !== undefined ? t("payment.pegOutFee", {fee:onchainContext.pegOutFeeSats}) : t("payment.pegOutFeeUnavailable");
+      ? t("payment.depositLine", {federation:onchainContext.federation, fee:onchainContext.pegInFeeSats, confirmations:onchainContext.finalityDelay})
+      : t("payment.federationDeposit", {federation:onchainContext.federation}) + " · " + t("fund.checkingOnchainFee")
+    : t(onchainContext.pegOutFeeSats !== undefined ? "payment.withdrawalLine" : "payment.withdrawalUnavailable", {fee:onchainContext.kind === "withdrawal" ? onchainContext.pegOutFeeSats ?? 0 : 0});
   return <><PagerPills wrapLabels disabled={rails.map(disabled)} tabIds={rails} tabs={rails.map(railLabel)} icons={rails.map(r => icons[r])}
     active={Math.max(0, rails.indexOf(rail))} chevrons={false} label={t("payment.rail")}
     onSelect={i => { if (!disabled(rails[i])) onSelect?.(rails[i]); }} />
-    {rails.includes("onchain") && <div data-onchain-purpose={onchainContext.kind} style={{fontSize:11, color:T.muted, lineHeight:1.5, marginBottom:6}}>{onchainDetail}</div>}
+    {rail === "onchain" && <div data-onchain-purpose={onchainContext.kind} style={{fontSize:11, color:T.muted, lineHeight:1.5, marginBottom:6}}>{onchainDetail}</div>}
     {lockedRail && <div style={{ fontSize: 11, color: T.muted, lineHeight: 1.4, marginBottom: 4 }}>{t((alternativeRailAvailable ?? rails.some(r => r !== lockedRail && !disabledReasons?.[r])) ? "fund.railLocked" : "fund.railLockedOnly", { rail: railLabel(lockedRail) })}</div>}
     {rails.filter(r => disabledReasons?.[r]).map(r => <div key={r} style={{ fontSize: 11, color: T.muted, lineHeight: 1.4, marginBottom: 4 }}>{railLabel(r)}: {disabledReasons?.[r]}</div>)}
   </>;

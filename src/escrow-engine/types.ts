@@ -365,6 +365,7 @@ export interface CreatePayload {
    *  rewrites this to the canonical "service" if supplied (or fills
    *  it in if missing) so the chain is consistent. */
   fulfillment?: "physical" | "service" | "digital";
+  delivery?: "ship" | "meet" | "service" | "digital";
   /** Community slug from the static registry (PR 2). Optional for
    *  backwards compatibility with pre-registry trades — those flow
    *  through Browse as cross-community listings without a pill. */
@@ -1082,6 +1083,7 @@ export interface EscrowState {
    *  after handleCreate runs — defaults to "service" for non-marketplace
    *  categories, "physical" for marketplace when not specified. */
   fulfillment: "physical" | "service" | "digital";
+  delivery?: "ship" | "meet" | "service" | "digital";
   /** Community slug. Null for pre-registry trades (no community tag
    *  on CREATE) — Browse renders these without a community pill. */
   community: string | null;

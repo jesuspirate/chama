@@ -1,3 +1,4 @@
+import { satsWithPremium } from "../../payments/bill-pay-quote.js";
 import { RangeFiat } from "../components/RangeFiat.js";
 // ══════════════════════════════════════════════════════════════════════════
 // Chama — Create wizard (v0.2.0 item 5 + items 7, 10)
@@ -440,11 +441,6 @@ function parsePremiumBps(value: string): number | undefined {
   return Math.round(clamped * 100);
 }
 
-function satsWithPremium(baseSats: number, premiumBps: number | undefined): number {
-  if (!Number.isFinite(baseSats) || baseSats <= 0) return 0;
-  const multiplierBps = Math.max(1, 10_000 + (premiumBps ?? 0));
-  return Math.max(1, Math.ceil((baseSats * multiplierBps) / 10_000));
-}
 
 function parseOptionalPositiveInt(value: string): number | undefined {
   const parsed = Number.parseInt(value, 10);
@@ -1218,6 +1214,7 @@ export function CreateForm({
       premium: initialCanvasIntent.premiumBps !== undefined ? String(initialCanvasIntent.premiumBps / 100) : initial.premium,
       stock: initialCanvasIntent.stock !== undefined ? String(initialCanvasIntent.stock) : initial.stock,
       escrowMode: initialCanvasIntent.escrowMode,
+      fulfillment: initialCanvasIntent.delivery === "service" || initialCanvasIntent.delivery === "digital" ? initialCanvasIntent.delivery : initial.fulfillment,
       // Exchange range → one exchange-bracket menu item [min..max]. Publishes
       // through the exact same menu-mode assembly the full editor uses.
       ...(initialCanvasIntent.vertical === "p2p-trade"
@@ -1578,6 +1575,9 @@ export function CreateForm({
           ? SETTLEMENT_POLICY_ONCHAIN_FULL
           : SETTLEMENT_POLICY_ECASH_SLICES,
         ...(slicePlan ? { sliceCount: slicePlan.sliceCount } : {}),
+        delivery: vertical === "marketplace"
+          ? form.fulfillment === "physical" ? (initialCanvasIntent?.delivery === "meet" ? "meet" : "ship") : form.fulfillment
+          : undefined,
         fulfillment: vertical === "work" ? "service" : vertical === "marketplace" ? form.fulfillment : undefined,
         mintUrl: escrowMode === "onchain" ? "" : mintUrl,
         communityArbiters: communityArbiters.length > 0 ? communityArbiters : undefined,

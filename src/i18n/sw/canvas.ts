@@ -1,4 +1,11 @@
 export const canvas: Record<string, string> = {
+  "canvas.fromOfferBracket": "Kutoka ofa ya muuzaji ya sats {min}–{max}",
+  "canvas.deliverydigital": "Kidijitali",
+  "canvas.deliveryservice": "Huduma",
+  "canvas.deliverymeet": "Kutana",
+  "canvas.deliveryship": "Safirisha",
+  "canvas.deliveryQ": "Mnunuzi ataipataje?",
+  "canvas.billSatsSummary": "bili ya sats {base} + bonasi ya sats {bonus} = sats {total} kwako",
   "canvas.backOffers": "Ofa",
   "canvas.staysLive": "Inabaki hai unapotumia Chama. Ukikosekana siku moja, inasitishwa.",
   "canvas.renewPaused": "Imesitishwa — mnunuzi alisubiri na hukufunga. Sasisha ili ionekane tena.",

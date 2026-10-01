@@ -121,9 +121,15 @@ public class ChamaWakeWorker extends Worker {
                     if ("shown".equals(posted)) fired.put(note.getString("tag"));
                     if ("rate-limited".equals(posted)) retry = true;
                 }
-                JSONArray bounded = new JSONArray();
-                for (int i = Math.max(0, fired.length() - 500); i < fired.length(); i++) bounded.put(fired.get(i));
-                ChamaPushStore.prefs(c).edit().putString("wakeFired", bounded.toString()).apply();
+                synchronized (ChamaPushStore.class) {
+                    java.util.LinkedHashSet<String> merged = new java.util.LinkedHashSet<>();
+                    JSONArray current = new JSONArray(ChamaPushStore.prefs(c).getString("wakeFired", "[]"));
+                    for (int i = 0; i < current.length(); i++) merged.add(current.getString(i));
+                    for (int i = 0; i < fired.length(); i++) merged.add(fired.getString(i));
+                    JSONArray bounded = new JSONArray(); int skip = Math.max(0, merged.size() - 500), index = 0;
+                    for (String tag : merged) if (index++ >= skip) bounded.put(tag);
+                    ChamaPushStore.prefs(c).edit().putString("wakeFired", bounded.toString()).apply();
+                }
                 if (retry) return Result.retry();
                 synchronized (ChamaPushStore.class) {
                     if (snapshot.equals(ChamaPushStore.prefs(c).getString("snapshot", "")))

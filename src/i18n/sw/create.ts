@@ -1,4 +1,7 @@
 export const create: Record<string, string> = {
+  "create.billHealthSha": "Afya — SHA/SHIF",
+  "create.billTv": "Runinga (DSTV/GOtv/Zuku)",
+  "create.billElectricityKplc": "Umeme — KPLC",
   "create.listingBody": "Maelezo — aya, orodha, **nzito**, *italiki*, [maandishi](https://…)",
   "create.recurringToggleLabel": "Inajirudia kila mwezi",
   "create.publishingTitle": "Inachapisha ofa yako…",

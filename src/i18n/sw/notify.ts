@@ -1,4 +1,11 @@
 export const notify: Record<string, string> = {
+  "notify.marketActiondigital": "tuma faili na utie alama kuwa imetumwa",
+  "notify.marketActionservice": "fanya kazi na utie alama kuwa imekamilika",
+  "notify.marketActionmeet": "kabidhi na utie alama kuwa imekamilika",
+  "notify.marketActionship": "tuma bidhaa na utie alama kuwa imetumwa",
+  "notify.newMessageFallback": "Ujumbe mpya",
+  "notify.resolvedBody": "Imeamuliwa — sats zinaenda kwa {who}.",
+  "notify.resolvedTitle": "Imeamuliwa",
   "notify.namedLockedBody": "{who} amefungia sats {amount} — {action}.",
   "notify.listingNeedsYou": "Tangazo lako linakuhitaji",
   "notify.listingTitle": "Tangazo lako",
@@ -13,7 +20,7 @@ export const notify: Record<string, string> = {
   "notify.tradeLabel": "biashara yako ya sats {amount}",
 
   "notify.approvedBody":
-    "{label} imeamuliwa kwa upande wako — fungua Chama kudai sats zako.",
+    "Sats zako {amount} ziko tayari — fungua Chama uzidai.",
   "notify.approvedTitle": "✅ Dai lako liko tayari",
   "notify.arbiterKeyBody": "{label} imekuchagua kuwa msuluhishi. Fungua Chama na uchapishe ufunguo wako wa escrow ili ugharamiaji wa mnyororo uanze.",
   "notify.arbiterKeyTitle": "🔑 Biashara ya mnyororo inahitaji ufunguo wako",

@@ -1,4 +1,6 @@
 export const browse: Record<string, string> = {
+  "browse.otherCurrencies": "Sarafu nyingine · {count}",
+  "browse.allExcludesMine": "Ofa za wengine — zako ziko chini ya Zangu.",
   "browse.copyDiagnostics": "Nakili uchunguzi wa Vinjari",
   "browse.advancedFooterLine1": "Matukio: aina 38100-38108 · 2-kati-ya-3 SSS",
   "browse.advancedFooterLine2": "Imesimbwa kwa NIP-44 · marudio ya relay · hakuna seva inayoshikilia",

@@ -1,5 +1,10 @@
 // es/fund — Session C fills this from src/i18n/en/fund.ts (key set must match EXACTLY).
 export const fund: Record<string, string> = {
+  "payment.withdrawalUnavailable": "Sale de la federación en cadena · comisión no disponible ahora · ~1 hora",
+  "payment.withdrawalLine": "Sale de la federación en cadena · comisión ~{fee} sats · ~1 hora",
+  "payment.depositLine": "Depósito en {federation} · comisión {fee} sats · {confirmations} confirmaciones",
+  "payment.onchain": "En cadena",
+  "payment.deposit": "Depositar",
   "payment.bitcoinMinimum": "La custodia en Bitcoin requiere al menos 25.000 sats por intercambio — sube el mínimo o elige ecash de Chama",
   "payment.bitcoin": "Bitcoin",
   "payment.bitcoinHeld": "En Bitcoin · 2 de 3 · sin custodio.",

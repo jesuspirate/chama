@@ -1,3 +1,5 @@
+import { MARKET_DELIVERIES, type MarketDelivery } from "../../labels/market-delivery.js";
+import { billPayQuote } from "../../payments/bill-pay-quote.js";
 import { filterListingsByCurrency, listingMatchesCurrency } from "../listing-currency.js";
 import { RangeFiat } from "../components/RangeFiat.js";
 import { ConductFacts } from "../components/ConductFacts.js";
@@ -34,7 +36,7 @@ import {
   phonePlaceholderForCountryIso,
 } from "../../payments/saved-handles.js";
 import type { AggregateRatings } from "../../reputation/ratings.js";
-import { estimateSatsForFiat } from "../amount-display.js";
+import { formatEstimatedFiatForMsats, estimateSatsForFiat } from "../amount-display.js";
 import { shareTradeLink } from "../share-link.js";
 import { useBitcoinPrice } from "../hooks/useBitcoinPrice.js";
 import { useFiatRates } from "../hooks/useFiatRates.js";
@@ -71,6 +73,7 @@ export interface AssistedCanvasResume {
   detail: string;
   detailMax: string;
   terms: string;
+  delivery?: MarketDelivery;
   paymentRails: string[];
   matches: GuidedMatchCandidate[];
   goodsMatches: MarketMatch[];
@@ -166,6 +169,7 @@ export function AssistedCanvas({
   const [detail, setDetail] = useState(resume?.detail ?? "");
   // Second half of the Exchange sell RANGE (min = detail, max = detailMax).
   const [detailMax, setDetailMax] = useState(resume?.detailMax ?? "");
+  const [delivery, setDelivery] = useState<MarketDelivery>(resume?.delivery ?? "ship");
   const [terms, setTerms] = useState(resume?.terms ?? "");
   const [paymentRails, setPaymentRails] = useState<string[]>(resume?.paymentRails ?? readPreferredRails());
   // Why the nearest offers were rejected (debug + honest no-match copy).
@@ -189,7 +193,7 @@ export function AssistedCanvas({
   // Snapshot every render into a plain ref; hand it to the parent on unmount.
   const snapshotRef = useRef<AssistedCanvasResume | null>(null);
   snapshotRef.current = {
-    at: Date.now(), surface, bring, want, detail, detailMax, terms, paymentRails,
+    at: Date.now(), surface, bring, want, detail, detailMax, terms, delivery, paymentRails,
     matches, goodsMatches, matchWhy, premiumBps, premiumMode, premiumInput,
   };
   useEffect(() => () => {
@@ -580,6 +584,7 @@ export function AssistedCanvas({
       })
     : null;
 
+  const billQuote = estimatedSats ? billPayQuote(estimatedSats, premiumBps) : null;
   const fiatQuote = { currency: fiatCurrency, usdPerBtc: btcPrice.usd, usdFiatRates: fiatRates.rates };
 
   const offeredSats = fiatBring ? estimatedSats ?? 0
@@ -590,9 +595,10 @@ export function AssistedCanvas({
   const railChoice = escrow.available && <div role="group" aria-label={tr("onchain.modeLabel")} style={{ display: "flex", gap: 8, marginTop: 12 }}>
     {(["onchain", "ecash"] as const).map(mode => <button key={mode} type="button" aria-pressed={escrowMode === mode} onClick={() => setEscrowChoice(mode)} style={{ flex: 1, padding: 10, borderRadius: 12, border: `1px solid ${escrowMode === mode ? T.accent : T.border}`, background: escrowMode === mode ? T.accentDim : T.card, color: T.text }}>
       {tr(mode === "onchain" ? "payment.bitcoin" : "onchain.modeEcash")}
-      {mode === "onchain" && <div style={{fontSize:11, color:T.muted, marginTop:6}}>{tr("payment.bitcoinHeld")}</div>}
     </button>)}
   </div>;
+  const railExplanation = escrow.available && escrowMode === "onchain"
+    && <div style={{fontSize:11, color:T.muted, marginTop:6}}>{tr("payment.bitcoinHeld")}</div>;
 
   const openPreparedOffer = () => {
     if (!bring || !want || escrow.invalidMinimum) return;
@@ -613,7 +619,7 @@ export function AssistedCanvas({
       return;
     }
     if (bring === "goods") {
-      onCreate({ vertical: "marketplace", description: detail.trim(), amountSats: positiveNumber(terms) ?? undefined, stock: 1, escrowMode, autoPublish: true });
+      onCreate({ vertical: "marketplace", delivery, description: detail.trim(), amountSats: positiveNumber(terms) ?? undefined, stock: 1, escrowMode, autoPublish: true });
       return;
     }
     onCreate({
@@ -865,11 +871,16 @@ export function AssistedCanvas({
         {sellRange && <RangeFiat min={rangeMin} max={rangeMax} {...fiatQuote} />}
         {bring === "bill" && estimatedSats && <ReviewRow label={tr("canvas.bitcoinOffered")} value={tr("canvas.aboutSats", { amount: estimatedSats.toLocaleString() })} />}
         {bring === "sats" && <ReviewRow label={tr("canvas.receiveThrough")} value={paymentRailLabels(effectiveRails)} />}
-        {railChoice}
+        {railChoice}{railExplanation}
         {escrow.invalidMinimum && <div style={{ color: T.amber, marginTop: 8 }}>{minimumMessage} <button type="button" onClick={() => setSurface("detail")}>Change amount</button></div>}
         {escrowMode === "onchain" && escrow.available
           && <OnchainFeeCheckout amountSats={escrow.amountSats} rate={onchainFee.rate} />}
         {((bring === "sats" && want === "cash") || bring === "bill") && <ReviewRow label={bring === "bill" ? tr("canvas.volunteerBonus") : tr("canvas.yourRate")} value={premiumBps === 0 ? tr("canvas.marketRate") : `+${(premiumBps / 100).toLocaleString()}%`} />}
+        {bring === "bill" && billQuote && <div data-bill-quote style={{fontSize:13, color:T.text, lineHeight:1.6, marginBottom:12}}>
+          {tr("canvas.billSatsSummary", {base:billQuote.base.toLocaleString(), bonus:billQuote.bonus.toLocaleString(), total:billQuote.total.toLocaleString()})}
+          <div style={{color:T.muted}}>{formatEstimatedFiatForMsats({amountMsats:billQuote.total * 1000, ...fiatQuote})}</div>
+        </div>}
+        {bring === "goods" && <ReviewRow label={tr("canvas.deliveryQ")} value={tr(`canvas.delivery${delivery}`)} />}
         <ReviewRow label={tr("canvas.visibleIn")} value={community?.displayName ?? browseCommunity} last />
       </div>
       <Primary disabled={escrow.invalidMinimum} onClick={openPreparedOffer}>{tr("canvas.publishIt")}</Primary>
@@ -884,6 +895,11 @@ export function AssistedCanvas({
       <RouteCue>{routeLabel}</RouteCue>
       <h1 style={headingStyle()}>{termsConfig.heading}</h1>
       <p style={subStyle()}>{termsConfig.sub}</p>
+      {bring === "goods" && <div role="group" aria-label={tr("canvas.deliveryQ")} style={{marginBottom:16}}>
+        <p>{tr("canvas.deliveryQ")}</p><div style={{display:"flex", gap:6}}>{MARKET_DELIVERIES.map(mode =>
+          <button key={mode} type="button" aria-pressed={delivery === mode} onClick={()=>setDelivery(mode)}
+            style={{flex:1, minHeight:44, borderRadius:18, background:delivery === mode ? T.accentDim : T.surface, color:T.text, border:`1px solid ${T.border}`}}>{tr(`canvas.delivery${mode}`)}</button>)}</div>
+      </div>}
       <QuestionCard>
         {termsConfig.kind === "rail" ? (
           <div>

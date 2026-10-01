@@ -223,6 +223,11 @@ final class ChamaPushStore {
         return post(c, wake, trade, note.getString("tag"), note.getString("title"), note.getString("body"), false, note.optString("group", ""), note);
     }
 
+    static String postForegroundChat(Context c, String wake, JSONObject note) throws Exception {
+        return post(c, wake, note.getString("escrowId"), note.getString("tag"), note.getString("title"),
+            note.getString("body"), false, "", note, true);
+    }
+
     static synchronized void clearTrade(Context c, String trade) {
         NotificationManagerCompat manager = NotificationManagerCompat.from(c);
         int state = prefs(c).getInt("tradeNote:" + trade, 0);
@@ -241,11 +246,24 @@ final class ChamaPushStore {
     private static String post(Context c, String wake, String trade, String tag, String title, String body, boolean test, String group) {
         return post(c, wake, trade, tag, title, body, test, group, null);
     }
-    private static synchronized String post(Context c, String wake, String trade, String tag, String title, String body, boolean test, String group, JSONObject note) {
+    private static String post(Context c, String wake, String trade, String tag, String title, String body, boolean test, String group, JSONObject note) {
+        return post(c, wake, trade, tag, title, body, test, group, note, false);
+    }
+    private static synchronized String post(Context c, String wake, String trade, String tag, String title, String body, boolean test, String group, JSONObject note, boolean foregroundChat) {
         int id = ChamaWakePolicy.notificationId(trade, tag);
         String reason = ChamaWakePolicy.reason(trade, tag);
         String key = "posted:" + id;
-        String verdict = policy(c, test, trade.isEmpty() ? prefs(c).getLong(key, 0) : 0);
+        String verdict = foregroundChat ? ChamaWakePolicy.verdict(true, false,
+            NotificationManagerCompat.from(c).areNotificationsEnabled() && channelEnabled(c), false, 0, System.currentTimeMillis())
+            : policy(c, test, trade.isEmpty() ? prefs(c).getLong(key, 0) : 0);
+        if (reason.equals("chat") && note != null) {
+            try {
+                JSONArray fired = new JSONArray(prefs(c).getString("wakeFired", "[]"));
+                for (int i = 0; i < fired.length(); i++) if (tag.equals(fired.optString(i))) {
+                    log(c, wake, "duplicate", "shared chat poster", id, reason); return "duplicate";
+                }
+            } catch (Exception ignored) { }
+        }
         if (!"shown".equals(verdict)) { log(c, wake, verdict, null, null, reason); return verdict; }
         if (android.os.Build.VERSION.SDK_INT >= 26) c.getSystemService(NotificationManager.class).createNotificationChannel(
             new NotificationChannel("chama_activity", "Chama", NotificationManager.IMPORTANCE_DEFAULT));
@@ -278,6 +296,11 @@ final class ChamaPushStore {
                 prefs(c).edit().putString("tradeChat:" + trade, bounded.toString()).apply();
             }
             manager.notify(id, builder.build());
+            if (chat && note != null) {
+                JSONArray fired = new JSONArray(prefs(c).getString("wakeFired", "[]")), bounded = new JSONArray();
+                for (int i = Math.max(0, fired.length() - 499); i < fired.length(); i++) bounded.put(fired.get(i));
+                bounded.put(tag); prefs(c).edit().putString("wakeFired", bounded.toString()).apply();
+            }
             if (!group.isEmpty()) manager.notify(group.hashCode(), new NotificationCompat.Builder(c, "chama_activity")
                 .setSmallIcon(R.drawable.ic_chama_notification).setContentTitle("New listings")
                 .setContentText("New offers in your community").setGroup(group).setGroupSummary(true)
@@ -289,6 +312,17 @@ final class ChamaPushStore {
             }
             prefs(c).edit().putLong(key, System.currentTimeMillis()).apply();
             log(c, wake, "shown", null, id, reason);
+            try {
+                JSONArray rows = alertLog(c);
+                for (int i = 0; i < rows.length(); i++) {
+                    JSONObject row = rows.getJSONObject(i);
+                    if (wake.equals(row.optString("id"))) {
+                        JSONArray posts = row.getJSONArray("posts");
+                        if (posts.length() > 0) posts.getJSONObject(posts.length() - 1).put("tag", tag).put("poster", "shared-native");
+                    }
+                }
+                prefs(c).edit().putString("alertLog", rows.toString()).apply();
+            } catch (Exception ignored) { }
             return "shown";
         } catch (org.json.JSONException e) {
             log(c, wake, "failed", null, null, reason);

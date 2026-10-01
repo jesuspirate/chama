@@ -52,3 +52,49 @@ try {
   assert.equal(registered.length,0,'alerts off prevents own registration');
 } finally { sc.disconnect();bc.disconnect(); }
 console.log('PASS actual CREATE/JOIN/CHAT publishers: creator launch registration, peer ECDH tags, alerts-off send and community JOIN routing.');
+
+// 6.4.18 G: every real settlement builder carries both peer wake tags.
+const {Outcome,EscrowEventKind} = await import('../escrow-engine/types.js');
+const {verifyEvent} = await import('nostr-tools/pure');
+const principals = [sp,bp,ap];
+const settlementStart = published.length;
+const s2 = client(seller), b2 = client(buyer);
+try {
+ const created = (await s2.createEscrow({description:'Settlement wake test',amountMsats:3_000_000,
+  category:'p2p-trade',mintUrl:'test-only',community:'us-blf',communityArbiters:[ap]})).state;
+ (b2 as any).states.set(created.id,created);
+ const joined = await b2.joinEscrow(created.id,Role.BUYER,{amountMsats:3_000_000,orderFinalized:true});
+ (s2 as any).states.set(created.id,joined);
+ const hash = 'a'.repeat(64);
+ const locked = await s2.lockEscrow(created.id,{notesHash:hash,
+  shares:[1,2,3].map(shareIndex=>({shareIndex,encryptedFor:{[sp]:'test-only',[bp]:'test-only',[ap]:'test-only'}})),
+  sellerReceivesMsats:3_000_000,arbiterFeeMsats:0,buyerPubkey:bp,arbiterPubkey:ap});
+ assert.equal(locked.status,EscrowStatus.LOCKED);
+ (b2 as any).states.set(created.id,locked);
+ const voted = await b2.vote(created.id,Outcome.RELEASE);
+ (s2 as any).states.set(created.id,voted);
+ await s2.vote(created.id,Outcome.RELEASE);
+ const approved = s2.getState(created.id)!;
+ assert.equal(approved.status,EscrowStatus.APPROVED);
+ (b2 as any).states.set(created.id,approved);
+ await b2.claim(created.id,hash);
+ await b2.complete(created.id);
+ const cancelBase = (await s2.createEscrow({description:'Cancellation wake',amountMsats:1_000_000,
+  category:'p2p-trade',mintUrl:'test-only',communityArbiters:[ap]})).state;
+ (s2 as any).states.set(cancelBase.id,{...cancelBase,participants:{buyer:bp,seller:sp,arbiter:ap}});
+ await s2.cancel(cancelBase.id);
+ const rows = published.slice(settlementStart);
+ for (const kind of [EscrowEventKind.VOTE,EscrowEventKind.CLAIM,EscrowEventKind.COMPLETE,EscrowEventKind.CANCEL,EscrowEventKind.RESOLVE]) {
+  const event = rows.find(e=>e.kind===kind)!;
+  assert(event, `actual builder published kind ${kind}`);
+  assert(verifyEvent(event), `kind ${kind} has a valid signature`);
+  assert.equal(event.tags.filter(t=>t[0]==='w').length,2,`kind ${kind} wakes both peers`);
+  const author = event.pubkey === sp ? seller : buyer;
+  for (const peer of principals.filter(pk=>pk!==event.pubkey)) {
+   assert(event.tags.some(t=>t[0]==='p' && t[1]===peer));
+   const expected = await deriveWatchTag(await author.conversationKey(peer),event.tags.find(t=>t[0]==='d')![1],0);
+   assert(event.tags.some(t=>t[0]==='w' && t[1]===expected));
+  }
+ }
+} finally {s2.disconnect();b2.disconnect();}
+console.log('PASS signed VOTE/CLAIM/COMPLETE/CANCEL/RESOLVE builders wake both seated peers');
