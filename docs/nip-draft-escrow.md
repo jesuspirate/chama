@@ -110,7 +110,17 @@ tranches, arbiter premiums) that are out of scope for this NIP.
 | `["mint", <invite or url>]`, `["fed", <federation id>]` | CREATE, ecash module | Federation; see NIP-87. |
 | `["a", "30402:<pubkey>:<d>"]` | marketplace CREATE | The NIP-99 listing this escrow offers. |
 
-Escrow ids SHOULD be random and at least 64 bits. Chama uses the `sm_` prefix.
+A trade's identity is the pair **(creator pubkey, `d`)**, like a NIP-01
+address. The `d` value alone is public and anyone can publish a CREATE
+reusing it, so every reference to a trade (links, notifications, NIP-99
+`a` tags) MUST carry the creator's pubkey, and replay MUST root the chain at
+the CREATE by that pubkey, ignoring other CREATEs with the same `d`.
+Escrow ids SHOULD still be random and at least 64 bits. Chama uses the
+`sm_` prefix.
+
+> **Migration.** Chama roots replay at the earliest CREATE for a `d`,
+> whoever wrote it, so a backdated CREATE by a stranger replaces the real
+> listing. See `docs/replay-hardening-brief.md`.
 
 ## Encrypted envelopes
 
@@ -277,7 +287,8 @@ ignored.
 
 A client computes state by replaying the trade's consensus events:
 
-1. Fetch every event with the trade's `#d`, from several relays.
+1. Fetch every event with the trade's `#d`, from several relays, and take
+   the CREATE by the trade's creator as the root.
 2. Verify each signature and parse its payload; drop anything invalid.
 3. Order topologically by the `e` tag. Among events that are ready at the
    same time, order by `created_at`, then by kind (CREATE, JOIN, LOCK, VOTE,
@@ -299,8 +310,10 @@ a source of evidence, never of authority.
 > fails the whole trade on several of these: an early arbiter vote, a VOTE
 > or CANCEL from a non-participant. Confirmed against the reducer on
 > 2026-10-02. Live clients reject such events one at a time and are
-> unaffected until they reload. Rule 5 is the intended behaviour; the fix is
-> tracked separately.
+> unaffected until they reload. Rule 5 is the intended behaviour. It must ship
+> *after* the creator-bound root above, or a stranger's CREATE could make
+> the real seller's events look like a stranger's and be skipped. Plan in
+> `docs/replay-hardening-brief.md`.
 
 ## Arbitration
 
