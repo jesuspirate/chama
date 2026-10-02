@@ -28,15 +28,16 @@ import { EscrowEventKind, type CreatePayload, type ParsedEscrowEvent } from "./t
 /** Hex characters of the creator's pubkey carried by a creator-tagged id. */
 export const CREATOR_TAG_HEX = 16;
 
-// sm_<base36 time>_<random>_<16 hex of creator pubkey>. The untagged form is
-// sm_<time>_<random>: two segments, so it can never match.
-const CREATOR_TAGGED_ID = /^sm_[0-9a-z]+_[0-9a-z]+_([0-9a-f]{16})$/;
+// sm_<base36 time>_<16 hex of creator pubkey>_<random>. The untagged form is
+// sm_<time>_<random>: two segments, so it can never match. The random part
+// stays last because the UI labels a trade by the tail of its id.
+const CREATOR_TAGGED_ID = /^sm_[0-9a-z]+_([0-9a-f]{16})_[0-9a-z]+$/;
 
 /** Build a creator-tagged escrow id. */
 export function creatorTaggedEscrowId(time: string, random: string, creatorPubkey: string): string {
   const pk = creatorPubkey.toLowerCase();
   if (!/^[0-9a-f]{64}$/.test(pk)) throw new Error("Escrow id needs the creator's hex pubkey");
-  return `sm_${time}_${random}_${pk.slice(0, CREATOR_TAG_HEX)}`;
+  return `sm_${time}_${pk.slice(0, CREATOR_TAG_HEX)}_${random}`;
 }
 
 /** The creator prefix an id commits to, or null for an untagged id. */

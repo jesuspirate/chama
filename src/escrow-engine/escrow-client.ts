@@ -117,7 +117,7 @@ import {
 import { simTagOrNull, shouldDropForSimPolicy } from "../sim/simMode.js";
 import { verifyEvent as verifyNostrEventSignature } from "nostr-tools/pure";
 import { randomId } from "../storage/random-id.js";
-import { creatorTaggedEscrowId, selectTradeRoot } from "./trade-identity.js";
+import { creatorMatchesEscrowId, creatorTaggedEscrowId, selectTradeRoot } from "./trade-identity.js";
 import { listTradeIndex } from "./trade-index.js";
 import { compactSelectedMenuItems } from "./selected-menu-items.js";
 import { pickPreferredArbiter } from "../arbiters/pool.js";
@@ -536,10 +536,11 @@ export class EscrowClient {
   private _listingHydrationCooldown: Map<string, number> = new Map();
   /** One fetch/decrypt/replay generation per escrow. All cold-start callers
    *  share it; bounded completeness retries stay inside the owner. */
-  /** Who created each trade this device has been told about: an explicit
-   *  `loadEscrow({ creator })` (a trade link) or a state it already holds.
-   *  Reloads stay bound to it. See trade-identity.ts. */
+  /** Creators confirmed this session: a load that named one and replayed.
+   *  Reloads of that trade stay bound to it. See trade-identity.ts. */
   private expectedCreators = new Map<string, string>();
+  /** A creator named by a caller for a load that has not replayed yet. */
+  private namedCreators = new Map<string, string>();
   /** Creators remembered by the durable trade index, read once per client. */
   private indexedCreators: Map<string, string> | null = null;
   private _loadEscrowInFlight: Map<string, {
@@ -1081,7 +1082,8 @@ export class EscrowClient {
     if (existing) return circleFromEscrow(existing) ? existing : undefined;
     const events = await this.relayManager.fetchOnce({ kinds: [EscrowEventKind.CREATE], "#d": [id] }, 15_000);
     const creates = selectTradeRoot(
-      sortEventChain(events.map(raw => parseEscrowEvent(raw, raw.content, true)).filter(r => r.ok).map(r => r.event)),
+      sortEventChain(events.map(raw => parseEscrowEvent(raw, raw.content, true)).filter(r => r.ok).map(r => r.event))
+        .filter(event => event.escrowId === id && (event.payload as CreatePayload).category === "chama"),
       this.expectedCreatorOf(id));
     for (const raw of creates.ok ? creates.events : []) {
       if (raw.escrowId !== id || (raw.payload as CreatePayload).category !== "chama") continue;
@@ -3162,10 +3164,22 @@ export class EscrowClient {
     escrowId: string,
     opts: { repairFromCache?: boolean; fullHistory?: boolean; creator?: string } = {},
   ): Promise<EscrowState | null> {
-    // A named creator outlives this call: every later reload of the trade
-    // (out-of-order heal, completeness retry) must root at the same key.
-    if (opts.creator && /^[0-9a-f]{64}$/i.test(opts.creator)) {
-      this.expectedCreators.set(escrowId, opts.creator.toLowerCase());
+    // A creator named by the caller (a trade link) is a claim, not knowledge.
+    // It never overrides what this device already knows, and it is refused
+    // outright when it contradicts the trade this device is holding: the
+    // state map is keyed by id, so honouring it would replace that trade.
+    const named = opts.creator && /^[0-9a-f]{64}$/i.test(opts.creator)
+      && creatorMatchesEscrowId(escrowId, opts.creator) ? opts.creator.toLowerCase() : undefined;
+    if (named && !this.knownCreatorOf(escrowId)) {
+      const held = this.states.get(escrowId);
+      const heldCreator = held?.eventChain.some(event => event.kind === EscrowEventKind.CREATE)
+        ? held.initiator.pubkey.toLowerCase() : undefined;
+      if (heldCreator && heldCreator !== named) {
+        this.recordLoadFailure(escrowId, { reason: "conflicting-creators", code: "CONFLICTING_CREATES",
+          message: "This link names a different creator than the trade this device holds" });
+        return Promise.resolve(null);
+      }
+      this.namedCreators.set(escrowId, named);
     }
     const repairFromCache = opts.repairFromCache === true;
     const fullHistory = repairFromCache || opts.fullHistory === true;
@@ -3210,24 +3224,28 @@ export class EscrowClient {
     return promise;
   }
 
-  /** The key this device already knows created `escrowId`, if any: named by
-   *  a caller, held in live state, or remembered by the durable trade index.
-   *  Browse discovery supplies none on purpose: a relay-delivered CREATE is
-   *  not evidence of who the real creator is. */
-  private expectedCreatorOf(escrowId: string): string | undefined {
-    const named = this.expectedCreators.get(escrowId);
-    if (named) return named;
-    const held = this.states.get(escrowId);
-    if (held?.eventChain.some(event => event.kind === EscrowEventKind.CREATE)) return held.initiator.pubkey;
+  /** The key this device KNOWS created `escrowId`: remembered by the durable
+   *  trade index (a trade the user is party to), or confirmed earlier this
+   *  session. A state merely held in memory is not knowledge: Browse loads
+   *  whatever CREATE a relay delivered, and a partial read can deliver only a
+   *  forgery, so holding it must not pin it. */
+  private knownCreatorOf(escrowId: string): string | undefined {
     if (!this.indexedCreators) {
       this.indexedCreators = new Map();
       try {
         for (const entry of listTradeIndex()) {
-          if (entry.creator) this.indexedCreators.set(entry.id, entry.creator);
+          if (entry.creator && creatorMatchesEscrowId(entry.id, entry.creator)) {
+            this.indexedCreators.set(entry.id, entry.creator.toLowerCase());
+          }
         }
       } catch { /* no storage (tests, private mode): nothing remembered */ }
     }
-    return this.indexedCreators.get(escrowId);
+    return this.indexedCreators.get(escrowId) ?? this.expectedCreators.get(escrowId);
+  }
+
+  /** The creator a replay of `escrowId` must root at, if any. */
+  private expectedCreatorOf(escrowId: string): string | undefined {
+    return this.knownCreatorOf(escrowId) ?? this.namedCreators.get(escrowId);
   }
 
   /** One generation's internal attempt. Recursive completeness retries call
@@ -3440,6 +3458,7 @@ export class EscrowClient {
     }
 
     if (!outcome.ok) {
+      this.namedCreators.delete(escrowId);
       this.recordLoadFailure(escrowId, outcome.failure);
       // Keep the readable local snapshot, explicitly demoted until replay succeeds.
       if (current) {
@@ -3457,6 +3476,13 @@ export class EscrowClient {
       return null;
     }
     const result = { ok: true as const, state: outcome.state };
+    // A named creator that replayed is confirmed for the rest of the session;
+    // one that didn't is forgotten, so a bad link can't poison later reloads.
+    const namedCreator = this.namedCreators.get(escrowId);
+    if (namedCreator && namedCreator === outcome.state.initiator.pubkey.toLowerCase()) {
+      this.expectedCreators.set(escrowId, namedCreator);
+    }
+    this.namedCreators.delete(escrowId);
     this.clearLoadFailure(escrowId);
     this.acknowledgeRelayObservedMoneyEvents(escrowId, fetchedRawEvents, result.state);
 
