@@ -1,8 +1,8 @@
 # Shipped goods escrow — v1 spec (for maintainer review)
 
-Status: SPEC, NOT IMPLEMENTED. Money-path change. Implement against this
-document only after the decisions marked **DECIDE** are locked, then
-adversarial verification before wiring. Builds on
+Status: SPEC, NOT IMPLEMENTED. Decisions locked by the maintainer
+2026-10-02 (section 10). Money-path change: adversarial verification before
+wiring. Builds on
 `docs/shipping-escrow-brief.md`, which explains the idea; this document says
 exactly what changes.
 
@@ -11,7 +11,7 @@ Every claim about current behaviour below cites the code it was read from.
 ## 0. What already exists
 
 Most of the flow is already in the engine. The spec adds terms, timing rules
-and a watcher around it.
+and carrier tracking links around it.
 
 | Need | Already there | Where |
 |---|---|---|
@@ -41,11 +41,23 @@ These are why shipping can't simply reuse a marketplace trade.
    window. Shipping needs days.
 3. **The seller can vote RELEASE before shipping anything.** The reducer
    can't know about delivery, so a premature RELEASE starts the clock in (2).
-4. **A seller who never ships keeps the buyer waiting until expiry.** A lone
-   *buyer* REFUND does not open the arbiter's window (`oneSidedReleaseAnchor`
-   only handles the non-locker's RELEASE outside chama policies). With a
-   three-week trade life, that is three weeks of waiting for an obvious
-   refund.
+4. **A seller who never ships keeps the buyer waiting until expiry.** Only
+   the party *waiting to be paid* (the non-locker) can bring in the arbiter
+   early; the party *who put the money in* (the locker) cannot.
+   `oneSidedReleaseAnchor` only handles the non-locker's lone RELEASE outside
+   chama policies. Confirmed against the reducer on 2026-10-02, 24h
+   marketplace trade, buyer locked:
+
+   | Situation | Arbiter vote | Result |
+   |---|---|---|
+   | Buyer (locker) alone voted REFUND | +5h, +22h | `ARBITER_TOO_EARLY` |
+   | Buyer (locker) alone voted REFUND | after expiry | accepted (healing) |
+   | Nobody voted | +5h | `ARBITER_TOO_EARLY` |
+   | Seller (non-locker) alone voted RELEASE | +5h | accepted |
+
+   The same holds for exchange trades with the roles mirrored. On a 24h
+   trade the locker waits at most a day; on an 18-day shipped trade it would
+   be 18 days for an obvious refund.
 5. **On-chain: Bitcoin's refund timer overrides the app.** The REFUND leaf
    matures at `tip + REFUND_CLTV_BLOCKS` (30 × 144 blocks, about 30 days)
    from funding (`useEscrow.ts`, `onchain-escrow.ts`). After that the buyer
@@ -172,10 +184,12 @@ These cannot be consensus, because the reducer cannot see a parcel.
 
 ### 3.1 Seller's RELEASE means "delivered"
 
-The seller's client offers RELEASE only once the watcher (section 5) reports
-**delivered** for the committed tracking number. Before that, the button
-reads "Waiting for delivery". A seller on a modified client can still vote
-early; section 3.2 makes that useless.
+The seller's client offers RELEASE ("Mark delivered") only after a tracking
+number has been posted to the trade (section 4). The client cannot see the
+parcel in v1 (no watcher, section 5), so the button asks the seller to
+confirm the carrier shows it delivered. A seller who votes early gains
+nothing: section 3.2 has the arbiter check the carrier, and the buyer's
+inspection window (2.3) still runs.
 
 ### 3.2 The arbiter's shipped-goods rule
 
@@ -184,17 +198,19 @@ roster, `docs/arbiter-roster-spec.md`):
 
 **Rule RELEASE** on a one-sided contest only if all hold:
 1. Tracking was given before `lockedAt + shipBySeconds`.
-2. The watcher reported delivered for that tracking number.
-3. `inspectionSeconds` have passed **since the delivered report** (not since
-   the seller's vote).
+2. The carrier's public tracking page shows delivered for that number.
+3. `inspectionSeconds` have passed **since the carrier's delivery time** (not
+   since the seller's vote).
 4. The buyer has not raised a problem in the trade.
 
 **Rule REFUND** if tracking never arrived by ship-by, or the tracking never
-moved, or the delivered report doesn't exist by the end of transit.
+moved, or the carrier shows no delivery by the end of transit.
 
 **Two-sided dispute** (buyer said REFUND): evidence from both sides
-(section 4). A refund for an item that *was* delivered requires return
-tracking showing delivery back to the seller.
+(section 4). A refund for an item that *was* delivered requires the buyer to
+ship it back **at their own cost**, with tracking showing delivery back to
+the seller. This is fixed, not negotiated per trade, and the listing says
+so before anyone pays.
 
 > On-chain: anything still undecided when the refund leaf matures goes to the
 > buyer. Arbiters must rule before then, and the return-shipping requirement
@@ -202,12 +218,13 @@ tracking showing delivery back to the seller.
 
 ### 3.3 Client gates
 
-New clients refuse to *publish* (not just display) an arbiter RELEASE on a
-shipped one-sided contest unless rules 1–3 hold from the watcher evidence the
-client can see. A deliberate override needs a typed reason posted to the
-trade. This protects against careless arbiters; it can't stop a colluding
-one, since seller + arbiter is already two of three (same as every Chama
-dispute today).
+New clients refuse to publish an arbiter RELEASE on a shipped one-sided
+contest unless rule 1 holds (a tracking number was posted before ship-by,
+which the client can see in the trade) and the arbiter ticks that they
+checked the carrier page for rules 2–3. This protects against careless
+arbiters; it can't stop a colluding one, since seller + arbiter is already
+two of three (same as every Chama dispute today). With a watcher (v2) the
+gate can check rules 2–3 itself.
 
 ## 4. Data: address, tracking, evidence
 
@@ -220,7 +237,7 @@ none of it is consensus data.
 | Carrier + tracking number | seller → buyer, arbiter | Structured chat message | Arbiter needs it to check delivery. |
 | Photos before shipping | seller → buyer, arbiter | Chat image attachments | Item and sealed parcel. |
 | Photos of what arrived | buyer → seller, arbiter | Chat image attachments | On dispute. |
-| Return tracking | buyer → seller, arbiter | Structured chat message | Required for a refund after delivery. |
+| Return tracking | buyer → seller, arbiter | Structured chat message | Required for a refund after delivery; return postage paid by the buyer. |
 
 Structured messages carry a plain-text fallback (`message`) so older clients
 show something readable, plus a typed field the new client renders, e.g.:
@@ -232,26 +249,33 @@ shipment?: { carrier: string; tracking: string; kind: "outbound" | "return" }
 The address envelope reveals the buyer's home to one key only. A dispute does
 not need it: the arbiter judges from tracking and photos.
 
-## 5. Tracking watcher
+## 5. Tracking: carrier links in v1, a watcher later
 
-A small service that turns carrier tracking into evidence. It never holds
-money, keys to the escrow, or a vote.
+**v1 runs no tracking service.** The seller posts carrier + tracking number;
+every client turns that into a link to the carrier's own public tracking
+page (USPS, UPS, FedEx, DHL and others: a URL template per carrier, plus
+"other" with a pasted link). Buyer, seller and arbiter all read the same
+public page. No API keys, no server, no cost, and it works for any carrier.
 
-- **Input:** the seller's client registers `{ carrier, tracking, escrowId,
-  recipient pubkeys }` after shipping. The watcher learns tracking numbers
-  and pubkeys, never names or addresses. The create flow must say so.
-- **Source:** a shipping aggregator (EasyPost, Shippo or similar) for one API
-  across carriers with webhooks. **DECIDE** which.
-- **Output:** signed observations `{ escrowId, tracking, status, carrierTime,
-  observedAt }`, status ∈ `accepted | in_transit | out_for_delivery |
-  delivered | exception | returned`, encrypted to the registered pubkeys and
-  published as a new event kind (proposed **38140**; unused per a scan of
+Why not a service now: the carriers do offer developer access for tracking,
+but each requires registering an account, keeping the keys on a server (they
+can't ship inside a client app), and living with rate limits and terms that
+change. Aggregators that cover all carriers in one API charge past a free
+tier. I have not verified current pricing; check before v2.
+
+**v2: an optional, self-hostable watcher.** Open-source, run by whoever
+wants it — a marketplace, an arbiter, a community — with their own carrier
+keys. Chama doesn't have to run one.
+
+- It learns tracking numbers and pubkeys, never names or addresses.
+- It publishes signed observations `{ escrowId, tracking, status,
+  carrierTime, observedAt }`, status ∈ `accepted | in_transit |
+  out_for_delivery | delivered | exception | returned`, encrypted to the
+  trade parties, as event kind **38140** (reserved now; unused per a scan of
   `src/`).
-- **Trust:** the watcher's pubkey is a client constant in v1 (Chama-run),
-  later a list. Clients display observations; arbiters cite them. A watcher
-  lying is caught by the buyer disputing, and is bounded by the same
-  2-of-3 as everything else.
-- **Shape:** same deployment pattern as `scripts/vps-webpush-watcher/`.
+- Arbiters choose which watchers they trust. Clients display observations;
+  the gate in 3.3 can then check delivery itself.
+- Deployment pattern: `scripts/vps-webpush-watcher/`.
 
 ## 6. What users see
 
@@ -268,16 +292,18 @@ Timeline on the trade screen, for both sides:
 | Silent past inspection | "Inspection ended — seller will be paid" | "Inspection ended — arbiter can release" |
 | Missed ship-by | "Seller missed the ship date. Ask for a refund." | "Ship date missed" |
 
-Notifications (the existing "vote" notice covers the seller's RELEASE): add
-tracking added, delivered, and inspection ends in 24 hours.
+Notifications (the existing "vote" notice covers the seller's RELEASE, which
+is the "delivered" moment in v1): add tracking added, and inspection ends in
+24 hours.
 
 ## 7. Funding rail
 
-- **On-chain** is the recommended rail: the money is held by a Bitcoin
-  script for the whole shipment.
-- **Ecash** keeps the buyer trusting the federation for up to three weeks.
-  **DECIDE** an ecash cap for shipped trades (proposed: 250,000 sats), above
-  which the create form offers on-chain only.
+No new rule. Shipped trades use the existing rail choice:
+`defaultEscrowModeForAmount` and `ONCHAIN_ESCROW_MINIMUM_SATS` (25,000 sats)
+in `src/bond-multisig/onchain-escrow.ts`, which already defaults to on-chain
+from `ONCHAIN_ESCROW_THRESHOLD_SATS` (100,000 sats) on mainnet. Below the
+on-chain minimum the trade is ecash, and the buyer trusts the federation for
+the shipment's duration; the create form says so for shipped listings.
 
 ## 8. Out of scope for v1
 
@@ -285,6 +311,8 @@ tracking added, delivered, and inspection ends in 24 hours.
 - Shipping paid separately from the item.
 - Partial refunds (outcomes stay release or refund).
 - Automated arbiter (v1 is humans following section 3.2).
+- Tracking watcher (v2, section 5).
+- Negotiated return terms (v1: buyer pays return postage, always).
 - Insurance.
 - Multiple parcels per trade.
 
@@ -302,14 +330,28 @@ Per `AGENTS.md`, money-path changes need regression coverage:
 - Expiry during a shipped contest: no auto-refund; healing votes rule on
   merit.
 - Address envelope decryptable by seller only (not arbiter).
-- Client gate: arbiter RELEASE refused without delivered evidence.
+- Client gate: arbiter RELEASE refused without a tracking number posted
+  before ship-by.
+- Carrier link templates produce the right URL per carrier.
 
-## 10. Decisions for the maintainer
+## 10. Decisions (locked 2026-10-02)
 
-1. **Old clients excluded** from shipped trades via the new policy value. OK?
+1. **Old clients excluded** from shipped trades via the new policy value: yes.
 2. **Default windows:** ship by 3 days, transit 10, inspection 3, total 18
-   (max 21).
-3. **Ecash cap** for shipped trades (proposed 250,000 sats).
-4. **Return-before-refund** rule for delivered items in disputes.
-5. **Watcher operator and aggregator** (Chama-run in v1?).
-6. **Event kind 38140** for watcher observations.
+   (max 21): yes.
+3. **Rail:** no shipped-specific cap; follow the existing on-chain minimum and
+   default (section 7).
+4. **Returns:** a refund for a delivered item requires return shipping with
+   tracking, at the buyer's own cost, fixed for every shipped trade.
+5. **Tracking:** every carrier, without Chama running a paid service. v1 uses
+   carrier tracking links; v2 adds an optional self-hostable watcher.
+6. **Event kind 38140** reserved for watcher observations.
+
+## 11. Related gap outside shipping
+
+Section 1, item 4 is not shipping-specific: on every trade type, only the
+party waiting to be paid can bring in the arbiter early. The party who put
+the money in waits until expiry when the other side goes silent. Section 2.4
+fixes it for shipped trades only. Fixing it for all trades is a consensus
+change, so it needs the same versioning discipline (new trades marked so
+that old clients refuse them) and its own spec.
