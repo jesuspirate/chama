@@ -1987,6 +1987,77 @@ export function applyEvent(
 // ══════════════════════════════════════════════════════════════════════════
 
 /**
+ * Does this event's author hold the role that is entitled to publish it?
+ *
+ * Replay-only. The trade's `d` tag and chain ids are public and anyone can
+ * NIP-44-encrypt an envelope to the participants, so a rejected event is
+ * evidence about the TRADE only when it comes from someone who could have
+ * moved it. An event from anyone else is noise: replay records and skips it
+ * exactly as a live client rejects it on arrival.
+ *
+ * Every arm is the reducer's own author rule or a deliberate SUPERSET of it.
+ * A superset keeps the old strict behaviour for a real party; it can never
+ * silence one. `state` is the state the event was applied against.
+ */
+function replayAuthorEntitled(state: EscrowState, event: ParsedEscrowEvent): boolean {
+  const pk = event.pubkey;
+  const seated = getRole(state, pk);
+  // Before LOCK the buyer and arbiter seats may still be empty, so an event
+  // that presupposes a LOCK cannot be attributed: it is as likely a real
+  // party's event on a chain whose LOCK is missing as it is a stranger's.
+  // Everything stays strict until the money is locked.
+  const locked = state.eventChain.some(e => e.kind === EscrowEventKind.LOCK);
+  if (!locked && [EscrowEventKind.VOTE, EscrowEventKind.RESOLVE, EscrowEventKind.CLAIM,
+    EscrowEventKind.PERIOD_RELEASE, EscrowEventKind.SETTLEMENT_STALLED].includes(event.kind)) return true;
+  switch (event.kind) {
+    case EscrowEventKind.LOCK: {
+      // handleLock's locker rule. Raw seat OR live hold: a locker whose hold
+      // lapsed may still have spent real ecash, so that LOCK stays strict.
+      const role = seated ?? getActiveRole(state, pk, event.timestamp);
+      if (!role) return false;
+      const expected = (state.category === "marketplace" || state.chamaPolicy !== undefined) ? Role.BUYER
+        : (state.category === "lending" || state.category === "p2p-trade" || state.category === "bill-pay") ? Role.SELLER
+        : null;
+      return expected === null || role === expected;
+    }
+    case EscrowEventKind.CLAIM:
+      // Only a principal can ever be the winner. Both stay strict, resolved or
+      // not: a principal's CLAIM that contradicts the replayed outcome is the
+      // strongest sign the chain in hand is missing something.
+      return seated === Role.BUYER || seated === Role.SELLER;
+    case EscrowEventKind.VOTE:
+    case EscrowEventKind.RESOLVE:
+      // Seated, or a backup in the pooled-share priority order.
+      return seated !== null
+        || (!!state.lock.arbiterPoolShare && arbiterVotePriority(state, pk) !== null);
+    case EscrowEventKind.CANCEL:
+    case EscrowEventKind.PLAN_START:
+      return pk === state.initiator.pubkey;
+    default:
+      // JOIN, COMPLETE, SUBSCRIBE, PERIOD_RELEASE, SETTLEMENT_STALLED,
+      // CHILD_KEY: the reducer accepts these from seated participants only
+      // (a first JOIN that takes a seat succeeds and never reaches here).
+      return seated !== null;
+  }
+}
+
+/**
+ * Rejections that break a timing or state rule on an event that moves no
+ * money. The live reducer drops these without changing state, whoever signed
+ * them, so replay does too. Funds transitions (LOCK, CLAIM, SUBSCRIBE,
+ * PERIOD_RELEASE) are never listed here, and neither are a vote's money-module
+ * checks (share envelope, vote-carried payout) or a VOTE with no LOCK under it.
+ */
+const REPLAY_RULE_BREAKS: Partial<Record<EscrowEventKind, ReadonlySet<string>>> = {
+  [EscrowEventKind.VOTE]: new Set([
+    "ARBITER_TOO_EARLY", "ARBITER_NOT_NEEDED", "SUBSTITUTE_TOO_EARLY",
+    "INVALID_HEAL_OUTCOME", "ROLE_MISMATCH",
+  ]),
+  [EscrowEventKind.CANCEL]: new Set(["INVALID_STATE", "FUNDING_TERMS_FROZEN"]),
+  [EscrowEventKind.JOIN]: new Set(["ROLE_CONFLICT", "ORDER_ALREADY_FINALIZED", "CHAMA_SEATS_FIXED"]),
+};
+
+/**
  * Replay a full chain of parsed escrow events to reconstruct state.
  *
  * Events MUST be in dependency order (sorted by e-tag chain, not timestamp).
@@ -1998,7 +2069,13 @@ export function applyEvent(
  * whose CREATEs come from more than one author is refused (see
  * trade-identity.ts) instead of rooted at whichever claims the earliest time.
  *
- * Returns the final state or the first validation error encountered.
+ * An event that fails is recorded in `replayNotes` and skipped when its author
+ * does not hold the role entitled to publish it, or when it only breaks a
+ * timing or state rule on a non-money event (NIP draft, Replay rule 5). Replay
+ * stops only on an entitled author's rejected event where custody is in doubt:
+ * a funds transition, a RESOLVE the votes don't support, a vote with no LOCK.
+ *
+ * Returns the final state or the first such error.
  */
 export function replayEventChain(
   events: ParsedEscrowEvent[],
@@ -2040,6 +2117,10 @@ export function replayEventChain(
   for (const event of events) {
     const result = applyEvent(state, event);
     if (!result.ok) {
+      // The root is already bound to its creator (selectTradeRoot above): a
+      // chain with a second author's CREATE never reaches this loop unbound, so
+      // an author who holds no role here is an outsider, not a displaced party.
+      const entitled = !state || replayAuthorEntitled(state, event);
       // Positive signed-time refusal, not absence from a partial relay read.
       // Preserve the notes reference for the funder's recovery, never as escrow.
       // Other funds errors (including claims) remain strict below.
@@ -2059,12 +2140,6 @@ export function replayEventChain(
         }] };
         continue;
       }
-      // Never let a generic duplicate/terminal error forgive a funds transition.
-      // Re-delivery of the identical signed ID already succeeds in applyEvent.
-      if ([EscrowEventKind.LOCK, EscrowEventKind.CLAIM,
-           EscrowEventKind.SUBSCRIBE, EscrowEventKind.PERIOD_RELEASE].includes(event.kind)) {
-        return result;
-      }
       const note = (benign = false) => {
         if (state) state = { ...state, replayNotes: [...(state.replayNotes ?? []), {
           eventId: event.raw.id, kind: event.kind,
@@ -2072,6 +2147,14 @@ export function replayEventChain(
           ...(benign ? { benign: true } : {}),
         }] };
       };
+      // Never let a generic duplicate/terminal error forgive a funds transition.
+      // Re-delivery of the identical signed ID already succeeds in applyEvent.
+      // Strict for the role that can move the money; anyone else's is noise.
+      if ([EscrowEventKind.LOCK, EscrowEventKind.CLAIM,
+           EscrowEventKind.SUBSCRIBE, EscrowEventKind.PERIOD_RELEASE].includes(event.kind)) {
+        if (entitled) return result;
+        note(); continue;
+      }
       // A repeated RESOLVE is redundant only when it agrees with the committed
       // result. Missing threshold/evidence and contradictory outcomes stay strict.
       const redundantResolve = event.kind === EscrowEventKind.RESOLVE && state
@@ -2079,7 +2162,8 @@ export function replayEventChain(
         && (result.error.code === "INVALID_STATE" || result.error.code === "TERMINAL_STATE");
       if (event.kind === EscrowEventKind.RESOLVE) {
         if (redundantResolve) { note(true); continue; }
-        return result;
+        if (entitled) return result;
+        note(); continue;
       }
       if (benignCodes.has(result.error.code)) { note(true); continue; }
       // Late acknowledgements/votes cannot change committed custody. A missing
@@ -2116,7 +2200,12 @@ export function replayEventChain(
       if (event.kind === EscrowEventKind.SETTLEMENT && result.error.code === "NOT_PARTICIPANT") {
         note(); continue;
       }
-      // Real error — fail the replay
+      // Replay rule 5: an author without the needed role, or a broken timing
+      // or state rule on a non-money event, is ignored and replay continues.
+      if (!entitled || REPLAY_RULE_BREAKS[event.kind]?.has(result.error.code)) {
+        note(); continue;
+      }
+      // An entitled author's event that leaves custody in doubt — fail the replay
       return result;
     }
     // A rejected advisory event needs no predecessor. An accepted state

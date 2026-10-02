@@ -6,9 +6,8 @@
 // only public data (the escrow id and the parties' pubkeys).
 //
 // Step 0 pinned the behaviour before any fix. Step 1 (trade identity is
-// creator + id) has flipped the finding-2 blocks. Finding 1 still pins the
-// fail-closed behaviour that step 2 (invalid events from non-entitled authors
-// are dropped) changes; those assertions are marked "STEP 2".
+// creator + id) flipped the finding-2 blocks; step 2 (invalid events from
+// non-entitled authors are dropped) flipped finding 1.
 import assert from 'node:assert/strict';
 import { finalizeEvent, getPublicKey } from 'nostr-tools/pure';
 import { EscrowClient } from './escrow-client.js';
@@ -112,7 +111,10 @@ const nextId = () => `sm_${T.toString(36)}_rh${(++idSeq).toString().padStart(6, 
   console.log('PASS baseline chain cold-loads to APPROVED/release; fetch has no authors filter');
 }
 
-// ── Finding 1: one stray signed event makes the whole trade fail to load ──
+// ── Finding 1 after step 2: a stray signed event is noted and skipped ─────
+// Step 0 pinned the opposite here: each of these made the trade fail to load
+// (chain-incomplete). outsider-replay.tests.ts covers eight such events on two
+// viewer devices with real NIP-44; these four keep the step-0 rows comparable.
 {
   const strays: [string, (id: string, b: ReturnType<typeof baseline>) => NostrEvent, string][] = [
     ['arbiter VOTE before either principal voted',
@@ -131,19 +133,21 @@ const nextId = () => `sm_${T.toString(36)}_rh${(++idSeq).toString().padStart(6, 
   for (const [name, make, code] of strays) {
     const id = nextId();
     const b = baseline(id);
-    const { state, failure } = await coldLoad(id, [...b.chain, make(id, b)]);
-    // STEP 2: expected to load as APPROVED/release with a replay note instead.
-    assert.equal(state, null, `${name}: trade does not load today`);
-    assert.equal(failure?.reason, 'chain-incomplete', name);
-    assert.equal(failure?.code, code, `${name}: ${failure?.code} ${failure?.message}`);
-    console.log(`PASS finding 1 reproduced through loadEscrow: ${name} → ${code}`);
+    const stray = make(id, b);
+    const { state, failure } = await coldLoad(id, [...b.chain, stray]);
+    assert.equal(failure, null, `${name}: ${failure?.code} ${failure?.message}`);
+    assert.equal(state?.status, S.APPROVED, `${name}: loads to the honest state`);
+    assert.equal(state?.resolvedOutcome, O.RELEASE);
+    assert.ok(!state?.eventChain.some(e => e.raw.id === stray.id), `${name}: the stray is not in the chain`);
+    assert.equal(state?.replayNotes?.find(n => n.eventId === stray.id)?.code, code, `${name}: noted as ${code}`);
+    console.log(`PASS finding 1 after step 2: ${name} is skipped (${code}) and the trade loads APPROVED/release`);
   }
 }
 
 // ── Control: the signature verifier really runs on this path ──────────────
 // The fake relay serialises every event, so the client verifies fresh objects
-// and never sees finalizeEvent's cached "verified" marker. The same stray
-// CANCEL that fails the load above is dropped once its signature is broken.
+// and never sees finalizeEvent's cached "verified" marker. With a broken
+// signature the stray CANCEL never reaches replay, so it leaves no note.
 {
   const id = nextId();
   const b = baseline(id);
@@ -154,7 +158,8 @@ const nextId = () => `sm_${T.toString(36)}_rh${(++idSeq).toString().padStart(6, 
   assert.equal(failure, null, `a badly signed stray is dropped before replay: ${failure?.code} ${failure?.message}`);
   assert.equal(state?.status, S.APPROVED);
   assert.ok(!state?.eventChain.some(e => e.raw.id === forged.id), 'the badly signed event never reaches the chain');
-  console.log('PASS control: an event with a tampered signature is dropped, so the strays above passed real verification');
+  assert.ok(!state?.replayNotes?.some(n => n.eventId === forged.id), 'nor replay: it is dropped at verification');
+  console.log('PASS control: an event with a tampered signature is dropped, never reaching replay');
 }
 
 // ── Finding 2 after step 1: a stranger's CREATE cannot take a listing ─────

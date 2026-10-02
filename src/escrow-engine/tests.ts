@@ -6602,6 +6602,62 @@ for (const needs of [0, 2]) for (const active of [0, 200000]) for (const balance
         && picked.events[0].raw.id === m1.raw.id, "rotation round: every member's CREATE is kept, earliest first");
     }
   }
+
+  // Replay rule 5: the escrow id and chain ids are public, so a stranger can
+  // publish events that parse. None of them may stop the trade from loading,
+  // and none may change the state an honest replay reaches.
+  const OUTSIDER_PK = "99".repeat(32);
+  const skipped = (name: string, extra: ParsedEscrowEvent<EscrowPayload>, code: string, chain = base) => {
+    const r = replayEventChain(sortEventChain([...chain, extra]));
+    if (!assertOk(r, `${name}: trade still replays`)) return;
+    const honest = replayEventChain(sortEventChain(chain));
+    assert(honest.ok && r.state.status === honest.state.status
+      && r.state.resolvedOutcome === honest.state.resolvedOutcome
+      && JSON.stringify(r.state.votes) === JSON.stringify(honest.state.votes)
+      && r.state.eventChain.length === honest.state.eventChain.length,
+      `${name}: state equals the honest replay`);
+    const n = r.state.replayNotes?.find(x => x.eventId === extra.raw.id);
+    assert(n?.code === code && !n.benign, `${name}: recorded as ${code}`, n?.code);
+  };
+  const at = <T extends EscrowPayload>(e: ParsedEscrowEvent<T>, after: ParsedEscrowEvent<EscrowPayload>) =>
+    retimeEvent(e, after.timestamp) as ParsedEscrowEvent<EscrowPayload>;
+  skipped("arbiter VOTE before any principal voted",
+    at(voteEvent(Role.ARBITER, ARBITER_PK, Outcome.REFUND, lock.raw.id), lock), "ARBITER_TOO_EARLY");
+  skipped("outsider VOTE claiming buyer",
+    at(voteEvent(Role.BUYER, OUTSIDER_PK, Outcome.REFUND, lock.raw.id), lock), "NOT_PARTICIPANT");
+  skipped("outsider VOTE claiming arbiter",
+    at(voteEvent(Role.ARBITER, OUTSIDER_PK, Outcome.REFUND, lock.raw.id), lock), "NOT_PARTICIPANT");
+  skipped("outsider CANCEL after RESOLVE",
+    { ...cancelEvent(resolve.raw.id), pubkey: OUTSIDER_PK }, "INVALID_STATE");
+  skipped("outsider LOCK before the real one",
+    at(lockEvent(create.raw.id, { locker: OUTSIDER_PK }), create), "NOT_PARTICIPANT");
+  skipped("outsider LOCK on a locked trade",
+    at(lockEvent(lock.raw.id, { locker: OUTSIDER_PK }), lock), "INVALID_STATE");
+  skipped("outsider CLAIM after RESOLVE", claimEvent(Role.BUYER, OUTSIDER_PK, resolve.raw.id), "WRONG_CLAIMER");
+  skipped("outsider CLAIM before RESOLVE",
+    at(claimEvent(Role.BUYER, OUTSIDER_PK, lock.raw.id), lock), "INVALID_STATE");
+  skipped("outsider RESOLVE with the wrong outcome",
+    { ...at(resolveEvent(Outcome.REFUND, [Role.BUYER, Role.SELLER], false, lock.raw.id), lock), pubkey: OUTSIDER_PK },
+    "THRESHOLD_NOT_MET");
+  // Strict where custody is in doubt, whoever the chain makes the author look like.
+  assert(!replayEventChain(sortEventChain([...base, claimEvent(Role.SELLER, SELLER_PK, resolve.raw.id)])).ok,
+    "a principal's failing CLAIM still stops replay");
+  assert(!replayEventChain(sortEventChain([create, lock, buyer, resolve])).ok,
+    "a participant's RESOLVE the votes don't support still stops replay");
+  assert(!replayEventChain([create, at(voteEvent(Role.BUYER, OUTSIDER_PK, Outcome.REFUND, create.raw.id), create)]).ok,
+    "before LOCK an unattributable VOTE stays strict");
+  // A stranger's backdated CREATE takes the root. The real seller's LOCK must
+  // then fail the load, never be skipped into an impostor's open listing.
+  const impostor = retimeEvent({ ...createEvent(), pubkey: OUTSIDER_PK }, create.timestamp - 10);
+  impostor.raw = { ...impostor.raw, pubkey: OUTSIDER_PK };
+  const hijack = replayEventChain(sortEventChain([impostor, ...base]));
+  assert(!hijack.ok, "real LOCK under a stranger's root is never skipped into an open listing",
+    hijack.ok ? hijack.state.status : undefined);
+  // A caller that names the stranger (a hostile `by` on a fresh device) roots
+  // at the forgery. The real LOCK must still fail the load, not be skipped.
+  const named = replayEventChain(sortEventChain([impostor, ...base]), { creator: OUTSIDER_PK });
+  assert(!named.ok, "real LOCK under a named stranger's root is never skipped into an open listing",
+    named.ok ? named.state.status : undefined);
   assert(!replayEventChain([...base, resolveEvent(Outcome.REFUND, [Role.BUYER, Role.SELLER], false, resolve.raw.id)]).ok,
     "contradictory resolution cannot be skipped as a duplicate");
 }
