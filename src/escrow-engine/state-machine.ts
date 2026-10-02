@@ -2095,6 +2095,13 @@ export function replayEventChain(
   const claimants = new Set(events
     .filter(event => event.kind === EscrowEventKind.CREATE)
     .map(event => event.pubkey));
+  // Anyone who asked for a seat. Once one LOCK is accepted, a second LOCK is a
+  // harmless duplicate only from someone who never asked for a seat and who
+  // locks the same notes: a buyer who JOINed may be the real funder, outrun by
+  // a squatter's backdated JOIN and LOCK, or a lapsed holder who still paid.
+  const seatSeekers = new Set(events
+    .filter(event => event.kind === EscrowEventKind.JOIN)
+    .map(event => event.pubkey));
   const rooted = selectTradeRoot(events, opts.creator);
   if (!rooted.ok) return err(rooted.code, rooted.message);
   events = rooted.events;
@@ -2134,7 +2141,9 @@ export function replayEventChain(
       // up the chain, or that a backdated JOIN can displace. A funds event that
       // replies to an event the read does not hold is a hole, not an outsider.
       const entitled = !state || claimants.has(event.pubkey)
-        || (event.kind === EscrowEventKind.LOCK && !state.eventChain.some(e => e.kind === EscrowEventKind.LOCK))
+        || (event.kind === EscrowEventKind.LOCK && (!state.eventChain.some(e => e.kind === EscrowEventKind.LOCK)
+          || seatSeekers.has(event.pubkey)
+          || (event.payload as LockPayload).notesHash !== state.lock.notesHash))
         || (funds && !!event.prevEventId && !availableIds.has(event.prevEventId))
         || replayAuthorEntitled(state, event);
       if (event.kind === EscrowEventKind.JOIN && result.error.code === "ROLE_TAKEN") claimants.add(event.pubkey);

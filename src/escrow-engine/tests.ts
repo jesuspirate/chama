@@ -6694,6 +6694,35 @@ for (const needs of [0, 2]) for (const active of [0, 200000]) for (const balance
   const arbiterAfterMissing = { ...voteEvent(Role.ARBITER, ARBITER_PK, Outcome.RELEASE, "missing-seller-vote") };
   assert(!replayEventChain(sortEventChain([create, lock, buyer, arbiterAfterMissing])).ok,
     "an arbiter vote replying to a missing principal vote stays strict");
+  // Third review. A squatter who JOINs and LOCKs before the real buyer's JOIN
+  // has the first accepted LOCK; the real buyer's LOCK must fail the load,
+  // never be skipped so the trade reads as funded by the squatter.
+  const BUYER_B = "ab".repeat(32);
+  const sqJoin = retimeEvent(joinEvent(Role.BUYER, OUTSIDER_PK, mkt.raw.id), NOW + 4);
+  const sqLock = retimeEvent(lockEvent(sqJoin.raw.id, { locker: OUTSIDER_PK, buyerPubkey: OUTSIDER_PK }), NOW + 6);
+  sqLock.payload = { ...sqLock.payload, notesHash: "squatter-notes" };
+  const bJoin = retimeEvent(joinEvent(Role.BUYER, BUYER_B, mkt.raw.id), NOW + 7);
+  const bLock = retimeEvent(lockEvent(bJoin.raw.id, { locker: BUYER_B, buyerPubkey: BUYER_B }), NOW + 10);
+  assertOk(replayEventChain(sortEventChain([mkt, sqJoin, sqLock])), "squatter control: their own LOCK replays alone");
+  for (const [name, chain] of [
+    ["real JOIN in the read", [mkt, sqJoin, sqLock, bJoin, bLock]],
+    ["real LOCK replying to the CREATE", [mkt, sqJoin, sqLock,
+      retimeEvent(lockEvent(mkt.raw.id, { locker: BUYER_B, buyerPubkey: BUYER_B }), NOW + 10)]],
+  ] as const) {
+    const r = replayEventChain(sortEventChain([...chain]));
+    assert(!r.ok, `a squatter's earlier LOCK never makes the real buyer's LOCK skippable (${name})`,
+      r.ok ? `${r.state.status} buyer=${r.state.participants[Role.BUYER]?.slice(0, 4)}` : undefined);
+  }
+  // A buyer whose hold lapsed but who still locked within the grace window,
+  // after a second buyer took the seat and locked: strict, as before step 2.
+  const b1Join = retimeEvent(joinEvent(Role.BUYER, BUYER_PK, mkt.raw.id), NOW + 1);
+  const lapse = joinHoldExpiresAt(NOW + 1);
+  const b2Join = retimeEvent(joinEvent(Role.BUYER, BUYER_B, mkt.raw.id), lapse + 1);
+  const b2Lock = retimeEvent(lockEvent(b2Join.raw.id, { locker: BUYER_B, buyerPubkey: BUYER_B }), lapse + 5);
+  const b1Lock = retimeEvent(lockEvent(b1Join.raw.id, { locker: BUYER_PK }), lapse + 60);
+  assertOk(replayEventChain(sortEventChain([mkt, b1Join, b2Join, b2Lock])), "lapsed-hold control: the second buyer's LOCK replays");
+  assert(!replayEventChain(sortEventChain([mkt, b1Join, b2Join, b2Lock, b1Lock])).ok,
+    "a lapsed holder's LOCK inside the grace window still stops replay");
   // Neither a made-up predecessor nor a JOIN of their own makes an outsider's
   // non-funds event strict.
   skipped("outsider VOTE replying to a made-up id",
