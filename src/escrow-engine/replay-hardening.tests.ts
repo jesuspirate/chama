@@ -1,16 +1,18 @@
-// Replay hardening, step 0: evidence before code (docs/replay-hardening-brief.md).
+// Replay hardening evidence (docs/replay-hardening-brief.md).
 //
-// Reproduces the brief's findings through the real cold-load path —
-// relay REQ, nostr-tools signature verification, decrypt, parse, sort,
-// replay — instead of calling the reducer directly. Every event is signed
-// with its author's own key; strangers use only public data (the escrow id
-// and the parties' pubkeys). Assertions pin TODAY's behaviour, which is
-// fail-closed. When step 1 (trade identity is creator + id) and step 2
-// (invalid events from non-entitled authors are dropped) land, the
-// assertions marked "STEP 1" / "STEP 2" are the ones expected to change.
+// Drives the real cold-load path — relay REQ, nostr-tools signature
+// verification, decrypt, parse, sort, replay — instead of calling the reducer
+// directly. Every event is signed with its author's own key; strangers use
+// only public data (the escrow id and the parties' pubkeys).
+//
+// Step 0 pinned the behaviour before any fix. Step 1 (trade identity is
+// creator + id) has flipped the finding-2 blocks. Finding 1 still pins the
+// fail-closed behaviour that step 2 (invalid events from non-entitled authors
+// are dropped) changes; those assertions are marked "STEP 2".
 import assert from 'node:assert/strict';
 import { finalizeEvent, getPublicKey } from 'nostr-tools/pure';
 import { EscrowClient } from './escrow-client.js';
+import { creatorTaggedEscrowId } from './trade-identity.js';
 import { EscrowEventKind as K, EscrowStatus as S, Outcome as O, Role as R, type NostrEvent } from './types.js';
 
 const storage = new Map<string, string>();
@@ -155,66 +157,44 @@ const nextId = () => `sm_${T.toString(36)}_rh${(++idSeq).toString().padStart(6, 
   console.log('PASS control: an event with a tampered signature is dropped, so the strays above passed real verification');
 }
 
-// ── Finding 2: a stranger's backdated CREATE takes the root ───────────────
+// ── Finding 2 after step 1: a stranger's CREATE cannot take a listing ─────
+// Step 0 pinned the opposite here: the backdated CREATE became the root, and
+// a buyer-funded (`marketplace`) listing was presented under the impostor with
+// the impostor's own arbiter pool. A trade is now (creator, id). The unlocked,
+// locked and link-with-`by` cases live in trade-identity.tests.ts; this keeps
+// the severity case and the dating boundary on the same cold-load path.
 {
-  const id = nextId();
-  const real = sign(SELLER, K.CREATE, id, createPayload(pk(SELLER), 100_000_000, T), T);
-  const impostor = sign(STRANGER, K.CREATE, id, createPayload(pk(STRANGER), 1_000, T - 10), T - 10);
-
-  const alone = await coldLoad(id, [real]);
-  assert.equal(alone.state?.status, S.CREATED);
-  assert.equal(alone.state?.participants[R.SELLER], pk(SELLER));
-  assert.equal(alone.state?.amountMsats, 100_000_000);
-
-  // STEP 1: with the expected creator known, this must root at `real`.
-  const unlocked = await coldLoad(id, [real, impostor]);
-  assert.equal(unlocked.failure, null, `${unlocked.failure?.code}`);
-  assert.equal(unlocked.state?.status, S.CREATED, 'unlocked listing still reads as open');
-  assert.equal(unlocked.state?.participants[R.SELLER], pk(STRANGER), 'impostor is seated as seller');
-  assert.equal(unlocked.state?.amountMsats, 1_000, "impostor's terms replace the real listing");
-  console.log('PASS finding 2 reproduced through loadEscrow: backdated stranger CREATE replaces the open listing');
-
-  const b = baseline(id);
-  const locked = await coldLoad(id, [...b.chain, impostor]);
-  assert.equal(locked.state, null, 'a locked trade under an impostor root fails to load');
-  assert.equal(locked.failure?.code, 'NOT_PARTICIPANT', `${locked.failure?.code} ${locked.failure?.message}`);
-  console.log('PASS finding 2 reproduced through loadEscrow: locked trade under an impostor root fails NOT_PARTICIPANT (fail-closed)');
-}
-
-// ── Finding 2 severity: a buyer-funded listing ────────────────────────────
-// In `marketplace` the BUYER locks (funderRole). An impostor who copies the
-// real listing's terms but names their own arbiter is presented, on a fresh
-// device, as an open listing the buyer can fund, with the impostor holding
-// seller + arbiter (2 of 3). What stands between the buyer and that lock
-// today is UI, not consensus: TradeDetail's arbiter provenance check flags
-// an arbiter outside the community roster / bonded / device-trusted pool.
-{
-  const id = nextId();
   const SOCK = key(6);
   const listing = (sellerPk: string, arbiters: string[], at: number) => ({
     ...createPayload(sellerPk, 50_000_000, at), category: 'marketplace', description: 'Handmade chair',
     communityArbiters: arbiters });
-  const real = sign(SELLER, K.CREATE, id, listing(pk(SELLER), [pk(ARBITER)], T), T);
-  const impostor = sign(STRANGER, K.CREATE, id, listing(pk(STRANGER), [pk(SOCK)], T - 10), T - 10);
-  const { state, failure } = await coldLoad(id, [real, impostor]);
-  assert.equal(failure, null, `${failure?.code}`);
-  assert.equal(state?.status, S.CREATED, 'reads as an open, fundable listing');
-  assert.equal(state?.description, 'Handmade chair', 'same title and price as the real listing');
-  assert.equal(state?.amountMsats, 50_000_000);
-  assert.equal(state?.participants[R.SELLER], pk(STRANGER), 'impostor is the seller');
-  assert.deepEqual(state?.communityArbiters, [pk(SOCK)], "impostor's own arbiter pool");
-  console.log('PASS finding 2 severity: a buyer-funded listing is presented under the impostor with their arbiter pool');
-}
+  // The impostor's CREATE dated before the real one (the attack) and after it
+  // (harmless before step 1). Both now get the same answer.
+  for (const [when, at] of [['backdated', T - 10], ['later', T + 10]] as const) {
+    // New ids name their creator: the impostor's CREATE is not this trade's.
+    const tagged = creatorTaggedEscrowId(T.toString(36), `rh${(++idSeq).toString().padStart(6, '0')}`, pk(SELLER));
+    const real = sign(SELLER, K.CREATE, tagged, listing(pk(SELLER), [pk(ARBITER)], T), T);
+    const impostor = sign(STRANGER, K.CREATE, tagged, listing(pk(STRANGER), [pk(SOCK)], at), at);
+    const fresh = await coldLoad(tagged, [real, impostor]);
+    assert.equal(fresh.failure, null, `${when}: ${fresh.failure?.code} ${fresh.failure?.message}`);
+    assert.equal(fresh.state?.status, S.CREATED);
+    assert.equal(fresh.state?.participants[R.SELLER], pk(SELLER), `${when}: the real seller is the seller`);
+    assert.deepEqual(fresh.state?.communityArbiters, [pk(ARBITER)], `${when}: the real arbiter pool`);
+    assert.ok(!fresh.state?.eventChain.some(e => e.raw.id === impostor.id), `${when}: the impostor's CREATE is not in the chain`);
+    console.log(`PASS creator-tagged id: a ${when} stranger CREATE is ignored and the real buyer-funded listing loads`);
 
-// ── Finding 2 boundary: a CREATE dated after the real one is harmless ─────
-{
-  const id = nextId();
-  const real = sign(SELLER, K.CREATE, id, createPayload(pk(SELLER), 100_000_000, T), T);
-  const late = sign(STRANGER, K.CREATE, id, createPayload(pk(STRANGER), 1_000, T + 10), T + 10);
-  const { state } = await coldLoad(id, [real, late]);
-  assert.equal(state?.participants[R.SELLER], pk(SELLER));
-  assert.equal(state?.amountMsats, 100_000_000);
-  console.log('PASS a later stranger CREATE is skipped as DUPLICATE_CREATE');
+    // Old ids name nobody. A fresh device with no record of the trade cannot
+    // tell the two apart, so it shows neither. The listing is hidden, never
+    // replaced. (Before step 1 the later CREATE was skipped as DUPLICATE_CREATE.)
+    const old = nextId();
+    const oldReal = sign(SELLER, K.CREATE, old, listing(pk(SELLER), [pk(ARBITER)], T), T);
+    const oldImpostor = sign(STRANGER, K.CREATE, old, listing(pk(STRANGER), [pk(SOCK)], at), at);
+    const refused = await coldLoad(old, [oldReal, oldImpostor]);
+    assert.equal(refused.state, null, `${when}: an old id with two creators opens as neither listing`);
+    assert.equal(refused.failure?.reason, 'conflicting-creators', when);
+    assert.equal(refused.failure?.code, 'CONFLICTING_CREATES', when);
+    console.log(`PASS old id: a ${when} stranger CREATE makes a fresh device refuse the listing (CONFLICTING_CREATES)`);
+  }
 }
 
 process.exit(0);
