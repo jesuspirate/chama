@@ -100,7 +100,12 @@ shipping: {
   costIncluded: true;         // v1: shipping is inside amountMsats
   shipsTo?: string[];         // ISO alpha-2; display and filtering only
 }
+imageHashes?: string[];       // CREATE field: SHA-256 hex per imageUrls entry
 ```
+
+`imageHashes` is required on a shipped CREATE whenever `imageUrls` has
+remote entries, one hash per entry (`SHIPPED_IMAGE_HASHES_REQUIRED`). It is
+the evidence base for disputes (3.4).
 
 Parser: all numbers finite integers > 0; `costIncluded` must be `true` in v1
 (separate shipping payment is out of scope). Reducer stores it on state.
@@ -206,11 +211,8 @@ roster, `docs/arbiter-roster-spec.md`):
 **Rule REFUND** if tracking never arrived by ship-by, or the tracking never
 moved, or the carrier shows no delivery by the end of transit.
 
-**Two-sided dispute** (buyer said REFUND): evidence from both sides
-(section 4). A refund for an item that *was* delivered requires the buyer to
-ship it back **at their own cost**, with tracking showing delivery back to
-the seller. This is fixed, not negotiated per trade, and the listing says
-so before anyone pays.
+**Two-sided dispute** (buyer said REFUND): decided only on the reasons and
+proof in 3.4. Anything else is ruled RELEASE.
 
 > On-chain: anything still undecided when the refund leaf matures goes to the
 > buyer. Arbiters must rule before then, and the return-shipping requirement
@@ -226,6 +228,65 @@ arbiters; it can't stop a colluding one, since seller + arbiter is already
 two of three (same as every Chama dispute today). With a watcher (v2) the
 gate can check rules 2–3 itself.
 
+### 3.4 Dispute reasons and proof
+
+Chama is not a free-returns shop. A buyer who changes their mind keeps the
+item and the seller is paid; overstock coming back for any reason hurts
+sellers and drives them away. A refund needs one of four reasons, each with
+proof the arbiter checks.
+
+| Reason | What it means | Proof required | Return needed? |
+|---|---|---|---|
+| **Not received** | Never arrived | Carrier shows no delivery by the end of transit, or shows it lost or returned to sender | No |
+| **Damaged** | Arrived broken or unusable | Photos of the damage, the outer packaging and the shipping label, taken at opening | Yes |
+| **Wrong item** | A different item, model, size or quantity than the listing | Photos of what arrived next to the label, compared with the listing | Yes |
+| **Not as described** | Material difference from the listing: counterfeit, missing parts, undisclosed defects, false condition | Photos or video showing the difference, compared with the listing | Yes |
+
+**Not grounds for a refund:** changed mind, found it cheaper, no longer
+needed, doesn't fit or doesn't suit when the listing was accurate, minor
+cosmetic differences the listing photos already showed, or slow delivery
+that still arrived within the transit window.
+
+Rules:
+
+- **The listing is the contract.** Its title and description are signed
+  into the CREATE event, and there is no edit event: an "edit" publishes a
+  new listing and cancels the old one (`listing-edit.ts`), so a paid trade's
+  terms never change. Photos need one more step: a listing photo can be an
+  `https` URL (`listing-image-upload.ts`), and the server behind it could
+  swap the picture after the sale. Shipped CREATEs therefore also sign a
+  SHA-256 hash of every photo (`imageHashes`, same order as `imageUrls`;
+  inline `data:` photos are already signed). Clients show a photo as
+  "changed since purchase" when its hash no longer matches. "Wrong item"
+  and "Not as described" are judged against this signed listing, not
+  against what either side remembers.
+- **Dispute inside the window.** A reason must be raised before the
+  inspection window ends. After it, silence means accepted (3.2).
+- **Proof up front.** The buyer picks a reason and attaches proof in the same
+  step. A dispute without proof is ruled RELEASE.
+- **Seller's answer.** The seller can reply with their own evidence: the
+  photos taken before shipping (section 4) and the listing itself.
+- **Delivered means delivered.** For "Not received", a carrier delivery scan
+  to the buyer's address counts as received. Sellers of valuable items
+  should use signature-on-delivery.
+- **Damage in transit is the seller's risk.** The seller chose the packaging
+  and the carrier, and can insure the parcel; their carrier claim is their
+  business, not the buyer's.
+- **Return before refund.** For Damaged, Wrong item and Not as described,
+  the arbiter rules REFUND only once return tracking shows the item
+  delivered back to the seller. The return must fit inside the on-chain
+  deadline (3.2).
+- **Return postage.** The buyer pays it up front. Escrow outcomes are release
+  or refund only, so the escrow can't reimburse the buyer when the seller
+  was at fault. Seller-paid returns need partial payouts, which are out of
+  scope (section 8).
+- **Arbiters judge, don't guess.** When proof is unclear, the arbiter asks
+  for more within the trade. Rulings, and the reason chosen, become part of
+  both parties' conduct record (`.agents/skills/proof-of-conduct`).
+
+The create form shows these rules on every shipped listing, before anyone
+pays.
+
 ## 4. Data: address, tracking, evidence
 
 All of this travels in encrypted envelopes, never in clear on relays, and
@@ -236,7 +297,7 @@ none of it is consensus data.
 | Shipping address | buyer → **seller only** | New structured envelope, seller + self | Not trade chat: chat includes the arbiter. Entered after LOCK. |
 | Carrier + tracking number | seller → buyer, arbiter | Structured chat message | Arbiter needs it to check delivery. |
 | Photos before shipping | seller → buyer, arbiter | Chat image attachments | Item and sealed parcel. |
-| Photos of what arrived | buyer → seller, arbiter | Chat image attachments | On dispute. |
+| Dispute reason + proof | buyer → seller, arbiter | Structured chat message with image attachments | One of the four reasons in 3.4. |
 | Return tracking | buyer → seller, arbiter | Structured chat message | Required for a refund after delivery; return postage paid by the buyer. |
 
 Structured messages carry a plain-text fallback (`message`) so older clients
@@ -312,7 +373,8 @@ the shipment's duration; the create form says so for shipped listings.
 - Partial refunds (outcomes stay release or refund).
 - Automated arbiter (v1 is humans following section 3.2).
 - Tracking watcher (v2, section 5).
-- Negotiated return terms (v1: buyer pays return postage, always).
+- Returns for any reason other than the four in 3.4.
+- Seller-paid return postage (needs partial payouts).
 - Insurance.
 - Multiple parcels per trade.
 
@@ -333,6 +395,9 @@ Per `AGENTS.md`, money-path changes need regression coverage:
 - Client gate: arbiter RELEASE refused without a tracking number posted
   before ship-by.
 - Carrier link templates produce the right URL per carrier.
+- Shipped CREATE without `imageHashes` for remote photos is rejected; a photo
+  whose bytes no longer match its hash is flagged.
+- Dispute without one of the four reasons and attached proof can't be sent.
 
 ## 10. Decisions (locked 2026-10-02)
 
@@ -341,8 +406,10 @@ Per `AGENTS.md`, money-path changes need regression coverage:
    (max 21): yes.
 3. **Rail:** no shipped-specific cap; follow the existing on-chain minimum and
    default (section 7).
-4. **Returns:** a refund for a delivered item requires return shipping with
-   tracking, at the buyer's own cost, fixed for every shipped trade.
+4. **Returns:** not free returns. A refund needs one of four reasons with
+   proof the arbiter vets — not received, damaged, wrong item, not as
+   described (3.4). Delivered items must be shipped back with tracking
+   before a refund; the buyer pays return postage up front.
 5. **Tracking:** every carrier, without Chama running a paid service. v1 uses
    carrier tracking links; v2 adds an optional self-hostable watcher.
 6. **Event kind 38140** reserved for watcher observations.
