@@ -1,6 +1,8 @@
 # Shipped goods — sats locked through delivery and inspection (design brief)
 
-Status: DESIGN BRIEF. Nothing here is implemented. Money-path change — same
+Status: DESIGN BRIEF. Nothing here is implemented. The buildable version,
+with the open questions below resolved into proposals, is
+`docs/shipping-escrow-spec.md`. Money-path change — same
 discipline as `chama-money-path-design.md`: implement against an agreed spec,
 then adversarial verification before wiring.
 
