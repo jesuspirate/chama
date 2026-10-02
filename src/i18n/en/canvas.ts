@@ -1,6 +1,12 @@
 // AssistedCanvas (the guided create/browse canvas) + its satellite components
 // (attention bell, offline bar). Extracted for 6.3.1 — EN is source of truth.
 export const canvas: Record<string, string> = {
+  "canvas.deliverydigital": "Digital",
+  "canvas.deliveryservice": "Service",
+  "canvas.deliverymeet": "Meet",
+  "canvas.deliveryship": "Ship",
+  "canvas.deliveryQ": "How does the buyer get it?",
+  "canvas.billSatsSummary": "{base} sats bill + {bonus} sats bonus = {total} sats to you",
   "canvas.backOffers": "Offers",
   "canvas.staysLive": "Stays live while you use Chama. If you're away a day, it pauses.",
   "canvas.renewPaused": "Paused — a buyer waited and you didn't lock. Renew to show it again.",

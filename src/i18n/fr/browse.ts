@@ -1,5 +1,7 @@
 // fr/browse — Session B fills this from src/i18n/en/browse.ts (key set must match EXACTLY).
 export const browse: Record<string, string> = {
+  "browse.otherCurrencies": "Autres devises · {count}",
+  "browse.allExcludesMine": "Les offres de tout le monde sauf les vôtres — les vôtres sont sous Mes offres.",
   "browse.copyDiagnostics": "Copier le diagnostic de Parcourir",
   "browse.advancedFooterLine1": "Événements : kinds 38100-38108 · SSS 2-sur-3",
   "browse.advancedFooterLine2": "Chiffré NIP-44 · relecture par relais · aucune garde serveur",

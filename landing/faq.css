@@ -48,3 +48,14 @@ html[data-theme=dark] .technical-card{background:#20241e}
 @media(max-width:900px){.home-link{display:none}.faq-hero{gap:30px;padding-top:55px}.faq-section{gap:35px;grid-template-columns:1fr 1.6fr}.faq-note{flex-wrap:wrap}.faq-note p{flex:1}.faq-note a{margin-left:48px}}
 @media(max-width:600px){:root{--nav-height:72px}.nav{gap:10px;padding-inline:16px}.nav .brand{font-size:23px;gap:5px}.nav .brand img{width:27px;height:27px}.nav-actions{gap:7px}.nav .faq-languages{gap:0}.faq-languages a{font-size:10px;padding:10px 6px}.theme-toggle{width:30px;height:30px}.nav-enter{display:none}.faq-hero{grid-template-columns:1fr;padding:45px 0 35px;gap:22px}.faq-hero h1{font-size:clamp(37px,9vw,54px);margin-block:20px}.faq-art{width:130px;justify-self:end;margin-top:-10px}.faq-intro{font-size:16px}.faq-note{gap:15px}.faq-note p{font-size:13px;flex:1 1 calc(100% - 50px)}.faq-note a{margin-left:37px}.faq-jump{grid-template-columns:repeat(2,1fr);gap:0 20px;padding-bottom:40px}.faq-jump a{font-size:12px;gap:10px}.faq-section{grid-template-columns:1fr;gap:30px;padding:35px 0 40px}.section-heading h2{max-width:none}.qa summary{font-size:17px;gap:15px}.answer{font-size:15px;padding-right:0}.technical-card{padding:27px;margin-bottom:40px}.faq-footer{flex-wrap:wrap;gap:15px}.faq-footer p{width:100%;order:3;margin:0}.faq-footer>a:last-child{margin-left:auto}}
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+
+/* Readability: nothing a reader must read sits under 12px. */
+html .home-link,html .faq-note a { font-size: 15px; }
+html .faq-languages a { font-size: 13px; }
+html .faq-note p,html .faq-jump a { font-size: 16px; }
+html .faq-jump span,html .section-heading .eyebrow,html .technical-card .eyebrow { font-size: 12px; }
+html .answer { font-size: 17px; }
+html .technical-card .text-link { font-size: 15px; }
+html .faq-footer { font-size: 14px; }
+@media(max-width:600px) { html .faq-languages a { font-size: 12px; } html .faq-jump a { font-size: 14px; } html .answer { font-size: 16px; } }
+

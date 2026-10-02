@@ -1,3 +1,4 @@
+import { isNativePushSupported, postNativeChat } from "./native-push.js";
 import { esploraTransactionUrl } from "../bond-multisig/esplora-config.js";
 import { MAINNET, SIGNET } from "../bond-multisig/multisig.js";
 import { onchainAttention, type OnchainObservation } from '../escrow-engine/onchain-attention.js';
@@ -413,6 +414,10 @@ async function deliver(n: TradeNotification): Promise<boolean> {
   notifyDebug(() => `deliver tag=${n.tag} platform=${platformName()}`);
   try {
     if (isCapacitorNative()) {
+      if (n.tag.startsWith(`${n.escrowId}:chat:`) && isNativePushSupported()) {
+        // Never fall through to a second Android poster, even on plugin failure.
+        return await postNativeChat(n);
+      }
       const { LocalNotifications } = await import("@capacitor/local-notifications");
       // Android freezes a channel's importance after first creation. The old
       // implicit `default` channel was DEFAULT importance: it made a sound and

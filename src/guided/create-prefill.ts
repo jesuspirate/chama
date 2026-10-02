@@ -16,6 +16,7 @@ export interface CanvasCreatePrefill {
    *  unmistakable at the final editable boundary. */
   emphasizePaymentMethods?: boolean;
   description?: string;
+  delivery?: "ship" | "meet" | "service" | "digital";
   amountSats?: number;
   /** Exchange range (Jet 2026-09-05: "no single offers ever"): with both
    *  amountSats (min) and maxAmountSats set on a p2p-trade prefill, Create

@@ -504,6 +504,13 @@ export interface LoadFailure {
 // ESCROW CLIENT
 // ══════════════════════════════════════════════════════════════════════════
 
+/** Advisory peer discovery/wake tags; never a source of consensus seating. */
+export function seatedPeerTags(state: EscrowState, me: string): string[][] {
+  return [...new Set([...Object.values(state.participants), state.actingArbiter]
+    .filter((pk): pk is string => typeof pk === "string" && /^[0-9a-f]{64}$/i.test(pk) && pk.toLowerCase() !== me.toLowerCase()).map(pk => pk.toLowerCase()))]
+    .map(pk => [TAGS.PARTICIPANT, pk]);
+}
+
 export class EscrowClient {
   private relayManager: RelayManager;
   private signer: Signer;
@@ -847,6 +854,14 @@ export class EscrowClient {
    * touch the trade chain and don't need the tag.
    */
   private async signWithSimTag(unsigned: UnsignedEvent): Promise<NostrEvent> {
+    // Every chain builder uses this boundary, including settlement/key events.
+    // Add peers before deriving ECDH wake tags; existing LOCK discovery tags stay.
+    const escrowId = unsigned.tags.find(tag => tag[0] === TAGS.ESCROW_ID)?.[1];
+    const state = escrowId ? this.states.get(escrowId) : undefined;
+    if (state) {
+      const existing = new Set(unsigned.tags.filter(tag => tag[0] === TAGS.PARTICIPANT).map(tag => tag[1].toLowerCase()));
+      unsigned = {...unsigned, tags:[...unsigned.tags, ...seatedPeerTags(state, await this.getPubkey()).filter(tag => !existing.has(tag[1]))]};
+    }
     if (isChamaClientTagKind(unsigned.kind)) {
       unsigned = { ...unsigned, tags: [...unsigned.tags, chamaClientTag()] };
     }
@@ -1211,6 +1226,7 @@ export class EscrowClient {
     /** PR 2: marketplace user picks; non-marketplace categories get
      *  "service" written by handleCreate regardless of what's passed. */
     fulfillment?: "physical" | "service" | "digital";
+    delivery?: "ship" | "meet" | "service" | "digital";
     /** PR 2: community slug from the static registry. Optional —
      *  pre-registry trades work but won't show a community pill. */
     community?: string;
@@ -1305,7 +1321,7 @@ export class EscrowClient {
     // get "service" regardless of input.
     const fulfillment: "physical" | "service" | "digital" =
       params.category === "marketplace"
-        ? (params.fulfillment ?? "physical")
+        ? (params.delivery ? (params.delivery === "service" || params.delivery === "digital" ? params.delivery : "physical") : (params.fulfillment ?? "physical"))
         : "service";
 
     // Resolved AFTER the id exists — see escrowKeyFor. Fails soft: no key just
@@ -1332,6 +1348,7 @@ export class EscrowClient {
       chamaPolicy: params.chamaPolicy,
       chamaCircle: params.chamaCircle,
       fulfillment,
+      ...(params.category === "marketplace" ? {delivery:params.delivery ?? (fulfillment === "physical" ? "ship" : fulfillment)} : {}),
       community: params.community,
       // v3.1 B3: carry the ISO country so receivers who don't know this
       // community can still self-describe (flag + currency) from the wire.
@@ -1547,6 +1564,7 @@ export class EscrowClient {
       premiumBps: parent.premiumBps,
       category: parent.category,
       fulfillment: parent.fulfillment,
+      delivery: parent.delivery,
       community: parent.community ?? undefined,
       country: parent.country ?? undefined,
       billType: parent.billType ?? undefined,

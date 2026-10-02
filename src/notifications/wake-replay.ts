@@ -46,7 +46,7 @@ export function selectWakeNotifications(next: Iterable<EscrowState>, old: Map<st
       .filter((chat): chat is TradeNotification => !!chat)
       .map(chat => {
         const message = state.chatMessages.find(m => chat.tag.endsWith(m.raw.id))!;
-        return { ...chat, sender: snapshot.names?.[message.pubkey] || translate(getCurrentLang(), "notify.partnerFallback"), body: `${snapshot.names?.[message.pubkey] || translate(getCurrentLang(), "notify.partnerFallback")}: ${message.payload.message || translate(getCurrentLang(), "notify.photoFallback")}` };
+        return { ...chat, sender: snapshot.names?.[message.pubkey] || translate(getCurrentLang(), "notify.partnerFallback"), body: `${snapshot.names?.[message.pubkey] || translate(getCurrentLang(), "notify.partnerFallback")}: ${chat.message}` };
       });
     const root = state.eventChain.find(e => e.kind === 38100);
     const listing = snapshot.newListings?.enabled && root && !root.raw.tags.some(t => t[0] === 'renewal')

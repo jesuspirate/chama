@@ -1,5 +1,16 @@
 // es/notify — Session C fills this from src/i18n/en/notify.ts (key set must match EXACTLY).
 export const notify: Record<string, string> = {
+  "notify.savedIntentGoodsBodyGeneric": "Apareció una oferta que estabas siguiendo. Toca para verla.",
+  "notify.savedIntentGoodsBody": "Alguien acaba de publicar «{query}». Toca para verlo.",
+  "notify.savedIntentSatsBody": "Alguien ofrece los sats que buscabas. Toca para verlo.",
+  "notify.savedIntentTitle": "Apareció una coincidencia",
+  "notify.marketActiondigital": "entrega el archivo y márcalo como enviado",
+  "notify.marketActionservice": "haz el trabajo y márcalo como hecho",
+  "notify.marketActionmeet": "entrégalo y márcalo como hecho",
+  "notify.marketActionship": "envía el artículo y márcalo como enviado",
+  "notify.newMessageFallback": "Mensaje nuevo",
+  "notify.resolvedBody": "Resuelto — los sats van a {who}.",
+  "notify.resolvedTitle": "Resuelto",
   "notify.namedLockedBody": "{who} bloqueó {amount} sats — {action}.",
   "notify.listingNeedsYou": "Tu anuncio te necesita",
   "notify.listingTitle": "Tu anuncio",
@@ -14,7 +25,7 @@ export const notify: Record<string, string> = {
   "notify.tradeLabel": "tu intercambio de {amount} sats",
 
   "notify.approvedBody":
-    "{label} se resolvió a tu favor — abre Chama para reclamar tus sats.",
+    "Tus {amount} sats están listos — abre Chama para reclamarlos.",
   "notify.approvedTitle": "✅ Tu reclamo está listo",
   "notify.arbiterKeyBody": "{label} te seleccionó como árbitro. Abre Chama y publica tu clave de custodia para iniciar la financiación en cadena.",
   "notify.arbiterKeyTitle": "🔑 Un intercambio on-chain necesita tu clave",

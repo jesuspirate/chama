@@ -1,3 +1,4 @@
+import { marketDelivery } from "../labels/market-delivery.js";
 import { readNostrProfileCache } from '../ui/nostr-profiles.js';
 import { expectedLockerRole } from "../escrow-engine/lock-custody.js";
 import { getWinner } from '../escrow-engine/state-machine.js';
@@ -234,7 +235,7 @@ export function notificationForTransition(
         body: translate(getCurrentLang(), "notify.namedLockedBody", {
           who: names[next.participants[expectedLockerRole(next.category) ?? Role.SELLER] ?? ""] || translate(getCurrentLang(), "notify.partnerFallback"),
           amount: Math.floor((selectedMenuItemsTotalMsats(next.lock?.selectedItems ?? []) || next.amountMsats) / 1000).toLocaleString("en-US"),
-          action: translate(getCurrentLang(), next.category === "marketplace" ? "notify.lockedMarketAction" : next.category === "bill-pay" ? "notify.lockedBillAction" : "notify.lockedExchangeAction"),
+          action: translate(getCurrentLang(), next.category === "marketplace" ? `notify.marketAction${marketDelivery(next)}` : next.category === "bill-pay" ? "notify.lockedBillAction" : "notify.lockedExchangeAction"),
         }),
         tag: `${id}:locked`,
       };
@@ -248,10 +249,15 @@ export function notificationForTransition(
       return {
         escrowId: id,
         title: translate(getCurrentLang(), "notify.approvedTitle"),
-        body: translate(getCurrentLang(), "notify.approvedBody", { label }),
+        body: translate(getCurrentLang(), "notify.approvedBody", { amount:Math.floor((selectedMenuItemsTotalMsats(next.lock?.selectedItems ?? []) || next.amountMsats) / 1000).toLocaleString("en-US") }),
         tag: `${id}:approved`,
       };
     }
+    if (winner && role !== Role.ARBITER) return {
+      escrowId:id, title:translate(getCurrentLang(), "notify.resolvedTitle"),
+      body:translate(getCurrentLang(), "notify.resolvedBody", {who:names[winner.pubkey] || translate(getCurrentLang(), winner.role === Role.SELLER ? "trade.sellerNoun" : "trade.buyerNoun")}),
+      tag:`${id}:approved`,
+    };
   }
 
   // 3) A dispute just opened → tell the ARBITER. This is the keystone: an
@@ -476,7 +482,7 @@ export function chatNotificationFor(
     body: translate(lang, "notify.chatBody", { who, label }),
     tag: `${id}:chat:${message.raw.id}`,
     sender: readNostrProfileCache(userPubkey)[message.pubkey] || who,
-    message: message.payload.message || translate(lang, "notify.photoFallback"), sentAt: message.timestamp * 1000,
+    message: message.payload.message || translate(lang, message.payload.attachments?.length ? "notify.photoFallback" : "notify.newMessageFallback"), sentAt: message.timestamp * 1000,
   };
 }
 

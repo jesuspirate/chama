@@ -1,4 +1,11 @@
 export const canvas: Record<string, string> = {
+  "canvas.fromOfferBracket": "De la oferta de {min}–{max} sats del vendedor",
+  "canvas.deliverydigital": "Digital",
+  "canvas.deliveryservice": "Servicio",
+  "canvas.deliverymeet": "Entrega",
+  "canvas.deliveryship": "Envío",
+  "canvas.deliveryQ": "¿Cómo lo recibe el comprador?",
+  "canvas.billSatsSummary": "factura de {base} sats + bono de {bonus} sats = {total} sats para ti",
   "canvas.backOffers": "Ofertas",
   "canvas.staysLive": "Sigue activa mientras usas Chama. Si te ausentas un día, se pausa.",
   "canvas.renewPaused": "En pausa: un comprador esperó y no bloqueaste. Renueva para mostrarla de nuevo.",

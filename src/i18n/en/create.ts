@@ -5,6 +5,9 @@
 // key fan-outs (menuTitle*/menuAdd*/… — the module-level helpers resolve them
 // with translate(getCurrentLang()) at render time).
 export const create: Record<string, string> = {
+  "create.billHealthSha": "Health — SHA/SHIF",
+  "create.billTv": "TV (DSTV/GOtv/Zuku)",
+  "create.billElectricityKplc": "Electricity — KPLC",
   "create.listingBody": "Description — paragraphs, lists, **bold**, *italic*, [label](https://…)",
   // Monthly CBP — recurring bill toggle (bill-pay only, no bond, online-gated).
   "create.recurringToggleLabel": "Recurring monthly",

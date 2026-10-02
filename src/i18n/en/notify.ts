@@ -9,6 +9,13 @@
 //   translate): the `tag` strings ("{id}:locked", "{id}:chat:…", "selftest",
 //   etc.) and escrowId sentinels stay hardcoded.
 export const notify: Record<string, string> = {
+  "notify.marketActiondigital": "deliver the file and mark it sent",
+  "notify.marketActionservice": "do the work and mark it done",
+  "notify.marketActionmeet": "hand it over and mark it done",
+  "notify.marketActionship": "send the item and mark it sent",
+  "notify.newMessageFallback": "New message",
+  "notify.resolvedBody": "Resolved — the sats go to {who}.",
+  "notify.resolvedTitle": "Resolved",
   "notify.listingNeedsYou": "Your listing needs you",
   "notify.listingTitle": "Your listing",
   "notify.buyerFallback": "A buyer",
@@ -22,7 +29,7 @@ export const notify: Record<string, string> = {
   "notify.tradeLabel": "your {amount}-sat trade",
 
   "notify.approvedBody":
-    "{label} resolved in your favor — open Chama to claim your sats.",
+    "Your {amount} sats are ready — open Chama to claim.",
   "notify.approvedTitle": "✅ Your claim is ready",
   "notify.arbiterKeyBody": "{label} selected you as arbiter. Open Chama and publish your escrow key so on-chain funding can begin.",
   "notify.arbiterKeyTitle": "🔑 An on-chain trade needs your key",

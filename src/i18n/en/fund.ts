@@ -7,6 +7,11 @@
 // half. The exact TZS amount / agent number / USSD code arrive as {params}
 // — never hardcode them in a translation.
 export const fund: Record<string, string> = {
+  "payment.withdrawalUnavailable": "Leaves the federation on-chain · fee unavailable right now · ~1 hour",
+  "payment.withdrawalLine": "Leaves the federation on-chain · fee ~{fee} sats · ~1 hour",
+  "payment.depositLine": "Deposit to {federation} · fee {fee} sats · {confirmations} confirmations",
+  "payment.onchain": "On-chain",
+  "payment.deposit": "Deposit",
   "payment.bitcoinMinimum": "Bitcoin escrow needs at least 25,000 sats per trade — raise the low end or choose Chama ecash",
   "payment.bitcoin": "Bitcoin",
   "payment.bitcoinHeld": "Held on Bitcoin · 2-of-3 · no custodian.",

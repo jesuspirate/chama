@@ -27,15 +27,17 @@ try {
   assert.deepEqual([...html.matchAll(/data-listing-id="([^"]+)"/g)].map(m=>m[1]),expected,'one card per vertical still reorders across routes');
   for(const badge of ['Store','Exchange','Bill']) assert.match(html,new RegExp(badge),'card keeps its vertical identity');
  }
+ assert.match(render(), /Everyone’s offers but yours/);
  const allChips = render();
  assert.match(allChips, /data-browse-category="bill-pay" data-count="1"/);
  setScopedStorageItem('chama_browse_scope_v2','local');
  assert.deepEqual([...render().matchAll(/data-listing-id="([^"]+)"/g)].map(m=>m[1]),['exchange','store'],'sort respects local filter');
  const localChips = render();
- assert.match(localChips, /data-browse-category="bill-pay" data-count="0"/);
- assert.match(localChips, /data-browse-category="mine" data-count="0"/);
+ assert.doesNotMatch(localChips, /data-browse-category="bill-pay"/);
+ assert.doesNotMatch(localChips, /data-browse-category="mine"/);
  assert.match(localChips, /data-browse-category="marketplace" data-count="1"/);
  assert.match(localChips, /data-browse-category="p2p-trade" data-count="1"/);
+ assert.doesNotMatch(render([exchange]), /data-browse-category-row/, 'a single remaining category is not a filter');
  const mine = {...store,id:'mine',participants:{...store.participants,seller:'f'.repeat(64)}};
  const withMine = render([exchange,store,mine]);
  const chipSum = [...withMine.matchAll(/data-browse-category="[^"]+" data-count="(\d+)"/g)].reduce((sum,m)=>sum+Number(m[1]),0);
@@ -61,7 +63,7 @@ const rows = [
  {...store,id:'included',expiresAt:900},
  {...store,id:'owned',expiresAt:900,participants:{...store.participants,seller:viewer}},
  {...store,id:'outside',expiresAt:900},
- {...store,id:'currency',expiresAt:900},
+ {...store,id:'currency',fiatCurrency:'EUR',expiresAt:900},
  {...store,id:'search',expiresAt:900},
  {...store,id:'hidden',expiresAt:900},
  {...store,id:'category',expiresAt:900},
@@ -71,14 +73,14 @@ const rows = [
 ] as any;
 const diagnostic = browseDiagnostics({viewer,community:'us-usd',currency:'USD',scope:'local',category:'marketplace',
  search:'offer',mine:false,otherCurrencies:false,clock:500,relays:['wss://relay.example'],knownIds:['unknown'],
- states:rows,excludedReasons:{hidden:'hidden'},visibleIds:new Set(['included']),
- matchingIds:new Set(['included','currency','search','category']),
+ states:rows,excludedReasons:{hidden:'sold-out'},visibleIds:new Set(['included']),
+ matchingIds:new Set(['included','currency','search','category','hidden']),
  currencyIds:new Set(['included','search','category']),searchIds:new Set(['included','category'])});
 assert.match(diagnostic.viewer!, /^npub1/);
 const byId = new Map(diagnostic.listings.map(row=>[row.id,row]));
-for (const [id,reason] of Object.entries({owned:'mine',outside:'community',currency:'currency',search:'search',
- hidden:'hidden',category:'category',cancelled:'cancelled@400',lapsed:'presence-lapsed@499',unknown:'not-fetched'})) {
- assert.deepEqual(byId.get(id)?.reasons,[reason]);
+for (const [id,reason] of Object.entries({owned:'mine',outside:'other-community',currency:'currency:EUR',search:'search',
+ hidden:'sold-out',category:'category:marketplace',cancelled:'cancelled@400',lapsed:'presence-lapsed@499',unknown:'not-fetched'})) {
+ assert.deepEqual(byId.get(id)?.out,[reason]);
  assert.equal(byId.get(id)?.included,false);
 }
 assert.equal(byId.get('included')?.included,true);
@@ -88,3 +90,7 @@ assert.equal(byId.get('unknown')?.createAt,null,'unfetched ids never invent time
 assert.doesNotMatch(JSON.stringify(diagnostic),/Store offer|description|content|participants|amountMsats|ecash/,
  'export contains no listing bodies, identities of counterparties, or wallet notes');
 console.log('PASS Browse diagnostics: known ids, exact filter reasons, timestamps, and content-free export');
+
+assert.match(diagnostic.summary, /^shown 1 · mine 1 · other-currency 1 · lapsed 1 · cancelled 1 · unfetched 1$/);
+assert.deepEqual(byId.get('included')?.out,[]);
+assert.deepEqual(byId.get('unknown')?.in,[]);

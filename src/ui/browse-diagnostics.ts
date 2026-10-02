@@ -1,5 +1,6 @@
 import { nip19 } from 'nostr-tools';
 import { EscrowEventKind, EscrowStatus, type EscrowState } from '../escrow-engine/types.js';
+import { getCommunityBySlug } from '../communities/registry.js';
 import { isOwnListing } from './browse-own-filter.js';
 export interface BrowseDiagnosticsContext {
   clock: number;
@@ -15,29 +16,35 @@ export function browseDiagnostics(input: BrowseDiagnosticsContext & {
   matchingIds: ReadonlySet<string>; currencyIds: ReadonlySet<string>; searchIds: ReadonlySet<string>;
 }) {
   const states = new Map(input.states.map(s => [s.id, s]));
-  return {
+  const listings = [...new Set([...states.keys(), ...input.knownIds])].sort().map(id => {
+    const state = states.get(id);
+    const included = input.visibleIds.has(id);
+    if (!state) return {id, included:false, in:[] as string[], out:['not-fetched'], createAt:null, cancelAt:null, presenceDeadline:null};
+    const createAt = state.eventChain.find(e => e.kind === EscrowEventKind.CREATE)?.timestamp ?? state.createdAt;
+    const cancelAt = state.eventChain.find(e => e.kind === EscrowEventKind.CANCEL)?.timestamp ?? state.cancelledAt ?? null;
+    const currency = (state.fiatCurrency || getCommunityBySlug(state.community ?? '')?.currency || 'BTC').toUpperCase();
+    let out: string[] = [];
+    if (!included) {
+      if (state.status === EscrowStatus.CANCELLED) out = [`cancelled@${cancelAt ?? 'unknown'}`];
+      else if (state.status !== EscrowStatus.CREATED) out = [`status:${state.status}`];
+      else if (state.expiresAt < input.clock) out = [`presence-lapsed@${state.expiresAt}`];
+      else if (isOwnListing(state,input.viewer) !== input.mine) out = [input.mine ? 'not-mine' : 'mine'];
+      else if (input.excludedReasons[id]) out = [input.excludedReasons[id]];
+      else if (input.scope === 'local' && !input.matchingIds.has(id)) out = ['other-community'];
+      else if (!input.currencyIds.has(id)) out = [`currency:${currency}`];
+      else if (!input.searchIds.has(id)) out = ['search'];
+      else out = [`category:${state.category}`];
+    }
+    return {id, included, in:included ? [isOwnListing(state,input.viewer) ? 'mine' : input.matchingIds.has(id) ? 'community' : 'all', `currency:${currency}`] : [],
+      out, createAt, cancelAt, presenceDeadline:state.expiresAt};
+  });
+  const count = (reason:string) => listings.filter(row => row.out.some(r=>r===reason || r.startsWith(reason))).length;
+  const summary = `shown ${listings.filter(row=>row.included).length} · mine ${count('mine')} · other-currency ${count('currency:')} · lapsed ${count('presence-lapsed@')} · cancelled ${count('cancelled@')} · unfetched ${count('not-fetched')}`;
+  return {summary,
     viewer: /^[0-9a-f]{64}$/i.test(input.viewer) ? nip19.npubEncode(input.viewer) : null,
     community: input.community, currency: input.currency, scope: input.scope,
     category: input.category, search: input.search, mine: input.mine,
     otherCurrencies: input.otherCurrencies, clock: input.clock, relays: [...input.relays].sort(),
-    coverage: 'Loaded states and locally indexed ids; unseen relay ids are unknown.',
-    listings: [...new Set([...states.keys(), ...input.knownIds])].sort().map(id => {
-      const state = states.get(id);
-      const included = input.visibleIds.has(id);
-      if (!state) return {id, included:false, reasons:['not-fetched'], createAt:null, cancelAt:null, presenceDeadline:null};
-      const createAt = state.eventChain.find(e => e.kind === EscrowEventKind.CREATE)?.timestamp ?? state.createdAt;
-      const cancelAt = state.eventChain.find(e => e.kind === EscrowEventKind.CANCEL)?.timestamp ?? state.cancelledAt ?? null;
-      let reasons: string[];
-      if (included) reasons = [isOwnListing(state,input.viewer) ? 'mine' : input.matchingIds.has(id) ? 'community' : 'all', input.otherCurrencies ? 'other-currency' : 'currency'];
-      else if (state.status === EscrowStatus.CANCELLED) reasons = [`cancelled@${cancelAt ?? 'unknown'}`];
-      else if (state.status === EscrowStatus.CREATED && state.expiresAt < input.clock) reasons = [`presence-lapsed@${state.expiresAt}`];
-      else if (input.excludedReasons[id]) reasons = [input.excludedReasons[id]];
-      else if (isOwnListing(state,input.viewer) !== input.mine) reasons = ['mine'];
-      else if (input.scope === 'local' && !input.matchingIds.has(id)) reasons = ['community'];
-      else if (!input.currencyIds.has(id)) reasons = ['currency'];
-      else if (!input.searchIds.has(id)) reasons = ['search'];
-      else reasons = ['category'];
-      return {id, included, reasons, createAt, cancelAt, presenceDeadline:state.expiresAt};
-    }),
+    coverage: 'Loaded states and locally indexed ids; unseen relay ids are unknown.', listings,
   };
 }

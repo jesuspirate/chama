@@ -5,10 +5,11 @@ export interface NativeAlertLogEntry {
   id: string; time: number; transport: string; verdict: string; job: string;
   foregroundBranch?: string; tradeCount?: number; matchedTags?: string[]; jobResult?: string; elapsedMs?: number;
   notificationsEnabled?: boolean; channelEnabled?: boolean;
-  posts: { reason: string; verdict: string; notificationId: number | null }[];
+  posts: { reason: string; verdict: string; notificationId: number | null; tag?: string; poster?: string }[];
 }
 export type NativePushStatus = { registerHttpStatus?: number; registeredTags?: string[]; lane: "fcm" | "unifiedpush" | "unavailable"; ready: boolean; registered: boolean; ntfy?: boolean; testReceived?: string; testHttpStatus?: number; testHttpNonce?: string; alertLog?: NativeAlertLogEntry[]; notificationsEnabled?: boolean; channelEnabled?: boolean };
 interface NativePushPlugin {
+  postChat(options: { note: string }): Promise<{ verdict: string }>;
   diagnostic(options: { diagnostic: string }): Promise<void>;
   clearTrade(options: { trade: string }): Promise<void>;
   takeTrade(): Promise<{ trade: string | null }>;
@@ -84,4 +85,11 @@ export async function clearNativeTradeAlerts(trade: string): Promise<void> {
 /** Funding diagnostics share the device's alert log, without entering UI copy. */
 export async function recordNativeFundingDiagnostic(diagnostic: Record<string, unknown>): Promise<void> {
   if (isNativePushSupported()) await native.diagnostic({diagnostic: JSON.stringify(diagnostic)}).catch(() => {});
+}
+
+/** Android chat has one device-local MessagingStyle poster for foreground and wakes. */
+export async function postNativeChat(note: import('./trade-notifications.js').TradeNotification): Promise<boolean> {
+  if (!isNativePushSupported()) return false;
+  const result = await native.postChat({note:JSON.stringify(note)});
+  return result.verdict === 'shown' || result.verdict === 'duplicate';
 }

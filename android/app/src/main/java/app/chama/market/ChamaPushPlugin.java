@@ -80,6 +80,20 @@ public class ChamaPushPlugin extends Plugin {
         } catch (Exception e) { call.reject("Invalid diagnostics"); }
     }
 
+    @PluginMethod public void postChat(PluginCall call) {
+        try {
+            JSONObject note = new JSONObject(call.getString("note", "{}"));
+            String trade = note.getString("escrowId"), tag = note.getString("tag");
+            if (!trade.matches("(?i)sm_[a-z0-9_]+") || !ChamaWakePolicy.reason(trade, tag).equals("chat")) {
+                call.reject("Invalid chat notification"); return;
+            }
+            String wake = ChamaPushStore.beginWake(getContext(), "foreground-chat");
+            String verdict = ChamaPushStore.postForegroundChat(getContext(), wake, note);
+            ChamaPushStore.jobDetails(getContext(), wake, new org.json.JSONArray().put(tag), verdict, 0);
+            JSObject result = new JSObject(); result.put("verdict", verdict); call.resolve(result);
+        } catch (Exception e) { call.reject("Chat notification failed"); }
+    }
+
     @PluginMethod public void clearTrade(PluginCall call) {
         String trade = call.getString("trade", "");
         if (!trade.matches("(?i)sm_[a-z0-9_]+")) { call.reject("Invalid trade"); return; }

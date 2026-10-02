@@ -3,6 +3,11 @@
 // byte-identical to EN; only the En halves are translated. Exact TZS amount /
 // agent number / USSD code arrive as {params}.
 export const fund: Record<string, string> = {
+  "payment.withdrawalUnavailable": "Sort de la fédération sur chaîne · frais indisponibles · ~1 heure",
+  "payment.withdrawalLine": "Sort de la fédération sur chaîne · frais ~{fee} sats · ~1 heure",
+  "payment.depositLine": "Dépôt dans {federation} · frais de {fee} sats · {confirmations} confirmations",
+  "payment.onchain": "Sur chaîne",
+  "payment.deposit": "Déposer",
   "payment.bitcoinMinimum": "Le séquestre Bitcoin nécessite au moins 25 000 sats par échange — augmentez le minimum ou choisissez l’ecash Chama",
   "payment.bitcoin": "Bitcoin",
   "payment.bitcoinHeld": "Sur Bitcoin · 2 sur 3 · sans dépositaire.",

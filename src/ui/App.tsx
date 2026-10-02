@@ -4728,7 +4728,10 @@ export default function App() {
               allEscrows={[...escrows.values()]}
               diagnosticsContext={{clock:now, relays:[...relayStatuses.keys()], knownIds:listTradeIndex().map(e=>e.id),
                 excludedReasons:Object.fromEntries([...escrows.values()].filter(s=>!allVisibleListings.some(l=>l.id===s.id)).map(s=>[s.id,
-                  !hasVerifiedTradeCreate(s) ? "not-fetched" : "hidden"]))}}
+                  !hasVerifiedTradeCreate(s) ? "not-fetched" : retiredIds.has(s.id) ? "retired"
+                  : s.parent !== undefined ? "child-order" : listingSoldOut(s) ? "sold-out"
+                  : isSlicedTradeShape(s) ? "slicing-disabled" : s.listingKind ? "work-disabled"
+                  : s.category === "chama" || s.chamaPolicy ? "circle-unlisted-or-disabled" : `status:${s.status}`]))}}
               circleChildrenLoaded={circleChildrenLoaded}
               browseCategory={browseCategory}
               setBrowseCategory={setBrowseCategory}
