@@ -117,6 +117,8 @@ import {
 import { simTagOrNull, shouldDropForSimPolicy } from "../sim/simMode.js";
 import { verifyEvent as verifyNostrEventSignature } from "nostr-tools/pure";
 import { randomId } from "../storage/random-id.js";
+import { creatorTaggedEscrowId, selectTradeRoot } from "./trade-identity.js";
+import { listTradeIndex } from "./trade-index.js";
 import { compactSelectedMenuItems } from "./selected-menu-items.js";
 import { pickPreferredArbiter } from "../arbiters/pool.js";
 import {
@@ -489,8 +491,12 @@ export interface EscrowClientConfig {
  *                    on THRESHOLD_NOT_MET) or one is invalid. NOT "gone" —
  *                    the missing part may come back, and other participants
  *                    may still hold it.
+ *   conflicting-creators  more than one key has published a CREATE under this
+ *                    id and nothing says which is the real trade, or the
+ *                    creator this load was told to expect has no CREATE here.
+ *                    Refused instead of guessed: see trade-identity.ts.
  */
-export type LoadFailureReason = "no-events" | "undecryptable" | "chain-incomplete";
+export type LoadFailureReason = "no-events" | "undecryptable" | "chain-incomplete" | "conflicting-creators";
 
 export interface LoadFailure {
   reason: LoadFailureReason;
@@ -530,6 +536,12 @@ export class EscrowClient {
   private _listingHydrationCooldown: Map<string, number> = new Map();
   /** One fetch/decrypt/replay generation per escrow. All cold-start callers
    *  share it; bounded completeness retries stay inside the owner. */
+  /** Who created each trade this device has been told about: an explicit
+   *  `loadEscrow({ creator })` (a trade link) or a state it already holds.
+   *  Reloads stay bound to it. See trade-identity.ts. */
+  private expectedCreators = new Map<string, string>();
+  /** Creators remembered by the durable trade index, read once per client. */
+  private indexedCreators: Map<string, string> | null = null;
   private _loadEscrowInFlight: Map<string, {
     promise: Promise<EscrowState | null>;
     diagnostic: HydrationDiagnosticRun;
@@ -1068,7 +1080,10 @@ export class EscrowClient {
     const existing = this.states.get(id);
     if (existing) return circleFromEscrow(existing) ? existing : undefined;
     const events = await this.relayManager.fetchOnce({ kinds: [EscrowEventKind.CREATE], "#d": [id] }, 15_000);
-    for (const raw of sortEventChain(events.map(raw => parseEscrowEvent(raw, raw.content, true)).filter(r => r.ok).map(r => r.event))) {
+    const creates = selectTradeRoot(
+      sortEventChain(events.map(raw => parseEscrowEvent(raw, raw.content, true)).filter(r => r.ok).map(r => r.event)),
+      this.expectedCreatorOf(id));
+    for (const raw of creates.ok ? creates.events : []) {
       if (raw.escrowId !== id || (raw.payload as CreatePayload).category !== "chama") continue;
       const result = applyEvent(null, raw);
       if (result.ok) {
@@ -1302,7 +1317,7 @@ export class EscrowClient {
     const now = Math.floor(Date.now() / 1000);
     const parent = params.chamaPolicy && params.parent ? await this.resolveChamaParent(params.parent) : undefined;
     if (params.chamaPolicy && !parent) throw new Error("A validated circle parent is required");
-    const escrowId = params.escrowId ?? (parent ? shareEscrowId(parent.id, pubkey, parent.chamaCircle!.roundIndex) : this.generateEscrowId());
+    const escrowId = params.escrowId ?? (parent ? shareEscrowId(parent.id, pubkey, parent.chamaCircle!.roundIndex) : this.generateEscrowId(pubkey));
     if (parent) {
       const existing = this.states.get(escrowId) ?? await this.loadEscrow(escrowId);
       if (existing) {
@@ -3145,8 +3160,13 @@ export class EscrowClient {
    */
   loadEscrow(
     escrowId: string,
-    opts: { repairFromCache?: boolean; fullHistory?: boolean } = {},
+    opts: { repairFromCache?: boolean; fullHistory?: boolean; creator?: string } = {},
   ): Promise<EscrowState | null> {
+    // A named creator outlives this call: every later reload of the trade
+    // (out-of-order heal, completeness retry) must root at the same key.
+    if (opts.creator && /^[0-9a-f]{64}$/i.test(opts.creator)) {
+      this.expectedCreators.set(escrowId, opts.creator.toLowerCase());
+    }
     const repairFromCache = opts.repairFromCache === true;
     const fullHistory = repairFromCache || opts.fullHistory === true;
     const existing = this._loadEscrowInFlight.get(escrowId);
@@ -3188,6 +3208,26 @@ export class EscrowClient {
       });
     this._loadEscrowInFlight.set(escrowId, { promise, diagnostic, repairFromCache, fullHistory });
     return promise;
+  }
+
+  /** The key this device already knows created `escrowId`, if any: named by
+   *  a caller, held in live state, or remembered by the durable trade index.
+   *  Browse discovery supplies none on purpose: a relay-delivered CREATE is
+   *  not evidence of who the real creator is. */
+  private expectedCreatorOf(escrowId: string): string | undefined {
+    const named = this.expectedCreators.get(escrowId);
+    if (named) return named;
+    const held = this.states.get(escrowId);
+    if (held?.eventChain.some(event => event.kind === EscrowEventKind.CREATE)) return held.initiator.pubkey;
+    if (!this.indexedCreators) {
+      this.indexedCreators = new Map();
+      try {
+        for (const entry of listTradeIndex()) {
+          if (entry.creator) this.indexedCreators.set(entry.id, entry.creator);
+        }
+      } catch { /* no storage (tests, private mode): nothing remembered */ }
+    }
+    return this.indexedCreators.get(escrowId);
   }
 
   /** One generation's internal attempt. Recursive completeness retries call
@@ -3317,13 +3357,15 @@ export class EscrowClient {
       const preflightSorted = sortEventChain(
         lockResolvedParsed.filter((event) => event.kind !== EscrowEventKind.CHAT),
       );
-      const preflight = replayEventChain(preflightSorted);
+      const creator = this.expectedCreatorOf(escrowId);
+      const preflight = replayEventChain(preflightSorted, { creator });
       if (!preflight.ok) {
         console.debug(`[escrow] loadEscrow ${escrowId}: replay skipped historical invalid chain — ${preflight.error.code}: ${preflight.error.message}`);
         return {
           ok: false,
           failure: {
-            reason: "chain-incomplete",
+            reason: preflight.error.code === "CONFLICTING_CREATES" || preflight.error.code === "CREATOR_NOT_FOUND"
+              ? "conflicting-creators" : "chain-incomplete",
             code: preflight.error.code,
             message: preflight.error.message,
             eventId: preflight.error.eventId,
@@ -3345,7 +3387,7 @@ export class EscrowClient {
       console.debug(`[escrow] loadEscrow ${escrowId}: sorted chain`,
         sorted.map(e => `kind:${e.kind}(${e.raw.id.slice(0,6)})`).join(' → '));
       const replayStarted = globalThis.performance?.now?.() ?? Date.now();
-      const replayed = replayEventChain(sorted);
+      const replayed = replayEventChain(sorted, { creator });
       diagnostic.step(
         `replay:${pass}`,
         (globalThis.performance?.now?.() ?? Date.now()) - replayStarted,
@@ -4505,13 +4547,15 @@ export class EscrowClient {
 
   // ── Helpers ─────────────────────────────────────────────────────────────
 
-  private generateEscrowId(): string {
+  private generateEscrowId(creatorPubkey: string): string {
     // SECURITY: escrow IDs flow into Nostr d-tags and are the primary
     // join key across relays. Crypto randomness prevents an attacker
     // from pre-allocating the same ID and forcing a collision on a
     // shared relay (which would race the legitimate CREATE).
     const ts = Date.now().toString(36);
     const rand = randomId(8);
-    return `sm_${ts}_${rand}`;
+    // …and the id names its creator, so nobody else's CREATE can claim it
+    // (trade-identity.ts).
+    return creatorTaggedEscrowId(ts, rand, creatorPubkey);
   }
 }

@@ -2,7 +2,12 @@
 // to land directly on a listing — App already consumes `?trade=sm_...` on boot
 // (one-shot, address cleaned after open), so sharing is just building the URL.
 
-export function tradeShareUrl(escrowId: string, href = window.location.href): string {
+//
+// `by` names the key that created the trade. A trade is (creator, id): with it
+// the opener roots the chain at that key's CREATE and nothing else
+// (escrow-engine/trade-identity.ts). Links minted before it still open.
+
+export function tradeShareUrl(escrowId: string, href = window.location.href, creator?: string | null): string {
   const here = new URL(href);
   const host = here.hostname.toLowerCase().replace(/\.$/, "");
   const privateHost = host === "localhost" || host.endsWith(".localhost")
@@ -10,13 +15,14 @@ export function tradeShareUrl(escrowId: string, href = window.location.href): st
     || host.endsWith(".local") || host.endsWith(".onion");
   const publicWeb = ["https:", "http:"].includes(here.protocol) && !privateHost;
   const base = publicWeb ? `${here.origin}${here.pathname}` : "https://getchama.app/";
-  return `${base}?trade=${encodeURIComponent(escrowId)}`;
+  const by = creator && /^[0-9a-f]{64}$/i.test(creator) ? `&by=${creator.toLowerCase()}` : "";
+  return `${base}?trade=${encodeURIComponent(escrowId)}${by}`;
 }
 
 /** Native share sheet where the platform has one; clipboard everywhere else.
  *  "shared" also covers a cancelled sheet — nothing further owed to the user. */
-export async function shareTradeLink(escrowId: string): Promise<"shared" | "copied" | "failed"> {
-  const url = tradeShareUrl(escrowId);
+export async function shareTradeLink(escrowId: string, creator?: string | null): Promise<"shared" | "copied" | "failed"> {
+  const url = tradeShareUrl(escrowId, undefined, creator);
   const nav = navigator as Navigator & { share?: (data: { url: string }) => Promise<void> };
   if (typeof nav.share === "function") {
     try { await nav.share({ url }); return "shared"; }

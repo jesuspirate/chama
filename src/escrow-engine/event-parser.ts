@@ -1,6 +1,7 @@
 import { chamaCreateError, chamaOutcomeError } from "../chama/policy.js";
 import { eventIsSim } from "../sim/simMode.js";
 import type { EscrowState } from "./types.js";
+import { creatorMatchesEscrowId } from "./trade-identity.js";
 // ══════════════════════════════════════════════════════════════════════════
 // Chama Nostr Escrow Engine — Event Parser
 // ══════════════════════════════════════════════════════════════════════════
@@ -686,6 +687,19 @@ export function parseEscrowEvent(
       error: {
         code: "MISSING_ESCROW_ID",
         message: "Event is missing d-tag (escrow ID)",
+        eventId: raw.id,
+      },
+    };
+  }
+
+  // A creator-tagged id belongs to one key (trade-identity.ts). Anyone else's
+  // CREATE under it is not this trade's CREATE, on any path that parses it.
+  if (kind === EscrowEventKind.CREATE && !creatorMatchesEscrowId(escrowId, raw.pubkey)) {
+    return {
+      ok: false,
+      error: {
+        code: "CREATOR_MISMATCH",
+        message: "CREATE is not signed by the key this escrow id names",
         eventId: raw.id,
       },
     };

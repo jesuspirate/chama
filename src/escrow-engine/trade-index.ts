@@ -67,6 +67,10 @@ export interface TradeIndexEntry {
    *  CREATE until a signed JOIN exists, then the newest JOIN. Late votes,
    *  claims and relay healing must not resurrect an old trade as "latest". */
   enteredAt?: number;
+  /** The key that signed this trade's CREATE. A trade is (creator, id): a
+   *  later load roots only at a CREATE from this key (trade-identity.ts).
+   *  Absent on entries written before this field, or with no verified CREATE. */
+  creator?: string;
   /** When the index last touched this entry (Unix MS) — for eviction. */
   updatedAt: number;
 }
@@ -191,6 +195,7 @@ export function deriveTradeIndexEntry(
     createdAt: signedTradeCreatedAt(state),
     lastActivityAt: signedTradeActivityAt(state),
     enteredAt: signedTradeEnteredAt(state),
+    ...(hasVerifiedTradeCreate(state) ? { creator: state.initiator.pubkey.toLowerCase() } : {}),
     updatedAt: nowMs,
   };
 }
@@ -221,6 +226,8 @@ export function recordTradeToIndex(
       prev.lastActivityAt ?? prev.createdAt ?? 0,
       entry.lastActivityAt ?? entry.createdAt ?? 0,
     );
+    // The creator is fixed the first time a verified CREATE is seen.
+    if (prev.creator) entry.creator = prev.creator;
     // Preserve the newest signed JOIN across partial relay replays.
     entry.enteredAt = Math.max(
       prev.enteredAt ?? prev.createdAt ?? 0,
