@@ -145,3 +145,6 @@ One fault found and fixed: with motion reduced on a phone the hero is a paper pa
 
 Known and left alone: `?film=original|varied` in `story.js` names files under `img/circle-turns/` that are not in the tree (older experiment, not reachable from the page); on a phone with JavaScript off the hero shows the wide still, cropped.
 
+### Readability and the phone chapter copy (2026-10-01)
+Type across the page and the FAQ was raised so nothing a reader must read sits under 12px and body copy sits at 16px or more; sizes inside the trade diagram stay a step smaller so its parts keep their places. On phones the chapter copy (Meet, Agree, Trade) used to travel up through the pinned portraits on its way to the top, and was then faded out by the desktop rule once it got there. It now waits until it reaches its seat under the chapter tabs, appears there above the diagram, and fades only once it scrolls on past.
+

@@ -109,7 +109,14 @@
       thread.dataset.tone = root.dataset.theme === 'dark' || under?.closest('.cinema-screen,.circle-finale,.invitation') ? 'dark' : 'light';
     }
     const floor = nav.offsetHeight + 96;
-    copies.forEach(copy => copy.style.setProperty('--copy-fade', still() ? 1 : clamp((copy.getBoundingClientRect().top - floor) / 70)));
+    // On phones the copy also waits until it has reached its place above the diagram.
+    // On phones the copy sits just under the chapter tabs, so it fades only once it
+    // scrolls on past that seat, and it waits to appear until it has reached it.
+    const seat = mobile.matches ? nav.offsetHeight + 58 : 0;
+    copies.forEach(copy => {
+      const top = copy.getBoundingClientRect().top;
+      copy.style.setProperty('--copy-fade', still() ? 1 : seat ? clamp((top - seat + 64) / 56) * clamp(1 - (top - seat - 6) / 48) : clamp((top - floor) / 70));
+    });
     bridge.style.setProperty('--bridge-line', clamp((h * .82 - bridge.getBoundingClientRect().bottom) / (h * .3) + 1));
   }
   function schedule() { if (!framed) { framed = true; requestAnimationFrame(follow); } }
