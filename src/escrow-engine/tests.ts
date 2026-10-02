@@ -78,6 +78,7 @@ import {
   getSummary,
   type TransitionResult,
 } from "./state-machine.js";
+import { creatorTaggedEscrowId, escrowIdCreatorTag, selectTradeRoot } from "./trade-identity.js";
 import { workOffersForWorker, workerPubkeyForListing } from "../ui/work-resume.js";
 import { BROWSE_CATS } from "../ui/theme.js";
 import {
@@ -6539,6 +6540,68 @@ for (const needs of [0, 2]) for (const active of [0, 200000]) for (const balance
     "missing signed predecessor cannot establish a rebuilt money chain");
   assert(replayEventChain([...base, claim, claim]).ok, "identical signed CLAIM redelivery remains idempotent");
   assert(!replayEventChain([create, buyer]).ok, "missing LOCK is not hidden by advisory skip policy");
+
+  // A trade is (creator, id). Nothing in an old id names its creator, so a
+  // stranger's backdated CREATE used to take the root: an open listing then
+  // read as the stranger's, with the stranger seated as seller.
+  const STRANGER_PK = "99".repeat(32);
+  const forged = retimeEvent(createEvent({ amountMsats: 1_000 }), create.timestamp - 10);
+  forged.pubkey = STRANGER_PK; forged.raw = { ...forged.raw, pubkey: STRANGER_PK };
+  const listing = replayEventChain(sortEventChain([forged, create]));
+  assertErr(listing, "CONFLICTING_CREATES", "two keys under one id with no known creator is refused, not guessed");
+  const bound = replayEventChain(sortEventChain([forged, create]), { creator: SELLER_PK });
+  if (assertOk(bound, "with the creator known, replay roots at the real CREATE")) {
+    assert(bound.state.initiator.pubkey === SELLER_PK && bound.state.amountMsats === 100_000_000,
+      "the real listing's seller and amount survive a backdated forgery");
+    assert(bound.state.replayNotes?.some(n => n.eventId === forged.raw.id && n.code === "FOREIGN_CREATE") === true,
+      "the forged CREATE is recorded, not silently dropped");
+  }
+  const funded = replayEventChain(sortEventChain([forged, ...base]));
+  assert(!funded.ok, "real LOCK under a stranger's root is never read as an open listing",
+    funded.ok ? funded.state.status : undefined);
+  const fundedBound = replayEventChain(sortEventChain([forged, ...base]), { creator: SELLER_PK.toUpperCase() });
+  assert(fundedBound.ok && fundedBound.state.status === EscrowStatus.APPROVED
+    && fundedBound.state.participants[Role.SELLER] === SELLER_PK,
+    "bound to its creator, the funded trade replays to its honest state");
+  assertErr(replayEventChain(sortEventChain([forged, ...base]), { creator: BUYER_PK }), "CREATOR_NOT_FOUND",
+    "a creator with no CREATE under the id is refused");
+  assert(replayEventChain(sortEventChain(base), { creator: SELLER_PK }).ok
+    && replayEventChain(sortEventChain(base)).ok, "a single-creator chain replays bound or unbound");
+  const twice = retimeEvent(createEvent(), create.timestamp + 5);
+  assert(replayEventChain(sortEventChain([create, twice])).ok, "one key re-publishing its own CREATE is not a conflict");
+
+  // New ids name their creator, so the forgery is not a CREATE of the trade at all.
+  const taggedId = creatorTaggedEscrowId("lz4k2a", "abcd1234", SELLER_PK);
+  assert(taggedId === `sm_lz4k2a_abcd1234_${"bb".repeat(8)}` && escrowIdCreatorTag(taggedId) === "bb".repeat(8)
+    && escrowIdCreatorTag("sm_lz4k2a_abcd1234") === null && escrowIdCreatorTag(ESCROW_ID) === null
+    && escrowIdCreatorTag("sm_ghost_heal_3") === null, "only the creator-tagged shape names a creator");
+  const onId = <T extends EscrowPayload>(e: ParsedEscrowEvent<T>, pk: string): ParsedEscrowEvent<T> =>
+    ({ ...e, escrowId: taggedId, pubkey: pk, raw: { ...e.raw, pubkey: pk, tags: [["d", taggedId]] } });
+  assertOk(applyEvent(null, onId(createEvent(), SELLER_PK)), "the named creator's CREATE is accepted");
+  assertErr(applyEvent(null, onId(createEvent(), STRANGER_PK)), "CREATOR_MISMATCH",
+    "another key's CREATE under a creator-tagged id is rejected by the reducer");
+  const wire = onId(createEvent(), STRANGER_PK);
+  const parsedForgery = parseEscrowEvent(wire.raw, JSON.stringify(wire.payload), true);
+  assert(!parsedForgery.ok && parsedForgery.error.code === "CREATOR_MISMATCH", "…and by the parser, on every path");
+  const mine = onId(createEvent(), SELLER_PK);
+  assert(parseEscrowEvent(mine.raw, JSON.stringify(mine.payload), true).ok, "the creator's own CREATE parses");
+
+  // Rotation rounds: the id is derived from the cycle and any sealed member may
+  // publish it. Both CREATEs stay, in either arrival order, bound or not.
+  const round = (pk: string, at: number) => {
+    const e = retimeEvent(createEvent(), at);
+    e.pubkey = pk; e.raw = { ...e.raw, pubkey: pk };
+    e.payload = { ...e.payload, category: "chama", chamaCircle: { pot: "rotation-v2", roundIndex: 2 } } as unknown as CreatePayload;
+    return e;
+  };
+  const [m1, m2] = [round(BUYER_PK, NOW + 1), round(SELLER_PK, NOW + 2)];
+  for (const order of [[m1, m2], [m2, m1]]) {
+    for (const creator of [undefined, SELLER_PK]) {
+      const picked = selectTradeRoot(sortEventChain(order), creator);
+      assert(picked.ok && picked.events.length === 2 && picked.ignored.length === 0
+        && picked.events[0].raw.id === m1.raw.id, "rotation round: every member's CREATE is kept, earliest first");
+    }
+  }
   assert(!replayEventChain([...base, resolveEvent(Outcome.REFUND, [Role.BUYER, Role.SELLER], false, resolve.raw.id)]).ok,
     "contradictory resolution cannot be skipped as a duplicate");
 }

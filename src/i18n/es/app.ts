@@ -196,6 +196,8 @@ export const app: Record<string, string> = {
     "Toca Eliminar de nuevo para confirmar — esto cancela el anuncio y lo quita de Explorar.",
   "app.tradeForgotten": "Intercambio olvidado en este dispositivo — el dinero permanece en custodia.",
   "app.tradeLoaded": "¡Intercambio cargado!",
+  "app.tradeConflictingCreators":
+    "Dos cuentas distintas han publicado un anuncio con el mismo identificador de este intercambio, así que Chama no puede saber cuál es el real y no abrirá ninguno. Pide un enlace nuevo a quien te lo envió.",
   "app.tradeNotFound": "Intercambio no encontrado en los relays",
   "app.tradeNotFoundYet": "Todavía no se encuentra el intercambio {id} en los relays.",
   "app.tradePublished": "¡Intercambio publicado! {escrowId}",

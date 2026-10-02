@@ -829,7 +829,7 @@ export function LiveTradeSurface({
         <button
           type="button"
           onClick={() => {
-            void shareTradeLink(state.id).then(result => {
+            void shareTradeLink(state.id, state.initiator.pubkey).then(result => {
               if (result === "copied") { setShareCopied(true); setTimeout(() => setShareCopied(false), 2500); }
             });
           }}

@@ -198,6 +198,8 @@ export const app: Record<string, string> = {
     "Touchez Supprimer à nouveau pour confirmer — cela annule l'annonce et la retire de Parcourir.",
   "app.tradeForgotten": "Échange oublié sur cet appareil — l'argent reste sous séquestre.",
   "app.tradeLoaded": "Échange chargé !",
+  "app.tradeConflictingCreators":
+    "Deux comptes différents ont publié une annonce sous l'identifiant de cet échange ; Chama ne peut pas savoir laquelle est la vraie et n'en ouvrira aucune. Demandez un nouveau lien à la personne qui vous l'a envoyé.",
   "app.tradeNotFound": "Échange introuvable sur les relais",
   "app.tradeNotFoundYet": "Échange {id} introuvable sur les relais pour l'instant.",
   "app.tradePublished": "Échange publié ! {escrowId}",

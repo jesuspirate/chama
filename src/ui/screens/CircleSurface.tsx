@@ -70,7 +70,7 @@ export function CircleSurface({ parent, escrows, viewerPubkey, backLabel, childr
     const wasLock = model.move === "lock";
     try { await action(); if (wasLock) { setCelebrate(true); setTimeout(() => setCelebrate(false), 1700); } }
     catch (e) { setMessage(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); } };
-  const invite = async () => { const result = await shareTradeLink(circle.circleId); if (result !== "shared") setMessage(t(result === "copied" ? "circle.copied" : "circle.shareFailed")); };
+  const invite = async () => { const result = await shareTradeLink(circle.circleId, circle.creatorPubkey); if (result !== "shared") setMessage(t(result === "copied" ? "circle.copied" : "circle.shareFailed")); };
   const status = !childrenLoaded ? t("circle.syncing") : model.status === "filling"
     // Fixed round clock: a FILLED circle keeps filling until the deadline
     // (no early start), so "waiting for 0 more" was arithmetically true and
