@@ -56,7 +56,11 @@ may vote only under the timing rules in [Arbitration](#arbitration).
 | `p2p-trade` | seller | buyer | seller | Seller escrows sats, buyer pays fiat off-chain |
 | `bill-pay` | seller | buyer | seller | Someone pays a bill for you in exchange for sats |
 | `marketplace` | buyer | seller | buyer | Goods, services, digital items |
-| `lending` | seller | buyer | seller | Reserved |
+
+`lending` is retired: no client creates it any more, but trades published
+under it remain valid history and replay with the seller as locker. Chama's
+savings circles (`category: "chama"`) are an extension, out of scope here;
+their share escrows are buyer-funded and pay like `marketplace`.
 
 Clients MUST derive payees from this table and MUST NOT accept a payout
 address or recipient that contradicts it.
@@ -152,10 +156,15 @@ Published by the creator. Opens the trade.
 }
 ```
 
-The author of CREATE takes the `seller` seat, except in `lending`, where
-they take `buyer`. (Chama extensions such as multi-unit purchases also seat
-the author as buyer; they are out of scope here.) So in `marketplace` the
-seller lists and the buyer locks; in `p2p-trade` the seller lists and locks.
+The author of CREATE takes the `seller` seat: every listing is published by
+a seller. So in `marketplace` the seller lists and the buyer locks; in
+`p2p-trade` the seller lists and locks.
+
+Out-of-scope extensions add one pattern: a *child* escrow under a parent
+listing (a purchase from a multi-unit storefront, or a member's share in a
+circle) is published by the buyer, who names the seller in `sellerPubkey`
+so the seller needn't be online for each purchase. The seller is still the
+listing's author; only the per-purchase escrow is buyer-authored.
 
 ### JOIN (`8101`)
 
@@ -275,9 +284,23 @@ A client computes state by replaying the trade's consensus events:
    RESOLVE, CLAIM, COMPLETE, CANCEL), then by event id.
 4. Apply each event in order. **The first valid event wins**: a later event
    that conflicts with accepted state is rejected, never merged.
+5. **An invalid event is dropped, never fatal.** Anyone can publish an event
+   carrying a trade's `d` tag and an `e` tag pointing into its chain. An
+   event whose author doesn't hold the role it needs, or that breaks a
+   timing or state rule, MUST be ignored and the replay continues. The only
+   events whose rejection may stop a replay are ones from the role entitled
+   to publish them (for example, a LOCK by the locker that fails the money
+   module's checks), because then the trade's custody really is in doubt.
 
 Two clients that see the same events MUST compute the same state. Relays are
 a source of evidence, never of authority.
+
+> **Migration.** Chama's cold-load replay (`replayEventChain`) currently
+> fails the whole trade on several of these: an early arbiter vote, a VOTE
+> or CANCEL from a non-participant. Confirmed against the reducer on
+> 2026-10-02. Live clients reject such events one at a time and are
+> unaffected until they reload. Rule 5 is the intended behaviour; the fix is
+> tracked separately.
 
 ## Arbitration
 
@@ -424,6 +447,7 @@ implements these as extensions; each needs its own NIP.
 
 ## Test vectors
 
-To be published with Chama's reducer tests: a set of signed event chains and
+To be generated from Chama's reducer once replay rule 5 is fixed, so the
+vectors don't encode the current fail-the-trade behaviour. Planned: a set of signed event chains and
 the state each must replay to, including the contest, healing and backup
 arbiter cases.
