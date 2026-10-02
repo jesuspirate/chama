@@ -6621,8 +6621,11 @@ for (const needs of [0, 2]) for (const active of [0, 200000]) for (const balance
   };
   const at = <T extends EscrowPayload>(e: ParsedEscrowEvent<T>, after: ParsedEscrowEvent<EscrowPayload>) =>
     retimeEvent(e, after.timestamp) as ParsedEscrowEvent<EscrowPayload>;
-  skipped("arbiter VOTE before any principal voted",
-    at(voteEvent(Role.ARBITER, ARBITER_PK, Outcome.REFUND, lock.raw.id), lock), "ARBITER_TOO_EARLY");
+  // A seated arbiter's early vote stays strict: from a real party, "too early"
+  // is as likely a principal vote missing from the read.
+  assert(!replayEventChain(sortEventChain([...base,
+    at(voteEvent(Role.ARBITER, ARBITER_PK, Outcome.REFUND, lock.raw.id), lock)])).ok,
+    "a seated arbiter's ARBITER_TOO_EARLY vote still stops replay");
   skipped("outsider VOTE claiming buyer",
     at(voteEvent(Role.BUYER, OUTSIDER_PK, Outcome.REFUND, lock.raw.id), lock), "NOT_PARTICIPANT");
   skipped("outsider VOTE claiming arbiter",
@@ -6658,6 +6661,36 @@ for (const needs of [0, 2]) for (const active of [0, 200000]) for (const balance
   const named = replayEventChain(sortEventChain([impostor, ...base]), { creator: OUTSIDER_PK });
   assert(!named.ok, "real LOCK under a named stranger's root is never skipped into an open listing",
     named.ok ? named.state.status : undefined);
+
+  // Review of step 2. None of these chains has a vote after the LOCK, so the
+  // pre-LOCK strictness on votes cannot be what fails them.
+  // F3: locked, awaiting fiat, opened by a link that names the stranger.
+  const lockedOnly = [impostor, create, lock];
+  for (const creator of [OUTSIDER_PK, undefined]) {
+    const r = replayEventChain(sortEventChain(lockedOnly), { creator });
+    assert(!r.ok, `locked trade with no votes under a stranger's root fails (creator ${creator ? "named" : "unknown"})`,
+      r.ok ? `${r.state.status} seller=${r.state.participants[Role.SELLER]?.slice(0, 4)}` : undefined);
+  }
+  // F1: a backdated JOIN takes the buyer seat; the real buyer's LOCK must fail
+  // the load, not be skipped into an unfunded listing with the outsider seated.
+  const mkt = { ...create, payload: { ...create.payload, category: "marketplace" as const } };
+  const realJoin = retimeEvent(joinEvent(Role.BUYER, BUYER_PK, mkt.raw.id), NOW + 5);
+  const buyerLock = retimeEvent(lockEvent(realJoin.raw.id, { locker: BUYER_PK }), NOW + 10);
+  assertOk(replayEventChain(sortEventChain([mkt, realJoin, buyerLock])), "marketplace control: JOIN then buyer LOCK replays");
+  const squat = retimeEvent(joinEvent(Role.BUYER, OUTSIDER_PK, mkt.raw.id), NOW + 4);
+  const squatted = replayEventChain(sortEventChain([mkt, squat, realJoin, buyerLock]));
+  assert(!squatted.ok, "a backdated outsider JOIN never makes a funded marketplace trade read as unfunded",
+    squatted.ok ? `${squatted.state.status} buyer=${squatted.state.participants[Role.BUYER]?.slice(0, 4)}` : undefined);
+  // F2: the relay read lost the buyer's JOIN. The LOCK hangs off a missing
+  // predecessor and must not be dropped as a non-participant's.
+  const holed = replayEventChain(sortEventChain([mkt, buyerLock]));
+  assert(!holed.ok, "a buyer LOCK whose JOIN is missing from the read stays strict",
+    holed.ok ? holed.state.status : undefined);
+  // F4: the seller's vote is missing; the arbiter's vote that replies to it
+  // must not be skipped as "too early", hiding the hole.
+  const arbiterAfterMissing = { ...voteEvent(Role.ARBITER, ARBITER_PK, Outcome.RELEASE, "missing-seller-vote") };
+  assert(!replayEventChain(sortEventChain([create, lock, buyer, arbiterAfterMissing])).ok,
+    "an arbiter vote replying to a missing principal vote stays strict");
   assert(!replayEventChain([...base, resolveEvent(Outcome.REFUND, [Role.BUYER, Role.SELLER], false, resolve.raw.id)]).ok,
     "contradictory resolution cannot be skipped as a duplicate");
 }

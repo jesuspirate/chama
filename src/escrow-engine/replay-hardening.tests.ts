@@ -113,13 +113,23 @@ const nextId = () => `sm_${T.toString(36)}_rh${(++idSeq).toString().padStart(6, 
 
 // ── Finding 1 after step 2: a stray signed event is noted and skipped ─────
 // Step 0 pinned the opposite here: each of these made the trade fail to load
-// (chain-incomplete). outsider-replay.tests.ts covers eight such events on two
-// viewer devices with real NIP-44; these four keep the step-0 rows comparable.
+// (chain-incomplete). outsider-replay.tests.ts covers more such events on two
+// viewer devices with real NIP-44; these keep the step-0 rows comparable.
+//
+// Step 0's first row, a SEATED arbiter voting before either principal, stays
+// strict on purpose: from a real party "too early" may mean a principal's vote
+// is missing from the read, and skipping it would hide the hole.
+{
+  const id = nextId();
+  const b = baseline(id);
+  const early = sign(ARBITER, K.VOTE, id, { type: 'escrow:vote', outcome: O.REFUND, role: R.ARBITER, votedAt: T + 15 }, T + 15, b.lock);
+  const { state, failure } = await coldLoad(id, [...b.chain, early]);
+  assert.equal(state, null, 'a seated arbiter\'s early vote still stops the load');
+  assert.equal(failure?.code, 'ARBITER_TOO_EARLY', `${failure?.code} ${failure?.message}`);
+  console.log('PASS finding 1, seated arbiter: an early arbiter VOTE still fails the load (ARBITER_TOO_EARLY), by design');
+}
 {
   const strays: [string, (id: string, b: ReturnType<typeof baseline>) => NostrEvent, string][] = [
-    ['arbiter VOTE before either principal voted',
-      (id, b) => sign(ARBITER, K.VOTE, id, { type: 'escrow:vote', outcome: O.REFUND, role: R.ARBITER, votedAt: T + 15 }, T + 15, b.lock),
-      'ARBITER_TOO_EARLY'],
     ['stranger VOTE claiming buyer',
       (id, b) => sign(STRANGER, K.VOTE, id, { type: 'escrow:vote', outcome: O.REFUND, role: R.BUYER, votedAt: T + 15 }, T + 15, b.lock),
       'NOT_PARTICIPANT'],

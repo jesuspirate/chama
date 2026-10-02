@@ -2047,12 +2047,14 @@ function replayAuthorEntitled(state: EscrowState, event: ParsedEscrowEvent): boo
  * them, so replay does too. Funds transitions (LOCK, CLAIM, SUBSCRIBE,
  * PERIOD_RELEASE) are never listed here, and neither are a vote's money-module
  * checks (share envelope, vote-carried payout) or a VOTE with no LOCK under it.
+ *
+ * Nor are the arbiter-timing codes (ARBITER_TOO_EARLY, ARBITER_NOT_NEEDED,
+ * SUBSTITUTE_TOO_EARLY, INVALID_HEAL_OUTCOME): whether they fire depends on
+ * which principal votes the chain holds, so from a seated arbiter they are as
+ * likely a missing vote as an early one. They stay strict for real parties.
  */
 const REPLAY_RULE_BREAKS: Partial<Record<EscrowEventKind, ReadonlySet<string>>> = {
-  [EscrowEventKind.VOTE]: new Set([
-    "ARBITER_TOO_EARLY", "ARBITER_NOT_NEEDED", "SUBSTITUTE_TOO_EARLY",
-    "INVALID_HEAL_OUTCOME", "ROLE_MISMATCH",
-  ]),
+  [EscrowEventKind.VOTE]: new Set(["ROLE_MISMATCH"]),
   [EscrowEventKind.CANCEL]: new Set(["INVALID_STATE", "FUNDING_TERMS_FROZEN"]),
   [EscrowEventKind.JOIN]: new Set(["ROLE_CONFLICT", "ORDER_ALREADY_FINALIZED", "CHAMA_SEATS_FIXED"]),
 };
@@ -2085,6 +2087,14 @@ export function replayEventChain(
     return err("EMPTY_CHAIN", "Cannot replay empty event chain");
   }
 
+  // Anyone who signed a CREATE or a JOIN under this id claimed a place in the
+  // trade, whether replay seated them or not. A backdated JOIN can take a
+  // seat first and a creator named by a caller can set the real CREATE aside,
+  // so a real party can look like an outsider here. Their rejected events stay
+  // strict: skipping a displaced buyer's LOCK would read a funded trade as open.
+  const claimants = new Set(events
+    .filter(event => event.kind === EscrowEventKind.CREATE || event.kind === EscrowEventKind.JOIN)
+    .map(event => event.pubkey));
   const rooted = selectTradeRoot(events, opts.creator);
   if (!rooted.ok) return err(rooted.code, rooted.message);
   events = rooted.events;
@@ -2117,10 +2127,13 @@ export function replayEventChain(
   for (const event of events) {
     const result = applyEvent(state, event);
     if (!result.ok) {
-      // The root is already bound to its creator (selectTradeRoot above): a
-      // chain with a second author's CREATE never reaches this loop unbound, so
-      // an author who holds no role here is an outsider, not a displaced party.
-      const entitled = !state || replayAuthorEntitled(state, event);
+      // Only an author with no claim on the trade, replying to an event this
+      // chain holds, can be skipped as an outsider. An event whose predecessor
+      // is missing points at a hole in the read (a JOIN the relay dropped), and
+      // the author's seat may sit in that hole.
+      const entitled = !state || claimants.has(event.pubkey)
+        || (!!event.prevEventId && !availableIds.has(event.prevEventId))
+        || replayAuthorEntitled(state, event);
       // Positive signed-time refusal, not absence from a partial relay read.
       // Preserve the notes reference for the funder's recovery, never as escrow.
       // Other funds errors (including claims) remain strict below.

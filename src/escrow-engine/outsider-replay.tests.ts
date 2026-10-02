@@ -99,10 +99,9 @@ const clean = await coldLoad(baseline);
 assert.equal(clean.state?.status, EscrowStatus.APPROVED, 'baseline chain loads');
 assert.equal(clean.state?.resolvedOutcome, Outcome.RELEASE);
 
+// A seated arbiter's early vote is not an outsider's event: it stays strict
+// (it may mean a principal's vote is missing), see replay-hardening.tests.ts.
 const cases: Array<[string, NostrEvent, string]> = [
-  ['arbiter VOTE before any principal voted',
-    sign(arbiter, EscrowEventKind.VOTE, T0 + 15, lock.id,
-      envelope(arbiter.sk, votePayload(Role.ARBITER, Outcome.REFUND, T0 + 15))), 'ARBITER_TOO_EARLY'],
   ['outsider VOTE claiming the buyer role',
     sign(outsider, EscrowEventKind.VOTE, T0 + 15, lock.id,
       envelope(outsider.sk, votePayload(Role.BUYER, Outcome.REFUND, T0 + 15))), 'NOT_PARTICIPANT'],
