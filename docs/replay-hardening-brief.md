@@ -47,10 +47,8 @@ and the real one is then skipped as `DUPLICATE_CREATE` (benign):
 So an unlocked listing loaded by id (trade link, Browse tap) can show the
 impostor's terms with the impostor as seller; a locked one fails to load.
 
-**Not yet checked:** whether Browse or the trade-link path would actually
-present the impostor's state to a buyer and let them fund it. The UI shows
-the seated seller's profile, which would differ from the real seller's.
-Verify before rating severity.
+**Checked (step 0, below):** Browse and trade links both present the
+impostor's state, and a buyer-funded listing reads as open and fundable.
 
 ### 3. Two CREATEs under one id can be legitimate
 
@@ -59,6 +57,45 @@ circle member** may publish ("deterministic id makes duplicates
 impossible"). Concurrent members produce distinct CREATE events (different
 authors and signatures) under one `d`. Share escrows use
 `shareEscrowId(parent, pubkey, round)`, one author per id.
+
+## Step 0 results (2026-10-02)
+
+`src/escrow-engine/replay-hardening.tests.ts` reproduces every row above
+through the real cold-load path: relay REQ, nostr-tools signature
+verification, decrypt, parse, sort, replay. Each event is signed by its own
+key, and strangers use only public data. The tests pin today's behaviour, so
+the assertions marked STEP 1 / STEP 2 are the ones those steps change.
+
+- **Finding 1:** all four rows fail `loadEscrow` with the codes in the table
+  (`chain-incomplete`). Plaintext payloads are accepted (decrypt "shape 1"),
+  so a stranger doesn't even need to encrypt.
+- **Finding 2, unlocked:** the backdated stranger CREATE loads as CREATED
+  with the stranger as seller and their amount. A stranger CREATE dated
+  *after* the real one is harmless (`DUPLICATE_CREATE`).
+- **Finding 2, locked:** fails `NOT_PARTICIPANT` on the real seller's LOCK.
+  Fail-closed, as the brief said.
+- **Browse is exposed, not only links.** A public CREATE for an unseen id is
+  not shown directly: `handleIncomingEvent` queues listing hydration, which
+  is `loadEscrow(id)`. So the Browse tile for the real listing's id shows the
+  impostor's terms, and there is no second tile to compare against.
+- **Severity: a buyer can be invited to fund the impostor.** In
+  `marketplace` the buyer locks (`funderRole`). An impostor can copy the
+  real title and price and name their own arbiter, holding seller and
+  arbiter (2 of 3). The test shows the fresh device presents exactly that as
+  an open listing. What stands in the way today is UI only: TradeDetail's
+  arbiter provenance check flags an arbiter outside the roster / bonded /
+  device-trusted pool, and `requiresVerifiedRosterConsent` turns that into a
+  hard consent gate only for fee-bearing trades or amounts of 2,000,000 sats
+  and up (`src/arbiters/pool.ts`). A small no-fee trade gets a warning.
+  *Inferred, not tested in the UI:* if the impostor instead copies the real
+  roster arbiters, the buyer's refund vote with an honest arbiter recovers
+  the lock, so the loss is the listing, not the money.
+- For `p2p-trade` and `bill-pay` the seller locks, so the impostor would have
+  to fund the escrow themselves; the harm there is a hijacked listing and a
+  confused buyer, not a theft path.
+
+This raises step 1 from griefing to a money-path fix for buyer-funded
+categories. It does not change the order: step 2 alone is still worse.
 
 ## Why the order matters
 
