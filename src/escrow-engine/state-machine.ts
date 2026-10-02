@@ -2052,10 +2052,13 @@ function replayAuthorEntitled(state: EscrowState, event: ParsedEscrowEvent): boo
  * SUBSTITUTE_TOO_EARLY, INVALID_HEAL_OUTCOME): whether they fire depends on
  * which principal votes the chain holds, so from a seated arbiter they are as
  * likely a missing vote as an early one. They stay strict for real parties.
+ *
+ * Nor is a CANCEL. The initiator's CANCEL that lost a race with a LOCK fails
+ * the load, so the conflict surfaces instead of the trade quietly reading as
+ * funded. A CANCEL from anyone else is skipped as an outsider's.
  */
 const REPLAY_RULE_BREAKS: Partial<Record<EscrowEventKind, ReadonlySet<string>>> = {
   [EscrowEventKind.VOTE]: new Set(["ROLE_MISMATCH"]),
-  [EscrowEventKind.CANCEL]: new Set(["INVALID_STATE", "FUNDING_TERMS_FROZEN"]),
   [EscrowEventKind.JOIN]: new Set(["ROLE_CONFLICT", "ORDER_ALREADY_FINALIZED", "CHAMA_SEATS_FIXED"]),
 };
 

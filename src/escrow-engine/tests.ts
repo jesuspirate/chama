@@ -6632,6 +6632,13 @@ for (const needs of [0, 2]) for (const active of [0, 200000]) for (const balance
     at(voteEvent(Role.ARBITER, OUTSIDER_PK, Outcome.REFUND, lock.raw.id), lock), "NOT_PARTICIPANT");
   skipped("outsider CANCEL after RESOLVE",
     { ...cancelEvent(resolve.raw.id), pubkey: OUTSIDER_PK }, "INVALID_STATE");
+  // The seller's own CANCEL that lost a race with the LOCK stays strict.
+  assert(!replayEventChain(sortEventChain([create, lock, at(cancelEvent(lock.raw.id), lock)])).ok,
+    "the initiator's CANCEL after a LOCK still stops replay");
+  assert(!replayEventChain(sortEventChain([...base, cancelEvent(resolve.raw.id)])).ok,
+    "the initiator's CANCEL after RESOLVE still stops replay");
+  skipped("outsider CANCEL after the LOCK",
+    { ...at(cancelEvent(lock.raw.id), lock), pubkey: OUTSIDER_PK }, "INVALID_STATE");
   // Before any LOCK is accepted, a LOCK cannot be told apart from a real
   // funder's whose JOIN the read lost or a backdated JOIN displaced. Strict.
   assert(!replayEventChain(sortEventChain([...base,
@@ -6723,6 +6730,18 @@ for (const needs of [0, 2]) for (const active of [0, 200000]) for (const balance
   assertOk(replayEventChain(sortEventChain([mkt, b1Join, b2Join, b2Lock])), "lapsed-hold control: the second buyer's LOCK replays");
   assert(!replayEventChain(sortEventChain([mkt, b1Join, b2Join, b2Lock, b1Lock])).ok,
     "a lapsed holder's LOCK inside the grace window still stops replay");
+  // A CANCEL that lands before any LOCK is honoured.
+  {
+    const mktCancel = retimeEvent({ ...cancelEvent(mkt.raw.id) }, NOW + 8);
+    const lateLock = retimeEvent(lockEvent(realJoin.raw.id, { locker: BUYER_PK }), NOW + 10);
+    const cancelled = replayEventChain(sortEventChain([mkt, realJoin, mktCancel, lateLock]));
+    // The LOCK on a cancelled trade is a funds event, so it fails the load
+    // (TERMINAL_STATE) rather than being skipped: the buyer's client must see
+    // that its notes did not enter an escrow.
+    assert(!cancelled.ok && cancelled.error.code === "TERMINAL_STATE",
+      "a CANCEL before the LOCK is honoured: the buyer's LOCK fails, the trade never reads as funded",
+      cancelled.ok ? cancelled.state.status : cancelled.error.code);
+  }
   // Neither a made-up predecessor nor a JOIN of their own makes an outsider's
   // non-funds event strict.
   skipped("outsider VOTE replying to a made-up id",
