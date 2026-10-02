@@ -105,6 +105,32 @@ await device(async client => {
 });
 console.log('PASS a funded trade is never downgraded to a stranger\'s open listing');
 
+// A link is a claim. It must not replace the trade a device already holds.
+const strangerCancel = sign(stranger, OLD, EscrowEventKind.CANCEL, T0 - 5, forged.id,
+  { type: 'escrow:cancel', cancellerRole: 'seller', reason: 'x', cancelledAt: T0 - 5 });
+Socket.chain = [real];
+await device(async client => {
+  assert.equal((await client.loadEscrow(OLD))?.initiator.pubkey, seller.pk);
+  Socket.chain = [forged, strangerCancel, real];
+  assert.equal(await client.loadEscrow(OLD, { creator: stranger.pk, fullHistory: true }), null,
+    'a link naming someone else is refused on a device holding the real trade');
+  assert.equal(client.getLastLoadFailure(OLD)?.reason, 'conflicting-creators');
+  assert.equal(client.getState(OLD)?.initiator.pubkey, seller.pk, 'the held trade is untouched');
+  assert.equal(client.getState(OLD)?.status, EscrowStatus.CREATED);
+});
+console.log('PASS a hostile link cannot re-root or cancel a trade the device already holds');
+
+// Holding a state is not knowing its creator: a partial read may have
+// delivered only the forgery. The full read is then refused, not pinned to it.
+Socket.chain = [forged];
+await device(async client => {
+  assert.equal((await client.loadEscrow(OLD))?.initiator.pubkey, stranger.pk, 'a partial read can only show what it was given');
+  Socket.chain = [forged, real];
+  assert.equal(await client.loadEscrow(OLD, { fullHistory: true }), null, 'once both are visible the id is refused');
+  assert.equal(client.getLastLoadFailure(OLD)?.code, 'CONFLICTING_CREATES');
+});
+console.log('PASS a forgery seen first is not pinned as the creator');
+
 // ── A new id names its creator: the forgery is not a CREATE of it at all ──
 const NEW = creatorTaggedEscrowId('lz4k2b', 'abcd1234', seller.pk);
 const realNew = sign(seller, NEW, EscrowEventKind.CREATE, T0, null, createPayload(seller, T0, 100_000_000));
@@ -115,6 +141,11 @@ await device(async client => {
   assert.equal(state?.initiator.pubkey, seller.pk, 'with no creator supplied, a creator-tagged id still loads the real listing');
   assert.equal(state?.amountMsats, 100_000_000);
 });
+await device(async client => {
+  const state = await client.loadEscrow(NEW, { creator: stranger.pk });
+  assert.equal(state?.initiator.pubkey, seller.pk, 'a link whose `by` contradicts the id is ignored, not obeyed');
+  assert.equal((await client.loadEscrow(NEW, { fullHistory: true }))?.initiator.pubkey, seller.pk, '…and leaves later reloads working');
+});
 Socket.chain = [forgedNew];
 await device(async client => {
   assert.equal(await client.loadEscrow(NEW), null, 'a forgery alone under a creator-tagged id is nothing');
@@ -124,7 +155,7 @@ await device(async client => {
     client.createEscrow({ category: 'p2p-trade', description: 'New listing', amountMsats: 1_000_000, mintUrl: 'test', arbiterFeeMsats: 0, communityArbiters: [] }),
     new Promise<never>((_, reject) => setTimeout(() => reject(new Error('createEscrow timed out')), 3000)),
   ]);
-  assert.ok(escrowId.endsWith(`_${buyer.pk.slice(0, 16)}`), `a new trade's id names its creator: ${escrowId}`);
+  assert.ok(escrowId.includes(`_${buyer.pk.slice(0, 16)}_`), `a new trade's id names its creator: ${escrowId}`);
   assert.equal(state.initiator.pubkey, buyer.pk);
 });
 console.log('PASS new ids name their creator; a forged CREATE under one is ignored without any hint from the caller');

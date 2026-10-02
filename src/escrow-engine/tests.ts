@@ -6572,7 +6572,7 @@ for (const needs of [0, 2]) for (const active of [0, 200000]) for (const balance
 
   // New ids name their creator, so the forgery is not a CREATE of the trade at all.
   const taggedId = creatorTaggedEscrowId("lz4k2a", "abcd1234", SELLER_PK);
-  assert(taggedId === `sm_lz4k2a_abcd1234_${"bb".repeat(8)}` && escrowIdCreatorTag(taggedId) === "bb".repeat(8)
+  assert(taggedId === `sm_lz4k2a_${"bb".repeat(8)}_abcd1234` && escrowIdCreatorTag(taggedId) === "bb".repeat(8)
     && escrowIdCreatorTag("sm_lz4k2a_abcd1234") === null && escrowIdCreatorTag(ESCROW_ID) === null
     && escrowIdCreatorTag("sm_ghost_heal_3") === null, "only the creator-tagged shape names a creator");
   const onId = <T extends EscrowPayload>(e: ParsedEscrowEvent<T>, pk: string): ParsedEscrowEvent<T> =>
