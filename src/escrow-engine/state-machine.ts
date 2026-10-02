@@ -2087,13 +2087,13 @@ export function replayEventChain(
     return err("EMPTY_CHAIN", "Cannot replay empty event chain");
   }
 
-  // Anyone who signed a CREATE or a JOIN under this id claimed a place in the
-  // trade, whether replay seated them or not. A backdated JOIN can take a
-  // seat first and a creator named by a caller can set the real CREATE aside,
-  // so a real party can look like an outsider here. Their rejected events stay
-  // strict: skipping a displaced buyer's LOCK would read a funded trade as open.
+  // Real parties replay can fail to seat. A creator named by a caller sets
+  // every other CREATE aside, and a backdated JOIN takes a seat before the real
+  // one (which then fails ROLE_TAKEN, below). Their rejected events stay strict:
+  // skipping a displaced party's LOCK would read a funded trade as open, or as
+  // funded by someone else.
   const claimants = new Set(events
-    .filter(event => event.kind === EscrowEventKind.CREATE || event.kind === EscrowEventKind.JOIN)
+    .filter(event => event.kind === EscrowEventKind.CREATE)
     .map(event => event.pubkey));
   const rooted = selectTradeRoot(events, opts.creator);
   if (!rooted.ok) return err(rooted.code, rooted.message);
@@ -2127,13 +2127,17 @@ export function replayEventChain(
   for (const event of events) {
     const result = applyEvent(state, event);
     if (!result.ok) {
-      // Only an author with no claim on the trade, replying to an event this
-      // chain holds, can be skipped as an outsider. An event whose predecessor
-      // is missing points at a hole in the read (a JOIN the relay dropped), and
-      // the author's seat may sit in that hole.
+      const funds = [EscrowEventKind.LOCK, EscrowEventKind.CLAIM,
+        EscrowEventKind.SUBSCRIBE, EscrowEventKind.PERIOD_RELEASE].includes(event.kind);
+      // A LOCK before any LOCK is accepted stays strict whoever signed it: the
+      // locker's seat comes from a JOIN that a partial read can lose anywhere
+      // up the chain, or that a backdated JOIN can displace. A funds event that
+      // replies to an event the read does not hold is a hole, not an outsider.
       const entitled = !state || claimants.has(event.pubkey)
-        || (!!event.prevEventId && !availableIds.has(event.prevEventId))
+        || (event.kind === EscrowEventKind.LOCK && !state.eventChain.some(e => e.kind === EscrowEventKind.LOCK))
+        || (funds && !!event.prevEventId && !availableIds.has(event.prevEventId))
         || replayAuthorEntitled(state, event);
+      if (event.kind === EscrowEventKind.JOIN && result.error.code === "ROLE_TAKEN") claimants.add(event.pubkey);
       // Positive signed-time refusal, not absence from a partial relay read.
       // Preserve the notes reference for the funder's recovery, never as escrow.
       // Other funds errors (including claims) remain strict below.

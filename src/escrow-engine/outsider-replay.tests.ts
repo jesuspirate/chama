@@ -99,8 +99,9 @@ const clean = await coldLoad(baseline);
 assert.equal(clean.state?.status, EscrowStatus.APPROVED, 'baseline chain loads');
 assert.equal(clean.state?.resolvedOutcome, Outcome.RELEASE);
 
-// A seated arbiter's early vote is not an outsider's event: it stays strict
-// (it may mean a principal's vote is missing), see replay-hardening.tests.ts.
+// Two events stay strict on purpose and are not listed: a seated arbiter's
+// early vote (it may mean a principal's vote is missing) and any LOCK before
+// the real one is accepted (it may be a real funder whose JOIN the read lost).
 const cases: Array<[string, NostrEvent, string]> = [
   ['outsider VOTE claiming the buyer role',
     sign(outsider, EscrowEventKind.VOTE, T0 + 15, lock.id,
@@ -111,8 +112,6 @@ const cases: Array<[string, NostrEvent, string]> = [
   ['outsider CANCEL after RESOLVE',
     sign(outsider, EscrowEventKind.CANCEL, T0 + 50, resolve.id, JSON.stringify({
       type: 'escrow:cancel', cancellerRole: Role.SELLER, reason: 'x', cancelledAt: T0 + 50 })), 'INVALID_STATE'],
-  ['outsider LOCK before the real one',
-    sign(outsider, EscrowEventKind.LOCK, T0 + 5, create.id, JSON.stringify(lockPayload(T0 + 5))), 'NOT_PARTICIPANT'],
   ['outsider LOCK after the real one',
     sign(outsider, EscrowEventKind.LOCK, T0 + 15, lock.id, JSON.stringify(lockPayload(T0 + 15))), 'INVALID_STATE'],
   ['outsider CLAIM after RESOLVE',
@@ -134,6 +133,12 @@ for (const viewer of [buyer, arbiter]) {
     console.log(`${ok ? 'PASS' : 'FAIL'} ${viewer === buyer ? 'buyer' : 'arbiter'} device · ${name}` +
       (ok ? ` (skipped as ${code})` : ` — ${failure ? `load failed: ${failure.code}` : `status ${state?.status}, note ${note?.code}`}`));
   }
+}
+{
+  const early = sign(outsider, EscrowEventKind.LOCK, T0 + 5, create.id, JSON.stringify(lockPayload(T0 + 5)));
+  const { state } = await coldLoad([...baseline, early]);
+  assert.equal(state, null, 'an outsider LOCK before the real one still fails the load (fail-closed)');
+  console.log('PASS an outsider LOCK before the real one still fails the load, by design');
 }
 assert.equal(failures, 0, `${failures} hostile chain(s) did not load to the honest state`);
 console.log('PASS an outsider-authored event never stops a signed trade from cold-loading');

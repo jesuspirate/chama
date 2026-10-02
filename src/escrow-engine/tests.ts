@@ -6632,8 +6632,11 @@ for (const needs of [0, 2]) for (const active of [0, 200000]) for (const balance
     at(voteEvent(Role.ARBITER, OUTSIDER_PK, Outcome.REFUND, lock.raw.id), lock), "NOT_PARTICIPANT");
   skipped("outsider CANCEL after RESOLVE",
     { ...cancelEvent(resolve.raw.id), pubkey: OUTSIDER_PK }, "INVALID_STATE");
-  skipped("outsider LOCK before the real one",
-    at(lockEvent(create.raw.id, { locker: OUTSIDER_PK }), create), "NOT_PARTICIPANT");
+  // Before any LOCK is accepted, a LOCK cannot be told apart from a real
+  // funder's whose JOIN the read lost or a backdated JOIN displaced. Strict.
+  assert(!replayEventChain(sortEventChain([...base,
+    at(lockEvent(create.raw.id, { locker: OUTSIDER_PK }), create)])).ok,
+    "an outsider LOCK before the real one still stops replay (fail-closed)");
   skipped("outsider LOCK on a locked trade",
     at(lockEvent(lock.raw.id, { locker: OUTSIDER_PK }), lock), "INVALID_STATE");
   skipped("outsider CLAIM after RESOLVE", claimEvent(Role.BUYER, OUTSIDER_PK, resolve.raw.id), "WRONG_CLAIMER");
@@ -6691,6 +6694,29 @@ for (const needs of [0, 2]) for (const active of [0, 200000]) for (const balance
   const arbiterAfterMissing = { ...voteEvent(Role.ARBITER, ARBITER_PK, Outcome.RELEASE, "missing-seller-vote") };
   assert(!replayEventChain(sortEventChain([create, lock, buyer, arbiterAfterMissing])).ok,
     "an arbiter vote replying to a missing principal vote stays strict");
+  // Neither a made-up predecessor nor a JOIN of their own makes an outsider's
+  // non-funds event strict.
+  skipped("outsider VOTE replying to a made-up id",
+    at(voteEvent(Role.BUYER, OUTSIDER_PK, Outcome.REFUND, "made-up-id"), lock), "NOT_PARTICIPANT");
+  const lateJoin = at(joinEvent(Role.BUYER, OUTSIDER_PK, lock.raw.id), lock);
+  const lateVote = at(voteEvent(Role.BUYER, OUTSIDER_PK, Outcome.REFUND, lateJoin.raw.id), lock);
+  const joined = replayEventChain(sortEventChain([...base, lateJoin, lateVote]));
+  assert(joined.ok && joined.state.status === EscrowStatus.APPROVED,
+    "an outsider's own JOIN after LOCK does not make their VOTE strict", joined.ok ? joined.state.status : joined.error.code);
+  // Second review: holes further up than the LOCK's own predecessor.
+  const arbiterJoin = retimeEvent(joinEvent(Role.ARBITER, ARBITER_PK, "missing-buyer-join"), NOW + 6);
+  const lockOnArbiter = retimeEvent(lockEvent(arbiterJoin.raw.id, { locker: BUYER_PK }), NOW + 10);
+  assert(!replayEventChain(sortEventChain([mkt, arbiterJoin, lockOnArbiter])).ok,
+    "a buyer LOCK whose JOIN is missing two steps back stays strict");
+  const lockOnCreate = retimeEvent(lockEvent(mkt.raw.id, { locker: BUYER_PK }), NOW + 10);
+  assert(!replayEventChain(sortEventChain([mkt, lockOnCreate])).ok,
+    "a buyer LOCK replying to the CREATE with no JOIN in the read stays strict");
+  // A squatter's own LOCK is accepted on the squatted seat; the real buyer's
+  // LOCK, whose JOIN the read lost, must still fail the load.
+  const squatLock = retimeEvent(lockEvent(squat.raw.id, { locker: OUTSIDER_PK, buyerPubkey: OUTSIDER_PK }), NOW + 8);
+  const afterSquat = replayEventChain(sortEventChain([mkt, squat, squatLock, buyerLock]));
+  assert(!afterSquat.ok, "the real LOCK after a squatter's accepted LOCK stays strict when its JOIN is missing",
+    afterSquat.ok ? `${afterSquat.state.status} buyer=${afterSquat.state.participants[Role.BUYER]?.slice(0, 4)}` : undefined);
   assert(!replayEventChain([...base, resolveEvent(Outcome.REFUND, [Role.BUYER, Role.SELLER], false, resolve.raw.id)]).ok,
     "contradictory resolution cannot be skipped as a duplicate");
 }
