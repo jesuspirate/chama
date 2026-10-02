@@ -309,4 +309,19 @@ html .app-lock-capture figcaption { font-size: 11px; }
   .has-experience .has-story .journey-sticky .journey-art { top: 248px; height: calc(100% - 288px); }
 }
 
+/* ── The hero keeps its own captions; the page says nothing over them ────── */
+.cinema .film-context { display: none; }
+
+/* ── The trade diagram points at what each chapter is about ─────────────── */
+@media(prefers-reduced-motion:no-preference) {
+  .journey-art.is-meet .intent-card { animation: glow-card 1s ease-in-out infinite; }
+  .journey-art.is-agree .role .role-portrait { animation: glow-face 1s ease-in-out infinite; }
+  .journey-art.is-pay .cash-transfer { animation: glow-cash .9s ease-in-out infinite; }
+  .journey-art.is-release .sats-transfer img { animation: glow-coin .9s ease-in-out infinite; }
+}
+@keyframes glow-card { 0%,100% { box-shadow: 0 0 0 1px #f7931a40,0 8px 24px #233c2f09; } 50% { box-shadow: 0 0 0 4px #f7931a,0 0 44px #f7931aa0,0 8px 24px #233c2f09; } }
+@keyframes glow-face { 0%,100% { box-shadow: 0 0 0 0 var(--role-color,#f7931a),0 8px 30px #29422716; } 50% { box-shadow: 0 0 0 9px var(--role-color,#f7931a),0 0 48px var(--role-color,#f7931a),0 8px 30px #29422716; } }
+@keyframes glow-cash { 0%,100% { box-shadow: 0 0 0 0 #7fbf7f00; } 50% { box-shadow: 0 0 0 5px #8fd48f,0 0 40px #8fd48fcc; } }
+@keyframes glow-coin { 0%,100% { filter: drop-shadow(0 0 0 #f7931a00); } 50% { filter: drop-shadow(0 0 10px #f7931a) drop-shadow(0 0 26px #f7931a); } }
+
 @media print { .thread,.thread-bar { display: none !important; } }

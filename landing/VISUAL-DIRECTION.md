@@ -148,3 +148,6 @@ Known and left alone: `?film=original|varied` in `story.js` names files under `i
 ### Readability and the phone chapter copy (2026-10-01)
 Type across the page and the FAQ was raised so nothing a reader must read sits under 12px and body copy sits at 16px or more; sizes inside the trade diagram stay a step smaller so its parts keep their places. On phones the chapter copy (Meet, Agree, Trade) used to travel up through the pinned portraits on its way to the top, and was then faded out by the desktop rule once it got there. It now waits until it reaches its seat under the chapter tabs, appears there above the diagram, and fades only once it scrolls on past.
 
+### Chapter emphasis (2026-10-01)
+The pinned trade diagram now points at what each chapter is about, with a bold pulse: the two intent cards while matching, the three people once the agreement is in place, the local-money note as it crosses, then the sats as they leave escrow. The emphasis follows the diagram's own progress values, so it lands exactly when each thing happens. Reduced motion shows none of it. The "A vision of rotating savings · coming next" line is no longer shown over the hero: the film has its own captions, and the name section carries the open-today / coming-next distinction.
+

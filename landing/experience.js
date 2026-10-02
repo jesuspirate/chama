@@ -68,6 +68,7 @@
   const navLinks = [...nav.querySelectorAll('nav a')].map(link => ({ link, target: document.querySelector(link.getAttribute('href')) }));
   const bridge = document.querySelector('.story-bridge');
   const copies = [...document.querySelectorAll('.journey-chapter>.chapter-copy')];
+  const art = document.querySelector('.journey-sticky .journey-art');
   let current = -1, saying = 0, framed = false, cutting = false;
   function follow() {
     framed = false;
@@ -118,6 +119,16 @@
       copy.style.setProperty('--copy-fade', still() ? 1 : seat ? clamp((top - seat + 64) / 56) * clamp(1 - (top - seat - 6) / 48) : clamp((top - floor) / 70));
     });
     bridge.style.setProperty('--bridge-line', clamp((h * .82 - bridge.getBoundingClientRect().bottom) / (h * .3) + 1));
+    // Point at what the chapter is about: the two cards while matching, the three
+    // people once agreed, the money as it crosses, then the sats as they leave escrow.
+    if (art) {
+      const v = name => parseFloat(art.style.getPropertyValue(name)) || 0;
+      const released = v('--seller-received') > .99 && v('--vault-opacity') < .97 && v('--buyer-received') < 1;
+      art.classList.toggle('is-meet', v('--meet-opacity') > .6 && v('--match-offset') < .3);
+      art.classList.toggle('is-agree', v('--agree-opacity') > .5 && v('--arbiter-opacity') > .9);
+      art.classList.toggle('is-pay', v('--cash-opacity') > .1);
+      art.classList.toggle('is-release', released);
+    }
   }
   function schedule() { if (!framed) { framed = true; requestAnimationFrame(follow); } }
   addEventListener('scroll', schedule, { passive: true });
