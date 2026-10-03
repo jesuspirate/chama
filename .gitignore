@@ -2,6 +2,7 @@ android/.idea/
 /.startos
 node_modules
 dist/
+/dist-next/
 /javascript/
 *.db
 *.db-journal

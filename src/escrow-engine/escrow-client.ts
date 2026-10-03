@@ -1947,13 +1947,19 @@ export class EscrowClient {
       if (!checked.ok) throw new Error(`Invalid share LOCK: ${checked.error.message}`);
     }
 
-    const publishOutcome = params.custody && !params.onchain
-      ? await this.publishDurableMoney(signed, {
-          escrowId,
-          type: "lock",
-          ...params.custody,
-        })
-      : { custodyDurability: "acknowledged" as const };
+    let publishOutcome: { custodyDurability: CustodyDurability; error?: string };
+    if (params.custody && !params.onchain) {
+      publishOutcome = await this.publishDurableMoney(signed, {
+        escrowId,
+        type: "lock",
+        ...params.custody,
+      });
+    } else {
+      // Sim/testnet and on-chain locks have no bearer-note outbox, but still
+      // need relay delivery. Only mark them acknowledged after publish succeeds.
+      await this.relayManager.publish(signed);
+      publishOutcome = { custodyDurability: "acknowledged" };
+    }
 
     // For local apply, we have the cleartext in scope — synthesize a
     // payload that includes BOTH the envelope (for wire fidelity in
