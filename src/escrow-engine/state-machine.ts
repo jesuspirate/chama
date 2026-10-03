@@ -2150,6 +2150,29 @@ export function replayEventChain(
         || (funds && !!event.prevEventId && !availableIds.has(event.prevEventId))
         || replayAuthorEntitled(state, event);
       if (event.kind === EscrowEventKind.JOIN && result.error.code === "ROLE_TAKEN") claimants.add(event.pubkey);
+      // A cancellation accepted before this ecash LOCK is positive refusal,
+      // not evidence inferred from an absent LOCK. Keep the cancelled trade
+      // and the exact signed note reference for the funder's recovery. Never
+      // do this with known custody, an unknown predecessor, an unseated author,
+      // or an on-chain deposit (which has a different recovery protocol).
+      const cancelledState = state as EscrowState | null;
+      if (cancelledState && event.kind === EscrowEventKind.LOCK
+          && result.error.code === "TERMINAL_STATE"
+          && cancelledState.status === EscrowStatus.CANCELLED
+          && !cancelledState.eventChain.some(e => e.kind === EscrowEventKind.LOCK)
+          && replayAuthorEntitled(cancelledState, event)
+          && !(event.payload as LockPayload).onchain
+          && !!event.prevEventId && availableIds.has(event.prevEventId)
+          && cancelledState.eventChain.some(e => e.kind === EscrowEventKind.CANCEL
+            && e.pubkey === cancelledState.initiator.pubkey && e.timestamp < event.timestamp)) {
+        state = { ...cancelledState, rejectedLocks: [...(cancelledState.rejectedLocks ?? []), {
+          event: event as ParsedEscrowEvent<LockPayload>, code: "CANCELLED_BEFORE_LOCK",
+        }], replayNotes: [...(cancelledState.replayNotes ?? []), {
+          eventId: event.raw.id, kind: event.kind, code: "CANCELLED_BEFORE_LOCK",
+          message: "The initiator cancelled before this lock; its notes did not enter escrow",
+        }] };
+        continue;
+      }
       // Positive signed-time refusal, not absence from a partial relay read.
       // Preserve the notes reference for the funder's recovery, never as escrow.
       // Other funds errors (including claims) remain strict below.
