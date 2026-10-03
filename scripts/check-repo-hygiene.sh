@@ -55,7 +55,9 @@ fi
 # Vite copies all of public/ into the Android app. A large design archive here
 # silently becomes APK payload, so keep a conservative ceiling above the normal
 # Chama production asset footprint (currently about 8 MiB).
-public_bytes=$(git ls-files -z public | xargs -0 stat -f '%z' 2>/dev/null | awk '{sum += $1} END {print sum + 0}')
+# Sizes come from the index blobs, not stat(1): its flags differ between BSD and
+# GNU, and the committed size is what a release actually ships.
+public_bytes=$(git ls-files -s public | awk '{print $2}' | git cat-file --batch-check='%(objectsize)' | awk '{sum += $1} END {print sum + 0}')
 public_limit=$((20 * 1024 * 1024))
 if [ "$public_bytes" -gt "$public_limit" ]; then
   public_mib=$((public_bytes / 1024 / 1024))
