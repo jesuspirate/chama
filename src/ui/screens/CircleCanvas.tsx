@@ -1,3 +1,4 @@
+import { RangeFiat } from "../components/RangeFiat.js";
 import { useCanvasViewport } from "../hooks/useCanvasViewport.js";
 import { useEffect, useState } from "react";
 import { isSimModeOn } from "../../sim/simMode.js";
@@ -104,7 +105,7 @@ export function CircleCanvas({ viewerPubkey, community, mintUrl, initial, onBack
             onChange={e => setName(e.target.value)} aria-label={t("circle.nameLabel")} />
         </label>
         <dl className="circle-review">
-        <div><dt>{t("circle.share")}</dt><dd>{t("circle.satsEach", { amount: Number(sats).toLocaleString(lang) })}</dd></div>
+        <div><dt>{t("circle.share")}</dt><dd>{t("circle.satsEach", { amount: Number(sats).toLocaleString(lang) })}<RangeFiat min={round.shareMsats / 1000} currency={defaultCurrencyForCommunity(community)} usdPerBtc={price.usd} usdFiatRates={rates.rates} /></dd></div>
         <div><dt>{t("circle.people")}</dt><dd>{threshold}{audience === "friends" ? ` · ${t("circle.justUs")}` : ` · ${t("circle.openAnyone")}`}</dd></div>
         <div><dt>{t("circle.whoFor")}</dt><dd>{audience === "friends" ? t("circle.byInvite") : t("circle.listedBrowse")}</dd></div>
         <div><dt>{t("circle.fillsBy")}</dt><dd>{date(round.fillDeadlineSec)}</dd></div><div><dt>{t("circle.returnDate")}</dt><dd>{date(round.roundEndSec)}</dd></div>

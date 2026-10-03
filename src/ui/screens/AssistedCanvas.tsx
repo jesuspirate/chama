@@ -36,7 +36,7 @@ import {
   phonePlaceholderForCountryIso,
 } from "../../payments/saved-handles.js";
 import type { AggregateRatings } from "../../reputation/ratings.js";
-import { formatEstimatedFiatForMsats, estimateSatsForFiat } from "../amount-display.js";
+import { estimateSatsForFiat } from "../amount-display.js";
 import { shareTradeLink } from "../share-link.js";
 import { useBitcoinPrice } from "../hooks/useBitcoinPrice.js";
 import { useFiatRates } from "../hooks/useFiatRates.js";
@@ -868,7 +868,7 @@ export function AssistedCanvas({
               ? tr("canvas.satsRangeValue", { min: (rangeMin ?? 0).toLocaleString(), max: rangeMax.toLocaleString() })
               : tr("canvas.satsValue", { amount: (positiveNumber(bring === "goods" ? terms : detail) ?? 0).toLocaleString() })}
         />
-        {sellRange && <RangeFiat min={rangeMin} max={rangeMax} {...fiatQuote} />}
+        {bring !== "bill" && <RangeFiat min={positiveNumber(bring === "goods" ? terms : detail)} max={sellRange ? rangeMax : undefined} {...fiatQuote} />}
         {bring === "bill" && estimatedSats && <ReviewRow label={tr("canvas.bitcoinOffered")} value={tr("canvas.aboutSats", { amount: estimatedSats.toLocaleString() })} />}
         {bring === "sats" && <ReviewRow label={tr("canvas.receiveThrough")} value={paymentRailLabels(effectiveRails)} />}
         {railChoice}{railExplanation}
@@ -878,7 +878,7 @@ export function AssistedCanvas({
         {((bring === "sats" && want === "cash") || bring === "bill") && <ReviewRow label={bring === "bill" ? tr("canvas.volunteerBonus") : tr("canvas.yourRate")} value={premiumBps === 0 ? tr("canvas.marketRate") : `+${(premiumBps / 100).toLocaleString()}%`} />}
         {bring === "bill" && billQuote && <div data-bill-quote style={{fontSize:13, color:T.text, lineHeight:1.6, marginBottom:12}}>
           {tr("canvas.billSatsSummary", {base:billQuote.base.toLocaleString(), bonus:billQuote.bonus.toLocaleString(), total:billQuote.total.toLocaleString()})}
-          <div style={{color:T.muted}}>{formatEstimatedFiatForMsats({amountMsats:billQuote.total * 1000, ...fiatQuote})}</div>
+          <RangeFiat min={billQuote.total} {...fiatQuote} />
         </div>}
         {bring === "goods" && <ReviewRow label={tr("canvas.deliveryQ")} value={tr(`canvas.delivery${delivery}`)} />}
         <ReviewRow label={tr("canvas.visibleIn")} value={community?.displayName ?? browseCommunity} last />

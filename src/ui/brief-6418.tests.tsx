@@ -85,6 +85,6 @@ try {
   listingsLoading={false} onBrowse={()=>{}} onCreate={()=>{}} onMoreOptions={()=>{}} onOpenTrade={()=>{}}
   resumeRef={{current:{...resume,surface:'publish',bring:'bill',detail:'100',terms:'utilities',premiumBps:500}}} /></LangProvider>);
  assert.match(billReview,/100,000 sats bill \+ 5,000 sats bonus = 105,000 sats to you/);
- assert.match(billReview,/USD 105<\/div>/, 'the fiat equivalent includes the volunteer bonus');
+ assert.match(billReview,/≈ 105.00 USD<\/div>/, 'the fiat equivalent includes the volunteer bonus');
 } finally { unsubscribe(); globalThis.fetch = originalFetch; }
 console.log('PASS 6.4.18: signed delivery replay, custody unchanged, all delivery actions, payout recipients, chat fallback, bill rounding and guided pills');

@@ -4093,6 +4093,9 @@ function Step3({
                       usdPerBtc: btcPrice.usd,
                       usdFiatRates: fiatRates.rates,
                     })}
+                    <RangeFiat min={(item.minAmountMsats ?? item.amountMsats) / 1000}
+                      max={item.maxAmountMsats === undefined ? undefined : item.maxAmountMsats / 1000}
+                      currency={form.cur} usdPerBtc={btcPrice.usd} usdFiatRates={fiatRates.rates} />
                   </span>
                 </div>
               ))}
@@ -4134,6 +4137,7 @@ function Step3({
               )}
               {form.isSubscription && <span style={{ color: T.muted, fontWeight: 500 }}>{t("create.totalSuffix")}</span>}
             </div>
+            <RangeFiat min={previewSingleSats} currency={form.cur} usdPerBtc={btcPrice.usd} usdFiatRates={fiatRates.rates} />
             {previewPremium && (
               <div style={{ marginTop: 6, color: T.accent, fontFamily: T.mono, fontSize: 10, fontWeight: 800 }}>
                 {previewPremium}
