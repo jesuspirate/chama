@@ -1,3 +1,4 @@
+import { CHAMA_NEXT, NEXT_BADGE } from "../../sim/next-build.js";
 import { SavedWalletRow } from "../components/SavedWalletRow.js";
 import { BlockExplorerSetting } from '../panels/BlockExplorerSetting.js';
 import { useState, useEffect, useRef, type ReactNode } from "react";
@@ -182,6 +183,7 @@ export function SettingsAdvanced({
         </button>
         <span style={{ fontSize: 18, fontWeight: 700, color: T.text, fontFamily: T.sans }}>
           Advanced
+          {CHAMA_NEXT && <small style={{ display: "block", color: T.amber, fontSize: 11 }}>{NEXT_BADGE}</small>}
         </span>
         <span style={{ width: 50 }} />
       </div>

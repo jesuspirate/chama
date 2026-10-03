@@ -1,3 +1,4 @@
+import { CHAMA_NEXT } from "../sim/next-build.js";
 import { pickPreferredArbiter } from "../arbiters/pool.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils.js";
@@ -54,6 +55,7 @@ function chainedRoundError(c: CircleRound, id: string, pubkey: string, at: numbe
   if (c.prevCircleId !== (c.roundIndex === 2 ? round1Id : roundCircleId(round1Id, c.roundIndex - 1))) return "Rotation round must chain to the previous round";
   if (c.roundIndex > order.length + 1) return "No round beyond the rotation";
   if (!order.includes(pubkey.toLowerCase())) return "Only a sealed member can open a rotation round";
+  if (c.collectWindowSec !== round1.collectWindowSec) return "Rotation rounds must keep the collect window";
   if (c.shareMsats !== round1.shareMsats || c.community !== round1.community || c.mintUrl !== round1.mintUrl) return "Rotation rounds must keep the cycle terms";
   if (c.seatThreshold !== order.length - 1 || c.seatCap !== order.length - 1) return "Rotation round seats must equal the sealed members minus the collector";
   if (c.unlisted !== true) return "Rotation rounds are members-only";
@@ -91,6 +93,7 @@ export function chamaCreateError(p: CreatePayload, id: string, pubkey: string, a
     if (!p.chamaCircle || p.chamaPolicy !== undefined || p.parent !== undefined) return "Invalid circle parent shape";
     const c: CircleRound = { ...p.chamaCircle, version: 1, circleId: id, creatorPubkey: pubkey,
       community: p.community ?? "", mintUrl: p.mintUrl, name: p.description, createdAt: at };
+    if (c.collectWindowSec !== undefined && !sim) return "Custom collect windows require sim-tagged events";
     const errors = validateCircleRound(c);
     if (errors.length) return errors.join("; ");
     if (at + p.expirySeconds !== c.roundEndSec) return "Circle expiry must equal round end";
@@ -125,6 +128,7 @@ export function chamaCreateError(p: CreatePayload, id: string, pubkey: string, a
   }
   if (p.category !== "chama-share" || (p.chamaPolicy !== "share-v1" && p.chamaPolicy !== "share-v2") || p.chamaCircle !== undefined) return "Invalid share policy/category";
   const circle = parent && circleFromEscrow(parent);
+  if (circle?.collectWindowSec !== undefined && !sim) return "Sim collection clocks require sim-tagged shares";
   if (!parent || !circle || validateCircleRound(circle).length || p.parent !== parent.id) return "A validated circle parent is required";
   if (p.amountMsats !== circle.shareMsats) return "Share amount must equal circle share amount";
   if (at < circle.createdAt || at >= circle.fillDeadlineSec || at + p.expirySeconds !== circle.roundEndSec) return "Share must use the circle's fixed deadlines";
@@ -283,6 +287,9 @@ export function shareCreatePayload(parent: EscrowState, nowSec: number,
     const buyer = ring.buyerPubkey.toLowerCase();
     const candidates = ring.locks.filter(l => l.circleId === parent.id && l.status === "locked"
       && l.lockedAtSec !== null && l.lockedAtSec <= nowSec && l.memberPubkey.toLowerCase() !== buyer);
+    if (CHAMA_NEXT && buyer === circle.creatorPubkey.toLowerCase()
+        && new Set(candidates.map(l => l.memberPubkey.toLowerCase())).size < (circle.seatCap ?? circle.seatThreshold) - 1)
+      throw new Error("Hosts lock last: all other members must lock first");
     const latest = [...candidates].sort((a, b) => b.lockedAtSec! - a.lockedAtSec!)[0];
     if (latest) sellerPubkey = latest.memberPubkey;
     else if (buyer === circle.creatorPubkey.toLowerCase()) throw new Error("Hosts lock last: another member must lock first");
@@ -336,7 +343,7 @@ export function nextRotationRoundPayload(cycle: ChamaCycleContext, nowSec: numbe
     escrowId: roundCircleId(round1Id, next),
     payload: { type: "escrow:create", description: round1.name, category: "chama",
       chamaCircle: { shareMsats: round1.shareMsats, seatThreshold: order.length - 1, seatCap: order.length - 1,
-        unlisted: true, fillDeadlineSec: start + fillWindow, roundEndSec: start + duration,
+        unlisted: true, ...(round1.collectWindowSec !== undefined ? { collectWindowSec: round1.collectWindowSec } : {}), fillDeadlineSec: start + fillWindow, roundEndSec: start + duration,
         roundIndex: next, prevCircleId: next === 2 ? round1Id : roundCircleId(round1Id, next - 1), pot: "rotation-v2" },
       amountMsats: round1.shareMsats, mintUrl: round1.mintUrl, community: round1.community || undefined,
       fed: original.fed, fedPrefix: original.fedPrefix, platformFeeBps: 0, platformFeePubkey: original.platformFeePubkey,

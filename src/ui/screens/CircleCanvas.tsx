@@ -1,3 +1,4 @@
+import { CHAMA_NEXT } from "../../sim/next-build.js";
 import { useCanvasViewport } from "../hooks/useCanvasViewport.js";
 import { useEffect, useState } from "react";
 import { isSimModeOn } from "../../sim/simMode.js";
@@ -41,18 +42,20 @@ export function CircleCanvas({ viewerPubkey, community, mintUrl, initial, onBack
   // The circle's IDENTITY (Jet, completion night: three circles all named
   // "Your Circle" made My Trades a guessing game). Empty falls back to the
   // default; a re-formed round inherits its lineage's name.
+  const [collectWindow, setCollectWindow] = useState(initial?.collectWindowSec ?? 600);
   const [name, setName] = useState(initial?.name ?? "");
   const [createdAt] = useState(() => Math.floor(Date.now() / 1000));
   // Runway #9: payday = birthday, so OFFER landing the return on Sunday
   // evening (the "lock in the week, back by Sunday" pulse) as one more chip.
   const sundayDuration = sundaySnapDurationSec(createdAt, -new Date().getTimezoneOffset());
   const [busy, setBusy] = useState(false), [error, setError] = useState<string | null>(null);
-  const round = circleCanvasRound({ shareSats: Number(sats), threshold, cap, durationSec: duration, createdAt,
+  const round = circleCanvasRound({ shareSats: Number(sats), threshold, cap, durationSec: duration, collectWindowSec: collectWindow, createdAt,
     unlisted: audience === "friends",
     creatorPubkey: viewerPubkey, community, mintUrl, name: name.trim() || t("circle.defaultName"), previous: initial });
   const validAmount = Number.isSafeInteger(Number(sats)) && Number(sats) > 0;
-  const validSeats = Number.isSafeInteger(threshold) && threshold >= 2;
-  const date = (at: number) => new Date(at * 1000).toLocaleDateString(lang, { weekday: "short", month: "short", day: "numeric" });
+  const seatMinimum = CHAMA_NEXT && round.roundIndex === 1 ? 3 : 2;
+  const validSeats = Number.isSafeInteger(threshold) && threshold >= seatMinimum;
+  const date = (at: number) => new Date(at * 1000).toLocaleString(lang, { weekday: "short", month: "short", day: "numeric", ...(CHAMA_NEXT ? { hour: "2-digit", minute: "2-digit" } as const : {}) });
   const quote = formatEstimatedFiatForMsats({ amountMsats: round.shareMsats, currency: defaultCurrencyForCommunity(community), usdPerBtc: price.usd, usdFiatRates: rates.rates });
   const publish = async () => { if (busy) return; setBusy(true); setError(null); try { await onPublish(round); } catch (e) { setError(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); } };
   const titles = ["circle.amountQuestion", "circle.seatsQuestion", "circle.endQuestion", "circle.reviewQuestion"];
@@ -88,13 +91,14 @@ export function CircleCanvas({ viewerPubkey, community, mintUrl, initial, onBack
           <button type="button" aria-pressed={audience === "anyone"} onClick={() => setAudience("anyone")}>{t("circle.anyoneJoin")}</button>
         </div>
         <p className="circle-caption">{t(audience === "friends" ? "circle.groupSize" : "circle.minCaption")}</p>
-        <div className="circle-stepper"><button type="button" aria-label={t("circle.fewer")} disabled={threshold <= 2} onClick={() => setThreshold(n => n - 1)}>−</button><output aria-live="polite">{threshold}</output><button type="button" aria-label={t("circle.more")} onClick={() => setThreshold(n => n + 1)}>+</button></div>
+        <div className="circle-stepper"><button type="button" aria-label={t("circle.fewer")} disabled={threshold <= seatMinimum} onClick={() => setThreshold(n => n - 1)}>−</button><output aria-live="polite">{threshold}</output><button type="button" aria-label={t("circle.more")} onClick={() => setThreshold(n => n + 1)}>+</button></div>
         <p className="circle-muted">{audience === "friends"
           ? t("circle.privateNote", { count: threshold })
           : t("circle.publicNote", { count: threshold })}</p>
       </QuestionCard></>}
       {step === 2 && <><p style={subStyle()}>{t("circle.twoWeekBound")}</p><QuestionCard>
         <div className="circle-chips">{[7, 14].map(days => <button type="button" key={days} aria-pressed={duration === days * 86400} onClick={() => setDuration(days * 86400)}>{t(days === 7 ? "circle.oneWeek" : "circle.twoWeeks")}</button>)}<button type="button" aria-pressed={duration === sundayDuration} onClick={() => setDuration(sundayDuration)}>{t("circle.bySunday")}</button>{isSimModeOn() && <button type="button" aria-pressed={duration === 600} onClick={() => setDuration(600)}>{t("circle.testDrive")}</button>}</div>
+        {CHAMA_NEXT && <div className="circle-next-clocks"><label>{t("circle.roundMinutes")}<input type="number" min={10} max={20160} value={duration / 60} onChange={e => setDuration(Number(e.target.value) * 60)} /></label><label>{t("circle.collectMinutes")}<input type="number" min={10} max={10080} value={collectWindow / 60} onChange={e => setCollectWindow(Number(e.target.value) * 60)} /></label></div>}
         <h2>{t("circle.backBy", { date: date(round.roundEndSec) })}</h2><p className="circle-muted">{t("circle.closesDate", { date: date(round.fillDeadlineSec) })}</p>
       </QuestionCard></>}
       {step === 3 && <div className="circle-review-card" style={reviewStyle()}>
@@ -107,8 +111,10 @@ export function CircleCanvas({ viewerPubkey, community, mintUrl, initial, onBack
         <div><dt>{t("circle.share")}</dt><dd>{t("circle.satsEach", { amount: Number(sats).toLocaleString(lang) })}</dd></div>
         <div><dt>{t("circle.people")}</dt><dd>{threshold}{audience === "friends" ? ` · ${t("circle.justUs")}` : ` · ${t("circle.openAnyone")}`}</dd></div>
         <div><dt>{t("circle.whoFor")}</dt><dd>{audience === "friends" ? t("circle.byInvite") : t("circle.listedBrowse")}</dd></div>
+        {CHAMA_NEXT && <><div><dt>{t("circle.roundLength")}</dt><dd>{t("circle.clockMinutes", { minutes: duration / 60 })}</dd></div><div><dt>{t("circle.collectWindow")}</dt><dd>{t("circle.clockMinutes", { minutes: collectWindow / 60 })}</dd></div></>}
         <div><dt>{t("circle.fillsBy")}</dt><dd>{date(round.fillDeadlineSec)}</dd></div><div><dt>{t("circle.returnDate")}</dt><dd>{date(round.roundEndSec)}</dd></div>
-      </dl><p>{t("circle.promise", { date: date(round.fillDeadlineSec) })}</p><p className="circle-host-note">{t("circle.hostNote")}</p></div>}
+      </dl><p>{t("circle.promise", { date: date(round.fillDeadlineSec) })}</p><p className="circle-host-note">{t(CHAMA_NEXT ? "circle.nextHostNote" : "circle.hostNote")}</p>
+      {CHAMA_NEXT && <><p>{t("circle.rotationIntro")}</p><p>{t("circle.postCollectionDefault")}</p></>}</div>}
       {error && <p role="alert" style={{ color: T.red }}>{error}</p>}
     </div></div>
       <div className="circle-canvas-action"><Primary disabled={busy || !validAmount || !validSeats || (step === 3 && circleCanvasErrors(round).length > 0)} onClick={step === 3 ? () => void publish() : () => setStep(step + 1)}>{t(busy ? "circle.publishing" : step === 3 ? "circle.openCircle" : "circle.continue")}</Primary></div>
@@ -135,6 +141,7 @@ export function circleCss() { return `
  .circle-canvas .circle-review div{padding:7px 0}
 }
 
+.circle-next-clocks{display:grid;gap:12px;margin:16px 0}.circle-next-clocks label{display:flex;align-items:center;justify-content:space-between;gap:12px;color:${T.text}}.circle-next-clocks input{width:90px;padding:10px;border:1px solid ${T.borderHi};border-radius:10px;background:${T.bg};color:${T.text};font:600 18px ${T.sans}}
 .circle-caption{margin:0 0 6px;}.circle-chips+.circle-caption{margin-top:clamp(18px,3vh,30px)}
 .circle-caption{color:${T.muted};font:700 10px/1.4 ${T.mono};letter-spacing:.14em;text-transform:uppercase}.circle-eyebrow{display:flex;align-items:center;gap:10px;color:${T.accent};font:700 11px ${T.mono};letter-spacing:.14em;text-transform:uppercase}
 .circle-chips{display:flex;flex-wrap:wrap;gap:10px}.circle-chips button,.circle-stepper button{padding:12px 22px;min-height:46px;border-radius:999px;border:1px solid ${T.borderHi};background:${T.bg};color:${T.text};font:700 15px ${T.sans};cursor:pointer}.circle-chips button[aria-pressed=true]{background:${T.accentDim};border-color:${T.accent};color:${T.accent}}

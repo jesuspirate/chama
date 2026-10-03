@@ -1,3 +1,5 @@
+import { CHAMA_NEXT } from "../sim/next-build.js";
+import { CHAMA_ROTATION_ENABLED } from "../escrow-engine/experimental-escrow-features.js";
 import { DEFAULT_ROUND_SEC, type CircleRound } from "./types.js";
 import { validateCircleRound } from "./circle.js";
 
@@ -14,7 +16,7 @@ export function circleInviteId(value: string): string | null {
 
 export function circleCanvasRound(input: {
   shareSats: number; threshold: number; cap: number | null;
-  durationSec?: number; createdAt: number; creatorPubkey: string;
+  durationSec?: number; collectWindowSec?: number; createdAt: number; creatorPubkey: string;
   community: string; mintUrl: string; name: string; previous?: CircleRound;
   /** "Just us": invite-link only, hidden from Browse. */
   unlisted?: boolean;
@@ -27,7 +29,8 @@ export function circleCanvasRound(input: {
   const fillWindow = duration >= 86_400
     ? Math.round(duration * .4 / 86_400) * 86_400
     : Math.max(60, Math.round(duration * .5));
-  return { version: 1, circleId: "", creatorPubkey: input.creatorPubkey,
+  return { ...(CHAMA_ROTATION_ENABLED ? { pot: "rotation-v2" as const } : {}),
+    ...(CHAMA_NEXT ? { collectWindowSec: input.collectWindowSec ?? 7 * 86400 } : {}), version: 1, circleId: "", creatorPubkey: input.creatorPubkey,
     community: input.community, mintUrl: input.mintUrl, name: input.name,
     ...(input.unlisted ? { unlisted: true } : {}),
     shareMsats: input.shareSats * 1000, seatThreshold: input.threshold, seatCap: input.cap,
@@ -58,5 +61,5 @@ export function sundaySnapDurationSec(createdAt: number, tzOffsetMinutes: number
 }
 
 export function circleCanvasErrors(circle: CircleRound): string[] {
-  return validateCircleRound(circle);
+  return [...validateCircleRound(circle), ...(CHAMA_NEXT && circle.roundEndSec - circle.createdAt < 600 ? ["NEXT rounds need at least ten minutes"] : [])];
 }

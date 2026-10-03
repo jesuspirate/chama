@@ -1,3 +1,5 @@
+import { CHAMA_NEXT } from "../sim/next-build.js";
+
 // Chama — default Nostr relay pool
 //
 // The launch-grade answer — own the reliability instead of renting it — is
@@ -39,6 +41,6 @@ const PUBLIC_RELAYS: string[] = [
 const PROFILE_RELAY = (import.meta as any).env?.VITE_CHAMA_PROFILE_RELAY?.trim?.();
 
 // Chama relay first (the reliable anchor); public pool as fallback / redundancy.
-export const DEFAULT_RELAYS: string[] = PROFILE_RELAY
+export const DEFAULT_RELAYS: string[] = CHAMA_NEXT ? [CHAMA_RELAY] : PROFILE_RELAY
   ? PROFILE_RELAY.split(",").map((url: string) => url.trim()).filter(Boolean)
   : [CHAMA_RELAY, ...PUBLIC_RELAYS];

@@ -1,5 +1,5 @@
 import { circleProgress } from "./circle.js";
-import { COLLECT_WINDOW_SEC } from "./rotation.js";
+import { collectWindowSeconds } from "./rotation.js";
 import { CHAMA_ROTATION_ENABLED } from "../escrow-engine/experimental-escrow-features.js";
 import { circleFromEscrow } from "./policy.js";
 import type { CircleShareLock } from "./types.js";
@@ -62,8 +62,12 @@ export function createChamaRefundWatcher(deps: {
    *  flag file. Voting on EXISTING v2 shares is never flag-gated (the
    *  flag-file doctrine: never strand recoverable money). */
   rotationEnabled?: boolean;
+  onVote?: (shareId: string, roundId: string, outcome: Outcome, at: number) => void;
   onError?: (id: string, error: unknown) => void;
 }) {
+  const logVote = (id: string, roundId: string, outcome: Outcome, at: number) => {
+    try { deps.onVote?.(id, roundId, outcome, at); } catch { /* Diagnostics cannot retry a published vote. */ }
+  };
   let running = false;
   return async (nowSec = Math.floor(Date.now() / 1000)): Promise<void> => {
     if (running) return;
@@ -92,7 +96,7 @@ export function createChamaRefundWatcher(deps: {
         if (!rotationRound) for (const id of circleProgress(circle, shares, nowSec).dueBackEscrowIds) {
           const state = [...deps.getEscrows()].find(e => e.id === id);
           if (!state || !canVote(state, pubkey, nowSec, Outcome.REFUND).canVote) continue;
-          try { await deps.vote(id, Outcome.REFUND); }
+          try { await deps.vote(id, Outcome.REFUND); logVote(id, parent.id, Outcome.REFUND, nowSec); }
           catch (error) { deps.onError?.(id, error); }
         }
         // Rotation cadence (decision 3): the moment a rotation round ends,
@@ -117,12 +121,12 @@ export function createChamaRefundWatcher(deps: {
         if (role === undefined || e.votes[role] !== undefined) continue;
         if (!e.eventChain.some(ev => ev.kind === EscrowEventKind.LOCK)) continue;
         const c = e.chamaCircle;
-        const candidates: Outcome[] = nowSec >= c.roundEndSec + COLLECT_WINDOW_SEC ? [Outcome.REFUND]
+        const candidates: Outcome[] = nowSec >= c.roundEndSec + collectWindowSeconds(c) ? [Outcome.REFUND]
           : nowSec >= c.roundEndSec ? [Outcome.RELEASE, Outcome.REFUND]
           : nowSec >= c.fillDeadlineSec && deps.viewComplete?.(e.parent ?? "") === true ? [Outcome.REFUND]
           : [];
         for (const [index, want] of candidates.entries()) {
-          try { await deps.vote(e.id, want); break; }
+          try { await deps.vote(e.id, want); logVote(e.id, e.parent!, want, nowSec); break; }
           catch (error) { if (index === candidates.length - 1) deps.onError?.(e.id, error); }
         }
       }

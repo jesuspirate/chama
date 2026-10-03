@@ -15,6 +15,13 @@ import { EscrowEventKind, Role, type EscrowState } from "../escrow-engine/types.
  *  2026-09-15: 7 days; tighten only if it proves a risk). */
 export const COLLECT_WINDOW_SEC = 7 * 86_400;
 
+/** A custom value enters state only through the sim-only CREATE gate. */
+export function collectWindowSeconds(round: { collectWindowSec?: number }): number {
+  const value = round.collectWindowSec;
+  return Number.isSafeInteger(value) && value! >= 600 && value! <= COLLECT_WINDOW_SEC
+    ? value! : COLLECT_WINDOW_SEC;
+}
+
 /** Deterministic id for round r (r ≥ 2) of the cycle anchored at round 1.
  *  Anyone can therefore publish the next round's CREATE (no host liveness
  *  dependency) and duplicates are structurally impossible. Round 1's id is
@@ -91,7 +98,7 @@ export function collectorForRound(
  *  (the collector sits out, decision 2). */
 export type RoundOutcome = "none" | "refund" | "release";
 export function roundOutcomeAt(
-  round: Pick<CircleRound, "fillDeadlineSec" | "roundEndSec">,
+  round: Pick<CircleRound, "fillDeadlineSec" | "roundEndSec" | "collectWindowSec">,
   lockedCount: number,
   expectedCount: number,
   nowSec: number,
@@ -103,7 +110,7 @@ export function roundOutcomeAt(
   if (nowSec < round.fillDeadlineSec && !filled) return "none";
   if (!filled) return "refund";
   if (nowSec < round.roundEndSec) return "none";
-  if (nowSec < round.roundEndSec + COLLECT_WINDOW_SEC) return "release";
+  if (nowSec < round.roundEndSec + collectWindowSeconds(round)) return "release";
   // Collector never claimed: notes must not rot because one person vanished.
   return "refund";
 }

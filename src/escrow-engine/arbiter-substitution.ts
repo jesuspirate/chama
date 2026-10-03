@@ -26,7 +26,7 @@
 import { Role, EscrowEventKind, Outcome, type EscrowState, type VotePayload } from "./types.js";
 import { pickArbiterFromPool } from "../arbiters/pool.js";
 import { payoutRecipientFor } from "./recipients.js";
-import { COLLECT_WINDOW_SEC as ROTATION_COLLECT_WINDOW_SEC } from "../chama/rotation.js";
+import { collectWindowSeconds } from "../chama/rotation.js";
 
 /** Pool members who hold a copy of the arbiter share AND may vote: the
  *  assigned arbiter + 2 backups. Share-holding and vote-eligibility are capped
@@ -318,7 +318,7 @@ export function isPerformanceContest(state: EscrowState, nowSec: number = Math.f
   // window lapses the deterministic law has spoken (REFUND is the only
   // lawful outcome) and the contest is over by construction (review finding 9).
   if (state.chamaPolicy === "share-v2" && state.chamaCircle
-      && nowSec >= state.chamaCircle.roundEndSec + ROTATION_COLLECT_WINDOW_SEC) return false;
+      && nowSec >= state.chamaCircle.roundEndSec + collectWindowSeconds(state.chamaCircle)) return false;
   return true;
 }
 

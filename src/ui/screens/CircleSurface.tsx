@@ -1,3 +1,4 @@
+import { CHAMA_NEXT } from "../../sim/next-build.js";
 import { useState, useEffect } from "react";
 import { generatedNameFor, profileNameFor, type NostrProfileNameMap } from "../nostr-profiles.js";
 import { rotationView } from "../../chama/rotation.js";
@@ -131,6 +132,11 @@ export function CircleSurface({ parent, escrows, viewerPubkey, backLabel, childr
       {viewerIsCollector ? t("circle.yourPayday") : t("circle.payday", { name: nym(rot!.collector) })}
       <span style={{ color: T.muted, fontWeight: 500 }}> · {t("circle.potPays", { amount: fmtSats(circle.shareMsats * circle.seatThreshold) })}</span>
     </p>}
+    {circle.pot === "rotation-v2" && <>
+      {model.status === "refund-due" && <p>{t("circle.cycleFailed")}</p>}
+      {isCollectionRound && <p>{t("circle.collectorSitsOut")}</p>}
+      <p style={{ color: T.muted }}>{t("circle.postCollectionDefault")}</p>
+    </>}
     <div style={{ background: T.card, border: `1px solid ${T.borderHi}`, borderRadius: 30, padding: "clamp(22px,4vw,36px)", textAlign: "center" }}>
       {childrenLoaded
         ? <CircleSeatRing filled={model.seatsLocked} total={model.seatThreshold} potMsats={model.potMsats} targetMsats={circle.shareMsats * model.seatThreshold} />
@@ -149,7 +155,7 @@ export function CircleSurface({ parent, escrows, viewerPubkey, backLabel, childr
       {(model.move === "returning" || model.move === "return-now") && <p>{t("circle.returning")}</p>}
       {model.move === "collect" && <p style={{ color: T.accent, fontWeight: 700 }}>{t(viewerIsCollector ? "circle.potReady" : "circle.readyCollect")}</p>}
       {viewerIsCollector && model.move === "wait" && model.status === "filling" && <p style={{ color: T.muted }}>{t("circle.sitOut")}</p>}
-      {model.refusal && <p>{t(model.refusal === "full" ? "circle.full" : model.refusal === "closed" ? "circle.closed" : model.refusal === "host-waits" ? "circle.hostLocksLast" : "circle.alreadySeated")}</p>}
+      {model.refusal && <p>{t(model.refusal === "full" ? "circle.full" : model.refusal === "closed" ? "circle.closed" : model.refusal === "host-waits" ? (CHAMA_NEXT ? "circle.nextHostLocksLast" : "circle.hostLocksLast") : "circle.alreadySeated")}</p>}
       {model.status === "complete" && childrenLoaded && <>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 10, margin: "26px 0" }}>
           {[["circle.completedCircles", stats.completed], ["circle.onTime", stats.onTime], ["circle.standing", Math.round(stats.standing).toLocaleString(lang)]].map(([label, value]) => <div key={label} style={{ padding: "16px 4px", background: T.bg, border: `1px solid ${T.border}`, borderRadius: 16 }}><strong style={{ display: "block", fontSize: 24 }}>{value}</strong><small style={{ color: T.muted }}>{t(String(label))}</small></div>)}

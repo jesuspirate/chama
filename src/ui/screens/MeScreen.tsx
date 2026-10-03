@@ -1,3 +1,5 @@
+import { roundAlertLog } from "../../notifications/round-alert-log.js";
+import { CHAMA_NEXT, NEXT_BADGE } from "../../sim/next-build.js";
 import { listPaidLockRecoveries, acknowledgePaidLockRecoveries } from "../../payments/paid-lock-recovery.js";
 import { hasVerifiedTradeCreate } from "../../escrow-engine/trade-index.js";
 import { UnverifiedHistory } from "../components/UnverifiedHistory.js";
@@ -1086,6 +1088,7 @@ export function MeScreen({
       </>}
 
       {shownTab === "settings" && <>
+        {CHAMA_NEXT && <p style={{ color: T.amber, fontFamily: T.mono, fontWeight: 700 }}>{NEXT_BADGE}</p>}
         <div style={{
           background: T.card, border: `1px solid ${T.border}`,
           borderRadius: T.r, padding: 0, overflow: "hidden",
@@ -2870,6 +2873,12 @@ function NotificationsRow() {
 }
 
 function BackgroundPushRow() {
+  const [roundAlerts, setRoundAlerts] = useState(roundAlertLog);
+  useEffect(() => {
+    const refresh = () => setRoundAlerts(roundAlertLog());
+    window.addEventListener("chama:round-alert", refresh);
+    return () => window.removeEventListener("chama:round-alert", refresh);
+  }, []);
   const [testState, setTestState] = useState<"idle" | "waiting" | "received" | "failed">("idle");
   const { t } = useT();
   const [nativeStatus, setNativeStatus] = useState<NativePushStatus | null>(null);
@@ -2929,6 +2938,14 @@ function BackgroundPushRow() {
           {hint}
           {nativeStatus && <p>{t("me.bgPushForceStop")}</p>}
           {nativeStatus?.ntfy && <p>{t("me.bgPushNtfy")}</p>}
+          {CHAMA_NEXT && <details style={{ margin: "8px 0", overflowWrap: "anywhere" }}>
+            <summary>Alert log · round watcher</summary>
+            {!roundAlerts.length && <p>No automatic round votes yet.</p>}
+            <ol>{[...roundAlerts].reverse().map((entry, i) => <li key={i}>
+              {new Date(entry.at * 1000).toLocaleString()} · {entry.outcome}
+              <div>Round: {entry.roundId}</div><div>Share: {entry.shareId}</div>
+            </li>)}</ol>
+          </details>}
           {nativeStatus && <details style={{ margin: "8px 0", overflowWrap: "anywhere" }}>
             <summary>Alert log</summary>
             <p>Last 50 wakes on this device. Notifications: {nativeStatus.notificationsEnabled ? "allowed" : "disabled"}; Chama activity channel: {nativeStatus.channelEnabled ? "allowed" : "muted"}.</p>

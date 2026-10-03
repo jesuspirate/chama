@@ -1,3 +1,4 @@
+import { CHAMA_NEXT } from "./next-build.js";
 // ══════════════════════════════════════════════════════════════════════════
 // Chama — Sim mode banner + first-entry info modal
 // ══════════════════════════════════════════════════════════════════════════
@@ -226,7 +227,7 @@ export function SimEntryModal() {
           >
             Get Android APK
           </a>
-          <button
+          {!CHAMA_NEXT && <button
             onClick={exit}
             style={{
               background: "none",
@@ -242,7 +243,7 @@ export function SimEntryModal() {
             }}
           >
             Exit sim mode
-          </button>
+          </button>}
           <button
             onClick={ack}
             style={{

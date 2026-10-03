@@ -71,6 +71,8 @@ export interface CircleRound {
    *  fully participate in the commitment round (which is pure share-v1);
    *  only rounds 2+ need v2 readers. Absent = fill-or-refund circle. */
   pot?: "rotation-v2";
+  /** NEXT sim-only committed clock; real-money CREATEs reject this field. */
+  collectWindowSec?: number;
   /** 1-based pulse counter across a re-forming circle's lifetime. */
   roundIndex: number;
   /** Auto-re-entry lineage: the previous round's circleId, null for a

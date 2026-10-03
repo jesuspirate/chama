@@ -1,3 +1,5 @@
+import { CHAMA_NEXT } from "../sim/next-build.js";
+
 // Experimental trade slicing is paused at the PRODUCT boundary.
 //
 // Keep the protocol/replay implementations intact: old relay events and any
@@ -45,14 +47,14 @@ export const CHAMA_CIRCLES_ENABLED = true;
 // shares at parse, so an early writer would present thin circle views to
 // old clients. Decisions locked with Jet 2026-09-15: hosts lock last (no
 // arbiter bootstrap), witness fixed at share CREATE, immutable.
-export const CHAMA_RING_WRITER_ENABLED = false;
+export const CHAMA_RING_WRITER_ENABLED = CHAMA_NEXT;
 
 // Rotation v2 — collection (docs/chama-rotation-v2-spec.md). OFF gates the
 // WRITER only: no client creates share-v2 escrows or chained-round circles
 // until the v2 READERS (the deterministic-outcome law) have shipped and the
 // fleet has updated. Flips in the same release as CHAMA_RING_WRITER_ENABLED
 // — one sealed upgrade, decided with Jet 2026-09-15.
-export const CHAMA_ROTATION_ENABLED = false;
+export const CHAMA_ROTATION_ENABLED = CHAMA_NEXT;
 
 export function isSlicedTradeShape(state: {
   sliceCount?: number;
