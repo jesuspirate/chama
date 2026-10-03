@@ -28,6 +28,17 @@ final class ChamaPushStore {
         try { return new JSONArray(prefs(c).getString("alertLog", "[]")); }
         catch (Exception e) { return new JSONArray(); }
     }
+    // Synchronous commit: an uncaught exception may terminate the process immediately.
+    static synchronized void crash(Context c, String exceptionClass, String topFrame) {
+        try {
+            JSONArray rows = alertLog(c), bounded = new JSONArray();
+            for (int i = Math.max(0, rows.length() - 49); i < rows.length(); i++) bounded.put(rows.get(i));
+            bounded.put(new JSONObject().put("id", java.util.UUID.randomUUID().toString())
+                .put("time", System.currentTimeMillis()).put("transport", "crash").put("verdict", "recorded")
+                .put("job", exceptionClass + " · " + topFrame).put("posts", new JSONArray()));
+            prefs(c).edit().putString("alertLog", bounded.toString()).commit();
+        } catch (Exception ignored) { }
+    }
     static synchronized String beginWake(Context c, String transport) {
         String id = java.util.UUID.randomUUID().toString();
         try {

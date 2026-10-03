@@ -128,8 +128,8 @@ export const me: Record<string, string> = {
   "me.itemCountOne": "{count} item",
   "me.lastError": "Last error: {error}",
   "me.light": "Light",
-  "me.lightningAddresses": "Lightning Addresses",
-  "me.lightningAddressesHint": "Saved addresses for claims and recovery",
+  "me.lightningAddresses": "Saved wallets",
+  "me.lightningAddressesHint": "Rename or forget saved wallet addresses and connections",
   "me.listedArbiter": "listed arbiter",
   "me.liveCount": "{count} live",
   "me.liveTradeNoSwitch":

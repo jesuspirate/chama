@@ -144,3 +144,8 @@ docs/PHILOSOPHY.md
 
 # Throwaway signet escrow harness keys and local transaction journal
 scripts/.mutinynet-escrow-*.json
+
+# Isolated NEXT simulation output; never Android or the live web deployment.
+/dist-next/
+# Local Firebase client config is provisioned by the release operator.
+/android/app/google-services.json

@@ -13,6 +13,7 @@
     </queries>
 
     <application
+        android:name=".ChamaApplication"
         android:allowBackup="false"
         android:fullBackupContent="false"
         android:dataExtractionRules="@xml/data_extraction_rules"

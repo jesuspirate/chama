@@ -1,3 +1,4 @@
+import { CHAMA_NEXT } from "../sim/next-build.js";
 import {
   EARLY_LOCK_BONUS_MAX,
   MAX_ROUND_SEC,
@@ -19,6 +20,9 @@ import { CHAMA_RING_WRITER_ENABLED } from "../escrow-engine/experimental-escrow-
  *  after money moved. */
 export function validateCircleRound(circle: CircleRound): string[] {
   const errors: string[] = [];
+  if (circle.collectWindowSec !== undefined && (!Number.isSafeInteger(circle.collectWindowSec)
+      || circle.collectWindowSec < 600 || circle.collectWindowSec > 7 * 86400))
+    errors.push("Sim collect window must be between ten minutes and seven days");
   if (![circle.createdAt, circle.fillDeadlineSec, circle.roundEndSec].every(Number.isSafeInteger)) errors.push("Circle timestamps must be safe integer seconds");
   if (circle.prevCircleId !== null && (typeof circle.prevCircleId !== "string" || !circle.prevCircleId)) errors.push("Previous circle id must be null or a nonempty string");
   if (!Number.isSafeInteger(circle.shareMsats) || circle.shareMsats <= 0) {
@@ -159,6 +163,10 @@ export function canTakeSeat(
   if (circle.creatorPubkey.toLowerCase() === member) {
     if (!hostSeat) return { ok: false, reason: "host" };
     const witnessed = mine.some(l => l.status === "locked" && l.memberPubkey.toLowerCase() !== member);
+    const others = new Set(mine.filter(l => l.status === "locked" && l.lockedAtSec !== null
+      && l.memberPubkey.toLowerCase() !== member).map(l => l.memberPubkey.toLowerCase()));
+    if (CHAMA_NEXT && others.size < (circle.seatCap ?? circle.seatThreshold) - 1)
+      return { ok: false, reason: "host-waits" };
     if (!witnessed) return { ok: false, reason: "host-waits" };
   }
   const seated = mine.some(

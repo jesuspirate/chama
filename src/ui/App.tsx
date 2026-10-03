@@ -3903,7 +3903,8 @@ export default function App() {
             const { escrowId } = await actions.createEscrow({ category: "chama", description: round.name, amountMsats: round.shareMsats,
               community: round.community, mintUrl: round.mintUrl, escrowMode: "ecash", arbiterFeeMsats: 0,
               communityArbiters, expirySeconds: round.roundEndSec - Math.floor(Date.now() / 1000),
-              chamaCircle: { shareMsats: round.shareMsats, seatThreshold: round.seatThreshold, seatCap: round.seatCap,
+              chamaCircle: { ...(round.pot ? { pot: round.pot } : {}),
+                ...(round.collectWindowSec !== undefined ? { collectWindowSec: round.collectWindowSec } : {}), shareMsats: round.shareMsats, seatThreshold: round.seatThreshold, seatCap: round.seatCap,
                 ...(round.unlisted ? { unlisted: true } : {}),
                 fillDeadlineSec: round.fillDeadlineSec, roundEndSec: round.roundEndSec, roundIndex: round.roundIndex, prevCircleId: round.prevCircleId } });
             setSelectedId(escrowId); setView("circle"); setCircleChildrenLoaded(previous => new Set(previous).add(escrowId));
@@ -4647,6 +4648,7 @@ export default function App() {
             loadActiveRecoveryKey={actions.exportActiveRecoveryKey}
             focusExplorer={advancedFocusExplorer}
             focusNwc={advancedFocusNwc}
+            onManageSavedWallets={() => { setView("me"); setWalletOverlay("lightning"); }}
             onBack={() => setView("me")}
             onSandboxFund={() => setShowFundModal(true)}
             communitySlug={browseCommunity}

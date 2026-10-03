@@ -1,3 +1,4 @@
+import { installCrashBreadcrumbs } from "./notifications/crash-breadcrumbs.js";
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./ui/App.js";
@@ -12,6 +13,7 @@ import { requestPersistentStorageIfWorthwhile } from "./storage/persistent-stora
 // output and false for `vite dev`, so this is a no-op for the dev
 // server while remaining a guaranteed tripwire on every shipped APK
 // or web bundle.
+installCrashBreadcrumbs(window);
 assertProductionEncryption(import.meta.env.PROD);
 
 // Remote-bridge "friend wallet" invite links carried `#bridge=<url>&token=<t>`

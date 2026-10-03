@@ -35,6 +35,7 @@ Targets (exactly one):
   github            Push the current branch to origin. No tag or deployment.
   tag               Verify/push current main and its signed vX.Y.Z tag. No deploy.
   web               Deploy getchama.app only.
+  next              Build/deploy isolated NEXT simulation only; no tag or Android.
   landing           Deploy chama.community only.
   android           Build, sign, and verify Android release assets locally only.
   github-assets     Build Android assets and upload them to the GitHub Release only.
@@ -105,9 +106,17 @@ done
 [ -n "$TARGET" ] || { echo "❌ Choose one target with --only <target>."; usage; exit 1; }
 
 case "$TARGET" in
-  github|tag|web|landing|android|github-assets|release-page|zapstore|zapstore-listing|full) ;;
+  github|tag|web|next|landing|android|github-assets|release-page|zapstore|zapstore-listing|full) ;;
   *) echo "❌ Unknown publish target: $TARGET"; usage; exit 1 ;;
 esac
+
+if [ "$TARGET" = "next" ]; then
+  if [ "$DRY_RUN" = "1" ]; then
+    echo "scripts/release.sh --deploy-next (dist-next → ~/chama-next-dist only)"
+    exit 0
+  fi
+  exec "$ROOT_DIR/scripts/release.sh" --deploy-next
+fi
 
 VERSION=$(node -p "require('./package.json').version")
 TAG="${TAG:-v$VERSION}"

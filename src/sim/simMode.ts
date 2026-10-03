@@ -1,3 +1,5 @@
+import { CHAMA_NEXT } from "./next-build.js";
+
 // ══════════════════════════════════════════════════════════════════════════
 // Chama — Sim mode
 // ══════════════════════════════════════════════════════════════════════════
@@ -73,6 +75,7 @@ function applyUrlFlagOnce(): void {
  * a bare production URL cannot inherit a prior sandbox session.
  */
 export function isSimModeOn(): boolean {
+  if (CHAMA_NEXT) return true;
   applyUrlFlagOnce();
   try {
     if (typeof localStorage === "undefined") return false;
@@ -88,6 +91,7 @@ export function isSimModeOn(): boolean {
  * button doesn't require a copy-paste of `?sim=0`.
  */
 export function setSimMode(on: boolean): void {
+  if (CHAMA_NEXT) return;
   try {
     if (typeof localStorage === "undefined") return;
     if (on) localStorage.setItem(SIM_STORAGE_KEY, "1");

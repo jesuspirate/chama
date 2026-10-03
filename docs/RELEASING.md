@@ -72,3 +72,28 @@ npm run ship -- --only release-page --publish
 ```
 
 Secrets and host-specific paths remain in the gitignored `.env.release` file.
+
+## Isolated NEXT simulation
+
+`npm run ship -- --only next` delegates to `scripts/release.sh --deploy-next`.
+It runs the normal predeploy gates, builds with `VITE_CHAMA_NEXT=1` into
+`dist-next/`, and uploads only to `~/chama-next-dist`. It does not bump a
+version, commit, tag, sync Android, restart a bridge, or upload to the live
+or PoC directories. `--dry-run` is available on the channel command and on
+`release.sh --deploy-next`. A NEXT environment is refused by the live release
+lane. `npm run build:next` builds the same isolated output locally.
+
+The origin is **next.getchama.app**, separate from getchama.app's storage and
+service-worker scope. The one-time DNS record is an A record pointing to the
+same VPS as getchama.app. `scripts/next-origin.caddy` contains the concrete site
+block for the current VPS. An administrator adds that block once to
+`/etc/caddy/Caddyfile`, validates the whole file with `caddy validate`, then
+reloads Caddy. Automatic HTTPS requires the DNS record first. This host has no
+Fedimint bridge routes: the bundle forces fake-money sim mode even with
+`?sim=0`, confines escrow relays to relay.chama.community, and tags its events
+`chama-sim` with client name `chama-next`. Settings identifies the build.
+
+NEXT allows a committed 10-minute-or-longer collection window. The field is
+rejected on every untagged circle/share CREATE and is pinned across successors.
+The real-money collection law remains seven days. Row 5 device evidence and a
+later deliberate release are required before enabling either writer in live.

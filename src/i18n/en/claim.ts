@@ -7,6 +7,15 @@
 // sits mid-sentence — translators translate BOTH halves as one sentence.
 // Keys with {param} placeholders must keep the placeholders intact.
 export const claim: Record<string, string> = {
+  "claim.walletName": "Wallet name (optional)",
+  "claim.saveWalletName": "Save",
+  "claim.cancelWalletEdit": "Cancel",
+  "claim.renameWallet": "Rename",
+  "claim.removeWallet": "Remove",
+  "claim.removeWalletQuestion": "Remove? It only forgets the address",
+  "claim.confirmRemoveWallet": "Remove wallet",
+  "claim.keepWallet": "Keep",
+
   "claim.lightningOptions": "See all Lightning options",
   "claim.pasteBitcoin": "Paste a Bitcoin address",
   "claim.sendTo": "Send {amount} sats to {destination}",

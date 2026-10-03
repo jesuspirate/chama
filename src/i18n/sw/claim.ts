@@ -1,4 +1,13 @@
 export const claim: Record<string, string> = {
+  "claim.walletName": "Jina la pochi (si lazima)",
+  "claim.saveWalletName": "Hifadhi",
+  "claim.cancelWalletEdit": "Ghairi",
+  "claim.renameWallet": "Badili jina",
+  "claim.removeWallet": "Ondoa",
+  "claim.removeWalletQuestion": "Ondoa? Inasahau anwani tu",
+  "claim.confirmRemoveWallet": "Ondoa pochi",
+  "claim.keepWallet": "Weka",
+
   "claim.lightningOptions": "Ona chaguo zote za Lightning",
   "claim.pasteBitcoin": "Bandika anwani ya Bitcoin",
   "claim.sendTo": "Tuma sats {amount} kwa {destination}",

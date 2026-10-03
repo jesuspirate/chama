@@ -8,6 +8,7 @@ import pkg from "./package.json" with { type: "json" };
 export default defineConfig({
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
+    __CHAMA_NEXT__: process.env.VITE_CHAMA_NEXT === "1",
     // Build stamp for local/test builds: lets the tester SEE that a Tauri /
     // Android-Studio refresh actually picked up the new bundle (the chip reads
     // "v2.0.3 · dev 14:32"). Release builds go through ship.sh, which exports
@@ -33,7 +34,7 @@ export default defineConfig({
   build: {
     target: "esnext",
     rollupOptions: { input: { main: "index.html", wake: "wake.html" } },
-    outDir: "dist",
+    outDir: process.env.VITE_CHAMA_NEXT === "1" ? "dist-next" : "dist",
   },
   server: {
     port: 3000,

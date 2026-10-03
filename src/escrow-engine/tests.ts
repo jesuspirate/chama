@@ -4316,6 +4316,34 @@ console.log("\n── v2.9 expiry-exploit: performance contest ──");
     "v2.9: the LOCKER's own RELEASE (buyer silent) is NOT a contest — the patch isn't widened");
   assert(oneSidedEscalationAt(lr) === null, "v2.9: no escalation clock for a locker-side RELEASE");
 
+  // Reader-first symmetry: same committed grace and half-life as RELEASE.
+  const refundVote = retimeEvent(voteEvent(Role.SELLER, SELLER_PK, Outcome.REFUND, lk.raw.id), lockedAt + 60);
+  const refundStandingResult = applyEvent(s, refundVote);
+  if (assertOk(refundStandingResult, "6.4.19: locker can commit a standing REFUND")) {
+    const refundStanding = refundStandingResult.state;
+    assert(oneSidedEscalationAt(refundStanding) === escAt, "6.4.19: both principal arms have identical offsets");
+    for (const grace of [0, 300, 18000]) for (const remaining of [300, 7200, 86400]) {
+      const clock = (state: EscrowState) => ({ ...state, expiresAt: lockedAt + 60 + remaining,
+        lock: { ...state.lock!, substitutionGraceSeconds: grace } });
+      assert(oneSidedEscalationAt(clock(refundStanding)) === oneSidedEscalationAt(clock(contested)),
+        `6.4.19: symmetric offsets at grace ${grace}, remaining life ${remaining}`);
+    }
+    assert(oneSidedReleaseAnchor(refundStanding) === null, "pre-6.4.19 reader has no REFUND anchor: ARBITER_TOO_EARLY until both vote");
+    const early = retimeEvent(voteEvent(Role.ARBITER, ARBITER_PK, Outcome.REFUND, refundVote.raw.id), escAt! - 1);
+    assertErr(applyEvent(refundStanding, early), "ARBITER_TOO_EARLY", "6.4.19: REFUND still waits for its bounded window");
+    const decision = retimeEvent(voteEvent(Role.ARBITER, ARBITER_PK, Outcome.REFUND, refundVote.raw.id), escAt!);
+    const decided = applyEvent(refundStanding, decision);
+    if (assertOk(decided, "6.4.19: reader accepts arbiter REFUND at the boundary")) {
+      const resolved = applyEvent(decided.state, resolveEvent(Outcome.REFUND, [Role.SELLER, Role.ARBITER], true, decision.raw.id));
+      if (assertOk(resolved, "6.4.19: locker + arbiter resolves REFUND before expiry"))
+        assert(resolved.state.resolvedOutcome === Outcome.REFUND, "6.4.19: refund committed");
+    }
+    assert(oneSidedEscalationAt({ ...refundStanding, category: "lending" }) === null, "6.4.19: lending clock unchanged");
+    assert(oneSidedEscalationAt({ ...refundStanding, escrowMode: "onchain" }) === null, "6.4.19: on-chain clock unchanged");
+    assert(oneSidedEscalationAt({ ...refundStanding, votes: { ...refundStanding.votes, [Role.BUYER]: Outcome.RELEASE } }) === null,
+      "6.4.19: two-sided disagreement uses the existing dispute clock");
+  }
+
   // Marketplace inversion: payoutRecipientFor drives role selection. recipients.ts
   // says marketplace BUYER locks and the SELLER is the performer/non-locker, so
   // the contest must key on the SELLER's RELEASE there — proven at the pure

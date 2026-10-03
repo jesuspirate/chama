@@ -1,4 +1,4 @@
-import { isNativePushSupported, postNativeChat } from "./native-push.js";
+import { isNativePushSupported, postNativeChat, recordNativeFundingDiagnostic } from "./native-push.js";
 import { esploraTransactionUrl } from "../bond-multisig/esplora-config.js";
 import { MAINNET, SIGNET } from "../bond-multisig/multisig.js";
 import { onchainAttention, type OnchainObservation } from '../escrow-engine/onchain-attention.js';
@@ -449,6 +449,10 @@ async function deliver(n: TradeNotification): Promise<boolean> {
           extra: { escrowId: n.escrowId, ...(n.payoutTxid ? { payoutTxid: n.payoutTxid, payoutNetwork: n.payoutNetwork } : {}) },
         }],
       });
+      if (n.tag === `${n.escrowId}:newlisting`) {
+        void recordNativeFundingDiagnostic({ area: "alert-post", tag: n.tag, poster: "capacitor-local",
+          notificationId: (hashTag(n.tag) % 2_000_000_000) + 1, verdict: "scheduled" });
+      }
       notifyDebug(() => `capacitor scheduled tag=${n.tag}`);
       return true;
     }

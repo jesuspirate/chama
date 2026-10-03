@@ -1,3 +1,4 @@
+import { CardBack } from "../components/CardBack.js";
 // ══════════════════════════════════════════════════════════════════════════
 // Chama — RecoveryPayoutModal (v0.3.0 Phase 4)
 // ══════════════════════════════════════════════════════════════════════════
@@ -202,10 +203,7 @@ export function RecoveryPayoutModal({
             </div>
           </div>
           {stage.kind === "terminal" && (
-            <button onClick={() => onClose(stage.terminal)} style={{
-              background: "none", border: "none", color: T.muted,
-              fontFamily: T.mono, fontSize: 18, cursor: "pointer", padding: 0, lineHeight: 1,
-            }}>×</button>
+            <CardBack onClick={() => onClose(stage.terminal)} />
           )}
         </div>
 

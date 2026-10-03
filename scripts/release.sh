@@ -25,6 +25,17 @@ __CHAMA_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 #             creating commits or pushing tags. This is the safe post-push
 #             lane for manual checkpoint releases.
 
+# NEXT is an isolated current-worktree simulation lane: never tags, Android,
+# production output or the live deployment function below.
+if [ "${1:-}" = "--deploy-next" ]; then
+  shift
+  exec "$__CHAMA_ROOT/scripts/deploy-next.sh" "$@"
+fi
+if [ "${VITE_CHAMA_NEXT:-0}" = "1" ]; then
+  echo "Refusing a NEXT bundle in the live release lane. Use --deploy-next."
+  exit 1
+fi
+
 # ── Parse release options FIRST and shift them off ─────────────────────
 BUMP_TYPE="patch"
 DEPLOY=1

@@ -32,11 +32,15 @@ def buildFedimintBridgeForDebug = providers
         .map { it == "1" || it.equalsIgnoreCase("true") || it.equalsIgnoreCase("yes") }
         .orElse(false)
 
+def hasFirebaseConfig = file("google-services.json").isFile()
+
 android {
+    buildFeatures { buildConfig = true }
     namespace = "app.chama.market"
     compileSdk = rootProject.ext.compileSdkVersion
     defaultConfig {
         applicationId "app.chama.market"
+        buildConfigField "boolean", "HAS_FIREBASE_CONFIG", hasFirebaseConfig.toString()
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode appVersionCode
@@ -124,11 +128,10 @@ dependencies {
 
 apply from: 'capacitor.build.gradle'
 
-try {
-    def servicesJSON = file('google-services.json')
-    if (servicesJSON.text) {
-        apply plugin: 'com.google.gms.google-services'
-    }
-} catch(Exception e) {
-    logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
+// A present configuration must validate successfully; malformed input fails the
+// build instead of silently producing an APK whose Settings promises FCM.
+if (hasFirebaseConfig) {
+    apply plugin: 'com.google.gms.google-services'
+} else {
+    logger.info("No Firebase client configuration; UnifiedPush remains available")
 }

@@ -1,5 +1,14 @@
 // es/claim — Session C fills this from src/i18n/en/claim.ts (key set must match EXACTLY).
 export const claim: Record<string, string> = {
+  "claim.walletName": "Nombre de la cartera (opcional)",
+  "claim.saveWalletName": "Guardar",
+  "claim.cancelWalletEdit": "Cancelar",
+  "claim.renameWallet": "Cambiar nombre",
+  "claim.removeWallet": "Eliminar",
+  "claim.removeWalletQuestion": "¿Eliminar? Solo olvida la dirección",
+  "claim.confirmRemoveWallet": "Eliminar cartera",
+  "claim.keepWallet": "Conservar",
+
   "claim.lightningOptions": "Ver todas las opciones Lightning",
   "claim.pasteBitcoin": "Pegar una dirección Bitcoin",
   "claim.sendTo": "Enviar {amount} sats a {destination}",

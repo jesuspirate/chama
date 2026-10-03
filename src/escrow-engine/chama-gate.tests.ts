@@ -514,3 +514,54 @@ console.log("Review-driven regression assertions passed.");
   assert(!applyEvent(null, event(K.CREATE, simPayload, SELLER, "f9".repeat(32), T)).ok, "the same shape without the sim tag stays floored — real sats keep the hour rule");
 }
 console.log("Sim-circle assertions passed.");
+
+// NEXT committed collect window: replay preserves the short clock, chained
+// rounds cannot change it, and watcher decisions match the reducer boundary.
+{
+  const sim = (e: ParsedEscrowEvent): ParsedEscrowEvent => ({ ...e,
+    raw: { ...e.raw, tags: [...e.raw.tags, ["chama-sim", "v1"]] } });
+  const simR1Event = sim(event(K.CREATE, { ...r1Payload,
+    chamaCircle: { ...r1Payload.chamaCircle!, collectWindowSec: 600 } }, SELLER, P2, T));
+  const simR1 = accepted(null, simR1Event);
+  const commitments = [BUYER, MEMBER2, M3].map((member, i) => {
+    const share = accepted(null, { ...sim(event(K.CREATE, { ...sharePayload, parent: P2,
+      createdAt: T + 5, expirySeconds: END - T - 5 }, member, shareEscrowId(P2, member, 1), T + 5)), chamaParent: simR1 });
+    return commitLock(share, member, T + 100 + i * 100);
+  });
+  const simCycle = { circles: [simR1], shares: commitments };
+  const built = nextRotationRoundPayload(simCycle, END);
+  assert(typeof built !== "string");
+  assert.equal(built.payload.chamaCircle!.collectWindowSec, 600, "successors inherit the committed sim clock");
+  const simR2 = accepted(null, { ...sim(event(K.CREATE, built.payload, M3, R2, END)), chamaCycle: simCycle });
+  assert(!applyEvent(null, { ...sim(event(K.CREATE, { ...built.payload,
+    chamaCircle: { ...built.payload.chamaCircle!, collectWindowSec: 601 } }, M3, R2, END)), chamaCycle: simCycle }).ok,
+    "a successor cannot lengthen the cycle collect window");
+  const simShares = [MEMBER2, M3].map(member => {
+    const payload = rotationShareCreatePayload(simR2, END + 10, member, simCycle);
+    const create = sim(event(K.CREATE, payload, member, shareEscrowId(R2, member, 2), END + 10));
+    assert(!applyEvent(null, { ...create, raw: { ...create.raw, tags: create.raw.tags.filter(t => t[0] !== "chama-sim") },
+      chamaParent: simR2, chamaCycle: simCycle }).ok, "untagged shares cannot inherit a sim clock");
+    return v2Lock(accepted(null, { ...create, chamaParent: simR2, chamaCycle: simCycle }), member, END + 100);
+  });
+  const full = { circles: [simR1, simR2], shares: [...commitments, ...simShares] };
+  assert(canVote(simShares[0], MEMBER2, END2 + 599, O.RELEASE, full).canVote);
+  assert(!canVote(simShares[0], MEMBER2, END2 + 600, O.RELEASE, full).canVote);
+  assert(canVote(simShares[0], MEMBER2, END2 + 600, O.REFUND, full).canVote);
+  const calls: O[] = [], logs: [string, string, O, number][] = [];
+  const watcher = createChamaRefundWatcher({ getEscrows: () => [simShares[0]], getPubkey: async () => MEMBER2,
+    viewComplete: () => true, vote: async (_id, outcome) => { calls.push(outcome); },
+    onVote: (...entry) => { logs.push(entry); } });
+  await watcher(END2 + 599);
+  assert.deepEqual(calls, [O.RELEASE]);
+  assert.deepEqual(logs[0], [simShares[0].id, R2, O.RELEASE, END2 + 599]);
+  calls.length = 0;
+  await watcher(END2 + 600);
+  assert.deepEqual(calls, [O.REFUND], "watcher uses the same lapse second as replay");
+  calls.length = 0;
+  const failedFill = createChamaRefundWatcher({ getEscrows: () => [simShares[0]], getPubkey: async () => MEMBER2,
+    viewComplete: () => true, vote: async (_id, outcome) => { calls.push(outcome); },
+    onVote: () => { throw new Error("diagnostic unavailable"); } });
+  await failedFill(FILL2);
+  assert.deepEqual(calls, [O.REFUND], "failed fill refunds automatically; logging cannot retry a vote");
+}
+console.log("NEXT sim-clock replay and mechanical watcher regressions passed.");

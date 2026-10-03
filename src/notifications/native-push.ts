@@ -9,6 +9,7 @@ export interface NativeAlertLogEntry {
 }
 export type NativePushStatus = { registerHttpStatus?: number; registeredTags?: string[]; lane: "fcm" | "unifiedpush" | "unavailable"; ready: boolean; registered: boolean; ntfy?: boolean; testReceived?: string; testHttpStatus?: number; testHttpNonce?: string; alertLog?: NativeAlertLogEntry[]; notificationsEnabled?: boolean; channelEnabled?: boolean };
 interface NativePushPlugin {
+  crash(options: { exceptionClass: string; topFrame: string }): Promise<void>;
   postChat(options: { note: string }): Promise<{ verdict: string }>;
   diagnostic(options: { diagnostic: string }): Promise<void>;
   clearTrade(options: { trade: string }): Promise<void>;
@@ -92,4 +93,9 @@ export async function postNativeChat(note: import('./trade-notifications.js').Tr
   if (!isNativePushSupported()) return false;
   const result = await native.postChat({note:JSON.stringify(note)});
   return result.verdict === 'shown' || result.verdict === 'duplicate';
+}
+
+/** No exception messages or arbitrary rejection values enter the device log. */
+export async function recordNativeCrash(metadata: { exceptionClass: string; topFrame: string }): Promise<void> {
+  if (isNativePushSupported()) await native.crash(metadata).catch(() => {});
 }

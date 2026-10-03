@@ -125,8 +125,8 @@ export const me: Record<string, string> = {
   "me.itemCountOne": "{count} artículo",
   "me.lastError": "Último error: {error}",
   "me.light": "Claro",
-  "me.lightningAddresses": "Direcciones Lightning",
-  "me.lightningAddressesHint": "Direcciones guardadas para cobros y recuperación",
+  "me.lightningAddresses": "Carteras guardadas",
+  "me.lightningAddressesHint": "Cambia el nombre u olvida direcciones y conexiones guardadas",
   "me.listedArbiter": "árbitro listado",
   "me.liveCount": "{count} activos",
   "me.liveTradeNoSwitch":

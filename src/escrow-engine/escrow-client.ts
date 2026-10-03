@@ -1,3 +1,6 @@
+import { CHAMA_NEXT } from "../sim/next-build.js";
+import { CHAMA_RELAY } from "./default-relays.js";
+import { recordRoundVote } from "../notifications/round-alert-log.js";
 import { publicConductTags } from "./public-conduct.js";
 import type { SettlementStalledPayload } from "./types.js";
 import { finalRefundSettlementProof } from "./onchain-settlement-transport.js";
@@ -605,11 +608,12 @@ export class EscrowClient {
       defaultPlatformFeeBps: 50,
       defaultExpirySeconds: 86_400,
       ...config,
+      ...(CHAMA_NEXT ? { relays: [CHAMA_RELAY] } : {}),
     };
     this.callbacks = callbacks;
 
     this.relayManager = new RelayManager(
-      config.relays,
+      this.config.relays,
       {
         onEvent: (event, relay) => this.handleIncomingEvent(event, relay),
         onStatusChange: (relay, status) => {
@@ -1180,7 +1184,14 @@ export class EscrowClient {
 
   private readonly chamaRefundWatcher = createChamaRefundWatcher({
     getEscrows: () => this.states.values(), getPubkey: () => this.getPubkey(),
-    vote: (id, outcome) => this.vote(id, outcome),
+    vote: async (id, outcome) => {
+      const pubkey = await this.getPubkey();
+      const state = await this.vote(id, outcome);
+      const vote = state.eventChain.find(e => e.kind === EscrowEventKind.VOTE && e.pubkey === pubkey);
+      try { recordRoundVote(id, state.parent!, outcome, vote?.timestamp ?? Math.floor(Date.now() / 1000)); }
+      catch { /* Diagnostics never turn a successful publish into a retry. */ }
+      return state;
+    },
     viewComplete: (circleId) => this.chamaViewComplete.has(circleId),
     openNextRound: (roundId) => this.createNextRotationRound(roundId),
     onError: (id, error) => console.debug(`[chama] refund remains pending for ${id}`, error),

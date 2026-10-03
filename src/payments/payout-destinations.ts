@@ -1,3 +1,5 @@
+import { recordNativeFundingDiagnostic } from "../notifications/native-push.js";
+import { scopedStorageKey } from "../storage/user-scope.js";
 // ══════════════════════════════════════════════════════════════════════════
 // Chama — Payout Destinations (localStorage)
 // ══════════════════════════════════════════════════════════════════════════
@@ -82,8 +84,20 @@ function dedupeDestinations(destinations: PayoutDestination[]): PayoutDestinatio
   return out;
 }
 
+// Reads once per key/launch and every write, to diagnose the Pixel reproduction.
+// Addresses, labels and credentials are deliberately absent.
+const tracedStorage = new Set<string>();
+function traceStorage(operation: string, baseKey: string): void {
+  const key = scopedStorageKey(baseKey), trace = `${operation}:${key}`;
+  console.info("[chama/saved-wallets]", operation, key);
+  if (!operation.includes("write") && tracedStorage.has(trace)) return;
+  tracedStorage.add(trace);
+  void recordNativeFundingDiagnostic({ area: "saved-wallets", operation, key });
+}
+
 function readStored(key: string): PayoutDestination[] {
   try {
+    traceStorage("read", key);
     const raw = getScopedStorageItem(key);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
@@ -122,7 +136,9 @@ function writeRaw(
       }
     }
     const serialized = JSON.stringify(normalized);
+    traceStorage("write", PAYOUT_DESTINATIONS_STORAGE_KEY);
     setScopedStorageItem(PAYOUT_DESTINATIONS_STORAGE_KEY, serialized);
+    traceStorage("write", PAYOUT_DESTINATIONS_BACKUP_STORAGE_KEY);
     setScopedStorageItem(PAYOUT_DESTINATIONS_BACKUP_STORAGE_KEY, serialized);
   } catch {
     // localStorage unavailable / quota exceeded — cosmetic persistence
@@ -146,6 +162,7 @@ export function displayPayoutDestination(address: string): string {
  *  trade-time handle reveal cannot accidentally offer a payout address. */
 export function migrateLegacyLightningHandles(): number {
   try {
+    traceStorage("legacy-read", SAVED_HANDLES_STORAGE_KEY);
     const raw = getScopedStorageItem(SAVED_HANDLES_STORAGE_KEY);
     if (!raw) return 0;
     const parsed = JSON.parse(raw);
@@ -177,7 +194,9 @@ export function migrateLegacyLightningHandles(): number {
     if (migrated.length === 0 && keptHandles.length === parsed.length) return 0;
     writeRaw([...migrated, ...existing]);
     const keptSerialized = JSON.stringify(keptHandles);
+    traceStorage("legacy-write", SAVED_HANDLES_STORAGE_KEY);
     setScopedStorageItem(SAVED_HANDLES_STORAGE_KEY, keptSerialized);
+    traceStorage("legacy-write", SAVED_HANDLES_BACKUP_STORAGE_KEY);
     setScopedStorageItem(SAVED_HANDLES_BACKUP_STORAGE_KEY, keptSerialized);
     return migrated.length;
   } catch {

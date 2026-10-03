@@ -1,3 +1,8 @@
+import { RangeFiat } from "../components/RangeFiat.js";
+import { useBitcoinPrice } from "../hooks/useBitcoinPrice.js";
+import { useFiatRates } from "../hooks/useFiatRates.js";
+import { guidedListingAmount } from "../guided-listing-amount.js";
+import { CardBack } from "../components/CardBack.js";
 import { marketDelivery } from "../../labels/market-delivery.js";
 import { reabsorbedLockAmount } from "../../fedimint/pending-native-locks.js";
 import { RejectedLockRefund } from "../components/RejectedLockRefund.js";
@@ -181,7 +186,7 @@ export function LiveTradeSurface({
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "16px 0" }}>
           <div><BitcoinAmount msats={state.joinHolds?.buyer?.amountMsats ?? state.amountMsats} size={14} />
             <h2 style={{ color: T.text, fontSize: 20, margin: "6px 0", overflowWrap: "anywhere" }}>{state.title || state.description || "Fund trade"}</h2></div>
-          <button type="button" aria-label="Close" onClick={() => setOnchainOpen(false)} style={{ background: "none", border: 0, color: T.muted, minWidth: 44, minHeight: 44, fontSize: 20 }}>×</button>
+          <CardBack onClick={() => setOnchainOpen(false)} />
         </div>
         {onchainControls}
       </FundingModalShell>
@@ -197,6 +202,7 @@ export function LiveTradeSurface({
   // Range (exchange-bracket) join: the buyer's chosen sats amount, as typed.
   // Empty ⇒ the bracket minimum.
   const [joinSats, setJoinSats] = useState("");
+  useEffect(() => { setJoinSats(""); }, [state.id]);
   const [party, setParty] = useState<RoomPresence | null>(null);
   const [shareCopied, setShareCopied] = useState(false);
   const armTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -242,7 +248,11 @@ export function LiveTradeSurface({
   const orderMsats = buyerHold?.amountMsats
     ?? (orderItems?.length ? selectedMenuItemsTotalMsats(orderItems) : undefined);
   const effectiveMsats = !state.lock.notesHash && buyerHold?.orderFinalizedAt && orderMsats ? orderMsats : state.amountMsats;
-  const amountLabel = tr("lts.satsAmount", { amount: fmtSats(effectiveMsats) });
+  const price = useBitcoinPrice(), rates = useFiatRates();
+  const summaryAmount = guidedListingAmount(state, joinSats);
+  const amountLabel = summaryAmount.maxMsats !== undefined
+    ? `${fmtSats(summaryAmount.minMsats)}–${fmtSats(summaryAmount.maxMsats)} sats`
+    : tr("lts.satsAmount", { amount: fmtSats(summaryAmount.minMsats) });
   const catLabel = CAT_LABEL[state.category] ?? state.category;
   // The vertical speaks through its MARK, not a word (Jet, 6.3.4 review):
   // same id mapping TradeDetail's kicker uses, so every surface shows the
@@ -534,6 +544,7 @@ export function LiveTradeSurface({
             />
             {cancelOpen ? (
               <div>
+                <CardBack disabled={busy} onClick={() => setCancelOpen(false)} />
                 <div style={{ fontSize: 12, color: T.muted, margin: "8px 0" }}>{tr("lts.whyCancel")}</div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
                   {REFUND_REASONS.map(reason => (
@@ -824,7 +835,10 @@ export function LiveTradeSurface({
           {/* The word rides along where there's room (desktop) and yields to
               the mark alone where there isn't (phones) — real estate first. */}
           <span className="lts-cat-word">{catLabel.replace(/^[^ ]* /, m => /[a-z]/i.test(m) ? m : "")}</span>
-          <span style={{ fontFamily: T.mono, color: T.accent, overflow: "hidden", textOverflow: "ellipsis" }}>{amountLabel}</span>
+          <span style={{ fontFamily: T.mono, color: T.accent }}>{amountLabel}
+            <RangeFiat min={summaryAmount.minMsats / 1000} max={summaryAmount.maxMsats === undefined ? undefined : summaryAmount.maxMsats / 1000}
+              currency={state.fiatCurrency ?? communityCurrency ?? "USD"} usdPerBtc={price.usd} usdFiatRates={rates.rates} />
+          </span>
         </div>
         <button
           type="button"

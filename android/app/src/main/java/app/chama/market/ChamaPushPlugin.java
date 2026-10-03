@@ -23,9 +23,15 @@ import static org.unifiedpush.android.connector.ConstantsKt.INSTANCE_DEFAULT;
 })
 public class ChamaPushPlugin extends Plugin {
     private String lane() {
-        if (GoogleApiAvailabilityLight.getInstance().isGooglePlayServicesAvailable(getContext()) == ConnectionResult.SUCCESS
-            && FirebaseApp.initializeApp(getContext()) != null) return "fcm";
-        return UnifiedPush.getDistributors(getContext()).isEmpty() ? "unavailable" : "unifiedpush";
+        boolean playReachable = GoogleApiAvailabilityLight.getInstance()
+            .isGooglePlayServicesAvailable(getContext()) == ConnectionResult.SUCCESS;
+        boolean firebaseReady = false;
+        if (BuildConfig.HAS_FIREBASE_CONFIG && playReachable) {
+            try { firebaseReady = FirebaseApp.initializeApp(getContext()) != null; }
+            catch (RuntimeException ignored) { /* Preserve UnifiedPush fallback. */ }
+        }
+        return ChamaPushTransport.select(BuildConfig.HAS_FIREBASE_CONFIG, playReachable,
+            firebaseReady, !UnifiedPush.getDistributors(getContext()).isEmpty());
     }
 
     @PluginMethod public void status(PluginCall call) {
@@ -64,15 +70,33 @@ public class ChamaPushPlugin extends Plugin {
         JSObject result = new JSObject(); result.put("trade", pendingTrade); pendingTrade = null; call.resolve(result);
     }
 
+    @PluginMethod public void crash(PluginCall call) {
+        // Only metadata supplied by the WebView reporter, never exception messages.
+        String kind = call.getString("exceptionClass", "Error");
+        if (!kind.matches("[A-Za-z0-9_.$]{1,100}")) kind = "Error";
+        String frame = call.getString("topFrame", "unknown");
+        if (!frame.matches("[A-Za-z0-9_.$(): /-]{1,200}")) frame = "unknown";
+        ChamaPushStore.crash(getContext(), kind, frame);
+        call.resolve();
+    }
+
     @PluginMethod public void diagnostic(PluginCall call) {
         try {
             JSONObject detail = new JSONObject(call.getString("diagnostic", "{}"));
             synchronized (ChamaPushStore.class) {
-                String id = ChamaPushStore.beginWake(getContext(), "funding");
+                boolean walletStorage = "saved-wallets".equals(detail.optString("area"));
+                boolean alertPost = "alert-post".equals(detail.optString("area"));
+                String id = ChamaPushStore.beginWake(getContext(), alertPost ? "foreground-listing" : walletStorage ? "saved-wallets" : "funding");
                 org.json.JSONArray rows = ChamaPushStore.alertLog(getContext());
                 for (int i = 0; i < rows.length(); i++) {
                     JSONObject row = rows.getJSONObject(i);
-                    if (id.equals(row.optString("id"))) row.put("diagnostic", detail).put("verdict", "recorded").put("job", "funding receive");
+                    if (id.equals(row.optString("id"))) {
+                        row.put("diagnostic", detail).put("verdict", "recorded")
+                            .put("job", alertPost ? "foreground listing" : walletStorage ? "wallet storage" : "funding receive");
+                        if (alertPost) row.getJSONArray("posts").put(new JSONObject().put("reason", "listing")
+                            .put("verdict", detail.optString("verdict")).put("tag", detail.optString("tag"))
+                            .put("poster", detail.optString("poster")).put("notificationId", detail.optInt("notificationId")));
+                    }
                 }
                 ChamaPushStore.prefs(getContext()).edit().putString("alertLog", rows.toString()).apply();
             }
