@@ -30,10 +30,12 @@ export const GUIDED_SLICE_CHOICE_ENABLED = false;
 // and refundable in Me, and all relay/replay code remains intact. 6.4 flips
 // this to true (and un-comments the landing card marked CHAMA_CIRCLES).
 //
-// (Shipped un-gated by accident in 6.3.4 when ship.sh's `git add -A` swept the
-// in-progress tree; 6.3.5 re-darkened it via this flag.)
-// FLIPPED for the 6.4 "Big Boss Chama" launch (2026-09-14, the night the
-// first real circle completed its round trip).
+// History of CHAMA_CIRCLES_ENABLED only (the ring-writer and rotation flags
+// below have their own notes): circle creation shipped un-gated by accident
+// in 6.3.4 when ship.sh's `git add -A` swept the in-progress tree, and 6.3.5
+// turned it off again through this flag. Flipped on for the 6.4 "Big Boss
+// Chama" launch (2026-09-14, the night the first real circle completed its
+// round trip).
 export const CHAMA_CIRCLES_ENABLED = true;
 
 // Ring witnessing / the host's seat (docs/chama-host-seat-spec.md v1.1).
