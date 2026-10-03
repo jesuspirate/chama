@@ -171,13 +171,7 @@ export function EcashExportModal({
               {phase !== "ready" && <BitcoinAmount sats={sats} size={22} gap={6} glyphScale={1.2} color={T.text} glyphColor={T.muted} />}
             </div>
           </div>
-          {onBack && <CardBack onClick={() => confirmClear ? setConfirmClear(false) : onBack()} disabled={clearing || phase === "generating"} />}
-          {phase !== "generating" && (
-            <button onClick={onClose} style={{
-              background: "none", border: "none", color: T.muted,
-              fontFamily: T.mono, fontSize: 18, cursor: "pointer", padding: 0, lineHeight: 1, minWidth: 44, minHeight: 44,
-            }}>×</button>
-          )}
+          <CardBack onClick={() => confirmClear ? setConfirmClear(false) : (onBack ?? onClose)()} disabled={clearing || phase === "generating"} />
         </div>
 
         {phase === "intro" && (

@@ -330,11 +330,7 @@ export function DestinationPicker({
           <div style={{ fontSize: 14, fontWeight: 700, color: T.text, fontFamily: T.sans }}>
             {title}
           </div>
-          {onBack && <CardBack onClick={onBack} disabled={busy} />}
-          <button onClick={onCancel} style={{
-            background: "none", border: "none", color: T.muted,
-            fontFamily: T.mono, fontSize: 18, cursor: "pointer", padding: 0, lineHeight: 1,
-          }}>×</button>
+          <CardBack onClick={onBack ?? onCancel} disabled={busy} />
         </div>
         <div style={{ fontSize: 11, color: T.muted, fontFamily: T.mono, marginBottom: 16 }}>
           {subtitle ?? <>{t("claim.sendToWalletBefore")} <BitcoinAmount sats={amountSats} size={11} gap={4} glyphScale={1.18} color={T.muted} glyphColor={T.muted} /> {t("claim.sendToWalletAfter")}</>}

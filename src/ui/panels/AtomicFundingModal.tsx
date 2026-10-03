@@ -613,6 +613,7 @@ export function AtomicFundingModal({
 
   // The gateway preflight chooses the initial rail before the card paints.
   if (gatewayChecking) return <FundingModalShell onClose={handleCancel}>
+    <CardBack onClick={handleCancel} />
     <FundingNote>{t("fund.checkingGateways")}</FundingNote>
   </FundingModalShell>;
 
@@ -639,7 +640,7 @@ export function AtomicFundingModal({
           <div><button type="button" onClick={retryLightning} style={{ background: "none", border: 0, color: T.muted, textDecoration: "underline", minHeight: 44 }}>{t("fund.tryAgain")}</button></div>
         </FundingNote>}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
-          {!showFundingChoices && <CardBack disabled={!railsVisible} onClick={() => mpesaOpen ? setMpesaOpen(false) : setShowFundingChoices(true)} />}
+          <CardBack disabled={!railsVisible && phase.kind !== "locked" && phase.kind !== "lock-failed"} onClick={() => mpesaOpen ? setMpesaOpen(false) : showFundingChoices || !railsVisible ? handleCancel() : setShowFundingChoices(true)} />
           <div>
             <div style={{ fontSize: 9, color: T.muted, fontFamily: T.mono, letterSpacing: 1, marginBottom: 4 }}>
               {ctaLabel.toUpperCase()}
@@ -653,10 +654,6 @@ export function AtomicFundingModal({
               </div>
             )}
           </div>
-          <button type="button" onClick={handleCancel} style={{
-            background: "none", border: "none", color: T.muted,
-            fontFamily: T.mono, fontSize: 18, cursor: "pointer", padding: 0, lineHeight: 1, minWidth: 44, minHeight: 44,
-          }}>×</button>
         </div>
 
         {showFundingChoices && railsVisible && <PaymentButton tier="quiet" onClick={() => setShowFundingChoices(false)}>{request ? "Show payment request" : "Continue"}</PaymentButton>}
@@ -840,7 +837,7 @@ export function AtomicFundingModal({
             guard above is the real fix; this branch is defense in
             depth so a future emit path can't black-hole the modal
             silently. Renders an explicit "Cancelled" surface so the
-            state is at least visible and the user knows to tap × to
+            state is at least visible and the user knows to tap Back to
             close — though in practice the parent onClose dismissal
             should mean we never paint this. */}
         {phase.kind === "aborted" && (

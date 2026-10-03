@@ -670,13 +670,10 @@ export function ClaimPayoutModal({
               <BitcoinAmount sats={payoutSats} size={22} gap={6} glyphScale={1.2} color={T.text} glyphColor={T.muted} />
             </div>
           </div>
-          <CardBack disabled={stage.kind !== "terminal" || retryProbing || stage.terminal.kind === "payout-confirming" || stage.terminal.kind === "done"} onClick={() => setStage({ kind: "picking" })} />
-          {stage.kind === "terminal" && !retryProbing && (
-            <button onClick={() => onClose(stage.terminal)} style={{
-              background: "none", border: "none", color: T.muted,
-              fontFamily: T.mono, fontSize: 18, cursor: "pointer", padding: 0, lineHeight: 1, minWidth: 44, minHeight: 44,
-            }}>×</button>
-          )}
+          <CardBack disabled={stage.kind !== "terminal" || retryProbing}
+            onClick={() => { if (stage.kind !== "terminal") return;
+              if (stage.terminal.kind === "done" || stage.terminal.kind === "payout-confirming") onClose(stage.terminal);
+              else { setStage({ kind: "picking" }); setPayoutMethod(null); } }} />
         </div>
 
         {stage.kind === "running" && (
@@ -800,6 +797,7 @@ export function ClaimMethodChooser({
         }}
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
+          <CardBack onClick={onCancel} />
           <div>
             <div style={{ fontSize: 9, color: T.muted, fontFamily: T.mono, letterSpacing: 0, marginBottom: 4 }}>
               {t("claim.claimKicker")}
@@ -808,10 +806,6 @@ export function ClaimMethodChooser({
               <TradeAmount msats={(rail === "ecash" ? ecashPayoutSats : payoutSats) * 1000} size={22} interactive />
             </div>
           </div>
-          <button onClick={onCancel} style={{
-            background: "none", border: "none", color: T.muted,
-            fontFamily: T.mono, fontSize: 18, cursor: "pointer", padding: 0, lineHeight: 1, minWidth: 44, minHeight: 44,
-          }}>×</button>
         </div>
         <div style={{
           fontSize: 11, color: T.muted, fontFamily: T.mono,
@@ -1136,10 +1130,6 @@ function ExternalSwapRedirectPicker({
             </div>
           </div>
           <CardBack onClick={onBack} />
-          <button onClick={onCancel} style={{
-            background: "none", border: "none", color: T.muted,
-            fontFamily: T.mono, fontSize: 18, cursor: "pointer", padding: 0, lineHeight: 1, minWidth: 44, minHeight: 44,
-          }}>×</button>
         </div>
 
         <div style={{
@@ -1373,10 +1363,6 @@ function TandoMpesaPicker({
             </div>
           </div>
           <CardBack onClick={onBack} disabled={busy} />
-          <button onClick={onCancel} style={{
-            background: "none", border: "none", color: T.muted,
-            fontFamily: T.mono, fontSize: 18, cursor: "pointer", padding: 0, lineHeight: 1, minWidth: 44, minHeight: 44,
-          }}>×</button>
         </div>
 
         <div style={{
@@ -1613,10 +1599,6 @@ function ChapsmartMpesaPicker({
             </div>
           </div>
           <CardBack onClick={onBack} disabled={busy} />
-          <button onClick={onCancel} style={{
-            background: "none", border: "none", color: T.muted,
-            fontFamily: T.mono, fontSize: 18, cursor: "pointer", padding: 0, lineHeight: 1, minWidth: 44, minHeight: 44,
-          }}>×</button>
         </div>
 
         <div style={{
@@ -1859,10 +1841,6 @@ function StrikeUsdPicker({
             </div>
           </div>
           <CardBack onClick={onBack} disabled={busy} />
-          <button onClick={onCancel} style={{
-            background: "none", border: "none", color: T.muted,
-            fontFamily: T.mono, fontSize: 18, cursor: "pointer", padding: 0, lineHeight: 1, minWidth: 44, minHeight: 44,
-          }}>×</button>
         </div>
 
         <div style={{
@@ -2100,10 +2078,6 @@ export function OnchainPayoutPicker({
             </div>
           </div>
           <CardBack onClick={onBack} />
-          <button onClick={onCancel} style={{
-            background: "none", border: "none", color: T.muted,
-            fontFamily: T.mono, fontSize: 18, cursor: "pointer", padding: 0, lineHeight: 1, minWidth: 44, minHeight: 44,
-          }}>×</button>
         </div>
         <div style={{
           padding: "10px 12px", borderRadius: T.rs,

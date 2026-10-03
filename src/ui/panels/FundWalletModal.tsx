@@ -1,3 +1,4 @@
+import { CardBack } from "../components/CardBack.js";
 import { PaymentCard, PaymentButton, PaymentRails } from "../components/PaymentCard.js";
 import { useState, useEffect, type WheelEvent } from "react";
 import { T, inputStyle } from "../theme.js";
@@ -299,10 +300,7 @@ export function FundWalletModal({ onClose, onCreateInvoice, onPayInvoice, onSpen
       }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
           <Wordmark size={17} markSize={20} />
-          <button onClick={onClose} style={{
-            background: "none", border: "none", color: T.muted,
-            fontFamily: T.mono, fontSize: 18, cursor: "pointer", padding: 0, lineHeight: 1, minWidth: 44, minHeight: 44,
-          }}>×</button>
+          <CardBack onClick={onClose} />
         </div>
 
         <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>

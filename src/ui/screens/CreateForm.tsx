@@ -1,3 +1,4 @@
+import { CardBack } from "../components/CardBack.js";
 import { satsWithPremium } from "../../payments/bill-pay-quote.js";
 import { RangeFiat } from "../components/RangeFiat.js";
 // ══════════════════════════════════════════════════════════════════════════
@@ -1694,10 +1695,7 @@ export function CreateForm({
         <span style={{ fontSize: 18, fontWeight: 700, color: T.text, fontFamily: T.sans }}>
           {t("create.newListing")}
         </span>
-        <button data-chama-shortcut="back" onClick={onClose} style={{
-          background: "none", border: "none", color: T.muted,
-          fontSize: 20, cursor: "pointer",
-        }}>×</button>
+        {step === 1 && <CardBack onClick={onClose} />}
       </div>
 
       <StepProgress currentStep={step} />
