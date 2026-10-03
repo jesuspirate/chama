@@ -279,21 +279,35 @@ export function oneSidedReleaseAnchor(
   return null;
 }
 
-/** When the arbiter's window over a ONE-SIDED standing RELEASE opens: the
- *  RELEASE vote's created_at + min(committed grace clamped to [0,4h] (else the
- *  4h default), half the trade's remaining life at that anchor). Identical
- *  formula to substitutionEligibleAt, re-anchored on the lone RELEASE vote so
- *  no second patience knob exists. The half-life floor keeps it strictly before
- *  expiry, so a performer can win before the expiry refund. Null when there is
- *  no one-sided standing RELEASE. */
+/** v6.4.19 reader-first symmetric clock. The existing RELEASE arm stays
+ * byte-compatible; only an ecash locker's standing REFUND adds an anchor.
+ * Lending and on-chain retain their own clocks. No new principal UI action. */
+export function oneSidedPrincipalAnchor(state: EscrowState): number | null {
+  const legacy = oneSidedReleaseAnchor(state);
+  if (legacy) return legacy.releaseVoteAt;
+  if (state.category === "lending" || state.escrowMode === "onchain" || state.chamaPolicy) return null;
+  const locker = payoutRecipientFor(state, Outcome.REFUND);
+  const other = payoutRecipientFor(state, Outcome.RELEASE);
+  if (!locker || !other || state.votes[locker.role] !== Outcome.REFUND
+      || state.votes[other.role] !== undefined) return null;
+  const vote = state.eventChain.find(e => e.kind === EscrowEventKind.VOTE
+    && e.pubkey === state.participants[locker.role]
+    && (e.payload as VotePayload | undefined)?.outcome === Outcome.REFUND);
+  return vote ? clampDisputeAnchor(state, vote.raw?.created_at ?? 0) : null;
+}
+
+/** One-sided principal escalation: standing non-locker RELEASE or ecash
+ *  locker REFUND, vote time + min(committed grace clamped to [0,4h], half
+ *  the remaining life). Lending/on-chain keep their previous anchors.
+ *  Pure reader law; the symmetric principal UI door remains deferred. */
 export function oneSidedEscalationAt(state: EscrowState): number | null {
-  const anchor = oneSidedReleaseAnchor(state);
-  if (!anchor) return null;
+  const anchor = oneSidedPrincipalAnchor(state);
+  if (anchor === null) return null;
   const ceiling = clampSubstitutionGraceSeconds(state.lock?.substitutionGraceSeconds);
   const half = state.expiresAt
-    ? Math.max(0, Math.floor((state.expiresAt - anchor.releaseVoteAt) / 2))
+    ? Math.max(0, Math.floor((state.expiresAt - anchor) / 2))
     : ceiling;
-  return anchor.releaseVoteAt + Math.min(ceiling, half);
+  return anchor + Math.min(ceiling, half);
 }
 
 /** Suppression predicate (v2.9): a standing RELEASE from the non-locker means
