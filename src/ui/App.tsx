@@ -4647,6 +4647,7 @@ export default function App() {
             loadActiveRecoveryKey={actions.exportActiveRecoveryKey}
             focusExplorer={advancedFocusExplorer}
             focusNwc={advancedFocusNwc}
+            onManageSavedWallets={() => { setView("me"); setWalletOverlay("lightning"); }}
             onBack={() => setView("me")}
             onSandboxFund={() => setShowFundModal(true)}
             communitySlug={browseCommunity}

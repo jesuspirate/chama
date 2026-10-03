@@ -1,4 +1,4 @@
-import { SavedWalletRow } from "../components/SavedWalletRow.js";
+import { useT } from "../../i18n/index.js";
 import { BlockExplorerSetting } from '../panels/BlockExplorerSetting.js';
 import { useState, useEffect, useRef, type ReactNode } from "react";
 import { type FedimintState } from "../../hooks/useEscrow.js";
@@ -14,7 +14,6 @@ import { normalizeTrustedArbiterInput, readVerifiedRosterPool } from "../../arbi
 import { isNwcConnectionString } from "../../payments/nwc.js";
 import {
   addOrTouchSavedNwcConnection,
-  deleteSavedNwcConnection, renameSavedNwcConnection, displayNwcConnection,
   listSavedNwcConnections,
   type SavedNwcConnection,
 } from "../../payments/nwc-connections.js";
@@ -59,7 +58,7 @@ import { readBrowserWalletRecoveryJournal } from "../../fedimint/browser-wallet-
 export function SettingsAdvanced({
   fedimint,
   loadActiveRecoveryKey,
-  onBack,
+  onBack, onManageSavedWallets,
   onSwitchFederation,
   onResetLocalWallet,
   onSandboxFund,
@@ -77,6 +76,7 @@ export function SettingsAdvanced({
    * signers return null and never expose key material to Chama. */
   loadActiveRecoveryKey?: () => Promise<string | null>;
   onBack: () => void;
+  onManageSavedWallets?: () => void;
   onSwitchFederation: (inviteCode: string, opts?: { force?: boolean }) => Promise<void>;
   onResetLocalWallet: () => Promise<void>;
   /** INSTRUMENT-FIRST (Fedi round 3): re-run My Trades discovery (the same
@@ -162,10 +162,6 @@ export function SettingsAdvanced({
     } catch (e: any) {
       setNwcError(e?.message || "NWC connection could not be saved");
     }
-  };
-  const handleDeleteNwc = (id: string) => {
-    deleteSavedNwcConnection(id);
-    refreshNwcConnections();
   };
 
   return (
@@ -319,8 +315,7 @@ export function SettingsAdvanced({
             inputReady={nwcInputReady}
             onInput={setNwcInput}
             onSave={handleSaveNwc}
-            onDelete={handleDeleteNwc}
-            onRename={(id, label) => { renameSavedNwcConnection(id, label); refreshNwcConnections(); }}
+            onManageSavedWallets={onManageSavedWallets}
           />
         )}
       </div>
@@ -608,7 +603,7 @@ function NwcManager({
   inputReady,
   onInput,
   onSave,
-  onDelete, onRename,
+  onManageSavedWallets,
 }: {
   saved: SavedNwcConnection[];
   input: string;
@@ -616,9 +611,9 @@ function NwcManager({
   inputReady: boolean;
   onInput: (value: string) => void;
   onSave: () => void;
-  onDelete: (id: string) => void;
-  onRename: (id: string, label: string) => void;
+  onManageSavedWallets?: () => void;
 }) {
+  const { t } = useT();
   return (
     <div style={{
       marginTop: 14,
@@ -677,21 +672,10 @@ function NwcManager({
         </ol>
       </div>
 
-      {saved.length > 0 && (
-        <div style={{ marginBottom: 12 }}>
-          <div style={{
-            fontSize: 9,
-            color: T.muted,
-            fontFamily: T.mono,
-            letterSpacing: 1,
-            marginBottom: 6,
-          }}>
-            SAVED
-          </div>
-          {saved.map(connection => <SavedWalletRow key={connection.id} label={connection.label}
-            detail={displayNwcConnection(connection)} onRename={label => onRename(connection.id, label)} onRemove={() => onDelete(connection.id)} />)}
-        </div>
-      )}
+      {saved.length > 0 && onManageSavedWallets && <button type="button" onClick={onManageSavedWallets}
+        style={{ color: T.accent, background: "none", border: 0, minHeight: 44, marginBottom: 12, cursor: "pointer" }}>
+        {t("me.lightningAddresses")} · {saved.length}
+      </button>}
 
       <div style={{
         fontSize: 9,

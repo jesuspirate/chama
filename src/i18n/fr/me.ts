@@ -128,9 +128,9 @@ export const me: Record<string, string> = {
   "me.itemCountOne": "{count} article",
   "me.lastError": "Dernière erreur : {error}",
   "me.light": "Clair",
-  "me.lightningAddresses": "Adresses Lightning",
+  "me.lightningAddresses": "Portefeuilles enregistrés",
   "me.lightningAddressesHint":
-    "Adresses enregistrées pour les réclamations et la récupération",
+    "Renommer ou oublier les adresses et connexions enregistrées",
   "me.listedArbiter": "arbitre inscrit",
   "me.liveCount": "{count} en cours",
   "me.liveTradeNoSwitch":

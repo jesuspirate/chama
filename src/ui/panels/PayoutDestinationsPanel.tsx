@@ -1,3 +1,4 @@
+import { listSavedNwcConnections, renameSavedNwcConnection, deleteSavedNwcConnection, displayNwcConnection } from "../../payments/nwc-connections.js";
 import { SavedWalletRow } from "../components/SavedWalletRow.js";
 import { useState } from "react";
 import { T } from "../theme.js";
@@ -9,9 +10,8 @@ import {
   deletePayoutDestination, renamePayoutDestination, payoutDestinationLabel, displayPayoutDestination,
 } from "../../payments/payout-destinations.js";
 
-// Local Lightning Addresses used by Claim and Recover. NWC bearer
-// credentials live in Advanced > NWC wallets, keeping this screen focused
-// on addresses the user can understand at a glance.
+// One management list for receive addresses and saved wallet connections.
+// Connection rows show only a public identifier, never bearer credentials.
 export function PayoutDestinationsPanel({ onClose }: {
   onClose: () => void;
 }) {
@@ -19,6 +19,8 @@ export function PayoutDestinationsPanel({ onClose }: {
   const [destinations, setDestinations] = useState<PayoutDestination[]>(
     () => listPayoutDestinations(),
   );
+
+  const [connections, setConnections] = useState(listSavedNwcConnections);
 
   const handleDelete = (id: string) => {
     deletePayoutDestination(id);
@@ -31,11 +33,10 @@ export function PayoutDestinationsPanel({ onClose }: {
     // back to the wrong tab is gone. Copy comes from i18n now — this panel
     // was hardcoded English while its translations sat unused.
     <OverlaySheet
-      title={t("claim.lightningAddresses")}
-      subtitle={t("claim.lightningAddressesBody")}
+      title={t("me.lightningAddresses")}
       onClose={onClose}
     >
-      {destinations.length === 0 ? (
+      {destinations.length === 0 && connections.length === 0 ? (
         <div style={{
           padding: 24, textAlign: "center", borderRadius: T.r,
           background: T.surface, border: `1px dashed ${T.border}`,
@@ -49,6 +50,10 @@ export function PayoutDestinationsPanel({ onClose }: {
           <div style={{ fontSize: 9, color: T.muted, fontFamily: T.mono, letterSpacing: 1, marginBottom: 8 }}>
             {t("claim.savedAddresses")}
           </div>
+          {connections.map(connection => <SavedWalletRow key={connection.id}
+            label={connection.label} detail={displayNwcConnection(connection)}
+            onRename={label => { renameSavedNwcConnection(connection.id, label); setConnections(listSavedNwcConnections()); }}
+            onRemove={() => { deleteSavedNwcConnection(connection.id); setConnections(listSavedNwcConnections()); }} />)}
           {destinations.map(destination => <SavedWalletRow key={destination.id}
             label={payoutDestinationLabel(destination)} detail={destination.label ? destination.address : displayPayoutDestination(destination.address)}
             onRename={label => { renamePayoutDestination(destination.id, label); setDestinations(listPayoutDestinations()); }}

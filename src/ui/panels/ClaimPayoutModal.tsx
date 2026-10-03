@@ -36,9 +36,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { T, inputStyle } from "../theme.js";
 import { DestinationPicker, resolveReceiveCode } from "../components/DestinationPicker.js";
 import { BitcoinAmount } from "../components/BitcoinAmount.js";
-import { displayPayoutDestination, payoutDestinationLabel, renamePayoutDestination, deletePayoutDestination, listPayoutDestinations, type PayoutDestination } from "../../payments/payout-destinations.js";
+import { displayPayoutDestination, payoutDestinationLabel, listPayoutDestinations, type PayoutDestination } from "../../payments/payout-destinations.js";
 import {
-  addOrTouchSavedNwcConnection, renameSavedNwcConnection, deleteSavedNwcConnection, displayNwcConnection, listSavedNwcConnections,
+  addOrTouchSavedNwcConnection, displayNwcConnection, listSavedNwcConnections,
   type SavedNwcConnection,
 } from "../../payments/nwc-connections.js";
 import {
@@ -827,33 +827,11 @@ export function ClaimMethodChooser({
               {walletDestinations.map(destination => <SavedWalletRow key={destination.id}
                 label={payoutDestinationLabel(destination)} detail={destination.label ? destination.address : displayPayoutDestination(destination.address)} disabled={!!lightningReason}
                 selected={selected?.kind === "address" && selected.wallet.id === destination.id}
-                onSelect={() => { setRail("lightning"); setSelected({ kind: "address", wallet: destination }); }}
-                onRename={label => {
-                  renamePayoutDestination(destination.id, label);
-                  const updated = { ...destination, label: label.trim().slice(0, 64) || undefined };
-                  setWalletDestinations(rows => rows.map(row => row.id === destination.id ? updated : row));
-                  if (selected?.kind === "address" && selected.wallet.id === destination.id) setSelected({ kind: "address", wallet: updated });
-                }}
-                onRemove={() => {
-                  deletePayoutDestination(destination.id);
-                  setWalletDestinations(rows => rows.filter(row => row.id !== destination.id));
-                  if (selected?.kind === "address" && selected.wallet.id === destination.id) setSelected(null);
-                }} />)}
+                onSelect={() => { setRail("lightning"); setSelected({ kind: "address", wallet: destination }); }} />)}
               {walletConnections.map(connection => <SavedWalletRow key={connection.id}
                 label={connection.label} detail={displayNwcConnection(connection)} disabled={!!lightningReason}
                 selected={selected?.kind === "nwc" && selected.wallet.id === connection.id}
-                onSelect={() => { setRail("lightning"); setSelected({ kind: "nwc", wallet: connection }); }}
-                onRename={label => {
-                  renameSavedNwcConnection(connection.id, label);
-                  const updated = { ...connection, label: label.trim().slice(0, 64) || `NWC ${connection.walletPubkey.slice(0, 8)}` };
-                  setWalletConnections(rows => rows.map(row => row.id === connection.id ? updated : row));
-                  if (selected?.kind === "nwc" && selected.wallet.id === connection.id) setSelected({ kind: "nwc", wallet: updated });
-                }}
-                onRemove={() => {
-                  deleteSavedNwcConnection(connection.id);
-                  setWalletConnections(rows => rows.filter(row => row.id !== connection.id));
-                  if (selected?.kind === "nwc" && selected.wallet.id === connection.id) setSelected(null);
-                }} />)}
+                onSelect={() => { setRail("lightning"); setSelected({ kind: "nwc", wallet: connection }); }} />)}
             </div>
             {lightningReason && <p role="status" style={{ color: T.muted, fontSize: 12 }}>{lightningReason}</p>}
           </section>

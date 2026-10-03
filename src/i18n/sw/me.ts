@@ -120,8 +120,8 @@ export const me: Record<string, string> = {
   "me.itemCountOne": "Bidhaa {count}",
   "me.lastError": "Hitilafu ya mwisho: {error}",
   "me.light": "Mwanga",
-  "me.lightningAddresses": "Anwani za Lightning",
-  "me.lightningAddressesHint": "Anwani zilizohifadhiwa kwa madai na urejeshaji",
+  "me.lightningAddresses": "Pochi zilizohifadhiwa",
+  "me.lightningAddressesHint": "Badili jina au sahau anwani na miunganisho iliyohifadhiwa",
   "me.listedArbiter": "msuluhishi aliyeorodheshwa",
   "me.liveCount": "{count} hai",
   "me.liveTradeNoSwitch":
