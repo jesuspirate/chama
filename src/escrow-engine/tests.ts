@@ -6735,11 +6735,11 @@ for (const needs of [0, 2]) for (const active of [0, 200000]) for (const balance
     const mktCancel = retimeEvent({ ...cancelEvent(mkt.raw.id) }, NOW + 8);
     const lateLock = retimeEvent(lockEvent(realJoin.raw.id, { locker: BUYER_PK }), NOW + 10);
     const cancelled = replayEventChain(sortEventChain([mkt, realJoin, mktCancel, lateLock]));
-    // The LOCK on a cancelled trade is a funds event, so it fails the load
-    // (TERMINAL_STATE) rather than being skipped: the buyer's client must see
-    // that its notes did not enter an escrow.
-    assert(!cancelled.ok && cancelled.error.code === "TERMINAL_STATE",
-      "a CANCEL before the LOCK is honoured: the buyer's LOCK fails, the trade never reads as funded",
+    assert(cancelled.ok && cancelled.state.status === EscrowStatus.CANCELLED
+      && cancelled.state.lock.notesHash === null
+      && cancelled.state.rejectedLocks?.[0].event.raw.id === lateLock.raw.id
+      && cancelled.state.rejectedLocks?.[0].code === "CANCELLED_BEFORE_LOCK",
+      "a CANCEL before the LOCK is honoured and the refused notes remain available for recovery",
       cancelled.ok ? cancelled.state.status : cancelled.error.code);
   }
   // Neither a made-up predecessor nor a JOIN of their own makes an outsider's

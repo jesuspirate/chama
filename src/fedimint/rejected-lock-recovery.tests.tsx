@@ -42,7 +42,7 @@ const urgent = selectNeedsYouTrades({escrows:[state], userPubkey:owner, nowSec:1
 assert.deepEqual(decideChamaBarLabel({needsYouCount:urgent.length, balanceMsats:4000, hasActiveBuyerSellerCommitment:false}), {kind:'needs-you',count:1});
 const html = renderToStaticMarkup(createElement(RejectedLockRefund, {amountMsats:170000,onReclaim:async()=>{}}));
 assert.match(html, /Take your 170 sats back/);
-assert.match(html, /buyer&#x27;s seat had lapsed/);
+assert.match(html, /This lock didn&#x27;t reach the trade/);
 const { LiveTradeSurface } = await import('../ui/screens/LiveTradeSurface.js');
 const room = renderToStaticMarkup(createElement(LiveTradeSurface, {
   state: {...state, status: 'CANCELLED' as any}, pubkey: owner,

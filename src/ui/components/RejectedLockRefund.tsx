@@ -5,7 +5,7 @@ export function RejectedLockRefund({amountMsats, onReclaim}: {amountMsats: numbe
   const [error, setError] = useState<string | null>(null);
   const sats = Math.floor(amountMsats / 1000);
   return <div style={{padding: 14, marginBottom: 12, borderRadius: T.rs, border: `1px solid ${T.amber}`}}>
-    <p>This lock didn't reach the trade — the buyer's seat had lapsed. Take your {sats} sats back.</p>
+    <p>This lock didn't reach the trade. Take your {sats} sats back.</p>
     <button disabled={busy} onClick={() => {
       setBusy(true); setError(null);
       void onReclaim().catch(e => setError(e instanceof Error ? e.message : String(e))).finally(() => setBusy(false));
