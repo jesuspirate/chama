@@ -2787,6 +2787,10 @@ export default function App() {
     // durable-cache rebuild if the relays only hold part of the chain.
     actions.loadEscrow(id, { repairFromCache: true, creator }).then((state) => {
       if (!state) {
+        // A refused invite has no trade room to show. Keep its error visible,
+        // but return to Browse rather than leaving a fresh account in detail.
+        setSelectedId(null);
+        setView("browse");
         setToast({
           message: actions.getLoadFailure(id)?.reason === "conflicting-creators"
             ? t("app.tradeConflictingCreators") : t("app.tradeNotFoundYet", { id }),
@@ -3000,16 +3004,17 @@ export default function App() {
   };
 
   // The toggle's whole promise: signed in → straight to Browse. Fires once,
-  // only for a fresh account that asked for it, and never over an invite link
-  // (the invite names the home) or an explicit "change my home".
+  // only for a fresh account that asked for it. An invite gets first chance to
+  // name the home; if refused/unavailable it no longer blocks default setup.
+  // An explicit "change my home" still opens the picker.
   useEffect(() => {
     if (!connected || !pubkey) return;
     if (!fastSetupRequestedRef.current || fastSetupStartedRef.current) return;
-    if (changeHomeAfterConnect || bootInviteId) return;
+    if (changeHomeAfterConnect || (bootInviteId && inviteHomeState !== "failed")) return;
     if (getUserCommunitySlugRaw() !== null) return;
     void fastSetup();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [connected, pubkey, changeHomeAfterConnect, bootInviteId]);
+  }, [connected, pubkey, changeHomeAfterConnect, bootInviteId, inviteHomeState]);
 
   const guidedHome = () => {
     canvasResumeRef.current = null;
