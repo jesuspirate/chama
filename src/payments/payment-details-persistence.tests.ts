@@ -1,0 +1,33 @@
+import assert from 'node:assert/strict';
+import { setLocalStorageUserScope, scopedStorageKey } from '../storage/user-scope.js';
+import { listPayoutDestinations, renamePayoutDestination, deletePayoutDestination, PAYOUT_DESTINATIONS_STORAGE_KEY, PAYOUT_DESTINATIONS_BACKUP_STORAGE_KEY } from './payout-destinations.js';
+import { addSavedHandle, listSavedHandles, SAVED_HANDLES_STORAGE_KEY, SAVED_HANDLES_BACKUP_STORAGE_KEY } from './saved-handles.js';
+const values=new Map<string,string>();
+Object.defineProperty(globalThis,'localStorage',{configurable:true,value:{getItem:(k:string)=>values.get(k)??null,setItem:(k:string,v:string)=>values.set(k,v),removeItem:(k:string)=>values.delete(k)}});
+const trace:unknown[][]=[]; const originalInfo=console.info; console.info=(...args:unknown[])=>trace.push(args);
+try {
+ setLocalStorageUserScope('fixture-a');
+ const legacy=JSON.stringify([{id:'legacy',rail:'lightning',handle:'fixture@wallet.example',visibility:'private',createdAt:100}]);
+ for(const key of [SAVED_HANDLES_STORAGE_KEY,SAVED_HANDLES_BACKUP_STORAGE_KEY]) values.set(scopedStorageKey(key),legacy);
+ const [wallet]=listPayoutDestinations(); assert.equal(wallet.address,'fixture@wallet.example');
+ for(const key of [SAVED_HANDLES_STORAGE_KEY,SAVED_HANDLES_BACKUP_STORAGE_KEY]) assert.deepEqual(JSON.parse(values.get(scopedStorageKey(key))!),[],'migration removes old Lightning rows from both copies');
+ renamePayoutDestination(wallet.id,'Home wallet');
+ setLocalStorageUserScope(null);setLocalStorageUserScope('fixture-a');
+ assert.equal(listPayoutDestinations()[0].label,'Home wallet','rename survives same-identity relaunch');
+ values.delete(scopedStorageKey(PAYOUT_DESTINATIONS_STORAGE_KEY));
+ assert.equal(listPayoutDestinations()[0].label,'Home wallet','backup recovery preserves the name');
+ setLocalStorageUserScope('fixture-b');assert.deepEqual(listPayoutDestinations(),[],'new identity cannot claim another identity wallet');
+ addSavedHandle('strike','other-fixture');setLocalStorageUserScope('fixture-a');
+ assert.equal(listPayoutDestinations()[0].label,'Home wallet');
+ deletePayoutDestination(wallet.id);
+ for(const key of [PAYOUT_DESTINATIONS_STORAGE_KEY,PAYOUT_DESTINATIONS_BACKUP_STORAGE_KEY]) assert.deepEqual(JSON.parse(values.get(scopedStorageKey(key))!),[],'delete empties both destination copies');
+ addSavedHandle('strike','trade-fixture');
+ setLocalStorageUserScope(null);setLocalStorageUserScope('fixture-a');
+ assert.deepEqual(listPayoutDestinations(),[],'later trade-time handle write cannot resurrect deleted wallet');
+ assert.equal(listSavedHandles()[0].handle,'trade-fixture','payment details survive same-identity relaunch');
+ assert.ok(trace.some(args=>args.includes('chama_payout_destinations:fixture-a')));
+ assert.ok(trace.some(args=>args.includes('chama_payout_destinations:fixture-b')));
+ assert.ok(trace.some(args=>args.includes('chama_saved_handles:fixture-a')));
+ assert.doesNotMatch(JSON.stringify(trace),/fixture@wallet\.example|Home wallet|trade-fixture|other-fixture/,'diagnostics omit payment details, addresses and names');
+} finally {console.info=originalInfo;setLocalStorageUserScope(null);}
+console.log('PASS payment persistence: one-time legacy migration, rename/relaunch/backup, delete then trade-time handle write, identity isolation, private diagnostics.');
