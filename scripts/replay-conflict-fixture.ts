@@ -3,7 +3,7 @@ import WebSocket from 'ws';
 import { DEFAULT_RELAYS } from '../src/escrow-engine/default-relays.js';
 import { makeReplayConflictFixture } from './lib/replay-conflict-fixture.js';
 
-let baseUrl = 'http://localhost:3000/', dryRun = false;
+let baseUrl = 'http://localhost:30420/', dryRun = false;
 for (let i = 2; i < process.argv.length; i++) {
   const arg = process.argv[i];
   if (arg === '--dry-run') dryRun = true;
