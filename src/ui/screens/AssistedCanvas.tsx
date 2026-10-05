@@ -1,3 +1,4 @@
+import { privatePaymentFieldProps } from "../payment-field-autofill.js";
 import { CommunityChip } from "../components/CommunityChip.js";
 import { MARKET_DELIVERIES, type MarketDelivery } from "../../labels/market-delivery.js";
 import { billPayQuote } from "../../payments/bill-pay-quote.js";
@@ -331,7 +332,8 @@ export function AssistedCanvas({
                     }
                   }}
                   placeholder={rail?.placeholderKey ? tr("canvas.yourPaymentDetails") : rail?.placeholder ?? tr("canvas.yourPaymentDetails")}
-                  autoComplete="off"
+                  {...privatePaymentFieldProps}
+                  name={`chama-private-payment-${key}`}
                 />
                 <button type="button" onClick={() => savePaymentDetail(key)}>{tr("canvas.save")}</button>
               </div>

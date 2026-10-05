@@ -1,4 +1,5 @@
 import { OverlaySheet } from "../components/OverlaySheet.js";
+import { privatePaymentFieldProps } from "../payment-field-autofill.js";
 import { useState } from "react";
 import { T, inputStyle } from "../theme.js";
 import { useT, type TFunc } from "../../i18n/index.js";
@@ -442,12 +443,8 @@ export function SavedHandlesPanel({ communitySlug, onClose }: {
               onBlur={() => setPhoneValue(v => formatPhoneNumber(v))}
               placeholder={phoneInputPlaceholder}
               inputMode="tel"
-              autoComplete="off"
+              {...privatePaymentFieldProps}
               name="chama-private-payment-phone"
-              data-bwignore="true"
-              data-1p-ignore="true"
-              data-lpignore="true"
-              data-form-type="other"
               style={{
                 ...inputStyle,
                 marginBottom: 0, border: "none", borderRadius: 0,
@@ -520,6 +517,8 @@ export function SavedHandlesPanel({ communitySlug, onClose }: {
               </div>
             )}
             <input
+              {...privatePaymentFieldProps}
+              name="chama-payment-network-search"
               value={phoneNetworkQuery}
               onChange={e => setPhoneNetworkQuery(e.target.value)}
               placeholder={t("claim.searchNetworksForPhone")}
@@ -596,6 +595,8 @@ export function SavedHandlesPanel({ communitySlug, onClose }: {
         {banksOpen && (
         <div style={{ marginTop: 12, animation: "fadeIn 0.18s ease" }}>
         <input
+          {...privatePaymentFieldProps}
+          name="chama-payment-method-search"
           value={railQuery}
           onChange={e => {
             setRailQuery(e.target.value);
@@ -676,6 +677,8 @@ export function SavedHandlesPanel({ communitySlug, onClose }: {
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               <input
+                {...privatePaymentFieldProps}
+                name="chama-private-payment-id"
                 value={addValue}
                 onChange={e => { setAddValue(e.target.value); setError(null); }}
                 placeholder={selectedRail.placeholderKey ? t(selectedRail.placeholderKey) : (selectedRail.placeholder || t("claim.yourPaymentId"))}
@@ -852,6 +855,8 @@ export function SavedHandlesPanel({ communitySlug, onClose }: {
                     {editingNetworks && (
                       <div style={{ animation: "fadeIn 0.18s ease" }}>
                         <input
+                          {...privatePaymentFieldProps}
+                          name="chama-payment-network-edit-search"
                           value={handleNetworkQuery}
                           onChange={e => setHandleNetworkQuery(e.target.value)}
                           placeholder={t("claim.searchNetworks")}
