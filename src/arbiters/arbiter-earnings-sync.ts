@@ -87,6 +87,8 @@ export interface EarningsSyncResult {
  * legacy record. Parameterized replacement + premiumEventId dedupe make the
  * operation safe to repeat on every boot and every device. */
 export async function syncArbiterEarnings(client: EscrowClient): Promise<EarningsSyncResult> {
+  // Automatic history synchronization must never summon an extension.
+  if (client.getSigner().requiresUserAction) return { recovered: 0, published: 0 };
   const pubkey = await client.getPubkey();
   let recovered = 0;
   let events: NostrEvent[] = [];

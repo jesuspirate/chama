@@ -67,6 +67,16 @@ export function HelpScreen({ onBack }: { onBack: () => void }) {
 
   const renderAnswer = (a: FaqItem["a"]): ReactNode => {
     if (typeof a === "string") return <p style={answerPara}>{a}</p>;
+    if ("rows" in a) return <>
+      {a.intro && <p style={{ ...answerPara, marginBottom: 13 }}>{a.intro}</p>}
+      <table style={{ width: "100%", tableLayout: "fixed", borderCollapse: "collapse", fontFamily: T.sans, fontSize: 13, lineHeight: 1.6, overflowWrap: "anywhere" }}>
+        <thead><tr>{a.columns.map(column => <th key={column} scope="col" style={{ padding: "8px 5px", textAlign: "left", borderBottom: `1px solid ${T.border}` }}>{column}</th>)}</tr></thead>
+        <tbody>{a.rows.map((row, i) => <tr key={i}>{row.map((cell, j) => j === 0
+          ? <th key={j} scope="row" style={{ padding: "10px 5px", textAlign: "left", verticalAlign: "top", borderBottom: `1px solid ${T.border}` }}>{cell}</th>
+          : <td key={j} style={{ padding: "10px 5px", verticalAlign: "top", borderBottom: `1px solid ${T.border}` }}>{cell}</td>)}</tr>)}</tbody>
+      </table>
+      {a.outro && <p style={{ ...answerPara, marginTop: 14 }}>{a.outro}</p>}
+    </>;
     return (
       <>
         {a.intro && <p style={{ ...answerPara, marginBottom: 13 }}>{a.intro}</p>}

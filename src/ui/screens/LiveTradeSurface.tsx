@@ -1,3 +1,4 @@
+import { TradeCustody } from "../components/MoneyCustody.js";
 import { RangeFiat } from "../components/RangeFiat.js";
 import { useBitcoinPrice } from "../hooks/useBitcoinPrice.js";
 import { useFiatRates } from "../hooks/useFiatRates.js";
@@ -311,6 +312,7 @@ export function LiveTradeSurface({
       if (iAmFunder && !preLock?.lapsed) {
         if (state.escrowMode === "onchain") return (
           <Decision q="Fund this trade on Bitcoin" sub="Prepare the deposit address and send the exact amount from an on-chain wallet.">
+            <TradeCustody state={state} />
             <PrimaryButton onClick={() => setOnchainOpen(true)} label="Open on-chain funding" />
           </Decision>
         );
@@ -334,6 +336,7 @@ export function LiveTradeSurface({
             q={tr("lts.lockQ", { amount: amountLabel })}
             sub={tr("lts.lockSub")}
           >
+            <TradeCustody state={state} warn />
             {onLock ? (
               <>
                 <PrimaryButton

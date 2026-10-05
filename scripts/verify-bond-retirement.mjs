@@ -1,0 +1,51 @@
+import puppeteer from 'puppeteer-core';
+import assert from 'node:assert/strict';
+import { mkdir } from 'node:fs/promises';
+const browser = await puppeteer.launch({executablePath:process.env.CHAMA_BROWSER ?? '/Applications/Brave Browser.app/Contents/MacOS/Brave Browser',headless:true});
+try {
+ const page = await browser.newPage();
+ await page.evaluateOnNewDocument(()=>localStorage.setItem('chama_lang',new URLSearchParams(location.search).get('lang')??'en'));
+ await page.setViewport({width:390,height:844,isMobile:true,hasTouch:true});
+ const errors=[]; page.on('pageerror',e=>errors.push(e.message));
+ const clickText=async text=>{const buttons=await page.$$('button');for(const button of buttons)if((await button.evaluate(e=>e.textContent)).includes(text)){await button.click();return;}throw Error(`Button missing: ${text}`);};
+ const go=async query=>page.goto(`${process.env.CHAMA_PREVIEW ?? 'http://127.0.0.1:3211'}/tests/bond-retirement/?${query}`);
+ await go('lang=en');
+ await page.waitForFunction(()=>document.body.textContent.includes('Storefront-only bonds are retired.'));
+ await clickText('Manage');
+ await page.waitForFunction(()=>[...document.querySelectorAll('button')].some(e=>e.textContent.includes('21000')));
+ await clickText('21000');
+ await page.waitForFunction(()=>document.body.textContent.includes('Announce my bond'));
+ assert.match(await page.$eval('[data-bond-ceremony]',e=>e.innerText),/Locked on Bitcoin until block 970,000 \(~69 days\)\. Only your key can ever spend it, and only after that\./);
+ assert.doesNotMatch(await page.$eval('[data-bond-ceremony]',e=>e.innerText),/remaining\./);
+ assert.equal(await page.$$eval('[data-bond-ceremony] .payment-button',els=>els.filter(e=>e.textContent.includes('Announce my bond')).length),1,'announce is the primary action');
+ await mkdir('outputs/first-circle-phones',{recursive:true});
+ await page.screenshot({path:'outputs/first-circle-phones/bond-manage-locked-en-light.png'});
+ assert.equal(await page.$('input[type=checkbox]'),null);
+ assert.deepEqual(await page.evaluate(()=>window.publications),[], 'opening an existing opt-out must not re-announce it');
+ await clickText('Announce my bond');
+ await page.waitForFunction(()=>window.publications.length===1);
+ const publication=await page.evaluate(()=>window.publications[0]);
+ assert.equal(publication.args.length,2,'ceremony passes no roles argument');
+ assert.equal('roles' in publication.payload,false,'published announcement omits roles');
+ assert.equal(await page.$('[data-bond-ceremony] button[aria-label="Close"]'),null);
+ assert.equal(await page.$$eval('[data-bond-ceremony] button',els=>els.filter(e=>e.textContent.includes('Announce my bond')).length),0,'successful announce removes the action');
+ await clickText('Done');
+ await page.waitForFunction(()=>!document.body.textContent.includes('Storefront-only bonds are retired.'));
+ assert.equal(await page.evaluate(()=>window.moneyCalls),0);
+ await mkdir('outputs/first-circle-phones',{recursive:true});
+ for(const lang of ['en','es','fr','sw']) for(const theme of ['light','dark']) {
+   await go(`lang=${lang}&theme=${theme}`);
+   await page.waitForFunction(()=>document.querySelector('main') && document.body.textContent.includes(new URLSearchParams(location.search).get('lang')==='en'?'Storefront-only bonds':new URLSearchParams(location.search).get('lang')==='es'?'Las fianzas solo':new URLSearchParams(location.search).get('lang')==='fr'?'Les cautions réservées':'Dhamana za duka'));
+   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'phone layout does not overflow');
+   await page.screenshot({path:`outputs/first-circle-phones/bond-retirement-${lang}-${theme}.png`,fullPage:true});
+ }
+ await go('lang=en&arbiter=1');
+ await page.waitForFunction(()=>document.body.textContent.includes('21,000'));
+ assert.doesNotMatch(await page.$eval('main',e=>e.textContent),/Storefront-only bonds/);
+ await clickText('Manage');await page.waitForFunction(()=>[...document.querySelectorAll('button')].some(e=>e.textContent.includes('21000')));await clickText('21000');
+ await page.waitForFunction(()=>document.querySelector('[data-bond-ceremony]')?.innerText.includes('Announced to'));
+ assert.equal(await page.$$eval('[data-bond-ceremony] button',els=>els.filter(e=>e.textContent.includes('Announce my bond')).length),0,'existing default announcements hide the action on reopening');
+ assert.deepEqual(await page.evaluate(()=>window.publications),[]);
+ assert.deepEqual(errors,[]);
+ console.log('Bond ceremony: no roles, no automatic opt-in, refreshed nudge, four languages and phone layouts passed');
+} finally {await browser.close();}

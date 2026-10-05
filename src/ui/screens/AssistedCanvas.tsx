@@ -1,3 +1,4 @@
+import { CommunityChip } from "../components/CommunityChip.js";
 import { MARKET_DELIVERIES, type MarketDelivery } from "../../labels/market-delivery.js";
 import { billPayQuote } from "../../payments/bill-pay-quote.js";
 import { filterListingsByCurrency, listingMatchesCurrency } from "../listing-currency.js";
@@ -97,7 +98,7 @@ export function AssistedCanvas({
   fetchRatingSummary,
   onBrowse,
   onCreate,
-  onMoreOptions,
+  onMoreOptions, onOpenCommunity,
   onOpenTrade,
   onStartCircle,
   publishedInfo,
@@ -119,6 +120,7 @@ export function AssistedCanvas({
   onBrowse: (category: string) => void;
   onCreate: (intent: CanvasCreatePrefill) => void;
   onMoreOptions: () => void;
+  onOpenCommunity?: () => void;
   onOpenTrade: (id: string) => void;
   /** Start a savings circle from the home canvas (Jet, launch night: "how
    *  does a normal user create their own Chama from the home menu?"). Shown
@@ -671,7 +673,7 @@ export function AssistedCanvas({
   ]);
 
   if (publishedInfo) {
-    return <CanvasShell community={community} step={3} onExit={() => { onDismissPublished?.(); onBrowse("all"); }} onMoreOptions={onMoreOptions}>
+    return <CanvasShell onOpenCommunity={onOpenCommunity} community={community} step={3} onExit={() => { onDismissPublished?.(); onBrowse("all"); }} onMoreOptions={onMoreOptions}>
       <Kicker>{tr("canvas.liveKicker")}</Kicker>
       <h1 style={headingStyle()}>{tr("canvas.liveTitle")}</h1>
       <p style={subStyle()}>{tr("canvas.liveSub")}</p>
@@ -700,7 +702,7 @@ export function AssistedCanvas({
   }
 
   if (surface === "rails") {
-    return <CanvasShell community={community} step={3} onExit={() => onBrowse("all")} onMoreOptions={onMoreOptions}>
+    return <CanvasShell onOpenCommunity={onOpenCommunity} community={community} step={3} onExit={() => onBrowse("all")} onMoreOptions={onMoreOptions}>
       <Back onClick={() => setSurface("terms")}>{tr("canvas.changeLast")}</Back>
       <Kicker>{tr("canvas.acceptedPayment")}</Kicker>
       <RouteCue>{routeLabel}</RouteCue>
@@ -717,7 +719,7 @@ export function AssistedCanvas({
 
   if (surface === "premium") {
     const isBill = bring === "bill";
-    return <CanvasShell community={community} step={3} onExit={() => onBrowse("all")} onMoreOptions={onMoreOptions}>
+    return <CanvasShell onOpenCommunity={onOpenCommunity} community={community} step={3} onExit={() => onBrowse("all")} onMoreOptions={onMoreOptions}>
       <Back onClick={() => setSurface(bring === "bill" ? "rails" : "terms")}>{tr("canvas.changeLast")}</Back>
       <Kicker>{isBill ? tr("canvas.volunteerBonus") : tr("canvas.yourRate")}</Kicker>
       <RouteCue>{routeLabel}</RouteCue>
@@ -738,7 +740,7 @@ export function AssistedCanvas({
   }
 
   if (surface === "review" && selected) {
-    return <CanvasShell community={community} step={3} onExit={() => onBrowse("all")} onMoreOptions={onMoreOptions}>
+    return <CanvasShell onOpenCommunity={onOpenCommunity} community={community} step={3} onExit={() => onBrowse("all")} onMoreOptions={onMoreOptions}>
       <Back onClick={() => setSurface("matches")}>{tr("canvas.backToMatches")}</Back>
       <Kicker>{tr("canvas.exactPreview")}</Kicker>
       <h1 style={headingStyle()}>{tr("canvas.reviewMatch")}</h1>
@@ -764,7 +766,7 @@ export function AssistedCanvas({
     const shownKeys = new Set(recommended.map(({ candidate }) => candidate.listing.id));
     const alsoCompatible = visibleMatches.filter(c => !shownKeys.has(c.listing.id));
     const noMatches = !matching && !listingsLoading && (isGoods ? goodsMatches.length === 0 : visibleMatches.length === 0);
-    return <CanvasShell community={community} step={3} onExit={() => onBrowse("all")} onMoreOptions={onMoreOptions}>
+    return <CanvasShell onOpenCommunity={onOpenCommunity} community={community} step={3} onExit={() => onBrowse("all")} onMoreOptions={onMoreOptions}>
       <Back onClick={() => setSurface("terms")}>{tr("canvas.changeLast")}</Back>
       <Kicker>{isGoods ? tr("canvas.availableNow", { count: goodsMatches.length }) : tr("canvas.compatibleOffers", { count: visibleMatches.length })}</Kicker>
       <h1 style={headingStyle()}>{noMatches ? tr("canvas.noMatchTitle") : isGoods ? tr("canvas.goodsTitle") : tr(guidedChooseTitleKey(visibleMatches))}</h1>
@@ -851,7 +853,7 @@ export function AssistedCanvas({
   }
 
   if (surface === "publish") {
-    return <CanvasShell community={community} step={3} onExit={() => onBrowse("all")} onMoreOptions={onMoreOptions}>
+    return <CanvasShell onOpenCommunity={onOpenCommunity} community={community} step={3} onExit={() => onBrowse("all")} onMoreOptions={onMoreOptions}>
       <Back onClick={() => setSurface((bring === "sats" && want === "cash") || bring === "bill" ? "premium" : "terms")}>{tr("canvas.changeLast")}</Back>
       <Kicker>{tr("canvas.firstSide")}</Kicker>
       <RouteCue>{routeLabel}</RouteCue>
@@ -889,7 +891,7 @@ export function AssistedCanvas({
   }
 
   if (surface === "terms") {
-    return <CanvasShell community={community} step={3} onExit={() => onBrowse("all")} onMoreOptions={onMoreOptions}>
+    return <CanvasShell onOpenCommunity={onOpenCommunity} community={community} step={3} onExit={() => onBrowse("all")} onMoreOptions={onMoreOptions}>
       <Back onClick={() => setSurface("detail")}>{tr("canvas.changeLast")}</Back>
       <Kicker>{tr("canvas.lastDetail")}</Kicker>
       <RouteCue>{routeLabel}</RouteCue>
@@ -938,7 +940,7 @@ export function AssistedCanvas({
   }
 
   if (surface === "detail") {
-    return <CanvasShell community={community} step={2} onExit={() => onBrowse("all")} onMoreOptions={onMoreOptions}>
+    return <CanvasShell onOpenCommunity={onOpenCommunity} community={community} step={2} onExit={() => onBrowse("all")} onMoreOptions={onMoreOptions}>
       <Back onClick={() => setSurface(bring === "sats" ? "want" : "bring")}>
         {bring === "sats" ? tr("canvas.changeWant") : tr("canvas.changeHave")}
       </Back>
@@ -984,7 +986,7 @@ export function AssistedCanvas({
       if (id && onOpenTrade) onOpenTrade(id);
       else setInviteError(true);
     };
-    return <CanvasShell community={community} step={1} onExit={() => onBrowse("all")} onMoreOptions={onMoreOptions}>
+    return <CanvasShell onOpenCommunity={onOpenCommunity} community={community} step={1} onExit={() => onBrowse("all")} onMoreOptions={onMoreOptions}>
       <Back onClick={() => setSurface("bring")}>{tr("common.back")}</Back>
       <Kicker>{tr("canvas.circleKicker")}</Kicker>
       <h1 style={headingStyle()}>{tr("canvas.circleTitle")}</h1>
@@ -1047,7 +1049,7 @@ export function AssistedCanvas({
   }
 
   if (surface === "want" && bring) {
-    return <CanvasShell community={community} step={1} onExit={() => onBrowse("all")} onMoreOptions={onMoreOptions}>
+    return <CanvasShell onOpenCommunity={onOpenCommunity} community={community} step={1} onExit={() => onBrowse("all")} onMoreOptions={onMoreOptions}>
       <Back onClick={() => setSurface("bring")}>{tr("canvas.changeHave")}</Back>
       <Kicker>{tr("canvas.haveBitcoin")}</Kicker>
       <h1 style={headingStyle()}>{tr("canvas.whatInReturn")}</h1>
@@ -1072,7 +1074,7 @@ export function AssistedCanvas({
     </CanvasShell>;
   }
 
-  return <CanvasShell community={community} step={0} onExit={() => onBrowse("all")} onMoreOptions={onMoreOptions}>
+  return <CanvasShell onOpenCommunity={onOpenCommunity} community={community} step={0} onExit={() => onBrowse("all")} onMoreOptions={onMoreOptions}>
     {/* The namesake leads (Jet, 2026-09-18): circles are their own product,
         so they sit ABOVE the trading question, split by a dotted seam —
         one home, two doors. */}
@@ -1102,12 +1104,12 @@ export function AssistedCanvas({
   </CanvasShell>;
 }
 
-function CanvasShell({ community: _community, step, onExit, onMoreOptions, children }: { community: ReturnType<typeof getCommunityBySlug>; step: number; onExit: () => void; onMoreOptions: () => void; children: ReactNode }) {
+function CanvasShell({ community, step, onExit, onMoreOptions, onOpenCommunity, children }: { community: ReturnType<typeof getCommunityBySlug>; onOpenCommunity?: () => void; step: number; onExit: () => void; onMoreOptions: () => void; children: ReactNode }) {
   const rootRef = useCanvasViewport();
   return <div ref={rootRef} className="assisted-canvas">
     <style>{canvasCss()}</style>
     {step === 0 && <button type="button" data-chama-shortcut="back" onClick={onExit} tabIndex={-1} aria-hidden="true" style={{ display: "none" }} />}
-    <main className="assisted-canvas-main">{children}</main>
+    <main className="assisted-canvas-main">{community && <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}><CommunityChip slug={community.slug} onOpen={onOpenCommunity} /></div>}{children}</main>
     <footer className="assisted-canvas-footer">
       <button type="button" onClick={onMoreOptions}>{tr("canvas.knowWhatDoing")}</button>
       <div>{[0, 1, 2].map(index => <span key={index} className={index === step ? "on" : ""} />)}</div>

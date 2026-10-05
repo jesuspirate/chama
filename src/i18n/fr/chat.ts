@@ -34,7 +34,7 @@ export const chat: Record<string, string> = {
   "chat.hide": "Masquer",
   "chat.imageReady": "Image prête",
   "chat.keySavedHint": "Votre cl\u00e9 est enregistr\u00e9e sur cet appareil \u2014 Chama vous connectera automatiquement la prochaine fois.",
-  "chat.keepSignedIn": "Rester connecté sur cet appareil",
+  "chat.keepSignedIn": "Rester connecté sur ce téléphone",
   "chat.keepSignedInHintOn": "La prochaine fois, vous entrez directement — rien à coller.",
   "chat.keepSignedInHintOff": "Vous collerez votre clé à chaque connexion.",
   "chat.keyChoiceFooter":

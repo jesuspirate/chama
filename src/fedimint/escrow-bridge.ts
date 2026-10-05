@@ -1,3 +1,4 @@
+import { isSignerApprovalError } from "../escrow-engine/signer-approval.js";
 import { chamaFundingError } from "../chama/policy.js";
 // ══════════════════════════════════════════════════════════════════════════
 // Chama — Escrow ↔ Fedimint Bridge
@@ -1018,6 +1019,7 @@ export class EscrowFedimintBridge {
             voterPubkey: candidate.voterPubkey,
           });
         } catch (decErr) {
+          if (isSignerApprovalError(decErr)) throw decErr;
           candidateDecryptErrors.push(
             decErr instanceof Error ? decErr.message : String(decErr)
           );
@@ -1495,21 +1497,16 @@ export class EscrowFedimintBridge {
   private async decryptShare(encryptedShare: string, senderPubkey: string): Promise<SSSShare> {
     // In dev/plaintext mode, shares are not encrypted — try parsing directly first
     let decrypted: string;
+    let plaintext = false;
     try {
       const parsed = JSON.parse(encryptedShare);
-      if (parsed && (parsed.index !== undefined || parsed.data !== undefined)) {
-        // Already plaintext JSON — no decryption needed
-        decrypted = encryptedShare;
-      } else {
-        decrypted = await this.signer.nip44Decrypt(encryptedShare, senderPubkey);
-      }
-    } catch {
-      // Not valid JSON — must be encrypted, decrypt it
-      try {
-        decrypted = await this.signer.nip44Decrypt(encryptedShare, senderPubkey);
-      } catch (decryptErr) {
-        // If decrypt also fails, the share might be a simulated plaintext string
-        // (from simulatedLock which uses "sim_share_0_..." format)
+      plaintext = !!parsed && (parsed.index !== undefined || parsed.data !== undefined);
+    } catch { /* ciphertext */ }
+    if (plaintext) decrypted = encryptedShare;
+    else {
+      try { decrypted = await this.signer.nip44Decrypt(encryptedShare, senderPubkey); }
+      catch (error) {
+        if (isSignerApprovalError(error)) throw error;
         console.warn("[chama] Share decrypt failed, using as-is:", encryptedShare.slice(0, 30));
         decrypted = encryptedShare;
       }

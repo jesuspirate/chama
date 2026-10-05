@@ -1050,6 +1050,13 @@ export class RelayManager {
    * @param since Unix timestamp — only fetch CREATEs newer than this.
    *              Default: 7 days ago. Prevents pulling the entire history.
    */
+  subscribeToBrowseListings(scope: { community?: string; category?: string }): string {
+    return this.subscribe({ kinds: [EscrowEventKind.CREATE], since: Math.floor(Date.now() / 1000) - 7 * 86400,
+      ...(scope.community ? { "#community": [scope.community] } : {}),
+      ...(scope.category ? { "#cat": [scope.category] } : {}),
+    });
+  }
+
   subscribeToPublicListings(since?: number): string {
     const sevenDaysAgo = Math.floor(Date.now() / 1000) - 7 * 86400;
     return this.subscribe({

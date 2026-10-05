@@ -201,6 +201,8 @@ export function GlobeCountryPicker({ onSelect, loadLiveness, loadBondedCounts, b
     return n;
   };
 
+  const [livenessRetry, setLivenessRetry] = useState(0);
+
   // Fetch liveness once, when a SINGLE-community country is opened and a fetcher
   // is wired. Multi-chama countries disambiguate first (per-chama liveness is a
   // later pass). Fails soft — a null/throw just leaves the reassurance standing.
@@ -215,7 +217,7 @@ export function GlobeCountryPicker({ onSelect, loadLiveness, loadBondedCounts, b
     loadCoordinatedLiveness(slug, (community, signal) => loadLiveness(community, signal))
       .then((result) => {
         if (!cancelled) {
-          setLiveness(result.liveness);
+          setLiveness(result.outcome === "verified" ? result.liveness : null);
           setLivenessOutcome(result.outcome);
         }
       })
@@ -230,7 +232,7 @@ export function GlobeCountryPicker({ onSelect, loadLiveness, loadBondedCounts, b
     // Key off the opened country only — `loadLiveness` is a fresh identity each
     // render (reads the live client internally), so a stale closure is fine.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selected]);
+  }, [selected, livenessRetry]);
 
   // Ranked, not merely filtered: "us" must land on the United States rather
   // than on Belarus, and "uk" has to find a country whose ISO code is GB.
@@ -357,7 +359,7 @@ export function GlobeCountryPicker({ onSelect, loadLiveness, loadBondedCounts, b
                 Only when a fetcher is wired (post-connect); pre-signer onboarding
                 shows the reassurance below on its own, never a dark landing. */}
             {loadLiveness && (
-              <LivenessSignal liveness={liveness} loading={livenessLoading} outcome={livenessOutcome} blocksPerDay={livenessBlocksPerDay} />
+              <LivenessSignal onRetry={() => setLivenessRetry(n => n + 1)} liveness={liveness} loading={livenessLoading} outcome={livenessOutcome} blocksPerDay={livenessBlocksPerDay} />
             )}
             <div style={{
               padding: "14px 15px", borderRadius: T.r,

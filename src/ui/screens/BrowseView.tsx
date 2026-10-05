@@ -1,11 +1,14 @@
+import { CommunityChip } from "../components/CommunityChip.js";
+import { CommunityMismatchNudge } from "../components/CommunityMismatchNudge.js";
+import { browseAtTop, scrollBrowseResults, useBrowseArrivals } from "../browse-live.js";
 import { browseDiagnostics, type BrowseDiagnosticsContext } from "../browse-diagnostics.js";
 import { CopyButton } from "../components/CopyButton.js";
 import { filterListingsByCurrency, listingMatchesCurrency } from "../listing-currency.js";
 import { defaultCurrencyForCommunity } from "../../communities/currency.js";
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
 import { getScopedStorageItem, setScopedStorageItem } from "../../storage/user-scope.js";
 import { type EscrowState } from "../../escrow-engine/types.js";
-import { getCommunityBySlug, type Community } from "../../communities/registry.js";
+import { getCommunityBySlug } from "../../communities/registry.js";
 import { T, ROLE_COLOR, BROWSE_CATS, inputStyle, fmtSats } from "../theme.js";
 import { CHAMA_CIRCLES_ENABLED } from "../../escrow-engine/experimental-escrow-features.js";
 import { TradeCard } from "../components/TradeCard.js";
@@ -102,7 +105,7 @@ export function sortListingsNewestFirst(listings: readonly EscrowState[]): Escro
 // balance==0; destroy-confirm modal when balance>0).
 export function BrowseView({
   browseCategory, setBrowseCategory,
-  browseCommunity,
+  browseCommunity, subscribeListings, onOpenCommunity, suppressCommunityNudge,
   amountDisplayMode,
   matchingListings: suppliedMatching, nonMatchingListings: suppliedNonMatching, allEscrows, circleChildrenLoaded,
   diagnosticsContext,
@@ -119,6 +122,9 @@ export function BrowseView({
   browseCategory: string;
   setBrowseCategory: (s: string) => void;
   browseCommunity: string;
+  onOpenCommunity?: (country?: string) => void;
+  suppressCommunityNudge?: boolean;
+  subscribeListings?: (scope: { community?: string; category?: string }) => () => void;
   amountDisplayMode: AmountDisplayMode;
   allEscrows?: readonly EscrowState[];
   circleChildrenLoaded?: ReadonlySet<string>;
@@ -144,6 +150,10 @@ export function BrowseView({
   onCreate: () => void;
   onApplyAsArbiter: (community: string, statement: string) => Promise<void>;
 }) {
+  const resultsHeader = useRef<HTMLDivElement>(null);
+  const emptyResult = useRef<HTMLDivElement>(null);
+  const userFilterTap = useRef(false);
+  const [lastFilterLabel, setLastFilterLabel] = useState<string | null>(null);
   const [otherCurrencies, setOtherCurrencies] = useState(false);
   const viewerCurrency = defaultCurrencyForCommunity(browseCommunity);
   const matchingListings = useMemo(() => filterListingsByCurrency(suppliedMatching, viewerCurrency, otherCurrencies), [suppliedMatching, viewerCurrency, otherCurrencies]);
@@ -166,10 +176,14 @@ export function BrowseView({
   const [browseScope, setBrowseScopeState] = useState<BrowseScope>(() => getBrowseScope());
   const [browseSort, setBrowseSortState] = useState<BrowseSort>(() => getBrowseSort());
   const setBrowseScope = (scope: BrowseScope) => {
+    userFilterTap.current = scope !== browseScope;
+    setLastFilterLabel(t(scope === "local" ? "browse.scopeLocal" : "browse.scopeAll"));
     setBrowseScopeState(scope);
     persistBrowsePreference(BROWSE_SCOPE_KEY, scope);
   };
   const setBrowseSort = (sort: BrowseSort) => {
+    userFilterTap.current = sort !== browseSort;
+    setLastFilterLabel(t(sort === "cheapest" ? "browse.sortCheapest" : sort === "newest" ? "browse.sortNewest" : "browse.sortDefault"));
     setBrowseSortState(sort);
     persistBrowsePreference(BROWSE_SORT_KEY, sort);
   };
@@ -243,14 +257,36 @@ export function BrowseView({
   const totalListings = routedMatching.length + routedNonMatching.length;
   const homeCommunity = getCommunityBySlug(browseCommunity);
   useEffect(() => setOtherCurrencies(false), [browseCommunity, pubkey]);
-  const filteredMatchingListings = useMemo(
+  const candidateMatchingListings = useMemo(
     () => routedMatching.filter((listing) => listingMatchesSearch(listing, search) && (showOwn || browseCategory === "all" || countListingsByCategory([listing], [], browseCategory) > 0)),
     [routedMatching, search, browseCategory, showOwn],
   );
-  const filteredNonMatchingListings = useMemo(
+  const candidateNonMatchingListings = useMemo(
     () => routedNonMatching.filter((listing) => listingMatchesSearch(listing, search) && (showOwn || browseCategory === "all" || countListingsByCategory([listing], [], browseCategory) > 0)),
     [routedNonMatching, search, browseCategory, showOwn],
   );
+  const filterKey = JSON.stringify([pubkey, browseCommunity, browseCategory, browseScope, browseSort, showOwn, search, otherCurrencies]);
+  const live = useBrowseArrivals(filterKey, [...candidateMatchingListings, ...candidateNonMatchingListings], resultsHeader);
+  const matchingIds = new Set(candidateMatchingListings.map(l => l.id));
+  const filteredMatchingListings = live.visible.filter(l => matchingIds.has(l.id));
+  const filteredNonMatchingListings = live.visible.filter(l => !matchingIds.has(l.id));
+  // The app-wide feed keeps off-filter counts current. This mounted scope has
+  // its own subscription lifetime; all events still use the engine's validators.
+  const subscribeRef = useRef(subscribeListings);
+  subscribeRef.current = subscribeListings;
+  useEffect(() => subscribeRef.current?.({ community: browseScope === "local" ? browseCommunity : undefined,
+    category: showOwn || browseCategory === "all" ? undefined : browseCategory }), [browseCommunity, browseCategory, browseScope, showOwn, !!subscribeListings]);
+  useEffect(() => {
+    if (!userFilterTap.current) return;
+    userFilterTap.current = false;
+    scrollBrowseResults(emptyResult.current ?? resultsHeader.current);
+  }, [filterKey]);
+  useEffect(() => {
+    if (live.pending.length === 0) return;
+    const revealAtTop = () => { if (browseAtTop(resultsHeader.current)) live.flush(); };
+    window.addEventListener("scroll", revealAtTop, { passive: true, capture: true });
+    return () => window.removeEventListener("scroll", revealAtTop, true);
+  }, [live.pending.length]);
   // Explicit orders span every visible category AND route. Grouping after
   // sorting would silently undo the user's choice (even one card per category).
   const orderedVisibleListings = useMemo(() => {
@@ -277,6 +313,7 @@ export function BrowseView({
     [filteredNonMatchingListings],
   );
   const filteredTotal = filteredMatchingListings.length + filteredNonMatchingListings.length;
+  const emptyFilter = filteredTotal === 0 && live.pending.length === 0 && !!(search || lastFilterLabel || browseCategory !== "all" || showOwn || otherCurrencies);
   const browseSummary = totalListings === 0
     ? (listingsLoading ? t("browse.verifyingOffers") : t("browse.noOpenOffers"))
     : t(totalListings === 1 ? "browse.openOfferSummaryOne" : "browse.openOfferSummaryMany", {
@@ -293,6 +330,7 @@ export function BrowseView({
     // Same readable column as Me: wide enough to use a desktop, capped so a
     // listing row never becomes a stretched line of text.
     <div style={{ padding: 16, maxWidth: 760, margin: "0 auto" }}>
+      {onOpenCommunity && <CommunityMismatchNudge key={browseCommunity} slug={browseCommunity} suppressed={suppressCommunityNudge} onOpen={onOpenCommunity} />}
       {resumePubkey && (
         <WorkerResume
           pubkey={resumePubkey}
@@ -408,45 +446,12 @@ export function BrowseView({
           }}>
             {t("browse.listings")}
           </h1>
-          <div style={{
-            marginTop: 6, fontSize: 12, color: T.muted,
-            fontFamily: T.mono, whiteSpace: "nowrap" as const,
-            overflow: "hidden", textOverflow: "ellipsis",
-          }}>
-            {browseSummary}
-          </div>
+
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
           {/* v3.1.1: the create + arbiter on-ramps moved out of the header into
               the floating action menu (FAB stack) rendered at the screen root. */}
-          {homeCommunity && (
-          // v2.3.1: view-only identity chip. The community SWITCHER moved to
-          // Me › Your Chama so switching is a deliberate, between-trades act
-          // (and reclaims the Browse real estate the dropdown used to eat).
-          // This just tells you which Chama you're browsing as.
-          <div
-            title={browseCommunityButtonLabel(homeCommunity)}
-            style={{
-              padding: "7px 10px", borderRadius: 18,
-              background: T.surface, border: `1px solid ${T.border}`,
-              fontFamily: T.mono, fontSize: 11,
-              display: "flex", alignItems: "center", gap: 6,
-              color: T.text, minWidth: 0,
-              maxWidth: 174, flexShrink: 0,
-            }}
-          >
-            <span style={{ fontSize: 16, lineHeight: 1 }}>{homeCommunity.flagEmoji}</span>
-            <span style={{
-              minWidth: 0, display: "flex", flexDirection: "column",
-              alignItems: "flex-start", lineHeight: 1.1,
-            }}>
-              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 132 }}>
-                {homeCommunity.disambiguator ?? homeCommunity.displayName}
-              </span>
-              <span style={{ color: T.muted, fontSize: 9 }}>{homeCommunity.currency}</span>
-            </span>
-          </div>
-        )}
+          <CommunityChip slug={browseCommunity} onOpen={onOpenCommunity ? () => onOpenCommunity() : undefined} />
         </div>
       </div>
 
@@ -477,13 +482,15 @@ export function BrowseView({
         </label>
       </div>
 
+      <div style={{ minHeight: 42 }}>
       {(otherCurrencyCount > 0 || otherCurrencies) && <button type="button" aria-pressed={otherCurrencies}
-        onClick={() => setOtherCurrencies(value => !value)}
+        onClick={() => { userFilterTap.current = true; setLastFilterLabel(t("browse.otherCurrencies", { count: otherCurrencyCount })); setOtherCurrencies(value => !value); }}
         style={{ marginBottom: 12, padding: "7px 11px", borderRadius: 18, cursor: "pointer",
           background: otherCurrencies ? T.accentDim : T.surface, color: otherCurrencies ? T.accent : T.muted,
           border: `1px solid ${T.border}`, fontFamily: T.mono, fontSize: 11 }}>
         {t("browse.otherCurrencies", { count: otherCurrencyCount })}
       </button>}
+      </div>
       <div style={{
         display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12,
       }} data-coach="browse-preferences">
@@ -503,6 +510,7 @@ export function BrowseView({
 
       {browseScope === "all" && <p style={{fontSize:11, color:T.muted, marginTop:0}}>{t("browse.allExcludesMine")}</p>}
 
+      <div style={{ minHeight: 52 }}>
       {showCategoryChips && <div data-browse-category-row style={{
         display: "flex", gap: 6, marginBottom: 12,
         overflowX: "auto",
@@ -514,6 +522,8 @@ export function BrowseView({
           <button
             type="button"
             onClick={() => {
+              userFilterTap.current = true;
+              setLastFilterLabel(t(showOwn ? BROWSE_CATS.find(c => c.id === categoryBeforeOwn)?.l ?? "browse.catAll" : "browse.mine"));
               // The chip advertises toggle semantics (aria-pressed, and it lights
               // up like the category chips beside it), so a second tap has to turn
               // owner mode OFF. Turning it on stashes the shelf we came from;
@@ -560,6 +570,8 @@ export function BrowseView({
             <button
               key={c.id} data-browse-category={c.id} data-count={count}
               onClick={() => {
+                userFilterTap.current = true;
+                setLastFilterLabel(t(active ? "browse.catAll" : c.l));
                 if (showOwn) toggleShowOwn();
                 setBrowseCategory(active ? "all" : c.id);
               }}
@@ -596,18 +608,18 @@ export function BrowseView({
 
       </div>}
 
-      {search && totalListings > 0 && filteredTotal === 0 && (
-        <div style={{
-          textAlign: "center", padding: "24px 16px",
-          color: T.muted, fontFamily: T.mono, fontSize: 12, lineHeight: 1.6,
-          background: T.surface, border: `1px solid ${T.border}`, borderRadius: T.rs,
-          marginBottom: 14,
-        }}>
-          {t("browse.noListingsMatch", { query: searchQuery.trim() })}
-        </div>
-      )}
+      </div>
+      <style>{`@keyframes browse-arrive { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: none; } } .browse-arrival-card { animation: browse-arrive .2s ease-out; } @media (prefers-reduced-motion: reduce) { .browse-arrival-card { animation: none; } }`}</style>
+      <div ref={resultsHeader} data-browse-results style={{ scrollMarginTop: 12, minHeight: 42, display: "flex", alignItems: "center" }}>
+        {live.pending.length > 0 ? <button type="button" data-new-listings onClick={() => { live.flush(); scrollBrowseResults(resultsHeader.current, true); }} style={{ padding: "7px 12px", borderRadius: 999, border: `1px solid ${T.accent}`, background: T.accentDim, color: T.accent, cursor: "pointer" }}>
+          {t(live.pending.length === 1 ? "browse.newListingOne" : "browse.newListingMany", { n: live.pending.length })}
+        </button> : <span style={{ color: T.muted, fontSize: 12 }}>{browseSummary}</span>}
+      </div>
+      {emptyFilter && <div ref={emptyResult} data-browse-empty style={{ padding: 24, background: T.surface, color: T.muted, borderRadius: T.rs, marginBottom: 14 }}>
+        {t("browse.emptyFilter", { filter: [lastFilterLabel ?? (showOwn ? t("browse.mine") : t(BROWSE_CATS.find(c => c.id === browseCategory)?.l ?? "browse.scopeAll")), searchQuery.trim()].filter(Boolean).join(" · ") })}
+      </div>}
 
-      {totalListings === 0 ? (
+      {totalListings === 0 && !emptyFilter ? (
         <div style={{
           textAlign: "center", padding: "44px 20px", fontFamily: T.sans,
         }}>
@@ -874,12 +886,6 @@ export function BrowseView({
   );
 }
 
-function browseCommunityButtonLabel(community: Community): string {
-  return community.disambiguator
-    ? `${community.displayName} · ${community.disambiguator}`
-    : community.displayName;
-}
-
 export function listingMatchesSearch(listing: EscrowState, query: string): boolean {
   if (!query) return true;
   const community = listing.community ? getCommunityBySlug(listing.community) : null;
@@ -1098,6 +1104,7 @@ function BrowsePreferenceControl({
           return (
             <button
               key={optionValue}
+              data-browse-preference={optionValue}
               type="button"
               aria-pressed={active}
               onClick={() => onChange(optionValue)}

@@ -54,6 +54,7 @@ export const fund: Record<string, string> = {
   "payment.ecash": "Ecash",
   "payment.rail": "Njia ya malipo",
   "payment.walletFailed": "Imeshindikana kufungua pochi. Unaweza kunakili malipo.",
+  "payment.openInWallet": "Fungua kwenye pochi",
   "payment.openWith": "Fungua kwa…",
   "payment.details": "Maelezo",
   "payment.shareFailed": "Imeshindikana kufungua menyu ya kushiriki. Unaweza kunakili.",

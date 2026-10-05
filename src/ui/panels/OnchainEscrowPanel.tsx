@@ -1,3 +1,4 @@
+import { BitcoinCustody } from "../components/MoneyCustody.js";
 import { PaymentTarget } from '../components/PaymentTarget.js';
 import { esploraAddressUrl } from "../../bond-multisig/esplora-config.js";
 import { openExternalUrl } from "../open-url.js";
@@ -30,7 +31,7 @@ import { T } from "../theme.js";
 import { MAINNET, SIGNET } from "../../bond-multisig/multisig.js";
 
 export function OnchainEscrowPanel({
-  view,
+  view, refundHeight,
   network,
   settlementCheck,
   settlementUnavailable = false,
@@ -46,6 +47,7 @@ export function OnchainEscrowPanel({
   onPrepareFunding, onRefund, refunding,
 }: {
   view: OnchainEscrowView;
+  refundHeight?: number;
   onPrepareFunding?: () => void;
   onRefund?: () => void;
   refunding?: boolean;
@@ -105,7 +107,7 @@ export function OnchainEscrowPanel({
         )}
       </div>}
 
-      <div style={{fontSize:11, color:T.muted, lineHeight:1.5, marginBottom:8}}>{t("payment.bitcoinHeld")}</div>
+      <BitcoinCustody refundHeight={refundHeight} settled={view.stage === "done"} />
 
       <style>{`@keyframes funding-check-spin{to{transform:rotate(360deg)}}@media(prefers-reduced-motion:reduce){.funding-check-spinner{animation:none!important}}`}</style>
       {onPrepareFunding && <PaymentButton onClick={onPrepareFunding} disabled={checking}>

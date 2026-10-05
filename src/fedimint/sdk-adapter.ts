@@ -1,4 +1,6 @@
+import { boundedInspection, object, type FederationInspection } from "./federation-inspection.js";
 import { browserWalletStorageError } from "./browser-capabilities.js";
+import { createJoinDiagnostics, type JoinDiagnostics, type JoinPreviewDirector } from "./join-diagnostics.js";
 // ══════════════════════════════════════════════════════════════════════════
 // Chama — @fedimint/core SDK Adapter
 // ══════════════════════════════════════════════════════════════════════════
@@ -1535,7 +1537,26 @@ export function adaptRealWallet(
     rollbackFilename?: string | null;
   },
   allowRecoveryOnJoin = false,
+  joinDiagnostics?: { capture: JoinDiagnostics; director: JoinPreviewDirector },
 ): IFedimintWallet {
+  const joinWithDiagnostics = async (invite: string, forceRecover = false): Promise<void> => {
+    joinDiagnostics?.capture.reset();
+    const preview = await joinDiagnostics?.capture.preview(joinDiagnostics.director, invite);
+    const fallback = forceRecover
+      ? "Fedimint SDK did not start forced wallet recovery"
+      : "Fedimint SDK did not join the federation";
+    joinDiagnostics?.capture.joining(real.isOpen(), forceRecover);
+    let joined: boolean;
+    try {
+      joined = forceRecover
+        ? await real.joinFederation(invite, { forceRecover: true })
+        : await real.joinFederation(invite);
+    } catch (cause) {
+      throw joinDiagnostics?.capture.failure(fallback, preview, cause) ?? cause;
+    }
+    if (joined === false) throw joinDiagnostics?.capture.failure(fallback, preview) ?? new Error(fallback);
+    joinDiagnostics?.capture.joined();
+  };
   const activeReceiveWatches = new Set<() => void>();
   const armedReceiveOperationIds = new Set<string>();
   const armedMintReissueOperationIds = new Set<string>();
@@ -2290,7 +2311,14 @@ export function adaptRealWallet(
   return {
     async open() {
       const walletOpenStartedAt = Date.now();
-      await real.open();
+      joinDiagnostics?.capture.opening();
+      try {
+        await real.open();
+        joinDiagnostics?.capture.opened(real.isOpen());
+      } catch (cause) {
+        joinDiagnostics?.capture.openFailed(cause);
+        throw cause; // preserve the existing empty-client/error classification
+      }
       console.info(
         `[chama/startup] wallet database open: ${Date.now() - walletOpenStartedAt}ms`,
       );
@@ -2438,11 +2466,8 @@ export function adaptRealWallet(
         console.info(
           "[chama] Fresh browser client + Nostr-backed seed: forcing federation recovery before wallet use",
         );
-        let joined: boolean;
         try {
-          joined = await real.joinFederation(inviteCode, {
-            forceRecover: true,
-          });
+          await joinWithDiagnostics(inviteCode, true);
         } catch (error) {
           updateBrowserWalletRecoveryJournal(recoveryContext?.storageScope, {
             stage: "inconclusive",
@@ -2460,32 +2485,12 @@ export function adaptRealWallet(
           }
           throw error;
         }
-        if (joined === false) {
-          updateBrowserWalletRecoveryJournal(recoveryContext?.storageScope, {
-            stage: "inconclusive",
-            error: "Fedimint SDK did not start forced wallet recovery",
-          });
-          if (recoveryContext?.incident && recoveryContext.rollbackFilename) {
-            rememberFilename(
-              recoveryContext.storageScope,
-              recoveryContext.rollbackFilename,
-            );
-            requestBrowserWalletRecovery(
-              recoveryContext.storageScope,
-              recoveryContext.incident,
-            );
-          }
-          throw new Error("Fedimint SDK did not start forced wallet recovery");
-        }
         updateBrowserWalletRecoveryJournal(recoveryContext?.storageScope, {
           stage: "recovering",
           error: undefined,
         });
       } else {
-        const joined = await real.joinFederation(inviteCode);
-        if (joined === false) {
-          throw new Error("Fedimint SDK did not join the federation");
-        }
+        await joinWithDiagnostics(inviteCode);
       }
       const historyScanStartedAt = Date.now();
       let startupTransactions: RealTransaction[] | undefined;
@@ -2870,6 +2875,28 @@ export function adaptRealWallet(
     },
 
     federation: {
+      async inspectInvite(invite: string): Promise<FederationInspection> {
+        const director = joinDiagnostics?.director;
+        if (!director) return previewPublicFederation(invite);
+        return boundedInspection((async () => {
+          const parsed = await director.parseInviteCode(invite);
+          const activeId = real.isOpen() ? await real.federation.getFederationId() : null;
+          if (parsed.federation_id && activeId === parsed.federation_id && real.federation.getConfig) {
+            const config = await real.federation.getConfig();
+            const hasMeta = Object.values(object(object(config).modules)).some(mod => object(mod).kind === "meta");
+            let consensusMeta: unknown;
+            let metaStatus: FederationInspection["metaStatus"] = hasMeta ? "unavailable" : "absent";
+            if (hasMeta && real.federation.getMetaConsensusValue) {
+              try { consensusMeta = await real.federation.getMetaConsensusValue(0); metaStatus = "ready"; } catch { /* unknown limits */ }
+            }
+            return { federationId: activeId, config, consensusMeta, metaStatus };
+          }
+          const preview = object(await director.previewFederation(invite));
+          if (!parsed.federation_id || preview.federation_id !== parsed.federation_id) throw new Error("Federation preview identity mismatch");
+          const hasMeta = Object.values(object(object(preview.config).modules)).some(mod => object(mod).kind === "meta");
+          return { federationId: parsed.federation_id, config: preview.config, metaStatus: hasMeta ? "unavailable" : "absent" };
+        })());
+      },
       getFederationId() {
         return real.federation.getFederationId();
       },
@@ -3358,11 +3385,14 @@ export async function createRealWallet(
   }
   let director: any;
   let transport: any;
+  const joinCapture = createJoinDiagnostics(opts.mnemonic?.length ? [opts.mnemonic.join(" ")] : []);
 
   const attemptInit = async (fname: string) => {
     const t = new WasmWorkerTransport();
+    t.logger = joinCapture.logger;
     registerTransport(t as unknown as AnyTransport);
     const d = new WalletDirector(t, fname, /* lazy */ true);
+    d.setLogLevel("error");
     await (d as unknown as {
       initialize(dbPath?: string): Promise<unknown>;
     }).initialize(fname);
@@ -3450,8 +3480,10 @@ export async function createRealWallet(
     const { WalletDirector: WD2 } = await import("@fedimint/core");
     const { WasmWorkerTransport: WT2 } = await import("@fedimint/transport-web");
     const t2 = new WT2();
+    t2.logger = joinCapture.logger;
     registerTransport(t2 as unknown as AnyTransport);
     const d2 = new WD2(t2, freshName, /* lazy */ true);
+    d2.setLogLevel("error");
     await (d2 as unknown as {
       initialize(dbPath?: string): Promise<unknown>;
     }).initialize(freshName);
@@ -3668,6 +3700,7 @@ export async function createRealWallet(
         rollbackFilename: recoveryRollbackFilename,
       },
       opts.allowRecoveryOnJoin === true,
+      { capture: joinCapture, director },
     );
     walletReady = true;
     return adapted;
@@ -3689,4 +3722,24 @@ export async function createRealWallet(
       releaseRuntimeLease();
     }
   }
+}
+
+// A single public-preview transport, separate from every device-local wallet.
+// No createWallet, mnemonic operation, open_client or join_federation here.
+let publicPreviewDirector: Promise<JoinPreviewDirector> | undefined;
+export async function previewPublicFederation(invite: string): Promise<FederationInspection> {
+  publicPreviewDirector ??= (async () => {
+    const { WalletDirector, WasmWorkerTransport } = await preloadRealWalletRuntime();
+    const director = new WalletDirector(new WasmWorkerTransport(), "chama-public-preview.db", true);
+    await director.initialize("chama-public-preview.db");
+    return director;
+  })();
+  return boundedInspection((async () => {
+    const director = await publicPreviewDirector;
+    const parsed = await director!.parseInviteCode(invite);
+    const preview = object(await director!.previewFederation(invite));
+    if (!parsed.federation_id || preview.federation_id !== parsed.federation_id) throw new Error("Federation preview identity mismatch");
+    const hasMeta = Object.values(object(object(preview.config).modules)).some(mod => object(mod).kind === "meta");
+    return { federationId: parsed.federation_id, config: preview.config, metaStatus: hasMeta ? "unavailable" : "absent" };
+  })());
 }

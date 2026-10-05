@@ -1,3 +1,6 @@
+import { EcashCustody } from "../components/MoneyCustody.js";
+import { SettingsRow } from "../components/SettingsRow.js";
+import { RecoveryKeyRow, RecoveryKeyReminder } from "../components/RecoveryKey.js";
 import { listPaidLockRecoveries, acknowledgePaidLockRecoveries } from "../../payments/paid-lock-recovery.js";
 import { hasVerifiedTradeCreate } from "../../escrow-engine/trade-index.js";
 import { UnverifiedHistory } from "../components/UnverifiedHistory.js";
@@ -125,6 +128,7 @@ const ME_TRADE_FILTERS: { id: MeTradeFilter; labelKey: string }[] = [
 ];
 
 export function MeScreen({
+  onUseWallet,
   pubkey,
   kind0Enabled,
   profileNames,
@@ -156,12 +160,13 @@ export function MeScreen({
   onOpenAdvanced,
   onOpenHelp,
   balanceMsats,
+  balanceKnown = true, walletInvite,
   hasActiveCommitment,
   paidLockFederationId,
   satsTrace,
   onRecoverSats,
   onWithdrawEcash,
-  onSignOut,
+  onSignOut, loadActiveRecoveryKey,
   communitySlug,
   onSelectCommunity,
   onRateCounterparty,
@@ -175,6 +180,7 @@ export function MeScreen({
   hasPendingClaimPayout,
   stuckNativeLocks,
 }: {
+  onUseWallet?: () => void;
   pubkey: string;
   kind0Enabled?: boolean;
   /** Fetched kind-0 display names. Me used to render every counterparty as
@@ -184,7 +190,7 @@ export function MeScreen({
   /** Which pill to land on. Coming back from a Wallet sub-panel must return
    *  to WALLET, not to the default tab (Jet, 2026-09-20). Carries a nonce so
    *  asking for the SAME tab twice still lands. */
-  requestTab?: { tab: "trades" | "sats" | "seller" | "arbiter" | "profile" | "community" | "settings" | "live-trades"; n: number };
+  requestTab?: { tab: "trades" | "sats" | "seller" | "arbiter" | "profile" | "community" | "settings" | "live-trades"; n: number; country?: string };
   onKind0EnabledChange?: (enabled: boolean) => void;
   /** #50 dark/light theming — current mode + setter (App owns the state). */
   themeMode?: ThemeMode;
@@ -239,6 +245,8 @@ export function MeScreen({
   onOpenAdvanced: () => void;
   onOpenHelp: () => void;
   balanceMsats: number;
+  balanceKnown?: boolean;
+  walletInvite?: string;
   hasActiveCommitment: boolean;
   paidLockFederationId?: string;
   satsTrace?: SatsTraceEntry | null;
@@ -263,6 +271,7 @@ export function MeScreen({
     escrowId?: string;
   }) => Promise<ReabsorbOutcome>;
   onSignOut: () => void;
+  loadActiveRecoveryKey?: () => Promise<string | null>;
   /** v2.3.1: the user's current Chama. The Browse pill is now view-only;
    *  this screen is the deliberate place to CHANGE it. */
   communitySlug?: string | null;
@@ -573,6 +582,8 @@ export function MeScreen({
         </div>
       </div>
       )}
+
+      <RecoveryKeyReminder key={pubkey} pubkey={pubkey} loadKey={loadActiveRecoveryKey} />
 
       {/* ⭐ ATTENTION HERO — the single prioritized "needs your attention" queue.
           One source of truth with the Me-tab badge (selectNeedsYouTrades),
@@ -970,7 +981,7 @@ export function MeScreen({
         ] as Array<readonly [typeof meTab, string, number | undefined]>).map(([key, label, count]) => {
           const on = meTab === key;
           return (
-            <button key={key} type="button" aria-pressed={on} onClick={() => setMeTab(key)}
+            <button key={key} type="button" aria-pressed={on} onClick={() => { setMeTab(key); if (key === "sats") onUseWallet?.(); }}
               style={{
                 display: "inline-flex", alignItems: "center", gap: 7,
                 padding: "8px 15px", borderRadius: 999, cursor: "pointer",
@@ -1033,7 +1044,8 @@ export function MeScreen({
           background: T.card, border: `1px solid ${T.border}`,
           borderRadius: T.r, padding: 0, overflow: "hidden",
         }}>
-          <WalletBalance balanceMsats={balanceMsats} />
+          <WalletBalance balanceMsats={balanceMsats} known={balanceKnown} invite={walletInvite} />
+          <RecoveryKeyRow key={pubkey} pubkey={pubkey} loadKey={loadActiveRecoveryKey} />
           {onWithdrawEcash && (
             <SettingsRow label={t("me.withdrawEcash")} hint={t("me.withdrawEcashBackupHint")} onClick={onWithdrawEcash} />
           )}
@@ -1119,6 +1131,8 @@ export function MeScreen({
       {shownTab === "community" && <>
         {onSelectCommunity && (
           <YourChamaCard
+            key={requestTab?.n ?? 0}
+            suggestedCountry={requestTab?.tab === "community" ? requestTab.country : undefined}
             communitySlug={communitySlug ?? null}
             hasActiveCommitment={hasActiveCommitment}
             onSelectCommunity={onSelectCommunity}
@@ -2310,12 +2324,13 @@ function voteText(outcome?: Outcome): string {
 // follow-up). Idle → pick freely; the same funds-at-risk destroy-confirm guard
 // the pill used to fire still applies downstream via onSelectCommunity.
 function YourChamaCard({
-  communitySlug,
+  suggestedCountry, communitySlug,
   hasActiveCommitment,
   onSelectCommunity,
   loadLiveness,
   livenessBlocksPerDay = 144,
 }: {
+  suggestedCountry?: string;
   communitySlug: string | null;
   hasActiveCommitment: boolean;
   onSelectCommunity: (slug: string) => void;
@@ -2323,12 +2338,13 @@ function YourChamaCard({
   livenessBlocksPerDay?: number;
 }) {
   const { t } = useT();
-  const [changing, setChanging] = useState(false);
-  const [query, setQuery] = useState("");
-  const [expandedCountry, setExpandedCountry] = useState<string | null>(null);
+  const suggestion = getAllPickerCountries().find(country => country.code === suggestedCountry);
+  const [changing, setChanging] = useState(!!suggestion && !hasActiveCommitment);
+  const [query, setQuery] = useState(suggestion?.name ?? "");
+  const [expandedCountry, setExpandedCountry] = useState<string | null>(suggestion?.code ?? null);
   // Your own chama's chain-verified liveness — auto-refreshed (mount, focus, and a
   // gentle poll) so a bond appearing shows up without a manual reload. Fails soft.
-  const { liveness, loading: livenessLoading, outcome: livenessOutcome } = useLiveness(communitySlug, loadLiveness, { intervalMs: LIVENESS_POLL_MS });
+  const { liveness, loading: livenessLoading, outcome: livenessOutcome, retry: retryLiveness } = useLiveness(communitySlug, loadLiveness, { intervalMs: LIVENESS_POLL_MS });
   const current = communitySlug ? getCommunityBySlug(communitySlug) : null;
   const countries = getAllPickerCountries();
   const currentCountry = current?.country
@@ -2418,7 +2434,7 @@ function YourChamaCard({
 
       {loadLiveness && (
         <div style={{ marginTop: 12 }}>
-          <LivenessSignal liveness={liveness} loading={livenessLoading} outcome={livenessOutcome} blocksPerDay={livenessBlocksPerDay} />
+          <LivenessSignal onRetry={retryLiveness} liveness={liveness} loading={livenessLoading} outcome={livenessOutcome} blocksPerDay={livenessBlocksPerDay} />
         </div>
       )}
 
@@ -2444,6 +2460,7 @@ function YourChamaCard({
           }}>
             <span style={{ fontSize: 15, lineHeight: 1 }}>⌕</span>
             <input
+              data-community-country-search
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder={t("me.searchCountriesPlaceholder")}
@@ -2484,6 +2501,8 @@ function YourChamaCard({
               return (
                 <div key={country.code} style={{ display: "grid", gap: 6 }}>
                   <button
+                    data-community-country={country.code}
+                    aria-expanded={choices.length > 1 ? open : undefined}
                     onClick={() => {
                       if (choices.length > 1) {
                         setExpandedCountry(open ? null : country.code);
@@ -2520,6 +2539,7 @@ function YourChamaCard({
                     return (
                       <button
                         key={choice.slug}
+                        data-community-choice={choice.slug}
                         disabled={isCurrent}
                         onClick={() => {
                           setChanging(false);
@@ -3313,35 +3333,8 @@ function NostrNamesRow({ on, onToggle }: {
   );
 }
 
-function SettingsRow({ label, hint, onClick, danger }: {
-  label: string; hint: string | null; onClick: () => void; danger?: boolean;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      style={{
-        display: "flex", alignItems: "center", justifyContent: "space-between",
-        width: "100%", padding: "14px 16px",
-        background: "none", border: "none", borderBottom: `1px solid ${T.border}`,
-        color: danger ? T.red : T.text,
-        cursor: "pointer", textAlign: "left" as const,
-        fontFamily: T.sans,
-      }}
-    >
-      <div>
-        <div style={{ fontSize: 13, fontWeight: 600 }}>{label}</div>
-        {hint && (
-          <div style={{ fontSize: 11, color: T.muted, fontFamily: T.mono, marginTop: 2 }}>
-            {hint}
-          </div>
-        )}
-      </div>
-      <span style={{ color: T.muted, fontSize: 16 }}>›</span>
-    </button>
-  );
-}
 
-export function WalletBalance({ balanceMsats }: { balanceMsats: number }) {
+export function WalletBalance({ balanceMsats, known = true, invite }: { balanceMsats: number; known?: boolean; invite?: string }) {
   const { t } = useT();
-  return <div data-wallet-balance style={{ padding: 16, color: T.text }}>{t("me.walletBalance")} <TradeAmount msats={balanceMsats} interactive /></div>;
+  return <div data-wallet-balance style={{ padding: 16, color: T.text, fontFamily: T.sans }}>{t("me.walletBalance")} {known ? <TradeAmount msats={balanceMsats} interactive /> : "—"}<EcashCustody key={invite} invite={invite} /></div>;
 }

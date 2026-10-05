@@ -1,4 +1,4 @@
-import { walletUri, nativeWalletLinks } from '../../payments/wallet-link.js';
+import { walletUri, nativeWalletLinks, iosWalletLinks } from '../../payments/wallet-link.js';
 import { PaymentTarget, usePaymentTarget } from './PaymentTarget.js';
 import { useEffect, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from "react";
 import { T } from "../theme.js";
@@ -67,14 +67,23 @@ export function PaymentCopyChip({ value, address = false, uri }: { value: string
     style={{ position: "relative", isolation: "isolate", overflow: "hidden", width: "100%", minHeight: 44,
       borderRadius: 999, border: `1px solid ${copied ? T.accent : T.borderHi}`, background: T.surface,
       color: copied ? T.accent : T.text, font: `700 11px ${T.mono}`, cursor: "pointer", padding: "10px 12px" }}>
-    {!copied && <span aria-hidden="true">⧉ </span>}<span role="status">{copied ? t("common.copied") : label}</span>
+    {!copied && <span aria-hidden="true">⧉ </span>}<span role="status">{copied ? t("common.copied") : <>{iosWalletLinks() && uri?.startsWith("lightning:") ? `${t("common.copy")} · ` : ""}{label}</>}</span>
   </button>{failed && <div role="status">{failed}</div>}</>;
 }
 
-export function OpenWith({ value }: { value: string }) {
+export function OpenWith({ value, lightningUri }: { value: string; lightningUri?: string }) {
   const { t } = useT();
   const [error, setError] = useState("");
   const data = { text: value };
+  // A real link keeps the iOS wallet handoff in the user's tap. Sharing an
+  // invoice opens the share sheet, which does not select a Lightning handler.
+  // Keep the card's Copy control available: browsers cannot reliably tell us
+  // whether a custom scheme has an installed handler.
+  if (lightningUri && iosWalletLinks()) return <a href={lightningUri}
+    className="payment-button" style={{display:"block", textAlign:"center", boxSizing:"border-box",
+      textDecoration:"none", minHeight:44, padding:"10px 16px", borderRadius:999,
+      border:`1px solid ${T.borderHi}`, background:`linear-gradient(${T.card}, ${T.surface})`,
+      color:T.text, font:`700 12px ${T.sans}`}}>{t("payment.openInWallet")}</a>;
   if (typeof navigator === "undefined" || !navigator.share || !navigator.canShare?.(data)) return null;
   return <><PaymentButton onClick={() => { setError(""); void navigator.share(data).catch(e => {
     if (e?.name !== "AbortError") setError(t("payment.shareFailed"));
@@ -97,6 +106,8 @@ export function PaymentCard({ hideRails = false, amountMsats, rail, rails, onRai
     observer.observe(ref.current); return () => observer.disconnect();
   }, []);
   const uri = typeof data === 'string' && rail !== 'ecash' ? walletUri(data, rail) : undefined;
+  const paymentCopyValue = copyValue ?? (rail === "lightning" && iosWalletLinks() && typeof data === "string"
+    ? data.trim().replace(/^lightning:/i, "") : undefined);
   const qr = data ? <QRCode data={data} size={size} logo={motion ? "motion" : "static"} errorCorrectionLevel={ecash ? "L" : "H"} showLogo={!ecash} /> : null;
   return <section ref={ref} className="payment-card" style={{ color: T.text, minWidth: 0, width: "100%", fontFamily: T.sans,
     gridTemplateRows: hideRails ? "64px minmax(284px, auto) 0px 78px 100px auto" : undefined, "--payment-glow": T.accentDim, "--payment-focus": T.accent } as React.CSSProperties}>
@@ -120,10 +131,10 @@ export function PaymentCard({ hideRails = false, amountMsats, rail, rails, onRai
     {hideRails ? <div /> : <div><PaymentRails rail={rail} rails={rails ?? [rail]} onSelect={onRail} onchainContext={onchainContext} /></div>}
     <div role="status" style={{ textAlign: "center", alignSelf: "stretch", overflowY: "auto", padding: "10px 4px", fontSize: 12, lineHeight: 1.5 }}>{status}</div>
     <div style={{ display: "grid", gap: 6, alignContent: "start", textAlign: "center", fontSize: 11, color: T.muted }}>
-      {copyValue && <PaymentCopyChip value={copyValue} address={rail === "onchain"} uri={uri} />}<div style={{ maxHeight: 50, overflowY: "auto", lineHeight: 1.5 }}>{helper}</div>
+      {paymentCopyValue && <PaymentCopyChip value={paymentCopyValue} address={rail === "onchain"} uri={uri} />}<div style={{ maxHeight: 50, overflowY: "auto", lineHeight: 1.5 }}>{helper}</div>
     </div>
     <div style={{ display: "grid", gap: 10, paddingTop: 8 }}>
-      {!nativeWalletLinks() && data && typeof data === "string" && <OpenWith value={data} />}{data && actions}
+      {!nativeWalletLinks() && data && typeof data === "string" && <OpenWith value={data} lightningUri={rail === "lightning" ? uri : undefined} />}{data && actions}
       {details && <details><summary style={{ minHeight: 44, cursor: "pointer", paddingTop: 12 }}>{t("payment.details")}</summary><div style={{ fontSize: 12, lineHeight: 1.6, overflowWrap: "anywhere" }}>{details}</div></details>}
     </div>
   </section>;

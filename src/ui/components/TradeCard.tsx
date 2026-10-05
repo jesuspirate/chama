@@ -1,3 +1,4 @@
+import { FederationDisclosure, CircleShareLabel } from "./FederationDisclosure.js";
 import { signedTradeCreatedAt } from "../../escrow-engine/trade-index.js";
 import { ConductFacts } from "./ConductFacts.js";
 import { hasMissedBuyerLock, isRenewalPaused } from "../../escrow-engine/listing-renewal-age.js";
@@ -114,20 +115,16 @@ export function TradeCard({
       st === "returned" || st === "refunded" || st === "paid";
     const claimedCount = lockedShares.filter(sh => isSettled(sh.status)).length;
     const claimPhase = claimedCount > 0 || lockedShares.some(sh => sh.readyToClaim);
-    const mine = pubkey ? lockedShares.find(sh => sh.memberPubkey.toLowerCase() === pubkey.toLowerCase()) : undefined;
-    const mineText = mine
-      ? (isSettled(mine.status) ? t("circle.yourSeatClaimed")
-        : mine.readyToClaim ? t("circle.yourSeatClaimNow")
-        : t("circle.yourSeatLocked"))
-      : null;
-    const summaryText = [
-      claimPhase ? t("circle.claimSummary", { claimed: claimedCount, total: lockedShares.length }) : null,
-      mineText,
-    ].filter(Boolean).join(" · ");
-    return <button type="button" onClick={onSelect} className="circle-browse-card" style={{ width: "100%", display: "flex", gap: 18, alignItems: "center", padding: "22px 20px", background: T.card, border: `1px solid ${T.border}`, borderRadius: T.r, color: T.text, textAlign: "left", cursor: "pointer" }}>
+    const mine = pubkey ? shares.find(sh => sh.memberPubkey.toLowerCase() === pubkey.toLowerCase()) : undefined;
+    const seatState = mine ? isSettled(mine.status) ? "claimed" : mine.readyToClaim ? "collect" : mine.status === "reserved" ? "held" : "locked" : null;
+    const seatColor = seatState === "collect" ? T.accent : seatState === "held" ? T.muted : T.green;
+    const seatLabel = seatState === "claimed" ? "circle.seatClaimedChip" : seatState === "collect" ? "circle.seatCollectChip" : seatState === "held" ? "circle.seatHeldChip" : "circle.seatLockedChip";
+    const summaryText = claimPhase ? t("circle.claimSummary", { claimed: claimedCount, total: lockedShares.length }) : null;
+    return <button type="button" onClick={onSelect} className="circle-browse-card browse-arrival-card" style={{ width: "100%", display: "flex", gap: 18, alignItems: "center", padding: "22px 20px", background: T.card, border: `1px solid ${T.border}`, borderRadius: T.r, color: T.text, textAlign: "left", cursor: "pointer" }}>
       <VerticalIcon vertical="chama" size={74} />
-      <span style={{ display: "grid", gap: 7, minWidth: 0 }}><strong style={{ font: `750 21px ${T.sans}`, overflowWrap: "anywhere" }}>{circle.name}{circle.roundIndex > 1 ? ` · ${t("circle.roundN", { n: circle.roundIndex })}` : ""}{pubkey && circle.creatorPubkey.toLowerCase() === pubkey.toLowerCase() && <span style={{ marginLeft: 8, verticalAlign: "middle", padding: "2px 8px", borderRadius: 999, background: `${T.purple}22`, color: T.purple, border: `1px solid ${T.purple}55`, font: `700 10px ${T.mono}`, textTransform: "uppercase", letterSpacing: .5 }}>{t("circle.hostBadge")}</span>}</strong>
-        <span style={{ color: T.accent, fontWeight: 700 }}>{t("circle.satsEach", { amount: fmtSats(model.shareMsats) })}</span>
+      <span style={{ display: "grid", gap: 7, minWidth: 0 }}><strong style={{ font: `750 21px ${T.sans}`, overflowWrap: "anywhere" }}>{circle.name}{circle.roundIndex > 1 ? ` · ${t("circle.roundN", { n: circle.roundIndex })}` : ""}{seatState && <span data-circle-seat={seatState} style={{ display: "inline-block", marginLeft: 8, verticalAlign: "middle", padding: "3px 8px", borderRadius: 999, background: seatState === "held" ? "transparent" : `${seatState === "claimed" ? T.green : seatColor}22`, color: seatColor, opacity: seatState === "claimed" ? .75 : 1, border: `1px solid ${seatColor}`, font: `700 11px ${T.sans}` }}>{t(seatLabel)}</span>}{pubkey && circle.creatorPubkey.toLowerCase() === pubkey.toLowerCase() && <span style={{ marginLeft: 8, verticalAlign: "middle", padding: "2px 8px", borderRadius: 999, background: `${T.purple}22`, color: T.purple, border: `1px solid ${T.purple}55`, font: `700 10px ${T.mono}`, textTransform: "uppercase", letterSpacing: .5 }}>{t("circle.hostBadge")}</span>}</strong>
+        <CircleShareLabel circle={circle} amount={fmtSats(model.shareMsats)} />
+        <FederationDisclosure circle={circle} compact />
         <span style={{ color: T.muted, font: `11px ${T.mono}`, lineHeight: 1.6 }}>{model.seatsLocked === null ? `· ${t("circle.open")}` : t("circle.seats", { filled: model.seatsLocked, total: model.seatThreshold })}<br />{model.secsToFillDeadline > 0 ? t("circle.closesIn", { time: circleTimeText(model.secsToFillDeadline, t) }) : t("circle.closed")}</span>
         {summaryText && <span style={{ color: mine?.readyToClaim ? T.green : T.muted, font: `700 11px ${T.mono}` }}>{summaryText}</span>}
       </span><span style={{ marginLeft: "auto", color: T.accent }} aria-hidden="true">↗</span>
@@ -147,7 +144,7 @@ export function TradeCard({
       ? (() => { const parent = (allEscrows ?? []).find(e => e.id === state.parent); return parent ? circleFromEscrow(parent) : null; })()
       : null;
     const roundTag = parentCircle && parentCircle.roundIndex > 1 ? ` · ${t("circle.roundN", { n: parentCircle.roundIndex })}` : "";
-    return <button type="button" onClick={onSelect} className="circle-browse-card" style={{ width: "100%", display: "flex", gap: 18, alignItems: "center", padding: "22px 20px", background: T.card, border: `1px solid ${T.border}`, borderRadius: T.r, color: T.text, textAlign: "left", cursor: "pointer" }}>
+    return <button type="button" onClick={onSelect} className="circle-browse-card browse-arrival-card" style={{ width: "100%", display: "flex", gap: 18, alignItems: "center", padding: "22px 20px", background: T.card, border: `1px solid ${T.border}`, borderRadius: T.r, color: T.text, textAlign: "left", cursor: "pointer" }}>
       <VerticalIcon vertical="chama" size={74} />
       <span style={{ display: "grid", gap: 7, minWidth: 0 }}>
         <strong style={{ font: `750 21px ${T.sans}`, overflowWrap: "anywhere" }}>{state.description}{roundTag}</strong>
@@ -304,7 +301,7 @@ export function TradeCard({
     : null;
 
   return (
-    <div onClick={primarySelect} style={{
+    <div className="browse-arrival-card" onClick={primarySelect} style={{
       background: cardBg, border: `1px solid ${cardBorder}`,
       borderRadius: T.r, padding: 14, cursor: "pointer",
       transition: "border-color 0.2s",

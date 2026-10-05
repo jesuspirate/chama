@@ -1,4 +1,11 @@
 export const browse: Record<string, string> = {
+  "browse.timezoneMismatch": "Unavinjari {current} · inaonekana uko {detected}. Badilisha?",
+  "browse.notNow": "Si sasa",
+  "browse.openCommunity": "Fungua Mimi › Jumuiya ya {chama}",
+  "browse.newListingOne": "Tangazo {n} jipya",
+  "browse.newListingMany": "Matangazo {n} mapya",
+  "browse.emptyFilter": "Hakuna matangazo ya “{filter}”.",
+
   "browse.otherCurrencies": "Sarafu nyingine · {count}",
   "browse.allExcludesMine": "Ofa za wengine — zako ziko chini ya Zangu.",
   "browse.copyDiagnostics": "Nakili uchunguzi wa Vinjari",

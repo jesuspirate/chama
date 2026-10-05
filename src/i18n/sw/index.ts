@@ -1,3 +1,4 @@
+import { custody } from "./custody.js";
 import { circle } from "./circle.js";
 // SW dictionary — Kiswahili. Mirrors en/ per-namespace files; missing keys
 // fall back to en, then the key. First pass machine-assisted (2026-09-05) —
@@ -29,6 +30,7 @@ import { tranche } from "./tranche.js";
 import { work } from "./work.js";
 
 export const sw: Record<string, string> = {
+  ...custody,
   ...circle,
   ...app,
   ...bond,

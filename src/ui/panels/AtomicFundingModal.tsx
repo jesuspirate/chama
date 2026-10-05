@@ -1,3 +1,7 @@
+import { EcashCustody } from "../components/MoneyCustody.js";
+import type { CircleRound } from "../../chama/types.js";
+import { federationFacts } from "../../fedimint/federation-inspection.js";
+import { FederationDisclosure, useFederationInfo } from "../components/FederationDisclosure.js";
 import { SEAT_LAPSED_COPY } from "../../payments/seat-funding.js";
 import { CardBack } from "../components/CardBack.js";
 import { FundingModalShell, FundingNote } from "../components/FundingModalShell.js";
@@ -69,7 +73,10 @@ import type { EscrowState, SelectedMenuItem } from "../../escrow-engine/types.js
 export interface AtomicFundingModalProps {
   /** Trade ID being funded. Passed through to fundAndLock. */
   escrowId: string;
+  circleCustody?: CircleRound;
   federationName?: string;
+  custodyState?: EscrowState;
+  mintUrl?: string;
   seatDeadline?: number;
   onPostAgain?: () => void;
   custodyNotice?: EscrowState["custodyNotice"];
@@ -192,7 +199,7 @@ type ModalPhase =
 
 export function AtomicFundingModal({
   escrowId,
-  federationName,
+  federationName, circleCustody, custodyState, mintUrl,
   seatDeadline,
   onPostAgain,
   amountMsats,
@@ -217,7 +224,13 @@ export function AtomicFundingModal({
   onClose, custodyNotice,
 }: AtomicFundingModalProps) {
   const { t } = useT();
-  const federation = federationName || t("claim.yourFederation");
+  const custodyInvite = custodyState?.mintUrl ?? mintUrl ?? circleCustody?.mintUrl ?? "";
+  const { info: custodyInfo } = useFederationInfo(custodyInvite);
+  // A listing can name a different federation from the currently open wallet.
+  // All rails here buy its ecash; an on-chain deposit is not Bitcoin escrow.
+  const federation = custodyInvite
+    ? federationFacts(custodyInvite, custodyInfo).name ?? t("custody.unknown")
+    : federationName || t("custody.unknown");
   const depositContext = {kind:"deposit" as const, federation};
   const premiumMsats = fundingPremiumMsats(requestedPremiumMsats);
   const requiredMsats = amountMsats + premiumMsats;
@@ -463,7 +476,12 @@ export function AtomicFundingModal({
       // After loop terminates: if it's a TERMINAL state that should
       // dismiss the modal automatically (locked → success), do it after
       // a brief delay so the user sees the success state.
-      if (settledRef.current) return; // Try-LOCK retry path took over
+      if (settledRef.current || ctrl.signal.aborted) return; // Try-LOCK retry path took over
+      // The returned terminal is authoritative even when initialization failed
+      // before the orchestrator emitted any phases. Never leave the invoice
+      // spinner showing after the funding action has finished.
+      setPhase(terminal);
+      if (terminal.kind === "lock-failed") setRequest(null);
       if (terminal.kind === "locked") {
         if (fundingMethod === "nwc" && rememberNwc && selectedNwcConnection) {
           try {
@@ -656,6 +674,8 @@ export function AtomicFundingModal({
           </div>
         </div>
 
+        <EcashCustody key={custodyState?.mintUrl ?? mintUrl} invite={custodyState?.mintUrl ?? mintUrl} issued trade={custodyState} warn={!circleCustody} />
+        {circleCustody && <FederationDisclosure circle={circleCustody} warningsOnly />}
         {showFundingChoices && railsVisible && <PaymentButton tier="quiet" onClick={() => setShowFundingChoices(false)}>{request ? "Show payment request" : "Continue"}</PaymentButton>}
         <div style={{ display: showFundingChoices && railsVisible ? "none" : undefined }}>
         {(phase.kind === "choose-method" || invoiceFailed) && hasBalance && <div style={{ marginBottom: 16 }}>

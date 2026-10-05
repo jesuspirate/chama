@@ -30,17 +30,19 @@ import { COUNTRY_CURRENCY, currencyForCountry } from "./country-currency.js";
 // two never drift. Sorted by localized name at render time.
 export const PICKER_COUNTRY_CODES: readonly string[] = Object.keys(COUNTRY_CURRENCY);
 
-let regionNames: Intl.DisplayNames | null = null;
+const regionNames = new Map<string, Intl.DisplayNames>();
 
 /** Localized country name from an ISO alpha-2 code, via Intl.DisplayNames.
  *  Falls back to the raw code on older webviews without DisplayNames support
  *  — the flag + code still render, so the picker degrades, never breaks. */
-export function countryName(code: string): string {
+export function countryName(code: string, language = "en"): string {
   try {
-    if (!regionNames) {
-      regionNames = new Intl.DisplayNames(["en"], { type: "region" });
+    let names = regionNames.get(language);
+    if (!names) {
+      names = new Intl.DisplayNames([language], { type: "region" });
+      regionNames.set(language, names);
     }
-    return regionNames.of(code) ?? code;
+    return names.of(code) ?? code;
   } catch {
     return code;
   }

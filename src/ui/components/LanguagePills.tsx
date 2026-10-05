@@ -2,11 +2,10 @@ import { T } from "../theme.js";
 import { LANGS, LANG_LABELS, useT } from "../../i18n/index.js";
 
 // The language switcher, two shapes:
-//   • <LanguagePills /> — the bare pill row (GlobeCountryPicker header, where
-//     language pairs naturally with picking a country).
+//   • <LanguagePills /> — the bare pill row on the sign-in chooser and country picker.
 //   • <LanguageRow />  — a full settings row (MeScreen, mirrors the Appearance
 //     row's label + hint + pills layout).
-// Pills show ENDONYMS (English / Français / Español) — never translated, so a
+// Pills show ENDONYMS (English / Français / Español / Kiswahili) — never translated, so a
 // lost French speaker can always find their way home from any language.
 
 export function LanguagePills() {

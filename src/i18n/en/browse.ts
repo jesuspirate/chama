@@ -2,6 +2,13 @@
 // (LoadTradeInput, BrowserSupportBanner, HelpTip, CopyButton, BitcoinPricePill,
 // QRScanner). Keys prefixed "browse." — see src/i18n/en/connect.ts for the pattern.
 export const browse: Record<string, string> = {
+  "browse.timezoneMismatch": "Browsing {current} · you look like you’re in {detected}. Switch?",
+  "browse.notNow": "Not now",
+  "browse.openCommunity": "Open Me › Community for {chama}",
+  "browse.newListingOne": "{n} new listing",
+  "browse.newListingMany": "{n} new listings",
+  "browse.emptyFilter": "No listings for “{filter}”.",
+
   "browse.allExcludesMine": "Everyone’s offers but yours — yours are under Mine.",
   "browse.copyDiagnostics": "Copy Browse diagnostics",
   "browse.otherCurrencies": "Other currencies · {count}",

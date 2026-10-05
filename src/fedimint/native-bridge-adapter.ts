@@ -1,3 +1,4 @@
+import type { FederationInspection } from "./federation-inspection.js";
 // Fedimint native sidecar adapter.
 //
 // This keeps Chama's existing IFedimintWallet boundary intact while routing
@@ -1336,6 +1337,9 @@ export class NativeBridgeWallet implements IFedimintWallet {
   };
 
   federation = {
+    inspectInvite: (invite: string): Promise<FederationInspection> => this.request("/federation-preview", {
+      method: "POST", body: { inviteCode: invite }, timeoutMs: 12_000,
+    }),
     getFederationId: async (): Promise<string> => {
       if (this.federationId) return this.federationId;
       const info = await this.request<NativeInfoResponse>("/info", {

@@ -28,6 +28,7 @@ import type { VerifiedBond } from "../../bond-multisig/bond-announcement.js";
 import { readCachedCommunityBonds } from "../../arbiters/bonded-pool-cache.js";
 import { mergeDashboardBonds } from "../../bond-multisig/dashboard-bonds.js";
 import { summarizeArbiterEarnings } from "../../arbiters/arbiter-earnings.js";
+import { RetiredMerchantBondNudge } from "../components/RetiredMerchantBondNudge.js";
 import { SHOW_BOND_CEREMONY } from "../panels/BondCeremonyModal.js";
 import { getCommunityBySlug } from "../../communities/registry.js";
 import { EscrowStatus, Role, type EscrowState } from "../../escrow-engine/types.js";
@@ -56,6 +57,7 @@ export function DashboardScreen({
   livenessBlocksPerDay = 144,
   onOpenBondCeremony,
   earningsRevision = 0,
+  bondsRevision = 0,
   balanceMsats = 0,
   onWithdrawEcash,
   fetchMyBonds,
@@ -71,6 +73,7 @@ export function DashboardScreen({
   livenessBlocksPerDay?: number;
   onOpenBondCeremony?: () => void;
   earningsRevision?: number;
+  bondsRevision?: number;
   balanceMsats?: number;
   onWithdrawEcash?: () => void;
   fetchMyBonds?: () => Promise<VerifiedBond[]>;
@@ -191,7 +194,7 @@ export function DashboardScreen({
       .catch(() => { /* fail-soft: keep local bonds only */ });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lower]);
+  }, [lower, bondsRevision]);
   useEffect(() => {
     if (!getBondChainTip) return;
     let cancelled = false;
@@ -206,7 +209,7 @@ export function DashboardScreen({
     [localActive, announcedBonds, lower],
   );
 
-  const { liveness, loading: livenessLoading, outcome: livenessOutcome } = useLiveness(communitySlug ?? null, loadLiveness, { intervalMs: 90_000 });
+  const { liveness, loading: livenessLoading, outcome: livenessOutcome, retry: retryLiveness } = useLiveness(communitySlug ?? null, loadLiveness, { intervalMs: 90_000 });
 
   const ratePct = ratings && ratings.count > 0 ? Math.round((ratings.positive / ratings.count) * 100) : null;
 
@@ -381,6 +384,7 @@ export function DashboardScreen({
                     ? `${t(liveness.arbiterCount === 1 ? "bond.arbiterCountOne" : "bond.arbiterCountMany", { count: liveness.arbiterCount })}${liveness.isLive ? ` · ${t("dash.livenessLive")}` : ""}`
                     : livenessOutcome === "timeout" ? t("bond.livenessTimeout") : t("bond.livenessUnknown")}
               </span>
+              {!livenessLoading && !liveness && <button type="button" onClick={retryLiveness} style={{ alignSelf: "flex-start", background: "none", border: 0, boxShadow: "none", padding: 0, minHeight: 44, color: T.accent }}>{t("bond.livenessRetry")}</button>}
             </div>
           </div>
         ) : (
@@ -413,6 +417,7 @@ export function DashboardScreen({
               </button>
             )}
           </div>
+          <RetiredMerchantBondNudge bonds={announcedBonds} owner={pubkey} />
           {mergedBonds.length > 0 ? (
             <div style={{ display: "grid", gap: 8 }}>
               {mergedBonds.map((b) => (

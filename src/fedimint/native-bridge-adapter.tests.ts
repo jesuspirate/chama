@@ -99,3 +99,20 @@ try {
 } finally {
  globalThis.fetch=originalFetch;globalThis.setTimeout=originalSetTimeout;globalThis.clearTimeout=originalClearTimeout;
 }
+
+// Public inspection is callable without opening or joining a wallet and uses
+// the bridge's camelCase request schema, like its existing join endpoint.
+const inspectFetch = globalThis.fetch;
+try {
+  const requests: Array<{ url: string; body: any }> = [];
+  globalThis.fetch = async (url, init) => {
+    requests.push({ url: String(url), body: JSON.parse(String(init?.body)) });
+    return new Response(JSON.stringify({ federationId: "f".repeat(64), config: { global: {} }, metaStatus: "absent" }), { headers: { "content-type": "application/json" } });
+  };
+  const reader = createNativeBridgeWallet("http://127.0.0.1:8787");
+  const info = await reader.federation.inspectInvite!("fed1public-inspection");
+  assert.equal(info.federationId, "f".repeat(64));
+  assert.deepEqual(requests, [{ url: "http://127.0.0.1:8787/federation-preview", body: { inviteCode: "fed1public-inspection" } }]);
+  assert.equal(reader.isOpen(), false);
+} finally { globalThis.fetch = inspectFetch; }
+console.info("✓ native public preview does not open a wallet");

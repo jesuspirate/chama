@@ -1,3 +1,4 @@
+import { OverlaySheet } from "../components/OverlaySheet.js";
 import { useState } from "react";
 import { T, inputStyle } from "../theme.js";
 import { useT, type TFunc } from "../../i18n/index.js";
@@ -159,10 +160,7 @@ function displayNetworkLabels(keys: readonly string[]): string[] {
 // default for mobile money, while app, wallet, and mobile-bank identifiers use
 // the searchable rail picker below. Handles are still private by default and
 // only become public when the rail explicitly allows that opt-in path.
-export function SavedHandlesPanel({ communitySlug, onClose, backLabel }: {
-  /** What tapping back returns to, named. A bare × left people guessing
-   *  where they would land (and landed them somewhere else entirely). */
-  backLabel?: string;
+export function SavedHandlesPanel({ communitySlug, onClose }: {
   communitySlug: string;
   onClose: () => void;
 }) {
@@ -354,31 +352,7 @@ export function SavedHandlesPanel({ communitySlug, onClose, backLabel }: {
   };
 
   return (
-    <div style={{ padding: 16, maxWidth: 560, margin: "0 auto" }}>
-      <button
-        type="button"
-        data-chama-shortcut="back"
-        onClick={onClose}
-        style={{
-          background: "none", border: 0, padding: "6px 0 10px",
-          color: T.muted, fontFamily: T.sans, fontSize: 13, cursor: "pointer",
-        }}
-      >
-        ‹ {backLabel ?? t("common.back")}
-      </button>
-      <div style={{ marginBottom: 18 }}>
-        <span style={{ fontSize: 18, fontWeight: 700, color: T.text, fontFamily: T.sans }}>
-          {t("claim.paymentMethods")}
-        </span>
-      </div>
-
-      <div style={{
-        fontSize: 11, color: T.muted, fontFamily: T.mono,
-        marginBottom: 14, lineHeight: 1.5,
-      }}>
-        {t("claim.paymentMethodsBody")}
-      </div>
-
+    <OverlaySheet title={t("claim.paymentMethods")} subtitle={t("claim.paymentMethodsBody")} onClose={onClose}>
       <div style={{
         background: T.card,
         border: `1px solid ${T.teal + "55"}`,
@@ -927,6 +901,6 @@ export function SavedHandlesPanel({ communitySlug, onClose, backLabel }: {
           })}
         </div>
       )}
-    </div>
+    </OverlaySheet>
   );
 }

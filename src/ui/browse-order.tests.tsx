@@ -10,6 +10,8 @@ const store={...f.state,id:'store',category:'marketplace',description:'Store off
 const exchange={...f.state,id:'exchange',category:'p2p-trade',description:'Exchange offer',fiatAmount:3,fiatCurrency:'USD',createdAt:300};
 const foreign={...exchange,id:'foreign-eur',description:'EUR foreign offer',fiatCurrency:'EUR'};
 const bill={...f.state,id:'bill',category:'bill-pay',description:'Bill offer',fiatAmount:2,fiatCurrency:'USD',createdAt:200};
+// Each synthetic listing must own a distinct CREATE, like real verified states.
+for (const listing of [store, exchange, foreign, bill]) listing.eventChain = listing.eventChain.map(event => ({...event, raw: {...event.raw, id: `${listing.id}-${event.raw.id}`}}));
 const original=Object.getOwnPropertyDescriptor(globalThis,'localStorage'),data=new Map<string,string>();
 Object.defineProperty(globalThis,'localStorage',{configurable:true,value:{getItem:(k:string)=>data.get(k)??null,setItem:(k:string,v:string)=>data.set(k,v),removeItem:(k:string)=>data.delete(k)}});
 try {
@@ -38,7 +40,7 @@ try {
  assert.match(localChips, /data-browse-category="marketplace" data-count="1"/);
  assert.match(localChips, /data-browse-category="p2p-trade" data-count="1"/);
  assert.doesNotMatch(render([exchange]), /data-browse-category-row/, 'a single remaining category is not a filter');
- const mine = {...store,id:'mine',participants:{...store.participants,seller:'f'.repeat(64)}};
+ const mine = {...store,id:'mine',eventChain:store.eventChain.map(event=>({...event,raw:{...event.raw,id:`mine-${event.raw.id}`}})),participants:{...store.participants,seller:'f'.repeat(64)}};
  const withMine = render([exchange,store,mine]);
  const chipSum = [...withMine.matchAll(/data-browse-category="[^"]+" data-count="(\d+)"/g)].reduce((sum,m)=>sum+Number(m[1]),0);
  assert.equal(chipSum,3,'Mine and public verticals partition My Chama listings');

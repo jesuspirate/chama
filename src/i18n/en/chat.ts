@@ -37,7 +37,7 @@ export const chat: Record<string, string> = {
   "chat.hide": "Hide",
   "chat.imageReady": "Image ready",
   "chat.keySavedHint": "Your key is saved on this device \u2014 Chama will sign you in automatically next time.",
-  "chat.keepSignedIn": "Keep me signed in on this device",
+  "chat.keepSignedIn": "Keep me signed in on this phone",
   "chat.keepSignedInHintOn": "You'll land straight in next time — no pasting.",
   "chat.keepSignedInHintOff": "You'll paste your key every time you sign in.",
   "chat.keyChoiceFooter":

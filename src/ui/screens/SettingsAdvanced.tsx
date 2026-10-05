@@ -33,9 +33,6 @@ import {
   type HydrateIdDiag,
 } from "../../escrow-engine/discovery-diagnostics.js";
 import { getPinnedIdentity } from "../../storage/identity-pin.js";
-import { QRCode } from "../QRCode.js";
-import { Preferences } from "@capacitor/preferences";
-import { isTauriRuntime } from "../sign-in-environment.js";
 import {
   NATIVE_BRIDGE_TOKEN_KEY,
   NATIVE_BRIDGE_URL_KEY,
@@ -57,7 +54,6 @@ import { readBrowserWalletRecoveryJournal } from "../../fedimint/browser-wallet-
 // works for both first-time-join and federation-switch flows.
 export function SettingsAdvanced({
   fedimint,
-  loadActiveRecoveryKey,
   onBack, onManageSavedWallets,
   onSwitchFederation,
   onResetLocalWallet,
@@ -74,7 +70,6 @@ export function SettingsAdvanced({
   fedimint: FedimintState;
   /** Explicit, user-triggered export for an in-memory local signer. Remote
    * signers return null and never expose key material to Chama. */
-  loadActiveRecoveryKey?: () => Promise<string | null>;
   onBack: () => void;
   onManageSavedWallets?: () => void;
   onSwitchFederation: (inviteCode: string, opts?: { force?: boolean }) => Promise<void>;
@@ -345,7 +340,7 @@ export function SettingsAdvanced({
       {/* v2.5 — Account key (nsec). Explicitly requested from the active local
           signer, or loaded from secure storage for older generated accounts.
           Extension and NIP-46 keys never touch Chama and cannot be revealed. */}
-      <NsecRevealCard loadActiveRecoveryKey={loadActiveRecoveryKey} />
+
 
       {/* Power-user toggle */}
       <div style={{
@@ -926,174 +921,6 @@ function RemoteBridgeCard() {
 // The reveal is an explicit user action. It asks the active local signer for
 // its in-memory key, with a secure-storage fallback for older generated
 // accounts. Extension and NIP-46 keys never touch Chama and cannot be revealed.
-function NsecRevealCard({
-  loadActiveRecoveryKey,
-}: {
-  loadActiveRecoveryKey?: () => Promise<string | null>;
-}) {
-  const [loaded, setLoaded] = useState(false);
-  const [origin, setOrigin] = useState<string | null>(null);
-  const [nsec, setNsec] = useState<string | null>(null);
-  const [revealed, setRevealed] = useState(false);
-  const [showQr, setShowQr] = useState(false);
-  const [revealError, setRevealError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      let originVal: string | null = null;
-      let nsecVal: string | null = null;
-      try { originVal = (await Preferences.get({ key: "chama_nsec_origin" })).value; } catch { /* secure storage unavailable */ }
-      try { nsecVal = (await Preferences.get({ key: "chama_saved_nsec" })).value; } catch { /* secure storage unavailable */ }
-      if (isTauriRuntime()) {
-        try { originVal = originVal ?? localStorage.getItem("chama_nsec_origin"); } catch { /* local storage unavailable */ }
-        try { nsecVal = nsecVal ?? localStorage.getItem("chama_saved_nsec"); } catch { /* local storage unavailable */ }
-      }
-      if (cancelled) return;
-      setOrigin(originVal);
-      setNsec(nsecVal);
-      setLoaded(true);
-    })();
-    return () => { cancelled = true; };
-  }, []);
-
-  const canRevealStored = origin === "generated" && !!nsec;
-  const canRequestActive = typeof loadActiveRecoveryKey === "function";
-
-  const revealKey = async () => {
-    setRevealError(null);
-    if (canRevealStored) {
-      setRevealed(true);
-      return;
-    }
-    try {
-      const active = await loadActiveRecoveryKey?.();
-      if (!active) {
-        setRevealError("This account uses an extension or remote signer, so Chama does not hold a recovery key to reveal.");
-        return;
-      }
-      setNsec(active);
-      setOrigin("active");
-      setRevealed(true);
-    } catch {
-      setRevealError("Chama could not read the active local recovery key. Keep this session open and try again.");
-    }
-  };
-
-  return (
-    <div style={{
-      background: T.card, border: `1px solid ${T.border}`,
-      borderRadius: T.r, padding: 16, marginBottom: 16,
-    }}>
-      <div style={{
-        fontSize: 11, fontWeight: 600, color: T.muted, fontFamily: T.mono,
-        letterSpacing: 1, marginBottom: 8,
-      }}>
-        ACCOUNT KEY (NSEC)
-      </div>
-      <div style={{ fontSize: 11, color: T.muted, fontFamily: T.mono, lineHeight: 1.6, marginBottom: 12 }}>
-        Your nsec is the master key to this account — it restores your Nostr
-        identity, trade history, and reputation. It does not restore bearer
-        ecash held in a device-local wallet. Anyone who has it controls your
-        Chama identity.
-      </div>
-
-      {!loaded ? (
-        <div style={{ fontSize: 11, color: T.muted, fontFamily: T.mono }}>Checking your device…</div>
-      ) : !canRevealStored && !canRequestActive ? (
-        <div style={{
-          padding: "10px 12px", borderRadius: T.rs,
-          background: T.surface, border: `1px solid ${T.border}`,
-          color: T.muted, fontFamily: T.mono, fontSize: 11, lineHeight: 1.6,
-        }}>
-          {origin === "imported"
-            ? "You signed in with your own key, so Chama doesn't reveal it — back it up where you created it."
-            : "Chama only reveals a key it generated for you and stored on this device. If you use a remote signer (NIP-46), your key stays in your signer app."}
-        </div>
-      ) : !revealed ? (
-        <>
-          <div style={{
-            padding: "10px 12px", borderRadius: T.rs, marginBottom: 12,
-            background: T.redDim, border: `1px solid ${T.red}44`,
-            color: T.red, fontFamily: T.mono, fontSize: 10, lineHeight: 1.6,
-          }}>
-            ⚠ This is the master key to your whole account. Never type it into a
-            website, never share it, and make sure no one is watching your screen.
-            Chama will never ask for it.
-          </div>
-          <button
-            onClick={() => void revealKey()}
-            style={{
-              width: "100%", padding: "11px 14px", borderRadius: T.rs,
-              background: T.accentDim, border: `1px solid ${T.accent}66`,
-              color: T.accent, fontFamily: T.mono, fontSize: 12, fontWeight: 800,
-              cursor: "pointer", letterSpacing: 0.5,
-            }}
-          >
-            Reveal active recovery key
-          </button>
-          {revealError && (
-            <div style={{ marginTop: 10, color: T.red, fontFamily: T.mono, fontSize: 10, lineHeight: 1.5 }}>
-              {revealError}
-            </div>
-          )}
-        </>
-      ) : (
-        <>
-          <div style={{
-            padding: "10px 12px", borderRadius: T.rs, marginBottom: 12,
-            background: T.bg, border: `1px solid ${T.border}`,
-            color: T.text, fontFamily: T.mono, fontSize: 11, lineHeight: 1.5,
-            wordBreak: "break-all" as const,
-          }}>
-            {nsec}
-          </div>
-
-          {showQr && nsec && (
-            <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}>
-              <QRCode data={nsec} size={240} margin={4} />
-            </div>
-          )}
-
-          <div style={{ display: "flex", gap: 8 }}>
-            <CopyButton
-              value={nsec ?? ""}
-              disabled={!nsec}
-              label="Copy"
-              copiedLabel="✓ Copied"
-              style={{
-                flex: 1, padding: "9px 12px", borderRadius: T.rs,
-                background: T.surface, border: `1px solid ${T.border}`, color: T.muted,
-                fontFamily: T.mono, fontSize: 11, fontWeight: 700, cursor: "pointer",
-              }}
-            />
-            <button
-              onClick={() => setShowQr((v) => !v)}
-              style={{
-                flex: 1, padding: "9px 12px", borderRadius: T.rs,
-                background: T.surface, border: `1px solid ${T.border}`,
-                color: T.muted, fontFamily: T.mono, fontSize: 11, fontWeight: 700, cursor: "pointer",
-              }}
-            >
-              {showQr ? "Hide QR" : "Show QR"}
-            </button>
-            <button
-              onClick={() => { setRevealed(false); setShowQr(false); }}
-              style={{
-                flex: 1, padding: "9px 12px", borderRadius: T.rs,
-                background: T.surface, border: `1px solid ${T.border}`,
-                color: T.muted, fontFamily: T.mono, fontSize: 11, fontWeight: 700, cursor: "pointer",
-              }}
-            >
-              Hide
-            </button>
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
 // ── Arbiter-substitution test lever ──────────────────────────────────────
 // Writes chama_create_expiry_seconds, which createEscrow reads as the CREATE
 // expiry override. Consensus-safe: the value is committed into the CREATE
@@ -1286,6 +1113,7 @@ function TestSubstitutionGraceCard() {
 // (SharedArrayBuffer / crossOriginIsolated / OPFS) are the unknowns. Read out,
 // copy, send back — no side effects beyond an optional webln.enable() prompt.
 function FediWeblnProbeCard() {
+  const { t } = useT();
   const [report, setReport] = useState<string | null>(null);
   const [weblnResult, setWeblnResult] = useState<string | null>(null);
   const [communities, setCommunities] = useState<string | null>(null);
@@ -1315,6 +1143,7 @@ function FediWeblnProbeCard() {
       `isSecureContext: ${yn(!!w.isSecureContext)}`,
       `hardwareConcurrency: ${(navigator as any).hardwareConcurrency ?? "?"}`,
       `UA: ${navigator.userAgent.slice(0, 100)}`,
+      t("me.browserConnectivity"),
     ];
     setReport(lines.join("\n"));
   };
@@ -1378,6 +1207,7 @@ function FediWeblnProbeCard() {
         and what the host's WebLN exposes — the last unknowns for cross-Chama
         trading. Copy the readout and send it back.
       </div>
+      <p style={{ color: T.muted, fontSize: 12, overflowWrap: "anywhere" }}>{t("me.browserConnectivity")}</p>
       <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
         <button
           onClick={run}

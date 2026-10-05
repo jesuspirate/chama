@@ -4,16 +4,16 @@ import type { FaqContent } from "./faq-types.js";
 
 export const faqEn: FaqContent = {
   intro:
-    "Chama is a marketplace where you trade with your community using Bitcoin — without needing to understand Bitcoin. A chama is an East African savings circle: neighbours who pool what they have and settle on trust. Here the trust is cryptographic, and there's no company in the middle — just you, your counterparty, your community, and Nostr.",
+    "Trade Bitcoin, goods and services with your community. A chama is an East African savings circle; here, trades use federation-issued ecash or direct Bitcoin escrow. Chama does not hold the money; the table below names who does.",
   sections: [
     {
       id: "basics",
       title: "The basics",
       items: [
-        { q: "What is Chama?", a: "A peer-to-peer marketplace. You can buy and sell Bitcoin, goods, and services with people in your community. Every trade is protected by an escrow that no company can freeze, seize, or switch off — because there is no company in the middle." },
+        { q: "What is Chama?", a: "A peer-to-peer marketplace for Bitcoin, goods and services in your community. Trades use either federation-issued ecash or a direct Bitcoin escrow. The holder and the trade’s terms are shown before you fund it." },
         { q: "Do I need to know anything about Bitcoin?", a: "No. You pick your country and currency, you trade, and (in supported countries) your money can land straight in your mobile-money account like M-Pesa. Bitcoin is the plumbing; you don't have to think about it." },
-        { q: "Is Chama free? What does it cost?", a: "The app is free to download, and Chama itself takes no cut — it's non-custodial, so no company sits between you and your money. On a completed trade, a small 0.5% insurance premium goes to the community arbiter who backs your trade (0.25% from each side), sent as ecash. It's included by default and you can turn it off before you settle. If a trade goes to an arbiter to settle a dispute, a small additional fee applies for that work. Sellers can also set their own premium on a listing (e.g. “+25%”) — that's the seller's price, not a Chama fee — and you always see the final amount before you commit." },
-        { q: "Does Chama hold my money?", a: "No. Chama never touches your money. Your funds sit in a shared escrow only while a trade is active, and they move to you the moment the trade settles. Between trades, your balance is zero by design — there's no wallet for anyone to drain." },
+        { q: "Is Chama free? What does it cost?", a: "The app is free to download, and Chama itself takes no cut — Chama does not hold your money; ecash is backed by Bitcoin held by federation guardians. On a completed trade, a small 0.5% insurance premium goes to the community arbiter who backs your trade (0.25% from each side), sent as ecash. It's included by default and you can turn it off before you settle. If a trade goes to an arbiter to settle a dispute, a small additional fee applies for that work. Sellers can also set their own premium on a listing (e.g. “+25%”) — that's the seller's price, not a Chama fee — and you always see the final amount before you commit." },
+        { q: "Does Chama hold my money?", a: "Chama does not hold your money. Ecash is backed by Bitcoin held by the named federation’s guardians, for as long as you hold its notes. Direct Bitcoin escrow is held by the trade’s script until settlement or its refund block. You can have a device-local ecash balance between trades; saving your account key does not back up that balance." },
       ],
     },
     {
@@ -32,7 +32,7 @@ export const faqEn: FaqContent = {
         { q: "How do I buy something?", a: { steps: [
           "On Browse, tap a listing that interests you.",
           "Tap Join as Buyer to reserve your spot (nothing moves yet).",
-          "Build your order / confirm the amount, then fund it — this locks your sats safely in escrow.",
+          "Build your order / confirm the amount, then fund it — this locks your sats in escrow.",
           "Pay the seller's fiat (e.g. M-Pesa, Airtel) the way the listing says, or receive your goods.",
           "When you've got what you paid for, tap to release — the sats go to the seller. Done.",
         ] } },
@@ -43,7 +43,7 @@ export const faqEn: FaqContent = {
           "Once released, tap Claim to receive your sats — and cash out.",
         ] } },
         { q: "What are the steps of a trade?", a: "Reserved (someone joined) → Locked (sats funded into escrow) → the work happens (goods delivered / fiat sent) → Released (both sides agree) → Claim your payout → Settled. You can follow it on the trade's timeline, and chat with the other party at any time." },
-        { q: "How does the escrow keep me safe?", a: "When a trade is funded, the money is split so that two of the three people in the trade — you, your counterparty, and a community arbiter — must agree before it can move. No single person (and no company) can run off with it. Normally you and your counterparty simply agree and it settles; the arbiter only steps in if something goes wrong." },
+        { q: "How does the escrow keep me safe?", a: "Two of the three trade participants must agree on a payout: buyer, seller and arbiter. With ecash, this protects access to the notes; the federation’s guardians still hold the Bitcoin backing them. Direct Bitcoin escrow uses a script with a refund path for the funder. These rules do not remove federation or device-loss risks." },
         { q: "What is an arbiter?", a: "A trusted member of your community who can help settle a trade only if there's a dispute. They can't take your money — they can only break a tie between buyer and seller. Arbiters build a reputation over time." },
         { q: "What if something goes wrong / I have a dispute?", a: "If you and your counterparty disagree (e.g. goods never arrived), each of you casts your vote — release or refund — and explain why. If you clash, the arbiter is brought in to decide fairly. You're never left stuck." },
         { q: "How do I cancel or back out?", a: "Before anything is funded, you can simply leave. After funding, backing out means casting a refund vote, which returns the sats to the right person (the arbiter is the backstop). Chama always shows you exactly where the money goes before you confirm." },
@@ -86,7 +86,7 @@ export const faqEn: FaqContent = {
       id: "safety",
       title: "Your account & safety",
       items: [
-        { q: "Is my money safe?", a: "Yes — your funds are protected by the two-of-three escrow and are only ever committed to a specific trade. Chama, and any “Chama” entity, cannot seize, freeze, or move them." },
+        { q: "Is my money safe?", a: "There are risks. Ecash depends on the named federation’s guardians remaining available and honouring the notes. Direct Bitcoin escrow depends on its script and refund terms. Chama does not hold either; read the holder and deadline before committing funds." },
         { q: "Back up your account (important!)", a: "Your key is your account and your recovery path. If you lose your phone without a backup, you could lose access. When you sign in, save your key / recovery phrase somewhere safe and private (write it down offline; never share it). Anyone with your key controls your account — treat it like cash." },
         { q: "Is Chama private?", a: "You don't give Chama an email, phone number, or ID to use it. Your identity is just your key. Be mindful that what you post publicly (listings, chat in a trade) is shared over the Nostr network." },
       ],
@@ -104,7 +104,7 @@ export const faqEn: FaqContent = {
   glossary: [
     { term: "Sats", def: "The small unit of Bitcoin (1 Bitcoin = 100,000,000 sats). Prices in Chama show in your local currency too." },
     { term: "Lightning", def: "The fast, cheap Bitcoin payment network Chama uses to move sats." },
-    { term: "Escrow", def: "A safe “holding” of funds during a trade, released only when the right people agree." },
+    { term: "Escrow", def: "A holding of funds during a trade, released only when the right people agree." },
     { term: "Arbiter", def: "A community member who can settle a disputed trade — never able to take your money." },
     { term: "Key / npub", def: "Your account on Chama (and Nostr). Back it up." },
     { term: "M-Pesa / Tando", def: "Mobile money (Kenya) and the bridge that turns your sats into M-Pesa cash." },

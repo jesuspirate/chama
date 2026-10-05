@@ -1,3 +1,4 @@
+import { EcashCustody } from "../components/MoneyCustody.js";
 import { CardBack } from "../components/CardBack.js";
 import { PaymentCard, PaymentButton, PaymentRails } from "../components/PaymentCard.js";
 import { useState, useEffect, type WheelEvent } from "react";
@@ -58,7 +59,7 @@ function blurNumberInputOnWheel(e: WheelEvent<HTMLInputElement>) {
   e.currentTarget.blur();
 }
 
-export function FundWalletModal({ onClose, onCreateInvoice, onPayInvoice, onSpendNotes, onRedeemEcash, onReabsorbBearerNotes, balanceMsats }: {
+export function FundWalletModal({ onClose, onCreateInvoice, onPayInvoice, onSpendNotes, onRedeemEcash, onReabsorbBearerNotes, balanceMsats, mintUrl }: {
   onClose: () => void;
   onCreateInvoice: (amountSats: number, description: string) => Promise<string>;
   onPayInvoice: (bolt11: string) => Promise<void>;
@@ -76,6 +77,7 @@ export function FundWalletModal({ onClose, onCreateInvoice, onPayInvoice, onSpen
     escrowId?: string;
   }) => Promise<ReabsorbOutcome>;
   balanceMsats: number;
+  mintUrl?: string;
 }) {
   const { t } = useT();
   const [tab, setTab] = useState<"receive" | "send">("receive");
@@ -307,6 +309,8 @@ export function FundWalletModal({ onClose, onCreateInvoice, onPayInvoice, onSpen
           {tabBtn("receive", t("fund.receive"))}
           {tabBtn("send", t("fund.send"))}
         </div>
+
+        <EcashCustody key={mintUrl} invite={mintUrl} issued />
 
         {/* RECEIVE */}
         {tab === "receive" && !invoice && (<>

@@ -33,7 +33,7 @@ export const chat: Record<string, string> = {
   "chat.hide": "Ficha",
   "chat.imageReady": "Picha iko tayari",
   "chat.keySavedHint": "Ufunguo wako umehifadhiwa kwenye kifaa hiki \u2014 Chama itakuingiza kiotomatiki wakati ujao.",
-  "chat.keepSignedIn": "Niendelee kuwa nimeingia kwenye kifaa hiki",
+  "chat.keepSignedIn": "Niendelee kuwa nimeingia kwenye simu hii",
   "chat.keepSignedInHintOn": "Wakati ujao utaingia moja kwa moja — hakuna kubandika.",
   "chat.keepSignedInHintOff": "Utabandika ufunguo wako kila unapoingia.",
   "chat.keyChoiceFooter":

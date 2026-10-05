@@ -1,5 +1,12 @@
 // es/browse — Session C fills this from src/i18n/en/browse.ts (key set must match EXACTLY).
 export const browse: Record<string, string> = {
+  "browse.timezoneMismatch": "Exploras {current} · parece que estás en {detected}. ¿Cambiar?",
+  "browse.notNow": "Ahora no",
+  "browse.openCommunity": "Abrir Yo › Comunidad para {chama}",
+  "browse.newListingOne": "{n} anuncio nuevo",
+  "browse.newListingMany": "{n} anuncios nuevos",
+  "browse.emptyFilter": "No hay anuncios para «{filter}».",
+
   "browse.otherCurrencies": "Otras monedas · {count}",
   "browse.allExcludesMine": "Las ofertas de todos menos las tuyas — las tuyas están en Mías.",
   "browse.copyDiagnostics": "Copiar diagnóstico de Explorar",

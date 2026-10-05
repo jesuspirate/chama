@@ -1,3 +1,4 @@
+import { FederationDisclosure, useFederationInfo } from "../components/FederationDisclosure.js";
 import { useState, useEffect } from "react";
 import { generatedNameFor, profileNameFor, type NostrProfileNameMap } from "../nostr-profiles.js";
 import { rotationView } from "../../chama/rotation.js";
@@ -40,6 +41,7 @@ export function CircleSurface({ parent, escrows, viewerPubkey, backLabel, childr
   const [busy, setBusy] = useState(false), [message, setMessage] = useState<string | null>(null);
   useEffect(() => { const id = setInterval(() => setNow(Math.floor(Date.now() / 1000)), 15000); return () => clearInterval(id); }, []);
   const circle = circleFromEscrow(parent);
+  const federationInfo = useFederationInfo(circle?.mintUrl ?? "");
   if (!circle) return null;
   const shares = sharesForCircle(escrows.values(), circle.circleId);
   const allStates = [...escrows.values()];
@@ -155,7 +157,8 @@ export function CircleSurface({ parent, escrows, viewerPubkey, backLabel, childr
           {[["circle.completedCircles", stats.completed], ["circle.onTime", stats.onTime], ["circle.standing", Math.round(stats.standing).toLocaleString(lang)]].map(([label, value]) => <div key={label} style={{ padding: "16px 4px", background: T.bg, border: `1px solid ${T.border}`, borderRadius: 16 }}><strong style={{ display: "block", fontSize: 24 }}>{value}</strong><small style={{ color: T.muted }}>{t(String(label))}</small></div>)}
         </div><h3>{t("circle.nextTitle")}</h3><p style={{ color: T.muted, lineHeight: 1.6 }}>{t("circle.nextBody")}</p>
       </>}
-      {action && childrenLoaded && <button type="button" disabled={busy} onClick={() => void run(action)}
+      <FederationDisclosure circle={circle} />
+      {action && childrenLoaded && <button type="button" disabled={(model.move === "lock" && federationInfo.loading) || busy} onClick={() => void run(action)}
         className={model.move === "lock" ? `circle-lock-btn${busy ? " charging" : ""}` : undefined}
         style={{ width: "100%", minHeight: 60, marginTop: 16, border: 0, borderRadius: 999, background: T.accent, color: T.bg, font: `800 18px ${T.sans}`, cursor: busy ? "wait" : "pointer", opacity: busy && model.move !== "lock" ? .6 : 1, position: "relative", overflow: "hidden" }}>{t(moveKey[model.move as keyof typeof moveKey])}</button>}
       {celebrate && <div className="circle-locked-burst" aria-hidden="true"><span /><span /><span />🔒</div>}

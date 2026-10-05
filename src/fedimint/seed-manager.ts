@@ -1,3 +1,4 @@
+import { SignerApprovalError, isSignerApprovalError } from "../escrow-engine/signer-approval.js";
 // ══════════════════════════════════════════════════════════════════════════
 // Chama — Nostr-backed Fedimint Seed Manager
 // ══════════════════════════════════════════════════════════════════════════
@@ -156,6 +157,13 @@ async function tryDecryptSeedEvent(
   pubkey: string,
   signer: Signer,
 ): Promise<string | null> {
+  // The old NIP-04 wire format identifies itself. Interactive signers make
+  // one attempt in the matching format, not a sequence of permission prompts.
+  if (signer.requiresUserAction && candidate.content.includes("?iv=")) {
+    if (!signer.nip04Decrypt) throw new SignerApprovalError("wallet");
+    const plaintext = await signer.nip04Decrypt(candidate.content, pubkey);
+    return looksLikeMnemonic(plaintext) ? plaintext : null;
+  }
   // Try 1: NIP-44 decrypt
   try {
     const attempt = await signer.nip44Decrypt(candidate.content, pubkey);
@@ -163,8 +171,10 @@ async function tryDecryptSeedEvent(
       console.debug("[chama] Seed decrypted via NIP-44");
       return attempt;
     }
+    if (signer.requiresUserAction) return null;
     console.debug("[chama] NIP-44 decrypted but result is not a valid mnemonic — trying NIP-04");
   } catch (e1) {
+    if (isSignerApprovalError(e1)) throw e1;
     console.debug("[chama] NIP-44 seed decrypt failed:", (e1 as Error)?.message?.slice(0, 50));
   }
 
@@ -180,6 +190,7 @@ async function tryDecryptSeedEvent(
       console.debug("[chama] NIP-04 decrypted but result is not a valid mnemonic");
     }
   } catch (e2) {
+    if (signer.requiresUserAction) { console.warn("[chama] Legacy seed decrypt failed:", e2); throw new SignerApprovalError("wallet"); }
     console.debug("[chama] NIP-04 seed decrypt failed:", (e2 as Error)?.message?.slice(0, 50));
   }
 
@@ -205,7 +216,7 @@ export async function recoverSeedWordsFromEvents(
   } = {},
 ): Promise<{ words: string[]; event: NostrEvent } | null> {
   const sorted = [...events].sort((a, b) => b.created_at - a.created_at);
-  const delaysMs = options.delaysMs ?? seedDecryptRetryDelaysForRuntime();
+  const delaysMs = signer.requiresUserAction ? [] : options.delaysMs ?? seedDecryptRetryDelaysForRuntime();
   const sleepFn = options.sleepFn ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
 
   for (let attempt = 0; attempt <= delaysMs.length; attempt++) {
@@ -442,7 +453,7 @@ export async function getOrCreateSeed(
   // checked fire-and-forget after wallet startup, so this removes login
   // latency without weakening the remote backup or replacement-seed guards.
   const localEvent = loadLocalSeedEvent(pubkey);
-  if (localEvent) {
+  if (localEvent && !signer.requiresUserAction) {
     const local = await recoverSeedWordsFromEvents(
       [localEvent],
       pubkey,
@@ -506,6 +517,10 @@ export async function getOrCreateSeed(
       console.info("[chama] Fedimint seed recovered on retry (relay pool warmed up)");
     }
   }
+
+  // Interactive lookup ranks the verified local copy with relay candidates,
+  // rather than asking to decrypt an older cache before reading newer events.
+  if (signer.requiresUserAction && localEvent && !existing.some(event => event.id === localEvent.id)) existing.push(localEvent);
 
   if (existing.length > 0) {
     const recovered = await recoverSeedWordsFromEvents(existing, pubkey, signer);
