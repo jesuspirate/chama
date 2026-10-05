@@ -1,3 +1,4 @@
+import { createJoinErrorCapture, type JoinErrorCapture } from "./join-error-capture.js";
 import { browserWalletStorageError } from "./browser-capabilities.js";
 // ══════════════════════════════════════════════════════════════════════════
 // Chama — @fedimint/core SDK Adapter
@@ -1535,7 +1536,18 @@ export function adaptRealWallet(
     rollbackFilename?: string | null;
   },
   allowRecoveryOnJoin = false,
+  joinCapture?: JoinErrorCapture,
 ): IFedimintWallet {
+  const runSdkJoin = async (invite: string, forceRecover = false): Promise<boolean> => {
+    joinCapture?.reset();
+    try {
+      return forceRecover
+        ? await real.joinFederation(invite, { forceRecover: true })
+        : await real.joinFederation(invite);
+    } catch (cause) {
+      throw joinCapture?.failure("Fedimint SDK federation join failed", cause) ?? cause;
+    }
+  };
   const activeReceiveWatches = new Set<() => void>();
   const armedReceiveOperationIds = new Set<string>();
   const armedMintReissueOperationIds = new Set<string>();
@@ -2440,9 +2452,7 @@ export function adaptRealWallet(
         );
         let joined: boolean;
         try {
-          joined = await real.joinFederation(inviteCode, {
-            forceRecover: true,
-          });
+          joined = await runSdkJoin(inviteCode, true);
         } catch (error) {
           updateBrowserWalletRecoveryJournal(recoveryContext?.storageScope, {
             stage: "inconclusive",
@@ -2461,9 +2471,11 @@ export function adaptRealWallet(
           throw error;
         }
         if (joined === false) {
+          const error = joinCapture?.failure("Fedimint SDK did not start forced wallet recovery")
+            ?? new Error("Fedimint SDK did not start forced wallet recovery");
           updateBrowserWalletRecoveryJournal(recoveryContext?.storageScope, {
             stage: "inconclusive",
-            error: "Fedimint SDK did not start forced wallet recovery",
+            error: error.message,
           });
           if (recoveryContext?.incident && recoveryContext.rollbackFilename) {
             rememberFilename(
@@ -2475,16 +2487,17 @@ export function adaptRealWallet(
               recoveryContext.incident,
             );
           }
-          throw new Error("Fedimint SDK did not start forced wallet recovery");
+          throw error;
         }
         updateBrowserWalletRecoveryJournal(recoveryContext?.storageScope, {
           stage: "recovering",
           error: undefined,
         });
       } else {
-        const joined = await real.joinFederation(inviteCode);
+        const joined = await runSdkJoin(inviteCode);
         if (joined === false) {
-          throw new Error("Fedimint SDK did not join the federation");
+          throw joinCapture?.failure("Fedimint SDK did not join the federation")
+            ?? new Error("Fedimint SDK did not join the federation");
         }
       }
       const historyScanStartedAt = Date.now();
@@ -3358,11 +3371,14 @@ export async function createRealWallet(
   }
   let director: any;
   let transport: any;
+  const joinCapture = createJoinErrorCapture(opts.mnemonic?.length ? [opts.mnemonic.join(" ")] : []);
 
   const attemptInit = async (fname: string) => {
     const t = new WasmWorkerTransport();
+    t.logger = joinCapture.logger;
     registerTransport(t as unknown as AnyTransport);
     const d = new WalletDirector(t, fname, /* lazy */ true);
+    d.setLogLevel("error");
     await (d as unknown as {
       initialize(dbPath?: string): Promise<unknown>;
     }).initialize(fname);
@@ -3450,8 +3466,10 @@ export async function createRealWallet(
     const { WalletDirector: WD2 } = await import("@fedimint/core");
     const { WasmWorkerTransport: WT2 } = await import("@fedimint/transport-web");
     const t2 = new WT2();
+    t2.logger = joinCapture.logger;
     registerTransport(t2 as unknown as AnyTransport);
     const d2 = new WD2(t2, freshName, /* lazy */ true);
+    d2.setLogLevel("error");
     await (d2 as unknown as {
       initialize(dbPath?: string): Promise<unknown>;
     }).initialize(freshName);
@@ -3668,6 +3686,7 @@ export async function createRealWallet(
         rollbackFilename: recoveryRollbackFilename,
       },
       opts.allowRecoveryOnJoin === true,
+      joinCapture,
     );
     walletReady = true;
     return adapted;
