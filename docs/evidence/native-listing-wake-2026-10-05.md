@@ -59,3 +59,8 @@ is not a successfully sent wake lost on the phone. Confirm Jet's listing id/time
 and Pixel endpoint, then obtain the corresponding provider status before
 choosing a fix. Do not infer ntfy rate limits, expiry, Android battery policy or
 install-over registration loss from the generic `failed` line alone.
+
+Follow-up: [HTTP-status receipt instrumentation](watcher-http-status-2026-10-05.md)
+was deployed at 2026-10-06 01:47:24 UTC. It applies to new ordinary wake attempts;
+it cannot reconstruct the provider statuses missing from the historical lines
+above. Jet's next re-registered, swiped-away listing attempt remains pending.
