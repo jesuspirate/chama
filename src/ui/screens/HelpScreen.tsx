@@ -47,8 +47,8 @@ export function HelpScreen({ onBack }: { onBack: () => void }) {
   });
 
   const sectionLabel: CSSProperties = {
-    fontFamily: T.mono, fontSize: 10, fontWeight: 800, letterSpacing: 1,
-    color: T.muted, textTransform: "uppercase", margin: "0 2px 8px",
+    fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 800,
+    color: T.muted, margin: "0 2px 8px",
   };
   const cardWrap: CSSProperties = {
     background: T.card, border: `1px solid ${T.border}`, borderRadius: T.r, overflow: "hidden",
@@ -58,7 +58,7 @@ export function HelpScreen({ onBack }: { onBack: () => void }) {
     padding: "9px 13px", borderRadius: 999, minHeight: 40, boxSizing: "border-box",
     background: T.surface, border: `1px solid ${T.border}`,
     color: T.accent, textDecoration: "none",
-    fontFamily: T.mono, fontSize: 11, fontWeight: 700,
+    fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
   };
   // The answer — the most legible thing on the screen: big, full contrast, airy.
   const answerPara: CSSProperties = {
@@ -87,7 +87,7 @@ export function HelpScreen({ onBack }: { onBack: () => void }) {
             <li key={i} style={{ display: "flex", gap: 12, alignItems: "baseline" }}>
               <span aria-hidden="true" style={{
                 flex: "0 0 auto", minWidth: 20, textAlign: "right",
-                fontFamily: T.mono, fontWeight: 800, fontSize: 15, color: T.accent,
+                fontFamily: T.sans, fontWeight: 700, fontSize: 15, color: T.accent,
               }}>{i + 1}.</span>
               <span style={{ ...answerPara, flex: 1, minWidth: 0 }}>{step}</span>
             </li>
@@ -109,7 +109,7 @@ export function HelpScreen({ onBack }: { onBack: () => void }) {
           display: "grid", placeItems: "center", lineHeight: 1,
         }}>←</button>
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontFamily: T.mono, fontSize: 9.5, fontWeight: 700, letterSpacing: 1.1, color: T.accent, textTransform: "uppercase", marginBottom: 2 }}>
+          <div style={{ fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700, color: T.accent, marginBottom: 2 }}>
             {t("help.helpFaq")}
           </div>
           <div style={{ fontFamily: T.sans, fontSize: 18, fontWeight: 800, color: T.text }}>

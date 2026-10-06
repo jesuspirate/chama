@@ -209,7 +209,7 @@ try {
  await go('mode=paste');const key=await page.evaluate(()=>window.testNsec);await page.type('input[type=password]',key);await page.waitForFunction(()=>window.submissions.length===1);assert.equal(await page.evaluate(()=>window.submissions[0][2]),false);
  await go('mode=signout');await page.evaluate(()=>localStorage.removeItem(`chama_key_backup_v1:${window.viewer}`));await page.reload();await page.waitForSelector('[data-recovery-key]');assert.match(await page.$eval('[role=dialog]',e=>e.textContent),/I saved it — sign out/);
  await page.evaluate(()=>window.copyAllowed=true);await page.click('[data-key-copy]');await page.waitForFunction(()=>!document.querySelector('[data-recovery-key]'));
- await page.reload();await page.waitForSelector('[role=dialog]');assert.equal(await page.$('[data-recovery-key]'),null);assert.match(await page.$eval('[role=dialog]',e=>e.textContent),/Your key is safe. See you soon./);assert.doesNotMatch(await page.$eval('[role=dialog]',e=>e.textContent),/Saved ✓|BEFORE YOU GO/);
+ await page.reload();await page.waitForSelector('[role=dialog]');assert.equal(await page.$('[data-recovery-key]'),null);assert.match(await page.$eval('[role=dialog]',e=>e.textContent),/Your key is safe. See you soon./);assert.doesNotMatch(await page.$eval('[role=dialog]',e=>e.textContent),/Saved ✓|before you go/i);
  await go('mode=signout&wrong');await page.evaluate(()=>localStorage.removeItem(`chama_key_backup_v1:${window.viewer}`));await page.reload();
  await page.waitForFunction(()=>document.body.textContent.includes('Could not read your key'));
  assert.equal(await page.$('[data-recovery-key]'),null,'never reveal a key belonging to another identity');

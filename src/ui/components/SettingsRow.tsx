@@ -21,7 +21,7 @@ export function SettingsRow({ label, hint, onClick, danger, ...buttonProps }: {
       <div>
         <div style={{ fontSize: 13, fontWeight: 600 }}>{label}</div>
         {hint && (
-          <div style={{ fontSize: 11, color: T.muted, fontFamily: T.mono, marginTop: 2 }}>
+          <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, marginTop: 2 }}>
             {hint}
           </div>
         )}

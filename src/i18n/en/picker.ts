@@ -9,7 +9,7 @@ export const picker: Record<string, string> = {
     "— backed by Chama's global arbiters. Your own local Chama is coming; switch to it the moment it launches.",
   "picker.availableBodyBefore": "Trade {name}'s sats now as",
   "picker.availableNowBadge": "✓ Available now",
-  "picker.bondedNote": "· 🛡 {count} bonded",
+  "picker.bondedNote": "· {count} bonded",
   "picker.chooseYourChama": "Choose your Chama",
   "picker.comingSoonBadge": "○ Coming soon",
   "picker.comingSoonBodyAfter":
@@ -32,4 +32,5 @@ export const picker: Record<string, string> = {
   "picker.subLocalChama": "{currency} · local Chama",
   "picker.whereHome": "Where's home?",
   "picker.yourCountry": "Your country",
+  "picker.showAll": "Show all {count} countries",
 };

@@ -97,7 +97,7 @@ export function DestroyEcashConfirmModal({
           {t("recovery.guardNote")}
           {reserveSats > 0 && (
             <>
-              {" "}{t("recovery.reservedBefore")} <BitcoinAmount sats={reserveSats} size={11} gap={4} glyphScale={1.18} color={T.muted} glyphColor={T.muted} /> {t("recovery.reservedAfter")}
+              {" "}{t("recovery.reservedBefore")} <BitcoinAmount sats={reserveSats} size={T.fs.secondary} gap={4} glyphScale={1.18} color={T.muted} glyphColor={T.muted} /> {t("recovery.reservedAfter")}
             </>
           )}
           {" "}{t("recovery.bearerWarning")}

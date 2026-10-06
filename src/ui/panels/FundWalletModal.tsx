@@ -286,7 +286,7 @@ export function FundWalletModal({ onClose, onCreateInvoice, onPayInvoice, onSpen
       flex: 1, padding: "8px 0", borderRadius: T.rs, border: "none",
       background: tab === tabId ? T.accent : T.surface,
       color: tab === tabId ? "#000" : T.muted,
-      fontFamily: T.mono, fontSize: 11, fontWeight: 700, cursor: "pointer",
+      fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700, cursor: "pointer",
     }}>{label}</button>
   );
 
@@ -317,7 +317,7 @@ export function FundWalletModal({ onClose, onCreateInvoice, onPayInvoice, onSpen
           <PaymentRails rail={receiveType} rails={["lightning", "ecash"]} onSelect={rail => { if (rail !== "onchain") setReceiveType(rail); setErr(null); setSuccess(null); }} />
 
           {receiveType === "lightning" && (<>
-            <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono, marginBottom: 4, letterSpacing: 1 }}>{t("fund.amountSats")}</div>
+            <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, marginBottom: 4,}}>{t("fund.amountSats")}</div>
             <input
               type="number"
               name="chama-lightning-receive-amount"
@@ -331,7 +331,7 @@ export function FundWalletModal({ onClose, onCreateInvoice, onPayInvoice, onSpen
               onWheel={blurNumberInputOnWheel}
               style={{ ...inputStyle, marginBottom: 12 }}
             />
-            <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono, marginBottom: 4, letterSpacing: 1 }}>{t("fund.description")}</div>
+            <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, marginBottom: 4,}}>{t("fund.description")}</div>
             <input type="text" name="chama-lightning-receive-description" autoComplete="off"
               data-bwignore="true" data-1p-ignore="true" data-lpignore="true" data-form-type="other"
               value={description} onChange={(e) => setDescription(e.target.value)} style={{ ...inputStyle, marginBottom: 16 }} />
@@ -344,7 +344,7 @@ export function FundWalletModal({ onClose, onCreateInvoice, onPayInvoice, onSpen
           </>)}
 
           {receiveType === "ecash" && (<>
-            <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono, marginBottom: 4, letterSpacing: 1 }}>{t("fund.pasteEcashNotes")}</div>
+            <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, marginBottom: 4,}}>{t("fund.pasteEcashNotes")}</div>
             <textarea value={ecashInput} onChange={(e) => setEcashInput(e.target.value)} placeholder="fedimint..." rows={4} style={{ ...inputStyle, resize: "vertical" as const, marginBottom: 12, minHeight: 90 }} />
             <button disabled={busy} onClick={handleRedeemEcash} style={{
               width: "100%", padding: "12px 16px", borderRadius: T.rs,
@@ -374,10 +374,10 @@ export function FundWalletModal({ onClose, onCreateInvoice, onPayInvoice, onSpen
             background: T.amberDim, border: `1px solid ${T.amber}66`,
             borderRadius: T.rs, padding: 12, marginBottom: 12,
           }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: T.amber, fontFamily: T.mono, letterSpacing: 0.5, marginBottom: 6 }}>
+            <div style={{ fontSize: T.fs.secondary, fontWeight: 700, color: T.amber, fontFamily: T.sans, marginBottom: 6 }}>
               {t("fund.uncollectedEcashTitle")}
             </div>
-            <div style={{ fontSize: 11, color: T.text, fontFamily: T.mono, lineHeight: 1.55, marginBottom: 10 }}>
+            <div style={{ fontSize: T.fs.secondary, color: T.text, fontFamily: T.sans, lineHeight: 1.55, marginBottom: 10 }}>
               {t("fund.uncollectedEcashBody", { sats: Math.floor(stashed.amountMsats / 1000).toLocaleString() })}
             </div>
             <button
@@ -386,8 +386,8 @@ export function FundWalletModal({ onClose, onCreateInvoice, onPayInvoice, onSpen
               style={{
                 width: "100%", padding: "10px 16px", borderRadius: T.rs,
                 background: busy ? T.surface : T.amber, border: `1px solid ${T.amber}`,
-                color: busy ? T.muted : "#1d1c24", fontFamily: T.mono, fontSize: 11,
-                fontWeight: 800, cursor: busy ? "not-allowed" : "pointer", marginBottom: 8,
+                color: busy ? T.muted : "#1d1c24", fontFamily: T.sans, fontSize: T.fs.secondary,
+                fontWeight: 700, cursor: busy ? "not-allowed" : "pointer", marginBottom: 8,
               }}
             >
               {busy ? t("fund.sending") : t("fund.putEcashBack")}
@@ -399,7 +399,7 @@ export function FundWalletModal({ onClose, onCreateInvoice, onPayInvoice, onSpen
               style={{
                 width: "100%", padding: "8px 16px", borderRadius: T.rs,
                 background: "transparent", border: `1px solid ${T.border}`,
-                color: T.muted, fontFamily: T.mono, fontSize: 10.5, cursor: "pointer",
+                color: T.muted, fontFamily: T.sans, fontSize: T.fs.secondary, cursor: "pointer",
               }}
             />
           </div>
@@ -407,7 +407,7 @@ export function FundWalletModal({ onClose, onCreateInvoice, onPayInvoice, onSpen
 
         {tab === "send" && !ecashOutput && (<>
           <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-            <button onClick={() => setSendType("lightning")} style={{ flex: 1, padding: "6px 0", borderRadius: T.rs, border: sendType === "lightning" ? `1px solid ${T.accent}` : `1px solid ${T.border}`, background: sendType === "lightning" ? T.accentDim : T.surface, color: sendType === "lightning" ? T.accent : T.muted, fontFamily: T.mono, fontSize: 10, cursor: "pointer" }}>Lightning</button>
+            <button onClick={() => setSendType("lightning")} style={{ flex: 1, padding: "6px 0", borderRadius: T.rs, border: sendType === "lightning" ? `1px solid ${T.accent}` : `1px solid ${T.border}`, background: sendType === "lightning" ? T.accentDim : T.surface, color: sendType === "lightning" ? T.accent : T.muted, fontFamily: T.sans, fontSize: T.fs.secondary, cursor: "pointer" }}>Lightning</button>
             <button onClick={() => setSendType("ecash")} style={{ flex: 1, padding: "6px 0", borderRadius: T.rs, border: sendType === "ecash" ? `1px solid ${T.amber}` : `1px solid ${T.border}`, background: sendType === "ecash" ? T.amberDim : T.surface, color: sendType === "ecash" ? T.amber : T.muted, fontFamily: T.mono, fontSize: 10, cursor: "pointer" }}>{t("fund.ecash")}</button>
           </div>
 
@@ -418,7 +418,7 @@ export function FundWalletModal({ onClose, onCreateInvoice, onPayInvoice, onSpen
           </>)}
 
           {sendType === "ecash" && (<>
-            <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono, marginBottom: 4, letterSpacing: 1 }}>{t("fund.amountSats")}</div>
+            <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, marginBottom: 4,}}>{t("fund.amountSats")}</div>
             <input
               type="number"
               value={amountSats}
@@ -427,23 +427,23 @@ export function FundWalletModal({ onClose, onCreateInvoice, onPayInvoice, onSpen
               style={{ ...inputStyle, marginBottom: 12 }}
             />
             <div style={{ display: "flex", gap: 8 }}>
-              <button disabled={busy} onClick={handleSpendAmount} style={{ flex: 1, padding: "12px 8px", borderRadius: T.rs, background: busy ? T.surface : T.amber, border: `1px solid ${T.amber}`, color: busy ? T.muted : "#000", fontFamily: T.mono, fontSize: 11, fontWeight: 800, cursor: busy ? "not-allowed" : "pointer" }}>{busy ? t("fund.creating") : t("fund.createEcash")}</button>
-              <button disabled={busy} onClick={handleSpendAll} style={{ flex: 1, padding: "12px 8px", borderRadius: T.rs, background: busy ? T.surface : T.red, border: `1px solid ${T.red}`, color: busy ? T.muted : "#fff", fontFamily: T.mono, fontSize: 11, fontWeight: 800, cursor: busy ? "not-allowed" : "pointer" }}>{t("fund.sendAllBefore")}<BitcoinAmount sats={Math.floor(balanceMsats / 1000)} size={11} gap={3} glyphScale={1.18} color="inherit" glyphColor="inherit" />{t("fund.sendAllAfter")}</button>
+              <button disabled={busy} onClick={handleSpendAmount} style={{ flex: 1, padding: "12px 8px", borderRadius: T.rs, background: busy ? T.surface : T.amber, border: `1px solid ${T.amber}`, color: busy ? T.muted : "#000", fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700, cursor: busy ? "not-allowed" : "pointer" }}>{busy ? t("fund.creating") : t("fund.createEcash")}</button>
+              <button disabled={busy} onClick={handleSpendAll} style={{ flex: 1, padding: "12px 8px", borderRadius: T.rs, background: busy ? T.surface : T.red, border: `1px solid ${T.red}`, color: busy ? T.muted : "#fff", fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700, cursor: busy ? "not-allowed" : "pointer" }}>{t("fund.sendAllBefore")}<BitcoinAmount sats={Math.floor(balanceMsats / 1000)} size={T.fs.secondary} gap={3} glyphScale={1.18} color="inherit" glyphColor="inherit" />{t("fund.sendAllAfter")}</button>
             </div>
           </>)}
         </>)}
 
         {tab === "send" && ecashOutput && (<>
-          <div style={{ fontSize: 10, color: T.amber, fontFamily: T.mono, marginBottom: 8, letterSpacing: 1, textAlign: "center" }}>{t("fund.ecashNotesCopySend")}</div>
-          <div style={{ padding: 8, marginBottom: 12, borderRadius: T.rs, background: T.surface, border: `1px solid ${T.border}`, fontFamily: T.mono, fontSize: 8, color: T.text, wordBreak: "break-all", maxHeight: 100, overflowY: "auto" }}>{ecashOutput}</div>
-          <CopyButton value={ecashOutput} label={t("fund.copyEcashNotes")} copiedLabel={t("common.copied")} style={{ width: "100%", padding: "10px 16px", borderRadius: T.rs, background: T.amberDim, border: `1px solid ${T.amber}44`, color: T.amber, fontFamily: T.mono, fontSize: 11, fontWeight: 700, cursor: "pointer", marginBottom: 8 }} />
-          <button onClick={() => setEcashOutput(null)} style={{ width: "100%", padding: "10px 16px", borderRadius: T.rs, background: T.surface, border: `1px solid ${T.border}`, color: T.muted, fontFamily: T.mono, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>{t("common.done")}</button>
+          <div style={{ fontSize: T.fs.secondary, color: T.amber, fontFamily: T.sans, marginBottom: 8, textAlign: "center" }}>{t("fund.ecashNotesCopySend")}</div>
+          <div style={{ padding: 8, marginBottom: 12, borderRadius: T.rs, background: T.surface, border: `1px solid ${T.border}`, fontFamily: T.sans, fontSize: T.fs.secondary, color: T.text, wordBreak: "break-all", maxHeight: 100, overflowY: "auto" }}>{ecashOutput}</div>
+          <CopyButton value={ecashOutput} label={t("fund.copyEcashNotes")} copiedLabel={t("common.copied")} style={{ width: "100%", padding: "10px 16px", borderRadius: T.rs, background: T.amberDim, border: `1px solid ${T.amber}44`, color: T.amber, fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700, cursor: "pointer", marginBottom: 8 }} />
+          <button onClick={() => setEcashOutput(null)} style={{ width: "100%", padding: "10px 16px", borderRadius: T.rs, background: T.surface, border: `1px solid ${T.border}`, color: T.muted, fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700, cursor: "pointer" }}>{t("common.done")}</button>
         </>)}
 
-        {success && <div style={{ marginTop: 12, padding: 10, borderRadius: T.rs, background: T.greenDim, border: `1px solid ${T.green}44`, color: T.green, fontFamily: T.mono, fontSize: 10 }}>{success}</div>}
+        {success && <div style={{ marginTop: 12, padding: 10, borderRadius: T.rs, background: T.greenDim, border: `1px solid ${T.green}44`, color: T.green, fontFamily: T.sans, fontSize: T.fs.secondary }}>{success}</div>}
         {err && (
           <>
-            <div style={{ marginTop: 12, padding: 10, borderRadius: T.rs, background: T.redDim, border: `1px solid ${T.red}44`, color: T.red, fontFamily: T.mono, fontSize: 10, wordBreak: "break-word" }}>
+            <div style={{ marginTop: 12, padding: 10, borderRadius: T.rs, background: T.redDim, border: `1px solid ${T.red}44`, color: T.red, fontFamily: T.sans, fontSize: T.fs.secondary, wordBreak: "break-word" }}>
               {nativeBridgeUnavailable
                 ? t("fund.nativeBridgeUnavailableShort")
                 : gatewayTrustError
@@ -455,13 +455,13 @@ export function FundWalletModal({ onClose, onCreateInvoice, onPayInvoice, onSpen
                 value={diagnostics}
                 label={t("fund.copyDiagnostics")}
                 copiedLabel={t("common.copied")}
-                style={{ width: "100%", padding: "10px 16px", borderRadius: T.rs, background: T.redDim, border: `1px solid ${T.red}44`, color: T.red, fontFamily: T.mono, fontSize: 11, fontWeight: 700, cursor: "pointer", marginTop: 8 }}
+                style={{ width: "100%", padding: "10px 16px", borderRadius: T.rs, background: T.redDim, border: `1px solid ${T.red}44`, color: T.red, fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700, cursor: "pointer", marginTop: 8 }}
               />
             )}
             {gatewayTrustError && !nativeBridgeUnavailable && !isSimModeOn() && (
               <button
                 onClick={openSimDemo}
-                style={{ width: "100%", padding: "10px 16px", borderRadius: T.rs, background: T.amberDim, border: `1px solid ${T.amber}55`, color: T.amber, fontFamily: T.mono, fontSize: 11, fontWeight: 800, cursor: "pointer", marginTop: 8 }}
+                style={{ width: "100%", padding: "10px 16px", borderRadius: T.rs, background: T.amberDim, border: `1px solid ${T.amber}55`, color: T.amber, fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700, cursor: "pointer", marginTop: 8 }}
               >
                 {t("fund.openSimDemo")}
               </button>

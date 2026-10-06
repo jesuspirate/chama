@@ -213,7 +213,7 @@ export function DashboardScreen({
 
   const ratePct = ratings && ratings.count > 0 ? Math.round((ratings.positive / ratings.count) * 100) : null;
 
-  const kickerStyle = { fontSize: 9, fontWeight: 700, color: T.muted, fontFamily: T.mono, letterSpacing: 1.4, textTransform: "uppercase" as const };
+  const kickerStyle = { fontSize: T.fs.secondary, fontWeight: 700, color: T.muted, fontFamily: T.sans, };
   const cardStyle = { background: T.card, border: `1px solid ${T.border}`, borderRadius: T.r, padding: "16px 18px" };
   const windowLabel = (k: WindowKey) => k === "90d" ? t("dash.window90") : k === "year" ? t("dash.windowYear") : t("dash.windowAll");
 
@@ -237,7 +237,7 @@ export function DashboardScreen({
       {/* Header: kicker + title + window pills + converter */}
       <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 12, marginBottom: 14, flexWrap: "wrap" }}>
         <div>
-          <div style={{ fontSize: 10, fontWeight: 700, color: T.accent, fontFamily: T.mono, letterSpacing: 1.6 }}>
+          <div style={{ fontSize: T.fs.secondary, fontWeight: 700, color: T.accent, fontFamily: T.sans,}}>
             {t("bond.dashHeading")}
           </div>
           <div style={{ fontSize: 28, fontWeight: 700, color: T.text, fontFamily: T.sans, letterSpacing: "-0.03em", lineHeight: 1.05, marginTop: 4 }}>
@@ -249,7 +249,7 @@ export function DashboardScreen({
             const on = windowKey === k;
             return (
               <button key={k} type="button" aria-pressed={on} onClick={() => setWindowKey(k)}
-                style={{ padding: "6px 13px", borderRadius: 999, cursor: "pointer", fontFamily: T.mono, fontSize: 10, fontWeight: 800, letterSpacing: 0.5, border: `1px solid ${on ? T.accent : T.borderHi}`, background: on ? T.accentDim : "transparent", color: on ? T.accent : T.muted }}>
+                style={{ padding: "6px 13px", borderRadius: 999, cursor: "pointer", fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700, border: `1px solid ${on ? T.accent : T.borderHi}`, background: on ? T.accentDim : "transparent", color: on ? T.accent : T.muted }}>
                 {windowLabel(k)}
               </button>
             );
@@ -258,7 +258,7 @@ export function DashboardScreen({
             type="button"
             aria-expanded={converterOpen}
             onClick={() => setConverterOpen((open) => !open)}
-            style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 11px", borderRadius: 999, border: `1px solid ${converterOpen ? T.accent : T.accent + "66"}`, background: converterOpen ? T.accentDim : T.card, color: T.accent, fontFamily: T.mono, fontSize: 10, fontWeight: 800, letterSpacing: .4, cursor: "pointer" }}
+            style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 11px", borderRadius: 999, border: `1px solid ${converterOpen ? T.accent : T.accent + "66"}`, background: converterOpen ? T.accentDim : T.card, color: T.accent, fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700, cursor: "pointer" }}
           >
             <img src="/icons/bitcoin-mark-64.png" alt="" aria-hidden="true" width={16} height={16} style={{ display: "block", width: 16, height: 16 }} />
             {t("bond.converterHeading")}
@@ -272,12 +272,12 @@ export function DashboardScreen({
       <div style={{ ...cardStyle, border: `1px solid ${T.borderHi}` }}>
         <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
           <span style={kickerStyle}>{t("dash.volumeLabel")}</span>
-          <span style={{ fontFamily: T.mono, fontSize: 26, fontWeight: 800, color: T.text }}>
+          <span style={{ fontFamily: T.sans, fontSize: 26, fontWeight: 700, color: T.text }}>
             {volume.totalSats.toLocaleString()}
           </span>
-          <span style={{ fontFamily: T.mono, fontSize: 11, color: T.muted }}>sats</span>
+          <span style={{ fontFamily: T.sans, fontSize: T.fs.secondary, color: T.muted }}>sats</span>
           {volume.deltaPct !== null && (
-            <span style={{ fontFamily: T.mono, fontSize: 11, fontWeight: 700, color: volume.deltaPct >= 0 ? T.green : T.red }}>
+            <span style={{ fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700, color: volume.deltaPct >= 0 ? T.green : T.red }}>
               {volume.deltaPct >= 0 ? "▲" : "▼"} {Math.abs(volume.deltaPct)}% {t("dash.vsPrior")}
             </span>
           )}
@@ -303,7 +303,7 @@ export function DashboardScreen({
       </div>
 
       {noShowCount > 0 && (
-        <div style={{ marginTop: 10, padding: "10px 14px", borderRadius: T.rs, border: `1px solid ${T.amber}44`, background: T.amberDim, fontSize: 11, fontFamily: T.mono, color: T.amber, lineHeight: 1.5 }}>
+        <div style={{ marginTop: 10, padding: "10px 14px", borderRadius: T.rs, border: `1px solid ${T.amber}44`, background: T.amberDim, fontSize: T.fs.secondary, fontFamily: T.sans, color: T.amber, lineHeight: 1.5 }}>
           {t("bond.dashNoShows", { count: noShowCount })}
         </div>
       )}
@@ -315,7 +315,7 @@ export function DashboardScreen({
           {verticals.length > 0 ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
               {verticals.map((v) => (
-                <div key={v.key} style={{ display: "flex", alignItems: "center", gap: 10, fontFamily: T.mono, fontSize: 11 }}>
+                <div key={v.key} style={{ display: "flex", alignItems: "center", gap: 10, fontFamily: T.sans, fontSize: T.fs.secondary }}>
                   <span style={{ width: 82, color: T.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t(v.labelKey)}</span>
                   <div style={{ flex: 1, height: 11, borderRadius: 4, background: T.surface, overflow: "hidden" }}>
                     <div style={{ width: `${v.pct}%`, height: "100%", borderRadius: 4, background: v.color }} />
@@ -335,14 +335,14 @@ export function DashboardScreen({
             {earnings.noteCount > 0 ? (
               <>
                 <BitcoinAmount sats={Math.floor(earnings.totalMsats / 1000)} size={22} gap={6} glyphScale={1.15} color={T.green} glyphColor={T.green} />
-                <div style={{ fontSize: 10.5, color: T.muted, fontFamily: T.mono, lineHeight: 1.5, marginTop: 8 }}>
+                <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, lineHeight: 1.5, marginTop: 8 }}>
                   {t("bond.dashEarningsCovered", { count: earnings.tradeCount })}
                 </div>
                 {balanceMsats >= 1_000 && onWithdrawEcash && (
                   <button
                     type="button"
                     onClick={onWithdrawEcash}
-                    style={{ width: "100%", marginTop: 12, padding: "10px 12px", borderRadius: T.rs, background: T.purpleDim, border: `1px solid ${T.purple}66`, color: T.purple, fontFamily: T.mono, fontSize: 10, fontWeight: 800, cursor: "pointer" }}
+                    style={{ width: "100%", marginTop: 12, padding: "10px 12px", borderRadius: T.rs, background: T.purpleDim, border: `1px solid ${T.purple}66`, color: T.purple, fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700, cursor: "pointer" }}
                   >
                     {t("bond.dashClaimRewardsEcash", { sats: Math.floor(balanceMsats / 1000).toLocaleString() })}
                   </button>
@@ -360,7 +360,7 @@ export function DashboardScreen({
             {ratePct !== null ? (
               <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
                 <span style={{ fontSize: 28, fontWeight: 900, color: T.green, fontFamily: T.sans, lineHeight: 1 }}>{ratePct}%</span>
-                <span style={{ fontSize: 12, color: T.muted, fontFamily: T.mono }}>{t("bond.dashPositive")}</span>
+                <span style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans }}>{t("bond.dashPositive")}</span>
               </div>
             ) : (
               <div style={{ fontSize: 12.5, color: T.muted, fontFamily: T.sans, lineHeight: 1.55 }}>{t("bond.dashNewHereBody")}</div>
@@ -377,7 +377,7 @@ export function DashboardScreen({
               <span style={{ fontSize: 13, fontWeight: 600, color: T.text, fontFamily: T.sans, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {community?.flagEmoji ?? "🌍"} {community?.displayName ?? communitySlug}
               </span>
-              <span style={{ fontFamily: T.mono, fontSize: 10, color: T.muted, lineHeight: 1.4 }}>
+              <span style={{ fontFamily: T.sans, fontSize: T.fs.secondary, color: T.muted, lineHeight: 1.4 }}>
                 {livenessLoading
                   ? t("bond.livenessChecking")
                   : liveness
@@ -390,7 +390,7 @@ export function DashboardScreen({
         ) : (
           <div style={cardStyle}>
             <div style={{ ...kickerStyle, marginBottom: 10 }}>{t("bond.dashStanding")}</div>
-            <div style={{ fontSize: 12, color: T.muted, fontFamily: T.mono }}>
+            <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans }}>
               {ratings ? t("bond.dashRatedLine", { positive: ratings.positive, negative: ratings.negative, count: ratings.count }) : "—"}
             </div>
           </div>
@@ -398,7 +398,7 @@ export function DashboardScreen({
       </div>
 
       {stats.asArbiter > 0 && (
-        <div style={{ marginTop: 10, fontSize: 11.5, color: T.muted, fontFamily: T.mono, textAlign: "center" }}>
+        <div style={{ marginTop: 10, fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, textAlign: "center" }}>
           {t("bond.dashArbitratedBefore")}<span style={{ color: T.text, fontWeight: 700 }}>{stats.asArbiter}</span>{t(stats.asArbiter === 1 ? "bond.dashArbitratedAfterOne" : "bond.dashArbitratedAfterMany")}
         </div>
       )}
@@ -422,7 +422,7 @@ export function DashboardScreen({
             <div style={{ display: "grid", gap: 8 }}>
               {mergedBonds.map((b) => (
                 <div key={b.key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "10px 12px", background: T.surface, border: `1px solid ${T.border}`, borderRadius: T.rs }}>
-                  <span style={{ fontSize: 14, fontWeight: 800, color: T.text, fontFamily: T.mono }}>
+                  <span style={{ fontSize: 14, fontWeight: 700, color: T.text, fontFamily: T.sans }}>
                     <BitcoinAmount sats={b.amountSats} size={14} gap={4} glyphScale={1.18} color={T.text} glyphColor={T.muted} />
                     {bondTip != null && b.locked && b.lockUntil - bondTip <= 4_320 && (
                       <span style={{ display: "block", marginTop: 4, fontSize: 9.5, color: b.lockUntil <= bondTip ? T.red : T.amber, fontWeight: 700 }}>
@@ -432,17 +432,17 @@ export function DashboardScreen({
                       </span>
                     )}
                   </span>
-                  <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: 1, fontFamily: T.mono, color: b.locked && (bondTip == null || b.lockUntil > bondTip) ? T.green : T.amber, border: `1px solid ${b.locked && (bondTip == null || b.lockUntil > bondTip) ? T.green : T.amber}`, borderRadius: 99, padding: "2px 8px" }}>
+                  <span style={{ fontSize: T.fs.secondary, fontWeight: 700, fontFamily: T.sans, color: b.locked && (bondTip == null || b.lockUntil > bondTip) ? T.green : T.amber, border: `1px solid ${b.locked && (bondTip == null || b.lockUntil > bondTip) ? T.green : T.amber}`, borderRadius: 99, padding: "2px 8px" }}>
                     {b.locked ? (bondTip != null && b.lockUntil <= bondTip ? t("bond.chipTermEnded") : t("bond.chipLockedEmoji")) : t("bond.chipAwaitingFunding")}
                   </span>
                 </div>
               ))}
               {mergedBonds.some((b) => !b.local) && (
-                <div style={{ fontSize: 10.5, color: T.amber, fontFamily: T.mono, lineHeight: 1.5, marginTop: 2 }}>
+                <div style={{ fontSize: T.fs.secondary, color: T.amber, fontFamily: T.sans, lineHeight: 1.5, marginTop: 2 }}>
                   {t("bond.dashAnnouncedElsewhere")}
                 </div>
               )}
-              <div style={{ fontSize: 10.5, color: T.muted, fontFamily: T.mono, lineHeight: 1.5, marginTop: 2 }}>
+              <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, lineHeight: 1.5, marginTop: 2 }}>
                 {t("bond.dashLockedCapital")}
               </div>
             </div>
@@ -472,7 +472,7 @@ function VolumeChart({ buckets, startSec, endSec }: { buckets: number[]; startSe
   const line = smoothPath(pts);
   const area = `${line} L${W} ${H - PAD_BOTTOM} L0 ${H - PAD_BOTTOM} Z`;
   const peak = pts.reduce((a, b) => (b.v > a.v ? b : a), pts[0]!);
-  const fmt = (s: number) => new Date(s * 1000).toLocaleString(undefined, { month: "short" }).toUpperCase();
+  const fmt = (s: number) => new Date(s * 1000).toLocaleString(undefined, { month: "short" });
   const midSec = Math.floor((startSec + endSec) / 2);
   const short = (v: number) => v >= 1_000_000 ? `${(v / 1_000_000).toFixed(1)}M` : v >= 1_000 ? `${Math.round(v / 1_000)}k` : String(v);
   return (
@@ -542,9 +542,9 @@ function smoothPath(pts: Array<{ x: number; y: number }>): string {
 function StatTile({ label, value, accent, sub }: { label: string; value: string; accent?: string; sub?: string }) {
   return (
     <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: T.r, padding: "13px 14px", display: "flex", flexDirection: "column", gap: 4 }}>
-      <div style={{ fontSize: 8.5, color: T.muted, fontFamily: T.mono, fontWeight: 700, letterSpacing: 1.2, textTransform: "uppercase" }}>{label}</div>
-      <div style={{ fontSize: 23, fontWeight: 800, color: accent ?? T.text, fontFamily: T.mono, lineHeight: 1 }}>{value}</div>
-      {sub && <div style={{ fontSize: 9.5, color: T.muted, fontFamily: T.mono, lineHeight: 1.35 }}>{sub}</div>}
+      <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, fontWeight: 700, }}>{label}</div>
+      <div style={{ fontSize: 23, fontWeight: 700, color: accent ?? T.text, fontFamily: T.sans, lineHeight: 1 }}>{value}</div>
+      {sub && <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, lineHeight: 1.35 }}>{sub}</div>}
     </div>
   );
 }

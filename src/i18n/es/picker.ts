@@ -5,7 +5,7 @@ export const picker: Record<string, string> = {
     "— respaldado por los árbitros globales de Chama. Tu Chama local viene en camino; cámbiate en cuanto se lance.",
   "picker.availableBodyBefore": "Intercambia los sats de {name} ahora como",
   "picker.availableNowBadge": "✓ Disponible ahora",
-  "picker.bondedNote": "· 🛡 {count} con fianza",
+  "picker.bondedNote": "· {count} con fianza",
   "picker.chooseYourChama": "Elige tu Chama",
   "picker.comingSoonBadge": "○ Muy pronto",
   "picker.comingSoonBodyAfter":
@@ -28,4 +28,5 @@ export const picker: Record<string, string> = {
   "picker.subLocalChama": "{currency} · Chama local",
   "picker.whereHome": "¿Dónde es tu hogar?",
   "picker.yourCountry": "Tu país",
+  "picker.showAll": "Ver los {count} países",
 };

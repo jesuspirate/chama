@@ -424,7 +424,7 @@ export function MeScreen({
           width: "100%",
           minHeight: 40, padding: "11px 12px", borderRadius: T.rs,
           background: T.surface, border: `1px solid ${opts.accent}66`,
-          color: opts.accent, fontFamily: T.mono, fontSize: 11, fontWeight: 800,
+          color: opts.accent, fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
           cursor: probingNotes === null ? "pointer" : "default",
           opacity: probingNotes !== null && !busy ? 0.5 : 1,
         }}
@@ -527,6 +527,12 @@ export function MeScreen({
     setMeTab(requestTab.tab);
   }, [requestTab?.tab, requestTab?.n]);
   const shownTab = useDeferredValue(meTab);
+  // v7 redesign: a Me tab renders on its first visit and then STAYS mounted
+  // (hidden when inactive), so switching back is instant even with 88 trades.
+  const visitedPanes = useRef(new Set<string>());
+  visitedPanes.current.add(shownTab);
+  const paneMounted = (key: string) => visitedPanes.current.has(key);
+  const paneSwitching = meTab !== shownTab && !visitedPanes.current.has(meTab);
   useEffect(() => {
     if (shownTab === "sats" && paidLockFederationId) acknowledgePaidLockRecoveries(paidLockFederationId, balanceMsats);
   }, [shownTab, paidLockFederationId, balanceMsats, paidLockRows.filter(row => !row.seen).map(row => row.escrowId).join(",")]);
@@ -551,8 +557,7 @@ export function MeScreen({
         borderRadius: T.r, padding: 20, marginBottom: 16,
       }}>
         <div style={{
-          fontSize: 11, fontWeight: 600, color: T.muted, fontFamily: T.mono,
-          letterSpacing: 1, marginBottom: 10,
+          fontSize: T.fs.secondary, fontWeight: 600, color: T.muted, fontFamily: T.sans, marginBottom: 10,
         }}>
           {t("me.profile")}
         </div>
@@ -592,7 +597,7 @@ export function MeScreen({
         <div style={{
           background: T.card, border: `1px solid ${T.border}`,
           borderRadius: T.r, padding: 18, marginBottom: 16,
-          color: T.muted, fontFamily: T.mono, fontSize: 11,
+          color: T.muted, fontFamily: T.sans, fontSize: T.fs.secondary,
           display: "flex", alignItems: "center", gap: 10,
         }}>
           <span style={{ display: "inline-block", animation: "spin 0.8s linear infinite" }}>↻</span>
@@ -635,8 +640,8 @@ export function MeScreen({
           }}
         >
           <div style={{
-            fontSize: 11, fontWeight: 600, color: T.red,
-            fontFamily: T.mono, letterSpacing: 1, marginBottom: 8,
+            fontSize: T.fs.secondary, fontWeight: 600, color: T.red,
+            fontFamily: T.sans, marginBottom: 8,
           }}>
             {t("me.strandedClaimTitle")}
           </div>
@@ -685,8 +690,8 @@ export function MeScreen({
           }}
         >
           <div style={{
-            fontSize: 11, fontWeight: 600, color: T.amber,
-            fontFamily: T.mono, letterSpacing: 1, marginBottom: 8,
+            fontSize: T.fs.secondary, fontWeight: 600, color: T.amber,
+            fontFamily: T.sans, marginBottom: 8,
           }}>
             {probedConsumed ? t("me.probedConsumedTitle") : t("me.checkOtherDeviceTitle")}
           </div>
@@ -699,7 +704,7 @@ export function MeScreen({
               never rewritten as recovered), so the date is what tells you
               whether you are looking at an old scar or a new wound. */}
           {entry.createdAt > 0 && (
-            <div style={{ fontSize: 11, color: T.muted, fontFamily: T.mono, marginBottom: 12 }}>
+            <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, marginBottom: 12 }}>
               {t("me.strandedSince", {
                 date: new Date(entry.createdAt).toLocaleDateString(lang, {
                   year: "numeric", month: "short", day: "numeric",
@@ -767,8 +772,8 @@ export function MeScreen({
           boxShadow: isClaimPayoutRecovery ? `0 0 30px ${T.amber}22` : "none",
         }}>
           <div style={{
-            fontSize: 11, fontWeight: 600, color: isSmallLeftover ? T.muted : T.amber,
-            fontFamily: T.mono, letterSpacing: 1, marginBottom: 12,
+            fontSize: T.fs.secondary, fontWeight: 600, color: isSmallLeftover ? T.muted : T.amber,
+            fontFamily: T.sans, marginBottom: 12,
           }}>
             {isClaimPayoutRecovery ? t("me.payoutRecoveryTitle") : t("me.satsRecoveryTitle")}
           </div>
@@ -812,12 +817,12 @@ export function MeScreen({
               border: `1px solid ${recoverWorthwhile ? T.amber + "66" : T.border}`,
               borderRadius: T.rs,
               color: recoverWorthwhile ? T.amber : T.muted,
-              fontFamily: T.mono, fontSize: 12, fontWeight: 800,
+              fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
               cursor: recoverWorthwhile ? "pointer" : "default",
             }}
           >
             {recoverWorthwhile
-              ? <>{isClaimPayoutRecovery ? t("me.recoverPayout") : t("me.recover")} <BitcoinAmount sats={localRecoverableSats} size={12} gap={4} glyphScale={1.18} color="inherit" glyphColor="inherit" /></>
+              ? <>{isClaimPayoutRecovery ? t("me.recoverPayout") : t("me.recover")} <BitcoinAmount sats={localRecoverableSats} size={T.fs.secondary} gap={4} glyphScale={1.18} color="inherit" glyphColor="inherit" /></>
               : isSmallLeftover
                 ? t("me.accumulatingTooSmall")
                 : t("me.waitingEnoughSats")}
@@ -833,7 +838,7 @@ export function MeScreen({
                 width: "100%", padding: "11px", marginTop: 8,
                 background: T.surface, border: `1px solid ${T.teal}55`,
                 borderRadius: T.rs, color: T.teal,
-                fontFamily: T.mono, fontSize: 11, fontWeight: 800, cursor: "pointer",
+                fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700, cursor: "pointer",
               }}
             >
               {t("me.withdrawEcash")}
@@ -841,7 +846,7 @@ export function MeScreen({
           )}
           {onWithdrawEcash && (
             <div style={{
-              marginTop: 6, fontSize: 9, color: T.muted, fontFamily: T.mono,
+              marginTop: 6, fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans,
               lineHeight: 1.5, textAlign: "center",
             }}>
               {t("me.withdrawEcashBackupHint")}
@@ -862,8 +867,8 @@ export function MeScreen({
           borderRadius: T.r, padding: 16, marginBottom: 16,
         }}>
           <div style={{
-            fontSize: 11, fontWeight: 600, color: T.amber,
-            fontFamily: T.mono, letterSpacing: 1, marginBottom: 10,
+            fontSize: T.fs.secondary, fontWeight: 600, color: T.amber,
+            fontFamily: T.sans, marginBottom: 10,
           }}>
             {t("me.lockRecoveryPausedTitle")}
           </div>
@@ -885,7 +890,7 @@ export function MeScreen({
               width: "100%", padding: "11px", marginTop: 12,
               background: T.surface, border: `1px solid ${T.border}`,
               borderRadius: T.rs, color: T.text,
-              fontFamily: T.mono, fontSize: 11, fontWeight: 800, cursor: "pointer",
+              fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700, cursor: "pointer",
             }}
           >
             {t("me.openTrade")}
@@ -905,8 +910,8 @@ export function MeScreen({
           }}
         >
           <div style={{
-            fontSize: 11, fontWeight: 600, color: T.amber,
-            fontFamily: T.mono, letterSpacing: 1, marginBottom: 8,
+            fontSize: T.fs.secondary, fontWeight: 600, color: T.amber,
+            fontFamily: T.sans, marginBottom: 8,
           }}>
             {t("me.pendingEcashExportTitle")}
           </div>
@@ -941,7 +946,7 @@ export function MeScreen({
 
       </div>
       {safety.quiet.length > 0 && <div data-money-safety-quiet data-tone={safety.quietTone} style={{ border: `1px solid ${T.border}`, borderRadius: T.r, marginBottom: 16 }}>
-        <div style={{ padding: "12px 14px", color: T.muted, font: `700 10px ${T.mono}`, textTransform: "uppercase", letterSpacing: 1 }}>{t("me.moneySafetyOther")}</div>
+        <div style={{ padding: "12px 14px", color: T.muted, font: `600 ${T.fs.secondary} ${T.sans}` }}>{t("me.moneySafetyOther")}</div>
         {safety.quiet.map(item => {
           const claim = [...loudClaims, ...calmClaims].find(e => e.escrowId === item.escrowId);
           const title = item.kind === "stranded-claim" ? t("me.strandedClaimTitle")
@@ -956,7 +961,7 @@ export function MeScreen({
           };
           return <div key={item.key} data-money-safety-row={item.key} style={{ borderTop: `1px solid ${T.border}`, padding: "10px 14px" }}>
             <button type="button" onClick={open} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", minHeight: 44, padding: 0, border: 0, background: "none", color: T.text, textAlign: "left", cursor: "pointer" }}>
-              <span style={{ flex: 1, minWidth: 0 }}>{title}</span><BitcoinAmount msats={item.amountMsats} size={12} color={T.text} glyphColor={T.muted}/><span aria-hidden="true">›</span>
+              <span style={{ flex: 1, minWidth: 0 }}>{title}</span><BitcoinAmount msats={item.amountMsats} size={T.fs.secondary} color={T.text} glyphColor={T.muted}/><span aria-hidden="true">›</span>
             </button>
             {onReabsorbBearerNotes && claim && (item.kind === "stranded-claim" || item.kind === "unresolved-credit" && claim.probeVerdict !== "consumed-uncredited") && reabsorbButton({ oobNotes: claim.oobNotes, expectedMsats: claim.amountMsats, context: "stranded-claim", escrowId: claim.escrowId }, { label: t("me.reabsorbCta"), accent: T.muted })}
             {item.kind === "unresolved-credit" && <button type="button" onClick={() => dismissClaim(item.escrowId!)} style={{ background: "none", border: 0, minHeight: 40, color: T.muted, cursor: "pointer" }}>{t("me.dismiss")}</button>}
@@ -984,15 +989,16 @@ export function MeScreen({
             <button key={key} type="button" aria-pressed={on} onClick={() => { setMeTab(key); if (key === "sats") onUseWallet?.(); }}
               style={{
                 display: "inline-flex", alignItems: "center", gap: 7,
-                padding: "8px 15px", borderRadius: 999, cursor: "pointer",
-                border: `1px solid ${on ? T.accent : T.borderHi}`,
-                background: on ? T.accentDim : "transparent",
-                color: on ? T.accent : T.muted,
-                fontFamily: T.mono, fontSize: 11.5, fontWeight: 700,
+                // v7 redesign: ink pill for the open tab, quiet outline otherwise.
+                minHeight: T.size.touch, padding: "0 16px", borderRadius: 999, cursor: "pointer",
+                border: `1px solid ${on ? T.ink : T.line}`,
+                background: on ? T.ink : "transparent",
+                color: on ? T.onInk : T.ink,
+                fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: on ? 700 : 500,
               }}>
               {label}
               {count !== undefined && (
-                <span style={{ fontSize: 9.5, fontWeight: 900, padding: "1px 7px", borderRadius: 999, background: on ? T.accent : T.surface, color: on ? T.bg : T.muted, border: on ? "none" : `1px solid ${T.border}` }}>
+                <span style={{ fontSize: T.fs.secondary, fontWeight: 700, padding: "0 7px", borderRadius: 999, background: on ? T.onInk : T.raised, color: on ? T.ink : T.ink2 }}>
                   {count}
                 </span>
               )}
@@ -1001,20 +1007,26 @@ export function MeScreen({
         })}
       </div>
 
+      {paneSwitching && (
+        <div role="status" style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 4px", color: T.ink2, fontFamily: T.sans, fontSize: T.fs.secondary }}>
+          <span style={{ display: "inline-block", animation: "spin 0.8s linear infinite" }} aria-hidden="true">↻</span>
+          {t("common.loading")}
+        </div>
+      )}
       {/* ── TRADES — settlements ledger + seller queue + full history ─── */}
       {/* Selling has its own pill now (Jet, 2026-09-20: "so it's not in the
           way of legit simple trades") — the same treatment the arbiter view
           already had. Trades is history; Seller is inventory and orders. */}
-      {shownTab === "seller" && !hydratingTrades && hasSellerDashboard && (
+      {paneMounted("seller") && <div data-me-pane="seller" hidden={shownTab !== "seller"}>{!hydratingTrades && hasSellerDashboard && (
         <SellerDashboardPanel
           dashboard={dashboard}
           onOpenTrade={onOpenTrade}
           onSellerEditListing={onSellerEditListing}
           onSellerDeleteListing={onSellerDeleteListing}
         />
-      )}
+      )}</div>}
 
-      {shownTab === "trades" && !hydratingTrades && <>
+      {paneMounted("trades") && <div data-me-pane="trades" hidden={shownTab !== "trades"}>{!hydratingTrades && <>
         <div>
           <MeTradeHistory
             trades={visibleTrades}
@@ -1036,10 +1048,10 @@ export function MeScreen({
             highlightLive={pillTargetAt}
           />
         </div>
-      </>}
+      </>}</div>}
 
       {/* ── SATS — money utilities. Deliberately not called a wallet. ── */}
-      {shownTab === "sats" && (
+      {paneMounted("sats") && <div data-me-pane="sats" hidden={shownTab !== "sats"}>{(
         <div style={{
           background: T.card, border: `1px solid ${T.border}`,
           borderRadius: T.r, padding: 0, overflow: "hidden",
@@ -1052,16 +1064,16 @@ export function MeScreen({
           <SettingsRow label={t("me.paymentMethods")} hint={t("me.paymentMethodsHint")} onClick={onOpenSavedHandles} />
           <SettingsRow label={t("me.lightningAddresses")} hint={t("me.lightningAddressesHint")} onClick={onOpenPayoutDestinations} />
         </div>
-      )}
+      )}</div>}
 
       {/* ── ARBITER — rendered only for an arbiter / pool member ── */}
-      {shownTab === "arbiter" && !hydratingTrades && dashboard.arbiterVisible && (
+      {paneMounted("arbiter") && <div data-me-pane="arbiter" hidden={shownTab !== "arbiter"}>{!hydratingTrades && dashboard.arbiterVisible && (
         <ArbiterDashboardPanel
           dashboard={dashboard}
           onOpenTrade={onOpenTrade}
           viewerPubkey={pubkey}
         />
-      )}
+      )}</div>}
 
       {/* ── SETTINGS ────────────────────────────────────────────── */}
       {/* ── PROFILE (Jet, 2026-09-19) ─────────────────────────────────────
@@ -1071,7 +1083,7 @@ export function MeScreen({
           presentation choices that are also "you" — appearance and language.
           Everything that is a SETTING (notifications, bonds, advanced, sign
           out) stays in Settings. */}
-      {shownTab === "profile" && <>
+      {paneMounted("profile") && <div data-me-pane="profile" hidden={shownTab !== "profile"}>{<>
         <div style={{
           background: T.card, border: `1px solid ${T.border}`,
           borderRadius: T.r, padding: 0, overflow: "hidden",
@@ -1095,9 +1107,9 @@ export function MeScreen({
           <LanguageRow />
           <NostrNamesRow on={kind0On} onToggle={() => setKind0On(!kind0On)} />
         </div>
-      </>}
+      </>}</div>}
 
-      {shownTab === "settings" && <>
+      {paneMounted("settings") && <div data-me-pane="settings" hidden={shownTab !== "settings"}>{<>
         <div style={{
           background: T.card, border: `1px solid ${T.border}`,
           borderRadius: T.r, padding: 0, overflow: "hidden",
@@ -1123,12 +1135,12 @@ export function MeScreen({
           <SettingsRow label={t("me.helpFaq")} hint={t("me.helpFaqHint")} onClick={onOpenHelp} />
           <SettingsRow label={t("me.signOut")} hint={null} onClick={onSignOut} danger />
         </div>
-      </>}
+      </>}</div>}
 
       {/* ── COMMUNITY — the chama switcher, alone. Ratings live on the
           Dashboard; the identity hex lives in the top banner; sign out lives
           in Settings. */}
-      {shownTab === "community" && <>
+      {paneMounted("community") && <div data-me-pane="community" hidden={shownTab !== "community"}>{<>
         {onSelectCommunity && (
           <YourChamaCard
             key={requestTab?.n ?? 0}
@@ -1140,7 +1152,7 @@ export function MeScreen({
             livenessBlocksPerDay={livenessBlocksPerDay}
           />
         )}
-      </>}
+      </>}</div>}
     </div>
     </AmountDisplayProvider>
   );
@@ -1173,13 +1185,12 @@ function Accordion({
       >
         <span style={{
           display: "inline-flex", alignItems: "center", gap: 8,
-          fontFamily: T.mono, fontSize: 11, fontWeight: 700, color: T.muted,
-          letterSpacing: 1, textTransform: "uppercase",
+          fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700, color: T.muted,
         }}>
           {title}
           {count !== undefined && (
             <span style={{
-              fontFamily: T.mono, color: T.text, fontSize: 10, fontWeight: 900,
+              fontFamily: T.sans, color: T.text, fontSize: T.fs.secondary, fontWeight: 700,
               padding: "2px 7px", borderRadius: 999,
               background: T.surface, border: `1px solid ${T.border}`,
             }}>
@@ -1188,7 +1199,7 @@ function Accordion({
           )}
         </span>
         <span aria-hidden="true" style={{
-          color: T.muted, fontSize: 13, fontFamily: T.mono,
+          color: T.muted, fontSize: 13, fontFamily: T.sans,
           transform: open ? "rotate(90deg)" : "none", transition: "transform 0.15s",
         }}>
           ›
@@ -1271,8 +1282,7 @@ function MeTradeHistory({
       }}>
         <div>
           <div style={{
-            fontSize: 11, fontWeight: 700, color: T.muted, fontFamily: T.mono,
-            letterSpacing: 1, textTransform: "uppercase",
+            fontSize: T.fs.secondary, fontWeight: 700, color: T.muted, fontFamily: T.sans,
           }}>
             {t("me.myTrades")}
           </div>
@@ -1285,7 +1295,7 @@ function MeTradeHistory({
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <div style={{
-            color: T.muted, fontFamily: T.mono, fontSize: 11,
+            color: T.muted, fontFamily: T.sans, fontSize: T.fs.secondary,
             whiteSpace: "nowrap" as const,
           }}>
             {trades.length} / {totalCount}
@@ -1301,7 +1311,7 @@ function MeTradeHistory({
                 background: "transparent", border: `1px solid ${T.border}`,
                 borderRadius: 8, padding: "4px 8px",
                 color: refreshing ? T.muted : T.text,
-                fontFamily: T.mono, fontSize: 11, fontWeight: 700,
+                fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
                 cursor: refreshing ? "default" : "pointer",
                 opacity: refreshing ? 0.6 : 1,
                 whiteSpace: "nowrap" as const,
@@ -1335,9 +1345,8 @@ function MeTradeHistory({
                 background: active ? T.accentDim : T.surface,
                 border: `1px solid ${active ? T.accent + "66" : T.border}`,
                 color: active ? T.accent : T.muted,
-                fontFamily: T.mono, fontSize: 11, fontWeight: 800,
+                fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
                 cursor: "pointer", whiteSpace: "nowrap" as const,
-                letterSpacing: 0,
               }}
             >
               {t(filter.labelKey)} {count > 0 ? count : ""}
@@ -1350,7 +1359,7 @@ function MeTradeHistory({
         <div style={{
           padding: 24, textAlign: "center",
           background: T.surface, border: `1px dashed ${T.border}`,
-          borderRadius: T.r, color: T.muted, fontFamily: T.mono, fontSize: 11,
+          borderRadius: T.r, color: T.muted, fontFamily: T.sans, fontSize: T.fs.secondary,
         }}>
           {t("me.noTradesYet")}
         </div>
@@ -1358,7 +1367,7 @@ function MeTradeHistory({
         <div style={{
           padding: 18, textAlign: "center",
           background: T.surface, border: `1px dashed ${T.border}`,
-          borderRadius: T.r, color: T.muted, fontFamily: T.mono, fontSize: 11,
+          borderRadius: T.r, color: T.muted, fontFamily: T.sans, fontSize: T.fs.secondary,
         }}>
           {t("me.nothingInView")}
         </div>
@@ -1482,8 +1491,8 @@ function SellerDashboardPanel({
       }}>
         <div>
           <div style={{
-            fontFamily: T.mono, color: T.green, fontSize: 10,
-            fontWeight: 900, letterSpacing: 1, textTransform: "uppercase",
+            fontFamily: T.sans, color: T.green, fontSize: T.fs.secondary,
+            fontWeight: 900,
           }}>
             {t("me.sellerDashboard")}
           </div>
@@ -1496,7 +1505,7 @@ function SellerDashboardPanel({
           </div>
         </div>
         <div style={{
-          fontFamily: T.mono, color: T.muted, fontSize: 10,
+          fontFamily: T.sans, color: T.muted, fontSize: T.fs.secondary,
           lineHeight: 1.35, textAlign: "right" as const,
         }}>
           {t("me.openCount", { count: dashboard.sellerOpen.length.toLocaleString() })}<br />
@@ -1596,22 +1605,20 @@ function DashboardMetric({
       }}
     >
       <div style={{
-        fontFamily: T.mono,
+        fontFamily: T.sans,
         color: disabled ? T.muted : tone,
         fontSize: 20,
-        fontWeight: 900,
+        fontWeight: 700,
         lineHeight: 1,
         marginBottom: 5,
       }}>
         {value.toLocaleString()}
       </div>
       <div style={{
-        fontFamily: T.mono,
+        fontFamily: T.sans,
         color: value > 0 ? T.text : T.muted,
-        fontSize: 9,
+        fontSize: T.fs.secondary,
         fontWeight: 800,
-        textTransform: "uppercase",
-        letterSpacing: 0.6,
         overflow: "hidden",
         textOverflow: "ellipsis",
         whiteSpace: "nowrap" as const,
@@ -1652,9 +1659,9 @@ function SellerQueueList({
         background: T.surface,
         border: `1px dashed ${T.border}`,
         borderRadius: T.rs,
-        fontFamily: T.mono,
+        fontFamily: T.sans,
         color: T.muted,
-        fontSize: 10,
+        fontSize: T.fs.secondary,
         textAlign: "center" as const,
       }}>
         {emptyCopy}
@@ -1678,19 +1685,17 @@ function SellerQueueList({
         borderBottom: `1px solid ${T.border}`,
       }}>
         <div style={{
-          fontFamily: T.mono,
+          fontFamily: T.sans,
           color: T.muted,
-          fontSize: 10,
+          fontSize: T.fs.secondary,
           fontWeight: 900,
-          textTransform: "uppercase",
-          letterSpacing: 1,
         }}>
           {t("me.queueHeader", { label: t(SELLER_QUEUE_LABEL_KEY[queue]) })}
         </div>
         <div style={{
-          fontFamily: T.mono,
+          fontFamily: T.sans,
           color: T.muted,
-          fontSize: 10,
+          fontSize: T.fs.secondary,
         }}>
           {trades.length === 1
             ? t("me.itemCountOne", { count: trades.length.toLocaleString() })
@@ -1761,9 +1766,9 @@ function SellerQueueItem({
           </div>
           <div style={{
             marginTop: 3,
-            fontFamily: T.mono,
+            fontFamily: T.sans,
             color: T.muted,
-            fontSize: 10,
+            fontSize: T.fs.secondary,
             whiteSpace: "nowrap" as const,
             overflow: "hidden",
             textOverflow: "ellipsis",
@@ -1824,9 +1829,9 @@ function SellerActionButton({
         background: disabled ? T.bg : T.card,
         border: `1px solid ${disabled ? T.border : tone + "55"}`,
         color: disabled ? T.muted : tone,
-        fontFamily: T.mono,
-        fontSize: 10,
-        fontWeight: 900,
+        fontFamily: T.sans,
+        fontSize: T.fs.secondary,
+        fontWeight: 700,
         cursor: disabled ? "default" : "pointer",
         opacity: disabled ? 0.65 : 1,
       }}
@@ -1878,8 +1883,8 @@ function ArbiterDashboardPanel({
       }}>
         <div>
           <div style={{
-            fontFamily: T.mono, color: ROLE_COLOR.arbiter, fontSize: 10,
-            fontWeight: 900, letterSpacing: 1, textTransform: "uppercase",
+            fontFamily: T.sans, color: ROLE_COLOR.arbiter, fontSize: T.fs.secondary,
+            fontWeight: 900,
           }}>
             {t("me.arbiterDashboard")}
           </div>
@@ -1892,7 +1897,7 @@ function ArbiterDashboardPanel({
           </div>
         </div>
         <div style={{
-          fontFamily: T.mono, color: T.muted, fontSize: 10,
+          fontFamily: T.sans, color: T.muted, fontSize: T.fs.secondary,
           lineHeight: 1.35, textAlign: "right" as const,
         }}>
           {t("me.listedArbiter")}<br />
@@ -1974,9 +1979,9 @@ function ArbiterQueueList({
         background: T.surface,
         border: `1px dashed ${T.border}`,
         borderRadius: T.rs,
-        fontFamily: T.mono,
+        fontFamily: T.sans,
         color: T.muted,
-        fontSize: 10,
+        fontSize: T.fs.secondary,
         textAlign: "center" as const,
       }}>
         {emptyCopy}
@@ -2000,19 +2005,17 @@ function ArbiterQueueList({
         borderBottom: `1px solid ${T.border}`,
       }}>
         <div style={{
-          fontFamily: T.mono,
+          fontFamily: T.sans,
           color: tone,
-          fontSize: 10,
+          fontSize: T.fs.secondary,
           fontWeight: 900,
-          textTransform: "uppercase",
-          letterSpacing: 1,
         }}>
           {t(ARBITER_QUEUE_LABEL_KEY[queue])}
         </div>
         <div style={{
-          fontFamily: T.mono,
+          fontFamily: T.sans,
           color: T.muted,
-          fontSize: 10,
+          fontSize: T.fs.secondary,
         }}>
           {trades.length === 1
             ? t("me.tradeCountOne", { count: trades.length.toLocaleString() })
@@ -2077,9 +2080,9 @@ function ArbiterQueueItem({
           </div>
           <div style={{
             marginTop: 3,
-            fontFamily: T.mono,
+            fontFamily: T.sans,
             color: T.muted,
-            fontSize: 10,
+            fontSize: T.fs.secondary,
             whiteSpace: "nowrap" as const,
             overflow: "hidden",
             textOverflow: "ellipsis",
@@ -2152,11 +2155,9 @@ function VoteChip({ label, outcome }: { label: string; outcome?: Outcome }) {
       borderRadius: T.rs,
       background: T.card,
       border: `1px solid ${outcome ? tone + "55" : T.border}`,
-      fontFamily: T.mono,
-      fontSize: 9,
+      fontFamily: T.sans,
+      fontSize: T.fs.secondary,
       color: tone,
-      textTransform: "uppercase",
-      letterSpacing: 0.4,
       whiteSpace: "nowrap" as const,
       overflow: "hidden",
       textOverflow: "ellipsis",
@@ -2204,7 +2205,7 @@ function DashboardRow({
           {label}
         </div>
         <div style={{
-          fontFamily: T.mono, fontSize: 10, color: T.muted,
+          fontFamily: T.sans, fontSize: T.fs.secondary, color: T.muted,
           lineHeight: 1.45,
         }}>
           {hint}
@@ -2212,7 +2213,7 @@ function DashboardRow({
       </div>
       <div style={{
         flexShrink: 0, display: "flex", alignItems: "center", gap: 7,
-        color: tone, fontFamily: T.mono, fontSize: 11, fontWeight: 900,
+        color: tone, fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
       }}>
         {value}
         {onClick && <span style={{ color: T.muted, fontSize: 14 }}>›</span>}
@@ -2378,7 +2379,7 @@ function YourChamaCard({
         marginBottom: 12,
       }}>
         <div style={{
-          fontSize: 11, fontWeight: 600, color: T.muted, fontFamily: T.mono, letterSpacing: 1,
+          fontSize: T.fs.secondary, fontWeight: 600, color: T.muted, fontFamily: T.sans,
         }}>
           {t("me.yourChama")}
         </div>
@@ -2393,7 +2394,7 @@ function YourChamaCard({
               background: changing ? T.surface : T.accentDim,
               border: `1px solid ${changing ? T.border : T.accent + "66"}`,
               color: changing ? T.muted : T.accent,
-              fontFamily: T.mono, fontSize: 10, fontWeight: 800, letterSpacing: 0.5,
+              fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
               padding: "5px 10px", borderRadius: T.rs, cursor: "pointer",
             }}
           >
@@ -2414,7 +2415,7 @@ function YourChamaCard({
             width: 34, height: 34, borderRadius: "50%",
             background: T.accentDim, color: T.accent,
             display: "inline-flex", alignItems: "center", justifyContent: "center",
-            fontFamily: T.mono, fontSize: 13, fontWeight: 900,
+            fontFamily: T.sans, fontSize: 13, fontWeight: 700,
           }}>
             C
           </span>
@@ -2423,11 +2424,11 @@ function YourChamaCard({
           <div style={{ fontSize: 14, color: T.text, fontFamily: T.sans, fontWeight: 600 }}>
             {currentCountryLabel}
           </div>
-          <div style={{ fontSize: 11, color: T.muted, fontFamily: T.mono }}>
+          <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans }}>
             {currentCountrySubline}
           </div>
         </div>
-        <div style={{ color: T.accent, fontFamily: T.mono, fontSize: 10, fontWeight: 900 }}>
+        <div style={{ color: T.accent, fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700 }}>
           {t("me.current")}
         </div>
       </div>
@@ -2442,7 +2443,7 @@ function YourChamaCard({
         <div style={{
           marginTop: 12, padding: "9px 11px", borderRadius: T.rs,
           background: T.amberDim, border: `1px solid ${T.amber}44`,
-          fontSize: 10, color: T.muted, fontFamily: T.mono, lineHeight: 1.5,
+          fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, lineHeight: 1.5,
         }}>
           {t("me.liveTradeNoSwitch")}
         </div>
@@ -2456,7 +2457,7 @@ function YourChamaCard({
             display: "flex", alignItems: "center", gap: 8,
             padding: "10px 12px", borderRadius: T.rs,
             background: T.surface, border: `1px solid ${T.border}`,
-            color: T.muted, fontFamily: T.mono, marginBottom: 12,
+            color: T.muted, fontFamily: T.sans, marginBottom: 12,
           }}>
             <span style={{ fontSize: 15, lineHeight: 1 }}>⌕</span>
             <input
@@ -2476,8 +2477,8 @@ function YourChamaCard({
           </label>
 
           <div style={{
-            fontSize: 10, fontWeight: 800, color: T.muted,
-            fontFamily: T.mono, letterSpacing: 1, marginBottom: 8,
+            fontSize: T.fs.secondary, fontWeight: 700, color: T.muted,
+            fontFamily: T.sans, marginBottom: 8,
           }}>
             {search
               ? (switchCountries.length === 1
@@ -2490,7 +2491,7 @@ function YourChamaCard({
               <div style={{
                 padding: "14px 12px", borderRadius: T.rs,
                 background: T.surface, border: `1px dashed ${T.border}`,
-                color: T.muted, fontFamily: T.mono, fontSize: 11,
+                color: T.muted, fontFamily: T.sans, fontSize: T.fs.secondary,
                 textAlign: "center" as const,
               }}>
                 {t("me.noCountriesMatch")}
@@ -2524,13 +2525,13 @@ function YourChamaCard({
                       <span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 13, fontWeight: 800, color: T.text }}>
                         {country.name}
                       </span>
-                      <span style={{ display: "block", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: T.mono, fontSize: 10, color: T.muted }}>
+                      <span style={{ display: "block", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: T.sans, fontSize: T.fs.secondary, color: T.muted }}>
                         {choices.length > 1
                           ? t("me.chamasInCountry", { count: choices.length })
                           : countrySubline(country)}
                       </span>
                     </span>
-                    <span style={{ color: T.accent, fontFamily: T.mono, fontSize: 11, fontWeight: 900 }}>
+                    <span style={{ color: T.accent, fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700 }}>
                       {choices.length > 1 ? (open ? "−" : "+") : t("me.switchAction")}
                     </span>
                   </button>
@@ -2560,11 +2561,11 @@ function YourChamaCard({
                           <span style={{ display: "block", fontFamily: T.sans, fontSize: 12, fontWeight: 800 }}>
                             {choice.pickerLabel ?? choice.displayName}
                           </span>
-                          <span style={{ display: "block", marginTop: 2, color: T.muted, fontFamily: T.mono, fontSize: 9 }}>
+                          <span style={{ display: "block", marginTop: 2, color: T.muted, fontFamily: T.sans, fontSize: T.fs.secondary }}>
                             {[choice.disambiguator, choice.currency].filter(Boolean).join(" · ")}
                           </span>
                         </span>
-                        <span style={{ fontFamily: T.mono, fontSize: 10, fontWeight: 900 }}>
+                        <span style={{ fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700 }}>
                           {isCurrent ? t("me.current") : t("me.switchAction")}
                         </span>
                       </button>
@@ -2847,7 +2848,7 @@ function NotificationsRow() {
         <div style={{ fontSize: 13, fontWeight: 600, color: T.text, fontFamily: T.sans }}>
           {t("me.notifications")}
         </div>
-        <div style={{ fontSize: 11, color: T.muted, fontFamily: T.mono, marginTop: 2 }}>
+        <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, marginTop: 2 }}>
           {t("me.notificationsHint")}
         </div>
       </div>
@@ -2861,7 +2862,7 @@ function NotificationsRow() {
         style={{
           border: `1px solid ${testState === "blocked" ? T.red + "66" : T.border}`,
           background: T.surface, color: testState === "sent" ? T.green : testState === "blocked" ? T.red : T.muted,
-          borderRadius: T.rs, padding: "5px 8px", fontFamily: T.mono, fontSize: 10,
+          borderRadius: T.rs, padding: "5px 8px", fontFamily: T.sans, fontSize: T.fs.secondary,
           fontWeight: 700, cursor: "pointer",
         }}
       >
@@ -2945,7 +2946,7 @@ function BackgroundPushRow() {
         <div style={{ fontSize: 13, fontWeight: 600, color: T.text, fontFamily: T.sans }}>
           {t("me.bgPush")}
         </div>
-        <div style={{ fontSize: 11, color: T.muted, fontFamily: T.mono, marginTop: 2 }}>
+        <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, marginTop: 2 }}>
           {hint}
           {nativeStatus && <p>{t("me.bgPushForceStop")}</p>}
           {nativeStatus?.ntfy && <p>{t("me.bgPushNtfy")}</p>}
@@ -3024,7 +3025,7 @@ function DmNotificationsRow() {
         <div style={{ fontSize: 13, fontWeight: 600, color: T.text, fontFamily: T.sans }}>
           {t("me.dmNotifications")}
         </div>
-        <div style={{ fontSize: 11, color: T.muted, fontFamily: T.mono, marginTop: 2 }}>
+        <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, marginTop: 2 }}>
           {sublabel}
         </div>
       </div>
@@ -3043,7 +3044,7 @@ function DmNotificationsRow() {
                 border: `1px solid ${active ? T.accent + "66" : T.border}`,
                 background: active ? T.accentDim : T.surface,
                 color: active ? T.accent : T.muted,
-                fontFamily: T.mono, fontSize: 10, fontWeight: 800,
+                fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
                 cursor: "pointer",
               }}
             >
@@ -3078,7 +3079,7 @@ function CounterpartyDmRow() {
         <div style={{ fontSize: 13, fontWeight: 600, color: T.text, fontFamily: T.sans }}>
           {t("me.tradeDm")}
         </div>
-        <div style={{ fontSize: 11, color: T.muted, fontFamily: T.mono, marginTop: 2 }}>
+        <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, marginTop: 2 }}>
           {t("me.tradeDmHint")}
         </div>
       </div>
@@ -3128,7 +3129,7 @@ function NewListingNotificationsRow() {
         <div style={{ fontSize: 13, fontWeight: 600, color: T.text, fontFamily: T.sans }}>
           {t("me.newListingNotifications")}
         </div>
-        <div style={{ fontSize: 11, color: T.muted, fontFamily: T.mono, marginTop: 2 }}>
+        <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, marginTop: 2 }}>
           {t("me.newListingNotificationsHint")}
         </div>
       </div>
@@ -3169,7 +3170,7 @@ function AppearanceRow({ themeMode, onThemeModeChange }: {
         <div style={{ fontSize: 13, fontWeight: 600, color: T.text, fontFamily: T.sans }}>
           {t("me.appearance")}
         </div>
-        <div style={{ fontSize: 11, color: T.muted, fontFamily: T.mono, marginTop: 2 }}>
+        <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, marginTop: 2 }}>
           {t("me.appearanceHint")}
         </div>
       </div>
@@ -3250,12 +3251,12 @@ function TradeNameRow({ pubkey, onPublishName, onPublishAvatar }: {
         </label>}
         {t("me.tradeName")}
       </div>
-      <div style={{ fontSize: 11, color: T.muted, fontFamily: T.mono, marginTop: 2 }}>
+      <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, marginTop: 2 }}>
         {t("me.tradeNameHint", { name: generated })}
       </div>
       {publishState !== "idle" && (
         <div style={{
-          fontSize: 11, marginTop: 6, fontFamily: T.mono, lineHeight: 1.5,
+          fontSize: T.fs.secondary, marginTop: 6, fontFamily: T.sans, lineHeight: 1.5,
           color: publishState === "local-only" ? T.amber : publishState === "published" ? T.green : T.muted,
         }}>
           {t(publishState === "publishing" ? "me.tradeNamePublishing"
@@ -3307,7 +3308,7 @@ function NostrNamesRow({ on, onToggle }: {
         <div style={{ fontSize: 13, fontWeight: 600, color: T.text, fontFamily: T.sans }}>
           {t("me.nostrNames")}
         </div>
-        <div style={{ fontSize: 11, color: T.muted, fontFamily: T.mono, marginTop: 2 }}>
+        <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, marginTop: 2 }}>
           {t("me.nostrNamesHint")}
         </div>
       </div>

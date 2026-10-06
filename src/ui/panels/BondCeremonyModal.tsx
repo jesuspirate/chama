@@ -418,7 +418,7 @@ export function BondCeremonyModal({ createCommitmentBond, checkCommitmentFunding
             <ArbiterDuties />
             <label style={labelStyle}>{t("bond.amountLabel")}</label>
             <input aria-label={t("bond.amountLabel")} value={amountStr} onChange={(e) => setAmountStr(e.target.value.replace(/[^0-9]/g, ""))} inputMode="numeric"
-              style={{ width: "100%", boxSizing: "border-box", background: T.surface, border: `1px solid ${T.border}`, borderRadius: T.rs, color: T.text, fontFamily: T.mono, fontSize: 18, minHeight: 44, padding: "10px 12px", marginBottom: 16 }} />
+              style={{ width: "100%", boxSizing: "border-box", background: T.surface, border: `1px solid ${T.border}`, borderRadius: T.rs, color: T.text, fontFamily: T.sans, fontSize: 18, minHeight: 44, padding: "10px 12px", marginBottom: 16 }} />
             <TermChoices value={termBlocks} onChange={setTermBlocks} />
             <div style={{ fontSize: 12, color: T.muted, margin: "12px 0" }}>{t("bond.noSatsMove")}</div>
             <PaymentButton tier="primary" onClick={post} disabled={amountSats <= 0n} style={primaryBtn(amountSats > 0n)}>{t("bond.createAddress")}</PaymentButton>
@@ -428,8 +428,8 @@ export function BondCeremonyModal({ createCommitmentBond, checkCommitmentFunding
         {view.kind === "working" && (
           <div style={{ padding: "28px 0", textAlign: "center" }}>
             <div style={{ fontSize: 26, marginBottom: 12 }}>⚙️</div>
-            <div style={{ fontSize: 13, color: T.text, fontFamily: T.mono }}>{view.label}</div>
-            <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono, marginTop: 6 }}>{t("bond.noSatsMove")}</div>
+            <div style={{ fontSize: 13, color: T.text, fontFamily: T.sans }}>{view.label}</div>
+            <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, marginTop: 6 }}>{t("bond.noSatsMove")}</div>
           </div>
         )}
 
@@ -447,12 +447,12 @@ export function BondCeremonyModal({ createCommitmentBond, checkCommitmentFunding
               </div>
               <BondCustody block={rec.bond.lockUntil} remainingBlocks={toGo} prospective />
               {toGo != null && toGo <= 0 && (
-                <div style={{ fontSize: 10.5, color: T.red, fontFamily: T.mono, marginBottom: 10, lineHeight: 1.5, background: T.surface, border: `1px solid ${T.border}`, borderRadius: T.rs, padding: "8px 10px" }}>
+                <div style={{ fontSize: T.fs.secondary, color: T.red, fontFamily: T.sans, marginBottom: 10, lineHeight: 1.5, background: T.surface, border: `1px solid ${T.border}`, borderRadius: T.rs, padding: "8px 10px" }}>
                   {t("bond.warnEndedBefore")}<b>{t("bond.warnEndedBold")}</b>{t("bond.warnEndedAfter")}
                 </div>
               )}
               {toGo != null && toGo > 0 && toGo <= NEAR_END_BLOCKS && (
-                <div style={{ fontSize: 10.5, color: T.amber, fontFamily: T.mono, marginBottom: 10, lineHeight: 1.5 }}>
+                <div style={{ fontSize: T.fs.secondary, color: T.amber, fontFamily: T.sans, marginBottom: 10, lineHeight: 1.5 }}>
                   {t(toGo === 1 ? "bond.nearEndOne" : "bond.nearEndMany", { blocks: toGo, time: humanTime(toGo) })}
                 </div>
               )}
@@ -465,7 +465,7 @@ export function BondCeremonyModal({ createCommitmentBond, checkCommitmentFunding
               {isRenewal && rec.renewalTxid && (
                 <CopyableValue heading={t("bond.renewalTxid")} label={t("bond.copyTxid")} value={rec.renewalTxid} />
               )}
-              <div style={{ fontSize: 10.5, color: T.muted, fontFamily: T.mono, textAlign: "center", marginTop: 4, lineHeight: 1.5 }}>
+              <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, textAlign: "center", marginTop: 4, lineHeight: 1.5 }}>
                 {t("bond.watchingChain", { secs: FUNDING_POLL_MS / 1000 })}
               </div>
               <button onClick={() => void checkNow(view.bondId)} disabled={busy} style={{ ...secondaryBtn, marginTop: 8 }}>
@@ -475,7 +475,7 @@ export function BondCeremonyModal({ createCommitmentBond, checkCommitmentFunding
                 style={{ ...secondaryBtn, color: T.muted, borderColor: T.border, marginTop: 2 }}>
                 {t("bond.discardDraft")}
               </button>}
-              {note && <div style={{ fontSize: 10.5, color: T.amber, fontFamily: T.mono, marginTop: 6, lineHeight: 1.5, textAlign: "center" }}>{note}</div>}
+              {note && <div style={{ fontSize: T.fs.secondary, color: T.amber, fontFamily: T.sans, marginTop: 6, lineHeight: 1.5, textAlign: "center" }}>{note}</div>}
             </div>
           );
         })()}
@@ -509,7 +509,7 @@ export function BondCeremonyModal({ createCommitmentBond, checkCommitmentFunding
                     </div>
                   ))}
                   <button onClick={() => void checkNow(view.bondId)} disabled={busy}
-                    style={{ background: "none", border: "none", color: T.muted, fontFamily: T.mono, fontSize: 12, cursor: "pointer", minHeight: 44, padding: "4px 0 0", boxShadow: "none" }}>
+                    style={{ background: "none", border: "none", color: T.muted, fontFamily: T.sans, fontSize: T.fs.secondary, cursor: "pointer", minHeight: 44, padding: "4px 0 0", boxShadow: "none" }}>
                     {busy ? t("bond.checkingLower") : t("bond.checkForMore")}
                   </button>
                 </details>
@@ -519,7 +519,7 @@ export function BondCeremonyModal({ createCommitmentBond, checkCommitmentFunding
                   so a stray tap after locking can't return the bond. Consensus is the
                   real gate: an early reclaim is rejected and surfaced as "almost". */}
               {!confirmReclaim && !notYet && tip != null && (
-                <div style={{ fontSize: 10.5, color: T.accent, fontFamily: T.mono, marginBottom: 8, lineHeight: 1.5, textAlign: "center" }}>
+                <div style={{ fontSize: T.fs.secondary, color: T.accent, fontFamily: T.sans, marginBottom: 8, lineHeight: 1.5, textAlign: "center" }}>
                   {t("bond.termUpReclaim")}
                 </div>
               )}
@@ -593,7 +593,7 @@ export function BondCeremonyModal({ createCommitmentBond, checkCommitmentFunding
             <div style={{ padding: "6px 0", textAlign: "center" }}>
               <BackToBonds onClick={backToList} />
               <div style={{ fontSize: 30, marginBottom: 10 }}>{emoji}</div>
-              <div style={{ fontSize: 15, fontWeight: 800, color: titleColor, fontFamily: T.mono, marginBottom: 8 }}>{t(creditConfirmed ? "bond.creditLandedTitle" : "bond.bondReclaimed")}</div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: titleColor, fontFamily: T.sans, marginBottom: 8 }}>{t(creditConfirmed ? "bond.creditLandedTitle" : "bond.bondReclaimed")}</div>
               <div style={{ fontSize: 13, color: T.text, fontFamily: T.sans, lineHeight: 1.6, marginBottom: 12 }}>
                 {t(bodyKey)}
               </div>
@@ -623,7 +623,7 @@ export function BondCeremonyModal({ createCommitmentBond, checkCommitmentFunding
               )}
               <PaymentButton tier="primary" onClick={() => setView({ kind: "describe" })} style={view.creditedToChama ? primaryBtn(true) : { ...secondaryBtn, marginTop: 6 }}>{t("bond.postFreshBond")}</PaymentButton>
               <button onClick={onClose} style={{ ...secondaryBtn, marginTop: 6 }}>{t("common.done")}</button>
-              {note && <div style={{ fontSize: 10.5, color: view.creditedToChama ? T.green : T.red, fontFamily: T.mono, marginTop: 10, lineHeight: 1.5 }}>{note}</div>}
+              {note && <div style={{ fontSize: T.fs.secondary, color: view.creditedToChama ? T.green : T.red, fontFamily: T.sans, marginTop: 10, lineHeight: 1.5 }}>{note}</div>}
             </div>
           );
         })()}
@@ -634,8 +634,8 @@ export function BondCeremonyModal({ createCommitmentBond, checkCommitmentFunding
 
         {view.kind === "error" && (
           <div style={{ padding: "8px 0" }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: T.red, fontFamily: T.mono, marginBottom: 8 }}>{t("bond.somethingWrong")}</div>
-            <div style={{ fontSize: 12, color: T.text, fontFamily: T.mono, lineHeight: 1.5, marginBottom: 16 }}>{view.message}</div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: T.red, fontFamily: T.sans, marginBottom: 8 }}>{t("bond.somethingWrong")}</div>
+            <div style={{ fontSize: T.fs.secondary, color: T.text, fontFamily: T.sans, lineHeight: 1.5, marginBottom: 16 }}>{view.message}</div>
             <PaymentButton tier="primary" onClick={() => setView({ kind: "describe" })} style={primaryBtn(true)}>{t("common.back")}</PaymentButton>
           </div>
         )}
@@ -672,7 +672,7 @@ function BondList({ bonds, tip, onOpen, onPostNew }: {
     <div>
       <div style={{ fontSize: 15, fontWeight: 700, color: T.text, fontFamily: T.sans, marginBottom: 10 }}>{t("bond.currentBond")}</div>
       {current.length === 0 && (
-        <div style={{ fontSize: 11, color: T.muted, fontFamily: T.mono, lineHeight: 1.5, marginBottom: 12 }}>
+        <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, lineHeight: 1.5, marginBottom: 12 }}>
           {t("bond.noLiveBond")}
         </div>
       )}
@@ -695,7 +695,7 @@ function BondList({ bonds, tip, onOpen, onPostNew }: {
       {past.length > 0 && (
         <div style={{ marginTop: 14 }}>
           <button type="button" aria-expanded={showPast} onClick={() => setShowPast((v) => !v)}
-            style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", background: "transparent", border: 0, color: T.muted, fontFamily: T.mono, fontSize: 12, minHeight: 44, boxShadow: "none", padding: "8px 0", cursor: "pointer" }}>
+            style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", background: "transparent", border: 0, color: T.muted, fontFamily: T.sans, fontSize: T.fs.secondary, minHeight: 44, boxShadow: "none", padding: "8px 0", cursor: "pointer" }}>
             <span>{t("bond.pastBondsCount", { count: past.length })}</span><span>{showPast ? "▴" : "▾"}</span>
           </button>
           {showPast && past.map((b) => <BondRow key={b.bondId} rec={b} tip={tip} onOpen={onOpen} />)}
@@ -740,7 +740,7 @@ function BondRow({ rec, tip, onOpen }: { rec: CommitmentRecord; tip: number | nu
         <span style={{ fontSize: 15, fontWeight: 700, color: T.text, fontFamily: T.sans }}>
           {rec.phase === "created" && !rec.renewedFromBondId ? t("bond.satsPlanned", { sats: rec.amountSats.toString() }) : t("bond.satsAmount", { sats: rec.amountSats.toString() })}
         </span>
-        <span style={{ fontSize: 8.5, fontWeight: 800, color: status.color, fontFamily: T.mono, letterSpacing: 1, border: `1px solid ${status.color}`, borderRadius: 99, padding: "2px 8px", flexShrink: 0 }}>
+        <span style={{ fontSize: T.fs.secondary, fontWeight: 700, color: status.color, fontFamily: T.sans, border: `1px solid ${status.color}`, borderRadius: 99, padding: "2px 8px", flexShrink: 0 }}>
           {status.chip}
         </span>
       </div>
@@ -954,7 +954,7 @@ function AnnounceBond({ slug, onSlug, announcing, announcedTo, error, onAnnounce
       <div style={{ display: "flex", alignItems: "center", gap: 9, background: "none", border: 0, borderBottom: `1px solid ${T.border}`, padding: "12px 0", marginBottom: 12 }}>
         <span style={{ fontSize: 18, lineHeight: 1 }}>{selected?.flagEmoji ?? "🌍"}</span>
         <div style={{ minWidth: 0, flex: 1 }}>
-          <div style={{ fontSize: 12, color: T.text, fontFamily: T.mono, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{selected?.displayName ?? slug}</div>
+          <div style={{ fontSize: T.fs.secondary, color: T.text, fontFamily: T.sans, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{selected?.displayName ?? slug}</div>
         </div>
         <button type="button" ref={chooserRef} disabled={announcing} aria-expanded={choosing} onClick={() => setChoosing(v => !v)}
           style={{ background: "none", border: 0, boxShadow: "none", minHeight: 44, color: T.accent, fontSize: 12, cursor: "pointer" }}>{t("bond.changeCommunity")}</button>
@@ -963,19 +963,19 @@ function AnnounceBond({ slug, onSlug, announcing, announcedTo, error, onAnnounce
       <input
         value={query} onChange={(e) => setQuery(e.target.value)} disabled={announcing}
         aria-label={t("bond.searchCountries")} autoFocus placeholder={t("bond.searchCountries")} autoComplete="off" autoCapitalize="off" spellCheck={false}
-        style={{ width: "100%", boxSizing: "border-box", background: T.surface, border: `1px solid ${T.border}`, borderRadius: T.rs, color: T.text, fontFamily: T.mono, fontSize: 12, padding: "9px 11px", marginBottom: 8, outline: "none" }}
+        style={{ width: "100%", boxSizing: "border-box", background: T.surface, border: `1px solid ${T.border}`, borderRadius: T.rs, color: T.text, fontFamily: T.sans, fontSize: T.fs.secondary, padding: "9px 11px", marginBottom: 8, outline: "none" }}
       />
       {search && (
         <div style={{ display: "grid", gap: 6, maxHeight: 176, overflowY: "auto", marginBottom: 8, paddingRight: 2 }}>
           {matches.length === 0 ? (
-            <div style={{ fontSize: 10.5, color: T.muted, fontFamily: T.mono, padding: "8px 4px" }}>{t("bond.noCountryMatch", { query })}</div>
+            <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, padding: "8px 4px" }}>{t("bond.noCountryMatch", { query })}</div>
           ) : matches.map((c) => (
             <button key={c.code} onClick={() => pick(c)} disabled={announcing}
               style={{ display: "flex", alignItems: "center", gap: 9, width: "100%", textAlign: "left", background: T.surface, border: `1px solid ${T.border}`, borderRadius: T.rs, padding: "8px 10px", cursor: "pointer" }}>
               <span style={{ fontSize: 16, lineHeight: 1 }}>{c.flag}</span>
               <span style={{ minWidth: 0, flex: 1 }}>
-                <span style={{ display: "block", fontSize: 12, color: T.text, fontFamily: T.mono, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.name}</span>
-                <span style={{ display: "block", fontSize: 9, color: T.muted, fontFamily: T.mono }}>{countrySubline(c)}</span>
+                <span style={{ display: "block", fontSize: T.fs.secondary, color: T.text, fontFamily: T.sans, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.name}</span>
+                <span style={{ display: "block", fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans }}>{countrySubline(c)}</span>
               </span>
             </button>
           ))}
@@ -985,7 +985,7 @@ function AnnounceBond({ slug, onSlug, announcing, announcedTo, error, onAnnounce
       {!announcedTo && <PaymentButton tier="primary" onClick={onAnnounce} disabled={announcing || !slug} style={primaryBtn(!announcing && !!slug)}>
         {announcing ? t("bond.announcing") : t("bond.announceMyBond")}
       </PaymentButton>}
-      {error && <div style={{ fontSize: 10.5, color: T.red, fontFamily: T.mono, marginTop: 6, lineHeight: 1.5 }}>{error}</div>}
+      {error && <div style={{ fontSize: T.fs.secondary, color: T.red, fontFamily: T.sans, marginTop: 6, lineHeight: 1.5 }}>{error}</div>}
     </div>
   );
 }
@@ -1004,7 +1004,7 @@ function MissingBond({ onBack }: { onBack: () => void }) {
   const { t } = useT();
   return (
     <div style={{ padding: "8px 0" }}>
-      <div style={{ fontSize: 12, color: T.text, fontFamily: T.mono, lineHeight: 1.5, marginBottom: 12 }}>
+      <div style={{ fontSize: T.fs.secondary, color: T.text, fontFamily: T.sans, lineHeight: 1.5, marginBottom: 12 }}>
         {t("bond.missingBond")}
       </div>
       <PaymentButton tier="primary" onClick={onBack} style={primaryBtn(true)}>{t("bond.backToBonds")}</PaymentButton>
@@ -1015,8 +1015,8 @@ function MissingBond({ onBack }: { onBack: () => void }) {
 function CopyableValue({ heading, label, value }: { heading?: string; label: string; value: string }) {
   return (
     <>
-      {heading && <div style={{ fontSize: 9, color: T.muted, fontFamily: T.mono, letterSpacing: 1, margin: "8px 0 5px", textAlign: "left" }}>{heading}</div>}
-      <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono, wordBreak: "break-all", background: T.surface, border: `1px solid ${T.border}`, borderRadius: T.rs, padding: "6px 8px", marginBottom: 8 }}>{value}</div>
+      {heading && <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, margin: "8px 0 5px", textAlign: "left" }}>{heading}</div>}
+      <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, wordBreak: "break-all", background: T.surface, border: `1px solid ${T.border}`, borderRadius: T.rs, padding: "6px 8px", marginBottom: 8 }}>{value}</div>
       <CopyButton value={value} label={label} style={secondaryBtn} />
     </>
   );

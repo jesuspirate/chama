@@ -4,7 +4,7 @@ export const picker: Record<string, string> = {
     "— ikiungwa mkono na wasuluhishi wa kimataifa wa Chama. Chama chako cha kienyeji kinakuja; hamia mara kitakapozinduliwa.",
   "picker.availableBodyBefore": "Fanya biashara ya sats za {name} sasa kama",
   "picker.availableNowBadge": "✓ Inapatikana sasa",
-  "picker.bondedNote": "· 🛡 {count} wenye dhamana",
+  "picker.bondedNote": "· {count} wenye dhamana",
   "picker.chooseYourChama": "Chagua Chama chako",
   "picker.comingSoonBadge": "○ Inakuja hivi karibuni",
   "picker.comingSoonBodyAfter":
@@ -27,4 +27,5 @@ export const picker: Record<string, string> = {
   "picker.subLocalChama": "{currency} · Chama cha kienyeji",
   "picker.whereHome": "Nyumbani ni wapi?",
   "picker.yourCountry": "Nchi yako",
+  "picker.showAll": "Onyesha nchi zote {count}",
 };
