@@ -161,7 +161,7 @@ export function LivenessSignal({ liveness, loading, outcome, blocksPerDay = 144,
       background: T.surface, border: `1px solid ${T.border}`, borderRadius: T.r, padding: "12px 14px",
     }}>
       <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 8 }}>
-        <span style={{ fontFamily: T.mono, fontSize: 9.5, fontWeight: 800, letterSpacing: 1, color: T.muted, textTransform: "uppercase" }}>
+        <span style={{ fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 800, color: T.muted, }}>
           {t("bond.livenessHeading")}
         </span>
         <HelpTip title={t("bond.livenessTipTitle")} label={t("bond.livenessTipLabel")}>
@@ -172,7 +172,7 @@ export function LivenessSignal({ liveness, loading, outcome, blocksPerDay = 144,
       {liveness && <div style={{ opacity: loading ? 0.55 : 1, transition: "opacity .2s" }}>
         <LivenessMeter score={liveness.score} />
       </div>}
-      <div style={{ fontFamily: T.mono, fontSize: 11, color: liveness && !thin ? T.text : T.muted, marginTop: 7, lineHeight: 1.5 }}>
+      <div style={{ fontFamily: T.sans, fontSize: T.fs.secondary, color: liveness && !thin ? T.text : T.muted, marginTop: 7, lineHeight: 1.5 }}>
         {readout}
       </div>
 
@@ -186,13 +186,13 @@ export function LivenessSignal({ liveness, loading, outcome, blocksPerDay = 144,
               style={{
                 display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 11px", borderRadius: T.rs,
                 background: "none", border: `1px solid ${T.accent}`, color: T.accent,
-                fontFamily: T.mono, fontSize: 11, fontWeight: 700, cursor: "pointer",
+                fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700, cursor: "pointer",
               }}
             >
               {t("bond.needsArbitersCta")} <span style={{ fontSize: 13, lineHeight: 1 }}>→</span>
             </button>
           ) : (
-            <div style={{ fontFamily: T.mono, fontSize: 10.5, color: T.accent, lineHeight: 1.5 }}>
+            <div style={{ fontFamily: T.sans, fontSize: T.fs.secondary, color: T.accent, lineHeight: 1.5 }}>
               {t("bond.needsArbitersInfo")}
             </div>
           )}

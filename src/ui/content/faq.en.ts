@@ -4,7 +4,7 @@ import type { FaqContent } from "./faq-types.js";
 
 export const faqEn: FaqContent = {
   intro:
-    "Trade Bitcoin, goods and services with your community. A chama is an East African savings circle; here, trades use federation-issued ecash or direct Bitcoin escrow. Chama does not hold the money; the table below names who does.",
+    "Trade Bitcoin, goods and services with your community. A chama is an East African savings circle; here, trades use federation-issued ecash or direct Bitcoin escrow. Chama does not hold the money; “Who holds my money?” shows who does.",
   sections: [
     {
       id: "basics",

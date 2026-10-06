@@ -12,7 +12,7 @@ export function RetiredMerchantBondNudge({ bonds, owner }: {
   const latest = bonds.filter(b => b.npub.toLowerCase() === owner.toLowerCase())
     .sort((a, b) => (b.announcedAt ?? 0) - (a.announcedAt ?? 0))[0];
   if (!latest?.roles?.includes("merchant") || latest.roles.includes("arbiter")) return null;
-  return <div style={{ fontSize: 10.5, color: T.muted, fontFamily: T.mono, lineHeight: 1.5, marginBottom: 10 }}>
+  return <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, lineHeight: 1.5, marginBottom: 10 }}>
     {t("bond.merchantRetired")}
   </div>;
 }

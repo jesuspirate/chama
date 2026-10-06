@@ -102,7 +102,7 @@ export function RecoveryPayoutModal({
     : Math.max(0, Math.ceil((Math.max(0, balanceMsats) - payoutSats * 1000) / 1000));
   const feeReserveNote = reserveSats > 0 ? (
     <>
-      {t("claim.feeReserveBefore")} <BitcoinAmount sats={reserveSats} size={11} gap={4} glyphScale={1.18} color={T.muted} glyphColor={T.muted} /> {t("claim.feeReserveAfter")}
+      {t("claim.feeReserveBefore")} <BitcoinAmount sats={reserveSats} size={T.fs.secondary} gap={4} glyphScale={1.18} color={T.muted} glyphColor={T.muted} /> {t("claim.feeReserveAfter")}
     </>
   ) : null;
   const pickerSubtitle =
@@ -110,15 +110,19 @@ export function RecoveryPayoutModal({
       ? <>{subtitle}{feeReserveNote && <> {feeReserveNote}</>}</>
       : (
           <>
-            {t("claim.sendToAddressBefore")} <BitcoinAmount sats={payoutSats} size={11} gap={4} glyphScale={1.18} color={T.muted} glyphColor={T.muted} /> {t("claim.sendToAddressAfter")}
+            {t("claim.sendToAddressBefore")} <BitcoinAmount sats={payoutSats} size={T.fs.secondary} gap={4} glyphScale={1.18} color={T.muted} glyphColor={T.muted} /> {t("claim.sendToAddressAfter")}
             {feeReserveNote && <>. {feeReserveNote}</>}
           </>
         );
   const [stage, setStage] = useState<Stage>({ kind: "picking" });
 
   if (stage.kind === "picking") {
+    // v7 redesign (Jet, 2026-10-05: "hold too"): every recovery payout route
+    // is a hold, the same as the claim sheet. The retry buttons below only
+    // return to this picker, so they stay plain taps.
     return (
       <DestinationPicker
+        holdToSend
         amountSats={payoutSats}
         savedDestinations={savedDestinations}
         savedNwcConnections={savedNwcConnections}
@@ -195,10 +199,10 @@ export function RecoveryPayoutModal({
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
           <div>
-            <div style={{ fontSize: 9, color: T.muted, fontFamily: T.mono, letterSpacing: 1, marginBottom: 4 }}>
-              {title.toUpperCase()}
+            <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, marginBottom: 4 }}>
+              {title}
             </div>
-            <div style={{ fontSize: 22, fontWeight: 800, color: T.text, fontFamily: T.mono, letterSpacing: -0.5 }}>
+            <div style={{ fontSize: 22, fontWeight: 700, color: T.text, fontFamily: T.sans,}}>
               <BitcoinAmount sats={payoutSats} size={22} gap={6} glyphScale={1.2} color={T.text} glyphColor={T.muted} />
             </div>
           </div>
@@ -240,7 +244,7 @@ function RunningPanel() {
         background: T.amber, animation: "pulse 1.4s ease-in-out infinite",
         margin: "0 auto 12px",
       }} />
-      <div style={{ fontSize: 11, fontWeight: 600, color: T.amber, fontFamily: T.mono, letterSpacing: 1 }}>
+      <div style={{ fontSize: T.fs.secondary, fontWeight: 600, color: T.amber, fontFamily: T.sans,}}>
         {t("claim.sendingToWalletCaps")}
       </div>
     </div>
@@ -268,7 +272,7 @@ function TerminalPanel({
         <div style={{ fontSize: 14, fontWeight: 700, color: T.green, fontFamily: T.sans, marginBottom: 6 }}>
           {t("claim.recoveredToWallet")}
         </div>
-        <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono, marginTop: 12 }}>
+        <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, marginTop: 12 }}>
           {t("claim.closing")}
         </div>
       </div>
@@ -290,7 +294,7 @@ function TerminalPanel({
             {t("claim.titlePayoutSentConfirming")}
           </div>
           <div style={{
-            fontSize: 10, color: T.muted, fontFamily: T.mono,
+            fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans,
             whiteSpace: "pre-wrap", wordBreak: "break-word",
           }}>
             {terminal.error ?? t("claim.recoveryConfirmingBody")}
@@ -301,7 +305,7 @@ function TerminalPanel({
           style={{
             width: "100%", padding: "10px 16px", borderRadius: T.rs,
             background: T.surface, border: `1px solid ${T.border}`,
-            color: T.muted, fontFamily: T.mono, fontSize: 11, fontWeight: 700,
+            color: T.muted, fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
             cursor: "pointer",
           }}
         >
@@ -328,7 +332,7 @@ function TerminalPanel({
           {t("claim.recoveryCouldntBeSent")}
         </div>
         <div style={{
-          fontSize: 10, color: T.muted, fontFamily: T.mono,
+          fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans,
           whiteSpace: "pre-wrap", wordBreak: "break-word",
         }}>
           {terminal.error}{"\n\n"}{t("claim.recoverySatsStillSafe")}
@@ -339,7 +343,7 @@ function TerminalPanel({
         style={{
           width: "100%", padding: "12px 16px", borderRadius: T.rs,
           background: T.accent, border: `1px solid ${T.accent}`,
-          color: "#000", fontFamily: T.mono, fontSize: 12, fontWeight: 800,
+          color: T.onInk, fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
           cursor: "pointer", marginBottom: 8,
         }}
       >
@@ -351,11 +355,11 @@ function TerminalPanel({
           style={{
             width: "100%", padding: "12px 16px", borderRadius: T.rs,
             background: T.amberDim, border: `1px solid ${T.amber}66`,
-            color: T.amber, fontFamily: T.mono, fontSize: 12, fontWeight: 800,
+            color: T.amber, fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
             cursor: "pointer", marginBottom: 8,
           }}
         >
-          {t("claim.tryAmountBefore")} <BitcoinAmount sats={retrySmallerSats} size={12} gap={4} glyphScale={1.18} color="inherit" glyphColor="inherit" />
+          {t("claim.tryAmountBefore")} <BitcoinAmount sats={retrySmallerSats} size={T.fs.secondary} gap={4} glyphScale={1.18} color="inherit" glyphColor="inherit" />
         </button>
       )}
       <button
@@ -363,7 +367,7 @@ function TerminalPanel({
         style={{
           width: "100%", padding: "10px 16px", borderRadius: T.rs,
           background: T.surface, border: `1px solid ${T.border}`,
-          color: T.muted, fontFamily: T.mono, fontSize: 11, fontWeight: 700,
+          color: T.muted, fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
           cursor: "pointer",
         }}
       >

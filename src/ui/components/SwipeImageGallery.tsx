@@ -123,7 +123,7 @@ export function SwipeImageGallery({
             display: "inline-flex", alignItems: "center", gap: 5,
             padding: "4px 7px", borderRadius: 999,
             background: "rgba(6, 6, 12, 0.72)", color: "#fff",
-            fontFamily: T.mono, fontSize: 8, fontWeight: 800,
+            fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
             pointerEvents: "none",
           }}>
             ↔ {activeIndex + 1}/{images.length}

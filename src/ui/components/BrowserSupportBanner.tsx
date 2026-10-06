@@ -16,8 +16,7 @@ export function BrowserSupportBanner({ onDismiss }: { onDismiss: () => void }) {
       display: "flex", flexDirection: "column", gap: 12,
     }}>
       <div style={{
-        fontSize: 11, fontWeight: 700, color: T.amber, fontFamily: T.mono,
-        letterSpacing: 1,
+        fontSize: T.fs.secondary, fontWeight: 700, color: T.amber, fontFamily: T.sans,
       }}>
         {t("browse.realMoneyTrades")}
       </div>
@@ -31,8 +30,8 @@ export function BrowserSupportBanner({ onDismiss }: { onDismiss: () => void }) {
         color: T.muted, fontFamily: T.sans, fontSize: 12, lineHeight: 1.55,
       }}>
         <summary style={{
-          cursor: "pointer", color: T.amber, fontFamily: T.mono,
-          fontSize: 10, fontWeight: 800, letterSpacing: 0.6,
+          cursor: "pointer", color: T.amber, fontFamily: T.sans,
+          fontSize: T.fs.secondary, fontWeight: 700,
         }}>
           {t("browse.technicalDetails")}
         </summary>
@@ -46,8 +45,8 @@ export function BrowserSupportBanner({ onDismiss }: { onDismiss: () => void }) {
           alignSelf: "flex-start",
           padding: "7px 14px", borderRadius: T.rs,
           background: T.surface, border: `1px solid ${T.amber}44`,
-          color: T.amber, fontFamily: T.mono, fontSize: 11, fontWeight: 700,
-          cursor: "pointer", letterSpacing: 0.5,
+          color: T.amber, fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
+          cursor: "pointer",
         }}
       >
         {t("browse.gotIt")}

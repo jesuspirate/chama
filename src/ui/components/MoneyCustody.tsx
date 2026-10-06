@@ -24,13 +24,13 @@ export function EcashCustody({ invite = "", issued = false, trade, warn = false 
   const unlisted = !!invite && !facts.curated && invite.trim() !== communityInvite?.trim();
   return <div data-money-custody="ecash" style={{ fontFamily: T.sans, lineHeight: 1.5 }}>
     <InlineExplanation summary={summary}>{t(trade ? "custody.tradeExplanation" : "custody.notes")}</InlineExplanation>
-    {trade && <div style={{ fontSize: 12, color: T.muted, marginBottom: 8 }}>
+    {trade && <div style={{ fontSize: T.fs.secondary, color: T.ink2, marginBottom: 8 }}>
       {t("custody.settlement")} · {period.deadline ? t("custody.deadline", { date: new Date(period.deadline * 1000).toLocaleString(lang) }) : period.seconds ? t("custody.window", { hours: Number((period.seconds / 3600).toFixed(2)) }) : t("custody.deadlineUnknown")}
       {period.seconds && period.seconds > 7 * 86400 && <> · {t("custody.days", { days: Math.ceil(period.seconds / 86400) })}</>}
       {period.deadline && period.deadline - (trade.lock.lockedAt ?? trade.createdAt) > 7 * 86400 && <> · {t("custody.days", { days: Math.ceil((period.deadline - (trade.lock.lockedAt ?? trade.createdAt)) / 86400) })}</>}
     </div>}
-    {warn && unlisted && <p data-custody-warning="unlisted" style={{ margin: "4px 0 8px", fontSize: 12, color: T.amber }}>{t("custody.unlisted")}</p>}
-    {warn && facts.singleOperator && <p data-custody-warning="operator" style={{ margin: "4px 0 8px", fontSize: 12, color: T.red }}>{t("custody.operator")}</p>}
+    {warn && unlisted && <p data-custody-warning="unlisted" style={{ margin: "4px 0 8px", fontSize: T.fs.warn, fontWeight: 600, color: T.attnInk }}>{t("custody.unlisted")}</p>}
+    {warn && facts.singleOperator && <p data-custody-warning="operator" style={{ margin: "4px 0 8px", fontSize: T.fs.warn, fontWeight: 600, color: T.crit }}>{t("custody.operator")}</p>}
   </div>;
 }
 export function BitcoinCustody({ refundHeight, settled = false }: { refundHeight?: number | null; settled?: boolean }) {

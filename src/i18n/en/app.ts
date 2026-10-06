@@ -50,7 +50,7 @@ export const app: Record<string, string> = {
     "My Chama and Cheapest are the defaults. Switch to All when you want to discover offers from other countries and communities.",
   "app.coachBrowsePreferencesTitle": "Choose what Browse shows",
   "app.coachCreateBody":
-    "This ✎ button opens three plain questions. Chama finds a match or prepares the right offer for you.",
+    "Create opens three plain questions. Chama finds a match or prepares the right offer for you.",
   "app.coachCreateTitle": "Start with what you have",
   "app.coachDashboardBody":
     "Your standing, stats, earnings, and ratings are coming here — the place that tracks how you're doing as you trade.",
@@ -199,7 +199,7 @@ export const app: Record<string, string> = {
   "app.startingOrder": "Starting your order…",
   "app.strandedClaimBody":
     "⚠ This note IS the sats from your settled trade. Chama couldn't redeem it automatically — import it into Fedi or any Fedimint wallet on this federation, or save it somewhere safe NOW. Clearing browser data destroys the only copy.",
-  "app.strandedClaimHeadline": "STRANDED CLAIM · BEARER NOTE",
+  "app.strandedClaimHeadline": "Stranded claim · bearer note",
   "app.strandedClaimUnresolvedBody":
     "⚠ This note was reported already-redeemed, but Chama couldn't confirm YOUR wallet was credited. Save it anyway, then check your balance — if the sats aren't there, this string is your evidence and recovery path.",
   "app.switchOverlayAfter": "…",
@@ -236,10 +236,10 @@ export const app: Record<string, string> = {
     "Chama wallet disconnected. Tap Reconnect and try again.",
   "app.yourFederation": "your federation",
   "edit.title": "Edit your listing",
-  "edit.description": "DESCRIPTION",
-  "edit.priceSats": "PRICE (SATS)",
-  "edit.priceFiat": "PRICE ({currency})",
-  "edit.stock": "STOCK",
+  "edit.description": "Description",
+  "edit.priceSats": "Price (sats)",
+  "edit.priceFiat": "Price ({currency})",
+  "edit.stock": "Stock",
   "edit.save": "Save changes",
   "edit.saving": "Saving…",
   "edit.saved": "Listing updated.",

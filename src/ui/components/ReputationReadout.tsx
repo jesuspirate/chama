@@ -35,10 +35,10 @@ export function ReputationReadout({ pubkey, name, fetchSummary }: {
     <div style={{
       marginTop: 12, padding: "10px 12px", borderRadius: T.rs,
       background: T.surface, border: `1px solid ${T.border}`,
-      fontFamily: T.mono, fontSize: 12.5,
+      fontFamily: T.sans, fontSize: T.fs.secondary,
       animation: "fadeIn 0.2s ease",
     }}>
-      <div style={{ fontSize: 9.5, color: T.muted, letterSpacing: 0.5, marginBottom: 6, textTransform: "uppercase" }}>
+      <div style={{ fontSize: T.fs.secondary, color: T.muted, marginBottom: 6, }}>
         {t("me.reputationTitle", { who })}
       </div>
       {loading ? (
