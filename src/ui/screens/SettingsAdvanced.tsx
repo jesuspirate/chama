@@ -167,7 +167,7 @@ export function SettingsAdvanced({
       }}>
         <button onClick={onBack} style={{
           background: "none", border: "none", color: T.muted,
-          fontFamily: T.mono, fontSize: 12, cursor: "pointer", padding: 0,
+          fontFamily: T.sans, fontSize: T.fs.secondary, cursor: "pointer", padding: 0,
         }}>
           ← Back
         </button>
@@ -182,8 +182,7 @@ export function SettingsAdvanced({
         borderRadius: T.r, padding: 16, marginBottom: 16,
       }}>
         <div style={{
-          fontSize: 11, fontWeight: 600, color: T.muted, fontFamily: T.mono,
-          letterSpacing: 1, marginBottom: 10,
+          fontSize: T.fs.secondary, fontWeight: 600, color: T.muted, fontFamily: T.sans, marginBottom: 10,
         }}>
           LOCAL WALLET BALANCE
         </div>
@@ -197,7 +196,7 @@ export function SettingsAdvanced({
           <BalanceMetric label="Whole" value={<BitcoinAmount sats={wholeSats} size={13} gap={3} glyphScale={1.18} color={T.text} glyphColor={T.muted} />} />
           <BalanceMetric label="Recoverable" value={<BitcoinAmount sats={recoverableSats} size={13} gap={3} glyphScale={1.18} color={recoverableSats > 0 ? T.amber : T.muted} glyphColor={recoverableSats > 0 ? T.amber : T.muted} />} tone={recoverableSats > 0 ? T.amber : T.muted} />
         </div>
-        <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono, lineHeight: 1.6 }}>
+        <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, lineHeight: 1.6 }}>
           Route: <span style={{ color: T.text }}>{routeLabel}</span>
           {" · "}
           Status: <span style={{ color: fedimint.joined ? T.green : fedimint.busy ? T.amber : T.muted }}>
@@ -205,12 +204,12 @@ export function SettingsAdvanced({
           </span>
           {" · "}
           Lightning reserve: <span style={{ color: reserveSats > 0 ? T.amber : T.muted }}>
-            <BitcoinAmount sats={reserveSats} size={10} gap={3} glyphScale={1.18} color={reserveSats > 0 ? T.amber : T.muted} glyphColor={reserveSats > 0 ? T.amber : T.muted} />
+            <BitcoinAmount sats={reserveSats} size={T.fs.secondary} gap={3} glyphScale={1.18} color={reserveSats > 0 ? T.amber : T.muted} glyphColor={reserveSats > 0 ? T.amber : T.muted} />
           </span>
         </div>
         {fedimint.federationId && (
           <div style={{
-            fontSize: 9, color: T.muted, fontFamily: T.mono,
+            fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans,
             marginTop: 8, wordBreak: "break-all",
           }}>
             fed {fedimint.federationId}
@@ -227,19 +226,18 @@ export function SettingsAdvanced({
           marginBottom: 16,
         }}>
           <div style={{
-            fontSize: 11,
+            fontSize: T.fs.secondary,
             fontWeight: 700,
             color: browserRecoveryJournal.stage === "completed" ? T.green : T.amber,
-            fontFamily: T.mono,
-            letterSpacing: 1,
+            fontFamily: T.sans,
             marginBottom: 8,
           }}>
             BROWSER WALLET REPAIR ATTEMPT · {browserRecoveryJournal.stage.toUpperCase()}
           </div>
           <div style={{
-            fontSize: 11,
+            fontSize: T.fs.secondary,
             color: T.text,
-            fontFamily: T.mono,
+            fontFamily: T.sans,
             lineHeight: 1.65,
           }}>
             {browserRecoveryJournal.stage === "completed"
@@ -251,9 +249,9 @@ export function SettingsAdvanced({
               : browserRecoveryJournal.error || "Recovery is still running or needs another check."}
           </div>
           <div style={{
-            fontSize: 9,
+            fontSize: T.fs.secondary,
             color: T.muted,
-            fontFamily: T.mono,
+            fontFamily: T.sans,
             lineHeight: 1.6,
             marginTop: 10,
             wordBreak: "break-all",
@@ -289,12 +287,12 @@ export function SettingsAdvanced({
             <div style={{ fontSize: 13, fontWeight: 700, color: T.text, fontFamily: T.sans }}>
               NWC wallets
             </div>
-            <div style={{ fontSize: 11, color: T.muted, fontFamily: T.mono, marginTop: 4, lineHeight: 1.5 }}>
+            <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, marginTop: 4, lineHeight: 1.5 }}>
               Advanced wallet links for fast payouts and auto-funding.
             </div>
           </div>
           <div style={{
-            color: T.muted, fontFamily: T.mono, fontSize: 12,
+            color: T.muted, fontFamily: T.sans, fontSize: T.fs.secondary,
             transform: nwcManagerOpen ? "rotate(90deg)" : "rotate(0)",
             transition: "transform 0.16s ease",
           }}>
@@ -358,7 +356,7 @@ export function SettingsAdvanced({
             <div style={{ fontSize: 13, fontWeight: 700, color: T.text, fontFamily: T.sans }}>
               Power-user mode
             </div>
-            <div style={{ fontSize: 11, color: T.muted, fontFamily: T.mono, marginTop: 4, lineHeight: 1.5 }}>
+            <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, marginTop: 4, lineHeight: 1.5 }}>
               Reveals power-user surfaces: route switching, external invite
               paste, OPFS reset. Off by default.
               {isDev && (
@@ -391,8 +389,7 @@ export function SettingsAdvanced({
             borderRadius: T.r, padding: 16, marginBottom: 16,
           }}>
             <div style={{
-              fontSize: 11, fontWeight: 600, color: T.muted, fontFamily: T.mono,
-              letterSpacing: 1, marginBottom: 8,
+              fontSize: T.fs.secondary, fontWeight: 600, color: T.muted, fontFamily: T.sans, marginBottom: 8,
             }}>
               ROUTE
             </div>
@@ -401,7 +398,7 @@ export function SettingsAdvanced({
                 one switches the raw FEDERATION — for custom or non-listed feds
                 you paste yourself. Two layers, kept on purpose. */}
             <div style={{
-              fontSize: 10, color: T.muted, fontFamily: T.mono, lineHeight: 1.5,
+              fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, lineHeight: 1.5,
               marginBottom: 10,
             }}>
               For a custom or non-listed federation. To change your community
@@ -424,12 +421,11 @@ export function SettingsAdvanced({
             borderRadius: T.r, padding: 16, marginBottom: 16,
           }}>
             <div style={{
-              fontSize: 11, fontWeight: 600, color: T.muted, fontFamily: T.mono,
-              letterSpacing: 1, marginBottom: 8,
+              fontSize: T.fs.secondary, fontWeight: 600, color: T.muted, fontFamily: T.sans, marginBottom: 8,
             }}>
               RESET LOCAL CHAMA
             </div>
-            <div style={{ fontSize: 11, color: T.muted, fontFamily: T.mono, lineHeight: 1.5, marginBottom: 12 }}>
+            <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, lineHeight: 1.5, marginBottom: 12 }}>
               Wipes the device-local OPFS Fedimint client. Your Nostr trade
               history survives, but the local wallet does not. The fund-loss
               guard refuses if a balance is present — withdraw first.
@@ -443,9 +439,9 @@ export function SettingsAdvanced({
                 background: "none",
                 border: `1px solid ${T.border}`,
                 color: T.muted,
-                fontFamily: T.mono, fontSize: 11, fontWeight: 700,
+                fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
                 padding: "8px 12px", borderRadius: T.rs,
-                cursor: "pointer", letterSpacing: 0.5,
+                cursor: "pointer",
               }}
             >
               ↺ Reset local Chama
@@ -454,7 +450,7 @@ export function SettingsAdvanced({
               <div style={{
                 marginTop: 10, padding: "9px 11px", borderRadius: T.rs,
                 background: T.redDim, border: `1px solid ${T.red}55`,
-                color: T.red, fontFamily: T.mono, fontSize: 10, lineHeight: 1.5,
+                color: T.red, fontFamily: T.sans, fontSize: T.fs.secondary, lineHeight: 1.5,
                 wordBreak: "break-word" as const,
               }}>
                 ⚠ {resetError}
@@ -478,8 +474,7 @@ export function SettingsAdvanced({
           borderRadius: T.r, padding: 16, marginBottom: 16,
         }}>
           <div style={{
-            fontSize: 11, fontWeight: 600, color: T.muted, fontFamily: T.mono,
-            letterSpacing: 1, marginBottom: 8,
+            fontSize: T.fs.secondary, fontWeight: 600, color: T.muted, fontFamily: T.sans, marginBottom: 8,
           }}>
             {simOn ? "FUND SIM WALLET" : "MANUAL FUND (POWER USER)"}
           </div>
@@ -494,9 +489,9 @@ export function SettingsAdvanced({
               background: "none",
               border: `1px solid ${T.border}`,
               color: T.muted,
-              fontFamily: T.mono, fontSize: 11, fontWeight: 700,
+              fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
               padding: "8px 12px", borderRadius: T.rs,
-              cursor: "pointer", letterSpacing: 0.5,
+              cursor: "pointer",
             }}
           >
             ⚡ Open manual fund
@@ -533,7 +528,7 @@ export function SettingsAdvanced({
         <div style={{
           padding: 24, textAlign: "center" as const,
           background: T.surface, border: `1px dashed ${T.border}`,
-          borderRadius: T.r, color: T.muted, fontFamily: T.mono, fontSize: 11, lineHeight: 1.7,
+          borderRadius: T.r, color: T.muted, fontFamily: T.sans, fontSize: T.fs.secondary, lineHeight: 1.7,
         }}>
           Power-user surfaces are hidden in production. Flip Power-user
           mode above to reveal them.
@@ -563,11 +558,9 @@ function BalanceMetric({
       minWidth: 0,
     }}>
       <div style={{
-        fontSize: 9,
+        fontSize: T.fs.secondary,
         color: T.muted,
-        fontFamily: T.mono,
-        textTransform: "uppercase",
-        letterSpacing: 0.8,
+        fontFamily: T.sans,
         marginBottom: 5,
       }}>
         {label}
@@ -575,15 +568,15 @@ function BalanceMetric({
       <div style={{
         fontSize: 13,
         color: tone,
-        fontFamily: T.mono,
-        fontWeight: 800,
+        fontFamily: T.sans,
+        fontWeight: 700,
         lineHeight: 1.2,
         wordBreak: "break-word",
       }}>
         {value}
       </div>
       {suffix && (
-        <div style={{ fontSize: 9, color: T.muted, fontFamily: T.mono, marginTop: 3 }}>
+        <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, marginTop: 3 }}>
           {suffix}
         </div>
       )}
@@ -641,11 +634,10 @@ function NwcManager({
         marginBottom: 12,
       }}>
         <div style={{
-          fontSize: 10,
+          fontSize: T.fs.secondary,
           color: T.text,
-          fontFamily: T.mono,
-          fontWeight: 800,
-          letterSpacing: 0.4,
+          fontFamily: T.sans,
+          fontWeight: 700,
           marginBottom: 6,
         }}>
           SETUP
@@ -673,10 +665,9 @@ function NwcManager({
       </button>}
 
       <div style={{
-        fontSize: 9,
+        fontSize: T.fs.secondary,
         color: T.muted,
-        fontFamily: T.mono,
-        letterSpacing: 1,
+        fontFamily: T.sans,
         marginBottom: 6,
       }}>
         PASTE CONNECTION
@@ -695,8 +686,8 @@ function NwcManager({
           border: `1px solid ${T.red}44`,
           color: T.red,
           borderRadius: T.rs,
-          fontFamily: T.mono,
-          fontSize: 10,
+          fontFamily: T.sans,
+          fontSize: T.fs.secondary,
           marginBottom: 8,
         }}>
           {error}
@@ -712,9 +703,9 @@ function NwcManager({
           background: inputReady ? T.accent : T.surface,
           border: `1px solid ${inputReady ? T.accent : T.border}`,
           color: inputReady ? "#000" : T.muted,
-          fontFamily: T.mono,
-          fontSize: 11,
-          fontWeight: 800,
+          fontFamily: T.sans,
+          fontSize: T.fs.secondary,
+          fontWeight: 700,
           cursor: inputReady ? "pointer" : "not-allowed",
         }}
       >
@@ -742,20 +733,18 @@ function NwcPermissionCard({
       minWidth: 0,
     }}>
       <div style={{
-        fontSize: 9,
+        fontSize: T.fs.secondary,
         color: T.muted,
-        fontFamily: T.mono,
-        textTransform: "uppercase",
-        letterSpacing: 0.8,
+        fontFamily: T.sans,
         marginBottom: 5,
       }}>
         {title}
       </div>
       <div style={{
-        fontSize: 12,
+        fontSize: T.fs.secondary,
         color: T.accent,
-        fontFamily: T.mono,
-        fontWeight: 900,
+        fontFamily: T.sans,
+        fontWeight: 700,
         lineHeight: 1.25,
         marginBottom: 5,
       }}>
@@ -763,8 +752,8 @@ function NwcPermissionCard({
       </div>
       <div style={{
         color: T.muted,
-        fontFamily: T.mono,
-        fontSize: 9,
+        fontFamily: T.sans,
+        fontSize: T.fs.secondary,
         lineHeight: 1.45,
       }}>
         {hint}
@@ -833,14 +822,14 @@ function RemoteBridgeCard() {
           <div style={{ fontSize: 13, fontWeight: 700, color: T.text, fontFamily: T.sans }}>
             Chama node
           </div>
-          <div style={{ fontSize: 11, color: T.muted, fontFamily: T.mono, marginTop: 4, lineHeight: 1.5 }}>
+          <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, marginTop: 4, lineHeight: 1.5 }}>
             {configuredUrl
               ? <>Connected to <span style={{ color: T.green }}>{configuredUrl}</span>{hasToken ? " · token set" : ""}</>
               : "Run your wallet on a node hosted by someone you trust."}
           </div>
         </div>
         <div style={{
-          color: T.muted, fontFamily: T.mono, fontSize: 12,
+          color: T.muted, fontFamily: T.sans, fontSize: T.fs.secondary,
           transform: open ? "rotate(90deg)" : "rotate(0)",
           transition: "transform 0.16s ease",
         }}>
@@ -850,7 +839,7 @@ function RemoteBridgeCard() {
 
       {open && (
         <div style={{ marginTop: 12 }}>
-          <div style={{ fontSize: 11, color: T.muted, fontFamily: T.mono, lineHeight: 1.6, marginBottom: 10 }}>
+          <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, lineHeight: 1.6, marginBottom: 10 }}>
             Your wallet keys live on that node — connect only to a node run by a
             person you personally trust, and use it from ONE browser only.
             Sats pass through during trades and settle out; Chama holds nothing
@@ -876,7 +865,7 @@ function RemoteBridgeCard() {
             spellCheck={false}
           />
           {error && (
-            <div style={{ fontSize: 11, color: T.red, fontFamily: T.mono, marginBottom: 8 }}>
+            <div style={{ fontSize: T.fs.secondary, color: T.red, fontFamily: T.sans, marginBottom: 8 }}>
               {error}
             </div>
           )}
@@ -964,12 +953,12 @@ function TestExpiryOverrideCard() {
       borderRadius: T.r, padding: 16, marginBottom: 16,
     }}>
       <div style={{
-        fontSize: 11, fontWeight: 600, color: active ? T.amber : T.muted,
-        fontFamily: T.mono, letterSpacing: 1, marginBottom: 8,
+        fontSize: T.fs.secondary, fontWeight: 600, color: active ? T.amber : T.muted,
+        fontFamily: T.sans, marginBottom: 8,
       }}>
         TEST TRADE EXPIRY {active ? "· ACTIVE" : "(POWER USER)"}
       </div>
-      <div style={{ fontSize: 11, color: T.muted, fontFamily: T.mono, lineHeight: 1.5, marginBottom: 12 }}>
+      <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, lineHeight: 1.5, marginBottom: 12 }}>
         Overrides the expiry baked into trades CREATED on this device (seconds,
         5 min – 30 days). A 1800s trade opens the backup-arbiter floor after
         ~15 min — every device follows the trade, only the creator needs this.
@@ -981,7 +970,7 @@ function TestExpiryOverrideCard() {
           onChange={(e) => setValue(e.target.value)}
           placeholder="e.g. 1800"
           inputMode="numeric"
-          style={{ ...inputStyle, flex: 1, fontFamily: T.mono, fontSize: 12 }}
+          style={{ ...inputStyle, flex: 1, fontFamily: T.sans, fontSize: T.fs.secondary }}
         />
         <button
           onClick={save}
@@ -990,7 +979,7 @@ function TestExpiryOverrideCard() {
             background: valid ? T.amberDim : "none",
             border: `1px solid ${valid ? T.amber + "66" : T.border}`,
             color: valid ? T.amber : T.muted,
-            fontFamily: T.mono, fontSize: 11, fontWeight: 700,
+            fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
             padding: "8px 12px", borderRadius: T.rs,
             cursor: valid ? "pointer" : "default",
           }}
@@ -1001,7 +990,7 @@ function TestExpiryOverrideCard() {
           onClick={clear}
           style={{
             background: "none", border: `1px solid ${T.border}`, color: T.muted,
-            fontFamily: T.mono, fontSize: 11, fontWeight: 700,
+            fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
             padding: "8px 12px", borderRadius: T.rs, cursor: "pointer",
           }}
         >
@@ -1056,12 +1045,12 @@ function TestSubstitutionGraceCard() {
       borderRadius: T.r, padding: 16, marginBottom: 16,
     }}>
       <div style={{
-        fontSize: 11, fontWeight: 600, color: active ? T.amber : T.muted,
-        fontFamily: T.mono, letterSpacing: 1, marginBottom: 8,
+        fontSize: T.fs.secondary, fontWeight: 600, color: active ? T.amber : T.muted,
+        fontFamily: T.sans, marginBottom: 8,
       }}>
         TEST SUBSTITUTION GRACE {active ? "· ACTIVE" : "(POWER USER)"}
       </div>
-      <div style={{ fontSize: 11, color: T.muted, fontFamily: T.mono, lineHeight: 1.5, marginBottom: 12 }}>
+      <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, lineHeight: 1.5, marginBottom: 12 }}>
         Sets the grace ceiling (seconds, 0 – 4h) committed into trades LOCKED on
         this device — how long the assigned arbiter keeps the dispute to itself
         before a backup may step in. 60 opens the floor a minute after a dispute
@@ -1074,7 +1063,7 @@ function TestSubstitutionGraceCard() {
           onChange={(e) => setValue(e.target.value)}
           placeholder="e.g. 60"
           inputMode="numeric"
-          style={{ ...inputStyle, flex: 1, fontFamily: T.mono, fontSize: 12 }}
+          style={{ ...inputStyle, flex: 1, fontFamily: T.sans, fontSize: T.fs.secondary }}
         />
         <button
           onClick={save}
@@ -1083,7 +1072,7 @@ function TestSubstitutionGraceCard() {
             background: valid ? T.amberDim : "none",
             border: `1px solid ${valid ? T.amber + "66" : T.border}`,
             color: valid ? T.amber : T.muted,
-            fontFamily: T.mono, fontSize: 11, fontWeight: 700,
+            fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
             padding: "8px 12px", borderRadius: T.rs,
             cursor: valid ? "pointer" : "default",
           }}
@@ -1094,7 +1083,7 @@ function TestSubstitutionGraceCard() {
           onClick={clear}
           style={{
             background: "none", border: `1px solid ${T.border}`, color: T.muted,
-            fontFamily: T.mono, fontSize: 11, fontWeight: 700,
+            fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
             padding: "8px 12px", borderRadius: T.rs, cursor: "pointer",
           }}
         >
@@ -1196,12 +1185,11 @@ function FediWeblnProbeCard() {
       borderRadius: T.r, padding: 16, marginBottom: 16,
     }}>
       <div style={{
-        fontSize: 11, fontWeight: 600, color: T.muted, fontFamily: T.mono,
-        letterSpacing: 1, marginBottom: 8,
+        fontSize: T.fs.secondary, fontWeight: 600, color: T.muted, fontFamily: T.sans, marginBottom: 8,
       }}>
         FEDI WEBLN PROBE (#52 SPIKE)
       </div>
-      <div style={{ fontSize: 11, color: T.muted, fontFamily: T.mono, lineHeight: 1.6, marginBottom: 12 }}>
+      <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, lineHeight: 1.6, marginBottom: 12 }}>
         Run this inside the Fedi mini-app. It reports whether Chama's Fedimint
         WASM client can run here (SharedArrayBuffer / crossOriginIsolated / OPFS)
         and what the host's WebLN exposes — the last unknowns for cross-Chama
@@ -1214,7 +1202,7 @@ function FediWeblnProbeCard() {
           style={{
             flex: 1, padding: "10px 12px", borderRadius: T.rs,
             background: T.accentDim, border: `1px solid ${T.accent}66`,
-            color: T.accent, fontFamily: T.mono, fontSize: 11, fontWeight: 800, cursor: "pointer",
+            color: T.accent, fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700, cursor: "pointer",
           }}
         >
           Run probe
@@ -1224,7 +1212,7 @@ function FediWeblnProbeCard() {
           style={{
             flex: 1, padding: "10px 12px", borderRadius: T.rs,
             background: T.surface, border: `1px solid ${T.border}`,
-            color: T.muted, fontFamily: T.mono, fontSize: 11, fontWeight: 700, cursor: "pointer",
+            color: T.muted, fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700, cursor: "pointer",
           }}
         >
           Test WebLN
@@ -1236,7 +1224,7 @@ function FediWeblnProbeCard() {
         style={{
           width: "100%", padding: "10px 12px", borderRadius: T.rs, marginBottom: 12,
           background: T.tealDim, border: `1px solid ${T.teal}55`,
-          color: T.teal, fontFamily: T.mono, fontSize: 11, fontWeight: 800, cursor: "pointer",
+          color: T.teal, fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700, cursor: "pointer",
         }}
       >
         Map communities (read-only)
@@ -1246,7 +1234,7 @@ function FediWeblnProbeCard() {
         <div style={{
           padding: "10px 12px", borderRadius: T.rs,
           background: T.bg, border: `1px solid ${T.border}`,
-          color: T.text, fontFamily: T.mono, fontSize: 10, lineHeight: 1.6,
+          color: T.text, fontFamily: T.sans, fontSize: T.fs.secondary, lineHeight: 1.6,
           whiteSpace: "pre-wrap" as const, wordBreak: "break-all" as const,
           marginBottom: weblnResult ? 8 : 10,
         }}>
@@ -1257,7 +1245,7 @@ function FediWeblnProbeCard() {
         <div style={{
           padding: "9px 11px", borderRadius: T.rs, marginBottom: 10,
           background: T.surface, border: `1px solid ${T.border}`,
-          color: T.muted, fontFamily: T.mono, fontSize: 10, lineHeight: 1.5,
+          color: T.muted, fontFamily: T.sans, fontSize: T.fs.secondary, lineHeight: 1.5,
           whiteSpace: "pre-wrap" as const, wordBreak: "break-all" as const,
         }}>
           WebLN · {weblnResult}
@@ -1267,7 +1255,7 @@ function FediWeblnProbeCard() {
         <div style={{
           padding: "10px 12px", borderRadius: T.rs, marginBottom: 10,
           background: T.bg, border: `1px solid ${T.border}`,
-          color: T.text, fontFamily: T.mono, fontSize: 9, lineHeight: 1.6,
+          color: T.text, fontFamily: T.sans, fontSize: T.fs.secondary, lineHeight: 1.6,
           whiteSpace: "pre-wrap" as const, wordBreak: "break-all" as const,
           maxHeight: 220, overflowY: "auto",
         }}>
@@ -1286,7 +1274,7 @@ function FediWeblnProbeCard() {
           style={{
             width: "100%", padding: "9px 12px", borderRadius: T.rs,
             background: T.surface, border: `1px solid ${T.border}`, color: T.muted,
-            fontFamily: T.mono, fontSize: 11, fontWeight: 700, cursor: "pointer",
+            fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700, cursor: "pointer",
           }}
         />
       )}
@@ -1389,11 +1377,11 @@ function LegBlock({ leg }: { leg: FetchLegDiag }) {
       background: T.bg, border: `1px solid ${T.border}`,
     }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
-        <span style={{ fontSize: 11, color: T.text, fontFamily: T.mono, fontWeight: 800 }}>
+        <span style={{ fontSize: T.fs.secondary, color: T.text, fontFamily: T.sans, fontWeight: 700 }}>
           {leg.label}
         </span>
         <span style={{
-          fontSize: 10, fontFamily: T.mono, fontWeight: 800, letterSpacing: 0.5,
+          fontSize: T.fs.secondary, fontFamily: T.sans, fontWeight: 700,
           padding: "2px 7px", borderRadius: 999,
           color: resolvedTone(leg.resolvedBy),
           background: `${resolvedTone(leg.resolvedBy)}1f`,
@@ -1401,21 +1389,21 @@ function LegBlock({ leg }: { leg: FetchLegDiag }) {
         }}>
           {resolvedLabel(leg.resolvedBy)}
         </span>
-        <span style={{ fontSize: 10, color: T.muted, fontFamily: T.mono }}>
+        <span style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans }}>
           unique:{leg.totalEvents} · {leg.elapsedMs}ms
         </span>
       </div>
-      <div style={{ fontSize: 9, color: T.muted, fontFamily: T.mono, marginBottom: 6, wordBreak: "break-all" }}>
+      <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, marginBottom: 6, wordBreak: "break-all" }}>
         {leg.filterSummary}
       </div>
       {leg.perRelay.length === 0 ? (
-        <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono }}>(no relays touched)</div>
+        <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans }}>(no relays touched)</div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 3, marginBottom: 6 }}>
           {leg.perRelay.map((r) => (
             <div key={r.url} style={{
               display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap",
-              fontSize: 10, fontFamily: T.mono, color: T.text,
+              fontSize: T.fs.secondary, fontFamily: T.sans, color: T.text,
             }}>
               <span style={{ minWidth: 120, color: T.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {shortRelay(r.url)}
@@ -1428,7 +1416,7 @@ function LegBlock({ leg }: { leg: FetchLegDiag }) {
           ))}
         </div>
       )}
-      <div style={{ fontSize: 10, color: verdict.tone, fontFamily: T.mono, lineHeight: 1.5 }}>
+      <div style={{ fontSize: T.fs.secondary, color: verdict.tone, fontFamily: T.sans, lineHeight: 1.5 }}>
         → {verdict.text}
       </div>
     </div>
@@ -1515,7 +1503,7 @@ function HydrateBlock({ run }: { run: HydrateRunDiag }) {
   const verdict = hydrateVerdict(run);
   return (
     <div style={{ marginBottom: 12 }}>
-      <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono, marginBottom: 6 }}>
+      <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, marginBottom: 6 }}>
         HYDRATE · discovered:{run.discovered} · known:{run.knownCount} · forgotten:{run.forgottenCount} · fresh:{run.freshCount} · added:{run.added}
       </div>
       <div style={{
@@ -1529,7 +1517,7 @@ function HydrateBlock({ run }: { run: HydrateRunDiag }) {
         {run.ids.slice(0, 30).map((d) => (
           <div key={d.id} style={{
             display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap",
-            fontSize: 10, fontFamily: T.mono,
+            fontSize: T.fs.secondary, fontFamily: T.sans,
           }}>
             <span style={{
               fontSize: 9, fontWeight: 800, letterSpacing: 0.3, padding: "1px 6px",
@@ -1547,7 +1535,7 @@ function HydrateBlock({ run }: { run: HydrateRunDiag }) {
           </div>
         ))}
         {run.ids.length > 30 && (
-          <div style={{ fontSize: 9, color: T.muted, fontFamily: T.mono }}>
+          <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans }}>
             … +{run.ids.length - 30} more (in the copied readout)
           </div>
         )}
@@ -1677,8 +1665,7 @@ function DiscoveryDiagnosticCard({
       borderRadius: T.r, padding: 16, marginBottom: 16,
     }}>
       <div style={{
-        fontSize: 11, fontWeight: 600, color: T.muted, fontFamily: T.mono,
-        letterSpacing: 1, marginBottom: 8,
+        fontSize: T.fs.secondary, fontWeight: 600, color: T.muted, fontFamily: T.sans, marginBottom: 8,
       }}>
         MY TRADES DISCOVERY (FEDI R3)
       </div>
@@ -1697,7 +1684,7 @@ function DiscoveryDiagnosticCard({
           style={{
             flex: 1, minWidth: 150, padding: "10px 12px", borderRadius: T.rs,
             background: T.accentDim, border: `1px solid ${T.accent}66`,
-            color: T.accent, fontFamily: T.mono, fontSize: 11, fontWeight: 800,
+            color: T.accent, fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
             cursor: !onRunDiscovery || running ? "default" : "pointer",
             opacity: !onRunDiscovery || running ? 0.6 : 1,
           }}
@@ -1709,14 +1696,14 @@ function DiscoveryDiagnosticCard({
           style={{
             padding: "10px 12px", borderRadius: T.rs,
             background: T.surface, border: `1px solid ${T.border}`,
-            color: T.muted, fontFamily: T.mono, fontSize: 11, fontWeight: 700, cursor: "pointer",
+            color: T.muted, fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700, cursor: "pointer",
           }}
         >
           Re-check identity
         </button>
       </div>
       {runResult && (
-        <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono, marginBottom: 12, lineHeight: 1.5 }}>
+        <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, marginBottom: 12, lineHeight: 1.5 }}>
           {runResult}
         </div>
       )}
@@ -1741,7 +1728,7 @@ function DiscoveryDiagnosticCard({
       {/* Discovery legs (candidate 2/3 — the resolvedBy headline) */}
       {run ? (
         <div style={{ marginBottom: 12 }}>
-          <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono, marginBottom: 6 }}>
+          <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, marginBottom: 6 }}>
             DISCOVERY · {run.idsDiscovered} id(s) · {run.eventsFetched} event(s)
           </div>
           {run.legs.map((leg, i) => <LegBlock key={i} leg={leg} />)}
@@ -1750,7 +1737,7 @@ function DiscoveryDiagnosticCard({
         <div style={{
           padding: "10px 12px", borderRadius: T.rs, marginBottom: 12,
           background: T.bg, border: `1px solid ${T.border}`,
-          color: T.muted, fontFamily: T.mono, fontSize: 10, lineHeight: 1.5,
+          color: T.muted, fontFamily: T.sans, fontSize: T.fs.secondary, lineHeight: 1.5,
         }}>
           No discovery run captured yet — tap Run discovery now.
         </div>
@@ -1764,10 +1751,10 @@ function DiscoveryDiagnosticCard({
         padding: "10px 12px", borderRadius: T.rs,
         background: T.surface, border: `1px solid ${T.border}`, marginBottom: 12,
       }}>
-        <div style={{ fontSize: 10, color: T.text, fontFamily: T.mono, fontWeight: 800, letterSpacing: 0.4, marginBottom: 6 }}>
+        <div style={{ fontSize: T.fs.secondary, color: T.text, fontFamily: T.sans, fontWeight: 700, marginBottom: 6 }}>
           #d TRANSPORT CONTROL
         </div>
-        <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono, lineHeight: 1.5, marginBottom: 8 }}>
+        <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, lineHeight: 1.5, marginBottom: 8 }}>
           Fetch one KNOWN trade by id over the same path — no signer involved.
           Events back ⇒ transport works ⇒ an empty discovery is the query key.
           Times out empty ⇒ transport is blocked.
@@ -1777,7 +1764,7 @@ function DiscoveryDiagnosticCard({
             value={idInput}
             onChange={(e) => setIdInput(e.target.value)}
             placeholder="sm_mqm0mzwh_mr207nq0"
-            style={{ ...inputStyle, flex: 1, fontFamily: T.mono, fontSize: 11 }}
+            style={{ ...inputStyle, flex: 1, fontFamily: T.sans, fontSize: T.fs.secondary }}
           />
           <button
             onClick={() => void probeId()}
@@ -1785,7 +1772,7 @@ function DiscoveryDiagnosticCard({
             style={{
               padding: "8px 12px", borderRadius: T.rs,
               background: T.tealDim, border: `1px solid ${T.teal}55`,
-              color: T.teal, fontFamily: T.mono, fontSize: 11, fontWeight: 800,
+              color: T.teal, fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
               cursor: !onProbeFetchById || idBusy ? "default" : "pointer",
               opacity: !onProbeFetchById || idBusy ? 0.6 : 1,
             }}
@@ -1794,7 +1781,7 @@ function DiscoveryDiagnosticCard({
           </button>
         </div>
         {idError && (
-          <div style={{ fontSize: 10, color: T.red, fontFamily: T.mono, lineHeight: 1.5 }}>⚠ {idError}</div>
+          <div style={{ fontSize: T.fs.secondary, color: T.red, fontFamily: T.sans, lineHeight: 1.5 }}>⚠ {idError}</div>
         )}
         {idProbe && <LegBlock leg={idProbe} />}
       </div>
@@ -1806,7 +1793,7 @@ function DiscoveryDiagnosticCard({
         style={{
           width: "100%", padding: "9px 12px", borderRadius: T.rs,
           background: T.surface, border: `1px solid ${T.border}`, color: T.muted,
-          fontFamily: T.mono, fontSize: 11, fontWeight: 700, cursor: "pointer",
+          fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700, cursor: "pointer",
         }}
       />
     </div>
@@ -1879,8 +1866,7 @@ function StewardRosterCard({
       borderRadius: T.r, padding: 16, marginBottom: 16,
     }}>
       <div style={{
-        fontSize: 11, fontWeight: 700, color: T.muted, fontFamily: T.mono,
-        letterSpacing: 1, marginBottom: 8,
+        fontSize: T.fs.secondary, fontWeight: 700, color: T.muted, fontFamily: T.sans, marginBottom: 8,
       }}>
         COMMUNITY ARBITER ROSTER · STEWARD
       </div>
@@ -1892,7 +1878,7 @@ function StewardRosterCard({
       </div>
       {current.length > 0 && (
         <div style={{
-          fontSize: 10, color: T.text, fontFamily: T.mono, lineHeight: 1.6,
+          fontSize: T.fs.secondary, color: T.text, fontFamily: T.sans, lineHeight: 1.6,
           padding: "8px 10px", borderRadius: T.rs, marginBottom: 10,
           background: T.surface, border: `1px solid ${T.border}`,
         }}>
@@ -1909,7 +1895,7 @@ function StewardRosterCard({
           width: "100%", boxSizing: "border-box", resize: "vertical",
           padding: "10px 12px", borderRadius: T.rs, marginBottom: 8,
           background: T.surface, border: `1px solid ${T.border}`,
-          color: T.text, fontFamily: T.mono, fontSize: 11, lineHeight: 1.5,
+          color: T.text, fontFamily: T.sans, fontSize: T.fs.secondary, lineHeight: 1.5,
         }}
       />
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -1919,7 +1905,7 @@ function StewardRosterCard({
           style={{
             padding: "10px 14px", borderRadius: T.rs,
             border: `1px solid ${T.accent}66`, background: T.accentDim,
-            color: T.accent, fontFamily: T.mono, fontSize: 11, fontWeight: 800,
+            color: T.accent, fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
             cursor: busy ? "default" : "pointer", opacity: busy ? 0.6 : 1,
           }}
         >
@@ -1942,7 +1928,7 @@ function StewardRosterCard({
             style={{
               padding: "10px 14px", borderRadius: T.rs,
               border: `1px solid ${T.teal}66`, background: T.tealDim,
-              color: T.teal, fontFamily: T.mono, fontSize: 11, fontWeight: 800,
+              color: T.teal, fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
               cursor: appsBusy ? "default" : "pointer", opacity: appsBusy ? 0.6 : 1,
             }}
           >
@@ -1953,7 +1939,7 @@ function StewardRosterCard({
       {applications && (
         <div style={{ marginTop: 10 }}>
           {applications.length === 0 ? (
-            <div style={{ fontSize: 11, color: T.muted, fontFamily: T.mono }}>
+            <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans }}>
               No pending applications for {displayName} (already-rostered keys are filtered out).
             </div>
           ) : applications.map(app => (
@@ -1968,7 +1954,7 @@ function StewardRosterCard({
                 display: "flex", justifyContent: "space-between",
                 alignItems: "center", gap: 8, marginBottom: 4,
               }}>
-                <span style={{ fontSize: 10, color: T.teal, fontFamily: T.mono, fontWeight: 800 }}>
+                <span style={{ fontSize: T.fs.secondary, color: T.teal, fontFamily: T.sans, fontWeight: 700 }}>
                   {app.applicant.slice(0, 8)}…{app.applicant.slice(-4)}
                 </span>
                 <button
@@ -1976,7 +1962,7 @@ function StewardRosterCard({
                   style={{
                     padding: "4px 9px", borderRadius: 999,
                     border: `1px solid ${T.green}66`, background: T.greenDim,
-                    color: T.green, fontFamily: T.mono, fontSize: 10, fontWeight: 800,
+                    color: T.green, fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
                     cursor: "pointer",
                   }}
                 >
@@ -1991,12 +1977,12 @@ function StewardRosterCard({
         </div>
       )}
       {status && (
-        <div style={{ marginTop: 8, fontSize: 11, color: T.green, fontFamily: T.mono }}>
+        <div style={{ marginTop: 8, fontSize: T.fs.secondary, color: T.green, fontFamily: T.sans }}>
           ✓ {status}
         </div>
       )}
       {error && (
-        <div style={{ marginTop: 8, fontSize: 11, color: T.red, fontFamily: T.mono }}>
+        <div style={{ marginTop: 8, fontSize: T.fs.secondary, color: T.red, fontFamily: T.sans }}>
           ⚠ {error}
         </div>
       )}

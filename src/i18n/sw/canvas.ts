@@ -12,7 +12,7 @@ export const canvas: Record<string, string> = {
 
   "canvas.chamaWant": "Mizunguko",
   "canvas.xbtTease": "XBT · Bitcoin",
-  "canvas.circleKicker": "MIZUNGUKO YA AKIBA",
+  "canvas.circleKicker": "Mizunguko ya akiba",
   "canvas.circleTitle": "Anzisha, au jiunge?",
   "canvas.circleSub": "Mzunguko ni watu unaoweka akiba nao. Leta wako, au tafuta mmoja.",
   "canvas.circleStart": "Anzisha mzunguko mpya",
@@ -24,7 +24,7 @@ export const canvas: Record<string, string> = {
   "canvas.xbtTeaseDesc": "Soko jipya — pale tu litakapokuwa tayari kweli.",
   "canvas.comingSoon": "Inakuja hivi karibuni",
   "canvas.chamaWantDesc": "Fungua duara la Chama — sehemu sawa, wote wanakamilisha au wote wanarejeshewa.",
-  "canvas.chamaWantBadge": "JINA LENYEWE",
+  "canvas.chamaWantBadge": "Jina lenyewe",
   "canvas.enterRailDetails": "Weka maelezo yako ya malipo ya {rail}.",
   "canvas.detailsSaveFailed": "Maelezo hayo ya malipo hayakuweza kuhifadhiwa.",
   "canvas.enterAmountAndRail": "Weka kiasi na uchague angalau njia moja ya kulipa.",
@@ -215,4 +215,6 @@ export const canvas: Record<string, string> = {
   "canvas.circleLive": "Mizunguko iliyo wazi · {count} moja kwa moja",
   "canvas.circleNoneOpen": "Hakuna uliofunguliwa sasa — anzisha mmoja uwe wa kwanza.",
   "canvas.circleBrowseMore": "Ona {count} zaidi katika Vinjari",
+  "canvas.satsRange": "sats {min}–{max}",
+  "canvas.pickAmountNext": "Uliomba sats {amount} — utachagua kiasi kamili katika hatua inayofuata.",
 };

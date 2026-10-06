@@ -28,7 +28,7 @@ export function LoadTradeInput({ onLoad }: { onLoad: (id: string) => void }) {
           flex: 1, padding: "8px 12px",
           background: T.card, border: `1px solid ${T.border}`,
           borderRadius: T.rs, color: T.text,
-          fontFamily: T.mono, fontSize: 11, outline: "none",
+          fontFamily: T.sans, fontSize: T.fs.secondary, outline: "none",
         }}
       />
       <button
@@ -39,7 +39,7 @@ export function LoadTradeInput({ onLoad }: { onLoad: (id: string) => void }) {
           background: id.trim() && !loading ? T.tealDim : T.card,
           border: `1px solid ${id.trim() && !loading ? T.teal + "44" : T.border}`,
           color: id.trim() && !loading ? T.teal : T.muted,
-          fontFamily: T.mono, fontSize: 11, fontWeight: 700,
+          fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
           cursor: id.trim() && !loading ? "pointer" : "default",
           transition: "all 0.2s", whiteSpace: "nowrap",
         }}

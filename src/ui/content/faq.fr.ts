@@ -5,7 +5,7 @@ import type { FaqContent } from "./faq-types.js";
 
 export const faqFr: FaqContent = {
   intro:
-    "Échangez des bitcoins, des biens et des services avec votre communauté. Un chama est un cercle d’épargne d’Afrique de l’Est ; ici, les échanges utilisent de l’ecash émis par une fédération ou un dépôt direct en Bitcoin. Chama ne détient pas l’argent ; le tableau ci-dessous indique qui le détient.",
+    "Échangez des bitcoins, des biens et des services avec votre communauté. Un chama est un cercle d’épargne d’Afrique de l’Est ; ici, les échanges utilisent de l’ecash émis par une fédération ou un dépôt direct en Bitcoin. Chama ne détient pas l’argent ; « Qui détient mon argent ? » indique qui le détient.",
   sections: [
     {
       id: "basics",

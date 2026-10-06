@@ -41,8 +41,7 @@ export function RecurringBillCard({
     >
       <div
         style={{
-          fontSize: 11, color: T.accent, fontFamily: T.mono,
-          letterSpacing: 0.5, textTransform: "uppercase", fontWeight: 700,
+          fontSize: T.fs.secondary, color: T.accent, fontFamily: T.sans, fontWeight: 700,
           display: "flex", alignItems: "center", gap: 6,
         }}
       >
@@ -68,7 +67,7 @@ export function RecurringBillCard({
               </div>
               <div style={{ fontSize: 12, color: T.muted, marginTop: 1, display: "flex", alignItems: "center", gap: 6 }}>
                 {state ? (
-                  <BitcoinAmount msats={state.amountMsats} size={12} gap={3} glyphScale={1.18} />
+                  <BitcoinAmount msats={state.amountMsats} size={T.fs.secondary} gap={3} glyphScale={1.18} />
                 ) : null}
                 <span>{t("me.recurringNextPost", { date: dateFmt(nextRepostAt(cfg)) })}</span>
               </div>

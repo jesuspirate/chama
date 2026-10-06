@@ -367,9 +367,8 @@ export function SavedHandlesPanel({ communitySlug, onClose }: {
         }}>
           <div>
             <div style={{
-              fontSize: 10, fontWeight: 800, color: T.teal,
-              fontFamily: T.mono, letterSpacing: 1,
-              textTransform: "uppercase",
+              fontSize: T.fs.secondary, fontWeight: 800, color: T.teal,
+              fontFamily: T.sans,
             }}>
               {t("claim.defaultForMobileMoney")}
             </div>
@@ -383,8 +382,8 @@ export function SavedHandlesPanel({ communitySlug, onClose }: {
           <span style={{
             padding: "3px 9px", borderRadius: 999,
             background: T.surface, border: `1px solid ${T.border}`,
-            color: T.muted, fontFamily: T.mono, fontSize: 9,
-            fontWeight: 800, letterSpacing: 0.3, flexShrink: 0,
+            color: T.muted, fontFamily: T.sans, fontSize: T.fs.secondary,
+            fontWeight: 700, flexShrink: 0,
           }}>
             {t("claim.privateBadge")}
           </span>
@@ -460,7 +459,7 @@ export function SavedHandlesPanel({ communitySlug, onClose }: {
               background: !phoneValue.trim() || phoneSaveError ? T.surface : T.tealDim,
               border: `1px solid ${!phoneValue.trim() || phoneSaveError ? T.border : T.teal + "66"}`,
               color: !phoneValue.trim() || phoneSaveError ? T.muted : T.teal,
-              fontFamily: T.mono, fontSize: 11, fontWeight: 800,
+              fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
               cursor: !phoneValue.trim() || phoneSaveError ? "default" : "pointer",
               whiteSpace: "nowrap" as const,
             }}
@@ -470,16 +469,16 @@ export function SavedHandlesPanel({ communitySlug, onClose }: {
         </div>
         {phoneProgressHint && !showPhoneSaveError && (
           <div style={{
-            marginTop: 8, color: T.teal, fontFamily: T.mono,
-            fontSize: 10, lineHeight: 1.45,
+            marginTop: 8, color: T.teal, fontFamily: T.sans,
+            fontSize: T.fs.secondary, lineHeight: 1.45,
           }}>
             {phoneProgressHint}
           </div>
         )}
         {showPhoneSaveError && (
           <div style={{
-            marginTop: 8, color: T.red, fontFamily: T.mono,
-            fontSize: 10, lineHeight: 1.45,
+            marginTop: 8, color: T.red, fontFamily: T.sans,
+            fontSize: T.fs.secondary, lineHeight: 1.45,
           }}>
             {phoneSaveError}
           </div>
@@ -492,13 +491,12 @@ export function SavedHandlesPanel({ communitySlug, onClose }: {
               gap: 8, marginBottom: 7,
             }}>
               <div style={{
-                fontSize: 10, color: T.muted, fontFamily: T.mono,
-                letterSpacing: 0.4,
+                fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans,
               }}>
                 {t("claim.optionalNetworkTags")}
               </div>
               {phoneNetworks.size > 0 && (
-                <span style={{ fontSize: 10, color: T.teal, fontFamily: T.mono }}>
+                <span style={{ fontSize: T.fs.secondary, color: T.teal, fontFamily: T.sans }}>
                   {t("claim.selectedCount", { count: [...phoneNetworks].length })}
                 </span>
               )}
@@ -509,7 +507,7 @@ export function SavedHandlesPanel({ communitySlug, onClose }: {
                   <span key={label} style={{
                     padding: "4px 8px", borderRadius: 999,
                     background: T.tealDim, border: `1px solid ${T.teal + "55"}`,
-                    color: T.teal, fontFamily: T.mono, fontSize: 9, fontWeight: 800,
+                    color: T.teal, fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
                   }}>
                     {label}
                   </span>
@@ -538,7 +536,7 @@ export function SavedHandlesPanel({ communitySlug, onClose }: {
                       background: selected ? T.tealDim : T.surface,
                       border: `1px solid ${selected ? T.teal + "66" : T.border}`,
                       color: selected ? T.teal : T.text,
-                      fontFamily: T.mono, fontSize: 10, fontWeight: 800,
+                      fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
                       cursor: "pointer", textAlign: "left" as const,
                       animation: `fadeIn 0.18s ease ${i * 0.025}s both`,
                     }}
@@ -572,9 +570,8 @@ export function SavedHandlesPanel({ communitySlug, onClose }: {
         >
           <div style={{ minWidth: 0 }}>
             <div style={{
-              fontSize: 10, fontWeight: 800, color: T.accent,
-              fontFamily: T.mono, letterSpacing: 1,
-              textTransform: "uppercase",
+              fontSize: T.fs.secondary, fontWeight: 800, color: T.accent,
+              fontFamily: T.sans,
             }}>
               {t("claim.banksAndApps")}
             </div>
@@ -586,7 +583,7 @@ export function SavedHandlesPanel({ communitySlug, onClose }: {
             </div>
           </div>
           <span style={{
-            color: T.muted, fontSize: 13, fontFamily: T.mono, flexShrink: 0,
+            color: T.muted, fontSize: 13, fontFamily: T.sans, flexShrink: 0,
             transform: banksOpen ? "rotate(90deg)" : "none",
             transition: "transform 0.15s ease",
           }}>▸</span>
@@ -612,7 +609,7 @@ export function SavedHandlesPanel({ communitySlug, onClose }: {
             <div style={{
               padding: 12, borderRadius: T.rs, background: T.surface,
               border: `1px dashed ${T.border}`, color: T.muted,
-              fontFamily: T.mono, fontSize: 11,
+              fontFamily: T.sans, fontSize: T.fs.secondary,
             }}>
               {t("claim.noMatchYet")}
             </div>
@@ -647,8 +644,8 @@ export function SavedHandlesPanel({ communitySlug, onClose }: {
                       {rail.displayName}
                     </span>
                     <span style={{
-                      display: "block", color: T.muted, fontFamily: T.mono,
-                      fontSize: 10, marginTop: 2,
+                      display: "block", color: T.muted, fontFamily: T.sans,
+                      fontSize: T.fs.secondary, marginTop: 2,
                       overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                     }}>
                       {rail.placeholderKey ? t(rail.placeholderKey) : (rail.placeholder ?? t("claim.paymentIdFallback"))}
@@ -659,7 +656,7 @@ export function SavedHandlesPanel({ communitySlug, onClose }: {
                     background: selected ? T.accentDim : T.card,
                     border: `1px solid ${selected ? T.accent + "44" : T.border}`,
                     color: selected ? T.accent : T.muted,
-                    fontFamily: T.mono, fontSize: 9, fontWeight: 800,
+                    fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
                     flexShrink: 0,
                   }}>
                     {railPrivacyLabel(rail, t)}
@@ -672,7 +669,7 @@ export function SavedHandlesPanel({ communitySlug, onClose }: {
 
         {selectedRail && (
           <div style={{ animation: "fadeIn 0.18s ease" }}>
-            <div style={{ fontSize: 11, color: T.muted, fontFamily: T.mono, marginBottom: 6 }}>
+            <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, marginBottom: 6 }}>
               {t("claim.paymentIdFor", { rail: selectedRail.displayName })}
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -692,7 +689,7 @@ export function SavedHandlesPanel({ communitySlug, onClose }: {
                   background: !addValue.trim() ? T.surface : T.accentDim,
                   border: `1px solid ${!addValue.trim() ? T.border : T.accent + "66"}`,
                   color: !addValue.trim() ? T.muted : T.accent,
-                  fontFamily: T.mono, fontSize: 11, fontWeight: 800,
+                  fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
                   cursor: !addValue.trim() ? "default" : "pointer",
                   whiteSpace: "nowrap" as const,
                 }}
@@ -702,8 +699,8 @@ export function SavedHandlesPanel({ communitySlug, onClose }: {
             </div>
             {selectedRailNeedsCountryCode && (
               <div style={{
-                marginTop: 7, color: T.amber, fontFamily: T.mono,
-                fontSize: 10, lineHeight: 1.45,
+                marginTop: 7, color: T.amber, fontFamily: T.sans,
+                fontSize: T.fs.secondary, lineHeight: 1.45,
               }}>
                 {t("claim.phoneCountryCodeNudge", { example: phonePlaceholder })}
               </div>
@@ -716,7 +713,7 @@ export function SavedHandlesPanel({ communitySlug, onClose }: {
 
       {error && (
         <div style={{
-          color: T.red, fontFamily: T.mono, fontSize: 11,
+          color: T.red, fontFamily: T.sans, fontSize: T.fs.secondary,
           marginBottom: 12, padding: "10px 12px",
           background: T.redDim, border: `1px solid ${T.red + "44"}`,
           borderRadius: T.rs,
@@ -724,9 +721,8 @@ export function SavedHandlesPanel({ communitySlug, onClose }: {
       )}
 
       <div style={{
-        fontSize: 10, fontWeight: 800, color: T.muted,
-        fontFamily: T.mono, letterSpacing: 1.3, marginBottom: 10,
-        textTransform: "uppercase",
+        fontSize: T.fs.secondary, fontWeight: 800, color: T.muted,
+        fontFamily: T.sans, marginBottom: 10,
       }}>
         {t("claim.savedMethods")}
       </div>
@@ -734,7 +730,7 @@ export function SavedHandlesPanel({ communitySlug, onClose }: {
         <div style={{
           padding: 24, textAlign: "center", borderRadius: T.r,
           background: T.surface, border: `1px dashed ${T.border}`,
-          color: T.muted, fontFamily: T.mono, fontSize: 12,
+          color: T.muted, fontFamily: T.sans, fontSize: T.fs.secondary,
           marginBottom: 20, lineHeight: 1.5,
         }}>
           {t("claim.noSavedMethods")}
@@ -775,8 +771,8 @@ export function SavedHandlesPanel({ communitySlug, onClose }: {
                         background: h.visibility === "public" ? T.greenDim : T.surface,
                         border: `1px solid ${h.visibility === "public" ? T.green + "66" : T.border}`,
                         color: h.visibility === "public" ? T.green : T.muted,
-                        fontFamily: T.mono, fontSize: 9, fontWeight: 800,
-                        cursor: "pointer", letterSpacing: 0.3,
+                        fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
+                        cursor: "pointer",
                         flexShrink: 0,
                       }}
                     >
@@ -794,7 +790,7 @@ export function SavedHandlesPanel({ communitySlug, onClose }: {
                 <button
                   onClick={() => handleReveal(h.id)}
                   style={{
-                    width: "100%", fontFamily: T.mono, fontSize: 13, color: T.text,
+                    width: "100%", fontFamily: T.sans, fontSize: 13, color: T.text,
                     padding: "8px 10px", background: T.surface,
                     borderRadius: T.rs, cursor: "pointer",
                     border: `1px solid ${T.border}`, marginBottom: 8,
@@ -822,14 +818,13 @@ export function SavedHandlesPanel({ communitySlug, onClose }: {
                     }}>
                       <div style={{ minWidth: 0 }}>
                         <div style={{
-                          fontSize: 9, color: T.muted, fontFamily: T.mono,
-                          letterSpacing: 0.6, textTransform: "uppercase",
+                          fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans,
                         }}>
                           {t("claim.networkTags")}
                         </div>
                         <div style={{
                           color: networkLabels.length ? T.teal : T.muted,
-                          fontFamily: T.mono, fontSize: 10, marginTop: 3,
+                          fontFamily: T.sans, fontSize: T.fs.secondary, marginTop: 3,
                           overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                         }}>
                           {networkLabels.length ? networkLabels.join(" · ") : t("claim.noTagsYet")}
@@ -845,7 +840,7 @@ export function SavedHandlesPanel({ communitySlug, onClose }: {
                           background: editingNetworks ? T.tealDim : T.surface,
                           border: `1px solid ${editingNetworks ? T.teal + "55" : T.border}`,
                           color: editingNetworks ? T.teal : T.muted,
-                          fontFamily: T.mono, fontSize: 9, fontWeight: 800,
+                          fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
                           cursor: "pointer", flexShrink: 0,
                         }}
                       >
@@ -875,7 +870,7 @@ export function SavedHandlesPanel({ communitySlug, onClose }: {
                                   background: selected ? T.tealDim : T.surface,
                                   border: `1px solid ${selected ? T.teal + "66" : T.border}`,
                                   color: selected ? T.teal : T.text,
-                                  fontFamily: T.mono, fontSize: 10, fontWeight: 800,
+                                  fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
                                   cursor: "pointer", textAlign: "left" as const,
                                   animation: `fadeIn 0.18s ease ${i * 0.025}s both`,
                                 }}
@@ -897,7 +892,7 @@ export function SavedHandlesPanel({ communitySlug, onClose }: {
                   onClick={() => handleDelete(h.id)}
                   style={{
                     background: "none", border: "none",
-                    color: T.red, fontFamily: T.mono, fontSize: 10,
+                    color: T.red, fontFamily: T.sans, fontSize: T.fs.secondary,
                     cursor: "pointer", padding: 0,
                   }}
                 >{t("claim.delete")}</button>

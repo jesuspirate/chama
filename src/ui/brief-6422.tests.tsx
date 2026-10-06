@@ -46,7 +46,7 @@ assert.equal(recoveryKeyBackedUp(viewer),false);markRecoveryKeyBackedUp(viewer);
 assert.deepEqual([...data.values()],['1'],'receipt contains no secret');
 delete (globalThis as any).window;
 const html=renderToStaticMarkup(<LangProvider><SignOutConfirmModal pubkey={viewer} onCancel={()=>{}} onConfirm={()=>{}} /></LangProvider>);
-assert.match(html,/Your key is safe. See you soon./);assert.doesNotMatch(html,/Saved ✓|BEFORE YOU GO/);assert.doesNotMatch(html,/data-recovery-key|Reading your key/);
+assert.match(html,/Your key is safe. See you soon./);assert.doesNotMatch(html,/Saved ✓|before you go/i);assert.doesNotMatch(html,/data-recovery-key|Reading your key/);
 const relay = new RelayManager([],{});
 const filters:unknown[]=[];(relay as any).subscribe=(f:unknown)=>{filters.push(f);return 'scope';};
 relay.subscribeToBrowseListings({community:'us-usd',category:'chama'});
