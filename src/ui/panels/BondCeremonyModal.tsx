@@ -1,3 +1,4 @@
+import { mergeManageBonds, type BondRecoveryReport } from '../../bond-multisig/bond-recovery.js';
 import { BondManageActions } from '../components/BondManageActions.js';
 import { bondManageActions, type BondChainObservation } from '../../bond-multisig/manage-actions.js';
 // ══════════════════════════════════════════════════════════════════════════
@@ -84,7 +85,8 @@ export interface BondCeremonyModalProps {
   getCommitmentReclaimQuote: (bondId: string) => Promise<{ finalityDelay: number; minimumDepositSats: number; pegInFeeSats: number; minerFeeSats: bigint; estimatedNetSats: bigint } | null>;
   renewCommitmentBond: (bondId: string, termBlocks: number) => Promise<{ bondId: string; txid: string; amountSats: bigint; feeSats: bigint; lockUntil: number; pending: boolean }>;
   /** Rebuild this device's bond records from the user's own on-chain announcements + seed. */
-  recoverMyBonds: () => Promise<{ recovered: number }>;
+  recoverMyBonds: (opts?: { allowUserAction?: boolean }) => Promise<{ recovered: number; issues?: BondRecoveryReport["issues"] }>;
+  findMyBond?: (address: string, lockUntil: number) => Promise<{ bondId: string }>;
   reclaimCommitmentBond: (bondId: string, destination?: ReclaimDestinationChoice) => Promise<{
     txid: string;
     alreadyReclaimed?: boolean;
@@ -122,10 +124,10 @@ type View =
     }
   | { kind: "error"; message: string };
 
-export function BondCeremonyModal({ createCommitmentBond, checkCommitmentFunding, getCommitmentReclaimQuote, renewCommitmentBond, recoverMyBonds, reclaimCommitmentBond, creditReclaimedCommitmentBond, getBondChainTip, publishBondAnnouncement, fetchMyBonds, walletInvite, onClose }: BondCeremonyModalProps) {
+export function BondCeremonyModal({ createCommitmentBond, checkCommitmentFunding, getCommitmentReclaimQuote, renewCommitmentBond, recoverMyBonds, findMyBond, reclaimCommitmentBond, creditReclaimedCommitmentBond, getBondChainTip, publishBondAnnouncement, fetchMyBonds, walletInvite, onClose }: BondCeremonyModalProps) {
   const { t } = useT();
   // Open on the list when any bond exists; straight to describe on a first run.
-  const [view, setView] = useState<View>(() => (listCommitmentBonds().length > 0 ? { kind: "list" } : { kind: "describe" }));
+  const [view, setView] = useState<View>({ kind: "list" });
   const [amountStr, setAmountStr] = useState(String(SEED_AMOUNT_SATS));
   const [termBlocks, setTermBlocks] = useState(TERM_PRESETS[0].blocks);
   const [busy, setBusy] = useState(false);
@@ -143,17 +145,6 @@ export function BondCeremonyModal({ createCommitmentBond, checkCommitmentFunding
     const rec = getCommitmentBond(bondId);
     if (rec) setAnnounced(old => new Set([...old, `${rec.bond.address}|${slug}`]));
   };
-  useEffect(() => {
-    let cancelled = false;
-    if (fetchMyBonds) void fetchMyBonds().then(bonds => {
-      if (!cancelled) setAnnounced(old => new Set([...old, ...bonds
-        .filter(b => !b.roles || b.roles.includes("arbiter"))
-        .map(b => `${b.address}|${b.community}`)]));
-    }).catch(() => {});
-    return () => { cancelled = true; };
-    // One read per open; reading announcements never publishes an opt-in.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
   const [announceErr, setAnnounceErr] = useState<string | null>(null);
   // Bump to re-read the store after a check/reclaim mutates it.
   const [storeRev, setStoreRev] = useState(0);
@@ -171,24 +162,55 @@ export function BondCeremonyModal({ createCommitmentBond, checkCommitmentFunding
   // list doesn't re-fire — only a fresh on-chain lock detection does).
   const autoAnnouncedRef = useRef<Set<string>>(new Set());
 
-  // ── Cross-device recovery: pull my own on-chain bonds into THIS device ────────
-  // A bond posted on another device (same npub) has no local record here; rebuild it
-  // from my kind-38135 announcement + seed so it shows + reclaims on every device.
-  // Once per open, fail-soft (a fetch hiccup just leaves the local list as-is).
-  const recoveredRef = useRef(false);
+  const recoveryMessage = (issue: { code?: string; reason: string }) => {
+    const key = { 'seed-locked': 'bond.seedLocked', 'seed-missing': 'bond.seedMissing', 'key-not-found': 'bond.keyNotFound', 'funds-not-confirmed': 'bond.fundsNotConfirmed' }[issue.code ?? ''];
+    return key ? t(key) : issue.reason;
+  };
+  const [verifiedBonds, setVerifiedBonds] = useState<VerifiedBond[]>([]);
+  const [recoveryIssues, setRecoveryIssues] = useState<string[]>([]);
+  const [recovering, setRecovering] = useState(true);
+  const [findAddress, setFindAddress] = useState('');
+  const [findBlock, setFindBlock] = useState('');
+  const [findError, setFindError] = useState<string | null>(null);
+  const alive = useRef(true);
+  const recoveryBusy = useRef(false);
+  const refreshBonds = async (allowUserAction = false) => {
+    if (recoveryBusy.current) return;
+    recoveryBusy.current = true; setRecovering(true);
+    const [publicRead, recovery] = await Promise.allSettled([
+      fetchMyBonds ? fetchMyBonds() : Promise.resolve([] as VerifiedBond[]),
+      recoverMyBonds({ allowUserAction }),
+    ]);
+    if (alive.current) {
+      const issues: string[] = [];
+      if (publicRead.status === 'fulfilled') {
+        setVerifiedBonds(publicRead.value);
+        setAnnounced(old => new Set([...old, ...publicRead.value.map(b => `${b.address}|${b.community}`)]));
+      } else issues.push(publicRead.reason?.message || t('bond.recoveryFailed'));
+      if (recovery.status === 'fulfilled') issues.push(...(recovery.value.issues ?? []).map(recoveryMessage));
+      else issues.push(recovery.reason?.message || t('bond.recoveryFailed'));
+      setRecoveryIssues(issues); setStoreRev(n => n + 1); setRecovering(false);
+    }
+    recoveryBusy.current = false;
+  };
   useEffect(() => {
-    if (recoveredRef.current) return;
-    recoveredRef.current = true;
-    void recoverMyBonds()
-      .then((r) => {
-        if (r.recovered > 0) {
-          setStoreRev((n) => n + 1);
-          setView((v) => (v.kind === "describe" && listCommitmentBonds().length > 0 ? { kind: "list" } : v));
-        }
-      })
-      .catch(() => {});
+    alive.current = true; void refreshBonds();
+    return () => { alive.current = false; };
+    // One read per open. Retry is an explicit wallet-unlock gesture.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  const findBond = async () => {
+    if (!findMyBond || busy) return;
+    setBusy(true); setFindError(null);
+    try {
+      const found = await findMyBond(findAddress.trim(), Number(findBlock));
+      if (!alive.current) return;
+      setStoreRev(n => n + 1); setRecoveryIssues([]); setFindAddress(''); setFindBlock('');
+      const rec = getCommitmentBond(found.bondId);
+      setView(rec?.phase === 'reclaimed' ? { kind: 'list' } : { kind: 'locked', bondId: found.bondId });
+    } catch (error) { if (alive.current) setFindError(recoveryMessage({ code: (error as { code?: string }).code, reason: (error as Error).message })); }
+    finally { if (alive.current) setBusy(false); }
+  };
 
   // ── Auto-clear abandoned draft bonds (created-but-unfunded past the TTL) ──────
   // Fund-safe: each stale draft gets a fresh on-chain check first; a funded one
@@ -421,9 +443,12 @@ export function BondCeremonyModal({ createCommitmentBond, checkCommitmentFunding
             void getCommitmentReclaimQuote(managedRec.bondId).then(setReclaimQuote).catch(() => setReclaimQuote(null));
           }} />}
 
-        {view.kind === "list" && (
+        {view.kind === "list" && <>
+          <BondRecoveryNotice issues={recoveryIssues} busy={recovering} onRetry={() => void refreshBonds(true)} />
           <BondList
             bonds={bonds}
+            verified={verifiedBonds}
+            checking={recovering || (recoveryIssues.length > 0 && bonds.length === 0 && verifiedBonds.length === 0)}
             tip={tip}
             onOpen={(rec) => {
               setNote(null); resetReclaimForm();
@@ -441,11 +466,21 @@ export function BondCeremonyModal({ createCommitmentBond, checkCommitmentFunding
             }}
             onPostNew={() => { setNote(null); resetReclaimForm(); setView({ kind: "describe" }); }}
           />
-        )}
+          {findMyBond && <details style={{ marginTop: 12 }}>
+            <summary style={{ minHeight: 44, cursor: 'pointer' }}>{t('bond.findMyBonds')}</summary>
+            <div style={{ margin: '8px 0' }}>{t('bond.findHelp')}</div>
+            <label style={labelStyle}>{t('bond.findAddress')}</label>
+            <input aria-label={t('bond.findAddress')} value={findAddress} onChange={e => setFindAddress(e.target.value)} style={{ width: '100%', boxSizing: 'border-box', minHeight: 44, background: T.surface, border: `1px solid ${T.border}`, borderRadius: T.rs, color: T.text, padding: '10px 12px', marginBottom: 12 }} />
+            <label style={labelStyle}>{t('bond.findUnlockBlock')}</label>
+            <input aria-label={t('bond.findUnlockBlock')} value={findBlock} onChange={e => setFindBlock(e.target.value.replace(/[^0-9]/g, ''))} inputMode="numeric" style={{ width: '100%', boxSizing: 'border-box', minHeight: 44, background: T.surface, border: `1px solid ${T.border}`, borderRadius: T.rs, color: T.text, padding: '10px 12px', marginBottom: 12 }} />
+            {findError && <div role="alert" style={{ color: T.amber, margin: '8px 0' }}>{findError}</div>}
+            <PaymentButton disabled={busy || recovering || !findAddress.trim() || !Number(findBlock)} onClick={() => void findBond()}>{busy ? t('bond.checking') : t('bond.findMyBonds')}</PaymentButton>
+          </details>}
+        </>}
 
         {view.kind === "describe" && (
           <>
-            {bonds.length > 0 && <BackToBonds onClick={backToList} />}
+            {(bonds.length > 0 || verifiedBonds.length > 0) && <BackToBonds onClick={backToList} />}
             <div style={{ marginBottom: 14 }}><BondCustody /></div>
             <ArbiterDuties />
             <label style={labelStyle}>{t("bond.amountLabel")}</label>
@@ -582,13 +617,15 @@ export function BondCeremonyModal({ createCommitmentBond, checkCommitmentFunding
                   <div style={{ textAlign: "left", margin: "0 0 10px" }}>
                     <TermChoices value={termBlocks} onChange={setTermBlocks} disabled={busy} renewal />
                   </div>
-                  <PaymentButton tier="primary" onClick={() => void renew(view.bondId)} disabled={busy} style={primaryBtn(!busy)}>
+                  <PaymentButton tier="primary" onClick={() => void renew(view.bondId)} disabled={busy || !bondManageActions(rec, managedObservation).claim.enabled} style={primaryBtn(!busy && bondManageActions(rec, managedObservation).claim.enabled)}>
                     {busy ? t("bond.renewing") : t("bond.renewBond")}
                   </PaymentButton>
                   <button onClick={onClose} style={{ ...secondaryBtn, marginTop: 6 }}>{t("common.done")}</button>
                 </>
               ) : (
                 <>
+                  <PaymentButton tier="quiet" disabled>{t("bond.renewBond")}</PaymentButton>
+                  <div style={{ fontSize: 12, color: T.muted }}>{t("bond.claimAtBlock", { block: rec.bond.lockUntil })}</div>
                   <PaymentButton tier={publishBondAnnouncement && !announced.has(`${rec.bond.address}|${announceSlug}`) ? "quiet" : "primary"} onClick={onClose} style={publishBondAnnouncement && !announced.has(`${rec.bond.address}|${announceSlug}`) ? secondaryBtn : primaryBtn(true)}>{t("common.done")}</PaymentButton>
 
                 </>
@@ -673,64 +710,39 @@ export function BondCeremonyModal({ createCommitmentBond, checkCommitmentFunding
 }
 
 // ── The "Your bonds" list — post another · watch each · reclaim each ─────────
-function BondList({ bonds, tip, onOpen, onPostNew }: {
-  bonds: CommitmentRecord[];
-  tip: number | null;
-  onOpen: (rec: CommitmentRecord) => void;
-  onPostNew: () => void;
+export function BondRecoveryNotice({ issues, busy, onRetry }: { issues: readonly string[]; busy?: boolean; onRetry: () => void }) {
+  const { t } = useT();
+  if (!issues.length) return busy ? <div>{t('bond.checking')}</div> : null;
+  return <div style={{ marginBottom: 12 }}>
+    <div role="alert" style={{ color: T.amber }}>{[...new Set(issues)].join(' ')}</div>
+    <PaymentButton tier="quiet" disabled={busy} onClick={onRetry}>{t('common.retry')}</PaymentButton>
+  </div>;
+}
+
+export function BondList({ bonds, verified = [], checking, tip, onOpen, onPostNew }: {
+  bonds: CommitmentRecord[]; verified?: VerifiedBond[]; checking?: boolean;
+  tip: number | null; onOpen: (rec: CommitmentRecord) => void; onPostNew: () => void;
 }) {
   const { t } = useT();
-  const [showPast, setShowPast] = useState(false);
-  // A renewal SPENDS the old bond's UTXO into the new one, but the predecessor
-  // record stays `locked` with a past lockUntil forever — so without this it
-  // kept being offered for renewal, pointing at an outpoint that no longer
-  // exists. Any bond some successor was renewed FROM is spent, full stop.
-  const renewedFromIds = new Set(
-    bonds.map((b) => b.renewedFromBondId).filter((id): id is string => !!id),
-  );
-  const expired = tip == null
-    ? undefined
-    : bonds.find((b) =>
-        b.phase === "locked" &&
-        tip >= b.bond.lockUntil &&
-        !renewedFromIds.has(b.bondId));
-  const current = bonds.filter((b) => b.phase === "created" || (b.phase === "locked" && !renewedFromIds.has(b.bondId)));
-  const past = bonds.filter((b) => b.phase === "reclaimed" || renewedFromIds.has(b.bondId));
-  return (
-    <div>
-      <div style={{ fontSize: 15, fontWeight: 700, color: T.text, fontFamily: T.sans, marginBottom: 10 }}>{t("bond.currentBond")}</div>
-      {current.length === 0 && (
-        <div style={{ fontSize: 11, color: T.muted, fontFamily: T.mono, lineHeight: 1.5, marginBottom: 12 }}>
-          {t("bond.noLiveBond")}
-        </div>
-      )}
-      {current.map((b) => <BondRow key={b.bondId} rec={b} tip={tip} onOpen={onOpen} />)}
-      {/* Renewing a stale bond is only "recommended" when you have no live one.
-          With a bond already standing it is a legitimate but secondary action
-          (revive old capital), so it drops out of the primary slot. */}
-      {expired && (
-        <PaymentButton tier="primary"
-          onClick={() => onOpen(expired)}
-          style={{
-            ...(current.length > 0 ? secondaryBtn : primaryBtn(true)),
-            marginTop: 6,
-          }}
-        >
-          {t(current.length > 0 ? "bond.renewExpiredOptional" : "bond.renewPreferred")}
-        </PaymentButton>
-      )}
-      <button onClick={onPostNew} style={{ ...secondaryBtn, marginTop: 6 }}>{t(expired ? "bond.postAdditionalBond" : "bond.postNewBond")}</button>
-      {past.length > 0 && (
-        <div style={{ marginTop: 14 }}>
-          <button type="button" aria-expanded={showPast} onClick={() => setShowPast((v) => !v)}
-            style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", background: "transparent", border: 0, color: T.muted, fontFamily: T.mono, fontSize: 12, minHeight: 44, boxShadow: "none", padding: "8px 0", cursor: "pointer" }}>
-            <span>{t("bond.pastBondsCount", { count: past.length })}</span><span>{showPast ? "▴" : "▾"}</span>
-          </button>
-          {showPast && past.map((b) => <BondRow key={b.bondId} rec={b} tip={tip} onOpen={onOpen} />)}
-        </div>
-      )}
-    </div>
-  );
+  const rows = mergeManageBonds(bonds, verified);
+  return <div>
+    <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 10 }}>{t('bond.yourBonds')}</div>
+    {rows.map(row => row.local
+      ? <BondRow key={row.address} rec={row.local} tip={tip} onOpen={onOpen} />
+      : <div key={row.address} data-announced-bond={row.address} style={{ borderBottom: `1px solid ${T.border}`, padding: '14px 0' }}>
+          <div>{t('bond.satsAmount', { sats: row.announced!.actualSats.toString() })}</div>
+          <BondCustody block={row.announced!.lockUntil} />
+          <div style={{ overflowWrap: 'anywhere', fontFamily: T.mono, fontSize: 11 }}>{row.address}</div>
+          <div style={{ fontSize: 12, color: T.muted, margin: '8px 0', lineHeight: 1.5 }}>{t('bond.recoverBeforeManage')}</div>
+          <PaymentButton disabled>{t('bond.announceAgain')}</PaymentButton>
+          <PaymentButton disabled>{t('bond.renewBond')}</PaymentButton>
+          <PaymentButton disabled>{t('bond.reclaimMyBond')}</PaymentButton>
+        </div>)}
+    {!checking && rows.length === 0 && <div>{t('bond.noLiveBond')}</div>}
+    <PaymentButton tier="quiet" disabled={checking} onClick={onPostNew}>
+      {t(rows.length ? 'bond.postAdditionalBond' : 'bond.postNewBond')}
+    </PaymentButton>
+  </div>;
 }
 
 function BondRow({ rec, tip, onOpen }: { rec: CommitmentRecord; tip: number | null; onOpen: (rec: CommitmentRecord) => void }) {
@@ -773,6 +785,7 @@ function BondRow({ rec, tip, onOpen }: { rec: CommitmentRecord; tip: number | nu
         </span>
       </div>
       <div style={{ fontSize: 12, color: T.muted, fontFamily: T.sans, marginTop: 6 }}>
+        <span style={{ overflowWrap: 'anywhere', fontFamily: T.mono, fontSize: 11 }}>{rec.bond.address}</span><br />
         {rec.phase !== "reclaimed" && <>{t(rec.phase === "created" ? "bond.rowPlanned" : "bond.rowHolding", { block: rec.bond.lockUntil })}<br /></>}{status.line}
       </div>
     </button>

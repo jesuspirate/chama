@@ -1,5 +1,16 @@
 // fr/bond — Session B fills this from src/i18n/en/bond.ts (key set must match EXACTLY).
 export const bond: Record<string, string> = {
+  "bond.seedLocked": "Votre phrase de récupération est verrouillée. Réessayez pour la déverrouiller et retrouver vos cautions.",
+  "bond.seedMissing": "Votre phrase de récupération existante est introuvable. Restaurez-la ou reconnectez-vous, puis réessayez.",
+  "bond.keyNotFound": "La clé de cette caution est introuvable dans cette phrase de récupération. Vérifiez l’adresse et le bloc ou restaurez la phrase d’origine, puis réessayez.",
+  "bond.fundsNotConfirmed": "Aucun fonds confirmé à cette caution ou à son adresse de retour. Réessayez après confirmation.",
+  "bond.findMyBonds": "Retrouver mes cautions",
+  "bond.findHelp": "Pour une ancienne caution absente, collez son adresse Bitcoin et son bloc de déverrouillage. Cela restaure le dossier sans déplacer de sats.",
+  "bond.findAddress": "Adresse de la caution",
+  "bond.findUnlockBlock": "Bloc de déverrouillage",
+  "bond.recoverBeforeManage": "Récupérez la clé avant d’annoncer, renouveler ou récupérer la caution. Réessayez pour déverrouiller votre phrase de récupération.",
+  "bond.recoveryFailed": "Impossible de récupérer vos cautions. Réessayez.",
+
   "bond.announceAgain": "Annoncer à nouveau",
   "bond.announceWhenActive": "Annoncez à nouveau une fois le dépôt actif.",
   "bond.claimAtBlock": "Récupérable au bloc Bitcoin {block}.",

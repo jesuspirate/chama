@@ -2,6 +2,17 @@
 // renew, arbiter duties, announce), Dashboard, liveness signal, arbiter apply.
 // Keys MUST be prefixed "bond." — see src/i18n/en/connect.ts for the pattern.
 export const bond: Record<string, string> = {
+  "bond.seedLocked": "Your wallet seed is locked. Choose Retry to unlock it and recover your bonds.",
+  "bond.seedMissing": "Your existing wallet seed could not be found. Restore it or reconnect, then Retry.",
+  "bond.keyNotFound": "The bond key was not found in this seed. Check the address and unlock block, or restore the original seed, then Retry.",
+  "bond.fundsNotConfirmed": "No confirmed funds were found at this bond or its return address. Retry after confirmation.",
+  "bond.findMyBonds": "Find my bonds",
+  "bond.findHelp": "For an older bond missing from this list, paste its Bitcoin address and unlock block. This only finds and restores your record; it does not move sats.",
+  "bond.findAddress": "Bond address",
+  "bond.findUnlockBlock": "Unlock block",
+  "bond.recoverBeforeManage": "Recover this bond’s key before announcing, renewing or reclaiming. Use Retry to unlock your seed.",
+  "bond.recoveryFailed": "Could not recover your bonds. Retry.",
+
   "bond.announceAgain": "Announce again",
   "bond.announceWhenActive": "Announce again once the bond is active.",
   "bond.claimAtBlock": "Claimable at Bitcoin block {block}.",

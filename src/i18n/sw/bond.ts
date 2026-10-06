@@ -1,4 +1,15 @@
 export const bond: Record<string, string> = {
+  "bond.seedLocked": "Maneno yako ya urejeshaji yamefungwa. Jaribu tena kuyafungua na kurejesha dhamana zako.",
+  "bond.seedMissing": "Maneno yako ya urejeshaji hayajapatikana. Yarejeshe au unganisha tena, kisha ujaribu tena.",
+  "bond.keyNotFound": "Ufunguo wa dhamana haujapatikana katika maneno haya. Hakiki anwani na block au rejesha maneno ya awali, kisha ujaribu tena.",
+  "bond.fundsNotConfirmed": "Hakuna fedha zilizothibitishwa katika dhamana au anwani yake ya kurudisha. Jaribu tena baada ya uthibitisho.",
+  "bond.findMyBonds": "Tafuta dhamana zangu",
+  "bond.findHelp": "Kwa dhamana ya zamani isiyo kwenye orodha, bandika anwani yake ya Bitcoin na block ya kufunguliwa. Hurejesha rekodi pekee; haihamishi sats.",
+  "bond.findAddress": "Anwani ya dhamana",
+  "bond.findUnlockBlock": "Block ya kufunguliwa",
+  "bond.recoverBeforeManage": "Rejesha ufunguo wa dhamana kabla ya kutangaza, kuhuisha au kudai. Jaribu tena kufungua maneno yako ya urejeshaji.",
+  "bond.recoveryFailed": "Imeshindwa kurejesha dhamana zako. Jaribu tena.",
+
   "bond.announceAgain": "Tangaza tena",
   "bond.announceWhenActive": "Tangaza tena dhamana ikiwa hai.",
   "bond.claimAtBlock": "Unaweza kuirejesha kwenye bloku ya Bitcoin {block}.",

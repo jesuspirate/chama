@@ -1,5 +1,16 @@
 // es/bond — Session C fills this from src/i18n/en/bond.ts (key set must match EXACTLY).
 export const bond: Record<string, string> = {
+  "bond.seedLocked": "Tu semilla está bloqueada. Pulsa Reintentar para desbloquearla y recuperar tus fianzas.",
+  "bond.seedMissing": "No se encontró tu semilla existente. Restáurala o vuelve a conectarte y reintenta.",
+  "bond.keyNotFound": "No se encontró la clave de la fianza en esta semilla. Comprueba la dirección y el bloque, o restaura la semilla original y reintenta.",
+  "bond.fundsNotConfirmed": "No se encontraron fondos confirmados en la fianza ni en su dirección de retorno. Reintenta tras la confirmación.",
+  "bond.findMyBonds": "Encontrar mis fianzas",
+  "bond.findHelp": "Si falta un fianza antigua, pega su dirección Bitcoin y bloque de desbloqueo. Solo restaura el registro; no mueve sats.",
+  "bond.findAddress": "Dirección de la fianza",
+  "bond.findUnlockBlock": "Bloque de desbloqueo",
+  "bond.recoverBeforeManage": "Recupera la clave de la fianza antes de anunciar, renovar o reclamar. Pulsa Reintentar para desbloquear tu semilla.",
+  "bond.recoveryFailed": "No se pudieron recuperar tus fianzas. Reintenta.",
+
   "bond.announceAgain": "Anunciar de nuevo",
   "bond.announceWhenActive": "Puedes anunciar cuando el bono esté activo.",
   "bond.claimAtBlock": "Se puede reclamar en el bloque Bitcoin {block}.",

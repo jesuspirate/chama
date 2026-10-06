@@ -3599,6 +3599,7 @@ export default function App() {
           getCommitmentReclaimQuote={actions.getCommitmentReclaimQuote}
           renewCommitmentBond={actions.renewCommitmentBond}
           recoverMyBonds={actions.recoverMyBonds}
+          findMyBond={actions.findMyBond}
           reclaimCommitmentBond={actions.reclaimCommitmentBond}
           creditReclaimedCommitmentBond={actions.creditReclaimedCommitmentBond}
           getBondChainTip={actions.getBondChainTip}

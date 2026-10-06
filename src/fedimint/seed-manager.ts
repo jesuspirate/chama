@@ -424,6 +424,22 @@ export function getCachedSeedWords(): string[] | null {
 // PUBLIC API
 // ══════════════════════════════════════════════════════════════════════════
 
+/** Recovery-only read. Never generate or replace a seed while locating bonds. */
+export async function getExistingSeed(client: EscrowClient, signer: Signer, allowUserAction = false): Promise<string[]> {
+  const pubkey = await signer.getPublicKey();
+  if (cachedSeed && cachedForPubkey === pubkey) return [...cachedSeed];
+  if (signer.requiresUserAction && !allowUserAction) throw Object.assign(new Error('Unlock your wallet seed to recover these bonds. Choose Retry to unlock.'), { code: 'seed-locked' });
+  const local = loadLocalSeedEvent(pubkey);
+  const remote = await client.queryOnce({ kinds: [CHAMA_SEED_KIND], authors: [pubkey], '#d': [CHAMA_SEED_D_TAG], limit: 4 }, SEED_RECOVERY_TIMEOUT_MS);
+  const events = [...remote, ...(local ? [local] : [])].filter(e => isChamaSeedEvent(e, pubkey));
+  if (!events.length) throw Object.assign(new Error('Your existing wallet seed could not be found. Restore it or reconnect, then Retry.'), { code: 'seed-missing' });
+  const recovered = await recoverSeedWordsFromEvents(events, pubkey, signer, { delaysMs: [] });
+  if (!recovered) throw Object.assign(new Error('Your wallet seed is locked or could not be opened. Unlock it, then Retry.'), { code: 'seed-locked' });
+  cachedSeed = recovered.words; cachedForPubkey = pubkey; cachedSeedSource = 'recovered';
+  saveLocalSeedEvent(pubkey, recovered.event); saveSeedPublishedMarker(pubkey, recovered.event.id);
+  return [...recovered.words];
+}
+
 /**
  * Fetch the user's Chama Fedimint seed, or generate one if none exists.
  *

@@ -1,3 +1,5 @@
+import { recoverOwnedBonds, findOwnedBond, type BondRecoveryReport } from '../bond-multisig/bond-recovery.js';
+import { getExistingSeed } from '../fedimint/seed-manager.js';
 import { assertBondClaimReady } from '../bond-multisig/manage-actions.js';
 import { readLivenessBonds } from "../arbiters/liveness-evidence.js";
 import { isSignerApprovalError, signerAction } from "../escrow-engine/signer-approval.js";
@@ -317,7 +319,7 @@ import {
   type CommitmentReclaimDestination,
   type ReclaimDestinationChoice,
 } from "../bond-multisig/commitment-bond.js";
-import { buildBondAnnouncementEvent, selectLatestAnnouncements, groupLatestAnnouncementsByCommunity, verifyBondAnnouncement, ARBITER_BOND_ANNOUNCEMENT_KIND, MAX_LINEAGE_HOPS, type BondLineage, type BondLineageHop, type BondRole, type VerifiedBond } from "../bond-multisig/bond-announcement.js";
+import { buildBondAnnouncementEvent, readCommunityBondEvents, communityBondFilters, selectLatestAnnouncements, groupLatestAnnouncementsByCommunity, verifyBondAnnouncement, ARBITER_BOND_ANNOUNCEMENT_KIND, MAX_LINEAGE_HOPS, type BondLineage, type BondLineageHop, type BondRole, type VerifiedBond } from "../bond-multisig/bond-announcement.js";
 import {
   ARBITER_FAULT_KIND,
   excludedArbitersNow,
@@ -335,7 +337,7 @@ import {
   writeCachedCommunityBonds,
 } from "../arbiters/bonded-pool-cache.js";
 import { bondedArbitersForCommunity } from "../arbiters/live-chama.js";
-import { getCommitmentBond, upsertCommitmentBond, listCommitmentBonds, newBondId, reconstructBondRecord } from "../bond-multisig/commitment-store.js";
+import { getCommitmentBond, upsertCommitmentBond, listCommitmentBonds, newBondId } from "../bond-multisig/commitment-store.js";
 import { MAINNET as BOND_NETWORK } from "../bond-multisig/multisig.js";
 import { hexToBytes, bytesToHex as msBytesToHexLocal } from "@noble/hashes/utils.js";
 import { computeChamaLiveness, type ChamaLiveness, type RatingSummary as LivenessRatingSummary } from "../arbiters/live-chama.js";
@@ -1211,7 +1213,8 @@ export interface UseEscrowActions {
   /** Cross-device bond recovery: rebuild local bond records from the user's own
    *  kind-38135 announcements + seed, so a bond posted on one device shows + reclaims
    *  on another with the same npub. Returns how many were newly recovered. */
-  recoverMyBonds: () => Promise<{ recovered: number }>;
+  recoverMyBonds: (opts?: { allowUserAction?: boolean }) => Promise<BondRecoveryReport>;
+  findMyBond: (address: string, lockUntil: number) => Promise<{ bondId: string }>;
   /** Fetch every arbiter's current bond announcement for a community, chain-verified
    *  (the data source for the live-chama liveness score). */
   fetchCommunityBonds: (
@@ -2938,10 +2941,12 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     let arbiterBond;
     let arbiterXonly = keys[Role.ARBITER];
     if (!arbiterXonly) {
-      const events = await client.queryOnce({ kinds: [ARBITER_BOND_ANNOUNCEMENT_KIND],
-        authors: [fundingArbiter(trade)!], "#d": [trade.community!] } as any, 6000);
-      const announcement = selectLatestAnnouncements(events as any).find(a => a.npub === fundingArbiter(trade));
-      const bond = announcement && await verifyBondAnnouncement(announcement, { network: ESCROW_NETWORK, fetchJson, tipHeight: tip });
+      const events = await readCommunityBondEvents(trade.community!, filter => client.queryOnce({ ...filter, authors: [fundingArbiter(trade)!] }, 6000));
+      let bond;
+      for (const announcement of selectLatestAnnouncements(events).filter(a => a.npub === fundingArbiter(trade) && a.community === trade.community)) {
+        const verified = await verifyBondAnnouncement(announcement, { network: ESCROW_NETWORK, fetchJson, tipHeight: tip });
+        if (verified?.funded && verified.active) { bond = verified; break; }
+      }
       if (!bond?.funded || !bond.active || !bond.signedEvent) throw new Error("The arbiter's signed, funded bond could not be verified");
       arbiterXonly = bond.ownerXonly;
       arbiterBond = bond.signedEvent;
@@ -6306,7 +6311,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
         if (out?.spent && out.txid) throw new Error(`This bond was already spent in ${out.txid}; it cannot be renewed.`);
         throw new Error("No unspent bond output was found. Nothing was broadcast.");
       }
-      const words = await getOrCreateSeed(client, signer);
+      const words = await getExistingSeed(client, signer, true);
       const oldKey = deriveBondSigningKey(words.join(" "), { network: BOND_NETWORK, index: old.keyIndex ?? 0 });
       if (!oldKey.xonly.every((b, i) => b === old.bond.ownerXonly[i])) throw new Error("Bond key mismatch — renewal refused.");
       const keyIndex = listCommitmentBonds().reduce((m, b) => Math.max(m, b.keyIndex ?? 0), -1) + 1;
@@ -6391,7 +6396,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       // lockUntil, so CONSENSUS is the authority on whether the term has passed — we
       // attempt the broadcast and translate a genuine too-early rejection into a calm
       // message (instead of pre-guessing from a load-balanced, jittery tip height).
-      const words = await getOrCreateSeed(client, signer);
+      const words = await getExistingSeed(client, signer, true);
       // Re-derive at THIS bond's persisted index (default 0 for legacy single-key bonds).
       const { priv, xonly } = deriveBondSigningKey(words.join(" "), { network: BOND_NETWORK, index: rec.keyIndex ?? 0 });
       // Sanity: the re-derived key MUST reproduce the bond's stored key (right seed +
@@ -6528,7 +6533,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       }
       const base = defaultEsploraBase(BOND_NETWORK);
       const fetchJson = esploraFetcher(base);
-      const words = await getOrCreateSeed(client, signer);
+      const words = await getExistingSeed(client, signer, true);
       const { priv, xonly } = deriveBondSigningKey(words.join(" "), { network: BOND_NETWORK, index: rec.keyIndex ?? 0 });
       if (xonly.length !== rec.bond.ownerXonly.length || !xonly.every((b, i) => b === rec.bond.ownerXonly[i])) {
         throw new Error("Bond key mismatch — cannot credit reclaimed sats (unexpected seed or key index).");
@@ -6610,9 +6615,9 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       // spends the previous bond's output, so the claim is chain-checkable.
       // Fails SOFT: an unresolvable predecessor announces without lineage
       // rather than blocking a real bond from being announced at all.
-      // The WHOLE chain, not one hop: announcing a renewal REPLACES the
-      // predecessor's 38135, so a one-hop pointer would dead-end at the first
-      // superseded ancestor. This device's commitment store is the only place
+      // Keep the whole chain: legacy community-addressed renewals replaced
+      // predecessor announcements. Per-bond addressing cannot restore those
+      // old ancestors. This device's commitment store is the only place
       // the full history survives, so it publishes all of it and lets any
       // reader prove each hop independently.
       let lineage: BondLineage | undefined;
@@ -6649,53 +6654,41 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       await client.publishRaw(signed);
       return { community, address: rec.bond.address };
     },
-    recoverMyBonds: async () => {
-      const client = clientRef.current;
-      const signer = signerRef.current;
-      if (!client || !signer) throw new Error("Not connected");
+    recoverMyBonds: async (opts) => {
+      const client = clientRef.current, signer = signerRef.current;
+      if (!client || !signer) throw new Error("Not connected — reconnect, then Retry.");
       const myPubkey = await signer.getPublicKey();
-      const words = await getOrCreateSeed(client, signer);
+      const reading = await client.queryPublicConduct({ kinds: [ARBITER_BOND_ANNOUNCEMENT_KIND], authors: [myPubkey] } as any, 6_000);
+      if (!reading.complete) throw new Error('Could not finish checking your bond announcements. Reconnect, then Retry.');
+      const events = reading.events;
+      const parsed = selectLatestAnnouncements(events).filter(a => a.npub === myPubkey && a.network === (BOND_NETWORK === PUBLIC_SIGNET ? 'signet' : 'mainnet'));
       const fetchJson = esploraFetcher(defaultEsploraBase(BOND_NETWORK), { network: BOND_NETWORK });
-      const events = await client.queryOnce(
-        { kinds: [ARBITER_BOND_ANNOUNCEMENT_KIND], authors: [myPubkey] } as any, 6_000,
-      );
-      const minConfs = defaultMinConfs(BOND_NETWORK);
-      const parsed = selectLatestAnnouncements(events as any).filter((a: any) => a.npub === myPubkey);
-      const have = new Set(listCommitmentBonds().map((b) => b.bond.address));
-      let recovered = 0;
-      for (const a of parsed) {
-        if (have.has(a.address)) continue;
-        // Live-bond funds sit at the CLTV address; reclaimed-not-yet-swept funds sit at
-        // the bond-KEY address (the reclaim destination). Check both so a reclaimed bond
-        // also recovers → its "credit to Chama" sweep button surfaces on this device.
-        let bondKeyAddress: string;
-        try { bondKeyAddress = btcSigner.p2tr(hexToBytes(a.ownerXonly), undefined, BOND_NETWORK).address as string; }
-        catch { continue; }
-        const [bondUtxos, bondKeyUtxos] = await Promise.all([
-          findBondFundingUtxos({ address: a.address, fetchJson, minConfs }).then((f) => f.map((x) => x.utxo)).catch(() => []),
-          findBondFundingUtxos({ address: bondKeyAddress, fetchJson, minConfs }).then((f) => f.map((x) => x.utxo)).catch(() => []),
-        ]);
-        const rec = reconstructBondRecord({
-          ownerXonlyHex: a.ownerXonly, lockUntil: a.lockUntil, claimedSats: a.claimedSats,
-          announcedAddress: a.address, seedWords: words.join(" "), network: BOND_NETWORK,
-          bondUtxos, bondKeyUtxos, createdAt: a.createdAt,
-        });
-        if (!rec) continue;
-        upsertCommitmentBond(rec);
-        have.add(a.address);
-        recovered++;
-      }
-      return { recovered };
+      return recoverOwnedBonds(parsed, listCommitmentBonds(), {
+        network: BOND_NETWORK, seed: () => getExistingSeed(client, signer, opts?.allowUserAction === true),
+        readUtxos: async address => (await findBondFundingUtxos({ address, fetchJson, minConfs: defaultMinConfs(BOND_NETWORK) })).map(x => x.utxo),
+        save: upsertCommitmentBond,
+      });
+    },
+    findMyBond: async (address, lockUntil) => {
+      const client = clientRef.current, signer = signerRef.current;
+      if (!client || !signer) throw new Error("Not connected — reconnect, then Retry.");
+      const fetchJson = esploraFetcher(defaultEsploraBase(BOND_NETWORK), { network: BOND_NETWORK });
+      const record = await findOwnedBond(address, lockUntil, listCommitmentBonds(), {
+        network: BOND_NETWORK, seed: () => getExistingSeed(client, signer, true),
+        readUtxos: async address => (await findBondFundingUtxos({ address, fetchJson, minConfs: defaultMinConfs(BOND_NETWORK) })).map(x => x.utxo),
+        save: upsertCommitmentBond,
+      });
+      return { bondId: record.bondId };
     },
     fetchMyBonds: async (): Promise<VerifiedBond[]> => {
       // #77: the user's OWN announced bonds, chain-verified — so the Dashboard
       // shows a live bond on a fresh device (no local commitment record yet).
-      // Fail-soft everywhere: any relay/esplora hiccup yields [] (never throws
-      // into render), and each announcement is recompute-don't-trust verified.
+      // Failed relay/chain reads reject so Manage can explain and retry; they
+      // are never an empty-bond reading. Each announcement is chain-verified.
       try {
         const client = clientRef.current;
         const signer = signerRef.current;
-        if (!client || !signer) return [];
+        if (!client || !signer) throw new Error('Reconnect to check your bonds.');
         const myPubkey = (await signer.getPublicKey()).trim().toLowerCase();
         const events = await client.queryOnce(
           { kinds: [ARBITER_BOND_ANNOUNCEMENT_KIND], authors: [myPubkey] } as any, 6_000,
@@ -6705,19 +6698,17 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
         );
         if (latest.length === 0) return [];
         const fetchJson = esploraFetcher(defaultEsploraBase(BOND_NETWORK), { network: BOND_NETWORK });
-        const tip = await esploraTipHeight(fetchJson).catch(() => undefined);
+        const tip = await esploraTipHeight(fetchJson);
         const verified: VerifiedBond[] = [];
         for (const a of latest) {
-          const v = await verifyBondAnnouncement(
-            a, { network: BOND_NETWORK, fetchJson, tipHeight: tip },
-          ).catch(() => null);
+          const v = await verifyBondAnnouncement(a, { network: BOND_NETWORK, fetchJson, tipHeight: tip });
           if (v) verified.push(v);
         }
         await resolveLineageTenure(verified, fetchJson);
         return verified;
       } catch (e) {
-        console.warn("[chama] fetchMyBonds failed — showing local bonds only:", e);
-        return [];
+        console.warn("[chama] fetchMyBonds failed:", e);
+        throw e;
       }
     },
     /**
@@ -6782,16 +6773,12 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       // (2) on any failure OR an empty verify, fall back to the last
       // chain-verified cached set (12h TTL) instead of returning nothing.
       try {
-        let events = await client.queryOnce(
-          { kinds: [ARBITER_BOND_ANNOUNCEMENT_KIND], "#d": [community] } as any, 6_000,
-        );
+        let events = await readCommunityBondEvents(community, filter => client.queryOnce(filter, 6_000));
         if (events.length === 0) {
           await new Promise((r) => setTimeout(r, 800));
-          events = await client.queryOnce(
-            { kinds: [ARBITER_BOND_ANNOUNCEMENT_KIND], "#d": [community] } as any, 6_000,
-          );
+          events = await readCommunityBondEvents(community, filter => client.queryOnce(filter, 6_000));
         }
-        const latest = selectLatestAnnouncements(events as any);
+        const latest = selectLatestAnnouncements(events as any).filter(a => a.community === community);
         const fetchJson = esploraFetcher(defaultEsploraBase(BOND_NETWORK), { network: BOND_NETWORK });
         const tip = await esploraTipHeight(fetchJson).catch(() => undefined);
         // ⭐ Each announcement is chain-verified (recompute address + read on-chain);
@@ -6941,9 +6928,10 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       // doing them serially made the minimum wait the sum of both networks.
       const { tip, bonds } = await readLivenessBonds({
         community, network: BOND_NETWORK, fetchJson, signal,
-        readAnnouncements: () => client.queryPublicConduct(
-          { kinds: [ARBITER_BOND_ANNOUNCEMENT_KIND], "#d": [community] } as any, 3_500,
-        ),
+        readAnnouncements: async () => {
+          const reads = await Promise.all(communityBondFilters(community).map(filter => client.queryPublicConduct(filter, 3_500)));
+          return { events: [...new Map(reads.flatMap(read => read.events).map(event => [event.id, event])).values()], complete: reads.every(read => read.complete) };
+        },
       });
       throwIfAborted();
       // 2. Ratings are enrichment, not permission to reveal the bonded count.
