@@ -1,5 +1,13 @@
 // fr/trade — Session B fills this from src/i18n/en/trade.ts (key set must match EXACTLY).
 export const trade: Record<string, string> = {
+  "trade.voteSending": "Envoi de votre vote… Il comptera après confirmation.",
+  "trade.choosePaymentDetails": "Choisir les coordonnées de paiement",
+  "trade.sendDetailsInChat": "Je les enverrai dans le chat",
+  "trade.paymentMethod": "Moyen de paiement",
+  "trade.savePaymentDetails": "Enregistrer les coordonnées",
+  "trade.howToPay": "Comment payer",
+  "trade.detailsInChat": "Demandez les coordonnées au vendeur dans le chat avant de payer.",
+
   "trade.lockReabsorbed": "Vos {amount} sats sont de retour dans votre portefeuille.",
   "trade.responseHours": "{count} heures",
   "trade.responseDays": "{count} jours",

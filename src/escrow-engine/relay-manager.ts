@@ -853,7 +853,7 @@ export class RelayManager {
   }
 
   /** Pending OK handlers — keyed by "eventId:relayUrl" */
-  private pendingOk: Map<string, { resolve: (v: { accepted: boolean; message: string }) => void; timeout: ReturnType<typeof setTimeout> }> = new Map();
+  private pendingOk: Map<string, { resolve: (v: { accepted: boolean; message: string }) => void; timeout: ReturnType<typeof setTimeout>; promise: Promise<{ accepted: boolean; message: string }> }> = new Map();
 
   /** Events the PREFERRED relay hasn't accepted yet (it was down, rejected,
    *  or timed out). Re-offered on its next connect. Bounded by count + TTL. */
@@ -957,17 +957,21 @@ export class RelayManager {
     relay: RelayConnection,
     event: NostrEvent
   ): Promise<{ accepted: boolean; message: string }> {
-    return new Promise((resolve) => {
-      const key = `${event.id}:${relay.url}`;
-
-      const timeout = setTimeout(() => {
-        this.pendingOk.delete(key);
-        resolve({ accepted: false, message: `Timeout on ${relay.url}` });
-      }, this.publishTimeoutMs);
-
-      this.pendingOk.set(key, { resolve, timeout });
-      this.sendToRelay(relay, ["EVENT", event]);
-    });
+    const key = `${event.id}:${relay.url}`;
+    // A reconnect backfill and the foreground action can send the same signed
+    // event concurrently. Share its ACK wait; replacing the resolver stranded
+    // the foreground caller even after the relay had accepted its event.
+    const existing = this.pendingOk.get(key);
+    if (existing) return existing.promise;
+    let resolve!: (value: { accepted: boolean; message: string }) => void;
+    const promise = new Promise<{ accepted: boolean; message: string }>(done => { resolve = done; });
+    const timeout = setTimeout(() => {
+      this.pendingOk.delete(key);
+      resolve({ accepted: false, message: `Timeout on ${relay.url}` });
+    }, this.publishTimeoutMs);
+    this.pendingOk.set(key, { resolve, timeout, promise });
+    this.sendToRelay(relay, ["EVENT", event]);
+    return promise;
   }
 
   // ── Subscribe to events matching a filter ───────────────────────────────

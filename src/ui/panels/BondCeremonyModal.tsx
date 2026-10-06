@@ -1,3 +1,5 @@
+import { BondManageActions } from '../components/BondManageActions.js';
+import { bondManageActions, type BondChainObservation } from '../../bond-multisig/manage-actions.js';
 // ══════════════════════════════════════════════════════════════════════════
 // Chama — Bond ceremony (single-key TIMELOCK COMMITMENT — the sealed v1 model)
 // ══════════════════════════════════════════════════════════════════════════
@@ -78,7 +80,7 @@ const PLANNED_BOND_TTL_MS = 24 * 60 * 60 * 1000; // 24h
 export interface BondCeremonyModalProps {
   createCommitmentBond: (p: { amountSats: bigint; termBlocks: number }) =>
     Promise<{ bondId: string; address: string; lockUntil: number; amountSats: bigint; tipAtCreate: number }>;
-  checkCommitmentFunding: (bondId: string) => Promise<{ locked: boolean; txid?: string; lockedSats?: bigint; deposits?: number }>;
+  checkCommitmentFunding: (bondId: string) => Promise<{ locked: boolean; txid?: string; lockedSats?: bigint; deposits?: number; chainConfirmed?: boolean }>;
   getCommitmentReclaimQuote: (bondId: string) => Promise<{ finalityDelay: number; minimumDepositSats: number; pegInFeeSats: number; minerFeeSats: bigint; estimatedNetSats: bigint } | null>;
   renewCommitmentBond: (bondId: string, termBlocks: number) => Promise<{ bondId: string; txid: string; amountSats: bigint; feeSats: bigint; lockUntil: number; pending: boolean }>;
   /** Rebuild this device's bond records from the user's own on-chain announcements + seed. */
@@ -260,6 +262,27 @@ export function BondCeremonyModal({ createCommitmentBond, checkCommitmentFunding
   }, [creditPendingBondId]);
 
   const bonds = (() => { void storeRev; return listCommitmentBonds(); })();
+  const managedBondId = 'bondId' in view ? view.bondId : null;
+  const [manageChain, setManageChain] = useState<{ bondId: string; observation: BondChainObservation } | null>(null);
+  useEffect(() => {
+    if (!managedBondId) { setManageChain(null); return; }
+    let cancelled = false;
+    const pull = async () => {
+      try {
+        const [height, funding] = await Promise.all([tipFnRef.current(), checkFnRef.current(managedBondId)]);
+        if (!cancelled) {
+          setManageChain({ bondId: managedBondId, observation: { tip: height, unspent: funding.chainConfirmed === true } });
+          setStoreRev(n => n + 1);
+        }
+      } catch { if (!cancelled) setManageChain(null); }
+    };
+    void pull();
+    const timer = setInterval(() => void pull(), TIP_POLL_MS);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, [managedBondId]);
+  const managedRec = managedBondId ? bonds.find(b => b.bondId === managedBondId) : undefined;
+  const managedObservation = manageChain?.bondId === managedBondId ? manageChain.observation : null;
+
   const resetReclaimForm = () => {
     setConfirmReclaim(false);
     setReclaimChoice("chama");
@@ -388,6 +411,15 @@ export function BondCeremonyModal({ createCommitmentBond, checkCommitmentFunding
       onClose={onClose} dismissible={closeable} showDone={false}>
       <div data-bond-ceremony ref={contentRef} tabIndex={-1} style={{ fontFamily: T.sans, outline: "none" }}>
         <style>{`.bond-term:focus-visible,[data-bond-ceremony] summary:focus-visible{outline:2px solid ${T.accent};outline-offset:3px}`}</style>
+
+        {managedRec && !confirmReclaim && <BondManageActions rec={managedRec} chain={managedObservation} busy={busy || announcing}
+          onAnnounce={publishBondAnnouncement ? () => void announce(managedRec.bondId, announceSlug) : undefined}
+          onAdd={() => { setNote(null); resetReclaimForm(); setView({ kind: "describe" }); }}
+          onClaim={() => {
+            if (!bondManageActions(managedRec, managedObservation).claim.enabled) return;
+            setNote(null); setConfirmReclaim(true); setView({ kind: "locked", bondId: managedRec.bondId });
+            void getCommitmentReclaimQuote(managedRec.bondId).then(setReclaimQuote).catch(() => setReclaimQuote(null));
+          }} />}
 
         {view.kind === "list" && (
           <BondList
@@ -553,16 +585,12 @@ export function BondCeremonyModal({ createCommitmentBond, checkCommitmentFunding
                   <PaymentButton tier="primary" onClick={() => void renew(view.bondId)} disabled={busy} style={primaryBtn(!busy)}>
                     {busy ? t("bond.renewing") : t("bond.renewBond")}
                   </PaymentButton>
-                  <button onClick={() => { setNote(null); setConfirmReclaim(true); void getCommitmentReclaimQuote(view.bondId).then(setReclaimQuote).catch(() => setReclaimQuote(null)); }}
-                    style={{ ...secondaryBtn, marginTop: 6 }}>
-                    {t("bond.reclaimMyBond")}
-                  </button>
                   <button onClick={onClose} style={{ ...secondaryBtn, marginTop: 6 }}>{t("common.done")}</button>
                 </>
               ) : (
                 <>
                   <PaymentButton tier={publishBondAnnouncement && !announced.has(`${rec.bond.address}|${announceSlug}`) ? "quiet" : "primary"} onClick={onClose} style={publishBondAnnouncement && !announced.has(`${rec.bond.address}|${announceSlug}`) ? secondaryBtn : primaryBtn(true)}>{t("common.done")}</PaymentButton>
-                  {!notYet && <button onClick={() => { setNote(null); setConfirmReclaim(true); void getCommitmentReclaimQuote(view.bondId).then(setReclaimQuote).catch(() => setReclaimQuote(null)); }} style={{ ...secondaryBtn, border: 0, marginTop: 6 }}>{t("bond.reclaimMyBond")}</button>}
+
                 </>
               )}
               {note && <div style={{ fontSize: 10.5, color: T.red, fontFamily: T.mono, marginTop: 10, lineHeight: 1.5 }}>{note}</div>}
@@ -666,8 +694,8 @@ function BondList({ bonds, tip, onOpen, onPostNew }: {
         b.phase === "locked" &&
         tip >= b.bond.lockUntil &&
         !renewedFromIds.has(b.bondId));
-  const current = bonds.filter((b) => b.phase === "created" || (b.phase === "locked" && (tip == null || tip < b.bond.lockUntil)));
-  const past = bonds.filter((b) => b.phase === "reclaimed" || (b.phase === "locked" && tip != null && tip >= b.bond.lockUntil));
+  const current = bonds.filter((b) => b.phase === "created" || (b.phase === "locked" && !renewedFromIds.has(b.bondId)));
+  const past = bonds.filter((b) => b.phase === "reclaimed" || renewedFromIds.has(b.bondId));
   return (
     <div>
       <div style={{ fontSize: 15, fontWeight: 700, color: T.text, fontFamily: T.sans, marginBottom: 10 }}>{t("bond.currentBond")}</div>
@@ -982,9 +1010,6 @@ function AnnounceBond({ slug, onSlug, announcing, announcedTo, error, onAnnounce
         </div>
       )}
       </>}
-      {!announcedTo && <PaymentButton tier="primary" onClick={onAnnounce} disabled={announcing || !slug} style={primaryBtn(!announcing && !!slug)}>
-        {announcing ? t("bond.announcing") : t("bond.announceMyBond")}
-      </PaymentButton>}
       {error && <div style={{ fontSize: 10.5, color: T.red, fontFamily: T.mono, marginTop: 6, lineHeight: 1.5 }}>{error}</div>}
     </div>
   );

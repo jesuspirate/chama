@@ -8,14 +8,14 @@ import { Match, MatchReviewAmount, guidedChooseTitleKey } from "./screens/Assist
 // Exercise the actual per-amount searches that the guided canvas merges.
 function offer(id: string, sats: number, fiat: number, currency = "USD", category = "p2p-trade") {
   const listing = {
-    id, category, status: EscrowStatus.CREATED, amountMsats: sats * 1000,
+    id, category, community: "global-usd", status: EscrowStatus.CREATED, amountMsats: sats * 1000,
     fiatAmount: fiat, fiatCurrency: currency, description: "Help with this month’s utilities",
     expiresAt: 2000, participants: { [Role.SELLER]: id }, paymentMethods: ["strike"],
     fees: { platformMsats: 0, arbiterMsats: 0 },
     ...(category === "bill-pay" ? { items: [{ id: "utilities", label: "Utilities", kind: "bill", amountMsats: sats * 1000 }] } : {}),
   } as EscrowState;
   return matchGuidedListings({ version: 1, direction: "buy_sats", amountSats: sats,
-    paymentRails: ["strike"], strategy: "available_now" }, [{ listing }], { nowSec: 1000 }).candidates[0]!;
+    paymentRails: ["strike"], community: "global-usd", strategy: "available_now" }, [{ listing }], { nowSec: 1000 }).candidates[0]!;
 }
 const a = offer("a", 2459, 2);
 const b = offer("b", 3183, 2);

@@ -3,6 +3,7 @@
 // byte-identical to EN; only the En halves are translated. Exact TZS amount /
 // agent number / USSD code arrive as {params}.
 export const fund: Record<string, string> = {
+  "fund.buyerSeatClosed": "La place de l’acheteur ou le délai a expiré. Attendez un nouvel acheteur ou republiez avant de payer.",
   "payment.withdrawalUnavailable": "Sort de la fédération sur chaîne · frais indisponibles · ~1 heure",
   "payment.withdrawalLine": "Sort de la fédération sur chaîne · frais ~{fee} sats · ~1 heure",
   "payment.depositLine": "Dépôt dans {federation} · frais de {fee} sats · {confirmations} confirmations",

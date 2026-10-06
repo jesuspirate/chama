@@ -507,7 +507,7 @@ export function stateProvenance(state: EscrowState): "replayed" | "summary" {
 }
 
 export function canOfferClaim(state: EscrowState): boolean {
-  return stateProvenance(state) === "replayed" && hasLockEvidence(state);
+  return !state.pendingVote && stateProvenance(state) === "replayed" && hasLockEvidence(state);
 }
 
 export function needsTradeHistory(state: EscrowState): boolean {
@@ -2012,6 +2012,7 @@ export function decideVotePrompt(
   participants: EscrowState["participants"] = state.participants,
   nowSec: number = Math.floor(Date.now() / 1000),
 ): VotePrompt {
+  if (state.pendingVote) return { kind: "waiting", waitingOn: state.pendingVote.role, message: translate(getCurrentLang(), "trade.voteSending") };
   if (state.status !== EscrowStatus.LOCKED && state.status !== EscrowStatus.EXPIRED) {
     return { kind: "none", reason: "not-votable-state" };
   }

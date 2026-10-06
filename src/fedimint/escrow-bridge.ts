@@ -1,3 +1,4 @@
+import { assertTradePaymentDetails } from '../payments/trade-payment-details.js';
 import { isSignerApprovalError } from "../escrow-engine/signer-approval.js";
 import { chamaFundingError } from "../chama/policy.js";
 // ══════════════════════════════════════════════════════════════════════════
@@ -106,6 +107,7 @@ interface LockOptions {
    *  buyer and arbiter can read where to send fiat. Optional —
    *  marketplace digital trades and raw escrows don't need it. */
   savedHandleId?: string;
+  paymentDetailsInChat?: boolean;
   /** Menu basket snapshot. Required when locking a menu listing. */
   selectedItems?: SelectedMenuItem[];
   /** Buyer identity snapshotted before an external funding payment begins.
@@ -328,6 +330,7 @@ export class EscrowFedimintBridge {
     if (this.escrow.getState(escrowId) !== state) return this.prepareLockContext(escrowId, opts);
     const timestamp = Math.floor(Date.now() / 1000);
     if (preLockDeadline(state, timestamp)?.lapsed) throw new Error("The buyer's seat or listing lapsed. Post it again or wait for the buyer to rejoin.");
+    assertTradePaymentDetails(state, opts);
     const amount = amountMsatsForLock(state, opts.selectedItems);
     const payload: LockPayload = {
       type: "escrow:lock", lockedAt: timestamp, buyerPubkey, arbiterPubkey,
@@ -584,7 +587,7 @@ export class EscrowFedimintBridge {
     });
     const guardOn = this.nativeLockGuardOn();
     const lockOpts = {
-      savedHandleId: opts.savedHandleId,
+      savedHandleId: opts.savedHandleId, paymentDetailsInChat: opts.paymentDetailsInChat,
       selectedItems: opts.selectedItems,
       buyerPubkey: opts.buyerPubkey,
     };
@@ -763,7 +766,7 @@ export class EscrowFedimintBridge {
     const amountMsats = amountMsatsForLock(context.state, opts.selectedItems);
     const guardOn = this.nativeLockGuardOn();
     const lockOpts = {
-      savedHandleId: opts.savedHandleId,
+      savedHandleId: opts.savedHandleId, paymentDetailsInChat: opts.paymentDetailsInChat,
       selectedItems: opts.selectedItems,
       buyerPubkey: opts.buyerPubkey,
     };

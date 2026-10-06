@@ -1,3 +1,4 @@
+import { sameCommunity } from '../../guided/join-eligibility.js';
 import { CommunityChip } from "../components/CommunityChip.js";
 import { CommunityMismatchNudge } from "../components/CommunityMismatchNudge.js";
 import { browseAtTop, scrollBrowseResults, useBrowseArrivals } from "../browse-live.js";
@@ -208,10 +209,10 @@ export function BrowseView({
   // Own-listing hide (default) happens BEFORE search/section grouping so counts
   // and empty-states reflect what the viewer actually sees.
   const search = searchQuery.trim().toLowerCase();
-  const otherCurrencyCount = (browseScope === "local" ? suppliedMatching : [...suppliedMatching, ...suppliedNonMatching])
+  const otherCurrencyCount = ([...suppliedMatching, ...suppliedNonMatching].filter(l => browseScope !== "local" || sameCommunity(l.community, browseCommunity)))
     .filter(l => !listingMatchesCurrency(l, viewerCurrency) && listingMatchesSearch(l, search)).length;
-  const scopedMatching = matchingListings.filter(l => listingMatchesSearch(l, search));
-  const scopedNonMatching = nonMatchingListings.filter(l => listingMatchesSearch(l, search));
+  const scopedMatching = [...matchingListings, ...nonMatchingListings].filter(l => sameCommunity(l.community, browseCommunity) && listingMatchesSearch(l, search));
+  const scopedNonMatching = [...matchingListings, ...nonMatchingListings].filter(l => !sameCommunity(l.community, browseCommunity) && listingMatchesSearch(l, search));
   const hasOwnListings = countOwnListings(matchingListings, pubkey) + countOwnListings(nonMatchingListings, pubkey) > 0;
   const ownListingCount = countOwnListings(scopedMatching, pubkey)
     + (browseScope === "all" ? countOwnListings(scopedNonMatching, pubkey) : 0);

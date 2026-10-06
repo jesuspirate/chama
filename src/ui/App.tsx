@@ -752,7 +752,7 @@ export default function App() {
   // LiveTradeSurface fires the IDENTICAL AtomicFundingModal flow (no money-path
   // fork). Both views pass this same handler.
   const tradeOnLock = async (
-    lockOpts: { savedHandleId?: string; selectedItems?: SelectedMenuItem[]; amountMsats?: number } = {},
+    lockOpts: { savedHandleId?: string; paymentDetailsInChat?: boolean; selectedItems?: SelectedMenuItem[]; amountMsats?: number } = {},
   ): Promise<void> => {
     if (!selected || selected.escrowMode === "onchain") return;
     if (!requireOnline()) return;
@@ -810,7 +810,7 @@ export default function App() {
                   amountMsats: lockAmountMsats,
                   premiumMsats: fundPremiumMsats,
                   ctaLabel: lockLabel,
-                  savedHandleId,
+                  savedHandleId, paymentDetailsInChat: lockOpts.paymentDetailsInChat,
                   selectedItems,
                   tradeCommunity: selected.community,
                   fiatCurrency: selected.fiatCurrency,
@@ -976,6 +976,7 @@ export default function App() {
     premiumMsats?: number;
     ctaLabel: string;
     savedHandleId?: string;
+    paymentDetailsInChat?: boolean;
     selectedItems?: SelectedMenuItem[];
     // Trade context fields, kept on the funding modal as informational
     // metadata. The pre-LOCK external-swap CTA was removed in the
@@ -3439,7 +3440,11 @@ export default function App() {
             const parent = share?.parent ? escrows.get(share.parent) : undefined;
             return parent ? circleFromEscrow(parent) ?? undefined : undefined;
           })()}
-          onPostAgain={() => setView("create")}
+          onPostAgain={(() => {
+            const offer = escrows.get(pendingFundAndLock.escrowId);
+            return offer && !offer.parent && offer.initiator.role === Role.SELLER && offer.initiator.pubkey === pubkey
+              ? () => { void renewListing(offer.id); } : undefined;
+          })()}
           seatDeadline={escrows.get(pendingFundAndLock.escrowId) ? fundingSeatDeadline(escrows.get(pendingFundAndLock.escrowId)!) : undefined}
           custodyNotice={escrows.get(pendingFundAndLock.escrowId)?.custodyNotice}
           escrowId={pendingFundAndLock.escrowId}
@@ -3447,6 +3452,7 @@ export default function App() {
           premiumMsats={pendingFundAndLock.premiumMsats ?? 0}
           ctaLabel={pendingFundAndLock.ctaLabel}
           savedHandleId={pendingFundAndLock.savedHandleId}
+          paymentDetailsInChat={pendingFundAndLock.paymentDetailsInChat}
           selectedItems={pendingFundAndLock.selectedItems}
           homeCommunity={getUserCommunitySlugRaw()}
           tradeCommunity={pendingFundAndLock.tradeCommunity}
@@ -4367,7 +4373,7 @@ export default function App() {
                   fundingMethod: "nwc",
                   nwcConnectionString: opts.nwcConnectionString,
                   rememberNwc: false, // already saved
-                  savedHandleId: opts.savedHandleId,
+                  savedHandleId: opts.savedHandleId, paymentDetailsInChat: opts.paymentDetailsInChat,
                   selectedItems: opts.selectedItems,
                   onPhase: (phase) => {
                     // Map engine phase kinds to compact button labels.

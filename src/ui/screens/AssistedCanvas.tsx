@@ -218,10 +218,10 @@ export function AssistedCanvas({
     from,
     to,
     listingInputs,
-    { viewerPubkey, community: browseCommunity, nowSec: Math.floor(Date.now() / 1000) },
+    { viewerPubkey, community: browseCommunity, mintUrl: activeMintUrl, nowSec: Math.floor(Date.now() / 1000) },
   );
-  const cashOffers = useMemo(() => count("cash", "sats").count, [listingInputs, viewerPubkey, browseCommunity]);
-  const goodsOffers = useMemo(() => count("sats", "goods").count, [listingInputs, viewerPubkey, browseCommunity]);
+  const cashOffers = useMemo(() => count("cash", "sats").count, [listingInputs, viewerPubkey, browseCommunity, activeMintUrl]);
+  const goodsOffers = useMemo(() => count("sats", "goods").count, [listingInputs, viewerPubkey, browseCommunity, activeMintUrl]);
 
   const railChoices = useMemo(() => {
     const advertised = new Set(

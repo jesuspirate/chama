@@ -1,4 +1,10 @@
 export const bond: Record<string, string> = {
+  "bond.announceAgain": "Tangaza tena",
+  "bond.announceWhenActive": "Tangaza tena dhamana ikiwa hai.",
+  "bond.claimAtBlock": "Unaweza kuirejesha kwenye bloku ya Bitcoin {block}.",
+  "bond.alreadyClaimed": "Dhamana hii tayari imedaiwa au imeongezwa muda.",
+  "bond.checkChainFirst": "Bado hatujaweza kuthibitisha dhamana kwenye Bitcoin. Jaribu tena.",
+
   "bond.custodyLockedTime": "Imefungwa kwenye Bitcoin hadi kitalu {block} (~{time}). Ni ufunguo wako tu unaweza kuitumia, na baada ya hapo tu.",
   "bond.custodyFundingTime": "Amana zinafungwa kwenye Bitcoin hadi kitalu {block} (~{time}). Ni ufunguo wako tu unaweza kuzitumia, na baada ya hapo tu.",
   "bond.reclaimConsequence": "Kuirudisha dhamana hii kunaimaliza na kutuma bitcoin zake kwenye mahali utakachochagua.",
@@ -36,7 +42,6 @@ export const bond: Record<string, string> = {
   "bond.allBonds": "← Dhamana zote",
   "bond.amountLabel": "Kiasi cha dhamana (sats)",
   "bond.merchantRetired": "Dhamana za duka pekee zimeondolewa. Tangaza tena ili uhesabiwe kama msuluhishi.",
-  "bond.announceAgain": "Tangaza tena",
   "bond.announceBodyAfter": " — uthibitisho kwamba kuna msuluhishi mwenye dhamana hapa, unaoweza kuthibitishwa dhidi ya mnyororo. Nchi yoyote, kukiwa na shirikisho la kienyeji au la.",
   "bond.announceBodyBefore": "Chapisha dhamana hii ili jamii iihesabu kwenye ",
   "bond.announceBodyBold": "uhai",

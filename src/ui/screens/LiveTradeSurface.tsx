@@ -1,3 +1,5 @@
+import { TradePaymentDetailsChoice, BuyerPaymentDetails, CHAT_PAYMENT_CHOICE } from '../components/TradePaymentDetails.js';
+import { matchingTradeHandles, needsTradePaymentDetails } from '../../payments/trade-payment-details.js';
 import { TradeCustody } from "../components/MoneyCustody.js";
 import { RangeFiat } from "../components/RangeFiat.js";
 import { useBitcoinPrice } from "../hooks/useBitcoinPrice.js";
@@ -42,8 +44,7 @@ import { ChatPanel } from "../panels/ChatPanel.js";
 import type { RatingThumb } from "../../reputation/ratings.js";
 import { translate, getCurrentLang } from "../../i18n/index.js";
 import { shareTradeLink } from "../share-link.js";
-import { listSavedHandles } from "../../payments/saved-handles.js";
-import { getRailByKey, toRailKey } from "../../payments/rail-registry.js";
+import { getRailByKey } from "../../payments/rail-registry.js";
 import { VerticalIcon } from "../components/VerticalIcon.js";
 import { isParentStorefront, isChildOrder } from "../../escrow-engine/storefront.js";
 
@@ -120,7 +121,7 @@ export function LiveTradeSurface({
    *  the Fund / Claim surfaces defer to the full view via onOpenFullView. */
   onClaim?: () => Promise<void>;
   onReclaimRejectedLock?: (id: string) => Promise<void>;
-  onLock?: (opts?: { savedHandleId?: string; selectedItems?: SelectedMenuItem[]; amountMsats?: number }) => Promise<void>;
+  onLock?: (opts?: { savedHandleId?: string; paymentDetailsInChat?: boolean; selectedItems?: SelectedMenuItem[]; amountMsats?: number }) => Promise<void>;
   /** Seat the viewer into the trade's open slot (guided join). A range
    *  (exchange-bracket) listing passes the chosen order along. */
   onHome?: () => void;
@@ -174,6 +175,9 @@ export function LiveTradeSurface({
   const myRole = effectiveViewerRole(state, pubkey, nowSec, onchainActions?.onchainObservation);
 
   const [busy, setBusy] = useState(false);
+  const [paymentChoice, setPaymentChoice] = useState(() => matchingTradeHandles(state)[0]?.id ?? '');
+  useEffect(() => setPaymentChoice(matchingTradeHandles(state)[0]?.id ?? ''), [state.id]);
+
   const [onchainOpen, setOnchainOpen] = useState(false);
   useEffect(() => { setOnchainOpen(false); }, [state.id, state.status]);
   const onchainControls = <OnchainTradeControls onReleaseWithPayout={address => onVote(Outcome.RELEASE, address)} state={state} pubkey={pubkey} profileNames={profileNames} kind0Enabled={kind0Enabled} {...onchainActions} />;
@@ -282,6 +286,7 @@ export function LiveTradeSurface({
 
   // ── The single decision, per state × role ──────────────────────────────
   function renderDecision() {
+    if (state.pendingVote) return <Waiting message={tr("trade.voteSending")} />;
     if (needsTradeHistory(state)) return <Decision q={tr("trade.historyUnverified")} sub={tr("app.archivedIncomplete")}>
       <CopyButton value={state.id} label={state.id} />
       <MoreOptions onClick={onOpenFullView} label={tr("trade.resendHeal")} />
@@ -317,44 +322,27 @@ export function LiveTradeSurface({
           </Decision>
         );
         // Fiat trades reveal the locker's payment details inside the LOCK
-        // payload (NIP-44, participants only) — where the fiat lands on
-        // Exchange, the account the volunteer pays on Bill Pay. The full view
-        // has a picker; here we auto-attach the newest saved handle matching
-        // the trade's advertised methods, and say so under the button.
-        const revealHandle = (state.category === "p2p-trade" || state.category === "bill-pay")
-          ? (() => {
-              try {
-                const rails = new Set((state.paymentMethods ?? []).map(toRailKey));
-                return listSavedHandles().find(h =>
-                  rails.has(toRailKey(h.rail))
-                  || (h.networks ?? []).some(n => rails.has(toRailKey(n)))) ?? null;
-              } catch { return null; }
-            })()
-          : null;
+        // Payment details ride in the existing private LOCK envelope. Confirm
+        // a matching saved handle, add one here, or explicitly choose chat.
         return (
           <Decision
             q={tr("lts.lockQ", { amount: amountLabel })}
             sub={tr("lts.lockSub")}
           >
             <TradeCustody state={state} warn />
+            {needsTradePaymentDetails(state) && <TradePaymentDetailsChoice state={state} value={paymentChoice} onChange={setPaymentChoice} />}
             {onLock ? (
               <>
                 <PrimaryButton
-                  disabled={busy || fundingInProgress || bootProbeFailed}
+                  disabled={busy || fundingInProgress || bootProbeFailed || (needsTradePaymentDetails(state) && !paymentChoice)}
                   onClick={() => run(() => onLock({
                     amountMsats: effectiveMsats,
                     ...(orderItems?.length ? { selectedItems: orderItems } : {}),
-                    ...(revealHandle ? { savedHandleId: revealHandle.id } : {}),
+                    ...(paymentChoice && paymentChoice !== CHAT_PAYMENT_CHOICE ? { savedHandleId: paymentChoice } : {}),
+                    paymentDetailsInChat: paymentChoice === CHAT_PAYMENT_CHOICE,
                   }))}
                   label={fundingInProgress ? tr("lts.locking") : tr("lts.fundLock", { amount: amountLabel })}
                 />
-                {revealHandle ? (
-                  <div style={{ fontSize: 10.5, color: T.muted, fontFamily: T.mono }}>
-                    {tr("lts.revealsHandle", { rail: getRailByKey(revealHandle.rail)?.displayName ?? revealHandle.rail })}
-                  </div>
-                ) : (state.category === "p2p-trade" || state.category === "bill-pay") ? (
-                  <Hint>{tr("lts.noHandleHint")}</Hint>
-                ) : null}
                 {bootProbeFailed && <Hint>{tr("lts.fedUnreachable")}</Hint>}
               </>
             ) : (
@@ -912,9 +900,10 @@ export function LiveTradeSurface({
             </>}
             <ReplayNotes notes={state.replayNotes} />
             {historyReloading && <p role="status">Refreshing this trade's history…</p>}
+            {state.status === EscrowStatus.LOCKED && myRole === Role.BUYER && needsTradePaymentDetails(state) && <BuyerPaymentDetails state={state} />}
             {renderDecision()}
             {state.escrowMode === "onchain" && state.status === EscrowStatus.LOCKED && <MoreOptions onClick={() => setOnchainOpen(true)} label="Open on-chain deposit details" />}
-            {state.status === EscrowStatus.LOCKED && myRole && state.lock.handle && <details style={{ marginTop: 16 }}>
+            {state.status === EscrowStatus.LOCKED && myRole && state.lock.handle && !(myRole === Role.BUYER && needsTradePaymentDetails(state)) && <details style={{ marginTop: 16 }}>
               <summary style={{ minHeight: 44, cursor: "pointer", color: T.muted }}>{tr("lts.howToPay", { name: lockerName })}</summary>
               <div style={{ padding: 12, overflowWrap: "anywhere", background: T.surface, borderRadius: 12 }}>
                 <div>{getRailByKey(state.lock.handle.rail)?.displayName ?? state.lock.handle.rail}</div>

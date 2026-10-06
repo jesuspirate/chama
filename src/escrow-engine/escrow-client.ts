@@ -1726,6 +1726,13 @@ export class EscrowClient {
       throw err;
     }
 
+    // New ranged Exchange JOINs must commit the buyer's own amount. Historical
+    // empty JOINs still replay; the outgoing API no longer creates them.
+    if (role === Role.BUYER && state.items?.some(item => item.kind === 'exchange-bracket')
+      && (!Number.isSafeInteger(opts.amountMsats) || opts.amountMsats! <= 0 || !opts.selectedItems?.length)) {
+      throw new Error('Choose an amount before joining this offer.');
+    }
+
     const now = Math.floor(Date.now() / 1000);
     const lastEventId = state.eventChain[state.eventChain.length - 1]?.raw.id;
 
@@ -2036,6 +2043,8 @@ export class EscrowClient {
     }
   }
 
+  private pendingVotes = new Set<string>();
+
   async vote(escrowId: string, outcome: Outcome, onchainRelease?: SettlementPayload): Promise<EscrowState> {
     const state = this.states.get(escrowId);
     if (!state) throw new Error(`Escrow ${escrowId} not loaded`);
@@ -2110,9 +2119,32 @@ export class EscrowClient {
     if (!parsedVote.ok) throw new Error(parsedVote.error.message);
     const checkedVote = applyEvent(this.states.get(escrowId)!, parsedVote.event);
     if (!checkedVote.ok) throw new Error(checkedVote.error.message);
-    await this.relayManager.publish(signed);
-
-    const newState = this.applyLocally(escrowId, signed, payload, cycle);
+    if (this.pendingVotes.has(escrowId)) throw new Error('Your previous vote is still being sent.');
+    this.pendingVotes.add(escrowId);
+    this.callbacks.onStateUpdate?.(escrowId, {
+      ...checkedVote.state, pendingVote: { eventId: signed.id, role, outcome },
+    });
+    let newState: EscrowState;
+    try {
+      // A positive relay ACK establishes delivery; no echo round trip is needed.
+      // RelayManager bounds no-response publishes and rejects zero accepts.
+      await this.relayManager.publish(signed);
+      const committed = this.states.get(escrowId);
+      newState = committed?.eventChain.some(event => event.raw.id === signed.id)
+        ? committed : this.applyLocally(escrowId, signed, payload, cycle);
+      this.callbacks.onStateUpdate?.(escrowId, newState);
+    } catch (error) {
+      // Re-read, rather than restoring a captured state: other participants'
+      // committed events may have arrived while our publish was pending.
+      const committed = this.states.get(escrowId);
+      if (committed) this.callbacks.onStateUpdate?.(escrowId, committed);
+      // A verified history refresh may already have replayed this exact event,
+      // even if the foreground ACK was lost. That is committed evidence.
+      if (committed?.eventChain.some(event => event.raw.id === signed.id)) newState = committed;
+      else throw error;
+    } finally {
+      this.pendingVotes.delete(escrowId);
+    }
 
     // Auto-resolve if 2-of-3 threshold is met.
     // Wrapped in try/catch — resolve failure must not break the vote.

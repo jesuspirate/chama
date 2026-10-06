@@ -1,5 +1,11 @@
 // es/bond — Session C fills this from src/i18n/en/bond.ts (key set must match EXACTLY).
 export const bond: Record<string, string> = {
+  "bond.announceAgain": "Anunciar de nuevo",
+  "bond.announceWhenActive": "Puedes anunciar cuando el bono esté activo.",
+  "bond.claimAtBlock": "Se puede reclamar en el bloque Bitcoin {block}.",
+  "bond.alreadyClaimed": "Este bono ya se reclamó o renovó.",
+  "bond.checkChainFirst": "Aún no se pudo verificar el bono en Bitcoin. Inténtalo de nuevo.",
+
   "bond.custodyLockedTime": "Bloqueado en Bitcoin hasta el bloque {block} (~{time}). Solo tu clave puede gastarlo, y únicamente después.",
   "bond.custodyFundingTime": "Los depósitos se bloquean en Bitcoin hasta el bloque {block} (~{time}). Solo tu clave puede gastarlos, y únicamente después.",
   "bond.reclaimConsequence": "Recuperar la fianza la da por terminada y envía sus bitcoin al destino que elijas.",
@@ -37,7 +43,6 @@ export const bond: Record<string, string> = {
   "bond.allBonds": "← Todas las fianzas",
   "bond.amountLabel": "Monto de la fianza (sats)",
   "bond.merchantRetired": "Las fianzas solo para tiendas se han retirado. Anuncia de nuevo para contar como árbitro.",
-  "bond.announceAgain": "Anunciar de nuevo",
   "bond.announceBodyAfter": " — prueba de que aquí hay un árbitro con fianza, verificable contra la cadena. Cualquier país, con o sin federación local.",
   "bond.announceBodyBefore": "Publica esta fianza para que una comunidad la cuente en su ",
   "bond.announceBodyBold": "vitalidad",

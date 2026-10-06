@@ -1,3 +1,5 @@
+import { TradePaymentDetailsChoice, BuyerPaymentDetails, CHAT_PAYMENT_CHOICE } from '../components/TradePaymentDetails.js';
+import { matchingTradeHandles, needsTradePaymentDetails } from '../../payments/trade-payment-details.js';
 import { reabsorbedLockAmount } from "../../fedimint/pending-native-locks.js";
 import { RejectedLockRefund } from "../components/RejectedLockRefund.js";
 export { RejectedLockRefund } from "../components/RejectedLockRefund.js";
@@ -267,6 +269,7 @@ export function TradeDetail({
   onReclaimRejectedLock?: (id: string) => Promise<void>;
   onLock: (opts?: {
     savedHandleId?: string;
+    paymentDetailsInChat?: boolean;
     selectedItems?: SelectedMenuItem[];
     amountMsats?: number;
   }) => Promise<void>;
@@ -282,6 +285,7 @@ export function TradeDetail({
   onLockDirectNwc?: (opts: {
     nwcConnectionString: string;
     savedHandleId?: string;
+    paymentDetailsInChat?: boolean;
     selectedItems?: SelectedMenuItem[];
     amountMsats: number;
     onPhase?: (label: string) => void;
@@ -419,7 +423,8 @@ export function TradeDetail({
   // Disables the Claim button while the modal is open so re-taps can't
   // queue another flow.
   const [claiming, setClaiming] = useState(false);
-  const [selectedHandleId, setSelectedHandleId] = useState<string>("");
+  const [selectedHandleId, setSelectedHandleId] = useState<string>(() => matchingTradeHandles(state)[0]?.id ?? '');
+  useEffect(() => setSelectedHandleId(matchingTradeHandles(state)[0]?.id ?? ''), [state.id]);
   const [menuQuantities, setMenuQuantities] = useState<Record<string, number>>({});
   const [menuAmounts, setMenuAmounts] = useState<Record<string, string>>({});
   // v0.3.0 Phase 6: one-time educational card for State B (cross-fed
@@ -2206,7 +2211,6 @@ export function TradeDetail({
             const fiatCategory = state.category === "p2p-trade"
               || state.category === "bill-pay"
               || state.category === "lending";
-            const allHandles = fiatCategory ? listSavedHandles() : [];
             const menuSelectionMissing = lockMenuSelectionMissing;
             return (
             <div style={{
@@ -2215,50 +2219,7 @@ export function TradeDetail({
               marginBottom: 16,
               borderTop: `1px solid ${T.accent}33`,
             }}>
-              {/* Handle reveal picker for fiat categories */}
-              {fiatCategory && (
-                <div style={{ marginBottom: 14 }}>
-                  <div style={{
-                    fontSize: 10, fontWeight: 600, color: T.muted,
-                    fontFamily: T.mono, letterSpacing: 0.5, marginBottom: 6,
-                  }}>
-                    {t("trade.revealHandleHeader")}
-                  </div>
-                  {allHandles.length === 0 ? (
-                    <div style={{
-                      padding: "10px 12px", borderRadius: T.rs,
-                      background: T.surface, border: `1px dashed ${T.border}`,
-                      color: T.muted, fontFamily: T.mono, fontSize: 11,
-                      display: "flex", justifyContent: "space-between", alignItems: "center",
-                    }}>
-                      <span>{t("trade.noSavedHandles")}</span>
-                      {onOpenSettings && (
-                        <button onClick={onOpenSettings} style={{
-                          background: "none", border: "none",
-                          color: T.accent, fontFamily: T.mono, fontSize: 11,
-                          fontWeight: 700, cursor: "pointer", padding: 0,
-                        }}>{t("trade.addHandle")}</button>
-                      )}
-                    </div>
-                  ) : (
-                    <select
-                      value={selectedHandleId}
-                      onChange={e => setSelectedHandleId(e.target.value)}
-                      style={{ ...inputStyle, color: T.text, background: T.surface }}
-                    >
-                      <option value="">{t("trade.dontRevealHandle")}</option>
-                      {allHandles.map(h => {
-                        const rail = getRailByKey(h.rail);
-                        return (
-                          <option key={h.id} value={h.id}>
-                            {(rail?.displayName || h.rail) + " · " + maskHandle(h.handle)}
-                          </option>
-                        );
-                      })}
-                    </select>
-                  )}
-                </div>
-              )}
+              {fiatCategory && <TradePaymentDetailsChoice state={state} value={selectedHandleId} onChange={setSelectedHandleId} />}
 
               {/* v1.2.4: NWC status banner + direct-NWC Fund path. If the
                   user has a saved NWC wallet, the Fund button bypasses the
@@ -2275,7 +2236,7 @@ export function TradeDetail({
 
               <button
                 type="button"
-                disabled={locking || directNwcFundPhase !== null || fundingInProgress || !participants.buyer || fundUnavailable || lockBlockedByNoArbiter || menuSelectionMissing || menuOrderNotFinal}
+                disabled={(fiatCategory && !selectedHandleId) || locking || directNwcFundPhase !== null || fundingInProgress || !participants.buyer || fundUnavailable || lockBlockedByNoArbiter || menuSelectionMissing || menuOrderNotFinal}
                 title={fundingInProgress
                   ? t("trade.fundingInProgressNote")
                   : receiveUnavailable
@@ -2297,7 +2258,8 @@ export function TradeDetail({
                     try {
                       const result = await onLockDirectNwc({
                         nwcConnectionString: activeNwc.connectionString,
-                        savedHandleId: selectedHandleId || undefined,
+                        savedHandleId: selectedHandleId && selectedHandleId !== CHAT_PAYMENT_CHOICE ? selectedHandleId : undefined,
+                        paymentDetailsInChat: selectedHandleId === CHAT_PAYMENT_CHOICE,
                         selectedItems: hasMenu ? lockMenuItems : undefined,
                         amountMsats: lockAmountMsats,
                         onPhase: (label) => setDirectNwcFundPhase(label),
@@ -2315,7 +2277,8 @@ export function TradeDetail({
                   setLocking(true);
                   try {
                     await onLock({
-                      savedHandleId: selectedHandleId || undefined,
+                      savedHandleId: selectedHandleId && selectedHandleId !== CHAT_PAYMENT_CHOICE ? selectedHandleId : undefined,
+                        paymentDetailsInChat: selectedHandleId === CHAT_PAYMENT_CHOICE,
                       selectedItems: hasMenu ? lockMenuItems : undefined,
                       amountMsats: lockAmountMsats,
                     });
@@ -2392,13 +2355,14 @@ export function TradeDetail({
                   modal instead (different wallet, Onchain, external swap,
                   etc.). Hidden when no NWC is set up — the regular button
                   already routes through the modal in that case. */}
-              {activeNwc && onLockDirectNwc && !directNwcFundPhase && !locking && (
+              {(!fiatCategory || selectedHandleId) && activeNwc && onLockDirectNwc && !directNwcFundPhase && !locking && (
                 <button
                   onClick={async () => {
                     setLocking(true);
                     try {
                       await onLock({
-                        savedHandleId: selectedHandleId || undefined,
+                        savedHandleId: selectedHandleId && selectedHandleId !== CHAT_PAYMENT_CHOICE ? selectedHandleId : undefined,
+                        paymentDetailsInChat: selectedHandleId === CHAT_PAYMENT_CHOICE,
                         selectedItems: hasMenu ? lockMenuItems : undefined,
                         amountMsats: lockAmountMsats,
                       });
@@ -2434,6 +2398,8 @@ export function TradeDetail({
             </div>
             );
           })()}
+          {state.status === EscrowStatus.LOCKED && myRole === Role.BUYER && needsTradePaymentDetails(state) && <BuyerPaymentDetails state={state} />}
+
           {/* Vote buttons — vertical-aware copy from the label dictionary.
               v0.2.0 item 9: when the user is the arbiter, the vote
               buttons mirror role colors per Pillar 5.2 — purple for
@@ -4517,8 +4483,9 @@ export function TradeDetail({
         </div>
       )}
 
+      {state.pendingVote && <p role="status">{t("trade.voteSending")}</p>}
       {/* Revealed payment handle for the trade's three participants. */}
-      {state.status === EscrowStatus.LOCKED && state.lock.handle && (
+      {state.status === EscrowStatus.LOCKED && state.lock.handle && !(myRole === Role.BUYER && needsTradePaymentDetails(state)) && (
         <div style={{
           paddingTop: 16,
           marginTop: 16,

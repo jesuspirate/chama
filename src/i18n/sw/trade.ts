@@ -1,4 +1,12 @@
 export const trade: Record<string, string> = {
+  "trade.voteSending": "Tunatuma kura yako… Itahesabiwa ikithibitishwa.",
+  "trade.choosePaymentDetails": "Chagua maelezo ya malipo",
+  "trade.sendDetailsInChat": "Nitatuma maelezo ya malipo kwenye gumzo",
+  "trade.paymentMethod": "Njia ya malipo",
+  "trade.savePaymentDetails": "Hifadhi maelezo ya malipo",
+  "trade.howToPay": "Jinsi ya kulipa",
+  "trade.detailsInChat": "Omba maelezo ya malipo kwa muuzaji kwenye gumzo kabla ya kutuma pesa.",
+
   "trade.lockReabsorbed": "Sats zako {amount} zimerudi kwenye pochi yako.",
   "trade.responseHours": "saa {count}",
   "trade.responseDays": "siku {count}",

@@ -1,5 +1,7 @@
 // es/fund — Session C fills this from src/i18n/en/fund.ts (key set must match EXACTLY).
 export const fund: Record<string, string> = {
+  "fund.buyerSeatClosed": "El puesto del comprador o el plazo ya no está abierto. Espera a otro comprador o vuelve a publicar antes de pagar.",
+
   "payment.withdrawalUnavailable": "Sale de la federación en cadena · comisión no disponible ahora · ~1 hora",
   "payment.withdrawalLine": "Sale de la federación en cadena · comisión ~{fee} sats · ~1 hora",
   "payment.depositLine": "Depósito en {federation} · comisión {fee} sats · {confirmations} confirmaciones",

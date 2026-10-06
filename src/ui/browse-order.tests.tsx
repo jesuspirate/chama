@@ -6,10 +6,10 @@ import { BrowseView } from './screens/BrowseView.js';
 import { LangProvider } from '../i18n/index.js';
 import { setLocalStorageUserScope, setScopedStorageItem } from '../storage/user-scope.js';
 const f=safetyFixture({buyer:btc.utils.pubSchnorr(new Uint8Array(32).fill(11)),seller:btc.utils.pubSchnorr(new Uint8Array(32).fill(12)),arbiter:btc.utils.pubSchnorr(new Uint8Array(32).fill(13))},2_000_000);
-const store={...f.state,id:'store',category:'marketplace',description:'Store offer',fiatAmount:1,fiatCurrency:'USD',createdAt:100};
-const exchange={...f.state,id:'exchange',category:'p2p-trade',description:'Exchange offer',fiatAmount:3,fiatCurrency:'USD',createdAt:300};
+const store={...f.state,id:'store',community:'us-usd',category:'marketplace',description:'Store offer',fiatAmount:1,fiatCurrency:'USD',createdAt:100};
+const exchange={...f.state,id:'exchange',community:'us-usd',category:'p2p-trade',description:'Exchange offer',fiatAmount:3,fiatCurrency:'USD',createdAt:300};
 const foreign={...exchange,id:'foreign-eur',description:'EUR foreign offer',fiatCurrency:'EUR'};
-const bill={...f.state,id:'bill',category:'bill-pay',description:'Bill offer',fiatAmount:2,fiatCurrency:'USD',createdAt:200};
+const bill={...f.state,id:'bill',community:'ke-kes',category:'bill-pay',description:'Bill offer',fiatAmount:2,fiatCurrency:'USD',createdAt:200};
 // Each synthetic listing must own a distinct CREATE, like real verified states.
 for (const listing of [store, exchange, foreign, bill]) listing.eventChain = listing.eventChain.map(event => ({...event, raw: {...event.raw, id: `${listing.id}-${event.raw.id}`}}));
 const original=Object.getOwnPropertyDescriptor(globalThis,'localStorage'),data=new Map<string,string>();

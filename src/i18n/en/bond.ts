@@ -2,6 +2,12 @@
 // renew, arbiter duties, announce), Dashboard, liveness signal, arbiter apply.
 // Keys MUST be prefixed "bond." — see src/i18n/en/connect.ts for the pattern.
 export const bond: Record<string, string> = {
+  "bond.announceAgain": "Announce again",
+  "bond.announceWhenActive": "Announce again once the bond is active.",
+  "bond.claimAtBlock": "Claimable at Bitcoin block {block}.",
+  "bond.alreadyClaimed": "This bond has already been claimed or renewed.",
+  "bond.checkChainFirst": "Couldn’t verify the bond on Bitcoin yet. Try again.",
+
   "bond.custodyLockedTime": "Locked on Bitcoin until block {block} (~{time}). Only your key can ever spend it, and only after that.",
   "bond.custodyFundingTime": "Deposits lock on Bitcoin until block {block} (~{time}). Only your key can spend them, and only after that.",
   "bond.reclaimConsequence": "Reclaiming ends this bond and sends its Bitcoin to the destination you choose.",
@@ -39,7 +45,6 @@ export const bond: Record<string, string> = {
   "bond.allBonds": "← All bonds",
   "bond.amountLabel": "Bond amount (sats)",
   "bond.merchantRetired": "Storefront-only bonds are retired. Announce again to count as an arbiter.",
-  "bond.announceAgain": "Announce again",
   "bond.announceBodyAfter": " — proof there’s a bonded arbiter here, verifiable against the chain. Any country, with or without a local fed.",
   "bond.announceBodyBefore": "Publish this bond so a community counts it toward its ",
   "bond.announceBodyBold": "liveness",

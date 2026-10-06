@@ -7,6 +7,7 @@
 // half. The exact TZS amount / agent number / USSD code arrive as {params}
 // — never hardcode them in a translation.
 export const fund: Record<string, string> = {
+  "fund.buyerSeatClosed": "The buyer’s seat or lock window is no longer open. Wait for a new buyer or post the offer again before paying.",
   "payment.withdrawalUnavailable": "Leaves the federation on-chain · fee unavailable right now · ~1 hour",
   "payment.withdrawalLine": "Leaves the federation on-chain · fee ~{fee} sats · ~1 hour",
   "payment.depositLine": "Deposit to {federation} · fee {fee} sats · {confirmations} confirmations",

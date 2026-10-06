@@ -1,4 +1,6 @@
 export const fund: Record<string, string> = {
+  "fund.buyerSeatClosed": "Nafasi ya mnunuzi au muda wa kufunga umeisha. Subiri mnunuzi mpya au chapisha tena kabla ya kulipa.",
+
   "payment.withdrawalUnavailable": "Zinatoka kwenye shirikisho kupitia mnyororo · ada haipatikani sasa · ~saa 1",
   "payment.withdrawalLine": "Zinatoka kwenye shirikisho kupitia mnyororo · ada ~sats {fee} · ~saa 1",
   "payment.depositLine": "Weka kwenye {federation} · ada sats {fee} · uthibitisho {confirmations}",

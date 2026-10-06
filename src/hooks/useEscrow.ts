@@ -1,3 +1,4 @@
+import { assertBondClaimReady } from '../bond-multisig/manage-actions.js';
 import { readLivenessBonds } from "../arbiters/liveness-evidence.js";
 import { isSignerApprovalError, signerAction } from "../escrow-engine/signer-approval.js";
 import type { FederationInspection } from "../fedimint/federation-inspection.js";
@@ -858,6 +859,7 @@ export interface UseEscrowActions {
    */
   lockAndPublish: (escrowId: string, opts?: {
     savedHandleId?: string;
+    paymentDetailsInChat?: boolean;
     selectedItems?: SelectedMenuItem[];
   }) => Promise<EscrowState>;
   /** Cast a vote */
@@ -1103,6 +1105,7 @@ export interface UseEscrowActions {
       nwcConnectionString?: string;
       rememberNwc?: boolean;
       savedHandleId?: string;
+      paymentDetailsInChat?: boolean;
       selectedItems?: SelectedMenuItem[];
       onPhase: (phase: import("../payments/fund-and-lock.js").FundAndLockPhase) => void;
       signal?: AbortSignal;
@@ -1170,7 +1173,7 @@ export interface UseEscrowActions {
   /** Re-scan the bond address for confirmed deposits (ANY amount, every call — a
    *  deposit landing after the first is still recorded) → mark/keep it LOCKED with
    *  the full UTXO set. { locked:false } = nothing confirmed yet, keep waiting. */
-  checkCommitmentFunding: (bondId: string) => Promise<{ locked: boolean; txid?: string; lockedSats?: bigint; deposits?: number }>;
+  checkCommitmentFunding: (bondId: string) => Promise<{ locked: boolean; txid?: string; lockedSats?: bigint; deposits?: number; chainConfirmed?: boolean }>;
   getCommitmentReclaimQuote: (bondId: string) => Promise<{ finalityDelay: number; minimumDepositSats: number; pegInFeeSats: number; minerFeeSats: bigint; estimatedNetSats: bigint } | null>;
   /** Spend a mature bond directly into a fresh owner-only CLTV bond. The new
    * record stays pending until the normal on-chain confirmation gate promotes it. */
@@ -1468,6 +1471,12 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
 
   const rejectedRecoveryInFlight = useRef(new Set<string>());
   const updateEscrow = useCallback((escrowId: string, escrowState: EscrowState) => {
+    // A pending signed vote is presentation only: do not journal it as history,
+    // run recovery, or trigger any committed-state side effects.
+    if (escrowState.pendingVote) {
+      setState(prev => { const escrows = new Map(prev.escrows); escrows.set(escrowId, escrowState); return { ...prev, escrows }; });
+      return;
+    }
     // A locally-forgotten ghost stays gone: don't let the Browse/public-
     // listings feed (or any re-delivery) re-add it after a restart. The ref is
     // loaded at connect with the reliable pubkey, so this works even before
@@ -2400,7 +2409,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
 
   const lockAndPublishAction = useCallback(async (
     escrowId: string,
-    opts: { savedHandleId?: string; selectedItems?: SelectedMenuItem[]; buyerPubkey?: string } = {},
+    opts: { savedHandleId?: string; paymentDetailsInChat?: boolean; selectedItems?: SelectedMenuItem[]; buyerPubkey?: string } = {},
   ) => {
     const client = requireClient();
     const bridge = requireBridge();
@@ -2442,7 +2451,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
   const lockAndPublishWithEcashAction = useCallback(async (
     escrowId: string,
     oobNotes: string,
-    opts: { savedHandleId?: string; selectedItems?: SelectedMenuItem[]; buyerPubkey?: string } = {},
+    opts: { savedHandleId?: string; paymentDetailsInChat?: boolean; selectedItems?: SelectedMenuItem[]; buyerPubkey?: string } = {},
   ) => {
     const client = requireClient();
     const bridge = requireBridge();
@@ -4867,6 +4876,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       nwcConnectionString?: string;
       rememberNwc?: boolean;
       savedHandleId?: string;
+      paymentDetailsInChat?: boolean;
       selectedItems?: SelectedMenuItem[];
       onPhase: (phase: import("../payments/fund-and-lock.js").FundAndLockPhase) => void;
       signal?: AbortSignal;
@@ -4911,7 +4921,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       return "The order or participants changed before it could lock.";
     };
     try {
-      ({ buyerPubkey: fundingBuyerPubkey, seatDeadline } = await requireBridge().preflightLock(escrowId, { selectedItems: opts.selectedItems }));
+      ({ buyerPubkey: fundingBuyerPubkey, seatDeadline } = await requireBridge().preflightLock(escrowId, { selectedItems: opts.selectedItems, savedHandleId: opts.savedHandleId, paymentDetailsInChat: opts.paymentDetailsInChat }));
       fundingInvoiceSeconds(seatDeadline);
       if (!isSimModeOn()) assertPaidLockRecoveryWritable();
       if (opts.fundingMethod === "onchain") assertOnchainFundingWindow(requireClient().getState(escrowId)!);
@@ -4991,7 +5001,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
               ? (opts.selectedItems ?? []).reduce((sum, item) => sum + item.amountMsats * item.quantity, 0)
               : trade.amountMsats,
             lock: () => lockAndPublishAction(escrowId, {
-              savedHandleId: opts.savedHandleId, selectedItems: opts.selectedItems, buyerPubkey: fundingBuyerPubkey,
+              savedHandleId: opts.savedHandleId, paymentDetailsInChat: opts.paymentDetailsInChat, selectedItems: opts.selectedItems, buyerPubkey: fundingBuyerPubkey,
             }),
           });
         } finally { balanceLockBusy.current = false; }
@@ -5008,11 +5018,11 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
           escrowId,
           amountMsats: opts.amountMsats,
           description: opts.description,
-          savedHandleId: opts.savedHandleId,
+          savedHandleId: opts.savedHandleId, paymentDetailsInChat: opts.paymentDetailsInChat,
           selectedItems: opts.selectedItems,
           onPhase: opts.onPhase,
           signal: opts.signal,
-          preflight: async () => { await requireBridge().preflightLock(escrowId, {selectedItems: opts.selectedItems, buyerPubkey: fundingBuyerPubkey}); },
+          preflight: async () => { await requireBridge().preflightLock(escrowId, {selectedItems: opts.selectedItems, buyerPubkey: fundingBuyerPubkey, savedHandleId: opts.savedHandleId, paymentDetailsInChat: opts.paymentDetailsInChat}); },
           generateEcash: (amountMsats, memo) => generateFediEcash(amountMsats, memo),
           // Re-absorb WITHOUT expectedMsats — re-absorbing the exact notes we
           // generated is exact, and passing it risks a receive-then-throw that
@@ -5101,7 +5111,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
               }
               opts.onPhase({ kind: "locking" });
               const locked = await lockAndPublishAction(escrowId, {
-                savedHandleId: opts.savedHandleId,
+                savedHandleId: opts.savedHandleId, paymentDetailsInChat: opts.paymentDetailsInChat,
                 selectedItems: opts.selectedItems,
                 buyerPubkey: fundingBuyerPubkey,
               });
@@ -5138,7 +5148,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
         opts.onPhase({ kind: "locking" });
         const expectedNotesHash = await hashNotes(notes);
         const locked = await lockAndPublishWithEcashAction(escrowId, notes, {
-          savedHandleId: opts.savedHandleId,
+          savedHandleId: opts.savedHandleId, paymentDetailsInChat: opts.paymentDetailsInChat,
           selectedItems: opts.selectedItems,
           buyerPubkey: fundingBuyerPubkey,
         });
@@ -5165,7 +5175,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
             amountMsats: opts.amountMsats,
             federationId: fedimint.getFederationId(),
             lockOpts: {
-              savedHandleId: opts.savedHandleId,
+              savedHandleId: opts.savedHandleId, paymentDetailsInChat: opts.paymentDetailsInChat,
               selectedItems: opts.selectedItems,
               buyerPubkey: fundingBuyerPubkey,
             },
@@ -5203,7 +5213,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
         const depositAmountSats = amountSats + pegInFeeSats + Math.floor(premiumMsats / 1000);
         const baselineMsats = await fedimint.getBalance();
         onchainBaselineMsats = baselineMsats;
-        await requireBridge().preflightLock(escrowId, { selectedItems: opts.selectedItems, buyerPubkey: fundingBuyerPubkey });
+        await requireBridge().preflightLock(escrowId, { selectedItems: opts.selectedItems, buyerPubkey: fundingBuyerPubkey, savedHandleId: opts.savedHandleId, paymentDetailsInChat: opts.paymentDetailsInChat });
         assertOnchainFundingWindow(requireClient().getState(escrowId)!);
         const deposit = await fedimint.createOnchainDepositAddress(meta);
         if (opts.signal?.aborted) {
@@ -5285,9 +5295,9 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
         }
 
         opts.onPhase({ kind: "locking" });
-        await requireBridge().preflightLock(escrowId, {selectedItems: opts.selectedItems, buyerPubkey: fundingBuyerPubkey});
+        await requireBridge().preflightLock(escrowId, {selectedItems: opts.selectedItems, buyerPubkey: fundingBuyerPubkey, savedHandleId: opts.savedHandleId, paymentDetailsInChat: opts.paymentDetailsInChat});
         const locked = await lockAndPublishAction(escrowId, {
-          savedHandleId: opts.savedHandleId,
+          savedHandleId: opts.savedHandleId, paymentDetailsInChat: opts.paymentDetailsInChat,
           selectedItems: opts.selectedItems,
           buyerPubkey: fundingBuyerPubkey,
         });
@@ -5317,11 +5327,11 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
         escrowId,
         amountMsats: opts.amountMsats + premiumMsats,
         description: opts.description,
-        savedHandleId: opts.savedHandleId,
+        savedHandleId: opts.savedHandleId, paymentDetailsInChat: opts.paymentDetailsInChat,
         selectedItems: opts.selectedItems,
         getBalance: () => fedimint.getBalance(),
         createFundingInvoice: async (amountMsats, description, onReceiveState, onGateway, expirySeconds) => {
-          const fresh = await requireBridge().preflightLock(escrowId, { selectedItems: opts.selectedItems, buyerPubkey: fundingBuyerPubkey });
+          const fresh = await requireBridge().preflightLock(escrowId, { selectedItems: opts.selectedItems, buyerPubkey: fundingBuyerPubkey, savedHandleId: opts.savedHandleId, paymentDetailsInChat: opts.paymentDetailsInChat });
           const invoice = await createFundingInvoice(
             amountMsats,
             description,
@@ -5346,7 +5356,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
           ? async (bolt11) => {
               const connectionString = opts.nwcConnectionString?.trim();
               if (!connectionString) throw new Error("Paste an NWC connection");
-              await requireBridge().preflightLock(escrowId, {selectedItems: opts.selectedItems, buyerPubkey: fundingBuyerPubkey});
+              await requireBridge().preflightLock(escrowId, {selectedItems: opts.selectedItems, buyerPubkey: fundingBuyerPubkey, savedHandleId: opts.savedHandleId, paymentDetailsInChat: opts.paymentDetailsInChat});
               fundingInvoiceSeconds(seatDeadline);
               await payInvoiceWithNwc(connectionString, bolt11);
             }
@@ -6231,7 +6241,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       const utxos = [...merged.values()];
       const total = utxos.reduce((s, u) => s + u.amountSats, 0n);
       const locked = upsertCommitmentBond({ ...rec, phase: "locked", utxos, amountSats: total });
-      return { locked: true, txid: locked.utxos?.[0]?.txid, lockedSats: total, deposits: utxos.length };
+      return { locked: true, txid: locked.utxos?.[0]?.txid, lockedSats: total, deposits: utxos.length, chainConfirmed: found.length > 0 };
     },
     getCommitmentReclaimQuote: async (bondId: string) => {
       const rec = getCommitmentBond(bondId);
@@ -6353,9 +6363,10 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       const fetchJson = esploraFetcher(base);
       // ⭐ Sweep what the CHAIN says is at the address, not the local cache — a deposit
       // that confirmed after the last funding check (or was recorded on another device)
-      // must not be stranded. The cache is the fallback only when the scan itself fails.
+      // must not be stranded. A failed fresh read keeps claim closed.
       const cached = rec.utxos ?? [];
-      let utxos = cached;
+      const claimTip = await esploraTipHeight(fetchJson);
+      let utxos: typeof cached = [];
       try {
         const fresh = await findBondFundingUtxos({ address: rec.bond.address, fetchJson, minConfs: defaultMinConfs(BOND_NETWORK) });
         if (fresh.length > 0) {
@@ -6370,10 +6381,10 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
             upsertCommitmentBond({ ...rec, phase: "reclaimed", reclaimTxid: out.txid });
             return { txid: out.txid, alreadyReclaimed: true };
           }
-          // Not spent, just not visible (lagging LB node) → sweep the cached set;
-          // consensus is the authority either way.
+          // An empty current chain read cannot authorize spending cached outpoints.
         }
-      } catch { /* Esplora unreachable — try the cached set */ }
+      } catch { throw new Error("Couldn’t verify this bond on Bitcoin. Try again before claiming."); }
+      assertBondClaimReady(rec, { tip: claimTip, unspent: utxos.length > 0 });
       if (utxos.length === 0) throw new Error("This bond isn't funded yet.");
       // ⚠ Real sats: reclaim the arbiter's OWN bond to their own key. Re-derive the
       // private key from the seed (never stored). The reclaim tx carries nLockTime =

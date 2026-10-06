@@ -2121,6 +2121,7 @@ export function replayEventChain(events: ParsedEscrowEvent[]): TransitionResult 
 
 /** Check if a specific pubkey can vote in the current state */
 export function canVote(state: EscrowState, pubkey: string, nowSec?: number, outcome?: Outcome, cycle?: ChamaCycleContext): { canVote: boolean; reason?: string } {
+  if (state.pendingVote) return { canVote: false, reason: "Your vote is awaiting confirmation" };
   if (state.chamaPolicy && outcome !== undefined) {
     const law = chamaOutcomeError(state, outcome, nowSec ?? Math.floor(Date.now() / 1000), cycle, "intent");
     if (law) return { canVote: false, reason: law };

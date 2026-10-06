@@ -1,5 +1,11 @@
 // fr/bond — Session B fills this from src/i18n/en/bond.ts (key set must match EXACTLY).
 export const bond: Record<string, string> = {
+  "bond.announceAgain": "Annoncer à nouveau",
+  "bond.announceWhenActive": "Annoncez à nouveau une fois le dépôt actif.",
+  "bond.claimAtBlock": "Récupérable au bloc Bitcoin {block}.",
+  "bond.alreadyClaimed": "Ce dépôt a déjà été récupéré ou renouvelé.",
+  "bond.checkChainFirst": "Impossible de vérifier le dépôt sur Bitcoin pour le moment. Réessayez.",
+
   "bond.custodyLockedTime": "Bloqué sur Bitcoin jusqu’au bloc {block} (~{time}). Seule votre clé peut le dépenser, et uniquement après.",
   "bond.custodyFundingTime": "Les dépôts sont bloqués sur Bitcoin jusqu’au bloc {block} (~{time}). Seule votre clé peut les dépenser, et uniquement après.",
   "bond.reclaimConsequence": "Récupérer cette caution y met fin et envoie ses bitcoins vers la destination choisie.",
@@ -37,7 +43,6 @@ export const bond: Record<string, string> = {
   "bond.allBonds": "← Toutes les cautions",
   "bond.amountLabel": "Montant de la caution (sats)",
   "bond.merchantRetired": "Les cautions réservées aux boutiques sont retirées. Annoncez à nouveau pour compter comme arbitre.",
-  "bond.announceAgain": "Annoncer à nouveau",
   "bond.announceBodyAfter": " — la preuve qu'il y a un arbitre cautionné ici, vérifiable sur la chaîne. N'importe quel pays, avec ou sans fédération locale.",
   "bond.announceBodyBefore": "Publiez cette caution pour qu'une communauté la compte dans sa ",
   "bond.announceBodyBold": "vitalité",

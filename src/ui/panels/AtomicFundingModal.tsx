@@ -1,3 +1,4 @@
+import { canShowTradeFunding } from '../../payments/seat-funding.js';
 import { EcashCustody } from "../components/MoneyCustody.js";
 import type { CircleRound } from "../../chama/types.js";
 import { federationFacts } from "../../fedimint/federation-inspection.js";
@@ -91,6 +92,7 @@ export interface AtomicFundingModalProps {
   ctaLabel: string;
   /** Optional handle to reveal in the LOCK payload. */
   savedHandleId?: string;
+  paymentDetailsInChat?: boolean;
   /** Optional menu basket snapshot to attach to LOCK. */
   selectedItems?: SelectedMenuItem[];
   /** User's home community (e.g. "sn-cfa"). Trade-context metadata kept
@@ -118,6 +120,7 @@ export interface AtomicFundingModalProps {
       nwcConnectionString?: string;
       rememberNwc?: boolean;
       savedHandleId?: string;
+      paymentDetailsInChat?: boolean;
       selectedItems?: SelectedMenuItem[];
       onPhase: (phase: FundAndLockPhase) => void;
       signal?: AbortSignal;
@@ -134,6 +137,7 @@ export interface AtomicFundingModalProps {
    *  on the mint settling within 60s). */
   lockAndPublish: (escrowId: string, opts: {
     savedHandleId?: string;
+    paymentDetailsInChat?: boolean;
     selectedItems?: SelectedMenuItem[];
   }) => Promise<unknown>;
   /** Hide NWC in environments where funding must stay on an internal
@@ -206,6 +210,7 @@ export function AtomicFundingModal({
   premiumMsats: requestedPremiumMsats = 0,
   ctaLabel,
   savedHandleId,
+  paymentDetailsInChat,
   selectedItems,
   homeCommunity,
   tradeCommunity,
@@ -285,6 +290,7 @@ export function AtomicFundingModal({
     !isSimModeOn() &&
     isChapsmartOnrampContext({ homeCommunity, tradeCommunity, fiatCurrency, tradeCategory });
   const [now, setNow] = useState(() => Date.now());
+  const fundingAllowed = canShowTradeFunding(custodyState, now);
   const abortRef = useRef<AbortController | null>(null);
   const settledRef = useRef(false);
 
@@ -338,7 +344,7 @@ export function AtomicFundingModal({
   // Phase-driven main loop. Re-runs when the user taps "Generate new
   // invoice" (retryToken increments). Aborts on unmount.
   useEffect(() => {
-    if (!fundingMethod) return;
+    if (!fundingMethod || !fundingAllowed) return;
     settledRef.current = false;
     const ctrl = new AbortController();
     abortRef.current = ctrl;
@@ -356,7 +362,7 @@ export function AtomicFundingModal({
         ecashNotes: fundingMethod === "ecash" ? ecashInput.trim() : undefined,
         nwcConnectionString: selectedNwcConnection ?? undefined,
         rememberNwc,
-        savedHandleId,
+        savedHandleId, paymentDetailsInChat,
         selectedItems,
         signal: ctrl.signal,
         onPhase: (p) => {
@@ -511,6 +517,11 @@ export function AtomicFundingModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [retryToken, fundingMethod]);
 
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
   // 1Hz tick for the countdown timer when an invoice is live.
   useEffect(() => {
     if (
@@ -588,7 +599,7 @@ export function AtomicFundingModal({
     abortRef.current?.abort();
     setTryLockBusy(true);
     try {
-      await lockAndPublish(escrowId, { savedHandleId, selectedItems });
+      await lockAndPublish(escrowId, { savedHandleId, paymentDetailsInChat, selectedItems });
       setPhase({ kind: "locked" });
       setTimeout(() => onClose({ kind: "locked" }), 1200);
     } catch (e: any) {
@@ -628,6 +639,12 @@ export function AtomicFundingModal({
     setInitialRail("lightning"); setFundingMethod("lightning");
     setPhase({ kind: "creating-invoice" }); setRetryToken(value => value + 1);
   };
+
+  if (!fundingAllowed && !paymentDetected && !settledRef.current) return <FundingModalShell onClose={handleCancel}>
+    <CardBack onClick={handleCancel} />
+    <FundingNote>{t('fund.buyerSeatClosed')}</FundingNote>
+    {onPostAgain && <PaymentButton onClick={() => { handleCancel(); onPostAgain(); }}>{t('lts.postAgain')}</PaymentButton>}
+  </FundingModalShell>;
 
   // The gateway preflight chooses the initial rail before the card paints.
   if (gatewayChecking) return <FundingModalShell onClose={handleCancel}>

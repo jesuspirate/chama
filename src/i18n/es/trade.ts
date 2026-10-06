@@ -2,6 +2,14 @@
 // extraction sweep). Keys prefixed "trade.", alphabetized. `ns*` keys are the
 // detailNextStep action-card matrix (kicker/title/body cells).
 export const trade: Record<string, string> = {
+  "trade.voteSending": "Enviando tu voto… Contará cuando se confirme.",
+  "trade.choosePaymentDetails": "Elige los datos de pago",
+  "trade.sendDetailsInChat": "Enviaré los datos de pago por chat",
+  "trade.paymentMethod": "Método de pago",
+  "trade.savePaymentDetails": "Guardar datos de pago",
+  "trade.howToPay": "Cómo pagar",
+  "trade.detailsInChat": "Pide al vendedor los datos de pago por chat antes de enviar dinero.",
+
   "trade.lockReabsorbed": "Tus {amount} sats están de vuelta en tu cartera.",
   "trade.responseHours": "{count} horas",
   "trade.responseDays": "{count} días",
