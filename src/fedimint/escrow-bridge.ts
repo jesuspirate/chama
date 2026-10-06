@@ -330,7 +330,6 @@ export class EscrowFedimintBridge {
     if (this.escrow.getState(escrowId) !== state) return this.prepareLockContext(escrowId, opts);
     const timestamp = Math.floor(Date.now() / 1000);
     if (preLockDeadline(state, timestamp)?.lapsed) throw new Error("The buyer's seat or listing lapsed. Post it again or wait for the buyer to rejoin.");
-    assertTradePaymentDetails(state, opts);
     const amount = amountMsatsForLock(state, opts.selectedItems);
     const payload: LockPayload = {
       type: "escrow:lock", lockedAt: timestamp, buyerPubkey, arbiterPubkey,
@@ -752,6 +751,8 @@ export class EscrowFedimintBridge {
 
   async preflightLock(escrowId: string, opts: LockOptions = {}): Promise<{ buyerPubkey: string; seatDeadline?: number }> {
     const { buyerPubkey, state } = await this.prepareLockContext(escrowId, opts);
+    // Require a choice before new funding, never while recovering notes already spent.
+    assertTradePaymentDetails(state, opts);
     return { buyerPubkey, seatDeadline: preLockDeadline(state)?.at };
   }
 

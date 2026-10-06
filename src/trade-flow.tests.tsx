@@ -12,6 +12,10 @@ import { sameCommunity } from './guided/join-eligibility.js';
 import { matchGuidedListings } from './guided/match-listings.js';
 import { canShowTradeFunding } from './payments/seat-funding.js';
 import { assertTradePaymentDetails } from './payments/trade-payment-details.js';
+import { EscrowFedimintBridge } from './fedimint/escrow-bridge.js';
+import { effectiveCreateFederationId } from './fedimint/federation-config.js';
+import { hashNotes } from './fedimint/fedimint-client.js';
+import { stashNativeLockIntent, upgradeNativeLockToSpent, getPendingNativeLock } from './fedimint/pending-native-locks.js';
 import { addSavedHandle } from './payments/saved-handles.js';
 import { AtomicFundingModal } from './ui/panels/AtomicFundingModal.js';
 import { BuyerPaymentDetails, TradePaymentDetailsChoice } from './ui/components/TradePaymentDetails.js';
@@ -131,6 +135,54 @@ try {
   const fallback = render(<BuyerPaymentDetails state={{ ...locked, lock: { ...locked.lock, handle: null } }} />);
   assert.match(fallback, /cash-app/); assert.match(fallback, /chat before sending money/);
   assert.match(render(<TradePaymentDetailsChoice state={offer} value="" onChange={() => {}} />), /send payment details in chat/);
+
+  // Legacy native stash options predate paymentDetailsInChat. Resume the real
+  // bridge flow: reabsorb the provably unpublished notes, re-spend, and commit
+  // a signed LOCK. Missing/deleted handles must not strand existing funding.
+  for (const legacyOpts of [{}, { savedHandleId: 'since-deleted-handle' }]) {
+    const legacy = await seller.createEscrow({ description: 'Legacy funded resume', category: 'p2p-trade',
+      community: 'global-usd', mintUrl: 'test-only', amountMsats: 1_000_000, paymentMethods: ['cash-app'],
+      communityArbiters: [arbiterPk], arbiterFeeMsats: 0 });
+    await buyer.loadEscrow(legacy.escrowId, { fullHistory: true });
+    await buyer.joinEscrow(legacy.escrowId, Role.BUYER);
+    await seller.loadEscrow(legacy.escrowId, { fullHistory: true });
+    const notes = `fixture-only-legacy-notes-${legacy.escrowId}`;
+    let reabsorbs = 0, spends = 0;
+    const fed = effectiveCreateFederationId(legacy.state.eventChain[0].payload as any)!;
+    const wallet = {
+      getFederationId: () => fed, probeReachable: async () => ({ fed }),
+      parseNotes: async () => ({ federationId: fed, totalAmount: 1_000_000 }),
+      redeemWithRetry: async (saved: string) => { assert.equal(saved, notes); reabsorbs++; },
+      spendNotesForLock: async (amount: number, _meta: unknown, onSpent?: (notes: string) => void) => {
+        assert.equal(reabsorbs, 1); assert.equal(amount, 1_000_000); spends++; onSpent?.(notes); return { oobNotes: notes };
+      },
+      buildEscrowLockBundle: async () => ({ notesHash: await hashNotes(notes), totalMsats: 1_000_000,
+        sellerReceivesMsats: 1_000_000, arbiterFeeMsats: 0,
+        shares: [0, 1, 2].map(index => ({ index, data: 'fixture-only-share' })) }),
+    };
+    const bridge = new EscrowFedimintBridge(seller, wallet as any, {
+      getPublicKey: async () => sellerPk, signEvent: async e => finalizeEvent(e, sellerKey),
+      nip44Encrypt: async value => value, nip44Decrypt: async value => value,
+    });
+    await assert.rejects(bridge.preflightLock(legacy.escrowId, legacyOpts), /payment details/,
+      'new funding still requires valid payment details or an explicit chat choice');
+    const input = { escrowId: legacy.escrowId, amountMsats: 1_000_000,
+      federationId: fed, lockOpts: legacyOpts };
+    stashNativeLockIntent(input); upgradeNativeLockToSpent({ ...input, oobNotes: notes });
+    const saved = getPendingNativeLock(legacy.escrowId)!;
+    assert.equal(saved.stage, 'spent'); assert.equal(saved.lockOpts?.paymentDetailsInChat, undefined);
+    setSimMode(false);
+    try {
+      const resumed = await bridge.lockAndPublish(saved.escrowId, saved.lockOpts);
+      assert.equal(resumed.status, S.LOCKED); assert.equal(resumed.lock.notesHash, await hashNotes(notes));
+      assert.equal(resumed.lock.handle, null); assert.equal(getPendingNativeLock(saved.escrowId), null);
+      assert.equal(reabsorbs, 1); assert.equal(spends, 1);
+      const paid = await buyer.loadEscrow(saved.escrowId, { fullHistory: true });
+      assert.equal(paid?.status, S.LOCKED);
+      assert.match(render(<BuyerPaymentDetails state={paid!} />), /cash-app/);
+      assert.match(render(<BuyerPaymentDetails state={paid!} />), /chat before sending money/);
+    } finally { setSimMode(true); }
+  }
 
   let vote = seller.vote(escrowId, Outcome.REFUND).then(state => ({ state, error: undefined }), error => ({ state: undefined, error }));
   await until(() => Relay.votes.length === 1);
