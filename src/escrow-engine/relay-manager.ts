@@ -1088,11 +1088,11 @@ export class RelayManager {
    * a child escrow id); the caller loads each child's full chain to derive
    * committed stock.
    */
-  fetchChildCreates(parentId: string, timeoutMs = 5_000): Promise<NostrEvent[]> {
+  fetchChildCreates(parentId: string, timeoutMs = 5_000, probe?: FetchProbe): Promise<NostrEvent[]> {
     return this.fetchOnce({
       kinds: [EscrowEventKind.CREATE],
       "#parent": [parentId],
-    }, timeoutMs);
+    }, timeoutMs, probe);
   }
 
   // ── One-shot fetch: get all events for an escrow ────────────────────────

@@ -1196,16 +1196,20 @@ export class EscrowClient {
   private chamaRefundRefreshRunning = false;
 
   async maybeAutoRefundChama(nowSec = Math.floor(Date.now() / 1000)): Promise<void> {
-    if (this.chamaRefundRefreshRunning) return;
+    if (this.chamaRefundRefreshRunning || this.signer.requiresUserAction) return;
     this.chamaRefundRefreshRunning = true;
     try {
       // Refresh cross-child evidence before evaluating the fill deadline.
       for (const parent of [...this.states.values()]) {
         const circle = circleFromEscrow(parent);
         if (circle && nowSec >= circle.fillDeadlineSec) {
-          await this.loadChildren(parent.id);
-          // Reached only when the refresh resolved: a throw unwinds the pass.
-          this.chamaViewComplete.add(parent.id);
+          try {
+            await this.loadChildren(parent.id);
+            // loadChildren certifies EOSE and successful child replay itself.
+          } catch (error) {
+            this.chamaViewComplete.delete(parent.id);
+            console.debug(`[chama] Circle return evidence incomplete for ${parent.id}`, error);
+          }
         }
       }
       await this.chamaRefundWatcher(nowSec);
@@ -3096,7 +3100,9 @@ export class EscrowClient {
    *  overcommit just refunds). The SELLER is a participant in every child, so
    *  the seller's own view is accurate. */
   async loadChildren(parentId: string, userAction = false): Promise<EscrowState[]> {
-    const createEvents = await this.relayManager.fetchChildCreates(parentId);
+    this.chamaViewComplete.delete(parentId);
+    const probe = new FetchProbe("circle-children", `#parent:${parentId}`);
+    const createEvents = await this.relayManager.fetchChildCreates(parentId, 5_000, probe);
     const childIds = new Set<string>();
     for (const ev of createEvents) {
       const d = ev.tags.find(t => t[0] === TAGS.ESCROW_ID)?.[1];
@@ -3121,6 +3127,9 @@ export class EscrowClient {
       for (const id of childIds) loaded.push(await load(id));
     } else loaded.push(...await Promise.all([...childIds].map(load)));
     const children = loaded.filter((c): c is EscrowState => c !== null);
+    if (probe.snapshot(createEvents.length).resolvedBy === "eose" && children.length === childIds.size) {
+      this.chamaViewComplete.add(parentId);
+    }
     this.childrenSnapshotAt.set(parentId, Date.now());
     return children;
   }

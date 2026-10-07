@@ -1,3 +1,4 @@
+import { suppressedVoteError } from '../escrow-engine/vote-suppression.js';
 import { recoverOwnedBonds, findOwnedBond, type BondRecoveryReport } from '../bond-multisig/bond-recovery.js';
 import { getExistingSeed } from '../fedimint/seed-manager.js';
 import { assertBondClaimReady } from '../bond-multisig/manage-actions.js';
@@ -1470,6 +1471,20 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
   // can read the latest values without taking `state` as a dependency.
   stateRef.current = state;
 
+  // Mechanical circle returns run while online, including after reconnect.
+  // Permission-bound signers never get a background approval prompt.
+  useEffect(() => {
+    if (!state.pubkey || state.connectedRelays === 0) return;
+    const tick = () => {
+      const client = clientRef.current;
+      if (!client || client.getSigner().requiresUserAction) return;
+      void client.maybeAutoRefundChama().catch(error => console.debug("[chama] Circle return refresh:", errorText(error, "")));
+    };
+    tick();
+    const timer = setInterval(tick, 15_000);
+    return () => clearInterval(timer);
+  }, [state.pubkey, state.connectedRelays]);
+
   // ── State updater helpers ───────────────────────────────────────────────
 
   const rejectedRecoveryInFlight = useRef(new Set<string>());
@@ -2764,23 +2779,12 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       // the duplicate/stale event was rejected, and the caller can
       // still recover the current state via getState if needed.
       const msg = errorText(e, "");
-      if (msg.includes("already voted") || msg.includes("Cannot vote") ||
-          msg.includes("TERMINAL") || msg.includes("not LOCKED")) {
-        console.debug("[chama] Vote suppressed:", msg);
-        const swallowed = new Error(
-          msg.includes("already voted")
-            ? "Vote already recorded for this trade."
-            : msg.includes("not LOCKED")
-              ? "Trade is no longer accepting votes."
-              : msg.includes("TERMINAL")
-                ? "Trade has already settled — no further votes accepted."
-                : "This vote can no longer be cast.",
-        ) as Error & { voteSuppressed?: true; code?: string; originalMessage?: string; currentState?: EscrowState | null };
-        swallowed.voteSuppressed = true;
-        swallowed.code = "VOTE_SUPPRESSED";
-        swallowed.originalMessage = msg;
-        swallowed.currentState = client.getState(escrowId);
-        throw swallowed;
+      const suppressed = suppressedVoteError(msg, client.getState(escrowId));
+      if (suppressed) {
+        console.debug("[chama] Vote suppressed:", msg, { escrowId,
+          status: suppressed.currentState?.status, votes: suppressed.currentState?.votes,
+          seats: suppressed.currentState?.participants });
+        throw suppressed;
       }
       throw e;
     }
