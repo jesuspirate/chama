@@ -45,6 +45,7 @@ export function arbiterRecord(pubkey: string, escrows: readonly EscrowState[], b
   const tenureBlocks = tenures.length ? Math.max(...tenures) : null;
   return { pubkey, healings, disputes, medianResponseSec, lastSeen, observedTrades: trades.length,
     concentration: arbiterRulingConcentration(trades, pubkey),
+    bondTerms: ownBonds.map(b => ({ address: b.address, sats: b.actualSats, lockUntil: b.lockUntil })),
     bondSats: ownBonds.reduce((sum, b) => sum + b.actualSats, 0n), tenureBlocks,
     tenure: tenureTier(tenureBlocks, blocksPerDay),
     liveness: tipHeight == null ? null : computeChamaLiveness(ownBonds[0]?.community ?? '', ownBonds, ratings, tipHeight),

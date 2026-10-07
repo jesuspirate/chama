@@ -1,3 +1,9 @@
+import { CircleArbiter, viewerCircleShare } from "../components/CircleArbiter.js";
+import { TradeArbiterRecord } from "../components/TradeArbiterRecord.js";
+import { OverlaySheet } from "../components/OverlaySheet.js";
+import { ConductFacts } from "../components/ConductFacts.js";
+import { CopyButton } from "../components/CopyButton.js";
+import type { VerifiedBond } from "../../bond-multisig/bond-announcement.js";
 import { FederationDisclosure, useFederationInfo } from "../components/FederationDisclosure.js";
 import { useState, useEffect } from "react";
 import { generatedNameFor, profileNameFor, type NostrProfileNameMap } from "../nostr-profiles.js";
@@ -21,7 +27,7 @@ export function circleTimeText(seconds: number, t: TFunc): string {
   return t("circle.minutes", { count: Math.max(0, Math.ceil(seconds / 60)) });
 }
 
-export function CircleSurface({ parent, escrows, viewerPubkey, backLabel, childrenLoaded, loadError, profileNames, kind0Enabled = false, onBack, onLock, onClaim, onNextRound, onRefresh }: {
+export function CircleSurface({ parent, escrows, viewerPubkey, backLabel, childrenLoaded, loadError, profileNames, kind0Enabled = false, fetchBonds, onBack, onLock, onClaim, onNextRound, onRefresh }: {
   parent: EscrowState; escrows: ReadonlyMap<string, EscrowState>; viewerPubkey: string;
   backLabel: string; childrenLoaded: boolean; loadError?: string | null;
   /** Circles used to render the deterministic nym directly, which ignored a
@@ -29,6 +35,7 @@ export function CircleSurface({ parent, escrows, viewerPubkey, backLabel, childr
    *  about my new name" (Jet, 2026-09-18). Same name resolution as every
    *  other surface now. */
   profileNames?: NostrProfileNameMap; kind0Enabled?: boolean;
+  fetchBonds?: (community:string)=>Promise<VerifiedBond[]>;
   onBack: () => void;
   onLock: () => Promise<void>;
   /** REFUND resolved on the viewer's share: fire the SAME ClaimPayoutModal
@@ -40,6 +47,8 @@ export function CircleSurface({ parent, escrows, viewerPubkey, backLabel, childr
   const [now, setNow] = useState(() => Math.floor(Date.now() / 1000));
   const [busy, setBusy] = useState(false), [message, setMessage] = useState<string | null>(null);
   useEffect(() => { const id = setInterval(() => setNow(Math.floor(Date.now() / 1000)), 15000); return () => clearInterval(id); }, []);
+  const [profile, setProfile] = useState<string|null>(null);
+  const ownShare = viewerCircleShare(escrows.values(),parent.id,viewerPubkey);
   const circle = circleFromEscrow(parent);
   const federationInfo = useFederationInfo(circle?.mintUrl ?? "");
   if (!circle) return null;
@@ -180,8 +189,11 @@ export function CircleSurface({ parent, escrows, viewerPubkey, backLabel, childr
         {entry.collector?.toLowerCase() === viewerPubkey.toLowerCase() && <small style={{ color: T.accent, fontFamily: T.sans }}>{t("circle.you")}</small>}
       </div>)}
     </div>}
-    {childrenLoaded && shares.some(sh => sh.circleId === circle.circleId) && <div style={{ marginTop: 26, background: T.card, border: `1px solid ${T.border}`, borderRadius: 22, padding: "18px 20px" }}>
+    <div style={{ marginTop: 26, background: T.card, border: `1px solid ${T.border}`, borderRadius: 22, padding: "18px 20px" }}>
       <h3 style={{ margin: "0 0 12px", fontSize: 15, color: T.muted, }}>{t("circle.members")}</h3>
+      <button type="button" onClick={()=>setProfile(circle.creatorPubkey)} style={{background:"none",border:0,color:T.text,padding:"10px 0",font:"inherit",cursor:"pointer"}}>{t("circle.hostedBy",{name:nym(circle.creatorPubkey)})} ›</button>
+      <CircleArbiter share={ownShare} profileNames={profileNames} kind0Enabled={kind0Enabled} onProfile={setProfile} />
+      {ownShare?.participants[Role.ARBITER] && <TradeArbiterRecord state={ownShare} trades={allStates} fetchBonds={fetchBonds} profileNames={profileNames} kind0Enabled={kind0Enabled} />}
       {shares.filter(sh => sh.circleId === circle.circleId)
         .sort((a, b) => (a.lockedAtSec ?? Infinity) - (b.lockedAtSec ?? Infinity))
         .map((sh, index) => {
@@ -196,7 +208,8 @@ export function CircleSurface({ parent, escrows, viewerPubkey, backLabel, childr
               : t("circle.reservedSeat")}</small>
           </div>;
         })}
-    </div>}
+    </div>
+    {profile && <OverlaySheet title={nym(profile)} subtitle={profile} onClose={()=>setProfile(null)}>{ownShare?.participants[Role.ARBITER] !== profile && <ConductFacts pubkey={profile} showEmpty />}<CopyButton value={profile} />{ownShare?.participants[Role.ARBITER] === profile && <TradeArbiterRecord state={ownShare} trades={allStates} fetchBonds={fetchBonds} profileNames={profileNames} kind0Enabled={kind0Enabled}/>}</OverlaySheet>}
     <p style={{ textAlign: "center", color: T.muted, lineHeight: 1.7, fontSize: 13, margin: "22px auto 0", maxWidth: 430 }}>{t("circle.footer")}</p>
   </section>;
 }

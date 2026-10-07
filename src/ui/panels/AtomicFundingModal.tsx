@@ -1,4 +1,6 @@
 import { canShowTradeFunding } from '../../payments/seat-funding.js';
+import { CircleArbiter } from "../components/CircleArbiter.js";
+import type { NostrProfileNameMap } from "../nostr-profiles.js";
 import { EcashCustody } from "../components/MoneyCustody.js";
 import type { CircleRound } from "../../chama/types.js";
 import { federationFacts } from "../../fedimint/federation-inspection.js";
@@ -75,6 +77,8 @@ export interface AtomicFundingModalProps {
   /** Trade ID being funded. Passed through to fundAndLock. */
   escrowId: string;
   circleCustody?: CircleRound;
+  profileNames?: NostrProfileNameMap;
+  kind0Enabled?: boolean;
   federationName?: string;
   custodyState?: EscrowState;
   mintUrl?: string;
@@ -213,7 +217,7 @@ function SummaryRow({ label, sats, strong }: { label: string; sats: number; stro
 
 export function AtomicFundingModal({
   escrowId,
-  federationName, circleCustody, custodyState, mintUrl,
+  federationName, circleCustody, custodyState, mintUrl, profileNames, kind0Enabled,
   seatDeadline,
   onPostAgain,
   amountMsats,
@@ -707,7 +711,8 @@ export function AtomicFundingModal({
           )}
         </div>
 
-        <EcashCustody key={custodyState?.mintUrl ?? mintUrl} invite={custodyState?.mintUrl ?? mintUrl} issued trade={custodyState} warn={!circleCustody} />
+        <EcashCustody key={custodyState?.mintUrl ?? mintUrl} invite={custodyState?.mintUrl ?? mintUrl} issued={!circleCustody && !custodyState?.chamaPolicy} trade={custodyState} warn={!circleCustody} />
+        {(circleCustody || custodyState?.chamaPolicy) && <CircleArbiter share={custodyState} profileNames={profileNames} kind0Enabled={kind0Enabled} />}
         {circleCustody && <FederationDisclosure circle={circleCustody} warningsOnly />}
         {showFundingChoices && railsVisible && <PaymentButton tier="quiet" onClick={() => setShowFundingChoices(false)}>{request ? "Show payment request" : "Continue"}</PaymentButton>}
         <div style={{ display: showFundingChoices && railsVisible ? "none" : undefined }}>

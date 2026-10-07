@@ -3497,7 +3497,7 @@ export default function App() {
           path. FundWalletModal stays mounted above for the (Phase 5-
           gated) Sandbox-mode path. */}
       {pendingFundAndLock && escrows.get(pendingFundAndLock.escrowId)?.escrowMode !== "onchain" && (
-        <AtomicFundingModal federationName={fedimint.federationName ?? undefined}
+        <AtomicFundingModal profileNames={nostrProfiles} kind0Enabled={kind0Enabled} federationName={fedimint.federationName ?? undefined}
           mintUrl={liveActiveInvite ?? undefined}
           custodyState={escrows.get(pendingFundAndLock.escrowId)}
           circleCustody={(() => {
@@ -4021,7 +4021,7 @@ export default function App() {
           }} />
       ) : (view === "circle" || view === "detail" && !!selected && (selected.category === "chama" || selected.chamaPolicy === "share-v1")) ? (
         selected && circleFromEscrow(selected) ? <CircleSurface key={selected.id} parent={selected} escrows={escrows} viewerPubkey={pubkey!}
-          childrenLoaded={circleChildrenLoaded.has(selected.id)} loadError={circleLoadError}
+          childrenLoaded={circleChildrenLoaded.has(selected.id)} loadError={circleLoadError} fetchBonds={actions.fetchCommunityBonds}
           profileNames={nostrProfiles} kind0Enabled={kind0Enabled}
           backLabel={detailBackView === "me" ? t("browse.navMe") : detailBackView === "dashboard" ? t("browse.navHome") : detailBackView === "circles" ? t("browse.navCircles") : detailBackView === "guided" ? t(detailReturnsHome ? "lts.backHome" : "canvas.backOffers") : t("browse.navBrowse")}
           onBack={backFromTrade}
