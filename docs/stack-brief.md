@@ -1,6 +1,16 @@
 # Stack — named stacks on one wallet (brief)
 
-Status: BRIEF. Premises for review; no code yet.
+Status: BRIEF, ON HOLD for wallet hardening. The pure ledger
+(`src/stack/ledger.ts`) exists; no storage, UI or money wiring.
+
+> Hold (2026-10-07): the money-path security review concluded the browser
+> wallet must not be Stack's Main balance. Its seed lives only in browser
+> storage with no backup, so a browser balance dies with the tab's storage.
+> Before any Stack UI: C1 and H1-H3 released, a decision on where Main lives
+> (native wallet with a user-visible seed backup, or an external wallet such
+> as Fedi or the user's own keys), and the review's other must-fix items. The
+> ledger only takes a `spendableMsats` number, so it works over whichever
+> wallet that decision picks. The laws below still hold.
 
 > Jet's ruling, 2026-10-07: "Reuse the same wallet and logically
 > compartmentalize it instead." Stack comes back, not as a vertical with its
