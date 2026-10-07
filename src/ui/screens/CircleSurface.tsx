@@ -21,7 +21,7 @@ export function circleTimeText(seconds: number, t: TFunc): string {
   return t("circle.minutes", { count: Math.max(0, Math.ceil(seconds / 60)) });
 }
 
-export function CircleSurface({ parent, escrows, viewerPubkey, backLabel, childrenLoaded, loadError, profileNames, kind0Enabled = false, onBack, onLock, onReturn, onClaim, onNextRound, onRefresh }: {
+export function CircleSurface({ parent, escrows, viewerPubkey, backLabel, childrenLoaded, loadError, profileNames, kind0Enabled = false, onBack, onLock, onClaim, onNextRound, onRefresh }: {
   parent: EscrowState; escrows: ReadonlyMap<string, EscrowState>; viewerPubkey: string;
   backLabel: string; childrenLoaded: boolean; loadError?: string | null;
   /** Circles used to render the deterministic nym directly, which ignored a
@@ -30,7 +30,7 @@ export function CircleSurface({ parent, escrows, viewerPubkey, backLabel, childr
    *  other surface now. */
   profileNames?: NostrProfileNameMap; kind0Enabled?: boolean;
   onBack: () => void;
-  onLock: () => Promise<void>; onReturn: () => Promise<void>;
+  onLock: () => Promise<void>;
   /** REFUND resolved on the viewer's share: fire the SAME ClaimPayoutModal
    *  flow every trade uses, aimed at the share escrow. The last leg home. */
   onClaim: () => Promise<void>;
@@ -67,11 +67,12 @@ export function CircleSurface({ parent, escrows, viewerPubkey, backLabel, childr
   const viewerIsCollector = isCollectionRound && rot!.collector === viewerPubkey.toLowerCase();
   const stats = circleMemberStats(escrows.values(), viewerPubkey, now);
   const date = (at: number) => new Date(at * 1000).toLocaleDateString(lang, { month: "short", day: "numeric" });
+  const returnTime = (at: number) => new Date(at * 1000).toLocaleString(lang, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" });
   const [celebrate, setCelebrate] = useState(false);
   const run = async (action: () => Promise<void>) => { if (busy) return; setBusy(true); setMessage(null);
     const wasLock = model.move === "lock";
     try { await action(); if (wasLock) { setCelebrate(true); setTimeout(() => setCelebrate(false), 1700); } }
-    catch (e) { setMessage(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); } };
+    catch (e) { setMessage(e instanceof Error ? ((e as Error & { originalMessage?: string }).originalMessage ?? e.message) : String(e)); } finally { setBusy(false); } };
   const invite = async () => { const result = await shareTradeLink(circle.circleId); if (result !== "shared") setMessage(t(result === "copied" ? "circle.copied" : "circle.shareFailed")); };
   const status = !childrenLoaded ? t("circle.syncing") : model.status === "filling"
     // Fixed round clock: a FILLED circle keeps filling until the deadline
@@ -83,9 +84,9 @@ export function CircleSurface({ parent, escrows, viewerPubkey, backLabel, childr
       : model.move === "invite" && !model.isHost ? t("circle.yourShareIn", { count: Math.max(0, model.seatThreshold - model.seatsLocked) }) : t("circle.seats", { filled: model.seatsLocked, total: model.seatThreshold })
     : model.status === "running" ? t("circle.backBy", { date: date(circle.roundEndSec) })
     : model.status === "refund-due" ? t("circle.failedFill") : t("circle.complete");
-  const moveKey = { lock: "circle.lock", invite: "circle.invite", collect: "circle.collect", "return-now": "circle.returnNow",
+  const moveKey = { lock: "circle.lock", invite: "circle.invite", collect: "circle.collect",
     "next-round": model.status === "refund-due" ? "circle.runAgain" : "circle.nextRound" } as const;
-  const action = model.move === "lock" ? onLock : model.move === "invite" ? invite : model.move === "collect" ? onClaim : model.move === "return-now" ? onReturn : model.move === "next-round" ? async () => onNextRound(circle) : null;
+  const action = model.move === "lock" ? onLock : model.move === "invite" ? invite : model.move === "collect" ? onClaim : model.move === "next-round" ? async () => onNextRound(circle) : null;
   return <section className="circle-surface" style={{ maxWidth: 640, margin: "0 auto", padding: "24px 18px 38px", color: T.text }}>
     <style>{`
       .circle-loader{display:flex;justify-content:center;margin:14px 0 20px}
@@ -148,7 +149,12 @@ export function CircleSurface({ parent, escrows, viewerPubkey, backLabel, childr
       <p style={{ color: T.muted, fontFamily: T.sans, lineHeight: 1.6, margin: 0 }}>{t("circle.satsEach", { amount: fmtSats(circle.shareMsats) })}</p>
       {model.status === "filling" && <p style={{ color: T.muted, fontFamily: T.sans, lineHeight: 1.6, marginTop: 2 }}>{t("circle.closesIn", { time: circleTimeText(model.secsToFillDeadline, t) })}</p>}
       {model.status === "running" && <p style={{ color: T.accent }}>{t("circle.countdown", { time: circleTimeText(model.secsToRoundEnd, t) })}</p>}
-      {(model.move === "returning" || model.move === "return-now") && <p>{t("circle.returning")}</p>}
+      {model.move === "returning" && <p role="status">{model.waitingOn.length > 1 && model.arbiterReturnAtSec !== null && now < model.arbiterReturnAtSec
+        ? t("circle.waitingOnHostUntil", { host: nym(model.waitingOn[0]), arbiter: nym(model.waitingOn[1]), time: returnTime(model.arbiterReturnAtSec) })
+        : model.waitingOn.length > 1
+        ? t("circle.waitingOnEither", { host: nym(model.waitingOn[0]), arbiter: nym(model.waitingOn[1]) })
+        : model.waitingOn.length === 1 ? t("circle.waitingOnReturn", { name: nym(model.waitingOn[0]) })
+        : t(model.returnStage === "signing" ? "circle.signingReturn" : model.returnStage === "confirming" ? "circle.confirmingReturn" : "circle.checkingReturn")}</p>}
       {model.move === "collect" && <p style={{ color: T.accent, fontWeight: 700 }}>{t(viewerIsCollector ? "circle.potReady" : "circle.readyCollect")}</p>}
       {viewerIsCollector && model.move === "wait" && model.status === "filling" && <p style={{ color: T.muted }}>{t("circle.sitOut")}</p>}
       {model.refusal && <p>{t(model.refusal === "full" ? "circle.full" : model.refusal === "closed" ? "circle.closed" : model.refusal === "host-waits" ? "circle.hostLocksLast" : "circle.alreadySeated")}</p>}

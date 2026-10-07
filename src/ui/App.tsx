@@ -4025,10 +4025,6 @@ export default function App() {
               premiumMsats: 0, ctaLabel: t("circle.lock"), tradeCommunity: share.community, tradeCategory: share.category, resolve }));
             await refreshCircle(selected.id);
           }}
-          onReturn={async () => {
-            const share = [...escrows.values()].find(e => e.parent === selected.id && e.chamaPolicy === "share-v1" && e.participants[Role.BUYER] === pubkey);
-            if (share) await actions.vote(share.id, Outcome.REFUND);
-          }}
           onClaim={async () => {
             if (!requireOnline()) return;
             // Every share of this circle whose engine-computed winner is the

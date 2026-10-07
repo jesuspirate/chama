@@ -75,6 +75,8 @@ const firstVote = accepted(locked, vote(locked, R.BUYER, BUYER, O.REFUND, FILL))
 const escalation = oneSidedEscalationAt(firstVote)!;
 assert(escalation > FILL && escalation < END);
 assert(!canVote(firstVote, assigned, escalation - 1, O.REFUND).canVote);
+const earlyReturn = applyEvent(firstVote, vote(firstVote, R.ARBITER, assigned, O.REFUND, escalation - 1));
+assert(!earlyReturn.ok, "an early arbiter VOTE remains rejected by the unchanged reducer");
 assert(canVote(firstVote, assigned, escalation, O.REFUND).canVote);
 const ruled = accepted(firstVote, vote(firstVote, R.ARBITER, assigned, O.REFUND, escalation));
 assert.equal(ruled.votes[R.ARBITER], O.REFUND, "ghost creator permits mechanical arbiter refund");
@@ -114,6 +116,23 @@ await watcher(T + 30); assert.equal(attempts, 0);
 await watcher(FILL); assert.equal(attempts, 1);
 fail = false; await watcher(FILL); assert.equal(attempts, 2);
 await watcher(FILL); assert.equal(attempts, 2, "accepted vote deduplicates later passes");
+// Each online responder signs once from committed state, without a UI action.
+for (const responder of [SELLER, assigned]) {
+  let responding = firstVote, sends = 0;
+  const automatic = createChamaRefundWatcher({ getEscrows: () => [parent, responding], getPubkey: async () => responder,
+    viewComplete: () => true, vote: async (_id, outcome) => {
+      sends++; const role = responder === SELLER ? R.SELLER : R.ARBITER;
+      responding = accepted(responding, vote(responding, role, responder, outcome, responder === SELLER ? FILL : escalation));
+    } });
+  await automatic(FILL);
+  assert.equal(sends, responder === SELLER ? 1 : 0, "host signs immediately; arbiter waits for the existing clock");
+  if (responder === assigned) { await automatic(escalation - 1); assert.equal(sends, 0); }
+  await automatic(escalation); await automatic(escalation);
+  assert.equal(sends, 1, "eligible host and assigned arbiter auto-publish once");
+}
+const missingChildView = createChamaRefundWatcher({ getEscrows: () => [parent, locked], getPubkey: async () => BUYER,
+  viewComplete: () => false, vote: async () => { throw Error("an incomplete child view cannot refund a running circle"); } });
+await missingChildView(FILL);
 const legacy = accepted(null, event(K.CREATE, { ...parentPayload, category: "marketplace", chamaCircle: undefined }, SELLER, ID, T));
 assert.equal(legacy.chamaPolicy, undefined);
 assert.equal(payoutRecipientFor({ ...legacy, participants: { buyer: BUYER, seller: SELLER, arbiter: ARBITER } }, O.RELEASE)?.pubkey, SELLER);
