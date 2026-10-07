@@ -22,6 +22,9 @@ struct BridgeRuntime {
     bridge_url: String,
     instance_id: Option<String>,
     data_dir_override: Option<PathBuf>,
+    /// Per-launch bearer token for the bridge. Without it any web page the
+    /// user visits could POST to 127.0.0.1 and spend or reset the wallet.
+    auth_token: String,
 }
 
 impl BridgeSidecar {
@@ -63,6 +66,13 @@ fn ephemeral_loopback_addr() -> Result<SocketAddr, Box<dyn std::error::Error>> {
     let addr = listener.local_addr()?;
     drop(listener);
     Ok(addr)
+}
+
+fn random_bridge_token() -> Result<String, Box<dyn std::error::Error>> {
+    let mut bytes = [0u8; 32];
+    getrandom::getrandom(&mut bytes)
+        .map_err(|error| std::io::Error::other(format!("bridge token RNG failed: {error}")))?;
+    Ok(bytes.iter().map(|byte| format!("{byte:02x}")).collect())
 }
 
 fn optional_env(name: &str) -> Option<String> {
@@ -142,6 +152,7 @@ fn choose_bridge_runtime() -> Result<BridgeRuntime, Box<dyn std::error::Error>> 
         bridge_url: format!("http://{bind}"),
         instance_id,
         data_dir_override: optional_env("CHAMA_TAURI_BRIDGE_DATA_DIR").map(PathBuf::from),
+        auth_token: random_bridge_token()?,
     })
 }
 
@@ -183,12 +194,14 @@ fn bridge_init_script(runtime: &BridgeRuntime) -> String {
         .as_deref()
         .map(js_string)
         .unwrap_or_else(|| "null".to_owned());
+    let auth_token = js_string(&runtime.auth_token);
 
     format!(
         r#"
 ;window.__CHAMA_NATIVE_FEDIMINT__ = Object.freeze({{
   bridgeUrl: {bridge_url},
-  instanceId: {instance_id}
+  instanceId: {instance_id},
+  authToken: {auth_token}
 }});
 "#,
     )
@@ -219,6 +232,8 @@ fn start_bridge_sidecar(
             "--bind",
             bind_arg.as_str(),
         ])
+        // Environment, not argv: argv is visible to every local process.
+        .env("CHAMA_BRIDGE_AUTH_TOKEN", runtime.auth_token.as_str())
         .spawn()?;
 
     app.manage(BridgeSidecar(Mutex::new(Some(child))));
