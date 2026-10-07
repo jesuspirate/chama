@@ -49,13 +49,14 @@ or its own seed.
    block, delay, or redirect a recovery. Fail-closed stays fail-closed.
 3. **Shrink deterministically when the balance falls.** If spendable drops
    below the allocated sum (a send from elsewhere, a federation quirk),
-   shrink stacks in a fixed order (open question 1) and say so once in
-   plain words. Never show a stack total the wallet cannot back.
+   shrink Main first, then the most recently filled stack, and so on
+   (Jet, 2026-10-07), and say so once in plain words. Never show a stack total the wallet cannot back.
 4. **Stacks belong to a wallet, not to an npub.** The device-local browser
    wallet and the native bridge's wallet are separate (AGENTS.md). Stacks
-   are keyed by npub + wallet + federation, stored with
-   `storage/user-scope`, and are not synced over Nostr in v1. A Nostr
-   identity is not a bearer-ecash backup, and stack labels are not either.
+   are keyed by npub + wallet + federation and stored with
+   `storage/user-scope`. A Nostr identity is not a bearer-ecash backup;
+   what follows the user to a new device is the stack *labels*, never
+   money (law 8).
 5. **Sats leave from Main, as on Strike.** Locks and sends draw from Main.
    If Main is short, Chama offers to move the difference from a stack
    first ("Move 20,000 sats from House to pay this?"), free and instant.
@@ -67,6 +68,18 @@ or its own seed.
    `pegOutFeeSats`). Never automatic. Swept sats leave the stack; its card
    keeps a "moved to your keys" history and the goal can count them.
 7. **No yield, no fiat balances, no buys executed for the user.**
+8. **Labels survive a restore; amounts are rebuilt by the user.** (Jet,
+   2026-10-07: "help the user reconstruct at least the labels… as long as
+   the main wallet exists with the sats inside.") Chama keeps a copy of
+   each stack's name, goal, schedule and inflow rule as a NIP-44
+   self-encrypted kind-30078 event (`d = chama-stacks-v1`), the same
+   pattern `fedimint/seed-manager.ts` uses. It also carries each stack's
+   last-known amount *as a hint only*. On a fresh device or restore, all
+   sats land in Main and Chama offers "Rebuild your stacks": names, goals
+   and schedules prefilled, amounts suggested from the hint and capped so
+   the total never exceeds Main. Nothing is applied until the user
+   confirms. If the copy cannot be read, the user starts with Main only,
+   which loses nothing.
 
 ## How sats move
 
@@ -116,12 +129,15 @@ or its own seed.
    when Main is short.
 3. **Schedules + inflow rule** — per-stack cadence reminder into an
    Exchange buy; % of claims to a stack.
-4. **Move to your keys** — peg-out offer above threshold, native first.
+4. **Rebuild on restore** — the label copy on Nostr and the "Rebuild your
+   stacks" offer (law 8).
+5. **Move to your keys** — peg-out offer above threshold, in the native
+   app only for v1 (Jet, 2026-10-07); browser wallet later.
 
-## Open questions
+## Decided (Jet, 2026-10-07)
 
-1. Shrink order when the wallet drops on its own: most recently filled
-   stack first, or let the user rank them?
-2. Browser-wallet peg-out: available today, or native only for v1?
-3. Should stacks follow a native-bridge restore to a second device, or
-   does restore start with everything in Main?
+1. Shrink order when the wallet drops on its own: Main first, then the
+   most recently filled stack.
+2. Moving a stack to your own keys: native app only in v1.
+3. Restore: labels come back (law 8); amounts are rebuilt by the user,
+   with last-known amounts offered as hints.
