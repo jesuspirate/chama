@@ -1081,8 +1081,12 @@ export class EscrowClient {
     const existing = this.states.get(id);
     if (existing) return circleFromEscrow(existing) ? existing : undefined;
     const events = await this.relayManager.fetchOnce({ kinds: [EscrowEventKind.CREATE], "#d": [id] }, 15_000);
+    // Cycle resolution has a recursion guard. Parse sequentially so concurrent
+    // candidates cannot mistake another candidate's lookup for a malicious loop.
+    const contextual = [];
+    for (const raw of events) contextual.push(await this.parseWithChamaContext(raw, raw.content));
     const creates = selectTradeRoot(
-      sortEventChain(events.map(raw => parseEscrowEvent(raw, raw.content, true)).filter(r => r.ok).map(r => r.event))
+      sortEventChain(contextual.filter(r => r.ok).map(r => r.event))
         .filter(event => event.escrowId === id && (event.payload as CreatePayload).category === "chama"),
       this.expectedCreatorOf(id));
     for (const raw of creates.ok ? creates.events : []) {

@@ -24,6 +24,8 @@
 //      trade; on an unlocked one it guessed, and guessed the forgery.
 
 import { EscrowEventKind, type CreatePayload, type ParsedEscrowEvent } from "./types.js";
+import { chamaCreateError } from "../chama/policy.js";
+import { eventIsSim } from "../sim/simMode.js";
 
 /** Hex characters of the creator's pubkey carried by a creator-tagged id. */
 export const CREATOR_TAG_HEX = 16;
@@ -63,7 +65,7 @@ function isRotationRound(event: ParsedEscrowEvent): boolean {
 
 export type TradeRootSelection =
   | { ok: true; events: ParsedEscrowEvent[]; ignored: ParsedEscrowEvent[] }
-  | { ok: false; code: "CONFLICTING_CREATES" | "CREATOR_NOT_FOUND"; message: string };
+  | { ok: false; code: "CONFLICTING_CREATES" | "CREATOR_NOT_FOUND" | "INVALID_CHAMA"; message: string };
 
 /**
  * Decide which CREATE may root a replay. Returns the events to replay (order
@@ -76,8 +78,23 @@ export function selectTradeRoot(events: ParsedEscrowEvent[], creator?: string | 
   const creates = events.filter(event => event.kind === EscrowEventKind.CREATE);
   const all = { ok: true as const, events, ignored: [] };
   if (creates.length === 0) return all;
-  // Rotation rounds keep the earliest-CREATE rule every client already uses.
-  if (creates.every(isRotationRound)) return all;
+  // A successor belongs to its validated cycle, not an arbitrary author.
+  // Recheck the full CREATE law before choosing a root: direct replay and
+  // parent lookup must be as strict as the contextual wire parser.
+  const rounds = creates.filter(isRotationRound);
+  const valid = rounds.filter(event => chamaCreateError(event.payload as CreatePayload,
+    event.escrowId, event.pubkey, event.timestamp, event.chamaParent, event.chamaWitness,
+    event.chamaCycle, eventIsSim(event.raw)) === null)
+    .sort((a, b) => a.timestamp - b.timestamp || a.raw.id.localeCompare(b.raw.id));
+  if (valid.length) {
+    const keep = new Set(valid);
+    const ignored = creates.filter(event => !keep.has(event));
+    // Keep valid rival roots as harmless duplicates so a child's predecessor
+    // can reference either member's CREATE. The chosen root is always first.
+    return { ok: true, events: [...valid, ...events.filter(event => event.kind !== EscrowEventKind.CREATE)], ignored };
+  }
+  if (rounds.length === creates.length) return { ok: false, code: "INVALID_CHAMA",
+    message: "No rotation CREATE is valid for the sealed cycle" };
 
   const by = creator?.toLowerCase();
   if (by) {
