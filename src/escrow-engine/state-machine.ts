@@ -61,6 +61,7 @@ import { arbiterPriorityOrder, arbiterVotePriority, substitutionEligibleAt, clam
 import { pickArbiterFromPool, pickPreferredArbiter } from "../arbiters/pool.js";
 import { finalArbiterSettlementProof, finalCoopSettlementProof } from "./onchain-settlement-transport.js";
 import { validatePlanStart } from "./tranche-plan.js";
+import { creatorMatchesEscrowId, selectTradeRoot } from "./trade-identity.js";
 import {
   SETTLEMENT_POLICY_ECASH_SLICES, MAX_SLICE_COUNT, defaultSettlementPolicy,
   minSlicesForCap, settlementPolicyMatchesMode,
@@ -291,6 +292,10 @@ function handleCreate(event: ParsedEscrowEvent<CreatePayload>): TransitionResult
   const p = event.payload;
   const chamaError = chamaCreateError(p, event.escrowId, event.pubkey, event.timestamp, event.chamaParent, event.chamaWitness, event.chamaCycle, eventIsSim(event.raw));
   if (chamaError) return err("INVALID_CHAMA_CREATE", chamaError, event.raw.id);
+  // A creator-tagged id belongs to one key. See trade-identity.ts.
+  if (!creatorMatchesEscrowId(event.escrowId, event.pubkey)) {
+    return err("CREATOR_MISMATCH", "CREATE is not signed by the key this escrow id names", event.raw.id);
+  }
 
   // Validate required fields
   if (!p.description || p.amountMsats <= 0) {
@@ -1987,12 +1992,25 @@ export function applyEvent(
  * Events MUST be in dependency order (sorted by e-tag chain, not timestamp).
  * The first event must be a CREATE.
  *
+ * A trade is identified by its creator as well as its id. Pass `creator` when
+ * the caller knows who created the trade: replay then roots only at a CREATE
+ * signed by that key and sets any other aside with a note. Without it, a chain
+ * whose CREATEs come from more than one author is refused (see
+ * trade-identity.ts) instead of rooted at whichever claims the earliest time.
+ *
  * Returns the final state or the first validation error encountered.
  */
-export function replayEventChain(events: ParsedEscrowEvent[]): TransitionResult {
+export function replayEventChain(
+  events: ParsedEscrowEvent[],
+  opts: { creator?: string | null } = {},
+): TransitionResult {
   if (events.length === 0) {
     return err("EMPTY_CHAIN", "Cannot replay empty event chain");
   }
+
+  const rooted = selectTradeRoot(events, opts.creator);
+  if (!rooted.ok) return err(rooted.code, rooted.message);
+  events = rooted.events;
 
   if (events[0].kind !== EscrowEventKind.CREATE) {
     return err("MISSING_CREATE", "First event in chain must be CREATE");
@@ -2112,6 +2130,12 @@ export function replayEventChain(events: ParsedEscrowEvent[]): TransitionResult 
     state = result.state;
   }
 
+  if (rooted.ignored.length > 0) {
+    state = { ...state!, replayNotes: [...(state!.replayNotes ?? []), ...rooted.ignored.map(event => ({
+      eventId: event.raw.id, kind: event.kind, code: "FOREIGN_CREATE",
+      message: "A CREATE under this trade id signed by a different key was ignored",
+    }))] };
+  }
   return { ok: true, state: state! };
 }
 

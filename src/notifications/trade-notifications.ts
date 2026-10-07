@@ -42,8 +42,9 @@ export function onchainNotificationBody(state: EscrowState, viewer: string, text
 
 /** getchama.app deep link for a trade, safe to drop into a plaintext external DM.
  *  Mirrors App's `?trade=<id>` / `?escrowId=<id>` URL open path. */
-function tradeDeepLink(id: string): string {
-  return `https://getchama.app/?trade=${id}`;
+function tradeDeepLink(id: string, creator?: string): string {
+  const by = creator && /^[0-9a-f]{64}$/i.test(creator) ? `&by=${creator.toLowerCase()}` : "";
+  return `https://getchama.app/?trade=${id}${by}`;
 }
 
 /** Circle seat context for a share LOCK (runway: seal round 1). Built by
@@ -571,7 +572,7 @@ export function tradeDmNotificationFor(
   if (!prev || !myRole) return null; // only DM on an OBSERVED transition
   const id = next.id;
   const label = shortId(id);
-  const link = tradeDeepLink(id);
+  const link = tradeDeepLink(id, next.initiator?.pubkey);
   const lang = getCurrentLang();
 
   const build = (

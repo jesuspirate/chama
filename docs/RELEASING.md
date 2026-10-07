@@ -72,3 +72,19 @@ npm run ship -- --only release-page --publish
 ```
 
 Secrets and host-specific paths remain in the gitignored `.env.release` file.
+
+### Prepared branch ancestry
+
+A `release/*` candidate must include the current local `main`:
+
+```sh
+npm run check:release-ancestry
+```
+
+The same check runs in `predeploy` and at the start of `ship.sh` and
+`release.sh` for main/release branches, before release side effects. It fails
+if main is missing or is not an ancestor. This protects committed ancestry;
+conflict resolution still needs the application regressions. When .21 lands,
+merge the newly advanced main into a prepared .22 candidate and rerun checks.
+Preparation branches are reviewed and fast-forwarded to main before using the
+canonical ship command. No version bump or release occurs during preparation.

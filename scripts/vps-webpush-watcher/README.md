@@ -170,7 +170,15 @@ local WebSocket relay produces an opaque wake at a registered community endpoint
 Every ordinary transport wake includes the matched opaque `tags` array.
 Distinct signed events are delivered independently; only duplicate event
 delivery to the same endpoint is suppressed. FCM has no shared collapse key.
-Send results print `wake <tag prefix> <transport> <sent|failed> <ms>ms`.
+Send results print `wake <tag prefix> <transport> <sent|failed> <ms>ms http=<status>`.
+The status is the provider's numeric HTTP response on success or rejection;
+`http=unknown` means no valid HTTP status was available (for example a timeout).
+An accepted response establishes transport acceptance, not receipt by the phone.
+FCM records the actual HTTP status, including an OAuth rejection; its internal
+dead-token pruning signal remains separate (an HTTP 404 can still prune as 410).
 The same lines, with UTC timestamps, are retained in owner-readable
 `wake-delivery.log` beside the registration store, capped at 1 MiB plus one
 rotated copy. They contain no endpoint, trade ID, message, or wallet data.
+Provider error bodies and credentials are never included. The local relay/HTTP
+regression test covers accepted 201, rejected 429 and no-response receipts, and
+checks that private endpoint, trade and error-body content stays out of the log.

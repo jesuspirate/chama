@@ -947,7 +947,7 @@ export interface UseEscrowActions {
    *  discovery or background sweeps. */
   loadEscrow: (
     escrowId: string,
-    opts?: { repairFromCache?: boolean; userAction?: boolean },
+    opts?: { repairFromCache?: boolean; userAction?: boolean; creator?: string },
   ) => Promise<EscrowState | null>;
   /** Why the last loadEscrow of this id returned null (null when it didn't). */
   getLoadFailure: (escrowId: string) => LoadFailure | null;
@@ -2808,7 +2808,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
 
   const loadEscrow = useCallback(async (
     escrowId: string,
-    opts: { repairFromCache?: boolean; userAction?: boolean } = {},
+    opts: { repairFromCache?: boolean; userAction?: boolean; creator?: string } = {},
   ) => {
     const client = requireClient();
     // Loading a trade by ID is a deliberate "bring it back" — clear any

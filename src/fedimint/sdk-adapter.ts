@@ -1,3 +1,4 @@
+import type { JoinErrorCapture } from "./join-error-capture.js";
 import { boundedInspection, object, type FederationInspection } from "./federation-inspection.js";
 import { browserWalletStorageError } from "./browser-capabilities.js";
 import { createJoinDiagnostics, type JoinDiagnostics, type JoinPreviewDirector } from "./join-diagnostics.js";
@@ -1537,10 +1538,15 @@ export function adaptRealWallet(
     rollbackFilename?: string | null;
   },
   allowRecoveryOnJoin = false,
-  joinDiagnostics?: { capture: JoinDiagnostics; director: JoinPreviewDirector },
+  joinDiagnosticsInput?: { capture: JoinDiagnostics; director: JoinPreviewDirector } | JoinErrorCapture,
 ): IFedimintWallet {
+  // Keep the released capture-only adapter contract while production .22
+  // supplies the richer preview/open diagnostics. Neither adds a join RPC.
+  const joinDiagnostics = joinDiagnosticsInput && "capture" in joinDiagnosticsInput ? joinDiagnosticsInput : undefined;
+  const joinCapture = joinDiagnosticsInput && !("capture" in joinDiagnosticsInput) ? joinDiagnosticsInput : undefined;
   const joinWithDiagnostics = async (invite: string, forceRecover = false): Promise<void> => {
     joinDiagnostics?.capture.reset();
+    joinCapture?.reset();
     const preview = await joinDiagnostics?.capture.preview(joinDiagnostics.director, invite);
     const fallback = forceRecover
       ? "Fedimint SDK did not start forced wallet recovery"
@@ -1552,9 +1558,11 @@ export function adaptRealWallet(
         ? await real.joinFederation(invite, { forceRecover: true })
         : await real.joinFederation(invite);
     } catch (cause) {
-      throw joinDiagnostics?.capture.failure(fallback, preview, cause) ?? cause;
+      throw joinDiagnostics?.capture.failure(fallback, preview, cause)
+        ?? joinCapture?.failure("Fedimint SDK federation join failed", cause) ?? cause;
     }
-    if (joined === false) throw joinDiagnostics?.capture.failure(fallback, preview) ?? new Error(fallback);
+    if (joined === false) throw joinDiagnostics?.capture.failure(fallback, preview)
+      ?? joinCapture?.failure(fallback) ?? new Error(fallback);
     joinDiagnostics?.capture.joined();
   };
   const activeReceiveWatches = new Set<() => void>();

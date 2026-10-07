@@ -60,7 +60,9 @@ export function selectWakeNotifications(next: Iterable<EscrowState>, old: Map<st
   });
 }
 
-export function replayWake(events: NostrEvent[], pubkey: string, nsec: string): Map<string, EscrowState> {
+export function replayWake(events: NostrEvent[], pubkey: string, nsec: string,
+  /** Creator of each trade this device already holds (trade-identity.ts). */
+  creators?: ReadonlyMap<string, string>): Map<string, EscrowState> {
   let secret: Uint8Array | undefined;
   if (nsec) {
     const decoded = nip19.decode(nsec);
@@ -112,7 +114,7 @@ export function replayWake(events: NostrEvent[], pubkey: string, nsec: string): 
   }
   const result = new Map<string, EscrowState>();
   for (const [id, events] of groups) {
-    const replay = replayEventChain(sortEventChain(events));
+    const replay = replayEventChain(sortEventChain(events), { creator: creators?.get(id) });
     if (!replay.ok) throw Error(`Incomplete trade: ${replay.error.code}`);
     result.set(id, replay.state);
   }
@@ -207,7 +209,8 @@ export async function runWakeJob(input: WakeInput) {
     const cached = input.snapshot.events.filter(belongs);
     try { for (const [key, state] of replayWake([...cached, ...parents], input.snapshot.pubkey, input.nsec)) old.set(key, state); }
     catch { /* An incomplete old baseline cannot veto a complete new replay. */ }
-    try { for (const [key, state] of replayWake([...cached, ...fresh.filter(belongs), ...parents], input.snapshot.pubkey, input.nsec)) next.set(key, state); }
+    try { for (const [key, state] of replayWake([...cached, ...fresh.filter(belongs), ...parents], input.snapshot.pubkey, input.nsec,
+      new Map([...old].map(([key, state]) => [key, state.initiator.pubkey])))) next.set(key, state); }
     catch (error) { failures.push(error instanceof Error ? error.message : 'Replay error'); }
   }
   if (failures.length && !next.size) throw Error(failures[0]);
