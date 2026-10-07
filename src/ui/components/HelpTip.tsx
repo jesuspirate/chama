@@ -95,7 +95,7 @@ export function HelpTip({ title, children, label }: {
       style={{ width: 44, height: 44, flexShrink: 0, background: "none", border: "none", boxShadow: "none", padding: 12, margin: -12, borderRadius: T.rs, cursor: "pointer", display: "inline-grid", placeItems: "center", lineHeight: 0 }}>
       <span aria-hidden="true" style={{ width: 20, height: 20, boxSizing: "border-box", borderRadius: 999,
         background: open ? T.accent : T.surface, border: `1px solid ${open ? T.accent : T.border}`,
-        color: open ? "#fff" : T.muted, fontFamily: T.mono, fontSize: 12, fontWeight: 800,
+        color: open ? "#fff" : T.muted, fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
         display: "grid", placeItems: "center", lineHeight: 1 }}>?</span>
     </button>
     {open && createPortal(<>
@@ -109,7 +109,7 @@ export function HelpTip({ title, children, label }: {
           maxWidth: "calc(100vw - 16px)", boxSizing: "border-box", overflowY: "auto", visibility: pos ? "visible" : "hidden",
           background: T.card, border: `1px solid ${T.borderHi}`, borderRadius: T.r, padding: "12px 14px",
           boxShadow: "0 14px 36px #0009", textAlign: "left", outline: "none", overflowWrap: "anywhere" }}>
-        {title && <div style={{ fontFamily: T.mono, fontSize: 10, fontWeight: 800, letterSpacing: 0.8, color: T.accent, marginBottom: 6 }}>{title}</div>}
+        {title && <div style={{ fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700, color: T.accent, marginBottom: 6 }}>{title}</div>}
         <div id={`${id}-body`} style={{ fontFamily: T.sans, fontSize: 12.5, lineHeight: 1.55, color: T.text }}>{children}</div>
       </div>
     </>, document.body)}

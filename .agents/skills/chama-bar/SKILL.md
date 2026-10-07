@@ -20,19 +20,23 @@ field error), keep it local.
 
 ## Priority (top wins, one label at a time)
 
-1. `unreachable` — the federation can't be reached. Amber, tap = reconnect.
+Since the v7 redesign the bar renders as a status capsule
+(`ChamaBarLabelPill`); colours below are the capsule's theme tokens.
+
+1. `unreachable` — the federation can't be reached. Attention fill, tap = reconnect.
 2. `needs-you` — a trade is waiting on this person: sign, confirm, claim,
-   re-post, reply to a dispute. Orange, tap opens the most urgent trade.
+   re-post, reply to a dispute. Attention fill, tap opens the most urgent trade.
    **Every state that stalls a trade until this person acts must count
    here** — on-chain included (deposit to send, payout to sign, key to
    publish). If a trade can be stranded because nobody told the person,
    the bar was wrong.
-3. `stranded` — sats recoverable. Amber, tap = recover.
-4. `in-trade` — N active trades, sats in escrow. Purple, tap = the trade.
+3. `stranded` — sats recoverable. Attention tint, tap = recover.
+4. `in-trade` — N active trades, sats in escrow. Neutral with a lock
+   (escrow is normal and safe; no role colour), tap = the trade.
 5. `syncing` — the initial trade read from relays is still running
    (`myTradesLoading`). The spinning wordmark dot, small, no text needed
    beyond "Syncing…". Never for background refreshes.
-6. `ready` — "Chama: ready". Muted.
+6. `ready` — "Ready". Quiet, with a positive dot.
 
 A new state slots into this list with a reason; it never sits beside the
 bar as a second indicator.

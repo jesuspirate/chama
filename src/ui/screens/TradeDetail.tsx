@@ -1,5 +1,7 @@
 import { TradePaymentDetailsChoice, BuyerPaymentDetails, CHAT_PAYMENT_CHOICE } from '../components/TradePaymentDetails.js';
 import { matchingTradeHandles, needsTradePaymentDetails } from '../../payments/trade-payment-details.js';
+import { HoldToConfirm } from "../components/Button.js";
+import { collectIsHold } from "../claim-hold.js";
 import { reabsorbedLockAmount } from "../../fedimint/pending-native-locks.js";
 import { RejectedLockRefund } from "../components/RejectedLockRefund.js";
 export { RejectedLockRefund } from "../components/RejectedLockRefund.js";
@@ -47,7 +49,7 @@ import { getPremiumOutboxRecord, setPremiumDeclined } from "../../arbiters/arbit
 import { getPayoutRecord } from "../../payments/payout-journal.js";
 import {
   T, STATUS, ROLE_COLOR, ROLE_COLOR_TEXT, CAT_LABEL, TRINITY_RING_ORDER,
-  fmtSats, refundRecipientFor, inputStyle,
+  fmtSats, refundRecipientFor, inputStyle, ON_ATTN,
 } from "../theme.js";
 import { listingPremiumLine } from "../listing-metrics.js";
 import { useBitcoinPrice } from "../hooks/useBitcoinPrice.js";
@@ -160,10 +162,10 @@ const SPLIT_FLOOR_BOTTOM = "clamp(120px, calc(var(--chama-viewport-height, 100dv
 
 // Shared inline-style fragments (exact duplicates factored out — no visual
 // change; each was byte-identical at 2+ call sites in this file).
-const centerAmberNote: React.CSSProperties = { textAlign: "center", marginTop: 8, fontSize: 10, color: T.amber, fontFamily: T.mono };
+const centerAmberNote: React.CSSProperties = { textAlign: "center", marginTop: 8, fontSize: T.fs.secondary, color: T.amber, fontFamily: T.sans };
 const ellipsisClamp: React.CSSProperties = { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" };
-const mutedMonoNote: React.CSSProperties = { fontSize: 10, color: T.muted, fontFamily: T.mono, lineHeight: 1.5 };
-const textLinkButtonStyle: React.CSSProperties = { background: "none", border: "none", color: T.muted, fontFamily: T.mono, fontSize: 10, cursor: "pointer", padding: "8px 0", width: "100%", textAlign: "center", textDecoration: "underline" };
+const mutedMonoNote: React.CSSProperties = { fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, lineHeight: 1.5 };
+const textLinkButtonStyle: React.CSSProperties = { background: "none", border: "none", color: T.ink, fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 600, cursor: "pointer", padding: "8px 0", minHeight: 48, width: "100%", textAlign: "center", textDecoration: "underline" };
 
 
 export function TradeDetail({
@@ -1641,11 +1643,9 @@ export function TradeDetail({
             alignItems: "center",
             gap: 5,
             color: T.accent,
-            fontFamily: T.mono,
-            fontSize: 9.5,
+            fontFamily: T.sans,
+            fontSize: T.fs.secondary,
             fontWeight: 700,
-            letterSpacing: 1.1,
-            textTransform: "uppercase",
             marginBottom: 3,
             overflow: "hidden",
             textOverflow: "ellipsis",
@@ -1727,7 +1727,7 @@ export function TradeDetail({
           border: `1px solid ${T.accent}55`, background: T.accentDim,
           borderRadius: 12, padding: 12, marginBottom: 12,
         }}>
-          <div style={{ fontFamily: T.mono, fontWeight: 800, fontSize: 11, color: T.accent }}>
+          <div style={{ fontFamily: T.sans, fontWeight: 700, fontSize: T.fs.secondary, color: T.accent }}>
             {t("tranche.ecashPlanTitle", { n: state.sliceCount ?? 1 })}
           </div>
           <div style={{ fontFamily: T.sans, fontSize: 11, color: T.muted, lineHeight: 1.5, marginTop: 5 }}>
@@ -1738,7 +1738,7 @@ export function TradeDetail({
               {pendingEcashSliceRows.map((row) => (
                 <div
                   key={row.index}
-                  style={{ display: "flex", justifyContent: "space-between", padding: "8px 10px", borderRadius: 9, border: `1px solid ${T.border}`, background: T.surface, color: T.text, fontFamily: T.mono, fontSize: 10 }}
+                  style={{ display: "flex", justifyContent: "space-between", padding: "8px 10px", borderRadius: 9, border: `1px solid ${T.border}`, background: T.surface, color: T.text, fontFamily: T.sans, fontSize: T.fs.secondary }}
                 >
                   <span>{t("tranche.sliceRow", { n: row.index + 1 })}</span>
                   <span>{Math.ceil(row.amountMsats / 1000).toLocaleString()} sats · {t("tranche.awaitingPlan")}</span>
@@ -1758,7 +1758,7 @@ export function TradeDetail({
                   .catch((error) => setAdvanceTrancheError(error instanceof Error ? error.message : String(error)))
                   .finally(() => setStartingSlicePlan(false));
               }}
-              style={{ marginTop: 9, padding: "8px 12px", borderRadius: 999, border: `1px solid ${T.accent}`, background: T.accent, color: T.bg, fontFamily: T.mono, fontWeight: 800, cursor: "pointer" }}
+              style={{ marginTop: 9, padding: "8px 12px", borderRadius: 999, border: `1px solid ${T.accent}`, background: T.accent, color: T.bg, fontFamily: T.sans, fontWeight: 700, cursor: "pointer" }}
             >
               {startingSlicePlan ? t("tranche.starting") : t("tranche.startProtected", { n: state.sliceCount ?? 1 })}
             </button>
@@ -1773,7 +1773,7 @@ export function TradeDetail({
 
       {TRADE_SLICING_ENABLED && state.tranchePlan && state.settlementPolicy === "ecash-mutual-slices-v1" && (
         <div style={{ border: `1px solid ${T.border}`, borderRadius: 12, padding: 12, marginBottom: 12 }}>
-          <div style={{ fontFamily: T.mono, fontWeight: 800, fontSize: 11, color: T.text }}>
+          <div style={{ fontFamily: T.sans, fontWeight: 700, fontSize: T.fs.secondary, color: T.text }}>
             {t("tranche.planTitle", { n: state.tranchePlan.total })}
           </div>
           <div style={{ display: "grid", gap: 6, marginTop: 8 }}>
@@ -1788,7 +1788,7 @@ export function TradeDetail({
                   type="button"
                   disabled={!child || !onOpenChild}
                   onClick={() => child && onOpenChild?.(child.id)}
-                  style={{ display: "flex", justifyContent: "space-between", padding: "8px 10px", borderRadius: 9, border: `1px solid ${isActiveSlice ? T.accent : T.border}`, background: isActiveSlice ? T.accentDim : T.surface, color: isActiveSlice ? T.accent : T.text, cursor: child ? "pointer" : "default", fontFamily: T.mono, fontSize: 10, fontWeight: isActiveSlice ? 800 : 400 }}
+                  style={{ display: "flex", justifyContent: "space-between", padding: "8px 10px", borderRadius: 9, border: `1px solid ${isActiveSlice ? T.accent : T.border}`, background: isActiveSlice ? T.accentDim : T.surface, color: isActiveSlice ? T.accent : T.text, cursor: child ? "pointer" : "default", fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: isActiveSlice ? 800 : 400 }}
                 >
                   <span>{t("tranche.sliceRow", { n: row.index + 1 })}</span>
                   <span>{Math.ceil(row.amountMsats / 1000).toLocaleString()} sats · {isActiveSlice ? t("tranche.fundThisSlice") : (child?.status ?? t("tranche.publishing"))}</span>
@@ -1813,8 +1813,7 @@ export function TradeDetail({
           margin: "0 4px 16px",
         }}>
           <div style={{
-            color: T.accent, fontFamily: T.mono, fontSize: 11, fontWeight: 800,
-            letterSpacing: 0.5, marginBottom: 8,
+            color: T.accent, fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700, marginBottom: 8,
           }}>
             {t("trade.storefrontOrdersTitle", { count: liveChildOrders!.length })}
           </div>
@@ -1846,8 +1845,8 @@ export function TradeDetail({
                       <span aria-label={childUnread === 1 ? t("card.unreadMessageOne") : t("card.unreadMessageMany", { count: childUnread })} style={{
                         display: "inline-flex", alignItems: "center",
                         minWidth: 18, height: 18, padding: "0 5px", boxSizing: "border-box",
-                        borderRadius: 999, background: T.accent, color: "#fff",
-                        fontFamily: T.mono, fontSize: 9.5, fontWeight: 800, lineHeight: "18px",
+                        borderRadius: 999, background: T.attn, color: ON_ATTN,
+                        fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700, lineHeight: "18px",
                       }}>
                         💬 {childUnread > 9 ? "9+" : childUnread}
                       </span>
@@ -1876,8 +1875,7 @@ export function TradeDetail({
           margin: "0 4px 16px",
         }}>
           <div style={{
-            color: T.amber, fontFamily: T.mono, fontSize: 11, fontWeight: 800,
-            letterSpacing: 0.5, marginBottom: 8,
+            color: T.amber, fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700, marginBottom: 8,
           }}>
             {t("trade.storefrontReservingTitle", { count: pendingChildOrders!.length })}
           </div>
@@ -1908,8 +1906,8 @@ export function TradeDetail({
                       <span aria-label={childUnread === 1 ? t("card.unreadMessageOne") : t("card.unreadMessageMany", { count: childUnread })} style={{
                         display: "inline-flex", alignItems: "center",
                         minWidth: 18, height: 18, padding: "0 5px", boxSizing: "border-box",
-                        borderRadius: 999, background: T.accent, color: "#fff",
-                        fontFamily: T.mono, fontSize: 9.5, fontWeight: 800, lineHeight: "18px",
+                        borderRadius: 999, background: T.attn, color: ON_ATTN,
+                        fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700, lineHeight: "18px",
                       }}>
                         💬 {childUnread > 9 ? "9+" : childUnread}
                       </span>
@@ -1927,7 +1925,8 @@ export function TradeDetail({
           it's learnable; the middle node carries the deal's health (amber when
           disputed, red when closed). Static here — motion lands in a later stage. */}
       {(() => {
-        const spineAccent = myRole ? ROLE_COLOR[myRole as keyof typeof ROLE_COLOR] : T.accent;
+        // v7 redesign: the spine is ink — role colours name people, not progress.
+        const spineAccent = T.ink;
         const isClosed = state.status === EscrowStatus.EXPIRED || state.status === EscrowStatus.CANCELLED;
         // Only "disputed" while UNRESOLVED — votes aren't cleared after an arbiter
         // decides, so without this gate a settled trade keeps flashing amber.
@@ -1978,8 +1977,7 @@ export function TradeDetail({
                   />
                   <div style={{
                     color: lit ? nodeColor : T.muted,
-                    fontFamily: T.mono, fontSize: 9, fontWeight: 800,
-                    letterSpacing: 0.8, textTransform: "uppercase",
+                    fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 800,
                   }}>
                     {st.label}
                   </div>
@@ -2041,25 +2039,17 @@ export function TradeDetail({
         <div style={{
           padding: 14,
           borderRadius: T.rs,
-          // v3.2 prototype: the card wears the VIEWER's role colour — buyer
-          // purple, seller orange, arbiter blue — "the screen knows who you
-          // are". Red (error) stays semantic: that signal is sacred. Visitors
-          // (no seat) keep the semantic tone palette.
-          background: myRole && nextStep.tone !== "red"
-            ? `${ROLE_COLOR[myRole as keyof typeof ROLE_COLOR]}14`
-            : nextStep.tone === "green" ? T.greenDim
-            : nextStep.tone === "red" ? T.redDim
-            : nextStep.tone === "purple" ? T.purpleDim
-            : nextStep.tone === "teal" ? T.tealDim
+          // v7 redesign (canvas "Your turn"): role colours name people, so
+          // the card no longer wears the viewer's role colour (that was the
+          // v3.2 prototype). A seated viewer's next step is the attention-ringed
+          // surface card; red (error) stays semantic; positive stays green.
+          background: nextStep.tone === "red" ? T.critBg
+            : nextStep.tone === "green" ? T.posBg
             : T.surface,
-          border: `1px solid ${
-            myRole && nextStep.tone !== "red"
-            ? ROLE_COLOR[myRole as keyof typeof ROLE_COLOR] + "44"
-            : nextStep.tone === "green" ? T.green + "44"
-            : nextStep.tone === "red" ? T.red + "44"
-            : nextStep.tone === "purple" ? T.purple + "44"
-            : nextStep.tone === "teal" ? T.teal + "44"
-            : T.accent + "33"
+          border: `${myRole ? 2 : 1}px solid ${
+            nextStep.tone === "red" ? T.crit
+            : nextStep.tone === "green" ? T.pos
+            : myRole ? T.attn : T.line
           }`,
           marginBottom: 16,
         }}>
@@ -2072,22 +2062,19 @@ export function TradeDetail({
               marginBottom: 7,
             }}>
               {!isReservedDetails && <div style={{
-                // Identity accent — v3.2: the kicker wears the viewer's role
-                // colour in every state except error (red stays sacred). Money
-                // colour now lives on the buttons inside the card, not the chrome.
-                // ROLE_COLOR_TEXT = light-mode-legible variant of the role hexes.
-                color: (myRole && nextStep.tone !== "red")
-                  ? ROLE_COLOR_TEXT[myRole as keyof typeof ROLE_COLOR_TEXT]
-                  : nextStep.color,
-                fontFamily: T.mono,
-                fontSize: 11,
-                fontWeight: 900,
-                letterSpacing: 1,
+                // v7 redesign: the kicker reads in the attention tone for a
+                // seated viewer ("Your next step"), semantic tones otherwise.
+                color: nextStep.tone === "red" ? T.crit
+                  : nextStep.tone === "green" ? T.pos
+                  : myRole ? T.attnInk : nextStep.color,
+                fontFamily: T.sans,
+                fontSize: T.fs.secondary,
+                fontWeight: 700,
               }}>
                 {nextStep.kicker}
               </div>}
               {activePane !== 1 && nextStepDisplayAmountMsats !== null && (
-                <BitcoinAmount msats={nextStepDisplayAmountMsats} size={12} gap={4} style={{ whiteSpace: "nowrap" }} />
+                <BitcoinAmount msats={nextStepDisplayAmountMsats} size={T.fs.secondary} gap={4} style={{ whiteSpace: "nowrap" }} />
               )}
             </div>
           )}
@@ -2131,7 +2118,7 @@ export function TradeDetail({
             <div style={{ marginTop: 12 }}>
               <CountdownTimer
                 expiresAt={liveJoinHold.expiresAt}
-                label={t("trade.lockWindowEndsIn", { role: roleDisplayName(liveLockWindowRole ?? liveJoinHold.role, t).toUpperCase() })}
+                label={t("trade.lockWindowEndsIn", { role: roleDisplayName(liveLockWindowRole ?? liveJoinHold.role, t) })}
               />
             </div>
           )}
@@ -2234,10 +2221,9 @@ export function TradeDetail({
                 />
               )}
 
-              <button
-                type="button"
-                disabled={(fiatCategory && !selectedHandleId) || locking || directNwcFundPhase !== null || fundingInProgress || !participants.buyer || fundUnavailable || lockBlockedByNoArbiter || menuSelectionMissing || menuOrderNotFinal}
-                title={fundingInProgress
+              {/* v7 redesign: fund-and-lock is a hold-to-confirm. The handler and
+                  every guard below are unchanged; only the gesture is new. */}
+              <div title={fundingInProgress
                   ? t("trade.fundingInProgressNote")
                   : receiveUnavailable
                     ? t("trade.receiveUnavailableTitle")
@@ -2247,8 +2233,14 @@ export function TradeDetail({
                     ? t("trade.mustPressReady", { role: roleDisplayName(menuSelectorRole, t) })
                   : menuSelectionMissing
                     ? menuSelectionTitle(state.category, t)
-                    : undefined}
-                onClick={async () => {
+                    : undefined}>
+              <HoldToConfirm
+                disabled={(fiatCategory && !selectedHandleId) || locking || directNwcFundPhase !== null || fundingInProgress || !participants.buyer || fundUnavailable || lockBlockedByNoArbiter || menuSelectionMissing || menuOrderNotFinal}
+                busy={locking || directNwcFundPhase !== null}
+                resetKey={`${state.id}:lock`}
+                hint={t("common.holdToConfirm")}
+                armedLabel={t("common.holdArmed")}
+                onConfirm={() => { void (async () => {
                   // v1.2.4: when the user has a saved NWC and the parent
                   // wired the direct path, skip the modal entirely. The
                   // direct path threads phase labels back via onPhase so
@@ -2285,23 +2277,8 @@ export function TradeDetail({
                   } finally {
                     setLocking(false);
                   }
-                }}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: 6,
-                  width: "100%", padding: "16px", borderRadius: T.rs,
-                  background: locking || fundingInProgress || !participants.buyer || fundUnavailable || lockBlockedByNoArbiter || menuSelectionMissing || menuOrderNotFinal
-                    ? T.surface
-                    : `linear-gradient(135deg, ${T.accent}, ${T.amber})`,
-                  border: "none",
-                  color: locking || fundingInProgress || !participants.buyer || fundUnavailable || lockBlockedByNoArbiter || menuSelectionMissing || menuOrderNotFinal ? T.muted : T.bg,
-                  fontFamily: T.mono, fontSize: 14, fontWeight: 800,
-                  cursor: locking || fundingInProgress || !participants.buyer || fundUnavailable || lockBlockedByNoArbiter || menuSelectionMissing || menuOrderNotFinal ? "default" : "pointer",
-                  letterSpacing: 0.5, transition: "all 0.2s",
-                }}
-              >
+                })(); }}
+                label={<>
                 {directNwcFundPhase
                   ? `${directNwcFundPhase}`
                   : locking
@@ -2323,7 +2300,9 @@ export function TradeDetail({
                             {t("trade.fundPrefix", { label: lockLabel })} <BitcoinAmount msats={lockAmountMsats} size={14} gap={4} glyphScale={1.18} color="inherit" glyphColor="inherit" />
                           </>
                         )}
-              </button>
+                </>}
+              />
+              </div>
               {/* v1.2.4: indeterminate progress strip under the Fund
                   button while the direct-NWC path is mid-action.
                   Cosmetic — the button label already shows the phase
@@ -2423,7 +2402,7 @@ export function TradeDetail({
               padding: "14px 0 0",
               marginTop: 16,
               borderTop: `1px solid ${T.border}`,
-              color: T.muted, fontFamily: T.mono, fontSize: 11,
+              color: T.muted, fontFamily: T.sans, fontSize: T.fs.secondary,
               lineHeight: 1.5, textAlign: "center", marginBottom: 16,
             }}>
               {votePrompt.message}
@@ -2482,7 +2461,7 @@ export function TradeDetail({
                 background: performRisk.loud ? T.redDim : T.amberDim,
                 border: `1px solid ${performRisk.loud ? T.red : T.amber}55`,
                 color: performRisk.loud ? T.red : T.amber,
-                fontFamily: T.mono, fontSize: 10, fontWeight: 700, lineHeight: 1.5,
+                fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700, lineHeight: 1.5,
               }}>
                 ⚠ {performRisk.line} {t("trade.riskProceed")}
               </div>
@@ -2500,13 +2479,13 @@ export function TradeDetail({
 
             const refundBg = isArbiter
               ? `${arbiterRefundColor}22`
-              : state.subscription ? T.redDim : T.amberDim;
+              : T.critBg;
             const refundBorder = isArbiter
               ? `${arbiterRefundColor}66`
-              : `${state.subscription ? T.red : T.amber}44`;
+              : "transparent";
             const refundText = isArbiter
               ? arbiterRefundColor
-              : state.subscription ? T.red : T.amber;
+              : T.crit;
             // Vote #1 (the off-chain deed-doer, zero votes cast): no real duality
             // exists yet — the voter has ONE task plus a back-out hatch, so the
             // primary button drops the protocol prefix and the refund demotes to a
@@ -2622,29 +2601,18 @@ export function TradeDetail({
                 ))}
               </div>
             );
+            // v7 redesign: release is a hold-to-confirm (replaces the armed
+            // tap-again). It fires exactly what the confirming second tap did.
             const releaseButton = showRelease ? (
-              <button
+              <HoldToConfirm
                 key="release"
-                className={releaseArmed ? "td-armed" : undefined}
                 disabled={voting}
-                onClick={() => armOrVote(Outcome.RELEASE)}
-                aria-label={releaseArmed ? t("trade.confirmAria", { text: releaseConfirm }) : t("trade.voteReleaseAria", { label: releaseLabel })}
-                style={{
-                  ...voteActionButtonStyle({
-                    disabled: voting,
-                    background: releaseArmed ? T.amberDim : releaseBg,
-                    border: releaseArmed ? `${T.amber}66` : releaseBorder,
-                    color: releaseArmed ? T.amber : releaseText,
-                  }),
-                  ...(releaseArmed ? { animation: "armPulse 1s ease-in-out infinite" } : {}),
-                }}
-              >
-                {releaseArmed ? (
-                  <span style={voteConfirmStackStyle}>
-                    <span style={voteConfirmEyebrowStyle}>{t("trade.tapAgainEyebrow")}</span>
-                    <span style={voteConfirmActionStyle}>{releaseArmedAction}</span>
-                  </span>
-                ) : (
+                busy={voting}
+                resetKey={`${state.id}:release`}
+                onConfirm={() => { disarmVote(); void handleVote(Outcome.RELEASE); }}
+                hint={t("common.holdToConfirm")}
+                armedLabel={t("common.holdArmed")}
+                label={
                   <span style={voteActionLabelStyle()}>
                     <span style={voteActionTitleStyle}>
                       <span aria-hidden="true" style={voteInlineIconStyle}>
@@ -2654,8 +2622,8 @@ export function TradeDetail({
                     </span>
                     {releaseCopy.detail && <span style={voteActionDetailStyle}>{releaseCopy.detail}</span>}
                   </span>
-                )}
-              </button>
+                }
+              />
             ) : null;
             const refundButton = showRefund ? (
               <button
@@ -2722,7 +2690,7 @@ export function TradeDetail({
                         border: `1px dashed ${T.border}`,
                         borderRadius: T.rs,
                         color: T.muted,
-                        fontFamily: T.mono, fontSize: 11, fontWeight: 700,
+                        fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
                         cursor: voting ? "default" : "pointer",
                       }}
                     >
@@ -2733,10 +2701,10 @@ export function TradeDetail({
                       marginTop: 10, padding: "10px 12px", borderRadius: T.rs,
                       background: T.amberDim, border: `1px solid ${T.amber}66`,
                     }}>
-                      <div style={{ color: T.amber, fontFamily: T.mono, fontSize: 11, fontWeight: 700, marginBottom: 4 }}>
+                      <div style={{ color: T.amber, fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700, marginBottom: 4 }}>
                         {t("trade.backOutQuestion")}
                       </div>
-                      <div style={{ color: T.muted, fontFamily: T.mono, fontSize: 10, lineHeight: 1.5, marginBottom: 10 }}>
+                      <div style={{ color: T.muted, fontFamily: T.sans, fontSize: T.fs.secondary, lineHeight: 1.5, marginBottom: 10 }}>
                         {t("trade.castsRefundVote", { routing: cancelRouting })}{" "}
                         {deedDonePrompt(state.category, t)} {t("trade.dontBackOut")}
                       </div>
@@ -2746,15 +2714,15 @@ export function TradeDetail({
                           onClick={() => { setCancelArmed(false); handleVote(Outcome.RELEASE); }}
                           style={{
                             width: "100%", padding: "9px 10px", borderRadius: T.rs,
-                            background: T.accent, border: `1px solid ${T.accent}`, color: "#000",
-                            fontFamily: T.mono, fontSize: 11, fontWeight: 800,
+                            background: T.accent, border: `1px solid ${T.accent}`, color: T.onInk,
+                            fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
                             cursor: voting ? "default" : "pointer",
                           }}
                         >
                           {t("trade.markItDone")}
                         </button>
                         {/* …or back out, tapping the reason — it rides into chat. */}
-                        <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono, marginBottom: 1 }}>
+                        <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, marginBottom: 1 }}>
                           {t("trade.orBackOutReason", { routing: cancelRouting })}
                         </div>
                         {reasonChips(reason => { setCancelArmed(false); onSendChat(reason); handleVote(Outcome.REFUND); })}
@@ -2764,7 +2732,7 @@ export function TradeDetail({
                           style={{
                             width: "100%", padding: "8px 10px", borderRadius: T.rs,
                             background: "none", border: `1px dashed ${T.amber}66`, color: T.amber,
-                            fontFamily: T.mono, fontSize: 10, fontWeight: 700,
+                            fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
                             cursor: voting ? "default" : "pointer",
                           }}
                         >
@@ -2787,7 +2755,7 @@ export function TradeDetail({
                     background: T.amberDim, border: `1px solid ${T.amber}55`,
                     borderRadius: T.r, padding: 14,
                   }}>
-                    <div style={{ color: T.amber, fontFamily: T.mono, fontSize: 11, fontWeight: 800, letterSpacing: 0.5, marginBottom: 10 }}>
+                    <div style={{ color: T.amber, fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700, marginBottom: 10 }}>
                       {t("trade.refundWhy", { amount: amtLabel })}
                     </div>
                     {reasonChips(reason => { disarmVote(); onSendChat(reason); handleVote(Outcome.REFUND); })}
@@ -2796,14 +2764,14 @@ export function TradeDetail({
                         type="button"
                         disabled={voting}
                         onClick={() => { disarmVote(); handleVote(Outcome.REFUND); }}
-                        style={{ background: "none", border: "none", color: T.amber, fontFamily: T.mono, fontSize: 11, fontWeight: 700, cursor: voting ? "default" : "pointer", padding: "4px 0" }}
+                        style={{ background: "none", border: "none", color: T.amber, fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700, cursor: voting ? "default" : "pointer", padding: "4px 0" }}
                       >
                         {t("trade.refundNoNote")}
                       </button>
                       <button
                         type="button"
                         onClick={disarmVote}
-                        style={{ marginLeft: "auto", background: "none", border: "none", color: T.muted, fontFamily: T.mono, fontSize: 11, cursor: "pointer", padding: "4px 0" }}
+                        style={{ marginLeft: "auto", background: "none", border: "none", color: T.muted, fontFamily: T.sans, fontSize: T.fs.secondary, cursor: "pointer", padding: "4px 0" }}
                       >
                         {t("common.cancel")}
                       </button>
@@ -2818,7 +2786,9 @@ export function TradeDetail({
             return (
               <div className="trade-vote-actions" style={{
                 display: "grid",
-                gridTemplateColumns: showRelease && showRefund ? "minmax(0, 1fr) minmax(0, 1fr)" : "1fr",
+                // v7 redesign: side by side only where both fit at the larger
+                // type; stacked on phones so the hold's caption never cramps.
+                gridTemplateColumns: showRelease && showRefund ? "repeat(auto-fit, minmax(min(100%, 240px), 1fr))" : "1fr",
                 gap: 10,
                 marginBottom: 16,
               }}>
@@ -2862,9 +2832,18 @@ export function TradeDetail({
                 />
               )}
 
-              <PaymentButton tier="primary"
+              {/* v7 redesign: collecting is a hold-to-confirm; same handler.
+                  Option b: when this only OPENS the claim sheet (which holds on
+                  the final send) it is a plain tap — but it stays a hold when it
+                  pays directly (saved NWC wallet) or inside Fedi. */}
+              <HoldToConfirm
+                plain={!(collectIsHold() || (!forceClaimMethodChooser && !!activeNwc && !!onClaimDirectNwc))}
                 disabled={claiming || directNwcClaimPhase !== null || bootProbeFailed || claimRetryBlocked || payoutConfirming}
-                onClick={async () => {
+                busy={claiming || directNwcClaimPhase !== null}
+                resetKey={`${state.id}:claim:${state.status}`}
+                hint={t("common.holdToConfirm")}
+                armedLabel={t("common.holdArmed")}
+                onConfirm={() => { void (async () => {
                   // v1.2.4: direct-NWC claim path. Saved NWC wallet skips
                   // the ClaimPayoutModal chooser → resolveNwcConnectionToInvoice
                   // → claimAndPayout in one shot, all from the button.
@@ -2886,8 +2865,8 @@ export function TradeDetail({
                   } finally {
                     setClaiming(false);
                   }
-                }}
-                style={{ width: "100%", fontSize: 15 }}>
+                })(); }}
+                label={<>
                 {directNwcClaimPhase
                   ? directNwcClaimPhase
                   : payoutConfirming
@@ -2901,7 +2880,8 @@ export function TradeDetail({
                         ? t("trade.retryClaimVia", { wallet: activeNwc.label })
                         : t("trade.claimSatsVia", { wallet: activeNwc.label }))
                     : state.status === EscrowStatus.CLAIMED ? t("trade.retryClaim") : t("trade.claimSats")}
-              </PaymentButton>
+                </>}
+              />
               {/* v1.2.4: same indeterminate progress strip under the
                   Claim button while the direct-NWC claim is mid-action.
                   Mirror of the Fund strip — purely cosmetic, since the
@@ -2953,7 +2933,7 @@ export function TradeDetail({
               {claimRetryBlocked && (
                 <div style={{
                   textAlign: "center", marginTop: 8,
-                  fontSize: 10, color: T.red, fontFamily: T.mono,
+                  fontSize: T.fs.secondary, color: T.red, fontFamily: T.sans,
                 }}>
                   {t("trade.ecashRedeemFailed")}
                 </div>
@@ -2961,7 +2941,7 @@ export function TradeDetail({
               {!bootProbeFailed && !claimRetryBlocked && state.status === EscrowStatus.CLAIMED && (
                 <div style={{
                   textAlign: "center", marginTop: 8,
-                  fontSize: 10, color: payoutConfirming ? T.green : T.amber, fontFamily: T.mono,
+                  fontSize: T.fs.secondary, color: payoutConfirming ? T.green : T.amber, fontFamily: T.sans,
                 }}>
                   {payoutConfirming
                     ? t("trade.payoutConfirmingNote")
@@ -2996,7 +2976,7 @@ export function TradeDetail({
                   background: draftCancelArmed ? T.amberDim : "transparent",
                   border: `1px ${draftCancelArmed ? "solid" : "dashed"} ${draftCancelArmed ? T.amber + "77" : T.border}`,
                   color: draftCancelArmed ? T.amber : T.muted,
-                  fontFamily: T.mono, fontSize: 11, fontWeight: 800,
+                  fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
                   cursor: draftCancelling ? "default" : "pointer",
                 }}
               >
@@ -3006,7 +2986,7 @@ export function TradeDetail({
                     ? t("trade.confirmCancelDraftOrder")
                     : t("trade.cancelDraftOrder")}
               </button>
-              <div style={{ marginTop: 6, color: T.muted, fontFamily: T.mono, fontSize: 9.5, lineHeight: 1.45, textAlign: "center" }}>
+              <div style={{ marginTop: 6, color: T.muted, fontFamily: T.sans, fontSize: T.fs.secondary, lineHeight: 1.45, textAlign: "center" }}>
                 {t("trade.cancelDraftOrderNote")}
               </div>
             </div>
@@ -3020,12 +3000,12 @@ export function TradeDetail({
               marginBottom: 16,
               borderTop: `1px solid ${T.border}`,
             }}>
-              <div style={{ fontSize: 11, fontWeight: 600, color: T.muted, fontFamily: T.mono, letterSpacing: 1, marginBottom: 12 }}>
+              <div style={{ fontSize: T.fs.secondary, fontWeight: 600, color: T.muted, fontFamily: T.sans, marginBottom: 12 }}>
                 {isMultiUnitParent ? t("trade.buyFromListing") : t("trade.joinThisTrade")}
               </div>
               {isMultiUnitParent && onPurchase && (
                 soldOut ? (
-                  <div style={{ padding: "12px 14px", borderRadius: T.rs, background: T.surface, border: `1px solid ${T.border}`, color: T.muted, fontFamily: T.mono, fontSize: 12, fontWeight: 700, textAlign: "center", letterSpacing: 0.5 }}>
+                  <div style={{ padding: "12px 14px", borderRadius: T.rs, background: T.surface, border: `1px solid ${T.border}`, color: T.muted, fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700, textAlign: "center",}}>
                     {t("trade.soldOut")}
                   </div>
                 ) : (
@@ -3033,12 +3013,12 @@ export function TradeDetail({
                   <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
                     <button type="button" disabled={purchasing || buyQtyClamped <= 1}
                       onClick={() => setBuyQty(q => Math.max(1, Math.min(q, buyMax) - 1))}
-                      style={{ width: 40, height: 40, borderRadius: T.rs, background: T.surface, border: `1px solid ${T.border}`, color: T.text, fontFamily: T.mono, fontSize: 18, fontWeight: 800, cursor: (purchasing || buyQtyClamped <= 1) ? "default" : "pointer" }}>−</button>
-                    <div style={{ minWidth: 44, textAlign: "center", fontFamily: T.mono, fontSize: 18, fontWeight: 800, color: T.text }}>{buyQtyClamped}</div>
+                      style={{ width: 40, height: 40, borderRadius: T.rs, background: T.surface, border: `1px solid ${T.border}`, color: T.text, fontFamily: T.sans, fontSize: 18, fontWeight: 700, cursor: (purchasing || buyQtyClamped <= 1) ? "default" : "pointer" }}>−</button>
+                    <div style={{ minWidth: 44, textAlign: "center", fontFamily: T.sans, fontSize: 18, fontWeight: 700, color: T.text }}>{buyQtyClamped}</div>
                     <button type="button" disabled={purchasing || buyQtyClamped >= buyMax}
                       onClick={() => setBuyQty(q => Math.min(buyMax, q + 1))}
-                      style={{ width: 40, height: 40, borderRadius: T.rs, background: T.surface, border: `1px solid ${T.border}`, color: T.text, fontFamily: T.mono, fontSize: 18, fontWeight: 800, cursor: (purchasing || buyQtyClamped >= buyMax) ? "default" : "pointer" }}>+</button>
-                    <div style={{ color: T.muted, fontFamily: T.mono, fontSize: 11, marginLeft: 4 }}>
+                      style={{ width: 40, height: 40, borderRadius: T.rs, background: T.surface, border: `1px solid ${T.border}`, color: T.text, fontFamily: T.sans, fontSize: 18, fontWeight: 700, cursor: (purchasing || buyQtyClamped >= buyMax) ? "default" : "pointer" }}>+</button>
+                    <div style={{ color: T.muted, fontFamily: T.sans, fontSize: T.fs.secondary, marginLeft: 4 }}>
                       {typeof stockLeft === "number" ? t("trade.stockLeft", { count: stockLeft }) : t("trade.inStock", { count: state.stock ?? 0 })}
                     </div>
                   </div>
@@ -3050,7 +3030,7 @@ export function TradeDetail({
                     style={{
                       width: "100%", padding: "14px", borderRadius: T.rs,
                       background: T.accentDim, border: `1px solid ${T.accent}44`,
-                      color: T.accent, fontFamily: T.mono, fontSize: 13, fontWeight: 700,
+                      color: T.accent, fontFamily: T.sans, fontSize: 13, fontWeight: 700,
                       cursor: purchasing ? "default" : "pointer",
                     }}>
                     {purchasing ? t("trade.startingOrder") : (buyQtyClamped > 1 ? t("trade.buyUnitsMany", { count: buyQtyClamped }) : t("trade.buyUnitsOne", { count: buyQtyClamped }))}
@@ -3073,7 +3053,7 @@ export function TradeDetail({
                   }} style={{
                     flex: 1, padding: "14px", borderRadius: T.rs,
                     background: `${ROLE_COLOR.buyer}22`, border: `1px solid ${ROLE_COLOR.buyer}44`,
-                    color: ROLE_COLOR.buyer, fontFamily: T.mono, fontSize: 13, fontWeight: 700,
+                    color: ROLE_COLOR.buyer, fontFamily: T.sans, fontSize: 13, fontWeight: 700,
                     cursor: joining ? "default" : "pointer", transition: "all 0.2s",
                   }}>
                     {joining ? t("trade.joining") : t("trade.joinAsBuyer")}
@@ -3098,7 +3078,7 @@ export function TradeDetail({
                   }} style={{
                     flex: 1, padding: "14px", borderRadius: T.rs,
                     background: `${ROLE_COLOR.arbiter}22`, border: `1px solid ${ROLE_COLOR.arbiter}44`,
-                    color: ROLE_COLOR.arbiter, fontFamily: T.mono, fontSize: 13, fontWeight: 700,
+                    color: ROLE_COLOR.arbiter, fontFamily: T.sans, fontSize: 13, fontWeight: 700,
                     cursor: joining ? "default" : "pointer", transition: "all 0.2s",
                   }}>
                     {joining ? t("trade.joining")
@@ -3117,7 +3097,7 @@ export function TradeDetail({
                 }} style={{
                   width: "100%", marginTop: 10, padding: "14px", borderRadius: T.rs,
                   background: `${ROLE_COLOR.seller}22`, border: `1px solid ${ROLE_COLOR.seller}44`,
-                  color: ROLE_COLOR.seller, fontFamily: T.mono, fontSize: 13, fontWeight: 700,
+                  color: ROLE_COLOR.seller, fontFamily: T.sans, fontSize: 13, fontWeight: 700,
                   cursor: joining ? "default" : "pointer", transition: "all 0.2s",
                 }}>
                   {joining ? t("trade.joining") : t("trade.joinAsSeller")}
@@ -3135,7 +3115,7 @@ export function TradeDetail({
               onClick={() => goPane(0)}
               style={{
                 background: "none", border: "none", padding: "10px 0 0",
-                color: ROLE_COLOR_TEXT.arbiter, fontFamily: T.mono, fontSize: 12,
+                color: ROLE_COLOR_TEXT.arbiter, fontFamily: T.sans, fontSize: T.fs.secondary,
                 fontWeight: 700, cursor: "pointer", textAlign: "left",
               }}
             >
@@ -3237,7 +3217,7 @@ export function TradeDetail({
                   display: "inline-flex", alignItems: "center", gap: 5,
                   padding: "5px 11px", borderRadius: 999,
                   background: T.surface, border: `1px solid ${T.border}`,
-                  color: T.text, fontFamily: T.mono, fontSize: 11, fontWeight: 700,
+                  color: T.text, fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
                 }}>
                   <span aria-hidden="true">{billTypeChip.icon}</span>
                   {billTypeChip.label}
@@ -3250,21 +3230,23 @@ export function TradeDetail({
                 carries the direction, so there's zero ambiguity. */}
             {state.status === EscrowStatus.LOCKED && checkoutFiatLabel && fiatPayerRole && (
               <div style={{
-                background: myRole === fiatPayerRole ? `${ROLE_COLOR.buyer}14` : T.card,
-                border: `1px solid ${myRole === fiatPayerRole ? ROLE_COLOR.buyer + "55" : T.border}`,
-                borderRadius: T.r,
+                // v7 redesign: what you owe is a task (attention ring), not a
+                // role tint; everyone else sees a plain surface card.
+                background: T.surface,
+                border: myRole === fiatPayerRole ? `2px solid ${T.attn}` : `1px solid ${T.line}`,
+                borderRadius: T.rCard,
                 padding: "13px 14px",
                 marginBottom: 12,
                 textAlign: "center" as const,
               }}>
-                <div style={{ fontFamily: T.mono, fontSize: 9.5, fontWeight: 800, letterSpacing: 1.2, color: T.muted, marginBottom: 5 }}>
+                <div style={{ fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700, color: myRole === fiatPayerRole ? T.attnInk : T.ink2, marginBottom: 5 }}>
                   {myRole === fiatPayerRole ? t("trade.youOwe") : myRole === Role.SELLER ? t("trade.youllReceive") : t("trade.fiatDue")}
                 </div>
-                <div style={{ fontFamily: T.sans, fontSize: 30, fontWeight: 900, color: T.text, lineHeight: 1.05 }}>
+                <div style={{ fontFamily: T.sans, fontSize: T.fs.amount, fontWeight: 700, color: T.ink, lineHeight: 1.1, fontVariantNumeric: "tabular-nums", overflowWrap: "anywhere" }}>
                   {checkoutFiatLabel}
                 </div>
                 {premiumCheckoutLine && (
-                  <div style={{ fontFamily: T.mono, fontSize: 10, color: T.muted, marginTop: 6, lineHeight: 1.4 }}>
+                  <div style={{ fontFamily: T.sans, fontSize: T.fs.secondary, color: T.ink2, marginTop: 6, lineHeight: 1.4 }}>
                     {premiumCheckoutLine}
                   </div>
                 )}
@@ -3297,24 +3279,25 @@ export function TradeDetail({
             }}>
               {showHeroFiat ? (
                 <div className="trade-detail-amount" style={{
-                  color: T.accent,
-                  fontFamily: T.mono,
-                  fontSize: 32,
-                  fontWeight: 900,
-                  lineHeight: 1,
-                  letterSpacing: 0,
+                  color: T.ink,
+                  fontFamily: T.sans,
+                  fontSize: T.fs.amount,
+                  fontWeight: 700,
+                  lineHeight: 1.1,
+                  fontVariantNumeric: "tabular-nums",
+                  overflowWrap: "anywhere",
                 }}>
                   {heroFiatLabel}
                 </div>
               ) : (
-                <BitcoinAmount className="trade-detail-amount" msats={heroAmountMsats} size={34} gap={7} glyphScale={1.12} />
+                <BitcoinAmount className="trade-detail-amount" msats={heroAmountMsats} size={T.fs.amount} gap={7} glyphScale={0.9} color={T.ink} glyphColor={T.ink2} />
               )}
             </div>
             <div style={{
               marginTop: 7,
               color: T.muted,
-              fontFamily: T.mono,
-              fontSize: 10,
+              fontFamily: T.sans,
+              fontSize: T.fs.secondary,
               lineHeight: 1.45,
             }}>
               {heroMetaParts.join(" · ")}
@@ -3332,9 +3315,9 @@ export function TradeDetail({
                 background: `linear-gradient(135deg, ${T.amber}2b, ${T.green}18)`,
                 border: `1px solid ${T.amber}55`,
                 color: T.amber,
-                fontFamily: T.mono,
-                fontSize: 10,
-                fontWeight: 900,
+                fontFamily: T.sans,
+                fontSize: T.fs.secondary,
+                fontWeight: 700,
                 maxWidth: "100%",
               }}>
                 <span aria-hidden="true">★</span>
@@ -3361,21 +3344,20 @@ export function TradeDetail({
             marginBottom: 12,
           }}>
             <div style={{
-              fontSize: 11,
+              fontSize: T.fs.secondary,
               fontWeight: 700,
               color: T.muted,
-              fontFamily: T.mono,
-              letterSpacing: 1,
+              fontFamily: T.sans,
             }}>
               {state.status === EscrowStatus.CREATED && !canSelectMenu
-                ? t("trade.roleCart", { role: roleDisplayName(menuSelectorRole, t).toUpperCase() })
+                ? t("trade.roleCart", { role: roleDisplayName(menuSelectorRole, t) })
                 : menuHeaderTitle(state.category, state.status === EscrowStatus.CREATED, t)}
             </div>
             <div style={{
               color: T.accent,
-              fontFamily: T.mono,
+              fontFamily: T.sans,
               fontSize: 13,
-              fontWeight: 800,
+              fontWeight: 700,
               display: "inline-flex",
               justifyContent: "flex-end",
               minWidth: 96,
@@ -3414,8 +3396,8 @@ export function TradeDetail({
                 border: `1px dashed ${T.border}`,
                 borderRadius: T.rs,
                 color: T.muted,
-                fontFamily: T.mono,
-                fontSize: 11,
+                fontFamily: T.sans,
+                fontSize: T.fs.secondary,
                 lineHeight: 1.55,
                 textAlign: "center",
               }}>
@@ -3491,9 +3473,9 @@ export function TradeDetail({
                     </div>
                     <div style={{
                       marginTop: 3,
-                      fontSize: 10,
+                      fontSize: T.fs.secondary,
                       color: T.muted,
-                      fontFamily: T.mono,
+                      fontFamily: T.sans,
                     }}>
                       {menuAmountLabel(item)}
                       {"quantity" in item && item.quantity > 1 ? ` × ${item.quantity}` : ""}
@@ -3502,9 +3484,9 @@ export function TradeDetail({
                     {metaLine && (
                       <div style={{
                         marginTop: 3,
-                        fontSize: 9,
+                        fontSize: T.fs.secondary,
                         color: T.muted,
-                        fontFamily: T.mono,
+                        fontFamily: T.sans,
                         overflow: "hidden",
                         textOverflow: "ellipsis",
                         whiteSpace: "nowrap" as const,
@@ -3554,9 +3536,9 @@ export function TradeDetail({
                         minWidth: 18,
                         textAlign: "center",
                         color: qty > 0 ? T.accent : T.muted,
-                        fontFamily: T.mono,
-                        fontSize: 12,
-                        fontWeight: 800,
+                        fontFamily: T.sans,
+                        fontSize: T.fs.secondary,
+                        fontWeight: 700,
                       }}>
                         {qty}
                       </span>
@@ -3573,16 +3555,16 @@ export function TradeDetail({
                   ) : (
                     <div style={{
                       color: selected ? T.accent : T.muted,
-                      fontFamily: T.mono,
-                      fontSize: 12,
-                      fontWeight: 800,
+                      fontFamily: T.sans,
+                      fontSize: T.fs.secondary,
+                      fontWeight: 700,
                     }}>
                       {selected
                         ? hasExchangeMenu && savedOrderItem
                           ? (
                             <BitcoinAmount
                               msats={savedOrderItem.amountMsats}
-                              size={12}
+                              size={T.fs.secondary}
                               gap={4}
                               glyphScale={1.18}
                             />
@@ -3624,9 +3606,9 @@ export function TradeDetail({
                   border: `1px solid ${selectedMenuItems.length > 0 && !selectionMatchesSavedOrder ? T.border : T.border}`,
                   background: T.surface,
                   color: selectedMenuItems.length > 0 && !selectionMatchesSavedOrder ? T.text : T.muted,
-                  fontFamily: T.mono,
-                  fontSize: 11,
-                  fontWeight: 900,
+                  fontFamily: T.sans,
+                  fontSize: T.fs.secondary,
+                  fontWeight: 700,
                   cursor: joining || selectedMenuItems.length === 0 || selectionMatchesSavedOrder ? "default" : "pointer",
                 }}
               >
@@ -3638,7 +3620,7 @@ export function TradeDetail({
                       ? menuSelectionButtonLabel(state.category, t)
                       : (
                         <>
-                          {t("trade.saveCartPrefix")} <BitcoinAmount msats={selectedMenuAmountMsats} size={11} gap={4} glyphScale={1.18} color="inherit" glyphColor="inherit" />
+                          {t("trade.saveCartPrefix")} <BitcoinAmount msats={selectedMenuAmountMsats} size={T.fs.secondary} gap={4} glyphScale={1.18} color="inherit" glyphColor="inherit" />
                         </>
                       )}
               </button>
@@ -3663,9 +3645,9 @@ export function TradeDetail({
                   border: `1px solid ${selectedMenuItems.length > 0 ? T.accent + "66" : T.border}`,
                   background: selectedMenuItems.length > 0 ? T.accentDim : T.surface,
                   color: selectedMenuItems.length > 0 ? T.accent : T.muted,
-                  fontFamily: T.mono,
-                  fontSize: 11,
-                  fontWeight: 900,
+                  fontFamily: T.sans,
+                  fontSize: T.fs.secondary,
+                  fontWeight: 700,
                   cursor: joining || selectedMenuItems.length === 0 ? "default" : "pointer",
                 }}
               >
@@ -3675,7 +3657,7 @@ export function TradeDetail({
                     ? t("trade.notReady")
                     : (
                       <>
-                        {t("trade.readyPrefix")} <BitcoinAmount msats={selectedMenuAmountMsats} size={11} gap={4} glyphScale={1.18} color="inherit" glyphColor="inherit" />
+                        {t("trade.readyPrefix")} <BitcoinAmount msats={selectedMenuAmountMsats} size={T.fs.secondary} gap={4} glyphScale={1.18} color="inherit" glyphColor="inherit" />
                       </>
                     )}
               </button>
@@ -3693,11 +3675,10 @@ export function TradeDetail({
           marginBottom: 12,
         }}>
           <div style={{
-            fontSize: 11,
+            fontSize: T.fs.secondary,
             fontWeight: 700,
             color: T.muted,
-            fontFamily: T.mono,
-            letterSpacing: 1,
+            fontFamily: T.sans,
             marginBottom: 9,
           }}>
             {t("trade.tradeTerms")}
@@ -3720,9 +3701,9 @@ export function TradeDetail({
                         background: isShared ? `${T.green}22` : T.surface,
                         border: `1px solid ${isShared ? T.green : T.border}`,
                         color: isShared ? T.green : T.text,
-                        fontFamily: T.mono,
-                        fontSize: 11,
-                        fontWeight: 800,
+                        fontFamily: T.sans,
+                        fontSize: T.fs.secondary,
+                        fontWeight: 700,
                       }}
                     >
                       {isShared ? "✓ " : ""}{method}
@@ -3747,8 +3728,8 @@ export function TradeDetail({
               justifyContent: "space-between",
               gap: 10,
               color: T.amber,
-              fontFamily: T.mono,
-              fontSize: 11,
+              fontFamily: T.sans,
+              fontSize: T.fs.secondary,
               lineHeight: 1.4,
             }}>
               <span style={{ color: T.muted, fontWeight: 800, letterSpacing: 0.7 }}>{t("trade.premiumLabel")}</span>
@@ -3778,7 +3759,7 @@ export function TradeDetail({
           marginBottom: 12,
         }}>
           <div style={{ minWidth: 0 }}>
-            <div style={{ color: T.text, fontFamily: T.mono, fontSize: 11, fontWeight: 800 }}>
+            <div style={{ color: T.text, fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700 }}>
               {t("trade.nostrListing")}
             </div>
             <div style={{ color: T.muted, fontSize: 10, lineHeight: 1.45, marginTop: 2 }}>
@@ -3794,9 +3775,9 @@ export function TradeDetail({
               border: `1px solid ${T.accent}`,
               borderRadius: T.rs,
               color: T.accent,
-              fontFamily: T.mono,
-              fontSize: 10,
-              fontWeight: 800,
+              fontFamily: T.sans,
+              fontSize: T.fs.secondary,
+              fontWeight: 700,
               padding: "7px 10px",
               whiteSpace: "nowrap",
             }}
@@ -3811,7 +3792,7 @@ export function TradeDetail({
       {showVerboseRouteEducation && state.status === EscrowStatus.CREATED && framing.kind === "state-a" && (
         <div style={{
           padding: "8px 12px", marginBottom: 12,
-          fontSize: 11, color: T.muted, fontFamily: T.mono,
+          fontSize: T.fs.secondary, color: T.ink2, fontFamily: T.sans,
           textAlign: "center" as const, lineHeight: 1.5,
         }}>
           {framing.sameFedSameCommunity
@@ -3832,8 +3813,7 @@ export function TradeDetail({
           borderRadius: T.r,
         }}>
           <div style={{
-            fontSize: 11, fontWeight: 700, color: T.accent, fontFamily: T.mono,
-            letterSpacing: 1, marginBottom: 8,
+            fontSize: T.fs.secondary, fontWeight: 700, color: T.accent, fontFamily: T.sans, marginBottom: 8,
           }}>
             {t("trade.stateBHeadsUp")}
           </div>
@@ -3852,9 +3832,9 @@ export function TradeDetail({
             }}
             style={{
               background: "none", border: `1px solid ${T.accent}66`,
-              color: T.accent, fontFamily: T.mono, fontSize: 11, fontWeight: 700,
+              color: T.accent, fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
               padding: "6px 12px", borderRadius: T.rs,
-              cursor: "pointer", letterSpacing: 0.3,
+              cursor: "pointer",
             }}
           >
             {t("trade.gotIt")}
@@ -3868,8 +3848,7 @@ export function TradeDetail({
           borderRadius: T.rs,
         }}>
           <div style={{
-            fontSize: 11, fontWeight: 700, color: T.amber, fontFamily: T.mono,
-            letterSpacing: 1, marginBottom: 8,
+            fontSize: T.fs.secondary, fontWeight: 700, color: T.amber, fontFamily: T.sans, marginBottom: 8,
           }}>
             {t("trade.crossFederation")}
           </div>
@@ -3882,7 +3861,7 @@ export function TradeDetail({
           {/* v0.3.0 Phase 6: educational essay moved to the one-time
               card above. This callout is now a single reassuring
               sentence, the only thing returning State-B users see. */}
-          <div style={{ fontSize: 11, color: T.muted, fontFamily: T.mono, lineHeight: 1.5 }}>
+          <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, lineHeight: 1.5 }}>
             {t("trade.switchedAutomatically")}
           </div>
         </div>
@@ -3923,7 +3902,7 @@ export function TradeDetail({
                 padding: "12px 14px", borderRadius: 8, textAlign: "center",
                 background: T.amberDim, border: `1px solid ${T.amber}44`,
               }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: T.amber, fontFamily: T.mono }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: T.amber, fontFamily: T.sans }}>
                   {isExpired ? t("trade.expiredArbiterDecides") : t("trade.releaseVoteIn")}
                 </div>
                 <div style={{ fontSize: 11, color: T.text, fontFamily: T.sans, marginTop: 6 }}>
@@ -3931,7 +3910,7 @@ export function TradeDetail({
                     ? t("trade.expiredNoAutoRefund")
                     : t("trade.deadlineGoesToArbiter")}
                 </div>
-                <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono, marginTop: 6 }}>
+                <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, marginTop: 6 }}>
                   {t("trade.latestChamaNote")}
                 </div>
               </div>
@@ -3940,13 +3919,13 @@ export function TradeDetail({
                 padding: "14px 16px", borderRadius: 8, textAlign: "center",
                 background: T.redDim, border: `1px solid ${T.red}44`,
               }}>
-                <div style={{ fontSize: 14, fontWeight: 700, color: T.red, fontFamily: T.mono }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: T.red, fontFamily: T.sans }}>
                   {t("trade.tradeExpired")}
                 </div>
                 <div style={{ fontSize: 11, color: T.text, fontFamily: T.sans, marginTop: 6 }}>
                   {t("trade.arbiterAutoRefund")}
                 </div>
-                <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono, marginTop: 4 }}>
+                <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, marginTop: 4 }}>
                   {t("trade.satsReturnedAuto", { party: refundRecipientFor(state.category) === "seller" ? t("trade.sellerNoun") : t("trade.buyerNoun") })}
                 </div>
               </div>
@@ -3957,7 +3936,7 @@ export function TradeDetail({
                 border: `1px solid ${isUrgent ? T.red + "33" : T.amber + "22"}`,
               }}>
                 <span style={{
-                  fontSize: 10, fontFamily: T.mono,
+                  fontSize: T.fs.secondary, fontFamily: T.sans,
                   color: isUrgent ? T.red : T.amber,
                 }}>
                   {isUrgent ? `${t("trade.expiringSoon")} ` : "⏱️ "}
@@ -3978,17 +3957,16 @@ export function TradeDetail({
           border: `1px solid ${T.amber}55`,
         }}>
           <div style={{
-            fontSize: 11, fontWeight: 800, color: T.amber, fontFamily: T.mono,
-            letterSpacing: 1, marginBottom: 8,
+            fontSize: T.fs.secondary, fontWeight: 700, color: T.amber, fontFamily: T.sans, marginBottom: 8,
           }}>
-            {t("trade.reservedByOther", { role: roleDisplayName(reservedByOther.role, t).toUpperCase() })}
+            {t("trade.reservedByOther", { role: roleDisplayName(reservedByOther.role, t) })}
           </div>
           <CountdownTimer
             expiresAt={reservedByOther.expiresAt}
             label={t("trade.freesUpIn")}
           />
           <div style={{
-            marginTop: 8, fontSize: 10, color: T.muted, fontFamily: T.mono, lineHeight: 1.5,
+            marginTop: 8, fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, lineHeight: 1.5,
           }}>
             {t("trade.reservedNote")}
           </div>
@@ -4007,7 +3985,7 @@ export function TradeDetail({
           <CountdownTimer
             expiresAt={liveJoinHold?.expiresAt ?? state.expiresAt}
             label={liveJoinHold
-              ? t("trade.lockWindowEndsIn", { role: roleDisplayName(liveLockWindowRole ?? liveJoinHold.role, t).toUpperCase() })
+              ? t("trade.lockWindowEndsIn", { role: roleDisplayName(liveLockWindowRole ?? liveJoinHold.role, t) })
               : state.status === EscrowStatus.CREATED ? t("trade.listingExpiresIn") : t("trade.tradeExpiresIn")}
           />
         </div>
@@ -4025,13 +4003,13 @@ export function TradeDetail({
             background: T.surface, border: `1px dashed ${T.border}`,
             borderRadius: T.rs,
           }}>
-            <div style={{ fontFamily: T.mono, fontSize: 11, color: T.muted }}>
+            <div style={{ fontFamily: T.sans, fontSize: T.fs.secondary, color: T.muted }}>
               {t("trade.draftOrderForming")}
             </div>
             <div style={{
               marginTop: 7, display: "flex", alignItems: "center",
               justifyContent: "center", gap: 7,
-              fontFamily: T.mono, fontSize: 11,
+              fontFamily: T.sans, fontSize: T.fs.secondary,
             }}>
               <span style={{
                 width: 7, height: 7, borderRadius: 999,
@@ -4086,19 +4064,18 @@ export function TradeDetail({
               marginBottom: 10,
             }}>
               <div style={{
-                fontSize: 11,
+                fontSize: T.fs.secondary,
                 fontWeight: 700,
                 color: T.muted,
-                fontFamily: T.mono,
-                letterSpacing: 1,
+                fontFamily: T.sans,
               }}>
                 {t("trade.buyerAttempts")}
               </div>
               <div style={{
                 color: T.amber,
-                fontFamily: T.mono,
-                fontSize: 10,
-                fontWeight: 900,
+                fontFamily: T.sans,
+                fontSize: T.fs.secondary,
+                fontWeight: 700,
               }}>
                 {buyerAttemptRows.length === 1 ? t("trade.eventCountOne", { count: buyerAttemptRows.length }) : t("trade.eventCountMany", { count: buyerAttemptRows.length })}
               </div>
@@ -4126,10 +4103,9 @@ export function TradeDetail({
                     }}>
                       <span style={{
                         color: attempt.isLive ? T.accent : T.muted,
-                        fontFamily: T.mono,
-                        fontSize: 10,
+                        fontFamily: T.sans,
+                        fontSize: T.fs.secondary,
                         fontWeight: 900,
-                        textTransform: "uppercase",
                       }}>
                         {attempt.statusLabel}
                       </span>
@@ -4147,8 +4123,8 @@ export function TradeDetail({
                     <div style={{
                       marginTop: 4,
                       color: T.muted,
-                      fontFamily: T.mono,
-                      fontSize: 10,
+                      fontFamily: T.sans,
+                      fontSize: T.fs.secondary,
                       lineHeight: 1.4,
                     }}>
                       {attempt.selectedCount > 0
@@ -4163,7 +4139,7 @@ export function TradeDetail({
                   {attempt.amountMsats > 0 && (
                     <BitcoinAmount
                       msats={attempt.amountMsats}
-                      size={12}
+                      size={T.fs.secondary}
                       gap={4}
                       glyphScale={1.18}
                       color={attempt.isLive ? T.accent : T.muted}
@@ -4187,7 +4163,7 @@ export function TradeDetail({
             display: "flex", alignItems: "center", gap: 10,
           }}>
             <div style={{ minWidth: 0, flex: 1 }}>
-              <span style={{ fontFamily: T.mono, fontSize: 11, fontWeight: 700 }}>
+              <span style={{ fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700 }}>
                 <button type="button" onClick={e => { e.stopPropagation(); if (participants.buyer) setRepFor(participants.buyer); }} style={{ background: "none", border: 0, color: ROLE_COLOR.buyer, minHeight: 44, cursor: "pointer" }}><RoleAvatar role="buyer" pubkey={participants.buyer ?? null} /> <ConductFacts pubkey={participants.buyer} />{dealBuyerName ?? t("trade.buyer")}</button>
                 <span style={{ color: T.muted }}> ⇄ </span>
                 <button type="button" onClick={e => { e.stopPropagation(); if (participants.seller) setRepFor(participants.seller); }} style={{ background: "none", border: 0, color: ROLE_COLOR.seller, minHeight: 44, cursor: "pointer" }}><RoleAvatar role="seller" pubkey={participants.seller ?? null} /> <ConductFacts pubkey={participants.seller} />{dealSellerName ?? t("trade.seller")}</button>
@@ -4195,7 +4171,7 @@ export function TradeDetail({
               </span>
               <span style={{ fontFamily: T.sans, fontSize: 11, color: T.muted }}> · {state.description || tradeRoomTitle}</span>
             </div>
-            <span style={{ color: T.muted, fontSize: 11, fontFamily: T.mono, flexShrink: 0 }}>{dealOpen ? "▾" : "▸"}</span>
+            <span style={{ color: T.muted, fontSize: T.fs.secondary, fontFamily: T.sans, flexShrink: 0 }}>{dealOpen ? "▾" : "▸"}</span>
           </div>
           {dealOpen && (
           <div style={{ padding: "4px 14px 14px" }}>
@@ -4206,9 +4182,9 @@ export function TradeDetail({
           gap: 12,
           marginBottom: 14,
         }}>
-          <div style={{ fontSize: 11, fontWeight: 600, color: T.muted, fontFamily: T.mono, letterSpacing: 1 }}>{t("trade.participants")}</div>
+          <div style={{ fontSize: T.fs.secondary, fontWeight: 600, color: T.muted, fontFamily: T.sans,}}>{t("trade.participants")}</div>
           {state.communityArbiters && state.communityArbiters.length > 0 && (
-            <div style={{ fontSize: 10, color: T.purple, fontFamily: T.mono }}>
+            <div style={{ fontSize: T.fs.secondary, color: T.purple, fontFamily: T.sans }}>
               {state.actingArbiter && state.actingArbiter !== participants[Role.ARBITER]
                 // Arbiter substitution: a pool backup's vote currently holds the
                 // arbiter slot (the assigned arbiter went absent past the floor).
@@ -4291,7 +4267,7 @@ export function TradeDetail({
           }}>
             <span style={{ fontSize: 15, lineHeight: 1 }}>🛡️</span>
             {t("trade.howMoneyProtected")}
-            <span style={{ marginLeft: "auto", color: T.muted, fontSize: 11, fontFamily: T.mono }}>▾</span>
+            <span style={{ marginLeft: "auto", color: T.muted, fontSize: T.fs.secondary, fontFamily: T.sans }}>▾</span>
           </summary>
           <div style={{ padding: "0 14px 14px", fontFamily: T.sans }}>
             <div style={{ fontSize: 12.5, color: T.muted, lineHeight: 1.6, marginBottom: 12 }}>
@@ -4343,13 +4319,13 @@ export function TradeDetail({
               cursor: "pointer", padding: "11px 14px",
               display: "flex", alignItems: "center", gap: 8,
             }}>
-              <span style={{ fontFamily: T.mono, fontSize: 11, fontWeight: 700, color: titleDisputed ? T.amber : T.muted, letterSpacing: 1 }}>
+              <span style={{ fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700, color: titleDisputed ? T.amber : T.muted,}}>
                 {titleDisputed ? t("trade.votesOnRecord") : t("trade.settlementHeader")}
               </span>
-              <span style={{ fontFamily: T.mono, fontSize: 10, color: decisionTone }}>
+              <span style={{ fontFamily: T.sans, fontSize: T.fs.secondary, color: decisionTone }}>
                 {state.resolvedOutcome ? String(state.resolvedOutcome).toLowerCase() : t("trade.awaiting")} · {releaseVoteCount}R / {refundVoteCount}F
               </span>
-              <span style={{ marginLeft: "auto", color: T.muted, fontSize: 11, fontFamily: T.mono }}>{votesOpen ? "▾" : "▸"}</span>
+              <span style={{ marginLeft: "auto", color: T.muted, fontSize: T.fs.secondary, fontFamily: T.sans }}>{votesOpen ? "▾" : "▸"}</span>
             </div>
             {votesOpen && (
           <div className="trade-vote-decisions" style={{
@@ -4401,7 +4377,7 @@ export function TradeDetail({
           borderRadius: T.r, padding: 14, marginBottom: 16,
           color: T.amber, fontFamily: T.sans, fontSize: 12, lineHeight: 1.5,
         }}>
-          <div style={{ fontFamily: T.mono, fontSize: 11, fontWeight: 800, letterSpacing: 0.5, marginBottom: 6 }}>
+          <div style={{ fontFamily: T.sans, fontSize: T.fs.warn, fontWeight: 700, marginBottom: 6 }}>
             {t("trade.oversoldTitle")}{state.participants[Role.BUYER] ? ` · ${t("trade.oversoldBuyer", { pubkey: shortParticipantPubkey(state.participants[Role.BUYER]!) })}` : ""}
           </div>
           {myRole === Role.SELLER
@@ -4437,8 +4413,8 @@ export function TradeDetail({
           color: T.amber, fontFamily: T.sans, fontSize: 12, lineHeight: 1.45,
         }}>
           <div style={{
-            fontSize: 11, fontWeight: 800, fontFamily: T.mono,
-            letterSpacing: 1, marginBottom: 6,
+            fontSize: T.fs.warn, fontWeight: 700, fontFamily: T.sans,
+            marginBottom: 6,
           }}>
             {t("trade.lockWindowExpired")}
           </div>
@@ -4493,8 +4469,8 @@ export function TradeDetail({
           borderTop: `1px solid ${T.amber}33`,
         }}>
           <div style={{
-            fontSize: 11, fontWeight: 600, color: T.muted,
-            fontFamily: T.mono, letterSpacing: 1, marginBottom: 8,
+            fontSize: T.fs.secondary, fontWeight: 600, color: T.muted,
+            fontFamily: T.sans, marginBottom: 8,
           }}>
             {t("trade.paymentHandle")}
             {state.lock.handle.rail && (
@@ -4520,8 +4496,7 @@ export function TradeDetail({
           {!!myRole && state.lock.handle.networks && state.lock.handle.networks.length > 0 && (
             <div style={{ marginTop: 8 }}>
               <div style={{
-                fontSize: 9, color: T.muted, fontFamily: T.mono,
-                letterSpacing: 0.3, marginBottom: 5,
+                fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, marginBottom: 5,
               }}>
                 {t("trade.accepts")}
               </div>
@@ -4531,8 +4506,8 @@ export function TradeDetail({
                     padding: "4px 10px", borderRadius: 12,
                     background: T.tealDim,
                     border: `1px solid ${T.teal}66`,
-                    color: T.teal, fontFamily: T.mono,
-                    fontSize: 10, fontWeight: 700, letterSpacing: 0.2,
+                    color: T.teal, fontFamily: T.sans,
+                    fontSize: T.fs.secondary, fontWeight: 700,
                   }}>
                     {getRailByKey(networkKey)?.displayName || networkKey}
                   </span>
@@ -4541,7 +4516,7 @@ export function TradeDetail({
             </div>
           )}
           <div style={{
-            fontSize: 9, color: T.muted, fontFamily: T.mono,
+            fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans,
             marginTop: 8, lineHeight: 1.4,
           }}>
             {myRole
@@ -4574,10 +4549,10 @@ export function TradeDetail({
             background: T.surface, border: `1px solid ${T.border}`,
             display: "grid", placeItems: "center", fontSize: 12,
           }}>⚙</span>
-          <span style={{ fontFamily: T.mono, fontSize: 11, fontWeight: 700, letterSpacing: 0.5, color: T.muted }}>
+          <span style={{ fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700, color: T.muted }}>
             {t("trade.tradeTimeline")}
           </span>
-          <span style={{ fontFamily: T.mono, fontSize: 10, color: T.muted, opacity: 0.7 }}>
+          <span style={{ fontFamily: T.sans, fontSize: T.fs.secondary, color: T.muted, opacity: 0.7 }}>
             · {state.eventChain.length !== 1 ? t("trade.stepCountMany", { count: state.eventChain.length }) : t("trade.stepCountOne", { count: state.eventChain.length })} · {t("trade.msgCount", { count: state.chatMessages.length })}
           </span>
           <span className="td-tl-chev" aria-hidden="true" style={{
@@ -4603,7 +4578,7 @@ export function TradeDetail({
                 } as Record<string, string>)[evt.payload.type]
                   ?? evt.payload.type.replace("escrow:", "").replace(/_/g, " ")}
               </span>
-              <span style={{ fontSize: 9, fontFamily: T.mono, color: T.border, marginLeft: "auto" }}>
+              <span style={{ fontSize: T.fs.key, fontFamily: T.mono, color: T.ink3, marginLeft: "auto" }}>
                 {evt.raw.id.slice(0, 8)}…
               </span>
             </div>
@@ -4646,10 +4621,9 @@ export function TradeDetail({
                 borderRadius: T.r,
                 color: T.muted,
                 cursor: rebroadcasting ? "default" : "pointer",
-                fontFamily: T.mono,
-                fontSize: 11,
+                fontFamily: T.sans,
+                fontSize: T.fs.secondary,
                 fontWeight: 700,
-                letterSpacing: 0.5,
                 opacity: rebroadcasting ? 0.6 : 1,
                 padding: "8px 12px",
                 width: "100%",
@@ -4663,7 +4637,7 @@ export function TradeDetail({
             </p>
             {rebroadcastDone && (
               <div style={{ marginTop: 10, padding: "10px 12px", background: T.card, border: `1px solid ${T.accent}`, borderRadius: T.r }}>
-                <div style={{ color: T.text, fontSize: 10, fontWeight: 700, fontFamily: T.mono, letterSpacing: 0.5, marginBottom: 6 }}>
+                <div style={{ color: T.text, fontSize: T.fs.secondary, fontWeight: 700, fontFamily: T.sans, marginBottom: 6 }}>
                   {t("trade.sendTradeIdNext")}
                 </div>
                 <div style={{ color: T.muted, fontSize: 10, lineHeight: 1.5, marginBottom: 8 }}>
@@ -4678,8 +4652,8 @@ export function TradeDetail({
                     label={t("trade.copyUpper")}
                     copiedLabel={t("trade.copiedUpper")}
                     style={{
-                      background: T.accent, border: "none", borderRadius: 6, color: "#fff",
-                      cursor: "pointer", fontFamily: T.mono, fontSize: 10, fontWeight: 700,
+                      background: T.accent, border: "none", borderRadius: 6, color: T.onInk,
+                      cursor: "pointer", fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
                       padding: "7px 10px", whiteSpace: "nowrap",
                     }}
                   />
@@ -4696,7 +4670,7 @@ export function TradeDetail({
               // in Me → Done, so history is preserved either way.
               <div style={{
                 background: T.surface, border: `1px solid ${T.border}`, borderRadius: T.rs,
-                color: T.muted, fontFamily: T.mono, fontSize: 10, lineHeight: 1.5,
+                color: T.muted, fontFamily: T.sans, fontSize: T.fs.secondary, lineHeight: 1.5,
                 padding: "8px 10px",
               }}>
                 {t("trade.satsStillInEscrow")}
@@ -4710,10 +4684,9 @@ export function TradeDetail({
                   border: "none",
                   color: T.red,
                   cursor: "pointer",
-                  fontFamily: T.mono,
-                  fontSize: 10,
+                  fontFamily: T.sans,
+                  fontSize: T.fs.secondary,
                   fontWeight: 700,
-                  letterSpacing: 0.5,
                   padding: "6px 2px",
                   textDecoration: "underline",
                 }}
@@ -4731,8 +4704,7 @@ export function TradeDetail({
                     onClick={() => { setForgetArmed(false); onForget(state.id); }}
                     style={{
                       background: T.red, border: "none", borderRadius: 6, color: "#fff",
-                      cursor: "pointer", fontFamily: T.mono, fontSize: 10, fontWeight: 700,
-                      letterSpacing: 0.5, padding: "7px 12px",
+                      cursor: "pointer", fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700, padding: "7px 12px",
                     }}
                   >
                     {t("trade.forgetIt")}
@@ -4742,8 +4714,8 @@ export function TradeDetail({
                     onClick={() => setForgetArmed(false)}
                     style={{
                       background: "transparent", border: `1px solid ${T.border}`, borderRadius: 6,
-                      color: T.muted, cursor: "pointer", fontFamily: T.mono, fontSize: 10,
-                      fontWeight: 700, letterSpacing: 0.5, padding: "7px 12px",
+                      color: T.muted, cursor: "pointer", fontFamily: T.sans, fontSize: T.fs.secondary,
+                      fontWeight: 700, padding: "7px 12px",
                     }}
                   >
                     {t("trade.cancelUpper")}
@@ -4800,14 +4772,14 @@ function ArbiterCommitmentCard({ bond, tipHeight, cohortPeers, concentration }: 
     <div style={{
       padding: "10px 12px", marginBottom: 12, borderRadius: T.rs,
       background: `${T.accent}${Math.round(tint * 255).toString(16).padStart(2, "0")}`,
-      border: `1px solid ${T.border}`, fontFamily: T.mono, fontSize: 11,
+      border: `1px solid ${T.border}`, fontFamily: T.sans, fontSize: T.fs.secondary,
       color: T.text, lineHeight: 1.6,
     }}>
       <div style={{ fontSize: 9, color: T.muted, letterSpacing: 1, marginBottom: 4 }}>
         {t("trade.arbiterCommitment")}
       </div>
       <div>
-        <BitcoinAmount sats={Number(bond.actualSats)} size={12} gap={3} glyphScale={1.1} />
+        <BitcoinAmount sats={Number(bond.actualSats)} size={T.fs.secondary} gap={3} glyphScale={1.1} />
         {days !== null && <span style={{ color: T.muted }}> · {t(days === 1 ? "trade.bondedForDaysOne" : "trade.bondedForDaysMany", { count: days })}</span>}
       </div>
       {/* Renewals are stated as a COUNT, never as a virtue. "Kept going through
@@ -4917,7 +4889,7 @@ function ArbiterSubstitutionNotice({ state }: { state: EscrowState }) {
       display: "flex", alignItems: "center", gap: 8, padding: "9px 12px",
       marginBottom: 12, background: `${T.amber}12`,
       border: `1px solid ${T.amber}44`, borderRadius: T.rs,
-      fontFamily: T.mono, fontSize: 11, color: T.amber, lineHeight: 1.5,
+      fontFamily: T.sans, fontSize: T.fs.secondary, color: T.amber, lineHeight: 1.5,
     }}>
       <span>↻</span>
       <span>{t("trade.arbiterSubstituted")}</span>
@@ -4958,8 +4930,8 @@ function ArbiterInsuranceRow({ state, pubkey }: { state: EscrowState; pubkey: st
   const record = getPremiumOutboxRecord(state.id);
   if (record?.status === "paid") {
     return (
-      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", marginBottom: 12, background: `${T.green}12`, border: `1px solid ${T.green}44`, borderRadius: T.rs, fontFamily: T.mono, fontSize: 11, color: T.green }}>
-        <span>🛡</span>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", marginBottom: 12, background: `${T.green}12`, border: `1px solid ${T.green}44`, borderRadius: T.rs, fontFamily: T.sans, fontSize: T.fs.secondary, color: T.green }}>
+        <span>🛡️</span>
         <span>{t("trade.insuranceSent")}</span>
       </div>
     );
@@ -4978,9 +4950,9 @@ function ArbiterInsuranceRow({ state, pubkey }: { state: EscrowState; pubkey: st
         }}
         style={{ accentColor: T.accent, width: 15, height: 15, flexShrink: 0 }}
       />
-      <span style={{ fontFamily: T.mono, fontSize: 11, color: included ? T.text : T.muted, lineHeight: 1.45, display: "flex", alignItems: "baseline", gap: 5, flexWrap: "wrap" }}>
-        <span style={{ fontWeight: 800 }}>🛡 {t("trade.insuranceLabel")}</span>
-        <BitcoinAmount sats={decision.amountSats} size={11} gap={3} glyphScale={1.15} color="inherit" glyphColor="inherit" />
+      <span style={{ fontFamily: T.sans, fontSize: T.fs.secondary, color: included ? T.text : T.muted, lineHeight: 1.45, display: "flex", alignItems: "baseline", gap: 5, flexWrap: "wrap" }}>
+        <span style={{ fontWeight: 800 }}>🛡️ {t("trade.insuranceLabel")}</span>
+        <BitcoinAmount sats={decision.amountSats} size={T.fs.secondary} gap={3} glyphScale={1.15} color="inherit" glyphColor="inherit" />
         <span style={{ color: T.muted }}>{t("trade.insuranceSuffix")}</span>
       </span>
     </label>
@@ -5012,7 +4984,7 @@ function ArbiterProvenanceBanner({ state, prov, assignment, selfRostered }: {
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
           <span style={{ fontSize: 12, color: T.red }}>⚠</span>
-          <span style={{ fontSize: 10, color: T.red, fontFamily: T.mono, fontWeight: 800, letterSpacing: 0.5 }}>
+          <span style={{ fontSize: T.fs.secondary, color: T.red, fontFamily: T.sans, fontWeight: 700,}}>
             {t("trade.offAssignmentTitle")}
           </span>
         </div>
@@ -5034,7 +5006,7 @@ function ArbiterProvenanceBanner({ state, prov, assignment, selfRostered }: {
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
           <span style={{ fontSize: 12, color: T.amber }}>⚠</span>
-          <span style={{ fontSize: 10, color: T.amber, fontFamily: T.mono, fontWeight: 800, letterSpacing: 0.5 }}>
+          <span style={{ fontSize: T.fs.secondary, color: T.amber, fontFamily: T.sans, fontWeight: 700,}}>
             {t("trade.selfRosteredTitle")}
           </span>
         </div>
@@ -5054,7 +5026,7 @@ function ArbiterProvenanceBanner({ state, prov, assignment, selfRostered }: {
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
           <span style={{ fontSize: 12, color: T.amber }}>⚠</span>
-          <span style={{ fontSize: 10, color: T.amber, fontFamily: T.mono, fontWeight: 800, letterSpacing: 0.5 }}>
+          <span style={{ fontSize: T.fs.secondary, color: T.amber, fontFamily: T.sans, fontWeight: 700,}}>
             {prov.unrecognized.length !== 1 ? t("trade.unrecognizedMany") : t("trade.unrecognizedOne")}
           </span>
         </div>
@@ -5083,7 +5055,7 @@ function ArbiterProvenanceBanner({ state, prov, assignment, selfRostered }: {
         display: "flex", alignItems: "center", gap: 8,
       }}>
         <span style={{ fontSize: 11, color: T.green }}>✓</span>
-        <span style={{ fontSize: 10, color: T.muted, fontFamily: T.mono, lineHeight: 1.4 }}>
+        <span style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, lineHeight: 1.4 }}>
           {t("trade.verifiedArbiters", { community: communityName })}
           {pool.length < 3 && (
             <> {pool.length === 1 ? t("trade.smallPoolOne") : t("trade.smallPoolMany", { count: pool.length })}</>
@@ -5113,7 +5085,7 @@ const TD_PANE_STYLE: React.CSSProperties = {
 const TD_PANE_PLACEHOLDER: React.CSSProperties = {
   display: "flex", alignItems: "center", justifyContent: "center",
   height: "100%", textAlign: "center", color: T.muted,
-  fontFamily: T.mono, fontSize: 12, lineHeight: 1.6, padding: "0 26px",
+  fontFamily: T.sans, fontSize: T.fs.secondary, lineHeight: 1.6, padding: "0 26px",
 };
 
 type DetailNextStepTone = "accent" | "green" | "red" | "purple" | "teal";
@@ -5614,9 +5586,9 @@ function menuQtyButtonStyle(): React.CSSProperties {
     border: `1px solid ${T.border}`,
     background: T.card,
     color: T.text,
-    fontFamily: T.mono,
+    fontFamily: T.sans,
     fontSize: 15,
-    fontWeight: 900,
+    fontWeight: 700,
     cursor: "pointer",
     display: "inline-flex",
     alignItems: "center",
@@ -5632,9 +5604,9 @@ function menuPickButtonStyle(selected: boolean): React.CSSProperties {
     border: `1px solid ${selected ? T.green : T.border}`,
     background: selected ? `${T.green}22` : T.card,
     color: selected ? T.green : T.text,
-    fontFamily: T.mono,
-    fontSize: 11,
-    fontWeight: 800,
+    fontFamily: T.sans,
+    fontSize: T.fs.secondary,
+    fontWeight: 700,
     cursor: "pointer",
     lineHeight: 1,
     whiteSpace: "nowrap",
@@ -5657,8 +5629,7 @@ function voteDecisionChipStyle(color: string): React.CSSProperties {
     gap: 1,
     padding: "7px 5px",
     color,
-    fontFamily: T.mono,
-    textTransform: "uppercase",
+    fontFamily: T.sans,
     boxShadow: color === T.muted ? "none" : `inset 0 1px 0 ${color}22`,
     overflow: "hidden",
   };
@@ -5756,10 +5727,8 @@ const voteConfirmStackStyle: React.CSSProperties = {
 };
 const voteConfirmEyebrowStyle: React.CSSProperties = {
   fontFamily: T.sans,
-  fontSize: 11,
+  fontSize: T.fs.secondary,
   fontWeight: 800,
-  letterSpacing: 0.8,
-  textTransform: "uppercase",
   opacity: 0.9,
   lineHeight: 1.1,
 };
@@ -6020,7 +5989,7 @@ function menuAmountLabel(item: { amountMsats: number; minAmountMsats?: number; m
     return (
       <BitcoinAmount
         label={min === max ? min : `${min}-${max}`}
-        size={10}
+        size={T.fs.secondary}
         gap={3}
         glyphScale={1.2}
         color={T.muted}
@@ -6031,7 +6000,7 @@ function menuAmountLabel(item: { amountMsats: number; minAmountMsats?: number; m
   return (
     <BitcoinAmount
       msats={item.amountMsats}
-      size={10}
+      size={T.fs.secondary}
       gap={3}
       glyphScale={1.2}
       color={T.muted}

@@ -187,7 +187,7 @@ const withdrawal = renderToStaticMarkup(<OnchainPayoutPicker federationName="Bit
  pegOutFeeSats={25} payoutSats={1_200} onResolve={()=>{}} onBack={()=>{}} onCancel={()=>{}} />);
 assert.match(withdrawal, /Withdraw from Bitcoin Life Federation to a bitcoin address/);
 assert.match(withdrawal, /Peg-out fee 25 sats/);
-assert.match(withdrawal, /ONCHAIN CLAIM/);
+assert.match(withdrawal, /Onchain claim/);
 assert.match(withdrawal, /Slow path. Paste a fresh bitcoin address/,'claim blurb stays unchanged');
 const chooser = renderToStaticMarkup(<ClaimMethodChooser federationName="Bitcoin Life Federation" pegOutFeeSats={25}
  payoutSats={1_200} ecashPayoutSats={1_200} externalSwaps={[]} tandoEligible={false} chapsmartEligible={false}

@@ -5,7 +5,7 @@ import type { FaqContent } from "./faq-types.js";
 
 export const faqEs: FaqContent = {
   intro:
-    "Intercambia Bitcoin, bienes y servicios con tu comunidad. Un chama es un círculo de ahorro de África Oriental; aquí, los intercambios usan ecash emitido por una federación o custodia directa en Bitcoin. Chama no tiene el dinero; la tabla de abajo indica quién lo tiene.",
+    "Intercambia Bitcoin, bienes y servicios con tu comunidad. Un chama es un círculo de ahorro de África Oriental; aquí, los intercambios usan ecash emitido por una federación o custodia directa en Bitcoin. Chama no tiene el dinero; «¿Quién tiene mi dinero?» indica quién lo tiene.",
   sections: [
     {
       id: "basics",

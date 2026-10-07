@@ -54,9 +54,13 @@ for (const status of [EscrowStatus.CREATED, EscrowStatus.LOCKED, EscrowStatus.AP
  assert.equal(tradeDetailReturnsHome(state,false),false,`${status} keeps Offers before settlement`);
  assert.equal(tradeDetailReturnsHome(state,true),true,'Home-opened trades still go Home');
 }
-for (const status of [EscrowStatus.COMPLETED, EscrowStatus.CANCELLED, EscrowStatus.EXPIRED]) {
- assert.equal(tradeDetailReturnsHome({status} as EscrowState,false),true,`${status} goes Home`);
+// v7 redesign (Jet, 2026-10-06): only a fully successful trade returns Home;
+// failures send the buyer back to the offers to try again.
+assert.equal(tradeDetailReturnsHome({status:EscrowStatus.COMPLETED,resolvedOutcome:Outcome.RELEASE} as EscrowState,false),true,'a completed release goes Home');
+for (const status of [EscrowStatus.CANCELLED, EscrowStatus.EXPIRED]) {
+ assert.equal(tradeDetailReturnsHome({status} as EscrowState,false),false,`${status} goes back to the offers`);
 }
-assert.equal(tradeDetailReturnsHome({status:EscrowStatus.CLAIMED,resolvedOutcome:Outcome.REFUND} as EscrowState,false,true),true,'Confirmed refund payout goes Home before COMPLETE arrives');
+assert.equal(tradeDetailReturnsHome({status:EscrowStatus.COMPLETED,resolvedOutcome:Outcome.REFUND} as EscrowState,false),false,'a completed refund goes back to the offers');
+assert.equal(tradeDetailReturnsHome({status:EscrowStatus.CLAIMED,resolvedOutcome:Outcome.REFUND} as EscrowState,false,true),false,'a settled refund goes back to the offers');
 assert.equal(tradeDetailReturnsHome(null,false),false);
-console.log('PASS brief 12: active offers retain navigation, terminal trades and settled refunds return Home');
+console.log('PASS brief 12 (v7): active and failed trades return to the offers; only a completed release returns Home');

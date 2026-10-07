@@ -72,6 +72,13 @@ assert.equal(locked.recovered,0);assert.match(locked.issues[0].reason,/seed is l
 const html=renderToStaticMarkup(<LangProvider><BondRecoveryNotice issues={locked.issues.map(i=>i.reason)} onRetry={()=>{}}/><BondList bonds={[]} verified={verified} tip={tip} onOpen={()=>{}} onPostNew={()=>{}}/></LangProvider>);
 assert.match(html,/seed is locked/);assert.match(html,/Retry/);assert.doesNotMatch(html,/No live bond|Post a new bond|Create a bond/);
 assert.equal((html.match(/data-announced-bond=/g)??[]).length,2);
+const pastBond = buildCommitmentBond(deriveBondSigningKey(words,{network:MAINNET,index:2}).xonly,tip+1000,MAINNET);
+const pastRecord = { ...records[0], bondId: 'reclaimed-history', bond: pastBond, phase: 'reclaimed' } as CommitmentRecord;
+const expiredRows = renderToStaticMarkup(<LangProvider><BondList bonds={[...records,pastRecord]} verified={verified} tip={tip+2000} onOpen={()=>{}} onPostNew={()=>{}}/></LangProvider>);
+for (const bond of bonds) assert(expiredRows.includes(bond.address), 'each expired, unspent bond remains visible in Manage');
+assert.match(expiredRows,/Bond history · 1/, 'redesign retains collapsed history for reclaimed bonds');
+assert(!expiredRows.includes(pastBond.address), 'reclaimed history starts collapsed');
+assert.doesNotMatch(expiredRows,/No live bond/, 'expired bonds are still held funds, not an empty wallet');
 const missingKey=await recoverOwnedBonds(selectLatestAnnouncements(fetched).slice(0,1),[],{...deps,seed:async()=> 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about'.split(' ')});
 assert.match(missingKey.issues[0].reason,/key was not found/);
 const chainFailure=await recoverOwnedBonds(selectLatestAnnouncements(fetched),[],{...deps,readUtxos:async()=>{throw Error('Explorer unavailable');}});

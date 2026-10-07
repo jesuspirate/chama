@@ -201,6 +201,16 @@ type ModalPhase =
   | { kind: "funding-not-started"; reason: FundingStorageKey }
   | { kind: "lock-failed"; error: string; errorKey?: FundingStorageKey; invoiceFailed?: boolean };
 
+/** One line of the Lock summary: label left, ₿ amount right (tabular). */
+function SummaryRow({ label, sats, strong }: { label: string; sats: number; strong?: boolean }) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, padding: "10px 0", borderTop: `1px solid ${T.line}`, fontSize: T.fs.body }}>
+      <span style={{ color: T.ink2 }}>{label}</span>
+      <span style={{ color: T.ink, fontWeight: strong ? 700 : 600, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>₿ {sats.toLocaleString()}</span>
+    </div>
+  );
+}
+
 export function AtomicFundingModal({
   escrowId,
   federationName, circleCustody, custodyState, mintUrl,
@@ -674,21 +684,27 @@ export function AtomicFundingModal({
           <small style={{ overflowWrap: "anywhere" }}>{phase.error}</small>
           <div><button type="button" onClick={retryLightning} style={{ background: "none", border: 0, color: T.muted, textDecoration: "underline", minHeight: 44 }}>{t("fund.tryAgain")}</button></div>
         </FundingNote>}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
+        {/* v7 redesign (canvas "Lock"): back, then the action and the amount
+            at amount size (40px+ on phones), then the money summary. Every
+            row is a number this modal already holds — no fee is estimated. */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 16 }}>
           <CardBack disabled={!railsVisible && phase.kind !== "locked" && phase.kind !== "lock-failed"} onClick={() => mpesaOpen ? setMpesaOpen(false) : showFundingChoices || !railsVisible ? handleCancel() : setShowFundingChoices(true)} />
           <div>
-            <div style={{ fontSize: 9, color: T.muted, fontFamily: T.mono, letterSpacing: 1, marginBottom: 4 }}>
-              {ctaLabel.toUpperCase()}
+            <div style={{ fontSize: T.fs.secondary, color: T.ink2, fontFamily: T.sans, fontWeight: 600, marginBottom: 4 }}>
+              {ctaLabel}
             </div>
-            <div style={{ fontSize: 22, fontWeight: 800, color: T.text, fontFamily: T.mono, letterSpacing: -0.5 }}>
-              {!request && <TradeAmount msats={totalSats * 1000} size={22} interactive />}
-            </div>
-            {insuranceSats > 0 && (
-              <div style={{ fontSize: 9.5, color: T.muted, fontFamily: T.mono, marginTop: 4, display: "flex", alignItems: "baseline", gap: 4 }}>
-                {t("fund.insuranceBefore")} <BitcoinAmount sats={insuranceSats} size={9.5} gap={3} glyphScale={1.15} color={T.muted} glyphColor={T.muted} /> {t("fund.insuranceAfter")}
-              </div>
-            )}
+            {!request && <div style={{ color: T.ink, fontFamily: T.sans, lineHeight: 1.1 }}>
+              <TradeAmount msats={totalSats * 1000} size={T.fs.amount} glyphScale={0.9} color={T.ink} interactive />
+            </div>}
           </div>
+          {!request && (
+            <div data-funding-summary style={{ background: T.raised, borderRadius: 16, padding: "4px 14px", fontFamily: T.sans }}>
+              <SummaryRow label={t("fund.summaryLocked")} sats={amountSats} />
+              {insuranceSats > 0 && <SummaryRow label={t("fund.summaryInsurance")} sats={insuranceSats} />}
+              {insuranceSats > 0 && <SummaryRow label={t("fund.summaryTotal")} sats={totalSats} strong />}
+              {hasBalance && <SummaryRow label={t("fund.summaryLeft")} sats={Math.floor((spendableMsats - requiredMsats) / 1000)} />}
+            </div>
+          )}
         </div>
 
         <EcashCustody key={custodyState?.mintUrl ?? mintUrl} invite={custodyState?.mintUrl ?? mintUrl} issued trade={custodyState} warn={!circleCustody} />
@@ -884,8 +900,7 @@ export function AtomicFundingModal({
             borderRadius: T.r,
           }}>
             <div style={{
-              fontSize: 12, color: T.muted, fontFamily: T.mono,
-              letterSpacing: 1,
+              fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans,
             }}>
               {t("fund.cancelled")}
             </div>
@@ -999,16 +1014,15 @@ function FundingMethodChooser({
       <div>
         <div style={{
           marginBottom: 12, padding: 14, borderRadius: T.r,
-          background: T.tealDim, border: `1px solid ${T.teal}66`,
+          background: T.raised, border: `1px solid ${T.line}`,
         }}>
           <div style={{
-            fontSize: 9, color: T.teal, fontFamily: T.mono,
-            letterSpacing: 1, fontWeight: 900, marginBottom: 8,
+            fontSize: T.fs.secondary, color: T.ink, fontFamily: T.sans, fontWeight: 700, marginBottom: 8,
           }}>
             {t("fund.fediWalletFunding")}
           </div>
           <div style={{
-            fontSize: 11, color: T.text, fontFamily: T.mono,
+            fontSize: T.fs.secondary, color: T.text, fontFamily: T.sans,
             lineHeight: 1.55,
           }}>
             {t("fund.fediEcashBody")}
@@ -1018,10 +1032,10 @@ function FundingMethodChooser({
         <div style={{
           marginBottom: 12, padding: "8px 10px", borderRadius: T.rs,
           background: T.surface, border: `1px solid ${T.border}`,
-          fontSize: 10, color: T.muted, fontFamily: T.mono,
+          fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans,
           lineHeight: 1.45, textAlign: "center",
         }}>
-          {t("fund.tradeAmountBefore")} <BitcoinAmount sats={amountSats} size={10} gap={4} glyphScale={1.18} color={T.muted} glyphColor={T.muted} />
+          {t("fund.tradeAmountBefore")} <BitcoinAmount sats={amountSats} size={T.fs.secondary} gap={4} glyphScale={1} color={T.ink2} glyphColor={T.ink2} />
         </div>
 
         <button
@@ -1029,24 +1043,24 @@ function FundingMethodChooser({
           disabled={lightningDisabled}
           onClick={() => onSelect("lightning")}
           style={{
-            width: "100%", minHeight: 64, padding: "14px 16px",
-            borderRadius: T.r, background: T.accent,
-            border: `1px solid ${T.accent}`, color: "#000",
+            width: "100%", minHeight: T.size.moneyButton, padding: "14px 16px",
+            borderRadius: T.r, background: T.ink,
+            border: "none", color: T.onInk,
             cursor: lightningDisabled ? "not-allowed" : "pointer",
             opacity: lightningDisabled ? 0.55 : 1,
-            fontFamily: T.mono, fontSize: 13,
-            fontWeight: 900, letterSpacing: 0.5,
+            fontFamily: T.sans, fontSize: T.fs.moneyButton,
+            fontWeight: 600,
           }}
         >
-          {t("fund.useFediWalletBefore")} <BitcoinAmount sats={amountSats} size={13} gap={4} glyphScale={1.18} color="#000" glyphColor="#000" />
+          {t("fund.useFediWalletBefore")} <BitcoinAmount sats={amountSats} size={T.fs.moneyButton} gap={4} glyphScale={1} color="inherit" glyphColor="inherit" />
         </button>
         {browserLightningBlocked && (
-          <div style={{ marginTop: 8, color: T.red, fontFamily: T.mono, fontSize: 10, lineHeight: 1.45 }}>
+          <div style={{ marginTop: 8, color: T.red, fontFamily: T.sans, fontSize: T.fs.secondary, lineHeight: 1.45 }}>
             {t("fund.browserLightningBlockedBody", { amount: amountSats.toLocaleString() })}
           </div>
         )}
         {!browserLightningBlocked && lightningTooSmall && (
-          <div style={{ marginTop: 8, color: T.red, fontFamily: T.mono, fontSize: 10, lineHeight: 1.45 }}>
+          <div style={{ marginTop: 8, color: T.red, fontFamily: T.sans, fontSize: T.fs.secondary, lineHeight: 1.45 }}>
             {minimumLightningFundingMessage()}
           </div>
         )}
@@ -1060,7 +1074,7 @@ function FundingMethodChooser({
         <div style={{
           marginBottom: 12, padding: "12px 14px", borderRadius: T.r,
           background: T.redDim, border: `1px solid ${T.red}66`,
-          color: T.red, fontFamily: T.mono, fontSize: 10.5, lineHeight: 1.5,
+          color: T.red, fontFamily: T.sans, fontSize: T.fs.secondary, lineHeight: 1.5,
         }}>
           <div style={{ fontWeight: 900, letterSpacing: 0.7, marginBottom: 5 }}>
             {t("fund.browserLightningBlockedTitle")}
@@ -1072,7 +1086,7 @@ function FundingMethodChooser({
         <div style={{
           marginBottom: 12, padding: "10px 12px", borderRadius: T.rs,
           background: T.amberDim, border: `1px solid ${T.amber}66`,
-          fontFamily: T.mono, fontSize: 10.5, color: T.amber, lineHeight: 1.5,
+          fontFamily: T.sans, fontSize: T.fs.secondary, color: T.amber, lineHeight: 1.5,
         }}>
           <div style={{ fontWeight: 900, letterSpacing: 0.5, marginBottom: 4 }}>
             {t("fund.largeAmountTitle")}
@@ -1085,7 +1099,7 @@ function FundingMethodChooser({
         </div>
       )}
       <div style={{
-        fontSize: 11, color: T.muted, fontFamily: T.mono,
+        fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans,
         lineHeight: 1.5, marginBottom: 12,
       }}>
         {t("fund.chooseMethodIntro")}
@@ -1100,7 +1114,7 @@ function FundingMethodChooser({
           outranking the ordinary lock mechanisms. */}
       {!disableNwc && savedNwcConnections.length > 0 && (
         <details style={{ marginBottom: 12 }}>
-          <summary style={{ color: T.muted, fontFamily: T.mono, fontSize: 9, cursor: "pointer" }}>
+          <summary style={{ color: T.muted, fontFamily: T.sans, fontSize: T.fs.secondary, cursor: "pointer" }}>
             NWC · {savedNwcConnections.length}
           </summary>
           <div style={{ display: "grid", gap: 6, marginTop: 8 }}>
@@ -1113,7 +1127,7 @@ function FundingMethodChooser({
                 style={{
                   width: "100%", padding: "12px 14px", borderRadius: T.r,
                   background: T.accentDim, border: `1px solid ${T.accent}66`,
-                  color: T.text, fontFamily: T.mono, fontSize: 12,
+                  color: T.text, fontFamily: T.sans, fontSize: T.fs.secondary,
                   cursor: nwcDisabled ? "not-allowed" : "pointer",
                   opacity: nwcDisabled ? 0.55 : 1,
                   display: "flex",
@@ -1144,7 +1158,7 @@ function FundingMethodChooser({
         <summary style={{
           padding: "10px 12px", borderRadius: T.rs, cursor: "pointer",
           background: T.tealDim, border: `1px solid ${T.teal}66`,
-          color: T.teal, fontFamily: T.mono, fontSize: 11, fontWeight: 900,
+          color: T.teal, fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
           listStyle: "none",
         }}>
           ▦ {t("fund.ecashLockTitle")}
@@ -1153,7 +1167,7 @@ function FundingMethodChooser({
           marginTop: 8, padding: 12, borderRadius: T.rs,
           background: T.surface, border: `1px solid ${T.border}`,
         }}>
-          <div style={{ color: T.muted, fontFamily: T.mono, fontSize: 10, lineHeight: 1.5, marginBottom: 8 }}>
+          <div style={{ color: T.muted, fontFamily: T.sans, fontSize: T.fs.secondary, lineHeight: 1.5, marginBottom: 8 }}>
             {t("fund.ecashLockBody", { amount: amountSats.toLocaleString() })}
           </div>
           <textarea
@@ -1179,16 +1193,16 @@ function FundingMethodChooser({
       <div style={{
         marginTop: 12, padding: "8px 10px", borderRadius: T.rs,
         background: T.surface, border: `1px solid ${T.border}`,
-        fontSize: 10, color: T.muted, fontFamily: T.mono,
+        fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans,
         lineHeight: 1.45, textAlign: "center",
       }}>
-        {t("fund.tradeAmountBefore")} <BitcoinAmount sats={amountSats} size={10} gap={4} glyphScale={1.18} color={T.muted} glyphColor={T.muted} />
+        {t("fund.tradeAmountBefore")} <BitcoinAmount sats={amountSats} size={T.fs.secondary} gap={4} glyphScale={1} color={T.ink2} glyphColor={T.ink2} />
       </div>
 
       {!disableNwc && (
       <details style={{ marginTop: 12 }}>
         <summary style={{
-          color: T.muted, fontFamily: T.mono, fontSize: 10,
+          color: T.muted, fontFamily: T.sans, fontSize: T.fs.secondary,
           cursor: "pointer", listStyle: "none",
         }}>
           {savedNwcConnections.length > 0
@@ -1203,8 +1217,7 @@ function FundingMethodChooser({
               disclosure is now only for the paste-new-NWC setup
               path, which is uncommon enough to keep collapsed. */}
           <div style={{
-            fontSize: 9, color: T.muted, fontFamily: T.mono,
-            letterSpacing: 1, marginBottom: 6,
+            fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, marginBottom: 6,
           }}>
             {t("fund.pasteNwcConnection")}
           </div>
@@ -1217,8 +1230,8 @@ function FundingMethodChooser({
           />
           <label style={{
             display: "flex", alignItems: "center", gap: 8,
-            marginBottom: 10, color: T.muted, fontFamily: T.mono,
-            fontSize: 10, cursor: "pointer",
+            marginBottom: 10, color: T.muted, fontFamily: T.sans,
+            fontSize: T.fs.secondary, cursor: "pointer",
           }}>
             <input
               type="checkbox"
@@ -1332,16 +1345,16 @@ function RequestingFediEcash({
       }} />
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
       <div style={{
-        fontSize: 12, fontWeight: 700, color: T.accent,
-        fontFamily: T.mono, letterSpacing: 1, marginBottom: 8,
+        fontSize: T.fs.secondary, fontWeight: 700, color: T.accent,
+        fontFamily: T.sans, marginBottom: 8,
       }}>
         {t("fund.requestingFediEcash")}
       </div>
       <div style={{
-        fontSize: 11, color: T.muted, fontFamily: T.mono,
+        fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans,
         lineHeight: 1.5, marginBottom: 12,
       }}>
-        {t("fund.approveInFediBefore")} <BitcoinAmount sats={amountSats} size={10} gap={4} glyphScale={1.18} color={T.muted} glyphColor={T.muted} /> {t("fund.approveInFediAfter")}
+        {t("fund.approveInFediBefore")} <BitcoinAmount sats={amountSats} size={T.fs.secondary} gap={4} glyphScale={1.18} color={T.muted} glyphColor={T.muted} /> {t("fund.approveInFediAfter")}
       </div>
       <button
         onClick={onCancel}
@@ -1410,8 +1423,8 @@ function CreatingInvoice({
               style={{
                 padding: "8px 16px", borderRadius: T.rs,
                 background: T.surface, border: `1px solid ${T.border}`,
-                color: T.muted, fontFamily: T.mono, fontSize: 10,
-                fontWeight: 700, cursor: "pointer", letterSpacing: 0.3,
+                color: T.muted, fontFamily: T.sans, fontSize: T.fs.secondary,
+                fontWeight: 700, cursor: "pointer",
               }}
             >
               {t("common.cancel")}
@@ -1439,8 +1452,8 @@ function PayingWithNwc({ amountSats }: { amountSats: number }) {
         margin: "0 auto 14px",
       }} />
       <div style={{
-        fontSize: 12, fontWeight: 800, color: T.accent,
-        fontFamily: T.mono, letterSpacing: 1, marginBottom: 8,
+        fontSize: T.fs.secondary, fontWeight: 700, color: T.accent,
+        fontFamily: T.sans, marginBottom: 8,
       }}>
         {t("fund.requestingNwcPayment")}
       </div>
@@ -1448,7 +1461,7 @@ function PayingWithNwc({ amountSats }: { amountSats: number }) {
         fontSize: 11, color: T.muted, fontFamily: T.mono,
         lineHeight: 1.5,
       }}>
-        {t("fund.askingWalletBefore")} <BitcoinAmount sats={amountSats} size={10} gap={4} glyphScale={1.18} color={T.muted} glyphColor={T.muted} />{t("fund.askingWalletAfter")}
+        {t("fund.askingWalletBefore")} <BitcoinAmount sats={amountSats} size={T.fs.secondary} gap={4} glyphScale={1.18} color={T.muted} glyphColor={T.muted} />{t("fund.askingWalletAfter")}
       </div>
     </div>
   );
@@ -1586,7 +1599,7 @@ function ChapsmartMpesaPanel({
     return (
       <div style={{ padding: "24px 16px", textAlign: "center" }}>
         <div style={{ fontSize: 24, marginBottom: 10 }}>🇹🇿</div>
-        <div style={{ fontSize: 11, color: T.muted, fontFamily: T.mono, letterSpacing: 0.5 }}>
+        <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans,}}>
           {t("fund.gettingMpesaPrice")}
         </div>
       </div>
@@ -1599,7 +1612,7 @@ function ChapsmartMpesaPanel({
         <div style={{
           padding: "16px 14px", marginBottom: 12, borderRadius: T.r,
           background: T.amberDim, border: `1px solid ${T.amber}66`,
-          fontSize: 11, color: T.text, fontFamily: T.mono, lineHeight: 1.55,
+          fontSize: T.fs.secondary, color: T.text, fontFamily: T.sans, lineHeight: 1.55,
         }}>
           {state.message}
         </div>
@@ -1615,7 +1628,7 @@ function ChapsmartMpesaPanel({
           <button onClick={() => void loadQuote()} style={{
             padding: "10px 16px", borderRadius: T.rs,
             background: T.tealDim, border: `1px solid ${T.teal}66`,
-            color: T.teal, fontFamily: T.mono, fontSize: 11, fontWeight: 700,
+            color: T.teal, fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
             cursor: "pointer",
           }}>
             {state.quoteExpired ? t("fund.getNewQuote") : t("fund.tryAgain")}
@@ -1632,7 +1645,7 @@ function ChapsmartMpesaPanel({
         <div style={{ fontSize: 13, fontWeight: 700, color: T.teal, fontFamily: T.sans, marginBottom: 6 }}>
           {t("fund.chapsmartPaying")}
         </div>
-        <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono, lineHeight: 1.55 }}>
+        <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, lineHeight: 1.55 }}>
           {t("fund.chapsmartPayingBody")}
         </div>
         <div style={{
@@ -1644,7 +1657,7 @@ function ChapsmartMpesaPanel({
             width: 8, height: 8, borderRadius: "50%",
             background: T.teal, animation: "pulse 1.4s ease-in-out infinite",
           }} />
-          <span style={{ fontSize: 10, fontFamily: T.mono, color: T.teal, letterSpacing: 0.5 }}>
+          <span style={{ fontSize: T.fs.secondary, fontFamily: T.sans, color: T.teal,}}>
             {t("fund.stillWaitingPayment")}
           </span>
         </div>
@@ -1686,14 +1699,14 @@ function ChapsmartMpesaPanel({
         padding: "12px 14px", marginBottom: 10, borderRadius: T.r,
         background: T.tealDim, border: `1px solid ${T.teal}66`, textAlign: "center",
       }}>
-        <div style={{ fontSize: 9, color: T.teal, fontFamily: T.mono, letterSpacing: 1, fontWeight: 900, marginBottom: 4 }}>
+        <div style={{ fontSize: T.fs.secondary, color: T.teal, fontFamily: T.sans, fontWeight: 700, marginBottom: 4 }}>
           {t("fund.payExactly")}
         </div>
-        <div style={{ fontSize: 20, fontWeight: 800, color: T.text, fontFamily: T.mono }}>
+        <div style={{ fontSize: 20, fontWeight: 700, color: T.text, fontFamily: T.sans }}>
           TZS {formatTzs(quote.amountTZS)}
         </div>
-        <div style={{ fontSize: 9, color: T.muted, fontFamily: T.mono, marginTop: 4 }}>
-          {t("fund.quoteForBefore")} <BitcoinAmount sats={amountSats} size={9} gap={3} glyphScale={1.18} color={T.muted} glyphColor={T.muted} /> {t("fund.quoteForAfter")}
+        <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, marginTop: 4 }}>
+          {t("fund.quoteForBefore")} <BitcoinAmount sats={amountSats} size={T.fs.secondary} gap={3} glyphScale={1.18} color={T.muted} glyphColor={T.muted} /> {t("fund.quoteForAfter")}
         </div>
       </div>
 
@@ -1701,7 +1714,7 @@ function ChapsmartMpesaPanel({
         {steps.map((step, i) => (
           <li key={i} style={{
             display: "flex", gap: 8, alignItems: "baseline",
-            fontSize: 10.5, fontFamily: T.mono, color: T.text, lineHeight: 1.45,
+            fontSize: T.fs.secondary, fontFamily: T.sans, color: T.text, lineHeight: 1.45,
           }}>
             <span style={{ color: T.teal, fontWeight: 800, flexShrink: 0 }}>{i + 1}.</span>
             <span>
@@ -1719,12 +1732,12 @@ function ChapsmartMpesaPanel({
         style={{
           width: "100%", marginBottom: 10, padding: "8px 12px", borderRadius: T.rs,
           background: T.surface, border: `1px solid ${T.border}`,
-          color: T.text, fontFamily: T.mono, fontSize: 10.5, fontWeight: 700,
+          color: T.text, fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
           cursor: "pointer",
         }}
       />
 
-      <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono, marginBottom: 6, lineHeight: 1.5 }}>
+      <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, marginBottom: 6, lineHeight: 1.5 }}>
         {t("fund.mpesaPasteCode")}
       </div>
       <input
@@ -1740,14 +1753,14 @@ function ChapsmartMpesaPanel({
         autoCapitalize="characters"
         autoCorrect="off"
         spellCheck={false}
-        style={{ ...inputStyle, marginBottom: 8, textTransform: "uppercase" }}
+        style={{ ...inputStyle, marginBottom: 8, }}
       />
 
       {inlineError && (
         <div style={{
           padding: "8px 12px", marginBottom: 8, borderRadius: T.rs,
           background: T.amberDim, border: `1px solid ${T.amber}55`,
-          fontSize: 10, color: T.amber, fontFamily: T.mono, lineHeight: 1.5,
+          fontSize: T.fs.secondary, color: T.amber, fontFamily: T.sans, lineHeight: 1.5,
         }}>
           {inlineError}
         </div>
@@ -1758,8 +1771,8 @@ function ChapsmartMpesaPanel({
         disabled={busy || !normalizeMpesaConfirmationCode(codeInput)}
         style={{
           width: "100%", padding: "12px 16px", borderRadius: T.rs,
-          background: T.teal, border: `1px solid ${T.teal}`,
-          color: "#000", fontFamily: T.mono, fontSize: 12, fontWeight: 900,
+          background: T.accent, border: `1px solid ${T.accent}`,
+          color: T.onInk, fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
           cursor: busy ? "wait" : "pointer",
           opacity: busy || !normalizeMpesaConfirmationCode(codeInput) ? 0.55 : 1,
         }}
@@ -1805,10 +1818,10 @@ function MintConfirmingSlowState({
         <div style={{ fontSize: 13, fontWeight: 700, color: T.amber, fontFamily: T.sans, marginBottom: 4 }}>
           {t("fund.federationTakingItsTime")}
         </div>
-        <div style={{ fontSize: 18, fontWeight: 800, color: T.text, fontFamily: T.mono, marginBottom: 6 }}>
+        <div style={{ fontSize: 18, fontWeight: 700, color: T.text, fontFamily: T.sans, marginBottom: 6 }}>
           +<BitcoinAmount sats={amountSats} size={18} gap={5} glyphScale={1.18} color={T.text} glyphColor={T.muted} /> {t("fund.inbound")}
         </div>
-        <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono, lineHeight: 1.5, wordBreak: "break-word" }}>
+        <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, lineHeight: 1.5, wordBreak: "break-word" }}>
           {t("fund.mintConfirmingSlowBody")}
         </div>
       </div>
@@ -1822,7 +1835,7 @@ function MintConfirmingSlowState({
           width: 8, height: 8, borderRadius: "50%",
           background: T.amber, animation: "pulse 1.4s ease-in-out infinite",
         }} />
-        <span style={{ fontSize: 10, fontFamily: T.mono, color: T.amber, letterSpacing: 0.5 }}>
+        <span style={{ fontSize: T.fs.secondary, fontFamily: T.sans, color: T.amber,}}>
           {t("fund.mintStillSettling")}
         </span>
       </div>
@@ -1831,7 +1844,7 @@ function MintConfirmingSlowState({
         style={{
           width: "100%", padding: "10px 16px", borderRadius: T.rs,
           background: T.surface, border: `1px solid ${T.border}`,
-          color: T.muted, fontFamily: T.mono, fontSize: 11, fontWeight: 700,
+          color: T.muted, fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
           cursor: "pointer",
         }}
       >
@@ -1856,10 +1869,10 @@ function ReceiveRejectedState({
         <div style={{ fontSize: 13, fontWeight: 700, color: T.red, fontFamily: T.sans, marginBottom: 4 }}>
           {t("fund.federationRejectedPayment")}
         </div>
-        <div style={{ fontSize: 18, fontWeight: 800, color: T.text, fontFamily: T.mono, marginBottom: 6 }}>
+        <div style={{ fontSize: 18, fontWeight: 700, color: T.text, fontFamily: T.sans, marginBottom: 6 }}>
           <BitcoinAmount sats={amountSats} size={18} gap={5} glyphScale={1.18} color={T.text} glyphColor={T.muted} /> {t("fund.notCredited")}
         </div>
-        <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono, lineHeight: 1.5, wordBreak: "break-word" }}>
+        <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, lineHeight: 1.5, wordBreak: "break-word" }}>
           {t("fund.gatewayCanceledBody", { reason })}
         </div>
       </div>
@@ -1873,7 +1886,7 @@ function ReceiveRejectedState({
           width: 8, height: 8, borderRadius: "50%",
           background: T.red, animation: "pulse 1.4s ease-in-out infinite",
         }} />
-        <span style={{ fontSize: 10, fontFamily: T.mono, color: T.red, letterSpacing: 0.5 }}>
+        <span style={{ fontSize: T.fs.secondary, fontFamily: T.sans, color: T.red,}}>
           {t("fund.checkingBalanceBeforeStopping")}
         </span>
       </div>
@@ -1882,7 +1895,7 @@ function ReceiveRejectedState({
         style={{
           width: "100%", padding: "10px 16px", borderRadius: T.rs,
           background: T.surface, border: `1px solid ${T.border}`,
-          color: T.muted, fontFamily: T.mono, fontSize: 11, fontWeight: 700,
+          color: T.muted, fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
           cursor: "pointer",
         }}
       >
@@ -1903,10 +1916,10 @@ function PaymentConfirmed({ amountSats }: { amountSats: number }) {
       <div style={{ fontSize: 13, fontWeight: 700, color: T.green, fontFamily: T.sans, marginBottom: 4 }}>
         {t("fund.paymentReceived")}
       </div>
-      <div style={{ fontSize: 18, fontWeight: 800, color: T.text, fontFamily: T.mono }}>
+      <div style={{ fontSize: 18, fontWeight: 700, color: T.text, fontFamily: T.sans }}>
         +<BitcoinAmount sats={amountSats} size={18} gap={5} glyphScale={1.18} color={T.text} glyphColor={T.muted} />
       </div>
-      <div style={{ fontSize: 9, color: T.muted, fontFamily: T.mono, marginTop: 10, letterSpacing: 1 }}>
+      <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, marginTop: 10,}}>
         {t("fund.sealingTrade")}
       </div>
     </div>
@@ -1925,7 +1938,7 @@ function Locking() {
         background: T.purple, animation: "pulse 1.4s ease-in-out infinite",
         margin: "0 auto 12px",
       }} />
-      <div style={{ fontSize: 11, fontWeight: 600, color: T.purple, fontFamily: T.mono, letterSpacing: 1 }}>
+      <div style={{ fontSize: T.fs.secondary, fontWeight: 600, color: T.purple, fontFamily: T.sans,}}>
         {t("fund.splittingShares")}
       </div>
     </div>
@@ -1944,10 +1957,10 @@ function LockedSuccess({ amountSats }: { amountSats: number }) {
       <div style={{ fontSize: 14, fontWeight: 700, color: T.green, fontFamily: T.sans, marginBottom: 6 }}>
         {t("fund.lockedInEscrow")}
       </div>
-      <div style={{ fontSize: 22, fontWeight: 800, color: T.text, fontFamily: T.mono, letterSpacing: -0.5 }}>
+      <div style={{ fontSize: 22, fontWeight: 700, color: T.text, fontFamily: T.sans,}}>
         <BitcoinAmount sats={amountSats} size={18} gap={5} glyphScale={1.18} color={T.text} glyphColor={T.muted} />
       </div>
-      <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono, marginTop: 12 }}>
+      <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, marginTop: 12 }}>
         {t("fund.tradeLiveClosing")}
       </div>
     </div>
@@ -1969,7 +1982,7 @@ function ExpiredState({
         <div style={{ fontSize: 12, fontWeight: 700, color: T.red, fontFamily: T.sans, marginBottom: 4 }}>
           {t("fund.invoiceExpired")}
         </div>
-        <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono }}>
+        <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans }}>
           {t("fund.expiredBody")}
         </div>
       </div>
@@ -1978,7 +1991,7 @@ function ExpiredState({
         style={{
           width: "100%", padding: "12px 16px", borderRadius: T.rs,
           background: T.accent, border: `1px solid ${T.accent}`,
-          color: "#000", fontFamily: T.mono, fontSize: 12, fontWeight: 800,
+          color: T.onInk, fontFamily: T.mono, fontSize: 12, fontWeight: 800,
           cursor: "pointer", marginBottom: 8,
         }}
       >
@@ -1989,7 +2002,7 @@ function ExpiredState({
         style={{
           width: "100%", padding: "10px 16px", borderRadius: T.rs,
           background: T.surface, border: `1px solid ${T.border}`,
-          color: T.muted, fontFamily: T.mono, fontSize: 11, fontWeight: 700,
+          color: T.muted, fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
           cursor: "pointer",
         }}
       >
@@ -2014,7 +2027,7 @@ function MintTimeoutState({
         <div style={{ fontSize: 12, fontWeight: 700, color: T.amber, fontFamily: T.sans, marginBottom: 4 }}>
           {t("fund.mintTakingLonger")}
         </div>
-        <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono }}>
+        <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans }}>
           {t("fund.mintSlowBody")}
         </div>
       </div>
@@ -2025,7 +2038,7 @@ function MintTimeoutState({
           width: "100%", padding: "12px 16px", borderRadius: T.rs,
           background: busy ? T.surface : T.amber, border: `1px solid ${T.amber}`,
           color: busy ? T.muted : "#000",
-          fontFamily: T.mono, fontSize: 12, fontWeight: 800,
+          fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
           cursor: busy ? "not-allowed" : "pointer", marginBottom: 8,
         }}
       >
@@ -2086,7 +2099,7 @@ export function LockFailedState({
         <div style={{ fontSize: 12, fontWeight: 700, color: seatExpired ? T.text : T.red, fontFamily: T.sans, marginBottom: 4 }}>
           {title}
         </div>
-        <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono, wordBreak: "break-word" }}>
+        <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, wordBreak: "break-word" }}>
           {detail}
         </div>
       </div>
@@ -2099,7 +2112,7 @@ export function LockFailedState({
           style={{
             width: "100%", padding: "10px 16px", borderRadius: T.rs,
             background: T.redDim, border: `1px solid ${T.red}44`,
-            color: T.red, fontFamily: T.mono, fontSize: 11, fontWeight: 700,
+            color: T.red, fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
             cursor: "pointer", marginBottom: 8,
           }}
         />
@@ -2112,7 +2125,7 @@ export function LockFailedState({
           style={{
             width: "100%", padding: "10px 16px", borderRadius: T.rs,
             background: T.redDim, border: `1px solid ${T.red}44`,
-            color: T.red, fontFamily: T.mono, fontSize: 11, fontWeight: 700,
+            color: T.red, fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
             cursor: "pointer", marginBottom: 8,
           }}
         />
@@ -2123,7 +2136,7 @@ export function LockFailedState({
           style={{
             width: "100%", padding: "10px 16px", borderRadius: T.rs,
             background: T.amberDim, border: `1px solid ${T.amber}55`,
-            color: T.amber, fontFamily: T.mono, fontSize: 11, fontWeight: 800,
+            color: T.amber, fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
             cursor: "pointer", marginBottom: 8,
           }}
         >
@@ -2135,7 +2148,7 @@ export function LockFailedState({
         style={{
           width: "100%", padding: "10px 16px", borderRadius: T.rs,
           background: T.surface, border: `1px solid ${T.border}`,
-          color: T.muted, fontFamily: T.mono, fontSize: 11, fontWeight: 700,
+          color: T.muted, fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
           cursor: "pointer",
         }}
       >

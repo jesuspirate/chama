@@ -149,7 +149,7 @@ import {
 import {
   BROWSE_CATS, T, TRINITY_RING_ORDER,
   activeResolvedTheme, applyThemeMode, readThemeMode, resolveThemeMode,
-  writeThemeMode, type ThemeMode,
+  writeThemeMode, typeScaleCss, type ThemeMode,
 } from "./theme.js";
 import { useT, translate, getCurrentLang } from "../i18n/index.js";
 import {
@@ -183,7 +183,9 @@ import { BitcoinAmount } from "./components/BitcoinAmount.js";
 import { VerticalIcon } from "./components/VerticalIcon.js";
 import { ChamaLoader } from "./components/ChamaLoader.js";
 import { isExpiredUnfundedListing } from "../escrow-engine/expired-listing.js";
-import { BottomNav, BOTTOM_NAV_HEIGHT, type Tab } from "./components/BottomNav.js";
+import { BottomNav, BOTTOM_NAV_HEIGHT, CreateButton, navCss, type Tab } from "./components/BottomNav.js";
+import { HomeHero, homeCss } from "./components/HomeHero.js";
+import { CirclesHome } from "./screens/CirclesHome.js";
 import { CoachMarkTour, readCoachSeen, type CoachStep } from "./components/CoachMarkTour.js";
 import { BitcoinPricePill } from "./components/BitcoinPricePill.js";
 import { useDesktopNavigationShortcuts } from "./hooks/useDesktopNavigationShortcuts.js";
@@ -193,7 +195,7 @@ import { PendingPayoutCard } from "./components/PendingPayoutCard.js";
 import { useFederationCommands } from "./hooks/useFederationCommands.js";
 
 import { BrowseView } from "./screens/BrowseView.js";
-import { AssistedCanvas, type AssistedCanvasResume } from "./screens/AssistedCanvas.js";
+import { CanvasAllListings, AssistedCanvas, type AssistedCanvasResume } from "./screens/AssistedCanvas.js";
 import type { CanvasCreatePrefill } from "../guided/create-prefill.js";
 import { ConnectScreen } from "./screens/ConnectScreen.js";
 import { GlobeCountryPicker } from "./screens/GlobeCountryPicker.js";
@@ -207,7 +209,7 @@ import { MeScreen } from "./screens/MeScreen.js";
 import { LapsedStoreCard } from "./components/LapsedStoreCard.js";
 import { RecurringBillCard } from "./components/RecurringBillCard.js";
 import { SettingsAdvanced } from "./screens/SettingsAdvanced.js";
-import { HelpScreen } from "./screens/HelpScreen.js";
+import { HelpScreen, HelpOverlay } from "./screens/HelpScreen.js";
 
 import { WalletBar } from "./panels/WalletBar.js";
 import { ChamaBar } from "./panels/ChamaBar.js";
@@ -284,6 +286,7 @@ type View =
   | "circle-create"
   | "create"
   | "dashboard"
+  | "circles"
   | "me"
   | "saved-handles"
   | "payout-destinations"
@@ -314,12 +317,14 @@ const TAB_FOR_VIEW: Record<View, Tab> = {
   guided: "browse",
   browse: "browse",
   detail: "browse",
-  circle: "browse",
-  "circle-create": "browse",
-  // v4.2.1: the inline create view is legacy/dead (Create lives on the pencil
-  // FAB overlay now); keep it mapped to a valid tab. The middle tab is Dashboard.
+  circle: "circles",
+  "circle-create": "circles",
+  // v4.2.1: the inline create view is legacy/dead (Create lives on the "+" /
+  // FAB / sidebar Create now); keep it mapped to a valid tab.
   create: "browse",
-  dashboard: "dashboard",
+  // v7 redesign: the Dashboard is the Home tab; Circles has its own home.
+  dashboard: "home",
+  circles: "circles",
   me: "me",
   "saved-handles": "me",
   "payout-destinations": "me",
@@ -349,7 +354,7 @@ const COACH_STEPS: CoachStep[] = [
     bodyKey: "app.coachCreateBody",
   },
   {
-    selector: '[data-coach="nav-dashboard"]',
+    selector: '[data-coach="nav-home"]',
     titleKey: "app.coachDashboardTitle",
     bodyKey: "app.coachDashboardBody",
   },
@@ -535,6 +540,12 @@ export default function App() {
   const setMeRequestTab = (tab: "sats" | "settings" | "live-trades" | "community", country?: string) =>
     setMeRequestTabRaw(prev => ({ tab, country, n: (prev?.n ?? 0) + 1 }));
   const openCommunity = (country?: string) => { setMeRequestTab("community", country); setView("me"); };
+  const advancedReturnRef = useRef<View>("me");
+  const openAdvanced = () => { advancedReturnRef.current = view === "advanced" ? advancedReturnRef.current : view; setView("advanced"); };
+  const closeAdvanced = () => {
+    const back = advancedReturnRef.current;
+    if (back === "me") { setMeRequestTab("settings"); setView("me"); } else setView(back);
+  };
   const [explicitCommunities, setExplicitCommunities] = useState<ReadonlySet<string>>(() => new Set());
 
   const [{
@@ -574,7 +585,7 @@ export default function App() {
         const sats = Math.floor(p.deltaMsats / 1000);
         t({
           message: p.viaWatchdog
-            ? <>{translate(getCurrentLang(), "app.claimedBefore")} <BitcoinAmount sats={sats} size={12} gap={3} glyphScale={1.2} color="inherit" glyphColor="inherit" /> {translate(getCurrentLang(), "app.claimedAfter")}</>
+            ? <>{translate(getCurrentLang(), "app.claimedBefore")} <BitcoinAmount sats={sats} size={T.fs.secondary} gap={3} glyphScale={1.2} color="inherit" glyphColor="inherit" /> {translate(getCurrentLang(), "app.claimedAfter")}</>
             : translate(getCurrentLang(), "app.claimedRedeemed"),
           type: "success",
         });
@@ -824,6 +835,20 @@ export default function App() {
   // when the user backs out of the detail view.
   const visitedForeignFedRef = useRef(false);
   const [browseCategory, setBrowseCategory] = useState<string>("all");
+  // v7 redesign (back map): Advanced returns to the screen that opened it —
+  // Me › Settings, or the trade whose explorer link led here.
+  // v7 redesign: Help & FAQ open as overlays over Me › Settings.
+  const [helpOpen, setHelpOpen] = useState(false);
+  // v7 redesign (Jet): the subtle advanced "All listings" Browse, for people
+  // who know what they're doing. Remembered per device; off by default.
+  const [browseAdvanced, setBrowseAdvanced] = useState<boolean>(() => {
+    try { return globalThis.localStorage?.getItem("chama_browse_advanced") === "1"; } catch { return false; }
+  });
+  const setBrowseAdvancedPref = (on: boolean) => {
+    setBrowseAdvanced(on);
+    try { globalThis.localStorage?.setItem("chama_browse_advanced", on ? "1" : "0"); } catch { /* cosmetic */ }
+    if (on) setView("browse"); else setView("guided");
+  };
   // Per the "every user has a home" doctrine (§2.1, locked for v0.2.0):
   // every user — first-time or returning — gets a community from the
   // moment they sign in. v0.1.87 retired the synthetic "All communities"
@@ -3027,8 +3052,17 @@ export default function App() {
     maybeSnapBackHome();
   };
   const switchTab = (t: Tab) => {
-    if (t === "browse") { if (view === "browse" || view === "guided") guidedHome(); else setView("browse"); }
-    else if (t === "dashboard") setView("dashboard");
+    if (t === "browse") {
+      // v7 redesign: Browse is the guided canvas, unless this person chose
+      // the advanced "All listings" view (remembered on this device). A
+      // second tap on Browse keeps its old meaning (back to the front door).
+      if (browseAdvanced) setView("browse");
+      else if (view === "guided") guidedHome();
+      else setView("guided");
+    }
+    // v7 redesign: Circles is circles end to end — its own home.
+    else if (t === "circles") setView("circles");
+    else if (t === "home") setView("dashboard");
     else if (t === "me") setView("me");
     // V3 #75: leaving a visited trade via the bottom nav counts as backing
     // out — same snap-back as the detail back button.
@@ -3200,8 +3234,10 @@ export default function App() {
   // screen left") — the 520 shell clamp made a desktop viewport render the
   // market as a phone column with dark gutters, while Me and the Dashboard
   // already breathed.
-  const wideOwnWidthMode = view === "dashboard" || view === "me" || view === "browse";
-  const activeTab = detailMode ? TAB_FOR_VIEW[detailBackView] : TAB_FOR_VIEW[view];
+  const wideOwnWidthMode = view === "dashboard" || view === "me" || view === "browse" || view === "circles";
+  const baseTab = detailMode ? TAB_FOR_VIEW[detailBackView] : TAB_FOR_VIEW[view];
+  const activeTab: Tab = baseTab;
+  const openCreate = () => setView("guided");
   const effectiveShellPaddingBottom = detailMode ? 0 : shellPaddingBottom;
   const chamaBarLabel = decideChamaBarLabel({
       myTradesLoading,
@@ -3218,7 +3254,10 @@ export default function App() {
     });
 
   return (
-    <FederationInfoProvider load={actions.inspectFederation} activeId={fedimint.federationId} communityInvite={getCommunityBySlug(getUserCommunitySlugRaw() ?? "")?.federationInvite ?? undefined}><ConductProvider key={pubkey ?? "anonymous"} load={actions.fetchPublicConduct}><div style={{
+    <FederationInfoProvider load={actions.inspectFederation} activeId={fedimint.federationId} communityInvite={getCommunityBySlug(getUserCommunitySlugRaw() ?? "")?.federationInvite ?? undefined}><ConductProvider key={pubkey ?? "anonymous"} load={actions.fetchPublicConduct}><div
+      className={detailMode ? undefined : "chama-shell-nav"}
+      data-shell-width={(assistedCanvasMode || wideOwnWidthMode) ? "wide" : "narrow"}
+      style={{
       background: T.bg, color: T.text, minHeight: "100dvh",
       // v2.7 Stage 4: detail mode widens to 1120 so TradeDetail's built-in
       // ≥980px two-column layout (listing pane + sticky trade-room/chat) can
@@ -3236,6 +3275,7 @@ export default function App() {
       <SimModePill />
       <SimEntryModal />
 
+      {helpOpen && <HelpOverlay onClose={() => setHelpOpen(false)} />}
       {toast && <Toast message={toast.message} type={toast.type} sticky={toast.sticky} dismissOnTap={toast.dismissOnTap} onDone={() => setToast(null)} />}
       {walletOverlay === "payment-methods" && <SavedHandlesPanel communitySlug={actions.getCommunity()} onClose={() => setWalletOverlay(null)} />}
       {walletOverlay === "lightning" && (
@@ -3255,7 +3295,7 @@ export default function App() {
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <div>
                 <button type="button" aria-label={t("lts.backHome")} onClick={guidedHome} style={{ background: "none", border: 0, padding: 0, cursor: "pointer" }}><Wordmark /></button>
-                <div style={{ fontSize: 9, color: T.muted, fontFamily: T.mono, letterSpacing: 1.5, textTransform: "uppercase", paddingLeft: 34, marginTop: 3 }}>
+                <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, paddingLeft: 34, marginTop: 3 }}>
                   {defaultCurrencyForCommunity(routeCommunitySlug)} · {t("app.headerTagline")}
                 </div>
               </div>
@@ -3272,6 +3312,7 @@ export default function App() {
                     bundle. ship.sh exports CHAMA_RELEASE=1 → clean version. */}
                 v{__APP_VERSION__}{__BUILD_STAMP__ ? ` · dev ${__BUILD_STAMP__}` : ""}{__BUILD_STAMP__ && sessionBadge ? ` · ${sessionBadge}` : ""}
               </div>
+              <CreateButton onCreate={openCreate} />
             </div>
           </div>
 
@@ -3284,6 +3325,7 @@ export default function App() {
               amountMode={amountDisplayMode}
               onAmountModeChange={setAmountDisplayMode}
               quoteCurrency={getCommunityBySlug(routeCommunitySlug)?.currency ?? null}
+              converterCommunity={routeCommunitySlug}
             />
           </div>
 
@@ -3958,7 +4000,7 @@ export default function App() {
         selected && circleFromEscrow(selected) ? <CircleSurface key={selected.id} parent={selected} escrows={escrows} viewerPubkey={pubkey!}
           childrenLoaded={circleChildrenLoaded.has(selected.id)} loadError={circleLoadError}
           profileNames={nostrProfiles} kind0Enabled={kind0Enabled}
-          backLabel={detailBackView === "me" ? t("browse.navMe") : detailBackView === "dashboard" ? t("browse.navDashboard") : detailBackView === "guided" ? t(detailReturnsHome ? "lts.backHome" : "canvas.backOffers") : t("browse.navBrowse")}
+          backLabel={detailBackView === "me" ? t("browse.navMe") : detailBackView === "dashboard" ? t("browse.navHome") : detailBackView === "circles" ? t("browse.navCircles") : detailBackView === "guided" ? t(detailReturnsHome ? "lts.backHome" : "canvas.backOffers") : t("browse.navBrowse")}
           onBack={backFromTrade}
           onRefresh={() => refreshCircle(selected.id)}
           onLock={async () => {
@@ -4022,7 +4064,7 @@ export default function App() {
           }}>{t("circle.retry")}</button>}</div>
       ) : view === "guided" ? (
         <>
-        <AssistedCanvas
+        <CanvasAllListings.Provider value={() => setBrowseAdvancedPref(true)}><AssistedCanvas
           onOpenCommunity={() => openCommunity()}
           profileNames={nostrProfiles} kind0Enabled={kind0Enabled}
           key={canvasHomeKey}
@@ -4049,11 +4091,10 @@ export default function App() {
             setCreateOverlayOpen(true);
           }}
           onOpenTrade={(id) => { setDetailReturnsHome(false); openEscrow(id, "guided"); }}
-          onStartCircle={openCircleCanvas}
           publishedInfo={canvasPublished}
           onDismissPublished={() => setCanvasPublished(null)}
           resumeRef={canvasResumeRef}
-        />
+        /></CanvasAllListings.Provider>
         {visibleAttentionTrade && (
           <CanvasAttentionBell
             trade={visibleAttentionTrade}
@@ -4082,7 +4123,7 @@ export default function App() {
               onchainActions={{
                 onRequestStalledPayout: actions.requestStalledOnchainPayout,
                 onchainObservation: onchainObservations?.get(selected.id),
-                onOpenExplorerSettings: () => { setAdvancedFocusExplorer(true); setView("advanced"); },
+                onOpenExplorerSettings: () => { setAdvancedFocusExplorer(true); openAdvanced(); },
                 fetchCommunityBonds: actions.fetchCommunityBonds,
                 onchainFundingPlan: actions.onchainFundingPlan,
                 onPrepareOnchainFunding: actions.prepareOnchainFunding,
@@ -4105,7 +4146,8 @@ export default function App() {
               onBack={backFromTrade}
               backLabel={
                 detailBackView === "me" ? t("browse.navMe")
-                : detailBackView === "dashboard" ? t("browse.navDashboard")
+                : detailBackView === "dashboard" ? t("browse.navHome")
+                : detailBackView === "circles" ? t("browse.navCircles")
                 : detailBackView === "guided" ? t(detailReturnsHome ? "lts.backHome" : "canvas.backOffers")
                 : t("browse.navBrowse")
               }
@@ -4172,7 +4214,7 @@ export default function App() {
             onPrepareOnchainSettlement={actions.prepareOnchainSettlement}
             onRequestStalledPayout={actions.requestStalledOnchainPayout}
             onchainObservation={onchainObservations?.get(selected.id)}
-            onOpenExplorerSettings={() => { setAdvancedFocusExplorer(true); setView("advanced"); }}
+            onOpenExplorerSettings={() => { setAdvancedFocusExplorer(true); openAdvanced(); }}
             onCheckOnchainSettlement={actions.checkOnchainSettlement}
             onSignOnchainSettlement={actions.signOnchainSettlement}
             onFinalizeOnchainSettlement={actions.finalizeOnchainSettlement}
@@ -4504,7 +4546,7 @@ export default function App() {
               void actions.prewarmFunding();
             }}
             onOpenSettings={() => setWalletOverlay("payment-methods")}
-            onOpenNwcSettings={() => { setAdvancedFocusNwc(true); setView("advanced"); }}
+            onOpenNwcSettings={() => { setAdvancedFocusNwc(true); openAdvanced(); }}
           />
           )}
         </div>
@@ -4578,9 +4620,24 @@ export default function App() {
           )}
         </div>
       ) : view === "dashboard" ? (
-        // v5.0 "finish the bond": the real Dashboard — standing (ratings), your
-        // bond, chama liveness, and trade stats, composed from data the app
-        // already has. Replaces the v4.2.1 "coming soon" placeholder.
+        // v7 redesign: the Home tab. The hero (money, needs you, also going
+        // on) leads; v5.0's standing Dashboard follows — beside it on wide
+        // screens, below it on phones.
+        <HomeHero
+          balanceMsats={fedimint.balanceMsats ?? 0}
+          inEscrowMsats={committedMsats}
+          readyToCollectCount={needsYouTrades.filter(e =>
+            needsYouReasonFor(e, pubkey!, now, settledClaimIds, onchainObservations?.get(e.id)) === "claim").length}
+          needsYou={needsYouTrades}
+          alsoGoingOn={[...escrows.values()].filter(e =>
+            liveCommitmentForViewer(e, pubkey!, now) && !needsYouTrades.some(n => n.id === e.id))}
+          pubkey={pubkey!}
+          profileNames={nostrProfiles}
+          kind0Enabled={kind0Enabled}
+          onchainObservations={onchainObservations}
+          onOpenTrade={openEscrow}
+          quoteCurrency={getCommunityBySlug(routeCommunitySlug)?.currency ?? null}
+        >
         <DashboardScreen
           knownTrades={knownTradesForConcentration}
           pubkey={pubkey!}
@@ -4598,10 +4655,27 @@ export default function App() {
           fetchCommunityBonds={actions.fetchCommunityBonds}
           getBondChainTip={actions.getBondChainTip}
         />
+        </HomeHero>
+      ) : view === "circles" ? (
+        // v7 redesign: the Circles tab — circles end to end.
+        <CirclesHome
+          allEscrows={[...escrows.values()]}
+          visibleListings={allVisibleListings}
+          pubkey={pubkey!}
+          onOpenTrade={(id) => openEscrow(id, "circles")}
+          onStartCircle={CHAMA_CIRCLES_ENABLED ? openCircleCanvas : undefined}
+          amountDisplayMode={amountDisplayMode}
+          quoteCurrency={getCommunityBySlug(routeCommunitySlug)?.currency ?? null}
+          profileNames={nostrProfiles}
+          kind0Enabled={kind0Enabled}
+        />
       ) : view === "me" ? (
         <div style={{ animation: "fadeIn 0.3s ease" }}>
+          {/* v7 redesign: the tab's large title, above every Me card. */}
+          <h1 style={{ maxWidth: 760, margin: "0 auto", padding: "20px 16px 0", fontFamily: T.sans, fontSize: T.fs.largeTitle, fontWeight: 700, letterSpacing: "-0.02em", color: T.ink, lineHeight: 1.15 }}>
+            {t("browse.navMe")}
+          </h1>
 
-          <LapsedStoreCard autoRenewEnabled={storeAutoRenewEnabled} onAutoRenewChange={changeStoreAutoRenew} />
           {!myTradesLoading && <RecurringBillCard series={recurringSeries} onStop={cancelRecurring} />}
           <MeScreen
             walletInvite={fedimint.joined ? liveActiveInvite ?? undefined : undefined}
@@ -4612,6 +4686,7 @@ export default function App() {
               }
             }}
             loadActiveRecoveryKey={actions.exportActiveRecoveryKey}
+            storeAutoRenew={{ enabled: storeAutoRenewEnabled, onChange: changeStoreAutoRenew }}
             pubkey={pubkey!}
             kind0Enabled={kind0Enabled}
             profileNames={nostrProfiles}
@@ -4664,8 +4739,8 @@ export default function App() {
             onOpenPayoutDestinations={() => setWalletOverlay("lightning")}
             unfundedListingCount={clearableListings.length}
             onClearUnfundedListings={() => setShowClearListings(true)}
-            onOpenAdvanced={() => { setAdvancedFocusNwc(false); setView("advanced"); }}
-            onOpenHelp={() => setView("help")}
+            onOpenAdvanced={() => { setAdvancedFocusNwc(false); openAdvanced(); }}
+            onOpenHelp={() => setHelpOpen(true)}
             onSignOut={handleSignOut}
             onWithdrawEcash={() => setShowEcashExport(true)}
             onExportStrandedClaim={(entry) => setStrandedClaimExport(entry)}
@@ -4692,7 +4767,7 @@ export default function App() {
             focusExplorer={advancedFocusExplorer}
             focusNwc={advancedFocusNwc}
             onManageSavedWallets={() => { setView("me"); setWalletOverlay("lightning"); }}
-            onBack={() => setView("me")}
+            onBack={closeAdvanced}
             onSandboxFund={() => setShowFundModal(true)}
             communitySlug={browseCommunity}
             userPubkey={pubkey}
@@ -4785,8 +4860,9 @@ export default function App() {
               setBrowseCategory={setBrowseCategory}
               browseCommunity={routeCommunitySlug}
               amountDisplayMode={amountDisplayMode}
-              matchingListings={allVisibleListings.filter(listingMatchesRoute)}
-              nonMatchingListings={allVisibleListings.filter(s => !listingMatchesRoute(s))}
+              // v7 redesign: circles live on the Circles tab only.
+              matchingListings={allVisibleListings.filter(s => !circleFromEscrow(s) && listingMatchesRoute(s))}
+              nonMatchingListings={allVisibleListings.filter(s => !circleFromEscrow(s) && !listingMatchesRoute(s))}
               stockByListing={stockByListing}
               orderIndicatorByListing={listingOrderIndicator}
               fedimintJoined={fedimint.joined}
@@ -4800,6 +4876,7 @@ export default function App() {
               onCreate={() => {
                 setView("guided");
               }}
+              onGuided={() => setBrowseAdvancedPref(false)}
               onApplyAsArbiter={async (community, statement) => {
                 await actions.applyAsArbiter(community, statement);
               }}
@@ -4844,7 +4921,7 @@ export default function App() {
         </>
       )}
 
-      {!detailMode && <BottomNav active={activeTab} onSelect={switchTab} badges={{}} />}
+      {!detailMode && <BottomNav active={activeTab} onSelect={switchTab} onCreate={openCreate} badges={{}} />}
 
       {/* v4.1 C1: one-time post-sign-in tour. Only on the Browse home screen
           (FABs mounted), never over the create sheet or a detail view. */}
@@ -4886,8 +4963,8 @@ export default function App() {
               }}
             >×</button>
             <div style={{
-              color: T.amber, fontFamily: T.mono, fontSize: 10,
-              fontWeight: 800, letterSpacing: 1.1, textTransform: "uppercase",
+              color: T.amber, fontFamily: T.sans, fontSize: T.fs.secondary,
+              fontWeight: 800,
               marginBottom: 8,
             }}><span style={{ display: "inline-flex", verticalAlign: "middle", marginRight: 5 }}><VerticalIcon vertical="marketplace" size={15} /></span>Your listing</div>
             <div style={{
@@ -5017,7 +5094,7 @@ export default function App() {
 // Function, not a const string: the template interpolates T (focus ring), and
 // a module-scope capture would go stale when the palette swaps (#50). Called
 // per render so it always reflects the active theme.
-const globalCss = () => `
+const globalCss = () => `${typeScaleCss()}${navCss()}${homeCss()}
   /* The escrow pill states a number; landing on Me, the trades that MAKE that
      number briefly glow, so "which one is it talking about?" stops being a
      guessing game (Jet, 2026-09-20). Fades on its own — a permanent

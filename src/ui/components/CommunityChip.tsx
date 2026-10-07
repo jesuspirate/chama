@@ -13,7 +13,7 @@ export function CommunityChip({ slug, onOpen }: { slug: string; onOpen?: () => v
     aria-label={t("browse.openCommunity", { chama: community.displayName })} title={community.displayName}
     style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 10px", minHeight: 36,
       borderRadius: 999, background: T.surface, border: `1px solid ${T.border}`, color: T.text,
-      font: `600 11px ${T.mono}`, cursor: "pointer", flexShrink: 0 }}>
+      font: `600 ${T.fs.secondary} ${T.sans}`, cursor: "pointer", flexShrink: 0 }}>
     <span aria-hidden="true" style={{ fontSize: 16 }}>{community.flagEmoji}</span><span>{code}</span>
   </button>;
 }
