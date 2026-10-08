@@ -581,8 +581,7 @@ export class EscrowFedimintBridge {
   private async lockAndPublishInner(escrowId: string, opts: LockOptions = {}): Promise<EscrowState> {
     // A previous attempt may already have spent bearer notes. Recover those
     // under the flow mutex before the new empty-pool funding refusal fires.
-    const priorState = this.escrow.getState(escrowId);
-    if (this.nativeLockGuardOn() && priorState?.communityArbiters.length === 0 && getPendingNativeLock(escrowId)) {
+    if (this.nativeLockGuardOn() && getPendingNativeLock(escrowId) && this.escrow.getState(escrowId)?.communityArbiters.length === 0) {
       const outcome = await this.settlePendingNativeLockInner(escrowId, { ignoreAttemptCap: true });
       // Successful recovery can leave a notes-free Finish-lock intent. This
       // trade cannot be funded again, so remove only that proven-restored intent.
