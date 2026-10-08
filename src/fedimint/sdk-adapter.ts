@@ -1,3 +1,4 @@
+import { type JoinErrorCapture } from "./join-error-capture.js";
 import { boundedInspection, object, type FederationInspection } from "./federation-inspection.js";
 import { browserWalletStorageError } from "./browser-capabilities.js";
 import { createJoinDiagnostics, type JoinDiagnostics, type JoinPreviewDirector } from "./join-diagnostics.js";
@@ -1537,25 +1538,28 @@ export function adaptRealWallet(
     rollbackFilename?: string | null;
   },
   allowRecoveryOnJoin = false,
-  joinDiagnostics?: { capture: JoinDiagnostics; director: JoinPreviewDirector },
+  joinOptions?: { capture: JoinDiagnostics; director: JoinPreviewDirector } | JoinErrorCapture,
 ): IFedimintWallet {
+  const joinDiagnostics = joinOptions && "capture" in joinOptions ? joinOptions : undefined;
   const joinWithDiagnostics = async (invite: string, forceRecover = false): Promise<void> => {
-    joinDiagnostics?.capture.reset();
-    const preview = await joinDiagnostics?.capture.preview(joinDiagnostics.director, invite);
+    const diagnostics = joinDiagnostics && "capture" in joinDiagnostics ? joinDiagnostics : undefined;
+    const capture = (diagnostics?.capture ?? joinOptions) as JoinErrorCapture | undefined;
+    capture?.reset();
+    const preview = await diagnostics?.capture.preview(diagnostics.director, invite);
     const fallback = forceRecover
       ? "Fedimint SDK did not start forced wallet recovery"
       : "Fedimint SDK did not join the federation";
-    joinDiagnostics?.capture.joining(real.isOpen(), forceRecover);
+    diagnostics?.capture.joining(real.isOpen(), forceRecover);
     let joined: boolean;
     try {
       joined = forceRecover
         ? await real.joinFederation(invite, { forceRecover: true })
         : await real.joinFederation(invite);
     } catch (cause) {
-      throw joinDiagnostics?.capture.failure(fallback, preview, cause) ?? cause;
+      throw (diagnostics ? diagnostics.capture.failure(fallback, preview, cause) : capture?.failure(fallback, cause)) ?? cause;
     }
-    if (joined === false) throw joinDiagnostics?.capture.failure(fallback, preview) ?? new Error(fallback);
-    joinDiagnostics?.capture.joined();
+    if (joined === false) throw (diagnostics ? diagnostics.capture.failure(fallback, preview) : capture?.failure(fallback)) ?? new Error(fallback);
+    diagnostics?.capture.joined();
   };
   const activeReceiveWatches = new Set<() => void>();
   const armedReceiveOperationIds = new Set<string>();
@@ -2889,7 +2893,7 @@ export function adaptRealWallet(
             if (hasMeta && real.federation.getMetaConsensusValue) {
               try { consensusMeta = await real.federation.getMetaConsensusValue(0); metaStatus = "ready"; } catch { /* unknown limits */ }
             }
-            return { federationId: activeId, config, consensusMeta, metaStatus };
+            return { federationId: parsed.federation_id, config, consensusMeta, metaStatus };
           }
           const preview = object(await director.previewFederation(invite));
           if (!parsed.federation_id || preview.federation_id !== parsed.federation_id) throw new Error("Federation preview identity mismatch");

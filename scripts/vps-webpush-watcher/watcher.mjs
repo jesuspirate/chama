@@ -23,7 +23,7 @@ import crypto from "node:crypto";
 import webpush from "web-push";
 import { SimplePool, useWebSocketImplementation } from "nostr-tools/pool";
 import WebSocket from "ws";
-import { validSubscription, endpointKeyOf, createFcmSender } from "./delivery.mjs";
+import { validSubscription, endpointKeyOf, createFcmSender, deliveryHttpStatus } from "./delivery.mjs";
 import { subscribeWakeBand } from "./relay-subscription.mjs";
 import { freshWake, communityWakeSlugs } from "./wake-policy.mjs";
 
@@ -183,17 +183,18 @@ async function wake(tag, createdAt, eventId) {
     if (lastSent.size > 10000) lastSent.delete(lastSent.keys().next().value);
     try {
       // Payload contains only the registered opaque tag and freshness time.
-      if (rec.subscription.transport === "fcm") await sendFcm(rec.subscription, undefined, [tag]);
+      let response;
+      if (rec.subscription.transport === "fcm") response = await sendFcm(rec.subscription, undefined, [tag]);
       else {
         const payload = JSON.stringify({ wake: 1, sentAt: now, tags: [tag] });
-        await webpush.sendNotification(rec.subscription, payload, { TTL: 120, urgency: "high", timeout: 10_000 });
+        response = await webpush.sendNotification(rec.subscription, payload, { TTL: 120, urgency: "high", timeout: 10_000 });
       }
-      logWake(`wake ${tag.slice(0, 7)} ${rec.subscription.transport || "webpush"} sent ${Date.now() - now}ms`);
+      logWake(`wake ${tag.slice(0, 7)} ${rec.subscription.transport || "webpush"} sent ${Date.now() - now}ms http=${deliveryHttpStatus(response)}`);
     } catch (err) {
-      logWake(`wake ${tag.slice(0, 7)} ${rec.subscription.transport || "webpush"} failed ${Date.now() - now}ms`);
+      logWake(`wake ${tag.slice(0, 7)} ${rec.subscription.transport || "webpush"} failed ${Date.now() - now}ms http=${deliveryHttpStatus(err)}`);
       const code = err?.statusCode;
       if (code === 404 || code === 410) pruneEndpoint(key); // dead endpoint
-      else console.warn("[watcher] push send error status:", code || "?");
+      else console.warn("[watcher] push send error status:", deliveryHttpStatus(err));
     }
   }
 }

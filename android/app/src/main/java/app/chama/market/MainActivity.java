@@ -16,6 +16,7 @@ import com.getcapacitor.BridgeActivity;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.InputStreamReader;
+import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -23,6 +24,7 @@ public class MainActivity extends BridgeActivity {
     private static final String TAG = "Chama";
     private static final String PREFS_NAME = "chama_native";
     private static final String ASSET_VERSION_KEY = "web_asset_version";
+    private static final String BRIDGE_AUTH_TOKEN_KEY = "fedimint_bridge_auth_token";
     private static final String FEDIMINT_BRIDGE_BINARY = "libchama_fedimint_bridge.so";
     private static final String FEDIMINT_BRIDGE_BIND = "127.0.0.1:8787";
     private static final long FEDIMINT_BRIDGE_STABLE_MS = 30_000L;
@@ -122,6 +124,21 @@ public class MainActivity extends BridgeActivity {
         applySelectionTheme(light);
     }
 
+    /** Stable per-install bridge token, kept in app-private preferences so a
+     *  bridge that outlives the activity still accepts the WebView. */
+    synchronized String bridgeAuthToken() {
+        SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+        String token = prefs.getString(BRIDGE_AUTH_TOKEN_KEY, null);
+        if (token != null && token.length() >= 64) return token;
+        byte[] bytes = new byte[32];
+        new SecureRandom().nextBytes(bytes);
+        StringBuilder hex = new StringBuilder(64);
+        for (byte b : bytes) hex.append(String.format("%02x", b));
+        token = hex.toString();
+        prefs.edit().putString(BRIDGE_AUTH_TOKEN_KEY, token).commit();
+        return token;
+    }
+
     private synchronized void startFedimintBridge() {
         fedimintBridgeHandler.removeCallbacks(fedimintBridgeRestartRunnable);
         if (fedimintBridgeProcess != null && fedimintBridgeProcess.isAlive()) {
@@ -151,6 +168,12 @@ public class MainActivity extends BridgeActivity {
         ProcessBuilder builder = new ProcessBuilder(command);
         builder.redirectErrorStream(true);
         builder.environment().put("RUST_LOG", "warn");
+        // Every bridge route needs this token. Without it, any other app on
+        // the phone (or a web page via the system browser) could call
+        // 127.0.0.1:8787 and spend, withdraw or reset the wallet. The token
+        // travels by environment, never argv, and reaches only this app's
+        // WebView through ChamaDevicePlugin.bridgeToken().
+        builder.environment().put("CHAMA_BRIDGE_AUTH_TOKEN", bridgeAuthToken());
         builder.environment().put("LD_LIBRARY_PATH", getApplicationInfo().nativeLibraryDir);
 
         try {

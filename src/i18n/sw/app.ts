@@ -194,6 +194,8 @@ export const app: Record<string, string> = {
     "Gusa Futa tena kuthibitisha — hii inaghairi tangazo na kuliondoa kwenye Vinjari.",
   "app.tradeForgotten": "Biashara imesahauliwa kwenye kifaa hiki — pesa zinabaki kwenye escrow.",
   "app.tradeLoaded": "Biashara imepakiwa!",
+  "app.tradeConflictingCreators":
+    "Akaunti mbili tofauti zimechapisha tangazo kwa kitambulisho cha biashara hii, kwa hiyo Chama haiwezi kujua ni lipi la kweli na haitafungua lolote. Mwombe aliyekutumia kiungo kipya.",
   "app.tradeNotFound": "Biashara haijapatikana kwenye relay",
   "app.tradeNotFoundYet": "Bado biashara {id} haijapatikana kwenye relay.",
   "app.tradePublished": "Biashara imechapishwa! {escrowId}",

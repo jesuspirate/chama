@@ -26,7 +26,10 @@ await writeFile(path.join(temp, 'push.mjs'), `import {appendFile} from 'node:fs/
   setVapidDetails() {},
   async sendNotification(subscription, payload) {
     if (!JSON.parse(payload).test && !JSON.parse(payload).wake) throw Error('Expected opaque wake');
+    if (subscription.endpoint.endsWith('/failure429')) throw Object.assign(Error('private provider body'), {statusCode:429});
+    if (subscription.endpoint.endsWith('/timeout')) throw Error('private provider body');
     await appendFile(${JSON.stringify(wakes)}, payload + '\\n');
+    return {statusCode:201};
   }
 };`);
 await writeFile(path.join(temp, 'loader.mjs'), `export async function resolve(specifier, context, next) {
@@ -94,7 +97,7 @@ try {
   assert.equal(wakeRows.at(-1).wake,1);
   assert.equal(wakeRows.at(-1).escrowId,undefined,'wake contains no trade details');
   assert.deepEqual(wakeRows.at(-1).tags,[communityTag]);
-  assert.match(await readFile(path.join(temp,'wake-delivery.log'),'utf8'), new RegExp(`wake ${communityTag.slice(0,7)} unifiedpush sent [0-9]+ms`));
+  assert.match(await readFile(path.join(temp,'wake-delivery.log'),'utf8'), new RegExp(`wake ${communityTag.slice(0,7)} unifiedpush sent [0-9]+ms http=201`));
   const chats = ['first','second'].map(content => finalizeEvent({kind:38108,created_at:Math.floor(Date.now()/1000),tags:[['d','test-listing'],['w',communityTag]],content},new Uint8Array(32).fill(44)));
   for (const [socket,id] of subscriptions) if (socket.readyState===1) for (const chat of chats) socket.send(JSON.stringify(['EVENT',id,chat]));
   for (let i=0;i<20;i++) {
@@ -107,6 +110,25 @@ try {
   for (const [socket,id] of subscriptions) if (socket.readyState===1) { socket.send(JSON.stringify(['EVENT',id,chats[0]])); socket.send(JSON.stringify(['EVENT',id,renewal])); }
   await new Promise(resolve=>setTimeout(resolve,150));
   assert.equal((await readFile(wakes,'utf8')).trim().split('\n').length,before+3,'relay duplicates and renewal stay quiet');
+  const failures = [
+    {subscription:{...endpoint,endpoint:'https://ntfy.sh/failure429'},tag:'rate-limit-test',http:'429'},
+    {subscription:{...endpoint,endpoint:'https://ntfy.sh/timeout'},tag:'network-test',http:'unknown'},
+  ];
+  for (const f of failures) assert.equal(await post('register',{endpoint:f.subscription,tags:[f.tag]}),204);
+  await new Promise(resolve=>setTimeout(resolve,1100));
+  for (const f of failures) {
+    const event=finalizeEvent({kind:38108,created_at:Math.floor(Date.now()/1000),tags:[['d','private-test-trade'],['w',f.tag]],content:'private test body'},new Uint8Array(32).fill(44));
+    for (const [socket,id] of subscriptions) if(socket.readyState===1) socket.send(JSON.stringify(['EVENT',id,event]));
+  }
+  let receipts='';
+  for(let i=0;i<20;i++) {
+    receipts=await readFile(path.join(temp,'wake-delivery.log'),'utf8');
+    if(failures.every(f=>new RegExp(`wake ${f.tag.slice(0,7)} unifiedpush failed [0-9]+ms http=${f.http}`).test(receipts))) break;
+    await new Promise(resolve=>setTimeout(resolve,100));
+  }
+  for(const f of failures) assert.match(receipts,new RegExp(`wake ${f.tag.slice(0,7)} unifiedpush failed [0-9]+ms http=${f.http}`));
+  assert.doesNotMatch(receipts,/https:\/\/|private provider body|private-test-trade|private test body|p256dh|auth/,'receipts contain no endpoints, credentials, trade id or provider body');
+  for(const f of failures) assert.equal(await post('unregister',{endpoint:f.subscription,tags:[f.tag]}),204);
   assert.equal(await post('unregister',{endpoint,tags:[communityTag]}),204);
   assert.equal(await post('register',{endpoint,tags:[]}),204);
   const saved = JSON.parse(await readFile(store, 'utf8'));

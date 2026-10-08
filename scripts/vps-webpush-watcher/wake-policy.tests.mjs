@@ -4,7 +4,12 @@ import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
 import { freshWake } from "./wake-policy.mjs";
-import { validSubscription, endpointKeyOf, createFcmSender } from "./delivery.mjs";
+import { validSubscription, endpointKeyOf, createFcmSender, deliveryHttpStatus } from "./delivery.mjs";
+
+assert.equal(deliveryHttpStatus({statusCode:201}),201);
+assert.equal(deliveryHttpStatus({statusCode:429}),429);
+assert.equal(deliveryHttpStatus({statusCode:410,httpStatus:404}),404, 'provider HTTP status differs from dead-token prune signal');
+for (const value of [undefined,0,600,429.5,'429','secret endpoint']) assert.equal(deliveryHttpStatus({statusCode:value}),'unknown');
 
 assert.equal(freshWake(100, 100_000, 90_000, 101_000), false); // strict connect boundary
 assert.equal(freshWake(101, 100_000, 102_000, 103_000), false); // registered after event
@@ -48,13 +53,16 @@ try {
     assert.equal(body.message.android.collapse_key, undefined);
     assert.equal(body.message.android.ttl, "120s");
     assert.equal(opts.headers.authorization, "Bearer test-token");
-    return expired ? { ok: false, status: 404, json: async () => ({ error: { details: [{ errorCode: "UNREGISTERED" }] } }) } : { ok: true };
+    return expired ? { ok: false, status: 404, json: async () => ({ error: { details: [{ errorCode: "UNREGISTERED" }] } }) } : { ok: true, status:200 };
   });
-  await send(fcm); await send(fcm);
+  assert.equal(deliveryHttpStatus(await send(fcm)),200); await send(fcm);
   await send(fcm, undefined, ["opaque-tag"]);
   assert.equal(authCalls, 1); assert.equal(sends, 3);
   expired = true;
-  await assert.rejects(send(fcm), e => e.statusCode === 410);
+  await assert.rejects(send(fcm), e => e.statusCode === 410 && deliveryHttpStatus(e) === 404);
+  const authRejected = createFcmSender(accountPath, async () => ({ok:false, status:403}));
+  await assert.rejects(authRejected(fcm), e => deliveryHttpStatus(e) === 403 && e.statusCode === undefined,
+    'an OAuth rejection retains its HTTP status without pruning a device token');
 } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 console.log("Native wake transport: freshness, endpoint policy, FCM authentication/data-only delivery and dead-token handling passed");
 

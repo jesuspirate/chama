@@ -2679,7 +2679,9 @@ export default function App() {
         // 2026-09-18: "stuck on Opening trade forever"). Say what happened.
         if (!loaded || isExpiredUnfundedListing(loaded)) {
           setToast({
-            message: loaded ? t("app.listingExpired") : t("app.tradeOpenFailed"),
+            message: loaded ? t("app.listingExpired")
+              : actions.getLoadFailure(id)?.reason === "conflicting-creators"
+                ? t("app.tradeConflictingCreators") : t("app.tradeOpenFailed"),
             type: "info",
           });
           setSelectedId(null);
@@ -2783,6 +2785,8 @@ export default function App() {
       : "";
     const message = timedOut
       ? t("app.archivedStillLoading")
+      : failure?.reason === "conflicting-creators"
+        ? t("app.tradeConflictingCreators")
       : failure?.reason === "chain-incomplete"
         ? t("app.archivedIncomplete") + code
         : failure?.reason === "undecryptable"
@@ -2796,6 +2800,9 @@ export default function App() {
     const params = new URLSearchParams(window.location.search);
     const id = params.get("escrowId") || params.get("trade");
     if (!id || !/^sm_[a-z0-9_]+$/i.test(id)) return;
+    // The link's creator: the trade is rooted at this key's CREATE only.
+    const by = params.get("by");
+    const creator = by && /^[0-9a-f]{64}$/i.test(by) ? by.toLowerCase() : undefined;
 
     urlEscrowOpenAttemptedRef.current = true;
     // A deep link is a one-shot navigation intent, not a durable startup
@@ -2806,6 +2813,7 @@ export default function App() {
     const cleanUrl = new URL(window.location.href);
     cleanUrl.searchParams.delete("escrowId");
     cleanUrl.searchParams.delete("trade");
+    cleanUrl.searchParams.delete("by");
     window.history.replaceState(
       window.history.state,
       "",
@@ -2816,9 +2824,17 @@ export default function App() {
     setView("detail");
     // Deep link = an explicit open, same as tapping an archived trade: worth a
     // durable-cache rebuild if the relays only hold part of the chain.
-    actions.loadEscrow(id, { repairFromCache: true }).then((state) => {
+    actions.loadEscrow(id, { repairFromCache: true, creator }).then((state) => {
       if (!state) {
-        setToast({ message: t("app.tradeNotFoundYet", { id }), type: "error" });
+        // A refused invite has no trade room to show. Keep its error visible,
+        // but return to Browse rather than leaving a fresh account in detail.
+        setSelectedId(null);
+        setView("browse");
+        setToast({
+          message: actions.getLoadFailure(id)?.reason === "conflicting-creators"
+            ? t("app.tradeConflictingCreators") : t("app.tradeNotFoundYet", { id }),
+          type: "error",
+        });
       }
     }).catch((e: any) => {
       setToast({ message: e?.message || t("app.couldntLoadTrade", { id }), type: "error" });
@@ -2983,6 +2999,12 @@ export default function App() {
       return id && /^sm_[a-z0-9_]+$/i.test(id) ? id : null;
     } catch { return null; }
   });
+  const [bootInviteCreator] = useState<string | undefined>(() => {
+    try {
+      const by = new URLSearchParams(window.location.search).get("by");
+      return by && /^[0-9a-f]{64}$/i.test(by) ? by.toLowerCase() : undefined;
+    } catch { return undefined; }
+  });
   const [inviteHomeState, setInviteHomeState] = useState<"idle" | "resolving" | "failed">("idle");
   const inviteHomeAttemptedRef = useRef(false);
   useEffect(() => {
@@ -2993,7 +3015,7 @@ export default function App() {
     setInviteHomeState("resolving");
     (async () => {
       try {
-        const state = await actions.loadEscrow(bootInviteId, { repairFromCache: true });
+        const state = await actions.loadEscrow(bootInviteId, { repairFromCache: true, creator: bootInviteCreator });
         const community = state?.community;
         if (community && getCommunityBySlug(community)) {
           const selection = handleSelectCommunity(community);
@@ -3027,9 +3049,10 @@ export default function App() {
     }
   };
 
-  // The joining door's promise: signed in → straight to Browse. Fires once,
-  // only when the identity has no home, and never over a resolved invite
-  // or an explicit "change my home". Failed invite lookup uses the card.
+  // The toggle's whole promise: signed in → straight to Browse. Fires once,
+  // only for a fresh account that asked for it. An invite gets first chance to
+  // name the home; if refused/unavailable it no longer blocks default setup.
+  // An explicit "change my home" still opens the picker.
   useEffect(() => {
     if (!connected || !pubkey) return;
     if (!fastSetupRequestedRef.current || fastSetupStartedRef.current) return;
@@ -4928,7 +4951,9 @@ export default function App() {
                       ? ` (${failure.code}${failure.eventId ? ` · ${failure.eventId}` : ""})`
                       : "";
                     setToast({
-                      message: failure?.reason === "chain-incomplete"
+                      message: failure?.reason === "conflicting-creators"
+                        ? t("app.tradeConflictingCreators")
+                        : failure?.reason === "chain-incomplete"
                         ? t("app.archivedIncomplete") + code
                         : failure?.reason === "undecryptable"
                           ? t("app.archivedUnreadable")

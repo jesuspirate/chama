@@ -216,6 +216,8 @@ export const app: Record<string, string> = {
     "Tap Delete again to confirm — this cancels the listing and removes it from Browse.",
   "app.tradeForgotten": "Trade forgotten on this device — money stays in escrow.",
   "app.tradeLoaded": "Trade loaded!",
+  "app.tradeConflictingCreators":
+    "Two different accounts have published a listing under this trade's id, so Chama can't tell which one is real and won't open either. Ask the person who sent it for a fresh link.",
   "app.tradeNotFound": "Trade not found on relays",
   "app.tradeNotFoundYet": "Couldn't find trade {id} on relays yet.",
   "app.tradePublished": "Trade published! {escrowId}",

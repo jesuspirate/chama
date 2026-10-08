@@ -19,6 +19,14 @@ export function validSubscription(s, extraHosts = []) {
 }
 export function endpointKeyOf(s) { return s?.transport === "fcm" ? `fcm:${s.token}` : String(s?.endpoint || ""); }
 
+/** Only numeric provider statuses enter receipts; no error body or endpoint. */
+export function deliveryHttpStatus(result) {
+  // FCM's statusCode can be our synthetic 410 used to prune a dead token.
+  // Prefer its actual HTTP response status when provided.
+  return [result?.httpStatus, result?.statusCode].find(code =>
+    Number.isInteger(code) && code >= 100 && code <= 599) ?? "unknown";
+}
+
 /** Service account is read only on the VPS. Nothing from it goes to a client. */
 export function createFcmSender(credentialsPath, fetchImpl = fetch) {
   let token = null;
@@ -44,7 +52,7 @@ export function createFcmSender(credentialsPath, fetchImpl = fetch) {
         headers: { "content-type": "application/x-www-form-urlencoded" },
         body: new URLSearchParams({ grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer", assertion }),
       });
-      if (!response.ok) throw new Error("FCM authentication failed");
+      if (!response.ok) throw Object.assign(new Error("FCM authentication failed"), { httpStatus: response.status });
       const result = await response.json();
       if (typeof result.access_token !== "string") throw new Error("FCM authentication failed");
       token = result.access_token; expiresAt = Date.now() + Math.min(Number(result.expires_in) || 0, 3600) * 1000;
@@ -62,11 +70,12 @@ export function createFcmSender(credentialsPath, fetchImpl = fetch) {
     });
     if (!response.ok) {
       if (response.status === 401) { token = null; expiresAt = 0; }
-      const err = new Error("FCM send failed");
+      const err = Object.assign(new Error("FCM send failed"), { httpStatus: response.status });
       const result = await response.json().catch(() => ({}));
       // A project/auth failure is NOT evidence that a user's token is dead.
       if (result.error?.details?.some(d => d.errorCode === "UNREGISTERED")) err.statusCode = 410;
       throw err;
     }
+    return { httpStatus: response.status };
   };
 }

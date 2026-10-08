@@ -6,4 +6,9 @@ for (const origin of ["https://localhost", "http://localhost:3000", "capacitor:/
 }
 assert.equal(tradeShareUrl("sm_trade", "https://getchama.app/?old=yes#fragment"), "https://getchama.app/?trade=sm_trade");
 assert.equal(tradeShareUrl("sm_trade", "https://example.com/chama/?old=yes"), "https://example.com/chama/?trade=sm_trade");
+const by = "AB".repeat(32);
+assert.equal(tradeShareUrl("sm_trade", "https://getchama.app/", by), `https://getchama.app/?trade=sm_trade&by=${"ab".repeat(32)}`,
+  "a link names the trade's creator");
+assert.equal(tradeShareUrl("sm_trade", "https://getchama.app/", "not-a-key"), "https://getchama.app/?trade=sm_trade",
+  "a malformed creator is left out, never put in a URL");
 console.log("Share links: passed");
