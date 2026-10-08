@@ -19,4 +19,6 @@ export const dash: Record<string, string> = {
   "dash.readyTrades": "{count} za kuchukua",
   "dash.alsoGoingOn": "Kinachoendelea sasa",
   "dash.fiatApprox": "≈ {amount}",
+  "dash.moreNeedYou": "{count} zaidi zinakuhitaji",
+  "dash.showFewerNeeds": "Onyesha chache",
 };

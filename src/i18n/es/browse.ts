@@ -130,4 +130,5 @@ export const browse: Record<string, string> = {
   "browse.openToJoin": "Abiertos para unirse",
   "browse.allListings": "Todas las ofertas",
   "browse.guidedView": "Vista guiada",
+  "browse.circlesCount": "Círculos · {count}",
 };

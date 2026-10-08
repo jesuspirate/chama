@@ -70,6 +70,12 @@ export function CirclesHome({
   return (
     <div style={{ maxWidth: 760, margin: "0 auto", padding: "20px 16px 32px", display: "flex", flexDirection: "column", gap: 24, fontFamily: T.sans }}>
       <div>
+        {(mine.length + open.length) > 0 && (
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, marginBottom: 6, fontSize: T.fs.secondary, fontWeight: 700, color: T.ink2, letterSpacing: ".04em", textTransform: "uppercase" }}>
+            <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: 4, background: T.pos }} />
+            {t("browse.circlesCount", { count: mine.length + open.length })}
+          </div>
+        )}
         <h1 style={{ margin: 0, fontSize: T.fs.largeTitle, fontWeight: 700, letterSpacing: "-0.02em", color: T.ink, lineHeight: 1.15 }}>
           {t("browse.navCircles")}
         </h1>
@@ -100,22 +106,23 @@ export function CirclesHome({
               {open.map(card)}
             </section>
           )}
-          {onStartCircle && <Button onClick={onStartCircle}>{t("browse.startCircle")}</Button>}
         </>
       )}
 
-      <section style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <section style={{ display: "flex", flexDirection: "column", gap: 8, padding: 16, borderRadius: T.rCard, background: T.surface, border: `1px solid ${T.line}` }}>
         <label htmlFor="chama-circle-invite" style={{ fontSize: T.fs.secondary, fontWeight: 600, color: T.ink2 }}>{t("canvas.circleInvited")}</label>
         <div style={{ display: "flex", gap: 10 }}>
           <input id="chama-circle-invite" value={inviteDraft}
             onChange={e => { setInviteDraft(e.target.value); setInviteError(false); }}
             onKeyDown={e => { if (e.key === "Enter") openInvite(); }}
             placeholder={t("canvas.circlePaste")}
-            style={{ flex: 1, minWidth: 0, minHeight: T.size.touch, padding: "0 14px", borderRadius: T.rs, border: `1px solid ${T.line}`, background: T.surface, color: T.ink, fontFamily: T.sans, fontSize: T.fs.body }} />
+            style={{ flex: 1, minWidth: 0, minHeight: T.size.touch, padding: "0 14px", borderRadius: T.rs, border: `1px solid ${T.line}`, background: T.bg, color: T.ink, fontFamily: T.sans, fontSize: T.fs.body }} />
           <Button variant="secondary" fullWidth={false} disabled={!inviteDraft.trim()} onClick={openInvite}>{t("canvas.circleOpen")}</Button>
         </div>
         {inviteError && <div role="alert" style={{ fontSize: T.fs.secondary, color: T.crit }}>{t("canvas.circleBadInvite")}</div>}
       </section>
+      {/* Figma pass: one primary action, at the bottom where the thumb is. */}
+      {!empty && onStartCircle && <Button onClick={onStartCircle}>{t("browse.startCircle")}</Button>}
     </div>
   );
 }

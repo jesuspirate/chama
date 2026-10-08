@@ -194,13 +194,16 @@ export function BitcoinConverter({ communitySlug, variant = "card" }: {
 
 /** A text field that keeps the raw value canonical ("1250000.5") while
  *  showing it grouped in the viewer's separators, caret held in place. */
-function GroupedInput({ id, value, onChange, sep, maxDecimals, style, ...rest }: {
-  id: string;
+export function GroupedInput({ id, value, onChange, sep, maxDecimals, style, placeholder = "0", ...rest }: {
+  id?: string;
   value: string;
   onChange: (raw: string) => void;
   sep: Separators;
   maxDecimals: number;
   style: CSSProperties;
+  placeholder?: string;
+  autoFocus?: boolean;
+  "aria-label"?: string;
   "data-converter-input"?: boolean;
 }) {
   const ref = useRef<HTMLInputElement>(null);
@@ -215,7 +218,7 @@ function GroupedInput({ id, value, onChange, sep, maxDecimals, style, ...rest }:
     if (document.activeElement === el) el.setSelectionRange(at, at);
   });
   return (
-    <input ref={ref} id={id} {...rest} value={shown} placeholder="0" autoComplete="off"
+    <input ref={ref} id={id} {...rest} value={shown} placeholder={placeholder} autoComplete="off"
       inputMode={maxDecimals > 0 ? "decimal" : "numeric"}
       onKeyDown={(event) => {
         // Deleting across a separator deletes the digit beside it.

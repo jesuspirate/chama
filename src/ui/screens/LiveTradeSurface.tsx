@@ -30,7 +30,8 @@ import { ReplayNotes } from "../components/ReplayNotes.js";
 import { TradeArbiterRecord } from "../components/TradeArbiterRecord.js";
 import type { VerifiedBond } from "../../bond-multisig/bond-announcement.js";
 import { ListingBody } from "../components/ListingBody.js";
-import { createContext, useContext, useEffect, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { TRADE_STEPS, tradeStepsDone } from "../trade-steps.js";
 import { EscrowStatus, Outcome, Role, JOIN_HOLD_LOCK_GRACE_SECONDS, selectedMenuItemsTotalMsats, getEffectiveParticipantsAt, type EscrowState, type SelectedMenuItem } from "../../escrow-engine/types.js";
 import { effectiveViewerRole, decideVotePrompt, preLockDeadline, tradeRoomPresence, type RoomPresence } from "../decisions.js";
 import { profileNameFor, type NostrProfileNameMap } from "../nostr-profiles.js";
@@ -296,6 +297,64 @@ export function LiveTradeSurface({
 
   const REFUND_REASONS = [tr("lts.reasonNotArrived"), tr("lts.reasonWrongAmount"), tr("lts.reasonChangedMind")];
 
+  // v7 Figma pass: the amount is said once, at the decision (see Decision),
+  // with its fiat estimate; the person across from you sits in one compact
+  // card under it. Same selectors the money card and room strip used.
+  const tradeFiat = rangeFiatText({ min: summaryAmount.minMsats / 1000, max: summaryAmount.maxMsats === undefined ? undefined : summaryAmount.maxMsats / 1000,
+    currency: state.fiatCurrency ?? communityCurrency ?? "USD", usdPerBtc: price.usd, usdFiatRates: rates.rates });
+  const presence = tradeRoomPresence(state, pubkey, nowSec, TRINITY_RING_ORDER, onchainActions?.onchainObservation);
+  const counterpartyPk = counterparty ?? (myRole === null && state.status === EscrowStatus.CREATED ? state.initiator.pubkey : null);
+  const counterpartyPresence = counterpartyPk ? presence.find(p => !p.isYou && samePubkey(p.pubkey, counterpartyPk)) ?? null : null;
+  const arbiterPresence = presence.find(p => p.role === Role.ARBITER) ?? null;
+  const peopleCard = counterpartyPresence ? (
+    <CounterpartyCard
+      person={counterpartyPresence}
+      name={profileNameFor(profileNames, counterpartyPresence.pubkey, kind0Enabled)}
+      methods={(state.paymentMethods ?? []).map(key => getRailByKey(key)?.displayName ?? key)}
+      arbiterName={arbiterPresence?.pubkey ? (samePubkey(arbiterPresence.pubkey, pubkey) ? tr("lts.roomYou") : profileNameFor(profileNames, arbiterPresence.pubkey, kind0Enabled) ?? tr("lts.roomSomeone")) : null}
+      onOpen={() => setParty(counterpartyPresence)}
+      onOpenArbiter={arbiterPresence?.pubkey ? () => setParty(arbiterPresence) : undefined}
+    />
+  ) : (
+    <div className="lts-room-people">
+      {presence.map(person => (
+        <PersonChip
+          key={person.role}
+          person={person}
+          onClick={() => setParty(person)}
+          name={person.isYou ? tr("lts.roomYou") : profileNameFor(profileNames, person.pubkey, kind0Enabled)}
+        />
+      ))}
+    </div>
+  );
+  // Where the fiat goes. Shown inside the payer's decision (above the hold),
+  // otherwise below the decision; payShownInDecision is set while the
+  // decision renders, which happens before the blocks under it.
+  let payShownInDecision = false;
+  const payDetails = state.status === EscrowStatus.LOCKED && myRole
+    ? state.lock.handle ? (
+      <div data-pay-details style={{ fontFamily: T.sans }}>
+        <div style={{ fontSize: T.fs.secondary, color: T.ink2, marginBottom: 6 }}>{tr("lts.howToPay", { name: lockerName })}</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", overflowWrap: "anywhere", background: T.raised, borderRadius: 14 }}>
+          <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
+            <div style={{ fontSize: T.fs.secondary, color: T.ink2 }}>{getRailByKey(state.lock.handle.rail)?.displayName ?? state.lock.handle.rail}</div>
+            <div style={{ fontSize: T.fs.headline, fontWeight: 600, color: T.ink }}>{handleDisplayForViewer(state.lock.handle.value, true)}</div>
+            {!!state.lock.handle.networks?.length && <div style={{ fontSize: T.fs.secondary, color: T.ink2 }}>{state.lock.handle.networks.map(key => getRailByKey(key)?.displayName ?? key).join(" · ")}</div>}
+          </div>
+          <CopyButton value={state.lock.handle.value} />
+        </div>
+      </div>
+    ) : state.paymentMethods?.length && (state.category === "p2p-trade" || state.category === "bill-pay") ? (
+      <div data-agreed-methods style={{ padding: "12px 14px", borderRadius: 14, background: T.raised, fontFamily: T.sans }}>
+        <div style={{ fontSize: T.fs.secondary, color: T.ink2, marginBottom: 4 }}>{tr("lts.agreedMethods")}</div>
+        <div style={{ fontSize: T.fs.headline, fontWeight: 600, color: T.ink }}>
+          {state.paymentMethods.map(key => getRailByKey(key)?.displayName ?? key).join(" · ")}
+        </div>
+        <div style={{ fontSize: T.fs.secondary, color: T.ink2, marginTop: 6 }}>{tr("lts.detailsInChat", { name: lockerName })}</div>
+      </div>
+    ) : null
+    : null;
+
   // ── The single decision, per state × role ──────────────────────────────
   function renderDecision() {
     // v7 redesign (#5, UI only): between a vote being accepted by a relay and
@@ -355,7 +414,7 @@ export function LiveTradeSurface({
             q={tr("lts.lockQ", { amount: amountLabel })}
             sub={tr("lts.lockSub")}
           >
-            <TradeCustody state={state} warn />
+            <TradeCustody state={state} warn part="warnings" />
             {onLock ? (
               <>
                 <MoneyHold
@@ -389,6 +448,7 @@ export function LiveTradeSurface({
             {preLock?.lapsed && (
               <Hint>{tr(preLock.kind === "hold" ? "lts.seatLapsed" : "lts.listingExpired")}</Hint>
             )}
+            <TradeCustody state={state} part="facts" />
           </Decision>
         );
       }
@@ -563,14 +623,17 @@ export function LiveTradeSurface({
       // First happy-path voter: one real task (attest the deed) + a demoted
       // back-out. Render a single primary + a quiet cancel, not two co-equal.
       if (vp.firstVote) {
+        const payTitle = state.category === "p2p-trade";
+        if (payDetails) payShownInDecision = true;
         return (
-          <Decision q={deedQuestion(state, myRole)} sub={releaseSub}>
+          <Decision q={payTitle ? tr("lts.payTitle", { amount: amountLabel }) : deedQuestion(state, myRole)} sub={payTitle ? `${tr("lts.paySub")} ${releaseSub}` : releaseSub}>
+            {payDetails}
             <MoneyHold
               disabled={busy}
               busy={busy}
               resetKey={`${state.id}:release1`}
               onConfirm={() => run(() => castVote(Outcome.RELEASE))}
-              label={tr(state.category === "marketplace" ? `lts.mark${marketDelivery(state)}` : "lts.yesConfirm")}
+              label={tr(state.category === "marketplace" ? `lts.mark${marketDelivery(state)}` : state.category === "p2p-trade" ? "lts.iSentIt" : "lts.yesConfirm")}
             />
             {cancelOpen ? (
               <div>
@@ -632,14 +695,19 @@ export function LiveTradeSurface({
       const showRelease = outcomes.includes(Outcome.RELEASE);
       const showRefund = outcomes.includes(Outcome.REFUND);
       return (
-        <Decision q={receiptQuestion(state, myRole)} sub={releaseSub}>
+        <Decision
+          q={state.category === "p2p-trade" ? tr("lts.releaseTitle", { amount: amountLabel }) : receiptQuestion(state, myRole)}
+          sub={releaseSub}>
+          {state.category === "p2p-trade" && showRelease && (
+            <div style={{ fontSize: T.fs.warn, fontWeight: 600, lineHeight: 1.35, color: T.attnInk }}>{tr("lts.releaseOnlyIf")}</div>
+          )}
           {showRelease && (
             <MoneyHold
               disabled={busy}
               busy={busy}
               resetKey={`${state.id}:release`}
               onConfirm={() => { disarm(); void run(() => castVote(Outcome.RELEASE)); }}
-              label={`${tr("lts.release")} · ${tr("lts.toCounterparty")}`}
+              label={state.category === "p2p-trade" ? tr("lts.releaseToBtn", { name: releaseName }) : `${tr("lts.release")} · ${tr("lts.toCounterparty")}`}
             />
           )}
           {showRefund && (
@@ -806,7 +874,7 @@ export function LiveTradeSurface({
              clipped the decision text and exposed the grid's border-colored
              background as a dead band between the panes (Jet's 6.3 phone
              screenshot). 52dvh is definite everywhere. */
-          .lts-votes{max-height:calc(var(--chama-viewport-height, 100dvh) * .52)}
+          .lts-votes{max-height:calc(var(--chama-viewport-height, 100dvh) * .64)}
           [data-chat-focused] .lts-header{max-height:35%;overflow-y:auto;flex-shrink:1}
           [data-chat-focused] .lts-grid{grid-template-rows:minmax(0, .3fr) minmax(100px, 1fr)}
           [data-chat-focused] .lts-votes{max-height:none;padding:8px 12px}
@@ -912,34 +980,9 @@ export function LiveTradeSurface({
           : <Badge status={state.status} />}
       </div>
 
-      {/* Money card (v7 redesign): the trade's amount at amount size (40px+
-          on phones), its live fiat estimate beside it. Same numbers the
-          header used to carry — guidedListingAmount + rangeFiatText. */}
-      <div className="lts-summary">
-      <div className="lts-money" style={{ padding: "12px 16px 0", background: T.bg }}>
-        <div style={{
-          display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", height: "100%", boxSizing: "border-box",
-          padding: "14px 16px", borderRadius: T.rCard, background: T.surface, border: `1px solid ${T.line}`,
-        }}>
-          <div style={{ width: 40, height: 40, borderRadius: 12, background: T.raised, color: T.ink, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-            <LockGlyph size={20} />
-          </div>
-          <div style={{ flex: "1 1 160px", minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
-            <div style={{ fontSize: T.fs.secondary, color: T.ink2, fontFamily: T.sans }}>
-              {state.status === EscrowStatus.CREATED ? tr("lts.tradeAmount") : tr("lts.lockedInEscrow")}
-            </div>
-            <div style={{ fontSize: T.fs.amount, fontWeight: 700, fontFamily: T.sans, color: T.ink, lineHeight: 1.1, letterSpacing: "-0.02em", fontVariantNumeric: "tabular-nums", overflowWrap: "anywhere" }}>
-              {amountLabel}
-            </div>
-          </div>
-          {(() => {
-            const fiat = rangeFiatText({ min: summaryAmount.minMsats / 1000, max: summaryAmount.maxMsats === undefined ? undefined : summaryAmount.maxMsats / 1000,
-              currency: state.fiatCurrency ?? communityCurrency ?? "USD", usdPerBtc: price.usd, usdFiatRates: rates.rates });
-            return fiat ? <div style={{ fontSize: T.fs.fiat, color: T.ink2, fontFamily: T.sans }}>{fiat}</div> : null;
-          })()}
-        </div>
-      </div>
-
+      {/* Step strip (v7 Figma pass): where the trade is, in four words.
+          The amount and the person moved into the decision below. */}
+      {(() => { const done = tradeStepsDone(state); return done === null ? null : <TradeStepsStrip done={done} />; })()}
       {party?.pubkey && <OverlaySheet title={profileNameFor(profileNames, party.pubkey, kind0Enabled) ?? tr("trade.participants")} subtitle={party.pubkey} onClose={() => setParty(null)}>
         <ConductFacts pubkey={party.pubkey} />
         <CopyButton value={party.pubkey} />
@@ -947,27 +990,6 @@ export function LiveTradeSurface({
           : null}
         <p>{tr("trade.arbiterConduct")}</p>
       </OverlaySheet>}
-      {/* The room strip. PHILOSOPHY.md rule 1 — "trade with people, not
-          platforms": you should always be able to see WHO is across from you
-          and whether they are actually there, and (Jet, 6.3) the price you
-          are trading against should never disappear the moment a trade opens.
-          Presence is evidence-derived only (see tradeRoomPresence). */}
-      <div className="lts-room">
-        <div className="lts-room-people">
-          {tradeRoomPresence(state, pubkey, nowSec, TRINITY_RING_ORDER, onchainActions?.onchainObservation).map(person => (
-            <PersonChip
-              key={person.role}
-              person={person}
-              onClick={() => setParty(person)}
-              name={person.isYou
-                ? tr("lts.roomYou")
-                : profileNameFor(profileNames, person.pubkey, kind0Enabled)}
-            />
-          ))}
-        </div>
-      </div>
-      </div>
-      {clockText && <div className="lts-clock" style={{ padding: '0 16px 8px', fontSize: T.fs.secondary, color: T.ink2, textAlign: 'center', fontFamily: T.sans }}>{clockText}</div>}
 
       </div>
       {/* Decision left · chat right (decision on top on phones; an unseated
@@ -979,11 +1001,7 @@ export function LiveTradeSurface({
               the right. margin:auto both centers and degrades safely — a
               tall phase (reason chips, slice chooser) scrolls instead of
               clipping at the top the way justify-content:center would. */}
-          <div className="lts-decision-well"><DecisionClock.Provider value={clockText ?? null}>
-            {state.status === EscrowStatus.CREATED && <>
-              <TradeArbiterRecord profileNames={profileNames} kind0Enabled={kind0Enabled} state={state} trades={knownTrades} fetchBonds={fetchCommunityBonds} />
-              {state.body && <ListingBody body={state.body} />}
-            </>}
+          <div className="lts-decision-well"><DecisionClock.Provider value={clockText ?? null}><RoomContext.Provider value={{ amountLabel, fiat: tradeFiat ?? null, people: peopleCard }}>
             <ReplayNotes notes={state.replayNotes} />
             {historyReloading && <p role="status">Refreshing this trade's history…</p>}
             {myRole && myRole !== Role.ARBITER && state.status === EscrowStatus.LOCKED
@@ -994,30 +1012,13 @@ export function LiveTradeSurface({
             )}
             {renderDecision()}
             {state.escrowMode === "onchain" && state.status === EscrowStatus.LOCKED && <MoreOptions onClick={() => setOnchainOpen(true)} label="Open on-chain deposit details" />}
-            {/* v7 redesign (Jet): where to send the fiat must be visible exactly
-                when it's needed. With a handle on the lock, the panel opens by
-                default; without one, the agreed methods still show. */}
-            {state.status === EscrowStatus.LOCKED && myRole && !state.lock.handle && !!state.paymentMethods?.length
-              && (state.category === "p2p-trade" || state.category === "bill-pay") && (
-              <div data-agreed-methods style={{ marginTop: 16, padding: "12px 14px", borderRadius: 12, background: T.raised, fontFamily: T.sans }}>
-                <div style={{ fontSize: T.fs.secondary, color: T.ink2, marginBottom: 4 }}>{tr("lts.agreedMethods")}</div>
-                <div style={{ fontSize: T.fs.headline, fontWeight: 600, color: T.ink }}>
-                  {state.paymentMethods.map(key => getRailByKey(key)?.displayName ?? key).join(" · ")}
-                </div>
-                <div style={{ fontSize: T.fs.secondary, color: T.ink2, marginTop: 6 }}>{tr("lts.detailsInChat", { name: lockerName })}</div>
-              </div>
-            )}
-            {state.status === EscrowStatus.LOCKED && myRole && state.lock.handle && <details open style={{ marginTop: 16, fontFamily: T.sans }}>
-              <summary style={{ minHeight: T.size.touch, display: "flex", alignItems: "center", cursor: "pointer", color: T.ink, fontSize: T.fs.body, fontWeight: 600 }}>{tr("lts.howToPay", { name: lockerName })}</summary>
-              <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", overflowWrap: "anywhere", background: T.raised, borderRadius: 12 }}>
-                <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
-                  <div style={{ fontSize: T.fs.secondary, color: T.ink2 }}>{getRailByKey(state.lock.handle.rail)?.displayName ?? state.lock.handle.rail}</div>
-                  <div style={{ fontSize: T.fs.headline, fontWeight: 600, color: T.ink }}>{handleDisplayForViewer(state.lock.handle.value, true)}</div>
-                  {!!state.lock.handle.networks?.length && <div style={{ fontSize: T.fs.secondary, color: T.ink2 }}>{state.lock.handle.networks.map(key => getRailByKey(key)?.displayName ?? key).join(" · ")}</div>}
-                </div>
-                <CopyButton value={state.lock.handle.value} />
-              </div>
-            </details>}
+            {state.status === EscrowStatus.CREATED && <div style={{ marginTop: 16 }}>
+              <TradeArbiterRecord profileNames={profileNames} kind0Enabled={kind0Enabled} state={state} trades={knownTrades} fetchBonds={fetchCommunityBonds} />
+              {state.body && <ListingBody body={state.body} />}
+            </div>}
+            {/* Where to send the fiat: inside the payer's decision when it is
+                their turn, otherwise here, below the action. */}
+            {!payShownInDecision && payDetails && <div style={{ marginTop: 16 }}>{payDetails}</div>}
             {state.status !== EscrowStatus.CREATED && state.body && <details style={{ marginTop: 16 }}>
               <summary>{state.description}</summary>
               <ListingBody body={state.body} />
@@ -1025,7 +1026,7 @@ export function LiveTradeSurface({
             <div style={{ marginTop: 20, paddingTop: 16, borderTop: `1px solid ${T.border}` }}>
               <MoreOptions onClick={onOpenFullView} label={tr("lts.moreOptions")} />
             </div>
-          </DecisionClock.Provider></div>
+          </RoomContext.Provider></DecisionClock.Provider></div>
         </div>
         <div className="lts-pane lts-chat">
           <ChatPanel preferredRelayConnected={preferredRelayConnected} state={state} myRole={myRole} onSend={onSendChat} embedded fill hideHeader />
@@ -1111,45 +1112,139 @@ function DisputeCard({ state, pubkey, amountLabel, nameFor }: {
   );
 }
 
-/** A question that needs this person: the "Your turn" card (attention ring). */
 /** The trade's live clock line, shared with every "Your turn" card. */
 const DecisionClock = createContext<string | null>(null);
+/** The amount (said once, here) and the person across from you. */
+const RoomContext = createContext<{ amountLabel: string; fiat: string | null; people: ReactNode } | null>(null);
 
-function Decision({ q, sub, children }: { q: string; sub?: string; children: React.ReactNode }) {
+function TurnLine({ label, tone }: { label: string; tone: "attn" | "quiet" }) {
   const clock = useContext(DecisionClock);
   return (
-    <section style={{
-      border: `2px solid ${T.attn}`, borderRadius: T.rCard, background: T.surface,
-      padding: 16, display: "flex", flexDirection: "column", gap: 10, fontFamily: T.sans,
-    }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-        <div style={{ fontSize: T.fs.secondary, fontWeight: 700, color: T.attnInk }}>{tr("lts.yourTurn")}</div>
-        {clock && <div style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: T.fs.secondary, fontWeight: 600, color: T.ink2 }}>
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
-          {clock}
-        </div>}
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+      <div style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: T.fs.secondary, fontWeight: 700, color: tone === "attn" ? T.attnInk : T.ink2 }}>
+        <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: 4, background: tone === "attn" ? T.attn : T.ink3 }} />
+        {label}
       </div>
-      <div style={{ fontSize: T.fs.title2, lineHeight: 1.25, fontWeight: 700, letterSpacing: "-0.01em", color: T.ink, overflowWrap: "anywhere" }}>{q}</div>
+      {clock && <div style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: T.fs.secondary, fontWeight: 600, color: T.ink2 }}>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
+        {clock}
+      </div>}
+    </div>
+  );
+}
+
+/** The amount, once: the fiat estimate under a title that already says the
+ *  sats, or the full "sats · fiat" line under a title that doesn't. */
+function AmountLine({ title }: { title?: string }) {
+  const room = useContext(RoomContext);
+  if (!room) return null;
+  const titled = !!title && title.includes(room.amountLabel);
+  if (titled && !room.fiat) return null;
+  return (
+    <div style={{ fontSize: T.fs.fiat, color: T.ink2, fontVariantNumeric: "tabular-nums", overflowWrap: "anywhere" }}>
+      {titled ? room.fiat : room.fiat ? `${room.amountLabel} · ${room.fiat}` : room.amountLabel}
+    </div>
+  );
+}
+
+/** A question that needs this person (v7 Figma pass): the turn line, one
+ *  action title, the amount, the person, then the action. No boxed card; the
+ *  attention dot says it is your turn. */
+function Decision({ q, sub, children }: { q: string; sub?: string; children: React.ReactNode }) {
+  const room = useContext(RoomContext);
+  return (
+    <section data-decision style={{ display: "flex", flexDirection: "column", gap: 10, fontFamily: T.sans }}>
+      <TurnLine label={tr("lts.yourTurn")} tone="attn" />
+      <div style={{ fontSize: T.fs.title1, lineHeight: 1.2, fontWeight: 700, letterSpacing: "-0.02em", color: T.ink, overflowWrap: "anywhere" }}>{q}</div>
+      <AmountLine title={q} />
       {sub && <div style={{ fontSize: T.fs.body, lineHeight: 1.45, color: T.ink2 }}>{sub}</div>}
-      <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 4 }}>{children}</div>
+      {room?.people && <div style={{ marginTop: 4 }}>{room.people}</div>}
+      <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 6 }}>{children}</div>
     </section>
   );
 }
 
-/** Nothing needed from this person right now — a calm line, not a card. */
+/** Nothing needed from this person right now: a calm line, the amount and
+ *  the person, then any quiet extras. */
 function Waiting({ message, children }: { message: string; children?: React.ReactNode }) {
+  const room = useContext(RoomContext);
   return (
-    <div>
-      <div style={{
-        display: "flex", alignItems: "center", gap: 10, fontFamily: T.sans, fontSize: T.fs.body,
-        color: T.ink2, background: T.surface, border: `1px solid ${T.line}`,
-        padding: "12px 16px", borderRadius: T.rCard, lineHeight: 1.4,
+    <section data-waiting style={{ display: "flex", flexDirection: "column", gap: 10, fontFamily: T.sans }}>
+      <TurnLine label={tr("lts.notYourTurn")} tone="quiet" />
+      <div style={{ fontSize: T.fs.title2, lineHeight: 1.3, fontWeight: 700, color: T.ink, overflowWrap: "anywhere" }}>{message}</div>
+      <AmountLine />
+      {room?.people && <div style={{ marginTop: 4 }}>{room.people}</div>}
+      {children && <div style={{ marginTop: 4 }}>{children}</div>}
+    </section>
+  );
+}
+
+/** One compact card for the person across from you (Figma "A trade"):
+ *  avatar, name, whether they are here, their verifiable conduct, the
+ *  trade's payment methods and who arbitrates. Tap for their full record. */
+function CounterpartyCard({ person, name, methods, arbiterName, onOpen, onOpenArbiter }: {
+  person: RoomPresence; name: string | null; methods: string[]; arbiterName: string | null;
+  onOpen: () => void; onOpenArbiter?: () => void;
+}) {
+  const roleWord = person.role === Role.BUYER ? tr("trade.buyer") : person.role === Role.SELLER ? tr("trade.seller") : tr("trade.arbiter");
+  const signal = person.ready ? tr("lts.roomReady")
+    : person.signal === "assigned" ? tr("lts.assigned")
+    : person.signal === "active" ? tr("lts.hereNow")
+    : person.signal === "recent" ? tr("lts.justHere")
+    : tr("lts.roomQuiet");
+  return (
+    <div data-counterparty style={{ borderRadius: T.rCard, background: T.surface, border: `1px solid ${T.line}`, fontFamily: T.sans, overflow: "hidden" }}>
+      <button type="button" onClick={onOpen} style={{
+        width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", minHeight: T.size.touch,
+        background: "none", border: "none", color: T.ink, textAlign: "left", cursor: "pointer",
       }}>
-        <span style={{ width: 8, height: 8, borderRadius: "50%", background: T.ink3, flexShrink: 0 }} />
-        {message}
-      </div>
-      {children && <div style={{ marginTop: 12 }}>{children}</div>}
+        <RoleAvatar role={person.role} pubkey={person.pubkey} size={40} />
+        <span style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
+          <span style={{ fontSize: T.fs.headline, fontWeight: 700, overflowWrap: "anywhere" }}>{name ?? tr("lts.roomSomeone")}</span>
+          <span style={{ fontSize: T.fs.secondary, color: T.ink2 }}>
+            {roleWord} · <span style={{ color: person.ready ? T.pos : T.ink2 }}>{signal}</span>
+          </span>
+          {methods.length > 0 && <span style={{ fontSize: T.fs.secondary, color: T.ink2, overflowWrap: "anywhere" }}>{methods.join(" · ")}</span>}
+          {person.pubkey && <ConductFacts pubkey={person.pubkey} />}
+        </span>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={T.ink3} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>
+      </button>
+      {arbiterName && (
+        <button type="button" onClick={onOpenArbiter} disabled={!onOpenArbiter} style={{
+          width: "100%", display: "flex", alignItems: "center", minHeight: T.size.touch, padding: "0 14px",
+          background: "none", border: "none", borderTop: `1px solid ${T.line}`, color: T.ink2, textAlign: "left",
+          fontFamily: T.sans, fontSize: T.fs.secondary, cursor: onOpenArbiter ? "pointer" : "default",
+        }}>
+          {tr("lts.arbiterLine", { name: arbiterName })}
+        </button>
+      )}
     </div>
+  );
+}
+
+/** Locked · Paid · Released · Collected (Figma "A trade"). Done steps in the
+ *  positive state colour, the current one in ink, the rest faint. */
+function TradeStepsStrip({ done }: { done: number }) {
+  return (
+    <ol aria-label={tr("lts.stepsLabel")} data-trade-steps style={{
+      listStyle: "none", margin: 0, padding: "10px 16px 4px", display: "grid",
+      gridTemplateColumns: `repeat(${TRADE_STEPS.length}, minmax(0, 1fr))`, gap: 6, background: T.bg, fontFamily: T.sans,
+    }}>
+      {TRADE_STEPS.map((step, i) => {
+        const state = i < done ? "done" : i === done ? "current" : "todo";
+        return (
+          <li key={step} aria-current={state === "current" ? "step" : undefined} style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 0 }}>
+            <span style={{
+              fontSize: T.fs.secondary, fontWeight: state === "todo" ? 500 : 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+              color: state === "done" ? T.pos : state === "current" ? T.ink : T.ink3,
+            }}>
+              {tr(`lts.step_${step}`)}
+            </span>
+            <span aria-hidden="true" style={{ height: 3, borderRadius: 2, background: state === "done" ? T.pos : state === "current" ? T.ink : T.line }} />
+          </li>
+        );
+      })}
+    </ol>
   );
 }
 

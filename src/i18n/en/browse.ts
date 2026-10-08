@@ -133,4 +133,5 @@ export const browse: Record<string, string> = {
   "browse.openToJoin": "Open to join",
   "browse.allListings": "All listings",
   "browse.guidedView": "Guided view",
+  "browse.circlesCount": "Circles · {count}",
 };

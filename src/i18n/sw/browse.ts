@@ -128,4 +128,5 @@ export const browse: Record<string, string> = {
   "browse.openToJoin": "Wazi kujiunga",
   "browse.allListings": "Matangazo yote",
   "browse.guidedView": "Mwonekano wa kuongozwa",
+  "browse.circlesCount": "Vikundi · {count}",
 };

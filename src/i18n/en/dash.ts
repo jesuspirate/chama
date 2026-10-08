@@ -20,4 +20,6 @@ export const dash: Record<string, string> = {
   "dash.readyTrades": "{count} to collect",
   "dash.alsoGoingOn": "Happening now",
   "dash.fiatApprox": "≈ {amount}",
+  "dash.moreNeedYou": "{count} more need you",
+  "dash.showFewerNeeds": "Show fewer",
 };

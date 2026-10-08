@@ -188,6 +188,7 @@ import { HomeHero, homeCss } from "./components/HomeHero.js";
 import { CirclesHome } from "./screens/CirclesHome.js";
 import { CoachMarkTour, readCoachSeen, type CoachStep } from "./components/CoachMarkTour.js";
 import { BitcoinPricePill } from "./components/BitcoinPricePill.js";
+import { useBrowseSkin } from "./browse-skin.js";
 import { useDesktopNavigationShortcuts } from "./hooks/useDesktopNavigationShortcuts.js";
 import { RecoveryBanner } from "./screens/RecoveryBanner.js";
 import { PendingLockCard } from "./components/PendingLockCard.js";
@@ -891,6 +892,7 @@ export default function App() {
   const [autoInitDone, setAutoInitDone] = useState(false);
   // Suppress the offline banner during initial boot/seed-paste (relays connect a
   // beat after login) — only show it once we've actually been online and dropped.
+  const [browseSkin] = useBrowseSkin();
   const [everOnline, setEverOnline] = useState(false);
   useEffect(() => { if (connected && connectedRelays > 0) setEverOnline(true); }, [connected, connectedRelays]);
   // Relay-resilience re-arm. The auto-init effect latches autoInitDone on
@@ -3315,25 +3317,54 @@ export default function App() {
             </div>
           </div>
 
-          <div style={{
+          {/* New look (Figma pass, browse-skin "steps"): on phones the price
+              is one slim line and the identity row steps aside (it lives in
+              Me); the Chama bar below stays the one status signal. The
+              classic look keeps the hero card and the identity row. */}
+          <style>{`
+            .chama-hero-slim{display:none}
+            @media (max-width:760px){
+              .chama-native .chama-hero-full{display:none}
+              .chama-native .chama-hero-slim{display:block}
+              .chama-native .chama-hero{padding:8px 12px!important}
+              .chama-native .chama-walletbar{display:none}
+            }
+          `}</style>
+          <div className={`chama-hero-wrap${browseSkin === "steps" ? " chama-native" : ""}`}>
+          <div className="chama-hero" style={{
             padding: "12px 16px",
             borderBottom: `1px solid ${T.border}`,
           }}>
-            <BitcoinPricePill
-              hero
-              amountMode={amountDisplayMode}
-              onAmountModeChange={setAmountDisplayMode}
-              quoteCurrency={getCommunityBySlug(routeCommunitySlug)?.currency ?? null}
-              converterCommunity={routeCommunitySlug}
-            />
+            <div className="chama-hero-full">
+              <BitcoinPricePill
+                hero
+                amountMode={amountDisplayMode}
+                onAmountModeChange={setAmountDisplayMode}
+                quoteCurrency={getCommunityBySlug(routeCommunitySlug)?.currency ?? null}
+                converterCommunity={routeCommunitySlug}
+              />
+            </div>
+            <div className="chama-hero-slim">
+              <BitcoinPricePill
+                hero
+                slim
+                amountMode={amountDisplayMode}
+                onAmountModeChange={setAmountDisplayMode}
+                quoteCurrency={getCommunityBySlug(routeCommunitySlug)?.currency ?? null}
+                converterCommunity={routeCommunitySlug}
+              />
+            </div>
           </div>
 
           {/* Identity bar (relays + npub). Sign out lives in Me → Settings. */}
+          <div className="chama-walletbar">
           <WalletBar
             pubkey={pubkey!}
             connectedRelays={connectedRelays}
             relayStatuses={relayStatuses}
           />
+          </div>
+          </div>
 
           {/* Chama bar (renamed from FedimintBar in v0.3.0 Phase 5).
           showReconnect is true for users who have a reconnect target

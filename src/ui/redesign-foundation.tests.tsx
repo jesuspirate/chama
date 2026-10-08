@@ -173,3 +173,20 @@ console.log("PASS badge + capsule: lock on In escrow, sentence case, attention f
   assert.equal(caretAfter(formatRaw(parseTyped(mid, en, 0), en), meaningfulBefore(mid, 4, en), en), 4);
   console.log("PASS converter grouping: locale separators, raw round-trip, fiat decimals, stable caret");
 }
+
+// ── Trade room step strip (Figma pass) ──────────────────────────────────────
+{
+  const { tradeStepsDone } = await import("./trade-steps.js");
+  const { EscrowStatus, Outcome } = await import("../escrow-engine/types.js");
+  const t = (o: Record<string, unknown>) => ({ category: "p2p-trade", status: EscrowStatus.CREATED, votes: {}, lock: { notesHash: null, lockedAt: null }, resolvedOutcome: null, ...o }) as never;
+  assert.equal(tradeStepsDone(t({})), 0);
+  assert.equal(tradeStepsDone(t({ status: EscrowStatus.LOCKED, lock: { notesHash: "x", lockedAt: 1 } })), 1);
+  assert.equal(tradeStepsDone(t({ status: EscrowStatus.LOCKED, votes: { buyer: Outcome.RELEASE } })), 2);
+  assert.equal(tradeStepsDone(t({ status: EscrowStatus.LOCKED, votes: { buyer: Outcome.REFUND } })), 1, "a cancel vote is not a payment");
+  assert.equal(tradeStepsDone(t({ status: EscrowStatus.APPROVED, resolvedOutcome: Outcome.RELEASE })), 3);
+  assert.equal(tradeStepsDone(t({ status: EscrowStatus.COMPLETED, resolvedOutcome: Outcome.RELEASE })), 4);
+  assert.equal(tradeStepsDone(t({ status: EscrowStatus.APPROVED, resolvedOutcome: Outcome.REFUND })), null, "refunds show no strip");
+  assert.equal(tradeStepsDone(t({ status: EscrowStatus.CANCELLED })), null);
+  assert.equal(tradeStepsDone(t({ category: "marketplace", status: EscrowStatus.LOCKED })), null, "only money-for-sats trades");
+  console.log("PASS trade steps: read from committed state, hidden for refunds, closed trades and non-exchange categories");
+}

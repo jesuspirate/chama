@@ -217,4 +217,7 @@ export const canvas: Record<string, string> = {
   "canvas.circleBrowseMore": "Ona {count} zaidi katika Vinjari",
   "canvas.satsRange": "sats {min}–{max}",
   "canvas.pickAmountNext": "Uliomba sats {amount} — utachagua kiasi kamili katika hatua inayofuata.",
+  "canvas.stepOf": "Hatua {n} kati ya {total}",
+  "canvas.classicLook": "Mwonekano wa zamani",
+  "canvas.stepsLook": "Mwonekano mpya",
 };

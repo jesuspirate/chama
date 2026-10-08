@@ -10,7 +10,7 @@
 // amount: the payout of each is shown on its own card, where fees and splits
 // are already resolved.
 
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import type { EscrowState } from "../../escrow-engine/types.js";
 import type { OnchainObservation } from "../../escrow-engine/onchain-attention.js";
 import { useT } from "../../i18n/index.js";
@@ -45,6 +45,7 @@ export function HomeHero({
   children?: ReactNode;
 }) {
   const { t } = useT();
+  const [showAllNeeds, setShowAllNeeds] = useState(false);
   const price = useBitcoinPrice();
   const rates = useFiatRates();
   const currency = normalizeFiatCurrency(quoteCurrency) ?? "USD";
@@ -55,53 +56,49 @@ export function HomeHero({
   return (
     <div className="chama-home">
       <div className="chama-home-main">
-        <h1 style={{
-          margin: "4px 0 0", fontFamily: T.sans, fontSize: T.fs.largeTitle,
-          fontWeight: 700, letterSpacing: "-0.02em", color: T.ink, lineHeight: 1.15,
-        }}>
+        {/* v7 Figma pass: the wallet leads, big and uncarded; then exactly
+            one "needs you" card, with the rest one tap away. The h1 stays
+            for screen readers (the tab is still called Home). */}
+        <h1 className="chama-sr-only" style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0 0 0 0)", whiteSpace: "nowrap", margin: 0 }}>
           {t("dash.homeTitle")}
         </h1>
 
-        <section style={{
-          background: T.surface, border: `1px solid ${T.line}`, borderRadius: T.rCard,
-          padding: 18, display: "flex", flexDirection: "column", gap: 14,
-        }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-            <Label icon={<WalletGlyph />}>{t("dash.inWallet")}</Label>
-            <Sats msats={balanceMsats} size={T.fs.amount} />
-            {fiat != null && (
-              <div style={{ fontSize: T.fs.fiat, color: T.ink2, fontFamily: T.sans }}>
-                {t("dash.fiatApprox", { amount: formatFiatAmount(fiat, currency) })}
-              </div>
-            )}
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10 }}>
-            <div style={{ background: T.raised, borderRadius: 14, padding: 12, display: "flex", flexDirection: "column", gap: 4 }}>
+        <section data-home-wallet style={{ display: "flex", flexDirection: "column", gap: 4, paddingTop: 4 }}>
+          <Label icon={<WalletGlyph />}>{t("dash.inWallet")}</Label>
+          <Sats msats={balanceMsats} size="calc(var(--chama-fs-amount) * 1.25)" />
+          {fiat != null && (
+            <div style={{ fontSize: T.fs.fiat, color: T.ink2, fontFamily: T.sans }}>
+              {t("dash.fiatApprox", { amount: formatFiatAmount(fiat, currency) })}
+            </div>
+          )}
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 8, minHeight: 36, padding: "0 12px", borderRadius: 999, background: T.surface, border: `1px solid ${T.line}` }}>
               <Label icon={<LockGlyph size={15} />}>{t("dash.inEscrowForYou")}</Label>
-              <Sats msats={inEscrowMsats} size={T.fs.title2} />
-            </div>
-            <div style={{
-              background: readyToCollectCount > 0 ? T.attnBg : T.raised,
-              border: `1px solid ${readyToCollectCount > 0 ? T.attn : "transparent"}`,
-              borderRadius: 14, padding: 12, display: "flex", flexDirection: "column", gap: 4,
-            }}>
-              <Label icon={<CollectGlyph />} color={readyToCollectCount > 0 ? T.attnInk : T.ink2}>
-                {t("dash.readyToCollect")}
-              </Label>
-              <div style={{ fontFamily: T.sans, fontSize: T.fs.title2, fontWeight: 700, color: T.ink }}>
-                {t("dash.readyTrades", { count: readyToCollectCount })}
-              </div>
-            </div>
+              <Sats msats={inEscrowMsats} size={T.fs.secondary} weight={700} />
+            </span>
+            {readyToCollectCount > 0 && (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 8, minHeight: 36, padding: "0 12px", borderRadius: 999, background: T.attnBg, border: `1px solid ${T.attn}` }}>
+                <Label icon={<CollectGlyph />} color={T.attnInk}>{t("dash.readyTrades", { count: readyToCollectCount })}</Label>
+              </span>
+            )}
           </div>
         </section>
 
         <AttentionQueue
           profileNames={profileNames} kind0Enabled={kind0Enabled}
-          ranked={needsYou}
+          ranked={showAllNeeds ? needsYou : needsYou.slice(0, 1)}
           onchainObservations={onchainObservations}
           pubkey={pubkey}
           onOpenTrade={onOpenTrade}
         />
+        {needsYou.length > 1 && (
+          <button type="button" aria-expanded={showAllNeeds} onClick={() => setShowAllNeeds(v => !v)} style={{
+            alignSelf: "flex-start", minHeight: T.size.touch, marginTop: -12, padding: 0, background: "none", border: "none",
+            color: T.ink, fontFamily: T.sans, fontSize: T.fs.body, fontWeight: 600, textDecoration: "underline", textUnderlineOffset: 3, cursor: "pointer",
+          }}>
+            {showAllNeeds ? t("dash.showFewerNeeds") : t("dash.moreNeedYou", { count: needsYou.length - 1 })}
+          </button>
+        )}
 
         {alsoGoingOn.length > 0 && (
           <section style={{ display: "flex", flexDirection: "column", gap: 10 }}>

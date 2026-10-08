@@ -19,4 +19,6 @@ export const dash: Record<string, string> = {
   "dash.readyTrades": "{count} à encaisser",
   "dash.alsoGoingOn": "En ce moment",
   "dash.fiatApprox": "≈ {amount}",
+  "dash.moreNeedYou": "{count} autres ont besoin de vous",
+  "dash.showFewerNeeds": "Afficher moins",
 };

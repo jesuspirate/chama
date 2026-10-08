@@ -114,6 +114,7 @@ import type { TradeIndexEntry } from "../../escrow-engine/trade-index.js";
 import { readKind0Toggle, writeKind0Toggle, readLocalTradeName, writeLocalTradeName, sanitizeTradeName, generatedNameFor, type NostrProfileNameMap } from "../nostr-profiles.js";
 import { backgroundPushEnabled, enableBackgroundPush, disableBackgroundPush } from "../../notifications/watch-tags.js";
 import { isWebPushSupported, iosNeedsInstallForPush } from "../../notifications/web-push-client.js";
+import { useBrowseSkin } from "../browse-skin.js";
 
 
 
@@ -530,6 +531,7 @@ export function MeScreen({
     setMeTab(requestTab.tab);
   }, [requestTab?.tab, requestTab?.n]);
   const shownTab = useDeferredValue(meTab);
+  const [browseSkin] = useBrowseSkin();
   // v7 redesign: a Me tab renders on its first visit and then STAYS mounted
   // (hidden when inactive), so switching back is instant even with 88 trades.
   const visitedPanes = useRef(new Set<string>());
@@ -1010,6 +1012,14 @@ export function MeScreen({
         })}
       </div>
 
+      {/* New look (Figma pass): each pill opens with a plain title and one
+          line saying what lives there. Classic look skips it. */}
+      {browseSkin === "steps" && (
+        <div data-me-pane-title style={{ margin: "0 0 14px", fontFamily: T.sans }}>
+          <h2 style={{ margin: 0, fontFamily: T.display, fontSize: T.fs.title1, fontWeight: 700, letterSpacing: "-0.02em", color: T.ink }}>{t(`me.paneTitle_${shownTab}`)}</h2>
+          <p style={{ margin: "6px 0 0", fontSize: T.fs.body, lineHeight: 1.45, color: T.ink2 }}>{t(`me.paneSub_${shownTab}`)}</p>
+        </div>
+      )}
       {paneSwitching && (
         <div role="status" style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 4px", color: T.ink2, fontFamily: T.sans, fontSize: T.fs.secondary }}>
           <span style={{ display: "inline-block", animation: "spin 0.8s linear infinite" }} aria-hidden="true">↻</span>

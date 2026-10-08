@@ -217,4 +217,7 @@ export const canvas: Record<string, string> = {
   "canvas.circleBrowseMore": "Voir {count} de plus dans Parcourir",
   "canvas.satsRange": "{min}–{max} sats",
   "canvas.pickAmountNext": "Vous avez demandé {amount} sats — vous choisissez le montant exact à l’étape suivante.",
+  "canvas.stepOf": "Étape {n} sur {total}",
+  "canvas.classicLook": "Ancien affichage",
+  "canvas.stepsLook": "Nouvel affichage",
 };
