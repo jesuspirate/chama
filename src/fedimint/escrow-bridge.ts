@@ -579,6 +579,18 @@ export class EscrowFedimintBridge {
   }
 
   private async lockAndPublishInner(escrowId: string, opts: LockOptions = {}): Promise<EscrowState> {
+    // A previous attempt may already have spent bearer notes. Recover those
+    // under the flow mutex before the new empty-pool funding refusal fires.
+    const priorState = this.escrow.getState(escrowId);
+    if (this.nativeLockGuardOn() && priorState?.communityArbiters.length === 0 && getPendingNativeLock(escrowId)) {
+      const outcome = await this.settlePendingNativeLockInner(escrowId, { ignoreAttemptCap: true });
+      // Successful recovery can leave a notes-free Finish-lock intent. This
+      // trade cannot be funded again, so remove only that proven-restored intent.
+      if (outcome === "reabsorbed" && getPendingNativeLock(escrowId)?.stage === "intent") clearPendingNativeLock(escrowId);
+      const error = new Error("Cannot lock — this trade has no committed arbiter pool. Check Wallet for your previous funding's recovery status.");
+      Object.assign(error, { code: "ARBITER_POOL_EMPTY" });
+      throw error;
+    }
     let context = await this.prepareLockContext(escrowId, opts);
     const amountMsats = amountMsatsForLock(context.state, opts.selectedItems);
     const meta = buildChamaOperationMeta({

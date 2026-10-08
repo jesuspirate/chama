@@ -88,3 +88,30 @@ for(const status of [S.LOCKED,S.EXPIRED]) {
  } finally {Date.now=realNow;client.disconnect();}
 }
 console.log('PASS ungated client consent: old empty-pool funding refuses; old backdated LOCK cannot cause early auto-REFUND');
+
+// Old empty-pool retry: recover actual saved notes before refusing new funding.
+{
+ const storage=new Map<string,string>();
+ Object.defineProperty(globalThis,'localStorage',{configurable:true,value:{getItem:(key:string)=>storage.get(key)??null,setItem:(key:string,value:string)=>storage.set(key,value),removeItem:(key:string)=>storage.delete(key)}});
+ const {setLocalStorageUserScope}=await import('../storage/user-scope.js');
+ const {stashNativeLockIntent,upgradeNativeLockToSpent,getPendingNativeLock}=await import('../fedimint/pending-native-locks.js');
+ setLocalStorageUserScope('empty-pool-stash-regression');
+ const {state}=create(cutoff-86400,[]);
+ const notes='synthetic-saved-ecash';
+ const input={escrowId:state.id,amountMsats:state.amountMsats,federationId:'test-federation'};
+ stashNativeLockIntent(input);upgradeNativeLockToSpent({...input,oobNotes:notes});
+ let reabsorbed=0,locks=0,spends=0;
+ const bridge=new EscrowFedimintBridge({getState:()=>state,loadEscrow:async()=>state,getConnectedRelayCount:()=>2,resolveDurableMoneyPublish:()=>{},lockEscrow:async()=>{locks++;}} as any,
+  {getFederationId:()=>input.federationId,redeemWithRetry:async(value:string)=>{assert.equal(value,notes);reabsorbed++;},spendNotesForLock:async()=>{spends++;}} as any,{} as any);
+ const originalNow=Date.now;
+ try {
+  Date.now=()=> (state.createdAt+20)*1000;
+  await assert.rejects(bridge.lockAndPublish(state.id),(error:any)=>{
+   assert.equal(error.code,'ARBITER_POOL_EMPTY');assert.doesNotMatch(error.message,/No sats were spent/);assert.equal(reabsorbed,1,'Recover before refusing');return true;
+  });
+ } finally {Date.now=originalNow;}
+ assert.equal(reabsorbed,1);assert.equal(locks,0);assert.equal(spends,0);
+ assert.equal(getPendingNativeLock(state.id),null,'Recovered stash and unusable Finish-lock intent cleared');
+ setLocalStorageUserScope(null);
+}
+console.log('PASS old empty-pool retry reabsorbs saved ecash, publishes no LOCK, clears stash and refuses honestly');
