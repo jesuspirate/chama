@@ -1,3 +1,5 @@
+import type { FederationInspection } from "./federation-inspection.js";
+import { recordFundingDiagnostic } from "../payments/funding-diagnostics.js";
 import { errorText } from "../payments/error-text.js";
 // ══════════════════════════════════════════════════════════════════════════
 // Chama Nostr Escrow Engine — Fedimint Client (Browser WASM)
@@ -217,6 +219,7 @@ export interface IFedimintWallet {
   };
 
   federation: {
+    inspectInvite?(invite: string): Promise<FederationInspection>;
     getFederationId(): Promise<string>;
     getInviteCode(): Promise<string>;
   };
@@ -348,8 +351,9 @@ function assertJoinedFederationMatchesInvite(
     got?: string | null;
     invitePrefix?: string;
   } = new Error(
-    `Requested federation invite resolves to ${expected}, but the wallet opened ` +
-      `${actual || "an unknown federation"}. Refusing to record a mismatched route.`
+    `This browser's wallet belongs to a different federation (or its federation could not be identified). ` +
+      `Requested ${expected}; wallet opened ${actual || "an unknown federation"}. ` +
+      "The existing wallet has been preserved; no federation switch was made."
   );
   err.code = "FED_JOIN_MISMATCH";
   err.expected = expected;
@@ -773,16 +777,19 @@ export class FedimintClient {
     //   (c) same session, different    → throw (legitimate switch
     //       invite                       attempt, still blocked)
     //
-    // Residual risk in (b): if an invite for a different federation
-    // is passed while the OPFS holds federation X, we'd record it
-    // but the wallet stays on X. This matches pre-v0.1.68 behavior
-    // (silent no-op in this case) and doesn't introduce new risk
-    // relative to what shipped for months before. Closing this gap
-    // requires an SDK helper to peek an invite's federation ID
-    // without joining — revisit when multi-federation work starts.
+    // Before recording either open-wallet case, compare the federation ID
+    // resolved from a registered invite with the opened wallet's actual ID.
+    // An unregistered invite cannot establish that identity (see
+    // expectedFederationIdForInvite); do not mistake a missing ID for proof.
     if (wallet.isOpen()) {
       const currentId =
         this._federationId || (await wallet.federation.getFederationId());
+      const expectedId = expectedFederationIdForInvite(inviteCode);
+      const diagnostic = { issue: "fedimint_wallet_route", at: Date.now(),
+        walletOpen: true, actualFederationId: currentId, expectedFederationId: expectedId,
+        comparison: expectedId ? (normalizeKnownFederationId(currentId) === expectedId ? "match" : "mismatch") : "unregistered-invite" };
+      recordFundingDiagnostic(diagnostic);
+      console.info("[chama] Fedimint open wallet route", diagnostic);
       assertJoinedFederationMatchesInvite(inviteCode, currentId);
 
       // (b) Re-open case: wallet is open from a previous session but
@@ -1067,6 +1074,13 @@ export class FedimintClient {
     } catch {
       return false;
     }
+  }
+
+  /** Public inspection never initializes, joins, replaces, or switches a wallet. */
+  async inspectFederation(invite: string): Promise<FederationInspection> {
+    if (this.wallet?.federation.inspectInvite) return this.wallet.federation.inspectInvite(invite);
+    const { previewPublicFederation } = await import("./sdk-adapter.js");
+    return previewPublicFederation(invite);
   }
 
   /** Get the federation invite code (for sharing) */

@@ -29,7 +29,8 @@ export const AmountDisplayProvider = AmountDisplayContext.Provider;
 export function TradeAmount({ msats, size = 13, color = T.text, gap = 3, glyphScale = 1.15, interactive = false }: {
   msats: number;
   interactive?: boolean;
-  size?: number;
+  /** px, or a type token such as T.fs.amount. */
+  size?: number | string;
   color?: string;
   gap?: number;
   glyphScale?: number;
@@ -46,7 +47,7 @@ export function TradeAmount({ msats, size = 13, color = T.text, gap = 3, glyphSc
         usdPerBtc: price.usd, usdFiatRates: rates.rates,
       })
     : null;
-  const content = fiat ? <span style={{ fontFamily: T.mono, fontSize: size, fontWeight: 700, color, whiteSpace: "nowrap" }}>{fiat}</span>
+  const content = fiat ? <span style={{ fontFamily: T.sans, fontSize: size, fontWeight: 700, color, overflowWrap: "anywhere", fontVariantNumeric: "tabular-nums" }}>{fiat}</span>
     : <BitcoinAmount msats={msats} size={size} gap={gap} glyphScale={glyphScale} color={color} glyphColor={T.muted} />;
   return interactive ? <button type="button" onClick={() => setOverride(mode === "sats" ? "fiat" : "sats")}
     style={{ minHeight: 44, background: "none", border: 0, padding: 0, color, cursor: "pointer" }}>{content}</button> : content;

@@ -60,7 +60,7 @@ export interface RunFediFundAndLockDeps {
   lockAndPublish: (
     escrowId: string,
     notes: string,
-    opts: { savedHandleId?: string; selectedItems?: SelectedMenuItem[] },
+    opts: { savedHandleId?: string; paymentDetailsInChat?: boolean; selectedItems?: SelectedMenuItem[] },
   ) => Promise<{ lockedNotesHash: string | null }>;
 }
 
@@ -73,6 +73,7 @@ export interface RunFediFundAndLockOpts extends RunFediFundAndLockDeps {
   description: string;
   /** Optional handle to reveal in the LOCK payload. */
   savedHandleId?: string;
+  paymentDetailsInChat?: boolean;
   /** Optional menu basket snapshot to attach to LOCK. */
   selectedItems?: SelectedMenuItem[];
   /** Phase callback — granular UI updates. */
@@ -189,7 +190,7 @@ export async function runFediFundAndLock(
   let lockedNotesHash: string | null;
   try {
     ({ lockedNotesHash } = await opts.lockAndPublish(escrowId, notes, {
-      savedHandleId: opts.savedHandleId,
+      savedHandleId: opts.savedHandleId, paymentDetailsInChat: opts.paymentDetailsInChat,
       selectedItems: opts.selectedItems,
     }));
   } catch (e) {

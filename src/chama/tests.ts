@@ -20,7 +20,6 @@ import {
   type CircleShareLock,
 } from "./types.js";
 import {
-  MANUAL_REFUND_GRACE_SEC,
   circleCardModel,
   circleSurfaceModel,
 } from "./surface.js";
@@ -289,14 +288,14 @@ assert(move(filling2, "a", FILL + 60) === "returning",
 const collectible = (base: CircleShareLock): CircleShareLock => ({ ...base, readyToClaim: true });
 assert(move([collectible(seat("a", "locked")), seat("b", "locked")], "a", FILL + 60) === "collect",
   "refund-due + resolution landed = COLLECT, not a moot manual vote");
-assert(move([collectible(seat("a", "locked")), seat("b", "locked")], "a", FILL + MANUAL_REFUND_GRACE_SEC) === "collect",
+assert(move([collectible(seat("a", "locked")), seat("b", "locked")], "a", FILL + 600) === "collect",
   "collect outranks the manual escape hatch once the vote is already resolved");
 assert(move([collectible(seat("a", "locked")), seat("b", "locked"), seat("c", "locked")], "a", END + 10) === "collect",
   "a completed round with an approved share offers COLLECT — the sats come home by a tap, not a promise");
 assert(move(threeLocked.map(x => x.memberPubkey === "a" ? collectible(x) : x), "b", END + 10) === "returning",
   "another member's collectible share changes nothing for me");
-assert(move(filling2, "a", FILL + MANUAL_REFUND_GRACE_SEC) === "return-now",
-  "after the grace, the manual refund escape hatch appears");
+assert(move(filling2, "a", FILL + 600) === "returning",
+  "a failed fill never re-offers a redundant manual vote");
 assert(move(filling2, "dora", FILL + 86_400) === "none",
   "someone with no seat in a failed circle is owed nothing and offered nothing");
 assert(move(filling2, "amina", FILL + 60) === "next-round",

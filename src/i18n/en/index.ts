@@ -1,3 +1,4 @@
+import { custody } from "./custody.js";
 import { circle } from "./circle.js";
 // English — the source of truth. One namespace file per screen-group so the
 // extraction sweep (and later the fr/es translation passes) fan out with zero
@@ -29,6 +30,7 @@ import { tranche } from "./tranche.js";
 import { work } from "./work.js";
 
 export const en: Record<string, string> = {
+  ...custody,
   ...circle,
   ...app,
   ...bond,

@@ -19257,8 +19257,8 @@ console.log("\n── THEME PALETTE SWAP ──");
     "STATUS entries are rebuilt to the active palette on swap",
   );
   assert(
-    STATUS.APPROVED.c === T.accent,
-    "STATUS accent tracks the light accent, not the module-load capture",
+    STATUS.APPROVED.c === T.attnInk && STATUS.LOCKED.bg === T.ink && STATUS.LOCKED.fg === T.onInk,
+    "STATUS attention/ink track the light palette, not the module-load capture",
   );
   assert(
     (inputStyle as { background?: string }).background === T.surface &&
@@ -19294,7 +19294,7 @@ console.log("\n── THEME PALETTE SWAP ──");
     "Swapping back restores the dark brand palette exactly",
   );
   assert(
-    STATUS.APPROVED.c === T.accent && STATUS.CANCELLED.bg === T.surface,
+    STATUS.APPROVED.c === T.attnInk && STATUS.LOCKED.bg === T.ink && STATUS.CANCELLED.bg === "transparent",
     "STATUS tracks T again after the restore",
   );
   assert(
@@ -27376,22 +27376,22 @@ console.log("\n── #62 REDEEM-PROBE + BONDED-POOL CACHE ──");
     "counter-demand: expiry is exclusive at the boundary — an offer expiring this second is not available");
   assert(countOf([mkListing({ id: "x", expiresAt: NOW + 1 })]) === 1,
     "counter-demand: one second of life still counts");
-  assert(countOf([mkListing({ id: "x", initiator: { pubkey: ME, role: Role.SELLER } as any })]) === 0,
+  assert(countOf([mkListing({ id: "x", participants: { buyer: null, seller: ME, arbiter: null }, initiator: { pubkey: OTHER, role: Role.SELLER } as any })]) === 0,
     "⭐ counter-demand: your own listing never inflates your own count");
   assert(countOf([mkListing({ id: "x", community: "ke-kes" })]) === 0,
     "counter-demand: 'within your community' means exactly that");
-  assert(countOf([mkListing({ id: "x", community: null as any })]) === 1,
-    "counter-demand: a listing with no community is global and counts");
+  assert(countOf([mkListing({ id: "x", community: null as any })]) === 0,
+    "counter-demand: an untagged listing stays outside community matches");
   assert(countOf([mkListing({ id: "x", parent: "p1" } as any)]) === 0,
     "counter-demand: a child order is one buyer's purchase, not an open offer");
   assert(countOf([mkListing({
-    id: "x",
+    id: "x", participants: { buyer: OTHER, seller: OTHER, arbiter: null },
     joinHolds: { [Role.BUYER]: { role: Role.BUYER, pubkey: OTHER, joinedAt: NOW, expiresAt: NOW + 60, eventId: "h" } },
   } as any)]) === 0,
     "⭐ counter-demand: a live reservation is not available NOW, and 'now' is what the number claims");
   assert(countOf([mkListing({
-    id: "x",
-    joinHolds: { [Role.BUYER]: { role: Role.BUYER, pubkey: OTHER, joinedAt: NOW - 600, expiresAt: NOW - 1, eventId: "h" } },
+    id: "x", participants: { buyer: OTHER, seller: OTHER, arbiter: null },
+    joinHolds: { [Role.BUYER]: { role: Role.BUYER, pubkey: OTHER, joinedAt: NOW - 600, expiresAt: NOW - 121, eventId: "h" } },
   } as any)]) === 1,
     "counter-demand: a LAPSED hold frees the seat back into the count");
 

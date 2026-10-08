@@ -1,3 +1,6 @@
+import { CommunityChip } from "../components/CommunityChip.js";
+import { publicShareLimit } from "../../fedimint/federation-inspection.js";
+import { useFederationInfo } from "../components/FederationDisclosure.js";
 import { RangeFiat } from "../components/RangeFiat.js";
 import { useCanvasViewport } from "../hooks/useCanvasViewport.js";
 import { useEffect, useState } from "react";
@@ -14,8 +17,9 @@ import { useFiatRates } from "../hooks/useFiatRates.js";
 import { formatEstimatedFiatForMsats } from "../amount-display.js";
 import { defaultCurrencyForCommunity } from "../../communities/currency.js";
 
-export function CircleCanvas({ viewerPubkey, community, mintUrl, initial, onBack, onPublish }: {
+export function CircleCanvas({ viewerPubkey, community, mintUrl, initial, onBack, onPublish, onOpenCommunity }: {
   viewerPubkey: string; community: string; mintUrl: string; initial?: CircleRound;
+  onOpenCommunity?: () => void;
   onBack: () => void; onPublish: (round: CircleRound) => Promise<void>;
 }) {
   const { t, lang } = useT();
@@ -29,15 +33,14 @@ export function CircleCanvas({ viewerPubkey, community, mintUrl, initial, onBack
     const main = rootRef.current?.querySelector(".assisted-canvas-main");
     if (main) main.scrollTop = 0;
   }, [step]);
-  const [sats, setSats] = useState(String(initial ? initial.shareMsats / 1000 : 10000));
+  const [sats, setSats] = useState(String(initial ? initial.shareMsats / 1000 : 1000));
   const [threshold, setThreshold] = useState(initial?.seatThreshold ?? 5);
-  // Jet's audience split (2026-09-15): the old screen asked a MARKET question
-  // (floor + ceiling) when the human question is WHO IS THIS FOR. "Just us"
-  // collapses both numbers into one — everyone must lock, seats = the group,
-  // shared by link, unlisted. "Anyone" keeps only the floor and stays open.
+  // New public circles have a bounded seat count so the collector's payout
+  // can be checked against federation metadata. Existing rounds keep terms.
+  const continuingRound = initial?.pot === "rotation-v2" && initial.roundIndex > 1;
   const [audience, setAudience] = useState<"friends" | "anyone">(
-    initial ? (initial.unlisted || initial.seatCap === initial.seatThreshold ? "friends" : "anyone") : "friends");
-  const cap = audience === "friends" ? threshold : null;
+    initial ? (initial.unlisted ? "friends" : "anyone") : "friends");
+  const cap = continuingRound ? initial.seatCap : threshold;
   const [duration, setDuration] = useState(initial ? initial.roundEndSec - initial.createdAt : DEFAULT_ROUND_SEC);
   // The circle's IDENTITY (Jet, completion night: three circles all named
   // "Your Circle" made My Trades a guessing game). Empty falls back to the
@@ -51,20 +54,26 @@ export function CircleCanvas({ viewerPubkey, community, mintUrl, initial, onBack
   const round = circleCanvasRound({ shareSats: Number(sats), threshold, cap, durationSec: duration, createdAt,
     unlisted: audience === "friends",
     creatorPubkey: viewerPubkey, community, mintUrl, name: name.trim() || t("circle.defaultName"), previous: initial });
-  const validAmount = Number.isSafeInteger(Number(sats)) && Number(sats) > 0;
+  const { info: federationInfo } = useFederationInfo(mintUrl);
+  const maximum = publicShareLimit(federationInfo, cap);
+  const exceedsMaximum = maximum !== null && Number(sats) > maximum;
+  const publicLimitInvalid = audience === "anyone" && !continuingRound && (maximum === null || exceedsMaximum);
+  const limitCopy = maximum === null ? t("circle.shareLimitUnknown") : t("circle.shareLimit", { count: threshold, max: maximum.toLocaleString(lang) });
+  const validAmount = Number.isSafeInteger(Number(sats) * 1000) && Number(sats) > 0;
   const validSeats = Number.isSafeInteger(threshold) && threshold >= 2;
   const date = (at: number) => new Date(at * 1000).toLocaleDateString(lang, { weekday: "short", month: "short", day: "numeric" });
   const quote = formatEstimatedFiatForMsats({ amountMsats: round.shareMsats, currency: defaultCurrencyForCommunity(community), usdPerBtc: price.usd, usdFiatRates: rates.rates });
-  const publish = async () => { if (busy) return; setBusy(true); setError(null); try { await onPublish(round); } catch (e) { setError(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); } };
+  const publish = async () => { if (busy || !validAmount || !validSeats || publicLimitInvalid || circleCanvasErrors(round).length) return; setBusy(true); setError(null); try { await onPublish(round); } catch (e) { setError(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); } };
   const titles = ["circle.amountQuestion", "circle.seatsQuestion", "circle.endQuestion", "circle.reviewQuestion"];
   return <section ref={rootRef} className="assisted-canvas circle-canvas" aria-label={t("circle.createTitle")}>
     <style>{canvasCss()}{circleCss()}</style>
     <div className="assisted-canvas-main"><div className="circle-canvas-content">
       <Back onClick={step ? () => setStep(step - 1) : onBack}>{t("common.back")}</Back>
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}><CommunityChip slug={community} onOpen={onOpenCommunity} /></div>
       <div className="circle-eyebrow"><VerticalIcon vertical="chama" size={32} />{t("circle.createTitle")}</div>
       <h1 style={headingStyle()}>{t(titles[step])}</h1>
       {step === 0 && <><p style={subStyle()}>{t("circle.equalShares")}</p><QuestionCard>
-        <div className="circle-chips">{[5000, 10000, 25000].map(n => <button key={n} type="button" aria-pressed={Number(sats) === n} onClick={() => setSats(String(n))}>{n / 1000}k</button>)}<button type="button" onClick={() => document.getElementById("circle-amount")?.focus()}>{t("circle.custom")}</button></div>
+        <div className="circle-chips">{[1000, 5000, 10000].map(n => <button key={n} type="button" aria-pressed={Number(sats) === n} onClick={() => setSats(String(n))}>{n / 1000}k</button>)}<button type="button" onClick={() => document.getElementById("circle-amount")?.focus()}>{t("circle.custom")}</button></div>
         <label className="circle-amount"><input id="circle-amount" aria-label={t("circle.amountQuestion")} inputMode="numeric" value={sats} onChange={e => setSats(e.target.value.replace(/[^0-9]/g, ""))} /><span>{t("circle.sats")}</span></label>
         <p className="circle-muted">{quote ?? t("circle.quoteUnavailable")}</p>
         {/* Tiny-share guidance (ui-wiring-spec §5 ruling): no protocol floor —
@@ -78,21 +87,16 @@ export function CircleCanvas({ viewerPubkey, community, mintUrl, initial, onBack
         {!validAmount && <p role="alert">{t("circle.amountError")}</p>}
       </QuestionCard></>}
       {step === 1 && <><p style={subStyle()}>{t("circle.thresholdWhy")}</p><QuestionCard>
-        {/* One human question — WHO is this circle for — instead of the old
-            floor-and-ceiling tangle (Jet, 2026-09-15: "why are we making
-            things so weirdly close to each other?"). "Just us" makes the two
-            numbers ONE: everyone must lock, seats = the group, invite-link
-            only. "Anyone" keeps only the go-ahead floor and stays open. */}
         <p className="circle-caption">{t("circle.whoFor")}</p>
         <div className="circle-chips">
           <button type="button" aria-pressed={audience === "friends"} onClick={() => setAudience("friends")}>{t("circle.justUs")}</button>
           <button type="button" aria-pressed={audience === "anyone"} onClick={() => setAudience("anyone")}>{t("circle.anyoneJoin")}</button>
         </div>
-        <p className="circle-caption">{t(audience === "friends" ? "circle.groupSize" : "circle.minCaption")}</p>
+        <p className="circle-caption">{t(continuingRound && cap === null ? "circle.minCaption" : "circle.groupSize")}</p>
         <div className="circle-stepper"><button type="button" aria-label={t("circle.fewer")} disabled={threshold <= 2} onClick={() => setThreshold(n => n - 1)}>−</button><output aria-live="polite">{threshold}</output><button type="button" aria-label={t("circle.more")} onClick={() => setThreshold(n => n + 1)}>+</button></div>
         <p className="circle-muted">{audience === "friends"
           ? t("circle.privateNote", { count: threshold })
-          : t("circle.publicNote", { count: threshold })}</p>
+          : t(continuingRound && cap === null ? "circle.publicNote" : "circle.fixedPublicNote", { count: threshold })}</p>
       </QuestionCard></>}
       {step === 2 && <><p style={subStyle()}>{t("circle.twoWeekBound")}</p><QuestionCard>
         <div className="circle-chips">{[7, 14].map(days => <button type="button" key={days} aria-pressed={duration === days * 86400} onClick={() => setDuration(days * 86400)}>{t(days === 7 ? "circle.oneWeek" : "circle.twoWeeks")}</button>)}<button type="button" aria-pressed={duration === sundayDuration} onClick={() => setDuration(sundayDuration)}>{t("circle.bySunday")}</button>{isSimModeOn() && <button type="button" aria-pressed={duration === 600} onClick={() => setDuration(600)}>{t("circle.testDrive")}</button>}</div>
@@ -110,9 +114,12 @@ export function CircleCanvas({ viewerPubkey, community, mintUrl, initial, onBack
         <div><dt>{t("circle.whoFor")}</dt><dd>{audience === "friends" ? t("circle.byInvite") : t("circle.listedBrowse")}</dd></div>
         <div><dt>{t("circle.fillsBy")}</dt><dd>{date(round.fillDeadlineSec)}</dd></div><div><dt>{t("circle.returnDate")}</dt><dd>{date(round.roundEndSec)}</dd></div>
       </dl><p>{t("circle.promise", { date: date(round.fillDeadlineSec) })}</p><p className="circle-host-note">{t("circle.hostNote")}</p></div>}
+      <p className="circle-muted">{t("circle.startSmall")}</p>
+      <p data-circle-limit className="circle-muted" style={{ color: publicLimitInvalid ? T.amber : T.muted }}>{limitCopy}{audience === "friends" && <> {t("circle.privateLimitAdvice")}</>}</p>
+      {audience === "anyone" && !continuingRound && exceedsMaximum && <p role="alert" style={{ color: T.amber }}>{t("circle.shareOverLimit", { max: maximum!.toLocaleString(lang) })}</p>}
       {error && <p role="alert" style={{ color: T.red }}>{error}</p>}
     </div></div>
-      <div className="circle-canvas-action"><Primary disabled={busy || !validAmount || !validSeats || (step === 3 && circleCanvasErrors(round).length > 0)} onClick={step === 3 ? () => void publish() : () => setStep(step + 1)}>{t(busy ? "circle.publishing" : step === 3 ? "circle.openCircle" : "circle.continue")}</Primary></div>
+      <div className="circle-canvas-action"><Primary disabled={busy || !validAmount || !validSeats || (step > 0 && publicLimitInvalid) || (step === 3 && circleCanvasErrors(round).length > 0)} onClick={step === 3 ? () => void publish() : () => setStep(step + 1)}>{t(busy ? "circle.publishing" : step === 3 ? "circle.openCircle" : "circle.continue")}</Primary></div>
     <footer className="assisted-canvas-footer"><span>{t("circle.noMoneyYet")}</span><div aria-label={t("circle.step", { current: step + 1, total: 4 })}>{titles.map((key, i) => <span key={key} className={i === step ? "on" : ""} />)}</div><small>{step + 1} / 4</small></footer>
   </section>;
 }
@@ -137,7 +144,7 @@ export function circleCss() { return `
 }
 
 .circle-caption{margin:0 0 6px;}.circle-chips+.circle-caption{margin-top:clamp(18px,3vh,30px)}
-.circle-caption{color:${T.muted};font:700 10px/1.4 ${T.mono};letter-spacing:.14em;text-transform:uppercase}.circle-eyebrow{display:flex;align-items:center;gap:10px;color:${T.accent};font:700 11px ${T.mono};letter-spacing:.14em;text-transform:uppercase}
+.circle-caption{color:${T.muted};font:600 var(--chama-fs-secondary)/1.4 ${T.sans}}.circle-eyebrow{display:flex;align-items:center;gap:10px;color:${T.accent};font:600 var(--chama-fs-secondary) ${T.sans}}
 .circle-chips{display:flex;flex-wrap:wrap;gap:10px}.circle-chips button,.circle-stepper button{padding:12px 22px;min-height:46px;border-radius:999px;border:1px solid ${T.borderHi};background:${T.bg};color:${T.text};font:700 15px ${T.sans};cursor:pointer}.circle-chips button[aria-pressed=true]{background:${T.accentDim};border-color:${T.accent};color:${T.accent}}
 .circle-amount{display:flex;align-items:baseline;gap:14px;margin-top:clamp(12px,2.4vh,22px);border-bottom:2px dashed ${T.muted};padding-bottom:12px}.circle-amount input{width:100%;min-width:0;background:none;border:0;color:${T.text};font:650 clamp(36px,7vw,64px) ${T.sans};outline:none}.circle-amount span,.circle-muted{color:${T.muted};font-family:${T.mono};line-height:1.6}.circle-amount:focus-within{border-color:${T.accent}}
 .circle-stepper{display:flex;align-items:center;justify-content:center;gap:32px;margin:clamp(4px,1vh,8px) 0 clamp(14px,3vh,30px)}.circle-stepper output{font:650 clamp(44px,7vh,64px) ${T.sans}}.circle-stepper button:disabled{opacity:.4}.circle-cap{display:flex;align-items:center;gap:14px;margin-top:20px}.circle-cap input{width:90px;padding:10px;border:1px solid ${T.borderHi};border-radius:10px;background:${T.bg};color:${T.text};font:600 20px ${T.sans}}

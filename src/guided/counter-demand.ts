@@ -1,3 +1,4 @@
+import { joinRejection } from './join-eligibility.js';
 // ══════════════════════════════════════════════════════════════════════════
 // Chama — Assisted Chama canvas: counter-demand counts (A5 · S2)
 // ══════════════════════════════════════════════════════════════════════════
@@ -21,7 +22,7 @@
 //
 // The honest zero matters more than the impressive number.
 
-import { EscrowStatus, Role, type EscrowState } from "../escrow-engine/types.js";
+import { type EscrowState } from "../escrow-engine/types.js";
 import { matchableVerticalsFor, type CanvasAsset, type CanvasVertical } from "./canvas-routing.js";
 
 /** Everything a count needs about one listing. Mirrors `GuidedListingInput`'s
@@ -40,6 +41,7 @@ export interface CounterDemandContext {
   community: string | null;
   /** Seconds. Injected so expiry is testable and never reads the clock. */
   nowSec: number;
+  mintUrl?: string | null;
 }
 
 /** Why a listing did not count. Kept so a "0" can always be explained rather
@@ -52,7 +54,9 @@ export type CounterDemandExclusion =
   | "own-listing"
   | "reserved"
   | "out-of-stock"
-  | "other-community";
+  | "other-community"
+  | "other-federation"
+  | "no-seller";
 
 export interface CounterDemandResult {
   count: number;
@@ -66,11 +70,6 @@ function verticalOf(listing: EscrowState): CanvasVertical | null {
   return c === "p2p-trade" || c === "bill-pay" || c === "marketplace" || c === "work"
     ? c
     : null;
-}
-
-/** Who owns this listing — the initiator, falling back to the seated seller. */
-function authorOf(listing: EscrowState): string | null {
-  return listing.initiator?.pubkey ?? listing.participants?.[Role.SELLER] ?? null;
 }
 
 /**
@@ -104,36 +103,14 @@ export function countCounterDemand(
     const vertical = verticalOf(l);
     if (!vertical || !wanted.includes(vertical)) { drop("wrong-vertical"); continue; }
 
-    // Only a live, unlocked offer is actionable. Anything past CREATED is
-    // somebody else's trade.
-    if (l.status !== EscrowStatus.CREATED) { drop("not-open"); continue; }
-
-    // A child order is one buyer's in-flight purchase from a storefront, not an
-    // offer open to the viewer.
-    if (l.parent) { drop("child-order"); continue; }
-
-    if (l.expiresAt !== null && l.expiresAt !== undefined && l.expiresAt <= ctx.nowSec) {
-      drop("expired"); continue;
-    }
-
-    const author = authorOf(l);
-    if (ctx.viewerPubkey && author && author.toLowerCase() === ctx.viewerPubkey.toLowerCase()) {
-      drop("own-listing"); continue;
-    }
-
-    // "Within your community" — the canvas's own words, so the count must mean
-    // exactly that. A listing with no community is treated as global and counts.
-    if (ctx.community && l.community && l.community !== ctx.community) {
-      drop("other-community"); continue;
-    }
-
-    // Someone holds this seat right now. It may free up; it is not available
-    // now, and "now" is what the number claims.
-    const hold = l.joinHolds?.[Role.BUYER];
-    if (hold && hold.expiresAt > ctx.nowSec) { drop("reserved"); continue; }
-
-    if (entry.availableUnits !== undefined && entry.availableUnits <= 0) {
-      drop("out-of-stock"); continue;
+    const reason = joinRejection(l, { ...ctx, availableUnits: entry.availableUnits });
+    if (reason) {
+      const reasons: Partial<Record<typeof reason, CounterDemandExclusion>> = {
+        NOT_OPEN: 'not-open', CHILD_ORDER: 'child-order', EXPIRED: 'expired',
+        NO_SELLER: 'no-seller', SELF_LISTING: 'own-listing', OUT_OF_STOCK: 'out-of-stock',
+        RESERVED: 'reserved', COMMUNITY_MISMATCH: 'other-community', FEDERATION_MISMATCH: 'other-federation',
+      };
+      drop(reasons[reason]!); continue;
     }
 
     listingIds.push(id);

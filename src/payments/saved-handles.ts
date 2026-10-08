@@ -1,3 +1,5 @@
+import { recordNativeFundingDiagnostic } from "../notifications/native-push.js";
+import { scopedStorageKey } from "../storage/user-scope.js";
 // ══════════════════════════════════════════════════════════════════════════
 // Chama — Saved Payment Handles (localStorage)
 // ══════════════════════════════════════════════════════════════════════════
@@ -142,6 +144,8 @@ function writeAll(
       }
     }
     const serialized = JSON.stringify(next);
+    console.info("[chama/saved-wallets] legacy handle write", scopedStorageKey(SAVED_HANDLES_STORAGE_KEY), "Lightning rows", legacyLightning.length);
+    void recordNativeFundingDiagnostic({ area: "saved-wallets", operation: "handle-write", key: scopedStorageKey(SAVED_HANDLES_STORAGE_KEY), legacyLightningCount: legacyLightning.length });
     setScopedStorageItem(
       SAVED_HANDLES_STORAGE_KEY,
       serialized,

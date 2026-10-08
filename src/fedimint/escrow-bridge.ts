@@ -1,3 +1,5 @@
+import { assertTradePaymentDetails } from '../payments/trade-payment-details.js';
+import { isSignerApprovalError } from "../escrow-engine/signer-approval.js";
 import { chamaFundingError } from "../chama/policy.js";
 // ══════════════════════════════════════════════════════════════════════════
 // Chama — Escrow ↔ Fedimint Bridge
@@ -105,6 +107,7 @@ interface LockOptions {
    *  buyer and arbiter can read where to send fiat. Optional —
    *  marketplace digital trades and raw escrows don't need it. */
   savedHandleId?: string;
+  paymentDetailsInChat?: boolean;
   /** Menu basket snapshot. Required when locking a menu listing. */
   selectedItems?: SelectedMenuItem[];
   /** Buyer identity snapshotted before an external funding payment begins.
@@ -583,7 +586,7 @@ export class EscrowFedimintBridge {
     });
     const guardOn = this.nativeLockGuardOn();
     const lockOpts = {
-      savedHandleId: opts.savedHandleId,
+      savedHandleId: opts.savedHandleId, paymentDetailsInChat: opts.paymentDetailsInChat,
       selectedItems: opts.selectedItems,
       buyerPubkey: opts.buyerPubkey,
     };
@@ -748,6 +751,8 @@ export class EscrowFedimintBridge {
 
   async preflightLock(escrowId: string, opts: LockOptions = {}): Promise<{ buyerPubkey: string; seatDeadline?: number }> {
     const { buyerPubkey, state } = await this.prepareLockContext(escrowId, opts);
+    // Require a choice before new funding, never while recovering notes already spent.
+    assertTradePaymentDetails(state, opts);
     return { buyerPubkey, seatDeadline: preLockDeadline(state)?.at };
   }
 
@@ -762,7 +767,7 @@ export class EscrowFedimintBridge {
     const amountMsats = amountMsatsForLock(context.state, opts.selectedItems);
     const guardOn = this.nativeLockGuardOn();
     const lockOpts = {
-      savedHandleId: opts.savedHandleId,
+      savedHandleId: opts.savedHandleId, paymentDetailsInChat: opts.paymentDetailsInChat,
       selectedItems: opts.selectedItems,
       buyerPubkey: opts.buyerPubkey,
     };
@@ -1018,6 +1023,7 @@ export class EscrowFedimintBridge {
             voterPubkey: candidate.voterPubkey,
           });
         } catch (decErr) {
+          if (isSignerApprovalError(decErr)) throw decErr;
           candidateDecryptErrors.push(
             decErr instanceof Error ? decErr.message : String(decErr)
           );
@@ -1495,21 +1501,16 @@ export class EscrowFedimintBridge {
   private async decryptShare(encryptedShare: string, senderPubkey: string): Promise<SSSShare> {
     // In dev/plaintext mode, shares are not encrypted — try parsing directly first
     let decrypted: string;
+    let plaintext = false;
     try {
       const parsed = JSON.parse(encryptedShare);
-      if (parsed && (parsed.index !== undefined || parsed.data !== undefined)) {
-        // Already plaintext JSON — no decryption needed
-        decrypted = encryptedShare;
-      } else {
-        decrypted = await this.signer.nip44Decrypt(encryptedShare, senderPubkey);
-      }
-    } catch {
-      // Not valid JSON — must be encrypted, decrypt it
-      try {
-        decrypted = await this.signer.nip44Decrypt(encryptedShare, senderPubkey);
-      } catch (decryptErr) {
-        // If decrypt also fails, the share might be a simulated plaintext string
-        // (from simulatedLock which uses "sim_share_0_..." format)
+      plaintext = !!parsed && (parsed.index !== undefined || parsed.data !== undefined);
+    } catch { /* ciphertext */ }
+    if (plaintext) decrypted = encryptedShare;
+    else {
+      try { decrypted = await this.signer.nip44Decrypt(encryptedShare, senderPubkey); }
+      catch (error) {
+        if (isSignerApprovalError(error)) throw error;
         console.warn("[chama] Share decrypt failed, using as-is:", encryptedShare.slice(0, 30));
         decrypted = encryptedShare;
       }

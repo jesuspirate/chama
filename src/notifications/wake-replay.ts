@@ -9,11 +9,13 @@ import { parseEscrowEvent, sortEventChain } from '../escrow-engine/event-parser.
 import { replayEventChain } from '../escrow-engine/state-machine.js';
 import { needsYouReasonFor } from '../ui/decisions.js';
 import { onchainAttention } from '../escrow-engine/onchain-attention.js';
-import { joinedListingNotification, newListingNotificationFor, chatNotificationFor, onchainNotificationBody, notificationForTransition, type DmNotifyPref, type TradeNotification } from './trade-notifications.js';
+import { circleReturnSignatureNotification, joinedListingNotification, newListingNotificationFor, chatNotificationFor, onchainNotificationBody, notificationForTransition, type DmNotifyPref, type TradeNotification } from './trade-notifications.js';
 import { Role, EscrowStatus, selectedMenuItemsTotalMsats, type NostrEvent, type EscrowState } from '../escrow-engine/types.js';
 
 export interface WakeSnapshot { pubkey: string; events: NostrEvent[]; relays: string[]; names?: Record<string, string>; settledClaimIds?: string[]; fired?: string[]; dmNotifyPref?: DmNotifyPref; cachedAt?: number; watchTrades?: Record<string, string[]>; watchCommunities?: Record<string, string>; homeCommunity?: string; newListings?: { enabled: boolean; verticals: "all" | string[] }; }
 export function wakeNotification(state: EscrowState, previous: EscrowState | null, pubkey: string, names?: Record<string, string>, settledClaimIds?: ReadonlySet<string>): TradeNotification | null {
+  const circleReturn = circleReturnSignatureNotification(state, pubkey);
+  if (circleReturn) return circleReturn;
   const reason = needsYouReasonFor(state, pubkey, undefined, settledClaimIds);
   const action = onchainAttention(state, pubkey);
   if (action && reason) return { escrowId: state.id, title: 'Your trade needs you', body: onchainNotificationBody(state, pubkey, action.text, names), tag: `${state.id}:onchain:${action.key}` };
@@ -73,6 +75,16 @@ export function replayWake(events: NostrEvent[], pubkey: string, nsec: string,
     try { return nip44.v2.decrypt(cipher, key); } finally { key.fill(0); }
   };
   try {
+  // Parent context is public, signature-verified and replayed before parsing
+  // share CREATEs; read-only wake replay never asks a signer or wallet.
+  const parents = new Map<string, EscrowState>();
+  for (const raw of events) {
+    if (raw.kind !== 38100 || !verifyEvent(raw)) continue;
+    const parsed = parseEscrowEvent(raw, raw.content);
+    if (!parsed.ok || parsed.event.payload.type !== "escrow:create" || parsed.event.payload.category !== "chama") continue;
+    const replay = replayEventChain([parsed.event]);
+    if (replay.ok) parents.set(replay.state.id, replay.state);
+  }
   const groups = new Map<string, ReturnType<typeof sortEventChain>>();
   for (const event of new Map(events.map(e => [e.id, e])).values()) {
     if (!verifyEvent(event)) continue;
@@ -94,7 +106,8 @@ export function replayWake(events: NostrEvent[], pubkey: string, nsec: string,
         content = JSON.stringify({...payload, message: body.message, attachments: body.attachments});
       }
     }
-    const parsed = parseEscrowEvent(event, content);
+    const parentId = event.kind === 38100 ? JSON.parse(content)?.parent : undefined;
+    const parsed = parseEscrowEvent(event, content, false, { parent: parents.get(parentId) });
     if (!parsed.ok) continue;
     const group = groups.get(parsed.event.escrowId) ?? [];
     group.push(parsed.event); groups.set(parsed.event.escrowId, group);
@@ -136,7 +149,7 @@ export async function fetchWakeEvents(snapshot: WakeSnapshot, tags: readonly str
     return await Promise.any(snapshot.relays.map((url, index) => new Promise<NostrEvent[]>((resolve, reject) => {
       const socket = new WebSocket(url), events: NostrEvent[] = [];
       sockets.add(socket);
-      let fetchingRoots = false, finished = false;
+      let rootFetches = 0, finished = false;
       const end = (error?: Error) => {
         if (finished) return; finished = true;
         clearTimeout(timer); timers.delete(timer); socket.close(); sockets.delete(socket);
@@ -156,11 +169,19 @@ export async function fetchWakeEvents(snapshot: WakeSnapshot, tags: readonly str
           if (value[1] !== 'wake') return;
           if (value[0] === 'EVENT' && events.length < 10000) events.push(value[2]);
           if (value[0] === 'EOSE') {
-            const roots = new Set([...snapshot.events, ...events].filter(e => e.kind === 38100).flatMap(e => e.tags.filter(t => t[0] === 'd').map(t => t[1])));
-            const missing = [...new Set(events.flatMap(e => e.tags.filter(t => t[0] === 'd' && !roots.has(t[1])).map(t => t[1])))];
-            if (!fetchingRoots && missing.length) {
-              fetchingRoots = true;
+            const available = [...snapshot.events, ...events];
+            const roots = new Set(available.filter(e => e.kind === 38100).flatMap(e => e.tags.filter(t => t[0] === 'd').map(t => t[1])));
+            const parentIds = available.flatMap(e => {
+              if (e.kind !== 38100) return [];
+              try { const p = JSON.parse(e.content); return p.chamaPolicy === 'share-v1' && typeof p.parent === 'string' ? [p.parent] : []; }
+              catch { return []; }
+            });
+            const missing = [...new Set([...events.flatMap(e => e.tags.filter(t => t[0] === 'd').map(t => t[1])), ...parentIds])].filter(id => !roots.has(id));
+            if (missing.length && rootFetches < 2) {
+              rootFetches++;
               socket.send(JSON.stringify(['REQ', 'wake', { '#d': missing }]));
+              // Replay rejects each incomplete trade separately. An unrelated
+              // missing root must not hide a valid notification in this wake.
             } else end();
           }
           if (value[0] === 'CLOSED') end(Error('Relay refused query'));
@@ -179,12 +200,16 @@ export async function runWakeJob(input: WakeInput) {
   const ids = new Set(fresh.flatMap(e => e.tags.filter(t => t[0] === 'd').map(t => t[1])));
   const old = new Map<string, EscrowState>(), next = new Map<string, EscrowState>();
   const failures: string[] = [];
+  const parents = [...input.snapshot.events, ...fresh].filter(e => {
+    if (e.kind !== 38100 || !verifyEvent(e)) return false;
+    try { return JSON.parse(e.content).category === "chama"; } catch { return false; }
+  });
   for (const id of ids) {
     const belongs = (e: NostrEvent) => e.tags.some(t => t[0] === 'd' && t[1] === id);
     const cached = input.snapshot.events.filter(belongs);
-    try { for (const [key, state] of replayWake(cached, input.snapshot.pubkey, input.nsec)) old.set(key, state); }
+    try { for (const [key, state] of replayWake([...cached, ...parents], input.snapshot.pubkey, input.nsec)) old.set(key, state); }
     catch { /* An incomplete old baseline cannot veto a complete new replay. */ }
-    try { for (const [key, state] of replayWake([...cached, ...fresh.filter(belongs)], input.snapshot.pubkey, input.nsec,
+    try { for (const [key, state] of replayWake([...cached, ...fresh.filter(belongs), ...parents], input.snapshot.pubkey, input.nsec,
       new Map([...old].map(([key, state]) => [key, state.initiator.pubkey])))) next.set(key, state); }
     catch (error) { failures.push(error instanceof Error ? error.message : 'Replay error'); }
   }

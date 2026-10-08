@@ -19,8 +19,7 @@ export function RailHeader({ rail, count, showRule = true }: { rail: SettlementR
       margin: "4px 0 2px",
       gridColumn: "1 / -1",
       color: rail === "onchain" ? T.amber : T.muted,
-      fontFamily: T.mono, fontSize: 10, fontWeight: 800,
-      letterSpacing: 1, textTransform: "uppercase",
+      fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 800,
     }}>
       <span style={{ fontSize: 11, lineHeight: 1 }}>{RAIL_GLYPH[rail]}</span>
       <span>{t(RAIL_LABEL_KEY[rail])}</span>

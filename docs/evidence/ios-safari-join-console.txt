@@ -1,0 +1,47 @@
+[Error] WebSocket connection to 'wss://use1-1.relay.elsirion.fedimint.iroh.link./relay' failed: The network connection was lost.
+[Debug] [relay] fetch sm_fetch_386: complete with 1 events from 4 relays (main-B2eUOG5Y.js, line 18019)
+[Debug] [escrow] loadEscrow sm_muspyjag_4ox5j3uu: fetched 1 raw events from relays (main-B2eUOG5Y.js, line 21055)
+[Debug] [escrow] loadEscrow sm_muspyjag_4ox5j3uu: parsed 1/1 events – "kind:38100" – "" (main-B2eUOG5Y.js, line 21080)
+[Debug] [escrow] loadEscrow sm_muspyjag_4ox5j3uu: sorted chain – "kind:38100(f370cb)" (main-B2eUOG5Y.js, line 21104)
+[Debug] [escrow] loadEscrow sm_muspyjag_4ox5j3uu: replay OK — state is CREATED (main-B2eUOG5Y.js, line 21150)
+[Debug] [escrow] loadEscrow sm_muspyjag_4ox5j3uu: non-terminal (CREATED) — completeness retry 1/2 (main-B2eUOG5Y.js, line 21153)
+[Debug] [relay] fetch sm_fetch_387: complete with 1 events from 4 relays (main-B2eUOG5Y.js, line 18019)
+[Debug] [escrow] loadEscrow sm_muspyjag_4ox5j3uu: fetched 1 raw events from relays, replaying 1 with local cache (main-B2eUOG5Y.js, line 21055)
+[Debug] [escrow] loadEscrow sm_muspyjag_4ox5j3uu: parsed 1/1 events – "kind:38100" – "" (main-B2eUOG5Y.js, line 21080)
+[Debug] [escrow] loadEscrow sm_muspyjag_4ox5j3uu: sorted chain – "kind:38100(f370cb)" (main-B2eUOG5Y.js, line 21104)
+[Debug] [escrow] loadEscrow sm_muspyjag_4ox5j3uu: replay OK — state is CREATED (main-B2eUOG5Y.js, line 21150)
+[Debug] [escrow] loadEscrow sm_muspyjag_4ox5j3uu: non-terminal (CREATED) — completeness retry 2/2 (main-B2eUOG5Y.js, line 21153)
+[Debug] [relay] fetch sm_fetch_388: complete with 1 events from 4 relays (main-B2eUOG5Y.js, line 18019)
+[Debug] [escrow] loadEscrow sm_muspyjag_4ox5j3uu: fetched 1 raw events from relays, replaying 1 with local cache (main-B2eUOG5Y.js, line 21055)
+[Debug] [escrow] loadEscrow sm_muspyjag_4ox5j3uu: parsed 1/1 events – "kind:38100" – "" (main-B2eUOG5Y.js, line 21080)
+[Debug] [escrow] loadEscrow sm_muspyjag_4ox5j3uu: sorted chain – "kind:38100(f370cb)" (main-B2eUOG5Y.js, line 21104)
+[Debug] [escrow] loadEscrow sm_muspyjag_4ox5j3uu: replay OK — state is CREATED (main-B2eUOG5Y.js, line 21150)
+[Log] [chama] sentinel: scanned 91 escrows, 0 heals (main-B2eUOG5Y.js, line 32175)
+[Error] WebSocket connection to 'wss://nostr.mom/' failed: The network connection was lost.
+[Warning] [relay] wss://nostr.mom: WebSocket error on wss://nostr.mom (main-B2eUOG5Y.js, line 17912)
+[Error] WebSocket connection to 'wss://nos.lol/' failed: The network connection was lost.
+[Warning] [relay] wss://nos.lol: WebSocket error on wss://nos.lol (main-B2eUOG5Y.js, line 17912)
+[Debug] [relay] fetch sm_fetch_396: complete with 0 events from 4 relays (main-B2eUOG5Y.js, line 18019)
+[Debug] [escrow] loadEscrow 40d0fb3a1c2515980b970ba3cff9c91ef40cb3cd36181b2c20574a96b2e605a2: fetched 0 raw events from relays (main-B2eUOG5Y.js, line 21055)
+[Info] [fund-trace] native-lock-intent escrowId=40d0fb3a1c2515980b970ba3cff9c91ef40cb3cd36181b2c20574a96b2e605a2 amountMsats=50000 (main-B2eUOG5Y.js, line 7413)
+[Info] [chama] LN receive gateway candidate: 1/2 Fedi us-east-1 [fedi.xyz] 0284cf7053be11bb23e59381861299dbaf7670c60dd62c928479c235a53bd95fe4 vetted=false private=true https://gateway.mainnet-lnd-us-east-1.dev.fedibtc.com/v1 (main-B2eUOG5Y.js, line 27944)
+[Info] [chama] LN receive gateway candidate: 2/2 Henwen 🐷 039d1e06e6b10f3d18bbb76bb67f38a7088679c9a5e5914f4efe839298cb17e5e1 vetted=false private=true https://gateway.henwen.net/v1 (main-B2eUOG5Y.js, line 27944)
+[Info] [chama] LN receive federation config meta probe: metaModule=true refs=4 ids=none (main-B2eUOG5Y.js, line 27785)
+[Info] [chama] federation.getMetaConsensusValue key=0(default) -> object(revision,value; valueKeys=federation_name,fedi:autojoin_communities,fedi:federation_icon_url,fedi:max_balance_msats,fedi:max_invoice_msats,fedi:max_stable_balance_msats,fedi:multispend_disabled,fedi:pay_to_lnurl,fedi:social_recovery_disabled,fedi:stability_pool_disabled,fedi:tos_url,fedi:welcome_message,recurringd_api,sites,vetted_gateways) (main-B2eUOG5Y.js, line 27724)
+[Info] [chama] LN receive meta-vetted gateway IDs: 0284cf7053be11bb23e59381861299dbaf7670c60dd62c928479c235a53bd95fe4, 039d1e06e6b10f3d18bbb76bb67f38a7088679c9a5e5914f4efe839298cb17e5e1 (main-B2eUOG5Y.js, line 27797)
+[Info] [chama] LN receive using meta-vetted gateway: 1/2 Fedi us-east-1 [fedi.xyz] 0284cf7053be11bb23e59381861299dbaf7670c60dd62c928479c235a53bd95fe4 vetted=false private=true https://gateway.mainnet-lnd-us-east-1.dev.fedibtc.com/v1 (main-B2eUOG5Y.js, line 27962)
+[Info] [chama] LN receive availability confirmed by select_available_gateway: 0284cf7053be11bb23e59381861299dbaf7670c60dd62c928479c235a53bd95fe4 (main-B2eUOG5Y.js, line 27998)
+[Info] [chama] LN receive trace 494371e21a009dd544f3c5cd14b4c65c5cadcba36c5b7c7a42754bcd2eadce55 invoice-created – {amountMsats: 50000, gatewayId: "0284cf7053be11bb23e59381861299dbaf7670c60dd62c928479c235a53bd95fe4", gatewayAlias: "Fedi us-east-1 [fedi.xyz]", …} (main-B2eUOG5Y.js, line 27332)
+{amountMsats: 50000, gatewayId: "0284cf7053be11bb23e59381861299dbaf7670c60dd62c928479c235a53bd95fe4", gatewayAlias: "Fedi us-east-1 [fedi.xyz]", invoiceLen: 443, invoicePrefix: "lnbc500n1p4vzjz2dpsgd5xz", …}Object
+[Info] [chama] LN receive 494371e21a009dd544f3c5cd14b4c65c5cadcba36c5b7c7a42754bcd2eadce55: created – "created" (main-B2eUOG5Y.js, line 28124)
+[Info] [chama] LN receive 494371e21a009dd544f3c5cd14b4c65c5cadcba36c5b7c7a42754bcd2eadce55: waiting_for_payment – {waiting_for_payment: {invoice: "lnbc500n1p4vzjz2dpsgd5xzmtpyp68yctyv5sv9deqf3hkx6e…ezujslg375p9u0l5rvfup2e2ceu57gg72z0l3lf36cprwp3ta", timeout: {nanos: 0, secs: 855}}} (main-B2eUOG5Y.js, line 28124)
+{waiting_for_payment: {invoice: "lnbc500n1p4vzjz2dpsgd5xzmtpyp68yctyv5sv9deqf3hkx6e…ezujslg375p9u0l5rvfup2e2ceu57gg72z0l3lf36cprwp3ta", timeout: {nanos: 0, secs: 855}}}Object
+[Info] [chama] LN receive trace 494371e21a009dd544f3c5cd14b4c65c5cadcba36c5b7c7a42754bcd2eadce55 state:created – {operation: Object} (main-B2eUOG5Y.js, line 27332)
+{operation: Object}Object
+[Info] [chama] LN receive trace 494371e21a009dd544f3c5cd14b4c65c5cadcba36c5b7c7a42754bcd2eadce55 state:waiting_for_payment – {operation: Object} (main-B2eUOG5Y.js, line 27332)
+{operation: Object}Object
+[Log] [chama] sentinel: scanned 92 escrows, 0 heals (main-B2eUOG5Y.js, line 32175)
+[Error] WebSocket connection to 'wss://nostr.mom/' failed: The network connection was lost.
+[Warning] [relay] wss://nostr.mom: WebSocket error on wss://nostr.mom (main-B2eUOG5Y.js, line 17912)
+[Error] WebSocket connection to 'wss://nos.lol/' failed: The network connection was lost.
+[Warning] [relay] wss://nos.lol: WebSocket error on wss://nos.lol (main-B2eUOG5Y.js, line 17912)

@@ -321,6 +321,7 @@ console.log("\n── GUIDED DETERMINISTIC MATCHING ──");
   );
 
   const reserved = listing("reserved", {
+    participants: { buyer: "someone-else", seller: "seller-reserved", arbiter: null },
     joinHolds: {
       [Role.BUYER]: {
         role: Role.BUYER,

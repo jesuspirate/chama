@@ -1,3 +1,11 @@
+import { suppressedVoteError } from '../escrow-engine/vote-suppression.js';
+import { recoverOwnedBonds, findOwnedBond, type BondRecoveryReport } from '../bond-multisig/bond-recovery.js';
+import { getExistingSeed } from '../fedimint/seed-manager.js';
+import { assertBondClaimReady } from '../bond-multisig/manage-actions.js';
+import { readLivenessBonds } from "../arbiters/liveness-evidence.js";
+import { isSignerApprovalError, signerAction } from "../escrow-engine/signer-approval.js";
+import type { FederationInspection } from "../fedimint/federation-inspection.js";
+import { waitForFundingWallet } from "../payments/funding-wallet-ready.js";
 import { rejectedLockRecovery } from "../fedimint/rejected-lock-recovery.js";
 import { assertOnchainFundingWindow, fundingInvoiceSeconds, assertFundingInvoiceWithinSeat } from "../payments/seat-funding.js";
 import { recordPaidLockRecovery, assertPaidLockRecoveryWritable } from "../payments/paid-lock-recovery.js";
@@ -312,7 +320,7 @@ import {
   type CommitmentReclaimDestination,
   type ReclaimDestinationChoice,
 } from "../bond-multisig/commitment-bond.js";
-import { buildBondAnnouncementEvent, selectLatestAnnouncements, groupLatestAnnouncementsByCommunity, verifyBondAnnouncement, ARBITER_BOND_ANNOUNCEMENT_KIND, MAX_LINEAGE_HOPS, type BondLineage, type BondLineageHop, type BondRole, type VerifiedBond } from "../bond-multisig/bond-announcement.js";
+import { buildBondAnnouncementEvent, readCommunityBondEvents, communityBondFilters, selectLatestAnnouncements, groupLatestAnnouncementsByCommunity, verifyBondAnnouncement, ARBITER_BOND_ANNOUNCEMENT_KIND, MAX_LINEAGE_HOPS, type BondLineage, type BondLineageHop, type BondRole, type VerifiedBond } from "../bond-multisig/bond-announcement.js";
 import {
   ARBITER_FAULT_KIND,
   excludedArbitersNow,
@@ -330,7 +338,7 @@ import {
   writeCachedCommunityBonds,
 } from "../arbiters/bonded-pool-cache.js";
 import { bondedArbitersForCommunity } from "../arbiters/live-chama.js";
-import { getCommitmentBond, upsertCommitmentBond, listCommitmentBonds, newBondId, reconstructBondRecord } from "../bond-multisig/commitment-store.js";
+import { getCommitmentBond, upsertCommitmentBond, listCommitmentBonds, newBondId } from "../bond-multisig/commitment-store.js";
 import { MAINNET as BOND_NETWORK } from "../bond-multisig/multisig.js";
 import { hexToBytes, bytesToHex as msBytesToHexLocal } from "@noble/hashes/utils.js";
 import { computeChamaLiveness, type ChamaLiveness, type RatingSummary as LivenessRatingSummary } from "../arbiters/live-chama.js";
@@ -774,6 +782,8 @@ export interface FedimintState {
 }
 
 export interface UseEscrowState {
+  /** Extension secrets must be opened by a user action, never boot. */
+  signerNeedsUserAction?: boolean;
   /** Whether the client is connected to relays */
   connected: boolean;
   /** User's Nostr pubkey (hex) */
@@ -820,6 +830,7 @@ export interface UseEscrowActions {
   connect: () => Promise<void>;
   /** Return the active local signer's recovery key only when that signer
    * explicitly supports export. NIP-07/NIP-46/Fedi signers return null. */
+  inspectFederation: (invite: string) => Promise<FederationInspection>;
   exportActiveRecoveryKey: () => Promise<string | null>;
   /** Disconnect from relays */
   disconnect: () => void;
@@ -851,6 +862,7 @@ export interface UseEscrowActions {
    */
   lockAndPublish: (escrowId: string, opts?: {
     savedHandleId?: string;
+    paymentDetailsInChat?: boolean;
     selectedItems?: SelectedMenuItem[];
   }) => Promise<EscrowState>;
   /** Cast a vote */
@@ -935,7 +947,7 @@ export interface UseEscrowActions {
    *  discovery or background sweeps. */
   loadEscrow: (
     escrowId: string,
-    opts?: { repairFromCache?: boolean; creator?: string },
+    opts?: { repairFromCache?: boolean; userAction?: boolean; creator?: string },
   ) => Promise<EscrowState | null>;
   /** Why the last loadEscrow of this id returned null (null when it didn't). */
   getLoadFailure: (escrowId: string) => LoadFailure | null;
@@ -1096,6 +1108,7 @@ export interface UseEscrowActions {
       nwcConnectionString?: string;
       rememberNwc?: boolean;
       savedHandleId?: string;
+      paymentDetailsInChat?: boolean;
       selectedItems?: SelectedMenuItem[];
       onPhase: (phase: import("../payments/fund-and-lock.js").FundAndLockPhase) => void;
       signal?: AbortSignal;
@@ -1163,7 +1176,7 @@ export interface UseEscrowActions {
   /** Re-scan the bond address for confirmed deposits (ANY amount, every call — a
    *  deposit landing after the first is still recorded) → mark/keep it LOCKED with
    *  the full UTXO set. { locked:false } = nothing confirmed yet, keep waiting. */
-  checkCommitmentFunding: (bondId: string) => Promise<{ locked: boolean; txid?: string; lockedSats?: bigint; deposits?: number }>;
+  checkCommitmentFunding: (bondId: string) => Promise<{ locked: boolean; txid?: string; lockedSats?: bigint; deposits?: number; chainConfirmed?: boolean }>;
   getCommitmentReclaimQuote: (bondId: string) => Promise<{ finalityDelay: number; minimumDepositSats: number; pegInFeeSats: number; minerFeeSats: bigint; estimatedNetSats: bigint } | null>;
   /** Spend a mature bond directly into a fresh owner-only CLTV bond. The new
    * record stays pending until the normal on-chain confirmation gate promotes it. */
@@ -1201,7 +1214,8 @@ export interface UseEscrowActions {
   /** Cross-device bond recovery: rebuild local bond records from the user's own
    *  kind-38135 announcements + seed, so a bond posted on one device shows + reclaims
    *  on another with the same npub. Returns how many were newly recovered. */
-  recoverMyBonds: () => Promise<{ recovered: number }>;
+  recoverMyBonds: (opts?: { allowUserAction?: boolean }) => Promise<BondRecoveryReport>;
+  findMyBond: (address: string, lockUntil: number) => Promise<{ bondId: string }>;
   /** Fetch every arbiter's current bond announcement for a community, chain-verified
    *  (the data source for the live-chama liveness score). */
   fetchCommunityBonds: (
@@ -1270,6 +1284,7 @@ export interface UseEscrowActions {
   switchFederation: (inviteCode: string, options?: { force?: boolean; persistCustom?: boolean }) => Promise<void>;
   /** (Re-)start the Browse feed subscription for public listings. */
   watchPublicListings: (since?: number) => void;
+  watchBrowseListings: (scope: { community?: string; category?: string }) => () => void;
   /**
    * v0.6.5: subscribe to live updates for a specific escrow. Idempotent —
    * a label-keyed map de-duplicates per escrow id. Used by Browse to
@@ -1456,10 +1471,30 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
   // can read the latest values without taking `state` as a dependency.
   stateRef.current = state;
 
+  // Mechanical circle returns run while online, including after reconnect.
+  // Permission-bound signers never get a background approval prompt.
+  useEffect(() => {
+    if (!state.pubkey || state.connectedRelays === 0) return;
+    const tick = () => {
+      const client = clientRef.current;
+      if (!client || client.getSigner().requiresUserAction) return;
+      void client.maybeAutoRefundChama().catch(error => console.debug("[chama] Circle return refresh:", errorText(error, "")));
+    };
+    tick();
+    const timer = setInterval(tick, 15_000);
+    return () => clearInterval(timer);
+  }, [state.pubkey, state.connectedRelays]);
+
   // ── State updater helpers ───────────────────────────────────────────────
 
   const rejectedRecoveryInFlight = useRef(new Set<string>());
   const updateEscrow = useCallback((escrowId: string, escrowState: EscrowState) => {
+    // A pending signed vote is presentation only: do not journal it as history,
+    // run recovery, or trigger any committed-state side effects.
+    if (escrowState.pendingVote) {
+      setState(prev => { const escrows = new Map(prev.escrows); escrows.set(escrowId, escrowState); return { ...prev, escrows }; });
+      return;
+    }
     // A locally-forgotten ghost stays gone: don't let the Browse/public-
     // listings feed (or any re-delivery) re-add it after a restart. The ref is
     // loaded at connect with the reliable pubkey, so this works even before
@@ -1794,6 +1829,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       setState(prev => ({
         ...prev,
         connected: true,
+        signerNeedsUserAction: signer.requiresUserAction === true,
         pubkey,
         loading: false,
         publicListingsLoading: true,
@@ -2214,15 +2250,16 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       const f = fedimintRef.current;
       return !!(f && f.isInitialized() && f.isJoined());
     };
-    if (ok()) return true;
-    try { clientRef.current?.forceReconnectAll(); } catch {}
-    let waited = 0;
-    while (waited < waitMs) {
-      await new Promise(r => setTimeout(r, READY_POLL_MS));
-      waited += READY_POLL_MS;
-      if (ok()) return true;
-    }
-    return ok();
+    return waitForFundingWallet({
+      isReady: ok,
+      joinFailure: () => {
+        const fed = stateRef.current?.fedimint;
+        return fed && !fed.busy && !fed.joined ? fed.error : null;
+      },
+      nudge: () => clientRef.current?.forceReconnectAll(),
+      waitMs,
+      pollMs: READY_POLL_MS,
+    });
   };
 
   /**
@@ -2390,7 +2427,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
 
   const lockAndPublishAction = useCallback(async (
     escrowId: string,
-    opts: { savedHandleId?: string; selectedItems?: SelectedMenuItem[]; buyerPubkey?: string } = {},
+    opts: { savedHandleId?: string; paymentDetailsInChat?: boolean; selectedItems?: SelectedMenuItem[]; buyerPubkey?: string } = {},
   ) => {
     const client = requireClient();
     const bridge = requireBridge();
@@ -2432,7 +2469,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
   const lockAndPublishWithEcashAction = useCallback(async (
     escrowId: string,
     oobNotes: string,
-    opts: { savedHandleId?: string; selectedItems?: SelectedMenuItem[]; buyerPubkey?: string } = {},
+    opts: { savedHandleId?: string; paymentDetailsInChat?: boolean; selectedItems?: SelectedMenuItem[]; buyerPubkey?: string } = {},
   ) => {
     const client = requireClient();
     const bridge = requireBridge();
@@ -2742,23 +2779,12 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       // the duplicate/stale event was rejected, and the caller can
       // still recover the current state via getState if needed.
       const msg = errorText(e, "");
-      if (msg.includes("already voted") || msg.includes("Cannot vote") ||
-          msg.includes("TERMINAL") || msg.includes("not LOCKED")) {
-        console.debug("[chama] Vote suppressed:", msg);
-        const swallowed = new Error(
-          msg.includes("already voted")
-            ? "Vote already recorded for this trade."
-            : msg.includes("not LOCKED")
-              ? "Trade is no longer accepting votes."
-              : msg.includes("TERMINAL")
-                ? "Trade has already settled — no further votes accepted."
-                : "This vote can no longer be cast.",
-        ) as Error & { voteSuppressed?: true; code?: string; originalMessage?: string; currentState?: EscrowState | null };
-        swallowed.voteSuppressed = true;
-        swallowed.code = "VOTE_SUPPRESSED";
-        swallowed.originalMessage = msg;
-        swallowed.currentState = client.getState(escrowId);
-        throw swallowed;
+      const suppressed = suppressedVoteError(msg, client.getState(escrowId));
+      if (suppressed) {
+        console.debug("[chama] Vote suppressed:", msg, { escrowId,
+          status: suppressed.currentState?.status, votes: suppressed.currentState?.votes,
+          seats: suppressed.currentState?.participants });
+        throw suppressed;
       }
       throw e;
     }
@@ -2769,7 +2795,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     message: string | { message: string; attachments?: ChatImageAttachment[] },
   ) => {
     const client = requireClient();
-    await client.sendChat(escrowId, message);
+    await signerAction("sendMessage", () => client.sendChat(escrowId, message));
     vibrate(15); // Subtle tap
   }, []);
 
@@ -2782,7 +2808,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
 
   const loadEscrow = useCallback(async (
     escrowId: string,
-    opts: { repairFromCache?: boolean; creator?: string } = {},
+    opts: { repairFromCache?: boolean; userAction?: boolean; creator?: string } = {},
   ) => {
     const client = requireClient();
     // Loading a trade by ID is a deliberate "bring it back" — clear any
@@ -2801,6 +2827,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
         loading: false,
         error: e instanceof Error ? e.message : String(e),
       }));
+      if (isSignerApprovalError(e)) throw e;
       return null;
     }
   }, []);
@@ -2827,8 +2854,9 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     // whichever side is behind. A heal is an explicit user action, so the pull
     // may rebuild from the durable cache (unlike background discovery).
     try {
-      await client.loadEscrow(escrowId, { repairFromCache: true });
+      await client.loadEscrow(escrowId, { repairFromCache: true, userAction: true });
     } catch (e) {
+      if (isSignerApprovalError(e)) throw e;
       console.debug(`[chama] heal: pull for ${escrowId} failed; pushing cache anyway`, e);
     }
     return client.rebroadcastEscrow(escrowId);
@@ -2917,10 +2945,12 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     let arbiterBond;
     let arbiterXonly = keys[Role.ARBITER];
     if (!arbiterXonly) {
-      const events = await client.queryOnce({ kinds: [ARBITER_BOND_ANNOUNCEMENT_KIND],
-        authors: [fundingArbiter(trade)!], "#d": [trade.community!] } as any, 6000);
-      const announcement = selectLatestAnnouncements(events as any).find(a => a.npub === fundingArbiter(trade));
-      const bond = announcement && await verifyBondAnnouncement(announcement, { network: ESCROW_NETWORK, fetchJson, tipHeight: tip });
+      const events = await readCommunityBondEvents(trade.community!, filter => client.queryOnce({ ...filter, authors: [fundingArbiter(trade)!] }, 6000));
+      let bond;
+      for (const announcement of selectLatestAnnouncements(events).filter(a => a.npub === fundingArbiter(trade) && a.community === trade.community)) {
+        const verified = await verifyBondAnnouncement(announcement, { network: ESCROW_NETWORK, fetchJson, tipHeight: tip });
+        if (verified?.funded && verified.active) { bond = verified; break; }
+      }
       if (!bond?.funded || !bond.active || !bond.signedEvent) throw new Error("The arbiter's signed, funded bond could not be verified");
       arbiterXonly = bond.ownerXonly;
       arbiterBond = bond.signedEvent;
@@ -3058,7 +3088,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
   const lockRecoveryInFlight = useRef(new Set<string>());
   const lockRecoveryNextCheck = useRef(new Map<string, number>());
   useEffect(() => {
-    if (!state.connected || !state.pubkey || state.connectedRelays < 1) return;
+    if (!state.connected || !state.pubkey || state.connectedRelays < 1 || signerRef.current?.requiresUserAction) return;
     const scan = () => {
       const current = stateRef.current;
       if (!current?.pubkey || !current.connected || current.connectedRelays < 1) return;
@@ -3984,6 +4014,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
                   "[chama] Seed unavailable — remote-bridge fallback is disabled for this session:",
                   seedErr,
                 );
+                if (isSignerApprovalError(seedErr)) throw seedErr;
                 return undefined;
               })
           : await getOrCreateSeed(clientRef.current!, signerRef.current!);
@@ -4360,7 +4391,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       //
       // Fire-and-forget, matches the v0.1.68 drain pattern. Non-blocking
       // so UI transitions to the "joined" state without waiting.
-      if (mnemonic && !isTestnetMode() && !isSimModeOn()) {
+      if (mnemonic && !signerRef.current?.requiresUserAction && !isTestnetMode() && !isSimModeOn()) {
         checkAndMaybeRepublishSeed(
           clientRef.current!,
           signerRef.current!
@@ -4896,6 +4927,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       nwcConnectionString?: string;
       rememberNwc?: boolean;
       savedHandleId?: string;
+      paymentDetailsInChat?: boolean;
       selectedItems?: SelectedMenuItem[];
       onPhase: (phase: import("../payments/fund-and-lock.js").FundAndLockPhase) => void;
       signal?: AbortSignal;
@@ -4940,7 +4972,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       return "The order or participants changed before it could lock.";
     };
     try {
-      ({ buyerPubkey: fundingBuyerPubkey, seatDeadline } = await requireBridge().preflightLock(escrowId, { selectedItems: opts.selectedItems }));
+      ({ buyerPubkey: fundingBuyerPubkey, seatDeadline } = await requireBridge().preflightLock(escrowId, { selectedItems: opts.selectedItems, savedHandleId: opts.savedHandleId, paymentDetailsInChat: opts.paymentDetailsInChat }));
       fundingInvoiceSeconds(seatDeadline);
       if (!isSimModeOn()) assertPaidLockRecoveryWritable();
       if (opts.fundingMethod === "onchain") assertOnchainFundingWindow(requireClient().getState(escrowId)!);
@@ -5020,7 +5052,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
               ? (opts.selectedItems ?? []).reduce((sum, item) => sum + item.amountMsats * item.quantity, 0)
               : trade.amountMsats,
             lock: () => lockAndPublishAction(escrowId, {
-              savedHandleId: opts.savedHandleId, selectedItems: opts.selectedItems, buyerPubkey: fundingBuyerPubkey,
+              savedHandleId: opts.savedHandleId, paymentDetailsInChat: opts.paymentDetailsInChat, selectedItems: opts.selectedItems, buyerPubkey: fundingBuyerPubkey,
             }),
           });
         } finally { balanceLockBusy.current = false; }
@@ -5037,11 +5069,11 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
           escrowId,
           amountMsats: opts.amountMsats,
           description: opts.description,
-          savedHandleId: opts.savedHandleId,
+          savedHandleId: opts.savedHandleId, paymentDetailsInChat: opts.paymentDetailsInChat,
           selectedItems: opts.selectedItems,
           onPhase: opts.onPhase,
           signal: opts.signal,
-          preflight: async () => { await requireBridge().preflightLock(escrowId, {selectedItems: opts.selectedItems, buyerPubkey: fundingBuyerPubkey}); },
+          preflight: async () => { await requireBridge().preflightLock(escrowId, {selectedItems: opts.selectedItems, buyerPubkey: fundingBuyerPubkey, savedHandleId: opts.savedHandleId, paymentDetailsInChat: opts.paymentDetailsInChat}); },
           generateEcash: (amountMsats, memo) => generateFediEcash(amountMsats, memo),
           // Re-absorb WITHOUT expectedMsats — re-absorbing the exact notes we
           // generated is exact, and passing it risks a receive-then-throw that
@@ -5130,7 +5162,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
               }
               opts.onPhase({ kind: "locking" });
               const locked = await lockAndPublishAction(escrowId, {
-                savedHandleId: opts.savedHandleId,
+                savedHandleId: opts.savedHandleId, paymentDetailsInChat: opts.paymentDetailsInChat,
                 selectedItems: opts.selectedItems,
                 buyerPubkey: fundingBuyerPubkey,
               });
@@ -5167,7 +5199,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
         opts.onPhase({ kind: "locking" });
         const expectedNotesHash = await hashNotes(notes);
         const locked = await lockAndPublishWithEcashAction(escrowId, notes, {
-          savedHandleId: opts.savedHandleId,
+          savedHandleId: opts.savedHandleId, paymentDetailsInChat: opts.paymentDetailsInChat,
           selectedItems: opts.selectedItems,
           buyerPubkey: fundingBuyerPubkey,
         });
@@ -5194,7 +5226,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
             amountMsats: opts.amountMsats,
             federationId: fedimint.getFederationId(),
             lockOpts: {
-              savedHandleId: opts.savedHandleId,
+              savedHandleId: opts.savedHandleId, paymentDetailsInChat: opts.paymentDetailsInChat,
               selectedItems: opts.selectedItems,
               buyerPubkey: fundingBuyerPubkey,
             },
@@ -5232,7 +5264,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
         const depositAmountSats = amountSats + pegInFeeSats + Math.floor(premiumMsats / 1000);
         const baselineMsats = await fedimint.getBalance();
         onchainBaselineMsats = baselineMsats;
-        await requireBridge().preflightLock(escrowId, { selectedItems: opts.selectedItems, buyerPubkey: fundingBuyerPubkey });
+        await requireBridge().preflightLock(escrowId, { selectedItems: opts.selectedItems, buyerPubkey: fundingBuyerPubkey, savedHandleId: opts.savedHandleId, paymentDetailsInChat: opts.paymentDetailsInChat });
         assertOnchainFundingWindow(requireClient().getState(escrowId)!);
         const deposit = await fedimint.createOnchainDepositAddress(meta);
         if (opts.signal?.aborted) {
@@ -5314,9 +5346,9 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
         }
 
         opts.onPhase({ kind: "locking" });
-        await requireBridge().preflightLock(escrowId, {selectedItems: opts.selectedItems, buyerPubkey: fundingBuyerPubkey});
+        await requireBridge().preflightLock(escrowId, {selectedItems: opts.selectedItems, buyerPubkey: fundingBuyerPubkey, savedHandleId: opts.savedHandleId, paymentDetailsInChat: opts.paymentDetailsInChat});
         const locked = await lockAndPublishAction(escrowId, {
-          savedHandleId: opts.savedHandleId,
+          savedHandleId: opts.savedHandleId, paymentDetailsInChat: opts.paymentDetailsInChat,
           selectedItems: opts.selectedItems,
           buyerPubkey: fundingBuyerPubkey,
         });
@@ -5346,11 +5378,11 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
         escrowId,
         amountMsats: opts.amountMsats + premiumMsats,
         description: opts.description,
-        savedHandleId: opts.savedHandleId,
+        savedHandleId: opts.savedHandleId, paymentDetailsInChat: opts.paymentDetailsInChat,
         selectedItems: opts.selectedItems,
         getBalance: () => fedimint.getBalance(),
         createFundingInvoice: async (amountMsats, description, onReceiveState, onGateway, expirySeconds) => {
-          const fresh = await requireBridge().preflightLock(escrowId, { selectedItems: opts.selectedItems, buyerPubkey: fundingBuyerPubkey });
+          const fresh = await requireBridge().preflightLock(escrowId, { selectedItems: opts.selectedItems, buyerPubkey: fundingBuyerPubkey, savedHandleId: opts.savedHandleId, paymentDetailsInChat: opts.paymentDetailsInChat });
           const invoice = await createFundingInvoice(
             amountMsats,
             description,
@@ -5375,7 +5407,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
           ? async (bolt11) => {
               const connectionString = opts.nwcConnectionString?.trim();
               if (!connectionString) throw new Error("Paste an NWC connection");
-              await requireBridge().preflightLock(escrowId, {selectedItems: opts.selectedItems, buyerPubkey: fundingBuyerPubkey});
+              await requireBridge().preflightLock(escrowId, {selectedItems: opts.selectedItems, buyerPubkey: fundingBuyerPubkey, savedHandleId: opts.savedHandleId, paymentDetailsInChat: opts.paymentDetailsInChat});
               fundingInvoiceSeconds(seatDeadline);
               await payInvoiceWithNwc(connectionString, bolt11);
             }
@@ -5983,6 +6015,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
   // failure bumps an attempt counter (capped — a note the payer's horizon
   // already refunded must not be retried forever).
   const redeemArbiterPremiumsAction = async (escrowId: string): Promise<void> => {
+    if (signerRef.current?.requiresUserAction) return;
     if (isSimModeOn() || isTestnetMode()) return;
     const fedimint = fedimintRef.current;
     if (!fedimint) return;
@@ -6048,6 +6081,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
   // premiumNotes), then redeems. Fail-soft everywhere — a probe must never
   // surface an error.
   const probeArbiterPremiumsAction = async (): Promise<void> => {
+    if (signerRef.current?.requiresUserAction) return;
     if (isSimModeOn() || isTestnetMode()) return;
     const client = clientRef.current;
     if (!client) return;
@@ -6081,16 +6115,24 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
 
   // ── Return ──────────────────────────────────────────────────────────────
 
+  const exportActiveRecoveryKey = useCallback(async () => {
+    const signer = signerRef.current;
+    if (!signer?.exportRecoveryKey) return null;
+    return signer.exportRecoveryKey();
+  }, []);
+
+  const inspectFederation = useCallback(async (invite: string) => {
+    if (fedimintRef.current) return fedimintRef.current.inspectFederation(invite);
+    const { previewPublicFederation } = await import("../fedimint/sdk-adapter.js");
+    return previewPublicFederation(invite);
+  }, []);
   const actions: UseEscrowActions = {
-    exportActiveRecoveryKey: async () => {
-      const signer = signerRef.current;
-      if (!signer?.exportRecoveryKey) return null;
-      return signer.exportRecoveryKey();
-    },
+    inspectFederation,
+    exportActiveRecoveryKey,
     connect,
     disconnect,
     recoverRelays,
-    createEscrow,
+    createEscrow: (...args) => signerAction("listing", () => createEscrow(...args)),
     createChamaShare: async (parentId) => {
       if (!(await ensureRelayReady())) throw new Error(translate(getCurrentLang(), "circle.relayUnavailable"));
       const result = await requireClient().createChamaShare(parentId);
@@ -6100,10 +6142,10 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     },
     loadCircle: async (parentId) => {
       const client = requireClient();
-      const parent = client.getState(parentId) ?? await client.loadEscrow(parentId);
+      const parent = await client.loadEscrow(parentId, { userAction: true });
       if (!parent || parent.category !== "chama") throw new Error(translate(getCurrentLang(), "circle.notFound"));
       client.watchChildren(parentId);
-      await client.loadChildren(parentId);
+      await client.loadChildren(parentId, true);
     },
     joinEscrow,
     renewListing,
@@ -6126,23 +6168,23 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     scanMyOnchainPayouts,
     sweepOnchainPayout,
     repostRecurringCbp,
-    lockAndPublish: lockAndPublishAction,
-    vote: voteAction,
+    lockAndPublish: (...args) => signerAction("lock", () => lockAndPublishAction(...args)),
+    vote: (...args) => signerAction("vote", () => voteAction(...args)),
     releasePeriod: async (escrowId: string, periodIndex: number) => {
       if (!clientRef.current) throw new Error("Not connected");
       const newState = await clientRef.current.releasePeriod(escrowId, periodIndex);
       updateEscrow(escrowId, newState);
       return newState;
     },
-    claimAndRedeem: claimAndRedeemAction,
-    claimAndPayout: claimAndPayoutAction,
+    claimAndRedeem: (...args) => signerAction("claim", () => claimAndRedeemAction(...args)),
+    claimAndPayout: (...args) => signerAction("claim", () => claimAndPayoutAction(...args)),
     confirmClaimEcashExport: confirmClaimEcashExportAction,
     reattachPayout: reattachPayoutAction,
     payArbiterPremium: payArbiterPremiumAction,
     redeemArbiterPremiums: redeemArbiterPremiumsAction,
     probeArbiterPremiums: probeArbiterPremiumsAction,
     sendChat,
-    cancel: cancelAction,
+    cancel: (...args) => signerAction("cancel", () => cancelAction(...args)),
     loadEscrow,
     getLoadFailure,
     rebroadcastEscrow,
@@ -6154,7 +6196,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     publishProfileName,
     publishProfileAvatar,
     vibrate,
-    initFedimint,
+    initFedimint: (...args) => signerAction("wallet", () => initFedimint(...args)),
     setCustomInvite,
     createFundingInvoice,
     fundAndLock: fundAndLockAction,
@@ -6250,7 +6292,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       const utxos = [...merged.values()];
       const total = utxos.reduce((s, u) => s + u.amountSats, 0n);
       const locked = upsertCommitmentBond({ ...rec, phase: "locked", utxos, amountSats: total });
-      return { locked: true, txid: locked.utxos?.[0]?.txid, lockedSats: total, deposits: utxos.length };
+      return { locked: true, txid: locked.utxos?.[0]?.txid, lockedSats: total, deposits: utxos.length, chainConfirmed: found.length > 0 };
     },
     getCommitmentReclaimQuote: async (bondId: string) => {
       const rec = getCommitmentBond(bondId);
@@ -6315,7 +6357,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
         if (out?.spent && out.txid) throw new Error(`This bond was already spent in ${out.txid}; it cannot be renewed.`);
         throw new Error("No unspent bond output was found. Nothing was broadcast.");
       }
-      const words = await getOrCreateSeed(client, signer);
+      const words = await getExistingSeed(client, signer, true);
       const oldKey = deriveBondSigningKey(words.join(" "), { network: BOND_NETWORK, index: old.keyIndex ?? 0 });
       if (!oldKey.xonly.every((b, i) => b === old.bond.ownerXonly[i])) throw new Error("Bond key mismatch — renewal refused.");
       const keyIndex = listCommitmentBonds().reduce((m, b) => Math.max(m, b.keyIndex ?? 0), -1) + 1;
@@ -6372,9 +6414,10 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       const fetchJson = esploraFetcher(base);
       // ⭐ Sweep what the CHAIN says is at the address, not the local cache — a deposit
       // that confirmed after the last funding check (or was recorded on another device)
-      // must not be stranded. The cache is the fallback only when the scan itself fails.
+      // must not be stranded. A failed fresh read keeps claim closed.
       const cached = rec.utxos ?? [];
-      let utxos = cached;
+      const claimTip = await esploraTipHeight(fetchJson);
+      let utxos: typeof cached = [];
       try {
         const fresh = await findBondFundingUtxos({ address: rec.bond.address, fetchJson, minConfs: defaultMinConfs(BOND_NETWORK) });
         if (fresh.length > 0) {
@@ -6389,17 +6432,17 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
             upsertCommitmentBond({ ...rec, phase: "reclaimed", reclaimTxid: out.txid });
             return { txid: out.txid, alreadyReclaimed: true };
           }
-          // Not spent, just not visible (lagging LB node) → sweep the cached set;
-          // consensus is the authority either way.
+          // An empty current chain read cannot authorize spending cached outpoints.
         }
-      } catch { /* Esplora unreachable — try the cached set */ }
+      } catch { throw new Error("Couldn’t verify this bond on Bitcoin. Try again before claiming."); }
+      assertBondClaimReady(rec, { tip: claimTip, unspent: utxos.length > 0 });
       if (utxos.length === 0) throw new Error("This bond isn't funded yet.");
       // ⚠ Real sats: reclaim the arbiter's OWN bond to their own key. Re-derive the
       // private key from the seed (never stored). The reclaim tx carries nLockTime =
       // lockUntil, so CONSENSUS is the authority on whether the term has passed — we
       // attempt the broadcast and translate a genuine too-early rejection into a calm
       // message (instead of pre-guessing from a load-balanced, jittery tip height).
-      const words = await getOrCreateSeed(client, signer);
+      const words = await getExistingSeed(client, signer, true);
       // Re-derive at THIS bond's persisted index (default 0 for legacy single-key bonds).
       const { priv, xonly } = deriveBondSigningKey(words.join(" "), { network: BOND_NETWORK, index: rec.keyIndex ?? 0 });
       // Sanity: the re-derived key MUST reproduce the bond's stored key (right seed +
@@ -6536,7 +6579,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       }
       const base = defaultEsploraBase(BOND_NETWORK);
       const fetchJson = esploraFetcher(base);
-      const words = await getOrCreateSeed(client, signer);
+      const words = await getExistingSeed(client, signer, true);
       const { priv, xonly } = deriveBondSigningKey(words.join(" "), { network: BOND_NETWORK, index: rec.keyIndex ?? 0 });
       if (xonly.length !== rec.bond.ownerXonly.length || !xonly.every((b, i) => b === rec.bond.ownerXonly[i])) {
         throw new Error("Bond key mismatch — cannot credit reclaimed sats (unexpected seed or key index).");
@@ -6618,9 +6661,9 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       // spends the previous bond's output, so the claim is chain-checkable.
       // Fails SOFT: an unresolvable predecessor announces without lineage
       // rather than blocking a real bond from being announced at all.
-      // The WHOLE chain, not one hop: announcing a renewal REPLACES the
-      // predecessor's 38135, so a one-hop pointer would dead-end at the first
-      // superseded ancestor. This device's commitment store is the only place
+      // Keep the whole chain: legacy community-addressed renewals replaced
+      // predecessor announcements. Per-bond addressing cannot restore those
+      // old ancestors. This device's commitment store is the only place
       // the full history survives, so it publishes all of it and lets any
       // reader prove each hop independently.
       let lineage: BondLineage | undefined;
@@ -6657,53 +6700,41 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       await client.publishRaw(signed);
       return { community, address: rec.bond.address };
     },
-    recoverMyBonds: async () => {
-      const client = clientRef.current;
-      const signer = signerRef.current;
-      if (!client || !signer) throw new Error("Not connected");
+    recoverMyBonds: async (opts) => {
+      const client = clientRef.current, signer = signerRef.current;
+      if (!client || !signer) throw new Error("Not connected — reconnect, then Retry.");
       const myPubkey = await signer.getPublicKey();
-      const words = await getOrCreateSeed(client, signer);
+      const reading = await client.queryPublicConduct({ kinds: [ARBITER_BOND_ANNOUNCEMENT_KIND], authors: [myPubkey] } as any, 6_000);
+      if (!reading.complete) throw new Error('Could not finish checking your bond announcements. Reconnect, then Retry.');
+      const events = reading.events;
+      const parsed = selectLatestAnnouncements(events).filter(a => a.npub === myPubkey && a.network === (BOND_NETWORK === PUBLIC_SIGNET ? 'signet' : 'mainnet'));
       const fetchJson = esploraFetcher(defaultEsploraBase(BOND_NETWORK), { network: BOND_NETWORK });
-      const events = await client.queryOnce(
-        { kinds: [ARBITER_BOND_ANNOUNCEMENT_KIND], authors: [myPubkey] } as any, 6_000,
-      );
-      const minConfs = defaultMinConfs(BOND_NETWORK);
-      const parsed = selectLatestAnnouncements(events as any).filter((a: any) => a.npub === myPubkey);
-      const have = new Set(listCommitmentBonds().map((b) => b.bond.address));
-      let recovered = 0;
-      for (const a of parsed) {
-        if (have.has(a.address)) continue;
-        // Live-bond funds sit at the CLTV address; reclaimed-not-yet-swept funds sit at
-        // the bond-KEY address (the reclaim destination). Check both so a reclaimed bond
-        // also recovers → its "credit to Chama" sweep button surfaces on this device.
-        let bondKeyAddress: string;
-        try { bondKeyAddress = btcSigner.p2tr(hexToBytes(a.ownerXonly), undefined, BOND_NETWORK).address as string; }
-        catch { continue; }
-        const [bondUtxos, bondKeyUtxos] = await Promise.all([
-          findBondFundingUtxos({ address: a.address, fetchJson, minConfs }).then((f) => f.map((x) => x.utxo)).catch(() => []),
-          findBondFundingUtxos({ address: bondKeyAddress, fetchJson, minConfs }).then((f) => f.map((x) => x.utxo)).catch(() => []),
-        ]);
-        const rec = reconstructBondRecord({
-          ownerXonlyHex: a.ownerXonly, lockUntil: a.lockUntil, claimedSats: a.claimedSats,
-          announcedAddress: a.address, seedWords: words.join(" "), network: BOND_NETWORK,
-          bondUtxos, bondKeyUtxos, createdAt: a.createdAt,
-        });
-        if (!rec) continue;
-        upsertCommitmentBond(rec);
-        have.add(a.address);
-        recovered++;
-      }
-      return { recovered };
+      return recoverOwnedBonds(parsed, listCommitmentBonds(), {
+        network: BOND_NETWORK, seed: () => getExistingSeed(client, signer, opts?.allowUserAction === true),
+        readUtxos: async address => (await findBondFundingUtxos({ address, fetchJson, minConfs: defaultMinConfs(BOND_NETWORK) })).map(x => x.utxo),
+        save: upsertCommitmentBond,
+      });
+    },
+    findMyBond: async (address, lockUntil) => {
+      const client = clientRef.current, signer = signerRef.current;
+      if (!client || !signer) throw new Error("Not connected — reconnect, then Retry.");
+      const fetchJson = esploraFetcher(defaultEsploraBase(BOND_NETWORK), { network: BOND_NETWORK });
+      const record = await findOwnedBond(address, lockUntil, listCommitmentBonds(), {
+        network: BOND_NETWORK, seed: () => getExistingSeed(client, signer, true),
+        readUtxos: async address => (await findBondFundingUtxos({ address, fetchJson, minConfs: defaultMinConfs(BOND_NETWORK) })).map(x => x.utxo),
+        save: upsertCommitmentBond,
+      });
+      return { bondId: record.bondId };
     },
     fetchMyBonds: async (): Promise<VerifiedBond[]> => {
       // #77: the user's OWN announced bonds, chain-verified — so the Dashboard
       // shows a live bond on a fresh device (no local commitment record yet).
-      // Fail-soft everywhere: any relay/esplora hiccup yields [] (never throws
-      // into render), and each announcement is recompute-don't-trust verified.
+      // Failed relay/chain reads reject so Manage can explain and retry; they
+      // are never an empty-bond reading. Each announcement is chain-verified.
       try {
         const client = clientRef.current;
         const signer = signerRef.current;
-        if (!client || !signer) return [];
+        if (!client || !signer) throw new Error('Reconnect to check your bonds.');
         const myPubkey = (await signer.getPublicKey()).trim().toLowerCase();
         const events = await client.queryOnce(
           { kinds: [ARBITER_BOND_ANNOUNCEMENT_KIND], authors: [myPubkey] } as any, 6_000,
@@ -6713,19 +6744,17 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
         );
         if (latest.length === 0) return [];
         const fetchJson = esploraFetcher(defaultEsploraBase(BOND_NETWORK), { network: BOND_NETWORK });
-        const tip = await esploraTipHeight(fetchJson).catch(() => undefined);
+        const tip = await esploraTipHeight(fetchJson);
         const verified: VerifiedBond[] = [];
         for (const a of latest) {
-          const v = await verifyBondAnnouncement(
-            a, { network: BOND_NETWORK, fetchJson, tipHeight: tip },
-          ).catch(() => null);
+          const v = await verifyBondAnnouncement(a, { network: BOND_NETWORK, fetchJson, tipHeight: tip });
           if (v) verified.push(v);
         }
         await resolveLineageTenure(verified, fetchJson);
         return verified;
       } catch (e) {
-        console.warn("[chama] fetchMyBonds failed — showing local bonds only:", e);
-        return [];
+        console.warn("[chama] fetchMyBonds failed:", e);
+        throw e;
       }
     },
     /**
@@ -6790,16 +6819,12 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       // (2) on any failure OR an empty verify, fall back to the last
       // chain-verified cached set (12h TTL) instead of returning nothing.
       try {
-        let events = await client.queryOnce(
-          { kinds: [ARBITER_BOND_ANNOUNCEMENT_KIND], "#d": [community] } as any, 6_000,
-        );
+        let events = await readCommunityBondEvents(community, filter => client.queryOnce(filter, 6_000));
         if (events.length === 0) {
           await new Promise((r) => setTimeout(r, 800));
-          events = await client.queryOnce(
-            { kinds: [ARBITER_BOND_ANNOUNCEMENT_KIND], "#d": [community] } as any, 6_000,
-          );
+          events = await readCommunityBondEvents(community, filter => client.queryOnce(filter, 6_000));
         }
-        const latest = selectLatestAnnouncements(events as any);
+        const latest = selectLatestAnnouncements(events as any).filter(a => a.community === community);
         const fetchJson = esploraFetcher(defaultEsploraBase(BOND_NETWORK), { network: BOND_NETWORK });
         const tip = await esploraTipHeight(fetchJson).catch(() => undefined);
         // ⭐ Each announcement is chain-verified (recompute address + read on-chain);
@@ -6947,23 +6972,13 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       const fetchJson = esploraFetcher(defaultEsploraBase(BOND_NETWORK), { signal, timeoutMs: 4_500, network: BOND_NETWORK });
       // Relay history and the chain tip are independent. Fetch them together;
       // doing them serially made the minimum wait the sum of both networks.
-      const [tip, annEvents] = await Promise.all([
-        esploraTipHeight(fetchJson),
-        client.queryOnce(
-          { kinds: [ARBITER_BOND_ANNOUNCEMENT_KIND], "#d": [community] } as any, 3_500,
-        ),
-      ]);
-      throwIfAborted();
-      const bonds: VerifiedBond[] = [];
-      const candidates = selectLatestAnnouncements(annEvents as any).slice(0, 12);
-      const verified = await mapPool(candidates, 6, async (announcement) => {
-        throwIfAborted();
-        return verifyBondAnnouncement(
-          announcement,
-          { network: BOND_NETWORK, fetchJson, tipHeight: tip },
-        ).catch(() => null);
+      const { tip, bonds } = await readLivenessBonds({
+        community, network: BOND_NETWORK, fetchJson, signal,
+        readAnnouncements: async () => {
+          const reads = await Promise.all(communityBondFilters(community).map(filter => client.queryPublicConduct(filter, 3_500)));
+          return { events: [...new Map(reads.flatMap(read => read.events).map(event => [event.id, event])).values()], complete: reads.every(read => read.complete) };
+        },
       });
-      for (const bond of verified) if (bond) bonds.push(bond);
       throwIfAborted();
       // 2. Ratings are enrichment, not permission to reveal the bonded count.
       // Use only already-hydrated trades and a short relay read. The previous
@@ -7189,6 +7204,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     getBalance: readBalance,
     resetLocalWallet,
     switchFederation,
+    watchBrowseListings: (scope) => clientRef.current?.watchBrowseListings(scope) ?? (() => {}),
     watchPublicListings: (since?: number) => {
       clientRef.current?.watchPublicListings(since);
     },

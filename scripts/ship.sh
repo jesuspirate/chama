@@ -53,6 +53,9 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
+# A prepared release must include the released main before any channel work.
+node "$ROOT_DIR/scripts/check-release-ancestry.mjs" --release-only
+
 # Channel-only work must never bump, commit, tag, or publish unrelated
 # destinations. Keep ship.sh as the one remembered entry point, but delegate
 # any --only request before the new-version machinery resolves notes or mutates

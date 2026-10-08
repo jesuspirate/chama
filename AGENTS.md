@@ -12,6 +12,7 @@ This is the authoritative Chama application repository. It contains the web/PWA 
 ## Working rules
 
 - Preserve unrelated user changes in a dirty worktree.
+- GitHub is the source of truth. For new work: branch, commit, push, open or update a pull request (draft while acceptance is pending). Never leave completed work only on disk. Do not merge or ship without the release instruction.
 - Use `rg` / `rg --files` for repository search.
 - Keep money-path changes fail-closed. Never replace, rotate, or delete a possibly funded wallet merely to make startup succeed.
 - A Nostr identity is not a bearer-ecash backup. Keep device-local browser wallets and the native bridge's wallet state conceptually separate.

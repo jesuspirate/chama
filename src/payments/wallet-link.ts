@@ -6,6 +6,11 @@ export function walletUri(value: string, rail: 'lightning' | 'onchain'): string 
   return clean.toLowerCase().startsWith(scheme) ? scheme + clean.slice(scheme.length) : scheme + clean;
 }
 export function nativeWalletLinks(): boolean { return Capacitor.getPlatform() === 'android'; }
+/** Include iPadOS desktop browsing, which identifies itself as a touch Mac. */
+export function iosWalletLinks(env: Pick<Navigator, 'userAgent' | 'maxTouchPoints'> | undefined = typeof navigator === 'undefined' ? undefined : navigator): boolean {
+  return !!env && (/iPad|iPhone|iPod/.test(env.userAgent)
+    || /Macintosh/.test(env.userAgent) && env.maxTouchPoints > 1);
+}
 export async function openWalletLink(uri: string, share = false): Promise<void> {
   if (!/^(lightning|bitcoin):\S+$/i.test(uri)) throw Error('Invalid payment link');
   await nativeDevice.payment({ uri, share });

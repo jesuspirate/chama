@@ -33,29 +33,31 @@ export function useLiveness(
   liveness: ChamaLiveness | null;
   loading: boolean;
   outcome: LivenessGenerationDiagnostic["outcome"] | null;
+  retry: () => void;
 } {
   const [liveness, setLiveness] = useState<ChamaLiveness | null>(null);
   const [loading, setLoading] = useState(false);
   const [outcome, setOutcome] = useState<LivenessGenerationDiagnostic["outcome"] | null>(null);
+  const [retryToken, setRetryToken] = useState(0);
   const loadRef = useRef(loadLiveness);
   loadRef.current = loadLiveness;
   const intervalMs = opts.intervalMs ?? 0;
   useEffect(() => {
     const load = loadRef.current;
-    if (!load || !slug) { setLiveness(null); return; }
+    if (!load || !slug) { setLiveness(null); setLoading(false); setOutcome(null); return; }
     // Public chain truth is safe to reuse across identities. Paint the most
     // recent verified result synchronously, then refresh behind it; a returning
     // user should never stare at "checking" merely because Me and Dashboard
     // mounted a fresh copy of the same signal.
     const warm = readCachedLiveness(slug);
-    setLiveness(warm);
+    setLiveness(warm); setOutcome(null);
     let cancelled = false;
     const run = (showLoading: boolean) => {
-      if (showLoading) setLoading(true);
+      if (showLoading || !readCachedLiveness(slug)) setLoading(true);
       loadCoordinatedLiveness(slug, (community, signal) => load(community, signal))
         .then((result) => {
           if (cancelled) return;
-          setLiveness(result.liveness);
+          setLiveness(result.outcome === "verified" ? result.liveness : null);
           setOutcome(result.outcome);
         })
         .catch(() => {
@@ -75,8 +77,8 @@ export function useLiveness(
       if (id) clearInterval(id);
       if (typeof window !== "undefined") window.removeEventListener("focus", onFocus);
     };
-  }, [slug, intervalMs]);
-  return { liveness, loading, outcome };
+  }, [slug, intervalMs, retryToken]);
+  return { liveness, loading, outcome, retry: () => setRetryToken(token => token + 1) };
 }
 
 const SEGMENTS = 5;
@@ -136,12 +138,15 @@ export interface LivenessSignalProps {
   /** Optional — turns the thin-coverage nudge into a real CTA. Absent ⇒ the nudge
    *  is an informational line (the arbiter on-ramp lives elsewhere by default). */
   onBecomeArbiter?: () => void;
+  onRetry?: () => void;
 }
 
 /** The full signal block: label + "?" + meter + honest readout + thin nudge. */
-export function LivenessSignal({ liveness, loading, outcome, blocksPerDay = 144, onBecomeArbiter }: LivenessSignalProps) {
+export function LivenessSignal({ liveness, loading, outcome, blocksPerDay = 144, onBecomeArbiter, onRetry }: LivenessSignalProps) {
   const { t } = useT();
-  const thin = !liveness || liveness.arbiterCount <= 1 || liveness.score < THIN_SCORE;
+  // A cached reading can paint before refresh, but a failed refresh is unknown.
+  if (outcome && outcome !== "verified") liveness = null;
+  const thin = !!liveness && (liveness.arbiterCount <= 1 || liveness.score < THIN_SCORE);
   const readout = loading
     ? t("bond.livenessChecking")
     : liveness
@@ -156,7 +161,7 @@ export function LivenessSignal({ liveness, loading, outcome, blocksPerDay = 144,
       background: T.surface, border: `1px solid ${T.border}`, borderRadius: T.r, padding: "12px 14px",
     }}>
       <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 8 }}>
-        <span style={{ fontFamily: T.mono, fontSize: 9.5, fontWeight: 800, letterSpacing: 1, color: T.muted, textTransform: "uppercase" }}>
+        <span style={{ fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 800, color: T.muted, }}>
           {t("bond.livenessHeading")}
         </span>
         <HelpTip title={t("bond.livenessTipTitle")} label={t("bond.livenessTipLabel")}>
@@ -164,12 +169,14 @@ export function LivenessSignal({ liveness, loading, outcome, blocksPerDay = 144,
         </HelpTip>
       </div>
 
-      <div style={{ opacity: loading ? 0.55 : 1, transition: "opacity .2s" }}>
-        <LivenessMeter score={liveness?.score ?? 0} />
-      </div>
-      <div style={{ fontFamily: T.mono, fontSize: 11, color: liveness && !thin ? T.text : T.muted, marginTop: 7, lineHeight: 1.5 }}>
+      {liveness && <div style={{ opacity: loading ? 0.55 : 1, transition: "opacity .2s" }}>
+        <LivenessMeter score={liveness.score} />
+      </div>}
+      <div style={{ fontFamily: T.sans, fontSize: T.fs.secondary, color: liveness && !thin ? T.text : T.muted, marginTop: 7, lineHeight: 1.5 }}>
         {readout}
       </div>
+
+      {!loading && !liveness && onRetry && <button type="button" onClick={onRetry} style={{ background: "none", border: 0, boxShadow: "none", minHeight: 44, padding: 0, color: T.accent, cursor: "pointer" }}>{t("bond.livenessRetry")}</button>}
 
       {!loading && thin && (
         <div style={{ marginTop: 9, paddingTop: 9, borderTop: `1px solid ${T.border}` }}>
@@ -179,13 +186,13 @@ export function LivenessSignal({ liveness, loading, outcome, blocksPerDay = 144,
               style={{
                 display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 11px", borderRadius: T.rs,
                 background: "none", border: `1px solid ${T.accent}`, color: T.accent,
-                fontFamily: T.mono, fontSize: 11, fontWeight: 700, cursor: "pointer",
+                fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700, cursor: "pointer",
               }}
             >
               {t("bond.needsArbitersCta")} <span style={{ fontSize: 13, lineHeight: 1 }}>→</span>
             </button>
           ) : (
-            <div style={{ fontFamily: T.mono, fontSize: 10.5, color: T.accent, lineHeight: 1.5 }}>
+            <div style={{ fontFamily: T.sans, fontSize: T.fs.secondary, color: T.accent, lineHeight: 1.5 }}>
               {t("bond.needsArbitersInfo")}
             </div>
           )}

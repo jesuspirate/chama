@@ -1,3 +1,4 @@
+import { isSignerApprovalError } from "./signer-approval.js";
 // ══════════════════════════════════════════════════════════════════════════
 // Chama — 3-recipient NIP-44 envelope helpers (PR 4)
 // ══════════════════════════════════════════════════════════════════════════
@@ -72,7 +73,8 @@ export async function decryptFromEnvelope(
   if (!ciphertext) return null;
   try {
     return await decrypt(ciphertext, senderPubkey);
-  } catch {
+  } catch (error) {
+    if (isSignerApprovalError(error)) throw error;
     return null;
   }
 }

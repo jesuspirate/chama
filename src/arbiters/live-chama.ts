@@ -58,15 +58,16 @@ export function computeChamaLiveness(
   tipHeight: number,
   weights: LivenessWeights = DEFAULT_LIVENESS_WEIGHTS,
 ): ChamaLiveness {
-  // One live bond per arbiter (newest already selected upstream); dedup defensively.
-  const byArbiter = new Map<string, VerifiedBond>();
+  // Each on-chain address contributes once; extra bonds do not invent people.
+  const byAddress = new Map<string, VerifiedBond>();
   for (const b of bonds) {
-    if (!b.funded || !b.active) continue;
-    const cur = byArbiter.get(b.npub);
-    if (!cur || b.actualSats > cur.actualSats) byArbiter.set(b.npub, b);
+    if (!b.funded || !b.active || b.community !== community) continue;
+    const cur = byAddress.get(b.address);
+    if (!cur || (b.announcedAt ?? 0) > (cur.announcedAt ?? 0) || ((b.announcedAt ?? 0) === (cur.announcedAt ?? 0) && b.actualSats > cur.actualSats)) byAddress.set(b.address, b);
   }
-  const live = [...byArbiter.values()];
-  const arbiterCount = live.length;
+  const live = [...byAddress.values()];
+  const arbiters = [...new Set(live.map(b => b.npub.toLowerCase()))];
+  const arbiterCount = arbiters.length;
 
   const totalBondSats = live.reduce((s, b) => s + b.actualSats, 0n);
   const bondWeightSatBlocks = live.reduce(
@@ -76,8 +77,8 @@ export function computeChamaLiveness(
   const avgRemainingBlocks = totalBondSats > 0n ? Number(bondWeightSatBlocks / totalBondSats) : 0;
 
   let rc = 0, rp = 0, rn = 0;
-  for (const b of live) {
-    const r = ratingsByNpub.get(b.npub);
+  for (const npub of arbiters) {
+    const r = ratingsByNpub.get(npub);
     if (r) { rc += r.count; rp += r.positive; rn += r.negative; }
   }
   const positiveRate = rc > 0 ? rp / rc : 0;

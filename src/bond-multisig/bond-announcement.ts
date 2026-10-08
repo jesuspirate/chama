@@ -1,3 +1,4 @@
+import { PER_BOND_ANNOUNCEMENT_WRITER_ENABLED } from '../escrow-engine/experimental-escrow-features.js';
 // ══════════════════════════════════════════════════════════════════════════
 // Chama — commitment-bond ANNOUNCEMENT (Nostr kind 38135, chain-verifiable)
 // ══════════════════════════════════════════════════════════════════════════
@@ -20,9 +21,9 @@
 // arbiters/bonds.ts) and clear of 38130 (the legacy UNBACKED exposure-ledger
 // declaration) / 38131 (victim attestation). This is the CHAIN-BACKED companion:
 // where 38130 was a claim, 38135 is provable. Parameterized-replaceable, keyed
-// d=community: one CURRENT announcement per (arbiter, community), and a filter on
-// `#d:[community]` returns every arbiter's bond for that community (the liveness
-// query). The signer IS the announcing arbiter — no announcing on another's behalf.
+// Readers accept d=bond address and historical d=community. Community reads
+// combine #c=community with legacy #d=community events. The per-bond writer is
+// gated OFF until the .22 fleet probe passes. The signer IS the owner.
 
 import { hexToBytes } from "@noble/hashes/utils.js";
 import { verifyEvent as verifyNostrEventSignature } from "nostr-tools/pure";
@@ -82,10 +83,9 @@ export interface BondLineageHop {
 /** ⚠ The full renewal ancestry, carried by the CURRENT announcement.
  *
  *  It has to be the full chain, not a single pointer. Kind 38135 is
- *  parameterized-replaceable per (npub, community), so announcing a renewal
- *  REPLACES the predecessor's announcement — after two renewals the middle
- *  bond's event is simply gone from relays, and a one-hop pointer would dead-end
- *  there. Since the announcer's own commitment store knows their whole history,
+ *  historically parameterized-replaceable per (npub, community), so old
+ *  renewals replaced their predecessor. Per-bond addressing prevents future
+ *  replacement, but those missing ancestors still require the full chain. Since the announcer's own commitment store knows their whole history,
  *  they publish every hop, and each one is INDEPENDENTLY verifiable on-chain by
  *  anyone: recompute the hop's address, confirm its funding output was spent by
  *  the very transaction that funded the next bond along. A fabricated hop fails
@@ -211,7 +211,10 @@ export function buildBondAnnouncementEvent(params: {
   roles?: readonly BondRole[];
   /** Pass when this bond was created by renewing a previous one. */
   lineage?: BondLineage;
-}): { kind: number; created_at: number; tags: string[][]; content: string } {
+}, options: { perBondWriterEnabled?: boolean } = {}): { kind: number; created_at: number; tags: string[][]; content: string } {
+  // Injectable only at this pure builder for flag-on regression fixtures.
+  // Production callers use the reviewed, default-off rollout flag.
+  const perBondWriter = options.perBondWriterEnabled ?? PER_BOND_ANNOUNCEMENT_WRITER_ENABLED;
   const pubkey = normHex(params.pubkey);
   if (!pubkey) throw new Error(`Announcement pubkey is not a 64-char hex key: ${params.pubkey}`);
   const community = params.community.trim();
@@ -244,7 +247,7 @@ export function buildBondAnnouncementEvent(params: {
     kind: ARBITER_BOND_ANNOUNCEMENT_KIND,
     created_at: params.createdAt ?? Math.floor(Date.now() / 1000),
     tags: [
-      ["d", community], // one current announcement per (arbiter, community); #d = liveness query
+      ["d", perBondWriter ? params.address : community], // .22 remains a legacy writer until the fleet updates
       ["t", ARBITER_BOND_ANNOUNCEMENT_TYPE],
       ["c", community],
       chamaClientTag(),
@@ -399,9 +402,9 @@ export async function verifyBondAnnouncement(
   };
 }
 
-/** Newest current announcement per arbiter (parameterized-replaceable: newest
- *  created_at wins, ties → lexicographically smallest event id). Dedups a set of raw
- *  events (e.g. from a community `#d` query) to one per npub. */
+/** Readers first: retain each bond, including legacy community-addressed history.
+ * Same bond/community advertised in both wire shapes is counted once. Dedup by
+ * the recomputable descriptor, never an untrusted claimed address. */
 export function selectLatestAnnouncements(
   events: readonly NostrEvent[],
   options?: { verifyEvent?: (event: NostrEvent) => boolean },
@@ -410,38 +413,33 @@ export function selectLatestAnnouncements(
   for (const event of events) {
     const a = parseBondAnnouncementEvent(event, options);
     if (!a) continue;
-    const cur = best.get(a.npub);
-    if (!cur || a.createdAt > cur.createdAt || (a.createdAt === cur.createdAt && a.eventId < cur.eventId)) {
-      best.set(a.npub, a);
-    }
+    const key = `${a.npub}|${a.community}|${a.network}|${a.ownerXonly}|${a.lockUntil}`;
+    const cur = best.get(key);
+    if (!cur || a.createdAt > cur.createdAt || (a.createdAt === cur.createdAt && a.eventId < cur.eventId)) best.set(key, a);
   }
-  return [...best.values()];
+  return [...best.values()].sort((a, b) => b.createdAt - a.createdAt || a.eventId.localeCompare(b.eventId));
 }
 
-/** Newest current announcement per (arbiter, community) from a BATCHED no-`#d`
- *  query — the country-LIST read. selectLatestAnnouncements keys per npub, which
- *  is right for a single community's `#d` result but would collapse an arbiter
- *  bonded in TWO chamas down to one; this variant keys (npub, community) and
- *  groups the winners by community, ready for per-community chain verification. */
 export function groupLatestAnnouncementsByCommunity(
   events: readonly NostrEvent[],
   options?: { verifyEvent?: (event: NostrEvent) => boolean },
 ): Map<string, ParsedBondAnnouncement[]> {
-  const best = new Map<string, ParsedBondAnnouncement>(); // key: `${npub}|${community}`
-  for (const event of events) {
-    const a = parseBondAnnouncementEvent(event, options);
-    if (!a) continue;
-    const key = `${a.npub}|${a.community}`;
-    const cur = best.get(key);
-    if (!cur || a.createdAt > cur.createdAt || (a.createdAt === cur.createdAt && a.eventId < cur.eventId)) {
-      best.set(key, a);
-    }
+  const groups = new Map<string, ParsedBondAnnouncement[]>();
+  for (const a of selectLatestAnnouncements(events, options)) {
+    const list = groups.get(a.community) ?? [];
+    list.push(a); groups.set(a.community, list);
   }
-  const byCommunity = new Map<string, ParsedBondAnnouncement[]>();
-  for (const a of best.values()) {
-    const list = byCommunity.get(a.community);
-    if (list) list.push(a);
-    else byCommunity.set(a.community, [a]);
-  }
-  return byCommunity;
+  return groups;
+}
+
+/** OR across both addressing generations. Do not require old events to have c. */
+export const communityBondFilters = (community: string) => [
+  { kinds: [ARBITER_BOND_ANNOUNCEMENT_KIND], '#c': [community] },
+  { kinds: [ARBITER_BOND_ANNOUNCEMENT_KIND], '#d': [community] },
+];
+export async function readCommunityBondEvents(
+  community: string, query: (filter: ReturnType<typeof communityBondFilters>[number]) => Promise<NostrEvent[]>,
+): Promise<NostrEvent[]> {
+  const readings = await Promise.all(communityBondFilters(community).map(query));
+  return [...new Map(readings.flat().map(event => [event.id, event])).values()];
 }

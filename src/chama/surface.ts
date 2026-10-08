@@ -1,3 +1,4 @@
+import { Outcome } from '../escrow-engine/types.js';
 // ══════════════════════════════════════════════════════════════════════════
 // Chama — what a circle SAYS and what it OFFERS, as pure functions
 // ══════════════════════════════════════════════════════════════════════════
@@ -15,13 +16,6 @@ import type {
   SeatRefusal,
 } from "./types.js";
 
-/** How long after a failed fill before the member is offered the MANUAL
- *  refund. The watcher votes automatically within seconds; this escape
- *  hatch exists for the case where it could not (offline, thin relay view),
- *  and it must not appear so early that it makes the automatic path look
- *  broken. */
-export const MANUAL_REFUND_GRACE_SEC = 600;
-
 export type CircleMove =
   /** Take a seat, or finish funding one already reserved. */
   | "lock"
@@ -36,8 +30,6 @@ export type CircleMove =
   | "wait"
   /** Refund in flight, automatic. Reassure, do not prompt. */
   | "returning"
-  /** The automatic path had its chance; offer the manual REFUND. */
-  | "return-now"
   /** Completed round: the host may re-form the circle. */
   | "next-round"
   | "none";
@@ -61,6 +53,9 @@ export type CircleSurfaceModel = {
   potMsats: number;
   secsToFillDeadline: number;
   secsToRoundEnd: number;
+  waitingOn: string[];
+  arbiterReturnAtSec: number | null;
+  returnStage: "checking" | "signing" | "waiting" | "confirming";
 };
 
 function seatOf(
@@ -92,6 +87,10 @@ export function circleSurfaceModel(
 
   const seatsStillOpen = progress.seatsOpen === null || progress.seatsOpen > 0;
   const viewer = viewerPubkey.trim().toLowerCase();
+  const votes = seat?.returnVotes, seats = seat?.returnSeats;
+  const signed = votes?.buyer === Outcome.REFUND;
+  const confirming = signed && (votes?.seller === Outcome.REFUND || votes?.arbiter === Outcome.REFUND);
+  const waitingOn = signed && !confirming ? [seats?.seller, seats?.arbiter].filter((pk): pk is string => !!pk) : [];
   const base = {
     status: progress.status,
     refusal: null as SeatRefusal | null,
@@ -104,6 +103,9 @@ export function circleSurfaceModel(
     potMsats: progress.potMsats,
     secsToFillDeadline: progress.secsToFillDeadline,
     secsToRoundEnd: progress.secsToRoundEnd,
+    waitingOn,
+    arbiterReturnAtSec: seat?.arbiterReturnAtSec ?? null,
+    returnStage: (!votes ? "checking" : !signed ? "signing" : confirming ? "confirming" : "waiting") as CircleSurfaceModel["returnStage"],
   };
 
   // Rotation collection rounds (pot: rotation-v2, roundIndex ≥ 2) follow
@@ -161,11 +163,7 @@ export function circleSurfaceModel(
     // Resolution already landed: the manual REFUND vote is moot — the only
     // thing left is to take the sats.
     if (seat.readyToClaim) return { ...base, move: "collect" };
-    const sinceFailure = nowSec - circle.fillDeadlineSec;
-    return {
-      ...base,
-      move: sinceFailure >= MANUAL_REFUND_GRACE_SEC ? "return-now" : "returning",
-    };
+    return { ...base, move: "returning" };
   }
 
   // complete

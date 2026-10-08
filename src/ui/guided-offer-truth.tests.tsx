@@ -8,14 +8,14 @@ import { Match, MatchReviewAmount, guidedChooseTitleKey } from "./screens/Assist
 // Exercise the actual per-amount searches that the guided canvas merges.
 function offer(id: string, sats: number, fiat: number, currency = "USD", category = "p2p-trade") {
   const listing = {
-    id, category, status: EscrowStatus.CREATED, amountMsats: sats * 1000,
+    id, category, community: "global-usd", status: EscrowStatus.CREATED, amountMsats: sats * 1000,
     fiatAmount: fiat, fiatCurrency: currency, description: "Help with this month’s utilities",
     expiresAt: 2000, participants: { [Role.SELLER]: id }, paymentMethods: ["strike"],
     fees: { platformMsats: 0, arbiterMsats: 0 },
     ...(category === "bill-pay" ? { items: [{ id: "utilities", label: "Utilities", kind: "bill", amountMsats: sats * 1000 }] } : {}),
   } as EscrowState;
   return matchGuidedListings({ version: 1, direction: "buy_sats", amountSats: sats,
-    paymentRails: ["strike"], strategy: "available_now" }, [{ listing }], { nowSec: 1000 }).candidates[0]!;
+    paymentRails: ["strike"], community: "global-usd", strategy: "available_now" }, [{ listing }], { nowSec: 1000 }).candidates[0]!;
 }
 const a = offer("a", 2459, 2);
 const b = offer("b", 3183, 2);
@@ -62,8 +62,11 @@ console.log("PASS guided offer truth: unit prices, currencies, lanes, bill copy,
 
 const rangeCandidate = { ...a, amountSats: 500, listing: { ...a.listing, items: [{ id: 'range', label: 'Sats', kind: 'exchange-bracket' as const, amountMsats: 21_000, minAmountMsats: 21_000, maxAmountMsats: 60_000_000 }] } };
 const reviewAmount = renderToStaticMarkup(<MatchReviewAmount candidate={rangeCandidate} />);
-assert.ok(reviewAmount.includes('500 sats'));
-assert.ok(reviewAmount.includes('from a 21–60,000 sats offer'));
-assert.ok(reviewAmount.indexOf('500 sats') < reviewAmount.indexOf('from a'));
-assert.ok(!renderToStaticMarkup(<MatchReviewAmount candidate={a} />).includes('from a'));
-console.log('PASS review shows chosen amount first and original offer bracket underneath');
+// v7 redesign (Jet, 2026-10-06): a ranged offer leads with its RANGE — the
+// exact amount is picked on the next screen — and still names what was asked.
+assert.ok(reviewAmount.includes('21–60,000 sats'), 'the first line states the bracket');
+assert.ok(reviewAmount.includes('You asked for 500 sats'), 'the chosen amount is still named');
+assert.ok(reviewAmount.indexOf('21–60,000 sats') < reviewAmount.indexOf('You asked for 500'));
+const single = renderToStaticMarkup(<MatchReviewAmount candidate={a} />);
+assert.ok(!single.includes('You asked for') && !single.includes('–'), 'a single-amount offer just states the amount');
+console.log('PASS review leads with the offer bracket and names the chosen amount underneath');

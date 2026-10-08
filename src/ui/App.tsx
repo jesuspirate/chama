@@ -1,3 +1,6 @@
+import { isSignerApprovalError } from "../escrow-engine/signer-approval.js";
+import { publicShareLimit } from "../fedimint/federation-inspection.js";
+import { FederationInfoProvider } from "./components/FederationDisclosure.js";
 import { buildWakeIndex } from "../notifications/wake-index.js";
 import { deleteListings } from "../escrow-engine/delete-listings.js";
 import { listPaidLockRecoveries } from "../payments/paid-lock-recovery.js";
@@ -146,7 +149,7 @@ import {
 import {
   BROWSE_CATS, T, TRINITY_RING_ORDER,
   activeResolvedTheme, applyThemeMode, readThemeMode, resolveThemeMode,
-  writeThemeMode, type ThemeMode,
+  writeThemeMode, typeScaleCss, type ThemeMode,
 } from "./theme.js";
 import { useT, translate, getCurrentLang } from "../i18n/index.js";
 import {
@@ -180,7 +183,9 @@ import { BitcoinAmount } from "./components/BitcoinAmount.js";
 import { VerticalIcon } from "./components/VerticalIcon.js";
 import { ChamaLoader } from "./components/ChamaLoader.js";
 import { isExpiredUnfundedListing } from "../escrow-engine/expired-listing.js";
-import { BottomNav, BOTTOM_NAV_HEIGHT, type Tab } from "./components/BottomNav.js";
+import { BottomNav, BOTTOM_NAV_HEIGHT, CreateButton, navCss, type Tab } from "./components/BottomNav.js";
+import { HomeHero, homeCss } from "./components/HomeHero.js";
+import { CirclesHome } from "./screens/CirclesHome.js";
 import { CoachMarkTour, readCoachSeen, type CoachStep } from "./components/CoachMarkTour.js";
 import { BitcoinPricePill } from "./components/BitcoinPricePill.js";
 import { useDesktopNavigationShortcuts } from "./hooks/useDesktopNavigationShortcuts.js";
@@ -190,7 +195,7 @@ import { PendingPayoutCard } from "./components/PendingPayoutCard.js";
 import { useFederationCommands } from "./hooks/useFederationCommands.js";
 
 import { BrowseView } from "./screens/BrowseView.js";
-import { AssistedCanvas, type AssistedCanvasResume } from "./screens/AssistedCanvas.js";
+import { CanvasAllListings, AssistedCanvas, type AssistedCanvasResume } from "./screens/AssistedCanvas.js";
 import type { CanvasCreatePrefill } from "../guided/create-prefill.js";
 import { ConnectScreen } from "./screens/ConnectScreen.js";
 import { GlobeCountryPicker } from "./screens/GlobeCountryPicker.js";
@@ -204,7 +209,7 @@ import { MeScreen } from "./screens/MeScreen.js";
 import { LapsedStoreCard } from "./components/LapsedStoreCard.js";
 import { RecurringBillCard } from "./components/RecurringBillCard.js";
 import { SettingsAdvanced } from "./screens/SettingsAdvanced.js";
-import { HelpScreen } from "./screens/HelpScreen.js";
+import { HelpScreen, HelpOverlay } from "./screens/HelpScreen.js";
 
 import { WalletBar } from "./panels/WalletBar.js";
 import { ChamaBar } from "./panels/ChamaBar.js";
@@ -281,6 +286,7 @@ type View =
   | "circle-create"
   | "create"
   | "dashboard"
+  | "circles"
   | "me"
   | "saved-handles"
   | "payout-destinations"
@@ -311,12 +317,14 @@ const TAB_FOR_VIEW: Record<View, Tab> = {
   guided: "browse",
   browse: "browse",
   detail: "browse",
-  circle: "browse",
-  "circle-create": "browse",
-  // v4.2.1: the inline create view is legacy/dead (Create lives on the pencil
-  // FAB overlay now); keep it mapped to a valid tab. The middle tab is Dashboard.
+  circle: "circles",
+  "circle-create": "circles",
+  // v4.2.1: the inline create view is legacy/dead (Create lives on the "+" /
+  // FAB / sidebar Create now); keep it mapped to a valid tab.
   create: "browse",
-  dashboard: "dashboard",
+  // v7 redesign: the Dashboard is the Home tab; Circles has its own home.
+  dashboard: "home",
+  circles: "circles",
   me: "me",
   "saved-handles": "me",
   "payout-destinations": "me",
@@ -346,7 +354,7 @@ const COACH_STEPS: CoachStep[] = [
     bodyKey: "app.coachCreateBody",
   },
   {
-    selector: '[data-coach="nav-dashboard"]',
+    selector: '[data-coach="nav-home"]',
     titleKey: "app.coachDashboardTitle",
     bodyKey: "app.coachDashboardBody",
   },
@@ -527,13 +535,22 @@ export default function App() {
   // replacing it (Jet, 2026-09-20). Nothing navigates, so nothing has to
   // guess where "back" goes.
   const [, setStateRefreshTick] = useState(0);
-  const [walletOverlay, setWalletOverlay] = useState<null | "lightning">(null);
-  const [meRequestTabRaw, setMeRequestTabRaw] = useState<{ tab: "sats" | "settings" | "live-trades"; n: number } | null>(null);
-  const setMeRequestTab = (tab: "sats" | "settings" | "live-trades") =>
-    setMeRequestTabRaw(prev => ({ tab, n: (prev?.n ?? 0) + 1 }));
+  const [walletOverlay, setWalletOverlay] = useState<null | "lightning" | "payment-methods">(null);
+  const [meRequestTabRaw, setMeRequestTabRaw] = useState<{ tab: "sats" | "settings" | "live-trades" | "community"; n: number; country?: string } | null>(null);
+  const setMeRequestTab = (tab: "sats" | "settings" | "live-trades" | "community", country?: string) =>
+    setMeRequestTabRaw(prev => ({ tab, country, n: (prev?.n ?? 0) + 1 }));
+  const openCommunity = (country?: string) => { setMeRequestTab("community", country); setView("me"); };
+  const advancedReturnRef = useRef<View>("me");
+  const openAdvanced = () => { advancedReturnRef.current = view === "advanced" ? advancedReturnRef.current : view; setView("advanced"); };
+  const closeAdvanced = () => {
+    const back = advancedReturnRef.current;
+    if (back === "me") { setMeRequestTab("settings"); setView("me"); } else setView(back);
+  };
+  const [explicitCommunities, setExplicitCommunities] = useState<ReadonlySet<string>>(() => new Set());
 
   const [{
     connected,
+    signerNeedsUserAction,
     pubkey,
     escrows,
     reloadingEscrows,
@@ -568,7 +585,7 @@ export default function App() {
         const sats = Math.floor(p.deltaMsats / 1000);
         t({
           message: p.viaWatchdog
-            ? <>{translate(getCurrentLang(), "app.claimedBefore")} <BitcoinAmount sats={sats} size={12} gap={3} glyphScale={1.2} color="inherit" glyphColor="inherit" /> {translate(getCurrentLang(), "app.claimedAfter")}</>
+            ? <>{translate(getCurrentLang(), "app.claimedBefore")} <BitcoinAmount sats={sats} size={T.fs.secondary} gap={3} glyphScale={1.2} color="inherit" glyphColor="inherit" /> {translate(getCurrentLang(), "app.claimedAfter")}</>
             : translate(getCurrentLang(), "app.claimedRedeemed"),
           type: "success",
         });
@@ -746,7 +763,7 @@ export default function App() {
   // LiveTradeSurface fires the IDENTICAL AtomicFundingModal flow (no money-path
   // fork). Both views pass this same handler.
   const tradeOnLock = async (
-    lockOpts: { savedHandleId?: string; selectedItems?: SelectedMenuItem[]; amountMsats?: number } = {},
+    lockOpts: { savedHandleId?: string; paymentDetailsInChat?: boolean; selectedItems?: SelectedMenuItem[]; amountMsats?: number } = {},
   ): Promise<void> => {
     if (!selected || selected.escrowMode === "onchain") return;
     if (!requireOnline()) return;
@@ -804,7 +821,7 @@ export default function App() {
                   amountMsats: lockAmountMsats,
                   premiumMsats: fundPremiumMsats,
                   ctaLabel: lockLabel,
-                  savedHandleId,
+                  savedHandleId, paymentDetailsInChat: lockOpts.paymentDetailsInChat,
                   selectedItems,
                   tradeCommunity: selected.community,
                   fiatCurrency: selected.fiatCurrency,
@@ -818,6 +835,20 @@ export default function App() {
   // when the user backs out of the detail view.
   const visitedForeignFedRef = useRef(false);
   const [browseCategory, setBrowseCategory] = useState<string>("all");
+  // v7 redesign (back map): Advanced returns to the screen that opened it —
+  // Me › Settings, or the trade whose explorer link led here.
+  // v7 redesign: Help & FAQ open as overlays over Me › Settings.
+  const [helpOpen, setHelpOpen] = useState(false);
+  // v7 redesign (Jet): the subtle advanced "All listings" Browse, for people
+  // who know what they're doing. Remembered per device; off by default.
+  const [browseAdvanced, setBrowseAdvanced] = useState<boolean>(() => {
+    try { return globalThis.localStorage?.getItem("chama_browse_advanced") === "1"; } catch { return false; }
+  });
+  const setBrowseAdvancedPref = (on: boolean) => {
+    setBrowseAdvanced(on);
+    try { globalThis.localStorage?.setItem("chama_browse_advanced", on ? "1" : "0"); } catch { /* cosmetic */ }
+    if (on) setView("browse"); else setView("guided");
+  };
   // Per the "every user has a home" doctrine (§2.1, locked for v0.2.0):
   // every user — first-time or returning — gets a community from the
   // moment they sign in. v0.1.87 retired the synthetic "All communities"
@@ -970,6 +1001,7 @@ export default function App() {
     premiumMsats?: number;
     ctaLabel: string;
     savedHandleId?: string;
+    paymentDetailsInChat?: boolean;
     selectedItems?: SelectedMenuItem[];
     // Trade context fields, kept on the funding modal as informational
     // metadata. The pre-LOCK external-swap CTA was removed in the
@@ -995,6 +1027,7 @@ export default function App() {
   } | null>(null);
   // Bond Phase 2A: the cabinet-only "Post your bond" ceremony modal.
   const [showBondCeremony, setShowBondCeremony] = useState(false);
+  const [bondsRevision, setBondsRevision] = useState(0);
   const [blockedClaimReasons, setBlockedClaimReasons] = useState<Record<string, string>>({});
   // v0.3.0 Phase 4: RecoveryPayoutModal mount state. Single mount used
   // by BOTH the failure-mode RecoveryBanner (no follow-up after drain)
@@ -1358,7 +1391,7 @@ export default function App() {
     if (!connected || !pubkey) return;
     try { claimGeneratedShellCreator(pubkey); } catch { /* storage-only, non-fatal */ }
     const pending = getPendingCommunityReport();
-    if (!pending) return;
+    if (!pending || signerNeedsUserAction) return;
     clearPendingCommunityReport();
     actions.publishCommunityReport(pending)
       .then((r) => setToast({
@@ -1417,13 +1450,13 @@ export default function App() {
   // per session, fail-soft.
   const bondRecoveryDoneRef = useRef(false);
   useEffect(() => {
-    if (!connected || bondRecoveryDoneRef.current) return;
+    if (!connected || signerNeedsUserAction || bondRecoveryDoneRef.current) return;
     bondRecoveryDoneRef.current = true;
     void actions.recoverMyBonds().catch(() => {});
   }, [connected]);
 
   useEffect(() => {
-    if (!connected || autoInitDone) return;
+    if (!connected || autoInitDone || signerNeedsUserAction) return;
     if (!isNativeBridgeModeOn() && !fediWebView && !simOn && !isTestnetMode() && browserWalletStorageError()) return;
     // `connected` flips true synchronously when client.connect() is
     // dispatched, but relay WebSocket handshakes happen async. Firing
@@ -1709,8 +1742,8 @@ export default function App() {
     // storefront-only bridge while its replacement waits for 1 confirmation.
     // It never flows into the verified bond pool used for arbiter privileges.
     const storeBondContinuity = false; // Presence, not a bond, controls store renewal.
-    // A fresh signed CREATE requires an online seller.
-    if (!connected || !pubkey) return;
+    // Interactive signers renew only after a deliberate Renew tap.
+    if (!connected || !pubkey || signerNeedsUserAction) return;
     for (const listing of escrows.values()) {
       if (listing.initiator.pubkey === pubkey && !getRetiredIds().has(listing.id) && hasMissedBuyerLock(listing, now)) {
         markMissedLock(listingIdentityKey(listing), pubkey);
@@ -1770,6 +1803,7 @@ export default function App() {
   // can't loop (setRetiredTick isn't in the deps).
   useEffect(() => {
     if (!connected || !pubkey) return;
+    if (signerNeedsUserAction) return;
     const retired = getRetiredIds();
     const ownUnfunded = [...escrows.values()].filter(
       (s) => isSellerOwnedListing(s, pubkey) && listingNeverFunded(s) && !retired.has(s.id),
@@ -1865,8 +1899,9 @@ export default function App() {
   // Legacy route: anything still navigating to the old page lands on Me with
   // the overlay up, so this surface has exactly one appearance.
   useEffect(() => {
-    if (view !== "payout-destinations") return;
-    setWalletOverlay("lightning");
+    if (view !== "payout-destinations" && view !== "saved-handles") return;
+    setWalletOverlay(view === "saved-handles" ? "payment-methods" : "lightning");
+    setMeRequestTab("sats");
     setView("me");
   }, [view]);
 
@@ -2103,7 +2138,7 @@ export default function App() {
   // re-pays. Gated on an initialized wallet so requireBridge() inside
   // doesn't fail-soft and waste the once-per-session latch.
   useEffect(() => {
-    if (!pubkey || !fedimint.initialized) return;
+    if (!pubkey || !fedimint.initialized || signerNeedsUserAction) return;
     if (isSimModeOn() || isTestnetMode()) return;
     const targets = selectPayoutReattachTargets({
       escrows: escrows.values(),
@@ -2126,7 +2161,7 @@ export default function App() {
   // session. Covers both the live settle moment (COMPLETED propagates into
   // `escrows`) and the boot catch-up (trade settled while I was offline).
   useEffect(() => {
-    if (!pubkey || !fedimint.initialized) return;
+    if (!pubkey || !fedimint.initialized || signerNeedsUserAction) return;
     if (isSimModeOn() || isTestnetMode()) return;
     const targets = selectPremiumPayTargets({
       escrows: escrows.values(),
@@ -2145,7 +2180,7 @@ export default function App() {
   // Latched per (trade, note-count) so a NEW note arriving mid-session
   // re-triggers the sweep for that trade.
   useEffect(() => {
-    if (!pubkey || !fedimint.initialized) return;
+    if (!pubkey || !fedimint.initialized || signerNeedsUserAction) return;
     if (isSimModeOn() || isTestnetMode()) return;
     const targets = selectPremiumRedeemTargets({
       escrows: escrows.values(),
@@ -2173,7 +2208,7 @@ export default function App() {
   // whatever's missing. The action is fail-soft and self-idempotent (the
   // earnings ledger settles each note once).
   useEffect(() => {
-    if (!pubkey || !fedimint.initialized) return;
+    if (!pubkey || !fedimint.initialized || signerNeedsUserAction) return;
     if (isSimModeOn() || isTestnetMode()) return;
     void actions.probeArbiterPremiums();
     const timer = setInterval(
@@ -2620,7 +2655,7 @@ export default function App() {
       const request = ++circleRouteRequest.current;
       void (async () => {
         if (!escrows.has(parentId)) {
-          const parent = await actions.loadEscrow(parentId);
+          const parent = await actions.loadEscrow(parentId, { userAction: true });
           if (!parent) throw new Error(t("app.tradeNotFound"));
         }
         await refreshCircle(parentId);
@@ -2636,7 +2671,7 @@ export default function App() {
       setDetailBackView(safeBackView);
       setSelectedId(id);
       setView("detail");
-      actions.loadEscrow(id, { repairFromCache: true }).then((loaded) => {
+      actions.loadEscrow(id, { repairFromCache: true, userAction: true }).then((loaded) => {
         // The load can SUCCEED and still leave nothing to show: an expired,
         // never-funded listing is dropped from local state on arrival, so the
         // detail view would wait on an escrow that is never coming (Jet,
@@ -2658,7 +2693,7 @@ export default function App() {
         );
         // The loading surface below (view "detail" with no local copy yet)
         // would otherwise spin forever on a trade the relays can't return.
-        setToast({ message: t("app.tradeOpenFailed"), type: "error" });
+        setToast({ message: isSignerApprovalError(e) ? e.message : t("app.tradeOpenFailed"), type: "error" });
         setSelectedId(null);
         setView(safeBackView);
       });
@@ -2686,8 +2721,9 @@ export default function App() {
     setSelectedId(id);
     setView("detail");
     if (!TRULY_TERMINAL_STATES.has(local.status)) {
-      void actions.loadEscrow(id, { repairFromCache: true }).catch(error => {
+      void actions.loadEscrow(id, { repairFromCache: true, userAction: true }).catch(error => {
         console.debug("[chama] trade refresh failed:", error);
+        if (isSignerApprovalError(error)) setToast({ message: error.message, type: "error" });
       });
     }
   };
@@ -2715,7 +2751,7 @@ export default function App() {
         // is worth it: the relays may hold only part of this chain, and this
         // device often still has the rest. Boot discovery deliberately does
         // NOT ask for this (see EscrowClient.loadEscrow).
-        actions.loadEscrow(id, { repairFromCache: true }),
+        actions.loadEscrow(id, { repairFromCache: true, userAction: true }),
         new Promise<null>((resolve) =>
           setTimeout(() => {
             timedOut = true;
@@ -2723,7 +2759,9 @@ export default function App() {
           }, 10_000),
         ),
       ]);
-    } catch { /* handled below */ }
+    } catch (error) {
+      if (isSignerApprovalError(error)) { setToast({ message: error.message, type: "error" }); return; }
+    }
     if (state) {
       openEscrow(id, "me");
       return;
@@ -2924,7 +2962,7 @@ export default function App() {
   };
 
   const { handleSelectCommunity, handlePasteCustomInvite } = useFederationCommands({
-    walletAvailable: isNativeBridgeModeOn() || hasFediInternalEcash() || isSimModeOn() || isTestnetMode() || !browserWalletStorageError(),
+    walletAvailable: (!signerNeedsUserAction || fedimint.initialized) && (isNativeBridgeModeOn() || hasFediInternalEcash() || isSimModeOn() || isTestnetMode() || !browserWalletStorageError()),
     fedimint,
     actions,
     activeCommitmentCount,
@@ -2934,16 +2972,23 @@ export default function App() {
     setPendingDestroyConfirm: queueDestroyConfirm,
   });
 
-  // ── Runway #13: fast vs manual setup after nsec signup ────────────────────
-  // A fresh account never faces the 190-country globe by default. FAST goes
-  // straight through on the default community (BLF-backed) with zero further
-  // questions; MANUAL keeps every knob (the globe). And an invite link
-  // outranks both: the linked trade's own chain names its community, so the
+  const selectCommunityExplicitly = async (slug: string) => {
+    const selection = handleSelectCommunity(slug);
+    if (getUserCommunitySlugRaw() === slug) {
+      setExplicitCommunities(previous => new Set([...previous, slug]));
+    }
+    await selection;
+  };
+
+  // ── Joining defaults after explicit key setup ──────────────────────────
+  // Joining uses the displayed community with no country or federation step.
+  // The country picker remains available for an explicit change afterward.
+  // An invite link outranks the default: its chain names the community, so the
   // newcomer lands where the link pointed, home derived — never asked.
-  // Runway #13 (revised 2026-09-19): the fast route is a TOGGLE on the login
-  // screen, not a screen of its own — ConnectScreen hands its state in at
-  // sign-in and a newcomer who left it checked never meets the globe.
+  // The joining door carries the community displayed on its card into setup.
+  // An invite still takes precedence; market choices remain available afterward.
   const fastSetupRequestedRef = useRef(false);
+  const fastSetupCommunityRef = useRef(DEFAULT_COMMUNITY_SLUG);
   const fastSetupStartedRef = useRef(false);
   const [fastSetupBusy, setFastSetupBusy] = useState(false);
   const [bootInviteId] = useState<string | null>(() => {
@@ -2993,7 +3038,7 @@ export default function App() {
     try {
       // Same contract as the globe's onSelect: the identity choice persists
       // synchronously; wallet join may finish behind the shell.
-      const selection = handleSelectCommunity(DEFAULT_COMMUNITY_SLUG);
+      const selection = handleSelectCommunity(fastSetupCommunityRef.current);
       setNeedsHomePick(getUserCommunitySlugRaw() === null);
       await selection;
       setChangeHomeAfterConnect(false);
@@ -3030,8 +3075,17 @@ export default function App() {
     maybeSnapBackHome();
   };
   const switchTab = (t: Tab) => {
-    if (t === "browse") { if (view === "browse" || view === "guided") guidedHome(); else setView("browse"); }
-    else if (t === "dashboard") setView("dashboard");
+    if (t === "browse") {
+      // v7 redesign: Browse is the guided canvas, unless this person chose
+      // the advanced "All listings" view (remembered on this device). A
+      // second tap on Browse keeps its old meaning (back to the front door).
+      if (browseAdvanced) setView("browse");
+      else if (view === "guided") guidedHome();
+      else setView("guided");
+    }
+    // v7 redesign: Circles is circles end to end — its own home.
+    else if (t === "circles") setView("circles");
+    else if (t === "home") setView("dashboard");
     else if (t === "me") setView("me");
     // V3 #75: leaving a visited trade via the bottom nav counts as backing
     // out — same snap-back as the detail back button.
@@ -3098,12 +3152,12 @@ export default function App() {
         )}
         <ConnectScreen
           onConnect={actions.connect}
-          onRequestHomeChange={() => setChangeHomeAfterConnect(true)}
-          onConnectNsec={async (nsec: string, remember: boolean, wasGenerated: boolean, fastSetupWanted?: boolean) => {
+          onConnectNsec={async (nsec: string, remember: boolean, wasGenerated: boolean, fastSetupWanted?: boolean, setupCommunity?: string) => {
             (window as any).__chama_connect_nsec = nsec;
-            // Runway #13 (revised): the login screen's fast-route toggle. Read
-            // here and acted on once the npub is known (the effect above).
+            // Apply the default newcomer setup once the npub is known.
             fastSetupRequestedRef.current = fastSetupWanted === true;
+            fastSetupCommunityRef.current = setupCommunity && getCommunityBySlug(setupCommunity)
+              ? setupCommunity : DEFAULT_COMMUNITY_SLUG;
             if (remember) {
               try {
                 // v2.5: record key origin alongside the saved nsec so Me ›
@@ -3157,7 +3211,7 @@ export default function App() {
             </div>
           </div>
         ) : fastSetupBusy || (fastSetupRequestedRef.current && !changeHomeAfterConnect && getUserCommunitySlugRaw() === null) ? (
-          // The fast-route toggle was left checked on the login screen: no
+          // The joining door requested the displayed community: no
           // fork, no globe, no questions — just a beat of honest feedback
           // while the default market is joined behind it.
           <div style={{ marginTop: "18vh", display: "grid", gap: 14, justifyItems: "center" }}>
@@ -3174,7 +3228,7 @@ export default function App() {
             // the user straight to Browse; wallet join, bond reads, and health
             // work may finish behind the shell. If the switch later fails, the
             // handler clears the first-time choice and this gate returns.
-            const selection = handleSelectCommunity(slug);
+            const selection = selectCommunityExplicitly(slug);
             setNeedsHomePick(getUserCommunitySlugRaw() === null);
             await selection;
             setChangeHomeAfterConnect(false);
@@ -3203,8 +3257,10 @@ export default function App() {
   // screen left") — the 520 shell clamp made a desktop viewport render the
   // market as a phone column with dark gutters, while Me and the Dashboard
   // already breathed.
-  const wideOwnWidthMode = view === "dashboard" || view === "me" || view === "browse";
-  const activeTab = detailMode ? TAB_FOR_VIEW[detailBackView] : TAB_FOR_VIEW[view];
+  const wideOwnWidthMode = view === "dashboard" || view === "me" || view === "browse" || view === "circles";
+  const baseTab = detailMode ? TAB_FOR_VIEW[detailBackView] : TAB_FOR_VIEW[view];
+  const activeTab: Tab = baseTab;
+  const openCreate = () => setView("guided");
   const effectiveShellPaddingBottom = detailMode ? 0 : shellPaddingBottom;
   const chamaBarLabel = decideChamaBarLabel({
       myTradesLoading,
@@ -3221,7 +3277,10 @@ export default function App() {
     });
 
   return (
-    <ConductProvider key={pubkey ?? "anonymous"} load={actions.fetchPublicConduct}><div style={{
+    <FederationInfoProvider load={actions.inspectFederation} activeId={fedimint.federationId} communityInvite={getCommunityBySlug(getUserCommunitySlugRaw() ?? "")?.federationInvite ?? undefined}><ConductProvider key={pubkey ?? "anonymous"} load={actions.fetchPublicConduct}><div
+      className={detailMode ? undefined : "chama-shell-nav"}
+      data-shell-width={(assistedCanvasMode || wideOwnWidthMode) ? "wide" : "narrow"}
+      style={{
       background: T.bg, color: T.text, minHeight: "100dvh",
       // v2.7 Stage 4: detail mode widens to 1120 so TradeDetail's built-in
       // ≥980px two-column layout (listing pane + sticky trade-room/chat) can
@@ -3239,7 +3298,9 @@ export default function App() {
       <SimModePill />
       <SimEntryModal />
 
+      {helpOpen && <HelpOverlay onClose={() => setHelpOpen(false)} />}
       {toast && <Toast message={toast.message} type={toast.type} sticky={toast.sticky} dismissOnTap={toast.dismissOnTap} onDone={() => setToast(null)} />}
+      {walletOverlay === "payment-methods" && <SavedHandlesPanel communitySlug={actions.getCommunity()} onClose={() => setWalletOverlay(null)} />}
       {walletOverlay === "lightning" && (
         <PayoutDestinationsPanel onClose={() => setWalletOverlay(null)} />
       )}
@@ -3257,7 +3318,7 @@ export default function App() {
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <div>
                 <button type="button" aria-label={t("lts.backHome")} onClick={guidedHome} style={{ background: "none", border: 0, padding: 0, cursor: "pointer" }}><Wordmark /></button>
-                <div style={{ fontSize: 9, color: T.muted, fontFamily: T.mono, letterSpacing: 1.5, textTransform: "uppercase", paddingLeft: 34, marginTop: 3 }}>
+                <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, paddingLeft: 34, marginTop: 3 }}>
                   {defaultCurrencyForCommunity(routeCommunitySlug)} · {t("app.headerTagline")}
                 </div>
               </div>
@@ -3274,6 +3335,7 @@ export default function App() {
                     bundle. ship.sh exports CHAMA_RELEASE=1 → clean version. */}
                 v{__APP_VERSION__}{__BUILD_STAMP__ ? ` · dev ${__BUILD_STAMP__}` : ""}{__BUILD_STAMP__ && sessionBadge ? ` · ${sessionBadge}` : ""}
               </div>
+              <CreateButton onCreate={openCreate} />
             </div>
           </div>
 
@@ -3286,6 +3348,7 @@ export default function App() {
               amountMode={amountDisplayMode}
               onAmountModeChange={setAmountDisplayMode}
               quoteCurrency={getCommunityBySlug(routeCommunitySlug)?.currency ?? null}
+              converterCommunity={routeCommunitySlug}
             />
           </div>
 
@@ -3401,6 +3464,7 @@ export default function App() {
       {/* Fund Chama modal */}
       {showFundModal && (
         <FundWalletModal
+          mintUrl={liveActiveInvite ?? undefined}
           onClose={() => {
             setShowFundModal(false);
             // v0.2.0 item 8 + Q4: closing the modal before balance
@@ -3433,8 +3497,19 @@ export default function App() {
           path. FundWalletModal stays mounted above for the (Phase 5-
           gated) Sandbox-mode path. */}
       {pendingFundAndLock && escrows.get(pendingFundAndLock.escrowId)?.escrowMode !== "onchain" && (
-        <AtomicFundingModal federationName={fedimint.federationName ?? undefined}
-          onPostAgain={() => setView("create")}
+        <AtomicFundingModal profileNames={nostrProfiles} kind0Enabled={kind0Enabled} federationName={fedimint.federationName ?? undefined}
+          mintUrl={liveActiveInvite ?? undefined}
+          custodyState={escrows.get(pendingFundAndLock.escrowId)}
+          circleCustody={(() => {
+            const share = escrows.get(pendingFundAndLock.escrowId);
+            const parent = share?.parent ? escrows.get(share.parent) : undefined;
+            return parent ? circleFromEscrow(parent) ?? undefined : undefined;
+          })()}
+          onPostAgain={(() => {
+            const offer = escrows.get(pendingFundAndLock.escrowId);
+            return offer && !offer.parent && offer.initiator.role === Role.SELLER && offer.initiator.pubkey === pubkey
+              ? () => { void renewListing(offer.id); } : undefined;
+          })()}
           seatDeadline={escrows.get(pendingFundAndLock.escrowId) ? fundingSeatDeadline(escrows.get(pendingFundAndLock.escrowId)!) : undefined}
           custodyNotice={escrows.get(pendingFundAndLock.escrowId)?.custodyNotice}
           escrowId={pendingFundAndLock.escrowId}
@@ -3442,6 +3517,7 @@ export default function App() {
           premiumMsats={pendingFundAndLock.premiumMsats ?? 0}
           ctaLabel={pendingFundAndLock.ctaLabel}
           savedHandleId={pendingFundAndLock.savedHandleId}
+          paymentDetailsInChat={pendingFundAndLock.paymentDetailsInChat}
           selectedItems={pendingFundAndLock.selectedItems}
           homeCommunity={getUserCommunitySlugRaw()}
           tradeCommunity={pendingFundAndLock.tradeCommunity}
@@ -3588,11 +3664,14 @@ export default function App() {
           getCommitmentReclaimQuote={actions.getCommitmentReclaimQuote}
           renewCommitmentBond={actions.renewCommitmentBond}
           recoverMyBonds={actions.recoverMyBonds}
+          findMyBond={actions.findMyBond}
           reclaimCommitmentBond={actions.reclaimCommitmentBond}
           creditReclaimedCommitmentBond={actions.creditReclaimedCommitmentBond}
           getBondChainTip={actions.getBondChainTip}
           publishBondAnnouncement={actions.publishBondAnnouncement}
-          onClose={() => setShowBondCeremony(false)}
+          fetchMyBonds={actions.fetchMyBonds}
+          walletInvite={fedimint.joined ? liveActiveInvite ?? undefined : undefined}
+          onClose={() => { setShowBondCeremony(false); setBondsRevision(n => n + 1); }}
         />
       )}
 
@@ -3748,7 +3827,9 @@ export default function App() {
           — Sandbox-mode users who truly need to nuke OPFS use
           Settings → Advanced → Sandbox → Reset OPFS. */}
       {pendingSignOut && (
-        <SignOutConfirmModal
+        <SignOutConfirmModal key={pubkey}
+          pubkey={pubkey ?? ""}
+          loadActiveRecoveryKey={actions.exportActiveRecoveryKey}
           onCancel={() => setPendingSignOut(false)}
           onConfirm={() => {
             setPendingSignOut(false);
@@ -3919,9 +4000,15 @@ export default function App() {
 
       {/* Content — routed by view */}
       {view === "circle-create" ? (
-        <CircleCanvas viewerPubkey={pubkey!} community={circleInitial?.community ?? browseCommunity} mintUrl={circleInitial?.mintUrl ?? resolveCreateMintUrl({ activeInvite: liveActiveInvite, community: browseCommunity })}
+        <CircleCanvas onOpenCommunity={() => openCommunity()} viewerPubkey={pubkey!} community={circleInitial?.community ?? browseCommunity} mintUrl={circleInitial?.mintUrl ?? resolveCreateMintUrl({ activeInvite: liveActiveInvite, community: browseCommunity })}
           initial={circleInitial} onBack={() => setView(circleInitial && selected ? "circle" : detailBackView)}
           onPublish={async round => {
+            if (!round.unlisted && !(circleInitial?.pot === "rotation-v2" && circleInitial.roundIndex > 1)) {
+              const info = await actions.inspectFederation(round.mintUrl).catch(() => null);
+              const maximum = publicShareLimit(info, round.seatCap);
+              if (maximum === null) throw new Error(t("circle.shareLimitUnknown"));
+              if (round.shareMsats > maximum * 1000) throw new Error(t("circle.shareOverLimit", { max: maximum.toLocaleString() }));
+            }
             const communityArbiters = getTrustedArbiterPool({ community: round.community, excludePubkeys: [pubkey] });
             const { escrowId } = await actions.createEscrow({ category: "chama", description: round.name, amountMsats: round.shareMsats,
               community: round.community, mintUrl: round.mintUrl, escrowMode: "ecash", arbiterFeeMsats: 0,
@@ -3934,9 +4021,9 @@ export default function App() {
           }} />
       ) : (view === "circle" || view === "detail" && !!selected && (selected.category === "chama" || selected.chamaPolicy === "share-v1")) ? (
         selected && circleFromEscrow(selected) ? <CircleSurface key={selected.id} parent={selected} escrows={escrows} viewerPubkey={pubkey!}
-          childrenLoaded={circleChildrenLoaded.has(selected.id)} loadError={circleLoadError}
+          childrenLoaded={circleChildrenLoaded.has(selected.id)} loadError={circleLoadError} fetchBonds={actions.fetchCommunityBonds}
           profileNames={nostrProfiles} kind0Enabled={kind0Enabled}
-          backLabel={detailBackView === "me" ? t("browse.navMe") : detailBackView === "dashboard" ? t("browse.navDashboard") : detailBackView === "guided" ? t(detailReturnsHome ? "lts.backHome" : "canvas.backOffers") : t("browse.navBrowse")}
+          backLabel={detailBackView === "me" ? t("browse.navMe") : detailBackView === "dashboard" ? t("browse.navHome") : detailBackView === "circles" ? t("browse.navCircles") : detailBackView === "guided" ? t(detailReturnsHome ? "lts.backHome" : "canvas.backOffers") : t("browse.navBrowse")}
           onBack={backFromTrade}
           onRefresh={() => refreshCircle(selected.id)}
           onLock={async () => {
@@ -3960,10 +4047,6 @@ export default function App() {
             await new Promise<void>(resolve => setPendingFundAndLock({ escrowId: share.id, amountMsats: share.amountMsats,
               premiumMsats: 0, ctaLabel: t("circle.lock"), tradeCommunity: share.community, tradeCategory: share.category, resolve }));
             await refreshCircle(selected.id);
-          }}
-          onReturn={async () => {
-            const share = [...escrows.values()].find(e => e.parent === selected.id && e.chamaPolicy === "share-v1" && e.participants[Role.BUYER] === pubkey);
-            if (share) await actions.vote(share.id, Outcome.REFUND);
           }}
           onClaim={async () => {
             if (!requireOnline()) return;
@@ -4000,7 +4083,8 @@ export default function App() {
           }}>{t("circle.retry")}</button>}</div>
       ) : view === "guided" ? (
         <>
-        <AssistedCanvas
+        <CanvasAllListings.Provider value={() => setBrowseAdvancedPref(true)}><AssistedCanvas
+          onOpenCommunity={() => openCommunity()}
           profileNames={nostrProfiles} kind0Enabled={kind0Enabled}
           key={canvasHomeKey}
           listings={allVisibleListings}
@@ -4026,11 +4110,10 @@ export default function App() {
             setCreateOverlayOpen(true);
           }}
           onOpenTrade={(id) => { setDetailReturnsHome(false); openEscrow(id, "guided"); }}
-          onStartCircle={openCircleCanvas}
           publishedInfo={canvasPublished}
           onDismissPublished={() => setCanvasPublished(null)}
           resumeRef={canvasResumeRef}
-        />
+        /></CanvasAllListings.Provider>
         {visibleAttentionTrade && (
           <CanvasAttentionBell
             trade={visibleAttentionTrade}
@@ -4059,7 +4142,7 @@ export default function App() {
               onchainActions={{
                 onRequestStalledPayout: actions.requestStalledOnchainPayout,
                 onchainObservation: onchainObservations?.get(selected.id),
-                onOpenExplorerSettings: () => { setAdvancedFocusExplorer(true); setView("advanced"); },
+                onOpenExplorerSettings: () => { setAdvancedFocusExplorer(true); openAdvanced(); },
                 fetchCommunityBonds: actions.fetchCommunityBonds,
                 onchainFundingPlan: actions.onchainFundingPlan,
                 onPrepareOnchainFunding: actions.prepareOnchainFunding,
@@ -4082,7 +4165,8 @@ export default function App() {
               onBack={backFromTrade}
               backLabel={
                 detailBackView === "me" ? t("browse.navMe")
-                : detailBackView === "dashboard" ? t("browse.navDashboard")
+                : detailBackView === "dashboard" ? t("browse.navHome")
+                : detailBackView === "circles" ? t("browse.navCircles")
                 : detailBackView === "guided" ? t(detailReturnsHome ? "lts.backHome" : "canvas.backOffers")
                 : t("browse.navBrowse")
               }
@@ -4149,7 +4233,7 @@ export default function App() {
             onPrepareOnchainSettlement={actions.prepareOnchainSettlement}
             onRequestStalledPayout={actions.requestStalledOnchainPayout}
             onchainObservation={onchainObservations?.get(selected.id)}
-            onOpenExplorerSettings={() => { setAdvancedFocusExplorer(true); setView("advanced"); }}
+            onOpenExplorerSettings={() => { setAdvancedFocusExplorer(true); openAdvanced(); }}
             onCheckOnchainSettlement={actions.checkOnchainSettlement}
             onSignOnchainSettlement={actions.signOnchainSettlement}
             onFinalizeOnchainSettlement={actions.finalizeOnchainSettlement}
@@ -4351,7 +4435,7 @@ export default function App() {
                   fundingMethod: "nwc",
                   nwcConnectionString: opts.nwcConnectionString,
                   rememberNwc: false, // already saved
-                  savedHandleId: opts.savedHandleId,
+                  savedHandleId: opts.savedHandleId, paymentDetailsInChat: opts.paymentDetailsInChat,
                   selectedItems: opts.selectedItems,
                   onPhase: (phase) => {
                     // Map engine phase kinds to compact button labels.
@@ -4480,8 +4564,8 @@ export default function App() {
             onPrewarmFunding={() => {
               void actions.prewarmFunding();
             }}
-            onOpenSettings={() => setView("saved-handles")}
-            onOpenNwcSettings={() => { setAdvancedFocusNwc(true); setView("advanced"); }}
+            onOpenSettings={() => setWalletOverlay("payment-methods")}
+            onOpenNwcSettings={() => { setAdvancedFocusNwc(true); openAdvanced(); }}
           />
           )}
         </div>
@@ -4555,9 +4639,24 @@ export default function App() {
           )}
         </div>
       ) : view === "dashboard" ? (
-        // v5.0 "finish the bond": the real Dashboard — standing (ratings), your
-        // bond, chama liveness, and trade stats, composed from data the app
-        // already has. Replaces the v4.2.1 "coming soon" placeholder.
+        // v7 redesign: the Home tab. The hero (money, needs you, also going
+        // on) leads; v5.0's standing Dashboard follows — beside it on wide
+        // screens, below it on phones.
+        <HomeHero
+          balanceMsats={fedimint.balanceMsats ?? 0}
+          inEscrowMsats={committedMsats}
+          readyToCollectCount={needsYouTrades.filter(e =>
+            needsYouReasonFor(e, pubkey!, now, settledClaimIds, onchainObservations?.get(e.id)) === "claim").length}
+          needsYou={needsYouTrades}
+          alsoGoingOn={[...escrows.values()].filter(e =>
+            liveCommitmentForViewer(e, pubkey!, now) && !needsYouTrades.some(n => n.id === e.id))}
+          pubkey={pubkey!}
+          profileNames={nostrProfiles}
+          kind0Enabled={kind0Enabled}
+          onchainObservations={onchainObservations}
+          onOpenTrade={openEscrow}
+          quoteCurrency={getCommunityBySlug(routeCommunitySlug)?.currency ?? null}
+        >
         <DashboardScreen
           knownTrades={knownTradesForConcentration}
           pubkey={pubkey!}
@@ -4568,18 +4667,45 @@ export default function App() {
           livenessBlocksPerDay={BOND_LIVENESS_BLOCKS_PER_DAY}
           onOpenBondCeremony={() => setShowBondCeremony(true)}
           earningsRevision={earningsRevision}
+          bondsRevision={bondsRevision}
           balanceMsats={fedimint.balanceMsats ?? 0}
           onWithdrawEcash={() => setShowEcashExport(true)}
           fetchMyBonds={actions.fetchMyBonds}
           fetchCommunityBonds={actions.fetchCommunityBonds}
           getBondChainTip={actions.getBondChainTip}
         />
+        </HomeHero>
+      ) : view === "circles" ? (
+        // v7 redesign: the Circles tab — circles end to end.
+        <CirclesHome
+          allEscrows={[...escrows.values()]}
+          visibleListings={allVisibleListings}
+          pubkey={pubkey!}
+          onOpenTrade={(id) => openEscrow(id, "circles")}
+          onStartCircle={CHAMA_CIRCLES_ENABLED ? openCircleCanvas : undefined}
+          amountDisplayMode={amountDisplayMode}
+          quoteCurrency={getCommunityBySlug(routeCommunitySlug)?.currency ?? null}
+          profileNames={nostrProfiles}
+          kind0Enabled={kind0Enabled}
+        />
       ) : view === "me" ? (
         <div style={{ animation: "fadeIn 0.3s ease" }}>
+          {/* v7 redesign: the tab's large title, above every Me card. */}
+          <h1 style={{ maxWidth: 760, margin: "0 auto", padding: "20px 16px 0", fontFamily: T.sans, fontSize: T.fs.largeTitle, fontWeight: 700, letterSpacing: "-0.02em", color: T.ink, lineHeight: 1.15 }}>
+            {t("browse.navMe")}
+          </h1>
 
-          <LapsedStoreCard autoRenewEnabled={storeAutoRenewEnabled} onAutoRenewChange={changeStoreAutoRenew} />
           {!myTradesLoading && <RecurringBillCard series={recurringSeries} onStop={cancelRecurring} />}
           <MeScreen
+            walletInvite={fedimint.joined ? liveActiveInvite ?? undefined : undefined}
+            balanceKnown={fedimint.joined && fedimint.balanceMsats !== null}
+            onUseWallet={() => {
+              if (signerNeedsUserAction && !fedimint.joined && !fedimint.busy) {
+                void actions.initFedimint().catch(error => setToast({ message: error.message, type: "error" }));
+              }
+            }}
+            loadActiveRecoveryKey={actions.exportActiveRecoveryKey}
+            storeAutoRenew={{ enabled: storeAutoRenewEnabled, onChange: changeStoreAutoRenew }}
             pubkey={pubkey!}
             kind0Enabled={kind0Enabled}
             profileNames={nostrProfiles}
@@ -4628,35 +4754,25 @@ export default function App() {
             }}
             onSellerEditListing={editSellerListing}
             onSellerDeleteListing={deleteSellerListing}
-            onOpenSavedHandles={() => setView("saved-handles")}
+            onOpenSavedHandles={() => setWalletOverlay("payment-methods")}
             onOpenPayoutDestinations={() => setWalletOverlay("lightning")}
             unfundedListingCount={clearableListings.length}
             onClearUnfundedListings={() => setShowClearListings(true)}
-            onOpenAdvanced={() => { setAdvancedFocusNwc(false); setView("advanced"); }}
-            onOpenHelp={() => setView("help")}
+            onOpenAdvanced={() => { setAdvancedFocusNwc(false); openAdvanced(); }}
+            onOpenHelp={() => setHelpOpen(true)}
             onSignOut={handleSignOut}
             onWithdrawEcash={() => setShowEcashExport(true)}
             onExportStrandedClaim={(entry) => setStrandedClaimExport(entry)}
             onReabsorbBearerNotes={handleReabsorbBearerNotes}
             communitySlug={browseCommunity}
-            onSelectCommunity={handleSelectCommunity}
+            onSelectCommunity={selectCommunityExplicitly}
             onOpenBondCeremony={() => setShowBondCeremony(true)}
             loadLiveness={actions.getChamaLiveness}
             livenessBlocksPerDay={BOND_LIVENESS_BLOCKS_PER_DAY}
           />
         </div>
-      ) : view === "saved-handles" ? (
-        <div style={{ animation: "fadeIn 0.3s ease" }}>
-
-          <SavedHandlesPanel
-            communitySlug={actions.getCommunity()}
-            backLabel={t("me.tabSats")}
-            onClose={() => { setMeRequestTab("sats"); setView("me"); }}
-          />
-        </div>
-      ) : view === "payout-destinations" ? (
-        // Legacy route: anything still navigating here lands on Me with the
-        // overlay open, so there is exactly one way this surface looks.
+      ) : view === "saved-handles" || view === "payout-destinations" ? (
+        // Legacy routes converge on Me with the same overlay.
         <div style={{ animation: "fadeIn 0.3s ease" }} />
       ) : view === "help" ? (
         <div style={{ animation: "fadeIn 0.3s ease" }}>
@@ -4667,11 +4783,10 @@ export default function App() {
 
           <SettingsAdvanced
             fedimint={fedimint}
-            loadActiveRecoveryKey={actions.exportActiveRecoveryKey}
             focusExplorer={advancedFocusExplorer}
             focusNwc={advancedFocusNwc}
             onManageSavedWallets={() => { setView("me"); setWalletOverlay("lightning"); }}
-            onBack={() => setView("me")}
+            onBack={closeAdvanced}
             onSandboxFund={() => setShowFundModal(true)}
             communitySlug={browseCommunity}
             userPubkey={pubkey}
@@ -4749,6 +4864,9 @@ export default function App() {
             />
           ) : (
             <BrowseView
+              onOpenCommunity={openCommunity}
+              suppressCommunityNudge={Capacitor.isNativePlatform() && explicitCommunities.has(routeCommunitySlug)}
+              subscribeListings={actions.watchBrowseListings}
               allEscrows={[...escrows.values()]}
               diagnosticsContext={{clock:now, relays:[...relayStatuses.keys()], knownIds:listTradeIndex().map(e=>e.id),
                 excludedReasons:Object.fromEntries([...escrows.values()].filter(s=>!allVisibleListings.some(l=>l.id===s.id)).map(s=>[s.id,
@@ -4761,8 +4879,9 @@ export default function App() {
               setBrowseCategory={setBrowseCategory}
               browseCommunity={routeCommunitySlug}
               amountDisplayMode={amountDisplayMode}
-              matchingListings={allVisibleListings.filter(listingMatchesRoute)}
-              nonMatchingListings={allVisibleListings.filter(s => !listingMatchesRoute(s))}
+              // v7 redesign: circles live on the Circles tab only.
+              matchingListings={allVisibleListings.filter(s => !circleFromEscrow(s) && listingMatchesRoute(s))}
+              nonMatchingListings={allVisibleListings.filter(s => !circleFromEscrow(s) && !listingMatchesRoute(s))}
               stockByListing={stockByListing}
               orderIndicatorByListing={listingOrderIndicator}
               fedimintJoined={fedimint.joined}
@@ -4776,6 +4895,7 @@ export default function App() {
               onCreate={() => {
                 setView("guided");
               }}
+              onGuided={() => setBrowseAdvancedPref(false)}
               onApplyAsArbiter={async (community, statement) => {
                 await actions.applyAsArbiter(community, statement);
               }}
@@ -4822,7 +4942,7 @@ export default function App() {
         </>
       )}
 
-      {!detailMode && <BottomNav active={activeTab} onSelect={switchTab} badges={{}} />}
+      {!detailMode && <BottomNav active={activeTab} onSelect={switchTab} onCreate={openCreate} badges={{}} />}
 
       {/* v4.1 C1: one-time post-sign-in tour. Only on the Browse home screen
           (FABs mounted), never over the create sheet or a detail view. */}
@@ -4864,8 +4984,8 @@ export default function App() {
               }}
             >×</button>
             <div style={{
-              color: T.amber, fontFamily: T.mono, fontSize: 10,
-              fontWeight: 800, letterSpacing: 1.1, textTransform: "uppercase",
+              color: T.amber, fontFamily: T.sans, fontSize: T.fs.secondary,
+              fontWeight: 800,
               marginBottom: 8,
             }}><span style={{ display: "inline-flex", verticalAlign: "middle", marginRight: 5 }}><VerticalIcon vertical="marketplace" size={15} /></span>Your listing</div>
             <div style={{
@@ -4984,7 +5104,7 @@ export default function App() {
         </>
       )}
 
-    </div></ConductProvider>
+    </div></ConductProvider></FederationInfoProvider>
   );
 }
 
@@ -4995,7 +5115,7 @@ export default function App() {
 // Function, not a const string: the template interpolates T (focus ring), and
 // a module-scope capture would go stale when the palette swaps (#50). Called
 // per render so it always reflects the active theme.
-const globalCss = () => `
+const globalCss = () => `${typeScaleCss()}${navCss()}${homeCss()}
   /* The escrow pill states a number; landing on Me, the trades that MAKE that
      number briefly glow, so "which one is it talking about?" stops being a
      guessing game (Jet, 2026-09-20). Fades on its own — a permanent

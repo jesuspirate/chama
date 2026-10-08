@@ -1,3 +1,5 @@
+import { FederationDisclosure, CircleShareLabel } from "./FederationDisclosure.js";
+import { LockGlyph } from "./Badge.js";
 import { signedTradeCreatedAt } from "../../escrow-engine/trade-index.js";
 import { ConductFacts } from "./ConductFacts.js";
 import { hasMissedBuyerLock, isRenewalPaused } from "../../escrow-engine/listing-renewal-age.js";
@@ -20,7 +22,7 @@ import {
 } from "../../escrow-engine/types.js";
 import { getCommunityBySlug, flagEmojiForCountry } from "../../communities/registry.js";
 import { pickPreferredArbiter } from "../../arbiters/pool.js";
-import { activeResolvedTheme, T, ROLE_COLOR, ROLE_ICON, STATUS, TRINITY_RING_ORDER, fmtSats } from "../theme.js";
+import { activeResolvedTheme, T, ROLE_COLOR, ROLE_COLOR_TEXT, ROLE_ICON, STATUS, TRINITY_RING_ORDER, fmtSats, ON_ATTN } from "../theme.js";
 import { copyTextRobust } from "./CopyButton.js";
 import { listingPremiumLine } from "../listing-metrics.js";
 import { unreadChatForTrade } from "../../chat/unread.js";
@@ -114,22 +116,18 @@ export function TradeCard({
       st === "returned" || st === "refunded" || st === "paid";
     const claimedCount = lockedShares.filter(sh => isSettled(sh.status)).length;
     const claimPhase = claimedCount > 0 || lockedShares.some(sh => sh.readyToClaim);
-    const mine = pubkey ? lockedShares.find(sh => sh.memberPubkey.toLowerCase() === pubkey.toLowerCase()) : undefined;
-    const mineText = mine
-      ? (isSettled(mine.status) ? t("circle.yourSeatClaimed")
-        : mine.readyToClaim ? t("circle.yourSeatClaimNow")
-        : t("circle.yourSeatLocked"))
-      : null;
-    const summaryText = [
-      claimPhase ? t("circle.claimSummary", { claimed: claimedCount, total: lockedShares.length }) : null,
-      mineText,
-    ].filter(Boolean).join(" · ");
-    return <button type="button" onClick={onSelect} className="circle-browse-card" style={{ width: "100%", display: "flex", gap: 18, alignItems: "center", padding: "22px 20px", background: T.card, border: `1px solid ${T.border}`, borderRadius: T.r, color: T.text, textAlign: "left", cursor: "pointer" }}>
+    const mine = pubkey ? shares.find(sh => sh.memberPubkey.toLowerCase() === pubkey.toLowerCase()) : undefined;
+    const seatState = mine ? isSettled(mine.status) ? "claimed" : mine.readyToClaim ? "collect" : mine.status === "reserved" ? "held" : "locked" : null;
+    const seatColor = seatState === "collect" ? T.accent : seatState === "held" ? T.muted : T.green;
+    const seatLabel = seatState === "claimed" ? "circle.seatClaimedChip" : seatState === "collect" ? "circle.seatCollectChip" : seatState === "held" ? "circle.seatHeldChip" : "circle.seatLockedChip";
+    const summaryText = claimPhase ? t("circle.claimSummary", { claimed: claimedCount, total: lockedShares.length }) : null;
+    return <button type="button" onClick={onSelect} className="circle-browse-card browse-arrival-card" style={{ width: "100%", display: "flex", gap: 18, alignItems: "center", padding: "22px 20px", background: T.card, border: `1px solid ${T.border}`, borderRadius: T.r, color: T.text, textAlign: "left", cursor: "pointer" }}>
       <VerticalIcon vertical="chama" size={74} />
-      <span style={{ display: "grid", gap: 7, minWidth: 0 }}><strong style={{ font: `750 21px ${T.sans}`, overflowWrap: "anywhere" }}>{circle.name}{circle.roundIndex > 1 ? ` · ${t("circle.roundN", { n: circle.roundIndex })}` : ""}{pubkey && circle.creatorPubkey.toLowerCase() === pubkey.toLowerCase() && <span style={{ marginLeft: 8, verticalAlign: "middle", padding: "2px 8px", borderRadius: 999, background: `${T.purple}22`, color: T.purple, border: `1px solid ${T.purple}55`, font: `700 10px ${T.mono}`, textTransform: "uppercase", letterSpacing: .5 }}>{t("circle.hostBadge")}</span>}</strong>
-        <span style={{ color: T.accent, fontWeight: 700 }}>{t("circle.satsEach", { amount: fmtSats(model.shareMsats) })}</span>
-        <span style={{ color: T.muted, font: `11px ${T.mono}`, lineHeight: 1.6 }}>{model.seatsLocked === null ? `· ${t("circle.open")}` : t("circle.seats", { filled: model.seatsLocked, total: model.seatThreshold })}<br />{model.secsToFillDeadline > 0 ? t("circle.closesIn", { time: circleTimeText(model.secsToFillDeadline, t) }) : t("circle.closed")}</span>
-        {summaryText && <span style={{ color: mine?.readyToClaim ? T.green : T.muted, font: `700 11px ${T.mono}` }}>{summaryText}</span>}
+      <span style={{ display: "grid", gap: 7, minWidth: 0 }}><strong style={{ font: `750 21px ${T.sans}`, overflowWrap: "anywhere" }}>{circle.name}{circle.roundIndex > 1 ? ` · ${t("circle.roundN", { n: circle.roundIndex })}` : ""}{seatState && <span data-circle-seat={seatState} style={{ display: "inline-block", marginLeft: 8, verticalAlign: "middle", padding: "3px 8px", borderRadius: 999, background: seatState === "held" ? "transparent" : `${seatState === "claimed" ? T.green : seatColor}22`, color: seatColor, opacity: seatState === "claimed" ? .75 : 1, border: `1px solid ${seatColor}`, font: `700 11px ${T.sans}` }}>{t(seatLabel)}</span>}{pubkey && circle.creatorPubkey.toLowerCase() === pubkey.toLowerCase() && <span style={{ marginLeft: 8, verticalAlign: "middle", padding: "2px 8px", borderRadius: 999, background: `${T.purple}22`, color: T.purple, border: `1px solid ${T.purple}55`, font: `600 ${T.fs.secondary} ${T.sans}` }}>{t("circle.hostBadge")}</span>}</strong>
+        <CircleShareLabel circle={circle} amount={fmtSats(model.shareMsats)} />
+        <FederationDisclosure circle={circle} compact />
+        <span style={{ color: T.muted, font: `${T.fs.secondary} ${T.sans}`, lineHeight: 1.6 }}>{model.seatsLocked === null ? `· ${t("circle.open")}` : t("circle.seats", { filled: model.seatsLocked, total: model.seatThreshold })}<br />{model.secsToFillDeadline > 0 ? t("circle.closesIn", { time: circleTimeText(model.secsToFillDeadline, t) }) : t("circle.closed")}</span>
+        {summaryText && <span style={{ color: mine?.readyToClaim ? T.green : T.muted, font: `700 ${T.fs.secondary} ${T.sans}` }}>{summaryText}</span>}
       </span><span style={{ marginLeft: "auto", color: T.accent }} aria-hidden="true">↗</span>
     </button>;
   }
@@ -147,14 +145,14 @@ export function TradeCard({
       ? (() => { const parent = (allEscrows ?? []).find(e => e.id === state.parent); return parent ? circleFromEscrow(parent) : null; })()
       : null;
     const roundTag = parentCircle && parentCircle.roundIndex > 1 ? ` · ${t("circle.roundN", { n: parentCircle.roundIndex })}` : "";
-    return <button type="button" onClick={onSelect} className="circle-browse-card" style={{ width: "100%", display: "flex", gap: 18, alignItems: "center", padding: "22px 20px", background: T.card, border: `1px solid ${T.border}`, borderRadius: T.r, color: T.text, textAlign: "left", cursor: "pointer" }}>
+    return <button type="button" onClick={onSelect} className="circle-browse-card browse-arrival-card" style={{ width: "100%", display: "flex", gap: 18, alignItems: "center", padding: "22px 20px", background: T.card, border: `1px solid ${T.border}`, borderRadius: T.r, color: T.text, textAlign: "left", cursor: "pointer" }}>
       <VerticalIcon vertical="chama" size={74} />
       <span style={{ display: "grid", gap: 7, minWidth: 0 }}>
         <strong style={{ font: `750 21px ${T.sans}`, overflowWrap: "anywhere" }}>{state.description}{roundTag}</strong>
         <span style={{ color: T.accent, fontWeight: 700 }}>{viewerIsMember
           ? t("circle.yourShare", { amount: fmtSats(state.amountMsats) })
           : t("circle.memberShare", { name: profileNameFor(profileNames, memberPk, kind0Enabled) ?? "…", amount: fmtSats(state.amountMsats) })}</span>
-        <span style={{ justifySelf: "start", fontSize: 10, padding: "3px 8px", borderRadius: 999, background: st.bg, color: st.c, border: `1px solid ${st.c}55`, fontFamily: T.mono, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5 }}>{t(needsTradeHistory(state) ? "trade.savedSummary" : st.l)}</span>
+        <span style={{ justifySelf: "start", fontSize: 10, padding: "3px 8px", borderRadius: 999, background: st.bg, color: st.fg ?? st.c, border: `1px solid ${st.bg === "transparent" ? T.line : "transparent"}`, fontFamily: T.sans, fontWeight: 600 }}>{t(needsTradeHistory(state) ? "trade.savedSummary" : st.l)}</span>
       </span>
       <span style={{ marginLeft: "auto", color: T.accent }} aria-hidden="true">↗</span>
     </button>;
@@ -287,8 +285,11 @@ export function TradeCard({
   const showFiatPrimary = amountDisplayMode === "fiat" && !!displayFiatPrimary;
   const paymentMethodsLine = paymentMethodsSummary(state.paymentMethods);
   const premiumLine = listingPremiumLine(state, btcPrice.usd);
+  // v7 redesign (Jet): ONE price per card — the headline follows the top
+  // sats/fiat switch, so fiat mode no longer repeats the sats figure here.
+  void satsLabel;
   const secondaryLine = showFiatPrimary
-    ? [`₿ ${satsLabel}`, menuCountLine].filter(Boolean).join(" · ")
+    ? menuCountLine
     : fiatLine ?? (
       hasMenu
         ? menuLine
@@ -304,7 +305,7 @@ export function TradeCard({
     : null;
 
   return (
-    <div onClick={primarySelect} style={{
+    <div className="browse-arrival-card" onClick={primarySelect} style={{
       background: cardBg, border: `1px solid ${cardBorder}`,
       borderRadius: T.r, padding: 14, cursor: "pointer",
       transition: "border-color 0.2s",
@@ -319,8 +320,8 @@ export function TradeCard({
           position: "absolute", top: 8, right: 8, zIndex: 2,
           display: "inline-flex", alignItems: "center", gap: 3,
           minWidth: 18, height: 18, padding: "0 5px", boxSizing: "border-box",
-          borderRadius: 999, background: T.accent, color: "#fff",
-          fontFamily: T.mono, fontSize: 9.5, fontWeight: 800, lineHeight: "18px",
+          borderRadius: 999, background: T.attn, color: ON_ATTN,
+          fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700, lineHeight: "18px",
         }}>
           💬 {combinedUnread > 9 ? "9+" : combinedUnread}
         </span>
@@ -365,11 +366,11 @@ export function TradeCard({
           }}>
             <span style={{
               display: "inline-flex", alignItems: "center", gap: 4,
-              fontSize: 10, padding: "3px 8px", borderRadius: 999,
+              fontSize: T.fs.secondary, padding: "3px 8px", borderRadius: 999,
               background: isParentStorefront(state) ? `${T.teal}18` : T.surface,
               color: isParentStorefront(state) ? T.teal : T.muted,
               border: `1px solid ${isParentStorefront(state) ? `${T.teal}55` : T.border}`,
-              fontFamily: T.mono, fontWeight: 700,
+              fontFamily: T.sans, fontWeight: 700,
               lineHeight: 1.2,
             }}>
               <VerticalIcon vertical={isWorkListing(state) ? "work" : state.category} size={14} fallback="📦" />
@@ -390,11 +391,11 @@ export function TradeCard({
             {state.escrowMode === "onchain" && (
               <span style={{
                 display: "inline-flex", alignItems: "center", gap: 4,
-                fontSize: 10, padding: "3px 8px", borderRadius: 999,
+                fontSize: T.fs.secondary, padding: "3px 8px", borderRadius: 999,
                 background: ESCROW_NETWORK_LABEL === "signet" ? `${T.amber}1e` : `${T.accent}1e`,
                 color: ESCROW_NETWORK_LABEL === "signet" ? T.amber : T.accent,
                 border: `1px solid ${ESCROW_NETWORK_LABEL === "signet" ? T.amber : T.accent}55`,
-                fontFamily: T.mono, fontWeight: 800, lineHeight: 1.2,
+                fontFamily: T.sans, fontWeight: 700, lineHeight: 1.2,
               }}>
                 <span style={{ fontSize: 11, lineHeight: 1 }}>⛓</span>
                 {ESCROW_NETWORK_LABEL === "signet" ? "SIGNET" : "ON-CHAIN"}
@@ -403,22 +404,22 @@ export function TradeCard({
             {(state.escrowMode ?? "ecash") === "ecash" && (
               <span style={{
                 display: "inline-flex", alignItems: "center", gap: 4,
-                fontSize: 10, padding: "3px 8px", borderRadius: 999,
-                background: `${T.teal}18`, color: T.teal,
-                border: `1px solid ${T.teal}55`,
-                fontFamily: T.mono, fontWeight: 800, lineHeight: 1.2,
+                fontSize: T.fs.secondary, padding: "3px 8px", borderRadius: 999,
+                background: T.raised, color: T.ink2,
+                border: `1px solid ${T.line}`,
+                fontFamily: T.sans, fontWeight: 600, lineHeight: 1.2,
               }}>
                 <span style={{ fontSize: 11, lineHeight: 1 }}>⚡</span>
-                ECASH
+                Ecash
               </span>
             )}
             {billTypeChip && billTypeChip.label !== state.description && (
               <span style={{
                 display: "inline-flex", alignItems: "center", gap: 4,
-                fontSize: 10, padding: "3px 8px", borderRadius: 999,
+                fontSize: T.fs.secondary, padding: "3px 8px", borderRadius: 999,
                 background: T.surface, color: T.text,
                 border: `1px solid ${T.border}`,
-                fontFamily: T.mono, fontWeight: 700, lineHeight: 1.2,
+                fontFamily: T.sans, fontWeight: 700, lineHeight: 1.2,
               }}>
                 <span style={{ fontSize: 11, lineHeight: 1 }}>{billTypeChip.icon}</span>
                 {billTypeChip.label}
@@ -426,20 +427,20 @@ export function TradeCard({
             )}
             {state.subscription && (
               <span style={{
-                fontSize: 10, padding: "3px 8px", borderRadius: 999,
+                fontSize: T.fs.secondary, padding: "3px 8px", borderRadius: 999,
                 background: T.purpleDim, color: T.purple,
                 border: `1px solid ${T.purple}33`,
-                fontFamily: T.mono, fontWeight: 700,
+                fontFamily: T.sans, fontWeight: 700,
               }}>
                 🔄 {state.subscription.releasedCount}/{state.subscription.totalPeriods}
               </span>
             )}
             {hasMenu && (
               <span style={{
-                fontSize: 10, padding: "3px 8px", borderRadius: 999,
+                fontSize: T.fs.secondary, padding: "3px 8px", borderRadius: 999,
                 background: T.accentDim, color: T.accent,
                 border: `1px solid ${T.accent}33`,
-                fontFamily: T.mono, fontWeight: 800,
+                fontFamily: T.sans, fontWeight: 700,
               }}>
                 {menuBadgeLabel(state.category, t)}
               </span>
@@ -448,11 +449,11 @@ export function TradeCard({
                 0 (all units currently held/locked but not fully sold) → reserved. */}
             {stockLeft !== undefined && (
               <span style={{
-                fontSize: 10, padding: "3px 8px", borderRadius: 999,
+                fontSize: T.fs.secondary, padding: "3px 8px", borderRadius: 999,
                 background: stockLeft > 0 ? `${T.green}22` : `${T.amber}22`,
                 color: stockLeft > 0 ? T.green : T.amber,
                 border: `1px solid ${(stockLeft > 0 ? T.green : T.amber)}55`,
-                fontFamily: T.mono, fontWeight: 800,
+                fontFamily: T.sans, fontWeight: 700,
               }}>
                 {stockLeft > 0 ? t("card.stockLeft", { count: stockLeft }) : t("card.reserved")}
               </span>
@@ -462,10 +463,10 @@ export function TradeCard({
                 own Browse cards, so this is where the seller sees all of them). */}
             {!viewerOrderId && liveOrderCount > 0 && (
               <span style={{
-                fontSize: 10, padding: "3px 8px", borderRadius: 999,
+                fontSize: T.fs.secondary, padding: "3px 8px", borderRadius: 999,
                 background: `${T.accent}1c`, color: T.accent,
                 border: `1px solid ${T.accent}55`,
-                fontFamily: T.mono, fontWeight: 800,
+                fontFamily: T.sans, fontWeight: 700,
                 display: "inline-flex", alignItems: "center", gap: 4,
               }}>
                 {t(liveOrderCount === 1 ? "card.liveOrdersOne" : "card.liveOrdersMany", { count: liveOrderCount })}
@@ -503,11 +504,11 @@ export function TradeCard({
                   : undefined}
                 title={isWorkOffer(state) ? t("card.viewWorkerProfile") : undefined}
                 style={{
-                fontSize: 10, padding: "3px 9px", borderRadius: 999,
+                fontSize: T.fs.secondary, padding: "3px 9px", borderRadius: 999,
                 background: isParentStorefront(state) ? `${T.teal}12` : T.surface,
                 color: isWorkListing(state) ? T.green : isParentStorefront(state) ? T.teal : T.muted,
                 border: `1px solid ${isParentStorefront(state) ? `${T.teal}3d` : T.border}`,
-                fontFamily: T.mono, fontWeight: 800,
+                fontFamily: T.sans, fontWeight: 700,
                 display: "inline-flex", alignItems: "center", gap: 4,
                 maxWidth: "100%",
                 cursor: isWorkOffer(state) && onOpenWorkerProfile ? "pointer" : "default",
@@ -531,10 +532,10 @@ export function TradeCard({
               const chipBg = accent ? accent + "1a" : T.surface;
               return (
               <span style={{
-                fontSize: 10, padding: "3px 8px", borderRadius: 999,
+                fontSize: T.fs.secondary, padding: "3px 8px", borderRadius: 999,
                 background: chipBg, color: chipColor,
                 border: `1px solid ${chipBorder}`,
-                fontFamily: T.mono, fontWeight: 700,
+                fontFamily: T.sans, fontWeight: 700,
                 display: "inline-flex", alignItems: "center", gap: 3,
                 maxWidth: "100%",
               }}>
@@ -550,10 +551,10 @@ export function TradeCard({
                 so a custom/not-yet-curated community (the Canada bug) still reads. */}
             {showCommunityChip && !listingCommunity && state.country && (
               <span style={{
-                fontSize: 10, padding: "3px 8px", borderRadius: 999,
+                fontSize: T.fs.secondary, padding: "3px 8px", borderRadius: 999,
                 background: T.surface, color: T.muted,
                 border: `1px solid ${T.border}`,
-                fontFamily: T.mono, fontWeight: 700,
+                fontFamily: T.sans, fontWeight: 700,
                 display: "inline-flex", alignItems: "center", gap: 3,
                 maxWidth: "100%",
               }}>
@@ -579,10 +580,12 @@ export function TradeCard({
             <div style={{
               marginTop: -4,
               marginBottom: 6,
-              color: viewerRole === Role.SELLER ? T.purple : T.amber,
-              fontFamily: T.mono,
-              fontSize: 10,
-              fontWeight: 700,
+              // The counterparty's role colour (text tone): buyer for a seller,
+              // seller for everyone else — a role, never an alarm colour.
+              color: viewerRole === Role.SELLER ? ROLE_COLOR_TEXT.buyer : ROLE_COLOR_TEXT.seller,
+              fontFamily: T.sans,
+              fontSize: T.fs.secondary,
+              fontWeight: 600,
               lineHeight: 1.4,
               overflow: "hidden",
               textOverflow: "ellipsis",
@@ -601,8 +604,8 @@ export function TradeCard({
               marginTop: -4,
               marginBottom: 9,
               color: T.muted,
-              fontFamily: T.mono,
-              fontSize: 10,
+              fontFamily: T.sans,
+              fontSize: T.fs.secondary,
               lineHeight: 1.4,
               overflow: "hidden",
               textOverflow: "ellipsis",
@@ -619,7 +622,7 @@ export function TradeCard({
           }}>
             <span style={{
               display: "inline-flex", alignItems: "center", gap: 6,
-              color: T.accent, fontFamily: T.mono, lineHeight: 1,
+              color: T.accent, fontFamily: T.sans, lineHeight: 1,
             }}>
               {hasMenu && !exchangeRange && !showFiatPrimary && (
                 <span style={{ fontSize: 10, color: T.muted, fontWeight: 800, lineHeight: 1 }}>
@@ -643,16 +646,18 @@ export function TradeCard({
             </span>
             {secondaryLine && (
               <span style={{
-                fontSize: 11,
+                fontSize: T.fs.secondary,
                 color: T.muted,
-                fontFamily: T.mono,
+                fontFamily: T.sans,
                 lineHeight: 1.4,
               }}>
                 · {secondaryLine}
               </span>
             )}
           </div>
-          {exchangeBrackets.length > 0 && (
+          {/* A single bracket only repeated the headline price — show the
+              chips only when there is a real choice between brackets. */}
+          {exchangeBrackets.length > 1 && (
             <div style={{
               display: "flex", flexWrap: "wrap", gap: 6,
               marginTop: -4, marginBottom: 11,
@@ -661,11 +666,11 @@ export function TradeCard({
                 <span key={`${bracket.id}:${bracket.label}`} style={{
                   display: "inline-flex", alignItems: "center", gap: 5,
                   padding: "4px 7px", borderRadius: 999,
-                  border: `1px solid ${T.purple}55`, background: `${T.purple}12`,
-                  color: T.text, fontFamily: T.mono, fontSize: 9.5, fontWeight: 700,
+                  border: `1px solid ${T.line}`, background: T.raised,
+                  color: T.ink, fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 600,
                 }}>
-                  <span style={{ color: T.muted }}>{bracket.name}</span>
-                  <span style={{ color: T.accent }}>₿ {bracket.label}</span>
+                  <span style={{ color: T.ink2 }}>{bracket.name}</span>
+                  <span style={{ color: T.ink }}>₿ {bracket.label}</span>
                 </span>
               ))}
             </div>
@@ -675,8 +680,8 @@ export function TradeCard({
               marginTop: -5,
               marginBottom: premiumLine ? 4 : 11,
               color: T.muted,
-              fontFamily: T.mono,
-              fontSize: 10,
+              fontFamily: T.sans,
+              fontSize: T.fs.secondary,
               lineHeight: 1.4,
               overflow: "hidden",
               textOverflow: "ellipsis",
@@ -689,10 +694,10 @@ export function TradeCard({
             <div style={{
               marginTop: paymentMethodsLine ? 0 : -5,
               marginBottom: 11,
-              color: T.amber,
-              fontFamily: T.mono,
-              fontSize: 10,
-              fontWeight: 800,
+              color: T.ink2,
+              fontFamily: T.sans,
+              fontSize: T.fs.secondary,
+              fontWeight: 600,
               lineHeight: 1.4,
               overflow: "hidden",
               textOverflow: "ellipsis",
@@ -717,21 +722,23 @@ export function TradeCard({
           <span style={{
             display: "inline-flex", alignItems: "center", gap: 5,
             padding: "4px 8px", borderRadius: 999,
-            background: status.bg, color: status.c,
-            border: `1px solid ${status.c}33`,
-            fontSize: 10, fontWeight: 800,
-            fontFamily: T.mono, textTransform: "uppercase",
+            background: status.bg, color: status.fg ?? status.c,
+            border: `1px solid ${status.bg === "transparent" ? T.line : "transparent"}`,
+            fontSize: 12, fontWeight: 600,
+            fontFamily: T.sans,
             lineHeight: 1.2,
           }}>
-            <span style={{
-              width: 6, height: 6, borderRadius: "50%",
-              background: status.c, boxShadow: `0 0 8px ${status.c}66`,
-            }} />
+            {status.icon === "lock" ? <LockGlyph size={12} /> : !status.fg && (
+              <span style={{
+                width: 6, height: 6, borderRadius: "50%", flexShrink: 0,
+                background: status.c,
+              }} />
+            )}
             {compactStatusLabel(state, nowSec, pubkey, t)}
           </span>
           {timeLine && (
             <div style={{
-              fontSize: 10, color: timeLine.tone, fontFamily: T.mono,
+              fontSize: T.fs.secondary, color: timeLine.tone, fontFamily: T.sans,
               lineHeight: 1.35,
             }}>
               {timeLine.label}
@@ -766,7 +773,7 @@ function TradeIdLine({ id }: { id: string }) {
       style={{
         marginTop: -2, marginBottom: 9,
         display: "inline-flex", alignItems: "center", gap: 5, maxWidth: "100%",
-        color: T.muted, fontFamily: T.mono, fontSize: 9, lineHeight: 1.4,
+        color: T.muted, fontFamily: T.sans, fontSize: T.fs.secondary, lineHeight: 1.4,
         cursor: "pointer",
       }}
     >
@@ -795,7 +802,7 @@ function TradeTimeLine({ createdAt }: { createdAt: number }) {
   return (
     <div style={{
       marginTop: -4, marginBottom: 10,
-      color: T.text, fontFamily: T.mono, fontSize: 12, fontWeight: 600, lineHeight: 1.4,
+      color: T.text, fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 600, lineHeight: 1.4,
     }}>
       <time dateTime={new Date(createdAt * 1000).toISOString()}>{when}</time>
     </div>
@@ -1060,7 +1067,7 @@ function MiniTrinityRing({
                 border: `1px ${filled ? "solid" : "dashed"} ${filled ? color : T.border}`,
                 background: filled ? (autoAssigned ? `${color}12` : `${color}22`) : T.surface,
                 color: filled ? color : T.muted,
-                fontFamily: T.mono, fontSize: 10, fontWeight: 800,
+                fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
                 opacity: autoAssigned ? 0.78 : 1,
                 boxShadow: isYou ? `0 0 0 2px ${color}22` : "none",
               }}

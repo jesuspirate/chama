@@ -1,4 +1,6 @@
 export const notify: Record<string, string> = {
+  "notify.circleReturnTitle": "Kurudisha mchango wa kikundi",
+  "notify.circleReturnSignature": "Mchango wa kikundi unahitaji sahihi yako ili urudishwe.",
   "notify.marketActiondigital": "tuma faili na utie alama kuwa imetumwa",
   "notify.marketActionservice": "fanya kazi na utie alama kuwa imekamilika",
   "notify.marketActionmeet": "kabidhi na utie alama kuwa imekamilika",

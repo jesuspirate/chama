@@ -388,6 +388,13 @@ export function createSimWallet(opts: CreateSimWalletOptions = { npub: null }): 
     },
 
     federation: {
+      async inspectInvite() {
+        // Simulation-only metadata for exercising the public-circle UI. Never
+        // fetch a real guardian or initialize a real WASM wallet in sim mode.
+        return { federationId: SIM_FEDERATION_ID, metaStatus: "ready" as const,
+          config: { global: { meta: { federation_name: "SIM" } } },
+          consensusMeta: { revision: 0, value: { "fedi:max_invoice_msats": "100000000" } } };
+      },
       async getFederationId() { return SIM_FEDERATION_ID; },
       async getInviteCode() { return SIM_INVITE; },
     },

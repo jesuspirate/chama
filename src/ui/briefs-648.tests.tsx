@@ -69,7 +69,7 @@ for(const [sim,testnet] of [[true,false],[false,true]]){
 }
 assert.equal(fundingPremiumMsats(10_000,false,false),10_000);
 function balanceModal(spendableMsats:number,premiumMsats:number){
- return renderToStaticMarkup(<AtomicFundingModal escrowId="insured" amountMsats={100_000}
+ return renderToStaticMarkup(<AtomicFundingModal escrowId="insured" custodyState={{...trade, expiresAt: Math.floor(Date.now()/1000)+3600, joinHolds:{}}} amountMsats={100_000}
   spendableMsats={spendableMsats} premiumMsats={premiumMsats} disableNwc ctaLabel="Lock"
   getOnchainInfo={async()=>{throw Error("On-chain is unsupported in this fixture");}}
   fundAndLock={async()=>({kind:'locked'})} lockAndPublish={async()=>{}} onClose={()=>{}}/>);
@@ -151,7 +151,7 @@ assert.match(rejectedReceive,/Do not pay another invoice/);
 assert.match(rejectedReceive,/Copy diagnostics/);
 assert.doesNotMatch(rejectedReceive,/test-diagnostic-never-inline|Chama diagnostics:/);
 
-const fundingProps = {
+const fundingProps = { custodyState: {...trade, expiresAt: Math.floor(Date.now()/1000)+3600, joinHolds:{}},
   escrowId:'rail-visibility', amountMsats:1_200_000, ctaLabel:'Fund escrow',
   fundAndLock:async()=>({kind:'aborted' as const}), getOnchainInfo:async()=>({} as any),
   lockAndPublish:async()=>{}, onClose:()=>{},
@@ -187,7 +187,7 @@ const withdrawal = renderToStaticMarkup(<OnchainPayoutPicker federationName="Bit
  pegOutFeeSats={25} payoutSats={1_200} onResolve={()=>{}} onBack={()=>{}} onCancel={()=>{}} />);
 assert.match(withdrawal, /Withdraw from Bitcoin Life Federation to a bitcoin address/);
 assert.match(withdrawal, /Peg-out fee 25 sats/);
-assert.match(withdrawal, /ONCHAIN CLAIM/);
+assert.match(withdrawal, /Onchain claim/);
 assert.match(withdrawal, /Slow path. Paste a fresh bitcoin address/,'claim blurb stays unchanged');
 const chooser = renderToStaticMarkup(<ClaimMethodChooser federationName="Bitcoin Life Federation" pegOutFeeSats={25}
  payoutSats={1_200} ecashPayoutSats={1_200} externalSwaps={[]} tandoEligible={false} chapsmartEligible={false}

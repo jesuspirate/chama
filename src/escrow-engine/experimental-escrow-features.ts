@@ -67,3 +67,9 @@ export function isSlicedTradeShape(state: {
     || state.tranchePlan !== undefined
     || state.trancheChild !== undefined;
 }
+
+// Bond announcements: .22 ships both legacy-community and per-bond readers.
+// Keep the writer on d=community until the client-tag probe shows the fleet is
+// on .22. Flip deliberately in a reviewed change; this gates only new writes,
+// never history, Manage recovery, or the local-only Find my bonds flow.
+export const PER_BOND_ANNOUNCEMENT_WRITER_ENABLED = false;

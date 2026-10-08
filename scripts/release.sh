@@ -4,6 +4,7 @@ set -euo pipefail
 # Load local, gitignored deploy config (deploy host/key/signing) so a fresh
 # terminal tab always has it — independent of ~/.zshrc / which tab you opened.
 __CHAMA_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+(cd "$__CHAMA_ROOT" && node scripts/check-release-ancestry.mjs --release-only)
 [ -f "$__CHAMA_ROOT/.env.release" ] && . "$__CHAMA_ROOT/.env.release"
 
 # Usage:

@@ -1,10 +1,16 @@
 import assert from 'node:assert/strict';
-import { walletUri, openWalletLink, nativeWalletLinks } from './wallet-link.js';
+import { walletUri, openWalletLink, nativeWalletLinks, iosWalletLinks } from './wallet-link.js';
 assert.equal(walletUri('LNBC123','lightning'),'lightning:LNBC123');
 assert.equal(walletUri('LIGHTNING:LNBC123','lightning'),'lightning:LNBC123');
 assert.equal(walletUri('bitcoin:bc1qexample?amount=0.001','onchain'),'bitcoin:bc1qexample?amount=0.001');
 assert.equal(walletUri('bc1qexample','onchain'),'bitcoin:bc1qexample');
 assert.equal(nativeWalletLinks(), false, 'web keeps copy behavior');
+for (const userAgent of ['iPhone Safari', 'iPhone CriOS', 'iPad Safari', 'iPod Safari', 'Macintosh Safari']) {
+  assert.equal(iosWalletLinks({userAgent, maxTouchPoints: 5}), true);
+}
+for (const userAgent of ['Macintosh Safari', 'Android Chrome', 'Windows Chrome']) {
+  assert.equal(iosWalletLinks({userAgent, maxTouchPoints: 0}), false);
+}
 await assert.rejects(openWalletLink('https://example.com'), /Invalid payment link/);
 console.log('PASS native wallet URI boundary and web fallback');
 const { openWalletOrCopy } = await import('./wallet-link.js');

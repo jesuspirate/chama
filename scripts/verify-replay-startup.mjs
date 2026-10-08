@@ -20,7 +20,7 @@ const browser = await puppeteer.launch({
 try {
   for (const [name, events, home] of [['refused', [forged, real], 'us-blf'], ['valid', [real], 'ke-kes']]) {
     const context = await browser.createBrowserContext();
-    const page = await context.newPage(); page.setDefaultTimeout(20000);
+    const page = await context.newPage(); await page.setViewport({ width: 390, height: 844 }); page.setDefaultTimeout(20000);
     await page.evaluateOnNewDocument(events => {
       localStorage.setItem('chama_intro_seen', '1');
       window.__startupDeliveredCreates = new Set();
@@ -52,7 +52,10 @@ try {
       await page.waitForFunction(text => [...document.querySelectorAll('button')].some(b => b.textContent.trim()===text), {}, text);
       await page.evaluate(text => [...document.querySelectorAll('button')].find(b=>b.textContent.trim()===text).click(), text);
     };
-    await click('Create my account'); await click('Continue with this key');
+    await page.waitForFunction(() => [...document.querySelectorAll('button')].some(b => ['Become a citizen','Create my account'].includes(b.textContent.trim())));
+    const chooser = await page.evaluate(() => [...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='Become a citizen'));
+    await click(chooser ? 'Become a citizen' : 'Create my account');
+    await click(chooser ? 'Save & continue' : 'Continue with this key');
     await page.waitForFunction(home => Object.keys(localStorage).some(k => k.startsWith('chama_community:') && localStorage.getItem(k)===home), {}, home);
     await page.waitForFunction(() => !document.body.innerText.includes('Setting you up…') && !document.body.innerText.includes('Opening your invite'));
     if (name === 'refused') {
@@ -61,7 +64,7 @@ try {
       assert.ok(await page.$('[data-coach="nav-browse"]'), 'Browse navigation renders instead of onboarding');
       assert.ok(await page.$('[data-coach="browse-preferences"]'), 'Browse content renders, not an empty detail selection');
     } else {
-      await page.waitForFunction(() => document.body.innerText.includes('Join this trade?'));
+      await page.waitForSelector('.lts-room');
       assert.ok(await page.$('.lts-room'), 'valid invite still opens the trade room');
     }
     console.log(`PASS ${name} deep link: fresh sign-in completes with ${home}; ${name==='refused'?'conflict refused and Browse available':'valid invite home retained'}`);
