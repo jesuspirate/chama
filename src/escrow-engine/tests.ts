@@ -27458,12 +27458,37 @@ console.log("\n── #62 REDEEM-PROBE + BONDED-POOL CACHE ──");
     throw new Error(`unexpected path ${path}`);
   };
   const GENESIS = esploraCfg.MAINNET_GENESIS_HASH;
+  const CHECKPOINT = `/block-height/${esploraCfg.MAINNET_CHECKPOINT.height}`;
+  const TIP_HASH = "00000000000000000000" + "ab".repeat(22);
+  const HEADER = `/block/${TIP_HASH}/header`;
+  const mainnetFake = (over: Record<string, any> = {}) => fakeEsplora({
+    "/blocks/tip/height": 971_000, "/block-height/0": GENESIS,
+    [CHECKPOINT]: esploraCfg.MAINNET_CHECKPOINT.hash,
+    "/blocks/tip/hash": TIP_HASH, [HEADER]: "00".repeat(80),
+    ...over,
+  });
 
-  const okMain = await esploraCfg.probeEsplora(MS_MAINNET, fakeEsplora({
-    "/blocks/tip/height": 870_000, "/block-height/0": GENESIS,
-  }));
-  assert(okMain.verdict === "ok" && okMain.tipHeight === 870_000,
+  const okMain = await esploraCfg.probeEsplora(MS_MAINNET, mainnetFake());
+  assert(okMain.verdict === "ok" && okMain.tipHeight === 971_000,
     "esplora: a real mainnet explorer probes ok and reports its tip");
+
+  // ⭐⭐ XBT (the BLAKE2b fork) shares Bitcoin's genesis and addresses.
+  const xbt = await esploraCfg.probeEsplora(MS_MAINNET, mainnetFake({ [CHECKPOINT]: "00".repeat(32) }));
+  assert(xbt.verdict === "wrong-network",
+    "⭐⭐ esplora: a fork sharing Bitcoin's genesis is caught by the post-fork checkpoint");
+  const fatHeader = await esploraCfg.probeEsplora(MS_MAINNET, mainnetFake({ [HEADER]: "00".repeat(164) }));
+  assert(fatHeader.verdict === "wrong-network",
+    "⭐⭐ esplora: a 164-byte tip header is not Bitcoin");
+  const checkpointDown = await esploraCfg.probeEsplora(MS_MAINNET, mainnetFake({ [CHECKPOINT]: new Error("timeout") }));
+  assert(checkpointDown.verdict === "unreachable",
+    "⭐ esplora: a checkpoint lookup that fails is unreachable — never ok, never wrong");
+  const headerDown = await esploraCfg.probeEsplora(MS_MAINNET, mainnetFake({ [HEADER]: new Error("timeout") }));
+  assert(headerDown.verdict === "unreachable",
+    "esplora: a header lookup that fails is unreachable, never ok");
+  const junkCheckpoint = await esploraCfg.probeEsplora(MS_MAINNET, mainnetFake({ [CHECKPOINT]: { error: "nope" } }));
+  const junkHeader = await esploraCfg.probeEsplora(MS_MAINNET, mainnetFake({ [HEADER]: "<html>" }));
+  assert(junkCheckpoint.verdict === "not-esplora" && junkHeader.verdict === "not-esplora",
+    "esplora: a malformed checkpoint or header answer is not an explorer");
 
   const wrongChain = await esploraCfg.probeEsplora(MS_MAINNET, fakeEsplora({
     "/blocks/tip/height": 200_000, "/block-height/0": "00".repeat(32),
