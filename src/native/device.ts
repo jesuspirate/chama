@@ -3,4 +3,5 @@ import { registerPlugin } from '@capacitor/core';
 export const nativeDevice = registerPlugin<{
   setTheme(options: {color: string; theme: "light" | "dark"}): Promise<void>;
   payment(options: {uri: string; share: boolean}): Promise<void>;
+  bridgeToken(): Promise<{token: string}>;
 }>('ChamaDevice');
