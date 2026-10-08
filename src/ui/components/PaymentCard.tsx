@@ -43,11 +43,16 @@ export function PaymentRails({ rail, rails = ["lightning", "onchain", "ecash"], 
 export function PaymentButton({ tier = "raised", tone = "accent", style, ...props }: ButtonHTMLAttributes<HTMLButtonElement> & {
   tier?: "primary" | "raised" | "quiet"; tone?: "accent" | "teal";
 }) {
+  void tone;
   return <><style>{`.payment-button{box-shadow:inset 0 1px 0 #ffffff24,0 1px 0 #0006,0 2px 3px #0003,0 7px 16px #0002;transition:transform .12s,box-shadow .12s}.payment-button:active{transform:translateY(1px);box-shadow:inset 0 1px 0 #ffffff24,0 1px 2px #0003}.payment-button:disabled{box-shadow:none;filter:saturate(0);opacity:.45;cursor:default}.payment-button:focus-visible{outline:2px solid ${T.accent};outline-offset:3px}@media(prefers-reduced-motion:reduce){.payment-button{transition:none}}`}</style><button {...props} type={props.type ?? "button"} className={`payment-button ${props.className ?? ""}`}
-    style={{ background: tier === "primary" ? T[tone] : tier === "quiet" ? "transparent" : `linear-gradient(${T.card}, ${T.surface})`,
-      color: tier === "primary" ? T.bg : T.text, border: `1px solid ${T.borderHi}`, borderRadius: 999,
-      boxShadow: tier === "quiet" ? "none" : undefined,
-      minHeight: 44, padding: "10px 16px", font: `700 12px ${T.sans}`, cursor: "pointer",
+    // v7 redesign: primary = the ink money button (60px / 19px on phones);
+    // raised = secondary; quiet = text. `tone` is kept for callers but no
+    // longer paints a role colour onto a button.
+    style={{ ...(tier === "primary" ? { width: "100%" } : {}), background: tier === "primary" ? T.ink : tier === "quiet" ? "transparent" : T.raised,
+      color: tier === "primary" ? T.onInk : T.ink, border: tier === "primary" ? "none" : `1px solid ${T.line}`, borderRadius: T.r,
+      boxShadow: tier === "primary" ? undefined : "none",
+      minHeight: tier === "primary" ? T.size.moneyButton : T.size.touch, padding: "10px 18px",
+      fontFamily: T.sans, fontWeight: 600, fontSize: tier === "primary" ? T.fs.moneyButton : T.fs.button, lineHeight: 1.2, cursor: "pointer",
       ...style }} /></>;
 }
 

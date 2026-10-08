@@ -64,8 +64,10 @@ export function ActiveTradePill({
   const count = Math.max(1, activeTradeCount);
   const amountMsats = activeTradeMsats ?? trade.amountMsats;
   const nWaiting = Math.max(1, actionCount);
-  const tone = actionMode ? T.accent : T.purple;
-  const toneDim = actionMode ? T.accentDim : T.purpleDim;
+  // v7 redesign: attention when you're owed an action, neutral ink otherwise —
+  // never a role colour (purple named the buyer, not "a trade").
+  const tone = actionMode ? T.attnInk : T.ink;
+  const toneDim = actionMode ? T.attnBg : T.surface;
   return (
     <button
       onClick={onTap}
@@ -74,7 +76,7 @@ export function ActiveTradePill({
         width: "calc(100% - 32px)",
         margin: "12px 16px 0",
         padding: "10px 14px",
-        background: toneDim, border: `1px solid ${tone}${actionMode ? "aa" : "66"}`,
+        background: toneDim, border: actionMode ? `2px solid ${T.attn}` : `1px solid ${T.line}`,
         borderRadius: T.r,
         color: T.text, fontFamily: T.sans,
         cursor: "pointer", textAlign: "left" as const,
@@ -83,19 +85,17 @@ export function ActiveTradePill({
     >
       <span style={{
         width: 10, height: 10, borderRadius: "50%",
-        background: tone,
-        boxShadow: `0 0 8px ${tone}88`,
+        background: actionMode ? T.attn : T.ink3,
         animation: "pulse 2s ease-in-out infinite",
         flexShrink: 0,
       }} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{
-          fontSize: 11, color: tone, fontFamily: T.mono,
-          letterSpacing: 0.5, textTransform: "uppercase", fontWeight: 700,
+          fontSize: T.fs.secondary, color: tone, fontFamily: T.sans, fontWeight: 700,
         }}>
           {actionMode
             ? t("card.needsYouPill", { count: nWaiting })
-            : <>{count === 1 ? t("card.activeTradeOne") : t("card.activeTradeMany", { count })} · <BitcoinAmount msats={amountMsats} size={11} gap={3} glyphScale={1.18} /> {t("card.totalSuffix")}</>}
+            : <>{count === 1 ? t("card.activeTradeOne") : t("card.activeTradeMany", { count })} · <BitcoinAmount msats={amountMsats} size={T.fs.secondary} gap={3} glyphScale={1.18} /> {t("card.totalSuffix")}</>}
         </div>
         <div style={{
           fontSize: 13, color: T.text, fontFamily: T.sans,

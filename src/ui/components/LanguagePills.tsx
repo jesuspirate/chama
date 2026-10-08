@@ -24,7 +24,7 @@ export function LanguagePills() {
               border: `1px solid ${active ? T.accent + "66" : T.border}`,
               background: active ? T.accentDim : T.surface,
               color: active ? T.accent : T.muted,
-              fontFamily: T.mono, fontSize: 10, fontWeight: 800,
+              fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
               cursor: "pointer",
             }}
           >
@@ -47,7 +47,7 @@ export function LanguageRow() {
         <div style={{ fontSize: 13, fontWeight: 600, color: T.text, fontFamily: T.sans }}>
           {t("common.language")}
         </div>
-        <div style={{ fontSize: 11, color: T.muted, fontFamily: T.mono, marginTop: 2 }}>
+        <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, marginTop: 2 }}>
           {t("common.languageHint")}
         </div>
       </div>

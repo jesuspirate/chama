@@ -5,7 +5,7 @@ import type { FaqContent } from "./faq-types.js";
 
 export const faqFr: FaqContent = {
   intro:
-    "Chama est une place de marché où vous échangez avec votre communauté grâce au Bitcoin — sans avoir besoin de comprendre le Bitcoin. Un chama est une tontine d'Afrique de l'Est : des voisins qui mettent en commun ce qu'ils ont et se font confiance pour régler les comptes. Ici, la confiance est cryptographique, et il n'y a aucune entreprise au milieu — juste vous, votre interlocuteur, votre communauté et Nostr.",
+    "Échangez des bitcoins, des biens et des services avec votre communauté. Un chama est un cercle d’épargne d’Afrique de l’Est ; ici, les échanges utilisent de l’ecash émis par une fédération ou un dépôt direct en Bitcoin. Chama ne détient pas l’argent ; « Qui détient mon argent ? » indique qui le détient.",
   sections: [
     {
       id: "basics",

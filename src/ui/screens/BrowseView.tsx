@@ -113,7 +113,7 @@ export function BrowseView({
   isFirstTime, onPasteCustomInvite,
   onOpenEscrow, onLoadById,
   fetchRatingSummary,
-  onCreate, onApplyAsArbiter,
+  onCreate, onGuided, onApplyAsArbiter,
 }: {
   diagnosticsContext?: BrowseDiagnosticsContext;
   browseCategory: string;
@@ -142,6 +142,8 @@ export function BrowseView({
   /** S4: the primary pencil opens Assisted Chama. The full editor remains
    *  reachable from the canvas through its explicit More options door. */
   onCreate: () => void;
+  /** v7 redesign: leave the advanced "All listings" view for the guided canvas. */
+  onGuided?: () => void;
   onApplyAsArbiter: (community: string, statement: string) => Promise<void>;
 }) {
   const [otherCurrencies, setOtherCurrencies] = useState(false);
@@ -376,25 +378,8 @@ export function BrowseView({
           </svg>
         </button>
         )}
-        {/* create a trade (primary) */}
-        <button
-          type="button" onClick={onCreate}
-          data-coach="fab-create"
-          title={t("browse.createTrade")} aria-label={t("browse.createTrade")}
-          style={{
-            // The canvas is the front door — the pencil earns front-door size
-            // (Jet, 2026-09-18).
-            width: 76, height: 76, borderRadius: "50%", flexShrink: 0,
-            background: T.accent, border: "none", color: "#fff",
-            cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
-            boxShadow: `0 10px 26px ${T.accent}66, 0 10px 24px rgba(0,0,0,0.5)`,
-          }}
-        >
-          <svg width="41" height="41" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2.1} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4" />
-            <path d="M13.5 6.5l4 4" />
-          </svg>
-        </button>
+        {/* v7 redesign: Create moved to the shell — "+" in the top bar, an
+            extended FAB on Android, the sidebar button on wide screens. */}
       </div>
       <div style={{
         display: "flex", justifyContent: "space-between", alignItems: "flex-start",
@@ -403,18 +388,19 @@ export function BrowseView({
       }}>
         <div style={{ minWidth: 0 }}>
           <h1 style={{
-            margin: 0, color: T.text, fontFamily: T.sans,
-            fontSize: 30, lineHeight: 1.05, fontWeight: 800,
+            margin: 0, color: T.ink, fontFamily: T.sans,
+            fontSize: T.fs.largeTitle, lineHeight: 1.15, fontWeight: 700, letterSpacing: "-0.02em",
           }}>
-            {t("browse.listings")}
+            {t("browse.allListings")}
           </h1>
-          <div style={{
-            marginTop: 6, fontSize: 12, color: T.muted,
-            fontFamily: T.mono, whiteSpace: "nowrap" as const,
-            overflow: "hidden", textOverflow: "ellipsis",
-          }}>
-            {browseSummary}
-          </div>
+          {onGuided && (
+            <button type="button" onClick={onGuided} style={{
+              marginTop: 6, minHeight: 40, padding: 0, background: "none", border: "none", cursor: "pointer",
+              color: T.ink2, fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 600,
+              textDecoration: "underline", textUnderlineOffset: 3,
+            }}>{t("browse.guidedView")}</button>
+          )}
+
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
           {/* v3.1.1: the create + arbiter on-ramps moved out of the header into
@@ -460,7 +446,7 @@ export function BrowseView({
           flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 8,
           padding: "10px 12px", borderRadius: T.rs, background: T.surface,
           border: `1px solid ${T.border}`,
-          color: T.muted, fontFamily: T.mono,
+          color: T.muted, fontFamily: T.sans,
         }}>
           <span style={{ fontSize: 16, lineHeight: 1 }}>⌕</span>
           <input
@@ -481,11 +467,12 @@ export function BrowseView({
         onClick={() => setOtherCurrencies(value => !value)}
         style={{ marginBottom: 12, padding: "7px 11px", borderRadius: 18, cursor: "pointer",
           background: otherCurrencies ? T.accentDim : T.surface, color: otherCurrencies ? T.accent : T.muted,
-          border: `1px solid ${T.border}`, fontFamily: T.mono, fontSize: 11 }}>
+          border: `1px solid ${T.border}`, fontFamily: T.sans, fontSize: T.fs.secondary }}>
         {t("browse.otherCurrencies", { count: otherCurrencyCount })}
       </button>}
       <div style={{
-        display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12,
+        // Side by side where they fit; stacked on phones at the larger type.
+        display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 260px), 1fr))", gap: 12, marginBottom: 12,
       }} data-coach="browse-preferences">
         <BrowsePreferenceControl
           label={t("browse.scope")}
@@ -536,9 +523,9 @@ export function BrowseView({
               background: showOwn ? T.accentDim : T.surface,
               border: `1px solid ${showOwn ? T.accent + "66" : T.border}`,
               color: showOwn ? T.accent : T.muted,
-              fontFamily: T.mono, fontSize: 11, fontWeight: 700,
+              fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
               cursor: "pointer", transition: "all 0.15s",
-              whiteSpace: "nowrap" as const, letterSpacing: 0,
+              whiteSpace: "nowrap" as const,
               display: "inline-flex", alignItems: "center", gap: 6,
             }}
           >
@@ -744,8 +731,7 @@ export function BrowseView({
               }}>
                 <div style={{ flex: 1, height: 1, background: T.border }} />
                 <div style={{
-                  fontSize: 9, color: T.muted, fontFamily: T.mono,
-                  letterSpacing: 0, textTransform: "uppercase",
+                  fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans,
                   whiteSpace: "nowrap" as const,
                 }}>
                   {t(filteredNonMatchingListings.length === 1 ? "browse.otherCommunitiesOne" : "browse.otherCommunitiesMany", { count: filteredNonMatchingListings.length })}
@@ -807,13 +793,13 @@ export function BrowseView({
         </>
       )}
 
-      <div style={{ marginTop: 20, fontFamily: T.mono }}>
+      <div style={{ marginTop: 20, fontFamily: T.sans }}>
         <button
           onClick={() => setShowAdvancedTools((v) => !v)}
           style={{
             background: "none", border: "none", padding: 0,
-            color: T.muted, fontFamily: T.mono, fontSize: 10, fontWeight: 700,
-            cursor: "pointer", letterSpacing: 0, textTransform: "uppercase",
+            color: T.muted, fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
+            cursor: "pointer",
           }}
         >
           {showAdvancedTools ? "▲" : "▼"} {t("browse.advancedTools")}
@@ -853,7 +839,7 @@ export function BrowseView({
                     background: customInviteInput.trim().startsWith("fed1") ? T.accentDim : T.surface,
                     border: `1px solid ${customInviteInput.trim().startsWith("fed1") ? T.accent + "44" : T.border}`,
                     color: customInviteInput.trim().startsWith("fed1") ? T.accent : T.muted,
-                    fontFamily: T.mono, fontSize: 11, fontWeight: 700,
+                    fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
                     cursor: customInviteInput.trim().startsWith("fed1") ? "pointer" : "not-allowed",
                     whiteSpace: "nowrap" as const,
                   }}
@@ -863,7 +849,7 @@ export function BrowseView({
               </div>
             )}
             <LoadTradeInput onLoad={onLoadById} />
-            <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono, lineHeight: 1.7, textAlign: "center" }}>
+            <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, lineHeight: 1.7, textAlign: "center" }}>
               {t("browse.advancedFooterLine1")}<br />
               {t("browse.advancedFooterLine2")}
             </div>
@@ -1006,7 +992,7 @@ function WorkerResume({
             fontSize: 23,
           }}>👤</div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ color: T.green, fontFamily: T.mono, fontSize: 9, fontWeight: 800, letterSpacing: 1 }}>
+            <div style={{ color: T.green, fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,}}>
               {t("browse.workerResumeEyebrow")}
             </div>
             <div style={{
@@ -1036,7 +1022,7 @@ function WorkerResume({
 
         <div style={{
           marginTop: 18, marginBottom: 8, color: T.text,
-          fontFamily: T.mono, fontSize: 11, fontWeight: 800, letterSpacing: .7,
+          fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
         }}>
           {t(offers.length === 1 ? "browse.workerOfferCountOne" : "browse.workerOfferCountMany", { count: offers.length })}
         </div>
@@ -1060,7 +1046,7 @@ function WorkerResume({
                   fontSize: 13, fontWeight: 750,
                   overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                 }}>{offer.description}</span>
-                <span style={{ display: "block", marginTop: 3, color: T.muted, fontFamily: T.mono, fontSize: 10 }}>
+                <span style={{ display: "block", marginTop: 3, color: T.muted, fontFamily: T.sans, fontSize: T.fs.secondary }}>
                   ₿ {fmtSats(offer.amountMsats)}
                 </span>
               </span>
@@ -1089,10 +1075,10 @@ function BrowsePreferenceControl({
 }) {
   return (
     <div style={{ minWidth: 0 }}>
-      <div style={{ color: T.muted, fontFamily: T.mono, fontSize: 8, letterSpacing: 1, marginBottom: 5 }}>
+      <div style={{ color: T.muted, fontFamily: T.sans, fontSize: T.fs.secondary, marginBottom: 5 }}>
         {label}
       </div>
-      <div style={{ display: "flex", padding: 3, gap: 3, background: T.surface, border: `1px solid ${T.border}`, borderRadius: T.rs }}>
+      <div style={{ display: "flex", padding: 3, gap: 3, background: T.raised, borderRadius: T.r }}>
         {options.map(([optionValue, optionLabel, optionCount]) => {
           const active = value === optionValue;
           return (
@@ -1102,12 +1088,15 @@ function BrowsePreferenceControl({
               aria-pressed={active}
               onClick={() => onChange(optionValue)}
               style={{
-                flex: 1, minWidth: 0, padding: "6px 4px", borderRadius: 6,
-                background: active ? T.accentDim : "transparent",
-                border: `1px solid ${active ? T.accent + "66" : "transparent"}`,
-                color: active ? T.accent : T.muted,
-                fontFamily: T.mono, fontSize: 9, fontWeight: 800,
-                cursor: "pointer", whiteSpace: "nowrap",
+                // v7 redesign: a segmented control — the active segment is a
+                // surface tile with ink text; labels wrap rather than overlap.
+                flex: 1, minWidth: 0, minHeight: T.size.touch, padding: "6px 6px", borderRadius: T.r - 3,
+                background: active ? T.surface : "transparent",
+                border: "none",
+                boxShadow: active ? `0 0 0 1px ${T.line}` : "none",
+                color: active ? T.ink : T.ink2,
+                fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: active ? 700 : 500,
+                cursor: "pointer", overflowWrap: "anywhere", lineHeight: 1.2,
               }}
             >
               {optionLabel}
@@ -1167,19 +1156,17 @@ function BrowseSection({
           alignItems: "center",
           gap: 7,
           color: T.text,
-          fontFamily: T.mono,
-          fontSize: 11,
+          fontFamily: T.sans,
+          fontSize: T.fs.secondary,
           fontWeight: 800,
-          letterSpacing: 0.8,
-          textTransform: "uppercase",
         }}>
           <VerticalIcon vertical={section.id} size={17} />
           {t(section.label)}
         </div>
         <div style={{
           color: T.muted,
-          fontFamily: T.mono,
-          fontSize: 10,
+          fontFamily: T.sans,
+          fontSize: T.fs.secondary,
         }}>
           {t("browse.sectionOpenCount", { count: section.listings.length })}
         </div>

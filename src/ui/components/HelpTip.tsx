@@ -77,8 +77,8 @@ export function HelpTip({ title, children, label }: {
           width: 20, height: 20, borderRadius: 999,
           background: open ? T.accent : T.surface,
           border: `1px solid ${open ? T.accent : T.border}`,
-          color: open ? "#fff" : T.muted,
-          fontFamily: T.mono, fontSize: 12, fontWeight: 800,
+          color: open ? T.onInk : T.muted,
+          fontFamily: T.sans, fontSize: T.fs.body, fontWeight: 800,
           display: "grid", placeItems: "center", lineHeight: 1,
         }}>?</span>
       </button>
@@ -104,7 +104,7 @@ export function HelpTip({ title, children, label }: {
             }}
           >
             {title && (
-              <div style={{ fontFamily: T.mono, fontSize: 10, fontWeight: 800, letterSpacing: 0.8, color: T.accent, marginBottom: 6 }}>
+              <div style={{ fontFamily: T.sans, fontSize: 10, fontWeight: 800, letterSpacing: 0.8, color: T.accent, marginBottom: 6 }}>
                 {title}
               </div>
             )}

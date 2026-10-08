@@ -58,7 +58,7 @@ export function OverlaySheet({ title, subtitle, onClose, children }: {
         </div>
         {subtitle && (
           <div style={{
-            fontSize: 11, color: T.muted, fontFamily: T.mono,
+            fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans,
             margin: "8px 0 16px", lineHeight: 1.5,
           }}>
             {subtitle}

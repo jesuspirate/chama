@@ -4,7 +4,7 @@ import type { FaqContent } from "./faq-types.js";
 
 export const faqEn: FaqContent = {
   intro:
-    "Chama is a marketplace where you trade with your community using Bitcoin — without needing to understand Bitcoin. A chama is an East African savings circle: neighbours who pool what they have and settle on trust. Here the trust is cryptographic, and there's no company in the middle — just you, your counterparty, your community, and Nostr.",
+    "Trade Bitcoin, goods and services with your community. A chama is an East African savings circle; here, trades use federation-issued ecash or direct Bitcoin escrow. Chama does not hold the money; “Who holds my money?” shows who does.",
   sections: [
     {
       id: "basics",

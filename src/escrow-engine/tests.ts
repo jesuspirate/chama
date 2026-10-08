@@ -19257,8 +19257,8 @@ console.log("\n── THEME PALETTE SWAP ──");
     "STATUS entries are rebuilt to the active palette on swap",
   );
   assert(
-    STATUS.APPROVED.c === T.accent,
-    "STATUS accent tracks the light accent, not the module-load capture",
+    STATUS.APPROVED.c === T.attnInk && STATUS.LOCKED.bg === T.ink && STATUS.LOCKED.fg === T.onInk,
+    "STATUS attention/ink track the light palette, not the module-load capture",
   );
   assert(
     (inputStyle as { background?: string }).background === T.surface &&
@@ -19294,7 +19294,7 @@ console.log("\n── THEME PALETTE SWAP ──");
     "Swapping back restores the dark brand palette exactly",
   );
   assert(
-    STATUS.APPROVED.c === T.accent && STATUS.CANCELLED.bg === T.surface,
+    STATUS.APPROVED.c === T.attnInk && STATUS.LOCKED.bg === T.ink && STATUS.CANCELLED.bg === "transparent",
     "STATUS tracks T again after the restore",
   );
   assert(

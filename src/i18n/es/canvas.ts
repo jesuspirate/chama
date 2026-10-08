@@ -12,7 +12,7 @@ export const canvas: Record<string, string> = {
 
   "canvas.chamaWant": "Círculos",
   "canvas.xbtTease": "XBT · Bitcoin",
-  "canvas.circleKicker": "CÍRCULOS DE AHORRO",
+  "canvas.circleKicker": "Círculos de ahorro",
   "canvas.circleTitle": "¿Crear uno o unirte?",
   "canvas.circleSub": "Un círculo es la gente con la que ahorras. Trae el tuyo o encuentra uno.",
   "canvas.circleStart": "Crear un círculo nuevo",
@@ -24,7 +24,7 @@ export const canvas: Record<string, string> = {
   "canvas.xbtTeaseDesc": "Un nuevo mercado — solo cuando esté de verdad listo.",
   "canvas.comingSoon": "Muy pronto",
   "canvas.chamaWantDesc": "Abre un círculo Chama — partes iguales, todos completan o todos reciben reembolso.",
-  "canvas.chamaWantBadge": "EL HOMÓNIMO",
+  "canvas.chamaWantBadge": "El homónimo",
   "canvas.enterRailDetails": "Introduce tus datos de pago de {rail}.",
   "canvas.detailsSaveFailed": "No se pudieron guardar esos datos de pago.",
   "canvas.enterAmountAndRail": "Introduce un monto y elige al menos una forma de pago.",
@@ -215,4 +215,9 @@ export const canvas: Record<string, string> = {
   "canvas.circleLive": "Círculos abiertos · {count} en vivo",
   "canvas.circleNoneOpen": "No hay ninguno abierto ahora — crea uno y sé el primero.",
   "canvas.circleBrowseMore": "Ver {count} más en Explorar",
+  "canvas.satsRange": "{min}–{max} sats",
+  "canvas.pickAmountNext": "Pediste {amount} sats; eliges el monto exacto en el siguiente paso.",
+  "canvas.stepOf": "Paso {n} de {total}",
+  "canvas.classicLook": "Vista clásica",
+  "canvas.stepsLook": "Vista nueva",
 };

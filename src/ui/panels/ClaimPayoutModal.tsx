@@ -1,4 +1,6 @@
 import type { OnchainInfo } from "../../fedimint/fedimint-client.js";
+import { HoldToConfirm, buttonStyle } from "../components/Button.js";
+import { CLAIM_HOLD_IN_SHEET } from "../claim-hold.js";
 import { CardBack } from "../components/CardBack.js";
 import { useCardDraft, type CardDraft } from "../hooks/useCardDraft.js";
 import { SavedWalletRow } from "../components/SavedWalletRow.js";
@@ -610,6 +612,7 @@ export function ClaimPayoutModal({
     // payoutMethod.kind === "lightning"
     return (
       <DestinationPicker
+        holdToSend={CLAIM_HOLD_IN_SHEET}
         draft={draft}
         onBack={() => setPayoutMethod(null)}
         amountSats={payoutSats}
@@ -619,15 +622,15 @@ export function ClaimPayoutModal({
         title={t("claim.claimYourSats")}
         subtitle={(
           <>
-            {t("claim.sendToWalletBefore")} <BitcoinAmount sats={payoutSats} size={11} gap={4} glyphScale={1.18} color={T.muted} glyphColor={T.muted} /> {t("claim.sendToWalletAfter")}
+            {t("claim.sendToWalletBefore")} <BitcoinAmount sats={payoutSats} size={T.fs.secondary} gap={4} glyphScale={1.18} color={T.muted} glyphColor={T.muted} /> {t("claim.sendToWalletAfter")}
             {reserveSats > 0 && (
               <>
-                . {t("claim.feeReserveBefore")} <BitcoinAmount sats={reserveSats} size={11} gap={4} glyphScale={1.18} color={T.muted} glyphColor={T.muted} /> {t("claim.feeReserveAfter")}
+                . {t("claim.feeReserveBefore")} <BitcoinAmount sats={reserveSats} size={T.fs.secondary} gap={4} glyphScale={1.18} color={T.muted} glyphColor={T.muted} /> {t("claim.feeReserveAfter")}
               </>
             )}
             {insuranceSats > 0 && (
               <>
-                {" "}{t("claim.insuranceBefore")} <BitcoinAmount sats={insuranceSats} size={11} gap={4} glyphScale={1.18} color={T.muted} glyphColor={T.muted} /> {t("claim.insuranceAfter")}
+                {" "}{t("claim.insuranceBefore")} <BitcoinAmount sats={insuranceSats} size={T.fs.secondary} gap={4} glyphScale={1.18} color={T.muted} glyphColor={T.muted} /> {t("claim.insuranceAfter")}
               </>
             )}
           </>
@@ -657,17 +660,19 @@ export function ClaimPayoutModal({
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          background: T.card, border: `1px solid ${T.borderHi}`, borderRadius: T.r,
-          padding: 24, maxWidth: 420, width: "100%",
+          background: T.surface, border: `1px solid ${T.line}`, borderRadius: T.rSheet,
+          padding: 24, maxWidth: 440, width: "100%",
         }}
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
           <div>
-            <div style={{ fontSize: 9, color: T.muted, fontFamily: T.mono, letterSpacing: 1, marginBottom: 4 }}>
+            {/* v7 redesign (canvas "Claim"): "Ready to collect" over the
+                amount at amount size — 40px+ on phones. */}
+            <div style={{ fontSize: T.fs.secondary, color: T.attnInk, fontFamily: T.sans, fontWeight: 700, marginBottom: 4 }}>
               {t("claim.claimKicker")}
             </div>
-            <div style={{ fontSize: 22, fontWeight: 800, color: T.text, fontFamily: T.mono, letterSpacing: -0.5 }}>
-              <BitcoinAmount sats={payoutSats} size={22} gap={6} glyphScale={1.2} color={T.text} glyphColor={T.muted} />
+            <div style={{ color: T.ink, fontFamily: T.sans, lineHeight: 1.1 }}>
+              <BitcoinAmount sats={payoutSats} size={T.fs.amount} gap={6} glyphScale={0.9} color={T.ink} glyphColor={T.ink2} />
             </div>
           </div>
           <CardBack disabled={stage.kind !== "terminal" || retryProbing}
@@ -799,16 +804,16 @@ export function ClaimMethodChooser({
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
           <CardBack onClick={onCancel} />
           <div>
-            <div style={{ fontSize: 9, color: T.muted, fontFamily: T.mono, letterSpacing: 0, marginBottom: 4 }}>
+            <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, marginBottom: 4 }}>
               {t("claim.claimKicker")}
             </div>
-            <div style={{ fontSize: 22, fontWeight: 800, color: T.text, fontFamily: T.mono, letterSpacing: 0 }}>
+            <div style={{ fontSize: 22, fontWeight: 700, color: T.text, fontFamily: T.sans,}}>
               <TradeAmount msats={(rail === "ecash" ? ecashPayoutSats : payoutSats) * 1000} size={22} interactive />
             </div>
           </div>
         </div>
         <div style={{
-          fontSize: 11, color: T.muted, fontFamily: T.mono,
+          fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans,
           lineHeight: 1.5, marginBottom: 12,
         }}>
           {t("claim.chooseWhere")}
@@ -833,9 +838,21 @@ export function ClaimMethodChooser({
 
         <PaymentRails onchainContext={{kind:"withdrawal", federation:federationName || t("claim.yourFederation"), pegOutFeeSats}} rail={rail} disabledReasons={{ lightning: lightningReason }} onSelect={setRail} />
         <p style={{ color: T.muted, fontSize: 12, lineHeight: 1.5 }}>{t("claim.railTiming")}</p>
+        {/* Option b: this button PAYS when it collects as ecash or sends to the
+            selected saved wallet — then it is a hold. Otherwise it only opens
+            a form (on-chain, Lightning options), which stays a plain tap. */}
+        {CLAIM_HOLD_IN_SHEET && (rail === "ecash" || rail === "lightning" && selected) ? (
+          <div style={{ marginBottom: 12 }}>
+            <HoldToConfirm disabled={rail === "lightning" && !!lightningReason}
+              onConfirm={() => rail === "ecash" ? onSelectEcash() : rail === "lightning" && selected ? selected.kind === "address" ? onSelectSavedWallet(selected.wallet) : onSelectSavedNwc(selected.wallet) : onSelect({ kind: rail })}
+              label={rail === "ecash" || !selected ? t("claim.ecashMethod") : t("claim.sendTo", { amount: payoutSats.toLocaleString(), destination: selected.kind === "address" ? payoutDestinationLabel(selected.wallet) : selected.wallet.label })}
+              hint={t("common.holdToConfirm")} armedLabel={t("common.holdArmed")} />
+          </div>
+        ) : (
         <PaymentButton disabled={rail === "lightning" && !!lightningReason} tier={rail === "ecash" ? "primary" : "raised"} style={{ width: "100%", marginBottom: 12 }} onClick={() => rail === "ecash" ? onSelectEcash() : rail === "lightning" && selected ? selected.kind === "address" ? onSelectSavedWallet(selected.wallet) : onSelectSavedNwc(selected.wallet) : onSelect({ kind: rail })}>
           {rail === "ecash" ? t("claim.ecashMethod") : rail === "onchain" ? t("claim.pasteBitcoin") : selected ? t("claim.sendTo", { amount: payoutSats.toLocaleString(), destination: selected.kind === "address" ? payoutDestinationLabel(selected.wallet) : selected.wallet.label }) : t("claim.lightningOptions")}
         </PaymentButton>
+        )}
         {rail === "lightning" && selected && <PaymentButton disabled={!!lightningReason} onClick={() => onSelect({ kind: "lightning" })} style={{ width: "100%", marginBottom: 12 }}>{t("claim.lightningOptions")}</PaymentButton>}
         {hasTallCards && <section aria-label={t("claim.cashOutCurrency", { currency: cashOutCurrency })}>
         <h3 style={{ fontSize: 14, color: T.text, fontFamily: T.sans }}>{t("claim.cashOutCurrency", { currency: cashOutCurrency })}</h3>
@@ -861,7 +878,7 @@ export function ClaimMethodChooser({
                     style={{
                       width: "100%", padding: "12px 14px", borderRadius: T.r,
                       background: T.greenDim, border: `1px solid ${T.green}66`,
-                      color: T.text, fontFamily: T.mono, fontSize: 12,
+                      color: T.text, fontFamily: T.sans, fontSize: T.fs.secondary,
                       cursor: lightningReason ? "not-allowed" : "pointer", opacity: lightningReason ? 0.5 : 1, display: "flex",
                       justifyContent: "space-between", alignItems: "center",
                       gap: 12,
@@ -908,16 +925,16 @@ export function ClaimMethodChooser({
               }}>
                 <span style={{ fontSize: 20 }}>🇰🇪</span>
                 <span style={{
-                  fontSize: 8, fontFamily: T.mono, color: T.green,
+                  fontSize: T.fs.secondary, fontFamily: T.sans, color: T.green,
                   border: `1px solid ${T.green}55`, borderRadius: 4,
-                  padding: "2px 6px", textTransform: "uppercase",
+                  padding: "2px 6px",
                 }}>
                   {t("claim.oneTap")}
                 </span>
               </div>
               <div style={{
-                fontSize: 12, fontWeight: 800, color: T.green,
-                fontFamily: T.mono, marginBottom: 6, textTransform: "uppercase",
+                fontSize: T.fs.secondary, fontWeight: 800, color: T.green,
+                fontFamily: T.sans, marginBottom: 6,
               }}>
                 M-Pesa · KES
               </div>
@@ -945,20 +962,20 @@ export function ClaimMethodChooser({
               }}>
                 <span style={{ fontSize: 20 }}>🇹🇿</span>
                 <span style={{
-                  fontSize: 8, fontFamily: T.mono, color: T.green,
+                  fontSize: T.fs.secondary, fontFamily: T.sans, color: T.green,
                   border: `1px solid ${T.green}55`, borderRadius: 4,
-                  padding: "2px 6px", textTransform: "uppercase",
+                  padding: "2px 6px",
                 }}>
                   {t("claim.oneTap")}
                 </span>
               </div>
               <div style={{
-                fontSize: 12, fontWeight: 800, color: T.green,
-                fontFamily: T.mono, marginBottom: 6, textTransform: "uppercase",
+                fontSize: T.fs.secondary, fontWeight: 800, color: T.green,
+                fontFamily: T.sans, marginBottom: 6,
               }}>
                 M-Pesa · TZS
               </div>
-              <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono, lineHeight: 1.45 }}>
+              <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, lineHeight: 1.45 }}>
                 {t("claim.chapsmartCardBlurb")}
               </div>
             </button>
@@ -980,20 +997,20 @@ export function ClaimMethodChooser({
               }}>
                 <span style={{ fontSize: 20 }}>🇺🇸</span>
                 <span style={{
-                  fontSize: 8, fontFamily: T.mono, color: T.green,
+                  fontSize: T.fs.secondary, fontFamily: T.sans, color: T.green,
                   border: `1px solid ${T.green}55`, borderRadius: 4,
-                  padding: "2px 6px", textTransform: "uppercase",
+                  padding: "2px 6px",
                 }}>
                   {showSavedStrike ? t("claim.badgeNew") : t("claim.badgeCash")}
                 </span>
               </div>
               <div style={{
-                fontSize: 12, fontWeight: 800, color: T.green,
-                fontFamily: T.mono, marginBottom: 6, textTransform: "uppercase",
+                fontSize: T.fs.secondary, fontWeight: 800, color: T.green,
+                fontFamily: T.sans, marginBottom: 6,
               }}>
                 {t("claim.cashOutStrike")}
               </div>
-              <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono, lineHeight: 1.45 }}>
+              <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, lineHeight: 1.45 }}>
                 {showSavedStrike
                   ? t("claim.strikeUseDifferent")
                   : t("claim.strikeCardBlurb")}
@@ -1031,24 +1048,22 @@ export function ClaimMethodChooser({
                 }}>
                   <span style={{ fontSize: 20 }}>{provider.flagEmoji}</span>
                   <span style={{
-                    fontSize: 8, fontFamily: T.mono,
+                    fontSize: T.fs.secondary, fontFamily: T.sans,
                     color: isLive ? T.teal : T.amber,
                     border: `1px solid ${isLive ? T.teal : T.amber}55`,
                     borderRadius: 4, padding: "2px 6px",
-                    textTransform: "uppercase",
                   }}>
                     {recommended ? t("claim.badgeTopPick") : (isLive ? t("claim.badgeLive") : t("claim.badgeSoon"))}
                   </span>
                 </div>
                 <div style={{
-                  fontSize: 12, fontWeight: 800, color: titleColor,
-                  fontFamily: T.mono, marginBottom: 6,
-                  textTransform: "uppercase",
+                  fontSize: T.fs.secondary, fontWeight: 800, color: titleColor,
+                  fontFamily: T.sans, marginBottom: 6,
                 }}>
                   {provider.displayName} · {provider.currency}
                 </div>
                 <div style={{
-                  fontSize: 10, color: T.muted, fontFamily: T.mono,
+                  fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans,
                   lineHeight: 1.45,
                 }}>
                   {(provider.blurbKey && t(provider.blurbKey)) || provider.blurb ||
@@ -1122,10 +1137,10 @@ function ExternalSwapRedirectPicker({
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
           <div>
-            <div style={{ fontSize: 9, color: T.muted, fontFamily: T.mono, letterSpacing: 0, marginBottom: 4 }}>
-              {t("claim.providerClaimKicker", { provider: provider.displayName.toUpperCase() })}
+            <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, marginBottom: 4 }}>
+              {t("claim.providerClaimKicker", { provider: provider.displayName })}
             </div>
-            <div style={{ fontSize: 22, fontWeight: 800, color: T.text, fontFamily: T.mono, letterSpacing: 0 }}>
+            <div style={{ fontSize: 22, fontWeight: 700, color: T.text, fontFamily: T.sans,}}>
               <BitcoinAmount sats={payoutSats} size={22} gap={6} glyphScale={1.2} color={T.text} glyphColor={T.muted} />
             </div>
           </div>
@@ -1144,8 +1159,8 @@ function ExternalSwapRedirectPicker({
             <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
               <span style={{ fontSize: 20 }}>{availability.country.flagEmoji}</span>
               <span style={{
-                color: T.teal, fontFamily: T.mono, fontSize: 11,
-                fontWeight: 900, overflow: "hidden", textOverflow: "ellipsis",
+                color: T.teal, fontFamily: T.sans, fontSize: T.fs.secondary,
+                fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis",
                 whiteSpace: "nowrap",
               }}>
                 {availability.country.displayName}
@@ -1156,23 +1171,22 @@ function ExternalSwapRedirectPicker({
               background: isLive ? T.greenDim : T.amberDim,
               border: `1px solid ${isLive ? T.green : T.amber}55`,
               borderRadius: 4, padding: "2px 6px",
-              fontFamily: T.mono, fontSize: 8, fontWeight: 900,
-              textTransform: "uppercase",
+              fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 900,
             }}>
               {isLive ? t("claim.badgeLiveNow") : t("claim.badgeComingSoon")}
             </span>
           </div>
           <div style={{
-            color: T.muted, fontFamily: T.mono, fontSize: 10,
+            color: T.muted, fontFamily: T.sans, fontSize: T.fs.secondary,
             lineHeight: 1.5,
           }}>
             {isLive
               ? (
                   <>
-                    {t("claim.externalLiveBodyBefore", { provider: provider.displayName, currency: provider.currency })} <BitcoinAmount sats={payoutSats} size={10} gap={3} glyphScale={1.18} color={T.muted} glyphColor={T.muted} />{t("claim.externalLiveBodyAfter")}
+                    {t("claim.externalLiveBodyBefore", { provider: provider.displayName, currency: provider.currency })} <BitcoinAmount sats={payoutSats} size={T.fs.secondary} gap={3} glyphScale={1.18} color={T.muted} glyphColor={T.muted} />{t("claim.externalLiveBodyAfter")}
                     {reserveSats > 0 && (
                       <>
-                        {" "}{t("claim.feeReserveBefore")} <BitcoinAmount sats={reserveSats} size={10} gap={3} glyphScale={1.18} color={T.muted} glyphColor={T.muted} /> {t("claim.feeReserveAfter")}
+                        {" "}{t("claim.feeReserveBefore")} <BitcoinAmount sats={reserveSats} size={T.fs.secondary} gap={3} glyphScale={1.18} color={T.muted} glyphColor={T.muted} /> {t("claim.feeReserveAfter")}
                       </>
                     )}
                   </>
@@ -1190,8 +1204,8 @@ function ExternalSwapRedirectPicker({
           style={{
             width: "100%", padding: "12px 16px", borderRadius: T.rs,
             background: T.teal, border: `1px solid ${T.teal}`,
-            color: T.bg, fontFamily: T.mono, fontSize: 12,
-            fontWeight: 900, cursor: "pointer", marginBottom: 10,
+            color: T.bg, fontFamily: T.sans, fontSize: T.fs.secondary,
+            fontWeight: 700, cursor: "pointer", marginBottom: 10,
           }}
         >
           {isLive
@@ -1214,21 +1228,13 @@ function ExternalSwapRedirectPicker({
                 outline: "none", marginBottom: 10,
               }}
             />
-            <button
-              onClick={() => onResolve(normalizedInvoice)}
+            <ClaimSendButton
               disabled={!looksLikeBolt11}
-              style={{
-                width: "100%", padding: "12px 16px", borderRadius: T.rs,
-                background: looksLikeBolt11 ? T.teal : T.surface,
-                border: `1px solid ${looksLikeBolt11 ? T.teal : T.border}`,
-                color: looksLikeBolt11 ? T.bg : T.muted,
-                fontFamily: T.mono, fontSize: 12, fontWeight: 900,
-                cursor: looksLikeBolt11 ? "pointer" : "default",
-                marginBottom: 8,
-              }}
+              busy={false}
+              onSend={() => onResolve(normalizedInvoice)}
             >
               {t("claim.claimViaProviderInvoice", { provider: provider.displayName })}
-            </button>
+            </ClaimSendButton>
           </>
         )}
 
@@ -1355,10 +1361,10 @@ function TandoMpesaPicker({
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
           <div>
-            <div style={{ fontSize: 9, color: T.muted, fontFamily: T.mono, letterSpacing: 0, marginBottom: 4 }}>
+            <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, marginBottom: 4 }}>
               {t("claim.tandoKicker")}
             </div>
-            <div style={{ fontSize: 22, fontWeight: 800, color: T.text, fontFamily: T.mono, letterSpacing: 0 }}>
+            <div style={{ fontSize: 22, fontWeight: 700, color: T.text, fontFamily: T.sans,}}>
               <BitcoinAmount sats={payoutSats} size={22} gap={6} glyphScale={1.2} color={T.text} glyphColor={T.muted} />
             </div>
           </div>
@@ -1377,8 +1383,8 @@ function TandoMpesaPicker({
             <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
               <span style={{ fontSize: 20 }}>🇰🇪</span>
               <span style={{
-                color: T.green, fontFamily: T.mono, fontSize: 11,
-                fontWeight: 900, overflow: "hidden", textOverflow: "ellipsis",
+                color: T.green, fontFamily: T.sans, fontSize: T.fs.secondary,
+                fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis",
                 whiteSpace: "nowrap",
               }}>
                 {t("claim.cashOutMpesa")}
@@ -1387,26 +1393,25 @@ function TandoMpesaPicker({
             <span style={{
               flexShrink: 0, color: T.green, background: T.greenDim,
               border: `1px solid ${T.green}55`, borderRadius: 4, padding: "2px 6px",
-              fontFamily: T.mono, fontSize: 8, fontWeight: 900,
-              textTransform: "uppercase",
+              fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 900,
             }}>
               {t("claim.oneTap")}
             </span>
           </div>
           <div style={{
-            color: T.muted, fontFamily: T.mono, fontSize: 10,
+            color: T.muted, fontFamily: T.sans, fontSize: T.fs.secondary,
             lineHeight: 1.5,
           }}>
             {t("claim.tandoBody")}
             {reserveSats > 0 && (
               <>
-                {" "}{t("claim.feeReserveBefore")} <BitcoinAmount sats={reserveSats} size={10} gap={3} glyphScale={1.18} color={T.muted} glyphColor={T.muted} /> {t("claim.feeReserveAfter")}
+                {" "}{t("claim.feeReserveBefore")} <BitcoinAmount sats={reserveSats} size={T.fs.secondary} gap={3} glyphScale={1.18} color={T.muted} glyphColor={T.muted} /> {t("claim.feeReserveAfter")}
               </>
             )}
           </div>
         </div>
 
-        <div style={{ fontSize: 9, color: T.muted, fontFamily: T.mono, marginBottom: 6, letterSpacing: 1 }}>
+        <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, marginBottom: 6,}}>
           {t("claim.mpesaPhoneLabel")}
         </div>
         <input
@@ -1429,7 +1434,7 @@ function TandoMpesaPicker({
         />
 
         <div style={{
-          fontSize: 10, color: T.muted, fontFamily: T.mono,
+          fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans,
           lineHeight: 1.5, marginBottom: 12, minHeight: 14,
         }}>
           {valid ? (
@@ -1444,27 +1449,19 @@ function TandoMpesaPicker({
           )}
         </div>
 
-        <button
-          onClick={() => void submit()}
+        <ClaimSendButton
           disabled={!valid || busy}
-          style={{
-            width: "100%", padding: "12px 16px", borderRadius: T.rs,
-            background: valid && !busy ? T.green : T.surface,
-            border: `1px solid ${valid && !busy ? T.green : T.border}`,
-            color: valid && !busy ? T.bg : T.muted,
-            fontFamily: T.mono, fontSize: 12, fontWeight: 900,
-            cursor: valid && !busy ? "pointer" : "default",
-            marginBottom: 8,
-          }}
+          busy={busy}
+          onSend={() => void submit()}
         >
           {busy ? t("claim.reachingTando") : t("claim.cashOutMpesa")}
-        </button>
+        </ClaimSendButton>
 
         {err && (
           <div style={{
             marginBottom: 8, padding: 10, borderRadius: T.rs,
             background: T.redDim, border: `1px solid ${T.red}44`,
-            color: T.red, fontFamily: T.mono, fontSize: 10, lineHeight: 1.5,
+            color: T.red, fontFamily: T.sans, fontSize: T.fs.secondary, lineHeight: 1.5,
           }}>
             {err}
           </div>
@@ -1591,10 +1588,10 @@ function ChapsmartMpesaPicker({
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
           <div>
-            <div style={{ fontSize: 9, color: T.muted, fontFamily: T.mono, letterSpacing: 0, marginBottom: 4 }}>
+            <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, marginBottom: 4 }}>
               {t("claim.chapsmartKicker")}
             </div>
-            <div style={{ fontSize: 22, fontWeight: 800, color: T.text, fontFamily: T.mono, letterSpacing: 0 }}>
+            <div style={{ fontSize: 22, fontWeight: 700, color: T.text, fontFamily: T.sans,}}>
               <BitcoinAmount sats={payoutSats} size={22} gap={6} glyphScale={1.2} color={T.text} glyphColor={T.muted} />
             </div>
           </div>
@@ -1613,8 +1610,8 @@ function ChapsmartMpesaPicker({
             <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
               <span style={{ fontSize: 20 }}>🇹🇿</span>
               <span style={{
-                color: T.green, fontFamily: T.mono, fontSize: 11,
-                fontWeight: 900, overflow: "hidden", textOverflow: "ellipsis",
+                color: T.green, fontFamily: T.sans, fontSize: T.fs.secondary,
+                fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis",
                 whiteSpace: "nowrap",
               }}>
                 {t("claim.cashOutMpesa")}
@@ -1623,26 +1620,25 @@ function ChapsmartMpesaPicker({
             <span style={{
               flexShrink: 0, color: T.green, background: T.greenDim,
               border: `1px solid ${T.green}55`, borderRadius: 4, padding: "2px 6px",
-              fontFamily: T.mono, fontSize: 8, fontWeight: 900,
-              textTransform: "uppercase",
+              fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 900,
             }}>
               {t("claim.oneTap")}
             </span>
           </div>
           <div style={{
-            color: T.muted, fontFamily: T.mono, fontSize: 10,
+            color: T.muted, fontFamily: T.sans, fontSize: T.fs.secondary,
             lineHeight: 1.5,
           }}>
             {t("claim.chapsmartBody")}
             {reserveSats > 0 && (
               <>
-                {" "}{t("claim.feeReserveBefore")} <BitcoinAmount sats={reserveSats} size={10} gap={3} glyphScale={1.18} color={T.muted} glyphColor={T.muted} /> {t("claim.feeReserveAfter")}
+                {" "}{t("claim.feeReserveBefore")} <BitcoinAmount sats={reserveSats} size={T.fs.secondary} gap={3} glyphScale={1.18} color={T.muted} glyphColor={T.muted} /> {t("claim.feeReserveAfter")}
               </>
             )}
           </div>
         </div>
 
-        <div style={{ fontSize: 9, color: T.muted, fontFamily: T.mono, marginBottom: 6, letterSpacing: 1 }}>
+        <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, marginBottom: 6,}}>
           {t("claim.mpesaPhoneLabel")}
         </div>
         <input
@@ -1665,7 +1661,7 @@ function ChapsmartMpesaPicker({
         />
 
         <div style={{
-          fontSize: 10, color: T.muted, fontFamily: T.mono,
+          fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans,
           lineHeight: 1.5, marginBottom: 12, minHeight: 14,
         }}>
           {valid ? (
@@ -1680,27 +1676,19 @@ function ChapsmartMpesaPicker({
           )}
         </div>
 
-        <button
-          onClick={() => void submit()}
+        <ClaimSendButton
           disabled={!valid || busy}
-          style={{
-            width: "100%", padding: "12px 16px", borderRadius: T.rs,
-            background: valid && !busy ? T.green : T.surface,
-            border: `1px solid ${valid && !busy ? T.green : T.border}`,
-            color: valid && !busy ? T.bg : T.muted,
-            fontFamily: T.mono, fontSize: 12, fontWeight: 900,
-            cursor: valid && !busy ? "pointer" : "default",
-            marginBottom: 8,
-          }}
+          busy={busy}
+          onSend={() => void submit()}
         >
           {busy ? t("claim.reachingChapsmart") : t("claim.cashOutMpesa")}
-        </button>
+        </ClaimSendButton>
 
         {err && (
           <div style={{
             marginBottom: 8, padding: 10, borderRadius: T.rs,
             background: T.redDim, border: `1px solid ${T.red}44`,
-            color: T.red, fontFamily: T.mono, fontSize: 10, lineHeight: 1.5,
+            color: T.red, fontFamily: T.sans, fontSize: T.fs.secondary, lineHeight: 1.5,
           }}>
             {err}
           </div>
@@ -1833,10 +1821,10 @@ function StrikeUsdPicker({
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
           <div>
-            <div style={{ fontSize: 9, color: T.muted, fontFamily: T.mono, letterSpacing: 0, marginBottom: 4 }}>
+            <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, marginBottom: 4 }}>
               {t("claim.strikeKicker")}
             </div>
-            <div style={{ fontSize: 22, fontWeight: 800, color: T.text, fontFamily: T.mono, letterSpacing: 0 }}>
+            <div style={{ fontSize: 22, fontWeight: 700, color: T.text, fontFamily: T.sans,}}>
               <BitcoinAmount sats={payoutSats} size={22} gap={6} glyphScale={1.2} color={T.text} glyphColor={T.muted} />
             </div>
           </div>
@@ -1855,8 +1843,8 @@ function StrikeUsdPicker({
             <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
               <span style={{ fontSize: 20 }}>🇺🇸</span>
               <span style={{
-                color: T.green, fontFamily: T.mono, fontSize: 11,
-                fontWeight: 900, overflow: "hidden", textOverflow: "ellipsis",
+                color: T.green, fontFamily: T.sans, fontSize: T.fs.secondary,
+                fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis",
                 whiteSpace: "nowrap",
               }}>
                 {t("claim.strikeTitle")}
@@ -1865,21 +1853,20 @@ function StrikeUsdPicker({
             <span style={{
               flexShrink: 0, color: T.green, background: T.greenDim,
               border: `1px solid ${T.green}55`, borderRadius: 4, padding: "2px 6px",
-              fontFamily: T.mono, fontSize: 8, fontWeight: 900,
-              textTransform: "uppercase",
+              fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 900,
             }}>
               {t("claim.badgeNative")}
             </span>
           </div>
           <div style={{
-            color: T.muted, fontFamily: T.mono, fontSize: 10,
+            color: T.muted, fontFamily: T.sans, fontSize: T.fs.secondary,
             lineHeight: 1.5,
           }}>
             {t("claim.strikeBodyBefore")}{" "}
             <span style={{ color: T.green }}>@{STRIKE_LNADDRESS_DOMAIN}</span>{t("claim.strikeBodyAfter")}
             {reserveSats > 0 && (
               <>
-                {" "}{t("claim.feeReserveBefore")} <BitcoinAmount sats={reserveSats} size={10} gap={3} glyphScale={1.18} color={T.muted} glyphColor={T.muted} /> {t("claim.feeReserveAfter")}
+                {" "}{t("claim.feeReserveBefore")} <BitcoinAmount sats={reserveSats} size={T.fs.secondary} gap={3} glyphScale={1.18} color={T.muted} glyphColor={T.muted} /> {t("claim.feeReserveAfter")}
               </>
             )}
           </div>
@@ -1890,33 +1877,33 @@ function StrikeUsdPicker({
           background: T.amberDim, border: `1px solid ${T.amber}44`,
         }}>
           <div style={{
-            color: T.amber, fontFamily: T.mono, fontSize: 10,
-            fontWeight: 900, lineHeight: 1.4, marginBottom: 6,
+            color: T.amber, fontFamily: T.sans, fontSize: T.fs.secondary,
+            fontWeight: 700, lineHeight: 1.4, marginBottom: 6,
           }}>
             {t("claim.strikeCashTitle")}
           </div>
           <div style={{
-            color: T.muted, fontFamily: T.mono, fontSize: 10,
+            color: T.muted, fontFamily: T.sans, fontSize: T.fs.secondary,
             lineHeight: 1.5, marginBottom: 8,
           }}>
             {STRIKE_CASH_HINT}
           </div>
           <ol style={{
             margin: "0 0 8px", paddingLeft: 18, color: T.muted,
-            fontFamily: T.mono, fontSize: 10, lineHeight: 1.55,
+            fontFamily: T.sans, fontSize: T.fs.secondary, lineHeight: 1.55,
           }}>
             {STRIKE_CASH_STEPS.map((step) => (
               <li key={step} style={{ marginBottom: 2 }}>{step}</li>
             ))}
           </ol>
           <div style={{
-            color: T.muted, fontFamily: T.mono, fontSize: 9, lineHeight: 1.45,
+            color: T.muted, fontFamily: T.sans, fontSize: T.fs.secondary, lineHeight: 1.45,
           }}>
             {STRIKE_CASH_CAVEAT} {t("claim.strikeSendsSats")}
           </div>
         </div>
 
-        <div style={{ fontSize: 9, color: T.muted, fontFamily: T.mono, marginBottom: 6, letterSpacing: 1 }}>
+        <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, marginBottom: 6,}}>
           {t("claim.strikeUsernameLabel")}
         </div>
         <div style={{ position: "relative", marginBottom: 8 }}>
@@ -1951,7 +1938,7 @@ function StrikeUsdPicker({
           />
           <span style={{
             position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)",
-            color: valid ? T.green : T.muted, fontFamily: T.mono, fontSize: 12,
+            color: valid ? T.green : T.muted, fontFamily: T.sans, fontSize: T.fs.secondary,
             fontWeight: 700, pointerEvents: "none",
           }}>
             @{STRIKE_LNADDRESS_DOMAIN}
@@ -1982,7 +1969,7 @@ function StrikeUsdPicker({
           background: cashReady ? T.greenDim : T.surface,
           border: `1px solid ${cashReady ? `${T.green}66` : T.border}`,
           color: cashReady ? T.text : T.muted,
-          fontFamily: T.mono, fontSize: 10, lineHeight: 1.45,
+          fontFamily: T.sans, fontSize: T.fs.secondary, lineHeight: 1.45,
           marginBottom: 12, cursor: busy ? "not-allowed" : "pointer",
         }}>
           <input
@@ -2000,27 +1987,19 @@ function StrikeUsdPicker({
           </span>
         </label>
 
-        <button
-          onClick={() => void submit()}
+        <ClaimSendButton
           disabled={!readyToSend}
-          style={{
-            width: "100%", padding: "12px 16px", borderRadius: T.rs,
-            background: readyToSend ? T.green : T.surface,
-            border: `1px solid ${readyToSend ? T.green : T.border}`,
-            color: readyToSend ? T.bg : T.muted,
-            fontFamily: T.mono, fontSize: 12, fontWeight: 900,
-            cursor: readyToSend ? "pointer" : "default",
-            marginBottom: 8,
-          }}
+          busy={busy}
+          onSend={() => void submit()}
         >
           {busy ? t("claim.reachingStrike") : cashReady ? t("claim.sendToStrike") : t("claim.confirmCashReceive")}
-        </button>
+        </ClaimSendButton>
 
         {err && (
           <div style={{
             marginBottom: 8, padding: 10, borderRadius: T.rs,
             background: T.redDim, border: `1px solid ${T.red}44`,
-            color: T.red, fontFamily: T.mono, fontSize: 10, lineHeight: 1.5,
+            color: T.red, fontFamily: T.sans, fontSize: T.fs.secondary, lineHeight: 1.5,
           }}>
             {err}
           </div>
@@ -2070,10 +2049,10 @@ export function OnchainPayoutPicker({
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
           <div>
-            <div style={{ fontSize: 9, color: T.muted, fontFamily: T.mono, letterSpacing: 0, marginBottom: 4 }}>
+            <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, marginBottom: 4 }}>
               {t("claim.onchainClaimKicker")}
             </div>
-            <div style={{ fontSize: 22, fontWeight: 800, color: T.text, fontFamily: T.mono, letterSpacing: 0 }}>
+            <div style={{ fontSize: 22, fontWeight: 700, color: T.text, fontFamily: T.sans,}}>
               <BitcoinAmount sats={payoutSats} size={22} gap={6} glyphScale={1.2} color={T.text} glyphColor={T.muted} />
             </div>
           </div>
@@ -2082,7 +2061,7 @@ export function OnchainPayoutPicker({
         <div style={{
           padding: "10px 12px", borderRadius: T.rs,
           background: T.amberDim, border: `1px solid ${T.amber}44`,
-          color: T.amber, fontFamily: T.mono, fontSize: 10,
+          color: T.amber, fontFamily: T.sans, fontSize: T.fs.secondary,
           lineHeight: 1.5, marginBottom: 12,
         }}>
           <div>{t("payment.federationWithdrawal", {federation:federationName || t("claim.yourFederation")})}</div>
@@ -2102,21 +2081,13 @@ export function OnchainPayoutPicker({
             outline: "none", marginBottom: 10,
           }}
         />
-        <button
-          onClick={() => onResolve(trimmed)}
+        <ClaimSendButton
           disabled={!looksLikeBitcoinAddress}
-          style={{
-            width: "100%", padding: "12px 16px", borderRadius: T.rs,
-            background: looksLikeBitcoinAddress ? T.amber : T.surface,
-            border: `1px solid ${looksLikeBitcoinAddress ? T.amber : T.border}`,
-            color: looksLikeBitcoinAddress ? T.bg : T.muted,
-            fontFamily: T.mono, fontSize: 12, fontWeight: 800,
-            cursor: looksLikeBitcoinAddress ? "pointer" : "default",
-            marginBottom: 8,
-          }}
+          busy={false}
+          onSend={() => onResolve(trimmed)}
         >
           {looksLikeBitcoinAddress ? t("claim.sendTo", { amount: payoutSats.toLocaleString(), destination: `${trimmed.slice(0, 10)}…${trimmed.slice(-6)}` }) : t("claim.pasteBitcoin")}
-        </button>
+        </ClaimSendButton>
       </div>
     </div>
   );
@@ -2193,12 +2164,12 @@ function RunningPanel({
         background: tone, animation: "pulse 1.4s ease-in-out infinite",
         margin: "0 auto 12px",
       }} />
-      <div style={{ fontSize: 11, fontWeight: 600, color: tone, fontFamily: T.mono, letterSpacing: 1 }}>
-        {message.toUpperCase()}
+      <div style={{ fontSize: T.fs.secondary, fontWeight: 600, color: tone, fontFamily: T.sans,}}>
+        {message}
       </div>
       {showEscape && onEscape && (
         <div style={{ marginTop: 18 }}>
-          <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono, marginBottom: 8, lineHeight: 1.5 }}>
+          <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, marginBottom: 8, lineHeight: 1.5 }}>
             {t("claim.longRunningEscape")}
           </div>
           <button
@@ -2206,7 +2177,7 @@ function RunningPanel({
             style={{
               width: "100%", padding: "10px 16px", borderRadius: T.rs,
               background: T.surface, border: `1px solid ${T.border}`,
-              color: T.text, fontFamily: T.mono, fontSize: 12, fontWeight: 700,
+              color: T.text, fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
               cursor: "pointer",
             }}
           >
@@ -2252,7 +2223,7 @@ function TerminalPanel({
               ? t("claim.sentToProvider", { provider: payoutMethod.match.provider.displayName })
               : t("claim.sentToWallet")}
         </div>
-        <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono, marginTop: 12 }}>
+        <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, marginTop: 12 }}>
           {t("claim.closing")}
         </div>
       </div>
@@ -2358,7 +2329,7 @@ function TerminalPanel({
           {title}
         </div>
         <div style={{
-          fontSize: 10, color: T.muted, fontFamily: T.mono,
+          fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans,
           whiteSpace: "pre-wrap", wordBreak: "break-word",
         }}>
           {subtitle}
@@ -2373,7 +2344,7 @@ function TerminalPanel({
             background: T.surface,
             border: `1px solid ${T.accent}`,
             color: retryProbing ? T.muted : T.accent,
-            fontFamily: T.mono, fontSize: 12, fontWeight: 800,
+            fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
             cursor: retryProbing ? "not-allowed" : "pointer",
             marginBottom: 8,
             display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
@@ -2396,7 +2367,7 @@ function TerminalPanel({
           background: showRecoveryCta ? T.amber : T.surface,
           border: `1px solid ${showRecoveryCta ? T.amber : T.border}`,
           color: showRecoveryCta ? "#000" : T.muted,
-          fontFamily: T.mono, fontSize: 11, fontWeight: 800,
+          fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
           cursor: retryProbing ? "not-allowed" : "pointer",
           boxShadow: showRecoveryCta ? `0 0 24px ${T.amber}33` : "none",
         }}
@@ -2404,5 +2375,26 @@ function TerminalPanel({
         {showRecoveryCta ? t("claim.showRecoveryNow") : t("common.close")}
       </button>
     </div>
+  );
+}
+
+/** v7 redesign: the final "send my payout here" button of every claim route.
+ *  While CLAIM_HOLD_IN_SHEET is off (today) it is a plain tap — the hold sits
+ *  on the trade room's Collect — restyled as the ink money button. Turned on
+ *  (Jet's option b), the same handler fires from a hold instead. Behaviour is
+ *  otherwise identical in both modes: same handler, same disabled guard. */
+function ClaimSendButton({ onSend, disabled, busy, children }: {
+  onSend: () => void; disabled: boolean; busy: boolean; children: React.ReactNode;
+}) {
+  const { t } = useT();
+  if (CLAIM_HOLD_IN_SHEET) {
+    return <HoldToConfirm label={children} onConfirm={onSend} disabled={disabled} busy={busy}
+      hint={t("common.holdToConfirm")} armedLabel={t("common.holdArmed")} />;
+  }
+  return (
+    <button type="button" onClick={onSend} disabled={disabled}
+      style={buttonStyle("primary", { money: true, disabled })}>
+      {children}
+    </button>
   );
 }
