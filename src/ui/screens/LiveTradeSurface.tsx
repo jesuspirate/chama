@@ -78,6 +78,11 @@ const tr = (key: string, params?: Record<string, string | number>) =>
 const samePubkey = (a?: string | null, b?: string | null): boolean =>
   !!a && !!b && a.toLowerCase() === b.toLowerCase();
 
+/** False means App reported a failed/suppressed attempt; keep the decision retryable. */
+export async function recordAcceptedVote(onVote: (outcome: Outcome) => Promise<boolean | void>, outcome: Outcome, onAccepted: () => void): Promise<void> {
+  if (await onVote(outcome) === true) onAccepted();
+}
+
 export function LiveTradeSurface({
   state,
   historyReloading = false,
@@ -119,7 +124,7 @@ export function LiveTradeSurface({
   onOpenFullView: (section?: "onchain-funding") => void;
   onCheckOnchainFunding?: (id: string) => Promise<{ depositStatus: "waiting" | "seen" | "confirmed"; verdict: { funded: boolean } | null; refundVerified?: boolean; refundPending?: boolean }>;
   onchainActions?: OnchainTradeActions;
-  onVote: (outcome: Outcome, payoutAddress?: string) => Promise<void>;
+  onVote: (outcome: Outcome, payoutAddress?: string) => Promise<boolean | void>;
   /** Modal-driven money paths. Optional: when a caller hasn't wired them yet,
    *  the Fund / Claim surfaces defer to the full view via onOpenFullView. */
   onClaim?: () => Promise<void>;
@@ -180,7 +185,7 @@ export function LiveTradeSurface({
   const [busy, setBusy] = useState(false);
   const [onchainOpen, setOnchainOpen] = useState(false);
   useEffect(() => { setOnchainOpen(false); }, [state.id, state.status]);
-  const onchainControls = <OnchainTradeControls onReleaseWithPayout={address => onVote(Outcome.RELEASE, address)} state={state} pubkey={pubkey} profileNames={profileNames} kind0Enabled={kind0Enabled} {...onchainActions} />;
+  const onchainControls = <OnchainTradeControls onReleaseWithPayout={async address => { await onVote(Outcome.RELEASE, address); }} state={state} pubkey={pubkey} profileNames={profileNames} kind0Enabled={kind0Enabled} {...onchainActions} />;
   useEffect(() => {
     if (state.escrowMode === "onchain" && state.status === EscrowStatus.CREATED && participants.buyer && participants.seller
       && myRole === (state.onchainFundingTerms?.funder ?? expectedLockerRole(state.category))) setOnchainOpen(true);
@@ -216,18 +221,23 @@ export function LiveTradeSurface({
     if (armTimer.current) { clearTimeout(armTimer.current); armTimer.current = null; }
     setArmed(null);
   };
-  // UI-only placeholder: set once onVote resolves (the vote was published),
+  // UI-only placeholder: set only when App confirms the vote succeeded,
   // cleared as soon as the trade's recorded votes or status change. The vote
   // itself is exactly the onVote call it always was.
   const [voteRecorded, setVoteRecorded] = useState(false);
   const voteKey = `${state.id}|${state.status}|${state.votes[Role.BUYER] ?? ""}|${state.votes[Role.SELLER] ?? ""}|${state.votes[Role.ARBITER] ?? ""}`;
   useEffect(() => { setVoteRecorded(false); }, [voteKey]);
+  const [voteAttempt, setVoteAttempt] = useState(0);
   const castVote = async (outcome: Outcome) => {
-    await onVote(outcome);
-    // App reports a failed vote with a toast and still resolves, so the
-    // placeholder also clears itself — the buttons return for a retry.
-    setVoteRecorded(true);
-    setTimeout(() => setVoteRecorded(false), 10_000);
+    try {
+      await recordAcceptedVote(onVote, outcome, () => {
+        setVoteRecorded(true);
+        setTimeout(() => setVoteRecorded(false), 10_000);
+      });
+    } finally {
+      // Even an immediately settled failure must reset the completed hold.
+      setVoteAttempt(attempt => attempt + 1);
+    }
   };
   const run = async (fn: () => Promise<void> | void) => {
     if (busy) return;
@@ -628,7 +638,7 @@ export function LiveTradeSurface({
             <MoneyHold
               disabled={busy}
               busy={busy}
-              resetKey={`${state.id}:release1`}
+              resetKey={`${state.id}:release1:${voteAttempt}`}
               onConfirm={() => run(() => castVote(Outcome.RELEASE))}
               label={tr(state.category === "marketplace" ? `lts.mark${marketDelivery(state)}` : state.category === "p2p-trade" ? "lts.iSentIt" : "lts.yesConfirm")}
             />
@@ -671,7 +681,7 @@ export function LiveTradeSurface({
             <MoneyHold
               disabled={busy}
               busy={busy}
-              resetKey={`${state.id}:agree-refund`}
+              resetKey={`${state.id}:agree-refund:${voteAttempt}`}
               onConfirm={() => run(() => castVote(Outcome.REFUND))}
               label={tr("lts.agreeRefund")}
             />
@@ -680,7 +690,7 @@ export function LiveTradeSurface({
                 variant="secondary"
                 disabled={busy}
                 busy={busy}
-                resetKey={`${state.id}:release-anyway`}
+                resetKey={`${state.id}:release-anyway:${voteAttempt}`}
                 onConfirm={() => run(() => castVote(Outcome.RELEASE))}
                 label={`${tr("lts.releaseAnyway")} · ${tr("lts.toCounterparty")}`}
               />
@@ -702,7 +712,7 @@ export function LiveTradeSurface({
             <MoneyHold
               disabled={busy}
               busy={busy}
-              resetKey={`${state.id}:release`}
+              resetKey={`${state.id}:release:${voteAttempt}`}
               onConfirm={() => { disarm(); void run(() => castVote(Outcome.RELEASE)); }}
               label={state.category === "p2p-trade" ? tr("lts.releaseToBtn", { name: releaseName }) : `${tr("lts.release")} · ${tr("lts.toCounterparty")}`}
             />

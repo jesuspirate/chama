@@ -4,7 +4,7 @@
 import assert from 'node:assert/strict';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { LiveTradeSurface } from './screens/LiveTradeSurface.js';
+import { LiveTradeSurface, recordAcceptedVote } from './screens/LiveTradeSurface.js';
 import { EscrowStatus, Outcome, type EscrowState } from '../escrow-engine/types.js';
 import { payoutRecipientFor } from '../escrow-engine/recipients.js';
 import { LangProvider } from '../i18n/index.js';
@@ -29,7 +29,7 @@ const base = {
 const HOLD = /Press and hold to confirm/;
 const room = (state: EscrowState, pubkey: string, extra: Record<string, unknown> = {}) => renderToStaticMarkup(
   <LangProvider><LiveTradeSurface state={state} pubkey={pubkey} onBack={() => {}} onOpenFullView={() => {}}
-    onVote={async () => {}} onSendChat={async () => {}} {...extra} /></LangProvider>);
+    onVote={async () => true} onSendChat={async () => {}} {...extra} /></LangProvider>);
 
 // Release — both the first vote and the confirming vote.
 const locked = { ...base, status: EscrowStatus.LOCKED, lock: { notesHash: 'locked', lockedAt: now } } as unknown as EscrowState;
@@ -92,7 +92,7 @@ assert.equal(collectIsHold(), false);
 // The sheet's destinations: typed sends and saved-wallet sends are holds, and
 // a saved row only SELECTS (no render-time or tap-time dispatch).
 const { DestinationPicker } = await import('./components/DestinationPicker.js');
-const { readFileSync } = await import('node:fs');
+const { readFileSync, readdirSync } = await import('node:fs');
 const unexpected = () => { throw new Error('must not dispatch'); };
 const typedHtml = renderToStaticMarkup(<LangProvider><DestinationPicker holdToSend amountSats={196}
   initialAddress="bitcrazy@getalby.com" savedDestinations={[]} savedNwcConnections={[]}
@@ -103,8 +103,15 @@ assert.match(typedHtml, /Send 196 sats to bitcrazy@getalby.com/);
 const recovery = readFileSync(new URL('./panels/RecoveryPayoutModal.tsx', import.meta.url), 'utf8');
 assert.match(recovery, /<DestinationPicker\s+holdToSend\s/, 'the recovery picker holds');
 // No single-tap send anywhere: every DestinationPicker in the app holds.
-const { execFileSync } = await import('node:child_process');
-const pickers = execFileSync('rg', ['-l', '<DestinationPicker', 'src/ui', '--glob', '!*.tests*']).toString().trim().split('\n');
+function uiSourceFiles(directory: URL): URL[] {
+  return readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
+    if (entry.name.includes('.tests')) return [];
+    const file = new URL(entry.name + (entry.isDirectory() ? '/' : ''), directory);
+    return entry.isDirectory() ? uiSourceFiles(file) : /\.[cm]?[jt]sx?$/.test(entry.name) ? [file] : [];
+  });
+}
+const pickers = uiSourceFiles(new URL('./', import.meta.url)).filter(file => readFileSync(file, 'utf8').includes('<DestinationPicker'));
+assert.ok(pickers.length > 0, 'the source walk must find payout pickers');
 for (const file of pickers) {
   // Real JSX uses only — comment lines that merely mention the component are skipped.
   const src = readFileSync(file, 'utf8').split('\n').filter(line => !/^\s*(\/\/|\*)/.test(line)).join('\n');
@@ -120,3 +127,25 @@ assert.doesNotMatch(sheet, /onClick=\{\(\) => void submit\(\)\}/, 'no single-tap
 assert.match(sheet, /<DestinationPicker\s+holdToSend=\{CLAIM_HOLD_IN_SHEET\}/, 'the claim picker holds');
 
 console.log('PASS money moves: lock, release (first + confirming) and agree-to-refund are hold-to-confirm; no tap-again path; option b: claim- and recovery-sheet sends hold, Collect plain outside Fedi and a hold inside; dispute card reads committed votes');
+
+// App catches failed and suppressed votes and returns false. Neither is an
+// accepted vote; retries must be immediately available, without a timer.
+for (const reason of ['failed', 'suppressed']) {
+  let recorded = false;
+  let attempts = 0;
+  const vote = async () => { attempts++; return false; };
+  const accepted = () => { recorded = true; };
+  await recordAcceptedVote(vote, Outcome.RELEASE, accepted);
+  await recordAcceptedVote(vote, Outcome.RELEASE, accepted);
+  assert.equal(attempts, 2, `${reason}: immediate retry reaches the same vote handler`);
+  assert.equal(recorded, false, `${reason}: never enters recording state`);
+  const html = room(locked, recipient.pubkey, { onVote: vote });
+  assert.match(html, HOLD, `${reason}: the vote button remains visible`);
+  assert.doesNotMatch(html, /Recording your vote/);
+}
+let acceptedCount = 0;
+await assert.rejects(recordAcceptedVote(async () => { throw Error('transport failed'); }, Outcome.RELEASE, () => { acceptedCount++; }), /transport failed/);
+assert.equal(acceptedCount, 0, 'thrown failures never enter recording state');
+await recordAcceptedVote(async () => true, Outcome.RELEASE, () => { acceptedCount++; });
+assert.equal(acceptedCount, 1, 'only a successful vote starts the short recording placeholder');
+console.log('PASS vote feedback: failed, suppressed and thrown attempts never record; failed attempts retry immediately; only success records');

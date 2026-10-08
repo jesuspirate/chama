@@ -4163,10 +4163,11 @@ export default function App() {
               onClaim={tradeOnClaim}
               onJoin={tradeOnJoin}
               onVote={(outcome, payoutAddress) => actions.vote(selectedId!, outcome, payoutAddress).then(
-                () => setToast({ message: t("app.votedOutcome", { outcome }), type: "success" }),
+                () => { setToast({ message: t("app.votedOutcome", { outcome }), type: "success" }); return true; },
                 (e: any) => {
-                  if (e?.voteSuppressed) { setToast({ message: e?.message || t("app.voteAlreadyRecorded"), type: "info" }); return; }
+                  if (e?.voteSuppressed) { setToast({ message: e?.message || t("app.voteAlreadyRecorded"), type: "info" }); return false; }
                   setToast({ message: e?.message || t("app.voteFailed"), type: "error" });
+                  return false;
                 },
               )}
               onConfirmPayout={(escrowId) => { void actions.reattachPayout(escrowId); }}

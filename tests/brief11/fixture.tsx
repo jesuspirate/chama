@@ -15,23 +15,23 @@ const params=new URLSearchParams(location.search), theme=params.get('theme')==='
 applyThemeMode(theme);document.head.insertAdjacentHTML('beforeend','<style>.chama-loader-static{display:none}@media(prefers-reduced-motion:reduce){.chama-loader-motion{display:none}.chama-loader-static{display:block}}</style>');document.body.style.background=T.bg;document.body.style.color=T.text;
 const noop=()=>{};
 function NavigationFixture(){
- const [status,setStatus]=useState(EscrowStatus.CREATED);
+ const [status,setStatus]=useState(params.get('panel')==='vote-retry'?EscrowStatus.LOCKED:EscrowStatus.CREATED);
  const [inTrade,setInTrade]=useState(true);
  const [resume]=useState<{current:AssistedCanvasResume|null}>(()=>({current:{at:Date.now(),surface:'matches',bring:'cash',want:'sats',detail:'100',detailMax:'',terms:'',paymentRails:['strike'],matches:[],goodsMatches:[],matchWhy:null,premiumBps:0,premiumMode:'preset',premiumInput:''}}));
  const seller='a'.repeat(64),buyer='b'.repeat(64),arbiter='c'.repeat(64);
- const trade={provenance:'chain',id:'navigation',category:'p2p-trade',status,amountMsats:1000000,description:'Navigation test',createdAt:Date.now()/1000,expiresAt:Date.now()/1000+86400,participants:{buyer,seller,arbiter},initiator:{pubkey:seller,role:'seller'},lock:{notesHash:status===EscrowStatus.CREATED?null:'locked',lockedAt:null},votes:{},eventChain:[],chatMessages:[],communityArbiters:[arbiter]} as unknown as EscrowState;
+ const trade={provenance:'chain',id:'navigation',category:'p2p-trade',status,amountMsats:1000000,description:'Navigation test',createdAt:Date.now()/1000,expiresAt:Date.now()/1000+86400,participants:{buyer,seller,arbiter},initiator:{pubkey:seller,role:'seller'},lock:{notesHash:status===EscrowStatus.CREATED?null:'locked',lockedAt:status===EscrowStatus.LOCKED?Date.now()/1000:null},votes:{},eventChain:[],chatMessages:[],communityArbiters:[arbiter]} as unknown as EscrowState;
  (window as any).navigationStatus=setStatus;
  if(!inTrade)return <AssistedCanvas listings={[]} browseCommunity="us" viewerPubkey={buyer} listingsLoading={false} resumeRef={resume} onBrowse={noop} onCreate={noop} onMoreOptions={noop} onOpenTrade={noop}/>;
  const home=tradeDetailReturnsHome(trade,false);
  return <LiveTradeSurface state={trade} pubkey={buyer} backLabel={home?'Home':'Offers'}
   onBack={()=>{if(home)resume.current=null;(window as any).navigationReset=resume.current===null;setInTrade(false);}}
-  onOpenFullView={noop} onVote={async()=>{}} onSendChat={async()=>{}}/>;
+  onOpenFullView={noop} onVote={async()=>{ const win=window as any; win.voteAttempts=(win.voteAttempts??0)+1; return win.voteResult===true; }} onSendChat={async()=>{}}/>;
 }
 function Fixture(){
  const [active,setActive]=useState(0);
  if(params.has('compare'))return <div style={{display:'flex'}}>{['pager','funding','claim'].map(panel=><section key={panel} style={{width:390,flexShrink:0}}><h3 style={{fontFamily:T.sans,textAlign:'center'}}>{panel}</h3><iframe title={panel} src={`?panel=${panel}&theme=${theme}`} style={{width:390,height:720,border:0}}/></section>)}</div>;
  const panel=params.get('panel');
- if(panel==='navigation')return <NavigationFixture/>;
+ if(panel==='navigation'||panel==='vote-retry')return <NavigationFixture/>;
  if(panel==='funding')return <AtomicFundingModal escrowId="fixture" amountMsats={2000000} ctaLabel="Test" supportsOnchain
   getOnchainInfo={async()=>({pegInFeeSats:100,minimumDepositSats:101,finalityDelay:3} as any)} getLightningGatewayCount={async()=>1}
   fundAndLock={async()=>new Promise(()=>{})} lockAndPublish={async()=>{}} onClose={noop}/>;
