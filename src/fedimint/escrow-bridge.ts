@@ -1,3 +1,4 @@
+import { usesMoneyPathHardening } from "../escrow-engine/protocol-hardening.js";
 import { chamaFundingError } from "../chama/policy.js";
 // ══════════════════════════════════════════════════════════════════════════
 // Chama — Escrow ↔ Fedimint Bridge
@@ -201,6 +202,11 @@ export class EscrowFedimintBridge {
   }> {
     const state = this.escrow.getState(escrowId);
     if (!state) throw new Error(`Escrow ${escrowId} not loaded`);
+    if (usesMoneyPathHardening(state) && state.communityArbiters.length === 0) {
+      const error = new Error("Cannot lock — this trade has no committed arbiter pool. No sats were spent.");
+      Object.assign(error, { code: "ARBITER_POOL_EMPTY" });
+      throw error;
+    }
     if (state.chamaCircle) {
       const reason = chamaFundingError(state, await this.escrow.getPubkey(), Math.floor(Date.now() / 1000));
       if (reason) throw new Error(`Cannot LOCK — ${reason}. (No sats were spent.)`);

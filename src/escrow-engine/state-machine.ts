@@ -1,3 +1,4 @@
+import { usesMoneyPathHardening, LOCK_TIMESTAMP_SKEW_SECONDS } from "./protocol-hardening.js";
 import { stalledPayoutEligibility } from "./onchain-stalled.js";
 import type { SettlementStalledPayload } from "./types.js";
 import { atomicReleaseError, voteSettlement, winnerSettlementChoice } from "./onchain-settlement-choice.js";
@@ -714,7 +715,7 @@ function handleJoin(state: EscrowState, event: ParsedEscrowEvent<JoinPayload>): 
   // may still use volunteer arbiters, but a named community with an empty
   // pool means "no trusted arbiter configured," not "anyone may join."
   if (p.role === Role.ARBITER) {
-    if (state.community && state.communityArbiters.length === 0) {
+    if ((state.community || usesMoneyPathHardening(state)) && state.communityArbiters.length === 0) {
       return err("ARBITER_POOL_EMPTY",
         "This community trade has no trusted arbiter pool",
         event.raw.id
@@ -833,6 +834,11 @@ function handleJoin(state: EscrowState, event: ParsedEscrowEvent<JoinPayload>): 
 
 function handleLock(state: EscrowState, event: ParsedEscrowEvent<LockPayload>): TransitionResult {
   const p = event.payload;
+  if (usesMoneyPathHardening(state)) {
+    if (state.communityArbiters.length === 0) return err("ARBITER_POOL_EMPTY", "Cannot lock without a committed arbiter pool", event.raw.id);
+    if (!Number.isSafeInteger(p.lockedAt) || Math.abs(p.lockedAt - event.timestamp) > LOCK_TIMESTAMP_SKEW_SECONDS)
+      return err("LOCK_TIMESTAMP_SKEW", "LOCK lockedAt must be within five minutes of its signed event timestamp", event.raw.id);
+  }
   if (state.category === "chama") return err("CHAMA_MANIFEST", "Circle parents cannot hold funds", event.raw.id);
   if (state.chamaPolicy && (event.timestamp < state.createdAt || event.timestamp >= state.chamaCircle!.fillDeadlineSec || p.lockedAt !== event.timestamp || p.buyerPubkey !== state.participants[Role.BUYER]
     || p.arbiterPubkey !== state.participants[Role.ARBITER] || p.arbiterPoolShare !== true || p.arbiterFeeMsats !== 0 || p.sellerReceivesMsats !== state.amountMsats)) return err("INVALID_CHAMA_LOCK", "Share LOCK must be on time with committed seats and pool healing", event.raw.id);
