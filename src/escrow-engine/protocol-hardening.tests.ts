@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { finalizeEvent, getPublicKey, verifyEvent } from 'nostr-tools/pure';
 import { parseEscrowEvent } from './event-parser.js';
+import { EscrowClient } from './escrow-client.js';
 import { applyEvent, replayEventChain } from './state-machine.js';
 import { EscrowFedimintBridge } from '../fedimint/escrow-bridge.js';
 import { MONEY_PATH_HARDENING_CREATE_AT as cutoff, LOCK_TIMESTAMP_SKEW_SECONDS as skew } from './protocol-hardening.js';
@@ -33,6 +34,8 @@ for(const at of [cutoff-1,cutoff,cutoff+1]) {
   assert(applyEvent(state,lock(state,-3600)).ok,'Old backdated clock remains replayable');
  } else {
   rejected(joined,'ARBITER_POOL_EMPTY'); rejected(locked,'ARBITER_POOL_EMPTY');
+ }
+ {
   let walletTouches=0;
   const wallet=new Proxy({}, {get(){walletTouches++;throw Error('Wallet must not be touched');}});
   const bridge=new EscrowFedimintBridge({getState:()=>state} as any,wallet as any,{} as any);
@@ -63,3 +66,25 @@ rejected(applyEvent(forged.state,lock(forged.state)),'ARBITER_POOL_EMPTY');
 const legacyCommunity=create(cutoff-1,[],'ke-kes');
 rejected(applyEvent(legacyCommunity.state,event(K.JOIN,{type:'escrow:join',role:Role.ARBITER,joinedAt:cutoff},keys[2],cutoff,legacyCommunity.state.id,legacyCommunity.e.raw.id)),'ARBITER_POOL_EMPTY');
 console.log('PASS H5/H6: signed CREATE boundaries, pre-spend pool refusal, inclusive skew, strict forged-deadline replay, legacy chains');
+
+// A signed pre-gate CREATE is still legacy consensus, but funding consent is
+// ungated. The bridge cases above include cutoff-1 with an empty pool.
+const old=create(cutoff-86400,[arbiter]);
+const oldLock=lock(old.state,-3600);
+const funded=applyEvent(old.state,oldLock); assert(funded.ok);
+const signedDeadline=oldLock.timestamp+86400;
+const realNow=Date.now;
+for(const status of [S.LOCKED,S.EXPIRED]) {
+ const client=new EscrowClient({getPublicKey:async()=>seller,signEvent:async e=>finalizeEvent(e,keys[0]),nip44Encrypt:async text=>text,nip44Decrypt:async text=>text},{relays:[]});
+ const seam=client as any; seam.states.set(old.state.id,{...funded.state,status});
+ const votes:string[]=[]; seam.vote=async(_id:string,outcome:string)=>{votes.push(outcome);};
+ try {
+  for(const at of [funded.state.expiresAt+1,signedDeadline-1,signedDeadline]) {
+   Date.now=()=>at*1000; await seam.maybeAutoRefundExpired(old.state.id);
+   assert.equal(votes.length,0,'Pre-gate backdated lockedAt cannot cause an early automatic REFUND');
+  }
+  Date.now=()=> (signedDeadline+1)*1000; await seam.maybeAutoRefundExpired(old.state.id);
+  assert.deepEqual(votes,['refund'],'Automatic healing resumes after the signed-time deadline');
+ } finally {Date.now=realNow;client.disconnect();}
+}
+console.log('PASS ungated client consent: old empty-pool funding refuses; old backdated LOCK cannot cause early auto-REFUND');

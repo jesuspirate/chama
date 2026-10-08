@@ -4385,7 +4385,19 @@ export class EscrowClient {
     if (!isStuckLocked && !isStuckExpired) return;
 
     const now = Math.floor(Date.now() / 1000);
-    if (now <= state.expiresAt) return;
+    // Client consent is stricter than historical consensus: even an old-chain
+    // locker must not make our automatic vote follow their backdated clock.
+    // Circle shares use the committed round end, not a rolling LOCK timeout.
+    let refundDeadline = state.expiresAt;
+    if (!state.chamaPolicy) {
+      const lockEvent = state.eventChain.find(e => e.kind === EscrowEventKind.LOCK);
+      const lockedAt = state.lock.lockedAt;
+      if (!lockEvent || lockedAt === null || !Number.isFinite(lockedAt) || !Number.isFinite(lockEvent.timestamp)) return;
+      const timeout = state.tradeTimeoutSeconds ?? state.expiresAt - lockedAt;
+      if (!Number.isFinite(timeout) || timeout <= 0) return;
+      refundDeadline = Math.max(lockedAt, lockEvent.timestamp) + timeout;
+    }
+    if (now <= refundDeadline) return;
 
     // v2.9: never auto-refund a ghosting LOCKER against a standing RELEASE from
     // the non-locker — that is the performance-contest theft (DECISIONS
