@@ -280,6 +280,11 @@ const AWAIT_INVOICE_REARM_WINDOW_MS = 60 * 60_000;
  *  and hold the request open; the transport re-arm still covers them. */
 const AWAIT_INVOICE_WAIT_SECS = 45;
 
+function isDevBuild(): boolean {
+  const env = (import.meta as unknown as { env?: { DEV?: unknown } }).env;
+  return env?.DEV === true;
+}
+
 function getImportEnv(key: string): string | null {
   const env = (import.meta as unknown as { env?: Record<string, unknown> }).env;
   const value = env?.[key];
@@ -287,6 +292,12 @@ function getImportEnv(key: string): string | null {
 }
 
 function getBrowserSearchParams(): URLSearchParams | null {
+  // A link must never choose where the wallet lives. In a production build a
+  // crafted `?nativeFedimint=1&nativeFedimintUrl=https://attacker` would send
+  // funding invoices, redeemed escrow notes and any saved bridge token to that
+  // host with no prompt. Only dev builds read these overrides from the URL;
+  // production configures a bridge through Settings or the native shell.
+  if (!isDevBuild()) return null;
   try {
     if (typeof window === "undefined") return null;
     return new URL(window.location.href).searchParams;
@@ -583,6 +594,49 @@ export function getNativeBridgeToken(): string | null {
   );
 }
 
+function getInjectedNativeBridgeToken(): string | null {
+  const global = globalThis as {
+    __CHAMA_NATIVE_FEDIMINT__?: {
+      authToken?: unknown;
+    };
+  };
+  const value = global.__CHAMA_NATIVE_FEDIMINT__?.authToken;
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function isLoopbackBridgeUrl(baseUrl: string): boolean {
+  try {
+    const host = new URL(baseUrl).hostname;
+    return host === "127.0.0.1" || host === "localhost" || host === "[::1]";
+  } catch {
+    return false;
+  }
+}
+
+let shellBridgeTokenPromise: Promise<string | null> | null = null;
+
+/** The token the desktop or Android shell gave its own bridge sidecar. It is
+ * only ever sent to a loopback URL, so a configured remote bridge can never
+ * receive the local wallet's credential. */
+async function getShellBridgeToken(baseUrl: string): Promise<string | null> {
+  if (!isShellManagedNativeBridge() || !isLoopbackBridgeUrl(baseUrl)) return null;
+  const injected = getInjectedNativeBridgeToken();
+  if (injected) return injected;
+  if (!isCapacitorNativePlatform()) return null;
+  shellBridgeTokenPromise ??= (async () => {
+    try {
+      const { nativeDevice } = await import("../native/device.js");
+      const { token } = await nativeDevice.bridgeToken();
+      return typeof token === "string" && token.trim() ? token.trim() : null;
+    } catch {
+      // An older APK has no bridgeToken(), and its bridge runs without one.
+      shellBridgeTokenPromise = null;
+      return null;
+    }
+  })();
+  return shellBridgeTokenPromise;
+}
+
 export function setNativeBridgeConfig(url: string, token: string | null): void {
   const normalized = normalizeBaseUrl(url);
   if (!normalized) return;
@@ -715,7 +769,7 @@ async function nativeBridgeFetch<T>(
   // Remote-bridge auth: every bridge request funnels through here, so this
   // one line covers the whole wallet surface. Token-less local bridges
   // (Tauri/Android sidecars) send no header — unchanged.
-  const token = getNativeBridgeToken();
+  const token = (await getShellBridgeToken(baseUrl)) ?? getNativeBridgeToken();
   if (token && !headers.has("authorization")) {
     headers.set("authorization", `Bearer ${token}`);
   }

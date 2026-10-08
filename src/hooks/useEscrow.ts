@@ -4538,6 +4538,21 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       console.debug("[chama] balance read during reset:", e);
     }
 
+    // Same fail-closed rule as switchFederation: an unreadable balance is not
+    // an empty one.
+    if (
+      !force
+      && currentBalanceMsats === null
+      && (fedimintRef.current !== null || getActiveInvite() !== null)
+    ) {
+      const err = new Error(
+        "Chama couldn't read this wallet's balance, so it won't reset it. " +
+        "Nothing was changed. Close other Chama tabs and try again.",
+      );
+      (err as Error & { code?: string }).code = "RESET_REFUSED_BALANCE_UNKNOWN";
+      throw err;
+    }
+
     if (!force && currentBalanceMsats !== null && currentBalanceMsats > 0) {
       const sats = Math.floor(currentBalanceMsats / 1000);
       const err = new Error(
@@ -4704,6 +4719,33 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       }
     } catch (e) {
       console.debug("[chama] switch-fed: balance read failed:", e);
+    }
+    // A switch wipes the wallet file, so it must never run under a live
+    // funding or claim: their sats may not show in the balance yet.
+    if (!force && (fundingInProgressRef.current?.aborted === false || claimPayoutInProgressRef.current)) {
+      const err = new Error(
+        "A payment is still in progress, so Chama won't switch communities yet. Try again when it finishes.",
+      );
+      (err as Error & { code?: string }).code = "SWITCH_REFUSED_MONEY_FLOW_IN_PROGRESS";
+      throw err;
+    }
+
+    // Fail closed when the balance can't be read. A wallet that failed to
+    // open (another tab, busy storage) or whose balance read threw may still
+    // hold funds, and its file holds the only copy of the browser seed.
+    // Wiping it on an unknown balance is how a funded wallet disappears.
+    if (
+      !force
+      && currentBalanceMsats === null
+      && (fedimintRef.current !== null || getActiveInvite() !== null)
+    ) {
+      const err = new Error(
+        "Chama couldn't read this wallet's balance, so it won't switch " +
+        "communities right now. Nothing was changed. Close other Chama tabs " +
+        "and try again.",
+      );
+      (err as Error & { code?: string }).code = "SWITCH_REFUSED_BALANCE_UNKNOWN";
+      throw err;
     }
     if (
       !force

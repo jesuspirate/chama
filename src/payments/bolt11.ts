@@ -63,3 +63,21 @@ export function decodeBolt11Payment(raw: string): { amountMsats: number; expires
     return { amountMsats, expiresAt: timestamp + expiry };
   } catch { return null; }
 }
+
+/** Why a payout invoice must not be paid, or null when it is safe to send.
+ * A pasted or provider-supplied invoice sets its own amount, and Fedimint pays
+ * whatever it says from the whole wallet balance, including sats that belong
+ * to other claims. So every Lightning payout must name an amount, and that
+ * amount may not exceed what this payout is entitled to move. */
+export function payoutInvoiceError(raw: string, maxMsats: number): string | null {
+  const amountMsats = parseBolt11Msats(raw);
+  if (amountMsats === null) {
+    return "This invoice has no amount. Ask for an invoice for the exact payout. No sats moved.";
+  }
+  if (!Number.isFinite(maxMsats) || amountMsats > maxMsats) {
+    const asked = Math.ceil(amountMsats / 1000).toLocaleString();
+    const allowed = Math.floor(Math.max(0, maxMsats) / 1000).toLocaleString();
+    return `This invoice asks for ${asked} sats, more than this payout's ${allowed} sats. No sats moved.`;
+  }
+  return null;
+}

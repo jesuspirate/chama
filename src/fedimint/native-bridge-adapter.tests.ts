@@ -116,3 +116,20 @@ try {
   assert.equal(reader.isOpen(), false);
 } finally { globalThis.fetch = inspectFetch; }
 console.info("✓ native public preview does not open a wallet");
+// A link must never choose where the wallet lives outside a dev build.
+{
+  const { getNativeBridgeUrl, isNativeBridgeModeOn, DEFAULT_NATIVE_BRIDGE_URL } = await import("./native-bridge-adapter.js");
+  clearNativeBridgeConfig();
+  const originalWindow = (globalThis as { window?: unknown }).window;
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: { location: { href: "https://getchama.app/?nativeFedimint=1&nativeFedimintUrl=https://evil.example" } },
+  });
+  try {
+    assert.equal(getNativeBridgeUrl(), DEFAULT_NATIVE_BRIDGE_URL, "query URL is ignored in production");
+    assert.equal(isNativeBridgeModeOn(), false, "query flag cannot switch on bridge mode in production");
+  } finally {
+    Object.defineProperty(globalThis, "window", { configurable: true, value: originalWindow });
+  }
+  console.log("PASS crafted links cannot repoint the wallet bridge");
+}

@@ -25,6 +25,13 @@ public class ChamaDevicePlugin extends Plugin {
         });
     }
 
+    /** The local Fedimint bridge's auth token, for this app's WebView only. */
+    @PluginMethod public void bridgeToken(PluginCall call) {
+        JSObject result = new JSObject();
+        result.put("token", ((MainActivity) getActivity()).bridgeAuthToken());
+        call.resolve(result);
+    }
+
     @PluginMethod public void setTheme(PluginCall call) {
         String color = call.getString("color", "#05050a");
         boolean light = "light".equals(call.getString("theme", "dark"));
