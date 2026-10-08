@@ -40,7 +40,7 @@ assert.deepEqual(selectPayoutReattachTargets({ escrows: [state], userPubkey: 'pe
 for (const outcome of ['failed', 'inflight', 'paid'] as const) {
   let balance = 0;
   const before: number = claims;
-  const result = await runClaimAndPayout({ escrowId: state.id, bolt11: 'invoice', expectedDeltaMsats: 100_000, saveAfter: false,
+  const result = await runClaimAndPayout({ escrowId: state.id, bolt11: 'lnbc1u1pinvoice', expectedDeltaMsats: 100_000, saveAfter: false,
     getBalance: async () => balance, claimAndRedeem: async () => { balance = 100_000; },
     payInvoice: async () => {
       assert.equal(claims, before, 'CLAIM not published before payment');
@@ -54,3 +54,26 @@ for (const outcome of ['failed', 'inflight', 'paid'] as const) {
   assert.equal(claims, before + (outcome === 'paid' ? 1 : 0));
 }
 console.log('PASS ecash preview/confirmation, safe persistence, deferred Lightning claim and boot reattachment');
+
+// A pasted or provider invoice names its own amount and Fedimint pays it from
+// the whole wallet. Oversized and amountless invoices are refused before any
+// claim or send happens.
+{
+  const { payoutInvoiceError } = await import('./bolt11.js');
+  assert.equal(payoutInvoiceError('lnbc1u1pexact', 100_000), null, 'exact amount is allowed');
+  assert.equal(payoutInvoiceError('lightning:lnbc500n1psmaller', 100_000), null, 'smaller amount is allowed');
+  assert.match(payoutInvoiceError('lnbc2u1pbigger', 100_000) ?? '', /more than this payout/);
+  assert.match(payoutInvoiceError('lnbc1pnoamount', 100_000) ?? '', /no amount/);
+  for (const bolt11 of ['lnbc2u1poversized', 'lnbc1pamountless']) {
+    let claimed = 0; let paid = 0;
+    const result = await runClaimAndPayout({ escrowId: 'oversized-invoice', bolt11, expectedDeltaMsats: 100_000, saveAfter: false,
+      getBalance: async () => 100_000, claimAndRedeem: async () => { claimed++; },
+      payInvoice: async () => { paid++; return 'op'; },
+      addOrTouchLightningHandle: () => {}, onPhase: () => {},
+    });
+    assert.equal(result.kind, 'payout-failed');
+    assert.equal(claimed, 0, `${bolt11}: nothing is claimed`);
+    assert.equal(paid, 0, `${bolt11}: nothing is sent`);
+  }
+}
+console.log('PASS oversized and amountless payout invoices are refused before claim');

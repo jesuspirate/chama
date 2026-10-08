@@ -1,4 +1,5 @@
 import { errorText } from "./error-text.js";
+import { payoutInvoiceError } from "./bolt11.js";
 // ══════════════════════════════════════════════════════════════════════════
 // Chama — Atomic claim-and-payout orchestrator (v0.3.0 Phase 3)
 // ══════════════════════════════════════════════════════════════════════════
@@ -549,6 +550,19 @@ export async function runClaimAndPayout(
       const error = errorMessage(e, "Couldn't prepare this ecash claim safely");
       emit({ kind: "claim-failed", error });
       return { kind: "claim-failed", error };
+    }
+  }
+
+  // A Lightning payout pays whatever amount the invoice names, from the whole
+  // wallet balance. Refuse an amountless or oversized invoice before anything
+  // is claimed or sent, so a pasted or provider-supplied invoice can never
+  // move more than this claim is worth.
+  if (payoutKind === "lightning") {
+    const invoiceError = payoutInvoiceError(opts.bolt11, opts.expectedDeltaMsats);
+    if (invoiceError) {
+      claimTrace("orchestrator-invoice-refused", { escrowId: opts.escrowId });
+      emit({ kind: "payout-failed", error: invoiceError, claimCompleted: false });
+      return { kind: "payout-failed", error: invoiceError, claimCompleted: false };
     }
   }
 
