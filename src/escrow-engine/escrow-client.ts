@@ -1081,8 +1081,12 @@ export class EscrowClient {
     const existing = this.states.get(id);
     if (existing) return circleFromEscrow(existing) ? existing : undefined;
     const events = await this.relayManager.fetchOnce({ kinds: [EscrowEventKind.CREATE], "#d": [id] }, 15_000);
+    // Cycle resolution has a recursion guard. Parse sequentially so concurrent
+    // candidates cannot mistake another candidate's lookup for a malicious loop.
+    const contextual = [];
+    for (const raw of events) contextual.push(await this.parseWithChamaContext(raw, raw.content));
     const creates = selectTradeRoot(
-      sortEventChain(events.map(raw => parseEscrowEvent(raw, raw.content, true)).filter(r => r.ok).map(r => r.event))
+      sortEventChain(contextual.filter(r => r.ok).map(r => r.event))
         .filter(event => event.escrowId === id && (event.payload as CreatePayload).category === "chama"),
       this.expectedCreatorOf(id));
     for (const raw of creates.ok ? creates.events : []) {
@@ -4381,7 +4385,19 @@ export class EscrowClient {
     if (!isStuckLocked && !isStuckExpired) return;
 
     const now = Math.floor(Date.now() / 1000);
-    if (now <= state.expiresAt) return;
+    // Client consent is stricter than historical consensus: even an old-chain
+    // locker must not make our automatic vote follow their backdated clock.
+    // Circle shares use the committed round end, not a rolling LOCK timeout.
+    let refundDeadline = state.expiresAt;
+    if (!state.chamaPolicy) {
+      const lockEvent = state.eventChain.find(e => e.kind === EscrowEventKind.LOCK);
+      const lockedAt = state.lock.lockedAt;
+      if (!lockEvent || lockedAt === null || !Number.isFinite(lockedAt) || !Number.isFinite(lockEvent.timestamp)) return;
+      const timeout = state.tradeTimeoutSeconds ?? state.expiresAt - lockedAt;
+      if (!Number.isFinite(timeout) || timeout <= 0) return;
+      refundDeadline = Math.max(lockedAt, lockEvent.timestamp) + timeout;
+    }
+    if (now <= refundDeadline) return;
 
     // v2.9: never auto-refund a ghosting LOCKER against a standing RELEASE from
     // the non-locker — that is the performance-contest theft (DECISIONS
