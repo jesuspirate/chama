@@ -27376,12 +27376,12 @@ console.log("\n── #62 REDEEM-PROBE + BONDED-POOL CACHE ──");
     "counter-demand: expiry is exclusive at the boundary — an offer expiring this second is not available");
   assert(countOf([mkListing({ id: "x", expiresAt: NOW + 1 })]) === 1,
     "counter-demand: one second of life still counts");
-  assert(countOf([mkListing({ id: "x", initiator: { pubkey: ME, role: Role.SELLER } as any })]) === 0,
+  assert(countOf([mkListing({ id: "x", participants: { buyer: null, seller: ME, arbiter: null } })]) === 0,
     "⭐ counter-demand: your own listing never inflates your own count");
   assert(countOf([mkListing({ id: "x", community: "ke-kes" })]) === 0,
     "counter-demand: 'within your community' means exactly that");
-  assert(countOf([mkListing({ id: "x", community: null as any })]) === 1,
-    "counter-demand: a listing with no community is global and counts");
+  assert(countOf([mkListing({ id: "x", community: null as any })]) === 0,
+    "counter-demand: a listing with no community is not joinable");
   assert(countOf([mkListing({ id: "x", parent: "p1" } as any)]) === 0,
     "counter-demand: a child order is one buyer's purchase, not an open offer");
   assert(countOf([mkListing({
@@ -27391,7 +27391,7 @@ console.log("\n── #62 REDEEM-PROBE + BONDED-POOL CACHE ──");
     "⭐ counter-demand: a live reservation is not available NOW, and 'now' is what the number claims");
   assert(countOf([mkListing({
     id: "x",
-    joinHolds: { [Role.BUYER]: { role: Role.BUYER, pubkey: OTHER, joinedAt: NOW - 600, expiresAt: NOW - 1, eventId: "h" } },
+    joinHolds: { [Role.BUYER]: { role: Role.BUYER, pubkey: OTHER, joinedAt: NOW - 600, expiresAt: NOW - JOIN_HOLD_LOCK_GRACE_SECONDS, eventId: "h" } },
   } as any)]) === 1,
     "counter-demand: a LAPSED hold frees the seat back into the count");
 

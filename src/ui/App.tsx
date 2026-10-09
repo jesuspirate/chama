@@ -1,3 +1,5 @@
+import { LockPaymentDetailsModal } from "./panels/LockPaymentDetailsModal.js";
+import { confirmedLockPaymentFields, needsLockPaymentDetails, type LockPaymentChoice } from "../payments/lock-payment-details.js";
 import { buildWakeIndex } from "../notifications/wake-index.js";
 import { deleteListings } from "../escrow-engine/delete-listings.js";
 import { listPaidLockRecoveries } from "../payments/paid-lock-recovery.js";
@@ -742,6 +744,30 @@ export default function App() {
               }
   };
 
+  const [lockPaymentPrompt, setLockPaymentPrompt] = useState<{ state: EscrowState; initialId?: string; resolve: (choice: LockPaymentChoice | null) => void } | null>(null);
+  const confirmLockDetails = (trade: EscrowState, initialId?: string): Promise<LockPaymentChoice | null> =>
+    needsLockPaymentDetails(trade) ? new Promise(resolve => setLockPaymentPrompt({ state: trade, initialId, resolve })) : Promise.resolve({ inChat: true });
+  const prepareOnchainWithDetails = async (id: string) => {
+    const trade = escrows.get(id);
+    if (!trade) throw new Error("Trade unavailable");
+    if (needsLockPaymentDetails(trade) && !trade.onchainFundingTerms) {
+      if (!await confirmLockDetails(trade)) throw new Error("Payment details confirmation cancelled");
+    }
+    await actions.prepareOnchainFunding(id);
+  };
+
+  const publishOnchainWithDetails = async (id: string) => {
+    const trade = escrows.get(id);
+    if (!trade) throw new Error("Trade unavailable");
+    // A handle removed after the deposit was prepared needs a fresh choice.
+    // Legacy funded trades without a stored choice keep their existing path.
+    try { confirmedLockPaymentFields(trade); }
+    catch {
+      if (!await confirmLockDetails(trade)) throw new Error("Payment details confirmation cancelled");
+    }
+    return actions.publishOnchainLock(id);
+  };
+
   // Fund / lock, lifted from the inline TradeDetail prop so the guided
   // LiveTradeSurface fires the IDENTICAL AtomicFundingModal flow (no money-path
   // fork). Both views pass this same handler.
@@ -750,7 +776,9 @@ export default function App() {
   ): Promise<void> => {
     if (!selected || selected.escrowMode === "onchain") return;
     if (!requireOnline()) return;
-              const savedHandleId = lockOpts.savedHandleId;
+              const paymentChoice = await confirmLockDetails(selected, lockOpts.savedHandleId);
+              if (!paymentChoice) return;
+              const savedHandleId = 'savedHandleId' in paymentChoice ? paymentChoice.savedHandleId : undefined;
               const selectedItems = lockOpts.selectedItems;
               if (!await ensureTradeWallet(selected)) return;
               // v0.6.5: the only Fund gate is mid-funding — multiple
@@ -3146,7 +3174,7 @@ export default function App() {
         {/* The picker only remains mounted until the identity choice is saved.
             Wallet initialization errors no longer clear that choice; they are
             handled from the signed-in shell's Chama bar. */}
-        {toast && <Toast message={toast.message} type={toast.type} sticky={toast.sticky} dismissOnTap={toast.dismissOnTap} onDone={() => setToast(null)} />}
+      {toast && <Toast message={toast.message} type={toast.type} sticky={toast.sticky} dismissOnTap={toast.dismissOnTap} onDone={() => setToast(null)} />}
         {bootInviteId && inviteHomeState === "resolving" && !changeHomeAfterConnect ? (
           // Runway #13: the invite implies the home — nothing federation-shaped
           // is ever shown to someone joining a friend's circle.
@@ -3239,6 +3267,9 @@ export default function App() {
       <SimModePill />
       <SimEntryModal />
 
+        {lockPaymentPrompt && <LockPaymentDetailsModal state={lockPaymentPrompt.state} initialId={lockPaymentPrompt.initialId}
+        onClose={() => { lockPaymentPrompt.resolve(null); setLockPaymentPrompt(null); }}
+        onConfirm={choice => { lockPaymentPrompt.resolve(choice); setLockPaymentPrompt(null); }} />}
       {toast && <Toast message={toast.message} type={toast.type} sticky={toast.sticky} dismissOnTap={toast.dismissOnTap} onDone={() => setToast(null)} />}
       {walletOverlay === "lightning" && (
         <PayoutDestinationsPanel onClose={() => setWalletOverlay(null)} />
@@ -4062,9 +4093,9 @@ export default function App() {
                 onOpenExplorerSettings: () => { setAdvancedFocusExplorer(true); setView("advanced"); },
                 fetchCommunityBonds: actions.fetchCommunityBonds,
                 onchainFundingPlan: actions.onchainFundingPlan,
-                onPrepareOnchainFunding: actions.prepareOnchainFunding,
+                onPrepareOnchainFunding: prepareOnchainWithDetails,
                 onCheckOnchainFunding: actions.checkOnchainFunding,
-                onPublishOnchainLock: actions.publishOnchainLock,
+                onPublishOnchainLock: publishOnchainWithDetails,
                 onOnchainRefundAvailable: actions.onchainRefundAvailable,
                 onRefundOnchainEscrow: actions.refundOnchainEscrow,
                 onPrepareOnchainSettlement: actions.prepareOnchainSettlement,
@@ -4141,11 +4172,11 @@ export default function App() {
             knownTrades={knownTradesForConcentration}
             onStartNextTranche={TRADE_SLICING_ENABLED ? handleStartNextTranche : undefined}
             onchainFundingPlan={actions.onchainFundingPlan}
-            onPrepareOnchainFunding={actions.prepareOnchainFunding}
+            onPrepareOnchainFunding={prepareOnchainWithDetails}
             onCheckOnchainFunding={actions.checkOnchainFunding}
             onRefundOnchainEscrow={actions.refundOnchainEscrow}
             onOnchainRefundAvailable={actions.onchainRefundAvailable}
-            onPublishOnchainLock={actions.publishOnchainLock}
+            onPublishOnchainLock={publishOnchainWithDetails}
             onPrepareOnchainSettlement={actions.prepareOnchainSettlement}
             onRequestStalledPayout={actions.requestStalledOnchainPayout}
             onchainObservation={onchainObservations?.get(selected.id)}
@@ -4302,6 +4333,10 @@ export default function App() {
             // onLock (modal flow) on failure via the "Try other
             // method" link.
             onLockDirectNwc={async (opts) => {
+              if (!selected) return { ok: false, error: "Trade unavailable" };
+              const paymentChoice = await confirmLockDetails(selected, opts.savedHandleId);
+              if (!paymentChoice) return { ok: false, error: "Payment details confirmation cancelled" };
+              opts = { ...opts, savedHandleId: 'savedHandleId' in paymentChoice ? paymentChoice.savedHandleId : undefined };
               if (fediWebView) {
                 setToast({
                   message: t("app.fediNwcDisabledFund"),

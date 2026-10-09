@@ -1,3 +1,4 @@
+import { listingCommunityMatches } from "../../guided/offer-eligibility.js";
 import { browseDiagnostics, type BrowseDiagnosticsContext } from "../browse-diagnostics.js";
 import { CopyButton } from "../components/CopyButton.js";
 import { filterListingsByCurrency, listingMatchesCurrency } from "../listing-currency.js";
@@ -194,13 +195,17 @@ export function BrowseView({
   // Own-listing hide (default) happens BEFORE search/section grouping so counts
   // and empty-states reflect what the viewer actually sees.
   const search = searchQuery.trim().toLowerCase();
-  const otherCurrencyCount = (browseScope === "local" ? suppliedMatching : [...suppliedMatching, ...suppliedNonMatching])
+  const otherCurrencyCount = (browseScope === "local" ? suppliedMatching.filter(l => listingCommunityMatches(l.community, browseCommunity)) : [...suppliedMatching, ...suppliedNonMatching])
     .filter(l => !listingMatchesCurrency(l, viewerCurrency) && listingMatchesSearch(l, search)).length;
-  const scopedMatching = matchingListings.filter(l => listingMatchesSearch(l, search));
+  const searchedMatching = matchingListings.filter(l => listingMatchesSearch(l, search));
+  const localMatching = searchedMatching.filter(l => listingCommunityMatches(l.community, browseCommunity));
+  const scopedMatching = browseScope === "local" ? localMatching : searchedMatching;
   const scopedNonMatching = nonMatchingListings.filter(l => listingMatchesSearch(l, search));
-  const hasOwnListings = countOwnListings(matchingListings, pubkey) + countOwnListings(nonMatchingListings, pubkey) > 0;
   const ownListingCount = countOwnListings(scopedMatching, pubkey)
     + (browseScope === "all" ? countOwnListings(scopedNonMatching, pubkey) : 0);
+  const hasOwnListings = countOwnListings(browseScope === "local"
+    ? matchingListings.filter(l => listingCommunityMatches(l.community, browseCommunity)) : matchingListings, pubkey)
+    + (browseScope === "all" ? countOwnListings(nonMatchingListings, pubkey) : 0) > 0;
   const categoryMatching = filterOwnListings(scopedMatching, pubkey, false);
   const categoryNonMatching = browseScope === "all" ? filterOwnListings(scopedNonMatching, pubkey, false) : [];
   const visibleCategoryChips = BROWSE_CATS.filter(c => c.id !== "all" && (CHAMA_CIRCLES_ENABLED || c.id !== "chama"))
@@ -217,12 +222,12 @@ export function BrowseView({
   }, [listingsLoading, showOwn, hasOwnListings]);
   const ownHiddenCount = showOwn ? 0 : ownListingCount;
   const ownFilteredMatching = useMemo(
-    () => filterOwnListings(matchingListings, pubkey, showOwn),
-    [matchingListings, pubkey, showOwn],
+    () => filterOwnListings(scopedMatching, pubkey, showOwn),
+    [scopedMatching, pubkey, showOwn],
   );
   const ownFilteredNonMatching = useMemo(
-    () => filterOwnListings(nonMatchingListings, pubkey, showOwn),
-    [nonMatchingListings, pubkey, showOwn],
+    () => filterOwnListings(scopedNonMatching, pubkey, showOwn),
+    [scopedNonMatching, pubkey, showOwn],
   );
   const routedMatching = useMemo(
     () => browseSort === "default" ? ownFilteredMatching : browseSort === "cheapest"
@@ -238,8 +243,8 @@ export function BrowseView({
         : sortListingsNewestFirst(ownFilteredNonMatching),
     [browseScope, browseSort, ownFilteredNonMatching],
   );
-  const localScopeCount = scopedMatching.length;
-  const allScopeCount = localScopeCount + scopedNonMatching.length;
+  const localScopeCount = localMatching.length;
+  const allScopeCount = searchedMatching.length + scopedNonMatching.length;
   const totalListings = routedMatching.length + routedNonMatching.length;
   const homeCommunity = getCommunityBySlug(browseCommunity);
   useEffect(() => setOtherCurrencies(false), [browseCommunity, pubkey]);

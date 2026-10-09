@@ -1,3 +1,4 @@
+import { handleMatchesTrade, needsLockPaymentDetails } from "../payments/lock-payment-details.js";
 import { chamaFundingError } from "../chama/policy.js";
 // ══════════════════════════════════════════════════════════════════════════
 // Chama — Escrow ↔ Fedimint Bridge
@@ -201,6 +202,10 @@ export class EscrowFedimintBridge {
   }> {
     const state = this.escrow.getState(escrowId);
     if (!state) throw new Error(`Escrow ${escrowId} not loaded`);
+    if (opts.savedHandleId && needsLockPaymentDetails(state)) {
+      const handle = getSavedHandle(opts.savedHandleId);
+      if (!handle || !handleMatchesTrade(handle, state)) throw new Error("Payment details changed. Confirm them again before locking.");
+    }
     if (state.chamaCircle) {
       const reason = chamaFundingError(state, await this.escrow.getPubkey(), Math.floor(Date.now() / 1000));
       if (reason) throw new Error(`Cannot LOCK — ${reason}. (No sats were spent.)`);
@@ -411,6 +416,9 @@ export class EscrowFedimintBridge {
     let handleNetworks: string[] | undefined;
     if (opts.savedHandleId) {
       const saved = getSavedHandle(opts.savedHandleId);
+      if (needsLockPaymentDetails(state) && (!saved || !handleMatchesTrade(saved, state))) {
+        throw new Error("Payment details changed. Confirm them again before locking.");
+      }
       if (saved) {
         handleId = saved.id;
         handle = saved.handle;

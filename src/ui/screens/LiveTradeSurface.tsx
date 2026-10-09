@@ -1,3 +1,4 @@
+import { TradePaymentDetails } from "../components/TradePaymentDetails.js";
 import { RangeFiat } from "../components/RangeFiat.js";
 import { useBitcoinPrice } from "../hooks/useBitcoinPrice.js";
 import { useFiatRates } from "../hooks/useFiatRates.js";
@@ -15,7 +16,6 @@ import { BitcoinAmount } from "../components/BitcoinAmount.js";
 import { ConductFacts } from "../components/ConductFacts.js";
 import { settlementWinner } from "../../escrow-engine/onchain-settlement-choice.js";
 import { payoutRecipientFor } from "../../escrow-engine/recipients.js";
-import { handleDisplayForViewer } from "../../payments/saved-handles.js";
 import { RoleAvatar } from "../components/RoleAvatar.js";
 import { Wordmark } from "../components/Wordmark.js";
 import { OverlaySheet } from "../components/OverlaySheet.js";
@@ -909,17 +909,9 @@ export function LiveTradeSurface({
             </>}
             <ReplayNotes notes={state.replayNotes} />
             {historyReloading && <p role="status">Refreshing this trade's history…</p>}
+            {state.status === EscrowStatus.LOCKED && myRole && <TradePaymentDetails state={state} />}
             {renderDecision()}
             {state.escrowMode === "onchain" && state.status === EscrowStatus.LOCKED && <MoreOptions onClick={() => setOnchainOpen(true)} label="Open on-chain deposit details" />}
-            {state.status === EscrowStatus.LOCKED && myRole && state.lock.handle && <details style={{ marginTop: 16 }}>
-              <summary style={{ minHeight: 44, cursor: "pointer", color: T.muted }}>{tr("lts.howToPay", { name: lockerName })}</summary>
-              <div style={{ padding: 12, overflowWrap: "anywhere", background: T.surface, borderRadius: 12 }}>
-                <div>{getRailByKey(state.lock.handle.rail)?.displayName ?? state.lock.handle.rail}</div>
-                <div>{handleDisplayForViewer(state.lock.handle.value, true)}</div>
-                <CopyButton value={state.lock.handle.value} />
-                <div>{state.lock.handle.networks?.map(key => getRailByKey(key)?.displayName ?? key).join(" · ")}</div>
-              </div>
-            </details>}
             {state.status !== EscrowStatus.CREATED && state.body && <details style={{ marginTop: 16 }}>
               <summary>{state.description}</summary>
               <ListingBody body={state.body} />

@@ -1,3 +1,4 @@
+import type {EscrowState} from '../escrow-engine/types.js';
 import assert from 'node:assert/strict';
 import { renderToStaticMarkup } from 'react-dom/server';
 import * as btc from '@scure/btc-signer';
@@ -6,15 +7,15 @@ import { BrowseView } from './screens/BrowseView.js';
 import { LangProvider } from '../i18n/index.js';
 import { setLocalStorageUserScope, setScopedStorageItem } from '../storage/user-scope.js';
 const f=safetyFixture({buyer:btc.utils.pubSchnorr(new Uint8Array(32).fill(11)),seller:btc.utils.pubSchnorr(new Uint8Array(32).fill(12)),arbiter:btc.utils.pubSchnorr(new Uint8Array(32).fill(13))},2_000_000);
-const store={...f.state,id:'store',category:'marketplace',description:'Store offer',fiatAmount:1,fiatCurrency:'USD',createdAt:100};
-const exchange={...f.state,id:'exchange',category:'p2p-trade',description:'Exchange offer',fiatAmount:3,fiatCurrency:'USD',createdAt:300};
+const store={...f.state,community:'us-usd',id:'store',category:'marketplace',description:'Store offer',fiatAmount:1,fiatCurrency:'USD',createdAt:100};
+const exchange={...f.state,community:'us-usd',id:'exchange',category:'p2p-trade',description:'Exchange offer',fiatAmount:3,fiatCurrency:'USD',createdAt:300};
 const foreign={...exchange,id:'foreign-eur',description:'EUR foreign offer',fiatCurrency:'EUR'};
-const bill={...f.state,id:'bill',category:'bill-pay',description:'Bill offer',fiatAmount:2,fiatCurrency:'USD',createdAt:200};
+const bill={...f.state,community:'us-usd',id:'bill',category:'bill-pay',description:'Bill offer',fiatAmount:2,fiatCurrency:'USD',createdAt:200};
 const original=Object.getOwnPropertyDescriptor(globalThis,'localStorage'),data=new Map<string,string>();
 Object.defineProperty(globalThis,'localStorage',{configurable:true,value:{getItem:(k:string)=>data.get(k)??null,setItem:(k:string,v:string)=>data.set(k,v),removeItem:(k:string)=>data.delete(k)}});
 try {
  setLocalStorageUserScope('viewer');
- const render=(local=[exchange,store], category="all")=>renderToStaticMarkup(<LangProvider><BrowseView browseCategory={category} setBrowseCategory={()=>{}} browseCommunity="us-usd" amountDisplayMode="sats"
+ const render=(local: EscrowState[]=[exchange,store], category="all")=>renderToStaticMarkup(<LangProvider><BrowseView browseCategory={category} setBrowseCategory={()=>{}} browseCommunity="us-usd" amountDisplayMode="sats"
  matchingListings={local} nonMatchingListings={[bill,foreign]} pubkey={'f'.repeat(64)} fedimintJoined={true} listingsLoading={false} isFirstTime={false}
  onPasteCustomInvite={()=>{}} onOpenEscrow={()=>{}} onLoadById={()=>{}} onCreate={()=>{}} onApplyAsArbiter={async()=>{}} /></LangProvider>);
  setScopedStorageItem('chama_browse_scope_v2','all');
@@ -32,6 +33,8 @@ try {
  assert.match(allChips, /data-browse-category="bill-pay" data-count="1"/);
  setScopedStorageItem('chama_browse_scope_v2','local');
  assert.deepEqual([...render().matchAll(/data-listing-id="([^"]+)"/g)].map(m=>m[1]),['exchange','store'],'sort respects local filter');
+ const notOurCommunity = [exchange, {...exchange,id:'untagged',community:null}, {...exchange,id:'different-community',community:'ke-kes'}];
+ assert.deepEqual([...render(notOurCommunity).matchAll(/data-listing-id="([^"]+)"/g)].map(m=>m[1]),['exchange'],'My Chama excludes untagged and other-community listings even if routing supplied them as matching');
  const localChips = render();
  assert.doesNotMatch(localChips, /data-browse-category="bill-pay"/);
  assert.doesNotMatch(localChips, /data-browse-category="mine"/);
