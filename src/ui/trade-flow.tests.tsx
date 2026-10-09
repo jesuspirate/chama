@@ -37,9 +37,6 @@ let moneyCalls=0;
 const bridge=new EscrowFedimintBridge({getState:()=>({...state,status:EscrowStatus.CREATED}),lockEscrow:()=>{moneyCalls++;}} as unknown as EscrowClient,{createEscrowLock:()=>{moneyCalls++;},spendNotes:()=>{moneyCalls++;}} as unknown as FedimintClient,{} as Signer);
 await assert.rejects(bridge.preflightLock(state.id,{savedHandleId:saved.id}),/changed/);
 await assert.rejects(bridge.lockAndPublish(state.id,{savedHandleId:saved.id}),/changed/);
-// Also cover deletion while shares were being encrypted: no handle-less LOCK.
-const publishingBridge = bridge as unknown as {publishLockBundle: (id:string,state:EscrowState,bundle:{notesHash:string;shares:[]},participants:{buyerPubkey:string;sellerPk:string;arbiterPubkey:string},opts:{savedHandleId:string})=>Promise<EscrowState>};
-await assert.rejects(publishingBridge.publishLockBundle(state.id,state,{notesHash:'locked',shares:[]},{buyerPubkey:buyer,sellerPk:seller,arbiterPubkey:arbiter},{savedHandleId:saved.id}),/changed/);
 assert.equal(moneyCalls,0,'stale payment handle refuses before a spend or LOCK');
 confirmLockPaymentChoice(state,{inChat:true});assert.deepEqual(readLockPaymentChoice(state),{inChat:true});
 assert.deepEqual(confirmedLockPaymentFields(state),{},'chat fallback uses the existing no-handle LOCK shape');

@@ -1,3 +1,4 @@
+import { requestLockPaymentDetails, type LockPaymentPrompt } from "./lock-payment-prompt.js";
 import { LockPaymentDetailsModal } from "./panels/LockPaymentDetailsModal.js";
 import { confirmedLockPaymentFields, needsLockPaymentDetails, type LockPaymentChoice } from "../payments/lock-payment-details.js";
 import { buildWakeIndex } from "../notifications/wake-index.js";
@@ -744,9 +745,10 @@ export default function App() {
               }
   };
 
-  const [lockPaymentPrompt, setLockPaymentPrompt] = useState<{ state: EscrowState; initialId?: string; resolve: (choice: LockPaymentChoice | null) => void } | null>(null);
+  const [lockPaymentPrompt, setLockPaymentPrompt] = useState<LockPaymentPrompt | null>(null);
+  const lockPaymentPromptRef = useRef<LockPaymentPrompt | null>(null);
   const confirmLockDetails = (trade: EscrowState, initialId?: string): Promise<LockPaymentChoice | null> =>
-    needsLockPaymentDetails(trade) ? new Promise(resolve => setLockPaymentPrompt({ state: trade, initialId, resolve })) : Promise.resolve({ inChat: true });
+    requestLockPaymentDetails(lockPaymentPromptRef, setLockPaymentPrompt, trade, initialId);
   const prepareOnchainWithDetails = async (id: string) => {
     const trade = escrows.get(id);
     if (!trade) throw new Error("Trade unavailable");
@@ -3268,8 +3270,8 @@ export default function App() {
       <SimEntryModal />
 
         {lockPaymentPrompt && <LockPaymentDetailsModal state={lockPaymentPrompt.state} initialId={lockPaymentPrompt.initialId}
-        onClose={() => { lockPaymentPrompt.resolve(null); setLockPaymentPrompt(null); }}
-        onConfirm={choice => { lockPaymentPrompt.resolve(choice); setLockPaymentPrompt(null); }} />}
+        onClose={() => lockPaymentPrompt.resolve(null)}
+        onConfirm={choice => lockPaymentPrompt.resolve(choice)} />}
       {toast && <Toast message={toast.message} type={toast.type} sticky={toast.sticky} dismissOnTap={toast.dismissOnTap} onDone={() => setToast(null)} />}
       {walletOverlay === "lightning" && (
         <PayoutDestinationsPanel onClose={() => setWalletOverlay(null)} />
