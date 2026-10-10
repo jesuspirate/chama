@@ -190,3 +190,15 @@ console.log("PASS badge + capsule: lock on In escrow, sentence case, attention f
   assert.equal(tradeStepsDone(t({ category: "marketplace", status: EscrowStatus.LOCKED })), null, "only money-for-sats trades");
   console.log("PASS trade steps: read from committed state, hidden for refunds, closed trades and non-exchange categories");
 }
+
+// Wide New look uses one column, keeping both phone and Classic untouched.
+{
+  const { newLookDesktopCss } = await import('./desktop-layout.js');
+  const css = newLookDesktopCss();
+  assert.match(css, /@media \(min-width:1024px\)/);
+  assert.match(css, /max-width:720px;margin:0 auto/);
+  assert.match(css, /data-new-look="true".*\.chama-page-brand\{display:none!important\}/);
+  assert.match(css, /h1\{font-size:1.75rem!important\}/);
+  assert.match(css, /assisted-choice strong\{font-size:1.125rem\}/);
+  assert.match(css, /assisted-canvas-footer\{display:flex/);
+}

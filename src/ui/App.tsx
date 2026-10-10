@@ -1,3 +1,4 @@
+import { newLookDesktopCss } from "./desktop-layout.js";
 import { buildWakeIndex } from "../notifications/wake-index.js";
 import { deleteListings } from "../escrow-engine/delete-listings.js";
 import { listPaidLockRecoveries } from "../payments/paid-lock-recovery.js";
@@ -3256,7 +3257,7 @@ export default function App() {
     });
 
   return (
-    <ConductProvider key={pubkey ?? "anonymous"} load={actions.fetchPublicConduct}><div className={detailMode ? undefined : "chama-shell-nav"} data-shell-width={(assistedCanvasMode || wideOwnWidthMode) ? "wide" : "narrow"} style={{
+    <ConductProvider key={pubkey ?? "anonymous"} load={actions.fetchPublicConduct}><div className={detailMode ? undefined : "chama-shell-nav"} data-new-look={browseSkin === "steps" && !detailMode && (view === "guided" || wideOwnWidthMode) ? "true" : undefined} data-shell-width={(assistedCanvasMode || wideOwnWidthMode) ? "wide" : "narrow"} style={{
       background: T.bg, color: T.text, minHeight: "100dvh",
       // v2.7 Stage 4: detail mode widens to 1120 so TradeDetail's built-in
       // ≥980px two-column layout (listing pane + sticky trade-room/chat) can
@@ -3270,6 +3271,7 @@ export default function App() {
       paddingTop: shellPaddingTop,
     }}>
       <style>{globalCss()}</style>
+      <div className="chama-desktop-column">
       {everOnline && (!connected || connectedRelays === 0) && <OfflineBar />}
       <SimModePill />
       <SimEntryModal />
@@ -3286,11 +3288,11 @@ export default function App() {
       {!detailMode && (
         <>
           {/* Header */}
-          <div style={{
+          <div className="chama-page-header" style={{
             padding: "16px 16px 12px", borderBottom: `1px solid ${T.border}`,
             display: "flex", justifyContent: "space-between", alignItems: "center",
           }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div className="chama-page-brand" style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <div>
                 <button type="button" aria-label={t("lts.backHome")} onClick={guidedHome} style={{ background: "none", border: 0, padding: 0, cursor: "pointer" }}><Wordmark /></button>
                 <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, paddingLeft: 34, marginTop: 3 }}>
@@ -5086,7 +5088,7 @@ export default function App() {
         </>
       )}
 
-    </div></ConductProvider>
+    </div></div></ConductProvider>
   );
 }
 
@@ -5097,7 +5099,7 @@ export default function App() {
 // Function, not a const string: the template interpolates T (focus ring), and
 // a module-scope capture would go stale when the palette swaps (#50). Called
 // per render so it always reflects the active theme.
-const globalCss = () => `${typeScaleCss()}${navCss()}${homeCss()}
+const globalCss = () => `${typeScaleCss()}${navCss()}${homeCss()}${newLookDesktopCss()}
   /* The escrow pill states a number; landing on Me, the trades that MAKE that
      number briefly glow, so "which one is it talking about?" stops being a
      guessing game (Jet, 2026-09-20). Fades on its own — a permanent
