@@ -1,3 +1,5 @@
+import { captureReplay } from "../protocol/replay-capture.test-helper.js";
+const replayEventChain = captureReplay("src/escrow-engine/tests.ts");
 import { needsTradeHistory } from "../ui/decisions.js";
 // ══════════════════════════════════════════════════════════════════════════
 // Chama Escrow Engine — Test Suite (PR 1 atomic funding + PR 2 community)
@@ -70,7 +72,6 @@ import {
 
 import {
   applyEvent,
-  replayEventChain,
   canVote,
   getWinner,
   payoutRecipientFor,
