@@ -158,9 +158,12 @@ On pinned Fedimint 0.11.1, forced recovery is
 backup snapshot. With `--from-backup`, the preview client downloads and decrypts
 the federation snapshot and passes `Some(backup)` to recovery. A missing or
 unreadable snapshot is refused; this mode never falls back to seed-only.
-Both recovery and the subsequent balance-reading client use a stopped
-transaction executor. No invoice, spend, receive or reissue command runs.
-Recovery reads federation history and writes only the disposable scratch DB.
+The recovery client stays stopped. After module recovery, the reopened scratch
+client runs only the state machines created by recovery to collect recovered
+notes' signatures. It waits for all active state machines within the same overall
+deadline before reading the balance. A timeout discards scratch and prints no
+partial balance. No invoice, spend, receive, reissue, backup or new operation
+is submitted by recover-check. Recovery writes only the disposable scratch DB.
 
 The source balance uses the same primary Bitcoin mint module and its
 `get_balance` implementation against a source read-only transaction. The
@@ -215,6 +218,14 @@ bridge/client process using SOURCE, and do not fund or spend from it during
 the proof. A live source can change while history is scanned and invalidate
 the comparison.
 
+On Fedimint 0.11.1, `--from-backup` only changes recovery on federations using
+the history path. Slice-based mint recovery ignores the snapshot and collects
+note signatures after module recovery. For the mint v1 primary module, JSON
+includes `recoveryMethod: "slices"` or `"history"` from the same
+`fetch_recovery_count` availability probe used by the SDK. This extra probe is
+diagnostic, not an override of the SDK's choice. The field is omitted for
+mintv2, which has no history-vs-slices fallback.
+
 First test seed-only recovery, before uploading a snapshot:
 
 ```sh
@@ -249,7 +260,7 @@ On recovery completion, stdout is JSON (with `fromBackup: true` for snapshot
 mode and `false` for seed-only):
 
 ```json
-{"federationId":"<federation-id>","recoveredBalanceMsat":1000000,"sourceBalanceMsat":1000000,"recoveryCompleted":true,"fromBackup":false,"elapsedSeconds":42}
+{"federationId":"<federation-id>","recoveredBalanceMsat":1000000,"sourceBalanceMsat":1000000,"recoveryCompleted":true,"fromBackup":false,"recoveryMethod":"slices","elapsedSeconds":42}
 ```
 
 **Passing** means recovery completed and the two balances are equal. A completed

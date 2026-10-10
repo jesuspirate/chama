@@ -7,6 +7,7 @@ use fedimint_client::Client;
 use fedimint_core::db::{Database, IDatabaseTransactionOpsCore};
 use fedimint_core::invite_code::InviteCode;
 use fedimint_core::module::AmountUnit;
+use fedimint_mint_client::api::MintFederationApi;
 use futures::StreamExt;
 use serde::Serialize;
 
@@ -22,6 +23,8 @@ pub(crate) struct RecoveryCheckOutput {
     source_balance_msat: u64,
     recovery_completed: bool,
     from_backup: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    recovery_method: Option<&'static str>,
     elapsed_seconds: u64,
 }
 
@@ -145,13 +148,14 @@ pub(crate) async fn run(
     .await;
     // Close clients before deleting their DB; print success only after cleanup.
     scratch.cleanup()?;
-    let (federation_id, recovered_balance_msat, source_balance_msat) = result?;
+    let (federation_id, recovered_balance_msat, source_balance_msat, recovery_method) = result?;
     Ok(RecoveryCheckOutput {
         federation_id,
         recovered_balance_msat,
         source_balance_msat,
         recovery_completed: true,
         from_backup,
+        recovery_method,
         elapsed_seconds: started.elapsed().as_secs(),
     })
 }
@@ -164,10 +168,10 @@ async fn recover(
     invite: InviteCode,
     timeout: Duration,
     from_backup: bool,
-) -> Result<(String, u64, u64)> {
+) -> Result<(String, u64, u64, Option<&'static str>)> {
     let started = Instant::now();
     let (mut builder, db) = bridge.client_builder().await?;
-    builder.stopped(); // no transaction state-machine executor during the proof
+    builder.stopped(); // module recovery first; recovered outputs run only after reopen
     let client = tokio::time::timeout(timeout, async {
         let preview = builder.preview(bridge.connectors().await?, &invite).await?;
         let backup = if from_backup {
@@ -190,15 +194,15 @@ async fn recover(
     client.shutdown().await;
     finished.context("module recovery timed out; scratch wallet discarded")??;
 
-    // Recovering modules are unavailable until reopened. Restart via a new
-    // stopped builder; ClientHandle::restart would enable its executor.
-    let remaining = timeout.saturating_sub(started.elapsed());
+    // Recovering modules are unavailable until reopened. Enable the scratch
+    // executor so recovery-created mint outputs can collect signatures. No
+    // new operations are submitted to this client.
     let mut builder = Client::builder()
         .await?
         .with_iroh_enable_dht(bridge.iroh_enable_dht)
         .with_iroh_enable_next(bridge.iroh_enable_next);
     builder.with_module_inits(default_module_inits());
-    builder.stopped();
+    let remaining = timeout.saturating_sub(started.elapsed());
     let client = tokio::time::timeout(remaining, async {
         builder
             .open(
@@ -210,8 +214,8 @@ async fn recover(
     })
     .await
     .context("timed out reopening recovered modules")??;
-    let result = async {
-        let recovered = client.get_balance_for_btc().await?;
+    let remaining = timeout.saturating_sub(started.elapsed());
+    let result = tokio::time::timeout(remaining, async {
         let (id, module) = client
             .primary_module_for_unit(AmountUnit::BITCOIN)
             .context("recovered client has no Bitcoin balance module")?;
@@ -225,6 +229,27 @@ async fn recover(
         if kind != "mint" && kind != "mintv2" {
             bail!("unsupported source balance module; refusing an invented balance");
         }
+        // Same endpoint-availability probe as MintClientInit::recover in 0.11.1.
+        // This is diagnostic only; the SDK still chooses its own recovery path.
+        let recovery_method = if kind == "mint" {
+            Some(
+                if client
+                    .api()
+                    .with_module(id)
+                    .fetch_recovery_count()
+                    .await
+                    .is_ok()
+                {
+                    "slices"
+                } else {
+                    "history"
+                },
+            )
+        } else {
+            None // mintv2 has no history-vs-slices fallback to diagnose.
+        };
+        client.wait_for_all_active_state_machines().await?;
+        let recovered = client.get_balance_for_btc().await?;
         let source_config = Client::get_config_from_db(source_db)
             .await
             .context("source federation config is missing")?;
@@ -250,11 +275,13 @@ async fn recover(
             client.federation_id().to_string(),
             recovered.msats,
             source.msats,
+            recovery_method,
         ))
-    }
-    .await;
+    })
+    .await
+    .context("recovered notes still collecting signatures; scratch wallet discarded");
     client.shutdown().await;
-    result
+    result?
 }
 
 fn require_snapshot(
