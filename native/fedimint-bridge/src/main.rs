@@ -277,6 +277,13 @@ enum Command {
         allowed_origins: Vec<String>,
     },
 
+    /// Upload a source wallet snapshot without spending. Uses a private
+    /// temporary database copy; the source remains read-only. Stop its bridge first.
+    BackupNow {
+        #[arg(long, default_value_t = 900, value_parser = clap::value_parser!(u64).range(1..))]
+        timeout_seconds: u64,
+    },
+
     /// Dev-only seed recovery proof. Never operates the source wallet. The
     /// scratch wallet shares its seed, must never be used, and is deleted on
     /// completion or failure. Stop the source bridge before running this.
@@ -287,6 +294,9 @@ enum Command {
         invite: String,
         #[arg(long)]
         scratch_data_dir: PathBuf,
+        /// Require the encrypted snapshot downloaded from the federation.
+        #[arg(long)]
+        from_backup: bool,
         /// Total recovery deadline (seconds); no incomplete scratch wallet is kept.
         #[arg(long, default_value_t = 900, value_parser = clap::value_parser!(u64).range(1..))]
         timeout_seconds: u64,
@@ -655,7 +665,7 @@ struct ParseNotesOutput {
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
-    if matches!(&cli.command, Command::RecoverCheck { .. }) {
+    if matches!(&cli.command, Command::RecoverCheck { .. } | Command::BackupNow { .. }) {
         // Recovery libraries can log note details at debug level. Keep this
         // proof on warnings regardless of the user's normal RUST_LOG setting.
         let _ = tracing_subscriber::fmt()
@@ -701,11 +711,19 @@ async fn main() -> Result<()> {
     bridge.log_effective_config();
 
     match cli.command {
+        Command::BackupNow { timeout_seconds } => {
+            let output = recover_check::backup_now(
+                &bridge,
+                Duration::from_secs(timeout_seconds),
+            ).await?;
+            print_json(&output)?;
+        }
         Command::RecoverCheck {
             source_data_dir,
             invite,
             scratch_data_dir,
             timeout_seconds,
+            from_backup,
         } => {
             let output = recover_check::run(
                 &bridge,
@@ -713,6 +731,7 @@ async fn main() -> Result<()> {
                 &invite,
                 &scratch_data_dir,
                 Duration::from_secs(timeout_seconds),
+                from_backup,
             )
             .await?;
             print_json(&output)?;

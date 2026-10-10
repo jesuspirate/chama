@@ -154,7 +154,10 @@ federation against the source config before creating a scratch wallet.
 
 On pinned Fedimint 0.11.1, forced recovery is
 `ClientBuilder::preview(...).recover(db, root_secret, None)`, followed by
-`wait_for_all_recoveries`. This uses the seed alone, without a backup snapshot.
+`wait_for_all_recoveries`. By default this uses the seed alone, without a
+backup snapshot. With `--from-backup`, the preview client downloads and decrypts
+the federation snapshot and passes `Some(backup)` to recovery. A missing or
+unreadable snapshot is refused; this mode never falls back to seed-only.
 Both recovery and the subsequent balance-reading client use a stopped
 transaction executor. No invoice, spend, receive or reissue command runs.
 Recovery reads federation history and writes only the disposable scratch DB.
@@ -164,6 +167,19 @@ The source balance uses the same primary Bitcoin mint module and its
 pinned mint v1/v2 implementations count the notes in that supplied transaction;
 no source client, source migrations or source state machines are started.
 An unsupported primary balance module is an error, not a zero balance.
+
+`backup-now` uploads an encrypted snapshot of the source wallet with Fedimint's
+`backup_to_federation`. That SDK method also writes local LastBackupKey/event
+metadata, so this command first copies one read-only source transaction into a
+private temporary database. It opens that exact wallet-state copy with a
+stopped executor, uploads the snapshot, shuts it down, and deletes the copy.
+No source client or source migrations run, and SOURCE files remain unchanged.
+No invoice, spend, receive or reissue operation is started. The temporary copy
+uses Unix mode 0700. The default upload deadline is 900 seconds.
+
+These snapshot APIs are deprecated in pinned Fedimint 0.11.1 and scheduled for
+removal in 0.13.0; this tool compares the two recovery approaches, not a promise
+of a permanent app backup feature.
 
 ### Manual run (Jet)
 
@@ -199,6 +215,8 @@ bridge/client process using SOURCE, and do not fund or spend from it during
 the proof. A live source can change while history is scanned and invalidate
 the comparison.
 
+First test seed-only recovery, before uploading a snapshot:
+
 ```sh
 "$BRIDGE" recover-check \
   --source-data-dir "$SOURCE" \
@@ -207,10 +225,31 @@ the comparison.
   --timeout-seconds 900
 ```
 
-On completion, stdout is JSON:
+Then explicitly upload the source wallet's snapshot and test recovery with it.
+Keep SOURCE stopped and unchanged between both tests. The first successful
+check deleted SCRATCH, so reuse the same path. If an interrupted check left it
+behind, remove only that dedicated disposable scratch directory before retrying.
+
+```sh
+"$BRIDGE" --data-dir "$SOURCE" backup-now --timeout-seconds 900
+"$BRIDGE" recover-check \
+  --source-data-dir "$SOURCE" \
+  --invite "$INVITE" \
+  --scratch-data-dir "$SCRATCH" \
+  --from-backup \
+  --timeout-seconds 900
+```
+
+A successful upload reports `backupUploaded: true` and the federation id. It
+does not mean recovery works; the second command checks that independently.
+Even if the first mode times out or gives unequal balances, run the snapshot
+mode after a successful backup upload and report both results.
+
+On recovery completion, stdout is JSON (with `fromBackup: true` for snapshot
+mode and `false` for seed-only):
 
 ```json
-{"federationId":"<federation-id>","recoveredBalanceMsat":1000000,"sourceBalanceMsat":1000000,"recoveryCompleted":true,"elapsedSeconds":42}
+{"federationId":"<federation-id>","recoveredBalanceMsat":1000000,"sourceBalanceMsat":1000000,"recoveryCompleted":true,"fromBackup":false,"elapsedSeconds":42}
 ```
 
 **Passing** means recovery completed and the two balances are equal. A completed
@@ -218,7 +257,8 @@ scan with unequal balances is a failed proof, not successful wallet restoration.
 A timeout is **inconclusive**, not evidence that seed recovery failed: recovery
 progress with a stopped executor has not yet been demonstrated on a funded
 federation. Preserve SOURCE and report the timeout.
-Paste the JSON into the review thread. This proves native recovery only;
+Paste both recovery JSON results (or each mode's timeout/error) and the upload
+result into the review thread. This proves native recovery only;
 WASM browser recovery needs its own separate evidence.
 
 SCRATCH must be new or empty, must not overlap SOURCE (in either direction),
@@ -232,7 +272,9 @@ The scratch client shares the source's seed. **Never use it as another wallet**:
 it could reuse note nonces and lose money. The tool shuts it down and deletes
 SCRATCH before printing success. A process kill, power loss or crash can leave
 SCRATCH behind; remove that dedicated scratch directory before retrying, and
-never start a normal bridge on it. SOURCE is retained. No mnemonic or entropy
+never start a normal bridge on it. `backup-now` also deletes its private
+`chama-backup-now-*` temporary copy on normal completion/error; after a crash,
+remove any leftover copy and never use it as a wallet. SOURCE is retained. No mnemonic or entropy
 is printed by the command.
 
 ### Finish: pay the test sats back to your own wallet

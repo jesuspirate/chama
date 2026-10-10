@@ -4,9 +4,10 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, bail};
 use fedimint_client::Client;
-use fedimint_core::db::Database;
+use fedimint_core::db::{Database, IDatabaseTransactionOpsCore};
 use fedimint_core::invite_code::InviteCode;
 use fedimint_core::module::AmountUnit;
+use futures::StreamExt;
 use serde::Serialize;
 
 use crate::{Bridge, default_module_inits, root_secret_from_mnemonic};
@@ -20,6 +21,7 @@ pub(crate) struct RecoveryCheckOutput {
     recovered_balance_msat: u64,
     source_balance_msat: u64,
     recovery_completed: bool,
+    from_backup: bool,
     elapsed_seconds: u64,
 }
 
@@ -105,6 +107,7 @@ pub(crate) async fn run(
     invite: &str,
     scratch: &Path,
     timeout: Duration,
+    from_backup: bool,
 ) -> Result<RecoveryCheckOutput> {
     let started = Instant::now();
     let (source, scratch) = validate_paths(source, scratch)?;
@@ -131,7 +134,15 @@ pub(crate) async fn run(
     let scratch = ScratchDir::create(scratch)?;
     let mut scratch_bridge = bridge.clone();
     scratch_bridge.data_dir = scratch.0.clone();
-    let result = recover(&scratch_bridge, &source_db, &mnemonic, invite, timeout).await;
+    let result = recover(
+        &scratch_bridge,
+        &source_db,
+        &mnemonic,
+        invite,
+        timeout,
+        from_backup,
+    )
+    .await;
     // Close clients before deleting their DB; print success only after cleanup.
     scratch.cleanup()?;
     let (federation_id, recovered_balance_msat, source_balance_msat) = result?;
@@ -140,25 +151,36 @@ pub(crate) async fn run(
         recovered_balance_msat,
         source_balance_msat,
         recovery_completed: true,
+        from_backup,
         elapsed_seconds: started.elapsed().as_secs(),
     })
 }
 
+#[allow(deprecated)] // Explicit comparison of snapshot vs seed-only on pinned 0.11.1.
 async fn recover(
     bridge: &Bridge,
     source_db: &Database,
     mnemonic: &Mnemonic,
     invite: InviteCode,
     timeout: Duration,
+    from_backup: bool,
 ) -> Result<(String, u64, u64)> {
     let started = Instant::now();
     let (mut builder, db) = bridge.client_builder().await?;
     builder.stopped(); // no transaction state-machine executor during the proof
     let client = tokio::time::timeout(timeout, async {
-        builder
-            .preview(bridge.connectors().await?, &invite)
-            .await?
-            .recover(db.clone(), root_secret_from_mnemonic(mnemonic), None)
+        let preview = builder.preview(bridge.connectors().await?, &invite).await?;
+        let backup = if from_backup {
+            Some(require_snapshot(
+                preview
+                    .download_backup_from_federation(root_secret_from_mnemonic(mnemonic))
+                    .await?,
+            )?)
+        } else {
+            None
+        };
+        preview
+            .recover(db.clone(), root_secret_from_mnemonic(mnemonic), backup)
             .await
     })
     .await
@@ -233,6 +255,96 @@ async fn recover(
     .await;
     client.shutdown().await;
     result
+}
+
+fn require_snapshot(
+    backup: Option<fedimint_client::backup::ClientBackup>,
+) -> Result<fedimint_client::backup::ClientBackup> {
+    backup.context("no readable federation snapshot found; refusing seed-only fallback")
+}
+
+/// Copy one read transaction, not live RocksDB files; only the private target
+/// is writable. Includes the source's last-backup metadata for SDK validation.
+async fn copy_source_database(source: &Database, target: &Database) -> Result<()> {
+    let mut read = source.begin_transaction_nc().await;
+    let mut rows = read.raw_find_by_prefix(&[]).await?;
+    let mut write = target.begin_transaction().await;
+    while let Some((key, value)) = rows.next().await {
+        write.raw_insert_bytes(&key, &value).await?;
+    }
+    write.commit_tx_result().await?;
+    Ok(())
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct BackupNowOutput {
+    federation_id: String,
+    backup_uploaded: bool,
+}
+
+/// SDK backup writes LastBackupKey and an event locally. Stage the source
+/// snapshot instead of allowing those metadata writes into the real wallet.
+#[allow(deprecated)]
+pub(crate) async fn backup_now(bridge: &Bridge, timeout: Duration) -> Result<BackupNowOutput> {
+    let source = bridge
+        .data_dir
+        .canonicalize()
+        .context("source data directory does not exist")?;
+    if !source.join("client.db").is_dir() {
+        bail!("source client.db is missing; no source wallet was created");
+    }
+    let source_db: Database =
+        fedimint_rocksdb::RocksDbReadOnly::open_read_only(source.join("client.db"))
+            .await
+            .context("could not open source database read-only")?
+            .into();
+    let mut entropy = Client::load_decodable_client_secret::<Vec<u8>>(&source_db)
+        .await
+        .context("stored source client secret is missing or unreadable")?;
+    let mnemonic = Mnemonic::from_entropy(&entropy);
+    entropy.fill(0);
+    let mnemonic = mnemonic.context("invalid stored source secret")?;
+    let config = Client::get_config_from_db(&source_db)
+        .await
+        .context("source federation config is missing")?;
+    let path = std::env::temp_dir().join(format!(
+        "chama-backup-now-{}-{:016x}",
+        std::process::id(),
+        rand::random::<u64>()
+    ));
+    let (_, path) = validate_paths(&source, &path)?;
+    let staged = ScratchDir::create(path)?;
+    let result = tokio::time::timeout(timeout, async {
+        let db = crate::load_database(&staged.0).await?;
+        copy_source_database(&source_db, &db).await?;
+        let mut builder = Client::builder()
+            .await?
+            .with_iroh_enable_dht(bridge.iroh_enable_dht)
+            .with_iroh_enable_next(bridge.iroh_enable_next);
+        builder.with_module_inits(default_module_inits());
+        builder.stopped();
+        let client = builder
+            .open(
+                bridge.connectors().await?,
+                db,
+                root_secret_from_mnemonic(&mnemonic),
+            )
+            .await?;
+        let result = client
+            .backup_to_federation(fedimint_client::backup::Metadata::empty())
+            .await;
+        client.shutdown().await;
+        result?;
+        Ok::<_, anyhow::Error>(BackupNowOutput {
+            federation_id: config.calculate_federation_id().to_string(),
+            backup_uploaded: true,
+        })
+    })
+    .await
+    .context("backup upload timed out; temporary copy discarded");
+    staged.cleanup()?;
+    result?
 }
 
 #[cfg(test)]
@@ -332,11 +444,42 @@ mod tests {
             secret == vec![42u8; 16],
             "stored test secret could not be read"
         );
+        let staged = ScratchDir::create(source.parent().unwrap().join("backup-copy")).unwrap();
+        let target = crate::load_database(&staged.0).await.unwrap();
+        copy_source_database(&read_only, &target).await.unwrap();
+        let copied = Client::load_decodable_client_secret::<Vec<u8>>(&target)
+            .await
+            .unwrap();
+        assert!(
+            copied == secret,
+            "private backup copy changed the source secret"
+        );
+        let mut tx = target.begin_transaction().await;
+        tx.raw_insert_bytes(b"test-backup-metadata", b"private copy only")
+            .await
+            .unwrap();
+        tx.commit_tx_result().await.unwrap();
+        drop(target);
+        staged.cleanup().unwrap();
         drop(read_only);
         assert!(
             before == manifest(&source),
             "opening source read-only modified its files"
         );
+    }
+    #[test]
+    fn missing_snapshot_refuses_seed_only_fallback() {
+        assert!(require_snapshot(None).is_err());
+    }
+    #[test]
+    fn downloaded_snapshot_is_preserved_for_recovery() {
+        let snapshot = fedimint_client::backup::ClientBackup {
+            session_count: 42,
+            metadata: fedimint_client::backup::Metadata::empty(),
+            modules: Default::default(),
+        };
+        let actual = require_snapshot(Some(snapshot.clone())).unwrap();
+        assert!(actual == snapshot, "downloaded snapshot was altered");
     }
     #[test]
     fn cli_accepts_standalone_recovery_and_rejects_zero_timeout() {
@@ -351,7 +494,26 @@ mod tests {
             "--scratch-data-dir",
             "scratch",
         ];
-        assert!(crate::Cli::try_parse_from(args).is_ok());
+        let seed_only = crate::Cli::try_parse_from(args).unwrap();
+        assert!(matches!(
+            seed_only.command,
+            crate::Command::RecoverCheck {
+                from_backup: false,
+                ..
+            }
+        ));
+        let snapshot =
+            crate::Cli::try_parse_from(args.into_iter().chain(["--from-backup"])).unwrap();
+        assert!(matches!(
+            snapshot.command,
+            crate::Command::RecoverCheck {
+                from_backup: true,
+                ..
+            }
+        ));
+        assert!(
+            crate::Cli::try_parse_from(["bridge", "--data-dir", "source", "backup-now"]).is_ok()
+        );
         assert!(
             crate::Cli::try_parse_from(args.into_iter().chain(["--timeout-seconds", "0"])).is_err()
         );
