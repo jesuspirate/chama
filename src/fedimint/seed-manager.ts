@@ -2,9 +2,10 @@
 // Chama — Nostr-backed Fedimint Seed Manager
 // ══════════════════════════════════════════════════════════════════════════
 //
-// The Fedimint WASM wallet needs a BIP-39 mnemonic to derive its keys.
-// Chama stores that mnemonic as a NIP-44-encrypted kind-30078 *replaceable*
-// event on the user's Nostr relays (d-tag: "chama-fedimint-seed-v1").
+// Since v6.1 ordinary browser wallets use their own device-local seeds.
+// This relay-backed BIP-39 root serves on-chain escrow/bond keys and the
+// optional browser remote-bridge Fedimint fallback. Legacy backups are NIP-44
+// kind-30078 events (d-tag: "chama-fedimint-seed-v1").
 //
 // v2 backups add an independent recovery code inside the NIP-44 envelope.
 // Legacy v1 backups require only the Nostr signer; public relays may retain
@@ -69,11 +70,12 @@ async function openProtectedSeed(event: NostrEvent, pubkey: string, signer: Sign
   try { json = await signer.nip44Decrypt(event.content, pubkey); }
   catch { throw new Error("Couldn't open your protected wallet backup with this Nostr signer. Try again."); }
   const mnemonic = unwrapSeedBackup(parseSeedBackupV2(json, 'browser'), options.recoveryCode, 'browser');
-  if (!options.restoreConfirmed) throw new SeedNeedsRestoreConfirmation(pubkey);
+  if (options.requireRestoreConfirmation && !options.restoreConfirmed) throw new SeedNeedsRestoreConfirmation(pubkey);
   cachedSeed = mnemonic.split(' ');
   cachedForPubkey = pubkey;
   cachedSeedSource = 'recovered';
   cachedProtectedSeed = true;
+  cachedNeedsRestoreConfirmation = !options.restoreConfirmed;
   saveSeedPublishedMarker(pubkey, event.id);
   saveLocalSeedEvent(pubkey, event);
   return [...cachedSeed];
@@ -373,6 +375,7 @@ let cachedSeed: string[] | null = null;
 let cachedForPubkey: string | null = null;
 let cachedSeedSource: "fresh" | "recovered" | null = null;
 let cachedProtectedSeed = false;
+let cachedNeedsRestoreConfirmation = false;
 
 /** Clear the cache — call on disconnect / signer change */
 export function clearSeedCache(): void {
@@ -380,6 +383,7 @@ export function clearSeedCache(): void {
   cachedForPubkey = null;
   cachedSeedSource = null;
   cachedProtectedSeed = false;
+  cachedNeedsRestoreConfirmation = false;
 }
 
 /**
@@ -483,6 +487,10 @@ export async function getOrCreateSeed(
   };
 
   if (cachedSeed && cachedForPubkey === pubkey) {
+    if (options.requireRestoreConfirmation && cachedNeedsRestoreConfirmation && !options.restoreConfirmed) {
+      throw new SeedNeedsRestoreConfirmation(pubkey);
+    }
+    if (options.restoreConfirmed) cachedNeedsRestoreConfirmation = false;
     return cachedSeed;
   }
 
@@ -601,6 +609,7 @@ export async function getOrCreateSeed(
       cachedSeedSource = loadPendingFirstJoin(pubkey)?.eventId === event.id
         ? "fresh"
         : "recovered";
+      cachedNeedsRestoreConfirmation = cachedSeedSource === 'recovered' && !options.restoreConfirmed;
       // v0.1.74 seed safety: record marker on recovery so future
       // sessions are protected even if the seed was originally
       // generated on a different device.

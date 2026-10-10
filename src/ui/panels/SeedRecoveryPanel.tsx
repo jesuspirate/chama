@@ -5,8 +5,9 @@ import { OverlaySheet } from '../components/OverlaySheet.js';
 import { T } from '../theme.js';
 
 /** Secrets live only in this mounted form; no clipboard, logs or persistence. */
-export function SeedRecoveryPanel({ needsCode, onRestore, onClose }: {
+export function SeedRecoveryPanel({ needsCode, requireRestoreConfirmation, onRestore, onClose }: {
   needsCode: boolean;
+  requireRestoreConfirmation: boolean;
   onRestore: (code: string, confirmed: boolean) => Promise<void>;
   onClose: () => void;
 }) {
@@ -38,7 +39,7 @@ export function SeedRecoveryPanel({ needsCode, onRestore, onClose }: {
   return <div style={{ position: 'fixed', inset: 0, zIndex: 10020 }}><OverlaySheet title={t(needsCode ? 'recovery.seed.codeTitle' : 'recovery.seed.restoreAction')} onClose={onClose}>
     {restored ? <p role="status">{t('recovery.seed.restored')}</p> : <form ref={form} onSubmit={async event => {
       event.preventDefault();
-      if (inFlight.current || !confirmed || (needsCode && !code.trim())) return;
+      if (inFlight.current || (requireRestoreConfirmation && !confirmed) || (needsCode && !code.trim())) return;
       inFlight.current = true; setBusy(true); setError(null);
       try {
         await onRestore(code, confirmed);
@@ -53,13 +54,15 @@ export function SeedRecoveryPanel({ needsCode, onRestore, onClose }: {
           autoComplete="off" autoCorrect="off" spellCheck={false} disabled={busy}
           style={{ display: 'block', boxSizing: 'border-box', width: '100%', fontSize: 19, padding: 12, marginTop: 8 }} />
       </label>}
+      {requireRestoreConfirmation && <>
       <p>{t('recovery.seed.restoreWarning')}</p>
       <label style={{ display: 'flex', gap: 10 }}>
         <input type="checkbox" checked={confirmed} onChange={event => setConfirmed(event.target.checked)} disabled={busy} />
         {t('recovery.seed.restoreConfirm')}
       </label>
+      </>}
       {error && <p role="alert">{error}</p>}
-      <button type="submit" disabled={busy || !confirmed || (needsCode && !code.trim())}
+      <button type="submit" disabled={busy || (requireRestoreConfirmation && !confirmed) || (needsCode && !code.trim())}
         style={{ width: '100%', minHeight: 60, fontSize: 19, marginTop: 16, borderRadius: T.rs, background: T.text, color: T.bg }}>
         {t(busy ? 'recovery.seed.restoring' : 'recovery.seed.restoreAction')}
       </button>

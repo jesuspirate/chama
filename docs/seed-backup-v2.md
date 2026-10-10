@@ -40,8 +40,11 @@ have valid signatures. Browser v2 takes priority over any legacy relay copy.
 Any v2 scope blocks fresh generation when no browser/v1 seed is usable. Any
 known v1 retirement blocks resurrection of another relay v1 copy.
 
-A code is entered in a dismissible overlay, with explicit acknowledgement of
-the old-device warning in English, Spanish, French or Swahili. Failed attempts
+A code is entered in a dismissible overlay. Only reads that seed a Fedimint
+client (today the browser remote-bridge fallback) require acknowledgement of
+the old-device warning, in English, Spanish, French or Swahili. Escrow and bond
+key derivation require no restore confirmation for v1; v2 still requires its
+code, but no Fedimint nonce-reuse warning for Bitcoin key derivation. Failed attempts
 remain retryable. All ten existing hook reader calls use the typed refusal
 handler. Unlocking does not resume a funding or signing action: the person
 must retry it. Signed encrypted events and existence markers are stored

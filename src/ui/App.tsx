@@ -3073,6 +3073,7 @@ export default function App() {
       {seedRecovery && seedRecovery.pubkey === pubkey && <SeedRecoveryPanel
         key={seedRecovery.pubkey}
         needsCode={seedRecovery.needsCode}
+        requireRestoreConfirmation={seedRecovery.requireRestoreConfirmation}
         onClose={actions.dismissSeedRecovery}
         onRestore={async (code, confirmed) => {
           await actions.unlockSeedBackup(code, confirmed);

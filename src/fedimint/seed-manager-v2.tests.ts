@@ -5,6 +5,7 @@ import type { NostrEvent } from '../escrow-engine/types.js';
 import type { Signer, UnsignedEvent } from '../escrow-engine/escrow-client.js';
 import { getOrCreateSeed, clearSeedCache, republishSeed, cachedSeedRequiresFederationRecovery,
   SeedNeedsRecoveryCode, SeedNeedsRestoreConfirmation, recoverSeedWordsFromEvents, checkAndMaybeRepublishSeed, SEED_RECOVERY_RETRY_DELAYS_MS, SEED_PUBLISHED_MARKER_KEY } from './seed-manager.js';
+import { deriveEscrowSigningKey } from '../bond-multisig/onchain-escrow-funding.js';
 import { SEED_V2_BROWSER_D_TAG, wrapSeedBackup, formatRecoveryCode, InvalidRecoveryCode } from './seed-backup-v2.js';
 const secret = new Uint8Array(32).fill(1), pubkey = getPublicKey(secret);
 const conversation = nip44.v2.utils.getConversationKey(secret, pubkey);
@@ -52,7 +53,7 @@ try {
   assert.equal(writes.length, 0);
   await assert.rejects(getOrCreateSeed(client([v1]), signer, { recoveryCode: formatRecoveryCode(new Uint8Array(16).fill(2)), restoreConfirmed: true }), InvalidRecoveryCode); cases++;
   assert.equal(writes.length, 0);
-  await assert.rejects(getOrCreateSeed(client([]), signer, { recoveryCode: code }), SeedNeedsRestoreConfirmation); cases++;
+  await assert.rejects(getOrCreateSeed(client([]), signer, { recoveryCode: code, requireRestoreConfirmation: true }), SeedNeedsRestoreConfirmation); cases++;
   const words = await getOrCreateSeed(client([]), signer, { recoveryCode: code, restoreConfirmed: true });
   assert.equal(words.join(' '), mnemonic); cases++;
   assert.equal(cachedSeedRequiresFederationRecovery(pubkey), true);
@@ -98,6 +99,22 @@ try {
   assert.equal((await getOrCreateSeed(client([damaged, v1]), signer)).join(' '), mnemonic); cases++;
   assert.equal(writes.length, 0);
 
+  reset();
+  // Review regression: an existing v1 seed on a fresh device derives an
+  // escrow key with no confirmation, preserving the released key path.
+  const keyWords = await getOrCreateSeed(client([v1]), signer);
+  const escrowKey = deriveEscrowSigningKey(keyWords.join(' '), 'review-v1-fresh-device');
+  assert.deepEqual(escrowKey.xonly, deriveEscrowSigningKey(mnemonic, 'review-v1-fresh-device').xonly); cases++;
+  assert.equal(writes.length, 0);
+  await assert.rejects(getOrCreateSeed(client([]), signer, { requireRestoreConfirmation: true }),
+    SeedNeedsRestoreConfirmation, 'Deriving a key does not consent to restoring a Fedimint client'); cases++;
+  reset();
+  await assert.rejects(getOrCreateSeed(client([v2]), signer), SeedNeedsRecoveryCode);
+  const protectedKeyWords = await getOrCreateSeed(client([v2]), signer, { recoveryCode: code });
+  assert.deepEqual(deriveEscrowSigningKey(protectedKeyWords.join(' '), 'review-v2-key').xonly,
+    deriveEscrowSigningKey(mnemonic, 'review-v2-key').xonly); cases++;
+  await assert.rejects(getOrCreateSeed(client([]), signer, { requireRestoreConfirmation: true }),
+    SeedNeedsRestoreConfirmation, 'Opening v2 for a key still requires acknowledgement before seeding Fedimint'); cases++;
   reset();
   await assert.rejects(getOrCreateSeed(client([v1]), signer, { requireRestoreConfirmation: true }), SeedNeedsRestoreConfirmation); cases++;
   assert.equal((await getOrCreateSeed(client([v1]), signer, { requireRestoreConfirmation: true, restoreConfirmed: true })).join(' '), mnemonic); cases++;

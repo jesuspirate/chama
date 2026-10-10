@@ -776,7 +776,7 @@ export interface FedimintState {
 }
 
 export interface UseEscrowState {
-  seedRecovery?: { pubkey: string; needsCode: boolean } | null;
+  seedRecovery?: { pubkey: string; needsCode: boolean; requireRestoreConfirmation: boolean } | null;
   /** Whether the client is connected to relays */
   connected: boolean;
   /** User's Nostr pubkey (hex) */
@@ -2242,13 +2242,17 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     lastDiscoveryRelayCountRef.current = 0;
   }, []);
 
-  const readSeed = useCallback(async (client: EscrowClient, signer: Signer) => {
-    try { return await getOrCreateSeed(client, signer, { requireRestoreConfirmation: true }); }
+  const readSeed = useCallback(async (client: EscrowClient, signer: Signer, requireRestoreConfirmation = false) => {
+    // Bitcoin key derivation is safe on multiple devices. Only a mnemonic
+    // installed into a Fedimint client needs the nonce-reuse acknowledgement.
+    try { return await getOrCreateSeed(client, signer, { requireRestoreConfirmation }); }
     catch (error) {
       if ((error instanceof SeedNeedsRecoveryCode || error instanceof SeedNeedsRestoreConfirmation)
         && signerRef.current === signer && clientRef.current === client) {
         setState(prev => ({ ...prev, seedRecovery: { pubkey: error.pubkey,
-          needsCode: error instanceof SeedNeedsRecoveryCode } }));
+          needsCode: error instanceof SeedNeedsRecoveryCode,
+          requireRestoreConfirmation: requireRestoreConfirmation ||
+            (prev.seedRecovery?.pubkey === error.pubkey && prev.seedRecovery.requireRestoreConfirmation) } }));
       }
       throw error;
     }
@@ -2258,9 +2262,13 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
   }, []);
   const unlockSeedBackup = useCallback(async (code: string, confirmed: boolean) => {
     const client = clientRef.current, signer = signerRef.current;
-    if (!client || !signer || !confirmed) throw new Error('Confirm the restore before continuing.');
+    const request = stateRef.current?.seedRecovery;
+    if (!client || !signer || !request || (request.requireRestoreConfirmation && !confirmed)) {
+      throw new Error('The recovery request is missing or needs confirmation.');
+    }
+    if (await signer.getPublicKey() !== request.pubkey) throw new Error('Your signed-in identity changed.');
     await getOrCreateSeed(client, signer, { recoveryCode: code, restoreConfirmed: confirmed,
-      requireRestoreConfirmation: true });
+      requireRestoreConfirmation: request.requireRestoreConfirmation });
     if (clientRef.current !== client || signerRef.current !== signer) throw new Error('Your signed-in identity changed.');
     setState(prev => ({ ...prev, seedRecovery: null }));
     // Only unlock the reader. The user retries the original action explicitly;
@@ -4008,7 +4016,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       const mnemonic = skipSeedFetch
         ? undefined
         : browserRemoteBridge
-          ? await readSeed(clientRef.current!, signerRef.current!)
+          ? await readSeed(clientRef.current!, signerRef.current!, true)
               .catch((seedErr) => {
                 console.warn(
                   "[chama] Seed unavailable — remote-bridge fallback is disabled for this session:",
@@ -4016,7 +4024,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
                 );
                 return undefined;
               })
-          : await readSeed(clientRef.current!, signerRef.current!);
+          : await readSeed(clientRef.current!, signerRef.current!, true);
       await runtimeWarmup;
       // Sim wallet keys its persisted state by npub so multiple
       // identities in the same browser don't share a sim balance.
