@@ -64,3 +64,14 @@ const holdDestinationHtml = renderToStaticMarkup(<LangProvider><DestinationPicke
 assert.match(holdDestinationHtml, /to bitcrazy@getalby.com/);
 assert.match(holdDestinationHtml, /Hold to send 196 sats/);
 assert.doesNotMatch(holdDestinationHtml, /Send 196 sats to/);
+
+const { ClaimHoldDestination } = await import('./panels/ClaimPayoutModal.js');
+const walletLineHtml = renderToStaticMarkup(<LangProvider><ClaimHoldDestination destination="My Alby wallet" /></LangProvider>);
+assert.match(walletLineHtml, /to My Alby wallet/);
+assert.match(walletLineHtml, /font-size:var\(--chama-fs-body\)/);
+const subtitleForDestination = (known: boolean) => known ? 'Fee reserve' : 'to your Lightning wallet. Fee reserve';
+const pickerSubtitle = (initialAddress: string) => renderToStaticMarkup(<LangProvider><DestinationPicker holdToSend amountSats={196}
+  initialAddress={initialAddress} savedDestinations={[]} savedNwcConnections={[]}
+  title="Claim" subtitle={subtitleForDestination} onResolve={unexpected} onCancel={unexpected} /></LangProvider>);
+assert.doesNotMatch(pickerSubtitle('bitcrazy@getalby.com'), /to your Lightning wallet/);
+assert.match(pickerSubtitle(''), /to your Lightning wallet/);
