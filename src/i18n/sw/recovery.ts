@@ -111,4 +111,13 @@ export const recovery: Record<string, string> = {
   "recovery.unknownCounterparty": "mshirika asiyejulikana",
   "recovery.youFunded": "Uligharamia",
   "recovery.yourRole": "Nafasi yako:",
+  "recovery.seed.codeTitle": "Weka msimbo wa kurejesha pochi yako",
+  "recovery.seed.codeLabel": "Msimbo wa kurejesha pochi",
+  "recovery.seed.restoreWarning": "Kurejesha huweka pochi hii kwenye kifaa hiki. Acha kuitumia kwenye kifaa chako cha zamani. Kutumia pochi moja kwenye vifaa viwili kunaweza kupoteza pesa.",
+  "recovery.seed.restoreConfirm": "Nitaacha kutumia pochi hii kwenye kifaa changu cha zamani.",
+  "recovery.seed.restoreAction": "Rejesha ufikiaji wa pochi",
+  "recovery.seed.wrongCode": "Msimbo wa kurejesha pochi si sahihi. Ukague na ujaribu tena.",
+  "recovery.seed.openError": "Imeshindikana kufungua nakala ya pochi yako. Kagua kisaini chako cha Nostr na muunganisho, kisha ujaribu tena.",
+  "recovery.seed.restored": "Ufikiaji wa pochi umerejeshwa. Jaribu tena hatua uliyokuwa ukifanya.",
+  "recovery.seed.restoring": "Inarejesha…",
 };

@@ -1,0 +1,24 @@
+[
+  {
+    "codeHex": "000102030405060708090a0b0c0d0e0f",
+    "code": "00041-06105-0R3G-G28A-1C60-T3GF",
+    "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+    "keyHex": "de0de2a6c29cecc323d779d72388a5f07745d14d74208a729618c00436d58cb6",
+    "v": 2,
+    "scope": "browser",
+    "codeCheck": "c9f83f2b",
+    "nonce": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYX",
+    "box": "aN0VwPp6iuSAQdu1qLIedJ2NZ5lm1zRbvhKR/coEZN5vOnnk2Lv+gEmdKNOllogFVZqVuXby3N66zwcU2XfUQXZKCf0WU+KZIcw4aEDG//fvuLDG2YzE2rxAcehrt2kz2MCDDW62+FA1IFZKkA=="
+  },
+  {
+    "codeHex": "000102030405060708090a0b0c0d0e0f",
+    "code": "00041-06105-0R3G-G28A-1C60-T3GF",
+    "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+    "keyHex": "46fc4168434c3495006b140504d830179a63147fd2d0575cd9d8163415410bcb",
+    "v": 2,
+    "scope": "native:abababababababababababababababababababababababababababababababab",
+    "codeCheck": "c9f83f2b",
+    "nonce": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYX",
+    "box": "3ak1SqDTFaOfhYkvUS7HG6NL7N8cJpD3DLGLaiOGQoVvzJZSvQuz46W/Z3XVhy/Dd84asJhg2ujqLP36Md5bDsXaGlZS7R5rG3PVjWrR0Kh8Bi95jmnCWuf9UrG4ff5yauDN3NBAmmbg1xnPvg=="
+  }
+]
