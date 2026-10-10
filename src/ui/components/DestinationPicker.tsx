@@ -85,7 +85,7 @@ export interface DestinationPickerProps {
   /** Modal header. "Claim", "Recover sats", etc. */
   title: string;
   /** Optional one-line subtitle below the title. */
-  subtitle?: ReactNode;
+  subtitle?: ReactNode | ((destinationKnown: boolean) => ReactNode);
   /** Fired with BOLT11 plus metadata describing whether/what to save. */
   onResolve: (bolt11: string, opts: DestinationPickerResolveOpts) => void;
   /** v7 redesign (Jet's option b): every send in this picker is a hold. A
@@ -360,7 +360,7 @@ export function DestinationPicker({
           {t("claim.toDestination", { destination: destinationSummary })}
         </div>}
         <div style={{ fontSize: T.fs.secondary, color: T.ink2, fontFamily: T.sans, lineHeight: 1.45, marginBottom: 18 }}>
-          {subtitle ?? t("claim.sendToWalletAfter")}
+          {typeof subtitle === "function" ? subtitle(!!destinationSummary) : subtitle ?? (!destinationSummary ? t("claim.sendToWalletAfter") : null)}
         </div>
 
         {topSlot && (

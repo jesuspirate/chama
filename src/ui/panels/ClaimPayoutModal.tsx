@@ -620,15 +620,12 @@ export function ClaimPayoutModal({
         savedDestinations={savedDestinations}
         savedNwcConnections={savedNwcConnections}
         title={t("claim.claimYourSats")}
-        subtitle={(
+        subtitle={(destinationKnown) => (
           <>
-            {/* The big amount sits right above this line (DestinationPicker), so
-                it continues "₿ 992 / to your Lightning wallet" without
-                repeating the number. */}
-            {t("claim.sendToWalletAfter")}
+            {!destinationKnown && t("claim.sendToWalletAfter")}
             {reserveSats > 0 && (
               <>
-                . {t("claim.feeReserveBefore")} <BitcoinAmount sats={reserveSats} size={T.fs.secondary} gap={4} glyphScale={1.18} color={T.muted} glyphColor={T.muted} /> {t("claim.feeReserveAfter")}
+                {!destinationKnown && ". "}{t("claim.feeReserveBefore")} <BitcoinAmount sats={reserveSats} size={T.fs.secondary} gap={4} glyphScale={1.18} color={T.muted} glyphColor={T.muted} /> {t("claim.feeReserveAfter")}
               </>
             )}
             {insuranceSats > 0 && (
@@ -850,6 +847,7 @@ export function ClaimMethodChooser({
               onConfirm={() => rail === "ecash" ? onSelectEcash() : rail === "lightning" && selected ? selected.kind === "address" ? onSelectSavedWallet(selected.wallet) : onSelectSavedNwc(selected.wallet) : onSelect({ kind: rail })}
               label={rail === "ecash" || !selected ? t("claim.ecashMethod") : t("claim.holdToSend", { amount: payoutSats.toLocaleString() })}
               hint={t("common.holdToConfirm")} armedLabel={t("common.holdArmed")} />
+            {rail === "lightning" && selected && <ClaimHoldDestination destination={selected.kind === "address" ? payoutDestinationLabel(selected.wallet) : selected.wallet.label} />}
           </div>
         ) : (
         <PaymentButton disabled={rail === "lightning" && !!lightningReason} tier={rail === "ecash" ? "primary" : "raised"} style={{ width: "100%", marginBottom: 12 }} onClick={() => rail === "ecash" ? onSelectEcash() : rail === "lightning" && selected ? selected.kind === "address" ? onSelectSavedWallet(selected.wallet) : onSelectSavedNwc(selected.wallet) : onSelect({ kind: rail })}>
@@ -2400,4 +2398,12 @@ function ClaimSendButton({ onSend, disabled, busy, children }: {
       {children}
     </button>
   );
+}
+
+/** The short send label keeps its destination visible beside the action. */
+export function ClaimHoldDestination({ destination }: { destination: string }) {
+  const { t } = useT();
+  return <div style={{ fontSize: T.fs.body, fontFamily: T.sans, color: T.ink, lineHeight: 1.45, overflowWrap: "anywhere", marginTop: 8 }}>
+    {t("claim.toDestination", { destination })}
+  </div>;
 }
