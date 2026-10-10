@@ -1,3 +1,5 @@
+mod recover_check;
+
 use std::collections::{BTreeMap, HashMap};
 use std::io::ErrorKind;
 use std::net::SocketAddr;
@@ -111,7 +113,7 @@ const DISCOVERY_PROBE_TIMEOUT: Duration = Duration::from_secs(4);
 struct Cli {
     /// Directory containing the Fedimint client database.
     #[arg(long, env = "CHAMA_FEDIMINT_DATA_DIR")]
-    data_dir: PathBuf,
+    data_dir: Option<PathBuf>,
 
     /// Enable Iroh DHT/PKARR discovery. This is on by default because public
     /// iroh federations often need it.
@@ -273,6 +275,21 @@ enum Command {
         /// must include the app origin(s) that will call this bridge.
         #[arg(long = "allowed-origin", env = "CHAMA_BRIDGE_ALLOWED_ORIGINS", value_delimiter = ',')]
         allowed_origins: Vec<String>,
+    },
+
+    /// Dev-only seed recovery proof. Never operates the source wallet. The
+    /// scratch wallet shares its seed, must never be used, and is deleted on
+    /// completion or failure. Stop the source bridge before running this.
+    RecoverCheck {
+        #[arg(long)]
+        source_data_dir: PathBuf,
+        #[arg(long)]
+        invite: String,
+        #[arg(long)]
+        scratch_data_dir: PathBuf,
+        /// Total recovery deadline (seconds); no incomplete scratch wallet is kept.
+        #[arg(long, default_value_t = 900, value_parser = clap::value_parser!(u64).range(1..))]
+        timeout_seconds: u64,
     },
 
     /// Join/open, print info, probe gateways, and create a tiny invoice.
@@ -637,9 +654,25 @@ struct ParseNotesOutput {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    init_tracing();
-
     let cli = Cli::parse();
+    if matches!(&cli.command, Command::RecoverCheck { .. }) {
+        // Recovery libraries can log note details at debug level. Keep this
+        // proof on warnings regardless of the user's normal RUST_LOG setting.
+        let _ = tracing_subscriber::fmt()
+            .with_env_filter("warn")
+            .with_writer(std::io::stderr)
+            .try_init();
+    } else {
+        init_tracing();
+    }
+    let data_dir = match (&cli.command, &cli.data_dir) {
+        (
+            Command::RecoverCheck { source_data_dir, .. },
+            None,
+        ) => source_data_dir.clone(),
+        (_, Some(data_dir)) => data_dir.clone(),
+        _ => bail!("--data-dir is required except for recover-check"),
+    };
     // Default native discovery to n0's HTTPS PKARR relay so a fresh join over
     // mobile/CGNAT resolves guardians the same reliable way the browser does,
     // instead of relying only on DNS(:53) + DHT(UDP). Additive, not a swap.
@@ -654,7 +687,7 @@ async fn main() -> Result<()> {
         ),
     };
     let bridge = Bridge {
-        data_dir: cli.data_dir,
+        data_dir,
         iroh_enable_dht: cli.iroh_enable_dht,
         iroh_enable_next: cli.iroh_enable_next,
         iroh_dns,
@@ -668,6 +701,22 @@ async fn main() -> Result<()> {
     bridge.log_effective_config();
 
     match cli.command {
+        Command::RecoverCheck {
+            source_data_dir,
+            invite,
+            scratch_data_dir,
+            timeout_seconds,
+        } => {
+            let output = recover_check::run(
+                &bridge,
+                &source_data_dir,
+                &invite,
+                &scratch_data_dir,
+                Duration::from_secs(timeout_seconds),
+            )
+            .await?;
+            print_json(&output)?;
+        }
         Command::Join { invite_code } => {
             let client = bridge.join(&invite_code).await?;
             print_json(&JoinOutput {

@@ -143,3 +143,89 @@ through the local Rust sidecar. Native mode also exposes Fedimint wallet-module
 on-chain peg-in and peg-out for the slow-path funding and payout toggles.
 Without `nativeFedimint=1`, Chama still uses the current browser WASM SDK
 adapter.
+
+## Dev-only seed recovery proof
+
+`recover-check` adds no app or HTTP route. It opens the source `client.db`
+read-only and reads the stored entropy through
+`Client::load_decodable_client_secret`, the same encoding used by the bridge.
+It never generates or replaces the source secret. It checks the invite's
+federation against the source config before creating a scratch wallet.
+
+On pinned Fedimint 0.11.1, forced recovery is
+`ClientBuilder::preview(...).recover(db, root_secret, None)`, followed by
+`wait_for_all_recoveries`. This uses the seed alone, without a backup snapshot.
+Both recovery and the subsequent balance-reading client use a stopped
+transaction executor. No invoice, spend, receive or reissue command runs.
+Recovery reads federation history and writes only the disposable scratch DB.
+
+The source balance uses the same primary Bitcoin mint module and its
+`get_balance` implementation against a source read-only transaction. The
+pinned mint v1/v2 implementations count the notes in that supplied transaction;
+no source client, source migrations or source state machines are started.
+An unsupported primary balance module is an error, not a zero balance.
+
+### Manual run (Jet)
+
+Use a **dedicated test wallet**, not your normal wallet. Choose an invite for
+the federation under test. `INVITE` below is the public invite, not a seed.
+
+```sh
+cd native/fedimint-bridge
+cargo build
+BRIDGE="$PWD/target/debug/chama-fedimint-bridge"
+SOURCE=/private/tmp/chama-recovery-proof-source
+SCRATCH=/private/tmp/chama-recovery-proof-scratch
+
+# Use a new SOURCE directory. Smoke creates an invoice for 1,000 sats.
+"$BRIDGE" --data-dir "$SOURCE" smoke "$INVITE" --amount-msats 1000000
+```
+
+Pay the printed invoice. Then run `await-invoice` using its printed operation
+id so the source client finishes receiving the payment and persists its notes:
+
+```sh
+"$BRIDGE" --data-dir "$SOURCE" await-invoice "$OPERATION_ID"
+"$BRIDGE" --data-dir "$SOURCE" info
+```
+
+Wait for a settled receive and verify about 1,000 sats in `info`. Stop every
+bridge/client process using SOURCE, and do not fund or spend from it during
+the proof. A live source can change while history is scanned and invalidate
+the comparison.
+
+```sh
+"$BRIDGE" recover-check \
+  --source-data-dir "$SOURCE" \
+  --invite "$INVITE" \
+  --scratch-data-dir "$SCRATCH" \
+  --timeout-seconds 900
+```
+
+On completion, stdout is JSON:
+
+```json
+{"federationId":"<federation-id>","recoveredBalanceMsat":1000000,"sourceBalanceMsat":1000000,"recoveryCompleted":true,"elapsedSeconds":42}
+```
+
+**Passing** means recovery completed and the two balances are equal. A completed
+scan with unequal balances is a failed proof, not successful wallet restoration.
+Paste the JSON into the review thread. This proves native recovery only;
+WASM browser recovery needs its own separate evidence.
+
+SCRATCH must be new or empty, must not overlap SOURCE (in either direction),
+and must not be a symlink or file. Its parent must already exist. The source
+must contain an existing `client.db`; missing data is refused without creating
+a replacement wallet. The default timeout is 15 minutes. Invalid input,
+timeout, module recovery failure or cleanup failure returns nonzero, without a
+success JSON. Normal error paths also remove the owned scratch directory.
+
+The scratch client shares the source's seed. **Never use it as another wallet**:
+it could reuse note nonces and lose money. The tool shuts it down and deletes
+SCRATCH before printing success. A process kill, power loss or crash can leave
+SCRATCH behind; remove that dedicated scratch directory before retrying, and
+never start a normal bridge on it. SOURCE is retained. No mnemonic or entropy
+is printed by the command.
+
+PR 2 (backup writers) remains on hold pending Jet's wallet-backup decision;
+this manual proof is evidence for that decision, not automatic authorization.
