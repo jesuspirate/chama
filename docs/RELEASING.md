@@ -72,3 +72,50 @@ npm run ship -- --only release-page --publish
 ```
 
 Secrets and host-specific paths remain in the gitignored `.env.release` file.
+
+## Amber phone signing (default on Jet's Mac)
+
+The verified NIP-46 connection is stored outside Git at
+`~/Library/Application Support/chama-release/zapstore-bunker.txt`. Its directory
+is owner-only (0700), and the file is owner-only (0600). This is a pairing
+credential, not the publisher's private key; treat it as a secret. This storage
+protects it from other local accounts, not programs running as your account.
+Do not paste it into chat, commits, logs or shell command arguments.
+
+`ship` and the Android Zapstore lane load this file into `SIGN_WITH` without
+printing it. On Jet's Mac, the gitignored `.env.release` already loads the same
+connection through a private copy of the validator in that directory, so Amber
+is the default even before this script change merges. An explicitly set `SIGN_WITH` wins. `CHAMA_ZAPSTORE_SIGNER_FILE`
+selects another private file. A missing default uses the existing browser signer;
+a malformed, insecure, or explicitly configured missing file stops signing.
+
+For a normal release use `npm run ship -- --patch`. For an already prepared
+version use `npm run ship -- --only zapstore --tag vX.Y.Z`. The normal release
+checks and publishing confirmations still apply. Keep Amber running and
+connected, review the requests, and approve them on the phone. Keep **Never auto
+approve**: the Mac prepares the events, and the publisher key stays in Amber.
+This does not approve a new release in advance or bypass Zapstore's final
+publishing/terms confirmation.
+
+The tested connection uses `wss://nrs.primal.net` and `wss://relay.nip46.com`.
+These are signing transport relays, separate from social inbox/outbox relays.
+Both ends must have the same connection relays. If no prompt arrives, inspect
+Amber's connection and logs and the relay's publish acknowledgement; a working
+WebSocket alone does not prove writes are accepted. Do not repeatedly retry a
+rate-limited relay. Updating Amber's defaults does not repair an existing
+connection's saved permissions or response relays.
+
+zsp also stores a local NIP-46 client key under
+`~/Library/Application Support/zsp/bunker-keys/`. Retain it: Amber's permissions
+are tied to that client identity. Never commit or print these files. If pairing
+is broken, create a fresh connection in Amber and replace the private connection
+file deliberately; do not silently rotate keys or enable automatic approval.
+
+The signing-only acceptance test used `zsp publish zapstore.yaml --offline
+--quiet`, capturing output privately. It signed three events (32267, 30063,
+3063) for 6.4.21; all signatures and the APK fingerprint were verified. Offline
+mode uploads and publishes nothing. Use `--offline` explicitly for future tests;
+`--quiet` alone is not a dry run. Signed test output can be published, so keep it
+private and never feed it into a publishing command by accident.
+
+Signer regression checks: `node --test scripts/zapstore-signer.tests.mjs`.
