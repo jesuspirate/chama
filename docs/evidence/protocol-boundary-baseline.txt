@@ -1,0 +1,128 @@
+Protocol boundary baseline (report only)
+Entries: src/escrow-engine/types.ts, src/escrow-engine/event-parser.ts, src/escrow-engine/state-machine.ts
+Repository files walked: 39
+Counts (distinct rule/file/line; comments and string contents excluded):
+  localStorage: 42
+  sessionStorage: 0
+  indexedDB: 0
+  window.: 2
+  document.: 0
+  navigator.: 0
+  fetch(: 3
+  WebSocket: 0
+  Date.now(: 17
+  new Date(): 0
+  Math.random(: 0
+  platform-import: 0
+  relay-import: 0
+  app-import: 2
+Total crossings: 66
+
+Crossings:
+  app-import src/arbiters/pool.ts:12
+  app-import src/communities/registry.ts:27
+  Date.now( src/arbiters/bonds.ts:102
+  Date.now( src/arbiters/exposure.ts:134
+  Date.now( src/arbiters/exposure.ts:318
+  Date.now( src/arbiters/roster.ts:115
+  Date.now( src/bond-multisig/bond-announcement.ts:245
+  Date.now( src/bond-multisig/commitment-store.ts:142
+  Date.now( src/bond-multisig/commitment-store.ts:302
+  Date.now( src/chama/circle.ts:102
+  Date.now( src/chama/circle.ts:146
+  Date.now( src/escrow-engine/arbiter-substitution.ts:308
+  Date.now( src/escrow-engine/state-machine.ts:2149
+  Date.now( src/escrow-engine/state-machine.ts:2157
+  Date.now( src/escrow-engine/types.ts:1319
+  Date.now( src/escrow-engine/types.ts:1339
+  Date.now( src/escrow-engine/types.ts:1352
+  Date.now( src/escrow-engine/types.ts:1389
+  Date.now( src/escrow-engine/types.ts:1432
+  fetch( src/bond-multisig/fund-watcher.ts:142
+  fetch( src/bond-multisig/fund-watcher.ts:222
+  fetch( src/media/listing-image-upload.ts:104
+  localStorage src/arbiters/pool.ts:205
+  localStorage src/arbiters/pool.ts:208
+  localStorage src/arbiters/pool.ts:209
+  localStorage src/arbiters/roster.ts:224
+  localStorage src/arbiters/roster.ts:232
+  localStorage src/communities/registry.ts:588
+  localStorage src/communities/registry.ts:589
+  localStorage src/communities/registry.ts:641
+  localStorage src/communities/registry.ts:642
+  localStorage src/communities/registry.ts:694
+  localStorage src/communities/registry.ts:695
+  localStorage src/sim/simMode.ts:60
+  localStorage src/sim/simMode.ts:64
+  localStorage src/sim/simMode.ts:78
+  localStorage src/sim/simMode.ts:79
+  localStorage src/sim/simMode.ts:92
+  localStorage src/sim/simMode.ts:93
+  localStorage src/sim/simMode.ts:94
+  localStorage src/storage/user-scope.ts:35
+  localStorage src/storage/user-scope.ts:37
+  localStorage src/storage/user-scope.ts:40
+  localStorage src/storage/user-scope.ts:42
+  localStorage src/storage/user-scope.ts:46
+  localStorage src/storage/user-scope.ts:48
+  localStorage src/storage/user-scope.ts:49
+  localStorage src/storage/user-scope.ts:64
+  localStorage src/storage/user-scope.ts:66
+  localStorage src/storage/user-scope.ts:74
+  localStorage src/storage/user-scope.ts:75
+  localStorage src/storage/user-scope.ts:79
+  localStorage src/storage/user-scope.ts:80
+  localStorage src/storage/user-scope.ts:89
+  localStorage src/storage/user-scope.ts:91
+  localStorage src/storage/user-scope.ts:93
+  localStorage src/storage/user-scope.ts:95
+  localStorage src/storage/user-scope.ts:96
+  localStorage src/storage/user-scope.ts:107
+  localStorage src/storage/user-scope.ts:109
+  localStorage src/storage/user-scope.ts:110
+  localStorage src/storage/user-scope.ts:114
+  localStorage src/storage/user-scope.ts:116
+  localStorage src/storage/user-scope.ts:117
+  window. src/sim/simMode.ts:54
+  window. src/sim/simMode.ts:141
+
+Import closure:
+  src/arbiters/bonds.ts
+  src/arbiters/exposure.ts
+  src/arbiters/pool.ts
+  src/arbiters/roster.ts
+  src/bond-multisig/bond-announcement.ts
+  src/bond-multisig/commitment-bond.ts
+  src/bond-multisig/commitment-store.ts
+  src/bond-multisig/esplora-config.ts
+  src/bond-multisig/fund-watcher.ts
+  src/bond-multisig/multisig.ts
+  src/bond-multisig/onchain-escrow-funding.ts
+  src/bond-multisig/onchain-escrow-settle.ts
+  src/bond-multisig/onchain-escrow.ts
+  src/chama/circle.ts
+  src/chama/policy.ts
+  src/chama/rotation.ts
+  src/chama/types.ts
+  src/communities/registry.ts
+  src/escrow-engine/arbiter-substitution.ts
+  src/escrow-engine/client-tag.ts
+  src/escrow-engine/event-parser.ts
+  src/escrow-engine/experimental-escrow-features.ts
+  src/escrow-engine/holder-shares.ts
+  src/escrow-engine/onchain-funding-terms.ts
+  src/escrow-engine/onchain-settlement-choice.ts
+  src/escrow-engine/onchain-settlement-transport.ts
+  src/escrow-engine/onchain-stalled.ts
+  src/escrow-engine/recipients.ts
+  src/escrow-engine/slice-policy.ts
+  src/escrow-engine/state-machine.ts
+  src/escrow-engine/trade-identity.ts
+  src/escrow-engine/tranche-plan.ts
+  src/escrow-engine/tranche.ts
+  src/escrow-engine/types.ts
+  src/fedimint/federation-invites.ts
+  src/media/listing-image-upload.ts
+  src/sim/simMode.ts
+  src/storage/random-id.ts
+  src/storage/user-scope.ts

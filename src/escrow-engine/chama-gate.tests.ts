@@ -1,7 +1,9 @@
+import { captureReplay } from "../protocol/replay-capture.test-helper.js";
+const replayEventChain = captureReplay("src/escrow-engine/chama-gate.tests.ts");
 import assert from "node:assert/strict";
 import { EscrowEventKind as K, EscrowStatus as S, Outcome as O, Role as R, type CreatePayload, type EscrowState, type EscrowPayload, type NostrEvent, type ParsedEscrowEvent, type LockPayload } from "./types.js";
 import { parseEscrowEvent } from "./event-parser.js";
-import { applyEvent, canVote, getWinner, replayEventChain } from "./state-machine.js";
+import { applyEvent, canVote, getWinner } from "./state-machine.js";
 import { payoutRecipientFor } from "./recipients.js";
 import { oneSidedEscalationAt } from "./arbiter-substitution.js";
 import { shareEscrowId, shareCreatePayload, rotationShareCreatePayload, nextRotationRoundPayload } from "../chama/policy.js";

@@ -1,7 +1,9 @@
+import { captureReplay } from "../protocol/replay-capture.test-helper.js";
+const replayEventChain = captureReplay("src/escrow-engine/two-truths.tests.ts");
 import assert from 'node:assert/strict';
 import evidence from '../../docs/evidence/v6.4.14-brief-03-public-replay.json';
 import { parseEscrowEvent, sortEventChain } from './event-parser.js';
-import { applyEvent, replayEventChain } from './state-machine.js';
+import { applyEvent } from './state-machine.js';
 import { EscrowEventKind as K, EscrowStatus, Role, type EscrowState } from './types.js';
 // Public CREATE/JOIN bodies are exact. Encrypted LOCK/CHAT bodies are modeled;
 // ciphertext/signatures were not exported, so this does not authenticate them.

@@ -1,10 +1,11 @@
+import { captureReplay } from "../protocol/replay-capture.test-helper.js";
+const replayEventChain = captureReplay("src/ui/brief-6418.tests.tsx");
 import assert from 'node:assert/strict';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { EscrowClient } from '../escrow-engine/escrow-client.js';
 import { NsecSigner } from '../escrow-engine/nsec-signer.js';
 import { parseEscrowEvent } from '../escrow-engine/event-parser.js';
-import { replayEventChain } from '../escrow-engine/state-machine.js';
 import { EscrowStatus, Role, Outcome, type EscrowState, type NostrEvent, type ChatPayload, type ParsedEscrowEvent } from '../escrow-engine/types.js';
 import { marketDelivery, MARKET_DELIVERIES } from '../labels/market-delivery.js';
 import { expectedLockerRole } from '../escrow-engine/lock-custody.js';

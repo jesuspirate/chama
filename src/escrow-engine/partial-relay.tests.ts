@@ -1,3 +1,5 @@
+import { captureReplay } from "../protocol/replay-capture.test-helper.js";
+const replayEventChain = captureReplay("src/escrow-engine/partial-relay.tests.ts");
 import assert from 'node:assert/strict';
 import { finalizeEvent, getPublicKey, verifyEvent } from 'nostr-tools/pure';
 import { EscrowClient } from './escrow-client.js';
@@ -53,7 +55,6 @@ try {
   }
   const {deleteListings} = await import('./delete-listings.js');
   const {parseEscrowEvent, sortEventChain} = await import('./event-parser.js');
-  const {replayEventChain} = await import('./state-machine.js');
   const {shouldShowOnBrowse} = await import('../ui/decisions.js');
   const ids = [escrowId];
   for (let i = 0; i < 2; i++) ids.push((await client.createEscrow({category:'p2p-trade', description:`Delete ${i}`,

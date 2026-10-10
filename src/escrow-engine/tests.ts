@@ -1,3 +1,5 @@
+import { captureReplay } from "../protocol/replay-capture.test-helper.js";
+const replayEventChain = captureReplay("src/escrow-engine/tests.ts");
 import { needsTradeHistory } from "../ui/decisions.js";
 // ══════════════════════════════════════════════════════════════════════════
 // Chama Escrow Engine — Test Suite (PR 1 atomic funding + PR 2 community)
@@ -70,7 +72,6 @@ import {
 
 import {
   applyEvent,
-  replayEventChain,
   canVote,
   getWinner,
   payoutRecipientFor,
@@ -2734,7 +2735,8 @@ console.log("\n── ATOMIC LOCK (CREATED → LOCKED, no FUNDED hop) ──");
       "⭐ S2: three keys must be DISTINCT or '2-of-3' is a lie");
 
     // The mode gate.
-    const { replayEventChain } = await import("./state-machine.js");
+    const { captureReplay } = await import("../protocol/replay-capture.test-helper.js");
+    const replayEventChain = captureReplay("src/escrow-engine/tests.ts:mode-mismatch");
     assert(typeof replayEventChain === "function",
       "S2: the reducer is reachable for the mode-mismatch checks below");
   }
