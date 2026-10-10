@@ -18,6 +18,53 @@ This is the authoritative Chama application repository. It contains the web/PWA 
 - Buyer, seller, and arbiter decisions must come from committed escrow state. Historical community-pool membership alone is not a current obligation.
 - Update regression coverage for wallet storage, federation routing, encryption, escrow voting, claims, and recovery behavior.
 
+## Brief delivery lessons
+
+Apply these rules to every brief, even when the brief omits them. The agent
+owns the safety and verification of the change it delivers, including copied
+code; authorship and a missing instruction do not excuse a missed defect.
+
+### Before and after sats move
+
+- Before changing a money path, trace every caller through preflight, spend or
+  invoice payment, publish, retry and recovery. Mark the point at which sats
+  move; a function receiving already-funded notes is already past that point.
+- Checks for payment handles, optional metadata and UI confirmation must run
+  **before any sats move**. Keep the user's confirmation before funding, and
+  check all entry points rather than assuming one preflight covers every caller.
+- **After sats move, never abort the lock solely because a handle or other
+  optional detail disappeared or changed.** Use the supported fallback (for
+  payment details, agreed methods plus chat), and preserve the funded state and
+  its publish or recovery path. This does not permit bypassing consensus,
+  authorization or custody checks: those remain fail-closed, with funds retained
+  for settlement or recovery rather than lost behind a new exception.
+- Rechecks after a spend and retries with saved funds require special review.
+  If a safety check refuses a funded attempt, use the existing lawful recovery
+  path and report what happened accurately; never claim no sats moved without
+  evidence.
+- Add regression tests that remove or change optional details between
+  confirmation and publish, refuse invalid details before funding with no spend,
+  and exercise retries with funds already present. Assert the funds' disposition
+  and published events, not just the error text.
+
+### Scope and verification
+
+- For repeated work, inspect the earlier commits and their fixes before coding;
+  carry their lessons forward instead of recreating the same failure.
+- Before merging, inspect branch ancestry, the commits being introduced and the
+  complete diff. A presentation branch must not carry old money-path commits.
+  Honour exact fenced-off paths and explicitly approved exceptions.
+- Verify test wiring mechanically, including direct calls, aliases and dynamic
+  imports. Check every named suite is exercised by the intended command; an
+  imported wrapper alone does not prove all calls use it. Use tools available
+  to the CI runner in executable tests.
+- Test failed actions and repeated taps as well as success. A rejected vote must
+  restore retry controls promptly; replacing a pending confirmation must settle
+  the previous promise so no caller hangs.
+- Before delivery, review the full diff against the brief and report exactly
+  which checks passed, what they prove and what remains unverified. Distinguish
+  local checks, CI and device evidence; do not claim an unrun check passed.
+
 ## Release notes
 
 Two audiences, two documents. Do not write one and trim it into the other.
