@@ -1,3 +1,4 @@
+import { SeedRecoveryPanel } from './panels/SeedRecoveryPanel.js';
 import { buildWakeIndex } from "../notifications/wake-index.js";
 import { deleteListings } from "../escrow-engine/delete-listings.js";
 import { listPaidLockRecoveries } from "../payments/paid-lock-recovery.js";
@@ -546,6 +547,7 @@ export default function App() {
     onchainObservations,
     earningsRevision,
     fedimint,
+    seedRecovery,
     fundingInProgress,
     claimPayoutInProgress,
   }, actions] = useEscrow({
@@ -3068,6 +3070,16 @@ export default function App() {
         paddingTop: shellPaddingTop,
       }}>
         <style>{globalCss()}</style>
+      {seedRecovery && seedRecovery.pubkey === pubkey && <SeedRecoveryPanel
+        key={seedRecovery.pubkey}
+        needsCode={seedRecovery.needsCode}
+        requireRestoreConfirmation={seedRecovery.requireRestoreConfirmation}
+        onClose={actions.dismissSeedRecovery}
+        onRestore={async (code, confirmed) => {
+          await actions.unlockSeedBackup(code, confirmed);
+          setToast({ type: 'success', message: t('recovery.seed.restored') });
+        }}
+      />}
         <SimModePill />
         <SimEntryModal />
         {showQRScanner && (

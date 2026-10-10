@@ -2,30 +2,19 @@
 // Chama — Nostr-backed Fedimint Seed Manager
 // ══════════════════════════════════════════════════════════════════════════
 //
-// The Fedimint WASM wallet needs a BIP-39 mnemonic to derive its keys.
-// Chama stores that mnemonic as a NIP-44-encrypted kind-30078 *replaceable*
-// event on the user's Nostr relays (d-tag: "chama-fedimint-seed-v1").
+// Since v6.1 ordinary browser wallets use their own device-local seeds.
+// This relay-backed BIP-39 root serves on-chain escrow/bond keys and the
+// optional browser remote-bridge Fedimint fallback. Legacy backups are NIP-44
+// kind-30078 events (d-tag: "chama-fedimint-seed-v1").
 //
-// Properties:
-//   - The mnemonic is randomly generated, not derived from the Nostr key.
-//     Compromise of the Nostr privkey does not immediately leak the seed
-//     unless the attacker also has relay access at the same moment.
-//
-//   - Recovery: any device with the user's Nostr signer + at least one
-//     relay that still holds the replaceable event can reconstruct the
-//     wallet. "Lost my phone, still have my nsec" ⇒ funds recoverable.
-//
-//   - Replaceable: kind 30078 is NIP-33 parameterized replaceable, so each
-//     relay only keeps the latest per (pubkey, d-tag) pair. No accumulation.
-//
-//   - Self-to-self NIP-44: the signer both encrypts and decrypts against
-//     its own pubkey. Only the holder of the privkey can decrypt.
-//
-// This module never sees the Nostr private key directly. All crypto goes
-// through the Signer interface, which delegates to NIP-07 / custom signers.
+// v2 backups add an independent recovery code inside the NIP-44 envelope.
+// Legacy v1 backups require only the Nostr signer; public relays may retain
+// them indefinitely. This reader-only release does not migrate or retire v1.
+// Secrets are kept in session memory only, never logged or written plaintext.
 
 import type { NostrEvent } from "../escrow-engine/types.js";
 import type { EscrowClient, Signer, UnsignedEvent } from "../escrow-engine/escrow-client.js";
+import { SEED_V2_D_PREFIX, SEED_V2_BROWSER_D_TAG, parseSeedBackupV2, unwrapSeedBackup } from './seed-backup-v2.js';
 import { generateSeedWords } from "nostr-tools/nip06";
 import { verifyEvent as verifyNostrEventSignature } from "nostr-tools/pure";
 
@@ -42,6 +31,54 @@ function isChamaSeedEvent(event: NostrEvent, pubkey: string): boolean {
     event.pubkey === pubkey &&
     event.tags?.some(tag => tag[0] === "d" && tag[1] === CHAMA_SEED_D_TAG) === true
   );
+}
+
+/** Typed refusal, caught by the recovery UI before any funding can run. */
+export class SeedNeedsRecoveryCode extends Error {
+  readonly code = 'SEED_NEEDS_RECOVERY_CODE';
+  constructor(readonly pubkey: string) { super('Enter your wallet recovery code. No wallet was created or replaced.'); }
+}
+export class SeedNeedsRestoreConfirmation extends Error {
+  readonly code = 'SEED_NEEDS_RESTORE_CONFIRMATION';
+  constructor(readonly pubkey: string) { super('Confirm that you will stop using this wallet on your old device before restoring.'); }
+}
+export interface SeedReadOptions {
+  recoveryCode?: string;
+  restoreConfirmed?: boolean;
+  requireRestoreConfirmation?: boolean;
+}
+function isProtectedSeedEvent(event: NostrEvent, pubkey: string): boolean {
+  return event.kind === CHAMA_SEED_KIND && event.pubkey === pubkey
+    && event.tags?.some(tag => tag[0] === 'd' && tag[1]?.startsWith(SEED_V2_D_PREFIX)) === true
+    // nostr-tools memoizes verification on objects; don't trust a cached
+    // verification symbol if a caller changed the signed fields afterwards.
+    && verifyNostrEventSignature({ id: event.id, pubkey: event.pubkey, kind: event.kind,
+      created_at: event.created_at, tags: event.tags, content: event.content, sig: event.sig });
+}
+function isBrowserProtectedSeedEvent(event: NostrEvent): boolean {
+  return event.tags.some(tag => tag[0] === 'd' && tag[1] === SEED_V2_BROWSER_D_TAG);
+}
+async function isRetiredSeed(event: NostrEvent, pubkey: string, signer: Signer): Promise<boolean> {
+  try {
+    const value = JSON.parse(await signer.nip44Decrypt(event.content, pubkey));
+    return value?.retired === true;
+  } catch { return false; }
+}
+async function openProtectedSeed(event: NostrEvent, pubkey: string, signer: Signer, options: SeedReadOptions): Promise<string[]> {
+  if (!options.recoveryCode) throw new SeedNeedsRecoveryCode(pubkey);
+  let json: string;
+  try { json = await signer.nip44Decrypt(event.content, pubkey); }
+  catch { throw new Error("Couldn't open your protected wallet backup with this Nostr signer. Try again."); }
+  const mnemonic = unwrapSeedBackup(parseSeedBackupV2(json, 'browser'), options.recoveryCode, 'browser');
+  if (options.requireRestoreConfirmation && !options.restoreConfirmed) throw new SeedNeedsRestoreConfirmation(pubkey);
+  cachedSeed = mnemonic.split(' ');
+  cachedForPubkey = pubkey;
+  cachedSeedSource = 'recovered';
+  cachedProtectedSeed = true;
+  cachedNeedsRestoreConfirmation = !options.restoreConfirmed;
+  saveSeedPublishedMarker(pubkey, event.id);
+  saveLocalSeedEvent(pubkey, event);
+  return [...cachedSeed];
 }
 
 // ── v0.1.69: Seed resilience constants ──────────────────────────────────
@@ -165,7 +202,7 @@ async function tryDecryptSeedEvent(
     }
     console.debug("[chama] NIP-44 decrypted but result is not a valid mnemonic — trying NIP-04");
   } catch (e1) {
-    console.debug("[chama] NIP-44 seed decrypt failed:", (e1 as Error)?.message?.slice(0, 50));
+    console.debug("[chama] NIP-44 seed decrypt failed");
   }
 
   // Try 2: NIP-04 decrypt (seed may have been encrypted with older method)
@@ -180,7 +217,7 @@ async function tryDecryptSeedEvent(
       console.debug("[chama] NIP-04 decrypted but result is not a valid mnemonic");
     }
   } catch (e2) {
-    console.debug("[chama] NIP-04 seed decrypt failed:", (e2 as Error)?.message?.slice(0, 50));
+    console.debug("[chama] NIP-04 seed decrypt failed");
   }
 
   // Try 3: content might be plaintext JSON or raw mnemonic (dev mode)
@@ -309,7 +346,7 @@ function loadLocalSeedEvent(pubkey: string): NostrEvent | null {
     const event = JSON.parse(raw) as NostrEvent;
     const marker = loadSeedPublishedMarker(pubkey);
     if (!marker || marker.lastEventId !== event.id) return null;
-    if (!isChamaSeedEvent(event, pubkey)) return null;
+    if (!isChamaSeedEvent(event, pubkey) && !isProtectedSeedEvent(event, pubkey)) return null;
     if (!verifyNostrEventSignature(event as any)) return null;
     return event;
   } catch {
@@ -337,12 +374,16 @@ export interface SeedHealth {
 let cachedSeed: string[] | null = null;
 let cachedForPubkey: string | null = null;
 let cachedSeedSource: "fresh" | "recovered" | null = null;
+let cachedProtectedSeed = false;
+let cachedNeedsRestoreConfirmation = false;
 
 /** Clear the cache — call on disconnect / signer change */
 export function clearSeedCache(): void {
   cachedSeed = null;
   cachedForPubkey = null;
   cachedSeedSource = null;
+  cachedProtectedSeed = false;
+  cachedNeedsRestoreConfirmation = false;
 }
 
 /**
@@ -416,22 +457,40 @@ export function getCachedSeedWords(): string[] | null {
 /**
  * Fetch the user's Chama Fedimint seed, or generate one if none exists.
  *
- * Flow:
- *   1. Query relays for the latest kind-30078 event with d="chama-fedimint-seed-v1"
- *      authored by the user's pubkey.
- *   2. If found, NIP-44 decrypt to self and return the mnemonic words.
- *   3. If not found (or decryption fails), generate a fresh BIP-39 mnemonic,
- *      NIP-44 encrypt to self, publish as a replaceable event, return.
+ * Flow: verified local cache, protected browser backup, then legacy v1.
+ * A protected or retired backup blocks fresh generation, including when it
+ * cannot be decrypted. Existing device-local wallet startup is unchanged.
  *
  * Idempotent: subsequent calls within the same session hit the cache.
  */
 export async function getOrCreateSeed(
   client: EscrowClient,
-  signer: Signer
+  signer: Signer,
+  options: SeedReadOptions = {},
 ): Promise<string[]> {
   const pubkey = await signer.getPublicKey();
+  // Retirement inspection and mnemonic validation share a successful decrypt
+  // within this read, so a signer is not prompted twice for the same event.
+  // This transient map never goes into browser storage or logs.
+  const decrypted = new Map<string, string>();
+  const readerSigner: Signer = {
+    getPublicKey: () => signer.getPublicKey(),
+    signEvent: event => signer.signEvent(event),
+    nip44Encrypt: (plain, to) => signer.nip44Encrypt(plain, to),
+    nip44Decrypt: async (cipher, from) => {
+      const previous = decrypted.get(cipher);
+      if (previous !== undefined) return previous;
+      const plain = await signer.nip44Decrypt(cipher, from);
+      decrypted.set(cipher, plain);
+      return plain;
+    },
+  };
 
   if (cachedSeed && cachedForPubkey === pubkey) {
+    if (options.requireRestoreConfirmation && cachedNeedsRestoreConfirmation && !options.restoreConfirmed) {
+      throw new SeedNeedsRestoreConfirmation(pubkey);
+    }
+    if (options.restoreConfirmed) cachedNeedsRestoreConfirmation = false;
     return cachedSeed;
   }
 
@@ -443,10 +502,17 @@ export async function getOrCreateSeed(
   // latency without weakening the remote backup or replacement-seed guards.
   const localEvent = loadLocalSeedEvent(pubkey);
   if (localEvent) {
-    const local = await recoverSeedWordsFromEvents(
+    if (isProtectedSeedEvent(localEvent, pubkey)) {
+      if (!isBrowserProtectedSeedEvent(localEvent)) throw new SeedNeedsRecoveryCode(pubkey);
+      return openProtectedSeed(localEvent, pubkey, readerSigner, options);
+    }
+    const localRetired = await isRetiredSeed(localEvent, pubkey, readerSigner);
+    if (localRetired && !options.recoveryCode) throw new SeedNeedsRecoveryCode(pubkey);
+    // With a code supplied, a cached tombstone must still query for v2.
+    const local = localRetired ? null : await recoverSeedWordsFromEvents(
       [localEvent],
       pubkey,
-      signer,
+      readerSigner,
       { delaysMs: [] },
     );
     if (local) {
@@ -469,11 +535,13 @@ export async function getOrCreateSeed(
   const seedFilter = {
     kinds: [CHAMA_SEED_KIND],
     authors: [pubkey],
-    "#d": [CHAMA_SEED_D_TAG],
-    limit: 4,
+    // Read all app-data d-tags: even a native v2 backup must block the
+    // assumption that this identity has never had a wallet. No small limit
+    // may hide the browser backup behind another scope.
+
   };
   let existing = (await client.queryOnce(seedFilter, SEED_RECOVERY_TIMEOUT_MS))
-    .filter(event => isChamaSeedEvent(event, pubkey));
+    .filter(event => isChamaSeedEvent(event, pubkey) || isProtectedSeedEvent(event, pubkey));
   mlog("SEED-RECOVERY-RESULT", {
     pubkey: pubkey.slice(0, 8),
     eventCount: existing.length,
@@ -495,7 +563,7 @@ export async function getOrCreateSeed(
     });
     existing = await queryUntilFound(
       async () => (await client.queryOnce(seedFilter, SEED_RECOVERY_TIMEOUT_MS))
-        .filter(event => isChamaSeedEvent(event, pubkey)),
+        .filter(event => isChamaSeedEvent(event, pubkey) || isProtectedSeedEvent(event, pubkey)),
       SEED_RECOVERY_RETRY_DELAYS_MS,
     );
     mlog("SEED-RECOVERY-RETRY-RESULT", {
@@ -507,15 +575,41 @@ export async function getOrCreateSeed(
     }
   }
 
-  if (existing.length > 0) {
-    const recovered = await recoverSeedWordsFromEvents(existing, pubkey, signer);
+  const protectedEvents = existing.filter(event => isProtectedSeedEvent(event, pubkey));
+  const browserProtected = protectedEvents.filter(isBrowserProtectedSeedEvent)
+    .sort((a, b) => b.created_at - a.created_at || b.id.localeCompare(a.id))[0];
+  if (browserProtected) {
+    // Persist signed ciphertext and its existence before asking for the code.
+    // A dismissed form plus an empty relay read must never create a new seed.
+    saveSeedPublishedMarker(pubkey, browserProtected.id);
+    saveLocalSeedEvent(pubkey, browserProtected);
+    return openProtectedSeed(browserProtected, pubkey, readerSigner, options);
+  }
+  const legacyEvents = existing.filter(event => isChamaSeedEvent(event, pubkey))
+    .sort((a, b) => b.created_at - a.created_at || b.id.localeCompare(a.id));
+  // Any retirement marker must not resurrect an unprotected copy, even if
+  // an old client subsequently republished v1 with a later timestamp.
+  for (const legacy of legacyEvents) {
+    if (await isRetiredSeed(legacy, pubkey, readerSigner)) {
+      saveSeedPublishedMarker(pubkey, legacy.id);
+      saveLocalSeedEvent(pubkey, legacy);
+      throw new SeedNeedsRecoveryCode(pubkey);
+    }
+  }
+  if (legacyEvents.length > 0) {
+    const recovered = await recoverSeedWordsFromEvents(legacyEvents, pubkey, readerSigner);
     if (recovered) {
       const { words, event } = recovered;
+      if (options.requireRestoreConfirmation && !options.restoreConfirmed
+        && loadPendingFirstJoin(pubkey)?.eventId !== event.id) {
+        throw new SeedNeedsRestoreConfirmation(pubkey);
+      }
       cachedSeed = words;
       cachedForPubkey = pubkey;
       cachedSeedSource = loadPendingFirstJoin(pubkey)?.eventId === event.id
         ? "fresh"
         : "recovered";
+      cachedNeedsRestoreConfirmation = cachedSeedSource === 'recovered' && !options.restoreConfirmed;
       // v0.1.74 seed safety: record marker on recovery so future
       // sessions are protected even if the seed was originally
       // generated on a different device.
@@ -565,6 +659,10 @@ export async function getOrCreateSeed(
   // exists, we know recovery returning empty is a transient relay
   // issue, NOT a true first launch. Refuse to generate fresh, throw
   // a clear error the user can act on.
+  if (protectedEvents.length > 0) {
+    saveSeedPublishedMarker(pubkey, protectedEvents[0].id);
+    throw new SeedNeedsRecoveryCode(pubkey);
+  }
   const marker = loadSeedPublishedMarker(pubkey);
   if (marker) {
     mlog("SEED-REFUSE-FRESH", {
@@ -652,10 +750,23 @@ export async function getOrCreateSeed(
 export async function republishSeed(
   client: EscrowClient,
   signer: Signer
-): Promise<void> {
-  if (!cachedSeed) return;
+): Promise<boolean> {
+  // Readers never re-encrypt a protected seed into the unprotected v1 slot,
+  // nor write a new v2 event. Writer rollout owns protected republishing.
+  if (!cachedSeed || cachedProtectedSeed) return false;
+  const seed = cachedSeed;
   const pubkey = await signer.getPublicKey();
-  const mnemonic = cachedSeed.join(" ");
+  if (cachedForPubkey !== pubkey) return false;
+  const backups = await client.queryOnce({ kinds: [CHAMA_SEED_KIND], authors: [pubkey] }, SEED_RECOVERY_TIMEOUT_MS);
+  if (!client.hasRecoveryReadQuorum() || backups.length === 0) return false;
+  if (backups.some(event => isProtectedSeedEvent(event, pubkey))) return false;
+  for (const legacy of backups.filter(event => isChamaSeedEvent(event, pubkey))) {
+    if (await isRetiredSeed(legacy, pubkey, signer)) return false;
+  }
+  // Relay/signer awaits must not republish another identity's session cache
+  // or downgrade a protected seed opened while this read was in flight.
+  if (cachedForPubkey !== pubkey || cachedSeed !== seed || cachedProtectedSeed) return false;
+  const mnemonic = seed.join(" ");
   const ciphertext = await signer.nip44Encrypt(mnemonic, pubkey);
   const now = Math.floor(Date.now() / 1000);
   const unsigned: UnsignedEvent = {
@@ -668,6 +779,8 @@ export async function republishSeed(
     content: ciphertext,
   };
   const signed = await signer.signEvent(unsigned);
+  if (signed.pubkey !== pubkey) throw new Error('Your Nostr signer changed. The seed was not republished.');
+  if (cachedForPubkey !== pubkey || cachedSeed !== seed || cachedProtectedSeed) return false;
   await client.publishRaw(signed);
   recordSeedPublished();
   // v0.1.74 seed safety: keep the marker fresh on every republish so
@@ -680,6 +793,7 @@ export async function republishSeed(
     eventId: signed.id.slice(0, 8),
     source: "republish",
   });
+  return true;
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -719,11 +833,10 @@ export async function checkAndMaybeRepublishSeed(
       {
         kinds: [CHAMA_SEED_KIND],
         authors: [pubkey],
-        "#d": [CHAMA_SEED_D_TAG],
-        limit: 4,
+        "#d": [CHAMA_SEED_D_TAG, SEED_V2_BROWSER_D_TAG],
       },
       5_000
-    )).filter(event => isChamaSeedEvent(event, pubkey));
+    )).filter(event => isChamaSeedEvent(event, pubkey) || isProtectedSeedEvent(event, pubkey));
 
     health.relaysReturnedSeed = existing.length;
 
@@ -783,8 +896,7 @@ export async function checkAndMaybeRepublishSeed(
         previousEventId: newest.id?.slice(0, 8),
       });
       try {
-        await republishSeed(client, signer);
-        health.lastPublishedAt = Date.now();
+        if (await republishSeed(client, signer)) health.lastPublishedAt = Date.now();
       } catch (e) {
         console.warn("[chama] staleness-triggered seed republish failed:", e);
       }

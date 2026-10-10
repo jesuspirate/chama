@@ -112,4 +112,13 @@ export const recovery: Record<string, string> = {
   "recovery.unknownCounterparty": "una contraparte desconocida",
   "recovery.youFunded": "Financiaste",
   "recovery.yourRole": "Tu rol:",
+  "recovery.seed.codeTitle": "Introduce el código de recuperación de tu cartera",
+  "recovery.seed.codeLabel": "Código de recuperación de la cartera",
+  "recovery.seed.restoreWarning": "Al restaurar, esta cartera pasa a este dispositivo. Deja de usarla en el dispositivo anterior. Usar una cartera en dos dispositivos puede causar pérdidas de dinero.",
+  "recovery.seed.restoreConfirm": "Dejaré de usar esta cartera en mi dispositivo anterior.",
+  "recovery.seed.restoreAction": "Restaurar el acceso a la cartera",
+  "recovery.seed.wrongCode": "El código de recuperación es incorrecto. Compruébalo e inténtalo de nuevo.",
+  "recovery.seed.openError": "No se pudo abrir la copia de tu cartera. Comprueba tu firmante Nostr y la conexión e inténtalo de nuevo.",
+  "recovery.seed.restored": "Se ha restaurado el acceso a la cartera. Vuelve a intentar la acción que estabas realizando.",
+  "recovery.seed.restoring": "Restaurando…",
 };
