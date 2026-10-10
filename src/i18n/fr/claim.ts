@@ -299,4 +299,8 @@ export const claim: Record<string, string> = {
   "claim.yourPaymentId": "Votre identifiant de paiement",
   "claim.titleTradeNotSynced": "Cet échange n’est pas entièrement synchronisé ici",
   "claim.bodyTradeNotSynced": "Vos sats sont en sécurité et toujours à vous — rien n’a bougé. Cet appareil ne voit pas les données du verrouillage : les relais ont perdu cette partie de la chaîne. Réessayez. Si cela persiste, demandez à la personne qui a verrouillé les sats d’ouvrir cet échange, de déplier ⚙ en bas et d’appuyer sur Rediffuser — sa copie est ce qui remet la partie manquante.",
+  "claim.saveForNextTime": "Enregistrer cette adresse pour la prochaine fois",
+  "claim.scan": "Scanner",
+  "claim.toDestination": "à {destination}",
+  "claim.holdToSend": "Maintenez pour envoyer {amount} sats",
 };

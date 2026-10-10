@@ -622,7 +622,10 @@ export function ClaimPayoutModal({
         title={t("claim.claimYourSats")}
         subtitle={(
           <>
-            {t("claim.sendToWalletBefore")} <BitcoinAmount sats={payoutSats} size={T.fs.secondary} gap={4} glyphScale={1.18} color={T.muted} glyphColor={T.muted} /> {t("claim.sendToWalletAfter")}
+            {/* The big amount sits right above this line (DestinationPicker), so
+                it continues "₿ 992 / to your Lightning wallet" without
+                repeating the number. */}
+            {t("claim.sendToWalletAfter")}
             {reserveSats > 0 && (
               <>
                 . {t("claim.feeReserveBefore")} <BitcoinAmount sats={reserveSats} size={T.fs.secondary} gap={4} glyphScale={1.18} color={T.muted} glyphColor={T.muted} /> {t("claim.feeReserveAfter")}
@@ -845,7 +848,7 @@ export function ClaimMethodChooser({
           <div style={{ marginBottom: 12 }}>
             <HoldToConfirm disabled={rail === "lightning" && !!lightningReason}
               onConfirm={() => rail === "ecash" ? onSelectEcash() : rail === "lightning" && selected ? selected.kind === "address" ? onSelectSavedWallet(selected.wallet) : onSelectSavedNwc(selected.wallet) : onSelect({ kind: rail })}
-              label={rail === "ecash" || !selected ? t("claim.ecashMethod") : t("claim.sendTo", { amount: payoutSats.toLocaleString(), destination: selected.kind === "address" ? payoutDestinationLabel(selected.wallet) : selected.wallet.label })}
+              label={rail === "ecash" || !selected ? t("claim.ecashMethod") : t("claim.holdToSend", { amount: payoutSats.toLocaleString() })}
               hint={t("common.holdToConfirm")} armedLabel={t("common.holdArmed")} />
           </div>
         ) : (

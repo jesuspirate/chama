@@ -49,10 +49,18 @@ const destinationHtml = renderToStaticMarkup(<LangProvider><DestinationPicker am
   initialAddress="bitcrazy@getalby.com" savedDestinations={[]} savedNwcConnections={[]}
   title="Claim" onResolve={unexpected} onCancel={unexpected} /></LangProvider>);
 assert.match(destinationHtml, /Send 196 sats to bitcrazy@getalby.com/);
-assert.match(destinationHtml, /save address/);
+assert.match(destinationHtml, /Save this address for next time/);
+assert.doesNotMatch(destinationHtml, /Send once/, 'one send action plus a save box, not two competing holds');
 console.log('PASS claim action labels: net payout and destination, explicit saving, no render-time dispatch');
 
 const lnurlHtml = renderToStaticMarkup(<LangProvider><DestinationPicker amountSats={196}
   initialAddress="lnurl1dp68gurn8ghj7urgdajku6tc9eshqup0d3h82unvwqhkzmrfvdjsr5eqhc"
   savedDestinations={[]} savedNwcConnections={[]} title="Claim" onResolve={unexpected} onCancel={unexpected} /></LangProvider>);
 assert.match(lnurlHtml, /Send 196 sats to lnurl1dp6…qhc/);
+
+const holdDestinationHtml = renderToStaticMarkup(<LangProvider><DestinationPicker holdToSend amountSats={196}
+  initialAddress="bitcrazy@getalby.com" savedDestinations={[]} savedNwcConnections={[]}
+  title="Claim" onResolve={unexpected} onCancel={unexpected} /></LangProvider>);
+assert.match(holdDestinationHtml, /to bitcrazy@getalby.com/);
+assert.match(holdDestinationHtml, /Hold to send 196 sats/);
+assert.doesNotMatch(holdDestinationHtml, /Send 196 sats to/);

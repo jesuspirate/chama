@@ -284,4 +284,8 @@ export const claim: Record<string, string> = {
   "claim.yourPaymentId": "Tu ID de pago",
   "claim.titleTradeNotSynced": "Esta operación no está sincronizada aquí",
   "claim.bodyTradeNotSynced": "Tus sats están a salvo y siguen siendo tuyos — nada se movió. Este dispositivo no ve los datos del bloqueo: los relays perdieron esa parte de la cadena. Inténtalo de nuevo. Si sigue fallando, pide a quien bloqueó los sats que abra esta operación, despliegue ⚙ abajo y pulse Retransmitir — su copia es la que repone lo que falta.",
+  "claim.saveForNextTime": "Guardar esta dirección para la próxima vez",
+  "claim.scan": "Escanear",
+  "claim.toDestination": "a {destination}",
+  "claim.holdToSend": "Mantén pulsado para enviar {amount} sats",
 };

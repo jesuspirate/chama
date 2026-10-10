@@ -98,7 +98,8 @@ const typedHtml = renderToStaticMarkup(<LangProvider><DestinationPicker holdToSe
   initialAddress="bitcrazy@getalby.com" savedDestinations={[]} savedNwcConnections={[]}
   title="Claim" onResolve={unexpected} onCancel={unexpected} /></LangProvider>);
 assert.match(typedHtml, HOLD, 'a typed Lightning address sends with a hold');
-assert.match(typedHtml, /Send 196 sats to bitcrazy@getalby.com/);
+assert.match(typedHtml, /Hold to send 196 sats/);
+assert.match(typedHtml, /to bitcrazy@getalby.com/);
 // Recovery (Jet, 2026-10-05: "hold too") uses the same picker with holds.
 const recovery = readFileSync(new URL('./panels/RecoveryPayoutModal.tsx', import.meta.url), 'utf8');
 assert.match(recovery, /<DestinationPicker\s+holdToSend\s/, 'the recovery picker holds');
