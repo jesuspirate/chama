@@ -58,12 +58,12 @@ It is a conservative source check, not whole-program capability analysis: aliase
 computed imports or properties can escape it and require review.
 
 Golden capture preserves full raw event objects in input order, exact parsed inputs,
-creator options, observed `nowSec`, final state and the complete success/error result.
+creator options, observed `nowSec`, final state and the complete success/error result. `parsedEvents` stores raw-parser output where key-free parsing succeeds; `replayOverrides` preserves fixture-only context or deliberate parsed-field overrides separately. Replay uses those overrides without claiming they came from the raw event.
 Existing replay tests include synthetic signatures and modeled decrypted content;
 those are explicitly classified and are not claimed to authenticate a chain.
 Parsed inputs are necessary because some tests deliberately override parsed fields
 without changing raw content. The raw events are never rewritten or re-signed.
-Golden replay tests the reducer boundary, not parser authentication or transport.
+Golden replay tests the reducer boundary and also checks parser equality for every raw event that parses with its own content and no decryption keys or context. It does not claim coverage of encrypted/decryption or transport paths.
 
 ## Verified closure and corrections
 
@@ -140,10 +140,18 @@ Regenerate twice and compare byte-for-byte before accepting a new baseline.
 A difference is a review signal: explain it in the PR rather than automatically
 accepting it. Updating the baseline is never part of an ordinary test run.
 
-Initial corpus: **54 records, 3,911,685 bytes**; 43 successful replays and 11
-refusals. The main engine suite contributes 34 records, two-truths 5,
-partial-relay 3, onchain-safety 1, chama-gate 2, rejected-lock-recovery's imported
-two-truths fixture 5, and brief-6418 4. There are 13 valid-signature and 233
-synthetic/modeled raw-event occurrences (redelivery is counted per occurrence).
-Two complete captures compared byte-for-byte equal. These are fixture signatures
-and public/model evidence; no signing secret, nsec or wallet seed is exported.
+Current corpus after capture coverage review: **56 records, 4,003,703 bytes**;
+45 successful replays and 11 refusals. The main engine suite contributes 34,
+two-truths 5, partial-relay 3, onchain-safety 1, chama-gate 2,
+rejected-lock-recovery 7 (5 imported fixture replays and 2 direct calls), and
+brief-6418 4. The dynamic mode-mismatch import is wrapped but only checks that
+its function exists, so it contributes no invocation.
+
+There are 20 valid-signature and 240 synthetic/modeled raw-event occurrences.
+**31 key-free raw parser outputs** deep-equal stored parsed events. Fixture cycle
+context is kept separately as a replay override; it is not reconstructed from
+raw content. The original 54 records retain identical raw events, actual replay
+inputs, clocks, options, signature classifications and results; the additional
+2 records close a capture gap, not a protocol behaviour change. Two complete
+captures compare byte-for-byte equal. No signing secret, nsec or wallet seed
+is exported; fixture signatures and public/model evidence remain distinguished.

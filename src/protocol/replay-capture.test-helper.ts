@@ -2,6 +2,7 @@ import { appendFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { verifyEvent } from 'nostr-tools/pure';
 import { replayEventChain as replay } from '../escrow-engine/state-machine.js';
+import { parseEscrowEvent } from '../escrow-engine/event-parser.js';
 
 export function deterministic(value: unknown): any {
   if (value instanceof Set) return [...value].map(deterministic).sort(compare);
@@ -24,8 +25,17 @@ export function captureReplay(source: string): typeof replay {
     if (process.env.CHAMA_CAPTURE_GOLDEN !== '1') return replay(events, options);
     const nowSec = Date.now()/1000;
     const result = atReplayTime(nowSec, () => replay(events, options));
+    const replayOverrides: Record<number, unknown> = {};
+    const parsedEvents = events.map((event, index) => {
+      const parsed = parseEscrowEvent(JSON.parse(JSON.stringify(event.raw)), event.raw.content);
+      if (!parsed.ok) return event;
+      // Fixture-only cycle evidence / intentional overrides are replay input,
+      // not facts the raw parser can reconstruct. Preserve both boundaries.
+      if (JSON.stringify(deterministic(parsed.event)) !== JSON.stringify(deterministic(event))) replayOverrides[index] = event;
+      return parsed.event;
+    });
     const record = { name:`${process.argv[1]?.split('/').pop()}:${source}#${++ordinal}`, nowSec,
-      events:events.map(event => event.raw), parsedEvents:events, options,
+      events:events.map(event => event.raw), parsedEvents, ...(Object.keys(replayOverrides).length ? { replayOverrides } : {}), options,
       authentication:events.map(event => {
         try { return verifyEvent(JSON.parse(JSON.stringify(event.raw))) ? 'valid-signature' : 'synthetic-or-modeled'; }
         catch { return 'synthetic-or-modeled'; }

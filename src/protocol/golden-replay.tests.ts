@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { verifyEvent } from 'nostr-tools/pure';
 import { replayEventChain } from '../escrow-engine/state-machine.js';
+import { parseEscrowEvent } from '../escrow-engine/event-parser.js';
 import type { ParsedEscrowEvent } from '../escrow-engine/types.js';
 import { atReplayTime, deterministic } from './replay-capture.test-helper.js';
 
@@ -14,7 +15,7 @@ assert(!/nsec1[a-z0-9]{20,}/i.test(contents) && !/"(?:privateKey|secretKey|mnemo
 const records = contents.trim().split('\n').map(line=>JSON.parse(line));
 assert(records.length > 0,'golden corpus must not be empty');
 const names = new Set<string>();
-let signed=0, synthetic=0;
+let signed=0, synthetic=0, parsedWithoutKeys=0;
 for(const record of records) {
   assert(!names.has(record.name),`duplicate golden name ${record.name}`);names.add(record.name);
   assert(Number.isFinite(record.nowSec),`${record.name}: explicit replay clock`);
@@ -23,9 +24,21 @@ for(const record of records) {
     try {return verifyEvent(JSON.parse(JSON.stringify(raw))) ? 'valid-signature' : 'synthetic-or-modeled';}
     catch {return 'synthetic-or-modeled';}
   }),`${record.name}: signature provenance`);
+  for (const [index, raw] of record.events.entries()) {
+    // The parser's existing API takes content explicitly. Raw plaintext needs
+    // no decryption keys, signature bypass, parent context or modeled payload.
+    const parsed = parseEscrowEvent(JSON.parse(JSON.stringify(raw)), raw.content);
+    if (parsed.ok) {
+      assert.deepEqual(deterministic(parsed.event), record.parsedEvents[index],
+        `${record.name}: key-free raw parsing at input ${index}`);
+      parsedWithoutKeys++;
+    }
+  }
   for(const status of record.authentication) status === 'valid-signature' ? signed++ : synthetic++;
-  const result = atReplayTime(record.nowSec,()=>replayEventChain(record.parsedEvents,record.options));
+  const replayInputs = record.parsedEvents.map((event:ParsedEscrowEvent,index:number)=>record.replayOverrides?.[index] ?? event);
+  assert.deepEqual(record.events,replayInputs.map((event:ParsedEscrowEvent)=>event.raw),`${record.name}: overrides preserve raw inputs`);
+  const result = atReplayTime(record.nowSec,()=>replayEventChain(replayInputs,record.options));
   assert.deepEqual(deterministic(result),record.result,record.name);
   assert.deepEqual(deterministic(result.ok ? result.state : null),record.state,`${record.name}: final state`);
 }
-console.log(`PASS golden replay: ${records.length} records; ${signed} authenticated and ${synthetic} synthetic/modeled raw event occurrences; exact success/error results and final states`);
+console.log(`PASS golden replay: ${records.length} records; ${signed} authenticated and ${synthetic} synthetic/modeled raw event occurrences; ${parsedWithoutKeys} raw event occurrences checked against key-free parsing; exact success/error results and final states`);
