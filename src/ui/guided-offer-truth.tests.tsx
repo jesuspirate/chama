@@ -8,7 +8,7 @@ import { Match, MatchReviewAmount, guidedChooseTitleKey } from "./screens/Assist
 // Exercise the actual per-amount searches that the guided canvas merges.
 function offer(id: string, sats: number, fiat: number, currency = "USD", category = "p2p-trade") {
   const listing = {
-    id, category, status: EscrowStatus.CREATED, amountMsats: sats * 1000,
+    id, category, community: "us-usd", status: EscrowStatus.CREATED, amountMsats: sats * 1000,
     fiatAmount: fiat, fiatCurrency: currency, description: "Help with this month’s utilities",
     expiresAt: 2000, participants: { [Role.SELLER]: id }, paymentMethods: ["strike"],
     fees: { platformMsats: 0, arbiterMsats: 0 },

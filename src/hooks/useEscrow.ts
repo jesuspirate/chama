@@ -1,3 +1,4 @@
+import { confirmedLockPaymentFields } from "../payments/lock-payment-details.js";
 import { rejectedLockRecovery } from "../fedimint/rejected-lock-recovery.js";
 import { assertOnchainFundingWindow, fundingInvoiceSeconds, assertFundingInvoiceWithinSeat } from "../payments/seat-funding.js";
 import { recordPaidLockRecovery, assertPaidLockRecoveryWritable } from "../payments/paid-lock-recovery.js";
@@ -3025,6 +3026,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     const arbiterPubkey = state.participants[Role.ARBITER];
     if (!buyerPubkey || !arbiterPubkey) throw new Error("Buyer and arbiter must both have joined.");
     return client.lockEscrow(escrowId, {
+      ...confirmedLockPaymentFields(state),
       notesHash: "",
       shares: [],
       onchain: terms,

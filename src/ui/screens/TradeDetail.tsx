@@ -1,3 +1,4 @@
+import { TradePaymentDetails } from "../components/TradePaymentDetails.js";
 import { reabsorbedLockAmount } from "../../fedimint/pending-native-locks.js";
 import { RejectedLockRefund } from "../components/RejectedLockRefund.js";
 export { RejectedLockRefund } from "../components/RejectedLockRefund.js";
@@ -36,7 +37,6 @@ import { getVoteLabel } from "../../labels/vote-labels.js";
 import {
   listSavedHandles,
   maskHandle,
-  handleDisplayForViewer,
 } from "../../payments/saved-handles.js";
 import { getRailByKey, matchRails, toRailKey, categoryUsesPaymentRails } from "../../payments/rail-registry.js";
 import { listPendingRedemptions } from "../../fedimint/pending-redemptions.js";
@@ -2033,6 +2033,7 @@ export function TradeDetail({
             overflowY: "auto", overflowX: "hidden",
           }}
         >
+        {state.status === EscrowStatus.LOCKED && myRole && <TradePaymentDetails state={state} />}
         <div style={{
           padding: 14,
           borderRadius: T.rs,
@@ -4517,72 +4518,6 @@ export function TradeDetail({
         </div>
       )}
 
-      {/* Revealed payment handle for the trade's three participants. */}
-      {state.status === EscrowStatus.LOCKED && state.lock.handle && (
-        <div style={{
-          paddingTop: 16,
-          marginTop: 16,
-          marginBottom: 16,
-          borderTop: `1px solid ${T.amber}33`,
-        }}>
-          <div style={{
-            fontSize: 11, fontWeight: 600, color: T.muted,
-            fontFamily: T.mono, letterSpacing: 1, marginBottom: 8,
-          }}>
-            {t("trade.paymentHandle")}
-            {state.lock.handle.rail && (
-              <span style={{ color: T.amber, marginLeft: 8 }}>
-                · {getRailByKey(state.lock.handle.rail)?.displayName || state.lock.handle.rail}
-              </span>
-            )}
-          </div>
-          <div style={{
-            fontFamily: T.mono, fontSize: 14, color: T.text,
-            padding: "10px 12px", background: T.surface,
-            borderRadius: T.rs, border: `1px solid ${T.border}`,
-            wordBreak: "break-all" as const,
-          }} title={myRole ? state.lock.handle.value : undefined}>
-            {handleDisplayForViewer(state.lock.handle.value, !!myRole)}
-          </div>
-          {/* v0.6.5: networks the seller accepts on this handle.
-              Phone numbers serve many mobile-money networks; without
-              this chip row the buyer has no honest way to know which
-              one to use. Only renders for participants (the cleartext
-              value itself is hidden from non-participants anyway, so
-              the network tags would be a privacy leak there). */}
-          {!!myRole && state.lock.handle.networks && state.lock.handle.networks.length > 0 && (
-            <div style={{ marginTop: 8 }}>
-              <div style={{
-                fontSize: 9, color: T.muted, fontFamily: T.mono,
-                letterSpacing: 0.3, marginBottom: 5,
-              }}>
-                {t("trade.accepts")}
-              </div>
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                {state.lock.handle.networks.map(networkKey => (
-                  <span key={networkKey} style={{
-                    padding: "4px 10px", borderRadius: 12,
-                    background: T.tealDim,
-                    border: `1px solid ${T.teal}66`,
-                    color: T.teal, fontFamily: T.mono,
-                    fontSize: 10, fontWeight: 700, letterSpacing: 0.2,
-                  }}>
-                    {getRailByKey(networkKey)?.displayName || networkKey}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-          <div style={{
-            fontSize: 9, color: T.muted, fontFamily: T.mono,
-            marginTop: 8, lineHeight: 1.4,
-          }}>
-            {myRole
-              ? t("trade.revealedToParticipants")
-              : t("trade.handleHidden")}
-          </div>
-        </div>
-      )}
 
           </div>
         </div>

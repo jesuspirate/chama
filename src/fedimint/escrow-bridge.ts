@@ -1,3 +1,4 @@
+import { handleMatchesTrade, needsLockPaymentDetails } from "../payments/lock-payment-details.js";
 import { chamaFundingError } from "../chama/policy.js";
 // ══════════════════════════════════════════════════════════════════════════
 // Chama — Escrow ↔ Fedimint Bridge
@@ -188,7 +189,7 @@ export class EscrowFedimintBridge {
     this.signer = signer;
   }
 
-  private async prepareLockContext(escrowId: string, opts: LockOptions = {}): Promise<{
+  private async prepareLockContext(escrowId: string, opts: LockOptions = {}, validation: { checkPaymentDetails?: boolean } = {}): Promise<{
     state: EscrowState;
     buyerPubkey: string;
     sellerPk: string;
@@ -201,6 +202,10 @@ export class EscrowFedimintBridge {
   }> {
     const state = this.escrow.getState(escrowId);
     if (!state) throw new Error(`Escrow ${escrowId} not loaded`);
+    if (validation.checkPaymentDetails && opts.savedHandleId && needsLockPaymentDetails(state)) {
+      const handle = getSavedHandle(opts.savedHandleId);
+      if (!handle || !handleMatchesTrade(handle, state)) throw new Error("Payment details changed. Confirm them again before locking.");
+    }
     if (state.chamaCircle) {
       const reason = chamaFundingError(state, await this.escrow.getPubkey(), Math.floor(Date.now() / 1000));
       if (reason) throw new Error(`Cannot LOCK — ${reason}. (No sats were spent.)`);
@@ -324,7 +329,7 @@ export class EscrowFedimintBridge {
 
     const lockerPubkey = await this.escrow.getPubkey();
     // Async probes may have allowed a JOIN/CANCEL to replace this state.
-    if (this.escrow.getState(escrowId) !== state) return this.prepareLockContext(escrowId, opts);
+    if (this.escrow.getState(escrowId) !== state) return this.prepareLockContext(escrowId, opts, validation);
     const timestamp = Math.floor(Date.now() / 1000);
     if (preLockDeadline(state, timestamp)?.lapsed) throw new Error("The buyer's seat or listing lapsed. Post it again or wait for the buyer to rejoin.");
     const amount = amountMsatsForLock(state, opts.selectedItems);
@@ -411,7 +416,8 @@ export class EscrowFedimintBridge {
     let handleNetworks: string[] | undefined;
     if (opts.savedHandleId) {
       const saved = getSavedHandle(opts.savedHandleId);
-      if (saved) {
+      // Notes already exist here. Optional fiat details must never strand them.
+      if (saved && (!needsLockPaymentDetails(state) || handleMatchesTrade(saved, state))) {
         handleId = saved.id;
         handle = saved.handle;
         rail = saved.rail;
@@ -421,7 +427,7 @@ export class EscrowFedimintBridge {
       } else {
         console.warn(
           `[chama] lockAndPublish: savedHandleId ${opts.savedHandleId} ` +
-          `not found in local storage — proceeding without handle reveal`
+          `missing or no longer matches — proceeding without handle reveal`
         );
       }
     }
@@ -574,7 +580,7 @@ export class EscrowFedimintBridge {
   }
 
   private async lockAndPublishInner(escrowId: string, opts: LockOptions = {}): Promise<EscrowState> {
-    let context = await this.prepareLockContext(escrowId, opts);
+    let context = await this.prepareLockContext(escrowId, opts, { checkPaymentDetails: true });
     const amountMsats = amountMsatsForLock(context.state, opts.selectedItems);
     const meta = buildChamaOperationMeta({
       flow: "lock_spend",
@@ -747,7 +753,7 @@ export class EscrowFedimintBridge {
   }
 
   async preflightLock(escrowId: string, opts: LockOptions = {}): Promise<{ buyerPubkey: string; seatDeadline?: number }> {
-    const { buyerPubkey, state } = await this.prepareLockContext(escrowId, opts);
+    const { buyerPubkey, state } = await this.prepareLockContext(escrowId, opts, { checkPaymentDetails: true });
     return { buyerPubkey, seatDeadline: preLockDeadline(state)?.at };
   }
 
