@@ -4,7 +4,7 @@ import { nip44 } from 'nostr-tools';
 import type { NostrEvent } from '../escrow-engine/types.js';
 import type { Signer, UnsignedEvent } from '../escrow-engine/escrow-client.js';
 import { getOrCreateSeed, clearSeedCache, republishSeed, cachedSeedRequiresFederationRecovery,
-  SeedNeedsRecoveryCode, SeedNeedsRestoreConfirmation, recoverSeedWordsFromEvents, SEED_RECOVERY_RETRY_DELAYS_MS, SEED_PUBLISHED_MARKER_KEY } from './seed-manager.js';
+  SeedNeedsRecoveryCode, SeedNeedsRestoreConfirmation, recoverSeedWordsFromEvents, checkAndMaybeRepublishSeed, SEED_RECOVERY_RETRY_DELAYS_MS, SEED_PUBLISHED_MARKER_KEY } from './seed-manager.js';
 import { SEED_V2_BROWSER_D_TAG, wrapSeedBackup, formatRecoveryCode, InvalidRecoveryCode } from './seed-backup-v2.js';
 const secret = new Uint8Array(32).fill(1), pubkey = getPublicKey(secret);
 const conversation = nip44.v2.utils.getConversationKey(secret, pubkey);
@@ -58,8 +58,10 @@ try {
   assert.equal(cachedSeedRequiresFederationRecovery(pubkey), true);
   assert.equal(queries, 1, 'Signed local v2 cache does not wait on relays, even after dismissal or wrong code');
   assert.ok([...values.values()].every(value => !value.includes(code) && !value.includes(mnemonic)));
-  await republishSeed(client([]), signer);
+  assert.equal(await republishSeed(client([]), signer), false);
   assert.equal(writes.length, 0, 'Readers never downgrade or republish v2'); cases++;
+  const health = await checkAndMaybeRepublishSeed(client([v2]), signer);
+  assert.equal(health.lastPublishedAt, null, 'A skipped protected republish is not reported as a publication'); cases++;
   clearSeedCache();
   await assert.rejects(getOrCreateSeed(client([]), signer), SeedNeedsRecoveryCode); cases++;
 
@@ -105,6 +107,17 @@ try {
   await republishSeed(client([]), signer); assert.equal(writes.length, 0); cases++;
   await republishSeed({ ...client([v1]), hasRecoveryReadQuorum: () => false }, signer); assert.equal(writes.length, 0); cases++;
   await republishSeed(client([v1]), signer); assert.equal(writes.length, 1, 'Unprotected legacy republish still works after a complete read'); cases++;
+
+  reset();
+  await getOrCreateSeed(client([v1]), signer);
+  const changedWhileReading = { ...client([v1]), async queryOnce() {
+    clearSeedCache(); values.clear();
+    await getOrCreateSeed(client([v2]), signer, { recoveryCode: code, restoreConfirmed: true });
+    return [v1];
+  } };
+  assert.equal(await republishSeed(changedWhileReading, signer), false,
+    'A session cache changed while relays were read must not be republished or downgraded');
+  assert.equal(writes.length, 0); cases++;
 
   reset();
   values.set(SEED_PUBLISHED_MARKER_KEY, JSON.stringify({ [pubkey]: { firstPublishedAt: 1, lastEventId: v1.id } }));

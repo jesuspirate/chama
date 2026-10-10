@@ -741,19 +741,23 @@ export async function getOrCreateSeed(
 export async function republishSeed(
   client: EscrowClient,
   signer: Signer
-): Promise<void> {
+): Promise<boolean> {
   // Readers never re-encrypt a protected seed into the unprotected v1 slot,
   // nor write a new v2 event. Writer rollout owns protected republishing.
-  if (!cachedSeed || cachedProtectedSeed) return;
+  if (!cachedSeed || cachedProtectedSeed) return false;
+  const seed = cachedSeed;
   const pubkey = await signer.getPublicKey();
-  if (cachedForPubkey !== pubkey) return;
+  if (cachedForPubkey !== pubkey) return false;
   const backups = await client.queryOnce({ kinds: [CHAMA_SEED_KIND], authors: [pubkey] }, SEED_RECOVERY_TIMEOUT_MS);
-  if (!client.hasRecoveryReadQuorum() || backups.length === 0) return;
-  if (backups.some(event => isProtectedSeedEvent(event, pubkey))) return;
+  if (!client.hasRecoveryReadQuorum() || backups.length === 0) return false;
+  if (backups.some(event => isProtectedSeedEvent(event, pubkey))) return false;
   for (const legacy of backups.filter(event => isChamaSeedEvent(event, pubkey))) {
-    if (await isRetiredSeed(legacy, pubkey, signer)) return;
+    if (await isRetiredSeed(legacy, pubkey, signer)) return false;
   }
-  const mnemonic = cachedSeed.join(" ");
+  // Relay/signer awaits must not republish another identity's session cache
+  // or downgrade a protected seed opened while this read was in flight.
+  if (cachedForPubkey !== pubkey || cachedSeed !== seed || cachedProtectedSeed) return false;
+  const mnemonic = seed.join(" ");
   const ciphertext = await signer.nip44Encrypt(mnemonic, pubkey);
   const now = Math.floor(Date.now() / 1000);
   const unsigned: UnsignedEvent = {
@@ -766,6 +770,8 @@ export async function republishSeed(
     content: ciphertext,
   };
   const signed = await signer.signEvent(unsigned);
+  if (signed.pubkey !== pubkey) throw new Error('Your Nostr signer changed. The seed was not republished.');
+  if (cachedForPubkey !== pubkey || cachedSeed !== seed || cachedProtectedSeed) return false;
   await client.publishRaw(signed);
   recordSeedPublished();
   // v0.1.74 seed safety: keep the marker fresh on every republish so
@@ -778,6 +784,7 @@ export async function republishSeed(
     eventId: signed.id.slice(0, 8),
     source: "republish",
   });
+  return true;
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -880,8 +887,7 @@ export async function checkAndMaybeRepublishSeed(
         previousEventId: newest.id?.slice(0, 8),
       });
       try {
-        await republishSeed(client, signer);
-        health.lastPublishedAt = Date.now();
+        if (await republishSeed(client, signer)) health.lastPublishedAt = Date.now();
       } catch (e) {
         console.warn("[chama] staleness-triggered seed republish failed:", e);
       }
