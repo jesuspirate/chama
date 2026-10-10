@@ -174,12 +174,17 @@ the federation under test. `INVITE` below is the public invite, not a seed.
 cd native/fedimint-bridge
 cargo build
 BRIDGE="$PWD/target/debug/chama-fedimint-bridge"
-SOURCE=/private/tmp/chama-recovery-proof-source
+SOURCE="$HOME/chama-recovery-proof-source"
 SCRATCH=/private/tmp/chama-recovery-proof-scratch
 
 # Use a new SOURCE directory. Smoke creates an invoice for 1,000 sats.
 "$BRIDGE" --data-dir "$SOURCE" smoke "$INVITE" --amount-msats 1000000
 ```
+
+Until you pay the balance back out, the federation holds the sats and this
+SOURCE directory is the only retained wallet that can spend them. Keep it on
+persistent storage under `$HOME`; do not delete it while it has a balance.
+SCRATCH is disposable and is never a wallet to use for spending.
 
 Pay the printed invoice. Then run `await-invoice` using its printed operation
 id so the source client finishes receiving the payment and persists its notes:
@@ -210,6 +215,9 @@ On completion, stdout is JSON:
 
 **Passing** means recovery completed and the two balances are equal. A completed
 scan with unequal balances is a failed proof, not successful wallet restoration.
+A timeout is **inconclusive**, not evidence that seed recovery failed: recovery
+progress with a stopped executor has not yet been demonstrated on a funded
+federation. Preserve SOURCE and report the timeout.
 Paste the JSON into the review thread. This proves native recovery only;
 WASM browser recovery needs its own separate evidence.
 
@@ -226,6 +234,28 @@ SCRATCH before printing success. A process kill, power loss or crash can leave
 SCRATCH behind; remove that dedicated scratch directory before retrying, and
 never start a normal bridge on it. SOURCE is retained. No mnemonic or entropy
 is printed by the command.
+
+### Finish: pay the test sats back to your own wallet
+
+After the proof (including a timeout), use only SOURCE to get the sats back.
+Create a Lightning invoice in your own external wallet for an amount the test
+balance can cover, leaving room for Lightning fees. Do not make an invoice
+for the entire balance if the payment also needs fees.
+
+```sh
+"$BRIDGE" --data-dir "$SOURCE" info
+"$BRIDGE" --data-dir "$SOURCE" pay "$YOUR_WALLET_INVOICE"
+"$BRIDGE" --data-dir "$SOURCE" info
+```
+
+Wait for a settled payment and verify the sats arrived in your external wallet.
+The final `info` should show `total_amount_msat: 0` before you remove SOURCE.
+If the payment is pending, inspect `pay-outcome` with its operation id rather
+than issuing the payment again. If fees leave a remainder, keep SOURCE and pay
+out what you can in another affordable payment; do not delete a wallet holding
+leftover sats, even if the remainder is too small to send over Lightning.
+Until the payout settles, the federation still holds those sats and SOURCE
+remains the wallet you must keep to spend or recover them.
 
 PR 2 (backup writers) remains on hold pending Jet's wallet-backup decision;
 this manual proof is evidence for that decision, not automatic authorization.
