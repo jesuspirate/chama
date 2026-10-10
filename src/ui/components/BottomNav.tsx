@@ -1,3 +1,4 @@
+import type { Ref } from "react";
 import { T, ON_ATTN } from "../theme.js";
 import { getSignInEnvironment, shouldApplyCssSafeAreaInsets } from "../sign-in-environment.js";
 import { useT } from "../../i18n/index.js";
@@ -22,7 +23,9 @@ export function isAndroidUserAgent(ua = typeof navigator !== "undefined" ? navig
   return /Android/i.test(ua);
 }
 
-export function BottomNav({ active, onSelect, onCreate, badges }: {
+export function BottomNav({ active, onSelect, onCreate, badges, sidebarRowsRef, sidebarFederationRef }: {
+  sidebarRowsRef?: Ref<HTMLDivElement>;
+  sidebarFederationRef?: Ref<HTMLDivElement>;
   active: Tab;
   onSelect: (t: Tab) => void;
   /** Create entry point for the sidebar layout (phones use CreateButton). */
@@ -79,6 +82,7 @@ export function BottomNav({ active, onSelect, onCreate, badges }: {
           );
         })}
       </div>
+      <div className="chama-sidebar-context"><div ref={sidebarRowsRef} className="chama-sidebar-rows" /><div ref={sidebarFederationRef} className="chama-sidebar-federation" /></div>
     </nav>
   );
 }

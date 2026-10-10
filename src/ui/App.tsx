@@ -1,3 +1,5 @@
+import { createPortal } from "react-dom";
+import { useSidebarWidth } from "./sidebar-placement.js";
 import { newLookDesktopCss } from "./desktop-layout.js";
 import { buildWakeIndex } from "../notifications/wake-index.js";
 import { deleteListings } from "../escrow-engine/delete-listings.js";
@@ -885,6 +887,9 @@ export default function App() {
   // Suppress the offline banner during initial boot/seed-paste (relays connect a
   // beat after login) — only show it once we've actually been online and dropped.
   const [browseSkin] = useBrowseSkin();
+  const sidebarWide = useSidebarWidth();
+  const [sidebarRowsTarget, setSidebarRowsTarget] = useState<HTMLDivElement | null>(null);
+  const [sidebarFederationTarget, setSidebarFederationTarget] = useState<HTMLDivElement | null>(null);
   const [everOnline, setEverOnline] = useState(false);
   useEffect(() => { if (connected && connectedRelays > 0) setEverOnline(true); }, [connected, connectedRelays]);
   // Relay-resilience re-arm. The auto-init effect latches autoInitDone on
@@ -3238,6 +3243,7 @@ export default function App() {
   // market as a phone column with dark gutters, while Me and the Dashboard
   // already breathed.
   const wideOwnWidthMode = view === "dashboard" || view === "me" || view === "browse" || view === "circles";
+  const sidebarNewLook = browseSkin === "steps" && sidebarWide && !detailMode && (view === "guided" || wideOwnWidthMode);
   const baseTab = detailMode ? TAB_FOR_VIEW[detailBackView] : TAB_FOR_VIEW[view];
   const activeTab: Tab = baseTab;
   const openCreate = () => setView("guided");
@@ -3255,6 +3261,45 @@ export default function App() {
       hasPendingNativeLock,
       hasPendingClaimPayout,
     });
+
+  const renderContextRows = () => (
+          <div className={`chama-hero-wrap${browseSkin === "steps" ? " chama-native" : ""}`}>
+          <div className="chama-hero" style={{
+            padding: "12px 16px",
+            borderBottom: `1px solid ${T.border}`,
+          }}>
+            <div className="chama-hero-full">
+              <BitcoinPricePill
+                hero
+                compact={sidebarNewLook}
+                amountMode={amountDisplayMode}
+                onAmountModeChange={setAmountDisplayMode}
+                quoteCurrency={getCommunityBySlug(routeCommunitySlug)?.currency ?? null}
+                converterCommunity={routeCommunitySlug}
+              />
+            </div>
+            <div className="chama-hero-slim">
+              <BitcoinPricePill
+                hero
+                slim
+                amountMode={amountDisplayMode}
+                onAmountModeChange={setAmountDisplayMode}
+                quoteCurrency={getCommunityBySlug(routeCommunitySlug)?.currency ?? null}
+                converterCommunity={routeCommunitySlug}
+              />
+            </div>
+          </div>
+
+          {/* Identity bar (relays + npub). Sign out lives in Me → Settings. */}
+          <div className="chama-walletbar">
+          <WalletBar
+            pubkey={pubkey!}
+            connectedRelays={connectedRelays}
+            relayStatuses={relayStatuses}
+          />
+          </div>
+          </div>
+  );
 
   return (
     <ConductProvider key={pubkey ?? "anonymous"} load={actions.fetchPublicConduct}><div className={detailMode ? undefined : "chama-shell-nav"} data-new-look={browseSkin === "steps" && !detailMode && (view === "guided" || wideOwnWidthMode) ? "true" : undefined} data-shell-width={(assistedCanvasMode || wideOwnWidthMode) ? "wide" : "narrow"} style={{
@@ -3329,41 +3374,11 @@ export default function App() {
               .chama-native .chama-walletbar{display:none}
             }
           `}</style>
-          <div className={`chama-hero-wrap${browseSkin === "steps" ? " chama-native" : ""}`}>
-          <div className="chama-hero" style={{
-            padding: "12px 16px",
-            borderBottom: `1px solid ${T.border}`,
-          }}>
-            <div className="chama-hero-full">
-              <BitcoinPricePill
-                hero
-                amountMode={amountDisplayMode}
-                onAmountModeChange={setAmountDisplayMode}
-                quoteCurrency={getCommunityBySlug(routeCommunitySlug)?.currency ?? null}
-                converterCommunity={routeCommunitySlug}
-              />
-            </div>
-            <div className="chama-hero-slim">
-              <BitcoinPricePill
-                hero
-                slim
-                amountMode={amountDisplayMode}
-                onAmountModeChange={setAmountDisplayMode}
-                quoteCurrency={getCommunityBySlug(routeCommunitySlug)?.currency ?? null}
-                converterCommunity={routeCommunitySlug}
-              />
-            </div>
-          </div>
-
-          {/* Identity bar (relays + npub). Sign out lives in Me → Settings. */}
-          <div className="chama-walletbar">
-          <WalletBar
-            pubkey={pubkey!}
-            connectedRelays={connectedRelays}
-            relayStatuses={relayStatuses}
-          />
-          </div>
-          </div>
+          {/* Desktop New look: this stack (price, identity, Chama bar) sits at
+              the foot of the sidebar instead of above the page (desktop-
+              layout.ts). Same components, same taps; only where they sit. */}
+          <div className="chama-status-stack">
+          {sidebarNewLook && sidebarRowsTarget ? createPortal(renderContextRows(), sidebarRowsTarget) : renderContextRows()}
 
           {/* Chama bar (renamed from FedimintBar in v0.3.0 Phase 5).
           showReconnect is true for users who have a reconnect target
@@ -3378,6 +3393,7 @@ export default function App() {
           tap reuses the same RecoveryPayoutModal as the banner, so
           the failure-mode escape hatch is reachable from anywhere. */}
           <ChamaBar
+            federationTarget={sidebarNewLook ? sidebarFederationTarget : null}
             fedimint={fedimint}
             communitySlug={routeCommunitySlug}
             chamaLabel={chamaBarLabel}
@@ -3458,6 +3474,7 @@ export default function App() {
               runInit();
             }}
           />
+          </div>
         </>
       )}
 
@@ -4926,7 +4943,6 @@ export default function App() {
         </>
       )}
 
-      {!detailMode && <BottomNav active={activeTab} onSelect={switchTab} onCreate={openCreate} badges={{}} />}
 
       {/* v4.1 C1: one-time post-sign-in tour. Only on the Browse home screen
           (FABs mounted), never over the create sheet or a detail view. */}
@@ -5088,7 +5104,9 @@ export default function App() {
         </>
       )}
 
-    </div></div></ConductProvider>
+    </div>
+      {!detailMode && <BottomNav sidebarRowsRef={setSidebarRowsTarget} sidebarFederationRef={setSidebarFederationTarget} active={activeTab} onSelect={switchTab} onCreate={openCreate} badges={{}} />}
+    </div></ConductProvider>
   );
 }
 

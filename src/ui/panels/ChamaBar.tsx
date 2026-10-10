@@ -1,3 +1,4 @@
+import { createPortal } from "react-dom";
 import { ChamaLoader } from '../components/ChamaLoader.js';
 // ══════════════════════════════════════════════════════════════════════════
 // Chama — ChamaBar (v0.3.0 Phase 5; renamed from FedimintBar)
@@ -33,6 +34,7 @@ import { BitcoinAmount } from "../components/BitcoinAmount.js";
 
 export function ChamaBar({
   fedimint,
+  federationTarget,
   chamaLabel,
   onTapStranded,
   onTapInTrade,
@@ -40,6 +42,7 @@ export function ChamaBar({
   showReconnect,
   communitySlug,
 }: {
+  federationTarget?: HTMLElement | null;
   fedimint: FedimintState;
   /** Pre-computed by the shell via decideChamaBarLabel. The bar is a
    *  pure renderer — it does not introspect escrow state directly. */
@@ -96,13 +99,8 @@ export function ChamaBar({
     : fedimint.joined ? T.green : fedimint.busy ? T.amber : T.muted;
   const dotGlow = !healthFailed && fedimint.joined ? `0 0 8px ${T.green}66` : "none";
 
-  return (
-    <div style={{
-      display: "flex", alignItems: "center", justifyContent: "space-between",
-      gap: 12, padding: "10px 16px", background: T.bg,
-      borderBottom: `1px solid ${T.line}`, fontFamily: T.sans,
-    }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+  const federationRow = (
+      <div className="chama-federation-row" style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
         <div
           title={healthFailed ? t("recovery.barUnreachableTitle") : undefined}
           style={{
@@ -120,6 +118,15 @@ export function ChamaBar({
           {displayName}
         </span>
       </div>
+  );
+
+  return (
+    <div className="chama-status-row" style={{
+      display: "flex", alignItems: "center", justifyContent: "space-between",
+      gap: 12, padding: "10px 16px", background: T.bg,
+      borderBottom: `1px solid ${T.line}`, fontFamily: T.sans,
+    }}>
+      {federationTarget ? createPortal(federationRow, federationTarget) : federationRow}
 
       {/* Right side — state-aware label or Reconnect when not joined.
           v0.3.1 Phase 3: when joined AND bootProbeState === "failed",

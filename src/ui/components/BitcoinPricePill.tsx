@@ -281,7 +281,7 @@ export function BitcoinPricePill({
             <div style={{
               display: "flex", alignItems: "center", gap: 8, minWidth: 0,
               color: stale ? T.muted : T.green,
-              fontFamily: T.sans, fontVariantNumeric: "tabular-nums", fontSize: 22, fontWeight: 700, whiteSpace: "nowrap",
+              fontFamily: T.sans, fontVariantNumeric: "tabular-nums", fontSize: compact ? 16 : 22, fontWeight: 700, whiteSpace: "nowrap",
             }}>
               <span aria-hidden="true" style={{
                 width: 9, height: 9, borderRadius: "50%",
@@ -291,16 +291,16 @@ export function BitcoinPricePill({
               1 BTC
             </div>
             <button type="button" className="chama-sr-focusable" onClick={e => { e.stopPropagation(); setConverterOpen(true); }}>{t("browse.openConverter")}</button>
-            <PriceSwitch mode={amountMode} currency={displayCurrency} size={"full"} onToggle={() => onAmountModeChange(nextMode)} />
+            <PriceSwitch mode={amountMode} currency={displayCurrency} size={compact ? "slim" : "full"} onToggle={() => onAmountModeChange(nextMode)} />
             <div style={{
               display: "flex", alignItems: "baseline", justifyContent: "flex-end", gap: 8,
               minWidth: 0,
             }}>
               <span style={{
                 flexShrink: 0, color: price.usd ? T.text : T.muted,
-                fontFamily: T.sans, fontVariantNumeric: "tabular-nums", fontSize: 20, fontWeight: 700,
+                fontFamily: T.sans, fontVariantNumeric: "tabular-nums", fontSize: compact ? 13 : 20, fontWeight: 700,
               }}>{priceTicker}</span>
-              <FitText text={priceDigits} max={50} min={23} align="right" style={{
+              <FitText text={priceDigits} max={compact ? 32 : 50} min={compact ? 16 : 23} align="right" style={{
                 color: price.usd ? T.text : T.muted,
                 fontFamily: T.sans, fontVariantNumeric: "tabular-nums",
                 fontWeight: 700,

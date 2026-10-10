@@ -202,3 +202,16 @@ console.log("PASS badge + capsule: lock on In escrow, sentence case, attention f
   assert.match(css, /assisted-choice strong\{font-size:1.125rem\}/);
   assert.match(css, /assisted-canvas-footer\{display:flex/);
 }
+
+{
+  const { newLookDesktopCss } = await import('./desktop-layout.js');
+  const css = newLookDesktopCss();
+  const [phone, desktop] = css.split('@media (min-width:1024px)');
+  assert.match(phone, /chama-sidebar-context\{display:none\}/);
+  assert.doesNotMatch(phone, /chama-hero-wrap|chama-federation-row|chama-status-row/);
+  assert.match(desktop, /data-new-look="true".*chama-sidebar-context\{display:block/);
+  assert.match(desktop, /chama-desktop-column \.chama-hero-wrap\{display:none\}/);
+  assert.match(desktop, /chama-desktop-column \.chama-federation-row\{display:none\}/);
+  assert.match(desktop, /chama-sidebar-federation \.chama-federation-row\{display:flex\}/);
+  assert.match(desktop, /chama-status-row\{justify-content:flex-end!important\}/);
+}
