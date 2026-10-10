@@ -110,7 +110,8 @@ CHAMA_GPG_KEY="${CHAMA_GPG_KEY:-0CCF412F47859431BDB2C1F1489728C34DF7C33D}"
 # and a zsp binary. Default + export them so `npm run ship` just works without
 # remembering to set them each run; export anything yourself to override.
 # These propagate to the `npm run release:all` child process below.
-export SIGN_WITH="${SIGN_WITH:-browser}"
+source "$ROOT_DIR/scripts/zapstore-signer.sh"
+chama_zapstore_signer
 # Release builds carry NO dev build-stamp: vite reads this and bakes a clean
 # "vX.Y.Z" chip. Local `npm run build` / android:sync (without this) bake an
 # amber "v2.0.3 · dev MM-DD HH:mm" stamp so testers can SEE a refresh landed.
