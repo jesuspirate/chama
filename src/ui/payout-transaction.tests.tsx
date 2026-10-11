@@ -75,3 +75,15 @@ const pickerSubtitle = (initialAddress: string) => renderToStaticMarkup(<LangPro
   title="Claim" subtitle={subtitleForDestination} onResolve={unexpected} onCancel={unexpected} /></LangProvider>);
 assert.doesNotMatch(pickerSubtitle('bitcrazy@getalby.com'), /to your Lightning wallet/);
 assert.match(pickerSubtitle(''), /to your Lightning wallet/);
+
+const { missingWebCrypto, cameraUnavailableReason } = await import('./browser-capability-copy.js');
+assert.equal(cameraUnavailableReason(false, undefined), 'https');
+assert.equal(cameraUnavailableReason(true, undefined), 'unavailable');
+assert.equal(cameraUnavailableReason(true, { getUserMedia: async () => ({}) as MediaStream }), null);
+assert.equal(missingWebCrypto('Web Crypto API (crypto.subtle) is required for hashNotes but is unavailable in this environment.'), true);
+assert.equal(missingWebCrypto('Could not rebuild notes from release keys'), false);
+const { Toast } = await import('./components/Toast.js');
+const capabilityToast = renderToStaticMarkup(<LangProvider><Toast type="error" onDone={() => {}} message="Web Crypto API (crypto.subtle) is required for hashNotes but is unavailable in this environment." /></LangProvider>);
+assert.match(capabilityToast, /needs HTTPS to claim/);
+assert.doesNotMatch(capabilityToast, /vote again|border-radius:999px/);
+assert.match(capabilityToast, /max-width:min\(520px/);
