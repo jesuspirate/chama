@@ -132,4 +132,8 @@ export const lts: Record<string, string> = {
   "lts.step_paid": "Imelipwa",
   "lts.step_released": "Imeachiliwa",
   "lts.step_collected": "Imepokelewa",
+  "lts.chatWith": "Mazungumzo na {name}",
+  "lts.chatWithArbiter": "Mazungumzo na {name} na {arbiter}",
+  "lts.chatUnread": "Mazungumzo, {count} hayajasomwa",
+  "lts.chatParticipants": "washiriki wengine",
 };

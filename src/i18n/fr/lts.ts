@@ -132,4 +132,8 @@ export const lts: Record<string, string> = {
   "lts.step_paid": "Payé",
   "lts.step_released": "Libéré",
   "lts.step_collected": "Récupéré",
+  "lts.chatWith": "Discussion avec {name}",
+  "lts.chatWithArbiter": "Discussion avec {name} et {arbiter}",
+  "lts.chatUnread": "Discussion, {count} non lus",
+  "lts.chatParticipants": "les autres participants",
 };

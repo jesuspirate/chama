@@ -1,3 +1,4 @@
+import { usePhoneTradeChat, phoneTradeChatCss } from "../phone-trade-chat.js";
 import { RangeFiat } from "../components/RangeFiat.js";
 import { HoldToConfirm, buttonStyle } from "../components/Button.js";
 import { Badge, LockGlyph } from "../components/Badge.js";
@@ -181,6 +182,15 @@ export function LiveTradeSurface({
   }, [state.id]);
   const participants = getEffectiveParticipantsAt(state, nowSec, onchainActions?.onchainObservation);
   const myRole = effectiveViewerRole(state, pubkey, nowSec, onchainActions?.onchainObservation);
+
+  const phoneChat = usePhoneTradeChat(state.id, pubkey, state.chatMessages,
+    Object.values(participants).filter((pk): pk is string => typeof pk === "string" && !!pk), myRole !== null);
+  const otherParty = myRole === Role.BUYER ? participants.seller : myRole === Role.SELLER ? participants.buyer : participants.buyer || participants.seller;
+  const chatTitle = tr(participants.arbiter && myRole !== Role.ARBITER ? "lts.chatWithArbiter" : "lts.chatWith", {
+    name: profileNameFor(profileNames, otherParty, kind0Enabled) ?? tr("lts.chatParticipants"),
+    arbiter: profileNameFor(profileNames, participants.arbiter, kind0Enabled) ?? "",
+  });
+  const existingChat = <ChatPanel preferredRelayConnected={preferredRelayConnected} state={state} myRole={myRole} onSend={onSendChat} embedded fill hideHeader />;
 
   const [busy, setBusy] = useState(false);
   const [onchainOpen, setOnchainOpen] = useState(false);
@@ -861,6 +871,7 @@ export function LiveTradeSurface({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0, background: T.bg, paddingBottom: 12 }}>
+      <style>{phoneTradeChatCss()}</style>
       {state.rejectedLockRecovery?.pubkey === pubkey && onReclaimRejectedLock &&
         <RejectedLockRefund amountMsats={state.rejectedLockRecovery.amountMsats} onReclaim={() => onReclaimRejectedLock(state.id)} />}
       {reabsorbedLockAmount(state.id) && <p>{tr("trade.lockReabsorbed", {amount:Math.floor(reabsorbedLockAmount(state.id)! / 1000).toLocaleString()})}</p>}
@@ -874,19 +885,9 @@ export function LiveTradeSurface({
         .lts-decision-well{width:100%}
         @media (min-width:721px){.lts-decision-well{margin:auto 0;padding:12px 0}}
         @media (max-width:720px){
-          .lts-grid{grid-template-columns:1fr;grid-template-rows:minmax(0,auto) minmax(0,1fr)}
-          /* dvh, never %: a percentage max-height on an item in an auto grid
-             row is cyclic — Chrome ignores it, iOS Safari resolves it
-             mid-layout and clamps the pane SHORTER than its own row, which
-             clipped the decision text and exposed the grid's border-colored
-             background as a dead band between the panes (Jet's 6.3 phone
-             screenshot). 52dvh is definite everywhere. */
-          .lts-votes{max-height:calc(var(--chama-viewport-height, 100dvh) * .64)}
-          [data-chat-focused] .lts-header{max-height:35%;overflow-y:auto;flex-shrink:1}
-          [data-chat-focused] .lts-grid{grid-template-rows:minmax(0, .3fr) minmax(100px, 1fr)}
-          [data-chat-focused] .lts-votes{max-height:none;padding:8px 12px}
-          .lts-grid.lts-prejoin .lts-chat{display:none}
-          .lts-grid.lts-prejoin{grid-template-rows:1fr}
+          .lts-grid{grid-template-columns:1fr;grid-template-rows:1fr}
+          .lts-votes{max-height:none}
+          .lts-grid .lts-chat{display:none}
         }
         .lts-price-hero{padding:10px 16px;border-bottom:1px solid ${T.border};background:${T.bg}}
         .lts-hero-slim{display:none}
@@ -1001,7 +1002,7 @@ export function LiveTradeSurface({
       </div>
       {/* Decision left · chat right (decision on top on phones; an unseated
           phone viewer sees only the join question — chat appears once seated) */}
-      <div className={`lts-grid${myRole === null && state.status === EscrowStatus.CREATED ? " lts-prejoin" : ""}`}>
+      <div className={`lts-grid${myRole === null ? " lts-prejoin" : ""}`}>
         <div className="lts-pane lts-votes">
           {/* The decision floats to the vertical CENTER of the pane on
               desktop (Jet, 6.3.4 review): vote in the middle-left, talk on
@@ -1035,10 +1036,15 @@ export function LiveTradeSurface({
             </div>
           </RoomContext.Provider></DecisionClock.Provider></div>
         </div>
-        <div className="lts-pane lts-chat">
-          <ChatPanel preferredRelayConnected={preferredRelayConnected} state={state} myRole={myRole} onSend={onSendChat} embedded fill hideHeader />
-        </div>
+        {!phoneChat.phone && <div className="lts-pane lts-chat">{existingChat}</div>}
       </div>
+      {phoneChat.show && <button key={phoneChat.pulse} type="button" className="lts-chat-bubble" data-pulse={phoneChat.pulse > 0 ? "true" : "false"}
+        aria-label={tr("lts.chatUnread", { count: phoneChat.count })} aria-haspopup="dialog" aria-expanded={phoneChat.open}
+        onClick={phoneChat.openChat}>
+        <svg aria-hidden="true" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5H4l-3 2V11.5a8.5 8.5 0 0 1 17-1" /><path d="M7 9h10M7 13h7" /></svg>
+        {phoneChat.count > 0 && <span style={{ position: "absolute", right: -3, top: -3, minWidth: 24, height: 24, padding: "0 5px", borderRadius: 12, background: T.crit, color: "#fff", fontSize: 13, display: "grid", placeItems: "center" }}>{phoneChat.count > 9 ? "9+" : phoneChat.count}</span>}
+      </button>}
+      {phoneChat.open && <OverlaySheet fullHeight title={chatTitle} onClose={phoneChat.closeChat}>{existingChat}</OverlaySheet>}
     </div>
   );
 }

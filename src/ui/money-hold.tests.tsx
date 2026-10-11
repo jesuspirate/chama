@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { LiveTradeSurface, recordAcceptedVote } from './screens/LiveTradeSurface.js';
-import { EscrowStatus, Outcome, type EscrowState } from '../escrow-engine/types.js';
+import { EscrowStatus, Outcome, Role, type EscrowState } from '../escrow-engine/types.js';
 import { payoutRecipientFor } from '../escrow-engine/recipients.js';
 import { LangProvider } from '../i18n/index.js';
 import { setLocalStorageUserScope } from '../storage/user-scope.js';
@@ -150,3 +150,40 @@ assert.equal(acceptedCount, 0, 'thrown failures never enter recording state');
 await recordAcceptedVote(async () => true, Outcome.RELEASE, () => { acceptedCount++; });
 assert.equal(acceptedCount, 1, 'only a successful vote starts the short recording placeholder');
 console.log('PASS vote feedback: failed, suppressed and thrown attempts never record; failed attempts retry immediately; only success records');
+
+// Phone chat is a seated participant's sheet; no message/money handlers change.
+{
+  const { unreadTradeMessages, phoneTradeChatCss, readChatSeen, writeChatSeen } = await import('./phone-trade-chat.js');
+  const message = (author: string, at: number, id: string) => ({ raw: { pubkey: author, created_at: at, id }, payload: { message: 'Hello', senderRole: Role.BUYER, sentAt: at } }) as EscrowState['chatMessages'][number];
+  const messages = [message(buyer, 11, 'buyer-new'), message(seller, 12, 'my-cancel-reason'), message(arbiter, 13, 'arbiter-new'), message(buyer, 9, 'buyer-seen'), message('f'.repeat(64), 14, 'outsider')];
+  assert.deepEqual(unreadTradeMessages(messages, seller, [buyer, seller, arbiter], 10).map(m => m.raw.id), ['buyer-new', 'arbiter-new']);
+  assert.equal(unreadTradeMessages(messages, seller, [buyer, seller], 10).length, 1, 'unseated arbiter does not count');
+  assert.equal(unreadTradeMessages(messages, seller, [buyer, seller, arbiter], 13).length, 0);
+  writeChatSeen('chat-test', seller, 13);
+  assert.equal(readChatSeen('chat-test', seller), 13);
+  assert.equal(readChatSeen('chat-test', buyer), 0, 'seen receipts are scoped to the viewer');
+  const storageDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'localStorage')!;
+  Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: { getItem: () => { throw new Error('private mode'); }, setItem: () => { throw new Error('private mode'); } } });
+  try { assert.equal(readChatSeen('chat-test', seller), 0); assert.doesNotThrow(() => writeChatSeen('chat-test', seller, 13)); }
+  finally { Object.defineProperty(globalThis, 'localStorage', storageDescriptor); }
+  writeChatSeen(locked.id, seller, 10);
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'window');
+  Object.defineProperty(globalThis, 'window', { configurable: true, value: { matchMedia: () => ({ matches: true }) } });
+  try {
+    const phone = room({ ...locked, chatMessages: messages }, seller);
+    assert.match(phone, /width:60px;height:60px/, "the main room includes the floating bubble stylesheet");
+    assert.match(phone, /lts-chat-bubble/);
+    assert.match(phone, /aria-label="Chat, 2 unread"/);
+    assert.doesNotMatch(phone, /class="lts-pane lts-chat"/);
+    const prejoin = room({ ...base, status: EscrowStatus.CREATED, participants: { seller, arbiter }, lock: {}, chatMessages: [] } as unknown as EscrowState, buyer);
+    assert.doesNotMatch(prejoin, /class="lts-chat-bubble"/);
+  } finally {
+    if (descriptor) Object.defineProperty(globalThis, 'window', descriptor); else delete (globalThis as { window?: unknown }).window;
+  }
+  assert.match(room(locked, seller), /class="lts-pane lts-chat"/, 'desktop chat remains side by side');
+  const css = phoneTradeChatCss();
+  assert.match(css, /@media\(max-width:720px\)/);
+  assert.match(css, /lts-grid \.lts-chat\{display:none\}/);
+  assert.match(css, /grid-template-rows:1fr/);
+  assert.match(css, /env\(safe-area-inset-bottom,0px\)/);
+}

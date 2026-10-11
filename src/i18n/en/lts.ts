@@ -134,4 +134,8 @@ export const lts: Record<string, string> = {
   "lts.step_paid": "Paid",
   "lts.step_released": "Released",
   "lts.step_collected": "Collected",
+  "lts.chatWith": "Chat with {name}",
+  "lts.chatWithArbiter": "Chat with {name} and {arbiter}",
+  "lts.chatUnread": "Chat, {count} unread",
+  "lts.chatParticipants": "the other participants",
 };
