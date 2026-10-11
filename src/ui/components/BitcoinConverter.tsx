@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { defaultCurrencyForCommunity } from "../../communities/currency.js";
 import { COUNTRY_CURRENCY } from "../../communities/country-currency.js";
 import { formatFiatAmount } from "../amount-display.js";
@@ -6,25 +6,35 @@ import { useBitcoinPrice } from "../hooks/useBitcoinPrice.js";
 import { useFiatRates } from "../hooks/useFiatRates.js";
 import { T, inputStyle } from "../theme.js";
 import { useT } from "../../i18n/index.js";
+import { caretAfter, formatRaw, meaningfulBefore, parseTyped, separatorsFor, type Separators } from "../grouped-number.js";
 
-type ConverterTab = "convert" | "plan";
+// v7 redesign (Jet, 2026-10-06): the plain conversion is the star — one big
+// field you type into, one big answer, a clear swap — and digits are grouped
+// as you type ("1,250,000 sats"). "Plan ahead" became one plain question
+// behind a disclosure: what would these sats be worth at another price?
+
 type ConvertFrom = "sats" | "fiat";
 
 const COMMON_CURRENCIES = ["USD", "EUR", "GBP", "KES", "TZS", "NGN", "ZAR", "CAD", "AUD", "BRL", "ARS", "MXN"];
 const WORLD_FIAT_CURRENCIES = new Set<string>(Object.values(COUNTRY_CURRENCY));
+const WHAT_IF_MULTIPLES = [2, 5, 10] as const;
 
-export function BitcoinConverter({ communitySlug }: { communitySlug?: string | null }) {
-  const { t } = useT();
+export function BitcoinConverter({ communitySlug, variant = "card" }: {
+  communitySlug?: string | null;
+  /** "sheet" drops the card chrome when the converter already sits in a sheet
+   *  whose title says "Converter". */
+  variant?: "card" | "sheet";
+}) {
+  const { t, lang } = useT();
+  const sep = useMemo(() => separatorsFor(lang), [lang]);
   const price = useBitcoinPrice();
   const fiatRates = useFiatRates();
   const homeCurrency = defaultCurrencyForCommunity(communitySlug);
-  const [tab, setTab] = useState<ConverterTab>("convert");
   const [currency, setCurrency] = useState(homeCurrency);
   const [from, setFrom] = useState<ConvertFrom>("fiat");
   const [amount, setAmount] = useState("100");
+  const [whatIfOpen, setWhatIfOpen] = useState(false);
   const [futurePrice, setFuturePrice] = useState("");
-  const [futureSats, setFutureSats] = useState("1000000");
-  const [goalFiat, setGoalFiat] = useState("10000");
   const seededFuturePrice = useRef(false);
 
   useEffect(() => setCurrency(homeCurrency), [homeCurrency]);
@@ -43,7 +53,7 @@ export function BitcoinConverter({ communitySlug }: { communitySlug?: string | n
   useEffect(() => {
     if (seededFuturePrice.current || !fiatPerBtc) return;
     seededFuturePrice.current = true;
-    setFuturePrice(String(Math.round(fiatPerBtc * 2 / 1000) * 1000));
+    setFuturePrice(String(roundPrice(fiatPerBtc * 2)));
   }, [fiatPerBtc]);
 
   const changeCurrency = (nextCurrency: string) => {
@@ -65,106 +75,179 @@ export function BitcoinConverter({ communitySlug }: { communitySlug?: string | n
       ? { sats: Math.round(numericAmount / fiatPerBtc * 100_000_000), fiat: numericAmount }
       : { sats: Math.round(numericAmount), fiat: numericAmount / 100_000_000 * fiatPerBtc }
     : null;
+  const swap = () => {
+    setFrom(old => old === "fiat" ? "sats" : "fiat");
+    setAmount(converted ? (from === "fiat" ? String(converted.sats) : trimFiat(converted.fiat)) : "");
+  };
 
-  const scenarioPriceFiat = positiveNumber(futurePrice);
-  const scenarioSats = positiveNumber(futureSats);
-  const scenarioFiat = scenarioPriceFiat && scenarioSats
-    ? scenarioSats / 100_000_000 * scenarioPriceFiat
-    : null;
-  const goal = positiveNumber(goalFiat);
-  const goalSats = goal && scenarioPriceFiat
-    ? Math.ceil(goal / scenarioPriceFiat * 100_000_000)
-    : null;
-  const currentGoalCost = goalSats && fiatPerBtc
-    ? goalSats / 100_000_000 * fiatPerBtc
-    : null;
+  const scenarioPrice = positiveNumber(futurePrice);
+  const scenarioFiat = scenarioPrice && converted ? converted.sats / 100_000_000 * scenarioPrice : null;
 
   const quoteReady = !!fiatPerBtc;
   const quoteStatus = price.source === "live" && (currency === "USD" || fiatRates.source === "live")
     ? t("bond.converterLive")
     : quoteReady ? t("bond.converterCached") : t("bond.converterWaiting");
+  const sats = (n: number) => `${formatRaw(String(n), sep)} sats`;
+  const unitFrom = from === "fiat" ? currency : "sats";
+
+  const label: CSSProperties = { color: T.ink2, fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 600 };
+  const big: CSSProperties = { fontFamily: T.sans, fontVariantNumeric: "tabular-nums", fontSize: T.fs.amount, fontWeight: 700, letterSpacing: "-0.02em", lineHeight: 1.1 };
+  const shell: CSSProperties = variant === "sheet"
+    ? {}
+    : { background: T.card, border: `1px solid ${T.borderHi}`, borderRadius: T.r, padding: 18, marginBottom: 14 };
 
   return (
-    <section style={{ background: T.card, border: `1px solid ${T.borderHi}`, borderRadius: T.r, padding: 18, marginBottom: 14 }}>
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 14 }}>
-        <div>
-          <div style={{ color: T.accent, fontFamily: T.mono, fontSize: 10, fontWeight: 800, letterSpacing: 1 }}>{t("bond.converterHeading")}</div>
-          <div style={{ color: T.text, fontFamily: T.sans, fontSize: 18, fontWeight: 900, marginTop: 3 }}>{t("bond.converterTitle")}</div>
-        </div>
-        <select aria-label={t("bond.converterCurrency")} value={currency} onChange={(event) => changeCurrency(event.target.value)} style={{ ...inputStyle, width: "auto", minWidth: 82, padding: "8px 10px", fontFamily: T.mono, fontWeight: 800 }}>
+    <section data-converter style={{ ...shell, fontFamily: T.sans }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 10, marginBottom: 12 }}>
+        <label htmlFor="chama-converter-currency" style={label}>{t("bond.converterCurrencyShort")}</label>
+        <select id="chama-converter-currency" value={currency} onChange={(event) => changeCurrency(event.target.value)}
+          style={{ ...inputStyle, width: "auto", minWidth: 96, minHeight: T.size.touch, padding: "0 12px", fontFamily: T.sans, fontSize: T.fs.body, fontWeight: 700 }}>
           {currencies.map(code => <option key={code} value={code}>{code}</option>)}
         </select>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", padding: 3, borderRadius: T.rs, background: T.surface, marginBottom: 16 }}>
-        <TabButton active={tab === "convert"} onClick={() => setTab("convert")}>{t("bond.converterConvert")}</TabButton>
-        <TabButton active={tab === "plan"} onClick={() => setTab("plan")}>{t("bond.converterPlan")}</TabButton>
+      {/* The question: what you type. */}
+      <div style={{ padding: "14px 16px", borderRadius: T.rCard, background: T.surface, border: `1px solid ${T.line}` }}>
+        <label htmlFor="chama-converter-amount" style={label}>{t("bond.converterYouType", { unit: unitFrom })}</label>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginTop: 6 }}>
+          <GroupedInput id="chama-converter-amount" data-converter-input value={amount} onChange={setAmount}
+            sep={sep} maxDecimals={from === "fiat" ? 2 : 0}
+            style={{ ...big, flex: 1, minWidth: 0, width: "100%", padding: 0, border: 0, outline: "none", background: "transparent", color: T.ink }} />
+          <span style={{ color: T.ink2, fontSize: T.fs.fiat, fontWeight: 700, flex: "0 0 auto" }}>{unitFrom}</span>
+        </div>
       </div>
 
-      {tab === "convert" ? (
-        <div>
-          <FieldLabel>{from === "fiat" ? currency : t("bond.converterSats")}</FieldLabel>
-          <div style={{ display: "flex", gap: 8 }}>
-            <input inputMode="decimal" value={amount} onChange={(event) => setAmount(cleanNumber(event.target.value))} placeholder="0" style={{ ...inputStyle, minWidth: 0, fontSize: 20, fontFamily: T.mono, fontWeight: 800 }} />
-            <button type="button" onClick={() => { setFrom(old => old === "fiat" ? "sats" : "fiat"); setAmount(converted ? String(from === "fiat" ? converted.sats : trimFiat(converted.fiat)) : ""); }} aria-label={t("bond.converterSwap")} style={{ width: 48, flex: "0 0 48px", borderRadius: T.rs, border: `1px solid ${T.accent}55`, background: T.accentDim, color: T.accent, fontSize: 20, cursor: "pointer" }}>⇅</button>
-          </div>
-          <div style={{ marginTop: 12, padding: "14px 16px", borderRadius: T.rs, background: T.surface, border: `1px solid ${T.border}` }}>
-            <div style={{ color: T.muted, fontFamily: T.mono, fontSize: 10, letterSpacing: .7 }}>{t("bond.converterEstimate")}</div>
-            <div style={{ color: converted ? T.text : T.muted, fontFamily: T.sans, fontSize: 24, fontWeight: 900, marginTop: 5 }}>
-              {converted ? (from === "fiat" ? `${converted.sats.toLocaleString()} sats` : formatFiatAmount(converted.fiat, currency)) : "—"}
-            </div>
-          </div>
+      {/* The swap sits on the seam between question and answer. */}
+      <div style={{ display: "flex", justifyContent: "center", margin: "-8px 0", position: "relative", zIndex: 1 }}>
+        <button type="button" onClick={swap} aria-label={t("bond.converterSwap")}
+          style={{ display: "inline-flex", alignItems: "center", gap: 8, minHeight: T.size.touch, padding: "0 18px", borderRadius: 999, border: `1px solid ${T.line}`, background: T.raised, color: T.ink, fontFamily: T.sans, fontSize: T.fs.button, fontWeight: 700, cursor: "pointer" }}>
+          <span aria-hidden="true" style={{ fontSize: "1.2em", lineHeight: 1 }}>⇅</span>
+          {t("bond.converterSwapShort")}
+        </button>
+      </div>
+
+      {/* The answer. */}
+      <div style={{ padding: "14px 16px", borderRadius: T.rCard, background: T.surface, border: `1px solid ${T.line}` }}>
+        <div style={label}>{t("bond.converterThatIs")}</div>
+        <div aria-live="polite" style={{ ...big, color: converted ? T.ink : T.ink3, marginTop: 6, overflowWrap: "anywhere" }}>
+          {converted ? (from === "fiat" ? sats(converted.sats) : formatFiatAmount(converted.fiat, currency)) : "—"}
         </div>
-      ) : (
-        <div>
-          <div style={{ fontSize: 12, color: T.muted, fontFamily: T.sans, lineHeight: 1.5, marginBottom: 14 }}>{t("bond.converterPlanIntro")}</div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            <LabeledInput label={t("bond.converterFuturePrice")} suffix={`${currency}/BTC`} value={futurePrice} onChange={setFuturePrice} />
-            <LabeledInput label={t("bond.converterYourSats")} suffix="sats" value={futureSats} onChange={setFutureSats} />
-          </div>
-          <ResultLine label={t("bond.converterFutureWorth")} value={scenarioFiat ? formatFiatAmount(scenarioFiat, currency) : "—"} accent />
-          <div style={{ height: 1, background: T.border, margin: "16px 0" }} />
-          <LabeledInput label={t("bond.converterGoal")} suffix={currency} value={goalFiat} onChange={setGoalFiat} />
-          <ResultLine label={t("bond.converterSatsNeeded")} value={goalSats ? `${goalSats.toLocaleString()} sats` : "—"} accent />
-          {currentGoalCost && (
-            <div style={{ color: T.muted, fontFamily: T.mono, fontSize: 10.5, lineHeight: 1.5, marginTop: 8 }}>
-              {t("bond.converterTodayCost", { amount: formatFiatAmount(currentGoalCost, currency) })}
-            </div>
-          )}
+      </div>
+
+      {fiatPerBtc && (
+        <div style={{ color: T.ink2, fontSize: T.fs.secondary, lineHeight: 1.5, marginTop: 12, fontVariantNumeric: "tabular-nums" }}>
+          {t("bond.converterRate", { price: formatFiatAmount(Math.round(fiatPerBtc), currency) })}
         </div>
       )}
 
-      <div style={{ display: "flex", gap: 7, alignItems: "center", color: quoteReady ? T.muted : T.amber, fontFamily: T.mono, fontSize: 9.5, lineHeight: 1.45, marginTop: 14 }}>
-        <span style={{ width: 6, height: 6, flex: "0 0 6px", borderRadius: 99, background: quoteReady ? T.green : T.amber }} />
+      {/* What if: one plain question, folded away until asked. */}
+      <div style={{ marginTop: 14, borderTop: `1px solid ${T.line}`, paddingTop: 6 }}>
+        <button type="button" aria-expanded={whatIfOpen} aria-controls="chama-converter-whatif" onClick={() => setWhatIfOpen(open => !open)}
+          style={{ display: "flex", width: "100%", alignItems: "center", justifyContent: "space-between", gap: 12, minHeight: T.size.touch, padding: 0, border: 0, background: "transparent", color: T.ink, fontFamily: T.sans, fontSize: T.fs.body, fontWeight: 700, cursor: "pointer", textAlign: "left" }}>
+          {t("bond.converterWhatIf")}
+          <span aria-hidden="true" style={{ color: T.ink2, transform: whatIfOpen ? "rotate(180deg)" : "none", transition: "transform .15s" }}>⌄</span>
+        </button>
+        {whatIfOpen && (
+          <div id="chama-converter-whatif" style={{ display: "flex", flexDirection: "column", gap: 10, paddingBottom: 4 }}>
+            <label htmlFor="chama-converter-whatif-price" style={label}>{t("bond.converterIfPrice")}</label>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <GroupedInput id="chama-converter-whatif-price" value={futurePrice} onChange={setFuturePrice} sep={sep} maxDecimals={0}
+                style={{ ...inputStyle, flex: 1, minWidth: 0, minHeight: T.size.touch, fontFamily: T.sans, fontVariantNumeric: "tabular-nums", fontSize: T.fs.fiat, fontWeight: 700 }} />
+              <span style={{ color: T.ink2, fontSize: T.fs.body, fontWeight: 700 }}>{currency}</span>
+            </div>
+            {fiatPerBtc && (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {WHAT_IF_MULTIPLES.map(m => {
+                  const value = String(roundPrice(fiatPerBtc * m));
+                  const active = futurePrice === value;
+                  return (
+                    <button key={m} type="button" aria-pressed={active} onClick={() => setFuturePrice(value)}
+                      style={{ minHeight: T.size.touch, padding: "0 14px", borderRadius: 999, border: `1px solid ${active ? T.ink : T.line}`, background: active ? T.accentDim : "transparent", color: T.ink, fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700, cursor: "pointer" }}>
+                      {t("bond.converterTimesToday", { n: m })}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            <div aria-live="polite" style={{ padding: "12px 14px", borderRadius: T.rs, background: T.posBg }}>
+              {converted && scenarioFiat ? (
+                <>
+                  <div style={{ color: T.ink, fontSize: T.fs.body, lineHeight: 1.4 }}>{t("bond.converterWouldBe", { sats: sats(converted.sats) })}</div>
+                  <div style={{ color: T.pos, fontSize: T.fs.title2, fontWeight: 700, marginTop: 2, fontVariantNumeric: "tabular-nums" }}>{formatFiatAmount(scenarioFiat, currency)}</div>
+                </>
+              ) : (
+                <div style={{ color: T.ink2, fontSize: T.fs.body }}>{t("bond.converterEnterFirst")}</div>
+              )}
+            </div>
+            <div style={{ color: T.ink2, fontSize: T.fs.secondary }}>{t("bond.converterNotPrediction")}</div>
+          </div>
+        )}
+      </div>
+
+      <div style={{ display: "flex", gap: 8, alignItems: "center", color: quoteReady ? T.ink2 : T.attnInk, fontSize: T.fs.secondary, lineHeight: 1.45, marginTop: 12 }}>
+        <span style={{ width: 6, height: 6, flex: "0 0 6px", borderRadius: 99, background: quoteReady ? T.pos : T.attn }} />
         {quoteStatus} · {t("bond.converterDisclaimer")}
       </div>
     </section>
   );
 }
 
-function TabButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: string }) {
-  return <button type="button" onClick={onClick} style={{ border: 0, borderRadius: 6, padding: "9px 12px", cursor: "pointer", background: active ? T.card : "transparent", color: active ? T.text : T.muted, fontFamily: T.mono, fontSize: 11, fontWeight: 800, boxShadow: active ? `0 0 0 1px ${T.border}` : "none" }}>{children}</button>;
-}
-
-function FieldLabel({ children }: { children: string }) {
-  return <div style={{ color: T.muted, fontFamily: T.mono, fontSize: 10, fontWeight: 700, letterSpacing: .7, marginBottom: 6, textTransform: "uppercase" }}>{children}</div>;
-}
-
-function LabeledInput({ label, suffix, value, onChange }: { label: string; suffix: string; value: string; onChange: (value: string) => void }) {
-  return <label style={{ display: "block" }}><FieldLabel>{label}</FieldLabel><div style={{ position: "relative" }}><input inputMode="decimal" value={value} onChange={(event) => onChange(cleanNumber(event.target.value))} placeholder="0" style={{ ...inputStyle, paddingRight: Math.max(54, suffix.length * 7 + 18), fontFamily: T.mono, fontWeight: 700 }} /><span style={{ position: "absolute", right: 11, top: "50%", transform: "translateY(-50%)", color: T.muted, fontFamily: T.mono, fontSize: 9, pointerEvents: "none" }}>{suffix}</span></div></label>;
-}
-
-function ResultLine({ label, value, accent = false }: { label: string; value: string; accent?: boolean }) {
-  return <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, marginTop: 12 }}><span style={{ color: T.muted, fontFamily: T.sans, fontSize: 12 }}>{label}</span><span style={{ color: accent ? T.green : T.text, fontFamily: T.mono, fontSize: 15, fontWeight: 800, textAlign: "right" }}>{value}</span></div>;
+/** A text field that keeps the raw value canonical ("1250000.5") while
+ *  showing it grouped in the viewer's separators, caret held in place. */
+export function GroupedInput({ id, value, onChange, sep, maxDecimals, style, placeholder = "0", ...rest }: {
+  id?: string;
+  value: string;
+  onChange: (raw: string) => void;
+  sep: Separators;
+  maxDecimals: number;
+  style: CSSProperties;
+  placeholder?: string;
+  autoFocus?: boolean;
+  "aria-label"?: string;
+  "data-converter-input"?: boolean;
+}) {
+  const ref = useRef<HTMLInputElement>(null);
+  const pendingCaret = useRef<number | null>(null);
+  const [, rerender] = useState(0);
+  const shown = formatRaw(value, sep);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el || pendingCaret.current === null) return;
+    const at = caretAfter(shown, pendingCaret.current, sep);
+    pendingCaret.current = null;
+    if (document.activeElement === el) el.setSelectionRange(at, at);
+  });
+  return (
+    <input ref={ref} id={id} {...rest} value={shown} placeholder={placeholder} autoComplete="off"
+      inputMode={maxDecimals > 0 ? "decimal" : "numeric"}
+      onKeyDown={(event) => {
+        // Deleting across a separator deletes the digit beside it.
+        const el = event.currentTarget;
+        const at = el.selectionStart ?? 0;
+        if (at !== el.selectionEnd) return;
+        if (event.key === "Backspace" && at > 0 && el.value[at - 1] === sep.group) el.setSelectionRange(at - 1, at - 1);
+        if (event.key === "Delete" && el.value[at] === sep.group) el.setSelectionRange(at + 1, at + 1);
+      }}
+      onChange={(event) => {
+        const el = event.target;
+        pendingCaret.current = meaningfulBefore(el.value, el.selectionStart ?? el.value.length, sep);
+        onChange(parseTyped(el.value, sep, maxDecimals));
+        rerender(n => n + 1);
+      }}
+      style={style} />
+  );
 }
 
 function positiveNumber(value: string): number | null {
-  const parsed = Number(value.replace(/,/g, ""));
+  const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
-function cleanNumber(value: string): string {
-  return value.replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1");
+/** A round, readable what-if price: 2 significant figures ("170,000"). */
+function roundPrice(value: number): number {
+  if (value <= 0) return 0;
+  const step = 10 ** Math.max(0, Math.floor(Math.log10(value)) - 1);
+  return Math.round(value / step) * step;
 }
 
 function trimFiat(value: number): string {

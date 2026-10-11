@@ -2271,7 +2271,16 @@ export function canLockFromBalance(state: EscrowState | null | undefined, spenda
 }
 
 /** Back navigation only: expiry may still have money-recovery work to do. */
+/**
+ * Where a trade's back button goes. v7 redesign (Jet, 2026-10-06): a trade
+ * opened from the offers goes back to those offers until it fully SUCCEEDS —
+ * a cancelled, expired or refunded trade sends the buyer back to the results
+ * to try again, not Home. Only a completed release (or a trade opened from
+ * Home) returns Home. `payoutSettled` is kept for callers; a settled refund is
+ * still a failed trade for this purpose.
+ */
 export function tradeDetailReturnsHome(state: EscrowState | null | undefined, openedFromHome: boolean, payoutSettled = false): boolean {
-  return openedFromHome || !!state && (TERMINAL_STATES.has(state.status)
-    || state.status === EscrowStatus.CLAIMED && state.resolvedOutcome === Outcome.REFUND && payoutSettled);
+  void payoutSettled;
+  return openedFromHome || !!state
+    && state.status === EscrowStatus.COMPLETED && state.resolvedOutcome !== Outcome.REFUND;
 }

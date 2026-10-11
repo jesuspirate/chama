@@ -3,6 +3,7 @@ import { rankCountries } from "../../communities/country-search.js";
 import { T } from "../theme.js";
 import { BrandHeader } from "../components/BrandHeader.js";
 import { GlobeHero } from "../components/GlobeHero.js";
+import { Wordmark } from "../components/Wordmark.js";
 import { LivenessSignal } from "../components/LivenessSignal.js";
 import { loadCoordinatedLiveness, readCachedLiveness, type LivenessGenerationDiagnostic } from "../../arbiters/liveness-coordinator.js";
 import { LanguagePills } from "../components/LanguagePills.js";
@@ -67,6 +68,8 @@ function localeCountryCode(): string | null {
   return null;
 }
 
+const SHORT_LIST = 6;
+
 export function GlobeCountryPicker({ onSelect, loadLiveness, loadBondedCounts, bondedCountsGeneration = 0, livenessBlocksPerDay = 144 }: {
   onSelect: (slug: string) => void;
   /** Optional: compute a community's chain-verified liveness (getChamaLiveness).
@@ -109,6 +112,8 @@ export function GlobeCountryPicker({ onSelect, loadLiveness, loadBondedCounts, b
   );
 
   const [query, setQuery] = useState("");
+  // v7 redesign: a short list first; the whole world one tap away.
+  const [showAllCountries, setShowAllCountries] = useState(false);
   // The header mark is tiny and decodes almost instantly; the globe is a much
   // larger asset. Hold the main picker's first visible paint until the globe
   // has decoded so onboarding arrives as one composed surface instead of a
@@ -296,7 +301,7 @@ export function GlobeCountryPicker({ onSelect, loadLiveness, loadBondedCounts, b
             <div style={{ fontSize: 22, fontWeight: 900, color: T.text, fontFamily: T.sans, lineHeight: 1.1 }}>
               {selected.name}
             </div>
-            <div style={{ fontSize: 11, color: multi ? T.muted : T.green, fontFamily: T.mono, marginTop: 2 }}>
+            <div style={{ fontSize: T.fs.secondary, color: multi ? T.muted : T.green, fontFamily: T.sans, marginTop: 2 }}>
               {multi
                 ? t("picker.chooseYourChama")
                 : comingSoon
@@ -330,19 +335,19 @@ export function GlobeCountryPicker({ onSelect, loadLiveness, loadBondedCounts, b
                   <span style={{ display: "block", fontFamily: T.sans, fontSize: 14, fontWeight: 800 }}>
                     {c.disambiguator ?? c.displayName}
                   </span>
-                  <span style={{ display: "flex", alignItems: "center", gap: 6, fontFamily: T.mono, color: T.muted, fontSize: 10, marginTop: 3 }}>
+                  <span style={{ display: "flex", alignItems: "center", gap: 6, fontFamily: T.sans, color: T.muted, fontSize: T.fs.secondary, marginTop: 3 }}>
                     <CheckDot />
                     {real
                       ? t("picker.subLocalChama", { currency: c.currency })
                       : t("picker.subAvailableNow", { currency: c.currency })}
                     {bonded > 0 && (
-                      <span style={{ color: T.green }}>
+                      <span style={{ color: T.green, display: "inline-flex", alignItems: "center", gap: 3 }}>
                         {t("picker.bondedNote", { count: bonded })}
                       </span>
                     )}
                   </span>
                 </span>
-                <span style={{ fontFamily: T.mono, color: T.accent, fontSize: 16, lineHeight: 1 }}>→</span>
+                <span style={{ fontFamily: T.sans, color: T.accent, fontSize: 16, lineHeight: 1 }}>→</span>
               </button>
               );
             })}
@@ -366,7 +371,7 @@ export function GlobeCountryPicker({ onSelect, loadLiveness, loadBondedCounts, b
               color: T.text, fontFamily: T.sans, fontSize: 13.5, lineHeight: 1.6,
               textAlign: "left",
             }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, fontFamily: T.mono, fontWeight: 800, fontSize: 11, letterSpacing: 0.5, color: T.green }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, fontFamily: T.sans, fontWeight: 700, fontSize: T.fs.secondary, color: T.green }}>
                 {comingSoon ? t("picker.comingSoonBadge") : t("picker.availableNowBadge")}
               </div>
               {comingSoon ? (
@@ -407,6 +412,7 @@ export function GlobeCountryPicker({ onSelect, loadLiveness, loadBondedCounts, b
   return (
     <div
       aria-busy={!globeArtworkReady}
+
       style={{
         width: "100%",
         display: "flex",
@@ -418,25 +424,24 @@ export function GlobeCountryPicker({ onSelect, loadLiveness, loadBondedCounts, b
         visibility: "visible",
       }}
     >
-      <BrandHeader />
-      {/* Language pills — the first screen a fresh npub meets, and the natural
-          moment: language pairs with picking where home is. */}
-      <div style={{ marginBottom: 14 }}>
+      {/* v7 redesign (Jet): one question, the search field and a short list,
+          with the original globe (GlobeHero, unchanged from 6.4.22). */}
+      <div style={{ width: "100%", maxWidth: 420, display: "flex", flexDirection: "column", alignItems: "center", gap: 12, marginBottom: 20 }}>
+        <Wordmark size={20} markSize={24} />
         <LanguagePills />
       </div>
-      <div style={{ fontSize: 28, lineHeight: 1.1, color: T.text, fontFamily: T.sans, fontWeight: 900, marginBottom: 8 }}>
-        {t("picker.whereHome")}
-      </div>
-      <div style={{ maxWidth: 340, color: T.muted, fontFamily: T.sans, fontSize: 14, lineHeight: 1.6, marginBottom: 16 }}>
-        {t("picker.findCountry")}
-      </div>
-
       <div style={{ marginBottom: 18 }}>
         <GlobeHero
           size={186}
           markers={GLOBE_MARKERS}
           onReady={() => setGlobeArtworkReady(true)}
         />
+      </div>
+      <h1 style={{ margin: "0 0 8px", fontSize: T.fs.largeTitle, lineHeight: 1.15, color: T.ink, fontFamily: T.sans, fontWeight: 700, letterSpacing: "-0.02em", textAlign: "center" }}>
+        {t("picker.whereHome")}
+      </h1>
+      <div style={{ maxWidth: 360, color: T.ink2, fontFamily: T.sans, fontSize: T.fs.body, lineHeight: 1.45, marginBottom: 18, textAlign: "center" }}>
+        {t("picker.findCountry")}
       </div>
 
       <div style={{ width: "100%", maxWidth: 380, marginBottom: 12 }}>
@@ -449,10 +454,10 @@ export function GlobeCountryPicker({ onSelect, loadLiveness, loadBondedCounts, b
           spellCheck={false}
           aria-label={t("picker.searchAria")}
           style={{
-            width: "100%", boxSizing: "border-box", padding: "12px 14px",
-            borderRadius: T.r, border: `1px solid ${T.border}`,
-            background: T.surface, color: T.text, fontFamily: T.sans,
-            fontSize: 14, outline: "none",
+            width: "100%", boxSizing: "border-box", padding: "0 16px", minHeight: T.size.button,
+            borderRadius: T.r, border: `1px solid ${T.line}`,
+            background: T.surface, color: T.ink, fontFamily: T.sans,
+            fontSize: T.fs.body, outline: "none",
           }}
         />
       </div>
@@ -493,9 +498,15 @@ export function GlobeCountryPicker({ onSelect, loadLiveness, loadBondedCounts, b
           )}
           <SectionLabel>{t("picker.everyCountry")}</SectionLabel>
           <div style={{ display: "grid", gap: 8, width: "100%", maxWidth: 380 }}>
-            {restCountries.map((c) => (
+            {(showAllCountries ? restCountries : restCountries.slice(0, SHORT_LIST)).map((c) => (
               <CountryRow key={c.code} country={c} bonded={bondedForCountry(c)} onTap={() => openCountry(c)} />
             ))}
+            {!showAllCountries && restCountries.length > SHORT_LIST && (
+              <button type="button" onClick={() => setShowAllCountries(true)} style={{
+                minHeight: T.size.touch, borderRadius: T.r, border: `1px solid ${T.line}`, background: "transparent",
+                color: T.ink, fontFamily: T.sans, fontSize: T.fs.body, fontWeight: 600, cursor: "pointer",
+              }}>{t("picker.showAll", { count: restCountries.length })}</button>
+            )}
           </div>
         </>
       )}
@@ -536,21 +547,21 @@ function CountryRow({ country, bonded = 0, onTap }: { country: PickerCountry; bo
           }}>
             {country.name}
           </span>
-          <span style={{ display: "flex", alignItems: "center", gap: 5, fontFamily: T.mono, color: T.muted, fontSize: 10, marginTop: 2 }}>
+          <span style={{ display: "flex", alignItems: "center", gap: 5, fontFamily: T.sans, color: T.muted, fontSize: T.fs.secondary, marginTop: 2 }}>
             {green && <CheckDot />}
             {subtitle}
             {/* The computed layer over the registry tiers: chain-verified
                 funded+active bonds. Purely additive — appears only when real
                 sats back real arbiters here; its absence changes nothing. */}
             {bonded > 0 && (
-              <span style={{ color: T.green, fontWeight: 800, whiteSpace: "nowrap" }}>
+              <span style={{ color: T.green, fontWeight: 700, whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", gap: 3 }}>
                 {t("picker.bondedNote", { count: bonded })}
               </span>
             )}
           </span>
         </span>
       </span>
-      <span style={{ fontFamily: T.mono, color: green ? T.accent : T.muted, fontSize: 16, lineHeight: 1 }}>→</span>
+      <span style={{ fontFamily: T.sans, color: green ? T.accent : T.muted, fontSize: 16, lineHeight: 1 }}>→</span>
     </button>
   );
 }
@@ -572,8 +583,7 @@ function SectionLabel({ children, accent }: { children: ReactNode; accent?: bool
   return (
     <div style={{
       width: "100%", maxWidth: 380, textAlign: "left", margin: "2px 0 10px",
-      color: accent ? T.green : T.muted, fontFamily: T.mono, fontSize: 10, fontWeight: 800,
-      letterSpacing: 1, textTransform: "uppercase",
+      color: accent ? T.green : T.muted, fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 800,
       display: "flex", alignItems: "center", gap: 6,
     }}>
       {children}
@@ -593,7 +603,7 @@ function BackButton({ label, onClick }: { label: string; onClick: () => void }) 
           display: "inline-flex", alignItems: "center", gap: 6,
           padding: "6px 10px", borderRadius: T.rs,
           background: T.surface, border: `1px solid ${T.border}`,
-          color: T.muted, fontFamily: T.mono, fontSize: 10, cursor: "pointer",
+          color: T.muted, fontFamily: T.sans, fontSize: T.fs.secondary, cursor: "pointer",
         }}
       >
         <span style={{ fontSize: 12, lineHeight: 1 }}>←</span>

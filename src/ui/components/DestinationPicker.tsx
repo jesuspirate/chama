@@ -26,6 +26,7 @@ import { useCardDraft, type CardDraft } from "../hooks/useCardDraft.js";
 // The picker handles Lightning Address LNURL-pay resolution and NWC
 // make_invoice resolution internally; the consumer only sees BOLT11.
 
+import { HoldToConfirm } from "./Button.js";
 import { lazy, Suspense, useMemo, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode } from "react";
 import { Capacitor } from "@capacitor/core";
 import { T, inputStyle } from "../theme.js";
@@ -84,9 +85,13 @@ export interface DestinationPickerProps {
   /** Modal header. "Claim", "Recover sats", etc. */
   title: string;
   /** Optional one-line subtitle below the title. */
-  subtitle?: ReactNode;
+  subtitle?: ReactNode | ((destinationKnown: boolean) => ReactNode);
   /** Fired with BOLT11 plus metadata describing whether/what to save. */
   onResolve: (bolt11: string, opts: DestinationPickerResolveOpts) => void;
+  /** v7 redesign (Jet's option b): every send in this picker is a hold. A
+   *  saved row then SELECTS its destination and the hold below sends to it;
+   *  each hold calls exactly the dispatch its old tap did. */
+  holdToSend?: boolean;
   /** Fired when the user dismisses the modal without committing. */
   onCancel: () => void;
   /** Optional first-tier destination supplied by a caller-specific
@@ -103,6 +108,7 @@ export function DestinationPicker({
   title,
   subtitle,
   onResolve,
+  holdToSend = false,
   onCancel,
   topSlot,
 }: DestinationPickerProps) {
@@ -112,6 +118,14 @@ export function DestinationPicker({
   const [showAdvanced, setShowAdvanced] = useCardDraft<boolean>(draft, "lightning-showAdvanced", false);
   const [rememberNwc, setRememberNwc] = useCardDraft<boolean>(draft, "lightning-rememberNwc", true);
   const [busy, setBusy] = useState(false);
+  // v7 (Jet, 2026-10-10): one send button plus a "save this address" box,
+  // instead of two competing holds. Same two handlers as before:
+  // dispatchTyped(true) saved the address, dispatchTyped(false) did not.
+  const [saveTyped, setSaveTyped] = useState(true);
+  /** holdToSend: the saved destination a row tap selected for the hold. */
+  const [pendingSend, setPendingSend] = useState<
+    { kind: "saved"; destination: PayoutDestination } | { kind: "nwc"; connection: SavedNwcConnection } | null
+  >(null);
   const [err, setErr] = useState<string | null>(null);
   const [scannerOpen, setScannerOpen] = useState(false);
 
@@ -231,7 +245,7 @@ export function DestinationPicker({
   const commitOnEnter = (e: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     if (e.key !== "Enter" || e.shiftKey || busy) return;
     e.preventDefault();
-    void dispatchTyped(true);
+    void dispatchTyped(saveTyped);
   };
 
   const handleTypedPaste = (e: ClipboardEvent<HTMLInputElement>) => {
@@ -262,7 +276,7 @@ export function DestinationPicker({
   const activeSubmit = dispatchPreview.ok && !busy;
   const previewTier = dispatchPreview.ok ? dispatchPreview.decision.tier : null;
   const submitAmount = (
-    <BitcoinAmount sats={amountSats} size={12} gap={4} glyphScale={1.18} color="inherit" glyphColor="inherit" />
+    <BitcoinAmount sats={amountSats} size={T.fs.secondary} gap={4} glyphScale={1.18} color="inherit" glyphColor="inherit" />
   );
   const submitLabel = busy
     ? t("claim.resolving")
@@ -271,10 +285,21 @@ export function DestinationPicker({
       : dispatchPreview.ok && dispatchPreview.decision.tier === "pasted-nwc"
         ? <>{t("claim.nwcInvoiceBefore")} {submitAmount}</>
         : dispatchPreview.ok && dispatchPreview.decision.tier === "typed-address"
-          ? <>{t("claim.sendTo", { amount: amountSats.toLocaleString(), destination: displayPayoutDestination(dispatchPreview.decision.addressUsed!) })} · {t("claim.saveAddressHint")}</>
+          ? <>{t("claim.sendTo", { amount: amountSats.toLocaleString(), destination: displayPayoutDestination(dispatchPreview.decision.addressUsed!) })}</>
           : <>{t("claim.submitSendBefore")} {submitAmount} →</>;
 
-  const renderPrimarySubmitButton = (marginBottom = 10, saveAfterOverride = true) => (
+  const destinationSummary = pendingSend
+    ? pendingSend.kind === "saved" ? displayPayoutDestination(pendingSend.destination.address) : pendingSend.connection.label
+    : dispatchPreview.ok && dispatchPreview.decision.tier === "typed-address"
+      ? displayPayoutDestination(dispatchPreview.decision.addressUsed!) : null;
+
+  const renderPrimarySubmitButton = (marginBottom = 10, saveAfterOverride = true) => holdToSend ? (
+    <div style={{ marginBottom }}>
+      <HoldToConfirm label={busy ? submitLabel : t("claim.holdToSend", { amount: amountSats.toLocaleString() })} disabled={busy} busy={busy}
+        onConfirm={() => void dispatchTyped(saveAfterOverride)}
+        hint={t("common.holdToConfirm")} armedLabel={t("common.holdArmed")} />
+    </div>
+  ) : (
     <button
       disabled={busy}
       onClick={() => void dispatchTyped(saveAfterOverride)}
@@ -282,8 +307,8 @@ export function DestinationPicker({
         width: "100%", padding: "12px 16px", borderRadius: T.rs,
         background: activeSubmit ? T.accent : T.surface,
         border: `1px solid ${activeSubmit ? T.accent : T.border}`,
-        color: activeSubmit ? "#000" : T.muted,
-        fontFamily: T.mono, fontSize: 12, fontWeight: 800,
+        color: activeSubmit ? T.onInk : T.muted,
+        fontFamily: T.sans, fontSize: T.fs.button, fontWeight: 700,
         cursor: busy ? "not-allowed" : "pointer", marginBottom,
       }}
     >
@@ -298,20 +323,15 @@ export function DestinationPicker({
 
     return (
       <div style={{ marginBottom }}>
-        {renderPrimarySubmitButton(8, true)}
-        <button
-          disabled={busy}
-          onClick={() => void dispatchTyped(false)}
-          style={{
-            width: "100%", padding: "11px 16px", borderRadius: T.rs,
-            background: T.surface, border: `1px solid ${activeSubmit ? T.accent + "55" : T.border}`,
-            color: activeSubmit ? T.accent : T.muted,
-            fontFamily: T.mono, fontSize: 11, fontWeight: 800,
-            cursor: busy ? "not-allowed" : "pointer",
-          }}
-        >
-          {t("claim.sendOnceDontSave")}
-        </button>
+        <label style={{
+          display: "flex", alignItems: "center", gap: 12, minHeight: T.size.touch, marginBottom: 10,
+          color: T.ink, fontFamily: T.sans, fontSize: T.fs.body, cursor: busy ? "not-allowed" : "pointer",
+        }}>
+          <input type="checkbox" checked={saveTyped} disabled={busy} onChange={(e) => setSaveTyped(e.target.checked)}
+            style={{ width: 22, height: 22, accentColor: T.ink, flexShrink: 0 }} />
+          {t("claim.saveForNextTime")}
+        </label>
+        {renderPrimarySubmitButton(0, saveTyped)}
       </div>
     );
   };
@@ -327,13 +347,20 @@ export function DestinationPicker({
         padding: 24, maxWidth: 420, width: "100%",
       }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-          <div style={{ fontSize: 14, fontWeight: 700, color: T.text, fontFamily: T.sans }}>
+          <div style={{ fontSize: T.fs.title2, fontWeight: 700, color: T.ink, fontFamily: T.sans }}>
             {title}
           </div>
           <CardBack onClick={onBack ?? onCancel} disabled={busy} />
         </div>
-        <div style={{ fontSize: 11, color: T.muted, fontFamily: T.mono, marginBottom: 16 }}>
-          {subtitle ?? <>{t("claim.sendToWalletBefore")} <BitcoinAmount sats={amountSats} size={11} gap={4} glyphScale={1.18} color={T.muted} glyphColor={T.muted} /> {t("claim.sendToWalletAfter")}</>}
+        {/* The money, first and big; the fee and insurance fine print under it. */}
+        <div style={{ margin: "10px 0 4px" }}>
+          <BitcoinAmount sats={amountSats} size={T.fs.amount} gap={6} glyphScale={1.1} color={T.ink} glyphColor={T.ink2} />
+        </div>
+        {destinationSummary && <div style={{ fontSize: T.fs.body, color: T.ink, fontFamily: T.sans, lineHeight: 1.45, overflowWrap: "anywhere", marginBottom: 8 }}>
+          {t("claim.toDestination", { destination: destinationSummary })}
+        </div>}
+        <div style={{ fontSize: T.fs.secondary, color: T.ink2, fontFamily: T.sans, lineHeight: 1.45, marginBottom: 18 }}>
+          {typeof subtitle === "function" ? subtitle(!!destinationSummary) : subtitle ?? (!destinationSummary ? t("claim.sendToWalletAfter") : null)}
         </div>
 
         {topSlot && (
@@ -347,34 +374,36 @@ export function DestinationPicker({
           <div style={{ marginBottom: 16 }}>
             {decoratedRows.length > 0 && (
               <>
-                <div style={{ fontSize: 9, color: T.muted, fontFamily: T.mono, marginBottom: 6, letterSpacing: 1 }}>
+                <div style={{ fontSize: T.fs.secondary, color: T.ink2, fontFamily: T.sans, fontWeight: 600, marginBottom: 6 }}>
                   {t("claim.savedDestinations")}
                 </div>
                 {decoratedRows.map(({ destination, isDefault }) => (
                   <button
                     key={destination.id}
                     disabled={busy}
-                    onClick={() => dispatchSavedRow(destination)}
+                    onClick={() => holdToSend ? setPendingSend({ kind: "saved", destination }) : dispatchSavedRow(destination)}
+                    aria-pressed={holdToSend ? pendingSend?.kind === "saved" && pendingSend.destination.id === destination.id : undefined}
                     style={{
                       display: "flex", alignItems: "center", justifyContent: "space-between",
-                      width: "100%", padding: "10px 12px", marginBottom: 6,
-                      background: T.surface, border: `1px solid ${T.border}`, borderRadius: T.rs,
+                      width: "100%", padding: "10px 12px", marginBottom: 6, minHeight: T.size.touch,
+                      background: T.surface, borderRadius: T.rs,
+                      border: holdToSend && pendingSend?.kind === "saved" && pendingSend.destination.id === destination.id ? `2px solid ${T.ink}` : `1px solid ${T.border}`,
                       cursor: busy ? "not-allowed" : "pointer", textAlign: "left",
                     }}
                   >
                     <span style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-                      <span style={{ color: T.accent, fontFamily: T.mono, fontSize: 12 }}>⚡</span>
+                      <span style={{ color: T.accent, fontFamily: T.sans, fontSize: T.fs.secondary }}>⚡</span>
                       <span style={{
                         color: T.text, fontFamily: T.mono, fontSize: 11,
                         overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                       }}>
                         {payoutDestinationLabel(destination)}
-                        {destination.label && <span style={{ display: "block", color: T.muted, fontSize: 10 }}>{displayPayoutDestination(destination.address)}</span>}
+                        {destination.label && <span style={{ display: "block", color: T.ink2, fontSize: T.fs.secondary }}>{displayPayoutDestination(destination.address)}</span>}
                       </span>
                     </span>
                     {isDefault && (
                       <span style={{
-                        fontSize: 8, fontFamily: T.mono, letterSpacing: 1,
+                        fontSize: T.fs.secondary, fontFamily: T.sans,
                         color: T.accent, background: T.accentDim,
                         padding: "2px 6px", borderRadius: 4,
                       }}>{t("claim.defaultBadge")}</span>
@@ -386,9 +415,8 @@ export function DestinationPicker({
             {savedNwcConnections.length > 0 && (
               <>
                 <div style={{
-                  fontSize: 9, color: T.muted, fontFamily: T.mono,
+                  fontSize: T.fs.secondary, color: T.ink2, fontFamily: T.sans, fontWeight: 600,
                   margin: decoratedRows.length > 0 ? "10px 0 6px" : "0 0 6px",
-                  letterSpacing: 1,
                 }}>
                   {t("claim.savedNwcWallets")}
                 </div>
@@ -396,18 +424,20 @@ export function DestinationPicker({
                   <button
                     key={connection.id}
                     disabled={busy}
-                    onClick={() => dispatchSavedNwc(connection)}
+                    onClick={() => holdToSend ? setPendingSend({ kind: "nwc", connection }) : dispatchSavedNwc(connection)}
+                    aria-pressed={holdToSend ? pendingSend?.kind === "nwc" && pendingSend.connection.id === connection.id : undefined}
                     style={{
                       display: "flex", alignItems: "center", justifyContent: "space-between",
-                      width: "100%", padding: "10px 12px", marginBottom: 6,
-                      background: T.surface, border: `1px solid ${T.border}`, borderRadius: T.rs,
+                      width: "100%", padding: "10px 12px", marginBottom: 6, minHeight: T.size.touch,
+                      background: T.surface, borderRadius: T.rs,
+                      border: holdToSend && pendingSend?.kind === "nwc" && pendingSend.connection.id === connection.id ? `2px solid ${T.ink}` : `1px solid ${T.border}`,
                       cursor: busy ? "not-allowed" : "pointer", textAlign: "left",
                     }}
                   >
                     <span style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-                      <span style={{ color: T.accent, fontFamily: T.mono, fontSize: 11 }}>NWC</span>
+                      <span style={{ color: T.accent, fontFamily: T.sans, fontSize: T.fs.secondary }}>NWC</span>
                       <span style={{
-                        color: T.text, fontFamily: T.mono, fontSize: 11,
+                        color: T.text, fontFamily: T.sans, fontSize: T.fs.secondary,
                         overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                       }}>
                         {connection.label}
@@ -415,7 +445,7 @@ export function DestinationPicker({
                     </span>
                     {i === 0 && (
                       <span style={{
-                        fontSize: 8, fontFamily: T.mono, letterSpacing: 1,
+                        fontSize: T.fs.secondary, fontFamily: T.sans,
                         color: T.accent, background: T.accentDim,
                         padding: "2px 6px", borderRadius: 4,
                       }}>{t("claim.defaultBadge")}</span>
@@ -424,13 +454,24 @@ export function DestinationPicker({
                 ))}
               </>
             )}
+            {holdToSend && pendingSend && (
+              <div style={{ marginTop: 6 }}>
+                <HoldToConfirm
+                  disabled={busy} busy={busy}
+                  resetKey={pendingSend.kind === "saved" ? pendingSend.destination.id : pendingSend.connection.id}
+                  label={t("claim.holdToSend", { amount: amountSats.toLocaleString() })}
+                  onConfirm={() => void (pendingSend.kind === "saved" ? dispatchSavedRow(pendingSend.destination) : dispatchSavedNwc(pendingSend.connection))}
+                  hint={t("common.holdToConfirm")} armedLabel={t("common.holdArmed")} />
+              </div>
+            )}
           </div>
         )}
 
         {/* Tier 2: typed Lightning Address or LNURL-pay receive code */}
-        <div style={{ fontSize: 9, color: T.muted, fontFamily: T.mono, marginBottom: 6, letterSpacing: 1 }}>
+        <div style={{ fontSize: T.fs.secondary, color: T.ink2, fontFamily: T.sans, fontWeight: 600, marginBottom: 6 }}>
           {(decoratedRows.length > 0 || savedNwcConnections.length > 0) ? t("claim.orSendNewAddress") : t("claim.sendToLightningAddress")}
         </div>
+        <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
         <input
           type="text"
           inputMode="text"
@@ -443,13 +484,19 @@ export function DestinationPicker({
           onKeyDown={commitOnEnter}
           placeholder="you@wallet.app or lnurl1…"
           disabled={busy}
-          style={{ ...inputStyle, marginBottom: 10 }}
+          style={{ ...inputStyle, flex: 1, minWidth: 0, minHeight: T.size.touch, fontSize: T.fs.body }}
         />
-        <button type="button" disabled={busy} onClick={() => setScannerOpen(true)} style={{
-          background: T.surface, border: `1px solid ${T.border}`, borderRadius: T.rs,
-          padding: "8px 10px", color: T.text, marginBottom: 10, cursor: "pointer",
-        }}>{t("claim.scanReceiveCode")}</button>
+        <button type="button" disabled={busy} onClick={() => setScannerOpen(true)} aria-label={t("claim.scanReceiveCode")} title={t("claim.scanReceiveCode")} style={{
+          flex: "0 0 auto", minWidth: T.size.touch, minHeight: T.size.touch, padding: "0 12px",
+          background: T.surface, border: `1px solid ${T.line}`, borderRadius: T.rs, color: T.ink, cursor: "pointer",
+          display: "inline-flex", alignItems: "center", gap: 6, fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 600,
+        }}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3" /><path d="M7 12h10" /></svg>
+          {t("claim.scan")}
+        </button>
+        </div>
         {scannerOpen && <Suspense fallback={null}><QRScanner
+          pasteTitle={t("claim.pasteDestination")} pastePlaceholder={t("claim.destinationPlaceholder")} pasteInputType="text"
           onClose={() => setScannerOpen(false)}
           onScan={(scanned) => {
             setScannerOpen(false);
@@ -473,7 +520,7 @@ export function DestinationPicker({
           style={{
             width: "100%", padding: "6px 0", borderRadius: T.rs,
             background: "transparent", border: "none",
-            color: T.muted, fontFamily: T.mono, fontSize: 10,
+            color: T.muted, fontFamily: T.sans, fontSize: T.fs.secondary,
             cursor: "pointer", marginBottom: showAdvanced ? 8 : 0,
           }}
         >
@@ -481,7 +528,7 @@ export function DestinationPicker({
         </button>
         {showAdvanced && (
           <>
-            <div style={{ fontSize: 9, color: T.muted, fontFamily: T.mono, marginBottom: 6, letterSpacing: 1 }}>
+            <div style={{ fontSize: T.fs.secondary, color: T.ink2, fontFamily: T.sans, fontWeight: 600, marginBottom: 6 }}>
               {t("claim.pasteBolt11OrNwc")}
             </div>
             <textarea
@@ -494,14 +541,14 @@ export function DestinationPicker({
               disabled={busy}
               style={{ ...inputStyle, resize: "vertical" as const, minHeight: 60, marginBottom: 8 }}
             />
-            <div style={{ fontSize: 9, color: T.muted, fontFamily: T.mono, marginBottom: 12 }}>
+            <div style={{ fontSize: T.fs.secondary, color: T.ink2, fontFamily: T.sans, marginBottom: 12 }}>
               {t("claim.invoiceOnlyHint")}
             </div>
             {bolt11PasteInput?.kind === "nwc" && (
               <label style={{
                 display: "flex", alignItems: "center", gap: 8,
-                marginBottom: 12, color: T.muted, fontFamily: T.mono,
-                fontSize: 10, cursor: busy ? "not-allowed" : "pointer",
+                marginBottom: 12, color: T.muted, fontFamily: T.sans,
+                fontSize: T.fs.secondary, cursor: busy ? "not-allowed" : "pointer",
               }}>
                 <input
                   type="checkbox"
@@ -520,7 +567,7 @@ export function DestinationPicker({
           <div style={{
             marginTop: 4, padding: 10, borderRadius: T.rs,
             background: T.redDim, border: `1px solid ${T.red}44`,
-            color: T.red, fontFamily: T.mono, fontSize: 10,
+            color: T.red, fontFamily: T.sans, fontSize: T.fs.secondary,
           }}>
             {err}
           </div>

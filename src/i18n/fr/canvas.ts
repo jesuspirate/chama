@@ -12,7 +12,7 @@ export const canvas: Record<string, string> = {
 
   "canvas.chamaWant": "Cercles",
   "canvas.xbtTease": "XBT · Bitcoin",
-  "canvas.circleKicker": "CERCLES D'ÉPARGNE",
+  "canvas.circleKicker": "Cercles d'épargne",
   "canvas.circleTitle": "En créer un, ou en rejoindre un ?",
   "canvas.circleSub": "Un cercle, ce sont les gens avec qui vous épargnez. Amenez le vôtre, ou trouvez-en un.",
   "canvas.circleStart": "Créer un nouveau cercle",
@@ -24,7 +24,7 @@ export const canvas: Record<string, string> = {
   "canvas.xbtTeaseDesc": "Un nouveau marché — seulement quand il sera vraiment prêt.",
   "canvas.comingSoon": "Bientôt",
   "canvas.chamaWantDesc": "Ouvrez un cercle Chama — parts égales, tout le monde termine ou tout le monde est remboursé.",
-  "canvas.chamaWantBadge": "L'ÉPONYME",
+  "canvas.chamaWantBadge": "L'éponyme",
   "canvas.enterRailDetails": "Saisissez vos coordonnées de paiement {rail}.",
   "canvas.detailsSaveFailed": "Ces coordonnées de paiement n’ont pas pu être enregistrées.",
   "canvas.enterAmountAndRail": "Saisissez un montant et choisissez au moins un moyen de paiement.",
@@ -215,4 +215,9 @@ export const canvas: Record<string, string> = {
   "canvas.circleLive": "Cercles ouverts · {count} en direct",
   "canvas.circleNoneOpen": "Aucun ouvert pour l'instant — lancez-en un et soyez le premier.",
   "canvas.circleBrowseMore": "Voir {count} de plus dans Parcourir",
+  "canvas.satsRange": "{min}–{max} sats",
+  "canvas.pickAmountNext": "Vous avez demandé {amount} sats — vous choisissez le montant exact à l’étape suivante.",
+  "canvas.stepOf": "Étape {n} sur {total}",
+  "canvas.classicLook": "Ancien affichage",
+  "canvas.stepsLook": "Nouvel affichage",
 };

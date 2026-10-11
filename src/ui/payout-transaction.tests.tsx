@@ -44,15 +44,46 @@ const chooserHtml = renderToStaticMarkup(<LangProvider><ClaimMethodChooser
   onSelectSavedWallet={unexpected} onSelectSavedNwc={unexpected} onCancel={unexpected}
 /></LangProvider>);
 assert.match(chooserHtml, /See all Lightning options/);
-assert.doesNotMatch(chooserHtml, /LN · FAST|ONCHAIN · SLOW/);
+assert.doesNotMatch(chooserHtml, /LN · fast|onchain · slow/i);
 const destinationHtml = renderToStaticMarkup(<LangProvider><DestinationPicker amountSats={196}
   initialAddress="bitcrazy@getalby.com" savedDestinations={[]} savedNwcConnections={[]}
   title="Claim" onResolve={unexpected} onCancel={unexpected} /></LangProvider>);
 assert.match(destinationHtml, /Send 196 sats to bitcrazy@getalby.com/);
-assert.match(destinationHtml, /save address/);
+assert.match(destinationHtml, /Save this address for next time/);
+assert.doesNotMatch(destinationHtml, /Send once/, 'one send action plus a save box, not two competing holds');
 console.log('PASS claim action labels: net payout and destination, explicit saving, no render-time dispatch');
 
 const lnurlHtml = renderToStaticMarkup(<LangProvider><DestinationPicker amountSats={196}
   initialAddress="lnurl1dp68gurn8ghj7urgdajku6tc9eshqup0d3h82unvwqhkzmrfvdjsr5eqhc"
   savedDestinations={[]} savedNwcConnections={[]} title="Claim" onResolve={unexpected} onCancel={unexpected} /></LangProvider>);
 assert.match(lnurlHtml, /Send 196 sats to lnurl1dp6…qhc/);
+
+const holdDestinationHtml = renderToStaticMarkup(<LangProvider><DestinationPicker holdToSend amountSats={196}
+  initialAddress="bitcrazy@getalby.com" savedDestinations={[]} savedNwcConnections={[]}
+  title="Claim" onResolve={unexpected} onCancel={unexpected} /></LangProvider>);
+assert.match(holdDestinationHtml, /to bitcrazy@getalby.com/);
+assert.match(holdDestinationHtml, /Hold to send 196 sats/);
+assert.doesNotMatch(holdDestinationHtml, /Send 196 sats to/);
+
+const { ClaimHoldDestination } = await import('./panels/ClaimPayoutModal.js');
+const walletLineHtml = renderToStaticMarkup(<LangProvider><ClaimHoldDestination destination="My Alby wallet" /></LangProvider>);
+assert.match(walletLineHtml, /to My Alby wallet/);
+assert.match(walletLineHtml, /font-size:var\(--chama-fs-body\)/);
+const subtitleForDestination = (known: boolean) => known ? 'Fee reserve' : 'to your Lightning wallet. Fee reserve';
+const pickerSubtitle = (initialAddress: string) => renderToStaticMarkup(<LangProvider><DestinationPicker holdToSend amountSats={196}
+  initialAddress={initialAddress} savedDestinations={[]} savedNwcConnections={[]}
+  title="Claim" subtitle={subtitleForDestination} onResolve={unexpected} onCancel={unexpected} /></LangProvider>);
+assert.doesNotMatch(pickerSubtitle('bitcrazy@getalby.com'), /to your Lightning wallet/);
+assert.match(pickerSubtitle(''), /to your Lightning wallet/);
+
+const { missingWebCrypto, cameraUnavailableReason } = await import('./browser-capability-copy.js');
+assert.equal(cameraUnavailableReason(false, undefined), 'https');
+assert.equal(cameraUnavailableReason(true, undefined), 'unavailable');
+assert.equal(cameraUnavailableReason(true, { getUserMedia: async () => ({}) as MediaStream }), null);
+assert.equal(missingWebCrypto('Web Crypto API (crypto.subtle) is required for hashNotes but is unavailable in this environment.'), true);
+assert.equal(missingWebCrypto('Could not rebuild notes from release keys'), false);
+const { Toast } = await import('./components/Toast.js');
+const capabilityToast = renderToStaticMarkup(<LangProvider><Toast type="error" onDone={() => {}} message="Web Crypto API (crypto.subtle) is required for hashNotes but is unavailable in this environment." /></LangProvider>);
+assert.match(capabilityToast, /needs HTTPS to claim/);
+assert.doesNotMatch(capabilityToast, /vote again|border-radius:999px/);
+assert.match(capabilityToast, /max-width:min\(520px/);

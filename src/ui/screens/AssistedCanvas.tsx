@@ -5,7 +5,7 @@ import { RangeFiat } from "../components/RangeFiat.js";
 import { ConductFacts } from "../components/ConductFacts.js";
 import { readPreferredRails, savePreferredRails } from "../../payments/preferred-rails.js";
 import { useCanvasViewport } from "../hooks/useCanvasViewport.js";
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Role, type EscrowState } from "../../escrow-engine/types.js";
 import { ChamaLoader } from "../components/ChamaLoader.js";
 import {
@@ -52,6 +52,9 @@ import { OnchainFeeCheckout, useOnchainFeeRate } from "../components/OnchainFeeC
 import { profileNameFor, type NostrProfileNameMap } from "../nostr-profiles.js";
 import { translate, getCurrentLang } from "../../i18n/index.js";
 import { circleInviteId } from "../../chama/canvas.js";
+import { useBrowseSkin } from "../browse-skin.js";
+import { GroupedInput } from "../components/BitcoinConverter.js";
+import { separatorsFor } from "../grouped-number.js";
 
 // Render-time translation (same pattern as decisions.ts) — module-level so the
 // pure copy helpers below (detailCopy, termsCopy, …) localize without threading
@@ -963,7 +966,10 @@ export function AssistedCanvas({
             <span>SATS</span>
           </div>
         ) : (
-          <div style={amountLineStyle()}><span>{detailConfig.prefix}</span><input autoFocus inputMode={fiatBring ? "decimal" : "numeric"} value={detail} onChange={event => setDetail(numberText(event.target.value, fiatBring))} placeholder={fiatBring ? "50.00" : "50,000"} style={bareInputStyle()} /><span>{detailConfig.suffix}</span></div>
+          <div style={amountLineStyle()}><span>{detailConfig.prefix}</span>
+            {/* Grouped as you type (Jet: "commas on each digit"); the value
+                stays the same plain digits the canvas always stored. */}
+            <GroupedInput autoFocus value={detail} onChange={setDetail} sep={separatorsFor(getCurrentLang())} maxDecimals={fiatBring ? 2 : 0} placeholder={fiatBring ? "50.00" : "50,000"} style={bareInputStyle()} /><span>{detailConfig.suffix}</span></div>
         )}
         {sellRange && railChoice}
         {sellRange && (
@@ -1102,14 +1108,30 @@ export function AssistedCanvas({
   </CanvasShell>;
 }
 
+/** v7 redesign (Jet): the subtle switch to the advanced "All listings" Browse.
+ *  Provided by the shell around the canvas; absent ⇒ no link. */
+export const CanvasAllListings = createContext<(() => void) | null>(null);
+
 function CanvasShell({ community: _community, step, onExit, onMoreOptions, children }: { community: ReturnType<typeof getCommunityBySlug>; step: number; onExit: () => void; onMoreOptions: () => void; children: ReactNode }) {
   const rootRef = useCanvasViewport();
-  return <div ref={rootRef} className="assisted-canvas">
+  const onAllListings = useContext(CanvasAllListings);
+  const [skin, setSkin] = useBrowseSkin();
+  const native = skin === "steps";
+  // Steps look (Figma pass): "Step n of 4" leads, the question is a plain
+  // phone heading, and the primary action sits at thumb height.
+  const stepNumber = Math.min(step, 3) + 1;
+  return <div ref={rootRef} className={`assisted-canvas${native ? " assisted-native" : ""}`}>
     <style>{canvasCss()}</style>
     {step === 0 && <button type="button" data-chama-shortcut="back" onClick={onExit} tabIndex={-1} aria-hidden="true" style={{ display: "none" }} />}
-    <main className="assisted-canvas-main">{children}</main>
+    <main className="assisted-canvas-main">{native && <div style={{ display: "flex", alignItems: "center", justifyContent: native ? "space-between" : "flex-end", gap: 12, marginBottom: 12 }}>
+      {native && <span className="assisted-step">{tr("canvas.stepOf", { n: stepNumber, total: 4 })}</span>}
+    </div>}{children}</main>
     <footer className="assisted-canvas-footer">
-      <button type="button" onClick={onMoreOptions}>{tr("canvas.knowWhatDoing")}</button>
+      <span style={{ display: "inline-flex", gap: 16, flexWrap: "wrap", justifySelf: "start" }}>
+        <button type="button" onClick={onMoreOptions}>{tr("canvas.knowWhatDoing")}</button>
+        {onAllListings && <button type="button" data-all-listings onClick={onAllListings}>{tr("browse.allListings")}</button>}
+        <button type="button" data-browse-skin onClick={() => setSkin(native ? "canvas" : "steps")}>{native ? tr("canvas.classicLook") : tr("canvas.stepsLook")}</button>
+      </span>
       <div>{[0, 1, 2].map(index => <span key={index} className={index === step ? "on" : ""} />)}</div>
       <small>{tr("canvas.nothingWithoutConfirm")}</small>
     </footer>
@@ -1151,8 +1173,8 @@ function AssetMark({ asset }: { asset: AssistedCanvasAsset }) {
 }
 
 function RouteCue({ children }: { children: string }) { return <div className="assisted-route">{children}</div>; }
-function Kicker({ children }: { children: string }) { return <div style={{ color: T.accent, fontFamily: T.mono, fontSize: 10, fontWeight: 700, letterSpacing: ".16em", textTransform: "uppercase" }}>{children}</div>; }
-export function Back({ onClick, children }: { onClick: () => void; children: string }) { return <button type="button" data-chama-shortcut="back" onClick={onClick} style={{ border: 0, padding: 0, marginBottom: "clamp(10px, 2vh, 28px)", background: "transparent", color: T.muted, cursor: "pointer" }}>← {children}</button>; }
+function Kicker({ children }: { children: string }) { return <div className="assisted-kicker" style={{ color: T.accent, fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700, }}>{children}</div>; }
+export function Back({ onClick, children }: { onClick: () => void; children: string }) { return <button type="button" className="assisted-back" data-chama-shortcut="back" onClick={onClick} style={{ border: 0, padding: 0, marginBottom: "clamp(10px, 2vh, 28px)", background: "transparent", color: T.muted, cursor: "pointer" }}>← {children}</button>; }
 export function QuestionCard({ children }: { children: ReactNode }) { return <div className="assisted-question-card">{children}</div>; }
 export function Primary({ children, onClick, disabled = false }: { children: ReactNode; onClick: () => void; disabled?: boolean }) { return <button type="button" data-chama-shortcut="enter" disabled={disabled} onClick={onClick} className="assisted-primary">{children}</button>; }
 function Safety({ children }: { children: ReactNode }) { return <div style={{ marginTop: 14, color: T.muted, fontSize: 12, lineHeight: 1.5 }}>{children}</div>; }
@@ -1207,10 +1229,14 @@ export function MatchReviewAmount({ candidate }: { candidate: GuidedMatchCandida
   const low = bracket ? (bracket.minAmountMsats ?? bracket.amountMsats) / 1000 : null;
   const high = bracket ? (bracket.maxAmountMsats ?? bracket.amountMsats) / 1000 : null;
   return <>
-    <ReviewRow label={tr("canvas.youReceive")} value={tr("canvas.satsValue", { amount: candidate.amountSats.toLocaleString() })} />
-    {low !== null && high !== null && low < high && <div style={{ color: T.muted, fontSize: 12, textAlign: "right", padding: "8px 0" }}>
-      {tr("canvas.fromOfferBracket", { min: low.toLocaleString(), max: high.toLocaleString() })}
-    </div>}
+    {/* v7 redesign (Jet): a ranged offer states its RANGE first — the exact
+        amount is chosen on the next screen, so leading with the max misleads. */}
+    {low !== null && high !== null && low < high ? <>
+      <ReviewRow label={tr("canvas.youReceive")} value={tr("canvas.satsRange", { min: low.toLocaleString(), max: high.toLocaleString() })} />
+      <div style={{ color: T.ink2, fontSize: T.fs.secondary, textAlign: "right", padding: "8px 0" }}>
+        {tr("canvas.pickAmountNext", { amount: candidate.amountSats.toLocaleString() })}
+      </div>
+    </> : <ReviewRow label={tr("canvas.youReceive")} value={tr("canvas.satsValue", { amount: candidate.amountSats.toLocaleString() })} />}
   </>;
 }
 
@@ -1269,9 +1295,12 @@ function bareInputStyle(): CSSProperties { return { minWidth: 0, flex: 1, border
 function amountLineStyle(): CSSProperties { return { display: "flex", alignItems: "baseline", gap: 12, paddingBottom: 15, borderBottom: `1px solid ${T.border}`, color: T.accent, fontFamily: T.mono, fontWeight: 700 }; }
 
 export function canvasCss() { return `
-  .assisted-canvas{position:relative;min-height:calc(100dvh - var(--assisted-chrome, 360px));display:grid;grid-template-rows:1fr auto;padding:clamp(14px,2.5vh,48px) clamp(22px,5vw,70px) 12px;animation:fadeIn .25s ease}
-  .assisted-canvas-main{width:100%;max-width:1080px;margin:0 auto;align-self:center}
-  .assisted-canvas-footer{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:18px;color:${T.muted};font-size:12px}
+  .assisted-canvas{position:relative;min-height:calc(100dvh - var(--assisted-chrome, 360px));display:flex;flex-direction:column;padding:clamp(14px,2.5vh,48px) clamp(22px,5vw,70px) 12px;animation:fadeIn .25s ease}
+  /* v7 redesign: the question floats in the free space (auto block margins)
+     and the footer is pinned to the bottom of the canvas, never closer than
+     24px to the last card — larger phone type grows the cards, not the gap. */
+  .assisted-canvas-main{width:100%;max-width:1080px;margin:auto}
+  .assisted-canvas-footer{flex:0 0 auto;margin-top:24px;padding-bottom:calc(12px + var(--chama-footer-safe, 0px));display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:18px;color:${T.muted};font-size:12px}
   .assisted-canvas-footer button{justify-self:start;border:0;background:transparent;color:${T.muted};cursor:pointer}
   .assisted-canvas-footer small{justify-self:end}.assisted-canvas-footer div{display:flex;gap:7px}.assisted-canvas-footer div span{width:7px;height:7px;border-radius:9px;background:${T.borderHi}}.assisted-canvas-footer div span.on{width:24px;background:${T.accent}}
   .assisted-choice-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin-top:clamp(14px,3vh,42px)}.assisted-choice-grid.two{grid-template-columns:repeat(2,minmax(0,1fr));max-width:800px}
@@ -1287,7 +1316,7 @@ export function canvasCss() { return `
   .assisted-choice-soon{cursor:default;opacity:.62;margin-top:10px}
   .assisted-choice-soon:hover{transform:none;border-color:${T.borderHi};box-shadow:none}
   .assisted-choice-soon em{background:${T.border};color:${T.muted}}
-  .assisted-choice strong{display:block;margin-top:clamp(10px,2vh,24px);font-size:22px}.assisted-choice small{display:block;margin-top:7px;color:${T.muted};line-height:1.45}.assisted-choice em{display:inline-block;margin-top:auto;padding-top:13px;padding:6px 8px;border-radius:999px;background:${T.greenDim};color:${T.green};font:700 9px/1 ${T.mono};font-style:normal;text-transform:uppercase;letter-spacing:.06em}
+  .assisted-choice strong{display:block;margin-top:clamp(10px,2vh,24px);font-size:22px}.assisted-choice small{display:block;margin-top:7px;color:${T.muted};line-height:1.45}.assisted-choice em{display:inline-block;margin-top:auto;padding-top:13px;padding:6px 8px;border-radius:999px;background:${T.greenDim};color:${T.green};font:600 var(--chama-fs-secondary)/1.2 ${T.sans};font-style:normal}
   .assisted-glyph{width:44px;height:44px;display:grid;place-items:center;color:${T.accent}}
   .assisted-glyph img{display:block;object-fit:contain}
   .assisted-route{display:inline-flex;margin-top:clamp(8px,1.5vh,18px);padding:8px 11px;border:1px solid ${T.border};border-radius:999px;background:${T.greenDim};color:${T.green};font:700 10px/1 ${T.mono}}
@@ -1308,7 +1337,7 @@ export function canvasCss() { return `
   .assisted-primary{width:100%;margin-top:clamp(12px,2.2vh,27px);padding:14px 22px;border:0;border-radius:999px;background:${T.accent};color:${T.bg};cursor:pointer;font-weight:800}.assisted-primary:disabled{opacity:.38;cursor:default}
   .assisted-result-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:clamp(16px,3vh,38px)}
   .assisted-match{padding:20px;border:1px solid ${T.borderHi};border-radius:20px;background:${T.card};color:${T.text};text-align:left;cursor:pointer}.assisted-match:hover{border-color:${T.accent}}
-  .assisted-tags{display:flex;gap:6px;flex-wrap:wrap}.assisted-tags span{padding:5px 7px;border-radius:999px;background:${T.accentDim};color:${T.accent};font:700 9px/1 ${T.mono};text-transform:uppercase}
+  .assisted-tags{display:flex;gap:6px;flex-wrap:wrap}.assisted-tags span{padding:5px 7px;border-radius:999px;background:${T.accentDim};color:${T.accent};font:600 var(--chama-fs-secondary)/1.2 ${T.sans}}
   .assisted-match-row{display:flex;justify-content:space-between;gap:18px;margin-top:16px}.assisted-match-row strong{font-size:18px}.assisted-match-row small{display:block;margin-top:6px;color:${T.muted}}.assisted-match-row>b{text-align:right;white-space:nowrap}
   .assisted-match-foot{display:flex;justify-content:space-between;margin-top:17px;padding-top:13px;border-top:1px solid ${T.border};color:${T.muted};font-size:12px}.assisted-match-foot b{color:${T.accent}}
   .assisted-empty{grid-column:1/-1;padding:30px;border:1px solid ${T.border};border-radius:20px;color:${T.muted}}.assisted-empty strong{display:block;color:${T.text}}.assisted-empty span{display:block;margin-top:7px}.assisted-empty button{margin-top:16px;border:0;background:transparent;color:${T.accent};cursor:pointer;padding:0}
@@ -1358,4 +1387,59 @@ export function canvasCss() { return `
     .assisted-choice{min-height:88px}
   }
   @media(max-width:760px){.assisted-canvas{min-height:calc(100dvh - var(--assisted-chrome, 116px));padding:clamp(16px,2.5vh,48px) 18px 14px}.assisted-choice-grid,.assisted-choice-grid.two{grid-template-columns:1fr}.assisted-choice{min-height:120px}.assisted-choice strong{margin-top:18px}.assisted-result-grid{grid-template-columns:1fr}.assisted-rail-grid,.assisted-premium-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.assisted-canvas-footer{grid-template-columns:1fr auto}.assisted-canvas-footer small{display:none}}
+  /* v7 redesign (canvas "Browse"): on phones the four starting points are
+     list rows — 44px icon tile, title, one-line description, status tag and a
+     chevron — so all four fit above the fold at the larger phone type. */
+  @media(max-width:760px){
+    .assisted-choice-grid{gap:10px}
+    .assisted-choice-grid .assisted-choice{display:grid;grid-template-columns:44px minmax(0,1fr) 18px;grid-template-areas:"glyph title chev" "glyph small chev" "glyph em chev";column-gap:14px;row-gap:2px;align-items:center;min-height:0;padding:14px;border-radius:20px;border-color:${T.line};background:${T.surface}}
+    .assisted-choice-grid .assisted-choice:hover{transform:none;box-shadow:none}
+    .assisted-choice-grid .assisted-choice .assisted-glyph{grid-area:glyph;width:44px;height:44px;border-radius:12px;background:${T.raised}}
+    .assisted-choice-grid .assisted-choice .assisted-glyph img,.assisted-choice-grid .assisted-choice .assisted-glyph svg{width:26px!important;height:26px!important}
+    .assisted-choice-grid .assisted-choice strong{grid-area:title;margin:0;font-size:var(--chama-fs-headline);font-weight:600}
+    .assisted-choice-grid .assisted-choice small{grid-area:small;margin:0;font-size:var(--chama-fs-secondary);color:${T.ink2}}
+    .assisted-choice-grid .assisted-choice em{grid-area:em;justify-self:start;margin-top:4px;padding:3px 8px}
+    .assisted-choice-grid .assisted-choice::after{content:"";grid-area:chev;width:9px;height:9px;border-right:2px solid ${T.ink3};border-top:2px solid ${T.ink3};transform:rotate(45deg);justify-self:center}
+  }
+  /* v7 redesign (Jet): the chosen payment method / premium is unmistakable —
+     ink fill, 2px ink border, bold label and a filled check; the rest stay
+     outlined. Colour is never the only signal (the ✓/+ glyph changes too). */
+  .assisted-rail-grid button,.assisted-premium-grid button{border:2px solid ${T.line};background:${T.surface};color:${T.ink};font-weight:500;font-family:${T.sans};font-size:var(--chama-fs-body)}
+  .assisted-rail-grid button:hover,.assisted-premium-grid button:hover{border-color:${T.ink3}}
+  .assisted-rail-grid button.selected,.assisted-premium-grid button.selected{border-color:${T.ink};background:${T.ink};color:${T.onInk};font-weight:700}
+  .assisted-rail-grid button span{border:2px solid ${T.ink3};color:${T.ink2};font:700 13px/1 ${T.sans}}
+  .assisted-rail-grid button.selected span{border-color:${T.onInk};background:${T.onInk};color:${T.ink}}
+
+  /* ── Steps look (Figma pass, Jet 2026-10-08): one question at a time, phone
+     native. Same markup as the canvas; .assisted-native only restyles it.
+     !important only where the canvas sets inline styles. */
+  .assisted-native .assisted-canvas-main{margin:0 auto;max-width:680px}
+  .assisted-native .assisted-step{display:inline-flex;align-items:center;gap:8px;color:${T.ink2};font:700 var(--chama-fs-secondary)/1.2 ${T.sans};letter-spacing:.04em;text-transform:uppercase}
+  .assisted-native .assisted-step::before{content:"";width:8px;height:8px;border-radius:4px;background:${T.attn}}
+  .assisted-native .assisted-back{display:inline-flex;align-items:center;min-height:var(--chama-h-touch);margin-bottom:4px!important;color:${T.ink}!important;font:600 var(--chama-fs-body)/1.2 ${T.sans}}
+  .assisted-native .assisted-kicker{color:${T.ink2}!important;font-weight:600!important}
+  .assisted-native .assisted-route{background:${T.surface};color:${T.ink2};border-color:${T.line};font:600 var(--chama-fs-secondary)/1.2 ${T.sans}}
+  .assisted-native h1{margin-top:8px!important;font-family:${T.display}!important;font-size:var(--chama-fs-large-title)!important;line-height:1.12!important;letter-spacing:-.02em!important;font-weight:700!important;color:${T.ink}!important}
+  .assisted-native .assisted-canvas-main>p{margin-top:10px!important;font-size:var(--chama-fs-body)!important;line-height:1.45!important;color:${T.ink2}!important}
+  .assisted-native .assisted-question-card{max-width:none;margin-top:20px;padding:0;border:0;background:transparent;box-shadow:none}
+  .assisted-native .assisted-question-card input[inputmode]{font-family:${T.sans}!important;font-size:calc(var(--chama-fs-amount) * 1.2)!important;font-weight:700!important;letter-spacing:-.02em;color:${T.ink}!important}
+  .assisted-native .assisted-question-card span{font-family:${T.sans}}
+  .assisted-native .assisted-primary{min-height:var(--chama-h-money-button);margin-top:24px;border-radius:16px;background:${T.ink};color:${T.onInk};font:700 var(--chama-fs-money-button)/1.2 ${T.sans}}
+  .assisted-native .assisted-choice-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:20px}
+  .assisted-native .assisted-choice-grid .assisted-choice{position:relative;display:flex;flex-direction:column;justify-content:flex-end;align-items:flex-start;min-height:150px;padding:18px;border:1px solid ${T.line};border-radius:20px;background:${T.surface};transform:none;box-shadow:none}
+  .assisted-native .assisted-choice-grid .assisted-choice:hover{border-color:${T.ink3}}
+  .assisted-native .assisted-choice-grid .assisted-choice::after{display:none}
+  .assisted-native .assisted-choice-grid .assisted-choice .assisted-glyph{position:absolute;top:16px;left:16px;width:40px;height:40px;border-radius:12px;background:${T.raised}}
+  .assisted-native .assisted-choice-grid .assisted-choice strong{margin:44px 0 0;font-family:${T.display};font-size:var(--chama-fs-title2);font-weight:700}
+  .assisted-native .assisted-choice-grid .assisted-choice small{margin-top:6px;font-size:var(--chama-fs-secondary);color:${T.ink2}}
+  .assisted-native .assisted-choice-grid .assisted-choice em{position:absolute;top:16px;right:16px;margin:0;padding:4px 10px;background:${T.posBg};color:${T.pos}}
+  .assisted-native .assisted-canvas-footer>div{display:none}
+  .assisted-native .assisted-canvas-footer{grid-template-columns:1fr auto}
+  .assisted-native .assisted-canvas-footer button{min-height:var(--chama-h-touch);color:${T.ink2};font:600 var(--chama-fs-secondary)/1.2 ${T.sans};text-decoration:underline;text-underline-offset:3px}
+  @media(max-width:760px){
+    .assisted-native .assisted-choice-grid{grid-template-columns:1fr}
+    .assisted-native .assisted-choice-grid .assisted-choice{min-height:128px}
+    .assisted-native .assisted-primary{position:sticky;bottom:calc(10px + var(--chama-footer-safe, 0px));z-index:2;box-shadow:0 -14px 22px ${T.bg}}
+    .assisted-native .assisted-canvas-footer{grid-template-columns:1fr}
+  }
 `; }

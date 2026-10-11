@@ -1,3 +1,4 @@
+import { createPortal } from "react-dom";
 import { ChamaLoader } from '../components/ChamaLoader.js';
 // ══════════════════════════════════════════════════════════════════════════
 // Chama — ChamaBar (v0.3.0 Phase 5; renamed from FedimintBar)
@@ -25,12 +26,15 @@ import {
 } from "../../fedimint/federation-config.js";
 import { getCommunityBySlug, type Community } from "../../communities/registry.js";
 import type { ChamaBarLabel } from "../decisions.js";
-import { T } from "../theme.js";
+import type React from "react";
+import { T, ON_ATTN } from "../theme.js";
+import { LockGlyph } from "../components/Badge.js";
 import { useT } from "../../i18n/index.js";
 import { BitcoinAmount } from "../components/BitcoinAmount.js";
 
 export function ChamaBar({
   fedimint,
+  federationTarget,
   chamaLabel,
   onTapStranded,
   onTapInTrade,
@@ -38,6 +42,7 @@ export function ChamaBar({
   showReconnect,
   communitySlug,
 }: {
+  federationTarget?: HTMLElement | null;
   fedimint: FedimintState;
   /** Pre-computed by the shell via decideChamaBarLabel. The bar is a
    *  pure renderer — it does not introspect escrow state directly. */
@@ -94,13 +99,8 @@ export function ChamaBar({
     : fedimint.joined ? T.green : fedimint.busy ? T.amber : T.muted;
   const dotGlow = !healthFailed && fedimint.joined ? `0 0 8px ${T.green}66` : "none";
 
-  return (
-    <div style={{
-      display: "flex", alignItems: "center", justifyContent: "space-between",
-      padding: "12px 16px", background: T.surface,
-      borderBottom: `1px solid ${T.border}`, fontFamily: T.mono,
-    }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+  const federationRow = (
+      <div className="chama-federation-row" style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
         <div
           title={healthFailed ? t("recovery.barUnreachableTitle") : undefined}
           style={{
@@ -112,12 +112,21 @@ export function ChamaBar({
           }}
         />
         <span style={{
-          fontSize: 10, color: T.muted,
-          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+          fontSize: T.fs.secondary, color: T.ink2, fontWeight: 500,
+          overflowWrap: "anywhere",
         }}>
           {displayName}
         </span>
       </div>
+  );
+
+  return (
+    <div className="chama-status-row" style={{
+      display: "flex", alignItems: "center", justifyContent: "space-between",
+      gap: 12, padding: "10px 16px", background: T.bg,
+      borderBottom: `1px solid ${T.line}`, fontFamily: T.sans,
+    }}>
+      {federationTarget ? createPortal(federationRow, federationTarget) : federationRow}
 
       {/* Right side — state-aware label or Reconnect when not joined.
           v0.3.1 Phase 3: when joined AND bootProbeState === "failed",
@@ -134,19 +143,12 @@ export function ChamaBar({
           onTapUnreachable={onInit}
         />
       ) : fedimint.busy ? (
-        <span style={{
-          fontSize: 10, color: T.amber, fontFamily: T.mono,
-          letterSpacing: 0.3, whiteSpace: "nowrap",
-        }}>
+        <span style={capsule("quiet", false)}>
+          <CapsuleDot color={T.attn} />
           {t("common.connecting")}
         </span>
       ) : showReconnect && (
-        <button onClick={onInit} style={{
-          padding: "6px 16px", borderRadius: 20,
-          background: T.surface, border: `1px solid ${T.border}`,
-          color: T.muted, fontFamily: T.mono, fontSize: 10, fontWeight: 700,
-          cursor: "pointer",
-        }}>
+        <button type="button" onClick={onInit} style={capsule("neutral", true)}>
           {t("recovery.barReconnect")}
         </button>
       )}
@@ -158,6 +160,28 @@ function communityChamaBarLabel(community: Community): string {
   return community.pickerLabel
     ?? community.disambiguator
     ?? community.displayName;
+}
+
+// v7 redesign: the status capsule. One pill, top of every screen, tap acts.
+// Attention states (unreachable, needs you) are a solid attention fill with
+// dark text; recovery is an attention tint; in-trade is neutral with a lock
+// (escrow is normal and safe); syncing / checking / ready are quiet.
+function capsule(kind: "attn" | "attn-tint" | "neutral" | "quiet", tappable: boolean): React.CSSProperties {
+  const base: React.CSSProperties = {
+    display: "inline-flex", alignItems: "center", gap: 8,
+    minHeight: tappable ? T.size.touch : 36, padding: "4px 14px 4px 10px",
+    borderRadius: 999, fontFamily: T.sans, fontSize: T.fs.secondary,
+    fontWeight: 600, lineHeight: 1.25, textAlign: "left",
+    cursor: tappable ? "pointer" : "default", border: "1px solid transparent",
+  };
+  if (kind === "attn") return { ...base, background: T.attn, color: ON_ATTN };
+  if (kind === "attn-tint") return { ...base, background: T.attnBg, color: T.attnInk, borderColor: T.attn };
+  if (kind === "neutral") return { ...base, background: T.surface, color: T.ink, borderColor: T.line };
+  return { ...base, background: T.surface, color: T.ink2, fontWeight: 500 };
+}
+
+function CapsuleDot({ color }: { color: string }) {
+  return <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: 4, background: color, flexShrink: 0 }} />;
 }
 
 function ChamaBarLabelPill({
@@ -176,17 +200,20 @@ function ChamaBarLabelPill({
 }) {
   const { t } = useT();
   if (label.kind === "needs-you") return <button type="button" onClick={onTapInTrade}
-    style={{ padding: "5px 12px", borderRadius: 20, background: T.amberDim,
-      border: `1px solid ${T.amber}66`, color: T.amber, cursor: "pointer" }}>
-    {t("recovery.barNeedsYou", { count: label.count })} ›
+    aria-label={`${t("recovery.barNeedsYou")}: ${label.count}`}
+    style={capsule("attn", true)}>
+    <span aria-hidden="true" style={{
+      minWidth: 22, height: 22, padding: "0 6px", borderRadius: 11, boxSizing: "border-box",
+      background: ON_ATTN, color: T.attn, fontSize: 13, fontWeight: 700,
+      display: "inline-flex", alignItems: "center", justifyContent: "center",
+    }}>{label.count}</span>
+    <span>{t("recovery.barNeedsYou")}</span>
   </button>;
   if (label.kind === "syncing") return <ChamaLoader size={18} label={t("me.syncing")} />;
   if (label.kind === "checking") {
     return (
-      <span style={{
-        fontSize: 10, color: T.muted, fontFamily: T.mono,
-        letterSpacing: 0.3, whiteSpace: "nowrap",
-      }}>
+      <span style={capsule("quiet", false)}>
+        <CapsuleDot color={T.ink3} />
         {t("recovery.barCheckingTrades")}
       </span>
     );
@@ -197,25 +224,15 @@ function ChamaBarLabelPill({
     // gates Fund/Claim buttons against the same bootProbeState flag
     // but does NOT render its own Reconnect button; users come here.
     return (
-      <button
-        onClick={onTapUnreachable}
-        style={{
-          padding: "5px 12px", borderRadius: 20,
-          background: T.amberDim, border: `1px solid ${T.amber}66`,
-          color: T.amber, fontFamily: T.mono, fontSize: 10, fontWeight: 700,
-          letterSpacing: 0.3, whiteSpace: "nowrap", cursor: "pointer",
-        }}
-      >
+      <button type="button" onClick={onTapUnreachable} style={capsule("attn", true)}>
         {t("recovery.barUnreachableCta")}
       </button>
     );
   }
   if (label.kind === "ready") {
     return (
-      <span style={{
-        fontSize: 10, color: T.muted, fontFamily: T.mono,
-        letterSpacing: 0.3,
-      }}>
+      <span style={capsule("quiet", false)}>
+        <CapsuleDot color={T.pos} />
         {t("recovery.barReady")}
       </span>
     );
@@ -231,30 +248,17 @@ function ChamaBarLabelPill({
         type="button"
         onClick={onTapInTrade}
         disabled={!onTapInTrade}
-        style={{
-          padding: "5px 12px", borderRadius: 20,
-          background: T.purple + "18", border: `1px solid ${T.purple}66`,
-          color: T.purple, fontFamily: T.mono, fontSize: 10, fontWeight: 700,
-          letterSpacing: 0.3, whiteSpace: "nowrap",
-          cursor: onTapInTrade ? "pointer" : "default",
-        }}
+        style={capsule("neutral", !!onTapInTrade)}
       >
-        {t("recovery.barInTradeBefore", { trades: tradeCopy })} <BitcoinAmount sats={label.sats} size={10} gap={3} glyphScale={1.2} color="inherit" glyphColor="inherit" /> {t("recovery.barInTradeAfter")}{onTapInTrade ? " ›" : ""}
+        <LockGlyph size={15} />
+        <span>{t("recovery.barInTradeBefore", { trades: tradeCopy })} <BitcoinAmount sats={label.sats} size={15} gap={3} glyphScale={1.1} color="inherit" glyphColor="inherit" style={{ fontFamily: T.sans, fontWeight: 600 }} /> {t("recovery.barInTradeAfter")}</span>
       </button>
     );
   }
-  // stranded — tappable, amber, points at recovery
+  // stranded — tappable, attention tint, points at recovery
   return (
-    <button
-      onClick={onTapStranded}
-      style={{
-        padding: "5px 12px", borderRadius: 20,
-        background: T.amberDim, border: `1px solid ${T.amber}66`,
-        color: T.amber, fontFamily: T.mono, fontSize: 10, fontWeight: 700,
-        letterSpacing: 0.3, whiteSpace: "nowrap", cursor: "pointer",
-      }}
-    >
-      {t("recovery.barRecoverCta")} <BitcoinAmount sats={label.sats} size={10} gap={3} glyphScale={1.2} color="inherit" glyphColor="inherit" /> →
+    <button type="button" onClick={onTapStranded} style={capsule("attn-tint", true)}>
+      <BitcoinAmount sats={label.sats} size={15} gap={3} glyphScale={1.1} color="inherit" glyphColor="inherit" style={{ fontFamily: T.sans, fontWeight: 600 }} /> {t("recovery.barRecoverCta")}
     </button>
   );
 }

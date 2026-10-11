@@ -109,7 +109,7 @@ export function CircleSurface({ parent, escrows, viewerPubkey, backLabel, childr
       @media (prefers-reduced-motion: reduce){.circle-lock-btn,.circle-loader-arc,.circle-loader-seat,.circle-lock-btn.charging::after{animation:none}.circle-locked-burst{animation:circleBurstPop 1.7s forwards}}
     `}</style>
     <button type="button" data-chama-shortcut="back" onClick={onBack} style={{ background: "none", border: 0, color: T.muted, padding: "8px 0", cursor: "pointer" }}>‹ {backLabel}</button>
-    <div style={{ display: "flex", alignItems: "center", gap: 9, color: T.accent, font: `700 11px ${T.mono}`, letterSpacing: 2 }}><VerticalIcon vertical="chama" size={30} />CHAMA</div>
+    <div style={{ display: "flex", alignItems: "center", gap: 9, color: T.accent, font: `700 ${T.fs.secondary} ${T.sans}`, letterSpacing: 2 }}><VerticalIcon vertical="chama" size={30} />CHAMA</div>
     <h1 style={{ fontSize: "clamp(32px, 6vw, 52px)", letterSpacing: "-.05em", margin: "10px 0 8px" }}>{circle.name}{circle.roundIndex > 1 && <span style={{ color: T.muted, fontWeight: 500 }}> · {isCollectionRound ? t("circle.roundOf", { n: circle.roundIndex, total: rot!.totalRounds }) : t("circle.roundN", { n: circle.roundIndex })}</span>}</h1>
     {viewerIsHost ? (
       // The host's job is structural (they lock last, they open the next
@@ -143,8 +143,8 @@ export function CircleSurface({ parent, escrows, viewerPubkey, backLabel, childr
             </svg>
           </div>}
       <h2 aria-live="polite" style={{ fontSize: "clamp(22px,4vw,30px)", lineHeight: 1.2, marginBottom: 12 }}>{status}</h2>
-      <p style={{ color: T.muted, fontFamily: T.mono, lineHeight: 1.6, margin: 0 }}>{t("circle.satsEach", { amount: fmtSats(circle.shareMsats) })}</p>
-      {model.status === "filling" && <p style={{ color: T.muted, fontFamily: T.mono, lineHeight: 1.6, marginTop: 2 }}>{t("circle.closesIn", { time: circleTimeText(model.secsToFillDeadline, t) })}</p>}
+      <p style={{ color: T.muted, fontFamily: T.sans, lineHeight: 1.6, margin: 0 }}>{t("circle.satsEach", { amount: fmtSats(circle.shareMsats) })}</p>
+      {model.status === "filling" && <p style={{ color: T.muted, fontFamily: T.sans, lineHeight: 1.6, marginTop: 2 }}>{t("circle.closesIn", { time: circleTimeText(model.secsToFillDeadline, t) })}</p>}
       {model.status === "running" && <p style={{ color: T.accent }}>{t("circle.countdown", { time: circleTimeText(model.secsToRoundEnd, t) })}</p>}
       {(model.move === "returning" || model.move === "return-now") && <p>{t("circle.returning")}</p>}
       {model.move === "collect" && <p style={{ color: T.accent, fontWeight: 700 }}>{t(viewerIsCollector ? "circle.potReady" : "circle.readyCollect")}</p>}
@@ -163,24 +163,24 @@ export function CircleSurface({ parent, escrows, viewerPubkey, backLabel, childr
       {(message || loadError) && <p role="status" style={{ color: T.accent, lineHeight: 1.5 }}>{message ?? loadError}</p>}
     </div>
     {rot !== null && rot.queue.length > 0 && <div style={{ marginTop: 26, background: T.card, border: `1px solid ${T.border}`, borderRadius: 22, padding: "18px 20px" }}>
-      <h3 style={{ margin: "0 0 6px", fontSize: 15, color: T.muted, letterSpacing: 1, textTransform: "uppercase" }}>{t("circle.queueTitle")}</h3>
+      <h3 style={{ margin: "0 0 6px", fontSize: 15, color: T.muted, }}>{t("circle.queueTitle")}</h3>
       <p style={{ margin: "0 0 12px", color: T.muted, fontSize: 13, lineHeight: 1.5 }}>{t("circle.raceHint")}</p>
       {rot.queue.map(entry => <div key={entry.roundIndex} style={{ display: "flex", alignItems: "baseline", gap: 10, padding: "7px 0" }}>
-        <span style={{ color: T.muted, font: `600 12px ${T.mono}`, minWidth: 64 }}>{t("circle.roundN", { n: entry.roundIndex })}</span>
+        <span style={{ color: T.muted, font: `600 ${T.fs.secondary} ${T.sans}`, minWidth: 64 }}>{t("circle.roundN", { n: entry.roundIndex })}</span>
         <strong style={{ flex: 1, fontSize: 15, color: entry.collector ? T.text : T.muted }}>{entry.collector ? nym(entry.collector) : t("circle.queueOpen")}</strong>
-        {entry.collector?.toLowerCase() === viewerPubkey.toLowerCase() && <small style={{ color: T.accent, fontFamily: T.mono }}>{t("circle.you")}</small>}
+        {entry.collector?.toLowerCase() === viewerPubkey.toLowerCase() && <small style={{ color: T.accent, fontFamily: T.sans }}>{t("circle.you")}</small>}
       </div>)}
     </div>}
     {childrenLoaded && shares.some(sh => sh.circleId === circle.circleId) && <div style={{ marginTop: 26, background: T.card, border: `1px solid ${T.border}`, borderRadius: 22, padding: "18px 20px" }}>
-      <h3 style={{ margin: "0 0 12px", fontSize: 15, color: T.muted, letterSpacing: 1, textTransform: "uppercase" }}>{t("circle.members")}</h3>
+      <h3 style={{ margin: "0 0 12px", fontSize: 15, color: T.muted, }}>{t("circle.members")}</h3>
       {shares.filter(sh => sh.circleId === circle.circleId)
         .sort((a, b) => (a.lockedAtSec ?? Infinity) - (b.lockedAtSec ?? Infinity))
         .map((sh, index) => {
           const you = sh.memberPubkey.toLowerCase() === viewerPubkey.toLowerCase();
           return <div key={sh.memberPubkey} style={{ display: "flex", alignItems: "baseline", gap: 10, padding: "9px 0", borderTop: index ? `1px solid ${T.border}` : "none" }}>
-            <span style={{ color: T.muted, font: `600 12px ${T.mono}`, minWidth: 22 }}>{sh.lockedAtSec !== null ? `#${index + 1}` : "·"}</span>
-            <strong style={{ flex: 1, fontSize: 15 }}>{nym(sh.memberPubkey)}{you && <span style={{ color: T.accent, fontWeight: 600 }}> · {t("circle.you")}</span>}{sh.memberPubkey.toLowerCase() === circle.creatorPubkey.toLowerCase() && <span style={{ marginLeft: 7, padding: "2px 7px", borderRadius: 999, background: `${T.purple}22`, color: T.purple, border: `1px solid ${T.purple}55`, font: `700 10px ${T.mono}`, textTransform: "uppercase", letterSpacing: .5 }}>{t("circle.hostBadge")}</span>}</strong>
-            <small style={{ color: sh.lockedAtSec !== null ? T.accent : T.muted, fontFamily: T.mono }}>{
+            <span style={{ color: T.muted, font: `600 ${T.fs.secondary} ${T.sans}`, minWidth: 22 }}>{sh.lockedAtSec !== null ? `#${index + 1}` : "·"}</span>
+            <strong style={{ flex: 1, fontSize: 15 }}>{nym(sh.memberPubkey)}{you && <span style={{ color: T.accent, fontWeight: 600 }}> · {t("circle.you")}</span>}{sh.memberPubkey.toLowerCase() === circle.creatorPubkey.toLowerCase() && <span style={{ marginLeft: 7, padding: "2px 7px", borderRadius: 999, background: `${T.purple}22`, color: T.purple, border: `1px solid ${T.purple}55`, font: `600 ${T.fs.secondary} ${T.sans}` }}>{t("circle.hostBadge")}</span>}</strong>
+            <small style={{ color: sh.lockedAtSec !== null ? T.accent : T.muted, fontFamily: T.sans }}>{
               sh.status === "returned" || sh.status === "refunded" || sh.status === "paid" ? t("circle.claimedBadge")
               : sh.readyToClaim ? t("circle.canClaimNow")
               : sh.lockedAtSec !== null ? t("circle.lockedOn", { date: date(sh.lockedAtSec) })

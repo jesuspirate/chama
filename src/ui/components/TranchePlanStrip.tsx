@@ -55,8 +55,8 @@ export function TranchePlanStrip({
         fontSize: 12.5, fontWeight: 800, color: tone,
       }}>
         <span>{t("tranche.title", { done: gate.settled, total: gate.total })}</span>
-        <span style={{ marginLeft: "auto", fontFamily: T.mono, fontSize: 11, color: T.muted }}>
-          {t("tranche.outstanding")} <BitcoinAmount sats={Math.round(outstanding / 1000)} size={11} gap={2} />
+        <span style={{ marginLeft: "auto", fontFamily: T.sans, fontSize: T.fs.secondary, color: T.muted }}>
+          {t("tranche.outstanding")} <BitcoinAmount sats={Math.round(outstanding / 1000)} size={T.fs.secondary} gap={2} />
         </span>
       </div>
 
@@ -69,7 +69,7 @@ export function TranchePlanStrip({
           return (
             <div key={i} style={{
               minWidth: 0, flex: 1, padding: "5px 2px", borderRadius: 6,
-              textAlign: "center", fontFamily: T.mono, fontSize: 9.5, fontWeight: 800,
+              textAlign: "center", fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
               color: settled ? T.bg : current ? tone : T.muted,
               background: settled ? tone : current ? `${tone}1c` : `${T.muted}12`,
               border: `1px solid ${settled || current ? tone + "55" : T.border}`,

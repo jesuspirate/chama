@@ -1,4 +1,6 @@
 import { useLayoutEffect, useRef, useState, type CSSProperties } from "react";
+import { OverlaySheet } from "./OverlaySheet.js";
+import { BitcoinConverter } from "./BitcoinConverter.js";
 import { formatUsdBtcPrice, formatUsdBtcPriceFull } from "../../markets/bitcoin-price.js";
 import { T } from "../theme.js";
 import { useBitcoinPrice } from "../hooks/useBitcoinPrice.js";
@@ -17,7 +19,7 @@ import { useT } from "../../i18n/index.js";
 // on press (tactile), and the "sats ⇄ fiat" toggle line POPS each time you
 // switch (the "animate on action" feel, driven by a React key so it's reliable
 // on touch — :active alone felt stale on mobile). Honors prefers-reduced-motion.
-const TOGGLE_CSS = `
+const toggleCss = () => `
 @keyframes chamaPricePop {
   0%   { transform: scale(.86); }
   55%  { transform: scale(1.1); }
@@ -25,12 +27,14 @@ const TOGGLE_CSS = `
 }
 .chama-price-btn { transition: transform .14s cubic-bezier(.34,1.56,.64,1), box-shadow .2s ease; }
 .chama-price-btn:active { transform: scale(.98); }
+.chama-sr-focusable { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; padding: 0; }
+.chama-sr-focusable:focus-visible { position: absolute; left: 8px; top: 8px; width: auto; height: auto; clip: auto; padding: 6px 10px; border-radius: 999px; background: ${T.ink}; color: ${T.onInk}; z-index: 2; }
 .chama-price-swap { transition: opacity .3s ease; }
 .chama-price-rocker-knob { transition: transform .24s cubic-bezier(.34,1.56,.64,1); }
 .chama-price-pop { animation: chamaPricePop .3s cubic-bezier(.34,1.56,.64,1); transform-origin: center; }
 @media (prefers-reduced-motion: reduce) { .chama-price-pop { animation: none; } }
 `;
-const ToggleStyle = () => <style>{TOGGLE_CSS}</style>;
+const ToggleStyle = () => <style>{toggleCss()}</style>;
 
 /** Big price number that SHRINKS to fit its width (content-responsive), so a
  *  high-denomination currency (IDR/VND-scale) never overflows or clips on a
@@ -78,6 +82,7 @@ export function BitcoinPricePill({
   amountMode,
   onAmountModeChange,
   quoteCurrency,
+  converterCommunity,
 }: {
   compact?: boolean;
   hero?: boolean;
@@ -88,9 +93,19 @@ export function BitcoinPricePill({
   amountMode?: AmountDisplayMode;
   onAmountModeChange?: (mode: AmountDisplayMode) => void;
   quoteCurrency?: string | null;
+  /** Community for the converter sheet's home currency. */
+  converterCommunity?: string | null;
 }) {
   const { t } = useT();
   const price = useBitcoinPrice();
+  // v7 redesign (Jet): the price bar opens the converter as a sheet — a goodie
+  // reachable from every screen that shows the bar. The switch toggles mode.
+  const [converterOpen, setConverterOpen] = useState(false);
+  const converterSheet = converterOpen ? (
+    <OverlaySheet title={t("bond.converterHeading")} onClose={() => setConverterOpen(false)}>
+      <BitcoinConverter communitySlug={converterCommunity} variant="sheet" />
+    </OverlaySheet>
+  ) : null;
   const fiatRates = useFiatRates();
   const normalizedQuoteCurrency = normalizeFiatCurrency(quoteCurrency) ?? "USD";
   const localBtcPrice = normalizedQuoteCurrency === "USD"
@@ -155,7 +170,6 @@ export function BitcoinPricePill({
           background: amountMode === "fiat" ? T.green + "18" : T.accentDim,
           border: `1px solid ${amountMode === "fiat" ? T.green + "44" : T.accent + "44"}`,
           color: amountMode === "fiat" ? T.green : T.accent,
-          textTransform: "uppercase",
         }}>
           {amountMode}
         </span>
@@ -172,9 +186,9 @@ export function BitcoinPricePill({
     background: T.surface,
     border: `1px solid ${stale ? T.border : T.green + "55"}`,
     color: stale ? T.muted : T.green,
-    fontFamily: T.mono,
+    fontFamily: T.sans, fontVariantNumeric: "tabular-nums",
     fontSize: compact ? 8 : 9,
-    fontWeight: 800,
+    fontWeight: 700,
     whiteSpace: "nowrap" as const,
     lineHeight: 1,
   };
@@ -186,11 +200,11 @@ export function BitcoinPricePill({
       return (
         <>
         <ToggleStyle />
-        <button
-          type="button"
+        <div
           className="chama-price-btn"
-          title={t("browse.tapToSwitch", { title, mode: nextMode })}
-          onClick={() => onAmountModeChange(nextMode)}
+          role="group"
+          aria-label={title}
+          onClick={() => setConverterOpen(true)}
           style={{
             width: "100%",
             display: "flex",
@@ -212,57 +226,25 @@ export function BitcoinPricePill({
           }} />
           <span style={{
             flexShrink: 0, color: stale ? T.muted : T.green,
-            fontFamily: T.mono, fontSize: 13, fontWeight: 950, whiteSpace: "nowrap",
+            fontFamily: T.sans, fontVariantNumeric: "tabular-nums", fontSize: 13, fontWeight: 700, whiteSpace: "nowrap",
           }}>1 BTC</span>
-          <span
-            className="chama-price-swap"
-            aria-hidden="true"
-            style={{
-              position: "relative", flexShrink: 0, width: 48, height: 26, borderRadius: 9,
-              display: "block", overflow: "hidden",
-              border: `1px solid ${T.borderHi}`,
-              background: `linear-gradient(90deg, ${T.accentDim}, ${T.greenDim})`,
-              boxShadow: `inset 0 2px 5px ${T.bg}cc, 0 1px 0 ${T.text}16`,
-            }}
-          >
-            <span
-              className="chama-price-rocker-knob"
-              style={{
-                position: "absolute", zIndex: 0, left: 2, top: 2,
-                width: 21, height: 20, borderRadius: 6,
-                transform: amountMode === "fiat" ? "translateX(21px)" : "translateX(0)",
-                background: amountMode === "fiat"
-                  ? `linear-gradient(180deg, ${T.green}dd, ${T.green}88)`
-                  : `linear-gradient(180deg, ${T.accent}dd, ${T.accent}88)`,
-                boxShadow: `0 3px 6px ${T.bg}cc, inset 0 1px 0 ${T.text}66`,
-              }}
-            />
-            <span key={amountMode} className="chama-price-pop" style={{
-              position: "absolute", zIndex: 1, inset: 0,
-              display: "flex", alignItems: "center", justifyContent: "center",
-              color: T.text, lineHeight: 0, textShadow: `0 1px 4px ${T.bg}`,
-            }}>
-              <svg width="18" height="12" viewBox="0 0 24 16" fill="none" aria-hidden="true"
-                style={{ display: "block", overflow: "visible", filter: `drop-shadow(0 1px 2px ${T.bg})` }}>
-                <path d="M3 5h15M15 2l3 3-3 3" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
-                <path d="M21 11H6M9 8l-3 3 3 3" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </span>
-          </span>
+          <button type="button" className="chama-sr-focusable" onClick={e => { e.stopPropagation(); setConverterOpen(true); }}>{t("browse.openConverter")}</button>
+            <PriceSwitch mode={amountMode} currency={displayCurrency} size={"slim"} onToggle={() => onAmountModeChange(nextMode)} />
           <span style={{
             display: "flex", alignItems: "baseline", justifyContent: "flex-end",
             gap: 6, minWidth: 0, flex: 1,
           }}>
             <span style={{
               flexShrink: 0, color: price.usd ? T.text : T.muted,
-              fontFamily: T.mono, fontSize: 13, fontWeight: 950,
+              fontFamily: T.sans, fontVariantNumeric: "tabular-nums", fontSize: 13, fontWeight: 700,
             }}>{priceTicker}</span>
             <FitText text={priceDigits} max={30} min={18} align="right" style={{
               color: price.usd ? T.text : T.muted,
-              fontFamily: T.mono, fontWeight: 950, lineHeight: .94, letterSpacing: -1,
+              fontFamily: T.sans, fontVariantNumeric: "tabular-nums", fontWeight: 700, lineHeight: .94,
             }} />
           </span>
-        </button>
+        </div>
+        {converterSheet}
         </>
       );
     }
@@ -270,11 +252,11 @@ export function BitcoinPricePill({
       return (
         <>
         <ToggleStyle />
-        <button
-          type="button"
+        <div
           className="chama-price-btn"
-          title={t("browse.tapToSwitch", { title, mode: nextMode })}
-          onClick={() => onAmountModeChange(nextMode)}
+          role="group"
+          aria-label={title}
+          onClick={() => setConverterOpen(true)}
           style={{
             width: "100%",
             display: "flex",
@@ -293,14 +275,13 @@ export function BitcoinPricePill({
           {/* One clean exchange line. The values remain plain; the physical
               rocker in the middle is the only control-shaped object. */}
           <div style={{
-            display: "grid", gridTemplateColumns: "minmax(98px,.72fr) 64px minmax(0,1.35fr)",
+            display: "grid", gridTemplateColumns: "minmax(98px,.72fr) 84px minmax(0,1.35fr)",
             alignItems: "center", gap: 12,
           }}>
             <div style={{
               display: "flex", alignItems: "center", gap: 8, minWidth: 0,
               color: stale ? T.muted : T.green,
-              fontFamily: T.mono, fontSize: 22, fontWeight: 950,
-              letterSpacing: 0.2, whiteSpace: "nowrap",
+              fontFamily: T.sans, fontVariantNumeric: "tabular-nums", fontSize: compact ? 16 : 22, fontWeight: 700, whiteSpace: "nowrap",
             }}>
               <span aria-hidden="true" style={{
                 width: 9, height: 9, borderRadius: "50%",
@@ -309,66 +290,21 @@ export function BitcoinPricePill({
               }} />
               1 BTC
             </div>
-            <span
-              className="chama-price-swap"
-              aria-hidden="true"
-              style={{
-                position: "relative", width: 64, height: 34, borderRadius: 11,
-                display: "block", overflow: "hidden",
-                border: `1px solid ${T.borderHi}`,
-                background: `linear-gradient(90deg, ${T.accentDim}, ${T.greenDim})`,
-                boxShadow: `inset 0 3px 7px ${T.bg}cc, 0 1px 0 ${T.text}16`,
-              }}
-            >
-              <span
-                className="chama-price-rocker-knob"
-                style={{
-                  position: "absolute", zIndex: 0, left: 3, top: 3,
-                  width: 28, height: 26, borderRadius: 8,
-                  transform: amountMode === "fiat" ? "translateX(28px)" : "translateX(0)",
-                  background: amountMode === "fiat"
-                    ? `linear-gradient(180deg, ${T.green}dd, ${T.green}88)`
-                    : `linear-gradient(180deg, ${T.accent}dd, ${T.accent}88)`,
-                  boxShadow: `0 4px 8px ${T.bg}cc, inset 0 1px 0 ${T.text}66`,
-                }}
-              />
-              <span
-                key={amountMode}
-                className="chama-price-pop"
-                style={{
-                  position: "absolute", zIndex: 1, inset: 0,
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  color: T.text, lineHeight: 0,
-                  textShadow: `0 1px 4px ${T.bg}`,
-                }}
-              >
-                <svg
-                  width="24"
-                  height="16"
-                  viewBox="0 0 24 16"
-                  fill="none"
-                  aria-hidden="true"
-                  style={{ display: "block", overflow: "visible", filter: `drop-shadow(0 1px 2px ${T.bg})` }}
-                >
-                  <path d="M3 5h15M15 2l3 3-3 3" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
-                  <path d="M21 11H6M9 8l-3 3 3 3" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              </span>
-            </span>
+            <button type="button" className="chama-sr-focusable" onClick={e => { e.stopPropagation(); setConverterOpen(true); }}>{t("browse.openConverter")}</button>
+            <PriceSwitch mode={amountMode} currency={displayCurrency} size={compact ? "slim" : "full"} onToggle={() => onAmountModeChange(nextMode)} />
             <div style={{
               display: "flex", alignItems: "baseline", justifyContent: "flex-end", gap: 8,
               minWidth: 0,
             }}>
               <span style={{
                 flexShrink: 0, color: price.usd ? T.text : T.muted,
-                fontFamily: T.mono, fontSize: 20, fontWeight: 950,
+                fontFamily: T.sans, fontVariantNumeric: "tabular-nums", fontSize: compact ? 13 : 20, fontWeight: 700,
               }}>{priceTicker}</span>
-              <FitText text={priceDigits} max={50} min={23} align="right" style={{
+              <FitText text={priceDigits} max={compact ? 32 : 50} min={compact ? 16 : 23} align="right" style={{
                 color: price.usd ? T.text : T.muted,
-                fontFamily: T.mono,
-                fontWeight: 950,
+                fontFamily: T.sans, fontVariantNumeric: "tabular-nums",
+                fontWeight: 700,
                 lineHeight: .94,
-                letterSpacing: -1.5,
               }} />
             </div>
           </div>
@@ -376,18 +312,17 @@ export function BitcoinPricePill({
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
             <span style={{
               color: amountMode === "fiat" ? T.green : T.accent,
-              fontFamily: T.mono, fontSize: 9, fontWeight: 900,
-              textTransform: "uppercase", letterSpacing: .7,
+              fontFamily: T.sans, fontVariantNumeric: "tabular-nums", fontSize: T.fs.secondary, fontWeight: 900,
             }}>
               {t("browse.browseIn", { unit: amountMode === "fiat" ? displayCurrency : "sats" })}
             </span>
             <span style={{
               minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-              color: T.muted, fontFamily: T.mono, fontSize: 8, fontWeight: 800,
-              textTransform: "uppercase", letterSpacing: 0.5,
+              color: T.muted, fontFamily: T.sans, fontVariantNumeric: "tabular-nums", fontSize: T.fs.secondary, fontWeight: 800,
             }}>{sourceLabel}</span>
           </div>
-        </button>
+        </div>
+        {converterSheet}
         </>
       );
     }
@@ -431,11 +366,9 @@ export function BitcoinPricePill({
         <div style={{ minWidth: 0 }}>
           <div style={{
             color: stale ? T.muted : T.green,
-            fontFamily: T.mono,
-            fontSize: 10,
+            fontFamily: T.sans, fontVariantNumeric: "tabular-nums",
+            fontSize: T.fs.secondary,
             fontWeight: 900,
-            letterSpacing: 1.1,
-            textTransform: "uppercase",
             marginBottom: 5,
           }}>
             BTC/{displayCurrency}
@@ -446,22 +379,22 @@ export function BitcoinPricePill({
             min={15}
             style={{
               color: price.usd ? T.text : T.muted,
-              fontFamily: T.mono,
-              fontWeight: 950,
+              fontFamily: T.sans, fontVariantNumeric: "tabular-nums",
+              fontWeight: 700,
               lineHeight: 1,
-              letterSpacing: 0,
             }}
           />
         </div>
         <div style={{
-          flexShrink: 0,
+          flexShrink: 1,
+          minWidth: 0,
+          maxWidth: "45%",
           color: T.muted,
-          fontFamily: T.mono,
-          fontSize: 9,
-          fontWeight: 800,
-          textTransform: "uppercase",
-          letterSpacing: 0.8,
+          fontFamily: T.sans, fontVariantNumeric: "tabular-nums",
+          fontSize: T.fs.secondary,
+          fontWeight: 600,
           textAlign: "right",
+          lineHeight: 1.25,
         }}>
           {sourceLabel}
         </div>
@@ -476,5 +409,61 @@ export function BitcoinPricePill({
     >
       {content}
     </span>
+  );
+}
+
+/**
+ * v7 redesign (Jet): the price toggle as an unmistakable switch — a visible
+ * track labelled at both ends (₿ · local currency) and a thumb that is the
+ * orange Bitcoin coin in sats mode and the green currency thumb in fiat mode.
+ */
+function PriceSwitch({ mode, currency, size, onToggle }: {
+  mode: AmountDisplayMode; currency: string; size: "slim" | "full"; onToggle: () => void;
+}) {
+  const { t } = useT();
+  const fiat = mode === "fiat";
+  // The fiat end shows the currency's symbol ($, KSh…) — the price beside the
+  // switch already spells the code, so "USD USD" never stacks up.
+  let symbol = currency.slice(0, 3);
+  try {
+    symbol = new Intl.NumberFormat(undefined, { style: "currency", currency }).formatToParts(0)
+      .find(part => part.type === "currency")?.value ?? symbol;
+  } catch { /* unknown code: keep the code */ }
+  symbol = symbol.slice(0, 3);
+  const w = size === "full" ? 84 : 66;
+  const h = size === "full" ? 38 : 30;
+  const thumb = h - 6;
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={fiat}
+      aria-label={t("browse.browseIn", { unit: fiat ? currency : "sats" })}
+      onClick={e => { e.stopPropagation(); onToggle(); }}
+      style={{
+        position: "relative", flexShrink: 0, width: w, height: h, padding: 0,
+        borderRadius: 999, border: `1px solid ${T.line}`, background: T.raised,
+        cursor: "pointer", fontFamily: T.sans,
+      }}
+    >
+      <span aria-hidden="true" style={{ position: "absolute", left: 9, top: 0, bottom: 0, display: "flex", alignItems: "center", fontSize: 13, fontWeight: 700, color: T.ink2 }}>₿</span>
+      <span aria-hidden="true" style={{ position: "absolute", right: 7, top: 0, bottom: 0, display: "flex", alignItems: "center", fontSize: 12, fontWeight: 700, color: T.ink2 }}>{symbol}</span>
+      <span
+        aria-hidden="true"
+        className="chama-price-rocker-knob"
+        style={{
+          position: "absolute", top: 2, left: 2, width: thumb, height: thumb, borderRadius: "50%",
+          transform: fiat ? `translateX(${w - thumb - 6}px)` : "translateX(0)",
+          display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden",
+          background: fiat ? T.green : "transparent",
+          boxShadow: "0 2px 5px rgba(0,0,0,0.3)",
+          color: "#FFFFFF", fontSize: 10, fontWeight: 800,
+        }}
+      >
+        {fiat
+          ? symbol
+          : <img src="/icons/bitcoin-mark-64.png" alt="" width={thumb} height={thumb} style={{ display: "block" }} />}
+      </span>
+    </button>
   );
 }

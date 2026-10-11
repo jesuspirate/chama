@@ -15,7 +15,8 @@ import { useT } from "../../i18n/index.js";
 // saved-address view closed to the wrong tab for exactly this reason). This
 // sheet keeps the screen behind you — blurred, still there — and closes to
 // precisely where you were, by tapping outside, pressing Escape, or Done.
-export function OverlaySheet({ title, subtitle, onClose, children }: {
+export function OverlaySheet({ title, subtitle, onClose, children, fullHeight = false }: {
+  fullHeight?: boolean;
   title: string;
   subtitle?: string;
   onClose: () => void;
@@ -34,8 +35,8 @@ export function OverlaySheet({ title, subtitle, onClose, children }: {
       role="presentation"
       style={{
         position: "fixed", inset: 0, zIndex: 400,
-        display: "flex", alignItems: "center", justifyContent: "center",
-        padding: "24px 16px calc(24px + env(safe-area-inset-bottom, 0px))",
+        display: "flex", alignItems: fullHeight ? "flex-end" : "center", justifyContent: "center",
+        padding: fullHeight ? "env(safe-area-inset-top, 0px) 0 0" : "24px 16px calc(24px + env(safe-area-inset-bottom, 0px))",
         background: "rgba(0,0,0,0.45)",
         backdropFilter: "blur(7px)", WebkitBackdropFilter: "blur(7px)",
         animation: "fadeIn 0.18s ease",
@@ -47,9 +48,10 @@ export function OverlaySheet({ title, subtitle, onClose, children }: {
         aria-label={title}
         onClick={(e) => e.stopPropagation()}
         style={{
-          width: "100%", maxWidth: 460, maxHeight: "80dvh", overflowY: "auto",
+          width: "100%", maxWidth: fullHeight ? "none" : 460, maxHeight: fullHeight ? "100%" : "80dvh", overflowY: fullHeight ? "hidden" : "auto",
+          ...(fullHeight ? { height: "100%", display: "flex", flexDirection: "column" as const, minHeight: 0 } : {}),
           background: T.card, border: `1px solid ${T.borderHi}`,
-          borderRadius: T.r, padding: "20px 20px 16px",
+          borderRadius: fullHeight ? "20px 20px 0 0" : T.r, padding: fullHeight ? "16px 12px calc(12px + env(safe-area-inset-bottom, 0px))" : "20px 20px 16px",
           boxShadow: "0 24px 60px rgba(0,0,0,0.45)",
         }}
       >
@@ -58,13 +60,13 @@ export function OverlaySheet({ title, subtitle, onClose, children }: {
         </div>
         {subtitle && (
           <div style={{
-            fontSize: 11, color: T.muted, fontFamily: T.mono,
+            fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans,
             margin: "8px 0 16px", lineHeight: 1.5,
           }}>
             {subtitle}
           </div>
         )}
-        {children}
+        {fullHeight ? <div style={{ flex: 1, minHeight: 0, marginTop: 12 }}>{children}</div> : children}
         <button
           type="button"
           onClick={onClose}

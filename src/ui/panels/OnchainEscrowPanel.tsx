@@ -100,7 +100,7 @@ export function OnchainEscrowPanel({
           <span style={{
             marginLeft: "auto", padding: "2px 7px", borderRadius: 999,
             background: `${T.amber}22`, border: `1px solid ${T.amber}55`,
-            color: T.amber, fontFamily: T.mono, fontSize: 9.5, fontWeight: 800,
+            color: T.amber, fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
           }}>{t("onchain.signetBadge")}</span>
         )}
       </div>}
@@ -242,7 +242,7 @@ export function OnchainEscrowPanel({
             }}>
               <strong>⚠ {t("onchain.checkFailed")}</strong>
               {settlementCheck.failures.map((f, i) => (
-                <div key={i} style={{ marginTop: 4, fontFamily: T.mono, fontSize: 10.5 }}>• {f}</div>
+                <div key={i} style={{ marginTop: 4, fontFamily: T.sans, fontSize: T.fs.secondary }}>• {f}</div>
               ))}
             </div>
           )}

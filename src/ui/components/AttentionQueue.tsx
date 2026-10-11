@@ -108,12 +108,12 @@ export function AttentionQueue({
               }}>
                 {latestTrade.description}
               </span>
-              <span style={{ display: "block", fontFamily: T.mono, fontSize: 10, color: T.muted, marginTop: 2 }}>
+              <span style={{ display: "block", fontFamily: T.sans, fontSize: T.fs.secondary, color: T.muted, marginTop: 2 }}>
                 {t("me.latestTrade")}
               </span>
             </span>
             <TradeAmount msats={latestTrade.amountMsats} size={13} color={T.text} />
-            <span aria-hidden="true" style={{ color: T.muted, opacity: 0.6, fontFamily: T.mono, fontSize: 13 }}>›</span>
+            <span aria-hidden="true" style={{ color: T.muted, opacity: 0.6, fontFamily: T.sans, fontSize: 13 }}>›</span>
           </button>
         )}
       </div>
@@ -127,13 +127,12 @@ export function AttentionQueue({
         gap: 12, marginBottom: 10,
       }}>
         <div style={{
-          fontSize: 11, fontWeight: 700, color: T.muted, fontFamily: T.mono,
-          letterSpacing: 1, textTransform: "uppercase",
+          fontSize: T.fs.secondary, fontWeight: 700, color: T.muted, fontFamily: T.sans,
         }}>
           {t("me.attentionTitle")}
         </div>
         {!suppressCount && <span style={{
-          fontFamily: T.mono, color: T.muted, fontSize: 10, fontWeight: 900,
+          fontFamily: T.sans, color: T.muted, fontSize: T.fs.secondary, fontWeight: 700,
           padding: "4px 8px", borderRadius: 999,
           background: "transparent", border: "none",
         }}>
@@ -273,7 +272,7 @@ function AttentionCard({
 
       <div style={{
         display: "flex", alignItems: "center", gap: 7, marginBottom: 12,
-        fontFamily: T.mono, fontSize: 12, fontWeight: 700, color: tone,
+        fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700, color: tone,
       }}>
         <span style={{
           width: 7, height: 7, borderRadius: "50%", background: tone,

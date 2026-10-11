@@ -42,7 +42,7 @@ export const app: Record<string, string> = {
     "Mi Chama y Más barato son los valores predeterminados. Cambia a Todos para descubrir ofertas de otros países y comunidades.",
   "app.coachBrowsePreferencesTitle": "Elige qué muestra Explorar",
   "app.coachCreateBody":
-    "Este botón ✎ abre tres preguntas sencillas. Chama encuentra una coincidencia o prepara la oferta correcta.",
+    "Crear abre tres preguntas sencillas. Chama encuentra una coincidencia o prepara la oferta correcta.",
   "app.coachCreateTitle": "Empieza con lo que tienes",
   "app.coachDashboardBody":
     "Tu reputación, estadísticas, ganancias y calificaciones llegarán aquí — el lugar que muestra cómo te va mientras intercambias.",
@@ -183,7 +183,7 @@ export const app: Record<string, string> = {
   "app.startingOrder": "Iniciando tu pedido…",
   "app.strandedClaimBody":
     "⚠ Esta nota ES los sats de tu intercambio liquidado. Chama no pudo canjearla automáticamente — impórtala a Fedi o a cualquier billetera Fedimint de esta federación, o guárdala en un lugar seguro AHORA. Borrar los datos del navegador destruye la única copia.",
-  "app.strandedClaimHeadline": "RECLAMO VARADO · NOTA AL PORTADOR",
+  "app.strandedClaimHeadline": "Reclamo varado · nota al portador",
   "app.strandedClaimUnresolvedBody":
     "⚠ Esta nota se reportó como ya canjeada, pero Chama no pudo confirmar que TU billetera fuera acreditada. Guárdala de todos modos y luego revisa tu saldo — si los sats no están ahí, esta cadena es tu evidencia y tu vía de recuperación.",
   "app.switchOverlayAfter": "…",
@@ -218,10 +218,10 @@ export const app: Record<string, string> = {
     "La billetera de Chama se desconectó. Toca Reconectar e inténtalo de nuevo.",
   "app.yourFederation": "tu federación",
   "edit.title": "Edita tu anuncio",
-  "edit.description": "DESCRIPCIÓN",
-  "edit.priceSats": "PRECIO (SATS)",
-  "edit.priceFiat": "PRECIO ({currency})",
-  "edit.stock": "STOCK",
+  "edit.description": "Descripción",
+  "edit.priceSats": "Precio (sats)",
+  "edit.priceFiat": "Precio ({currency})",
+  "edit.stock": "Stock",
   "edit.save": "Guardar cambios",
   "edit.saving": "Guardando…",
   "edit.saved": "Anuncio actualizado.",

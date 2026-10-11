@@ -164,10 +164,10 @@ export function EcashExportModal({
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
           <div>
-            <div style={{ fontSize: 9, color: preset ? T.amber : T.muted, fontFamily: T.mono, letterSpacing: 1, marginBottom: 4 }}>
+            <div style={{ fontSize: T.fs.secondary, color: preset ? T.amber : T.muted, fontFamily: T.sans, marginBottom: 4 }}>
               {preset ? preset.headline : t("recovery.exportHeadline")}
             </div>
-            <div style={{ fontSize: 22, fontWeight: 800, color: T.text, fontFamily: T.mono }}>
+            <div style={{ fontSize: 22, fontWeight: 700, color: T.text, fontFamily: T.sans }}>
               {phase !== "ready" && <BitcoinAmount sats={sats} size={22} gap={6} glyphScale={1.2} color={T.text} glyphColor={T.muted} />}
             </div>
           </div>
@@ -176,14 +176,14 @@ export function EcashExportModal({
 
         {phase === "intro" && (
           <>
-            <div style={{ fontSize: 12, color: T.muted, fontFamily: T.mono, lineHeight: 1.6, marginBottom: 12 }}>
+            <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, lineHeight: 1.6, marginBottom: 12 }}>
               {t("recovery.exportIntroBefore")} <strong style={{ color: T.text }}>{federationLabel}</strong>{" "}
               {t("recovery.exportIntroAfter")}
             </div>
             <div style={{
               padding: "10px 12px", borderRadius: T.rs, marginBottom: 14,
               background: T.amberDim, border: `1px solid ${T.amber}44`,
-              color: T.amber, fontFamily: T.mono, fontSize: 10, lineHeight: 1.6,
+              color: T.amber, fontFamily: T.sans, fontSize: T.fs.secondary, lineHeight: 1.6,
             }}>
               {t("recovery.exportWarnBefore")} <strong>{t("recovery.exportWarnIs")}</strong>{" "}
               {t("recovery.exportWarnAfter", { federation: federationLabel })}
@@ -193,8 +193,8 @@ export function EcashExportModal({
               style={{
                 width: "100%", padding: "12px 16px", borderRadius: T.rs,
                 background: T.accent, border: `1px solid ${T.accent}`,
-                color: "#000", fontFamily: T.mono, fontSize: 12, fontWeight: 800,
-                cursor: "pointer", letterSpacing: 0.5,
+                color: T.onInk, fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
+                cursor: "pointer",
               }}
             >
               {t("recovery.exportGenerateCta")}
@@ -212,7 +212,7 @@ export function EcashExportModal({
               background: T.purple, animation: "pulse 1.4s ease-in-out infinite",
               margin: "0 auto 12px",
             }} />
-            <div style={{ fontSize: 11, fontWeight: 600, color: T.purple, fontFamily: T.mono, letterSpacing: 1 }}>
+            <div style={{ fontSize: T.fs.secondary, fontWeight: 600, color: T.purple, fontFamily: T.sans,}}>
               {t("recovery.exportMinting")}
             </div>
           </div>
@@ -230,7 +230,7 @@ export function EcashExportModal({
               style={{
                 width: "100%", padding: "9px 12px", borderRadius: 999, marginBottom: 18,
                 background: "none", border: `1px solid ${T.border}`, color: T.muted,
-                fontFamily: T.mono, fontSize: 11, fontWeight: 700, cursor: "pointer",
+                fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700, cursor: "pointer",
               }}
             >
               {t("recovery.exportKeepPending")}
@@ -244,7 +244,7 @@ export function EcashExportModal({
                 border: `1px solid ${confirmClear ? T.amber : T.border}`,
                 color: confirmClear ? "#000" : T.muted,
                 opacity: confirmClear ? 1 : 0.58,
-                fontFamily: T.mono, fontSize: 10, fontWeight: 700, cursor: "pointer",
+                fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700, cursor: "pointer",
               }}
             >
               {clearing
@@ -266,7 +266,7 @@ export function EcashExportModal({
               <div style={{ fontSize: 12, fontWeight: 700, color: T.red, fontFamily: T.sans, marginBottom: 4 }}>
                 {t("recovery.exportErrorTitle")}
               </div>
-              <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+              <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
                 {error}
               </div>
             </div>
@@ -275,7 +275,7 @@ export function EcashExportModal({
               style={{
                 width: "100%", padding: "11px 16px", borderRadius: T.rs, marginBottom: 8,
                 background: T.accent, border: `1px solid ${T.accent}`,
-                color: "#000", fontFamily: T.mono, fontSize: 12, fontWeight: 800, cursor: "pointer",
+                color: T.onInk, fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700, cursor: "pointer",
               }}
             >
               {t("recovery.tryAgain")}
@@ -285,7 +285,7 @@ export function EcashExportModal({
               style={{
                 width: "100%", padding: "9px 16px", borderRadius: T.rs,
                 background: "none", border: `1px solid ${T.border}`, color: T.muted,
-                fontFamily: T.mono, fontSize: 11, fontWeight: 700, cursor: "pointer",
+                fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700, cursor: "pointer",
               }}
             >
               {t("common.close")}
