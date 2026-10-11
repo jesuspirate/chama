@@ -496,6 +496,7 @@ export function DestinationPicker({
         </button>
         </div>
         {scannerOpen && <Suspense fallback={null}><QRScanner
+          pasteTitle={t("claim.pasteDestination")} pastePlaceholder={t("claim.destinationPlaceholder")} pasteInputType="text"
           onClose={() => setScannerOpen(false)}
           onScan={(scanned) => {
             setScannerOpen(false);

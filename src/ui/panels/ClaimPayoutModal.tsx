@@ -1,3 +1,4 @@
+import { missingWebCrypto } from "../browser-capability-copy.js";
 import type { OnchainInfo } from "../../fedimint/fedimint-client.js";
 import { HoldToConfirm, buttonStyle } from "../components/Button.js";
 import { CLAIM_HOLD_IN_SHEET } from "../claim-hold.js";
@@ -2252,7 +2253,8 @@ function TerminalPanel({
   // (in addition to the App-level toast wrapper) so the in-modal
   // terminal panel reads cleanly even on the brief beat before the
   // modal closes and the toast takes over.
-  const humanizedError = humanizeNwcError(terminal.error);
+  const cryptoUnavailable = missingWebCrypto(terminal.error);
+  const humanizedError = cryptoUnavailable ? t("claim.browserNeedsHttps") : humanizeNwcError(terminal.error);
 
   if (terminal.kind === "claim-failed") {
     const settlementFailed = /reissue|consumed|settle/i.test(terminal.error);
@@ -2264,7 +2266,11 @@ function TerminalPanel({
     // amber and offers Try again instead of a red dead end (Jet, 2026-09-20).
     const incompleteChain = /not fully loaded|may be incomplete|no lock data|no shares available/i
       .test(terminal.error);
-    if (incompleteChain) {
+    if (cryptoUnavailable) {
+      title = t("claim.browserCannotClaim");
+      subtitle = humanizedError;
+      tone = T.amber; toneDim = T.amberDim; icon = "!";
+    } else if (incompleteChain) {
       title = t("claim.titleTradeNotSynced");
       subtitle = t("claim.bodyTradeNotSynced") + (terminal.error.match(/ \([A-Z_]+(?: · [^)]*)?\)$/)?.[0] ?? "");
       tone = T.amber;

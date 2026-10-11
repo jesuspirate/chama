@@ -294,4 +294,10 @@ export const claim: Record<string, string> = {
   "claim.scan": "Scan",
   "claim.toDestination": "to {destination}",
   "claim.holdToSend": "Hold to send {amount} sats",
+  "claim.cameraNeedsHttps": "Camera scanning needs HTTPS. Open the secure preview, or paste the destination instead.",
+  "claim.cameraUnavailable": "The camera is unavailable in this browser. Paste the destination instead.",
+  "claim.browserCannotClaim": "This page cannot claim yet",
+  "claim.browserNeedsHttps": "This page needs HTTPS to claim. Open Chama through a secure HTTPS address and retry. Voting again will not fix this browser limitation.",
+  "claim.pasteDestination": "Paste a Lightning destination",
+  "claim.destinationPlaceholder": "Lightning address, invoice or receive code",
 };
