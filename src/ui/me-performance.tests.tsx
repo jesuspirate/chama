@@ -47,7 +47,7 @@ const meProps = (list: EscrowState[]): ComponentProps<typeof MeScreen> => ({
 } as unknown as ComponentProps<typeof MeScreen>);
 
 {
-  assert.equal(ME_TRADE_PAGE_SIZE, 30);
+  assert.equal(ME_TRADE_PAGE_SIZE, 10);
   assert.equal(searchMeTrades(trades, "", noName), trades, "an empty search is the whole list, same array");
   assert.deepEqual(searchMeTrades(trades, "bicycle", noName).map(t => t.id), ["me_perf_137"],
     "search finds a trade far past the first page");
@@ -78,18 +78,18 @@ console.log("PASS Me rows: only the first 8 fade in; the Live ring still plays")
     </LangProvider>,
   );
   const rows = html.match(/data-me-trade-row/g)?.length ?? 0;
-  assert.equal(rows, ME_TRADE_PAGE_SIZE, "Me renders 30 of 150 trades");
-  assert.match(html, /data-me-trade-show-more[^>]*>Show 30 more</, "a Show more button offers the next 30");
+  assert.equal(rows, ME_TRADE_PAGE_SIZE, "Me renders 10 of 150 trades");
+  assert.match(html, /data-me-trade-show-more[^>]*>Show 10 more</, "a Show more button offers the next 10");
   assert.match(html, /data-me-trade-search/, "a search box appears once there are more trades than one page");
   const few = renderToStaticMarkup(
     <LangProvider>
-      <MeScreen {...meProps(trades.slice(0, 12))} />
+      <MeScreen {...meProps(trades.slice(0, 8))} />
     </LangProvider>,
   );
-  assert.equal(few.match(/data-me-trade-row/g)?.length ?? 0, 12);
+  assert.equal(few.match(/data-me-trade-row/g)?.length ?? 0, 8);
   assert.doesNotMatch(few, /data-me-trade-show-more|data-me-trade-search/, "no paging or search for a short history");
 }
-console.log("PASS Me list: 30 rows, Show more, search box only for long histories");
+console.log("PASS Me list: 10 rows, Show more, search box only for long histories");
 
 {
   const a = { id: "x", n: 1 }, b = { id: "y", n: 2 };
