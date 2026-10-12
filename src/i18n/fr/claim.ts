@@ -18,6 +18,7 @@ export const claim: Record<string, string> = {
   "claim.cashOutCurrency": "Retirer en {currency}",
   "claim.yourWallets": "Vos portefeuilles",
   "claim.ecashMethod": "Obtenir un billet ecash",
+  "claim.sandboxKeep": "Garder dans le portefeuille sandbox",
   "claim.ecashMethodBlurb": "Réclamez une note au porteur prête pour Fedi. Chama garde une copie de récupération jusqu’à votre confirmation.",
   "claim.ecashReadyHeadline": "RÉCLAMATION PRÊTE · IMPORTER L’ECASH",
   "claim.ecashReadyBody": "Scannez avec Fedi, puis confirmez seulement quand Fedi affiche les sats. Chama garde cette note exacte récupérable jusqu’à votre accord.",
