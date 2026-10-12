@@ -1035,7 +1035,7 @@ export interface EscrowState {
   /** Positively refused signed ecash LOCKs, outside committed custody. */
   /** Device-local saved funding for a refused LOCK; never consensus custody. */
   rejectedLockRecovery?: { eventId: string; pubkey: string; amountMsats: number };
-  rejectedLocks?: { event: ParsedEscrowEvent<LockPayload>; code: "ORDER_NOT_FINALIZED" }[];
+  rejectedLocks?: { event: ParsedEscrowEvent<LockPayload>; code: "ORDER_NOT_FINALIZED" | "CANCELLED_BEFORE_LOCK" }[];
   /** Rejected advisory transitions retained for an honest reconstruction report. */
   replayNotes?: ReplayNote[];
   /** Unique escrow identifier (d-tag value) */

@@ -115,4 +115,13 @@ export const recovery: Record<string, string> = {
   "recovery.unknownCounterparty": "an unknown counterparty",
   "recovery.youFunded": "You funded",
   "recovery.yourRole": "Your role:",
+  "recovery.seed.codeTitle": "Enter your wallet recovery code",
+  "recovery.seed.codeLabel": "Wallet recovery code",
+  "recovery.seed.restoreWarning": "Restoring puts this wallet on this device. Stop using it on your old device. Two devices using one wallet can lose money.",
+  "recovery.seed.restoreConfirm": "I will stop using this wallet on my old device.",
+  "recovery.seed.restoreAction": "Restore wallet access",
+  "recovery.seed.wrongCode": "Wrong wallet recovery code. Check it and try again.",
+  "recovery.seed.openError": "Couldn’t open your wallet backup. Check your Nostr signer and connection, then try again.",
+  "recovery.seed.restored": "Wallet access restored. Retry the action you were doing.",
+  "recovery.seed.restoring": "Restoring…",
 };
