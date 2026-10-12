@@ -26,6 +26,7 @@ import { nextRoundTemplate } from "../chama/circle.js";
 import type { CircleRound } from "../chama/types.js";
 import { getTrustedArbiterPool } from "../arbiters/pool.js";
 import { useState, useEffect, useMemo, useRef, useCallback, lazy, Suspense, type ReactNode } from "react";
+import { sameRecord, useStableList } from "./stable-list.js";
 import { Capacitor } from "@capacitor/core";
 import { Preferences } from "@capacitor/preferences";
 
@@ -1617,7 +1618,13 @@ export default function App() {
     setRetiredTick((n) => n + 1);
   };
 
-  const visibleTrades = [...escrows.values()]
+  // Me with 100+ trades lagged because these lists were rebuilt as new arrays
+  // on every App render, which threw away every memo below them. Each is now
+  // recomputed only when an input changes, and keeps its previous identity
+  // while the result is equal. Contents are unchanged: the clock (seconds),
+  // the retired ledger and the escrow map are all inputs.
+  const retiredKey = [...retiredIds].sort().join(",");
+  const visibleTrades = useStableList(useMemo(() => [...escrows.values()]
     .filter(s => {
       // Superseded untouched listings stay hidden, but buyer activity upgrades
       // an old relay-visible listing into a real trade that must resurface.
@@ -1626,11 +1633,16 @@ export default function App() {
       if (s.createdAt && (now - s.createdAt) > HIDE_AFTER) return false;
       return true;
     })
-    .sort(compareTradeChronology);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- retiredKey is retiredIds' content
+    .sort(compareTradeChronology), [escrows, retiredKey, now]));
 
   // Participant history must not inherit Browse's seven-day retention filter:
   // completed payouts remain recoverable on a fresh/cross-device client.
-  const myTrades = participantTradeHistory(escrows.values(), pubkey, now, retiredIds);
+  const myTrades = useStableList(useMemo(
+    () => participantTradeHistory(escrows.values(), pubkey, now, retiredIds),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- retiredKey is retiredIds' content
+    [escrows, pubkey, now, retiredKey],
+  ));
   useEffect(() => {
     if (pubkey && myTradesLoading) return;
     const cacheWake = () => {
@@ -1653,10 +1665,12 @@ export default function App() {
   // everything currently loaded so there are no dupes; the Me "All" view
   // renders these as compact "earlier trades" rows below the live list. Cheap
   // synchronous scoped-localStorage read; recomputed as escrows load.
-  const archivedTrades = pubkey
+  // Read fresh every render (the durable index can change without any input
+  // here changing), but the array only changes when an entry does.
+  const archivedTrades = useStableList(pubkey
     ? archivedTradeEntries(myTrades.map((trade) => trade.id))
         .filter((entry) => !retiredTradeIndexEntryIsStillSuperseded(entry, retiredIds))
-    : [];
+    : [], sameRecord);
 
   const [renewingId, setRenewingId] = useState<string | null>(null);
   // Store renewal is an explicit, per-identity preference. Older builds
@@ -1995,14 +2009,20 @@ export default function App() {
     for (const r of listPendingRedemptions()) settledClaimIds.add(r.escrowId);
     for (const c of listClaimCredits()) settledClaimIds.add(c.escrowId);
   }
-  const ordinaryNeedsYouTrades = pubkey
-    ? selectNeedsYouTrades({ escrows: escrows.values(), userPubkey: pubkey, nowSec: now, settledClaimIds, onchainObservations })
-    : [];
-  const needsYouTrades = mergeOnchainPayoutAttention({
-    needsYou: ordinaryNeedsYouTrades,
-    escrows: escrows.values(),
-    pendingEscrowIds: pendingOnchainPayoutIds,
-  });
+  // The ledgers above are still read on every render, so a new credit
+  // suppresses on the very next paint; only the selection waits for a change.
+  const settledClaimKey = [...settledClaimIds].sort().join(",");
+  const needsYouTrades = useStableList(useMemo(() => {
+    const ordinaryNeedsYouTrades = pubkey
+      ? selectNeedsYouTrades({ escrows: escrows.values(), userPubkey: pubkey, nowSec: now, settledClaimIds, onchainObservations })
+      : [];
+    return mergeOnchainPayoutAttention({
+      needsYou: ordinaryNeedsYouTrades,
+      escrows: escrows.values(),
+      pendingEscrowIds: pendingOnchainPayoutIds,
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- settledClaimKey is settledClaimIds' content
+  }, [escrows, pubkey, now, settledClaimKey, onchainObservations, pendingOnchainPayoutIds]));
   const needsYouCount = needsYouTrades.length;
   const attentionTrade = needsYouTrades[0] ?? activeTrade;
   // Known work stays actionable during hydration; syncing only fills the

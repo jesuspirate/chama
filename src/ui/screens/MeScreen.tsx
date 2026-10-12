@@ -33,7 +33,8 @@ import { ProfileAvatar } from "../components/ProfileAvatar.js";
 // "Chama doesn't manage your Nostr profile" educational copy so the
 // doctrine is visible from day one.
 
-import { useState, useEffect, useMemo, useRef, useDeferredValue } from "react";
+import { useState, useEffect, useMemo, useRef, useDeferredValue, useCallback, memo } from "react";
+import { useStableCallback } from "../stable-list.js";
 import { useT, translate, getCurrentLang } from "../../i18n/index.js";
 import { LanguageRow } from "../components/LanguagePills.js";
 import {
@@ -69,7 +70,7 @@ import {
 } from "../decisions.js";
 import { AttentionQueue } from "../components/AttentionQueue.js";
 import { latestParticipantTradePointer } from "../latest-trade.js";
-import { buildMeTradeCounts, filterMeTrades, type MeTradeFilter, type MeTradeCounts } from "../me-trade-filters.js";
+import { buildMeTradeCounts, filterMeTrades, searchMeTrades, ME_TRADE_PAGE_SIZE, type MeTradeFilter, type MeTradeCounts } from "../me-trade-filters.js";
 import { counterpartyToRate, type RatingThumb } from "../../reputation/ratings.js";
 import { RatingTap } from "../components/RatingTap.js";
 import {
@@ -111,7 +112,7 @@ import { type AmountDisplayMode } from "../amount-display.js";
 import { AmountDisplayProvider, TradeAmount } from "../components/TradeAmount.js";
 import { BitcoinAmount } from "../components/BitcoinAmount.js";
 import type { TradeIndexEntry } from "../../escrow-engine/trade-index.js";
-import { readKind0Toggle, writeKind0Toggle, readLocalTradeName, writeLocalTradeName, sanitizeTradeName, generatedNameFor, type NostrProfileNameMap } from "../nostr-profiles.js";
+import { readKind0Toggle, writeKind0Toggle, readLocalTradeName, writeLocalTradeName, sanitizeTradeName, generatedNameFor, profileNameFor, type NostrProfileNameMap } from "../nostr-profiles.js";
 import { backgroundPushEnabled, enableBackgroundPush, disableBackgroundPush } from "../../notifications/watch-tags.js";
 import { isWebPushSupported, iosNeedsInstallForPush } from "../../notifications/web-push-client.js";
 
@@ -305,6 +306,14 @@ export function MeScreen({
   stuckNativeLocks?: PendingNativeLock[];
 }) {
   const { t, lang } = useT();
+  // App passes fresh inline callbacks on every render. Stable wrappers let the
+  // memoised Me tabs below skip redrawing unless their own data changed.
+  const openTrade = useStableCallback(onOpenTrade)!;
+  const refreshTrades = useStableCallback(onRefreshTrades);
+  const rateCounterparty = useStableCallback(onRateCounterparty);
+  const openArchivedTrade = useStableCallback(onOpenArchivedTrade);
+  const sellerEditListing = useStableCallback(onSellerEditListing);
+  const sellerDeleteListing = useStableCallback(onSellerDeleteListing);
   const myTrades = useMemo(() => discoveredTrades.filter(hasVerifiedTradeCreate), [discoveredTrades]);
   const unverifiedIds = useMemo(() => {
     const verifiedIds = new Set(myTrades.map(trade => trade.id));
@@ -1023,9 +1032,9 @@ export function MeScreen({
       {paneMounted("seller") && <div data-me-pane="seller" hidden={shownTab !== "seller"}>{!hydratingTrades && hasSellerDashboard && (
         <SellerDashboardPanel
           dashboard={dashboard}
-          onOpenTrade={onOpenTrade}
-          onSellerEditListing={onSellerEditListing}
-          onSellerDeleteListing={onSellerDeleteListing}
+          onOpenTrade={openTrade}
+          onSellerEditListing={sellerEditListing}
+          onSellerDeleteListing={sellerDeleteListing}
         />
       )}</div>}
 
@@ -1038,12 +1047,12 @@ export function MeScreen({
             activeFilter={tradeFilter}
             onFilter={setTradeFilter}
             pubkey={pubkey}
-            onOpenTrade={onOpenTrade}
-            onRefreshTrades={onRefreshTrades}
-            onRateCounterparty={onRateCounterparty}
+            onOpenTrade={openTrade}
+            onRefreshTrades={refreshTrades}
+            onRateCounterparty={rateCounterparty}
             myGivenRatings={myGivenRatings}
             unverifiedIds={unverifiedIds}
-            onOpenArchivedTrade={onOpenArchivedTrade}
+            onOpenArchivedTrade={openArchivedTrade}
             amountDisplayMode={amountDisplayMode}
             quoteCurrency={quoteCurrency}
             profileNames={profileNames}
@@ -1073,7 +1082,7 @@ export function MeScreen({
       {paneMounted("arbiter") && <div data-me-pane="arbiter" hidden={shownTab !== "arbiter"}>{!hydratingTrades && dashboard.arbiterVisible && (
         <ArbiterDashboardPanel
           dashboard={dashboard}
-          onOpenTrade={onOpenTrade}
+          onOpenTrade={openTrade}
           viewerPubkey={pubkey}
         />
       )}</div>}
@@ -1232,7 +1241,7 @@ function Accordion({
 
 
 
-function MeTradeHistory({
+const MeTradeHistory = memo(function MeTradeHistory({
   trades,
   totalCount,
   counts,
@@ -1272,7 +1281,25 @@ function MeTradeHistory({
    *  briefly rings the live rows. */
   highlightLive?: number;
 }) {
-  const { t } = useT();
+  const { t, lang } = useT();
+  // Search covers every trade in the active filter; only the list on screen
+  // is paged (30 at a time) so 100+ trades never render and animate at once.
+  const [query, setQuery] = useState("");
+  const searchQuery = useDeferredValue(query);
+  const [shownCount, setShownCount] = useState(ME_TRADE_PAGE_SIZE);
+  useEffect(() => { setShownCount(ME_TRADE_PAGE_SIZE); }, [activeFilter, searchQuery]);
+  const nameFor = useCallback(
+    (pk: string) => profileNameFor(profileNames, pk, Boolean(kind0Enabled), lang),
+    [profileNames, kind0Enabled, lang],
+  );
+  const matched = useMemo(() => searchMeTrades(trades, searchQuery, nameFor), [trades, searchQuery, nameFor]);
+  const page = matched.length > shownCount ? matched.slice(0, shownCount) : matched;
+  const remaining = matched.length - page.length;
+  // One lookup for "already rated", instead of scanning every rating per row.
+  const ratedKeys = useMemo(
+    () => new Set((myGivenRatings ?? []).map(r => `${r.tradeId}:${r.ratee}`)),
+    [myGivenRatings],
+  );
   const activeFilterKey = ME_TRADE_FILTERS.find((filter) => filter.id === activeFilter)?.labelKey ?? "me.filterAll";
   const activeFilterLabel = t(activeFilterKey);
   const [refreshing, setRefreshing] = useState(false);
@@ -1367,6 +1394,22 @@ function MeTradeHistory({
         })}
       </div>
 
+      {totalCount > ME_TRADE_PAGE_SIZE && (
+        <input
+          type="search"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder={t("me.searchTradesPlaceholder")}
+          aria-label={t("me.searchTradesPlaceholder")}
+          data-me-trade-search
+          style={{
+            width: "100%", boxSizing: "border-box", minHeight: 44, marginBottom: 12,
+            padding: "10px 14px", borderRadius: T.rs, border: `1px solid ${T.border}`,
+            background: T.surface, color: T.text, fontFamily: T.sans, fontSize: T.fs.body,
+          }}
+        />
+      )}
+
       {totalCount === 0 ? (
         <div style={{
           padding: 24, textAlign: "center",
@@ -1383,61 +1426,46 @@ function MeTradeHistory({
         }}>
           {t("me.nothingInView")}
         </div>
+      ) : matched.length === 0 ? (
+        <div data-me-trade-no-match style={{
+          padding: 18, textAlign: "center",
+          background: T.surface, border: `1px dashed ${T.border}`,
+          borderRadius: T.r, color: T.muted, fontFamily: T.sans, fontSize: T.fs.secondary,
+        }}>
+          {t("me.searchTradesNoMatch", { query: searchQuery.trim() })}
+        </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {trades.map((s, i) => {
-            // v1 ratings: a settled-but-UNRATED trade keeps a one-tap thumb in
-            // history (the "rate later" path for users who bolt with their sats).
-            // Once rated, the tap drops — the slot is replaceable, so it reappears
-            // nowhere and double-rating is impossible.
-            // Chama shares never prompt for a rating: a savings circle has no
-            // counterparty performance to judge — punctuality standing is the
-            // circle's reputation, chain-derived and automatic (Jet, launch
-            // night review).
-            const ratee = onRateCounterparty && s.status === EscrowStatus.COMPLETED && !s.chamaPolicy
-              ? counterpartyToRate(s, pubkey)
-              : null;
-            const alreadyRated = ratee
-              ? (myGivenRatings ?? []).some(r => r.tradeId === s.id && r.ratee === ratee.toLowerCase())
-              : false;
-            // The pill's number is the sum of the viewer's live commitments,
-            // which is narrower than this tab. So ring exactly those rows:
-            // the tab stays a complete list of what is in flight, and the
-            // glow answers "which of these is the pill talking about?".
-            const ringing = Boolean(highlightLive)
-              && activeFilter === "live"
-              && liveCommitmentForViewer(s, pubkey, Math.floor(Date.now() / 1000));
-            return (
-              <div
-                /* The pill's glow never fired: this row's INLINE animation
-                   (fadeIn) outranks the .chama-pill-target class rule, so the
-                   ring was declared and then immediately overridden. Compose
-                   both on the inline property instead, and key the row on the
-                   request timestamp so a SECOND tap of the pill remounts it
-                   and replays the ring rather than finding the class already
-                   applied and doing nothing. */
-                key={ringing ? `${s.id}:${highlightLive}` : s.id}
-                className={ringing ? "chama-pill-target" : undefined}
-                style={{
-                  animation: ringing
-                    ? `fadeIn 0.4s ease ${i * 0.05}s both, chamaPillTarget 2.6s ease-out ${i * 0.05}s 2`
-                    : `fadeIn 0.4s ease ${i * 0.05}s both`,
-                }}
-              >
-                <TradeCard state={s} pubkey={pubkey} onSelect={() => onOpenTrade(s.id)} amountDisplayMode={amountDisplayMode} quoteCurrency={quoteCurrency} profileNames={profileNames} kind0Enabled={kind0Enabled} />
-                {s.status === EscrowStatus.COMPLETED && s.escrowMode === "onchain" && s.onchainPayoutTxid && (
-                  <div style={{ color: T.muted, fontSize: 11, fontFamily: T.mono, padding: "4px 12px" }}>
-                    <PayoutTransactionDetails txid={s.onchainPayoutTxid} depositTxid={s.lock.onchain?.fundingTxid} network={s.lock.onchain?.network === "signet" ? SIGNET : MAINNET} />
-                  </div>
-                )}
-                {/* Safety net Jetty asked for: rate the counterparty straight from
-                    history (👍/👎) if you forgot or backed out of the trade. */}
-                {ratee && !alreadyRated && onRateCounterparty && (
-                  <RatingTap tradeId={s.id} ratee={ratee} onRate={onRateCounterparty} />
-                )}
-              </div>
-            );
-          })}
+          {page.map((s, i) => (
+            <MeTradeRow
+              key={s.id}
+              trade={s}
+              index={i}
+              pubkey={pubkey}
+              onOpenTrade={onOpenTrade}
+              onRateCounterparty={onRateCounterparty}
+              alreadyRatedKeys={ratedKeys}
+              ringAt={highlightLive && activeFilter === "live" ? highlightLive : 0}
+              amountDisplayMode={amountDisplayMode}
+              quoteCurrency={quoteCurrency}
+              profileNames={profileNames}
+              kind0Enabled={kind0Enabled}
+            />
+          ))}
+          {remaining > 0 && (
+            <button
+              type="button"
+              data-me-trade-show-more
+              onClick={() => setShownCount(count => count + ME_TRADE_PAGE_SIZE)}
+              style={{
+                minHeight: 48, borderRadius: T.rs, border: `1px solid ${T.border}`,
+                background: T.surface, color: T.text, fontFamily: T.sans,
+                fontSize: T.fs.secondary, fontWeight: 700, cursor: "pointer",
+              }}
+            >
+              {t("me.showMoreTrades", { count: Math.min(remaining, ME_TRADE_PAGE_SIZE) })}
+            </button>
+          )}
         </div>
       )}
 
@@ -1445,7 +1473,94 @@ function MeTradeHistory({
 
     </section>
   );
+});
+
+/** Only the first rows fade in, with a short stagger. With 150 trades the old
+ *  0.05s-per-row stagger left the last row invisible for 7.5s and ran every
+ *  animation at once on each filter switch. */
+export const ME_ROW_ANIMATED = 8;
+export function meRowAnimation(index: number, ringing: boolean): string | undefined {
+  const delay = index < ME_ROW_ANIMATED ? `${index * 0.04}s` : "0s";
+  const fade = index < ME_ROW_ANIMATED ? `fadeIn 0.3s ease ${delay} both` : "";
+  const ring = ringing ? `chamaPillTarget 2.6s ease-out ${delay} 2` : "";
+  return [fade, ring].filter(Boolean).join(", ") || undefined;
 }
+
+/** One row of Me's trade history. Memoised: a row redraws only when its own
+ *  trade, the viewer, its rating state or the display settings change. */
+const MeTradeRow = memo(function MeTradeRow({
+  trade: s,
+  index: i,
+  pubkey,
+  onOpenTrade,
+  onRateCounterparty,
+  alreadyRatedKeys,
+  ringAt,
+  amountDisplayMode,
+  quoteCurrency,
+  profileNames,
+  kind0Enabled,
+}: {
+  trade: EscrowState;
+  index: number;
+  pubkey: string;
+  onOpenTrade: (id: string) => void;
+  onRateCounterparty?: (tradeId: string, ratee: string, thumb: RatingThumb) => Promise<void>;
+  alreadyRatedKeys: ReadonlySet<string>;
+  /** Non-zero while the Live pill's "which trades?" ring is requested. */
+  ringAt: number;
+  amountDisplayMode?: AmountDisplayMode;
+  quoteCurrency?: string | null;
+  profileNames?: NostrProfileNameMap;
+  kind0Enabled?: boolean;
+}) {
+  // v1 ratings: a settled-but-UNRATED trade keeps a one-tap thumb in
+  // history (the "rate later" path for users who bolt with their sats).
+  // Once rated, the tap drops — the slot is replaceable, so it reappears
+  // nowhere and double-rating is impossible.
+  // Chama shares never prompt for a rating: a savings circle has no
+  // counterparty performance to judge — punctuality standing is the
+  // circle's reputation, chain-derived and automatic (Jet, launch
+  // night review).
+  const ratee = onRateCounterparty && s.status === EscrowStatus.COMPLETED && !s.chamaPolicy
+    ? counterpartyToRate(s, pubkey)
+    : null;
+  const alreadyRated = ratee ? alreadyRatedKeys.has(`${s.id}:${ratee.toLowerCase()}`) : false;
+  // The pill's number is the sum of the viewer's live commitments,
+  // which is narrower than this tab. So ring exactly those rows:
+  // the tab stays a complete list of what is in flight, and the
+  // glow answers "which of these is the pill talking about?".
+  const ringing = Boolean(ringAt)
+    && liveCommitmentForViewer(s, pubkey, Math.floor(Date.now() / 1000));
+  const open = useCallback(() => onOpenTrade(s.id), [onOpenTrade, s.id]);
+  return (
+    <div
+      /* The pill's glow never fired: this row's INLINE animation
+         (fadeIn) outranks the .chama-pill-target class rule, so the
+         ring was declared and then immediately overridden. Compose
+         both on the inline property instead, and key the row on the
+         request timestamp so a SECOND tap of the pill remounts it
+         and replays the ring rather than finding the class already
+         applied and doing nothing. */
+      key={ringing ? `${s.id}:${ringAt}` : s.id}
+      className={ringing ? "chama-pill-target" : undefined}
+      data-me-trade-row
+      style={{ animation: meRowAnimation(i, ringing) }}
+    >
+      <TradeCard state={s} pubkey={pubkey} onSelect={open} amountDisplayMode={amountDisplayMode} quoteCurrency={quoteCurrency} profileNames={profileNames} kind0Enabled={kind0Enabled} />
+      {s.status === EscrowStatus.COMPLETED && s.escrowMode === "onchain" && s.onchainPayoutTxid && (
+        <div style={{ color: T.muted, fontSize: 11, fontFamily: T.mono, padding: "4px 12px" }}>
+          <PayoutTransactionDetails txid={s.onchainPayoutTxid} depositTxid={s.lock.onchain?.fundingTxid} network={s.lock.onchain?.network === "signet" ? SIGNET : MAINNET} />
+        </div>
+      )}
+      {/* Safety net Jetty asked for: rate the counterparty straight from
+          history (👍/👎) if you forgot or backed out of the trade. */}
+      {ratee && !alreadyRated && onRateCounterparty && (
+        <RatingTap tradeId={s.id} ratee={ratee} onRate={onRateCounterparty} />
+      )}
+    </div>
+  );
+});
 
 type MeDashboardModel = {
   needsYou: EscrowState[];
@@ -1472,7 +1587,7 @@ const SELLER_QUEUE_LABEL_KEY: Record<SellerQueueKey, string> = {
   stock: "me.queueStock",
 };
 
-function SellerDashboardPanel({
+const SellerDashboardPanel = memo(function SellerDashboardPanel({
   dashboard,
   onOpenTrade,
   onSellerEditListing,
@@ -1582,7 +1697,7 @@ function SellerDashboardPanel({
       />
     </div>
   );
-}
+});
 
 function DashboardMetric({
   label,
@@ -1863,7 +1978,7 @@ const ARBITER_QUEUE_LABEL_KEY: Record<ArbiterQueueKey, string> = {
   settled: "me.queueSettled",
 };
 
-function ArbiterDashboardPanel({
+const ArbiterDashboardPanel = memo(function ArbiterDashboardPanel({
   dashboard,
   onOpenTrade,
   viewerPubkey,
@@ -1963,7 +2078,7 @@ function ArbiterDashboardPanel({
       />
     </div>
   );
-}
+});
 
 function ArbiterQueueList({
   queue,

@@ -70,3 +70,41 @@ export function isDoneTrade(trade: EscrowState): boolean {
     trade.status === EscrowStatus.CANCELLED
   );
 }
+
+/** How many trades Me shows before "Show more" (Jet, 6.4.24: Me lagged with
+ *  100+ trades because every row rendered and animated at once). */
+export const ME_TRADE_PAGE_SIZE = 30;
+
+/** Text a trade can be found by in Me's search: what its card shows (title,
+ *  amount, currency, community, payment methods), its id, and the names of
+ *  the people in it as the viewer sees them. */
+export function meTradeSearchText(
+  trade: EscrowState,
+  nameFor: (pubkey: string) => string | null,
+): string {
+  const people = [trade.participants.buyer, trade.participants.seller, trade.participants.arbiter, trade.initiator?.pubkey]
+    .filter((pk): pk is string => Boolean(pk))
+    .map(pk => nameFor(pk) ?? "");
+  const sats = Math.floor(trade.amountMsats / 1000);
+  return [
+    trade.description, trade.id, trade.community, trade.category, trade.status,
+    trade.fiatCurrency, trade.fiatAmount != null ? String(trade.fiatAmount) : "",
+    String(sats), sats.toLocaleString("en-US"),
+    ...(trade.paymentMethods ?? []), ...people,
+  ].filter(Boolean).join("\n").toLowerCase();
+}
+
+/** Every trade in `trades` matching all words of `query` (case-insensitive).
+ *  Searches the whole list, never just the page that is on screen. */
+export function searchMeTrades(
+  trades: EscrowState[],
+  query: string,
+  nameFor: (pubkey: string) => string | null,
+): EscrowState[] {
+  const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return trades;
+  return trades.filter(trade => {
+    const text = meTradeSearchText(trade, nameFor);
+    return words.every(word => text.includes(word));
+  });
+}
