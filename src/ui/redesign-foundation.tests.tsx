@@ -7,6 +7,8 @@ import { BottomNav, navCss, trackScrollActivity, SCROLL_IDLE_MS } from "./compon
 import { Badge } from "./components/Badge.js";
 import { ChamaBar } from "./panels/ChamaBar.js";
 import { StatusBarScrim } from "./components/StatusBarScrim.js";
+import { toastText } from "./components/Toast.js";
+import { app as enApp } from "../i18n/en/app.js";
 import { readFileSync } from "node:fs";
 import { LangProvider } from "../i18n/index.js";
 
@@ -224,3 +226,23 @@ console.log("PASS badge + capsule: lock on In escrow, sentence case, attention f
   assert.equal(caretAfter(formatRaw(parseTyped(mid, en, 0), en), meaningfulBefore(mid, 4, en), en), 4);
   console.log("PASS converter grouping: locale separators, raw round-trip, fiat decimals, stable caret");
 }
+
+{
+  // Jet (6.4.23-rc.5): a raw wallet-bridge error filled the screen in a toast.
+  const t = (key: string) => (enApp as Record<string, string>)[key] ?? key;
+  const unreachable = "Native Fedimint bridge is enabled but unreachable at http://127.0.0.1:8787/health. Start the local Rust bridge and tap Reconnect.\n\nChama diagnostics:\n{\n  \"issue\": \"native_fedimint_bridge_unavailable\"\n}";
+  assert.equal(toastText(unreachable, t), "Your wallet is still starting. Give it a few seconds, then try again.");
+  const slow = "Native Fedimint bridge /join did not answer within 30s. No sats moved.\n\nChama diagnostics:\n{\"issue\": \"native_fedimint_bridge_timeout\"}";
+  assert.equal(toastText(slow, t), "Your wallet didn't answer in time. Check your balance before you try again.");
+  // The timeout error is shared by every bridge call, payments included, so the
+  // toast must never claim that no sats moved.
+  assert.doesNotMatch(toastText(slow, t) as string, /no sats/i);
+  assert.equal(toastText("Something failed.\n\nChama diagnostics:\n{\"issue\": \"x\"}", t), "Something failed.", "diagnostics never reach a toast");
+  assert.equal(toastText("Joined as buyer", t), "Joined as buyer");
+  for (const lang of ["en", "es", "fr", "sw"]) {
+    const src = readFileSync(`src/i18n/${lang}/app.ts`, "utf8");
+    assert.match(src, /"app\.walletStarting":/, `${lang} has the wallet-starting line`);
+    assert.match(src, /"app\.walletSlow":/, `${lang} has the wallet-slow line`);
+  }
+}
+console.log("PASS toasts: wallet-bridge errors read as plain sentences, diagnostics stripped");

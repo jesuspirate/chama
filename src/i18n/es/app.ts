@@ -62,6 +62,8 @@ export const app: Record<string, string> = {
   "app.useWalletHere": "Usarla aquí",
   "app.couldntLoadTrade": "No se pudo cargar el intercambio {id}.",
   "app.couldntReconnect": "No se pudo reconectar. ¿Intentar de nuevo?",
+  "app.walletStarting": "Tu billetera todavía se está iniciando. Espera unos segundos y vuelve a intentarlo.",
+  "app.walletSlow": "Tu billetera no respondió a tiempo. Revisa tu saldo antes de volver a intentarlo.",
   "app.couldntStartOrder": "No se pudo iniciar el pedido.",
   "app.couldntSwitchTo": "No se pudo cambiar a {label}. Inténtalo de nuevo.",
   "app.countdownHoursMinutes": "en ~{h}h {m}m",
