@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { renderToStaticMarkup } from "react-dom/server";
 import { T, STATUS, ON_ATTN, applyThemeMode, typeScaleCss } from "./theme.js";
 import { holdReducer, HOLD_TO_CONFIRM_MS, ASSISTIVE_CONFIRM_WINDOW_MS, type HoldState } from "./components/Button.js";
-import { BottomNav, navCss } from "./components/BottomNav.js";
+import { BottomNav, navCss, trackScrollActivity, SCROLL_IDLE_MS } from "./components/BottomNav.js";
 import { Badge } from "./components/Badge.js";
 import { ChamaBar } from "./panels/ChamaBar.js";
 import { StatusBarScrim } from "./components/StatusBarScrim.js";
@@ -114,10 +114,10 @@ console.log("PASS hold to confirm: hold confirms once, early lift cancels, taps 
   assert.match(css, /@media \(min-width:1024px\)\{[\s\S]*\.chama-nav\{top:0;right:auto;width:240px/, "sidebar from 1024px");
   assert.match(css, /\.chama-create-plus,\.chama-create-fab\{display:none!important\}/, "phone Create hidden beside the sidebar");
   assert.match(css, /\.chama-create-fab-wrap\{display:none!important\}/, "the Android Create wrapper is hidden beside the sidebar too");
-  // Android FAB (6.4.23 RC): once the page moves the button itself turns to
-  // frosted glass (no halo around it), and every page ends with room to scroll
-  // its last control clear of the button.
-  assert.match(css, /\.chama-create-fab-scrolled \.chama-create-fab\{background:#[0-9A-Fa-f]{6}8c;[^}]*backdrop-filter:blur\(14px\)/, "the scrolled Create button is translucent and blurs what is behind it");
+  // Android FAB (6.4.23 RC): while the page scrolls the button itself is
+  // frosted glass, about half see-through (no halo around it), and every page
+  // ends with room to scroll its last control clear of the button.
+  assert.match(css, /\.chama-create-fab-scrolling \.chama-create-fab\{background:#[0-9A-Fa-f]{6}80;[^}]*backdrop-filter:blur\(14px\)[^}]*text-shadow:/, "the Create button is half see-through and blurs what is behind it while scrolling");
   assert.doesNotMatch(css, /\.chama-create-fab-wrap::before/, "no halo around the Create button");
   assert.match(css, /body:has\(\.chama-create-fab\) \.chama-shell-nav::after\{content:"";display:block;height:84px\}/);
 }
@@ -131,6 +131,32 @@ console.log("PASS hold to confirm: hold confirms once, early lift cancels, taps 
   assert.equal((app.match(/<style>\{globalCss\(\)\}<\/style>\n\s*\{useSafeAreaInsets && <StatusBarScrim \/>\}/g) ?? []).length, 3);
 }
 console.log("PASS nav: Home/Browse/Circles/Me + Create, one active tab, unique coach targets, sidebar ≥1024px");
+{
+  // Create button glass: on while scroll events arrive, solid again after the
+  // page has been still for SCROLL_IDLE_MS. Continuous scrolling never flickers.
+  const pending = new Map<number, () => void>();
+  let nextId = 1;
+  const timers = {
+    set: (fn: () => void, _ms: number) => { const id = nextId++; pending.set(id, fn); return id; },
+    clear: (id: unknown) => { pending.delete(id as number); },
+  };
+  const seen: boolean[] = [];
+  const activity = trackScrollActivity((on) => seen.push(on), SCROLL_IDLE_MS, timers);
+  activity.onScroll();
+  activity.onScroll();
+  activity.onScroll();
+  assert.deepEqual(seen, [true], "glass turns on once, however many scroll events arrive");
+  assert.equal(pending.size, 1, "each scroll event restarts the one stop timer");
+  const [[firedId, fire]] = [...pending.entries()];
+  pending.delete(firedId);
+  fire();
+  assert.deepEqual(seen, [true, false], "solid again once scrolling stops");
+  activity.onScroll();
+  assert.deepEqual(seen, [true, false, true], "glass again on the next scroll");
+  activity.dispose();
+  assert.equal(pending.size, 0, "unmount clears the stop timer");
+}
+console.log("PASS Create glass: on while scrolling, solid when scrolling stops");
 
 // ── Badge + capsule ──────────────────────────────────────────────────────────
 {

@@ -84,28 +84,55 @@ export function BottomNav({ active, onSelect, onCreate, badges }: {
   );
 }
 
+/** How long the page must stay still before the Create button is solid again. */
+export const SCROLL_IDLE_MS = 180;
+
+/** Reports true on the first scroll event and false once no scroll event has
+ *  arrived for `idleMs`. Timers are injectable for tests. */
+export function trackScrollActivity(
+  onChange: (scrolling: boolean) => void,
+  idleMs = SCROLL_IDLE_MS,
+  timers: { set: (fn: () => void, ms: number) => unknown; clear: (id: unknown) => void } = {
+    set: (fn, ms) => setTimeout(fn, ms),
+    clear: (id) => clearTimeout(id as ReturnType<typeof setTimeout>),
+  },
+): { onScroll: () => void; dispose: () => void } {
+  let idle: unknown = null;
+  let active = false;
+  return {
+    onScroll() {
+      if (!active) { active = true; onChange(true); }
+      if (idle !== null) timers.clear(idle);
+      idle = timers.set(() => { idle = null; active = false; onChange(false); }, idleMs);
+    },
+    dispose() {
+      if (idle !== null) timers.clear(idle);
+      idle = null;
+    },
+  };
+}
+
 /** Phone Create control: "+" in the top bar, or an extended FAB on Android.
  *  Hidden on wide screens, where the sidebar carries Create. */
 export function CreateButton({ onCreate }: { onCreate: () => void }) {
   const { t } = useT();
   const android = isAndroidUserAgent();
-  // Jet (6.4.23 RC, Pixel 8): once the page moves, content slides under the
-  // floating Create button. The button itself turns to frosted glass, so the
-  // page shows through it, blurred, and it is plain that content continues.
-  const [scrolled, setScrolled] = useState(false);
+  // Jet (6.4.23 RC, Pixel 8): content slides under the floating Create button.
+  // While the page scrolls, the button itself turns to frosted glass so the page
+  // shows through it, blurred; it is solid again once scrolling stops.
+  const [scrolling, setScrolling] = useState(false);
   useEffect(() => {
     if (!android || typeof window === "undefined") return;
-    const onScroll = (event: Event) => {
-      const target = event.target as Element | Document | null;
-      const top = target && "scrollTop" in (target as Element) ? (target as Element).scrollTop : window.scrollY;
-      setScrolled(Math.max(top ?? 0, window.scrollY) > 4);
+    const activity = trackScrollActivity(setScrolling);
+    window.addEventListener("scroll", activity.onScroll, { capture: true, passive: true });
+    return () => {
+      window.removeEventListener("scroll", activity.onScroll, { capture: true });
+      activity.dispose();
     };
-    window.addEventListener("scroll", onScroll, { capture: true, passive: true });
-    return () => window.removeEventListener("scroll", onScroll, { capture: true });
   }, [android]);
   if (android) {
     return (
-      <div className={`chama-create-fab-wrap${scrolled ? " chama-create-fab-scrolled" : ""}`}>
+      <div className={`chama-create-fab-wrap${scrolling ? " chama-create-fab-scrolling" : ""}`}>
         <button type="button" className="chama-create-fab" onClick={onCreate}
           data-coach="fab-create" aria-label={t("browse.createTrade")}>
           <PlusGlyph size={22} />{t("browse.navCreate")}
@@ -138,8 +165,8 @@ export function navCss(): string {
   .chama-create-plus{width:44px;height:44px;border-radius:22px;border:none;background:${T.raised};color:${T.ink};display:inline-flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0}
   .chama-create-fab-wrap{position:fixed;right:16px;bottom:calc(${BOTTOM_NAV_HEIGHT}px + env(safe-area-inset-bottom,0px) + 16px);z-index:90}
   .chama-create-fab{position:relative;min-height:56px;padding:0 20px 0 16px;border-radius:16px;border:none;background:${T.ink};color:${T.onInk};display:inline-flex;align-items:center;gap:8px;font-family:${T.sans};font-size:var(--chama-fs-button);font-weight:600;box-shadow:0 6px 16px rgba(0,0,0,0.22);cursor:pointer;transition:background-color .2s ease}
-  .chama-create-fab-scrolled .chama-create-fab{background:${T.ink}8c;-webkit-backdrop-filter:blur(14px) saturate(160%);backdrop-filter:blur(14px) saturate(160%)}
-  @media (prefers-reduced-transparency: reduce){.chama-create-fab-scrolled .chama-create-fab{background:${T.ink};-webkit-backdrop-filter:none;backdrop-filter:none}}
+  .chama-create-fab-scrolling .chama-create-fab{background:${T.ink}80;-webkit-backdrop-filter:blur(14px) saturate(160%);backdrop-filter:blur(14px) saturate(160%);text-shadow:0 0 6px ${T.ink}}
+  @media (prefers-reduced-transparency: reduce){.chama-create-fab-scrolling .chama-create-fab{background:${T.ink};-webkit-backdrop-filter:none;backdrop-filter:none;text-shadow:none}}
   /* The Android extended FAB floats above the bottom nav; page footers keep
      clear of it so it never covers their links or step dots. */
   @media (max-width:${NAV_WIDE_MIN_PX - 1}px){body:has(.chama-create-fab) .assisted-canvas-footer{margin-bottom:76px}
