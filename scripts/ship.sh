@@ -38,6 +38,7 @@ set -euo pipefail
 #   npm run ship -- --minor                  # same, via package.json
 #   npm run ship -- --only landing           # current version, landing only
 #   npm run ship -- --only zapstore-listing  # current version, listing refresh only
+#   npm run ship -- --zapstore-interactive    # old interactive zsp instead of quiet + Amber
 #
 # ── Env (defaults match the maintainer; override to re-home) ──────────────
 #   CHAMA_COMMIT_DIR   where the notes files live           (default /tmp)
@@ -151,7 +152,8 @@ while [ $# -gt 0 ]; do
     --no-release) DO_RELEASE=0; shift ;;
     --no-start9) DO_START9=0; shift ;;
     --yes|-y) ASSUME_YES=1; shift ;;
-    -h|--help) sed -n '4,52p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --zapstore-interactive) export CHAMA_ZAPSTORE_INTERACTIVE=1; shift ;;
+    -h|--help) sed -n '4,53p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "❌ Unknown option: $1"; exit 1 ;;
   esac
 done

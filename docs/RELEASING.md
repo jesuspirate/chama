@@ -135,3 +135,22 @@ mode uploads and publishes nothing. Use `--offline` explicitly for future tests;
 private and never feed it into a publishing command by accident.
 
 Signer regression checks: `node --test scripts/zapstore-signer.tests.mjs`.
+
+### Quiet Zapstore publish (default with Amber)
+
+When the signer is an Amber (`bunker://`) connection, the Zapstore lane runs
+`zsp publish zapstore.yaml --quiet --skip-preview`: no Enter, no "Publish now"
+selector. Every signature still waits for a manual approval in Amber on the
+phone. A quiet zsp prints nothing on success and also exits 0 when there is
+nothing to publish, so the lane then runs
+`node scripts/verify-zapstore-release.mjs --since <start>`. It requires a
+signed kind 30063 event for `<applicationId>@<version>` from the publisher in
+`zapstore.yaml` on `wss://relay.zapstore.dev`. It retries a few times for relay
+lag, fails the release when the event never lands, and reports "already
+published" when this run added nothing new. Run it by hand at any time:
+`node scripts/verify-zapstore-release.mjs --version X.Y.Z`.
+
+The browser signer needs a person at the Mac, so it stays interactive. To force
+the interactive run, pass `--zapstore-interactive` to `ship`, `ship --only …`
+or `android-release.sh`, or set `CHAMA_ZAPSTORE_INTERACTIVE=1`. The publish-mode
+choice and the relay check are covered by `npm test`.

@@ -55,6 +55,7 @@ Common options:
   --gpg-key KEY                 Checksum-signing key.
   --clobber                     Replace same-named GitHub assets.
   --overwrite-zapstore          Re-publish the current Zapstore release.
+  --zapstore-interactive        Run zsp interactively (default with Amber: quiet + relay check).
   --reuse-apk, --no-build       Reuse the existing signed APK instead of rebuilding it.
   --skip-gates                  Skip web predeploy/build when already verified in this shell.
   --title TEXT                  GitHub Release title (release-page only).
@@ -88,6 +89,7 @@ while [ $# -gt 0 ]; do
     --publish) PUBLISH_RELEASE=1; shift ;;
     --clobber) CLOBBER=1; shift ;;
     --overwrite-zapstore|--zapstore-overwrite) OVERWRITE_ZAPSTORE=1; shift ;;
+    --zapstore-interactive) export CHAMA_ZAPSTORE_INTERACTIVE=1; shift ;;
     --reuse-apk|--no-build) REUSE_APK=1; shift ;;
     --skip-gates|--skip-web-gate) SKIP_GATES=1; shift ;;
     --tag) need_value "$1" "${2:-}"; TAG="$2"; shift 2 ;;
