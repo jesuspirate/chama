@@ -2,6 +2,25 @@ import { useEffect, type ReactNode } from "react";
 import { T } from "../theme.js";
 import { isSimModeOn } from "../../sim/simMode.js";
 import { SIM_PILL_HEIGHT } from "../../sim/SimModeBanner.js";
+import { useT } from "../../i18n/index.js";
+
+/** What a toast says for an error message written for developers. Many callers
+ *  pass `error.message` straight through; the native wallet bridge's messages
+ *  carry a JSON diagnostics block and bridge jargon that filled a phone screen
+ *  (Jet, 6.4.23-rc.5, first launch after the update). Bridge start-up and
+ *  timeout errors get a plain sentence; any other message loses its
+ *  diagnostics block. Non-string messages pass through untouched. */
+export function toastText(message: ReactNode, t: (key: string) => string): ReactNode {
+  if (typeof message !== "string") return message;
+  if (/native_fedimint_bridge_unavailable|Native Fedimint bridge is enabled but unreachable/i.test(message)) {
+    return t("app.walletStarting");
+  }
+  if (/native_fedimint_bridge_timeout|Native Fedimint bridge \S+ did not answer within/i.test(message)) {
+    return t("app.walletSlow");
+  }
+  const cut = message.indexOf("Chama diagnostics:");
+  return cut >= 0 ? message.slice(0, cut).trim() : message;
+}
 
 export function Toast({ message, type, onDone, sticky = false, dismissOnTap = false }: {
   message: ReactNode; type: "success" | "error" | "info"; onDone: () => void;
@@ -21,6 +40,7 @@ export function Toast({ message, type, onDone, sticky = false, dismissOnTap = fa
    *  of the toast. Set it there, never on the decision-carrying ones. */
   dismissOnTap?: boolean;
 }) {
+  const { t } = useT();
   // Type-aware dwell: a success/info confirmation only needs a glance, so it
   // shouldn't linger; an error carries more to read, so it stays a touch longer.
   const dwellMs = type === "error" ? 4500 : type === "info" ? 3000 : 2200;
@@ -62,7 +82,7 @@ export function Toast({ message, type, onDone, sticky = false, dismissOnTap = fa
     >
       <span style={{ display: "inline-flex", alignItems: "baseline", justifyContent: "center", gap: 8, flexWrap: "wrap" }}>
         <span aria-hidden="true" style={{ fontSize: 17, lineHeight: 1 }}>{type === "success" ? "✓" : type === "error" ? "✗" : "⚡"}</span>
-        <span>{message}</span>
+        <span>{toastText(message, t)}</span>
       </span>
       {sticky && (
         <button

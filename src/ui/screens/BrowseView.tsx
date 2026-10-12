@@ -1,11 +1,15 @@
+import { sameCommunity } from '../../guided/join-eligibility.js';
+import { CommunityChip } from "../components/CommunityChip.js";
+import { CommunityMismatchNudge } from "../components/CommunityMismatchNudge.js";
+import { browseAtTop, scrollBrowseResults, useBrowseArrivals } from "../browse-live.js";
 import { browseDiagnostics, type BrowseDiagnosticsContext } from "../browse-diagnostics.js";
 import { CopyButton } from "../components/CopyButton.js";
 import { filterListingsByCurrency, listingMatchesCurrency } from "../listing-currency.js";
 import { defaultCurrencyForCommunity } from "../../communities/currency.js";
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
 import { getScopedStorageItem, setScopedStorageItem } from "../../storage/user-scope.js";
 import { type EscrowState } from "../../escrow-engine/types.js";
-import { getCommunityBySlug, type Community } from "../../communities/registry.js";
+import { getCommunityBySlug } from "../../communities/registry.js";
 import { T, ROLE_COLOR, BROWSE_CATS, inputStyle, fmtSats } from "../theme.js";
 import { CHAMA_CIRCLES_ENABLED } from "../../escrow-engine/experimental-escrow-features.js";
 import { TradeCard } from "../components/TradeCard.js";
@@ -102,7 +106,7 @@ export function sortListingsNewestFirst(listings: readonly EscrowState[]): Escro
 // balance==0; destroy-confirm modal when balance>0).
 export function BrowseView({
   browseCategory, setBrowseCategory,
-  browseCommunity,
+  browseCommunity, subscribeListings, onOpenCommunity, suppressCommunityNudge,
   amountDisplayMode,
   matchingListings: suppliedMatching, nonMatchingListings: suppliedNonMatching, allEscrows, circleChildrenLoaded,
   diagnosticsContext,
@@ -113,12 +117,15 @@ export function BrowseView({
   isFirstTime, onPasteCustomInvite,
   onOpenEscrow, onLoadById,
   fetchRatingSummary,
-  onCreate, onApplyAsArbiter,
+  onCreate, onGuided, onApplyAsArbiter,
 }: {
   diagnosticsContext?: BrowseDiagnosticsContext;
   browseCategory: string;
   setBrowseCategory: (s: string) => void;
   browseCommunity: string;
+  onOpenCommunity?: (country?: string) => void;
+  suppressCommunityNudge?: boolean;
+  subscribeListings?: (scope: { community?: string; category?: string }) => () => void;
   amountDisplayMode: AmountDisplayMode;
   allEscrows?: readonly EscrowState[];
   circleChildrenLoaded?: ReadonlySet<string>;
@@ -142,8 +149,14 @@ export function BrowseView({
   /** S4: the primary pencil opens Assisted Chama. The full editor remains
    *  reachable from the canvas through its explicit More options door. */
   onCreate: () => void;
+  /** v7 redesign: leave the advanced "All listings" view for the guided canvas. */
+  onGuided?: () => void;
   onApplyAsArbiter: (community: string, statement: string) => Promise<void>;
 }) {
+  const resultsHeader = useRef<HTMLDivElement>(null);
+  const emptyResult = useRef<HTMLDivElement>(null);
+  const userFilterTap = useRef(false);
+  const [lastFilterLabel, setLastFilterLabel] = useState<string | null>(null);
   const [otherCurrencies, setOtherCurrencies] = useState(false);
   const viewerCurrency = defaultCurrencyForCommunity(browseCommunity);
   const matchingListings = useMemo(() => filterListingsByCurrency(suppliedMatching, viewerCurrency, otherCurrencies), [suppliedMatching, viewerCurrency, otherCurrencies]);
@@ -166,10 +179,14 @@ export function BrowseView({
   const [browseScope, setBrowseScopeState] = useState<BrowseScope>(() => getBrowseScope());
   const [browseSort, setBrowseSortState] = useState<BrowseSort>(() => getBrowseSort());
   const setBrowseScope = (scope: BrowseScope) => {
+    userFilterTap.current = scope !== browseScope;
+    setLastFilterLabel(t(scope === "local" ? "browse.scopeLocal" : "browse.scopeAll"));
     setBrowseScopeState(scope);
     persistBrowsePreference(BROWSE_SCOPE_KEY, scope);
   };
   const setBrowseSort = (sort: BrowseSort) => {
+    userFilterTap.current = sort !== browseSort;
+    setLastFilterLabel(t(sort === "cheapest" ? "browse.sortCheapest" : sort === "newest" ? "browse.sortNewest" : "browse.sortDefault"));
     setBrowseSortState(sort);
     persistBrowsePreference(BROWSE_SORT_KEY, sort);
   };
@@ -194,10 +211,10 @@ export function BrowseView({
   // Own-listing hide (default) happens BEFORE search/section grouping so counts
   // and empty-states reflect what the viewer actually sees.
   const search = searchQuery.trim().toLowerCase();
-  const otherCurrencyCount = (browseScope === "local" ? suppliedMatching : [...suppliedMatching, ...suppliedNonMatching])
+  const otherCurrencyCount = ([...suppliedMatching, ...suppliedNonMatching].filter(l => browseScope !== "local" || sameCommunity(l.community, browseCommunity)))
     .filter(l => !listingMatchesCurrency(l, viewerCurrency) && listingMatchesSearch(l, search)).length;
-  const scopedMatching = matchingListings.filter(l => listingMatchesSearch(l, search));
-  const scopedNonMatching = nonMatchingListings.filter(l => listingMatchesSearch(l, search));
+  const scopedMatching = [...matchingListings, ...nonMatchingListings].filter(l => sameCommunity(l.community, browseCommunity) && listingMatchesSearch(l, search));
+  const scopedNonMatching = [...matchingListings, ...nonMatchingListings].filter(l => !sameCommunity(l.community, browseCommunity) && listingMatchesSearch(l, search));
   const hasOwnListings = countOwnListings(matchingListings, pubkey) + countOwnListings(nonMatchingListings, pubkey) > 0;
   const ownListingCount = countOwnListings(scopedMatching, pubkey)
     + (browseScope === "all" ? countOwnListings(scopedNonMatching, pubkey) : 0);
@@ -243,14 +260,36 @@ export function BrowseView({
   const totalListings = routedMatching.length + routedNonMatching.length;
   const homeCommunity = getCommunityBySlug(browseCommunity);
   useEffect(() => setOtherCurrencies(false), [browseCommunity, pubkey]);
-  const filteredMatchingListings = useMemo(
+  const candidateMatchingListings = useMemo(
     () => routedMatching.filter((listing) => listingMatchesSearch(listing, search) && (showOwn || browseCategory === "all" || countListingsByCategory([listing], [], browseCategory) > 0)),
     [routedMatching, search, browseCategory, showOwn],
   );
-  const filteredNonMatchingListings = useMemo(
+  const candidateNonMatchingListings = useMemo(
     () => routedNonMatching.filter((listing) => listingMatchesSearch(listing, search) && (showOwn || browseCategory === "all" || countListingsByCategory([listing], [], browseCategory) > 0)),
     [routedNonMatching, search, browseCategory, showOwn],
   );
+  const filterKey = JSON.stringify([pubkey, browseCommunity, browseCategory, browseScope, browseSort, showOwn, search, otherCurrencies]);
+  const live = useBrowseArrivals(filterKey, [...candidateMatchingListings, ...candidateNonMatchingListings], resultsHeader);
+  const matchingIds = new Set(candidateMatchingListings.map(l => l.id));
+  const filteredMatchingListings = live.visible.filter(l => matchingIds.has(l.id));
+  const filteredNonMatchingListings = live.visible.filter(l => !matchingIds.has(l.id));
+  // The app-wide feed keeps off-filter counts current. This mounted scope has
+  // its own subscription lifetime; all events still use the engine's validators.
+  const subscribeRef = useRef(subscribeListings);
+  subscribeRef.current = subscribeListings;
+  useEffect(() => subscribeRef.current?.({ community: browseScope === "local" ? browseCommunity : undefined,
+    category: showOwn || browseCategory === "all" ? undefined : browseCategory }), [browseCommunity, browseCategory, browseScope, showOwn, !!subscribeListings]);
+  useEffect(() => {
+    if (!userFilterTap.current) return;
+    userFilterTap.current = false;
+    scrollBrowseResults(emptyResult.current ?? resultsHeader.current);
+  }, [filterKey]);
+  useEffect(() => {
+    if (live.pending.length === 0) return;
+    const revealAtTop = () => { if (browseAtTop(resultsHeader.current)) live.flush(); };
+    window.addEventListener("scroll", revealAtTop, { passive: true, capture: true });
+    return () => window.removeEventListener("scroll", revealAtTop, true);
+  }, [live.pending.length]);
   // Explicit orders span every visible category AND route. Grouping after
   // sorting would silently undo the user's choice (even one card per category).
   const orderedVisibleListings = useMemo(() => {
@@ -277,6 +316,7 @@ export function BrowseView({
     [filteredNonMatchingListings],
   );
   const filteredTotal = filteredMatchingListings.length + filteredNonMatchingListings.length;
+  const emptyFilter = filteredTotal === 0 && live.pending.length === 0 && !!(search || lastFilterLabel || browseCategory !== "all" || showOwn || otherCurrencies);
   const browseSummary = totalListings === 0
     ? (listingsLoading ? t("browse.verifyingOffers") : t("browse.noOpenOffers"))
     : t(totalListings === 1 ? "browse.openOfferSummaryOne" : "browse.openOfferSummaryMany", {
@@ -293,6 +333,7 @@ export function BrowseView({
     // Same readable column as Me: wide enough to use a desktop, capped so a
     // listing row never becomes a stretched line of text.
     <div style={{ padding: 16, maxWidth: 760, margin: "0 auto" }}>
+      {onOpenCommunity && <CommunityMismatchNudge key={browseCommunity} slug={browseCommunity} suppressed={suppressCommunityNudge} onOpen={onOpenCommunity} />}
       {resumePubkey && (
         <WorkerResume
           pubkey={resumePubkey}
@@ -376,25 +417,8 @@ export function BrowseView({
           </svg>
         </button>
         )}
-        {/* create a trade (primary) */}
-        <button
-          type="button" onClick={onCreate}
-          data-coach="fab-create"
-          title={t("browse.createTrade")} aria-label={t("browse.createTrade")}
-          style={{
-            // The canvas is the front door — the pencil earns front-door size
-            // (Jet, 2026-09-18).
-            width: 76, height: 76, borderRadius: "50%", flexShrink: 0,
-            background: T.accent, border: "none", color: "#fff",
-            cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
-            boxShadow: `0 10px 26px ${T.accent}66, 0 10px 24px rgba(0,0,0,0.5)`,
-          }}
-        >
-          <svg width="41" height="41" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2.1} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4" />
-            <path d="M13.5 6.5l4 4" />
-          </svg>
-        </button>
+        {/* v7 redesign: Create moved to the shell — "+" in the top bar, an
+            extended FAB on Android, the sidebar button on wide screens. */}
       </div>
       <div style={{
         display: "flex", justifyContent: "space-between", alignItems: "flex-start",
@@ -403,50 +427,24 @@ export function BrowseView({
       }}>
         <div style={{ minWidth: 0 }}>
           <h1 style={{
-            margin: 0, color: T.text, fontFamily: T.sans,
-            fontSize: 30, lineHeight: 1.05, fontWeight: 800,
+            margin: 0, color: T.ink, fontFamily: T.sans,
+            fontSize: T.fs.largeTitle, lineHeight: 1.15, fontWeight: 700, letterSpacing: "-0.02em",
           }}>
-            {t("browse.listings")}
+            {t("browse.allListings")}
           </h1>
-          <div style={{
-            marginTop: 6, fontSize: 12, color: T.muted,
-            fontFamily: T.mono, whiteSpace: "nowrap" as const,
-            overflow: "hidden", textOverflow: "ellipsis",
-          }}>
-            {browseSummary}
-          </div>
+          {onGuided && (
+            <button type="button" onClick={onGuided} style={{
+              marginTop: 6, minHeight: 40, padding: 0, background: "none", border: "none", cursor: "pointer",
+              color: T.ink2, fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 600,
+              textDecoration: "underline", textUnderlineOffset: 3,
+            }}>{t("browse.guidedView")}</button>
+          )}
+
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
           {/* v3.1.1: the create + arbiter on-ramps moved out of the header into
               the floating action menu (FAB stack) rendered at the screen root. */}
-          {homeCommunity && (
-          // v2.3.1: view-only identity chip. The community SWITCHER moved to
-          // Me › Your Chama so switching is a deliberate, between-trades act
-          // (and reclaims the Browse real estate the dropdown used to eat).
-          // This just tells you which Chama you're browsing as.
-          <div
-            title={browseCommunityButtonLabel(homeCommunity)}
-            style={{
-              padding: "7px 10px", borderRadius: 18,
-              background: T.surface, border: `1px solid ${T.border}`,
-              fontFamily: T.mono, fontSize: 11,
-              display: "flex", alignItems: "center", gap: 6,
-              color: T.text, minWidth: 0,
-              maxWidth: 174, flexShrink: 0,
-            }}
-          >
-            <span style={{ fontSize: 16, lineHeight: 1 }}>{homeCommunity.flagEmoji}</span>
-            <span style={{
-              minWidth: 0, display: "flex", flexDirection: "column",
-              alignItems: "flex-start", lineHeight: 1.1,
-            }}>
-              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 132 }}>
-                {homeCommunity.disambiguator ?? homeCommunity.displayName}
-              </span>
-              <span style={{ color: T.muted, fontSize: 9 }}>{homeCommunity.currency}</span>
-            </span>
-          </div>
-        )}
+          <CommunityChip slug={browseCommunity} onOpen={onOpenCommunity ? () => onOpenCommunity() : undefined} />
         </div>
       </div>
 
@@ -460,7 +458,7 @@ export function BrowseView({
           flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 8,
           padding: "10px 12px", borderRadius: T.rs, background: T.surface,
           border: `1px solid ${T.border}`,
-          color: T.muted, fontFamily: T.mono,
+          color: T.muted, fontFamily: T.sans,
         }}>
           <span style={{ fontSize: 16, lineHeight: 1 }}>⌕</span>
           <input
@@ -477,15 +475,18 @@ export function BrowseView({
         </label>
       </div>
 
+      <div style={{ minHeight: 42 }}>
       {(otherCurrencyCount > 0 || otherCurrencies) && <button type="button" aria-pressed={otherCurrencies}
-        onClick={() => setOtherCurrencies(value => !value)}
+        onClick={() => { userFilterTap.current = true; setLastFilterLabel(t("browse.otherCurrencies", { count: otherCurrencyCount })); setOtherCurrencies(value => !value); }}
         style={{ marginBottom: 12, padding: "7px 11px", borderRadius: 18, cursor: "pointer",
           background: otherCurrencies ? T.accentDim : T.surface, color: otherCurrencies ? T.accent : T.muted,
-          border: `1px solid ${T.border}`, fontFamily: T.mono, fontSize: 11 }}>
+          border: `1px solid ${T.border}`, fontFamily: T.sans, fontSize: T.fs.secondary }}>
         {t("browse.otherCurrencies", { count: otherCurrencyCount })}
       </button>}
+      </div>
       <div style={{
-        display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12,
+        // Side by side where they fit; stacked on phones at the larger type.
+        display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 260px), 1fr))", gap: 12, marginBottom: 12,
       }} data-coach="browse-preferences">
         <BrowsePreferenceControl
           label={t("browse.scope")}
@@ -503,6 +504,7 @@ export function BrowseView({
 
       {browseScope === "all" && <p style={{fontSize:11, color:T.muted, marginTop:0}}>{t("browse.allExcludesMine")}</p>}
 
+      <div style={{ minHeight: 52 }}>
       {showCategoryChips && <div data-browse-category-row style={{
         display: "flex", gap: 6, marginBottom: 12,
         overflowX: "auto",
@@ -514,6 +516,8 @@ export function BrowseView({
           <button
             type="button"
             onClick={() => {
+              userFilterTap.current = true;
+              setLastFilterLabel(t(showOwn ? BROWSE_CATS.find(c => c.id === categoryBeforeOwn)?.l ?? "browse.catAll" : "browse.mine"));
               // The chip advertises toggle semantics (aria-pressed, and it lights
               // up like the category chips beside it), so a second tap has to turn
               // owner mode OFF. Turning it on stashes the shelf we came from;
@@ -536,9 +540,9 @@ export function BrowseView({
               background: showOwn ? T.accentDim : T.surface,
               border: `1px solid ${showOwn ? T.accent + "66" : T.border}`,
               color: showOwn ? T.accent : T.muted,
-              fontFamily: T.mono, fontSize: 11, fontWeight: 700,
+              fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
               cursor: "pointer", transition: "all 0.15s",
-              whiteSpace: "nowrap" as const, letterSpacing: 0,
+              whiteSpace: "nowrap" as const,
               display: "inline-flex", alignItems: "center", gap: 6,
             }}
           >
@@ -560,6 +564,8 @@ export function BrowseView({
             <button
               key={c.id} data-browse-category={c.id} data-count={count}
               onClick={() => {
+                userFilterTap.current = true;
+                setLastFilterLabel(t(active ? "browse.catAll" : c.l));
                 if (showOwn) toggleShowOwn();
                 setBrowseCategory(active ? "all" : c.id);
               }}
@@ -596,18 +602,18 @@ export function BrowseView({
 
       </div>}
 
-      {search && totalListings > 0 && filteredTotal === 0 && (
-        <div style={{
-          textAlign: "center", padding: "24px 16px",
-          color: T.muted, fontFamily: T.mono, fontSize: 12, lineHeight: 1.6,
-          background: T.surface, border: `1px solid ${T.border}`, borderRadius: T.rs,
-          marginBottom: 14,
-        }}>
-          {t("browse.noListingsMatch", { query: searchQuery.trim() })}
-        </div>
-      )}
+      </div>
+      <style>{`@keyframes browse-arrive { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: none; } } .browse-arrival-card { animation: browse-arrive .2s ease-out; } @media (prefers-reduced-motion: reduce) { .browse-arrival-card { animation: none; } }`}</style>
+      <div ref={resultsHeader} data-browse-results style={{ scrollMarginTop: 12, minHeight: 42, display: "flex", alignItems: "center" }}>
+        {live.pending.length > 0 ? <button type="button" data-new-listings onClick={() => { live.flush(); scrollBrowseResults(resultsHeader.current, true); }} style={{ padding: "7px 12px", borderRadius: 999, border: `1px solid ${T.accent}`, background: T.accentDim, color: T.accent, cursor: "pointer" }}>
+          {t(live.pending.length === 1 ? "browse.newListingOne" : "browse.newListingMany", { n: live.pending.length })}
+        </button> : <span style={{ color: T.muted, fontSize: 12 }}>{browseSummary}</span>}
+      </div>
+      {emptyFilter && <div ref={emptyResult} data-browse-empty style={{ padding: 24, background: T.surface, color: T.muted, borderRadius: T.rs, marginBottom: 14 }}>
+        {t("browse.emptyFilter", { filter: [lastFilterLabel ?? (showOwn ? t("browse.mine") : t(BROWSE_CATS.find(c => c.id === browseCategory)?.l ?? "browse.scopeAll")), searchQuery.trim()].filter(Boolean).join(" · ") })}
+      </div>}
 
-      {totalListings === 0 ? (
+      {totalListings === 0 && !emptyFilter ? (
         <div style={{
           textAlign: "center", padding: "44px 20px", fontFamily: T.sans,
         }}>
@@ -744,8 +750,7 @@ export function BrowseView({
               }}>
                 <div style={{ flex: 1, height: 1, background: T.border }} />
                 <div style={{
-                  fontSize: 9, color: T.muted, fontFamily: T.mono,
-                  letterSpacing: 0, textTransform: "uppercase",
+                  fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans,
                   whiteSpace: "nowrap" as const,
                 }}>
                   {t(filteredNonMatchingListings.length === 1 ? "browse.otherCommunitiesOne" : "browse.otherCommunitiesMany", { count: filteredNonMatchingListings.length })}
@@ -807,13 +812,13 @@ export function BrowseView({
         </>
       )}
 
-      <div style={{ marginTop: 20, fontFamily: T.mono }}>
+      <div style={{ marginTop: 20, fontFamily: T.sans }}>
         <button
           onClick={() => setShowAdvancedTools((v) => !v)}
           style={{
             background: "none", border: "none", padding: 0,
-            color: T.muted, fontFamily: T.mono, fontSize: 10, fontWeight: 700,
-            cursor: "pointer", letterSpacing: 0, textTransform: "uppercase",
+            color: T.muted, fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
+            cursor: "pointer",
           }}
         >
           {showAdvancedTools ? "▲" : "▼"} {t("browse.advancedTools")}
@@ -853,7 +858,7 @@ export function BrowseView({
                     background: customInviteInput.trim().startsWith("fed1") ? T.accentDim : T.surface,
                     border: `1px solid ${customInviteInput.trim().startsWith("fed1") ? T.accent + "44" : T.border}`,
                     color: customInviteInput.trim().startsWith("fed1") ? T.accent : T.muted,
-                    fontFamily: T.mono, fontSize: 11, fontWeight: 700,
+                    fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
                     cursor: customInviteInput.trim().startsWith("fed1") ? "pointer" : "not-allowed",
                     whiteSpace: "nowrap" as const,
                   }}
@@ -863,7 +868,7 @@ export function BrowseView({
               </div>
             )}
             <LoadTradeInput onLoad={onLoadById} />
-            <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono, lineHeight: 1.7, textAlign: "center" }}>
+            <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, lineHeight: 1.7, textAlign: "center" }}>
               {t("browse.advancedFooterLine1")}<br />
               {t("browse.advancedFooterLine2")}
             </div>
@@ -872,12 +877,6 @@ export function BrowseView({
       </div>
     </div>
   );
-}
-
-function browseCommunityButtonLabel(community: Community): string {
-  return community.disambiguator
-    ? `${community.displayName} · ${community.disambiguator}`
-    : community.displayName;
 }
 
 export function listingMatchesSearch(listing: EscrowState, query: string): boolean {
@@ -1006,7 +1005,7 @@ function WorkerResume({
             fontSize: 23,
           }}>👤</div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ color: T.green, fontFamily: T.mono, fontSize: 9, fontWeight: 800, letterSpacing: 1 }}>
+            <div style={{ color: T.green, fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,}}>
               {t("browse.workerResumeEyebrow")}
             </div>
             <div style={{
@@ -1036,7 +1035,7 @@ function WorkerResume({
 
         <div style={{
           marginTop: 18, marginBottom: 8, color: T.text,
-          fontFamily: T.mono, fontSize: 11, fontWeight: 800, letterSpacing: .7,
+          fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
         }}>
           {t(offers.length === 1 ? "browse.workerOfferCountOne" : "browse.workerOfferCountMany", { count: offers.length })}
         </div>
@@ -1060,7 +1059,7 @@ function WorkerResume({
                   fontSize: 13, fontWeight: 750,
                   overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                 }}>{offer.description}</span>
-                <span style={{ display: "block", marginTop: 3, color: T.muted, fontFamily: T.mono, fontSize: 10 }}>
+                <span style={{ display: "block", marginTop: 3, color: T.muted, fontFamily: T.sans, fontSize: T.fs.secondary }}>
                   ₿ {fmtSats(offer.amountMsats)}
                 </span>
               </span>
@@ -1089,25 +1088,29 @@ function BrowsePreferenceControl({
 }) {
   return (
     <div style={{ minWidth: 0 }}>
-      <div style={{ color: T.muted, fontFamily: T.mono, fontSize: 8, letterSpacing: 1, marginBottom: 5 }}>
+      <div style={{ color: T.muted, fontFamily: T.sans, fontSize: T.fs.secondary, marginBottom: 5 }}>
         {label}
       </div>
-      <div style={{ display: "flex", padding: 3, gap: 3, background: T.surface, border: `1px solid ${T.border}`, borderRadius: T.rs }}>
+      <div style={{ display: "flex", padding: 3, gap: 3, background: T.raised, borderRadius: T.r }}>
         {options.map(([optionValue, optionLabel, optionCount]) => {
           const active = value === optionValue;
           return (
             <button
               key={optionValue}
+              data-browse-preference={optionValue}
               type="button"
               aria-pressed={active}
               onClick={() => onChange(optionValue)}
               style={{
-                flex: 1, minWidth: 0, padding: "6px 4px", borderRadius: 6,
-                background: active ? T.accentDim : "transparent",
-                border: `1px solid ${active ? T.accent + "66" : "transparent"}`,
-                color: active ? T.accent : T.muted,
-                fontFamily: T.mono, fontSize: 9, fontWeight: 800,
-                cursor: "pointer", whiteSpace: "nowrap",
+                // v7 redesign: a segmented control — the active segment is a
+                // surface tile with ink text; labels wrap rather than overlap.
+                flex: 1, minWidth: 0, minHeight: T.size.touch, padding: "6px 6px", borderRadius: T.r - 3,
+                background: active ? T.surface : "transparent",
+                border: "none",
+                boxShadow: active ? `0 0 0 1px ${T.line}` : "none",
+                color: active ? T.ink : T.ink2,
+                fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: active ? 700 : 500,
+                cursor: "pointer", overflowWrap: "anywhere", lineHeight: 1.2,
               }}
             >
               {optionLabel}
@@ -1167,19 +1170,17 @@ function BrowseSection({
           alignItems: "center",
           gap: 7,
           color: T.text,
-          fontFamily: T.mono,
-          fontSize: 11,
+          fontFamily: T.sans,
+          fontSize: T.fs.secondary,
           fontWeight: 800,
-          letterSpacing: 0.8,
-          textTransform: "uppercase",
         }}>
           <VerticalIcon vertical={section.id} size={17} />
           {t(section.label)}
         </div>
         <div style={{
           color: T.muted,
-          fontFamily: T.mono,
-          fontSize: 10,
+          fontFamily: T.sans,
+          fontSize: T.fs.secondary,
         }}>
           {t("browse.sectionOpenCount", { count: section.listings.length })}
         </div>

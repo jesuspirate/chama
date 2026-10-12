@@ -16,7 +16,8 @@ export function BitcoinAmount({
   msats?: number;
   sats?: number;
   label?: string;
-  size?: number;
+  /** px, or a type token such as T.fs.amount (scales with the phone scale). */
+  size?: number | string;
   color?: string;
   glyphColor?: string;
   gap?: number;
@@ -37,8 +38,11 @@ export function BitcoinAmount({
         alignItems: "baseline",
         gap,
         color,
-        fontFamily: T.mono,
-        fontWeight: 900,
+        // v7 redesign: amounts are DM Sans with tabular figures (mono is for
+        // keys only); callers may still override via `style`.
+        fontFamily: T.sans,
+        fontWeight: 700,
+        fontVariantNumeric: "tabular-nums",
         lineHeight: 1,
         ...style,
       }}
@@ -47,7 +51,7 @@ export function BitcoinAmount({
         className="bitcoin-amount-glyph"
         aria-hidden="true"
         style={{
-          fontSize: Math.ceil(size * effectiveGlyphScale),
+          fontSize: typeof size === "number" ? Math.ceil(size * effectiveGlyphScale) : `calc(${size} * ${effectiveGlyphScale})`,
           color: glyphColor,
           lineHeight: 1,
           transform: "translateY(-1px)",

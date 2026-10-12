@@ -3,7 +3,7 @@ import { finalizeEvent, getPublicKey } from 'nostr-tools/pure';
 import { nip44 } from 'nostr-tools';
 import type { NostrEvent } from '../escrow-engine/types.js';
 import type { Signer, UnsignedEvent } from '../escrow-engine/escrow-client.js';
-import { getOrCreateSeed, clearSeedCache, republishSeed, cachedSeedRequiresFederationRecovery,
+import { getOrCreateSeed, getExistingSeed, clearSeedCache, republishSeed, cachedSeedRequiresFederationRecovery,
   SeedNeedsRecoveryCode, SeedNeedsRestoreConfirmation, recoverSeedWordsFromEvents, checkAndMaybeRepublishSeed, SEED_RECOVERY_RETRY_DELAYS_MS, SEED_PUBLISHED_MARKER_KEY } from './seed-manager.js';
 import { deriveEscrowSigningKey } from '../bond-multisig/onchain-escrow-funding.js';
 import { SEED_V2_BROWSER_D_TAG, wrapSeedBackup, formatRecoveryCode, InvalidRecoveryCode } from './seed-backup-v2.js';
@@ -152,5 +152,23 @@ try {
   await assert.rejects(getOrCreateSeed(client([v2]), badSigner, { recoveryCode: code, restoreConfirmed: true }), /Couldn't open/); cases++;
   assert.equal(writes.length, 0);
   assert.ok(!JSON.stringify(logs).includes(code) && !JSON.stringify(logs).includes(mnemonic), 'No secret reaches console or mlog');
+
+  // Recovery-only reader for bonds (#31) goes through the same v2 checks and
+  // never creates a seed.
+  reset();
+  await assert.rejects(getExistingSeed(client([v1, v2]), signer), SeedNeedsRecoveryCode);
+  assert.equal(writes.length, 0, 'bond recovery never bypasses a protected backup'); cases++;
+  reset();
+  await assert.rejects(getExistingSeed(client([v1, retired]), signer), SeedNeedsRecoveryCode);
+  assert.equal(writes.length, 0, 'bond recovery never resurrects a retired v1 copy'); cases++;
+  reset();
+  await assert.rejects(getExistingSeed(client([]), signer), (e: any) => e?.code === 'seed-missing');
+  assert.equal(writes.length, 0, 'no backup anywhere: bond recovery refuses instead of generating'); cases++;
+  reset();
+  assert.equal((await getExistingSeed(client([v1]), signer)).join(' '), mnemonic, 'a plain v1 backup still recovers bonds'); cases++;
+  assert.equal(writes.length, 0);
+  reset();
+  await assert.rejects(getExistingSeed(client([v1]), { ...signer, requiresUserAction: true }), (e: any) => e?.code === 'seed-locked');
+  assert.equal(queries, 0, 'an extension signer is not prompted without a user action'); cases++;
 } finally { methods.forEach((k, i) => { console[k] = original[i]; }); clearSeedCache(); }
 console.log(`PASS protected seed reader: ${cases} recovery, refusal, cache, retirement, downgrade and secret-redaction cases`);

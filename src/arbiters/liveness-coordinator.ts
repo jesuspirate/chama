@@ -3,7 +3,9 @@ import type { ChamaLiveness } from "./live-chama.js";
 export const LIVENESS_GENERATION_TIMEOUT_MS = 12_000;
 export const LIVENESS_CACHE_TTL_MS = 5 * 60_000;
 export const LIVENESS_DIAGNOSTICS_KEY = "chama_liveness_diagnostics_v1";
-export const LIVENESS_CACHE_KEY = "chama_liveness_verified_cache_v1";
+// v1 could cache an incomplete relay/chain reading as verified zero. Keep old
+// storage intact, but accept only generations made by the stricter public reader.
+export const LIVENESS_CACHE_KEY = "chama_liveness_verified_cache_v2";
 const MAX_DIAGNOSTICS = 40;
 
 export interface LivenessGenerationDiagnostic {
@@ -152,10 +154,16 @@ export function loadCoordinatedLiveness(
       { once: true },
     );
   });
-  const promise = Promise.race([loader(community, controller.signal), abortPromise])
+  // Preserve same-tick dispatch/dedup, while containing a synchronous loader
+  // exception inside the generation so timers and diagnostics are finalized.
+  let work: Promise<ChamaLiveness | null>;
+  try { work = loader(community, controller.signal); }
+  catch (error) { work = Promise.reject(error); }
+  const promise = Promise.race([work, abortPromise])
     .then(value => finish(value ? "verified" : "empty", value))
     .catch(error => {
       const aborted = controller.signal.aborted;
+      if (!aborted) controller.abort(error); // Stop sibling bond reads after a failed generation.
       return finish(timedOut ? "timeout" : aborted ? "aborted" : "error", null);
     })
     .finally(() => {

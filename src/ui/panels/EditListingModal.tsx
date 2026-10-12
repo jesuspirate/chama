@@ -138,8 +138,7 @@ export function EditListingModal({
         boxShadow: "0 18px 54px rgba(0,0,0,0.72)",
       }}>
         <div style={{
-          color: T.amber, fontFamily: T.mono, fontSize: 10, fontWeight: 800,
-          letterSpacing: 1.1, textTransform: "uppercase", marginBottom: 12,
+          color: T.amber, fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 800, marginBottom: 12,
         }}>✎ {t("edit.title")}</div>
 
         {blockedReason === "buyer-holding" ? (

@@ -2,8 +2,8 @@
 // In-app Help & FAQ content — language selector
 // ══════════════════════════════════════════════════════════════════════════
 //
-// SINGLE SOURCE OF TRUTH = docs/FAQ.md, mirrored per language in faq.en.ts /
-// faq.fr.ts / faq.es.ts (FaqContent shape). This module picks the viewer's
+// Article content lives in faq.en.ts / faq.fr.ts / faq.es.ts (FaqContent shape).
+// The custody table uses the shared en/es/fr/sw custody dictionary. This module picks the viewer's
 // language at RENDER time via getCurrentLang() — the Help screen calls the
 // getFaq* functions inside its render (it already re-renders on a language
 // switch through useT), so switching language reflows the FAQ live.
@@ -12,7 +12,7 @@
 // plain const. Plain text only in the content — no markdown — so the Help screen
 // renders these verbatim.
 
-import { getCurrentLang } from "../../i18n/index.js";
+import { getCurrentLang, translate } from "../../i18n/index.js";
 import type { FaqContent } from "./faq-types.js";
 import { faqEn } from "./faq.en.js";
 import { faqFr } from "./faq.fr.js";
@@ -30,7 +30,12 @@ export function getFaqIntro(): string {
   return pick().intro;
 }
 export function getFaqSections(): FaqContent["sections"] {
-  return pick().sections;
+  const t = (key: string) => translate(getCurrentLang(), `custody.${key}`);
+  return [{ id: "custody", title: t("faqTitle"), items: [{ q: t("faqTitle"), a: {
+    intro: t("faqIntro"), columns: [t("faqWhere"), t("faqWho"), t("faqHowLong")],
+    rows: ["own", "escrow", "lightning", "ecash", "bond"].map(rail => [t(rail), t(`${rail}Who`), t(`${rail}Time`)]),
+    outro: t("faqOutro"),
+  } }] }, ...pick().sections];
 }
 export function getFaqGlossary(): FaqContent["glossary"] {
   return pick().glossary;

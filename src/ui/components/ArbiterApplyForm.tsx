@@ -57,7 +57,7 @@ export function ArbiterApplyForm({
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
         <span style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
           <span style={{ fontSize: 15, lineHeight: 1 }}>⚖️</span>
-          <span style={{ fontFamily: T.mono, fontSize: 12, fontWeight: 800, color: ROLE_COLOR.arbiter, letterSpacing: 0.5 }}>
+          <span style={{ fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700, color: ROLE_COLOR.arbiter,}}>
             {t("bond.applyHeading")}
           </span>
           <HelpTip title={t("bond.applyTipTitle")} label={t("bond.applyTipLabel")}>
@@ -108,7 +108,7 @@ export function ArbiterApplyForm({
         background: `${ROLE_COLOR.arbiter}0f`, border: `1px solid ${ROLE_COLOR.arbiter}33`,
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
-          <span style={{ fontSize: 11, fontWeight: 800, color: ROLE_COLOR.arbiter, fontFamily: T.mono, letterSpacing: 0.5 }}>
+          <span style={{ fontSize: T.fs.secondary, fontWeight: 700, color: ROLE_COLOR.arbiter, fontFamily: T.sans,}}>
             {t("bond.applyFedHeading")}
           </span>
           <HelpTip title={t("bond.applyFedTipTitle")} label={t("bond.applyFedTipLabel")}>
@@ -126,7 +126,7 @@ export function ArbiterApplyForm({
             width: "100%", boxSizing: "border-box",
             padding: "9px 11px", borderRadius: T.rs,
             background: T.surface, border: `1px solid ${T.border}`,
-            color: T.text, fontFamily: T.mono, fontSize: 12,
+            color: T.text, fontFamily: T.sans, fontSize: T.fs.secondary,
           }}
         />
       </div>
@@ -136,19 +136,19 @@ export function ArbiterApplyForm({
         style={{
           width: "100%", padding: "10px 14px", borderRadius: T.rs,
           border: `1px solid ${ROLE_COLOR.arbiter}66`, background: `${ROLE_COLOR.arbiter}22`,
-          color: ROLE_COLOR.arbiter, fontFamily: T.mono, fontSize: 11, fontWeight: 800,
+          color: ROLE_COLOR.arbiter, fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
           cursor: busy ? "default" : "pointer", opacity: busy ? 0.6 : 1,
         }}
       >
         {busy ? t("bond.applyPublishing") : t("bond.applySubmit")}
       </button>
       {status && (
-        <div style={{ marginTop: 8, fontSize: 11, color: T.green, fontFamily: T.mono, lineHeight: 1.4 }}>
+        <div style={{ marginTop: 8, fontSize: T.fs.secondary, color: T.green, fontFamily: T.sans, lineHeight: 1.4 }}>
           ✓ {status}
         </div>
       )}
       {error && (
-        <div style={{ marginTop: 8, fontSize: 11, color: T.red, fontFamily: T.mono, lineHeight: 1.4 }}>
+        <div style={{ marginTop: 8, fontSize: T.fs.secondary, color: T.red, fontFamily: T.sans, lineHeight: 1.4 }}>
           ⚠ {error}
         </div>
       )}

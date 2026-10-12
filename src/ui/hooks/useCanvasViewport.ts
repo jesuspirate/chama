@@ -17,8 +17,15 @@ export function useCanvasViewport<T extends HTMLElement = HTMLDivElement>() {
     const measure = () => {
       // scrollY-corrected so a mid-scroll re-measure can't poison the value.
       const top = Math.max(0, Math.round(el.getBoundingClientRect().top + window.scrollY));
+      // v7 redesign: from 1024px the same nav element is a full-height LEFT
+      // sidebar. Counting its height as "chrome below" zeroed the canvas and
+      // pulled the footer up under the cards — only a nav that actually sits
+      // along the bottom edge takes vertical room.
       const nav = document.querySelector<HTMLElement>("[data-chama-bottom-nav]");
-      const bottom = nav ? Math.round(nav.getBoundingClientRect().height) : 0;
+      const rect = nav?.getBoundingClientRect();
+      const alongBottom = !!rect && rect.height > 0 && rect.width >= window.innerWidth * 0.5
+        && rect.bottom >= window.innerHeight - 1;
+      const bottom = alongBottom ? Math.round(rect!.height) : 0;
       el.style.setProperty("--assisted-chrome", `${top + bottom}px`);
     };
     measure();

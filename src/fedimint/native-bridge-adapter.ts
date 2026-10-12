@@ -1,3 +1,4 @@
+import type { FederationInspection } from "./federation-inspection.js";
 // Fedimint native sidecar adapter.
 //
 // This keeps Chama's existing IFedimintWallet boundary intact while routing
@@ -69,7 +70,11 @@ const REQUIRED_NATIVE_BRIDGE_CAPABILITIES = [
   "idempotent_join",
   "effective_iroh_config",
 ];
-const NATIVE_BRIDGE_READY_RETRY_DELAYS_MS = [0, 250, 500, 1000, 1500, 2500];
+// The app shell launches the bridge as a child process alongside the WebView,
+// so the first check can arrive before the bridge listens, and the first launch
+// after an update is slowest (Jet, 6.4.23-rc.5 on a Pixel 8). Only "connection
+// refused" retries, so a running bridge answers on the first try; ~15s in all.
+const NATIVE_BRIDGE_READY_RETRY_DELAYS_MS = [0, 250, 500, 1000, 1500, 2500, 4000, 5000];
 const NATIVE_BRIDGE_HEALTH_TIMEOUT_MS = 5_000;
 const NATIVE_BRIDGE_RESET_TIMEOUT_MS = 10_000;
 const NATIVE_BRIDGE_INFO_TIMEOUT_MS = 20_000;
@@ -855,7 +860,7 @@ export class NativeBridgeWallet implements IFedimintWallet {
   }
 
   async open(): Promise<void> {
-    const health = await assertNativeBridgeCompatible(this.baseUrl);
+    const health = await this.readyHealth();
     // A fresh native client has no database to open yet. Avoid asking `/info`
     // to construct/open a Fedimint client solely to rediscover that fact;
     // Start9 field logs show that cold path can terminate the bridge worker.
@@ -877,7 +882,7 @@ export class NativeBridgeWallet implements IFedimintWallet {
   }
 
   async joinFederation(inviteCode: string): Promise<void> {
-    await assertNativeBridgeCompatible(this.baseUrl);
+    await this.readyHealth();
     let joined: NativeJoinResponse | null = null;
     let lastJoinError: unknown = null;
 
@@ -921,7 +926,7 @@ export class NativeBridgeWallet implements IFedimintWallet {
   }
 
   async switchFederationPreserving(inviteCode: string): Promise<void> {
-    await assertNativeBridgeCompatible(this.baseUrl);
+    await this.readyHealth();
     const joined = await this.request<NativeJoinResponse>("/switch", {
       method: "POST",
       body: { inviteCode },
@@ -1390,6 +1395,9 @@ export class NativeBridgeWallet implements IFedimintWallet {
   };
 
   federation = {
+    inspectInvite: (invite: string): Promise<FederationInspection> => this.request("/federation-preview", {
+      method: "POST", body: { inviteCode: invite }, timeoutMs: 12_000,
+    }),
     getFederationId: async (): Promise<string> => {
       if (this.federationId) return this.federationId;
       const info = await this.request<NativeInfoResponse>("/info", {
@@ -1425,14 +1433,22 @@ export class NativeBridgeWallet implements IFedimintWallet {
 
   private async ensureBridgeReady(): Promise<void> {
     if (!isShellManagedNativeBridge()) return;
+    await this.readyHealth();
+  }
+
+  /** The bridge's health once it answers. In an app shell, which starts the
+   *  bridge itself, waits through "connection refused" while it comes up;
+   *  elsewhere (a bridge the user runs) checks once. Any other failure —
+   *  incompatible, unauthorised — is thrown at once. */
+  private async readyHealth(): Promise<NativeHealthResponse> {
+    if (!isShellManagedNativeBridge()) return assertNativeBridgeCompatible(this.baseUrl);
 
     let lastError: unknown = null;
 
     for (const delayMs of NATIVE_BRIDGE_READY_RETRY_DELAYS_MS) {
       if (delayMs > 0) await sleepMs(delayMs);
       try {
-        await assertNativeBridgeCompatible(this.baseUrl);
-        return;
+        return await assertNativeBridgeCompatible(this.baseUrl);
       } catch (error) {
         lastError = error;
         if (!isNativeBridgeUnavailable(error)) {

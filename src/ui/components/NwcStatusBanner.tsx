@@ -93,9 +93,9 @@ export function NwcStatusBanner({
         }}>
           <span style={{ fontSize: 14, lineHeight: 1, flexShrink: 0 }}>⚡</span>
           <div style={{ minWidth: 0, display: "flex", alignItems: "center", gap: 5 }}>
-            <span style={{ fontSize: 9, color: T.accent, fontFamily: T.mono, fontWeight: 800 }}>NWC ·</span>
+            <span style={{ fontSize: T.fs.secondary, color: T.accent, fontFamily: T.sans, fontWeight: 700 }}>NWC ·</span>
             <span style={{
-              fontSize: 12, color: T.text, fontFamily: T.mono,
+              fontSize: T.fs.secondary, color: T.text, fontFamily: T.sans,
               fontWeight: 600,
               overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
             }}>
@@ -112,12 +112,11 @@ export function NwcStatusBanner({
               borderRadius: T.rs,
               padding: "6px 10px",
               color: T.accent,
-              fontFamily: T.mono,
-              fontSize: 10,
+              fontFamily: T.sans,
+              fontSize: T.fs.secondary,
               fontWeight: 700,
               cursor: "pointer",
               flexShrink: 0,
-              letterSpacing: 0.5,
             }}
           >
             {t("fund.change")}
@@ -148,14 +147,14 @@ export function NwcStatusBanner({
         style={{
           width: "100%", padding: "8px 10px", background: "none", border: "none",
           display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8,
-          color: T.muted, fontFamily: T.mono, fontSize: 10, fontWeight: 700, cursor: "pointer",
+          color: T.muted, fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700, cursor: "pointer",
         }}
       >
         <span>⚡ NWC · {t("fund.nwcOneTapTitle")}</span>
         <span aria-hidden="true">{expanded ? "⌃" : "⌄"}</span>
       </button>
       {expanded && <>
-      <div style={{ color: T.muted, fontFamily: T.mono, fontSize: 10, lineHeight: 1.4, marginBottom: 8 }}>
+      <div style={{ color: T.muted, fontFamily: T.sans, fontSize: T.fs.secondary, lineHeight: 1.4, marginBottom: 8 }}>
         {t("fund.nwcOneTapBody")}
       </div>
       <div style={{ display: "flex", gap: 8 }}>
@@ -181,9 +180,9 @@ export function NwcStatusBanner({
             background: ready ? T.accent : T.card,
             border: `1px solid ${ready ? T.accent : T.border}`,
             color: ready ? "#000" : T.muted,
-            fontFamily: T.mono,
-            fontSize: 11,
-            fontWeight: 800,
+            fontFamily: T.sans,
+            fontSize: T.fs.secondary,
+            fontWeight: 700,
             cursor: ready ? "pointer" : "not-allowed",
             flexShrink: 0,
           }}
@@ -196,7 +195,7 @@ export function NwcStatusBanner({
           marginTop: 8, padding: "6px 10px",
           background: T.redDim, border: `1px solid ${T.red}33`,
           borderRadius: T.rs, color: T.red,
-          fontSize: 10, fontFamily: T.mono,
+          fontSize: T.fs.secondary, fontFamily: T.sans,
         }}>
           {error}
         </div>

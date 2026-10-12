@@ -3,7 +3,7 @@ import { T } from "../theme.js";
 /**
  * Lowercase Manrope wordmark with a drawn orange dot in the text flow.
  * The dot scales at 30% of the type size (minimum 5px), sits on its baseline,
- * and uses the same light/dark accent inks as the landing's --dot token.
+ * and uses T.brand — the same light/dark inks as the landing's --dot token.
  * Keeping it inside the text span avoids flex gaps and font-dependent glyphs.
  */
 export function Wordmark({ size = 24, markSize = 28, showMark = true }: { size?: number; markSize?: number; showMark?: boolean }) {
@@ -38,7 +38,7 @@ export function Wordmark({ size = 24, markSize = 28, showMark = true }: { size?:
             width: dot,
             height: dot,
             borderRadius: "50%",
-            background: T.accent,
+            background: T.brand,
             verticalAlign: "baseline",
             marginLeft: Math.round(size * 0.10),
           }}

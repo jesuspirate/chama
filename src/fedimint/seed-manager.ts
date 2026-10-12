@@ -1,3 +1,4 @@
+import { SignerApprovalError, isSignerApprovalError } from "../escrow-engine/signer-approval.js";
 // ══════════════════════════════════════════════════════════════════════════
 // Chama — Nostr-backed Fedimint Seed Manager
 // ══════════════════════════════════════════════════════════════════════════
@@ -43,6 +44,8 @@ export class SeedNeedsRestoreConfirmation extends Error {
   constructor(readonly pubkey: string) { super('Confirm that you will stop using this wallet on your old device before restoring.'); }
 }
 export interface SeedReadOptions {
+  /** Recovery-only read (bonds): never generate a seed when none is found. */
+  existingOnly?: boolean;
   recoveryCode?: string;
   restoreConfirmed?: boolean;
   requireRestoreConfirmation?: boolean;
@@ -193,6 +196,13 @@ async function tryDecryptSeedEvent(
   pubkey: string,
   signer: Signer,
 ): Promise<string | null> {
+  // The old NIP-04 wire format identifies itself. Interactive signers make
+  // one attempt in the matching format, not a sequence of permission prompts.
+  if (signer.requiresUserAction && candidate.content.includes("?iv=")) {
+    if (!signer.nip04Decrypt) throw new SignerApprovalError("wallet");
+    const plaintext = await signer.nip04Decrypt(candidate.content, pubkey);
+    return looksLikeMnemonic(plaintext) ? plaintext : null;
+  }
   // Try 1: NIP-44 decrypt
   try {
     const attempt = await signer.nip44Decrypt(candidate.content, pubkey);
@@ -200,8 +210,10 @@ async function tryDecryptSeedEvent(
       console.debug("[chama] Seed decrypted via NIP-44");
       return attempt;
     }
+    if (signer.requiresUserAction) return null;
     console.debug("[chama] NIP-44 decrypted but result is not a valid mnemonic — trying NIP-04");
   } catch (e1) {
+    if (isSignerApprovalError(e1)) throw e1;
     console.debug("[chama] NIP-44 seed decrypt failed");
   }
 
@@ -217,6 +229,8 @@ async function tryDecryptSeedEvent(
       console.debug("[chama] NIP-04 decrypted but result is not a valid mnemonic");
     }
   } catch (e2) {
+    // Seed decrypt errors are never logged with their message (#38).
+    if (signer.requiresUserAction) { console.warn("[chama] Legacy seed decrypt failed"); throw new SignerApprovalError("wallet"); }
     console.debug("[chama] NIP-04 seed decrypt failed");
   }
 
@@ -242,7 +256,7 @@ export async function recoverSeedWordsFromEvents(
   } = {},
 ): Promise<{ words: string[]; event: NostrEvent } | null> {
   const sorted = [...events].sort((a, b) => b.created_at - a.created_at);
-  const delaysMs = options.delaysMs ?? seedDecryptRetryDelaysForRuntime();
+  const delaysMs = signer.requiresUserAction ? [] : options.delaysMs ?? seedDecryptRetryDelaysForRuntime();
   const sleepFn = options.sleepFn ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
 
   for (let attempt = 0; attempt <= delaysMs.length; attempt++) {
@@ -454,6 +468,18 @@ export function getCachedSeedWords(): string[] | null {
 // PUBLIC API
 // ══════════════════════════════════════════════════════════════════════════
 
+/** Recovery-only read. Never generate or replace a seed while locating bonds.
+ *  Uses the same reader as getOrCreateSeed (protected v2 backups, retired v1
+ *  copies, published-marker and quorum guards) with creation switched off, so
+ *  bond recovery can never bypass a protected backup or resurrect a retired
+ *  one. A protected backup raises SeedNeedsRecoveryCode for the unlock form. */
+export async function getExistingSeed(client: EscrowClient, signer: Signer, allowUserAction = false): Promise<string[]> {
+  const pubkey = await signer.getPublicKey();
+  if (cachedSeed && cachedForPubkey === pubkey) return [...cachedSeed];
+  if (signer.requiresUserAction && !allowUserAction) throw Object.assign(new Error('Unlock your wallet seed to recover these bonds. Choose Retry to unlock.'), { code: 'seed-locked' });
+  return [...await getOrCreateSeed(client, signer, { existingOnly: true })];
+}
+
 /**
  * Fetch the user's Chama Fedimint seed, or generate one if none exists.
  *
@@ -474,6 +500,9 @@ export async function getOrCreateSeed(
   // This transient map never goes into browser storage or logs.
   const decrypted = new Map<string, string>();
   const readerSigner: Signer = {
+    // #31: tryDecryptSeedEvent checks these to make one prompt, not several.
+    requiresUserAction: signer.requiresUserAction,
+    ...(signer.nip04Decrypt ? { nip04Decrypt: (cipher: string, from: string) => signer.nip04Decrypt!(cipher, from) } : {}),
     getPublicKey: () => signer.getPublicKey(),
     signEvent: event => signer.signEvent(event),
     nip44Encrypt: (plain, to) => signer.nip44Encrypt(plain, to),
@@ -501,7 +530,9 @@ export async function getOrCreateSeed(
   // checked fire-and-forget after wallet startup, so this removes login
   // latency without weakening the remote backup or replacement-seed guards.
   const localEvent = loadLocalSeedEvent(pubkey);
-  if (localEvent) {
+  // Interactive signers (#31) skip this fast path: the verified local copy is
+  // ranked with relay candidates below instead of prompting for an older cache.
+  if (localEvent && !signer.requiresUserAction) {
     if (isProtectedSeedEvent(localEvent, pubkey)) {
       if (!isBrowserProtectedSeedEvent(localEvent)) throw new SeedNeedsRecoveryCode(pubkey);
       return openProtectedSeed(localEvent, pubkey, readerSigner, options);
@@ -574,6 +605,11 @@ export async function getOrCreateSeed(
       console.info("[chama] Fedimint seed recovered on retry (relay pool warmed up)");
     }
   }
+
+  // Interactive lookup ranks the verified local copy with relay candidates,
+  // rather than asking to decrypt an older cache before reading newer events.
+  // A protected or retired local copy then goes through the same v2 checks.
+  if (signer.requiresUserAction && localEvent && !existing.some(event => event.id === localEvent.id)) existing.push(localEvent);
 
   const protectedEvents = existing.filter(event => isProtectedSeedEvent(event, pubkey));
   const browserProtected = protectedEvents.filter(isBrowserProtectedSeedEvent)
@@ -700,6 +736,10 @@ export async function getOrCreateSeed(
       connectedRelays: client.getConnectedRelayCount(),
     });
     throw seedRecoveryRelaysUnreadyError();
+  }
+
+  if (options.existingOnly) {
+    throw Object.assign(new Error('Your existing wallet seed could not be found. Restore it or reconnect, then Retry.'), { code: 'seed-missing' });
   }
 
   // ── 3. True first launch — no marker, no recovery. Generate fresh. ──

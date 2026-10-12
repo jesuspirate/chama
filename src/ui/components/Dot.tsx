@@ -55,9 +55,9 @@ export function Dot({ role, pk, isYou, voted, outcome, autoAssigned, displayName
         )}
       </div>
       <span style={{
-        fontSize: 9,
+        fontSize: T.fs.secondary,
         color: isYou ? c : T.muted,
-        fontFamily: T.mono,
+        fontFamily: T.sans,
         fontWeight: isYou ? 700 : 400,
         fontStyle: autoAssigned ? "italic" : "normal",
         maxWidth: 104,

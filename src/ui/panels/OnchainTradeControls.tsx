@@ -255,7 +255,7 @@ export function OnchainTradeControls({ state, pubkey, profileNames, kind0Enabled
           const result = await actions.onRefundOnchainEscrow!(state.id); setNote(`Refund broadcast: ${result.txid}`);
         })}>Recover deposit</button>}
       </>}
-    </div> : <OnchainEscrowPanel settlementUnavailable={unavailable} view={view} network={ESCROW_NETWORK_LABEL} settlementCheck={unavailable ? null : checkedChoice === choice?.id ? check : check?.ok === false ? check : null} signing={busy} signedByViewer={signed}
+    </div> : <OnchainEscrowPanel refundHeight={(state.lock.onchain ?? state.onchainFundingTerms)?.refundLockUntil} settlementUnavailable={unavailable} view={view} network={ESCROW_NETWORK_LABEL} settlementCheck={unavailable ? null : checkedChoice === choice?.id ? check : check?.ok === false ? check : null} signing={busy} signedByViewer={signed}
       checking={busy} fundingNote={state.onchainFundingTerms && unavailable && state.status === EscrowStatus.CREATED ? "Couldn’t check the deposit yet — retrying" : note} depositStatus={depositStatus} publishing={busy} refunding={busy}
       onPrepareFunding={prepareFailed && !state.onchainFundingTerms && view.viewerFunds && participants.buyer && participants.seller && actions.onPrepareOnchainFunding
         ? () => void run(prepareFunding) : undefined}

@@ -466,13 +466,13 @@ function lendingTierSummary(value: string) {
   if (!tier || !limit) {
     return (
       <>
-        {translate(lang, "create.aboveLendingCapBefore")} <BitcoinAmount sats={MAX_FEDIMINT_LENDING_SATS} size={11} gap={4} glyphScale={1.18} color="inherit" glyphColor="inherit" />{translate(lang, "create.aboveLendingCapAfter")}
+        {translate(lang, "create.aboveLendingCapBefore")} <BitcoinAmount sats={MAX_FEDIMINT_LENDING_SATS} size={T.fs.secondary} gap={4} glyphScale={1.18} color="inherit" glyphColor="inherit" />{translate(lang, "create.aboveLendingCapAfter")}
       </>
     );
   }
   return (
     <>
-      {translate(lang, "create.tierSummaryBefore", { tier, label: translate(lang, limit.labelKey) })} <BitcoinAmount sats={limit.maxSats} size={11} gap={4} glyphScale={1.18} color="inherit" glyphColor="inherit" />
+      {translate(lang, "create.tierSummaryBefore", { tier, label: translate(lang, limit.labelKey) })} <BitcoinAmount sats={limit.maxSats} size={T.fs.secondary} gap={4} glyphScale={1.18} color="inherit" glyphColor="inherit" />
     </>
   );
 }
@@ -905,13 +905,13 @@ function formatMenuAmount(
     return (
       <BitcoinAmount
         label={min === max ? min : `${min}-${max}`}
-        size={12}
+        size={T.fs.secondary}
         gap={4}
         glyphScale={1.18}
       />
     );
   }
-  return <BitcoinAmount msats={item.amountMsats} size={12} gap={4} glyphScale={1.18} />;
+  return <BitcoinAmount msats={item.amountMsats} size={T.fs.secondary} gap={4} glyphScale={1.18} />;
 }
 
 function supportsPremium(vertical: Vertical): boolean {
@@ -1860,8 +1860,8 @@ function ArbiterWarningCard({
           {isHard ? "⚠️" : "⚖️"}
         </div>
         <div style={{
-          fontSize: 11, fontWeight: 700, color: isHard ? T.red : T.amber,
-          fontFamily: T.mono, letterSpacing: 1.5, textTransform: "uppercase",
+          fontSize: T.fs.secondary, fontWeight: 700, color: isHard ? T.red : T.amber,
+          fontFamily: T.sans,
           marginBottom: 12,
         }}>
           {isHard ? t("create.warnHardTitle") : t("create.warnSoftTitle")}
@@ -3402,7 +3402,7 @@ function Step2({
           {t("create.lendingCapBefore")}{" "}
           <BitcoinAmount
             sats={MAX_FEDIMINT_LENDING_SATS}
-            size={10}
+            size={T.fs.secondary}
             gap={3}
             glyphScale={1.2}
             color="inherit"
@@ -4208,7 +4208,7 @@ function Step3({
           {t("create.lendingCapBefore")}{" "}
           <BitcoinAmount
             sats={MAX_FEDIMINT_LENDING_SATS}
-            size={10}
+            size={T.fs.secondary}
             gap={3}
             glyphScale={1.2}
             color="inherit"

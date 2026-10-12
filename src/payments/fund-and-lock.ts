@@ -468,6 +468,7 @@ export interface RunFundAndLockDeps {
   /** Bound to actions.lockAndPublish in the hook. */
   lockAndPublish: (escrowId: string, opts: {
     savedHandleId?: string;
+    paymentDetailsInChat?: boolean;
     selectedItems?: SelectedMenuItem[];
   }) => Promise<unknown>;
 }
@@ -486,6 +487,7 @@ export interface RunFundAndLockOpts extends RunFundAndLockDeps {
   description: string;
   /** Optional handle to reveal in the LOCK payload. */
   savedHandleId?: string;
+  paymentDetailsInChat?: boolean;
   /** Optional menu basket snapshot to attach to LOCK. */
   selectedItems?: SelectedMenuItem[];
   /** Phase callback. */
@@ -842,7 +844,7 @@ async function runFundAndLockWatched(
 
   try {
     await opts.lockAndPublish(opts.escrowId, {
-      savedHandleId: opts.savedHandleId,
+      savedHandleId: opts.savedHandleId, paymentDetailsInChat: opts.paymentDetailsInChat,
       selectedItems: opts.selectedItems,
     });
     emit({ kind: "locked" });

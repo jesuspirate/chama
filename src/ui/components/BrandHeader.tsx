@@ -37,8 +37,7 @@ export function BrandHeader() {
           <div style={{
             display: "flex", alignItems: "center", gap: 7,
             marginTop: 12, color: T.muted, fontFamily: T.sans,
-            fontSize: 7.5, fontWeight: 700, letterSpacing: 1.25,
-            textTransform: "uppercase", whiteSpace: "nowrap",
+            fontSize: T.fs.secondary, fontWeight: 700, whiteSpace: "nowrap",
           }}>
             <span>community</span><span aria-hidden="true" style={{ fontSize: 5, opacity: 0.65 }}>●</span>
             <span>trust</span><span aria-hidden="true" style={{ fontSize: 5, opacity: 0.65 }}>●</span>
@@ -47,8 +46,7 @@ export function BrandHeader() {
         </div>
       </div>
       <div style={{
-        fontSize: 10, color: T.muted, fontFamily: T.mono,
-        letterSpacing: 3, textTransform: "uppercase",
+        fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans,
       }}>
         bitcoin commerce, together
       </div>

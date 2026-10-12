@@ -106,9 +106,8 @@ export function RecoveryBanner({
             is wrong. */}
         <div style={{
           display: "flex", alignItems: "center", gap: 8,
-          fontSize: 10, fontWeight: 700,
-          color: T.muted, fontFamily: T.mono,
-          letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 12,
+          fontSize: T.fs.secondary, fontWeight: 700,
+          color: T.muted, fontFamily: T.sans, marginBottom: 12,
         }}>
           {!fundsReturned && (
             <span style={{
@@ -189,7 +188,7 @@ export function RecoveryBanner({
             <div style={{ fontSize: 12, color: T.muted, fontFamily: T.mono }}>
               {t("recovery.youFunded")}{" "}
               <span style={{ color: T.accent, fontWeight: 700 }}>
-                <BitcoinAmount msats={fundingTrade.amountMsats} size={12} gap={4} glyphScale={1.18} />
+                <BitcoinAmount msats={fundingTrade.amountMsats} size={T.fs.secondary} gap={4} glyphScale={1.18} />
               </span>
             </div>
           </div>
@@ -229,7 +228,7 @@ export function RecoveryBanner({
               </span>
               {" · "}
               <span style={{ color: T.accent, fontWeight: 700 }}>
-                <BitcoinAmount msats={source.amountMsats} size={12} gap={4} glyphScale={1.18} />
+                <BitcoinAmount msats={source.amountMsats} size={T.fs.secondary} gap={4} glyphScale={1.18} />
               </span>
             </div>
           </div>

@@ -5,16 +5,16 @@ import type { FaqContent } from "./faq-types.js";
 
 export const faqEs: FaqContent = {
   intro:
-    "Chama es un mercado donde comercias con tu comunidad usando Bitcoin — sin necesidad de entender de Bitcoin. Un chama es un círculo de ahorro de África Oriental: vecinos que juntan lo que tienen y se arreglan por confianza. Aquí la confianza es criptográfica, y no hay ninguna empresa en el medio — solo tú, tu contraparte, tu comunidad y Nostr.",
+    "Intercambia Bitcoin, bienes y servicios con tu comunidad. Un chama es un círculo de ahorro de África Oriental; aquí, los intercambios usan ecash emitido por una federación o custodia directa en Bitcoin. Chama no tiene el dinero; «¿Quién tiene mi dinero?» indica quién lo tiene.",
   sections: [
     {
       id: "basics",
       title: "Lo básico",
       items: [
-        { q: "¿Qué es Chama?", a: "Un mercado entre pares. Puedes comprar y vender Bitcoin, bienes y servicios con gente de tu comunidad. Cada intercambio está protegido por una custodia que ninguna empresa puede congelar, incautar ni apagar — porque no hay ninguna empresa en el medio." },
+        { q: "¿Qué es Chama?", a: "Un mercado entre pares para Bitcoin, bienes y servicios en tu comunidad. Los intercambios usan ecash emitido por una federación o custodia directa en Bitcoin. Antes de aportar fondos ves quién los tiene y las condiciones del intercambio." },
         { q: "¿Necesito saber algo de Bitcoin?", a: "No. Eliges tu país y tu moneda, comercias, y (en los países compatibles) tu dinero puede llegar directo a tu cuenta de dinero móvil como M-Pesa. Bitcoin es la tubería; no tienes que pensar en él." },
-        { q: "¿Chama es gratis? ¿Cuánto cuesta?", a: "La app es gratis para descargar, y Chama en sí no se queda con nada — es no-custodial, así que ninguna empresa se interpone entre tú y tu dinero. En un intercambio completado, una pequeña prima de seguro del 0,5 % va al árbitro de la comunidad que respalda tu intercambio (0,25 % de cada lado), enviada en ecash. Está incluida por defecto y puedes desactivarla antes de cerrar. Si un intercambio pasa a un árbitro para resolver una disputa, se aplica una pequeña comisión adicional por ese trabajo. Los vendedores también pueden fijar su propia prima en una publicación (por ejemplo “+25 %”) — ese es el precio del vendedor, no una comisión de Chama — y siempre ves el monto final antes de comprometerte." },
-        { q: "¿Chama guarda mi dinero?", a: "No. Chama nunca toca tu dinero. Tus fondos quedan en una custodia compartida solo mientras un intercambio está activo, y se mueven hacia ti en el momento en que el intercambio se cierra. Entre intercambios, tu saldo es cero por diseño — no hay ninguna billetera que nadie pueda vaciar." },
+        { q: "¿Chama es gratis? ¿Cuánto cuesta?", a: "La app es gratis para descargar, y Chama en sí no se queda con nada — Chama no tiene tu dinero; el ecash está respaldado por Bitcoin en manos de los guardianes de una federación. En un intercambio completado, una pequeña prima de seguro del 0,5 % va al árbitro de la comunidad que respalda tu intercambio (0,25 % de cada lado), enviada en ecash. Está incluida por defecto y puedes desactivarla antes de cerrar. Si un intercambio pasa a un árbitro para resolver una disputa, se aplica una pequeña comisión adicional por ese trabajo. Los vendedores también pueden fijar su propia prima en una publicación (por ejemplo “+25 %”) — ese es el precio del vendedor, no una comisión de Chama — y siempre ves el monto final antes de comprometerte." },
+        { q: "¿Chama guarda mi dinero?", a: "Chama no tiene tu dinero. El ecash representa Bitcoin en manos de los guardianes de la federación indicada mientras conservas sus notas. La custodia directa en Bitcoin está en el script del intercambio hasta la liquidación o el bloque de reembolso. Puedes tener un saldo ecash local entre intercambios; guardar la clave de tu cuenta no respalda ese saldo." },
       ],
     },
     {
@@ -33,7 +33,7 @@ export const faqEs: FaqContent = {
         { q: "¿Cómo compro algo?", a: { steps: [
           "En Explorar, toca una publicación que te interese.",
           "Toca Unirme como comprador para reservar tu lugar (todavía no se mueve nada).",
-          "Arma tu pedido / confirma el monto, luego financíalo — esto bloquea tus sats a salvo en custodia.",
+          "Arma tu pedido / confirma el monto, luego financíalo — esto bloquea tus sats en custodia.",
           "Págale al vendedor el efectivo (por ejemplo M-Pesa, Airtel) como lo indica la publicación, o recibe tus bienes.",
           "Cuando tengas lo que pagaste, toca para liberar — los sats van al vendedor. Listo.",
         ] } },
@@ -44,7 +44,7 @@ export const faqEs: FaqContent = {
           "Una vez liberado, toca Reclamar para recibir tus sats — y retirar.",
         ] } },
         { q: "¿Cuáles son los pasos de un intercambio?", a: "Reservado (alguien se unió) → Bloqueado (sats financiados en custodia) → sucede el trabajo (bienes entregados / efectivo enviado) → Liberado (ambas partes de acuerdo) → Reclama tu cobro → Cerrado. Puedes seguirlo en la línea de tiempo del intercambio, y chatear con la otra parte en cualquier momento." },
-        { q: "¿Cómo me mantiene a salvo la custodia?", a: "Cuando un intercambio se financia, el dinero se divide de modo que dos de las tres personas del intercambio — tú, tu contraparte y un árbitro de la comunidad — deben estar de acuerdo antes de que pueda moverse. Ninguna persona sola (ni ninguna empresa) puede escaparse con él. Normalmente tú y tu contraparte simplemente se ponen de acuerdo y se cierra; el árbitro solo interviene si algo sale mal." },
+        { q: "¿Cómo me mantiene a salvo la custodia?", a: "Dos de los tres participantes deben aprobar el pago: comprador, vendedor y árbitro. Con ecash, esto protege el acceso a las notas; los guardianes de la federación siguen teniendo el Bitcoin que las respalda. La custodia directa en Bitcoin usa un script con una vía de reembolso para quien aportó los fondos. Estas reglas no eliminan los riesgos de la federación ni de perder el dispositivo." },
         { q: "¿Qué es un árbitro?", a: "Un miembro de confianza de tu comunidad que puede ayudar a cerrar un intercambio solo si hay una disputa. No puede quedarse con tu dinero — solo puede desempatar entre comprador y vendedor. Los árbitros construyen una reputación con el tiempo." },
         { q: "¿Qué pasa si algo sale mal / tengo una disputa?", a: "Si tú y tu contraparte no están de acuerdo (por ejemplo, los bienes nunca llegaron), cada uno emite su voto — liberar o reembolsar — y explica por qué. Si chocan, se llama al árbitro para que decida con justicia. Nunca te quedas atascado." },
         { q: "¿Cómo cancelo o me echo atrás?", a: "Antes de que algo se financie, puedes simplemente salir. Después de financiar, echarte atrás significa emitir un voto de reembolso, que devuelve los sats a la persona correcta (el árbitro es el respaldo). Chama siempre te muestra exactamente a dónde va el dinero antes de que confirmes." },
@@ -87,7 +87,7 @@ export const faqEs: FaqContent = {
       id: "safety",
       title: "Cuenta y seguridad",
       items: [
-        { q: "¿Está seguro mi dinero?", a: "Sí — tus fondos están protegidos por la custodia de dos de tres y solo se comprometen a un intercambio específico. Chama, y cualquier entidad “Chama”, no puede incautarlos, congelarlos ni moverlos." },
+        { q: "¿Está seguro mi dinero?", a: "Hay riesgos. El ecash depende de que los guardianes de la federación indicada sigan disponibles y canjeen sus notas. La custodia directa en Bitcoin depende de su script y las condiciones de reembolso. Chama no tiene ninguno de los dos; lee quién los tiene y el plazo antes de aportar fondos." },
         { q: "Respalda tu cuenta (¡importante!)", a: "Tu llave es tu cuenta y tu vía de recuperación. Si pierdes tu teléfono sin un respaldo, podrías perder el acceso. Cuando inicies sesión, guarda tu llave / frase de recuperación en un lugar seguro y privado (anótala fuera de línea; nunca la compartas). Cualquiera con tu llave controla tu cuenta — trátala como efectivo." },
         { q: "¿Chama es privado?", a: "No le das a Chama un correo, número de teléfono ni identificación para usarlo. Tu identidad es solo tu llave. Ten en cuenta que lo que publicas en público (anuncios, chat en un intercambio) se comparte por la red Nostr." },
       ],
@@ -105,7 +105,7 @@ export const faqEs: FaqContent = {
   glossary: [
     { term: "Sats", def: "La unidad pequeña de Bitcoin (1 Bitcoin = 100.000.000 sats). Los precios en Chama también se muestran en tu moneda local." },
     { term: "Lightning", def: "La red de pagos de Bitcoin rápida y barata que Chama usa para mover sats." },
-    { term: "Custodia", def: "Una “retención” segura de los fondos durante un intercambio, liberada solo cuando las personas correctas están de acuerdo." },
+    { term: "Custodia", def: "Una “retención” de los fondos durante un intercambio, liberada solo cuando las personas correctas están de acuerdo." },
     { term: "Árbitro", def: "Un miembro de la comunidad que puede cerrar un intercambio en disputa — nunca capaz de quedarse con tu dinero." },
     { term: "Llave / npub", def: "Tu cuenta en Chama (y Nostr). Respáldala." },
     { term: "M-Pesa / Tando", def: "Dinero móvil (Kenia) y el puente que convierte tus sats en efectivo M-Pesa." },

@@ -87,7 +87,7 @@ for(const leaf of ['coop','dispute'] as const) for (const direct of [false, true
   assert.match(html,confirmed ? /Payout confirmed · 99,500 sats/ : /Payout sent · waiting for confirmation/);
   assert.ok(html.includes(`/tx/${txid}`));
   const recoveryHtml=renderToStaticMarkup(createElement(LangProvider,null,createElement(OnchainTradeControls,{state:done,pubkey:f.pks.buyer,onchainObservation:obs,onScanMyOnchainPayouts:async()=>({payouts:[],balanceSats:0n}),onSweepOnchainPayout:async()=>{throw Error('not used');}})));
-  assert.equal(recoveryHtml.includes('YOUR ON-CHAIN PAYOUT'),!direct);
+  assert.equal(recoveryHtml.includes('Your on-chain payout'),!direct);
   assert.equal(obs.payout?.sats,'99500');assert.equal(obs.payout?.destination,destination);
   for(const pk of [f.pks.buyer,f.pks.seller]) {
    assert.equal(onchainAttention(done,pk,obs)?.actionable,false);

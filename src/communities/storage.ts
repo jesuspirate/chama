@@ -30,14 +30,13 @@ export const COMMUNITY_STORAGE_KEY = "chama_community";
 // reload lands on the disconnected ConnectScreen — and with the scoped home
 // unreadable, a returning user was dropped onto the first-run globe.
 //
-// This hint is written whenever the home is set/known and read ONLY by the
-// ConnectScreen, purely to keep a returning user past the globe pre-signin.
+// This hint is written whenever home is set/known. The chooser displays it
+// and explicitly joining uses the displayed community as its setup default.
 // It is deliberately NOT consulted by getUserCommunitySlug /
 // claimLegacyStorageItem, so it can never flow into a *different* npub's
-// committed community — the v3.5.1 onboarding-leak fix stays intact. Worst
-// case on a shared browser is cosmetic: a fresh npub briefly sees the prior
-// user's home name on the pre-signin welcome screen; their actual home is
-// still resolved from their own (empty) scope after sign-in.
+// committed community during stored-key startup. Joining explicitly accepts
+// the displayed default; an existing identity's scoped home still wins after
+// sign-in. Wallet state and bearer funds never follow this browser-wide hint.
 const LAST_HOME_KEY = "chama_last_home";
 
 /** Persist the unscoped "last home" display hint (see LAST_HOME_KEY). */

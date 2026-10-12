@@ -17,8 +17,7 @@ export function SubscriptionTimeline({ subscription, onRelease }: {
       borderRadius: T.r, padding: 16, marginBottom: 16,
     }}>
       <div style={{
-        fontSize: 11, fontWeight: 600, color: T.purple, fontFamily: T.mono,
-        letterSpacing: 1, marginBottom: 12,
+        fontSize: T.fs.secondary, fontWeight: 600, color: T.purple, fontFamily: T.sans, marginBottom: 12,
       }}>
         {t("card.subscriptionHeader", { released: sub.releasedCount, total: sub.totalPeriods })}
       </div>
@@ -43,7 +42,7 @@ export function SubscriptionTimeline({ subscription, onRelease }: {
               background: `${color}${status === "released" ? "44" : isActive ? "66" : "22"}`,
               border: `1px solid ${color}${isActive ? "88" : "33"}`,
               display: "flex", alignItems: "center", justifyContent: "center",
-              fontSize: 8, fontFamily: T.mono, color,
+              fontSize: T.fs.secondary, fontFamily: T.sans, color,
               fontWeight: isActive ? 700 : 400,
               animation: isActive ? "pulse 2s ease-in-out infinite" : "none",
               cursor: (isActive || isPast) && status === "pending" ? "pointer" : "default",
@@ -66,7 +65,7 @@ export function SubscriptionTimeline({ subscription, onRelease }: {
         ].map(item => (
           <div key={item.l} style={{ display: "flex", alignItems: "center", gap: 4 }}>
             <div style={{ width: 8, height: 8, borderRadius: 2, background: item.c + "66" }} />
-            <span style={{ fontSize: 9, color: T.muted, fontFamily: T.mono }}>{item.l}</span>
+            <span style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans }}>{item.l}</span>
           </div>
         ))}
       </div>
@@ -93,11 +92,11 @@ export function SubscriptionTimeline({ subscription, onRelease }: {
           }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <div>
-                <div style={{ fontSize: 11, color: T.purple, fontFamily: T.mono, fontWeight: 600 }}>
-                  {t("card.periodLabel", { number: i + 1 })} · <BitcoinAmount msats={sub.periodAmountMsats} size={11} gap={3} glyphScale={1.18} color={T.purple} glyphColor={T.purple} />
+                <div style={{ fontSize: T.fs.secondary, color: T.purple, fontFamily: T.sans, fontWeight: 600 }}>
+                  {t("card.periodLabel", { number: i + 1 })} · <BitcoinAmount msats={sub.periodAmountMsats} size={T.fs.secondary} gap={3} glyphScale={1.18} color={T.purple} glyphColor={T.purple} />
                 </div>
                 {remaining > 0 && (
-                  <div style={{ fontSize: 9, color: T.muted, fontFamily: T.mono, marginTop: 2 }}>
+                  <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, marginTop: 2 }}>
                     {t("card.autoReleasesIn", { time: `${days > 0 ? `${days}d ` : ""}${hours}h` })}
                   </div>
                 )}
@@ -105,7 +104,7 @@ export function SubscriptionTimeline({ subscription, onRelease }: {
               <button onClick={() => onRelease(i)} style={{
                 padding: "8px 16px", borderRadius: T.rs,
                 background: T.greenDim, border: `1px solid ${T.green}33`,
-                color: T.green, fontFamily: T.mono, fontSize: 10, fontWeight: 600,
+                color: T.green, fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 600,
                 cursor: "pointer",
               }}>
                 {t("card.release")}
@@ -116,9 +115,9 @@ export function SubscriptionTimeline({ subscription, onRelease }: {
       })}
 
       {/* Summary */}
-      <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono, textAlign: "center" }}>
-        <BitcoinAmount msats={sub.totalReleasedMsats} size={10} gap={3} glyphScale={1.18} color={T.muted} glyphColor={T.muted} /> /{" "}
-        <BitcoinAmount msats={sub.totalPeriods * sub.periodAmountMsats} size={10} gap={3} glyphScale={1.18} color={T.muted} glyphColor={T.muted} /> {t("card.releasedSuffix")}
+      <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, textAlign: "center" }}>
+        <BitcoinAmount msats={sub.totalReleasedMsats} size={T.fs.secondary} gap={3} glyphScale={1.18} color={T.muted} glyphColor={T.muted} /> /{" "}
+        <BitcoinAmount msats={sub.totalPeriods * sub.periodAmountMsats} size={T.fs.secondary} gap={3} glyphScale={1.18} color={T.muted} glyphColor={T.muted} /> {t("card.releasedSuffix")}
       </div>
     </div>
   );

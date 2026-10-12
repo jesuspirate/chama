@@ -1,21 +1,21 @@
 // fr/recovery — Session B fills this from src/i18n/en/recovery.ts (key set must match EXACTLY).
 export const recovery: Record<string, string> = {
-  "recovery.barNeedsYou": "À vous d’agir : {count}",
+  "recovery.barNeedsYou": "À vous d’agir",
   "recovery.barCheckingTrades": "Vérification de vos échanges…",
   "recovery.exportClearError": "Chama n’a pas pu terminer l’effacement de cet export. La copie de récupération reste conservée.",
   "recovery.exportClearing": "Finalisation sécurisée…",
   "recovery.exportStashFailedReabsorbed": "Chama n’a pas pu enregistrer la copie de récupération ecash, donc l’export a été annulé. Vos sats restent dans Chama (ou sont remboursés automatiquement après le délai). Libérez de l’espace et réessayez.",
   "recovery.aBalance": "un solde",
-  "recovery.activeTradeMany": "{count} échanges actifs",
-  "recovery.activeTradeOne": "1 échange actif",
+  "recovery.activeTradeMany": "{count} échanges",
+  "recovery.activeTradeOne": "1 échange",
   "recovery.barChooseChama": "Choisissez votre Chama",
   "recovery.barExternalRoute": "Route externe",
-  "recovery.barInTradeAfter": "sous séquestre",
-  "recovery.barInTradeBefore": "⚡ {trades} ·",
-  "recovery.barReady": "Chama : prêt",
+  "recovery.barInTradeAfter": "bloqués",
+  "recovery.barInTradeBefore": "{trades} ·",
+  "recovery.barReady": "Prêt",
   "recovery.barReconnect": "Reconnecter",
-  "recovery.barRecoverCta": "⚠ Récupérer",
-  "recovery.barUnreachableCta": "⚠ Chama injoignable · Reconnecter →",
+  "recovery.barRecoverCta": "à récupérer",
+  "recovery.barUnreachableCta": "Impossible de joindre votre Chama · Réessayer",
   "recovery.barUnreachableTitle":
     "Chama injoignable — les réceptions seront refusées",
   "recovery.bearerWarning":
@@ -32,13 +32,13 @@ export const recovery: Record<string, string> = {
   "recovery.exportGenerateCta": "Générer une note ecash",
   "recovery.exportGenerateError":
     "Impossible de générer la note ecash. Vos sats sont en sécurité dans votre Chama.",
-  "recovery.exportHeadline": "RETIRER EN ECASH · SANS FRAIS LN",
+  "recovery.exportHeadline": "Retirer en ecash · sans frais LN",
   "recovery.exportIntroAfter":
     "— sans frais Lightning. Parfait pour la poussière qui coûte plus cher à déplacer via Lightning qu'elle ne vaut.",
   "recovery.exportIntroBefore":
     "Transformez votre solde en note ecash Fedimint que vous pouvez importer dans Fedi — ou dans tout portefeuille Fedimint sur",
   "recovery.exportKeepPending": "La garder en attente — je finirai plus tard",
-  "recovery.exportMinting": "CRÉATION DE VOTRE NOTE ECASH…",
+  "recovery.exportMinting": "Création de votre note ecash…",
   "recovery.exportReadyBody":
     "✓ Ecash Fedimint · {federation}. Importez ceci dans Fedi ou dans tout portefeuille Fedimint sur {federation}. Sauvegardez-la maintenant — c'est de l'argent au porteur.",
   "recovery.exportWarnAfter":
@@ -50,8 +50,8 @@ export const recovery: Record<string, string> = {
   "recovery.finishPayoutCta": "Finir le versement →",
   "recovery.finishPayoutTag": "⚡ Finissez votre versement",
   "recovery.finishing": "Finalisation…",
-  "recovery.fundedTradeLabel": "ÉCHANGE FINANCÉ",
-  "recovery.fundsAtRiskTag": "⚠ FONDS EN DANGER",
+  "recovery.fundedTradeLabel": "Échange financé",
+  "recovery.fundsAtRiskTag": "⚠ Fonds en danger",
   "recovery.fundsReturnedBody1":
     "Un échange que vous avez financé ne s'est pas conclu, alors vos",
   "recovery.fundsReturnedBody2":
@@ -117,7 +117,7 @@ export const recovery: Record<string, string> = {
   "recovery.switchBody3": "sur ce Chama ;",
   "recovery.switchBody4":
     "peuvent d'abord être récupérés vers votre portefeuille Lightning.",
-  "recovery.tradeLabel": "ÉCHANGE",
+  "recovery.tradeLabel": "Échange",
   "recovery.tradeNeedsAttention": "⚠ Échange : attention requise",
   "recovery.tryAgain": "Réessayer",
   "recovery.unknownCounterparty": "une contrepartie inconnue",

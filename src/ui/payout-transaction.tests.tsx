@@ -44,7 +44,7 @@ const chooserHtml = renderToStaticMarkup(<LangProvider><ClaimMethodChooser
   onSelectSavedWallet={unexpected} onSelectSavedNwc={unexpected} onCancel={unexpected}
 /></LangProvider>);
 assert.match(chooserHtml, /See all Lightning options/);
-assert.doesNotMatch(chooserHtml, /LN · FAST|ONCHAIN · SLOW/);
+assert.doesNotMatch(chooserHtml, /LN · fast|onchain · slow/i);
 const destinationHtml = renderToStaticMarkup(<LangProvider><DestinationPicker amountSats={196}
   initialAddress="bitcrazy@getalby.com" savedDestinations={[]} savedNwcConnections={[]}
   title="Claim" onResolve={unexpected} onCancel={unexpected} /></LangProvider>);

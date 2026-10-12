@@ -1,3 +1,4 @@
+import { SignerApprovalError } from "./signer-approval.js";
 // ══════════════════════════════════════════════════════════════════════════
 // Chama — Signer Implementations
 // ══════════════════════════════════════════════════════════════════════════
@@ -64,6 +65,7 @@ function cachePromise<T>(
  * Also works with Fedi's NIP-07 provider when running as a Mini-App.
  */
 export class NIP07Signer implements Signer {
+  readonly requiresUserAction = true;
   private pubkeyPromise: Promise<string> | null = null;
   private decryptCache: Map<string, Promise<string>> = new Map();
 
@@ -76,7 +78,7 @@ export class NIP07Signer implements Signer {
 
   async getPublicKey(): Promise<string> {
     if (!this.pubkeyPromise) {
-      this.pubkeyPromise = Promise.resolve(this.getNostr().getPublicKey())
+      this.pubkeyPromise = Promise.resolve(this.request(() => this.getNostr().getPublicKey(), "signIn"))
         .then(normalizeSignerPubkey)
         .catch((err) => {
           this.pubkeyPromise = null;
@@ -86,15 +88,45 @@ export class NIP07Signer implements Signer {
     return this.pubkeyPromise;
   }
 
+  private async request<T>(run: () => Promise<T>, action: SignerApprovalError["action"] = "action"): Promise<T> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([Promise.resolve().then(run), new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error("Signer request timed out")), 30_000);
+      })]);
+    } catch (error) {
+      console.warn("[chama] Extension request failed:", error);
+      throw new SignerApprovalError(action);
+    } finally { clearTimeout(timer); }
+  }
+
+  private requestText(run: () => Promise<unknown>, action: SignerApprovalError["action"] = "action"): Promise<string> {
+    return this.request(async () => {
+      const result = await run();
+      if (result && typeof result === "object" && (result as any).error) throw (result as any).error;
+      if (typeof result !== "string" || !result) throw new Error("Extension did not return encrypted/decrypted text");
+      return result;
+    }, action);
+  }
+
+  async nip04Decrypt(ciphertext: string, senderPubkey: string): Promise<string> {
+    return this.requestText(() => this.getNostr().nip04.decrypt(senderPubkey, ciphertext), "wallet");
+  }
+
   async signEvent(event: UnsignedEvent): Promise<NostrEvent> {
-    const nostr = this.getNostr();
-    // NIP-07 signEvent expects the full event template and returns it signed
-    const signed = await nostr.signEvent(event);
-    // User rejected the signing prompt (nos2x returns {error: {message: "denied"}})
-    if (!signed || (signed as any).error || !signed.sig) {
-      throw new Error("Signing cancelled — you can try again");
-    }
-    return signed as NostrEvent;
+    return this.request(async () => {
+      const signed = await this.getNostr().signEvent(event);
+      if (signed?.error) throw signed.error;
+      if (!signed || !signed.sig) throw new Error("Extension did not return a signed event");
+      return signed as NostrEvent;
+    }, ({ 0: "profile", 38100: "listing", 38102: "lock", 38103: "vote", 38105: "claim", 38107: "cancel", 38108: "sendMessage" } as Record<number, SignerApprovalError["action"]>)[event.kind] ?? "action");
+  }
+
+  /** Background reads may reuse a successful decrypt, but may never ask the
+   * extension for permission. Failed requests are evicted for explicit retry. */
+  async nip44DecryptCached(ciphertext: string, senderPubkey: string): Promise<string | null> {
+    try { return await (this.decryptCache.get(`${senderPubkey}:${ciphertext}`) ?? null); }
+    catch { return null; }
   }
 
   async nip44Encrypt(plaintext: string, recipientPubkey: string): Promise<string> {
@@ -114,7 +146,7 @@ export class NIP07Signer implements Signer {
           "or switch to a NIP-44-capable signer.",
       );
     }
-    return nostr.nip44.encrypt(recipientPubkey, plaintext);
+    return this.requestText(() => nostr.nip44.encrypt(recipientPubkey, plaintext));
   }
 
   async nip44Decrypt(ciphertext: string, senderPubkey: string): Promise<string> {
@@ -130,7 +162,7 @@ export class NIP07Signer implements Signer {
               "Please upgrade your extension or switch to a NIP-44-capable signer.",
           );
         }
-        return nostr.nip44.decrypt(senderPubkey, ciphertext);
+        return this.requestText(() => nostr.nip44.decrypt(senderPubkey, ciphertext), "openTrade");
       },
     );
   }
@@ -142,7 +174,7 @@ export class NIP07Signer implements Signer {
     if (!nostr.nip04?.encrypt) {
       throw new Error("Your Nostr signer does not support NIP-04 encryption");
     }
-    return nostr.nip04.encrypt(recipientPubkey, plaintext);
+    return this.requestText(() => nostr.nip04.encrypt(recipientPubkey, plaintext));
   }
 }
 

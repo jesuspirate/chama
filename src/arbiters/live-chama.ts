@@ -25,6 +25,10 @@ export interface ChamaLiveness {
   isLive: boolean;
   /** Distinct funded + active bonded arbiters. */
   arbiterCount: number;
+  /** Lowercased pubkeys whose funded, active bond here licenses arbitration —
+   *  "is this key one of this chama's verified arbiters?" Optional because a
+   *  cached result from before 6.4.23 has none; absent reads as "not listed". */
+  arbiterNpubs?: string[];
   /** Σ actual on-chain sats across live bonds (chain truth). */
   totalBondSats: bigint;
   /** Σ sats × remaining-term-blocks — the "how much × how long" commitment. */
@@ -58,15 +62,16 @@ export function computeChamaLiveness(
   tipHeight: number,
   weights: LivenessWeights = DEFAULT_LIVENESS_WEIGHTS,
 ): ChamaLiveness {
-  // One live bond per arbiter (newest already selected upstream); dedup defensively.
-  const byArbiter = new Map<string, VerifiedBond>();
+  // Each on-chain address contributes once; extra bonds do not invent people.
+  const byAddress = new Map<string, VerifiedBond>();
   for (const b of bonds) {
-    if (!b.funded || !b.active) continue;
-    const cur = byArbiter.get(b.npub);
-    if (!cur || b.actualSats > cur.actualSats) byArbiter.set(b.npub, b);
+    if (!b.funded || !b.active || b.community !== community) continue;
+    const cur = byAddress.get(b.address);
+    if (!cur || (b.announcedAt ?? 0) > (cur.announcedAt ?? 0) || ((b.announcedAt ?? 0) === (cur.announcedAt ?? 0) && b.actualSats > cur.actualSats)) byAddress.set(b.address, b);
   }
-  const live = [...byArbiter.values()];
-  const arbiterCount = live.length;
+  const live = [...byAddress.values()];
+  const arbiters = [...new Set(live.map(b => b.npub.toLowerCase()))];
+  const arbiterCount = arbiters.length;
 
   const totalBondSats = live.reduce((s, b) => s + b.actualSats, 0n);
   const bondWeightSatBlocks = live.reduce(
@@ -76,8 +81,8 @@ export function computeChamaLiveness(
   const avgRemainingBlocks = totalBondSats > 0n ? Number(bondWeightSatBlocks / totalBondSats) : 0;
 
   let rc = 0, rp = 0, rn = 0;
-  for (const b of live) {
-    const r = ratingsByNpub.get(b.npub);
+  for (const npub of arbiters) {
+    const r = ratingsByNpub.get(npub);
     if (r) { rc += r.count; rp += r.positive; rn += r.negative; }
   }
   const positiveRate = rc > 0 ? rp / rc : 0;
@@ -97,6 +102,7 @@ export function computeChamaLiveness(
     community,
     isLive: arbiterCount > 0,
     arbiterCount,
+    arbiterNpubs: bondedArbitersForCommunity(live),
     totalBondSats,
     bondWeightSatBlocks,
     avgRemainingBlocks,
@@ -234,4 +240,12 @@ export function tenureTier(blocks: number | null, blocksPerDay: number): TenureT
 export function tenureDays(blocks: number | null, blocksPerDay: number): number | null {
   if (blocks === null || blocksPerDay <= 0) return null;
   return Math.floor(blocks / blocksPerDay);
+}
+
+/** True only when `pubkey` is one of the chama's chain-verified arbiters in
+ *  this liveness reading. A bond stored on the device is not enough: it may
+ *  belong to another key or another chama, or no longer be funded and active. */
+export function isVerifiedArbiter(liveness: Pick<ChamaLiveness, "arbiterNpubs"> | null | undefined, pubkey: string | null | undefined): boolean {
+  if (!pubkey || !Array.isArray(liveness?.arbiterNpubs)) return false;
+  return liveness.arbiterNpubs.includes(pubkey.toLowerCase());
 }

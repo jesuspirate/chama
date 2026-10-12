@@ -39,11 +39,15 @@ export type CoachStep = {
 type Rect = { top: number; left: number; width: number; height: number };
 
 function measure(selector: string): Rect | null {
-  const el = document.querySelector(selector);
-  if (!el) return null;
-  const r = el.getBoundingClientRect();
-  if (r.width === 0 && r.height === 0) return null;
-  return { top: r.top, left: r.left, width: r.width, height: r.height };
+  // The same target can exist in several layouts (e.g. Create is a "+" in the
+  // phone header, an extended FAB on Android and a sidebar button on wide
+  // screens) with CSS hiding all but one — spotlight the one that is visible.
+  for (const el of Array.from(document.querySelectorAll(selector))) {
+    const r = el.getBoundingClientRect();
+    if (r.width === 0 && r.height === 0) continue;
+    return { top: r.top, left: r.left, width: r.width, height: r.height };
+  }
+  return null;
 }
 
 export function CoachMarkTour({ steps, onDone }: {
@@ -134,8 +138,8 @@ export function CoachMarkTour({ steps, onDone }: {
         textAlign: "left",
       }}>
         <div style={{
-          fontFamily: T.mono, fontSize: 10, fontWeight: 800, letterSpacing: 0.8,
-          color: T.accent, textTransform: "uppercase", marginBottom: 6,
+          fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 800,
+          color: T.accent, marginBottom: 6,
         }}>
           {t("app.coachStepOf", { step: i + 1, total: steps.length })}
         </div>
@@ -156,7 +160,7 @@ export function CoachMarkTour({ steps, onDone }: {
             type="button" onClick={finish}
             style={{
               background: "none", border: "none", color: T.muted,
-              fontFamily: T.mono, fontSize: 11, fontWeight: 700, cursor: "pointer",
+              fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700, cursor: "pointer",
               padding: "8px 4px",
             }}
           >
@@ -169,7 +173,7 @@ export function CoachMarkTour({ steps, onDone }: {
                 style={{
                   padding: "9px 14px", borderRadius: T.rs,
                   background: T.surface, border: `1px solid ${T.border}`,
-                  color: T.text, fontFamily: T.mono, fontSize: 11, fontWeight: 700,
+                  color: T.text, fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
                   cursor: "pointer",
                 }}
               >
@@ -182,7 +186,7 @@ export function CoachMarkTour({ steps, onDone }: {
               style={{
                 padding: "9px 16px", borderRadius: T.rs,
                 background: T.accent, border: "none", color: T.bg,
-                fontFamily: T.mono, fontSize: 11, fontWeight: 800, cursor: "pointer",
+                fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700, cursor: "pointer",
               }}
             >
               {isLast ? t("common.done") : t("app.coachNext")}

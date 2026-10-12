@@ -771,6 +771,7 @@ dependencies = [
  "anyhow",
  "axum",
  "clap",
+ "fedimint-api-client",
  "fedimint-bip39",
  "fedimint-client",
  "fedimint-connectors",

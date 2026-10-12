@@ -54,6 +54,12 @@ function RailsFixture() {
   fundAndLock={async(_id,opts)=>{
     (window as any).railCalls.push(opts.fundingMethod);
     if(opts.fundingMethod==='lightning') {
+      if(mode==='join-error' || mode==='join-terminal') {
+        await new Promise(resolve => setTimeout(resolve, 100));
+        const error = 'Fedimint SDK did not join the federation: Client already exists in database';
+        if(mode==='join-error') throw new Error(error);
+        return {kind:'lock-failed', error}; // no phase callback during initialization
+      }
       if(mode==='fail') { const failure={kind:'lock-failed' as const,error:'No gateways available',invoiceFailed:true};opts.onPhase(failure);return failure; }
       opts.onPhase({kind:'creating-invoice'});
       (window as any).issueInvoice=()=>opts.onPhase({kind:'invoice-created',bolt11:payload.slice(10),expiresAt:Date.now()+600000});

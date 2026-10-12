@@ -8,6 +8,7 @@ publish = false
 anyhow = "1.0.98"
 axum = "0.8.9"
 clap = { version = "4.5.60", features = ["derive", "env"] }
+fedimint-api-client = "=0.11.1"
 fedimint-bip39 = "=0.11.1"
 fedimint-client = "=0.11.1"
 fedimint-connectors = "=0.11.1"

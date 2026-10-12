@@ -66,7 +66,7 @@ export function RatingTap({
     return (
       <div style={wrap}>
         <span style={{ fontSize: 14 }}>{shown === "up" ? "👍" : "👎"}</span>
-        <span style={{ fontSize: 11, fontFamily: T.mono, color: T.muted }}>
+        <span style={{ fontSize: T.fs.secondary, fontFamily: T.sans, color: T.muted }}>
           {t("me.ratingThanks")}
         </span>
       </div>
@@ -87,7 +87,7 @@ export function RatingTap({
 
   return (
     <div style={wrap}>
-      <span style={{ fontSize: 11, fontFamily: T.mono, color: failed ? T.red : T.muted }}>
+      <span style={{ fontSize: T.fs.secondary, fontFamily: T.sans, color: failed ? T.red : T.muted }}>
         {failed ? t("me.ratingPublishFailed") : t("me.ratingPrompt")}
       </span>
       <button aria-label={t("me.thumbsUpAria")} disabled={!!pending} onClick={() => tap("up")} style={pill("up", T.green)}>

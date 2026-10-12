@@ -1,3 +1,4 @@
+import { EscrowEventKind, type CreatePayload } from "./types.js";
 import { hasMissedBuyerLock } from "./listing-renewal-age.js";
 // ══════════════════════════════════════════════════════════════════════════
 // Chama — Store permanence (#49) Tier 1 + Tier 3: renewable listings
@@ -425,6 +426,11 @@ export function autoRenewableListings(
 export interface RenewCreateParams {
   renewalOf?: string;
   description: string;
+  escrowMode?: EscrowState["escrowMode"];
+  onchainNetwork?: "mainnet" | "signet";
+  settlementPolicy?: string;
+  title?: string;
+  body?: string;
   listingKind?: WorkListingKind;
   imageDataUrl?: string;
   imageUrls?: string[];
@@ -459,9 +465,15 @@ export function buildRenewCreateParams(state: EscrowState): RenewCreateParams {
   if (state.parent !== undefined) {
     throw new Error("buildRenewCreateParams: a child order is not a renewable listing");
   }
+  const create = (state.eventChain ?? []).find(event => event.kind === EscrowEventKind.CREATE)?.payload as CreatePayload | undefined;
   return {
     renewalOf: state.id,
     description: state.description,
+    escrowMode: state.escrowMode,
+    ...(create?.onchainNetwork ? { onchainNetwork: create.onchainNetwork } : {}),
+    settlementPolicy: state.settlementPolicy,
+    ...(state.title ? { title: state.title } : {}),
+    ...(state.body ? { body: state.body } : {}),
     ...(state.listingKind ? { listingKind: state.listingKind } : {}),
     ...(state.imageDataUrl ? { imageDataUrl: state.imageDataUrl } : {}),
     ...(state.imageUrls?.length ? { imageUrls: [...state.imageUrls] } : {}),

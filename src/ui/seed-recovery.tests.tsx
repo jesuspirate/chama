@@ -17,8 +17,12 @@ for (const lang of LANGS) for (const key of ['restoreWarning', 'restoreConfirm',
   assert.notEqual(translate(lang, `recovery.seed.${key}`), `recovery.seed.${key}`);
 }
 const hook = readFileSync(new URL('../hooks/useEscrow.ts', import.meta.url), 'utf8');
-// All ten existing reader sites go through the typed refusal handler.
-assert.equal((hook.match(/await readSeed\(/g) ?? []).length, 10);
+// All eleven reader sites go through a typed refusal handler: six wallet
+// reads use readSeed; the five bond-recovery reads (#31) use the recovery-only
+// readExistingSeed, which never creates a seed and raises the same request.
+assert.equal((hook.match(/await readSeed\(/g) ?? []).length, 6);
+assert.equal((hook.match(/await readExistingSeed\(/g) ?? []).length + (hook.match(/\(\) => readExistingSeed\(/g) ?? []).length, 5);
+assert.equal((hook.match(/getExistingSeed\(/g) ?? []).length, 1, 'Only readExistingSeed calls the recovery-only reader');
 assert.equal((hook.match(/await getOrCreateSeed\(/g) ?? []).length, 2, 'Only handler and explicit unlock call underlying reader');
 const keyOnly = renderToStaticMarkup(<LangProvider><SeedRecoveryPanel needsCode requireRestoreConfirmation={false} onClose={() => {}} onRestore={async () => {}} /></LangProvider>);
 assert.ok(keyOnly.includes('type="password"'));

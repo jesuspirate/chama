@@ -367,10 +367,10 @@ export function ChatPanel({ state, myRole, onSend, preferredRelayConnected = fal
         borderTop: embedded ? `1px solid ${T.border}` : "none",
         display: "flex", justifyContent: "space-between", alignItems: "center",
       }}>
-        <div style={{ fontSize: 11, fontWeight: 600, color: T.muted, fontFamily: T.mono, letterSpacing: 1 }}>
+        <div style={{ fontSize: T.fs.secondary, fontWeight: 600, color: T.muted, fontFamily: T.sans,}}>
           {t("chat.chatHeader")}
         </div>
-        <div style={{ fontSize: 9, color: T.muted, fontFamily: T.mono }}>
+        <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans }}>
           {state.chatMessages.length !== 1
             ? t("chat.messageCountMany", { count: state.chatMessages.length })
             : t("chat.messageCountOne", { count: state.chatMessages.length })}
@@ -388,7 +388,7 @@ export function ChatPanel({ state, myRole, onSend, preferredRelayConnected = fal
         {feed.length === 0 ? (
           <div style={{
             textAlign: "center", padding: "20px 0",
-            color: T.muted, fontFamily: T.mono, fontSize: 11,
+            color: T.muted, fontFamily: T.sans, fontSize: T.fs.secondary,
           }}>
             {t("chat.noMessagesYet")}
           </div>
@@ -415,7 +415,7 @@ export function ChatPanel({ state, myRole, onSend, preferredRelayConnected = fal
                 alignItems: isMe ? "flex-end" : "flex-start",
               }}>
                 <div style={{
-                  fontSize: 9, color, fontFamily: T.mono,
+                  fontSize: T.fs.secondary, color, fontFamily: T.sans,
                   fontWeight: 600, marginBottom: 2,
                 }}>
                   {isMe ? t("chat.you") : roleName(payload.senderRole)}
@@ -461,7 +461,7 @@ export function ChatPanel({ state, myRole, onSend, preferredRelayConnected = fal
                   )}
                 </div>
                 <div style={{
-                  fontSize: 8, color: T.muted, fontFamily: T.mono, marginTop: 2,
+                  fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, marginTop: 2,
                 }}>
                   {new Date(payload.sentAt * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                 </div>
@@ -507,7 +507,7 @@ export function ChatPanel({ state, myRole, onSend, preferredRelayConnected = fal
           borderTop: `1px solid ${T.border}`,
           textAlign: "center" as const,
         }}>
-          <span style={{ fontFamily: T.mono, fontSize: 10.5, color: T.muted, letterSpacing: 0.3 }}>
+          <span style={{ fontFamily: T.sans, fontSize: T.fs.secondary, color: T.muted,}}>
             {t("chat.closed")}
           </span>
         </div>
@@ -553,7 +553,7 @@ export function ChatPanel({ state, myRole, onSend, preferredRelayConnected = fal
                 }}>
                   {attachment.name || t("chat.imageReady")}
                 </div>
-                <div style={{ fontSize: 9, color: T.muted, fontFamily: T.mono, marginTop: 2 }}>
+                <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, marginTop: 2 }}>
                   {t("chat.encryptedReceiptImage")}
                 </div>
               </div>
@@ -573,7 +573,7 @@ export function ChatPanel({ state, myRole, onSend, preferredRelayConnected = fal
             <div style={{
               padding: "8px 10px", background: T.redDim,
               border: `1px solid ${T.red}33`, borderRadius: 10,
-              color: T.red, fontSize: 10, fontFamily: T.mono,
+              color: T.red, fontSize: T.fs.secondary, fontFamily: T.sans,
             }}>
               {err}
             </div>
@@ -595,7 +595,7 @@ export function ChatPanel({ state, myRole, onSend, preferredRelayConnected = fal
                 background: imageBusy ? T.surface : T.tealDim,
                 border: `1px solid ${imageBusy ? T.border : T.teal + "44"}`,
                 color: imageBusy ? T.muted : T.teal,
-                fontFamily: T.mono, fontSize: 17, fontWeight: 900,
+                fontFamily: T.sans, fontSize: 17, fontWeight: 700,
                 cursor: imageBusy || sending ? "default" : "pointer",
                 flex: "0 0 auto",
               }}
@@ -624,7 +624,7 @@ export function ChatPanel({ state, myRole, onSend, preferredRelayConnected = fal
                 background: canSend ? T.accentDim : T.surface,
                 border: `1px solid ${canSend ? T.accent + "44" : T.border}`,
                 color: canSend ? T.accent : T.muted,
-                fontFamily: T.mono, fontSize: 11, fontWeight: 700,
+                fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
                 cursor: canSend ? "pointer" : "default",
                 transition: "all 0.2s",
                 flex: "0 0 auto",

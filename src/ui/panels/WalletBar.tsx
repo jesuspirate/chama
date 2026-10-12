@@ -26,7 +26,7 @@ export function WalletBar({ pubkey, connectedRelays, relayStatuses }: {
           display: "flex", alignItems: "center", justifyContent: "space-between",
           padding: "10px 16px", background: T.surface,
           borderBottom: `1px solid ${T.border}`,
-          fontFamily: T.mono, cursor: "pointer",
+          fontFamily: T.sans, cursor: "pointer",
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -59,7 +59,7 @@ export function WalletBar({ pubkey, connectedRelays, relayStatuses }: {
           {[...relayStatuses.entries()].map(([url, status]) => (
             <div key={url} style={{
               display: "flex", alignItems: "center", gap: 8,
-              padding: "4px 0", fontSize: 10, fontFamily: T.mono,
+              padding: "4px 0", fontSize: T.fs.secondary, fontFamily: T.sans,
             }}>
               <div style={{
                 width: 6, height: 6, borderRadius: "50%",

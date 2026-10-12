@@ -1,27 +1,18 @@
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { nip19 } from "nostr-tools";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Capacitor } from "@capacitor/core";
 import { T } from "../theme.js";
-import { CopyButton } from "../components/CopyButton.js";
+import { PaymentButton } from "../components/PaymentCard.js";
 import { isTauriRuntime } from "../sign-in-environment.js";
 import { validateRecoveryKeyInput } from "../../escrow-engine/nsec-signer.js";
 import { useT } from "../../i18n/index.js";
 
-// ── v6.4 runway #13 (revised 2026-09-19): the app keeps the key ────────────
-// Every client — browser, PWA, APK, Tauri, Start9's served page — persists the
-// nsec on login by default. The opt-out lives HERE, as a pre-checked "keep me
-// signed in" checkbox on the login screen itself — no extra screen after
-// login; you land straight on Browse. The copy-then-re-paste ritual stays
-// retired, and the paste field is a real current-password control so a manager
-// can FILL a key the user saved themselves — import restored (Jet, 2026-09-18).
-// The v6.3.x SAVE apparatus is back for exactly one moment: the instant Chama
-// generates a brand-new key (Jet, 2026-09-19 — "it's our last shot"; the app is
-// non-custodial and may never raise the key again). That moment gets
-// credentials.store() on Chromium and the credential pair + unmount + same-URL
-// History push WebKit needs. Nothing else prompts: pasting a key you already
-// have never offers to save it.
+// Save & continue submits visible credential fields; only Me can confirm a manager backup.
 export function NsecLogin({
   onSubmit,
+  onCreatingChange,
   defaultOpen = false,
+  createOnMount = false,
   friendly = false,
   friendlySecondary,
   allowCreate = true,
@@ -32,7 +23,10 @@ export function NsecLogin({
   choiceFooter,
 }: {
   onSubmit: (nsec: string, remember: boolean, wasGenerated: boolean) => void | Promise<void>;
+  onCreatingChange?: (creating: boolean) => void;
   defaultOpen?: boolean;
+  /** Mounted only after an explicit Become a citizen choice. */
+  createOnMount?: boolean;
   friendly?: boolean;
   friendlySecondary?: {
     label: string;
@@ -59,9 +53,9 @@ export function NsecLogin({
 }) {
   const { t } = useT();
   const isNative = Capacitor.isNativePlatform() || isTauriRuntime();
-  const [showNsec, setShowNsec] = useState(isNative || defaultOpen || friendly);
+  const [showNsec, setShowNsec] = useState(isNative || defaultOpen || friendly || createOnMount);
   const [mode, setMode] = useState<"choice" | "create" | "paste">(
-    friendly ? "choice" : "paste",
+    createOnMount ? "create" : friendly ? "choice" : "paste",
   );
   const [nsecInput, setNsecInput] = useState("");
   // Runway #13 (revised): keep-by-default, opt-out on the login screen itself.
@@ -73,118 +67,83 @@ export function NsecLogin({
   const setKeepKey = controlledKeep ? onKeepKeyChange! : setKeepKeyOwn;
   const remember = keepKey;
   const [generatedNsec, setGeneratedNsec] = useState<string | null>(null);
-  const [showKey, setShowKey] = useState(false);
-  const [generating, setGenerating] = useState(false);
+  const [generating, setGenerating] = useState(createOnMount);
   const [generateError, setGenerateError] = useState<string | null>(null);
   const [inputError, setInputError] = useState<string | null>(null);
   // True from the instant a valid submit is accepted: swaps the form for the
   // signing-in placeholder while the shell boots the wallet behind it.
   const [handoffDone, setHandoffDone] = useState(false);
   const autoSubmittedKeyRef = useRef<string | null>(null);
-  // The npub labels the saved credential so a manager entry reads as an
-  // account, not an opaque secret. Kept in a ref too: managers inspect the
-  // form at SUBMIT time, which can precede React's next render.
-  const credentialUsernameRef = useRef<HTMLInputElement | null>(null);
-  const [credentialUsername, setCredentialUsername] = useState("Chama Nostr account");
-  // Chromium exposes the Credential Management API; WebKit does not. Where it
-  // exists we save through it EXCLUSIVELY — rendering the WebKit-heuristic
-  // fields too made Android show TWO Bitwarden prompts at once (Jet's
-  // GrapheneOS recording, v6.3.1).
-  const supportsCredentialStore =
-    typeof (globalThis as any).PasswordCredential === "function"
-    && !!(navigator as any).credentials?.store;
-
-  const identifyCredential = async (secretKey: Uint8Array): Promise<string> => {
-    const [{ getPublicKey }, { nip19 }] = await Promise.all([
-      import("nostr-tools/pure"),
-      import("nostr-tools"),
-    ]);
-    const username = nip19.npubEncode(getPublicKey(secretKey));
-    setCredentialUsername(username);
-    if (credentialUsernameRef.current) credentialUsernameRef.current.value = username;
-    return username;
-  };
+  const [generatedPubkey, setGeneratedPubkey] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const submitInFlight = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
 
   const handleGenerate = async () => {
     setMode("create");
+    onCreatingChange?.(true);
     setGenerating(true);
     setGenerateError(null);
     setInputError(null);
     try {
-      const [{ generateSecretKey }, { nip19 }] = await Promise.all([
+      const [{ generateSecretKey, getPublicKey }, { nip19 }] = await Promise.all([
         import("nostr-tools/pure"),
         import("nostr-tools"),
       ]);
+      if (!mounted.current) return;
       const secretKey = generateSecretKey();
       const nsec = nip19.nsecEncode(secretKey);
-      await identifyCredential(secretKey);
+      setGeneratedPubkey(getPublicKey(secretKey));
       setNsecInput(nsec);
       setGeneratedNsec(nsec);
-      setShowKey(true);
     } catch (e: any) {
-      setGenerateError(e?.message || t("chat.couldNotCreateKey"));
+      if (mounted.current) setGenerateError(e?.message || t("chat.couldNotCreateKey"));
     } finally {
-      setGenerating(false);
+      if (mounted.current) setGenerating(false);
     }
   };
 
-  const handleSubmit = async () => {
-    if (!nsecInput.trim()) return;
-    const validated = await validateRecoveryKeyInput(nsecInput);
-    if (!validated.ok) {
-      setInputError(validated.error);
-      return;
+  const generationStarted = useRef(false);
+  useEffect(() => {
+    if (createOnMount && !generationStarted.current) {
+      generationStarted.current = true;
+      void handleGenerate();
     }
-    setInputError(null);
-    // Tell the shell whether this key was generated in Chama (so only
-    // generated keys get the master-key reveal in Me › Advanced). The
-    // submitted key matching the just-generated one is the signal.
-    const wasGenerated = generatedNsec !== null && nsecInput.trim() === generatedNsec;
+  }, [createOnMount]);
 
-    // ── The one save offer we make (creation only) ──────────────────────
-    // Two engines, two contracts. Chromium/Android WebView store the pair
-    // explicitly — no heuristics. iOS/macOS Safari has no credentials.store and
-    // decides to offer a save when a submitted form's credential fields LEAVE
-    // the DOM or the page navigates; handoffDone unmounts them immediately and
-    // the same-URL History push below is the SPA-legal "login succeeded"
-    // signal WebKit actually releases the offer on (field-verified, v6.3.2).
-    // A refusal never blocks sign-in, and a PASTED key never reaches here.
-    if (wasGenerated) {
-      const username = await identifyCredential(validated.secretKey);
-      try {
-        const CredCtor = (globalThis as any).PasswordCredential;
-        if (CredCtor && (navigator as any).credentials?.store) {
-          await (navigator as any).credentials.store(new CredCtor({
-            id: username,
-            name: "Chama recovery key",
-            password: nsecInput.trim(),
-          }));
-        }
-      } catch {
-        // Optional enhancement only.
-      }
-    }
-
-    (document.activeElement as HTMLElement | null)?.blur?.();
-    setHandoffDone(true);
-    if (wasGenerated) {
-      try {
-        history.pushState({ chamaSignedIn: true }, "", window.location.href);
-      } catch { /* cosmetic only */ }
-    }
+  const handleSubmit = async (submittedKey?: string) => {
+    const key = (submittedKey ?? nsecInput).trim();
+    if (handoffDone || submitInFlight.current) return;
+    if (!key) { setInputError(t("connect.invalidKey")); return; }
+    submitInFlight.current = true;
+    setSubmitting(true);
+    setNsecInput(key);
     try {
-      await onSubmit(nsecInput.trim(), remember, wasGenerated);
+      const validated = await validateRecoveryKeyInput(key);
+      if (!mounted.current) return;
+      if (!validated.ok) { setInputError(t("connect.invalidKey")); return; }
+      setInputError(null);
+      // Submitting cannot confirm that a password manager saved the key.
+      const wasGenerated = generatedNsec !== null && key === generatedNsec;
+      (document.activeElement as HTMLElement | null)?.blur?.();
+      setHandoffDone(true);
+      await onSubmit(key, remember, wasGenerated);
     } catch (e: any) {
-      // Bring the form back — a failed boot must never strand the user on
-      // the handoff placeholder.
-      setHandoffDone(false);
-      setInputError(e?.message || String(e));
+      if (mounted.current) { setHandoffDone(false); setInputError(e?.message || String(e)); }
+    } finally {
+      submitInFlight.current = false;
+      if (mounted.current) setSubmitting(false);
     }
   };
 
-  const generatedActive = generatedNsec !== null && nsecInput.trim() === generatedNsec;
-  const submitDisabled = !nsecInput.trim();
-  const showPasteInput = !generatedActive || mode === "paste";
+  // A manager may fill a previously saved key. That must still require the
+  // generated form's submit; never fall into the pasted-key auto-submit path.
+  const generatedActive = generatedNsec !== null;
+  // Manager autofill may update the native control without a React event.
+  // Returning submit stays enabled and reads the form's actual password.
+  const submitDisabled = generatedActive && !nsecInput.trim();
+  const showPasteInput = !createOnMount && (!generatedActive || mode === "paste");
 
   useEffect(() => {
     const value = nsecInput.trim();
@@ -194,12 +153,13 @@ export function NsecLogin({
     let cancelled = false;
     const timer = window.setTimeout(async () => {
       const validated = await validateRecoveryKeyInput(value);
-      if (cancelled || !validated.ok) return;
+      if (cancelled) return;
+      if (!validated.ok) { setInputError(t("connect.invalidKey")); return; }
       autoSubmittedKeyRef.current = value;
       setInputError(null);
       // Auto-submit only fires for a PASTED key (gated on !generatedActive
       // above), so it's never the Chama-generated one.
-      onSubmit(value, remember, false);
+      void handleSubmit(value);
     }, 120);
 
     return () => {
@@ -235,11 +195,11 @@ export function NsecLogin({
     const secondaryAccent = friendlySecondary?.tone === "accent";
     return (
       <div style={{ width: "100%", maxWidth: 360 }}>
-        <button
+        <PaymentButton
           onClick={handleGenerate}
           disabled={generating}
           style={{
-            width: "100%", padding: "16px", borderRadius: T.r,
+            width: "100%", padding: "16px", borderRadius: 999,
             background: T.accent, border: "none", color: T.bg,
             fontFamily: T.sans, fontSize: 15, fontWeight: 800,
             cursor: generating ? "default" : "pointer",
@@ -247,8 +207,8 @@ export function NsecLogin({
           }}
         >
           {generating ? t("chat.creating") : t("chat.createMyAccount")}
-        </button>
-        <button
+        </PaymentButton>
+        {friendlySecondary && <PaymentButton
           onClick={friendlySecondary
             ? friendlySecondary.onClick
             : () => {
@@ -258,7 +218,7 @@ export function NsecLogin({
               }}
           disabled={friendlySecondary?.disabled}
           style={{
-            width: "100%", padding: "13px", borderRadius: T.r,
+            width: "100%", padding: "13px", borderRadius: 999,
             background: secondaryAccent ? T.accentDim : T.surface,
             border: `1px solid ${secondaryAccent ? `${T.accent}99` : T.border}`,
             color: friendlySecondary?.disabled ? T.muted : secondaryAccent ? T.accent : T.text,
@@ -275,7 +235,7 @@ export function NsecLogin({
               ({friendlySecondary.hint})
             </span>
           )}
-        </button>
+        </PaymentButton>}
         <div style={{
           fontSize: 10, color: T.muted, fontFamily: T.sans,
           textAlign: "center", marginTop: 12, lineHeight: 1.5,
@@ -287,7 +247,7 @@ export function NsecLogin({
     );
   }
 
-  if (handoffDone) {
+  if (handoffDone && !generatedActive) {
     // Post-submit handoff: the shell is booting the wallet behind this. The
     // key is being kept on this device (default) — the keep-notice on the
     // next screen is where the user can say no.
@@ -303,7 +263,7 @@ export function NsecLogin({
             marginTop: 12, color: T.text, fontFamily: T.sans, fontSize: 13,
             lineHeight: 1.5,
           }}>
-            {t("chat.saveOfferHint")}
+            {t("backup.reason")}
           </div>
         )}
         {keepKey && !generatedActive && (
@@ -322,47 +282,13 @@ export function NsecLogin({
     <form
       onSubmit={(e) => {
         e.preventDefault();
-        void handleSubmit();
+        const password = new FormData(e.currentTarget).get("password");
+        void handleSubmit(typeof password === "string" ? password : undefined);
       }}
-      autoComplete="off"
+      autoComplete="on"
       style={{ marginTop: isNative ? 0 : 8, width: "100%", maxWidth: 360 }}
     >
-      {/* Creation-only credential pair. A real username/password pair at
-          submit time is the contract browser and Android WebView autofill
-          use; the npub labels the saved account without exposing the nsec
-          twice. Visually hidden, never type="hidden" (managers ignore hidden
-          credential controls) and never focusable (so iOS's strong-password
-          sheet can't attach). Rendered ONLY while a freshly generated key is
-          on screen, so the paste path stays free of save prompts — and only
-          where credentials.store() is absent, because rendering both made
-          Android fire two prompts at once. */}
-      {generatedActive && !supportsCredentialStore && (
-        <>
-          <input
-            ref={credentialUsernameRef}
-            name="username"
-            value={credentialUsername}
-            readOnly
-            autoComplete="username"
-            aria-label="Nostr public account"
-            tabIndex={-1}
-            style={HIDDEN_CREDENTIAL_STYLE}
-          />
-          {!showPasteInput && (
-            <input
-              name="password"
-              type="password"
-              value={nsecInput}
-              readOnly
-              autoComplete="new-password"
-              aria-hidden="true"
-              tabIndex={-1}
-              style={HIDDEN_CREDENTIAL_STYLE}
-            />
-          )}
-        </>
-      )}
-      {isNative && (
+      {isNative && !minimalPaste && !createOnMount && (
         <div style={{
           fontSize: 10, color: T.muted, fontFamily: T.mono,
           letterSpacing: 1, marginBottom: 8, textAlign: "center",
@@ -372,10 +298,12 @@ export function NsecLogin({
       )}
 
       {friendly && (
-        <button
+        <PaymentButton
           type="button"
+          disabled={submitting}
           onClick={() => {
             setMode("choice");
+            onCreatingChange?.(false);
             setNsecInput("");
             setGeneratedNsec(null);
             setInputError(null);
@@ -387,7 +315,7 @@ export function NsecLogin({
           }}
         >
           {t("chat.back")}
-        </button>
+        </PaymentButton>
       )}
 
       {showPasteInput && (
@@ -409,9 +337,9 @@ export function NsecLogin({
                 setGeneratedNsec(null);
               }
             }}
-            onKeyDown={(e) => e.key === "Enter" && void handleSubmit()}
             placeholder={t("chat.pasteRecoveryKey")}
-            type={showKey ? "text" : "password"}
+            type="password"
+            className={inputError ? "key-invalid" : undefined}
             autoComplete="current-password"
             autoCapitalize="off"
             autoCorrect="off"
@@ -420,7 +348,7 @@ export function NsecLogin({
             style={{
               width: "100%", padding: "14px 16px", boxSizing: "border-box",
               background: T.surface, border: `1px solid ${inputError ? T.red : T.border}`,
-              borderRadius: T.rs, color: T.text,
+              borderRadius: 999, color: T.text,
               fontFamily: T.mono, fontSize: 12, outline: "none",
               marginBottom: 8,
             }}
@@ -430,40 +358,27 @@ export function NsecLogin({
             justifyContent: allowCreate ? "stretch" : "flex-end",
           }}>
             {allowCreate && (
-              <button
+              <PaymentButton
                 type="button"
                 onClick={handleGenerate}
                 disabled={generating}
                 style={{
                   flex: 1, padding: "10px 12px",
                   background: T.surface, border: `1px solid ${T.border}`,
-                  borderRadius: T.rs, color: T.text,
+                  borderRadius: 999, color: T.text,
                   fontFamily: T.mono, fontSize: 10, fontWeight: 700,
                   cursor: generating ? "default" : "pointer",
                 }}
               >
                 {generating ? t("chat.creating") : t("chat.createNewAccount")}
-              </button>
+              </PaymentButton>
             )}
-            <button
-              type="button"
-              onClick={() => setShowKey(!showKey)}
-              disabled={!nsecInput.trim()}
-              style={{
-                width: allowCreate ? 92 : 120, padding: "10px 12px",
-                background: "transparent", border: `1px solid ${T.border}`,
-                borderRadius: T.rs, color: nsecInput.trim() ? T.muted : T.muted + "66",
-                fontFamily: T.mono, fontSize: 10, fontWeight: 700,
-                cursor: nsecInput.trim() ? "pointer" : "default",
-              }}
-            >
-              {showKey ? t("chat.hide") : t("chat.show")}
-            </button>
+
           </div>
         </>
       )}
 
-      {generateError && <InlineError>{generateError}</InlineError>}
+      {generateError && <><InlineError>{generateError}</InlineError>{createOnMount && <PaymentButton type="button" onClick={handleGenerate}>{t("common.retry")}</PaymentButton>}</>}
       {inputError && <InlineError>{inputError}</InlineError>}
 
       {generatedActive && (
@@ -482,36 +397,21 @@ export function NsecLogin({
             fontSize: 13, color: T.muted, fontFamily: T.sans,
             lineHeight: 1.55, marginBottom: 12,
           }}>
-            {t("chat.keyOnlyBefore")}
-            <span style={{ color: T.text, fontWeight: 700 }}>
-              {t("chat.keyOnlyBold")}
-            </span>{t("chat.keyOnlyAfter")}
+            {t("backup.identityOnly")}
           </div>
-          <div style={{
-            fontSize: 11, color: T.text, fontFamily: T.mono,
-            lineHeight: 1.55, wordBreak: "break-all",
-            padding: 12, background: T.bg, border: `1px solid ${T.border}`,
-            borderRadius: T.rs, marginBottom: 11,
-          }}>
-            {generatedNsec}
-          </div>
-          {/* Runway #13: a plain copy button, full stop. No copy-gating, no
-              re-paste verification, no password-manager hint. The app keeps
-              the key on this device; this button is for whoever also wants
-              their own external copy. */}
-          <CopyButton
-            value={generatedNsec ?? ""}
-            disabled={!generatedNsec}
-            label={t("chat.copyKey")}
-            copiedLabel={t("chat.copiedKey")}
-            style={{
-              padding: "9px 14px", flexShrink: 0,
-              background: T.surface, border: `1px solid ${T.borderHi}`,
-              borderRadius: T.rs, color: T.text,
-              fontFamily: T.sans, fontSize: 12, fontWeight: 700,
-              cursor: "pointer",
-            }}
-          />
+          <style>{`.chama-generated-credential{box-sizing:border-box;width:100%;padding:12px;border:1px solid ${T.border};border-radius:${T.rs}px;background:${T.bg};color:${T.text};font:11px/1.55 ${T.mono};}`}</style>
+          <label style={{ display: "block", color: T.muted, fontSize: 11, marginBottom: 10 }}>
+            {t("backup.publicKey")}
+            <input className="chama-generated-credential" name="username" autoComplete="username" defaultValue={nip19.npubEncode(generatedPubkey)} autoCapitalize="off" spellCheck={false} />
+          </label>
+          <label style={{ display: "block", color: T.muted, fontSize: 11 }}>
+            {t("backup.title")}
+            <input className="chama-generated-credential" name="password" type="password" autoComplete="current-password" value={nsecInput}
+              onChange={e => { if (!submitting) { setNsecInput(e.target.value); setInputError(null); } }} autoCapitalize="off" autoCorrect="off" spellCheck={false} />
+            {/* Password masking is browser-enforced. Keep the actual credential
+                control visible and give the person a readable copy alongside it. */}
+            <output data-generated-key style={{ display: "block", padding: "10px 12px", background: T.bg, borderRadius: T.rs, color: T.text, font: `11px/1.55 ${T.mono}`, overflowWrap: "anywhere", userSelect: "text" }}>{nsecInput}</output>
+          </label>
         </div>
       )}
 
@@ -537,30 +437,27 @@ export function NsecLogin({
         </span>
       </label>}
 
-      {/* v2.5: minimalPaste (the returning-user box attached to "I'm a
-          returning Chama citizen") drops the Continue button entirely —
-          a valid paste auto-submits, and Enter also works — and the
-          footer, so the user just pastes and is in. The Continue stays
-          for the generation flow and the native sign-in. */}
-      {!minimalPaste && (
-        <button
+      {/* Valid paste opens automatically; native form submission also works
+          for Enter and password-manager autofill without a React event. */}
+      <style>{`@keyframes key-invalid{0%,100%{transform:translateX(0)}25%{transform:translateX(-4px)}75%{transform:translateX(4px)}}.key-invalid{animation:key-invalid .22s ease-out}@media(prefers-reduced-motion:reduce){.key-invalid{animation:none!important}}`}</style>
+      {(!minimalPaste && (!createOnMount || generatedActive)) && <PaymentButton
           type="submit"
-          disabled={submitDisabled}
+          aria-live="polite"
+          disabled={submitDisabled || handoffDone || submitting}
           style={{
             width: "100%", padding: "14px",
             background: !submitDisabled ? T.accent : T.surface,
             border: `1px solid ${!submitDisabled ? T.accent : T.border}`,
-            borderRadius: T.rs, color: !submitDisabled ? T.bg : T.muted,
+            borderRadius: 999, color: !submitDisabled ? T.bg : T.muted,
             fontFamily: T.mono, fontSize: 13, fontWeight: 700,
             cursor: !submitDisabled ? "pointer" : "default",
             letterSpacing: 0.5,
-            transition: "all 0.2s",
+            transition: "background-color .2s, color .2s, box-shadow .2s",
           }}
         >
-          {generatedActive ? t("chat.continueWithKey") : t("chat.continue")}
-        </button>
-      )}
-      {!minimalPaste && (
+          {generatedActive ? t("backup.saveContinue") : t("connect.openDoor")}
+      </PaymentButton>}
+      {!minimalPaste && !createOnMount && (
         <div style={{
           fontSize: 10, color: T.muted, fontFamily: T.sans,
           textAlign: "center", marginTop: 10, lineHeight: 1.5,
@@ -578,19 +475,11 @@ export function NsecLogin({
   );
 }
 
-/** Visually hidden, but a REAL control — password managers skip
- *  display:none / type=hidden credential fields. */
-const HIDDEN_CREDENTIAL_STYLE: CSSProperties = {
-  position: "absolute", width: 1, height: 1, padding: 0, margin: -1,
-  overflow: "hidden", clip: "rect(0, 0, 0, 0)", whiteSpace: "nowrap", border: 0,
-};
-
 function InlineError({ children }: { children: string }) {
   return (
-    <div style={{
-      marginBottom: 8, padding: "8px 10px",
-      background: T.redDim, border: `1px solid ${T.red}33`,
-      borderRadius: T.rs, color: T.red,
+    <div role="alert" style={{
+      marginBottom: 8, padding: "4px 0",
+      color: T.red,
       fontSize: 10, fontFamily: T.mono,
     }}>
       {children}

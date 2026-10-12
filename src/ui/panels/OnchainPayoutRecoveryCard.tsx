@@ -102,7 +102,7 @@ export function OnchainPayoutRecoveryCard({
           <div style={{ color: T.muted, fontSize: 11.5, lineHeight: 1.5, marginBottom: 9 }}>
             {result && result.payouts.filter(item => item.balanceSats > 0n).length > 1
               ? <>{t("onchain.payoutAggregateBefore")}{" "}
-                  <BitcoinAmount sats={Number(result.balanceSats)} size={12} gap={3} />.</>
+                  <BitcoinAmount sats={Number(result.balanceSats)} size={T.fs.secondary} gap={3} />.</>
               : t("onchain.payoutRecoveredBody")}
           </div>
           <input

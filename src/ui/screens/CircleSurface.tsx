@@ -1,3 +1,10 @@
+import { CircleArbiter, viewerCircleShare } from "../components/CircleArbiter.js";
+import { TradeArbiterRecord } from "../components/TradeArbiterRecord.js";
+import { OverlaySheet } from "../components/OverlaySheet.js";
+import { ConductFacts } from "../components/ConductFacts.js";
+import { CopyButton } from "../components/CopyButton.js";
+import type { VerifiedBond } from "../../bond-multisig/bond-announcement.js";
+import { FederationDisclosure, useFederationInfo } from "../components/FederationDisclosure.js";
 import { useState, useEffect } from "react";
 import { generatedNameFor, profileNameFor, type NostrProfileNameMap } from "../nostr-profiles.js";
 import { rotationView } from "../../chama/rotation.js";
@@ -20,7 +27,7 @@ export function circleTimeText(seconds: number, t: TFunc): string {
   return t("circle.minutes", { count: Math.max(0, Math.ceil(seconds / 60)) });
 }
 
-export function CircleSurface({ parent, escrows, viewerPubkey, backLabel, childrenLoaded, loadError, profileNames, kind0Enabled = false, onBack, onLock, onReturn, onClaim, onNextRound, onRefresh }: {
+export function CircleSurface({ parent, escrows, viewerPubkey, backLabel, childrenLoaded, loadError, profileNames, kind0Enabled = false, fetchBonds, onBack, onLock, onClaim, onNextRound, onRefresh }: {
   parent: EscrowState; escrows: ReadonlyMap<string, EscrowState>; viewerPubkey: string;
   backLabel: string; childrenLoaded: boolean; loadError?: string | null;
   /** Circles used to render the deterministic nym directly, which ignored a
@@ -28,8 +35,9 @@ export function CircleSurface({ parent, escrows, viewerPubkey, backLabel, childr
    *  about my new name" (Jet, 2026-09-18). Same name resolution as every
    *  other surface now. */
   profileNames?: NostrProfileNameMap; kind0Enabled?: boolean;
+  fetchBonds?: (community:string)=>Promise<VerifiedBond[]>;
   onBack: () => void;
-  onLock: () => Promise<void>; onReturn: () => Promise<void>;
+  onLock: () => Promise<void>;
   /** REFUND resolved on the viewer's share: fire the SAME ClaimPayoutModal
    *  flow every trade uses, aimed at the share escrow. The last leg home. */
   onClaim: () => Promise<void>;
@@ -39,7 +47,10 @@ export function CircleSurface({ parent, escrows, viewerPubkey, backLabel, childr
   const [now, setNow] = useState(() => Math.floor(Date.now() / 1000));
   const [busy, setBusy] = useState(false), [message, setMessage] = useState<string | null>(null);
   useEffect(() => { const id = setInterval(() => setNow(Math.floor(Date.now() / 1000)), 15000); return () => clearInterval(id); }, []);
+  const [profile, setProfile] = useState<string|null>(null);
+  const ownShare = viewerCircleShare(escrows.values(),parent.id,viewerPubkey);
   const circle = circleFromEscrow(parent);
+  const federationInfo = useFederationInfo(circle?.mintUrl ?? "");
   if (!circle) return null;
   const shares = sharesForCircle(escrows.values(), circle.circleId);
   const allStates = [...escrows.values()];
@@ -65,11 +76,12 @@ export function CircleSurface({ parent, escrows, viewerPubkey, backLabel, childr
   const viewerIsCollector = isCollectionRound && rot!.collector === viewerPubkey.toLowerCase();
   const stats = circleMemberStats(escrows.values(), viewerPubkey, now);
   const date = (at: number) => new Date(at * 1000).toLocaleDateString(lang, { month: "short", day: "numeric" });
+  const returnTime = (at: number) => new Date(at * 1000).toLocaleString(lang, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" });
   const [celebrate, setCelebrate] = useState(false);
   const run = async (action: () => Promise<void>) => { if (busy) return; setBusy(true); setMessage(null);
     const wasLock = model.move === "lock";
     try { await action(); if (wasLock) { setCelebrate(true); setTimeout(() => setCelebrate(false), 1700); } }
-    catch (e) { setMessage(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); } };
+    catch (e) { setMessage(e instanceof Error ? ((e as Error & { originalMessage?: string }).originalMessage ?? e.message) : String(e)); } finally { setBusy(false); } };
   const invite = async () => { const result = await shareTradeLink(circle.circleId, circle.creatorPubkey); if (result !== "shared") setMessage(t(result === "copied" ? "circle.copied" : "circle.shareFailed")); };
   const status = !childrenLoaded ? t("circle.syncing") : model.status === "filling"
     // Fixed round clock: a FILLED circle keeps filling until the deadline
@@ -81,9 +93,9 @@ export function CircleSurface({ parent, escrows, viewerPubkey, backLabel, childr
       : model.move === "invite" && !model.isHost ? t("circle.yourShareIn", { count: Math.max(0, model.seatThreshold - model.seatsLocked) }) : t("circle.seats", { filled: model.seatsLocked, total: model.seatThreshold })
     : model.status === "running" ? t("circle.backBy", { date: date(circle.roundEndSec) })
     : model.status === "refund-due" ? t("circle.failedFill") : t("circle.complete");
-  const moveKey = { lock: "circle.lock", invite: "circle.invite", collect: "circle.collect", "return-now": "circle.returnNow",
+  const moveKey = { lock: "circle.lock", invite: "circle.invite", collect: "circle.collect",
     "next-round": model.status === "refund-due" ? "circle.runAgain" : "circle.nextRound" } as const;
-  const action = model.move === "lock" ? onLock : model.move === "invite" ? invite : model.move === "collect" ? onClaim : model.move === "return-now" ? onReturn : model.move === "next-round" ? async () => onNextRound(circle) : null;
+  const action = model.move === "lock" ? onLock : model.move === "invite" ? invite : model.move === "collect" ? onClaim : model.move === "next-round" ? async () => onNextRound(circle) : null;
   return <section className="circle-surface" style={{ maxWidth: 640, margin: "0 auto", padding: "24px 18px 38px", color: T.text }}>
     <style>{`
       .circle-loader{display:flex;justify-content:center;margin:14px 0 20px}
@@ -109,7 +121,7 @@ export function CircleSurface({ parent, escrows, viewerPubkey, backLabel, childr
       @media (prefers-reduced-motion: reduce){.circle-lock-btn,.circle-loader-arc,.circle-loader-seat,.circle-lock-btn.charging::after{animation:none}.circle-locked-burst{animation:circleBurstPop 1.7s forwards}}
     `}</style>
     <button type="button" data-chama-shortcut="back" onClick={onBack} style={{ background: "none", border: 0, color: T.muted, padding: "8px 0", cursor: "pointer" }}>‹ {backLabel}</button>
-    <div style={{ display: "flex", alignItems: "center", gap: 9, color: T.accent, font: `700 11px ${T.mono}`, letterSpacing: 2 }}><VerticalIcon vertical="chama" size={30} />CHAMA</div>
+    <div style={{ display: "flex", alignItems: "center", gap: 9, color: T.accent, font: `700 ${T.fs.secondary} ${T.sans}`, letterSpacing: 2 }}><VerticalIcon vertical="chama" size={30} />CHAMA</div>
     <h1 style={{ fontSize: "clamp(32px, 6vw, 52px)", letterSpacing: "-.05em", margin: "10px 0 8px" }}>{circle.name}{circle.roundIndex > 1 && <span style={{ color: T.muted, fontWeight: 500 }}> · {isCollectionRound ? t("circle.roundOf", { n: circle.roundIndex, total: rot!.totalRounds }) : t("circle.roundN", { n: circle.roundIndex })}</span>}</h1>
     {viewerIsHost ? (
       // The host's job is structural (they lock last, they open the next
@@ -143,10 +155,15 @@ export function CircleSurface({ parent, escrows, viewerPubkey, backLabel, childr
             </svg>
           </div>}
       <h2 aria-live="polite" style={{ fontSize: "clamp(22px,4vw,30px)", lineHeight: 1.2, marginBottom: 12 }}>{status}</h2>
-      <p style={{ color: T.muted, fontFamily: T.mono, lineHeight: 1.6, margin: 0 }}>{t("circle.satsEach", { amount: fmtSats(circle.shareMsats) })}</p>
-      {model.status === "filling" && <p style={{ color: T.muted, fontFamily: T.mono, lineHeight: 1.6, marginTop: 2 }}>{t("circle.closesIn", { time: circleTimeText(model.secsToFillDeadline, t) })}</p>}
+      <p style={{ color: T.muted, fontFamily: T.sans, lineHeight: 1.6, margin: 0 }}>{t("circle.satsEach", { amount: fmtSats(circle.shareMsats) })}</p>
+      {model.status === "filling" && <p style={{ color: T.muted, fontFamily: T.sans, lineHeight: 1.6, marginTop: 2 }}>{t("circle.closesIn", { time: circleTimeText(model.secsToFillDeadline, t) })}</p>}
       {model.status === "running" && <p style={{ color: T.accent }}>{t("circle.countdown", { time: circleTimeText(model.secsToRoundEnd, t) })}</p>}
-      {(model.move === "returning" || model.move === "return-now") && <p>{t("circle.returning")}</p>}
+      {model.move === "returning" && <p role="status">{model.waitingOn.length > 1 && model.arbiterReturnAtSec !== null && now < model.arbiterReturnAtSec
+        ? t("circle.waitingOnHostUntil", { host: nym(model.waitingOn[0]), arbiter: nym(model.waitingOn[1]), time: returnTime(model.arbiterReturnAtSec) })
+        : model.waitingOn.length > 1
+        ? t("circle.waitingOnEither", { host: nym(model.waitingOn[0]), arbiter: nym(model.waitingOn[1]) })
+        : model.waitingOn.length === 1 ? t("circle.waitingOnReturn", { name: nym(model.waitingOn[0]) })
+        : t(model.returnStage === "signing" ? "circle.signingReturn" : model.returnStage === "confirming" ? "circle.confirmingReturn" : "circle.checkingReturn")}</p>}
       {model.move === "collect" && <p style={{ color: T.accent, fontWeight: 700 }}>{t(viewerIsCollector ? "circle.potReady" : "circle.readyCollect")}</p>}
       {viewerIsCollector && model.move === "wait" && model.status === "filling" && <p style={{ color: T.muted }}>{t("circle.sitOut")}</p>}
       {model.refusal && <p>{t(model.refusal === "full" ? "circle.full" : model.refusal === "closed" ? "circle.closed" : model.refusal === "host-waits" ? "circle.hostLocksLast" : "circle.alreadySeated")}</p>}
@@ -155,7 +172,8 @@ export function CircleSurface({ parent, escrows, viewerPubkey, backLabel, childr
           {[["circle.completedCircles", stats.completed], ["circle.onTime", stats.onTime], ["circle.standing", Math.round(stats.standing).toLocaleString(lang)]].map(([label, value]) => <div key={label} style={{ padding: "16px 4px", background: T.bg, border: `1px solid ${T.border}`, borderRadius: 16 }}><strong style={{ display: "block", fontSize: 24 }}>{value}</strong><small style={{ color: T.muted }}>{t(String(label))}</small></div>)}
         </div><h3>{t("circle.nextTitle")}</h3><p style={{ color: T.muted, lineHeight: 1.6 }}>{t("circle.nextBody")}</p>
       </>}
-      {action && childrenLoaded && <button type="button" disabled={busy} onClick={() => void run(action)}
+      <FederationDisclosure circle={circle} />
+      {action && childrenLoaded && <button type="button" disabled={(model.move === "lock" && federationInfo.loading) || busy} onClick={() => void run(action)}
         className={model.move === "lock" ? `circle-lock-btn${busy ? " charging" : ""}` : undefined}
         style={{ width: "100%", minHeight: 60, marginTop: 16, border: 0, borderRadius: 999, background: T.accent, color: T.bg, font: `800 18px ${T.sans}`, cursor: busy ? "wait" : "pointer", opacity: busy && model.move !== "lock" ? .6 : 1, position: "relative", overflow: "hidden" }}>{t(moveKey[model.move as keyof typeof moveKey])}</button>}
       {celebrate && <div className="circle-locked-burst" aria-hidden="true"><span /><span /><span />🔒</div>}
@@ -163,31 +181,35 @@ export function CircleSurface({ parent, escrows, viewerPubkey, backLabel, childr
       {(message || loadError) && <p role="status" style={{ color: T.accent, lineHeight: 1.5 }}>{message ?? loadError}</p>}
     </div>
     {rot !== null && rot.queue.length > 0 && <div style={{ marginTop: 26, background: T.card, border: `1px solid ${T.border}`, borderRadius: 22, padding: "18px 20px" }}>
-      <h3 style={{ margin: "0 0 6px", fontSize: 15, color: T.muted, letterSpacing: 1, textTransform: "uppercase" }}>{t("circle.queueTitle")}</h3>
+      <h3 style={{ margin: "0 0 6px", fontSize: 15, color: T.muted, }}>{t("circle.queueTitle")}</h3>
       <p style={{ margin: "0 0 12px", color: T.muted, fontSize: 13, lineHeight: 1.5 }}>{t("circle.raceHint")}</p>
       {rot.queue.map(entry => <div key={entry.roundIndex} style={{ display: "flex", alignItems: "baseline", gap: 10, padding: "7px 0" }}>
-        <span style={{ color: T.muted, font: `600 12px ${T.mono}`, minWidth: 64 }}>{t("circle.roundN", { n: entry.roundIndex })}</span>
+        <span style={{ color: T.muted, font: `600 ${T.fs.secondary} ${T.sans}`, minWidth: 64 }}>{t("circle.roundN", { n: entry.roundIndex })}</span>
         <strong style={{ flex: 1, fontSize: 15, color: entry.collector ? T.text : T.muted }}>{entry.collector ? nym(entry.collector) : t("circle.queueOpen")}</strong>
-        {entry.collector?.toLowerCase() === viewerPubkey.toLowerCase() && <small style={{ color: T.accent, fontFamily: T.mono }}>{t("circle.you")}</small>}
+        {entry.collector?.toLowerCase() === viewerPubkey.toLowerCase() && <small style={{ color: T.accent, fontFamily: T.sans }}>{t("circle.you")}</small>}
       </div>)}
     </div>}
-    {childrenLoaded && shares.some(sh => sh.circleId === circle.circleId) && <div style={{ marginTop: 26, background: T.card, border: `1px solid ${T.border}`, borderRadius: 22, padding: "18px 20px" }}>
-      <h3 style={{ margin: "0 0 12px", fontSize: 15, color: T.muted, letterSpacing: 1, textTransform: "uppercase" }}>{t("circle.members")}</h3>
+    <div style={{ marginTop: 26, background: T.card, border: `1px solid ${T.border}`, borderRadius: 22, padding: "18px 20px" }}>
+      <h3 style={{ margin: "0 0 12px", fontSize: 15, color: T.muted, }}>{t("circle.members")}</h3>
+      <button type="button" onClick={()=>setProfile(circle.creatorPubkey)} style={{background:"none",border:0,color:T.text,padding:"10px 0",font:"inherit",cursor:"pointer"}}>{t("circle.hostedBy",{name:nym(circle.creatorPubkey)})} ›</button>
+      <CircleArbiter share={ownShare} profileNames={profileNames} kind0Enabled={kind0Enabled} onProfile={setProfile} />
+      {ownShare?.participants[Role.ARBITER] && <TradeArbiterRecord state={ownShare} trades={allStates} fetchBonds={fetchBonds} profileNames={profileNames} kind0Enabled={kind0Enabled} />}
       {shares.filter(sh => sh.circleId === circle.circleId)
         .sort((a, b) => (a.lockedAtSec ?? Infinity) - (b.lockedAtSec ?? Infinity))
         .map((sh, index) => {
           const you = sh.memberPubkey.toLowerCase() === viewerPubkey.toLowerCase();
           return <div key={sh.memberPubkey} style={{ display: "flex", alignItems: "baseline", gap: 10, padding: "9px 0", borderTop: index ? `1px solid ${T.border}` : "none" }}>
-            <span style={{ color: T.muted, font: `600 12px ${T.mono}`, minWidth: 22 }}>{sh.lockedAtSec !== null ? `#${index + 1}` : "·"}</span>
-            <strong style={{ flex: 1, fontSize: 15 }}>{nym(sh.memberPubkey)}{you && <span style={{ color: T.accent, fontWeight: 600 }}> · {t("circle.you")}</span>}{sh.memberPubkey.toLowerCase() === circle.creatorPubkey.toLowerCase() && <span style={{ marginLeft: 7, padding: "2px 7px", borderRadius: 999, background: `${T.purple}22`, color: T.purple, border: `1px solid ${T.purple}55`, font: `700 10px ${T.mono}`, textTransform: "uppercase", letterSpacing: .5 }}>{t("circle.hostBadge")}</span>}</strong>
-            <small style={{ color: sh.lockedAtSec !== null ? T.accent : T.muted, fontFamily: T.mono }}>{
+            <span style={{ color: T.muted, font: `600 ${T.fs.secondary} ${T.sans}`, minWidth: 22 }}>{sh.lockedAtSec !== null ? `#${index + 1}` : "·"}</span>
+            <strong style={{ flex: 1, fontSize: 15 }}>{nym(sh.memberPubkey)}{you && <span style={{ color: T.accent, fontWeight: 600 }}> · {t("circle.you")}</span>}{sh.memberPubkey.toLowerCase() === circle.creatorPubkey.toLowerCase() && <span style={{ marginLeft: 7, padding: "2px 7px", borderRadius: 999, background: `${T.purple}22`, color: T.purple, border: `1px solid ${T.purple}55`, font: `600 ${T.fs.secondary} ${T.sans}` }}>{t("circle.hostBadge")}</span>}</strong>
+            <small style={{ color: sh.lockedAtSec !== null ? T.accent : T.muted, fontFamily: T.sans }}>{
               sh.status === "returned" || sh.status === "refunded" || sh.status === "paid" ? t("circle.claimedBadge")
               : sh.readyToClaim ? t("circle.canClaimNow")
               : sh.lockedAtSec !== null ? t("circle.lockedOn", { date: date(sh.lockedAtSec) })
               : t("circle.reservedSeat")}</small>
           </div>;
         })}
-    </div>}
+    </div>
+    {profile && <OverlaySheet title={nym(profile)} subtitle={profile} onClose={()=>setProfile(null)}>{ownShare?.participants[Role.ARBITER] !== profile && <ConductFacts pubkey={profile} showEmpty />}<CopyButton value={profile} />{ownShare?.participants[Role.ARBITER] === profile && <TradeArbiterRecord state={ownShare} trades={allStates} fetchBonds={fetchBonds} profileNames={profileNames} kind0Enabled={kind0Enabled}/>}</OverlaySheet>}
     <p style={{ textAlign: "center", color: T.muted, lineHeight: 1.7, fontSize: 13, margin: "22px auto 0", maxWidth: 430 }}>{t("circle.footer")}</p>
   </section>;
 }

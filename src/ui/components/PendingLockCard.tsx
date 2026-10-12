@@ -49,8 +49,7 @@ export function PendingLockCard({
         borderRadius: T.r, padding: 16,
       }}>
         <div style={{
-          fontSize: 10, fontWeight: 700, color: T.accent, fontFamily: T.mono,
-          letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 8,
+          fontSize: T.fs.secondary, fontWeight: 700, color: T.accent, fontFamily: T.sans, marginBottom: 8,
         }}>
           {t("recovery.finishLockTag")}
         </div>
@@ -86,8 +85,8 @@ export function PendingLockCard({
               flex: 1, padding: "12px",
               background: busy ? T.border : T.accent,
               border: "none", borderRadius: T.rs,
-              color: T.bg, fontFamily: T.mono, fontSize: 13, fontWeight: 800,
-              cursor: busy ? "default" : "pointer", letterSpacing: 0.5,
+              color: T.bg, fontFamily: T.sans, fontSize: 13, fontWeight: 700,
+              cursor: busy ? "default" : "pointer",
             }}
           >
             {busy ? t("recovery.finishing") : t("recovery.finishLockCta")}
@@ -98,7 +97,7 @@ export function PendingLockCard({
               padding: "12px 14px",
               background: "transparent",
               border: `1px solid ${T.border}`, borderRadius: T.rs,
-              color: T.text, fontFamily: T.mono, fontSize: 12, fontWeight: 600,
+              color: T.text, fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 600,
               cursor: "pointer",
             }}
           >
@@ -107,7 +106,7 @@ export function PendingLockCard({
         </div>
 
         <div style={{
-          marginTop: 8, fontSize: 9, color: T.muted, fontFamily: T.mono,
+          marginTop: 8, fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans,
           lineHeight: 1.5,
         }}>
           {t("recovery.lockFooter")}
