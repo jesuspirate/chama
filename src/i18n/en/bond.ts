@@ -217,6 +217,8 @@ export const bond: Record<string, string> = {
   "bond.nearEndOne": "⚠ Only ~1 block (~{time}) left on this term — a deposit needs a block to confirm, so it may lock already-reclaimable.",
   "bond.needsArbitersCta": "This chama needs arbiters — become one",
   "bond.needsArbitersInfo": "This chama needs arbiters — an opening for whoever bonds first.",
+  "bond.youAreOnlyArbiter": "You're this chama's only bonded arbiter so far. Invite another trusted person to bond and make it stronger.",
+  "bond.youAreBondedArbiter": "You're one of this chama's bonded arbiters. More arbiters make it stronger.",
   "bond.noBondedArbiters": "No bonded arbiters yet — be the first",
   "bond.arbiterCountOne": "{count} arbiter",
   "bond.arbiterCountMany": "{count} arbiters",
@@ -301,4 +303,6 @@ export const bond: Record<string, string> = {
   "bond.watchingChain": "👀 Watching the chain — deposits are detected automatically (checks every {secs}s).",
   "bond.yesReclaim": "Yes, reclaim my bond",
   "bond.yourBonds": "Your bonds",
+  "bond.announcementsIncomplete": "Some relays didn't answer in time, so a bond announced from another device may be missing. The bonds listed below are safe.",
+  "bond.lastChecked": "Checked at {time}",
 };

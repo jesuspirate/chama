@@ -216,6 +216,8 @@ export const bond: Record<string, string> = {
   "bond.nearEndOne": "⚠ Solo queda ~1 bloque (~{time}) de este plazo — un depósito necesita un bloque para confirmar, así que podría bloquearse ya recuperable.",
   "bond.needsArbitersCta": "Este Chama necesita árbitros — conviértete en uno",
   "bond.needsArbitersInfo": "Este Chama necesita árbitros — una oportunidad para quien ponga fianza primero.",
+  "bond.youAreOnlyArbiter": "Por ahora eres el único árbitro con fianza de esta chama. Invita a otra persona de confianza a depositar una fianza para fortalecerla.",
+  "bond.youAreBondedArbiter": "Eres uno de los árbitros con fianza de esta chama. Más árbitros la hacen más fuerte.",
   "bond.noBondedArbiters": "Aún no hay árbitros con fianza — sé el primero",
   "bond.arbiterCountOne": "{count} árbitro",
   "bond.arbiterCountMany": "{count} árbitros",
@@ -299,4 +301,6 @@ export const bond: Record<string, string> = {
   "bond.watchingChain": "👀 Vigilando la cadena — los depósitos se detectan automáticamente (revisa cada {secs}s).",
   "bond.yesReclaim": "Sí, recuperar mi fianza",
   "bond.yourBonds": "Tus fianzas",
+  "bond.announcementsIncomplete": "Algunos relés no respondieron a tiempo, así que puede faltar una fianza anunciada desde otro dispositivo. Las fianzas de abajo están a salvo.",
+  "bond.lastChecked": "Comprobado a las {time}",
 };

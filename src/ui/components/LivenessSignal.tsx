@@ -139,10 +139,13 @@ export interface LivenessSignalProps {
    *  is an informational line (the arbiter on-ramp lives elsewhere by default). */
   onBecomeArbiter?: () => void;
   onRetry?: () => void;
+  /** The viewer holds a funded bond themselves: the thin-coverage line
+   *  speaks to them as an arbiter instead of inviting them to bond. */
+  viewerBonded?: boolean;
 }
 
 /** The full signal block: label + "?" + meter + honest readout + thin nudge. */
-export function LivenessSignal({ liveness, loading, outcome, blocksPerDay = 144, onBecomeArbiter, onRetry }: LivenessSignalProps) {
+export function LivenessSignal({ liveness, loading, outcome, blocksPerDay = 144, onBecomeArbiter, onRetry, viewerBonded = false }: LivenessSignalProps) {
   const { t } = useT();
   // A cached reading can paint before refresh, but a failed refresh is unknown.
   if (outcome && outcome !== "verified") liveness = null;
@@ -180,7 +183,11 @@ export function LivenessSignal({ liveness, loading, outcome, blocksPerDay = 144,
 
       {!loading && thin && (
         <div style={{ marginTop: 9, paddingTop: 9, borderTop: `1px solid ${T.border}` }}>
-          {onBecomeArbiter ? (
+          {viewerBonded && liveness && liveness.arbiterCount >= 1 ? (
+            <div style={{ fontFamily: T.sans, fontSize: T.fs.secondary, color: T.ink2, lineHeight: 1.5 }}>
+              {t(liveness.arbiterCount === 1 ? "bond.youAreOnlyArbiter" : "bond.youAreBondedArbiter")}
+            </div>
+          ) : onBecomeArbiter ? (
             <button
               onClick={onBecomeArbiter}
               style={{

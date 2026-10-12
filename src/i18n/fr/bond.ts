@@ -216,6 +216,8 @@ export const bond: Record<string, string> = {
   "bond.nearEndOne": "⚠ Il ne reste que ~1 bloc (~{time}) sur cette durée — un dépôt a besoin d'un bloc pour confirmer, il pourrait donc se verrouiller déjà récupérable.",
   "bond.needsArbitersCta": "Ce Chama a besoin d'arbitres — devenez-en un",
   "bond.needsArbitersInfo": "Ce Chama a besoin d'arbitres — une place à prendre pour le premier qui poste une caution.",
+  "bond.youAreOnlyArbiter": "Vous êtes pour l’instant le seul arbitre avec caution de cette chama. Invitez une autre personne de confiance à déposer une caution pour la renforcer.",
+  "bond.youAreBondedArbiter": "Vous êtes l’un des arbitres avec caution de cette chama. Plus d’arbitres la rendent plus solide.",
   "bond.noBondedArbiters": "Aucun arbitre cautionné — soyez le premier",
   "bond.arbiterCountOne": "{count} arbitre",
   "bond.arbiterCountMany": "{count} arbitres",
@@ -299,4 +301,6 @@ export const bond: Record<string, string> = {
   "bond.watchingChain": "👀 Surveillance de la chaîne — les dépôts sont détectés automatiquement (vérification toutes les {secs} s).",
   "bond.yesReclaim": "Oui, récupérer ma caution",
   "bond.yourBonds": "Vos cautions",
+  "bond.announcementsIncomplete": "Certains relais n’ont pas répondu à temps : une caution annoncée depuis un autre appareil peut manquer. Les cautions listées ci-dessous sont en sécurité.",
+  "bond.lastChecked": "Vérifié à {time}",
 };

@@ -214,6 +214,8 @@ export const bond: Record<string, string> = {
   "bond.nearEndOne": "⚠ Kimebaki ~kitalu 1 (~{time}) kwenye kipindi hiki — amana inahitaji kitalu kuthibitishwa, hivyo inaweza kufungwa ikiwa tayari inarejesheka.",
   "bond.needsArbitersCta": "Chama hiki kinahitaji wasuluhishi — kuwa mmoja",
   "bond.needsArbitersInfo": "Chama hiki kinahitaji wasuluhishi — fursa kwa atakayeweka dhamana kwanza.",
+  "bond.youAreOnlyArbiter": "Kwa sasa wewe ndiye msuluhishi pekee mwenye dhamana katika chama hiki. Mwalike mtu mwingine unayemwamini aweke dhamana ili kukiimarisha.",
+  "bond.youAreBondedArbiter": "Wewe ni mmoja wa wasuluhishi wenye dhamana katika chama hiki. Wasuluhishi zaidi hukiimarisha.",
   "bond.noBondedArbiters": "Bado hakuna wasuluhishi wenye dhamana — kuwa wa kwanza",
   "bond.arbiterCountOne": "Msuluhishi {count}",
   "bond.arbiterCountMany": "Wasuluhishi {count}",
@@ -298,4 +300,6 @@ export const bond: Record<string, string> = {
   "bond.watchingChain": "👀 Inaangalia mnyororo — amana zinagunduliwa kiotomatiki (inakagua kila sekunde {secs}).",
   "bond.yesReclaim": "Ndiyo, rejesha dhamana yangu",
   "bond.yourBonds": "Dhamana zako",
+  "bond.announcementsIncomplete": "Baadhi ya relay hazikujibu kwa wakati, kwa hivyo dhamana iliyotangazwa kutoka kifaa kingine inaweza kukosekana. Dhamana zilizoorodheshwa hapa chini ziko salama.",
+  "bond.lastChecked": "Imeangaliwa saa {time}",
 };

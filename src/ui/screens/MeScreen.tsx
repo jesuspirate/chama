@@ -34,6 +34,7 @@ import { ProfileAvatar } from "../components/ProfileAvatar.js";
 // doctrine is visible from day one.
 
 import { useState, useEffect, useMemo, useRef, useDeferredValue } from "react";
+import { listCommitmentBonds } from "../../bond-multisig/commitment-store.js";
 import { useT, translate, getCurrentLang } from "../../i18n/index.js";
 import { LanguageRow } from "../components/LanguagePills.js";
 import {
@@ -2357,6 +2358,12 @@ function YourChamaCard({
   // Your own chama's chain-verified liveness — auto-refreshed (mount, focus, and a
   // gentle poll) so a bond appearing shows up without a manual reload. Fails soft.
   const { liveness, loading: livenessLoading, outcome: livenessOutcome, retry: retryLiveness } = useLiveness(communitySlug, loadLiveness, { intervalMs: LIVENESS_POLL_MS });
+  // Jet (6.4.23 RC): a bonded viewer should not be invited to "bond first".
+  // A funded, unreclaimed bond on this device marks the viewer as an arbiter.
+  const viewerBonded = useMemo(() => {
+    try { return listCommitmentBonds().some(record => record.phase === "locked" && !record.reclaimTxid); }
+    catch { return false; }
+  }, [liveness]);
   const current = communitySlug ? getCommunityBySlug(communitySlug) : null;
   const countries = getAllPickerCountries();
   const currentCountry = current?.country
@@ -2446,7 +2453,8 @@ function YourChamaCard({
 
       {loadLiveness && (
         <div style={{ marginTop: 12 }}>
-          <LivenessSignal onRetry={retryLiveness} liveness={liveness} loading={livenessLoading} outcome={livenessOutcome} blocksPerDay={livenessBlocksPerDay} />
+          <LivenessSignal onRetry={retryLiveness} liveness={liveness} loading={livenessLoading} outcome={livenessOutcome} blocksPerDay={livenessBlocksPerDay}
+            viewerBonded={viewerBonded} />
         </div>
       )}
 

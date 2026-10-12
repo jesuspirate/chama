@@ -163,12 +163,15 @@ export function BondCeremonyModal({ createCommitmentBond, checkCommitmentFunding
   const autoAnnouncedRef = useRef<Set<string>>(new Set());
 
   const recoveryMessage = (issue: { code?: string; reason: string }) => {
-    const key = { 'seed-locked': 'bond.seedLocked', 'seed-missing': 'bond.seedMissing', 'key-not-found': 'bond.keyNotFound', 'funds-not-confirmed': 'bond.fundsNotConfirmed' }[issue.code ?? ''];
+    const key = { 'seed-locked': 'bond.seedLocked', 'seed-missing': 'bond.seedMissing', 'key-not-found': 'bond.keyNotFound', 'funds-not-confirmed': 'bond.fundsNotConfirmed', 'announcements-incomplete': 'bond.announcementsIncomplete' }[issue.code ?? ''];
     return key ? t(key) : issue.reason;
   };
   const [verifiedBonds, setVerifiedBonds] = useState<VerifiedBond[]>([]);
   const [recoveryIssues, setRecoveryIssues] = useState<string[]>([]);
   const [recovering, setRecovering] = useState(true);
+  // When the last check finished, so a Retry that ends the same way still
+  // visibly ran (6.4.23 RC: "the retry button doesn't seem to work").
+  const [checkedAt, setCheckedAt] = useState<number | null>(null);
   const [findAddress, setFindAddress] = useState('');
   const [findBlock, setFindBlock] = useState('');
   const [findError, setFindError] = useState<string | null>(null);
@@ -189,7 +192,7 @@ export function BondCeremonyModal({ createCommitmentBond, checkCommitmentFunding
       } else issues.push(publicRead.reason?.message || t('bond.recoveryFailed'));
       if (recovery.status === 'fulfilled') issues.push(...(recovery.value.issues ?? []).map(recoveryMessage));
       else issues.push(recovery.reason?.message || t('bond.recoveryFailed'));
-      setRecoveryIssues(issues); setStoreRev(n => n + 1); setRecovering(false);
+      setRecoveryIssues(issues); setStoreRev(n => n + 1); setRecovering(false); setCheckedAt(Date.now());
     }
     recoveryBusy.current = false;
   };
@@ -444,7 +447,7 @@ export function BondCeremonyModal({ createCommitmentBond, checkCommitmentFunding
           }} />}
 
         {view.kind === "list" && <>
-          <BondRecoveryNotice issues={recoveryIssues} busy={recovering} onRetry={() => void refreshBonds(true)} />
+          <BondRecoveryNotice issues={recoveryIssues} busy={recovering} checkedAt={checkedAt} onRetry={() => void refreshBonds(true)} />
           <BondList
             bonds={bonds}
             verified={verifiedBonds}
@@ -710,12 +713,17 @@ export function BondCeremonyModal({ createCommitmentBond, checkCommitmentFunding
 }
 
 // ── The "Your bonds" list — post another · watch each · reclaim each ─────────
-export function BondRecoveryNotice({ issues, busy, onRetry }: { issues: readonly string[]; busy?: boolean; onRetry: () => void }) {
-  const { t } = useT();
+export function BondRecoveryNotice({ issues, busy, checkedAt, onRetry }: { issues: readonly string[]; busy?: boolean; checkedAt?: number | null; onRetry: () => void }) {
+  const { t, lang } = useT();
   if (!issues.length) return busy ? <div>{t('bond.checking')}</div> : null;
+  const at = checkedAt ? new Date(checkedAt).toLocaleTimeString(lang, { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : null;
   return <div style={{ marginBottom: 12 }}>
-    <div role="alert" style={{ color: T.amber }}>{[...new Set(issues)].join(' ')}</div>
-    <PaymentButton tier="quiet" disabled={busy} onClick={onRetry}>{t('common.retry')}</PaymentButton>
+    <div role="alert" style={{ color: T.attnInk, fontSize: T.fs.body, lineHeight: 1.45 }}>{[...new Set(issues)].join(' ')}</div>
+    {/* The button says what it is doing, and the time shows a Retry ran. */}
+    <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginTop: 8 }}>
+      <PaymentButton tier="quiet" disabled={busy} onClick={onRetry}>{busy ? t('bond.checking') : t('common.retry')}</PaymentButton>
+      {!busy && at && <span aria-live="polite" style={{ color: T.ink2, fontSize: T.fs.secondary }}>{t('bond.lastChecked', { time: at })}</span>}
+    </div>
   </div>;
 }
 

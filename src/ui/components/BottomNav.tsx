@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { T, ON_ATTN } from "../theme.js";
 import { getSignInEnvironment, shouldApplyCssSafeAreaInsets } from "../sign-in-environment.js";
 import { useT } from "../../i18n/index.js";
@@ -87,12 +88,29 @@ export function BottomNav({ active, onSelect, onCreate, badges }: {
  *  Hidden on wide screens, where the sidebar carries Create. */
 export function CreateButton({ onCreate }: { onCreate: () => void }) {
   const { t } = useT();
-  if (isAndroidUserAgent()) {
+  const android = isAndroidUserAgent();
+  // Jet (6.4.23 RC, Pixel 8): once the page moves, content slides under the
+  // floating Create button. A frosted halo behind it keeps the button legible
+  // and makes it plain that content continues underneath.
+  const [scrolled, setScrolled] = useState(false);
+  useEffect(() => {
+    if (!android || typeof window === "undefined") return;
+    const onScroll = (event: Event) => {
+      const target = event.target as Element | Document | null;
+      const top = target && "scrollTop" in (target as Element) ? (target as Element).scrollTop : window.scrollY;
+      setScrolled(Math.max(top ?? 0, window.scrollY) > 4);
+    };
+    window.addEventListener("scroll", onScroll, { capture: true, passive: true });
+    return () => window.removeEventListener("scroll", onScroll, { capture: true });
+  }, [android]);
+  if (android) {
     return (
-      <button type="button" className="chama-create-fab" onClick={onCreate}
-        data-coach="fab-create" aria-label={t("browse.createTrade")}>
-        <PlusGlyph size={22} />{t("browse.navCreate")}
-      </button>
+      <div className={`chama-create-fab-wrap${scrolled ? " chama-create-fab-scrolled" : ""}`}>
+        <button type="button" className="chama-create-fab" onClick={onCreate}
+          data-coach="fab-create" aria-label={t("browse.createTrade")}>
+          <PlusGlyph size={22} />{t("browse.navCreate")}
+        </button>
+      </div>
     );
   }
   return (
@@ -118,10 +136,17 @@ export function navCss(): string {
   .chama-nav-badge{position:absolute;top:-4px;left:calc(50% + 6px);min-width:18px;height:18px;padding:0 5px;box-sizing:border-box;border-radius:9px;background:${T.attn};color:${ON_ATTN};font-size:11px;font-weight:700;line-height:18px;text-align:center;box-shadow:0 0 0 2px ${T.chrome}}
   .chama-nav-label{max-width:100%;overflow-wrap:anywhere;text-align:center}
   .chama-create-plus{width:44px;height:44px;border-radius:22px;border:none;background:${T.raised};color:${T.ink};display:inline-flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0}
-  .chama-create-fab{position:fixed;right:16px;bottom:calc(${BOTTOM_NAV_HEIGHT}px + env(safe-area-inset-bottom,0px) + 16px);z-index:90;min-height:56px;padding:0 20px 0 16px;border-radius:16px;border:none;background:${T.ink};color:${T.onInk};display:inline-flex;align-items:center;gap:8px;font-family:${T.sans};font-size:var(--chama-fs-button);font-weight:600;box-shadow:0 6px 16px rgba(0,0,0,0.22);cursor:pointer}
+  .chama-create-fab-wrap{position:fixed;right:16px;bottom:calc(${BOTTOM_NAV_HEIGHT}px + env(safe-area-inset-bottom,0px) + 16px);z-index:90}
+  .chama-create-fab-wrap::before{content:"";position:absolute;inset:-12px;border-radius:28px;background:${T.bg}b3;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);opacity:0;transition:opacity .2s ease;pointer-events:none}
+  .chama-create-fab-wrap.chama-create-fab-scrolled::before{opacity:1}
+  @media (prefers-reduced-transparency: reduce){.chama-create-fab-wrap::before{background:${T.bg};-webkit-backdrop-filter:none;backdrop-filter:none}}
+  .chama-create-fab{position:relative;min-height:56px;padding:0 20px 0 16px;border-radius:16px;border:none;background:${T.ink};color:${T.onInk};display:inline-flex;align-items:center;gap:8px;font-family:${T.sans};font-size:var(--chama-fs-button);font-weight:600;box-shadow:0 6px 16px rgba(0,0,0,0.22);cursor:pointer}
   /* The Android extended FAB floats above the bottom nav; page footers keep
      clear of it so it never covers their links or step dots. */
-  @media (max-width:${NAV_WIDE_MIN_PX - 1}px){body:has(.chama-create-fab) .assisted-canvas-footer{margin-bottom:76px}}
+  @media (max-width:${NAV_WIDE_MIN_PX - 1}px){body:has(.chama-create-fab) .assisted-canvas-footer{margin-bottom:76px}
+    /* Room at the end of every page so its last control can scroll clear of
+       the floating Create button (it covered Circles' invite "Open"). */
+    body:has(.chama-create-fab) .chama-shell-nav::after{content:"";display:block;height:84px}}
   @media (min-width:${NAV_WIDE_MIN_PX}px){
     .chama-nav{top:0;right:auto;width:${W}px;border-top:none;border-right:1px solid ${T.line};padding:24px 16px!important;display:flex;flex-direction:column;gap:20px;overflow-y:auto}
     .chama-nav-brand{display:block;padding:0 8px}
@@ -132,6 +157,7 @@ export function navCss(): string {
     .chama-nav-item[aria-current="page"]{background:${T.raised}}
     .chama-nav-icon{width:28px;height:28px;background:none!important}
     .chama-create-plus,.chama-create-fab{display:none!important}
+    .chama-create-fab-wrap{display:none!important}
     /* The bottom nav already pads for the home indicator; with the nav as a
        sidebar, page footers pad for it themselves. */
     :root{--chama-footer-safe:env(safe-area-inset-bottom, 0px)}

@@ -91,4 +91,16 @@ let seedQueries=0, decrypts=0, publishes=0;
 await assert.rejects(getExistingSeed({queryOnce:async()=>{seedQueries++;return [];},publishRaw:async()=>{publishes++;}} as any,
   {getPublicKey:async()=>npub,requiresUserAction:true,nip44Decrypt:async()=>{decrypts++;return words;}} as any),/Unlock your wallet seed/);
 assert.equal(seedQueries,0);assert.equal(decrypts,0);assert.equal(publishes,0,'background bond recovery cannot prompt or create a replacement seed');
+// 6.4.23 RC: Retry visibly runs, and a slow relay no longer fails recovery.
+{
+  const busy=renderToStaticMarkup(<LangProvider><BondRecoveryNotice issues={['x']} busy onRetry={()=>{}}/></LangProvider>);
+  assert.match(busy, /Checking…/); assert.match(busy, /disabled/);
+  const done=renderToStaticMarkup(<LangProvider><BondRecoveryNotice issues={['x']} checkedAt={Date.UTC(2026,9,12,15,4,5)} onRetry={()=>{}}/></LangProvider>);
+  assert.match(done, /Checked at/); assert.match(done, />Retry</);
+  const { readFileSync } = await import('node:fs');
+  const hook=readFileSync(new URL('../hooks/useEscrow.ts', import.meta.url),'utf8');
+  const recover=hook.slice(hook.indexOf('recoverMyBonds: async'), hook.indexOf('findMyBond: async'));
+  assert.doesNotMatch(recover, /if \(!reading\.complete\) throw/, 'a partial relay read no longer throws away what it found');
+  assert.match(recover, /announcements-incomplete/, 'a partial read is reported as a calm issue');
+}
 console.log('PASS per-bond announcements: dual readers, two bonds in one community, summed deposits/distinct people, union rows, locked seed and Retry, key-index/read failures, explicit historical lookup and recovery-only seed gate');

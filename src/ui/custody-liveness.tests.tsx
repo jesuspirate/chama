@@ -35,7 +35,14 @@ assert.doesNotMatch(checking,/role="img"/); assert.match(checking,/checking who/
 const genuineZero=computeChamaLiveness("test",[],new Map(),900000);
 assert.match(html(<LivenessSignal liveness={genuineZero} />), /role="img"/);
 assert.doesNotMatch(html(<LivenessSignal liveness={genuineZero} outcome="timeout" onRetry={()=>{}} />), /role="img"/, "a failed refresh must not paint its cached score as a completed check");
-for (const lang of ["en","es","fr","sw"] as const) for(const key of ["custody.what","custody.notes","custody.faqTitle","bond.livenessRetry"]) assert.notEqual(translate(lang,key),key);
+// A thin chama with one arbiter: a bonded viewer is told they're that
+// arbiter, not invited to "bond first" (6.4.23 RC).
+const oneArbiter={...genuineZero,isLive:true,arbiterCount:1,score:40};
+assert.match(html(<LivenessSignal liveness={oneArbiter} />), /an opening for whoever bonds first/);
+const bondedView=html(<LivenessSignal liveness={oneArbiter} viewerBonded />);
+assert.match(bondedView, /only bonded arbiter so far/); assert.doesNotMatch(bondedView, /whoever bonds first/);
+assert.match(html(<LivenessSignal liveness={{...oneArbiter,arbiterCount:2}} viewerBonded />), /one of this chama.{1,6}s bonded arbiters/);
+for (const lang of ["en","es","fr","sw"] as const) for(const key of ["custody.what","custody.notes","custody.faqTitle","bond.livenessRetry","bond.youAreOnlyArbiter","bond.youAreBondedArbiter"]) assert.notEqual(translate(lang,key),key);
 const secret = new Uint8Array(32).fill(51), pubkey=getPublicKey(secret);
 const unsigned=buildBondAnnouncementEvent({pubkey,community:"test",ownerXonly:pubkey,lockUntil:950000,amountSats:1000n,network:MAINNET,address:"public test address",createdAt:1700000000});
 const event=finalizeEvent(unsigned,secret);

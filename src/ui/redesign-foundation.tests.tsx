@@ -111,6 +111,12 @@ console.log("PASS hold to confirm: hold confirms once, early lift cancels, taps 
   const css = navCss();
   assert.match(css, /@media \(min-width:1024px\)\{[\s\S]*\.chama-nav\{top:0;right:auto;width:240px/, "sidebar from 1024px");
   assert.match(css, /\.chama-create-plus,\.chama-create-fab\{display:none!important\}/, "phone Create hidden beside the sidebar");
+  assert.match(css, /\.chama-create-fab-wrap\{display:none!important\}/, "the Android Create wrapper is hidden beside the sidebar too");
+  // Android FAB (6.4.23 RC): a frosted halo appears once the page moves, and
+  // every page ends with room to scroll its last control clear of the button.
+  assert.match(css, /\.chama-create-fab-wrap::before\{[^}]*backdrop-filter:blur\(12px\)[^}]*opacity:0/);
+  assert.match(css, /\.chama-create-fab-wrap\.chama-create-fab-scrolled::before\{opacity:1\}/);
+  assert.match(css, /body:has\(\.chama-create-fab\) \.chama-shell-nav::after\{content:"";display:block;height:84px\}/);
 }
 console.log("PASS nav: Home/Browse/Circles/Me + Create, one active tab, unique coach targets, sidebar ≥1024px");
 

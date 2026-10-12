@@ -238,7 +238,7 @@ export function BitcoinPricePill({
               flexShrink: 0, color: price.usd ? T.text : T.muted,
               fontFamily: T.sans, fontVariantNumeric: "tabular-nums", fontSize: 13, fontWeight: 700,
             }}>{priceTicker}</span>
-            <FitText text={priceDigits} max={30} min={18} align="right" style={{
+            <FitText text={priceDigits} max={30} min={12} align="right" style={{
               color: price.usd ? T.text : T.muted,
               fontFamily: T.sans, fontVariantNumeric: "tabular-nums", fontWeight: 700, lineHeight: .94,
             }} />
@@ -275,8 +275,11 @@ export function BitcoinPricePill({
           {/* One clean exchange line. The values remain plain; the physical
               rocker in the middle is the only control-shaped object. */}
           <div style={{
-            display: "grid", gridTemplateColumns: "minmax(98px,.72fr) 84px minmax(0,1.35fr)",
-            alignItems: "center", gap: 12,
+            // The price column takes everything the label and switch leave, so
+            // large Android font/display sizes squeeze the price last, and
+            // FitText shrinks it rather than clipping digits (Pixel 8, 6.4.23 RC).
+            display: "grid", gridTemplateColumns: "auto auto minmax(0,1fr)",
+            alignItems: "center", gap: 10,
           }}>
             <div style={{
               display: "flex", alignItems: "center", gap: 8, minWidth: 0,
@@ -300,7 +303,7 @@ export function BitcoinPricePill({
                 flexShrink: 0, color: price.usd ? T.text : T.muted,
                 fontFamily: T.sans, fontVariantNumeric: "tabular-nums", fontSize: 20, fontWeight: 700,
               }}>{priceTicker}</span>
-              <FitText text={priceDigits} max={50} min={23} align="right" style={{
+              <FitText text={priceDigits} max={50} min={14} align="right" style={{
                 color: price.usd ? T.text : T.muted,
                 fontFamily: T.sans, fontVariantNumeric: "tabular-nums",
                 fontWeight: 700,

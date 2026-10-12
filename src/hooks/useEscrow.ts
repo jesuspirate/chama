@@ -6760,15 +6760,23 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       if (!client || !signer) throw new Error("Not connected — reconnect, then Retry.");
       const myPubkey = await signer.getPublicKey();
       const reading = await client.queryPublicConduct({ kinds: [ARBITER_BOND_ANNOUNCEMENT_KIND], authors: [myPubkey] } as any, 6_000);
-      if (!reading.complete) throw new Error('Could not finish checking your bond announcements. Reconnect, then Retry.');
+      // Recovery only ever ADDS bonds proven on chain; it never removes or
+      // rewrites one. So a partial relay read (one slow relay missed EOSE) is
+      // still safe to use: recover what was found and say plainly that some
+      // announcements may be missing (6.4.23 RC: the hard failure made Retry
+      // look broken, since a slow relay failed it the same way every time).
       const events = reading.events;
       const parsed = selectLatestAnnouncements(events).filter(a => a.npub === myPubkey && a.network === (BOND_NETWORK === PUBLIC_SIGNET ? 'signet' : 'mainnet'));
       const fetchJson = esploraFetcher(defaultEsploraBase(BOND_NETWORK), { network: BOND_NETWORK });
-      return recoverOwnedBonds(parsed, listCommitmentBonds(), {
+      const report = await recoverOwnedBonds(parsed, listCommitmentBonds(), {
         network: BOND_NETWORK, seed: () => readExistingSeed(client, signer, opts?.allowUserAction === true),
         readUtxos: async address => (await findBondFundingUtxos({ address, fetchJson, minConfs: defaultMinConfs(BOND_NETWORK) })).map(x => x.utxo),
         save: upsertCommitmentBond,
       });
+      if (!reading.complete) {
+        report.issues = [...(report.issues ?? []), { reason: 'Some relays did not answer in time.', code: 'announcements-incomplete' }];
+      }
+      return report;
     },
     findMyBond: async (address, lockUntil) => {
       const client = clientRef.current, signer = signerRef.current;
