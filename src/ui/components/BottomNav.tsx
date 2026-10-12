@@ -90,8 +90,8 @@ export function CreateButton({ onCreate }: { onCreate: () => void }) {
   const { t } = useT();
   const android = isAndroidUserAgent();
   // Jet (6.4.23 RC, Pixel 8): once the page moves, content slides under the
-  // floating Create button. A frosted halo behind it keeps the button legible
-  // and makes it plain that content continues underneath.
+  // floating Create button. The button itself turns to frosted glass, so the
+  // page shows through it, blurred, and it is plain that content continues.
   const [scrolled, setScrolled] = useState(false);
   useEffect(() => {
     if (!android || typeof window === "undefined") return;
@@ -137,10 +137,9 @@ export function navCss(): string {
   .chama-nav-label{max-width:100%;overflow-wrap:anywhere;text-align:center}
   .chama-create-plus{width:44px;height:44px;border-radius:22px;border:none;background:${T.raised};color:${T.ink};display:inline-flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0}
   .chama-create-fab-wrap{position:fixed;right:16px;bottom:calc(${BOTTOM_NAV_HEIGHT}px + env(safe-area-inset-bottom,0px) + 16px);z-index:90}
-  .chama-create-fab-wrap::before{content:"";position:absolute;inset:-12px;border-radius:28px;background:${T.bg}b3;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);opacity:0;transition:opacity .2s ease;pointer-events:none}
-  .chama-create-fab-wrap.chama-create-fab-scrolled::before{opacity:1}
-  @media (prefers-reduced-transparency: reduce){.chama-create-fab-wrap::before{background:${T.bg};-webkit-backdrop-filter:none;backdrop-filter:none}}
-  .chama-create-fab{position:relative;min-height:56px;padding:0 20px 0 16px;border-radius:16px;border:none;background:${T.ink};color:${T.onInk};display:inline-flex;align-items:center;gap:8px;font-family:${T.sans};font-size:var(--chama-fs-button);font-weight:600;box-shadow:0 6px 16px rgba(0,0,0,0.22);cursor:pointer}
+  .chama-create-fab{position:relative;min-height:56px;padding:0 20px 0 16px;border-radius:16px;border:none;background:${T.ink};color:${T.onInk};display:inline-flex;align-items:center;gap:8px;font-family:${T.sans};font-size:var(--chama-fs-button);font-weight:600;box-shadow:0 6px 16px rgba(0,0,0,0.22);cursor:pointer;transition:background-color .2s ease}
+  .chama-create-fab-scrolled .chama-create-fab{background:${T.ink}8c;-webkit-backdrop-filter:blur(14px) saturate(160%);backdrop-filter:blur(14px) saturate(160%)}
+  @media (prefers-reduced-transparency: reduce){.chama-create-fab-scrolled .chama-create-fab{background:${T.ink};-webkit-backdrop-filter:none;backdrop-filter:none}}
   /* The Android extended FAB floats above the bottom nav; page footers keep
      clear of it so it never covers their links or step dots. */
   @media (max-width:${NAV_WIDE_MIN_PX - 1}px){body:has(.chama-create-fab) .assisted-canvas-footer{margin-bottom:76px}

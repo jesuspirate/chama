@@ -114,10 +114,11 @@ console.log("PASS hold to confirm: hold confirms once, early lift cancels, taps 
   assert.match(css, /@media \(min-width:1024px\)\{[\s\S]*\.chama-nav\{top:0;right:auto;width:240px/, "sidebar from 1024px");
   assert.match(css, /\.chama-create-plus,\.chama-create-fab\{display:none!important\}/, "phone Create hidden beside the sidebar");
   assert.match(css, /\.chama-create-fab-wrap\{display:none!important\}/, "the Android Create wrapper is hidden beside the sidebar too");
-  // Android FAB (6.4.23 RC): a frosted halo appears once the page moves, and
-  // every page ends with room to scroll its last control clear of the button.
-  assert.match(css, /\.chama-create-fab-wrap::before\{[^}]*backdrop-filter:blur\(12px\)[^}]*opacity:0/);
-  assert.match(css, /\.chama-create-fab-wrap\.chama-create-fab-scrolled::before\{opacity:1\}/);
+  // Android FAB (6.4.23 RC): once the page moves the button itself turns to
+  // frosted glass (no halo around it), and every page ends with room to scroll
+  // its last control clear of the button.
+  assert.match(css, /\.chama-create-fab-scrolled \.chama-create-fab\{background:#[0-9A-Fa-f]{6}8c;[^}]*backdrop-filter:blur\(14px\)/, "the scrolled Create button is translucent and blurs what is behind it");
+  assert.doesNotMatch(css, /\.chama-create-fab-wrap::before/, "no halo around the Create button");
   assert.match(css, /body:has\(\.chama-create-fab\) \.chama-shell-nav::after\{content:"";display:block;height:84px\}/);
 }
 // Status bar (6.4.23 rc): a fixed strip covers the safe-area inset so the
