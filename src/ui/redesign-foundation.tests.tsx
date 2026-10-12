@@ -117,7 +117,7 @@ console.log("PASS hold to confirm: hold confirms once, early lift cancels, taps 
   // Android FAB (6.4.23 RC): while the page scrolls the button itself is
   // frosted glass, about half see-through (no halo around it), and every page
   // ends with room to scroll its last control clear of the button.
-  assert.match(css, /\.chama-create-fab-scrolling \.chama-create-fab\{background:#[0-9A-Fa-f]{6}80;[^}]*backdrop-filter:blur\(14px\)[^}]*text-shadow:/, "the Create button is half see-through and blurs what is behind it while scrolling");
+  assert.match(css, /\.chama-create-fab-scrolling \.chama-create-fab\{transition:none;background:#[0-9A-Fa-f]{6}80;[^}]*backdrop-filter:blur\(14px\)[^}]*text-shadow:/, "the Create button turns half see-through and blurred at once (no fade-in delay) while scrolling");
   assert.doesNotMatch(css, /\.chama-create-fab-wrap::before/, "no halo around the Create button");
   assert.match(css, /body:has\(\.chama-create-fab\) \.chama-shell-nav::after\{content:"";display:block;height:84px\}/);
 }
@@ -132,31 +132,38 @@ console.log("PASS hold to confirm: hold confirms once, early lift cancels, taps 
 }
 console.log("PASS nav: Home/Browse/Circles/Me + Create, one active tab, unique coach targets, sidebar ≥1024px");
 {
-  // Create button glass: on while scroll events arrive, solid again after the
-  // page has been still for SCROLL_IDLE_MS. Continuous scrolling never flickers.
+  // Create button glass: on the moment a finger touches the page (before any
+  // scroll event), held while the finger is down, solid again SCROLL_IDLE_MS
+  // after the finger lifts and scrolling stops. Continuous scrolling never flickers.
   const pending = new Map<number, () => void>();
   let nextId = 1;
   const timers = {
     set: (fn: () => void, _ms: number) => { const id = nextId++; pending.set(id, fn); return id; },
     clear: (id: unknown) => { pending.delete(id as number); },
   };
+  const fireAll = () => { const fns = [...pending.values()]; pending.clear(); fns.forEach((fn) => fn()); };
   const seen: boolean[] = [];
   const activity = trackScrollActivity((on) => seen.push(on), SCROLL_IDLE_MS, timers);
+  assert.equal(SCROLL_IDLE_MS, 300, "same settle time as the pre-redesign Browse button");
+  activity.onPress();
+  assert.deepEqual(seen, [true], "glass the moment the finger touches the page, before any scroll");
   activity.onScroll();
   activity.onScroll();
+  assert.equal(pending.size, 0, "no settle timer while the finger is still down");
+  activity.onRelease();
+  assert.equal(pending.size, 1, "lifting the finger starts the one settle timer");
   activity.onScroll();
-  assert.deepEqual(seen, [true], "glass turns on once, however many scroll events arrive");
-  assert.equal(pending.size, 1, "each scroll event restarts the one stop timer");
-  const [[firedId, fire]] = [...pending.entries()];
-  pending.delete(firedId);
-  fire();
+  assert.equal(pending.size, 1, "momentum scrolling restarts that timer, never stacks it");
+  assert.deepEqual(seen, [true], "glass turns on once per gesture");
+  fireAll();
   assert.deepEqual(seen, [true, false], "solid again once scrolling stops");
   activity.onScroll();
-  assert.deepEqual(seen, [true, false, true], "glass again on the next scroll");
+  assert.deepEqual(seen, [true, false, true], "a scroll without a touch (wheel, keyboard) also turns it on");
+  activity.onPress();
   activity.dispose();
-  assert.equal(pending.size, 0, "unmount clears the stop timer");
+  assert.equal(pending.size, 0, "unmount clears the settle timer");
 }
-console.log("PASS Create glass: on while scrolling, solid when scrolling stops");
+console.log("PASS Create glass: on at first touch, held while scrolling, solid when scrolling stops");
 
 // ── Badge + capsule ──────────────────────────────────────────────────────────
 {

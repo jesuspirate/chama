@@ -84,11 +84,13 @@ export function BottomNav({ active, onSelect, onCreate, badges }: {
   );
 }
 
-/** How long the page must stay still before the Create button is solid again. */
-export const SCROLL_IDLE_MS = 180;
+/** How long the page must stay still, finger lifted, before the Create button
+ *  is solid again (the pre-redesign Browse button used 300ms). */
+export const SCROLL_IDLE_MS = 300;
 
-/** Reports true on the first scroll event and false once no scroll event has
- *  arrived for `idleMs`. Timers are injectable for tests. */
+/** Reports true the moment a finger touches the page or a scroll event arrives,
+ *  and false once the finger is up and nothing has scrolled for `idleMs`.
+ *  Timers are injectable for tests. */
 export function trackScrollActivity(
   onChange: (scrolling: boolean) => void,
   idleMs = SCROLL_IDLE_MS,
@@ -96,19 +98,22 @@ export function trackScrollActivity(
     set: (fn, ms) => setTimeout(fn, ms),
     clear: (id) => clearTimeout(id as ReturnType<typeof setTimeout>),
   },
-): { onScroll: () => void; dispose: () => void } {
+): { onPress: () => void; onRelease: () => void; onScroll: () => void; dispose: () => void } {
   let idle: unknown = null;
   let active = false;
+  let pressed = false;
+  const stopTimer = () => { if (idle !== null) timers.clear(idle); idle = null; };
+  const start = () => { if (!active) { active = true; onChange(true); } };
+  const settle = () => {
+    stopTimer();
+    if (pressed) return;
+    idle = timers.set(() => { idle = null; active = false; onChange(false); }, idleMs);
+  };
   return {
-    onScroll() {
-      if (!active) { active = true; onChange(true); }
-      if (idle !== null) timers.clear(idle);
-      idle = timers.set(() => { idle = null; active = false; onChange(false); }, idleMs);
-    },
-    dispose() {
-      if (idle !== null) timers.clear(idle);
-      idle = null;
-    },
+    onPress() { pressed = true; stopTimer(); start(); },
+    onRelease() { if (!pressed) return; pressed = false; if (active) settle(); },
+    onScroll() { start(); settle(); },
+    dispose: stopTimer,
   };
 }
 
@@ -118,15 +123,29 @@ export function CreateButton({ onCreate }: { onCreate: () => void }) {
   const { t } = useT();
   const android = isAndroidUserAgent();
   // Jet (6.4.23 RC, Pixel 8): content slides under the floating Create button.
-  // While the page scrolls, the button itself turns to frosted glass so the page
-  // shows through it, blurred; it is solid again once scrolling stops.
+  // As soon as a finger touches the page, and while it scrolls, the button
+  // itself turns to frosted glass so the page shows through it, blurred; it is
+  // solid again once the finger is up and scrolling stops. Touching the button
+  // itself does not count: pressing Create must not dim it.
   const [scrolling, setScrolling] = useState(false);
   useEffect(() => {
     if (!android || typeof window === "undefined") return;
     const activity = trackScrollActivity(setScrolling);
-    window.addEventListener("scroll", activity.onScroll, { capture: true, passive: true });
+    const onPress = (event: Event) => {
+      const target = event.target as Element | null;
+      if (target?.closest?.(".chama-create-fab")) return;
+      activity.onPress();
+    };
+    const opts = { capture: true, passive: true } as const;
+    window.addEventListener("touchstart", onPress, opts);
+    window.addEventListener("touchend", activity.onRelease, opts);
+    window.addEventListener("touchcancel", activity.onRelease, opts);
+    window.addEventListener("scroll", activity.onScroll, opts);
     return () => {
-      window.removeEventListener("scroll", activity.onScroll, { capture: true });
+      window.removeEventListener("touchstart", onPress, opts);
+      window.removeEventListener("touchend", activity.onRelease, opts);
+      window.removeEventListener("touchcancel", activity.onRelease, opts);
+      window.removeEventListener("scroll", activity.onScroll, opts);
       activity.dispose();
     };
   }, [android]);
@@ -165,7 +184,7 @@ export function navCss(): string {
   .chama-create-plus{width:44px;height:44px;border-radius:22px;border:none;background:${T.raised};color:${T.ink};display:inline-flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0}
   .chama-create-fab-wrap{position:fixed;right:16px;bottom:calc(${BOTTOM_NAV_HEIGHT}px + env(safe-area-inset-bottom,0px) + 16px);z-index:90}
   .chama-create-fab{position:relative;min-height:56px;padding:0 20px 0 16px;border-radius:16px;border:none;background:${T.ink};color:${T.onInk};display:inline-flex;align-items:center;gap:8px;font-family:${T.sans};font-size:var(--chama-fs-button);font-weight:600;box-shadow:0 6px 16px rgba(0,0,0,0.22);cursor:pointer;transition:background-color .2s ease}
-  .chama-create-fab-scrolling .chama-create-fab{background:${T.ink}80;-webkit-backdrop-filter:blur(14px) saturate(160%);backdrop-filter:blur(14px) saturate(160%);text-shadow:0 0 6px ${T.ink}}
+  .chama-create-fab-scrolling .chama-create-fab{transition:none;background:${T.ink}80;-webkit-backdrop-filter:blur(14px) saturate(160%);backdrop-filter:blur(14px) saturate(160%);text-shadow:0 0 6px ${T.ink}}
   @media (prefers-reduced-transparency: reduce){.chama-create-fab-scrolling .chama-create-fab{background:${T.ink};-webkit-backdrop-filter:none;backdrop-filter:none;text-shadow:none}}
   /* The Android extended FAB floats above the bottom nav; page footers keep
      clear of it so it never covers their links or step dots. */
