@@ -22,6 +22,10 @@ set -euo pipefail
 # --github-release uploads those assets to the matching GitHub tag/release.
 # --zapstore publishes the APK through zsp after the APK and optional GitHub
 # release steps pass. Set CHAMA_ZSP_BIN to use a non-PATH zsp binary.
+# With an Amber (bunker://) signer the publish is quiet: no prompts, Amber
+# approvals only, then a relay check confirms the release event landed.
+# --zapstore-interactive (or CHAMA_ZAPSTORE_INTERACTIVE=1) restores the
+# interactive zsp run.
 # --skip-web-gate assumes npm predeploy/build already passed in this shell,
 # and only syncs Capacitor + builds/verifies the APK.
 # Checksum signing is automatic when gpg has a secret key available.
@@ -40,6 +44,8 @@ UPLOAD_GITHUB=0
 PUBLISH_ZAPSTORE=0
 ZAPSTORE_OVERWRITE=0
 PRESERVE_ZAPSTORE_NOTES=0
+# Quiet is the default with an Amber (bunker) signer; see zapstore-publish-mode.sh.
+ZAPSTORE_INTERACTIVE="${CHAMA_ZAPSTORE_INTERACTIVE:-0}"
 BUILD_APK=1
 RUN_WEB_GATE=1
 CLOBBER=0
@@ -305,18 +311,8 @@ EOF
     exit 1
   fi
 
-  if [ -z "${SIGN_WITH:-}" ]; then
-    cat <<EOF
-❌ SIGN_WITH is required for Zapstore publishing.
-
-For local release signing:
-  SIGN_WITH=browser ./scripts/android-release.sh --no-build --zapstore
-
-For CI/CD, prefer a NIP-46 bunker URL stored as a secret:
-  SIGN_WITH='bunker://...' ./scripts/android-release.sh --github-release --zapstore
-EOF
-    exit 1
-  fi
+  source "$ROOT_DIR/scripts/zapstore-signer.sh"
+  chama_zapstore_signer
 
   # Populate the release-notes file referenced by `release_notes:` in
   # zapstore.yaml. zsp reads metadata from GitHub via metadata_sources,
@@ -356,8 +352,34 @@ EOF
     zapstore_args+=(--overwrite-release)
   fi
 
-  echo "🚀 Publishing Android release to Zapstore..."
-  "$zsp" "${zapstore_args[@]}"
+  source "$ROOT_DIR/scripts/zapstore-publish-mode.sh"
+  local mode
+  mode=$(CHAMA_ZAPSTORE_INTERACTIVE="$ZAPSTORE_INTERACTIVE" chama_zapstore_mode)
+  if [ "$mode" = "quiet" ]; then
+    # No prompts and no Enter: zsp auto-confirms, and every signature is still
+    # approved by hand in Amber. Quiet prints nothing on success and also
+    # exits 0 when it has nothing to do, so the relay check below is what
+    # proves the release landed.
+    zapstore_args+=(--quiet --skip-preview)
+    # Quiet output is empty, so record which zsp ran for the release log.
+    # zsp --version prints an ASCII banner; keep only the version number.
+    local zsp_version
+    zsp_version=$("$zsp" --version 2>&1 | grep -Eo 'v[0-9]+\.[0-9]+\.[0-9]+' | head -n 1 || true)
+    echo "🔕 Publishing to Zapstore quietly with zsp ${zsp_version:-(unknown version)} ($zsp)"
+    echo "   Approve the signing requests in Amber on your phone."
+    local started
+    started=$(date +%s)
+    "$zsp" "${zapstore_args[@]}"
+    local verify_args=(--config "$ZAPSTORE_CONFIG" --version "$VERSION" --since "$started")
+    # A re-publish must replace the release event; an old one alone is a failure.
+    if [ "$ZAPSTORE_OVERWRITE" = "1" ]; then
+      verify_args+=(--require-new)
+    fi
+    node "$ROOT_DIR/scripts/verify-zapstore-release.mjs" "${verify_args[@]}"
+  else
+    echo "🚀 Publishing Android release to Zapstore..."
+    "$zsp" "${zapstore_args[@]}"
+  fi
 }
 
 while [ $# -gt 0 ]; do
@@ -376,6 +398,10 @@ while [ $# -gt 0 ]; do
       ;;
     --preserve-zapstore-notes)
       PRESERVE_ZAPSTORE_NOTES=1
+      shift
+      ;;
+    --zapstore-interactive)
+      ZAPSTORE_INTERACTIVE=1
       shift
       ;;
     --no-build)

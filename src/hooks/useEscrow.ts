@@ -240,6 +240,8 @@ import {
   hasCustomFederation,
   BP_FEDERATION_NAME,
   getOrCreateSeed,
+  SeedNeedsRecoveryCode,
+  SeedNeedsRestoreConfirmation,
   cachedSeedRequiresFederationRecovery,
   markCachedSeedFederationJoined,
   clearSeedCache,
@@ -784,6 +786,7 @@ export interface FedimintState {
 export interface UseEscrowState {
   /** Extension secrets must be opened by a user action, never boot. */
   signerNeedsUserAction?: boolean;
+  seedRecovery?: { pubkey: string; needsCode: boolean; requireRestoreConfirmation: boolean } | null;
   /** Whether the client is connected to relays */
   connected: boolean;
   /** User's Nostr pubkey (hex) */
@@ -826,6 +829,8 @@ export interface UseEscrowState {
 }
 
 export interface UseEscrowActions {
+  dismissSeedRecovery: () => void;
+  unlockSeedBackup: (code: string, confirmed: boolean) => Promise<void>;
   /** Connect to relays and initialize signer */
   connect: () => Promise<void>;
   /** Return the active local signer's recovery key only when that signer
@@ -2274,11 +2279,59 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     lastDiscoveryRelayCountRef.current = 0;
   }, []);
 
+  const readSeed = useCallback(async (client: EscrowClient, signer: Signer, requireRestoreConfirmation = false) => {
+    // Bitcoin key derivation is safe on multiple devices. Only a mnemonic
+    // installed into a Fedimint client needs the nonce-reuse acknowledgement.
+    try { return await getOrCreateSeed(client, signer, { requireRestoreConfirmation }); }
+    catch (error) {
+      if ((error instanceof SeedNeedsRecoveryCode || error instanceof SeedNeedsRestoreConfirmation)
+        && signerRef.current === signer && clientRef.current === client) {
+        setState(prev => ({ ...prev, seedRecovery: { pubkey: error.pubkey,
+          needsCode: error instanceof SeedNeedsRecoveryCode,
+          requireRestoreConfirmation: requireRestoreConfirmation ||
+            (prev.seedRecovery?.pubkey === error.pubkey && prev.seedRecovery.requireRestoreConfirmation) } }));
+      }
+      throw error;
+    }
+  }, []);
+  // Recovery-only seed read for bonds (#31): never creates a seed. A protected
+  // v2 backup (#38) raises the same recovery-code request as readSeed, so the
+  // unlock form appears and the user retries the bond action afterwards.
+  const readExistingSeed = useCallback(async (client: EscrowClient, signer: Signer, allowUserAction = false) => {
+    try { return await getExistingSeed(client, signer, allowUserAction); }
+    catch (error) {
+      if ((error instanceof SeedNeedsRecoveryCode || error instanceof SeedNeedsRestoreConfirmation)
+        && signerRef.current === signer && clientRef.current === client) {
+        setState(prev => ({ ...prev, seedRecovery: { pubkey: error.pubkey,
+          needsCode: error instanceof SeedNeedsRecoveryCode,
+          requireRestoreConfirmation: prev.seedRecovery?.pubkey === error.pubkey && prev.seedRecovery.requireRestoreConfirmation } }));
+      }
+      throw error;
+    }
+  }, []);
+  const dismissSeedRecovery = useCallback(() => {
+    setState(prev => ({ ...prev, seedRecovery: null }));
+  }, []);
+  const unlockSeedBackup = useCallback(async (code: string, confirmed: boolean) => {
+    const client = clientRef.current, signer = signerRef.current;
+    const request = stateRef.current?.seedRecovery;
+    if (!client || !signer || !request || (request.requireRestoreConfirmation && !confirmed)) {
+      throw new Error('The recovery request is missing or needs confirmation.');
+    }
+    if (await signer.getPublicKey() !== request.pubkey) throw new Error('Your signed-in identity changed.');
+    await getOrCreateSeed(client, signer, { recoveryCode: code, restoreConfirmed: confirmed,
+      requireRestoreConfirmation: request.requireRestoreConfirmation });
+    if (clientRef.current !== client || signerRef.current !== signer) throw new Error('Your signed-in identity changed.');
+    setState(prev => ({ ...prev, seedRecovery: null }));
+    // Only unlock the reader. The user retries the original action explicitly;
+    // restoring never resumes a failed funding or signing operation on its own.
+  }, []);
+
   const myEscrowKey = useCallback(async (escrowId: string) => {
     const client = requireClient();
     const signer = signerRef.current;
     if (!signer) throw new Error("Not connected");
-    const words = await getOrCreateSeed(client, signer);
+    const words = await readSeed(client, signer);
     return deriveEscrowSigningKey(
       Array.isArray(words) ? words.join(" ") : String(words),
       escrowId,
@@ -3460,7 +3513,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     }
     let key = await myEscrowKey(escrowId);
     if (role === Role.ARBITER && !signingKeyMatchesRole(key.xonly, role, ctx.trade.lock.onchain!)) {
-      const words = await getOrCreateSeed(ctx.client, signerRef.current!);
+      const words = await readSeed(ctx.client, signerRef.current!);
       key = deriveCommittedBondKey(Array.isArray(words) ? words.join(" ") : String(words),
         ctx.trade.lock.onchain!.arbiterXonly, listCommitmentBonds(), ESCROW_NETWORK);
     }
@@ -3585,7 +3638,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     const client = requireClient();
     const signer = signerRef.current;
     if (!pubkey || !trade || !signer) throw new Error("Reconnect to recover this on-chain payout.");
-    const words = await getOrCreateSeed(client, signer);
+    const words = await readSeed(client, signer);
     const mnemonic = Array.isArray(words) ? words.join(" ") : String(words);
     const network = trade.lock.onchain?.network === "mainnet" ? (btcSigner.NETWORK as typeof ESCROW_NETWORK) : ESCROW_NETWORK;
     const base = defaultEsploraBase(network);
@@ -4008,7 +4061,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       const mnemonic = skipSeedFetch
         ? undefined
         : browserRemoteBridge
-          ? await getOrCreateSeed(clientRef.current!, signerRef.current!)
+          ? await readSeed(clientRef.current!, signerRef.current!, true)
               .catch((seedErr) => {
                 console.warn(
                   "[chama] Seed unavailable — remote-bridge fallback is disabled for this session:",
@@ -4017,7 +4070,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
                 if (isSignerApprovalError(seedErr)) throw seedErr;
                 return undefined;
               })
-          : await getOrCreateSeed(clientRef.current!, signerRef.current!);
+          : await readSeed(clientRef.current!, signerRef.current!, true);
       await runtimeWarmup;
       // Sim wallet keys its persisted state by npub so multiple
       // identities in the same browser don't share a sim balance.
@@ -6128,6 +6181,8 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
   }, []);
   const actions: UseEscrowActions = {
     inspectFederation,
+    dismissSeedRecovery,
+    unlockSeedBackup,
     exportActiveRecoveryKey,
     connect,
     disconnect,
@@ -6257,7 +6312,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       }
       // The bond key is BIP86-derived from the same Nostr-backed seed (a distinct path,
       // no key reuse), so the arbiter alone controls it — no cabinet, no custody.
-      const words = await getOrCreateSeed(client, signer);
+      const words = await readSeed(client, signer);
       // ⭐ A FRESH derivation index per bond → a unique key → a unique address, even at
       // the same term. No two bonds ever share an address (no commingled UTXOs, better
       // privacy). Index = highest existing + 1 (legacy single-key bonds count as 0).
@@ -6357,7 +6412,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
         if (out?.spent && out.txid) throw new Error(`This bond was already spent in ${out.txid}; it cannot be renewed.`);
         throw new Error("No unspent bond output was found. Nothing was broadcast.");
       }
-      const words = await getExistingSeed(client, signer, true);
+      const words = await readExistingSeed(client, signer, true);
       const oldKey = deriveBondSigningKey(words.join(" "), { network: BOND_NETWORK, index: old.keyIndex ?? 0 });
       if (!oldKey.xonly.every((b, i) => b === old.bond.ownerXonly[i])) throw new Error("Bond key mismatch — renewal refused.");
       const keyIndex = listCommitmentBonds().reduce((m, b) => Math.max(m, b.keyIndex ?? 0), -1) + 1;
@@ -6442,7 +6497,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       // lockUntil, so CONSENSUS is the authority on whether the term has passed — we
       // attempt the broadcast and translate a genuine too-early rejection into a calm
       // message (instead of pre-guessing from a load-balanced, jittery tip height).
-      const words = await getExistingSeed(client, signer, true);
+      const words = await readExistingSeed(client, signer, true);
       // Re-derive at THIS bond's persisted index (default 0 for legacy single-key bonds).
       const { priv, xonly } = deriveBondSigningKey(words.join(" "), { network: BOND_NETWORK, index: rec.keyIndex ?? 0 });
       // Sanity: the re-derived key MUST reproduce the bond's stored key (right seed +
@@ -6579,7 +6634,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       }
       const base = defaultEsploraBase(BOND_NETWORK);
       const fetchJson = esploraFetcher(base);
-      const words = await getExistingSeed(client, signer, true);
+      const words = await readExistingSeed(client, signer, true);
       const { priv, xonly } = deriveBondSigningKey(words.join(" "), { network: BOND_NETWORK, index: rec.keyIndex ?? 0 });
       if (xonly.length !== rec.bond.ownerXonly.length || !xonly.every((b, i) => b === rec.bond.ownerXonly[i])) {
         throw new Error("Bond key mismatch — cannot credit reclaimed sats (unexpected seed or key index).");
@@ -6710,7 +6765,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       const parsed = selectLatestAnnouncements(events).filter(a => a.npub === myPubkey && a.network === (BOND_NETWORK === PUBLIC_SIGNET ? 'signet' : 'mainnet'));
       const fetchJson = esploraFetcher(defaultEsploraBase(BOND_NETWORK), { network: BOND_NETWORK });
       return recoverOwnedBonds(parsed, listCommitmentBonds(), {
-        network: BOND_NETWORK, seed: () => getExistingSeed(client, signer, opts?.allowUserAction === true),
+        network: BOND_NETWORK, seed: () => readExistingSeed(client, signer, opts?.allowUserAction === true),
         readUtxos: async address => (await findBondFundingUtxos({ address, fetchJson, minConfs: defaultMinConfs(BOND_NETWORK) })).map(x => x.utxo),
         save: upsertCommitmentBond,
       });
@@ -6720,7 +6775,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       if (!client || !signer) throw new Error("Not connected — reconnect, then Retry.");
       const fetchJson = esploraFetcher(defaultEsploraBase(BOND_NETWORK), { network: BOND_NETWORK });
       const record = await findOwnedBond(address, lockUntil, listCommitmentBonds(), {
-        network: BOND_NETWORK, seed: () => getExistingSeed(client, signer, true),
+        network: BOND_NETWORK, seed: () => readExistingSeed(client, signer, true),
         readUtxos: async address => (await findBondFundingUtxos({ address, fetchJson, minConfs: defaultMinConfs(BOND_NETWORK) })).map(x => x.utxo),
         save: upsertCommitmentBond,
       });

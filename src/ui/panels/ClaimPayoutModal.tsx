@@ -37,6 +37,8 @@ import { PaymentRails, PaymentButton, type PaymentRail } from "../components/Pay
 import { useEffect, useMemo, useRef, useState } from "react";
 import { T, inputStyle } from "../theme.js";
 import { DestinationPicker, resolveReceiveCode } from "../components/DestinationPicker.js";
+import { isSimModeOn } from "../../sim/simMode.js";
+import { sandboxClaimInvoice } from "../../sim/sim-wallet.js";
 import { BitcoinAmount } from "../components/BitcoinAmount.js";
 import { displayPayoutDestination, payoutDestinationLabel, listPayoutDestinations, type PayoutDestination } from "../../payments/payout-destinations.js";
 import {
@@ -529,6 +531,9 @@ export function ClaimPayoutModal({
           savedNwcConnections={savedNwcConnections}
           onSelect={setPayoutMethod}
           onSelectEcash={dispatchEcashClaim}
+          onSelectSandboxWallet={isSimModeOn()
+            ? () => resolveDestination(sandboxClaimInvoice(payoutSats), { saveAfter: false })
+            : undefined}
           onSelectSavedStrike={openSavedStrikeClaim}
           onSelectSavedNwc={dispatchSavedNwcClaim}
           onSelectSavedWallet={dispatchSavedWalletClaim}
@@ -726,6 +731,7 @@ export function ClaimMethodChooser({
   savedNwcConnections,
   onSelect,
   onSelectEcash,
+  onSelectSandboxWallet,
   onSelectSavedStrike,
   onSelectSavedNwc,
   onSelectSavedWallet,
@@ -764,6 +770,12 @@ export function ClaimMethodChooser({
   savedNwcConnections: SavedNwcConnection[];
   onSelect: (method: PayoutMethod) => void;
   onSelectEcash: () => void;
+  /** Sim/sandbox builds only: settle the claim into the mock wallet in one
+   *  tap. Lightning-address claims do a real LNURL fetch and the ecash export
+   *  waits for a real Fedi import, so neither completes against a sim wallet;
+   *  this feeds a sim invoice through the ordinary dispatch path instead.
+   *  Undefined in every real-money build, so the button never renders there. */
+  onSelectSandboxWallet?: () => void;
   onSelectSavedStrike: (address: string) => void;
   onSelectSavedNwc: (connection: SavedNwcConnection) => void;
   onSelectSavedWallet: (destination: PayoutDestination) => void;
@@ -836,6 +848,11 @@ export function ClaimMethodChooser({
           </section>
         )}
 
+        {onSelectSandboxWallet && (
+          <PaymentButton tier="primary" style={{ width: "100%", marginBottom: 12 }} onClick={onSelectSandboxWallet}>
+            {t("claim.sandboxKeep")}
+          </PaymentButton>
+        )}
         <PaymentRails onchainContext={{kind:"withdrawal", federation:federationName || t("claim.yourFederation"), pegOutFeeSats}} rail={rail} disabledReasons={{ lightning: lightningReason }} onSelect={setRail} />
         <p style={{ color: T.muted, fontSize: 12, lineHeight: 1.5 }}>{t("claim.railTiming")}</p>
         {/* Option b: this button PAYS when it collects as ecash or sends to the
