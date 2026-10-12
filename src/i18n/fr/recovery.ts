@@ -123,4 +123,13 @@ export const recovery: Record<string, string> = {
   "recovery.unknownCounterparty": "une contrepartie inconnue",
   "recovery.youFunded": "Vous avez financé",
   "recovery.yourRole": "Votre rôle :",
+  "recovery.seed.codeTitle": "Saisissez le code de récupération de votre portefeuille",
+  "recovery.seed.codeLabel": "Code de récupération du portefeuille",
+  "recovery.seed.restoreWarning": "La restauration place ce portefeuille sur cet appareil. Arrêtez de l’utiliser sur votre ancien appareil. Utiliser un même portefeuille sur deux appareils peut entraîner une perte d’argent.",
+  "recovery.seed.restoreConfirm": "Je cesserai d’utiliser ce portefeuille sur mon ancien appareil.",
+  "recovery.seed.restoreAction": "Rétablir l’accès au portefeuille",
+  "recovery.seed.wrongCode": "Le code de récupération est incorrect. Vérifiez-le et réessayez.",
+  "recovery.seed.openError": "Impossible d’ouvrir la sauvegarde de votre portefeuille. Vérifiez votre signataire Nostr et votre connexion, puis réessayez.",
+  "recovery.seed.restored": "L’accès au portefeuille est rétabli. Réessayez l’action en cours.",
+  "recovery.seed.restoring": "Restauration…",
 };
