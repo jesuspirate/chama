@@ -18,6 +18,10 @@ export function joinRejection(listing: EscrowState, ctx: {
   if ((listing.listingExpiresAt ?? listing.expiresAt) <= ctx.nowSec) return 'EXPIRED';
   if (!listing.participants[Role.SELLER]) return 'NO_SELLER';
   if (sameKey(listing.participants[Role.SELLER], ctx.viewerPubkey)) return 'SELF_LISTING';
+  // No committed arbiter pool: since 6.4.22 the wallet refuses to fund it and
+  // new chains refuse the LOCK (H5), so it is never offered as a match or
+  // counted as available.
+  if (!listing.communityArbiters?.length) return 'NO_ARBITER_POOL';
   if (ctx.availableUnits !== undefined && ctx.availableUnits <= 0) return 'OUT_OF_STOCK';
   const buyer = getEffectiveParticipantAt(listing, Role.BUYER, ctx.nowSec, { includeLockGrace: true });
   if (buyer && !sameKey(buyer, ctx.viewerPubkey)) return 'RESERVED';

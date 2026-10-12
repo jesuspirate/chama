@@ -525,6 +525,7 @@ export function AssistedCanvas({
         const labelFor: Record<string, string> = {
           PAYMENT_RAIL_MISMATCH: tr("canvas.rejPaymentRail"), COMMUNITY_MISMATCH: tr("canvas.rejCommunity"),
           FEDERATION_MISMATCH: tr("canvas.rejFederation"), SELF_LISTING: tr("canvas.rejSelfListing"),
+          NO_ARBITER_POOL: tr("canvas.rejNoArbiterPool"),
           OVER_MAX_FIAT: tr("canvas.rejOverBudget"), FIAT_CURRENCY_MISMATCH: tr("canvas.rejCurrency"),
           RESERVED: tr("canvas.rejReserved"), OUT_OF_STOCK: tr("canvas.rejSoldOut"),
           EXPIRED: tr("canvas.rejExpired"), AMOUNT_MISMATCH: tr("canvas.rejAmount"),

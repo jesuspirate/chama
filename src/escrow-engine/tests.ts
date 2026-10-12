@@ -27519,6 +27519,9 @@ console.log("\n── #62 REDEEM-PROBE + BONDED-POOL CACHE ──");
       initiator: { pubkey: OTHER, role: Role.SELLER },
       participants: { [Role.BUYER]: null, [Role.SELLER]: OTHER, [Role.ARBITER]: null },
       joinHolds: {},
+      // A real listing commits an arbiter pool; a pool-less one is excluded
+      // as no-arbiter-pool (6.4.23), covered in src/guided/tests.ts.
+      communityArbiters: ["arbiter-counter-demand"],
       ...over,
     } as unknown as EscrowState,
   });

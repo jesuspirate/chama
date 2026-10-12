@@ -56,7 +56,8 @@ export type CounterDemandExclusion =
   | "out-of-stock"
   | "other-community"
   | "other-federation"
-  | "no-seller";
+  | "no-seller"
+  | "no-arbiter-pool";
 
 export interface CounterDemandResult {
   count: number;
@@ -109,6 +110,7 @@ export function countCounterDemand(
         NOT_OPEN: 'not-open', CHILD_ORDER: 'child-order', EXPIRED: 'expired',
         NO_SELLER: 'no-seller', SELF_LISTING: 'own-listing', OUT_OF_STOCK: 'out-of-stock',
         RESERVED: 'reserved', COMMUNITY_MISMATCH: 'other-community', FEDERATION_MISMATCH: 'other-federation',
+        NO_ARBITER_POOL: 'no-arbiter-pool',
       };
       drop(reasons[reason]!); continue;
     }

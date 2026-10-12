@@ -35,6 +35,7 @@ export const canvas: Record<string, string> = {
   "canvas.rejPaymentRail": "njia ya malipo",
   "canvas.rejCommunity": "jamii tofauti",
   "canvas.rejFederation": "shirikisho tofauti",
+  "canvas.rejNoArbiterPool": "hakuna msuluhishi",
   "canvas.rejSelfListing": "tangazo lako mwenyewe",
   "canvas.rejOverBudget": "zaidi ya bajeti",
   "canvas.rejCurrency": "sarafu tofauti",

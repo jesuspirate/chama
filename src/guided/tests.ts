@@ -15,6 +15,8 @@ import {
   routeCanvasIntent,
 } from "./canvas-routing.js";
 import type { GuidedTradeIntent } from "./types.js";
+import { joinRejection } from "./join-eligibility.js";
+import { countCounterDemand } from "./counter-demand.js";
 import { groupBySettlementRail, railHeadersNeeded, settlementRailOf } from "../ui/settlement-rail.js";
 
 let passed = 0;
@@ -100,7 +102,7 @@ function listing(
     },
     joinHolds: {},
     initiator: { pubkey: `seller-${id}`, role: Role.SELLER },
-    communityArbiters: [],
+    communityArbiters: ["arbiter-guided"],
     subscription: null,
     votes: {},
     resolvedOutcome: null,
@@ -523,6 +525,27 @@ console.log("\n── GUIDED DETERMINISTIC MATCHING ──");
     "a lone non-instant group still gets its header — an all-onchain shelf says so",
   );
   assert(groupBySettlementRail([], () => "ecash-ln" as const).length === 0, "no items → no groups, no headers");
+}
+
+
+console.log("\n── No arbiter pool ──");
+{
+  // Since 6.4.22 a listing without a committed arbiter pool cannot be funded
+  // (bridge refusal, H5 on new chains), so it is never a match or a count.
+  const noPool = listing("no-pool", { communityArbiters: [] });
+  const pooled = listing("pooled");
+  assert(joinRejection(noPool, { community: "global-usd", mintUrl: "fed1-guided", nowSec: NOW }) === "NO_ARBITER_POOL",
+    "joinRejection: an empty arbiter pool is refused as NO_ARBITER_POOL");
+  assert(joinRejection(pooled, { community: "global-usd", mintUrl: "fed1-guided", nowSec: NOW }) === null,
+    "joinRejection: the same listing with a pool is joinable");
+  const result = matchGuidedListings(INTENT, [{ listing: noPool }, { listing: pooled }], { nowSec: NOW, limit: 10 });
+  assert(result.candidates.map(value => value.listing.id).join(",") === "pooled"
+    && result.rejected.some(value => value.listingId === "no-pool" && value.code === "NO_ARBITER_POOL"),
+    "matcher: drops the pool-less offer with NO_ARBITER_POOL and keeps the pooled one");
+  const counted = countCounterDemand("cash", "sats", [{ listing: noPool }, { listing: pooled }],
+    { viewerPubkey: "viewer", community: "global-usd", nowSec: NOW });
+  assert(counted.count === 1 && counted.excluded.some(value => value.listingId === "no-pool" && value.reason === "no-arbiter-pool"),
+    "count: the pool-less offer is excluded as no-arbiter-pool, so counts match the matcher");
 }
 
 console.log(`\nGuided results: ${passed} passed, ${failed} failed, ${passed + failed} total\n`);

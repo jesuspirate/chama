@@ -11,6 +11,7 @@ function offer(id: string, sats: number, fiat: number, currency = "USD", categor
     id, category, community: "global-usd", status: EscrowStatus.CREATED, amountMsats: sats * 1000,
     fiatAmount: fiat, fiatCurrency: currency, description: "Help with this month’s utilities",
     expiresAt: 2000, participants: { [Role.SELLER]: id }, paymentMethods: ["strike"],
+    communityArbiters: ["arbiter-offer-truth"],
     fees: { platformMsats: 0, arbiterMsats: 0 },
     ...(category === "bill-pay" ? { items: [{ id: "utilities", label: "Utilities", kind: "bill", amountMsats: sats * 1000 }] } : {}),
   } as EscrowState;

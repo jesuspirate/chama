@@ -35,6 +35,7 @@ export const canvas: Record<string, string> = {
   "canvas.rejPaymentRail": "método de pago",
   "canvas.rejCommunity": "otra comunidad",
   "canvas.rejFederation": "otra federación",
+  "canvas.rejNoArbiterPool": "sin árbitros",
   "canvas.rejSelfListing": "tu propio anuncio",
   "canvas.rejOverBudget": "sobre presupuesto",
   "canvas.rejCurrency": "otra moneda",
