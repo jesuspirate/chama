@@ -1,5 +1,7 @@
 /// <reference types="vite/client" />
 
 declare const __APP_VERSION__: string;
+/** Vite define: true only in `VITE_CHAMA_SANDBOX=1` builds (poc.getchama.app). */
+declare const __CHAMA_SANDBOX__: boolean | undefined;
 /** Local-build stamp ("MM-DD HH:mm"); empty string on CHAMA_RELEASE=1 builds. */
 declare const __BUILD_STAMP__: string;

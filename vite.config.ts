@@ -8,6 +8,8 @@ import pkg from "./package.json" with { type: "json" };
 export default defineConfig({
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
+    // Sandbox build (poc.getchama.app): sim mode forced on. See src/sim/sandbox-build.ts.
+    __CHAMA_SANDBOX__: process.env.VITE_CHAMA_SANDBOX === "1",
     // Build stamp for local/test builds: lets the tester SEE that a Tauri /
     // Android-Studio refresh actually picked up the new bundle (the chip reads
     // "v2.0.3 · dev 14:32"). Release builds go through ship.sh, which exports
@@ -33,7 +35,9 @@ export default defineConfig({
   build: {
     target: "esnext",
     rollupOptions: { input: { main: "index.html", wake: "wake.html" } },
-    outDir: "dist",
+    // A sandbox build never lands in dist/, so nothing that packages dist/
+    // (Android sync, Tauri, the live web lane) can pick it up by accident.
+    outDir: process.env.VITE_CHAMA_SANDBOX === "1" ? "dist-sandbox" : "dist",
   },
   server: {
     port: 3000,

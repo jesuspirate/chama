@@ -27,6 +27,7 @@ Use the same entry point with `--only` when the version already exists and only 
 | Push committed code | `npm run ship -- --only github` | Tags, deployments, releases |
 | Push/verify the signed version tag | `npm run ship -- --only tag` | Web, Android, Zapstore |
 | Deploy getchama.app | `npm run ship -- --only web` | Landing, GitHub, Zapstore |
+| Deploy the sandbox (poc.getchama.app) | `npm run ship -- --only sandbox` | Live web, tags, Android, Zapstore |
 | Deploy chama.community | `npm run ship -- --only landing` | App, GitHub, Zapstore |
 | Prepare Android assets | `npm run ship -- --only android` | Every remote channel |
 | Upload Android assets to GitHub | `npm run ship -- --only github-assets --clobber` | Web, landing, Zapstore |
@@ -40,6 +41,12 @@ Use the same entry point with `--only` when the version already exists and only 
 `npm run publish -- --only …` is an equivalent direct entry point. Add `--dry-run` to any target to print the exact command without changing local or remote state.
 
 If `main` has advanced beyond the requested release tag, the GitHub-assets, Zapstore, Zapstore-listing, and full targets automatically reuse that tag's prepared APK. They never rebuild a tagged release from newer source. Use `--release-dir` when restoring those assets from a different directory.
+
+## Sandbox
+
+`https://poc.getchama.app` serves the current worktree built with `VITE_CHAMA_SANDBOX=1`: production code with sim mode forced on. The URL flag, the entry modal's exit button and localStorage are all ignored there, so that origin can never reach a real federation or move real sats, while trades still run through the real Nostr relays (sim-tagged, so the live app never sees them). Use it to walk a release candidate through a full trade from any browser or phone before `ship`, with nobody at risk.
+
+`npm run ship -- --only sandbox` runs the gates, builds into `dist-sandbox/` (never `dist/`), refuses a bundle without the sandbox marker, keeps a dated copy of the previous sandbox on the VPS, and verifies the served origin after upload. The live lane refuses a sandbox bundle, and a sandbox build is never mirrored from a live deploy.
 
 ## Zapstore metadata limitation
 

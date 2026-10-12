@@ -35,6 +35,7 @@ Targets (exactly one):
   github            Push the current branch to origin. No tag or deployment.
   tag               Verify/push current main and its signed vX.Y.Z tag. No deploy.
   web               Deploy getchama.app only.
+  sandbox           Build/deploy the sandbox (poc.getchama.app, sim forced on) only; no tag or Android.
   landing           Deploy chama.community only.
   android           Build, sign, and verify Android release assets locally only.
   github-assets     Build Android assets and upload them to the GitHub Release only.
@@ -105,9 +106,16 @@ done
 [ -n "$TARGET" ] || { echo "❌ Choose one target with --only <target>."; usage; exit 1; }
 
 case "$TARGET" in
-  github|tag|web|landing|android|github-assets|release-page|zapstore|zapstore-listing|full) ;;
+  github|tag|web|sandbox|landing|android|github-assets|release-page|zapstore|zapstore-listing|full) ;;
   *) echo "❌ Unknown publish target: $TARGET"; usage; exit 1 ;;
 esac
+
+if [ "$TARGET" = "sandbox" ]; then
+  if [ "$DRY_RUN" = "1" ]; then
+    exec "$ROOT_DIR/scripts/release.sh" --deploy-sandbox --dry-run
+  fi
+  exec "$ROOT_DIR/scripts/release.sh" --deploy-sandbox
+fi
 
 VERSION=$(node -p "require('./package.json').version")
 TAG="${TAG:-v$VERSION}"
