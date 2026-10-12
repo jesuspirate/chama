@@ -25,6 +25,7 @@ export const claim: Record<string, string> = {
   "claim.cashOutCurrency": "Cash out in {currency}",
   "claim.yourWallets": "Your wallets",
   "claim.ecashMethod": "Get an ecash note",
+  "claim.sandboxKeep": "Keep in sandbox wallet",
   "claim.ecashMethodBlurb": "Claim as a Fedi-ready bearer note. Chama keeps a recovery copy until you confirm the import.",
   "claim.ecashReadyHeadline": "CLAIM READY · IMPORT ECASH",
   "claim.ecashReadyBody": "Scan this with Fedi, then confirm only after Fedi shows the sats. Chama keeps this exact bearer note recoverable until you approve.",

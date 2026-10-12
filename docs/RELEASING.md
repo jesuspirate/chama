@@ -27,6 +27,8 @@ Use the same entry point with `--only` when the version already exists and only 
 | Push committed code | `npm run ship -- --only github` | Tags, deployments, releases |
 | Push/verify the signed version tag | `npm run ship -- --only tag` | Web, Android, Zapstore |
 | Deploy getchama.app | `npm run ship -- --only web` | Landing, GitHub, Zapstore |
+| Deploy the sandbox (poc.getchama.app) | `npm run ship -- --only sandbox` | Live web, tags, Android, Zapstore |
+| Host a prerelease APK for a test phone | `npm run ship -- --only prerelease [--rc N] [--next patch\|minor\|major]` | Tags, commits, GitHub, Zapstore, Start9, web |
 | Deploy chama.community | `npm run ship -- --only landing` | App, GitHub, Zapstore |
 | Prepare Android assets | `npm run ship -- --only android` | Every remote channel |
 | Upload Android assets to GitHub | `npm run ship -- --only github-assets --clobber` | Web, landing, Zapstore |
@@ -40,6 +42,18 @@ Use the same entry point with `--only` when the version already exists and only 
 `npm run publish -- --only …` is an equivalent direct entry point. Add `--dry-run` to any target to print the exact command without changing local or remote state.
 
 If `main` has advanced beyond the requested release tag, the GitHub-assets, Zapstore, Zapstore-listing, and full targets automatically reuse that tag's prepared APK. They never rebuild a tagged release from newer source. Use `--release-dir` when restoring those assets from a different directory.
+
+## Sandbox
+
+`https://poc.getchama.app` serves the current worktree built with `VITE_CHAMA_SANDBOX=1`: production code with sim mode forced on. The URL flag, the entry modal's exit button and localStorage are all ignored there, so that origin can never reach a real federation or move real sats, while trades still run through the real Nostr relays (sim-tagged, so the live app never sees them). Use it to walk a release candidate through a full trade from any browser or phone before `ship`, with nobody at risk.
+
+`npm run ship -- --only sandbox` runs the gates, builds into `dist-sandbox/` (never `dist/`), refuses a bundle without the sandbox marker, keeps a dated copy of the previous sandbox on the VPS, and verifies the served origin after upload. The live lane refuses a sandbox bundle, and a sandbox build is never mirrored from a live deploy.
+
+## Prerelease APK
+
+The sandbox cannot exercise the native bridge or Android push. When a candidate needs a phone, `npm run ship -- --only prerelease` builds the current worktree exactly as a release would (same signing key, native bridge included) under a transient `X.Y.Z-rc.N` version — `X.Y.Z` is the next patch (or `--next minor|major`), `N` from `--rc`, default 1 — and hosts it at `https://poc.getchama.app/prerelease/chama-X.Y.Z-rc.N-PRERELEASE.apk` with its `.sha256` and `.sha256.asc`. The version change is restored on exit and never committed; nothing is tagged or published.
+
+Because it carries the release signature, it installs **over** the production app and keeps the device wallet. The lane is forward-only: Android refuses a lower `versionCode` and uninstalling deletes the wallet, so there is no rollback — only another rc (same `versionCode`) or shipping `X.Y.Z`, which installs over the rc. A sandbox deploy keeps the hosted file; the next prerelease replaces it.
 
 ## Zapstore metadata limitation
 
