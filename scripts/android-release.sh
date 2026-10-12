@@ -361,11 +361,21 @@ EOF
     # exits 0 when it has nothing to do, so the relay check below is what
     # proves the release landed.
     zapstore_args+=(--quiet --skip-preview)
-    echo "🔕 Publishing to Zapstore quietly — approve the signing requests in Amber on your phone."
+    # Quiet output is empty, so record which zsp ran for the release log.
+    # zsp --version prints an ASCII banner; keep only the version number.
+    local zsp_version
+    zsp_version=$("$zsp" --version 2>&1 | grep -Eo 'v[0-9]+\.[0-9]+\.[0-9]+' | head -n 1 || true)
+    echo "🔕 Publishing to Zapstore quietly with zsp ${zsp_version:-(unknown version)} ($zsp)"
+    echo "   Approve the signing requests in Amber on your phone."
     local started
     started=$(date +%s)
     "$zsp" "${zapstore_args[@]}"
-    node "$ROOT_DIR/scripts/verify-zapstore-release.mjs" --config "$ZAPSTORE_CONFIG" --version "$VERSION" --since "$started"
+    local verify_args=(--config "$ZAPSTORE_CONFIG" --version "$VERSION" --since "$started")
+    # A re-publish must replace the release event; an old one alone is a failure.
+    if [ "$ZAPSTORE_OVERWRITE" = "1" ]; then
+      verify_args+=(--require-new)
+    fi
+    node "$ROOT_DIR/scripts/verify-zapstore-release.mjs" "${verify_args[@]}"
   else
     echo "🚀 Publishing Android release to Zapstore..."
     "$zsp" "${zapstore_args[@]}"

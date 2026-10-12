@@ -5,7 +5,9 @@
 // A quiet zsp run prints nothing on success and also exits 0 when it found
 // nothing to do, so "no output" proves nothing. android-release.sh runs this
 // after every quiet publish; it can also be run by hand:
-//   node scripts/verify-zapstore-release.mjs [--version X.Y.Z] [--since <unix>]
+//   node scripts/verify-zapstore-release.mjs [--version X.Y.Z] [--since <unix>] [--require-new]
+// --require-new (used for --overwrite-zapstore) fails when only an event from
+// before --since exists, i.e. the re-publish landed nothing new.
 // Exit 0 = found, 1 = not found (or stale), 2 = relay unreachable / bad input.
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -31,7 +33,7 @@ export function applicationId(gradle) {
 }
 
 /** Picks the newest valid release event, or explains why none qualifies. */
-export function judge(events, { pubkey, identifier, version, since, verify = verifyEvent }) {
+export function judge(events, { pubkey, identifier, version, since, requireNew = false, verify = verifyEvent }) {
   const d = `${identifier}@${version}`;
   const matching = events.filter(e => e && e.kind === 30063 && e.pubkey === pubkey
     && (e.tags || []).some(t => t[0] === 'd' && t[1] === d) && verify(e));
@@ -41,6 +43,11 @@ export function judge(events, { pubkey, identifier, version, since, verify = ver
   // means this run published nothing new (zsp exits 0 when there is nothing
   // to do): the release is live, so report it plainly instead of failing.
   const stale = !!since && newest.created_at < since - 120;
+  // A deliberate re-publish (--overwrite-zapstore) exists to replace the
+  // release event. If only the old one is there, the re-publish did nothing.
+  if (stale && requireNew) {
+    return { ok: false, stale, event: newest, reason: `${d} was not re-published: the newest release event is from ${new Date(newest.created_at * 1000).toISOString()}, before this run` };
+  }
   return { ok: true, stale, event: newest };
 }
 
@@ -60,14 +67,14 @@ export function fetchEvents(relay, filter, timeoutMs = 15000) {
   });
 }
 
-export async function verifyRelease({ relay, pubkey, identifier, version, since, attempts = 4, delayMs = 5000, fetcher = fetchEvents }) {
+export async function verifyRelease({ relay, pubkey, identifier, version, since, requireNew = false, attempts = 4, delayMs = 5000, fetcher = fetchEvents }) {
   let last = { ok: false, reason: 'not checked' };
   for (let i = 0; i < attempts; i++) {
     if (i) await new Promise(r => setTimeout(r, delayMs));
     let events;
     try { events = await fetcher(relay, { kinds: [30063], authors: [pubkey], '#d': [`${identifier}@${version}`] }); }
     catch (error) { last = { ok: false, unreachable: true, reason: error.message }; continue; }
-    last = judge(events, { pubkey, identifier, version, since });
+    last = judge(events, { pubkey, identifier, version, since, requireNew });
     if (last.ok) return last;
   }
   return last;
@@ -84,7 +91,9 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     const version = arg(args, '--version') ?? JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8')).version;
     const since = arg(args, '--since') ? Number(arg(args, '--since')) : undefined;
     const relay = arg(args, '--relay') ?? DEFAULT_RELAY;
-    const result = await verifyRelease({ relay, pubkey, identifier, version, since });
+    const requireNew = args.includes('--require-new');
+    if (requireNew && !since) throw new Error('--require-new needs --since');
+    const result = await verifyRelease({ relay, pubkey, identifier, version, since, requireNew });
     if (result.ok) {
       const at = new Date(result.event.created_at * 1000).toISOString();
       console.log(result.stale

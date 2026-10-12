@@ -161,7 +161,10 @@ nothing to publish, so the lane then runs
 signed kind 30063 event for `<applicationId>@<version>` from the publisher in
 `zapstore.yaml` on `wss://relay.zapstore.dev`. It retries a few times for relay
 lag, fails the release when the event never lands, and reports "already
-published" when this run added nothing new. Run it by hand at any time:
+published" when this run added nothing new. A deliberate re-publish (`--overwrite-zapstore`)
+adds `--require-new`: if only the earlier release event is on the relay, the
+re-publish landed nothing and the release fails. Before a quiet run the lane
+prints `zsp --version` and the binary path, because quiet zsp prints nothing. Run it by hand at any time:
 `node scripts/verify-zapstore-release.mjs --version X.Y.Z`.
 
 The browser signer needs a person at the Mac, so it stays interactive. To force
