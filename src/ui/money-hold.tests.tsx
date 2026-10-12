@@ -109,7 +109,7 @@ assert.equal(collectIsHold(), false);
 // The sheet's destinations: typed sends and saved-wallet sends are holds, and
 // a saved row only SELECTS (no render-time or tap-time dispatch).
 const { DestinationPicker } = await import('./components/DestinationPicker.js');
-const { readFileSync } = await import('node:fs');
+const { readFileSync, readdirSync } = await import('node:fs');
 const unexpected = () => { throw new Error('must not dispatch'); };
 const typedHtml = renderToStaticMarkup(<LangProvider><DestinationPicker holdToSend amountSats={196}
   initialAddress="bitcrazy@getalby.com" savedDestinations={[]} savedNwcConnections={[]}
@@ -120,8 +120,16 @@ assert.match(typedHtml, /Send 196 sats to bitcrazy@getalby.com/);
 const recovery = readFileSync(new URL('./panels/RecoveryPayoutModal.tsx', import.meta.url), 'utf8');
 assert.match(recovery, /<DestinationPicker\s+holdToSend\s/, 'the recovery picker holds');
 // No single-tap send anywhere: every DestinationPicker in the app holds.
-const { execFileSync } = await import('node:child_process');
-const pickers = execFileSync('rg', ['-l', '<DestinationPicker', 'src/ui', '--glob', '!*.tests*']).toString().trim().split('\n');
+// A Node file walk, not rg: CI runners don't ship ripgrep (same fix as #34).
+function uiSourceFiles(directory: URL): URL[] {
+  return readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
+    if (entry.name.includes('.tests')) return [];
+    const file = new URL(entry.name + (entry.isDirectory() ? '/' : ''), directory);
+    return entry.isDirectory() ? uiSourceFiles(file) : /\.[cm]?[jt]sx?$/.test(entry.name) ? [file] : [];
+  });
+}
+const pickers = uiSourceFiles(new URL('./', import.meta.url)).filter(file => readFileSync(file, 'utf8').includes('<DestinationPicker'));
+assert.ok(pickers.length > 0, 'the source walk must find payout pickers');
 for (const file of pickers) {
   // Real JSX uses only — comment lines that merely mention the component are skipped.
   const src = readFileSync(file, 'utf8').split('\n').filter(line => !/^\s*(\/\/|\*)/.test(line)).join('\n');
