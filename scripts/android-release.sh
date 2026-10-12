@@ -305,18 +305,8 @@ EOF
     exit 1
   fi
 
-  if [ -z "${SIGN_WITH:-}" ]; then
-    cat <<EOF
-❌ SIGN_WITH is required for Zapstore publishing.
-
-For local release signing:
-  SIGN_WITH=browser ./scripts/android-release.sh --no-build --zapstore
-
-For CI/CD, prefer a NIP-46 bunker URL stored as a secret:
-  SIGN_WITH='bunker://...' ./scripts/android-release.sh --github-release --zapstore
-EOF
-    exit 1
-  fi
+  source "$ROOT_DIR/scripts/zapstore-signer.sh"
+  chama_zapstore_signer
 
   # Populate the release-notes file referenced by `release_notes:` in
   # zapstore.yaml. zsp reads metadata from GitHub via metadata_sources,
