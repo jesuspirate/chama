@@ -21,6 +21,7 @@
 import { useEffect, useState } from "react";
 import { T } from "../ui/theme.js";
 import { isSimModeOn, setSimMode } from "./simMode.js";
+import { CHAMA_SANDBOX, SANDBOX_BUILD_MARKER } from "./sandbox-build.js";
 
 const ACK_KEY = "chama_sim_modal_ack_v1";
 const ZAPSTORE_URL = "https://zapstore.dev/apps/app.chama.market";
@@ -50,6 +51,7 @@ export function SimModePill() {
       <div
         role="status"
         aria-live="polite"
+        data-build={CHAMA_SANDBOX ? SANDBOX_BUILD_MARKER : undefined}
         style={{
           position: "fixed",
           top: 0, left: 0, right: 0,
@@ -71,7 +73,7 @@ export function SimModePill() {
           flexWrap: "wrap",
         }}
       >
-        <span>▲ SIM MODE — no real sats, no real federation</span>
+        <span>{CHAMA_SANDBOX ? "▲ SANDBOX — no real sats, no real federation" : "▲ SIM MODE — no real sats, no real federation"}</span>
         <a
           href={ZAPSTORE_URL}
           target="_blank"
@@ -168,7 +170,7 @@ export function SimEntryModal() {
           color: T.red,
           marginBottom: 12,
         }}>
-          ▲ SIM MODE
+          {CHAMA_SANDBOX ? "▲ SANDBOX" : "▲ SIM MODE"}
         </div>
 
         <h2 style={{
@@ -177,7 +179,7 @@ export function SimEntryModal() {
           margin: "0 0 16px 0",
           fontFamily: T.sans,
         }}>
-          You're in the Chama sim.
+          {CHAMA_SANDBOX ? "You're in the Chama sandbox." : "You're in the Chama sim."}
         </h2>
 
         <div style={{ fontSize: 14, color: T.text, marginBottom: 16 }}>
@@ -226,7 +228,7 @@ export function SimEntryModal() {
           >
             Get Android APK
           </a>
-          <button
+          {!CHAMA_SANDBOX && <button
             onClick={exit}
             style={{
               background: "none",
@@ -242,7 +244,7 @@ export function SimEntryModal() {
             }}
           >
             Exit sim mode
-          </button>
+          </button>}
           <button
             onClick={ack}
             style={{

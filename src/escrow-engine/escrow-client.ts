@@ -1081,8 +1081,12 @@ export class EscrowClient {
     const existing = this.states.get(id);
     if (existing) return circleFromEscrow(existing) ? existing : undefined;
     const events = await this.relayManager.fetchOnce({ kinds: [EscrowEventKind.CREATE], "#d": [id] }, 15_000);
+    // Cycle resolution has a recursion guard. Parse sequentially so concurrent
+    // candidates cannot mistake another candidate's lookup for a malicious loop.
+    const contextual = [];
+    for (const raw of events) contextual.push(await this.parseWithChamaContext(raw, raw.content));
     const creates = selectTradeRoot(
-      sortEventChain(events.map(raw => parseEscrowEvent(raw, raw.content, true)).filter(r => r.ok).map(r => r.event))
+      sortEventChain(contextual.filter(r => r.ok).map(r => r.event))
         .filter(event => event.escrowId === id && (event.payload as CreatePayload).category === "chama"),
       this.expectedCreatorOf(id));
     for (const raw of creates.ok ? creates.events : []) {
@@ -1116,7 +1120,7 @@ export class EscrowClient {
             witness = await this.resolveRingWitness(payload.parent, payload.sellerPubkey, circle.roundIndex);
           }
           // Rotation share: the collector derivation needs the whole cycle.
-          if (payload.chamaPolicy === "share-v2" && parent) cycle = await this.resolveChamaCycle(parent.id);
+          if (payload.chamaPolicy === "share-v2" && parent && (circle?.roundIndex ?? 0) >= 2) cycle = await this.resolveChamaCycle(parent.id);
         }
         // Chained rotation round: its gate walks the chain back to round 1.
         if (payload?.category === "chama" && payload?.chamaCircle?.pot === "rotation-v2"
@@ -1145,7 +1149,23 @@ export class EscrowClient {
    *  to round 1, plus every round's share children) from cache + relays.
    *  Best effort: a missing link returns what was found — the gates then
    *  reject for lack of evidence, which is the conservative side. */
+  private readonly cycleReads = new Map<string, Promise<{ circles: EscrowState[]; shares: EscrowState[] } | undefined>>();
+
   private async resolveChamaCycle(roundId: string): Promise<{ circles: EscrowState[]; shares: EscrowState[] } | undefined> {
+    // A commitment round's shares cannot themselves need rotation context:
+    // share-v2 is refused on round 1 before reaching this resolver. Concurrent
+    // cold/live readers may safely share that read instead of treating each
+    // other as recursive loops. Later rounds retain the recursion guard.
+    const pending = this.cycleReads.get(roundId);
+    if (pending && this.states.get(roundId)?.chamaCircle?.roundIndex === 1) return pending;
+    if (this.cycleResolutionStack.has(roundId)) return undefined;
+    const read = this.resolveChamaCycleUnshared(roundId);
+    this.cycleReads.set(roundId, read);
+    try { return await read; }
+    finally { if (this.cycleReads.get(roundId) === read) this.cycleReads.delete(roundId); }
+  }
+
+  private async resolveChamaCycleUnshared(roundId: string): Promise<{ circles: EscrowState[]; shares: EscrowState[] } | undefined> {
     if (this.cycleResolutionStack.has(roundId)) return undefined;
     this.cycleResolutionStack.add(roundId);
     try {
@@ -3066,6 +3086,10 @@ export class EscrowClient {
     const createEvents = await this.relayManager.fetchChildCreates(parentId);
     const childIds = new Set<string>();
     for (const ev of createEvents) {
+      // CREATE is public plaintext. The tag is only a discovery hint; require
+      // the signed payload to name this parent before following its id.
+      try { if (JSON.parse(ev.content)?.parent !== parentId) continue; }
+      catch { continue; }
       const d = ev.tags.find(t => t[0] === TAGS.ESCROW_ID)?.[1];
       if (d) childIds.add(d);
     }
@@ -4381,7 +4405,19 @@ export class EscrowClient {
     if (!isStuckLocked && !isStuckExpired) return;
 
     const now = Math.floor(Date.now() / 1000);
-    if (now <= state.expiresAt) return;
+    // Client consent is stricter than historical consensus: even an old-chain
+    // locker must not make our automatic vote follow their backdated clock.
+    // Circle shares use the committed round end, not a rolling LOCK timeout.
+    let refundDeadline = state.expiresAt;
+    if (!state.chamaPolicy) {
+      const lockEvent = state.eventChain.find(e => e.kind === EscrowEventKind.LOCK);
+      const lockedAt = state.lock.lockedAt;
+      if (!lockEvent || lockedAt === null || !Number.isFinite(lockedAt) || !Number.isFinite(lockEvent.timestamp)) return;
+      const timeout = state.tradeTimeoutSeconds ?? state.expiresAt - lockedAt;
+      if (!Number.isFinite(timeout) || timeout <= 0) return;
+      refundDeadline = Math.max(lockedAt, lockEvent.timestamp) + timeout;
+    }
+    if (now <= refundDeadline) return;
 
     // v2.9: never auto-refund a ghosting LOCKER against a standing RELEASE from
     // the non-locker — that is the performance-contest theft (DECISIONS

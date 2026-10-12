@@ -3,7 +3,9 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import {chain} from '../escrow-engine/two-truths.tests.js';
 import { EscrowEventKind as K, Role } from '../escrow-engine/types.js';
-import { replayEventChain, applyEvent } from '../escrow-engine/state-machine.js';
+import { applyEvent } from '../escrow-engine/state-machine.js';
+import { captureReplay } from '../protocol/replay-capture.test-helper.js';
+const replayEventChain = captureReplay('src/fedimint/rejected-lock-recovery.tests.tsx');
 import { sortEventChain } from '../escrow-engine/event-parser.js';
 import {hashNotes} from './fedimint-client.js';
 import {rejectedLockRecovery} from './rejected-lock-recovery.js';
@@ -42,7 +44,7 @@ const urgent = selectNeedsYouTrades({escrows:[state], userPubkey:owner, nowSec:1
 assert.deepEqual(decideChamaBarLabel({needsYouCount:urgent.length, balanceMsats:4000, hasActiveBuyerSellerCommitment:false}), {kind:'needs-you',count:1});
 const html = renderToStaticMarkup(createElement(RejectedLockRefund, {amountMsats:170000,onReclaim:async()=>{}}));
 assert.match(html, /Take your 170 sats back/);
-assert.match(html, /buyer&#x27;s seat had lapsed/);
+assert.match(html, /This lock didn&#x27;t reach the trade/);
 const { LiveTradeSurface } = await import('../ui/screens/LiveTradeSurface.js');
 const room = renderToStaticMarkup(createElement(LiveTradeSurface, {
   state: {...state, status: 'CANCELLED' as any}, pubkey: owner,
