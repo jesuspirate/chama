@@ -6,6 +6,8 @@ import { holdReducer, HOLD_TO_CONFIRM_MS, ASSISTIVE_CONFIRM_WINDOW_MS, type Hold
 import { BottomNav, navCss } from "./components/BottomNav.js";
 import { Badge } from "./components/Badge.js";
 import { ChamaBar } from "./panels/ChamaBar.js";
+import { StatusBarScrim } from "./components/StatusBarScrim.js";
+import { readFileSync } from "node:fs";
 import { LangProvider } from "../i18n/index.js";
 
 // ── WCAG contrast ────────────────────────────────────────────────────────────
@@ -117,6 +119,15 @@ console.log("PASS hold to confirm: hold confirms once, early lift cancels, taps 
   assert.match(css, /\.chama-create-fab-wrap::before\{[^}]*backdrop-filter:blur\(12px\)[^}]*opacity:0/);
   assert.match(css, /\.chama-create-fab-wrap\.chama-create-fab-scrolled::before\{opacity:1\}/);
   assert.match(css, /body:has\(\.chama-create-fab\) \.chama-shell-nav::after\{content:"";display:block;height:84px\}/);
+}
+// Status bar (6.4.23 rc): a fixed strip covers the safe-area inset so the
+// top bar never scrolls under the phone's clock, on every shell branch.
+{
+  const scrim = renderToStaticMarkup(<StatusBarScrim />);
+  assert.match(scrim, /position:fixed;top:0;left:0;right:0;z-index:150;height:env\(safe-area-inset-top, 0px\)/);
+  assert.match(scrim, /pointer-events:none/); assert.match(scrim, /aria-hidden="true"/);
+  const app = readFileSync(new URL("./App.tsx", import.meta.url), "utf8");
+  assert.equal((app.match(/<style>\{globalCss\(\)\}<\/style>\n\s*\{useSafeAreaInsets && <StatusBarScrim \/>\}/g) ?? []).length, 3);
 }
 console.log("PASS nav: Home/Browse/Circles/Me + Create, one active tab, unique coach targets, sidebar ≥1024px");
 

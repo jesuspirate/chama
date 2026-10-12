@@ -214,6 +214,7 @@ import { HelpScreen, HelpOverlay } from "./screens/HelpScreen.js";
 
 import { WalletBar } from "./panels/WalletBar.js";
 import { ChamaBar } from "./panels/ChamaBar.js";
+import { StatusBarScrim } from "./components/StatusBarScrim.js";
 import { DestroyEcashConfirmModal } from "./panels/DestroyEcashConfirmModal.js";
 import { SignOutConfirmModal } from "./panels/SignOutConfirmModal.js";
 import { FundWalletModal } from "./panels/FundWalletModal.js";
@@ -3124,6 +3125,7 @@ export default function App() {
         paddingTop: shellPaddingTop,
       }}>
         <style>{globalCss()}</style>
+        {useSafeAreaInsets && <StatusBarScrim />}
       {seedRecovery && seedRecovery.pubkey === pubkey && <SeedRecoveryPanel
         key={seedRecovery.pubkey}
         needsCode={seedRecovery.needsCode}
@@ -3208,6 +3210,7 @@ export default function App() {
         paddingTop: shellPaddingTop,
       }}>
         <style>{globalCss()}</style>
+        {useSafeAreaInsets && <StatusBarScrim />}
         <SimModePill />
         {/* The picker only remains mounted until the identity choice is saved.
             Wallet initialization errors no longer clear that choice; they are
@@ -3306,6 +3309,7 @@ export default function App() {
       paddingTop: shellPaddingTop,
     }}>
       <style>{globalCss()}</style>
+        {useSafeAreaInsets && <StatusBarScrim />}
       {everOnline && (!connected || connectedRelays === 0) && <OfflineBar />}
       <SimModePill />
       <SimEntryModal />

@@ -9,7 +9,8 @@ import { readLivenessBonds } from "../arbiters/liveness-evidence.js";
 import { MAINNET } from "../bond-multisig/multisig.js";
 import { buildBondAnnouncementEvent } from "../bond-multisig/bond-announcement.js";
 import { finalizeEvent, getPublicKey } from "nostr-tools/pure";
-import { computeChamaLiveness } from "../arbiters/live-chama.js";
+import { computeChamaLiveness, isVerifiedArbiter } from "../arbiters/live-chama.js";
+import { readFileSync } from "node:fs";
 import { loadCoordinatedLiveness, readCachedLiveness, resetLivenessCoordinator } from "../arbiters/liveness-coordinator.js";
 const data = new Map<string, string>();
 Object.defineProperty(globalThis, "localStorage", { configurable: true, value: { getItem: (key:string) => data.get(key) ?? null, setItem: (key:string, value:string) => data.set(key,value) } });
@@ -42,6 +43,25 @@ assert.match(html(<LivenessSignal liveness={oneArbiter} />), /an opening for who
 const bondedView=html(<LivenessSignal liveness={oneArbiter} viewerBonded />);
 assert.match(bondedView, /only bonded arbiter so far/); assert.doesNotMatch(bondedView, /whoever bonds first/);
 assert.match(html(<LivenessSignal liveness={{...oneArbiter,arbiterCount:2}} viewerBonded />), /one of this chama.{1,6}s bonded arbiters/);
+// The bonded text is for THIS key only when it is one of this chama's
+// chain-verified arbiters (Jet, 6.4.23 rc): a bond on the phone is not enough.
+{
+  const me="ab".repeat(32), other="cd".repeat(32);
+  const bond=(npub:string,extra:Record<string,unknown>={})=>({npub,community:"test",address:`addr-${npub.slice(0,4)}-${Object.keys(extra).join()}`,funded:true,active:true,actualSats:100000n,lockUntil:950000,announcedAt:1,...extra}) as any;
+  const mine=computeChamaLiveness("test",[bond(me.toUpperCase())],new Map(),900000);
+  assert.deepEqual(mine.arbiterNpubs,[me]);
+  assert.equal(isVerifiedArbiter(mine,me),true);
+  const someoneElse=computeChamaLiveness("test",[bond(other)],new Map(),900000);
+  assert.equal(isVerifiedArbiter(someoneElse,me),false,"another key's bond does not make me an arbiter");
+  for (const extra of [{community:"elsewhere"},{funded:false},{active:false},{roles:["merchant"]}]) {
+    assert.equal(isVerifiedArbiter(computeChamaLiveness("test",[bond(me,extra)],new Map(),900000),me),false,`not an arbiter: ${JSON.stringify(extra)}`);
+  }
+  assert.equal(isVerifiedArbiter({...genuineZero,arbiterNpubs:undefined},me),false,"a cached pre-6.4.23 reading lists nobody");
+  assert.equal(isVerifiedArbiter(mine,undefined),false);
+  const me2=readFileSync(new URL("./screens/MeScreen.tsx",import.meta.url),"utf8");
+  assert.match(me2,/const viewerBonded = isVerifiedArbiter\(liveness, viewerPubkey\);/);
+  assert.doesNotMatch(me2,/listCommitmentBonds/,"the device's bond store no longer decides the Community text");
+}
 for (const lang of ["en","es","fr","sw"] as const) for(const key of ["custody.what","custody.notes","custody.faqTitle","bond.livenessRetry","bond.youAreOnlyArbiter","bond.youAreBondedArbiter"]) assert.notEqual(translate(lang,key),key);
 const secret = new Uint8Array(32).fill(51), pubkey=getPublicKey(secret);
 const unsigned=buildBondAnnouncementEvent({pubkey,community:"test",ownerXonly:pubkey,lockUntil:950000,amountSats:1000n,network:MAINNET,address:"public test address",createdAt:1700000000});

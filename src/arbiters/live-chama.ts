@@ -25,6 +25,10 @@ export interface ChamaLiveness {
   isLive: boolean;
   /** Distinct funded + active bonded arbiters. */
   arbiterCount: number;
+  /** Lowercased pubkeys whose funded, active bond here licenses arbitration —
+   *  "is this key one of this chama's verified arbiters?" Optional because a
+   *  cached result from before 6.4.23 has none; absent reads as "not listed". */
+  arbiterNpubs?: string[];
   /** Σ actual on-chain sats across live bonds (chain truth). */
   totalBondSats: bigint;
   /** Σ sats × remaining-term-blocks — the "how much × how long" commitment. */
@@ -98,6 +102,7 @@ export function computeChamaLiveness(
     community,
     isLive: arbiterCount > 0,
     arbiterCount,
+    arbiterNpubs: bondedArbitersForCommunity(live),
     totalBondSats,
     bondWeightSatBlocks,
     avgRemainingBlocks,
@@ -235,4 +240,12 @@ export function tenureTier(blocks: number | null, blocksPerDay: number): TenureT
 export function tenureDays(blocks: number | null, blocksPerDay: number): number | null {
   if (blocks === null || blocksPerDay <= 0) return null;
   return Math.floor(blocks / blocksPerDay);
+}
+
+/** True only when `pubkey` is one of the chama's chain-verified arbiters in
+ *  this liveness reading. A bond stored on the device is not enough: it may
+ *  belong to another key or another chama, or no longer be funded and active. */
+export function isVerifiedArbiter(liveness: Pick<ChamaLiveness, "arbiterNpubs"> | null | undefined, pubkey: string | null | undefined): boolean {
+  if (!pubkey || !Array.isArray(liveness?.arbiterNpubs)) return false;
+  return liveness.arbiterNpubs.includes(pubkey.toLowerCase());
 }

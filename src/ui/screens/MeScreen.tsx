@@ -34,7 +34,6 @@ import { ProfileAvatar } from "../components/ProfileAvatar.js";
 // doctrine is visible from day one.
 
 import { useState, useEffect, useMemo, useRef, useDeferredValue } from "react";
-import { listCommitmentBonds } from "../../bond-multisig/commitment-store.js";
 import { useT, translate, getCurrentLang } from "../../i18n/index.js";
 import { LanguageRow } from "../components/LanguagePills.js";
 import {
@@ -52,7 +51,7 @@ import { arbiterVotePriority, substitutionEligibleAt } from "../../escrow-engine
 import { BLF_OFFICIAL_ARBITERS, isCabinetMember } from "../../arbiters/pool.js";
 import { SHOW_BOND_CEREMONY } from "../panels/BondCeremonyModal.js";
 import { LivenessSignal, useLiveness } from "../components/LivenessSignal.js";
-import type { ChamaLiveness } from "../../arbiters/live-chama.js";
+import { isVerifiedArbiter, type ChamaLiveness } from "../../arbiters/live-chama.js";
 
 /** How often the Me screen re-checks its own chama's liveness (a bond appearing
  *  or a rating landing shows up without a manual reload). Slow — liveness drifts
@@ -1162,6 +1161,7 @@ export function MeScreen({
             onSelectCommunity={onSelectCommunity}
             loadLiveness={loadLiveness}
             livenessBlocksPerDay={livenessBlocksPerDay}
+            viewerPubkey={pubkey}
           />
         )}
       </>}</div>}
@@ -2342,7 +2342,9 @@ function YourChamaCard({
   onSelectCommunity,
   loadLiveness,
   livenessBlocksPerDay = 144,
+  viewerPubkey,
 }: {
+  viewerPubkey?: string;
   suggestedCountry?: string;
   communitySlug: string | null;
   hasActiveCommitment: boolean;
@@ -2358,12 +2360,10 @@ function YourChamaCard({
   // Your own chama's chain-verified liveness — auto-refreshed (mount, focus, and a
   // gentle poll) so a bond appearing shows up without a manual reload. Fails soft.
   const { liveness, loading: livenessLoading, outcome: livenessOutcome, retry: retryLiveness } = useLiveness(communitySlug, loadLiveness, { intervalMs: LIVENESS_POLL_MS });
-  // Jet (6.4.23 RC): a bonded viewer should not be invited to "bond first".
-  // A funded, unreclaimed bond on this device marks the viewer as an arbiter.
-  const viewerBonded = useMemo(() => {
-    try { return listCommitmentBonds().some(record => record.phase === "locked" && !record.reclaimTxid); }
-    catch { return false; }
-  }, [liveness]);
+  // Jet (6.4.23 RC): a bonded viewer should not be invited to "bond first" —
+  // but only when THIS key is one of this chama's chain-verified arbiters. A
+  // bond held on this phone for another key or another chama says nothing here.
+  const viewerBonded = isVerifiedArbiter(liveness, viewerPubkey);
   const current = communitySlug ? getCommunityBySlug(communitySlug) : null;
   const countries = getAllPickerCountries();
   const currentCountry = current?.country
