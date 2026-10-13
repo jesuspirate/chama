@@ -84,52 +84,58 @@ export function BottomNav({ active, onSelect, onCreate, badges }: {
   );
 }
 
-/** How long the page must stay still, finger lifted, before the Create button
- *  is solid again (the pre-redesign Browse button used 300ms). */
-export const SCROLL_IDLE_MS = 300;
+/** Jet (6.4.25): the Create button turns solid the instant the page is still,
+ *  with no lingering delay and no fade. Browsers that report the end of a
+ *  scroll (`scrollend`: Chrome, Android WebView, Firefox) switch on that
+ *  event. Safari does not report it, so there the page counts as still once
+ *  no scroll event has arrived for this long, about two frames. */
+export const SCROLL_STILL_FALLBACK_MS = 34;
 
 /** Reports true the moment a finger touches the page or a scroll event arrives,
- *  and false once the finger is up and nothing has scrolled for `idleMs`.
- *  Timers are injectable for tests. */
+ *  and false the moment the finger is up and the page is still: at once on a
+ *  lift with no movement, on `scrollend` after a fling, or after
+ *  SCROLL_STILL_FALLBACK_MS without scroll events where `scrollend` is missing. */
 export function trackScrollActivity(
   onChange: (scrolling: boolean) => void,
-  idleMs = SCROLL_IDLE_MS,
+  hasScrollEnd = typeof window !== "undefined" && "onscrollend" in window,
   timers: { set: (fn: () => void, ms: number) => unknown; clear: (id: unknown) => void } = {
     set: (fn, ms) => setTimeout(fn, ms),
     clear: (id) => clearTimeout(id as ReturnType<typeof setTimeout>),
   },
-): { onPress: () => void; onRelease: () => void; onScroll: () => void; dispose: () => void } {
-  let idle: unknown = null;
+): { onPress: () => void; onRelease: () => void; onScroll: () => void; onScrollEnd: () => void; dispose: () => void } {
+  let fallback: unknown = null;
   let active = false;
   let pressed = false;
-  const stopTimer = () => { if (idle !== null) timers.clear(idle); idle = null; };
+  let moving = false;
+  const stopTimer = () => { if (fallback !== null) timers.clear(fallback); fallback = null; };
   const start = () => { if (!active) { active = true; onChange(true); } };
-  const settle = () => {
-    stopTimer();
-    if (pressed) return;
-    idle = timers.set(() => { idle = null; active = false; onChange(false); }, idleMs);
-  };
+  const end = () => { stopTimer(); if (active) { active = false; onChange(false); } };
+  const still = () => { moving = false; stopTimer(); if (!pressed) end(); };
   return {
-    onPress() { pressed = true; stopTimer(); start(); },
-    onRelease() { if (!pressed) return; pressed = false; if (active) settle(); },
-    onScroll() { start(); settle(); },
+    onPress() { pressed = true; start(); },
+    onRelease() { if (!pressed) return; pressed = false; if (!moving) end(); },
+    onScroll() {
+      start();
+      moving = true;
+      if (!hasScrollEnd) { stopTimer(); fallback = timers.set(() => { fallback = null; still(); }, SCROLL_STILL_FALLBACK_MS); }
+    },
+    onScrollEnd() { still(); },
     dispose: stopTimer,
   };
 }
 
-/** Phone Create control: "+" in the top bar, or an extended FAB on Android.
- *  Hidden on wide screens, where the sidebar carries Create. */
 export function CreateButton({ onCreate }: { onCreate: () => void }) {
   const { t } = useT();
-  const android = isAndroidUserAgent();
-  // Jet (6.4.23 RC, Pixel 8): content slides under the floating Create button.
+  // Every phone-sized screen floats Create at the bottom right (Jet, 6.4.25:
+  // the "+" beside the version was an odd place). Wide screens hide it: the
+  // sidebar carries its own Create.
   // As soon as a finger touches the page, and while it scrolls, the button
   // itself turns to frosted glass so the page shows through it, blurred; it is
-  // solid again once the finger is up and scrolling stops. Touching the button
-  // itself does not count: pressing Create must not dim it.
+  // solid again the instant the finger is up and the page is still. Touching
+  // the button itself does not count: pressing Create must not dim it.
   const [scrolling, setScrolling] = useState(false);
   useEffect(() => {
-    if (!android || typeof window === "undefined") return;
+    if (typeof window === "undefined") return;
     const activity = trackScrollActivity(setScrolling);
     const onPress = (event: Event) => {
       const target = event.target as Element | null;
@@ -141,29 +147,23 @@ export function CreateButton({ onCreate }: { onCreate: () => void }) {
     window.addEventListener("touchend", activity.onRelease, opts);
     window.addEventListener("touchcancel", activity.onRelease, opts);
     window.addEventListener("scroll", activity.onScroll, opts);
+    window.addEventListener("scrollend", activity.onScrollEnd, opts);
     return () => {
       window.removeEventListener("touchstart", onPress, opts);
       window.removeEventListener("touchend", activity.onRelease, opts);
       window.removeEventListener("touchcancel", activity.onRelease, opts);
       window.removeEventListener("scroll", activity.onScroll, opts);
+      window.removeEventListener("scrollend", activity.onScrollEnd, opts);
       activity.dispose();
     };
-  }, [android]);
-  if (android) {
-    return (
-      <div className={`chama-create-fab-wrap${scrolling ? " chama-create-fab-scrolling" : ""}`}>
-        <button type="button" className="chama-create-fab" onClick={onCreate}
-          data-coach="fab-create" aria-label={t("browse.createTrade")}>
-          <PlusGlyph size={22} />{t("browse.navCreate")}
-        </button>
-      </div>
-    );
-  }
+  }, []);
   return (
-    <button type="button" className="chama-create-plus" onClick={onCreate}
-      data-coach="fab-create" aria-label={t("browse.createTrade")}>
-      <PlusGlyph size={22} />
-    </button>
+    <div className={`chama-create-fab-wrap${scrolling ? " chama-create-fab-scrolling" : ""}`}>
+      <button type="button" className="chama-create-fab" onClick={onCreate}
+        data-coach="fab-create" aria-label={t("browse.createTrade")}>
+        <PlusGlyph size={22} />{t("browse.navCreate")}
+      </button>
+    </div>
   );
 }
 
@@ -181,15 +181,14 @@ export function navCss(): string {
   .chama-nav-android .chama-nav-item[aria-current="page"] .chama-nav-icon{background:${T.raised}}
   .chama-nav-badge{position:absolute;top:-4px;left:calc(50% + 6px);min-width:18px;height:18px;padding:0 5px;box-sizing:border-box;border-radius:9px;background:${T.attn};color:${ON_ATTN};font-size:11px;font-weight:700;line-height:18px;text-align:center;box-shadow:0 0 0 2px ${T.chrome}}
   .chama-nav-label{max-width:100%;overflow-wrap:anywhere;text-align:center}
-  .chama-create-plus{width:44px;height:44px;border-radius:22px;border:none;background:${T.raised};color:${T.ink};display:inline-flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0}
   .chama-create-fab-wrap{position:fixed;right:16px;bottom:calc(${BOTTOM_NAV_HEIGHT}px + env(safe-area-inset-bottom,0px) + 16px);z-index:90}
-  .chama-create-fab{position:relative;min-height:56px;padding:0 20px 0 16px;border-radius:16px;border:none;background:${T.ink};color:${T.onInk};display:inline-flex;align-items:center;gap:8px;font-family:${T.sans};font-size:var(--chama-fs-button);font-weight:600;box-shadow:0 6px 16px rgba(0,0,0,0.22);cursor:pointer;transition:background-color .2s ease}
+  .chama-create-fab{position:relative;min-height:56px;padding:0 20px 0 16px;border-radius:16px;border:none;background:${T.ink};color:${T.onInk};display:inline-flex;align-items:center;gap:8px;font-family:${T.sans};font-size:var(--chama-fs-button);font-weight:600;box-shadow:0 6px 16px rgba(0,0,0,0.22);cursor:pointer}
   /* Jet (6.4.24 rc.5): "it's grey, not blurry". Half the ink colour over the
      page read as a flat grey button, and a 14px blur smeared what was behind
      into one tone. The glass is now a light tint of the page colour with a
      3px blur, so cards and text show through, blurred; a thin outline keeps
      the button's edge and the label is ink with a soft halo. */
-  .chama-create-fab-scrolling .chama-create-fab{transition:none;background:${T.bg}26;-webkit-backdrop-filter:blur(3px) saturate(180%);backdrop-filter:blur(3px) saturate(180%);color:${T.ink};box-shadow:0 0 0 1px ${T.ink}40,0 6px 16px rgba(0,0,0,0.22);text-shadow:0 0 4px ${T.bg},0 0 8px ${T.bg}}
+  .chama-create-fab-scrolling .chama-create-fab{background:${T.bg}26;-webkit-backdrop-filter:blur(3px) saturate(180%);backdrop-filter:blur(3px) saturate(180%);color:${T.ink};box-shadow:0 0 0 1px ${T.ink}40,0 6px 16px rgba(0,0,0,0.22);text-shadow:0 0 4px ${T.bg},0 0 8px ${T.bg}}
   @media (prefers-reduced-transparency: reduce){.chama-create-fab-scrolling .chama-create-fab{background:${T.ink};color:${T.onInk};-webkit-backdrop-filter:none;backdrop-filter:none;box-shadow:0 6px 16px rgba(0,0,0,0.22);text-shadow:none}}
   /* The Android extended FAB floats above the bottom nav; page footers keep
      clear of it so it never covers their links or step dots. */
@@ -206,7 +205,7 @@ export function navCss(): string {
     .chama-nav-item:hover{background:${T.raised}}
     .chama-nav-item[aria-current="page"]{background:${T.raised}}
     .chama-nav-icon{width:28px;height:28px;background:none!important}
-    .chama-create-plus,.chama-create-fab{display:none!important}
+    .chama-create-fab{display:none!important}
     .chama-create-fab-wrap{display:none!important}
     /* The bottom nav already pads for the home indicator; with the nav as a
        sidebar, page footers pad for it themselves. */
