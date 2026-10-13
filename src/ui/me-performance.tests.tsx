@@ -122,7 +122,7 @@ console.log("PASS Me stays still: memoised tabs and rows, stable callbacks, stab
   const me = readFileSync("src/ui/screens/MeScreen.tsx", "utf8");
   assert.doesNotMatch(me, /hidden=\{shownTab !== /, "no Me tab hides with display:none where content-visibility works");
   for (const pane of ["trades", "seller", "sats", "arbiter", "profile", "settings", "community"]) {
-    assert.match(me, new RegExp(`\\{\\.\\.\\.paneProps\\("${pane}"\\)\\}`), `${pane} uses paneProps`);
+    assert.match(me, new RegExp(`<MePane store=\\{tabs\\} id="${pane}">`), `${pane} sits behind a MePane gate`);
   }
   assert.match(me, /CSS\.supports\("content-visibility", "hidden"\)/, "feature-checked, with the display:none fallback");
   assert.match(me, /contentVisibility: "hidden"/);
@@ -171,7 +171,7 @@ console.log("PASS Me tabs keep their layout: content-visibility panes and offscr
   assert.deepEqual(tap.steps.filter(s => s.name !== "signature checks").map(s => s.name).sort(), ["dashboard build", "needs-you build"]);
   assert.equal(probe.perfTiming(), false, "the tap is finished");
   const report = probe.perfReport();
-  assert.match(report, /^settings: \d+ ms total \(React \d+ ms, browser draw \d+ ms\)/);
+  assert.match(report, /^React profiler (on|off \(release build\))\nsettings: \d+ ms total \(React \d+ ms, browser draw \d+ ms\)/);
   assert.match(report, /\n  signature checks: \d+ ms · 5×/);
   assert.match(renderToStaticMarkup(<PerfReadout />), /data-perf-readout[\s\S]*settings/, "the readout shows the tap");
 
@@ -183,10 +183,51 @@ console.log("PASS Me tabs keep their layout: content-visibility panes and offscr
   assert.match(app, /onClick=\{onVersionTap\}/, "the version label carries the seven-tap toggle");
   assert.match(app, /<PerfReadout \/>/);
   const me = readFileSync("src/ui/screens/MeScreen.tsx", "utf8");
-  assert.match(me, /perfTapStart\(key\); setMeTab\(key\)/, "every Me tab tap starts a timing");
+  assert.match(me, /perfTapStart\(key\);\s*tabs\.press\(key\);/, "every Me tab tap starts a timing");
   assert.match(me, /perfMeasure\("dashboard build"/);
   assert.match(me, /perfMeasure\("needs-you build"/);
   assert.match(app, /perfMeasure\("needs-you build"/);
   assert.match(readFileSync("src/ui/components/TradeCard.tsx", "utf8"), /perfAdd\("card drawing"/);
 }
 console.log("PASS timing readout: off by default, 7 taps or ?perf=1, per-tap total, React vs draw, named steps, copyable report");
+
+{
+  // Jet (rc.4 readout): a tab tap re-rendered the whole Me screen 3-5 times.
+  // The open tab now lives in a store: the pill highlights at once, the pane
+  // swaps a frame later, and the Me screen itself does not re-render.
+  const { createMeTabStore } = await import("./me-tab-store.js");
+  const frames: Array<() => void> = [];
+  (globalThis as any).requestAnimationFrame = (fn: () => void) => { frames.push(fn); return frames.length; };
+  const store = createMeTabStore("trades");
+  let notified = 0;
+  store.subscribe(() => notified++);
+  assert.equal(store.isVisited("settings"), false);
+  store.press("settings");
+  assert.equal(store.getPressed(), "settings", "the pill highlights at once");
+  assert.equal(store.getShown(), "trades", "the pane waits for the next frame");
+  assert.equal(notified, 1);
+  store.press("sats");
+  frames.shift()!();
+  await new Promise(r => setTimeout(r, 5));
+  assert.equal(store.getShown(), "trades", "a superseded press never shows its pane");
+  frames.shift()!();
+  await new Promise(r => setTimeout(r, 5));
+  assert.equal(store.getShown(), "sats");
+  assert.equal(store.isVisited("sats"), true);
+  assert.equal(store.isVisited("settings"), false, "a tab only flashed past is not mounted");
+  store.set("community");
+  assert.equal(store.getPressed(), "community");
+  assert.equal(store.getShown(), "community", "programmatic navigation shows at once");
+
+  const me = readFileSync("src/ui/screens/MeScreen.tsx", "utf8");
+  assert.doesNotMatch(me, /useState<"trades" \| "sats"/, "the open tab is not Me screen state");
+  assert.doesNotMatch(me, /useDeferredValue\(meTab\)/);
+  assert.match(me, /const MeTabPills = memo\(/);
+  assert.match(me, /useMePressedTab\(store\)/, "pills follow the pressed tab");
+  assert.match(me, /useMeShownTab\(store\)/, "panes follow the shown tab");
+  const app = readFileSync("src/ui/App.tsx", "utf8");
+  for (const zone of ["Top bar", "Me screen", "Browse", "Bottom nav"]) assert.match(app, new RegExp(`<PerfZone id="${zone}">`));
+  assert.match(readFileSync("src/main.tsx", "utf8"), /<PerfZone id="Whole app">/);
+  assert.match(readFileSync("vite.config.ts", "utf8"), /CHAMA_PROFILING === "1"[\s\S]*react-dom\/profiling/, "profiling bundle only when asked for");
+}
+console.log("PASS Me tab store: instant pill, pane next frame, no Me re-render, profiler zones");

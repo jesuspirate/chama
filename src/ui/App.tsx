@@ -27,7 +27,7 @@ import type { CircleRound } from "../chama/types.js";
 import { getTrustedArbiterPool } from "../arbiters/pool.js";
 import { useState, useEffect, useMemo, useRef, useCallback, lazy, Suspense, type ReactNode } from "react";
 import { sameRecord, useStableList } from "./stable-list.js";
-import { perfMeasure, versionTapToggle } from "./perf-probe.js";
+import { perfMeasure, versionTapToggle, PerfZone } from "./perf-probe.js";
 import { PerfReadout } from "./components/PerfReadout.js";
 import { Capacitor } from "@capacitor/core";
 import { Preferences } from "@capacitor/preferences";
@@ -3350,7 +3350,7 @@ export default function App() {
         <button type="button" aria-label={t("lts.backHome")} onClick={guidedHome} style={{ background: "none", border: 0, padding: 0, cursor: "pointer" }}><Wordmark /></button>
       </div>}
       {!detailMode && (
-        <>
+        <PerfZone id="Top bar">
           {/* Header */}
           <div style={{
             padding: "16px 16px 12px", borderBottom: `1px solid ${T.border}`,
@@ -3493,7 +3493,7 @@ export default function App() {
               runInit();
             }}
           />
-        </>
+        </PerfZone>
       )}
 
       {/* The first-time onboarding picker no longer renders in the shell.
@@ -4737,7 +4737,7 @@ export default function App() {
           </h1>
 
           {!myTradesLoading && <RecurringBillCard series={recurringSeries} onStop={cancelRecurring} />}
-          <MeScreen
+          <PerfZone id="Me screen"><MeScreen
             walletInvite={fedimint.joined ? liveActiveInvite ?? undefined : undefined}
             balanceKnown={fedimint.joined && fedimint.balanceMsats !== null}
             onUseWallet={() => {
@@ -4810,7 +4810,7 @@ export default function App() {
             onOpenBondCeremony={() => setShowBondCeremony(true)}
             loadLiveness={actions.getChamaLiveness}
             livenessBlocksPerDay={BOND_LIVENESS_BLOCKS_PER_DAY}
-          />
+          /></PerfZone>
         </div>
       ) : view === "saved-handles" || view === "payout-destinations" ? (
         // Legacy routes converge on Me with the same overlay.
@@ -4904,7 +4904,7 @@ export default function App() {
               }}
             />
           ) : (
-            <BrowseView
+            <PerfZone id="Browse"><BrowseView
               onOpenCommunity={openCommunity}
               suppressCommunityNudge={Capacitor.isNativePlatform() && explicitCommunities.has(routeCommunitySlug)}
               subscribeListings={actions.watchBrowseListings}
@@ -4978,12 +4978,12 @@ export default function App() {
                   setToast({ message: e.message || t("app.loadFailed"), type: "error" });
                 }
               }}
-            />
+            /></PerfZone>
           )}
         </>
       )}
 
-      {!detailMode && <BottomNav active={activeTab} onSelect={switchTab} onCreate={openCreate} badges={{}} />}
+      {!detailMode && <PerfZone id="Bottom nav"><BottomNav active={activeTab} onSelect={switchTab} onCreate={openCreate} badges={{}} /></PerfZone>}
 
       {/* v4.1 C1: one-time post-sign-in tour. Only on the Browse home screen
           (FABs mounted), never over the create sheet or a detail view. */}

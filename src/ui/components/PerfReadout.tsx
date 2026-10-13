@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { T } from "../theme.js";
-import { perfEnabled, perfHistory, perfReport, setPerfEnabled, subscribePerf } from "../perf-probe.js";
+import { PROFILER_BUILD, perfEnabled, perfHistory, perfReport, setPerfEnabled, subscribePerf } from "../perf-probe.js";
 
 /** Hidden timing readout for Me tab taps (?perf=1 or seven taps on the
  *  version label). A developer diagnostic: English only, off by default. */
@@ -23,7 +23,7 @@ export function PerfReadout() {
       font: `12px/1.45 ${T.mono}`, boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
     }}>
       <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}>
-        <strong style={{ font: `700 12px ${T.sans}`, flex: 1 }}>Me tab timing</strong>
+        <strong style={{ font: `700 12px ${T.sans}`, flex: 1 }}>Me tab timing · {PROFILER_BUILD ? "React profiler on" : "React profiler off (release build)"}</strong>
         <button type="button" style={button} onClick={copy}>{copied ? "Copied" : "Copy"}</button>
         <button type="button" style={button} onClick={() => setPerfEnabled(false)}>Off</button>
       </div>

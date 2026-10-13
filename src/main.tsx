@@ -1,5 +1,6 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
+import { PerfZone } from "./ui/perf-probe.js";
 import App from "./ui/App.js";
 import { LangProvider } from "./i18n/index.js";
 import { assertProductionEncryption } from "./escrow-engine/encryption-config.js";
@@ -86,7 +87,9 @@ window.addEventListener("hashchange", () => {
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <LangProvider>
-      <App />
+      <PerfZone id="Whole app">
+        <App />
+      </PerfZone>
     </LangProvider>
   </React.StrictMode>
 );

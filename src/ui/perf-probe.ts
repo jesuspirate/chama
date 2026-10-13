@@ -107,7 +107,7 @@ export function perfTapCommitted(label: string): void {
 /** Plain text of the recorded taps, for pasting into a chat. */
 export function perfReport(taps: readonly PerfTap[] = history): string {
   const ms = (n: number) => `${Math.round(n)} ms`;
-  return taps.map(tap => [
+  return `${PROFILER_BUILD ? "React profiler on" : "React profiler off (release build)"}\n` + taps.map(tap => [
     `${tap.label}: ${ms(tap.totalMs)} total (React ${ms(tap.renderMs)}, browser draw ${ms(tap.drawMs)})`,
     ...tap.steps.map(s => `  ${s.name}: ${ms(s.ms)} · ${s.count}×${s.extra ? ` · ${s.extra} uncached` : ""}`),
   ].join("\n")).join("\n");
@@ -142,4 +142,21 @@ export function checkedTradeCreate(state: EscrowState): boolean {
 /** True while a Me tab tap is being timed. */
 export function perfTiming(): boolean {
   return current !== null;
+}
+
+import { Profiler, createElement, type ProfilerOnRenderCallback, type ReactNode } from "react";
+
+const onZoneRender: ProfilerOnRenderCallback = (id, _phase, actualDuration) => {
+  if (current) perfAdd(`render · ${id}`, actualDuration);
+};
+
+/** True when this build reports React render times (CHAMA_PROFILING=1). */
+export const PROFILER_BUILD = typeof __CHAMA_PROFILING__ !== "undefined" && __CHAMA_PROFILING__ === true;
+
+/** Names a part of the app in the timing readout: during a timed tap, its
+ *  render time (including everything inside it) is reported as
+ *  "render · <id>". Costs nothing measurable when the readout is off; React
+ *  reports times only in the profiling build. */
+export function PerfZone({ id, children }: { id: string; children: ReactNode }) {
+  return createElement(Profiler, { id, onRender: onZoneRender }, children);
 }

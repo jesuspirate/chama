@@ -32,9 +32,10 @@ import { ProfileAvatar } from "../components/ProfileAvatar.js";
 // "Chama doesn't manage your Nostr profile" educational copy so the
 // doctrine is visible from day one.
 
-import { useState, useEffect, useLayoutEffect, useMemo, useRef, useDeferredValue, useCallback, memo } from "react";
+import { useState, useEffect, useLayoutEffect, useMemo, useRef, useDeferredValue, useCallback, memo, type ReactNode } from "react";
 import { useStableCallback } from "../stable-list.js";
-import { checkedTradeCreate, perfMeasure, perfTapStart, perfTapCommitted, perfAdd } from "../perf-probe.js";
+import { checkedTradeCreate, perfMeasure, perfTapStart, perfTapCommitted, perfAdd, PerfZone } from "../perf-probe.js";
+import { createMeTabStore, useMePressedTab, useMeShownTab, type MeTabKey, type MeTabStore } from "../me-tab-store.js";
 import { useT, translate, getCurrentLang } from "../../i18n/index.js";
 import { LanguageRow } from "../components/LanguagePills.js";
 import {
@@ -517,19 +518,19 @@ export function MeScreen({
   const hasSellerDashboard = dashboard.sellerOpen.length > 0 || dashboard.sellerLive.length > 0;
   // v6.3 approved redesign: Browse-style pill tabs replace the accordions.
   // Money-safety cards stay ABOVE the tabs — never hidden behind one.
-  const [meTab, setMeTab] = useState<"trades" | "sats" | "seller" | "arbiter" | "profile" | "community" | "settings">("trades");
+  // The open tab lives in a small store, not in Me's state: a tap highlights
+  // its pill at once and swaps two panes on the next frame, without
+  // re-rendering this screen or anything outside it (Jet, 6.4.24 rc).
+  const tabStore = useRef<MeTabStore | null>(null);
+  if (!tabStore.current) tabStore.current = createMeTabStore("trades");
+  const tabs = tabStore.current;
 
-  // Perceived tap latency fix (Jet, v6.3.3 — worst on iOS PWA): the pills
-  // render from meTab and flip color the instant React commits the click,
-  // while the SECTIONS below render from this deferred value, so unmounting
-  // a long trade list and mounting Settings happens in a non-blocking pass
-  // instead of holding the tap's frame hostage.
   useEffect(() => {
     if (!requestTab) return;
     // "live-trades" is a destination, not a tab: land on Trades with the Live
     // filter already applied, which is what the active-trade pill promises.
     if (requestTab.tab === "live-trades") {
-      setMeTab("trades");
+      tabs.set("trades");
       setTradeFilter("live");
       // Glow the live rows for a beat: together they ARE the amount the pill
       // quoted, so highlighting all of them is the honest answer to "which
@@ -537,32 +538,21 @@ export function MeScreen({
       setPillTargetAt(Date.now());
       return;
     }
-    setMeTab(requestTab.tab);
+    tabs.set(requestTab.tab);
   }, [requestTab?.tab, requestTab?.n]);
-  const shownTab = useDeferredValue(meTab);
-  // Timing readout (?perf=1): the tapped tab's content is on screen.
-  useLayoutEffect(() => { perfTapCommitted(shownTab); }, [shownTab]);
-  // v7 redesign: a Me tab renders on its first visit and then STAYS mounted
-  // (hidden when inactive), so switching back is instant even with 88 trades.
-  const visitedPanes = useRef(new Set<string>());
-  visitedPanes.current.add(shownTab);
-  const paneMounted = (key: string) => visitedPanes.current.has(key);
-  // A visited tab that is not on screen keeps its finished layout. With
-  // `hidden` (display:none) the browser threw the layout away, so returning to
-  // My trades re-laid out every card: ~23 ms of layout per tap with 58 trades
-  // on a mid-range phone, against ~2 ms for every other tab. content-visibility
-  // skips rendering the pane but keeps its layout; browsers without it (older
-  // Safari) keep the old display:none behaviour.
-  const paneProps = (key: string) => {
-    const off = shownTab !== key;
-    return KEEP_PANE_LAYOUT
-      ? { "data-me-pane": key, "aria-hidden": off || undefined, style: off ? PANE_OFF_STYLE : undefined }
-      : { "data-me-pane": key, hidden: off };
-  };
-  const paneSwitching = meTab !== shownTab && !visitedPanes.current.has(meTab);
+  const pressTab = useStableCallback((key: MeTabKey) => {
+    perfTapStart(key);
+    tabs.press(key);
+    if (key === "sats") onUseWallet?.();
+  })!;
+  const unseenPaidLocks = paidLockRows.filter(row => !row.seen).map(row => row.escrowId).join(",");
   useEffect(() => {
-    if (shownTab === "sats" && paidLockFederationId) acknowledgePaidLockRecoveries(paidLockFederationId, balanceMsats);
-  }, [shownTab, paidLockFederationId, balanceMsats, paidLockRows.filter(row => !row.seen).map(row => row.escrowId).join(",")]);
+    const acknowledge = () => {
+      if (tabs.getShown() === "sats" && paidLockFederationId) acknowledgePaidLockRecoveries(paidLockFederationId, balanceMsats);
+    };
+    acknowledge();
+    return tabs.subscribe(acknowledge);
+  }, [tabs, paidLockFederationId, balanceMsats, unseenPaidLocks]);
   const hasVisibleMoneyAction =
     loudClaims.length > 0
     || calmClaims.length > 0
@@ -1002,8 +992,9 @@ export function MeScreen({
       {/* ── PILL TABS (v6.3) — the whole Me surface behind five Browse-style
           pills. Trades is home; Sats holds the money utilities; Arbiter shows
           only for arbiters; Profile & Settings hold the rest. */}
-      <div style={{ display: "flex", gap: 7, flexWrap: "wrap", margin: "2px 0 16px" }}>
-        {([
+      <MeTabPills
+        store={tabs}
+        items={[
           ["trades", t("me.accMyTrades"), myTrades.length || undefined],
           ["sats", t("me.tabSats"), undefined],
           ...(hasSellerDashboard ? [["seller", t("me.sellerDashboard"), (dashboard.sellerOpen.length + dashboard.sellerLive.length) || undefined] as const] : []),
@@ -1011,50 +1002,24 @@ export function MeScreen({
           ["profile", t("me.tabProfile"), undefined],
           ["community", t("me.tabCommunity"), undefined],
           ["settings", t("me.accSettings"), undefined],
-        ] as Array<readonly [typeof meTab, string, number | undefined]>).map(([key, label, count]) => {
-          const on = meTab === key;
-          return (
-            <button key={key} type="button" aria-pressed={on} onClick={() => { perfTapStart(key); setMeTab(key); if (key === "sats") onUseWallet?.(); }}
-              style={{
-                display: "inline-flex", alignItems: "center", gap: 7,
-                // v7 redesign: ink pill for the open tab, quiet outline otherwise.
-                minHeight: T.size.touch, padding: "0 16px", borderRadius: 999, cursor: "pointer",
-                border: `1px solid ${on ? T.ink : T.line}`,
-                background: on ? T.ink : "transparent",
-                color: on ? T.onInk : T.ink,
-                fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: on ? 700 : 500,
-              }}>
-              {label}
-              {count !== undefined && (
-                <span style={{ fontSize: T.fs.secondary, fontWeight: 700, padding: "0 7px", borderRadius: 999, background: on ? T.onInk : T.raised, color: on ? T.ink : T.ink2 }}>
-                  {count}
-                </span>
-              )}
-            </button>
-          );
-        })}
-      </div>
+        ]}
+        onPress={pressTab}
+      />
 
-      {paneSwitching && (
-        <div role="status" style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 4px", color: T.ink2, fontFamily: T.sans, fontSize: T.fs.secondary }}>
-          <span style={{ display: "inline-block", animation: "spin 0.8s linear infinite" }} aria-hidden="true">↻</span>
-          {t("common.loading")}
-        </div>
-      )}
       {/* ── TRADES — settlements ledger + seller queue + full history ─── */}
       {/* Selling has its own pill now (Jet, 2026-09-20: "so it's not in the
           way of legit simple trades") — the same treatment the arbiter view
           already had. Trades is history; Seller is inventory and orders. */}
-      {paneMounted("seller") && <div {...paneProps("seller")}>{!hydratingTrades && hasSellerDashboard && (
+      <MePane store={tabs} id="seller">{!hydratingTrades && hasSellerDashboard && (
         <SellerDashboardPanel
           dashboard={dashboard}
           onOpenTrade={openTrade}
           onSellerEditListing={sellerEditListing}
           onSellerDeleteListing={sellerDeleteListing}
         />
-      )}</div>}
+      )}</MePane>
 
-      {paneMounted("trades") && <div {...paneProps("trades")}>{!hydratingTrades && <>
+      <MePane store={tabs} id="trades">{!hydratingTrades && <>
         <div>
           <MeTradeHistory
             trades={visibleTrades}
@@ -1076,10 +1041,10 @@ export function MeScreen({
             highlightLive={pillTargetAt}
           />
         </div>
-      </>}</div>}
+      </>}</MePane>
 
       {/* ── SATS — money utilities. Deliberately not called a wallet. ── */}
-      {paneMounted("sats") && <div {...paneProps("sats")}>{(
+      <MePane store={tabs} id="sats">{(
         <div style={{
           background: T.card, border: `1px solid ${T.border}`,
           borderRadius: T.r, padding: 0, overflow: "hidden",
@@ -1092,16 +1057,16 @@ export function MeScreen({
           <SettingsRow label={t("me.paymentMethods")} hint={t("me.paymentMethodsHint")} onClick={onOpenSavedHandles} />
           <SettingsRow label={t("me.lightningAddresses")} hint={t("me.lightningAddressesHint")} onClick={onOpenPayoutDestinations} />
         </div>
-      )}</div>}
+      )}</MePane>
 
       {/* ── ARBITER — rendered only for an arbiter / pool member ── */}
-      {paneMounted("arbiter") && <div {...paneProps("arbiter")}>{!hydratingTrades && dashboard.arbiterVisible && (
+      <MePane store={tabs} id="arbiter">{!hydratingTrades && dashboard.arbiterVisible && (
         <ArbiterDashboardPanel
           dashboard={dashboard}
           onOpenTrade={openTrade}
           viewerPubkey={pubkey}
         />
-      )}</div>}
+      )}</MePane>
 
       {/* ── SETTINGS ────────────────────────────────────────────── */}
       {/* ── PROFILE (Jet, 2026-09-19) ─────────────────────────────────────
@@ -1111,7 +1076,7 @@ export function MeScreen({
           presentation choices that are also "you" — appearance and language.
           Everything that is a SETTING (notifications, bonds, advanced, sign
           out) stays in Settings. */}
-      {paneMounted("profile") && <div {...paneProps("profile")}>{<>
+      <MePane store={tabs} id="profile">{<>
         <div style={{
           background: T.card, border: `1px solid ${T.border}`,
           borderRadius: T.r, padding: 0, overflow: "hidden",
@@ -1133,9 +1098,9 @@ export function MeScreen({
           </div>
           <NostrNamesRow on={kind0On} onToggle={() => setKind0On(!kind0On)} />
         </div>
-      </>}</div>}
+      </>}</MePane>
 
-      {paneMounted("settings") && <div {...paneProps("settings")}>{<>
+      <MePane store={tabs} id="settings">{<>
         {/* v7 redesign (Jet): Settings in clear groups — each a labelled card,
             sign-out on its own. Same rows and handlers as before. */}
         <SettingsGroup label={t("me.groupDisplay")}>
@@ -1171,12 +1136,12 @@ export function MeScreen({
         <SettingsGroup>
           <SettingsRow label={t("me.signOut")} hint={null} onClick={onSignOut} danger />
         </SettingsGroup>
-      </>}</div>}
+      </>}</MePane>
 
       {/* ── COMMUNITY — the chama switcher, alone. Ratings live on the
           Dashboard; the identity hex lives in the top banner; sign out lives
           in Settings. */}
-      {paneMounted("community") && <div {...paneProps("community")}>{<>
+      <MePane store={tabs} id="community">{<>
         {onSelectCommunity && (
           <YourChamaCard
             key={requestTab?.n ?? 0}
@@ -1189,7 +1154,7 @@ export function MeScreen({
             viewerPubkey={pubkey}
           />
         )}
-      </>}</div>}
+      </>}</MePane>
     </div>
     </AmountDisplayProvider>
   );
@@ -1490,6 +1455,65 @@ const MeTradeHistory = memo(function MeTradeHistory({
     </section>
   );
 });
+
+/** Me's tab pills. Subscribes to the pressed tab only, so a tap repaints this
+ *  row at once while the pane behind it swaps on the next frame. */
+const MeTabPills = memo(function MeTabPills({ store, items, onPress }: {
+  store: MeTabStore;
+  items: ReadonlyArray<readonly [MeTabKey, string, number | undefined]>;
+  onPress: (key: MeTabKey) => void;
+}) {
+  const pressed = useMePressedTab(store);
+  return (
+    <PerfZone id="Me tab pills">
+    <div style={{ display: "flex", gap: 7, flexWrap: "wrap", margin: "2px 0 16px" }}>
+      {items.map(([key, label, count]) => {
+        const on = pressed === key;
+        return (
+          <button key={key} type="button" aria-pressed={on} onClick={() => onPress(key)}
+            style={{
+              display: "inline-flex", alignItems: "center", gap: 7,
+              // v7 redesign: ink pill for the open tab, quiet outline otherwise.
+              minHeight: T.size.touch, padding: "0 16px", borderRadius: 999, cursor: "pointer",
+              border: `1px solid ${on ? T.ink : T.line}`,
+              background: on ? T.ink : "transparent",
+              color: on ? T.onInk : T.ink,
+              fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: on ? 700 : 500,
+            }}>
+            {label}
+            {count !== undefined && (
+              <span style={{ fontSize: T.fs.secondary, fontWeight: 700, padding: "0 7px", borderRadius: 999, background: on ? T.onInk : T.raised, color: on ? T.ink : T.ink2 }}>
+                {count}
+              </span>
+            )}
+          </button>
+        );
+      })}
+    </div>
+    </PerfZone>
+  );
+});
+
+/** One Me tab's content. Mounts on its first visit and then stays mounted.
+ *  It subscribes to the shown tab itself, so switching tabs re-renders only
+ *  the two gates that swap; their content (`children`, created by the last Me
+ *  render) is the same element, so React skips it entirely.
+ *
+ *  A tab that is not shown keeps its finished layout. With `hidden`
+ *  (display:none) the browser threw the layout away, so returning to My
+ *  trades re-laid out every card. content-visibility skips rendering the pane
+ *  but keeps its layout; browsers without it (older Safari) keep display:none. */
+function MePane({ store, id, children }: { store: MeTabStore; id: MeTabKey; children: ReactNode }) {
+  const shown = useMeShownTab(store);
+  const on = shown === id;
+  // Timing readout (?perf=1): the tapped tab's content is on screen.
+  useLayoutEffect(() => { if (on) perfTapCommitted(id); }, [on, id]);
+  if (!on && !store.isVisited(id)) return null;
+  const attrs = KEEP_PANE_LAYOUT
+    ? { "data-me-pane": id, "aria-hidden": !on || undefined, style: on ? undefined : PANE_OFF_STYLE }
+    : { "data-me-pane": id, hidden: !on };
+  return <PerfZone id={`Me: ${id}`}><div {...attrs}>{children}</div></PerfZone>;
+}
 
 /** Kept-mounted Me tabs hide with content-visibility where supported, so
  *  their layout survives a tab switch (see paneProps in MeScreen). */
