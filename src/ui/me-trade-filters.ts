@@ -72,10 +72,8 @@ export function isDoneTrade(trade: EscrowState): boolean {
 }
 
 /** How many trades Me shows before "Show more" (Jet, 6.4.24: Me lagged with
- *  100+ trades because every row rendered and animated at once). Ten, not 30:
- *  on the Pixel, returning to My trades still lagged with 30 cards to lay out
- *  again; with 10 it is as quick as every other Me tab. */
-export const ME_TRADE_PAGE_SIZE = 10;
+ *  100+ trades because every row rendered and animated at once). */
+export const ME_TRADE_PAGE_SIZE = 30;
 
 /** Text a trade can be found by in Me's search: what its card shows (title,
  *  amount, currency, community, payment methods), its id, and the names of
