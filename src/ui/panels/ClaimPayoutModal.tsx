@@ -1,3 +1,4 @@
+import { missingWebCrypto } from "../browser-capability-copy.js";
 import type { OnchainInfo } from "../../fedimint/fedimint-client.js";
 import { HoldToConfirm, buttonStyle } from "../components/Button.js";
 import { CLAIM_HOLD_IN_SHEET } from "../claim-hold.js";
@@ -625,12 +626,12 @@ export function ClaimPayoutModal({
         savedDestinations={savedDestinations}
         savedNwcConnections={savedNwcConnections}
         title={t("claim.claimYourSats")}
-        subtitle={(
+        subtitle={(destinationKnown) => (
           <>
-            {t("claim.sendToWalletBefore")} <BitcoinAmount sats={payoutSats} size={T.fs.secondary} gap={4} glyphScale={1.18} color={T.muted} glyphColor={T.muted} /> {t("claim.sendToWalletAfter")}
+            {!destinationKnown && t("claim.sendToWalletAfter")}
             {reserveSats > 0 && (
               <>
-                . {t("claim.feeReserveBefore")} <BitcoinAmount sats={reserveSats} size={T.fs.secondary} gap={4} glyphScale={1.18} color={T.muted} glyphColor={T.muted} /> {t("claim.feeReserveAfter")}
+                {!destinationKnown && ". "}{t("claim.feeReserveBefore")} <BitcoinAmount sats={reserveSats} size={T.fs.secondary} gap={4} glyphScale={1.18} color={T.muted} glyphColor={T.muted} /> {t("claim.feeReserveAfter")}
               </>
             )}
             {insuranceSats > 0 && (
@@ -862,8 +863,9 @@ export function ClaimMethodChooser({
           <div style={{ marginBottom: 12 }}>
             <HoldToConfirm disabled={rail === "lightning" && !!lightningReason}
               onConfirm={() => rail === "ecash" ? onSelectEcash() : rail === "lightning" && selected ? selected.kind === "address" ? onSelectSavedWallet(selected.wallet) : onSelectSavedNwc(selected.wallet) : onSelect({ kind: rail })}
-              label={rail === "ecash" || !selected ? t("claim.ecashMethod") : t("claim.sendTo", { amount: payoutSats.toLocaleString(), destination: selected.kind === "address" ? payoutDestinationLabel(selected.wallet) : selected.wallet.label })}
+              label={rail === "ecash" || !selected ? t("claim.ecashMethod") : t("claim.holdToSend", { amount: payoutSats.toLocaleString() })}
               hint={t("common.holdToConfirm")} armedLabel={t("common.holdArmed")} />
+            {rail === "lightning" && selected && <ClaimHoldDestination destination={selected.kind === "address" ? payoutDestinationLabel(selected.wallet) : selected.wallet.label} />}
           </div>
         ) : (
         <PaymentButton disabled={rail === "lightning" && !!lightningReason} tier={rail === "ecash" ? "primary" : "raised"} style={{ width: "100%", marginBottom: 12 }} onClick={() => rail === "ecash" ? onSelectEcash() : rail === "lightning" && selected ? selected.kind === "address" ? onSelectSavedWallet(selected.wallet) : onSelectSavedNwc(selected.wallet) : onSelect({ kind: rail })}>
@@ -2268,7 +2270,8 @@ function TerminalPanel({
   // (in addition to the App-level toast wrapper) so the in-modal
   // terminal panel reads cleanly even on the brief beat before the
   // modal closes and the toast takes over.
-  const humanizedError = humanizeNwcError(terminal.error);
+  const cryptoUnavailable = missingWebCrypto(terminal.error);
+  const humanizedError = cryptoUnavailable ? t("claim.browserNeedsHttps") : humanizeNwcError(terminal.error);
 
   if (terminal.kind === "claim-failed") {
     const settlementFailed = /reissue|consumed|settle/i.test(terminal.error);
@@ -2280,7 +2283,11 @@ function TerminalPanel({
     // amber and offers Try again instead of a red dead end (Jet, 2026-09-20).
     const incompleteChain = /not fully loaded|may be incomplete|no lock data|no shares available/i
       .test(terminal.error);
-    if (incompleteChain) {
+    if (cryptoUnavailable) {
+      title = t("claim.browserCannotClaim");
+      subtitle = humanizedError;
+      tone = T.amber; toneDim = T.amberDim; icon = "!";
+    } else if (incompleteChain) {
       title = t("claim.titleTradeNotSynced");
       subtitle = t("claim.bodyTradeNotSynced") + (terminal.error.match(/ \([A-Z_]+(?: · [^)]*)?\)$/)?.[0] ?? "");
       tone = T.amber;
@@ -2414,4 +2421,12 @@ function ClaimSendButton({ onSend, disabled, busy, children }: {
       {children}
     </button>
   );
+}
+
+/** The short send label keeps its destination visible beside the action. */
+export function ClaimHoldDestination({ destination }: { destination: string }) {
+  const { t } = useT();
+  return <div style={{ fontSize: T.fs.body, fontFamily: T.sans, color: T.ink, lineHeight: 1.45, overflowWrap: "anywhere", marginTop: 8 }}>
+    {t("claim.toDestination", { destination })}
+  </div>;
 }

@@ -1,3 +1,4 @@
+import { cameraUnavailableReason } from "./browser-capability-copy.js";
 import { useState, useEffect, useRef, useCallback } from "react";
 import jsQR from "jsqr";
 import { useT } from "../i18n/index.js";
@@ -5,9 +6,12 @@ import { useT } from "../i18n/index.js";
 interface QRScannerProps {
   onScan: (data: string) => void;
   onClose: () => void;
+  pasteTitle?: string;
+  pastePlaceholder?: string;
+  pasteInputType?: "text" | "password";
 }
 
-export default function QRScanner({ onScan, onClose }: QRScannerProps) {
+export default function QRScanner({ onScan, onClose, pasteTitle, pastePlaceholder, pasteInputType = "password" }: QRScannerProps) {
   const { t } = useT();
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -33,6 +37,8 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
     let mounted = true;
     (async () => {
       try {
+        const unavailable = cameraUnavailableReason(globalThis.isSecureContext, navigator.mediaDevices);
+        if (unavailable) { setError(t(unavailable === "https" ? "claim.cameraNeedsHttps" : "claim.cameraUnavailable")); setScanning(false); return; }
         const stream = await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode: "environment",
@@ -125,14 +131,14 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
       ) : pasteMode ? (
         <div style={{ padding: 32, width: "100%", maxWidth: 360 }}>
           <div style={{ fontSize: 11, color: "#a78bfa", fontFamily: "monospace", marginBottom: 12, letterSpacing: 1, textAlign: "center" }}>
-            {t("browse.pasteNsecTitle")}
+            {pasteTitle ?? t("browse.pasteNsecTitle")}
           </div>
           <input
             value={pasteInput}
             onChange={(e) => setPasteInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handlePaste()}
-            placeholder="nsec1... or nostrconnect://..."
-            type="password"
+            placeholder={pastePlaceholder ?? "nsec1... or nostrconnect://..."}
+            type={pasteInputType}
             autoFocus
             style={{
               width: "100%", padding: "14px 16px", boxSizing: "border-box" as const,

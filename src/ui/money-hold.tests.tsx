@@ -115,7 +115,8 @@ const typedHtml = renderToStaticMarkup(<LangProvider><DestinationPicker holdToSe
   initialAddress="bitcrazy@getalby.com" savedDestinations={[]} savedNwcConnections={[]}
   title="Claim" onResolve={unexpected} onCancel={unexpected} /></LangProvider>);
 assert.match(typedHtml, HOLD, 'a typed Lightning address sends with a hold');
-assert.match(typedHtml, /Send 196 sats to bitcrazy@getalby.com/);
+assert.match(typedHtml, /Hold to send 196 sats/);
+assert.match(typedHtml, /to bitcrazy@getalby.com/);
 // Recovery (Jet, 2026-10-05: "hold too") uses the same picker with holds.
 const recovery = readFileSync(new URL('./panels/RecoveryPayoutModal.tsx', import.meta.url), 'utf8');
 assert.match(recovery, /<DestinationPicker\s+holdToSend\s/, 'the recovery picker holds');
@@ -145,3 +146,27 @@ assert.doesNotMatch(sheet, /onClick=\{\(\) => void submit\(\)\}/, 'no single-tap
 assert.match(sheet, /<DestinationPicker\s+holdToSend=\{CLAIM_HOLD_IN_SHEET\}/, 'the claim picker holds');
 
 console.log('PASS money moves: lock, release (first + confirming) and agree-to-refund are hold-to-confirm; no tap-again path; option b: claim- and recovery-sheet sends hold, Collect plain outside Fedi and a hold inside; dispute card reads committed votes');
+
+// Enter in the claim address field (Jet, 6.4.25-rc.1): in a hold-to-send
+// picker it only readies the hold; it never dispatches a send.
+{
+  const { enterInDestinationField } = await import('./components/DestinationPicker.js');
+  assert.equal(enterInDestinationField(true), 'ready-hold');
+  assert.equal(enterInDestinationField(false), 'send', 'pickers without holds keep Enter-to-send');
+  const picker = readFileSync(new URL('./components/DestinationPicker.tsx', import.meta.url), 'utf8');
+  const enter = picker.slice(picker.indexOf('const commitOnEnter'), picker.indexOf('const handleTypedPaste'));
+  assert.match(enter, /enterInDestinationField\(holdToSend\) === "ready-hold"\) \{ setHoldReady\(n => n \+ 1\); return; \}/,
+    'Enter returns before any dispatch when the picker holds');
+  assert.ok(enter.indexOf('return; }') < enter.indexOf('dispatchTyped'), 'the dispatch is only reachable without holds');
+  assert.match(picker, /readySignal=\{holdReady\}/, 'Enter readies the typed Hold to send button');
+  const button = readFileSync(new URL('./components/Button.tsx', import.meta.url), 'utf8');
+  const ready = button.slice(button.indexOf('if (!readySignal'), button.indexOf('}, [readySignal]);'));
+  assert.match(ready, /focus\(\)/);
+  assert.doesNotMatch(ready, /onConfirm|confirmed|setState/, 'readying never confirms or changes the hold state');
+  // Rendered: the typed-address sheet still shows only a hold, no tap-to-send.
+  const html = renderToStaticMarkup(<LangProvider><DestinationPicker holdToSend amountSats={196}
+    initialAddress="bitcrazy@getalby.com" savedDestinations={[]} savedNwcConnections={[]}
+    onResolve={unexpected} onCancel={() => {}} title="Claim" /></LangProvider>);
+  assert.match(html, HOLD);
+}
+console.log('PASS claim Enter: readies the hold, never sends; non-hold pickers unchanged');
