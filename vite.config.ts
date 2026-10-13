@@ -10,6 +10,10 @@ export default defineConfig({
     __APP_VERSION__: JSON.stringify(pkg.version),
     // Sandbox build (poc.getchama.app): sim mode forced on. See src/sim/sandbox-build.ts.
     __CHAMA_SANDBOX__: process.env.VITE_CHAMA_SANDBOX === "1",
+    // CHAMA_PROFILING=1 builds React's profiling bundle so the hidden ?perf=1
+    // readout can name which part of the app re-rendered and for how long.
+    // Release builds leave it off.
+    __CHAMA_PROFILING__: process.env.CHAMA_PROFILING === "1",
     // Build stamp for local/test builds: lets the tester SEE that a Tauri /
     // Android-Studio refresh actually picked up the new bundle (the chip reads
     // "v2.0.3 · dev 14:32"). Release builds go through ship.sh, which exports
@@ -20,6 +24,9 @@ export default defineConfig({
         : new Date().toISOString().slice(5, 16).replace("T", " "),
     ),
   },
+  resolve: process.env.CHAMA_PROFILING === "1"
+    ? { alias: [{ find: /^react-dom\/client$/, replacement: "react-dom/profiling" }] }
+    : undefined,
   plugins: [
     react(),
     wasm(),

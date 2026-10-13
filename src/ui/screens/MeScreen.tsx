@@ -2,7 +2,6 @@ import { EcashCustody } from "../components/MoneyCustody.js";
 import { SettingsRow } from "../components/SettingsRow.js";
 import { RecoveryKeyRow, RecoveryKeyReminder } from "../components/RecoveryKey.js";
 import { listPaidLockRecoveries, acknowledgePaidLockRecoveries } from "../../payments/paid-lock-recovery.js";
-import { hasVerifiedTradeCreate } from "../../escrow-engine/trade-index.js";
 import { UnverifiedHistory } from "../components/UnverifiedHistory.js";
 import { PayoutTransactionDetails } from "../components/PayoutTransactionDetails.js";
 import { MAINNET, SIGNET } from "../../bond-multisig/multisig.js";
@@ -33,7 +32,10 @@ import { ProfileAvatar } from "../components/ProfileAvatar.js";
 // "Chama doesn't manage your Nostr profile" educational copy so the
 // doctrine is visible from day one.
 
-import { useState, useEffect, useMemo, useRef, useDeferredValue } from "react";
+import { useState, useEffect, useLayoutEffect, useMemo, useRef, useDeferredValue, useCallback, memo, type ReactNode } from "react";
+import { useStableCallback } from "../stable-list.js";
+import { checkedTradeCreate, perfMeasure, perfTapStart, perfTapCommitted, perfAdd, PerfZone } from "../perf-probe.js";
+import { createMeTabStore, useMePressedTab, useMeShownTab, type MeTabKey, type MeTabStore } from "../me-tab-store.js";
 import { useT, translate, getCurrentLang } from "../../i18n/index.js";
 import { LanguageRow } from "../components/LanguagePills.js";
 import {
@@ -69,7 +71,7 @@ import {
 } from "../decisions.js";
 import { AttentionQueue } from "../components/AttentionQueue.js";
 import { latestParticipantTradePointer } from "../latest-trade.js";
-import { buildMeTradeCounts, filterMeTrades, type MeTradeFilter, type MeTradeCounts } from "../me-trade-filters.js";
+import { buildMeTradeCounts, filterMeTrades, searchMeTrades, ME_TRADE_PAGE_SIZE, type MeTradeFilter, type MeTradeCounts } from "../me-trade-filters.js";
 import { counterpartyToRate, type RatingThumb } from "../../reputation/ratings.js";
 import { RatingTap } from "../components/RatingTap.js";
 import {
@@ -111,7 +113,7 @@ import { type AmountDisplayMode } from "../amount-display.js";
 import { AmountDisplayProvider, TradeAmount } from "../components/TradeAmount.js";
 import { BitcoinAmount } from "../components/BitcoinAmount.js";
 import type { TradeIndexEntry } from "../../escrow-engine/trade-index.js";
-import { readKind0Toggle, writeKind0Toggle, readLocalTradeName, writeLocalTradeName, sanitizeTradeName, generatedNameFor, type NostrProfileNameMap } from "../nostr-profiles.js";
+import { readKind0Toggle, writeKind0Toggle, readLocalTradeName, writeLocalTradeName, sanitizeTradeName, generatedNameFor, profileNameFor, type NostrProfileNameMap } from "../nostr-profiles.js";
 import { backgroundPushEnabled, enableBackgroundPush, disableBackgroundPush } from "../../notifications/watch-tags.js";
 import { isWebPushSupported, iosNeedsInstallForPush } from "../../notifications/web-push-client.js";
 
@@ -304,8 +306,17 @@ export function MeScreen({
    *  re-opening the trade retries with a fresh budget). */
   stuckNativeLocks?: PendingNativeLock[];
 }) {
+  const bodyStart = typeof performance !== "undefined" ? performance.now() : 0;
   const { t, lang } = useT();
-  const myTrades = useMemo(() => discoveredTrades.filter(hasVerifiedTradeCreate), [discoveredTrades]);
+  // App passes fresh inline callbacks on every render. Stable wrappers let the
+  // memoised Me tabs below skip redrawing unless their own data changed.
+  const openTrade = useStableCallback(onOpenTrade)!;
+  const refreshTrades = useStableCallback(onRefreshTrades);
+  const rateCounterparty = useStableCallback(onRateCounterparty);
+  const openArchivedTrade = useStableCallback(onOpenArchivedTrade);
+  const sellerEditListing = useStableCallback(onSellerEditListing);
+  const sellerDeleteListing = useStableCallback(onSellerDeleteListing);
+  const myTrades = useMemo(() => discoveredTrades.filter(checkedTradeCreate), [discoveredTrades]);
   const unverifiedIds = useMemo(() => {
     const verifiedIds = new Set(myTrades.map(trade => trade.id));
     return [...new Set([...discoveredTrades.map(trade => trade.id), ...(archivedTrades ?? []).map(trade => trade.id)])]
@@ -456,7 +467,7 @@ export function MeScreen({
   // report). Nothing here needs sub-minute freshness.
   const nowSec = Math.floor(Date.now() / 60_000) * 60;
   const rawDashboard = useMemo(
-    () => buildMeDashboard(myTrades, allTrades ?? myTrades, pubkey, nowSec),
+    () => perfMeasure("dashboard build", () => buildMeDashboard(myTrades, allTrades ?? myTrades, pubkey, nowSec)),
     [myTrades, allTrades, pubkey, nowSec],
   );
   // `arbiterVisible` turns on when the viewer appears in any hydrated trade's
@@ -489,7 +500,7 @@ export function MeScreen({
   // for standalone/test callers; the app always passes needsYouTrades.)
   const rankedNeedsYou = useMemo(
     () => (needsYouTrades
-      ?? selectNeedsYouTrades({ escrows: allTrades ?? myTrades, userPubkey: pubkey, nowSec })).filter(hasVerifiedTradeCreate),
+      ?? perfMeasure("needs-you build", () => selectNeedsYouTrades({ escrows: allTrades ?? myTrades, userPubkey: pubkey, nowSec }))).filter(checkedTradeCreate),
     [needsYouTrades, allTrades, myTrades, pubkey, nowSec],
   );
   const tradeCounts = useMemo(
@@ -507,19 +518,19 @@ export function MeScreen({
   const hasSellerDashboard = dashboard.sellerOpen.length > 0 || dashboard.sellerLive.length > 0;
   // v6.3 approved redesign: Browse-style pill tabs replace the accordions.
   // Money-safety cards stay ABOVE the tabs — never hidden behind one.
-  const [meTab, setMeTab] = useState<"trades" | "sats" | "seller" | "arbiter" | "profile" | "community" | "settings">("trades");
+  // The open tab lives in a small store, not in Me's state: a tap highlights
+  // its pill at once and swaps two panes on the next frame, without
+  // re-rendering this screen or anything outside it (Jet, 6.4.24 rc).
+  const tabStore = useRef<MeTabStore | null>(null);
+  if (!tabStore.current) tabStore.current = createMeTabStore("trades");
+  const tabs = tabStore.current;
 
-  // Perceived tap latency fix (Jet, v6.3.3 — worst on iOS PWA): the pills
-  // render from meTab and flip color the instant React commits the click,
-  // while the SECTIONS below render from this deferred value, so unmounting
-  // a long trade list and mounting Settings happens in a non-blocking pass
-  // instead of holding the tap's frame hostage.
   useEffect(() => {
     if (!requestTab) return;
     // "live-trades" is a destination, not a tab: land on Trades with the Live
     // filter already applied, which is what the active-trade pill promises.
     if (requestTab.tab === "live-trades") {
-      setMeTab("trades");
+      tabs.set("trades");
       setTradeFilter("live");
       // Glow the live rows for a beat: together they ARE the amount the pill
       // quoted, so highlighting all of them is the honest answer to "which
@@ -527,18 +538,21 @@ export function MeScreen({
       setPillTargetAt(Date.now());
       return;
     }
-    setMeTab(requestTab.tab);
+    tabs.set(requestTab.tab);
   }, [requestTab?.tab, requestTab?.n]);
-  const shownTab = useDeferredValue(meTab);
-  // v7 redesign: a Me tab renders on its first visit and then STAYS mounted
-  // (hidden when inactive), so switching back is instant even with 88 trades.
-  const visitedPanes = useRef(new Set<string>());
-  visitedPanes.current.add(shownTab);
-  const paneMounted = (key: string) => visitedPanes.current.has(key);
-  const paneSwitching = meTab !== shownTab && !visitedPanes.current.has(meTab);
+  const pressTab = useStableCallback((key: MeTabKey) => {
+    perfTapStart(key);
+    tabs.press(key);
+    if (key === "sats") onUseWallet?.();
+  })!;
+  const unseenPaidLocks = paidLockRows.filter(row => !row.seen).map(row => row.escrowId).join(",");
   useEffect(() => {
-    if (shownTab === "sats" && paidLockFederationId) acknowledgePaidLockRecoveries(paidLockFederationId, balanceMsats);
-  }, [shownTab, paidLockFederationId, balanceMsats, paidLockRows.filter(row => !row.seen).map(row => row.escrowId).join(",")]);
+    const acknowledge = () => {
+      if (tabs.getShown() === "sats" && paidLockFederationId) acknowledgePaidLockRecoveries(paidLockFederationId, balanceMsats);
+    };
+    acknowledge();
+    return tabs.subscribe(acknowledge);
+  }, [tabs, paidLockFederationId, balanceMsats, unseenPaidLocks]);
   const hasVisibleMoneyAction =
     loudClaims.length > 0
     || calmClaims.length > 0
@@ -546,6 +560,7 @@ export function MeScreen({
     || Boolean(stuckNativeLocks?.length)
     || Boolean(pendingEcashExport && onWithdrawEcash);
 
+  if (bodyStart) perfAdd("Me screen logic", performance.now() - bodyStart);
   return (
     <AmountDisplayProvider value={{ mode: amountDisplayMode, currency: quoteCurrency ?? null }}>
     <div style={{ padding: 16, maxWidth: 760, margin: "0 auto" }}>
@@ -977,8 +992,9 @@ export function MeScreen({
       {/* ── PILL TABS (v6.3) — the whole Me surface behind five Browse-style
           pills. Trades is home; Sats holds the money utilities; Arbiter shows
           only for arbiters; Profile & Settings hold the rest. */}
-      <div style={{ display: "flex", gap: 7, flexWrap: "wrap", margin: "2px 0 16px" }}>
-        {([
+      <MeTabPills
+        store={tabs}
+        items={[
           ["trades", t("me.accMyTrades"), myTrades.length || undefined],
           ["sats", t("me.tabSats"), undefined],
           ...(hasSellerDashboard ? [["seller", t("me.sellerDashboard"), (dashboard.sellerOpen.length + dashboard.sellerLive.length) || undefined] as const] : []),
@@ -986,50 +1002,24 @@ export function MeScreen({
           ["profile", t("me.tabProfile"), undefined],
           ["community", t("me.tabCommunity"), undefined],
           ["settings", t("me.accSettings"), undefined],
-        ] as Array<readonly [typeof meTab, string, number | undefined]>).map(([key, label, count]) => {
-          const on = meTab === key;
-          return (
-            <button key={key} type="button" aria-pressed={on} onClick={() => { setMeTab(key); if (key === "sats") onUseWallet?.(); }}
-              style={{
-                display: "inline-flex", alignItems: "center", gap: 7,
-                // v7 redesign: ink pill for the open tab, quiet outline otherwise.
-                minHeight: T.size.touch, padding: "0 16px", borderRadius: 999, cursor: "pointer",
-                border: `1px solid ${on ? T.ink : T.line}`,
-                background: on ? T.ink : "transparent",
-                color: on ? T.onInk : T.ink,
-                fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: on ? 700 : 500,
-              }}>
-              {label}
-              {count !== undefined && (
-                <span style={{ fontSize: T.fs.secondary, fontWeight: 700, padding: "0 7px", borderRadius: 999, background: on ? T.onInk : T.raised, color: on ? T.ink : T.ink2 }}>
-                  {count}
-                </span>
-              )}
-            </button>
-          );
-        })}
-      </div>
+        ]}
+        onPress={pressTab}
+      />
 
-      {paneSwitching && (
-        <div role="status" style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 4px", color: T.ink2, fontFamily: T.sans, fontSize: T.fs.secondary }}>
-          <span style={{ display: "inline-block", animation: "spin 0.8s linear infinite" }} aria-hidden="true">↻</span>
-          {t("common.loading")}
-        </div>
-      )}
       {/* ── TRADES — settlements ledger + seller queue + full history ─── */}
       {/* Selling has its own pill now (Jet, 2026-09-20: "so it's not in the
           way of legit simple trades") — the same treatment the arbiter view
           already had. Trades is history; Seller is inventory and orders. */}
-      {paneMounted("seller") && <div data-me-pane="seller" hidden={shownTab !== "seller"}>{!hydratingTrades && hasSellerDashboard && (
+      <MePane store={tabs} id="seller">{!hydratingTrades && hasSellerDashboard && (
         <SellerDashboardPanel
           dashboard={dashboard}
-          onOpenTrade={onOpenTrade}
-          onSellerEditListing={onSellerEditListing}
-          onSellerDeleteListing={onSellerDeleteListing}
+          onOpenTrade={openTrade}
+          onSellerEditListing={sellerEditListing}
+          onSellerDeleteListing={sellerDeleteListing}
         />
-      )}</div>}
+      )}</MePane>
 
-      {paneMounted("trades") && <div data-me-pane="trades" hidden={shownTab !== "trades"}>{!hydratingTrades && <>
+      <MePane store={tabs} id="trades">{!hydratingTrades && <>
         <div>
           <MeTradeHistory
             trades={visibleTrades}
@@ -1038,12 +1028,12 @@ export function MeScreen({
             activeFilter={tradeFilter}
             onFilter={setTradeFilter}
             pubkey={pubkey}
-            onOpenTrade={onOpenTrade}
-            onRefreshTrades={onRefreshTrades}
-            onRateCounterparty={onRateCounterparty}
+            onOpenTrade={openTrade}
+            onRefreshTrades={refreshTrades}
+            onRateCounterparty={rateCounterparty}
             myGivenRatings={myGivenRatings}
             unverifiedIds={unverifiedIds}
-            onOpenArchivedTrade={onOpenArchivedTrade}
+            onOpenArchivedTrade={openArchivedTrade}
             amountDisplayMode={amountDisplayMode}
             quoteCurrency={quoteCurrency}
             profileNames={profileNames}
@@ -1051,10 +1041,10 @@ export function MeScreen({
             highlightLive={pillTargetAt}
           />
         </div>
-      </>}</div>}
+      </>}</MePane>
 
       {/* ── SATS — money utilities. Deliberately not called a wallet. ── */}
-      {paneMounted("sats") && <div data-me-pane="sats" hidden={shownTab !== "sats"}>{(
+      <MePane store={tabs} id="sats">{(
         <div style={{
           background: T.card, border: `1px solid ${T.border}`,
           borderRadius: T.r, padding: 0, overflow: "hidden",
@@ -1067,16 +1057,16 @@ export function MeScreen({
           <SettingsRow label={t("me.paymentMethods")} hint={t("me.paymentMethodsHint")} onClick={onOpenSavedHandles} />
           <SettingsRow label={t("me.lightningAddresses")} hint={t("me.lightningAddressesHint")} onClick={onOpenPayoutDestinations} />
         </div>
-      )}</div>}
+      )}</MePane>
 
       {/* ── ARBITER — rendered only for an arbiter / pool member ── */}
-      {paneMounted("arbiter") && <div data-me-pane="arbiter" hidden={shownTab !== "arbiter"}>{!hydratingTrades && dashboard.arbiterVisible && (
+      <MePane store={tabs} id="arbiter">{!hydratingTrades && dashboard.arbiterVisible && (
         <ArbiterDashboardPanel
           dashboard={dashboard}
-          onOpenTrade={onOpenTrade}
+          onOpenTrade={openTrade}
           viewerPubkey={pubkey}
         />
-      )}</div>}
+      )}</MePane>
 
       {/* ── SETTINGS ────────────────────────────────────────────── */}
       {/* ── PROFILE (Jet, 2026-09-19) ─────────────────────────────────────
@@ -1086,7 +1076,7 @@ export function MeScreen({
           presentation choices that are also "you" — appearance and language.
           Everything that is a SETTING (notifications, bonds, advanced, sign
           out) stays in Settings. */}
-      {paneMounted("profile") && <div data-me-pane="profile" hidden={shownTab !== "profile"}>{<>
+      <MePane store={tabs} id="profile">{<>
         <div style={{
           background: T.card, border: `1px solid ${T.border}`,
           borderRadius: T.r, padding: 0, overflow: "hidden",
@@ -1108,9 +1098,9 @@ export function MeScreen({
           </div>
           <NostrNamesRow on={kind0On} onToggle={() => setKind0On(!kind0On)} />
         </div>
-      </>}</div>}
+      </>}</MePane>
 
-      {paneMounted("settings") && <div data-me-pane="settings" hidden={shownTab !== "settings"}>{<>
+      <MePane store={tabs} id="settings">{<>
         {/* v7 redesign (Jet): Settings in clear groups — each a labelled card,
             sign-out on its own. Same rows and handlers as before. */}
         <SettingsGroup label={t("me.groupDisplay")}>
@@ -1146,12 +1136,12 @@ export function MeScreen({
         <SettingsGroup>
           <SettingsRow label={t("me.signOut")} hint={null} onClick={onSignOut} danger />
         </SettingsGroup>
-      </>}</div>}
+      </>}</MePane>
 
       {/* ── COMMUNITY — the chama switcher, alone. Ratings live on the
           Dashboard; the identity hex lives in the top banner; sign out lives
           in Settings. */}
-      {paneMounted("community") && <div data-me-pane="community" hidden={shownTab !== "community"}>{<>
+      <MePane store={tabs} id="community">{<>
         {onSelectCommunity && (
           <YourChamaCard
             key={requestTab?.n ?? 0}
@@ -1164,7 +1154,7 @@ export function MeScreen({
             viewerPubkey={pubkey}
           />
         )}
-      </>}</div>}
+      </>}</MePane>
     </div>
     </AmountDisplayProvider>
   );
@@ -1232,7 +1222,7 @@ function Accordion({
 
 
 
-function MeTradeHistory({
+const MeTradeHistory = memo(function MeTradeHistory({
   trades,
   totalCount,
   counts,
@@ -1272,7 +1262,25 @@ function MeTradeHistory({
    *  briefly rings the live rows. */
   highlightLive?: number;
 }) {
-  const { t } = useT();
+  const { t, lang } = useT();
+  // Search covers every trade in the active filter; only the list on screen
+  // is paged (30 at a time) so 100+ trades never render and animate at once.
+  const [query, setQuery] = useState("");
+  const searchQuery = useDeferredValue(query);
+  const [shownCount, setShownCount] = useState(ME_TRADE_PAGE_SIZE);
+  useEffect(() => { setShownCount(ME_TRADE_PAGE_SIZE); }, [activeFilter, searchQuery]);
+  const nameFor = useCallback(
+    (pk: string) => profileNameFor(profileNames, pk, Boolean(kind0Enabled), lang),
+    [profileNames, kind0Enabled, lang],
+  );
+  const matched = useMemo(() => searchMeTrades(trades, searchQuery, nameFor), [trades, searchQuery, nameFor]);
+  const page = matched.length > shownCount ? matched.slice(0, shownCount) : matched;
+  const remaining = matched.length - page.length;
+  // One lookup for "already rated", instead of scanning every rating per row.
+  const ratedKeys = useMemo(
+    () => new Set((myGivenRatings ?? []).map(r => `${r.tradeId}:${r.ratee}`)),
+    [myGivenRatings],
+  );
   const activeFilterKey = ME_TRADE_FILTERS.find((filter) => filter.id === activeFilter)?.labelKey ?? "me.filterAll";
   const activeFilterLabel = t(activeFilterKey);
   const [refreshing, setRefreshing] = useState(false);
@@ -1367,6 +1375,22 @@ function MeTradeHistory({
         })}
       </div>
 
+      {totalCount > ME_TRADE_PAGE_SIZE && (
+        <input
+          type="search"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder={t("me.searchTradesPlaceholder")}
+          aria-label={t("me.searchTradesPlaceholder")}
+          data-me-trade-search
+          style={{
+            width: "100%", boxSizing: "border-box", minHeight: 44, marginBottom: 12,
+            padding: "10px 14px", borderRadius: T.rs, border: `1px solid ${T.border}`,
+            background: T.surface, color: T.text, fontFamily: T.sans, fontSize: T.fs.body,
+          }}
+        />
+      )}
+
       {totalCount === 0 ? (
         <div style={{
           padding: 24, textAlign: "center",
@@ -1383,61 +1407,46 @@ function MeTradeHistory({
         }}>
           {t("me.nothingInView")}
         </div>
+      ) : matched.length === 0 ? (
+        <div data-me-trade-no-match style={{
+          padding: 18, textAlign: "center",
+          background: T.surface, border: `1px dashed ${T.border}`,
+          borderRadius: T.r, color: T.muted, fontFamily: T.sans, fontSize: T.fs.secondary,
+        }}>
+          {t("me.searchTradesNoMatch", { query: searchQuery.trim() })}
+        </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {trades.map((s, i) => {
-            // v1 ratings: a settled-but-UNRATED trade keeps a one-tap thumb in
-            // history (the "rate later" path for users who bolt with their sats).
-            // Once rated, the tap drops — the slot is replaceable, so it reappears
-            // nowhere and double-rating is impossible.
-            // Chama shares never prompt for a rating: a savings circle has no
-            // counterparty performance to judge — punctuality standing is the
-            // circle's reputation, chain-derived and automatic (Jet, launch
-            // night review).
-            const ratee = onRateCounterparty && s.status === EscrowStatus.COMPLETED && !s.chamaPolicy
-              ? counterpartyToRate(s, pubkey)
-              : null;
-            const alreadyRated = ratee
-              ? (myGivenRatings ?? []).some(r => r.tradeId === s.id && r.ratee === ratee.toLowerCase())
-              : false;
-            // The pill's number is the sum of the viewer's live commitments,
-            // which is narrower than this tab. So ring exactly those rows:
-            // the tab stays a complete list of what is in flight, and the
-            // glow answers "which of these is the pill talking about?".
-            const ringing = Boolean(highlightLive)
-              && activeFilter === "live"
-              && liveCommitmentForViewer(s, pubkey, Math.floor(Date.now() / 1000));
-            return (
-              <div
-                /* The pill's glow never fired: this row's INLINE animation
-                   (fadeIn) outranks the .chama-pill-target class rule, so the
-                   ring was declared and then immediately overridden. Compose
-                   both on the inline property instead, and key the row on the
-                   request timestamp so a SECOND tap of the pill remounts it
-                   and replays the ring rather than finding the class already
-                   applied and doing nothing. */
-                key={ringing ? `${s.id}:${highlightLive}` : s.id}
-                className={ringing ? "chama-pill-target" : undefined}
-                style={{
-                  animation: ringing
-                    ? `fadeIn 0.4s ease ${i * 0.05}s both, chamaPillTarget 2.6s ease-out ${i * 0.05}s 2`
-                    : `fadeIn 0.4s ease ${i * 0.05}s both`,
-                }}
-              >
-                <TradeCard state={s} pubkey={pubkey} onSelect={() => onOpenTrade(s.id)} amountDisplayMode={amountDisplayMode} quoteCurrency={quoteCurrency} profileNames={profileNames} kind0Enabled={kind0Enabled} />
-                {s.status === EscrowStatus.COMPLETED && s.escrowMode === "onchain" && s.onchainPayoutTxid && (
-                  <div style={{ color: T.muted, fontSize: 11, fontFamily: T.mono, padding: "4px 12px" }}>
-                    <PayoutTransactionDetails txid={s.onchainPayoutTxid} depositTxid={s.lock.onchain?.fundingTxid} network={s.lock.onchain?.network === "signet" ? SIGNET : MAINNET} />
-                  </div>
-                )}
-                {/* Safety net Jetty asked for: rate the counterparty straight from
-                    history (👍/👎) if you forgot or backed out of the trade. */}
-                {ratee && !alreadyRated && onRateCounterparty && (
-                  <RatingTap tradeId={s.id} ratee={ratee} onRate={onRateCounterparty} />
-                )}
-              </div>
-            );
-          })}
+          {page.map((s, i) => (
+            <MeTradeRow
+              key={s.id}
+              trade={s}
+              index={i}
+              pubkey={pubkey}
+              onOpenTrade={onOpenTrade}
+              onRateCounterparty={onRateCounterparty}
+              alreadyRatedKeys={ratedKeys}
+              ringAt={highlightLive && activeFilter === "live" ? highlightLive : 0}
+              amountDisplayMode={amountDisplayMode}
+              quoteCurrency={quoteCurrency}
+              profileNames={profileNames}
+              kind0Enabled={kind0Enabled}
+            />
+          ))}
+          {remaining > 0 && (
+            <button
+              type="button"
+              data-me-trade-show-more
+              onClick={() => setShownCount(count => count + ME_TRADE_PAGE_SIZE)}
+              style={{
+                minHeight: 48, borderRadius: T.rs, border: `1px solid ${T.border}`,
+                background: T.surface, color: T.text, fontFamily: T.sans,
+                fontSize: T.fs.secondary, fontWeight: 700, cursor: "pointer",
+              }}
+            >
+              {t("me.showMoreTrades", { count: Math.min(remaining, ME_TRADE_PAGE_SIZE) })}
+            </button>
+          )}
         </div>
       )}
 
@@ -1445,7 +1454,162 @@ function MeTradeHistory({
 
     </section>
   );
+});
+
+/** Me's tab pills. Subscribes to the pressed tab only, so a tap repaints this
+ *  row at once while the pane behind it swaps on the next frame. */
+const MeTabPills = memo(function MeTabPills({ store, items, onPress }: {
+  store: MeTabStore;
+  items: ReadonlyArray<readonly [MeTabKey, string, number | undefined]>;
+  onPress: (key: MeTabKey) => void;
+}) {
+  const pressed = useMePressedTab(store);
+  return (
+    <PerfZone id="Me tab pills">
+    <div style={{ display: "flex", gap: 7, flexWrap: "wrap", margin: "2px 0 16px" }}>
+      {items.map(([key, label, count]) => {
+        const on = pressed === key;
+        return (
+          <button key={key} type="button" aria-pressed={on} onClick={() => onPress(key)}
+            style={{
+              display: "inline-flex", alignItems: "center", gap: 7,
+              // v7 redesign: ink pill for the open tab, quiet outline otherwise.
+              minHeight: T.size.touch, padding: "0 16px", borderRadius: 999, cursor: "pointer",
+              border: `1px solid ${on ? T.ink : T.line}`,
+              background: on ? T.ink : "transparent",
+              color: on ? T.onInk : T.ink,
+              fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: on ? 700 : 500,
+            }}>
+            {label}
+            {count !== undefined && (
+              <span style={{ fontSize: T.fs.secondary, fontWeight: 700, padding: "0 7px", borderRadius: 999, background: on ? T.onInk : T.raised, color: on ? T.ink : T.ink2 }}>
+                {count}
+              </span>
+            )}
+          </button>
+        );
+      })}
+    </div>
+    </PerfZone>
+  );
+});
+
+/** One Me tab's content. Mounts on its first visit and then stays mounted.
+ *  It subscribes to the shown tab itself, so switching tabs re-renders only
+ *  the two gates that swap; their content (`children`, created by the last Me
+ *  render) is the same element, so React skips it entirely.
+ *
+ *  A tab that is not shown keeps its finished layout. With `hidden`
+ *  (display:none) the browser threw the layout away, so returning to My
+ *  trades re-laid out every card. content-visibility skips rendering the pane
+ *  but keeps its layout; browsers without it (older Safari) keep display:none. */
+function MePane({ store, id, children }: { store: MeTabStore; id: MeTabKey; children: ReactNode }) {
+  const shown = useMeShownTab(store);
+  const on = shown === id;
+  // Timing readout (?perf=1): the tapped tab's content is on screen.
+  useLayoutEffect(() => { if (on) perfTapCommitted(id); }, [on, id]);
+  if (!on && !store.isVisited(id)) return null;
+  const attrs = KEEP_PANE_LAYOUT
+    ? { "data-me-pane": id, "aria-hidden": !on || undefined, style: on ? undefined : PANE_OFF_STYLE }
+    : { "data-me-pane": id, hidden: !on };
+  return <PerfZone id={`Me: ${id}`}><div {...attrs}>{children}</div></PerfZone>;
 }
+
+/** Kept-mounted Me tabs hide with content-visibility where supported, so
+ *  their layout survives a tab switch (see paneProps in MeScreen). */
+const KEEP_PANE_LAYOUT = typeof CSS !== "undefined" && typeof CSS.supports === "function"
+  && CSS.supports("content-visibility", "hidden");
+const PANE_OFF_STYLE = { contentVisibility: "hidden" } as const;
+/** Trade rows below the screen skip layout and paint until scrolled near.
+ *  The size is a placeholder until the row's real height is remembered. */
+export const ME_ROW_STYLE_OFFSCREEN = { contentVisibility: "auto", containIntrinsicSize: "auto 240px" } as const;
+
+/** Only the first rows fade in, with a short stagger. With 150 trades the old
+ *  0.05s-per-row stagger left the last row invisible for 7.5s and ran every
+ *  animation at once on each filter switch. */
+export const ME_ROW_ANIMATED = 8;
+export function meRowAnimation(index: number, ringing: boolean): string | undefined {
+  const delay = index < ME_ROW_ANIMATED ? `${index * 0.04}s` : "0s";
+  const fade = index < ME_ROW_ANIMATED ? `fadeIn 0.3s ease ${delay} both` : "";
+  const ring = ringing ? `chamaPillTarget 2.6s ease-out ${delay} 2` : "";
+  return [fade, ring].filter(Boolean).join(", ") || undefined;
+}
+
+/** One row of Me's trade history. Memoised: a row redraws only when its own
+ *  trade, the viewer, its rating state or the display settings change. */
+const MeTradeRow = memo(function MeTradeRow({
+  trade: s,
+  index: i,
+  pubkey,
+  onOpenTrade,
+  onRateCounterparty,
+  alreadyRatedKeys,
+  ringAt,
+  amountDisplayMode,
+  quoteCurrency,
+  profileNames,
+  kind0Enabled,
+}: {
+  trade: EscrowState;
+  index: number;
+  pubkey: string;
+  onOpenTrade: (id: string) => void;
+  onRateCounterparty?: (tradeId: string, ratee: string, thumb: RatingThumb) => Promise<void>;
+  alreadyRatedKeys: ReadonlySet<string>;
+  /** Non-zero while the Live pill's "which trades?" ring is requested. */
+  ringAt: number;
+  amountDisplayMode?: AmountDisplayMode;
+  quoteCurrency?: string | null;
+  profileNames?: NostrProfileNameMap;
+  kind0Enabled?: boolean;
+}) {
+  // v1 ratings: a settled-but-UNRATED trade keeps a one-tap thumb in
+  // history (the "rate later" path for users who bolt with their sats).
+  // Once rated, the tap drops — the slot is replaceable, so it reappears
+  // nowhere and double-rating is impossible.
+  // Chama shares never prompt for a rating: a savings circle has no
+  // counterparty performance to judge — punctuality standing is the
+  // circle's reputation, chain-derived and automatic (Jet, launch
+  // night review).
+  const ratee = onRateCounterparty && s.status === EscrowStatus.COMPLETED && !s.chamaPolicy
+    ? counterpartyToRate(s, pubkey)
+    : null;
+  const alreadyRated = ratee ? alreadyRatedKeys.has(`${s.id}:${ratee.toLowerCase()}`) : false;
+  // The pill's number is the sum of the viewer's live commitments,
+  // which is narrower than this tab. So ring exactly those rows:
+  // the tab stays a complete list of what is in flight, and the
+  // glow answers "which of these is the pill talking about?".
+  const ringing = Boolean(ringAt)
+    && liveCommitmentForViewer(s, pubkey, Math.floor(Date.now() / 1000));
+  const open = useCallback(() => onOpenTrade(s.id), [onOpenTrade, s.id]);
+  return (
+    <div
+      /* The pill's glow never fired: this row's INLINE animation
+         (fadeIn) outranks the .chama-pill-target class rule, so the
+         ring was declared and then immediately overridden. Compose
+         both on the inline property instead, and key the row on the
+         request timestamp so a SECOND tap of the pill remounts it
+         and replays the ring rather than finding the class already
+         applied and doing nothing. */
+      key={ringing ? `${s.id}:${ringAt}` : s.id}
+      className={ringing ? "chama-pill-target" : undefined}
+      data-me-trade-row
+      style={{ ...(ringing ? null : ME_ROW_STYLE_OFFSCREEN), animation: meRowAnimation(i, ringing) }}
+    >
+      <TradeCard state={s} pubkey={pubkey} onSelect={open} amountDisplayMode={amountDisplayMode} quoteCurrency={quoteCurrency} profileNames={profileNames} kind0Enabled={kind0Enabled} />
+      {s.status === EscrowStatus.COMPLETED && s.escrowMode === "onchain" && s.onchainPayoutTxid && (
+        <div style={{ color: T.muted, fontSize: 11, fontFamily: T.mono, padding: "4px 12px" }}>
+          <PayoutTransactionDetails txid={s.onchainPayoutTxid} depositTxid={s.lock.onchain?.fundingTxid} network={s.lock.onchain?.network === "signet" ? SIGNET : MAINNET} />
+        </div>
+      )}
+      {/* Safety net Jetty asked for: rate the counterparty straight from
+          history (👍/👎) if you forgot or backed out of the trade. */}
+      {ratee && !alreadyRated && onRateCounterparty && (
+        <RatingTap tradeId={s.id} ratee={ratee} onRate={onRateCounterparty} />
+      )}
+    </div>
+  );
+});
 
 type MeDashboardModel = {
   needsYou: EscrowState[];
@@ -1472,7 +1636,7 @@ const SELLER_QUEUE_LABEL_KEY: Record<SellerQueueKey, string> = {
   stock: "me.queueStock",
 };
 
-function SellerDashboardPanel({
+const SellerDashboardPanel = memo(function SellerDashboardPanel({
   dashboard,
   onOpenTrade,
   onSellerEditListing,
@@ -1582,7 +1746,7 @@ function SellerDashboardPanel({
       />
     </div>
   );
-}
+});
 
 function DashboardMetric({
   label,
@@ -1863,7 +2027,7 @@ const ARBITER_QUEUE_LABEL_KEY: Record<ArbiterQueueKey, string> = {
   settled: "me.queueSettled",
 };
 
-function ArbiterDashboardPanel({
+const ArbiterDashboardPanel = memo(function ArbiterDashboardPanel({
   dashboard,
   onOpenTrade,
   viewerPubkey,
@@ -1963,7 +2127,7 @@ function ArbiterDashboardPanel({
       />
     </div>
   );
-}
+});
 
 function ArbiterQueueList({
   queue,

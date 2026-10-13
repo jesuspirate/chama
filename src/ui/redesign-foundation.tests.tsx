@@ -119,7 +119,8 @@ console.log("PASS hold to confirm: hold confirms once, early lift cancels, taps 
   // Android FAB (6.4.23 RC): while the page scrolls the button itself is
   // frosted glass, about half see-through (no halo around it), and every page
   // ends with room to scroll its last control clear of the button.
-  assert.match(css, /\.chama-create-fab-scrolling \.chama-create-fab\{transition:none;background:#[0-9A-Fa-f]{6}80;[^}]*backdrop-filter:blur\(14px\)[^}]*text-shadow:/, "the Create button turns half see-through and blurred at once (no fade-in delay) while scrolling");
+  assert.match(css, /\.chama-create-fab-scrolling \.chama-create-fab\{transition:none;background:#[0-9A-Fa-f]{6}26;[^}]*backdrop-filter:blur\(3px\)[^}]*text-shadow:/, "while scrolling the Create button is a light, clearly see-through glass (15% page tint, 3px blur), at once");
+  assert.doesNotMatch(css, /\.chama-create-fab-scrolling \.chama-create-fab\{[^}]*background:#[0-9A-Fa-f]{6}80/, "not the half-ink tint that read as flat grey");
   assert.doesNotMatch(css, /\.chama-create-fab-wrap::before/, "no halo around the Create button");
   assert.match(css, /body:has\(\.chama-create-fab\) \.chama-shell-nav::after\{content:"";display:block;height:84px\}/);
 }

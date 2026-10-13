@@ -184,8 +184,13 @@ export function navCss(): string {
   .chama-create-plus{width:44px;height:44px;border-radius:22px;border:none;background:${T.raised};color:${T.ink};display:inline-flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0}
   .chama-create-fab-wrap{position:fixed;right:16px;bottom:calc(${BOTTOM_NAV_HEIGHT}px + env(safe-area-inset-bottom,0px) + 16px);z-index:90}
   .chama-create-fab{position:relative;min-height:56px;padding:0 20px 0 16px;border-radius:16px;border:none;background:${T.ink};color:${T.onInk};display:inline-flex;align-items:center;gap:8px;font-family:${T.sans};font-size:var(--chama-fs-button);font-weight:600;box-shadow:0 6px 16px rgba(0,0,0,0.22);cursor:pointer;transition:background-color .2s ease}
-  .chama-create-fab-scrolling .chama-create-fab{transition:none;background:${T.ink}80;-webkit-backdrop-filter:blur(14px) saturate(160%);backdrop-filter:blur(14px) saturate(160%);text-shadow:0 0 6px ${T.ink}}
-  @media (prefers-reduced-transparency: reduce){.chama-create-fab-scrolling .chama-create-fab{background:${T.ink};-webkit-backdrop-filter:none;backdrop-filter:none;text-shadow:none}}
+  /* Jet (6.4.24 rc.5): "it's grey, not blurry". Half the ink colour over the
+     page read as a flat grey button, and a 14px blur smeared what was behind
+     into one tone. The glass is now a light tint of the page colour with a
+     3px blur, so cards and text show through, blurred; a thin outline keeps
+     the button's edge and the label is ink with a soft halo. */
+  .chama-create-fab-scrolling .chama-create-fab{transition:none;background:${T.bg}26;-webkit-backdrop-filter:blur(3px) saturate(180%);backdrop-filter:blur(3px) saturate(180%);color:${T.ink};box-shadow:0 0 0 1px ${T.ink}40,0 6px 16px rgba(0,0,0,0.22);text-shadow:0 0 4px ${T.bg},0 0 8px ${T.bg}}
+  @media (prefers-reduced-transparency: reduce){.chama-create-fab-scrolling .chama-create-fab{background:${T.ink};color:${T.onInk};-webkit-backdrop-filter:none;backdrop-filter:none;box-shadow:0 6px 16px rgba(0,0,0,0.22);text-shadow:none}}
   /* The Android extended FAB floats above the bottom nav; page footers keep
      clear of it so it never covers their links or step dots. */
   @media (max-width:${NAV_WIDE_MIN_PX - 1}px){body:has(.chama-create-fab) .assisted-canvas-footer{margin-bottom:76px}

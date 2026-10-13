@@ -1,4 +1,5 @@
 import { FederationDisclosure, CircleShareLabel } from "./FederationDisclosure.js";
+import { perfAdd, perfTiming } from "../perf-probe.js";
 import { LockGlyph } from "./Badge.js";
 import { signedTradeCreatedAt } from "../../escrow-engine/trade-index.js";
 import { ConductFacts } from "./ConductFacts.js";
@@ -56,7 +57,7 @@ import { ESCROW_NETWORK_LABEL } from "../../bond-multisig/onchain-escrow.js";
 // balance==0; destroy-confirm modal when balance>0). The community
 // flag/name appears inline so users can see at a glance which fed
 // they'd be switching to.
-export function TradeCard({
+function TradeCardBody({
   state,
   allEscrows, circleChildrenLoaded,
   pubkey,
@@ -1114,4 +1115,14 @@ function compactTimeRemaining(state: EscrowState, nowSec: number, t: TFunc): { l
     label: state.status === EscrowStatus.CREATED ? t("card.listingCountdown", { time: label }) : label,
     tone,
   };
+}
+
+/** TradeCardBody, timed for the hidden ?perf=1 readout ("card drawing"). It
+ *  is called as a plain function, so its hooks are TradeCard's own, in the
+ *  same order on every render. */
+export function TradeCard(props: Parameters<typeof TradeCardBody>[0]) {
+  const t0 = perfTiming() ? performance.now() : 0;
+  const out = TradeCardBody(props);
+  if (t0) perfAdd("card drawing", performance.now() - t0);
+  return out;
 }

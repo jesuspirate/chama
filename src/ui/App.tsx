@@ -26,6 +26,9 @@ import { nextRoundTemplate } from "../chama/circle.js";
 import type { CircleRound } from "../chama/types.js";
 import { getTrustedArbiterPool } from "../arbiters/pool.js";
 import { useState, useEffect, useMemo, useRef, useCallback, lazy, Suspense, type ReactNode } from "react";
+import { sameRecord, useStableList } from "./stable-list.js";
+import { perfMeasure, versionTapToggle, PerfZone } from "./perf-probe.js";
+import { PerfReadout } from "./components/PerfReadout.js";
 import { Capacitor } from "@capacitor/core";
 import { Preferences } from "@capacitor/preferences";
 
@@ -1617,7 +1620,15 @@ export default function App() {
     setRetiredTick((n) => n + 1);
   };
 
-  const visibleTrades = [...escrows.values()]
+  // Me with 100+ trades lagged because these lists were rebuilt as new arrays
+  // on every App render, which threw away every memo below them. Each is now
+  // recomputed only when an input changes, and keeps its previous identity
+  // while the result is equal. Contents are unchanged: the clock (seconds),
+  // the retired ledger and the escrow map are all inputs.
+  const retiredKey = [...retiredIds].sort().join(",");
+  // Seven taps on the version label toggle the hidden Me timing readout.
+  const onVersionTap = useMemo(versionTapToggle, []);
+  const visibleTrades = useStableList(useMemo(() => [...escrows.values()]
     .filter(s => {
       // Superseded untouched listings stay hidden, but buyer activity upgrades
       // an old relay-visible listing into a real trade that must resurface.
@@ -1626,11 +1637,16 @@ export default function App() {
       if (s.createdAt && (now - s.createdAt) > HIDE_AFTER) return false;
       return true;
     })
-    .sort(compareTradeChronology);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- retiredKey is retiredIds' content
+    .sort(compareTradeChronology), [escrows, retiredKey, now]));
 
   // Participant history must not inherit Browse's seven-day retention filter:
   // completed payouts remain recoverable on a fresh/cross-device client.
-  const myTrades = participantTradeHistory(escrows.values(), pubkey, now, retiredIds);
+  const myTrades = useStableList(useMemo(
+    () => participantTradeHistory(escrows.values(), pubkey, now, retiredIds),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- retiredKey is retiredIds' content
+    [escrows, pubkey, now, retiredKey],
+  ));
   useEffect(() => {
     if (pubkey && myTradesLoading) return;
     const cacheWake = () => {
@@ -1653,10 +1669,12 @@ export default function App() {
   // everything currently loaded so there are no dupes; the Me "All" view
   // renders these as compact "earlier trades" rows below the live list. Cheap
   // synchronous scoped-localStorage read; recomputed as escrows load.
-  const archivedTrades = pubkey
+  // Read fresh every render (the durable index can change without any input
+  // here changing), but the array only changes when an entry does.
+  const archivedTrades = useStableList(pubkey
     ? archivedTradeEntries(myTrades.map((trade) => trade.id))
         .filter((entry) => !retiredTradeIndexEntryIsStillSuperseded(entry, retiredIds))
-    : [];
+    : [], sameRecord);
 
   const [renewingId, setRenewingId] = useState<string | null>(null);
   // Store renewal is an explicit, per-identity preference. Older builds
@@ -1995,14 +2013,20 @@ export default function App() {
     for (const r of listPendingRedemptions()) settledClaimIds.add(r.escrowId);
     for (const c of listClaimCredits()) settledClaimIds.add(c.escrowId);
   }
-  const ordinaryNeedsYouTrades = pubkey
-    ? selectNeedsYouTrades({ escrows: escrows.values(), userPubkey: pubkey, nowSec: now, settledClaimIds, onchainObservations })
-    : [];
-  const needsYouTrades = mergeOnchainPayoutAttention({
-    needsYou: ordinaryNeedsYouTrades,
-    escrows: escrows.values(),
-    pendingEscrowIds: pendingOnchainPayoutIds,
-  });
+  // The ledgers above are still read on every render, so a new credit
+  // suppresses on the very next paint; only the selection waits for a change.
+  const settledClaimKey = [...settledClaimIds].sort().join(",");
+  const needsYouTrades = useStableList(useMemo(() => {
+    const ordinaryNeedsYouTrades = pubkey
+      ? perfMeasure("needs-you build", () => selectNeedsYouTrades({ escrows: escrows.values(), userPubkey: pubkey, nowSec: now, settledClaimIds, onchainObservations }))
+      : [];
+    return mergeOnchainPayoutAttention({
+      needsYou: ordinaryNeedsYouTrades,
+      escrows: escrows.values(),
+      pendingEscrowIds: pendingOnchainPayoutIds,
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- settledClaimKey is settledClaimIds' content
+  }, [escrows, pubkey, now, settledClaimKey, onchainObservations, pendingOnchainPayoutIds]));
   const needsYouCount = needsYouTrades.length;
   const attentionTrade = needsYouTrades[0] ?? activeTrade;
   // Known work stays actionable during hydration; syncing only fills the
@@ -3316,6 +3340,7 @@ export default function App() {
 
       {helpOpen && <HelpOverlay onClose={() => setHelpOpen(false)} />}
       {toast && <Toast message={toast.message} type={toast.type} sticky={toast.sticky} dismissOnTap={toast.dismissOnTap} onDone={() => setToast(null)} />}
+      <PerfReadout />
       {walletOverlay === "payment-methods" && <SavedHandlesPanel communitySlug={actions.getCommunity()} onClose={() => setWalletOverlay(null)} />}
       {walletOverlay === "lightning" && (
         <PayoutDestinationsPanel onClose={() => setWalletOverlay(null)} />
@@ -3325,7 +3350,7 @@ export default function App() {
         <button type="button" aria-label={t("lts.backHome")} onClick={guidedHome} style={{ background: "none", border: 0, padding: 0, cursor: "pointer" }}><Wordmark /></button>
       </div>}
       {!detailMode && (
-        <>
+        <PerfZone id="Top bar">
           {/* Header */}
           <div style={{
             padding: "16px 16px 12px", borderBottom: `1px solid ${T.border}`,
@@ -3345,7 +3370,7 @@ export default function App() {
               gap: 6,
               flexShrink: 0,
             }}>
-              <div style={{ fontSize: 9, color: __BUILD_STAMP__ ? T.amber : T.muted, fontFamily: T.mono, padding: "4px 10px", borderRadius: 6, background: T.surface, border: `1px solid ${__BUILD_STAMP__ ? T.amber + "55" : T.border}` }}>
+              <div onClick={onVersionTap} style={{ fontSize: 9, color: __BUILD_STAMP__ ? T.amber : T.muted, fontFamily: T.mono, padding: "4px 10px", borderRadius: 6, background: T.surface, border: `1px solid ${__BUILD_STAMP__ ? T.amber + "55" : T.border}` }}>
                 {/* Local/test builds carry an amber "dev <build time>" stamp so a
                     Tauri/ASDK refresh visibly confirms it picked up the new
                     bundle. ship.sh exports CHAMA_RELEASE=1 → clean version. */}
@@ -3468,7 +3493,7 @@ export default function App() {
               runInit();
             }}
           />
-        </>
+        </PerfZone>
       )}
 
       {/* The first-time onboarding picker no longer renders in the shell.
@@ -4712,7 +4737,7 @@ export default function App() {
           </h1>
 
           {!myTradesLoading && <RecurringBillCard series={recurringSeries} onStop={cancelRecurring} />}
-          <MeScreen
+          <PerfZone id="Me screen"><MeScreen
             walletInvite={fedimint.joined ? liveActiveInvite ?? undefined : undefined}
             balanceKnown={fedimint.joined && fedimint.balanceMsats !== null}
             onUseWallet={() => {
@@ -4785,7 +4810,7 @@ export default function App() {
             onOpenBondCeremony={() => setShowBondCeremony(true)}
             loadLiveness={actions.getChamaLiveness}
             livenessBlocksPerDay={BOND_LIVENESS_BLOCKS_PER_DAY}
-          />
+          /></PerfZone>
         </div>
       ) : view === "saved-handles" || view === "payout-destinations" ? (
         // Legacy routes converge on Me with the same overlay.
@@ -4879,7 +4904,7 @@ export default function App() {
               }}
             />
           ) : (
-            <BrowseView
+            <PerfZone id="Browse"><BrowseView
               onOpenCommunity={openCommunity}
               suppressCommunityNudge={Capacitor.isNativePlatform() && explicitCommunities.has(routeCommunitySlug)}
               subscribeListings={actions.watchBrowseListings}
@@ -4953,12 +4978,12 @@ export default function App() {
                   setToast({ message: e.message || t("app.loadFailed"), type: "error" });
                 }
               }}
-            />
+            /></PerfZone>
           )}
         </>
       )}
 
-      {!detailMode && <BottomNav active={activeTab} onSelect={switchTab} onCreate={openCreate} badges={{}} />}
+      {!detailMode && <PerfZone id="Bottom nav"><BottomNav active={activeTab} onSelect={switchTab} onCreate={openCreate} badges={{}} /></PerfZone>}
 
       {/* v4.1 C1: one-time post-sign-in tour. Only on the Browse home screen
           (FABs mounted), never over the create sheet or a detail view. */}
