@@ -2,7 +2,6 @@ import { EcashCustody } from "../components/MoneyCustody.js";
 import { SettingsRow } from "../components/SettingsRow.js";
 import { RecoveryKeyRow, RecoveryKeyReminder } from "../components/RecoveryKey.js";
 import { listPaidLockRecoveries, acknowledgePaidLockRecoveries } from "../../payments/paid-lock-recovery.js";
-import { hasVerifiedTradeCreate } from "../../escrow-engine/trade-index.js";
 import { UnverifiedHistory } from "../components/UnverifiedHistory.js";
 import { PayoutTransactionDetails } from "../components/PayoutTransactionDetails.js";
 import { MAINNET, SIGNET } from "../../bond-multisig/multisig.js";
@@ -33,8 +32,9 @@ import { ProfileAvatar } from "../components/ProfileAvatar.js";
 // "Chama doesn't manage your Nostr profile" educational copy so the
 // doctrine is visible from day one.
 
-import { useState, useEffect, useMemo, useRef, useDeferredValue, useCallback, memo } from "react";
+import { useState, useEffect, useLayoutEffect, useMemo, useRef, useDeferredValue, useCallback, memo } from "react";
 import { useStableCallback } from "../stable-list.js";
+import { checkedTradeCreate, perfMeasure, perfTapStart, perfTapCommitted, perfAdd } from "../perf-probe.js";
 import { useT, translate, getCurrentLang } from "../../i18n/index.js";
 import { LanguageRow } from "../components/LanguagePills.js";
 import {
@@ -305,6 +305,7 @@ export function MeScreen({
    *  re-opening the trade retries with a fresh budget). */
   stuckNativeLocks?: PendingNativeLock[];
 }) {
+  const bodyStart = typeof performance !== "undefined" ? performance.now() : 0;
   const { t, lang } = useT();
   // App passes fresh inline callbacks on every render. Stable wrappers let the
   // memoised Me tabs below skip redrawing unless their own data changed.
@@ -314,7 +315,7 @@ export function MeScreen({
   const openArchivedTrade = useStableCallback(onOpenArchivedTrade);
   const sellerEditListing = useStableCallback(onSellerEditListing);
   const sellerDeleteListing = useStableCallback(onSellerDeleteListing);
-  const myTrades = useMemo(() => discoveredTrades.filter(hasVerifiedTradeCreate), [discoveredTrades]);
+  const myTrades = useMemo(() => discoveredTrades.filter(checkedTradeCreate), [discoveredTrades]);
   const unverifiedIds = useMemo(() => {
     const verifiedIds = new Set(myTrades.map(trade => trade.id));
     return [...new Set([...discoveredTrades.map(trade => trade.id), ...(archivedTrades ?? []).map(trade => trade.id)])]
@@ -465,7 +466,7 @@ export function MeScreen({
   // report). Nothing here needs sub-minute freshness.
   const nowSec = Math.floor(Date.now() / 60_000) * 60;
   const rawDashboard = useMemo(
-    () => buildMeDashboard(myTrades, allTrades ?? myTrades, pubkey, nowSec),
+    () => perfMeasure("dashboard build", () => buildMeDashboard(myTrades, allTrades ?? myTrades, pubkey, nowSec)),
     [myTrades, allTrades, pubkey, nowSec],
   );
   // `arbiterVisible` turns on when the viewer appears in any hydrated trade's
@@ -498,7 +499,7 @@ export function MeScreen({
   // for standalone/test callers; the app always passes needsYouTrades.)
   const rankedNeedsYou = useMemo(
     () => (needsYouTrades
-      ?? selectNeedsYouTrades({ escrows: allTrades ?? myTrades, userPubkey: pubkey, nowSec })).filter(hasVerifiedTradeCreate),
+      ?? perfMeasure("needs-you build", () => selectNeedsYouTrades({ escrows: allTrades ?? myTrades, userPubkey: pubkey, nowSec }))).filter(checkedTradeCreate),
     [needsYouTrades, allTrades, myTrades, pubkey, nowSec],
   );
   const tradeCounts = useMemo(
@@ -539,6 +540,8 @@ export function MeScreen({
     setMeTab(requestTab.tab);
   }, [requestTab?.tab, requestTab?.n]);
   const shownTab = useDeferredValue(meTab);
+  // Timing readout (?perf=1): the tapped tab's content is on screen.
+  useLayoutEffect(() => { perfTapCommitted(shownTab); }, [shownTab]);
   // v7 redesign: a Me tab renders on its first visit and then STAYS mounted
   // (hidden when inactive), so switching back is instant even with 88 trades.
   const visitedPanes = useRef(new Set<string>());
@@ -567,6 +570,7 @@ export function MeScreen({
     || Boolean(stuckNativeLocks?.length)
     || Boolean(pendingEcashExport && onWithdrawEcash);
 
+  if (bodyStart) perfAdd("Me screen logic", performance.now() - bodyStart);
   return (
     <AmountDisplayProvider value={{ mode: amountDisplayMode, currency: quoteCurrency ?? null }}>
     <div style={{ padding: 16, maxWidth: 760, margin: "0 auto" }}>
@@ -1010,7 +1014,7 @@ export function MeScreen({
         ] as Array<readonly [typeof meTab, string, number | undefined]>).map(([key, label, count]) => {
           const on = meTab === key;
           return (
-            <button key={key} type="button" aria-pressed={on} onClick={() => { setMeTab(key); if (key === "sats") onUseWallet?.(); }}
+            <button key={key} type="button" aria-pressed={on} onClick={() => { perfTapStart(key); setMeTab(key); if (key === "sats") onUseWallet?.(); }}
               style={{
                 display: "inline-flex", alignItems: "center", gap: 7,
                 // v7 redesign: ink pill for the open tab, quiet outline otherwise.

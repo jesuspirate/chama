@@ -1,0 +1,145 @@
+// Hidden timing readout for Me tab taps (Jet, 6.4.24 rc: "a sec or two after
+// each tap"). Off unless turned on with ?perf=1 or seven taps on the version
+// label. When off, every helper is a cheap no-op apart from one flag read.
+//
+// A tap is timed from the click to the first painted frame after the tapped
+// tab's content has committed. Named steps (signature checks, needs-you and
+// dashboard builds, card drawing) are timed inside the same window; whatever
+// is left is React's other work plus the browser's style, layout and paint.
+
+const STORAGE_KEY = "chama_perf_readout_v1";
+
+type Step = { ms: number; count: number; extra: number };
+export type PerfTap = {
+  label: string;
+  totalMs: number;
+  /** Tap → commit of the new tab (JavaScript: React and the steps below). */
+  renderMs: number;
+  /** Commit → painted frame (browser style, layout and paint). */
+  drawMs: number;
+  steps: Array<{ name: string; ms: number; count: number; extra: number }>;
+};
+
+let enabled: boolean | null = null;
+let current: { label: string; t0: number; committedAt: number | null; steps: Map<string, Step> } | null = null;
+const history: PerfTap[] = [];
+const listeners = new Set<() => void>();
+
+function readEnabled(): boolean {
+  try {
+    if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("perf") === "1") {
+      localStorage.setItem(STORAGE_KEY, "1");
+      return true;
+    }
+    return localStorage.getItem(STORAGE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function perfEnabled(): boolean {
+  if (enabled === null) enabled = readEnabled();
+  return enabled;
+}
+
+export function setPerfEnabled(on: boolean): void {
+  enabled = on;
+  try { if (on) localStorage.setItem(STORAGE_KEY, "1"); else localStorage.removeItem(STORAGE_KEY); } catch { /* best effort */ }
+  if (!on) { current = null; history.length = 0; }
+  listeners.forEach(fn => fn());
+}
+
+export function subscribePerf(fn: () => void): () => void {
+  listeners.add(fn);
+  return () => { listeners.delete(fn); };
+}
+
+export function perfHistory(): readonly PerfTap[] {
+  return history;
+}
+
+const now = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
+
+/** Adds time (and one occurrence) to a named step of the tap being timed. */
+export function perfAdd(name: string, ms: number, extra = 0): void {
+  if (!current) return;
+  const step = current.steps.get(name) ?? { ms: 0, count: 0, extra: 0 };
+  step.ms += ms; step.count += 1; step.extra += extra;
+  current.steps.set(name, step);
+}
+
+/** Runs `fn`, adding its time to `name` while a tap is being timed. */
+export function perfMeasure<T>(name: string, fn: () => T): T {
+  if (!current) return fn();
+  const t0 = now();
+  try { return fn(); } finally { perfAdd(name, now() - t0); }
+}
+
+/** A Me tab was tapped. */
+export function perfTapStart(label: string): void {
+  if (!perfEnabled()) return;
+  current = { label, t0: now(), committedAt: null, steps: new Map() };
+}
+
+/** The tapped tab's content committed; finish at the next painted frame. */
+export function perfTapCommitted(label: string): void {
+  const tap = current;
+  if (!tap || tap.label !== label || tap.committedAt !== null) return;
+  tap.committedAt = now();
+  const finish = () => {
+    if (current !== tap) return;
+    const end = now();
+    history.unshift({
+      label: tap.label,
+      totalMs: end - tap.t0,
+      renderMs: (tap.committedAt ?? end) - tap.t0,
+      drawMs: end - (tap.committedAt ?? end),
+      steps: [...tap.steps.entries()].map(([name, s]) => ({ name, ...s })).sort((a, b) => b.ms - a.ms),
+    });
+    history.length = Math.min(history.length, 12);
+    current = null;
+    listeners.forEach(fn => fn());
+  };
+  if (typeof requestAnimationFrame === "function") requestAnimationFrame(() => setTimeout(finish, 0));
+  else setTimeout(finish, 0);
+}
+
+/** Plain text of the recorded taps, for pasting into a chat. */
+export function perfReport(taps: readonly PerfTap[] = history): string {
+  const ms = (n: number) => `${Math.round(n)} ms`;
+  return taps.map(tap => [
+    `${tap.label}: ${ms(tap.totalMs)} total (React ${ms(tap.renderMs)}, browser draw ${ms(tap.drawMs)})`,
+    ...tap.steps.map(s => `  ${s.name}: ${ms(s.ms)} · ${s.count}×${s.extra ? ` · ${s.extra} uncached` : ""}`),
+  ].join("\n")).join("\n");
+}
+
+/** Seven taps within 4 seconds on the version label toggle the readout. */
+export function versionTapToggle(): () => void {
+  let taps: number[] = [];
+  return () => {
+    const t = now();
+    taps = [...taps.filter(x => t - x < 4000), t];
+    if (taps.length >= 7) { taps = []; setPerfEnabled(!perfEnabled()); }
+  };
+}
+
+import { verifiedSymbol } from "nostr-tools/pure";
+import { EscrowEventKind, type EscrowState } from "../escrow-engine/types.js";
+import { hasVerifiedTradeCreate } from "../escrow-engine/trade-index.js";
+
+/** hasVerifiedTradeCreate, counted for the readout. "Uncached" checks ran a
+ *  full signature verification; cached ones reused nostr-tools' verdict. */
+export function checkedTradeCreate(state: EscrowState): boolean {
+  if (!current) return hasVerifiedTradeCreate(state);
+  const raw = state.eventChain.find(event => event.kind === EscrowEventKind.CREATE)?.raw as Record<symbol, unknown> | undefined;
+  const cached = raw?.[verifiedSymbol] === true;
+  const t0 = now();
+  const ok = hasVerifiedTradeCreate(state);
+  perfAdd("signature checks", now() - t0, cached ? 0 : 1);
+  return ok;
+}
+
+/** True while a Me tab tap is being timed. */
+export function perfTiming(): boolean {
+  return current !== null;
+}

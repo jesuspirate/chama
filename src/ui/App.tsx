@@ -27,6 +27,8 @@ import type { CircleRound } from "../chama/types.js";
 import { getTrustedArbiterPool } from "../arbiters/pool.js";
 import { useState, useEffect, useMemo, useRef, useCallback, lazy, Suspense, type ReactNode } from "react";
 import { sameRecord, useStableList } from "./stable-list.js";
+import { perfMeasure, versionTapToggle } from "./perf-probe.js";
+import { PerfReadout } from "./components/PerfReadout.js";
 import { Capacitor } from "@capacitor/core";
 import { Preferences } from "@capacitor/preferences";
 
@@ -1624,6 +1626,8 @@ export default function App() {
   // while the result is equal. Contents are unchanged: the clock (seconds),
   // the retired ledger and the escrow map are all inputs.
   const retiredKey = [...retiredIds].sort().join(",");
+  // Seven taps on the version label toggle the hidden Me timing readout.
+  const onVersionTap = useMemo(versionTapToggle, []);
   const visibleTrades = useStableList(useMemo(() => [...escrows.values()]
     .filter(s => {
       // Superseded untouched listings stay hidden, but buyer activity upgrades
@@ -2014,7 +2018,7 @@ export default function App() {
   const settledClaimKey = [...settledClaimIds].sort().join(",");
   const needsYouTrades = useStableList(useMemo(() => {
     const ordinaryNeedsYouTrades = pubkey
-      ? selectNeedsYouTrades({ escrows: escrows.values(), userPubkey: pubkey, nowSec: now, settledClaimIds, onchainObservations })
+      ? perfMeasure("needs-you build", () => selectNeedsYouTrades({ escrows: escrows.values(), userPubkey: pubkey, nowSec: now, settledClaimIds, onchainObservations }))
       : [];
     return mergeOnchainPayoutAttention({
       needsYou: ordinaryNeedsYouTrades,
@@ -3336,6 +3340,7 @@ export default function App() {
 
       {helpOpen && <HelpOverlay onClose={() => setHelpOpen(false)} />}
       {toast && <Toast message={toast.message} type={toast.type} sticky={toast.sticky} dismissOnTap={toast.dismissOnTap} onDone={() => setToast(null)} />}
+      <PerfReadout />
       {walletOverlay === "payment-methods" && <SavedHandlesPanel communitySlug={actions.getCommunity()} onClose={() => setWalletOverlay(null)} />}
       {walletOverlay === "lightning" && (
         <PayoutDestinationsPanel onClose={() => setWalletOverlay(null)} />
@@ -3365,7 +3370,7 @@ export default function App() {
               gap: 6,
               flexShrink: 0,
             }}>
-              <div style={{ fontSize: 9, color: __BUILD_STAMP__ ? T.amber : T.muted, fontFamily: T.mono, padding: "4px 10px", borderRadius: 6, background: T.surface, border: `1px solid ${__BUILD_STAMP__ ? T.amber + "55" : T.border}` }}>
+              <div onClick={onVersionTap} style={{ fontSize: 9, color: __BUILD_STAMP__ ? T.amber : T.muted, fontFamily: T.mono, padding: "4px 10px", borderRadius: 6, background: T.surface, border: `1px solid ${__BUILD_STAMP__ ? T.amber + "55" : T.border}` }}>
                 {/* Local/test builds carry an amber "dev <build time>" stamp so a
                     Tauri/ASDK refresh visibly confirms it picked up the new
                     bundle. ship.sh exports CHAMA_RELEASE=1 → clean version. */}

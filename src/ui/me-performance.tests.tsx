@@ -131,3 +131,62 @@ console.log("PASS Me stays still: memoised tabs and rows, stable callbacks, stab
   assert.match(me, /\(ringing \? null : ME_ROW_STYLE_OFFSCREEN\)/, "a ringing row is never paint-contained");
 }
 console.log("PASS Me tabs keep their layout: content-visibility panes and offscreen rows");
+
+{
+  // Hidden timing readout (?perf=1 or 7 taps on the version label).
+  const probe = await import("./perf-probe.js");
+  const { PerfReadout } = await import("./components/PerfReadout.js");
+  storage.delete("chama_perf_readout_v1");
+  assert.equal(probe.perfEnabled(), false, "off by default");
+  assert.equal(renderToStaticMarkup(<PerfReadout />), "", "renders nothing while off");
+  probe.perfTapStart("settings");
+  assert.equal(probe.perfTiming(), false, "taps are not timed while off");
+
+  const toggle = probe.versionTapToggle();
+  for (let i = 0; i < 6; i++) toggle();
+  assert.equal(probe.perfEnabled(), false, "six taps are not enough");
+  toggle();
+  assert.equal(probe.perfEnabled(), true, "the seventh tap turns it on");
+  assert.equal(storage.get("chama_perf_readout_v1"), "1", "and it stays on across reloads");
+
+  const frames: Array<() => void> = [];
+  (globalThis as any).requestAnimationFrame = (fn: () => void) => { frames.push(fn); return frames.length; };
+  probe.perfTapStart("settings");
+  assert.equal(probe.perfTiming(), true);
+  const checked = trades.slice(0, 5).map(t => probe.checkedTradeCreate(t));
+  assert.deepEqual(checked, [true, true, true, true, true], "the counted check gives the same verdict");
+  probe.perfMeasure("dashboard build", () => 1);
+  probe.perfMeasure("needs-you build", () => 2);
+  probe.perfTapCommitted("trades");
+  assert.equal(frames.length, 0, "a commit of another tab does not end the tap");
+  probe.perfTapCommitted("settings");
+  frames.shift()!();
+  await new Promise(r => setTimeout(r, 5));
+  const [tap] = probe.perfHistory();
+  assert.equal(tap.label, "settings");
+  assert.ok(tap.totalMs >= tap.renderMs && tap.drawMs >= 0);
+  const sig = tap.steps.find(s => s.name === "signature checks")!;
+  assert.equal(sig.count, 5, "every signature check is counted");
+  assert.ok(sig.extra <= 5, "uncached checks are counted separately");
+  assert.deepEqual(tap.steps.filter(s => s.name !== "signature checks").map(s => s.name).sort(), ["dashboard build", "needs-you build"]);
+  assert.equal(probe.perfTiming(), false, "the tap is finished");
+  const report = probe.perfReport();
+  assert.match(report, /^settings: \d+ ms total \(React \d+ ms, browser draw \d+ ms\)/);
+  assert.match(report, /\n  signature checks: \d+ ms · 5×/);
+  assert.match(renderToStaticMarkup(<PerfReadout />), /data-perf-readout[\s\S]*settings/, "the readout shows the tap");
+
+  probe.setPerfEnabled(false);
+  assert.equal(storage.has("chama_perf_readout_v1"), false, "Off clears the flag");
+  assert.equal(probe.perfHistory().length, 0);
+
+  const app = readFileSync("src/ui/App.tsx", "utf8");
+  assert.match(app, /onClick=\{onVersionTap\}/, "the version label carries the seven-tap toggle");
+  assert.match(app, /<PerfReadout \/>/);
+  const me = readFileSync("src/ui/screens/MeScreen.tsx", "utf8");
+  assert.match(me, /perfTapStart\(key\); setMeTab\(key\)/, "every Me tab tap starts a timing");
+  assert.match(me, /perfMeasure\("dashboard build"/);
+  assert.match(me, /perfMeasure\("needs-you build"/);
+  assert.match(app, /perfMeasure\("needs-you build"/);
+  assert.match(readFileSync("src/ui/components/TradeCard.tsx", "utf8"), /perfAdd\("card drawing"/);
+}
+console.log("PASS timing readout: off by default, 7 taps or ?perf=1, per-tap total, React vs draw, named steps, copyable report");
