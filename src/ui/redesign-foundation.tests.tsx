@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { renderToStaticMarkup } from "react-dom/server";
 import { T, STATUS, ON_ATTN, applyThemeMode, typeScaleCss } from "./theme.js";
 import { holdReducer, HOLD_TO_CONFIRM_MS, ASSISTIVE_CONFIRM_WINDOW_MS, type HoldState } from "./components/Button.js";
-import { BottomNav, navCss, trackScrollActivity, SCROLL_IDLE_MS } from "./components/BottomNav.js";
+import { BottomNav, CreateButton, navCss, trackScrollActivity, SCROLL_STILL_FALLBACK_MS } from "./components/BottomNav.js";
 import { Badge } from "./components/Badge.js";
 import { ChamaBar } from "./panels/ChamaBar.js";
 import { StatusBarScrim } from "./components/StatusBarScrim.js";
@@ -114,12 +114,23 @@ console.log("PASS hold to confirm: hold confirms once, early lift cancels, taps 
   assert.match(html, />2</, "Home carries the needs-you count");
   const css = navCss();
   assert.match(css, /@media \(min-width:1024px\)\{[\s\S]*\.chama-nav\{top:0;right:auto;width:240px/, "sidebar from 1024px");
-  assert.match(css, /\.chama-create-plus,\.chama-create-fab\{display:none!important\}/, "phone Create hidden beside the sidebar");
+  assert.match(css, /\.chama-create-fab\{display:none!important\}/, "phone Create hidden beside the sidebar");
+  assert.doesNotMatch(css, /chama-create-plus/, "no top-bar plus anywhere");
+  // Jet (6.4.25): Create floats on every phone, iPhone included, never as a
+  // "+" beside the version; the user agent no longer decides.
+  for (const ua of ["Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)", "Mozilla/5.0 (Linux; Android 15; Pixel 8)", "Mozilla/5.0 (Macintosh)"]) {
+    Object.defineProperty(globalThis, "navigator", { configurable: true, value: { userAgent: ua } });
+    const fab = renderToStaticMarkup(<LangProvider><CreateButton onCreate={() => {}} /></LangProvider>);
+    assert.match(fab, /class="chama-create-fab-wrap"[\s\S]*class="chama-create-fab"[\s\S]*>Create</, `${ua}: floating "+ Create"`);
+  }
+  // No fade between glass and solid: the switch is instant both ways.
+  assert.doesNotMatch(css, /\.chama-create-fab\{[^}]*transition/, "no transition on the Create button");
+  assert.doesNotMatch(css, /\.chama-create-fab-scrolling \.chama-create-fab\{[^}]*transition/);
   assert.match(css, /\.chama-create-fab-wrap\{display:none!important\}/, "the Android Create wrapper is hidden beside the sidebar too");
   // Android FAB (6.4.23 RC): while the page scrolls the button itself is
   // frosted glass, about half see-through (no halo around it), and every page
   // ends with room to scroll its last control clear of the button.
-  assert.match(css, /\.chama-create-fab-scrolling \.chama-create-fab\{transition:none;background:#[0-9A-Fa-f]{6}26;[^}]*backdrop-filter:blur\(3px\)[^}]*text-shadow:/, "while scrolling the Create button is a light, clearly see-through glass (15% page tint, 3px blur), at once");
+  assert.match(css, /\.chama-create-fab-scrolling \.chama-create-fab\{background:#[0-9A-Fa-f]{6}26;[^}]*backdrop-filter:blur\(3px\)[^}]*text-shadow:/, "while scrolling the Create button is a light, clearly see-through glass (15% page tint, 3px blur), at once");
   assert.doesNotMatch(css, /\.chama-create-fab-scrolling \.chama-create-fab\{[^}]*background:#[0-9A-Fa-f]{6}80/, "not the half-ink tint that read as flat grey");
   assert.doesNotMatch(css, /\.chama-create-fab-wrap::before/, "no halo around the Create button");
   assert.match(css, /body:has\(\.chama-create-fab\) \.chama-shell-nav::after\{content:"";display:block;height:84px\}/);
@@ -133,11 +144,10 @@ console.log("PASS hold to confirm: hold confirms once, early lift cancels, taps 
   const app = readFileSync(new URL("./App.tsx", import.meta.url), "utf8");
   assert.equal((app.match(/<style>\{globalCss\(\)\}<\/style>\n\s*\{useSafeAreaInsets && <StatusBarScrim \/>\}/g) ?? []).length, 3);
 }
-console.log("PASS nav: Home/Browse/Circles/Me + Create, one active tab, unique coach targets, sidebar ≥1024px");
+console.log("PASS nav: Home/Browse/Circles/Me + Create, one active tab, unique coach targets, sidebar ≥1024px, floating Create on every phone");
 {
-  // Create button glass: on the moment a finger touches the page (before any
-  // scroll event), held while the finger is down, solid again SCROLL_IDLE_MS
-  // after the finger lifts and scrolling stops. Continuous scrolling never flickers.
+  // Create button glass (Jet, 6.4.25): on the moment a finger touches the
+  // page, held while it moves, solid the instant it is still. No idle delay.
   const pending = new Map<number, () => void>();
   let nextId = 1;
   const timers = {
@@ -145,28 +155,43 @@ console.log("PASS nav: Home/Browse/Circles/Me + Create, one active tab, unique c
     clear: (id: unknown) => { pending.delete(id as number); },
   };
   const fireAll = () => { const fns = [...pending.values()]; pending.clear(); fns.forEach((fn) => fn()); };
+
+  // Browsers with scrollend (Chrome, Android WebView, Firefox): no timers at all.
   const seen: boolean[] = [];
-  const activity = trackScrollActivity((on) => seen.push(on), SCROLL_IDLE_MS, timers);
-  assert.equal(SCROLL_IDLE_MS, 300, "same settle time as the pre-redesign Browse button");
-  activity.onPress();
+  const a = trackScrollActivity((on) => seen.push(on), true, timers);
+  a.onPress();
   assert.deepEqual(seen, [true], "glass the moment the finger touches the page, before any scroll");
-  activity.onScroll();
-  activity.onScroll();
-  assert.equal(pending.size, 0, "no settle timer while the finger is still down");
-  activity.onRelease();
-  assert.equal(pending.size, 1, "lifting the finger starts the one settle timer");
-  activity.onScroll();
-  assert.equal(pending.size, 1, "momentum scrolling restarts that timer, never stacks it");
-  assert.deepEqual(seen, [true], "glass turns on once per gesture");
+  a.onRelease();
+  assert.deepEqual(seen, [true, false], "a touch with no movement is solid again the instant the finger lifts");
+  a.onPress(); a.onScroll(); a.onScroll();
+  a.onRelease();
+  assert.deepEqual(seen, [true, false, true], "a fling keeps the glass after the finger lifts, while the page still moves");
+  a.onScrollEnd();
+  assert.deepEqual(seen, [true, false, true, false], "solid the instant the page reports it stopped");
+  a.onPress(); a.onScroll(); a.onScrollEnd();
+  assert.deepEqual(seen.slice(4), [true], "the finger still down keeps the glass even if movement stops");
+  a.onRelease();
+  assert.deepEqual(seen.slice(4), [true, false]);
+  a.onScroll(); a.onScrollEnd();
+  assert.deepEqual(seen.slice(6), [true, false], "a wheel or keyboard scroll also turns it on and off");
+  assert.equal(pending.size, 0, "no timer is ever used where scrollend exists");
+
+  // Safari (no scrollend): still once no scroll has arrived for ~2 frames.
+  assert.equal(SCROLL_STILL_FALLBACK_MS, 34);
+  const safari: boolean[] = [];
+  const b = trackScrollActivity((on) => safari.push(on), false, timers);
+  b.onPress(); b.onScroll(); b.onScroll();
+  assert.equal(pending.size, 1, "one stillness timer, restarted by each scroll, never stacked");
+  b.onRelease();
+  assert.deepEqual(safari, [true], "still moving after the lift");
   fireAll();
-  assert.deepEqual(seen, [true, false], "solid again once scrolling stops");
-  activity.onScroll();
-  assert.deepEqual(seen, [true, false, true], "a scroll without a touch (wheel, keyboard) also turns it on");
-  activity.onPress();
-  activity.dispose();
-  assert.equal(pending.size, 0, "unmount clears the settle timer");
+  assert.deepEqual(safari, [true, false], "solid once the page is still");
+  b.onPress(); b.onRelease();
+  assert.deepEqual(safari, [true, false, true, false], "a still tap is instant on Safari too");
+  b.onScroll(); b.dispose();
+  assert.equal(pending.size, 0, "unmount clears the timer");
 }
-console.log("PASS Create glass: on at first touch, held while scrolling, solid when scrolling stops");
+console.log("PASS Create glass: on at first touch, held while moving, solid the instant the page is still, no fade");
 
 // ── Badge + capsule ──────────────────────────────────────────────────────────
 {
