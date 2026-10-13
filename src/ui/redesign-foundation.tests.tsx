@@ -272,3 +272,22 @@ console.log("PASS badge + capsule: lock on In escrow, sentence case, attention f
   }
 }
 console.log("PASS toasts: wallet-bridge errors read as plain sentences, diagnostics stripped");
+
+// First screen (Jet, 6.4.25): "Log in" on top, "Sign up" below, in every language.
+{
+  const { ConnectScreen, CONNECT_DOORS, CONNECT_DOOR_LABEL } = await import("./screens/ConnectScreen.js");
+  assert.deepEqual([...CONNECT_DOORS], ["returning", "create"], "Log in (returning) first, Sign up (create) second");
+  const words: Record<string, [string, string]> = {
+    en: ["Log in", "Sign up"], fr: ["Se connecter", "S'inscrire"], es: ["Iniciar sesión", "Registrarse"], sw: ["Ingia", "Jisajili"],
+  };
+  for (const [lang, [login, signup]] of Object.entries(words)) {
+    const src = readFileSync(`src/i18n/${lang}/me.ts`, "utf8");
+    assert.ok(src.includes(`"${CONNECT_DOOR_LABEL.returning}": ${JSON.stringify(login)}`), `${lang}: ${login}`);
+    assert.ok(src.includes(`"${CONNECT_DOOR_LABEL.create}": ${JSON.stringify(signup)}`), `${lang}: ${signup}`);
+  }
+  Object.defineProperty(globalThis, "navigator", { configurable: true, value: { userAgent: "Mozilla/5.0", language: "en", languages: ["en"] } });
+  const html = renderToStaticMarkup(<LangProvider><ConnectScreen onConnect={() => {}} onConnectNsec={() => {}} loading={false} error={null} /></LangProvider>);
+  const doors = [...html.matchAll(/data-connect-door="([a-z]+)"[^>]*>([^<]*)</g)].map(m => [m[1], m[2]]);
+  assert.deepEqual(doors, [["returning", "Log in"], ["create", "Sign up"]], "rendered top to bottom: Log in, then Sign up");
+}
+console.log("PASS first screen: Log in on top, Sign up below, in en, fr, es and sw");
