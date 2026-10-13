@@ -544,6 +544,18 @@ export function MeScreen({
   const visitedPanes = useRef(new Set<string>());
   visitedPanes.current.add(shownTab);
   const paneMounted = (key: string) => visitedPanes.current.has(key);
+  // A visited tab that is not on screen keeps its finished layout. With
+  // `hidden` (display:none) the browser threw the layout away, so returning to
+  // My trades re-laid out every card: ~23 ms of layout per tap with 58 trades
+  // on a mid-range phone, against ~2 ms for every other tab. content-visibility
+  // skips rendering the pane but keeps its layout; browsers without it (older
+  // Safari) keep the old display:none behaviour.
+  const paneProps = (key: string) => {
+    const off = shownTab !== key;
+    return KEEP_PANE_LAYOUT
+      ? { "data-me-pane": key, "aria-hidden": off || undefined, style: off ? PANE_OFF_STYLE : undefined }
+      : { "data-me-pane": key, hidden: off };
+  };
   const paneSwitching = meTab !== shownTab && !visitedPanes.current.has(meTab);
   useEffect(() => {
     if (shownTab === "sats" && paidLockFederationId) acknowledgePaidLockRecoveries(paidLockFederationId, balanceMsats);
@@ -1029,7 +1041,7 @@ export function MeScreen({
       {/* Selling has its own pill now (Jet, 2026-09-20: "so it's not in the
           way of legit simple trades") — the same treatment the arbiter view
           already had. Trades is history; Seller is inventory and orders. */}
-      {paneMounted("seller") && <div data-me-pane="seller" hidden={shownTab !== "seller"}>{!hydratingTrades && hasSellerDashboard && (
+      {paneMounted("seller") && <div {...paneProps("seller")}>{!hydratingTrades && hasSellerDashboard && (
         <SellerDashboardPanel
           dashboard={dashboard}
           onOpenTrade={openTrade}
@@ -1038,7 +1050,7 @@ export function MeScreen({
         />
       )}</div>}
 
-      {paneMounted("trades") && <div data-me-pane="trades" hidden={shownTab !== "trades"}>{!hydratingTrades && <>
+      {paneMounted("trades") && <div {...paneProps("trades")}>{!hydratingTrades && <>
         <div>
           <MeTradeHistory
             trades={visibleTrades}
@@ -1063,7 +1075,7 @@ export function MeScreen({
       </>}</div>}
 
       {/* ── SATS — money utilities. Deliberately not called a wallet. ── */}
-      {paneMounted("sats") && <div data-me-pane="sats" hidden={shownTab !== "sats"}>{(
+      {paneMounted("sats") && <div {...paneProps("sats")}>{(
         <div style={{
           background: T.card, border: `1px solid ${T.border}`,
           borderRadius: T.r, padding: 0, overflow: "hidden",
@@ -1079,7 +1091,7 @@ export function MeScreen({
       )}</div>}
 
       {/* ── ARBITER — rendered only for an arbiter / pool member ── */}
-      {paneMounted("arbiter") && <div data-me-pane="arbiter" hidden={shownTab !== "arbiter"}>{!hydratingTrades && dashboard.arbiterVisible && (
+      {paneMounted("arbiter") && <div {...paneProps("arbiter")}>{!hydratingTrades && dashboard.arbiterVisible && (
         <ArbiterDashboardPanel
           dashboard={dashboard}
           onOpenTrade={openTrade}
@@ -1095,7 +1107,7 @@ export function MeScreen({
           presentation choices that are also "you" — appearance and language.
           Everything that is a SETTING (notifications, bonds, advanced, sign
           out) stays in Settings. */}
-      {paneMounted("profile") && <div data-me-pane="profile" hidden={shownTab !== "profile"}>{<>
+      {paneMounted("profile") && <div {...paneProps("profile")}>{<>
         <div style={{
           background: T.card, border: `1px solid ${T.border}`,
           borderRadius: T.r, padding: 0, overflow: "hidden",
@@ -1119,7 +1131,7 @@ export function MeScreen({
         </div>
       </>}</div>}
 
-      {paneMounted("settings") && <div data-me-pane="settings" hidden={shownTab !== "settings"}>{<>
+      {paneMounted("settings") && <div {...paneProps("settings")}>{<>
         {/* v7 redesign (Jet): Settings in clear groups — each a labelled card,
             sign-out on its own. Same rows and handlers as before. */}
         <SettingsGroup label={t("me.groupDisplay")}>
@@ -1160,7 +1172,7 @@ export function MeScreen({
       {/* ── COMMUNITY — the chama switcher, alone. Ratings live on the
           Dashboard; the identity hex lives in the top banner; sign out lives
           in Settings. */}
-      {paneMounted("community") && <div data-me-pane="community" hidden={shownTab !== "community"}>{<>
+      {paneMounted("community") && <div {...paneProps("community")}>{<>
         {onSelectCommunity && (
           <YourChamaCard
             key={requestTab?.n ?? 0}
@@ -1475,6 +1487,15 @@ const MeTradeHistory = memo(function MeTradeHistory({
   );
 });
 
+/** Kept-mounted Me tabs hide with content-visibility where supported, so
+ *  their layout survives a tab switch (see paneProps in MeScreen). */
+const KEEP_PANE_LAYOUT = typeof CSS !== "undefined" && typeof CSS.supports === "function"
+  && CSS.supports("content-visibility", "hidden");
+const PANE_OFF_STYLE = { contentVisibility: "hidden" } as const;
+/** Trade rows below the screen skip layout and paint until scrolled near.
+ *  The size is a placeholder until the row's real height is remembered. */
+export const ME_ROW_STYLE_OFFSCREEN = { contentVisibility: "auto", containIntrinsicSize: "auto 240px" } as const;
+
 /** Only the first rows fade in, with a short stagger. With 150 trades the old
  *  0.05s-per-row stagger left the last row invisible for 7.5s and ran every
  *  animation at once on each filter switch. */
@@ -1545,7 +1566,7 @@ const MeTradeRow = memo(function MeTradeRow({
       key={ringing ? `${s.id}:${ringAt}` : s.id}
       className={ringing ? "chama-pill-target" : undefined}
       data-me-trade-row
-      style={{ animation: meRowAnimation(i, ringing) }}
+      style={{ ...(ringing ? null : ME_ROW_STYLE_OFFSCREEN), animation: meRowAnimation(i, ringing) }}
     >
       <TradeCard state={s} pubkey={pubkey} onSelect={open} amountDisplayMode={amountDisplayMode} quoteCurrency={quoteCurrency} profileNames={profileNames} kind0Enabled={kind0Enabled} />
       {s.status === EscrowStatus.COMPLETED && s.escrowMode === "onchain" && s.onchainPayoutTxid && (

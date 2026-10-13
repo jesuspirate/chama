@@ -10,7 +10,7 @@ import { replayEventChain } from "../escrow-engine/state-machine.js";
 import { EscrowEventKind, type EscrowState, type NostrEvent } from "../escrow-engine/types.js";
 import { LangProvider } from "../i18n/index.js";
 import { ME_TRADE_PAGE_SIZE, searchMeTrades } from "./me-trade-filters.js";
-import { MeScreen, ME_ROW_ANIMATED, meRowAnimation } from "./screens/MeScreen.js";
+import { MeScreen, ME_ROW_ANIMATED, ME_ROW_STYLE_OFFSCREEN, meRowAnimation } from "./screens/MeScreen.js";
 import { sameList, sameRecord } from "./stable-list.js";
 
 const storage = new Map<string, string>();
@@ -113,3 +113,21 @@ console.log("PASS Me list: 30 rows, Show more, search box only for long historie
   }
 }
 console.log("PASS Me stays still: memoised tabs and rows, stable callbacks, stable lists from App");
+
+{
+  // Jet (rc.1, 58 trades): returning to My trades from any Me tab lagged. A
+  // trace at mid-range-phone speed showed 22-33 ms of layout per return (vs
+  // 1-3 ms for other tabs): the kept-mounted pane was hidden with display:none,
+  // which discards its layout, so every card was laid out again.
+  const me = readFileSync("src/ui/screens/MeScreen.tsx", "utf8");
+  assert.doesNotMatch(me, /hidden=\{shownTab !== /, "no Me tab hides with display:none where content-visibility works");
+  for (const pane of ["trades", "seller", "sats", "arbiter", "profile", "settings", "community"]) {
+    assert.match(me, new RegExp(`\\{\\.\\.\\.paneProps\\("${pane}"\\)\\}`), `${pane} uses paneProps`);
+  }
+  assert.match(me, /CSS\.supports\("content-visibility", "hidden"\)/, "feature-checked, with the display:none fallback");
+  assert.match(me, /contentVisibility: "hidden"/);
+  assert.deepEqual(ME_ROW_STYLE_OFFSCREEN, { contentVisibility: "auto", containIntrinsicSize: "auto 240px" },
+    "rows below the screen skip layout until scrolled near");
+  assert.match(me, /\(ringing \? null : ME_ROW_STYLE_OFFSCREEN\)/, "a ringing row is never paint-contained");
+}
+console.log("PASS Me tabs keep their layout: content-visibility panes and offscreen rows");
