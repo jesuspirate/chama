@@ -99,6 +99,12 @@ export interface DestinationPickerProps {
   topSlot?: ReactNode;
 }
 
+/** What Enter in the address or invoice field does. In a hold-to-send picker
+ *  it only readies the hold; it never dispatches. */
+export function enterInDestinationField(holdToSend: boolean): "ready-hold" | "send" {
+  return holdToSend ? "ready-hold" : "send";
+}
+
 export function DestinationPicker({
   draft, onBack,
   amountSats,
@@ -242,9 +248,14 @@ export function DestinationPicker({
     }
   };
 
+  // With holdToSend, Enter never sends: it moves to the Hold to send button
+  // (Jet, 6.4.25-rc.1: "every send is still a hold"). Without it, Enter keeps
+  // its old meaning in pickers that never asked for holds.
+  const [holdReady, setHoldReady] = useState(0);
   const commitOnEnter = (e: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     if (e.key !== "Enter" || e.shiftKey || busy) return;
     e.preventDefault();
+    if (enterInDestinationField(holdToSend) === "ready-hold") { setHoldReady(n => n + 1); return; }
     void dispatchTyped(saveTyped);
   };
 
@@ -296,6 +307,7 @@ export function DestinationPicker({
   const renderPrimarySubmitButton = (marginBottom = 10, saveAfterOverride = true) => holdToSend ? (
     <div style={{ marginBottom }}>
       <HoldToConfirm label={busy ? submitLabel : t("claim.holdToSend", { amount: amountSats.toLocaleString() })} disabled={busy} busy={busy}
+        readySignal={holdReady}
         onConfirm={() => void dispatchTyped(saveAfterOverride)}
         hint={t("common.holdToConfirm")} armedLabel={t("common.holdArmed")} />
     </div>

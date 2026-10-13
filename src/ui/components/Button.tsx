@@ -158,7 +158,7 @@ function haptic(kind: "light" | "heavy"): void {
  */
 export function HoldToConfirm({
   label, armedLabel, hint, onConfirm, disabled, busy, icon, variant = "primary", resetKey, holdMs = HOLD_TO_CONFIRM_MS,
-  "data-coach": dataCoach, plain = false,
+  "data-coach": dataCoach, plain = false, readySignal,
 }: {
   label: ReactNode;
   /** Shown + announced after a first screen-reader activation. */
@@ -177,8 +177,13 @@ export function HoldToConfirm({
   /** Render as a plain tap button with the same handler (used where a later
    *  step holds instead — e.g. Collect opening a claim sheet that holds). */
   plain?: boolean;
+  /** Each new non-zero value (e.g. Enter in a form field) moves focus to this
+   *  button and emphasises "press and hold". It never confirms: the money
+   *  still moves only after a completed hold. */
+  readySignal?: number;
 }) {
   const [state, setState] = useState<HoldState>({ kind: "idle" });
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
   const [progress, setProgress] = useState(0);
   const [showHint, setShowHint] = useState(false);
   const raf = useRef<number | null>(null);
@@ -196,6 +201,11 @@ export function HoldToConfirm({
   };
   // A new action (resetKey) always starts fresh.
   useEffect(reset, [resetKey]);
+  useEffect(() => {
+    if (!readySignal || disabled || busy) return;
+    buttonRef.current?.focus();
+    setShowHint(true);
+  }, [readySignal]);
   // Becoming usable again resets — so a failed action can be retried — but
   // becoming BUSY must not: the confirm sets busy, and resetting then swept the
   // fill back to 0 and dimmed the button mid-action (the glitch Jet saw on
@@ -258,10 +268,12 @@ export function HoldToConfirm({
     <div style={{ display: "flex", flexDirection: "column", gap: 6, width: "100%" }}>
       <style>{HOLD_CSS}</style>
       <button
+        ref={buttonRef}
         type="button"
         disabled={inactive}
         data-coach={dataCoach}
         data-hold-state={state.kind}
+        data-hold-ready={showHint || undefined}
         className={done ? "chama-hold-done" : undefined}
         style={{ ...base, position: "relative", overflow: "hidden", touchAction: "none", userSelect: "none", WebkitUserSelect: "none" }}
         onPointerDown={e => {
