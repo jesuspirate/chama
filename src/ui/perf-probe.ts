@@ -18,6 +18,9 @@ export type PerfTap = {
   /** Commit → painted frame (browser style, layout and paint). */
   drawMs: number;
   steps: Array<{ name: string; ms: number; count: number; extra: number }>;
+  /** A timed flow (Lock invoice) rather than a Me tab tap: only the total
+   *  and its steps mean anything. */
+  flow?: boolean;
 };
 
 let enabled: boolean | null = null;
@@ -104,11 +107,49 @@ export function perfTapCommitted(label: string): void {
   else setTimeout(finish, 0);
 }
 
+// ── Lock invoice timing (Step 0) ─────────────────────────────────────────
+// From the completed Lock hold to the invoice on screen, in steps, so a
+// device readout shows which part of the wait dominates. Each step is the
+// time since the previous one.
+
+let lockFlow: { t0: number; last: number; steps: Array<{ name: string; ms: number; count: number; extra: number }> } | null = null;
+
+/** The Lock hold completed. */
+export function perfLockStart(): void {
+  if (!perfEnabled()) return;
+  const t = now();
+  lockFlow = { t0: t, last: t, steps: [] };
+}
+
+/** A step of the Lock flow finished. */
+export function perfLockStep(name: string): void {
+  if (!lockFlow) return;
+  const t = now();
+  lockFlow.steps.push({ name, ms: t - lockFlow.last, count: 1, extra: 0 });
+  lockFlow.last = t;
+}
+
+/** The invoice is on screen (or the flow ended without one). */
+export function perfLockEnd(outcome: "invoice shown" | "no invoice"): void {
+  const flow = lockFlow;
+  if (!flow) return;
+  lockFlow = null;
+  const finish = () => {
+    const end = now();
+    if (end - flow.last > 1) flow.steps.push({ name: outcome === "invoice shown" ? "draw" : "end", ms: end - flow.last, count: 1, extra: 0 });
+    history.unshift({ label: `Lock invoice · ${outcome}`, totalMs: end - flow.t0, renderMs: end - flow.t0, drawMs: 0, steps: flow.steps, flow: true });
+    history.length = Math.min(history.length, 12);
+    listeners.forEach(fn => fn());
+  };
+  if (outcome === "invoice shown" && typeof requestAnimationFrame === "function") requestAnimationFrame(() => setTimeout(finish, 0));
+  else finish();
+}
+
 /** Plain text of the recorded taps, for pasting into a chat. */
 export function perfReport(taps: readonly PerfTap[] = history): string {
   const ms = (n: number) => `${Math.round(n)} ms`;
   return `${PROFILER_BUILD ? "React profiler on" : "React profiler off (release build)"}\n` + taps.map(tap => [
-    `${tap.label}: ${ms(tap.totalMs)} total (React ${ms(tap.renderMs)}, browser draw ${ms(tap.drawMs)})`,
+    tap.flow ? `${tap.label}: ${ms(tap.totalMs)} total` : `${tap.label}: ${ms(tap.totalMs)} total (React ${ms(tap.renderMs)}, browser draw ${ms(tap.drawMs)})`,
     ...tap.steps.map(s => `  ${s.name}: ${ms(s.ms)} · ${s.count}×${s.extra ? ` · ${s.extra} uncached` : ""}`),
   ].join("\n")).join("\n");
 }
