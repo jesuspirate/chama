@@ -778,6 +778,12 @@ export function LiveTradeSurface({
              background as a dead band between the panes (Jet's 6.3 phone
              screenshot). 52dvh is definite everywhere. */
           .lts-votes{max-height:calc(var(--chama-viewport-height, 100dvh) * .52)}
+          /* Jet (6.4.25, Pixel): the decision area read as a separate white
+             panel with its own margins under the people card. On phones it
+             now shares the page background and the cards' 16px sides, with
+             even 12px gaps between what it holds. */
+          .lts-pane.lts-votes{background:${T.bg};padding:12px 16px}
+          .lts-decision-well{display:flex;flex-direction:column;gap:12px}
           [data-chat-focused] .lts-header{max-height:35%;overflow-y:auto;flex-shrink:1}
           [data-chat-focused] .lts-grid{grid-template-rows:minmax(0, .3fr) minmax(100px, 1fr)}
           [data-chat-focused] .lts-votes{max-height:none;padding:8px 12px}
@@ -794,6 +800,9 @@ export function LiveTradeSurface({
           .lts-hero-slim{display:block}
         }
         .lts-room{padding:12px 16px;background:${T.bg}}
+        /* One clock line per screen (Jet, 6.4.25): a "Your turn" card shows
+           the clock in its header, so the line under the people card hides. */
+        body:has([data-decision-clock]) .lts-clock{display:none}
         .lts-summary{background:${T.bg}}
         @media (min-width:900px){
           .lts-summary{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr);gap:12px;padding:12px 16px}
@@ -1097,7 +1106,7 @@ function Decision({ q, sub, children }: { q: string; sub?: string; children: Rea
     }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
         <div style={{ fontSize: T.fs.secondary, fontWeight: 700, color: T.attnInk }}>{tr("lts.yourTurn")}</div>
-        {clock && <div style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: T.fs.secondary, fontWeight: 600, color: T.ink2 }}>
+        {clock && <div data-decision-clock style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: T.fs.secondary, fontWeight: 600, color: T.ink2 }}>
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
           {clock}
         </div>}

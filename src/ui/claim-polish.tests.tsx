@@ -77,3 +77,17 @@ console.log("PASS saved wallets: a recognisable name (Fedi wallet, Strike · bit
 }
 console.log("PASS Browse attention: one signal, the top bar");
 
+{
+  // Trade room: a "Your turn" card shows the clock; the line under the people
+  // card hides then, so the expiry appears once.
+  const lts = readFileSync(new URL("./screens/LiveTradeSurface.tsx", import.meta.url), "utf8");
+  assert.match(lts, /\{clock && <div data-decision-clock /);
+  assert.match(lts, /body:has\(\[data-decision-clock\]\) \.lts-clock\{display:none\}/);
+  assert.match(lts, /className="lts-clock"/, "the line stays for screens without a card");
+  // Phone layout: the decision area shares the page background and the cards'
+  // 16px sides, with even 12px gaps — no separate white panel.
+  assert.match(lts, /\.lts-pane\.lts-votes\{background:\$\{T\.bg\};padding:12px 16px\}/);
+  assert.match(lts, /\.lts-decision-well\{display:flex;flex-direction:column;gap:12px\}/);
+}
+console.log("PASS trade room: one clock line per screen; on phones one calm page, even gaps, aligned edges");
+
