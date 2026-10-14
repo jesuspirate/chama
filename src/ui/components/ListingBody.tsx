@@ -1,6 +1,6 @@
 import { parseListingBody } from '../../listings/body.js';
 export function ListingBody({ body }: { body: string }) {
-  return <div style={{ overflowWrap: 'anywhere', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>
+  return <div data-selectable style={{ overflowWrap: 'anywhere', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>
     {parseListingBody(body).map((block, i) => <div key={i} style={{ minHeight: '1em' }}>
       {block.type === 'item' && '• '}
       {block.children.map((node, j) => node.type === 'link'

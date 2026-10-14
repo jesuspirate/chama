@@ -19,16 +19,18 @@
         -moz-osx-font-smoothing: grayscale;
       }
       html, body { height: 100%; }
-      /* In the Android and desktop apps, long-press or fast taps on app
-         chrome must not select the page: GrapheneOS drew the selection with
-         black boxes over the canvas heading (Jet, 6.4.25-rc.6). Only chrome
-         is unselectable (headings, labels, buttons, tabs, the bottom bar,
-         the version label, the guided canvas); addresses, invoices, keys and
-         chat keep normal selection. */
-      html[data-native-app] :is(h1, h2, h3, h4, h5, h6, button, label, nav, summary, [role="tab"], [role="button"], [data-chrome], .assisted-canvas) {
+      /* In the Android and desktop apps nothing is selectable unless it is
+         something people copy. GrapheneOS drew the selection with black
+         boxes over the canvas heading (Jet, 6.4.25-rc.6), and labelling
+         chrome one tag at a time left the trade screen selectable (rc.7).
+         So the page opts out and copyable things opt back in: fields, chat
+         messages, anything marked data-selectable, code, and the monospace
+         or break-all text Chama uses for addresses, invoices, keys and
+         codes. The web is unchanged. */
+      html[data-native-app] body {
         -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
       }
-      html[data-native-app] :is(input, textarea, [contenteditable], [data-selectable]) {
+      html[data-native-app] :is(input, textarea, [contenteditable], [data-selectable], code, pre, kbd, samp, [style*="JetBrains Mono"], [style*="monospace"], [style*="break-all"]) {
         -webkit-user-select: text; user-select: text; -webkit-touch-callout: default;
       }
       body { overscroll-behavior: contain; }

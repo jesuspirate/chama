@@ -244,7 +244,7 @@ export function OnchainTradeControls({ state, pubkey, profileNames, kind0Enabled
       })}>{choosingWithVote ? "Confirm · receive in Chama" : "Send to my Chama key instead"}</button>
     </div>}
     {view.canSettle && !choice && role !== winner?.role && <p role="status">Waiting for {winnerName} to choose where the sats go.</p>}
-    {view.canSettle && choice && <p style={{ color: T.muted, overflowWrap: "anywhere" }}>Payout address: {choice.destination}
+    {view.canSettle && choice && <p data-selectable style={{ color: T.muted, overflowWrap: "anywhere" }}>Payout address: {choice.destination}
       {choice.locked && <><br />The other signer has signed. The destination is fixed.</>}</p>}
     {(!view.canSettle || choice) && <>
     {retired ? <div>

@@ -102,9 +102,9 @@ export function OverlaySheet({ title, subtitle, onClose, children, dismissible =
             style={{ background: "none", border: 0, boxShadow: "none", color: T.muted, fontSize: 24, width: 44, minHeight: 44, flexShrink: 0, cursor: dismissible ? "pointer" : "default" }}>×</button>}
         </div>
         {subtitle && (
-          <div style={{
+          <div data-selectable style={{
             fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans,
-            margin: "8px 0 16px", lineHeight: 1.5,
+            margin: "8px 0 16px", lineHeight: 1.5, overflowWrap: "anywhere",
           }}>
             {subtitle}
           </div>

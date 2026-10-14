@@ -761,7 +761,7 @@ export function LiveTradeSurface({
   );
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0, background: T.bg, paddingBottom: 12 }}>
+    <div className="lts-root" style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0, background: T.bg, paddingBottom: 12 }}>
       {state.rejectedLockRecovery?.pubkey === pubkey && onReclaimRejectedLock &&
         <RejectedLockRefund amountMsats={state.rejectedLockRecovery.amountMsats} onReclaim={() => onReclaimRejectedLock(state.id)} />}
       {reabsorbedLockAmount(state.id) && <p>{tr("trade.lockReabsorbed", {amount:Math.floor(reabsorbedLockAmount(state.id)! / 1000).toLocaleString()})}</p>}
@@ -829,6 +829,24 @@ export function LiveTradeSurface({
         }
         .lts-room-people{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;align-items:start;
           padding:12px 6px;border-radius:20px;background:${T.surface};border:1px solid ${T.line}}
+        /* The decision card carries the clock; the header line would repeat it. */
+        .lts-root:has([data-decision-clock]) .lts-clock{display:none}
+        /* Phones (Jet, 6.4.25-rc.7 on a Pixel 8): the decision must fit
+           without scrolling its pane, and the bottom half reads as its own
+           sheet, separated from the trade facts above by a clear edge. */
+        @media (max-width:720px){
+          .lts-room{padding:8px 12px}
+          .lts-room-people{padding:6px 4px}
+          .lts-money{padding:8px 12px 0!important}
+          .lts-money>div{padding:10px 14px!important}
+          .lts-home{padding:2px 12px!important}
+          .lts-grid{background:transparent;gap:0;margin-top:4px}
+          .lts-votes{padding:14px 14px 12px;border-top:1px solid ${T.borderHi};border-radius:${T.rSheet}px ${T.rSheet}px 0 0;
+            box-shadow:0 -10px 28px rgba(0,0,0,.28)}
+          .lts-chat{border-top:1px solid ${T.line}}
+          .lts-decision-well{display:flex;flex-direction:column}
+          .lts-prelock-facts{order:2;margin-top:16px}
+        }
         @keyframes ltsPulse{0%,100%{box-shadow:0 0 0 0 ${T.amber}00}50%{box-shadow:0 0 0 4px ${T.amber}33}}
       `}</style>
 
@@ -860,7 +878,7 @@ export function LiveTradeSurface({
         </div>
       </div>
 
-      {onHome && <button type="button" onClick={onHome} aria-label={tr("lts.backHome")} style={{ background: "none", border: 0, padding: "8px 16px", cursor: "pointer", alignSelf: "flex-start" }}><Wordmark /></button>}
+      {onHome && <button type="button" className="lts-home" onClick={onHome} aria-label={tr("lts.backHome")} style={{ background: "none", border: 0, padding: "8px 16px", cursor: "pointer", alignSelf: "flex-start" }}><Wordmark /></button>}
       {/* Header (v7 redesign): back with a drawn chevron, the trade's mark,
           share and the status badge. Sentence-case DM Sans throughout. */}
       <div style={{
@@ -978,13 +996,15 @@ export function LiveTradeSurface({
               tall phase (reason chips, slice chooser) scrolls instead of
               clipping at the top the way justify-content:center would. */}
           <div className="lts-decision-well"><DecisionClock.Provider value={clockText ?? null}>
-            {state.status === EscrowStatus.CREATED && <>
+            {/* On phones these follow the decision (CSS order), so the
+                question and its hold button are what the pane opens on. */}
+            {state.status === EscrowStatus.CREATED && <div className="lts-prelock-facts">
               {/* Before taking a seat the arbiter's record helps decide; once
                   seated it is one tap away on the arbiter (Jet, rc.7: the
                   decision area was taller than the screen). */}
               {myRole === null && <TradeArbiterRecord profileNames={profileNames} kind0Enabled={kind0Enabled} state={state} trades={knownTrades} fetchBonds={fetchCommunityBonds} />}
               {state.body && <ListingBody body={state.body} />}
-            </>}
+            </div>}
             <ReplayNotes notes={state.replayNotes} />
             {historyReloading && <p role="status">Refreshing this trade's history…</p>}
             {!state.pendingVote && myRole && myRole !== Role.ARBITER && state.status === EscrowStatus.LOCKED
@@ -1015,7 +1035,7 @@ export function LiveTradeSurface({
               <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", overflowWrap: "anywhere", background: T.raised, borderRadius: 12 }}>
                 <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
                   <div style={{ fontSize: T.fs.secondary, color: T.ink2 }}>{railLabel(state.lock.handle.rail)}</div>
-                  <div style={{ fontSize: T.fs.headline, fontWeight: 600, color: T.ink }}>{handleDisplayForViewer(state.lock.handle.value, true)}</div>
+                  <div data-selectable style={{ fontSize: T.fs.headline, fontWeight: 600, color: T.ink }}>{handleDisplayForViewer(state.lock.handle.value, true)}</div>
                   {!!state.lock.handle.networks?.length && <div style={{ fontSize: T.fs.secondary, color: T.ink2 }}>{state.lock.handle.networks.map(key => railLabel(key)).join(" · ")}</div>}
                 </div>
                 <CopyButton value={state.lock.handle.value} />

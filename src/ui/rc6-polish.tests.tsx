@@ -28,8 +28,8 @@ import { getRailByKey, railLabel, railEntryName, toRailKey, matchRails } from ".
   assert.equal(railEntryName("cashtag"), "$cashtag (Cash App)");
   assert.equal(railEntryName("$cashtag (Cash App)"), "$cashtag (Cash App)");
   const tradeDetails = readFileSync(new URL("./components/TradePaymentDetails.tsx", import.meta.url), "utf8");
-  assert.match(tradeDetails, /\{railEntryName\(h\.rail\)\} · \{h\.handle\}/, "choosing saved details shows the full name");
-  assert.match(tradeDetails, /<option key=\{key\} value=\{key\}>\{railEntryName\(key\)\}<\/option>/, "adding details shows the full name");
+  assert.match(tradeDetails, /label: `\$\{railEntryName\(h\.rail\)\} · \$\{h\.handle\}`/, "choosing saved details shows the full name");
+  assert.match(tradeDetails, /aria-checked=\{rail === key\}[^>]*>[\s\S]{0,400}\{railEntryName\(key\)\}<\/button>/, "adding details shows the full name");
   const handles = readFileSync(new URL("./panels/SavedHandlesPanel.tsx", import.meta.url), "utf8");
   assert.doesNotMatch(handles, /railLabel/, "payment methods settings keep \"$cashtag (Cash App)\"");
   const canvas = readFileSync(new URL("./screens/AssistedCanvas.tsx", import.meta.url), "utf8");
@@ -89,13 +89,14 @@ console.log("PASS tab bar: tapping the tab you're on scrolls to the top; at the 
 
 {
   // Jet (rc.6, GrapheneOS): holding the canvas heading selected it, with black
-  // selection boxes. In the native apps, labels and headings don't select;
-  // fields, codes, keys and chat messages still do. The web is unchanged.
+  // selection boxes; rc.7: the trade screen still selected. In the native
+  // apps the page opts out and copyable things opt back in. The web is
+  // unchanged.
   const html = readFileSync(new URL("../../index.html", import.meta.url), "utf8");
-  // Only chrome is unselectable; nothing turns selection off for the page.
-  assert.match(html, /html\[data-native-app\] :is\(h1, h2, h3, h4, h5, h6, button, label, nav, summary, \[role="tab"\], \[role="button"\], \[data-chrome\], \.assisted-canvas\) \{\s*-webkit-user-select: none; user-select: none; -webkit-touch-callout: none;/);
-  assert.doesNotMatch(html, /html\[data-native-app\] body \{[^}]*user-select: none/, "addresses, invoices and keys are never switched off");
-  assert.match(html, /html\[data-native-app\] :is\(input, textarea, \[contenteditable\], \[data-selectable\]\) \{\s*-webkit-user-select: text; user-select: text;/);
+  assert.match(html, /html\[data-native-app\] body \{\s*-webkit-user-select: none; user-select: none; -webkit-touch-callout: none;/);
+  assert.match(html, /html\[data-native-app\] :is\(input, textarea, \[contenteditable\], \[data-selectable\], code, pre, kbd, samp, \[style\*="JetBrains Mono"\], \[style\*="monospace"\], \[style\*="break-all"\]\) \{\s*-webkit-user-select: text; user-select: text;/,
+    "fields, chat, marked values and monospace or break-all addresses, invoices, keys and codes stay copyable");
+  assert.doesNotMatch(html, /^\s*(html|body|#root)(?![^{]*data-native-app)[^{]*\{[^}]*user-select: none/m, "the web build never turns selection off");
   const appSrc = readFileSync(new URL("./App.tsx", import.meta.url), "utf8");
   assert.match(appSrc, /<div data-chrome onClick=\{onVersionTap\}/, "the version label (seven fast taps) never selects");
   const main = readFileSync(new URL("../main.tsx", import.meta.url), "utf8");
@@ -103,4 +104,4 @@ console.log("PASS tab bar: tapping the tab you're on scrolls to the top; at the 
   const chat = readFileSync(new URL("./panels/ChatPanel.tsx", import.meta.url), "utf8");
   assert.match(chat, /\{payload\.message && \(\s*<div data-selectable/, "chat messages stay copyable");
 }
-console.log("PASS native apps: chrome (headings, labels, buttons, tabs, version label, canvas) doesn't select; addresses, invoices, keys and chat do; web unchanged");
+console.log("PASS native apps: nothing selects except fields, chat, marked values and monospace addresses, invoices, keys and codes; web unchanged");
