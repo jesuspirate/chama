@@ -590,15 +590,22 @@ export function DestinationPicker({
   );
 }
 
+/** Plain, translated words for "couldn't reach the wallet's server": which
+ *  server, which step, and that nothing was paid. */
+export function lnurlUnreachableText(e: unknown, lang = getCurrentLang()): string | null {
+  if (!(e instanceof LnurlError) || e.code !== "LnurlDnsError" || !e.unreachable) return null;
+  return translate(lang, e.unreachable.step === "lookup" ? "claim.errWalletLookupUnreachable" : "claim.errWalletInvoiceUnreachable", { host: e.unreachable.host });
+}
+
 function formatLnurlError(e: unknown, rawLnurl = false): string {
   if (e instanceof LnurlError) {
     switch (e.code) {
       case "LnurlParseError":
         return e.message;
       case "LnurlDnsError":
-        return rawLnurl && typeof window !== "undefined" && !Capacitor.isNativePlatform() && !isTauriRuntime()
-          ? translate(getCurrentLang(), "claim.errLnurlBrowserCors")
-          : translate(getCurrentLang(), "claim.errWalletServerUnreachable", { message: e.message });
+        if (rawLnurl && typeof window !== "undefined" && !Capacitor.isNativePlatform() && !isTauriRuntime())
+          return translate(getCurrentLang(), "claim.errLnurlBrowserCors");
+        return lnurlUnreachableText(e) ?? translate(getCurrentLang(), "claim.errWalletServerUnreachable", { message: e.message });
       case "LnurlWithdrawRequestError":
         return translate(getCurrentLang(), "claim.errLnurlWithdraw");
       case "LnurlServerError":

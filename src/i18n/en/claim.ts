@@ -116,6 +116,13 @@ export const claim: Record<string, string> = {
     "Tando returned an unexpected response. Try again, or use Lightning.",
   "claim.errTandoServer": "Tando's server is busy right now. Try again in a moment.",
   "claim.errWalletServerUnhappy": "That wallet's server is unhappy. {message}",
+  "claim.phaseAskingWallet": "Asking your wallet for an invoice…",
+  "claim.inWalletNotPaidYet": "Your claim is already done, so your sats are in this app's wallet. Nothing has been paid out yet.",
+  "claim.notStartedYet": "Your claim hasn't started yet, so your sats are still in the trade.",
+  "claim.titleWalletNoInvoice": "Your wallet didn't send an invoice",
+  "claim.chooseAnotherWallet": "Try again or choose another wallet",
+  "claim.errWalletLookupUnreachable": "Couldn't reach {host} to look up this wallet. Nothing was paid. Check the address, or choose another wallet.",
+  "claim.errWalletInvoiceUnreachable": "Couldn't reach {host} to get an invoice. Nothing was paid. Try again in a moment, or choose another wallet.",
   "claim.errWalletServerUnreachable":
     "Couldn't reach that wallet's server. {message}",
   "claim.errWalletUnexpected":

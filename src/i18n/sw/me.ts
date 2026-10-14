@@ -1,8 +1,8 @@
 export const me: Record<string, string> = {
   "backup.copyKey": "Nakili ufunguo",
   "connect.homeHeading": "Karibu nyumbani, mwananchi wa Chama.",
-  "chooser.citizen": "Mimi ni mwananchi",
-  "chooser.become": "Kuwa mwananchi",
+  "chooser.citizen": "Ingia",
+  "chooser.become": "Jisajili",
   "signer.namedRefused": "Kitia saini chako hakikuidhinisha {action}. Chama imesimama hapa. Jaribu tena.",
   "signer.listingAction": "kuunda tangazo hili",
   "signer.voteAction": "kupiga kura kwenye biashara hii",

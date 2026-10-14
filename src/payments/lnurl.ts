@@ -1,4 +1,5 @@
 import { errorText } from "./error-text.js";
+import { defaultLnurlFetch, type LnurlFetch } from "./lnurl-transport.js";
 import { decodeBolt11Payment, isBolt11PaymentInfo } from "./bolt11.js";
 // ══════════════════════════════════════════════════════════════════════════
 // Chama — LNURL-pay resolver for Lightning Address claim destinations
@@ -28,7 +29,13 @@ import { decodeBolt11Payment, isBolt11PaymentInfo } from "./bolt11.js";
 /** Code-tagged error carrying the failure category. Callers branch on
  *  `.code` to render the right message. */
 export class LnurlError extends Error {
-  constructor(public code: LnurlErrorCode, message: string) {
+  constructor(
+    public code: LnurlErrorCode,
+    message: string,
+    /** For an unreachable server: which host, and which step failed — the
+     *  wallet lookup or the invoice request. Lets the UI say it plainly. */
+    public unreachable?: { host: string; step: "lookup" | "invoice" },
+  ) {
     super(message);
     this.name = "LnurlError";
   }
@@ -254,9 +261,7 @@ async function lnurlHttpErrorMessage(res: Response, fallback: string): Promise<s
  *  globalThis.fetch. */
 export async function fetchLnurlPayMetadata(
   address: string,
-  fetchImpl: typeof fetch = (typeof fetch !== "undefined" ? fetch : (() => {
-    throw new Error("fetch is not available in this environment");
-  }) as any),
+  fetchImpl: LnurlFetch | typeof fetch = defaultLnurlFetch(),
 ): Promise<LnurlPayMetadata> {
   const { user, domain } = parseLightningAddress(address);
   const url = `https://${domain}/.well-known/lnurlp/${user}`;
@@ -270,9 +275,7 @@ export async function fetchLnurlPayMetadataUrl(
     try { return new URL(url).host; }
     catch { return "LNURL server"; }
   })(),
-  fetchImpl: typeof fetch = (typeof fetch !== "undefined" ? fetch : (() => {
-    throw new Error("fetch is not available in this environment");
-  }) as any),
+  fetchImpl: LnurlFetch | typeof fetch = defaultLnurlFetch(),
 ): Promise<LnurlPayMetadata> {
   let res: Response;
   try {
@@ -280,7 +283,8 @@ export async function fetchLnurlPayMetadataUrl(
   } catch (e: any) {
     throw new LnurlError(
       "LnurlDnsError",
-      `Couldn't reach ${label}: ${errorText(e, "network error")}`,
+      `Couldn't reach ${label} to look up this wallet (${errorText(e, "network error")}). Nothing was paid.`,
+      { host: label, step: "lookup" },
     );
   }
   if (!res.ok) {
@@ -338,9 +342,7 @@ export async function fetchLnurlPayMetadataUrl(
 export async function requestLnurlInvoice(
   meta: LnurlPayMetadata,
   amountSats: number,
-  fetchImpl: typeof fetch = (typeof fetch !== "undefined" ? fetch : (() => {
-    throw new Error("fetch is not available in this environment");
-  }) as any),
+  fetchImpl: LnurlFetch | typeof fetch = defaultLnurlFetch(),
 ): Promise<string> {
   const amountMsats = amountSats * 1000;
   if (amountMsats < meta.minSendable || amountMsats > meta.maxSendable) {
@@ -359,7 +361,8 @@ export async function requestLnurlInvoice(
   } catch (e: any) {
     throw new LnurlError(
       "LnurlDnsError",
-      `LNURL callback unreachable: ${errorText(e, "network error")}`,
+      `Couldn't reach ${callbackHost(meta.callback)} to get an invoice (${errorText(e, "network error")}). Nothing was paid.`,
+      { host: callbackHost(meta.callback), step: "invoice" },
     );
   }
   if (!res.ok) {
@@ -401,13 +404,17 @@ export async function requestLnurlInvoice(
   return body.pr;
 }
 
+function callbackHost(callback: string): string {
+  try { return new URL(callback).host; } catch { return "the wallet's server"; }
+}
+
 /** One-shot helper: address + amount → BOLT11. Composes
  *  parseLightningAddress → fetchLnurlPayMetadata → requestLnurlInvoice.
  *  This is what DestinationPicker calls for Tier 1 / Tier 2. */
 export async function resolveLightningAddressToInvoice(
   address: string,
   amountSats: number,
-  fetchImpl?: typeof fetch,
+  fetchImpl?: LnurlFetch | typeof fetch,
 ): Promise<string> {
   const meta = await fetchLnurlPayMetadata(address, fetchImpl);
   return requestLnurlInvoice(meta, amountSats, fetchImpl);
@@ -417,7 +424,7 @@ export async function resolveLightningAddressToInvoice(
 export async function resolveRawLnurlToInvoice(
   rawLnurl: string,
   amountSats: number,
-  fetchImpl?: typeof fetch,
+  fetchImpl?: LnurlFetch | typeof fetch,
 ): Promise<string> {
   const url = parseRawLnurl(rawLnurl);
   const meta = await fetchLnurlPayMetadataUrl(url, undefined, fetchImpl);

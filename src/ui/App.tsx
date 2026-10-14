@@ -3764,6 +3764,9 @@ export default function App() {
           getLightningGatewayCount={actions.getLightningGatewayCount}
           onWithdrawEcash={() => { setPendingClaim(null); setShowEcashExport(true); }}
           escrowId={pendingClaim.escrowId}
+          // Same test as useEscrow's claimAlreadyPublished: a CLAIMED trade
+          // only resumes the payout, so its sats are already in this wallet.
+          claimAlreadyPublished={escrows.get(pendingClaim.escrowId)?.status === EscrowStatus.CLAIMED}
           payoutMsats={pendingClaim.payoutMsats}
           premiumMsats={pendingClaim.premiumMsats ?? 0}
           savedDestinations={listPayoutDestinations()}
