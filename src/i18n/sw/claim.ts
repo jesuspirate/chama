@@ -15,6 +15,8 @@ export const claim: Record<string, string> = {
   "claim.railTiming": "Lightning · sekunde · Bitcoin · ~saa 1 · Ecash · bila ada",
 
   "claim.cashOutCurrency": "Toa pesa kwa {currency}",
+  "claim.fediWallet": "Pochi ya Fedi",
+  "claim.lightningWalletAt": "Pochi ya Lightning kwenye {host}",
   "claim.yourWallets": "Pochi zako",
   "claim.ecashMethod": "Pata noti ya ecash",
   "claim.sandboxKeep": "Weka kwenye pochi ya sandbox",
@@ -106,6 +108,13 @@ export const claim: Record<string, string> = {
     "Tando imerudisha jibu lisilotarajiwa. Jaribu tena, au tumia Lightning.",
   "claim.errTandoServer": "Seva ya Tando ina shughuli nyingi sasa. Jaribu tena baada ya muda mfupi.",
   "claim.errWalletServerUnhappy": "Seva ya pochi hiyo ina tatizo. {message}",
+  "claim.phaseAskingWallet": "Inaomba ankara kutoka kwa pochi yako…",
+  "claim.inWalletNotPaidYet": "Dai lako limeshafanyika, kwa hivyo sats zako ziko kwenye pochi ya programu hii. Bado hakuna kilicholipwa.",
+  "claim.notStartedYet": "Dai lako bado halijaanza, kwa hivyo sats zako bado ziko kwenye biashara.",
+  "claim.titleWalletNoInvoice": "Pochi yako haikutuma ankara",
+  "claim.chooseAnotherWallet": "Jaribu tena au chagua pochi nyingine",
+  "claim.errWalletLookupUnreachable": "Imeshindwa kufikia {host} kutafuta pochi hii. Hakuna kilicholipwa. Angalia anwani, au chagua pochi nyingine.",
+  "claim.errWalletInvoiceUnreachable": "Imeshindwa kufikia {host} kupata ankara. Hakuna kilicholipwa. Jaribu tena baada ya muda mfupi, au chagua pochi nyingine.",
   "claim.errWalletServerUnreachable":
     "Imeshindikana kufikia seva ya pochi hiyo. {message}",
   "claim.errWalletUnexpected":

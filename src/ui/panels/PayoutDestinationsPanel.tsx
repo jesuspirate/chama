@@ -1,4 +1,5 @@
 import { listSavedNwcConnections, renameSavedNwcConnection, deleteSavedNwcConnection, displayNwcConnection } from "../../payments/nwc-connections.js";
+import { walletName } from "../wallet-names.js";
 import { SavedWalletRow } from "../components/SavedWalletRow.js";
 import { useState } from "react";
 import { T } from "../theme.js";
@@ -7,7 +8,7 @@ import { OverlaySheet } from "../components/OverlaySheet.js";
 import {
   type PayoutDestination,
   listPayoutDestinations,
-  deletePayoutDestination, renamePayoutDestination, payoutDestinationLabel, displayPayoutDestination,
+  deletePayoutDestination, renamePayoutDestination, displayPayoutDestination,
 } from "../../payments/payout-destinations.js";
 
 // One management list for receive addresses and saved wallet connections.
@@ -55,7 +56,7 @@ export function PayoutDestinationsPanel({ onClose }: {
             onRename={label => { renameSavedNwcConnection(connection.id, label); setConnections(listSavedNwcConnections()); }}
             onRemove={() => { deleteSavedNwcConnection(connection.id); setConnections(listSavedNwcConnections()); }} />)}
           {destinations.map(destination => <SavedWalletRow key={destination.id}
-            label={payoutDestinationLabel(destination)} detail={destination.label ? destination.address : displayPayoutDestination(destination.address)}
+            label={walletName(destination)} detail={displayPayoutDestination(destination.address)}
             onRename={label => { renamePayoutDestination(destination.id, label); setDestinations(listPayoutDestinations()); }}
             onRemove={() => handleDelete(destination.id)} />)}
         </div>

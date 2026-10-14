@@ -105,6 +105,14 @@ export type HoldState =
   | { kind: "armed"; at: number }
   | { kind: "confirmed" };
 
+/** When HoldToConfirm next needs a tick: the end of a hold, or just past the
+ *  assistive window. Null when nothing is pending. */
+export function holdDueAt(state: HoldState, holdMs = HOLD_TO_CONFIRM_MS): number | null {
+  if (state.kind === "holding") return state.since + holdMs;
+  if (state.kind === "armed") return state.at + ASSISTIVE_CONFIRM_WINDOW_MS + 1;
+  return null;
+}
+
 export function holdReducer(state: HoldState, ev: HoldEvent, holdMs = HOLD_TO_CONFIRM_MS): HoldState {
   if (state.kind === "confirmed") return state;
   switch (ev.type) {
@@ -189,9 +197,7 @@ export function HoldToConfirm({
 }) {
   const [state, setState] = useState<HoldState>({ kind: "idle" });
   const buttonRef = useRef<HTMLButtonElement | null>(null);
-  const [progress, setProgress] = useState(0);
   const [showHint, setShowHint] = useState(false);
-  const raf = useRef<number | null>(null);
   const keyHeld = useRef(false);
   const pointerActive = useRef(false);
   const confirmedFired = useRef(false);
@@ -201,7 +207,6 @@ export function HoldToConfirm({
 
   const reset = () => {
     setState({ kind: "idle" });
-    setProgress(0);
     confirmedFired.current = false;
   };
   // A new action (resetKey) always starts fresh.
@@ -226,23 +231,22 @@ export function HoldToConfirm({
     if (state.kind === "confirmed" && !confirmedFired.current) {
       confirmedFired.current = true;
       haptic("heavy");
-      setProgress(1);
       onConfirmRef.current();
     }
-    if (state.kind !== "holding") {
-      if (raf.current !== null) cancelAnimationFrame(raf.current);
-      raf.current = null;
-      if (state.kind === "idle") setProgress(0);
-      return;
-    }
-    const loop = () => {
+    // The fill is a CSS transition the compositor runs (Jet, 6.4.25-rc.7:
+    // the per-frame React re-render made it jitter). React only wakes once,
+    // when the hold is due (or the assistive window lapses), to tick the
+    // same reducer. A timer that fires a hair early simply re-arms.
+    const due = holdDueAt(state, holdMs);
+    if (due === null) return;
+    let timer: ReturnType<typeof setTimeout>;
+    const fire = () => {
       const now = performance.now();
-      setProgress(Math.min(1, (now - state.since) / holdMs));
+      if (now < due) { timer = setTimeout(fire, due - now + 1); return; }
       setState(s => holdReducer(s, { type: "tick", at: now }, holdMs));
-      raf.current = requestAnimationFrame(loop);
     };
-    raf.current = requestAnimationFrame(loop);
-    return () => { if (raf.current !== null) cancelAnimationFrame(raf.current); };
+    timer = setTimeout(fire, Math.max(0, due - performance.now()));
+    return () => clearTimeout(timer);
   }, [state, holdMs]);
 
   const press = () => {
@@ -253,7 +257,7 @@ export function HoldToConfirm({
     setState(s => holdReducer(s, { type: "press", at: performance.now() }, holdMs));
   };
   const release = () => {
-    if (state.kind === "holding" && progress < 1) setShowHint(true);
+    if (state.kind === "holding") setShowHint(true);
     if (state.kind === "holding") onHoldCancel?.();
     setState(s => holdReducer(s, { type: "release", at: performance.now() }, holdMs));
   };
@@ -314,11 +318,14 @@ export function HoldToConfirm({
           setState(s => holdReducer(s, { type: "assistive-activate", at: performance.now() }, holdMs));
         }}
       >
-        <span aria-hidden="true" style={{
-          position: "absolute", left: 0, top: 0, bottom: 0,
-          width: `${Math.round(progress * 100)}%`,
+        <span aria-hidden="true" data-hold-fill style={{
+          position: "absolute", left: 0, top: 0, bottom: 0, width: "100%",
           background: fillColor, opacity: done ? 0.3 : 0.22,
-          transition: state.kind === "holding" || done ? "none" : "width 200ms ease",
+          transformOrigin: "left center", willChange: "transform",
+          transform: `scaleX(${state.kind === "holding" || done ? 1 : 0})`,
+          // Linear over exactly the hold, so the fill is full the moment it
+          // confirms; an early lift glides back from wherever it got to.
+          transition: state.kind === "holding" ? `transform ${holdMs}ms linear` : done ? "none" : "transform 200ms ease",
         }} />
         <span style={{ position: "relative", display: "inline-flex", alignItems: "center", gap: 8 }}>
           {done ? <CheckGlyph /> : icon}

@@ -16,6 +16,8 @@ export const claim: Record<string, string> = {
   "claim.railTiming": "Lightning · segundos · Bitcoin · ~1 hora · Ecash · sin comisión",
 
   "claim.cashOutCurrency": "Retirar en {currency}",
+  "claim.fediWallet": "Billetera Fedi",
+  "claim.lightningWalletAt": "Billetera Lightning en {host}",
   "claim.yourWallets": "Tus billeteras",
   "claim.ecashMethod": "Obtener una nota ecash",
   "claim.sandboxKeep": "Guardar en la billetera sandbox",
@@ -108,6 +110,13 @@ export const claim: Record<string, string> = {
     "Tando devolvió una respuesta inesperada. Inténtalo de nuevo o usa Lightning.",
   "claim.errTandoServer": "El servidor de Tando está ocupado ahora mismo. Inténtalo en un momento.",
   "claim.errWalletServerUnhappy": "El servidor de esa billetera tiene problemas. {message}",
+  "claim.phaseAskingWallet": "Pidiendo una factura a tu billetera…",
+  "claim.inWalletNotPaidYet": "Tu reclamo ya está hecho, así que tus sats están en la billetera de esta app. Todavía no se ha pagado nada.",
+  "claim.notStartedYet": "Tu reclamo aún no ha empezado, así que tus sats siguen en el intercambio.",
+  "claim.titleWalletNoInvoice": "Tu billetera no envió una factura",
+  "claim.chooseAnotherWallet": "Reintentar o elegir otra billetera",
+  "claim.errWalletLookupUnreachable": "No se pudo contactar con {host} para encontrar esta billetera. No se pagó nada. Revisa la dirección o elige otra billetera.",
+  "claim.errWalletInvoiceUnreachable": "No se pudo contactar con {host} para obtener una factura. No se pagó nada. Inténtalo de nuevo en un momento o elige otra billetera.",
   "claim.errWalletServerUnreachable":
     "No pudimos conectar con el servidor de esa billetera. {message}",
   "claim.errWalletUnexpected":

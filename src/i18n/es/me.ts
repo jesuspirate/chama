@@ -2,8 +2,8 @@
 export const me: Record<string, string> = {
   "backup.copyKey": "Copiar clave",
   "connect.homeHeading": "Ya estás en casa, ciudadano de Chama.",
-  "chooser.citizen": "Ya soy de aquí",
-  "chooser.become": "Únete",
+  "chooser.citizen": "Iniciar sesión",
+  "chooser.become": "Registrarse",
   "signer.namedRefused": "Tu firmante no aprobó {action}. Chama se detuvo aquí. Inténtalo de nuevo.",
   "signer.listingAction": "crear esta oferta",
   "signer.voteAction": "votar en este intercambio",

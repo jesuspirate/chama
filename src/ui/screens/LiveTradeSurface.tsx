@@ -47,7 +47,7 @@ import { ChatPanel } from "../panels/ChatPanel.js";
 import type { RatingThumb } from "../../reputation/ratings.js";
 import { translate, getCurrentLang } from "../../i18n/index.js";
 import { shareTradeLink } from "../share-link.js";
-import { getRailByKey } from "../../payments/rail-registry.js";
+import { railLabel, getRailByKey } from "../../payments/rail-registry.js";
 import { VerticalIcon } from "../components/VerticalIcon.js";
 import { isParentStorefront, isChildOrder } from "../../escrow-engine/storefront.js";
 
@@ -776,7 +776,7 @@ export function LiveTradeSurface({
   );
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0, background: T.bg, paddingBottom: 12 }}>
+    <div className="lts-root" style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0, background: T.bg, paddingBottom: 12 }}>
       {state.rejectedLockRecovery?.pubkey === pubkey && onReclaimRejectedLock &&
         <RejectedLockRefund amountMsats={state.rejectedLockRecovery.amountMsats} onReclaim={() => onReclaimRejectedLock(state.id)} />}
       {reabsorbedLockAmount(state.id) && <p>{tr("trade.lockReabsorbed", {amount:Math.floor(reabsorbedLockAmount(state.id)! / 1000).toLocaleString()})}</p>}
@@ -798,6 +798,24 @@ export function LiveTradeSurface({
              background as a dead band between the panes (Jet's 6.3 phone
              screenshot). 52dvh is definite everywhere. */
           .lts-votes{max-height:calc(var(--chama-viewport-height, 100dvh) * .52)}
+          /* Jet (6.4.25, Pixel): the decision area read as a separate white
+             panel with its own margins under the people card. On phones it
+             now shares the page background and the cards' 16px sides, with
+             even 12px gaps between what it holds. */
+          .lts-pane.lts-votes{background:${T.bg};padding:12px 16px}
+          .lts-decision-well{display:flex;flex-direction:column;gap:12px}
+          /* Jet (rc.7, Pixel 8): the top half took 487 of 915px and the
+             decision scrolled inside the rest. On phones the amount and
+             people cards are compact, and a clear line separates the trade
+             (top) from what to do and the chat (bottom). */
+          .lts-grid{border-top:1px solid ${T.line}}
+          .lts-money{padding:8px 16px 0!important}
+          .lts-money-card{padding:10px 14px!important;gap:10px!important}
+          .lts-money-icon{width:32px!important;height:32px!important;border-radius:10px!important}
+          .lts-room{padding:8px 16px 10px!important}
+          .lts-room-people{padding:8px 4px!important}
+          .lts-room [data-role-avatar]{zoom:.75}
+          .lts-person-meta{flex-direction:row!important;flex-wrap:wrap;justify-content:center;column-gap:5px}
           [data-chat-focused] .lts-header{max-height:35%;overflow-y:auto;flex-shrink:1}
           [data-chat-focused] .lts-grid{grid-template-rows:minmax(0, .3fr) minmax(100px, 1fr)}
           [data-chat-focused] .lts-votes{max-height:none;padding:8px 12px}
@@ -814,6 +832,10 @@ export function LiveTradeSurface({
           .lts-hero-slim{display:block}
         }
         .lts-room{padding:12px 16px;background:${T.bg}}
+        .lts-person-meta{display:flex;flex-direction:column;align-items:center;gap:4px}
+        /* One clock line per screen (Jet, 6.4.25): a "Your turn" card shows
+           the clock in its header, so the line under the people card hides. */
+        body:has([data-decision-clock]) .lts-clock{display:none}
         .lts-summary{background:${T.bg}}
         @media (min-width:900px){
           .lts-summary{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr);gap:12px;padding:12px 16px}
@@ -822,6 +844,24 @@ export function LiveTradeSurface({
         }
         .lts-room-people{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;align-items:start;
           padding:12px 6px;border-radius:20px;background:${T.surface};border:1px solid ${T.line}}
+        /* The decision card carries the clock; the header line would repeat it. */
+        .lts-root:has([data-decision-clock]) .lts-clock{display:none}
+        /* Phones (Jet, 6.4.25-rc.7 on a Pixel 8): the decision must fit
+           without scrolling its pane, and the bottom half reads as its own
+           sheet, separated from the trade facts above by a clear edge. */
+        @media (max-width:720px){
+          .lts-room{padding:8px 12px}
+          .lts-room-people{padding:6px 4px}
+          .lts-money{padding:8px 12px 0!important}
+          .lts-money>div{padding:10px 14px!important}
+          .lts-home{padding:2px 12px!important}
+          .lts-grid{background:transparent;gap:0;margin-top:4px}
+          .lts-votes{padding:14px 14px 12px;border-top:1px solid ${T.borderHi};border-radius:${T.rSheet}px ${T.rSheet}px 0 0;
+            box-shadow:0 -10px 28px rgba(0,0,0,.28)}
+          .lts-chat{border-top:1px solid ${T.line}}
+          .lts-decision-well{display:flex;flex-direction:column}
+          .lts-prelock-facts{order:2;margin-top:16px}
+        }
         @keyframes ltsPulse{0%,100%{box-shadow:0 0 0 0 ${T.amber}00}50%{box-shadow:0 0 0 4px ${T.amber}33}}
       `}</style>
 
@@ -853,7 +893,7 @@ export function LiveTradeSurface({
         </div>
       </div>
 
-      {onHome && <button type="button" onClick={onHome} aria-label={tr("lts.backHome")} style={{ background: "none", border: 0, padding: "8px 16px", cursor: "pointer", alignSelf: "flex-start" }}><Wordmark /></button>}
+      {onHome && <button type="button" className="lts-home" onClick={onHome} aria-label={tr("lts.backHome")} style={{ background: "none", border: 0, padding: "8px 16px", cursor: "pointer", alignSelf: "flex-start" }}><Wordmark /></button>}
       {/* Header (v7 redesign): back with a drawn chevron, the trade's mark,
           share and the status badge. Sentence-case DM Sans throughout. */}
       <div style={{
@@ -908,11 +948,11 @@ export function LiveTradeSurface({
           header used to carry — guidedListingAmount + rangeFiatText. */}
       <div className="lts-summary">
       <div className="lts-money" style={{ padding: "12px 16px 0", background: T.bg }}>
-        <div style={{
+        <div className="lts-money-card" style={{
           display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", height: "100%", boxSizing: "border-box",
           padding: "14px 16px", borderRadius: T.rCard, background: T.surface, border: `1px solid ${T.line}`,
         }}>
-          <div style={{ width: 40, height: 40, borderRadius: 12, background: T.raised, color: T.ink, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+          <div className="lts-money-icon" style={{ width: 40, height: 40, borderRadius: 12, background: T.raised, color: T.ink, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
             <LockGlyph size={20} />
           </div>
           <div style={{ flex: "1 1 160px", minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
@@ -971,10 +1011,15 @@ export function LiveTradeSurface({
               tall phase (reason chips, slice chooser) scrolls instead of
               clipping at the top the way justify-content:center would. */}
           <div className="lts-decision-well"><DecisionClock.Provider value={clockText ?? null}>
-            {state.status === EscrowStatus.CREATED && <>
-              <TradeArbiterRecord profileNames={profileNames} kind0Enabled={kind0Enabled} state={state} trades={knownTrades} fetchBonds={fetchCommunityBonds} />
+            {/* On phones these follow the decision (CSS order), so the
+                question and its hold button are what the pane opens on. */}
+            {state.status === EscrowStatus.CREATED && <div className="lts-prelock-facts">
+              {/* Before taking a seat the arbiter's record helps decide; once
+                  seated it is one tap away on the arbiter (Jet, rc.7: the
+                  decision area was taller than the screen). */}
+              {myRole === null && <TradeArbiterRecord profileNames={profileNames} kind0Enabled={kind0Enabled} state={state} trades={knownTrades} fetchBonds={fetchCommunityBonds} />}
               {state.body && <ListingBody body={state.body} />}
-            </>}
+            </div>}
             <ReplayNotes notes={state.replayNotes} />
             {historyReloading && <p role="status">Refreshing this trade's history…</p>}
             {!state.pendingVote && myRole && myRole !== Role.ARBITER && state.status === EscrowStatus.LOCKED
@@ -995,7 +1040,7 @@ export function LiveTradeSurface({
               <div data-agreed-methods style={{ marginTop: 16, padding: "12px 14px", borderRadius: 12, background: T.raised, fontFamily: T.sans }}>
                 <div style={{ fontSize: T.fs.secondary, color: T.ink2, marginBottom: 4 }}>{tr("lts.agreedMethods")}</div>
                 <div style={{ fontSize: T.fs.headline, fontWeight: 600, color: T.ink }}>
-                  {state.paymentMethods.map(key => getRailByKey(key)?.displayName ?? key).join(" · ")}
+                  {state.paymentMethods.map(key => railLabel(key)).join(" · ")}
                 </div>
                 <div style={{ fontSize: T.fs.secondary, color: T.ink2, marginTop: 6 }}>{tr("lts.detailsInChat", { name: lockerName })}</div>
               </div>
@@ -1004,9 +1049,9 @@ export function LiveTradeSurface({
               <summary style={{ minHeight: T.size.touch, display: "flex", alignItems: "center", cursor: "pointer", color: T.ink, fontSize: T.fs.body, fontWeight: 600 }}>{tr("lts.howToPay", { name: lockerName })}</summary>
               <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", overflowWrap: "anywhere", background: T.raised, borderRadius: 12 }}>
                 <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
-                  <div style={{ fontSize: T.fs.secondary, color: T.ink2 }}>{getRailByKey(state.lock.handle.rail)?.displayName ?? state.lock.handle.rail}</div>
-                  <div style={{ fontSize: T.fs.headline, fontWeight: 600, color: T.ink }}>{handleDisplayForViewer(state.lock.handle.value, true)}</div>
-                  {!!state.lock.handle.networks?.length && <div style={{ fontSize: T.fs.secondary, color: T.ink2 }}>{state.lock.handle.networks.map(key => getRailByKey(key)?.displayName ?? key).join(" · ")}</div>}
+                  <div style={{ fontSize: T.fs.secondary, color: T.ink2 }}>{railLabel(state.lock.handle.rail)}</div>
+                  <div data-selectable style={{ fontSize: T.fs.headline, fontWeight: 600, color: T.ink }}>{handleDisplayForViewer(state.lock.handle.value, true)}</div>
+                  {!!state.lock.handle.networks?.length && <div style={{ fontSize: T.fs.secondary, color: T.ink2 }}>{state.lock.handle.networks.map(key => railLabel(key)).join(" · ")}</div>}
                 </div>
                 <CopyButton value={state.lock.handle.value} />
               </div>
@@ -1062,9 +1107,11 @@ function PersonChip({ person, name, onClick }: { person: RoomPresence; name: str
       <span style={{ fontSize: T.fs.secondary, fontWeight: 600, overflowWrap: "anywhere", maxWidth: "100%", color: person.signal === "assigned" ? T.ink2 : T.ink }}>
         {name ?? tr("lts.roomSomeone")}
       </span>
-      <span style={{ fontSize: T.fs.secondary, fontWeight: 600, color: ROLE_COLOR_TEXT[roleKey] }}>{roleWord}</span>
-      <span style={{ fontSize: T.fs.secondary, color: person.ready ? T.pos : T.ink2 }}>
-        {person.ready ? tr("lts.roomReady") : sub}
+      <span className="lts-person-meta">
+        <span style={{ fontSize: T.fs.secondary, fontWeight: 600, color: ROLE_COLOR_TEXT[roleKey] }}>{roleWord}</span>
+        <span style={{ fontSize: T.fs.secondary, color: person.ready ? T.pos : T.ink2 }}>
+          {person.ready ? tr("lts.roomReady") : sub}
+        </span>
       </span>
       <ConductFacts pubkey={person.pubkey} />
     </button>
@@ -1124,7 +1171,7 @@ function Decision({ q, sub, children }: { q: string; sub?: string; children: Rea
     }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
         <div style={{ fontSize: T.fs.secondary, fontWeight: 700, color: T.attnInk }}>{tr("lts.yourTurn")}</div>
-        {clock && <div style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: T.fs.secondary, fontWeight: 600, color: T.ink2 }}>
+        {clock && <div data-decision-clock style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: T.fs.secondary, fontWeight: 600, color: T.ink2 }}>
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
           {clock}
         </div>}

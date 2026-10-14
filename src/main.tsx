@@ -15,6 +15,15 @@ import { requestPersistentStorageIfWorthwhile } from "./storage/persistent-stora
 // or web bundle.
 assertProductionEncryption(import.meta.env.PROD);
 
+// Native shells (Capacitor on Android, Tauri on desktop): mark the page so
+// index.html can turn off text selection on labels and headings there.
+try {
+  const g = globalThis as { Capacitor?: { isNativePlatform?: () => boolean }; __TAURI__?: unknown; __TAURI_INTERNALS__?: unknown };
+  if (g.Capacitor?.isNativePlatform?.() || g.__TAURI__ || g.__TAURI_INTERNALS__) {
+    document.documentElement.dataset.nativeApp = "1";
+  }
+} catch { /* a web page keeps normal selection */ }
+
 // Remote-bridge "friend wallet" invite links carried `#bridge=<url>&token=<t>`
 // in the URL fragment — a wallet-repoint primitive: opening such a link used to
 // silently point your money lane at the sender's node. Friend links were soft-

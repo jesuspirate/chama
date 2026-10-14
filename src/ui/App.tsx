@@ -1,4 +1,5 @@
 import { isSignerApprovalError } from "../escrow-engine/signer-approval.js";
+import { scrollToTopIfScrolled } from "./scroll-top.js";
 import { publicShareLimit } from "../fedimint/federation-inspection.js";
 import { FederationInfoProvider } from "./components/FederationDisclosure.js";
 import { SeedRecoveryPanel } from './panels/SeedRecoveryPanel.js';
@@ -14,7 +15,7 @@ import { ConductProvider } from "./components/ConductFacts.js";
 import { tradeDetailReturnsHome } from "./decisions.js";
 import { fundingPremiumMsats } from "../payments/funding-premium.js";
 import { nativeLockEarmarks } from "../fedimint/pending-native-locks.js";
-import { spendableBalanceMsats, payoutEarmarks, canLockFromBalance } from "./decisions.js";
+import { spendableBalanceMsats, payoutEarmarks, canLockFromBalance, decideDestroyConfirmRoute } from "./decisions.js";
 import { saveNsec, SAVED_NSEC_KEY, NSEC_ORIGIN_KEY } from "../storage/saved-nsec.js";
 import { resolveCreateMintUrl,
   liveCommitmentForViewer,
@@ -27,6 +28,7 @@ import type { CircleRound } from "../chama/types.js";
 import { getTrustedArbiterPool } from "../arbiters/pool.js";
 import { useState, useEffect, useMemo, useRef, useCallback, lazy, Suspense, type ReactNode } from "react";
 import { sameRecord, useStableList } from "./stable-list.js";
+import { oncePerSessionToastKey } from "./components/Toast.js";
 import { perfMeasure, versionTapToggle, PerfZone } from "./perf-probe.js";
 import { PerfReadout } from "./components/PerfReadout.js";
 import { perfLockStart, perfLockStep, perfLockEnd } from "./perf-probe.js";
@@ -209,7 +211,6 @@ import { GlobeCountryPicker } from "./screens/GlobeCountryPicker.js";
 import { DashboardScreen } from "./screens/DashboardScreen.js";
 import { TradeDetail } from "./screens/TradeDetail.js";
 import { LiveTradeSurface } from "./screens/LiveTradeSurface.js";
-import { CanvasAttentionBell } from "./components/CanvasAttentionBell.js";
 import { OfflineBar } from "./components/OfflineBar.js";
 import { CreateForm } from "./screens/CreateForm.js";
 import { MeScreen } from "./screens/MeScreen.js";
@@ -940,7 +941,20 @@ export default function App() {
   // the person asks to change it, defer the real mutation until authentication
   // gives us an npub and the existing federation-switch safety gates can run.
   const [changeHomeAfterConnect, setChangeHomeAfterConnect] = useState(false);
-  const [toast, setToast] = useState<{ message: ReactNode; type: "success" | "error" | "info"; sticky?: boolean; dismissOnTap?: boolean } | null>(null);
+  type ToastState = { message: ReactNode; type: "success" | "error" | "info"; sticky?: boolean; dismissOnTap?: boolean } | null;
+  const [toast, setToastState] = useState<ToastState>(null);
+  // A few toasts describe a lasting condition, not an event (Jet, 6.4.25: the
+  // wallet-storage toast came back on every open and retry). Those show once
+  // per app session; every other toast is unchanged.
+  const shownOnceToasts = useRef(new Set<string>());
+  const setToast = useCallback((next: ToastState) => {
+    const key = next ? oncePerSessionToastKey(next.message) : null;
+    if (key) {
+      if (shownOnceToasts.current.has(key)) return;
+      shownOnceToasts.current.add(key);
+    }
+    setToastState(next);
+  }, []);
   toastRef.current = setToast;
   const [showFundModal, setShowFundModal] = useState(false);
   // v2.4 #56: "withdraw as ecash" modal (fee-free Fedimint note export).
@@ -1622,13 +1636,19 @@ export default function App() {
           ? (getCommunityBySlug(target.defaultCommunity)?.displayName ?? target.defaultCommunity)
           : t("app.fallbackPreviousCommunity");
     actions.initFedimint(target.invite).catch((e: any) => {
-      if (e?.code === "RECONCILE_REFUSED_NONZERO_BALANCE") {
+      if (e?.code === "RECONCILE_REFUSED_BALANCE_UNKNOWN"
+        || e?.code === "RECONCILE_REFUSED_NONZERO_BALANCE" && !(e.balanceMsats > 0)) {
+        // Unknown stays unknown (Jet, 6.4.25): the wallet balance couldn't be
+        // read, so nothing switches. Say so plainly; the relay re-arm or
+        // Reconnect asks again.
+        setToast({ message: t("app.balanceUnknownNoSwitch"), type: "error" });
+      } else if (e?.code === "RECONCILE_REFUSED_NONZERO_BALANCE") {
         // Deliberate fund-safety stop — don't re-arm into a modal loop.
         autoInitHardStopRef.current = true;
         queueDestroyConfirm({
           invite: e.desiredInvite,
           label: failureLabel,
-          balanceMsats: e.balanceMsats || 0,
+          balanceMsats: e.balanceMsats,
           activeInvite: e.previousActiveInvite,
         });
       } else if (
@@ -2095,20 +2115,6 @@ export default function App() {
   // eslint-disable-next-line react-hooks/exhaustive-deps -- settledClaimKey is settledClaimIds' content
   }, [escrows, pubkey, now, settledClaimKey, onchainObservations, pendingOnchainPayoutIds]));
   const needsYouCount = needsYouTrades.length;
-  const attentionTrade = needsYouTrades[0] ?? activeTrade;
-  // Known work stays actionable during hydration; syncing only fills the
-  // bar when no higher-priority state is known yet.
-  const visibleAttentionTrade = attentionTrade;
-  const attentionActionMode = needsYouCount > 0;
-  // Step 4: the attention pill routes to the most urgent needs-you trade
-  // (needsYouTrades[0]), which is often NOT the trade on screen. Name its
-  // destination — amount + community — so tapping is a deliberate jump, not a
-  // surprise that then reads as the current trade mutating to another currency.
-  // Same resolver the Details pane uses (getCommunityBySlug().displayName), so
-  // the pill and the destination agree.
-  const attentionCommunityLabel = visibleAttentionTrade?.community
-    ? getCommunityBySlug(visibleAttentionTrade.community)?.displayName ?? null
-    : null;
 
   // v0.6.5 funding-operation gate. The single backstop against two
   // concurrent runFundAndLock calls racing on the shared OPFS wallet.
@@ -2673,8 +2679,15 @@ export default function App() {
       return;
     }
 
-    if (!preservesArbiterFederationBalances
-      && balanceBlocksFederationSwitch(request.balanceMsats)) {
+    // Only a balance that was actually read may lead to a switch without the
+    // confirm sheet. Anything else is unknown: refuse, never treat it as 0.
+    const route = decideDestroyConfirmRoute(request.balanceMsats, preservesArbiterFederationBalances);
+    if (route === "unknown") {
+      setPendingDestroyConfirm(null);
+      setToast({ message: t("app.balanceUnknownNoSwitch"), type: "error" });
+      return;
+    }
+    if (route === "confirm") {
       setPendingDestroyConfirm(request);
       return;
     }
@@ -3169,6 +3182,9 @@ export default function App() {
     maybeSnapBackHome();
   };
   const switchTab = (t: Tab) => {
+    // Tapping the tab you're on goes back to the top (Jet, 6.4.25-rc.6). At
+    // the top already, a second tap keeps its old meaning below.
+    if (view !== "detail" && TAB_FOR_VIEW[view] === t && scrollToTopIfScrolled()) return;
     if (t === "browse") {
       // v7 redesign: Browse is the guided canvas, unless this person chose
       // the advanced "All listings" view (remembered on this device). A
@@ -3437,7 +3453,7 @@ export default function App() {
               gap: 6,
               flexShrink: 0,
             }}>
-              <div onClick={onVersionTap} style={{ fontSize: 9, color: __BUILD_STAMP__ ? T.amber : T.muted, fontFamily: T.mono, padding: "4px 10px", borderRadius: 6, background: T.surface, border: `1px solid ${__BUILD_STAMP__ ? T.amber + "55" : T.border}` }}>
+              <div data-chrome onClick={onVersionTap} style={{ fontSize: 9, color: __BUILD_STAMP__ ? T.amber : T.muted, fontFamily: T.mono, padding: "4px 10px", borderRadius: 6, background: T.surface, border: `1px solid ${__BUILD_STAMP__ ? T.amber + "55" : T.border}` }}>
                 {/* Local/test builds carry an amber "dev <build time>" stamp so a
                     Tauri/ASDK refresh visibly confirms it picked up the new
                     bundle. ship.sh exports CHAMA_RELEASE=1 → clean version. */}
@@ -3835,6 +3851,9 @@ export default function App() {
           getLightningGatewayCount={actions.getLightningGatewayCount}
           onWithdrawEcash={() => { setPendingClaim(null); setShowEcashExport(true); }}
           escrowId={pendingClaim.escrowId}
+          // Same test as useEscrow's claimAlreadyPublished: a CLAIMED trade
+          // only resumes the payout, so its sats are already in this wallet.
+          claimAlreadyPublished={escrows.get(pendingClaim.escrowId)?.status === EscrowStatus.CLAIMED}
           payoutMsats={pendingClaim.payoutMsats}
           premiumMsats={pendingClaim.premiumMsats ?? 0}
           savedDestinations={listPayoutDestinations()}
@@ -4225,14 +4244,9 @@ export default function App() {
           onDismissPublished={() => setCanvasPublished(null)}
           resumeRef={canvasResumeRef}
         /></CanvasAllListings.Provider>
-        {visibleAttentionTrade && (
-          <CanvasAttentionBell
-            trade={visibleAttentionTrade}
-            needsYouCount={needsYouCount}
-            actionMode={attentionActionMode}
-            onTap={() => { setDetailReturnsHome(true); openEscrow(visibleAttentionTrade.id, "guided"); }}
-          />
-        )}
+        {/* No floating "Your move" bell here (Jet, 6.4.25: two pills for one
+            thing on Browse). The top bar's "Needs you" / in-trade pill is the
+            one signal and opens the same trade (.agents/skills/chama-bar). */}
         </>
       ) : view === "detail" && selected ? (
         <div data-trade-room style={{

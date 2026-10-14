@@ -15,3 +15,20 @@ assert.equal(arbiterRecord('arb',[trade],[],new Map(),120).disputes,0);
 assert.equal(arbiterRecord('arb',[trade],[],new Map(),120).concentration.rulings,0);
 assert.equal(observed.concentration.rulings,1);
 console.log('Arbiter record: empty, deduplication, signed response and future cutoff passed');
+
+// Jet (6.4.25, Pixel): Bitcrazy's card listed "99,700 sats locked until block
+// 982,753" four times and "29,400 … 977,815" three times, and "at stake" said
+// 487,000 while the header said 129,100. A bond is one address: counted once.
+{
+  const bond = (address: string, sats: bigint, lockUntil: number) => ({ npub: 'arb', address, actualSats: sats, lockUntil,
+    funded: true, active: true, community: 'c' }) as never;
+  const a = bond('bc1qa', 99_700n, 982_753), b = bond('bc1qb', 29_400n, 977_815);
+  const repeated = arbiterRecord('arb', [], [a, a, a, a, b, b, b], new Map(), 1000);
+  assert.deepEqual(repeated.bondTerms.map(t => t.address), ['bc1qa', 'bc1qb']);
+  assert.equal(repeated.bondSats, 129_100n);
+  // Two different bonds with the same amount and lock are still two.
+  const twins = arbiterRecord('arb', [], [a, bond('bc1qc', 99_700n, 982_753)], new Map(), 1000);
+  assert.equal(twins.bondTerms.length, 2);
+  assert.equal(twins.bondSats, 199_400n);
+  console.log('Arbiter record: a bond announced several times is listed and counted once');
+}

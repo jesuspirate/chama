@@ -30,7 +30,7 @@ import { billTypeDisplay, billTypesForCountry } from "../../communities/bill-typ
 import { saveIntent } from "../../guided/saved-intents.js";
 import { registerCommunityWake } from "../../notifications/watch-tags.js";
 import { getCommunityBySlug } from "../../communities/registry.js";
-import { getRailByKey, railsForCommunity, toRailKey } from "../../payments/rail-registry.js";
+import { railLabel, getRailByKey, railsForCommunity, toRailKey } from "../../payments/rail-registry.js";
 import {
   addSavedHandle,
   listSavedHandles,
@@ -316,6 +316,8 @@ export function AssistedCanvas({
             const showCountryCodeNudge = rail?.placeholder?.includes("+") === true
               && (!draft.trim() || paymentHandleNeedsCountryCode(key, draft));
             return <label key={key}>
+              {/* Where the handle is typed, the full name says what to share
+                  ("$cashtag (Cash App)"); chips and listings show the label. */}
               <span>{rail?.displayName ?? key}</span>
               <div>
                 <input
@@ -751,7 +753,7 @@ export function AssistedCanvas({
       <div style={reviewStyle()}>
         <MatchReviewAmount candidate={selected} />
         <ReviewRow label={tr(selected.listing.category === "bill-pay" ? "canvas.youPayBill" : "canvas.youPay")} value={[selected.fiatQuote ? `${selected.fiatQuote.amount.toLocaleString()} ${selected.fiatQuote.currency}` : tr("canvas.confirmWithSeller"), ...(selected.listing.category === "bill-pay" ? [selected.sourceMenuItem?.label ?? selected.listing.description] : [])].join(" · ")} />
-        <ReviewRow label={tr("canvas.paymentMethod")} value={getRailByKey(selected.paymentRail)?.displayName ?? selected.paymentRail} />
+        <ReviewRow label={tr("canvas.paymentMethod")} value={railLabel(selected.paymentRail)} />
         <ReviewRow label={tr(selected.listing.category === "bill-pay" ? "canvas.billOwner" : "canvas.seller")} value={profileNameFor(profileNames, selected.sellerPubkey, kind0Enabled) ?? shortKey(selected.sellerPubkey)} last />
       </div>
       <Primary onClick={() => onOpenTrade(selected.listing.id)}>{tr("canvas.reviewFullTrade")}</Primary>
@@ -1135,7 +1137,7 @@ function RailGrid({ railChoices, effectiveRails, onToggle, ariaLabel }: { railCh
       const on = effectiveRails.includes(rail.key);
       return <button key={rail.key} type="button" className={on ? "selected" : ""} aria-pressed={on} autoFocus={index === 0} onClick={() => onToggle(rail.key)}>
         <span>{on ? "✓" : "+"}</span>
-        {rail.displayName}
+        {railLabel(rail.key)}
       </button>;
     })}
   </div>;
@@ -1188,7 +1190,7 @@ export function Match({ candidate, labels, onOpen }: { candidate: GuidedMatchCan
     <div className="assisted-tags">{labels.map(label => <span key={label}>{label}</span>)}</div>
     <ConductFacts pubkey={candidate.sellerPubkey} />
     <div className="assisted-match-row"><div><strong>{isBill ? tr("canvas.payBillTitle", { fiat, bill }) : `${sats} sats`}</strong><small>{candidate.listing.description}</small></div><b>{isBill ? tr("canvas.getSats", { amount: candidate.amountSats.toLocaleString() }) : fiat}</b></div>
-    <div className="assisted-match-foot"><span>{getRailByKey(candidate.paymentRail)?.displayName ?? candidate.paymentRail}</span><b>{tr("canvas.review")}</b></div>
+    <div className="assisted-match-foot"><span>{railLabel(candidate.paymentRail)}</span><b>{tr("canvas.review")}</b></div>
   </button>;
 }
 
@@ -1267,7 +1269,7 @@ function uniqueCandidates(lanes: Array<[string, GuidedMatchCandidate | null]>) {
 }
 
 function assetLabel(asset: AssistedCanvasAsset, fiatCurrency: string) { return asset === "sats" ? tr("canvas.assetBitcoin") : asset === "cash" ? fiatCurrency : asset === "bill" ? tr("canvas.assetBill") : tr("canvas.assetGoods"); }
-function paymentRailLabels(keys: string[]) { return keys.map(key => getRailByKey(key)?.displayName ?? key).join(", ") || tr("canvas.notSelected"); }
+function paymentRailLabels(keys: string[]) { return keys.map(key => railLabel(key)).join(", ") || tr("canvas.notSelected"); }
 function offerLabel(count: number) { return count > 0 ? tr("canvas.availableNow", { count }) : tr("canvas.noneOpenYet"); }
 function positiveNumber(value: string): number | null { const n = Number(value.replace(/,/g, "").trim()); return Number.isFinite(n) && n > 0 ? n : null; }
 function digitsOnly(value: string) { return value.replace(/[^\d]/g, ""); }

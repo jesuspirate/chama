@@ -21,6 +21,11 @@ function isExplicitFedimintRecoveryDiagnostic(): boolean {
 }
 
 type Door = "create" | "returning";
+/** First-screen order (Jet, 6.4.25): "Log in" on top, "Sign up" below — the
+ *  words most people already know. "Sign up" carries the filled style: new
+ *  people are the ones who need the nudge. */
+export const CONNECT_DOORS: readonly Door[] = ["returning", "create"];
+export const CONNECT_DOOR_LABEL: Record<Door, string> = { returning: "chooser.citizen", create: "chooser.become" };
 type KeySubmit = (nsec: string, remember: boolean, wasGenerated: boolean) => void | Promise<void>;
 
 /** Only the selected door mounts credential controls. Stored-key startup stays in App. */
@@ -84,10 +89,10 @@ export function ConnectScreen({ onConnect, onConnectNsec, loading, error }: {
       <p style={{ fontSize: 14, color: T.muted, lineHeight: 1.8, margin: "0 0 26px" }}>
         {pendingReport ? t("connect.pendingReportSignIn", { chama: pendingReport.requestedChama }) : <>{t("connect.tagline1")}<br /><span style={{ color: T.text }}>{t("connect.tagline2")}</span></>}
       </p>
-      {(["create", "returning"] as const).map(next => <div key={next} className={`connect-choice${choosing && choosing !== next ? " connect-choice-away" : ""}`} aria-hidden={!!choosing && choosing !== next}>
+      {CONNECT_DOORS.map(next => <div key={next} className={`connect-choice${choosing && choosing !== next ? " connect-choice-away" : ""}`} aria-hidden={!!choosing && choosing !== next}>
         <div><PaymentButton type="button" data-connect-door={next} onClick={() => choose(next)} disabled={!!choosing || loading}
           style={{ width: "100%", padding: 16, borderRadius: 999, background: next === "create" ? T.accent : T.surface, border: `1px solid ${next === "create" ? T.accent : T.border}`, color: next === "create" ? T.bg : T.text, font: `800 15px ${T.sans}` }}>
-          {t(next === "create" ? "chooser.become" : "chooser.citizen")}
+          {t(CONNECT_DOOR_LABEL[next])}
         </PaymentButton></div>
       </div>)}
       <div data-connect-language style={{ marginTop: 8 }}><LanguagePills /></div>
