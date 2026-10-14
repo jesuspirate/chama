@@ -19,6 +19,14 @@
         -moz-osx-font-smoothing: grayscale;
       }
       html, body { height: 100%; }
+      /* In the Android and desktop apps, tapping or holding text must not
+         select it: GrapheneOS drew the selection with black boxes over the
+         canvas heading (Jet, 6.4.25-rc.6). Fields, codes, keys and chat
+         messages stay selectable; Copy buttons cover the rest. */
+      html[data-native-app] body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+      html[data-native-app] :is(input, textarea, [contenteditable], [data-selectable], code, pre, output) {
+        -webkit-user-select: text; user-select: text; -webkit-touch-callout: default;
+      }
       body { overscroll-behavior: contain; }
       @media (max-width: 767px) {
         html[data-chat-focused], html[data-chat-focused] body { overflow: hidden; }

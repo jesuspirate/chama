@@ -54,3 +54,17 @@ console.log("PASS payment methods: chips and listings say \"Cash App\"; the hand
     "every tab: same-tab tap scrolls up first; other taps unchanged");
 }
 console.log("PASS tab bar: tapping the tab you're on scrolls to the top; at the top it keeps its old meaning");
+
+{
+  // Jet (rc.6, GrapheneOS): holding the canvas heading selected it, with black
+  // selection boxes. In the native apps, labels and headings don't select;
+  // fields, codes, keys and chat messages still do. The web is unchanged.
+  const html = readFileSync(new URL("../../index.html", import.meta.url), "utf8");
+  assert.match(html, /html\[data-native-app\] body \{ -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; \}/);
+  assert.match(html, /html\[data-native-app\] :is\(input, textarea, \[contenteditable\], \[data-selectable\], code, pre, output\) \{\s*-webkit-user-select: text; user-select: text;/);
+  const main = readFileSync(new URL("../main.tsx", import.meta.url), "utf8");
+  assert.match(main, /if \(g\.Capacitor\?\.isNativePlatform\?\.\(\) \|\| g\.__TAURI__ \|\| g\.__TAURI_INTERNALS__\) \{\s*document\.documentElement\.dataset\.nativeApp = "1";/);
+  const chat = readFileSync(new URL("./panels/ChatPanel.tsx", import.meta.url), "utf8");
+  assert.match(chat, /\{payload\.message && \(\s*<div data-selectable/, "chat messages stay copyable");
+}
+console.log("PASS native apps: labels and headings don't select; fields, codes and chat messages do; web unchanged");

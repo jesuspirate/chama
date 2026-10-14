@@ -451,7 +451,7 @@ export function ChatPanel({ state, myRole, onSend, preferredRelayConnected = fal
                     </button>
                   ))}
                   {payload.message && (
-                    <div style={{
+                    <div data-selectable style={{
                       fontSize: 12, color: T.text, fontFamily: T.sans,
                       lineHeight: 1.4, wordBreak: "break-word",
                       padding: attachments.length > 0 ? "0 4px 2px" : 0,
