@@ -289,5 +289,10 @@ console.log("PASS toasts: wallet-bridge errors read as plain sentences, diagnost
   const html = renderToStaticMarkup(<LangProvider><ConnectScreen onConnect={() => {}} onConnectNsec={() => {}} loading={false} error={null} /></LangProvider>);
   const doors = [...html.matchAll(/data-connect-door="([a-z]+)"[^>]*>([^<]*)</g)].map(m => [m[1], m[2]]);
   assert.deepEqual(doors, [["returning", "Log in"], ["create", "Sign up"]], "rendered top to bottom: Log in, then Sign up");
+  const { T } = await import("./theme.js");
+  const tag = (door: string) => [...html.matchAll(/<button[^>]*>/g)].map(m => m[0]).find(t => t.includes(`data-connect-door="${door}"`)) ?? "";
+  const filled = (door: string) => tag(door).includes(`background:${T.accent}`);
+  assert.equal(filled("create"), true, "Sign up is the filled button");
+  assert.equal(filled("returning"), false, "Log in is the outlined button");
 }
-console.log("PASS first screen: Log in on top, Sign up below, in en, fr, es and sw");
+console.log("PASS first screen: Log in on top, Sign up below (filled), in en, fr, es and sw");
