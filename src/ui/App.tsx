@@ -14,7 +14,7 @@ import { ConductProvider } from "./components/ConductFacts.js";
 import { tradeDetailReturnsHome } from "./decisions.js";
 import { fundingPremiumMsats } from "../payments/funding-premium.js";
 import { nativeLockEarmarks } from "../fedimint/pending-native-locks.js";
-import { spendableBalanceMsats, payoutEarmarks, canLockFromBalance } from "./decisions.js";
+import { spendableBalanceMsats, payoutEarmarks, canLockFromBalance, decideDestroyConfirmRoute } from "./decisions.js";
 import { saveNsec, SAVED_NSEC_KEY, NSEC_ORIGIN_KEY } from "../storage/saved-nsec.js";
 import { resolveCreateMintUrl,
   liveCommitmentForViewer,
@@ -1602,13 +1602,19 @@ export default function App() {
           ? (getCommunityBySlug(target.defaultCommunity)?.displayName ?? target.defaultCommunity)
           : t("app.fallbackPreviousCommunity");
     actions.initFedimint(target.invite).catch((e: any) => {
-      if (e?.code === "RECONCILE_REFUSED_NONZERO_BALANCE") {
+      if (e?.code === "RECONCILE_REFUSED_BALANCE_UNKNOWN"
+        || e?.code === "RECONCILE_REFUSED_NONZERO_BALANCE" && !(e.balanceMsats > 0)) {
+        // Unknown stays unknown (Jet, 6.4.25): the wallet balance couldn't be
+        // read, so nothing switches. Say so plainly; the relay re-arm or
+        // Reconnect asks again.
+        setToast({ message: t("app.balanceUnknownNoSwitch"), type: "error" });
+      } else if (e?.code === "RECONCILE_REFUSED_NONZERO_BALANCE") {
         // Deliberate fund-safety stop — don't re-arm into a modal loop.
         autoInitHardStopRef.current = true;
         queueDestroyConfirm({
           invite: e.desiredInvite,
           label: failureLabel,
-          balanceMsats: e.balanceMsats || 0,
+          balanceMsats: e.balanceMsats,
           activeInvite: e.previousActiveInvite,
         });
       } else if (
@@ -2639,8 +2645,15 @@ export default function App() {
       return;
     }
 
-    if (!preservesArbiterFederationBalances
-      && balanceBlocksFederationSwitch(request.balanceMsats)) {
+    // Only a balance that was actually read may lead to a switch without the
+    // confirm sheet. Anything else is unknown: refuse, never treat it as 0.
+    const route = decideDestroyConfirmRoute(request.balanceMsats, preservesArbiterFederationBalances);
+    if (route === "unknown") {
+      setPendingDestroyConfirm(null);
+      setToast({ message: t("app.balanceUnknownNoSwitch"), type: "error" });
+      return;
+    }
+    if (route === "confirm") {
       setPendingDestroyConfirm(request);
       return;
     }

@@ -63,6 +63,7 @@ export const app: Record<string, string> = {
   "app.couldntLoadTrade": "No se pudo cargar el intercambio {id}.",
   "app.couldntReconnect": "No se pudo reconectar. ¿Intentar de nuevo?",
   "app.walletStarting": "Tu billetera todavía se está iniciando. Espera unos segundos y vuelve a intentarlo.",
+  "app.balanceUnknownNoSwitch": "Chama no pudo leer el saldo de tu billetera, así que se quedó en tu comunidad actual. No se cambió nada. Vuelve a intentarlo en un momento.",
   "app.walletStorageBrowser": "Este navegador no puede guardar tu billetera de Chama. En iPhone, abre getchama.app en Safari. No se cambió nada.",
   "app.walletSlow": "Tu billetera no respondió a tiempo. Revisa tu saldo antes de volver a intentarlo.",
   "app.couldntStartOrder": "No se pudo iniciar el pedido.",

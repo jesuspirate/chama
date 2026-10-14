@@ -30,6 +30,9 @@ export function toastText(message: ReactNode, t: (key: string) => string): React
   if (/native_fedimint_bridge_timeout|Native Fedimint bridge \S+ did not answer within/i.test(message)) {
     return t("app.walletSlow");
   }
+  if (/couldn't read this wallet's balance, so it won't switch/i.test(message)) {
+    return t("app.balanceUnknownNoSwitch");
+  }
   const cut = message.indexOf("Chama diagnostics:");
   return cut >= 0 ? message.slice(0, cut).trim() : message;
 }
