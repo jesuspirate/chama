@@ -17,7 +17,11 @@ export function arbiterRecord(pubkey: string, escrows: readonly EscrowState[], b
     }
     return { ...state, eventChain, votes };
   });
-  const ownBonds = bonds.filter(b => b.npub.toLowerCase() === key && b.funded && b.active);
+  // One bond per address (Jet, 6.4.25: the same bond, announced more than
+  // once, showed as repeated lines and was counted again in "at stake").
+  // Same rule as conductStanding's bonded total.
+  const ownBonds = [...new Map(bonds.filter(b => b.npub.toLowerCase() === key && b.funded && b.active)
+    .map(b => [b.address, b] as const)).values()];
   let healings = 0, disputes = 0, lastSeen: number | null = null;
   const latencies: number[] = [];
   for (const state of trades) {

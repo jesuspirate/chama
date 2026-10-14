@@ -7,6 +7,7 @@ export const trade: Record<string, string> = {
   "trade.sendDetailsInChat": "I’ll send payment details in chat",
   "trade.paymentMethod": "Payment method",
   "trade.savePaymentDetails": "Save payment details",
+  "trade.addPaymentDetails": "Add new payment details",
   "trade.howToPay": "How to pay",
   "trade.detailsInChat": "Ask the seller for payment details in chat before sending money.",
 

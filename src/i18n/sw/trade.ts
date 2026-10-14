@@ -4,6 +4,7 @@ export const trade: Record<string, string> = {
   "trade.sendDetailsInChat": "Nitatuma maelezo ya malipo kwenye gumzo",
   "trade.paymentMethod": "Njia ya malipo",
   "trade.savePaymentDetails": "Hifadhi maelezo ya malipo",
+  "trade.addPaymentDetails": "Ongeza maelezo mapya ya malipo",
   "trade.howToPay": "Jinsi ya kulipa",
   "trade.detailsInChat": "Omba maelezo ya malipo kwa muuzaji kwenye gumzo kabla ya kutuma pesa.",
 
