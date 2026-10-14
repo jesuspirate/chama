@@ -679,11 +679,39 @@ export default function App() {
     void actions.prewarmFunding();
     warmGateways(fedimint.federationId, actions.getLightningGatewayCount);
   };
-  // Lock invoice, Step 2a: the Lock hold began, so start the federation
-  // check now (read-only, same wallet and federation only; see lock-probe).
-  const primeLockPath = (trade: EscrowState): void => {
+  // The funding sheet's label and the funder's premium for a Lock, shared by
+  // the press (which may prepare the invoice) and the confirm (which funds).
+  const lockFunding = (trade: EscrowState, amountMsats: number) => ({
+    ctaLabel: trade.category === "marketplace" ? "Pay for Item"
+      : trade.category === "lending" ? "Fund Loan"
+      : trade.category === "bill-pay" ? "Lock Sats"
+      : trade.category === "p2p-trade" ? "Fund Escrow"
+      : "Lock Sats",
+    // E1.1: fold the funder's 0.25% arbiter insurance into the
+    // invoice (bonded-stamp trades only; zero in sim/testnet).
+    premiumMsats: (!simOn && !isTestnetMode()) ? funderPremiumMsats(trade, amountMsats) : 0,
+  });
+  // Lock invoice, Steps 2a + 2b: the Lock hold began. Start the federation
+  // check (read-only; see lock-probe) and, when the sheet will go straight to
+  // a Lightning invoice, ask for that invoice now. It is never shown or paid
+  // from here: the funding flow adopts it only if the hold completes with the
+  // same terms (see prepared-funding-invoice.ts); a lifted hold abandons it.
+  const primeLockPath = (trade: EscrowState, lockOpts: { savedHandleId?: string; paymentDetailsInChat?: boolean; selectedItems?: SelectedMenuItem[]; amountMsats?: number } = {}): void => {
     if (!walletOnTradeFederation(trade)) return;
     primeLockProbe(lockProbeKey(fedimint.federationId, trade.id), actions.probeFederation);
+    if (isTestnetMode() || fediWebView) return;
+    if (!isNativeBridgeModeOn() && browserLightningReceiveIsBlocked(fedimint.federationId)) return;
+    // The sheet asks for an invoice on its own only with Lightning gateways
+    // and no balance to lock from; otherwise there is nothing to prepare.
+    if ((warmGatewayCount(fedimint.federationId) ?? 0) <= 0) return;
+    const amountMsats = lockOpts.amountMsats ?? trade.amountMsats;
+    const { ctaLabel, premiumMsats } = lockFunding(trade, amountMsats);
+    if (canLockFromBalance(trade, walletSpendableMsats, amountMsats, fundingPremiumMsats(premiumMsats))) return;
+    void actions.prepareFundingInvoice(trade.id, {
+      amountMsats, premiumMsats, description: `Chama trade · ${ctaLabel}`,
+      savedHandleId: lockOpts.savedHandleId, paymentDetailsInChat: lockOpts.paymentDetailsInChat,
+      selectedItems: lockOpts.selectedItems,
+    });
   };
   // The funding sheet's gateway check: a warm answer at once, else asked now.
   const lockGatewayCount = (): Promise<number | null> => {
@@ -813,13 +841,13 @@ export default function App() {
               perfLockStart();
               const savedHandleId = lockOpts.savedHandleId;
               const selectedItems = lockOpts.selectedItems;
-              if (!await ensureTradeWallet(selected)) { perfLockEnd("no invoice"); return; }
+              if (!await ensureTradeWallet(selected)) { perfLockEnd("no invoice"); actions.abandonPreparedFundingInvoice(); return; }
               perfLockStep("wallet ready");
               // v0.6.5: the only Fund gate is mid-funding — multiple
               // concurrent trades are fine, but two concurrent atomic
               // funding flows would race the shared OPFS wallet.
               if (midFunding) {
-                perfLockEnd("no invoice");
+                perfLockEnd("no invoice"); actions.abandonPreparedFundingInvoice();
                 setToast({
                   message: t("app.anotherFundingInProgress"),
                   type: "error",
@@ -833,7 +861,7 @@ export default function App() {
                 !isTestnetMode() &&
                 lockAmountMsats < MIN_REAL_ATOMIC_FUNDING_MSATS
               ) {
-                perfLockEnd("no invoice");
+                perfLockEnd("no invoice"); actions.abandonPreparedFundingInvoice();
                 setToast({
                   message: `${minimumAtomicFundingMessage()} ${t("app.enterPositiveAmount")}`,
                   type: "error",
@@ -848,7 +876,7 @@ export default function App() {
               );
               perfLockStep(probeEarly ? "federation check · during hold" : "federation check");
               if (!probe.ok) {
-                perfLockEnd("no invoice");
+                perfLockEnd("no invoice"); actions.abandonPreparedFundingInvoice();
                 setToast({
                   message: probe.error || t("app.walletDisconnectedReconnect"),
                   type: "error",
@@ -859,16 +887,7 @@ export default function App() {
               // dispatching lockAndPublish directly. The modal handles
               // BOLT11 → mint → LOCK in one user-perceived motion.
               // Pillar 2.1 Option B: no intermediate balance UI.
-              const lockLabel = selected.category === "marketplace" ? "Pay for Item"
-                : selected.category === "lending" ? "Fund Loan"
-                : selected.category === "bill-pay" ? "Lock Sats"
-                : selected.category === "p2p-trade" ? "Fund Escrow"
-                : "Lock Sats";
-              // E1.1: fold the funder's 0.25% arbiter insurance into the
-              // invoice (bonded-stamp trades only; zero in sim/testnet).
-              const fundPremiumMsats = (!simOn && !isTestnetMode())
-                ? funderPremiumMsats(selected, lockAmountMsats)
-                : 0;
+              const { ctaLabel: lockLabel, premiumMsats: fundPremiumMsats } = lockFunding(selected, lockAmountMsats);
               return new Promise<void>((resolve) => {
                 setPendingFundAndLock({
                   escrowId: selectedId!,
@@ -3632,6 +3651,9 @@ export default function App() {
           onClose={(terminal) => {
             const { resolve } = pendingFundAndLock;
             setPendingFundAndLock(null);
+            // An invoice prepared during the Lock hold and not adopted (the
+            // sheet locked from balance, or closed) was never shown.
+            actions.abandonPreparedFundingInvoice();
             if (terminal.kind === "locked") {
               setToast({ message: t("app.satsLocked"), type: "success" });
             } else if (terminal.kind === "lock-failed") {
@@ -4267,7 +4289,8 @@ export default function App() {
               onRepost={() => renewListing(selected.id)}
               onLock={tradeOnLock}
               onLockShown={() => warmLockPath(selected)}
-              onLockHoldStart={() => primeLockPath(selected)}
+              onLockHoldStart={lockOpts => primeLockPath(selected, lockOpts)}
+              onLockHoldCancel={() => actions.abandonPreparedFundingInvoice()}
               onClaim={tradeOnClaim}
               onJoin={tradeOnJoin}
               onVote={(outcome, payoutAddress) => actions.vote(selectedId!, outcome, payoutAddress).then(

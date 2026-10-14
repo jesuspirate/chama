@@ -158,7 +158,7 @@ function haptic(kind: "light" | "heavy"): void {
  */
 export function HoldToConfirm({
   label, armedLabel, hint, onConfirm, disabled, busy, icon, variant = "primary", resetKey, holdMs = HOLD_TO_CONFIRM_MS,
-  "data-coach": dataCoach, plain = false, readySignal, onHoldStart,
+  "data-coach": dataCoach, plain = false, readySignal, onHoldStart, onHoldCancel,
 }: {
   label: ReactNode;
   /** Shown + announced after a first screen-reader activation. */
@@ -184,6 +184,8 @@ export function HoldToConfirm({
   /** A hold (or a first assistive activation) began. Read-only warm-up
    *  only: it never confirms, and an early lift sends nothing. */
   onHoldStart?: () => void;
+  /** A hold was lifted before it confirmed. */
+  onHoldCancel?: () => void;
 }) {
   const [state, setState] = useState<HoldState>({ kind: "idle" });
   const buttonRef = useRef<HTMLButtonElement | null>(null);
@@ -252,6 +254,7 @@ export function HoldToConfirm({
   };
   const release = () => {
     if (state.kind === "holding" && progress < 1) setShowHint(true);
+    if (state.kind === "holding") onHoldCancel?.();
     setState(s => holdReducer(s, { type: "release", at: performance.now() }, holdMs));
   };
 

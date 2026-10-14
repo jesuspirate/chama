@@ -75,6 +75,8 @@ const tr = (key: string, params?: Record<string, string | number>) =>
  * the shipping view until this is eyeballed.
  */
 
+type LockOpts = { savedHandleId?: string; paymentDetailsInChat?: boolean; selectedItems?: SelectedMenuItem[]; amountMsats?: number };
+
 const samePubkey = (a?: string | null, b?: string | null): boolean =>
   !!a && !!b && a.toLowerCase() === b.toLowerCase();
 
@@ -93,6 +95,7 @@ export function LiveTradeSurface({
   onLock,
   onLockShown,
   onLockHoldStart,
+  onLockHoldCancel,
   onReclaimRejectedLock,
   onRepost,
   onHome,
@@ -132,7 +135,9 @@ export function LiveTradeSurface({
   onLockShown?: () => void;
   /** The Lock hold began: start the read-only federation check (App's
    *  primeLockPath). Never funds; an early lift leaves it unused. */
-  onLockHoldStart?: () => void;
+  onLockHoldStart?: (opts: LockOpts) => void;
+  /** The Lock hold was lifted early: nothing was shown; drop what began. */
+  onLockHoldCancel?: () => void;
   /** Seat the viewer into the trade's open slot (guided join). A range
    *  (exchange-bracket) listing passes the chosen order along. */
   onHome?: () => void;
@@ -296,6 +301,15 @@ export function LiveTradeSurface({
   const releaseSub = tr(releaseToMe ? "lts.releaseToYou" : "lts.releaseToName", { name: releaseName, amount: amountLabel });
   const lockerName = profileNameFor(profileNames, payoutRecipientFor(state, Outcome.REFUND)?.pubkey, kind0Enabled) ?? tr("trade.participants");
 
+  // One set of Lock options for the press (which may prepare the invoice)
+  // and the confirm (which funds): the invoice is adopted only if they match.
+  const lockOpts = (): LockOpts => ({
+    amountMsats: effectiveMsats,
+    ...(orderItems?.length ? { selectedItems: orderItems } : {}),
+    ...(paymentChoice && paymentChoice !== CHAT_PAYMENT_CHOICE ? { savedHandleId: paymentChoice } : {}),
+    paymentDetailsInChat: paymentChoice === CHAT_PAYMENT_CHOICE,
+  });
+
   const REFUND_REASONS = [tr("lts.reasonNotArrived"), tr("lts.reasonWrongAmount"), tr("lts.reasonChangedMind")];
 
   // ── The single decision, per state × role ──────────────────────────────
@@ -353,13 +367,9 @@ export function LiveTradeSurface({
                   busy={busy}
                   icon={<LockGlyph size={18} />}
                   resetKey={`${state.id}:lock`}
-                  onHoldStart={onLockHoldStart}
-                  onConfirm={() => run(() => onLock({
-                    amountMsats: effectiveMsats,
-                    ...(orderItems?.length ? { selectedItems: orderItems } : {}),
-                    ...(paymentChoice && paymentChoice !== CHAT_PAYMENT_CHOICE ? { savedHandleId: paymentChoice } : {}),
-                    paymentDetailsInChat: paymentChoice === CHAT_PAYMENT_CHOICE,
-                  }))}
+                  onHoldStart={onLockHoldStart && (() => onLockHoldStart(lockOpts()))}
+                  onHoldCancel={onLockHoldCancel}
+                  onConfirm={() => run(() => onLock(lockOpts()))}
                   label={fundingInProgress ? tr("lts.locking") : tr("lts.fundLock", { amount: amountLabel })}
                 />
                 {bootProbeFailed && <Hint>{tr("lts.fedUnreachable")}</Hint>}
@@ -1164,8 +1174,8 @@ function PrimaryButton({ label, onClick, disabled, tone }: {
  *  The handler is exactly what the old tap / tap-again fired — HoldToConfirm
  *  only replaces the confirmation gesture. "secondary" renders as a quiet
  *  ink-outlined hold for the less-likely choice. */
-function MoneyHold({ label, onConfirm, onHoldStart, disabled, busy, resetKey, icon, variant = "primary" }: {
-  label: string; onConfirm: () => void; onHoldStart?: () => void; disabled?: boolean; busy?: boolean;
+function MoneyHold({ label, onConfirm, onHoldStart, onHoldCancel, disabled, busy, resetKey, icon, variant = "primary" }: {
+  label: string; onConfirm: () => void; onHoldStart?: () => void; onHoldCancel?: () => void; disabled?: boolean; busy?: boolean;
   resetKey?: unknown; icon?: React.ReactNode; variant?: "primary" | "secondary";
 }) {
   return (
@@ -1174,6 +1184,7 @@ function MoneyHold({ label, onConfirm, onHoldStart, disabled, busy, resetKey, ic
       icon={icon}
       onConfirm={onConfirm}
       onHoldStart={onHoldStart}
+      onHoldCancel={onHoldCancel}
       disabled={disabled}
       busy={busy}
       resetKey={resetKey}

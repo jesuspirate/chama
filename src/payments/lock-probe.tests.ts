@@ -81,12 +81,12 @@ const key = lockProbeKey("fed-a", "trade-1");
   // Wiring: only the Lock hold starts the check; App reuses it only for the
   // trade's own federation; the hold calls it on press, never on confirm.
   const app = readFileSync(new URL("../ui/App.tsx", import.meta.url), "utf8");
-  assert.match(app, /onLockHoldStart=\{\(\) => primeLockPath\(selected\)\}/);
-  assert.match(app, /const primeLockPath = \(trade: EscrowState\): void => \{\s*if \(!walletOnTradeFederation\(trade\)\) return;\s*primeLockProbe\(lockProbeKey\(fedimint\.federationId, trade\.id\), actions\.probeFederation\);/);
+  assert.match(app, /onLockHoldStart=\{lockOpts => primeLockPath\(selected, lockOpts\)\}/);
+  assert.match(app, /const primeLockPath = \(trade: EscrowState[^)]*\): void => \{\s*if \(!walletOnTradeFederation\(trade\)\) return;\s*primeLockProbe\(lockProbeKey\(fedimint\.federationId, trade\.id\), actions\.probeFederation\);/);
   assert.match(app, /await takeLockProbe\(\s*walletOnTradeFederation\(selected\) \? lockProbeKey\(fedimint\.federationId, selected\.id\) : null,\s*actions\.probeFederation,\s*\);/);
   assert.equal((app.match(/primeLockPath\(/g) ?? []).length, 1, "wired once (the Lock hold)");
   const lts = readFileSync(new URL("../ui/screens/LiveTradeSurface.tsx", import.meta.url), "utf8");
-  assert.equal((lts.match(/onHoldStart=\{onLockHoldStart\}/g) ?? []).length, 1, "only the Lock hold");
+  assert.equal((lts.match(/onHoldStart=\{onLockHoldStart/g) ?? []).length, 1, "only the Lock hold");
   const button = readFileSync(new URL("../ui/components/Button.tsx", import.meta.url), "utf8");
   assert.match(button, /haptic\("light"\);\s*onHoldStart\?\.\(\);\s*setState\(s => holdReducer\(s, \{ type: "press"/);
   const confirmEffect = button.slice(button.indexOf('if (state.kind === "confirmed" && !confirmedFired.current)'), button.indexOf("onConfirmRef.current();") + 30);

@@ -8,6 +8,29 @@ import type { FederationInspection } from "../fedimint/federation-inspection.js"
 import { waitForFundingWallet } from "../payments/funding-wallet-ready.js";
 import { rejectedLockRecovery } from "../fedimint/rejected-lock-recovery.js";
 import { assertOnchainFundingWindow, fundingInvoiceSeconds, assertFundingInvoiceWithinSeat } from "../payments/seat-funding.js";
+import { abandonPreparedInvoice, adoptPreparedInvoice, prepareInvoice, type PreparedInvoiceTerms } from "../payments/prepared-funding-invoice.js";
+import { perfLockStep } from "../ui/perf-probe.js";
+
+/** The lifetime asked of the gateway for a funding invoice: the flow's
+ *  request capped by the seat, minus a 45 s margin. One rule for a fresh
+ *  invoice and for one prepared during the Lock hold. */
+/** fund-and-lock's DEFAULT_PAYMENT_DEADLINE_MS in seconds (that module is
+ *  loaded lazily; a test pins the two equal). */
+const PAYMENT_DEADLINE_SECONDS = 900;
+function fundingRequestSeconds(requested: number | undefined, seatDeadline: number | undefined): number {
+  return Math.max(1, Math.min(requested ?? 900, fundingInvoiceSeconds(seatDeadline)) - 45);
+}
+function preparedTerms(
+  escrowId: string, federationId: string, amountMsats: number, description: string,
+  opts: { savedHandleId?: string; paymentDetailsInChat?: boolean; selectedItems?: SelectedMenuItem[] },
+  seatDeadline: number | undefined,
+): PreparedInvoiceTerms {
+  return {
+    escrowId, federationId, amountMsats, description,
+    savedHandleId: opts.savedHandleId, paymentDetailsInChat: opts.paymentDetailsInChat,
+    itemsKey: opts.selectedItems?.length ? JSON.stringify(opts.selectedItems) : "", seatDeadline,
+  };
+}
 import { recordPaidLockRecovery, assertPaidLockRecoveryWritable } from "../payments/paid-lock-recovery.js";
 import { isLateOnchainDeposit, preLockDeadline, JOIN_HOLD_LOCK_GRACE_SECONDS } from "../escrow-engine/types.js";
 import { conductStanding, type BondConductProof } from "../escrow-engine/conduct-standing.js";
@@ -1101,6 +1124,14 @@ export interface UseEscrowActions {
    * the returned kind for post-modal navigation. Per-phase UI lives in
    * the modal via opts.onPhase.
    */
+  /** Lock Step 2b: ask for the funding invoice when the Lock hold begins.
+   *  Never shown or paid here; the funding flow adopts it or it is abandoned. */
+  prepareFundingInvoice: (
+    escrowId: string,
+    opts: { amountMsats: number; premiumMsats?: number; description: string; savedHandleId?: string; paymentDetailsInChat?: boolean; selectedItems?: SelectedMenuItem[] },
+  ) => Promise<void>;
+  /** The Lock hold was lifted: mark any prepared invoice abandoned. */
+  abandonPreparedFundingInvoice: () => void;
   fundAndLock: (
     escrowId: string,
     opts: {
@@ -5436,7 +5467,16 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
         getBalance: () => fedimint.getBalance(),
         createFundingInvoice: async (amountMsats, description, onReceiveState, onGateway, expirySeconds) => {
           const fresh = await requireBridge().preflightLock(escrowId, { selectedItems: opts.selectedItems, buyerPubkey: fundingBuyerPubkey, savedHandleId: opts.savedHandleId, paymentDetailsInChat: opts.paymentDetailsInChat });
-          const invoice = await createFundingInvoice(
+          const invoiceSeconds = fundingRequestSeconds(expirySeconds, fresh.seatDeadline);
+          // Lock Step 2b: the invoice asked for when the Lock hold began, if
+          // every term matches (see prepared-funding-invoice.ts). It was never
+          // shown; the same seat check below runs before it is.
+          const adopted = isSimModeOn() ? null : await adoptPreparedInvoice<LnReceiveStateKind, InvoiceGatewayInfo>(
+            preparedTerms(escrowId, fedimint.getFederationId() ?? "", amountMsats, description, opts, fresh.seatDeadline),
+            invoiceSeconds, onReceiveState, onGateway,
+          );
+          if (adopted) perfLockStep("invoice · started during hold");
+          const invoice = adopted ?? await createFundingInvoice(
             amountMsats,
             description,
             onReceiveState,
@@ -5446,7 +5486,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
               amountMsats,
             }),
             onGateway,
-            Math.max(1, Math.min(expirySeconds ?? 900, fundingInvoiceSeconds(fresh.seatDeadline)) - 45),
+            invoiceSeconds,
           );
           if (!isSimModeOn() && fresh.seatDeadline !== undefined) {
             // A slow gateway or old sidecar may ignore the requested expiry.
@@ -5509,6 +5549,52 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
         : prev);
     }
   }, [createFundingInvoice, lockAndPublishAction, lockAndPublishWithEcashAction, markFedimintWalletNotReady]);
+
+  // Lock invoice, Step 2b: the Lock hold began. Ask the federation for the
+  // funding invoice now, so the sheet can adopt it when the hold completes.
+  // Never shown or paid from here (see prepared-funding-invoice.ts): it is
+  // only adopted inside runFundAndLock, after the #37 settle and a fresh
+  // preflight, at the point a fresh invoice would be created. Any refusal
+  // here is silent and changes nothing: the normal path runs as before.
+  const prepareFundingInvoiceAction = useCallback(async (
+    escrowId: string,
+    opts: { amountMsats: number; premiumMsats?: number; description: string; savedHandleId?: string; paymentDetailsInChat?: boolean; selectedItems?: SelectedMenuItem[] },
+  ): Promise<void> => {
+    try {
+      if (isSimModeOn() || isTestnetMode()) return;
+      if (hasFediInternalGenerateEcash() || isFediMiniAppRuntime() || hasFediInternalEcash()) return;
+      const fedimint = fedimintRef.current;
+      if (!fedimint || !fedimint.isInitialized() || !fedimint.isJoined()) return;
+      const inflight = fundingInProgressRef.current;
+      if (inflight && !inflight.aborted) return;
+      // A prior attempt for this trade is settled by the real flow first;
+      // nothing is prepared beside it.
+      if (getPendingNativeLock(escrowId)) return;
+      const federationId = fedimint.getFederationId();
+      if (!federationId) return;
+      const amountMsats = opts.amountMsats + fundingPremiumMsats(opts.premiumMsats);
+      if (amountMsats < minimumRealFundingMsatsForMethod("lightning")) return;
+      const { buyerPubkey, seatDeadline } = await requireBridge().preflightLock(escrowId, {
+        selectedItems: opts.selectedItems, savedHandleId: opts.savedHandleId, paymentDetailsInChat: opts.paymentDetailsInChat,
+      });
+      void buyerPubkey;
+      const expirySeconds = fundingRequestSeconds(fundingInvoiceSeconds(seatDeadline, Date.now(), PAYMENT_DEADLINE_SECONDS), seatDeadline);
+      const journal = createFundingInvoiceJournal({ escrowId, amountMsats, federationId });
+      prepareInvoice<LnReceiveStateKind, InvoiceGatewayInfo>({
+        terms: preparedTerms(escrowId, federationId, amountMsats, opts.description, opts, seatDeadline),
+        expirySeconds,
+        journal,
+        create: (onState, onGateway) => createFundingInvoice(
+          amountMsats, opts.description, onState,
+          buildChamaOperationMeta({ flow: "fund_receive", escrowId, amountMsats }),
+          onGateway, expirySeconds,
+        ),
+      });
+    } catch (e) {
+      // Not ready to fund (seat, details, storage): the real flow says why.
+      console.warn("[chama] lock invoice not prepared during hold:", errorText(e, "not ready"));
+    }
+  }, [createFundingInvoice]);
 
   // R3-1b: re-attach to a submitted payout and, if it settled, transition the
   // trade to COMPLETED — on BOTH sides (publishing COMPLETE propagates to the
@@ -6255,6 +6341,8 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     setCustomInvite,
     createFundingInvoice,
     fundAndLock: fundAndLockAction,
+    prepareFundingInvoice: prepareFundingInvoiceAction,
+    abandonPreparedFundingInvoice: abandonPreparedInvoice,
     payInvoice: async (bolt11: string, meta?: ChamaOperationMeta) => {
       const bridge = requireBridge();
       // R3-1: surface the operationId so the recovery payout can journal it
