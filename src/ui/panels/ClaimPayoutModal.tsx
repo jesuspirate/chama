@@ -1,4 +1,5 @@
 import { missingWebCrypto } from "../browser-capability-copy.js";
+import { walletName } from "../wallet-names.js";
 import type { OnchainInfo } from "../../fedimint/fedimint-client.js";
 import { HoldToConfirm, buttonStyle } from "../components/Button.js";
 import { CLAIM_HOLD_IN_SHEET } from "../claim-hold.js";
@@ -41,7 +42,7 @@ import { DestinationPicker, resolveReceiveCode } from "../components/Destination
 import { isSimModeOn } from "../../sim/simMode.js";
 import { sandboxClaimInvoice } from "../../sim/sim-wallet.js";
 import { BitcoinAmount } from "../components/BitcoinAmount.js";
-import { displayPayoutDestination, payoutDestinationLabel, listPayoutDestinations, type PayoutDestination } from "../../payments/payout-destinations.js";
+import { displayPayoutDestination, listPayoutDestinations, type PayoutDestination } from "../../payments/payout-destinations.js";
 import {
   addOrTouchSavedNwcConnection, displayNwcConnection, listSavedNwcConnections,
   type SavedNwcConnection,
@@ -837,7 +838,7 @@ export function ClaimMethodChooser({
             <h3 style={{ color: T.text, fontFamily: T.sans, fontSize: 14 }}>{t("claim.yourWallets")}</h3>
             <div style={{ display: "grid", gap: 6 }}>
               {walletDestinations.map(destination => <SavedWalletRow key={destination.id}
-                label={payoutDestinationLabel(destination)} detail={destination.label ? destination.address : displayPayoutDestination(destination.address)} disabled={!!lightningReason}
+                label={walletName(destination)} detail={displayPayoutDestination(destination.address)} disabled={!!lightningReason}
                 selected={selected?.kind === "address" && selected.wallet.id === destination.id}
                 onSelect={() => { setRail("lightning"); setSelected({ kind: "address", wallet: destination }); }} />)}
               {walletConnections.map(connection => <SavedWalletRow key={connection.id}
@@ -865,11 +866,11 @@ export function ClaimMethodChooser({
               onConfirm={() => rail === "ecash" ? onSelectEcash() : rail === "lightning" && selected ? selected.kind === "address" ? onSelectSavedWallet(selected.wallet) : onSelectSavedNwc(selected.wallet) : onSelect({ kind: rail })}
               label={rail === "ecash" || !selected ? t("claim.ecashMethod") : t("claim.holdToSend", { amount: payoutSats.toLocaleString() })}
               hint={t("common.holdToConfirm")} armedLabel={t("common.holdArmed")} />
-            {rail === "lightning" && selected && <ClaimHoldDestination destination={selected.kind === "address" ? payoutDestinationLabel(selected.wallet) : selected.wallet.label} />}
+            {rail === "lightning" && selected && <ClaimHoldDestination destination={selected.kind === "address" ? walletName(selected.wallet) : selected.wallet.label} />}
           </div>
         ) : (
         <PaymentButton disabled={rail === "lightning" && !!lightningReason} tier={rail === "ecash" ? "primary" : "raised"} style={{ width: "100%", marginBottom: 12 }} onClick={() => rail === "ecash" ? onSelectEcash() : rail === "lightning" && selected ? selected.kind === "address" ? onSelectSavedWallet(selected.wallet) : onSelectSavedNwc(selected.wallet) : onSelect({ kind: rail })}>
-          {rail === "ecash" ? t("claim.ecashMethod") : rail === "onchain" ? t("claim.pasteBitcoin") : selected ? t("claim.sendTo", { amount: payoutSats.toLocaleString(), destination: selected.kind === "address" ? payoutDestinationLabel(selected.wallet) : selected.wallet.label }) : t("claim.lightningOptions")}
+          {rail === "ecash" ? t("claim.ecashMethod") : rail === "onchain" ? t("claim.pasteBitcoin") : selected ? t("claim.sendTo", { amount: payoutSats.toLocaleString(), destination: selected.kind === "address" ? walletName(selected.wallet) : selected.wallet.label }) : t("claim.lightningOptions")}
         </PaymentButton>
         )}
         {rail === "lightning" && selected && <PaymentButton disabled={!!lightningReason} onClick={() => onSelect({ kind: "lightning" })} style={{ width: "100%", marginBottom: 12 }}>{t("claim.lightningOptions")}</PaymentButton>}
