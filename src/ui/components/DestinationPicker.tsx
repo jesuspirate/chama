@@ -1,4 +1,5 @@
 import { CardBack } from "./CardBack.js";
+import { walletName } from "../wallet-names.js";
 import { useCardDraft, type CardDraft } from "../hooks/useCardDraft.js";
 // ══════════════════════════════════════════════════════════════════════════
 // Chama — DestinationPicker (v0.3.0 send-side affordance)
@@ -30,7 +31,7 @@ import { HoldToConfirm } from "./Button.js";
 import { lazy, Suspense, useMemo, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode } from "react";
 import { Capacitor } from "@capacitor/core";
 import { T, inputStyle } from "../theme.js";
-import { displayPayoutDestination, payoutDestinationLabel, type PayoutDestination } from "../../payments/payout-destinations.js";
+import { displayPayoutDestination, type PayoutDestination } from "../../payments/payout-destinations.js";
 import type { SavedNwcConnection } from "../../payments/nwc-connections.js";
 import {
   resolveLightningAddressToInvoice,
@@ -300,7 +301,7 @@ export function DestinationPicker({
           : <>{t("claim.submitSendBefore")} {submitAmount} →</>;
 
   const destinationSummary = pendingSend
-    ? pendingSend.kind === "saved" ? displayPayoutDestination(pendingSend.destination.address) : pendingSend.connection.label
+    ? pendingSend.kind === "saved" ? walletName(pendingSend.destination) : pendingSend.connection.label
     : dispatchPreview.ok && dispatchPreview.decision.tier === "typed-address"
       ? displayPayoutDestination(dispatchPreview.decision.addressUsed!) : null;
 
@@ -409,8 +410,8 @@ export function DestinationPicker({
                         color: T.text, fontFamily: T.mono, fontSize: 11,
                         overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                       }}>
-                        {payoutDestinationLabel(destination)}
-                        {destination.label && <span style={{ display: "block", color: T.ink2, fontSize: T.fs.secondary }}>{displayPayoutDestination(destination.address)}</span>}
+                        {walletName(destination)}
+                        {walletName(destination) !== displayPayoutDestination(destination.address) && <span style={{ display: "block", color: T.ink2, fontSize: T.fs.secondary }}>{displayPayoutDestination(destination.address)}</span>}
                       </span>
                     </span>
                     {isDefault && (

@@ -16,6 +16,8 @@ export const claim: Record<string, string> = {
   "claim.railTiming": "Lightning · secondes · Bitcoin · ~1 heure · Ecash · sans frais",
 
   "claim.cashOutCurrency": "Retirer en {currency}",
+  "claim.fediWallet": "Portefeuille Fedi",
+  "claim.lightningWalletAt": "Portefeuille Lightning sur {host}",
   "claim.yourWallets": "Vos portefeuilles",
   "claim.ecashMethod": "Obtenir un billet ecash",
   "claim.sandboxKeep": "Garder dans le portefeuille sandbox",

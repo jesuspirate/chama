@@ -15,6 +15,8 @@ export const claim: Record<string, string> = {
   "claim.railTiming": "Lightning · sekunde · Bitcoin · ~saa 1 · Ecash · bila ada",
 
   "claim.cashOutCurrency": "Toa pesa kwa {currency}",
+  "claim.fediWallet": "Pochi ya Fedi",
+  "claim.lightningWalletAt": "Pochi ya Lightning kwenye {host}",
   "claim.yourWallets": "Pochi zako",
   "claim.ecashMethod": "Pata noti ya ecash",
   "claim.sandboxKeep": "Weka kwenye pochi ya sandbox",
