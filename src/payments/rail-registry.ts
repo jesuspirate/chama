@@ -586,6 +586,14 @@ export function railLabel(rail: Rail | string | null | undefined): string {
   return found ? found.label ?? found.displayName : rail;
 }
 
+/** The full name, for where people enter their payment details: it says
+ *  what to share ("$cashtag (Cash App)"). Chips and listings use railLabel. */
+export function railEntryName(rail: string | null | undefined): string {
+  if (!rail) return "";
+  const found = BY_KEY.get(rail) ?? BY_KEY.get(toRailKey(rail));
+  return found ? found.displayName : rail;
+}
+
 export function getRailByKey(key: string | null | undefined): Rail | null {
   if (!key) return null;
   return BY_KEY.get(key) ?? null;
