@@ -65,7 +65,7 @@ console.log('PASS trade payment details: the choice opens the app overlay, metho
   assert.match(src, /@media \(max-width:720px\)\{[^}]*\.lts-room\{padding:8px 12px\}/);
   assert.match(src, /\.lts-votes\{padding:14px 14px 12px;border-top:1px solid \$\{T\.borderHi\};border-radius:\$\{T\.rSheet\}px \$\{T\.rSheet\}px 0 0;/, 'the bottom half has a sheet edge');
   assert.match(src, /\.lts-decision-well\{display:flex;flex-direction:column\}\s*\.lts-prelock-facts\{order:2;margin-top:16px\}/, 'arbiter record and listing follow the decision on phones');
-  assert.match(src, /\{state\.status === EscrowStatus\.CREATED && <div className="lts-prelock-facts">\s*<TradeArbiterRecord/);
+  assert.match(src, /\{state\.status === EscrowStatus\.CREATED && <div className="lts-prelock-facts">\s*(?:\{\/\*[\s\S]*?\*\/\}\s*)?(?:\{myRole === null && )?<TradeArbiterRecord/);
   assert.match(src, /<div className="lts-root"/);
 }
 console.log('PASS trade screen on phones: decision first, clock once, a clear edge between the halves');

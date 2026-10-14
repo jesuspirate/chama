@@ -1,4 +1,5 @@
 import { suppressedVoteError } from '../escrow-engine/vote-suppression.js';
+import { decideReconcileBalance } from "../fedimint/reconcile-balance.js";
 import { recoverOwnedBonds, findOwnedBond, type BondRecoveryReport } from '../bond-multisig/bond-recovery.js';
 import { getExistingSeed } from '../fedimint/seed-manager.js';
 import { assertBondClaimReady } from '../bond-multisig/manage-actions.js';
@@ -4237,62 +4238,43 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
           throw err;
         }
 
-        let opfsBalanceMsats = 0;
-        try {
-          opfsBalanceMsats = await fedimint.getBalance();
-        } catch (e) {
-          // If we can't read the balance, treat as unknown — refuse
-          // without force rather than risk silent destruction.
-          console.debug("[chama] reconcile: balance read failed:", e);
-          opfsBalanceMsats = -1;
+        // Unknown stays unknown (Jet, 6.4.25): a failed read, or anything
+        // that is not a whole non-negative amount, is never treated as 0.
+        const reconcileWallet = fedimint;
+        const decision = await decideReconcileBalance(() => reconcileWallet.getBalance(), force);
+        if (decision.kind === "unknown") {
+          // Same rule and wording as switchFederation's unknown-balance
+          // refusal. No amount rides on this error, so no handler can mistake
+          // it for an empty wallet and switch without asking.
+          const unknownErr = new Error(
+            "Chama couldn't read this wallet's balance, so it won't switch " +
+            "communities right now. Nothing was changed. Close other Chama tabs " +
+            "and try again.",
+          ) as Error & { code?: string; previousActiveInvite?: string; desiredInvite?: string };
+          unknownErr.code = "RECONCILE_REFUSED_BALANCE_UNKNOWN";
+          unknownErr.previousActiveInvite = previousActiveInvite ?? "";
+          unknownErr.desiredInvite = desiredInvite;
+          throw unknownErr;
         }
-
-        const balanceUnknown = opfsBalanceMsats < 0;
-        // Material dust line: only a recoverable-worth balance blocks the switch
-        // (same predicate the UI decision + modal use). Sub-material dust — e.g.
-        // ~1 sat that costs more than itself to recover — switches silently.
-        const balanceWithdrawable = balanceBlocksFederationSwitch(opfsBalanceMsats);
-        if (!force && (balanceUnknown || balanceWithdrawable)) {
-          const sats = opfsBalanceMsats > 0
-            ? Math.floor(opfsBalanceMsats / 1000)
-            : null;
+        if (decision.kind === "refuse") {
+          const opfsBalanceMsats = decision.balanceMsats;
+          const sats = Math.floor(opfsBalanceMsats / 1000);
           const refuseErr = new Error(
-            sats !== null
-              ? `Refusing to switch federations: ${sats} sats are held on ` +
-                `your current federation and would be permanently destroyed ` +
-                `when the local wallet is wiped. Move funds out (Lightning ` +
-                `withdrawal) before switching, or confirm destruction explicitly.`
-              : `Refusing to switch federations: couldn't verify the local ` +
-                `wallet balance. Try again, or confirm destruction explicitly.`,
-          );
-          (refuseErr as Error & {
-            code?: string;
-            balanceMsats?: number;
-            previousActiveInvite?: string;
-            desiredInvite?: string;
-          }).code = "RECONCILE_REFUSED_NONZERO_BALANCE";
-          (refuseErr as Error & {
-            code?: string;
-            balanceMsats?: number;
-            previousActiveInvite?: string;
-            desiredInvite?: string;
-          }).balanceMsats = opfsBalanceMsats > 0 ? opfsBalanceMsats : 0;
-          (refuseErr as Error & {
-            code?: string;
-            balanceMsats?: number;
-            previousActiveInvite?: string;
-            desiredInvite?: string;
-          }).previousActiveInvite = previousActiveInvite ?? "";
-          (refuseErr as Error & {
-            code?: string;
-            balanceMsats?: number;
-            previousActiveInvite?: string;
-            desiredInvite?: string;
-          }).desiredInvite = desiredInvite;
+            `Refusing to switch federations: ${sats} sats are held on ` +
+            `your current federation and would be permanently destroyed ` +
+            `when the local wallet is wiped. Move funds out (Lightning ` +
+            `withdrawal) before switching, or confirm destruction explicitly.`,
+          ) as Error & { code?: string; balanceMsats?: number; previousActiveInvite?: string; desiredInvite?: string };
+          refuseErr.code = "RECONCILE_REFUSED_NONZERO_BALANCE";
+          refuseErr.balanceMsats = opfsBalanceMsats;
+          refuseErr.previousActiveInvite = previousActiveInvite ?? "";
+          refuseErr.desiredInvite = desiredInvite;
           throw refuseErr;
         }
+        const opfsBalanceMsats = decision.balanceMsats;
 
-        // Safe-to-wipe path: balance is 0, OR force === true.
+        // Replace path: a balance that was read and is empty or dust, OR
+        // force === true (the person confirmed).
         console.warn(
           "[chama] reconcile: wiping OPFS to switch federations",
           {
