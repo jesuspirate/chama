@@ -90,6 +90,7 @@ console.log("PASS Lock warm-up: one shared gateway question per federation; only
   assert.match(lts, /\{onLockShown && <OnShown key=\{state\.id\} run=\{onLockShown\} \/>\}/);
   const fund = readFileSync(new URL("../ui/panels/AtomicFundingModal.tsx", import.meta.url), "utf8");
   assert.match(fund, /perfLockStep\("invoice created"\);\s*perfLockEnd\("invoice shown"\);/);
+  assert.match(fund, /useEffect\(\(\) => \{\s*perfLockSheetOpened\(\);/, "the sheet starts the timing if nothing did");
 }
 console.log("PASS Lock warm-up wiring: read-only, own federation only, both trade views, press path unchanged");
 
@@ -104,6 +105,8 @@ console.log("PASS Lock warm-up wiring: read-only, own federation only, both trad
   perf.setPerfEnabled(false);
   perf.perfLockStart(); perf.perfLockStep("wallet ready"); perf.perfLockEnd("no invoice");
   assert.equal(perf.perfHistory().length, 0, "off: nothing recorded");
+  assert.match(perf.perfReport(), /^Chama \S+ · Lock timing on · React profiler off \(release build\)\nNo timings yet: hold Lock/,
+    "an empty copy says so, and names the build");
   perf.setPerfEnabled(true);
   perf.perfLockStart();
   for (const step of ["wallet ready", "federation check", "sheet opens", "gateway check · warm", "invoice created"]) perf.perfLockStep(step);
@@ -112,10 +115,15 @@ console.log("PASS Lock warm-up wiring: read-only, own federation only, both trad
   assert.equal(flow.flow, true);
   assert.match(flow.label, /^Lock invoice/);
   assert.deepEqual(flow.steps.map(s => s.name).slice(0, 5), ["wallet ready", "federation check", "sheet opens", "gateway check · warm", "invoice created"]);
-  assert.match(perf.perfReport(), /Lock invoice · no invoice: \d+ ms total\n  wallet ready: \d+ ms/);
+  assert.match(perf.perfReport(), /Lock invoice · no invoice: \d+ ms total\n  wallet ready: \d+ ms\n/);
   // Ending twice (sheet closes after the invoice) records once.
   perf.perfLockEnd("no invoice");
   assert.equal(perf.perfHistory().length, 1);
+  // A sheet opened without the press path (another entry point) still times.
+  perf.perfLockSheetOpened();
+  perf.perfLockStep("invoice created");
+  perf.perfLockEnd("no invoice");
+  assert.deepEqual(perf.perfHistory()[0].steps.map(s => s.name).slice(0, 2), ["sheet opens", "invoice created"]);
   perf.setPerfEnabled(false);
 }
 console.log("PASS Lock timing readout: steps from the hold to the invoice, off by default");

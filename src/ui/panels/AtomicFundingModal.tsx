@@ -31,7 +31,7 @@ import { TradeAmount } from "../components/TradeAmount.js";
 // is the React shell that renders phase transitions.
 
 import { useEffect, useRef, useState } from "react";
-import { perfLockEnd, perfLockStep } from "../perf-probe.js";
+import { perfLockEnd, perfLockSheetOpened, perfLockStep } from "../perf-probe.js";
 import { T, inputStyle } from "../theme.js";
 import { useT } from "../../i18n/index.js";
 import { CopyButton } from "../components/CopyButton.js";
@@ -336,7 +336,7 @@ export function AtomicFundingModal({
   // Timing readout (?perf=1): the sheet is open; a sheet closed before an
   // invoice ends the Lock timing without one.
   useEffect(() => {
-    perfLockStep("sheet opens");
+    perfLockSheetOpened();
     return () => perfLockEnd("no invoice");
   }, []);
 

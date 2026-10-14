@@ -121,6 +121,13 @@ export function perfLockStart(): void {
   lockFlow = { t0: t, last: t, steps: [] };
 }
 
+/** The funding sheet opened. If nothing started the timing (another entry
+ *  point, or the readout switched on mid-flow), time from here. */
+export function perfLockSheetOpened(): void {
+  if (!lockFlow) perfLockStart();
+  perfLockStep("sheet opens");
+}
+
 /** A step of the Lock flow finished. */
 export function perfLockStep(name: string): void {
   if (!lockFlow) return;
@@ -148,9 +155,13 @@ export function perfLockEnd(outcome: "invoice shown" | "no invoice"): void {
 /** Plain text of the recorded taps, for pasting into a chat. */
 export function perfReport(taps: readonly PerfTap[] = history): string {
   const ms = (n: number) => `${Math.round(n)} ms`;
-  return `${PROFILER_BUILD ? "React profiler on" : "React profiler off (release build)"}\n` + taps.map(tap => [
+  // The first line names the build and says this build times Lock, so a
+  // pasted report shows which app produced it.
+  const head = `Chama ${typeof __APP_VERSION__ === "string" ? __APP_VERSION__ : "dev"} · Lock timing on · ${PROFILER_BUILD ? "React profiler on" : "React profiler off (release build)"}`;
+  if (taps.length === 0) return `${head}\nNo timings yet: hold Lock on a trade (or tap a Me tab), then Copy.`;
+  return `${head}\n` + taps.map(tap => [
     tap.flow ? `${tap.label}: ${ms(tap.totalMs)} total` : `${tap.label}: ${ms(tap.totalMs)} total (React ${ms(tap.renderMs)}, browser draw ${ms(tap.drawMs)})`,
-    ...tap.steps.map(s => `  ${s.name}: ${ms(s.ms)} · ${s.count}×${s.extra ? ` · ${s.extra} uncached` : ""}`),
+    ...tap.steps.map(s => tap.flow ? `  ${s.name}: ${ms(s.ms)}` : `  ${s.name}: ${ms(s.ms)} · ${s.count}×${s.extra ? ` · ${s.extra} uncached` : ""}`),
   ].join("\n")).join("\n");
 }
 
