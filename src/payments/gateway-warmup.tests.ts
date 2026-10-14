@@ -98,15 +98,28 @@ console.log("PASS Lock warm-up wiring: read-only, own federation only, both trad
   // Step 0: the readout records the Lock flow in steps when it is on, and
   // nothing at all when it is off.
   const values = new Map<string, string>();
+  const session = new Map<string, string>();
   Object.defineProperty(globalThis, "localStorage", { configurable: true, value: {
     getItem: (k: string) => values.get(k) ?? null, setItem: (k: string, v: string) => void values.set(k, v), removeItem: (k: string) => void values.delete(k),
   } });
   const perf = await import("../ui/perf-probe.js");
+  // Jet (rc.6): Copy gave only the header line. With the readout off, or
+  // switched off and on again, a Lock timing was never kept. Now the Lock
+  // flow is always recorded, and off only hides it.
+  Object.defineProperty(globalThis, "sessionStorage", { configurable: true, value: {
+    getItem: (k: string) => session.get(k) ?? null, setItem: (k: string, v: string) => void session.set(k, v), removeItem: (k: string) => void session.delete(k),
+  } });
   perf.setPerfEnabled(false);
-  perf.perfLockStart(); perf.perfLockStep("wallet ready"); perf.perfLockEnd("no invoice");
-  assert.equal(perf.perfHistory().length, 0, "off: nothing recorded");
   assert.match(perf.perfReport(), /^Chama \S+ · Lock timing on · React profiler off \(release build\)\nNo timings yet: hold Lock/,
     "an empty copy says so, and names the build");
+  perf.perfLockStart(); perf.perfLockStep("wallet ready"); perf.perfLockEnd("no invoice");
+  assert.equal(perf.perfHistory().length, 1, "recorded while the readout is off");
+  perf.setPerfEnabled(true);
+  perf.setPerfEnabled(false);
+  perf.setPerfEnabled(true);
+  assert.equal(perf.perfHistory().length, 1, "off and on again keeps it");
+  assert.match(perf.perfReport(), /Lock invoice · no invoice: \d+ ms total\n  wallet ready: \d+ ms/);
+  assert.ok(session.get("chama_perf_history_v1")?.includes("Lock invoice"), "kept for the session (survives a reload)");
   perf.setPerfEnabled(true);
   perf.perfLockStart();
   for (const step of ["wallet ready", "federation check", "sheet opens", "gateway check · warm", "invoice created"]) perf.perfLockStep(step);
@@ -118,7 +131,7 @@ console.log("PASS Lock warm-up wiring: read-only, own federation only, both trad
   assert.match(perf.perfReport(), /Lock invoice · no invoice: \d+ ms total\n  wallet ready: \d+ ms\n/);
   // Ending twice (sheet closes after the invoice) records once.
   perf.perfLockEnd("no invoice");
-  assert.equal(perf.perfHistory().length, 1);
+  assert.equal(perf.perfHistory().length, 2);
   // A sheet opened without the press path (another entry point) still times.
   perf.perfLockSheetOpened();
   perf.perfLockStep("invoice created");
@@ -126,4 +139,4 @@ console.log("PASS Lock warm-up wiring: read-only, own federation only, both trad
   assert.deepEqual(perf.perfHistory()[0].steps.map(s => s.name).slice(0, 2), ["sheet opens", "invoice created"]);
   perf.setPerfEnabled(false);
 }
-console.log("PASS Lock timing readout: steps from the hold to the invoice, off by default");
+console.log("PASS Lock timing readout: steps from the hold to the invoice; recorded even with the readout off, kept when it is switched off and on, kept across a reload");

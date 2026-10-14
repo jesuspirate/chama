@@ -25,7 +25,26 @@ export type PerfTap = {
 
 let enabled: boolean | null = null;
 let current: { label: string; t0: number; committedAt: number | null; steps: Map<string, Step> } | null = null;
-const history: PerfTap[] = [];
+// Kept for the session (survives a page reload, not an app restart), so
+// turning the readout on after holding Lock, or off and on again, never
+// loses a recorded timing (Jet, rc.6: Copy gave only the header line).
+const HISTORY_KEY = "chama_perf_history_v1";
+const history: PerfTap[] = readHistory();
+
+function readHistory(): PerfTap[] {
+  try {
+    const raw = typeof sessionStorage !== "undefined" ? sessionStorage.getItem(HISTORY_KEY) : null;
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.slice(0, 12) : [];
+  } catch {
+    return [];
+  }
+}
+
+function keepHistory(): void {
+  history.length = Math.min(history.length, 12);
+  try { sessionStorage.setItem(HISTORY_KEY, JSON.stringify(history)); } catch { /* best effort */ }
+}
 const listeners = new Set<() => void>();
 
 function readEnabled(): boolean {
@@ -48,7 +67,8 @@ export function perfEnabled(): boolean {
 export function setPerfEnabled(on: boolean): void {
   enabled = on;
   try { if (on) localStorage.setItem(STORAGE_KEY, "1"); else localStorage.removeItem(STORAGE_KEY); } catch { /* best effort */ }
-  if (!on) { current = null; history.length = 0; }
+  // Off hides the readout; recorded timings stay until the session ends.
+  if (!on) current = null;
   listeners.forEach(fn => fn());
 }
 
@@ -99,7 +119,7 @@ export function perfTapCommitted(label: string): void {
       drawMs: end - (tap.committedAt ?? end),
       steps: [...tap.steps.entries()].map(([name, s]) => ({ name, ...s })).sort((a, b) => b.ms - a.ms),
     });
-    history.length = Math.min(history.length, 12);
+    keepHistory();
     current = null;
     listeners.forEach(fn => fn());
   };
@@ -114,9 +134,9 @@ export function perfTapCommitted(label: string): void {
 
 let lockFlow: { t0: number; last: number; steps: Array<{ name: string; ms: number; count: number; extra: number }> } | null = null;
 
-/** The Lock hold completed. */
+/** The Lock hold completed. Recorded whether or not the readout is on (a
+ *  handful of timestamps), so it can be switched on afterwards. */
 export function perfLockStart(): void {
-  if (!perfEnabled()) return;
   const t = now();
   lockFlow = { t0: t, last: t, steps: [] };
 }
@@ -145,7 +165,7 @@ export function perfLockEnd(outcome: "invoice shown" | "no invoice"): void {
     const end = now();
     if (end - flow.last > 1) flow.steps.push({ name: outcome === "invoice shown" ? "draw" : "end", ms: end - flow.last, count: 1, extra: 0 });
     history.unshift({ label: `Lock invoice · ${outcome}`, totalMs: end - flow.t0, renderMs: end - flow.t0, drawMs: 0, steps: flow.steps, flow: true });
-    history.length = Math.min(history.length, 12);
+    keepHistory();
     listeners.forEach(fn => fn());
   };
   if (outcome === "invoice shown" && typeof requestAnimationFrame === "function") requestAnimationFrame(() => setTimeout(finish, 0));
