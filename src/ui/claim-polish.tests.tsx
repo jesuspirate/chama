@@ -67,3 +67,13 @@ const FEDI = "lnurl1dp68gurn8ghj7urjdajzuun9vd6hyunfdenkgtnkv95nze3wdaexwtmvdemr
 }
 console.log("PASS saved wallets: a recognisable name (Fedi wallet, Strike · bitcrazy) and a short code, never the full LNURL; one de-duplicated list that survives restarts");
 
+{
+  // Browse: the top bar's "Needs you" pill is the one signal; no floating bell.
+  const app = readFileSync(new URL("./App.tsx", import.meta.url), "utf8");
+  assert.doesNotMatch(app, /CanvasAttentionBell/);
+  assert.doesNotMatch(app, /visibleAttentionTrade|attentionActionMode/);
+  const bar = readFileSync(new URL("./panels/ChamaBar.tsx", import.meta.url), "utf8");
+  assert.match(bar, /label\.kind === "needs-you"/, "the bar still carries needs-you");
+}
+console.log("PASS Browse attention: one signal, the top bar");
+
