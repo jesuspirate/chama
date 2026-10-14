@@ -44,15 +44,42 @@ console.log("PASS payment methods: chips and listings say \"Cash App\"; the hand
   // 2. Tapping the tab you're on goes back to the top; at the top, the tap
   // keeps its old meaning (Browse: back to the guided start).
   const { scrollToTopIfScrolled } = await import("./scroll-top.js");
-  const calls: ScrollToOptions[] = [];
-  const page = { scrollTop: 1800, scrollTo: (o: ScrollToOptions) => { calls.push(o); page.scrollTop = 0; } };
-  assert.equal(scrollToTopIfScrolled(page, false), true);
-  assert.deepEqual(calls, [{ top: 0, behavior: "smooth" }]);
-  assert.equal(scrollToTopIfScrolled(page, false), false, "already at the top: nothing to do");
-  page.scrollTop = 900;
-  scrollToTopIfScrolled(page, true);
-  assert.deepEqual(calls[1], { top: 0, behavior: "auto" }, "reduced motion jumps");
-  assert.equal(scrollToTopIfScrolled(null, false), false);
+  const fakeRoot = (scrollTop: number) => {
+    const calls: ScrollToOptions[] = [];
+    const root = { scrollTop, calls, scrollTo: (o: ScrollToOptions) => { calls.push(o); root.scrollTop = 0; } };
+    return root;
+  };
+  // rc.7 on the Pixel: <body> is the scroller (html/body height 100% with
+  // overflow-x hidden), so the document's scrolling element reads 0.
+  let doc = fakeRoot(0), body = fakeRoot(1500);
+  assert.equal(scrollToTopIfScrolled([doc, body], false), true, "body scrolled: the tap scrolls up");
+  assert.deepEqual(body.calls, [{ top: 0, behavior: "smooth" }]);
+  assert.deepEqual(doc.calls, [], "the unscrolled root is left alone");
+  assert.equal(body.scrollTop, 0);
+  // A layout where the window scrolls still works.
+  doc = fakeRoot(1800); body = fakeRoot(0);
+  assert.equal(scrollToTopIfScrolled([doc, body], false), true, "window scrolled: the tap scrolls up");
+  assert.deepEqual(doc.calls, [{ top: 0, behavior: "smooth" }]);
+  assert.deepEqual(body.calls, []);
+  // At the top everywhere: nothing to do, the tap keeps its old meaning.
+  doc = fakeRoot(0); body = fakeRoot(3);
+  assert.equal(scrollToTopIfScrolled([doc, body], false), false, "already at the top: nothing to do");
+  assert.deepEqual([...doc.calls, ...body.calls], []);
+  assert.equal(scrollToTopIfScrolled([null, undefined], false), false);
+  assert.equal(scrollToTopIfScrolled([], false), false);
+  // Reduced motion jumps instead of gliding.
+  body = fakeRoot(900);
+  scrollToTopIfScrolled([fakeRoot(0), body], true);
+  assert.deepEqual(body.calls, [{ top: 0, behavior: "auto" }], "reduced motion jumps");
+  // Without scrollTo, scrollTop is set directly.
+  const bare = { scrollTop: 700 };
+  assert.equal(scrollToTopIfScrolled([bare], false), true);
+  assert.equal(bare.scrollTop, 0);
+  // The default candidates include <body>, not just the scrolling element.
+  const src = readFileSync(new URL("./scroll-top.ts", import.meta.url), "utf8");
+  assert.match(src, /\[document\.scrollingElement, document\.body\]/, "body is checked by default");
+  const html = readFileSync(new URL("../../index.html", import.meta.url), "utf8");
+  assert.match(html, /html, body \{ height: 100%; \}/, "if this CSS changes, recheck which element scrolls");
   const app = readFileSync(new URL("./App.tsx", import.meta.url), "utf8");
   const sw = app.slice(app.indexOf("const switchTab = (t: Tab) => {"), app.indexOf("// ── Not connected"));
   assert.match(sw, /if \(view !== "detail" && TAB_FOR_VIEW\[view\] === t && scrollToTopIfScrolled\(\)\) return;\s*if \(t === "browse"\)/,
