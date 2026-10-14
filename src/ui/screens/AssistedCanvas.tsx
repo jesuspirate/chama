@@ -257,7 +257,7 @@ export function AssistedCanvas({
     const value = paymentDetailDrafts[railKey]?.trim() ?? "";
     const rail = getRailByKey(railKey);
     if (!value) {
-      setPaymentDetailError(tr("canvas.enterRailDetails", { rail: rail ? railLabel(rail) : railKey }));
+      setPaymentDetailError(tr("canvas.enterRailDetails", { rail: rail?.displayName ?? railKey }));
       return;
     }
     try {
@@ -316,7 +316,9 @@ export function AssistedCanvas({
             const showCountryCodeNudge = rail?.placeholder?.includes("+") === true
               && (!draft.trim() || paymentHandleNeedsCountryCode(key, draft));
             return <label key={key}>
-              <span>{rail ? railLabel(rail) : key}</span>
+              {/* Where the handle is typed, the full name says what to share
+                  ("$cashtag (Cash App)"); chips and listings show the label. */}
+              <span>{rail?.displayName ?? key}</span>
               <div>
                 <input
                   value={draft}

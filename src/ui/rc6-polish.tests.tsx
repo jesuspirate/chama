@@ -19,15 +19,21 @@ import { getRailByKey, railLabel, toRailKey, matchRails } from "../payments/rail
   assert.equal(railLabel("Some future rail"), "Some future rail");
   assert.equal(railLabel(null), "");
   // Every place that shows a rail name uses the label.
-  for (const file of ["./components/TradePaymentDetails.tsx", "./screens/LiveTradeSurface.tsx", "./screens/AssistedCanvas.tsx", "./panels/SavedHandlesPanel.tsx", "./components/TradeCard.tsx"]) {
+  for (const file of ["./components/TradePaymentDetails.tsx", "./screens/LiveTradeSurface.tsx", "./screens/AssistedCanvas.tsx", "./components/TradeCard.tsx"]) {
     const src = readFileSync(new URL(file, import.meta.url), "utf8");
     assert.doesNotMatch(src, /getRailByKey\([^)]*\)\?\.displayName/, `${file}: shows the label, not the stored name`);
   }
+  // Jet (rc.6): where the handle is typed or managed, keep the full name so
+  // people know to share their $cashtag.
+  const handles = readFileSync(new URL("./panels/SavedHandlesPanel.tsx", import.meta.url), "utf8");
+  assert.doesNotMatch(handles, /railLabel/, "payment methods settings keep \"$cashtag (Cash App)\"");
+  const canvas = readFileSync(new URL("./screens/AssistedCanvas.tsx", import.meta.url), "utf8");
+  assert.match(canvas, /<span>\{rail\?\.displayName \?\? key\}<\/span>/, "the handle field keeps the full name");
   const create = readFileSync(new URL("./screens/CreateForm.tsx", import.meta.url), "utf8");
   assert.match(create, /onClick=\{\(\) => togglePaymentMethod\(rail\.displayName\)\}/, "Create still stores the unchanged name");
   assert.match(create, /\{selected \? "✓ " : ""\}\{railLabel\(rail\)\}/);
 }
-console.log("PASS payment methods: Cash App shows as \"Cash App\"; the stored name and matching are unchanged");
+console.log("PASS payment methods: chips and listings say \"Cash App\"; the handle field and payment methods keep \"$cashtag (Cash App)\"; the stored name and matching are unchanged");
 
 {
   // 2. Tapping the tab you're on goes back to the top; at the top, the tap
