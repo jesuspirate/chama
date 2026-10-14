@@ -91,6 +91,7 @@ export function LiveTradeSurface({
   onVote,
   onClaim,
   onLock,
+  onLockShown,
   onReclaimRejectedLock,
   onRepost,
   onHome,
@@ -125,6 +126,9 @@ export function LiveTradeSurface({
   onClaim?: () => Promise<void>;
   onReclaimRejectedLock?: (id: string) => Promise<void>;
   onLock?: (opts?: { savedHandleId?: string; paymentDetailsInChat?: boolean; selectedItems?: SelectedMenuItem[]; amountMsats?: number }) => Promise<void>;
+  /** Lock is on screen for this person: warm the funding path in the
+   *  background (read-only; see App's warmLockPath). Once per trade. */
+  onLockShown?: () => void;
   /** Seat the viewer into the trade's open slot (guided join). A range
    *  (exchange-bracket) listing passes the chosen order along. */
   onHome?: () => void;
@@ -339,6 +343,7 @@ export function LiveTradeSurface({
             {needsTradePaymentDetails(state) && <TradePaymentDetailsChoice state={state} value={paymentChoice} onChange={setPaymentChoice} />}
             {onLock ? (
               <>
+                {onLockShown && <OnShown key={state.id} run={onLockShown} />}
                 <MoneyHold
                   disabled={busy || fundingInProgress || bootProbeFailed || (needsTradePaymentDetails(state) && !paymentChoice)}
                   busy={busy}
@@ -1109,6 +1114,13 @@ function DisputeCard({ state, pubkey, amountLabel, nameFor }: {
       </div>
     </section>
   );
+}
+
+/** Calls `run` once when it first appears (keyed by trade). */
+function OnShown({ run }: { run: () => void }) {
+  const ran = useRef(false);
+  useEffect(() => { if (ran.current) return; ran.current = true; run(); }, [run]);
+  return null;
 }
 
 /** A question that needs this person: the "Your turn" card (attention ring). */

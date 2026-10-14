@@ -30,6 +30,8 @@ import { sameRecord, useStableList } from "./stable-list.js";
 import { oncePerSessionToastKey } from "./components/Toast.js";
 import { perfMeasure, versionTapToggle, PerfZone } from "./perf-probe.js";
 import { PerfReadout } from "./components/PerfReadout.js";
+import { perfLockStart, perfLockStep, perfLockEnd } from "./perf-probe.js";
+import { gatewayCount, warmGatewayCount, warmGateways } from "../payments/gateway-warmup.js";
 import { Capacitor } from "@capacitor/core";
 import { Preferences } from "@capacitor/preferences";
 
@@ -658,6 +660,31 @@ export default function App() {
     return true;
   };
 
+  // Lock invoice, Step 1 (Jet, 6.4.25): when a trade offers this person Lock,
+  // wake the wallet (the existing funding prewarm) and ask for its Lightning
+  // gateways in the background, so the funding sheet does not wait for
+  // either. Read-only: no invoice, nothing payable, no sats move. Only when
+  // the wallet is already on this trade's federation — never a join or switch.
+  const warmLockPath = (trade: EscrowState): void => {
+    if (simOn || trade.escrowMode === "onchain" || midFunding || !fedimint.joined) return;
+    const effect = decideListingTapEffect({
+      listing: { mintUrl: trade.mintUrl, community: trade.community,
+        fedId: (trade.eventChain[0]?.payload as { fed?: string } | undefined)?.fed ?? null },
+      currentInvite: liveActiveInvite, balanceMsats: 0, activeCommitmentCount,
+    });
+    if (effect.kind !== "matching") return;
+    void actions.prewarmFunding();
+    warmGateways(fedimint.federationId, actions.getLightningGatewayCount);
+  };
+  // The funding sheet's gateway check: a warm answer at once, else asked now.
+  const lockGatewayCount = (): Promise<number | null> => {
+    const warm = warmGatewayCount(fedimint.federationId) !== null;
+    return gatewayCount(fedimint.federationId, actions.getLightningGatewayCount).then(count => {
+      perfLockStep(warm ? "gateway check · warm" : "gateway check · cold");
+      return count;
+    });
+  };
+
   // Ecash custody still requires the trade's federation, even when its final
   // destination is a Lightning invoice. Never switch a funded wallet on navigation.
   const ensureTradeWallet = async (trade: EscrowState): Promise<boolean> => {
@@ -773,13 +800,17 @@ export default function App() {
   ): Promise<void> => {
     if (!selected || selected.escrowMode === "onchain") return;
     if (!requireOnline()) return;
+              // Timing readout (?perf=1): Lock hold → invoice on screen.
+              perfLockStart();
               const savedHandleId = lockOpts.savedHandleId;
               const selectedItems = lockOpts.selectedItems;
-              if (!await ensureTradeWallet(selected)) return;
+              if (!await ensureTradeWallet(selected)) { perfLockEnd("no invoice"); return; }
+              perfLockStep("wallet ready");
               // v0.6.5: the only Fund gate is mid-funding — multiple
               // concurrent trades are fine, but two concurrent atomic
               // funding flows would race the shared OPFS wallet.
               if (midFunding) {
+                perfLockEnd("no invoice");
                 setToast({
                   message: t("app.anotherFundingInProgress"),
                   type: "error",
@@ -793,6 +824,7 @@ export default function App() {
                 !isTestnetMode() &&
                 lockAmountMsats < MIN_REAL_ATOMIC_FUNDING_MSATS
               ) {
+                perfLockEnd("no invoice");
                 setToast({
                   message: `${minimumAtomicFundingMessage()} ${t("app.enterPositiveAmount")}`,
                   type: "error",
@@ -800,7 +832,9 @@ export default function App() {
                 return;
               }
               const probe = await actions.probeFederation();
+              perfLockStep("federation check");
               if (!probe.ok) {
+                perfLockEnd("no invoice");
                 setToast({
                   message: probe.error || t("app.walletDisconnectedReconnect"),
                   type: "error",
@@ -3565,7 +3599,7 @@ export default function App() {
           tradeCategory={pendingFundAndLock.tradeCategory}
           fundAndLock={actions.fundAndLock}
           spendableMsats={canLockFromBalance(escrows.get(pendingFundAndLock.escrowId), walletSpendableMsats, pendingFundAndLock.amountMsats, fundingPremiumMsats(pendingFundAndLock.premiumMsats)) ? walletSpendableMsats : 0}
-          getLightningGatewayCount={actions.getLightningGatewayCount}
+          getLightningGatewayCount={lockGatewayCount}
           supportsOnchain={actions.supportsOnchain()}
           subscribeDeposit={actions.subscribeDeposit}
           getOnchainInfo={actions.getOnchainInfo}
@@ -4215,6 +4249,7 @@ export default function App() {
               onHome={guidedHome}
               onRepost={() => renewListing(selected.id)}
               onLock={tradeOnLock}
+              onLockShown={() => warmLockPath(selected)}
               onClaim={tradeOnClaim}
               onJoin={tradeOnJoin}
               onVote={(outcome, payoutAddress) => actions.vote(selectedId!, outcome, payoutAddress).then(
@@ -4599,9 +4634,7 @@ export default function App() {
               }
             }}
             onLock={tradeOnLock}
-            onPrewarmFunding={() => {
-              void actions.prewarmFunding();
-            }}
+            onPrewarmFunding={() => warmLockPath(selected)}
             onOpenSettings={() => setWalletOverlay("payment-methods")}
             onOpenNwcSettings={() => { setAdvancedFocusNwc(true); openAdvanced(); }}
           />
