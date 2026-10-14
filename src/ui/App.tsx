@@ -27,6 +27,7 @@ import type { CircleRound } from "../chama/types.js";
 import { getTrustedArbiterPool } from "../arbiters/pool.js";
 import { useState, useEffect, useMemo, useRef, useCallback, lazy, Suspense, type ReactNode } from "react";
 import { sameRecord, useStableList } from "./stable-list.js";
+import { oncePerSessionToastKey } from "./components/Toast.js";
 import { perfMeasure, versionTapToggle, PerfZone } from "./perf-probe.js";
 import { PerfReadout } from "./components/PerfReadout.js";
 import { perfLockStart, perfLockStep, perfLockEnd } from "./perf-probe.js";
@@ -208,7 +209,6 @@ import { GlobeCountryPicker } from "./screens/GlobeCountryPicker.js";
 import { DashboardScreen } from "./screens/DashboardScreen.js";
 import { TradeDetail } from "./screens/TradeDetail.js";
 import { LiveTradeSurface } from "./screens/LiveTradeSurface.js";
-import { CanvasAttentionBell } from "./components/CanvasAttentionBell.js";
 import { OfflineBar } from "./components/OfflineBar.js";
 import { CreateForm } from "./screens/CreateForm.js";
 import { MeScreen } from "./screens/MeScreen.js";
@@ -907,7 +907,20 @@ export default function App() {
   // the person asks to change it, defer the real mutation until authentication
   // gives us an npub and the existing federation-switch safety gates can run.
   const [changeHomeAfterConnect, setChangeHomeAfterConnect] = useState(false);
-  const [toast, setToast] = useState<{ message: ReactNode; type: "success" | "error" | "info"; sticky?: boolean; dismissOnTap?: boolean } | null>(null);
+  type ToastState = { message: ReactNode; type: "success" | "error" | "info"; sticky?: boolean; dismissOnTap?: boolean } | null;
+  const [toast, setToastState] = useState<ToastState>(null);
+  // A few toasts describe a lasting condition, not an event (Jet, 6.4.25: the
+  // wallet-storage toast came back on every open and retry). Those show once
+  // per app session; every other toast is unchanged.
+  const shownOnceToasts = useRef(new Set<string>());
+  const setToast = useCallback((next: ToastState) => {
+    const key = next ? oncePerSessionToastKey(next.message) : null;
+    if (key) {
+      if (shownOnceToasts.current.has(key)) return;
+      shownOnceToasts.current.add(key);
+    }
+    setToastState(next);
+  }, []);
   toastRef.current = setToast;
   const [showFundModal, setShowFundModal] = useState(false);
   // v2.4 #56: "withdraw as ecash" modal (fee-free Fedimint note export).
@@ -2062,20 +2075,6 @@ export default function App() {
   // eslint-disable-next-line react-hooks/exhaustive-deps -- settledClaimKey is settledClaimIds' content
   }, [escrows, pubkey, now, settledClaimKey, onchainObservations, pendingOnchainPayoutIds]));
   const needsYouCount = needsYouTrades.length;
-  const attentionTrade = needsYouTrades[0] ?? activeTrade;
-  // Known work stays actionable during hydration; syncing only fills the
-  // bar when no higher-priority state is known yet.
-  const visibleAttentionTrade = attentionTrade;
-  const attentionActionMode = needsYouCount > 0;
-  // Step 4: the attention pill routes to the most urgent needs-you trade
-  // (needsYouTrades[0]), which is often NOT the trade on screen. Name its
-  // destination — amount + community — so tapping is a deliberate jump, not a
-  // surprise that then reads as the current trade mutating to another currency.
-  // Same resolver the Details pane uses (getCommunityBySlug().displayName), so
-  // the pill and the destination agree.
-  const attentionCommunityLabel = visibleAttentionTrade?.community
-    ? getCommunityBySlug(visibleAttentionTrade.community)?.displayName ?? null
-    : null;
 
   // v0.6.5 funding-operation gate. The single backstop against two
   // concurrent runFundAndLock calls racing on the shared OPFS wallet.
@@ -3799,6 +3798,9 @@ export default function App() {
           getLightningGatewayCount={actions.getLightningGatewayCount}
           onWithdrawEcash={() => { setPendingClaim(null); setShowEcashExport(true); }}
           escrowId={pendingClaim.escrowId}
+          // Same test as useEscrow's claimAlreadyPublished: a CLAIMED trade
+          // only resumes the payout, so its sats are already in this wallet.
+          claimAlreadyPublished={escrows.get(pendingClaim.escrowId)?.status === EscrowStatus.CLAIMED}
           payoutMsats={pendingClaim.payoutMsats}
           premiumMsats={pendingClaim.premiumMsats ?? 0}
           savedDestinations={listPayoutDestinations()}
@@ -4189,14 +4191,9 @@ export default function App() {
           onDismissPublished={() => setCanvasPublished(null)}
           resumeRef={canvasResumeRef}
         /></CanvasAllListings.Provider>
-        {visibleAttentionTrade && (
-          <CanvasAttentionBell
-            trade={visibleAttentionTrade}
-            needsYouCount={needsYouCount}
-            actionMode={attentionActionMode}
-            onTap={() => { setDetailReturnsHome(true); openEscrow(visibleAttentionTrade.id, "guided"); }}
-          />
-        )}
+        {/* No floating "Your move" bell here (Jet, 6.4.25: two pills for one
+            thing on Browse). The top bar's "Needs you" / in-trade pill is the
+            one signal and opens the same trade (.agents/skills/chama-bar). */}
         </>
       ) : view === "detail" && selected ? (
         <div data-trade-room style={{

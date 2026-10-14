@@ -5,8 +5,8 @@
 export const me: Record<string, string> = {
   "backup.copyKey": "Copy key",
   "connect.homeHeading": "Welcome home, Chama citizen.",
-  "chooser.citizen": "I'm a citizen",
-  "chooser.become": "Become a citizen",
+  "chooser.citizen": "Log in",
+  "chooser.become": "Sign up",
   "signer.namedRefused": "Your signer didn’t approve {action}. Chama stopped here. Try again.",
   "signer.listingAction": "creating this listing",
   "signer.voteAction": "voting on this trade",

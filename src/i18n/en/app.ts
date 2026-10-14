@@ -75,6 +75,7 @@ export const app: Record<string, string> = {
   "app.couldntLoadTrade": "Couldn't load trade {id}.",
   "app.couldntReconnect": "Couldn't reconnect. Try again?",
   "app.walletStarting": "Your wallet is still starting. Give it a few seconds, then try again.",
+  "app.walletStorageBrowser": "This browser can't keep your Chama wallet. On iPhone, open getchama.app in Safari. Nothing was changed.",
   "app.walletSlow": "Your wallet didn't answer in time. Check your balance before you try again.",
   "app.couldntStartOrder": "Couldn't start the order.",
   "app.couldntSwitchTo": "Couldn't switch to {label}. Try again.",

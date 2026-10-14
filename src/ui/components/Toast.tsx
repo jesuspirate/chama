@@ -11,8 +11,19 @@ import { useT } from "../../i18n/index.js";
  *  (Jet, 6.4.23-rc.5, first launch after the update). Bridge start-up and
  *  timeout errors get a plain sentence; any other message loses its
  *  diagnostics block. Non-string messages pass through untouched. */
+/** The browser can't open the wallet's storage (WebKit's OPFS refusal in an
+ *  iPhone third-party or private browser; sdk-adapter.ts). Matches the
+ *  English error text, since only `message` crosses the wallet worker. */
+const WALLET_STORAGE_UNAVAILABLE = /could not open its secure local wallet storage/i;
+
+/** Toasts that describe a lasting condition, shown once per app session. */
+export function oncePerSessionToastKey(message: ReactNode): string | null {
+  return typeof message === "string" && WALLET_STORAGE_UNAVAILABLE.test(message) ? "wallet-storage-unavailable" : null;
+}
+
 export function toastText(message: ReactNode, t: (key: string) => string): ReactNode {
   if (typeof message !== "string") return message;
+  if (WALLET_STORAGE_UNAVAILABLE.test(message)) return t("app.walletStorageBrowser");
   if (/native_fedimint_bridge_unavailable|Native Fedimint bridge is enabled but unreachable/i.test(message)) {
     return t("app.walletStarting");
   }

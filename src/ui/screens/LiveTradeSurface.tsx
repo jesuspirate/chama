@@ -783,6 +783,24 @@ export function LiveTradeSurface({
              background as a dead band between the panes (Jet's 6.3 phone
              screenshot). 52dvh is definite everywhere. */
           .lts-votes{max-height:calc(var(--chama-viewport-height, 100dvh) * .52)}
+          /* Jet (6.4.25, Pixel): the decision area read as a separate white
+             panel with its own margins under the people card. On phones it
+             now shares the page background and the cards' 16px sides, with
+             even 12px gaps between what it holds. */
+          .lts-pane.lts-votes{background:${T.bg};padding:12px 16px}
+          .lts-decision-well{display:flex;flex-direction:column;gap:12px}
+          /* Jet (rc.7, Pixel 8): the top half took 487 of 915px and the
+             decision scrolled inside the rest. On phones the amount and
+             people cards are compact, and a clear line separates the trade
+             (top) from what to do and the chat (bottom). */
+          .lts-grid{border-top:1px solid ${T.line}}
+          .lts-money{padding:8px 16px 0!important}
+          .lts-money-card{padding:10px 14px!important;gap:10px!important}
+          .lts-money-icon{width:32px!important;height:32px!important;border-radius:10px!important}
+          .lts-room{padding:8px 16px 10px!important}
+          .lts-room-people{padding:8px 4px!important}
+          .lts-room [data-role-avatar]{zoom:.75}
+          .lts-person-meta{flex-direction:row!important;flex-wrap:wrap;justify-content:center;column-gap:5px}
           [data-chat-focused] .lts-header{max-height:35%;overflow-y:auto;flex-shrink:1}
           [data-chat-focused] .lts-grid{grid-template-rows:minmax(0, .3fr) minmax(100px, 1fr)}
           [data-chat-focused] .lts-votes{max-height:none;padding:8px 12px}
@@ -799,6 +817,10 @@ export function LiveTradeSurface({
           .lts-hero-slim{display:block}
         }
         .lts-room{padding:12px 16px;background:${T.bg}}
+        .lts-person-meta{display:flex;flex-direction:column;align-items:center;gap:4px}
+        /* One clock line per screen (Jet, 6.4.25): a "Your turn" card shows
+           the clock in its header, so the line under the people card hides. */
+        body:has([data-decision-clock]) .lts-clock{display:none}
         .lts-summary{background:${T.bg}}
         @media (min-width:900px){
           .lts-summary{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr);gap:12px;padding:12px 16px}
@@ -893,11 +915,11 @@ export function LiveTradeSurface({
           header used to carry — guidedListingAmount + rangeFiatText. */}
       <div className="lts-summary">
       <div className="lts-money" style={{ padding: "12px 16px 0", background: T.bg }}>
-        <div style={{
+        <div className="lts-money-card" style={{
           display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", height: "100%", boxSizing: "border-box",
           padding: "14px 16px", borderRadius: T.rCard, background: T.surface, border: `1px solid ${T.line}`,
         }}>
-          <div style={{ width: 40, height: 40, borderRadius: 12, background: T.raised, color: T.ink, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+          <div className="lts-money-icon" style={{ width: 40, height: 40, borderRadius: 12, background: T.raised, color: T.ink, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
             <LockGlyph size={20} />
           </div>
           <div style={{ flex: "1 1 160px", minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
@@ -957,7 +979,10 @@ export function LiveTradeSurface({
               clipping at the top the way justify-content:center would. */}
           <div className="lts-decision-well"><DecisionClock.Provider value={clockText ?? null}>
             {state.status === EscrowStatus.CREATED && <>
-              <TradeArbiterRecord profileNames={profileNames} kind0Enabled={kind0Enabled} state={state} trades={knownTrades} fetchBonds={fetchCommunityBonds} />
+              {/* Before taking a seat the arbiter's record helps decide; once
+                  seated it is one tap away on the arbiter (Jet, rc.7: the
+                  decision area was taller than the screen). */}
+              {myRole === null && <TradeArbiterRecord profileNames={profileNames} kind0Enabled={kind0Enabled} state={state} trades={knownTrades} fetchBonds={fetchCommunityBonds} />}
               {state.body && <ListingBody body={state.body} />}
             </>}
             <ReplayNotes notes={state.replayNotes} />
@@ -1047,9 +1072,11 @@ function PersonChip({ person, name, onClick }: { person: RoomPresence; name: str
       <span style={{ fontSize: T.fs.secondary, fontWeight: 600, overflowWrap: "anywhere", maxWidth: "100%", color: person.signal === "assigned" ? T.ink2 : T.ink }}>
         {name ?? tr("lts.roomSomeone")}
       </span>
-      <span style={{ fontSize: T.fs.secondary, fontWeight: 600, color: ROLE_COLOR_TEXT[roleKey] }}>{roleWord}</span>
-      <span style={{ fontSize: T.fs.secondary, color: person.ready ? T.pos : T.ink2 }}>
-        {person.ready ? tr("lts.roomReady") : sub}
+      <span className="lts-person-meta">
+        <span style={{ fontSize: T.fs.secondary, fontWeight: 600, color: ROLE_COLOR_TEXT[roleKey] }}>{roleWord}</span>
+        <span style={{ fontSize: T.fs.secondary, color: person.ready ? T.pos : T.ink2 }}>
+          {person.ready ? tr("lts.roomReady") : sub}
+        </span>
       </span>
       <ConductFacts pubkey={person.pubkey} />
     </button>
@@ -1109,7 +1136,7 @@ function Decision({ q, sub, children }: { q: string; sub?: string; children: Rea
     }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
         <div style={{ fontSize: T.fs.secondary, fontWeight: 700, color: T.attnInk }}>{tr("lts.yourTurn")}</div>
-        {clock && <div style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: T.fs.secondary, fontWeight: 600, color: T.ink2 }}>
+        {clock && <div data-decision-clock style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: T.fs.secondary, fontWeight: 600, color: T.ink2 }}>
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
           {clock}
         </div>}
