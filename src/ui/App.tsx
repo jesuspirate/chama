@@ -27,6 +27,7 @@ import type { CircleRound } from "../chama/types.js";
 import { getTrustedArbiterPool } from "../arbiters/pool.js";
 import { useState, useEffect, useMemo, useRef, useCallback, lazy, Suspense, type ReactNode } from "react";
 import { sameRecord, useStableList } from "./stable-list.js";
+import { oncePerSessionToastKey } from "./components/Toast.js";
 import { perfMeasure, versionTapToggle, PerfZone } from "./perf-probe.js";
 import { PerfReadout } from "./components/PerfReadout.js";
 import { Capacitor } from "@capacitor/core";
@@ -872,7 +873,20 @@ export default function App() {
   // the person asks to change it, defer the real mutation until authentication
   // gives us an npub and the existing federation-switch safety gates can run.
   const [changeHomeAfterConnect, setChangeHomeAfterConnect] = useState(false);
-  const [toast, setToast] = useState<{ message: ReactNode; type: "success" | "error" | "info"; sticky?: boolean; dismissOnTap?: boolean } | null>(null);
+  type ToastState = { message: ReactNode; type: "success" | "error" | "info"; sticky?: boolean; dismissOnTap?: boolean } | null;
+  const [toast, setToastState] = useState<ToastState>(null);
+  // A few toasts describe a lasting condition, not an event (Jet, 6.4.25: the
+  // wallet-storage toast came back on every open and retry). Those show once
+  // per app session; every other toast is unchanged.
+  const shownOnceToasts = useRef(new Set<string>());
+  const setToast = useCallback((next: ToastState) => {
+    const key = next ? oncePerSessionToastKey(next.message) : null;
+    if (key) {
+      if (shownOnceToasts.current.has(key)) return;
+      shownOnceToasts.current.add(key);
+    }
+    setToastState(next);
+  }, []);
   toastRef.current = setToast;
   const [showFundModal, setShowFundModal] = useState(false);
   // v2.4 #56: "withdraw as ecash" modal (fee-free Fedimint note export).

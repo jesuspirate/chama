@@ -8,6 +8,7 @@ import { LangProvider, translate } from "../i18n/index.js";
 import { displayPayoutDestination, walletNameParts } from "../payments/payout-destinations.js";
 import { walletName } from "./wallet-names.js";
 import { SavedWalletRow } from "./components/SavedWalletRow.js";
+import { oncePerSessionToastKey, toastText } from "./components/Toast.js";
 
 const storage = new Map<string, string>();
 Object.defineProperty(globalThis, "localStorage", { configurable: true, value: {
@@ -91,3 +92,20 @@ console.log("PASS Browse attention: one signal, the top bar");
 }
 console.log("PASS trade room: one clock line per screen; on phones one calm page, even gaps, aligned edges");
 
+{
+  // Wallet storage: one short sentence, in every language, once per session.
+  const raw = "Chama could not open its secure local wallet storage. This is a browser storage failure—not evidence that your iPhone ran out of memory—and Reconnect cannot repair it in this browser.";
+  for (const lang of ["en", "fr", "es", "sw"] as const) {
+    const text = toastText(raw, key => translate(lang, key)) as string;
+    assert.ok(text.includes("getchama.app") && text.includes("Safari") && text.length < 140, `${lang}: short, names Safari`);
+    assert.doesNotMatch(text, /memory|Reconnect/);
+  }
+  assert.equal(toastText(raw, key => translate("en", key)), "This browser can't keep your Chama wallet. On iPhone, open getchama.app in Safari. Nothing was changed.");
+  assert.equal(oncePerSessionToastKey(raw), "wallet-storage-unavailable");
+  assert.equal(oncePerSessionToastKey("Joined as buyer"), null, "other toasts are never deduplicated");
+  const app = readFileSync(new URL("./App.tsx", import.meta.url), "utf8");
+  const guard = app.slice(app.indexOf("const setToast = useCallback"), app.indexOf("toastRef.current = setToast;"));
+  assert.match(guard, /oncePerSessionToastKey\(next\.message\)/);
+  assert.match(guard, /if \(shownOnceToasts\.current\.has\(key\)\) return;/);
+}
+console.log("PASS wallet storage message: one short sentence in en/fr/es/sw, shown once per session");

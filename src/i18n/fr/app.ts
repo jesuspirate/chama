@@ -63,6 +63,7 @@ export const app: Record<string, string> = {
   "app.couldntLoadTrade": "Impossible de charger l'échange {id}.",
   "app.couldntReconnect": "Impossible de se reconnecter. Réessayer ?",
   "app.walletStarting": "Votre portefeuille démarre encore. Patientez quelques secondes, puis réessayez.",
+  "app.walletStorageBrowser": "Ce navigateur ne peut pas conserver votre portefeuille Chama. Sur iPhone, ouvrez getchama.app dans Safari. Rien n'a été modifié.",
   "app.walletSlow": "Votre portefeuille n'a pas répondu à temps. Vérifiez votre solde avant de réessayer.",
   "app.couldntStartOrder": "Impossible de démarrer la commande.",
   "app.couldntSwitchTo": "Impossible de basculer vers {label}. Réessayez.",
