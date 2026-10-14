@@ -85,7 +85,7 @@ import {
   MIN_REAL_ATOMIC_FUNDING_SATS,
   minimumAtomicFundingMessage,
 } from "../../payments/funding-limits.js";
-import {
+import { railLabel,
   type Rail,
   getRailByKey,
   railsForCommunity,
@@ -3300,7 +3300,7 @@ function Step2({
                       whiteSpace: "nowrap",
                     }}
                   >
-                    {selected ? "✓ " : ""}{rail.displayName}
+                    {selected ? "✓ " : ""}{railLabel(rail)}
                   </button>
                 );
               })}
@@ -3370,7 +3370,7 @@ function Step2({
                       textOverflow: "ellipsis",
                       whiteSpace: "nowrap",
                     }}>
-                      {rail.displayName}
+                      {railLabel(rail)}
                     </span>
                     <span style={{ color: selected ? T.accent : T.muted, flexShrink: 0 }}>
                       {selected ? t("create.addedRail") : t("create.addRail")}
@@ -3994,7 +3994,7 @@ function Step3({
                   fontWeight: 800,
                 }}
               >
-                {method}
+                {railLabel(method)}
               </span>
             ))}
           </div>

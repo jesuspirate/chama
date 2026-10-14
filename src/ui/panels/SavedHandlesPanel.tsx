@@ -21,7 +21,7 @@ import {
   sanitizePhoneNumberForSave,
 } from "../../payments/saved-handles.js";
 import { getCommunityBySlug } from "../../communities/registry.js";
-import {
+import { railLabel,
   type Rail,
   getRailByKey,
   railsForCommunity,
@@ -103,7 +103,7 @@ function compactSearchText(value: string): string {
 }
 
 function railSearchRank(rail: Rail, terms: string[]): number | null {
-  const visible = normalizeSearchText(`${rail.displayName} ${rail.key.replace(/-/g, " ")}`);
+  const visible = normalizeSearchText(`${rail.displayName} ${rail.label ?? ""} ${rail.key.replace(/-/g, " ")}`);
   const visibleCompact = compactSearchText(`${rail.displayName} ${rail.key}`);
   const aliasWords = normalizeSearchText(RAIL_SEARCH_HINTS[rail.key] ?? "")
     .split(/[^a-z0-9]+/)
@@ -154,7 +154,7 @@ function railPrivacyLabel(rail: Rail, t: TFunc): string {
 }
 
 function displayNetworkLabels(keys: readonly string[]): string[] {
-  return keys.map(key => getRailByKey(key)?.displayName ?? key);
+  return keys.map(key => railLabel(key));
 }
 
 // Add/edit/delete local payment methods. Phone numbers stay a first-class
@@ -541,7 +541,7 @@ export function SavedHandlesPanel({ communitySlug, onClose }: {
                       animation: `fadeIn 0.18s ease ${i * 0.025}s both`,
                     }}
                   >
-                    <span>{rail.displayName}</span>
+                    <span>{railLabel(rail)}</span>
                     <span style={{ color: selected ? T.teal : T.muted }}>
                       {selected ? t("claim.added") : t("claim.add")}
                     </span>
@@ -641,7 +641,7 @@ export function SavedHandlesPanel({ communitySlug, onClose }: {
                       fontSize: 13, fontWeight: 800,
                       overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                     }}>
-                      {rail.displayName}
+                      {railLabel(rail)}
                     </span>
                     <span style={{
                       display: "block", color: T.muted, fontFamily: T.sans,
@@ -670,7 +670,7 @@ export function SavedHandlesPanel({ communitySlug, onClose }: {
         {selectedRail && (
           <div style={{ animation: "fadeIn 0.18s ease" }}>
             <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, marginBottom: 6 }}>
-              {t("claim.paymentIdFor", { rail: selectedRail.displayName })}
+              {t("claim.paymentIdFor", { rail: railLabel(selectedRail) })}
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               <input
@@ -739,7 +739,7 @@ export function SavedHandlesPanel({ communitySlug, onClose }: {
         <div style={{ marginBottom: 24 }}>
           {handles.map(h => {
             const rail = getRailByKey(h.rail);
-            const railName = rail?.displayName || h.rail;
+            const railName = rail ? railLabel(rail) : h.rail;
             const allowsPublic = railAllowsPublicHandle(h.rail);
             const revealed = revealedIds.has(h.id);
             const display = revealed
@@ -875,7 +875,7 @@ export function SavedHandlesPanel({ communitySlug, onClose }: {
                                   animation: `fadeIn 0.18s ease ${i * 0.025}s both`,
                                 }}
                               >
-                                <span>{rail.displayName}</span>
+                                <span>{railLabel(rail)}</span>
                                 <span style={{ color: selected ? T.teal : T.muted }}>
                                   {selected ? t("claim.added") : t("claim.add")}
                                 </span>

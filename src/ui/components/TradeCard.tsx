@@ -1,4 +1,5 @@
 import { FederationDisclosure, CircleShareLabel } from "./FederationDisclosure.js";
+import { railLabel } from "../../payments/rail-registry.js";
 import { perfAdd, perfTiming } from "../perf-probe.js";
 import { LockGlyph } from "./Badge.js";
 import { signedTradeCreatedAt } from "../../escrow-engine/trade-index.js";
@@ -982,7 +983,7 @@ function exchangeBracketLabels(items: NonNullable<EscrowState["items"]>): Array<
 }
 
 function paymentMethodsSummary(methods: string[] | undefined): string | null {
-  const cleaned = (methods ?? []).map((method) => method.trim()).filter(Boolean);
+  const cleaned = (methods ?? []).map((method) => railLabel(method.trim())).filter(Boolean);
   if (cleaned.length === 0) return null;
   const visible = cleaned.slice(0, 3).join(" · ");
   const extra = cleaned.length > 3 ? ` · +${cleaned.length - 3}` : "";
