@@ -89,6 +89,16 @@ console.log("PASS Browse attention: one signal, the top bar");
   // 16px sides, with even 12px gaps — no separate white panel.
   assert.match(lts, /\.lts-pane\.lts-votes\{background:\$\{T\.bg\};padding:12px 16px\}/);
   assert.match(lts, /\.lts-decision-well\{display:flex;flex-direction:column;gap:12px\}/);
+  // rc.7 (Pixel 8, 412×915): the top half took 487px and the decision
+  // scrolled inside the rest. Phones: compact amount and people cards, a
+  // clear line between the halves, and the arbiter record only before the
+  // viewer is seated (it stays one tap away on the arbiter).
+  assert.match(lts, /\.lts-grid\{border-top:1px solid \$\{T\.line\}\}/);
+  assert.match(lts, /\.lts-money-card\{padding:10px 14px!important;gap:10px!important\}/);
+  assert.match(lts, /\.lts-room \[data-role-avatar\]\{zoom:\.75\}/);
+  assert.match(lts, /\.lts-person-meta\{flex-direction:row!important/);
+  assert.match(lts, /\{myRole === null && <TradeArbiterRecord /);
+  assert.match(lts, /party\.role === Role\.ARBITER \? <TradeArbiterRecord /, "still in the arbiter's sheet");
 }
 console.log("PASS trade room: one clock line per screen; on phones one calm page, even gaps, aligned edges");
 
