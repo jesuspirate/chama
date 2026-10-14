@@ -27,8 +27,11 @@ import type { CircleRound } from "../chama/types.js";
 import { getTrustedArbiterPool } from "../arbiters/pool.js";
 import { useState, useEffect, useMemo, useRef, useCallback, lazy, Suspense, type ReactNode } from "react";
 import { sameRecord, useStableList } from "./stable-list.js";
+import { oncePerSessionToastKey } from "./components/Toast.js";
 import { perfMeasure, versionTapToggle, PerfZone } from "./perf-probe.js";
 import { PerfReadout } from "./components/PerfReadout.js";
+import { perfLockStart, perfLockStep, perfLockEnd } from "./perf-probe.js";
+import { gatewayCount, warmGatewayCount, warmGateways } from "../payments/gateway-warmup.js";
 import { Capacitor } from "@capacitor/core";
 import { Preferences } from "@capacitor/preferences";
 
@@ -206,7 +209,6 @@ import { GlobeCountryPicker } from "./screens/GlobeCountryPicker.js";
 import { DashboardScreen } from "./screens/DashboardScreen.js";
 import { TradeDetail } from "./screens/TradeDetail.js";
 import { LiveTradeSurface } from "./screens/LiveTradeSurface.js";
-import { CanvasAttentionBell } from "./components/CanvasAttentionBell.js";
 import { OfflineBar } from "./components/OfflineBar.js";
 import { CreateForm } from "./screens/CreateForm.js";
 import { MeScreen } from "./screens/MeScreen.js";
@@ -658,6 +660,31 @@ export default function App() {
     return true;
   };
 
+  // Lock invoice, Step 1 (Jet, 6.4.25): when a trade offers this person Lock,
+  // wake the wallet (the existing funding prewarm) and ask for its Lightning
+  // gateways in the background, so the funding sheet does not wait for
+  // either. Read-only: no invoice, nothing payable, no sats move. Only when
+  // the wallet is already on this trade's federation — never a join or switch.
+  const warmLockPath = (trade: EscrowState): void => {
+    if (simOn || trade.escrowMode === "onchain" || midFunding || !fedimint.joined) return;
+    const effect = decideListingTapEffect({
+      listing: { mintUrl: trade.mintUrl, community: trade.community,
+        fedId: (trade.eventChain[0]?.payload as { fed?: string } | undefined)?.fed ?? null },
+      currentInvite: liveActiveInvite, balanceMsats: 0, activeCommitmentCount,
+    });
+    if (effect.kind !== "matching") return;
+    void actions.prewarmFunding();
+    warmGateways(fedimint.federationId, actions.getLightningGatewayCount);
+  };
+  // The funding sheet's gateway check: a warm answer at once, else asked now.
+  const lockGatewayCount = (): Promise<number | null> => {
+    const warm = warmGatewayCount(fedimint.federationId) !== null;
+    return gatewayCount(fedimint.federationId, actions.getLightningGatewayCount).then(count => {
+      perfLockStep(warm ? "gateway check · warm" : "gateway check · cold");
+      return count;
+    });
+  };
+
   // Ecash custody still requires the trade's federation, even when its final
   // destination is a Lightning invoice. Never switch a funded wallet on navigation.
   const ensureTradeWallet = async (trade: EscrowState): Promise<boolean> => {
@@ -773,13 +800,17 @@ export default function App() {
   ): Promise<void> => {
     if (!selected || selected.escrowMode === "onchain") return;
     if (!requireOnline()) return;
+              // Timing readout (?perf=1): Lock hold → invoice on screen.
+              perfLockStart();
               const savedHandleId = lockOpts.savedHandleId;
               const selectedItems = lockOpts.selectedItems;
-              if (!await ensureTradeWallet(selected)) return;
+              if (!await ensureTradeWallet(selected)) { perfLockEnd("no invoice"); return; }
+              perfLockStep("wallet ready");
               // v0.6.5: the only Fund gate is mid-funding — multiple
               // concurrent trades are fine, but two concurrent atomic
               // funding flows would race the shared OPFS wallet.
               if (midFunding) {
+                perfLockEnd("no invoice");
                 setToast({
                   message: t("app.anotherFundingInProgress"),
                   type: "error",
@@ -793,6 +824,7 @@ export default function App() {
                 !isTestnetMode() &&
                 lockAmountMsats < MIN_REAL_ATOMIC_FUNDING_MSATS
               ) {
+                perfLockEnd("no invoice");
                 setToast({
                   message: `${minimumAtomicFundingMessage()} ${t("app.enterPositiveAmount")}`,
                   type: "error",
@@ -800,7 +832,9 @@ export default function App() {
                 return;
               }
               const probe = await actions.probeFederation();
+              perfLockStep("federation check");
               if (!probe.ok) {
+                perfLockEnd("no invoice");
                 setToast({
                   message: probe.error || t("app.walletDisconnectedReconnect"),
                   type: "error",
@@ -873,7 +907,20 @@ export default function App() {
   // the person asks to change it, defer the real mutation until authentication
   // gives us an npub and the existing federation-switch safety gates can run.
   const [changeHomeAfterConnect, setChangeHomeAfterConnect] = useState(false);
-  const [toast, setToast] = useState<{ message: ReactNode; type: "success" | "error" | "info"; sticky?: boolean; dismissOnTap?: boolean } | null>(null);
+  type ToastState = { message: ReactNode; type: "success" | "error" | "info"; sticky?: boolean; dismissOnTap?: boolean } | null;
+  const [toast, setToastState] = useState<ToastState>(null);
+  // A few toasts describe a lasting condition, not an event (Jet, 6.4.25: the
+  // wallet-storage toast came back on every open and retry). Those show once
+  // per app session; every other toast is unchanged.
+  const shownOnceToasts = useRef(new Set<string>());
+  const setToast = useCallback((next: ToastState) => {
+    const key = next ? oncePerSessionToastKey(next.message) : null;
+    if (key) {
+      if (shownOnceToasts.current.has(key)) return;
+      shownOnceToasts.current.add(key);
+    }
+    setToastState(next);
+  }, []);
   toastRef.current = setToast;
   const [showFundModal, setShowFundModal] = useState(false);
   // v2.4 #56: "withdraw as ecash" modal (fee-free Fedimint note export).
@@ -2034,20 +2081,6 @@ export default function App() {
   // eslint-disable-next-line react-hooks/exhaustive-deps -- settledClaimKey is settledClaimIds' content
   }, [escrows, pubkey, now, settledClaimKey, onchainObservations, pendingOnchainPayoutIds]));
   const needsYouCount = needsYouTrades.length;
-  const attentionTrade = needsYouTrades[0] ?? activeTrade;
-  // Known work stays actionable during hydration; syncing only fills the
-  // bar when no higher-priority state is known yet.
-  const visibleAttentionTrade = attentionTrade;
-  const attentionActionMode = needsYouCount > 0;
-  // Step 4: the attention pill routes to the most urgent needs-you trade
-  // (needsYouTrades[0]), which is often NOT the trade on screen. Name its
-  // destination — amount + community — so tapping is a deliberate jump, not a
-  // surprise that then reads as the current trade mutating to another currency.
-  // Same resolver the Details pane uses (getCommunityBySlug().displayName), so
-  // the pill and the destination agree.
-  const attentionCommunityLabel = visibleAttentionTrade?.community
-    ? getCommunityBySlug(visibleAttentionTrade.community)?.displayName ?? null
-    : null;
 
   // v0.6.5 funding-operation gate. The single backstop against two
   // concurrent runFundAndLock calls racing on the shared OPFS wallet.
@@ -3579,7 +3612,7 @@ export default function App() {
           tradeCategory={pendingFundAndLock.tradeCategory}
           fundAndLock={actions.fundAndLock}
           spendableMsats={canLockFromBalance(escrows.get(pendingFundAndLock.escrowId), walletSpendableMsats, pendingFundAndLock.amountMsats, fundingPremiumMsats(pendingFundAndLock.premiumMsats)) ? walletSpendableMsats : 0}
-          getLightningGatewayCount={actions.getLightningGatewayCount}
+          getLightningGatewayCount={lockGatewayCount}
           supportsOnchain={actions.supportsOnchain()}
           subscribeDeposit={actions.subscribeDeposit}
           getOnchainInfo={actions.getOnchainInfo}
@@ -3778,6 +3811,9 @@ export default function App() {
           getLightningGatewayCount={actions.getLightningGatewayCount}
           onWithdrawEcash={() => { setPendingClaim(null); setShowEcashExport(true); }}
           escrowId={pendingClaim.escrowId}
+          // Same test as useEscrow's claimAlreadyPublished: a CLAIMED trade
+          // only resumes the payout, so its sats are already in this wallet.
+          claimAlreadyPublished={escrows.get(pendingClaim.escrowId)?.status === EscrowStatus.CLAIMED}
           payoutMsats={pendingClaim.payoutMsats}
           premiumMsats={pendingClaim.premiumMsats ?? 0}
           savedDestinations={listPayoutDestinations()}
@@ -4168,14 +4204,9 @@ export default function App() {
           onDismissPublished={() => setCanvasPublished(null)}
           resumeRef={canvasResumeRef}
         /></CanvasAllListings.Provider>
-        {visibleAttentionTrade && (
-          <CanvasAttentionBell
-            trade={visibleAttentionTrade}
-            needsYouCount={needsYouCount}
-            actionMode={attentionActionMode}
-            onTap={() => { setDetailReturnsHome(true); openEscrow(visibleAttentionTrade.id, "guided"); }}
-          />
-        )}
+        {/* No floating "Your move" bell here (Jet, 6.4.25: two pills for one
+            thing on Browse). The top bar's "Needs you" / in-trade pill is the
+            one signal and opens the same trade (.agents/skills/chama-bar). */}
         </>
       ) : view === "detail" && selected ? (
         <div data-trade-room style={{
@@ -4231,6 +4262,7 @@ export default function App() {
               onHome={guidedHome}
               onRepost={() => renewListing(selected.id)}
               onLock={tradeOnLock}
+              onLockShown={() => warmLockPath(selected)}
               onClaim={tradeOnClaim}
               onJoin={tradeOnJoin}
               onVote={(outcome, payoutAddress) => actions.vote(selectedId!, outcome, payoutAddress).then(
@@ -4615,9 +4647,7 @@ export default function App() {
               }
             }}
             onLock={tradeOnLock}
-            onPrewarmFunding={() => {
-              void actions.prewarmFunding();
-            }}
+            onPrewarmFunding={() => warmLockPath(selected)}
             onOpenSettings={() => setWalletOverlay("payment-methods")}
             onOpenNwcSettings={() => { setAdvancedFocusNwc(true); openAdvanced(); }}
           />
