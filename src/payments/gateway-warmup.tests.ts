@@ -75,9 +75,10 @@ console.log("PASS Lock warm-up: one shared gateway question per federation; only
   // Wiring. The warm-up only reads: it creates no invoice and never joins or
   // switches federations; the press path keeps its own fresh federation check.
   const app = readFileSync(new URL("../ui/App.tsx", import.meta.url), "utf8");
-  const warm = app.slice(app.indexOf("const warmLockPath = "), app.indexOf("const lockGatewayCount = "));
-  assert.match(warm, /!fedimint\.joined\) return;/);
-  assert.match(warm, /if \(effect\.kind !== "matching"\) return;/, "only on the trade's own federation");
+  const warm = app.slice(app.indexOf("const walletOnTradeFederation = "), app.indexOf("const lockGatewayCount = "));
+  assert.match(warm, /!fedimint\.joined\) return false;/);
+  assert.match(warm, /\}\)\.kind === "matching";/, "only on the trade's own federation");
+  assert.match(warm, /const warmLockPath = \(trade: EscrowState\): void => \{\s*if \(!walletOnTradeFederation\(trade\)\) return;/);
   assert.match(warm, /void actions\.prewarmFunding\(\);/);
   assert.match(warm, /warmGateways\(fedimint\.federationId, actions\.getLightningGatewayCount\)/);
   assert.doesNotMatch(warm, /createFundingInvoice|fundAndLock|initFedimint|switchFederation|createInvoice/);
@@ -85,7 +86,7 @@ console.log("PASS Lock warm-up: one shared gateway question per federation; only
   assert.match(app, /onLockShown=\{\(\) => warmLockPath\(selected\)\}/, "phone trade screen warms");
   assert.match(app, /onPrewarmFunding=\{\(\) => warmLockPath\(selected\)\}/, "full view warms the same way");
   const pressAt = app.indexOf("const tradeOnLock = async ("), press = app.slice(pressAt, pressAt + 4000);
-  assert.match(press, /const probe = await actions\.probeFederation\(\);/, "the press still checks the federation fresh");
+  assert.match(press, /await takeLockProbe\([\s\S]{0,160}actions\.probeFederation,\s*\);/, "the press checks the federation (started on press-down when it can; see lock-probe)");
   const lts = readFileSync(new URL("../ui/screens/LiveTradeSurface.tsx", import.meta.url), "utf8");
   assert.match(lts, /\{onLockShown && <OnShown key=\{state\.id\} run=\{onLockShown\} \/>\}/);
   const fund = readFileSync(new URL("../ui/panels/AtomicFundingModal.tsx", import.meta.url), "utf8");
