@@ -171,13 +171,16 @@ console.log("PASS Me tabs keep their layout: content-visibility panes and offscr
   assert.deepEqual(tap.steps.filter(s => s.name !== "signature checks").map(s => s.name).sort(), ["dashboard build", "needs-you build"]);
   assert.equal(probe.perfTiming(), false, "the tap is finished");
   const report = probe.perfReport();
-  assert.match(report, /^React profiler (on|off \(release build\))\nsettings: \d+ ms total \(React \d+ ms, browser draw \d+ ms\)/);
+  assert.match(report, /^Chama \S+ · Lock timing on · React profiler (on|off \(release build\))\nsettings: \d+ ms total \(React \d+ ms, browser draw \d+ ms\)/);
   assert.match(report, /\n  signature checks: \d+ ms · 5×/);
   assert.match(renderToStaticMarkup(<PerfReadout />), /data-perf-readout[\s\S]*settings/, "the readout shows the tap");
 
   probe.setPerfEnabled(false);
   assert.equal(storage.has("chama_perf_readout_v1"), false, "Off clears the flag");
-  assert.equal(probe.perfHistory().length, 0);
+  // Off hides the readout but keeps what was recorded (Jet, rc.6: switching
+  // it off and on again lost the Lock timing).
+  assert.equal(probe.perfHistory().length, 1, "Off keeps recorded timings");
+  assert.equal(renderToStaticMarkup(<PerfReadout />), "", "Off hides the readout");
 
   const app = readFileSync("src/ui/App.tsx", "utf8");
   assert.match(app, /onClick=\{onVersionTap\}/, "the version label carries the seven-tap toggle");

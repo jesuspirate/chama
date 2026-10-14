@@ -18,6 +18,7 @@ import {
   type SavedHandle,
 } from "./saved-handles.js";
 import { randomId } from "../storage/random-id.js";
+import { parseRawLnurl } from "./lnurl.js";
 import {
   getScopedStorageItem,
   setScopedStorageItem,
@@ -155,6 +156,49 @@ export function displayPayoutDestination(address: string): string {
   const value = normalizeAddress(address);
   return value.startsWith("lnurl1") && value.length > 16
     ? `${value.slice(0, 9)}…${value.slice(-3)}` : value;
+}
+
+/** Wallet apps people recognise by their Lightning-address domain. */
+const WALLET_BRANDS: Record<string, string> = {
+  "strike.me": "Strike",
+  "getalby.com": "Alby",
+  "walletofsatoshi.com": "Wallet of Satoshi",
+  "blink.sv": "Blink",
+  "coinos.io": "Coinos",
+  "primal.net": "Primal",
+  "minibits.cash": "Minibits",
+  "npub.cash": "npub.cash",
+  "fedi.xyz": "Fedi",
+};
+
+/** How to name a saved wallet without showing its receive code (Jet, 6.4.25:
+ *  the claim sheet showed the whole lnurl1dp68… string). The UI turns this
+ *  into words; a name the person gave always wins over it. */
+export type WalletNameParts =
+  | { kind: "brand"; brand: string; user: string }
+  | { kind: "fedi" }
+  | { kind: "host"; host: string }
+  | { kind: "plain"; text: string };
+
+export function walletNameParts(address: string): WalletNameParts {
+  const value = normalizeAddress(address);
+  const at = value.lastIndexOf("@");
+  if (at > 0 && !value.startsWith("lnurl1")) {
+    const user = value.slice(0, at), domain = value.slice(at + 1);
+    const brand = WALLET_BRANDS[domain];
+    return brand ? { kind: "brand", brand, user } : { kind: "plain", text: value };
+  }
+  if (value.startsWith("lnurl1")) {
+    try {
+      const host = new URL(parseRawLnurl(value)).host;
+      // Fedi's LNURL receive codes are served by its recurringd service.
+      if (/(^|\.)vai1f\.org$|(^|\.)fedi\.xyz$/.test(host)) return { kind: "fedi" };
+      return { kind: "host", host };
+    } catch {
+      return { kind: "plain", text: displayPayoutDestination(value) };
+    }
+  }
+  return { kind: "plain", text: displayPayoutDestination(value) };
 }
 
 /** One-time lazy migration from pre-v0.6.3 saved_handles rows where

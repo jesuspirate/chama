@@ -31,6 +31,7 @@ import { TradeAmount } from "../components/TradeAmount.js";
 // is the React shell that renders phase transitions.
 
 import { useEffect, useRef, useState } from "react";
+import { perfLockEnd, perfLockSheetOpened, perfLockStep } from "../perf-probe.js";
 import { T, inputStyle } from "../theme.js";
 import { useT } from "../../i18n/index.js";
 import { CopyButton } from "../components/CopyButton.js";
@@ -332,6 +333,13 @@ export function AtomicFundingModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supportsOnchain]);
 
+  // Timing readout (?perf=1): the sheet is open; a sheet closed before an
+  // invoice ends the Lock timing without one.
+  useEffect(() => {
+    perfLockSheetOpened();
+    return () => perfLockEnd("no invoice");
+  }, []);
+
   useEffect(() => {
     if (!getLightningGatewayCount || disableNwc || isSimModeOn()) return;
     let cancelled = false;
@@ -392,6 +400,8 @@ export function AtomicFundingModal({
           if (ctrl.signal.aborted) return;
           if (["mint-confirming", "mint-confirming-slow", "payment-confirmed", "onchain-deposit-confirmed", "locking", "locked", "fedi-ecash-created"].includes(p.kind)) setPaymentDetected(true);
           if (p.kind === "invoice-created") {
+            perfLockStep("invoice created");
+            perfLockEnd("invoice shown");
             setRequest({ rail: "lightning", data: makeLightningInvoiceQrPayload(p.bolt11), value: p.bolt11, sats: totalSats, expiresAt: p.expiresAt, gateway: p.gateway });
             lastBolt11 = p.bolt11;
             lastExpiresAt = p.expiresAt;

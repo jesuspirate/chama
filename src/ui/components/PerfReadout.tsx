@@ -2,8 +2,9 @@ import { useEffect, useState } from "react";
 import { T } from "../theme.js";
 import { PROFILER_BUILD, perfEnabled, perfHistory, perfReport, setPerfEnabled, subscribePerf } from "../perf-probe.js";
 
-/** Hidden timing readout for Me tab taps (?perf=1 or seven taps on the
- *  version label). A developer diagnostic: English only, off by default. */
+/** Hidden timing readout for Me tab taps and the Lock invoice (?perf=1 or
+ *  seven taps on the version label). A developer diagnostic: English only,
+ *  off by default. */
 export function PerfReadout() {
   const [, setTick] = useState(0);
   useEffect(() => subscribePerf(() => setTick(n => n + 1)), []);
@@ -23,18 +24,18 @@ export function PerfReadout() {
       font: `12px/1.45 ${T.mono}`, boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
     }}>
       <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}>
-        <strong style={{ font: `700 12px ${T.sans}`, flex: 1 }}>Me tab timing · {PROFILER_BUILD ? "React profiler on" : "React profiler off (release build)"}</strong>
+        <strong style={{ font: `700 12px ${T.sans}`, flex: 1 }}>Timing · {PROFILER_BUILD ? "React profiler on" : "React profiler off (release build)"}</strong>
         <button type="button" style={button} onClick={copy}>{copied ? "Copied" : "Copy"}</button>
         <button type="button" style={button} onClick={() => setPerfEnabled(false)}>Off</button>
       </div>
       {taps.length === 0 ? (
-        <div style={{ color: T.ink2 }}>Tap a Me tab to time it.</div>
+        <div style={{ color: T.ink2 }}>Tap a Me tab, or hold Lock, to time it.</div>
       ) : taps.slice(0, 4).map((tap, i) => (
         <div key={i} style={{ marginTop: i ? 8 : 0, opacity: i ? 0.7 : 1 }}>
-          <div><b>{tap.label}</b>: {ms(tap.totalMs)} · React {ms(tap.renderMs)} · draw {ms(tap.drawMs)}</div>
-          {tap.steps.slice(0, 6).map(step => (
-            <div key={step.name} style={{ paddingLeft: 10, color: T.ink2 }}>
-              {step.name}: {ms(step.ms)} · {step.count}×{step.extra ? ` · ${step.extra} uncached` : ""}
+          <div><b>{tap.label}</b>: {ms(tap.totalMs)}{tap.flow ? "" : ` · React ${ms(tap.renderMs)} · draw ${ms(tap.drawMs)}`}</div>
+          {(tap.flow ? tap.steps : tap.steps.slice(0, 6)).map((step, j) => (
+            <div key={`${step.name}:${j}`} style={{ paddingLeft: 10, color: T.ink2 }}>
+              {step.name}: {ms(step.ms)}{tap.flow ? "" : ` · ${step.count}×`}{step.extra ? ` · ${step.extra} uncached` : ""}
             </div>
           ))}
         </div>
