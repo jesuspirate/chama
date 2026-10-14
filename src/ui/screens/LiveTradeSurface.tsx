@@ -92,6 +92,7 @@ export function LiveTradeSurface({
   onClaim,
   onLock,
   onLockShown,
+  onLockHoldStart,
   onReclaimRejectedLock,
   onRepost,
   onHome,
@@ -129,6 +130,9 @@ export function LiveTradeSurface({
   /** Lock is on screen for this person: warm the funding path in the
    *  background (read-only; see App's warmLockPath). Once per trade. */
   onLockShown?: () => void;
+  /** The Lock hold began: start the read-only federation check (App's
+   *  primeLockPath). Never funds; an early lift leaves it unused. */
+  onLockHoldStart?: () => void;
   /** Seat the viewer into the trade's open slot (guided join). A range
    *  (exchange-bracket) listing passes the chosen order along. */
   onHome?: () => void;
@@ -349,6 +353,7 @@ export function LiveTradeSurface({
                   busy={busy}
                   icon={<LockGlyph size={18} />}
                   resetKey={`${state.id}:lock`}
+                  onHoldStart={onLockHoldStart}
                   onConfirm={() => run(() => onLock({
                     amountMsats: effectiveMsats,
                     ...(orderItems?.length ? { selectedItems: orderItems } : {}),
@@ -1159,8 +1164,8 @@ function PrimaryButton({ label, onClick, disabled, tone }: {
  *  The handler is exactly what the old tap / tap-again fired — HoldToConfirm
  *  only replaces the confirmation gesture. "secondary" renders as a quiet
  *  ink-outlined hold for the less-likely choice. */
-function MoneyHold({ label, onConfirm, disabled, busy, resetKey, icon, variant = "primary" }: {
-  label: string; onConfirm: () => void; disabled?: boolean; busy?: boolean;
+function MoneyHold({ label, onConfirm, onHoldStart, disabled, busy, resetKey, icon, variant = "primary" }: {
+  label: string; onConfirm: () => void; onHoldStart?: () => void; disabled?: boolean; busy?: boolean;
   resetKey?: unknown; icon?: React.ReactNode; variant?: "primary" | "secondary";
 }) {
   return (
@@ -1168,6 +1173,7 @@ function MoneyHold({ label, onConfirm, disabled, busy, resetKey, icon, variant =
       label={label}
       icon={icon}
       onConfirm={onConfirm}
+      onHoldStart={onHoldStart}
       disabled={disabled}
       busy={busy}
       resetKey={resetKey}

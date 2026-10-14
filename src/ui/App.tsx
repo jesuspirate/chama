@@ -31,6 +31,7 @@ import { perfMeasure, versionTapToggle, PerfZone } from "./perf-probe.js";
 import { PerfReadout } from "./components/PerfReadout.js";
 import { perfLockStart, perfLockStep, perfLockEnd } from "./perf-probe.js";
 import { gatewayCount, warmGatewayCount, warmGateways } from "../payments/gateway-warmup.js";
+import { lockProbeKey, primeLockProbe, takeLockProbe } from "../payments/lock-probe.js";
 import { Capacitor } from "@capacitor/core";
 import { Preferences } from "@capacitor/preferences";
 
@@ -665,16 +666,24 @@ export default function App() {
   // gateways in the background, so the funding sheet does not wait for
   // either. Read-only: no invoice, nothing payable, no sats move. Only when
   // the wallet is already on this trade's federation — never a join or switch.
-  const warmLockPath = (trade: EscrowState): void => {
-    if (simOn || trade.escrowMode === "onchain" || midFunding || !fedimint.joined) return;
-    const effect = decideListingTapEffect({
+  const walletOnTradeFederation = (trade: EscrowState): boolean => {
+    if (simOn || trade.escrowMode === "onchain" || midFunding || !fedimint.joined) return false;
+    return decideListingTapEffect({
       listing: { mintUrl: trade.mintUrl, community: trade.community,
         fedId: (trade.eventChain[0]?.payload as { fed?: string } | undefined)?.fed ?? null },
       currentInvite: liveActiveInvite, balanceMsats: 0, activeCommitmentCount,
-    });
-    if (effect.kind !== "matching") return;
+    }).kind === "matching";
+  };
+  const warmLockPath = (trade: EscrowState): void => {
+    if (!walletOnTradeFederation(trade)) return;
     void actions.prewarmFunding();
     warmGateways(fedimint.federationId, actions.getLightningGatewayCount);
+  };
+  // Lock invoice, Step 2a: the Lock hold began, so start the federation
+  // check now (read-only, same wallet and federation only; see lock-probe).
+  const primeLockPath = (trade: EscrowState): void => {
+    if (!walletOnTradeFederation(trade)) return;
+    primeLockProbe(lockProbeKey(fedimint.federationId, trade.id), actions.probeFederation);
   };
   // The funding sheet's gateway check: a warm answer at once, else asked now.
   const lockGatewayCount = (): Promise<number | null> => {
@@ -831,8 +840,13 @@ export default function App() {
                 });
                 return;
               }
-              const probe = await actions.probeFederation();
-              perfLockStep("federation check");
+              // A check started when the hold began is used only for this
+              // trade on this federation while fresh, and only if it passed.
+              const { result: probe, early: probeEarly } = await takeLockProbe(
+                walletOnTradeFederation(selected) ? lockProbeKey(fedimint.federationId, selected.id) : null,
+                actions.probeFederation,
+              );
+              perfLockStep(probeEarly ? "federation check · during hold" : "federation check");
               if (!probe.ok) {
                 perfLockEnd("no invoice");
                 setToast({
@@ -4253,6 +4267,7 @@ export default function App() {
               onRepost={() => renewListing(selected.id)}
               onLock={tradeOnLock}
               onLockShown={() => warmLockPath(selected)}
+              onLockHoldStart={() => primeLockPath(selected)}
               onClaim={tradeOnClaim}
               onJoin={tradeOnJoin}
               onVote={(outcome, payoutAddress) => actions.vote(selectedId!, outcome, payoutAddress).then(

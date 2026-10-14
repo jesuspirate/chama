@@ -158,7 +158,7 @@ function haptic(kind: "light" | "heavy"): void {
  */
 export function HoldToConfirm({
   label, armedLabel, hint, onConfirm, disabled, busy, icon, variant = "primary", resetKey, holdMs = HOLD_TO_CONFIRM_MS,
-  "data-coach": dataCoach, plain = false, readySignal,
+  "data-coach": dataCoach, plain = false, readySignal, onHoldStart,
 }: {
   label: ReactNode;
   /** Shown + announced after a first screen-reader activation. */
@@ -181,6 +181,9 @@ export function HoldToConfirm({
    *  button and emphasises "press and hold". It never confirms: the money
    *  still moves only after a completed hold. */
   readySignal?: number;
+  /** A hold (or a first assistive activation) began. Read-only warm-up
+   *  only: it never confirms, and an early lift sends nothing. */
+  onHoldStart?: () => void;
 }) {
   const [state, setState] = useState<HoldState>({ kind: "idle" });
   const buttonRef = useRef<HTMLButtonElement | null>(null);
@@ -244,6 +247,7 @@ export function HoldToConfirm({
     if (inactive || state.kind === "confirmed") return;
     setShowHint(false);
     haptic("light");
+    onHoldStart?.();
     setState(s => holdReducer(s, { type: "press", at: performance.now() }, holdMs));
   };
   const release = () => {
@@ -303,6 +307,7 @@ export function HoldToConfirm({
           // Pointer taps and keyboard presses are handled as holds above.
           // A click with no pointer behind it is an assistive activation.
           if (inactive || e.detail !== 0 || keyHeld.current || pointerActive.current) return;
+          if (state.kind !== "armed") onHoldStart?.();
           setState(s => holdReducer(s, { type: "assistive-activate", at: performance.now() }, holdMs));
         }}
       >
