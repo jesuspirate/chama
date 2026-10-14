@@ -114,6 +114,13 @@ export const claim: Record<string, string> = {
     "Le serveur de Tando est occupé pour le moment. Réessayez dans un instant.",
   "claim.errWalletServerUnhappy":
     "Le serveur de ce portefeuille rencontre un problème. {message}",
+  "claim.phaseAskingWallet": "Demande d'une facture à votre portefeuille…",
+  "claim.inWalletNotPaidYet": "Votre réclamation est déjà faite : vos sats sont dans le portefeuille de cette app. Rien n'a encore été versé.",
+  "claim.notStartedYet": "Votre réclamation n'a pas encore commencé : vos sats sont toujours dans l'échange.",
+  "claim.titleWalletNoInvoice": "Votre portefeuille n'a pas envoyé de facture",
+  "claim.chooseAnotherWallet": "Réessayer ou choisir un autre portefeuille",
+  "claim.errWalletLookupUnreachable": "Impossible de joindre {host} pour trouver ce portefeuille. Rien n'a été payé. Vérifiez l'adresse ou choisissez un autre portefeuille.",
+  "claim.errWalletInvoiceUnreachable": "Impossible de joindre {host} pour obtenir une facture. Rien n'a été payé. Réessayez dans un instant ou choisissez un autre portefeuille.",
   "claim.errWalletServerUnreachable":
     "Impossible de joindre le serveur de ce portefeuille. {message}",
   "claim.errWalletUnexpected":

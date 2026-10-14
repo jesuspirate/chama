@@ -37,7 +37,7 @@ import { PaymentRails, PaymentButton, type PaymentRail } from "../components/Pay
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { T, inputStyle } from "../theme.js";
-import { DestinationPicker, resolveReceiveCode } from "../components/DestinationPicker.js";
+import { DestinationPicker, lnurlUnreachableText, resolveReceiveCode } from "../components/DestinationPicker.js";
 import { isSimModeOn } from "../../sim/simMode.js";
 import { sandboxClaimInvoice } from "../../sim/sim-wallet.js";
 import { BitcoinAmount } from "../components/BitcoinAmount.js";
@@ -107,6 +107,9 @@ export interface ClaimPayoutModalProps {
   onWithdrawEcash?: () => void;
   /** Trade ID being claimed. Passed through to claimAndPayout. */
   escrowId: string;
+  /** The trade is already CLAIMED: this sheet only resumes the payout, so the
+   *  sats are in this app's wallet, not in the trade. */
+  claimAlreadyPublished?: boolean;
   /** Post-escrow-fee payout amount in millisatoshis. claimAndPayout
    *  uses this as expectedDeltaMsats; the Lightning invoice amount is
    *  reduced slightly in the modal so the wallet can pay outbound LN
@@ -161,8 +164,20 @@ export interface ClaimPayoutModalProps {
   onClose: (terminal?: ClaimAndPayoutTerminal) => void;
 }
 
+/** Where the sats are while a saved wallet is asked for an invoice, or after
+ *  that ask failed. Nothing has been paid out in either case. */
+export function notPaidYetKey(claimAlreadyPublished: boolean): "claim.notStartedYet" | "claim.inWalletNotPaidYet" {
+  return claimAlreadyPublished ? "claim.inWalletNotPaidYet" : "claim.notStartedYet";
+}
+
 type Stage =
   | { kind: "picking" }
+  /** Asking a saved wallet for an invoice. The claim has NOT started; the
+   *  sats are still in the trade (Jet, 6.4.25: this used to read
+   *  "Recovering your share… your claim is published"). */
+  | { kind: "resolving" }
+  /** That ask failed. Still nothing claimed and nothing paid. */
+  | { kind: "destination-failed"; error: string }
   | { kind: "running"; phase: ClaimAndPayoutPhase }
   | { kind: "terminal"; terminal: ClaimAndPayoutTerminal };
 
@@ -199,6 +214,7 @@ export function ClaimPayoutModal({
   federationName, getOnchainInfo,
   getLightningGatewayCount, onWithdrawEcash,
   escrowId,
+  claimAlreadyPublished = false,
   payoutMsats,
   premiumMsats = 0,
   savedDestinations: initialDestinations,
@@ -379,17 +395,19 @@ export function ClaimPayoutModal({
   // the claim. The spinner appears immediately so the user sees that
   // something is happening during the relay round-trip.
   const dispatchSavedWalletClaim = async (destination: PayoutDestination) => {
-    setStage({ kind: "running", phase: { kind: "claiming" } });
+    setStage({ kind: "resolving" });
+    let invoice: string;
     try {
-      const invoice = await resolveReceiveCode(destination.address, payoutSats);
-      resolveDestination(invoice, { saveAfter: true, addressUsed: destination.address });
+      invoice = await resolveReceiveCode(destination.address, payoutSats);
     } catch (e: any) {
-      setStage({ kind: "terminal", terminal: { kind: "claim-failed", error: e?.message || t("claim.errResolveDestination") } });
+      setStage({ kind: "destination-failed", error: lnurlUnreachableText(e) ?? (e?.message || t("claim.errResolveDestination")) });
+      return;
     }
+    resolveDestination(invoice, { saveAfter: true, addressUsed: destination.address });
   };
 
   const dispatchSavedNwcClaim = async (connection: SavedNwcConnection) => {
-    setStage({ kind: "running", phase: { kind: "claiming" } });
+    setStage({ kind: "resolving" });
     let invoice: string;
     try {
       invoice = await resolveNwcConnectionToInvoice(
@@ -401,13 +419,7 @@ export function ClaimPayoutModal({
       // NWC wallet refused or couldn't issue the invoice — surface
       // through the standard terminal panel so the user can retry or
       // pick a different destination.
-      setStage({
-        kind: "terminal",
-        terminal: {
-          kind: "claim-failed",
-          error: e?.message || t("claim.errNwcNoInvoice"),
-        },
-      });
+      setStage({ kind: "destination-failed", error: e?.message || t("claim.errNwcNoInvoice") });
       return;
     }
     // Touch the saved row (bumps lastUsedAt) — same UX as
@@ -656,6 +668,7 @@ export function ClaimPayoutModal({
         // claim+payout is in flight — closing mid-flow can't actually
         // cancel the dispatch and would leave the user confused).
         if (stage.kind === "terminal") onClose(stage.terminal);
+        else if (stage.kind === "destination-failed") onClose(undefined);
       }}
       style={{
         position: "fixed", inset: 0, background: "#000c", zIndex: 9998,
@@ -681,12 +694,31 @@ export function ClaimPayoutModal({
               <BitcoinAmount sats={payoutSats} size={T.fs.amount} gap={6} glyphScale={0.9} color={T.ink} glyphColor={T.ink2} />
             </div>
           </div>
-          <CardBack disabled={stage.kind !== "terminal" || retryProbing}
-            onClick={() => { if (stage.kind !== "terminal") return;
+          <CardBack disabled={(stage.kind !== "terminal" && stage.kind !== "destination-failed") || retryProbing}
+            onClick={() => { if (stage.kind === "destination-failed") { setStage({ kind: "picking" }); setPayoutMethod(null); return; }
+              if (stage.kind !== "terminal") return;
               if (stage.terminal.kind === "done" || stage.terminal.kind === "payout-confirming") onClose(stage.terminal);
               else { setStage({ kind: "picking" }); setPayoutMethod(null); } }} />
         </div>
 
+        {stage.kind === "resolving" && (
+          <div role="status" data-claim-resolving style={{ padding: "32px 16px", textAlign: "center", background: T.purpleDim, border: `1px solid ${T.purple}44`, borderRadius: T.r }}>
+            <div style={{ width: 10, height: 10, borderRadius: "50%", background: T.purple, animation: "pulse 1.4s ease-in-out infinite", margin: "0 auto 12px" }} />
+            <div style={{ fontSize: T.fs.secondary, fontWeight: 600, color: T.purple, fontFamily: T.sans }}>{t("claim.phaseAskingWallet")}</div>
+            <div style={{ fontSize: T.fs.secondary, color: T.ink2, fontFamily: T.sans, marginTop: 8, lineHeight: 1.5 }}>{t(notPaidYetKey(claimAlreadyPublished))}</div>
+          </div>
+        )}
+        {stage.kind === "destination-failed" && (
+          <div data-claim-destination-failed>
+            <div role="alert" style={{ padding: "24px 16px", textAlign: "center", background: T.amberDim, border: `1px solid ${T.amber}44`, borderRadius: T.r, marginBottom: 12 }}>
+              <div style={{ fontSize: T.fs.body, fontWeight: 700, color: T.ink, fontFamily: T.sans, marginBottom: 8 }}>{t("claim.titleWalletNoInvoice")}</div>
+              <div style={{ fontSize: T.fs.secondary, color: T.ink, fontFamily: T.sans, lineHeight: 1.5, overflowWrap: "anywhere" }}>{stage.error}</div>
+              <div style={{ fontSize: T.fs.secondary, color: T.ink2, fontFamily: T.sans, lineHeight: 1.5, marginTop: 8 }}>{t(notPaidYetKey(claimAlreadyPublished))}</div>
+            </div>
+            <PaymentButton onClick={() => { setStage({ kind: "picking" }); setPayoutMethod(null); }}>{t("claim.chooseAnotherWallet")}</PaymentButton>
+            <button type="button" onClick={() => onClose(undefined)} style={{ width: "100%", marginTop: 10, minHeight: 48, borderRadius: T.rs, background: T.surface, border: `1px solid ${T.line}`, color: T.ink, fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700, cursor: "pointer" }}>{t("common.close")}</button>
+          </div>
+        )}
         {stage.kind === "running" && (
           <RunningPanel
             phase={stage.phase}
