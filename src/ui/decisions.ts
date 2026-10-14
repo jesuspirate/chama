@@ -1700,6 +1700,20 @@ export function resolveCreateMintUrl(inputs: {
   return resolveListingInvite({ mintUrl: "", community: inputs.community });
 }
 
+/** Where a refused federation change goes (App's queueDestroyConfirm).
+ *  "switch" happens without asking, so it needs a balance that was actually
+ *  read and is empty or dust (Jet, 6.4.25: unknown was reported as 0 and
+ *  switched). Anything that is not a whole non-negative amount is "unknown":
+ *  nothing switches. */
+export function decideDestroyConfirmRoute(
+  balanceMsats: number | null | undefined,
+  preservesArbiterFederationBalances: boolean,
+): "unknown" | "confirm" | "switch" {
+  if (typeof balanceMsats !== "number" || !Number.isFinite(balanceMsats) || balanceMsats < 0) return "unknown";
+  if (!preservesArbiterFederationBalances && balanceBlocksFederationSwitch(balanceMsats)) return "confirm";
+  return "switch";
+}
+
 export function decideListingTapEffect(inputs: ListingTapInputs): ListingTapEffect {
   const targetInvite = resolveListingInvite(inputs.listing);
   const community = inputs.listing.community ? getCommunityBySlug(inputs.listing.community) : null;

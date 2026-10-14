@@ -61,6 +61,7 @@ export const app: Record<string, string> = {
   "app.couldntLoadTrade": "Imeshindikana kupakia biashara {id}.",
   "app.couldntReconnect": "Imeshindikana kuunganisha tena. Ujaribu tena?",
   "app.walletStarting": "Pochi yako bado inaanza. Subiri sekunde chache, kisha ujaribu tena.",
+  "app.balanceUnknownNoSwitch": "Chama haikuweza kusoma salio la pochi yako, kwa hivyo imebaki kwenye jumuiya yako ya sasa. Hakuna kilichobadilishwa. Jaribu tena baada ya muda mfupi.",
   "app.walletSlow": "Pochi yako haikujibu kwa wakati. Angalia salio lako kabla ya kujaribu tena.",
   "app.couldntStartOrder": "Imeshindikana kuanzisha oda.",
   "app.couldntSwitchTo": "Imeshindikana kubadilisha kwenda {label}. Jaribu tena.",
