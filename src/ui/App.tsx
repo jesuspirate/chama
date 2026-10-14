@@ -1,4 +1,5 @@
 import { isSignerApprovalError } from "../escrow-engine/signer-approval.js";
+import { scrollToTopIfScrolled } from "./scroll-top.js";
 import { publicShareLimit } from "../fedimint/federation-inspection.js";
 import { FederationInfoProvider } from "./components/FederationDisclosure.js";
 import { SeedRecoveryPanel } from './panels/SeedRecoveryPanel.js';
@@ -3148,6 +3149,9 @@ export default function App() {
     maybeSnapBackHome();
   };
   const switchTab = (t: Tab) => {
+    // Tapping the tab you're on goes back to the top (Jet, 6.4.25-rc.6). At
+    // the top already, a second tap keeps its old meaning below.
+    if (view !== "detail" && TAB_FOR_VIEW[view] === t && scrollToTopIfScrolled()) return;
     if (t === "browse") {
       // v7 redesign: Browse is the guided canvas, unless this person chose
       // the advanced "All listings" view (remembered on this device). A
@@ -3416,7 +3420,7 @@ export default function App() {
               gap: 6,
               flexShrink: 0,
             }}>
-              <div onClick={onVersionTap} style={{ fontSize: 9, color: __BUILD_STAMP__ ? T.amber : T.muted, fontFamily: T.mono, padding: "4px 10px", borderRadius: 6, background: T.surface, border: `1px solid ${__BUILD_STAMP__ ? T.amber + "55" : T.border}` }}>
+              <div data-chrome onClick={onVersionTap} style={{ fontSize: 9, color: __BUILD_STAMP__ ? T.amber : T.muted, fontFamily: T.mono, padding: "4px 10px", borderRadius: 6, background: T.surface, border: `1px solid ${__BUILD_STAMP__ ? T.amber + "55" : T.border}` }}>
                 {/* Local/test builds carry an amber "dev <build time>" stamp so a
                     Tauri/ASDK refresh visibly confirms it picked up the new
                     bundle. ship.sh exports CHAMA_RELEASE=1 → clean version. */}

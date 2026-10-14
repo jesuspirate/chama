@@ -19,6 +19,18 @@
         -moz-osx-font-smoothing: grayscale;
       }
       html, body { height: 100%; }
+      /* In the Android and desktop apps, long-press or fast taps on app
+         chrome must not select the page: GrapheneOS drew the selection with
+         black boxes over the canvas heading (Jet, 6.4.25-rc.6). Only chrome
+         is unselectable (headings, labels, buttons, tabs, the bottom bar,
+         the version label, the guided canvas); addresses, invoices, keys and
+         chat keep normal selection. */
+      html[data-native-app] :is(h1, h2, h3, h4, h5, h6, button, label, nav, summary, [role="tab"], [role="button"], [data-chrome], .assisted-canvas) {
+        -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+      }
+      html[data-native-app] :is(input, textarea, [contenteditable], [data-selectable]) {
+        -webkit-user-select: text; user-select: text; -webkit-touch-callout: default;
+      }
       body { overscroll-behavior: contain; }
       @media (max-width: 767px) {
         html[data-chat-focused], html[data-chat-focused] body { overflow: hidden; }

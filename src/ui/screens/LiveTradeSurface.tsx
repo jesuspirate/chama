@@ -47,7 +47,7 @@ import { ChatPanel } from "../panels/ChatPanel.js";
 import type { RatingThumb } from "../../reputation/ratings.js";
 import { translate, getCurrentLang } from "../../i18n/index.js";
 import { shareTradeLink } from "../share-link.js";
-import { getRailByKey } from "../../payments/rail-registry.js";
+import { railLabel, getRailByKey } from "../../payments/rail-registry.js";
 import { VerticalIcon } from "../components/VerticalIcon.js";
 import { isParentStorefront, isChildOrder } from "../../escrow-engine/storefront.js";
 
@@ -1005,7 +1005,7 @@ export function LiveTradeSurface({
               <div data-agreed-methods style={{ marginTop: 16, padding: "12px 14px", borderRadius: 12, background: T.raised, fontFamily: T.sans }}>
                 <div style={{ fontSize: T.fs.secondary, color: T.ink2, marginBottom: 4 }}>{tr("lts.agreedMethods")}</div>
                 <div style={{ fontSize: T.fs.headline, fontWeight: 600, color: T.ink }}>
-                  {state.paymentMethods.map(key => getRailByKey(key)?.displayName ?? key).join(" · ")}
+                  {state.paymentMethods.map(key => railLabel(key)).join(" · ")}
                 </div>
                 <div style={{ fontSize: T.fs.secondary, color: T.ink2, marginTop: 6 }}>{tr("lts.detailsInChat", { name: lockerName })}</div>
               </div>
@@ -1014,9 +1014,9 @@ export function LiveTradeSurface({
               <summary style={{ minHeight: T.size.touch, display: "flex", alignItems: "center", cursor: "pointer", color: T.ink, fontSize: T.fs.body, fontWeight: 600 }}>{tr("lts.howToPay", { name: lockerName })}</summary>
               <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", overflowWrap: "anywhere", background: T.raised, borderRadius: 12 }}>
                 <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
-                  <div style={{ fontSize: T.fs.secondary, color: T.ink2 }}>{getRailByKey(state.lock.handle.rail)?.displayName ?? state.lock.handle.rail}</div>
+                  <div style={{ fontSize: T.fs.secondary, color: T.ink2 }}>{railLabel(state.lock.handle.rail)}</div>
                   <div style={{ fontSize: T.fs.headline, fontWeight: 600, color: T.ink }}>{handleDisplayForViewer(state.lock.handle.value, true)}</div>
-                  {!!state.lock.handle.networks?.length && <div style={{ fontSize: T.fs.secondary, color: T.ink2 }}>{state.lock.handle.networks.map(key => getRailByKey(key)?.displayName ?? key).join(" · ")}</div>}
+                  {!!state.lock.handle.networks?.length && <div style={{ fontSize: T.fs.secondary, color: T.ink2 }}>{state.lock.handle.networks.map(key => railLabel(key)).join(" · ")}</div>}
                 </div>
                 <CopyButton value={state.lock.handle.value} />
               </div>
