@@ -184,9 +184,7 @@ export function HoldToConfirm({
 }) {
   const [state, setState] = useState<HoldState>({ kind: "idle" });
   const buttonRef = useRef<HTMLButtonElement | null>(null);
-  const [progress, setProgress] = useState(0);
   const [showHint, setShowHint] = useState(false);
-  const raf = useRef<number | null>(null);
   const keyHeld = useRef(false);
   const pointerActive = useRef(false);
   const confirmedFired = useRef(false);
@@ -196,7 +194,6 @@ export function HoldToConfirm({
 
   const reset = () => {
     setState({ kind: "idle" });
-    setProgress(0);
     confirmedFired.current = false;
   };
   // A new action (resetKey) always starts fresh.
@@ -217,27 +214,27 @@ export function HoldToConfirm({
     wasInactive.current = nowInactive;
   }, [disabled, busy]);
 
+  // Jet (6.4.25-rc.7): the fill was jittery. It used to re-render this
+  // button on every animation frame and step its width in whole percents
+  // (~3.5px on a phone). Now the fill is one compositor transform animation
+  // (scaleX, linear, holdMs) and a single timer confirms the hold: no
+  // JavaScript runs per frame. The confirm rule (holdReducer) is unchanged.
   useEffect(() => {
     if (state.kind === "confirmed" && !confirmedFired.current) {
       confirmedFired.current = true;
       haptic("heavy");
-      setProgress(1);
       onConfirmRef.current();
     }
-    if (state.kind !== "holding") {
-      if (raf.current !== null) cancelAnimationFrame(raf.current);
-      raf.current = null;
-      if (state.kind === "idle") setProgress(0);
-      return;
-    }
-    const loop = () => {
-      const now = performance.now();
-      setProgress(Math.min(1, (now - state.since) / holdMs));
-      setState(s => holdReducer(s, { type: "tick", at: now }, holdMs));
-      raf.current = requestAnimationFrame(loop);
+    if (state.kind !== "holding") return;
+    const due = state.since + holdMs;
+    let timer: ReturnType<typeof setTimeout>;
+    const check = () => {
+      const at = performance.now();
+      setState(s => holdReducer(s, { type: "tick", at }, holdMs));
+      if (at < due) timer = setTimeout(check, Math.max(4, due - at));
     };
-    raf.current = requestAnimationFrame(loop);
-    return () => { if (raf.current !== null) cancelAnimationFrame(raf.current); };
+    timer = setTimeout(check, Math.max(0, due - performance.now()));
+    return () => clearTimeout(timer);
   }, [state, holdMs]);
 
   const press = () => {
@@ -247,7 +244,7 @@ export function HoldToConfirm({
     setState(s => holdReducer(s, { type: "press", at: performance.now() }, holdMs));
   };
   const release = () => {
-    if (state.kind === "holding" && progress < 1) setShowHint(true);
+    if (state.kind === "holding" && performance.now() - state.since < holdMs) setShowHint(true);
     setState(s => holdReducer(s, { type: "release", at: performance.now() }, holdMs));
   };
 
@@ -306,11 +303,14 @@ export function HoldToConfirm({
           setState(s => holdReducer(s, { type: "assistive-activate", at: performance.now() }, holdMs));
         }}
       >
-        <span aria-hidden="true" style={{
-          position: "absolute", left: 0, top: 0, bottom: 0,
-          width: `${Math.round(progress * 100)}%`,
+        <span aria-hidden="true" data-hold-fill style={{
+          position: "absolute", left: 0, top: 0, bottom: 0, width: "100%",
+          transformOrigin: "left center", willChange: "transform",
+          transform: `scaleX(${done || state.kind === "holding" ? 1 : 0})`,
           background: fillColor, opacity: done ? 0.3 : 0.22,
-          transition: state.kind === "holding" || done ? "none" : "width 200ms ease",
+          // Holding: grow linearly over the whole hold. Released early: ease
+          // back from wherever it got to. Done: stay full.
+          transition: state.kind === "holding" ? `transform ${holdMs}ms linear` : done ? "none" : "transform 200ms ease",
         }} />
         <span style={{ position: "relative", display: "inline-flex", alignItems: "center", gap: 8 }}>
           {done ? <CheckGlyph /> : icon}
