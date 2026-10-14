@@ -835,8 +835,8 @@ export default function App() {
   const tradeOnLock = async (
     lockOpts: { savedHandleId?: string; paymentDetailsInChat?: boolean; selectedItems?: SelectedMenuItem[]; amountMsats?: number } = {},
   ): Promise<void> => {
-    if (!selected || selected.escrowMode === "onchain") return;
-    if (!requireOnline()) return;
+    if (!selected || selected.escrowMode === "onchain") { actions.abandonPreparedFundingInvoice(); return; }
+    if (!requireOnline()) { actions.abandonPreparedFundingInvoice(); return; }
               // Timing readout (?perf=1): Lock hold → invoice on screen.
               perfLockStart();
               const savedHandleId = lockOpts.savedHandleId;
@@ -854,7 +854,7 @@ export default function App() {
                 });
                 return;
               }
-              if (!selected) return;
+              if (!selected) { perfLockEnd("no invoice"); actions.abandonPreparedFundingInvoice(); return; }
               const lockAmountMsats = lockOpts.amountMsats ?? selected.amountMsats;
               if (
                 !simOn &&
@@ -4290,7 +4290,7 @@ export default function App() {
               onLock={tradeOnLock}
               onLockShown={() => warmLockPath(selected)}
               onLockHoldStart={lockOpts => primeLockPath(selected, lockOpts)}
-              onLockHoldCancel={() => actions.abandonPreparedFundingInvoice()}
+              onLockHoldCancel={() => actions.releasePreparedFundingInvoice()}
               onClaim={tradeOnClaim}
               onJoin={tradeOnJoin}
               onVote={(outcome, payoutAddress) => actions.vote(selectedId!, outcome, payoutAddress).then(

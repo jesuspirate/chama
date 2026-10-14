@@ -8,7 +8,7 @@ import type { FederationInspection } from "../fedimint/federation-inspection.js"
 import { waitForFundingWallet } from "../payments/funding-wallet-ready.js";
 import { rejectedLockRecovery } from "../fedimint/rejected-lock-recovery.js";
 import { assertOnchainFundingWindow, fundingInvoiceSeconds, assertFundingInvoiceWithinSeat } from "../payments/seat-funding.js";
-import { abandonPreparedInvoice, adoptPreparedInvoice, prepareInvoice, type PreparedInvoiceTerms } from "../payments/prepared-funding-invoice.js";
+import { abandonPreparedInvoice, adoptPreparedInvoice, preparationTicket, prepareInvoice, releasePreparedInvoice, type PreparedInvoiceTerms } from "../payments/prepared-funding-invoice.js";
 import { perfLockStep } from "../ui/perf-probe.js";
 
 /** The lifetime asked of the gateway for a funding invoice: the flow's
@@ -1132,6 +1132,9 @@ export interface UseEscrowActions {
   ) => Promise<void>;
   /** The Lock hold was lifted: mark any prepared invoice abandoned. */
   abandonPreparedFundingInvoice: () => void;
+  /** The Lock hold was lifted: cancel a press still checking; keep an invoice
+   *  already asked for parked for the next press. */
+  releasePreparedFundingInvoice: () => void;
   fundAndLock: (
     escrowId: string,
     opts: {
@@ -5560,6 +5563,9 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     escrowId: string,
     opts: { amountMsats: number; premiumMsats?: number; description: string; savedHandleId?: string; paymentDetailsInChat?: boolean; selectedItems?: SelectedMenuItem[] },
   ): Promise<void> => {
+    // Taken before any await: a release, abandon or adoption meanwhile
+    // makes prepareInvoice refuse.
+    const ticket = preparationTicket();
     try {
       if (isSimModeOn() || isTestnetMode()) return;
       if (hasFediInternalGenerateEcash() || isFediMiniAppRuntime() || hasFediInternalEcash()) return;
@@ -5578,9 +5584,14 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
         selectedItems: opts.selectedItems, savedHandleId: opts.savedHandleId, paymentDetailsInChat: opts.paymentDetailsInChat,
       });
       void buyerPubkey;
+      // The hold may have completed while preflight ran: never beside the
+      // real flow.
+      const running = fundingInProgressRef.current;
+      if (running && !running.aborted) return;
       const expirySeconds = fundingRequestSeconds(fundingInvoiceSeconds(seatDeadline, Date.now(), PAYMENT_DEADLINE_SECONDS), seatDeadline);
       const journal = createFundingInvoiceJournal({ escrowId, amountMsats, federationId });
       prepareInvoice<LnReceiveStateKind, InvoiceGatewayInfo>({
+        ticket,
         terms: preparedTerms(escrowId, federationId, amountMsats, opts.description, opts, seatDeadline),
         expirySeconds,
         journal,
@@ -6343,6 +6354,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     fundAndLock: fundAndLockAction,
     prepareFundingInvoice: prepareFundingInvoiceAction,
     abandonPreparedFundingInvoice: abandonPreparedInvoice,
+    releasePreparedFundingInvoice: releasePreparedInvoice,
     payInvoice: async (bolt11: string, meta?: ChamaOperationMeta) => {
       const bridge = requireBridge();
       // R3-1: surface the operationId so the recovery payout can journal it
