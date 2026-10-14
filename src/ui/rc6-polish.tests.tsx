@@ -28,3 +28,23 @@ import { getRailByKey, railLabel, toRailKey, matchRails } from "../payments/rail
   assert.match(create, /\{selected \? "✓ " : ""\}\{railLabel\(rail\)\}/);
 }
 console.log("PASS payment methods: Cash App shows as \"Cash App\"; the stored name and matching are unchanged");
+
+{
+  // 2. Tapping the tab you're on goes back to the top; at the top, the tap
+  // keeps its old meaning (Browse: back to the guided start).
+  const { scrollToTopIfScrolled } = await import("./scroll-top.js");
+  const calls: ScrollToOptions[] = [];
+  const page = { scrollTop: 1800, scrollTo: (o: ScrollToOptions) => { calls.push(o); page.scrollTop = 0; } };
+  assert.equal(scrollToTopIfScrolled(page, false), true);
+  assert.deepEqual(calls, [{ top: 0, behavior: "smooth" }]);
+  assert.equal(scrollToTopIfScrolled(page, false), false, "already at the top: nothing to do");
+  page.scrollTop = 900;
+  scrollToTopIfScrolled(page, true);
+  assert.deepEqual(calls[1], { top: 0, behavior: "auto" }, "reduced motion jumps");
+  assert.equal(scrollToTopIfScrolled(null, false), false);
+  const app = readFileSync(new URL("./App.tsx", import.meta.url), "utf8");
+  const sw = app.slice(app.indexOf("const switchTab = (t: Tab) => {"), app.indexOf("// ── Not connected"));
+  assert.match(sw, /if \(view !== "detail" && TAB_FOR_VIEW\[view\] === t && scrollToTopIfScrolled\(\)\) return;\s*if \(t === "browse"\)/,
+    "every tab: same-tab tap scrolls up first; other taps unchanged");
+}
+console.log("PASS tab bar: tapping the tab you're on scrolls to the top; at the top it keeps its old meaning");

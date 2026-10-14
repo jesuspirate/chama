@@ -1,4 +1,5 @@
 import { isSignerApprovalError } from "../escrow-engine/signer-approval.js";
+import { scrollToTopIfScrolled } from "./scroll-top.js";
 import { publicShareLimit } from "../fedimint/federation-inspection.js";
 import { FederationInfoProvider } from "./components/FederationDisclosure.js";
 import { SeedRecoveryPanel } from './panels/SeedRecoveryPanel.js';
@@ -3102,6 +3103,9 @@ export default function App() {
     maybeSnapBackHome();
   };
   const switchTab = (t: Tab) => {
+    // Tapping the tab you're on goes back to the top (Jet, 6.4.25-rc.6). At
+    // the top already, a second tap keeps its old meaning below.
+    if (view !== "detail" && TAB_FOR_VIEW[view] === t && scrollToTopIfScrolled()) return;
     if (t === "browse") {
       // v7 redesign: Browse is the guided canvas, unless this person chose
       // the advanced "All listings" view (remembered on this device). A
