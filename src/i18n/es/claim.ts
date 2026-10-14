@@ -109,6 +109,7 @@ export const claim: Record<string, string> = {
   "claim.errTandoServer": "El servidor de Tando está ocupado ahora mismo. Inténtalo en un momento.",
   "claim.errWalletServerUnhappy": "El servidor de esa billetera tiene problemas. {message}",
   "claim.phaseAskingWallet": "Pidiendo una factura a tu billetera…",
+  "claim.inWalletNotPaidYet": "Tu reclamo ya está hecho, así que tus sats están en la billetera de esta app. Todavía no se ha pagado nada.",
   "claim.notStartedYet": "Tu reclamo aún no ha empezado, así que tus sats siguen en el intercambio.",
   "claim.titleWalletNoInvoice": "Tu billetera no envió una factura",
   "claim.chooseAnotherWallet": "Reintentar o elegir otra billetera",

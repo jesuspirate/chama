@@ -115,6 +115,7 @@ export const claim: Record<string, string> = {
   "claim.errWalletServerUnhappy":
     "Le serveur de ce portefeuille rencontre un problème. {message}",
   "claim.phaseAskingWallet": "Demande d'une facture à votre portefeuille…",
+  "claim.inWalletNotPaidYet": "Votre réclamation est déjà faite : vos sats sont dans le portefeuille de cette app. Rien n'a encore été versé.",
   "claim.notStartedYet": "Votre réclamation n'a pas encore commencé : vos sats sont toujours dans l'échange.",
   "claim.titleWalletNoInvoice": "Votre portefeuille n'a pas envoyé de facture",
   "claim.chooseAnotherWallet": "Réessayer ou choisir un autre portefeuille",

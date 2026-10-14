@@ -107,6 +107,7 @@ export const claim: Record<string, string> = {
   "claim.errTandoServer": "Seva ya Tando ina shughuli nyingi sasa. Jaribu tena baada ya muda mfupi.",
   "claim.errWalletServerUnhappy": "Seva ya pochi hiyo ina tatizo. {message}",
   "claim.phaseAskingWallet": "Inaomba ankara kutoka kwa pochi yako…",
+  "claim.inWalletNotPaidYet": "Dai lako limeshafanyika, kwa hivyo sats zako ziko kwenye pochi ya programu hii. Bado hakuna kilicholipwa.",
   "claim.notStartedYet": "Dai lako bado halijaanza, kwa hivyo sats zako bado ziko kwenye biashara.",
   "claim.titleWalletNoInvoice": "Pochi yako haikutuma ankara",
   "claim.chooseAnotherWallet": "Jaribu tena au chagua pochi nyingine",

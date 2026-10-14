@@ -109,9 +109,32 @@ console.log("PASS LNURL unreachable: names the server and the step (lookup or in
   assert.doesNotMatch(nwc, /claim-failed/);
   const resolving = modal.slice(modal.indexOf('{stage.kind === "resolving"'), modal.indexOf('{stage.kind === "destination-failed"'));
   assert.match(resolving, /claim\.phaseAskingWallet/);
-  assert.match(resolving, /claim\.notStartedYet/);
+  assert.match(resolving, /t\(notPaidYetKey\(claimAlreadyPublished\)\)/);
   assert.doesNotMatch(resolving, /longRunningEscape|phaseClaiming/);
-  const en = readFileSync(new URL("../i18n/en/claim.ts", import.meta.url), "utf8");
-  assert.match(en, /"claim\.notStartedYet": "Your claim hasn't started yet, so your sats are still in the trade\."/);
+  const failed = modal.slice(modal.indexOf('{stage.kind === "destination-failed"'), modal.indexOf('{stage.kind === "running"'));
+  assert.match(failed, /t\(notPaidYetKey\(claimAlreadyPublished\)\)/);
+  assert.doesNotMatch(resolving + failed, /claim\.notStartedYet"/, "neither panel hard-codes the not-started wording");
 }
-console.log("PASS claim sheet: plain lookup errors in en/fr/es/sw; a saved wallet is asked before the claim starts, and a failed ask never claims");
+{
+  // Where the sats are depends on whether the claim already happened. A trade
+  // already CLAIMED (useEscrow's claimAlreadyPublished) only resumes the
+  // payout: the sats are in this app's wallet, never "still in the trade".
+  const { notPaidYetKey } = await import("../ui/panels/ClaimPayoutModal.js");
+  const { translate } = await import("../i18n/index.js");
+  assert.equal(notPaidYetKey(false), "claim.notStartedYet");
+  assert.equal(notPaidYetKey(true), "claim.inWalletNotPaidYet");
+  assert.equal(translate("en", notPaidYetKey(false)), "Your claim hasn't started yet, so your sats are still in the trade.");
+  assert.equal(translate("en", notPaidYetKey(true)), "Your claim is already done, so your sats are in this app's wallet. Nothing has been paid out yet.");
+  for (const lang of ["en", "fr", "es", "sw"] as const) {
+    const claimed = translate(lang, "claim.inWalletNotPaidYet");
+    const notStarted = translate(lang, "claim.notStartedYet");
+    assert.ok(claimed && claimed !== "claim.inWalletNotPaidYet" && claimed !== notStarted, `${lang}: its own wording for the claimed case`);
+  }
+  assert.doesNotMatch(translate("en", "claim.inWalletNotPaidYet"), /still in the trade/);
+  const app = readFileSync(new URL("../ui/App.tsx", import.meta.url), "utf8");
+  const escrow = readFileSync(new URL("../hooks/useEscrow.ts", import.meta.url), "utf8");
+  assert.match(escrow, /claimAlreadyPublished: client\.getState\(escrowId\)\?\.status === EscrowStatus\.CLAIMED/);
+  assert.match(app, /claimAlreadyPublished=\{escrows\.get\(pendingClaim\.escrowId\)\?\.status === EscrowStatus\.CLAIMED\}/,
+    "the sheet uses the same test as the payout resume");
+}
+console.log("PASS claim sheet: plain lookup errors in en/fr/es/sw; a saved wallet is asked before the claim starts, a failed ask never claims; sats \"still in the trade\" before a claim, \"in this app's wallet\" once CLAIMED");
