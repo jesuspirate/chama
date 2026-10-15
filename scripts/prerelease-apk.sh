@@ -8,6 +8,7 @@ set -euo pipefail
 #   npm run ship -- --only prerelease --rc 2         # next patch, rc.2
 #   npm run ship -- --only prerelease --next minor   # next minor, rc.1
 #   npm run ship -- --only prerelease --dry-run
+#   npm run ship -- --only prerelease --rc 3 --no-sandbox   # APK only
 #
 # What it is: the same build android-release.sh produces for a release — same
 # signing key as Zapstore, native bridge included — numbered X.Y.Z-rc.N so it
@@ -20,6 +21,11 @@ set -euo pipefail
 # Start9, no live web. The version bump is transient and restored on exit,
 # whatever happens. The hosted file lives inside the sandbox dist and is kept
 # across sandbox deploys until the next prerelease replaces it.
+#
+# The sandbox follows the rc (Jet, Oct 15): once the APK is served, the same
+# worktree is deployed to https://poc.getchama.app under the same transient
+# version, so the sandbox's version line reads X.Y.Z-rc.N and a tester can see
+# which candidate it runs. --no-sandbox skips that step.
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
@@ -29,12 +35,14 @@ RC=1
 NEXT="patch"
 DRY_RUN=0
 SKIP_GATES=0
+SANDBOX=1
 while [ $# -gt 0 ]; do
   case "$1" in
     --rc) RC="${2:-}"; shift 2 ;;
     --next) NEXT="${2:-}"; shift 2 ;;
     --dry-run) DRY_RUN=1; shift ;;
     --skip-gates|--skip-web-gate) SKIP_GATES=1; shift ;;
+    --no-sandbox) SANDBOX=0; shift ;;
     *) echo "❌ Unknown option: $1"; exit 1 ;;
   esac
 done
@@ -52,7 +60,9 @@ URL="https://poc.getchama.app/prerelease/$BASENAME"
 
 if [ "$DRY_RUN" = "1" ]; then
   echo "PRERELEASE only: $BASE_VERSION → transient $RC_VERSION; gates; signed APK; upload → ~/$REMOTE_DIR/$BASENAME"
-  echo "Would be served at $URL. No tag, commit, GitHub, Zapstore, Start9 or live/sandbox web change; version restored on exit."
+  echo "Would be served at $URL. No tag, commit, GitHub, Zapstore, Start9 or live web change; version restored on exit."
+  if [ "$SANDBOX" = "1" ]; then echo "Then: sandbox deploy of the same worktree as v$RC_VERSION → https://poc.getchama.app (--no-sandbox skips it)."
+  else echo "Sandbox left as it is (--no-sandbox)."; fi
   exit 0
 fi
 
@@ -100,3 +110,15 @@ fi
 echo "✅ PRERELEASE $RC_VERSION is at $URL"
 echo "   sha256 $LOCAL_SHA (+ .sha256 and .sha256.asc beside it)"
 echo "   Same signing key as Zapstore: installs over the production app; forward-only (no rollback)."
+
+# The sandbox follows the rc, still under the transient version, so its version
+# line names the candidate. The APK above is already served and checked; a
+# sandbox failure is reported and fails the command, but leaves the APK alone.
+if [ "$SANDBOX" = "1" ]; then
+  echo "🧪 Deploying the sandbox as v$RC_VERSION…"
+  if [ "$SKIP_GATES" = "1" ]; then sandbox_env=(); else sandbox_env=(CHAMA_SANDBOX_GATES_PASSED=1); fi
+  if ! env ${sandbox_env[@]+"${sandbox_env[@]}"} "$ROOT_DIR/scripts/deploy-sandbox.sh"; then
+    echo "❌ Sandbox deploy failed. The APK at $URL is fine; retry the sandbox alone with: npm run ship -- --only sandbox (it will show the base version, not rc.$RC)."
+    exit 1
+  fi
+fi
