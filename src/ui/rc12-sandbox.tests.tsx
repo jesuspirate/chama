@@ -78,3 +78,18 @@ console.log("PASS sandbox profiles: real names shown, never published over");
   assert.match(me, /isSimModeOn\(\) \? "me\.sandboxProfileLocal" : "me\.avatarFailed"/);
 }
 console.log("PASS sandbox follow-up: trade room and toasts reserve the real banner height; honest local-only profile copy");
+
+{
+  // Jet (GrapheneOS, rc.12): selecting text (pasting in Browse › Advanced
+  // tools) drew black boxes with dark edges. Cause: the app theme set
+  // android:background, which Android applies to every view inflated with
+  // the theme, including the selection-handle and Copy/Paste pop-ups. Only
+  // the window and the main layout carry the dark background now.
+  const styles = readFileSync(new URL("../../android/app/src/main/res/values/styles.xml", import.meta.url), "utf8");
+  const appThemes = styles.slice(styles.indexOf('<style name="AppTheme"'), styles.indexOf('<style name="AppTheme.NoActionBarLaunch"'));
+  assert.doesNotMatch(appThemes, /<item name="android:background">/, "no theme-level background on the app themes");
+  assert.equal((appThemes.match(/<item name="android:windowBackground">#05050A<\/item>/g) ?? []).length, 2, "the window stays dark");
+  const layout = readFileSync(new URL("../../android/app/src/main/res/layout/activity_main.xml", import.meta.url), "utf8");
+  assert.match(layout, /android:background="#05050A"/, "the screen itself stays dark");
+}
+console.log("PASS Android: no theme background, so selection handles and the Copy/Paste bar draw normally");
