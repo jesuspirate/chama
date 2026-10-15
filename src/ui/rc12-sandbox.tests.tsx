@@ -193,11 +193,12 @@ console.log("PASS dispute: press-and-hold opens the reasons; back-to-sender unde
 {
   // Jet (rc.14): the back link read differently in Browse ("Change the last
   // answer", under the country chip) and Circles ("Back", above it). Both now
-  // say "← Back" in the same place, under the chip.
+  // share one top row — "← Back" left, the chip right — and say "Back" on
+  // every screen (src/ui/canvas-back.tests.tsx covers the row itself).
   const canvas = read("./screens/AssistedCanvas.tsx");
   assert.doesNotMatch(canvas, /tr\("canvas\.changeLast"\)/);
-  assert.match(canvas, /<CommunityChip slug=\{community\.slug\}[\s\S]*?\{children\}<\/main>/, "Browse: chip first, then the screen (Back leads it)");
+  assert.match(canvas, /<CanvasTopRow onBack=\{back \? \(\) => back\.run\(\) : null\} chip=\{community \? <CommunityChip slug=\{community\.slug\}/, "Browse: one row");
   const circle = read("./screens/CircleCanvas.tsx");
-  assert.match(circle, /<CommunityChip slug=\{community\} onOpen=\{onOpenCommunity\} \/><\/div>\s+<Back onClick=\{step \? \(\) => setStep\(step - 1\) : onBack\}>\{t\("common\.back"\)\}<\/Back>/, "Circles: chip, then Back");
+  assert.match(circle, /<CanvasTopRow onBack=\{step \? \(\) => setStep\(step - 1\) : onBack\} chip=\{<CommunityChip slug=\{community\} onOpen=\{onOpenCommunity\} \/>\} \/>/, "Circles: the same row");
 }
 console.log("PASS back link: same words, same place in Browse and Circles");

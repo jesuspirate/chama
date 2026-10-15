@@ -8,7 +8,7 @@ import { isSimModeOn } from "../../sim/simMode.js";
 import type { CircleRound } from "../../chama/types.js";
 import { DEFAULT_ROUND_SEC } from "../../chama/types.js";
 import { circleCanvasRound, circleCanvasErrors, sundaySnapDurationSec } from "../../chama/canvas.js";
-import { Back, QuestionCard, Primary, headingStyle, subStyle, reviewStyle, canvasCss } from "./AssistedCanvas.js";
+import { CanvasTopRow, QuestionCard, Primary, headingStyle, subStyle, reviewStyle, canvasCss } from "./AssistedCanvas.js";
 import { VerticalIcon } from "../components/VerticalIcon.js";
 import { T } from "../theme.js";
 import { useT } from "../../i18n/index.js";
@@ -68,10 +68,7 @@ export function CircleCanvas({ viewerPubkey, community, mintUrl, initial, onBack
   return <section ref={rootRef} className="assisted-canvas circle-canvas" aria-label={t("circle.createTitle")}>
     <style>{canvasCss()}{circleCss()}</style>
     <div className="assisted-canvas-main"><div className="circle-canvas-content">
-      {/* Same order as Browse's guided screens (CanvasShell): country chip,
-          then "← Back" (Jet, rc.14: the two read differently). */}
-      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}><CommunityChip slug={community} onOpen={onOpenCommunity} /></div>
-      <Back onClick={step ? () => setStep(step - 1) : onBack}>{t("common.back")}</Back>
+      <CanvasTopRow onBack={step ? () => setStep(step - 1) : onBack} chip={<CommunityChip slug={community} onOpen={onOpenCommunity} />} />
       <div className="circle-eyebrow"><VerticalIcon vertical="chama" size={32} />{t("circle.createTitle")}</div>
       <h1 style={headingStyle()}>{t(titles[step])}</h1>
       {step === 0 && <><p style={subStyle()}>{t("circle.equalShares")}</p><QuestionCard>

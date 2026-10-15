@@ -7,7 +7,7 @@ import { RangeFiat } from "../components/RangeFiat.js";
 import { ConductFacts } from "../components/ConductFacts.js";
 import { readPreferredRails, savePreferredRails } from "../../payments/preferred-rails.js";
 import { useCanvasViewport } from "../hooks/useCanvasViewport.js";
-import { createContext, useContext, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Role, type EscrowState } from "../../escrow-engine/types.js";
 import { ChamaLoader } from "../components/ChamaLoader.js";
 import {
@@ -1113,13 +1113,32 @@ export function AssistedCanvas({
  *  Provided by the shell around the canvas; absent ⇒ no link. */
 export const CanvasAllListings = createContext<(() => void) | null>(null);
 
+/** One top row on every canvas screen, Browse and Circles alike (Jet,
+ *  6.4.25-rc.14): "← Back" on the left, the country chip on the right. A
+ *  screen's <Back> hands its action to the shell's row instead of drawing
+ *  its own line under the chip. */
+type BackAction = { run: () => void };
+const CanvasBackSlot = createContext<((back: BackAction | null) => void) | null>(null);
+
+export function CanvasTopRow({ onBack, chip }: { onBack?: (() => void) | null; chip?: ReactNode }) {
+  if (!onBack && !chip) return null;
+  return <div className="canvas-top-row">
+    {onBack ? <button type="button" data-chama-shortcut="back" className="canvas-back" onClick={onBack}>← {tr("common.back")}</button> : <span />}
+    {chip ?? <span />}
+  </div>;
+}
+
 function CanvasShell({ community, step, onExit, onMoreOptions, onOpenCommunity, children }: { community: ReturnType<typeof getCommunityBySlug>; onOpenCommunity?: () => void; step: number; onExit: () => void; onMoreOptions: () => void; children: ReactNode }) {
   const rootRef = useCanvasViewport();
   const onAllListings = useContext(CanvasAllListings);
+  const [back, setBack] = useState<BackAction | null>(null);
   return <div ref={rootRef} className="assisted-canvas">
     <style>{canvasCss()}</style>
     {step === 0 && <button type="button" data-chama-shortcut="back" onClick={onExit} tabIndex={-1} aria-hidden="true" style={{ display: "none" }} />}
-    <main className="assisted-canvas-main">{community && <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}><CommunityChip slug={community.slug} onOpen={onOpenCommunity} /></div>}{children}</main>
+    <main className="assisted-canvas-main">
+      <CanvasTopRow onBack={back ? () => back.run() : null} chip={community ? <CommunityChip slug={community.slug} onOpen={onOpenCommunity} /> : null} />
+      <CanvasBackSlot.Provider value={setBack}>{children}</CanvasBackSlot.Provider>
+    </main>
     <footer className="assisted-canvas-footer">
       <span style={{ display: "inline-flex", gap: 16, flexWrap: "wrap", justifySelf: "start" }}>
         <button type="button" onClick={onMoreOptions}>{tr("canvas.knowWhatDoing")}</button>
@@ -1167,7 +1186,21 @@ function AssetMark({ asset }: { asset: AssistedCanvasAsset }) {
 
 function RouteCue({ children }: { children: string }) { return <div className="assisted-route">{children}</div>; }
 function Kicker({ children }: { children: string }) { return <div style={{ color: T.accent, fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700, }}>{children}</div>; }
-export function Back({ onClick, children }: { onClick: () => void; children: string }) { return <button type="button" data-chama-shortcut="back" onClick={onClick} style={{ border: 0, padding: 0, marginBottom: "clamp(10px, 2vh, 28px)", background: "transparent", color: T.muted, cursor: "pointer" }}>← {children}</button>; }
+/** A screen's way back. Inside a canvas shell it goes to the shared top row
+ *  (always "← Back"); elsewhere it draws itself. `children` is kept for
+ *  callers outside a shell. */
+export function Back({ onClick, children }: { onClick: () => void; children: string }) {
+  const slot = useContext(CanvasBackSlot);
+  const latest = useRef(onClick);
+  latest.current = onClick;
+  useLayoutEffect(() => {
+    if (!slot) return;
+    slot({ run: () => latest.current() });
+    return () => slot(null);
+  }, [slot]);
+  if (slot) return null;
+  return <button type="button" data-chama-shortcut="back" onClick={onClick} style={{ border: 0, padding: 0, marginBottom: "clamp(10px, 2vh, 28px)", background: "transparent", color: T.muted, cursor: "pointer" }}>← {children}</button>;
+}
 export function QuestionCard({ children }: { children: ReactNode }) { return <div className="assisted-question-card">{children}</div>; }
 export function Primary({ children, onClick, disabled = false }: { children: ReactNode; onClick: () => void; disabled?: boolean }) { return <button type="button" data-chama-shortcut="enter" disabled={disabled} onClick={onClick} className="assisted-primary">{children}</button>; }
 function Safety({ children }: { children: ReactNode }) { return <div style={{ marginTop: 14, color: T.muted, fontSize: 12, lineHeight: 1.5 }}>{children}</div>; }
@@ -1293,6 +1326,8 @@ export function canvasCss() { return `
      and the footer is pinned to the bottom of the canvas, never closer than
      24px to the last card — larger phone type grows the cards, not the gap. */
   .assisted-canvas-main{width:100%;max-width:1080px;margin:auto}
+  .canvas-top-row{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:clamp(10px, 2vh, 28px);min-height:44px}
+  .canvas-back{border:0;padding:8px 0;background:transparent;color:${T.muted};cursor:pointer;font:inherit;font-size:var(--chama-fs-secondary, 14px);min-height:44px}
   .assisted-canvas-footer{flex:0 0 auto;margin-top:24px;padding-bottom:calc(12px + var(--chama-footer-safe, 0px));display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:18px;color:${T.muted};font-size:12px}
   .assisted-canvas-footer button{justify-self:start;border:0;background:transparent;color:${T.muted};cursor:pointer}
   .assisted-canvas-footer small{justify-self:end}.assisted-canvas-footer div{display:flex;gap:7px}.assisted-canvas-footer div span{width:7px;height:7px;border-radius:9px;background:${T.borderHi}}.assisted-canvas-footer div span.on{width:24px;background:${T.accent}}
