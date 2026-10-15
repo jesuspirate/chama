@@ -6,8 +6,36 @@
 // so the last control scrolls clear instead of the button moving.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { countUnreadChat, getLastReadChatAt, markChatReadThrough } from "../chat/unread.js";
+import { Role } from "../escrow-engine/types.js";
 
+const store = new Map<string, string>();
+Object.defineProperty(globalThis, "localStorage", { configurable: true, value: {
+  getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, String(v)),
+  removeItem: (k: string) => void store.delete(k),
+} });
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
+
+{
+  // Unread is counted against the newest message read, not this phone's clock:
+  // a message the seller's slow clock stamped an hour "ago" still counts.
+  const now = Math.floor(Date.now() / 1000);
+  const msg = (id: string, at: number, senderRole: Role) => ({ raw: { id, created_at: at }, payload: { sentAt: at, senderRole } }) as never;
+  const seen = [msg("a", now - 7200, Role.SELLER), msg("b", now - 7100, Role.BUYER)];
+  assert.equal(markChatReadThrough("t1", []), 0, "no messages: nothing marked");
+  assert.equal(markChatReadThrough("t1", seen), now - 7100, "read through the newest message shown");
+  const late = [...seen, msg("c", now - 3600, Role.SELLER)];
+  assert.equal(countUnreadChat(late, Role.BUYER, getLastReadChatAt("t1")), 1, "stamped before now, after the last one read: unread");
+  assert.equal(markChatReadThrough("t1", seen.slice(0, 1)), now - 7100, "an older view never rewinds the mark");
+  assert.equal(markChatReadThrough("t1", late), now - 3600);
+  assert.equal(countUnreadChat(late, Role.BUYER, getLastReadChatAt("t1")), 0);
+  for (const file of ["./phone-trade-chat.ts", "./screens/TradeDetail.tsx"]) {
+    const src = read(file);
+    assert.doesNotMatch(src, /markChatRead\(/, `${file}: no clock-based read mark`);
+    assert.match(src, /markChatReadThrough\(state\.id, state\.chatMessages\)/);
+  }
+}
+console.log("PASS chat unread: counted from the newest message read, not the phone's clock");
 
 {
   const lts = read("./screens/LiveTradeSurface.tsx");
@@ -42,8 +70,8 @@ console.log("PASS chat bubble: fixed bottom-right at every scroll position; the 
   assert.match(lts, /\{phoneChat\.open && <OverlaySheet fullHeight showClose showDone=\{false\} title=\{chatTitle\}/);
   assert.match(lts, /<div ref=\{rootRef\} className="lts-root"/);
   const chat = read("./phone-trade-chat.ts");
-  assert.match(chat, /import \{ countUnreadChat, getLastReadChatAt, markChatRead \} from "\.\.\/chat\/unread\.js";/, "the same read marks as the trade list");
-  assert.match(chat, /openChat: \(\) => \{ setReadAt\(markChatRead\(state\.id\)\); setOpen\(true\); \}/);
+  assert.match(chat, /import \{ countUnreadChat, getLastReadChatAt, markChatReadThrough \} from "\.\.\/chat\/unread\.js";/, "the same read marks as the trade list");
+  assert.match(chat, /openChat: \(\) => \{ setReadAt\(markChatReadThrough\(state\.id, state\.chatMessages\)\); setOpen\(true\); \}/);
   assert.match(chat, /const seated = myRole !== null;/, "only someone with a seat has a chat");
   const sheet = read("./components/OverlaySheet.tsx");
   assert.match(sheet, /fullHeight = false/);

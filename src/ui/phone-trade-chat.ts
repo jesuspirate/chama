@@ -7,7 +7,7 @@
 // the redesign branch (#34, 273e6011), on main's own read marks
 // (chat/unread.ts) so the trade list and this button agree.
 import { useEffect, useRef, useState } from "react";
-import { countUnreadChat, getLastReadChatAt, markChatRead } from "../chat/unread.js";
+import { countUnreadChat, getLastReadChatAt, markChatReadThrough } from "../chat/unread.js";
 import type { EscrowState, Role } from "../escrow-engine/types.js";
 import { T } from "./theme.js";
 
@@ -43,7 +43,7 @@ export function usePhoneTradeChat(state: EscrowState, myRole: Role | null) {
   }, [state.id]);
   const unread = countUnreadChat(state.chatMessages, myRole, readAt);
   useEffect(() => {
-    if (seated && (open || !phone)) setReadAt(markChatRead(state.id));
+    if (seated && (open || !phone)) setReadAt(markChatReadThrough(state.id, state.chatMessages));
     else if (seated && state.chatMessages.some(m => !seen.current.has(m.raw.id) && m.payload?.senderRole !== myRole)) setPulse(n => n + 1);
     seen.current = new Set(state.chatMessages.map(m => m.raw.id));
   }, [state.chatMessages, open, phone, seated, state.id, myRole]);
@@ -54,7 +54,7 @@ export function usePhoneTradeChat(state: EscrowState, myRole: Role | null) {
     open: open && phone && seated,
     count: unread,
     pulse,
-    openChat: () => { setReadAt(markChatRead(state.id)); setOpen(true); },
+    openChat: () => { setReadAt(markChatReadThrough(state.id, state.chatMessages)); setOpen(true); },
     closeChat: () => setOpen(false),
   };
 }
