@@ -189,3 +189,15 @@ console.log("PASS chat: Enter on a phone sends and closes the keyboard");
   assert.match(lts, /flexDirection: "column", alignItems: "center"[\s\S]{0,80}<span>\{label\}<\/span>\s+<span style=\{\{ fontSize: T\.fs\.secondary/, "sublabel under the label");
 }
 console.log("PASS dispute: press-and-hold opens the reasons; back-to-sender under the label");
+
+{
+  // Jet (rc.14): the back link read differently in Browse ("Change the last
+  // answer", under the country chip) and Circles ("Back", above it). Both now
+  // say "← Back" in the same place, under the chip.
+  const canvas = read("./screens/AssistedCanvas.tsx");
+  assert.doesNotMatch(canvas, /tr\("canvas\.changeLast"\)/);
+  assert.match(canvas, /<CommunityChip slug=\{community\.slug\}[\s\S]*?\{children\}<\/main>/, "Browse: chip first, then the screen (Back leads it)");
+  const circle = read("./screens/CircleCanvas.tsx");
+  assert.match(circle, /<CommunityChip slug=\{community\} onOpen=\{onOpenCommunity\} \/><\/div>\s+<Back onClick=\{step \? \(\) => setStep\(step - 1\) : onBack\}>\{t\("common\.back"\)\}<\/Back>/, "Circles: chip, then Back");
+}
+console.log("PASS back link: same words, same place in Browse and Circles");

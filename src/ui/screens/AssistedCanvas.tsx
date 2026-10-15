@@ -708,7 +708,7 @@ export function AssistedCanvas({
 
   if (surface === "rails") {
     return <CanvasShell onOpenCommunity={onOpenCommunity} community={community} step={3} onExit={() => onBrowse("all")} onMoreOptions={onMoreOptions}>
-      <Back onClick={() => setSurface("terms")}>{tr("canvas.changeLast")}</Back>
+      <Back onClick={() => setSurface("terms")}>{tr("common.back")}</Back>
       <Kicker>{tr("canvas.acceptedPayment")}</Kicker>
       <RouteCue>{routeLabel}</RouteCue>
       <h1 style={headingStyle()}>{tr("canvas.volunteerPayQ")}</h1>
@@ -725,7 +725,7 @@ export function AssistedCanvas({
   if (surface === "premium") {
     const isBill = bring === "bill";
     return <CanvasShell onOpenCommunity={onOpenCommunity} community={community} step={3} onExit={() => onBrowse("all")} onMoreOptions={onMoreOptions}>
-      <Back onClick={() => setSurface(bring === "bill" ? "rails" : "terms")}>{tr("canvas.changeLast")}</Back>
+      <Back onClick={() => setSurface(bring === "bill" ? "rails" : "terms")}>{tr("common.back")}</Back>
       <Kicker>{isBill ? tr("canvas.volunteerBonus") : tr("canvas.yourRate")}</Kicker>
       <RouteCue>{routeLabel}</RouteCue>
       <h1 style={headingStyle()}>{isBill ? tr("canvas.bonusQ") : tr("canvas.rateQ")}</h1>
@@ -772,7 +772,7 @@ export function AssistedCanvas({
     const alsoCompatible = visibleMatches.filter(c => !shownKeys.has(c.listing.id));
     const noMatches = !matching && !listingsLoading && (isGoods ? goodsMatches.length === 0 : visibleMatches.length === 0);
     return <CanvasShell onOpenCommunity={onOpenCommunity} community={community} step={3} onExit={() => onBrowse("all")} onMoreOptions={onMoreOptions}>
-      <Back onClick={() => setSurface("terms")}>{tr("canvas.changeLast")}</Back>
+      <Back onClick={() => setSurface("terms")}>{tr("common.back")}</Back>
       <Kicker>{isGoods ? tr("canvas.availableNow", { count: goodsMatches.length }) : tr("canvas.compatibleOffers", { count: visibleMatches.length })}</Kicker>
       <h1 style={headingStyle()}>{noMatches ? tr("canvas.noMatchTitle") : isGoods ? tr("canvas.goodsTitle") : tr(guidedChooseTitleKey(visibleMatches))}</h1>
       <p style={subStyle()}>{noMatches ? tr("canvas.noMatchSub") : isGoods ? tr("canvas.goodsSub") : tr("canvas.chooseSub")}</p>
@@ -859,7 +859,7 @@ export function AssistedCanvas({
 
   if (surface === "publish") {
     return <CanvasShell onOpenCommunity={onOpenCommunity} community={community} step={3} onExit={() => onBrowse("all")} onMoreOptions={onMoreOptions}>
-      <Back onClick={() => setSurface((bring === "sats" && want === "cash") || bring === "bill" ? "premium" : "terms")}>{tr("canvas.changeLast")}</Back>
+      <Back onClick={() => setSurface((bring === "sats" && want === "cash") || bring === "bill" ? "premium" : "terms")}>{tr("common.back")}</Back>
       <Kicker>{tr("canvas.firstSide")}</Kicker>
       <RouteCue>{routeLabel}</RouteCue>
       <h1 style={headingStyle()}>{tr("canvas.readyLive")}</h1>
@@ -897,7 +897,7 @@ export function AssistedCanvas({
 
   if (surface === "terms") {
     return <CanvasShell onOpenCommunity={onOpenCommunity} community={community} step={3} onExit={() => onBrowse("all")} onMoreOptions={onMoreOptions}>
-      <Back onClick={() => setSurface("detail")}>{tr("canvas.changeLast")}</Back>
+      <Back onClick={() => setSurface("detail")}>{tr("common.back")}</Back>
       <Kicker>{tr("canvas.lastDetail")}</Kicker>
       <RouteCue>{routeLabel}</RouteCue>
       <h1 style={headingStyle()}>{termsConfig.heading}</h1>
