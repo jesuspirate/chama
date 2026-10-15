@@ -307,6 +307,14 @@ export function LiveTradeSurface({
   const releaseToMe = samePubkey(releaseRecipient?.pubkey, pubkey);
   const releaseName = profileNameFor(profileNames, releaseToMe ? counterparty : releaseRecipient?.pubkey, kind0Enabled) ?? tr("trade.participants");
   const releaseSub = tr(releaseToMe ? "lts.releaseToYou" : "lts.releaseToName", { name: releaseName, amount: amountLabel });
+  // The hold says who the sats go to (Jet, rc.9: "Release to Jetty", not
+  // "Release · → counterparty"). Without a name, the old wording stays.
+  const releaseRecipientName = releaseToMe ? null : profileNameFor(profileNames, releaseRecipient?.pubkey, kind0Enabled);
+  const releaseButtonLabel = releaseToMe ? tr("lts.releaseToYouButton")
+    : releaseRecipientName ? tr("lts.releaseToButton", { name: releaseRecipientName })
+    : `${tr("lts.release")} · ${tr("lts.toCounterparty")}`;
+  const releaseAnywayLabel = releaseRecipientName && !releaseToMe ? tr("lts.releaseAnywayTo", { name: releaseRecipientName })
+    : `${tr("lts.releaseAnyway")} · ${tr("lts.toCounterparty")}`;
   const lockerName = profileNameFor(profileNames, payoutRecipientFor(state, Outcome.REFUND)?.pubkey, kind0Enabled) ?? tr("trade.participants");
 
   // One set of Lock options for the press (which may prepare the invoice)
@@ -621,7 +629,7 @@ export function LiveTradeSurface({
                 busy={busy}
                 resetKey={`${state.id}:release-anyway`}
                 onConfirm={() => run(() => castVote(Outcome.RELEASE))}
-                label={`${tr("lts.releaseAnyway")} · ${tr("lts.toCounterparty")}`}
+                label={releaseAnywayLabel}
               />
             )}
           </Decision>
@@ -638,7 +646,7 @@ export function LiveTradeSurface({
               busy={busy}
               resetKey={`${state.id}:release`}
               onConfirm={() => { disarm(); void run(() => castVote(Outcome.RELEASE)); }}
-              label={`${tr("lts.release")} · ${tr("lts.toCounterparty")}`}
+              label={releaseButtonLabel}
             />
           )}
           {showRefund && (

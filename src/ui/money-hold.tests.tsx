@@ -42,6 +42,16 @@ for (const viewer of [buyer, seller]) {
   assert.doesNotMatch(html, /Tap again/i, 'no tap-again release remains');
 }
 
+// Jet (rc.9): the release hold names who the sats go to — "Release to
+// Jetty", not "Release · → counterparty".
+{
+  const confirming = { ...locked, votes: { [recipient.role]: Outcome.RELEASE } } as EscrowState;
+  const confirmer = recipient.pubkey === buyer ? seller : buyer;
+  const named = room(confirming, confirmer, { profileNames: { [recipient.pubkey]: "Jetty" }, kind0Enabled: true });
+  assert.match(named, /Release to Jetty/, "the hold names the recipient");
+  assert.doesNotMatch(named, /→ counterparty/);
+}
+
 // Agree to the counterparty's refund.
 const asked = { ...locked, votes: { [recipient.role]: Outcome.REFUND } } as EscrowState;
 const askedViewer = recipient.pubkey === buyer ? seller : buyer;
