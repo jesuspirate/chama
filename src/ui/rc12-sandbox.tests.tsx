@@ -174,3 +174,18 @@ console.log("PASS real app: every way into a sandbox trade says sandbox; Browse 
   assert.match(chat, /matchMedia\("\(pointer: coarse\)"\)\.matches\) e\.currentTarget\.blur\(\);/);
 }
 console.log("PASS chat: Enter on a phone sends and closes the keyboard");
+
+{
+  // Jet (rc.13 card: "Hold + left text"): Dispute is a press-and-hold like
+  // every other money move. The hold only opens the mandatory reasons; a
+  // reason still sends the vote. "→ back to sender" sits under the label,
+  // away from the floating 💬 at the right edge.
+  const lts = read("./screens/LiveTradeSurface.tsx");
+  const refund = lts.slice(lts.indexOf("{showRefund && armed !== Outcome.REFUND && ("), lts.indexOf("{armed === Outcome.REFUND && ("));
+  assert.match(refund, /<MoneyHold\s+variant="destructive"[\s\S]*?onConfirm=\{\(\) => armOrVote\(Outcome\.REFUND\)\}[\s\S]*?label=\{tr\("lts\.refundDispute"\)\}\s+sublabel=\{tr\("lts\.backToSender"\)\}/);
+  assert.doesNotMatch(refund, /castVote/, "the hold itself never sends a vote");
+  assert.match(refund, /\{showRefund && armed === Outcome\.REFUND && \(\s+<VoteButton[\s\S]*?label=\{tr\("lts\.pickReason"\)\}/);
+  assert.match(lts, /onClick=\{\(\) => \{ disarm\(\); onSendChat\(reason\); void run\(\(\) => castVote\(Outcome\.REFUND\)\); \}\}/, "a reason sends the vote");
+  assert.match(lts, /flexDirection: "column", alignItems: "center"[\s\S]{0,80}<span>\{label\}<\/span>\s+<span style=\{\{ fontSize: T\.fs\.secondary/, "sublabel under the label");
+}
+console.log("PASS dispute: press-and-hold opens the reasons; back-to-sender under the label");

@@ -649,14 +649,28 @@ export function LiveTradeSurface({
               label={releaseButtonLabel}
             />
           )}
-          {showRefund && (
+          {/* Dispute is a hold like every other money move (Jet, rc.13). The
+              hold only opens the mandatory reasons; picking one sends the
+              vote. "→ back to sender" sits under the label, clear of the
+              floating 💬 button at the right edge. */}
+          {showRefund && armed !== Outcome.REFUND && (
+            <MoneyHold
+              variant="destructive"
+              disabled={busy}
+              busy={busy}
+              resetKey={`${state.id}:refund`}
+              onConfirm={() => armOrVote(Outcome.REFUND)}
+              label={tr("lts.refundDispute")}
+              sublabel={tr("lts.backToSender")}
+            />
+          )}
+          {showRefund && armed === Outcome.REFUND && (
             <VoteButton
               tone="refund"
-              armed={armed === Outcome.REFUND}
+              armed
               disabled={busy}
               onClick={() => armOrVote(Outcome.REFUND)}
-              label={armed === Outcome.REFUND ? tr("lts.pickReason") : tr("lts.refundDispute")}
-              sats={tr("lts.backToSender")}
+              label={tr("lts.pickReason")}
             />
           )}
           {armed === Outcome.REFUND && (
@@ -1231,13 +1245,18 @@ function PrimaryButton({ label, onClick, disabled, tone }: {
  *  The handler is exactly what the old tap / tap-again fired — HoldToConfirm
  *  only replaces the confirmation gesture. "secondary" renders as a quiet
  *  ink-outlined hold for the less-likely choice. */
-function MoneyHold({ label, onConfirm, onHoldStart, onHoldCancel, disabled, busy, resetKey, icon, variant = "primary" }: {
-  label: string; onConfirm: () => void; onHoldStart?: () => void; onHoldCancel?: () => void; disabled?: boolean; busy?: boolean;
-  resetKey?: unknown; icon?: React.ReactNode; variant?: "primary" | "secondary";
+function MoneyHold({ label, sublabel, onConfirm, onHoldStart, onHoldCancel, disabled, busy, resetKey, icon, variant = "primary" }: {
+  label: string; sublabel?: string; onConfirm: () => void; onHoldStart?: () => void; onHoldCancel?: () => void; disabled?: boolean; busy?: boolean;
+  resetKey?: unknown; icon?: React.ReactNode; variant?: "primary" | "secondary" | "destructive";
 }) {
   return (
     <HoldToConfirm
-      label={label}
+      label={sublabel ? (
+        <span style={{ display: "flex", flexDirection: "column", alignItems: "center", lineHeight: 1.2 }}>
+          <span>{label}</span>
+          <span style={{ fontSize: T.fs.secondary, fontWeight: 500, opacity: 0.9 }}>{sublabel}</span>
+        </span>
+      ) : label}
       icon={icon}
       onConfirm={onConfirm}
       onHoldStart={onHoldStart}
