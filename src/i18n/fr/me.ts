@@ -341,6 +341,7 @@ export const me: Record<string, string> = {
   "me.tradeNameSaved": "Enregistr\u00e9",
   "me.tradeNamePublishing": "Publication sur votre profil Nostr…",
   "me.tradeNamePublished": "Publié — ce nom suit votre clé sur tous vos appareils.",
+  "me.sandboxProfileLocal": "Bac à sable : votre nom et votre photo restent sur cet appareil. Votre vrai profil Nostr n'est pas modifié.",
   "me.tradeNameLocalOnly": "Enregistré sur cet appareil seulement — les relais ont refusé le profil. Réessayez une fois en ligne.",
   "me.tabProfile": "Profil",
   "me.profileKnownAs": "Comment les autres vous voient",

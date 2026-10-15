@@ -63,6 +63,9 @@ export const lts: Record<string, string> = {
   "lts.cancelTrade": "Annuler cet échange",
   "lts.whereGo": "Où vont les {amount} ?",
   "lts.tapAgainRelease": "Touchez encore pour libérer",
+  "lts.releaseToButton": "Libérer pour {name}",
+  "lts.releaseToYouButton": "Libérer pour vous",
+  "lts.releaseAnywayTo": "Libérer pour {name} quand même",
   "lts.release": "Libérer",
   "lts.toCounterparty": "→ contrepartie",
   "lts.refundDispute": "Remboursement / litige",
@@ -119,4 +122,8 @@ export const lts: Record<string, string> = {
   "lts.detailsInChat": "{name} donne les coordonnées exactes dans le chat.",
   "lts.noHandleTitle": "L’acheteur a besoin de vos coordonnées de paiement",
   "lts.addPaymentDetails": "Choisir les coordonnées avant de bloquer",
+  "lts.chatWith": "Discussion avec {name}",
+  "lts.chatWithArbiter": "Discussion avec {name} et {arbiter}",
+  "lts.chatUnread": "Discussion, {count} non lus",
+  "lts.chatParticipants": "les autres participants",
 };

@@ -52,6 +52,7 @@ export const browse: Record<string, string> = {
   "browse.navMain": "Main",
   "browse.noListingsMatch": "No listings match \"{query}\".",
   "browse.noOpenOffers": "No open offers yet",
+  "browse.sandboxOwnHidden": "Your sandbox test offers don't show in the real app. Open them at poc.getchama.app.",
   "browse.ownHiddenTitle": "Your listings are hidden",
   "browse.ownHiddenBody": "The only offers here are your {count} own — hidden from the public feed. Tap Mine above to see them.",
   "browse.openOfferSummaryMany": "{filtered} of {total} open offers",

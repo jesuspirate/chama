@@ -138,8 +138,13 @@ export function eventIsSim(event: { tags: string[][] }): boolean {
  *   sim on, event is sim   → keep
  *   sim off, event is sim  → drop (don't pollute prod UI with sim trades)
  *   sim off, event not sim → keep
+ *   kind 0 (profiles)      → always keep
  */
-export function shouldDropForSimPolicy(event: { tags: string[][] }): boolean {
+export function shouldDropForSimPolicy(event: { kind?: number; tags: string[][] }): boolean {
+  // A Nostr profile (kind 0) is who someone is, not trade data: both worlds
+  // read the same one, so the sandbox shows real names (Jet, rc.12). The
+  // sandbox never publishes one (useEscrow publishProfileName/Avatar).
+  if (event.kind === 0) return false;
   const evtSim = eventIsSim(event);
   const localSim = isSimModeOn();
   return evtSim !== localSim;

@@ -205,6 +205,7 @@ export const app: Record<string, string> = {
   "app.tradeConflictingCreators":
     "Deux comptes différents ont publié une annonce sous l'identifiant de cet échange ; Chama ne peut pas savoir laquelle est la vraie et n'en ouvrira aucune. Demandez un nouveau lien à la personne qui vous l'a envoyé.",
   "app.tradeNotFound": "Échange introuvable sur les relais",
+  "app.sandboxTradeLink": "C'est un échange du bac à sable, avec des sats de test. Ouvrez-le sur poc.getchama.app, pas dans l'app.",
   "app.tradeNotFoundYet": "Échange {id} introuvable sur les relais pour l'instant.",
   "app.tradePublished": "Échange publié ! {escrowId}",
   "app.tradesUpToDate": "Vos échanges sont à jour.",

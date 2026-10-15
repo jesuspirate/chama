@@ -70,6 +70,19 @@ function messageAt(m: ChatMessage): number {
   return typeof sentAt === "number" ? sentAt : (m.raw?.created_at ?? 0);
 }
 
+/** Mark a trade's chat read through the newest message it holds, by the
+ *  messages' own timestamps rather than this phone's clock. A clock mark
+ *  silently swallowed any message stamped before it, such as one from a sender
+ *  whose clock runs behind or one that reached the relay late, and payment
+ *  details often arrive by chat. With no messages there is nothing to mark. */
+export function markChatReadThrough(tradeId: string, messages: readonly ChatMessage[]): number {
+  let newest = 0;
+  for (const m of messages) newest = Math.max(newest, messageAt(m));
+  if (newest > 0) return markChatRead(tradeId, newest);
+  void clearNativeTradeAlerts(tradeId);
+  return getLastReadChatAt(tradeId);
+}
+
 /** Count messages from the OTHER party that arrived after `since`. A null role
  *  (a non-participant, e.g. a Browse viewer) has no chat there ⇒ 0. */
 export function countUnreadChat(

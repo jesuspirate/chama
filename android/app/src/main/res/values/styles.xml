@@ -1,7 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-    <!-- Base application theme. -->
+    <!-- Base application theme.
+         No theme-level android:background: a theme background applies to EVERY
+         view inflated with the theme, including the pop-up windows Android uses
+         for text-selection handles and the Copy/Paste bar, which then drew as
+         black boxes with dark edges (Jet, GrapheneOS, 6.4.25 rc). The window
+         and activity_main.xml set the dark background themselves. -->
     <style name="AppTheme" parent="Theme.AppCompat.DayNight.NoActionBar">
         <item name="colorPrimary">@color/colorPrimary</item>
         <item name="colorPrimaryDark">@color/colorPrimaryDark</item>
@@ -10,7 +15,6 @@
         <item name="windowNoTitle">true</item>
         <item name="android:windowActionBar">false</item>
         <item name="android:windowNoTitle">true</item>
-        <item name="android:background">#05050A</item>
         <item name="android:windowBackground">#05050A</item>
         <item name="android:statusBarColor">#05050A</item>
         <item name="android:navigationBarColor">#05050A</item>
@@ -24,7 +28,6 @@
         <item name="windowNoTitle">true</item>
         <item name="android:windowActionBar">false</item>
         <item name="android:windowNoTitle">true</item>
-        <item name="android:background">#05050A</item>
         <item name="android:windowBackground">#05050A</item>
         <item name="android:statusBarColor">#05050A</item>
         <item name="android:navigationBarColor">#05050A</item>

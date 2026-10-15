@@ -23,6 +23,7 @@ import { profileNameFor, type NostrProfileNameMap } from "../nostr-profiles.js";
 import { type AmountDisplayMode } from "../amount-display.js";
 import { getBrowseShowOwn, setBrowseShowOwn, filterOwnListings, countOwnListings } from "../browse-own-filter.js";
 import { useT } from "../../i18n/index.js";
+import { onSandboxSighting, sandboxTradeCountBy } from "../../sim/sandbox-sightings.js";
 import { ReputationReadout } from "../components/ReputationReadout.js";
 import type { AggregateRatings } from "../../reputation/ratings.js";
 import { workOffersForWorker } from "../work-resume.js";
@@ -333,6 +334,7 @@ export function BrowseView({
     // Same readable column as Me: wide enough to use a desktop, capped so a
     // listing row never becomes a stretched line of text.
     <div style={{ padding: 16, maxWidth: 760, margin: "0 auto" }}>
+      <SandboxOwnHiddenNote pubkey={pubkey} />
       {onOpenCommunity && <CommunityMismatchNudge key={browseCommunity} slug={browseCommunity} suppressed={suppressCommunityNudge} onOpen={onOpenCommunity} />}
       {resumePubkey && (
         <WorkerResume
@@ -1215,5 +1217,29 @@ function BrowseSection({
         ])}
       </div>
     </section>
+  );
+}
+
+/**
+ * The real app never shows sandbox trades. When it has seen one of YOUR
+ * sandbox offers go by, say where it lives instead of letting it look lost
+ * (Jet, rc.12). Other people's sandbox trades stay silent: they are not
+ * this person's business and would only be noise.
+ */
+function SandboxOwnHiddenNote({ pubkey }: { pubkey: string }) {
+  const { t } = useT();
+  const [count, setCount] = useState(() => sandboxTradeCountBy(pubkey));
+  useEffect(() => {
+    setCount(sandboxTradeCountBy(pubkey));
+    return onSandboxSighting(() => setCount(sandboxTradeCountBy(pubkey)));
+  }, [pubkey]);
+  if (count === 0) return null;
+  return (
+    <div data-testid="sandbox-own-hidden" role="note" style={{
+      margin: "0 0 12px", padding: "10px 14px", borderRadius: 12,
+      border: `1px solid ${T.border}`, color: T.muted, fontSize: 17, lineHeight: 1.4,
+    }}>
+      🧪 {t("browse.sandboxOwnHidden")}
+    </div>
   );
 }

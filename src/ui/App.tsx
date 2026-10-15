@@ -2787,7 +2787,8 @@ export default function App() {
           setToast({
             message: loaded ? t("app.listingExpired")
               : actions.getLoadFailure(id)?.reason === "conflicting-creators"
-                ? t("app.tradeConflictingCreators") : t("app.tradeOpenFailed"),
+                ? t("app.tradeConflictingCreators")
+                : actions.sawSandboxTrade(id) ? t("app.sandboxTradeLink") : t("app.tradeOpenFailed"),
             type: "info",
           });
           setSelectedId(null);
@@ -2800,7 +2801,11 @@ export default function App() {
         );
         // The loading surface below (view "detail" with no local copy yet)
         // would otherwise spin forever on a trade the relays can't return.
-        setToast({ message: isSignerApprovalError(e) ? e.message : t("app.tradeOpenFailed"), type: "error" });
+        setToast({
+          message: isSignerApprovalError(e) ? e.message
+            : actions.sawSandboxTrade(id) ? t("app.sandboxTradeLink") : t("app.tradeOpenFailed"),
+          type: "error",
+        });
         setSelectedId(null);
         setView(safeBackView);
       });
@@ -2938,7 +2943,10 @@ export default function App() {
         setView("browse");
         setToast({
           message: actions.getLoadFailure(id)?.reason === "conflicting-creators"
-            ? t("app.tradeConflictingCreators") : t("app.tradeNotFoundYet", { id }),
+            ? t("app.tradeConflictingCreators")
+            // A sandbox trade opened in the real app: say so plainly.
+            : actions.sawSandboxTrade(id) ? t("app.sandboxTradeLink")
+            : t("app.tradeNotFoundYet", { id }),
           type: "error",
         });
       }
@@ -3275,6 +3283,18 @@ export default function App() {
           onConnect={actions.connect}
           onConnectNsec={async (nsec: string, remember: boolean, wasGenerated: boolean, fastSetupWanted?: boolean, setupCommunity?: string) => {
             (window as any).__chama_connect_nsec = nsec;
+            // Someone who pasted their own key already holds it: never ask
+            // them "Did you save your key?" (Jet, rc.12). Only a key Chama
+            // generated in this login still needs that reminder.
+            if (!wasGenerated) {
+              try {
+                const [{ validateRecoveryKeyInput }, { getPublicKey }, { markRecoveryKeyBackedUp }] = await Promise.all([
+                  import("../escrow-engine/nsec-signer.js"), import("nostr-tools/pure"), import("../storage/recovery-key-backup.js"),
+                ]);
+                const pasted = await validateRecoveryKeyInput(nsec);
+                if (pasted.ok) markRecoveryKeyBackedUp(getPublicKey(pasted.secretKey));
+              } catch { /* The reminder only shows again; login goes on. */ }
+            }
             // Apply the default newcomer setup once the npub is known.
             fastSetupRequestedRef.current = fastSetupWanted === true;
             fastSetupCommunityRef.current = setupCommunity && getCommunityBySlug(setupCommunity)
@@ -4255,7 +4275,7 @@ export default function App() {
           // a chat pager that flexes to take the leftover room, and the timeline
           // glued to the bottom. It scrolls only when a tall phase truly needs
           // it. Subtract the top chrome (safe-area / sim pill) the shell pads for.
-          height: `calc(var(--chama-viewport-height, 100dvh) - ${expertTradeView || !LIVE_TRADE_SURFACE_ENABLED ? "44px" : "0px"} - ${typeof shellPaddingTop === "number" ? `${shellPaddingTop}px` : shellPaddingTop} - ${simOn ? `${SIM_PILL_HEIGHT}px` : "0px"} - env(safe-area-inset-bottom, 0px))`,
+          height: `calc(var(--chama-viewport-height, 100dvh) - ${expertTradeView || !LIVE_TRADE_SURFACE_ENABLED ? "44px" : "0px"} - ${typeof shellPaddingTop === "number" ? `${shellPaddingTop}px` : shellPaddingTop} - ${simOn ? `var(--chama-sim-pill-height, ${SIM_PILL_HEIGHT}px)` : "0px"} - env(safe-area-inset-bottom, 0px))`,
           display: "flex", flexDirection: "column", minHeight: 0,
         }}>
           {LIVE_TRADE_SURFACE_ENABLED && !expertTradeView ? (

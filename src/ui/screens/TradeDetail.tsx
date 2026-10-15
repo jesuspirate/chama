@@ -75,7 +75,7 @@ import { defaultEsploraBase, esploraFetcher, esploraTipHeight } from "../../bond
 import { MAINNET as BOND_NETWORK } from "../../bond-multisig/multisig.js";
 import { counterpartyToRate, type RatingThumb, type AggregateRatings } from "../../reputation/ratings.js";
 import { RatingTap } from "../components/RatingTap.js";
-import { markChatRead, getLastReadChatAt, countUnreadChat, unreadChatForTrade } from "../../chat/unread.js";
+import { markChatReadThrough, getLastReadChatAt, countUnreadChat, unreadChatForTrade } from "../../chat/unread.js";
 import { pickDefaultPane } from "./trade-pane.js";
 import { billTypeDisplay } from "../../communities/bill-types.js";
 import {
@@ -1398,7 +1398,7 @@ export function TradeDetail({
   const [chatReadAt, setChatReadAt] = useState(() => getLastReadChatAt(state.id));
   useEffect(() => { setChatReadAt(getLastReadChatAt(state.id)); }, [state.id]);
   useEffect(() => {
-    if (activePane === 0) setChatReadAt(markChatRead(state.id));
+    if (activePane === 0) setChatReadAt(markChatReadThrough(state.id, state.chatMessages));
   }, [activePane, state.chatMessages.length, state.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const chatUnread = activePane === 0 ? 0 : countUnreadChat(state.chatMessages, myRole, chatReadAt);
   const pagerBadges = [chatUnread, 0, 0];

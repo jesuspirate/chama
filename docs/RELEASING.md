@@ -28,7 +28,7 @@ Use the same entry point with `--only` when the version already exists and only 
 | Push/verify the signed version tag | `npm run ship -- --only tag` | Web, Android, Zapstore |
 | Deploy getchama.app | `npm run ship -- --only web` | Landing, GitHub, Zapstore |
 | Deploy the sandbox (poc.getchama.app) | `npm run ship -- --only sandbox` | Live web, tags, Android, Zapstore |
-| Host a prerelease APK for a test phone | `npm run ship -- --only prerelease [--rc N] [--next patch\|minor\|major]` | Tags, commits, GitHub, Zapstore, Start9, web |
+| Host a prerelease APK for a test phone, and deploy the sandbox as that rc | `npm run ship -- --only prerelease [--rc N] [--next patch\|minor\|major] [--no-sandbox]` | Tags, commits, GitHub, Zapstore, Start9, web |
 | Deploy chama.community | `npm run ship -- --only landing` | App, GitHub, Zapstore |
 | Prepare Android assets | `npm run ship -- --only android` | Every remote channel |
 | Upload Android assets to GitHub | `npm run ship -- --only github-assets --clobber` | Web, landing, Zapstore |
@@ -54,6 +54,8 @@ If `main` has advanced beyond the requested release tag, the GitHub-assets, Zaps
 The sandbox cannot exercise the native bridge or Android push. When a candidate needs a phone, `npm run ship -- --only prerelease` builds the current worktree exactly as a release would (same signing key, native bridge included) under a transient `X.Y.Z-rc.N` version — `X.Y.Z` is the next patch (or `--next minor|major`), `N` from `--rc`, default 1 — and hosts it at `https://poc.getchama.app/prerelease/chama-X.Y.Z-rc.N-PRERELEASE.apk` with its `.sha256` and `.sha256.asc`. The version change is restored on exit and never committed; nothing is tagged or published.
 
 Because it carries the release signature, it installs **over** the production app and keeps the device wallet. The lane is forward-only: Android refuses a lower `versionCode` and uninstalling deletes the wallet, so there is no rollback — only another rc (same `versionCode`) or shipping `X.Y.Z`, which installs over the rc. A sandbox deploy keeps the hosted file; the next prerelease replaces it.
+
+The sandbox follows the rc. Once the APK is served and its hash checked, the same command deploys the same worktree to `https://poc.getchama.app` under the same transient version, so the sandbox's version line reads `X.Y.Z-rc.N` and a tester can tell which candidate it runs. The predeploy gates already ran for the APK and are not repeated. `--no-sandbox` leaves the sandbox as it is. If the sandbox step fails, the APK stays served and the command exits non-zero; `npm run ship -- --only sandbox` retries it alone, under the base version.
 
 ## Zapstore metadata limitation
 

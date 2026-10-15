@@ -607,7 +607,13 @@ export function ChatPanel({ state, myRole, onSend, preferredRelayConnected = fal
               onFocus={() => requestAnimationFrame(revealLastMessage)}
               value={msg}
               onChange={e => setMsg(e.target.value)}
-              onKeyDown={e => e.key === "Enter" && !e.shiftKey && handleSend()}
+              onKeyDown={e => {
+                if (e.key !== "Enter" || e.shiftKey) return;
+                handleSend();
+                // On a phone, Enter also closes the keyboard so the chat's
+                // close button shows (Jet, rc.13: iOS kept the keyboard open).
+                if (typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches) e.currentTarget.blur();
+              }}
               placeholder={attachment ? t("chat.notePlaceholder") : t("chat.typeMessagePlaceholder")}
               style={{
                 flex: 1, minWidth: 0, padding: "9px 12px",

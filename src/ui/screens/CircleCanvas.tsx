@@ -68,8 +68,10 @@ export function CircleCanvas({ viewerPubkey, community, mintUrl, initial, onBack
   return <section ref={rootRef} className="assisted-canvas circle-canvas" aria-label={t("circle.createTitle")}>
     <style>{canvasCss()}{circleCss()}</style>
     <div className="assisted-canvas-main"><div className="circle-canvas-content">
-      <Back onClick={step ? () => setStep(step - 1) : onBack}>{t("common.back")}</Back>
+      {/* Same order as Browse's guided screens (CanvasShell): country chip,
+          then "← Back" (Jet, rc.14: the two read differently). */}
       <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}><CommunityChip slug={community} onOpen={onOpenCommunity} /></div>
+      <Back onClick={step ? () => setStep(step - 1) : onBack}>{t("common.back")}</Back>
       <div className="circle-eyebrow"><VerticalIcon vertical="chama" size={32} />{t("circle.createTitle")}</div>
       <h1 style={headingStyle()}>{t(titles[step])}</h1>
       {step === 0 && <><p style={subStyle()}>{t("circle.equalShares")}</p><QuestionCard>

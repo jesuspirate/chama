@@ -72,7 +72,8 @@ export function Toast({ message, type, onDone, sticky = false, dismissOnTap = fa
   // the top of the toast (top:16, z:9999). Slide the toast below the
   // pill when sim mode is on so the green community-switch confirmation
   // and other toasts read cleanly.
-  const topOffset = isSimModeOn() ? SIM_PILL_HEIGHT + 16 : 16;
+  // The banner's real height (two lines on a phone), published by SimModePill.
+  const topOffset = isSimModeOn() ? `calc(var(--chama-sim-pill-height, ${SIM_PILL_HEIGHT}px) + 16px)` : 16;
   // Only meaningful while sticky — a self-dismissing toast has nothing to tap.
   const tapToDismiss = sticky && dismissOnTap;
   return (

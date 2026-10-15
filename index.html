@@ -33,6 +33,10 @@
       html[data-native-app] :is(input, textarea, [contenteditable], [data-selectable], code, pre, kbd, samp, [style*="JetBrains Mono"], [style*="monospace"], [style*="break-all"]) {
         -webkit-user-select: text; user-select: text; -webkit-touch-callout: default;
       }
+      /* Where text can be selected (a field, a key), the app draws the
+         selection itself: GrapheneOS's WebView default is a black box with
+         dark edges (Jet, rc.12, pasting in Browse > Advanced tools). */
+      html[data-native-app] ::selection { background: rgba(128, 128, 128, 0.35); color: inherit; }
       body { overscroll-behavior: contain; }
       @media (max-width: 767px) {
         html[data-chat-focused], html[data-chat-focused] body { overflow: hidden; }

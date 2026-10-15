@@ -65,6 +65,9 @@ export const lts: Record<string, string> = {
   "lts.cancelTrade": "Cancel this trade",
   "lts.whereGo": "Where do the {amount} go?",
   "lts.tapAgainRelease": "Tap again to release",
+  "lts.releaseToButton": "Release to {name}",
+  "lts.releaseToYouButton": "Release to you",
+  "lts.releaseAnywayTo": "Release to {name} anyway",
   "lts.release": "Release",
   "lts.toCounterparty": "→ counterparty",
   "lts.refundDispute": "Refund / dispute",
@@ -121,4 +124,8 @@ export const lts: Record<string, string> = {
   "lts.detailsInChat": "{name} shares the exact details in the chat.",
   "lts.noHandleTitle": "The buyer needs your payment details",
   "lts.addPaymentDetails": "Choose payment details before locking",
+  "lts.chatWith": "Chat with {name}",
+  "lts.chatWithArbiter": "Chat with {name} and {arbiter}",
+  "lts.chatUnread": "Chat, {count} unread",
+  "lts.chatParticipants": "the other participants",
 };

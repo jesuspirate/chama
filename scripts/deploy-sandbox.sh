@@ -31,7 +31,13 @@ fi
 : "${CHAMA_DEPLOY_KEY:?CHAMA_DEPLOY_KEY is required}"
 [ -f "$CHAMA_DEPLOY_KEY" ] || { echo "❌ Deploy key does not exist"; exit 1; }
 
-VITE_CHAMA_SANDBOX=0 npm run predeploy
+# A prerelease that already ran the predeploy gates on this same worktree
+# (scripts/prerelease-apk.sh) skips the repeat.
+if [ "${CHAMA_SANDBOX_GATES_PASSED:-0}" = "1" ]; then
+  echo "↷ Predeploy gates already passed for this worktree (prerelease)."
+else
+  VITE_CHAMA_SANDBOX=0 npm run predeploy
+fi
 rm -rf dist-sandbox
 VITE_CHAMA_SANDBOX=1 CHAMA_RELEASE=1 npm run build
 [ -f dist-sandbox/index.html ] || { echo "❌ Missing sandbox output"; exit 1; }

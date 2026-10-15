@@ -49,6 +49,7 @@ export const browse: Record<string, string> = {
   "browse.navMain": "Kuu",
   "browse.noListingsMatch": "Hakuna tangazo linalolingana na \"{query}\".",
   "browse.noOpenOffers": "Bado hakuna ofa wazi",
+  "browse.sandboxOwnHidden": "Ofa zako za majaribio za sandbox hazionekani kwenye programu halisi. Zifungue kwenye poc.getchama.app.",
   "browse.ownHiddenTitle": "Matangazo yako yamefichwa",
   "browse.ownHiddenBody": "Ofa pekee hapa ni zako {count} — zimefichwa kwenye mlisho wa umma. Gusa Zangu hapo juu kuziona.",
   "browse.openOfferSummaryMany": "{filtered} kati ya ofa wazi {total}",

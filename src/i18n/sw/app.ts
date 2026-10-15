@@ -201,6 +201,7 @@ export const app: Record<string, string> = {
   "app.tradeConflictingCreators":
     "Akaunti mbili tofauti zimechapisha tangazo kwa kitambulisho cha biashara hii, kwa hiyo Chama haiwezi kujua ni lipi la kweli na haitafungua lolote. Mwombe aliyekutumia kiungo kipya.",
   "app.tradeNotFound": "Biashara haijapatikana kwenye relay",
+  "app.sandboxTradeLink": "Hii ni biashara ya mazingira ya majaribio, yenye sats za majaribio. Ifungue kwenye poc.getchama.app, si kwenye programu.",
   "app.tradeNotFoundYet": "Bado biashara {id} haijapatikana kwenye relay.",
   "app.tradePublished": "Biashara imechapishwa! {escrowId}",
   "app.tradesUpToDate": "Biashara zako ziko sawa kabisa.",

@@ -116,6 +116,7 @@ import {
   type FetchLegDiag,
 } from "./discovery-diagnostics.js";
 import { simTagOrNull, shouldDropForSimPolicy } from "../sim/simMode.js";
+import { noteDroppedSandboxEvent, wasSeenAsSandboxTrade } from "../sim/sandbox-sightings.js";
 import { verifyEvent as verifyNostrEventSignature } from "nostr-tools/pure";
 import { randomId } from "../storage/random-id.js";
 import { creatorMatchesEscrowId, creatorTaggedEscrowId, selectTradeRoot } from "./trade-identity.js";
@@ -588,6 +589,11 @@ export class EscrowClient {
   /** Session context survives first-ACK queue retirement long enough to show
    *  late straggler rejection text in the one trade-level diagnostic. */
   private moneyPublishesInFlight = new Set<string>();
+  /** True when this live app dropped sandbox events for this trade id. The
+   *  ids (and their creators, for Browse) live in sim/sandbox-sightings.ts. */
+  sawSandboxTrade(escrowId: string): boolean {
+    return wasSeenAsSandboxTrade(escrowId);
+  }
   private moneyPublishContext = new Map<string, { escrowId: string; type: MoneyEventType }>();
   private shownRelayRejections = new Set<string>();
 
@@ -683,7 +689,14 @@ export class EscrowClient {
         // (loadEscrow's fetchEscrowEvents, raw fetchOnce). Defense in
         // depth — handleIncomingEvent still has its own check, but this
         // catches paths that bypass it entirely.
-        shouldDropEvent: (event) => shouldDropForSimPolicy(event),
+        shouldDropEvent: (event) => {
+          if (!shouldDropForSimPolicy(event)) return false;
+          // A live app dropping a sandbox trade remembers only its id, so a
+          // trade link can say "this is a sandbox trade" instead of "not
+          // found" (Jet, 6.4.25). Nothing else about it is kept.
+          noteDroppedSandboxEvent(event);
+          return true;
+        },
         // SECURITY: wire schnorr signature verification at the relay
         // boundary. Without this, any relay can forge events from any
         // pubkey (incl. participants of in-flight trades). Verification
