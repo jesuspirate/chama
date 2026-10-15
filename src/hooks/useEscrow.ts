@@ -989,6 +989,8 @@ export interface UseEscrowActions {
   ) => Promise<EscrowState | null>;
   /** Why the last loadEscrow of this id returned null (null when it didn't). */
   getLoadFailure: (escrowId: string) => LoadFailure | null;
+  /** A live app saw this trade only as sandbox events (see EscrowClient). */
+  sawSandboxTrade: (escrowId: string) => boolean;
   /** Heal a trade in BOTH directions: pull the latest chain in from relays
    *  (re-fetch + merge + replay, so a stale local state catches up to a
    *  counterparty's RESOLVE/COMPLETE), then re-broadcast our cached chain out
@@ -6332,6 +6334,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     cancel: (...args) => signerAction("cancel", () => cancelAction(...args)),
     loadEscrow,
     getLoadFailure,
+    sawSandboxTrade: (escrowId: string) => clientRef.current?.sawSandboxTrade(escrowId) ?? false,
     rebroadcastEscrow,
     refreshMyTrades,
     probeFetchById,

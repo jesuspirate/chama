@@ -223,6 +223,7 @@ export const app: Record<string, string> = {
   "app.tradeConflictingCreators":
     "Two different accounts have published a listing under this trade's id, so Chama can't tell which one is real and won't open either. Ask the person who sent it for a fresh link.",
   "app.tradeNotFound": "Trade not found on relays",
+  "app.sandboxTradeLink": "This is a sandbox trade with test sats. Open it at poc.getchama.app, not in the app.",
   "app.tradeNotFoundYet": "Couldn't find trade {id} on relays yet.",
   "app.tradePublished": "Trade published! {escrowId}",
   "app.tradesUpToDate": "Your trades are up to date.",

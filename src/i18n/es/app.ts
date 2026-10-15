@@ -203,6 +203,7 @@ export const app: Record<string, string> = {
   "app.tradeConflictingCreators":
     "Dos cuentas distintas han publicado un anuncio con el mismo identificador de este intercambio, así que Chama no puede saber cuál es el real y no abrirá ninguno. Pide un enlace nuevo a quien te lo envió.",
   "app.tradeNotFound": "Intercambio no encontrado en los relays",
+  "app.sandboxTradeLink": "Este es un intercambio del entorno de prueba, con sats de prueba. Ábrelo en poc.getchama.app, no en la app.",
   "app.tradeNotFoundYet": "Todavía no se encuentra el intercambio {id} en los relays.",
   "app.tradePublished": "¡Intercambio publicado! {escrowId}",
   "app.tradesUpToDate": "Tus intercambios están al día.",

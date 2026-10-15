@@ -2938,7 +2938,10 @@ export default function App() {
         setView("browse");
         setToast({
           message: actions.getLoadFailure(id)?.reason === "conflicting-creators"
-            ? t("app.tradeConflictingCreators") : t("app.tradeNotFoundYet", { id }),
+            ? t("app.tradeConflictingCreators")
+            // A sandbox trade opened in the real app: say so plainly.
+            : actions.sawSandboxTrade(id) ? t("app.sandboxTradeLink")
+            : t("app.tradeNotFoundYet", { id }),
           type: "error",
         });
       }

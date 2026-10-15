@@ -93,3 +93,30 @@ console.log("PASS sandbox follow-up: trade room and toasts reserve the real bann
   assert.match(layout, /android:background="#05050A"/, "the screen itself stays dark");
 }
 console.log("PASS Android: no theme background, so selection handles and the Copy/Paste bar draw normally");
+
+{
+  // Jet (rc.12): a sandbox trade link opened in the real app said "Couldn't
+  // find trade … on relays yet". The live app still drops sandbox events (so
+  // they can never look real) but remembers the trade id, and the link says
+  // it is a sandbox trade. Driven through the real EscrowClient drop path.
+  const values = new Map<string, string>();
+  Object.defineProperty(globalThis, "localStorage", { configurable: true, value: {
+    getItem: (k: string) => values.get(k) ?? null, setItem: (k: string, v: string) => void values.set(k, v), removeItem: (k: string) => void values.delete(k),
+  } });
+  const { EscrowClient } = await import("../escrow-engine/escrow-client.js");
+  const { generateSecretKey, getPublicKey, finalizeEvent } = await import("nostr-tools/pure");
+  const sk = generateSecretKey();
+  const client = new EscrowClient({ getPublicKey: async () => getPublicKey(sk), signEvent: async (e: any) => finalizeEvent(e, sk),
+    nip44Encrypt: async (v: string) => v, nip44Decrypt: async (v: string) => v } as any, { relays: [] });
+  const drop = (client as any).relayManager.callbacks.shouldDropEvent as (event: any) => boolean;
+  const sandboxEvent = { kind: 30078, tags: [["d", "sm_test_sandbox"], ["chama-sim", "v1"]] };
+  const realEvent = { kind: 30078, tags: [["d", "sm_test_real"]] };
+  assert.equal(drop(sandboxEvent), true, "the live app still drops sandbox events");
+  assert.equal(drop(realEvent), false, "real events pass");
+  assert.equal(client.sawSandboxTrade("sm_test_sandbox"), true, "but remembers the sandbox trade id");
+  assert.equal(client.sawSandboxTrade("sm_test_real"), false);
+  assert.equal(client.sawSandboxTrade("sm_never_seen"), false);
+  const app = read("./App.tsx");
+  assert.match(app, /: actions\.sawSandboxTrade\(id\) \? t\("app\.sandboxTradeLink"\)\s*: t\("app\.tradeNotFoundYet", \{ id \}\)/);
+}
+console.log("PASS sandbox trade link in the real app: says it is a sandbox trade, still never shown as real");
