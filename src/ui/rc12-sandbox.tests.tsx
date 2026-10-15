@@ -66,3 +66,15 @@ console.log("PASS selection: the Android app draws its own soft highlight");
   assert.match(escrow, /if \(isSimModeOn\(\)\) \{ saveAvatar\(pubkey, safe\); refuseSandboxProfilePublish\(\); \}\n    const events = await client\.queryOnce/);
 }
 console.log("PASS sandbox profiles: real names shown, never published over");
+
+{
+  // Follow-up: everything that reserves room for the banner uses its real
+  // height, and the sandbox says plainly why a name or photo stays local.
+  const app = read("./App.tsx");
+  assert.match(app, /\$\{simOn \? `var\(--chama-sim-pill-height, \$\{SIM_PILL_HEIGHT\}px\)` : "0px"\}/, "trade room height");
+  assert.match(read("./components/Toast.tsx"), /calc\(var\(--chama-sim-pill-height, \$\{SIM_PILL_HEIGHT\}px\) \+ 16px\)/, "toasts");
+  const me = read("./screens/MeScreen.tsx");
+  assert.match(me, /isSimModeOn\(\) \? "me\.sandboxProfileLocal" : "me\.tradeNameLocalOnly"/);
+  assert.match(me, /isSimModeOn\(\) \? "me\.sandboxProfileLocal" : "me\.avatarFailed"/);
+}
+console.log("PASS sandbox follow-up: trade room and toasts reserve the real banner height; honest local-only profile copy");

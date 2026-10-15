@@ -322,6 +322,7 @@ export const me: Record<string, string> = {
   "me.tradeNameSaved": "Imehifadhiwa",
   "me.tradeNamePublishing": "Inachapisha kwenye wasifu wako wa Nostr…",
   "me.tradeNamePublished": "Imechapishwa — jina hili sasa linafuata ufunguo wako kwenye kifaa chochote.",
+  "me.sandboxProfileLocal": "Mazingira ya majaribio: jina na picha yako vinabaki kwenye kifaa hiki. Wasifu wako halisi wa Nostr haubadilishwi.",
   "me.tradeNameLocalOnly": "Imehifadhiwa kwenye kifaa hiki tu — relays zilikataa wasifu. Jaribu tena ukiwa mtandaoni.",
   "me.tabProfile": "Wasifu",
   "me.profileKnownAs": "Jinsi wengine wanavyokuona",

@@ -4267,7 +4267,7 @@ export default function App() {
           // a chat pager that flexes to take the leftover room, and the timeline
           // glued to the bottom. It scrolls only when a tall phase truly needs
           // it. Subtract the top chrome (safe-area / sim pill) the shell pads for.
-          height: `calc(var(--chama-viewport-height, 100dvh) - ${expertTradeView || !LIVE_TRADE_SURFACE_ENABLED ? "44px" : "0px"} - ${typeof shellPaddingTop === "number" ? `${shellPaddingTop}px` : shellPaddingTop} - ${simOn ? `${SIM_PILL_HEIGHT}px` : "0px"} - env(safe-area-inset-bottom, 0px))`,
+          height: `calc(var(--chama-viewport-height, 100dvh) - ${expertTradeView || !LIVE_TRADE_SURFACE_ENABLED ? "44px" : "0px"} - ${typeof shellPaddingTop === "number" ? `${shellPaddingTop}px` : shellPaddingTop} - ${simOn ? `var(--chama-sim-pill-height, ${SIM_PILL_HEIGHT}px)` : "0px"} - env(safe-area-inset-bottom, 0px))`,
           display: "flex", flexDirection: "column", minHeight: 0,
         }}>
           {LIVE_TRADE_SURFACE_ENABLED && !expertTradeView ? (

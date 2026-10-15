@@ -327,6 +327,7 @@ export const me: Record<string, string> = {
   "me.tradeNameSaved": "Guardado",
   "me.tradeNamePublishing": "Publicando en tu perfil de Nostr…",
   "me.tradeNamePublished": "Publicado — este nombre te sigue con tu llave a cualquier dispositivo.",
+  "me.sandboxProfileLocal": "Entorno de prueba: tu nombre y tu foto se quedan en este dispositivo. Tu perfil real de Nostr no cambia.",
   "me.tradeNameLocalOnly": "Guardado solo en este dispositivo — los relays rechazaron el perfil. Inténtalo cuando vuelvas a estar en línea.",
   "me.tabProfile": "Perfil",
   "me.profileKnownAs": "Cómo te ven los demás",

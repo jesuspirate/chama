@@ -1,4 +1,5 @@
 import { EcashCustody } from "../components/MoneyCustody.js";
+import { isSimModeOn } from "../../sim/simMode.js";
 import { SettingsRow } from "../components/SettingsRow.js";
 import { RecoveryKeyRow, RecoveryKeyReminder } from "../components/RecoveryKey.js";
 import { listPaidLockRecoveries, acknowledgePaidLockRecoveries } from "../../payments/paid-lock-recovery.js";
@@ -3430,7 +3431,7 @@ function TradeNameRow({ pubkey, onPublishName, onPublishAvatar }: {
             try { await onPublishAvatar(await avatarFromFile(file)); }
             catch { setAvatarError(true); }
           }} />
-          {avatarError && <span>{t("me.avatarFailed")}</span>}
+          {avatarError && <span>{t(isSimModeOn() ? "me.sandboxProfileLocal" : "me.avatarFailed")}</span>}
         </label>}
         {t("me.tradeName")}
       </div>
@@ -3444,7 +3445,7 @@ function TradeNameRow({ pubkey, onPublishName, onPublishAvatar }: {
         }}>
           {t(publishState === "publishing" ? "me.tradeNamePublishing"
             : publishState === "published" ? "me.tradeNamePublished"
-            : "me.tradeNameLocalOnly")}
+            : isSimModeOn() ? "me.sandboxProfileLocal" : "me.tradeNameLocalOnly")}
         </div>
       )}
       <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
