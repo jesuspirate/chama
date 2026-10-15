@@ -25,7 +25,7 @@ import { handleDisplayForViewer } from "../../payments/saved-handles.js";
 import { RoleAvatar } from "../components/RoleAvatar.js";
 import { Wordmark } from "../components/Wordmark.js";
 import { OverlaySheet } from "../components/OverlaySheet.js";
-import { usePhoneTradeChat, phoneTradeChatCss, useBubbleDodge } from "../phone-trade-chat.js";
+import { usePhoneTradeChat, phoneTradeChatCss } from "../phone-trade-chat.js";
 import { OnchainTradeControls, type OnchainTradeActions } from "../panels/OnchainTradeControls.js";
 import { canOfferClaim, needsTradeHistory } from "../decisions.js";
 import { CopyButton } from "../components/CopyButton.js";
@@ -192,8 +192,6 @@ export function LiveTradeSurface({
   const myRole = effectiveViewerRole(state, pubkey, nowSec, onchainActions?.onchainObservation);
   const phoneChat = usePhoneTradeChat(state, myRole);
   const rootRef = useRef<HTMLDivElement>(null);
-  const bubbleRef = useRef<HTMLButtonElement>(null);
-  useBubbleDodge(bubbleRef, rootRef, phoneChat.show, phoneChat.pulse);
   const chatOther = myRole === Role.BUYER ? participants.seller : myRole === Role.SELLER ? participants.buyer : participants.buyer || participants.seller;
   const chatTitle = tr(participants.arbiter && myRole !== Role.ARBITER ? "lts.chatWithArbiter" : "lts.chatWith", {
     name: profileNameFor(profileNames, chatOther, kind0Enabled) ?? tr("lts.chatParticipants"),
@@ -832,6 +830,10 @@ export function LiveTradeSurface({
            floating button (phone-trade-chat.ts). */
         @media (max-width:720px){
           .lts-root{overflow-y:auto;overscroll-behavior-y:contain}
+          /* The 💬 button stays put bottom-right at every scroll position
+             (Jet, rc.9). Room at the end of the page lets the last control
+             scroll clear of it instead of the button moving. */
+          .lts-root{padding-bottom:calc(96px + env(safe-area-inset-bottom,0px))!important}
           .lts-home{display:none!important}
           .lts-grid{display:block;flex:none;background:transparent}
           .lts-pane.lts-votes{overflow:visible;max-height:none;background:${T.bg};
@@ -1059,7 +1061,7 @@ export function LiveTradeSurface({
           <ChatPanel preferredRelayConnected={preferredRelayConnected} state={state} myRole={myRole} onSend={onSendChat} embedded fill hideHeader />
         </div>}
       </div>
-      {phoneChat.show && <button ref={bubbleRef} key={phoneChat.pulse} type="button" className="lts-chat-bubble" data-chat-bubble
+      {phoneChat.show && <button key={phoneChat.pulse} type="button" className="lts-chat-bubble" data-chat-bubble
         data-pulse={phoneChat.pulse > 0 ? "true" : "false"}
         aria-label={tr("lts.chatUnread", { count: phoneChat.count })} aria-haspopup="dialog" aria-expanded={phoneChat.open}
         onClick={phoneChat.openChat}>

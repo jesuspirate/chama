@@ -1,30 +1,26 @@
 // rc.8 trade room (Jet, Pixel): the phone trade screen is one page that
 // scrolls as a whole, the amount and the three people share one card, and
 // the chat is a floating 💬 button with the unread count that opens a sheet
-// (ported from #34's 273e6011 onto main's read marks). The button never sits
-// on a decision control, a hold-to-confirm money button above all.
+// (ported from #34's 273e6011 onto main's read marks). rc.9: the button stays
+// fixed bottom-right at every scroll position; the page ends with room for it
+// so the last control scrolls clear instead of the button moving.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { bubbleLift } from "./phone-trade-chat.js";
 
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
 
 {
-  // The bubble rests 20px above the bottom, 16px from the right, 60px square.
-  const vp = { width: 412, height: 915 };
-  assert.equal(bubbleLift(vp, []), 0, "nothing to avoid: it rests in place");
-  assert.equal(bubbleLift(vp, [{ left: 16, right: 180, top: 820, bottom: 880 }]), 0, "a control to the left is not covered");
-  const hold = { left: 16, right: 396, top: 800, bottom: 860 };
-  const lifted = bubbleLift(vp, [hold]);
-  assert.ok(lifted > 0, "a hold button under the bubble lifts it");
-  const bubbleBottom = vp.height - 20 - lifted;
-  assert.ok(bubbleBottom <= hold.top, "the lifted bubble ends above the hold button");
-  const picker = { left: 16, right: 396, top: 730, bottom: 780 };
-  const both = bubbleLift(vp, [hold, picker]);
-  assert.ok(vp.height - 20 - both <= picker.top, "and above a control stacked over it");
-  assert.equal(bubbleLift(vp, [{ left: 16, right: 396, top: 100, bottom: 160 }]), 0, "controls far above do not move it");
+  const lts = read("./screens/LiveTradeSurface.tsx");
+  const chat = read("./phone-trade-chat.ts");
+  // Fixed bottom-right, above the trade view, at every scroll position.
+  const bubbleCss = chat.slice(chat.indexOf(".lts-chat-bubble{position:fixed;"), chat.indexOf("cursor:pointer}"));
+  assert.match(bubbleCss, /right:16px;\s*bottom:calc\(20px \+ env\(safe-area-inset-bottom,0px\)\);/);
+  assert.match(bubbleCss, /z-index:120/);
+  assert.doesNotMatch(chat + lts, /useBubbleDodge|bubbleLift|style\.translate/, "it never moves to dodge controls");
+  // The page ends with room for it, so the last control scrolls clear of it.
+  assert.match(lts, /\.lts-root\{padding-bottom:calc\(96px \+ env\(safe-area-inset-bottom,0px\)\)!important\}/);
 }
-console.log("PASS chat bubble: never covers a decision control");
+console.log("PASS chat bubble: fixed bottom-right at every scroll position; the last control scrolls clear of it");
 
 {
   const lts = read("./screens/LiveTradeSurface.tsx");
@@ -41,16 +37,14 @@ console.log("PASS chat bubble: never covers a decision control");
   assert.doesNotMatch(lts, /calc\(var\(--chama-viewport-height, 100dvh\) \* \.52\)/, "the old half-screen pane is gone");
   // Chat: the desktop pane stays; phones get the bubble and a full-height sheet.
   assert.match(lts, /\{!phoneChat\.phone && <div className="lts-pane lts-chat">/);
-  assert.match(lts, /\{phoneChat\.show && <button ref=\{bubbleRef\}[^>]*className="lts-chat-bubble" data-chat-bubble/);
+  assert.match(lts, /\{phoneChat\.show && <button key=\{phoneChat\.pulse\} type="button" className="lts-chat-bubble" data-chat-bubble/);
   assert.match(lts, /aria-label=\{tr\("lts\.chatUnread", \{ count: phoneChat\.count \}\)\} aria-haspopup="dialog"/);
   assert.match(lts, /\{phoneChat\.open && <OverlaySheet fullHeight showClose showDone=\{false\} title=\{chatTitle\}/);
-  assert.match(lts, /useBubbleDodge\(bubbleRef, rootRef, phoneChat\.show, phoneChat\.pulse\);/);
   assert.match(lts, /<div ref=\{rootRef\} className="lts-root"/);
   const chat = read("./phone-trade-chat.ts");
   assert.match(chat, /import \{ countUnreadChat, getLastReadChatAt, markChatRead \} from "\.\.\/chat\/unread\.js";/, "the same read marks as the trade list");
   assert.match(chat, /openChat: \(\) => \{ setReadAt\(markChatRead\(state\.id\)\); setOpen\(true\); \}/);
   assert.match(chat, /const seated = myRole !== null;/, "only someone with a seat has a chat");
-  assert.match(chat, /\.lts-decision-well button, \.lts-decision-well \[data-hold-state\]/, "the bubble avoids every decision control");
   const sheet = read("./components/OverlaySheet.tsx");
   assert.match(sheet, /fullHeight = false/);
   assert.match(sheet, /alignItems: fullHeight \? "flex-end" : "center"/);
