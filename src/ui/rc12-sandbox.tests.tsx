@@ -120,3 +120,48 @@ console.log("PASS Android: no theme background, so selection handles and the Cop
   assert.match(app, /: actions\.sawSandboxTrade\(id\) \? t\("app\.sandboxTradeLink"\)\s*: t\("app\.tradeNotFoundYet", \{ id \}\)/);
 }
 console.log("PASS sandbox trade link in the real app: says it is a sandbox trade, still never shown as real");
+
+{
+  // The link was one way in. Jet actually looked for the offer in Browse, and
+  // a trade can also be tapped or pasted (Browse › Load a trade). The real app
+  // names the sandbox on every open, and Browse points to YOUR OWN sandbox
+  // offers only (other people's stay silent: noise for a real user).
+  const sightings = await import("../sim/sandbox-sightings.js");
+  sightings.resetSandboxSightingsForTests();
+  const me = "a".repeat(64);
+  const other = "b".repeat(64);
+  const simTag = ["chama-sim", "v1"];
+  let fired = 0;
+  const off = sightings.onSandboxSighting(() => { fired++; });
+
+  setSimMode(false);
+  sightings.noteDroppedSandboxEvent({ pubkey: me, tags: [["d", "sm_abc_1"], simTag] });
+  sightings.noteDroppedSandboxEvent({ pubkey: me, tags: [["d", "sm_abc_1"], simTag] });
+  sightings.noteDroppedSandboxEvent({ pubkey: other, tags: [["d", "sm_abc_2"], simTag] });
+  sightings.noteDroppedSandboxEvent({ pubkey: me, tags: [["d", "sm_real_3"]] });
+  sightings.noteDroppedSandboxEvent({ pubkey: me, tags: [["d", "not-a-trade"], simTag] });
+  assert.equal(sightings.wasSeenAsSandboxTrade("sm_abc_1"), true);
+  assert.equal(sightings.wasSeenAsSandboxTrade("sm_abc_2"), true);
+  assert.equal(sightings.wasSeenAsSandboxTrade("sm_real_3"), false, "a real trade is never called sandbox");
+  assert.equal(sightings.wasSeenAsSandboxTrade("not-a-trade"), false);
+  assert.equal(sightings.sandboxTradeCountBy(me.toUpperCase()), 1, "only my own sandbox offers count");
+  assert.equal(sightings.sandboxTradeCountBy(null), 0);
+  assert.equal(fired, 2, "one signal per new sandbox trade");
+
+  setSimMode(true);
+  sightings.noteDroppedSandboxEvent({ pubkey: me, tags: [["d", "sm_abc_4"]] });
+  assert.equal(sightings.wasSeenAsSandboxTrade("sm_abc_4"), false, "the sandbox dropping a real trade records nothing");
+  setSimMode(false);
+  off();
+
+  const app = read("./App.tsx");
+  assert.equal((app.match(/actions\.sawSandboxTrade\(id\) \? t\("app\.sandboxTradeLink"\)/g) ?? []).length, 3,
+    "deep link, tap/paste and a failed refetch all say sandbox");
+  const browse = read("./screens/BrowseView.tsx");
+  assert.match(browse, /<SandboxOwnHiddenNote pubkey=\{pubkey\} \/>/);
+  assert.match(browse, /if \(count === 0\) return null;/, "silent unless you have one");
+  for (const lang of ["en", "es", "fr", "sw"]) {
+    assert.match(read(`../i18n/${lang}/browse.ts`), /"browse\.sandboxOwnHidden": ".*poc\.getchama\.app/);
+  }
+}
+console.log("PASS real app: every way into a sandbox trade says sandbox; Browse points to your own sandbox offers");

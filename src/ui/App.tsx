@@ -2787,7 +2787,8 @@ export default function App() {
           setToast({
             message: loaded ? t("app.listingExpired")
               : actions.getLoadFailure(id)?.reason === "conflicting-creators"
-                ? t("app.tradeConflictingCreators") : t("app.tradeOpenFailed"),
+                ? t("app.tradeConflictingCreators")
+                : actions.sawSandboxTrade(id) ? t("app.sandboxTradeLink") : t("app.tradeOpenFailed"),
             type: "info",
           });
           setSelectedId(null);
@@ -2800,7 +2801,11 @@ export default function App() {
         );
         // The loading surface below (view "detail" with no local copy yet)
         // would otherwise spin forever on a trade the relays can't return.
-        setToast({ message: isSignerApprovalError(e) ? e.message : t("app.tradeOpenFailed"), type: "error" });
+        setToast({
+          message: isSignerApprovalError(e) ? e.message
+            : actions.sawSandboxTrade(id) ? t("app.sandboxTradeLink") : t("app.tradeOpenFailed"),
+          type: "error",
+        });
         setSelectedId(null);
         setView(safeBackView);
       });

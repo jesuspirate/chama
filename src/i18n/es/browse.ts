@@ -50,6 +50,7 @@ export const browse: Record<string, string> = {
   "browse.navMain": "Principal",
   "browse.noListingsMatch": "Ningún anuncio coincide con «{query}».",
   "browse.noOpenOffers": "Aún no hay ofertas abiertas",
+  "browse.sandboxOwnHidden": "Tus ofertas de prueba del sandbox no aparecen en la app real. Ábrelas en poc.getchama.app.",
   "browse.ownHiddenTitle": "Tus anuncios están ocultos",
   "browse.ownHiddenBody": "Las únicas ofertas aquí son tus {count} anuncios — ocultos del listado público. Toca «Míos» arriba.",
   "browse.openOfferSummaryMany": "{filtered} de {total} ofertas abiertas",

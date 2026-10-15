@@ -115,7 +115,8 @@ import {
   recordDiscoveryRun,
   type FetchLegDiag,
 } from "./discovery-diagnostics.js";
-import { simTagOrNull, shouldDropForSimPolicy, eventIsSim, isSimModeOn } from "../sim/simMode.js";
+import { simTagOrNull, shouldDropForSimPolicy } from "../sim/simMode.js";
+import { noteDroppedSandboxEvent, wasSeenAsSandboxTrade } from "../sim/sandbox-sightings.js";
 import { verifyEvent as verifyNostrEventSignature } from "nostr-tools/pure";
 import { randomId } from "../storage/random-id.js";
 import { creatorMatchesEscrowId, creatorTaggedEscrowId, selectTradeRoot } from "./trade-identity.js";
@@ -588,19 +589,10 @@ export class EscrowClient {
   /** Session context survives first-ACK queue retirement long enough to show
    *  late straggler rejection text in the one trade-level diagnostic. */
   private moneyPublishesInFlight = new Set<string>();
-  /** Escrow ids seen only as sandbox (sim-tagged) events by this live client. */
-  private sandboxTradeIds = new Set<string>();
-
-  private noteSandboxTrade(tags: string[][]): void {
-    const id = tags.find(tag => tag[0] === TAGS.ESCROW_ID)?.[1];
-    if (!id) return;
-    if (this.sandboxTradeIds.size >= 500) this.sandboxTradeIds.clear();
-    this.sandboxTradeIds.add(id);
-  }
-
-  /** True when this live client dropped sandbox events for this trade id. */
+  /** True when this live app dropped sandbox events for this trade id. The
+   *  ids (and their creators, for Browse) live in sim/sandbox-sightings.ts. */
   sawSandboxTrade(escrowId: string): boolean {
-    return this.sandboxTradeIds.has(escrowId);
+    return wasSeenAsSandboxTrade(escrowId);
   }
   private moneyPublishContext = new Map<string, { escrowId: string; type: MoneyEventType }>();
   private shownRelayRejections = new Set<string>();
@@ -702,7 +694,7 @@ export class EscrowClient {
           // A live app dropping a sandbox trade remembers only its id, so a
           // trade link can say "this is a sandbox trade" instead of "not
           // found" (Jet, 6.4.25). Nothing else about it is kept.
-          if (!isSimModeOn() && eventIsSim(event)) this.noteSandboxTrade(event.tags);
+          noteDroppedSandboxEvent(event);
           return true;
         },
         // SECURITY: wire schnorr signature verification at the relay
