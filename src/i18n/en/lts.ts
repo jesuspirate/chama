@@ -121,4 +121,8 @@ export const lts: Record<string, string> = {
   "lts.detailsInChat": "{name} shares the exact details in the chat.",
   "lts.noHandleTitle": "The buyer needs your payment details",
   "lts.addPaymentDetails": "Choose payment details before locking",
+  "lts.chatWith": "Chat with {name}",
+  "lts.chatWithArbiter": "Chat with {name} and {arbiter}",
+  "lts.chatUnread": "Chat, {count} unread",
+  "lts.chatParticipants": "the other participants",
 };

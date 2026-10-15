@@ -119,4 +119,8 @@ export const lts: Record<string, string> = {
   "lts.detailsInChat": "{name} atatoa maelezo kamili kwenye gumzo.",
   "lts.noHandleTitle": "Mnunuzi anahitaji maelezo yako ya malipo",
   "lts.addPaymentDetails": "Chagua maelezo ya malipo kabla ya kufunga",
+  "lts.chatWith": "Mazungumzo na {name}",
+  "lts.chatWithArbiter": "Mazungumzo na {name} na {arbiter}",
+  "lts.chatUnread": "Mazungumzo, {count} hayajasomwa",
+  "lts.chatParticipants": "washiriki wengine",
 };

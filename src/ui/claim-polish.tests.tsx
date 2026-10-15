@@ -85,16 +85,10 @@ console.log("PASS Browse attention: one signal, the top bar");
   assert.match(lts, /\{clock && <div data-decision-clock /);
   assert.match(lts, /body:has\(\[data-decision-clock\]\) \.lts-clock\{display:none\}/);
   assert.match(lts, /className="lts-clock"/, "the line stays for screens without a card");
-  // Phone layout: the decision area shares the page background and the cards'
-  // 16px sides, with even 12px gaps — no separate white panel.
-  assert.match(lts, /\.lts-pane\.lts-votes\{background:\$\{T\.bg\};padding:12px 16px\}/);
+  // Phone layout (rc.8 reorganisation, rc8-trade-room.tests.tsx): the decision
+  // is part of one scrolling page with even 12px gaps, and the amount and
+  // people share one compact card.
   assert.match(lts, /\.lts-decision-well\{display:flex;flex-direction:column;gap:12px\}/);
-  // rc.7 (Pixel 8, 412×915): the top half took 487px and the decision
-  // scrolled inside the rest. Phones: compact amount and people cards, a
-  // clear line between the halves, and the arbiter record only before the
-  // viewer is seated (it stays one tap away on the arbiter).
-  assert.match(lts, /\.lts-grid\{border-top:1px solid \$\{T\.line\}\}/);
-  assert.match(lts, /\.lts-money-card\{padding:10px 14px!important;gap:10px!important\}/);
   assert.match(lts, /\.lts-room \[data-role-avatar\]\{zoom:\.75\}/);
   assert.match(lts, /\.lts-person-meta\{flex-direction:row!important/);
   assert.match(lts, /\{myRole === null && <TradeArbiterRecord /);

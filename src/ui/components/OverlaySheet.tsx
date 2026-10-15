@@ -15,7 +15,7 @@ import { useT } from "../../i18n/index.js";
 // saved-address view closed to the wrong tab for exactly this reason). This
 // sheet keeps the screen behind you — blurred, still there — and closes to
 // precisely where you were, by tapping outside, pressing Escape, or Done.
-export function OverlaySheet({ title, subtitle, onClose, children, dismissible = true, showDone = true, showClose = false }: {
+export function OverlaySheet({ title, subtitle, onClose, children, dismissible = true, showDone = true, showClose = false, fullHeight = false }: {
   title: string;
   subtitle?: string;
   onClose: () => void;
@@ -24,6 +24,9 @@ export function OverlaySheet({ title, subtitle, onClose, children, dismissible =
   dismissible?: boolean;
   showDone?: boolean;
   showClose?: boolean;
+  /** A bottom sheet filling the screen (the phone trade chat): the children
+   *  fill the space between the title and Done and scroll themselves. */
+  fullHeight?: boolean;
 }) {
   const { t } = useT();
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -74,8 +77,8 @@ export function OverlaySheet({ title, subtitle, onClose, children, dismissible =
       data-overlay-backdrop
       style={{
         position: "fixed", inset: 0, zIndex: 400,
-        display: "flex", alignItems: "center", justifyContent: "center",
-        padding: "24px 16px calc(24px + env(safe-area-inset-bottom, 0px))",
+        display: "flex", alignItems: fullHeight ? "flex-end" : "center", justifyContent: "center",
+        padding: fullHeight ? "max(12px, env(safe-area-inset-top, 0px)) 0 0" : "24px 16px calc(24px + env(safe-area-inset-bottom, 0px))",
         background: "rgba(0,0,0,0.45)",
         backdropFilter: "blur(7px)", WebkitBackdropFilter: "blur(7px)",
         animation: "fadeIn 0.18s ease",
@@ -89,9 +92,11 @@ export function OverlaySheet({ title, subtitle, onClose, children, dismissible =
         aria-label={title}
         onClick={(e) => e.stopPropagation()}
         style={{
-          width: "100%", maxWidth: 460, maxHeight: "80dvh", overflowY: "auto",
+          width: "100%", maxWidth: fullHeight ? "none" : 460, maxHeight: fullHeight ? "100%" : "80dvh", overflowY: fullHeight ? "hidden" : "auto",
+          ...(fullHeight ? { height: "100%", display: "flex", flexDirection: "column" as const, minHeight: 0, boxSizing: "border-box" as const } : {}),
           background: T.card, border: `1px solid ${T.borderHi}`,
-          borderRadius: T.r, padding: "20px 20px 16px",
+          borderRadius: fullHeight ? `${T.rSheet}px ${T.rSheet}px 0 0` : T.r,
+          padding: fullHeight ? "16px 12px calc(12px + env(safe-area-inset-bottom, 0px))" : "20px 20px 16px",
           outline: "none",
           boxShadow: "0 24px 60px rgba(0,0,0,0.45)",
         }}
@@ -109,7 +114,7 @@ export function OverlaySheet({ title, subtitle, onClose, children, dismissible =
             {subtitle}
           </div>
         )}
-        {children}
+        {fullHeight ? <div style={{ flex: 1, minHeight: 0, marginTop: 12, display: "flex", flexDirection: "column" }}>{children}</div> : children}
         {showDone && <button
           type="button"
           disabled={!dismissible}

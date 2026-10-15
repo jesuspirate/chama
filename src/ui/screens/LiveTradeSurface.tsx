@@ -25,6 +25,7 @@ import { handleDisplayForViewer } from "../../payments/saved-handles.js";
 import { RoleAvatar } from "../components/RoleAvatar.js";
 import { Wordmark } from "../components/Wordmark.js";
 import { OverlaySheet } from "../components/OverlaySheet.js";
+import { usePhoneTradeChat, phoneTradeChatCss, useBubbleDodge } from "../phone-trade-chat.js";
 import { OnchainTradeControls, type OnchainTradeActions } from "../panels/OnchainTradeControls.js";
 import { canOfferClaim, needsTradeHistory } from "../decisions.js";
 import { CopyButton } from "../components/CopyButton.js";
@@ -189,6 +190,15 @@ export function LiveTradeSurface({
   }, [state.id]);
   const participants = getEffectiveParticipantsAt(state, nowSec, onchainActions?.onchainObservation);
   const myRole = effectiveViewerRole(state, pubkey, nowSec, onchainActions?.onchainObservation);
+  const phoneChat = usePhoneTradeChat(state, myRole);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const bubbleRef = useRef<HTMLButtonElement>(null);
+  useBubbleDodge(bubbleRef, rootRef, phoneChat.show, phoneChat.pulse);
+  const chatOther = myRole === Role.BUYER ? participants.seller : myRole === Role.SELLER ? participants.buyer : participants.buyer || participants.seller;
+  const chatTitle = tr(participants.arbiter && myRole !== Role.ARBITER ? "lts.chatWithArbiter" : "lts.chatWith", {
+    name: profileNameFor(profileNames, chatOther, kind0Enabled) ?? tr("lts.chatParticipants"),
+    arbiter: profileNameFor(profileNames, participants.arbiter, kind0Enabled) ?? tr("trade.arbiter"),
+  });
 
   const [busy, setBusy] = useState(false);
   const [paymentChoice, setPaymentChoice] = useState(() => matchingTradeHandles(state)[0]?.id ?? '');
@@ -776,7 +786,7 @@ export function LiveTradeSurface({
   );
 
   return (
-    <div className="lts-root" style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0, background: T.bg, paddingBottom: 12 }}>
+    <div ref={rootRef} className="lts-root" style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0, background: T.bg, paddingBottom: 12 }}>
       {state.rejectedLockRecovery?.pubkey === pubkey && onReclaimRejectedLock &&
         <RejectedLockRefund amountMsats={state.rejectedLockRecovery.amountMsats} onReclaim={() => onReclaimRejectedLock(state.id)} />}
       {reabsorbedLockAmount(state.id) && <p>{tr("trade.lockReabsorbed", {amount:Math.floor(reabsorbedLockAmount(state.id)! / 1000).toLocaleString()})}</p>}
@@ -789,39 +799,6 @@ export function LiveTradeSurface({
         .lts-votes{padding:18px;overflow-y:auto;display:flex;flex-direction:column}
         .lts-decision-well{width:100%}
         @media (min-width:721px){.lts-decision-well{margin:auto 0;padding:12px 0}}
-        @media (max-width:720px){
-          .lts-grid{grid-template-columns:1fr;grid-template-rows:minmax(0,auto) minmax(0,1fr)}
-          /* dvh, never %: a percentage max-height on an item in an auto grid
-             row is cyclic — Chrome ignores it, iOS Safari resolves it
-             mid-layout and clamps the pane SHORTER than its own row, which
-             clipped the decision text and exposed the grid's border-colored
-             background as a dead band between the panes (Jet's 6.3 phone
-             screenshot). 52dvh is definite everywhere. */
-          .lts-votes{max-height:calc(var(--chama-viewport-height, 100dvh) * .52)}
-          /* Jet (6.4.25, Pixel): the decision area read as a separate white
-             panel with its own margins under the people card. On phones it
-             now shares the page background and the cards' 16px sides, with
-             even 12px gaps between what it holds. */
-          .lts-pane.lts-votes{background:${T.bg};padding:12px 16px}
-          .lts-decision-well{display:flex;flex-direction:column;gap:12px}
-          /* Jet (rc.7, Pixel 8): the top half took 487 of 915px and the
-             decision scrolled inside the rest. On phones the amount and
-             people cards are compact, and a clear line separates the trade
-             (top) from what to do and the chat (bottom). */
-          .lts-grid{border-top:1px solid ${T.line}}
-          .lts-money{padding:8px 16px 0!important}
-          .lts-money-card{padding:10px 14px!important;gap:10px!important}
-          .lts-money-icon{width:32px!important;height:32px!important;border-radius:10px!important}
-          .lts-room{padding:8px 16px 10px!important}
-          .lts-room-people{padding:8px 4px!important}
-          .lts-room [data-role-avatar]{zoom:.75}
-          .lts-person-meta{flex-direction:row!important;flex-wrap:wrap;justify-content:center;column-gap:5px}
-          [data-chat-focused] .lts-header{max-height:35%;overflow-y:auto;flex-shrink:1}
-          [data-chat-focused] .lts-grid{grid-template-rows:minmax(0, .3fr) minmax(100px, 1fr)}
-          [data-chat-focused] .lts-votes{max-height:none;padding:8px 12px}
-          .lts-grid.lts-prejoin .lts-chat{display:none}
-          .lts-grid.lts-prejoin{grid-template-rows:1fr}
-        }
         .lts-price-hero{padding:10px 16px;border-bottom:1px solid ${T.border};background:${T.bg}}
         .lts-hero-slim{display:none}
         .lts-cat-word{overflow:hidden;text-overflow:ellipsis}
@@ -846,24 +823,37 @@ export function LiveTradeSurface({
           padding:12px 6px;border-radius:20px;background:${T.surface};border:1px solid ${T.line}}
         /* The decision card carries the clock; the header line would repeat it. */
         .lts-root:has([data-decision-clock]) .lts-clock{display:none}
-        /* Phones (Jet, 6.4.25-rc.7 on a Pixel 8): the decision must fit
-           without scrolling its pane, and the bottom half reads as its own
-           sheet, separated from the trade facts above by a clear edge. */
+        /* Phones (Jet, 6.4.25-rc.8 on a Pixel): one page that scrolls as a
+           whole. The decision is part of the page, never a box scrolling
+           inside it (its edge cut across "Your turn" once the payment
+           picker closed). The amount and the three people share one card,
+           the wordmark row goes (Back already leads home), each person's
+           record is one tap away in their sheet, and the chat is the
+           floating button (phone-trade-chat.ts). */
         @media (max-width:720px){
-          .lts-room{padding:8px 12px}
-          .lts-room-people{padding:6px 4px}
-          .lts-money{padding:8px 12px 0!important}
-          .lts-money>div{padding:10px 14px!important}
-          .lts-home{padding:2px 12px!important}
-          .lts-grid{background:transparent;gap:0;margin-top:4px}
-          .lts-votes{padding:14px 14px 12px;border-top:1px solid ${T.borderHi};border-radius:${T.rSheet}px ${T.rSheet}px 0 0;
-            box-shadow:0 -10px 28px rgba(0,0,0,.28)}
-          .lts-chat{border-top:1px solid ${T.line}}
-          .lts-decision-well{display:flex;flex-direction:column}
-          .lts-prelock-facts{order:2;margin-top:16px}
+          .lts-root{overflow-y:auto;overscroll-behavior-y:contain}
+          .lts-home{display:none!important}
+          .lts-grid{display:block;flex:none;background:transparent}
+          .lts-pane.lts-votes{overflow:visible;max-height:none;background:${T.bg};
+            padding:4px 16px calc(96px + env(safe-area-inset-bottom, 0px))}
+          .lts-grid.lts-prejoin .lts-votes{padding-bottom:24px}
+          .lts-chat{display:none}
+          .lts-decision-well{display:flex;flex-direction:column;gap:12px}
+          .lts-prelock-facts{order:2;margin-top:4px}
+          .lts-summary{margin:12px 16px;border-radius:${T.rCard}px;background:${T.surface};border:1px solid ${T.line}}
+          .lts-money{padding:12px 16px 2px!important;background:transparent!important}
+          .lts-money-card{padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;gap:4px 12px!important}
+          .lts-money-icon{display:none!important}
+          .lts-room{padding:4px 4px 8px!important;background:transparent}
+          .lts-room-people{padding:0;border:0;border-radius:0;background:transparent}
+          .lts-room [data-role-avatar]{zoom:.75}
+          .lts-person-meta{flex-direction:row!important;flex-wrap:wrap;justify-content:center;column-gap:5px}
+          .lts-person-name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+          .lts-person-conduct{display:none}
         }
         @keyframes ltsPulse{0%,100%{box-shadow:0 0 0 0 ${T.amber}00}50%{box-shadow:0 0 0 4px ${T.amber}33}}
       `}</style>
+      <style>{phoneTradeChatCss()}</style>
 
       {/* The price, HERO-sized and FIRST (Jet, 6.3.4 review): the same big
           banner that anchors Browse rides through the whole trade — Browse,
@@ -1065,10 +1055,20 @@ export function LiveTradeSurface({
             </div>
           </DecisionClock.Provider></div>
         </div>
-        <div className="lts-pane lts-chat">
+        {!phoneChat.phone && <div className="lts-pane lts-chat">
           <ChatPanel preferredRelayConnected={preferredRelayConnected} state={state} myRole={myRole} onSend={onSendChat} embedded fill hideHeader />
-        </div>
+        </div>}
       </div>
+      {phoneChat.show && <button ref={bubbleRef} key={phoneChat.pulse} type="button" className="lts-chat-bubble" data-chat-bubble
+        data-pulse={phoneChat.pulse > 0 ? "true" : "false"}
+        aria-label={tr("lts.chatUnread", { count: phoneChat.count })} aria-haspopup="dialog" aria-expanded={phoneChat.open}
+        onClick={phoneChat.openChat}>
+        <svg aria-hidden="true" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.5 8.5 0 0 1-12.4 7.6L3 21l1.9-5.6A8.5 8.5 0 1 1 21 11.5z" /><path d="M8 10h8M8 14h5" /></svg>
+        {phoneChat.count > 0 && <span style={{ position: "absolute", right: -3, top: -3, minWidth: 24, height: 24, padding: "0 6px", boxSizing: "border-box", borderRadius: 12, background: "#FFC53D", color: "#111", fontSize: 13, fontWeight: 700, display: "grid", placeItems: "center", fontFamily: T.sans }}>{phoneChat.count > 9 ? "9+" : phoneChat.count}</span>}
+      </button>}
+      {phoneChat.open && <OverlaySheet fullHeight showClose showDone={false} title={chatTitle} onClose={phoneChat.closeChat}>
+        <ChatPanel preferredRelayConnected={preferredRelayConnected} state={state} myRole={myRole} onSend={onSendChat} embedded fill hideHeader />
+      </OverlaySheet>}
     </div>
   );
 }
@@ -1104,7 +1104,7 @@ function PersonChip({ person, name, onClick }: { person: RoomPresence; name: str
   return (
     <button type="button" onClick={onClick} style={{ ...column, minHeight: T.size.touch, cursor: "pointer", background: "none", border: "none", color: T.ink }}>
       <RoleAvatar role={person.role} pubkey={person.pubkey} size={52} />
-      <span style={{ fontSize: T.fs.secondary, fontWeight: 600, overflowWrap: "anywhere", maxWidth: "100%", color: person.signal === "assigned" ? T.ink2 : T.ink }}>
+      <span className="lts-person-name" style={{ fontSize: T.fs.secondary, fontWeight: 600, overflowWrap: "anywhere", maxWidth: "100%", color: person.signal === "assigned" ? T.ink2 : T.ink }}>
         {name ?? tr("lts.roomSomeone")}
       </span>
       <span className="lts-person-meta">
@@ -1113,7 +1113,7 @@ function PersonChip({ person, name, onClick }: { person: RoomPresence; name: str
           {person.ready ? tr("lts.roomReady") : sub}
         </span>
       </span>
-      <ConductFacts pubkey={person.pubkey} />
+      <span className="lts-person-conduct"><ConductFacts pubkey={person.pubkey} /></span>
     </button>
   );
 }

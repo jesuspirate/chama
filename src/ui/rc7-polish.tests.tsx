@@ -57,18 +57,16 @@ const src0 = () => read('./components/TradePaymentDetails.tsx');
 console.log('PASS trade payment details: the choice opens the app overlay, methods are chips, and the lock gets the same ids');
 
 {
-  // 2. Phones: the decision comes first in its pane, the clock shows once, and
-  // the bottom half is a sheet with its own edge.
+  // 2. Phones: the decision comes first and the clock shows once (rc.8 made
+  // the page one scroll; see rc8-trade-room.tests.tsx).
   const src = read('./screens/LiveTradeSurface.tsx');
   assert.match(src, /\.lts-root:has\(\[data-decision-clock\]\) \.lts-clock\{display:none\}/, 'the header clock yields to the decision card');
   assert.match(src, /\{clock && <div data-decision-clock/);
-  assert.match(src, /@media \(max-width:720px\)\{[^}]*\.lts-room\{padding:8px 12px\}/);
-  assert.match(src, /\.lts-votes\{padding:14px 14px 12px;border-top:1px solid \$\{T\.borderHi\};border-radius:\$\{T\.rSheet\}px \$\{T\.rSheet\}px 0 0;/, 'the bottom half has a sheet edge');
-  assert.match(src, /\.lts-decision-well\{display:flex;flex-direction:column\}\s*\.lts-prelock-facts\{order:2;margin-top:16px\}/, 'arbiter record and listing follow the decision on phones');
+  assert.match(src, /\.lts-decision-well\{display:flex;flex-direction:column;gap:12px\}\s*\.lts-prelock-facts\{order:2;margin-top:4px\}/, 'arbiter record and listing follow the decision on phones');
   assert.match(src, /\{state\.status === EscrowStatus\.CREATED && <div className="lts-prelock-facts">\s*(?:\{\/\*[\s\S]*?\*\/\}\s*)?(?:\{myRole === null && )?<TradeArbiterRecord/);
-  assert.match(src, /<div className="lts-root"/);
+  assert.match(src, /<div ref=\{rootRef\} className="lts-root"/);
 }
-console.log('PASS trade screen on phones: decision first, clock once, a clear edge between the halves');
+console.log('PASS trade screen on phones: decision first, clock once');
 
 {
   // 3. The hold fill is a CSS transition; React wakes only when the hold is due.
