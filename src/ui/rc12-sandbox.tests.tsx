@@ -165,3 +165,12 @@ console.log("PASS sandbox trade link in the real app: says it is a sandbox trade
   }
 }
 console.log("PASS real app: every way into a sandbox trade says sandbox; Browse points to your own sandbox offers");
+
+{
+  // Jet (rc.13, iOS): pressing Enter in the chat kept the keyboard up, hiding
+  // the chat's close button. On touch screens Enter sends and closes it.
+  const chat = read("./panels/ChatPanel.tsx");
+  assert.match(chat, /if \(e\.key !== "Enter" \|\| e\.shiftKey\) return;\s*handleSend\(\);/);
+  assert.match(chat, /matchMedia\("\(pointer: coarse\)"\)\.matches\) e\.currentTarget\.blur\(\);/);
+}
+console.log("PASS chat: Enter on a phone sends and closes the keyboard");
