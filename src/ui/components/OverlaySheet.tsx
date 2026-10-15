@@ -78,7 +78,9 @@ export function OverlaySheet({ title, subtitle, onClose, children, dismissible =
       style={{
         position: "fixed", inset: 0, zIndex: 400,
         display: "flex", alignItems: fullHeight ? "flex-end" : "center", justifyContent: "center",
-        padding: fullHeight ? "max(12px, env(safe-area-inset-top, 0px)) 0 0" : "24px 16px calc(24px + env(safe-area-inset-bottom, 0px))",
+        // Below the sandbox banner when it shows (SimModePill publishes its height).
+        padding: fullHeight ? "calc(max(12px, env(safe-area-inset-top, 0px)) + var(--chama-sim-pill-height, 0px)) 0 0"
+          : "calc(24px + var(--chama-sim-pill-height, 0px)) 16px calc(24px + env(safe-area-inset-bottom, 0px))",
         background: "rgba(0,0,0,0.45)",
         backdropFilter: "blur(7px)", WebkitBackdropFilter: "blur(7px)",
         animation: "fadeIn 0.18s ease",

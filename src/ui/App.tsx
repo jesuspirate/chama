@@ -3275,6 +3275,18 @@ export default function App() {
           onConnect={actions.connect}
           onConnectNsec={async (nsec: string, remember: boolean, wasGenerated: boolean, fastSetupWanted?: boolean, setupCommunity?: string) => {
             (window as any).__chama_connect_nsec = nsec;
+            // Someone who pasted their own key already holds it: never ask
+            // them "Did you save your key?" (Jet, rc.12). Only a key Chama
+            // generated in this login still needs that reminder.
+            if (!wasGenerated) {
+              try {
+                const [{ validateRecoveryKeyInput }, { getPublicKey }, { markRecoveryKeyBackedUp }] = await Promise.all([
+                  import("../escrow-engine/nsec-signer.js"), import("nostr-tools/pure"), import("../storage/recovery-key-backup.js"),
+                ]);
+                const pasted = await validateRecoveryKeyInput(nsec);
+                if (pasted.ok) markRecoveryKeyBackedUp(getPublicKey(pasted.secretKey));
+              } catch { /* The reminder only shows again; login goes on. */ }
+            }
             // Apply the default newcomer setup once the npub is known.
             fastSetupRequestedRef.current = fastSetupWanted === true;
             fastSetupCommunityRef.current = setupCommunity && getCommunityBySlug(setupCommunity)

@@ -18,7 +18,7 @@
 //     a re-acknowledgment if the sim contract ever changes (e.g. when
 //     we wire real Fedimint back in alongside sim).
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { T } from "../ui/theme.js";
 import { isSimModeOn, setSimMode } from "./simMode.js";
 import { CHAMA_SANDBOX, SANDBOX_BUILD_MARKER } from "./sandbox-build.js";
@@ -34,6 +34,8 @@ const ZAPSTORE_URL = "https://zapstore.dev/apps/app.chama.market";
  * Kept in sync with the pill's padding and compact Zapstore affordance.
  */
 export const SIM_PILL_HEIGHT = 40;
+/** CSS variable carrying the pill's measured height (unset when it is hidden). */
+export const SIM_PILL_HEIGHT_VAR = "--chama-sim-pill-height";
 
 export function SimModePill() {
   // Stay reactive to sim-mode flips (e.g. user clicks "Exit" in the modal)
@@ -43,12 +45,33 @@ export function SimModePill() {
     window.addEventListener("storage", tick);
     return () => window.removeEventListener("storage", tick);
   }, []);
+  // The pill wraps to two rows on narrow phones. Its real height is published
+  // as --chama-sim-pill-height so full-height sheets start below it (their
+  // close button was hidden under the banner, Jet on rc.12) and the spacer
+  // below matches it.
+  const pillRef = useRef<HTMLDivElement>(null);
+  const [height, setHeight] = useState(SIM_PILL_HEIGHT);
+  useEffect(() => {
+    const root = document.documentElement;
+    const el = pillRef.current;
+    if (!on || !el) { root.style.removeProperty(SIM_PILL_HEIGHT_VAR); return; }
+    const measure = () => {
+      const h = Math.max(SIM_PILL_HEIGHT, Math.ceil(el.getBoundingClientRect().height));
+      setHeight(h);
+      root.style.setProperty(SIM_PILL_HEIGHT_VAR, `${h}px`);
+    };
+    measure();
+    const observer = typeof ResizeObserver !== "undefined" ? new ResizeObserver(measure) : null;
+    observer?.observe(el);
+    return () => { observer?.disconnect(); root.style.removeProperty(SIM_PILL_HEIGHT_VAR); };
+  }, [on]);
 
   if (!on) return null;
 
   return (
     <>
       <div
+        ref={pillRef}
         role="status"
         aria-live="polite"
         data-build={CHAMA_SANDBOX ? SANDBOX_BUILD_MARKER : undefined}
@@ -97,7 +120,7 @@ export function SimModePill() {
           frequently re-rendering main shell (verified in-browser — the header
           rendered at top:0 under the banner). A spacer applies reliably. Height
           matches the pill. */}
-      <div aria-hidden="true" style={{ height: SIM_PILL_HEIGHT, flexShrink: 0 }} />
+      <div aria-hidden="true" style={{ height, flexShrink: 0 }} />
     </>
   );
 }

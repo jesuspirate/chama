@@ -480,6 +480,15 @@ import { worldScopedKey } from "../sim/sim-partition.js";
 import { reconcileIdentity } from "../storage/identity-pin.js";
 import { extractNostrProfileName, mergeProfileNameContent, type NostrProfileNameMap } from "../ui/nostr-profiles.js";
 
+/** The sandbox never publishes a Nostr profile: profiles are shared with the
+ *  real app, and a sandbox rename (or a read that found nothing) would
+ *  overwrite the person's real name, picture and lightning address. The
+ *  change stays on this device; callers show "saved here, not published". */
+function refuseSandboxProfilePublish(): void {
+  if (isSimModeOn()) throw new Error("Sandbox: profile changes stay on this device and are never published");
+}
+
+
 /** Shared with the UI so "we dropped it" and "here is why it won't open" can
  *  never drift apart (src/escrow-engine/expired-listing.ts). */
 const isExpiredUnfundedEscrow = (state: EscrowState, owner?: string | null) =>
@@ -3916,6 +3925,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
    *  picture/about/lud16 set elsewhere. Throws when the relays refuse, so the
    *  caller can say "saved here, not published yet" honestly. */
   const publishProfileName = useCallback(async (name: string): Promise<void> => {
+    refuseSandboxProfilePublish();
     const client = requireClient();
     const signer = signerRef.current;
     const pubkey = stateRef.current?.pubkey;
@@ -3945,6 +3955,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     const signer = signerRef.current;
     const pubkey = stateRef.current?.pubkey;
     if (!safe || !signer || !pubkey) throw new Error("Invalid avatar or disconnected");
+    if (isSimModeOn()) { saveAvatar(pubkey, safe); refuseSandboxProfilePublish(); }
     const events = await client.queryOnce({ kinds: [0], authors: [pubkey], limit: 4 }, 3000);
     const newest = [...events].sort((a,b) => b.created_at - a.created_at)[0];
     const content = newest ? JSON.parse(newest.content) : {};
