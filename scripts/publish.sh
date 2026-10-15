@@ -10,13 +10,24 @@ cd "$ROOT_DIR"
 
 [ -f "$ROOT_DIR/.env.release" ] && . "$ROOT_DIR/.env.release"
 
-# `--only prerelease` has its own options (--rc, --next); route it before the
-# shared parser below rejects them. Every other flag is forwarded untouched.
-__prev=""; __is_prerelease=0
+# `--only prerelease` and `--only sandbox` have their own options (--rc,
+# --next); route them before the shared parser below rejects them. Every other
+# flag is forwarded untouched.
+__prev=""; __is_prerelease=0; __is_sandbox=0
 for __arg in "$@"; do
   [ "$__prev" = "--only" ] && [ "$__arg" = "prerelease" ] && __is_prerelease=1
+  [ "$__prev" = "--only" ] && [ "$__arg" = "sandbox" ] && __is_sandbox=1
   __prev="$__arg"
 done
+if [ "$__is_sandbox" = "1" ]; then
+  __fwd=(); __skip=0
+  for __arg in "$@"; do
+    if [ "$__skip" = "1" ]; then __skip=0; continue; fi
+    if [ "$__arg" = "--only" ]; then __skip=1; continue; fi
+    __fwd+=("$__arg")
+  done
+  exec "$ROOT_DIR/scripts/deploy-sandbox.sh" ${__fwd[@]+"${__fwd[@]}"}
+fi
 if [ "$__is_prerelease" = "1" ]; then
   __fwd=(); __skip=0
   for __arg in "$@"; do
@@ -53,6 +64,7 @@ Targets (exactly one):
   tag               Verify/push current main and its signed vX.Y.Z tag. No deploy.
   web               Deploy getchama.app only.
   sandbox           Build/deploy the sandbox (poc.getchama.app, sim forced on) only; no tag or Android.
+                    --rc N [--next …] labels it X.Y.Z-rc.N, like prerelease (transient).
   prerelease        Build a signed X.Y.Z-rc.N APK and host it at poc.getchama.app/prerelease/ only (--rc N, --next patch|minor|major).
   landing           Deploy chama.community only.
   android           Build, sign, and verify Android release assets locally only.
@@ -129,13 +141,6 @@ case "$TARGET" in
   github|tag|web|sandbox|landing|android|github-assets|release-page|zapstore|zapstore-listing|full) ;;
   *) echo "❌ Unknown publish target: $TARGET"; usage; exit 1 ;;
 esac
-
-if [ "$TARGET" = "sandbox" ]; then
-  if [ "$DRY_RUN" = "1" ]; then
-    exec "$ROOT_DIR/scripts/release.sh" --deploy-sandbox --dry-run
-  fi
-  exec "$ROOT_DIR/scripts/release.sh" --deploy-sandbox
-fi
 
 VERSION=$(node -p "require('./package.json').version")
 TAG="${TAG:-v$VERSION}"

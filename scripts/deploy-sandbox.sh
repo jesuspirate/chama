@@ -21,15 +21,51 @@ SANDBOX_REMOTE_DIR="chama-poc-dist"
 SANDBOX_URL="https://poc.getchama.app"
 MARKER="chama-sandbox-build"
 
-if [ "${1:-}" = "--dry-run" ]; then
-  echo "SANDBOX only: predeploy; VITE_CHAMA_SANDBOX=1 build → dist-sandbox; upload → ~/$SANDBOX_REMOTE_DIR ($SANDBOX_URL)"
-  echo "No live upload, version bump, commit, tag, Android sync or bridge restart."
+# --rc N [--next patch|minor|major]: label the sandbox with the same transient
+# X.Y.Z-rc.N version as `--only prerelease --rc N`, so the version on screen
+# says which candidate the sandbox runs (Jet, 6.4.25). Restored on exit and
+# never committed. Without --rc the committed version is shown, as before.
+RC=""
+NEXT="patch"
+DRY_RUN=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --rc) RC="${2:-}"; shift 2 ;;
+    --next) NEXT="${2:-}"; shift 2 ;;
+    --dry-run) DRY_RUN=1; shift ;;
+    *) echo "Usage: release.sh --deploy-sandbox [--rc N] [--next patch|minor|major] [--dry-run]"; exit 1 ;;
+  esac
+done
+case "$NEXT" in patch|minor|major) ;; *) echo "❌ --next must be patch, minor or major"; exit 1 ;; esac
+BASE_VERSION="$(node -p "require('./package.json').version")"
+LABEL="$BASE_VERSION"
+if [ -n "$RC" ]; then
+  [[ "$RC" =~ ^[1-9][0-9]*$ ]] || { echo "❌ --rc must be a positive integer"; exit 1; }
+  NEXT_VERSION="$(node -e "
+const [a,b,c] = '$BASE_VERSION'.split('-')[0].split('.').map(Number);
+console.log({patch:[a,b,c+1], minor:[a,b+1,0], major:[a+1,0,0]}['$NEXT'].join('.'));")"
+  LABEL="$NEXT_VERSION-rc.$RC"
+fi
+
+if [ "$DRY_RUN" = "1" ]; then
+  echo "SANDBOX only (v$LABEL): predeploy; VITE_CHAMA_SANDBOX=1 build → dist-sandbox; upload → ~/$SANDBOX_REMOTE_DIR ($SANDBOX_URL)"
+  echo "No live upload, committed version bump, commit, tag, Android sync or bridge restart."
   exit 0
 fi
-[ $# -eq 0 ] || { echo "Usage: release.sh --deploy-sandbox [--dry-run]"; exit 1; }
 : "${CHAMA_DEPLOY_HOST:?CHAMA_DEPLOY_HOST is required}"
 : "${CHAMA_DEPLOY_KEY:?CHAMA_DEPLOY_KEY is required}"
 [ -f "$CHAMA_DEPLOY_KEY" ] || { echo "❌ Deploy key does not exist"; exit 1; }
+
+if [ -n "$RC" ]; then
+  if [ -n "$(git status --porcelain -- package.json package-lock.json)" ]; then
+    echo "❌ package.json / package-lock.json are already modified; refusing to layer a transient version on top."
+    exit 1
+  fi
+  restore_version() { git checkout -q -- package.json package-lock.json 2>/dev/null || true; }
+  trap restore_version EXIT
+  npm version "$LABEL" --no-git-tag-version >/dev/null
+  echo "🔖 Transient version $LABEL (restored on exit; never committed)"
+fi
 
 VITE_CHAMA_SANDBOX=0 npm run predeploy
 rm -rf dist-sandbox
@@ -65,4 +101,4 @@ if [ -z "$served" ] || [ "$served_ok" != "1" ]; then
   echo "❌ $SANDBOX_URL is not serving the sandbox marker after upload. Investigate before using it."
   exit 1
 fi
-echo "✅ Sandbox v$(node -p "require('./package.json').version") is live at $SANDBOX_URL (previous copy kept as ~/$SANDBOX_REMOTE_DIR.backup-$STAMP). Live output untouched."
+echo "✅ Sandbox v$LABEL is live at $SANDBOX_URL (previous copy kept as ~/$SANDBOX_REMOTE_DIR.backup-$STAMP). Live output untouched."

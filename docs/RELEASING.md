@@ -27,7 +27,7 @@ Use the same entry point with `--only` when the version already exists and only 
 | Push committed code | `npm run ship -- --only github` | Tags, deployments, releases |
 | Push/verify the signed version tag | `npm run ship -- --only tag` | Web, Android, Zapstore |
 | Deploy getchama.app | `npm run ship -- --only web` | Landing, GitHub, Zapstore |
-| Deploy the sandbox (poc.getchama.app) | `npm run ship -- --only sandbox` | Live web, tags, Android, Zapstore |
+| Deploy the sandbox (poc.getchama.app) | `npm run ship -- --only sandbox [--rc N]` | Live web, tags, Android, Zapstore |
 | Host a prerelease APK for a test phone | `npm run ship -- --only prerelease [--rc N] [--next patch\|minor\|major]` | Tags, commits, GitHub, Zapstore, Start9, web |
 | Deploy chama.community | `npm run ship -- --only landing` | App, GitHub, Zapstore |
 | Prepare Android assets | `npm run ship -- --only android` | Every remote channel |
@@ -47,7 +47,7 @@ If `main` has advanced beyond the requested release tag, the GitHub-assets, Zaps
 
 `https://poc.getchama.app` serves the current worktree built with `VITE_CHAMA_SANDBOX=1`: production code with sim mode forced on. The URL flag, the entry modal's exit button and localStorage are all ignored there, so that origin can never reach a real federation or move real sats, while trades still run through the real Nostr relays (sim-tagged, so the live app never sees them). Use it to walk a release candidate through a full trade from any browser or phone before `ship`, with nobody at risk.
 
-`npm run ship -- --only sandbox` runs the gates, builds into `dist-sandbox/` (never `dist/`), refuses a bundle without the sandbox marker, keeps a dated copy of the previous sandbox on the VPS, and verifies the served origin after upload. The live lane refuses a sandbox bundle, and a sandbox build is never mirrored from a live deploy.
+`npm run ship -- --only sandbox` runs the gates, builds into `dist-sandbox/` (never `dist/`), refuses a bundle without the sandbox marker, keeps a dated copy of the previous sandbox on the VPS, and verifies the served origin after upload. With `--rc N` (and optional `--next minor|major`) it carries the same transient `X.Y.Z-rc.N` version as the matching prerelease APK, so the version on screen says which candidate the sandbox runs; the version is restored on exit and never committed. Deploy the sandbox with the same `--rc N` every time a prerelease is built. The live lane refuses a sandbox bundle, and a sandbox build is never mirrored from a live deploy.
 
 ## Prerelease APK
 
