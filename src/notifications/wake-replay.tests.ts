@@ -52,7 +52,7 @@ console.log('PASS native wake transitions, local chat text, explicit mute and re
 // unrelated chain, and a capturing relay. No production key or wallet is used.
 const { NsecSigner } = await import('../escrow-engine/nsec-signer.js');
 const { EscrowClient } = await import('../escrow-engine/escrow-client.js');
-const { nip19, finalizeEvent } = await import('nostr-tools');
+const { nip19, finalizeEvent, verifyEvent } = await import('nostr-tools');
 const { runWakeJob, wakeFilters, wakePeerTags } = await import('./wake-replay.js');
 const { buildWakeIndex, communityWakeTag } = await import('./wake-index.js');
 const { deriveWatchTag, deriveCommunityWakeTag } = await import('./web-push-client.js');
@@ -122,6 +122,22 @@ try {
   const partialJob=await runWakeJob({snapshot:wakeSnapshot,nsec:nip19.nsecEncode(sellerSecret),tags:[communityWakeTag('us-blf')],lastWake:0,fired:[]});
   assert.equal(partialJob.failedTrades,1); assert.equal(partialJob.result,'partial replay');
   assert(partialJob.notifications.some(n=>n.body.includes('Bestie joined')),'one broken affected trade does not veto the valid JOIN');
+  // Jet (rc.13): the real app must never notify about a sandbox trade, e.g.
+  // wake a real arbiter for a sandbox dispute. The wake replay applies the
+  // same sim split as the app: the same JOIN, sandbox-tagged, is ignored.
+  {
+    // The buyer's real JOIN, re-signed by the buyer with the sandbox tag added.
+    const sandboxJoin = await buyerSigner.signEvent({ kind: join.kind, created_at: join.created_at,
+      tags: [...join.tags, ['chama-sim', 'v1']], content: join.content } as any);
+    assert(verifyEvent(sandboxJoin as any), 'a validly signed sandbox event');
+    returned = [sandboxJoin as any];
+    const sandboxJob = await runWakeJob({snapshot:wakeSnapshot,nsec:nip19.nsecEncode(sellerSecret),tags:[communityWakeTag('us-blf')],lastWake:0,fired:[]});
+    assert.equal(sandboxJob.notifications.length, 0, 'a sandbox JOIN never notifies the real app');
+    assert.equal(sandboxJob.affectedTrades, 0);
+    returned = [join];
+    const realAgain = await runWakeJob({snapshot:wakeSnapshot,nsec:nip19.nsecEncode(sellerSecret),tags:[communityWakeTag('us-blf')],lastWake:0,fired:[]});
+    assert(realAgain.notifications.some(n=>n.body.includes('Bestie joined')), 'the real JOIN still notifies');
+  }
   (buyerClient as any).states.set(listing.id,joined);
   await buyerClient.sendChat(listing.id,'are you up?');
   returned=[signed.at(-1)!]; seenQueries.length=0;

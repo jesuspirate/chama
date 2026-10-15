@@ -7,6 +7,7 @@ import { base64urlnopad } from "@scure/base";
 import { nip19, nip44, getPublicKey, verifyEvent } from 'nostr-tools';
 import { parseEscrowEvent, sortEventChain } from '../escrow-engine/event-parser.js';
 import { replayEventChain } from '../escrow-engine/state-machine.js';
+import { shouldDropForSimPolicy } from '../sim/simMode.js';
 import { needsYouReasonFor } from '../ui/decisions.js';
 import { onchainAttention } from '../escrow-engine/onchain-attention.js';
 import { circleReturnSignatureNotification, joinedListingNotification, newListingNotificationFor, chatNotificationFor, onchainNotificationBody, notificationForTransition, type DmNotifyPref, type TradeNotification } from './trade-notifications.js';
@@ -196,17 +197,23 @@ export interface WakeInput { snapshot: WakeSnapshot; nsec: string; lastWake: num
 /** Never replay unrelated old trades. One invalid affected trade cannot hide
  * a valid JOIN or CHAT on another trade in the same wake. */
 export async function runWakeJob(input: WakeInput) {
-  const fresh = (await fetchWakeEvents(input.snapshot, input.tags)).filter(e => verifyEvent(e));
+  // Same world split as the app (EscrowClient's relay chokepoint): this wake
+  // replay opens its own sockets, so without it the real app could notify
+  // about sandbox trades, e.g. wake a real arbiter for a sandbox dispute
+  // (Jet, 6.4.25-rc.13). Cached snapshot events are filtered too.
+  const sameWorld = (e: NostrEvent) => !shouldDropForSimPolicy(e);
+  const snapshotEvents = input.snapshot.events.filter(sameWorld);
+  const fresh = (await fetchWakeEvents(input.snapshot, input.tags)).filter(e => verifyEvent(e) && sameWorld(e));
   const ids = new Set(fresh.flatMap(e => e.tags.filter(t => t[0] === 'd').map(t => t[1])));
   const old = new Map<string, EscrowState>(), next = new Map<string, EscrowState>();
   const failures: string[] = [];
-  const parents = [...input.snapshot.events, ...fresh].filter(e => {
+  const parents = [...snapshotEvents, ...fresh].filter(e => {
     if (e.kind !== 38100 || !verifyEvent(e)) return false;
     try { return JSON.parse(e.content).category === "chama"; } catch { return false; }
   });
   for (const id of ids) {
     const belongs = (e: NostrEvent) => e.tags.some(t => t[0] === 'd' && t[1] === id);
-    const cached = input.snapshot.events.filter(belongs);
+    const cached = snapshotEvents.filter(belongs);
     try { for (const [key, state] of replayWake([...cached, ...parents], input.snapshot.pubkey, input.nsec)) old.set(key, state); }
     catch { /* An incomplete old baseline cannot veto a complete new replay. */ }
     try { for (const [key, state] of replayWake([...cached, ...fresh.filter(belongs), ...parents], input.snapshot.pubkey, input.nsec,
@@ -217,7 +224,7 @@ export async function runWakeJob(input: WakeInput) {
   const watchTags = wakePeerTags(next.values(), input.snapshot.pubkey, input.nsec);
   return { notifications: selectWakeNotifications(next.values(), old, input.snapshot, input.lastWake, input.fired),
     watchTags, snapshotDelta: fresh.filter(e => verifyEvent(e)),
-    ...buildWakeIndex([...input.snapshot.events, ...fresh.filter(e => verifyEvent(e))], input.snapshot.homeCommunity),
+    ...buildWakeIndex([...snapshotEvents, ...fresh.filter(e => verifyEvent(e))], input.snapshot.homeCommunity),
     result: failures.length ? 'partial replay' : ids.size ? 'replayed' : 'nothing new', affectedTrades: ids.size, failedTrades: failures.length };
 }
 
