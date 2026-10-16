@@ -6,21 +6,6 @@
   "permissions": [
     "core:default",
     {
-      "identifier": "shell:allow-spawn",
-      "allow": [
-        {
-          "name": "chama-fedimint-bridge",
-          "sidecar": true,
-          "args": true
-        },
-        {
-          "name": "binaries/chama-fedimint-bridge",
-          "sidecar": true,
-          "args": true
-        }
-      ]
-    },
-    {
       "identifier": "http:default",
       "allow": [
         { "url": "https://mempool.space/*" },
