@@ -182,17 +182,26 @@ function applySealed(scope: string, op: ListOp): Promise<void> {
   const sealer = activeSealer;
   const id = scopedStorageKey(NWC_CONNECTIONS_STORAGE_KEY, scope);
   const backupId = scopedStorageKey(NWC_CONNECTIONS_BACKUP_STORAGE_KEY, scope);
-  sealedWrites = sealedWrites.then(async () => {
+  sealedWrites = sealedWrites.then(() => withCrossTabLock(async () => {
     if (!sealer) return;
+    let plain: SavedNwcConnection[] = [];
+    try { plain = parseList(localStorage.getItem(id) ?? localStorage.getItem(backupId)); } catch {}
     let current: SavedNwcConnection[];
     try {
       current = parseList(await sealer.get(id));
     } catch {
-      // Unreadable now: change nothing stored; the in-memory list stays.
+      // The encrypted copy can't be read right now: leave it untouched and
+      // keep this change in plain copies, never only in memory.
+      const fallback = dedupeConnections(op(dedupeConnections([...plain, ...(sealedCache.get(id) ?? [])])));
+      try {
+        const serialized = JSON.stringify(fallback);
+        localStorage.setItem(id, serialized);
+        localStorage.setItem(backupId, serialized);
+      } catch {}
+      sealedCache.set(id, fallback);
+      announce(scope);
       return;
     }
-    let plain: SavedNwcConnection[] = [];
-    try { plain = parseList(localStorage.getItem(id) ?? localStorage.getItem(backupId)); } catch {}
     const next = dedupeConnections(op(dedupeConnections([...plain, ...current])));
     const serialized = JSON.stringify(next);
     try {
@@ -204,8 +213,19 @@ function applySealed(scope: string, op: ListOp): Promise<void> {
     }
     sealedCache.set(id, next);
     announce(scope);
-  });
+  }));
   return sealedWrites;
+}
+
+/** Run one read-change-write at a time across this browser's tabs, where
+ *  the Web Locks API exists; elsewhere tabs rely on writes being rare. */
+function withCrossTabLock(fn: () => Promise<void>): Promise<void> {
+  try {
+    const locks = (globalThis as { navigator?: { locks?: { request?: (name: string, cb: () => Promise<void>) => Promise<void> } } })
+      .navigator?.locks;
+    if (locks?.request) return locks.request(SEALED_CHANNEL, fn);
+  } catch {}
+  return fn();
 }
 
 /** Load the signed-in user's saved NWC connections from encrypted storage,

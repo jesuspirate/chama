@@ -190,6 +190,8 @@ const backupKey = scopedStorageKey(nwc.NWC_CONNECTIONS_BACKUP_STORAGE_KEY, user)
   store.set(SAVED_NSEC_KEY, "nsec1newer");
   assert.equal(await readBrowserSavedNsec(localStorage, s), "nsec1newer");
   assert.equal(s.sealed.get(SAVED_NSEC_KEY), "nsec1newer");
+  assert.ok([...s.sealed.entries()].some(([k, v]) => k.startsWith(`${SAVED_NSEC_KEY}:archived:`) && v === "nsec1older"),
+    "the replaced sealed key is kept aside, not lost");
   // A save that falls back to plain also clears the older sealed key.
   s.sealed.set(SAVED_NSEC_KEY, "nsec1older");
   s.opts.failSet = true;
@@ -207,6 +209,21 @@ const backupKey = scopedStorageKey(nwc.NWC_CONNECTIONS_BACKUP_STORAGE_KEY, user)
   assert.equal(await readBrowserSavedNsec(localStorage, s), null, "no auto sign-in after sign-out");
   await saveNsec("nsec1again", "imported", localStorage, undefined, s);
   assert.equal(await readBrowserSavedNsec(localStorage, s), "nsec1again", "saving again clears the mark");
+}
+
+{
+  // Re-check: when the encrypted list can't be read, a change goes to plain
+  // copies instead of living only in memory.
+  store.clear();
+  nwc.resetSealedNwcForTests();
+  setLocalStorageUserScope(user);
+  const s = fakeSealer();
+  await nwc.hydrateSavedNwcConnections(s);
+  s.opts.failGet = true;
+  nwc.addOrTouchSavedNwcConnection(conn(walletA, "8".repeat(64)));
+  await nwc.flushSealedNwcWrites();
+  assert.ok(store.get(primaryKey)?.includes(walletA), "kept in plain storage");
+  assert.ok(store.get(backupKey)?.includes(walletA));
 }
 
 console.log("PASS M9: saved key and NWC connections kept encrypted, moved in from plain storage, never dropped");

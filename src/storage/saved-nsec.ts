@@ -75,6 +75,11 @@ export async function readBrowserSavedNsec(
   }
   if (plain && sealer) {
     try {
+      // An older app (a stale PWA, a rollback) can't see the sealed key and
+      // may have saved a different one plainly. Keep the sealed one aside
+      // before it is replaced; if that can't be done, replace nothing.
+      const sealed = (await sealer.get(SAVED_NSEC_KEY))?.trim();
+      if (sealed && sealed !== plain) await sealer.set(`${SAVED_NSEC_KEY}:archived:${Date.now()}`, sealed);
       await sealer.set(SAVED_NSEC_KEY, plain);
       try { storage.removeItem?.(SAVED_NSEC_KEY); } catch {}
     } catch {
