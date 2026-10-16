@@ -45,6 +45,29 @@ export const BUILTIN_ESPLORA_BASE = {
 export const MAINNET_GENESIS_HASH =
   "000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f";
 
+/** A Bitcoin mainnet block after the XBT (BLAKE2b) hard fork. XBT shares
+ *  Bitcoin's genesis and addresses, so genesis alone cannot tell them apart;
+ *  a block both chains mined separately can. Mined 2026-10-05; identical on
+ *  https://mempool.space/api/block-height/970000 and
+ *  https://blockstream.info/api/block-height/970000 */
+export const MAINNET_CHECKPOINT = {
+  height: 970_000,
+  hash: "000000000000000000014e6a9bad5f954f266cfb3e8f63f8c2fb7967f29b5a07",
+} as const;
+
+/** Bitcoin block headers are 80 bytes. XBT's are 164. */
+const MAINNET_HEADER_HEX_LENGTH = 160;
+
+const HASH_RE = /^[0-9a-f]{64}$/;
+const HEX_RE = /^(?:[0-9a-f]{2})+$/;
+
+/** Esplora answers these endpoints in plain text. */
+function hexText(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const hex = raw.trim().toLowerCase();
+  return HEX_RE.test(hex) ? hex : null;
+}
+
 export type EsploraProbeVerdict =
   | "ok"
   /** Did not answer, timed out, or returned non-2xx. */
@@ -90,9 +113,10 @@ export function normalizeEsploraBase(raw: string): string | null {
  * The fetcher is injected so this is testable without a network, and so the
  * caller controls the timeout.
  *
- * ⚠ ASYMMETRIC BY DESIGN. On **mainnet** the genesis hash must match: real
- * money is at stake, and an explorer quietly reporting a different chain would
- * report every bond as unfunded. On **test networks** any reachable Esplora is
+ * ⚠ ASYMMETRIC BY DESIGN. On **mainnet** the genesis hash, a post-fork
+ * checkpoint, and the tip header's size must all match: real money is at
+ * stake, and an explorer quietly reporting a different chain would report
+ * every bond as unfunded — or, for a fork that shares our addresses, funded. On **test networks** any reachable Esplora is
  * accepted, because signet variants (Mutinynet among them) legitimately have
  * different genesis hashes and pinning one would reject the very endpoint we
  * ship as the default.
@@ -118,6 +142,26 @@ export async function probeEsplora(
       if (genesis.trim().toLowerCase() !== MAINNET_GENESIS_HASH) {
         return { verdict: "wrong-network", tipHeight };
       }
+    } catch {
+      return { verdict: "unreachable", tipHeight };
+    }
+
+    // XBT shares the genesis above. Our checkpoint block is not on its chain.
+    try {
+      const pinned = hexText(await fetchJson(`/block-height/${MAINNET_CHECKPOINT.height}`));
+      if (!pinned || !HASH_RE.test(pinned)) return { verdict: "not-esplora", tipHeight };
+      if (pinned !== MAINNET_CHECKPOINT.hash) return { verdict: "wrong-network", tipHeight };
+    } catch {
+      return { verdict: "unreachable", tipHeight };
+    }
+
+    // And its headers are not 80 bytes.
+    try {
+      const tipHash = hexText(await fetchJson("/blocks/tip/hash"));
+      if (!tipHash || !HASH_RE.test(tipHash)) return { verdict: "not-esplora", tipHeight };
+      const header = hexText(await fetchJson(`/block/${tipHash}/header`));
+      if (!header) return { verdict: "not-esplora", tipHeight };
+      if (header.length !== MAINNET_HEADER_HEX_LENGTH) return { verdict: "wrong-network", tipHeight };
     } catch {
       return { verdict: "unreachable", tipHeight };
     }
