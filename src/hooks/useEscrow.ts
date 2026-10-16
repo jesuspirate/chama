@@ -2155,6 +2155,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       console.debug("[chama] fedimint cleanup error:", e)
     );
     fedimintRef.current = null;
+    openScopeRef.current = null;
     bridgeRef.current = null;
     signerRef.current = null;
     fundingInProgressRef.current = null;
@@ -2222,7 +2223,10 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
 	      }
 	      const fedimint = fedimintRef.current;
 	      fedimint?.cleanup().catch(() => {});
-	      if (fedimintRef.current === fedimint) fedimintRef.current = null;
+	      if (fedimintRef.current === fedimint) {
+	        fedimintRef.current = null;
+	        openScopeRef.current = null;
+	      }
 	      if (bridgeRef.current) bridgeRef.current = null;
       setLocalStorageUserScope(null);
     };
@@ -4407,6 +4411,13 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
           err.code = plan.reason === "target-unreadable"
             ? "RECONCILE_REFUSED_FEDERATION_UNREADABLE"
             : "RECONCILE_REFUSED_SCOPE_COLLISION";
+          // Close the wallet that was opened for the check, so the screen
+          // never shows one federation's wallet under another's trades.
+          try { await fedimint.cleanup(); } catch {}
+          fedimintRef.current = null;
+          bridgeRef.current = null;
+          healthRef.current = { ok: null, at: null };
+          openScopeRef.current = null;
           throw err;
         }
         if (plan.kind === "park") {
@@ -4770,6 +4781,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
         // retrying forever against the same immutable refusal.
         const deferredClient = fedimintRef.current;
         fedimintRef.current = null;
+        openScopeRef.current = null;
         bridgeRef.current = null;
         try { await deferredClient?.cleanup(); } catch {}
         updateFedimint({
@@ -4821,6 +4833,11 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     // can't read it, treat as "unknown" and refuse without force —
     // we'd rather false-positive than destroy bearer notes.
     let currentBalanceMsats: number | null = null;
+    const clientWasOpen = fedimintRef.current !== null;
+    const openFederationId = (() => {
+      try { return fedimintRef.current?.isJoined() ? fedimintRef.current.getFederationId() : null; }
+      catch { return null; }
+    })();
     try {
       if (fedimintRef.current) {
         currentBalanceMsats = await fedimintRef.current.getBalance();
@@ -4859,6 +4876,22 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       throw err;
     }
 
+    // H4: reset only the file of the wallet that is actually open. With no
+    // open wallet the identity's first file is the target, and that file
+    // may be a wallet kept for another federation: never wipe one of those.
+    const activePubkey = await signerRef.current?.getPublicKey().catch(() => null) ?? null;
+    const resetScope = (!isNativeBridgeModeOn() && clientWasOpen ? openScopeRef.current : null) ?? activePubkey;
+    if (
+      !force && !isSimModeOn() && !isNativeBridgeModeOn() && activePubkey && resetScope
+      && scopeHoldsParkedWallet(activePubkey, resetScope, openFederationId)
+    ) {
+      const err = new Error(
+        "This wallet is kept for another federation, so Chama won't reset it. Nothing was changed.",
+      );
+      (err as Error & { code?: string }).code = "RESET_REFUSED_PARKED_WALLET";
+      throw err;
+    }
+
     // Tear down the in-memory wallet first so the OPFS delete isn't
     // blocked by the WASM worker holding the database open.
     try {
@@ -4872,10 +4905,6 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     healthRef.current = { ok: null, at: null };
     clearActiveInvite();
 
-    const activePubkey = await signerRef.current?.getPublicKey().catch(() => null) ?? null;
-    // H4: reset the file that was open, not whichever federation's wallet
-    // happens to live in the identity's first file.
-    const resetScope = (isNativeBridgeModeOn() ? null : openScopeRef.current) ?? activePubkey;
     openScopeRef.current = null;
     await resetLocalFedimintWallet({ storageScope: resetScope });
 
