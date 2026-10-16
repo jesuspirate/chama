@@ -95,13 +95,28 @@ export interface PayoutRecord {
 
 type Journal = Record<string, PayoutRecord>;
 
+/** Parse the stored journal. THROWS when a value exists but is not a journal:
+ *  a corrupt journal may be hiding a submitted or settled record, so reading
+ *  it as empty would re-open the double-pay window, and writing over it would
+ *  destroy the evidence. Writers and the pre-send probe use this. */
+function loadJournalStrict(): Journal {
+  const raw = getScopedStorageItem(PAYOUT_JOURNAL_KEY);
+  if (!raw) return {};
+  const parsed: unknown = JSON.parse(raw);
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error(
+      "This device's payout record can't be read, so Chama can't check whether this trade was already paid. No payment was sent.",
+    );
+  }
+  return parsed as Journal;
+}
+
+/** Display reads. A corrupt journal reads as empty here, but the corrupt value
+ *  is never overwritten (writers use loadJournalStrict) and no payout is sent
+ *  while it stands (assertPayoutJournalWritable refuses). */
 function loadJournal(): Journal {
   try {
-    const raw = getScopedStorageItem(PAYOUT_JOURNAL_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object") return {};
-    return parsed as Journal;
+    return loadJournalStrict();
   } catch (e) {
     console.warn("[chama] payout-journal: loadJournal failed:", e);
     return {};
@@ -127,6 +142,9 @@ function saveJournal(journal: Journal): void {
  * journal, and exercises the same storage path the guard relies on.
  */
 export function assertPayoutJournalWritable(): void {
+  // A journal that exists but cannot be parsed would be read as "no payout
+  // yet" and then overwritten by the intent write. Refuse instead.
+  loadJournalStrict();
   const probeKey = `${PAYOUT_JOURNAL_KEY}_probe`;
   setScopedStorageItem(probeKey, "1");
   try {
@@ -134,6 +152,13 @@ export function assertPayoutJournalWritable(): void {
   } catch {
     // Cleanup is best-effort; the write above is the load-bearing probe.
   }
+}
+
+/** Throws when the journal exists but cannot be parsed. The claim
+ *  orchestrator calls this before its double-pay guard so an unreadable
+ *  journal refuses every payout kind instead of reading as "never paid". */
+export function assertPayoutJournalReadable(): void {
+  loadJournalStrict();
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -156,7 +181,7 @@ export function recordPayoutIntent(input: {
   escrowId: string;
   amountMsats?: number;
 }): void {
-  const journal = loadJournal();
+  const journal = loadJournalStrict();
   const existing = journal[input.escrowId];
   if (existing?.status === "settled" || existing?.status === "submitted") return;
   journal[input.escrowId] = {
@@ -182,7 +207,7 @@ export function recordPayoutSubmitted(input: {
   operationId?: string;
   amountMsats?: number;
 }): void {
-  const journal = loadJournal();
+  const journal = loadJournalStrict();
   const existing = journal[input.escrowId];
   if (existing?.status === "settled") return; // never un-settle
   journal[input.escrowId] = {
@@ -204,7 +229,7 @@ export function recordPayoutSubmitted(input: {
  * After this, any re-tap of Claim is a no-op that just re-publishes COMPLETE.
  */
 export function markPayoutSettled(escrowId: string, operationId?: string): void {
-  const journal = loadJournal();
+  const journal = loadJournalStrict();
   const existing = journal[escrowId];
   journal[escrowId] = {
     escrowId,
@@ -224,7 +249,15 @@ export function markPayoutSettled(escrowId: string, operationId?: string): void 
  * payable and a retry is correct. Never call this on an unknown outcome.
  */
 export function clearPayoutRecord(escrowId: string): void {
-  const journal = loadJournal();
+  let journal: Journal;
+  try {
+    journal = loadJournalStrict();
+  } catch (e) {
+    // Unreadable journal: leave it untouched. Keeping a record only ever
+    // blocks a re-pay.
+    console.warn("[chama] payout-journal: clearPayoutRecord skipped (journal unreadable):", e);
+    return;
+  }
   if (journal[escrowId]) {
     delete journal[escrowId];
     try {
