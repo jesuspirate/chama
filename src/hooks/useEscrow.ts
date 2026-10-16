@@ -44,6 +44,7 @@ import { observeOnchainAttention, type OnchainObservation } from '../escrow-engi
 import { maybeNotifyOnchainAttention } from '../notifications/notify-service.js';
 import { settlementWinner, winnerSettlementChoice, assertWinnerMayChoose } from "../escrow-engine/onchain-settlement-choice.js";
 import { findEscrowFundingUtxos, deriveCommittedBondKey, escrowDepositWindowSafe } from "../bond-multisig/onchain-escrow-funding.js";
+import { escrowFundingMinConfs, findCorroboratedEscrowFunding, disputeSpendSet } from "../bond-multisig/escrow-chain-reads.js";
 import { finalRefundSettlementProof, observedRefundSpend } from "../escrow-engine/onchain-settlement-transport.js";
 import { fundingArbiter, fundingTermsError, onchainLockError, onchainFunder } from "../escrow-engine/onchain-funding-terms.js";
 import { pendingOnchainLockRecoveries } from "../escrow-engine/onchain-lock-recovery.js";
@@ -129,6 +130,13 @@ async function resolveLineageTenure(
   }
 }
 
+
+/** The sats a LOCK committed at the on-chain escrow. A settlement must spend
+ *  at least this much, whatever later deposits do (H7). */
+function committedEscrowSats(terms: { amountSats: string }): bigint {
+  if (!/^\d+$/.test(terms.amountSats)) throw new Error("The on-chain lock names no valid amount.");
+  return BigInt(terms.amountSats);
+}
 
 function isFediMiniAppRuntime(): boolean {
   if (typeof window !== "undefined" && Boolean((window as any).fediInternal)) return true;
@@ -325,7 +333,7 @@ import {
 } from "../fedimint/native-bridge-adapter.js";
 // ── Arbiter bond (sealed v1: single-key timelock COMMITMENT) ──────────────────
 import * as btcSigner from "@scure/btc-signer";
-import { findBondFundingUtxos, esploraFetcher, defaultEsploraBase, defaultMinConfs, esploraTipHeight, esploraBroadcast, esploraOutspend, esploraRecommendedFeeRate, esploraRequiredFeeRate, type EsploraFetch } from "../bond-multisig/fund-watcher.js";
+import { findBondFundingUtxos, esploraFetcher, defaultEsploraBase, defaultMinConfs, esploraTipHeight, esploraBroadcast, esploraOutspend, esploraRecommendedFeeRate, esploraRequiredFeeRate, capSettlementFeeRate, type EsploraFetch } from "../bond-multisig/fund-watcher.js";
 import { verifyBondLineage, tenureStartHeight } from "../bond-multisig/bond-lineage.js";
 import { deriveEscrowSigningKey, resolveFundingPlan, verifyFunding, buildOnchainLockTerms } from "../bond-multisig/onchain-escrow-funding.js";
 import { DISPUTE_CSV_BLOCKS, REFUND_CLTV_BLOCKS, ESCROW_NETWORK, ESCROW_NETWORK_LABEL, buildOnchainEscrow } from "../bond-multisig/onchain-escrow.js";
@@ -3098,14 +3106,20 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     // Bond ownership was authenticated by the frozen signed announcement.
     // Do not require its deposit to remain unspent: renewal/reclaim cannot
     // change the key that owns this already-created escrow or stop settlement.
-    const found = await findEscrowFundingUtxos({ network: ESCROW_NETWORK,
+    // M7: this read is what tells the counterparty to send. It needs two
+    // explorers to agree and the escrow confirmation depth, not the first
+    // host to answer at one block.
+    const fundingMinConfs = escrowFundingMinConfs(ESCROW_NETWORK);
+    const found = await findCorroboratedEscrowFunding({ network: ESCROW_NETWORK,
       address: plan.address,
-      fetchJson,
-      minConfs: defaultMinConfs(ESCROW_NETWORK),
+      minConfs: fundingMinConfs,
+      timeoutMs: SETTLEMENT_EXPLORER_TIMEOUT_MS,
     });
     if (found.length === 0) {
+      // Anything listed but not yet counted (in the mempool, short of the
+      // required depth, or not yet agreed) is still confirming.
       const pending = await fetchJson(`/address/${plan.address}/utxo`);
-      if (Array.isArray(pending) && pending.some(row => row?.status?.confirmed === false)) {
+      if (Array.isArray(pending) && pending.length > 0) {
         return { observation, plan, verdict: null, tipHeight, depositStatus: "seen" as const };
       }
     }
@@ -3117,7 +3131,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     const verdict = verifyFunding({
       utxos: found.map((f) => f.utxo),
       expectedSats: BigInt(Math.floor((state.joinHolds?.[Role.BUYER]?.amountMsats ?? state.amountMsats) / 1000)),
-      minConfs: defaultMinConfs(ESCROW_NETWORK),
+      minConfs: fundingMinConfs,
     });
     // The named outpoint must really be among the confirmed outputs; totals
     // may include several deposits, as settlement sweeps them all.
@@ -3279,27 +3293,40 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     });
     const utxos = found.map(f => f.utxo);
     if (utxos.length === 0) throw new Error("No confirmed escrow outputs are available to settle.");
+    if (!utxos.some(u => u.txid === t.fundingTxid && u.index === t.fundingVout)) {
+      throw new Error("The committed funding output is not available to settle.");
+    }
     const feeRate = await esploraRequiredFeeRate(fetchJson);
     let fundingHeight: number | undefined;
     let tipHeight: number | undefined;
+    // What this device spends. The coop leaf sweeps everything; the dispute
+    // leaf spends only outputs whose appeal wait has passed (H7).
+    let spend = utxos;
     if (leaf === "dispute") {
-      if (found.some(f => typeof f.blockHeight !== "number")) {
-        throw new Error("The dispute window cannot be verified because a funding height is unknown.");
-      }
-      fundingHeight = Math.max(...found.map(f => f.blockHeight!));
       tipHeight = await esploraTipHeight(fetchJson);
-      const window = disputeWindow({ fundingHeight, tipHeight, csvBlocks: t.disputeCsvBlocks });
-      if (!window.open) throw new Error(`The appeal window is still open — arbitration unlocks in ${window.blocksRemaining} block(s).`);
+      // H7: the appeal wait runs from the committed deposit. A later deposit
+      // (dust sent to keep the window shut) is left behind until it matures,
+      // so it can no longer hold the arbiter's payout hostage.
+      const selected = disputeSpendSet({ found, committed: { txid: t.fundingTxid, index: t.fundingVout },
+        tipHeight, csvBlocks: t.disputeCsvBlocks });
+      if (!selected.open) throw new Error(`The appeal window is still open — arbitration unlocks in ${selected.blocksRemaining} block(s).`);
+      spend = selected.spend.map(f => f.utxo);
+      fundingHeight = selected.fundingHeight;
     }
     return {
-      client, trade, escrow, utxos, destination,
+      client, trade, escrow, utxos: spend, destination,
       fundingHeight, tipHeight, leaf,
       base: defaultEsploraBase(ESCROW_NETWORK), fetchJson,
-      feeSats: settlementBuildFeeSats(feeRate, utxos.length, leaf),
+      feeSats: settlementBuildFeeSats(feeRate, spend.length, leaf),
       expectation: {
+        // Every known output stays known, so a proposal that spends them all
+        // (older clients, or a coop sweep) still verifies.
         escrow, utxos, destination,
         maxFeeSats: settlementFeeCeilingSats(leaf, feeRate, utxos.length),
         network: ESCROW_NETWORK, leaf,
+        // H7: a later deposit (dust) must not freeze the agreed payout.
+        committedOutpoint: { txid: t.fundingTxid, index: t.fundingVout },
+        minInputSats: committedEscrowSats(t),
       },
     };
   }, []);
@@ -3695,7 +3722,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     const candidate = payoutCandidateFor(trade, pubkey);
     if (!candidate) throw new Error("This identity has no payout key for the trade.");
     const pendingPayout = await scanOnchainPayout(candidate, fetchJson, true);
-    const feeRate = pendingPayout.hasUnconfirmed ? liveRate * 3n : liveRate;
+    const feeRate = capSettlementFeeRate(pendingPayout.hasUnconfirmed ? liveRate * 3n : liveRate);
     const built = await buildOnchainPayoutSweep({
       state: trade, viewerPubkey: pubkey, mnemonic, destination,
       fetchJson, feeRateSatsPerVb: feeRate, includeUnconfirmed: true,
