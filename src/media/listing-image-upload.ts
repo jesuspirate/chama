@@ -1,7 +1,9 @@
 const NOSTR_BUILD_UPLOAD_ENDPOINT = "https://nostr.build/api/v2/upload/files";
 const IMAGE_UPLOAD_TIMEOUT_MS = 30_000;
 
-export const MAX_LISTING_IMAGE_REFS = 9;
+// Wire-format validation lives in the protocol core; re-exported for existing callers.
+export { MAX_LISTING_IMAGE_REFS, areSupportedListingImageRefs, isSupportedListingImageRef } from "../protocol/core/listing-image-ref.js";
+import { validateRemoteImageUrl } from "../protocol/core/listing-image-ref.js";
 export type ListingImageUploadAuthorizer = (url: string, method: "POST") => Promise<string>;
 
 class ImageUploadHttpError extends Error {
@@ -39,15 +41,6 @@ export function extractUploadedImageUrl(value: unknown, depth = 0): string | nul
   }
 
   return null;
-}
-
-function validateRemoteImageUrl(value: string): string | null {
-  try {
-    const url = new URL(value);
-    return url.protocol === "https:" ? url.toString() : null;
-  } catch {
-    return null;
-  }
 }
 
 function dataUrlToBlob(dataUrl: string): Blob {
@@ -139,14 +132,4 @@ export async function ensureRemoteListingImage(
   if (remote) return remote;
   if (!imageRef.startsWith("data:image/")) throw new Error("This listing contains an invalid photo link.");
   return uploadListingImage(dataUrlToBlob(imageRef), filename, authorize);
-}
-
-export function areSupportedListingImageRefs(value: unknown): value is string[] {
-  return Array.isArray(value) && value.length <= MAX_LISTING_IMAGE_REFS && value.every(isSupportedListingImageRef);
-}
-
-export function isSupportedListingImageRef(value: unknown): value is string {
-  if (typeof value !== "string") return false;
-  if (value.startsWith("data:image/")) return value.length <= 500_000;
-  return value.length <= 2_048 && validateRemoteImageUrl(value) !== null;
 }

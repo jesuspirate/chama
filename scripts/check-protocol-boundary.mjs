@@ -10,7 +10,10 @@ export function inspectBoundary(root) {
   const options = { moduleResolution: ts.ModuleResolutionKind.Bundler, allowJs: true, baseUrl: root,
     paths: { '@engine/*': ['src/escrow-engine/*'], '@fedimint/*': ['src/fedimint/*'] } };
   const files = new Set(), findings = new Map(), edges = [];
+  // The clock port is the one place the core may read the system clock.
+  const allowed = new Set(['Date.now(:src/protocol/core/clock.ts']);
   const add = (rule, file, source, node) => {
+    if (allowed.has(`${rule}:${file}`)) return;
     const line = source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1;
     findings.set(`${rule}:${file}:${line}`, { rule, file, line });
   };
@@ -58,8 +61,25 @@ export function formatBoundary(report) {
     ...report.findings.map(f => `  ${f.rule} ${f.file}:${f.line}`), '', 'Import closure:', ...report.files.map(f => `  ${f}`), ''].join('\n');
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  try { process.stdout.write(formatBoundary(inspectBoundary(path.resolve(process.argv[2] ?? '.')))); }
-  catch (error) { console.log(`Protocol boundary inspection error (report only): ${error.message}`); }
-  // Intentionally never a release gate, including an inspection failure.
-  process.exitCode = 0;
+  const args = process.argv.slice(2);
+  // --strict: the gate. Any crossing, or a failed inspection, fails the run.
+  // Without it the check stays report-only and always exits zero.
+  const strict = args.includes('--strict');
+  const root = path.resolve(args.find(arg => !arg.startsWith('--')) ?? '.');
+  try {
+    const report = inspectBoundary(root);
+    if (strict) {
+      if (report.findings.length) {
+        console.error(`Protocol boundary: ${report.findings.length} crossing(s) into platform code from the core:`);
+        for (const f of report.findings) console.error(`  ${f.rule} ${f.file}:${f.line}`);
+        process.exitCode = 1;
+      } else console.log(`PASS protocol boundary (strict): ${report.files.length} core files, no crossings`);
+    } else {
+      process.stdout.write(formatBoundary(report));
+      process.exitCode = 0;
+    }
+  } catch (error) {
+    if (strict) { console.error(`Protocol boundary inspection error: ${error.message}`); process.exitCode = 1; }
+    else { console.log(`Protocol boundary inspection error (report only): ${error.message}`); process.exitCode = 0; }
+  }
 }

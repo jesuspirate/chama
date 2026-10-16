@@ -1,4 +1,4 @@
-import { pickPreferredArbiter } from "../arbiters/pool.js";
+import { pickPreferredArbiter } from "../protocol/core/arbiter-pick.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils.js";
 import { validateCircleRound } from "./circle.js";

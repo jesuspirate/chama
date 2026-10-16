@@ -24,9 +24,10 @@
 // until a RESOLVE + CLAIM settles the trade (first accepted wins).
 
 import { Role, EscrowEventKind, Outcome, type EscrowState, type VotePayload } from "./types.js";
-import { pickArbiterFromPool } from "../arbiters/pool.js";
+import { pickArbiterFromPool } from "../protocol/core/arbiter-pick.js";
 import { payoutRecipientFor } from "./recipients.js";
 import { COLLECT_WINDOW_SEC as ROTATION_COLLECT_WINDOW_SEC } from "../chama/rotation.js";
+import { nowSeconds } from "../protocol/core/clock.js";
 
 /** Pool members who hold a copy of the arbiter share AND may vote: the
  *  assigned arbiter + 2 backups. Share-holding and vote-eligibility are capped
@@ -305,7 +306,7 @@ export function oneSidedEscalationAt(state: EscrowState): number | null {
  *  forever. Covers the one-sided case (locker silent) AND the two-sided
  *  RELEASE/REFUND split with an absent arbiter — the same theft. Pure over
  *  committed state. */
-export function isPerformanceContest(state: EscrowState, nowSec: number = Math.floor(Date.now() / 1000)): boolean {
+export function isPerformanceContest(state: EscrowState, nowSec: number = nowSeconds()): boolean {
   // payoutRecipientFor is null only when a participant is unseated, which can
   // only happen pre-LOCK. Suppression is evaluated only post-LOCK (a contest
   // needs a recorded vote), so a null here is the honest "no contest" answer,

@@ -25,7 +25,7 @@
 
 import { EscrowEventKind, type CreatePayload, type ParsedEscrowEvent } from "./types.js";
 import { chamaCreateError } from "../chama/policy.js";
-import { eventIsSim } from "../sim/simMode.js";
+import { eventIsSim } from "../protocol/core/sim-tag.js";
 
 /** Hex characters of the creator's pubkey carried by a creator-tagged id. */
 export const CREATOR_TAG_HEX = 16;

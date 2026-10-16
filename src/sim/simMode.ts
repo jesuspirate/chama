@@ -37,6 +37,7 @@
 // realistic timing). If both flags are set, sim mode wins.
 
 import { CHAMA_SANDBOX } from "./sandbox-build.js";
+import { SIM_TAG_NAME, SIM_TAG_VERSION, eventIsSim } from "../protocol/core/sim-tag.js";
 
 const SIM_STORAGE_KEY = "chama_sim_mode";
 
@@ -103,14 +104,8 @@ export function setSimMode(on: boolean): void {
   } catch { /* no-op */ }
 }
 
-/**
- * Nostr tag that flags an event as sim-mode-published. Consumers
- * filter on the tag's first element (`chama-sim`) and treat any
- * non-empty value as match — the version slot exists so future sim
- * schemas can be distinguished without breaking older events.
- */
-export const SIM_TAG_NAME = "chama-sim";
-export const SIM_TAG_VERSION = "v1";
+// The tag itself is wire format and lives in the protocol core.
+export { SIM_TAG_NAME, SIM_TAG_VERSION, eventIsSim } from "../protocol/core/sim-tag.js";
 
 /**
  * Returns the sim-tag array suitable for splatting into an event's
@@ -121,16 +116,6 @@ export function simTagOrNull(): [string, string] | null {
   return isSimModeOn() ? [SIM_TAG_NAME, SIM_TAG_VERSION] : null;
 }
 
-/**
- * Whether a received Nostr event was published from sim mode. Read
- * from the event's tags; we do not trust the relay-side filter alone.
- */
-export function eventIsSim(event: { tags: string[][] }): boolean {
-  for (const t of event.tags) {
-    if (t[0] === SIM_TAG_NAME) return true;
-  }
-  return false;
-}
 
 /**
  * Drop policy for incoming events given the local sim-mode state:
