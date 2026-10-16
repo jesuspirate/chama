@@ -359,14 +359,14 @@ export class LocalSigner implements Signer {
  * For better UX, consider NIP-46 (Nostr Connect) which Amber also supports.
  */
 const AMBER_PUBKEY_REQUEST_KEY = "chama_amber_pubkey_request";
-const AMBER_PUBKEY_REQUEST_MAX_AGE_MS = 10 * 60 * 1000;
+const AMBER_PUBKEY_REQUEST_MAX_AGE_MS = 30 * 60 * 1000;
 
 /** Remember that this app just asked Amber for its public key. */
 export function markAmberPubkeyRequest(now = Date.now()): void {
   try { localStorage.setItem(AMBER_PUBKEY_REQUEST_KEY, String(now)); } catch {}
 }
 
-/** True once, for a public-key request this app made in the last ten minutes. */
+/** True once, for a public-key request this app made in the last thirty minutes. */
 export function takeAmberPubkeyRequest(now = Date.now()): boolean {
   try {
     const raw = localStorage.getItem(AMBER_PUBKEY_REQUEST_KEY);

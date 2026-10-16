@@ -422,7 +422,7 @@ export async function requestLnurlInvoice(
   // without a description hash are still accepted, as many wallets omit it.
   if (decoded.descriptionHash && meta.metadata
     && decoded.descriptionHash !== bytesToHex(sha256(new TextEncoder().encode(meta.metadata)))) {
-    throw new LnurlError("LnurlMalformedError", "LNURL callback returned an invoice for a different request");
+    throw new LnurlError("LnurlMalformedError", "This wallet sent an invoice that doesn't match what Chama asked for, so nothing was paid. Try another address.");
   }
   return body.pr;
 }

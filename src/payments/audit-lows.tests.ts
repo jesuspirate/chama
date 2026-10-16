@@ -73,7 +73,7 @@ assert.equal(await pay(invoice(1000, metaHash)), invoice(1000, metaHash), "match
 assert.equal(await pay(invoice(1000)), invoice(1000), "an invoice without a description hash is still accepted");
 await assert.rejects(
   pay(invoice(1000, sha256(new TextEncoder().encode("something else")))),
-  /different request/,
+  /doesn't match what Chama asked for/,
   "an invoice committing to other metadata is refused before it is paid",
 );
 
@@ -85,7 +85,7 @@ assert.equal(isAmberPubkey("npub1" + "q".repeat(58)), true);
 assert.equal(isAmberPubkey("<script>"), false);
 assert.equal(takeAmberPubkeyRequest(), false, "no request was made");
 markAmberPubkeyRequest(1_000);
-assert.equal(takeAmberPubkeyRequest(1_000 + 11 * 60 * 1000), false, "a request older than ten minutes is not honoured");
+assert.equal(takeAmberPubkeyRequest(1_000 + 31 * 60 * 1000), false, "a request older than thirty minutes is not honoured");
 markAmberPubkeyRequest(1_000);
 assert.equal(takeAmberPubkeyRequest(2_000), true);
 assert.equal(takeAmberPubkeyRequest(2_000), false, "a request is honoured once");
