@@ -5,8 +5,13 @@
 // answer the two questions that needs: which invite reopens a parked wallet,
 // and which federation an invite belongs to.
 
-import { CURATED_PRESETS, expectedFederationIdForInvite } from "./federation-config.js";
-import { getArbiterFederationRoute, listArbiterFederationRoutes } from "./arbiter-federation-store.js";
+import { CURATED_PRESETS, expectedFederationIdForInvite, shouldReconcileFederation } from "./federation-config.js";
+import {
+  arbiterFederationStorageScope,
+  getArbiterFederationRoute,
+  listArbiterFederationRoutes,
+  rememberArbiterFederationRoute,
+} from "./arbiter-federation-store.js";
 import type { FederationInspection } from "./federation-inspection.js";
 
 /** The invite a parked wallet is reopened with: the invite it last joined
@@ -51,4 +56,104 @@ export async function federationIdForInvite(
   } catch {
     return null;
   }
+}
+
+function cleanId(value: string | null | undefined): string | null {
+  const id = value?.trim().toLowerCase();
+  return id && /^[0-9a-f]{64}$/.test(id) ? id : null;
+}
+
+/** The browser storage scope a wallet for `federationId` lives in: its
+ *  remembered route, else the identity's first (legacy) file while no other
+ *  federation claims it, else a scope of its own. */
+export function scopeForFederation(pubkey: string, federationId: string | null): string {
+  const fed = cleanId(federationId);
+  if (fed) {
+    const route = getArbiterFederationRoute(pubkey, fed);
+    if (route) return route.storageScope;
+    const legacyClaimed = listArbiterFederationRoutes(pubkey)
+      .some((route) => route.storageScope === pubkey && route.federationId !== fed);
+    if (legacyClaimed) return arbiterFederationStorageScope(pubkey, fed);
+  }
+  return pubkey;
+}
+
+/** Whether the open wallet is on a different federation from the one wanted.
+ *  Compares federation ids when both are known (an unlisted invite has no
+ *  locally known id, so comparing invite strings alone misreads it). */
+export function walletDrifted(inputs: {
+  walletIsJoined: boolean;
+  walletFederationId: string | null | undefined;
+  desiredFederationId: string | null | undefined;
+  previousActiveInvite: string | null;
+  desiredInvite: string;
+}): boolean {
+  if (!inputs.walletIsJoined) return false;
+  const wallet = cleanId(inputs.walletFederationId);
+  const desired = cleanId(inputs.desiredFederationId);
+  if (wallet && desired) return wallet !== desired;
+  return shouldReconcileFederation({
+    previousActiveInvite: inputs.previousActiveInvite,
+    desiredInvite: inputs.desiredInvite,
+    walletIsJoined: inputs.walletIsJoined,
+    walletFederationId: inputs.walletFederationId,
+  });
+}
+
+export type DriftPlan =
+  /** Park the open wallet under its federation and open `targetScope`. */
+  | { kind: "park"; park: { federationId: string; inviteCode: string; storageScope: string }; targetScope: string }
+  /** Moving is not safe; nothing changes. */
+  | { kind: "refuse"; reason: "target-unreadable" | "scope-collision" }
+  /** The open wallet can't be reopened later (no invite is known for it):
+   *  only an empty wallet, or a confirmed one, may be replaced. */
+  | { kind: "replace-if-empty" };
+
+/** What to do when a browser wallet opened on the wrong federation. */
+export function planBrowserDrift(inputs: {
+  pubkey: string;
+  walletFederationId: string;
+  openScope: string;
+  desiredFederationId: string | null;
+  previousActiveInvite: string | null;
+}): DriftPlan {
+  const desired = cleanId(inputs.desiredFederationId);
+  if (!desired) return { kind: "refuse", reason: "target-unreadable" };
+  const wallet = inputs.walletFederationId.trim().toLowerCase();
+  const invite = parkedInviteFor(inputs.pubkey, wallet, inputs.previousActiveInvite);
+  if (!invite) return { kind: "replace-if-empty" };
+  const targetScope = getArbiterFederationRoute(inputs.pubkey, desired)?.storageScope
+    ?? arbiterFederationStorageScope(inputs.pubkey, desired);
+  if (targetScope === inputs.openScope) return { kind: "refuse", reason: "scope-collision" };
+  return { kind: "park", park: { federationId: wallet, inviteCode: invite, storageScope: inputs.openScope }, targetScope };
+}
+
+/** Remember a route and prove it was saved. A wallet is only moved away
+ *  from once its way back is on disk. */
+export function rememberRouteOrThrow(
+  pubkey: string,
+  route: { federationId: string; inviteCode: string; storageScope: string; lastBalanceMsats?: number },
+): void {
+  const previous = getArbiterFederationRoute(pubkey, route.federationId);
+  rememberArbiterFederationRoute(pubkey, {
+    ...route,
+    // A failed balance read keeps the last sighting rather than forgetting it.
+    lastBalanceMsats: route.lastBalanceMsats ?? previous?.lastBalanceMsats,
+  });
+  const saved = getArbiterFederationRoute(pubkey, route.federationId);
+  if (!saved || saved.storageScope !== route.storageScope || saved.inviteCode !== route.inviteCode.trim()) {
+    const err = new Error(
+      "Chama couldn't save where this wallet is kept, so it didn't switch. Nothing was changed.",
+    ) as Error & { code?: string };
+    err.code = "FEDERATION_ROUTE_NOT_SAVED";
+    throw err;
+  }
+}
+
+/** A storage scope some remembered route still points at. Such a file is a
+ *  parked wallet and is never wiped to make room. */
+export function scopeHoldsParkedWallet(pubkey: string, scope: string, exceptFederationId?: string | null): boolean {
+  const except = cleanId(exceptFederationId);
+  return listArbiterFederationRoutes(pubkey)
+    .some((route) => route.storageScope === scope && route.federationId !== except);
 }

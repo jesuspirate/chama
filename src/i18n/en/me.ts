@@ -56,7 +56,7 @@ export const me: Record<string, string> = {
   "me.parkedWalletsTitle": "Also on this device:",
   "me.parkedWalletLine": "{sats} sats on {name} when you last used it",
   "me.parkedWalletUnlisted": "a federation Chama doesn't list",
-  "me.parkedWalletsHint": "Each federation holds its own sats. Open a trade on that federation, or pick its community, to use them.",
+  "me.parkedWalletsHint": "Each federation holds its own sats. Open a trade on that federation to use them.",
 
   "me.arbiterSeatConflict": "Conflicting trade roles: you are listed as both a trader and the arbiter. This trade cannot appear in your arbiter queue. Open it to review the participants.",
   "me.moneySafetyOther": "Other money actions",

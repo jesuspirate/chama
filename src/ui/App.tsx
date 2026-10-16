@@ -733,6 +733,13 @@ export default function App() {
       return { invite, resolve };
     });
   });
+  // A question asked for one identity is never answered for another.
+  useEffect(() => {
+    setPendingUnlistedFederation(previous => {
+      previous?.resolve(false);
+      return null;
+    });
+  }, [pubkey]);
   const answerUnlistedFederation = (ok: boolean) => {
     const pending = pendingUnlistedFederation;
     if (!pending) return;
@@ -746,7 +753,9 @@ export default function App() {
 
   // Ecash custody still requires the trade's federation, even when its final
   // destination is a Lightning invoice. Never switch a funded wallet on navigation.
-  const ensureTradeWallet = async (trade: EscrowState): Promise<boolean> => {
+  // H4: `purpose` "claim" skips the unlisted-federation question: the sats
+  // are already locked there, so the only way to them is that federation.
+  const ensureTradeWallet = async (trade: EscrowState, purpose: "fund" | "claim" = "fund"): Promise<boolean> => {
     if (trade.escrowMode === "onchain") return true;
     if (midFunding) {
       setToast({ message: t("app.anotherFundingInProgress"), type: "error" });
@@ -763,12 +772,12 @@ export default function App() {
         currentInvite: liveActiveInvite,
         balanceMsats: preservesArbiterFederationBalances ? 0 : (fedimint.balanceMsats ?? 0),
         activeCommitmentCount,
-        acceptsUnlistedFederation,
+        acceptsUnlistedFederation: purpose === "claim" ? () => true : acceptsUnlistedFederation,
       });
       if (effect.kind === "blocked-active-commitment") throw new Error(t("app.listingOtherChama"));
       if (effect.kind === "unlisted-confirm") {
         if (!await confirmUnlistedFederation(effect.targetInvite)) return false;
-        return ensureTradeWallet(trade);
+        return ensureTradeWallet(trade, purpose);
       }
       if (effect.kind === "destroy-confirm") {
         queueDestroyConfirm({ invite: effect.targetInvite, label: effect.displayName,
@@ -790,7 +799,7 @@ export default function App() {
   // Claim, lifted so LiveTradeSurface fires the IDENTICAL ClaimPayoutModal flow.
   const tradeOnClaim = async (): Promise<void> => {
     if (!selected || selected.escrowMode === "onchain") return;
-    if (!requireOnline() || !await ensureTradeWallet(selected)) return;
+    if (!requireOnline() || !await ensureTradeWallet(selected, "claim")) return;
               // v0.3.0 Phase 3: open ClaimPayoutModal instead of
               // dispatching claimAndRedeem directly. In browsers this
               // can still route through a payout destination; inside
@@ -4707,7 +4716,7 @@ export default function App() {
               if (!selected) return { ok: false, error: "No selected trade" };
               const winner = getWinner(selected);
               if (!winner) return { ok: false, error: "No winner yet" };
-              if (!await ensureTradeWallet(selected)) return { ok: false, error: "Wallet unavailable" };
+              if (!await ensureTradeWallet(selected, "claim")) return { ok: false, error: "Wallet unavailable" };
               const payoutMsats = selected.amountMsats;
               // E1.1: same insurance holdback as the ClaimPayoutModal path.
               const nwcClaimDecision = (!isSimModeOn() && !isTestnetMode() && pubkey)

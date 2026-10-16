@@ -16,7 +16,10 @@ let storageBroken = false;
 const { BLF_FEDERATION_INVITE, BLF_FEDERATION_ID, GBF_FEDERATION_INVITE, GBF_FEDERATION_ID } = await import("./federation-invites.js");
 const { arbiterFederationStorageScope, getArbiterFederationRoute, listArbiterFederationRoutes, rememberArbiterFederationRoute } =
   await import("./arbiter-federation-store.js");
-const { federationIdForInvite, federationIdForRememberedInvite, parkedInviteFor } = await import("./federation-parking.js");
+const {
+  federationIdForInvite, federationIdForRememberedInvite, parkedInviteFor, planBrowserDrift, rememberRouteOrThrow,
+  scopeForFederation, scopeHoldsParkedWallet, walletDrifted,
+} = await import("./federation-parking.js");
 const { acceptUnlistedFederation, hasAcceptedUnlistedFederation } = await import("./unlisted-federation-consent.js");
 const { decideDestroyConfirmRoute, decideListingTapEffect, isListedFederationInvite } = await import("../ui/decisions.js");
 
@@ -117,5 +120,64 @@ assert.equal(await federationIdForInvite(UNLISTED, { inspectFederation: async ()
   "unreachable: no id, so the switch refuses instead of replacing a wallet");
 assert.equal(await federationIdForInvite(UNLISTED, null, async () => ({ federationId: UNLISTED_ID }) as never), UNLISTED_ID,
   "without a wallet open, the public preview answers");
+
+// ── Second-review findings (B1, B2, H3, M4, M5) ─────────────────────────────
+{
+  const CAROL = "d".repeat(64);
+  const U = "e".repeat(64);
+  const UINV = "fed1qqqqanotherunlistedinviteforcarol";
+  // First wallet ever: the identity's legacy file, whatever federation.
+  assert.equal(scopeForFederation(CAROL, BLF_FEDERATION_ID), CAROL, "a fresh identity opens its first file");
+  rememberRouteOrThrow(CAROL, { federationId: BLF_FEDERATION_ID, inviteCode: BLF_FEDERATION_INVITE, storageScope: CAROL });
+  assert.equal(scopeForFederation(CAROL, BLF_FEDERATION_ID), CAROL);
+  assert.equal(scopeForFederation(CAROL, U), `${CAROL}:arbiter-fed:${U}`,
+    "once the first file belongs to a federation, another federation never opens it");
+  assert.equal(scopeForFederation(CAROL, null), CAROL, "unknown id: the first file, where drift handling can see it");
+  rememberRouteOrThrow(CAROL, { federationId: U, inviteCode: UINV, storageScope: `${CAROL}:arbiter-fed:${U}` });
+  assert.equal(scopeForFederation(CAROL, U), `${CAROL}:arbiter-fed:${U}`, "a parked unlisted wallet reopens its own file");
+
+  // B1: reopening a parked unlisted wallet after the active invite was
+  // cleared is not drift, so it is neither re-parked nor replaced.
+  assert.equal(walletDrifted({ walletIsJoined: true, walletFederationId: U, desiredFederationId: U,
+    previousActiveInvite: null, desiredInvite: UINV }), false);
+  assert.equal(walletDrifted({ walletIsJoined: true, walletFederationId: BLF_FEDERATION_ID, desiredFederationId: U,
+    previousActiveInvite: UINV, desiredInvite: UINV }), true,
+  "H3: same invite string but the open wallet is another federation (native boot on the first database)");
+  assert.equal(walletDrifted({ walletIsJoined: false, walletFederationId: null, desiredFederationId: U,
+    previousActiveInvite: null, desiredInvite: UINV }), false, "nothing joined: nothing to move");
+  assert.equal(walletDrifted({ walletIsJoined: true, walletFederationId: BLF_FEDERATION_ID, desiredFederationId: null,
+    previousActiveInvite: UINV, desiredInvite: UINV }), false, "unknown id falls back to the invite comparison");
+
+  // Drift plans for a browser wallet.
+  assert.deepEqual(planBrowserDrift({ pubkey: CAROL, walletFederationId: BLF_FEDERATION_ID, openScope: CAROL,
+    desiredFederationId: U, previousActiveInvite: BLF_FEDERATION_INVITE }), {
+    kind: "park",
+    park: { federationId: BLF_FEDERATION_ID.toLowerCase(), inviteCode: BLF_FEDERATION_INVITE, storageScope: CAROL },
+    targetScope: `${CAROL}:arbiter-fed:${U}`,
+  }, "the open file is parked under its own federation and scope");
+  assert.deepEqual(planBrowserDrift({ pubkey: CAROL, walletFederationId: BLF_FEDERATION_ID, openScope: CAROL,
+    desiredFederationId: null, previousActiveInvite: BLF_FEDERATION_INVITE }), { kind: "refuse", reason: "target-unreadable" });
+  assert.deepEqual(planBrowserDrift({ pubkey: CAROL, walletFederationId: BLF_FEDERATION_ID, openScope: `${CAROL}:arbiter-fed:${U}`,
+    desiredFederationId: U, previousActiveInvite: null }), { kind: "refuse", reason: "scope-collision" },
+  "a file under the target's own scope holding another federation is never replaced");
+  assert.deepEqual(planBrowserDrift({ pubkey: "f".repeat(64), walletFederationId: "9".repeat(64), openScope: "f".repeat(64),
+    desiredFederationId: U, previousActiveInvite: null }), { kind: "replace-if-empty" },
+  "no known invite for the open wallet: only the balance-guarded path remains");
+
+  // M4: a scope a route points at is a parked wallet.
+  assert.equal(scopeHoldsParkedWallet(CAROL, CAROL, U), true);
+  assert.equal(scopeHoldsParkedWallet(CAROL, CAROL, BLF_FEDERATION_ID), false, "the open wallet's own route does not count");
+  assert.equal(scopeHoldsParkedWallet(CAROL, `${CAROL}:nothing`, null), false);
+
+  // M5: the way back must be on disk before a wallet is closed.
+  rememberRouteOrThrow(CAROL, { federationId: U, inviteCode: UINV, storageScope: `${CAROL}:arbiter-fed:${U}`, lastBalanceMsats: 7_000_000 });
+  rememberRouteOrThrow(CAROL, { federationId: U, inviteCode: UINV, storageScope: `${CAROL}:arbiter-fed:${U}` });
+  assert.equal(getArbiterFederationRoute(CAROL, U)?.lastBalanceMsats, 7_000_000, "a failed balance read keeps the last sighting");
+  storageBroken = true;
+  assert.throws(() => rememberRouteOrThrow(CAROL, { federationId: GBF_FEDERATION_ID, inviteCode: GBF_FEDERATION_INVITE,
+    storageScope: `${CAROL}:arbiter-fed:${GBF_FEDERATION_ID}` }), (e: any) => e.code === "FEDERATION_ROUTE_NOT_SAVED");
+  storageBroken = false;
+  assert.equal(getArbiterFederationRoute(CAROL, GBF_FEDERATION_ID), null);
+}
 
 console.log("PASS H4: wallets are kept per federation, and unlisted federations ask first");

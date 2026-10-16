@@ -103,13 +103,18 @@ export function rememberArbiterFederationRoute(
 ): ArbiterFederationRoute {
   const state = read(pubkey);
   const federationId = cleanFederationId(route.federationId);
+  // A route saved without a fresh balance keeps the last one seen, so a
+  // failed read never makes a parked wallet disappear from view.
+  const lastBalanceMsats = typeof route.lastBalanceMsats === "number"
+    && Number.isFinite(route.lastBalanceMsats) && route.lastBalanceMsats >= 0
+    ? route.lastBalanceMsats
+    : state.routes[federationId]?.lastBalanceMsats;
   const saved: ArbiterFederationRoute = {
     federationId,
     inviteCode: route.inviteCode.trim(),
     storageScope: route.storageScope,
     updatedAt: route.updatedAt ?? Date.now(),
-    ...(typeof route.lastBalanceMsats === "number" && Number.isFinite(route.lastBalanceMsats) && route.lastBalanceMsats >= 0
-      ? { lastBalanceMsats: route.lastBalanceMsats } : {}),
+    ...(lastBalanceMsats !== undefined ? { lastBalanceMsats } : {}),
   };
   state.routes[federationId] = saved;
   write(pubkey, state);

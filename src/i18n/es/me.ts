@@ -53,7 +53,7 @@ export const me: Record<string, string> = {
   "me.parkedWalletsTitle": "También en este dispositivo:",
   "me.parkedWalletLine": "{sats} sats en {name} la última vez que la usaste",
   "me.parkedWalletUnlisted": "una federación que Chama no lista",
-  "me.parkedWalletsHint": "Cada federación guarda sus propios sats. Abre un intercambio en esa federación, o elige su comunidad, para usarlos.",
+  "me.parkedWalletsHint": "Cada federación guarda sus propios sats. Abre un intercambio en esa federación para usarlos.",
 
   "me.arbiterSeatConflict": "Roles incompatibles: figuras como parte del intercambio y como árbitro. Este intercambio no puede aparecer en tu cola de arbitraje. Ábrelo para revisar los participantes.",
   "me.moneySafetyOther": "Otras acciones con fondos",
