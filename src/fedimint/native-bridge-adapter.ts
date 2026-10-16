@@ -23,7 +23,9 @@ import type { ChamaOperationMeta } from "../payments/sats-trace.js";
 import {
   LN_PAY_INFLIGHT,
   LN_PAY_REFUNDED,
+  LN_PAY_SUBMIT_FAILED,
   codedPayError,
+  type CodedPayError,
 } from "../payments/ln-pay-codes.js";
 import { expectedFederationIdForInvite } from "./federation-config.js";
 
@@ -1187,6 +1189,12 @@ export class NativeBridgeWallet implements IFedimintWallet {
             "Lightning payout was sent to the bridge but the response was lost — it may be in flight. Not retrying to avoid a double payment; it will reconcile.",
             LN_PAY_INFLIGHT,
           );
+        }
+        // Tag the bridge's own refusal as a submit failure so the claim guard
+        // keeps offering an immediate retry. Uncoded errors are no longer
+        // treated as retry-safe there.
+        if (error instanceof Error && !(error as CodedPayError).code) {
+          (error as CodedPayError).code = LN_PAY_SUBMIT_FAILED;
         }
         throw error;
       }

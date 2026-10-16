@@ -275,6 +275,7 @@ import {
   resetLocalFedimintWallet,
   drainPendingRedemptions,
   stashPendingFunding,
+  assertPendingFundingWritable,
   clearPendingFunding,
   drainPendingFundings,
   clearPendingNativeLockIfIntent,
@@ -375,6 +376,7 @@ import {
   markPayoutSettled,
   clearPayoutRecord,
   assertPayoutJournalWritable,
+  assertPayoutJournalReadable,
   PAY_RECONCILE_SINCE_MARGIN_MS,
 } from "../payments/payout-journal.js";
 import {
@@ -5162,6 +5164,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
           // would double-attempt an already-consumed note on the boot drain.
           receiveEcash: (notes) => receiveFediEcash(notes),
           stashFunding: stashPendingFunding,
+          assertStashWritable: assertPendingFundingWritable,
           clearFunding: clearPendingFunding,
           hashNotes,
           // lockAndPublishWithEcashAction keeps the stale-suppression swallow
@@ -5908,6 +5911,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
         markPayoutSettled,
         clearPayoutRecord,
         assertPayoutJournalWritable,
+        assertPayoutJournalReadable,
         awaitPayoutOutcome: (operationId: string) =>
           bridge.awaitPayoutOutcome(operationId),
         // V7 reconcile-by-escrow. Sim's mocked pay auto-settles and stamps

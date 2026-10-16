@@ -14772,8 +14772,9 @@ console.log("\n── BOLT11 PAYOUT AMOUNT ROUTING ──");
           "Native payInvoice defaults an unrecognized /pay outcome to INFLIGHT (refuse re-pay)");
       }
 
-      // pre-send failure (non-2xx) ⇒ a plain, UNCODED throw — no payment started,
+      // pre-send failure (non-2xx) ⇒ coded SUBMIT_FAILED — no payment started,
       // so the guard clears the record and a fresh retry is correct (no sats moved).
+      // An uncoded throw no longer clears the guard, so the code is load-bearing.
       mockPay({ error: "Couldn't find a reachable federation Lightning gateway" }, 500);
       {
         const wallet = new NativeBridgeWallet("http://bridge.test");
@@ -14781,8 +14782,8 @@ console.log("\n── BOLT11 PAYOUT AMOUNT ROUTING ──");
         try { await wallet.lightning.payInvoice("lnbc100n1payout"); }
         catch (e: any) { threw = true; code = e?.code; }
         assert(threw, "Native payInvoice throws on a pre-send /pay failure");
-        assert(code === undefined,
-          "Native pre-send /pay failure is uncoded (safe-to-retry, not INFLIGHT)");
+        assert(code === "LN_PAY_SUBMIT_FAILED",
+          "Native pre-send /pay failure is coded SUBMIT_FAILED (safe-to-retry, not INFLIGHT)");
       }
 
       // LOST RESPONSE (transport failure) after the bridge may have committed ⇒

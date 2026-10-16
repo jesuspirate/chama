@@ -47,6 +47,10 @@ export interface RunFediFundAndLockDeps {
     oobNotes: string;
     amountMsats: number;
   }) => void;
+  /** Pre-spend probe — assertPendingFundingWritable. Throws when the stash
+   *  can't be read or written, so funding refuses before any ecash leaves
+   *  Fedi. Optional so older callers/tests run unchanged. */
+  assertStashWritable?: () => void;
   /** Remove the stash entry — clearPendingFunding. Called only on a confirmed
    *  outcome (LOCK committed with our notes, or re-absorb confirmed). */
   clearFunding: (escrowId: string) => void;
@@ -107,15 +111,24 @@ async function recoverFailedLock(
   reabsorb: () => Promise<boolean>,
   originalError: string,
   emit: (p: FundAndLockPhase) => void,
+  stashed = true,
 ): Promise<FundAndLockTerminal> {
   const recovered = await reabsorb();
   originalError = originalError.replace(/Local apply failed:[\s\S]*/, "This trade could no longer be locked.");
   const err = recovered
     ? `${originalError} Your sats were returned to your Fedi wallet.`
-    : `${originalError} Your sats are saved — Chama will return them to your Fedi wallet next time you open it.`;
+    : stashed
+      ? `${originalError} Your sats are saved — Chama will return them to your Fedi wallet next time you open it.`
+      : `${originalError} ${UNSAVED_NOTES_COPY}`;
   emit({ kind: "lock-failed", error: err });
   return { kind: "lock-failed", error: err };
 }
+
+/** The one state with no durable copy: the stash write failed after the spend
+ *  and Fedi refused the notes back. Say so plainly rather than promise a
+ *  return on the next open that cannot happen. */
+const UNSAVED_NOTES_COPY =
+  "Chama could not return your sats to your Fedi wallet or save a copy on this device. Keep Chama open and try again.";
 
 // ── runFediFundAndLock ─────────────────────────────────────────────────────
 
@@ -145,6 +158,17 @@ export async function runFediFundAndLock(
     return { kind: "aborted" };
   }
 
+  // The stash is the only durable copy of the notes once they leave Fedi.
+  // Prove it can be written now, while refusing still costs nothing.
+  try {
+    opts.assertStashWritable?.();
+  } catch {
+    const err =
+      "Can't fund safely right now — this device can't save a safety copy of the payment. No sats moved.";
+    emit({ kind: "lock-failed", error: err });
+    return { kind: "lock-failed", error: err };
+  }
+
   // Spend ecash OUT of Fedi. A throw is still pre-spend (Fedi mints nothing it
   // can't back), so also a clean exit.
   let notes: string;
@@ -158,7 +182,13 @@ export async function runFediFundAndLock(
 
   // The sats have now LEFT Fedi and live only in `notes`. Persist them
   // synchronously BEFORE the abort-check + lock can drop them.
-  opts.stashFunding({ escrowId, oobNotes: notes, amountMsats });
+  let stashed = true;
+  try {
+    opts.stashFunding({ escrowId, oobNotes: notes, amountMsats });
+  } catch (e) {
+    console.error("[chama] fedi-fund: stash write failed after the spend:", e);
+    stashed = false;
+  }
 
   // The notesHash the LOCK must commit to for the spend to count as committed.
   const expectedNotesHash = await opts.hashNotes(notes);
@@ -175,9 +205,26 @@ export async function runFediFundAndLock(
     }
   };
 
+  // No durable copy: hand the notes straight back to Fedi instead of locking
+  // with nothing to recover from if the app dies mid-lock. Only when Fedi
+  // refuses them too does the lock go ahead, because the LOCK's own refund
+  // path is then the only recovery left; dropping the notes is never one.
+  if (!stashed) {
+    if (await reabsorb()) {
+      const err =
+        "This device couldn't save a safety copy of the payment, so Chama returned your sats to your Fedi wallet. Nothing was locked.";
+      emit({ kind: "lock-failed", error: err });
+      return { kind: "lock-failed", error: err };
+    }
+  }
+
   // Caller aborted after the spend → refund and report aborted (EXIT A).
   if (signal?.aborted) {
-    await reabsorb();
+    const recovered = await reabsorb();
+    if (!recovered && !stashed) {
+      emit({ kind: "lock-failed", error: UNSAVED_NOTES_COPY });
+      return { kind: "lock-failed", error: UNSAVED_NOTES_COPY };
+    }
     emit({ kind: "aborted" });
     return { kind: "aborted" };
   }
@@ -194,7 +241,7 @@ export async function runFediFundAndLock(
       selectedItems: opts.selectedItems,
     }));
   } catch (e) {
-    return await recoverFailedLock(reabsorb, errMessage(e, "LOCK failed."), emit);
+    return await recoverFailedLock(reabsorb, errMessage(e, "LOCK failed."), emit, stashed);
   }
 
   // Positive confirmation: commit ONLY on a genuine LOCKED-with-our-notesHash.
@@ -213,5 +260,6 @@ export async function runFediFundAndLock(
     reabsorb,
     "This trade was no longer lockable.",
     emit,
+    stashed,
   );
 }

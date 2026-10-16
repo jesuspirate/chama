@@ -35,6 +35,7 @@ export { isTestnetMode, createMockWallet } from "./mock-wallet.js";
 export { drainPendingRedemptions } from "./pending-redemptions.js";
 export {
   stashPendingFunding,
+  assertPendingFundingWritable,
   clearPendingFunding,
   listPendingFundings,
   drainPendingFundings,
