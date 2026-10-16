@@ -427,6 +427,8 @@ import {
   type HydrateIdDiag,
 } from "../escrow-engine/discovery-diagnostics.js";
 import { isSimModeOn } from "../sim/simMode.js";
+import { hydrateSavedNwcConnections } from "../payments/nwc-connections.js";
+import { sealedGet, sealedSet, sealedStoreAvailable } from "../storage/sealed-store.js";
 import { addOrTouchPayoutDestination } from "../payments/payout-destinations.js";
 import { payInvoiceWithNwc } from "../payments/nwc.js";
 import { balanceBlocksFederationSwitch } from "../payments/lightning-fees.js";
@@ -1750,6 +1752,11 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
         );
       }
       setLocalStorageUserScope(pubkey);
+      // M9: load this user's saved NWC connections from encrypted storage.
+      if (sealedStoreAvailable()) {
+        void hydrateSavedNwcConnections({ get: sealedGet, set: sealedSet })
+          .catch((e) => console.warn("[chama] encrypted NWC load failed; using plain storage", e));
+      }
       // v4.3 auth-first RETIRED the v3.5.1 pre-signer pick stash: the globe
       // picker now runs POST-connect and writes the npub scope directly
       // (handleSelectCommunity), so there is nothing to defer-commit here.
