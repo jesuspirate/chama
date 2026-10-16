@@ -47,6 +47,8 @@ while [ $# -gt 0 ]; do
   esac
 done
 [[ "$RC" =~ ^[1-9][0-9]*$ ]] || { echo "❌ --rc must be a positive integer"; exit 1; }
+# rc.99 would take the release's versionCode slot (scripts/android-version-code.mjs).
+[ "$RC" -gt 98 ] && { echo "❌ --rc must be 98 or lower: rc.99 and up would not sort below the release"; exit 1; }
 case "$NEXT" in patch|minor|major) ;; *) echo "❌ --next must be patch, minor or major"; exit 1 ;; esac
 
 BASE_VERSION="$(node -p "require('./package.json').version")"
