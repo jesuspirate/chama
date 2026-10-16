@@ -93,35 +93,55 @@ export interface FundingDrainSummary {
 
 type Stash = Record<string, PendingFunding>;
 
+/** Parse the stored stash. THROWS when a value exists but is not a stash: it
+ *  may hold the only copy of spent bearer notes, so it must never be read as
+ *  empty by a writer and then overwritten. */
+function loadStashStrict(): Stash {
+  const raw = getStrictScopedStorageItem(PENDING_FUNDINGS_KEY);
+  if (!raw) return {};
+  const parsed: unknown = JSON.parse(raw);
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("Pending-funding stash is unreadable");
+  }
+  return parsed as Stash;
+}
+
+/** Read-only view for listing and draining. A corrupt stash reads as empty
+ *  here and stays untouched on disk. */
 function loadStash(): Stash {
   try {
-    const raw = getStrictScopedStorageItem(PENDING_FUNDINGS_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object") return {};
-    return parsed as Stash;
+    return loadStashStrict();
   } catch (e) {
     console.warn("[chama] pending-fundings: loadStash failed:", e);
     return {};
   }
 }
 
+/** Throws on failure. Swallowing a failed write here would leave spent notes
+ *  with no durable copy while the funding flow carries on as if they had one. */
 function saveStash(stash: Stash): void {
-  try {
-    setStrictScopedStorageItem(PENDING_FUNDINGS_KEY, JSON.stringify(stash));
-  } catch (e) {
-    // QuotaExceededError is the main concern. Surface loudly — failing to
-    // persist the bearer notes defeats the whole point of this module.
-    console.error(
-      "[chama] pending-fundings: saveStash failed — stash may be lost:",
-      e,
-    );
-  }
+  setStrictScopedStorageItem(PENDING_FUNDINGS_KEY, JSON.stringify(stash));
 }
 
 // ══════════════════════════════════════════════════════════════════════════
 // PUBLIC API
 // ══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Pre-spend probe. Throws if the stash cannot be read or written right now, so
+ * the Fedi funding flow refuses BEFORE any ecash leaves Fedi rather than
+ * discovering the problem with the notes already spent.
+ */
+export function assertPendingFundingWritable(): void {
+  loadStashStrict();
+  const probeKey = `${PENDING_FUNDINGS_KEY}_probe`;
+  setStrictScopedStorageItem(probeKey, "1");
+  try {
+    removeStrictScopedStorageItem(probeKey);
+  } catch {
+    // Cleanup is best-effort; the write above is the load-bearing probe.
+  }
+}
 
 /**
  * Stash spent OOB funding notes to localStorage. Called by the Fedi
@@ -136,7 +156,7 @@ export function stashPendingFunding(input: {
   oobNotes: string;
   amountMsats: number;
 }): void {
-  const stash = loadStash();
+  const stash = loadStashStrict();
   const existing = stash[input.escrowId];
   stash[input.escrowId] = {
     escrowId: input.escrowId,
@@ -159,11 +179,17 @@ export function stashPendingFunding(input: {
  * confirmed the notes are back in Fedi.
  */
 export function clearPendingFunding(escrowId: string): void {
-  const stash = loadStash();
-  if (stash[escrowId]) {
-    delete stash[escrowId];
-    saveStash(stash);
-    console.info(`[fund-trace] pending-funding-clear escrowId=${escrowId}`);
+  try {
+    const stash = loadStashStrict();
+    if (stash[escrowId]) {
+      delete stash[escrowId];
+      saveStash(stash);
+      console.info(`[fund-trace] pending-funding-clear escrowId=${escrowId}`);
+    }
+  } catch (e) {
+    // Clearing follows a confirmed outcome; a failure leaves the entry in
+    // place, which never loses notes.
+    console.error("[chama] pending-funding: clear failed (entry kept):", e);
   }
 }
 
@@ -224,7 +250,15 @@ export async function drainPendingFundings(): Promise<FundingDrainSummary> {
     // Bump attempts BEFORE the try so attempts that crash the browser are
     // counted too, not just clean returns.
     entry.attempts += 1;
-    saveStash({ ...loadStash(), [entry.escrowId]: entry });
+    try {
+      saveStash({ ...loadStashStrict(), [entry.escrowId]: entry });
+    } catch (e) {
+      // Can't count this attempt durably. Leave the entry for a later boot
+      // rather than retrying without a bounded budget.
+      summary.stillPending++;
+      console.warn(`[chama] pending funding for ${entry.escrowId}: attempt not recorded, skipped:`, e);
+      continue;
+    }
 
     try {
       // No expectedMsats: re-absorbing the exact notes we generated is exact,
@@ -239,11 +273,15 @@ export async function drainPendingFundings(): Promise<FundingDrainSummary> {
       );
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      const stash = loadStash();
-      const cur = stash[entry.escrowId];
-      if (cur) {
-        cur.lastError = msg.slice(0, 500);
-        saveStash(stash);
+      try {
+        const stash = loadStashStrict();
+        const cur = stash[entry.escrowId];
+        if (cur) {
+          cur.lastError = msg.slice(0, 500);
+          saveStash(stash);
+        }
+      } catch (writeErr) {
+        console.warn("[chama] pending-funding: lastError not recorded:", writeErr);
       }
       summary.stillPending++;
       console.warn(

@@ -1,5 +1,6 @@
 import { errorText } from "./error-text.js";
 import { payoutInvoiceError } from "./bolt11.js";
+import { LN_PAY_REFUNDED, LN_PAY_SUBMIT_FAILED } from "./ln-pay-codes.js";
 // ══════════════════════════════════════════════════════════════════════════
 // Chama — Atomic claim-and-payout orchestrator (v0.3.0 Phase 3)
 // ══════════════════════════════════════════════════════════════════════════
@@ -452,6 +453,10 @@ export interface RunClaimAndPayoutDeps {
    *  pre-send so the orchestrator refuses to dispatch a payout it can't guard
    *  against a re-pay. No-op when unset (older callers/tests). */
   assertPayoutJournalWritable?: () => void;
+  /** Throws when the payout journal exists but cannot be read. Checked before
+   *  the double-pay guard for every payout kind: an unreadable journal may be
+   *  hiding a sent payout. No-op when unset (older callers/tests). */
+  assertPayoutJournalReadable?: () => void;
   /** Re-attach to a submitted payout and report its terminal outcome
    *  without paying again. "unknown" ⇒ keep the record, refuse to re-pay. */
   awaitPayoutOutcome?: (operationId: string) => Promise<"settled" | "refunded" | "unknown">;
@@ -531,26 +536,6 @@ export async function runClaimAndPayout(
       return { kind: "payout-failed", error, claimCompleted: false };
     }
 
-    // A browser ecash payout must never take the legacy
-    // escrow-note -> browser reissue -> fresh export route. The first reissue
-    // is precisely the failure boundary that can consume valid escrow notes
-    // without crediting the browser wallet. Export the already-reconstructed
-    // escrow bearer note directly instead.
-    if (!opts.claimAndExportEcash) {
-      const error = "Direct ecash claim is not available on this client. No sats moved.";
-      emit({ kind: "payout-failed", error, claimCompleted: false });
-      return { kind: "payout-failed", error, claimCompleted: false };
-    }
-    emit({ kind: "claiming" });
-    try {
-      const exported = await opts.claimAndExportEcash(opts.escrowId);
-      emit({ kind: "ecash-ready", ...exported });
-      return { kind: "ecash-ready", ...exported };
-    } catch (e) {
-      const error = errorMessage(e, "Couldn't prepare this ecash claim safely");
-      emit({ kind: "claim-failed", error });
-      return { kind: "claim-failed", error };
-    }
   }
 
   // A Lightning payout pays whatever amount the invoice names, from the whole
@@ -589,15 +574,27 @@ export async function runClaimAndPayout(
     }
   };
 
-  // ── 3.5.1 payout double-pay guard (Lightning only) ───────────────────────
+  // ── 3.5.1 payout double-pay guard (every payout kind) ────────────────────
   // BEFORE any claim/redeem/balance work: if a payout was already submitted
   // or settled for this escrow on a prior attempt, NEVER pay again. This MUST
   // run first — a successful prior payout drains the balance, so the Phase 2
   // cover check would otherwise bounce a retry to claim-pending and never
   // reach the pay step where the journal is consulted. The reported field
   // double-pay (two payouts ~78s apart) was exactly a retry after the 60s
-  // pay-watch window timed out mid-flight.
-  if (payoutKind === "lightning") {
+  // pay-watch window timed out mid-flight. Records are only ever written by a
+  // Lightning payout, but the guard runs for every kind: switching the
+  // destination to on-chain or ecash after an unresolved Lightning payout
+  // must not become the second send.
+  {
+    try {
+      opts.assertPayoutJournalReadable?.();
+    } catch {
+      const error =
+        "Can't check whether this trade was already paid out, because this device's payout record is unreadable. No payment was sent.";
+      claimTrace("orchestrator-payout-journal-unreadable", { escrowId: opts.escrowId });
+      emit({ kind: "payout-failed", error, claimCompleted: false });
+      return { kind: "payout-failed", error, claimCompleted: false };
+    }
     const prior = opts.getPayoutRecord?.(opts.escrowId) ?? null;
     if (prior?.status === "settled") {
       claimTrace("orchestrator-payout-already-settled", { escrowId: opts.escrowId });
@@ -731,6 +728,32 @@ export async function runClaimAndPayout(
           return { kind: "payout-confirming", error: PAYOUT_CONFIRMING_COPY };
         }
       }
+    }
+  }
+
+  // Fresh ecash export runs only after the double-pay guard above: a
+  // Lightning payout that already left for this escrow must never be
+  // followed by a second payout through another route.
+  if (opts.payoutKind === "ecash") {
+    // A browser ecash payout must never take the legacy
+    // escrow-note -> browser reissue -> fresh export route. The first reissue
+    // is precisely the failure boundary that can consume valid escrow notes
+    // without crediting the browser wallet. Export the already-reconstructed
+    // escrow bearer note directly instead.
+    if (!opts.claimAndExportEcash) {
+      const error = "Direct ecash claim is not available on this client. No sats moved.";
+      emit({ kind: "payout-failed", error, claimCompleted: false });
+      return { kind: "payout-failed", error, claimCompleted: false };
+    }
+    emit({ kind: "claiming" });
+    try {
+      const exported = await opts.claimAndExportEcash(opts.escrowId);
+      emit({ kind: "ecash-ready", ...exported });
+      return { kind: "ecash-ready", ...exported };
+    } catch (e) {
+      const error = errorMessage(e, "Couldn't prepare this ecash claim safely");
+      emit({ kind: "claim-failed", error });
+      return { kind: "claim-failed", error };
     }
   }
 
@@ -1067,10 +1090,23 @@ export async function runClaimAndPayout(
       emit({ kind: "payout-confirming", error: PAYOUT_CONFIRMING_COPY });
       return { kind: "payout-confirming", error: PAYOUT_CONFIRMING_COPY };
     }
-    // Definite failure (confirmed refund, submit-failed, onchain, or any
-    // other throw): the sats are still local, so re-paying is correct. Drop
-    // any record so the top guard doesn't block the legitimate retry.
-    if (payoutKind === "lightning") opts.clearPayoutRecord?.(opts.escrowId);
+    // Only a CODED definite failure clears the record: a confirmed refund or
+    // a submit the gateway rejected before any payment existed. Any other
+    // throw (an uncoded SDK or internal-payment error, a broken watch) says
+    // nothing about whether the payment left, so the pre-send intent stays.
+    // The retry then reconciles by escrow through the operation log, which
+    // pays fresh only on positive proof that no payment was dispatched.
+    if (
+      payoutKind === "lightning" &&
+      (code === LN_PAY_REFUNDED || code === LN_PAY_SUBMIT_FAILED)
+    ) {
+      opts.clearPayoutRecord?.(opts.escrowId);
+    } else if (payoutKind === "lightning") {
+      claimTrace("orchestrator-pay-uncoded-kept-intent", {
+        escrowId: opts.escrowId,
+        code: code ?? "none",
+      });
+    }
     const error = errorMessage(
       e,
       payoutKind === "onchain"
