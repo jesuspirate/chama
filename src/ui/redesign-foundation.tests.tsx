@@ -155,8 +155,8 @@ console.log("PASS hold to confirm: hold confirms once, early lift cancels, taps 
 }
 console.log("PASS nav: Home/Browse/Circles/Me + Create, one active tab, unique coach targets, sidebar ≥1024px, floating Create on every phone");
 {
-  // Create button glass (Jet, 6.4.25): on the moment a finger touches the
-  // page, held while it moves, solid the instant it is still. No idle delay.
+  // Create button glass (Jet, 6.4.25; Oct 16): on the moment the page moves,
+  // never for a touch alone, solid the instant it is still. No idle delay.
   const pending = new Map<number, () => void>();
   let nextId = 1;
   const timers = {
@@ -169,10 +169,14 @@ console.log("PASS nav: Home/Browse/Circles/Me + Create, one active tab, unique c
   const seen: boolean[] = [];
   const a = trackScrollActivity((on) => seen.push(on), true, timers);
   a.onPress();
-  assert.deepEqual(seen, [true], "glass the moment the finger touches the page, before any scroll");
+  assert.equal(seen.length, 0, "a touch alone changes nothing");
   a.onRelease();
-  assert.deepEqual(seen, [true, false], "a touch with no movement is solid again the instant the finger lifts");
-  a.onPress(); a.onScroll(); a.onScroll();
+  assert.equal(seen.length, 0, "a touch with no movement never turns it to glass");
+  a.onPress(); a.onScroll();
+  assert.deepEqual(seen, [true], "glass the moment the finger moves the page");
+  a.onScroll();
+  // Keep the indices below as they were when a touch alone flipped it twice.
+  seen.unshift(true, false);
   a.onRelease();
   assert.deepEqual(seen, [true, false, true], "a fling keeps the glass after the finger lifts, while the page still moves");
   a.onScrollEnd();
@@ -196,7 +200,7 @@ console.log("PASS nav: Home/Browse/Circles/Me + Create, one active tab, unique c
   fireAll();
   assert.deepEqual(safari, [true, false], "solid once the page is still");
   b.onPress(); b.onRelease();
-  assert.deepEqual(safari, [true, false, true, false], "a still tap is instant on Safari too");
+  assert.deepEqual(safari, [true, false], "a still tap changes nothing on Safari either");
   b.onScroll(); b.dispose();
   assert.equal(pending.size, 0, "unmount clears the timer");
 }

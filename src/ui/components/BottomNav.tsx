@@ -91,9 +91,10 @@ export function BottomNav({ active, onSelect, onCreate, badges }: {
  *  no scroll event has arrived for this long, about two frames. */
 export const SCROLL_STILL_FALLBACK_MS = 34;
 
-/** Reports true the moment a finger touches the page or a scroll event arrives,
- *  and false the moment the finger is up and the page is still: at once on a
- *  lift with no movement, on `scrollend` after a fling, or after
+/** Reports true the moment the page scrolls (Jet, Oct 16: a touch that does
+ *  not move the page changes nothing), held while the finger stays down, and
+ *  false the moment the finger is up and the page is still: on the lift after
+ *  movement has stopped, on `scrollend` after a fling, or after
  *  SCROLL_STILL_FALLBACK_MS without scroll events where `scrollend` is missing. */
 export function trackScrollActivity(
   onChange: (scrolling: boolean) => void,
@@ -112,7 +113,7 @@ export function trackScrollActivity(
   const end = () => { stopTimer(); if (active) { active = false; onChange(false); } };
   const still = () => { moving = false; stopTimer(); if (!pressed) end(); };
   return {
-    onPress() { pressed = true; start(); },
+    onPress() { pressed = true; },
     onRelease() { if (!pressed) return; pressed = false; if (!moving) end(); },
     onScroll() {
       start();
@@ -150,10 +151,10 @@ export function CreateButton({ onCreate }: { onCreate: () => void }) {
   // Every phone-sized screen floats Create at the bottom right (Jet, 6.4.25:
   // the "+" beside the version was an odd place). Wide screens hide it: the
   // sidebar carries its own Create.
-  // As soon as a finger touches the page, and while it scrolls, the button
-  // itself turns to frosted glass so the page shows through it, blurred; it is
-  // solid again the instant the finger is up and the page is still. Touching
-  // the button itself does not count: pressing Create must not dim it.
+  // As soon as the page scrolls, the button itself turns to frosted glass so
+  // the page shows through it, blurred; it is solid again the instant the
+  // finger is up and the page is still. A touch that does not move the page
+  // changes nothing, and touching the button itself does not count.
   const [scrolling, setScrolling] = useState(false);
   const [shrinks] = useState(() => createFabShrinksWhileScrolling());
   useEffect(() => {
