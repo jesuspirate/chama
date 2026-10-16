@@ -1,10 +1,12 @@
-// Arbiter-only federation storage routing.
+// Per-federation wallet storage routing.
 //
-// A bonded arbiter may cover communities backed by different Fedimint
-// federations. Ecash cannot cross federation boundaries, so every federation
-// must keep its own client database. This registry only remembers which
-// browser OPFS scope belongs to each federation; it never stores ecash, keys,
-// or a seed. Buyer/seller and future Stack flows do not call this module.
+// Ecash cannot cross federation boundaries, so every federation keeps its own
+// client database. Bonded arbiters used this first; since H4 every wallet
+// does, so moving to another federation parks the old wallet instead of
+// deleting it. This registry only remembers which browser OPFS scope belongs
+// to each federation (and the balance last seen there); it never stores
+// ecash, keys, or a seed. The names keep their arbiter prefix so existing
+// routes and storage scopes stay where they are.
 
 const STORE_PREFIX = "chama_arbiter_federations_v1";
 
@@ -13,6 +15,9 @@ export interface ArbiterFederationRoute {
   inviteCode: string;
   storageScope: string;
   updatedAt: number;
+  /** Balance read just before this wallet was parked. A last sighting, not
+   *  a live balance: it is shown so a parked wallet is never forgotten. */
+  lastBalanceMsats?: number;
 }
 
 interface StoredRoutes {
@@ -49,7 +54,16 @@ function read(pubkey: string): StoredRoutes {
       ) continue;
       const id = cleanFederationId(route.federationId || key);
       if (!id || !route.inviteCode.startsWith("fed1") || !route.storageScope) continue;
-      routes[id] = { ...route, federationId: id } as ArbiterFederationRoute;
+      const lastBalanceMsats = typeof route.lastBalanceMsats === "number"
+        && Number.isFinite(route.lastBalanceMsats) && route.lastBalanceMsats >= 0
+        ? route.lastBalanceMsats : undefined;
+      routes[id] = {
+        federationId: id,
+        inviteCode: route.inviteCode,
+        storageScope: route.storageScope,
+        updatedAt: route.updatedAt,
+        ...(lastBalanceMsats !== undefined ? { lastBalanceMsats } : {}),
+      };
     }
     return { version: 1, routes };
   } catch {
@@ -94,6 +108,8 @@ export function rememberArbiterFederationRoute(
     inviteCode: route.inviteCode.trim(),
     storageScope: route.storageScope,
     updatedAt: route.updatedAt ?? Date.now(),
+    ...(typeof route.lastBalanceMsats === "number" && Number.isFinite(route.lastBalanceMsats) && route.lastBalanceMsats >= 0
+      ? { lastBalanceMsats: route.lastBalanceMsats } : {}),
   };
   state.routes[federationId] = saved;
   write(pubkey, state);

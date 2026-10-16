@@ -84,7 +84,6 @@ import {
   resolveRenewalPolicy,
   sessionAllowsAutoRenew,
 } from "../escrow-engine/listing-renewal.js";
-import { listCommitmentBonds } from "../bond-multisig/commitment-store.js";
 import {
   retireListing,
   getRetiredIds,
@@ -125,6 +124,7 @@ import {
   setActiveInvite,
   summarizeNativeLocksForUi,
 } from "../fedimint/index.js";
+import { acceptUnlistedFederation, hasAcceptedUnlistedFederation } from "../fedimint/unlisted-federation-consent.js";
 import { getPayoutRecord } from "../payments/payout-journal.js";
 import {
   browserLightningReceiveIsBlocked,
@@ -723,6 +723,27 @@ export default function App() {
     });
   };
 
+  // H4: an unlisted federation the person already agreed to (saved, or agreed
+  // this session when saving failed).
+  const acceptsUnlistedFederation = (invite: string): boolean =>
+    unlistedAcceptedThisSession.current.has(invite.trim()) || hasAcceptedUnlistedFederation(pubkey, invite);
+  const confirmUnlistedFederation = (invite: string): Promise<boolean> => new Promise((resolve) => {
+    setPendingUnlistedFederation(previous => {
+      previous?.resolve(false);
+      return { invite, resolve };
+    });
+  });
+  const answerUnlistedFederation = (ok: boolean) => {
+    const pending = pendingUnlistedFederation;
+    if (!pending) return;
+    setPendingUnlistedFederation(null);
+    if (ok) {
+      unlistedAcceptedThisSession.current.add(pending.invite.trim());
+      acceptUnlistedFederation(pubkey, pending.invite);
+    }
+    pending.resolve(ok);
+  };
+
   // Ecash custody still requires the trade's federation, even when its final
   // destination is a Lightning invoice. Never switch a funded wallet on navigation.
   const ensureTradeWallet = async (trade: EscrowState): Promise<boolean> => {
@@ -742,8 +763,13 @@ export default function App() {
         currentInvite: liveActiveInvite,
         balanceMsats: preservesArbiterFederationBalances ? 0 : (fedimint.balanceMsats ?? 0),
         activeCommitmentCount,
+        acceptsUnlistedFederation,
       });
       if (effect.kind === "blocked-active-commitment") throw new Error(t("app.listingOtherChama"));
+      if (effect.kind === "unlisted-confirm") {
+        if (!await confirmUnlistedFederation(effect.targetInvite)) return false;
+        return ensureTradeWallet(trade);
+      }
       if (effect.kind === "destroy-confirm") {
         queueDestroyConfirm({ invite: effect.targetInvite, label: effect.displayName,
           balanceMsats: effect.balanceMsats, activeInvite: effect.currentInvite, navigateToEscrowAfter: trade.id });
@@ -975,6 +1001,10 @@ export default function App() {
   // — instead of "sign out and rejoin with the correct federation", offer a one-tap
   // switch to the chama the trade lives in. Captures the trade's community + a retry.
   const [pendingFedSwitch, setPendingFedSwitch] = useState<{ community: string; retry: () => Promise<void> } | null>(null);
+  // H4: "do you know who runs this federation?" before moving onto one Chama
+  // doesn't list. A newer question settles the older one as "no".
+  const [pendingUnlistedFederation, setPendingUnlistedFederation] = useState<{ invite: string; resolve: (ok: boolean) => void } | null>(null);
+  const unlistedAcceptedThisSession = useRef(new Set<string>());
   const [autoInitDone, setAutoInitDone] = useState(false);
   // Suppress the offline banner during initial boot/seed-paste (relays connect a
   // beat after login) — only show it once we've actually been online and dropped.
@@ -2022,11 +2052,10 @@ export default function App() {
   const activeCommitmentCount = pubkey
     ? countActiveBuyerSellerCommitments({ escrows: myTrades, userPubkey: pubkey, nowSec: now })
     : 0;
-  // Arbiter earnings are intentionally federation-bound and preserved in
-  // separate stores. This flag only comes from a real locked bond; buyers,
-  // sellers, and future Stack users retain the single-federation balance gate.
-  const preservesArbiterFederationBalances = listCommitmentBonds()
-    .some((bond) => bond.phase === "locked");
+  // H4: every wallet keeps one store per federation (bonded arbiters always
+  // did), so moving to another federation parks the balance instead of
+  // putting it at risk. Sim wallets hold no ecash and keep the old gate.
+  const preservesArbiterFederationBalances = !isSimModeOn();
   // v0.6.5: total amountMsats across every live buyer/seller trade.
   // Drives the ActiveTradePill headline "N active trades · X sats"
   // honestly — the implied total reading. Distinct from
@@ -4069,6 +4098,32 @@ export default function App() {
         );
       })()}
 
+      {pendingUnlistedFederation && (
+        <div role="dialog" aria-modal="true" aria-labelledby="unlisted-fed-title"
+          style={{ position: "fixed", inset: 0, background: "#000c", zIndex: 9998, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}
+          onClick={(e) => { if (e.target === e.currentTarget) answerUnlistedFederation(false); }}>
+          <div style={{ background: T.card, border: `1px solid ${T.borderHi}`, borderRadius: T.r, width: "100%", maxWidth: 380, padding: 22 }}>
+            <div id="unlisted-fed-title" style={{ fontSize: 19, fontWeight: 800, color: T.text, fontFamily: T.sans, marginBottom: 10 }}>
+              {t("app.unlistedFedTitle")}
+            </div>
+            <div style={{ fontSize: 17, color: T.text, fontFamily: T.sans, lineHeight: 1.5, marginBottom: 10 }}>
+              {t("app.unlistedFedBody")}
+            </div>
+            <div style={{ fontSize: 17, color: T.muted, fontFamily: T.sans, lineHeight: 1.5, marginBottom: 18 }}>
+              {t("app.unlistedFedWallet")}
+            </div>
+            <button onClick={() => answerUnlistedFederation(true)}
+              style={{ width: "100%", minHeight: 52, borderRadius: T.rs, background: T.text, border: "none", color: T.bg, fontFamily: T.sans, fontSize: 17, fontWeight: 800, cursor: "pointer", marginBottom: 8 }}>
+              {t("app.unlistedFedContinue")}
+            </button>
+            <button onClick={() => answerUnlistedFederation(false)}
+              style={{ width: "100%", minHeight: 48, borderRadius: T.rs, background: T.surface, border: `1px solid ${T.border}`, color: T.text, fontFamily: T.sans, fontSize: 17, cursor: "pointer" }}>
+              {t("app.notNow")}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* v0.3.0 Phase 4: RecoveryPayoutModal — single mount serving
           both the failure-mode RecoveryBanner path AND the destroy-
           modal recover-then-switch path. Title differentiates per
@@ -4177,9 +4232,18 @@ export default function App() {
           onBack={backFromTrade}
           onRefresh={() => refreshCircle(selected.id)}
           onLock={async () => {
-            const effect = decideListingTapEffect({ listing: { mintUrl: selected.mintUrl, community: selected.community },
-              currentInvite: liveActiveInvite, balanceMsats: fedimint.balanceMsats ?? 0, activeCommitmentCount });
+            let effect = decideListingTapEffect({ listing: { mintUrl: selected.mintUrl, community: selected.community },
+              currentInvite: liveActiveInvite, balanceMsats: preservesArbiterFederationBalances ? 0 : (fedimint.balanceMsats ?? 0),
+              activeCommitmentCount, acceptsUnlistedFederation });
             if (effect.kind === "blocked-active-commitment") throw new Error(t("app.listingOtherChama"));
+            if (effect.kind === "unlisted-confirm") {
+              if (!await confirmUnlistedFederation(effect.targetInvite)) return;
+              effect = decideListingTapEffect({ listing: { mintUrl: selected.mintUrl, community: selected.community },
+                currentInvite: liveActiveInvite, balanceMsats: preservesArbiterFederationBalances ? 0 : (fedimint.balanceMsats ?? 0),
+                activeCommitmentCount, acceptsUnlistedFederation });
+              if (effect.kind === "blocked-active-commitment") throw new Error(t("app.listingOtherChama"));
+              if (effect.kind === "unlisted-confirm") return;
+            }
             if (effect.kind === "destroy-confirm") {
               queueDestroyConfirm({ invite: effect.targetInvite, label: effect.displayName, balanceMsats: effect.balanceMsats,
                 activeInvite: effect.currentInvite, navigateToEscrowAfter: selected.id });
