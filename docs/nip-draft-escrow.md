@@ -306,14 +306,16 @@ A client computes state by replaying the trade's consensus events:
 Two clients that see the same events MUST compute the same state. Relays are
 a source of evidence, never of authority.
 
-> **Migration.** Chama's cold-load replay (`replayEventChain`) currently
-> fails the whole trade on several of these: an early arbiter vote, a VOTE
-> or CANCEL from a non-participant. Confirmed against the reducer on
-> 2026-10-02. Live clients reject such events one at a time and are
-> unaffected until they reload. Rule 5 is the intended behaviour. It must ship
-> *after* the creator-bound root above, or a stranger's CREATE could make
-> the real seller's events look like a stranger's and be skipped. Plan in
-> `docs/replay-hardening-brief.md`.
+> **Migration.** Until Chama 6.4.22, cold-load replay (`replayEventChain`)
+> failed the whole trade on a VOTE or CANCEL from a non-participant. Since
+> 6.4.22 it ignores events whose author holds no role, after the
+> creator-bound root above (otherwise a stranger's CREATE could make the real
+> seller's events look like a stranger's and be skipped). It is still stricter
+> than rule 5 for a party's own rule-breaking events: an arbiter's VOTE before
+> both principals voted, for example, still fails the replay
+> (`ARBITER_TOO_EARLY`), and the conformance vectors record that. Older
+> clients fail to load more of these trades; they never compute a different
+> state. Plan and findings in `docs/replay-hardening-brief.md`.
 
 ## Arbitration
 
@@ -460,7 +462,9 @@ implements these as extensions; each needs its own NIP.
 
 ## Test vectors
 
-To be generated from Chama's reducer once replay rule 5 is fixed, so the
-vectors don't encode the current fail-the-trade behaviour. Planned: a set of signed event chains and
-the state each must replay to, including the contest, healing and backup
-arbiter cases.
+`docs/conformance/` holds replay vectors generated from Chama's reducer: event
+chains, each with the replay clock and the state it must replay to or the
+refusal it must produce. Its README says how to run them, what passing means and
+what they do not cover yet (ordering, signatures, decryption, and Chama's own
+kind numbers). Planned additions: rule 3 ordering vectors and more contest,
+healing and backup-arbiter chains.
