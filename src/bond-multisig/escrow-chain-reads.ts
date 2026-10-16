@@ -21,6 +21,7 @@ import {
   type EsploraFetch,
 } from "./fund-watcher.js";
 import { findEscrowFundingUtxos } from "./onchain-escrow-funding.js";
+import { disputeWindow } from "./onchain-escrow-settle.js";
 
 /** Explorers that must agree before a deposit counts. */
 export const ESCROW_FUNDING_QUORUM = 2;
@@ -89,4 +90,33 @@ export async function findCorroboratedEscrowFunding(params: {
     }
   }
   return [...counts.values()].filter(e => e.votes >= ESCROW_FUNDING_QUORUM).map(e => e.funding);
+}
+
+/**
+ * H7: what a dispute (arbiter) payout spends.
+ *
+ * The CSV wait applies to every input, so a deposit sent after the committed
+ * one (dust, re-sent every few blocks) would otherwise keep the appeal window
+ * shut until the funder's refund matured. The window runs from the committed
+ * deposit; outputs still inside their own wait are left at the address.
+ *
+ * Throws when the committed deposit is missing or its height is unknown, and
+ * reports `open: false` while the committed deposit itself is still waiting.
+ */
+export function disputeSpendSet(params: {
+  found: readonly BondFunding[];
+  committed: { txid: string; index: number };
+  tipHeight: number;
+  csvBlocks: number;
+}): { open: false; blocksRemaining: number } | { open: true; spend: BondFunding[]; fundingHeight: number } {
+  const committed = params.found.find(f => f.utxo.txid === params.committed.txid && f.utxo.index === params.committed.index);
+  if (!committed) throw new Error("The committed funding output is not available to settle.");
+  if (typeof committed.blockHeight !== "number") {
+    throw new Error("The dispute window cannot be verified because a funding height is unknown.");
+  }
+  const window = disputeWindow({ fundingHeight: committed.blockHeight, tipHeight: params.tipHeight, csvBlocks: params.csvBlocks });
+  if (!window.open) return { open: false, blocksRemaining: window.blocksRemaining };
+  const spend = params.found.filter(f => typeof f.blockHeight === "number"
+    && disputeWindow({ fundingHeight: f.blockHeight, tipHeight: params.tipHeight, csvBlocks: params.csvBlocks }).open);
+  return { open: true, spend, fundingHeight: Math.max(...spend.map(f => f.blockHeight!)) };
 }

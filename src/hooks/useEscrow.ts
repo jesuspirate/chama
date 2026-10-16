@@ -44,7 +44,7 @@ import { observeOnchainAttention, type OnchainObservation } from '../escrow-engi
 import { maybeNotifyOnchainAttention } from '../notifications/notify-service.js';
 import { settlementWinner, winnerSettlementChoice, assertWinnerMayChoose } from "../escrow-engine/onchain-settlement-choice.js";
 import { findEscrowFundingUtxos, deriveCommittedBondKey, escrowDepositWindowSafe } from "../bond-multisig/onchain-escrow-funding.js";
-import { escrowFundingMinConfs, findCorroboratedEscrowFunding } from "../bond-multisig/escrow-chain-reads.js";
+import { escrowFundingMinConfs, findCorroboratedEscrowFunding, disputeSpendSet } from "../bond-multisig/escrow-chain-reads.js";
 import { finalRefundSettlementProof, observedRefundSpend } from "../escrow-engine/onchain-settlement-transport.js";
 import { fundingArbiter, fundingTermsError, onchainLockError, onchainFunder } from "../escrow-engine/onchain-funding-terms.js";
 import { pendingOnchainLockRecoveries } from "../escrow-engine/onchain-lock-recovery.js";
@@ -3299,21 +3299,28 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     const feeRate = await esploraRequiredFeeRate(fetchJson);
     let fundingHeight: number | undefined;
     let tipHeight: number | undefined;
+    // What this device spends. The coop leaf sweeps everything; the dispute
+    // leaf spends only outputs whose appeal wait has passed (H7).
+    let spend = utxos;
     if (leaf === "dispute") {
-      if (found.some(f => typeof f.blockHeight !== "number")) {
-        throw new Error("The dispute window cannot be verified because a funding height is unknown.");
-      }
-      fundingHeight = Math.max(...found.map(f => f.blockHeight!));
       tipHeight = await esploraTipHeight(fetchJson);
-      const window = disputeWindow({ fundingHeight, tipHeight, csvBlocks: t.disputeCsvBlocks });
-      if (!window.open) throw new Error(`The appeal window is still open — arbitration unlocks in ${window.blocksRemaining} block(s).`);
+      // H7: the appeal wait runs from the committed deposit. A later deposit
+      // (dust sent to keep the window shut) is left behind until it matures,
+      // so it can no longer hold the arbiter's payout hostage.
+      const selected = disputeSpendSet({ found, committed: { txid: t.fundingTxid, index: t.fundingVout },
+        tipHeight, csvBlocks: t.disputeCsvBlocks });
+      if (!selected.open) throw new Error(`The appeal window is still open — arbitration unlocks in ${selected.blocksRemaining} block(s).`);
+      spend = selected.spend.map(f => f.utxo);
+      fundingHeight = selected.fundingHeight;
     }
     return {
-      client, trade, escrow, utxos, destination,
+      client, trade, escrow, utxos: spend, destination,
       fundingHeight, tipHeight, leaf,
       base: defaultEsploraBase(ESCROW_NETWORK), fetchJson,
-      feeSats: settlementBuildFeeSats(feeRate, utxos.length, leaf),
+      feeSats: settlementBuildFeeSats(feeRate, spend.length, leaf),
       expectation: {
+        // Every known output stays known, so a proposal that spends them all
+        // (older clients, or a coop sweep) still verifies.
         escrow, utxos, destination,
         maxFeeSats: settlementFeeCeilingSats(leaf, feeRate, utxos.length),
         network: ESCROW_NETWORK, leaf,

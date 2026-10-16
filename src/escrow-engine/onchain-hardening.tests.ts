@@ -7,11 +7,12 @@ import { safetyFixture } from '../../scripts/lib/escrow-safety-fixture.js';
 import { deriveEscrowSigningKey } from '../bond-multisig/onchain-escrow-funding.js';
 import { deriveBondSigningKey } from '../bond-multisig/commitment-bond.js';
 import { MAINNET, SIGNET } from '../bond-multisig/multisig.js';
+import { EscrowStatus, isLateOnchainDeposit } from './types.js';
 import {
   MAINNET_HEDGE_EXPLORERS, MAX_SETTLEMENT_FEE_RATE, capSettlementFeeRate, esploraRequiredFeeRate,
 } from '../bond-multisig/fund-watcher.js';
 import {
-  ESCROW_FUNDING_MIN_CONFS, escrowFundingExplorers, escrowFundingMinConfs, findCorroboratedEscrowFunding,
+  ESCROW_FUNDING_MIN_CONFS, disputeSpendSet, escrowFundingExplorers, escrowFundingMinConfs, findCorroboratedEscrowFunding,
 } from '../bond-multisig/escrow-chain-reads.js';
 import {
   buildSettlementPsbt, coSignSettlement, finalizeSettlement, settlementFeeCeilingSats, verifySettlementPsbt,
@@ -75,6 +76,59 @@ assert.equal(capSettlementFeeRate(42n), 42n);
   const stranger = { txid: '44'.repeat(32), index: 0, amountSats: 5_000n };
   const smuggled = buildSettlementPsbt({ escrow: fixture.escrow, utxos: [funding, stranger], destination, feeSats: 1000n });
   assert(!verifySettlementPsbt(smuggled, { ...afterDust, ...committed }).ok, 'unknown inputs are still refused');
+}
+
+// ── H7, dispute leaf: dust re-sent every few blocks cannot keep the appeal
+// window shut until the funder's refund matures ─────────────────────────────
+{
+  const csv = 144;
+  const committed = { utxo: { txid: '11'.repeat(32), index: 0, amountSats: 100_000n }, blockHeight: 1000, fundingScript: fixture.escrow.script };
+  const earlyDust = { utxo: { txid: '22'.repeat(32), index: 0, amountSats: 330n }, blockHeight: 1010, fundingScript: fixture.escrow.script };
+  const freshDust = { utxo: { txid: '33'.repeat(32), index: 0, amountSats: 330n }, blockHeight: 1150, fundingScript: fixture.escrow.script };
+  const found = [committed, earlyDust, freshDust];
+  const ref = { txid: committed.utxo.txid, index: committed.utxo.index };
+  const tipHeight = 1000 + csv - 1; // committed deposit has exactly csv confirmations
+
+  const open = disputeSpendSet({ found, committed: ref, tipHeight, csvBlocks: csv });
+  assert(open.open, 'the appeal window runs from the committed deposit, not the newest dust');
+  assert.deepEqual(open.spend.map(f => f.utxo.txid), [committed.utxo.txid], 'immature deposits are left behind');
+  assert.equal(open.fundingHeight, 1000);
+
+  const later = disputeSpendSet({ found, committed: ref, tipHeight: 1010 + csv - 1, csvBlocks: csv });
+  assert(later.open && later.spend.length === 2, 'a deposit whose own wait has passed is swept with it');
+
+  const shut = disputeSpendSet({ found, committed: ref, tipHeight: tipHeight - 1, csvBlocks: csv });
+  assert(!shut.open && shut.blocksRemaining > 0, 'the committed deposit still has to wait out the window');
+  assert.throws(() => disputeSpendSet({ found: [earlyDust, freshDust], committed: ref, tipHeight, csvBlocks: csv }),
+    /committed funding output/);
+  assert.throws(() => disputeSpendSet({ found: [{ ...committed, blockHeight: undefined }], committed: ref, tipHeight, csvBlocks: csv }),
+    /funding height is unknown/);
+
+  // The resulting dispute spend verifies against an expectation that still
+  // knows every output, and builds with the committed deposit's maturity.
+  const destination = btc.p2tr(b.xonly, undefined, SIGNET).address!;
+  const csvEscrow = safetyFixture({ buyer: b.xonly, seller: s.xonly, arbiter: a.xonly }, 2000000).escrow;
+  assert((csvEscrow.params.disputeCsvBlocks ?? 0) > 0, 'fixture has a dispute wait');
+  {
+    const window = disputeSpendSet({ found, committed: ref, tipHeight: 1000 + csvEscrow.params.disputeCsvBlocks! - 1, csvBlocks: csvEscrow.params.disputeCsvBlocks! });
+    assert(window.open);
+    const psbt = buildSettlementPsbt({ escrow: csvEscrow, utxos: window.spend.map(f => f.utxo), destination, feeSats: 1000n,
+      leaf: 'dispute', fundingHeight: window.fundingHeight, tipHeight: 1000 + csvEscrow.params.disputeCsvBlocks! - 1 });
+    assert(verifySettlementPsbt(psbt, { escrow: csvEscrow, utxos: found.map(f => f.utxo), destination, maxFeeSats: 5000n,
+      network: SIGNET, leaf: 'dispute', committedOutpoint: ref, minInputSats: 100_000n }).ok,
+      'a dispute payout that leaves the fresh dust behind is accepted by the co-signer');
+  }
+}
+
+// M7 and the join hold: the seat question uses when the deposit first
+// appeared, so waiting for a second confirmation cannot lapse the trade.
+{
+  const deadlineAt = 10_000;
+  const state = { status: EscrowStatus.CREATED, onchainFundingTerms: {}, expiresAt: deadlineAt,
+    lock: { lockedAt: null }, joinHolds: {}, participants: {} } as never;
+  assert(!isLateOnchainDeposit(state, { deposit: 'confirmed', depositSeenAt: deadlineAt - 60 }, deadlineAt + 900),
+    'a deposit that confirmed before the deadline still locks after it');
+  assert(isLateOnchainDeposit(state, { deposit: 'confirmed', depositSeenAt: deadlineAt + 60 }, deadlineAt + 900));
 }
 
 // ── M7: funding needs two explorers to agree, and two confirmations ─────────
