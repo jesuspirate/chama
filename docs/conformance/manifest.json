@@ -1,0 +1,35 @@
+{
+  "accepted": 68,
+  "eventKinds": {
+    "38100": 109,
+    "38101": 54,
+    "38102": 83,
+    "38103": 98,
+    "38104": 47,
+    "38105": 13,
+    "38106": 7,
+    "38107": 8,
+    "38108": 41,
+    "38113": 2,
+    "38114": 2
+  },
+  "format": "chama-escrow-replay-vectors",
+  "formatVersion": 1,
+  "refusalCodes": {
+    "ARBITER_TOO_EARLY": 2,
+    "CONFLICTING_CREATES": 4,
+    "CREATOR_NOT_FOUND": 1,
+    "INVALID_STATE": 11,
+    "MISSING_PREDECESSOR": 1,
+    "NOT_PARTICIPANT": 7,
+    "ORDER_NOT_FINALIZED": 2,
+    "TERMINAL_STATE": 1,
+    "THRESHOLD_NOT_MET": 1,
+    "WRONG_CLAIMER": 1
+  },
+  "refused": 31,
+  "sha256": "eb2fc0ccd5a554e70396d10ce7916f891f2dc6c033dc50c14ae971841f144318",
+  "source": "tests/golden/replay.jsonl",
+  "spec": "docs/nip-draft-escrow.md",
+  "vectors": 99
+}

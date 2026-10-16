@@ -156,6 +156,16 @@ helpers in `chama/` and `bond-multisig/`. `crypto.getRandomValues` and
 `import.meta.env` were never counted by the rules, and neither is reachable from
 the core any more (`storage/random-id.ts` and the pool configuration left the closure).
 
+## Step 2 — public conformance vectors
+
+`docs/conformance/` publishes the golden corpus as conformance vectors: 99 event
+chains with their replay clock and the exact state or refusal each must produce.
+`scripts/export-conformance-vectors.mjs` derives them from `tests/golden/replay.jsonl`
+deterministically, and `npm test` fails if they are stale. The runner,
+`src/protocol/conformance.tests.ts`, replays every vector through
+`src/protocol/core/index.ts` with the clock set through `setProtocolClock` and
+`Date.now` made to throw: all 99 match, so replay reads no device clock.
+
 ## Regeneration contract
 
 `npm run golden:capture` runs the seven existing suites with test-only fixed
