@@ -4,6 +4,18 @@ import wasm from "vite-plugin-wasm";
 import topLevelAwait from "vite-plugin-top-level-await";
 
 import pkg from "./package.json" with { type: "json" };
+import { contentPolicyMetaTag } from "./src/security/content-policy";
+
+// M8: every built page carries the Content-Security-Policy as its first
+// <head> element. Dev builds don't: the hot-reload preamble is inline.
+const contentSecurityPolicy = () => ({
+  name: "chama-content-security-policy",
+  apply: "build" as const,
+  transformIndexHtml(html: string) {
+    if (!/<head>/i.test(html)) throw new Error("content policy: page has no <head>");
+    return html.replace(/<head>/i, (head) => `${head}${contentPolicyMetaTag()}`);
+  },
+});
 
 export default defineConfig({
   define: {
@@ -31,6 +43,7 @@ export default defineConfig({
     react(),
     wasm(),
     topLevelAwait(),
+    contentSecurityPolicy(),
   ],
   worker: {
     format: "es",
