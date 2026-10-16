@@ -2749,7 +2749,17 @@ export function adaptRealWallet(
         };
       },
       async payInvoice(bolt11: string, meta?: ChamaOperationMeta) {
-        const gateway = await getTrustedLightningGateway("pay");
+        let gateway: Awaited<ReturnType<typeof getTrustedLightningGateway>>;
+        try {
+          gateway = await getTrustedLightningGateway("pay");
+        } catch (e) {
+          // Gateway selection runs before anything is submitted: retry-safe.
+          // Coded so the claim guard clears its intent instead of holding the
+          // payout on "confirming" (uncoded errors keep it).
+          const error = (e instanceof Error ? e : new Error(String(e))) as CodedPayError;
+          if (!error.code) error.code = LN_PAY_SUBMIT_FAILED;
+          throw error;
+        }
         let result: unknown;
         const startedAt = Date.now();
         console.info(

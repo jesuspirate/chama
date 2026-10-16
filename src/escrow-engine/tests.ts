@@ -14786,6 +14786,25 @@ console.log("\n── BOLT11 PAYOUT AMOUNT ROUTING ──");
           "Native pre-send /pay failure is coded SUBMIT_FAILED (safe-to-retry, not INFLIGHT)");
       }
 
+      // A reverse proxy's 502/504 or HTML page is not the bridge's answer: the
+      // bridge may have committed the payment and died mid-wait. It must stay
+      // uncoded so the claim guard keeps its intent and reconciles first.
+      for (const reply of [
+        () => new Response(JSON.stringify({ error: "upstream" }), { status: 502 }),
+        () => new Response(JSON.stringify({ error: "timeout" }), { status: 504 }),
+        () => new Response("<html>502 Bad Gateway</html>", { status: 502 }),
+      ]) {
+        (globalThis as any).fetch = async (url: unknown) => String(url).endsWith("/pay")
+          ? reply()
+          : new Response(JSON.stringify({ federation_id: "fed_native_test", network: "bitcoin", total_amount_msat: 0, meta: {} }), { status: 200 });
+        const wallet = new NativeBridgeWallet("http://bridge.test");
+        let code: any = "unset"; let threw = false;
+        try { await wallet.lightning.payInvoice("lnbc100n1payout"); }
+        catch (e: any) { threw = true; code = e?.code; }
+        assert(threw && code !== "LN_PAY_SUBMIT_FAILED" && code !== "LN_PAY_REFUNDED",
+          "A proxy failure on /pay is never coded retry-safe (guard keeps the intent)");
+      }
+
       // LOST RESPONSE (transport failure) after the bridge may have committed ⇒
       // INFLIGHT, never a re-payable throw. "kill the await after send" must not
       // double-pay. A thrown fetch (bridge killed/socket dropped) → request()
@@ -21623,6 +21642,20 @@ console.log("\n── REAL SDK ADAPTER — Lightning receive watcher ──");
       "subscribeLnPay receives payment_type.lightning, not contract_id");
     assert(h.calls.unsubscribePay === 1,
       "Pay watcher unsubscribes after success");
+  }
+
+  // Gateway selection fails before anything is submitted: the throw must be
+  // coded retry-safe, or the claim guard keeps its intent and holds the
+  // payout on "confirming".
+  {
+    const h = makeRealWallet();
+    (h.real.lightning as any).listGateways = async () => [{ vetted: false, info: { gateway_id: "unvetted_gateway_999", api: "https://gw.invalid" } }];
+    const wallet = adaptRealWallet(h.real as any);
+    let code: unknown = "unset";
+    try { await wallet.lightning.payInvoice("lnbc100n1payout"); }
+    catch (e: any) { code = e?.code; }
+    assert(code === "LN_PAY_SUBMIT_FAILED" && h.calls.payInvoice === 0,
+      "No trusted pay gateway refuses before submit, coded SUBMIT_FAILED");
   }
 
   // The SDK returns two identifiers for external LN sends: contract_id and

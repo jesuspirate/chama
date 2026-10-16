@@ -104,7 +104,9 @@ function loadJournalStrict(): Journal {
   if (!raw) return {};
   const parsed: unknown = JSON.parse(raw);
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new Error("Payout journal is unreadable");
+    throw new Error(
+      "This device's payout record can't be read, so Chama can't check whether this trade was already paid. No payment was sent.",
+    );
   }
   return parsed as Journal;
 }

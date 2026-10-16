@@ -124,11 +124,11 @@ async function recoverFailedLock(
   return { kind: "lock-failed", error: err };
 }
 
-/** The one state with no durable copy: the stash write failed after the spend
- *  and Fedi refused the notes back. Say so plainly rather than promise a
- *  return on the next open that cannot happen. */
+/** The one state with no durable copy: the stash write failed after the spend,
+ *  Fedi refused the notes back and no LOCK holds them. Nothing will retry, so
+ *  say so plainly rather than promise a return that cannot happen. */
 const UNSAVED_NOTES_COPY =
-  "Chama could not return your sats to your Fedi wallet or save a copy on this device. Keep Chama open and try again.";
+  "Chama could not return your sats to your Fedi wallet or save a copy on this device, so they may be lost. Please report this trade.";
 
 // ── runFediFundAndLock ─────────────────────────────────────────────────────
 

@@ -1191,9 +1191,15 @@ export class NativeBridgeWallet implements IFedimintWallet {
           );
         }
         // Tag the bridge's own refusal as a submit failure so the claim guard
-        // keeps offering an immediate retry. Uncoded errors are no longer
-        // treated as retry-safe there.
-        if (error instanceof Error && !(error as CodedPayError).code) {
+        // keeps offering an immediate retry. A proxy 502/503/504 or HTML page
+        // is NOT the bridge's answer (the bridge may have committed the
+        // payment and then died mid-wait), so it stays uncoded: the guard
+        // keeps the intent and reconciles by escrow before any re-pay.
+        if (
+          error instanceof Error &&
+          !(error as CodedPayError).code &&
+          !isBridgeTransportFailure(error)
+        ) {
           (error as CodedPayError).code = LN_PAY_SUBMIT_FAILED;
         }
         throw error;
