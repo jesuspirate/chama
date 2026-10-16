@@ -358,6 +358,31 @@ export class LocalSigner implements Signer {
  * Limitation: each signing operation is a redirect round-trip.
  * For better UX, consider NIP-46 (Nostr Connect) which Amber also supports.
  */
+const AMBER_PUBKEY_REQUEST_KEY = "chama_amber_pubkey_request";
+const AMBER_PUBKEY_REQUEST_MAX_AGE_MS = 10 * 60 * 1000;
+
+/** Remember that this app just asked Amber for its public key. */
+export function markAmberPubkeyRequest(now = Date.now()): void {
+  try { localStorage.setItem(AMBER_PUBKEY_REQUEST_KEY, String(now)); } catch {}
+}
+
+/** True once, for a public-key request this app made in the last ten minutes. */
+export function takeAmberPubkeyRequest(now = Date.now()): boolean {
+  try {
+    const raw = localStorage.getItem(AMBER_PUBKEY_REQUEST_KEY);
+    localStorage.removeItem(AMBER_PUBKEY_REQUEST_KEY);
+    const at = raw === null ? NaN : Number(raw);
+    return Number.isFinite(at) && now - at >= 0 && now - at <= AMBER_PUBKEY_REQUEST_MAX_AGE_MS;
+  } catch {
+    return false;
+  }
+}
+
+/** Amber answers get_public_key with a hex key or an npub. */
+export function isAmberPubkey(value: string): boolean {
+  return /^[0-9a-f]{64}$/i.test(value) || /^npub1[02-9ac-hj-np-z]{58}$/.test(value);
+}
+
 export class AmberSigner implements Signer {
   private pubkey: string | null = null;
   private pendingResolve: ((value: string) => void) | null = null;
@@ -387,11 +412,15 @@ export class AmberSigner implements Signer {
       url.searchParams.delete("amber_type");
       window.history.replaceState({}, "", url.toString());
 
-      // Store the result
+      // Store the result. A public key is accepted only as the answer to a
+      // request this app made: a link carrying ?amber_type=get_public_key
+      // must never swap the signed-in identity for someone else's.
       if (amberType === "get_public_key") {
-        this.pubkey = event;
-        // Also persist for subsequent page loads
-        localStorage.setItem("chama_amber_pubkey", event);
+        if (takeAmberPubkeyRequest() && isAmberPubkey(event)) {
+          this.pubkey = event;
+          // Also persist for subsequent page loads
+          localStorage.setItem("chama_amber_pubkey", event);
+        }
       }
 
       // Resolve any pending promise
@@ -452,6 +481,7 @@ export class AmberSigner implements Signer {
     // No cached pubkey — need to redirect to Amber.
     // This will cause a page reload, so we don't await the Promise.
     // The callback handler will pick up the result on next page load.
+    markAmberPubkeyRequest();
     this.redirectToAmber({ type: "get_public_key" });
 
     // This Promise will never resolve (page is about to reload).
