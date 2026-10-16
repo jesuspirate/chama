@@ -65,9 +65,18 @@ export const SETTLEMENT_EXPLORER_TIMEOUT_MS = 20_000;
 
 /** Build a deadline-bound `fetch`-backed EsploraFetch for the app (throws on
  * non-2xx). An overall generation signal may cancel every chain read together. */
+/** The shipped mainnet explorer and the two public explorers it is hedged and
+ *  corroborated against. Independent operators, so one lying or stalled host
+ *  cannot decide a read on its own. */
+export const MAINNET_HEDGE_EXPLORERS = [
+  "https://mempool.space/api",
+  "https://blockstream.info/api",
+  "https://mempool.emzy.de/api",
+] as const;
+
 export function esploraFetcher(
   base: string,
-  opts: { signal?: AbortSignal; timeoutMs?: number; network?: BtcNetwork } = {},
+  opts: { signal?: AbortSignal; timeoutMs?: number; network?: BtcNetwork; hedge?: boolean } = {},
 ): EsploraFetch {
   return async (path: string) => {
     // Never send a stale foreign-network address to an explorer. After the
@@ -98,8 +107,10 @@ export function esploraFetcher(
     // single public explorer must not turn a chain-verified bonded count into a
     // silent zero. Hedge only the SHIPPED mainnet endpoint; a user-selected
     // explorer remains authoritative and is never bypassed behind their back.
-    const candidates = opts.network !== SIGNET && normalizedBase === builtinMainnet
-      ? [normalizedBase, "https://blockstream.info/api", "https://mempool.emzy.de/api"]
+    // `hedge: false` pins one host: corroborated reads need each answer to
+    // come from the explorer they asked, not whichever raced in first.
+    const candidates = opts.hedge !== false && opts.network !== SIGNET && normalizedBase === builtinMainnet
+      ? [normalizedBase, ...MAINNET_HEDGE_EXPLORERS.slice(1)]
       : [normalizedBase];
 
     const controllers = candidates.map(() => new AbortController());
@@ -203,14 +214,24 @@ export async function esploraRecommendedFeeRate(
   }
 }
 
-/** Settlement must not silently use a stale minimum when the fee API fails. */
+/** Highest fee rate an escrow settlement, refund or payout sweep will pay,
+ *  matching the bond reclaim cap. One wrong explorer answer must not hand the
+ *  escrow to miners; a capped transaction still relays and confirms. */
+export const MAX_SETTLEMENT_FEE_RATE = 100n;
+
+/** Settlement must not silently use a stale minimum when the fee API fails,
+ *  and never pays above MAX_SETTLEMENT_FEE_RATE whatever the explorer says. */
 export async function esploraRequiredFeeRate(fetchJson: EsploraFetch): Promise<bigint> {
   const r = await fetchJson("/v1/fees/recommended");
   const raw = r?.hourFee ?? r?.halfHourFee ?? r?.economyFee;
   if (typeof raw !== "number" || !Number.isFinite(raw) || raw <= 0) {
     throw new Error("Current Bitcoin fees are unavailable. Try settlement again when the fee estimate returns.");
   }
-  return BigInt(Math.ceil(raw));
+  return capSettlementFeeRate(BigInt(Math.ceil(raw)));
+}
+
+export function capSettlementFeeRate(rate: bigint): bigint {
+  return rate > MAX_SETTLEMENT_FEE_RATE ? MAX_SETTLEMENT_FEE_RATE : rate;
 }
 
 /** Broadcast a raw tx hex to Esplora; returns the txid, or throws with the node's

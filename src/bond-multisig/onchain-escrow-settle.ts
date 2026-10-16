@@ -250,6 +250,16 @@ export interface SettlementExpectation {
    *  block-based BIP68 sequence; an honest builder is not enough. */
   leaf?: SettlementLeaf;
   tipHeight?: number;
+  /** The funding outpoint committed in the LOCK. When set, the settlement may
+   *  spend any subset of `utxos` that includes it and totals at least
+   *  `minInputSats`, instead of every known output. A deposit that arrives
+   *  after the payout was proposed (a 330-sat dust send, say) then cannot
+   *  freeze the agreed payout; anything left behind stays at the escrow for
+   *  the funder's refund leaf. */
+  committedOutpoint?: { txid: string; index: number };
+  /** Committed escrow amount. Required with `committedOutpoint`: a subset that
+   *  quietly leaves part of the trade behind is refused. */
+  minInputSats?: bigint;
 }
 
 export interface SettlementCheck {
@@ -323,7 +333,16 @@ export function verifySettlementPsbt(
     if (tx.lockTime !== expect.escrow.params.refundLockUntil) fail("Wrong refund locktime");
     if (!Number.isInteger(expect.tipHeight) || expect.tipHeight! < expect.escrow.params.refundLockUntil) fail("Refund is not mature");
   }
-  if (seen.size !== known.size) fail("Settlement must spend every known escrow output");
+  if (expect.committedOutpoint) {
+    const committed = `${expect.committedOutpoint.txid}:${expect.committedOutpoint.index}`;
+    if (!seen.has(committed)) fail("Settlement must spend the committed funding output");
+    if (expect.minInputSats === undefined) fail("Settlement expectation is missing the committed amount");
+    else if (inSum < expect.minInputSats) {
+      fail(`Settlement spends ${inSum} sats, less than the committed ${expect.minInputSats}`);
+    }
+  } else if (seen.size !== known.size) {
+    fail("Settlement must spend every known escrow output");
+  }
 
   // ── Outputs: exactly one, to the locally-resolved winner ──
   if (tx.outputsLength !== 1) {
