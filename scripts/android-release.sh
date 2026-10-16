@@ -658,6 +658,14 @@ if [ -n "$AAPT" ]; then
       echo "$BADGING" | head -n 1
       exit 1
     fi
+    # An rc must sort below its release, or Zapstore never offers the release to
+    # a phone that ran the rc (6.4.25-rc.14 and 6.4.25 were both 60425).
+    EXPECTED_VERSION_CODE=$(node "$ROOT_DIR/scripts/android-version-code.mjs" "$VERSION")
+    if ! grep -q "versionCode='$EXPECTED_VERSION_CODE'" <<<"$BADGING"; then
+      echo "❌ APK versionCode is not $EXPECTED_VERSION_CODE for $VERSION (see scripts/android-version-code.mjs)."
+      echo "$BADGING" | head -n 1
+      exit 1
+    fi
     echo "✅ APK metadata: $(echo "$BADGING" | head -n 1)"
   fi
 else

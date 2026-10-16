@@ -5,9 +5,17 @@ import java.util.Properties
 
 def appPackageJson = new JsonSlurper().parse(new File(rootDir.parentFile, "package.json"))
 def appVersionName = appPackageJson.version as String
-def appVersionParts = appVersionName.tokenize("-")[0].tokenize(".").collect { it as int }
-while (appVersionParts.size() < 3) appVersionParts << 0
-def appVersionCode = appVersionParts[0] * 10000 + appVersionParts[1] * 100 + appVersionParts[2]
+// X.Y.Z-rc.N → base*100 + N (N = 1..98); X.Y.Z → base*100 + 99, so an rc always sorts
+// below its release and Zapstore offers the release to a phone running the rc.
+// Same formula as scripts/android-version-code.mjs, which android-release.sh checks.
+def appVersionMatch = appVersionName =~ /^(\d+)\.(\d+)\.(\d+)(?:-rc\.(\d+))?$/
+if (!appVersionMatch.matches()) throw new GradleException("Unsupported Android version ${appVersionName}: expected X.Y.Z or X.Y.Z-rc.N")
+def appVersionParts = (1..3).collect { appVersionMatch.group(it) as int }
+if (appVersionParts[1] > 99 || appVersionParts[2] > 99) throw new GradleException("Unsupported Android version ${appVersionName}: minor and patch must be 0..99")
+def appVersionBase = appVersionParts[0] * 10000 + appVersionParts[1] * 100 + appVersionParts[2]
+def appVersionRc = appVersionMatch.group(4) == null ? null : (appVersionMatch.group(4) as int)
+if (appVersionRc != null && (appVersionRc < 1 || appVersionRc > 98)) throw new GradleException("Unsupported Android version ${appVersionName}: rc must be 1..98")
+def appVersionCode = appVersionRc == null ? appVersionBase * 100 + 99 : appVersionBase * 100 + appVersionRc
 def appAbi = System.getenv("CHAMA_ANDROID_ABI") ?: "arm64-v8a"
 
 def keystoreProperties = new Properties()
