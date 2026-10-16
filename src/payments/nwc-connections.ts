@@ -8,7 +8,9 @@
 // invoice creation or funding auto-pay.
 
 import {
+  getLocalStorageUserScope,
   getScopedStorageItem,
+  scopedStorageKey,
   setScopedStorageItem,
 } from "../storage/user-scope.js";
 import { randomId } from "../storage/random-id.js";
@@ -104,7 +106,102 @@ function readStored(key: string): SavedNwcConnection[] {
   }
 }
 
+// M9: once a signed-in user's list has been loaded from encrypted storage
+// (sealed-store.ts) it is served from memory and every change is written
+// back encrypted; the plain localStorage copies are removed only after the
+// encrypted copy reads back. Until then, and wherever sealing is not
+// available, the plain localStorage path below works exactly as before.
+export interface NwcSealer {
+  get(name: string): Promise<string | null>;
+  set(name: string, value: string): Promise<void>;
+}
+
+const sealedCache = new Map<string, SavedNwcConnection[]>();
+let activeSealer: NwcSealer | null = null;
+let sealedWrites: Promise<void> = Promise.resolve();
+
+function activeSealedId(): string | null {
+  const scope = getLocalStorageUserScope();
+  return scope ? scopedStorageKey(NWC_CONNECTIONS_STORAGE_KEY, scope) : null;
+}
+
+function parseList(raw: string | null): SavedNwcConnection[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? dedupeConnections(parsed.filter(isSavedNwcConnection)) : [];
+  } catch {
+    return [];
+  }
+}
+
+function persistSealed(scope: string, list: SavedNwcConnection[]): Promise<void> {
+  const sealer = activeSealer;
+  const id = scopedStorageKey(NWC_CONNECTIONS_STORAGE_KEY, scope);
+  const serialized = JSON.stringify(list);
+  sealedWrites = sealedWrites.then(async () => {
+    if (!sealer) return;
+    try {
+      await sealer.set(id, serialized);
+      try {
+        localStorage.removeItem(id);
+        localStorage.removeItem(scopedStorageKey(NWC_CONNECTIONS_BACKUP_STORAGE_KEY, scope));
+      } catch {}
+    } catch {
+      // Sealing failed: keep a plain copy rather than lose the list.
+      try {
+        localStorage.setItem(id, serialized);
+        localStorage.setItem(scopedStorageKey(NWC_CONNECTIONS_BACKUP_STORAGE_KEY, scope), serialized);
+      } catch {}
+    }
+  });
+  return sealedWrites;
+}
+
+/** Load the signed-in user's saved NWC connections from encrypted storage,
+ *  moving any plain copy in. Call after the user scope is set. An
+ *  unreadable encrypted copy leaves everything as it is. */
+export async function hydrateSavedNwcConnections(sealer: NwcSealer): Promise<void> {
+  const scope = getLocalStorageUserScope();
+  if (!scope) return;
+  const id = scopedStorageKey(NWC_CONNECTIONS_STORAGE_KEY, scope);
+  if (sealedCache.has(id)) return;
+  let sealed: SavedNwcConnection[];
+  try {
+    sealed = parseList(await sealer.get(id));
+  } catch {
+    return;
+  }
+  if (getLocalStorageUserScope() !== scope || sealedCache.has(id)) return;
+  // Plain copies are newer (an older app, or a change made before this
+  // load finished), so they win over the sealed copy for the same wallet.
+  const plain = readPlainRaw();
+  const merged = dedupeConnections([...plain, ...sealed]);
+  activeSealer = sealer;
+  sealedCache.set(id, merged);
+  if (plain.length > 0 || merged.length !== sealed.length) await persistSealed(scope, merged);
+}
+
+/** Wait for pending encrypted writes (tests and sign-out). */
+export function flushSealedNwcWrites(): Promise<void> {
+  return sealedWrites;
+}
+
+/** Test hook. */
+export function resetSealedNwcForTests(): void {
+  sealedCache.clear();
+  activeSealer = null;
+  sealedWrites = Promise.resolve();
+}
+
 function readRaw(): SavedNwcConnection[] {
+  const id = activeSealedId();
+  const cached = id ? sealedCache.get(id) : undefined;
+  if (cached) return cached.slice();
+  return readPlainRaw();
+}
+
+function readPlainRaw(): SavedNwcConnection[] {
   const primary = readStored(NWC_CONNECTIONS_STORAGE_KEY);
   if (primary.length > 0) return primary;
 
@@ -122,6 +219,17 @@ function writeRaw(
   opts: { allowEmptyOverwrite?: boolean } = {},
 ): void {
   const normalized = dedupeConnections(connections);
+  const scope = getLocalStorageUserScope();
+  const id = activeSealedId();
+  if (scope && id && sealedCache.has(id)) {
+    if (normalized.length === 0 && !opts.allowEmptyOverwrite && (sealedCache.get(id)?.length ?? 0) > 0) {
+      console.warn("[chama] Refusing to overwrite NWC connections with an empty list");
+      return;
+    }
+    sealedCache.set(id, normalized);
+    void persistSealed(scope, normalized);
+    return;
+  }
   try {
     if (normalized.length === 0 && !opts.allowEmptyOverwrite) {
       const existing = readStored(NWC_CONNECTIONS_STORAGE_KEY);
