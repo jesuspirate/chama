@@ -4,16 +4,23 @@ import wasm from "vite-plugin-wasm";
 import topLevelAwait from "vite-plugin-top-level-await";
 
 import pkg from "./package.json" with { type: "json" };
-import { contentPolicyMetaTag } from "./src/security/content-policy";
+import { checkBuiltPage, contentPolicyMetaTag } from "./src/security/content-policy";
 
 // M8: every built page carries the Content-Security-Policy as its first
 // <head> element. Dev builds don't: the hot-reload preamble is inline.
+// The finished page is checked too, so a build that would ship something
+// the policy refuses fails here instead of loading blank on a phone.
 const contentSecurityPolicy = () => ({
   name: "chama-content-security-policy",
   apply: "build" as const,
-  transformIndexHtml(html: string) {
-    if (!/<head>/i.test(html)) throw new Error("content policy: page has no <head>");
-    return html.replace(/<head>/i, (head) => `${head}${contentPolicyMetaTag()}`);
+  transformIndexHtml: {
+    order: "post" as const,
+    handler(html: string, ctx: { filename: string }) {
+      if (!/<head>/i.test(html)) throw new Error("content policy: page has no <head>");
+      const out = html.replace(/<head>/i, (head) => `${head}${contentPolicyMetaTag()}`);
+      checkBuiltPage(ctx.filename, out);
+      return out;
+    },
   },
 });
 

@@ -13,21 +13,26 @@
 //
 // Network reach stays wide on purpose: relays, federations, Lightning
 // addresses and explorers are chosen by users and sellers, so connect-src
-// can't be a fixed list. Listing photos can come from any https host.
+// can't be a fixed list. That includes plain http, for a user's own
+// explorer on their home network (StartOS opened over the LAN). Listing
+// photos can come from any https host.
+//
+// A <meta> policy covers the page only. The wallet's worker and the
+// service worker load from their own URLs and take no policy from it.
 
 export const CONTENT_SECURITY_POLICY = [
   "default-src 'self'",
-  // Fedimint's wallet is WebAssembly; nothing else may be compiled or eval'd.
+  // WebAssembly may compile (Fedimint's wallet); the page may not eval.
   "script-src 'self' 'wasm-unsafe-eval'",
   // The UI sets inline styles throughout (React style props, <style> tags).
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob: https:",
   "font-src 'self' data:",
   "media-src 'self' data: blob: https:",
-  // Relays (wss/ws), federations, LNURL and explorers (https), the native
-  // wallet bridge on this device (127.0.0.1 / localhost), Tor LNURL (.onion)
+  // Relays (wss/ws), federations, LNURL and explorers (https, or http for
+  // a user's own explorer, the wallet bridge on this device and .onion)
   // and Tauri's IPC.
-  "connect-src 'self' https: wss: ws: http://127.0.0.1:* http://localhost:* http://*.onion ipc: http://ipc.localhost",
+  "connect-src 'self' https: wss: ws: http: ipc: http://ipc.localhost",
   "worker-src 'self' blob:",
   "manifest-src 'self'",
   "frame-src 'none'",
@@ -39,4 +44,21 @@ export const CONTENT_SECURITY_POLICY = [
 /** The <meta> tag carrying the policy, for the built HTML pages. */
 export function contentPolicyMetaTag(): string {
   return `<meta http-equiv="Content-Security-Policy" content="${CONTENT_SECURITY_POLICY}">`;
+}
+
+/**
+ * Refuse a finished page the policy would break: no policy tag, an inline
+ * script or handler (refused at runtime, so the app could load blank), or
+ * <meta charset> pushed past the first 1024 bytes by the tag.
+ */
+export function checkBuiltPage(name: string, html: string): void {
+  const tag = contentPolicyMetaTag();
+  if (!html.includes(tag)) throw new Error(`content policy: ${name} has no content policy tag`);
+  for (const script of html.match(/<script\b[^>]*>/gi) ?? []) {
+    if (!/\bsrc\s*=/i.test(script)) throw new Error(`content policy: ${name} has an inline <script>, which would be refused`);
+    if (/\son[a-z]+\s*=/i.test(script)) throw new Error(`content policy: ${name} has an inline event handler, which would be refused`);
+  }
+  if (/<[a-z][^>]*\son[a-z]+\s*=/i.test(html)) throw new Error(`content policy: ${name} has an inline event handler, which would be refused`);
+  const charset = html.search(/<meta\s+charset/i);
+  if (charset === -1 || charset > 1024) throw new Error(`content policy: ${name} must declare its charset in the first 1024 bytes`);
 }

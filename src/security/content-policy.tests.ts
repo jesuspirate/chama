@@ -23,12 +23,12 @@ assert.deepEqual(directives.get("object-src"), ["'none'"]);
 assert.deepEqual(directives.get("frame-src"), ["'none'"]);
 assert.deepEqual(directives.get("base-uri"), ["'self'"]);
 assert.deepEqual(directives.get("form-action"), ["'self'"]);
-// The native wallet bridge on this device and Tor Lightning addresses stay reachable.
+// Relays, the wallet bridge on this device (any port), a user's own http
+// explorer, Tor addresses on any port and Tauri's IPC stay reachable.
 const connect = directives.get("connect-src") ?? [];
-for (const source of ["'self'", "https:", "wss:", "http://127.0.0.1:*", "http://*.onion", "ipc:", "http://ipc.localhost"]) {
+for (const source of ["'self'", "https:", "wss:", "ws:", "http:", "ipc:", "http://ipc.localhost"]) {
   assert.ok(connect.includes(source), `connect-src keeps ${source}`);
 }
-assert.ok(!connect.includes("http:"), "plain http only to this device and .onion");
 assert.ok(!CONTENT_SECURITY_POLICY.includes('"'), "policy must not break out of the meta attribute");
 assert.equal(
   contentPolicyMetaTag(),
@@ -51,6 +51,16 @@ for (const page of ["index.html", "wake.html"]) {
 const viteConfig = readFileSync("vite.config.ts", "utf8");
 assert.match(viteConfig, /contentSecurityPolicy\(\)/, "vite.config.ts registers the policy plugin");
 assert.match(viteConfig, /\$\{head\}\$\{contentPolicyMetaTag\(\)\}/, "policy tag goes straight after <head>");
+
+// The plugin also checks each finished page, so a build that would ship an
+// inline script (refused, blank app) fails instead.
+const { checkBuiltPage } = await import("./content-policy.js");
+const good = `<!doctype html><html><head>${contentPolicyMetaTag()}<meta charset="utf-8"><script type="module" src="/a.js"></script></head></html>`;
+checkBuiltPage("good.html", good);
+assert.throws(() => checkBuiltPage("x.html", good.replace('<script type="module" src="/a.js"></script>', "<script>1</script>")), /inline <script>/);
+assert.throws(() => checkBuiltPage("x.html", good.replace(contentPolicyMetaTag(), "")), /no content policy/);
+assert.throws(() => checkBuiltPage("x.html", good.replace('<meta charset="utf-8">', `<!--${"x".repeat(1100)}--><meta charset="utf-8">`)), /charset/);
+assert.throws(() => checkBuiltPage("x.html", good.replace("<head>", '<head><base href="/"><script src="/a.js" onload="x()"></script>')), /event handler/);
 
 // Desktop: no global Tauri API for injected code, and the page cannot spawn programs.
 const tauriConf = JSON.parse(readFileSync("src-tauri/tauri.conf.json", "utf8"));
