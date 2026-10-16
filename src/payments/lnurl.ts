@@ -1,3 +1,5 @@
+import { sha256 } from "@noble/hashes/sha2.js";
+import { bytesToHex } from "@noble/hashes/utils.js";
 import { errorText } from "./error-text.js";
 import { defaultLnurlFetch, type LnurlFetch } from "./lnurl-transport.js";
 import { decodeBolt11Payment, isBolt11PaymentInfo } from "./bolt11.js";
@@ -163,10 +165,19 @@ export function parseRawLnurl(raw: string): string {
   } catch {
     throw new LnurlError("LnurlParseError", "LNURL did not decode to a valid URL");
   }
-  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
-    throw new LnurlError("LnurlParseError", "LNURL decoded to an unsupported URL scheme");
+  if (!isAllowedLnurlUrl(parsed)) {
+    throw new LnurlError("LnurlParseError", "LNURL must use https (plain http is allowed only for .onion addresses)");
   }
   return parsed.toString();
+}
+
+/** LUD-01: LNURL endpoints are https, except Tor .onion services, which may
+ *  use plain http because the onion address already authenticates them. */
+export function isAllowedLnurlUrl(url: URL | string): boolean {
+  let parsed: URL;
+  try { parsed = typeof url === "string" ? new URL(url) : url; } catch { return false; }
+  if (parsed.protocol === "https:") return true;
+  return parsed.protocol === "http:" && parsed.hostname.toLowerCase().endsWith(".onion");
 }
 
 /** Parse a Lightning Address (LUD-16) — `user@domain.tld`. Synchronous;
@@ -326,6 +337,12 @@ export async function fetchLnurlPayMetadataUrl(
       `${label} returned malformed LNURL-pay metadata`,
     );
   }
+  if (!isAllowedLnurlUrl(body.callback)) {
+    throw new LnurlError(
+      "LnurlMalformedError",
+      `${label} gave an invoice address that isn't https, so Chama won't ask it for an invoice`,
+    );
+  }
   return {
     callback: body.callback,
     minSendable: body.minSendable,
@@ -400,6 +417,12 @@ export async function requestLnurlInvoice(
   }
   if (decoded.expiresAt <= Math.floor(Date.now() / 1000)) {
     throw new LnurlError("LnurlMalformedError", "LNURL callback returned an expired invoice");
+  }
+  // LUD-06: the invoice commits to the metadata it was asked for. Invoices
+  // without a description hash are still accepted, as many wallets omit it.
+  if (decoded.descriptionHash && meta.metadata
+    && decoded.descriptionHash !== bytesToHex(sha256(new TextEncoder().encode(meta.metadata)))) {
+    throw new LnurlError("LnurlMalformedError", "This wallet sent an invoice that doesn't match what Chama asked for, so nothing was paid. Try another address.");
   }
   return body.pr;
 }
