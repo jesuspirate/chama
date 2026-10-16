@@ -14,7 +14,7 @@ export function OfflineBar() {
         position: "fixed", top: 0, left: 0, right: 0, zIndex: 200,
         display: "flex", alignItems: "center", justifyContent: "center", gap: 9,
         padding: "9px 14px", background: T.red, color: "#fff",
-        fontFamily: T.mono, fontSize: 12, fontWeight: 700, letterSpacing: 0.3,
+        fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
         textAlign: "center", boxShadow: "0 2px 12px rgba(0,0,0,0.28)",
       }}
     >

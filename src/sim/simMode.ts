@@ -16,6 +16,10 @@
 //   ?sim=1&onchain=underpaid  → deposit below the federation minimum
 //   ?sim=0  → turn sim mode off
 //
+// Sandbox builds (`VITE_CHAMA_SANDBOX=1`, served at poc.getchama.app) force
+// sim mode on: the URL flag, `setSimMode(false)` and localStorage are all
+// ignored there. See sandbox-build.ts.
+//
 // There is no UI toggle. The URL flag is the public entry point. A normal
 // `getchama.app` visit always clears a prior sim session: users must never
 // land in a fake-money experience simply because they explored the sandbox
@@ -31,6 +35,8 @@
 // fresh-1k-sats wallet for unit-test scaffolding. Sim mode is the
 // product-facing equivalent (0 starting sats, npub-keyed persistence,
 // realistic timing). If both flags are set, sim mode wins.
+
+import { CHAMA_SANDBOX } from "./sandbox-build.js";
 
 const SIM_STORAGE_KEY = "chama_sim_mode";
 
@@ -73,6 +79,7 @@ function applyUrlFlagOnce(): void {
  * a bare production URL cannot inherit a prior sandbox session.
  */
 export function isSimModeOn(): boolean {
+  if (CHAMA_SANDBOX) return true;
   applyUrlFlagOnce();
   try {
     if (typeof localStorage === "undefined") return false;
@@ -88,6 +95,7 @@ export function isSimModeOn(): boolean {
  * button doesn't require a copy-paste of `?sim=0`.
  */
 export function setSimMode(on: boolean): void {
+  if (CHAMA_SANDBOX) return; // the sandbox never leaves sim mode
   try {
     if (typeof localStorage === "undefined") return;
     if (on) localStorage.setItem(SIM_STORAGE_KEY, "1");
@@ -130,8 +138,13 @@ export function eventIsSim(event: { tags: string[][] }): boolean {
  *   sim on, event is sim   → keep
  *   sim off, event is sim  → drop (don't pollute prod UI with sim trades)
  *   sim off, event not sim → keep
+ *   kind 0 (profiles)      → always keep
  */
-export function shouldDropForSimPolicy(event: { tags: string[][] }): boolean {
+export function shouldDropForSimPolicy(event: { kind?: number; tags: string[][] }): boolean {
+  // A Nostr profile (kind 0) is who someone is, not trade data: both worlds
+  // read the same one, so the sandbox shows real names (Jet, rc.12). The
+  // sandbox never publishes one (useEscrow publishProfileName/Avatar).
+  if (event.kind === 0) return false;
   const evtSim = eventIsSim(event);
   const localSim = isSimModeOn();
   return evtSim !== localSim;

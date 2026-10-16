@@ -9,6 +9,8 @@
 //   translate): the `tag` strings ("{id}:locked", "{id}:chat:…", "selftest",
 //   etc.) and escrowId sentinels stay hardcoded.
 export const notify: Record<string, string> = {
+  "notify.circleReturnTitle": "Circle share return",
+  "notify.circleReturnSignature": "A circle share needs your return signature.",
   "notify.marketActiondigital": "deliver the file and mark it sent",
   "notify.marketActionservice": "do the work and mark it done",
   "notify.marketActionmeet": "hand it over and mark it done",

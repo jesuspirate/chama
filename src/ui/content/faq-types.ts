@@ -6,7 +6,7 @@ export interface FaqItem {
   /** A plain paragraph, OR a structured numbered procedure — an optional intro
    *  paragraph, an aligned step list, and an optional closing paragraph. Structured
    *  steps render as a real hanging-indent list in the Help screen. */
-  a: string | { intro?: string; steps: string[]; outro?: string };
+  a: string | { intro?: string; steps: string[]; outro?: string } | { intro?: string; columns: string[]; rows: string[][]; outro?: string };
 }
 
 export interface FaqSection {

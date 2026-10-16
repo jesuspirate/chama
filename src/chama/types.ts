@@ -1,3 +1,4 @@
+import type { Outcome } from '../escrow-engine/types.js';
 // ══════════════════════════════════════════════════════════════════════════
 // Chama — the savings circle. The app finally doing the thing it is named
 // after. Pure contract only: no events, no spends, no UI. Money enters when
@@ -93,6 +94,11 @@ export interface CircleShareLock {
    *  the member can collect NOW. Distinct from status — an approved share is
    *  still owed, so it stays "locked" until the sats actually move. */
   readyToClaim?: boolean;
+  /** Committed return signatures and seats; absent means the read is incomplete. */
+  returnVotes?: Partial<Record<"buyer" | "seller" | "arbiter", Outcome>>;
+  returnSeats?: Partial<Record<"buyer" | "seller" | "arbiter", string | null>>;
+  /** Existing lone-vote escalation clock; never an eligibility override. */
+  arbiterReturnAtSec?: number | null;
   /** Unix seconds the lock landed (chain fact, feeds punctuality standing).
    *  Null while reserved. */
   lockedAtSec: number | null;

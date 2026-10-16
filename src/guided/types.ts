@@ -75,6 +75,7 @@ export type GuidedMatchRejectionCode =
   | "CHILD_ORDER"
   | "EXPIRED"
   | "SELF_LISTING"
+  | "NO_ARBITER_POOL"
   | "NO_SELLER"
   | "RESERVED"
   | "OUT_OF_STOCK"

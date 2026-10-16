@@ -244,7 +244,7 @@ export function OnchainTradeControls({ state, pubkey, profileNames, kind0Enabled
       })}>{choosingWithVote ? "Confirm · receive in Chama" : "Send to my Chama key instead"}</button>
     </div>}
     {view.canSettle && !choice && role !== winner?.role && <p role="status">Waiting for {winnerName} to choose where the sats go.</p>}
-    {view.canSettle && choice && <p style={{ color: T.muted, overflowWrap: "anywhere" }}>Payout address: {choice.destination}
+    {view.canSettle && choice && <p data-selectable style={{ color: T.muted, overflowWrap: "anywhere" }}>Payout address: {choice.destination}
       {choice.locked && <><br />The other signer has signed. The destination is fixed.</>}</p>}
     {(!view.canSettle || choice) && <>
     {retired ? <div>
@@ -255,7 +255,7 @@ export function OnchainTradeControls({ state, pubkey, profileNames, kind0Enabled
           const result = await actions.onRefundOnchainEscrow!(state.id); setNote(`Refund broadcast: ${result.txid}`);
         })}>Recover deposit</button>}
       </>}
-    </div> : <OnchainEscrowPanel settlementUnavailable={unavailable} view={view} network={ESCROW_NETWORK_LABEL} settlementCheck={unavailable ? null : checkedChoice === choice?.id ? check : check?.ok === false ? check : null} signing={busy} signedByViewer={signed}
+    </div> : <OnchainEscrowPanel refundHeight={(state.lock.onchain ?? state.onchainFundingTerms)?.refundLockUntil} settlementUnavailable={unavailable} view={view} network={ESCROW_NETWORK_LABEL} settlementCheck={unavailable ? null : checkedChoice === choice?.id ? check : check?.ok === false ? check : null} signing={busy} signedByViewer={signed}
       checking={busy} fundingNote={state.onchainFundingTerms && unavailable && state.status === EscrowStatus.CREATED ? "Couldn’t check the deposit yet — retrying" : note} depositStatus={depositStatus} publishing={busy} refunding={busy}
       onPrepareFunding={prepareFailed && !state.onchainFundingTerms && view.viewerFunds && participants.buyer && participants.seller && actions.onPrepareOnchainFunding
         ? () => void run(prepareFunding) : undefined}

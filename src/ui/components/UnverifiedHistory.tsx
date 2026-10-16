@@ -11,7 +11,7 @@ export function UnverifiedHistory({ ids, onOpen }: { ids: readonly string[]; onO
         padding: 12, textAlign: 'left', color: T.muted, background: T.surface,
         border: `1px solid ${T.border}`, borderRadius: T.rs, cursor: 'pointer', overflowWrap: 'anywhere',
       }}>
-        <span style={{ display: 'block', fontFamily: T.mono }}>{id}</span>
+        <span style={{ display: 'block', fontFamily: T.sans }}>{id}</span>
         <span>This device has no signed record of this trade.</span>
       </button>)}
     </div>

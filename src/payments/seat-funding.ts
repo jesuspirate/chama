@@ -1,5 +1,5 @@
 import { decodeBolt11Payment } from "./bolt11.js";
-import { preLockDeadline, type EscrowState } from '../escrow-engine/types.js';
+import { EscrowStatus, Role, getEffectiveParticipantAt, preLockDeadline, type EscrowState } from '../escrow-engine/types.js';
 
 export const FUNDING_LOCK_MARGIN_SECONDS = 60;
 export const MIN_ONCHAIN_HOLD_SECONDS = 10 * 60;
@@ -29,4 +29,14 @@ export function assertFundingInvoiceWithinSeat(invoice: string, deadline: number
   if (!decoded || decoded.expiresAt > deadline - FUNDING_LOCK_MARGIN_SECONDS || decoded.expiresAt * 1000 <= now) {
     throw new Error("This invoice cannot be paid within the buyer's seat window. Chama did not show it. Wait for the buyer to rejoin.");
   }
+}
+
+/** UI and action preflight share the committed-seat and deadline boundary.
+ * A missing state is unknown, so payment stays hidden. */
+export function canShowTradeFunding(state: EscrowState | undefined, now = Date.now()): boolean {
+  if (!state || state.status !== EscrowStatus.CREATED) return false;
+  if (!getEffectiveParticipantAt(state, Role.BUYER, now / 1000, { includeLockGrace: true })) return false;
+  if (!getEffectiveParticipantAt(state, Role.SELLER, now / 1000, { includeLockGrace: true })) return false;
+  const deadline = fundingSeatDeadline(state);
+  return deadline === undefined || deadline - now / 1000 > FUNDING_LOCK_MARGIN_SECONDS;
 }

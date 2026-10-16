@@ -1,0 +1,70 @@
+{
+  "capturedAt": "2026-10-04T02:22:21.080Z",
+  "platform": "Disposable desktop Brave",
+  "requests": [],
+  "community": "us-blf",
+  "cacheBefore": null,
+  "result": {
+    "liveness": {
+      "community": "us-blf",
+      "isLive": false,
+      "arbiterCount": 0,
+      "totalBondSats": "0",
+      "bondWeightSatBlocks": "0",
+      "avgRemainingBlocks": 0,
+      "ratings": {
+        "count": 0,
+        "positive": 0,
+        "negative": 0,
+        "positiveRate": 0
+      },
+      "score": 0
+    },
+    "source": "live",
+    "outcome": "verified"
+  },
+  "diagnostics": [
+    {
+      "community": "us-blf",
+      "startedAt": 1791080540246,
+      "finishedAt": 1791080541034,
+      "durationMs": 788,
+      "joinedCallers": 0,
+      "maxSimultaneous": 1,
+      "outcome": "verified"
+    }
+  ],
+  "state": {
+    "pubkey": "a24e66d5c07f9d4f8ea1ad994828304fc644ec30407b1ce52a188ab6a9d96ddd",
+    "connected": true,
+    "relays": [
+      [
+        "wss://relay.chama.community",
+        "connected"
+      ],
+      [
+        "wss://relay.damus.io",
+        "connected"
+      ],
+      [
+        "wss://relay.primal.net",
+        "connected"
+      ],
+      [
+        "wss://nos.lol",
+        "connecting"
+      ],
+      [
+        "wss://nostr.mom",
+        "connecting"
+      ],
+      [
+        "wss://nostr.land",
+        "connected"
+      ]
+    ],
+    "initialized": false,
+    "joined": false
+  },
+  "errors": []
+}

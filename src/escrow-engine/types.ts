@@ -1035,7 +1035,7 @@ export interface EscrowState {
   /** Positively refused signed ecash LOCKs, outside committed custody. */
   /** Device-local saved funding for a refused LOCK; never consensus custody. */
   rejectedLockRecovery?: { eventId: string; pubkey: string; amountMsats: number };
-  rejectedLocks?: { event: ParsedEscrowEvent<LockPayload>; code: "ORDER_NOT_FINALIZED" }[];
+  rejectedLocks?: { event: ParsedEscrowEvent<LockPayload>; code: "ORDER_NOT_FINALIZED" | "CANCELLED_BEFORE_LOCK" }[];
   /** Rejected advisory transitions retained for an honest reconstruction report. */
   replayNotes?: ReplayNote[];
   /** Unique escrow identifier (d-tag value) */
@@ -1190,6 +1190,8 @@ export interface EscrowState {
   resolvedOutcome: Outcome | null;
   /** Which two roles formed the majority */
   resolvedMajority: [Role, Role] | null;
+  /** Display-only signed VOTE preview. Never serialized or used as claim evidence. */
+  pendingVote?: { eventId: string; role: Role; outcome: Outcome };
   /** Arbiter substitution: the pubkey whose vote currently holds the ARBITER
    *  slot — the assigned arbiter in the normal case, or the
    *  highest-priority pool backup who stepped in. Undefined before any

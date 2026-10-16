@@ -13,7 +13,7 @@ export const canvas: Record<string, string> = {
 
   "canvas.chamaWant": "Circles",
   "canvas.xbtTease": "XBT · Bitcoin",
-  "canvas.circleKicker": "SAVINGS CIRCLES",
+  "canvas.circleKicker": "Savings circles",
   "canvas.circleTitle": "Start one, or join one?",
   "canvas.circleSub": "A circle is people you save with. Bring yours, or find one.",
   "canvas.circleStart": "Start a new circle",
@@ -25,7 +25,7 @@ export const canvas: Record<string, string> = {
   "canvas.xbtTeaseDesc": "A new market — only when it's truly ready.",
   "canvas.comingSoon": "Coming soon",
   "canvas.chamaWantDesc": "Start a Chama circle — equal shares, everyone completes or everyone is refunded.",
-  "canvas.chamaWantBadge": "THE NAMESAKE",
+  "canvas.chamaWantBadge": "The namesake",
   // errors / dynamic
   "canvas.enterRailDetails": "Enter your {rail} payment details.",
   "canvas.detailsSaveFailed": "Those payment details could not be saved.",
@@ -38,6 +38,7 @@ export const canvas: Record<string, string> = {
   "canvas.rejPaymentRail": "payment method",
   "canvas.rejCommunity": "different community",
   "canvas.rejFederation": "different federation",
+  "canvas.rejNoArbiterPool": "no arbiter pool",
   "canvas.rejSelfListing": "your own listing",
   "canvas.rejOverBudget": "over budget",
   "canvas.rejCurrency": "different currency",
@@ -236,4 +237,6 @@ export const canvas: Record<string, string> = {
   "canvas.circleLive": "Open circles · {count} live",
   "canvas.circleNoneOpen": "None open right now — start one and be the first.",
   "canvas.circleBrowseMore": "See {count} more in Browse",
+  "canvas.satsRange": "{min}–{max} sats",
+  "canvas.pickAmountNext": "You asked for {amount} sats — you choose the exact amount in the next step.",
 };

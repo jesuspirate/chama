@@ -9,7 +9,7 @@
 // horizontal pager gesture. Purely presentational — the parent owns the pager
 // scroll; this reflects `active` and reports taps via `onSelect`.
 
-import { T } from "../../theme.js";
+import { T, ON_ATTN } from "../../theme.js";
 import { useT } from "../../../i18n/index.js";
 
 export function PagerPills({ tabs, active, onSelect, badges, icons, disabled, tabIds, chevrons = true, label, wrapLabels = false }: {
@@ -102,8 +102,8 @@ export function PagerPills({ tabs, active, onSelect, badges, icons, disabled, ta
                 <span aria-label={t("trade.unreadAria", { count: badge })} style={{
                   position: "absolute", top: 0, right: 2,
                   minWidth: 14, height: 14, padding: "0 3px", boxSizing: "border-box",
-                  borderRadius: 999, background: T.accent, color: "#fff",
-                  fontFamily: T.mono, fontSize: 8.5, fontWeight: 800,
+                  borderRadius: 999, background: T.attn, color: ON_ATTN,
+                  fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
                   lineHeight: "14px", textAlign: "center",
                 }}>
                   {badge > 9 ? "9+" : badge}

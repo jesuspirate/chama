@@ -50,7 +50,7 @@ export const app: Record<string, string> = {
     "My Chama and Cheapest are the defaults. Switch to All when you want to discover offers from other countries and communities.",
   "app.coachBrowsePreferencesTitle": "Choose what Browse shows",
   "app.coachCreateBody":
-    "This ✎ button opens three plain questions. Chama finds a match or prepares the right offer for you.",
+    "Create opens three plain questions. Chama finds a match or prepares the right offer for you.",
   "app.coachCreateTitle": "Start with what you have",
   "app.coachDashboardBody":
     "Your standing, stats, earnings, and ratings are coming here — the place that tracks how you're doing as you trade.",
@@ -74,6 +74,10 @@ export const app: Record<string, string> = {
   "app.useWalletHere": "Use it here",
   "app.couldntLoadTrade": "Couldn't load trade {id}.",
   "app.couldntReconnect": "Couldn't reconnect. Try again?",
+  "app.walletStarting": "Your wallet is still starting. Give it a few seconds, then try again.",
+  "app.balanceUnknownNoSwitch": "Chama couldn't read your wallet balance, so it stayed on your current community. Nothing was changed. Try again in a moment.",
+  "app.walletStorageBrowser": "This browser can't keep your Chama wallet. On iPhone, open getchama.app in Safari. Nothing was changed.",
+  "app.walletSlow": "Your wallet didn't answer in time. Check your balance before you try again.",
   "app.couldntStartOrder": "Couldn't start the order.",
   "app.couldntSwitchTo": "Couldn't switch to {label}. Try again.",
   "app.countdownHoursMinutes": "in ~{h}h {m}m",
@@ -199,7 +203,7 @@ export const app: Record<string, string> = {
   "app.startingOrder": "Starting your order…",
   "app.strandedClaimBody":
     "⚠ This note IS the sats from your settled trade. Chama couldn't redeem it automatically — import it into Fedi or any Fedimint wallet on this federation, or save it somewhere safe NOW. Clearing browser data destroys the only copy.",
-  "app.strandedClaimHeadline": "STRANDED CLAIM · BEARER NOTE",
+  "app.strandedClaimHeadline": "Stranded claim · bearer note",
   "app.strandedClaimUnresolvedBody":
     "⚠ This note was reported already-redeemed, but Chama couldn't confirm YOUR wallet was credited. Save it anyway, then check your balance — if the sats aren't there, this string is your evidence and recovery path.",
   "app.switchOverlayAfter": "…",
@@ -219,6 +223,7 @@ export const app: Record<string, string> = {
   "app.tradeConflictingCreators":
     "Two different accounts have published a listing under this trade's id, so Chama can't tell which one is real and won't open either. Ask the person who sent it for a fresh link.",
   "app.tradeNotFound": "Trade not found on relays",
+  "app.sandboxTradeLink": "This is a sandbox trade with test sats. Open it at poc.getchama.app, not in the app.",
   "app.tradeNotFoundYet": "Couldn't find trade {id} on relays yet.",
   "app.tradePublished": "Trade published! {escrowId}",
   "app.tradesUpToDate": "Your trades are up to date.",
@@ -238,10 +243,10 @@ export const app: Record<string, string> = {
     "Chama wallet disconnected. Tap Reconnect and try again.",
   "app.yourFederation": "your federation",
   "edit.title": "Edit your listing",
-  "edit.description": "DESCRIPTION",
-  "edit.priceSats": "PRICE (SATS)",
-  "edit.priceFiat": "PRICE ({currency})",
-  "edit.stock": "STOCK",
+  "edit.description": "Description",
+  "edit.priceSats": "Price (sats)",
+  "edit.priceFiat": "Price ({currency})",
+  "edit.stock": "Stock",
   "edit.save": "Save changes",
   "edit.saving": "Saving…",
   "edit.saved": "Listing updated.",

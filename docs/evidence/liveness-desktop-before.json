@@ -1,0 +1,95 @@
+{
+  "capturedAt": "2026-10-04T02:09:34.613Z",
+  "platform": "Disposable desktop Brave",
+  "requests": [
+    {
+      "url": "https://mempool.space/api/blocks/tip/height",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "url": "https://mempool.emzy.de/api/blocks/tip/height",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "url": "https://mempool.space/api/address/bc1p8xuc0xj6x2rgk3zkphsz3spy097wfk4acv3tlwhvhs3v2tyruqxstr9vws/utxo",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "url": "https://mempool.emzy.de/api/address/bc1p8xuc0xj6x2rgk3zkphsz3spy097wfk4acv3tlwhvhs3v2tyruqxstr9vws/utxo",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "url": "https://mempool.space/api/tx/a3ccfd47eda22e17c399cfd46ebcb767b38e9422369b8aca2e566acaadfbb54d",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "url": "https://mempool.emzy.de/api/tx/a3ccfd47eda22e17c399cfd46ebcb767b38e9422369b8aca2e566acaadfbb54d",
+      "error": "net::ERR_ABORTED"
+    }
+  ],
+  "community": "us-blf",
+  "cacheBefore": null,
+  "result": {
+    "liveness": {
+      "community": "us-blf",
+      "isLive": false,
+      "arbiterCount": 0,
+      "totalBondSats": "0",
+      "bondWeightSatBlocks": "0",
+      "avgRemainingBlocks": 0,
+      "ratings": {
+        "count": 0,
+        "positive": 0,
+        "negative": 0,
+        "positiveRate": 0
+      },
+      "score": 0
+    },
+    "source": "live",
+    "outcome": "verified"
+  },
+  "diagnostics": [
+    {
+      "community": "us-blf",
+      "startedAt": 1791079771455,
+      "finishedAt": 1791079774536,
+      "durationMs": 3081,
+      "joinedCallers": 0,
+      "maxSimultaneous": 1,
+      "outcome": "verified"
+    }
+  ],
+  "state": {
+    "pubkey": "b26986cf1339983c85915b4f1878f8dcdc118581c7adb0bff125b8eb758cb991",
+    "connected": true,
+    "relays": [
+      [
+        "wss://relay.chama.community",
+        "connected"
+      ],
+      [
+        "wss://relay.damus.io",
+        "connected"
+      ],
+      [
+        "wss://relay.primal.net",
+        "connected"
+      ],
+      [
+        "wss://nos.lol",
+        "connecting"
+      ],
+      [
+        "wss://nostr.mom",
+        "connecting"
+      ],
+      [
+        "wss://nostr.land",
+        "connected"
+      ]
+    ],
+    "initialized": false,
+    "joined": false
+  },
+  "errors": []
+}

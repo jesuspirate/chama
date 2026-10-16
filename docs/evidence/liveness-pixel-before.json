@@ -1,0 +1,70 @@
+{
+  "capturedAt": "2026-10-04T02:11:06.990Z",
+  "platform": "Pixel 8 Vanadium, USB diagnostic origin",
+  "requests": [],
+  "community": "us-blf",
+  "cacheBefore": null,
+  "result": {
+    "liveness": {
+      "community": "us-blf",
+      "isLive": false,
+      "arbiterCount": 0,
+      "totalBondSats": "0",
+      "bondWeightSatBlocks": "0",
+      "avgRemainingBlocks": 0,
+      "ratings": {
+        "count": 0,
+        "positive": 0,
+        "negative": 0,
+        "positiveRate": 0
+      },
+      "score": 0
+    },
+    "source": "live",
+    "outcome": "verified"
+  },
+  "diagnostics": [
+    {
+      "community": "us-blf",
+      "startedAt": 1791079800877,
+      "finishedAt": 1791079803400,
+      "durationMs": 2523,
+      "joinedCallers": 0,
+      "maxSimultaneous": 1,
+      "outcome": "verified"
+    }
+  ],
+  "state": {
+    "pubkey": "f0b24f19cb8e1ca686470c5375dd182b8d0af0614eda41a21d5b97abfca10b85",
+    "connected": true,
+    "relays": [
+      [
+        "wss://relay.chama.community",
+        "connected"
+      ],
+      [
+        "wss://relay.damus.io",
+        "connected"
+      ],
+      [
+        "wss://relay.primal.net",
+        "connected"
+      ],
+      [
+        "wss://nos.lol",
+        "connecting"
+      ],
+      [
+        "wss://nostr.mom",
+        "connecting"
+      ],
+      [
+        "wss://nostr.land",
+        "connected"
+      ]
+    ],
+    "initialized": false,
+    "joined": false
+  },
+  "errors": []
+}

@@ -4,6 +4,7 @@ set -euo pipefail
 # Load local, gitignored deploy config (deploy host/key/signing) so a fresh
 # terminal tab always has it — independent of ~/.zshrc / which tab you opened.
 __CHAMA_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+(cd "$__CHAMA_ROOT" && node scripts/check-release-ancestry.mjs --release-only)
 [ -f "$__CHAMA_ROOT/.env.release" ] && . "$__CHAMA_ROOT/.env.release"
 
 # Usage:
@@ -24,6 +25,17 @@ __CHAMA_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 #             Deploy already-pushed origin/main to getchama.app without
 #             creating commits or pushing tags. This is the safe post-push
 #             lane for manual checkpoint releases.
+
+# The SANDBOX lane (poc.getchama.app, sim mode forced on) is isolated: it
+# never tags, touches Android, writes dist/ or calls deploy_dist below.
+if [ "${1:-}" = "--deploy-sandbox" ]; then
+  shift
+  exec "$__CHAMA_ROOT/scripts/deploy-sandbox.sh" "$@"
+fi
+if [ "${VITE_CHAMA_SANDBOX:-0}" = "1" ]; then
+  echo "❌ Refusing a sandbox bundle in the live release lane. Use --deploy-sandbox."
+  exit 1
+fi
 
 # ── Parse release options FIRST and shift them off ─────────────────────
 BUMP_TYPE="patch"
@@ -124,20 +136,18 @@ fi
 CHAMA_DEPLOY_KEY="${CHAMA_DEPLOY_KEY:-}"
 CHAMA_DEPLOY_HOST="${CHAMA_DEPLOY_HOST:-}"
 
-# Push the freshly-built dist/ to the live web root, and — when CHAMA_POC_DIST=1 —
-# ALSO mirror it to the friend/PoC dist (~/chama-poc-dist) so browser/iPhone-PWA
-# friends don't sit on a stale bundle after a release. FRONTEND ONLY: never rebuilds
+# Push the freshly-built dist/ to the live web root. FRONTEND ONLY: never rebuilds
 # the Rust bridge binary (that stays a manual on-VPS step, needed only when
-# native/fedimint-bridge/** changes). Reuses the same CHAMA_DEPLOY_HOST + _KEY.
-# ⚠ ~/chama-dist (live getchama.app) and ~/chama-poc-dist (poc.getchama.app) are
-# SEPARATE origins — never target both in one command; keep the live dist intact.
+# native/fedimint-bridge/** changes).
+# ⚠ ~/chama-poc-dist (poc.getchama.app) is the SANDBOX now — sim mode forced on,
+# deployed only by scripts/deploy-sandbox.sh. The old CHAMA_POC_DIST mirror is
+# gone on purpose: a real-money bundle must never be copied onto that origin.
 deploy_dist() {
-  scp -r -i "$CHAMA_DEPLOY_KEY" dist/* "$CHAMA_DEPLOY_HOST:~/chama-dist/"
-  if [ "${CHAMA_POC_DIST:-0}" = "1" ]; then
-    echo "↗ Updating friend/PoC dist (~/chama-poc-dist) so friends get v${NEW_VERSION:-current}…"
-    rsync -az -e "ssh -i $CHAMA_DEPLOY_KEY" dist/ "$CHAMA_DEPLOY_HOST:~/chama-poc-dist/"
-    echo "✅ friend/PoC dist updated (bundle only; bridge binary unchanged)"
+  if grep -rqs "chama-sandbox-build" dist/assets; then
+    echo "❌ dist/ carries the sandbox marker; refusing to deploy it to getchama.app."
+    exit 1
   fi
+  scp -r -i "$CHAMA_DEPLOY_KEY" dist/* "$CHAMA_DEPLOY_HOST:~/chama-dist/"
 }
 if [ "${DEPLOY:-1}" = "1" ]; then
   if [ -z "$CHAMA_DEPLOY_HOST" ]; then

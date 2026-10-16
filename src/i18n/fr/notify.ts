@@ -1,5 +1,7 @@
 // fr/notify — Session B fills this from src/i18n/en/notify.ts (key set must match EXACTLY).
 export const notify: Record<string, string> = {
+  "notify.circleReturnTitle": "Retour de la part du cercle",
+  "notify.circleReturnSignature": "Une part du cercle a besoin de votre signature de retour.",
   "notify.savedIntentGoodsBodyGeneric": "Une offre que vous suiviez vient d’apparaître. Touchez pour voir.",
   "notify.savedIntentGoodsBody": "Quelqu’un vient de proposer « {query} ». Touchez pour voir.",
   "notify.savedIntentSatsBody": "Quelqu’un propose les sats que vous cherchiez. Touchez pour voir.",

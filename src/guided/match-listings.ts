@@ -1,6 +1,5 @@
+import { joinRejection } from './join-eligibility.js';
 import {
-  EscrowStatus,
-  JOIN_HOLD_LOCK_GRACE_SECONDS,
   Role,
   type MenuItem,
   type SelectedMenuItem,
@@ -31,10 +30,6 @@ const SCORE = {
 type Eligible = Omit<GuidedMatchCandidate, "reasons" | "score"> & {
   amountReason: "exact_amount" | "amount_in_range";
 };
-
-function sameText(a: string | null | undefined, b: string | null | undefined): boolean {
-  return !!a && !!b && a.trim().toLowerCase() === b.trim().toLowerCase();
-}
 
 function rejection(listingId: string, code: GuidedRejectedListing["code"]): GuidedRejectedListing {
   return { listingId, code };
@@ -179,26 +174,8 @@ export function matchGuidedListings(
     if (listing.category !== "p2p-trade" && listing.category !== "bill-pay") {
       code = "NOT_P2P_LISTING";
     }
-    else if (listing.status !== EscrowStatus.CREATED) code = "NOT_OPEN";
-    else if (listing.parent !== undefined) code = "CHILD_ORDER";
-    else if ((listing.listingExpiresAt ?? listing.expiresAt) <= nowSec) code = "EXPIRED";
-    else if (!listing.participants[Role.SELLER]) code = "NO_SELLER";
-    else if (sameText(listing.participants[Role.SELLER], options.viewerPubkey)) code = "SELF_LISTING";
-    else if (input.availableUnits !== undefined && input.availableUnits <= 0) code = "OUT_OF_STOCK";
-    else {
-      const hold = listing.joinHolds?.[Role.BUYER];
-      if (
-        hold
-        && hold.expiresAt + JOIN_HOLD_LOCK_GRACE_SECONDS > nowSec
-        && !sameText(hold.pubkey, options.viewerPubkey)
-      ) code = "RESERVED";
-    }
-    if (!code && intent.community && !sameText(listing.community, intent.community)) {
-      code = "COMMUNITY_MISMATCH";
-    }
-    if (!code && listing.escrowMode !== "onchain" && intent.mintUrl && listing.mintUrl !== intent.mintUrl) {
-      code = "FEDERATION_MISMATCH";
-    }
+    else code = joinRejection(listing, { ...options, community: intent.community,
+      mintUrl: intent.mintUrl, nowSec, availableUnits: input.availableUnits });
 
     const listingRails = [...new Set(
       (listing.paymentMethods ?? []).map(rail => rail.trim().toLowerCase()).filter(Boolean),

@@ -1,3 +1,4 @@
+import type { FederationInspection } from "./federation-inspection.js";
 // Fedimint native sidecar adapter.
 //
 // This keeps Chama's existing IFedimintWallet boundary intact while routing
@@ -69,10 +70,19 @@ const REQUIRED_NATIVE_BRIDGE_CAPABILITIES = [
   "idempotent_join",
   "effective_iroh_config",
 ];
-const NATIVE_BRIDGE_READY_RETRY_DELAYS_MS = [0, 250, 500, 1000, 1500, 2500];
+// The app shell launches the bridge as a child process alongside the WebView,
+// so the first check can arrive before the bridge listens, and the first launch
+// after an update is slowest (Jet, 6.4.23-rc.5 on a Pixel 8). "Connection
+// refused" retries, and so does a /health that does not answer within its 5s
+// (Jet, 6.4.25: "Your wallet didn't answer in time" on opening, while the
+// bridge was listening but still busy starting). /health only reads status.
+// A running bridge answers on the first try; ~15s of pauses in all.
+const NATIVE_BRIDGE_READY_RETRY_DELAYS_MS = [0, 250, 500, 1000, 1500, 2500, 4000, 5000];
 const NATIVE_BRIDGE_HEALTH_TIMEOUT_MS = 5_000;
 const NATIVE_BRIDGE_RESET_TIMEOUT_MS = 10_000;
 const NATIVE_BRIDGE_INFO_TIMEOUT_MS = 20_000;
+/** Tries for the first /info of the shell's own bridge (see readyInfo). */
+const NATIVE_BRIDGE_INFO_ATTEMPTS = 3;
 const NATIVE_BRIDGE_JOIN_TIMEOUT_MS = 105_000;
 const NATIVE_BRIDGE_JOIN_RETRY_DELAYS_MS = [0, 1500, 4000];
 
@@ -502,6 +512,16 @@ function hasChamaDiagnostics(
   return error instanceof Error && isRecord((error as any).chamaDiagnostics);
 }
 
+/** The shell's own bridge is not ready yet: not listening, or listening but
+ *  too busy to answer /health in time. Anything else (incompatible,
+ *  unauthorised) is a real answer and is never retried. */
+function isNativeBridgeStarting(error: unknown): boolean {
+  return isNativeBridgeUnavailable(error) || (
+    hasChamaDiagnostics(error) &&
+    error.chamaDiagnostics.issue === "native_fedimint_bridge_timeout"
+  );
+}
+
 function isNativeBridgeUnavailable(error: unknown): boolean {
   return (
     hasChamaDiagnostics(error) &&
@@ -855,7 +875,7 @@ export class NativeBridgeWallet implements IFedimintWallet {
   }
 
   async open(): Promise<void> {
-    const health = await assertNativeBridgeCompatible(this.baseUrl);
+    const health = await this.readyHealth();
     // A fresh native client has no database to open yet. Avoid asking `/info`
     // to construct/open a Fedimint client solely to rediscover that fact;
     // Start9 field logs show that cold path can terminate the bridge worker.
@@ -865,11 +885,28 @@ export class NativeBridgeWallet implements IFedimintWallet {
       this.federationId = null;
       return;
     }
-    const info = await this.request<NativeInfoResponse>("/info", {
-      timeoutMs: NATIVE_BRIDGE_INFO_TIMEOUT_MS,
-    });
+    const info = await this.readyInfo();
     this.applyInfo(info);
     this.loadCachedInvite();
+  }
+
+  /** The first /info after start-up opens the Fedimint client inside the
+   *  bridge and can be slow (Jet, 6.4.25: "Your wallet didn't answer in
+   *  time" on opening). For the shell's own bridge a timeout here is "still
+   *  starting": ask again, up to NATIVE_BRIDGE_INFO_ATTEMPTS times. /info
+   *  only reads; any other failure is thrown at once. */
+  private async readyInfo(): Promise<NativeInfoResponse> {
+    const attempts = isShellManagedNativeBridge() ? NATIVE_BRIDGE_INFO_ATTEMPTS : 1;
+    let lastError: unknown = null;
+    for (let attempt = 0; attempt < attempts; attempt++) {
+      try {
+        return await this.request<NativeInfoResponse>("/info", { timeoutMs: NATIVE_BRIDGE_INFO_TIMEOUT_MS });
+      } catch (error) {
+        lastError = error;
+        if (!isNativeBridgeStarting(error)) throw error;
+      }
+    }
+    throw lastError;
   }
 
   isOpen(): boolean {
@@ -877,7 +914,7 @@ export class NativeBridgeWallet implements IFedimintWallet {
   }
 
   async joinFederation(inviteCode: string): Promise<void> {
-    await assertNativeBridgeCompatible(this.baseUrl);
+    await this.readyHealth();
     let joined: NativeJoinResponse | null = null;
     let lastJoinError: unknown = null;
 
@@ -921,7 +958,7 @@ export class NativeBridgeWallet implements IFedimintWallet {
   }
 
   async switchFederationPreserving(inviteCode: string): Promise<void> {
-    await assertNativeBridgeCompatible(this.baseUrl);
+    await this.readyHealth();
     const joined = await this.request<NativeJoinResponse>("/switch", {
       method: "POST",
       body: { inviteCode },
@@ -1390,6 +1427,9 @@ export class NativeBridgeWallet implements IFedimintWallet {
   };
 
   federation = {
+    inspectInvite: (invite: string): Promise<FederationInspection> => this.request("/federation-preview", {
+      method: "POST", body: { inviteCode: invite }, timeoutMs: 12_000,
+    }),
     getFederationId: async (): Promise<string> => {
       if (this.federationId) return this.federationId;
       const info = await this.request<NativeInfoResponse>("/info", {
@@ -1425,17 +1465,26 @@ export class NativeBridgeWallet implements IFedimintWallet {
 
   private async ensureBridgeReady(): Promise<void> {
     if (!isShellManagedNativeBridge()) return;
+    await this.readyHealth();
+  }
+
+  /** The bridge's health once it answers. In an app shell, which starts the
+   *  bridge itself, waits through "connection refused" and a slow /health
+   *  while it comes up;
+   *  elsewhere (a bridge the user runs) checks once. Any other failure —
+   *  incompatible, unauthorised — is thrown at once. */
+  private async readyHealth(): Promise<NativeHealthResponse> {
+    if (!isShellManagedNativeBridge()) return assertNativeBridgeCompatible(this.baseUrl);
 
     let lastError: unknown = null;
 
     for (const delayMs of NATIVE_BRIDGE_READY_RETRY_DELAYS_MS) {
       if (delayMs > 0) await sleepMs(delayMs);
       try {
-        await assertNativeBridgeCompatible(this.baseUrl);
-        return;
+        return await assertNativeBridgeCompatible(this.baseUrl);
       } catch (error) {
         lastError = error;
-        if (!isNativeBridgeUnavailable(error)) {
+        if (!isNativeBridgeStarting(error)) {
           throw error;
         }
       }

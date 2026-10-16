@@ -86,8 +86,15 @@ export function createFundingInvoiceJournal(input: {
   return {
     record(invoice, operationId) {
       const entries = read();
-      if (!entries.some(e => e.invoice === invoice && e.federationId === input.federationId)) {
+      const existing = entries.find(e => e.invoice === invoice && e.federationId === input.federationId);
+      if (!existing) {
         entries.push({...input, invoice, operationId, createdAt:Date.now(), state:stopped === undefined ? 'watching' : stopped ? 'lock-observed' : 'abandoned'});
+      } else {
+        // Recorded earlier (a seat check, or a Lock-hold journal): keep the
+        // wallet operation id once known, and a late return after this
+        // journal stopped still ends in its observed state.
+        if (!existing.operationId && operationId) existing.operationId = operationId;
+        if (stopped !== undefined) existing.state = stopped ? 'lock-observed' : 'abandoned';
       }
       write(entries);
       recorded.add(invoice);

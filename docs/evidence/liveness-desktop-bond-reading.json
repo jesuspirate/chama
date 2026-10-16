@@ -1,0 +1,54 @@
+{
+  "capturedAt": "2026-10-04T02:14:41.324Z",
+  "tip": 969785,
+  "relayComplete": true,
+  "rawEvents": 2,
+  "candidates": 1,
+  "bonds": [
+    {
+      "eventId": "cab3838871456565fa3fe472a5ea450b378d87f80b25536cae89211e18bb5ac9",
+      "announced": 1790360737,
+      "claimed": "100000",
+      "lockUntil": 969517,
+      "verification": {
+        "signedEvent": {
+          "content": "{\"type\":\"chama:commitment-bond\",\"npub\":\"22f7161f76e075b9e0a250a447884ac09b04b636effd7c703a92394ed3fb39e8\",\"community\":\"us-blf\",\"ownerXonly\":\"c8ee7af5a32bf645f961060bc8167542851594fc9865deeff5353098c2d72a27\",\"lockUntil\":969517,\"amountSats\":\"100000\",\"network\":\"mainnet\",\"address\":\"bc1p8xuc0xj6x2rgk3zkphsz3spy097wfk4acv3tlwhvhs3v2tyruqxstr9vws\"}",
+          "created_at": 1790360737,
+          "id": "cab3838871456565fa3fe472a5ea450b378d87f80b25536cae89211e18bb5ac9",
+          "kind": 38135,
+          "pubkey": "22f7161f76e075b9e0a250a447884ac09b04b636effd7c703a92394ed3fb39e8",
+          "sig": "871c1a792d02c21d48dc916b354d3dc862c3f4a8a19208845e00b60cefbb2b8d067450bd51519e9d1ec4d64f709fdd808aa85eb2cd23d7f27d52368c520377ea",
+          "tags": [
+            [
+              "d",
+              "us-blf"
+            ],
+            [
+              "t",
+              "chama:commitment-bond"
+            ],
+            [
+              "c",
+              "us-blf"
+            ]
+          ]
+        },
+        "npub": "22f7161f76e075b9e0a250a447884ac09b04b636effd7c703a92394ed3fb39e8",
+        "community": "us-blf",
+        "address": "bc1p8xuc0xj6x2rgk3zkphsz3spy097wfk4acv3tlwhvhs3v2tyruqxstr9vws",
+        "lockUntil": 969517,
+        "actualSats": "100000",
+        "claimedSats": "100000",
+        "funded": true,
+        "active": false,
+        "fundedAtHeight": 968571,
+        "fundingTxid": "a3ccfd47eda22e17c399cfd46ebcb767b38e9422369b8aca2e566acaadfbb54d",
+        "roles": [
+          "arbiter"
+        ],
+        "ownerXonly": "c8ee7af5a32bf645f961060bc8167542851594fc9865deeff5353098c2d72a27",
+        "announcedAt": 1790360737
+      }
+    }
+  ]
+}

@@ -34,7 +34,7 @@ export function CountdownTimer({
       <div style={{
         padding: "10px 16px", borderRadius: T.rs,
         background: T.redDim, border: `1px solid ${T.red}44`,
-        textAlign: "center", fontFamily: T.mono, fontSize: 12,
+        textAlign: "center", fontFamily: T.sans, fontVariantNumeric: "tabular-nums", fontSize: T.fs.secondary,
         color: T.red, fontWeight: 700,
         width: "fit-content",
         maxWidth: "100%",
@@ -64,7 +64,7 @@ export function CountdownTimer({
       display: "inline-flex", alignItems: "center", justifyContent: "center",
       gap: 8, padding: "8px 16px", borderRadius: T.rs,
       background: T.surface, border: `1px solid ${color}44`,
-      fontFamily: T.mono, fontSize: 11,
+      fontFamily: T.sans, fontVariantNumeric: "tabular-nums", fontSize: T.fs.secondary,
       width: "fit-content",
       maxWidth: "100%",
     }}>

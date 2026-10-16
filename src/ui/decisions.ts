@@ -507,7 +507,7 @@ export function stateProvenance(state: EscrowState): "replayed" | "summary" {
 }
 
 export function canOfferClaim(state: EscrowState): boolean {
-  return stateProvenance(state) === "replayed" && hasLockEvidence(state);
+  return !state.pendingVote && stateProvenance(state) === "replayed" && hasLockEvidence(state);
 }
 
 export function needsTradeHistory(state: EscrowState): boolean {
@@ -1700,6 +1700,20 @@ export function resolveCreateMintUrl(inputs: {
   return resolveListingInvite({ mintUrl: "", community: inputs.community });
 }
 
+/** Where a refused federation change goes (App's queueDestroyConfirm).
+ *  "switch" happens without asking, so it needs a balance that was actually
+ *  read and is empty or dust (Jet, 6.4.25: unknown was reported as 0 and
+ *  switched). Anything that is not a whole non-negative amount is "unknown":
+ *  nothing switches. */
+export function decideDestroyConfirmRoute(
+  balanceMsats: number | null | undefined,
+  preservesArbiterFederationBalances: boolean,
+): "unknown" | "confirm" | "switch" {
+  if (typeof balanceMsats !== "number" || !Number.isFinite(balanceMsats) || balanceMsats < 0) return "unknown";
+  if (!preservesArbiterFederationBalances && balanceBlocksFederationSwitch(balanceMsats)) return "confirm";
+  return "switch";
+}
+
 export function decideListingTapEffect(inputs: ListingTapInputs): ListingTapEffect {
   const targetInvite = resolveListingInvite(inputs.listing);
   const community = inputs.listing.community ? getCommunityBySlug(inputs.listing.community) : null;
@@ -2012,6 +2026,7 @@ export function decideVotePrompt(
   participants: EscrowState["participants"] = state.participants,
   nowSec: number = Math.floor(Date.now() / 1000),
 ): VotePrompt {
+  if (state.pendingVote) return { kind: "waiting", waitingOn: state.pendingVote.role, message: translate(getCurrentLang(), "trade.voteSending") };
   if (state.status !== EscrowStatus.LOCKED && state.status !== EscrowStatus.EXPIRED) {
     return { kind: "none", reason: "not-votable-state" };
   }
@@ -2271,7 +2286,16 @@ export function canLockFromBalance(state: EscrowState | null | undefined, spenda
 }
 
 /** Back navigation only: expiry may still have money-recovery work to do. */
+/**
+ * Where a trade's back button goes. v7 redesign (Jet, 2026-10-06): a trade
+ * opened from the offers goes back to those offers until it fully SUCCEEDS —
+ * a cancelled, expired or refunded trade sends the buyer back to the results
+ * to try again, not Home. Only a completed release (or a trade opened from
+ * Home) returns Home. `payoutSettled` is kept for callers; a settled refund is
+ * still a failed trade for this purpose.
+ */
 export function tradeDetailReturnsHome(state: EscrowState | null | undefined, openedFromHome: boolean, payoutSettled = false): boolean {
-  return openedFromHome || !!state && (TERMINAL_STATES.has(state.status)
-    || state.status === EscrowStatus.CLAIMED && state.resolvedOutcome === Outcome.REFUND && payoutSettled);
+  void payoutSettled;
+  return openedFromHome || !!state
+    && state.status === EscrowStatus.COMPLETED && state.resolvedOutcome !== Outcome.REFUND;
 }

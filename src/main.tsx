@@ -1,5 +1,6 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
+import { PerfZone } from "./ui/perf-probe.js";
 import App from "./ui/App.js";
 import { LangProvider } from "./i18n/index.js";
 import { assertProductionEncryption } from "./escrow-engine/encryption-config.js";
@@ -13,6 +14,15 @@ import { requestPersistentStorageIfWorthwhile } from "./storage/persistent-stora
 // server while remaining a guaranteed tripwire on every shipped APK
 // or web bundle.
 assertProductionEncryption(import.meta.env.PROD);
+
+// Native shells (Capacitor on Android, Tauri on desktop): mark the page so
+// index.html can turn off text selection on labels and headings there.
+try {
+  const g = globalThis as { Capacitor?: { isNativePlatform?: () => boolean }; __TAURI__?: unknown; __TAURI_INTERNALS__?: unknown };
+  if (g.Capacitor?.isNativePlatform?.() || g.__TAURI__ || g.__TAURI_INTERNALS__) {
+    document.documentElement.dataset.nativeApp = "1";
+  }
+} catch { /* a web page keeps normal selection */ }
 
 // Remote-bridge "friend wallet" invite links carried `#bridge=<url>&token=<t>`
 // in the URL fragment — a wallet-repoint primitive: opening such a link used to
@@ -86,7 +96,9 @@ window.addEventListener("hashchange", () => {
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <LangProvider>
-      <App />
+      <PerfZone id="Whole app">
+        <App />
+      </PerfZone>
     </LangProvider>
   </React.StrictMode>
 );

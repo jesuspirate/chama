@@ -1,3 +1,4 @@
+import { canVote } from '../escrow-engine/state-machine.js';
 import { marketDelivery } from "../labels/market-delivery.js";
 import { readNostrProfileCache } from '../ui/nostr-profiles.js';
 import { expectedLockerRole } from "../escrow-engine/lock-custody.js";
@@ -23,7 +24,7 @@ import { onchainAttention } from '../escrow-engine/onchain-attention.js';
 // closed (prev = cached state, next = newer relay state).
 
 import {
-  EscrowStatus, Role, Outcome,
+  EscrowEventKind, EscrowStatus, Role, Outcome,
   getEffectiveParticipantsAt, selectedMenuItemsTotalMsats,
   type EscrowState, type ChatPayload, type ParsedEscrowEvent,
 } from "../escrow-engine/types.js";
@@ -134,6 +135,18 @@ export function joinedListingNotification(prev: EscrowState | null | undefined, 
     tag: `${next.id}:joined:${hold.eventId}` };
 }
 
+/** The member's signed return wakes the host and assigned arbiter. */
+export function circleReturnSignatureNotification(state: EscrowState, viewer: string, nowSec = Math.floor(Date.now() / 1000)): TradeNotification | null {
+  if (state.chamaPolicy !== "share-v1" || state.pendingVote || !state.chamaCircle || state.votes?.[Role.BUYER] !== Outcome.REFUND
+      || nowSec < state.chamaCircle!.fillDeadlineSec
+      || !(samePubkey(state.participants[Role.SELLER], viewer) || samePubkey(state.participants[Role.ARBITER], viewer))
+      || !canVote(state, viewer, nowSec, Outcome.REFUND).canVote) return null;
+  const memberVote = state.eventChain.find(e => e.kind === EscrowEventKind.VOTE && samePubkey(e.pubkey, state.participants[Role.BUYER]));
+  if (!memberVote) return null;
+  return { escrowId: state.id, title: translate(getCurrentLang(), "notify.circleReturnTitle"),
+    body: translate(getCurrentLang(), "notify.circleReturnSignature"), tag: `${state.id}:circle-return:${memberVote.raw.id}` };
+}
+
 /**
  * The notification (if any) to fire for one escrow transitioning prev → next,
  * from the perspective of `userPubkey`. Pure; null when nothing should buzz.
@@ -157,6 +170,11 @@ export function notificationForTransition(
   }
   const role = roleOf(next, userPubkey);
   if (!role) return null; // not a party to this trade
+  const circleReturn = circleReturnSignatureNotification(next, userPubkey);
+  if (circleReturn && prev?.votes[Role.BUYER] !== Outcome.REFUND) {
+    const signedAt = next.eventChain.find(e => e.kind === EscrowEventKind.VOTE && e.pubkey === next.participants[Role.BUYER])?.timestamp ?? 0;
+    if (prev || signedAt >= liveSinceSec) return circleReturn;
+  }
   const id = next.id;
   const label = translate(getCurrentLang(), "notify.tradeLabel", {amount:Math.floor(next.amountMsats / 1000).toLocaleString("en-US")});
 

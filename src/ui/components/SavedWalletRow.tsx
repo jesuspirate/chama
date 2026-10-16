@@ -12,7 +12,7 @@ export function SavedWalletRow({ label, detail, onRename, onRemove, onSelect, se
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(label);
   const content = <><strong style={{ display: 'block', fontSize: 13 }}>{label}{selected ? ' ✓' : ''}</strong>
-    {detail !== label && <span style={{ display: 'block', marginTop: 4, color: T.muted, fontSize: 11, overflowWrap: 'anywhere' }}>{detail}</span>}</>;
+    {detail !== label && <span data-selectable style={{ display: 'block', marginTop: 4, color: T.muted, fontSize: 11, overflowWrap: 'anywhere' }}>{detail}</span>}</>;
   const control = { background: 'none', border: 0, color: T.muted, minHeight: 36, cursor: 'pointer', padding: '4px 8px', fontSize: 12 };
   return <div style={{ border: `1px solid ${selected ? T.accent : T.border}`, borderRadius: T.rs, padding: 10, background: T.surface, minWidth: 0 }}>
     {onSelect ? <button type="button" disabled={disabled} aria-pressed={selected} onClick={onSelect}

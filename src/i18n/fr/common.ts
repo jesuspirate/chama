@@ -17,4 +17,6 @@ export const common: Record<string, string> = {
   "common.railEcashLn": "Ecash · Lightning",
   "common.railOnchain": "Bitcoin",
   "common.railOther": "Autres",
+  "common.holdToConfirm": "Maintenez appuyé pour confirmer",
+  "common.holdArmed": "Touchez encore pour confirmer",
 };

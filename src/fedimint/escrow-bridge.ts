@@ -1,3 +1,5 @@
+import { assertTradePaymentDetails } from '../payments/trade-payment-details.js';
+import { isSignerApprovalError } from "../escrow-engine/signer-approval.js";
 import { chamaFundingError } from "../chama/policy.js";
 // ══════════════════════════════════════════════════════════════════════════
 // Chama — Escrow ↔ Fedimint Bridge
@@ -105,6 +107,7 @@ interface LockOptions {
    *  buyer and arbiter can read where to send fiat. Optional —
    *  marketplace digital trades and raw escrows don't need it. */
   savedHandleId?: string;
+  paymentDetailsInChat?: boolean;
   /** Menu basket snapshot. Required when locking a menu listing. */
   selectedItems?: SelectedMenuItem[];
   /** Buyer identity snapshotted before an external funding payment begins.
@@ -201,6 +204,11 @@ export class EscrowFedimintBridge {
   }> {
     const state = this.escrow.getState(escrowId);
     if (!state) throw new Error(`Escrow ${escrowId} not loaded`);
+    if (state.communityArbiters.length === 0) {
+      const error = new Error("Cannot lock — this trade has no committed arbiter pool. No sats were spent.");
+      Object.assign(error, { code: "ARBITER_POOL_EMPTY" });
+      throw error;
+    }
     if (state.chamaCircle) {
       const reason = chamaFundingError(state, await this.escrow.getPubkey(), Math.floor(Date.now() / 1000));
       if (reason) throw new Error(`Cannot LOCK — ${reason}. (No sats were spent.)`);
@@ -574,6 +582,17 @@ export class EscrowFedimintBridge {
   }
 
   private async lockAndPublishInner(escrowId: string, opts: LockOptions = {}): Promise<EscrowState> {
+    // A previous attempt may already have spent bearer notes. Recover those
+    // under the flow mutex before the new empty-pool funding refusal fires.
+    if (this.nativeLockGuardOn() && getPendingNativeLock(escrowId) && this.escrow.getState(escrowId)?.communityArbiters.length === 0) {
+      const outcome = await this.settlePendingNativeLockInner(escrowId, { ignoreAttemptCap: true });
+      // Successful recovery can leave a notes-free Finish-lock intent. This
+      // trade cannot be funded again, so remove only that proven-restored intent.
+      if (outcome === "reabsorbed" && getPendingNativeLock(escrowId)?.stage === "intent") clearPendingNativeLock(escrowId);
+      const error = new Error("Cannot lock — this trade has no committed arbiter pool. Check Wallet for your previous funding's recovery status.");
+      Object.assign(error, { code: "ARBITER_POOL_EMPTY" });
+      throw error;
+    }
     let context = await this.prepareLockContext(escrowId, opts);
     const amountMsats = amountMsatsForLock(context.state, opts.selectedItems);
     const meta = buildChamaOperationMeta({
@@ -583,7 +602,7 @@ export class EscrowFedimintBridge {
     });
     const guardOn = this.nativeLockGuardOn();
     const lockOpts = {
-      savedHandleId: opts.savedHandleId,
+      savedHandleId: opts.savedHandleId, paymentDetailsInChat: opts.paymentDetailsInChat,
       selectedItems: opts.selectedItems,
       buyerPubkey: opts.buyerPubkey,
     };
@@ -748,6 +767,8 @@ export class EscrowFedimintBridge {
 
   async preflightLock(escrowId: string, opts: LockOptions = {}): Promise<{ buyerPubkey: string; seatDeadline?: number }> {
     const { buyerPubkey, state } = await this.prepareLockContext(escrowId, opts);
+    // Require a choice before new funding, never while recovering notes already spent.
+    assertTradePaymentDetails(state, opts);
     return { buyerPubkey, seatDeadline: preLockDeadline(state)?.at };
   }
 
@@ -762,7 +783,7 @@ export class EscrowFedimintBridge {
     const amountMsats = amountMsatsForLock(context.state, opts.selectedItems);
     const guardOn = this.nativeLockGuardOn();
     const lockOpts = {
-      savedHandleId: opts.savedHandleId,
+      savedHandleId: opts.savedHandleId, paymentDetailsInChat: opts.paymentDetailsInChat,
       selectedItems: opts.selectedItems,
       buyerPubkey: opts.buyerPubkey,
     };
@@ -1018,6 +1039,7 @@ export class EscrowFedimintBridge {
             voterPubkey: candidate.voterPubkey,
           });
         } catch (decErr) {
+          if (isSignerApprovalError(decErr)) throw decErr;
           candidateDecryptErrors.push(
             decErr instanceof Error ? decErr.message : String(decErr)
           );
@@ -1495,21 +1517,16 @@ export class EscrowFedimintBridge {
   private async decryptShare(encryptedShare: string, senderPubkey: string): Promise<SSSShare> {
     // In dev/plaintext mode, shares are not encrypted — try parsing directly first
     let decrypted: string;
+    let plaintext = false;
     try {
       const parsed = JSON.parse(encryptedShare);
-      if (parsed && (parsed.index !== undefined || parsed.data !== undefined)) {
-        // Already plaintext JSON — no decryption needed
-        decrypted = encryptedShare;
-      } else {
-        decrypted = await this.signer.nip44Decrypt(encryptedShare, senderPubkey);
-      }
-    } catch {
-      // Not valid JSON — must be encrypted, decrypt it
-      try {
-        decrypted = await this.signer.nip44Decrypt(encryptedShare, senderPubkey);
-      } catch (decryptErr) {
-        // If decrypt also fails, the share might be a simulated plaintext string
-        // (from simulatedLock which uses "sim_share_0_..." format)
+      plaintext = !!parsed && (parsed.index !== undefined || parsed.data !== undefined);
+    } catch { /* ciphertext */ }
+    if (plaintext) decrypted = encryptedShare;
+    else {
+      try { decrypted = await this.signer.nip44Decrypt(encryptedShare, senderPubkey); }
+      catch (error) {
+        if (isSignerApprovalError(error)) throw error;
         console.warn("[chama] Share decrypt failed, using as-is:", encryptedShare.slice(0, 30));
         decrypted = encryptedShare;
       }

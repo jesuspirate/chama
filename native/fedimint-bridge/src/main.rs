@@ -13,6 +13,7 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use clap::{Parser, Subcommand};
+use fedimint_meta_client::api::MetaFederationApi;
 use fedimint_bip39::{Bip39RootSecretStrategy, Mnemonic};
 use fedimint_client::module_init::ClientModuleInitRegistry;
 use fedimint_client::secret::RootSecretStrategy;
@@ -2416,6 +2417,7 @@ async fn serve_bridge(
         .route("/switch", post(api_switch))
         .route("/reset", post(api_reset))
         .route("/info", get(api_info))
+        .route("/federation-preview", post(api_federation_preview))
         .route("/gateways", get(api_gateways))
         .route("/probe-gateways", get(api_probe_gateways))
         .route("/invoice", post(api_invoice))
@@ -2627,6 +2629,7 @@ async fn api_health(State(state): State<AppState>) -> Json<serde_json::Value> {
             "pay_outcome_by_escrow",
             "auth_token",
             "multi_federation_switch",
+            "federation_preview",
         ],
     }))
 }
@@ -2656,6 +2659,38 @@ async fn api_switch(
 async fn api_reset(State(state): State<AppState>) -> Result<Json<serde_json::Value>, ApiError> {
     state.reset().await?;
     Ok(Json(json!({ "ok": true })))
+}
+
+/// Public config and consensus metadata only: deliberately never calls
+/// state.client(), client_builder(), load_database(), or any wallet operation.
+async fn api_federation_preview(
+    State(state): State<AppState>,
+    Json(req): Json<JoinRequest>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let result = tokio::time::timeout(Duration::from_secs(10), async {
+        let invite = InviteCode::from_str(&req.invite_code)?;
+        let connectors = state.bridge.connectors().await?;
+        let (config, api) = fedimint_api_client::download_from_invite_code(&connectors, &invite).await?;
+        let mut meta_status = "absent";
+        let mut consensus_meta = serde_json::Value::Null;
+        if let Some((id, _)) = config.modules.iter().find(|(_, module)| module.kind().as_str() == "meta") {
+            meta_status = "unavailable";
+            if let Ok(Ok(value)) = tokio::time::timeout(Duration::from_secs(4),
+                api.with_module(*id).get_consensus(fedimint_meta_client::common::DEFAULT_META_KEY)).await {
+                if let Some(value) = value {
+                    consensus_meta = json!({ "revision": value.revision, "value": value.value.to_json_lossy()? });
+                }
+                meta_status = "ready";
+            }
+        }
+        Ok::<_, anyhow::Error>(json!({
+            "federationId": invite.federation_id().to_string(),
+            "config": { "global": config.global },
+            "consensusMeta": consensus_meta,
+            "metaStatus": meta_status,
+        }))
+    }).await.context("Federation preview timed out")??;
+    Ok(Json(result))
 }
 
 async fn api_info(State(state): State<AppState>) -> Result<Json<InfoOutput>, ApiError> {

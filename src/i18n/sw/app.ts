@@ -40,7 +40,7 @@ export const app: Record<string, string> = {
     "Chama Changu na Nafuu zaidi ndizo chaguo-msingi. Badilisha kwenda Zote unapotaka kugundua ofa za nchi na jamii nyingine.",
   "app.coachBrowsePreferencesTitle": "Chagua kinachoonyeshwa na Vinjari",
   "app.coachCreateBody":
-    "Kitufe hiki ✎ kinafungua maswali matatu rahisi. Chama inakutafutia linalolingana au kukuandalia ofa sahihi.",
+    "Unda inafungua maswali matatu rahisi. Chama inakutafutia linalolingana au kukuandalia ofa sahihi.",
   "app.coachCreateTitle": "Anza na ulichonacho",
   "app.coachDashboardBody":
     "Hadhi yako, takwimu, mapato, na tathmini zinakuja hapa — mahali panapofuatilia unavyoendelea unapofanya biashara.",
@@ -60,6 +60,10 @@ export const app: Record<string, string> = {
   "app.useWalletHere": "Itumie hapa",
   "app.couldntLoadTrade": "Imeshindikana kupakia biashara {id}.",
   "app.couldntReconnect": "Imeshindikana kuunganisha tena. Ujaribu tena?",
+  "app.walletStarting": "Pochi yako bado inaanza. Subiri sekunde chache, kisha ujaribu tena.",
+  "app.balanceUnknownNoSwitch": "Chama haikuweza kusoma salio la pochi yako, kwa hivyo imebaki kwenye jumuiya yako ya sasa. Hakuna kilichobadilishwa. Jaribu tena baada ya muda mfupi.",
+  "app.walletStorageBrowser": "Kivinjari hiki hakiwezi kuhifadhi pochi yako ya Chama. Kwenye iPhone, fungua getchama.app kwenye Safari. Hakuna kilichobadilishwa.",
+  "app.walletSlow": "Pochi yako haikujibu kwa wakati. Angalia salio lako kabla ya kujaribu tena.",
   "app.couldntStartOrder": "Imeshindikana kuanzisha oda.",
   "app.couldntSwitchTo": "Imeshindikana kubadilisha kwenda {label}. Jaribu tena.",
   "app.countdownHoursMinutes": "baada ya ~saa {h} dakika {m}",
@@ -181,7 +185,7 @@ export const app: Record<string, string> = {
   "app.startingOrder": "Inaanzisha oda yako…",
   "app.strandedClaimBody":
     "⚠ Noti hii NDIYO sats za biashara yako iliyokamilika. Chama haikuweza kuikomboa kiotomatiki — iingize kwenye Fedi au pochi yoyote ya Fedimint kwenye shirikisho hili, au ihifadhi mahali salama SASA. Kufuta data ya kivinjari kunaharibu nakala pekee.",
-  "app.strandedClaimHeadline": "DAI LILILOKWAMA · NOTI YA MKONONI",
+  "app.strandedClaimHeadline": "Dai lililokwama · noti ya mkononi",
   "app.strandedClaimUnresolvedBody":
     "⚠ Noti hii iliripotiwa tayari imekombolewa, lakini Chama haikuweza kuthibitisha pochi YAKO iliwekewa salio. Ihifadhi hata hivyo, kisha angalia salio lako — kama sats hazipo, msururu huu ndio ushahidi na njia yako ya urejeshaji.",
   "app.switchOverlayAfter": "…",
@@ -197,6 +201,7 @@ export const app: Record<string, string> = {
   "app.tradeConflictingCreators":
     "Akaunti mbili tofauti zimechapisha tangazo kwa kitambulisho cha biashara hii, kwa hiyo Chama haiwezi kujua ni lipi la kweli na haitafungua lolote. Mwombe aliyekutumia kiungo kipya.",
   "app.tradeNotFound": "Biashara haijapatikana kwenye relay",
+  "app.sandboxTradeLink": "Hii ni biashara ya mazingira ya majaribio, yenye sats za majaribio. Ifungue kwenye poc.getchama.app, si kwenye programu.",
   "app.tradeNotFoundYet": "Bado biashara {id} haijapatikana kwenye relay.",
   "app.tradePublished": "Biashara imechapishwa! {escrowId}",
   "app.tradesUpToDate": "Biashara zako ziko sawa kabisa.",
@@ -216,10 +221,10 @@ export const app: Record<string, string> = {
     "Pochi ya Chama imekatika. Gusa Unganisha tena kisha ujaribu upya.",
   "app.yourFederation": "shirikisho lako",
   "edit.title": "Hariri tangazo lako",
-  "edit.description": "MAELEZO",
-  "edit.priceSats": "BEI (SATS)",
-  "edit.priceFiat": "BEI ({currency})",
-  "edit.stock": "STOO",
+  "edit.description": "Maelezo",
+  "edit.priceSats": "Bei (sats)",
+  "edit.priceFiat": "Bei ({currency})",
+  "edit.stock": "Stoo",
   "edit.save": "Hifadhi mabadiliko",
   "edit.saving": "Inahifadhi…",
   "edit.saved": "Tangazo limesasishwa.",

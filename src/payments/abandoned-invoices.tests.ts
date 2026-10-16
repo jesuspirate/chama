@@ -45,6 +45,23 @@ const crash=createFundingInvoiceJournal(input);crash.record('CRASH-INVOICE');
 assert.equal(JSON.parse(values.get(key)!).at(-1).state,'watching','a killed page leaves a durable interrupted-watcher record without an unload event');
 crash.stop(true);
 assert.equal(JSON.parse(values.get(key)!).at(-1).state,'lock-observed','even an observed lock does not discard a receive record without wallet outcome proof');
+// Recorded earlier without an operation id (the seat check, or the Lock-hold
+// journal of an adopted invoice): the flow's later record still keeps the id.
+const early=createFundingInvoiceJournal(input);early.record('PRE-RECORDED');
+const flow=createFundingInvoiceJournal(input);flow.record('PRE-RECORDED','op-9');
+const pre=()=>JSON.parse(values.get(key)!).filter((e:{invoice:string})=>e.invoice==='PRE-RECORDED');
+assert.equal(pre().length,1,'one record per invoice');
+assert.equal(pre()[0].operationId,'op-9','an operation id learned later is kept');
+flow.record('PRE-RECORDED','op-other');
+assert.equal(pre()[0].operationId,'op-9','a known operation id is never replaced');
+// The flow timed out before an adopted invoice returned: its late record of
+// the already-recorded invoice ends abandoned, not watching.
+const timedOutFlow=createFundingInvoiceJournal(input);timedOutFlow.stop(false);
+const hold=createFundingInvoiceJournal(input);hold.record('ADOPTED-LATE');
+timedOutFlow.record('ADOPTED-LATE','op-late');
+const adoptedLate=JSON.parse(values.get(key)!).find((e:{invoice:string})=>e.invoice==='ADOPTED-LATE');
+assert.equal(adoptedLate.state,'abandoned','late return after the flow stopped is abandoned');
+assert.equal(adoptedLate.operationId,'op-late');
 values.set(key,'malformed');
 assert.throws(()=>createFundingInvoiceJournal(input),'corrupt history blocks creating a competing invoice');
 assert.equal(values.get(key),'malformed','corrupt history is never overwritten');

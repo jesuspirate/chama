@@ -1,3 +1,4 @@
+import { BitcoinCustody } from "../components/MoneyCustody.js";
 import { PaymentTarget } from '../components/PaymentTarget.js';
 import { esploraAddressUrl } from "../../bond-multisig/esplora-config.js";
 import { openExternalUrl } from "../open-url.js";
@@ -30,7 +31,7 @@ import { T } from "../theme.js";
 import { MAINNET, SIGNET } from "../../bond-multisig/multisig.js";
 
 export function OnchainEscrowPanel({
-  view,
+  view, refundHeight,
   network,
   settlementCheck,
   settlementUnavailable = false,
@@ -46,6 +47,7 @@ export function OnchainEscrowPanel({
   onPrepareFunding, onRefund, refunding,
 }: {
   view: OnchainEscrowView;
+  refundHeight?: number;
   onPrepareFunding?: () => void;
   onRefund?: () => void;
   refunding?: boolean;
@@ -100,12 +102,12 @@ export function OnchainEscrowPanel({
           <span style={{
             marginLeft: "auto", padding: "2px 7px", borderRadius: 999,
             background: `${T.amber}22`, border: `1px solid ${T.amber}55`,
-            color: T.amber, fontFamily: T.mono, fontSize: 9.5, fontWeight: 800,
+            color: T.amber, fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
           }}>{t("onchain.signetBadge")}</span>
         )}
       </div>}
 
-      <div style={{fontSize:11, color:T.muted, lineHeight:1.5, marginBottom:8}}>{t("payment.bitcoinHeld")}</div>
+      <BitcoinCustody refundHeight={refundHeight} settled={view.stage === "done"} />
 
       <style>{`@keyframes funding-check-spin{to{transform:rotate(360deg)}}@media(prefers-reduced-motion:reduce){.funding-check-spinner{animation:none!important}}`}</style>
       {onPrepareFunding && <PaymentButton onClick={onPrepareFunding} disabled={checking}>
@@ -242,7 +244,7 @@ export function OnchainEscrowPanel({
             }}>
               <strong>⚠ {t("onchain.checkFailed")}</strong>
               {settlementCheck.failures.map((f, i) => (
-                <div key={i} style={{ marginTop: 4, fontFamily: T.mono, fontSize: 10.5 }}>• {f}</div>
+                <div key={i} style={{ marginTop: 4, fontFamily: T.sans, fontSize: T.fs.secondary }}>• {f}</div>
               ))}
             </div>
           )}

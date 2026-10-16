@@ -1,119 +1,117 @@
-// Reusable contextual "?" — a tiny affordance that opens a short popover anchored
-// near it, dismissed by tapping the backdrop or pressing Esc (focus returns to the
-// trigger). Land it anywhere a field or label needs a plain-language aside (first
-// home: the arbiter application form). Theme-tokened so it reads correctly in dark
-// AND light, with no new dependency.
-//
-// The popover is position:FIXED, measured from the trigger's rect on open and
-// clamped to the viewport. That's deliberate: an inline absolute popover gets
-// clipped by any overflow:hidden ancestor (e.g. the narrow arbiter card), and a
-// "?" often sits near a container edge. Fixed + clamp escapes the clip and never
-// runs off-screen.
-
-import { useState, useRef, useEffect, useLayoutEffect, type ReactNode } from "react";
+import { useId, useState, useRef, useEffect, useLayoutEffect, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { T } from "../theme.js";
 import { useT } from "../../i18n/index.js";
 
-const POPOVER_WIDTH = 248;
-
+/** Short help uses the Community popover style. Reading it never leaves the
+ * current task. The portal keeps it above clipped cards and funding sheets. */
 export function HelpTip({ title, children, label }: {
   title?: string;
   children: ReactNode;
-  /** Accessible name for the trigger. Defaults to a localized "What is this?". */
   label?: string;
 }) {
   const { t } = useT();
+  const id = useId();
   const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
-  const triggerRef = useRef<HTMLButtonElement | null>(null);
-
-  const place = () => {
-    const el = triggerRef.current;
-    if (!el) return;
-    const r = el.getBoundingClientRect();
-    const vw = globalThis.innerWidth || 360;
-    const vh = globalThis.innerHeight || 640;
-    const margin = 8;
-    // Centre under the trigger, then clamp into the viewport on both axes.
-    let left = r.left + r.width / 2 - POPOVER_WIDTH / 2;
-    left = Math.max(margin, Math.min(left, vw - POPOVER_WIDTH - margin));
-    const top = Math.min(r.bottom + 6, vh - 200);
-    setPos({ top, left });
+  const [pos, setPos] = useState<{ top: number; left: number; width: number; maxHeight: number } | null>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const dialog = useRef<HTMLDivElement>(null);
+  const name = label ?? t("custody.what");
+  const close = (restore = true) => {
+    setOpen(false);
+    if (restore && trigger.current?.isConnected) trigger.current.focus({ preventScroll: true });
   };
-
+  const place = () => {
+    if (!trigger.current || !dialog.current) return;
+    const rect = trigger.current.getBoundingClientRect();
+    const viewport = window.visualViewport;
+    const leftEdge = (viewport?.offsetLeft ?? 0) + 8;
+    const topEdge = (viewport?.offsetTop ?? 0) + 8;
+    const width = Math.min(248, (viewport?.width ?? innerWidth) - 16);
+    const maxHeight = (viewport?.height ?? innerHeight) - 16;
+    const height = Math.min(dialog.current.getBoundingClientRect().height, maxHeight);
+    const rightEdge = leftEdge + (viewport?.width ?? innerWidth) - 16;
+    const bottomEdge = topEdge + maxHeight;
+    const below = rect.bottom + 6;
+    const above = rect.top - 6 - height;
+    const preferred = below + height <= bottomEdge ? below : above >= topEdge ? above : below;
+    const next = {
+      left: Math.max(leftEdge, Math.min(rect.left + rect.width / 2 - width / 2, rightEdge - width)),
+      top: Math.max(topEdge, Math.min(preferred, bottomEdge - height)), width, maxHeight,
+    };
+    setPos(previous => previous && Object.keys(next).every(key => previous[key as keyof typeof next] === next[key as keyof typeof next]) ? previous : next);
+  };
   useLayoutEffect(() => { if (open) place(); }, [open]);
+  useLayoutEffect(() => { if (open && pos) dialog.current?.focus({ preventScroll: true }); }, [open, !!pos]);
   useEffect(() => {
     if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") { setOpen(false); triggerRef.current?.focus(); }
+    const key = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault(); event.stopImmediatePropagation(); close();
+      } else if (event.key === "Tab" && dialog.current) {
+        const controls = Array.from(dialog.current.querySelectorAll<HTMLElement>('a[href], button:not(:disabled), [tabindex="0"]'))
+          .filter(el => el.getClientRects().length > 0);
+        const active = document.activeElement;
+        // Short read-only help does not trap someone in a task. Tab enters any
+        // help link, then dismisses and continues from the original trigger.
+        if (active === dialog.current && controls.length && !event.shiftKey) {
+          event.preventDefault(); controls[0].focus();
+        } else if (!controls.length || (event.shiftKey ? active === controls[0] || active === dialog.current : active === controls.at(-1))) {
+          close();
+        }
+      }
     };
-    const reflow = () => place();
-    window.addEventListener("keydown", onKey);
-    window.addEventListener("resize", reflow);
-    window.addEventListener("scroll", reflow, true);
+    const focus = (event: FocusEvent) => {
+      const target = event.target as Node;
+      if (!dialog.current?.contains(target) && !trigger.current?.contains(target)) close(false);
+    };
+    const back = () => close(false);
+    const observer = new ResizeObserver(place);
+    if (dialog.current) observer.observe(dialog.current);
+    window.addEventListener("keydown", key, true);
+    window.addEventListener("focusin", focus);
+    window.addEventListener("popstate", back);
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    window.visualViewport?.addEventListener("resize", place);
+    window.visualViewport?.addEventListener("scroll", place);
     return () => {
-      window.removeEventListener("keydown", onKey);
-      window.removeEventListener("resize", reflow);
-      window.removeEventListener("scroll", reflow, true);
+      observer.disconnect();
+      window.removeEventListener("keydown", key, true);
+      window.removeEventListener("focusin", focus);
+      window.removeEventListener("popstate", back);
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+      window.visualViewport?.removeEventListener("resize", place);
+      window.visualViewport?.removeEventListener("scroll", place);
     };
   }, [open]);
 
-  return (
-    <span style={{ display: "inline-flex", verticalAlign: "middle" }}>
-      <button
-        ref={triggerRef}
-        type="button"
-        aria-label={label ?? t("browse.helpTipLabel")}
-        aria-expanded={open}
-        onClick={(e) => { e.stopPropagation(); setOpen(o => !o); }}
-        style={{
-          // Visual circle is the inner span; the button pads out to a ≥40px touch
-          // target, with a negative margin so it doesn't bloat the inline layout.
-          background: "none", border: "none", padding: 10, margin: -10,
-          cursor: "pointer", display: "inline-grid", placeItems: "center", lineHeight: 0,
-        }}
-      >
-        <span aria-hidden="true" style={{
-          width: 20, height: 20, borderRadius: 999,
-          background: open ? T.accent : T.surface,
-          border: `1px solid ${open ? T.accent : T.border}`,
-          color: open ? "#fff" : T.muted,
-          fontFamily: T.mono, fontSize: 12, fontWeight: 800,
-          display: "grid", placeItems: "center", lineHeight: 1,
-        }}>?</span>
-      </button>
-      {open && pos && (
-        <>
-          {/* Backdrop — a tap anywhere outside dismisses (same fixed-overlay idiom
-              the app's modals use). Transparent so the screen stays visible. */}
-          <div
-            onClick={(e) => { e.stopPropagation(); setOpen(false); }}
-            style={{ position: "fixed", inset: 0, zIndex: 200, background: "transparent" }}
-          />
-          <div
-            role="dialog"
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              position: "fixed", zIndex: 201,
-              top: pos.top, left: pos.left,
-              width: POPOVER_WIDTH, maxWidth: "92vw",
-              background: T.card, border: `1px solid ${T.borderHi}`,
-              borderRadius: T.r, padding: "12px 14px",
-              boxShadow: "0 14px 36px #0009",
-              textAlign: "left",
-            }}
-          >
-            {title && (
-              <div style={{ fontFamily: T.mono, fontSize: 10, fontWeight: 800, letterSpacing: 0.8, color: T.accent, marginBottom: 6 }}>
-                {title}
-              </div>
-            )}
-            <div style={{ fontFamily: T.sans, fontSize: 12.5, lineHeight: 1.55, color: T.text }}>
-              {children}
-            </div>
-          </div>
-        </>
-      )}
-    </span>
-  );
+  return <span data-help-tip style={{ display: "inline-flex", verticalAlign: "middle", flexShrink: 0 }}>
+    <style>{`.chama-help-trigger:focus-visible{outline:2px solid ${T.accent};outline-offset:2px}@keyframes chama-help-in{from{opacity:0;transform:translateY(-2px)}to{opacity:1;transform:translateY(0)}}.chama-help-popover{animation:chama-help-in .16s ease-out}@media(prefers-reduced-motion:reduce){.chama-help-popover{animation:none}}`}</style>
+    <button ref={trigger} className="chama-help-trigger" type="button" aria-label={name}
+      aria-expanded={open} aria-controls={open ? id : undefined} aria-haspopup="dialog"
+      onClick={event => { event.stopPropagation(); open ? close() : setOpen(true); }}
+      style={{ width: 44, height: 44, flexShrink: 0, background: "none", border: "none", boxShadow: "none", padding: 12, margin: -12, borderRadius: T.rs, cursor: "pointer", display: "inline-grid", placeItems: "center", lineHeight: 0 }}>
+      <span aria-hidden="true" style={{ width: 20, height: 20, boxSizing: "border-box", borderRadius: 999,
+        background: open ? T.accent : T.surface, border: `1px solid ${open ? T.accent : T.border}`,
+        color: open ? "#fff" : T.muted, fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
+        display: "grid", placeItems: "center", lineHeight: 1 }}>?</span>
+    </button>
+    {open && createPortal(<>
+      <div data-help-backdrop onClick={event => { event.stopPropagation(); close(); }}
+        style={{ position: "fixed", inset: 0, zIndex: 10020, background: "transparent" }} />
+      <div ref={dialog} id={id} data-help-popover className="chama-help-popover" role="dialog" tabIndex={-1}
+        aria-label={title ?? name} aria-describedby={`${id}-body`}
+        onClick={event => event.stopPropagation()}
+        style={{ position: "fixed", zIndex: 10021, top: pos?.top ?? 0, left: pos?.left ?? 0,
+          width: pos?.width ?? 248, maxHeight: pos?.maxHeight ?? "calc(100dvh - 16px)",
+          maxWidth: "calc(100vw - 16px)", boxSizing: "border-box", overflowY: "auto", visibility: pos ? "visible" : "hidden",
+          background: T.card, border: `1px solid ${T.borderHi}`, borderRadius: T.r, padding: "12px 14px",
+          boxShadow: "0 14px 36px #0009", textAlign: "left", outline: "none", overflowWrap: "anywhere" }}>
+        {title && <div style={{ fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700, color: T.accent, marginBottom: 6 }}>{title}</div>}
+        <div id={`${id}-body`} style={{ fontFamily: T.sans, fontSize: 12.5, lineHeight: 1.55, color: T.text }}>{children}</div>
+      </div>
+    </>, document.body)}
+  </span>;
 }

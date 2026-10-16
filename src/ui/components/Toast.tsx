@@ -1,7 +1,41 @@
+import { missingWebCrypto } from "../browser-capability-copy.js";
 import { useEffect, type ReactNode } from "react";
 import { T } from "../theme.js";
 import { isSimModeOn } from "../../sim/simMode.js";
 import { SIM_PILL_HEIGHT } from "../../sim/SimModeBanner.js";
+import { useT } from "../../i18n/index.js";
+
+/** What a toast says for an error message written for developers. Many callers
+ *  pass `error.message` straight through; the native wallet bridge's messages
+ *  carry a JSON diagnostics block and bridge jargon that filled a phone screen
+ *  (Jet, 6.4.23-rc.5, first launch after the update). Bridge start-up and
+ *  timeout errors get a plain sentence; any other message loses its
+ *  diagnostics block. Non-string messages pass through untouched. */
+/** The browser can't open the wallet's storage (WebKit's OPFS refusal in an
+ *  iPhone third-party or private browser; sdk-adapter.ts). Matches the
+ *  English error text, since only `message` crosses the wallet worker. */
+const WALLET_STORAGE_UNAVAILABLE = /could not open its secure local wallet storage/i;
+
+/** Toasts that describe a lasting condition, shown once per app session. */
+export function oncePerSessionToastKey(message: ReactNode): string | null {
+  return typeof message === "string" && WALLET_STORAGE_UNAVAILABLE.test(message) ? "wallet-storage-unavailable" : null;
+}
+
+export function toastText(message: ReactNode, t: (key: string) => string): ReactNode {
+  if (typeof message !== "string") return message;
+  if (WALLET_STORAGE_UNAVAILABLE.test(message)) return t("app.walletStorageBrowser");
+  if (/native_fedimint_bridge_unavailable|Native Fedimint bridge is enabled but unreachable/i.test(message)) {
+    return t("app.walletStarting");
+  }
+  if (/native_fedimint_bridge_timeout|Native Fedimint bridge \S+ did not answer within/i.test(message)) {
+    return t("app.walletSlow");
+  }
+  if (/couldn't read this wallet's balance, so it won't switch/i.test(message)) {
+    return t("app.balanceUnknownNoSwitch");
+  }
+  const cut = message.indexOf("Chama diagnostics:");
+  return cut >= 0 ? message.slice(0, cut).trim() : message;
+}
 
 export function Toast({ message, type, onDone, sticky = false, dismissOnTap = false }: {
   message: ReactNode; type: "success" | "error" | "info"; onDone: () => void;
@@ -21,6 +55,10 @@ export function Toast({ message, type, onDone, sticky = false, dismissOnTap = fa
    *  of the toast. Set it there, never on the decision-carrying ones. */
   dismissOnTap?: boolean;
 }) {
+  const { t } = useT();
+  // A browser without Web Crypto (an http:// preview) gets one plain sentence;
+  // every other message goes through toastText (no developer diagnostics).
+  const displayMessage = typeof message === "string" && missingWebCrypto(message) ? t("claim.browserNeedsHttps") : toastText(message, t);
   // Type-aware dwell: a success/info confirmation only needs a glance, so it
   // shouldn't linger; an error carries more to read, so it stays a touch longer.
   const dwellMs = type === "error" ? 4500 : type === "info" ? 3000 : 2200;
@@ -34,7 +72,8 @@ export function Toast({ message, type, onDone, sticky = false, dismissOnTap = fa
   // the top of the toast (top:16, z:9999). Slide the toast below the
   // pill when sim mode is on so the green community-switch confirmation
   // and other toasts read cleanly.
-  const topOffset = isSimModeOn() ? SIM_PILL_HEIGHT + 16 : 16;
+  // The banner's real height (two lines on a phone), published by SimModePill.
+  const topOffset = isSimModeOn() ? `calc(var(--chama-sim-pill-height, ${SIM_PILL_HEIGHT}px) + 16px)` : 16;
   // Only meaningful while sticky — a self-dismissing toast has nothing to tap.
   const tapToDismiss = sticky && dismissOnTap;
   return (
@@ -44,7 +83,7 @@ export function Toast({ message, type, onDone, sticky = false, dismissOnTap = fa
         position: "fixed", top: topOffset, left: "50%", transform: "translateX(-50%)",
         // A sticky toast carries a corner ✕. Pad the right so a long message
         // never runs under it, rather than letting it wrap to its own line.
-        padding: sticky ? "14px 40px 14px 24px" : "14px 24px", borderRadius: 999,
+        padding: sticky ? "14px 40px 14px 24px" : "14px 24px", borderRadius: 16,
         // OPAQUE surface so the toast never blends into whatever's behind it — a
         // toast is allowed to hide the page for its few seconds. The type colour
         // lives in the border, icon, and text; a soft shadow lifts it off.
@@ -56,13 +95,13 @@ export function Toast({ message, type, onDone, sticky = false, dismissOnTap = fa
         color: colors[type], fontFamily: T.sans, fontSize: 15.5, fontWeight: 800,
         lineHeight: 1.35, letterSpacing: 0.1,
         zIndex: 9999, animation: "fadeIn 0.3s ease",
-        maxWidth: "92vw", textAlign: "center", wordBreak: "break-word",
+        width: "max-content", maxWidth: "min(520px, calc(100vw - 32px))", maxHeight: "70dvh", overflowY: "auto", textAlign: "center", wordBreak: "break-word",
         cursor: tapToDismiss ? "pointer" : undefined,
       }}
     >
       <span style={{ display: "inline-flex", alignItems: "baseline", justifyContent: "center", gap: 8, flexWrap: "wrap" }}>
         <span aria-hidden="true" style={{ fontSize: 17, lineHeight: 1 }}>{type === "success" ? "✓" : type === "error" ? "✗" : "⚡"}</span>
-        <span>{message}</span>
+        <span style={{ minWidth: 0, flex: "1 1 0" }}>{displayMessage}</span>
       </span>
       {sticky && (
         <button

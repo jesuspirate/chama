@@ -1,3 +1,5 @@
+import { recordNativeFundingDiagnostic } from "../notifications/native-push.js";
+import { scopedStorageKey } from "../storage/user-scope.js";
 // ══════════════════════════════════════════════════════════════════════════
 // Chama — Payout Destinations (localStorage)
 // ══════════════════════════════════════════════════════════════════════════
@@ -16,6 +18,7 @@ import {
   type SavedHandle,
 } from "./saved-handles.js";
 import { randomId } from "../storage/random-id.js";
+import { parseRawLnurl } from "./lnurl.js";
 import {
   getScopedStorageItem,
   setScopedStorageItem,
@@ -82,8 +85,20 @@ function dedupeDestinations(destinations: PayoutDestination[]): PayoutDestinatio
   return out;
 }
 
+// Reads once per key/launch and every write, to diagnose the Pixel reproduction.
+// Addresses, labels and credentials are deliberately absent.
+const tracedStorage = new Set<string>();
+function traceStorage(operation: string, baseKey: string): void {
+  const key = scopedStorageKey(baseKey), trace = `${operation}:${key}`;
+  if (!operation.includes("write") && tracedStorage.has(trace)) return;
+  tracedStorage.add(trace);
+  console.info("[chama/saved-wallets]", operation, key);
+  void recordNativeFundingDiagnostic({ area: "saved-wallets", operation, key });
+}
+
 function readStored(key: string): PayoutDestination[] {
   try {
+    traceStorage("read", key);
     const raw = getScopedStorageItem(key);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
@@ -122,7 +137,9 @@ function writeRaw(
       }
     }
     const serialized = JSON.stringify(normalized);
+    traceStorage("write", PAYOUT_DESTINATIONS_STORAGE_KEY);
     setScopedStorageItem(PAYOUT_DESTINATIONS_STORAGE_KEY, serialized);
+    traceStorage("write", PAYOUT_DESTINATIONS_BACKUP_STORAGE_KEY);
     setScopedStorageItem(PAYOUT_DESTINATIONS_BACKUP_STORAGE_KEY, serialized);
   } catch {
     // localStorage unavailable / quota exceeded — cosmetic persistence
@@ -141,11 +158,55 @@ export function displayPayoutDestination(address: string): string {
     ? `${value.slice(0, 9)}…${value.slice(-3)}` : value;
 }
 
+/** Wallet apps people recognise by their Lightning-address domain. */
+const WALLET_BRANDS: Record<string, string> = {
+  "strike.me": "Strike",
+  "getalby.com": "Alby",
+  "walletofsatoshi.com": "Wallet of Satoshi",
+  "blink.sv": "Blink",
+  "coinos.io": "Coinos",
+  "primal.net": "Primal",
+  "minibits.cash": "Minibits",
+  "npub.cash": "npub.cash",
+  "fedi.xyz": "Fedi",
+};
+
+/** How to name a saved wallet without showing its receive code (Jet, 6.4.25:
+ *  the claim sheet showed the whole lnurl1dp68… string). The UI turns this
+ *  into words; a name the person gave always wins over it. */
+export type WalletNameParts =
+  | { kind: "brand"; brand: string; user: string }
+  | { kind: "fedi" }
+  | { kind: "host"; host: string }
+  | { kind: "plain"; text: string };
+
+export function walletNameParts(address: string): WalletNameParts {
+  const value = normalizeAddress(address);
+  const at = value.lastIndexOf("@");
+  if (at > 0 && !value.startsWith("lnurl1")) {
+    const user = value.slice(0, at), domain = value.slice(at + 1);
+    const brand = WALLET_BRANDS[domain];
+    return brand ? { kind: "brand", brand, user } : { kind: "plain", text: value };
+  }
+  if (value.startsWith("lnurl1")) {
+    try {
+      const host = new URL(parseRawLnurl(value)).host;
+      // Fedi's LNURL receive codes are served by its recurringd service.
+      if (/(^|\.)vai1f\.org$|(^|\.)fedi\.xyz$/.test(host)) return { kind: "fedi" };
+      return { kind: "host", host };
+    } catch {
+      return { kind: "plain", text: displayPayoutDestination(value) };
+    }
+  }
+  return { kind: "plain", text: displayPayoutDestination(value) };
+}
+
 /** One-time lazy migration from pre-v0.6.3 saved_handles rows where
  *  rail="lightning". After migration, the legacy rows are removed so
  *  trade-time handle reveal cannot accidentally offer a payout address. */
 export function migrateLegacyLightningHandles(): number {
   try {
+    traceStorage("legacy-read", SAVED_HANDLES_STORAGE_KEY);
     const raw = getScopedStorageItem(SAVED_HANDLES_STORAGE_KEY);
     if (!raw) return 0;
     const parsed = JSON.parse(raw);
@@ -177,7 +238,9 @@ export function migrateLegacyLightningHandles(): number {
     if (migrated.length === 0 && keptHandles.length === parsed.length) return 0;
     writeRaw([...migrated, ...existing]);
     const keptSerialized = JSON.stringify(keptHandles);
+    traceStorage("legacy-write", SAVED_HANDLES_STORAGE_KEY);
     setScopedStorageItem(SAVED_HANDLES_STORAGE_KEY, keptSerialized);
+    traceStorage("legacy-write", SAVED_HANDLES_BACKUP_STORAGE_KEY);
     setScopedStorageItem(SAVED_HANDLES_BACKUP_STORAGE_KEY, keptSerialized);
     return migrated.length;
   } catch {

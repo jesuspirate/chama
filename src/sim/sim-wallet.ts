@@ -139,6 +139,18 @@ export function parseBolt11Msats(bolt11: string): number | null {
 
 // ── Factory ───────────────────────────────────────────────────────────────
 
+/**
+ * The sandbox's one-tap claim. The sim wallet's `payInvoice` only needs an
+ * amount-encoded BOLT11 to debit, so a claim can settle "into the sim wallet"
+ * by paying an invoice we mint here: `n` is 100 msat, so `sats * 10` n.
+ * Nothing resolves it — it never leaves the mock. Sim-only: the live claim
+ * path never sees this string.
+ */
+export function sandboxClaimInvoice(sats: number): string {
+  if (!Number.isInteger(sats) || sats <= 0) throw new Error("sandboxClaimInvoice: sats must be a positive integer");
+  return `lnbcsim${sats * 10}n1psandbox${Date.now().toString(36)}`;
+}
+
 export interface CreateSimWalletOptions {
   /** Hex pubkey of the active signer. Used to key persistent state so
    *  multiple identities in the same browser don't share a sim balance. */
@@ -388,6 +400,13 @@ export function createSimWallet(opts: CreateSimWalletOptions = { npub: null }): 
     },
 
     federation: {
+      async inspectInvite() {
+        // Simulation-only metadata for exercising the public-circle UI. Never
+        // fetch a real guardian or initialize a real WASM wallet in sim mode.
+        return { federationId: SIM_FEDERATION_ID, metaStatus: "ready" as const,
+          config: { global: { meta: { federation_name: "SIM" } } },
+          consensusMeta: { revision: 0, value: { "fedi:max_invoice_msats": "100000000" } } };
+      },
       async getFederationId() { return SIM_FEDERATION_ID; },
       async getInviteCode() { return SIM_INVITE; },
     },

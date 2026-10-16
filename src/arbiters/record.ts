@@ -17,7 +17,11 @@ export function arbiterRecord(pubkey: string, escrows: readonly EscrowState[], b
     }
     return { ...state, eventChain, votes };
   });
-  const ownBonds = bonds.filter(b => b.npub.toLowerCase() === key && b.funded && b.active);
+  // One bond per address (Jet, 6.4.25: the same bond, announced more than
+  // once, showed as repeated lines and was counted again in "at stake").
+  // Same rule as conductStanding's bonded total.
+  const ownBonds = [...new Map(bonds.filter(b => b.npub.toLowerCase() === key && b.funded && b.active)
+    .map(b => [b.address, b] as const)).values()];
   let healings = 0, disputes = 0, lastSeen: number | null = null;
   const latencies: number[] = [];
   for (const state of trades) {
@@ -45,6 +49,7 @@ export function arbiterRecord(pubkey: string, escrows: readonly EscrowState[], b
   const tenureBlocks = tenures.length ? Math.max(...tenures) : null;
   return { pubkey, healings, disputes, medianResponseSec, lastSeen, observedTrades: trades.length,
     concentration: arbiterRulingConcentration(trades, pubkey),
+    bondTerms: ownBonds.map(b => ({ address: b.address, sats: b.actualSats, lockUntil: b.lockUntil })),
     bondSats: ownBonds.reduce((sum, b) => sum + b.actualSats, 0n), tenureBlocks,
     tenure: tenureTier(tenureBlocks, blocksPerDay),
     liveness: tipHeight == null ? null : computeChamaLiveness(ownBonds[0]?.community ?? '', ownBonds, ratings, tipHeight),

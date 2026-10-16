@@ -145,3 +145,6 @@ docs/PHILOSOPHY.md
 
 # Throwaway signet escrow harness keys and local transaction journal
 scripts/.mutinynet-escrow-*.json
+
+# Sandbox build output (poc.getchama.app); never Android or the live web deployment.
+/dist-sandbox/

@@ -121,6 +121,7 @@ export type PendingNativeLockStage = "intent" | "spent" | "publish-attempted";
  *  `savedHandleId` preserves the fiat-handle reveal. */
 export interface PendingNativeLockOpts {
   savedHandleId?: string;
+  paymentDetailsInChat?: boolean;
   selectedItems?: SelectedMenuItem[];
   /** Buyer seated when funding began. Preserved across a slow Lightning
    *  payment so expiry cannot erase the intended counterparty mid-lock. */
@@ -597,7 +598,7 @@ export async function recoverPendingNativeLock(
     // Reabsorb automatically, but only with measured wallet credit.
     if (state.rejectedLocks?.length) {
       const ourHash = await deps.hashNotes(entry.oobNotes);
-      const refused = state.rejectedLocks.some(row => row.code === "ORDER_NOT_FINALIZED"
+      const refused = state.rejectedLocks.some(row => (row.code === "ORDER_NOT_FINALIZED" || row.code === "CANCELLED_BEFORE_LOCK")
         && row.event.payload.notesHash === ourHash && !row.event.payload.onchain);
       if (refused && !state.claim.claimedAt) {
         return reabsorb(entry, deps, state, true);

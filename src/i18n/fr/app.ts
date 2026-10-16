@@ -42,7 +42,7 @@ export const app: Record<string, string> = {
     "Mon Chama et Moins cher sont les choix par défaut. Passez à Tout pour découvrir les offres d'autres pays et communautés.",
   "app.coachBrowsePreferencesTitle": "Choisissez le contenu de Parcourir",
   "app.coachCreateBody":
-    "Ce bouton ✎ ouvre trois questions simples. Chama trouve une correspondance ou prépare la bonne offre.",
+    "Créer ouvre trois questions simples. Chama trouve une correspondance ou prépare la bonne offre.",
   "app.coachCreateTitle": "Commencez avec ce que vous avez",
   "app.coachDashboardBody":
     "Votre réputation, vos statistiques, vos gains et vos notes arrivent ici — l'endroit qui suit vos progrès au fil de vos échanges.",
@@ -62,6 +62,10 @@ export const app: Record<string, string> = {
   "app.useWalletHere": "L'utiliser ici",
   "app.couldntLoadTrade": "Impossible de charger l'échange {id}.",
   "app.couldntReconnect": "Impossible de se reconnecter. Réessayer ?",
+  "app.walletStarting": "Votre portefeuille démarre encore. Patientez quelques secondes, puis réessayez.",
+  "app.balanceUnknownNoSwitch": "Chama n'a pas pu lire le solde de votre portefeuille, il reste donc sur votre communauté actuelle. Rien n'a été modifié. Réessayez dans un instant.",
+  "app.walletStorageBrowser": "Ce navigateur ne peut pas conserver votre portefeuille Chama. Sur iPhone, ouvrez getchama.app dans Safari. Rien n'a été modifié.",
+  "app.walletSlow": "Votre portefeuille n'a pas répondu à temps. Vérifiez votre solde avant de réessayer.",
   "app.couldntStartOrder": "Impossible de démarrer la commande.",
   "app.couldntSwitchTo": "Impossible de basculer vers {label}. Réessayez.",
   "app.countdownHoursMinutes": "dans ~{h} h {m} min",
@@ -185,7 +189,7 @@ export const app: Record<string, string> = {
   "app.startingOrder": "Démarrage de votre commande…",
   "app.strandedClaimBody":
     "⚠ Cette note EST les sats de votre échange réglé. Chama n'a pas pu l'encaisser automatiquement — importez-la dans Fedi ou tout portefeuille Fedimint sur cette fédération, ou sauvegardez-la en lieu sûr MAINTENANT. Effacer les données du navigateur détruit la seule copie.",
-  "app.strandedClaimHeadline": "RÉCLAMATION BLOQUÉE · NOTE AU PORTEUR",
+  "app.strandedClaimHeadline": "Réclamation bloquée · note au porteur",
   "app.strandedClaimUnresolvedBody":
     "⚠ Cette note a été signalée comme déjà encaissée, mais Chama n'a pas pu confirmer que VOTRE portefeuille a été crédité. Sauvegardez-la quand même, puis vérifiez votre solde — si les sats n'y sont pas, cette chaîne de caractères est votre preuve et votre voie de récupération.",
   "app.switchOverlayAfter": "…",
@@ -201,6 +205,7 @@ export const app: Record<string, string> = {
   "app.tradeConflictingCreators":
     "Deux comptes différents ont publié une annonce sous l'identifiant de cet échange ; Chama ne peut pas savoir laquelle est la vraie et n'en ouvrira aucune. Demandez un nouveau lien à la personne qui vous l'a envoyé.",
   "app.tradeNotFound": "Échange introuvable sur les relais",
+  "app.sandboxTradeLink": "C'est un échange du bac à sable, avec des sats de test. Ouvrez-le sur poc.getchama.app, pas dans l'app.",
   "app.tradeNotFoundYet": "Échange {id} introuvable sur les relais pour l'instant.",
   "app.tradePublished": "Échange publié ! {escrowId}",
   "app.tradesUpToDate": "Vos échanges sont à jour.",
@@ -220,10 +225,10 @@ export const app: Record<string, string> = {
     "Portefeuille Chama déconnecté. Touchez Reconnecter et réessayez.",
   "app.yourFederation": "votre fédération",
   "edit.title": "Modifier votre annonce",
-  "edit.description": "DESCRIPTION",
-  "edit.priceSats": "PRIX (SATS)",
-  "edit.priceFiat": "PRIX ({currency})",
-  "edit.stock": "STOCK",
+  "edit.description": "Description",
+  "edit.priceSats": "Prix (sats)",
+  "edit.priceFiat": "Prix ({currency})",
+  "edit.stock": "Stock",
   "edit.save": "Enregistrer",
   "edit.saving": "Enregistrement…",
   "edit.saved": "Annonce mise à jour.",

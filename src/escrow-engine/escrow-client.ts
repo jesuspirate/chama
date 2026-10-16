@@ -1,3 +1,4 @@
+import { isSignerApprovalError } from "./signer-approval.js";
 import { publicConductTags } from "./public-conduct.js";
 import type { SettlementStalledPayload } from "./types.js";
 import { finalRefundSettlementProof } from "./onchain-settlement-transport.js";
@@ -115,6 +116,7 @@ import {
   type FetchLegDiag,
 } from "./discovery-diagnostics.js";
 import { simTagOrNull, shouldDropForSimPolicy } from "../sim/simMode.js";
+import { noteDroppedSandboxEvent, wasSeenAsSandboxTrade } from "../sim/sandbox-sightings.js";
 import { verifyEvent as verifyNostrEventSignature } from "nostr-tools/pure";
 import { randomId } from "../storage/random-id.js";
 import { creatorMatchesEscrowId, creatorTaggedEscrowId, selectTradeRoot } from "./trade-identity.js";
@@ -153,6 +155,11 @@ import {
  *   - LocalSigner: uses a local keypair (testing / CLI)
  */
 export interface Signer {
+  /** Interactive signers require an explicit action before opening secrets. */
+  readonly requiresUserAction?: boolean;
+  nip44DecryptCached?(ciphertext: string, senderPubkey: string): Promise<string | null>;
+  /** Legacy seed format only; never a fallback for escrow payloads. */
+  nip04Decrypt?(ciphertext: string, senderPubkey: string): Promise<string>;
   /** Get the user's public key (hex) */
   getPublicKey(): Promise<string>;
 
@@ -550,6 +557,7 @@ export class EscrowClient {
      *  replay. A background generation can't satisfy a repair-wanting caller. */
     repairFromCache: boolean;
     fullHistory: boolean;
+    userAction: boolean;
   }> = new Map();
   /** Backfill bookkeeping: which trades already handed their recovered events
    *  back this session, and when the last batch went out. Republishing is
@@ -581,6 +589,11 @@ export class EscrowClient {
   /** Session context survives first-ACK queue retirement long enough to show
    *  late straggler rejection text in the one trade-level diagnostic. */
   private moneyPublishesInFlight = new Set<string>();
+  /** True when this live app dropped sandbox events for this trade id. The
+   *  ids (and their creators, for Browse) live in sim/sandbox-sightings.ts. */
+  sawSandboxTrade(escrowId: string): boolean {
+    return wasSeenAsSandboxTrade(escrowId);
+  }
   private moneyPublishContext = new Map<string, { escrowId: string; type: MoneyEventType }>();
   private shownRelayRejections = new Set<string>();
 
@@ -676,7 +689,14 @@ export class EscrowClient {
         // (loadEscrow's fetchEscrowEvents, raw fetchOnce). Defense in
         // depth — handleIncomingEvent still has its own check, but this
         // catches paths that bypass it entirely.
-        shouldDropEvent: (event) => shouldDropForSimPolicy(event),
+        shouldDropEvent: (event) => {
+          if (!shouldDropForSimPolicy(event)) return false;
+          // A live app dropping a sandbox trade remembers only its id, so a
+          // trade link can say "this is a sandbox trade" instead of "not
+          // found" (Jet, 6.4.25). Nothing else about it is kept.
+          noteDroppedSandboxEvent(event);
+          return true;
+        },
         // SECURITY: wire schnorr signature verification at the relay
         // boundary. Without this, any relay can forge events from any
         // pubkey (incl. participants of in-flight trades). Verification
@@ -694,7 +714,7 @@ export class EscrowClient {
   connect(): void {
     this.relayManager.connect();
 
-    this.notifier = new EscrowNotifier(this.signer, this.relayManager);
+    this.notifier = new EscrowNotifier(this.signer, this.relayManager, { enabled: !this.signer.requiresUserAction });
 
     // Boot drain for durable claims: give the pool a beat to dial, then
     // re-offer anything a previous session redeemed but never landed on the
@@ -936,9 +956,9 @@ export class EscrowClient {
    * One-shot query for events matching a filter. Resolves after EOSE
    * from all connected relays, or after the timeout.
    */
-  async queryPublicConduct(filter: import("./relay-manager.js").NostrFilter) {
+  async queryPublicConduct(filter: import("./relay-manager.js").NostrFilter, timeoutMs = 8_000) {
     const probe = new FetchProbe("public-conduct", "public evidence");
-    const events = await this.relayManager.fetchOnce(filter, 8_000, probe);
+    const events = await this.relayManager.fetchOnce(filter, timeoutMs, probe);
     return { events, complete: probe.snapshot(events.length).resolvedBy === "eose" };
   }
 
@@ -1081,8 +1101,12 @@ export class EscrowClient {
     const existing = this.states.get(id);
     if (existing) return circleFromEscrow(existing) ? existing : undefined;
     const events = await this.relayManager.fetchOnce({ kinds: [EscrowEventKind.CREATE], "#d": [id] }, 15_000);
+    // Cycle resolution has a recursion guard. Parse sequentially so concurrent
+    // candidates cannot mistake another candidate's lookup for a malicious loop.
+    const contextual = [];
+    for (const raw of events) contextual.push(await this.parseWithChamaContext(raw, raw.content));
     const creates = selectTradeRoot(
-      sortEventChain(events.map(raw => parseEscrowEvent(raw, raw.content, true)).filter(r => r.ok).map(r => r.event))
+      sortEventChain(contextual.filter(r => r.ok).map(r => r.event))
         .filter(event => event.escrowId === id && (event.payload as CreatePayload).category === "chama"),
       this.expectedCreatorOf(id));
     for (const raw of creates.ok ? creates.events : []) {
@@ -1116,7 +1140,7 @@ export class EscrowClient {
             witness = await this.resolveRingWitness(payload.parent, payload.sellerPubkey, circle.roundIndex);
           }
           // Rotation share: the collector derivation needs the whole cycle.
-          if (payload.chamaPolicy === "share-v2" && parent) cycle = await this.resolveChamaCycle(parent.id);
+          if (payload.chamaPolicy === "share-v2" && parent && (circle?.roundIndex ?? 0) >= 2) cycle = await this.resolveChamaCycle(parent.id);
         }
         // Chained rotation round: its gate walks the chain back to round 1.
         if (payload?.category === "chama" && payload?.chamaCircle?.pot === "rotation-v2"
@@ -1145,7 +1169,23 @@ export class EscrowClient {
    *  to round 1, plus every round's share children) from cache + relays.
    *  Best effort: a missing link returns what was found — the gates then
    *  reject for lack of evidence, which is the conservative side. */
+  private readonly cycleReads = new Map<string, Promise<{ circles: EscrowState[]; shares: EscrowState[] } | undefined>>();
+
   private async resolveChamaCycle(roundId: string): Promise<{ circles: EscrowState[]; shares: EscrowState[] } | undefined> {
+    // A commitment round's shares cannot themselves need rotation context:
+    // share-v2 is refused on round 1 before reaching this resolver. Concurrent
+    // cold/live readers may safely share that read instead of treating each
+    // other as recursive loops. Later rounds retain the recursion guard.
+    const pending = this.cycleReads.get(roundId);
+    if (pending && this.states.get(roundId)?.chamaCircle?.roundIndex === 1) return pending;
+    if (this.cycleResolutionStack.has(roundId)) return undefined;
+    const read = this.resolveChamaCycleUnshared(roundId);
+    this.cycleReads.set(roundId, read);
+    try { return await read; }
+    finally { if (this.cycleReads.get(roundId) === read) this.cycleReads.delete(roundId); }
+  }
+
+  private async resolveChamaCycleUnshared(roundId: string): Promise<{ circles: EscrowState[]; shares: EscrowState[] } | undefined> {
     if (this.cycleResolutionStack.has(roundId)) return undefined;
     this.cycleResolutionStack.add(roundId);
     try {
@@ -1206,16 +1246,20 @@ export class EscrowClient {
   private chamaRefundRefreshRunning = false;
 
   async maybeAutoRefundChama(nowSec = Math.floor(Date.now() / 1000)): Promise<void> {
-    if (this.chamaRefundRefreshRunning) return;
+    if (this.chamaRefundRefreshRunning || this.signer.requiresUserAction) return;
     this.chamaRefundRefreshRunning = true;
     try {
       // Refresh cross-child evidence before evaluating the fill deadline.
       for (const parent of [...this.states.values()]) {
         const circle = circleFromEscrow(parent);
         if (circle && nowSec >= circle.fillDeadlineSec) {
-          await this.loadChildren(parent.id);
-          // Reached only when the refresh resolved: a throw unwinds the pass.
-          this.chamaViewComplete.add(parent.id);
+          try {
+            await this.loadChildren(parent.id);
+            // loadChildren certifies EOSE and successful child replay itself.
+          } catch (error) {
+            this.chamaViewComplete.delete(parent.id);
+            console.debug(`[chama] Circle return evidence incomplete for ${parent.id}`, error);
+          }
         }
       }
       await this.chamaRefundWatcher(nowSec);
@@ -1736,6 +1780,13 @@ export class EscrowClient {
       throw err;
     }
 
+    // New ranged Exchange JOINs must commit the buyer's own amount. Historical
+    // empty JOINs still replay; the outgoing API no longer creates them.
+    if (role === Role.BUYER && state.items?.some(item => item.kind === 'exchange-bracket')
+      && (!Number.isSafeInteger(opts.amountMsats) || opts.amountMsats! <= 0 || !opts.selectedItems?.length)) {
+      throw new Error('Choose an amount before joining this offer.');
+    }
+
     const now = Math.floor(Date.now() / 1000);
     const lastEventId = state.eventChain[state.eventChain.length - 1]?.raw.id;
 
@@ -2040,10 +2091,13 @@ export class EscrowClient {
         encryptedFor: { [recipient.pubkey]: reEncrypted },
       };
     } catch (e) {
+      if (isSignerApprovalError(e)) throw e;
       console.debug("[escrow] vote share-envelope skipped (best-effort):", e);
       return undefined;
     }
   }
+
+  private pendingVotes = new Set<string>();
 
   async vote(escrowId: string, outcome: Outcome, onchainRelease?: SettlementPayload): Promise<EscrowState> {
     const state = this.states.get(escrowId);
@@ -2119,9 +2173,32 @@ export class EscrowClient {
     if (!parsedVote.ok) throw new Error(parsedVote.error.message);
     const checkedVote = applyEvent(this.states.get(escrowId)!, parsedVote.event);
     if (!checkedVote.ok) throw new Error(checkedVote.error.message);
-    await this.relayManager.publish(signed);
-
-    const newState = this.applyLocally(escrowId, signed, payload, cycle);
+    if (this.pendingVotes.has(escrowId)) throw new Error('Your previous vote is still being sent.');
+    this.pendingVotes.add(escrowId);
+    this.callbacks.onStateUpdate?.(escrowId, {
+      ...checkedVote.state, pendingVote: { eventId: signed.id, role, outcome },
+    });
+    let newState: EscrowState;
+    try {
+      // A positive relay ACK establishes delivery; no echo round trip is needed.
+      // RelayManager bounds no-response publishes and rejects zero accepts.
+      await this.relayManager.publish(signed);
+      const committed = this.states.get(escrowId);
+      newState = committed?.eventChain.some(event => event.raw.id === signed.id)
+        ? committed : this.applyLocally(escrowId, signed, payload, cycle);
+      this.callbacks.onStateUpdate?.(escrowId, newState);
+    } catch (error) {
+      // Re-read, rather than restoring a captured state: other participants'
+      // committed events may have arrived while our publish was pending.
+      const committed = this.states.get(escrowId);
+      if (committed) this.callbacks.onStateUpdate?.(escrowId, committed);
+      // A verified history refresh may already have replayed this exact event,
+      // even if the foreground ACK was lost. That is committed evidence.
+      if (committed?.eventChain.some(event => event.raw.id === signed.id)) newState = committed;
+      else throw error;
+    } finally {
+      this.pendingVotes.delete(escrowId);
+    }
 
     // Auto-resolve if 2-of-3 threshold is met.
     // Wrapped in try/catch — resolve failure must not break the vote.
@@ -2806,7 +2883,8 @@ export class EscrowClient {
       if (typeof body.amountSats !== "number" || !Number.isFinite(body.amountSats) || body.amountSats <= 0) return null;
       if (typeof body.escrowId !== "string") return null;
       return body;
-    } catch {
+    } catch (error) {
+      if (isSignerApprovalError(error)) throw error;
       return null;
     }
   }
@@ -3027,6 +3105,15 @@ export class EscrowClient {
     this.subscriptions.set(label, subId);
   }
 
+  /** Browse-owned discovery. The broad feed remains for shade/counts. Rail
+   * and currency are payload fields, so their filtering stays in Browse. */
+  watchBrowseListings(scope: { community?: string; category?: string }): () => void {
+    const id = this.relayManager.subscribeToBrowseListings(scope);
+    const label = `browse:${id}`;
+    this.subscriptions.set(label, id);
+    return () => { this.relayManager.unsubscribe(id); this.subscriptions.delete(label); };
+  }
+
   /** Stop the Browse feed subscription. */
   unwatchPublicListings(): void {
     const label = "public-listings";
@@ -3062,26 +3149,41 @@ export class EscrowClient {
    *  units and briefly see more stock than real — safe under Option A (an
    *  overcommit just refunds). The SELLER is a participant in every child, so
    *  the seller's own view is accurate. */
-  async loadChildren(parentId: string): Promise<EscrowState[]> {
-    const createEvents = await this.relayManager.fetchChildCreates(parentId);
+  async loadChildren(parentId: string, userAction = false): Promise<EscrowState[]> {
+    this.chamaViewComplete.delete(parentId);
+    const probe = new FetchProbe("circle-children", `#parent:${parentId}`);
+    const createEvents = await this.relayManager.fetchChildCreates(parentId, 5_000, probe);
     const childIds = new Set<string>();
     for (const ev of createEvents) {
+      // CREATE is public plaintext. The tag is only a discovery hint; require
+      // the signed payload to name this parent before following its id.
+      try { if (JSON.parse(ev.content)?.parent !== parentId) continue; }
+      catch { continue; }
       const d = ev.tags.find(t => t[0] === TAGS.ESCROW_ID)?.[1];
       if (d) childIds.add(d);
     }
     // Children load in PARALLEL: a 5-seat circle used to pay five sequential
     // relay round-trips here — most of the "Lock your share takes seconds"
     // feel (Jet, 2026-09-07) on the cold path and on every refund pass.
-    const loaded = await Promise.all([...childIds].map(async id => {
+    const load = async (id: string) => {
       try {
-        const state = await this.loadEscrow(id);
+        const state = await this.loadEscrow(id, { userAction });
         return state && state.parent === parentId ? state : null;
       } catch (e) {
+        if (isSignerApprovalError(e)) throw e;
         console.debug(`[escrow] loadChildren ${parentId}: child ${id} failed to load`, e);
         return null;
       }
-    }));
+    };
+    const loaded: (EscrowState | null)[] = [];
+    if (userAction && this.signer.requiresUserAction) {
+      // Refusing one prompt stops the whole open; no fan-out of permission dialogs.
+      for (const id of childIds) loaded.push(await load(id));
+    } else loaded.push(...await Promise.all([...childIds].map(load)));
     const children = loaded.filter((c): c is EscrowState => c !== null);
+    if (probe.snapshot(createEvents.length).resolvedBy === "eose" && children.length === childIds.size) {
+      this.chamaViewComplete.add(parentId);
+    }
     this.childrenSnapshotAt.set(parentId, Date.now());
     return children;
   }
@@ -3162,8 +3264,9 @@ export class EscrowClient {
    */
   loadEscrow(
     escrowId: string,
-    opts: { repairFromCache?: boolean; fullHistory?: boolean; creator?: string } = {},
+    opts: { repairFromCache?: boolean; fullHistory?: boolean; userAction?: boolean; creator?: string } = {},
   ): Promise<EscrowState | null> {
+    const userAction = opts.userAction === true;
     // A creator named by the caller (a trade link) is a claim, not knowledge.
     // It never overrides what this device already knows, and it is refused
     // outright when it contradicts the trade this device is holding: the
@@ -3189,6 +3292,9 @@ export class EscrowClient {
       // A background generation already running can't satisfy a caller who
       // asked for repair and retention checking. Join it first, then run a
       // full explicit-open read even if the cached replay succeeded.
+      if (userAction && !existing.userAction) {
+        return existing.promise.then(() => this.loadEscrow(escrowId, opts));
+      }
       if (repairFromCache && !existing.repairFromCache) {
         return existing.promise.then(() =>
           this.loadEscrow(escrowId, { repairFromCache: true }),
@@ -3201,7 +3307,7 @@ export class EscrowClient {
     }
 
     const diagnostic = beginHydrationDiagnostic(escrowId);
-    const promise = this.loadEscrowAttempt(escrowId, 0, diagnostic, repairFromCache, fullHistory)
+    const promise = this.loadEscrowAttempt(escrowId, 0, diagnostic, repairFromCache, fullHistory, userAction)
       .then((state) => {
         const failure = state ? null : this.getLastLoadFailure(escrowId);
         diagnostic.finish(state
@@ -3220,7 +3326,7 @@ export class EscrowClient {
           this._loadEscrowInFlight.delete(escrowId);
         }
       });
-    this._loadEscrowInFlight.set(escrowId, { promise, diagnostic, repairFromCache, fullHistory });
+    this._loadEscrowInFlight.set(escrowId, { promise, diagnostic, repairFromCache, fullHistory, userAction });
     return promise;
   }
 
@@ -3256,6 +3362,7 @@ export class EscrowClient {
     diagnostic: HydrationDiagnosticRun,
     repairFromCache = false,
     fullHistory = false,
+    userAction = false,
   ): Promise<EscrowState | null> {
     const current = this.states.get(escrowId);
     const cachedRawEvents = mergeRawEventsById(
@@ -3331,7 +3438,7 @@ export class EscrowClient {
       const parsed: ParsedEscrowEvent[] = [];
       let skippedEvents = 0;
       for (const raw of events) {
-        const content = await this.decryptEventContent(raw);
+        const content = await this.decryptEventContent(raw, userAction);
         if (content === null) {
           skippedEvents++;
           continue;
@@ -3370,7 +3477,7 @@ export class EscrowClient {
       // base64 payloads into the console.
       const lockResolvedParsed: ParsedEscrowEvent[] = [];
       for (const event of parsed) {
-        lockResolvedParsed.push(await this.resolveLockEnvelope(event));
+        lockResolvedParsed.push(await this.resolveLockEnvelope(event, userAction));
       }
       const preflightSorted = sortEventChain(
         lockResolvedParsed.filter((event) => event.kind !== EscrowEventKind.CHAT),
@@ -3396,7 +3503,7 @@ export class EscrowClient {
       // many concurrent NIP-44 calls.
       const readableParsed: ParsedEscrowEvent[] = [];
       for (const event of lockResolvedParsed) {
-        const resolved = await this.resolveChatEnvelope(event);
+        const resolved = await this.resolveChatEnvelope(event, userAction);
         if (resolved) readableParsed.push(resolved);
       }
 
@@ -3544,7 +3651,7 @@ export class EscrowClient {
       const merged = new Map((this.rawEvents.get(escrowId) ?? []).map(e => [e.id, e]));
       for (const e of rawEvents) merged.set(e.id, e);
       this.setHotRawEvents(escrowId, compactHotRawEvents([...merged.values()]));
-      return this.loadEscrowAttempt(escrowId, completenessAttempt + 1, diagnostic, repairFromCache, fullHistory);
+      return this.loadEscrowAttempt(escrowId, completenessAttempt + 1, diagnostic, repairFromCache, fullHistory, userAction);
     }
 
     if (isPartialReplayDowngrade(current, result.state)) {
@@ -4035,7 +4142,7 @@ export class EscrowClient {
    *     sender): returns unchanged. handleLock will see no top-level
    *     handle and leave state.lock.handle null. Non-participants
    *     transit this path silently. */
-  private async resolveLockEnvelope(parsed: ParsedEscrowEvent): Promise<ParsedEscrowEvent> {
+  private async resolveLockEnvelope(parsed: ParsedEscrowEvent, userAction = false): Promise<ParsedEscrowEvent> {
     if (parsed.kind !== EscrowEventKind.LOCK) return parsed;
     const lockPayload = parsed.payload as LockPayload;
     if (!lockPayload.handleEnvelope) return parsed;
@@ -4053,7 +4160,7 @@ export class EscrowClient {
       lockPayload.handleEnvelope,
       myPubkey,
       parsed.pubkey,
-      (ct, sender) => this.signer.nip44Decrypt(ct, sender),
+      (ct, sender) => this.decryptForRead(ct, sender, userAction),
     );
     if (cleartext === null) return parsed;
 
@@ -4093,7 +4200,7 @@ export class EscrowClient {
    *  envelope) pass through unchanged. If an enveloped chat cannot be
    *  decrypted by this signer, return null so replay/live handling skips
    *  it rather than displaying a blank receipt shell. */
-  private async resolveChatEnvelope(parsed: ParsedEscrowEvent): Promise<ParsedEscrowEvent | null> {
+  private async resolveChatEnvelope(parsed: ParsedEscrowEvent, userAction = false): Promise<ParsedEscrowEvent | null> {
     if (parsed.kind !== EscrowEventKind.CHAT) return parsed;
     const chatPayload = parsed.payload as ChatPayload;
     if (!chatPayload.bodyEnvelope) return parsed;
@@ -4110,7 +4217,7 @@ export class EscrowClient {
       chatPayload.bodyEnvelope,
       myPubkey,
       parsed.pubkey,
-      (ct, sender) => this.signer.nip44Decrypt(ct, sender),
+      (ct, sender) => this.decryptForRead(ct, sender, userAction),
     );
     if (cleartext === null) return null;
 
@@ -4166,7 +4273,16 @@ export class EscrowClient {
    * event" or "surface an error to the UI"; almost all current
    * callers just `return` and let the next event arrive.
    */
-  private async decryptEventContent(event: NostrEvent): Promise<string | null> {
+  private async decryptForRead(ciphertext: string, sender: string, userAction: boolean): Promise<string> {
+    if (this.signer.requiresUserAction && !userAction) {
+      const cached = await this.signer.nip44DecryptCached?.(ciphertext, sender);
+      if (cached === null || cached === undefined) throw new Error("Explicit trade open required");
+      return cached;
+    }
+    return this.signer.nip44Decrypt(ciphertext, sender);
+  }
+
+  private async decryptEventContent(event: NostrEvent, userAction = false): Promise<string | null> {
     // Shapes 1 + 2: structured JSON. Try parsing first; if it works,
     // dispatch on which field is present.
     let parsedObj: Record<string, unknown> | null = null;
@@ -4195,8 +4311,9 @@ export class EscrowClient {
           return null;
         }
         try {
-          return await this.signer.nip44Decrypt(ct, event.pubkey);
-        } catch {
+          return await this.decryptForRead(ct, event.pubkey, userAction);
+        } catch (error) {
+          if (userAction && isSignerApprovalError(error)) throw error;
           // Malformed envelope, wrong sender pubkey, etc.
           return null;
         }
@@ -4213,8 +4330,9 @@ export class EscrowClient {
       && !event.content.startsWith("[");
     if (!looksEncrypted) return null;
     try {
-      return await this.signer.nip44Decrypt(event.content, event.pubkey);
-    } catch {
+      return await this.decryptForRead(event.content, event.pubkey, userAction);
+    } catch (error) {
+      if (userAction && isSignerApprovalError(error)) throw error;
       return null;
     }
   }
@@ -4381,7 +4499,19 @@ export class EscrowClient {
     if (!isStuckLocked && !isStuckExpired) return;
 
     const now = Math.floor(Date.now() / 1000);
-    if (now <= state.expiresAt) return;
+    // Client consent is stricter than historical consensus: even an old-chain
+    // locker must not make our automatic vote follow their backdated clock.
+    // Circle shares use the committed round end, not a rolling LOCK timeout.
+    let refundDeadline = state.expiresAt;
+    if (!state.chamaPolicy) {
+      const lockEvent = state.eventChain.find(e => e.kind === EscrowEventKind.LOCK);
+      const lockedAt = state.lock.lockedAt;
+      if (!lockEvent || lockedAt === null || !Number.isFinite(lockedAt) || !Number.isFinite(lockEvent.timestamp)) return;
+      const timeout = state.tradeTimeoutSeconds ?? state.expiresAt - lockedAt;
+      if (!Number.isFinite(timeout) || timeout <= 0) return;
+      refundDeadline = Math.max(lockedAt, lockEvent.timestamp) + timeout;
+    }
+    if (now <= refundDeadline) return;
 
     // v2.9: never auto-refund a ghosting LOCKER against a standing RELEASE from
     // the non-locker — that is the performance-contest theft (DECISIONS

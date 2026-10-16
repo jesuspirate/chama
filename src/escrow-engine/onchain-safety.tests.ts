@@ -1,10 +1,12 @@
+import { captureReplay } from "../protocol/replay-capture.test-helper.js";
+const replayEventChain = captureReplay("src/escrow-engine/onchain-safety.tests.ts");
 import assert from 'node:assert/strict';
 import * as btc from '@scure/btc-signer';
 import { base64 } from '@scure/base';
 import { bytesToHex } from '@noble/hashes/utils.js';
 import { schnorr } from '@noble/curves/secp256k1.js';
 import { safetyFixture } from '../../scripts/lib/escrow-safety-fixture.js';
-import { applyEvent, replayEventChain } from './state-machine.js';
+import { applyEvent } from './state-machine.js';
 import { EscrowEventKind as Kind, EscrowStatus, Role, getEffectiveParticipantAt, type LockPayload } from './types.js';
 import { deriveOnchainView } from './onchain-escrow-view.js';
 import { pendingOnchainLockRecoveries } from './onchain-lock-recovery.js';

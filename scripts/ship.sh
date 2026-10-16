@@ -38,6 +38,7 @@ set -euo pipefail
 #   npm run ship -- --minor                  # same, via package.json
 #   npm run ship -- --only landing           # current version, landing only
 #   npm run ship -- --only zapstore-listing  # current version, listing refresh only
+#   npm run ship -- --zapstore-interactive    # old interactive zsp instead of quiet + Amber
 #
 # ── Env (defaults match the maintainer; override to re-home) ──────────────
 #   CHAMA_COMMIT_DIR   where the notes files live           (default /tmp)
@@ -52,6 +53,9 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
+
+# A prepared release must include the released main before any channel work.
+node "$ROOT_DIR/scripts/check-release-ancestry.mjs" --release-only
 
 # Channel-only work must never bump, commit, tag, or publish unrelated
 # destinations. Keep ship.sh as the one remembered entry point, but delegate
@@ -110,7 +114,8 @@ CHAMA_GPG_KEY="${CHAMA_GPG_KEY:-0CCF412F47859431BDB2C1F1489728C34DF7C33D}"
 # and a zsp binary. Default + export them so `npm run ship` just works without
 # remembering to set them each run; export anything yourself to override.
 # These propagate to the `npm run release:all` child process below.
-export SIGN_WITH="${SIGN_WITH:-browser}"
+source "$ROOT_DIR/scripts/zapstore-signer.sh"
+chama_zapstore_signer
 # Release builds carry NO dev build-stamp: vite reads this and bakes a clean
 # "vX.Y.Z" chip. Local `npm run build` / android:sync (without this) bake an
 # amber "v2.0.3 · dev MM-DD HH:mm" stamp so testers can SEE a refresh landed.
@@ -147,7 +152,8 @@ while [ $# -gt 0 ]; do
     --no-release) DO_RELEASE=0; shift ;;
     --no-start9) DO_START9=0; shift ;;
     --yes|-y) ASSUME_YES=1; shift ;;
-    -h|--help) sed -n '4,52p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --zapstore-interactive) export CHAMA_ZAPSTORE_INTERACTIVE=1; shift ;;
+    -h|--help) sed -n '4,53p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "❌ Unknown option: $1"; exit 1 ;;
   esac
 done

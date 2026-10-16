@@ -5,7 +5,7 @@ import { translate, getCurrentLang } from '../../i18n/index.js';
  * frame stepping or downsampled boot animation at small sizes. */
 export function ChamaLoader({size = 24, label}: {size?: number; label?: string}) {
   return <span role="status" aria-label={label ?? translate(getCurrentLang(), 'common.loading')}
-    style={{display:'inline-flex',alignItems:'center',gap:7,whiteSpace:'nowrap',color:T.accent}}>
+    style={{display:'inline-flex',alignItems:'center',gap:7,whiteSpace:'nowrap',color:T.brand}}>
     <style>{`
       @keyframes chamaLoaderOrbit { to { transform: rotate(360deg); } }
       .chama-loader-orbit { transform-origin: 12px 12px; animation: chamaLoaderOrbit 1.1s linear infinite; }

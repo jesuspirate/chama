@@ -24,8 +24,13 @@ export interface Rail {
   /** Stable wire identifier — never change once shipped. Lowercase
    *  hyphenated. Examples: wave, orange-money, m-pesa, revtag, cashtag. */
   key: string;
-  /** Human-readable label shown in pickers and listing pills. */
+  /** Human-readable name. Listings STORE this text in paymentMethods and
+   *  every client matches on it (toRailKey), so it is a wire value too:
+   *  never rename a shipped one. To change what people see, set `label`. */
   displayName: string;
+  /** Shorter name shown in the app when it differs from displayName (Jet,
+   *  6.4.25: "Cash App", not "$cashtag (Cash App)"). Display only. */
+  label?: string;
   /** Whether the user is permitted to opt this rail's handles into the
    *  public-display path. Sensitive rails (phone number, bank account)
    *  are locked private; public-by-design rails (Revtag, $cashtag)
@@ -450,6 +455,7 @@ export const RAIL_REGISTRY: Rail[] = [
   {
     key: "cashtag",
     displayName: "$cashtag (Cash App)",
+    label: "Cash App",
     allowPublicHandle: true,
     countries: ["US", "GB"],
     placeholder: "$username",
@@ -572,6 +578,22 @@ export function categoryUsesPaymentRails(category: string | null | undefined): b
 /** Look up a rail by its wire key. Returns null for unknown keys
  *  (e.g. a listing using a rail from a future registry version) so
  *  callers can render a generic pill without crashing. */
+/** What people see for a rail (a Rail, a key or a stored display name). */
+export function railLabel(rail: Rail | string | null | undefined): string {
+  if (!rail) return "";
+  if (typeof rail !== "string") return rail.label ?? rail.displayName;
+  const found = BY_KEY.get(rail) ?? BY_KEY.get(toRailKey(rail));
+  return found ? found.label ?? found.displayName : rail;
+}
+
+/** The full name, for where people enter their payment details: it says
+ *  what to share ("$cashtag (Cash App)"). Chips and listings use railLabel. */
+export function railEntryName(rail: string | null | undefined): string {
+  if (!rail) return "";
+  const found = BY_KEY.get(rail) ?? BY_KEY.get(toRailKey(rail));
+  return found ? found.displayName : rail;
+}
+
 export function getRailByKey(key: string | null | undefined): Rail | null {
   if (!key) return null;
   return BY_KEY.get(key) ?? null;

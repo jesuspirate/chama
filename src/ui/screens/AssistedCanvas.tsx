@@ -1,3 +1,5 @@
+import { privatePaymentFieldProps } from "../payment-field-autofill.js";
+import { CommunityChip } from "../components/CommunityChip.js";
 import { MARKET_DELIVERIES, type MarketDelivery } from "../../labels/market-delivery.js";
 import { billPayQuote } from "../../payments/bill-pay-quote.js";
 import { filterListingsByCurrency, listingMatchesCurrency } from "../listing-currency.js";
@@ -5,7 +7,7 @@ import { RangeFiat } from "../components/RangeFiat.js";
 import { ConductFacts } from "../components/ConductFacts.js";
 import { readPreferredRails, savePreferredRails } from "../../payments/preferred-rails.js";
 import { useCanvasViewport } from "../hooks/useCanvasViewport.js";
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Role, type EscrowState } from "../../escrow-engine/types.js";
 import { ChamaLoader } from "../components/ChamaLoader.js";
 import {
@@ -28,7 +30,7 @@ import { billTypeDisplay, billTypesForCountry } from "../../communities/bill-typ
 import { saveIntent } from "../../guided/saved-intents.js";
 import { registerCommunityWake } from "../../notifications/watch-tags.js";
 import { getCommunityBySlug } from "../../communities/registry.js";
-import { getRailByKey, railsForCommunity, toRailKey } from "../../payments/rail-registry.js";
+import { railLabel, getRailByKey, railsForCommunity, toRailKey } from "../../payments/rail-registry.js";
 import {
   addSavedHandle,
   listSavedHandles,
@@ -97,7 +99,7 @@ export function AssistedCanvas({
   fetchRatingSummary,
   onBrowse,
   onCreate,
-  onMoreOptions,
+  onMoreOptions, onOpenCommunity,
   onOpenTrade,
   onStartCircle,
   publishedInfo,
@@ -119,6 +121,7 @@ export function AssistedCanvas({
   onBrowse: (category: string) => void;
   onCreate: (intent: CanvasCreatePrefill) => void;
   onMoreOptions: () => void;
+  onOpenCommunity?: () => void;
   onOpenTrade: (id: string) => void;
   /** Start a savings circle from the home canvas (Jet, launch night: "how
    *  does a normal user create their own Chama from the home menu?"). Shown
@@ -215,10 +218,10 @@ export function AssistedCanvas({
     from,
     to,
     listingInputs,
-    { viewerPubkey, community: browseCommunity, nowSec: Math.floor(Date.now() / 1000) },
+    { viewerPubkey, community: browseCommunity, mintUrl: activeMintUrl, nowSec: Math.floor(Date.now() / 1000) },
   );
-  const cashOffers = useMemo(() => count("cash", "sats").count, [listingInputs, viewerPubkey, browseCommunity]);
-  const goodsOffers = useMemo(() => count("sats", "goods").count, [listingInputs, viewerPubkey, browseCommunity]);
+  const cashOffers = useMemo(() => count("cash", "sats").count, [listingInputs, viewerPubkey, browseCommunity, activeMintUrl]);
+  const goodsOffers = useMemo(() => count("sats", "goods").count, [listingInputs, viewerPubkey, browseCommunity, activeMintUrl]);
 
   const railChoices = useMemo(() => {
     const advertised = new Set(
@@ -313,6 +316,8 @@ export function AssistedCanvas({
             const showCountryCodeNudge = rail?.placeholder?.includes("+") === true
               && (!draft.trim() || paymentHandleNeedsCountryCode(key, draft));
             return <label key={key}>
+              {/* Where the handle is typed, the full name says what to share
+                  ("$cashtag (Cash App)"); chips and listings show the label. */}
               <span>{rail?.displayName ?? key}</span>
               <div>
                 <input
@@ -329,7 +334,8 @@ export function AssistedCanvas({
                     }
                   }}
                   placeholder={rail?.placeholderKey ? tr("canvas.yourPaymentDetails") : rail?.placeholder ?? tr("canvas.yourPaymentDetails")}
-                  autoComplete="off"
+                  {...privatePaymentFieldProps}
+                  name={`chama-private-payment-${key}`}
                 />
                 <button type="button" onClick={() => savePaymentDetail(key)}>{tr("canvas.save")}</button>
               </div>
@@ -521,6 +527,7 @@ export function AssistedCanvas({
         const labelFor: Record<string, string> = {
           PAYMENT_RAIL_MISMATCH: tr("canvas.rejPaymentRail"), COMMUNITY_MISMATCH: tr("canvas.rejCommunity"),
           FEDERATION_MISMATCH: tr("canvas.rejFederation"), SELF_LISTING: tr("canvas.rejSelfListing"),
+          NO_ARBITER_POOL: tr("canvas.rejNoArbiterPool"),
           OVER_MAX_FIAT: tr("canvas.rejOverBudget"), FIAT_CURRENCY_MISMATCH: tr("canvas.rejCurrency"),
           RESERVED: tr("canvas.rejReserved"), OUT_OF_STOCK: tr("canvas.rejSoldOut"),
           EXPIRED: tr("canvas.rejExpired"), AMOUNT_MISMATCH: tr("canvas.rejAmount"),
@@ -671,7 +678,7 @@ export function AssistedCanvas({
   ]);
 
   if (publishedInfo) {
-    return <CanvasShell community={community} step={3} onExit={() => { onDismissPublished?.(); onBrowse("all"); }} onMoreOptions={onMoreOptions}>
+    return <CanvasShell onOpenCommunity={onOpenCommunity} community={community} step={3} onExit={() => { onDismissPublished?.(); onBrowse("all"); }} onMoreOptions={onMoreOptions}>
       <Kicker>{tr("canvas.liveKicker")}</Kicker>
       <h1 style={headingStyle()}>{tr("canvas.liveTitle")}</h1>
       <p style={subStyle()}>{tr("canvas.liveSub")}</p>
@@ -700,8 +707,8 @@ export function AssistedCanvas({
   }
 
   if (surface === "rails") {
-    return <CanvasShell community={community} step={3} onExit={() => onBrowse("all")} onMoreOptions={onMoreOptions}>
-      <Back onClick={() => setSurface("terms")}>{tr("canvas.changeLast")}</Back>
+    return <CanvasShell onOpenCommunity={onOpenCommunity} community={community} step={3} onExit={() => onBrowse("all")} onMoreOptions={onMoreOptions}>
+      <Back onClick={() => setSurface("terms")}>{tr("common.back")}</Back>
       <Kicker>{tr("canvas.acceptedPayment")}</Kicker>
       <RouteCue>{routeLabel}</RouteCue>
       <h1 style={headingStyle()}>{tr("canvas.volunteerPayQ")}</h1>
@@ -717,8 +724,8 @@ export function AssistedCanvas({
 
   if (surface === "premium") {
     const isBill = bring === "bill";
-    return <CanvasShell community={community} step={3} onExit={() => onBrowse("all")} onMoreOptions={onMoreOptions}>
-      <Back onClick={() => setSurface(bring === "bill" ? "rails" : "terms")}>{tr("canvas.changeLast")}</Back>
+    return <CanvasShell onOpenCommunity={onOpenCommunity} community={community} step={3} onExit={() => onBrowse("all")} onMoreOptions={onMoreOptions}>
+      <Back onClick={() => setSurface(bring === "bill" ? "rails" : "terms")}>{tr("common.back")}</Back>
       <Kicker>{isBill ? tr("canvas.volunteerBonus") : tr("canvas.yourRate")}</Kicker>
       <RouteCue>{routeLabel}</RouteCue>
       <h1 style={headingStyle()}>{isBill ? tr("canvas.bonusQ") : tr("canvas.rateQ")}</h1>
@@ -738,7 +745,7 @@ export function AssistedCanvas({
   }
 
   if (surface === "review" && selected) {
-    return <CanvasShell community={community} step={3} onExit={() => onBrowse("all")} onMoreOptions={onMoreOptions}>
+    return <CanvasShell onOpenCommunity={onOpenCommunity} community={community} step={3} onExit={() => onBrowse("all")} onMoreOptions={onMoreOptions}>
       <Back onClick={() => setSurface("matches")}>{tr("canvas.backToMatches")}</Back>
       <Kicker>{tr("canvas.exactPreview")}</Kicker>
       <h1 style={headingStyle()}>{tr("canvas.reviewMatch")}</h1>
@@ -746,7 +753,7 @@ export function AssistedCanvas({
       <div style={reviewStyle()}>
         <MatchReviewAmount candidate={selected} />
         <ReviewRow label={tr(selected.listing.category === "bill-pay" ? "canvas.youPayBill" : "canvas.youPay")} value={[selected.fiatQuote ? `${selected.fiatQuote.amount.toLocaleString()} ${selected.fiatQuote.currency}` : tr("canvas.confirmWithSeller"), ...(selected.listing.category === "bill-pay" ? [selected.sourceMenuItem?.label ?? selected.listing.description] : [])].join(" · ")} />
-        <ReviewRow label={tr("canvas.paymentMethod")} value={getRailByKey(selected.paymentRail)?.displayName ?? selected.paymentRail} />
+        <ReviewRow label={tr("canvas.paymentMethod")} value={railLabel(selected.paymentRail)} />
         <ReviewRow label={tr(selected.listing.category === "bill-pay" ? "canvas.billOwner" : "canvas.seller")} value={profileNameFor(profileNames, selected.sellerPubkey, kind0Enabled) ?? shortKey(selected.sellerPubkey)} last />
       </div>
       <Primary onClick={() => onOpenTrade(selected.listing.id)}>{tr("canvas.reviewFullTrade")}</Primary>
@@ -764,8 +771,8 @@ export function AssistedCanvas({
     const shownKeys = new Set(recommended.map(({ candidate }) => candidate.listing.id));
     const alsoCompatible = visibleMatches.filter(c => !shownKeys.has(c.listing.id));
     const noMatches = !matching && !listingsLoading && (isGoods ? goodsMatches.length === 0 : visibleMatches.length === 0);
-    return <CanvasShell community={community} step={3} onExit={() => onBrowse("all")} onMoreOptions={onMoreOptions}>
-      <Back onClick={() => setSurface("terms")}>{tr("canvas.changeLast")}</Back>
+    return <CanvasShell onOpenCommunity={onOpenCommunity} community={community} step={3} onExit={() => onBrowse("all")} onMoreOptions={onMoreOptions}>
+      <Back onClick={() => setSurface("terms")}>{tr("common.back")}</Back>
       <Kicker>{isGoods ? tr("canvas.availableNow", { count: goodsMatches.length }) : tr("canvas.compatibleOffers", { count: visibleMatches.length })}</Kicker>
       <h1 style={headingStyle()}>{noMatches ? tr("canvas.noMatchTitle") : isGoods ? tr("canvas.goodsTitle") : tr(guidedChooseTitleKey(visibleMatches))}</h1>
       <p style={subStyle()}>{noMatches ? tr("canvas.noMatchSub") : isGoods ? tr("canvas.goodsSub") : tr("canvas.chooseSub")}</p>
@@ -851,8 +858,8 @@ export function AssistedCanvas({
   }
 
   if (surface === "publish") {
-    return <CanvasShell community={community} step={3} onExit={() => onBrowse("all")} onMoreOptions={onMoreOptions}>
-      <Back onClick={() => setSurface((bring === "sats" && want === "cash") || bring === "bill" ? "premium" : "terms")}>{tr("canvas.changeLast")}</Back>
+    return <CanvasShell onOpenCommunity={onOpenCommunity} community={community} step={3} onExit={() => onBrowse("all")} onMoreOptions={onMoreOptions}>
+      <Back onClick={() => setSurface((bring === "sats" && want === "cash") || bring === "bill" ? "premium" : "terms")}>{tr("common.back")}</Back>
       <Kicker>{tr("canvas.firstSide")}</Kicker>
       <RouteCue>{routeLabel}</RouteCue>
       <h1 style={headingStyle()}>{tr("canvas.readyLive")}</h1>
@@ -889,8 +896,8 @@ export function AssistedCanvas({
   }
 
   if (surface === "terms") {
-    return <CanvasShell community={community} step={3} onExit={() => onBrowse("all")} onMoreOptions={onMoreOptions}>
-      <Back onClick={() => setSurface("detail")}>{tr("canvas.changeLast")}</Back>
+    return <CanvasShell onOpenCommunity={onOpenCommunity} community={community} step={3} onExit={() => onBrowse("all")} onMoreOptions={onMoreOptions}>
+      <Back onClick={() => setSurface("detail")}>{tr("common.back")}</Back>
       <Kicker>{tr("canvas.lastDetail")}</Kicker>
       <RouteCue>{routeLabel}</RouteCue>
       <h1 style={headingStyle()}>{termsConfig.heading}</h1>
@@ -938,7 +945,7 @@ export function AssistedCanvas({
   }
 
   if (surface === "detail") {
-    return <CanvasShell community={community} step={2} onExit={() => onBrowse("all")} onMoreOptions={onMoreOptions}>
+    return <CanvasShell onOpenCommunity={onOpenCommunity} community={community} step={2} onExit={() => onBrowse("all")} onMoreOptions={onMoreOptions}>
       <Back onClick={() => setSurface(bring === "sats" ? "want" : "bring")}>
         {bring === "sats" ? tr("canvas.changeWant") : tr("canvas.changeHave")}
       </Back>
@@ -984,7 +991,7 @@ export function AssistedCanvas({
       if (id && onOpenTrade) onOpenTrade(id);
       else setInviteError(true);
     };
-    return <CanvasShell community={community} step={1} onExit={() => onBrowse("all")} onMoreOptions={onMoreOptions}>
+    return <CanvasShell onOpenCommunity={onOpenCommunity} community={community} step={1} onExit={() => onBrowse("all")} onMoreOptions={onMoreOptions}>
       <Back onClick={() => setSurface("bring")}>{tr("common.back")}</Back>
       <Kicker>{tr("canvas.circleKicker")}</Kicker>
       <h1 style={headingStyle()}>{tr("canvas.circleTitle")}</h1>
@@ -1047,7 +1054,7 @@ export function AssistedCanvas({
   }
 
   if (surface === "want" && bring) {
-    return <CanvasShell community={community} step={1} onExit={() => onBrowse("all")} onMoreOptions={onMoreOptions}>
+    return <CanvasShell onOpenCommunity={onOpenCommunity} community={community} step={1} onExit={() => onBrowse("all")} onMoreOptions={onMoreOptions}>
       <Back onClick={() => setSurface("bring")}>{tr("canvas.changeHave")}</Back>
       <Kicker>{tr("canvas.haveBitcoin")}</Kicker>
       <h1 style={headingStyle()}>{tr("canvas.whatInReturn")}</h1>
@@ -1072,7 +1079,7 @@ export function AssistedCanvas({
     </CanvasShell>;
   }
 
-  return <CanvasShell community={community} step={0} onExit={() => onBrowse("all")} onMoreOptions={onMoreOptions}>
+  return <CanvasShell onOpenCommunity={onOpenCommunity} community={community} step={0} onExit={() => onBrowse("all")} onMoreOptions={onMoreOptions}>
     {/* The namesake leads (Jet, 2026-09-18): circles are their own product,
         so they sit ABOVE the trading question, split by a dotted seam —
         one home, two doors. */}
@@ -1102,14 +1109,41 @@ export function AssistedCanvas({
   </CanvasShell>;
 }
 
-function CanvasShell({ community: _community, step, onExit, onMoreOptions, children }: { community: ReturnType<typeof getCommunityBySlug>; step: number; onExit: () => void; onMoreOptions: () => void; children: ReactNode }) {
+/** v7 redesign (Jet): the subtle switch to the advanced "All listings" Browse.
+ *  Provided by the shell around the canvas; absent ⇒ no link. */
+export const CanvasAllListings = createContext<(() => void) | null>(null);
+
+/** One top row on every canvas screen, Browse and Circles alike (Jet,
+ *  6.4.25-rc.14): "← Back" on the left, the country chip on the right. A
+ *  screen's <Back> hands its action to the shell's row instead of drawing
+ *  its own line under the chip. */
+type BackAction = { run: () => void };
+const CanvasBackSlot = createContext<((back: BackAction | null) => void) | null>(null);
+
+export function CanvasTopRow({ onBack, chip }: { onBack?: (() => void) | null; chip?: ReactNode }) {
+  if (!onBack && !chip) return null;
+  return <div className="canvas-top-row">
+    {onBack ? <button type="button" data-chama-shortcut="back" className="canvas-back" onClick={onBack}>← {tr("common.back")}</button> : <span />}
+    {chip ?? <span />}
+  </div>;
+}
+
+function CanvasShell({ community, step, onExit, onMoreOptions, onOpenCommunity, children }: { community: ReturnType<typeof getCommunityBySlug>; onOpenCommunity?: () => void; step: number; onExit: () => void; onMoreOptions: () => void; children: ReactNode }) {
   const rootRef = useCanvasViewport();
+  const onAllListings = useContext(CanvasAllListings);
+  const [back, setBack] = useState<BackAction | null>(null);
   return <div ref={rootRef} className="assisted-canvas">
     <style>{canvasCss()}</style>
     {step === 0 && <button type="button" data-chama-shortcut="back" onClick={onExit} tabIndex={-1} aria-hidden="true" style={{ display: "none" }} />}
-    <main className="assisted-canvas-main">{children}</main>
+    <main className="assisted-canvas-main">
+      <CanvasTopRow onBack={back ? () => back.run() : null} chip={community ? <CommunityChip slug={community.slug} onOpen={onOpenCommunity} /> : null} />
+      <CanvasBackSlot.Provider value={setBack}>{children}</CanvasBackSlot.Provider>
+    </main>
     <footer className="assisted-canvas-footer">
-      <button type="button" onClick={onMoreOptions}>{tr("canvas.knowWhatDoing")}</button>
+      <span style={{ display: "inline-flex", gap: 16, flexWrap: "wrap", justifySelf: "start" }}>
+        <button type="button" onClick={onMoreOptions}>{tr("canvas.knowWhatDoing")}</button>
+        {onAllListings && <button type="button" data-all-listings onClick={onAllListings}>{tr("browse.allListings")}</button>}
+      </span>
       <div>{[0, 1, 2].map(index => <span key={index} className={index === step ? "on" : ""} />)}</div>
       <small>{tr("canvas.nothingWithoutConfirm")}</small>
     </footer>
@@ -1122,7 +1156,7 @@ function RailGrid({ railChoices, effectiveRails, onToggle, ariaLabel }: { railCh
       const on = effectiveRails.includes(rail.key);
       return <button key={rail.key} type="button" className={on ? "selected" : ""} aria-pressed={on} autoFocus={index === 0} onClick={() => onToggle(rail.key)}>
         <span>{on ? "✓" : "+"}</span>
-        {rail.displayName}
+        {railLabel(rail.key)}
       </button>;
     })}
   </div>;
@@ -1151,8 +1185,22 @@ function AssetMark({ asset }: { asset: AssistedCanvasAsset }) {
 }
 
 function RouteCue({ children }: { children: string }) { return <div className="assisted-route">{children}</div>; }
-function Kicker({ children }: { children: string }) { return <div style={{ color: T.accent, fontFamily: T.mono, fontSize: 10, fontWeight: 700, letterSpacing: ".16em", textTransform: "uppercase" }}>{children}</div>; }
-export function Back({ onClick, children }: { onClick: () => void; children: string }) { return <button type="button" data-chama-shortcut="back" onClick={onClick} style={{ border: 0, padding: 0, marginBottom: "clamp(10px, 2vh, 28px)", background: "transparent", color: T.muted, cursor: "pointer" }}>← {children}</button>; }
+function Kicker({ children }: { children: string }) { return <div style={{ color: T.accent, fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700, }}>{children}</div>; }
+/** A screen's way back. Inside a canvas shell it goes to the shared top row
+ *  (always "← Back"); elsewhere it draws itself. `children` is kept for
+ *  callers outside a shell. */
+export function Back({ onClick, children }: { onClick: () => void; children: string }) {
+  const slot = useContext(CanvasBackSlot);
+  const latest = useRef(onClick);
+  latest.current = onClick;
+  useLayoutEffect(() => {
+    if (!slot) return;
+    slot({ run: () => latest.current() });
+    return () => slot(null);
+  }, [slot]);
+  if (slot) return null;
+  return <button type="button" data-chama-shortcut="back" onClick={onClick} style={{ border: 0, padding: 0, marginBottom: "clamp(10px, 2vh, 28px)", background: "transparent", color: T.muted, cursor: "pointer" }}>← {children}</button>;
+}
 export function QuestionCard({ children }: { children: ReactNode }) { return <div className="assisted-question-card">{children}</div>; }
 export function Primary({ children, onClick, disabled = false }: { children: ReactNode; onClick: () => void; disabled?: boolean }) { return <button type="button" data-chama-shortcut="enter" disabled={disabled} onClick={onClick} className="assisted-primary">{children}</button>; }
 function Safety({ children }: { children: ReactNode }) { return <div style={{ marginTop: 14, color: T.muted, fontSize: 12, lineHeight: 1.5 }}>{children}</div>; }
@@ -1175,7 +1223,7 @@ export function Match({ candidate, labels, onOpen }: { candidate: GuidedMatchCan
     <div className="assisted-tags">{labels.map(label => <span key={label}>{label}</span>)}</div>
     <ConductFacts pubkey={candidate.sellerPubkey} />
     <div className="assisted-match-row"><div><strong>{isBill ? tr("canvas.payBillTitle", { fiat, bill }) : `${sats} sats`}</strong><small>{candidate.listing.description}</small></div><b>{isBill ? tr("canvas.getSats", { amount: candidate.amountSats.toLocaleString() }) : fiat}</b></div>
-    <div className="assisted-match-foot"><span>{getRailByKey(candidate.paymentRail)?.displayName ?? candidate.paymentRail}</span><b>{tr("canvas.review")}</b></div>
+    <div className="assisted-match-foot"><span>{railLabel(candidate.paymentRail)}</span><b>{tr("canvas.review")}</b></div>
   </button>;
 }
 
@@ -1207,10 +1255,14 @@ export function MatchReviewAmount({ candidate }: { candidate: GuidedMatchCandida
   const low = bracket ? (bracket.minAmountMsats ?? bracket.amountMsats) / 1000 : null;
   const high = bracket ? (bracket.maxAmountMsats ?? bracket.amountMsats) / 1000 : null;
   return <>
-    <ReviewRow label={tr("canvas.youReceive")} value={tr("canvas.satsValue", { amount: candidate.amountSats.toLocaleString() })} />
-    {low !== null && high !== null && low < high && <div style={{ color: T.muted, fontSize: 12, textAlign: "right", padding: "8px 0" }}>
-      {tr("canvas.fromOfferBracket", { min: low.toLocaleString(), max: high.toLocaleString() })}
-    </div>}
+    {/* v7 redesign (Jet): a ranged offer states its RANGE first — the exact
+        amount is chosen on the next screen, so leading with the max misleads. */}
+    {low !== null && high !== null && low < high ? <>
+      <ReviewRow label={tr("canvas.youReceive")} value={tr("canvas.satsRange", { min: low.toLocaleString(), max: high.toLocaleString() })} />
+      <div style={{ color: T.ink2, fontSize: T.fs.secondary, textAlign: "right", padding: "8px 0" }}>
+        {tr("canvas.pickAmountNext", { amount: candidate.amountSats.toLocaleString() })}
+      </div>
+    </> : <ReviewRow label={tr("canvas.youReceive")} value={tr("canvas.satsValue", { amount: candidate.amountSats.toLocaleString() })} />}
   </>;
 }
 
@@ -1250,7 +1302,7 @@ function uniqueCandidates(lanes: Array<[string, GuidedMatchCandidate | null]>) {
 }
 
 function assetLabel(asset: AssistedCanvasAsset, fiatCurrency: string) { return asset === "sats" ? tr("canvas.assetBitcoin") : asset === "cash" ? fiatCurrency : asset === "bill" ? tr("canvas.assetBill") : tr("canvas.assetGoods"); }
-function paymentRailLabels(keys: string[]) { return keys.map(key => getRailByKey(key)?.displayName ?? key).join(", ") || tr("canvas.notSelected"); }
+function paymentRailLabels(keys: string[]) { return keys.map(key => railLabel(key)).join(", ") || tr("canvas.notSelected"); }
 function offerLabel(count: number) { return count > 0 ? tr("canvas.availableNow", { count }) : tr("canvas.noneOpenYet"); }
 function positiveNumber(value: string): number | null { const n = Number(value.replace(/,/g, "").trim()); return Number.isFinite(n) && n > 0 ? n : null; }
 function digitsOnly(value: string) { return value.replace(/[^\d]/g, ""); }
@@ -1269,9 +1321,14 @@ function bareInputStyle(): CSSProperties { return { minWidth: 0, flex: 1, border
 function amountLineStyle(): CSSProperties { return { display: "flex", alignItems: "baseline", gap: 12, paddingBottom: 15, borderBottom: `1px solid ${T.border}`, color: T.accent, fontFamily: T.mono, fontWeight: 700 }; }
 
 export function canvasCss() { return `
-  .assisted-canvas{position:relative;min-height:calc(100dvh - var(--assisted-chrome, 360px));display:grid;grid-template-rows:1fr auto;padding:clamp(14px,2.5vh,48px) clamp(22px,5vw,70px) 12px;animation:fadeIn .25s ease}
-  .assisted-canvas-main{width:100%;max-width:1080px;margin:0 auto;align-self:center}
-  .assisted-canvas-footer{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:18px;color:${T.muted};font-size:12px}
+  .assisted-canvas{position:relative;min-height:calc(100dvh - var(--assisted-chrome, 360px));display:flex;flex-direction:column;padding:clamp(14px,2.5vh,48px) clamp(22px,5vw,70px) 12px;animation:fadeIn .25s ease}
+  /* v7 redesign: the question floats in the free space (auto block margins)
+     and the footer is pinned to the bottom of the canvas, never closer than
+     24px to the last card — larger phone type grows the cards, not the gap. */
+  .assisted-canvas-main{width:100%;max-width:1080px;margin:auto}
+  .canvas-top-row{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:clamp(10px, 2vh, 28px);min-height:44px}
+  .canvas-back{border:0;padding:8px 0;background:transparent;color:${T.muted};cursor:pointer;font:inherit;font-size:var(--chama-fs-secondary, 14px);min-height:44px}
+  .assisted-canvas-footer{flex:0 0 auto;margin-top:24px;padding-bottom:calc(12px + var(--chama-footer-safe, 0px));display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:18px;color:${T.muted};font-size:12px}
   .assisted-canvas-footer button{justify-self:start;border:0;background:transparent;color:${T.muted};cursor:pointer}
   .assisted-canvas-footer small{justify-self:end}.assisted-canvas-footer div{display:flex;gap:7px}.assisted-canvas-footer div span{width:7px;height:7px;border-radius:9px;background:${T.borderHi}}.assisted-canvas-footer div span.on{width:24px;background:${T.accent}}
   .assisted-choice-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin-top:clamp(14px,3vh,42px)}.assisted-choice-grid.two{grid-template-columns:repeat(2,minmax(0,1fr));max-width:800px}
@@ -1287,7 +1344,7 @@ export function canvasCss() { return `
   .assisted-choice-soon{cursor:default;opacity:.62;margin-top:10px}
   .assisted-choice-soon:hover{transform:none;border-color:${T.borderHi};box-shadow:none}
   .assisted-choice-soon em{background:${T.border};color:${T.muted}}
-  .assisted-choice strong{display:block;margin-top:clamp(10px,2vh,24px);font-size:22px}.assisted-choice small{display:block;margin-top:7px;color:${T.muted};line-height:1.45}.assisted-choice em{display:inline-block;margin-top:auto;padding-top:13px;padding:6px 8px;border-radius:999px;background:${T.greenDim};color:${T.green};font:700 9px/1 ${T.mono};font-style:normal;text-transform:uppercase;letter-spacing:.06em}
+  .assisted-choice strong{display:block;margin-top:clamp(10px,2vh,24px);font-size:22px}.assisted-choice small{display:block;margin-top:7px;color:${T.muted};line-height:1.45}.assisted-choice em{display:inline-block;margin-top:auto;padding-top:13px;padding:6px 8px;border-radius:999px;background:${T.greenDim};color:${T.green};font:600 var(--chama-fs-secondary)/1.2 ${T.sans};font-style:normal}
   .assisted-glyph{width:44px;height:44px;display:grid;place-items:center;color:${T.accent}}
   .assisted-glyph img{display:block;object-fit:contain}
   .assisted-route{display:inline-flex;margin-top:clamp(8px,1.5vh,18px);padding:8px 11px;border:1px solid ${T.border};border-radius:999px;background:${T.greenDim};color:${T.green};font:700 10px/1 ${T.mono}}
@@ -1308,7 +1365,7 @@ export function canvasCss() { return `
   .assisted-primary{width:100%;margin-top:clamp(12px,2.2vh,27px);padding:14px 22px;border:0;border-radius:999px;background:${T.accent};color:${T.bg};cursor:pointer;font-weight:800}.assisted-primary:disabled{opacity:.38;cursor:default}
   .assisted-result-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:clamp(16px,3vh,38px)}
   .assisted-match{padding:20px;border:1px solid ${T.borderHi};border-radius:20px;background:${T.card};color:${T.text};text-align:left;cursor:pointer}.assisted-match:hover{border-color:${T.accent}}
-  .assisted-tags{display:flex;gap:6px;flex-wrap:wrap}.assisted-tags span{padding:5px 7px;border-radius:999px;background:${T.accentDim};color:${T.accent};font:700 9px/1 ${T.mono};text-transform:uppercase}
+  .assisted-tags{display:flex;gap:6px;flex-wrap:wrap}.assisted-tags span{padding:5px 7px;border-radius:999px;background:${T.accentDim};color:${T.accent};font:600 var(--chama-fs-secondary)/1.2 ${T.sans}}
   .assisted-match-row{display:flex;justify-content:space-between;gap:18px;margin-top:16px}.assisted-match-row strong{font-size:18px}.assisted-match-row small{display:block;margin-top:6px;color:${T.muted}}.assisted-match-row>b{text-align:right;white-space:nowrap}
   .assisted-match-foot{display:flex;justify-content:space-between;margin-top:17px;padding-top:13px;border-top:1px solid ${T.border};color:${T.muted};font-size:12px}.assisted-match-foot b{color:${T.accent}}
   .assisted-empty{grid-column:1/-1;padding:30px;border:1px solid ${T.border};border-radius:20px;color:${T.muted}}.assisted-empty strong{display:block;color:${T.text}}.assisted-empty span{display:block;margin-top:7px}.assisted-empty button{margin-top:16px;border:0;background:transparent;color:${T.accent};cursor:pointer;padding:0}
@@ -1358,4 +1415,26 @@ export function canvasCss() { return `
     .assisted-choice{min-height:88px}
   }
   @media(max-width:760px){.assisted-canvas{min-height:calc(100dvh - var(--assisted-chrome, 116px));padding:clamp(16px,2.5vh,48px) 18px 14px}.assisted-choice-grid,.assisted-choice-grid.two{grid-template-columns:1fr}.assisted-choice{min-height:120px}.assisted-choice strong{margin-top:18px}.assisted-result-grid{grid-template-columns:1fr}.assisted-rail-grid,.assisted-premium-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.assisted-canvas-footer{grid-template-columns:1fr auto}.assisted-canvas-footer small{display:none}}
+  /* v7 redesign (canvas "Browse"): on phones the four starting points are
+     list rows — 44px icon tile, title, one-line description, status tag and a
+     chevron — so all four fit above the fold at the larger phone type. */
+  @media(max-width:760px){
+    .assisted-choice-grid{gap:10px}
+    .assisted-choice-grid .assisted-choice{display:grid;grid-template-columns:44px minmax(0,1fr) 18px;grid-template-areas:"glyph title chev" "glyph small chev" "glyph em chev";column-gap:14px;row-gap:2px;align-items:center;min-height:0;padding:14px;border-radius:20px;border-color:${T.line};background:${T.surface}}
+    .assisted-choice-grid .assisted-choice:hover{transform:none;box-shadow:none}
+    .assisted-choice-grid .assisted-choice .assisted-glyph{grid-area:glyph;width:44px;height:44px;border-radius:12px;background:${T.raised}}
+    .assisted-choice-grid .assisted-choice .assisted-glyph img,.assisted-choice-grid .assisted-choice .assisted-glyph svg{width:26px!important;height:26px!important}
+    .assisted-choice-grid .assisted-choice strong{grid-area:title;margin:0;font-size:var(--chama-fs-headline);font-weight:600}
+    .assisted-choice-grid .assisted-choice small{grid-area:small;margin:0;font-size:var(--chama-fs-secondary);color:${T.ink2}}
+    .assisted-choice-grid .assisted-choice em{grid-area:em;justify-self:start;margin-top:4px;padding:3px 8px}
+    .assisted-choice-grid .assisted-choice::after{content:"";grid-area:chev;width:9px;height:9px;border-right:2px solid ${T.ink3};border-top:2px solid ${T.ink3};transform:rotate(45deg);justify-self:center}
+  }
+  /* v7 redesign (Jet): the chosen payment method / premium is unmistakable —
+     ink fill, 2px ink border, bold label and a filled check; the rest stay
+     outlined. Colour is never the only signal (the ✓/+ glyph changes too). */
+  .assisted-rail-grid button,.assisted-premium-grid button{border:2px solid ${T.line};background:${T.surface};color:${T.ink};font-weight:500;font-family:${T.sans};font-size:var(--chama-fs-body)}
+  .assisted-rail-grid button:hover,.assisted-premium-grid button:hover{border-color:${T.ink3}}
+  .assisted-rail-grid button.selected,.assisted-premium-grid button.selected{border-color:${T.ink};background:${T.ink};color:${T.onInk};font-weight:700}
+  .assisted-rail-grid button span{border:2px solid ${T.ink3};color:${T.ink2};font:700 13px/1 ${T.sans}}
+  .assisted-rail-grid button.selected span{border-color:${T.onInk};background:${T.onInk};color:${T.ink}}
 `; }
