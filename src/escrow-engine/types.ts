@@ -335,6 +335,7 @@ export interface ChildKeyPayload {
 export type WorkListingKind = "work" | "work-request";
 
 import type { TrancheRef } from "./tranche.js";
+import { nowSeconds } from "../protocol/core/clock.js";
 
 export interface CreatePayload {
   type: "escrow:create";
@@ -1318,7 +1319,7 @@ export function joinHoldExpiresAtFor(joinedAt: number, escrowMode?: string): num
 export function getEffectiveParticipantAt(
   state: EscrowState,
   role: Role,
-  atSec = Math.floor(Date.now() / 1000),
+  atSec = nowSeconds(),
   opts: { includeLockGrace?: boolean; observation?: FundingObservation } = {},
 ): string | null {
   const pubkey = state.participants[role];
@@ -1338,7 +1339,7 @@ export function getEffectiveParticipantAt(
 
 export function getEffectiveParticipantsAt(
   state: EscrowState,
-  atSec = Math.floor(Date.now() / 1000),
+  atSec = nowSeconds(),
   observation?: FundingObservation,
 ): EscrowState["participants"] {
   return {
@@ -1351,7 +1352,7 @@ export function getEffectiveParticipantsAt(
 export function getJoinHoldRemainingSeconds(
   state: EscrowState,
   role: Role,
-  atSec = Math.floor(Date.now() / 1000),
+  atSec = nowSeconds(),
 ): number | null {
   const hold = state.joinHolds?.[role];
   if (!hold || state.participants[role] !== hold.pubkey) return null;
@@ -1388,7 +1389,7 @@ export type PreLockDeadline = {
 /** The honest deadline on a CREATED trade. Null when nothing bounds it. */
 export function preLockDeadline(
   state: EscrowState,
-  nowSec: number = Math.floor(Date.now() / 1000),
+  nowSec: number = nowSeconds(),
 ): PreLockDeadline | null {
   if (state.status !== EscrowStatus.CREATED && !(state.status === EscrowStatus.EXPIRED && state.onchainFundingTerms && state.lock.lockedAt == null && !state.lock.onchain)) return null;
 
@@ -1431,7 +1432,7 @@ export function hasObservedOnchainDeposit(observation?: FundingObservation): boo
   return !observation?.refundSpent && (observation?.deposit === 'seen' || observation?.deposit === 'confirmed' || (observation?.receivedSats ?? 0) > 0);
 }
 /** Unknown arrival time after lapse is recovery-only; never solicit more money. */
-export function isLateOnchainDeposit(state: EscrowState, observation?: FundingObservation, nowSec = Math.floor(Date.now()/1000)): boolean {
+export function isLateOnchainDeposit(state: EscrowState, observation?: FundingObservation, nowSec = nowSeconds()): boolean {
   const deadline = preLockDeadline(state, nowSec);
   return !!state.onchainFundingTerms && !!deadline?.lapsed && hasObservedOnchainDeposit(observation)
     && (observation?.depositSeenAt === undefined || observation.depositSeenAt >= deadline.at);

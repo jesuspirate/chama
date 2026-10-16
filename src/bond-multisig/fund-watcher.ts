@@ -18,7 +18,7 @@
 // fake and nothing here bakes in a transport or an endpoint.
 
 import { hexToBytes } from "@noble/hashes/utils.js";
-import { SIGNET, type BtcNetwork, type BondUtxo } from "./multisig.js";
+import { SIGNET, type BtcNetwork } from "./multisig.js";
 import { BUILTIN_ESPLORA_BASE, resolveEsploraBase } from "./esplora-config.js";
 
 /** Minimal shape of an Esplora `/address/{addr}/utxo` entry. */
@@ -29,10 +29,9 @@ export interface EsploraUtxo {
   status?: { confirmed?: boolean; block_height?: number };
 }
 
-/** An injected Esplora GET that returns parsed JSON for a path like
- *  `/address/{addr}/utxo` or `/tx/{txid}`. In the app this wraps `fetch`; in tests
- *  it's a fake. */
-export type EsploraFetch = (path: string) => Promise<any>;
+// The chain-data port's shapes live in the protocol core; re-exported here.
+export type { EsploraFetch, BondFunding } from "../protocol/core/chain-data.js";
+import type { EsploraFetch, BondFunding } from "../protocol/core/chain-data.js";
 
 /** The default Esplora base per network. Mainnet (our bond network as of v5.0) →
  *  mempool.space. Signet → the endpoint the live-attack harness used. */
@@ -252,15 +251,6 @@ export async function esploraOutspend(
   return { spent: r.spent, ...(typeof r.txid === "string" ? { txid: r.txid } : {}) };
 }
 
-export interface BondFunding {
-  utxo: BondUtxo;
-  /** Block the deposit confirmed in, when Esplora reported it. This is the
-   *  tenure clock: unforgeable, and instantly checkable by anyone. */
-  blockHeight?: number;
-  /** The ACTUAL on-chain output script at (txid, vout), read off the funding tx —
-   *  recompute-don't-trust reaches the deposit. */
-  fundingScript: Uint8Array;
-}
 
 /** Find ALL confirmed, minConfs-deep UTXOs at `address` — of ANY amount. For the
  *  COMMITMENT bond: the arbiter locks their own sats to their own address, so we

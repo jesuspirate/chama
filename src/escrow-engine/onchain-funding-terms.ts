@@ -1,10 +1,10 @@
 import { hexToBytes } from "@noble/hashes/utils.js";
 import { buildCommitmentBond } from "../bond-multisig/commitment-bond.js";
-import { pickPreferredArbiter } from "../arbiters/pool.js";
+import { pickPreferredArbiter } from "../protocol/core/arbiter-pick.js";
 import { Role, getEffectiveParticipantAt, type EscrowState, type OnchainFundingTerms, type OnchainLockTerms } from './types.js';
 import { resolveFundingPlan } from '../bond-multisig/onchain-escrow-funding.js';
 import { MAINNET, SIGNET } from '../bond-multisig/multisig.js';
-import { parseBondAnnouncementEvent } from '../bond-multisig/bond-announcement.js';
+import { parseBondAnnouncementEvent } from '../protocol/core/bond-announcement.js';
 import { DISPUTE_CSV_BLOCKS } from '../bond-multisig/onchain-escrow.js';
 
 export function fundingArbiter(state: EscrowState): string | null {

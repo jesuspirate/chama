@@ -1,6 +1,7 @@
-# Protocol boundary — step 0
+# Protocol boundary
 
-This records the intended wall, not a completed extraction. Runtime behaviour,
+Step 0 recorded the intended wall; step 1 (below) cleared every crossing and
+turned the check into a gate. This is not yet a completed file move. Runtime behaviour,
 events, reducer rules and UI remain unchanged. The agreement / custody /
 settlement distinction follows [the escrow draft](nip-draft-escrow.md) and
 [the companion architecture](companion-apps-architecture.md).
@@ -10,6 +11,7 @@ settlement distinction follows [the escrow draft](nip-draft-escrow.md) and
 <!-- protocol-core-entry: src/escrow-engine/types.ts -->
 <!-- protocol-core-entry: src/escrow-engine/event-parser.ts -->
 <!-- protocol-core-entry: src/escrow-engine/state-machine.ts -->
+<!-- protocol-core-entry: src/protocol/core/index.ts -->
 
 These markers are the checker's roots. Its import closure includes type imports,
 re-exports and literal dynamic imports. External packages are opaque dependencies;
@@ -116,8 +118,43 @@ These reachable capabilities also belong outside a pure agreement computation;
 nonce/configuration inputs must be explicit in later extraction. They are not
 silently counted as Math.random or browser-property matches by this baseline.
 
-No crossing is fixed here. The baseline remains report-only until extraction
-steps have their own review and equivalence proof.
+Step 0 fixed no crossing. Step 1, below, fixes all of them.
+
+## Step 1 — the core reads no device
+
+The core's import closure (roots above, now including `src/protocol/core/index.ts`)
+has **0 crossings**, down from 66. `node scripts/check-protocol-boundary.mjs --strict`
+is part of `npm test`: any new storage, network, UI, platform or clock read reachable
+from the core fails the build. Without `--strict` the script still prints the report
+and exits zero.
+
+Each mixed module was split at the pure functions the core actually uses. The pure
+part moved to `src/protocol/core/` and the original module re-exports it, so no
+caller changed. Function bodies were moved byte for byte.
+
+| Core module | Taken from | What stayed behind (app side) |
+|---|---|---|
+| `sim-tag.ts` — `SIM_TAG_NAME`, `SIM_TAG_VERSION`, `eventIsSim` | `sim/simMode.ts` | URL flag, session storage, sandbox build |
+| `listing-image-ref.ts` — photo reference validation | `media/listing-image-upload.ts` | Upload over the network |
+| `arbiter-pick.ts` — `pickArbiterFromPool`, `pickPreferredArbiter` | `arbiters/pool.ts` | Trusted-arbiter settings, roster, registry, federation invites |
+| `bond-announcement.ts` — kind 38135 build, parse, select | `bond-multisig/bond-announcement.ts` | `verifyBondAnnouncement` (block explorer) |
+| `commitment-record.ts` — `CommitmentRecord` type | `bond-multisig/commitment-store.ts` | Saving and loading records |
+| `chain-data.ts` — `EsploraFetch`, `BondFunding` types | `bond-multisig/fund-watcher.ts` | Explorer URLs, settings and fetch |
+| `clock.ts` — `nowSeconds`, `setProtocolClock` | the ten `Math.floor(Date.now() / 1000)` defaults in `types.ts`, `state-machine.ts` (`canVote`), `arbiter-substitution.ts`, `chama/circle.ts` and the announcement builder | — |
+
+The clock is the one port the core reads directly, and `clock.ts` is the one file
+allowed to touch `Date.now`. Every former default now calls `nowSeconds()`, which
+returns the same value unless a host installs its own clock. Replay never reads it.
+
+**Equivalence proof.** All 99 golden records replay with identical results and final
+states, and the full test suite passes, before and after.
+
+**Not done yet (later steps).** The reducer, parser and types still live under
+`src/escrow-engine/`; `src/protocol/core/index.ts` is the entry new code should use,
+and moving the files is a separate mechanical step. The closure still includes pure
+helpers in `chama/` and `bond-multisig/`. `crypto.getRandomValues` and
+`import.meta.env` were never counted by the rules, and neither is reachable from
+the core any more (`storage/random-id.ts` and the pool configuration left the closure).
 
 ## Regeneration contract
 

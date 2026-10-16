@@ -9,6 +9,7 @@ import {
   type SeatRefusal,
 } from "./types.js";
 import { CHAMA_RING_WRITER_ENABLED } from "../escrow-engine/experimental-escrow-features.js";
+import { nowSeconds } from "../protocol/core/clock.js";
 
 // ── Validation ─────────────────────────────────────────────────────────────
 
@@ -99,7 +100,7 @@ export function circleStatus(
 export function circleProgress(
   circle: CircleRound,
   locks: readonly CircleShareLock[],
-  nowSec: number = Math.floor(Date.now() / 1000),
+  nowSec: number = nowSeconds(),
 ): CircleProgress {
   const mine = circleLocks(circle, locks);
   // "returned" still counts as a seat that WAS locked — a completed round's
@@ -143,7 +144,7 @@ export function canTakeSeat(
   circle: CircleRound,
   locks: readonly CircleShareLock[],
   memberPubkey: string,
-  nowSec: number = Math.floor(Date.now() / 1000),
+  nowSec: number = nowSeconds(),
   hostSeat: boolean = CHAMA_RING_WRITER_ENABLED,
 ): { ok: true } | { ok: false; reason: SeatRefusal } {
   if (nowSec >= circle.fillDeadlineSec) return { ok: false, reason: "closed" };

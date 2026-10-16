@@ -1,5 +1,5 @@
 import { deriveBondSigningKey } from "./commitment-bond.js";
-import type { CommitmentRecord } from "./commitment-store.js";
+import type { CommitmentRecord } from "../protocol/core/commitment-record.js";
 // ══════════════════════════════════════════════════════════════════════════
 // Chama — on-chain escrow: keys, funding, and the LOCK terms (Tier 2.1, S3)
 // ══════════════════════════════════════════════════════════════════════════
@@ -266,14 +266,14 @@ export function buildOnchainLockTerms(
  * unspent outpoint against the transaction, not only the address listing. */
 export async function findEscrowFundingUtxos(params: {
   address: string; network: BtcNetwork;
-  fetchJson: import("./fund-watcher.js").EsploraFetch; minConfs: number;
-}): Promise<import("./fund-watcher.js").BondFunding[]> {
+  fetchJson: import("../protocol/core/chain-data.js").EsploraFetch; minConfs: number;
+}): Promise<import("../protocol/core/chain-data.js").BondFunding[]> {
   const tip = Number(await params.fetchJson("/blocks/tip/height"));
   if (!Number.isInteger(tip) || tip <= 0) throw new Error("Unknown chain tip");
   const expected = bytesToHex(btc.OutScript.encode(btc.Address(params.network).decode(params.address)));
   const rows = await params.fetchJson(`/address/${params.address}/utxo`);
   if (!Array.isArray(rows)) throw new Error("Invalid deposit response");
-  const found: import("./fund-watcher.js").BondFunding[] = [];
+  const found: import("../protocol/core/chain-data.js").BondFunding[] = [];
   const seen = new Set<string>();
   for (const row of rows) {
     if (!/^[0-9a-f]{64}$/.test(row?.txid) || !Number.isInteger(row.vout) || row.vout < 0) continue;
