@@ -129,11 +129,21 @@ export async function sealedGet(name: string): Promise<string | null> {
 /** Encrypt and store `value`, then read it back; throws unless the stored
  *  copy decrypts to exactly `value`. */
 export async function sealedSet(name: string, value: string): Promise<void> {
+  askToPersist();
   const key = await sealKey();
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, new TextEncoder().encode(value));
   await put(PREFIX + name, { iv, ct } satisfies SealedRecord);
   if (await sealedGet(name) !== value) throw new Error("Sealed value did not read back");
+}
+
+let persistAsked = false;
+/** Ask the browser not to evict this origin's storage under pressure, so the
+ *  sealed store isn't dropped while plain storage stays. Best effort. */
+function askToPersist(): void {
+  if (persistAsked) return;
+  persistAsked = true;
+  try { void navigator.storage?.persist?.().catch(() => {}); } catch {}
 }
 
 export async function sealedDelete(name: string): Promise<void> {

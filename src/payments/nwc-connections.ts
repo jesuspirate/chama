@@ -75,6 +75,10 @@ function normalizeEntry(entry: SavedNwcConnection): SavedNwcConnection | null {
   }
 }
 
+function safeConnectionKey(connectionString: string): string | null {
+  try { return connectionKey(connectionString); } catch { return null; }
+}
+
 function connectionKey(connectionString: string): string {
   const parsed = parseNwcConnectionString(connectionString);
   return `${parsed.walletPubkey}:${parsed.secret}`;
@@ -135,25 +139,71 @@ function parseList(raw: string | null): SavedNwcConnection[] {
   }
 }
 
-function persistSealed(scope: string, list: SavedNwcConnection[]): Promise<void> {
+type ListOp = (list: SavedNwcConnection[]) => SavedNwcConnection[];
+
+const SAVED_WALLETS_EVENT = "chama:saved-wallets";
+const SEALED_CHANNEL = "chama-sealed-nwc";
+let channel: BroadcastChannel | null = null;
+
+function announce(scope: string): void {
+  if (typeof window !== "undefined") window.dispatchEvent(new Event(SAVED_WALLETS_EVENT));
+  try { channel?.postMessage({ scope }); } catch {}
+}
+
+/** Another tab changed this user's list: reload it from sealed storage. */
+function listenToOtherTabs(): void {
+  if (channel || typeof BroadcastChannel === "undefined") return;
+  try {
+    channel = new BroadcastChannel(SEALED_CHANNEL);
+    // Node keeps a process alive while a channel is open; browsers ignore this.
+    (channel as unknown as { unref?: () => void }).unref?.();
+    channel.onmessage = (event: MessageEvent) => {
+      const scope = (event.data as { scope?: unknown } | null)?.scope;
+      if (typeof scope !== "string" || !activeSealer) return;
+      const id = scopedStorageKey(NWC_CONNECTIONS_STORAGE_KEY, scope);
+      if (!sealedCache.has(id)) return;
+      const sealer = activeSealer;
+      sealedWrites = sealedWrites.then(async () => {
+        try {
+          sealedCache.set(id, parseList(await sealer.get(id)));
+          if (typeof window !== "undefined") window.dispatchEvent(new Event(SAVED_WALLETS_EVENT));
+        } catch {}
+      });
+    };
+  } catch {
+    channel = null;
+  }
+}
+
+/** Apply one change to the stored list, never a whole remembered list: the
+ *  current encrypted copy (plus any plain copy a tab wrote when sealing
+ *  failed) is re-read first, so a change made in another tab is kept. */
+function applySealed(scope: string, op: ListOp): Promise<void> {
   const sealer = activeSealer;
   const id = scopedStorageKey(NWC_CONNECTIONS_STORAGE_KEY, scope);
-  const serialized = JSON.stringify(list);
+  const backupId = scopedStorageKey(NWC_CONNECTIONS_BACKUP_STORAGE_KEY, scope);
   sealedWrites = sealedWrites.then(async () => {
     if (!sealer) return;
+    let current: SavedNwcConnection[];
+    try {
+      current = parseList(await sealer.get(id));
+    } catch {
+      // Unreadable now: change nothing stored; the in-memory list stays.
+      return;
+    }
+    let plain: SavedNwcConnection[] = [];
+    try { plain = parseList(localStorage.getItem(id) ?? localStorage.getItem(backupId)); } catch {}
+    const next = dedupeConnections(op(dedupeConnections([...plain, ...current])));
+    const serialized = JSON.stringify(next);
     try {
       await sealer.set(id, serialized);
-      try {
-        localStorage.removeItem(id);
-        localStorage.removeItem(scopedStorageKey(NWC_CONNECTIONS_BACKUP_STORAGE_KEY, scope));
-      } catch {}
+      try { localStorage.removeItem(id); localStorage.removeItem(backupId); } catch {}
     } catch {
-      // Sealing failed: keep a plain copy rather than lose the list.
-      try {
-        localStorage.setItem(id, serialized);
-        localStorage.setItem(scopedStorageKey(NWC_CONNECTIONS_BACKUP_STORAGE_KEY, scope), serialized);
-      } catch {}
+      // Sealing failed: keep a plain copy rather than lose the change.
+      try { localStorage.setItem(id, serialized); localStorage.setItem(backupId, serialized); } catch {}
     }
+    sealedCache.set(id, next);
+    announce(scope);
   });
   return sealedWrites;
 }
@@ -178,8 +228,10 @@ export async function hydrateSavedNwcConnections(sealer: NwcSealer): Promise<voi
   const plain = readPlainRaw();
   const merged = dedupeConnections([...plain, ...sealed]);
   activeSealer = sealer;
+  listenToOtherTabs();
   sealedCache.set(id, merged);
-  if (plain.length > 0 || merged.length !== sealed.length) await persistSealed(scope, merged);
+  if (plain.length > 0) await applySealed(scope, (list) => list);
+  else if (typeof window !== "undefined") window.dispatchEvent(new Event(SAVED_WALLETS_EVENT));
 }
 
 /** Wait for pending encrypted writes (tests and sign-out). */
@@ -189,6 +241,8 @@ export function flushSealedNwcWrites(): Promise<void> {
 
 /** Test hook. */
 export function resetSealedNwcForTests(): void {
+  try { channel?.close(); } catch {}
+  channel = null;
   sealedCache.clear();
   activeSealer = null;
   sealedWrites = Promise.resolve();
@@ -207,29 +261,38 @@ function readPlainRaw(): SavedNwcConnection[] {
 
   const backup = readStored(NWC_CONNECTIONS_BACKUP_STORAGE_KEY);
   if (backup.length > 0) {
-    writeRaw(backup, { allowEmptyOverwrite: true });
+    writeRaw(() => backup, { allowEmptyOverwrite: true });
     return backup;
   }
 
   return [];
 }
 
+/** Change the saved list by `op`. Signed in with sealed storage loaded, the
+ *  change shows at once and is applied to the freshly read stored list. */
 function writeRaw(
-  connections: SavedNwcConnection[],
+  op: ListOp,
   opts: { allowEmptyOverwrite?: boolean } = {},
 ): void {
-  const normalized = dedupeConnections(connections);
   const scope = getLocalStorageUserScope();
   const id = activeSealedId();
   if (scope && id && sealedCache.has(id)) {
-    if (normalized.length === 0 && !opts.allowEmptyOverwrite && (sealedCache.get(id)?.length ?? 0) > 0) {
-      console.warn("[chama] Refusing to overwrite NWC connections with an empty list");
-      return;
-    }
-    sealedCache.set(id, normalized);
-    void persistSealed(scope, normalized);
+    const guarded: ListOp = (list) => {
+      const next = op(list);
+      if (dedupeConnections(next).length === 0 && !opts.allowEmptyOverwrite && list.length > 0) {
+        console.warn("[chama] Refusing to overwrite NWC connections with an empty list");
+        return list;
+      }
+      return next;
+    };
+    sealedCache.set(id, dedupeConnections(guarded(sealedCache.get(id) ?? [])));
+    void applySealed(scope, guarded);
     return;
   }
+  // Read without readPlainRaw's backup repair, which itself writes here.
+  const primary = readStored(NWC_CONNECTIONS_STORAGE_KEY);
+  const current = primary.length > 0 ? primary : readStored(NWC_CONNECTIONS_BACKUP_STORAGE_KEY);
+  const normalized = dedupeConnections(op(current));
   try {
     if (normalized.length === 0 && !opts.allowEmptyOverwrite) {
       const existing = readStored(NWC_CONNECTIONS_STORAGE_KEY);
@@ -256,7 +319,12 @@ export function listSavedNwcConnections(): SavedNwcConnection[] {
 }
 
 export function deleteSavedNwcConnection(id: string): void {
-  writeRaw(readRaw().filter(c => c.id !== id), { allowEmptyOverwrite: true });
+  // Delete by wallet secret as well as id, so the same connection saved
+  // under another id (another tab, a plain copy) doesn't come back.
+  const target = readRaw().find(c => c.id === id);
+  const targetKey = target ? safeConnectionKey(target.connectionString) : null;
+  writeRaw(list => list.filter(c => c.id !== id && (targetKey === null || safeConnectionKey(c.connectionString) !== targetKey)),
+    { allowEmptyOverwrite: true });
   if (typeof window !== "undefined") window.dispatchEvent(new Event("chama:saved-wallets"));
 }
 
@@ -282,8 +350,9 @@ export function addOrTouchSavedNwcConnection(connectionString: string): SavedNwc
       relayCount: parsed.relays.length,
       lastUsedAt: nowSec,
     };
-    connections[idx] = next;
-    writeRaw(connections);
+    writeRaw(list => list.map(c => safeConnectionKey(c.connectionString) === key
+      ? { ...c, connectionString: normalized, walletPubkey: parsed.walletPubkey, relayCount: parsed.relays.length, lastUsedAt: nowSec }
+      : c));
     return next;
   }
 
@@ -296,12 +365,14 @@ export function addOrTouchSavedNwcConnection(connectionString: string): SavedNwc
     createdAt: nowSec,
     lastUsedAt: nowSec,
   };
-  writeRaw([entry, ...connections]);
+  writeRaw(list => list.some(c => safeConnectionKey(c.connectionString) === key)
+    ? list.map(c => safeConnectionKey(c.connectionString) === key ? { ...c, lastUsedAt: nowSec } : c)
+    : [entry, ...list]);
   return entry;
 }
 
 export function renameSavedNwcConnection(id: string, label: string): void {
-  writeRaw(readRaw().map(connection => connection.id === id
+  writeRaw(list => list.map(connection => connection.id === id
     ? { ...connection, label: label.trim().slice(0, 64) || labelForConnection(connection.connectionString) } : connection));
   if (typeof window !== "undefined") window.dispatchEvent(new Event("chama:saved-wallets"));
 }

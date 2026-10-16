@@ -151,4 +151,62 @@ const backupKey = scopedStorageKey(nwc.NWC_CONNECTIONS_BACKUP_STORAGE_KEY, user)
   assert.equal(nwc.listSavedNwcConnections().length, 1);
 }
 
+{
+  // Review blocker: another tab's change must survive this tab's next write.
+  store.clear();
+  nwc.resetSealedNwcForTests();
+  setLocalStorageUserScope(user);
+  const s = fakeSealer();
+  await nwc.hydrateSavedNwcConnections(s);
+  const x = conn(walletA, "6".repeat(64));
+  nwc.addOrTouchSavedNwcConnection(x);
+  await nwc.flushSealedNwcWrites();
+  // Another tab adds Y straight into sealed storage; this tab's memory has only X.
+  const stored = JSON.parse(s.sealed.get(primaryKey)!);
+  const y = { ...stored[0], id: "nwc_other_tab", connectionString: conn(walletB, "7".repeat(64)), walletPubkey: walletB };
+  s.sealed.set(primaryKey, JSON.stringify([y, ...stored]));
+  nwc.addOrTouchSavedNwcConnection(x); // pay with X here
+  await nwc.flushSealedNwcWrites();
+  const after = JSON.parse(s.sealed.get(primaryKey)!);
+  assert.equal(after.length, 2, "the other tab's wallet is kept");
+  assert.equal(nwc.listSavedNwcConnections().length, 2, "and this tab now shows it");
+
+  // Another tab deletes Y; touching X here must not bring Y back.
+  s.sealed.set(primaryKey, JSON.stringify(after.filter((c: any) => c.walletPubkey !== walletB)));
+  nwc.addOrTouchSavedNwcConnection(x);
+  await nwc.flushSealedNwcWrites();
+  assert.equal(JSON.parse(s.sealed.get(primaryKey)!).length, 1, "a wallet deleted elsewhere stays deleted");
+
+  // Deleting here removes it by wallet secret too, so no copy comes back.
+  nwc.deleteSavedNwcConnection(nwc.listSavedNwcConnections()[0].id);
+  await nwc.flushSealedNwcWrites();
+  assert.equal(JSON.parse(s.sealed.get(primaryKey)!).length, 0);
+}
+{
+  // Review: a newer plain key beats an older sealed one, and is moved in.
+  store.clear();
+  const s = fakeSealer();
+  s.sealed.set(SAVED_NSEC_KEY, "nsec1older");
+  store.set(SAVED_NSEC_KEY, "nsec1newer");
+  assert.equal(await readBrowserSavedNsec(localStorage, s), "nsec1newer");
+  assert.equal(s.sealed.get(SAVED_NSEC_KEY), "nsec1newer");
+  // A save that falls back to plain also clears the older sealed key.
+  s.sealed.set(SAVED_NSEC_KEY, "nsec1older");
+  s.opts.failSet = true;
+  await saveNsec("nsec1fresh", "imported", localStorage, undefined, s);
+  assert.equal(s.sealed.has(SAVED_NSEC_KEY), false);
+  assert.equal(await readBrowserSavedNsec(localStorage, s), "nsec1fresh");
+}
+{
+  // Review: if the sealed key can't be deleted, signing out still sticks.
+  store.clear();
+  const s = fakeSealer();
+  s.sealed.set(SAVED_NSEC_KEY, "nsec1stuck");
+  const stuck = { ...s, delete: async () => { throw new Error("blocked"); } };
+  await removeBrowserSavedNsec(localStorage, stuck);
+  assert.equal(await readBrowserSavedNsec(localStorage, s), null, "no auto sign-in after sign-out");
+  await saveNsec("nsec1again", "imported", localStorage, undefined, s);
+  assert.equal(await readBrowserSavedNsec(localStorage, s), "nsec1again", "saving again clears the mark");
+}
+
 console.log("PASS M9: saved key and NWC connections kept encrypted, moved in from plain storage, never dropped");

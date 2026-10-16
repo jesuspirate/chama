@@ -1,6 +1,9 @@
 /** Saved identity keys are separate from wallet recovery material. */
 export const SAVED_NSEC_KEY = "chama_saved_nsec";
 export const NSEC_ORIGIN_KEY = "chama_nsec_origin";
+/** Set when a sealed key could not be deleted: no key is kept, whatever
+ *  sealed storage still holds, until the next save. */
+export const NSEC_FORGOTTEN_KEY = "chama_saved_nsec_forgotten";
 
 type KeyStorage = Pick<Storage, "setItem"> & Partial<Pick<Storage, "removeItem">>;
 
@@ -36,13 +39,17 @@ export async function saveNsec(
       await sealer.set(SAVED_NSEC_KEY, nsec);
       storage.setItem(NSEC_ORIGIN_KEY, origin);
       try { storage.removeItem?.(SAVED_NSEC_KEY); } catch {}
+      try { storage.removeItem?.(NSEC_FORGOTTEN_KEY); } catch {}
       return;
     } catch {
-      // fall through to plain storage
+      // Fall through to plain storage, and don't let an older sealed key
+      // stand beside the new plain one.
+      try { await sealer.delete(SAVED_NSEC_KEY); } catch {}
     }
   }
   storage.setItem(SAVED_NSEC_KEY, nsec);
   storage.setItem(NSEC_ORIGIN_KEY, origin);
+  try { storage.removeItem?.(NSEC_FORGOTTEN_KEY); } catch {}
 }
 
 /** The kept browser key: the sealed copy first, else a plain one, which is
@@ -52,16 +59,20 @@ export async function readBrowserSavedNsec(
   storage: Pick<Storage, "getItem"> & Partial<Pick<Storage, "removeItem">>,
   sealer?: NsecSealer,
 ): Promise<string | null> {
-  if (sealer) {
+  try { if (storage.getItem(NSEC_FORGOTTEN_KEY)) return null; } catch {}
+  // A plain copy is always the newer one: it exists only from an older app
+  // or when sealing failed. It wins and is moved into sealed storage.
+  let plain: string | null = null;
+  try { plain = storage.getItem(SAVED_NSEC_KEY)?.trim() || null; } catch { plain = null; }
+  if (!plain && sealer) {
     try {
       const sealed = (await sealer.get(SAVED_NSEC_KEY))?.trim();
       if (sealed) return sealed;
     } catch {
-      // Unreadable sealed copy: fall back to any plain copy, delete nothing.
+      // Unreadable sealed copy: delete nothing.
     }
+    return null;
   }
-  let plain: string | null = null;
-  try { plain = storage.getItem(SAVED_NSEC_KEY)?.trim() || null; } catch { plain = null; }
   if (plain && sealer) {
     try {
       await sealer.set(SAVED_NSEC_KEY, plain);
@@ -75,10 +86,21 @@ export async function readBrowserSavedNsec(
 
 /** Forget the kept browser key, sealed and plain. */
 export async function removeBrowserSavedNsec(
-  storage: Partial<Pick<Storage, "removeItem">>,
+  storage: Partial<Pick<Storage, "removeItem" | "setItem">>,
   sealer?: NsecSealer,
 ): Promise<void> {
-  if (sealer) { try { await sealer.delete(SAVED_NSEC_KEY); } catch {} }
+  if (sealer) {
+    let gone = false;
+    try {
+      await sealer.delete(SAVED_NSEC_KEY);
+      gone = (await sealer.get(SAVED_NSEC_KEY)) === null;
+    } catch {
+      gone = false;
+    }
+    // Signing out must not sign back in on reload: if the sealed key may
+    // still be there, mark it forgotten.
+    if (!gone) { try { storage.setItem?.(NSEC_FORGOTTEN_KEY, "1"); } catch {} }
+  }
   try { storage.removeItem?.(SAVED_NSEC_KEY); } catch {}
   try { storage.removeItem?.(NSEC_ORIGIN_KEY); } catch {}
 }
