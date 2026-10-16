@@ -21,7 +21,6 @@ import {
   buildCommitmentBond,
   deriveBondSigningKey,
   validateBitcoinAddressForNetwork,
-  type CommitmentBond,
   type CommitmentReclaimDestination,
   type ReclaimDestinationKind,
 } from "./commitment-bond.js";
@@ -43,43 +42,12 @@ export const COMMITMENT_STORAGE_KEY = "chama_commitment_bonds_v1";
 export const COMMITMENT_BACKUP_STORAGE_KEY = "chama_commitment_bonds_backup_v1";
 export const COMMITMENT_MAX_ENTRIES = 200;
 
-export type CommitmentPhase = "created" | "locked" | "reclaimed";
 const PHASE_RANK: Record<CommitmentPhase, number> = { created: 0, locked: 1, reclaimed: 2 };
 
-/** The full local record for one commitment bond. `bond` is the recomputable
- *  descriptor; the rest is lifecycle. The owner PRIVATE key is never stored — it's
- *  re-derived from the seed at reclaim time. */
-export interface CommitmentRecord {
-  bondId: string;
-  bond: CommitmentBond;
-  amountSats: bigint;
-  phase: CommitmentPhase;
-  /** BIP86 address index this bond's key was derived at (m/86'/coin'/0'/0/index) —
-   *  persisted so reclaim re-derives the RIGHT private key. Each bond gets its own,
-   *  so no two bonds ever share an address. Absent ⇒ 0 (legacy single-key bonds). */
-  keyIndex?: number;
-  /** All UTXOs at the address once funded (phase >= locked) — the reclaim sweeps them. */
-  utxos?: BondUtxo[];
-  /** Set once reclaimed. */
-  reclaimTxid?: string;
-  /** The user's selected reclaim destination and the actual transaction output. */
-  reclaimDestination?: CommitmentReclaimDestination;
-  /** Set when the reclaimed return output is sent into Chama/Fedimint. */
-  creditTxid?: string;
-  creditOperationId?: string;
-  /** Set once the Fedimint on-chain deposit (peg-in) has confirmed and the ecash
-   *  landed in the spendable Chama balance — the "credit landed" signal the UI shows. */
-  creditConfirmedAt?: number;
-  /** v5.4 direct rollover journal. The replacement record remains `created`
-   * until its output reaches the normal bond confirmation policy. */
-  renewedFromBondId?: string;
-  renewalToBondId?: string;
-  renewalTxid?: string;
-  renewalRawTx?: string;
-  renewalFeeSats?: bigint;
-  renewalBroadcastAt?: number;
-  createdAt: number;
-}
+// The record's SHAPE is shared with the protocol core (on-chain funding reads it);
+// storing it is this module's job.
+export type { CommitmentPhase, CommitmentRecord } from "../protocol/core/commitment-record.js";
+import type { CommitmentPhase, CommitmentRecord } from "../protocol/core/commitment-record.js";
 
 interface SerializedCommitment {
   bondId: string;

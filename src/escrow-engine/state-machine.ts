@@ -6,7 +6,7 @@ import { finalRefundSettlementProof } from "./onchain-settlement-transport.js";
 import { fundingArbiter, fundingTermsError, onchainLockError, onchainFunder } from "./onchain-funding-terms.js";
 import { NEVER_EXPIRES } from "./types.js";
 import { chamaCreateError, chamaOutcomeError, type ChamaCycleContext } from "../chama/policy.js";
-import { eventIsSim } from "../sim/simMode.js";
+import { eventIsSim } from "../protocol/core/sim-tag.js";
 // ══════════════════════════════════════════════════════════════════════════
 // Chama Nostr Escrow Engine — State Machine
 // ══════════════════════════════════════════════════════════════════════════
@@ -59,7 +59,7 @@ import {
 import { payoutRecipientFor } from "./recipients.js";
 import { validateVoteShareEnvelope } from "./holder-shares.js";
 import { arbiterPriorityOrder, arbiterVotePriority, substitutionEligibleAt, clampSubstitutionGraceSeconds, oneSidedEscalationAt, isPerformanceContest } from "./arbiter-substitution.js";
-import { pickArbiterFromPool, pickPreferredArbiter } from "../arbiters/pool.js";
+import { pickArbiterFromPool, pickPreferredArbiter } from "../protocol/core/arbiter-pick.js";
 import { finalArbiterSettlementProof, finalCoopSettlementProof } from "./onchain-settlement-transport.js";
 import { validatePlanStart } from "./tranche-plan.js";
 import { creatorMatchesEscrowId, selectTradeRoot } from "./trade-identity.js";
@@ -67,6 +67,7 @@ import {
   SETTLEMENT_POLICY_ECASH_SLICES, MAX_SLICE_COUNT, defaultSettlementPolicy,
   minSlicesForCap, settlementPolicyMatchesMode,
 } from "./slice-policy.js";
+import { nowSeconds } from "../protocol/core/clock.js";
 
 // Re-export so existing callers (escrow-client, escrow-bridge, tests) keep
 // importing payoutRecipientFor from the state machine.
@@ -2296,7 +2297,7 @@ export function replayEventChain(
 export function canVote(state: EscrowState, pubkey: string, nowSec?: number, outcome?: Outcome, cycle?: ChamaCycleContext): { canVote: boolean; reason?: string } {
   if (state.pendingVote) return { canVote: false, reason: "Your vote is awaiting confirmation" };
   if (state.chamaPolicy && outcome !== undefined) {
-    const law = chamaOutcomeError(state, outcome, nowSec ?? Math.floor(Date.now() / 1000), cycle, "intent");
+    const law = chamaOutcomeError(state, outcome, nowSec ?? nowSeconds(), cycle, "intent");
     if (law) return { canVote: false, reason: law };
   }
   // v0.1.66.26: accept EXPIRED in addition to LOCKED. Mirrors
@@ -2304,7 +2305,7 @@ export function canVote(state: EscrowState, pubkey: string, nowSec?: number, out
   if (state.status !== EscrowStatus.LOCKED && state.status !== EscrowStatus.EXPIRED) {
     return { canVote: false, reason: `State is ${state.status}, not LOCKED or EXPIRED` };
   }
-  const now = nowSec ?? Math.floor(Date.now() / 1000);
+  const now = nowSec ?? nowSeconds();
   // HEALING includes a LOCKED trade past its deadline. The reducer only flips
   // status to EXPIRED when an EVENT arrives post-deadline — so on a quiet
   // dead trade every client still reads LOCKED, and judging "healing" by

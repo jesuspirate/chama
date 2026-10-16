@@ -1,5 +1,5 @@
 import { chamaCreateError, chamaOutcomeError } from "../chama/policy.js";
-import { eventIsSim } from "../sim/simMode.js";
+import { eventIsSim } from "../protocol/core/sim-tag.js";
 import type { EscrowState } from "./types.js";
 import { creatorMatchesEscrowId } from "./trade-identity.js";
 // ══════════════════════════════════════════════════════════════════════════
@@ -46,7 +46,7 @@ import {
   Role,
   Outcome,
 } from "./types.js";
-import { areSupportedListingImageRefs, isSupportedListingImageRef } from "../media/listing-image-upload.js";
+import { areSupportedListingImageRefs, isSupportedListingImageRef } from "../protocol/core/listing-image-ref.js";
 
 // ── Valid event kinds set ─────────────────────────────────────────────────
 
