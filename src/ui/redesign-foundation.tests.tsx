@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { renderToStaticMarkup } from "react-dom/server";
 import { T, STATUS, ON_ATTN, applyThemeMode, typeScaleCss } from "./theme.js";
 import { holdReducer, HOLD_TO_CONFIRM_MS, ASSISTIVE_CONFIRM_WINDOW_MS, type HoldState } from "./components/Button.js";
-import { BottomNav, CreateButton, navCss, trackScrollActivity, SCROLL_STILL_FALLBACK_MS } from "./components/BottomNav.js";
+import { BottomNav, CreateButton, createFabShrinksWhileScrolling, navCss, trackScrollActivity, SCROLL_STILL_FALLBACK_MS } from "./components/BottomNav.js";
 import { Badge } from "./components/Badge.js";
 import { ChamaBar } from "./panels/ChamaBar.js";
 import { StatusBarScrim } from "./components/StatusBarScrim.js";
@@ -121,8 +121,17 @@ console.log("PASS hold to confirm: hold confirms once, early lift cancels, taps 
   for (const ua of ["Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)", "Mozilla/5.0 (Linux; Android 15; Pixel 8)", "Mozilla/5.0 (Macintosh)"]) {
     Object.defineProperty(globalThis, "navigator", { configurable: true, value: { userAgent: ua } });
     const fab = renderToStaticMarkup(<LangProvider><CreateButton onCreate={() => {}} /></LangProvider>);
-    assert.match(fab, /class="chama-create-fab-wrap"[\s\S]*class="chama-create-fab"[\s\S]*>Create</, `${ua}: floating "+ Create"`);
+    assert.match(fab, /class="chama-create-fab-wrap[^"]*"[\s\S]*class="chama-create-fab"[\s\S]*>Create</, `${ua}: floating "+ Create"`);
+    assert.equal(fab.includes("chama-create-fab-compact"), /Android/.test(ua), `${ua}: only an Android browser shrinks Create while scrolling`);
   }
+  // Android browsers (Brave, Focus) drop the glass; the app, Fedi and iOS keep it.
+  const pixel = "Mozilla/5.0 (Linux; Android 15; Pixel 8) AppleWebKit/537.36 Chrome/141.0 Mobile Safari/537.36";
+  assert.equal(createFabShrinksWhileScrolling(pixel, false), true, "Android browser: round + while scrolling");
+  assert.equal(createFabShrinksWhileScrolling(pixel, true), false, "Android app keeps the glass");
+  assert.equal(createFabShrinksWhileScrolling(`${pixel} Fedi/1.0`, false), false, "Fedi keeps the glass");
+  assert.equal(createFabShrinksWhileScrolling("Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)", false), false, "iPhone keeps the glass");
+  assert.match(css, /\.chama-create-fab-compact\.chama-create-fab-scrolling \.chama-create-fab\{width:56px;[^}]*border-radius:28px;[^}]*backdrop-filter:none/, "compact Create is a solid round + with no blur");
+  assert.match(css, /\.chama-create-fab-compact\.chama-create-fab-scrolling \.chama-create-fab-label\{display:none\}/, "its label hides while scrolling");
   // No fade between glass and solid: the switch is instant both ways.
   assert.doesNotMatch(css, /\.chama-create-fab\{[^}]*transition/, "no transition on the Create button");
   assert.doesNotMatch(css, /\.chama-create-fab-scrolling \.chama-create-fab\{[^}]*transition/);

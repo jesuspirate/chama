@@ -124,6 +124,27 @@ export function trackScrollActivity(
   };
 }
 
+/** Jet (Oct 16): Brave and Firefox Focus on Android drop the frosted glass,
+ *  while the Android app, Fedi and iOS Safari show it. In Android browsers
+ *  Create therefore shrinks to a solid round "+" while the page moves, which
+ *  reads the same with or without blur. */
+export function createFabShrinksWhileScrolling(
+  ua = typeof navigator !== "undefined" ? navigator.userAgent : "",
+  inApp = isAndroidAppShell(),
+): boolean {
+  return isAndroidUserAgent(ua) && !inApp && !/\bFedi\b/i.test(ua);
+}
+
+function isAndroidAppShell(): boolean {
+  const g = globalThis as { Capacitor?: { isNativePlatform?: () => boolean }; fediInternal?: unknown };
+  if (g.fediInternal) return true;
+  try {
+    return typeof g.Capacitor?.isNativePlatform === "function" ? g.Capacitor.isNativePlatform() : false;
+  } catch {
+    return false;
+  }
+}
+
 export function CreateButton({ onCreate }: { onCreate: () => void }) {
   const { t } = useT();
   // Every phone-sized screen floats Create at the bottom right (Jet, 6.4.25:
@@ -134,6 +155,7 @@ export function CreateButton({ onCreate }: { onCreate: () => void }) {
   // solid again the instant the finger is up and the page is still. Touching
   // the button itself does not count: pressing Create must not dim it.
   const [scrolling, setScrolling] = useState(false);
+  const [shrinks] = useState(() => createFabShrinksWhileScrolling());
   useEffect(() => {
     if (typeof window === "undefined") return;
     const activity = trackScrollActivity(setScrolling);
@@ -158,10 +180,10 @@ export function CreateButton({ onCreate }: { onCreate: () => void }) {
     };
   }, []);
   return (
-    <div className={`chama-create-fab-wrap${scrolling ? " chama-create-fab-scrolling" : ""}`}>
+    <div className={`chama-create-fab-wrap${shrinks ? " chama-create-fab-compact" : ""}${scrolling ? " chama-create-fab-scrolling" : ""}`}>
       <button type="button" className="chama-create-fab" onClick={onCreate}
         data-coach="fab-create" aria-label={t("browse.createTrade")}>
-        <PlusGlyph size={22} />{t("browse.navCreate")}
+        <PlusGlyph size={22} /><span className="chama-create-fab-label">{t("browse.navCreate")}</span>
       </button>
     </div>
   );
@@ -189,6 +211,8 @@ export function navCss(): string {
      3px blur, so cards and text show through, blurred; a thin outline keeps
      the button's edge and the label is ink with a soft halo. */
   .chama-create-fab-scrolling .chama-create-fab{background:${T.bg}26;-webkit-backdrop-filter:blur(3px) saturate(180%);backdrop-filter:blur(3px) saturate(180%);color:${T.ink};box-shadow:0 0 0 1px ${T.ink}40,0 6px 16px rgba(0,0,0,0.22);text-shadow:0 0 4px ${T.bg},0 0 8px ${T.bg}}
+  .chama-create-fab-compact.chama-create-fab-scrolling .chama-create-fab{width:56px;padding:0;justify-content:center;border-radius:28px;background:${T.ink};color:${T.onInk};-webkit-backdrop-filter:none;backdrop-filter:none;box-shadow:0 6px 16px rgba(0,0,0,0.22);text-shadow:none}
+  .chama-create-fab-compact.chama-create-fab-scrolling .chama-create-fab-label{display:none}
   @media (prefers-reduced-transparency: reduce){.chama-create-fab-scrolling .chama-create-fab{background:${T.ink};color:${T.onInk};-webkit-backdrop-filter:none;backdrop-filter:none;box-shadow:0 6px 16px rgba(0,0,0,0.22);text-shadow:none}}
   /* The Android extended FAB floats above the bottom nav; page footers keep
      clear of it so it never covers their links or step dots. */
