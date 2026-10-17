@@ -349,7 +349,7 @@ export function FundWalletModal({ onClose, onCreateInvoice, onPayInvoice, onSpen
             <button disabled={busy} onClick={handleRedeemEcash} style={{
               width: "100%", padding: "12px 16px", borderRadius: T.rs,
               background: busy ? T.surface : T.amber, border: `1px solid ${T.amber}`,
-              color: busy ? T.muted : "#000", fontFamily: T.mono, fontSize: 12, fontWeight: 800,
+              color: busy ? T.muted : T.onInk, fontFamily: T.mono, fontSize: 12, fontWeight: 800,
               cursor: busy ? "not-allowed" : "pointer",
             }}>{busy ? t("fund.redeeming") : t("fund.redeemEcashNotes")}</button>
           </>)}
@@ -427,7 +427,7 @@ export function FundWalletModal({ onClose, onCreateInvoice, onPayInvoice, onSpen
               style={{ ...inputStyle, marginBottom: 12 }}
             />
             <div style={{ display: "flex", gap: 8 }}>
-              <button disabled={busy} onClick={handleSpendAmount} style={{ flex: 1, padding: "12px 8px", borderRadius: T.rs, background: busy ? T.surface : T.amber, border: `1px solid ${T.amber}`, color: busy ? T.muted : "#000", fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700, cursor: busy ? "not-allowed" : "pointer" }}>{busy ? t("fund.creating") : t("fund.createEcash")}</button>
+              <button disabled={busy} onClick={handleSpendAmount} style={{ flex: 1, padding: "12px 8px", borderRadius: T.rs, background: busy ? T.surface : T.amber, border: `1px solid ${T.amber}`, color: busy ? T.muted : T.onInk, fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700, cursor: busy ? "not-allowed" : "pointer" }}>{busy ? t("fund.creating") : t("fund.createEcash")}</button>
               <button disabled={busy} onClick={handleSpendAll} style={{ flex: 1, padding: "12px 8px", borderRadius: T.rs, background: busy ? T.surface : T.red, border: `1px solid ${T.red}`, color: busy ? T.muted : "#fff", fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700, cursor: busy ? "not-allowed" : "pointer" }}>{t("fund.sendAllBefore")}<BitcoinAmount sats={Math.floor(balanceMsats / 1000)} size={T.fs.secondary} gap={3} glyphScale={1.18} color="inherit" glyphColor="inherit" />{t("fund.sendAllAfter")}</button>
             </div>
           </>)}

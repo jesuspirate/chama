@@ -5047,6 +5047,11 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
             initialized: true,
             joined: true,
             federationId,
+            // Jet (6.4.26-rc.7): without this the name stayed the wallet
+            // switched away from, and "Withdraw as ecash" said the note only
+            // works on Bitcoin Life while it was minted on another federation.
+            federationName: federationNameForInvite(trimmed)
+              ?? (persistCustom ? "External route" : BP_FEDERATION_NAME),
             balanceMsats,
             busy: false,
             error: null,

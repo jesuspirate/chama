@@ -191,6 +191,8 @@ export const app: Record<string, string> = {
   "app.startingOrder": "Iniciando tu pedido…",
   "app.strandedClaimBody":
     "⚠ Esta nota ES los sats de tu intercambio liquidado. Chama no pudo canjearla automáticamente — impórtala a Fedi o a cualquier billetera Fedimint de esta federación, o guárdala en un lugar seguro AHORA. Borrar los datos del navegador destruye la única copia.",
+  "app.strandedClaimBodyApp":
+    "⚠ Esta nota ES los sats de tu intercambio liquidado. Chama no pudo canjearla automáticamente — impórtala a Fedi o a cualquier billetera Fedimint de esta federación, o guárdala en un lugar seguro AHORA. Borrar el almacenamiento de la app Chama destruye la única copia.",
   "app.strandedClaimHeadline": "Reclamo varado · nota al portador",
   "app.strandedClaimUnresolvedBody":
     "⚠ Esta nota se reportó como ya canjeada, pero Chama no pudo confirmar que TU billetera fuera acreditada. Guárdala de todos modos y luego revisa tu saldo — si los sats no están ahí, esta cadena es tu evidencia y tu vía de recuperación.",

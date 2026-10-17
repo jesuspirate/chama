@@ -314,7 +314,7 @@ export const claim: Record<string, string> = {
   "claim.toDestination": "à {destination}",
   "claim.holdToSend": "Maintenez pour envoyer {amount} sats",
   "claim.cameraNeedsHttps": "La caméra nécessite HTTPS. Ouvrez l’aperçu sécurisé ou collez la destination.",
-  "claim.cameraUnavailable": "La caméra est indisponible dans ce navigateur. Collez la destination.",
+  "claim.cameraUnavailable": "La caméra est indisponible ici. Collez la destination.",
   "claim.browserCannotClaim": "Cette page ne peut pas encore réclamer",
   "claim.browserNeedsHttps": "Cette page nécessite HTTPS pour réclamer. Ouvrez Chama à une adresse HTTPS sécurisée et réessayez. Voter à nouveau ne résoudra pas cette limite du navigateur.",
   "claim.pasteDestination": "Collez une destination Lightning",

@@ -17,6 +17,7 @@ export const chat: Record<string, string> = {
   "chat.createMyAccount": "Crear mi cuenta",
   "chat.createNewAccount": "Crear cuenta nueva",
   "chat.creating": "Creando...",
+  "chat.chooseFederation": "Elige una federación",
   "chat.curated": "Curada",
   "chat.destroyOverrideAfter":
     " para forzarlo. Esto destruye permanentemente el saldo retenido bajo esta ruta.",
@@ -70,7 +71,7 @@ export const chat: Record<string, string> = {
   "chat.switchKeepWarning":
     "El monedero que usas ahora se queda en este dispositivo con sus sats y vuelve cuando regreses. Tu semilla y tu historial de intercambios no cambian.",
   "chat.switchWipeWarning":
-    "Esto borra el archivo OPFS de tu Chama local y se une de nuevo al otro. Cualquier ecash en el Chama actual quedará varado hasta que regreses. Tu semilla respaldada en Nostr y tu historial de intercambios sobreviven.",
+    "Esto borra tu billetera de prueba y se une a la nueva ruta. Los sats de práctica que queden en ella se pierden. Tu cuenta y tu historial de intercambios no se ven afectados.",
   "chat.typeMessagePlaceholder": "Escribe un mensaje...",
   "chat.useExistingAccount": "Usar una cuenta existente",
   "chat.you": "Tú",

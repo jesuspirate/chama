@@ -8,6 +8,7 @@ import { T, inputStyle } from "../theme.js";
 import { useT } from "../../i18n/index.js";
 import { isSimModeOn } from "../../sim/simMode.js";
 import { isListedFederationInvite } from "../decisions.js";
+import { SheetSelect } from "../components/SheetSelect.js";
 
 // Renders inside Sandbox mode (Settings → Advanced) when the user is
 // already joined to a federation. Lets the user pick a different
@@ -30,6 +31,10 @@ export function SwitchFederationPanel({
   const [confirming, setConfirming] = useState<{ name: string; invite: string } | null>(null);
 
   const selectedPreset = presets.find((p) => p.inviteCode === selectedInvite) || presets[0];
+  // The route already open: switching to it would only re-run the switch.
+  const isCurrentFederation = (federationId: string | undefined) =>
+    !!federationId && !!fedimint.federationId
+    && federationId.trim().toLowerCase() === fedimint.federationId.trim().toLowerCase();
   const customTrimmed = customInvite.trim();
   const customValid = customTrimmed.startsWith("fed1");
 
@@ -76,25 +81,20 @@ export function SwitchFederationPanel({
       </div>
 
       <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-        <select
+        <SheetSelect
           value={selectedInvite}
-          onChange={(e) => setSelectedInvite(e.target.value)}
+          onChange={setSelectedInvite}
           disabled={busy}
+          title={t("chat.chooseFederation")}
+          options={presets.filter((p) => p.source === "curated").map((p) => ({ value: p.inviteCode, label: p.name }))}
           style={{
-            flex: 1, padding: "8px 10px", borderRadius: T.rs,
+            flex: 1, minWidth: 0, padding: "8px 10px", borderRadius: T.rs,
             background: T.surface, border: `1px solid ${T.border}`,
             color: T.text, fontFamily: T.mono, fontSize: 11,
-            cursor: busy ? "not-allowed" : "pointer",
           }}
-        >
-          <optgroup label={t("chat.curated")}>
-            {presets.filter((p) => p.source === "curated").map((p) => (
-              <option key={p.inviteCode} value={p.inviteCode}>{p.name}</option>
-            ))}
-          </optgroup>
-        </select>
+        />
         <button
-          disabled={busy || !selectedPreset || selectedPreset.inviteCode === fedimint.federationId}
+          disabled={busy || !selectedPreset || isCurrentFederation(selectedPreset.federationId)}
           onClick={requestPresetSwitch}
           style={{
             padding: "8px 14px", borderRadius: T.rs,

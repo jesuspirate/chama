@@ -223,7 +223,11 @@ export const me: Record<string, string> = {
   "me.bgPushHint": "Niamshe kwa hatua za biashara hata Chama ikiwa imefungwa kabisa",
   "me.bgPushInstall": "Ongeza Chama kwenye skrini yako ya nyumbani kwanza kupata arifa kwenye iPhone",
   "me.bgPushUnsupported": "Kivinjari hiki hakiwezi kuleta arifa Chama ikiwa imefungwa",
+  "me.bgPushUnsupportedApp":
+    "Programu hii haiwezi kuleta arifa Chama ikiwa imefungwa kwenye kifaa hiki",
   "me.bgPushBlocked": "Ruhusu arifa kwenye kivinjari chako kuwasha hii",
+  "me.bgPushBlockedApp":
+    "Ruhusu arifa za Chama kwenye mipangilio ya kifaa chako kuwasha hii",
   "me.off": "Imezimwa",
   "me.on": "Imewashwa",
   "me.openCount": "{count} wazi",
@@ -296,6 +300,8 @@ export const me: Record<string, string> = {
   "me.stepInCountdown": "unaweza kuingia {countdown}",
   "me.strandedClaimBody":
     "kutoka biashara iliyokamilika hazikuweza kutua kwenye pochi yako kiotomatiki. Noti ya mkononi — pesa yenyewe — imehifadhiwa kwenye kivinjari hiki tu. Gusa kuihamisha sasa, kabla kufuta data au kubadilisha mashirikisho hakujaharibu nakala pekee.",
+  "me.strandedClaimBodyApp":
+    "kutoka biashara iliyokamilika hazikuweza kutua kwenye pochi yako kiotomatiki. Noti ya mkononi — pesa yenyewe — imehifadhiwa kwenye programu hii tu, kwenye kifaa hiki. Gusa kuihamisha sasa, kabla kufuta hifadhi ya programu au kubadilisha mashirikisho hakujaharibu nakala pekee.",
   "me.strandedClaimTitle": "Dai limekwama — hatua inahitajika",
   "me.switch": "Badilisha",
   "me.switchAction": "badilisha",
@@ -318,6 +324,10 @@ export const me: Record<string, string> = {
   "me.waitingForYourLock": "inasubiri kufuli yako",
   "me.withdrawEcash": "Toa kama ecash · bila ada za LN",
   "me.withdrawEcashBackupHint": "Kufuta data ya kivinjari kunafuta fedha ambazo hujazihamisha.",
+  "me.withdrawEcashBackupHintApp":
+    "Pochi yako imehifadhiwa kwenye programu hii, kwenye kifaa hiki. Kuondoa Chama au kufuta hifadhi yake kunaweza kufuta fedha ambazo hujazihamisha.",
+  "me.withdrawEcashBackupHintNode":
+    "Pochi yako imehifadhiwa kwenye nodi ya Chama uliyounganishwa nayo, si kwenye kivinjari hiki. Anayeendesha nodi hiyo ndiye anayeshikilia sats zake.",
   "me.you": "Wewe",
   "me.yourChama": "Chama chako",
   "me.tradeName": "Jina la wasifu",

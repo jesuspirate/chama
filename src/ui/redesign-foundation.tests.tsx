@@ -309,3 +309,20 @@ console.log("PASS toasts: wallet-bridge errors read as plain sentences, diagnost
   assert.equal(filled("returning"), false, "Log in is the outlined button");
 }
 console.log("PASS first screen: Log in on top, Sign up below (filled), in en, fr, es and sw");
+
+// Filled buttons: text on an accent or amber fill is onInk, never a literal
+// black that vanishes on the light theme's ink fill (rc.4 Pixel test).
+{
+  const { execFileSync } = await import("node:child_process");
+  const files = execFileSync("git", ["ls-files", "src/ui"], { encoding: "utf8" }).split("\n")
+    .filter(f => /\.tsx?$/.test(f) && !f.includes(".tests."));
+  const offenders = files.filter(f => /\?\s*"#000"|:\s*"#000",/.test(readFileSync(f, "utf8").replace(/background: "#000"/g, "")));
+  assert.deepEqual(offenders, ["src/ui/QRScanner.tsx"], "only the camera viewfinder may hardcode black text");
+  for (const mode of ["light", "dark"] as const) {
+    applyThemeMode(mode);
+    assert.ok(contrast(T.onInk, T.accent) >= 4.5, `${mode}: onInk on an accent fill is readable`);
+    assert.ok(contrast(T.onInk, T.amber) >= 4.5, `${mode}: onInk on an amber fill is readable`);
+  }
+  applyThemeMode("dark");
+}
+console.log("PASS filled buttons keep readable text in light and dark");

@@ -13,6 +13,7 @@ export const recovery: Record<string, string> = {
   "recovery.activeTradeOne": "1 trade",
   "recovery.barChooseChama": "Choose your Chama",
   "recovery.barExternalRoute": "External route",
+  "recovery.barUnlistedNamed": "{name} · unlisted",
   "recovery.barInTradeAfter": "locked",
   "recovery.barInTradeBefore": "{trades} ·",
   "recovery.barReady": "Ready",
@@ -68,7 +69,7 @@ export const recovery: Record<string, string> = {
   "recovery.headlineLeftoverSats": "You have leftover sats from earlier trades",
   "recovery.headlineTradeWith": "Your trade with {name} didn't finish cleanly",
   "recovery.keepUsingFooter":
-    "You can keep using Chama. Recovering just clears unexplained sats out of OPFS.",
+    "You can keep using Chama. Recovering just moves unexplained sats out of your Chama wallet.",
   "recovery.lockFooter":
     "Recovery is automatic and fee-free — nothing is sent over Lightning.",
   "recovery.lockIntentAfter": "puts your sats in escrow.",
