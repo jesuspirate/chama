@@ -31,3 +31,16 @@ const theme = readFileSync(new URL("./theme.ts", import.meta.url), "utf8");
 assert.match(theme, /ink: "#F2F1EC"[^\n]*onInk: "#0B0B0F"/, "dark: ink is light, onInk is dark");
 assert.match(theme, /ink: "#15141B"[^\n]*onInk: "#FFFFFF"/, "light: ink is dark, onInk is white");
 console.log(`PASS accent contrast: ${files.length} UI files, no black or white text on the accent colour`);
+
+{
+  // Jet (Oct 17): Manual fund is the most-used tool in Advanced, so it comes
+  // first, above the wallet balance. Its gate is unchanged: power-user mode,
+  // a dev build or sim mode.
+  const adv = readFileSync(new URL("./screens/SettingsAdvanced.tsx", import.meta.url), "utf8");
+  const ret = adv.indexOf("  return (");
+  const fund = adv.indexOf("⚡ Open manual fund", ret);
+  assert.ok(fund > ret && fund < adv.indexOf("LOCAL WALLET BALANCE", ret), "manual fund is the first card");
+  assert.match(adv, /\{onSandboxFund && \(powerUserOn \|\| isDev \|\| simOn\) && \(/, "still gated");
+  assert.equal(adv.split("⚡ Open manual fund").length - 1, 1, "shown once");
+  console.log("PASS Advanced: manual fund first, same gate");
+}
