@@ -6,6 +6,8 @@ import {
 } from "../../fedimint/federation-config.js";
 import { T, inputStyle } from "../theme.js";
 import { useT } from "../../i18n/index.js";
+import { isSimModeOn } from "../../sim/simMode.js";
+import { isListedFederationInvite } from "../decisions.js";
 
 // Renders inside Sandbox mode (Settings → Advanced) when the user is
 // already joined to a federation. Lets the user pick a different
@@ -157,8 +159,13 @@ export function SwitchFederationPanel({
               <strong>{confirming.name}</strong>{t("chat.switchFromAfter")}
             </div>
             <div style={{ fontSize: 11, color: T.muted, fontFamily: T.mono, lineHeight: 1.5, marginBottom: 16 }}>
-              {t("chat.switchWipeWarning")}
+              {t(isSimModeOn() ? "chat.switchWipeWarning" : "chat.switchKeepWarning")}
             </div>
+            {!isListedFederationInvite(confirming.invite) && (
+              <div data-federation-warning="unlisted" style={{ fontSize: 13, color: T.amber, fontFamily: T.sans, lineHeight: 1.55, marginBottom: 16 }}>
+                {t("app.unlistedFedBody")}
+              </div>
+            )}
 
             {err && (
               <div style={{
