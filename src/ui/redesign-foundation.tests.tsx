@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { renderToStaticMarkup } from "react-dom/server";
 import { T, STATUS, ON_ATTN, applyThemeMode, typeScaleCss } from "./theme.js";
 import { holdReducer, HOLD_TO_CONFIRM_MS, ASSISTIVE_CONFIRM_WINDOW_MS, type HoldState } from "./components/Button.js";
-import { BottomNav, CreateButton, navCss, trackScrollActivity, SCROLL_STILL_FALLBACK_MS } from "./components/BottomNav.js";
+import { BottomNav, CreateButton, createFabShrinksWhileScrolling, navCss, trackScrollActivity, SCROLL_STILL_FALLBACK_MS } from "./components/BottomNav.js";
 import { Badge } from "./components/Badge.js";
 import { ChamaBar } from "./panels/ChamaBar.js";
 import { StatusBarScrim } from "./components/StatusBarScrim.js";
@@ -121,8 +121,17 @@ console.log("PASS hold to confirm: hold confirms once, early lift cancels, taps 
   for (const ua of ["Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)", "Mozilla/5.0 (Linux; Android 15; Pixel 8)", "Mozilla/5.0 (Macintosh)"]) {
     Object.defineProperty(globalThis, "navigator", { configurable: true, value: { userAgent: ua } });
     const fab = renderToStaticMarkup(<LangProvider><CreateButton onCreate={() => {}} /></LangProvider>);
-    assert.match(fab, /class="chama-create-fab-wrap"[\s\S]*class="chama-create-fab"[\s\S]*>Create</, `${ua}: floating "+ Create"`);
+    assert.match(fab, /class="chama-create-fab-wrap[^"]*"[\s\S]*class="chama-create-fab"[\s\S]*>Create</, `${ua}: floating "+ Create"`);
+    assert.equal(fab.includes("chama-create-fab-compact"), /Android/.test(ua), `${ua}: only an Android browser shrinks Create while scrolling`);
   }
+  // Android browsers (Brave, Focus) drop the glass; the app, Fedi and iOS keep it.
+  const pixel = "Mozilla/5.0 (Linux; Android 15; Pixel 8) AppleWebKit/537.36 Chrome/141.0 Mobile Safari/537.36";
+  assert.equal(createFabShrinksWhileScrolling(pixel, false), true, "Android browser: round + while scrolling");
+  assert.equal(createFabShrinksWhileScrolling(pixel, true), false, "Android app keeps the glass");
+  assert.equal(createFabShrinksWhileScrolling(`${pixel} Fedi/1.0`, false), false, "Fedi keeps the glass");
+  assert.equal(createFabShrinksWhileScrolling("Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)", false), false, "iPhone keeps the glass");
+  assert.match(css, /\.chama-create-fab-compact\.chama-create-fab-scrolling \.chama-create-fab\{width:56px;[^}]*border-radius:28px;[^}]*backdrop-filter:none/, "compact Create is a solid round + with no blur");
+  assert.match(css, /\.chama-create-fab-compact\.chama-create-fab-scrolling \.chama-create-fab-label\{display:none\}/, "its label hides while scrolling");
   // No fade between glass and solid: the switch is instant both ways.
   assert.doesNotMatch(css, /\.chama-create-fab\{[^}]*transition/, "no transition on the Create button");
   assert.doesNotMatch(css, /\.chama-create-fab-scrolling \.chama-create-fab\{[^}]*transition/);
@@ -146,8 +155,8 @@ console.log("PASS hold to confirm: hold confirms once, early lift cancels, taps 
 }
 console.log("PASS nav: Home/Browse/Circles/Me + Create, one active tab, unique coach targets, sidebar ≥1024px, floating Create on every phone");
 {
-  // Create button glass (Jet, 6.4.25): on the moment a finger touches the
-  // page, held while it moves, solid the instant it is still. No idle delay.
+  // Create button glass (Jet, 6.4.25; Oct 16): on the moment the page moves,
+  // never for a touch alone, solid the instant it is still. No idle delay.
   const pending = new Map<number, () => void>();
   let nextId = 1;
   const timers = {
@@ -160,10 +169,14 @@ console.log("PASS nav: Home/Browse/Circles/Me + Create, one active tab, unique c
   const seen: boolean[] = [];
   const a = trackScrollActivity((on) => seen.push(on), true, timers);
   a.onPress();
-  assert.deepEqual(seen, [true], "glass the moment the finger touches the page, before any scroll");
+  assert.equal(seen.length, 0, "a touch alone changes nothing");
   a.onRelease();
-  assert.deepEqual(seen, [true, false], "a touch with no movement is solid again the instant the finger lifts");
-  a.onPress(); a.onScroll(); a.onScroll();
+  assert.equal(seen.length, 0, "a touch with no movement never turns it to glass");
+  a.onPress(); a.onScroll();
+  assert.deepEqual(seen, [true], "glass the moment the finger moves the page");
+  a.onScroll();
+  // Keep the indices below as they were when a touch alone flipped it twice.
+  seen.unshift(true, false);
   a.onRelease();
   assert.deepEqual(seen, [true, false, true], "a fling keeps the glass after the finger lifts, while the page still moves");
   a.onScrollEnd();
@@ -187,7 +200,7 @@ console.log("PASS nav: Home/Browse/Circles/Me + Create, one active tab, unique c
   fireAll();
   assert.deepEqual(safari, [true, false], "solid once the page is still");
   b.onPress(); b.onRelease();
-  assert.deepEqual(safari, [true, false, true, false], "a still tap is instant on Safari too");
+  assert.deepEqual(safari, [true, false], "a still tap changes nothing on Safari either");
   b.onScroll(); b.dispose();
   assert.equal(pending.size, 0, "unmount clears the timer");
 }
