@@ -702,7 +702,7 @@ function NwcManager({
           borderRadius: T.rs,
           background: inputReady ? T.accent : T.surface,
           border: `1px solid ${inputReady ? T.accent : T.border}`,
-          color: inputReady ? "#000" : T.muted,
+          color: inputReady ? T.onInk : T.muted,
           fontFamily: T.sans,
           fontSize: T.fs.secondary,
           fontWeight: 700,
@@ -877,7 +877,7 @@ function RemoteBridgeCard() {
                 flex: 1, padding: "10px 12px", borderRadius: 8,
                 border: `1px solid ${T.border}`,
                 background: urlInput.trim() ? T.accent : T.card,
-                color: urlInput.trim() ? "#fff" : T.muted,
+                color: urlInput.trim() ? T.onInk : T.muted,
                 fontFamily: T.sans, fontSize: 13, fontWeight: 700,
                 cursor: urlInput.trim() ? "pointer" : "default",
               }}
