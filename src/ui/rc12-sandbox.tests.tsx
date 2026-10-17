@@ -88,6 +88,10 @@ console.log("PASS sandbox follow-up: trade room and toasts reserve the real bann
   const styles = readFileSync(new URL("../../android/app/src/main/res/values/styles.xml", import.meta.url), "utf8");
   const appThemes = styles.slice(styles.indexOf('<style name="AppTheme"'), styles.indexOf('<style name="AppTheme.NoActionBarLaunch"'));
   assert.doesNotMatch(appThemes, /<item name="android:background">/, "no theme-level background on the app themes");
+  // rc.5: the activity never leaves its launch theme, so a splash background
+  // there drew the logo behind the federation picker and Copy/Paste bar.
+  assert.doesNotMatch(styles, /<item name="android:background">/, "no theme-level background on any theme, launch included");
+  assert.match(styles, /<item name="android:windowBackground">@drawable\/chama_splash<\/item>/, "the launch splash stays on the window");
   assert.equal((appThemes.match(/<item name="android:windowBackground">#05050A<\/item>/g) ?? []).length, 2, "the window stays dark");
   const layout = readFileSync(new URL("../../android/app/src/main/res/layout/activity_main.xml", import.meta.url), "utf8");
   assert.match(layout, /android:background="#05050A"/, "the screen itself stays dark");
