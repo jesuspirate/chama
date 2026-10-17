@@ -67,6 +67,8 @@ export const chat: Record<string, string> = {
   "chat.switching": "Cambiando…",
   "chat.switchRoute": "Cambiar ruta",
   "chat.switchRouteBtn": "Cambiar ruta",
+  "chat.switchKeepWarning":
+    "El monedero que usas ahora se queda en este dispositivo con sus sats y vuelve cuando regreses. Tu semilla y tu historial de intercambios no cambian.",
   "chat.switchWipeWarning":
     "Esto borra el archivo OPFS de tu Chama local y se une de nuevo al otro. Cualquier ecash en el Chama actual quedará varado hasta que regreses. Tu semilla respaldada en Nostr y tu historial de intercambios sobreviven.",
   "chat.typeMessagePlaceholder": "Escribe un mensaje...",

@@ -66,6 +66,8 @@ export const chat: Record<string, string> = {
   "chat.switching": "Inabadilisha…",
   "chat.switchRoute": "Badilisha njia",
   "chat.switchRouteBtn": "Badilisha njia",
+  "chat.switchKeepWarning":
+    "Pochi uliyo nayo sasa inabaki kwenye kifaa hiki pamoja na sats zake, na inarudi utakaporudi. Mbegu yako na historia ya biashara haziathiriwi.",
   "chat.switchWipeWarning":
     "Hii inafuta faili la OPFS la Chama chako cha ndani na kujiunga upya na kipya. Ecash yoyote kwenye Chama cha sasa itakwama hadi urudi. Mbegu yako iliyohifadhiwa kwenye Nostr na historia ya biashara zinabaki salama.",
   "chat.typeMessagePlaceholder": "Andika ujumbe...",
