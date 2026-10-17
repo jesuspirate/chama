@@ -18,6 +18,8 @@ export const connect: Record<string, string> = {
   "connect.introNeverHolds": "Chama never holds your money.",
   "connect.introTitle": "Trade bitcoin with your community",
   "connect.lastChamaHere": "Last Chama used in this browser",
+  "connect.lastChamaHereApp":
+    "Last Chama used on this device",
   "connect.moreOptions": "▼ More sign-in options",
   "connect.pendingReportSignIn":
     "Sign in to put yourself on the map. The moment you connect, we'll tell the Chama arbiters that {chama} wants in.",

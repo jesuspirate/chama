@@ -189,6 +189,8 @@ export const app: Record<string, string> = {
   "app.startingOrder": "Inaanzisha oda yako…",
   "app.strandedClaimBody":
     "⚠ Noti hii NDIYO sats za biashara yako iliyokamilika. Chama haikuweza kuikomboa kiotomatiki — iingize kwenye Fedi au pochi yoyote ya Fedimint kwenye shirikisho hili, au ihifadhi mahali salama SASA. Kufuta data ya kivinjari kunaharibu nakala pekee.",
+  "app.strandedClaimBodyApp":
+    "⚠ Noti hii NDIYO sats za biashara yako iliyokamilika. Chama haikuweza kuikomboa kiotomatiki — iingize kwenye Fedi au pochi yoyote ya Fedimint kwenye shirikisho hili, au ihifadhi mahali salama SASA. Kufuta hifadhi ya programu ya Chama kunaharibu nakala pekee.",
   "app.strandedClaimHeadline": "Dai lililokwama · noti ya mkononi",
   "app.strandedClaimUnresolvedBody":
     "⚠ Noti hii iliripotiwa tayari imekombolewa, lakini Chama haikuweza kuthibitisha pochi YAKO iliwekewa salio. Ihifadhi hata hivyo, kisha angalia salio lako — kama sats hazipo, msururu huu ndio ushahidi na njia yako ya urejeshaji.",

@@ -277,6 +277,7 @@ import {
 } from "./sign-in-environment.js";
 import { cacheNostrProfileNames, readNostrProfileCache, writeKind0Toggle, readKind0Toggle, readLocalTradeName, writeLocalTradeName, type NostrProfileNameMap } from "./nostr-profiles.js";
 import { isWorkListing } from "./work-resume.js";
+import { walletHome } from "./wallet-location.js";
 import {
   readAmountDisplayMode,
   writeAmountDisplayMode,
@@ -3835,7 +3836,7 @@ export default function App() {
             headline: t("app.strandedClaimHeadline"),
             body: strandedClaimExport.stranded === "unresolved-credit"
               ? t("app.strandedClaimUnresolvedBody")
-              : t("app.strandedClaimBody"),
+              : t(walletHome() === "app" ? "app.strandedClaimBodyApp" : "app.strandedClaimBody"),
             onConfirmCleared: () => {
               clearPendingRedemption(strandedClaimExport.escrowId);
               setStrandedClaimExport(null);

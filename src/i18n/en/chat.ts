@@ -73,7 +73,7 @@ export const chat: Record<string, string> = {
   "chat.switchKeepWarning":
     "The wallet you're on now stays on this device with its sats and comes back when you switch back. Your seed and trade history are not affected.",
   "chat.switchWipeWarning":
-    "This wipes your local Chama's OPFS file and re-joins the new one. Any ecash on the current Chama will be stranded until you switch back. Your Nostr-backed seed and trade history survive.",
+    "This wipes your sandbox wallet and joins the new route. Practice sats left in it are lost. Your account and trade history are not affected.",
   "chat.typeMessagePlaceholder": "Type a message...",
   "chat.useExistingAccount": "Use an existing account",
   "chat.you": "You",

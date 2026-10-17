@@ -226,7 +226,11 @@ export const me: Record<string, string> = {
   "me.bgPushHint": "Avísame de acciones de operaciones incluso con Chama totalmente cerrada",
   "me.bgPushInstall": "Añade Chama a tu pantalla de inicio primero para recibir alertas en iPhone",
   "me.bgPushUnsupported": "Este navegador no puede entregar alertas con Chama cerrada",
+  "me.bgPushUnsupportedApp":
+    "Esta app no puede entregar alertas con Chama cerrada en este dispositivo",
   "me.bgPushBlocked": "Permite las notificaciones en tu navegador para activar esto",
+  "me.bgPushBlockedApp":
+    "Permite las notificaciones de Chama en los ajustes del dispositivo para activar esto",
   "me.notifications": "Notificaciones",
   "me.notificationsHint": "Bloqueado · reclamo listo · disputas · liquidado",
   "me.off": "Desactivado",
@@ -301,6 +305,8 @@ export const me: Record<string, string> = {
   "me.stepInCountdown": "puedes intervenir {countdown}",
   "me.strandedClaimBody":
     "de un intercambio liquidado no pudo llegar a tu billetera automáticamente. La nota al portador — el dinero mismo — está guardada solo en este navegador. Toca para exportarla ahora, antes de que borrar datos o cambiar de federación destruya la única copia.",
+  "me.strandedClaimBodyApp":
+    "de un intercambio liquidado no pudo llegar a tu billetera automáticamente. La nota al portador — el dinero mismo — está guardada solo en esta app, en este dispositivo. Toca para exportarla ahora, antes de que borrar el almacenamiento de la app o cambiar de federación destruya la única copia.",
   "me.strandedClaimTitle": "Reclamo varado — se necesita acción",
   "me.switch": "Cambiar",
   "me.switchAction": "cambiar",
@@ -323,6 +329,10 @@ export const me: Record<string, string> = {
   "me.waitingForYourLock": "esperando tu bloqueo",
   "me.withdrawEcash": "Retirar como ecash · sin comisiones LN",
   "me.withdrawEcashBackupHint": "Borrar los datos del navegador elimina los fondos que no hayas exportado.",
+  "me.withdrawEcashBackupHintApp":
+    "Tu billetera se guarda en esta app, en este dispositivo. Desinstalar Chama o borrar su almacenamiento puede eliminar los fondos que no hayas exportado.",
+  "me.withdrawEcashBackupHintNode":
+    "Tu billetera se guarda en el nodo Chama al que estás conectado, no en este navegador. Quien opera ese nodo tiene sus sats.",
   "me.you": "Tú",
   "me.yourChama": "Tu Chama",
   "me.tradeName": "Nombre de perfil",

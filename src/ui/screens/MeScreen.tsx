@@ -1,5 +1,6 @@
 import { EcashCustody } from "../components/MoneyCustody.js";
 import { isSimModeOn } from "../../sim/simMode.js";
+import { walletHome, isNativeAppShell } from "../wallet-location.js";
 import { SettingsRow } from "../components/SettingsRow.js";
 import { RecoveryKeyRow, RecoveryKeyReminder } from "../components/RecoveryKey.js";
 import { listPaidLockRecoveries, acknowledgePaidLockRecoveries } from "../../payments/paid-lock-recovery.js";
@@ -668,7 +669,7 @@ export function MeScreen({
           </div>
           <div style={{ fontSize: 13, color: T.text, fontFamily: T.sans, lineHeight: 1.5 }}>
             <BitcoinAmount sats={Math.floor(entry.amountMsats / 1000)} size={13} gap={4} glyphScale={1.18} color={T.text} glyphColor={T.muted} />
-            {" "}{t("me.strandedClaimBody")}
+            {" "}{t(walletHome() === "app" ? "me.strandedClaimBodyApp" : "me.strandedClaimBody")}
           </div>
           {/* The honest alternative to exporting a note nobody has tested:
               ask the federation by taking it. Either the sats land in the
@@ -870,7 +871,7 @@ export function MeScreen({
               marginTop: 6, fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans,
               lineHeight: 1.5, textAlign: "center",
             }}>
-              {t("me.withdrawEcashBackupHint")}
+              {t(withdrawEcashHintKey())}
             </div>
           )}
         </div>
@@ -1056,7 +1057,7 @@ export function MeScreen({
           <ParkedWallets pubkey={pubkey} activeInvite={walletInvite} />
           <RecoveryKeyRow key={pubkey} pubkey={pubkey} loadKey={loadActiveRecoveryKey} />
           {onWithdrawEcash && (
-            <SettingsRow label={t("me.withdrawEcash")} hint={t("me.withdrawEcashBackupHint")} onClick={onWithdrawEcash} />
+            <SettingsRow label={t("me.withdrawEcash")} hint={t(withdrawEcashHintKey())} onClick={onWithdrawEcash} />
           )}
           <SettingsRow label={t("me.paymentMethods")} hint={t("me.paymentMethodsHint")} onClick={onOpenSavedHandles} />
           <SettingsRow label={t("me.lightningAddresses")} hint={t("me.lightningAddressesHint")} onClick={onOpenPayoutDestinations} />
@@ -3077,6 +3078,16 @@ function NotificationsRow() {
   );
 }
 
+/** Where the wallet behind "Withdraw as ecash" lives decides what can erase
+ *  it: browser data in a browser, the app's storage in the Android or
+ *  desktop app, nothing here at all on a Chama node. */
+function withdrawEcashHintKey(): string {
+  const home = walletHome();
+  return home === "app" ? "me.withdrawEcashBackupHintApp"
+    : home === "node" ? "me.withdrawEcashBackupHintNode"
+    : "me.withdrawEcashBackupHint";
+}
+
 function BackgroundPushRow() {
   const [testState, setTestState] = useState<"idle" | "waiting" | "received" | "failed">("idle");
   const { t } = useT();
@@ -3117,8 +3128,8 @@ function BackgroundPushRow() {
   const hint =
     nativeStatus?.lane === "unavailable" ? t("me.bgPushNativeSetup")
     : needsInstall ? t("me.bgPushInstall")
-    : !supported ? t("me.bgPushUnsupported")
-    : blocked ? t("me.bgPushBlocked")
+    : !supported ? t(isNativeAppShell() ? "me.bgPushUnsupportedApp" : "me.bgPushUnsupported")
+    : blocked ? t(nativeStatus || isNativeAppShell() ? "me.bgPushBlockedApp" : "me.bgPushBlocked")
     : nativeStatus?.lane === "fcm" ? t("me.bgPushFcm")
     : nativeStatus?.lane === "unifiedpush" ? t("me.bgPushUnified")
     : t("me.bgPushHint");

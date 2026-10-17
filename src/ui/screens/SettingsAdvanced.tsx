@@ -40,6 +40,7 @@ import {
   setNativeBridgeConfig,
 } from "../../fedimint/native-bridge-adapter.js";
 import { readBrowserWalletRecoveryJournal } from "../../fedimint/browser-wallet-recovery-journal.js";
+import { walletHome } from "../wallet-location.js";
 
 // Settings → Advanced — the home of Power-user mode (formerly
 // "Sandbox mode" through v0.4.1) and the federation-switching tools
@@ -119,6 +120,9 @@ export function SettingsAdvanced({
   // switcher and OPFS reset stay behind power-user — those are
   // dangerous in real life and pointless in sim.
   const simOn = isSimModeOn();
+  // Where the wallet lives decides what Reset deletes and which probes mean
+  // anything: OPFS exists only for a browser wallet.
+  const home = walletHome();
   const balanceMsats = Math.max(0, Math.floor(fedimint.balanceMsats ?? 0));
   const wholeSats = Math.floor(balanceMsats / 1000);
   const recoverableSats = maxLightningPayoutSats(balanceMsats);
@@ -257,7 +261,7 @@ export function SettingsAdvanced({
         )}
       </div>
 
-      {browserRecoveryJournal && (
+      {home === "browser" && browserRecoveryJournal && (
         <div style={{
           background: T.card,
           border: `1px solid ${browserRecoveryJournal.stage === "completed" ? T.green : T.amber}`,
@@ -398,7 +402,7 @@ export function SettingsAdvanced({
             </div>
             <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, marginTop: 4, lineHeight: 1.5 }}>
               Reveals power-user surfaces: route switching, external invite
-              paste, OPFS reset. Off by default.
+              paste, local wallet reset. Off by default.
               {isDev && (
                 <span style={{ color: T.amber, display: "block", marginTop: 4 }}>
                   Auto-on in dev builds.
@@ -466,9 +470,9 @@ export function SettingsAdvanced({
               RESET LOCAL CHAMA
             </div>
             <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, lineHeight: 1.5, marginBottom: 12 }}>
-              Wipes the device-local OPFS Fedimint client. Your Nostr trade
-              history survives, but the local wallet does not. The fund-loss
-              guard refuses if a balance is present — withdraw first.
+              {resetLocalChamaCopy(home, simOn)} Your Nostr trade history
+              survives. The fund-loss guard refuses if a balance is present
+              or can't be read — withdraw first.
             </div>
             <button
               onClick={() => {
@@ -514,7 +518,10 @@ export function SettingsAdvanced({
         <TestSubstitutionGraceCard />
       )}
 
-      {(powerUserOn || isDev) && (
+      {/* The probe asks whether the browser WASM wallet can run in Fedi's
+          webview. In the Android or desktop app, or on a Chama node, the
+          wallet is the Rust bridge, so there is nothing for it to answer. */}
+      {(powerUserOn || isDev) && home === "browser" && (
         <FediWeblnProbeCard />
       )}
 
@@ -538,6 +545,21 @@ export function SettingsAdvanced({
       )}
     </div>
   );
+}
+
+/** What "Reset local Chama" deletes, per wallet home. Every branch was read
+ *  off resetLocalFedimintWallet: the sandbox clears its practice wallet, a
+ *  browser deletes its OPFS file, and the native bridge deletes its client
+ *  database for the open federation (POST /reset → reset_local_state). */
+export function resetLocalChamaCopy(home: "browser" | "app" | "node", simOn: boolean): string {
+  if (simOn) return "Deletes the sandbox's practice wallets on this device.";
+  if (home === "app") {
+    return "Deletes this app's Fedimint wallet database for the open federation, on this device. Ecash in it is lost; Chama keeps no other copy.";
+  }
+  if (home === "node") {
+    return "Deletes the Fedimint wallet database for the open federation on the Chama node you're connected to. Ecash in it is lost for every device using that node.";
+  }
+  return "Deletes this browser's Fedimint wallet file (OPFS) for the open federation. Ecash in it is lost.";
 }
 
 function BalanceMetric({
@@ -843,7 +865,7 @@ function RemoteBridgeCard() {
         <div style={{ marginTop: 12 }}>
           <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, lineHeight: 1.6, marginBottom: 10 }}>
             Your wallet keys live on that node — connect only to a node run by a
-            person you personally trust, and use it from ONE browser only.
+            person you personally trust, and use it from ONE device only.
             Sats pass through during trades and settle out; Chama holds nothing
             between trades.
           </div>
