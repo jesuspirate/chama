@@ -24,6 +24,9 @@ import {
   CURATED_PRESETS,
 } from "../../fedimint/federation-config.js";
 import { getCommunityBySlug, type Community } from "../../communities/registry.js";
+import { knownFederationIdForInvite } from "../../fedimint/federation-parking.js";
+import { useFederationInfo } from "../components/FederationDisclosure.js";
+import { publishedFederationName } from "../../fedimint/federation-inspection.js";
 import type { ChamaBarLabel } from "../decisions.js";
 import type React from "react";
 import { T, ON_ATTN } from "../theme.js";
@@ -39,6 +42,7 @@ export function ChamaBar({
   onInit,
   showReconnect,
   communitySlug,
+  activeInvite,
 }: {
   fedimint: FedimintState;
   /** Pre-computed by the shell via decideChamaBarLabel. The bar is a
@@ -67,24 +71,40 @@ export function ChamaBar({
    *  routes read like the user's chosen Chama, not the lower-level
    *  fallback federation. */
   communitySlug?: string | null;
+  /** The invite the open wallet was joined with. For a federation Chama
+   *  doesn't list, the bar reads the name that federation publishes. */
+  activeInvite?: string | null;
 }) {
   const { t } = useT();
   let displayName: string;
   const community = communitySlug ? getCommunityBySlug(communitySlug) : null;
+  const liveFed = fedimint.federationId?.trim().toLowerCase() || null;
+  // Jet (6.4.26-rc.6): an unlisted federation opened while Bitcoin Life was
+  // the home community was labelled Bitcoin Life. The community's label is
+  // only true when the open wallet is that community's federation.
+  const communityIsLive = !!community && !!liveFed
+    && knownFederationIdForInvite(community.federationInvite) === liveFed;
+  const matched = liveFed
+    ? CURATED_PRESETS.find((p) => p.federationId?.toLowerCase() === liveFed)
+    : null;
+  const unlisted = fedimint.joined && !!liveFed && !communityIsLive && !matched;
+  const { info } = useFederationInfo(unlisted ? activeInvite?.trim() ?? "" : "");
+  const published = publishedFederationName(info);
   if (!fedimint.joined) {
     displayName = community
       ? communityChamaBarLabel(community)
       : fedimint.busy ? t("common.connecting") : t("recovery.barChooseChama");
   } else {
-    const matched = fedimint.federationId
-      ? CURATED_PRESETS.find((p) => p.federationId === fedimint.federationId)
-      : null;
-    if (community) {
-      displayName = communityChamaBarLabel(community);
+    if (communityIsLive) {
+      displayName = communityChamaBarLabel(community!);
     } else if (matched) {
       displayName = matched.name;
-    } else if (fedimint.federationId) {
-      displayName = t("recovery.barExternalRoute");
+    } else if (liveFed) {
+      // The federation names itself; "unlisted" keeps a copycat name from
+      // passing for a listed federation.
+      displayName = published
+        ? t("recovery.barUnlistedNamed", { name: published })
+        : t("recovery.barExternalRoute");
     } else {
       displayName = fedimint.federationName;
     }

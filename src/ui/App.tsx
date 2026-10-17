@@ -3560,6 +3560,7 @@ export default function App() {
           <ChamaBar
             fedimint={fedimint}
             communitySlug={routeCommunitySlug}
+            activeInvite={liveActiveInvite}
             chamaLabel={chamaBarLabel}
             onTapStranded={() => unseenPaidLockMsats > 0 ? (setMeRequestTab("sats"), setView("me")) : setPendingRecovery({
               title: t("app.recoverSatsTitle"),

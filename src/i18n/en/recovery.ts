@@ -13,6 +13,7 @@ export const recovery: Record<string, string> = {
   "recovery.activeTradeOne": "1 trade",
   "recovery.barChooseChama": "Choose your Chama",
   "recovery.barExternalRoute": "External route",
+  "recovery.barUnlistedNamed": "{name} · unlisted",
   "recovery.barInTradeAfter": "locked",
   "recovery.barInTradeBefore": "{trades} ·",
   "recovery.barReady": "Ready",

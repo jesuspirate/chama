@@ -119,6 +119,8 @@ import { readKind0Toggle, writeKind0Toggle, readLocalTradeName, writeLocalTradeN
 import { backgroundPushEnabled, enableBackgroundPush, disableBackgroundPush } from "../../notifications/watch-tags.js";
 import { isWebPushSupported, iosNeedsInstallForPush } from "../../notifications/web-push-client.js";
 import { expectedFederationIdForInvite, federationNameForInvite } from "../../fedimint/federation-config.js";
+import { publishedFederationName } from "../../fedimint/federation-inspection.js";
+import { useFederationInfo } from "../components/FederationDisclosure.js";
 import { listArbiterFederationRoutes } from "../../fedimint/arbiter-federation-store.js";
 
 
@@ -3552,15 +3554,26 @@ export function ParkedWallets({ pubkey, activeInvite }: { pubkey: string | null 
       <div style={{ fontSize: T.fs.secondary, color: T.ink2, marginBottom: 6 }}>{t("me.parkedWalletsTitle")}</div>
       {parked.map((route) => (
         <div key={route.federationId} style={{ fontSize: T.fs.body, lineHeight: 1.45, marginBottom: 4 }}>
-          {t("me.parkedWalletLine", {
-            sats: Math.floor((route.lastBalanceMsats ?? 0) / 1000).toLocaleString(),
-            name: federationNameForInvite(route.inviteCode) ?? t("me.parkedWalletUnlisted"),
-          })}
+          <ParkedWalletLine sats={Math.floor((route.lastBalanceMsats ?? 0) / 1000)} invite={route.inviteCode} />
         </div>
       ))}
       <div style={{ fontSize: T.fs.secondary, color: T.ink2, lineHeight: 1.4, marginTop: 4 }}>{t("me.parkedWalletsHint")}</div>
     </div>
   );
+}
+
+/** Jet (6.4.26-rc.6): a kept wallet on an unlisted federation is named by
+ *  the name that federation publishes, marked unlisted, so each balance
+ *  says whose it is. */
+function ParkedWalletLine({ sats, invite }: { sats: number; invite: string }) {
+  const { t } = useT();
+  const listed = federationNameForInvite(invite);
+  const { info } = useFederationInfo(listed ? "" : invite.trim());
+  const published = publishedFederationName(info);
+  return <>{t("me.parkedWalletLine", {
+    sats: sats.toLocaleString(),
+    name: listed ?? (published ? t("recovery.barUnlistedNamed", { name: published }) : t("me.parkedWalletUnlisted")),
+  })}</>;
 }
 
 /** v7 redesign: a labelled settings group (canvas "Me": Money / Community / App). */

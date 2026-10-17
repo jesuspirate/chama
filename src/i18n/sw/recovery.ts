@@ -9,6 +9,7 @@ export const recovery: Record<string, string> = {
   "recovery.activeTradeOne": "Biashara 1",
   "recovery.barChooseChama": "Chagua Chama chako",
   "recovery.barExternalRoute": "Njia ya nje",
+  "recovery.barUnlistedNamed": "{name} · haijaorodheshwa",
   "recovery.barInTradeAfter": "zimefungwa",
   "recovery.barInTradeBefore": "{trades} ·",
   "recovery.barReady": "Tayari",
