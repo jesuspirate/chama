@@ -16,6 +16,7 @@ export const chat: Record<string, string> = {
   "chat.createMyAccount": "Unda akaunti yangu",
   "chat.createNewAccount": "Unda akaunti mpya",
   "chat.creating": "Inaunda...",
+  "chat.chooseFederation": "Chagua shirikisho",
   "chat.curated": "Zilizoteuliwa",
   "chat.destroyOverrideAfter":
     " kulazimisha. Hii inaharibu kabisa salio lililoshikiliwa chini ya njia hii.",

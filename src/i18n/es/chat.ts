@@ -17,6 +17,7 @@ export const chat: Record<string, string> = {
   "chat.createMyAccount": "Crear mi cuenta",
   "chat.createNewAccount": "Crear cuenta nueva",
   "chat.creating": "Creando...",
+  "chat.chooseFederation": "Elige una federación",
   "chat.curated": "Curada",
   "chat.destroyOverrideAfter":
     " para forzarlo. Esto destruye permanentemente el saldo retenido bajo esta ruta.",

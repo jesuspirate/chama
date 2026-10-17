@@ -20,6 +20,7 @@ export const chat: Record<string, string> = {
   "chat.createMyAccount": "Create my account",
   "chat.createNewAccount": "Create new account",
   "chat.creating": "Creating...",
+  "chat.chooseFederation": "Choose a federation",
   "chat.curated": "Curated",
   "chat.destroyOverrideAfter":
     " to override. This permanently destroys the balance held under this route.",
