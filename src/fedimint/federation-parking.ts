@@ -76,9 +76,22 @@ export function parkedInviteFor(pubkey: string | null, federationId: string, act
   const fed = federationId.trim().toLowerCase();
   const active = activeInvite?.trim();
   const remembered = pubkey ? getArbiterFederationRoute(pubkey, fed)?.inviteCode : undefined;
-  if (active?.startsWith("fed1") && (knownFederationIdForInvite(active) === fed || remembered === active)) return active;
+  if (active?.startsWith("fed1") && knownFederationIdForInvite(active) === fed
+    && inviteToRemember(remembered, active) === active) return active;
   if (remembered) return remembered;
   return CURATED_PRESETS.find((preset) => preset.federationId?.toLowerCase() === fed)?.inviteCode ?? null;
+}
+
+/** The invite a federation's route keeps when another is offered for it.
+ *  An unlisted invite only claims its federation id (anyone can write one
+ *  that points at other guardians), so it never replaces the invite a route
+ *  already reopens its wallet with; a listed invite, or a route with none
+ *  yet, takes the offered one. The caller has already matched the ids. */
+export function inviteToRemember(existing: string | null | undefined, offered: string): string {
+  const current = existing?.trim();
+  const next = offered.trim();
+  if (!current || current === next || expectedFederationIdForInvite(next)) return next;
+  return current;
 }
 
 /** A remembered route found by the invite it joined with, so an unlisted
@@ -169,7 +182,10 @@ export function routeAfterJoin(inputs: {
     : inputs.openScope;
   if (!storageScope) return null;
   if (!inputs.native && scopeHoldsParkedWallet(inputs.pubkey, storageScope, fed)) return null;
-  return { federationId: fed, inviteCode: invite, storageScope };
+  // A reopened wallet's join never reached the guardians with this invite,
+  // so it proves nothing about it: the route keeps the invite it has.
+  const inviteCode = inputs.reopenedWallet ? inviteToRemember(existing?.inviteCode, invite) : invite;
+  return { federationId: fed, inviteCode, storageScope };
 }
 
 /** Whether the open wallet is on a different federation from the one wanted.

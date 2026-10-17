@@ -430,6 +430,7 @@ import { isSimModeOn } from "../sim/simMode.js";
 import {
   federationIdForInvite,
   federationIdForRememberedInvite,
+  inviteToRemember,
   knownFederationIdForInvite,
   parkedInviteFor,
   planBrowserDrift,
@@ -4229,7 +4230,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
           updateFedimint({ initialized: false, joined: false, federationId: null, balanceMsats: 0 });
         }
         const err = new Error(
-          "Chama couldn't reach that federation to check it, so it didn't switch. Nothing was changed.",
+          "Chama couldn't check which federation that invite belongs to, so it didn't open a wallet for it. Nothing was changed.",
         ) as Error & { code?: string };
         err.code = "RECONCILE_REFUSED_FEDERATION_UNREADABLE";
         throw err;
@@ -5021,7 +5022,8 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       const targetRoute = getArbiterFederationRoute(activePubkey, targetFederationId);
       rememberArbiterFederationRoute(activePubkey, {
         federationId: targetFederationId,
-        inviteCode: trimmed,
+        // An unlisted invite never replaces the one the wallet reopens with.
+        inviteCode: inviteToRemember(targetRoute?.inviteCode, trimmed),
         storageScope: targetRoute?.storageScope ?? scopeForFederation(activePubkey, targetFederationId),
       });
 
