@@ -202,7 +202,7 @@ export function SwitchFederationPanel({
                   flex: 1, padding: "10px 14px", borderRadius: T.rs,
                   background: refusalCode === "balance" ? T.red : T.accent,
                   border: "none",
-                  color: refusalCode === "balance" ? "#fff" : "#000",
+                  color: refusalCode === "balance" ? "#fff" : T.onInk,
                   fontFamily: T.mono, fontSize: 12, fontWeight: 700,
                   cursor: busy ? "not-allowed" : "pointer",
                 }}

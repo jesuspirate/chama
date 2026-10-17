@@ -177,6 +177,46 @@ export function SettingsAdvanced({
         <span style={{ width: 50 }} />
       </div>
 
+      {/* First on the screen (Jet, Oct 17: the most-used tool here).
+          v0.3.0 Phase 5 / v0.4.2 sim mode: Manual fund — the only
+          remaining entry point to FundWalletModal in production. Gated
+          behind Power-user mode OR Sim mode. The label IS the warning
+          (per Phase 5 reminder #2): users see "Production trades use
+          atomic funding via listing-tap" and understand at a glance
+          that this is a testing surface, not the normal funding path.
+          In sim mode this is the natural starter step: fund the sim
+          wallet from 0, then trade. */}
+      {onSandboxFund && (powerUserOn || isDev || simOn) && (
+        <div style={{
+          background: T.card, border: `1px solid ${simOn ? T.red : T.border}`,
+          borderRadius: T.r, padding: 16, marginBottom: 16,
+        }}>
+          <div style={{
+            fontSize: T.fs.secondary, fontWeight: 600, color: T.muted, fontFamily: T.sans, marginBottom: 8,
+          }}>
+            {simOn ? "FUND SIM WALLET" : "MANUAL FUND (POWER USER)"}
+          </div>
+          <div style={{ fontSize: 11, color: T.muted, fontFamily: T.mono, lineHeight: 1.5, marginBottom: 12 }}>
+            {simOn
+              ? "Generate a sim Lightning invoice. It auto-settles after a few seconds — no real wallet needed."
+              : "Generate an arbitrary-amount Lightning invoice for testing. Production trades use atomic funding via listing-tap."}
+          </div>
+          <button
+            onClick={onSandboxFund}
+            style={{
+              background: "none",
+              border: `1px solid ${T.border}`,
+              color: T.muted,
+              fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
+              padding: "8px 12px", borderRadius: T.rs,
+              cursor: "pointer",
+            }}
+          >
+            ⚡ Open manual fund
+          </button>
+        </div>
+      )}
+
       <div style={{
         background: T.card, border: `1px solid ${T.border}`,
         borderRadius: T.r, padding: 16, marginBottom: 16,
@@ -460,44 +500,6 @@ export function SettingsAdvanced({
         </>
       )}
 
-      {/* v0.3.0 Phase 5 / v0.4.2 sim mode: Manual fund — the only
-          remaining entry point to FundWalletModal in production. Gated
-          behind Power-user mode OR Sim mode. The label IS the warning
-          (per Phase 5 reminder #2): users see "Production trades use
-          atomic funding via listing-tap" and understand at a glance
-          that this is a testing surface, not the normal funding path.
-          In sim mode this is the natural starter step: fund the sim
-          wallet from 0, then trade. */}
-      {onSandboxFund && (powerUserOn || isDev || simOn) && (
-        <div style={{
-          background: T.card, border: `1px solid ${simOn ? T.red : T.border}`,
-          borderRadius: T.r, padding: 16, marginBottom: 16,
-        }}>
-          <div style={{
-            fontSize: T.fs.secondary, fontWeight: 600, color: T.muted, fontFamily: T.sans, marginBottom: 8,
-          }}>
-            {simOn ? "FUND SIM WALLET" : "MANUAL FUND (POWER USER)"}
-          </div>
-          <div style={{ fontSize: 11, color: T.muted, fontFamily: T.mono, lineHeight: 1.5, marginBottom: 12 }}>
-            {simOn
-              ? "Generate a sim Lightning invoice. It auto-settles after a few seconds — no real wallet needed."
-              : "Generate an arbitrary-amount Lightning invoice for testing. Production trades use atomic funding via listing-tap."}
-          </div>
-          <button
-            onClick={onSandboxFund}
-            style={{
-              background: "none",
-              border: `1px solid ${T.border}`,
-              color: T.muted,
-              fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
-              padding: "8px 12px", borderRadius: T.rs,
-              cursor: "pointer",
-            }}
-          >
-            ⚡ Open manual fund
-          </button>
-        </div>
-      )}
 
       {/* Arbiter-substitution live testing: per-device override of the CREATE
           expiry. Consensus-safe — the value is committed wire data in the
@@ -702,7 +704,7 @@ function NwcManager({
           borderRadius: T.rs,
           background: inputReady ? T.accent : T.surface,
           border: `1px solid ${inputReady ? T.accent : T.border}`,
-          color: inputReady ? "#000" : T.muted,
+          color: inputReady ? T.onInk : T.muted,
           fontFamily: T.sans,
           fontSize: T.fs.secondary,
           fontWeight: 700,
@@ -877,7 +879,7 @@ function RemoteBridgeCard() {
                 flex: 1, padding: "10px 12px", borderRadius: 8,
                 border: `1px solid ${T.border}`,
                 background: urlInput.trim() ? T.accent : T.card,
-                color: urlInput.trim() ? "#fff" : T.muted,
+                color: urlInput.trim() ? T.onInk : T.muted,
                 fontFamily: T.sans, fontSize: 13, fontWeight: 700,
                 cursor: urlInput.trim() ? "pointer" : "default",
               }}
