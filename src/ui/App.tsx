@@ -3779,6 +3779,7 @@ export default function App() {
             ?? getCommunityBySlug(routeCommunitySlug)?.displayName
             ?? t("app.yourFederation")
           }
+          invite={liveActiveInvite ?? undefined}
           // Use the hardened export spend (long auto-refund horizon). Its OOB
           // payload stays compact: invite-bearing notes repeatedly parsed in
           // Fedi but then failed to claim for real users.

@@ -39,4 +39,16 @@ for(const joined of [true,false]) {
  assert.equal(publishedFederationName({ ...info, config: {} }), null);
  assert.equal(publishedFederationName(null), null);
 }
+// Jet (6.4.26-rc.7): the withdraw sheet said the note works on Bitcoin Life while the open wallet was another federation.
+{
+ const { EcashExportModal } = await import('./panels/EcashExportModal.js');
+ const { BP_FEDERATION_INVITE, BP_FEDERATION_NAME } = await import('../fedimint/federation-invites.js');
+ const sheet = (invite?: string) => renderToStaticMarkup(<LangProvider><EcashExportModal balanceMsats={121000} federationLabel="Bitcoin Life Federation" invite={invite} spendNotes={async()=>''} onClose={()=>{}}/></LangProvider>);
+ const onBp = sheet(BP_FEDERATION_INVITE);
+ assert.ok(onBp.includes(BP_FEDERATION_NAME) && !onBp.includes('Bitcoin Life'), 'the sheet names the open wallet federation');
+ const { readFileSync } = await import('node:fs');
+ const hook = readFileSync(new URL('../hooks/useEscrow.ts', import.meta.url), 'utf8');
+ const preserved = hook.slice(hook.indexOf('switchFederationPreserving(trimmed)'), hook.indexOf('switchFederationPreserving(trimmed)') + 900);
+ assert.match(preserved, /federationName: federationNameForInvite\(trimmed\)/, 'a preserved switch renames the open wallet');
+}
 console.log('PASS bar priority: unreachable > needs-you > stranded > in-trade > syncing > ready; vector loader and attention without federation membership');

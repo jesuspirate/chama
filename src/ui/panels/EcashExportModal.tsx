@@ -16,6 +16,9 @@ import { PaymentCard, PaymentButton } from "../components/PaymentCard.js";
 // two-tap, since it makes Chama forget the only copy it holds.
 
 import { useMemo, useState } from "react";
+import { federationNameForInvite } from "../../fedimint/federation-config.js";
+import { publishedFederationName } from "../../fedimint/federation-inspection.js";
+import { useFederationInfo } from "../components/FederationDisclosure.js";
 import { T } from "../theme.js";
 import { useT } from "../../i18n/index.js";
 import { BitcoinAmount } from "../components/BitcoinAmount.js";
@@ -33,7 +36,8 @@ type Phase = "intro" | "generating" | "ready" | "error";
 
 export function EcashExportModal({
   balanceMsats,
-  federationLabel,
+  federationLabel: fallbackLabel,
+  invite,
   spendNotes,
   recoverUnstashed,
   onExported,
@@ -46,6 +50,9 @@ export function EcashExportModal({
   balanceMsats: number;
   /** Human label for the federation the note will be bound to (e.g. "BLF"). */
   federationLabel: string;
+  /** Invite of the open wallet the note is minted on. When given, the label
+   *  is that federation's own name (an unlisted one marked so). */
+  invite?: string;
   /** Bound to actions.spendNotes — spends the amount into an OOB note string. */
   spendNotes: (amountMsats: number) => Promise<string>;
   /** Reabsorb a freshly-created note if the post-spend durable stash write
@@ -76,6 +83,13 @@ export function EcashExportModal({
   };
 }) {
   const { t } = useT();
+  // Jet (6.4.26-rc.7): the note only works on the federation it is minted
+  // on, so the label names the open wallet's federation, not a stale one.
+  const listedName = federationNameForInvite(invite);
+  const { info } = useFederationInfo(invite && !listedName ? invite.trim() : "");
+  const publishedName = publishedFederationName(info);
+  const federationLabel = listedName
+    ?? (publishedName ? t("recovery.barUnlistedNamed", { name: publishedName }) : fallbackLabel);
   // Resume a prior unconfirmed export if one is stashed (the balance may now
   // read 0, so this modal is the only way back to it).
   const rawStashed = preset ? null : getEcashExport();
