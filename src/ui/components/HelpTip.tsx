@@ -95,7 +95,7 @@ export function HelpTip({ title, children, label }: {
       style={{ width: 44, height: 44, flexShrink: 0, background: "none", border: "none", boxShadow: "none", padding: 12, margin: -12, borderRadius: T.rs, cursor: "pointer", display: "inline-grid", placeItems: "center", lineHeight: 0 }}>
       <span aria-hidden="true" style={{ width: 20, height: 20, boxSizing: "border-box", borderRadius: 999,
         background: open ? T.accent : T.surface, border: `1px solid ${open ? T.accent : T.border}`,
-        color: open ? "#fff" : T.muted, fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
+        color: open ? T.onInk : T.muted, fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
         display: "grid", placeItems: "center", lineHeight: 1 }}>?</span>
     </button>
     {open && createPortal(<>
