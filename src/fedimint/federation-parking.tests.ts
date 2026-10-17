@@ -17,10 +17,14 @@ const { BLF_FEDERATION_INVITE, BLF_FEDERATION_ID, GBF_FEDERATION_INVITE, GBF_FED
 const { arbiterFederationStorageScope, getArbiterFederationRoute, listArbiterFederationRoutes, rememberArbiterFederationRoute } =
   await import("./arbiter-federation-store.js");
 const {
-  federationIdForInvite, federationIdForRememberedInvite, parkedInviteFor, planBrowserDrift, rememberRouteOrThrow,
+  federationIdForInvite, federationIdForRememberedInvite, federationIdFromInvite, knownFederationIdForInvite,
+  parkedInviteFor, planBrowserDrift, planBrowserWalletScope, rememberRouteOrThrow, routeAfterJoin,
   scopeForFederation, scopeHoldsParkedWallet, walletDrifted,
 } = await import("./federation-parking.js");
-const { acceptUnlistedFederation, hasAcceptedUnlistedFederation } = await import("./unlisted-federation-consent.js");
+const { acceptUnlistedFederation, createSessionUnlistedConsent, hasAcceptedUnlistedFederation } =
+  await import("./unlisted-federation-consent.js");
+const invites = await import("./federation-invites.js");
+const { bech32m } = await import("@scure/base");
 const { decideDestroyConfirmRoute, decideListingTapEffect, isListedFederationInvite } = await import("../ui/decisions.js");
 
 const ALICE = "a".repeat(64);
@@ -178,6 +182,104 @@ assert.equal(await federationIdForInvite(UNLISTED, null, async () => ({ federati
     storageScope: `${CAROL}:arbiter-fed:${GBF_FEDERATION_ID}` }), (e: any) => e.code === "FEDERATION_ROUTE_NOT_SAVED");
   storageBroken = false;
   assert.equal(getArbiterFederationRoute(CAROL, GBF_FEDERATION_ID), null);
+}
+
+// ── Third-review findings: an unverified invite never lands on another
+// federation's wallet, every join records its route, consent is per identity
+{
+  // A real-shaped invite: one API part, then the federation id part.
+  const makeInvite = (...ids: string[]) => {
+    const url = new TextEncoder().encode("wss://guardian.example/");
+    const api = [url.length, ...url, 0];
+    const bytes = [1 + ids.length, 0, api.length, ...api];
+    for (const id of ids) bytes.push(1, 32, ...(id.match(/../g) ?? []).map((h) => parseInt(h, 16)));
+    return bech32m.encode("fed1", bech32m.toWords(Uint8Array.from(bytes)), 10_000);
+  };
+
+  // Every listed invite decodes locally to the id Chama ships for it.
+  for (const [name, value] of Object.entries(invites)) {
+    if (!name.endsWith("_FEDERATION_INVITE") || typeof value !== "string") continue;
+    const shipped = (invites as Record<string, unknown>)[name.replace(/_INVITE$/, "_ID")];
+    if (typeof shipped === "string") assert.equal(federationIdFromInvite(value), shipped.toLowerCase(), name);
+    else assert.match(federationIdFromInvite(value) ?? "", /^[0-9a-f]{64}$/, `${name} decodes`);
+  }
+  const U = "1".repeat(64);
+  const W = "2".repeat(64);
+  const UINV = makeInvite(U);
+  assert.equal(federationIdFromInvite(UINV), U, "an unlisted invite names its federation without a network read");
+  assert.equal(federationIdFromInvite(` ${UINV} `), U);
+  assert.equal(federationIdFromInvite(makeInvite(U, W)), null, "two different ids: trust neither");
+  assert.equal(federationIdFromInvite(makeInvite()), null, "no id part");
+  assert.equal(federationIdFromInvite(UNLISTED), null, "a malformed invite is not guessed at");
+  assert.equal(federationIdFromInvite(UINV.slice(0, -1) + (UINV.endsWith("q") ? "p" : "q")), null, "a bad checksum is refused");
+  assert.equal(federationIdFromInvite(bech32m.encode("lnurl", bech32m.toWords(new Uint8Array([0])))), null);
+  assert.equal(knownFederationIdForInvite(BLF_FEDERATION_INVITE), BLF_FEDERATION_ID.toLowerCase());
+  let asked = 0;
+  assert.equal(await federationIdForInvite(UINV, { inspectFederation: async () => { asked++; throw new Error("offline"); } }), U);
+  assert.equal(asked, 0, "guardians offline do not matter for a decodable invite");
+
+  // Finding 1: DAVE's first file is BLF's wallet. An invite whose federation
+  // can't be identified is refused; it never opens BLF's file as its own.
+  const DAVE = "7".repeat(64);
+  rememberRouteOrThrow(DAVE, { federationId: BLF_FEDERATION_ID, inviteCode: BLF_FEDERATION_INVITE, storageScope: DAVE });
+  const blfBefore = JSON.stringify(getArbiterFederationRoute(DAVE, BLF_FEDERATION_ID));
+  assert.deepEqual(planBrowserWalletScope(DAVE, null), { kind: "refuse", reason: "target-unverified" });
+  assert.deepEqual(planBrowserWalletScope(DAVE, "nonsense"), { kind: "refuse", reason: "target-unverified" });
+  assert.deepEqual(planBrowserWalletScope(DAVE, knownFederationIdForInvite(UINV)),
+    { kind: "open", scope: `${DAVE}:arbiter-fed:${U}` }, "a decodable unlisted invite opens its own file, not BLF's");
+  assert.deepEqual(planBrowserWalletScope(DAVE, BLF_FEDERATION_ID), { kind: "open", scope: DAVE });
+  // The next switch away from BLF with the unverified invite still active
+  // must not rewrite BLF's route with that invite.
+  assert.equal(parkedInviteFor(DAVE, BLF_FEDERATION_ID, UNLISTED), BLF_FEDERATION_INVITE,
+    "an invite whose federation can't be checked is never pinned onto the open wallet");
+  assert.equal(parkedInviteFor(DAVE, BLF_FEDERATION_ID, UINV), BLF_FEDERATION_INVITE, "nor one that names another federation");
+  rememberRouteOrThrow(DAVE, { federationId: BLF_FEDERATION_ID,
+    inviteCode: parkedInviteFor(DAVE, BLF_FEDERATION_ID, UNLISTED)!, storageScope: DAVE });
+  assert.equal(JSON.stringify({ ...getArbiterFederationRoute(DAVE, BLF_FEDERATION_ID), updatedAt: 0 }),
+    JSON.stringify({ ...JSON.parse(blfBefore), updatedAt: 0 }), "BLF's route is unchanged");
+  assert.equal(federationIdForRememberedInvite(DAVE, UNLISTED), null, "the unverified invite maps to no federation");
+  assert.equal(parkedInviteFor(DAVE, U, UINV), UINV, "an invite that names this federation is used");
+  assert.equal(parkedInviteFor(BOB, UNLISTED_ID, UNLISTED), null,
+    "an unverifiable invite with no route: the wallet cannot be parked, so it is not replaced silently");
+
+  // Finding 2: a first join on a fresh file records its route.
+  const ERIN = "8".repeat(64);
+  const fresh = routeAfterJoin({ pubkey: ERIN, joinedFederationId: U.toUpperCase(), joinedInvite: ` ${UINV} `,
+    desiredFederationId: null, reopenedWallet: false, openScope: `${ERIN}:arbiter-fed:${U}`, native: false });
+  assert.deepEqual(fresh, { federationId: U, inviteCode: UINV, storageScope: `${ERIN}:arbiter-fed:${U}` },
+    "a fresh file joined with the invite proves which federation it names");
+  rememberArbiterFederationRoute(ERIN, fresh!);
+  assert.equal(listArbiterFederationRoutes(ERIN).length, 1, "the joined wallet is now listed in Me → Sats");
+  assert.equal(parkedInviteFor(ERIN, U, UINV), UINV);
+  assert.deepEqual(routeAfterJoin({ pubkey: ERIN, joinedFederationId: BLF_FEDERATION_ID, joinedInvite: BLF_FEDERATION_INVITE,
+    desiredFederationId: BLF_FEDERATION_ID, reopenedWallet: true, openScope: ERIN, native: false }),
+  { federationId: BLF_FEDERATION_ID.toLowerCase(), inviteCode: BLF_FEDERATION_INVITE, storageScope: ERIN },
+  "a reopened wallet whose invite was checked is recorded");
+  assert.equal(routeAfterJoin({ pubkey: DAVE, joinedFederationId: BLF_FEDERATION_ID, joinedInvite: UNLISTED,
+    desiredFederationId: null, reopenedWallet: true, openScope: DAVE, native: false }), null,
+  "BLF's reopened wallet is never recorded under an invite nobody checked (the old poisoning)");
+  assert.equal(routeAfterJoin({ pubkey: DAVE, joinedFederationId: BLF_FEDERATION_ID, joinedInvite: UINV,
+    desiredFederationId: U, reopenedWallet: true, openScope: DAVE, native: false }), null, "a mismatched join records nothing");
+  assert.equal(routeAfterJoin({ pubkey: DAVE, joinedFederationId: W, joinedInvite: makeInvite(W),
+    desiredFederationId: W, reopenedWallet: false, openScope: DAVE, native: false }), null,
+  "a file another federation's route claims is never given a second owner");
+  assert.equal(getArbiterFederationRoute(DAVE, BLF_FEDERATION_ID)?.inviteCode, BLF_FEDERATION_INVITE);
+  assert.equal(routeAfterJoin({ pubkey: ERIN, joinedFederationId: U, joinedInvite: UINV,
+    desiredFederationId: U, reopenedWallet: true, openScope: null, native: false }), null, "no browser file, no route");
+  assert.deepEqual(routeAfterJoin({ pubkey: ERIN, joinedFederationId: U, joinedInvite: UINV,
+    desiredFederationId: U, reopenedWallet: true, openScope: null, native: true }),
+  { federationId: U, inviteCode: UINV, storageScope: `${ERIN}:arbiter-fed:${U}` }, "native keeps the route's scope");
+
+  // Finding 3: a session yes belongs to one identity.
+  const session = createSessionUnlistedConsent();
+  session.accept(ALICE, ` ${UINV} `);
+  assert.equal(session.has(ALICE, UINV), true);
+  assert.equal(session.has(ALICE.toUpperCase(), UINV), true);
+  assert.equal(session.has(BOB, UINV), false, "a second identity on the same tab is still asked");
+  assert.equal(session.has(null, UINV), false);
+  session.accept(null, UINV);
+  session.accept(BOB, "not-an-invite");
+  assert.equal(session.has(BOB, "not-an-invite"), false);
 }
 
 console.log("PASS H4: wallets are kept per federation, and unlisted federations ask first");

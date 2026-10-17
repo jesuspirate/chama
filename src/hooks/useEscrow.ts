@@ -430,9 +430,12 @@ import { isSimModeOn } from "../sim/simMode.js";
 import {
   federationIdForInvite,
   federationIdForRememberedInvite,
+  knownFederationIdForInvite,
   parkedInviteFor,
   planBrowserDrift,
+  planBrowserWalletScope,
   rememberRouteOrThrow,
+  routeAfterJoin,
   scopeForFederation,
   scopeHoldsParkedWallet,
   walletDrifted,
@@ -4194,7 +4197,9 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       const preserveFederations = !isSimModeOn();
       const desiredFederationId = expectedFederationIdForInvite(desiredInvite)
         ?? (preserveFederations && activePubkey && !skipMnemonic
-          ? federationIdForRememberedInvite(activePubkey, desiredInvite)
+          // Every fed1 invite carries its federation id; read it locally.
+          ? knownFederationIdForInvite(desiredInvite)
+            ?? federationIdForRememberedInvite(activePubkey, desiredInvite)
             // Native shells route by federation inside the bridge; only a
             // browser wallet needs the id before it opens a file.
             ?? (isNativeBridgeModeOn() ? null : await federationIdForInvite(desiredInvite, fedimintRef.current))
@@ -4205,12 +4210,36 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       // Browser wallets reopen the OPFS file assigned to this federation.
       // Native shells select their isolated database through the bridge, so
       // storageScope remains informational there.
-      let storageScope = !skipMnemonic
-        ? (preserveFederations && activePubkey
-          ? scopeForFederation(activePubkey, desiredFederationId)
-          : rememberedArbiterRoute?.storageScope ?? activePubkey)
+      const browserScopePlan = !skipMnemonic && preserveFederations && activePubkey && !isNativeBridgeModeOn()
+        ? planBrowserWalletScope(activePubkey, desiredFederationId)
         : null;
-      const initialStorageScope = storageScope;
+      if (browserScopePlan?.kind === "refuse") {
+        // H4: without the federation's id no file can be proven to be its
+        // wallet, and the first file may be another federation's. Refuse
+        // before anything opens; the open wallet is closed (never wiped) so
+        // it is not shown under this federation's trades.
+        const existing = fedimintRef.current;
+        if (existing) {
+          assertNoMoneyFlowForFederationMove();
+          try { await existing.cleanup(); } catch {}
+          fedimintRef.current = null;
+          bridgeRef.current = null;
+          healthRef.current = { ok: null, at: null };
+          openScopeRef.current = null;
+          updateFedimint({ initialized: false, joined: false, federationId: null, balanceMsats: 0 });
+        }
+        const err = new Error(
+          "Chama couldn't reach that federation to check it, so it didn't switch. Nothing was changed.",
+        ) as Error & { code?: string };
+        err.code = "RECONCILE_REFUSED_FEDERATION_UNREADABLE";
+        throw err;
+      }
+      let storageScope = !skipMnemonic
+        ? (browserScopePlan?.scope
+          ?? (preserveFederations && activePubkey
+            ? scopeForFederation(activePubkey, desiredFederationId)
+            : rememberedArbiterRoute?.storageScope ?? activePubkey))
+        : null;
 
       // Local field-verification route for an explicitly selected affected
       // identity. It never ships in production and never enables Lightning;
@@ -4589,23 +4618,32 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
 
       // Join federation (idempotent in the SDK when already on the
       // same fed; lands cleanly on the new fed when post-wipe).
+      const reopenedWallet = fedimint.isJoined();
       const federationId = await fedimint.joinFederation(effectiveInvite);
       if (activePubkey && mnemonic) {
         markCachedSeedFederationJoined(activePubkey);
       }
 
-      // Adopt the pre-multi-federation database as the arbiter's first route.
-      // This is the migration that preserves already-earned premiums (including
-      // balances minted before this feature existed) in place.
+      // H4: every successful join records (or refreshes) the joined
+      // federation's route, so its wallet is listed and found again. This also
+      // adopts the pre-multi-federation database as the first route, which
+      // preserves balances minted before routes existed in place.
       if (preserveFederations && activePubkey && federationId) {
-        const existingRoutes = listArbiterFederationRoutes(activePubkey);
-        const movedScope = !!storageScope && storageScope !== initialStorageScope;
-        if (rememberedArbiterRoute || existingRoutes.length === 0 || movedScope) {
-          rememberArbiterFederationRoute(activePubkey, {
-            federationId,
-            inviteCode: effectiveInvite,
-            storageScope: (movedScope ? storageScope : rememberedArbiterRoute?.storageScope) ?? activePubkey,
-          });
+        const joinedRoute = routeAfterJoin({
+          pubkey: activePubkey,
+          joinedFederationId: federationId,
+          joinedInvite: effectiveInvite,
+          desiredFederationId: resolvedDesiredFederationId,
+          reopenedWallet,
+          openScope: isNativeBridgeModeOn() ? null : storageScope,
+          native: isNativeBridgeModeOn(),
+        });
+        if (joinedRoute) {
+          try {
+            rememberArbiterFederationRoute(activePubkey, joinedRoute);
+          } catch (routeErr) {
+            console.warn("[chama] couldn't record the joined federation's route:", routeErr);
+          }
         }
       }
 

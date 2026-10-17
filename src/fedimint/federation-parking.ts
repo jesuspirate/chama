@@ -5,6 +5,7 @@
 // answer the two questions that needs: which invite reopens a parked wallet,
 // and which federation an invite belongs to.
 
+import { bech32m } from "@scure/base";
 import { CURATED_PRESETS, expectedFederationIdForInvite, shouldReconcileFederation } from "./federation-config.js";
 import {
   arbiterFederationStorageScope,
@@ -14,18 +15,68 @@ import {
 } from "./arbiter-federation-store.js";
 import type { FederationInspection } from "./federation-inspection.js";
 
+/** The federation id written into an invite. Every fed1 invite carries it,
+ *  so it is read locally, without asking the federation. Null when the
+ *  invite can't be decoded (a malformed or unusually encoded invite): the
+ *  caller then reads it from the federation, or refuses. */
+export function federationIdFromInvite(invite: string | null | undefined): string | null {
+  const trimmed = invite?.trim().toLowerCase();
+  if (!trimmed?.startsWith("fed1")) return null;
+  let bytes: Uint8Array;
+  try {
+    const decoded = bech32m.decode(trimmed as `${string}1${string}`, 10_000);
+    if (decoded.prefix !== "fed1") return null;
+    bytes = bech32m.fromWords(decoded.words);
+  } catch {
+    return null;
+  }
+  // Consensus encoding: a count of parts, then per part a variant and a
+  // length-prefixed payload. Variant 1 is the 32-byte federation id. Only
+  // one-byte lengths are read; anything longer is left to the network read.
+  let at = 0;
+  const small = (): number => {
+    const value = bytes[at++];
+    if (value === undefined || value >= 0x80) throw new Error("unsupported");
+    return value;
+  };
+  try {
+    const parts = small();
+    let id: string | null = null;
+    for (let i = 0; i < parts; i++) {
+      const variant = small();
+      const length = small();
+      if (at + length > bytes.length) return null;
+      if (variant === 1) {
+        if (length !== 32) return null;
+        const hex = Array.from(bytes.subarray(at, at + 32), (b) => b.toString(16).padStart(2, "0")).join("");
+        if (id && id !== hex) return null;
+        id = hex;
+      }
+      at += length;
+    }
+    return at === bytes.length ? id : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The federation id an invite is known to name without a network read:
+ *  a listed one, else the id written into the invite. */
+export function knownFederationIdForInvite(invite: string | null | undefined): string | null {
+  return expectedFederationIdForInvite(invite)?.toLowerCase() ?? federationIdFromInvite(invite);
+}
+
 /** The invite a parked wallet is reopened with: the invite it last joined
- *  when that names this federation (or can't be checked locally), else the
- *  one its route remembers, else a curated invite for it. Null when none is
+ *  when that is known to name this federation, else the one its route
+ *  remembers, else a curated invite for it. An invite whose federation
+ *  can't be checked is never pinned onto the open wallet: that is how one
+ *  federation's wallet came to be reopened for another. Null when none is
  *  known, in which case the wallet cannot be parked. */
 export function parkedInviteFor(pubkey: string | null, federationId: string, activeInvite: string | null): string | null {
   const fed = federationId.trim().toLowerCase();
   const active = activeInvite?.trim();
-  if (active?.startsWith("fed1")) {
-    const known = expectedFederationIdForInvite(active);
-    if (known === null || known.toLowerCase() === fed) return active;
-  }
   const remembered = pubkey ? getArbiterFederationRoute(pubkey, fed)?.inviteCode : undefined;
+  if (active?.startsWith("fed1") && (knownFederationIdForInvite(active) === fed || remembered === active)) return active;
   if (remembered) return remembered;
   return CURATED_PRESETS.find((preset) => preset.federationId?.toLowerCase() === fed)?.inviteCode ?? null;
 }
@@ -37,16 +88,16 @@ export function federationIdForRememberedInvite(pubkey: string, invite: string):
   return listArbiterFederationRoutes(pubkey).find((route) => route.inviteCode === trimmed)?.federationId ?? null;
 }
 
-/** Which federation an invite belongs to. Curated invites are known locally;
- *  any other is read from the federation itself (public config only: no
- *  wallet is opened or joined). Null when it can't be read. */
+/** Which federation an invite belongs to. Known locally for a listed or
+ *  decodable invite; any other is read from the federation itself (public
+ *  config only: no wallet is opened or joined). Null when it can't be read. */
 export async function federationIdForInvite(
   invite: string,
   client: { inspectFederation(invite: string): Promise<FederationInspection> } | null,
   preview?: (invite: string) => Promise<FederationInspection>,
 ): Promise<string | null> {
-  const known = expectedFederationIdForInvite(invite);
-  if (known) return known.toLowerCase();
+  const known = knownFederationIdForInvite(invite);
+  if (known) return known;
   try {
     const inspected = client
       ? await client.inspectFederation(invite)
@@ -76,6 +127,49 @@ export function scopeForFederation(pubkey: string, federationId: string | null):
     if (legacyClaimed) return arbiterFederationStorageScope(pubkey, fed);
   }
   return pubkey;
+}
+
+/** Browser: the file to open for a wanted federation. A federation whose id
+ *  is unknown is refused rather than given the identity's first file, which
+ *  may already be another federation's wallet; nothing could then tell that
+ *  wallet apart from the one wanted (a top-up would land in the wrong one). */
+export function planBrowserWalletScope(pubkey: string, federationId: string | null):
+  | { kind: "open"; scope: string }
+  | { kind: "refuse"; reason: "target-unverified" } {
+  if (!cleanId(federationId)) return { kind: "refuse", reason: "target-unverified" };
+  return { kind: "open", scope: scopeForFederation(pubkey, federationId) };
+}
+
+/** The route to record after a successful join, or null when the join does
+ *  not prove which federation the invite names. The joined client's id is
+ *  authoritative for the file; the invite is only recorded with it when it
+ *  was checked to name that federation, a fresh file joined with it, or the
+ *  route already records it. A file another federation's route claims is
+ *  never given a second owner. */
+export function routeAfterJoin(inputs: {
+  pubkey: string;
+  joinedFederationId: string | null | undefined;
+  joinedInvite: string;
+  desiredFederationId: string | null | undefined;
+  /** The file already held a joined wallet before this join. */
+  reopenedWallet: boolean;
+  /** The browser file opened; informational (null is fine) in native mode. */
+  openScope: string | null;
+  native: boolean;
+}): { federationId: string; inviteCode: string; storageScope: string } | null {
+  const fed = cleanId(inputs.joinedFederationId);
+  const invite = inputs.joinedInvite.trim();
+  if (!fed || !invite.startsWith("fed1")) return null;
+  const desired = cleanId(inputs.desiredFederationId);
+  if (desired && desired !== fed) return null;
+  const existing = getArbiterFederationRoute(inputs.pubkey, fed);
+  if (desired !== fed && inputs.reopenedWallet && existing?.inviteCode !== invite) return null;
+  const storageScope = inputs.native
+    ? existing?.storageScope ?? inputs.openScope ?? inputs.pubkey
+    : inputs.openScope;
+  if (!storageScope) return null;
+  if (!inputs.native && scopeHoldsParkedWallet(inputs.pubkey, storageScope, fed)) return null;
+  return { federationId: fed, inviteCode: invite, storageScope };
 }
 
 /** Whether the open wallet is on a different federation from the one wanted.

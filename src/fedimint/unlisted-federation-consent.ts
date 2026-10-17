@@ -41,3 +41,22 @@ export function acceptUnlistedFederation(pubkey: string | null | undefined, invi
     return false;
   }
 }
+
+/** This session's answers, for when saving failed. Kept per identity, so a
+ *  second identity signed in on the same tab is still asked. */
+export function createSessionUnlistedConsent() {
+  const accepted = new Map<string, Set<string>>();
+  const id = (pubkey: string) => pubkey.trim().toLowerCase();
+  return {
+    has(pubkey: string | null | undefined, invite: string): boolean {
+      return !!pubkey && (accepted.get(id(pubkey))?.has(invite.trim()) ?? false);
+    },
+    accept(pubkey: string | null | undefined, invite: string): void {
+      const trimmed = invite.trim();
+      if (!pubkey || !trimmed.startsWith("fed1")) return;
+      const set = accepted.get(id(pubkey)) ?? new Set<string>();
+      set.add(trimmed);
+      accepted.set(id(pubkey), set);
+    },
+  };
+}

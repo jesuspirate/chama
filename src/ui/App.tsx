@@ -124,7 +124,7 @@ import {
   setActiveInvite,
   summarizeNativeLocksForUi,
 } from "../fedimint/index.js";
-import { acceptUnlistedFederation, hasAcceptedUnlistedFederation } from "../fedimint/unlisted-federation-consent.js";
+import { acceptUnlistedFederation, createSessionUnlistedConsent, hasAcceptedUnlistedFederation } from "../fedimint/unlisted-federation-consent.js";
 import { getPayoutRecord } from "../payments/payout-journal.js";
 import {
   browserLightningReceiveIsBlocked,
@@ -726,11 +726,11 @@ export default function App() {
   // H4: an unlisted federation the person already agreed to (saved, or agreed
   // this session when saving failed).
   const acceptsUnlistedFederation = (invite: string): boolean =>
-    unlistedAcceptedThisSession.current.has(invite.trim()) || hasAcceptedUnlistedFederation(pubkey, invite);
+    unlistedAcceptedThisSession.current.has(pubkey, invite) || hasAcceptedUnlistedFederation(pubkey, invite);
   const confirmUnlistedFederation = (invite: string): Promise<boolean> => new Promise((resolve) => {
     setPendingUnlistedFederation(previous => {
       previous?.resolve(false);
-      return { invite, resolve };
+      return { invite, pubkey, resolve };
     });
   });
   // A question asked for one identity is never answered for another.
@@ -744,11 +744,13 @@ export default function App() {
     const pending = pendingUnlistedFederation;
     if (!pending) return;
     setPendingUnlistedFederation(null);
-    if (ok) {
-      unlistedAcceptedThisSession.current.add(pending.invite.trim());
-      acceptUnlistedFederation(pubkey, pending.invite);
+    // The yes belongs to the identity that was asked, and only to it.
+    const agreed = ok && pending.pubkey === pubkey;
+    if (agreed) {
+      unlistedAcceptedThisSession.current.accept(pending.pubkey, pending.invite);
+      acceptUnlistedFederation(pending.pubkey, pending.invite);
     }
-    pending.resolve(ok);
+    pending.resolve(agreed);
   };
 
   // Ecash custody still requires the trade's federation, even when its final
@@ -1012,8 +1014,9 @@ export default function App() {
   const [pendingFedSwitch, setPendingFedSwitch] = useState<{ community: string; retry: () => Promise<void> } | null>(null);
   // H4: "do you know who runs this federation?" before moving onto one Chama
   // doesn't list. A newer question settles the older one as "no".
-  const [pendingUnlistedFederation, setPendingUnlistedFederation] = useState<{ invite: string; resolve: (ok: boolean) => void } | null>(null);
-  const unlistedAcceptedThisSession = useRef(new Set<string>());
+  const [pendingUnlistedFederation, setPendingUnlistedFederation] = useState<{ invite: string; pubkey: string | null | undefined; resolve: (ok: boolean) => void } | null>(null);
+  // Answers kept for this session when saving failed, per identity.
+  const unlistedAcceptedThisSession = useRef(createSessionUnlistedConsent());
   const [autoInitDone, setAutoInitDone] = useState(false);
   // Suppress the offline banner during initial boot/seed-paste (relays connect a
   // beat after login) — only show it once we've actually been online and dropped.
