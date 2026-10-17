@@ -242,7 +242,7 @@ export function EcashExportModal({
                 width: "100%", padding: "8px 12px", borderRadius: 999,
                 background: confirmClear ? T.amber : "transparent",
                 border: `1px solid ${confirmClear ? T.amber : T.border}`,
-                color: confirmClear ? "#000" : T.muted,
+                color: confirmClear ? T.onInk : T.muted,
                 opacity: confirmClear ? 1 : 0.58,
                 fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700, cursor: "pointer",
               }}

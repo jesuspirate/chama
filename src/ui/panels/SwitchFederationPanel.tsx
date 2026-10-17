@@ -28,6 +28,10 @@ export function SwitchFederationPanel({
   const [confirming, setConfirming] = useState<{ name: string; invite: string } | null>(null);
 
   const selectedPreset = presets.find((p) => p.inviteCode === selectedInvite) || presets[0];
+  // The route already open: switching to it would only re-run the switch.
+  const isCurrentFederation = (federationId: string | undefined) =>
+    !!federationId && !!fedimint.federationId
+    && federationId.trim().toLowerCase() === fedimint.federationId.trim().toLowerCase();
   const customTrimmed = customInvite.trim();
   const customValid = customTrimmed.startsWith("fed1");
 
@@ -92,7 +96,7 @@ export function SwitchFederationPanel({
           </optgroup>
         </select>
         <button
-          disabled={busy || !selectedPreset || selectedPreset.inviteCode === fedimint.federationId}
+          disabled={busy || !selectedPreset || isCurrentFederation(selectedPreset.federationId)}
           onClick={requestPresetSwitch}
           style={{
             padding: "8px 14px", borderRadius: T.rs,
