@@ -17,6 +17,7 @@ import { NEVER_EXPIRES } from "../escrow-engine/types.js";
 import {
   getCommunityBySlug,
   communityForInvite,
+  COMMUNITY_REGISTRY,
   DEFAULT_COMMUNITY_SLUG,
 } from "../communities/registry.js";
 import {
@@ -1595,7 +1596,10 @@ export type ListingTapEffect =
       kind: "blocked-active-commitment";
       displayName: string;
       activeCommitmentCount: number;
-    };
+    }
+  /** H4: the listing names a federation Chama doesn't list. Nothing switches
+   *  until the person says they know who runs it. */
+  | { kind: "unlisted-confirm"; targetInvite: string };
 
 export interface ListingTapInputs {
   /** The listing's CREATE-event-derived fed identity. After PR A's
@@ -1621,6 +1625,20 @@ export interface ListingTapInputs {
    *  current call site does NOT pass this, so runtime is unchanged until the
    *  wiring is reviewed). */
   activeCommitmentCountElsewhere?: number;
+  /** H4: whether this person already agreed to use this unlisted federation.
+   *  Omitted ⇒ never agreed, so an unlisted target always asks first. */
+  acceptsUnlistedFederation?: (invite: string) => boolean;
+}
+
+/** A federation Chama ships an invite for (a curated preset or a community's
+ *  pinned federation). Anything else was pasted by someone. */
+export function isListedFederationInvite(invite: string | null | undefined): boolean {
+  const trimmed = invite?.trim();
+  if (!trimmed) return false;
+  if (expectedFederationIdForInvite(trimmed)) return true;
+  // Pre-seeded communities only: a custom community can carry any pasted invite.
+  return CURATED_PRESETS.some((preset) => preset.inviteCode === trimmed)
+    || COMMUNITY_REGISTRY.some((community) => community.federationInvite === trimmed);
 }
 
 function inviteForFederationId(fedId: string | null | undefined): string | null {
@@ -1740,6 +1758,11 @@ export function decideListingTapEffect(inputs: ListingTapInputs): ListingTapEffe
       displayName,
       activeCommitmentCount: blockingCommitmentCount,
     };
+  }
+  // H4: a pasted federation is the listing creator's choice, not Chama's.
+  // Ask before moving anyone onto it; listed federations still switch quietly.
+  if (!isListedFederationInvite(targetInvite) && !inputs.acceptsUnlistedFederation?.(targetInvite)) {
+    return { kind: "unlisted-confirm", targetInvite };
   }
   // Same material-balance dust line as decideCommunityTapEffect: dust never
   // blocks a listing-fed switch; only a recoverable-worth balance guards.
