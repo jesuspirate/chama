@@ -117,6 +117,8 @@ import type { TradeIndexEntry } from "../../escrow-engine/trade-index.js";
 import { readKind0Toggle, writeKind0Toggle, readLocalTradeName, writeLocalTradeName, sanitizeTradeName, generatedNameFor, profileNameFor, type NostrProfileNameMap } from "../nostr-profiles.js";
 import { backgroundPushEnabled, enableBackgroundPush, disableBackgroundPush } from "../../notifications/watch-tags.js";
 import { isWebPushSupported, iosNeedsInstallForPush } from "../../notifications/web-push-client.js";
+import { expectedFederationIdForInvite, federationNameForInvite } from "../../fedimint/federation-config.js";
+import { listArbiterFederationRoutes } from "../../fedimint/arbiter-federation-store.js";
 
 
 
@@ -1051,6 +1053,7 @@ export function MeScreen({
           borderRadius: T.r, padding: 0, overflow: "hidden",
         }}>
           <WalletBalance balanceMsats={balanceMsats} known={balanceKnown} invite={walletInvite} />
+          <ParkedWallets pubkey={pubkey} activeInvite={walletInvite} />
           <RecoveryKeyRow key={pubkey} pubkey={pubkey} loadKey={loadActiveRecoveryKey} />
           {onWithdrawEcash && (
             <SettingsRow label={t("me.withdrawEcash")} hint={t("me.withdrawEcashBackupHint")} onClick={onWithdrawEcash} />
@@ -3522,6 +3525,31 @@ function NostrNamesRow({ on, onToggle }: {
 export function WalletBalance({ balanceMsats, known = true, invite }: { balanceMsats: number; known?: boolean; invite?: string }) {
   const { t } = useT();
   return <div data-wallet-balance style={{ padding: 16, color: T.text, fontFamily: T.sans }}>{t("me.walletBalance")} {known ? <TradeAmount msats={balanceMsats} interactive /> : "—"}<EcashCustody key={invite} invite={invite} /></div>;
+}
+
+/** H4: wallets kept on this device for other federations. The amount is the
+ *  balance seen when the person last left that federation, so it says so. */
+export function ParkedWallets({ pubkey, activeInvite }: { pubkey: string | null | undefined; activeInvite?: string }) {
+  const { t } = useT();
+  if (!pubkey) return null;
+  const activeFed = expectedFederationIdForInvite(activeInvite)?.toLowerCase();
+  const parked = listArbiterFederationRoutes(pubkey).filter((route) =>
+    route.inviteCode !== activeInvite?.trim() && route.federationId !== activeFed && (route.lastBalanceMsats ?? 0) >= 1000);
+  if (parked.length === 0) return null;
+  return (
+    <div data-parked-wallets style={{ padding: "0 16px 16px", color: T.text, fontFamily: T.sans }}>
+      <div style={{ fontSize: T.fs.secondary, color: T.ink2, marginBottom: 6 }}>{t("me.parkedWalletsTitle")}</div>
+      {parked.map((route) => (
+        <div key={route.federationId} style={{ fontSize: T.fs.body, lineHeight: 1.45, marginBottom: 4 }}>
+          {t("me.parkedWalletLine", {
+            sats: Math.floor((route.lastBalanceMsats ?? 0) / 1000).toLocaleString(),
+            name: federationNameForInvite(route.inviteCode) ?? t("me.parkedWalletUnlisted"),
+          })}
+        </div>
+      ))}
+      <div style={{ fontSize: T.fs.secondary, color: T.ink2, lineHeight: 1.4, marginTop: 4 }}>{t("me.parkedWalletsHint")}</div>
+    </div>
+  );
 }
 
 /** v7 redesign: a labelled settings group (canvas "Me": Money / Community / App). */

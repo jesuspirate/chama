@@ -49,6 +49,10 @@ export const me: Record<string, string> = {
   "backup.reading": "Inasoma ufunguo wako…",
 
   "me.walletBalance": "Katika pochi yako ya Chama:",
+  "me.parkedWalletsTitle": "Pia kwenye kifaa hiki:",
+  "me.parkedWalletLine": "Sats {sats} kwenye {name} ulipoitumia mara ya mwisho",
+  "me.parkedWalletUnlisted": "shirikisho ambalo Chama haliorodheshi",
+  "me.parkedWalletsHint": "Kila shirikisho linashikilia sats zake. Fungua biashara kwenye shirikisho hilo ili kuzitumia.",
 
   "me.arbiterSeatConflict": "Majukumu yanakinzana: umeorodheshwa kama mshiriki wa biashara na mwamuzi. Biashara hii haiwezi kuonekana kwenye orodha yako ya uamuzi. Ifungue ukague washiriki.",
   "me.moneySafetyOther": "Hatua nyingine za fedha",

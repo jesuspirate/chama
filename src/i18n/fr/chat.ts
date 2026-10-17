@@ -67,6 +67,8 @@ export const chat: Record<string, string> = {
   "chat.switching": "Bascule…",
   "chat.switchRoute": "Changer de route",
   "chat.switchRouteBtn": "Changer de route",
+  "chat.switchKeepWarning":
+    "Le portefeuille actuel reste sur cet appareil avec ses sats et revient quand vous rebasculez. Votre seed et votre historique d'échanges ne changent pas.",
   "chat.switchWipeWarning":
     "Ceci efface le fichier OPFS de votre Chama local et rejoint le nouveau. Tout ecash sur le Chama actuel restera bloqué jusqu'à ce que vous rebasculiez. Votre seed adossée à Nostr et votre historique d'échanges survivent.",
   "chat.typeMessagePlaceholder": "Écrivez un message...",
