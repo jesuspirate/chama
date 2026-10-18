@@ -283,6 +283,23 @@ function isForeignFederationError(e: unknown): boolean {
   return msg.includes("invalid federation") || msg.includes("belongs to federation");
 }
 
+/** The most a federation's reissue fee may take from a put-back before the
+ *  credit stops being attributable to this note: 2% of the note, and never
+ *  less than 10 sats so small notes (many small denominations, each charged)
+ *  still fit. Measured on the play-sats federation: 11.92 sats on 49,994. */
+export function reissueFeeAllowanceMsats(expectedMsats: number): number {
+  return Math.max(Math.ceil(expectedMsats * 0.02), 10_000);
+}
+
+/** Did the balance move by this note's value, less at most the reissue fee?
+ *  Never more than the note, never zero, never less than half of it. */
+export function isThisNotesCredit(deltaMsats: number, expectedMsats: number): boolean {
+  if (!(expectedMsats > 0) || !(deltaMsats > 0)) return false;
+  if (deltaMsats > expectedMsats) return false;
+  if (deltaMsats * 2 < expectedMsats) return false;
+  return expectedMsats - deltaMsats <= reissueFeeAllowanceMsats(expectedMsats);
+}
+
 // ══════════════════════════════════════════════════════════════════════════
 // PUBLIC API
 // ══════════════════════════════════════════════════════════════════════════
@@ -422,19 +439,27 @@ async function runProbe(
 
   // ── 6. A clean resolve is judged by the bracket (rule 3) ────────────────
   //
-  // EXACT, for the same reason step 8 is exact — and for one more. A clean
-  // resolve is NOT always an independent second signal: on the already-spent
-  // path, `confirmAlreadySpentCredit` (fedimint-client.ts) derives its verdict
-  // from this very balance and then returns normally, so reading the balance
-  // again here would be re-counting one signal as two. That function is now
-  // exact as well; nothing downstream should be laxer than the check it rests
-  // on, and this branch cannot tell a true reissue from a balance-confirmed
-  // already-spent, so it takes the strict rule for both.
+  // EXACT, or short by no more than the mint's reissue fee — never more than
+  // the note. A clean resolve is NOT always an independent second signal: on
+  // the already-spent path, `confirmAlreadySpentCredit` (fedimint-client.ts)
+  // derives its verdict from this very balance and then returns normally, so
+  // reading the balance again here would be re-counting one signal as two.
+  // That function is exact, so an already-spent resolve always lands on the
+  // exact branch; only a true reissue can come back short.
+  //
+  // 6.4.27: a federation may charge a small per-note fee to reissue. On the
+  // play-sats federation (2026-10-18) every put-back came back short by it
+  // (~12 sats on 50,000), so the exact rule reported a successful put-back
+  // as "unknown" and kept offering a note that was already spent. A credit
+  // is accepted as this note's only when it is positive, at most the note,
+  // and within `reissueFeeAllowanceMsats`. Zero, more than the note, or a
+  // larger shortfall stay `unknown` — the 2026-08-19 case is still caught.
   if (thrown === null) {
-    if (delta !== undefined && expectedMsats > 0 && delta === expectedMsats) {
+    if (delta !== undefined && isThisNotesCredit(delta, expectedMsats)) {
       probeLog("out", {
         context, escrowId, outcome: "recovered",
         expectedMsats, balanceBefore, balanceAfter, delta, lateCredit: false,
+        feeMsats: expectedMsats - delta,
       });
       return {
         outcome: "recovered",

@@ -1410,10 +1410,18 @@ export default function App() {
           clearEcashExport();
         }
       }
+      // A federation may keep a small reissue fee; say so rather than let a
+      // short credit read as missing sats.
+      const feeSats = Math.floor(result.expectedMsats / 1000) - Math.floor(result.recoveredMsats / 1000);
       setToast({
-        message: t("app.reabsorbRecovered", {
-          sats: String(Math.floor(result.recoveredMsats / 1000)),
-        }),
+        message: feeSats > 0
+          ? t("app.reabsorbRecoveredFee", {
+            sats: String(Math.floor(result.recoveredMsats / 1000)),
+            fee: String(feeSats),
+          })
+          : t("app.reabsorbRecovered", {
+            sats: String(Math.floor(result.recoveredMsats / 1000)),
+          }),
         type: "success",
       });
     } else if (result.outcome === "consumed-uncredited") {
@@ -1445,11 +1453,15 @@ export default function App() {
       // still recorded so the forensic trail can tell "asked, couldn't tell"
       // apart from "never asked".
       recordBearerProbe(input.oobNotes, result.outcome, "reason" in result ? result.reason : undefined);
+      // Sticky: "nothing changed" is the answer to a money tap, and it must
+      // still be on screen when the person looks back at the card.
       setToast({
         message: result.outcome === "foreign"
           ? t("app.reabsorbForeign")
           : t("app.reabsorbUnknown"),
         type: "info",
+        sticky: true,
+        dismissOnTap: true,
       });
     }
     return result.outcome;

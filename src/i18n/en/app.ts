@@ -183,6 +183,7 @@ export const app: Record<string, string> = {
   "app.reabsorbForeign":
     "This note belongs to a different federation, so it can't come back here. Nothing was changed — open Chama on that federation to use it.",
   "app.reabsorbRecovered": "Recovered ₿{sats} to your balance.",
+  "app.reabsorbRecoveredFee": "Recovered ₿{sats} to your balance. The federation kept ₿{fee} as its fee for taking the note back.",
   "app.reabsorbUnknown":
     "Couldn't get a straight answer from your Chama, so nothing was changed. The note is exactly where it was — try again in a moment.",
   "app.recoverAndSwitchSubtitle":
