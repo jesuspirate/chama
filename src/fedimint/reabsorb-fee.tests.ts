@@ -37,9 +37,10 @@ const probe = (w: ReabsorbWallet, expectedMsats: number) =>
   reabsorbBearerNotes(w, { oobNotes: `note-${Math.random()}`, expectedMsats, context: "pending-export" });
 
 {
-  // The allowance: 2% of the note, never under 10 sats.
+  // The allowance: 0.5% of the note, never under 10 sats.
   assert.equal(reissueFeeAllowanceMsats(sats(121)), sats(10));
-  assert.equal(reissueFeeAllowanceMsats(sats(50_000)), sats(1_000));
+  assert.equal(reissueFeeAllowanceMsats(sats(50_000)), sats(250));
+  assert.equal(isThisNotesCredit(sats(49_740), sats(50_000)), false, "260 sats short on 50,000 is not a fee");
   // Measured on the play-sats federation.
   assert.equal(isThisNotesCredit(49_982_078 - 0, 49_993_998), true, "full balance, 11.92 sats fee");
   assert.equal(isThisNotesCredit(20_000_000 - 1_904, 20_000_000), true, "20,000 sats, 1.9 sats fee");
@@ -82,16 +83,23 @@ console.log("PASS reissue fee allowance: fee-short credits count, zero/over/larg
   const over = await probe(wallet({ balance: 0, credit: sats(200) }), sats(121));
   assert.equal(over.outcome, "unknown");
 
-  // After a throw the rule stays exact: a fee-short late credit is unattributable.
+  // After a non-definitive throw (timeout) the same window applies: a
+  // fee-short late credit is this note's, a larger shortfall is not.
   const late = await probe(wallet({ balance: 0, credit: sats(119), throws: new Error("timeout") }), sats(121));
-  assert.equal(late.outcome, "unknown");
+  assert.equal(late.outcome, "recovered");
+  assert.equal(late.outcome === "recovered" && late.lateCredit, true);
+  const lateShort = await probe(wallet({ balance: 0, credit: sats(90), throws: new Error("timeout") }), sats(121));
+  assert.equal(lateShort.outcome, "unknown");
+  // A definitive rejection outranks any balance movement in the window.
+  const rejected = await probe(wallet({ balance: 0, credit: sats(121), throws: new Error("note already spent") }), sats(121));
+  assert.equal(rejected.outcome, "consumed-uncredited");
 
   // A foreign note is never reissued here.
   const foreign = wallet({ balance: 0, credit: sats(121), noteFed: "aaaa", walletFed: "bbbb" });
   assert.equal((await probe(foreign, sats(121))).outcome, "foreign");
   assert.equal(foreign.redeemed, 0, "no reissue on the wrong federation");
 }
-console.log("PASS put-back probe: fee-short success recovers; no credit, big shortfall, over-credit and late credit stay unknown");
+console.log("PASS put-back probe: fee-short success or late credit recovers; no credit, big shortfall, over-credit and rejections do not");
 
 {
   // The person is told the fee, in every language, and "nothing changed"
@@ -106,5 +114,7 @@ console.log("PASS put-back probe: fee-short success recovers; no credit, big sho
   assert.match(block, /app\.reabsorbRecoveredFee/);
   const unknownToast = block.slice(block.indexOf("app.reabsorbForeign"));
   assert.match(unknownToast, /sticky: true/, "unknown/foreign answer stays until tapped");
+  const threw = block.slice(block.indexOf("reabsorb probe threw"), block.indexOf("const pending"));
+  assert.match(threw, /sticky: true/, "a probe that threw also stays until tapped");
 }
 console.log("PASS put-back copy: the fee is named in en/es/fr/sw and 'nothing changed' stays on screen");

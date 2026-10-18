@@ -1383,7 +1383,7 @@ export default function App() {
       // The probe is documented never to throw; if a caller layer does, that
       // is still "we don't know", which means CHANGE NOTHING.
       console.error("[chama] reabsorb probe threw — treating as unknown:", e);
-      setToast({ message: t("app.reabsorbUnknown"), type: "info" });
+      setToast({ message: t("app.reabsorbUnknown"), type: "info", sticky: true, dismissOnTap: true });
       return "unknown";
     }
 
@@ -1412,7 +1412,8 @@ export default function App() {
       }
       // A federation may keep a small reissue fee; say so rather than let a
       // short credit read as missing sats.
-      const feeSats = Math.floor(result.expectedMsats / 1000) - Math.floor(result.recoveredMsats / 1000);
+      const feeMsats = result.expectedMsats - result.recoveredMsats;
+      const feeSats = feeMsats > 0 ? Math.max(1, Math.round(feeMsats / 1000)) : 0;
       setToast({
         message: feeSats > 0
           ? t("app.reabsorbRecoveredFee", {

@@ -284,11 +284,13 @@ function isForeignFederationError(e: unknown): boolean {
 }
 
 /** The most a federation's reissue fee may take from a put-back before the
- *  credit stops being attributable to this note: 2% of the note, and never
+ *  credit stops being attributable to this note: 0.5% of the note, and never
  *  less than 10 sats so small notes (many small denominations, each charged)
- *  still fit. Measured on the play-sats federation: 11.92 sats on 49,994. */
+ *  still fit. Measured on the play-sats federation: 11.92 sats on 49,994
+ *  (~240 ppm, under 1 sat per note), so the band is ~20x the real fee and no
+ *  wider — an unrelated credit has to land inside it to be mistaken. */
 export function reissueFeeAllowanceMsats(expectedMsats: number): number {
-  return Math.max(Math.ceil(expectedMsats * 0.02), 10_000);
+  return Math.max(Math.ceil(expectedMsats * 0.005), 10_000);
 }
 
 /** Did the balance move by this note's value, less at most the reissue fee?
@@ -538,20 +540,24 @@ async function runProbe(
   // ── 8. Non-definitive throw: the op may still have landed ───────────────
   //
   // This is the ONLY branch where a throw can end in `recovered`, and it
-  // demands EXACT equality rather than `>=`. A timeout whose reissue lands a
-  // moment later moves the balance by precisely the note's value; anything
-  // else moved it by something we cannot attribute to this note, and an
-  // unattributable credit is not evidence about this note.
+  // demands the same narrow window as step 6, never `>=`. A timeout whose
+  // reissue lands a moment later moves the balance by the note's value less
+  // at most the reissue fee; anything else moved it by something we cannot
+  // attribute to this note, and an unattributable credit is not evidence
+  // about this note. (6.4.27: exact here too would leave a fee-short late
+  // credit "unknown", and a later retry would find the note already reissued
+  // and raise a false consumed-uncredited alarm for sats in the wallet.)
   //
   // Keyed to the EVIDENCE, not to which surface called. A context allow-list
   // was considered and rejected: it would have missed the real shape, which is
   // "fund over Lightning → export → reabsorb" and therefore lands on the
   // pending-export card, not on a funding one. An exactness rule holds on
   // surfaces nobody has written yet.
-  if (delta !== undefined && expectedMsats > 0 && delta === expectedMsats) {
+  if (delta !== undefined && isThisNotesCredit(delta, expectedMsats)) {
     probeLog("out", {
       context, escrowId, outcome: "recovered",
       expectedMsats, balanceBefore, balanceAfter, delta, lateCredit: true,
+      feeMsats: expectedMsats - delta,
     });
     return {
       outcome: "recovered",
