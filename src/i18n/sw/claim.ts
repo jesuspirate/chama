@@ -297,7 +297,7 @@ export const claim: Record<string, string> = {
   "claim.toDestination": "kwa {destination}",
   "claim.holdToSend": "Shikilia kutuma sats {amount}",
   "claim.cameraNeedsHttps": "Kamera inahitaji HTTPS. Fungua onyesho salama au bandika anwani ya kupokea.",
-  "claim.cameraUnavailable": "Kamera haipatikani kwenye kivinjari hiki. Bandika anwani ya kupokea.",
+  "claim.cameraUnavailable": "Kamera haipatikani hapa. Bandika anwani ya kupokea.",
   "claim.browserCannotClaim": "Ukurasa huu hauwezi kudai bado",
   "claim.browserNeedsHttps": "Ukurasa huu unahitaji HTTPS ili kudai. Fungua Chama kwa anwani salama ya HTTPS na ujaribu tena. Kupiga kura tena hakutatua kikomo hiki cha kivinjari.",
   "claim.pasteDestination": "Bandika anwani ya Lightning",

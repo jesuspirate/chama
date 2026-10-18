@@ -193,6 +193,8 @@ export const app: Record<string, string> = {
   "app.startingOrder": "Démarrage de votre commande…",
   "app.strandedClaimBody":
     "⚠ Cette note EST les sats de votre échange réglé. Chama n'a pas pu l'encaisser automatiquement — importez-la dans Fedi ou tout portefeuille Fedimint sur cette fédération, ou sauvegardez-la en lieu sûr MAINTENANT. Effacer les données du navigateur détruit la seule copie.",
+  "app.strandedClaimBodyApp":
+    "⚠ Cette note EST les sats de votre échange réglé. Chama n'a pas pu l'encaisser automatiquement — importez-la dans Fedi ou tout portefeuille Fedimint sur cette fédération, ou sauvegardez-la en lieu sûr MAINTENANT. Effacer le stockage de l'appli Chama détruit la seule copie.",
   "app.strandedClaimHeadline": "Réclamation bloquée · note au porteur",
   "app.strandedClaimUnresolvedBody":
     "⚠ Cette note a été signalée comme déjà encaissée, mais Chama n'a pas pu confirmer que VOTRE portefeuille a été crédité. Sauvegardez-la quand même, puis vérifiez votre solde — si les sats n'y sont pas, cette chaîne de caractères est votre preuve et votre voie de récupération.",

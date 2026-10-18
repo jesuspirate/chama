@@ -84,7 +84,7 @@ export function ConnectScreen({ onConnect, onConnectNsec, loading, error }: {
       {homeCommunity && <div style={{ marginBottom: 18, padding: 14, borderRadius: T.r, background: T.surface, border: `1px solid ${T.border}`, display: "flex", alignItems: "center", gap: 10, textAlign: "left" }}>
         <span style={{ fontSize: 24 }}>{homeCommunity.flagEmoji}</span>
         <div><div style={{ fontSize: 12, fontWeight: 800 }}>{homeCommunity.displayName}</div>
-          {hasHomeHint && <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono }}>{t("connect.lastChamaHere")}</div>}</div>
+          {hasHomeHint && <div style={{ fontSize: 10, color: T.muted, fontFamily: T.mono }}>{t(Capacitor.isNativePlatform() || isTauriRuntime() ? "connect.lastChamaHereApp" : "connect.lastChamaHere")}</div>}</div>
       </div>}
       <p style={{ fontSize: 14, color: T.muted, lineHeight: 1.8, margin: "0 0 26px" }}>
         {pendingReport ? t("connect.pendingReportSignIn", { chama: pendingReport.requestedChama }) : <>{t("connect.tagline1")}<br /><span style={{ color: T.text }}>{t("connect.tagline2")}</span></>}

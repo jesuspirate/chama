@@ -207,6 +207,8 @@ export const app: Record<string, string> = {
   "app.startingOrder": "Starting your order…",
   "app.strandedClaimBody":
     "⚠ This note IS the sats from your settled trade. Chama couldn't redeem it automatically — import it into Fedi or any Fedimint wallet on this federation, or save it somewhere safe NOW. Clearing browser data destroys the only copy.",
+  "app.strandedClaimBodyApp":
+    "⚠ This note IS the sats from your settled trade. Chama couldn't redeem it automatically — import it into Fedi or any Fedimint wallet on this federation, or save it somewhere safe NOW. Clearing Chama's app storage destroys the only copy.",
   "app.strandedClaimHeadline": "Stranded claim · bearer note",
   "app.strandedClaimUnresolvedBody":
     "⚠ This note was reported already-redeemed, but Chama couldn't confirm YOUR wallet was credited. Save it anyway, then check your balance — if the sats aren't there, this string is your evidence and recovery path.",

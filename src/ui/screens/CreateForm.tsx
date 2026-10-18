@@ -111,6 +111,7 @@ import { useBitcoinPrice } from "../hooks/useBitcoinPrice.js";
 import { useFiatRates } from "../hooks/useFiatRates.js";
 import { ensureRemoteListingImage, MAX_LISTING_IMAGE_REFS, type ListingImageUploadAuthorizer } from "../../media/listing-image-upload.js";
 import { SwipeImageGallery } from "../components/SwipeImageGallery.js";
+import { SheetSelect } from "../components/SheetSelect.js";
 import { VerticalIcon } from "../components/VerticalIcon.js";
 
 type Step = 1 | 2 | 3;
@@ -2638,12 +2639,13 @@ function Step2({
       {categoryAllowsFulfillmentChoice(vertical) && (
         <div style={{ marginBottom: 16 }}>
           <div style={{ fontSize: 11, color: T.muted, fontFamily: T.mono, marginBottom: 6 }}>{t("create.fulfillmentLabel")}</div>
-          <select value={form.fulfillment} onChange={e => setStoreFulfillment(e.target.value as Fulfillment)}
-            style={{ ...inputStyle, color: T.text, background: T.surface }}>
-            <option value="physical">{t("create.fulfillmentShipping")}</option>
-            <option value="service">{t("create.fulfillmentService")}</option>
-            <option value="digital">{t("create.fulfillmentDigital")}</option>
-          </select>
+          <SheetSelect value={form.fulfillment} onChange={v => setStoreFulfillment(v as Fulfillment)} title={t("create.fulfillmentLabel")}
+            options={[
+              { value: "physical", label: t("create.fulfillmentShipping") },
+              { value: "service", label: t("create.fulfillmentService") },
+              { value: "digital", label: t("create.fulfillmentDigital") },
+            ]}
+            style={{ ...inputStyle, color: T.text, background: T.surface }} />
         </div>
       )}
 
@@ -3560,17 +3562,12 @@ function Step2({
                     </>
                   )}
                   {vertical === "marketplace" && (
-                    <select
-                      value={form.fulfillment}
-                      disabled
-                      aria-label="Inherited storefront fulfillment"
-                      title="Inherited from the storefront fulfillment above"
-                      style={{ ...inputStyle, width: 108, padding: "12px 6px", fontSize: 11, color: T.muted, background: T.card, opacity: 0.8 }}
+                    <div
+                      aria-label={t("create.fulfillmentLabel")}
+                      style={{ ...inputStyle, width: 108, padding: "12px 6px", fontSize: 11, color: T.muted, background: T.card, opacity: 0.8, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
                     >
-                      <option value="physical">{t("create.fulfillmentShipping")}</option>
-                      <option value="service">{t("create.fulfillmentService")}</option>
-                      <option value="digital">{t("create.fulfillmentDigital")}</option>
-                    </select>
+                      {t(form.fulfillment === "service" ? "create.fulfillmentService" : form.fulfillment === "digital" ? "create.fulfillmentDigital" : "create.fulfillmentShipping")}
+                    </div>
                   )}
                   <button
                     onClick={() => removeMenuItem(item.id)}
@@ -3771,22 +3768,22 @@ function Step2({
               <div style={{ display: "flex", gap: 12 }}>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 10, color: T.purple, fontFamily: T.mono, marginBottom: 4 }}>{t("create.periodsLabel")}</div>
-                  <select value={form.periods} onChange={e => set("periods", e.target.value)}
-                    style={{ ...inputStyle, fontSize: 12, color: T.text, background: T.surface }}>
-                    {[2,3,4,5,6,7,8,9,10,11,12,24,36,52].map(n => (
-                      <option key={n} value={n}>{t(n === 1 ? "create.periodOptionOne" : "create.periodOptionMany", { count: n })}</option>
-                    ))}
-                  </select>
+                  <SheetSelect value={String(form.periods)} onChange={v => set("periods", v)} title={t("create.periodsLabel")}
+                    options={[2,3,4,5,6,7,8,9,10,11,12,24,36,52].map(n => ({
+                      value: String(n), label: t(n === 1 ? "create.periodOptionOne" : "create.periodOptionMany", { count: n }),
+                    }))}
+                    style={{ ...inputStyle, fontSize: 12, color: T.text, background: T.surface }} />
                 </div>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 10, color: T.purple, fontFamily: T.mono, marginBottom: 4 }}>{t("create.intervalLabel")}</div>
-                  <select value={form.intervalDays} onChange={e => set("intervalDays", e.target.value)}
-                    style={{ ...inputStyle, fontSize: 12, color: T.text, background: T.surface }}>
-                    <option value="7">{t("create.intervalWeekly")}</option>
-                    <option value="14">{t("create.intervalBiweekly")}</option>
-                    <option value="30">{t("create.intervalMonthly")}</option>
-                    <option value="90">{t("create.intervalQuarterly")}</option>
-                  </select>
+                  <SheetSelect value={String(form.intervalDays)} onChange={v => set("intervalDays", v)} title={t("create.intervalLabel")}
+                    options={[
+                      { value: "7", label: t("create.intervalWeekly") },
+                      { value: "14", label: t("create.intervalBiweekly") },
+                      { value: "30", label: t("create.intervalMonthly") },
+                      { value: "90", label: t("create.intervalQuarterly") },
+                    ]}
+                    style={{ ...inputStyle, fontSize: 12, color: T.text, background: T.surface }} />
                 </div>
               </div>
             </div>

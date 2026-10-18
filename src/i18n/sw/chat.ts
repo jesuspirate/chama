@@ -16,6 +16,7 @@ export const chat: Record<string, string> = {
   "chat.createMyAccount": "Unda akaunti yangu",
   "chat.createNewAccount": "Unda akaunti mpya",
   "chat.creating": "Inaunda...",
+  "chat.chooseFederation": "Chagua shirikisho",
   "chat.curated": "Zilizoteuliwa",
   "chat.destroyOverrideAfter":
     " kulazimisha. Hii inaharibu kabisa salio lililoshikiliwa chini ya njia hii.",
@@ -69,7 +70,7 @@ export const chat: Record<string, string> = {
   "chat.switchKeepWarning":
     "Pochi uliyo nayo sasa inabaki kwenye kifaa hiki pamoja na sats zake, na inarudi utakaporudi. Mbegu yako na historia ya biashara haziathiriwi.",
   "chat.switchWipeWarning":
-    "Hii inafuta faili la OPFS la Chama chako cha ndani na kujiunga upya na kipya. Ecash yoyote kwenye Chama cha sasa itakwama hadi urudi. Mbegu yako iliyohifadhiwa kwenye Nostr na historia ya biashara zinabaki salama.",
+    "Hii inafuta pochi yako ya majaribio na kujiunga na njia mpya. Sats za mazoezi zilizobaki ndani yake zinapotea. Akaunti yako na historia ya biashara haziathiriki.",
   "chat.typeMessagePlaceholder": "Andika ujumbe...",
   "chat.useExistingAccount": "Tumia akaunti iliyopo",
   "chat.you": "Wewe",

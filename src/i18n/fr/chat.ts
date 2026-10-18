@@ -17,6 +17,7 @@ export const chat: Record<string, string> = {
   "chat.createMyAccount": "Créer mon compte",
   "chat.createNewAccount": "Créer un nouveau compte",
   "chat.creating": "Création...",
+  "chat.chooseFederation": "Choisissez une fédération",
   "chat.curated": "Sélectionnée",
   "chat.destroyOverrideAfter":
     " pour forcer. Cela détruit définitivement le solde détenu sur cette route.",
@@ -70,7 +71,7 @@ export const chat: Record<string, string> = {
   "chat.switchKeepWarning":
     "Le portefeuille actuel reste sur cet appareil avec ses sats et revient quand vous rebasculez. Votre seed et votre historique d'échanges ne changent pas.",
   "chat.switchWipeWarning":
-    "Ceci efface le fichier OPFS de votre Chama local et rejoint le nouveau. Tout ecash sur le Chama actuel restera bloqué jusqu'à ce que vous rebasculiez. Votre seed adossée à Nostr et votre historique d'échanges survivent.",
+    "Ceci efface votre portefeuille du bac à sable et rejoint la nouvelle route. Les sats d'entraînement qui y restent sont perdus. Votre compte et votre historique d'échanges ne sont pas touchés.",
   "chat.typeMessagePlaceholder": "Écrivez un message...",
   "chat.useExistingAccount": "Utiliser un compte existant",
   "chat.you": "Vous",

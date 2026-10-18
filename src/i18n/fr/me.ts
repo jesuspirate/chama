@@ -233,7 +233,11 @@ export const me: Record<string, string> = {
   "me.bgPushHint": "Réveillez-moi pour les actions d’échange même quand Chama est complètement fermée",
   "me.bgPushInstall": "Ajoutez d’abord Chama à votre écran d’accueil pour recevoir les alertes sur iPhone",
   "me.bgPushUnsupported": "Ce navigateur ne peut pas livrer d’alertes quand Chama est fermée",
+  "me.bgPushUnsupportedApp":
+    "Cette appli ne peut pas livrer d’alertes quand Chama est fermée sur cet appareil",
   "me.bgPushBlocked": "Autorisez les notifications dans votre navigateur pour activer ceci",
+  "me.bgPushBlockedApp":
+    "Autorisez les notifications de Chama dans les réglages de l'appareil pour activer ceci",
   "me.notifications": "Notifications",
   "me.notificationsHint": "Verrouillé · réclamation prête · litiges · réglé",
   "me.off": "Désactivé",
@@ -315,6 +319,8 @@ export const me: Record<string, string> = {
   "me.stepInCountdown": "vous pouvez intervenir {countdown}",
   "me.strandedClaimBody":
     "issus d'un échange réglé n'ont pas pu arriver automatiquement dans votre portefeuille. La note au porteur — l'argent lui-même — n'est enregistrée que dans ce navigateur. Tapez pour l'exporter maintenant, avant qu'un effacement de données ou un changement de fédération ne détruise la seule copie.",
+  "me.strandedClaimBodyApp":
+    "issus d'un échange réglé n'ont pas pu arriver automatiquement dans votre portefeuille. La note au porteur — l'argent lui-même — n'est enregistrée que dans cette appli, sur cet appareil. Tapez pour l'exporter maintenant, avant qu'un effacement du stockage de l'appli ou un changement de fédération ne détruise la seule copie.",
   "me.strandedClaimTitle": "Réclamation bloquée — action requise",
   "me.switch": "Basculer",
   "me.switchAction": "basculer",
@@ -337,6 +343,10 @@ export const me: Record<string, string> = {
   "me.waitingForYourLock": "en attente de votre verrouillage",
   "me.withdrawEcash": "Retirer en ecash · sans frais LN",
   "me.withdrawEcashBackupHint": "Effacer les données du navigateur supprime les fonds que vous n'avez pas exportés.",
+  "me.withdrawEcashBackupHintApp":
+    "Votre portefeuille est gardé dans cette appli, sur cet appareil. Désinstaller Chama ou effacer son stockage peut supprimer les fonds que vous n'avez pas exportés.",
+  "me.withdrawEcashBackupHintNode":
+    "Votre portefeuille est gardé sur le nœud Chama auquel vous êtes connecté, pas dans ce navigateur. Celui qui fait tourner ce nœud détient ses sats.",
   "me.you": "Vous",
   "me.yourChama": "Votre Chama",
   "me.tradeName": "Nom de profil",

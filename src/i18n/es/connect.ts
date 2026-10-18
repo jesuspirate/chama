@@ -19,6 +19,8 @@ export const connect: Record<string, string> = {
   "connect.introNeverHolds": "Chama nunca retiene tu dinero.",
   "connect.introTitle": "Intercambia bitcoin con tu comunidad",
   "connect.lastChamaHere": "Último Chama usado en este navegador",
+  "connect.lastChamaHereApp":
+    "Último Chama usado en este dispositivo",
   "connect.moreOptions": "▼ Más opciones de acceso",
   "connect.pendingReportSignIn":
     "Inicia sesión para ponerte en el mapa. En cuanto te conectes, les diremos a los árbitros de Chama que {chama} quiere entrar.",

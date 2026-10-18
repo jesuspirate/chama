@@ -9,6 +9,7 @@ export const recovery: Record<string, string> = {
   "recovery.activeTradeOne": "Biashara 1",
   "recovery.barChooseChama": "Chagua Chama chako",
   "recovery.barExternalRoute": "Njia ya nje",
+  "recovery.barUnlistedNamed": "{name} · haijaorodheshwa",
   "recovery.barInTradeAfter": "zimefungwa",
   "recovery.barInTradeBefore": "{trades} ·",
   "recovery.barReady": "Tayari",
@@ -64,7 +65,7 @@ export const recovery: Record<string, string> = {
   "recovery.headlineLeftoverSats": "Una sats zilizobaki kutoka biashara za awali",
   "recovery.headlineTradeWith": "Biashara yako na {name} haikumalizika vizuri",
   "recovery.keepUsingFooter":
-    "Unaweza kuendelea kutumia Chama. Kurejesha kunaondoa tu sats zisizoelezeka kutoka OPFS.",
+    "Unaweza kuendelea kutumia Chama. Kurejesha kunaondoa tu sats zisizoelezeka kutoka pochi yako ya Chama.",
   "recovery.lockFooter":
     "Urejeshaji ni wa kiotomatiki na hauna ada — hakuna kinachotumwa kupitia Lightning.",
   "recovery.lockIntentAfter": "kunaweka sats zako kwenye escrow.",

@@ -277,6 +277,7 @@ import {
 } from "./sign-in-environment.js";
 import { cacheNostrProfileNames, readNostrProfileCache, writeKind0Toggle, readKind0Toggle, readLocalTradeName, writeLocalTradeName, type NostrProfileNameMap } from "./nostr-profiles.js";
 import { isWorkListing } from "./work-resume.js";
+import { walletHome } from "./wallet-location.js";
 import {
   readAmountDisplayMode,
   writeAmountDisplayMode,
@@ -3559,6 +3560,7 @@ export default function App() {
           <ChamaBar
             fedimint={fedimint}
             communitySlug={routeCommunitySlug}
+            activeInvite={liveActiveInvite}
             chamaLabel={chamaBarLabel}
             onTapStranded={() => unseenPaidLockMsats > 0 ? (setMeRequestTab("sats"), setView("me")) : setPendingRecovery({
               title: t("app.recoverSatsTitle"),
@@ -3777,6 +3779,7 @@ export default function App() {
             ?? getCommunityBySlug(routeCommunitySlug)?.displayName
             ?? t("app.yourFederation")
           }
+          invite={liveActiveInvite ?? undefined}
           // Use the hardened export spend (long auto-refund horizon). Its OOB
           // payload stays compact: invite-bearing notes repeatedly parsed in
           // Fedi but then failed to claim for real users.
@@ -3835,7 +3838,7 @@ export default function App() {
             headline: t("app.strandedClaimHeadline"),
             body: strandedClaimExport.stranded === "unresolved-credit"
               ? t("app.strandedClaimUnresolvedBody")
-              : t("app.strandedClaimBody"),
+              : t(walletHome() === "app" ? "app.strandedClaimBodyApp" : "app.strandedClaimBody"),
             onConfirmCleared: () => {
               clearPendingRedemption(strandedClaimExport.escrowId);
               setStrandedClaimExport(null);

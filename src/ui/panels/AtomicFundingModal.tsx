@@ -2052,7 +2052,7 @@ function MintTimeoutState({
         style={{
           width: "100%", padding: "12px 16px", borderRadius: T.rs,
           background: busy ? T.surface : T.amber, border: `1px solid ${T.amber}`,
-          color: busy ? T.muted : "#000",
+          color: busy ? T.muted : T.onInk,
           fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
           cursor: busy ? "not-allowed" : "pointer", marginBottom: 8,
         }}
