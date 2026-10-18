@@ -4882,6 +4882,8 @@ export default function App() {
         <HomeHero
           balanceMsats={fedimint.balanceMsats ?? 0}
           inEscrowMsats={committedMsats}
+          pendingNoteMsats={getEcashExport()?.amountMsats ?? 0}
+          onOpenPendingNote={() => { setView("me"); window.scrollTo?.(0, 0); }}
           readyToCollectCount={needsYouTrades.filter(e =>
             needsYouReasonFor(e, pubkey!, now, settledClaimIds, onchainObservations?.get(e.id)) === "claim").length}
           needsYou={needsYouTrades}

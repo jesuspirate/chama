@@ -25,9 +25,15 @@ import type { NostrProfileNameMap } from "../nostr-profiles.js";
 export function HomeHero({
   balanceMsats, inEscrowMsats, readyToCollectCount, needsYou, alsoGoingOn,
   pubkey, profileNames, kind0Enabled, onchainObservations, onOpenTrade, quoteCurrency,
+  pendingNoteMsats = 0, onOpenPendingNote,
   children,
 }: {
   balanceMsats: number;
+  /** Sats in a pending ecash export: they left the wallet and live only in
+   *  the note until it is imported or returned (Jet, 6.4.26: ₿0 here with no
+   *  word about the note read as lost sats). */
+  pendingNoteMsats?: number;
+  onOpenPendingNote?: () => void;
   /** activeCommittedMsats — the same figure as the status bar's in-trade pill. */
   inEscrowMsats: number;
   readyToCollectCount: number;
@@ -73,6 +79,15 @@ export function HomeHero({
               <div style={{ fontSize: T.fs.fiat, color: T.ink2, fontFamily: T.sans }}>
                 {t("dash.fiatApprox", { amount: formatFiatAmount(fiat, currency) })}
               </div>
+            )}
+            {pendingNoteMsats > 0 && (
+              <button type="button" data-home-pending-note onClick={onOpenPendingNote} style={{
+                marginTop: 6, alignSelf: "flex-start", minHeight: T.size.touch, padding: "8px 12px",
+                borderRadius: 12, border: `1px solid ${T.attn}`, background: T.attnBg, color: T.attnInk,
+                fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 600, textAlign: "left", cursor: "pointer",
+              }}>
+                {t("dash.pendingNote", { sats: fmtSats(pendingNoteMsats) })} ›
+              </button>
             )}
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10 }}>
