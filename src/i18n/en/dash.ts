@@ -15,6 +15,7 @@ export const dash: Record<string, string> = {
   "dash.noVerticalsYet": "Complete a trade and your mix of Exchange, Bill Pay, and Market shows up here.",
   "dash.homeTitle": "Home",
   "dash.inWallet": "In your wallet",
+  "dash.pendingNote": "₿{sats} waiting in an ecash note · open it in Me",
   "dash.inEscrowForYou": "In escrow for you",
   "dash.readyToCollect": "Ready to collect",
   "dash.readyTrades": "{count} to collect",

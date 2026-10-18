@@ -167,6 +167,7 @@ export const app: Record<string, string> = {
   "app.reabsorbForeign":
     "Esta nota pertenece a otra federación, así que no puede volver aquí. No se cambió nada — abre Chama en esa federación para usarla.",
   "app.reabsorbRecovered": "₿{sats} recuperados a tu saldo.",
+  "app.reabsorbRecoveredFee": "₿{sats} recuperados a tu saldo. La federación se quedó ₿{fee} como comisión por recuperar la nota.",
   "app.reabsorbUnknown":
     "No se pudo obtener una respuesta clara de tu Chama, así que no se cambió nada. La nota está exactamente donde estaba — inténtalo de nuevo en un momento.",
   "app.recoverAndSwitchSubtitle":

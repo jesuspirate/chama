@@ -14,6 +14,7 @@ export const dash: Record<string, string> = {
   "dash.noVerticalsYet": "Terminez un échange et votre répartition Échange, Factures et Marché apparaît ici.",
   "dash.homeTitle": "Accueil",
   "dash.inWallet": "Dans votre portefeuille",
+  "dash.pendingNote": "₿{sats} en attente dans une note ecash · ouvrez-la dans Moi",
   "dash.inEscrowForYou": "En séquestre pour vous",
   "dash.readyToCollect": "Prêt à encaisser",
   "dash.readyTrades": "{count} à encaisser",

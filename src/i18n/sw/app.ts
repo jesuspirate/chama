@@ -165,6 +165,7 @@ export const app: Record<string, string> = {
   "app.reabsorbForeign":
     "Noti hii ni ya shirikisho tofauti, hivyo haiwezi kurudi hapa. Hakuna kilichobadilishwa — fungua Chama kwenye shirikisho hilo kuitumia.",
   "app.reabsorbRecovered": "Zimerejeshwa ₿{sats} kwenye salio lako.",
+  "app.reabsorbRecoveredFee": "Zimerejeshwa ₿{sats} kwenye salio lako. Shirikisho limechukua ₿{fee} kama ada ya kurudisha noti.",
   "app.reabsorbUnknown":
     "Haikupatikana jibu la wazi kutoka Chama chako, hivyo hakuna kilichobadilishwa. Noti iko pale pale — jaribu tena baada ya muda mfupi.",
   "app.recoverAndSwitchSubtitle":
