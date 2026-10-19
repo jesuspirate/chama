@@ -38,7 +38,7 @@ export function hasBolt11Amount(raw: string): boolean {
 
 /** Decode the signed invoice envelope enough to enforce payout amount and
  * expiry before handing an LNURL callback's invoice to a money sender. */
-export function decodeBolt11Payment(raw: string): { amountMsats: number; expiresAt: number } | null {
+export function decodeBolt11Payment(raw: string): { amountMsats: number; expiresAt: number; descriptionHash?: string } | null {
   try {
     const invoice = stripLightningUri(raw).toLowerCase();
     const { words } = bech32.decode(invoice as `${string}1${string}`, 5000);
@@ -47,6 +47,7 @@ export function decodeBolt11Payment(raw: string): { amountMsats: number; expires
     let timestamp = 0;
     for (const word of words.slice(0, 7)) timestamp = timestamp * 32 + word;
     let expiry = 3600;
+    let descriptionHash: string | undefined;
     const tagEnd = words.length - 104; // 65-byte compact signature
     for (let i = 7; i < tagEnd;) {
       if (i + 3 > tagEnd) return null;
@@ -56,11 +57,16 @@ export function decodeBolt11Payment(raw: string): { amountMsats: number; expires
       if (tag === 6) { // BOLT11 `x` expiry tag
         expiry = 0;
         for (const word of words.slice(i, i + length)) expiry = expiry * 32 + word;
+      } else if (tag === 23 && length === 52) { // BOLT11 `h` description hash
+        const bytes = bech32.fromWordsUnsafe(words.slice(i, i + length));
+        if (bytes && bytes.length >= 32) {
+          descriptionHash = [...bytes.slice(0, 32)].map((b) => b.toString(16).padStart(2, "0")).join("");
+        }
       }
       i += length;
     }
     if (!Number.isSafeInteger(timestamp) || !Number.isSafeInteger(expiry) || expiry <= 0) return null;
-    return { amountMsats, expiresAt: timestamp + expiry };
+    return { amountMsats, expiresAt: timestamp + expiry, ...(descriptionHash ? { descriptionHash } : {}) };
   } catch { return null; }
 }
 
