@@ -283,6 +283,17 @@ function isForeignFederationError(e: unknown): boolean {
   return msg.includes("invalid federation") || msg.includes("belongs to federation");
 }
 
+/** Did this throw prove the federation ACCEPTED the reissue operation?
+ *  Only the native bridge says so today: it answers MINT_REISSUE_PENDING with
+ *  the operation id when the federation has taken the reissue and it simply
+ *  hasn't finished. A client-side timeout (REDEEM_TIMEOUT, the browser's
+ *  submit race) proves nothing — the reissue may never have been sent. */
+function reissueAcceptedByFederation(e: unknown): boolean {
+  if (errCode(e) !== "MINT_REISSUE_PENDING") return false;
+  const operationId = (e as { operationId?: unknown } | null)?.operationId;
+  return typeof operationId === "string" && operationId.length > 0;
+}
+
 /** The most a federation's reissue fee may take from a put-back before the
  *  credit stops being attributable to this note: 0.5% of the note, and never
  *  less than 10 sats so small notes (many small denominations, each charged)
@@ -553,7 +564,22 @@ async function runProbe(
   // "fund over Lightning → export → reabsorb" and therefore lands on the
   // pending-export card, not on a funding one. An exactness rule holds on
   // surfaces nobody has written yet.
-  if (delta !== undefined && isThisNotesCredit(delta, expectedMsats)) {
+  //
+  // 6.4.28: the fee window after a throw needs proof the reissue was sent.
+  // Without it, an unrelated credit of almost the note's value landing in the
+  // same seconds (a Lightning receive) would be taken for this note, and the
+  // caller would clear an entry whose note is still out — for a claim note
+  // there is no 14-day cancel to bring it back. So after a throw: an EXACT
+  // credit counts as before; a fee-short one counts only when the federation
+  // confirmed it accepted this reissue (`reissueAcceptedByFederation`).
+  // Anything else stays `unknown` and the entry is kept.
+  // A strict subset of the step-6 window: positive, at most the note, and
+  // then exact or confirmed sent. (Without the window first, a zero-value
+  // entry with no balance change would read as "recovered ₿0".)
+  const lateCreditIsThisNote = delta !== undefined
+    && isThisNotesCredit(delta, expectedMsats)
+    && (delta === expectedMsats || reissueAcceptedByFederation(thrown));
+  if (delta !== undefined && lateCreditIsThisNote) {
     probeLog("out", {
       context, escrowId, outcome: "recovered",
       expectedMsats, balanceBefore, balanceAfter, delta, lateCredit: true,
