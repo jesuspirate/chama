@@ -18,6 +18,6 @@ export const dash: Record<string, string> = {
   "dash.readyTrades": "{count} to collect",
   "dash.alsoGoingOn": "Happening now",
   "dash.yourSats": "Your sats in Chama",
-  "dash.holdsNothing": "Chama isn't holding any of your sats.",
+  "dash.cantCheckSats": "Chama can't check your sats right now. Try again later.",
   "dash.checkHeldSats": "Check whether Chama holds any of your sats",
 };

@@ -4903,7 +4903,24 @@ export default function App() {
                   void actions.initFedimint().catch(error => setToast({ message: error.message, type: "error" }));
                 }
               }}
-              inTradeMsats={committedMsats}
+              balanceUnreadable={fedimint.joined && fedimint.balanceMsats === null && !fedimint.busy}
+              pendingCards={(nativeLockResume || pendingPayoutCard) ? <>
+                {nativeLockResume && (
+                  <PendingLockCard
+                    entry={nativeLockResume}
+                    tradeDescription={escrows.get(nativeLockResume.escrowId)?.description ?? null}
+                    busy={pendingLockBusy}
+                    onFinishLock={handleFinishPendingLock}
+                    onOpenTrade={() => openEscrow(nativeLockResume.escrowId)}
+                  />
+                )}
+                {pendingPayoutCard && (
+                  <PendingPayoutCard
+                    entry={pendingPayoutCard}
+                    onOpenTrade={() => openEscrow(pendingPayoutCard.escrowId)}
+                  />
+                )}
+              </> : undefined}
               hasActiveCommitment={hasActiveCommitment}
               paidLockFederationId={fedimint.federationId ?? undefined}
               satsTrace={displayedSatsTrace}

@@ -17,6 +17,6 @@ export const dash: Record<string, string> = {
   "dash.readyTrades": "{count} por cobrar",
   "dash.alsoGoingOn": "Pasando ahora",
   "dash.yourSats": "Tus sats en Chama",
-  "dash.holdsNothing": "Chama no tiene ninguno de tus sats.",
+  "dash.cantCheckSats": "Chama no puede comprobar tus sats ahora mismo. Inténtalo más tarde.",
   "dash.checkHeldSats": "Comprueba si Chama tiene alguno de tus sats",
 };

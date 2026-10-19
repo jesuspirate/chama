@@ -17,6 +17,6 @@ export const dash: Record<string, string> = {
   "dash.readyTrades": "{count} za kuchukua",
   "dash.alsoGoingOn": "Kinachoendelea sasa",
   "dash.yourSats": "Sats zako ndani ya Chama",
-  "dash.holdsNothing": "Chama haishikilii sats zako zozote.",
+  "dash.cantCheckSats": "Chama haiwezi kuangalia sats zako sasa hivi. Jaribu tena baadaye.",
   "dash.checkHeldSats": "Angalia kama Chama inashikilia sats zako",
 };

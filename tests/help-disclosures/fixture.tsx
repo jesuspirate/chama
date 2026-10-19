@@ -27,7 +27,7 @@ function Fixture() {
   const [sheet, setSheet] = useState(false);
   return <main style={{ maxWidth: 728, margin: 'auto', padding: 16, color: T.text }}>
     {params.get('mode') === 'edge' ? <div style={{ position: 'fixed', bottom: 8, right: 8, width: 48, height: 48, overflow: 'hidden', transform: 'translateZ(0)', padding: 14, boxSizing: 'border-box' }}><HelpTip title="A long contextual explanation">{'Read this without leaving the task. '.repeat(35)}</HelpTip></div> : params.get('mode') === 'me' ? <HeldSats pubkey={viewer}
-      balanceMsats={100000000} walletInvite="fed1testcustom" hasActiveCommitment={false} inTradeMsats={0}
+      balanceMsats={100000000} walletInvite="fed1testcustom" hasActiveCommitment={false}
       onOpenTrade={action} onRecoverSats={action} onWithdrawEcash={action} /> : <>
       <ArbiterApplyForm communitySlug="us-blf" onApply={async () => action()} />
       <div data-parent onClick={action} style={{ marginTop: 16 }}>

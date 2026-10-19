@@ -6,8 +6,9 @@ import { LangProvider } from "../i18n/index.js";
 import { setLocalStorageUserScope } from "../storage/user-scope.js";
 
 // Chama is not a wallet (Jet, Oct 19): Home is the one place that lists the
-// sats Chama holds for you, each with its way out, and says so plainly when it
-// holds none. Me has no Wallet tab; it points at Home when sats need you.
+// sats Chama holds for you, each with its way out. It never claims Chama holds
+// none (some places sats sit show on their own screens), and "can't read" is
+// never shown as "none". Me has no Wallet tab; it points at Home when sats need you.
 const values = new Map<string, string>();
 Object.defineProperty(globalThis, "localStorage", { configurable: true, value: {
   getItem: (k: string) => values.get(k) ?? null, setItem: (k: string, v: string) => { values.set(k, v); },
@@ -28,25 +29,31 @@ const spy = (name: string) => () => { calls.push(name); };
 type HeldProps = Parameters<typeof HeldSats>[0];
 const held = (props: Partial<HeldProps> = {}) => renderToStaticMarkup(
   <LangProvider>
-    <HeldSats pubkey={pk} balanceMsats={0} hasActiveCommitment={false} inTradeMsats={0}
+    <HeldSats pubkey={pk} balanceMsats={0} hasActiveCommitment={false}
       onRecoverSats={spy("recover")} onOpenTrade={spy("open")} onWithdrawEcash={spy("withdraw")}
       onUseWallet={spy("use-wallet")} {...props} />
   </LangProvider>,
 );
 
 {
-  const empty = held();
-  assert.match(empty, /data-held-sats-empty/);
-  assert.match(empty, /Chama isn(’|'|&#x27;)t holding any of your sats\./, "nothing held is said in one plain line");
-  assert.doesNotMatch(empty, /data-money-safety-focus|data-held-sats-balance/);
-  assert.equal(held({ inTradeMsats: 5_000_000 }), "", "sats in a live trade are never called nothing; the trade rows show them");
-  assert.equal(held({ balanceKnown: false }), "", "an unopened wallet is never reported as empty");
+  assert.equal(held(), "", "nothing to show means Home says nothing, never \"you hold none\"");
+  assert.equal(held({ balanceKnown: false }), "", "a wallet that was never opened is not described at all");
+  const unreadable = held({ balanceKnown: false, balanceUnreadable: true });
+  assert.match(unreadable, /data-held-sats-unreadable/, "an open wallet whose balance can't be read says so");
+  assert.match(unreadable, /Chama can(’|'|&#x27;)t check your sats right now/);
+  assert.match(unreadable, /Left in Chama: —/, "unknown, never zero");
+  const pending = held({ pendingCards: <div data-finish-lock>finish</div>, balanceMsats: 500_000, hasPendingNativeLock: true });
+  assert.match(pending, /data-finish-lock/, "a lock caught mid-way shows its finish card on Home");
+  assert.doesNotMatch(pending, /Withdraw as ecash/, "and the balance it owns is not offered for withdrawal");
+  for (const lang of ["en", "es", "fr", "sw"]) {
+    const dash = readFileSync(new URL(`../i18n/${lang}/dash.ts`, import.meta.url), "utf8");
+    assert.doesNotMatch(dash, /holdsNothing/, `${lang}: no "Chama holds none" line exists to show`);
+  }
 }
 
 {
   const tap = held({ walletNeedsTap: true, balanceKnown: false });
   assert.match(tap, /data-held-sats-open/, "a signer that needs a tap gets a button to look");
-  assert.doesNotMatch(tap, /data-held-sats-empty/);
   assert.deepEqual(calls, [], "rendering Home never starts the wallet or any money action");
   const src = readFileSync(new URL("./components/HeldSats.tsx", import.meta.url), "utf8");
   assert.doesNotMatch(src, /useEffect\([^)]*onUseWallet/, "the wallet starts on a tap, never on mount");
@@ -58,7 +65,6 @@ const held = (props: Partial<HeldProps> = {}) => renderToStaticMarkup(
   assert.match(small, /data-held-sats-balance/);
   assert.match(small, /Left in Chama:/);
   assert.match(small, /Withdraw as ecash/);
-  assert.doesNotMatch(small, /data-held-sats-empty/);
   // While a pending lock or payout owns the balance, sending it out here would
   // abandon a resumable trade (#37): that card is the way out, not this one.
   assert.doesNotMatch(held({ balanceMsats: 500_000, hasPendingNativeLock: true }), /Withdraw as ecash/);
@@ -74,7 +80,6 @@ const held = (props: Partial<HeldProps> = {}) => renderToStaticMarkup(
   const note = held();
   assert.match(note, /data-money-safety-focus="export"/, "a note being sent shows on Home");
   assert.match(note, /121/);
-  assert.doesNotMatch(note, /data-held-sats-empty/);
   clearEcashExport();
 }
 
@@ -87,7 +92,6 @@ const held = (props: Partial<HeldProps> = {}) => renderToStaticMarkup(
     stuckNativeLocks: [{ escrowId: "stuck-lock", amountMsats: 1_500_000, createdAt: 1 } as never] });
   assert.equal((stuck.match(/data-money-safety-focus="/g) ?? []).length, 1, "one focused card");
   assert.ok((stuck.match(/data-money-safety-row="/g) ?? []).length >= 2, "every other entry stays visible");
-  assert.doesNotMatch(stuck, /data-held-sats-empty/);
 
   // Me no longer draws these cards; it points at Home instead of "all clear".
   const me = renderToStaticMarkup(<LangProvider>
@@ -124,7 +128,9 @@ const held = (props: Partial<HeldProps> = {}) => renderToStaticMarkup(
   assert.match(keyRow, /label=\{t\("backup\.rowTitle"\)\}/);
   assert.match(readFileSync(new URL("../i18n/en/me.ts", import.meta.url), "utf8"), /"backup\.rowHint": "Sign in on another device with it"/);
   const held = readFileSync(new URL("./components/HeldSats.tsx", import.meta.url), "utf8");
-  assert.match(held, /acknowledgePaidLockRecoveries\(paidLockFederationId, balanceMsats\)/,
-    "refunded paid-lock rows are acknowledged where they are shown");
+  assert.match(held, /try \{ acknowledgePaidLockRecoveries\(paidLockFederationId, balanceMsats\); \}/,
+    "refunded paid-lock rows are acknowledged where they are shown, and a corrupt record can't break Home");
+  assert.match(app, /pendingCards=\{\(nativeLockResume \|\| pendingPayoutCard\)/, "Home gets the finish-lock and finish-payout cards");
+  assert.match(app, /balanceUnreadable=\{fedimint\.joined && fedimint\.balanceMsats === null && !fedimint\.busy\}/);
 }
-console.log("PASS Home lists every sat Chama holds with its way out, says so when it holds none; Me has no Wallet tab");
+console.log("PASS Home lists the sats Chama holds with their way out, never claims none, says when it can't check; Me has no Wallet tab");

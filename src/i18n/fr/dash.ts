@@ -17,6 +17,6 @@ export const dash: Record<string, string> = {
   "dash.readyTrades": "{count} à encaisser",
   "dash.alsoGoingOn": "En ce moment",
   "dash.yourSats": "Vos sats dans Chama",
-  "dash.holdsNothing": "Chama ne garde aucun de vos sats.",
+  "dash.cantCheckSats": "Chama ne peut pas vérifier vos sats pour le moment. Réessayez plus tard.",
   "dash.checkHeldSats": "Vérifier si Chama garde des sats à vous",
 };

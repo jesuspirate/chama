@@ -9,7 +9,7 @@
 // selectors, handlers, focus rules and copy as before. When nothing is held,
 // Home says so in one line. There is deliberately no total.
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useT } from "../../i18n/index.js";
 import { T } from "../theme.js";
 import { BitcoinAmount } from "./BitcoinAmount.js";
@@ -213,15 +213,18 @@ export function useMoneySafety({
 }
 
 export function HeldSats({
-  pubkey, balanceKnown = true, walletInvite, inTradeMsats, onRecoverSats, onOpenTrade,
-  walletNeedsTap = false, onUseWallet, ...input
+  pubkey, balanceKnown = true, balanceUnreadable = false, walletInvite, onRecoverSats, onOpenTrade,
+  walletNeedsTap = false, onUseWallet, pendingCards, ...input
 }: MoneySafetyInput & {
   pubkey: string;
   balanceKnown?: boolean;
+  /** The wallet is open but its balance could not be read. "Can't read" is
+   *  never "none", so Home says Chama can't check rather than nothing. */
+  balanceUnreadable?: boolean;
   walletInvite?: string;
-  /** activeCommittedMsats: sats held by live trades, shown trade by trade
-   *  below. Only read here so the empty line never contradicts them. */
-  inTradeMsats: number;
+  /** The "Finish locking" and "Finish your payout" cards: while either owns
+   *  the balance, they are its way out, so Home shows them here too. */
+  pendingCards?: ReactNode;
   onRecoverSats: () => void;
   onOpenTrade: (id: string) => void;
   /** The signer needs a tap before the wallet can open, so Chama cannot yet
@@ -244,7 +247,11 @@ export function HeldSats({
   // where they are on screen now, beside the balance they were refunded to.
   const unseenPaidLocks = paidLockRows.filter(row => !row.seen).map(row => row.escrowId).join(",");
   useEffect(() => {
-    if (paidLockFederationId) acknowledgePaidLockRecoveries(paidLockFederationId, balanceMsats);
+    if (!paidLockFederationId) return;
+    // A corrupt record must not take Home down with it: Home is where people
+    // land, and the rows stay unacknowledged (still shown) if this fails.
+    try { acknowledgePaidLockRecoveries(paidLockFederationId, balanceMsats); }
+    catch (error) { console.error("[chama] paid-lock acknowledgement failed:", error); }
   }, [paidLockFederationId, balanceMsats, unseenPaidLocks]);
 
   const parked = parkedWalletRoutes(pubkey, walletInvite);
@@ -255,15 +262,12 @@ export function HeldSats({
   // While a pending lock or claim payout owns the balance, sending it out
   // here would abandon a resumable trade (#37): those cards are the way out.
   const balanceCanLeave = Boolean(onWithdrawEcash) && !hasPendingNativeLock && !hasPendingClaimPayout;
-  const holdsNothing = balanceKnown && !walletNeedsTap && moneyEntries.length === 0
-    && balanceMsats <= 0 && parked.length === 0 && inTradeMsats <= 0;
-
-  if (holdsNothing) {
-    return <p data-held-sats-empty style={{ margin: 0, color: T.ink2, fontFamily: T.sans, fontSize: T.fs.body, lineHeight: 1.45 }}>
-      {t("dash.holdsNothing")}
-    </p>;
-  }
-  if (moneyEntries.length === 0 && !showBalanceLine && parked.length === 0 && !walletNeedsTap) return null;
+  // When nothing shows, Home says nothing. It never claims Chama holds none
+  // of your sats: some places sats can sit (bonds, an on-chain payout not
+  // yet swept, a claim still redeeming) are shown on their own screens, so a
+  // "nothing here" line could be false (second review of #78).
+  if (moneyEntries.length === 0 && !showBalanceLine && parked.length === 0 && !walletNeedsTap
+    && !balanceUnreadable && !pendingCards) return null;
 
   return (
     <section data-held-sats style={{ display: "flex", flexDirection: "column" }}>
@@ -279,6 +283,17 @@ export function HeldSats({
           {t("dash.checkHeldSats")} ›
         </button>
       )}
+      {balanceUnreadable && (
+        <div data-held-sats-unreadable style={{
+          background: T.card, border: `1px solid ${T.amber}55`, borderRadius: T.r, marginBottom: 16, overflow: "hidden",
+        }}>
+          <WalletBalance balanceMsats={0} known={false} invite={walletInvite} />
+          <div style={{ padding: "0 16px 16px", color: T.text, fontFamily: T.sans, fontSize: T.fs.secondary, lineHeight: 1.5 }}>
+            {t("dash.cantCheckSats")}
+          </div>
+        </div>
+      )}
+      {pendingCards}
       {/* ── MONEY-SAFETY, always visible (never collapsed) ──────────────────
           Recovery / stranded-claim / lock-recovery / pending-ecash cards are
           money-critical, so they sit right under the hero — never hidden in a
