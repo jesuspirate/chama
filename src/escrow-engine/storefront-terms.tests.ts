@@ -34,9 +34,14 @@ assert.deepEqual(matchingChildren(parent, all).map((c) => c.id), [good.id]);
 assert.equal(remainingStock(parent, all, now), 1, 'only the matching order counts against stock');
 assert.deepEqual(overcommittedChildren(parent, [good, child({}, 1), child({ amountMsats: 1 }, 1)]).map((c) => c.id), [],
   'a forged order cannot push a real one over the stock line');
-// Circle shares and tranche children have their own checks.
-assert.deepEqual(storefrontChildMismatches(parent, child({ chamaPolicy: 'share-v1', amountMsats: 1 })), []);
-assert.deepEqual(storefrontChildMismatches(parent, child({ trancheChild: {} as EscrowState['trancheChild'], amountMsats: 1 })), []);
+// Circle shares and tranche children have their own checks, but only under a
+// real circle or tranche plan: on a storefront those markers are forged.
+assert(storefrontChildMismatches(parent, child({ chamaPolicy: 'share-v1' })).includes('kind'));
+assert(storefrontChildMismatches(parent, child({ trancheChild: {} as EscrowState['trancheChild'] })).includes('kind'));
+const circle = { ...parent, category: 'chama' } as EscrowState;
+assert.deepEqual(storefrontChildMismatches(circle, child({ chamaPolicy: 'share-v1', amountMsats: 1 })), []);
+const plan = { ...parent, tranchePlan: {} } as unknown as EscrowState;
+assert.deepEqual(storefrontChildMismatches(plan, child({ trancheChild: {} as EscrowState['trancheChild'], amountMsats: 1 })), []);
 // A legacy order with no unit count is one unit at the listing's price.
 assert.deepEqual(storefrontChildMismatches(parent, child({ claimedQuantity: undefined })), []);
 console.log('PASS M3: storefront orders count only on the listing\'s own price, federation, arbiters and seller');

@@ -2218,6 +2218,12 @@ export function replayEventChain(
           ...(benign ? { benign: true } : {}),
         }] };
       };
+      // Audit M2: this code fires only for an author who is neither seated nor
+      // a pooled backup, so their late event never changes the trade, whatever
+      // its kind (a past-deadline LOCK was never applied under the old law
+      // either). Skip it before the strict funds branch below, or a stranger
+      // could make a funded trade fail to load.
+      if (result.error.code === "EXPIRY_NOT_IN_TRADE") { note(); continue; }
       // Never let a generic duplicate/terminal error forgive a funds transition.
       // Re-delivery of the identical signed ID already succeeds in applyEvent.
       // Strict for the role that can move the money; anyone else's is noise.

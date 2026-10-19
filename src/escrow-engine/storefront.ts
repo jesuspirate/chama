@@ -97,8 +97,12 @@ export function isActiveChildOrder(s: EscrowState): boolean {
  *  tranche children have their own checks and are never judged here. A pure
  *  reader check: no event, reducer or replay changes. */
 export function storefrontChildMismatches(parent: EscrowState, child: EscrowState): string[] {
-  if (child.parent !== parent.id || child.chamaPolicy || child.trancheChild) return [];
+  if (child.parent !== parent.id) return [];
+  // Exempt only where the parent really is a circle or a tranche plan; on a
+  // storefront those markers are just more buyer-written fields.
+  if ((child.chamaPolicy && parent.category === "chama") || (child.trancheChild && parent.tranchePlan)) return [];
   const out: string[] = [];
+  if (child.chamaPolicy || child.trancheChild) out.push("kind");
   if (child.category !== parent.category) out.push("category");
   // Units are counted as stock counts them, so price and stock always agree.
   if (child.amountMsats !== parent.amountMsats * childClaim(child)) out.push("price");

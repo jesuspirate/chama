@@ -5030,7 +5030,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       });
       const targetRoute = getArbiterFederationRoute(activePubkey, targetFederationId);
       const targetWasKept = targetRoute !== null;
-      rememberArbiterFederationRoute(activePubkey, {
+      const writtenTargetRoute = rememberArbiterFederationRoute(activePubkey, {
         federationId: targetFederationId,
         // An unlisted invite never replaces the one the wallet reopens with.
         inviteCode: inviteToRemember(targetRoute?.inviteCode, trimmed),
@@ -5110,8 +5110,10 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
           try { return fedimintRef.current?.getFederationId()?.trim().toLowerCase() ?? null; }
           catch { return null; }
         })();
-        if (!targetWasKept && openFederationId !== targetFederationId) {
-          forgetUnjoinedFederationRoute(activePubkey, targetFederationId);
+        // A wallet that needs recovery exists and may hold sats: keep its route.
+        const needsRecovery = (e as { code?: string } | null)?.code === "FEDIMINT_RECOVERY_REQUIRES_USER_ACTION";
+        if (!targetWasKept && !needsRecovery && openFederationId !== targetFederationId) {
+          forgetUnjoinedFederationRoute(activePubkey, writtenTargetRoute);
         }
         const message = e instanceof Error ? e.message : String(e);
         updateFedimint({ busy: false, error: message });

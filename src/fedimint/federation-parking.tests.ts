@@ -302,17 +302,21 @@ assert.equal(await federationIdForInvite(UNLISTED, null, async () => ({ federati
   assert.equal(session.has(BOB, "not-an-invite"), false);
 }
 
-// #64 follow-up: a switch whose target never opened forgets the target route
-// it wrote, but never a route that has seen a balance.
+// #64 follow-up: a switch whose target never opened forgets the exact route
+// it wrote, never one a join re-recorded or that has seen a balance.
 {
   const FRANK = "f".repeat(64);
-  rememberArbiterFederationRoute(FRANK, { federationId: BLF_FEDERATION_ID, inviteCode: BLF_FEDERATION_INVITE, storageScope: FRANK, lastBalanceMsats: 0 });
-  rememberArbiterFederationRoute(FRANK, { federationId: GBF_FEDERATION_ID, inviteCode: GBF_FEDERATION_INVITE, storageScope: `${FRANK}:x` });
-  forgetUnjoinedFederationRoute(FRANK, GBF_FEDERATION_ID.toUpperCase());
-  assert.equal(getArbiterFederationRoute(FRANK, GBF_FEDERATION_ID), null, "a failed switch leaves no empty kept wallet");
-  forgetUnjoinedFederationRoute(FRANK, BLF_FEDERATION_ID);
+  const kept = rememberArbiterFederationRoute(FRANK, { federationId: BLF_FEDERATION_ID, inviteCode: BLF_FEDERATION_INVITE, storageScope: FRANK, lastBalanceMsats: 0 });
+  const written = rememberArbiterFederationRoute(FRANK, { federationId: GBF_FEDERATION_ID, inviteCode: GBF_FEDERATION_INVITE, storageScope: `${FRANK}:x`, updatedAt: 1 });
+  forgetUnjoinedFederationRoute(FRANK, kept);
   assert.ok(getArbiterFederationRoute(FRANK, BLF_FEDERATION_ID), "a route with a balance reading is never forgotten");
-  forgetUnjoinedFederationRoute(FRANK, "0".repeat(64));
+  // A join re-recorded the route after the switch wrote it: keep it.
+  rememberArbiterFederationRoute(FRANK, { federationId: GBF_FEDERATION_ID, inviteCode: GBF_FEDERATION_INVITE, storageScope: `${FRANK}:x`, updatedAt: 2 });
+  forgetUnjoinedFederationRoute(FRANK, written);
+  assert.ok(getArbiterFederationRoute(FRANK, GBF_FEDERATION_ID), "a route a join recorded again is kept");
+  const again = rememberArbiterFederationRoute(FRANK, { federationId: GBF_FEDERATION_ID, inviteCode: GBF_FEDERATION_INVITE, storageScope: `${FRANK}:x`, updatedAt: 3 });
+  forgetUnjoinedFederationRoute(FRANK, again);
+  assert.equal(getArbiterFederationRoute(FRANK, GBF_FEDERATION_ID), null, "a failed switch leaves no empty kept wallet");
   assert.equal(listArbiterFederationRoutes(FRANK).length, 1);
 }
 

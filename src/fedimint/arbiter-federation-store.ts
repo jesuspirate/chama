@@ -122,12 +122,14 @@ export function rememberArbiterFederationRoute(
 }
 
 /** #64 follow-up: forget a route written for a switch that never opened its
- *  wallet. A route that has seen a balance is kept: it may point at sats. */
-export function forgetUnjoinedFederationRoute(pubkey: string, federationId: string): void {
+ *  wallet. Only the exact route the switch wrote is forgotten: once a join
+ *  recorded it again, or it has seen a balance, it may point at sats. */
+export function forgetUnjoinedFederationRoute(pubkey: string, written: ArbiterFederationRoute): void {
   const state = read(pubkey);
-  const id = cleanFederationId(federationId);
+  const id = cleanFederationId(written.federationId);
   const route = state.routes[id];
-  if (!route || route.lastBalanceMsats !== undefined) return;
+  if (!route || route.lastBalanceMsats !== undefined || route.updatedAt !== written.updatedAt
+    || route.storageScope !== written.storageScope || route.inviteCode !== written.inviteCode) return;
   delete state.routes[id];
   write(pubkey, state);
 }

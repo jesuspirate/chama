@@ -62,4 +62,23 @@ for (const at of [cutoff - 1, cutoff, cutoff + 1]) {
   // Before the deadline a stranger's event is judged by the usual rules.
   assert(!applyEvent(state, vote(state, keys[3], state.expiresAt - 60)).ok);
 }
+// Second review: a stranger's late LOCK must not make a funded December trade
+// fail to load (replay is strict for LOCKs from an "entitled" author, and a
+// LOCK with a new notesHash or no predecessor counts as entitled).
+const strangerLock = (id: string, at: number, prev?: string) => event(K.LOCK, { type: 'escrow:lock', notesHash: 'evil',
+  shares: [0, 1, 2].map(shareIndex => ({ shareIndex, encryptedFor: { [stranger]: 'x' } })), buyerPubkey: stranger, arbiterPubkey: arbiter,
+  sellerReceivesMsats: 100000, arbiterFeeMsats: 0, lockedAt: at } as EscrowPayload, keys[3], at, id, prev);
+for (const at of [cutoff, cutoff + 1]) {
+  const { chain, state } = lockedTrade(at);
+  for (const prev of [state.eventChain.at(-1)!.raw.id, undefined]) {
+    const replay = replayEventChain([...chain, strangerLock(state.id, late(state), prev)]);
+    assert(replay.ok, replay.ok ? '' : `${replay.error.code}: a stranger's late LOCK must not brick replay`);
+    assert.equal(replay.state.status, S.LOCKED);
+    assert.equal(replay.state.lock.notesHash, 'test', "the real lock's notes stay committed");
+  }
+  // Before any LOCK: a stranger's late LOCK on the open listing changes nothing.
+  const replay = replayEventChain([chain[0], strangerLock(state.id, chain[0].timestamp + 3600 + 60, chain[0].raw.id)]);
+  assert(replay.ok, replay.ok ? '' : replay.error.message);
+  assert.equal(replay.state.status, S.CREATED);
+}
 console.log('PASS M2: only people in a trade can carry it past its deadline (December rules); legacy chains unchanged');
