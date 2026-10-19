@@ -83,13 +83,39 @@ console.log("PASS reissue fee allowance: fee-short credits count, zero/over/larg
   const over = await probe(wallet({ balance: 0, credit: sats(200) }), sats(121));
   assert.equal(over.outcome, "unknown");
 
-  // After a non-definitive throw (timeout) the same window applies: a
-  // fee-short late credit is this note's, a larger shortfall is not.
-  const late = await probe(wallet({ balance: 0, credit: sats(119), throws: new Error("timeout") }), sats(121));
-  assert.equal(late.outcome, "recovered");
+  // After a non-definitive throw, a fee-short credit counts only when the
+  // federation confirmed it accepted this reissue (native MINT_REISSUE_PENDING
+  // with an operation id). 6.4.28: a client timeout proves nothing was sent,
+  // so a near-equal unrelated credit in the same seconds must not clear the
+  // entry while the note is still out.
+  const pending = (operationId?: string) =>
+    Object.assign(new Error("still pending"), { code: "MINT_REISSUE_PENDING", operationId });
+  const timeout = () => Object.assign(new Error("redeemEcash did not resolve within 30s"), { code: "REDEEM_TIMEOUT" });
+  const late = await probe(wallet({ balance: 0, credit: sats(119), throws: pending("op-1") }), sats(121));
+  assert.equal(late.outcome, "recovered", "fee-short late credit after a confirmed-sent reissue is this note's");
   assert.equal(late.outcome === "recovered" && late.lateCredit, true);
-  const lateShort = await probe(wallet({ balance: 0, credit: sats(90), throws: new Error("timeout") }), sats(121));
+  assert.equal(late.outcome === "recovered" && late.recoveredMsats, sats(119));
+  for (const [label, err] of [
+    ["client timeout", timeout()],
+    ["plain error", new Error("timeout")],
+    ["pending with no operation id", pending()],
+    ["pending with an empty operation id", pending("")],
+  ] as const) {
+    const r = await probe(wallet({ balance: 0, credit: sats(119), throws: err }), sats(121));
+    assert.equal(r.outcome, "unknown", `${label}: a fee-short credit is not proven to be this note`);
+  }
+  // An exact late credit still counts after any non-definitive throw.
+  const lateExact = await probe(wallet({ balance: 0, credit: sats(121), throws: timeout() }), sats(121));
+  assert.equal(lateExact.outcome, "recovered");
+  assert.equal(lateExact.outcome === "recovered" && lateExact.lateCredit, true);
+  // A larger shortfall or an over-credit stays unknown even when confirmed sent.
+  const lateShort = await probe(wallet({ balance: 0, credit: sats(90), throws: pending("op-2") }), sats(121));
   assert.equal(lateShort.outcome, "unknown");
+  const lateOver = await probe(wallet({ balance: 0, credit: sats(122), throws: pending("op-3") }), sats(121));
+  assert.equal(lateOver.outcome, "unknown");
+  // Nothing landed after a confirmed-sent reissue: unknown, the entry is kept.
+  const lateNone = await probe(wallet({ balance: 0, credit: 0, throws: pending("op-4") }), sats(121));
+  assert.equal(lateNone.outcome, "unknown");
   // A definitive rejection outranks any balance movement in the window.
   const rejected = await probe(wallet({ balance: 0, credit: sats(121), throws: new Error("note already spent") }), sats(121));
   assert.equal(rejected.outcome, "consumed-uncredited");
@@ -99,7 +125,7 @@ console.log("PASS reissue fee allowance: fee-short credits count, zero/over/larg
   assert.equal((await probe(foreign, sats(121))).outcome, "foreign");
   assert.equal(foreign.redeemed, 0, "no reissue on the wrong federation");
 }
-console.log("PASS put-back probe: fee-short success or late credit recovers; no credit, big shortfall, over-credit and rejections do not");
+console.log("PASS put-back probe: fee-short success recovers; a fee-short late credit only after a confirmed-sent reissue; no credit, big shortfall, over-credit and rejections do not");
 
 {
   // The person is told the fee, in every language, and "nothing changed"
