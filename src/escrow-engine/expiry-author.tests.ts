@@ -76,9 +76,15 @@ for (const at of [cutoff, cutoff + 1]) {
     assert.equal(replay.state.status, S.LOCKED);
     assert.equal(replay.state.lock.notesHash, 'test', "the real lock's notes stay committed");
   }
-  // Before any LOCK: a stranger's late LOCK on the open listing changes nothing.
-  const replay = replayEventChain([chain[0], strangerLock(state.id, chain[0].timestamp + 3600 + 60, chain[0].raw.id)]);
-  assert(replay.ok, replay.ok ? '' : replay.error.message);
-  assert.equal(replay.state.status, S.CREATED);
+  // An unfunded listing keeps the old rule: a late event expires it, as before.
+  const listing = applyEvent(null, chain[0]); assert(listing.ok);
+  const lateOnListing = applyEvent(listing.state, strangerLock(state.id, chain[0].timestamp + 3600 + 60, chain[0].raw.id));
+  assert(lateOnListing.ok, lateOnListing.ok ? '' : lateOnListing.error.code);
+  assert.equal(lateOnListing.state.status, S.EXPIRED);
+  // Re-check: a replay that LOST the LOCK must stay strict. The buyer is only
+  // seated by the LOCK, so their later events must not be skipped as a
+  // stranger's (that would read a funded trade as an open listing).
+  const lostLock = replayEventChain([chain[0], vote(state, keys[1], late(state))]);
+  assert(!lostLock.ok, 'A chain missing its LOCK never loads as an open listing');
 }
 console.log('PASS M2: only people in a trade can carry it past its deadline (December rules); legacy chains unchanged');

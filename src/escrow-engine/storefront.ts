@@ -100,7 +100,12 @@ export function storefrontChildMismatches(parent: EscrowState, child: EscrowStat
   if (child.parent !== parent.id) return [];
   // Exempt only where the parent really is a circle or a tranche plan; on a
   // storefront those markers are just more buyer-written fields.
-  if ((child.chamaPolicy && parent.category === "chama") || (child.trancheChild && parent.tranchePlan)) return [];
+  // A tranche child is signed by its plan's coordinator, the listing's seller,
+  // so it is known even before the parent's plan start has loaded.
+  const seller = parent.participants[Role.SELLER];
+  const sellerSigned = !!seller && child.initiator?.pubkey?.toLowerCase() === seller.toLowerCase();
+  if ((child.chamaPolicy && parent.category === "chama")
+    || (child.trancheChild && (parent.tranchePlan || sellerSigned))) return [];
   const out: string[] = [];
   if (child.chamaPolicy || child.trancheChild) out.push("kind");
   if (child.category !== parent.category) out.push("category");
@@ -109,7 +114,6 @@ export function storefrontChildMismatches(parent: EscrowState, child: EscrowStat
   if (child.mintUrl.trim() !== parent.mintUrl.trim()) out.push("federation");
   const pool = (list: readonly string[]) => [...new Set(list.map((pk) => pk.toLowerCase()))].sort().join(",");
   if (pool(child.communityArbiters) !== pool(parent.communityArbiters)) out.push("arbiters");
-  const seller = parent.participants[Role.SELLER];
   if (!seller || child.participants[Role.SELLER]?.toLowerCase() !== seller.toLowerCase()) out.push("seller");
   return out;
 }

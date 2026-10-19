@@ -1922,9 +1922,13 @@ export function applyEvent(
     && (event.kind === EscrowEventKind.LOCK || event.kind === EscrowEventKind.CHILD_KEY);
   if (!(event.kind === EscrowEventKind.COMPLETE && state.onchainFundingTerms) && !activatesDeferredTranche && event.timestamp > state.expiresAt && state.status !== EscrowStatus.APPROVED && state.status !== EscrowStatus.CLAIMED) {
     // Audit M2: an event's timestamp is chosen by its signer, so under the
-    // December rules only someone in the trade can carry it past expiry. A
-    // stranger's late (or future-dated) event is refused and changes nothing.
-    if (state.status !== EscrowStatus.EXPIRED && usesDecemberTradeRules(state) && !mayCarryPastExpiry(state, event.pubkey)) {
+    // December rules only someone in the trade can carry a FUNDED trade past
+    // its deadline. A stranger's late (or future-dated) event is refused and
+    // changes nothing. An unfunded listing keeps the old rule: its buyer and
+    // arbiter are only seated by the LOCK, and a replay that lost the LOCK
+    // must stay strict rather than read their events as a stranger's.
+    if (state.status !== EscrowStatus.EXPIRED && state.status !== EscrowStatus.CREATED
+        && usesDecemberTradeRules(state) && !mayCarryPastExpiry(state, event.pubkey)) {
       return err("EXPIRY_NOT_IN_TRADE", "Only someone in this trade can carry it past its deadline", event.raw.id);
     }
     if (state.status === EscrowStatus.EXPIRED) {
@@ -2113,7 +2117,9 @@ export function replayEventChain(
   // every other CREATE aside, and a backdated JOIN takes a seat before the real
   // one (which then fails ROLE_TAKEN, below). Their rejected events stay strict:
   // skipping a displaced party's LOCK would read a funded trade as open, or as
-  // funded by someone else.
+  // funded by someone else. (One exception, audit M2: on a funded December
+  // trade a late event from anyone unseated is skipped, since it cannot
+  // change the trade, and otherwise anyone could stop the trade loading.)
   const claimants = new Set(events
     .filter(event => event.kind === EscrowEventKind.CREATE)
     .map(event => event.pubkey));
@@ -2218,12 +2224,14 @@ export function replayEventChain(
           ...(benign ? { benign: true } : {}),
         }] };
       };
-      // Audit M2: this code fires only for an author who is neither seated nor
-      // a pooled backup, so their late event never changes the trade, whatever
-      // its kind (a past-deadline LOCK was never applied under the old law
-      // either). Skip it before the strict funds branch below, or a stranger
-      // could make a funded trade fail to load.
-      if (result.error.code === "EXPIRY_NOT_IN_TRADE") { note(); continue; }
+      // Audit M2: this code fires only on a funded trade, for an author who is
+      // neither seated nor a pooled backup (claimants of a foreign CREATE
+      // included), so their late event never changes the trade, whatever its
+      // kind. Skip it before the strict funds branch below, or a stranger
+      // could make a funded trade fail to load. The LOCK check is belt and
+      // braces: without a LOCK in the chain nothing here is forgiven.
+      if (result.error.code === "EXPIRY_NOT_IN_TRADE"
+          && state?.eventChain.some(e => e.kind === EscrowEventKind.LOCK)) { note(); continue; }
       // Never let a generic duplicate/terminal error forgive a funds transition.
       // Re-delivery of the identical signed ID already succeeds in applyEvent.
       // Strict for the role that can move the money; anyone else's is noise.

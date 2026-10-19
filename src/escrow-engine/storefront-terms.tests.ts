@@ -40,6 +40,8 @@ assert(storefrontChildMismatches(parent, child({ chamaPolicy: 'share-v1' })).inc
 assert(storefrontChildMismatches(parent, child({ trancheChild: {} as EscrowState['trancheChild'] })).includes('kind'));
 const circle = { ...parent, category: 'chama' } as EscrowState;
 assert.deepEqual(storefrontChildMismatches(circle, child({ chamaPolicy: 'share-v1', amountMsats: 1 })), []);
+assert.deepEqual(storefrontChildMismatches(parent, child({ trancheChild: {} as EscrowState['trancheChild'], amountMsats: 1,
+  initiator: { pubkey: seller, role: Role.SELLER } } as Partial<EscrowState>)), [], "a seller-signed tranche child counts before the plan start loads");
 const plan = { ...parent, tranchePlan: {} } as unknown as EscrowState;
 assert.deepEqual(storefrontChildMismatches(plan, child({ trancheChild: {} as EscrowState['trancheChild'], amountMsats: 1 })), []);
 // A legacy order with no unit count is one unit at the listing's price.
