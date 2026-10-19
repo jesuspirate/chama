@@ -10,6 +10,7 @@ export const recovery: Record<string, string> = {
   "recovery.activeTradeOne": "1 intercambio",
   "recovery.barChooseChama": "Elige tu Chama",
   "recovery.barExternalRoute": "Ruta externa",
+  "recovery.barUnlistedNamed": "{name} · no listada",
   "recovery.barInTradeAfter": "bloqueados",
   "recovery.barInTradeBefore": "{trades} ·",
   "recovery.barReady": "Listo",
@@ -65,7 +66,7 @@ export const recovery: Record<string, string> = {
   "recovery.headlineLeftoverSats": "Tienes sats sobrantes de intercambios anteriores",
   "recovery.headlineTradeWith": "Tu intercambio con {name} no terminó limpiamente",
   "recovery.keepUsingFooter":
-    "Puedes seguir usando Chama. Recuperar solo saca de OPFS los sats sin explicación.",
+    "Puedes seguir usando Chama. Recuperar solo saca de tu billetera Chama los sats sin explicación.",
   "recovery.lockFooter":
     "La recuperación es automática y sin comisiones — no se envía nada por Lightning.",
   "recovery.lockIntentAfter": "pone tus sats en custodia.",

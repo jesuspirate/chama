@@ -141,6 +141,10 @@ export const app: Record<string, string> = {
     "Mint stalled. If sats need recovery, use Me or the Browse recovery prompt.",
   "app.noSatsMoveWhileSwitching": "no sats move while switching",
   "app.notNow": "Not now",
+  "app.unlistedFedTitle": "This trade uses a federation Chama doesn't list",
+  "app.unlistedFedBody": "Whoever runs this federation holds the sats until the trade ends. Continue only if you know and trust them.",
+  "app.unlistedFedWallet": "Your current wallet stays on this device. It comes back when you use its federation again.",
+  "app.unlistedFedContinue": "I know who runs it",
   "app.nwcWalletRefused": "NWC wallet refused",
   "app.onForTrade": "On {name} for this trade.",
   "app.onLabel": "On {label}.",
@@ -179,6 +183,7 @@ export const app: Record<string, string> = {
   "app.reabsorbForeign":
     "This note belongs to a different federation, so it can't come back here. Nothing was changed — open Chama on that federation to use it.",
   "app.reabsorbRecovered": "Recovered ₿{sats} to your balance.",
+  "app.reabsorbRecoveredFee": "Recovered ₿{sats} to your balance. The federation kept ₿{fee} as its fee for taking the note back.",
   "app.reabsorbUnknown":
     "Couldn't get a straight answer from your Chama, so nothing was changed. The note is exactly where it was — try again in a moment.",
   "app.recoverAndSwitchSubtitle":
@@ -203,6 +208,8 @@ export const app: Record<string, string> = {
   "app.startingOrder": "Starting your order…",
   "app.strandedClaimBody":
     "⚠ This note IS the sats from your settled trade. Chama couldn't redeem it automatically — import it into Fedi or any Fedimint wallet on this federation, or save it somewhere safe NOW. Clearing browser data destroys the only copy.",
+  "app.strandedClaimBodyApp":
+    "⚠ This note IS the sats from your settled trade. Chama couldn't redeem it automatically — import it into Fedi or any Fedimint wallet on this federation, or save it somewhere safe NOW. Clearing Chama's app storage destroys the only copy.",
   "app.strandedClaimHeadline": "Stranded claim · bearer note",
   "app.strandedClaimUnresolvedBody":
     "⚠ This note was reported already-redeemed, but Chama couldn't confirm YOUR wallet was credited. Save it anyway, then check your balance — if the sats aren't there, this string is your evidence and recovery path.",

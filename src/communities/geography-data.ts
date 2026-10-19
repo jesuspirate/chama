@@ -4,6 +4,8 @@
 // https://github.com/unicode-org/cldr/blob/main/common/supplemental/supplementalMetadata.xml
 // Unicode data license: https://www.unicode.org/license.txt
 // Keep territory-specific zone.tab entries before adding cross-country aliases.
+// CLDR also lists retired codes as aliases (FXX, ZAR, TMP); FR, CD and TL
+// carry their current ISO 3166-1 codes FRA, COD and TLS instead.
 export const TIMEZONE_COUNTRY: Readonly<Record<string, string>> = {
   "Africa/Abidjan": "CI",
   "Africa/Accra": "GH",
@@ -597,7 +599,7 @@ export const COUNTRY_ISO3: Readonly<Record<string, string>> = {
   "BZ": "BLZ",
   "CA": "CAN",
   "CC": "CCK",
-  "CD": "ZAR",
+  "CD": "COD",
   "CF": "CAF",
   "CG": "COG",
   "CH": "CHE",
@@ -635,7 +637,7 @@ export const COUNTRY_ISO3: Readonly<Record<string, string>> = {
   "FK": "FLK",
   "FM": "FSM",
   "FO": "FRO",
-  "FR": "FXX",
+  "FR": "FRA",
   "GA": "GAB",
   "GB": "GBR",
   "GD": "GRD",
@@ -794,7 +796,7 @@ export const COUNTRY_ISO3: Readonly<Record<string, string>> = {
   "TH": "THA",
   "TJ": "TJK",
   "TK": "TKL",
-  "TL": "TMP",
+  "TL": "TLS",
   "TM": "TKM",
   "TN": "TUN",
   "TO": "TON",

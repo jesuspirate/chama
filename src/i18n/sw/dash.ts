@@ -14,6 +14,7 @@ export const dash: Record<string, string> = {
   "dash.noVerticalsYet": "Kamilisha biashara na mchanganyiko wako wa Kubadilishana, Bili na Soko utaonekana hapa.",
   "dash.homeTitle": "Nyumbani",
   "dash.inWallet": "Kwenye pochi yako",
+  "dash.pendingNote": "₿{sats} zinasubiri kwenye noti ya ecash · ifungue kwenye Mimi",
   "dash.inEscrowForYou": "Kwenye escrow kwa ajili yako",
   "dash.readyToCollect": "Tayari kuchukua",
   "dash.readyTrades": "{count} za kuchukua",

@@ -6,6 +6,7 @@ import { useBitcoinPrice } from "../hooks/useBitcoinPrice.js";
 import { useFiatRates } from "../hooks/useFiatRates.js";
 import { T, inputStyle } from "../theme.js";
 import { useT } from "../../i18n/index.js";
+import { SheetSelect } from "./SheetSelect.js";
 import { caretAfter, formatRaw, meaningfulBefore, parseTyped, separatorsFor, type Separators } from "../grouped-number.js";
 
 // v7 redesign (Jet, 2026-10-06): the plain conversion is the star — one big
@@ -100,10 +101,9 @@ export function BitcoinConverter({ communitySlug, variant = "card" }: {
     <section data-converter style={{ ...shell, fontFamily: T.sans }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 10, marginBottom: 12 }}>
         <label htmlFor="chama-converter-currency" style={label}>{t("bond.converterCurrencyShort")}</label>
-        <select id="chama-converter-currency" value={currency} onChange={(event) => changeCurrency(event.target.value)}
-          style={{ ...inputStyle, width: "auto", minWidth: 96, minHeight: T.size.touch, padding: "0 12px", fontFamily: T.sans, fontSize: T.fs.body, fontWeight: 700 }}>
-          {currencies.map(code => <option key={code} value={code}>{code}</option>)}
-        </select>
+        <SheetSelect id="chama-converter-currency" value={currency} onChange={changeCurrency} title={t("bond.converterCurrencyShort")}
+          options={currencies.map(code => ({ value: code, label: code }))}
+          style={{ ...inputStyle, width: "auto", minWidth: 96, minHeight: T.size.touch, padding: "0 12px", fontFamily: T.sans, fontSize: T.fs.body, fontWeight: 700 }} />
       </div>
 
       {/* The question: what you type. */}

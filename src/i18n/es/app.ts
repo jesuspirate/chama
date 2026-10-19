@@ -127,6 +127,10 @@ export const app: Record<string, string> = {
     "El mint se detuvo. Si hay sats por recuperar, usa Yo o el aviso de recuperación en Explorar.",
   "app.noSatsMoveWhileSwitching": "ningún sat se mueve durante el cambio",
   "app.notNow": "Ahora no",
+  "app.unlistedFedTitle": "Este intercambio usa una federación que Chama no lista",
+  "app.unlistedFedBody": "Quien opera esta federación guarda los sats hasta que termine el intercambio. Continúa solo si los conoces y confías en ellos.",
+  "app.unlistedFedWallet": "Tu billetera actual se queda en este dispositivo. Vuelve cuando uses su federación otra vez.",
+  "app.unlistedFedContinue": "Sé quién la opera",
   "app.nwcWalletRefused": "La billetera NWC lo rechazó",
   "app.onForTrade": "En {name} para este intercambio.",
   "app.onLabel": "En {label}.",
@@ -163,6 +167,7 @@ export const app: Record<string, string> = {
   "app.reabsorbForeign":
     "Esta nota pertenece a otra federación, así que no puede volver aquí. No se cambió nada — abre Chama en esa federación para usarla.",
   "app.reabsorbRecovered": "₿{sats} recuperados a tu saldo.",
+  "app.reabsorbRecoveredFee": "₿{sats} recuperados a tu saldo. La federación se quedó ₿{fee} como comisión por recuperar la nota.",
   "app.reabsorbUnknown":
     "No se pudo obtener una respuesta clara de tu Chama, así que no se cambió nada. La nota está exactamente donde estaba — inténtalo de nuevo en un momento.",
   "app.recoverAndSwitchSubtitle":
@@ -187,6 +192,8 @@ export const app: Record<string, string> = {
   "app.startingOrder": "Iniciando tu pedido…",
   "app.strandedClaimBody":
     "⚠ Esta nota ES los sats de tu intercambio liquidado. Chama no pudo canjearla automáticamente — impórtala a Fedi o a cualquier billetera Fedimint de esta federación, o guárdala en un lugar seguro AHORA. Borrar los datos del navegador destruye la única copia.",
+  "app.strandedClaimBodyApp":
+    "⚠ Esta nota ES los sats de tu intercambio liquidado. Chama no pudo canjearla automáticamente — impórtala a Fedi o a cualquier billetera Fedimint de esta federación, o guárdala en un lugar seguro AHORA. Borrar el almacenamiento de la app Chama destruye la única copia.",
   "app.strandedClaimHeadline": "Reclamo varado · nota al portador",
   "app.strandedClaimUnresolvedBody":
     "⚠ Esta nota se reportó como ya canjeada, pero Chama no pudo confirmar que TU billetera fuera acreditada. Guárdala de todos modos y luego revisa tu saldo — si los sats no están ahí, esta cadena es tu evidencia y tu vía de recuperación.",

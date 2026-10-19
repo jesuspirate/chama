@@ -16,6 +16,8 @@ export const connect: Record<string, string> = {
   "connect.introNeverHolds": "Chama kamwe haishikilii pesa zako.",
   "connect.introTitle": "Fanya biashara ya bitcoin na jamii yako",
   "connect.lastChamaHere": "Chama kilichotumika mwisho kwenye kivinjari hiki",
+  "connect.lastChamaHereApp":
+    "Chama kilichotumika mwisho kwenye kifaa hiki",
   "connect.moreOptions": "▼ Njia zaidi za kuingia",
   "connect.pendingReportSignIn":
     "Ingia ujiweke kwenye ramani. Mara tu utakapounganisha, tutawaambia wasuluhishi wa Chama kwamba {chama} inataka kujiunga.",

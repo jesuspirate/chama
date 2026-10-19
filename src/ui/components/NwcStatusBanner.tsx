@@ -179,7 +179,7 @@ export function NwcStatusBanner({
             borderRadius: T.rs,
             background: ready ? T.accent : T.card,
             border: `1px solid ${ready ? T.accent : T.border}`,
-            color: ready ? "#000" : T.muted,
+            color: ready ? T.onInk : T.muted,
             fontFamily: T.sans,
             fontSize: T.fs.secondary,
             fontWeight: 700,

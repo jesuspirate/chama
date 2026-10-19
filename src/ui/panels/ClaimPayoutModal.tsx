@@ -2423,7 +2423,7 @@ function TerminalPanel({
           width: "100%", padding: "10px 16px", borderRadius: T.rs,
           background: showRecoveryCta ? T.amber : T.surface,
           border: `1px solid ${showRecoveryCta ? T.amber : T.border}`,
-          color: showRecoveryCta ? "#000" : T.muted,
+          color: showRecoveryCta ? T.onInk : T.muted,
           fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
           cursor: retryProbing ? "not-allowed" : "pointer",
           boxShadow: showRecoveryCta ? `0 0 24px ${T.amber}33` : "none",

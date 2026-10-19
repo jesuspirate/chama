@@ -1,5 +1,6 @@
 import { EcashCustody } from "../components/MoneyCustody.js";
 import { isSimModeOn } from "../../sim/simMode.js";
+import { walletHome, isNativeAppShell } from "../wallet-location.js";
 import { SettingsRow } from "../components/SettingsRow.js";
 import { RecoveryKeyRow, RecoveryKeyReminder } from "../components/RecoveryKey.js";
 import { listPaidLockRecoveries, acknowledgePaidLockRecoveries } from "../../payments/paid-lock-recovery.js";
@@ -117,6 +118,10 @@ import type { TradeIndexEntry } from "../../escrow-engine/trade-index.js";
 import { readKind0Toggle, writeKind0Toggle, readLocalTradeName, writeLocalTradeName, sanitizeTradeName, generatedNameFor, profileNameFor, type NostrProfileNameMap } from "../nostr-profiles.js";
 import { backgroundPushEnabled, enableBackgroundPush, disableBackgroundPush } from "../../notifications/watch-tags.js";
 import { isWebPushSupported, iosNeedsInstallForPush } from "../../notifications/web-push-client.js";
+import { expectedFederationIdForInvite, federationNameForInvite } from "../../fedimint/federation-config.js";
+import { publishedFederationName } from "../../fedimint/federation-inspection.js";
+import { useFederationInfo } from "../components/FederationDisclosure.js";
+import { listArbiterFederationRoutes } from "../../fedimint/arbiter-federation-store.js";
 
 
 
@@ -666,7 +671,7 @@ export function MeScreen({
           </div>
           <div style={{ fontSize: 13, color: T.text, fontFamily: T.sans, lineHeight: 1.5 }}>
             <BitcoinAmount sats={Math.floor(entry.amountMsats / 1000)} size={13} gap={4} glyphScale={1.18} color={T.text} glyphColor={T.muted} />
-            {" "}{t("me.strandedClaimBody")}
+            {" "}{t(walletHome() === "app" ? "me.strandedClaimBodyApp" : "me.strandedClaimBody")}
           </div>
           {/* The honest alternative to exporting a note nobody has tested:
               ask the federation by taking it. Either the sats land in the
@@ -868,7 +873,7 @@ export function MeScreen({
               marginTop: 6, fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans,
               lineHeight: 1.5, textAlign: "center",
             }}>
-              {t("me.withdrawEcashBackupHint")}
+              {t(withdrawEcashHintKey())}
             </div>
           )}
         </div>
@@ -1051,9 +1056,10 @@ export function MeScreen({
           borderRadius: T.r, padding: 0, overflow: "hidden",
         }}>
           <WalletBalance balanceMsats={balanceMsats} known={balanceKnown} invite={walletInvite} />
+          <ParkedWallets pubkey={pubkey} activeInvite={walletInvite} />
           <RecoveryKeyRow key={pubkey} pubkey={pubkey} loadKey={loadActiveRecoveryKey} />
           {onWithdrawEcash && (
-            <SettingsRow label={t("me.withdrawEcash")} hint={t("me.withdrawEcashBackupHint")} onClick={onWithdrawEcash} />
+            <SettingsRow label={t("me.withdrawEcash")} hint={t(withdrawEcashHintKey())} onClick={onWithdrawEcash} />
           )}
           <SettingsRow label={t("me.paymentMethods")} hint={t("me.paymentMethodsHint")} onClick={onOpenSavedHandles} />
           <SettingsRow label={t("me.lightningAddresses")} hint={t("me.lightningAddressesHint")} onClick={onOpenPayoutDestinations} />
@@ -3074,6 +3080,16 @@ function NotificationsRow() {
   );
 }
 
+/** Where the wallet behind "Withdraw as ecash" lives decides what can erase
+ *  it: browser data in a browser, the app's storage in the Android or
+ *  desktop app, nothing here at all on a Chama node. */
+function withdrawEcashHintKey(): string {
+  const home = walletHome();
+  return home === "app" ? "me.withdrawEcashBackupHintApp"
+    : home === "node" ? "me.withdrawEcashBackupHintNode"
+    : "me.withdrawEcashBackupHint";
+}
+
 function BackgroundPushRow() {
   const [testState, setTestState] = useState<"idle" | "waiting" | "received" | "failed">("idle");
   const { t } = useT();
@@ -3114,8 +3130,8 @@ function BackgroundPushRow() {
   const hint =
     nativeStatus?.lane === "unavailable" ? t("me.bgPushNativeSetup")
     : needsInstall ? t("me.bgPushInstall")
-    : !supported ? t("me.bgPushUnsupported")
-    : blocked ? t("me.bgPushBlocked")
+    : !supported ? t(isNativeAppShell() ? "me.bgPushUnsupportedApp" : "me.bgPushUnsupported")
+    : blocked ? t(nativeStatus || isNativeAppShell() ? "me.bgPushBlockedApp" : "me.bgPushBlocked")
     : nativeStatus?.lane === "fcm" ? t("me.bgPushFcm")
     : nativeStatus?.lane === "unifiedpush" ? t("me.bgPushUnified")
     : t("me.bgPushHint");
@@ -3522,6 +3538,42 @@ function NostrNamesRow({ on, onToggle }: {
 export function WalletBalance({ balanceMsats, known = true, invite }: { balanceMsats: number; known?: boolean; invite?: string }) {
   const { t } = useT();
   return <div data-wallet-balance style={{ padding: 16, color: T.text, fontFamily: T.sans }}>{t("me.walletBalance")} {known ? <TradeAmount msats={balanceMsats} interactive /> : "—"}<EcashCustody key={invite} invite={invite} /></div>;
+}
+
+/** H4: wallets kept on this device for other federations. The amount is the
+ *  balance seen when the person last left that federation, so it says so. */
+export function ParkedWallets({ pubkey, activeInvite }: { pubkey: string | null | undefined; activeInvite?: string }) {
+  const { t } = useT();
+  if (!pubkey) return null;
+  const activeFed = expectedFederationIdForInvite(activeInvite)?.toLowerCase();
+  const parked = listArbiterFederationRoutes(pubkey).filter((route) =>
+    route.inviteCode !== activeInvite?.trim() && route.federationId !== activeFed && (route.lastBalanceMsats ?? 0) >= 1000);
+  if (parked.length === 0) return null;
+  return (
+    <div data-parked-wallets style={{ padding: "0 16px 16px", color: T.text, fontFamily: T.sans }}>
+      <div style={{ fontSize: T.fs.secondary, color: T.ink2, marginBottom: 6 }}>{t("me.parkedWalletsTitle")}</div>
+      {parked.map((route) => (
+        <div key={route.federationId} style={{ fontSize: T.fs.body, lineHeight: 1.45, marginBottom: 4 }}>
+          <ParkedWalletLine sats={Math.floor((route.lastBalanceMsats ?? 0) / 1000)} invite={route.inviteCode} />
+        </div>
+      ))}
+      <div style={{ fontSize: T.fs.secondary, color: T.ink2, lineHeight: 1.4, marginTop: 4 }}>{t("me.parkedWalletsHint")}</div>
+    </div>
+  );
+}
+
+/** Jet (6.4.26-rc.6): a kept wallet on an unlisted federation is named by
+ *  the name that federation publishes, marked unlisted, so each balance
+ *  says whose it is. */
+function ParkedWalletLine({ sats, invite }: { sats: number; invite: string }) {
+  const { t } = useT();
+  const listed = federationNameForInvite(invite);
+  const { info } = useFederationInfo(listed ? "" : invite.trim());
+  const published = publishedFederationName(info);
+  return <>{t("me.parkedWalletLine", {
+    sats: sats.toLocaleString(),
+    name: listed ?? (published ? t("recovery.barUnlistedNamed", { name: published }) : t("me.parkedWalletUnlisted")),
+  })}</>;
 }
 
 /** v7 redesign: a labelled settings group (canvas "Me": Money / Community / App). */

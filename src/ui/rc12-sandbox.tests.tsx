@@ -88,11 +88,39 @@ console.log("PASS sandbox follow-up: trade room and toasts reserve the real bann
   const styles = readFileSync(new URL("../../android/app/src/main/res/values/styles.xml", import.meta.url), "utf8");
   const appThemes = styles.slice(styles.indexOf('<style name="AppTheme"'), styles.indexOf('<style name="AppTheme.NoActionBarLaunch"'));
   assert.doesNotMatch(appThemes, /<item name="android:background">/, "no theme-level background on the app themes");
+  // rc.5: the activity never leaves its launch theme, so a splash background
+  // there drew the logo behind the federation picker and Copy/Paste bar.
+  assert.doesNotMatch(styles, /<item name="android:background">/, "no theme-level background on any theme, launch included");
+  assert.match(styles, /<item name="android:windowBackground">@drawable\/chama_splash<\/item>/, "the launch splash stays on the window");
+  const manifest = readFileSync(new URL("../../android/app/src/main/AndroidManifest.xml", import.meta.url), "utf8");
+  assert.match(manifest, /android:theme="@style\/AppTheme\.NoActionBarLaunch"/, "the activity's theme is the one checked above");
   assert.equal((appThemes.match(/<item name="android:windowBackground">#05050A<\/item>/g) ?? []).length, 2, "the window stays dark");
   const layout = readFileSync(new URL("../../android/app/src/main/res/layout/activity_main.xml", import.meta.url), "utf8");
   assert.match(layout, /android:background="#05050A"/, "the screen itself stays dark");
 }
 console.log("PASS Android: no theme background, so selection handles and the Copy/Paste bar draw normally");
+{
+  // Jet (rc.5): native <select> pickers drew Android's own popup (with the
+  // splash art behind it). Every choice in the app opens the app's sheet.
+  const { readdirSync, statSync } = await import("node:fs");
+  const root = new URL("./", import.meta.url);
+  const found: string[] = [];
+  const walk = (dir: URL) => {
+    for (const name of readdirSync(dir)) {
+      const url = new URL(name, dir);
+      if (statSync(url).isDirectory()) { walk(new URL(name + "/", dir)); continue; }
+      if (!/\.tsx$/.test(name) || /\.tests?\.tsx$/.test(name)) continue;
+      if (/<select[\s>]/.test(readFileSync(url, "utf8"))) found.push(url.pathname);
+    }
+  };
+  walk(root);
+  assert.deepEqual(found, [], "no native <select> in the app's screens");
+  for (const file of ["./panels/SwitchFederationPanel.tsx", "./components/BitcoinConverter.tsx", "./screens/CreateForm.tsx"]) {
+    assert.match(read(file), /<SheetSelect/, `${file} uses the app's picker sheet`);
+  }
+}
+console.log("PASS Android: every picker opens the app's own sheet, never the native popup");
+
 
 {
   // Jet (rc.12): a sandbox trade link opened in the real app said "Couldn't

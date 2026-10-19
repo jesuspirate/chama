@@ -37,6 +37,14 @@ export function federationFacts(invite: string, inspection?: FederationInspectio
   return { name, guardians: endpoints.length || null, singleOperator: (endpoints.length > 0 && endpoints.length < 4) || sameHost || hostIsGuardian,
     curated: !!knownPreset || CURATED_PRESETS.some(preset => preset.inviteCode.trim() === invite.trim()), meta };
 }
+/** The name a federation publishes about itself, or null. Operator-written,
+ *  so callers mark it unlisted rather than show it as a listed name. */
+export function publishedFederationName(inspection: FederationInspection | null | undefined): string | null {
+  if (!inspection) return null;
+  const { meta } = federationFacts("", inspection);
+  const name = typeof meta.federation_name === "string" ? meta.federation_name.replace(/\s+/g, " ").trim().slice(0, 40) : "";
+  return name || null;
+}
 function msats(value: unknown): bigint | null {
   // Reject floats, unsafe JS integers, negatives, empty text and coercions.
   if (typeof value === "number" && Number.isSafeInteger(value) && value > 0) return BigInt(value);
