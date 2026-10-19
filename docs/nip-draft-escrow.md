@@ -283,6 +283,12 @@ money and can be settled by healing votes (see [Arbitration](#arbitration)).
 An event that would cause any other transition is invalid and MUST be
 ignored.
 
+The deadline transition is caused by the first event whose `created_at` is
+past the deadline. For a trade whose CREATE is signed at or after
+2026-12-01T00:00:00Z, only an event signed by a seated participant (or a
+backup arbiter of a pooled share) causes it; a late event from anyone else is
+invalid. Older trades keep the earlier rule, where any late event did.
+
 ### Replay
 
 A client computes state by replaying the trade's consensus events:

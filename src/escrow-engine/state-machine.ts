@@ -1,4 +1,4 @@
-import { usesMoneyPathHardening, LOCK_TIMESTAMP_SKEW_SECONDS } from "./protocol-hardening.js";
+import { usesMoneyPathHardening, usesDecemberTradeRules, LOCK_TIMESTAMP_SKEW_SECONDS } from "./protocol-hardening.js";
 import { stalledPayoutEligibility } from "./onchain-stalled.js";
 import type { SettlementStalledPayload } from "./types.js";
 import { atomicReleaseError, voteSettlement, winnerSettlementChoice } from "./onchain-settlement-choice.js";
@@ -1921,6 +1921,12 @@ export function applyEvent(
   const activatesDeferredTranche = state.tranche
     && (event.kind === EscrowEventKind.LOCK || event.kind === EscrowEventKind.CHILD_KEY);
   if (!(event.kind === EscrowEventKind.COMPLETE && state.onchainFundingTerms) && !activatesDeferredTranche && event.timestamp > state.expiresAt && state.status !== EscrowStatus.APPROVED && state.status !== EscrowStatus.CLAIMED) {
+    // Audit M2: an event's timestamp is chosen by its signer, so under the
+    // December rules only someone in the trade can carry it past expiry. A
+    // stranger's late (or future-dated) event is refused and changes nothing.
+    if (state.status !== EscrowStatus.EXPIRED && usesDecemberTradeRules(state) && !mayCarryPastExpiry(state, event.pubkey)) {
+      return err("EXPIRY_NOT_IN_TRADE", "Only someone in this trade can carry it past its deadline", event.raw.id);
+    }
     if (state.status === EscrowStatus.EXPIRED) {
       // Already expired — fall through to dispatch (healing path).
     } else if (event.kind === EscrowEventKind.VOTE) {
@@ -2006,6 +2012,12 @@ export function applyEvent(
  * A superset keeps the old strict behaviour for a real party; it can never
  * silence one. `state` is the state the event was applied against.
  */
+/** Audit M2: a seated party, or a backup arbiter in the pooled-share order. */
+function mayCarryPastExpiry(state: EscrowState, pubkey: string): boolean {
+  return getRole(state, pubkey) !== null
+    || (!!state.lock.arbiterPoolShare && arbiterVotePriority(state, pubkey) !== null);
+}
+
 function replayAuthorEntitled(state: EscrowState, event: ParsedEscrowEvent): boolean {
   const pk = event.pubkey;
   const seated = getRole(state, pk);
