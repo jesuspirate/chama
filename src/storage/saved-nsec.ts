@@ -1,11 +1,8 @@
 /** Saved identity keys are separate from wallet recovery material. */
 export const SAVED_NSEC_KEY = "chama_saved_nsec";
 export const NSEC_ORIGIN_KEY = "chama_nsec_origin";
-/** Set when a sealed key could not be deleted: no key is kept, whatever
- *  sealed storage still holds, until the next save. */
-export const NSEC_FORGOTTEN_KEY = "chama_saved_nsec_forgotten";
 
-type KeyStorage = Pick<Storage, "setItem"> & Partial<Pick<Storage, "removeItem">>;
+type KeyStorage = Pick<Storage, "setItem">;
 
 /** Encrypted browser storage (sealed-store.ts), injected so tests can fake it. */
 export interface NsecSealer {
@@ -31,81 +28,70 @@ export async function saveNsec(
     await native.set({ key: NSEC_ORIGIN_KEY, value: origin });
     return;
   }
-  // M9: in the browser the key is kept encrypted when it can be. The plain
-  // copy is removed only after the sealed copy has read back; if sealing
-  // fails, the key is kept the old way rather than not at all.
-  if (sealer) {
-    try {
-      await sealer.set(SAVED_NSEC_KEY, nsec);
-      storage.setItem(NSEC_ORIGIN_KEY, origin);
-      try { storage.removeItem?.(SAVED_NSEC_KEY); } catch {}
-      try { storage.removeItem?.(NSEC_FORGOTTEN_KEY); } catch {}
-      return;
-    } catch {
-      // Fall through to plain storage, and don't let an older sealed key
-      // stand beside the new plain one.
-      try { await sealer.delete(SAVED_NSEC_KEY); } catch {}
-    }
-  }
   storage.setItem(SAVED_NSEC_KEY, nsec);
   storage.setItem(NSEC_ORIGIN_KEY, origin);
-  try { storage.removeItem?.(NSEC_FORGOTTEN_KEY); } catch {}
+  // Not awaited: a slow or stuck encrypted store must never hold up sign-in.
+  if (sealer) void mirrorSealedNsec(nsec, sealer);
 }
 
-/** The kept browser key: the sealed copy first, else a plain one, which is
- *  then moved into sealed storage (plain copy removed only after it reads
- *  back). An unreadable sealed copy is never deleted here. */
+// M9, first step: in the browser the kept key is also written encrypted
+// (sealed-store.ts), but the plain copy stays the one that is read, so an
+// older app (a stale tab, a rollback) still finds it and a sign-out there
+// still signs out here. A later release reads the encrypted copy and removes
+// the plain one. The encrypted copy only follows the plain one, and failing
+// to write it changes nothing.
+//
+// Encrypted writes and deletes run one at a time, in order, so a sign-out
+// right after a save can't be overtaken by that save's encrypted write.
+let sealedNsecOps: Promise<void> = Promise.resolve();
+
+// A store that never answers gives up its turn after this long, so it can't
+// hold up a later sign-out's delete forever.
+const SEALED_OP_TIMEOUT_MS = 10_000;
+
+function queueSealedNsec(op: () => Promise<void>): Promise<void> {
+  const bounded = () => new Promise<void>((resolve) => {
+    const timer = setTimeout(resolve, SEALED_OP_TIMEOUT_MS);
+    (timer as unknown as { unref?: () => void }).unref?.();
+    op().catch(() => {}).finally(() => { clearTimeout(timer); resolve(); });
+  });
+  sealedNsecOps = sealedNsecOps.then(bounded, bounded);
+  return sealedNsecOps;
+}
+
+function mirrorSealedNsec(nsec: string, sealer: NsecSealer): Promise<void> {
+  return queueSealedNsec(async () => {
+    try {
+      if ((await sealer.get(SAVED_NSEC_KEY)) === nsec) return;
+      await sealer.set(SAVED_NSEC_KEY, nsec);
+    } catch (e) {
+      console.warn("[chama] encrypted copy of the kept key not written; plain copy kept", e);
+    }
+  });
+}
+
+/** Wait for queued encrypted writes and deletes (tests). */
+export function flushSealedNsecWrites(): Promise<void> {
+  return sealedNsecOps;
+}
+
+/** The kept browser key (the plain copy), refreshing its encrypted copy. */
 export async function readBrowserSavedNsec(
-  storage: Pick<Storage, "getItem"> & Partial<Pick<Storage, "removeItem">>,
+  storage: Pick<Storage, "getItem">,
   sealer?: NsecSealer,
 ): Promise<string | null> {
-  try { if (storage.getItem(NSEC_FORGOTTEN_KEY)) return null; } catch {}
-  // A plain copy is always the newer one: it exists only from an older app
-  // or when sealing failed. It wins and is moved into sealed storage.
   let plain: string | null = null;
   try { plain = storage.getItem(SAVED_NSEC_KEY)?.trim() || null; } catch { plain = null; }
-  if (!plain && sealer) {
-    try {
-      const sealed = (await sealer.get(SAVED_NSEC_KEY))?.trim();
-      if (sealed) return sealed;
-    } catch {
-      // Unreadable sealed copy: delete nothing.
-    }
-    return null;
-  }
-  if (plain && sealer) {
-    try {
-      // An older app (a stale PWA, a rollback) can't see the sealed key and
-      // may have saved a different one plainly. Keep the sealed one aside
-      // before it is replaced; if that can't be done, replace nothing.
-      const sealed = (await sealer.get(SAVED_NSEC_KEY))?.trim();
-      if (sealed && sealed !== plain) await sealer.set(`${SAVED_NSEC_KEY}:archived:${Date.now()}`, sealed);
-      await sealer.set(SAVED_NSEC_KEY, plain);
-      try { storage.removeItem?.(SAVED_NSEC_KEY); } catch {}
-    } catch {
-      // Keep the plain copy; try again next time.
-    }
-  }
+  if (plain && sealer) void mirrorSealedNsec(plain, sealer);
   return plain;
 }
 
-/** Forget the kept browser key, sealed and plain. */
+/** Forget the kept browser key, plain and encrypted. */
 export async function removeBrowserSavedNsec(
-  storage: Partial<Pick<Storage, "removeItem" | "setItem">>,
+  storage: Partial<Pick<Storage, "removeItem">>,
   sealer?: NsecSealer,
 ): Promise<void> {
-  if (sealer) {
-    let gone = false;
-    try {
-      await sealer.delete(SAVED_NSEC_KEY);
-      gone = (await sealer.get(SAVED_NSEC_KEY)) === null;
-    } catch {
-      gone = false;
-    }
-    // Signing out must not sign back in on reload: if the sealed key may
-    // still be there, mark it forgotten.
-    if (!gone) { try { storage.setItem?.(NSEC_FORGOTTEN_KEY, "1"); } catch {} }
-  }
   try { storage.removeItem?.(SAVED_NSEC_KEY); } catch {}
   try { storage.removeItem?.(NSEC_ORIGIN_KEY); } catch {}
+  if (sealer) void queueSealedNsec(async () => { try { await sealer.delete(SAVED_NSEC_KEY); } catch {} });
 }

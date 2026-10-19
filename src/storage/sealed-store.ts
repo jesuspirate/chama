@@ -14,6 +14,10 @@
 // policy, M8), and a determined attacker with the whole browser profile may
 // still recover the key. Where IndexedDB or WebCrypto is missing, callers
 // keep the old plain localStorage path; nothing is ever dropped to seal it.
+//
+// First step (6.4.29): callers write an encrypted copy beside the plain one
+// and still read the plain one, so an older app sees the same key and
+// wallets. A later release reads these copies and removes the plain ones.
 
 const DB_NAME = "chama-sealed-v1";
 const STORE = "items";

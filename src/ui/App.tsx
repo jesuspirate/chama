@@ -399,7 +399,7 @@ async function readSavedNsec(): Promise<string | null> {
     return value?.trim() || null;
   }
   // Browser, PWA and Tauri all read the same per-origin storage; M9 keeps
-  // the key encrypted there (sealed-store.ts) and moves an old plain copy in.
+  // an encrypted copy beside the plain one (sealed-store.ts).
   try {
     return await readBrowserSavedNsec(localStorage, browserNsecSealer());
   } catch {
