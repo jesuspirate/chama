@@ -427,6 +427,20 @@ import {
   type HydrateIdDiag,
 } from "../escrow-engine/discovery-diagnostics.js";
 import { isSimModeOn } from "../sim/simMode.js";
+import {
+  federationIdForInvite,
+  federationIdForRememberedInvite,
+  inviteToRemember,
+  knownFederationIdForInvite,
+  parkedInviteFor,
+  planBrowserDrift,
+  planBrowserWalletScope,
+  rememberRouteOrThrow,
+  routeAfterJoin,
+  scopeForFederation,
+  scopeHoldsParkedWallet,
+  walletDrifted,
+} from "../fedimint/federation-parking.js";
 import { addOrTouchPayoutDestination } from "../payments/payout-destinations.js";
 import { payInvoiceWithNwc } from "../payments/nwc.js";
 import { balanceBlocksFederationSwitch } from "../payments/lightning-fees.js";
@@ -1486,6 +1500,9 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
   // on the held ref, we can let run#2 proceed when run#1 is already
   // dead, while still blocking a real concurrent user Fund tap.
   const fundingInProgressRef = useRef<AbortSignal | null>(null);
+  // H4: the browser storage scope the open wallet client was built on, so a
+  // wallet is only ever parked or wiped under the file it really is.
+  const openScopeRef = useRef<string | null>(null);
   const claimPayoutInProgressRef = useRef(false);
   // High-water mark of the connected-relay count at the last discovery re-fire
   // (see the relay-growth effect). Reset on disconnect so a reconnect within
@@ -2142,6 +2159,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       console.debug("[chama] fedimint cleanup error:", e)
     );
     fedimintRef.current = null;
+    openScopeRef.current = null;
     bridgeRef.current = null;
     signerRef.current = null;
     fundingInProgressRef.current = null;
@@ -2209,7 +2227,10 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
 	      }
 	      const fedimint = fedimintRef.current;
 	      fedimint?.cleanup().catch(() => {});
-	      if (fedimintRef.current === fedimint) fedimintRef.current = null;
+	      if (fedimintRef.current === fedimint) {
+	        fedimintRef.current = null;
+	        openScopeRef.current = null;
+	      }
 	      if (bridgeRef.current) bridgeRef.current = null;
       setLocalStorageUserScope(null);
     };
@@ -4038,6 +4059,19 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     });
   }, [updateFedimint]);
 
+  // H4: moving between federations parks the open wallet instead of wiping
+  // it, but a live funding or claim still runs against the open wallet, so a
+  // move waits for it to finish.
+  const assertNoMoneyFlowForFederationMove = useCallback(() => {
+    if (fundingInProgressRef.current?.aborted === false || claimPayoutInProgressRef.current) {
+      const err = new Error(
+        "A payment is still in progress, so Chama won't switch communities yet. Try again when it finishes.",
+      );
+      (err as Error & { code?: string }).code = "SWITCH_REFUSED_MONEY_FLOW_IN_PROGRESS";
+      throw err;
+    }
+  }, []);
+
   const initFedimint = useCallback(async (
     inviteCode?: string,
     options?: { force?: boolean; persistCustom?: boolean; allowRecovery?: boolean },
@@ -4158,15 +4192,54 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
         ? activePubkey
         : null;
       const bondedArbiter = listCommitmentBonds().some((bond) => bond.phase === "locked");
-      const desiredFederationId = expectedFederationIdForInvite(desiredInvite);
-      const rememberedArbiterRoute = bondedArbiter && activePubkey && desiredFederationId
+      // H4: every wallet keeps one database per federation, the way bonded
+      // arbiters always have. Moving to another federation parks the old
+      // wallet; it is never deleted to make room. Sim wallets hold no ecash.
+      const preserveFederations = !isSimModeOn();
+      const desiredFederationId = expectedFederationIdForInvite(desiredInvite)
+        ?? (preserveFederations && activePubkey && !skipMnemonic
+          // Every fed1 invite carries its federation id; read it locally.
+          ? knownFederationIdForInvite(desiredInvite)
+            ?? federationIdForRememberedInvite(activePubkey, desiredInvite)
+            // Native shells route by federation inside the bridge; only a
+            // browser wallet needs the id before it opens a file.
+            ?? (isNativeBridgeModeOn() ? null : await federationIdForInvite(desiredInvite, fedimintRef.current))
+          : null);
+      const rememberedArbiterRoute = preserveFederations && activePubkey && desiredFederationId
         ? getArbiterFederationRoute(activePubkey, desiredFederationId)
         : null;
-      // Browser arbiters reopen the OPFS file assigned to this federation.
+      // Browser wallets reopen the OPFS file assigned to this federation.
       // Native shells select their isolated database through the bridge, so
       // storageScope remains informational there.
-      const storageScope = !skipMnemonic
-        ? (rememberedArbiterRoute?.storageScope ?? activePubkey)
+      const browserScopePlan = !skipMnemonic && preserveFederations && activePubkey && !isNativeBridgeModeOn()
+        ? planBrowserWalletScope(activePubkey, desiredFederationId)
+        : null;
+      if (browserScopePlan?.kind === "refuse") {
+        // H4: without the federation's id no file can be proven to be its
+        // wallet, and the first file may be another federation's. Refuse
+        // before anything opens; the open wallet is closed (never wiped) so
+        // it is not shown under this federation's trades.
+        const existing = fedimintRef.current;
+        if (existing) {
+          assertNoMoneyFlowForFederationMove();
+          try { await existing.cleanup(); } catch {}
+          fedimintRef.current = null;
+          bridgeRef.current = null;
+          healthRef.current = { ok: null, at: null };
+          openScopeRef.current = null;
+          updateFedimint({ initialized: false, joined: false, federationId: null, balanceMsats: 0 });
+        }
+        const err = new Error(
+          "Chama couldn't check which federation that invite belongs to, so it didn't open a wallet for it. Nothing was changed.",
+        ) as Error & { code?: string };
+        err.code = "RECONCILE_REFUSED_FEDERATION_UNREADABLE";
+        throw err;
+      }
+      let storageScope = !skipMnemonic
+        ? (browserScopePlan?.scope
+          ?? (preserveFederations && activePubkey
+            ? scopeForFederation(activePubkey, desiredFederationId)
+            : rememberedArbiterRoute?.storageScope ?? activePubkey))
         : null;
 
       // Local field-verification route for an explicitly selected affected
@@ -4219,6 +4292,45 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
         bridgeRef.current = null;
         fedimint = null;
       }
+      // H4: a browser client still open on another federation's file is
+      // parked and closed first. It is never reused under this federation's
+      // scope, where the drift logic below would mistake one file for another.
+      if (
+        fedimint && preserveFederations && !isNativeBridgeModeOn() && activePubkey
+        && storageScope && openScopeRef.current && openScopeRef.current !== storageScope
+      ) {
+        assertNoMoneyFlowForFederationMove();
+        const openFederationId = fedimint.isJoined() ? fedimint.getFederationId() : null;
+        if (openFederationId) {
+          const openInvite = parkedInviteFor(activePubkey, openFederationId, getActiveInvite());
+          if (openInvite) {
+            rememberRouteOrThrow(activePubkey, {
+              federationId: openFederationId,
+              inviteCode: openInvite,
+              storageScope: openScopeRef.current,
+              lastBalanceMsats: await fedimint.getBalance().catch(() => undefined),
+            });
+          } else {
+            // Leaving it is not deleting it, but without a route it could not
+            // be found again: only an empty wallet may be left like that.
+            const openBalance = await fedimint.getBalance().catch(() => null);
+            if (openBalance === null || openBalance > 0) {
+              const err = new Error(
+                "Chama couldn't keep your current wallet aside, so it didn't switch. Nothing was changed.",
+              ) as Error & { code?: string };
+              err.code = "SWITCH_REFUSED_CANNOT_PARK";
+              throw err;
+            }
+          }
+        }
+        try { await fedimint.cleanup(); } catch {}
+        fedimintRef.current = null;
+        bridgeRef.current = null;
+        healthRef.current = { ok: null, at: null };
+        openScopeRef.current = null;
+        clearActiveInvite();
+        fedimint = null;
+      }
       if (!fedimint) {
         fedimint = buildClient();
         await fedimint.init({
@@ -4229,6 +4341,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
           allowRecoveryOnJoin,
         });
         fedimintRef.current = fedimint;
+        openScopeRef.current = storageScope;
         updateFedimint({ initialized: true });
       }
 
@@ -4266,20 +4379,104 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       // Sim has no real bearer ecash to protect, so the reconcile/fund-loss
       // guard is meaningless here; bypass it like probeReachable() and the
       // wallet factory already do. Real mode is unaffected.
-      let driftDetected = !isSimModeOn() && shouldReconcileFederation({
-        previousActiveInvite,
-        desiredInvite,
-        walletIsJoined,
-        walletFederationId,
-      });
+      // H4: compare federation ids when they can be known. An unlisted invite
+      // has no locally known id; read it (remembered route, or the bridge's
+      // public preview) so a wallet already on it is not taken for drift.
+      let resolvedDesiredFederationId = desiredFederationId;
+      if (!resolvedDesiredFederationId && preserveFederations && walletIsJoined && isNativeBridgeModeOn()) {
+        resolvedDesiredFederationId = await federationIdForInvite(desiredInvite, fedimint);
+      }
+      let driftDetected = !isSimModeOn() && (preserveFederations
+        ? walletDrifted({
+          walletIsJoined,
+          walletFederationId,
+          desiredFederationId: resolvedDesiredFederationId,
+          previousActiveInvite,
+          desiredInvite,
+        })
+        : shouldReconcileFederation({
+          previousActiveInvite,
+          desiredInvite,
+          walletIsJoined,
+          walletFederationId,
+        }));
 
-      // A native bonded arbiter may boot with the legacy (first) database
-      // active even though their selected community belongs to another saved
-      // federation. Select the desired database before the destructive drift
-      // reconciliation path gets a chance to run.
-      if (driftDetected && bondedArbiter && isNativeBridgeModeOn()) {
+      // A native wallet may boot with the legacy (first) database active even
+      // though the selected community belongs to another federation. Select
+      // (or create) that federation's own database before the destructive
+      // drift reconciliation path gets a chance to run.
+      if (driftDetected && preserveFederations && isNativeBridgeModeOn()) {
+        assertNoMoneyFlowForFederationMove();
+        if (activePubkey && walletFederationId) {
+          const parkedInvite = parkedInviteFor(activePubkey, walletFederationId, previousActiveInvite);
+          const parkedBalanceMsats = await fedimint.getBalance().catch(() => undefined);
+          if (parkedInvite) {
+            rememberArbiterFederationRoute(activePubkey, {
+              federationId: walletFederationId,
+              inviteCode: parkedInvite,
+              storageScope: getArbiterFederationRoute(activePubkey, walletFederationId)?.storageScope ?? activePubkey,
+              lastBalanceMsats: parkedBalanceMsats,
+            });
+          }
+        }
         await fedimint.switchFederationPreserving(desiredInvite);
         driftDetected = false;
+      }
+      // Browser: park the open file under its own federation and open the
+      // desired federation's file instead of wiping (H4).
+      if (driftDetected && preserveFederations && !isNativeBridgeModeOn() && activePubkey && walletFederationId && storageScope) {
+        const plan = planBrowserDrift({
+          pubkey: activePubkey,
+          walletFederationId,
+          openScope: storageScope,
+          desiredFederationId: resolvedDesiredFederationId,
+          previousActiveInvite,
+        });
+        if (plan.kind === "refuse") {
+          const err = new Error(
+            plan.reason === "target-unreadable"
+              ? "Chama couldn't reach that federation to check it, so it didn't switch. Nothing was changed."
+              : "Chama found a wallet where this one should go, so it didn't switch. Nothing was changed.",
+          ) as Error & { code?: string };
+          err.code = plan.reason === "target-unreadable"
+            ? "RECONCILE_REFUSED_FEDERATION_UNREADABLE"
+            : "RECONCILE_REFUSED_SCOPE_COLLISION";
+          // Close the wallet that was opened for the check, so the screen
+          // never shows one federation's wallet under another's trades.
+          try { await fedimint.cleanup(); } catch {}
+          fedimintRef.current = null;
+          bridgeRef.current = null;
+          healthRef.current = { ok: null, at: null };
+          openScopeRef.current = null;
+          throw err;
+        }
+        if (plan.kind === "park") {
+          assertNoMoneyFlowForFederationMove();
+          rememberRouteOrThrow(activePubkey, {
+            ...plan.park,
+            lastBalanceMsats: await fedimint.getBalance().catch(() => undefined),
+          });
+          try { await fedimint.cleanup(); } catch {}
+          fedimintRef.current = null;
+          bridgeRef.current = null;
+          healthRef.current = { ok: null, at: null };
+          openScopeRef.current = null;
+          clearActiveInvite();
+          storageScope = plan.targetScope;
+          fedimint = buildClient();
+          await fedimint.init({
+            mnemonic,
+            storageScope,
+            simNpub,
+            forceRecoverOnJoin,
+            allowRecoveryOnJoin,
+          });
+          fedimintRef.current = fedimint;
+          openScopeRef.current = storageScope;
+          updateFedimint({ initialized: true });
+          driftDetected = false;
+        }
+        // "replace-if-empty" falls through to the balance-guarded path below.
       }
       if ((import.meta as any).env?.DEV) {
         console.info("[chama] initFedimint route", {
@@ -4348,6 +4545,19 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
           throw refuseErr;
         }
         const opfsBalanceMsats = decision.balanceMsats;
+        // H4: a wallet that could not be parked is only replaced when it was
+        // read as empty, or the person confirmed. Dust is no longer deleted.
+        if (preserveFederations && !force && (opfsBalanceMsats ?? 0) > 0) {
+          const refuseErr = new Error(
+            `Refusing to switch federations: ${Math.floor((opfsBalanceMsats ?? 0) / 1000)} sats are held on ` +
+            `your current federation and Chama couldn't keep that wallet aside. Nothing was changed.`,
+          ) as Error & { code?: string; balanceMsats?: number; previousActiveInvite?: string; desiredInvite?: string };
+          refuseErr.code = "RECONCILE_REFUSED_NONZERO_BALANCE";
+          refuseErr.balanceMsats = opfsBalanceMsats ?? 0;
+          refuseErr.previousActiveInvite = previousActiveInvite ?? "";
+          refuseErr.desiredInvite = desiredInvite;
+          throw refuseErr;
+        }
 
         // Replace path: a balance that was read and is empty or dust, OR
         // force === true (the person confirmed).
@@ -4366,6 +4576,15 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
         fedimintRef.current = null;
         bridgeRef.current = null;
         healthRef.current = { ok: null, at: null };
+        // H4: a file a remembered route points at is a parked wallet.
+        if (preserveFederations && activePubkey && storageScope
+          && scopeHoldsParkedWallet(activePubkey, storageScope, walletFederationId)) {
+          const err = new Error(
+            "This wallet is kept for another federation, so Chama won't replace it. Nothing was changed.",
+          ) as Error & { code?: string };
+          err.code = "RECONCILE_REFUSED_PARKED_WALLET";
+          throw err;
+        }
         try {
           await resetLocalFedimintWallet({ storageScope });
         } catch (e) {
@@ -4385,6 +4604,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
           allowRecoveryOnJoin,
         });
         fedimintRef.current = fedimint;
+        openScopeRef.current = storageScope;
       }
 
       const effectiveInvite = desiredInvite;
@@ -4399,22 +4619,32 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
 
       // Join federation (idempotent in the SDK when already on the
       // same fed; lands cleanly on the new fed when post-wipe).
+      const reopenedWallet = fedimint.isJoined();
       const federationId = await fedimint.joinFederation(effectiveInvite);
       if (activePubkey && mnemonic) {
         markCachedSeedFederationJoined(activePubkey);
       }
 
-      // Adopt the pre-multi-federation database as the arbiter's first route.
-      // This is the migration that preserves already-earned premiums (including
-      // balances minted before this feature existed) in place.
-      if (bondedArbiter && activePubkey && desiredFederationId) {
-        const existingRoutes = listArbiterFederationRoutes(activePubkey);
-        if (rememberedArbiterRoute || existingRoutes.length === 0) {
-          rememberArbiterFederationRoute(activePubkey, {
-            federationId,
-            inviteCode: effectiveInvite,
-            storageScope: rememberedArbiterRoute?.storageScope ?? activePubkey,
-          });
+      // H4: every successful join records (or refreshes) the joined
+      // federation's route, so its wallet is listed and found again. This also
+      // adopts the pre-multi-federation database as the first route, which
+      // preserves balances minted before routes existed in place.
+      if (preserveFederations && activePubkey && federationId) {
+        const joinedRoute = routeAfterJoin({
+          pubkey: activePubkey,
+          joinedFederationId: federationId,
+          joinedInvite: effectiveInvite,
+          desiredFederationId: resolvedDesiredFederationId,
+          reopenedWallet,
+          openScope: isNativeBridgeModeOn() ? null : storageScope,
+          native: isNativeBridgeModeOn(),
+        });
+        if (joinedRoute) {
+          try {
+            rememberArbiterFederationRoute(activePubkey, joinedRoute);
+          } catch (routeErr) {
+            console.warn("[chama] couldn't record the joined federation's route:", routeErr);
+          }
         }
       }
 
@@ -4590,6 +4820,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
         // retrying forever against the same immutable refusal.
         const deferredClient = fedimintRef.current;
         fedimintRef.current = null;
+        openScopeRef.current = null;
         bridgeRef.current = null;
         try { await deferredClient?.cleanup(); } catch {}
         updateFedimint({
@@ -4641,6 +4872,11 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     // can't read it, treat as "unknown" and refuse without force —
     // we'd rather false-positive than destroy bearer notes.
     let currentBalanceMsats: number | null = null;
+    const clientWasOpen = fedimintRef.current !== null;
+    const openFederationId = (() => {
+      try { return fedimintRef.current?.isJoined() ? fedimintRef.current.getFederationId() : null; }
+      catch { return null; }
+    })();
     try {
       if (fedimintRef.current) {
         currentBalanceMsats = await fedimintRef.current.getBalance();
@@ -4679,6 +4915,22 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       throw err;
     }
 
+    // H4: reset only the file of the wallet that is actually open. With no
+    // open wallet the identity's first file is the target, and that file
+    // may be a wallet kept for another federation: never wipe one of those.
+    const activePubkey = await signerRef.current?.getPublicKey().catch(() => null) ?? null;
+    const resetScope = (!isNativeBridgeModeOn() && clientWasOpen ? openScopeRef.current : null) ?? activePubkey;
+    if (
+      !force && !isSimModeOn() && !isNativeBridgeModeOn() && activePubkey && resetScope
+      && scopeHoldsParkedWallet(activePubkey, resetScope, openFederationId)
+    ) {
+      const err = new Error(
+        "This wallet is kept for another federation, so Chama won't reset it. Nothing was changed.",
+      );
+      (err as Error & { code?: string }).code = "RESET_REFUSED_PARKED_WALLET";
+      throw err;
+    }
+
     // Tear down the in-memory wallet first so the OPFS delete isn't
     // blocked by the WASM worker holding the database open.
     try {
@@ -4692,8 +4944,8 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     healthRef.current = { ok: null, at: null };
     clearActiveInvite();
 
-    const activePubkey = await signerRef.current?.getPublicKey().catch(() => null) ?? null;
-    await resetLocalFedimintWallet({ storageScope: activePubkey });
+    openScopeRef.current = null;
+    await resetLocalFedimintWallet({ storageScope: resetScope });
 
     updateFedimint({
       initialized: false,
@@ -4730,27 +4982,49 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       throw new Error("Invite code must start with 'fed1'");
     }
 
-    const bondedArbiter = listCommitmentBonds().some((bond) => bond.phase === "locked");
+    // H4: every wallet keeps one database per federation (bonded arbiters
+    // always did). The open wallet is parked under its federation and stays
+    // reachable by switching back; nothing is wiped to make room.
+    const preserveFederations = !isSimModeOn();
     const activePubkey = await signerRef.current?.getPublicKey().catch(() => null) ?? null;
-    const targetFederationId = expectedFederationIdForInvite(trimmed);
     const currentFederationId = fedimintRef.current?.getFederationId() ?? null;
+    const currentInvite = currentFederationId
+      ? parkedInviteFor(activePubkey, currentFederationId, getActiveInvite())
+      : null;
+    const targetFederationId = preserveFederations && currentFederationId
+      ? (activePubkey ? federationIdForRememberedInvite(activePubkey, trimmed) : null)
+        ?? await federationIdForInvite(trimmed, fedimintRef.current)
+      : expectedFederationIdForInvite(trimmed);
+    // An invite whose federation can't be read can't be given its own
+    // wallet. Refuse rather than fall back to replacing the open one.
+    if (preserveFederations && activePubkey && currentFederationId && currentInvite && !targetFederationId) {
+      const err = new Error(
+        "Chama couldn't reach that federation to check it, so it didn't switch. Nothing was changed.",
+      );
+      (err as Error & { code?: string }).code = "SWITCH_REFUSED_FEDERATION_UNREADABLE";
+      throw err;
+    }
 
-    if (bondedArbiter && activePubkey && targetFederationId && currentFederationId) {
-      const currentInvite = getActiveInvite();
-      if (currentInvite) {
-        const currentRoute = getArbiterFederationRoute(activePubkey, currentFederationId);
-        rememberArbiterFederationRoute(activePubkey, {
-          federationId: currentFederationId,
-          inviteCode: currentInvite,
-          storageScope: currentRoute?.storageScope ?? activePubkey,
-        });
-      }
+    if (preserveFederations && activePubkey && targetFederationId && currentFederationId && currentInvite) {
+      // Even a confirmed switch closes the open wallet, so it waits for a
+      // live funding or claim to finish.
+      assertNoMoneyFlowForFederationMove();
+      const parkedBalanceMsats = await fedimintRef.current?.getBalance().catch(() => undefined);
+      const currentRoute = getArbiterFederationRoute(activePubkey, currentFederationId);
+      // The way back is saved before the wallet is closed, or nothing moves.
+      rememberRouteOrThrow(activePubkey, {
+        federationId: currentFederationId,
+        inviteCode: currentInvite,
+        storageScope: (isNativeBridgeModeOn() ? null : openScopeRef.current)
+          ?? currentRoute?.storageScope ?? activePubkey,
+        lastBalanceMsats: parkedBalanceMsats,
+      });
       const targetRoute = getArbiterFederationRoute(activePubkey, targetFederationId);
       rememberArbiterFederationRoute(activePubkey, {
         federationId: targetFederationId,
-        inviteCode: trimmed,
-        storageScope: targetRoute?.storageScope
-          ?? arbiterFederationStorageScope(activePubkey, targetFederationId),
+        // An unlisted invite never replaces the one the wallet reopens with.
+        inviteCode: inviteToRemember(targetRoute?.inviteCode, trimmed),
+        storageScope: targetRoute?.storageScope ?? scopeForFederation(activePubkey, targetFederationId),
       });
 
       console.info("[chama] selecting preserved arbiter federation", targetFederationId);
@@ -4773,6 +5047,11 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
             initialized: true,
             joined: true,
             federationId,
+            // Jet (6.4.26-rc.7): without this the name stayed the wallet
+            // switched away from, and "Withdraw as ecash" said the note only
+            // works on Bitcoin Life while it was minted on another federation.
+            federationName: federationNameForInvite(trimmed)
+              ?? (persistCustom ? "External route" : BP_FEDERATION_NAME),
             balanceMsats,
             busy: false,
             error: null,
@@ -4783,6 +5062,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
           try { await fedimintRef.current?.cleanup(); } catch {}
           fedimintRef.current = null;
           bridgeRef.current = null;
+          openScopeRef.current = null;
           healthRef.current = { ok: null, at: null };
           clearActiveInvite();
           updateFedimint({
@@ -4861,7 +5141,9 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     if (
       !force
       && currentBalanceMsats !== null
-      && balanceBlocksFederationSwitch(currentBalanceMsats)
+      // H4: this path replaces the open wallet, so once wallets are kept per
+      // federation, even dust is refused here rather than deleted.
+      && (balanceBlocksFederationSwitch(currentBalanceMsats) || (preserveFederations && currentBalanceMsats > 0))
     ) {
       const sats = Math.floor(currentBalanceMsats / 1000);
       const err = new Error(
@@ -4902,8 +5184,12 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       // will write the new one once the join succeeds.
       clearActiveInvite();
 
-      // Step 2 — wipe OPFS file + rotate filename so init() opens a fresh DB
-      await resetLocalFedimintWallet({ storageScope: activePubkey });
+      // Step 2 — wipe OPFS file + rotate filename so init() opens a fresh DB.
+      // H4: with wallets kept per federation nothing is wiped here; the
+      // re-init below picks the target's own file, and any wallet it finds
+      // on the wrong federation goes through initFedimint's guarded path.
+      if (!preserveFederations) await resetLocalFedimintWallet({ storageScope: activePubkey });
+      openScopeRef.current = null;
 
       // Step 3 — persist only Advanced/Sandbox/custom switches as custom
       // overrides. Community taps pass persistCustom:false; those should

@@ -37,8 +37,13 @@
     </style>
 
 
+    <!-- The activity keeps this theme for its whole life (nothing calls
+         installSplashScreen), so it must not set android:background either:
+         a theme background is drawn by every view inflated with it,
+         including the federation picker and the Copy/Paste bar, which then
+         showed the splash logo behind every row (Jet, 6.4.26-rc.5). The
+         window background alone draws the launch splash. -->
     <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
-        <item name="android:background">@drawable/chama_splash</item>
         <item name="android:windowBackground">@drawable/chama_splash</item>
         <item name="windowSplashScreenBackground">@color/chama_splash_background</item>
         <item name="windowSplashScreenAnimatedIcon">@drawable/chama_splash_mark_inset</item>

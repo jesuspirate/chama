@@ -127,6 +127,10 @@ export const app: Record<string, string> = {
     "Le mint est bloqué. Si des sats doivent être récupérés, passez par Moi ou l'invite de récupération de Parcourir.",
   "app.noSatsMoveWhileSwitching": "aucun sat ne bouge pendant le changement",
   "app.notNow": "Pas maintenant",
+  "app.unlistedFedTitle": "Cet échange utilise une fédération que Chama ne liste pas",
+  "app.unlistedFedBody": "Ceux qui gèrent cette fédération gardent les sats jusqu'à la fin de l'échange. Continuez seulement si vous les connaissez et leur faites confiance.",
+  "app.unlistedFedWallet": "Votre portefeuille actuel reste sur cet appareil. Il revient quand vous utilisez à nouveau sa fédération.",
+  "app.unlistedFedContinue": "Je sais qui la gère",
   "app.nwcWalletRefused": "Le portefeuille NWC a refusé",
   "app.onForTrade": "Sur {name} pour cet échange.",
   "app.onLabel": "Sur {label}.",
@@ -165,6 +169,7 @@ export const app: Record<string, string> = {
   "app.reabsorbForeign":
     "Cette note appartient à une autre fédération, elle ne peut donc pas revenir ici. Rien n'a été modifié — ouvrez Chama sur cette fédération pour l'utiliser.",
   "app.reabsorbRecovered": "₿{sats} récupérés dans votre solde.",
+  "app.reabsorbRecoveredFee": "₿{sats} récupérés dans votre solde. La fédération a gardé ₿{fee} de frais pour reprendre la note.",
   "app.reabsorbUnknown":
     "Impossible d'obtenir une réponse claire de votre Chama, donc rien n'a été modifié. La note est exactement là où elle était — réessayez dans un instant.",
   "app.recoverAndSwitchSubtitle":
@@ -189,6 +194,8 @@ export const app: Record<string, string> = {
   "app.startingOrder": "Démarrage de votre commande…",
   "app.strandedClaimBody":
     "⚠ Cette note EST les sats de votre échange réglé. Chama n'a pas pu l'encaisser automatiquement — importez-la dans Fedi ou tout portefeuille Fedimint sur cette fédération, ou sauvegardez-la en lieu sûr MAINTENANT. Effacer les données du navigateur détruit la seule copie.",
+  "app.strandedClaimBodyApp":
+    "⚠ Cette note EST les sats de votre échange réglé. Chama n'a pas pu l'encaisser automatiquement — importez-la dans Fedi ou tout portefeuille Fedimint sur cette fédération, ou sauvegardez-la en lieu sûr MAINTENANT. Effacer le stockage de l'appli Chama détruit la seule copie.",
   "app.strandedClaimHeadline": "Réclamation bloquée · note au porteur",
   "app.strandedClaimUnresolvedBody":
     "⚠ Cette note a été signalée comme déjà encaissée, mais Chama n'a pas pu confirmer que VOTRE portefeuille a été crédité. Sauvegardez-la quand même, puis vérifiez votre solde — si les sats n'y sont pas, cette chaîne de caractères est votre preuve et votre voie de récupération.",

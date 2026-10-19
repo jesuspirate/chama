@@ -40,6 +40,9 @@ export function OverlaySheet({ title, subtitle, onClose, children, dismissible =
     const onKey = (e: KeyboardEvent) => {
       // Contextual help above this sheet owns its own Escape and Tab first.
       if (document.querySelector("[data-help-popover]")) return;
+      // A sheet opened from this one (a picker) owns the keys while it is open.
+      const sheets = document.querySelectorAll("[data-overlay-backdrop]");
+      if (dialog && sheets.length > 1 && sheets[sheets.length - 1] !== dialog.closest("[data-overlay-backdrop]")) return;
       if (e.key === "Escape") {
         e.preventDefault();
         e.stopPropagation();

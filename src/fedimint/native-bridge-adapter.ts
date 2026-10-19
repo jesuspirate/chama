@@ -356,7 +356,7 @@ function isTauriNativePlatform(): boolean {
   return Boolean(global.__TAURI__ || global.__TAURI_INTERNALS__);
 }
 
-function isShellManagedNativeBridge(): boolean {
+export function isShellManagedNativeBridge(): boolean {
   return isCapacitorNativePlatform() || isTauriNativePlatform();
 }
 

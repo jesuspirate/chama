@@ -53,6 +53,10 @@ export const me: Record<string, string> = {
   "backup.reading": "Reading your key…",
 
   "me.walletBalance": "In your Chama wallet:",
+  "me.parkedWalletsTitle": "Also on this device:",
+  "me.parkedWalletLine": "{sats} sats on {name} when you last used it",
+  "me.parkedWalletUnlisted": "a federation Chama doesn't list",
+  "me.parkedWalletsHint": "Each federation holds its own sats. Open a trade on that federation to use them.",
 
   "me.arbiterSeatConflict": "Conflicting trade roles: you are listed as both a trader and the arbiter. This trade cannot appear in your arbiter queue. Open it to review the participants.",
   "me.moneySafetyOther": "Other money actions",
@@ -227,7 +231,11 @@ export const me: Record<string, string> = {
   "me.bgPushHint": "Wake me for trade actions even when Chama is fully closed",
   "me.bgPushInstall": "Add Chama to your Home Screen first to get alerts on iPhone",
   "me.bgPushUnsupported": "This browser can't deliver alerts while Chama is closed",
+  "me.bgPushUnsupportedApp":
+    "This app can't deliver alerts while Chama is closed on this device",
   "me.bgPushBlocked": "Allow notifications in your browser to turn this on",
+  "me.bgPushBlockedApp":
+    "Allow notifications for Chama in your device settings to turn this on",
   "me.off": "Off",
   "me.on": "On",
   "me.openCount": "{count} open",
@@ -306,6 +314,8 @@ export const me: Record<string, string> = {
   "me.stepInCountdown": "you can step in {countdown}",
   "me.strandedClaimBody":
     "from a settled trade couldn't land in your wallet automatically. The bearer note — the money itself — is saved only in this browser. Tap to export it now, before clearing data or switching federations can destroy the only copy.",
+  "me.strandedClaimBodyApp":
+    "from a settled trade couldn't land in your wallet automatically. The bearer note — the money itself — is saved only in this app on this device. Tap to export it now, before clearing the app's storage or switching federations can destroy the only copy.",
   "me.strandedClaimTitle": "Stranded claim — action needed",
   "me.switch": "Switch",
   "me.switchAction": "switch",
@@ -328,6 +338,10 @@ export const me: Record<string, string> = {
   "me.waitingForYourLock": "waiting for your lock",
   "me.withdrawEcash": "Withdraw as ecash · no LN fees",
   "me.withdrawEcashBackupHint": "Clearing browser data erases funds you haven't exported.",
+  "me.withdrawEcashBackupHintApp":
+    "Your wallet is kept in this app on this device. Uninstalling Chama or clearing its app storage can erase funds you haven't exported.",
+  "me.withdrawEcashBackupHintNode":
+    "Your wallet is kept on the Chama node you're connected to, not in this browser. Whoever runs that node holds its sats.",
   "me.you": "You",
   "me.yourChama": "Your Chama",
   "me.tradeName": "Profile name",

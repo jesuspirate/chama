@@ -89,5 +89,5 @@ assert.equal(timezoneMismatchCountry('missing-chama','Africa/Nairobi'),null);
 assert.equal(timezoneNudgeSeen('us-blf'),false);markTimezoneNudgeSeen('us-blf');
 assert.equal(timezoneNudgeSeen('us-blf'),true);assert.equal(timezoneNudgeSeen('ke-kes'),false);
 assert.equal(data.get('chama_timezone_nudge_v1:us-blf'),'1','browser-wide, no identity or location stored');
-assert.equal(COUNTRY_ISO3.KE,'KEN');assert.equal(COUNTRY_ISO3.US,'USA');
+assert.equal(COUNTRY_ISO3.KE,'KEN');assert.equal(COUNTRY_ISO3.US,'USA');assert.equal(COUNTRY_ISO3.FR,'FRA');assert.equal(COUNTRY_ISO3.CD,'COD');assert.equal(COUNTRY_ISO3.TL,'TLS');
 console.log('PASS M timezone nudge: Nairobi mismatch, matching/unknown silence, aliases, browser-per-chama memory, ISO-3');
