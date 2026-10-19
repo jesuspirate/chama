@@ -322,6 +322,14 @@ a source of evidence, never of authority.
 > (`ARBITER_TOO_EARLY`), and the conformance vectors record that. Older
 > clients fail to load more of these trades; they never compute a different
 > state. Plan and findings in `docs/replay-hardening-brief.md`.
+>
+> **Migration (deadline author).** Chama before 6.4.30 lets any late event
+> cause the deadline transition. From 6.4.30, for a trade whose CREATE is
+> signed at or after 2026-12-01T00:00:00Z, a late event from a non-participant
+> is invalid and replay skips it; older trades replay unchanged. A client
+> older than 6.4.30 would still expire such a trade on a stranger's late
+> event, so the date is set after most clients have updated, and is moved
+> later if they have not.
 
 ## Arbitration
 

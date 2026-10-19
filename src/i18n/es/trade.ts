@@ -319,6 +319,9 @@ export const trade: Record<string, string> = {
   "trade.oversoldBuyerBody": "Esta unidad fue para un comprador anterior en una carrera por la última unidad — toca Reembolsar abajo para recuperar tus sats. El lado del vendedor también reembolsa, así que quedas cubierto.",
   "trade.oversoldSellerBody": "Esta unidad ya se le vendió a un comprador anterior (una carrera por la última unidad), así que es seguro reembolsar. Usa «Reembolsar pedido duplicado» abajo — no lo liberes. Tu venta real es el pedido sin este aviso.",
   "trade.oversoldTitle": "⚠ Pedido sobrevendido",
+  "trade.orderMismatchSellerBody":
+    "El comprador escribió este pedido con un precio, una federación o un árbitro que no están en tu anuncio. No envíes nada por él. Si bloqueó sats, los recupera cuando venza.",
+  "trade.orderMismatchTitle": "⚠ Este pedido no coincide con tu anuncio",
   "trade.paneChat": "Chat",
   "trade.paneDetails": "Detalles",
   "trade.paneParties": "Partes",
