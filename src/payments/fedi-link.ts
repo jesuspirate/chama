@@ -22,12 +22,17 @@
 export const FEDI_LINK_BASE = "https://app.fedi.xyz/link";
 
 /**
- * Practical ceiling for a URL handed to an OS handler. Long OOB notes exist
- * (many denominations = a long string), and a link past this is more likely
- * to be truncated by an intent/handler than to open — so we return null and
- * the caller keeps the QR and copy button, which always work.
+ * Practical ceiling for a URL handed to an OS handler. Past it we return null
+ * and the caller keeps the QR and copy button, which always work.
+ *
+ * 6.4.28: was 2000. On Jet's Pixel no note on Bitcoin Life or Liberty Tree
+ * showed the button. Each spendable note is a signature plus its spend key
+ * (~80 bytes, ~107 base64 chars) and a wallet keeps several per denomination,
+ * so even a ~₿121 withdraw can spend dozens of notes (inferred, not measured). An Android intent or a universal link carries far more
+ * than this (the Binder limit is ~1 MB), and the note rides in the fragment,
+ * which never reaches a server.
  */
-export const FEDI_LINK_MAX_TOKEN_CHARS = 2000;
+export const FEDI_LINK_MAX_TOKEN_CHARS = 16_000;
 
 /** Fedimint OOB notes are base64-ish bearer strings. Anything outside that
  *  alphabet is not a note we should be handing to another app. */
