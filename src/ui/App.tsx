@@ -4895,7 +4895,7 @@ export default function App() {
             <HeldSats
               pubkey={pubkey!}
               balanceMsats={fedimint.balanceMsats ?? 0}
-              balanceKnown={fedimint.joined && fedimint.balanceMsats !== null}
+              balanceKnown={fedimint.joined && !fedimint.balanceReadFailed}
               walletInvite={fedimint.joined ? liveActiveInvite ?? undefined : undefined}
               walletNeedsTap={signerNeedsUserAction && !fedimint.joined}
               onUseWallet={() => {
@@ -4903,7 +4903,7 @@ export default function App() {
                   void actions.initFedimint().catch(error => setToast({ message: error.message, type: "error" }));
                 }
               }}
-              balanceUnreadable={fedimint.joined && fedimint.balanceMsats === null && !fedimint.busy}
+              balanceUnreadable={fedimint.joined && Boolean(fedimint.balanceReadFailed) && !fedimint.busy}
               pendingCards={(nativeLockResume || pendingPayoutCard) ? <>
                 {nativeLockResume && (
                   <PendingLockCard

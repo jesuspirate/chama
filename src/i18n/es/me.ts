@@ -52,6 +52,7 @@ export const me: Record<string, string> = {
   "me.walletBalance": "Quedan en Chama:",
   "me.parkedWalletsTitle": "También en este dispositivo:",
   "me.parkedWalletLine": "{sats} sats en {name} la última vez que la usaste",
+  "me.parkedWalletLineUnchecked": "{name}: saldo sin comprobar la última vez que la usaste",
   "me.parkedWalletUnlisted": "una federación que Chama no lista",
   "me.parkedWalletsHint": "Cada federación guarda sus propios sats. Abre un intercambio en esa federación para usarlos.",
 

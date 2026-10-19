@@ -108,6 +108,37 @@ const held = (props: Partial<HeldProps> = {}) => renderToStaticMarkup(
 }
 
 {
+  // "Can't read" is never "none": a failed balance read is recorded, and any
+  // later successful reading clears it.
+  const { refreshBalanceInto, withBalanceReadState } = await import("../hooks/balance-read-state.js");
+  const patches: unknown[] = [];
+  await refreshBalanceInto({ getBalance: async () => { throw new Error("guardians unreachable"); } }, p => { patches.push(p); });
+  assert.deepEqual(patches as unknown, [{ balanceReadFailed: true }], "a failed read keeps the old figure and marks it unread");
+  await refreshBalanceInto({ getBalance: async () => 42_000 }, p => { patches.push(p); });
+  assert.deepEqual(patches[1] as unknown, { balanceMsats: 42_000 });
+  assert.deepEqual(withBalanceReadState({ balanceMsats: 42_000 }) as unknown, { balanceMsats: 42_000, balanceReadFailed: false },
+    "any balance update is a reading");
+  assert.deepEqual(withBalanceReadState({ balanceMsats: 0, balanceReadFailed: true }) as unknown, { balanceMsats: 0, balanceReadFailed: true },
+    "a placeholder 0 after a failed first read stays marked unread");
+  assert.deepEqual(withBalanceReadState({ busy: true }) as unknown, { busy: true });
+  const hook = readFileSync(new URL("../hooks/useEscrow.ts", import.meta.url), "utf8");
+  assert.match(hook, /fedimint: \{ \.\.\.prev\.fedimint, \.\.\.withBalanceReadState\(partial\) \}/, "every update goes through it");
+  assert.match(hook, /await refreshBalanceInto\(fedimint, updateFedimint\)/);
+  assert.match(hook, /balanceReadFailed: initialBalanceReadFailed/, "the first read after opening is marked too");
+  assert.match(hook, /updateFedimint\(\{ balanceReadFailed: true \}\);\n\s+throw e;/, "readBalance marks a failure before rethrowing");
+
+  // A kept wallet whose balance wasn't read when it was parked is listed as
+  // "not checked": never 0, never hidden.
+  const { rememberArbiterFederationRoute, arbiterFederationStorageScope } = await import("../fedimint/arbiter-federation-store.js");
+  const fed = "c".repeat(64);
+  rememberArbiterFederationRoute(pk, { federationId: fed, inviteCode: "fed1testunchecked", storageScope: arbiterFederationStorageScope(pk, fed) });
+  const kept = held();
+  assert.match(kept, /data-parked-wallets/);
+  assert.match(kept, /balance not checked when you last used it/);
+  assert.doesNotMatch(kept, /0 sats on/);
+}
+
+{
   const hero = renderToStaticMarkup(<LangProvider>
     <HomeHero inEscrowMsats={0} readyToCollectCount={0} needsYou={[]} alsoGoingOn={[]} pubkey={pk}
       onOpenTrade={() => {}} heldSats={<p data-slot>held</p>} />
@@ -131,6 +162,6 @@ const held = (props: Partial<HeldProps> = {}) => renderToStaticMarkup(
   assert.match(held, /try \{ acknowledgePaidLockRecoveries\(paidLockFederationId, balanceMsats\); \}/,
     "refunded paid-lock rows are acknowledged where they are shown, and a corrupt record can't break Home");
   assert.match(app, /pendingCards=\{\(nativeLockResume \|\| pendingPayoutCard\)/, "Home gets the finish-lock and finish-payout cards");
-  assert.match(app, /balanceUnreadable=\{fedimint\.joined && fedimint\.balanceMsats === null && !fedimint\.busy\}/);
+  assert.match(app, /balanceUnreadable=\{fedimint\.joined && Boolean\(fedimint\.balanceReadFailed\) && !fedimint\.busy\}/, "Home's can't-check line follows a real failed read");
 }
 console.log("PASS Home lists the sats Chama holds with their way out, never claims none, says when it can't check; Me has no Wallet tab");

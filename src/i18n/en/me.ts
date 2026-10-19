@@ -55,6 +55,7 @@ export const me: Record<string, string> = {
   "me.walletBalance": "Left in Chama:",
   "me.parkedWalletsTitle": "Also on this device:",
   "me.parkedWalletLine": "{sats} sats on {name} when you last used it",
+  "me.parkedWalletLineUnchecked": "{name}: balance not checked when you last used it",
   "me.parkedWalletUnlisted": "a federation Chama doesn't list",
   "me.parkedWalletsHint": "Each federation holds its own sats. Open a trade on that federation to use them.",
 

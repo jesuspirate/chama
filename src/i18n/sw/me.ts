@@ -51,6 +51,7 @@ export const me: Record<string, string> = {
   "me.walletBalance": "Zilizobaki ndani ya Chama:",
   "me.parkedWalletsTitle": "Pia kwenye kifaa hiki:",
   "me.parkedWalletLine": "Sats {sats} kwenye {name} ulipoitumia mara ya mwisho",
+  "me.parkedWalletLineUnchecked": "{name}: salio haikuangaliwa ulipoitumia mara ya mwisho",
   "me.parkedWalletUnlisted": "shirikisho ambalo Chama haliorodheshi",
   "me.parkedWalletsHint": "Kila shirikisho linashikilia sats zake. Fungua biashara kwenye shirikisho hilo ili kuzitumia.",
 

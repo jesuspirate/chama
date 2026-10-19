@@ -3037,13 +3037,16 @@ export function WalletBalance({ balanceMsats, known = true, invite }: { balanceM
   return <div data-wallet-balance style={{ padding: 16, color: T.text, fontFamily: T.sans }}>{t("me.walletBalance")} {known ? <TradeAmount msats={balanceMsats} interactive /> : "—"}<EcashCustody key={invite} invite={invite} /></div>;
 }
 
-/** H4: the wallets ParkedWallets lists. Home reads the same list, so it never
- *  says Chama holds nothing while a kept wallet still holds sats. */
+/** H4: the wallets ParkedWallets lists, which Home shows. A wallet whose
+ *  balance couldn't be read when it was parked is listed as "not checked",
+ *  never as 0 and never hidden: since 6.4.30 the empty routes left by failed
+ *  switches are forgotten, so an unknown balance is a real wallet. */
 export function parkedWalletRoutes(pubkey: string | null | undefined, activeInvite?: string) {
   if (!pubkey) return [];
   const activeFed = expectedFederationIdForInvite(activeInvite)?.toLowerCase();
   return listArbiterFederationRoutes(pubkey).filter((route) =>
-    route.inviteCode !== activeInvite?.trim() && route.federationId !== activeFed && (route.lastBalanceMsats ?? 0) >= 1000);
+    route.inviteCode !== activeInvite?.trim() && route.federationId !== activeFed
+    && (route.lastBalanceMsats === undefined || route.lastBalanceMsats >= 1000));
 }
 
 /** H4: wallets kept on this device for other federations. The amount is the
@@ -3057,7 +3060,7 @@ export function ParkedWallets({ pubkey, activeInvite }: { pubkey: string | null 
       <div style={{ fontSize: T.fs.secondary, color: T.ink2, marginBottom: 6 }}>{t("me.parkedWalletsTitle")}</div>
       {parked.map((route) => (
         <div key={route.federationId} style={{ fontSize: T.fs.body, lineHeight: 1.45, marginBottom: 4 }}>
-          <ParkedWalletLine sats={Math.floor((route.lastBalanceMsats ?? 0) / 1000)} invite={route.inviteCode} />
+          <ParkedWalletLine sats={route.lastBalanceMsats === undefined ? null : Math.floor(route.lastBalanceMsats / 1000)} invite={route.inviteCode} />
         </div>
       ))}
       <div style={{ fontSize: T.fs.secondary, color: T.ink2, lineHeight: 1.4, marginTop: 4 }}>{t("me.parkedWalletsHint")}</div>
@@ -3068,15 +3071,15 @@ export function ParkedWallets({ pubkey, activeInvite }: { pubkey: string | null 
 /** Jet (6.4.26-rc.6): a kept wallet on an unlisted federation is named by
  *  the name that federation publishes, marked unlisted, so each balance
  *  says whose it is. */
-function ParkedWalletLine({ sats, invite }: { sats: number; invite: string }) {
+function ParkedWalletLine({ sats, invite }: { sats: number | null; invite: string }) {
   const { t } = useT();
   const listed = federationNameForInvite(invite);
   const { info } = useFederationInfo(listed ? "" : invite.trim());
   const published = publishedFederationName(info);
-  return <>{t("me.parkedWalletLine", {
-    sats: sats.toLocaleString(),
-    name: listed ?? (published ? t("recovery.barUnlistedNamed", { name: published }) : t("me.parkedWalletUnlisted")),
-  })}</>;
+  const name = listed ?? (published ? t("recovery.barUnlistedNamed", { name: published }) : t("me.parkedWalletUnlisted"));
+  return <>{sats === null
+    ? t("me.parkedWalletLineUnchecked", { name })
+    : t("me.parkedWalletLine", { sats: sats.toLocaleString(), name })}</>;
 }
 
 /** v7 redesign: a labelled settings group (canvas "Me": Money / Community / App). */
