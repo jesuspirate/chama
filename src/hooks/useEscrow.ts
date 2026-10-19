@@ -304,6 +304,7 @@ import {
   getArbiterFederationRoute,
   listArbiterFederationRoutes,
   rememberArbiterFederationRoute,
+  forgetUnjoinedFederationRoute,
   generateFediEcash,
   receiveFediEcash,
   hasFediInternalEcash,
@@ -4927,8 +4928,9 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     // may be a wallet kept for another federation: never wipe one of those.
     const activePubkey = await signerRef.current?.getPublicKey().catch(() => null) ?? null;
     const resetScope = (!isNativeBridgeModeOn() && clientWasOpen ? openScopeRef.current : null) ?? activePubkey;
+    // Not even a confirmed reset may wipe a wallet kept for another federation.
     if (
-      !force && !isSimModeOn() && !isNativeBridgeModeOn() && activePubkey && resetScope
+      !isSimModeOn() && !isNativeBridgeModeOn() && activePubkey && resetScope
       && scopeHoldsParkedWallet(activePubkey, resetScope, openFederationId)
     ) {
       const err = new Error(
@@ -5027,6 +5029,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
         lastBalanceMsats: parkedBalanceMsats,
       });
       const targetRoute = getArbiterFederationRoute(activePubkey, targetFederationId);
+      const targetWasKept = targetRoute !== null;
       rememberArbiterFederationRoute(activePubkey, {
         federationId: targetFederationId,
         // An unlisted invite never replaces the one the wallet reopens with.
@@ -5100,6 +5103,16 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
             console.error("[chama] couldn't reopen preserved arbiter federation", restoreError);
           }
         }
+        // #64 follow-up: the target's route was written before the join. If
+        // it is new and the target never opened, forget it, or a failed switch
+        // leaves an empty wallet listed as kept.
+        const openFederationId = (() => {
+          try { return fedimintRef.current?.getFederationId()?.trim().toLowerCase() ?? null; }
+          catch { return null; }
+        })();
+        if (!targetWasKept && openFederationId !== targetFederationId) {
+          forgetUnjoinedFederationRoute(activePubkey, targetFederationId);
+        }
         const message = e instanceof Error ? e.message : String(e);
         updateFedimint({ busy: false, error: message });
         throw e;
@@ -5120,7 +5133,11 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     }
     // A switch wipes the wallet file, so it must never run under a live
     // funding or claim: their sats may not show in the balance yet.
-    if (!force && (fundingInProgressRef.current?.aborted === false || claimPayoutInProgressRef.current)) {
+    // Outside the sandbox no wallet is wiped here (see Step 2), so a
+    // confirmation discards nothing and skips no guard: a forced switch of a
+    // funded wallet would only close it and then be refused on reopen.
+    const mayDiscard = force && !preserveFederations;
+    if (!mayDiscard && (fundingInProgressRef.current?.aborted === false || claimPayoutInProgressRef.current)) {
       const err = new Error(
         "A payment is still in progress, so Chama won't switch communities yet. Try again when it finishes.",
       );
@@ -5133,7 +5150,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     // hold funds, and its file holds the only copy of the browser seed.
     // Wiping it on an unknown balance is how a funded wallet disappears.
     if (
-      !force
+      !mayDiscard
       && currentBalanceMsats === null
       && (fedimintRef.current !== null || getActiveInvite() !== null)
     ) {
@@ -5146,18 +5163,17 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       throw err;
     }
     if (
-      !force
+      !mayDiscard
       && currentBalanceMsats !== null
       // H4: this path replaces the open wallet, so once wallets are kept per
       // federation, even dust is refused here rather than deleted.
       && (balanceBlocksFederationSwitch(currentBalanceMsats) || (preserveFederations && currentBalanceMsats > 0))
     ) {
       const sats = Math.floor(currentBalanceMsats / 1000);
-      const err = new Error(
-        `Refusing federation switch: ${sats} sats would be permanently ` +
-        `destroyed when the OPFS file is wiped for the new federation. ` +
-        `Move funds out (Lightning withdrawal) before switching, or ` +
-        `confirm destruction explicitly in the UI.`,
+      const err = new Error(preserveFederations
+        ? `Chama couldn't keep this wallet aside, so it won't switch while it holds ${sats} sats. ` +
+          `Send them to your own wallet first, then switch. Nothing was changed.`
+        : `These ${sats} practice sats are erased if you switch. Confirm to switch anyway.`,
       );
       (err as Error & { code?: string; balanceMsats?: number }).code =
         "SWITCH_REFUSED_NONZERO_BALANCE";

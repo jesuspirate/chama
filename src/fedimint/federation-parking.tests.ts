@@ -14,7 +14,7 @@ let storageBroken = false;
 };
 
 const { BLF_FEDERATION_INVITE, BLF_FEDERATION_ID, GBF_FEDERATION_INVITE, GBF_FEDERATION_ID } = await import("./federation-invites.js");
-const { arbiterFederationStorageScope, getArbiterFederationRoute, listArbiterFederationRoutes, rememberArbiterFederationRoute } =
+const { arbiterFederationStorageScope, forgetUnjoinedFederationRoute, getArbiterFederationRoute, listArbiterFederationRoutes, rememberArbiterFederationRoute } =
   await import("./arbiter-federation-store.js");
 const {
   federationIdForInvite, federationIdForRememberedInvite, federationIdFromInvite, knownFederationIdForInvite,
@@ -300,6 +300,20 @@ assert.equal(await federationIdForInvite(UNLISTED, null, async () => ({ federati
   session.accept(null, UINV);
   session.accept(BOB, "not-an-invite");
   assert.equal(session.has(BOB, "not-an-invite"), false);
+}
+
+// #64 follow-up: a switch whose target never opened forgets the target route
+// it wrote, but never a route that has seen a balance.
+{
+  const FRANK = "f".repeat(64);
+  rememberArbiterFederationRoute(FRANK, { federationId: BLF_FEDERATION_ID, inviteCode: BLF_FEDERATION_INVITE, storageScope: FRANK, lastBalanceMsats: 0 });
+  rememberArbiterFederationRoute(FRANK, { federationId: GBF_FEDERATION_ID, inviteCode: GBF_FEDERATION_INVITE, storageScope: `${FRANK}:x` });
+  forgetUnjoinedFederationRoute(FRANK, GBF_FEDERATION_ID.toUpperCase());
+  assert.equal(getArbiterFederationRoute(FRANK, GBF_FEDERATION_ID), null, "a failed switch leaves no empty kept wallet");
+  forgetUnjoinedFederationRoute(FRANK, BLF_FEDERATION_ID);
+  assert.ok(getArbiterFederationRoute(FRANK, BLF_FEDERATION_ID), "a route with a balance reading is never forgotten");
+  forgetUnjoinedFederationRoute(FRANK, "0".repeat(64));
+  assert.equal(listArbiterFederationRoutes(FRANK).length, 1);
 }
 
 console.log("PASS H4: wallets are kept per federation, and unlisted federations ask first");

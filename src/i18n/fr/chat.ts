@@ -20,9 +20,9 @@ export const chat: Record<string, string> = {
   "chat.chooseFederation": "Choisissez une fédération",
   "chat.curated": "Sélectionnée",
   "chat.destroyOverrideAfter":
-    " pour forcer. Cela détruit définitivement le solde détenu sur cette route.",
-  "chat.destroyOverrideBefore": "Cliquez sur ",
-  "chat.destroyOverrideBold": "Basculer et détruire l'ecash",
+    " pour basculer quand même. Ce sont des sats d'entraînement du bac à sable : aucun vrai sat n'est perdu.",
+  "chat.destroyOverrideBefore": "Touchez ",
+  "chat.destroyOverrideBold": "Basculer et effacer les sats d'entraînement",
   "chat.encryptedReceiptImage": "image de reçu chiffrée",
   "chat.externalRoute": "Route externe",
   "chat.footerGeneratedNative":
@@ -60,7 +60,8 @@ export const chat: Record<string, string> = {
   "chat.show": "Afficher",
   "chat.signIn": "Se connecter",
   "chat.switch": "Basculer",
-  "chat.switchAndDestroy": "Basculer et détruire l'ecash",
+  "chat.switchAndDestroy": "Basculer et effacer les sats d'entraînement",
+  "chat.switchSendOutFirst": "Envoyez d'abord ces sats vers votre propre portefeuille, puis basculez. Rien n'a été modifié.",
   "chat.switchFailed": "Échec du changement",
   "chat.switchFromAfter": " ?",
   "chat.switchFromBefore": "Basculer de ",
