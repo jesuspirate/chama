@@ -17,6 +17,7 @@ import {
   getPhoneNumberDisplayParts,
   getPhoneCountryHint,
   phonePlaceholderForCountryIso,
+  railPlaceholderForCountry,
   paymentHandleNeedsCountryCode,
   sanitizePhoneNumberForSave,
 } from "../../payments/saved-handles.js";
@@ -648,7 +649,7 @@ export function SavedHandlesPanel({ communitySlug, onClose }: {
                       fontSize: T.fs.secondary, marginTop: 2,
                       overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                     }}>
-                      {rail.placeholderKey ? t(rail.placeholderKey) : (rail.placeholder ?? t("claim.paymentIdFallback"))}
+                      {rail.placeholderKey ? t(rail.placeholderKey) : (railPlaceholderForCountry(rail, communityCountryIso) ?? t("claim.paymentIdFallback"))}
                     </span>
                   </span>
                   <span style={{
@@ -678,7 +679,7 @@ export function SavedHandlesPanel({ communitySlug, onClose }: {
                 name="chama-private-payment-id"
                 value={addValue}
                 onChange={e => { setAddValue(e.target.value); setError(null); }}
-                placeholder={selectedRail.placeholderKey ? t(selectedRail.placeholderKey) : (selectedRail.placeholder || t("claim.yourPaymentId"))}
+                placeholder={selectedRail.placeholderKey ? t(selectedRail.placeholderKey) : (railPlaceholderForCountry(selectedRail, communityCountryIso) || t("claim.yourPaymentId"))}
                 style={{ ...inputStyle, marginBottom: 0, flex: "1 1 220px" }}
               />
               <button

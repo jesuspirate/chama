@@ -28,7 +28,7 @@ import { scopedStorageKey } from "../storage/user-scope.js";
 // don't share the ID space; that's fine, the cleartext `handle` flowing
 // alongside is what receivers use.
 
-import { getRailByKey, railAllowsPublicHandle } from "./rail-registry.js";
+import { getRailByKey, railAllowsPublicHandle, type Rail } from "./rail-registry.js";
 import {
   getScopedStorageItem,
   setScopedStorageItem,
@@ -377,6 +377,9 @@ const PHONE_CC_TO_ISO: Record<string, string> = {
   "263": "ZW",
   "265": "MW",
   "503": "SV",
+  "506": "CR",
+  "598": "UY",
+  "855": "KH",
   "880": "BD",
 };
 
@@ -425,6 +428,9 @@ const PHONE_CC_TO_COUNTRY: Record<string, string> = {
   "263": "Zimbabwe",
   "265": "Malawi",
   "503": "El Salvador",
+  "506": "Costa Rica",
+  "598": "Uruguay",
+  "855": "Cambodia",
   "880": "Bangladesh",
 };
 
@@ -483,7 +489,8 @@ const PHONE_LENGTH_RULES: Record<string, PhoneLengthRule> = {
   "223": { lengths: [8], example: "+223 76 12 34 56" },
   "225": { lengths: [10], example: "+225 07 12 34 5678" },
   "226": { lengths: [8], example: "+226 70 12 34 56" },
-  "229": { lengths: [8], example: "+229 91 234 567" },
+  // Benin moved every number to 10 digits ("01" + the old 8) in Nov 2024.
+  "229": { lengths: [10, 8], example: "+229 01 97 12 34 56" },
   "233": { lengths: [9], example: "+233 24 123 4567" },
   "234": { lengths: [10], example: "+234 801 234 5678" },
   "237": { lengths: [9], example: "+237 6 71 23 45 67" },
@@ -815,9 +822,79 @@ const ISO_TO_PHONE_CC: Record<string, string> = (() => {
  *  have no dial-code rule for that country, so callers can fall back. */
 export function phonePlaceholderForCountryIso(iso: string | null | undefined): string | null {
   if (!iso) return null;
-  const cc = ISO_TO_PHONE_CC[iso.toUpperCase()];
-  if (!cc) return null;
-  return PHONE_LENGTH_RULES[cc]?.example ?? null;
+  const upper = iso.toUpperCase();
+  const cc = ISO_TO_PHONE_CC[upper];
+  return (cc ? PHONE_LENGTH_RULES[cc]?.example : undefined)
+    ?? PHONE_EXAMPLE_BY_ISO[upper]
+    ?? null;
+}
+
+/** Examples only, for countries a Chama or a phone rail reaches but that
+ *  have no length rule above. Never used to accept or refuse a number. */
+const PHONE_EXAMPLE_BY_ISO: Record<string, string> = {
+  AO: "+244 923 123 456",
+  BI: "+257 79 56 12 34",
+  BW: "+267 71 123 456",
+  CF: "+236 70 01 23 45",
+  CG: "+242 06 123 4567",
+  CL: "+56 9 1234 5678",
+  CR: "+506 8312 3456",
+  CV: "+238 991 12 34",
+  DJ: "+253 77 83 10 01",
+  ER: "+291 7 123 456",
+  GA: "+241 07 12 34 56",
+  GM: "+220 301 2345",
+  GN: "+224 621 23 45 67",
+  GQ: "+240 222 123 456",
+  GW: "+245 955 012 345",
+  ID: "+62 812 3456 7890",
+  KH: "+855 91 234 567",
+  KM: "+269 321 23 45",
+  LR: "+231 77 012 3456",
+  LS: "+266 5012 3456",
+  MG: "+261 32 12 345 67",
+  MM: "+95 9 2123 4567",
+  MR: "+222 22 12 34 56",
+  MU: "+230 5251 2345",
+  MX: "+52 55 1234 5678",
+  MY: "+60 12 345 6789",
+  MZ: "+258 84 123 4567",
+  NE: "+227 96 12 34 56",
+  PE: "+51 912 345 678",
+  SC: "+248 2 510 123",
+  SG: "+65 8123 4567",
+  SL: "+232 25 123456",
+  SO: "+252 61 123 4567",
+  SS: "+211 977 123 456",
+  ST: "+239 981 2345",
+  SZ: "+268 7612 3456",
+  TD: "+235 66 12 34 56",
+  TG: "+228 90 12 34 56",
+  TH: "+66 81 234 5678",
+  UY: "+598 94 231 234",
+  VN: "+84 91 234 5678",
+};
+
+/** The example a payment field shows for a rail, in the viewer's country.
+ *  A phone rail that works in that country shows a number from there (M-Pesa
+ *  in Kenya is +254, in Tanzania +255); a rail that doesn't, or a mixed
+ *  example ("you@example.com or +1 …"), keeps its own. */
+export function railPlaceholderForCountry(
+  rail: Rail | null | undefined,
+  iso: string | null | undefined,
+): string | undefined {
+  if (!rail) return undefined;
+  const upper = iso?.toUpperCase();
+  if (!upper) return rail.placeholder;
+  const own = rail.placeholdersByCountry?.[upper];
+  if (own) return own;
+  const placeholder = rail.placeholder;
+  if (!placeholder || !/^\+[\d ]+$/.test(placeholder)) return placeholder;
+  // A rail's own example is from its first country, with its own prefix.
+  if (rail.countries?.[0] === upper) return placeholder;
+  const operatesHere = rail.countries ? rail.countries.includes(upper) : true;
+  if (!operatesHere) return placeholder;
+  return phonePlaceholderForCountryIso(upper) ?? placeholder;
 }
 
 /** Fully revealed phone number — for the settings reveal toggle and the
