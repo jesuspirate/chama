@@ -52,7 +52,7 @@ export const me: Record<string, string> = {
   "backup.identityOnly": "This key is you, not your sats. Keep it to yourself.",
   "backup.reading": "Reading your key…",
 
-  "me.walletBalance": "In your Chama wallet:",
+  "me.walletBalance": "Left in Chama:",
   "me.parkedWalletsTitle": "Also on this device:",
   "me.parkedWalletLine": "{sats} sats on {name} when you last used it",
   "me.parkedWalletUnlisted": "a federation Chama doesn't list",
@@ -96,7 +96,6 @@ export const me: Record<string, string> = {
   // Me refactor: attention hero + accordions.
   "me.accArbiter": "Arbiter",
   "me.tabCommunity": "Community",
-  "me.tabSats": "Wallet",
   "me.recentSettlements": "Recent settlements",
   "me.settledReleased": "released",
   "me.settledRefunded": "refunded",
@@ -361,4 +360,8 @@ export const me: Record<string, string> = {
   "me.groupTrading": "Trading",
   "me.groupBond": "Bond",
   "me.groupHelp": "Help & more",
+  "me.heldSatsOnHome": "Some of your sats need you. See them on Home",
+  "me.groupGettingPaid": "Where you get paid",
+  "backup.rowTitle": "Your key",
+  "backup.rowHint": "Sign in on another device with it",
 };

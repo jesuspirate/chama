@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { LangProvider } from '../../src/i18n';
 import { T, applyThemeMode } from '../../src/ui/theme';
-import { MeScreen } from '../../src/ui/screens/MeScreen';
+import { HeldSats } from '../../src/ui/components/HeldSats';
 import { ArbiterApplyForm } from '../../src/ui/components/ArbiterApplyForm';
 import { InlineExplanation } from '../../src/ui/components/InlineExplanation';
 import { HelpTip } from '../../src/ui/components/HelpTip';
@@ -26,12 +26,9 @@ function Fixture() {
   const [modal, setModal] = useState(false);
   const [sheet, setSheet] = useState(false);
   return <main style={{ maxWidth: 728, margin: 'auto', padding: 16, color: T.text }}>
-    {params.get('mode') === 'edge' ? <div style={{ position: 'fixed', bottom: 8, right: 8, width: 48, height: 48, overflow: 'hidden', transform: 'translateZ(0)', padding: 14, boxSizing: 'border-box' }}><HelpTip title="A long contextual explanation">{'Read this without leaving the task. '.repeat(35)}</HelpTip></div> : params.get('mode') === 'me' ? <MeScreen pubkey={viewer} myTrades={[]} ratings={null}
-      balanceMsats={100000000} walletInvite="fed1testcustom" hasActiveCommitment={false}
-      requestTab={{ tab: 'sats', n: 1 }} communitySlug="us-blf" loadLiveness={loadLiveness}
-      onSelectCommunity={action} onOpenTrade={action} onOpenSavedHandles={action}
-      onOpenPayoutDestinations={action} onOpenAdvanced={action} onOpenHelp={action}
-      onRecoverSats={action} onSignOut={action} /> : <>
+    {params.get('mode') === 'edge' ? <div style={{ position: 'fixed', bottom: 8, right: 8, width: 48, height: 48, overflow: 'hidden', transform: 'translateZ(0)', padding: 14, boxSizing: 'border-box' }}><HelpTip title="A long contextual explanation">{'Read this without leaving the task. '.repeat(35)}</HelpTip></div> : params.get('mode') === 'me' ? <HeldSats pubkey={viewer}
+      balanceMsats={100000000} walletInvite="fed1testcustom" hasActiveCommitment={false} inTradeMsats={0}
+      onOpenTrade={action} onRecoverSats={action} onWithdrawEcash={action} /> : <>
       <ArbiterApplyForm communitySlug="us-blf" onApply={async () => action()} />
       <div data-parent onClick={action} style={{ marginTop: 16 }}>
         <InlineExplanation summary="Held here · until tomorrow" label="Test contextual help">
