@@ -1935,6 +1935,8 @@ console.log("\n── ATOMIC LOCK (CREATED → LOCKED, no FUNDED hop) ──");
     ...(applyEvent(null, createEvent({ claimedQuantity })) as any).state,
     parent: parentId,
     claimedQuantity,
+    // M3: a child's price is the listing's price times its units.
+    amountMsats: parent.amountMsats * claimedQuantity,
     status,
     joinHolds: holdExpiresAt !== undefined
       ? { [Role.BUYER]: { role: Role.BUYER, pubkey: BUYER_PK, joinedAt: NOW, expiresAt: holdExpiresAt, eventId: "h" } }
