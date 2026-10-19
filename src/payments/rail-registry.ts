@@ -50,6 +50,10 @@ export interface Rail {
    *  the render sites show t(placeholderKey); `placeholder` stays for search
    *  indexing + phone-rail detection. */
   placeholderKey?: string;
+  /** Phone examples for countries where this network's own prefix differs
+   *  from the country's usual example (M-Pesa in Tanzania is Vodacom 074,
+   *  not Tigo 071). Render through railPlaceholderForCountry. */
+  placeholdersByCountry?: Partial<Record<string, string>>;
 }
 
 /** v1 seed list. Bias toward mobile-first + honest: enumerate the rails
@@ -89,6 +93,7 @@ export const RAIL_REGISTRY: Rail[] = [
     region: ["sn-cfa"],
     countries: ["SN", "CI", "CM", "GN", "ML", "BF", "BJ", "MG"],
     placeholder: "+221 77 123 4567",
+    placeholdersByCountry: { CM: "+237 6 91 23 45 67" },
   },
   {
     key: "wizall",
@@ -104,14 +109,15 @@ export const RAIL_REGISTRY: Rail[] = [
     allowPublicHandle: false,
     region: ["sn-cfa"],
     countries: ["SN"],
-    placeholder: "+221 77 123 4567",
+    placeholder: "+221 76 123 4567",
   },
   {
     key: "moov-money",
     displayName: "Moov Money",
     allowPublicHandle: false,
     countries: ["BJ", "CI", "BF", "TG", "NE"],
-    placeholder: "+229 91 234 567",
+    placeholder: "+229 01 95 12 34 56",
+    placeholdersByCountry: { CI: "+225 01 12 34 5678", BF: "+226 60 12 34 56", TG: "+228 96 12 34 56", NE: "+227 94 12 34 56" },
   },
   {
     key: "vodafone-cash",
@@ -143,7 +149,8 @@ export const RAIL_REGISTRY: Rail[] = [
     allowPublicHandle: false,
     region: ["ke-kes", "tz-tzs"],
     countries: ["KE", "TZ", "MZ", "CD", "LS", "GH", "EG", "ZA", "ET"],
-    placeholder: "+255 71 234 5678",
+    placeholder: "+254 712 345 678",
+    placeholdersByCountry: { TZ: "+255 74 123 4567", GH: "+233 20 123 4567", ZA: "+27 82 123 4567", ET: "+251 70 123 4567" },
   },
   {
     key: "airtel-money",
@@ -151,7 +158,8 @@ export const RAIL_REGISTRY: Rail[] = [
     allowPublicHandle: false,
     region: ["ke-kes", "tz-tzs"],
     countries: ["KE", "TZ", "UG", "RW", "ZM", "MW", "NE", "TD", "CD", "MG", "GA", "CG", "SC"],
-    placeholder: "+255 68 123 4567",
+    placeholder: "+254 733 123 456",
+    placeholdersByCountry: { TZ: "+255 68 123 4567", RW: "+250 73 123 4567", CD: "+243 99 123 4567", MG: "+261 33 12 345 67", CG: "+242 05 123 4567" },
   },
   // MTN Mobile Money (MoMo) — the dominant network across West and
   // Central Africa: Ghana, Côte d'Ivoire, Cameroon, Uganda, Rwanda,
@@ -165,6 +173,7 @@ export const RAIL_REGISTRY: Rail[] = [
     allowPublicHandle: false,
     countries: ["GH", "CI", "CM", "UG", "RW", "ZM", "BJ", "LR", "CG", "GN", "SS", "ZA"],
     placeholder: "+233 24 123 4567",
+    placeholdersByCountry: { CI: "+225 05 12 34 5678", UG: "+256 77 123 4567", ZM: "+260 96 123 4567", BJ: "+229 01 97 12 34 56", LR: "+231 88 012 3456", GN: "+224 664 12 34 56", SS: "+211 921 234 567", ZA: "+27 83 123 4567" },
   },
   // Tigo Pesa — Tanzania (rebranded to "Mixx by Yas" 2023 but Tigo
   // Pesa is still widely recognized), historically Senegal & Chad.
@@ -234,7 +243,7 @@ export const RAIL_REGISTRY: Rail[] = [
     displayName: "Chipper Cash",
     allowPublicHandle: false,
     countries: ["GH", "NG", "UG", "RW", "TZ", "ZA", "KE"],
-    placeholder: "+256 70 123 4567",
+    placeholder: "+233 24 123 4567",
   },
   {
     key: "mukuru",
