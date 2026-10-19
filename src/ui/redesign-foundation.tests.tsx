@@ -143,6 +143,14 @@ console.log("PASS hold to confirm: hold confirms once, early lift cancels, taps 
   assert.doesNotMatch(css, /\.chama-create-fab-scrolling \.chama-create-fab\{[^}]*background:#[0-9A-Fa-f]{6}80/, "not the half-ink tint that read as flat grey");
   assert.doesNotMatch(css, /\.chama-create-fab-wrap::before/, "no halo around the Create button");
   assert.match(css, /body:has\(\.chama-create-fab\) \.chama-shell-nav::after\{content:"";display:block;height:84px\}/);
+  // Jet (6.4.28, desktop): the sidebar and the top bar each showed a logo.
+  // Beside the sidebar the top bar drops its logo; phones keep it.
+  const wide = css.slice(css.indexOf("@media (min-width:1024px)"));
+  assert.match(wide, /body:has\(\.chama-nav\) \.chama-header-brand\{display:none\}/, "top-bar logo hidden beside the sidebar");
+  assert.match(wide, /body:has\(\.chama-nav\) \.chama-header-tagline\{padding-left:0!important/, "the tagline moves left into the logo's place");
+  assert.doesNotMatch(css.slice(0, css.indexOf("@media (min-width:1024px)")), /chama-header-brand/, "phones keep the top-bar logo");
+  const appSource = readFileSync(new URL("./App.tsx", import.meta.url), "utf8");
+  assert.match(appSource, /className="chama-header-brand"[^>]*><Wordmark \/><\/button>/, "the top-bar logo carries the class the sidebar rule hides");
 }
 // Status bar (6.4.23 rc): a fixed strip covers the safe-area inset so the
 // top bar never scrolls under the phone's clock, on every shell branch.
