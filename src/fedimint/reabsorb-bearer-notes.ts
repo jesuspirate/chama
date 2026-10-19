@@ -573,10 +573,12 @@ async function runProbe(
   // credit counts as before; a fee-short one counts only when the federation
   // confirmed it accepted this reissue (`reissueAcceptedByFederation`).
   // Anything else stays `unknown` and the entry is kept.
-  const lateCreditIsThisNote = delta !== undefined && (
-    delta === expectedMsats
-    || (isThisNotesCredit(delta, expectedMsats) && reissueAcceptedByFederation(thrown))
-  );
+  // A strict subset of the step-6 window: positive, at most the note, and
+  // then exact or confirmed sent. (Without the window first, a zero-value
+  // entry with no balance change would read as "recovered ₿0".)
+  const lateCreditIsThisNote = delta !== undefined
+    && isThisNotesCredit(delta, expectedMsats)
+    && (delta === expectedMsats || reissueAcceptedByFederation(thrown));
   if (delta !== undefined && lateCreditIsThisNote) {
     probeLog("out", {
       context, escrowId, outcome: "recovered",

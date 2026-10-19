@@ -113,6 +113,11 @@ console.log("PASS reissue fee allowance: fee-short credits count, zero/over/larg
   assert.equal(lateShort.outcome, "unknown");
   const lateOver = await probe(wallet({ balance: 0, credit: sats(122), throws: pending("op-3") }), sats(121));
   assert.equal(lateOver.outcome, "unknown");
+  // A zero-value entry with no balance change is never "recovered ₿0".
+  const zero = await probe(wallet({ balance: sats(5), credit: 0, throws: timeout() }), 0);
+  assert.equal(zero.outcome, "unknown", "0 === 0 after a timeout is not a put-back");
+  const zeroPending = await probe(wallet({ balance: sats(5), credit: 0, throws: pending("op-5") }), 0);
+  assert.equal(zeroPending.outcome, "unknown");
   // Nothing landed after a confirmed-sent reissue: unknown, the entry is kept.
   const lateNone = await probe(wallet({ balance: 0, credit: 0, throws: pending("op-4") }), sats(121));
   assert.equal(lateNone.outcome, "unknown");
