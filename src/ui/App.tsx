@@ -16,7 +16,8 @@ import { tradeDetailReturnsHome } from "./decisions.js";
 import { fundingPremiumMsats } from "../payments/funding-premium.js";
 import { nativeLockEarmarks } from "../fedimint/pending-native-locks.js";
 import { spendableBalanceMsats, payoutEarmarks, canLockFromBalance, decideDestroyConfirmRoute } from "./decisions.js";
-import { saveNsec, SAVED_NSEC_KEY, NSEC_ORIGIN_KEY } from "../storage/saved-nsec.js";
+import { readBrowserSavedNsec, removeBrowserSavedNsec, saveNsec, SAVED_NSEC_KEY, NSEC_ORIGIN_KEY, type NsecSealer } from "../storage/saved-nsec.js";
+import { sealedDelete, sealedGet, sealedSet, sealedStoreAvailable } from "../storage/sealed-store.js";
 import { resolveCreateMintUrl,
   liveCommitmentForViewer,
 } from "./decisions.js";
@@ -397,16 +398,22 @@ async function readSavedNsec(): Promise<string | null> {
     const { value } = await Preferences.get({ key: SAVED_NSEC_KEY });
     return value?.trim() || null;
   }
-  // Browser, PWA and Tauri all read the same per-origin local storage.
+  // Browser, PWA and Tauri all read the same per-origin storage; M9 keeps
+  // the key encrypted there (sealed-store.ts) and moves an old plain copy in.
   try {
-    return localStorage.getItem(SAVED_NSEC_KEY)?.trim() || null;
+    return await readBrowserSavedNsec(localStorage, browserNsecSealer());
   } catch {
     return null;
   }
 }
 
+function browserNsecSealer(): NsecSealer | undefined {
+  return sealedStoreAvailable() ? { get: sealedGet, set: sealedSet, delete: sealedDelete } : undefined;
+}
+
 async function writeSavedNsec(nsec: string, origin: "generated" | "imported"): Promise<void> {
-  await saveNsec(nsec, origin, localStorage, Capacitor.isNativePlatform() ? Preferences : undefined);
+  const native = Capacitor.isNativePlatform();
+  await saveNsec(nsec, origin, localStorage, native ? Preferences : undefined, native ? undefined : browserNsecSealer());
 }
 
 async function removeSavedNsec(): Promise<void> {
@@ -414,8 +421,7 @@ async function removeSavedNsec(): Promise<void> {
     try { await Preferences.remove({ key: SAVED_NSEC_KEY }); } catch {}
     try { await Preferences.remove({ key: NSEC_ORIGIN_KEY }); } catch {}
   }
-  try { localStorage.removeItem(SAVED_NSEC_KEY); } catch {}
-  try { localStorage.removeItem(NSEC_ORIGIN_KEY); } catch {}
+  await removeBrowserSavedNsec(localStorage, Capacitor.isNativePlatform() ? undefined : browserNsecSealer());
 }
 
 
