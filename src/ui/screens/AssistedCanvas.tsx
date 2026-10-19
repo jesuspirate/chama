@@ -36,6 +36,7 @@ import {
   listSavedHandles,
   paymentHandleNeedsCountryCode,
   phonePlaceholderForCountryIso,
+  railPlaceholderForCountry,
 } from "../../payments/saved-handles.js";
 import type { AggregateRatings } from "../../reputation/ratings.js";
 import { estimateSatsForFiat } from "../amount-display.js";
@@ -333,7 +334,7 @@ export function AssistedCanvas({
                       savePaymentDetail(key);
                     }
                   }}
-                  placeholder={rail?.placeholderKey ? tr("canvas.yourPaymentDetails") : rail?.placeholder ?? tr("canvas.yourPaymentDetails")}
+                  placeholder={rail?.placeholderKey ? tr("canvas.yourPaymentDetails") : railPlaceholderForCountry(rail, community?.countries?.[0]) ?? tr("canvas.yourPaymentDetails")}
                   {...privatePaymentFieldProps}
                   name={`chama-private-payment-${key}`}
                 />

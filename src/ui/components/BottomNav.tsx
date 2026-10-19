@@ -232,6 +232,10 @@ export function navCss(): string {
     .chama-nav-icon{width:28px;height:28px;background:none!important}
     .chama-create-fab{display:none!important}
     .chama-create-fab-wrap{display:none!important}
+    /* The sidebar carries the logo; the top bar repeating it read as two
+       logos side by side. Phones keep the top-bar logo. */
+    body:has(.chama-nav) .chama-header-brand{display:none}
+    body:has(.chama-nav) .chama-header-tagline{padding-left:0!important;margin-top:0!important}
     /* The bottom nav already pads for the home indicator; with the nav as a
        sidebar, page footers pad for it themselves. */
     :root{--chama-footer-safe:env(safe-area-inset-bottom, 0px)}
