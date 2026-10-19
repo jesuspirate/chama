@@ -3516,8 +3516,8 @@ export default function App() {
           }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <div>
-                <button type="button" aria-label={t("lts.backHome")} onClick={guidedHome} style={{ background: "none", border: 0, padding: 0, cursor: "pointer" }}><Wordmark /></button>
-                <div style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, paddingLeft: 34, marginTop: 3 }}>
+                <button type="button" className="chama-header-brand" aria-label={t("lts.backHome")} onClick={guidedHome} style={{ background: "none", border: 0, padding: 0, cursor: "pointer" }}><Wordmark /></button>
+                <div className="chama-header-tagline" style={{ fontSize: T.fs.secondary, color: T.muted, fontFamily: T.sans, paddingLeft: 34, marginTop: 3 }}>
                   {defaultCurrencyForCommunity(routeCommunitySlug)} · {t("app.headerTagline")}
                 </div>
               </div>
