@@ -68,6 +68,14 @@ const olderApp = {
   await flushSealedNsecWrites();
   assert.equal(s.sealed.get(SAVED_NSEC_KEY), "nsec1other", "an unreadable encrypted copy is left as it is");
   assert.equal(store.get(SAVED_NSEC_KEY), "nsec1real");
+
+  // Create (or import) while the encrypted copy can't be opened: the new key
+  // is kept plainly and the unreadable record is still not overwritten.
+  store.clear();
+  await saveNsec("nsec1created", "generated", localStorage, undefined, s);
+  await flushSealedNsecWrites();
+  assert.equal(store.get(SAVED_NSEC_KEY), "nsec1created");
+  assert.equal(s.sealed.get(SAVED_NSEC_KEY), "nsec1other", "unreadable record never overwritten by Create");
 }
 {
   // Review blocker 2: an older app (stale tab, rollback) still sees the key,
