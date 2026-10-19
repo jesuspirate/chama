@@ -8,7 +8,9 @@
 // invoice creation or funding auto-pay.
 
 import {
+  getLocalStorageUserScope,
   getScopedStorageItem,
+  scopedStorageKey,
   setScopedStorageItem,
 } from "../storage/user-scope.js";
 import { randomId } from "../storage/random-id.js";
@@ -137,6 +139,66 @@ function writeRaw(
   } catch {
     // localStorage unavailable / quota exceeded. NWC can still be used once.
   }
+  mirrorSealed();
+}
+
+// M9, first step: every saved list is also written encrypted
+// (sealed-store.ts), but the plain localStorage copy stays the one that is
+// read, so an older app (a stale tab, a rollback) still sees the same
+// wallets. A later release reads the encrypted copy and removes the plain
+// one. The encrypted copy only ever follows the plain one: a failure to
+// write it changes nothing, and a deletion here is deleted there too.
+export interface NwcSealer {
+  get(name: string): Promise<string | null>;
+  set(name: string, value: string): Promise<void>;
+}
+
+let mirrorSealer: NwcSealer | null = null;
+let sealedWrites: Promise<void> = Promise.resolve();
+
+function mirrorSealed(): void {
+  const sealer = mirrorSealer;
+  const scope = getLocalStorageUserScope();
+  if (!sealer || !scope) return;
+  const write = async () => {
+    // Copy the plain list as it is when this write runs, so a burst of
+    // changes always ends with the latest one.
+    if (getLocalStorageUserScope() !== scope) return;
+    let raw: string | null = null;
+    try { raw = getScopedStorageItem(NWC_CONNECTIONS_STORAGE_KEY); } catch { return; }
+    try {
+      await sealer.set(scopedStorageKey(NWC_CONNECTIONS_STORAGE_KEY, scope), raw ?? "[]");
+    } catch (e) {
+      console.warn("[chama] encrypted copy of saved wallets not written; plain copy kept", e);
+    }
+  };
+  // A store that never answers gives up its turn, so later changes still follow.
+  const bounded = () => new Promise<void>((resolve) => {
+    const timer = setTimeout(resolve, 10_000);
+    (timer as unknown as { unref?: () => void }).unref?.();
+    write().finally(() => { clearTimeout(timer); resolve(); });
+  });
+  sealedWrites = sealedWrites.then(bounded, bounded);
+}
+
+/** Start keeping an encrypted copy of the signed-in user's saved NWC
+ *  connections. Call after the user scope is set. */
+export async function hydrateSavedNwcConnections(sealer: NwcSealer): Promise<void> {
+  mirrorSealer = sealer;
+  if (!getLocalStorageUserScope()) return;
+  mirrorSealed();
+  await sealedWrites;
+}
+
+/** Wait for pending encrypted writes (tests). */
+export function flushSealedNwcWrites(): Promise<void> {
+  return sealedWrites;
+}
+
+/** Test hook. */
+export function resetSealedNwcForTests(): void {
+  mirrorSealer = null;
+  sealedWrites = Promise.resolve();
 }
 
 export function listSavedNwcConnections(): SavedNwcConnection[] {
