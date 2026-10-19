@@ -1769,10 +1769,10 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
         );
       }
       setLocalStorageUserScope(pubkey);
-      // M9: load this user's saved NWC connections from encrypted storage.
+      // M9: keep an encrypted copy of this user's saved NWC connections.
       if (sealedStoreAvailable()) {
         void hydrateSavedNwcConnections({ get: sealedGet, set: sealedSet })
-          .catch((e) => console.warn("[chama] encrypted NWC load failed; using plain storage", e));
+          .catch((e) => console.warn("[chama] encrypted copy of saved wallets failed; plain copy kept", e));
       }
       // v4.3 auth-first RETIRED the v3.5.1 pre-signer pick stash: the globe
       // picker now runs POST-connect and writes the npub scope directly
