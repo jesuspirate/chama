@@ -12,7 +12,7 @@
 //   2. Advisory audit — `npm audit --omit=dev --audit-level=high` fails the
 //      gate on any high/critical advisory that can reach shipped code.
 //      Dev-only advisories (vite/postcss/nanoid/ws class) do not fail the
-//      gate here; the esbuild override note in package.json documents why.
+//      gate here; package.json's //security_overrides note records the dev-tool pins.
 //
 // Exit 0 = pass, 1 = fail. Output is written for humans first.
 
