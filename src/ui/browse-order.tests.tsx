@@ -45,6 +45,9 @@ try {
  const chipSum = [...withMine.matchAll(/data-browse-category="[^"]+" data-count="(\d+)"/g)].reduce((sum,m)=>sum+Number(m[1]),0);
  assert.equal(chipSum,3,'Mine and public verticals partition My Chama listings');
  assert.match(withMine,/data-browse-category="mine" data-count="1"/);
+ const onlyMine = render([mine]);
+ assert.match(onlyMine,/data-browse-category="mine" data-count="1"/,'when every listing is yours, Mine still shows so "Tap Mine above" has a chip to tap');
+ assert.match(onlyMine,/Tap Mine above/);
  const selectedShelf = render([exchange,store], 'marketplace');
  assert.match(selectedShelf,/data-browse-category="p2p-trade" data-count="1"/,'selected category never changes the sibling shelf count');
  assert.deepEqual([...selectedShelf.matchAll(/data-listing-id="([^"]+)"/g)].map(m=>m[1]),['store']);
