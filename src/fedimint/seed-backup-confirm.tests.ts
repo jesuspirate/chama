@@ -37,11 +37,14 @@ const v1Newer = event('chama-fedimint-seed-v1', mnemonic, 200);
 const v1Older = event('chama-fedimint-seed-v1', mnemonic, 50);
 const displaced = event('chama-fedimint-seed-v1', other, 300);
 const retired = event('chama-fedimint-seed-v1', JSON.stringify({ retired: true, movedTo: SEED_V2_BROWSER_D_TAG }), 400);
+const retiredOlder = event('chama-fedimint-seed-v1', JSON.stringify({ retired: true, movedTo: SEED_V2_BROWSER_D_TAG }), 40);
+const unreadableNewer = finalizeEvent({ kind: 30078, tags: [['d', 'chama-fedimint-seed-v1'], ['client', 'chama']], created_at: 250,
+  content: 'not-a-ciphertext' }, secret) as NostrEvent;
 const v2 = event(SEED_V2_BROWSER_D_TAG, '{}', 500);
 
 /** A relay pool. `keep` decides whether a resent event sticks. */
 let writes: NostrEvent[] = [], queries = 0;
-function relays(stored: NostrEvent[], opts: { keep?: boolean; failPublish?: boolean; failQuery?: boolean } = {}) {
+function relays(stored: NostrEvent[], opts: { keep?: boolean; failPublish?: boolean; failQuery?: boolean; noQuorum?: boolean } = {}) {
   return {
     async queryOnce(filter: any) {
       queries++;
@@ -52,7 +55,7 @@ function relays(stored: NostrEvent[], opts: { keep?: boolean; failPublish?: bool
       if (opts.failQuery) throw new Error('relay down');
       return stored.map(e => ({ ...e, tags: e.tags.map(t => [...t]) }));
     },
-    hasRecoveryReadQuorum() { return true; }, getConnectedRelayCount() { return 3; },
+    hasRecoveryReadQuorum() { return !opts.noQuorum; }, getConnectedRelayCount() { return 3; },
     async publishRaw(e: NostrEvent) {
       writes.push(e);
       if (opts.failPublish) throw new Error('publish refused');
@@ -137,6 +140,36 @@ try {
   assert.deepEqual(await confirmSeedBackupOnRelays(relays([v1, v2]), signer), { confirmed: false, problem: 'different-seed-on-relays' });
   assert.equal(writes.length, 0); cases++;
 
+  // A retirement marker anywhere blocks every v1 copy on restore, even an older one.
+  await openSeed();
+  assert.deepEqual(await confirmSeedBackupOnRelays(relays([v1, retiredOlder]), signer), { confirmed: false, problem: 'different-seed-on-relays' });
+  assert.equal(writes.length, 0); cases++;
+
+  // An empty read from too few relays never triggers a resend.
+  await openSeed();
+  assert.deepEqual(await confirmSeedBackupOnRelays(relays([], { keep: true, noQuorum: true }), signer), { confirmed: false, problem: 'not-on-relays' });
+  assert.equal(writes.length, 0); cases++;
+
+  // A newer copy that doesn't open is skipped on restore, so ours still counts…
+  await openSeed();
+  assert.deepEqual(await confirmSeedBackupOnRelays(relays([v1, unreadableNewer]), signer), { confirmed: true, resent: false });
+  // …and alone it is not ours, so ours is resent.
+  await openSeed();
+  assert.deepEqual(await confirmSeedBackupOnRelays(relays([unreadableNewer], { keep: true }), signer), { confirmed: true, resent: true });
+  cases++;
+
+  // Each copy is opened at most once per check (one prompt per copy for asking signers).
+  await openSeed();
+  await confirmSeedBackupOnRelays(relays([v1, v1Newer]), signer);
+  assert.equal(decrypts, 1); cases++;
+
+  // Background checks never open a copy: anything needing the signer waits, and nothing is written.
+  await openSeed();
+  assert.deepEqual(await confirmSeedBackupOnRelays(relays([v1, v1Newer]), signer, { mayPrompt: false }), { confirmed: false, problem: 'not-on-relays' });
+  assert.equal(decrypts, 0); assert.equal(writes.length, 0);
+  assert.deepEqual(await confirmSeedBackupOnRelays(relays([v1]), signer, { mayPrompt: false }), { confirmed: true, resent: false });
+  cases++;
+
   // No verified local copy: nothing to resend, fail closed.
   await openSeed();
   for (const key of [...values.keys()]) if (key.startsWith('chama_seed_event_cache_v1')) values.delete(key);
@@ -166,6 +199,8 @@ try {
   const terms = body('const prepareOnchainFunding = useCallback', 'const checkOnchainFunding = useCallback');
   assert.ok(terms.indexOf('await requireRestorableEscrowKey(client)') >= 0
     && terms.indexOf('await requireRestorableEscrowKey(client)') < terms.indexOf('client.joinEscrow('), 'deposit terms check first');
+  assert.ok(join.includes('getEffectiveParticipantAt(seatState, role) === mySeat'), 'only a seat still held skips the check');
+  assert.ok(hook.includes('confirmSeedBackupOnRelays(client, signer, { mayPrompt: false })'), 'keep-alive never prompts');
   const guard = body('const requireRestorableEscrowKey = useCallback', 'const createEscrow = useCallback');
   assert.ok(guard.includes('throw new SeedBackupUnconfirmed'), 'unconfirmed throws');
   cases++;

@@ -18,7 +18,7 @@
 // answer is reported in `unchecked`, never as an empty list.
 
 import type { PendingRedemption } from "../fedimint/pending-redemptions.js";
-import { MAX_DRAIN_ATTEMPTS } from "../fedimint/pending-redemptions.js";
+import { isRetryingAutomatically } from "../fedimint/pending-redemptions.js";
 import type { PendingFunding } from "../fedimint/pending-fundings.js";
 import type { CommitmentRecord } from "../bond-multisig/commitment-store.js";
 import type { OnchainPayout, OnchainPayoutCandidate } from "../bond-multisig/onchain-payout-wallet.js";
@@ -78,14 +78,12 @@ function reasonOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-/** Claims still being redeemed automatically. Stranded entries (poisoned,
- *  out of retries, unresolved credit), archived entries and credited ones
- *  (the payout card owns those) already have their own cards. */
+/** Claims still being redeemed automatically. Stranded entries, archived
+ *  entries, credited ones (the payout card) and the legacy manual-export slot
+ *  (the export card) already have their own cards. */
 export function retryingClaims(entries: readonly PendingRedemption[]): HeldLeftover[] {
   return entries
-    .filter(entry => !entry.resolvedAt && !entry.creditedAt && !entry.unresolvedCredit
-      && !entry.poisonedAt && entry.probeVerdict !== "dead" && entry.probeVerdict !== "consumed-uncredited"
-      && entry.attempts < MAX_DRAIN_ATTEMPTS && entry.amountMsats > 0)
+    .filter(isRetryingAutomatically)
     .map(entry => ({
       kind: "claim-retrying" as const, id: `claim:${entry.escrowId}`, escrowId: entry.escrowId,
       amountMsats: entry.amountMsats, attempts: entry.attempts, since: entry.createdAt,

@@ -24,6 +24,10 @@ const claim = (over: Partial<PendingRedemption>): PendingRedemption => ({ escrow
     claim({ escrowId: 'archived', resolvedAt: 3, resolution: 'user-dismissed' }),
     claim({ escrowId: 'dead', probeVerdict: 'dead' }),
     claim({ escrowId: 'consumed', probeVerdict: 'consumed-uncredited' }),
+    // The legacy outgoing export: the drain skips it and the export card shows it.
+    claim({ escrowId: 'manual-fund-ecash' }),
+    // Consumed by text only (older releases): the stranded card shows it.
+    claim({ escrowId: 'consumed-text', lastError: 'Mint notes were consumed by the federation but no credit' }),
   ]);
   assert.deepEqual(listed.map(e => e.kind === 'claim-retrying' && e.escrowId), ['retrying']);
   assert.equal(listed[0].holder, 'federation'); assert.equal(listed[0].until, 'automatic-retry');
@@ -135,6 +139,24 @@ const claim = (over: Partial<PendingRedemption>): PendingRedemption => ({ escrow
     assert.throws(() => listPendingRedemptionsStrict(), /SecurityError/);
     assert.throws(() => listPendingFundingsStrict(), /SecurityError/);
     assert.equal(listPendingRedemptions().length, 0);
+    broken = false;
+    // An array stash is not a stash.
+    setStrictScopedStorageItem(PENDING_REDEMPTIONS_KEY, '[]');
+    assert.throws(() => listPendingRedemptionsStrict());
+    // Without a signed-in identity, the only key is someone else's quarantined one.
+    setLocalStorageUserScope(null);
+    assert.throws(() => listPendingFundingsStrict(), /Sign in/);
+    // Bonds: a corrupt store or a bond that no longer parses throws; the lenient list reads none.
+    setLocalStorageUserScope('ab'.repeat(32));
+    const { listCommitmentBonds, listCommitmentBondsStrict, COMMITMENT_STORAGE_KEY } = await import('../bond-multisig/commitment-store.js');
+    assert.deepEqual(listCommitmentBondsStrict(), [], 'no bonds stored is a real empty');
+    setStrictScopedStorageItem(COMMITMENT_STORAGE_KEY, '{not json');
+    assert.throws(() => listCommitmentBondsStrict());
+    setStrictScopedStorageItem(COMMITMENT_STORAGE_KEY, JSON.stringify({ b: { bondId: 'b', ownerXonly: 'zz', lockUntil: 1, network: 'mainnet', address: 'bc1p', amountSats: '1', phase: 'reclaimed', createdAt: 1, updatedAt: 1 } }));
+    assert.throws(() => listCommitmentBondsStrict(), /couldn't be read/);
+    assert.equal(listCommitmentBonds().length, 0);
+    broken = true;
+    assert.throws(() => listCommitmentBondsStrict(), /SecurityError/);
   } finally { console.warn = warn; broken = false; setLocalStorageUserScope(null); }
   cases++;
 }
@@ -147,6 +169,7 @@ const claim = (over: Partial<PendingRedemption>): PendingRedemption => ({ escrow
   assert.ok(i > 0);
   assert.ok(body.includes('claims: listPendingRedemptionsStrict'));
   assert.ok(body.includes('fediFundings: listPendingFundingsStrict'));
+  assert.ok(body.includes('bonds: listCommitmentBondsStrict'));
   assert.ok(/scanOnchainPayout\(candidate,[\s\S]*true\)/.test(body));
   assert.ok(hook.includes('    readHeldLeftovers,\n'), 'exposed as an action');
   cases++;

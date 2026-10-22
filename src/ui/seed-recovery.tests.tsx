@@ -33,4 +33,4 @@ const walletInit = hook.slice(hook.indexOf('const mnemonic = skipSeedFetch'), ho
 assert.equal((walletInit.match(/await readSeed\(clientRef.current!, signerRef.current!, true\)/g) ?? []).length, 2);
 assert.equal((hook.match(/await readSeed\(clientRef.current!, signerRef.current!, true\)/g) ?? []).length, 2,
   'Only mnemonic reads for Fedimint client init require confirmation');
-console.log('PASS seed recovery UI: code privacy, explicit restore acknowledgement, four languages and all 10 reader call sites');
+console.log('PASS seed recovery UI: code privacy, explicit restore acknowledgement, four languages and all 12 reader call sites');

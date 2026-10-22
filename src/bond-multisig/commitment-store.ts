@@ -28,6 +28,7 @@ import { SIGNET, type BtcNetwork, type BondUtxo } from "./multisig.js";
 import * as btc from "@scure/btc-signer";
 import {
   getScopedStorageItem,
+  readScopedStorageItem,
   setScopedStorageItem,
   getLocalStorageUserScope,
 } from "../storage/user-scope.js";
@@ -213,6 +214,26 @@ function writeRaw(map: StoreMap, opts: { allowEmptyOverwrite?: boolean } = {}): 
 }
 
 // ── public API ───────────────────────────────────────────────────────────────
+/** listCommitmentBonds for Home's leftover check: a storage error, an
+ *  unreadable store, or a saved bond that no longer parses throws instead of
+ *  quietly reading as fewer bonds. Same backup fallback and mainnet filter. */
+export function listCommitmentBondsStrict(): CommitmentRecord[] {
+  const read = (key: string): StoreMap => {
+    const raw = readScopedStorageItem(key);
+    if (!raw) return {};
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("The saved bonds are unreadable.");
+    return parsed as StoreMap;
+  };
+  let map = read(COMMITMENT_STORAGE_KEY);
+  if (Object.keys(map).length === 0) map = read(COMMITMENT_BACKUP_STORAGE_KEY);
+  const records = Object.values(map).map(deserializeCommitment);
+  if (records.some(r => r === null)) throw new Error("A saved bond couldn't be read.");
+  return (records as CommitmentRecord[])
+    .filter(r => r.bond.address.startsWith("bc1"))
+    .sort((a, b) => b.createdAt - a.createdAt);
+}
+
 export function listCommitmentBonds(): CommitmentRecord[] {
   // Mainnet-only display: drop any stale cross-network record — e.g. a pre-v5.0
   // signet/Mutinynet test bond persisted on a dev device. A mainnet Taproot bond
