@@ -13,6 +13,8 @@ import { useEffect, useState, type ReactNode } from "react";
 import { useT } from "../../i18n/index.js";
 import { T } from "../theme.js";
 import { BitcoinAmount } from "./BitcoinAmount.js";
+import { HeldLeftovers, leftoversShowSomething, useHeldLeftovers } from "./HeldLeftovers.js";
+import type { HeldLeftovers as HeldLeftoversData } from "../../payments/held-leftovers.js";
 import { walletHome } from "../wallet-location.js";
 import { MAIN_SURFACE_RECOVERY_MIN_SATS, selectMoneySafetyFocus, type MoneySafetyEntry } from "../decisions.js";
 import { lightningPayoutReserveSats, maxLightningPayoutSats } from "../../payments/lightning-fees.js";
@@ -214,7 +216,7 @@ export function useMoneySafety({
 
 export function HeldSats({
   pubkey, balanceKnown = true, balanceUnreadable = false, walletInvite, onRecoverSats, onOpenTrade,
-  walletNeedsTap = false, onUseWallet, pendingCards, ...input
+  walletNeedsTap = false, onUseWallet, pendingCards, readLeftovers, leftoversRevision, onOpenBond, ...input
 }: MoneySafetyInput & {
   pubkey: string;
   balanceKnown?: boolean;
@@ -231,8 +233,14 @@ export function HeldSats({
    *  see what it holds. Opening it stays a tap, never automatic. */
   walletNeedsTap?: boolean;
   onUseWallet?: () => void;
+  /** The remaining places sats can sit (claims still redeeming, Fedi ecash
+   *  going back, reclaimed bonds, on-chain payouts). */
+  readLeftovers?: () => Promise<HeldLeftoversData>;
+  leftoversRevision?: number;
+  onOpenBond?: () => void;
 }) {
   const { t, lang } = useT();
+  const leftovers = useHeldLeftovers(readLeftovers, leftoversRevision);
   const {
     balanceMsats, satsTrace, stuckNativeLocks, paidLockFederationId,
     onWithdrawEcash, onExportStrandedClaim, onReabsorbBearerNotes,
@@ -267,7 +275,7 @@ export function HeldSats({
   // yet swept, a claim still redeeming) are shown on their own screens, so a
   // "nothing here" line could be false (second review of #78).
   if (moneyEntries.length === 0 && !showBalanceLine && parked.length === 0 && !walletNeedsTap
-    && !balanceUnreadable && !pendingCards) return null;
+    && !balanceUnreadable && !pendingCards && !leftoversShowSomething(leftovers.result)) return null;
 
   return (
     <section data-held-sats style={{ display: "flex", flexDirection: "column" }}>
@@ -294,6 +302,7 @@ export function HeldSats({
         </div>
       )}
       {pendingCards}
+      <HeldLeftovers result={leftovers.result} onOpenTrade={onOpenTrade} onOpenBond={onOpenBond} onCheckAgain={leftovers.refresh} />
       {/* ── MONEY-SAFETY, always visible (never collapsed) ──────────────────
           Recovery / stranded-claim / lock-recovery / pending-ecash cards are
           money-critical, so they sit right under the hero — never hidden in a
