@@ -34,6 +34,7 @@ import {
 import { getWinner } from "../../escrow-engine/state-machine.js";
 import type { SettlementCheck } from "../../bond-multisig/onchain-escrow-settle.js";
 import { isParentStorefront, isChildOrder } from "../../escrow-engine/storefront.js";
+import { OrderMismatchBanner } from "../components/OrderMismatchBanner.js";
 import { payoutRecipientFor } from "../../escrow-engine/recipients.js";
 import { getCommunityBySlug } from "../../communities/registry.js";
 import { getVoteLabel } from "../../labels/vote-labels.js";
@@ -173,7 +174,7 @@ export function TradeDetail({
   claimBlockedReason, amountDisplayMode = "sats", onAmountDisplayModeChange, kind0Enabled = false, profileNames,
   disableNwc = false, forceClaimMethodChooser = false, onBack, onVote, onClaim, onJoin, onLock, onLockDirectNwc, onReclaimRejectedLock, onClaimDirectNwc, onConfirmPayout,
   onSendChat, preferredRelayConnected = false, onReleasePeriod, onOpenSettings, onOpenNwcSettings,
-  onPrewarmFunding, onRebroadcast, onForget, onPurchase, onCancelDraftOrder, stockLeft, isOversoldOrder = false,
+  onPrewarmFunding, onRebroadcast, onForget, onPurchase, onCancelDraftOrder, stockLeft, isOversoldOrder = false, orderMismatchesListing = false,
   onRateCounterparty, myGivenRatings, fetchRatingSummary, fetchCommunityBonds, knownTrades, onStartNextTranche, onchainFundingPlan, onPrepareOnchainFunding, onCheckOnchainFunding, onRefundOnchainEscrow, onOnchainRefundAvailable, onPublishOnchainLock, onCheckOnchainSettlement, onOpenExplorerSettings, onchainObservation, onRequestStalledPayout, onPrepareOnchainSettlement, onSignOnchainSettlement, onFinalizeOnchainSettlement, onScanMyOnchainPayouts, onSweepOnchainPayout,
   onStartEcashSlicePlan,
   liveChildOrders, pendingChildOrders, onOpenChild,
@@ -338,6 +339,8 @@ export function TradeDetail({
    *  the parent's stock by lock order). Reliable only for the seller. Shows a
    *  refund banner. */
   isOversoldOrder?: boolean;
+  /** Audit M3: this storefront order's terms aren't its listing's. */
+  orderMismatchesListing?: boolean;
   /** #63 storefront routing: live (LOCKED, unsettled) child orders spawned from
    *  THIS parent storefront. Only meaningful when `state` is a parent storefront;
    *  drives the "N orders in progress" section. Derived in App from
@@ -4370,6 +4373,8 @@ export function TradeDetail({
             )}
           </div>
         )}
+
+      {orderMismatchesListing && state.participants[Role.SELLER] === pubkey && <OrderMismatchBanner />}
 
       {isOversoldOrder && (state.status === EscrowStatus.LOCKED || state.status === EscrowStatus.APPROVED) && (
         <div style={{

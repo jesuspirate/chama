@@ -283,6 +283,13 @@ money and can be settled by healing votes (see [Arbitration](#arbitration)).
 An event that would cause any other transition is invalid and MUST be
 ignored.
 
+The deadline transition is caused by the first event whose `created_at` is
+past the deadline. For a funded trade (one with an accepted LOCK) whose
+CREATE is signed at or after 2026-12-01T00:00:00Z, only an event signed by a
+seated participant (or a backup arbiter of a pooled share) causes it; a late
+event from anyone else is invalid. Unfunded listings and older trades keep the
+earlier rule, where any late event did.
+
 ### Replay
 
 A client computes state by replaying the trade's consensus events:
@@ -316,6 +323,15 @@ a source of evidence, never of authority.
 > (`ARBITER_TOO_EARLY`), and the conformance vectors record that. Older
 > clients fail to load more of these trades; they never compute a different
 > state. Plan and findings in `docs/replay-hardening-brief.md`.
+>
+> **Migration (deadline author).** Chama before 6.4.30 lets any late event
+> cause the deadline transition. From 6.4.30, for a funded trade whose CREATE
+> is signed at or after 2026-12-01T00:00:00Z, a late event from a
+> non-participant is invalid and replay skips it; unfunded listings and older
+> trades replay unchanged. A client
+> older than 6.4.30 would still expire such a trade on a stranger's late
+> event, so the date is set after most clients have updated, and is moved
+> later if they have not.
 
 ## Arbitration
 
