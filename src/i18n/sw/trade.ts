@@ -316,6 +316,9 @@ export const trade: Record<string, string> = {
   "trade.oversoldBuyerBody": "Kipande hiki kilikwenda kwa mnunuzi wa awali katika mbio za kipande cha mwisho — gusa Rejesha hapa chini kupata sats zako. Upande wa muuzaji unarejesha pia, hivyo unafidiwa kikamilifu.",
   "trade.oversoldSellerBody": "Kipande hiki tayari kiliuzwa kwa mnunuzi wa awali (mbio za kipande cha mwisho), hivyo ni salama kurejesha. Tumia “Rejesha oda ya nakala” hapa chini — usikitoe. Mauzo yako halisi ni oda isiyo na bendera hii.",
   "trade.oversoldTitle": "⚠ Oda imeuzwa zaidi",
+  "trade.orderMismatchSellerBody":
+    "Mnunuzi aliandika oda hii kwa bei, shirikisho au msuluhishi ambaye hayupo kwenye tangazo lako. Usitume chochote kwa ajili yake. Ikiwa alifunga sats, atazirudishiwa itakapoisha muda.",
+  "trade.orderMismatchTitle": "⚠ Oda hii hailingani na tangazo lako",
   "trade.paneChat": "Mazungumzo",
   "trade.paneDetails": "Maelezo",
   "trade.paneParties": "Pande",

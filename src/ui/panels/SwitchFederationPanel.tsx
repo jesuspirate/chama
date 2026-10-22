@@ -28,6 +28,7 @@ export function SwitchFederationPanel({
   const [customInvite, setCustomInvite] = useState<string>("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [errCode, setErrCode] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<{ name: string; invite: string } | null>(null);
 
   const selectedPreset = presets.find((p) => p.inviteCode === selectedInvite) || presets[0];
@@ -53,18 +54,24 @@ export function SwitchFederationPanel({
   const doSwitch = async (target: { name: string; invite: string }, force: boolean) => {
     setBusy(true);
     setErr(null);
+    setErrCode(null);
     try {
       await onSwitch(target.invite, force ? { force: true } : undefined);
       setConfirming(null);
       setCustomInvite("");
     } catch (e: any) {
       setErr(e?.message || t("chat.switchFailed"));
+      setErrCode(typeof e?.code === "string" ? e.code : null);
     } finally {
       setBusy(false);
     }
   };
 
-  const refusalCode = (err && /SWITCH_REFUSED_NONZERO_BALANCE/i.test(err)) ? "balance" : null;
+  // A wallet holding sats that couldn't be kept aside. Only sandbox practice
+  // sats may be erased to switch; anywhere else the person sends them out
+  // first, and Switch just tries again.
+  const heldBack = errCode === "SWITCH_REFUSED_NONZERO_BALANCE" || errCode === "RECONCILE_REFUSED_NONZERO_BALANCE";
+  const refusalCode = heldBack && isSimModeOn() ? "balance" : null;
 
   return (
     <div style={{
@@ -179,12 +186,15 @@ export function SwitchFederationPanel({
                     {t("chat.destroyOverrideBefore")}<strong>{t("chat.destroyOverrideBold")}</strong>{t("chat.destroyOverrideAfter")}
                   </div>
                 )}
+                {heldBack && refusalCode !== "balance" && (
+                  <div style={{ marginTop: 8, color: T.amber }}>{t("chat.switchSendOutFirst")}</div>
+                )}
               </div>
             )}
 
             <div style={{ display: "flex", gap: 8 }}>
               <button
-                onClick={() => { setConfirming(null); setErr(null); }}
+                onClick={() => { setConfirming(null); setErr(null); setErrCode(null); }}
                 disabled={busy}
                 style={{
                   flex: 1, padding: "10px 14px", borderRadius: T.rs,

@@ -1582,6 +1582,45 @@ console.log("\n── JOIN (ACK only — does not transition state) ──");
   }
 }
 
+// A buyer can't take a multi-unit listing's buyer seat: that would turn the
+// whole store into one trade. They buy by quantity (a child order) instead.
+// A one-unit listing (the canvas's stock: 1) still joins directly.
+{
+  const create = createEvent({ community: "ke-kes", communityArbiters: [ARBITER_PK] });
+  const r1 = applyEvent(null, create);
+  if (r1.ok) {
+    const { isMultiUnitListing } = await import("./storefront.js");
+    const published: NostrEvent[] = [];
+    const buyerClient = new EscrowClient({
+      async getPublicKey() { return BUYER_PK; },
+      async signEvent(event: UnsignedEvent) {
+        return { ...event, id: `stock_join_${published.length}`, pubkey: BUYER_PK, sig: "sig" } as NostrEvent;
+      },
+      async nip44Encrypt(plaintext: string) { return plaintext; },
+      async nip44Decrypt(ciphertext: string) { return ciphertext; },
+    }, { relays: [] });
+    (buyerClient as any).relayManager.publish = async (event: NostrEvent) => {
+      published.push(event);
+      return { accepted: 1, rejected: 0, errors: [] };
+    };
+    const store = { ...r1.state, stock: 10 };
+    assert(isMultiUnitListing(store), "A 10-unit listing is a multi-unit listing");
+    assert(!isMultiUnitListing({ ...r1.state, stock: 1 }), "A one-unit listing is joined directly");
+    assert(!isMultiUnitListing({ ...store, parent: "sm_parent" }), "A child order is never a multi-unit listing");
+    (buyerClient as any).states.set(ESCROW_ID, store);
+    let code: string | undefined;
+    try {
+      await buyerClient.joinEscrow(ESCROW_ID, Role.BUYER);
+    } catch (e: any) {
+      code = e?.code;
+    }
+    assert(code === "BUY_BY_QUANTITY", "Client refuses a buyer joining a multi-unit listing directly");
+    assert(published.length === 0, "The refused join publishes nothing");
+    assert((buyerClient as any).states.get(ESCROW_ID).participants[Role.BUYER] == null,
+      "The listing's buyer seat stays open for the next buyer");
+  }
+}
+
 // On-chain buyer JOIN routes the pre-lock trade to the ONE deterministic
 // bonded arbiter without seating them in consensus state.
 {
@@ -1935,6 +1974,8 @@ console.log("\n── ATOMIC LOCK (CREATED → LOCKED, no FUNDED hop) ──");
     ...(applyEvent(null, createEvent({ claimedQuantity })) as any).state,
     parent: parentId,
     claimedQuantity,
+    // M3: a child's price is the listing's price times its units.
+    amountMsats: parent.amountMsats * claimedQuantity,
     status,
     joinHolds: holdExpiresAt !== undefined
       ? { [Role.BUYER]: { role: Role.BUYER, pubkey: BUYER_PK, joinedAt: NOW, expiresAt: holdExpiresAt, eventId: "h" } }

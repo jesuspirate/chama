@@ -96,7 +96,7 @@ import {
   beginHydrationDiagnostic,
   type HydrationDiagnosticRun,
 } from "./hydration-diagnostics.js";
-import { buildChildCreateParams, remainingStock, unsoldStock, isSoldOut, isLastUnitContested } from "./storefront.js";
+import { buildChildCreateParams, remainingStock, unsoldStock, isSoldOut, isLastUnitContested, isMultiUnitListing } from "./storefront.js";
 import { HOLDER_ONLY_SHARE_POLICY, shareIndexForRole } from "./holder-shares.js";
 import type { TrancheRef } from "./tranche.js";
 import type { EscrowMode } from "./types.js";
@@ -1776,6 +1776,16 @@ export class EscrowClient {
       err.code = state.communityArbiters.length === 0
         ? "ARBITER_POOL_EMPTY"
         : "ARBITER_NOT_IN_POOL";
+      err.requestedRole = role;
+      throw err;
+    }
+
+    // A buyer buys from a multi-unit listing by quantity (purchaseFromListing),
+    // never by taking the listing's buyer seat: that would make the whole
+    // store one trade. Refused here, before any sats move, for every caller.
+    if (role === Role.BUYER && isMultiUnitListing(state)) {
+      const err: any = new Error("Choose how many to buy from this listing.");
+      err.code = "BUY_BY_QUANTITY";
       err.requestedRole = role;
       throw err;
     }
