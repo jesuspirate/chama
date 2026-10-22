@@ -97,6 +97,40 @@ export function isActiveChildOrder(s: EscrowState): boolean {
   );
 }
 
+/** Audit M3: a storefront purchase is written and signed by the BUYER, so its
+ *  terms are only the buyer's word. Before a child counts as an order (or
+ *  against stock) its money terms must be the listing's: the listing's seller,
+ *  federation and arbiter list, and the listing's price times the units
+ *  claimed. Returns what differs; empty means it matches. Circle shares and
+ *  tranche children have their own checks and are never judged here. A pure
+ *  reader check: no event, reducer or replay changes. */
+export function storefrontChildMismatches(parent: EscrowState, child: EscrowState): string[] {
+  if (child.parent !== parent.id) return [];
+  // Exempt only where the parent really is a circle or a tranche plan; on a
+  // storefront those markers are just more buyer-written fields.
+  // A tranche child is signed by its plan's coordinator, the listing's seller,
+  // so it is known even before the parent's plan start has loaded.
+  const seller = parent.participants[Role.SELLER];
+  const sellerSigned = !!seller && child.initiator?.pubkey?.toLowerCase() === seller.toLowerCase();
+  if ((child.chamaPolicy && parent.category === "chama")
+    || (child.trancheChild && (parent.tranchePlan || sellerSigned))) return [];
+  const out: string[] = [];
+  if (child.chamaPolicy || child.trancheChild) out.push("kind");
+  if (child.category !== parent.category) out.push("category");
+  // Units are counted as stock counts them, so price and stock always agree.
+  if (child.amountMsats !== parent.amountMsats * childClaim(child)) out.push("price");
+  if (child.mintUrl.trim() !== parent.mintUrl.trim()) out.push("federation");
+  const pool = (list: readonly string[]) => [...new Set(list.map((pk) => pk.toLowerCase()))].sort().join(",");
+  if (pool(child.communityArbiters) !== pool(parent.communityArbiters)) out.push("arbiters");
+  if (!seller || child.participants[Role.SELLER]?.toLowerCase() !== seller.toLowerCase()) out.push("seller");
+  return out;
+}
+
+/** The parent's children whose terms are the listing's (audit M3). */
+export function matchingChildren(parent: EscrowState, children: readonly EscrowState[]): EscrowState[] {
+  return children.filter((child) => child.parent === parent.id && storefrontChildMismatches(parent, child).length === 0);
+}
+
 /** Units a child claims (defaults to 1 for legacy / malformed values, so a
  *  child can never silently free or over-consume stock). */
 function childClaim(child: EscrowState): number {
@@ -110,8 +144,9 @@ function sumClaims(
   predicate: (child: EscrowState) => boolean,
 ): number {
   let units = 0;
-  for (const child of children) {
-    if (child.parent !== parent.id) continue;
+  // M3: a child whose terms aren't the listing's is not an order, so it
+  // neither holds nor sells a unit.
+  for (const child of matchingChildren(parent, children)) {
     if (predicate(child)) units += childClaim(child);
   }
   return units;
@@ -179,8 +214,8 @@ export function overcommittedChildren(
   children: readonly EscrowState[],
 ): EscrowState[] {
   const stock = parent.stock ?? 1;
-  const locked = children
-    .filter((c) => c.parent === parent.id && childIsLocked(c))
+  const locked = matchingChildren(parent, children)
+    .filter((c) => childIsLocked(c))
     .sort((a, b) => (a.lock.lockedAt ?? a.createdAt) - (b.lock.lockedAt ?? b.createdAt));
   const oversold: EscrowState[] = [];
   let delivered = 0;
