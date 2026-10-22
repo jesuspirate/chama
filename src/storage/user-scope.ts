@@ -69,6 +69,13 @@ export function getStrictScopedStorageItem(baseKey: string): string | null {
   }
 }
 
+/** Like getStrictScopedStorageItem, but a storage error throws. Use where
+ *  "couldn't read" must never look like "nothing stored". */
+export function readStrictScopedStorageItem(baseKey: string): string | null {
+  if (typeof localStorage === "undefined") throw new Error("This browser has no local storage to read.");
+  return localStorage.getItem(scopedStorageKey(baseKey, getLocalStorageUserScope()));
+}
+
 /** Strict counterparts preserve any quarantined legacy key. */
 export function setStrictScopedStorageItem(baseKey: string, value: string): void {
   if (typeof localStorage === "undefined") return;

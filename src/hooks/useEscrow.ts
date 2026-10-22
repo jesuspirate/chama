@@ -1,7 +1,7 @@
 import { suppressedVoteError } from '../escrow-engine/vote-suppression.js';
 import { decideReconcileBalance } from "../fedimint/reconcile-balance.js";
 import { recoverOwnedBonds, findOwnedBond, type BondRecoveryReport } from '../bond-multisig/bond-recovery.js';
-import { getExistingSeed } from '../fedimint/seed-manager.js';
+import { getExistingSeed, confirmSeedBackupOnRelays, SeedBackupUnconfirmed } from '../fedimint/seed-manager.js';
 import { assertBondClaimReady } from '../bond-multisig/manage-actions.js';
 import { readLivenessBonds } from "../arbiters/liveness-evidence.js";
 import { isSignerApprovalError, signerAction } from "../escrow-engine/signer-approval.js";
@@ -339,6 +339,10 @@ import { verifyBondLineage, tenureStartHeight } from "../bond-multisig/bond-line
 import { deriveEscrowSigningKey, resolveFundingPlan, verifyFunding, buildOnchainLockTerms } from "../bond-multisig/onchain-escrow-funding.js";
 import { DISPUTE_CSV_BLOCKS, REFUND_CLTV_BLOCKS, ESCROW_NETWORK, ESCROW_NETWORK_LABEL, buildOnchainEscrow } from "../bond-multisig/onchain-escrow.js";
 import { buildSettlementPsbt, finalizeSettlement, coSignSettlement, disputeWindow, verifySettlementPsbt, settlementFeeCeilingSats, type SettlementCheck } from "../bond-multisig/onchain-escrow-settle.js";
+import { readHeldLeftovers as readHeldLeftoversFrom, type HeldLeftovers } from "../payments/held-leftovers.js";
+import { listPendingRedemptionsStrict } from "../fedimint/pending-redemptions.js";
+import { listPendingFundingsStrict } from "../fedimint/pending-fundings.js";
+import { hasFediInternalReceiveEcash } from "../fedimint/fedi-internal.js";
 import { aggregateOnchainPayoutBalance, buildOnchainPayoutSweep, payoutCandidateFor, payoutCandidatesFor, scanOnchainPayout, type OnchainPayout } from "../bond-multisig/onchain-payout-wallet.js";
 import { getWinner } from "../escrow-engine/state-machine.js";
 import { adoptedExpectedSettlementTxid, adoptedSettlementTxid, finalArbiterSettlementProof, finalCoopSettlementProof, finalizableArbiterSettlement, finalizableCoopSettlement, hasValidSettlementSignatureForRole, selectVerifiedArbiterSettlement, selectVerifiedCoopSettlement, settlementBuildFeeSats, settlementUnsignedId, signingKeyMatchesRole } from "../escrow-engine/onchain-settlement-transport.js";
@@ -1086,6 +1090,9 @@ export interface UseEscrowActions {
   /** Rebuild every winner address from known trades and total its confirmed,
    *  unspent outputs. Survives restarts because addresses derive from trade IDs. */
   scanMyOnchainPayouts: () => Promise<{ payouts: OnchainPayout[]; balanceSats: bigint }>;
+  /** M10/6.4.31: the remaining places Chama holds sats, for Home. Never
+   *  reads a failed source as empty; those come back in `unchecked`. */
+  readHeldLeftovers: () => Promise<HeldLeftovers>;
   /** Sweep one trade's confirmed winner outputs to a user-selected address. */
   sweepOnchainPayout: (escrowId: string, destination: string) => Promise<{
     txid: string; sentSats: bigint; feeSats: bigint;
@@ -2424,6 +2431,17 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     );
   }, []);
 
+  /** M10: an on-chain trade key is only as restorable as the seed backup on
+   *  relays. Confirm a relay holds it before the key goes into any signed
+   *  CREATE or JOIN; nothing is signed and no sats move when it can't be. */
+  const requireRestorableEscrowKey = useCallback(async (client: EscrowClient) => {
+    const signer = signerRef.current;
+    if (!signer) throw new Error("Not connected");
+    await readSeed(client, signer);
+    const check = await confirmSeedBackupOnRelays(client, signer);
+    if (!check.confirmed) throw new SeedBackupUnconfirmed(check.problem);
+  }, [readSeed]);
+
   const createEscrow = useCallback(async (params: Parameters<EscrowClient["createEscrow"]>[0]) => {
     // Soft-gate (relay resilience): if relays are still handshaking, wait briefly
     // and auto-retry instead of dead-ending with "Not connected". Instant when
@@ -2458,6 +2476,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     // backup-arbiter floor opens after ~15 minutes. Remove the key for the
     // 24h default. Clamped to [5 minutes, 30 days].
     const expiryOverride = readCreateExpiryOverride();
+    if ((params as { escrowMode?: string }).escrowMode === "onchain") await requireRestorableEscrowKey(client);
     const result = await client.createEscrow({
       ...params,
       ...(params.expirySeconds === undefined && expiryOverride !== null
@@ -2479,7 +2498,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     saveEscrowId(result.escrowId, stateRef.current?.pubkey ?? null);
     vibrate([40, 20, 40, 20, 80]); // Celebratory haptic
     return result;
-  }, [myEscrowKey]);
+  }, [myEscrowKey, requireRestorableEscrowKey]);
 
   const joinEscrow = useCallback(async (
     escrowId: string,
@@ -2498,6 +2517,17 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
 
     // JOIN signs a seat reservation. Federation equality belongs at the
     // actual ecash funding/claim boundary, never at joining or chatting.
+
+    // M10: a JOIN carries the only copy of this party's on-chain key and a
+    // seat cannot be re-keyed, so refuse the JOIN itself, before signing,
+    // when the seed backup behind that key isn't confirmed on relays.
+    const seatState = client.getState(escrowId);
+    const mySeat = stateRef.current?.pubkey;
+    // Re-tapping a seat this account already holds signs no new key.
+    if ((seatState?.escrowMode ?? "ecash") === "onchain"
+      && !(mySeat && seatState?.participants?.[role] === mySeat)) {
+      await requireRestorableEscrowKey(client);
+    }
 
     try {
       // Tier 2.1: an on-chain trade needs every party's escrow key before its
@@ -2541,7 +2571,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       }
       throw e;
     }
-  }, [myEscrowKey]);
+  }, [myEscrowKey, requireRestorableEscrowKey]);
 
 	  const requireBridge = (): EscrowFedimintBridge => {
 	    if (!bridgeRef.current && clientRef.current && fedimintRef.current && signerRef.current) {
@@ -3077,6 +3107,9 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     if (preLockDeadline(trade)?.lapsed) throw new Error("The lock window ended. Post the offer again to use a new address.");
     const role = onchainFunder(trade);
     if (trade.participants[role] !== await client.getPubkey()) throw new Error("Only the funder can commit funding terms");
+    // M10: the deposit address appears only after this JOIN, so the funder's
+    // refund key must be restorable on another device before anyone can pay.
+    await requireRestorableEscrowKey(client);
     const fetchJson = esploraFetcher(defaultEsploraBase(ESCROW_NETWORK), { network: ESCROW_NETWORK });
     const tip = await esploraTipHeight(fetchJson);
     const keys = trade.escrowKeys ?? {};
@@ -3108,7 +3141,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       disputeCsvBlocks: DISPUTE_CSV_BLOCKS, network: ESCROW_NETWORK_LABEL,
       ...(arbiterBond ? { arbiterBond } : {}),
     } });
-  }, []);
+  }, [requireRestorableEscrowKey]);
 
   /** Ask the chain whether the escrow is funded, at OUR recomputed address. */
   const checkOnchainFunding = useCallback(async (escrowId: string) => {
@@ -3225,6 +3258,30 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       window.removeEventListener("chama:resume", seed);
     };
   }, [state.connected, state.pubkey, state.escrows]);
+
+  // M10 keep-alive: while this account has a live on-chain trade or a bond,
+  // make sure the relays still hold the seed backup its keys come from. Only
+  // ever resends the exact signed backup this device already opened.
+  const seedBackupKeptFor = useRef<string | null>(null);
+  const seedBackupNextTry = useRef(0);
+  useEffect(() => {
+    const pubkey = state.pubkey;
+    if (!state.connected || !pubkey || state.connectedRelays < 1 || seedBackupKeptFor.current === pubkey) return;
+    if (Date.now() < seedBackupNextTry.current) return;
+    const signer = signerRef.current, client = clientRef.current;
+    if (!signer || !client || signer.requiresUserAction) return;
+    const liveOnchain = [...state.escrows.values()].some(trade => trade.escrowMode === "onchain"
+      && Object.values(trade.participants).includes(pubkey)
+      && trade.status !== EscrowStatus.COMPLETED && trade.status !== EscrowStatus.CANCELLED
+      && trade.status !== EscrowStatus.EXPIRED);
+    if (!liveOnchain && listCommitmentBonds().length === 0) return;
+    seedBackupKeptFor.current = pubkey;
+    seedBackupNextTry.current = Date.now() + 5 * 60_000;
+    void confirmSeedBackupOnRelays(client, signer).then(check => {
+      // Not confirmed yet (seed not opened, relays slow): try again later.
+      if (!check.confirmed && seedBackupKeptFor.current === pubkey) seedBackupKeptFor.current = null;
+    });
+  }, [state.connected, state.pubkey, state.connectedRelays, state.escrows]);
 
   // Reconcile committed deposits after launch and as discovered trades arrive.
   // The funder may have sent from another wallet and closed this app before
@@ -3733,6 +3790,22 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       return scanOnchainPayout(candidate, fetchJson, true);
     }));
     return { payouts, balanceSats: aggregateOnchainPayoutBalance(payouts) };
+  }, []);
+
+  const readHeldLeftovers = useCallback(async () => {
+    const pubkey = stateRef.current?.pubkey;
+    return readHeldLeftoversFrom({
+      claims: listPendingRedemptionsStrict,
+      fediFundings: listPendingFundingsStrict,
+      inFedi: hasFediInternalReceiveEcash(),
+      bonds: listCommitmentBonds,
+      payoutCandidates: () => {
+        if (!pubkey) throw new Error("Reconnect to check your on-chain payouts.");
+        return payoutCandidatesFor([...(stateRef.current?.escrows.values() ?? [])], pubkey);
+      },
+      scanPayout: candidate => scanOnchainPayout(candidate,
+        esploraFetcher(defaultEsploraBase(candidate.network), { network: candidate.network }), true),
+    });
   }, []);
 
   const sweepOnchainPayout = useCallback(async (escrowId: string, destination: string) => {
@@ -6655,6 +6728,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     signOnchainSettlement,
     finalizeOnchainSettlement,
     scanMyOnchainPayouts,
+    readHeldLeftovers,
     sweepOnchainPayout,
     repostRecurringCbp,
     lockAndPublish: (...args) => signerAction("lock", () => lockAndPublishAction(...args)),

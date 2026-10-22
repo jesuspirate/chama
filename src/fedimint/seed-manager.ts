@@ -951,6 +951,121 @@ export async function checkAndMaybeRepublishSeed(
   }
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// M10 — on-chain trade keys stay restorable
+// ══════════════════════════════════════════════════════════════════════════
+
+/** Why an on-chain trade key was withheld. Shown before anything is signed. */
+export type SeedBackupProblem =
+  /** The seed was not opened this session, so there is nothing to confirm. */
+  | "seed-not-open"
+  /** This device has no verified copy of its own signed backup to resend. */
+  | "no-local-copy"
+  /** No relay returned the backup, even after resending the saved copy. */
+  | "not-on-relays"
+  /** Relays hold a newer backup that does not open to this device's seed. */
+  | "different-seed-on-relays";
+
+export type SeedBackupCheck =
+  | { confirmed: true; resent: boolean }
+  | { confirmed: false; problem: SeedBackupProblem };
+
+export const SEED_BACKUP_UNCONFIRMED = "SEED_BACKUP_UNCONFIRMED";
+
+/** Typed refusal raised before an on-chain trade key goes into a signed event. */
+export class SeedBackupUnconfirmed extends Error {
+  readonly code = SEED_BACKUP_UNCONFIRMED;
+  constructor(readonly problem: SeedBackupProblem) {
+    super(problem === "different-seed-on-relays"
+      ? "The network holds a different backup of your on-chain trade keys than this device uses, so Chama stopped before this step. No sats moved."
+      : "Chama couldn't confirm that the backup of your on-chain trade keys is saved on the network, so it stopped before this step. No sats moved. Check your connection, then try again.");
+  }
+}
+
+function seedBackupScope(event: NostrEvent): string | undefined {
+  return event.tags.find(tag => tag[0] === "d")?.[1];
+}
+
+function freshlyVerified(event: NostrEvent): boolean {
+  // Relays are untrusted: re-hash and verify a plain copy, never a memoized
+  // verification flag, before counting an event as proof of the backup.
+  try {
+    return verifyNostrEventSignature({ id: event.id, pubkey: event.pubkey, kind: event.kind,
+      created_at: event.created_at, tags: event.tags, content: event.content, sig: event.sig } as any);
+  } catch { return false; }
+}
+
+/**
+ * M10: an on-chain trade key is derived from the wallet seed, and the only
+ * copy another device can restore that seed from is the encrypted backup on
+ * relays. Before a key is published into a CREATE or JOIN, confirm a relay
+ * still holds the backup this device opened.
+ *
+ * Never generates, re-encrypts or re-signs anything. When no relay returns
+ * the backup, the exact signed event saved on this device is sent again
+ * (relays keep the newest copy per slot, so an older resend cannot displace
+ * a newer backup) and the relays are asked once more.
+ *
+ * Fails closed: any doubt returns `confirmed: false`. Never throws.
+ */
+export async function confirmSeedBackupOnRelays(
+  client: EscrowClient,
+  signer: Signer,
+): Promise<SeedBackupCheck> {
+  try {
+    const pubkey = await signer.getPublicKey();
+    const seed = cachedSeed;
+    if (!seed || cachedForPubkey !== pubkey) return { confirmed: false, problem: "seed-not-open" };
+    const local = loadLocalSeedEvent(pubkey);
+    if (!local) return { confirmed: false, problem: "no-local-copy" };
+    const scope = seedBackupScope(local);
+
+    const read = async () => (await client.queryOnce({
+      kinds: [CHAMA_SEED_KIND],
+      authors: [pubkey],
+      "#d": [CHAMA_SEED_D_TAG, SEED_V2_BROWSER_D_TAG],
+    }, SEED_RECOVERY_TIMEOUT_MS)).filter(event =>
+      (isChamaSeedEvent(event, pubkey) || isProtectedSeedEvent(event, pubkey)) && freshlyVerified(event));
+
+    // A restoring device opens a browser v2 backup before any v1 copy, and
+    // the newest copy within a slot. Whatever it would open must be ours.
+    const verdict = async (events: NostrEvent[]): Promise<"ours" | "missing" | SeedBackupProblem> => {
+      if (!isProtectedSeedEvent(local, pubkey) && events.some(isBrowserProtectedSeedEvent)) {
+        return "different-seed-on-relays";
+      }
+      const newest = events.filter(event => seedBackupScope(event) === scope)
+        .sort((a, b) => b.created_at - a.created_at || b.id.localeCompare(a.id))[0];
+      if (!newest) return "missing";
+      if (newest.id === local.id) return "ours";
+      if (newest.created_at < local.created_at) return "missing";
+      // A newer copy was written elsewhere. Only a v1 copy can be compared
+      // without the recovery code; it must open to the same words.
+      if (isProtectedSeedEvent(newest, pubkey)) return "different-seed-on-relays";
+      if (await isRetiredSeed(newest, pubkey, signer)) return "different-seed-on-relays";
+      const opened = await recoverSeedWordsFromEvents([newest], pubkey, signer, { delaysMs: [] });
+      if (!opened || opened.words.join(" ") !== seed.join(" ")) return "different-seed-on-relays";
+      // Same seed, newer copy: keep it as the one to resend later.
+      saveSeedPublishedMarker(pubkey, newest.id);
+      saveLocalSeedEvent(pubkey, newest);
+      return "ours";
+    };
+
+    const first = await verdict(await read());
+    if (first === "ours") return { confirmed: true, resent: false };
+    if (first !== "missing") return { confirmed: false, problem: first };
+
+    mlog("SEED-BACKUP-RESEND", { pubkey: pubkey.slice(0, 8), eventId: local.id.slice(0, 8) });
+    try { await client.publishRaw(local); }
+    catch (error) { console.warn("[chama] Couldn't resend the saved seed backup:", error); }
+    const second = await verdict(await read());
+    if (second === "ours") return { confirmed: true, resent: true };
+    return { confirmed: false, problem: second === "missing" ? "not-on-relays" : second };
+  } catch (error) {
+    console.warn("[chama] Seed backup check failed:", error);
+    return { confirmed: false, problem: "not-on-relays" };
+  }
+}
+
 /**
  * Read the most recently recorded seed health snapshot. Returns null if
  * no health check has ever run (first launch, or pre-v0.1.69 data).

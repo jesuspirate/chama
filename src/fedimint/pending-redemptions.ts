@@ -55,6 +55,7 @@
 import type { FedimintClient } from "./fedimint-client.js";
 import {
   getStrictScopedStorageItem,
+  readStrictScopedStorageItem,
   removeStrictScopedStorageItem,
   setStrictScopedStorageItem,
 } from "../storage/user-scope.js";
@@ -181,13 +182,19 @@ function isConsumedCreditUnconfirmed(
     || msg.includes("mint notes were consumed by the federation");
 }
 
+function loadStashStrict(read: (key: string) => string | null = getStrictScopedStorageItem): Stash {
+  const raw = read(PENDING_REDEMPTIONS_KEY);
+  if (!raw) return {};
+  const parsed: unknown = JSON.parse(raw);
+  if (!parsed || typeof parsed !== "object") {
+    throw new Error("Pending-redemption stash is unreadable");
+  }
+  return parsed as Stash;
+}
+
 function loadStash(): Stash {
   try {
-    const raw = getStrictScopedStorageItem(PENDING_REDEMPTIONS_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object") return {};
-    return parsed as Stash;
+    return loadStashStrict();
   } catch (e) {
     console.warn("[chama] pending-redemptions: loadStash failed:", e);
     return {};
@@ -294,6 +301,12 @@ export function markPendingRedemptionCredited(
 /** Snapshot of all current entries. For UI / debug / tests. */
 export function listPendingRedemptions(): PendingRedemption[] {
   return Object.values(loadStash());
+}
+
+/** Like listPendingRedemptions, but a stash that can't be read throws instead
+ *  of reading as empty, so Home says it couldn't check rather than "nothing". */
+export function listPendingRedemptionsStrict(): PendingRedemption[] {
+  return Object.values(loadStashStrict(readStrictScopedStorageItem));
 }
 
 /** Remove every recovery record for an exact bearer note. This is only for

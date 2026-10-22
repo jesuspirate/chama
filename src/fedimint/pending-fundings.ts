@@ -47,6 +47,7 @@
 
 import {
   getStrictScopedStorageItem,
+  readStrictScopedStorageItem,
   removeStrictScopedStorageItem,
   setStrictScopedStorageItem,
 } from "../storage/user-scope.js";
@@ -96,8 +97,8 @@ type Stash = Record<string, PendingFunding>;
 /** Parse the stored stash. THROWS when a value exists but is not a stash: it
  *  may hold the only copy of spent bearer notes, so it must never be read as
  *  empty by a writer and then overwritten. */
-function loadStashStrict(): Stash {
-  const raw = getStrictScopedStorageItem(PENDING_FUNDINGS_KEY);
+function loadStashStrict(read: (key: string) => string | null = getStrictScopedStorageItem): Stash {
+  const raw = read(PENDING_FUNDINGS_KEY);
   if (!raw) return {};
   const parsed: unknown = JSON.parse(raw);
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
@@ -196,6 +197,12 @@ export function clearPendingFunding(escrowId: string): void {
 /** Snapshot of all current entries. For UI / debug / tests. */
 export function listPendingFundings(): PendingFunding[] {
   return Object.values(loadStash());
+}
+
+/** Like listPendingFundings, but a stash that can't be read throws instead of
+ *  reading as empty, so Home says it couldn't check rather than "nothing". */
+export function listPendingFundingsStrict(): PendingFunding[] {
+  return Object.values(loadStashStrict(readStrictScopedStorageItem));
 }
 
 /**
