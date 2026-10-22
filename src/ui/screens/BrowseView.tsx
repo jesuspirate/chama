@@ -223,7 +223,10 @@ export function BrowseView({
   const categoryNonMatching = browseScope === "all" ? filterOwnListings(scopedNonMatching, pubkey, false) : [];
   const visibleCategoryChips = BROWSE_CATS.filter(c => c.id !== "all" && (CHAMA_CIRCLES_ENABLED || c.id !== "chama"))
     .filter(c => countListingsByCategory(categoryMatching, categoryNonMatching, c.id) > 0);
-  const showCategoryChips = visibleCategoryChips.length + (ownListingCount > 0 ? 1 : 0) > 1;
+  // Mine always shows when you own a listing: Browse hides your own listings by
+  // default and "Tap Mine above" points here, so it can't depend on whether
+  // other shelves exist (Jet, 6.4.30-rc.1: every listing was his own, no chip).
+  const showCategoryChips = visibleCategoryChips.length > 1 || ownListingCount > 0;
 
   // A persisted Mine preference should not strand a returning user on an empty
   // feed. Wait until discovery settles, then fall back to All when they own 0.
