@@ -62,6 +62,14 @@ export function isParentStorefront(s: EscrowState): boolean {
   return s.stock !== undefined && s.parent === undefined;
 }
 
+/** A listing with 2+ units in stock. A buyer buys from it by quantity, which
+ *  starts their own child order; seating a buyer on the listing itself would
+ *  turn the whole store into one trade and take it off Browse for everyone.
+ *  A one-unit listing (the canvas's `stock: 1`) is still joined directly. */
+export function isMultiUnitListing(s: EscrowState): boolean {
+  return isParentStorefront(s) && (s.stock ?? 0) > 1;
+}
+
 /** #63 A CHILD order is one purchase spawned from a parent storefront — it
  *  carries `parent` = the storefront's id. Pure display predicate. */
 export function isChildOrder(s: EscrowState): boolean {
