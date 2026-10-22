@@ -50,7 +50,7 @@ import { translate, getCurrentLang } from "../../i18n/index.js";
 import { shareTradeLink } from "../share-link.js";
 import { railLabel, getRailByKey } from "../../payments/rail-registry.js";
 import { VerticalIcon } from "../components/VerticalIcon.js";
-import { isParentStorefront, isChildOrder } from "../../escrow-engine/storefront.js";
+import { isParentStorefront, isChildOrder, isMultiUnitListing } from "../../escrow-engine/storefront.js";
 
 // Render-time translation (same pattern as decisions.ts): picked up per render,
 // so a language switch re-reads the live language without prop threading.
@@ -480,7 +480,9 @@ export function LiveTradeSurface({
             </div>
           )}
           {(() => {
-            if (!openRole || !onJoin) {
+            // A multi-unit listing is bought by quantity in the full view; a
+            // direct join here would take the whole store as one trade.
+            if (!openRole || !onJoin || (openRole === Role.BUYER && isMultiUnitListing(state))) {
               return <MoreOptions onClick={onOpenFullView} label={tr("lts.reviewJoinFull")} />;
             }
             // A range listing (one exchange-bracket item) asks the ONE question
