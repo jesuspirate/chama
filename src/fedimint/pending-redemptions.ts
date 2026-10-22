@@ -581,14 +581,6 @@ export function reopenBalanceReconciledCredit(escrowId: string): boolean {
   return true;
 }
 
-/**
- * C13 (v3.4.0): the entries automatic retry can no longer help, in the
- * order the UI should show them. INVARIANT(stranded-notes-surfaced):
- * every entry that is poisoned, unresolved-credit, or out of drain
- * attempts appears here with its full oobNotes bearer string, so the
- * UI can offer export-to-safety. An entry still inside its retry
- * budget is NOT stranded — the boot drain owns it.
- */
 /** A claim the drain will still try by itself, and that no other Home card
  *  (stranded claims, the payout card, the ecash export) already shows. Keep in
  *  step with the skips in drainPendingRedemptions and listStrandedRedemptions. */
@@ -601,6 +593,14 @@ export function isRetryingAutomatically(entry: PendingRedemption): boolean {
   return entry.attempts < MAX_DRAIN_ATTEMPTS && entry.amountMsats > 0;
 }
 
+/**
+ * C13 (v3.4.0): the entries automatic retry can no longer help, in the
+ * order the UI should show them. INVARIANT(stranded-notes-surfaced):
+ * every entry that is poisoned, unresolved-credit, or out of drain
+ * attempts appears here with its full oobNotes bearer string, so the
+ * UI can offer export-to-safety. An entry still inside its retry
+ * budget is NOT stranded — the boot drain owns it.
+ */
 export function listStrandedRedemptions(): StrandedRedemption[] {
   const stranded: StrandedRedemption[] = [];
   for (const entry of Object.values(loadStash())) {

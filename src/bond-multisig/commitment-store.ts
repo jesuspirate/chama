@@ -214,10 +214,11 @@ function writeRaw(map: StoreMap, opts: { allowEmptyOverwrite?: boolean } = {}): 
 }
 
 // ── public API ───────────────────────────────────────────────────────────────
-/** listCommitmentBonds for Home's leftover check: a storage error, an
- *  unreadable store, or a saved bond that no longer parses throws instead of
- *  quietly reading as fewer bonds. Same backup fallback and mainnet filter. */
-export function listCommitmentBondsStrict(): CommitmentRecord[] {
+/** listCommitmentBonds for Home's leftover check: a storage error or an
+ *  unreadable store throws, and saved bonds that no longer parse are counted
+ *  in `unreadable` instead of quietly reading as fewer bonds. Same backup
+ *  fallback and mainnet filter. */
+export function listCommitmentBondsStrict(): { records: CommitmentRecord[]; unreadable: number } {
   const read = (key: string): StoreMap => {
     const raw = readScopedStorageItem(key);
     if (!raw) return {};
@@ -227,11 +228,11 @@ export function listCommitmentBondsStrict(): CommitmentRecord[] {
   };
   let map = read(COMMITMENT_STORAGE_KEY);
   if (Object.keys(map).length === 0) map = read(COMMITMENT_BACKUP_STORAGE_KEY);
-  const records = Object.values(map).map(deserializeCommitment);
-  if (records.some(r => r === null)) throw new Error("A saved bond couldn't be read.");
-  return (records as CommitmentRecord[])
+  const parsed = Object.values(map).map(deserializeCommitment);
+  const records = parsed.filter((r): r is CommitmentRecord => r !== null)
     .filter(r => r.bond.address.startsWith("bc1"))
     .sort((a, b) => b.createdAt - a.createdAt);
+  return { records, unreadable: parsed.filter(r => r === null).length };
 }
 
 export function listCommitmentBonds(): CommitmentRecord[] {

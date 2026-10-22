@@ -149,11 +149,17 @@ const claim = (over: Partial<PendingRedemption>): PendingRedemption => ({ escrow
     // Bonds: a corrupt store or a bond that no longer parses throws; the lenient list reads none.
     setLocalStorageUserScope('ab'.repeat(32));
     const { listCommitmentBonds, listCommitmentBondsStrict, COMMITMENT_STORAGE_KEY } = await import('../bond-multisig/commitment-store.js');
-    assert.deepEqual(listCommitmentBondsStrict(), [], 'no bonds stored is a real empty');
+    assert.deepEqual(listCommitmentBondsStrict(), { records: [], unreadable: 0 }, 'no bonds stored is a real empty');
     setStrictScopedStorageItem(COMMITMENT_STORAGE_KEY, '{not json');
     assert.throws(() => listCommitmentBondsStrict());
     setStrictScopedStorageItem(COMMITMENT_STORAGE_KEY, JSON.stringify({ b: { bondId: 'b', ownerXonly: 'zz', lockUntil: 1, network: 'mainnet', address: 'bc1p', amountSats: '1', phase: 'reclaimed', createdAt: 1, updatedAt: 1 } }));
-    assert.throws(() => listCommitmentBondsStrict(), /couldn't be read/);
+    assert.deepEqual(listCommitmentBondsStrict(), { records: [], unreadable: 1 });
+    // Readers name the bad record and still list the good ones.
+    const mixed = await readHeldLeftovers({ claims: () => [], fediFundings: () => [], inFedi: true, payoutCandidates: () => [],
+      scanPayout: async () => { throw new Error('unused'); },
+      bonds: () => ({ records: [{ bondId: 'ok', bond: {} as any, amountSats: 5n, phase: 'reclaimed', reclaimTxid: 't', creditTxid: 'c', createdAt: 1 } as any], unreadable: 2 }) });
+    assert.deepEqual(mixed.entries.map(e => e.id), ['bond-credit:ok']);
+    assert.deepEqual(mixed.unchecked, [{ source: 'bonds', reason: "2 saved bonds couldn't be read." }]);
     assert.equal(listCommitmentBonds().length, 0);
     broken = true;
     assert.throws(() => listCommitmentBondsStrict(), /SecurityError/);

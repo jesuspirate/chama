@@ -152,10 +152,10 @@ try {
 
   // A newer copy that doesn't open is skipped on restore, so ours still counts…
   await openSeed();
-  assert.deepEqual(await confirmSeedBackupOnRelays(relays([v1, unreadableNewer]), signer), { confirmed: true, resent: false });
+  assert.deepEqual(await confirmSeedBackupOnRelays(relays([v1, unreadableNewer]), signer, { retryDelaysMs: [] }), { confirmed: true, resent: false });
   // …and alone it is not ours, so ours is resent.
   await openSeed();
-  assert.deepEqual(await confirmSeedBackupOnRelays(relays([unreadableNewer], { keep: true }), signer), { confirmed: true, resent: true });
+  assert.deepEqual(await confirmSeedBackupOnRelays(relays([unreadableNewer], { keep: true }), signer, { retryDelaysMs: [] }), { confirmed: true, resent: true });
   cases++;
 
   // Each copy is opened at most once per check (one prompt per copy for asking signers).
@@ -169,6 +169,32 @@ try {
   assert.equal(decrypts, 0); assert.equal(writes.length, 0);
   assert.deepEqual(await confirmSeedBackupOnRelays(relays([v1]), signer, { mayPrompt: false }), { confirmed: true, resent: false });
   cases++;
+
+  // A copy that fails to open once is retried, as restore retries it.
+  {
+    await openSeed();
+    let fails = 1;
+    const flaky: Signer = { ...signer, async nip44Decrypt(value: string) {
+      if (value === displaced.content && fails-- > 0) throw new Error('signer busy');
+      return signer.nip44Decrypt(value, pubkey);
+    } };
+    assert.deepEqual(await confirmSeedBackupOnRelays(relays([v1, displaced]), flaky, { retryDelaysMs: [0] }),
+      { confirmed: false, problem: 'different-seed-on-relays' }, 'the second try opens the different seed');
+    cases++;
+  }
+
+  // A v2 local copy ignores v1 retirement markers: restore opens v2 first.
+  {
+    clearSeedCache(); values.clear();
+    const { wrapSeedBackup, formatRecoveryCode } = await import('./seed-backup-v2.js');
+    const codeBytes = new Uint8Array(16).fill(7);
+    const v2Mine = event(SEED_V2_BROWSER_D_TAG, JSON.stringify(wrapSeedBackup(mnemonic, codeBytes, 'browser', new Uint8Array(24).fill(9))), 600);
+    await getOrCreateSeed(relays([v2Mine, retired]), signer, { recoveryCode: formatRecoveryCode(codeBytes), restoreConfirmed: true });
+    writes = [];
+    assert.deepEqual(await confirmSeedBackupOnRelays(relays([v2Mine, retired]), signer), { confirmed: true, resent: false });
+    assert.equal(writes.length, 0);
+    cases++;
+  }
 
   // No verified local copy: nothing to resend, fail closed.
   await openSeed();

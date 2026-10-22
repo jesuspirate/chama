@@ -1011,7 +1011,7 @@ function freshlyVerified(event: NostrEvent): boolean {
 export async function confirmSeedBackupOnRelays(
   client: EscrowClient,
   signer: Signer,
-  options: { mayPrompt?: boolean } = {},
+  options: { mayPrompt?: boolean; /** Tests only. Defaults to restore's own delays. */ retryDelaysMs?: number[] } = {},
 ): Promise<SeedBackupCheck> {
   const mayPrompt = options.mayPrompt ?? true;
   try {
@@ -1033,7 +1033,12 @@ export async function confirmSeedBackupOnRelays(
       nip44Decrypt: (cipher, from) => {
         if (!mayPrompt) return Promise.reject(Object.assign(new Error("Not opening backups without the person"), { code: "seed-check-needs-signer" }));
         let plain = opened.get(cipher);
-        if (!plain) { plain = signer.nip44Decrypt(cipher, from); opened.set(cipher, plain); }
+        if (!plain) {
+          plain = signer.nip44Decrypt(cipher, from);
+          opened.set(cipher, plain);
+          // Remember only successes, so a retry can try a failed copy again.
+          plain.catch(() => { if (opened.get(cipher) === plain) opened.delete(cipher); });
+        }
         return plain;
       },
     };
@@ -1053,8 +1058,11 @@ export async function confirmSeedBackupOnRelays(
       if (!isProtectedSeedEvent(local, pubkey) && events.some(isBrowserProtectedSeedEvent)) {
         return "different-seed-on-relays";
       }
+      // A v2 backup is opened before any v1 copy, so v1 retirement markers
+      // only matter when this device's copy is itself v1.
       const seen = new Set<string>([local.id]);
-      for (const legacy of events.filter(event => isChamaSeedEvent(event, pubkey))) {
+      const legacyCopies = isProtectedSeedEvent(local, pubkey) ? [] : events.filter(event => isChamaSeedEvent(event, pubkey));
+      for (const legacy of legacyCopies) {
         if (seen.has(legacy.id)) continue;
         seen.add(legacy.id);
         if (needsSigner()) return "unchecked";
@@ -1071,7 +1079,10 @@ export async function confirmSeedBackupOnRelays(
         // without the recovery code; it must open to the same words.
         if (isProtectedSeedEvent(candidate, pubkey)) return "different-seed-on-relays";
         if (needsSigner()) return "unchecked";
-        const words = await recoverSeedWordsFromEvents([candidate], pubkey, readerSigner, { delaysMs: [] });
+        // Same decrypt retries as restore, so a copy restore would open after a
+        // slow first try is never skipped here.
+        const words = await recoverSeedWordsFromEvents([candidate], pubkey, readerSigner,
+          options.retryDelaysMs ? { delaysMs: options.retryDelaysMs } : {});
         // A copy that doesn't open is skipped on restore too; look further.
         if (!words) continue;
         if (words.words.join(" ") !== seed.join(" ")) return "different-seed-on-relays";

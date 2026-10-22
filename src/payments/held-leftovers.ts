@@ -148,7 +148,7 @@ export interface LeftoverReaders {
   claims: () => readonly PendingRedemption[];
   fediFundings: () => readonly PendingFunding[];
   inFedi: boolean;
-  bonds: () => readonly CommitmentRecord[];
+  bonds: () => { records: readonly CommitmentRecord[]; unreadable: number };
   payoutCandidates: () => readonly OnchainPayoutCandidate[];
   scanPayout: (candidate: OnchainPayoutCandidate) => Promise<OnchainPayout>;
 }
@@ -164,7 +164,12 @@ export async function readHeldLeftovers(readers: LeftoverReaders): Promise<HeldL
   };
   local("claims", () => retryingClaims(readers.claims()));
   local("fedi-fundings", () => returningFediFundings(readers.fediFundings(), readers.inFedi));
-  local("bonds", () => reclaimedBondLeftovers(readers.bonds()));
+  local("bonds", () => {
+    const { records, unreadable } = readers.bonds();
+    // Bonds that no longer parse are named, without hiding the good ones.
+    if (unreadable > 0) unchecked.push({ source: "bonds", reason: `${unreadable} saved bond${unreadable === 1 ? "" : "s"} couldn't be read.` });
+    return reclaimedBondLeftovers(records);
+  });
   let candidates: readonly OnchainPayoutCandidate[] = [];
   try { candidates = readers.payoutCandidates(); }
   catch (error) { unchecked.push({ source: "onchain-payouts", reason: reasonOf(error) }); }
