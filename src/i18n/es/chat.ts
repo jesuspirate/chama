@@ -20,9 +20,9 @@ export const chat: Record<string, string> = {
   "chat.chooseFederation": "Elige una federación",
   "chat.curated": "Curada",
   "chat.destroyOverrideAfter":
-    " para forzarlo. Esto destruye permanentemente el saldo retenido bajo esta ruta.",
-  "chat.destroyOverrideBefore": "Haz clic en ",
-  "chat.destroyOverrideBold": "Cambiar y destruir el ecash",
+    " para cambiar de todos modos. Son sats de práctica del entorno de pruebas, así que no se pierden sats reales.",
+  "chat.destroyOverrideBefore": "Toca ",
+  "chat.destroyOverrideBold": "Cambiar y borrar los sats de práctica",
   "chat.encryptedReceiptImage": "imagen de recibo cifrada",
   "chat.externalRoute": "Ruta externa",
   "chat.footerGeneratedNative":
@@ -60,7 +60,8 @@ export const chat: Record<string, string> = {
   "chat.show": "Mostrar",
   "chat.signIn": "Entrar",
   "chat.switch": "Cambiar",
-  "chat.switchAndDestroy": "Cambiar y destruir el ecash",
+  "chat.switchAndDestroy": "Cambiar y borrar los sats de práctica",
+  "chat.switchSendOutFirst": "Envía primero estos sats a tu propia billetera y luego cambia. No se cambió nada.",
   "chat.switchFailed": "El cambio falló",
   "chat.switchFromAfter": "?",
   "chat.switchFromBefore": "¿Cambiar de ",
