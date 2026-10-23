@@ -34,7 +34,7 @@ function preparedTerms(
   };
 }
 import { recordPaidLockRecovery, assertPaidLockRecoveryWritable } from "../payments/paid-lock-recovery.js";
-import { isLateOnchainDeposit, preLockDeadline, JOIN_HOLD_LOCK_GRACE_SECONDS } from "../escrow-engine/types.js";
+import { isLateOnchainDeposit, preLockDeadline, JOIN_HOLD_LOCK_GRACE_SECONDS, getEffectiveParticipantAt } from "../escrow-engine/types.js";
 import { conductStanding, type BondConductProof } from "../escrow-engine/conduct-standing.js";
 import { SIGNET as PUBLIC_SIGNET } from "../bond-multisig/multisig.js";
 import { replayPublicConduct, readConductSpend, publicConductRecord, type PublicConductRecord } from "../escrow-engine/public-conduct.js";
@@ -379,7 +379,7 @@ import {
   writeCachedCommunityBonds,
 } from "../arbiters/bonded-pool-cache.js";
 import { bondedArbitersForCommunity } from "../arbiters/live-chama.js";
-import { getCommitmentBond, upsertCommitmentBond, listCommitmentBonds, newBondId } from "../bond-multisig/commitment-store.js";
+import { getCommitmentBond, upsertCommitmentBond, listCommitmentBonds, listCommitmentBondsStrict, newBondId } from "../bond-multisig/commitment-store.js";
 import { MAINNET as BOND_NETWORK } from "../bond-multisig/multisig.js";
 import { hexToBytes, bytesToHex as msBytesToHexLocal } from "@noble/hashes/utils.js";
 import { computeChamaLiveness, type ChamaLiveness, type RatingSummary as LivenessRatingSummary } from "../arbiters/live-chama.js";
@@ -2528,9 +2528,11 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     // when the seed backup behind that key isn't confirmed on relays.
     const seatState = client.getState(escrowId);
     const mySeat = stateRef.current?.pubkey;
-    // Re-tapping a seat this account already holds signs no new key.
-    if ((seatState?.escrowMode ?? "ecash") === "onchain"
-      && !(mySeat && seatState?.participants?.[role] === mySeat)) {
+    // Re-tapping a seat this account still holds signs no new JOIN. An
+    // expired hold leaves the pubkey recorded but the seat empty, and a
+    // re-join there re-records the key, so that one is checked.
+    if (seatState && (seatState.escrowMode ?? "ecash") === "onchain"
+      && !(mySeat && getEffectiveParticipantAt(seatState, role) === mySeat)) {
       await requireRestorableEscrowKey(client);
     }
 
@@ -3282,7 +3284,9 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     if (!liveOnchain && listCommitmentBonds().length === 0) return;
     seedBackupKeptFor.current = pubkey;
     seedBackupNextTry.current = Date.now() + 5 * 60_000;
-    void confirmSeedBackupOnRelays(client, signer).then(check => {
+    // Background: never ask the person to open a backup copy (Amber's decrypt
+    // leaves the page). Anything that needs the signer waits for a trade step.
+    void confirmSeedBackupOnRelays(client, signer, { mayPrompt: false }).then(check => {
       // Not confirmed yet (seed not opened, relays slow): try again later.
       if (!check.confirmed && seedBackupKeptFor.current === pubkey) seedBackupKeptFor.current = null;
     });
@@ -3803,7 +3807,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       claims: listPendingRedemptionsStrict,
       fediFundings: listPendingFundingsStrict,
       inFedi: hasFediInternalReceiveEcash(),
-      bonds: listCommitmentBonds,
+      bonds: listCommitmentBondsStrict,
       payoutCandidates: () => {
         if (!pubkey) throw new Error("Reconnect to check your on-chain payouts.");
         return payoutCandidatesFor([...(stateRef.current?.escrows.values() ?? [])], pubkey);

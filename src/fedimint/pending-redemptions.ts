@@ -306,7 +306,9 @@ export function listPendingRedemptions(): PendingRedemption[] {
 /** Like listPendingRedemptions, but a stash that can't be read throws instead
  *  of reading as empty, so Home says it couldn't check rather than "nothing". */
 export function listPendingRedemptionsStrict(): PendingRedemption[] {
-  return Object.values(loadStashStrict(readStrictScopedStorageItem));
+  const stash = loadStashStrict(readStrictScopedStorageItem);
+  if (Array.isArray(stash)) throw new Error("Pending-redemption stash is unreadable");
+  return Object.values(stash);
 }
 
 /** Remove every recovery record for an exact bearer note. This is only for
@@ -577,6 +579,18 @@ export function reopenBalanceReconciledCredit(escrowId: string): boolean {
   saveStash(stash);
   console.info(`[claim-trace] unresolved-credit reopened escrowId=${escrowId} reason=unconfirmed-export`);
   return true;
+}
+
+/** A claim the drain will still try by itself, and that no other Home card
+ *  (stranded claims, the payout card, the ecash export) already shows. Keep in
+ *  step with the skips in drainPendingRedemptions and listStrandedRedemptions. */
+export function isRetryingAutomatically(entry: PendingRedemption): boolean {
+  if (entry.escrowId === LEGACY_MANUAL_ECASH_EXPORT_ID) return false;
+  if (entry.resolvedAt || entry.creditedAt) return false;
+  if (entry.probeVerdict === "dead" || entry.probeVerdict === "consumed-uncredited") return false;
+  if (entry.unresolvedCredit || isConsumedCreditUnconfirmed(entry)) return false;
+  if (entry.lastError && entry.poisonedAt) return false;
+  return entry.attempts < MAX_DRAIN_ATTEMPTS && entry.amountMsats > 0;
 }
 
 /**

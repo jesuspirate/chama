@@ -1011,7 +1011,9 @@ function freshlyVerified(event: NostrEvent): boolean {
 export async function confirmSeedBackupOnRelays(
   client: EscrowClient,
   signer: Signer,
+  options: { mayPrompt?: boolean; /** Tests only. Defaults to restore's own delays. */ retryDelaysMs?: number[] } = {},
 ): Promise<SeedBackupCheck> {
+  const mayPrompt = options.mayPrompt ?? true;
   try {
     const pubkey = await signer.getPublicKey();
     const seed = cachedSeed;
@@ -1020,6 +1022,28 @@ export async function confirmSeedBackupOnRelays(
     if (!local) return { confirmed: false, problem: "no-local-copy" };
     const scope = seedBackupScope(local);
 
+    // One decrypt per ciphertext for the whole check, so a signer that asks
+    // the person is asked at most once for each copy.
+    const opened = new Map<string, Promise<string>>();
+    const readerSigner: Signer = {
+      requiresUserAction: signer.requiresUserAction,
+      getPublicKey: () => signer.getPublicKey(),
+      signEvent: event => signer.signEvent(event),
+      nip44Encrypt: (plain, to) => signer.nip44Encrypt(plain, to),
+      nip44Decrypt: (cipher, from) => {
+        if (!mayPrompt) return Promise.reject(Object.assign(new Error("Not opening backups without the person"), { code: "seed-check-needs-signer" }));
+        let plain = opened.get(cipher);
+        if (!plain) {
+          plain = signer.nip44Decrypt(cipher, from);
+          opened.set(cipher, plain);
+          // Remember only successes, so a retry can try a failed copy again.
+          plain.catch(() => { if (opened.get(cipher) === plain) opened.delete(cipher); });
+        }
+        return plain;
+      },
+    };
+    const needsSigner = () => !mayPrompt;
+
     const read = async () => (await client.queryOnce({
       kinds: [CHAMA_SEED_KIND],
       authors: [pubkey],
@@ -1027,39 +1051,63 @@ export async function confirmSeedBackupOnRelays(
     }, SEED_RECOVERY_TIMEOUT_MS)).filter(event =>
       (isChamaSeedEvent(event, pubkey) || isProtectedSeedEvent(event, pubkey)) && freshlyVerified(event));
 
-    // A restoring device opens a browser v2 backup before any v1 copy, and
-    // the newest copy within a slot. Whatever it would open must be ours.
-    const verdict = async (events: NostrEvent[]): Promise<"ours" | "missing" | SeedBackupProblem> => {
+    // Mirror getOrCreateSeed's restore order: a browser v2 backup first; any
+    // retirement marker blocks every v1 copy; otherwise the newest v1 copy
+    // that opens. Whatever a restoring device would open must be ours.
+    const verdict = async (events: NostrEvent[]): Promise<"ours" | "missing" | "unchecked" | SeedBackupProblem> => {
       if (!isProtectedSeedEvent(local, pubkey) && events.some(isBrowserProtectedSeedEvent)) {
         return "different-seed-on-relays";
       }
-      const newest = events.filter(event => seedBackupScope(event) === scope)
-        .sort((a, b) => b.created_at - a.created_at || b.id.localeCompare(a.id))[0];
-      if (!newest) return "missing";
-      if (newest.id === local.id) return "ours";
-      if (newest.created_at < local.created_at) return "missing";
-      // A newer copy was written elsewhere. Only a v1 copy can be compared
-      // without the recovery code; it must open to the same words.
-      if (isProtectedSeedEvent(newest, pubkey)) return "different-seed-on-relays";
-      if (await isRetiredSeed(newest, pubkey, signer)) return "different-seed-on-relays";
-      const opened = await recoverSeedWordsFromEvents([newest], pubkey, signer, { delaysMs: [] });
-      if (!opened || opened.words.join(" ") !== seed.join(" ")) return "different-seed-on-relays";
-      // Same seed, newer copy: keep it as the one to resend later.
-      saveSeedPublishedMarker(pubkey, newest.id);
-      saveLocalSeedEvent(pubkey, newest);
-      return "ours";
+      // A v2 backup is opened before any v1 copy, so v1 retirement markers
+      // only matter when this device's copy is itself v1.
+      const seen = new Set<string>([local.id]);
+      const legacyCopies = isProtectedSeedEvent(local, pubkey) ? [] : events.filter(event => isChamaSeedEvent(event, pubkey));
+      for (const legacy of legacyCopies) {
+        if (seen.has(legacy.id)) continue;
+        seen.add(legacy.id);
+        if (needsSigner()) return "unchecked";
+        if (await isRetiredSeed(legacy, pubkey, readerSigner)) return "different-seed-on-relays";
+      }
+      const sameScope = events.filter(event => seedBackupScope(event) === scope)
+        .sort((a, b) => b.created_at - a.created_at || b.id.localeCompare(a.id));
+      for (const candidate of sameScope) {
+        if (candidate.id === local.id) return "ours";
+        // Only older copies remain: a restore would open one of them, so
+        // resend ours on top.
+        if (candidate.created_at < local.created_at) return "missing";
+        // A newer copy was written elsewhere. Only a v1 copy can be compared
+        // without the recovery code; it must open to the same words.
+        if (isProtectedSeedEvent(candidate, pubkey)) return "different-seed-on-relays";
+        if (needsSigner()) return "unchecked";
+        // Same decrypt retries as restore, so a copy restore would open after a
+        // slow first try is never skipped here.
+        const words = await recoverSeedWordsFromEvents([candidate], pubkey, readerSigner,
+          options.retryDelaysMs ? { delaysMs: options.retryDelaysMs } : {});
+        // A copy that doesn't open is skipped on restore too; look further.
+        if (!words) continue;
+        if (words.words.join(" ") !== seed.join(" ")) return "different-seed-on-relays";
+        // Same seed, newer copy: keep it as the one to resend later.
+        saveSeedPublishedMarker(pubkey, candidate.id);
+        saveLocalSeedEvent(pubkey, candidate);
+        return "ours";
+      }
+      return "missing";
     };
 
     const first = await verdict(await read());
     if (first === "ours") return { confirmed: true, resent: false };
+    if (first === "unchecked") return { confirmed: false, problem: "not-on-relays" };
     if (first !== "missing") return { confirmed: false, problem: first };
+    // An empty read from too few relays proves nothing about what the others
+    // hold (a later backup or retirement marker), so never resend on it.
+    if (!client.hasRecoveryReadQuorum()) return { confirmed: false, problem: "not-on-relays" };
 
     mlog("SEED-BACKUP-RESEND", { pubkey: pubkey.slice(0, 8), eventId: local.id.slice(0, 8) });
     try { await client.publishRaw(local); }
     catch (error) { console.warn("[chama] Couldn't resend the saved seed backup:", error); }
     const second = await verdict(await read());
     if (second === "ours") return { confirmed: true, resent: true };
-    return { confirmed: false, problem: second === "missing" ? "not-on-relays" : second };
+    return { confirmed: false, problem: second === "missing" || second === "unchecked" ? "not-on-relays" : second };
   } catch (error) {
     console.warn("[chama] Seed backup check failed:", error);
     return { confirmed: false, problem: "not-on-relays" };
