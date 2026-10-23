@@ -1,5 +1,5 @@
-import { TradePaymentDetailsChoice, BuyerPaymentDetails, CHAT_PAYMENT_CHOICE } from '../components/TradePaymentDetails.js';
-import { matchingTradeHandles, needsTradePaymentDetails } from '../../payments/trade-payment-details.js';
+import { TradePaymentDetailsChoice, BuyerPaymentDetails } from '../components/TradePaymentDetails.js';
+import { matchingTradeHandles, needsTradePaymentDetails, tradeCashDetailsVisible } from '../../payments/trade-payment-details.js';
 import { HoldToConfirm } from "../components/Button.js";
 import { collectIsHold } from "../claim-hold.js";
 import { reabsorbedLockAmount } from "../../fedimint/pending-native-locks.js";
@@ -242,7 +242,7 @@ export function TradeDetail({
   /** v6.0: seller freezes the signed plan after buyer + arbiter are seated. */
   onStartEcashSlicePlan?: (parentId: string) => Promise<unknown>;
   /** Tier 2.1: recompute this trade's escrow address from published keys. */
-  onPrepareOnchainFunding?: (id: string) => Promise<void>;
+  onPrepareOnchainFunding?: (id: string, opts?: { savedHandleId?: string }) => Promise<void>;
   onCheckOnchainFunding?: (id: string) => Promise<{ depositStatus: "waiting" | "seen" | "confirmed"; verdict: { funded: boolean; reason?: string; amountSats?: bigint; expectedSats?: bigint } | null; refundVerified?: boolean; refundPending?: boolean }>;
   onRefundOnchainEscrow?: (id: string) => Promise<{ txid: string }>;
   onOnchainRefundAvailable?: (id: string) => Promise<boolean>;
@@ -2253,8 +2253,7 @@ export function TradeDetail({
                     try {
                       const result = await onLockDirectNwc({
                         nwcConnectionString: activeNwc.connectionString,
-                        savedHandleId: selectedHandleId && selectedHandleId !== CHAT_PAYMENT_CHOICE ? selectedHandleId : undefined,
-                        paymentDetailsInChat: selectedHandleId === CHAT_PAYMENT_CHOICE,
+                        savedHandleId: selectedHandleId || undefined,
                         selectedItems: hasMenu ? lockMenuItems : undefined,
                         amountMsats: lockAmountMsats,
                         onPhase: (label) => setDirectNwcFundPhase(label),
@@ -2272,8 +2271,7 @@ export function TradeDetail({
                   setLocking(true);
                   try {
                     await onLock({
-                      savedHandleId: selectedHandleId && selectedHandleId !== CHAT_PAYMENT_CHOICE ? selectedHandleId : undefined,
-                        paymentDetailsInChat: selectedHandleId === CHAT_PAYMENT_CHOICE,
+                      savedHandleId: selectedHandleId || undefined,
                       selectedItems: hasMenu ? lockMenuItems : undefined,
                       amountMsats: lockAmountMsats,
                     });
@@ -2343,8 +2341,7 @@ export function TradeDetail({
                     setLocking(true);
                     try {
                       await onLock({
-                        savedHandleId: selectedHandleId && selectedHandleId !== CHAT_PAYMENT_CHOICE ? selectedHandleId : undefined,
-                        paymentDetailsInChat: selectedHandleId === CHAT_PAYMENT_CHOICE,
+                        savedHandleId: selectedHandleId || undefined,
                         selectedItems: hasMenu ? lockMenuItems : undefined,
                         amountMsats: lockAmountMsats,
                       });
@@ -2380,7 +2377,7 @@ export function TradeDetail({
             </div>
             );
           })()}
-          {state.status === EscrowStatus.LOCKED && myRole === Role.BUYER && needsTradePaymentDetails(state) && <BuyerPaymentDetails state={state} />}
+          {tradeCashDetailsVisible(state) && myRole === Role.BUYER && needsTradePaymentDetails(state) && <BuyerPaymentDetails state={state} />}
 
           {/* Vote buttons — vertical-aware copy from the label dictionary.
               v0.2.0 item 9: when the user is the arbiter, the vote
@@ -4466,7 +4463,7 @@ export function TradeDetail({
 
       {state.pendingVote && <p role="status">{t("trade.voteSending")}</p>}
       {/* Revealed payment handle for the trade's three participants. */}
-      {state.status === EscrowStatus.LOCKED && state.lock.handle && !(myRole === Role.BUYER && needsTradePaymentDetails(state)) && (
+      {tradeCashDetailsVisible(state) && state.lock.handle && !(myRole === Role.BUYER && needsTradePaymentDetails(state)) && (
         <div style={{
           paddingTop: 16,
           marginTop: 16,

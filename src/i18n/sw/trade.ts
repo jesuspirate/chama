@@ -1,7 +1,6 @@
 export const trade: Record<string, string> = {
   "trade.voteSending": "Tunatuma kura yako… Itahesabiwa ikithibitishwa.",
   "trade.choosePaymentDetails": "Chagua maelezo ya malipo",
-  "trade.sendDetailsInChat": "Nitatuma maelezo ya malipo kwenye gumzo",
   "trade.paymentMethod": "Njia ya malipo",
   "trade.savePaymentDetails": "Hifadhi maelezo ya malipo",
   "trade.addPaymentDetails": "Ongeza maelezo mapya ya malipo",

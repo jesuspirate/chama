@@ -67,4 +67,6 @@ export const onchain: Record<string, string> = {
   "onchain.payoutSending": "Inatuma…",
   "onchain.payoutSend": "Tuma salio hili la mnyororo",
   "onchain.payoutSent": "Imetuma sats {amount} (ada ya mchimbaji sats {fee}).",
+  "onchain.cashChoiceIntro": "Chagua mahali utakapopokea pesa za biashara hii. Ni mtu mwingine na msuluhishi tu watakaoona, amana yako ikishafungwa.",
+  "onchain.useCashDetails": "Tumia maelezo haya",
 };
