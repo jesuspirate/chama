@@ -747,6 +747,40 @@ function menuModeDescription(vertical: Vertical): string {
   return translate(lang, "create.menuModeDescMarket");
 }
 
+// The long listing body is optional. It stays behind "+ Add details" until
+// the seller wants it, so step 2 isn't a second, larger description box, and
+// its label never shows raw formatting syntax (6.4.31-rc.1 pass).
+export function ListingDetailsField({ body, onChange, inputStyle }: {
+  body: string;
+  onChange: (value: string) => void;
+  inputStyle: React.CSSProperties;
+}) {
+  const { t } = useT();
+  const [open, setOpen] = useState(body.trim().length > 0);
+  if (!open && !body.trim()) {
+    return (
+      <button type="button" data-listing-details-add onClick={() => setOpen(true)} style={{
+        display: "block", marginTop: 10, padding: "6px 0", background: "transparent", border: "none",
+        color: T.accent, fontFamily: T.mono, fontSize: 11, fontWeight: 800, cursor: "pointer",
+      }}>
+        {t("create.listingBodyAdd")}
+      </button>
+    );
+  }
+  return (
+    <label data-listing-details style={{ display: "block", marginTop: 12 }}>
+      <div style={{ fontSize: 11, color: T.muted, fontFamily: T.mono, marginBottom: 6 }}>
+        {t("create.listingBody")}
+      </div>
+      <textarea value={body} maxLength={8000} rows={3}
+        onChange={e => onChange(e.target.value)} style={{ ...inputStyle, resize: "vertical" }} />
+      <div style={{ fontSize: 10, color: T.muted, fontFamily: T.sans, marginTop: 5, lineHeight: 1.4 }}>
+        {t("create.listingBodyHint")}
+      </div>
+    </label>
+  );
+}
+
 function descriptionLabel(vertical: Vertical, usingMenu: boolean): string {
   const lang = getCurrentLang();
   if (vertical === "work") return translate(lang, "create.descLabelWork");
@@ -2186,6 +2220,11 @@ function Step1({
             ? menuModeDescription(vertical)
             : singleModeDescription(vertical)}
         </div>
+        {listingMode === "menu" && vertical === "marketplace" && (
+          <div data-store-stock-tip style={{ fontSize: 12, color: T.text, fontFamily: T.sans, lineHeight: 1.5, marginTop: 6 }}>
+            {t("create.menuStockTipMarket")}
+          </div>
+        )}
       </div>}
 
       {/* Community context. v2.2.0: the line reflects the header
@@ -2691,11 +2730,7 @@ function Step2({
           onKeyDown={event => focusNextImportant(event, "description")}
           placeholder={descriptionPlaceholder(vertical, usingMenu)}
           style={inputStyle} />
-        <label style={{ display: "block", marginTop: 12 }}>
-          {t("create.listingBody")}
-          <textarea value={form.body ?? ""} maxLength={8000} rows={6}
-            onChange={e => set("body", e.target.value)} style={inputStyle} />
-        </label>
+        <ListingDetailsField body={form.body ?? ""} onChange={value => set("body", value)} inputStyle={inputStyle} />
       </div>
       )}
 
@@ -3443,6 +3478,11 @@ function Step2({
             <div style={{ marginTop: 3, fontSize: 10, color: T.muted, fontFamily: T.mono, lineHeight: 1.45 }}>
               {menuHint}
             </div>
+            {vertical === "marketplace" && (
+              <div data-store-stock-note style={{ marginTop: 6, fontSize: 12, color: T.text, fontFamily: T.sans, lineHeight: 1.5 }}>
+                {t("create.menuStockNoteMarket")}
+              </div>
+            )}
             {hasMenu && (
               <div style={{
                 marginTop: 3,
@@ -3932,11 +3972,7 @@ function Step3({
         <input maxLength={160} value={form.desc} onChange={e => set("desc", e.target.value)}
           placeholder={descriptionPlaceholder(vertical, hasMenu)}
           style={inputStyle} />
-        <label style={{ display: "block", marginTop: 12 }}>
-          {t("create.listingBody")}
-          <textarea value={form.body ?? ""} maxLength={8000} rows={6}
-            onChange={e => set("body", e.target.value)} style={inputStyle} />
-        </label>
+        <ListingDetailsField body={form.body ?? ""} onChange={value => set("body", value)} inputStyle={inputStyle} />
       </div>
       )}
 
