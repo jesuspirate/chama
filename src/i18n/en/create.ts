@@ -138,6 +138,8 @@ export const create: Record<string, string> = {
   "create.menuModeExchange": "Curated swaps",
   "create.menuModeLending": "Loanbook",
   "create.menuModeMarket": "Storefront",
+  "create.menuStockNoteMarket": "By design, Chama doesn’t count stock in a Storefront. “Max / order” is the most one order can take of each item. Keep your own count, and check you have it before you ship.",
+  "create.menuStockTipMarket": "Selling one product many times? Choose Single and set “Units in stock”, and Chama counts down each order.",
   "create.menuPartialBillPay": "Complete bill names and sats before {stage}.",
   "create.menuPartialExchange":
     "Complete option names and valid min/max sats before {stage}.",

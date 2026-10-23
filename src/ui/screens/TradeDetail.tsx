@@ -3381,6 +3381,17 @@ export function TradeDetail({
                 )}
             </div>
           </div>
+          {state.category === "marketplace" && (
+            <div data-store-order-note style={{
+              color: T.muted,
+              fontFamily: T.sans,
+              fontSize: T.fs.secondary,
+              lineHeight: 1.5,
+              marginBottom: 8,
+            }}>
+              {t("trade.storeOneOrderNote")}
+            </div>
+          )}
           <div style={{
             display: "flex",
             flexDirection: "column",
