@@ -19,9 +19,9 @@ export const chat: Record<string, string> = {
   "chat.chooseFederation": "Chagua shirikisho",
   "chat.curated": "Zilizoteuliwa",
   "chat.destroyOverrideAfter":
-    " kulazimisha. Hii inaharibu kabisa salio lililoshikiliwa chini ya njia hii.",
-  "chat.destroyOverrideBefore": "Bofya ",
-  "chat.destroyOverrideBold": "Badilisha na uharibu ecash",
+    " kubadilisha hata hivyo. Hizi ni sats za mazoezi za majaribio, kwa hivyo hakuna sats halisi zinazopotea.",
+  "chat.destroyOverrideBefore": "Gusa ",
+  "chat.destroyOverrideBold": "Badilisha na ufute sats za mazoezi",
   "chat.encryptedReceiptImage": "picha ya risiti iliyosimbwa",
   "chat.externalRoute": "Njia ya nje",
   "chat.footerGeneratedNative":
@@ -59,7 +59,8 @@ export const chat: Record<string, string> = {
   "chat.show": "Onyesha",
   "chat.signIn": "Ingia",
   "chat.switch": "Badilisha",
-  "chat.switchAndDestroy": "Badilisha na uharibu ecash",
+  "chat.switchAndDestroy": "Badilisha na ufute sats za mazoezi",
+  "chat.switchSendOutFirst": "Tuma sats hizi kwenye pochi yako mwenyewe kwanza, kisha ubadilishe. Hakuna kilichobadilishwa.",
   "chat.switchFailed": "Kubadilisha kumeshindikana",
   "chat.switchFromAfter": "?",
   "chat.switchFromBefore": "Ubadilishe kutoka ",
