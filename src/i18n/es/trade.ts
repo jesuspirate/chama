@@ -4,7 +4,6 @@
 export const trade: Record<string, string> = {
   "trade.voteSending": "Enviando tu voto… Contará cuando se confirme.",
   "trade.choosePaymentDetails": "Elige los datos de pago",
-  "trade.sendDetailsInChat": "Enviaré los datos de pago por chat",
   "trade.paymentMethod": "Método de pago",
   "trade.savePaymentDetails": "Guardar datos de pago",
   "trade.addPaymentDetails": "Añadir otros datos de pago",

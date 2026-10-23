@@ -22,6 +22,9 @@ import { defaultCreditObserver } from "../../payments/claim-credit-ledger.js";
 import { OnchainPayoutRecoveryCard } from "./OnchainPayoutRecoveryCard.js";
 import type { ComponentProps } from "react";
 import { OnchainEscrowPanel } from "./OnchainEscrowPanel.js";
+import { TradePaymentDetailsChoice } from "../components/TradePaymentDetails.js";
+import { matchingTradeHandles, needsTradePaymentDetails } from "../../payments/trade-payment-details.js";
+import { getOnchainPaymentChoice } from "../../payments/onchain-payment-choice.js";
 
 export interface OnchainTradeActions {
   onRequestStalledPayout?: (id: string) => Promise<void>;
@@ -30,7 +33,7 @@ export interface OnchainTradeActions {
   onOpenExplorerSettings?: () => void;
   fetchCommunityBonds?: (community: string) => Promise<VerifiedBond[]>;
   onchainFundingPlan?: (id: string) => { ready: boolean; address?: string; blockers?: readonly string[] };
-  onPrepareOnchainFunding?: (id: string) => Promise<void>;
+  onPrepareOnchainFunding?: (id: string, opts?: { savedHandleId?: string }) => Promise<void>;
   onCheckOnchainFunding?: (id: string) => Promise<{ depositStatus: "waiting" | "seen" | "confirmed";
     verdict: { funded: boolean; reason?: string; amountSats?: bigint; expectedSats?: bigint } | null;
     refundVerified?: boolean; refundPending?: boolean }>;
@@ -112,6 +115,17 @@ export function OnchainTradeControls({ state, pubkey, profileNames, kind0Enabled
     ? new Date(((actions.onchainObservation?.tipObservedAt ?? now) + (refundHeight - tip) * 600) * 1000).toLocaleDateString() : null;
   const winnerName = profileNameFor(profileNames, winner?.pubkey, kind0Enabled) ?? "the winner";
   const approved = state.status === EscrowStatus.APPROVED || state.status === EscrowStatus.CLAIMED;
+  // Jet (6.4.31): a cash trade never waits on a deposit without the funder
+  // having said where the cash goes. Before the address exists the choice is
+  // required; if the address was published elsewhere, it is asked here and
+  // revealed with the LOCK.
+  const [cashPick, setCashPick] = useState("");
+  const [, refreshCashChoice] = useState(0);
+  const cashLeg = needsTradePaymentDetails(state);
+  const storedCash = cashLeg ? getOnchainPaymentChoice(state.id) : null;
+  const storedCashUsable = !!storedCash && matchingTradeHandles(state).some(h => h.id === storedCash.handleId);
+  const awaitingCashChoice = cashLeg && view.viewerFunds && state.status === EscrowStatus.CREATED && !lapsed
+    && (state.onchainFundingTerms ? !storedCash : !storedCashUsable);
   const eligibleSigner = (state.settlementStalled || state.resolvedMajority?.includes(Role.ARBITER))
     ? role === Role.ARBITER || (!!role && role === winner?.role)
     : role === Role.BUYER || role === Role.SELLER;
@@ -189,19 +203,20 @@ export function OnchainTradeControls({ state, pubkey, profileNames, kind0Enabled
     }
     finally { busyRef.current = false; setBusy(false); }
   };
-  const prepareFunding = async () => {
+  const prepareFunding = async (savedHandleId = storedCash?.handleId) => {
     setPrepareFailed(false);
-    try { await prepareFundingOnce(`${pubkey}:${state.id}`, () => latest.current.onPrepareOnchainFunding!(state.id)); }
+    try { await prepareFundingOnce(`${pubkey}:${state.id}`, () => latest.current.onPrepareOnchainFunding!(state.id, cashLeg ? { savedHandleId } : undefined)); }
     catch (error) { setPrepareFailed(true); throw error; }
+    finally { refreshCashChoice(n => n + 1); }
   };
   useEffect(() => {
-    if (lapsed || state.status !== EscrowStatus.CREATED || state.onchainFundingTerms || !view.viewerFunds
+    if (lapsed || state.status !== EscrowStatus.CREATED || state.onchainFundingTerms || !view.viewerFunds || awaitingCashChoice
       || !participants.buyer || !participants.seller || !actions.onPrepareOnchainFunding) return;
     const key = JSON.stringify([state.id, participants.buyer, participants.seller, state.escrowKeys]);
     if (attemptedFunding.current === key) return;
     attemptedFunding.current = key;
-    void run(prepareFunding);
-  }, [lapsed, state.id, state.status, state.onchainFundingTerms, view.viewerFunds, participants.buyer, participants.seller, state.escrowKeys]);
+    void run(() => prepareFunding());
+  }, [lapsed, state.id, state.status, state.onchainFundingTerms, view.viewerFunds, awaitingCashChoice, participants.buyer, participants.seller, state.escrowKeys]);
   const buttonStyle = { padding: "12px 14px", minHeight: 44, borderRadius: T.rs, border: `1px solid ${T.borderHi}`,
     background: T.surface, color: T.text, fontFamily: T.sans, fontWeight: 700, cursor: "pointer" };
   const recovery = actions.onScanMyOnchainPayouts && actions.onSweepOnchainPayout
@@ -243,6 +258,12 @@ export function OnchainTradeControls({ state, pubkey, profileNames, kind0Enabled
         const result = await actions.onPrepareOnchainSettlement!(state.id); setCheck(result.check); setCheckedChoice(settlementUnsignedId(result.psbt)); setSigned(result.signedByMe);
       })}>{choosingWithVote ? "Confirm · receive in Chama" : "Send to my Chama key instead"}</button>
     </div>}
+    {awaitingCashChoice && actions.onPrepareOnchainFunding && <div data-onchain-cash-choice style={{ margin: "12px 0", display: "grid", gap: 8 }}>
+      <p style={{ color: T.muted, margin: 0 }}>{t("onchain.cashChoiceIntro")}</p>
+      <TradePaymentDetailsChoice state={state} value={cashPick} onChange={setCashPick} />
+      <button type="button" disabled={busy || !cashPick} style={{ ...buttonStyle, opacity: busy || !cashPick ? 0.5 : 1 }}
+        onClick={() => void run(() => prepareFunding(cashPick))}>{t("onchain.useCashDetails")}</button>
+    </div>}
     {view.canSettle && !choice && role !== winner?.role && <p role="status">Waiting for {winnerName} to choose where the sats go.</p>}
     {view.canSettle && choice && <p data-selectable style={{ color: T.muted, overflowWrap: "anywhere" }}>Payout address: {choice.destination}
       {choice.locked && <><br />The other signer has signed. The destination is fixed.</>}</p>}
@@ -257,8 +278,8 @@ export function OnchainTradeControls({ state, pubkey, profileNames, kind0Enabled
       </>}
     </div> : <OnchainEscrowPanel refundHeight={(state.lock.onchain ?? state.onchainFundingTerms)?.refundLockUntil} settlementUnavailable={unavailable} view={view} network={ESCROW_NETWORK_LABEL} settlementCheck={unavailable ? null : checkedChoice === choice?.id ? check : check?.ok === false ? check : null} signing={busy} signedByViewer={signed}
       checking={busy} fundingNote={state.onchainFundingTerms && unavailable && state.status === EscrowStatus.CREATED ? "Couldn’t check the deposit yet — retrying" : note} depositStatus={depositStatus} publishing={busy} refunding={busy}
-      onPrepareFunding={prepareFailed && !state.onchainFundingTerms && view.viewerFunds && participants.buyer && participants.seller && actions.onPrepareOnchainFunding
-        ? () => void run(prepareFunding) : undefined}
+      onPrepareFunding={prepareFailed && !awaitingCashChoice && !state.onchainFundingTerms && view.viewerFunds && participants.buyer && participants.seller && actions.onPrepareOnchainFunding
+        ? () => void run(() => prepareFunding()) : undefined}
       onCheckFunding={view.viewerFunds && participants.buyer && actions.onCheckOnchainFunding && actions.onPublishOnchainLock ? () => void run(async () => {
         const result = await actions.onCheckOnchainFunding!(state.id);
         setDepositStatus(result.verdict?.funded ? "confirmed" : result.depositStatus === "seen" ? "seen" : "waiting");

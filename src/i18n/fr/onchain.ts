@@ -68,4 +68,6 @@ export const onchain: Record<string, string> = {
   "onchain.payoutSending": "Envoi…",
   "onchain.payoutSend": "Envoyer ce solde on-chain",
   "onchain.payoutSent": "{amount} sats envoyés (frais de minage : {fee} sats).",
+  "onchain.cashChoiceIntro": "Choisissez où vous recevez l’argent pour cet échange. Seuls l’autre personne et l’arbitre le voient, une fois votre dépôt bloqué.",
+  "onchain.useCashDetails": "Utiliser ces coordonnées",
 };

@@ -10,8 +10,6 @@ import { CopyButton } from './CopyButton.js';
 import { OverlaySheet } from './OverlaySheet.js';
 import { privatePaymentFieldProps } from '../payment-field-autofill.js';
 
-export const CHAT_PAYMENT_CHOICE = 'chat';
-
 // Jet (6.4.25-rc.7): the Android WebView drew these as the old native
 // picker. The choice now opens the app's own overlay, like every other
 // picker, and adding new details uses chips. Only the look changed: the
@@ -25,10 +23,9 @@ export function TradePaymentDetailsChoice({ state, value, onChange }: {
   const [handle, setHandle] = useState('');
   const [picking, setPicking] = useState(false);
   const handles = matchingTradeHandles(state);
-  const options: Array<{ id: string; label: string }> = [
-    ...handles.map(h => ({ id: h.id, label: `${railEntryName(h.rail)} · ${h.handle}` })),
-    { id: CHAT_PAYMENT_CHOICE, label: t('trade.sendDetailsInChat') },
-  ];
+  // Jet (6.4.31): "send in chat" is gone. Funding needs a real address for
+  // one of the agreed methods, so nobody locks without saying where the cash goes.
+  const options: Array<{ id: string; label: string }> = handles.map(h => ({ id: h.id, label: `${railEntryName(h.rail)} · ${h.handle}` }));
   const current = options.find(o => o.id === value);
   const choose = (id: string) => { onChange(id); setPicking(false); };
   return <div style={{ display: 'grid', gap: 8, marginBottom: 12, fontFamily: T.sans, fontSize: T.fs.body }}>
@@ -55,8 +52,6 @@ export function TradePaymentDetailsChoice({ state, value, onChange }: {
       <PaymentButton type="button" disabled={!rail || !handle.trim()} onClick={() => {
         const saved = addSavedHandle(rail, handle.trim()); onChange(saved.id); setHandle('');
       }}>{t('trade.savePaymentDetails')}</PaymentButton>
-      <button type="button" data-payment-details-chat onClick={() => onChange(CHAT_PAYMENT_CHOICE)}
-        style={{ minHeight: 44, background: 'none', border: 0, padding: 0, color: T.ink, fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 600, textDecoration: 'underline', cursor: 'pointer', justifySelf: 'start' }}>{t('trade.sendDetailsInChat')}</button>
     </div>}
   </div>;
 }
