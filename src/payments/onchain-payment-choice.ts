@@ -29,7 +29,7 @@ export interface OnchainPaymentChoice {
   chosenAt: number;
 }
 
-function isChoice(value: unknown): value is OnchainPaymentChoice {
+export function isOnchainPaymentChoice(value: unknown): value is OnchainPaymentChoice {
   const v = value as Record<string, unknown> | null;
   return !!v && typeof v === 'object'
     && typeof v.handleId === 'string' && v.handleId.length > 0
@@ -47,7 +47,7 @@ function readAll(): Record<string, OnchainPaymentChoice> {
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('Saved payment choices couldn’t be read.');
   const out: Record<string, OnchainPaymentChoice> = {};
   for (const [escrowId, value] of Object.entries(parsed as Record<string, unknown>)) {
-    if (isChoice(value)) out[escrowId] = value;
+    if (isOnchainPaymentChoice(value)) out[escrowId] = value;
   }
   return out;
 }
@@ -68,7 +68,14 @@ export function saveOnchainPaymentChoice(escrowId: string, saved: SavedHandle, n
     ...(saved.networks && saved.networks.length > 0 ? { networks: [...saved.networks] } : {}),
     chosenAt: now,
   };
-  if (!isChoice(choice)) throw new Error('These payment details are empty. Choose others before funding. No sats moved.');
+  if (!isOnchainPaymentChoice(choice)) throw new Error('These payment details are empty. Choose others before funding. No sats moved.');
+  return writeOnchainPaymentChoice(escrowId, choice);
+}
+
+/** Store a choice as given (a fresh one, or this account's copy read back
+ *  from relays on another device) and read it back. */
+export function writeOnchainPaymentChoice(escrowId: string, choice: OnchainPaymentChoice): OnchainPaymentChoice {
+  if (!isOnchainPaymentChoice(choice)) throw new Error('These payment details are empty. Choose others before funding. No sats moved.');
   let all: Record<string, OnchainPaymentChoice>;
   try { all = readAll(); }
   catch (error) {

@@ -247,3 +247,56 @@ console.log('PASS matching: a cash offer without payment methods cannot be taken
   assert(repost > 0 && repost < app.indexOf('cbpRepostedRef.current.add(cycleKey);', repost), 'skipped before the monthly cycle is spent');
 }
 console.log('PASS renewals: an older cash offer without methods is skipped, not silently spent');
+
+{
+  // 9. Another device signed in as the funder finds the choice on relays,
+  //    encrypted to the funder's own key, and nobody else's copy counts.
+  const { publishCashChoiceCopy, fetchCashChoiceCopy, cashChoiceDTag, CASH_CHOICE_KIND } = await import('./onchain-payment-choice-relay.js');
+  const relay: any[] = [];
+  const signerFor = (pubkey: string) => ({
+    getPublicKey: async () => pubkey,
+    nip44Encrypt: async (plain: string, to: string) => `enc:${to}:${plain}`,
+    nip44Decrypt: async (cipher: string, from: string) => {
+      if (!cipher.startsWith(`enc:${from}:`)) throw new Error('bad ciphertext');
+      return cipher.slice(`enc:${from}:`.length);
+    },
+    signEvent: async (event: any) => ({ ...event, pubkey, id: `id${relay.length}`, sig: 'sig' }),
+  });
+  const funder = signerFor('funder-pk');
+  const query = async (filter: any) => relay.filter(e => filter.authors.includes(e.pubkey)
+    && filter.kinds.includes(e.kind) && e.tags.some((t: string[]) => t[0] === 'd' && filter['#d'].includes(t[1])));
+  const choice = { handleId: 'h9', handle: '+255 700 999 000', rail: 'm-pesa', chosenAt: 1 };
+  await publishCashChoiceCopy({ escrowId: 'oc-relay', choice, signer: funder, publish: async e => { relay.push(e); }, now: 100 });
+  assert.equal(relay[0].kind, CASH_CHOICE_KIND);
+  assert.doesNotMatch(JSON.stringify(relay[0].tags), /oc-relay/, 'the d-tag does not name the trade');
+  assert.match(relay[0].content, /^enc:funder-pk:/, 'encrypted to the funder');
+  // Same app-data kind as the seed backup, never mistaken for one.
+  const { CHAMA_SEED_D_TAG } = await import('../fedimint/seed-manager.js');
+  const { SEED_V2_D_PREFIX } = await import('../fedimint/seed-backup-v2.js');
+  const d = relay[0].tags.find((t: string[]) => t[0] === 'd')[1];
+  assert(d !== CHAMA_SEED_D_TAG && !d.startsWith(SEED_V2_D_PREFIX));
+  assert.deepEqual(await fetchCashChoiceCopy({ escrowId: 'oc-relay', signer: funder, query }), choice, 'the second device finds it');
+  // A newer copy wins; an unreadable newest falls back to the older one.
+  await publishCashChoiceCopy({ escrowId: 'oc-relay', choice: { ...choice, handle: '+255 700 999 111', chosenAt: 2 }, signer: funder, publish: async e => { relay.push(e); }, now: 200 });
+  assert.equal((await fetchCashChoiceCopy({ escrowId: 'oc-relay', signer: funder, query }))?.handle, '+255 700 999 111');
+  relay.push({ ...relay[1], id: 'garbled', created_at: 300, content: 'garbled' });
+  assert.equal((await fetchCashChoiceCopy({ escrowId: 'oc-relay', signer: funder, query }))?.handle, '+255 700 999 111');
+  // Someone else's event under the same tag, or a copy for another trade, never counts.
+  relay.push({ kind: CASH_CHOICE_KIND, pubkey: 'funder-pk', created_at: 400, id: 'moved', sig: 's',
+    tags: [['d', cashChoiceDTag('oc-relay')]], content: `enc:funder-pk:${JSON.stringify({ escrowId: 'other-trade', choice })}` });
+  assert.equal((await fetchCashChoiceCopy({ escrowId: 'oc-relay', signer: funder, query }))?.handle, '+255 700 999 111', 'a copy for another trade is ignored');
+  assert.equal(await fetchCashChoiceCopy({ escrowId: 'oc-relay', signer: signerFor('stranger-pk'), query }), null);
+  assert.equal(await fetchCashChoiceCopy({ escrowId: 'oc-relay', signer: funder, query: async () => { throw new Error('offline'); } }), null,
+    'relays down after the deposit: no copy, the LOCK still goes out');
+  // Publishing fails closed, before the address can exist.
+  await assert.rejects(publishCashChoiceCopy({ escrowId: 'oc-x', choice, signer: funder, publish: async () => { throw new Error('all relays rejected'); } }), /rejected/);
+  await assert.rejects(publishCashChoiceCopy({ escrowId: 'oc-x', choice, signer: { ...funder, signEvent: async (e: any) => ({ ...e, pubkey: 'someone-else', id: 'x', sig: 'x' }) }, publish: async () => {} }), /signer changed/);
+
+  const hook = read('../hooks/useEscrow.ts');
+  const prep = hook.slice(hook.indexOf('const prepareOnchainFunding = useCallback'), hook.indexOf('/** Ask the chain whether the escrow is funded'));
+  const pub = prep.indexOf('await publishCashChoiceCopy(');
+  assert(pub > prep.indexOf('saveOnchainPaymentChoice(') && pub < prep.indexOf('await client.joinEscrow(escrowId, role, { fundingTerms'), 'copied to relays before the address exists');
+  const lock = hook.slice(hook.indexOf('const publishOnchainLock = useCallback'), hook.indexOf('// Seed on launch, discovery and enable'));
+  assert.match(lock, /await restoreCashChoice\(escrowId\)/, 'the LOCK uses the relay copy when this device has none');
+}
+console.log('PASS other devices: the funder\'s cash choice is kept on relays, encrypted to them, and only their copy for this trade counts');

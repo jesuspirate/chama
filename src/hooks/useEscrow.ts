@@ -49,7 +49,8 @@ import { finalRefundSettlementProof, observedRefundSpend } from "../escrow-engin
 import { fundingArbiter, fundingTermsError, onchainLockError, onchainFunder } from "../escrow-engine/onchain-funding-terms.js";
 import { assertCreatePaymentMethods, assertJoinPaymentMethods, assertTradePaymentDetails, needsTradePaymentDetails } from "../payments/trade-payment-details.js";
 import { getSavedHandle } from "../payments/saved-handles.js";
-import { getOnchainPaymentChoice, onchainLockHandleParams, saveOnchainPaymentChoice } from "../payments/onchain-payment-choice.js";
+import { getOnchainPaymentChoice, onchainLockHandleParams, saveOnchainPaymentChoice, writeOnchainPaymentChoice } from "../payments/onchain-payment-choice.js";
+import { fetchCashChoiceCopy, publishCashChoiceCopy } from "../payments/onchain-payment-choice-relay.js";
 import { pendingOnchainLockRecoveries } from "../escrow-engine/onchain-lock-recovery.js";
 import { fundingPremiumMsats } from "../payments/funding-premium.js";
 import { nativeLockEarmarks } from "../fedimint/pending-native-locks.js";
@@ -3108,6 +3109,21 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     return resolveFundingPlan({ ...terms, network: ESCROW_NETWORK });
   }, []);
 
+  /** The funder's cash choice for an on-chain trade: this device's copy, or
+   *  the encrypted copy another of their devices left on relays. Null when
+   *  neither can be found, never an error: callers are past the deposit. */
+  const cashChoiceLookups = useRef(new Set<string>());
+  const restoreCashChoice = useCallback(async (escrowId: string) => {
+    const local = getOnchainPaymentChoice(escrowId);
+    if (local) return local;
+    const client = clientRef.current;
+    const signer = signerRef.current;
+    if (!client || !signer) return null;
+    const copy = await fetchCashChoiceCopy({ escrowId, signer, query: filter => client.queryOnce(filter as never, 6000) });
+    if (!copy) return null;
+    try { return writeOnchainPaymentChoice(escrowId, copy); } catch { return copy; }
+  }, []);
+
   const prepareOnchainFunding = useCallback(async (escrowId: string, opts: { savedHandleId?: string } = {}) => {
     const client = requireClient();
     const trade = client.getState(escrowId);
@@ -3125,7 +3141,12 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     // choice first; publishOnchainLock reveals it to buyer and arbiter.
     if (cashLeg) {
       assertTradePaymentDetails(trade, opts);
-      saveOnchainPaymentChoice(escrowId, getSavedHandle(opts.savedHandleId!)!);
+      const choice = saveOnchainPaymentChoice(escrowId, getSavedHandle(opts.savedHandleId!)!);
+      // Any device signed in as the funder may publish the LOCK, so keep an
+      // encrypted copy on relays for them. Refused before the address exists.
+      const signer = signerRef.current;
+      if (!signer) throw new Error("Sign in again to save where the cash goes. No sats moved.");
+      await publishCashChoiceCopy({ escrowId, choice, signer, publish: event => client.publishRaw(event) });
     }
     if (trade.onchainFundingTerms) return;
     // M10: the deposit address appears only after this JOIN, so the funder's
@@ -3170,6 +3191,13 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     const state = client.getState(escrowId);
     if (!state) throw new Error("Escrow not loaded");
     const plan = onchainFundingPlan(escrowId);
+    // A funder on another device: pick up the cash choice kept on relays once
+    // per session, so this device doesn't ask again or lock without it.
+    if (state.status === EscrowStatus.CREATED && needsTradePaymentDetails(state) && !cashChoiceLookups.current.has(escrowId)
+      && state.participants[onchainFunder(state)] === stateRef.current?.pubkey && !getOnchainPaymentChoice(escrowId)) {
+      cashChoiceLookups.current.add(escrowId);
+      await restoreCashChoice(escrowId);
+    }
     const observation = await observeOnchainAttention(state,
       esploraFetcher(defaultEsploraBase(ESCROW_NETWORK), {network:ESCROW_NETWORK, timeoutMs:SETTLEMENT_EXPLORER_TIMEOUT_MS}),
       stateRef.current?.onchainObservations?.get(escrowId));
@@ -3221,7 +3249,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     if (state.lock.onchain && !found.some(f => f.utxo.txid === state.lock.onchain!.fundingTxid
       && f.utxo.index === state.lock.onchain!.fundingVout)) throw new Error("Committed funding output is unavailable");
     return { observation, plan, verdict, tipHeight, depositStatus: found.length ? "confirmed" as const : "waiting" as const };
-  }, [onchainFundingPlan]);
+  }, [onchainFundingPlan, restoreCashChoice]);
 
   /** Publish the on-chain LOCK once the deposit is confirmed.
    *
@@ -3255,7 +3283,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     // The deposit is on-chain already: reveal the funder's chosen details when
     // this device has them, otherwise lock anyway with the agreed methods plus
     // chat. Never abort a funded lock over a payment detail.
-    const chosen = needsTradePaymentDetails(state) ? getOnchainPaymentChoice(escrowId) : null;
+    const chosen = needsTradePaymentDetails(state) ? await restoreCashChoice(escrowId) : null;
     return client.lockEscrow(escrowId, {
       notesHash: "",
       shares: [],
@@ -3267,7 +3295,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       buyerPubkey,
       arbiterPubkey,
     });
-  }, [checkOnchainFunding]);
+  }, [checkOnchainFunding, restoreCashChoice]);
 
   // Seed on launch, discovery and enable, without requiring an own publish.
   useEffect(() => {
