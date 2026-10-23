@@ -130,6 +130,8 @@ export const create: Record<string, string> = {
   "create.menuModeExchange": "Ubadilishanaji ulioteuliwa",
   "create.menuModeLending": "Kitabu cha mikopo",
   "create.menuModeMarket": "Duka",
+  "create.menuStockNoteMarket": "Ndivyo ilivyoundwa: Chama haihesabu bidhaa zilizopo kwenye Duka. “Kikomo / oda” ni kiasi cha juu ambacho oda moja inaweza kuchukua kwa kila bidhaa. Weka hesabu yako mwenyewe, na hakikisha unazo kabla ya kutuma.",
+  "create.menuStockTipMarket": "Unauza bidhaa moja mara nyingi? Chagua Moja na uweke “Vipande stoo”, na Chama itapunguza kila oda.",
   "create.menuPartialBillPay": "Kamilisha majina ya bili na sats kabla ya {stage}.",
   "create.menuPartialExchange":
     "Kamilisha majina ya chaguo na sats halali za chini/juu kabla ya {stage}.",

@@ -2186,6 +2186,11 @@ function Step1({
             ? menuModeDescription(vertical)
             : singleModeDescription(vertical)}
         </div>
+        {listingMode === "menu" && vertical === "marketplace" && (
+          <div data-store-stock-tip style={{ fontSize: 12, color: T.text, fontFamily: T.sans, lineHeight: 1.5, marginTop: 6 }}>
+            {t("create.menuStockTipMarket")}
+          </div>
+        )}
       </div>}
 
       {/* Community context. v2.2.0: the line reflects the header
@@ -3443,6 +3448,11 @@ function Step2({
             <div style={{ marginTop: 3, fontSize: 10, color: T.muted, fontFamily: T.mono, lineHeight: 1.45 }}>
               {menuHint}
             </div>
+            {vertical === "marketplace" && (
+              <div data-store-stock-note style={{ marginTop: 6, fontSize: 12, color: T.text, fontFamily: T.sans, lineHeight: 1.5 }}>
+                {t("create.menuStockNoteMarket")}
+              </div>
+            )}
             {hasMenu && (
               <div style={{
                 marginTop: 3,
