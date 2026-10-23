@@ -49,9 +49,10 @@ export const me: Record<string, string> = {
   "backup.identityOnly": "Cette clé, c'est vous, pas vos sats. Gardez-la pour vous.",
   "backup.reading": "Lecture de votre clé…",
 
-  "me.walletBalance": "Dans votre portefeuille Chama :",
+  "me.walletBalance": "Restant dans Chama :",
   "me.parkedWalletsTitle": "Aussi sur cet appareil :",
   "me.parkedWalletLine": "{sats} sats sur {name} lors de votre dernière utilisation",
+  "me.parkedWalletLineUnchecked": "{name} : solde non vérifié lors de votre dernière utilisation",
   "me.parkedWalletUnlisted": "une fédération que Chama ne liste pas",
   "me.parkedWalletsHint": "Chaque fédération garde ses propres sats. Ouvrez un échange sur cette fédération pour les utiliser.",
 
@@ -94,7 +95,6 @@ export const me: Record<string, string> = {
   // Refonte Me : héros d'attention + accordéons.
   "me.accArbiter": "Arbitre",
   "me.tabCommunity": "Communauté",
-  "me.tabSats": "Portefeuille",
   "me.recentSettlements": "Règlements récents",
   "me.settledReleased": "libéré",
   "me.settledRefunded": "remboursé",
@@ -366,4 +366,8 @@ export const me: Record<string, string> = {
   "me.groupTrading": "Échanges",
   "me.groupBond": "Caution",
   "me.groupHelp": "Aide et plus",
+  "me.heldSatsOnHome": "Certains de vos sats vous attendent. Voyez-les dans Accueil",
+  "me.groupGettingPaid": "Où vous êtes payé",
+  "backup.rowTitle": "Votre clé",
+  "backup.rowHint": "Utilisez-la pour vous connecter sur un autre appareil",
 };
