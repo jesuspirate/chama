@@ -6,7 +6,9 @@ export const create: Record<string, string> = {
   "create.billHealthSha": "Santé — SHA/SHIF",
   "create.billTv": "Télévision (DSTV/GOtv/Zuku)",
   "create.billElectricityKplc": "Électricité — KPLC",
-  "create.listingBody": "Description — paragraphes, listes, **gras**, *italique*, [texte](https://…)",
+  "create.listingBody": "Détails · facultatif",
+  "create.listingBodyAdd": "+ Ajouter des détails",
+  "create.listingBodyHint": "Vous pouvez utiliser le gras, l’italique, les listes et les liens.",
   // CBP mensuel — bascule facture récurrente (paiement de factures uniquement).
   "create.recurringToggleLabel": "Mensuel récurrent",
   "create.recurringToggleHint": "Republie automatiquement cette facture dans votre communauté chaque mois tant que vous êtes en ligne. Aucune caution requise — arrêtez quand vous voulez depuis Moi.",
