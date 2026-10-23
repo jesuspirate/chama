@@ -615,7 +615,18 @@ export function BrowseView({
         </button> : <span style={{ color: T.muted, fontSize: 12 }}>{browseSummary}</span>}
       </div>
       {emptyFilter && <div ref={emptyResult} data-browse-empty style={{ padding: 24, background: T.surface, color: T.muted, borderRadius: T.rs, marginBottom: 14 }}>
-        {t("browse.emptyFilter", { filter: [lastFilterLabel ?? (showOwn ? t("browse.mine") : t(BROWSE_CATS.find(c => c.id === browseCategory)?.l ?? "browse.scopeAll")), searchQuery.trim()].filter(Boolean).join(" · ") })}
+        {/* Name what is on screen now (scope, shelf or Mine, other currencies,
+            search), not the last chip tapped: leaving Mine used to say "All"
+            (the shelf) while My Chama (the scope) was selected (6.4.31-rc.1). */}
+        {t("browse.emptyFilter", { filter: [
+          t(browseScope === "local" ? "browse.scopeLocal" : "browse.scopeAll"),
+          showOwn ? t("browse.mine") : browseCategory !== "all" ? t(BROWSE_CATS.find(c => c.id === browseCategory)?.l ?? "browse.catAll") : null,
+          otherCurrencies ? t("browse.otherCurrencies", { count: otherCurrencyCount }) : null,
+          searchQuery.trim(),
+        ].filter(Boolean).join(" · ") })}
+        {/* Your own listings are hidden by default; when they are all there
+            is, point at Mine instead of implying the shelf is empty. */}
+        {!showOwn && ownHiddenCount > 0 && browseCategory === "all" && !searchQuery.trim() && <div data-browse-own-hidden style={{ marginTop: 8 }}>{t("browse.ownHiddenBody", { count: ownHiddenCount })}</div>}
       </div>}
 
       {totalListings === 0 && !emptyFilter ? (
