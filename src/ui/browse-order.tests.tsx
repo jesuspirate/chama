@@ -48,6 +48,9 @@ try {
  const onlyMine = render([mine]);
  assert.match(onlyMine,/data-browse-category="mine" data-count="1"/,'when every listing is yours, Mine still shows so "Tap Mine above" has a chip to tap');
  assert.match(onlyMine,/Tap Mine above/);
+ // The empty message names what is on screen (scope, then shelf), not the last
+ // chip tapped: leaving Mine used to say "All" while My Chama was selected.
+ assert.match(render([mine], 'p2p-trade'),/No listings for “My Chama · Exchange”/,'empty filter names the scope and the shelf');
  const selectedShelf = render([exchange,store], 'marketplace');
  assert.match(selectedShelf,/data-browse-category="p2p-trade" data-count="1"/,'selected category never changes the sibling shelf count');
  assert.deepEqual([...selectedShelf.matchAll(/data-listing-id="([^"]+)"/g)].map(m=>m[1]),['store']);
