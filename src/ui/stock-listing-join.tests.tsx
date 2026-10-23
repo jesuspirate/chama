@@ -55,3 +55,19 @@ console.log('PASS a multi-unit listing is bought by quantity, never joined whole
   assert.match(translate('en', 'create.menuStockNoteMarket' as any), /doesn’t count stock/);
   console.log('PASS a Storefront says Chama does not count its stock, in every language');
 }
+
+// The optional long description stays folded until wanted, and its label is a
+// plain grey label, never raw formatting syntax (Jet, 6.4.31-rc.1 pass).
+{
+  const { ListingDetailsField } = await import('./screens/CreateForm.js');
+  const field = (body: string) => renderToStaticMarkup(<LangProvider>
+    <ListingDetailsField body={body} onChange={() => {}} inputStyle={{}} /></LangProvider>);
+  const empty = field('');
+  assert.match(empty, /data-listing-details-add/, 'no body: only "+ Add details"');
+  assert.doesNotMatch(empty, /<textarea/, 'no body: no open box');
+  const filled = field('Handmade, **red**');
+  assert.match(filled, /<textarea[^>]*rows="3"/, 'a draft with a body opens at 3 rows');
+  assert.match(filled, /Details · optional/);
+  for (const html of [empty, filled]) assert.doesNotMatch(html, /\*\*bold\*\*|\[label\]\(https/, 'no raw syntax in the label');
+  console.log('PASS the long description is optional, folded and labelled in plain words');
+}

@@ -8,7 +8,9 @@ export const create: Record<string, string> = {
   "create.billHealthSha": "Health — SHA/SHIF",
   "create.billTv": "TV (DSTV/GOtv/Zuku)",
   "create.billElectricityKplc": "Electricity — KPLC",
-  "create.listingBody": "Description — paragraphs, lists, **bold**, *italic*, [label](https://…)",
+  "create.listingBody": "Details · optional",
+  "create.listingBodyAdd": "+ Add details",
+  "create.listingBodyHint": "You can use bold, italics, lists and links.",
   // Monthly CBP — recurring bill toggle (bill-pay only, no bond, online-gated).
   "create.recurringToggleLabel": "Recurring monthly",
   "create.publishingTitle": "Publishing your offer…",
