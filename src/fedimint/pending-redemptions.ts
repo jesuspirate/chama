@@ -55,6 +55,7 @@
 import type { FedimintClient } from "./fedimint-client.js";
 import {
   getStrictScopedStorageItem,
+  readStrictScopedStorageItem,
   removeStrictScopedStorageItem,
   setStrictScopedStorageItem,
 } from "../storage/user-scope.js";
@@ -181,13 +182,19 @@ function isConsumedCreditUnconfirmed(
     || msg.includes("mint notes were consumed by the federation");
 }
 
+function loadStashStrict(read: (key: string) => string | null = getStrictScopedStorageItem): Stash {
+  const raw = read(PENDING_REDEMPTIONS_KEY);
+  if (!raw) return {};
+  const parsed: unknown = JSON.parse(raw);
+  if (!parsed || typeof parsed !== "object") {
+    throw new Error("Pending-redemption stash is unreadable");
+  }
+  return parsed as Stash;
+}
+
 function loadStash(): Stash {
   try {
-    const raw = getStrictScopedStorageItem(PENDING_REDEMPTIONS_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object") return {};
-    return parsed as Stash;
+    return loadStashStrict();
   } catch (e) {
     console.warn("[chama] pending-redemptions: loadStash failed:", e);
     return {};
@@ -294,6 +301,14 @@ export function markPendingRedemptionCredited(
 /** Snapshot of all current entries. For UI / debug / tests. */
 export function listPendingRedemptions(): PendingRedemption[] {
   return Object.values(loadStash());
+}
+
+/** Like listPendingRedemptions, but a stash that can't be read throws instead
+ *  of reading as empty, so Home says it couldn't check rather than "nothing". */
+export function listPendingRedemptionsStrict(): PendingRedemption[] {
+  const stash = loadStashStrict(readStrictScopedStorageItem);
+  if (Array.isArray(stash)) throw new Error("Pending-redemption stash is unreadable");
+  return Object.values(stash);
 }
 
 /** Remove every recovery record for an exact bearer note. This is only for
@@ -564,6 +579,18 @@ export function reopenBalanceReconciledCredit(escrowId: string): boolean {
   saveStash(stash);
   console.info(`[claim-trace] unresolved-credit reopened escrowId=${escrowId} reason=unconfirmed-export`);
   return true;
+}
+
+/** A claim the drain will still try by itself, and that no other Home card
+ *  (stranded claims, the payout card, the ecash export) already shows. Keep in
+ *  step with the skips in drainPendingRedemptions and listStrandedRedemptions. */
+export function isRetryingAutomatically(entry: PendingRedemption): boolean {
+  if (entry.escrowId === LEGACY_MANUAL_ECASH_EXPORT_ID) return false;
+  if (entry.resolvedAt || entry.creditedAt) return false;
+  if (entry.probeVerdict === "dead" || entry.probeVerdict === "consumed-uncredited") return false;
+  if (entry.unresolvedCredit || isConsumedCreditUnconfirmed(entry)) return false;
+  if (entry.lastError && entry.poisonedAt) return false;
+  return entry.attempts < MAX_DRAIN_ATTEMPTS && entry.amountMsats > 0;
 }
 
 /**

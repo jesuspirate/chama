@@ -33,25 +33,32 @@ export function scopedStorageKey(baseKey: string, scope = activeUserScope): stri
 export function getScopedStorageItem(baseKey: string): string | null {
   try {
     if (typeof localStorage === "undefined") return null;
-    const scope = getLocalStorageUserScope();
-    if (!scope) return localStorage.getItem(baseKey);
-
-    const scopedKey = scopedStorageKey(baseKey, scope);
-    const scoped = localStorage.getItem(scopedKey);
-    if (scoped !== null) {
-      localStorage.removeItem(baseKey);
-      return scoped;
-    }
-
-    const legacy = localStorage.getItem(baseKey);
-    if (legacy !== null) {
-      localStorage.setItem(scopedKey, legacy);
-      localStorage.removeItem(baseKey);
-    }
-    return legacy;
+    return readScopedStorageItem(baseKey);
   } catch {
     return null;
   }
+}
+
+/** getScopedStorageItem without the catch: a storage error throws, so a
+ *  caller can say it couldn't read instead of reading "nothing stored". */
+export function readScopedStorageItem(baseKey: string): string | null {
+  if (typeof localStorage === "undefined") throw new Error("This browser has no local storage to read.");
+  const scope = getLocalStorageUserScope();
+  if (!scope) return localStorage.getItem(baseKey);
+
+  const scopedKey = scopedStorageKey(baseKey, scope);
+  const scoped = localStorage.getItem(scopedKey);
+  if (scoped !== null) {
+    localStorage.removeItem(baseKey);
+    return scoped;
+  }
+
+  const legacy = localStorage.getItem(baseKey);
+  if (legacy !== null) {
+    localStorage.setItem(scopedKey, legacy);
+    localStorage.removeItem(baseKey);
+  }
+  return legacy;
 }
 
 /** Read only the active user's exact key. Unlike getScopedStorageItem this
@@ -67,6 +74,17 @@ export function getStrictScopedStorageItem(baseKey: string): string | null {
   } catch {
     return null;
   }
+}
+
+/** Like getStrictScopedStorageItem, but a storage error throws. Use where
+ *  "couldn't read" must never look like "nothing stored". */
+export function readStrictScopedStorageItem(baseKey: string): string | null {
+  if (typeof localStorage === "undefined") throw new Error("This browser has no local storage to read.");
+  const scope = getLocalStorageUserScope();
+  // Without a signed-in identity the only key left is the quarantined legacy
+  // one, which may belong to someone else. Not knowing is not "nothing".
+  if (!scope) throw new Error("Sign in to check what this device holds for you.");
+  return localStorage.getItem(scopedStorageKey(baseKey, scope));
 }
 
 /** Strict counterparts preserve any quarantined legacy key. */
