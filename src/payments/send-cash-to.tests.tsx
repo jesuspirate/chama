@@ -112,8 +112,10 @@ console.log('PASS after sats move: only the post-payment re-checks skip the paym
   const good = values.get(key)!;
   values.set(key, '[not json');
   assert.equal(getOnchainPaymentChoice('oc-1'), null, 'an unreadable store reads as "ask again", never as a choice');
-  assert.throws(() => saveOnchainPaymentChoice('oc-4', cash), 'a write never replaces choices it could not read');
-  assert.equal(values.get(key), '[not json');
+  // A store that no longer parses is kept aside, so funding isn't blocked forever.
+  saveOnchainPaymentChoice('oc-4', cash);
+  assert.equal(values.get(`${ONCHAIN_PAYMENT_CHOICE_STORAGE_KEY}_unreadable:send-cash-to-test`), '[not json');
+  assert.equal(getOnchainPaymentChoice('oc-4')?.handleId, cash.id);
   values.set(key, good);
 
   setLocalStorageUserScope(null);
@@ -167,8 +169,13 @@ console.log('PASS on-chain wiring: choose before the address, reveal at LOCK, ne
 
 {
   // 5. The cash card stays from the lock until the trade ends, on both views.
-  for (const status of [EscrowStatus.LOCKED, EscrowStatus.APPROVED, EscrowStatus.CLAIMED]) {
-    assert.equal(tradeCashDetailsVisible({ ...offer, status } as EscrowState), true, status);
+  const parties = { participants: { [Role.BUYER]: 'buyer-pk', [Role.SELLER]: 'seller-pk' } };
+  assert.equal(tradeCashDetailsVisible({ ...offer, status: EscrowStatus.LOCKED } as EscrowState), true);
+  for (const status of [EscrowStatus.APPROVED, EscrowStatus.CLAIMED]) {
+    // Released to the buyer: the cash is still owed, keep the card.
+    assert.equal(tradeCashDetailsVisible({ ...offer, ...parties, status, resolvedOutcome: 'release' } as unknown as EscrowState), true, status);
+    // Refunded to the seller: nobody should send cash now.
+    assert.equal(tradeCashDetailsVisible({ ...offer, ...parties, status, resolvedOutcome: 'refund' } as unknown as EscrowState), false, status);
   }
   for (const status of [EscrowStatus.CREATED, EscrowStatus.COMPLETED, EscrowStatus.EXPIRED, EscrowStatus.CANCELLED]) {
     assert.equal(tradeCashDetailsVisible({ ...offer, status } as EscrowState), false, status);
@@ -179,6 +186,9 @@ console.log('PASS on-chain wiring: choose before the address, reveal at LOCK, ne
     assert.doesNotMatch(src, /state\.status === EscrowStatus\.LOCKED && (myRole && )?(!?state\.lock\.handle|myRole === Role\.BUYER && needsTradePaymentDetails)/, `${screen}: no LOCKED-only cash card left`);
     assert.doesNotMatch(src, /CHAT_PAYMENT_CHOICE|paymentDetailsInChat: /, `${screen}: no chat choice reaches the lock`);
   }
+  // An older offer with no agreed methods still offers methods to add an address with.
+  const legacy = render(<TradePaymentDetailsChoice state={{ ...offer, paymentMethods: [], community: 'tanzania' } as unknown as EscrowState} value="" onChange={() => {}} />);
+  assert.match(legacy, /role="radio"/, 'the add form has methods to pick');
   const approved = { ...offer, status: EscrowStatus.APPROVED, lock: { handle: { id: 'h', value: '+255 700 333 444', rail: 'm-pesa', networks: [] } } } as unknown as EscrowState;
   assert.match(render(<BuyerPaymentDetails state={approved} />), /\+255 700 333 444/);
   for (const lang of ['en', 'es', 'fr', 'sw']) {
@@ -222,3 +232,18 @@ console.log('PASS posting: a new cash offer needs at least one payment method; M
     && join.indexOf('assertJoinPaymentMethods(seatState, role)') < join.indexOf('await requireRestorableEscrowKey(client)'), 'refused before anything is signed');
 }
 console.log('PASS matching: a cash offer without payment methods cannot be taken');
+
+{
+  // 8. Automatic renewals skip an older cash offer with no methods instead of
+  //    spending a cycle on a post that would be refused.
+  const { cashOfferMissingMethods } = await import('./trade-payment-details.js');
+  assert.equal(cashOfferMissingMethods({ category: 'p2p-trade', paymentMethods: [] }), true);
+  assert.equal(cashOfferMissingMethods({ category: 'p2p-trade', paymentMethods: ['m-pesa'] }), false);
+  assert.equal(cashOfferMissingMethods({ category: 'marketplace' }), false);
+  const app = read('../ui/App.tsx');
+  const renew = app.indexOf('if (cashOfferMissingMethods(l)) continue;');
+  assert(renew > 0 && renew < app.indexOf('bumpAutoRenewCount(listingIdentityKey(l));', renew), 'skipped before the renewal count is spent');
+  const repost = app.indexOf('if (source && cashOfferMissingMethods(source)) continue;');
+  assert(repost > 0 && repost < app.indexOf('cbpRepostedRef.current.add(cycleKey);', repost), 'skipped before the monthly cycle is spent');
+}
+console.log('PASS renewals: an older cash offer without methods is skipped, not silently spent');

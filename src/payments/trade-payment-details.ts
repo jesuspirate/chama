@@ -1,6 +1,7 @@
 import { EscrowStatus, Role, type EscrowState } from '../escrow-engine/types.js';
 import { getSavedHandle, listSavedHandles, type SavedHandle } from './saved-handles.js';
 import { toRailKey } from './rail-registry.js';
+import { getWinner } from '../escrow-engine/state-machine.js';
 
 export function needsTradePaymentDetails(state: EscrowState): boolean {
   return state.category === 'p2p-trade' || state.category === 'bill-pay' || state.category === 'lending';
@@ -9,7 +10,16 @@ export function needsTradePaymentDetails(state: EscrowState): boolean {
  *  not only while it waits for votes: an agreed or disputed trade still
  *  needs it. */
 export function tradeCashDetailsVisible(state: EscrowState): boolean {
-  return state.status === EscrowStatus.LOCKED || state.status === EscrowStatus.APPROVED || state.status === EscrowStatus.CLAIMED;
+  if (state.status === EscrowStatus.LOCKED) return true;
+  // Once decided, only a release to the buyer still needs the cash sent:
+  // after a refund nobody should send cash that can't come back.
+  return (state.status === EscrowStatus.APPROVED || state.status === EscrowStatus.CLAIMED)
+    && getWinner(state)?.role === Role.BUYER;
+}
+/** A cash offer that never said how the cash is paid (older listings). */
+export function cashOfferMissingMethods(state: Pick<EscrowState, 'category' | 'paymentMethods'>): boolean {
+  return needsTradePaymentDetails(state as EscrowState)
+    && !(state.paymentMethods ?? []).some(method => typeof method === 'string' && method.trim().length > 0);
 }
 /** Saved payment details the funder may lock with: one of the trade's agreed
  *  methods. A legacy listing that agreed no methods accepts any saved detail,
@@ -55,7 +65,6 @@ export function assertCreatePaymentMethods(params: {
  *  taking its buyer seat is refused before anything is signed, so nobody
  *  enters a trade that never said how the cash is paid. */
 export function assertJoinPaymentMethods(state: EscrowState | undefined | null, role: Role): void {
-  if (!state || role !== Role.BUYER || !needsTradePaymentDetails(state)) return;
-  if ((state.paymentMethods ?? []).some(method => typeof method === 'string' && method.trim().length > 0)) return;
+  if (!state || role !== Role.BUYER || !cashOfferMissingMethods(state)) return;
   throw Object.assign(new Error('This offer doesn’t say how the cash is paid, so it can’t be taken. Ask the seller to post it again with payment methods.'), { code: 'PAYMENT_METHODS_REQUIRED' });
 }

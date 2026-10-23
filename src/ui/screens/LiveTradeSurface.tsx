@@ -370,7 +370,7 @@ export function LiveTradeSurface({
         );
         // Fiat trades reveal the locker's payment details inside the LOCK
         // Payment details ride in the existing private LOCK envelope. Confirm
-        // a matching saved handle, add one here, or explicitly choose chat.
+        // a matching saved handle or add one here; chat is not a choice.
         return (
           <Decision
             q={tr("lts.lockQ", { amount: amountLabel })}

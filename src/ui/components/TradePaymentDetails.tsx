@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react';
 import type { EscrowState } from '../../escrow-engine/types.js';
 import { matchingTradeHandles } from '../../payments/trade-payment-details.js';
 import { addSavedHandle } from '../../payments/saved-handles.js';
-import { railLabel, railEntryName } from '../../payments/rail-registry.js';
+import { railLabel, railEntryName, railsForCommunity } from '../../payments/rail-registry.js';
 import { useT } from '../../i18n/index.js';
 import { T, inputStyle } from '../theme.js';
 import { PaymentButton } from './PaymentCard.js';
@@ -18,7 +18,10 @@ export function TradePaymentDetailsChoice({ state, value, onChange }: {
   state: EscrowState; value: string; onChange: (value: string) => void;
 }) {
   const { t } = useT();
-  const methods = state.paymentMethods ?? [];
+  // An older offer that agreed no methods still needs a real address: offer
+  // the community's usual methods so the add form can't dead-end.
+  const agreed = (state.paymentMethods ?? []).filter(key => key.trim().length > 0);
+  const methods = agreed.length > 0 ? agreed : railsForCommunity(state.community).slice(0, 8).map(rail => rail.key);
   const [rail, setRail] = useState(methods[0] ?? '');
   const [handle, setHandle] = useState('');
   const [picking, setPicking] = useState(false);

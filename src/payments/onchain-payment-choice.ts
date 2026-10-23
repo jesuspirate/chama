@@ -39,8 +39,7 @@ function isChoice(value: unknown): value is OnchainPaymentChoice {
     && typeof v.chosenAt === 'number';
 }
 
-/** Throws when the store can't be read: a write must never replace choices
- *  it could not see. */
+/** Throws when the store can't be read or parsed. */
 function readAll(): Record<string, OnchainPaymentChoice> {
   const raw = readStrictScopedStorageItem(ONCHAIN_PAYMENT_CHOICE_STORAGE_KEY);
   if (!raw) return {};
@@ -70,7 +69,17 @@ export function saveOnchainPaymentChoice(escrowId: string, saved: SavedHandle, n
     chosenAt: now,
   };
   if (!isChoice(choice)) throw new Error('These payment details are empty. Choose others before funding. No sats moved.');
-  const all = readAll();
+  let all: Record<string, OnchainPaymentChoice>;
+  try { all = readAll(); }
+  catch (error) {
+    // A store that no longer parses only held earlier choices, never money.
+    // Keep its text aside and start again rather than block funding forever;
+    // a store the browser can't read at all still throws.
+    const raw = readStrictScopedStorageItem(ONCHAIN_PAYMENT_CHOICE_STORAGE_KEY);
+    if (raw === null) throw error;
+    setStrictScopedStorageItem(`${ONCHAIN_PAYMENT_CHOICE_STORAGE_KEY}_unreadable`, raw);
+    all = {};
+  }
   all[escrowId] = choice;
   setStrictScopedStorageItem(ONCHAIN_PAYMENT_CHOICE_STORAGE_KEY, JSON.stringify(all));
   const back = getOnchainPaymentChoice(escrowId);
