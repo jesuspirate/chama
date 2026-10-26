@@ -154,6 +154,10 @@ function deserializeBond(s: SerializedBond): VerifiedBond | null {
   }
 }
 
+function cachedBondKey(bond: { npub: string; address: string }): string {
+  return `${bond.npub.toLowerCase()}|${bond.address}`;
+}
+
 /**
  * Record a successful chain-verified fetch. An EMPTY result is never
  * written: empty is indistinguishable from a relay flap, and must not
@@ -168,19 +172,24 @@ export function writeCachedCommunityBonds(
   if (!community || bonds.length === 0) return;
   const store = loadCache();
   // A relay or explorer can return only part of the roster. A new verification
-  // replaces that arbiter's older proof (including a verified spent/expired
+  // replaces that bond's older proof (including a verified spent/expired
   // result); absence from a partial read is not evidence that a bond vanished.
+  //
+  // One entry per BOND, not per arbiter. An arbiter may hold several bonds (a
+  // second deposit at a new lock height); keying by npub kept only the last
+  // one written, the oldest announcement, so a 99k top-up vanished from every
+  // cache-served read, CREATE's capacity check included.
   const prior = store[community];
-  const byArbiter = new Map<string, SerializedBond>();
+  const byBond = new Map<string, SerializedBond>();
   for (const old of Array.isArray(prior?.bonds) ? prior.bonds : []) {
-    if (deserializeBond(old)) byArbiter.set(old.npub.toLowerCase(), {
+    if (deserializeBond(old)) byBond.set(cachedBondKey(old), {
       ...old, verifiedAt: old.verifiedAt ?? prior.verifiedAt,
     });
   }
-  for (const bond of bonds) byArbiter.set(bond.npub.toLowerCase(), {
+  for (const bond of bonds) byBond.set(cachedBondKey(bond), {
     ...serializeBond(bond), verifiedAt: nowMs,
   });
-  store[community] = { verifiedAt: nowMs, bonds: [...byArbiter.values()] };
+  store[community] = { verifiedAt: nowMs, bonds: [...byBond.values()] };
   saveCache(store);
 }
 

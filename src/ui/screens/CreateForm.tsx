@@ -64,10 +64,11 @@ import {
 import { defaultCurrencyForCommunity } from "../../communities/currency.js";
 import { getTrustedArbiterPool } from "../../arbiters/pool.js";
 import { ARBITER_FAULT_READS_ENABLED } from "../../arbiters/arbiter-fault.js";
-import { defaultEsploraBase, esploraFetcher } from "../../bond-multisig/fund-watcher.js";
 import { readNostrProfileCache } from "../nostr-profiles.js";
-import { MAINNET, SIGNET } from "../../bond-multisig/multisig.js";
-import { tradesWithUnspentExposure, assignableBondedArbiters, getOpenBondedTrades, sumOpenExposure } from "../../arbiters/exposure.js";
+import { assignableBondedArbiters, getOpenBondedTrades, largestOnchainCoverSats } from "../../arbiters/exposure.js";
+import { declaresArbiterRole } from "../../arbiters/live-chama.js";
+import { suggestedEscrowMode, useOnchainCover, readUnspentExposure, type OnchainCover } from "../onchain-cover.js";
+import { OnchainCoverLine } from "../components/OnchainCoverLine.js";
 import { sellerIsBonded, resolveListingTenure } from "../../escrow-engine/listing-renewal.js";
 import type { VerifiedBond } from "../../bond-multisig/bond-announcement.js";
 import { type ArbiterWarning, displayCounterpartyName, resolveCreateMintUrl } from "../decisions.js";
@@ -595,6 +596,14 @@ function effectiveListingSats(form: FormState, vertical: Vertical): number {
   return form.isSubscription
     ? baseSats * parseWholeSats(form.periods)
     : baseSats;
+}
+
+/** What an on-chain arbiter must cover: the lock amount, or for a menu the
+ *  largest order a buyer can choose. Shared by Publish and the amount hint. */
+function onchainCoverageMsats(menuItems: MenuItem[], amountMsats: number): number {
+  return menuItems.length > 0
+    ? menuItems.reduce((sum, item) => sum + (item.maxAmountMsats ?? item.amountMsats) * (item.maxQuantity ?? 1), 0)
+    : amountMsats;
 }
 
 function hasDraftContent(form: FormState): boolean {
@@ -1241,6 +1250,9 @@ export function CreateForm({
   const [autoMode, setAutoMode] = useState<boolean>(() => !!initialCanvasIntent?.autoPublish);
   const autoFiredRef = useRef(false);
   const [publishError, setPublishError] = useState<string | null>(null);
+  // The refusal was "no arbiter can cover this on-chain". Retrying the same
+  // publish cannot help, so the error card offers ecash or a new amount.
+  const [coverRefused, setCoverRefused] = useState(false);
   const [arbiterDismissed, setArbiterDismissed] = useState(false);
   const [drafts, setDrafts] = useState<SavedDraft[]>(() => readAllDrafts());
   const [showAllDrafts, setShowAllDrafts] = useState(false);
@@ -1279,6 +1291,8 @@ export function CreateForm({
     community: string;
     bonds: VerifiedBond[];
     bondsReady: boolean;
+    /** The live bond read failed; `bonds` is then an empty stand-in. */
+    bondsFailed?: boolean;
     faultExcluded: string[];
   } | null>(null);
   useEffect(() => {
@@ -1290,11 +1304,13 @@ export function CreateForm({
     let cancelled = false;
     void (async () => {
       let bonds: VerifiedBond[] = [];
+      let bondsFailed = false;
       try {
         bonds = await fetchCommunityBonds(effectiveCommunity, { allowCachedFallback: false });
       } catch {
         // Fail open to the established community pool. Publish must never wait
         // again on a failed advisory refresh for an ordinary ecash listing.
+        bondsFailed = true;
       }
       if (cancelled) return;
       setStoreBonded(sellerIsBonded(bonds, userPubkey));
@@ -1302,6 +1318,7 @@ export function CreateForm({
         community: effectiveCommunity,
         bonds,
         bondsReady: true,
+        bondsFailed,
         faultExcluded: [],
       });
 
@@ -1326,6 +1343,7 @@ export function CreateForm({
             community: effectiveCommunity,
             bonds,
             bondsReady: true,
+            bondsFailed,
             faultExcluded,
           });
         }
@@ -1336,6 +1354,17 @@ export function CreateForm({
     return () => { cancelled = true; };
   }, [effectiveCommunity, userPubkey]);
   const storeTenure = resolveListingTenure({ bonded: storeBonded });
+  // The largest on-chain trade this chama's arbiters can cover, shown while
+  // the amount is typed. Same bonds, exposure read and rule as Publish.
+  const onchainCover = useOnchainCover({
+    bonds: !fetchCommunityBonds || !userPubkey
+      ? undefined // nothing to read with: show nothing rather than guess
+      : trustSnapshot?.community === effectiveCommunity
+        ? (trustSnapshot.bondsFailed ? null : trustSnapshot.bonds)
+        : undefined,
+    allTrades,
+    viewerPubkey: userPubkey,
+  });
 
   // Auto-save draft on field change (silent, debounced via the form
   // state's natural batching). Cleared on successful publish.
@@ -1354,6 +1383,7 @@ export function CreateForm({
 
   const handlePublish = async (): Promise<"published" | "invalid" | "error"> => {
     setPublishError(null);
+    setCoverRefused(false);
     let menuItems = normalizeMenuItems(form, vertical);
     const hasMenu = menuItems.length > 0;
     const description = buildListingDescription(form, vertical, menuItems);
@@ -1465,18 +1495,15 @@ export function CreateForm({
           bonds = await fetchCommunityBonds(effectiveCommunity, { allowCachedFallback: false });
         } catch { /* the explicit no-capable-arbiter blocker below owns copy */ }
       }
-      const activeBonds = bonds.filter(b => b.funded && b.active);
+      // A storefront-only bond is not a licence to judge: its owner can't be
+      // seated, and an on-chain deposit can't name its key (fundingTermsError).
+      const activeBonds = bonds.filter(b => b.funded && b.active && declaresArbiterRole(b));
       // A range's address is amount-independent, but its arbiter must cover
       // the largest order a buyer can actually choose, not the listing floor.
-      const coverageMsats = wantsOnchain && hasMenu
-        ? menuItems.reduce((sum, item) => sum + (item.maxAmountMsats ?? item.amountMsats) * (item.maxQuantity ?? 1), 0)
-        : amountMsats;
+      const coverageMsats = wantsOnchain ? onchainCoverageMsats(menuItems, amountMsats) : amountMsats;
       // A relay COMPLETE or pre-signed refund is not proof of an outspend.
       // Failed chain reads retain exposure until a later successful read.
-      const exposureTrades = await tradesWithUnspentExposure(allTrades, async deposit => {
-        const network = deposit.network === "signet" ? SIGNET : MAINNET;
-        return esploraFetcher(defaultEsploraBase(network), { network })(`/tx/${deposit.fundingTxid}/outspend/${deposit.fundingVout}`);
-      });
+      const exposureTrades = await readUnspentExposure(allTrades);
       bondedPool = assignableBondedArbiters({ bonds: activeBonds, tradeMsats: coverageMsats, allTrades: exposureTrades });
       const keyed = new Set(
         activeBonds.filter((b) => !!b.ownerXonly).map((b) => b.npub.toLowerCase()),
@@ -1508,18 +1535,22 @@ export function CreateForm({
       // Refuse rather than publish a dead listing. The seller finds out here,
       // in one sentence, instead of after a buyer has reserved it.
       if (wantsOnchain && communityArbiters.length === 0) {
-        const largest = activeBonds
-          .filter(b => b.ownerXonly && b.npub.toLowerCase() !== (userPubkey ?? "").toLowerCase())
-          .reduce((max, b) => {
-            const freeMsats = Number(b.actualSats) * 1000 - sumOpenExposure(getOpenBondedTrades(b.npub, exposureTrades));
-            return Math.max(max, Math.floor(Math.max(0, freeMsats) / 1000));
-          }, 0);
-        const covering = activeBonds.filter(b => b.ownerXonly && b.npub.toLowerCase() !== (userPubkey ?? "").toLowerCase()).flatMap(b => {
-          const trades = getOpenBondedTrades(b.npub, exposureTrades);
+        const keyedBonds = activeBonds.filter(b => keyed.has(b.npub.toLowerCase()));
+        const largest = largestOnchainCoverSats({ bonds: keyedBonds, allTrades: exposureTrades, excludePubkey: userPubkey });
+        const coveringArbiters = [...new Set(keyedBonds.map(b => b.npub.toLowerCase()))]
+          .filter(npub => npub !== (userPubkey ?? "").toLowerCase());
+        const covering = coveringArbiters.flatMap(npub => {
+          const trades = getOpenBondedTrades(npub, exposureTrades);
           if (!trades.length) return [];
-          const name = displayCounterpartyName({ npub: b.npub, fetchKind0Enabled: true, kind0Name: readNostrProfileCache(userPubkey)[b.npub] ?? null });
-          return [`${name}'s bond is covering: ${trades.map(trade => `${Math.floor(trade.amountMsats / 1000).toLocaleString()} sats (trade …${trade.id.slice(-6)}, ${trade.status.toLowerCase()})`).join(", ")}.`];
+          const name = displayCounterpartyName({ npub, fetchKind0Enabled: true, kind0Name: readNostrProfileCache(userPubkey)[npub] ?? null });
+          return [t("onchain.bondCovering", {
+            name,
+            trades: trades.map(trade => t("onchain.bondCoveringTrade", {
+              amount: Math.floor(trade.amountMsats / 1000).toLocaleString(), id: trade.id.slice(-6),
+            })).join(", "),
+          })];
         });
+        setCoverRefused(true);
         setPublishError([t("onchain.noCapableArbiter", { amount: largest.toLocaleString() }), ...covering].join(" "));
         setSubmitting(false);
         return "error";
@@ -1665,12 +1696,21 @@ export function CreateForm({
     return (
       <div style={{ padding: 28, maxWidth: 480, margin: "0 auto" }}>
         <div style={{ color: T.red, fontWeight: 700, marginBottom: 16, lineHeight: 1.4 }}>{publishError}</div>
+        {coverRefused ? (
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <button onClick={() => { setForm(f => ({ ...f, escrowMode: "ecash" })); setAutoMode(false); setPublishError(null); setCoverRefused(false); setStep(3); }}
+            style={{ padding: "10px 16px", borderRadius: 999, border: 0, background: T.accent, color: T.bg, fontWeight: 800, cursor: "pointer" }}>{t("create.coverUseEcash")}</button>
+          <button onClick={() => { setAutoMode(false); setPublishError(null); setCoverRefused(false); setStep(2); }}
+            style={{ padding: "10px 16px", borderRadius: 999, border: `1px solid ${T.border}`, background: "transparent", color: T.text, cursor: "pointer" }}>{t("create.coverChangeAmount")}</button>
+        </div>
+        ) : (
         <div style={{ display: "flex", gap: 10 }}>
           <button onClick={() => { autoFiredRef.current = false; setPublishError(null); void handlePublish(); }}
             style={{ padding: "10px 16px", borderRadius: 999, border: 0, background: T.accent, color: T.bg, fontWeight: 800, cursor: "pointer" }}>{t("common.retry")}</button>
           <button onClick={() => { setAutoMode(false); setPublishError(null); }}
             style={{ padding: "10px 16px", borderRadius: 999, border: `1px solid ${T.border}`, background: "transparent", color: T.text, cursor: "pointer" }}>{t("create.reviewManually")}</button>
         </div>
+        )}
       </div>
     );
   }
@@ -1731,8 +1771,21 @@ export function CreateForm({
           emphasizeStock={!!initialCanvasIntent && vertical === "marketplace"}
           emphasizePremium={!!initialCanvasIntent?.emphasizePremium && (vertical === "p2p-trade" || vertical === "bill-pay")}
           emphasizePaymentMethods={!!initialCanvasIntent?.emphasizePaymentMethods && categoryUsesPaymentRails(vertical)}
+          onchainCover={onchainCover}
           onBack={() => setStep(1)}
-          onNext={() => setStep(3)}
+          onNext={() => {
+            // Pin a steered rail so Publish uses exactly what step 2 showed,
+            // even if the cover read changes before the tap. Who holds the
+            // sats must never switch behind the person's back.
+            if (!form.escrowMode) {
+              const sats = effectiveListingSats(form, vertical);
+              const steered = suggestedEscrowMode(sats, Math.floor(onchainCoverageMsats(normalizeMenuItems(form, vertical), sats * 1000) / 1000), onchainCover);
+              if (steered !== defaultEscrowModeForAmount(BigInt(Math.max(0, Math.floor(sats))))) {
+                setForm(f => f.escrowMode ? f : { ...f, escrowMode: steered });
+              }
+            }
+            setStep(3);
+          }}
         />
       )}
 
@@ -2263,6 +2316,7 @@ function Step2({
   emphasizeStock,
   emphasizePremium,
   emphasizePaymentMethods,
+  onchainCover = { status: "loading" },
   onBack, onNext,
 }: {
   vertical: Vertical;
@@ -2275,6 +2329,7 @@ function Step2({
   emphasizeStock?: boolean;
   emphasizePremium?: boolean;
   emphasizePaymentMethods?: boolean;
+  onchainCover?: OnchainCover;
   onBack: () => void;
   onNext: () => void;
 }) {
@@ -2318,6 +2373,8 @@ function Step2({
   };
   const partialMenuRows = hasPartialMenuRows(form, vertical);
   const totalSats = effectiveListingSats(form, vertical);
+  const coverageSats = Math.floor(onchainCoverageMsats(menuItems, totalSats * 1000) / 1000);
+  const shownEscrowMode = form.escrowMode ?? suggestedEscrowMode(totalSats, coverageSats, onchainCover);
   const amountTooSmall =
     !isSimModeOn() &&
     !isTestnetMode() &&
@@ -2800,7 +2857,7 @@ function Step2({
               { id: "ecash", label: t("onchain.modeEcash"), body: t("onchain.modeEcashBody"), icon: "⚡" },
               { id: "onchain", label: t("onchain.modeOnchain"), body: t("onchain.modeOnchainBody"), icon: "⛓" },
             ] as const).map((opt) => {
-              const on = (form.escrowMode ?? defaultEscrowModeForAmount(BigInt(Math.max(0, Math.floor(totalSats))))) === opt.id;
+              const on = shownEscrowMode === opt.id;
               return (
                 <button
                   key={opt.id}
@@ -2836,7 +2893,8 @@ function Step2({
               );
             })}
           </div>
-          {(form.escrowMode ?? defaultEscrowModeForAmount(BigInt(Math.max(0, Math.floor(totalSats))))) === "onchain"
+          <OnchainCoverLine cover={onchainCover} coverageSats={coverageSats} />
+          {shownEscrowMode === "onchain"
             && <OnchainFeeCheckout amountSats={totalSats} rate={onchainFee.rate} />}
         </div>
       )}

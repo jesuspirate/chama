@@ -1,6 +1,8 @@
 // fr/create — Session B fills this from src/i18n/en/create.ts (key set must match EXACTLY).
 export const create: Record<string, string> = {
   "create.reviewManually": "Vérifier vous-même",
+  "create.coverUseEcash": "Utiliser ecash",
+  "create.coverChangeAmount": "Changer le montant",
   "create.publishingSub": "Votre offre va être publiée. Patientez un instant.",
   "create.publishingTitle": "Publication en cours",
   "create.billHealthSha": "Santé — SHA/SHIF",
