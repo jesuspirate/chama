@@ -82,7 +82,7 @@ export const fund: Record<string, string> = {
   "fund.askingWalletBefore": "Asking your wallet to pay",
   "fund.autoPayArrow": "Auto-pay →",
   "fund.autoPayWithNwc": "Auto-pay with NWC",
-  "fund.backToInvoice": "← Back to invoice",
+  "fund.backToInvoice": "Back to invoice",
   "fund.balanceUpdatedClosing": "Balance updated · closing…",
   "fund.bestForAlmostEveryone": "Best for almost everyone. Usually settles in seconds.",
   "fund.browserLightningBlockedTitle": "Browser Lightning paused",

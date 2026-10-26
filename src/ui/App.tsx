@@ -284,6 +284,7 @@ import {
   writeAmountDisplayMode,
   type AmountDisplayMode,
 } from "./amount-display.js";
+import { BackButton } from "./components/BackButton.js";
 
 const QRScanner = lazy(() => import("./QRScanner.js"));
 
@@ -4329,7 +4330,7 @@ export default function App() {
             await refreshCircle(selected.id);
           }}
           onNextRound={circle => { setCircleInitial(nextRoundTemplate(circle, { circleId: "", startSec: Math.floor(Date.now() / 1000) })); setView("circle-create"); }} />
-        : <div style={{ padding: 30 }}><button onClick={() => { ++circleRouteRequest.current; setView(detailBackView); }}>‹ {t("common.back")}</button><p role="status">{circleLoadError ?? t("circle.loading")}</p>
+        : <div style={{ padding: 30 }}><BackButton onClick={() => { ++circleRouteRequest.current; setView(detailBackView); }} label={t("common.back")} /><p role="status">{circleLoadError ?? t("circle.loading")}</p>
           {circleLoadError && selectedId && <button onClick={() => {
             setCircleLoadError(null);
             void refreshCircle(selectedId).catch(error => setCircleLoadError(error.message));

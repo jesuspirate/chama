@@ -52,6 +52,7 @@ import { railLabel, getRailByKey } from "../../payments/rail-registry.js";
 import { VerticalIcon } from "../components/VerticalIcon.js";
 import { isParentStorefront, isChildOrder, isMultiUnitListing } from "../../escrow-engine/storefront.js";
 import { OrderMismatchBanner } from "../components/OrderMismatchBanner.js";
+import { BackButton } from "../components/BackButton.js";
 
 // Render-time translation (same pattern as decisions.ts): picked up per render,
 // so a language switch re-reads the live language without prop threading.
@@ -800,7 +801,7 @@ export function LiveTradeSurface({
   );
   if (requiresDepositCheck && (state.lock.onchain || state.onchainRefundClaimed) && verifiedDeposit !== depositIdentity) return (
     <div style={{ padding: 24 }}>
-      <button onClick={onBack}>{backLabel ?? "Back"}</button>
+      <BackButton onClick={onBack} label={backLabel ?? tr("lts.back")} />
       {historyReloading && <p role="status">Refreshing this trade's history…</p>}
       <ReplayNotes notes={state.replayNotes} />
       <p role="status">Checking the deposit on the blockchain…</p>
@@ -921,19 +922,8 @@ export function LiveTradeSurface({
         display: "flex", alignItems: "center", gap: 8, padding: "4px 12px 4px 4px",
         borderBottom: `1px solid ${T.line}`, background: T.bg, minHeight: 56,
       }}>
-        <button
-          type="button"
-          onClick={onBack}
-          aria-label={tr("lts.back")}
-          style={{
-            display: "inline-flex", alignItems: "center", gap: 2, minHeight: T.size.touch, padding: "0 8px 0 4px",
-            background: "none", border: "none", color: T.ink, fontFamily: T.sans, fontSize: T.fs.body,
-            cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0,
-          }}
-        >
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg>
-          {backLabel ?? tr("lts.backTrades")}
-        </button>
+        <BackButton onClick={onBack} aria-label={tr("lts.back")} label={backLabel ?? tr("lts.backTrades")}
+          style={{ flexShrink: 0, marginLeft: 8 }} />
         <div
           title={catLabel}
           aria-label={catLabel}
