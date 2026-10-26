@@ -280,6 +280,11 @@ export interface CapacityBond {
   actualSats: bigint;
   address?: string;
   tenureDays?: number | null;
+  /** Funding txid, and the renewal ancestry the announcement claims. A bond
+   *  that another bond of the same arbiter names as its ancestor is the same
+   *  sats moved forward, so it never counts beside its successor. */
+  fundingTxid?: string;
+  lineage?: { hops: readonly { fromTxid: string }[] };
 }
 
 /** Each arbiter's TOTAL bond capacity in msats, in first-seen order. An
@@ -292,9 +297,15 @@ export function arbiterBondCapacities(
 ): Map<string, number> {
   const out = new Map<string, number>();
   const seenBonds = new Set<string>();
+  const renewed = new Set<string>();
+  for (const b of bonds) {
+    const npub = normPk(b.npub);
+    for (const hop of b.lineage?.hops ?? []) if (npub && hop?.fromTxid) renewed.add(`${npub}|${hop.fromTxid.toLowerCase()}`);
+  }
   bonds.forEach((b, index) => {
     const npub = normPk(b.npub);
     if (!npub) return;
+    if (b.fundingTxid && renewed.has(`${npub}|${b.fundingTxid.toLowerCase()}`)) return;
     const bondKey = `${npub}|${b.address ?? `#${index}`}`;
     if (seenBonds.has(bondKey)) return;
     seenBonds.add(bondKey);

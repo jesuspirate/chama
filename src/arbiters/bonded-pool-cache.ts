@@ -179,9 +179,17 @@ export function writeCachedCommunityBonds(
   // second deposit at a new lock height); keying by npub kept only the last
   // one written, the oldest announcement, so a 99k top-up vanished from every
   // cache-served read, CREATE's capacity check included.
+  //
+  // But a fresh read that names an arbiter is that arbiter's whole current
+  // set: their older entries are dropped, never kept beside it. Otherwise a
+  // renewed or reclaimed-and-relocked bond would count with its successor and
+  // the same sats twice (second review B1). Only an arbiter MISSING from this
+  // read keeps their last proof.
   const prior = store[community];
+  const freshArbiters = new Set(bonds.map(bond => bond.npub.toLowerCase()));
   const byBond = new Map<string, SerializedBond>();
   for (const old of Array.isArray(prior?.bonds) ? prior.bonds : []) {
+    if (typeof old?.npub === "string" && freshArbiters.has(old.npub.toLowerCase())) continue;
     if (deserializeBond(old)) byBond.set(cachedBondKey(old), {
       ...old, verifiedAt: old.verifiedAt ?? prior.verifiedAt,
     });

@@ -67,7 +67,7 @@ import { ARBITER_FAULT_READS_ENABLED } from "../../arbiters/arbiter-fault.js";
 import { readNostrProfileCache } from "../nostr-profiles.js";
 import { assignableBondedArbiters, getOpenBondedTrades, largestOnchainCoverSats } from "../../arbiters/exposure.js";
 import { declaresArbiterRole } from "../../arbiters/live-chama.js";
-import { suggestedEscrowMode, useOnchainCover, readUnspentExposure, type OnchainCover } from "../onchain-cover.js";
+import { pinnedEscrowModeOnNext, readBondTipHeight, seatableOnchainBonds, suggestedEscrowMode, useOnchainCover, readUnspentExposure, type OnchainCover } from "../onchain-cover.js";
 import { OnchainCoverLine } from "../components/OnchainCoverLine.js";
 import { sellerIsBonded, resolveListingTenure } from "../../escrow-engine/listing-renewal.js";
 import type { VerifiedBond } from "../../bond-multisig/bond-announcement.js";
@@ -1504,11 +1504,22 @@ export function CreateForm({
       // A relay COMPLETE or pre-signed refund is not proof of an outspend.
       // Failed chain reads retain exposure until a later successful read.
       const exposureTrades = await readUnspentExposure(allTrades);
+      // Bonds count only while they stay locked past the trade's refund window,
+      // measured from Bitcoin's height now. Unreadable height: no on-chain.
+      const bondTip = wantsOnchain ? await readBondTipHeight() : null;
+      if (wantsOnchain && bondTip === null) {
+        setPublishError(t("onchain.coverUncheckedPublish"));
+        setSubmitting(false);
+        return "error";
+      }
       bondedPool = assignableBondedArbiters({ bonds: activeBonds, tradeMsats: coverageMsats, allTrades: exposureTrades });
-      const keyed = new Set(
-        activeBonds.filter((b) => !!b.ownerXonly).map((b) => b.npub.toLowerCase()),
-      );
-      onchainCapableArbiters = bondedPool.filter((pk) => keyed.has(pk.toLowerCase()) && pk.toLowerCase() !== (userPubkey ?? "").toLowerCase());
+      // On-chain counts only bonds that carry an escrow key, through the same
+      // predicate as the amount hint, so the two can never disagree.
+      const keyedBonds = seatableOnchainBonds(activeBonds, bondTip);
+      onchainCapableArbiters = wantsOnchain
+        ? assignableBondedArbiters({ bonds: keyedBonds, tradeMsats: coverageMsats, allTrades: exposureTrades })
+          .filter((pk) => pk.toLowerCase() !== (userPubkey ?? "").toLowerCase())
+        : [];
       // Fault-attested arbiters (kind 38136) lose the seat — but only as a
       // PREFERENCE. getTrustedArbiterPool drops the soft exclusion entirely if
       // honouring it would leave nobody assignable, so an attestation can
@@ -1535,7 +1546,6 @@ export function CreateForm({
       // Refuse rather than publish a dead listing. The seller finds out here,
       // in one sentence, instead of after a buyer has reserved it.
       if (wantsOnchain && communityArbiters.length === 0) {
-        const keyedBonds = activeBonds.filter(b => keyed.has(b.npub.toLowerCase()));
         const largest = largestOnchainCoverSats({ bonds: keyedBonds, allTrades: exposureTrades, excludePubkey: userPubkey });
         const coveringArbiters = [...new Set(keyedBonds.map(b => b.npub.toLowerCase()))]
           .filter(npub => npub !== (userPubkey ?? "").toLowerCase());
@@ -1777,13 +1787,10 @@ export function CreateForm({
             // Pin a steered rail so Publish uses exactly what step 2 showed,
             // even if the cover read changes before the tap. Who holds the
             // sats must never switch behind the person's back.
-            if (!form.escrowMode) {
-              const sats = effectiveListingSats(form, vertical);
-              const steered = suggestedEscrowMode(sats, Math.floor(onchainCoverageMsats(normalizeMenuItems(form, vertical), sats * 1000) / 1000), onchainCover);
-              if (steered !== defaultEscrowModeForAmount(BigInt(Math.max(0, Math.floor(sats))))) {
-                setForm(f => f.escrowMode ? f : { ...f, escrowMode: steered });
-              }
-            }
+            const sats = effectiveListingSats(form, vertical);
+            const pin = pinnedEscrowModeOnNext(form.escrowMode, sats,
+              Math.floor(onchainCoverageMsats(normalizeMenuItems(form, vertical), sats * 1000) / 1000), onchainCover);
+            if (pin) setForm(f => f.escrowMode ? f : { ...f, escrowMode: pin });
             setStep(3);
           }}
         />
@@ -2906,7 +2913,7 @@ function Step2({
           once. That is stated in sats rather than as "1/4", because a fraction
           is not a loss a person can feel. */}
       {TRADE_SLICING_ENABLED
-        && (form.escrowMode ?? defaultEscrowModeForAmount(BigInt(Math.max(0, Math.floor(totalSats))))) === "ecash"
+        && shownEscrowMode === "ecash"
         && TRANCHEABLE_VERTICALS.has(vertical) && !usingMenu
         && trancheSplitAvailable(totalSats * 1000) && (() => {
         // Only offer counts whose slices clear MIN_TRANCHE_SATS. Splitting a
