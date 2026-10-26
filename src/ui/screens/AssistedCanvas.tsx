@@ -254,12 +254,12 @@ export function AssistedCanvas({
   const missingPaymentRails = collectsHandles
     ? effectiveRails.filter(key => !configuredRailKeys.has(toRailKey(key)))
     : [];
-  const savePaymentDetail = (railKey: string) => {
+  const savePaymentDetail = (railKey: string): boolean => {
     const value = paymentDetailDrafts[railKey]?.trim() ?? "";
     const rail = getRailByKey(railKey);
     if (!value) {
       setPaymentDetailError(tr("canvas.enterRailDetails", { rail: rail?.displayName ?? railKey }));
-      return;
+      return false;
     }
     try {
       addSavedHandle(toRailKey(railKey), value);
@@ -270,10 +270,17 @@ export function AssistedCanvas({
       });
       setPaymentDetailError(null);
       setSavedHandlesRevision(current => current + 1);
+      return true;
     } catch (cause) {
       setPaymentDetailError(cause instanceof Error ? cause.message : tr("canvas.detailsSaveFailed"));
+      return false;
     }
   };
+  // Jet (Oct 26): details typed here were lost unless Save was tapped, so the
+  // next offer asked again. Moving on now saves every detail typed; one that
+  // can't be saved stops here with its message. Empty boxes are left for
+  // later: funding still requires a real address before any sats move.
+  const saveTypedPaymentDetails = (): boolean => saveTypedDrafts(missingPaymentRails, paymentDetailDrafts, savePaymentDetail);
 
   const toggleRail = (key: string) => setPaymentRails(current => {
     const next = current.includes(key) ? current.filter(k => k !== key) : [...current, key];
@@ -718,7 +725,7 @@ export function AssistedCanvas({
         <RailGrid railChoices={railChoices} effectiveRails={effectiveRails} onToggle={toggleRail} ariaLabel={tr("canvas.railsAria")} />
         <div className="assisted-rail-help">{effectiveRails.length > 0 ? tr("canvas.nSelected", { count: effectiveRails.length }) : tr("canvas.selectAtLeastOneAccept")}</div>
         {effectiveRails.length > 0 && renderHandleNudge()}
-        <Primary disabled={effectiveRails.length === 0} onClick={() => setSurface("premium")}>{tr("canvas.continue")}</Primary>
+        <Primary disabled={effectiveRails.length === 0} onClick={() => { if (saveTypedPaymentDetails()) setSurface("premium"); }}>{tr("canvas.continue")}</Primary>
       </QuestionCard>
     </CanvasShell>;
   }
@@ -939,7 +946,7 @@ export function AssistedCanvas({
         ) : (
           <div style={amountLineStyle()}><input autoFocus inputMode="numeric" value={terms} onChange={event => setTerms(digitsOnly(event.target.value))} placeholder="50,000" style={bareInputStyle()} /><span>SATS</span></div>
         )}
-        <Primary disabled={!termsValid || matching} onClick={() => void finishRoute()}>{matching ? <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><ChamaLoader size={20} />{tr("canvas.checkingOffersBtn")}</span> : termsConfig.action}</Primary>
+        <Primary disabled={!termsValid || matching} onClick={() => { if (saveTypedPaymentDetails()) void finishRoute(); }}>{matching ? <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><ChamaLoader size={20} />{tr("canvas.checkingOffersBtn")}</span> : termsConfig.action}</Primary>
       </QuestionCard>
       {error && <ErrorBox>{error}</ErrorBox>}
     </CanvasShell>;
@@ -1120,6 +1127,13 @@ export const CanvasAllListings = createContext<(() => void) | null>(null);
  *  its own line under the chip. */
 type BackAction = { run: () => void };
 const CanvasBackSlot = createContext<((back: BackAction | null) => void) | null>(null);
+
+/** Save every payment detail that was typed but not saved yet, in order.
+ *  Empty boxes are skipped; the first one that can't be saved stops the
+ *  step (its message shows) and the rest stay as typed. */
+export function saveTypedDrafts(keys: readonly string[], drafts: Readonly<Record<string, string>>, save: (key: string) => boolean): boolean {
+  return keys.filter(key => (drafts[key]?.trim() ?? "").length > 0).every(key => save(key));
+}
 
 export function CanvasTopRow({ onBack, chip }: { onBack?: (() => void) | null; chip?: ReactNode }) {
   if (!onBack && !chip) return null;
