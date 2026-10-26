@@ -37,4 +37,16 @@ const { addSavedHandle, listSavedHandles } = await import("../payments/saved-han
   assert.match(canvas, /onClick=\{\(\) => \{ if \(saveTypedPaymentDetails\(\)\) void finishRoute\(\); \}\}>/, "Exchange: Prepare my offer");
   assert.doesNotMatch(canvas, /onClick=\{\(\) => void finishRoute\(\)\}/, "no way past the step that skips saving");
 }
-console.log("PASS canvas payment details: moving on saves what was typed, stops on one that can't be saved");
+{
+  // Jet (Oct 26): a claim address that returned an invoice is kept before the
+  // payout runs, so a failed or timed-out claim doesn't lose it.
+  const modal = readFileSync(new URL("./panels/ClaimPayoutModal.tsx", import.meta.url), "utf8");
+  const resolve = modal.slice(modal.indexOf("const resolveDestination = "), modal.indexOf("void dispatchClaim(lastDispatchRef.current);\n  };"));
+  assert.match(resolve, /if \(opts\.saveAfter && opts\.addressUsed\) \{\n\s+try \{ addOrTouchPayoutDestination\(opts\.addressUsed\); \} catch \{\}/, "saved before the claim is dispatched");
+  const { addOrTouchPayoutDestination, listPayoutDestinations } = await import("../payments/payout-destinations.js");
+  const { isStrikeLightningAddress, strikeUsernameFromAddress } = await import("../payments/strike-offramp.js");
+  addOrTouchPayoutDestination("Jet@strike.me");
+  const strike = listPayoutDestinations().find(d => isStrikeLightningAddress(d.address));
+  assert.equal(strike && strikeUsernameFromAddress(strike.address), "jet", "the next Strike claim is pre-filled");
+}
+console.log("PASS saved details: canvas moving on saves what was typed, stops on one that can't be saved; claim addresses kept before payout");
