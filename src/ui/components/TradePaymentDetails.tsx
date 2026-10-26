@@ -72,10 +72,14 @@ export function BuyerPaymentDetails({ state }: { state: EscrowState }) {
   const { t } = useT();
   return <div data-buyer-payment-details style={{ display: 'grid', gap: 6, padding: '12px 14px', marginBottom: 16, borderRadius: T.rCard, background: T.raised, color: T.ink, fontFamily: T.sans, fontSize: T.fs.body }}>
     <strong style={{ fontSize: T.fs.headline }}>{t('trade.howToPay')}</strong>
-    <div>{(state.paymentMethods ?? []).map(key => railLabel(key)).join(' · ')}</div>
+    {/* Jet (Oct 26): once the seller chose where the cash goes, the buyer sees
+        that one method only; the other agreed methods are irrelevant. */}
     {state.lock.handle ? <>
       <div>{railLabel(state.lock.handle.rail)}</div>
       <div data-selectable style={{ overflowWrap: 'anywhere', fontSize: T.fs.headline, fontWeight: 600 }}>{state.lock.handle.value}</div><CopyButton value={state.lock.handle.value} />
-    </> : <div>{t('trade.detailsInChat')}</div>}
+    </> : <>
+      <div>{(state.paymentMethods ?? []).map(key => railLabel(key)).join(' · ')}</div>
+      <div>{t('trade.detailsInChat')}</div>
+    </>}
   </div>;
 }

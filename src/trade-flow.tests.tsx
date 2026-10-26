@@ -136,6 +136,10 @@ try {
     buyerPubkey: buyerPk, arbiterPubkey: arbiterPk, sellerReceivesMsats: 1_000_000, arbiterFeeMsats: 0,
     handle: handle.handle, rail: handle.rail });
   assert.match(render(<BuyerPaymentDetails state={locked} />), /\$trade-fixture/);
+  // Jet (Oct 26): the buyer sees only the method the seller chose.
+  const chosenOnly = render(<BuyerPaymentDetails state={{ ...locked, paymentMethods: ['zelle', 'cash-app', 'strike'] }} />);
+  assert.doesNotMatch(chosenOnly, /Zelle|Strike/, 'other agreed methods are not shown once the seller chose one');
+  assert.match(chosenOnly, /\$trade-fixture/);
   const buyerState = await buyer.loadEscrow(escrowId, { fullHistory: true });
   assert.equal(buyerState?.lock.handle?.value, '$trade-fixture', 'the buyer decrypts the committed handle');
   const fallback = render(<BuyerPaymentDetails state={{ ...locked, lock: { ...locked.lock, handle: null } }} />);
