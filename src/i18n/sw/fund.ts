@@ -76,7 +76,7 @@ export const fund: Record<string, string> = {
   "fund.askingWalletBefore": "Inaiomba pochi yako ilipe",
   "fund.autoPayArrow": "Lipa-otomatiki →",
   "fund.autoPayWithNwc": "Lipa kiotomatiki kwa NWC",
-  "fund.backToInvoice": "← Rudi kwenye ankara",
+  "fund.backToInvoice": "Rudi kwenye ankara",
   "fund.balanceUpdatedClosing": "Salio limesasishwa · inafunga…",
   "fund.bestForAlmostEveryone": "Bora kwa karibu kila mtu. Kwa kawaida inakamilika kwa sekunde.",
   "fund.browserLightningBlockedTitle": "Lightning ya kivinjari imesimamishwa",

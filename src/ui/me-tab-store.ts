@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 
-export type MeTabKey = "trades" | "sats" | "seller" | "arbiter" | "profile" | "community" | "settings";
+export type MeTabKey = "trades" | "seller" | "arbiter" | "profile" | "community" | "settings";
 
 /** Which Me tab is pressed and which is shown, outside React state, so a tab
  *  tap re-renders only the pill row and the two panes that swap — not the Me

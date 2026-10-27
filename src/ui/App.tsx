@@ -28,6 +28,7 @@ import { nextRoundTemplate } from "../chama/circle.js";
 import type { CircleRound } from "../chama/types.js";
 import { getTrustedArbiterPool } from "../arbiters/pool.js";
 import { useState, useEffect, useMemo, useRef, useCallback, lazy, Suspense, type ReactNode } from "react";
+import { withSeedBackupCopy } from "./seed-backup-copy.js";
 import { sameRecord, useStableList } from "./stable-list.js";
 import { oncePerSessionToastKey } from "./components/Toast.js";
 import { perfMeasure, versionTapToggle, PerfZone } from "./perf-probe.js";
@@ -58,7 +59,7 @@ import {
 } from "../escrow-engine/types.js";
 import { DEFAULT_RELAYS, CHAMA_RELAY } from "../escrow-engine/default-relays.js";
 import { getWinner } from "../escrow-engine/state-machine.js";
-import { remainingStock, isSoldOut, overcommittedChildren, isLiveChildOrder, isActiveChildOrder } from "../escrow-engine/storefront.js";
+import { remainingStock, isSoldOut, overcommittedChildren, isLiveChildOrder, isActiveChildOrder, matchingChildren, storefrontChildMismatches } from "../escrow-engine/storefront.js";
 import { unreadChatForTrade } from "../chat/unread.js";
 import { archivedTradeEntries } from "../escrow-engine/trade-index.js";
 import {
@@ -195,6 +196,7 @@ import { ChamaLoader } from "./components/ChamaLoader.js";
 import { isExpiredUnfundedListing } from "../escrow-engine/expired-listing.js";
 import { BottomNav, BOTTOM_NAV_HEIGHT, CreateButton, navCss, type Tab } from "./components/BottomNav.js";
 import { HomeHero, homeCss } from "./components/HomeHero.js";
+import { HeldSats } from "./components/HeldSats.js";
 import { CirclesHome } from "./screens/CirclesHome.js";
 import { CoachMarkTour, readCoachSeen, type CoachStep } from "./components/CoachMarkTour.js";
 import { BitcoinPricePill } from "./components/BitcoinPricePill.js";
@@ -284,6 +286,7 @@ import {
   writeAmountDisplayMode,
   type AmountDisplayMode,
 } from "./amount-display.js";
+import { BackButton } from "./components/BackButton.js";
 
 const QRScanner = lazy(() => import("./QRScanner.js"));
 
@@ -552,8 +555,8 @@ export default function App() {
   // guess where "back" goes.
   const [, setStateRefreshTick] = useState(0);
   const [walletOverlay, setWalletOverlay] = useState<null | "lightning" | "payment-methods">(null);
-  const [meRequestTabRaw, setMeRequestTabRaw] = useState<{ tab: "sats" | "settings" | "live-trades" | "community"; n: number; country?: string } | null>(null);
-  const setMeRequestTab = (tab: "sats" | "settings" | "live-trades" | "community", country?: string) =>
+  const [meRequestTabRaw, setMeRequestTabRaw] = useState<{ tab: "settings" | "live-trades" | "community"; n: number; country?: string } | null>(null);
+  const setMeRequestTab = (tab: "settings" | "live-trades" | "community", country?: string) =>
     setMeRequestTabRaw(prev => ({ tab, country, n: (prev?.n ?? 0) + 1 }));
   const openCommunity = (country?: string) => { setMeRequestTab("community", country); setView("me"); };
   const advancedReturnRef = useRef<View>("me");
@@ -582,7 +585,7 @@ export default function App() {
     seedRecovery,
     fundingInProgress,
     claimPayoutInProgress,
-  }, actions] = useEscrow({
+  }, rawActions] = useEscrow({
     relays: DEFAULT_RELAYS,
     defaultPlatformFeeBps: 50,
     onClaimProgress: (p) => {
@@ -616,6 +619,14 @@ export default function App() {
       }
     },
   });
+  // M10: an on-chain step refused because the key backup isn't confirmed on
+  // relays reaches every screen in the reader's language.
+  const actions = useMemo(() => ({
+    ...rawActions,
+    createEscrow: withSeedBackupCopy(rawActions.createEscrow),
+    joinEscrow: withSeedBackupCopy(rawActions.joinEscrow),
+    prepareOnchainFunding: withSeedBackupCopy(rawActions.prepareOnchainFunding),
+  }), [rawActions]);
 
   const [view, setView] = useState<View>("guided");
   // v4.1 C1 coach-mark tour: shown once after the user's first sign-in, on the
@@ -2071,7 +2082,7 @@ export default function App() {
   useEffect(() => {
     if (view !== "payout-destinations" && view !== "saved-handles") return;
     setWalletOverlay(view === "saved-handles" ? "payment-methods" : "lightning");
-    setMeRequestTab("sats");
+    setMeRequestTab("settings");
     setView("me");
   }, [view]);
 
@@ -2569,7 +2580,8 @@ export default function App() {
     let orders = 0;
     let unread = 0;
     let viewerOrder: EscrowState | null = null;
-    for (const c of kids) {
+    // M3: an order whose terms aren't the listing's is not counted as one.
+    for (const c of parent ? matchingChildren(parent, kids) : kids) {
       if (!isActiveChildOrder(c)) continue;
       if (viewerOwnsParent) orders++;
       const myRole = c.participants[Role.SELLER] === pubkey ? Role.SELLER
@@ -2661,6 +2673,10 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visibleListings.length, visibleListings.map(l => l.id).join(",")]);
   const selected = selectedId ? escrows.get(selectedId) : null;
+  // M3: the open order's terms checked against its listing (when loaded).
+  const selectedOrderParent = selected?.parent ? escrows.get(selected.parent) : undefined;
+  const selectedOrderMismatchesListing = !!selected && !!selectedOrderParent
+    && storefrontChildMismatches(selectedOrderParent, selected).length > 0;
   const detailReturnsHome = tradeDetailReturnsHome(selected, detailOpenedFromHome, !!selected && getPayoutRecord(selected.id)?.status === "settled");
   const sellerManagedListing = sellerManageId ? escrows.get(sellerManageId) ?? null : null;
   const selectedPoisonedClaimReason = selected
@@ -3581,7 +3597,7 @@ export default function App() {
             communitySlug={routeCommunitySlug}
             activeInvite={liveActiveInvite}
             chamaLabel={chamaBarLabel}
-            onTapStranded={() => unseenPaidLockMsats > 0 ? (setMeRequestTab("sats"), setView("me")) : setPendingRecovery({
+            onTapStranded={() => unseenPaidLockMsats > 0 ? (setView("dashboard"), window.scrollTo?.(0, 0)) : setPendingRecovery({
               title: t("app.recoverSatsTitle"),
               traceContext: recoveryTraceContext,
             })}
@@ -4324,7 +4340,7 @@ export default function App() {
             await refreshCircle(selected.id);
           }}
           onNextRound={circle => { setCircleInitial(nextRoundTemplate(circle, { circleId: "", startSec: Math.floor(Date.now() / 1000) })); setView("circle-create"); }} />
-        : <div style={{ padding: 30 }}><button onClick={() => { ++circleRouteRequest.current; setView(detailBackView); }}>‹ {t("common.back")}</button><p role="status">{circleLoadError ?? t("circle.loading")}</p>
+        : <div style={{ padding: 30 }}><BackButton onClick={() => { ++circleRouteRequest.current; setView(detailBackView); }} label={t("common.back")} /><p role="status">{circleLoadError ?? t("circle.loading")}</p>
           {circleLoadError && selectedId && <button onClick={() => {
             setCircleLoadError(null);
             void refreshCircle(selectedId).catch(error => setCircleLoadError(error.message));
@@ -4379,6 +4395,7 @@ export default function App() {
           {LIVE_TRADE_SURFACE_ENABLED && !expertTradeView ? (
             <LiveTradeSurface
               onReclaimRejectedLock={actions.reclaimRejectedLock}
+              orderMismatchesListing={selectedOrderMismatchesListing}
               key={`lts:${selected.id}`}
               historyReloading={reloadingEscrows.has(selected.id)}
               onCheckOnchainFunding={actions.checkOnchainFunding}
@@ -4592,17 +4609,18 @@ export default function App() {
             }}
             stockLeft={selected ? stockByListing.get(selected.id) : undefined}
             isOversoldOrder={selected ? oversoldChildIds.has(selected.id) : false}
+            orderMismatchesListing={selectedOrderMismatchesListing}
             // #63 storefront routing: the live (LOCKED, unsettled) child orders
             // spawned from THIS parent storefront, so the seller can see and
             // tap through to each order to fulfill it. Reuses the App-derived
             // childrenByParent grouping (via listingChildren) — no re-query.
-            liveChildOrders={selected ? listingChildren(selected).filter(isLiveChildOrder) : undefined}
+            liveChildOrders={selected ? matchingChildren(selected, listingChildren(selected)).filter(isLiveChildOrder) : undefined}
             // Pre-lock reservations on this storefront where I'm the seller:
             // CREATED (unfunded) child orders that haven't passed their own
             // deadline. Surfaces a "joined but not paid" order to the seller —
             // the multi-unit analogue of the single-listing buyer-attempts panel.
             pendingChildOrders={selected
-              ? listingChildren(selected).filter((c) =>
+              ? matchingChildren(selected, listingChildren(selected)).filter((c) =>
                   isActiveChildOrder(c)
                   && c.status === EscrowStatus.CREATED
                   && c.participants[Role.SELLER] === pubkey
@@ -4887,10 +4905,58 @@ export default function App() {
         // on) leads; v5.0's standing Dashboard follows — beside it on wide
         // screens, below it on phones.
         <HomeHero
-          balanceMsats={fedimint.balanceMsats ?? 0}
           inEscrowMsats={committedMsats}
-          pendingNoteMsats={getEcashExport()?.amountMsats ?? 0}
-          onOpenPendingNote={() => { setView("me"); window.scrollTo?.(0, 0); }}
+          heldSats={
+            // Chama is not a wallet: every sat it holds for you shows here,
+            // with its way out, and nothing else does (Jet, Oct 19).
+            <HeldSats
+              pubkey={pubkey!}
+              balanceMsats={fedimint.balanceMsats ?? 0}
+              balanceKnown={fedimint.joined && !fedimint.balanceReadFailed}
+              walletInvite={fedimint.joined ? liveActiveInvite ?? undefined : undefined}
+              walletNeedsTap={signerNeedsUserAction && !fedimint.joined}
+              onUseWallet={() => {
+                if (signerNeedsUserAction && !fedimint.joined && !fedimint.busy) {
+                  void actions.initFedimint().catch(error => setToast({ message: error.message, type: "error" }));
+                }
+              }}
+              balanceUnreadable={fedimint.joined && Boolean(fedimint.balanceReadFailed) && !fedimint.busy}
+              pendingCards={(nativeLockResume || pendingPayoutCard) ? <>
+                {nativeLockResume && (
+                  <PendingLockCard
+                    entry={nativeLockResume}
+                    tradeDescription={escrows.get(nativeLockResume.escrowId)?.description ?? null}
+                    busy={pendingLockBusy}
+                    onFinishLock={handleFinishPendingLock}
+                    onOpenTrade={() => openEscrow(nativeLockResume.escrowId)}
+                  />
+                )}
+                {pendingPayoutCard && (
+                  <PendingPayoutCard
+                    entry={pendingPayoutCard}
+                    onOpenTrade={() => openEscrow(pendingPayoutCard.escrowId)}
+                  />
+                )}
+              </> : undefined}
+              hasActiveCommitment={hasActiveCommitment}
+              paidLockFederationId={fedimint.federationId ?? undefined}
+              satsTrace={displayedSatsTrace}
+              hasPendingNativeLock={hasPendingNativeLock}
+              hasPendingClaimPayout={hasPendingClaimPayout}
+              stuckNativeLocks={nativeLockSummary.stuck}
+              onRecoverSats={() => setPendingRecovery({
+                title: t("app.recoverSatsTitle"),
+                traceContext: recoveryTraceContext,
+              })}
+              onOpenTrade={openEscrow}
+              onWithdrawEcash={() => setShowEcashExport(true)}
+              onExportStrandedClaim={(entry) => setStrandedClaimExport(entry)}
+              onReabsorbBearerNotes={handleReabsorbBearerNotes}
+              readLeftovers={actions.readHeldLeftovers}
+              leftoversRevision={bondsRevision}
+              onOpenBond={() => setShowBondCeremony(true)}
+            />
+          }
           readyToCollectCount={needsYouTrades.filter(e =>
             needsYouReasonFor(e, pubkey!, now, settledClaimIds, onchainObservations?.get(e.id)) === "claim").length}
           needsYou={needsYouTrades}
@@ -4901,7 +4967,6 @@ export default function App() {
           kind0Enabled={kind0Enabled}
           onchainObservations={onchainObservations}
           onOpenTrade={openEscrow}
-          quoteCurrency={getCommunityBySlug(routeCommunitySlug)?.currency ?? null}
         >
         <DashboardScreen
           knownTrades={knownTradesForConcentration}
@@ -4943,13 +5008,7 @@ export default function App() {
 
           {!myTradesLoading && <RecurringBillCard series={recurringSeries} onStop={cancelRecurring} />}
           <PerfZone id="Me screen"><MeScreen
-            walletInvite={fedimint.joined ? liveActiveInvite ?? undefined : undefined}
-            balanceKnown={fedimint.joined && fedimint.balanceMsats !== null}
-            onUseWallet={() => {
-              if (signerNeedsUserAction && !fedimint.joined && !fedimint.busy) {
-                void actions.initFedimint().catch(error => setToast({ message: error.message, type: "error" }));
-              }
-            }}
+            onOpenHome={() => { setView("dashboard"); window.scrollTo?.(0, 0); }}
             loadActiveRecoveryKey={actions.exportActiveRecoveryKey}
             storeAutoRenew={{ enabled: storeAutoRenewEnabled, onChange: changeStoreAutoRenew }}
             pubkey={pubkey!}
@@ -5031,7 +5090,7 @@ export default function App() {
             fedimint={fedimint}
             focusExplorer={advancedFocusExplorer}
             focusNwc={advancedFocusNwc}
-            onManageSavedWallets={() => { setView("me"); setWalletOverlay("lightning"); }}
+            onManageSavedWallets={() => { setMeRequestTab("settings"); setView("me"); setWalletOverlay("lightning"); }}
             onBack={closeAdvanced}
             onSandboxFund={() => setShowFundModal(true)}
             communitySlug={browseCommunity}

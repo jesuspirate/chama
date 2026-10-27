@@ -60,7 +60,7 @@ function Fixture(){
  mode==='federation'?<div style={{padding:16}}><FederationDisclosure circle={{...circleFromEscrow(circleFixture('held').parent)!,mintUrl}} /></div>:
  mode.startsWith('community')?<CommunityNavigationFixture/>:
  mode==='canvas'?<CircleCanvas viewerPubkey={viewer} mintUrl={mintUrl} community="us-usd" onBack={()=>{}} onPublish={async round=>{w.submissions.push(round);}} />:
- mode==='me'?<MeScreen pubkey={viewer} myTrades={[]} ratings={null} balanceMsats={0} balanceKnown={false} hasActiveCommitment={false} loadActiveRecoveryKey={loadKey} onOpenTrade={()=>{}} onOpenSavedHandles={()=>setWalletOverlay("payment-methods")} onOpenPayoutDestinations={()=>setWalletOverlay("lightning")} onWithdrawEcash={()=>{}} onOpenAdvanced={()=>{}} onOpenHelp={()=>{}} onRecoverSats={()=>{}} onSignOut={()=>{}} onUseWallet={()=>{w.walletUses=(w.walletUses??0)+1;}} />:
+ mode==='me'?<MeScreen pubkey={viewer} myTrades={[]} ratings={null} balanceMsats={0} hasActiveCommitment={false} loadActiveRecoveryKey={loadKey} onOpenTrade={()=>{}} onOpenSavedHandles={()=>setWalletOverlay("payment-methods")} onOpenPayoutDestinations={()=>setWalletOverlay("lightning")} onWithdrawEcash={()=>{}} onOpenAdvanced={()=>{}} onOpenHelp={()=>{}} onRecoverSats={()=>{}} onSignOut={()=>{}} />:
  mode==='connect'?<ConnectScreen loading={false} error={signInError} onConnect={()=>{w.extensionAttempts=(w.extensionAttempts??0)+1;setSignInError("nos2x: user denied RAW SECRET ERROR");}} onConnectNsec={(...args)=>{w.submissions.push(args);}} />:
  mode==='startup'?<Startup/>:
  mode==='login'?<div style={{padding:16}}><NsecLogin friendly onSubmit={(...args)=>{w.submissions.push(args);}} /></div>:

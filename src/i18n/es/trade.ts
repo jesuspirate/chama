@@ -192,6 +192,7 @@ export const trade: Record<string, string> = {
   "trade.lockedSatsReturned": "los sats bloqueados se devuelven",
   "trade.markItDone": "Márcalo como hecho — hice mi parte",
   "trade.maxQty": "máx {count}",
+  "trade.storeOneOrderNote": "Un solo pedido para esta Tienda. Chama no cuenta el stock del vendedor aquí; el vendedor comprueba que lo tiene antes de enviar.",
   "trade.menuAmountOptions": "Opciones de monto",
   "trade.menuBillBundle": "Paquete de facturas",
   "trade.menuLoanOffers": "Ofertas de préstamo",
@@ -319,6 +320,9 @@ export const trade: Record<string, string> = {
   "trade.oversoldBuyerBody": "Esta unidad fue para un comprador anterior en una carrera por la última unidad — toca Reembolsar abajo para recuperar tus sats. El lado del vendedor también reembolsa, así que quedas cubierto.",
   "trade.oversoldSellerBody": "Esta unidad ya se le vendió a un comprador anterior (una carrera por la última unidad), así que es seguro reembolsar. Usa «Reembolsar pedido duplicado» abajo — no lo liberes. Tu venta real es el pedido sin este aviso.",
   "trade.oversoldTitle": "⚠ Pedido sobrevendido",
+  "trade.orderMismatchSellerBody":
+    "El comprador escribió este pedido con un precio, una federación o un árbitro que no están en tu anuncio. No envíes nada por él. Si bloqueó sats, los recupera cuando venza.",
+  "trade.orderMismatchTitle": "⚠ Este pedido no coincide con tu anuncio",
   "trade.paneChat": "Chat",
   "trade.paneDetails": "Detalles",
   "trade.paneParties": "Partes",

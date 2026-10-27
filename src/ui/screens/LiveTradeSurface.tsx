@@ -50,7 +50,9 @@ import { translate, getCurrentLang } from "../../i18n/index.js";
 import { shareTradeLink } from "../share-link.js";
 import { railLabel, getRailByKey } from "../../payments/rail-registry.js";
 import { VerticalIcon } from "../components/VerticalIcon.js";
-import { isParentStorefront, isChildOrder } from "../../escrow-engine/storefront.js";
+import { isParentStorefront, isChildOrder, isMultiUnitListing } from "../../escrow-engine/storefront.js";
+import { OrderMismatchBanner } from "../components/OrderMismatchBanner.js";
+import { BackButton } from "../components/BackButton.js";
 
 // Render-time translation (same pattern as decisions.ts): picked up per render,
 // so a language switch re-reads the live language without prop threading.
@@ -98,6 +100,7 @@ export function LiveTradeSurface({
   onLockHoldStart,
   onLockHoldCancel,
   onReclaimRejectedLock,
+  orderMismatchesListing = false,
   onRepost,
   onHome,
   onConfirmPayout,
@@ -130,6 +133,8 @@ export function LiveTradeSurface({
    *  the Fund / Claim surfaces defer to the full view via onOpenFullView. */
   onClaim?: () => Promise<void>;
   onReclaimRejectedLock?: (id: string) => Promise<void>;
+  /** Audit M3: this storefront order's terms aren't its listing's. */
+  orderMismatchesListing?: boolean;
   onLock?: (opts?: { savedHandleId?: string; paymentDetailsInChat?: boolean; selectedItems?: SelectedMenuItem[]; amountMsats?: number }) => Promise<void>;
   /** Lock is on screen for this person: warm the funding path in the
    *  background (read-only; see App's warmLockPath). Once per trade. */
@@ -480,7 +485,9 @@ export function LiveTradeSurface({
             </div>
           )}
           {(() => {
-            if (!openRole || !onJoin) {
+            // A multi-unit listing is bought by quantity in the full view; a
+            // direct join here would take the whole store as one trade.
+            if (!openRole || !onJoin || (openRole === Role.BUYER && isMultiUnitListing(state))) {
               return <MoreOptions onClick={onOpenFullView} label={tr("lts.reviewJoinFull")} />;
             }
             // A range listing (one exchange-bracket item) asks the ONE question
@@ -794,7 +801,7 @@ export function LiveTradeSurface({
   );
   if (requiresDepositCheck && (state.lock.onchain || state.onchainRefundClaimed) && verifiedDeposit !== depositIdentity) return (
     <div style={{ padding: 24 }}>
-      <button onClick={onBack}>{backLabel ?? "Back"}</button>
+      <BackButton onClick={onBack} label={backLabel ?? tr("lts.back")} />
       {historyReloading && <p role="status">Refreshing this trade's history…</p>}
       <ReplayNotes notes={state.replayNotes} />
       <p role="status">Checking the deposit on the blockchain…</p>
@@ -807,6 +814,7 @@ export function LiveTradeSurface({
 
   return (
     <div ref={rootRef} className="lts-root" style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0, background: T.bg, paddingBottom: 12 }}>
+      {orderMismatchesListing && state.participants[Role.SELLER] === pubkey && <OrderMismatchBanner />}
       {state.rejectedLockRecovery?.pubkey === pubkey && onReclaimRejectedLock &&
         <RejectedLockRefund amountMsats={state.rejectedLockRecovery.amountMsats} onReclaim={() => onReclaimRejectedLock(state.id)} />}
       {reabsorbedLockAmount(state.id) && <p>{tr("trade.lockReabsorbed", {amount:Math.floor(reabsorbedLockAmount(state.id)! / 1000).toLocaleString()})}</p>}
@@ -914,19 +922,8 @@ export function LiveTradeSurface({
         display: "flex", alignItems: "center", gap: 8, padding: "4px 12px 4px 4px",
         borderBottom: `1px solid ${T.line}`, background: T.bg, minHeight: 56,
       }}>
-        <button
-          type="button"
-          onClick={onBack}
-          aria-label={tr("lts.back")}
-          style={{
-            display: "inline-flex", alignItems: "center", gap: 2, minHeight: T.size.touch, padding: "0 8px 0 4px",
-            background: "none", border: "none", color: T.ink, fontFamily: T.sans, fontSize: T.fs.body,
-            cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0,
-          }}
-        >
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg>
-          {backLabel ?? tr("lts.backTrades")}
-        </button>
+        <BackButton onClick={onBack} aria-label={tr("lts.back")} label={backLabel ?? tr("lts.backTrades")}
+          style={{ flexShrink: 0, marginLeft: 8 }} />
         <div
           title={catLabel}
           aria-label={catLabel}

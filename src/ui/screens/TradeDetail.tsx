@@ -34,6 +34,7 @@ import {
 import { getWinner } from "../../escrow-engine/state-machine.js";
 import type { SettlementCheck } from "../../bond-multisig/onchain-escrow-settle.js";
 import { isParentStorefront, isChildOrder } from "../../escrow-engine/storefront.js";
+import { OrderMismatchBanner } from "../components/OrderMismatchBanner.js";
 import { payoutRecipientFor } from "../../escrow-engine/recipients.js";
 import { getCommunityBySlug } from "../../communities/registry.js";
 import { getVoteLabel } from "../../labels/vote-labels.js";
@@ -148,6 +149,7 @@ import {
   clearSplitFrac,
   clampSplitFrac,
 } from "../tradeview-split.js";
+import { BackButton } from "../components/BackButton.js";
 
 const samePubkey = (a?: string | null, b?: string | null): boolean =>
   !!a && !!b && a.toLowerCase() === b.toLowerCase();
@@ -173,7 +175,7 @@ export function TradeDetail({
   claimBlockedReason, amountDisplayMode = "sats", onAmountDisplayModeChange, kind0Enabled = false, profileNames,
   disableNwc = false, forceClaimMethodChooser = false, onBack, onVote, onClaim, onJoin, onLock, onLockDirectNwc, onReclaimRejectedLock, onClaimDirectNwc, onConfirmPayout,
   onSendChat, preferredRelayConnected = false, onReleasePeriod, onOpenSettings, onOpenNwcSettings,
-  onPrewarmFunding, onRebroadcast, onForget, onPurchase, onCancelDraftOrder, stockLeft, isOversoldOrder = false,
+  onPrewarmFunding, onRebroadcast, onForget, onPurchase, onCancelDraftOrder, stockLeft, isOversoldOrder = false, orderMismatchesListing = false,
   onRateCounterparty, myGivenRatings, fetchRatingSummary, fetchCommunityBonds, knownTrades, onStartNextTranche, onchainFundingPlan, onPrepareOnchainFunding, onCheckOnchainFunding, onRefundOnchainEscrow, onOnchainRefundAvailable, onPublishOnchainLock, onCheckOnchainSettlement, onOpenExplorerSettings, onchainObservation, onRequestStalledPayout, onPrepareOnchainSettlement, onSignOnchainSettlement, onFinalizeOnchainSettlement, onScanMyOnchainPayouts, onSweepOnchainPayout,
   onStartEcashSlicePlan,
   liveChildOrders, pendingChildOrders, onOpenChild,
@@ -338,6 +340,8 @@ export function TradeDetail({
    *  the parent's stock by lock order). Reliable only for the seller. Shows a
    *  refund banner. */
   isOversoldOrder?: boolean;
+  /** Audit M3: this storefront order's terms aren't its listing's. */
+  orderMismatchesListing?: boolean;
   /** #63 storefront routing: live (LOCKED, unsettled) child orders spawned from
    *  THIS parent storefront. Only meaningful when `state` is a parent storefront;
    *  drives the "N orders in progress" section. Derived in App from
@@ -1576,7 +1580,7 @@ export function TradeDetail({
 
   if (verifiedRefund === depositIdentity) return (
     <div className="trade-detail-shell" style={{ padding: 24 }}>
-      <button onClick={onBack}>{t("common.back")}</button>
+      <BackButton onClick={onBack} label={t("common.back")} />
       <p role="status">Refund confirmed on the blockchain.</p>
       {onchainView?.viewerFunds && onScanMyOnchainPayouts && onSweepOnchainPayout && <OnchainPayoutRecoveryCard
         escrowId={state.id} credited={defaultCreditObserver()(state)} embedded
@@ -1585,7 +1589,7 @@ export function TradeDetail({
   );
   if (onchainView?.stage === "checking-deposit") return (
     <div className="trade-detail-shell" style={{ padding: 24 }}>
-      <button onClick={onBack}>{t("common.back")}</button>
+      <BackButton onClick={onBack} label={t("common.back")} />
       <p role="status">Checking the deposit on the blockchain…</p>
       {fundingNote && <p>{fundingNote}</p>}
       <OnchainTradeControls onReleaseWithPayout={address => onVote(Outcome.RELEASE, address)} state={state} pubkey={pubkey} profileNames={profileNames} kind0Enabled={kind0Enabled}
@@ -1612,30 +1616,12 @@ export function TradeDetail({
         <p>Chama can't find the note for this lock on this device.</p>}
       <div className="trade-live-head" style={{
         display: "grid",
-        gridTemplateColumns: "42px minmax(0,1fr) auto",
+        gridTemplateColumns: "auto minmax(0,1fr) auto",
         alignItems: "center",
         gap: 12,
         marginBottom: 18,
       }}>
-        <button onClick={onBack} aria-label={t("common.back")} style={{
-          width: 38,
-          height: 38,
-          flex: "0 0 auto",
-          borderRadius: 999,
-          background: T.surface,
-          border: `1px solid ${T.border}`,
-          color: T.text,
-          fontFamily: T.sans,
-          fontSize: 20,
-          fontWeight: 700,
-          cursor: "pointer",
-          display: "grid",
-          placeItems: "center",
-          lineHeight: 1,
-          transition: "background .14s, border-color .14s",
-        }}>
-          ←
-        </button>
+        <BackButton onClick={onBack} label={t("common.back")} />
         <div style={{ minWidth: 0 }}>
           {/* Vertical kicker — the trade's vertical, never inferred. */}
           <div style={{
@@ -3378,6 +3364,17 @@ export function TradeDetail({
                 )}
             </div>
           </div>
+          {state.category === "marketplace" && (
+            <div data-store-order-note style={{
+              color: T.muted,
+              fontFamily: T.sans,
+              fontSize: T.fs.secondary,
+              lineHeight: 1.5,
+              marginBottom: 8,
+            }}>
+              {t("trade.storeOneOrderNote")}
+            </div>
+          )}
           <div style={{
             display: "flex",
             flexDirection: "column",
@@ -4370,6 +4367,8 @@ export function TradeDetail({
             )}
           </div>
         )}
+
+      {orderMismatchesListing && state.participants[Role.SELLER] === pubkey && <OrderMismatchBanner />}
 
       {isOversoldOrder && (state.status === EscrowStatus.LOCKED || state.status === EscrowStatus.APPROVED) && (
         <div style={{

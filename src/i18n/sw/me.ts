@@ -48,9 +48,10 @@ export const me: Record<string, string> = {
   "backup.identityOnly": "Ufunguo huu ni wewe, si sats zako. Usimpe mtu.",
   "backup.reading": "Inasoma ufunguo wako…",
 
-  "me.walletBalance": "Katika pochi yako ya Chama:",
+  "me.walletBalance": "Zilizobaki ndani ya Chama:",
   "me.parkedWalletsTitle": "Pia kwenye kifaa hiki:",
   "me.parkedWalletLine": "Sats {sats} kwenye {name} ulipoitumia mara ya mwisho",
+  "me.parkedWalletLineUnchecked": "{name}: salio haikuangaliwa ulipoitumia mara ya mwisho",
   "me.parkedWalletUnlisted": "shirikisho ambalo Chama haliorodheshi",
   "me.parkedWalletsHint": "Kila shirikisho linashikilia sats zake. Fungua biashara kwenye shirikisho hilo ili kuzitumia.",
 
@@ -88,7 +89,6 @@ export const me: Record<string, string> = {
   "me.accumulatingTooSmall": "Inajikusanya — bado ndogo mno kurejeshwa kupitia Lightning",
   "me.accArbiter": "Msuluhishi",
   "me.tabCommunity": "Jumuiya",
-  "me.tabSats": "Pochi",
   "me.recentSettlements": "Zilizokamilika hivi karibuni",
   "me.settledReleased": "imetolewa",
   "me.settledRefunded": "imerejeshwa",
@@ -347,4 +347,8 @@ export const me: Record<string, string> = {
   "me.groupTrading": "Biashara",
   "me.groupBond": "Dhamana",
   "me.groupHelp": "Msaada na zaidi",
+  "me.heldSatsOnHome": "Baadhi ya sats zako zinakuhitaji. Zione kwenye Nyumbani",
+  "me.groupGettingPaid": "Mahali unapolipwa",
+  "backup.rowTitle": "Ufunguo wako",
+  "backup.rowHint": "Utumie kuingia kwenye kifaa kingine",
 };

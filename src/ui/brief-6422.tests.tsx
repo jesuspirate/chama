@@ -54,7 +54,7 @@ assert.deepEqual((filters[0] as any).kinds,[38100]);assert.deepEqual((filters[0]
 
 
 const unknownBalance=renderToStaticMarkup(<LangProvider><WalletBalance balanceMsats={0} known={false}/></LangProvider>);
-assert.match(unknownBalance,/In your Chama wallet: —/);
+assert.match(unknownBalance,/Left in Chama: —/);
 
 console.log('PASS 6.4.22: four seat chips/light+dark, arrival buffering/deduplication, scrolling/reduced motion, per-identity backup receipts, scoped discovery');
 

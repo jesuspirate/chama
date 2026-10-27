@@ -192,6 +192,7 @@ export const trade: Record<string, string> = {
   "trade.lockedSatsReturned": "the locked sats are returned",
   "trade.markItDone": "Mark it done — I did my part",
   "trade.maxQty": "max {count}",
+  "trade.storeOneOrderNote": "One order for this Storefront. Chama doesn’t count the seller’s stock here; the seller checks they have it before shipping.",
   "trade.menuAmountOptions": "Amount options",
   "trade.menuBillBundle": "Bill bundle",
   "trade.menuLoanOffers": "Loan offers",
@@ -319,6 +320,9 @@ export const trade: Record<string, string> = {
   "trade.oversoldBuyerBody": "This unit went to an earlier buyer in a last-unit race — tap Refund below to get your sats back. The seller's side refunds too, so you're made whole.",
   "trade.oversoldSellerBody": "This unit was already sold to an earlier buyer (a last-unit race), so it's safe to refund. Use “Refund duplicate order” below — don't release it. Your real sale is the order without this banner.",
   "trade.oversoldTitle": "⚠ Oversold order",
+  "trade.orderMismatchSellerBody":
+    "The buyer wrote this order with a price, federation or arbiter that isn't on your listing. Don't send anything for it. If they locked sats, they get them back when it expires.",
+  "trade.orderMismatchTitle": "⚠ This order doesn't match your listing",
   "trade.paneChat": "Chat",
   "trade.paneDetails": "Details",
   "trade.paneParties": "Parties",

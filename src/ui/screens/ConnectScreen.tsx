@@ -12,6 +12,7 @@ import { getCommunityBySlug } from "../../communities/registry.js";
 import { getUserCommunitySlugRaw, getLastHomeHint } from "../../communities/storage.js";
 import { resolveJoiningCommunitySlug } from "../../communities/joining-default.js";
 import { getPendingCommunityReport } from "../../communities/community-request.js";
+import { BackButton } from "../components/BackButton.js";
 
 function isExplicitFedimintRecoveryDiagnostic(): boolean {
   try {
@@ -97,8 +98,8 @@ export function ConnectScreen({ onConnect, onConnectNsec, loading, error }: {
       </div>)}
       <div data-connect-language style={{ marginTop: 8 }}><LanguagePills /></div>
     </div> : <div className="connect-flow" style={{ width: "100%", maxWidth: 360, textAlign: "left" }}>
-      <button type="button" data-connect-back disabled={loading} onClick={() => { setDoor(null); setExtensionAttempted(false); setKeyAttempted(false); }}
-        style={{ border: "none", background: "none", padding: "0 0 14px", color: T.muted, font: `12px ${T.sans}`, cursor: "pointer" }}>{t("chat.back")}</button>
+      <BackButton data-connect-back disabled={loading} onClick={() => { setDoor(null); setExtensionAttempted(false); setKeyAttempted(false); }}
+        label={t("chat.back")} style={{ marginBottom: 14 }} />
       {door === "create" ? <CreateAccountFlow onSubmit={submitNsec} keepKey={keepKey} onKeepKeyChange={setKeepKey} />
         : <ReturningAccountFlow onSubmit={submitNsec} keepKey={keepKey} onKeepKeyChange={setKeepKey}
             hasExtension={hasExtension} loading={loading} error={extensionAttempted ? error : null}

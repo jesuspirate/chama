@@ -79,14 +79,18 @@ export async function scanOnchainPayout(
   const expectedScript = bytesToHex(spend.script).toLowerCase();
   const utxos: BondUtxo[] = [];
   let hasUnconfirmed = false;
-  if (Array.isArray(raw)) {
+  // An unreadable answer is never "no payout": fail so callers say they
+  // couldn't check instead of showing nothing.
+  if (!Array.isArray(raw)) throw new Error("The block explorer gave an unreadable answer for this payout address.");
+  {
     for (const row of raw) {
       if ((row?.status?.confirmed !== true && !(includeUnconfirmed && row?.status?.confirmed === false))
         || typeof row?.value !== "number" || row.value <= 0) continue;
       if (typeof row.txid !== "string" || !/^[0-9a-f]{64}$/i.test(row.txid)) continue;
       if (!Number.isInteger(row.vout) || row.vout < 0) continue;
       const tx = await fetchJson(`/tx/${row.txid}`);
-      const actual = tx?.vout?.[row.vout]?.scriptpubkey;
+      if (!Array.isArray(tx?.vout)) throw new Error("The block explorer gave an unreadable answer for a payout transaction.");
+      const actual = tx.vout[row.vout]?.scriptpubkey;
       if (typeof actual !== "string" || actual.toLowerCase() !== expectedScript) continue;
       if (row.status.confirmed === false) hasUnconfirmed = true;
       utxos.push({ txid: row.txid.toLowerCase(), index: row.vout, amountSats: BigInt(row.value) });
