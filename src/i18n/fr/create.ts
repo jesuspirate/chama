@@ -6,7 +6,9 @@ export const create: Record<string, string> = {
   "create.billHealthSha": "Santé — SHA/SHIF",
   "create.billTv": "Télévision (DSTV/GOtv/Zuku)",
   "create.billElectricityKplc": "Électricité — KPLC",
-  "create.listingBody": "Description — paragraphes, listes, **gras**, *italique*, [texte](https://…)",
+  "create.listingBody": "Détails · facultatif",
+  "create.listingBodyAdd": "+ Ajouter des détails",
+  "create.listingBodyHint": "Vous pouvez utiliser le gras, l’italique, les listes et les liens.",
   // CBP mensuel — bascule facture récurrente (paiement de factures uniquement).
   "create.recurringToggleLabel": "Mensuel récurrent",
   "create.recurringToggleHint": "Republie automatiquement cette facture dans votre communauté chaque mois tant que vous êtes en ligne. Aucune caution requise — arrêtez quand vous voulez depuis Moi.",
@@ -133,6 +135,8 @@ export const create: Record<string, string> = {
   "create.menuModeExchange": "Échanges à la carte",
   "create.menuModeLending": "Carnet de prêts",
   "create.menuModeMarket": "Boutique",
+  "create.menuStockNoteMarket": "C’est voulu : Chama ne compte pas le stock d’une Boutique. « Max / commande » est le maximum qu’une commande peut prendre de chaque article. Tenez votre propre compte et vérifiez que vous l’avez avant d’expédier.",
+  "create.menuStockTipMarket": "Vous vendez le même produit plusieurs fois ? Choisissez Unique et indiquez « Unités en stock », et Chama décompte chaque commande.",
   "create.menuPartialBillPay": "Complétez les noms de factures et les sats avant {stage}.",
   "create.menuPartialExchange":
     "Complétez les noms d'options et des sats min/max valides avant {stage}.",

@@ -28,6 +28,7 @@ import { nextRoundTemplate } from "../chama/circle.js";
 import type { CircleRound } from "../chama/types.js";
 import { getTrustedArbiterPool } from "../arbiters/pool.js";
 import { useState, useEffect, useMemo, useRef, useCallback, lazy, Suspense, type ReactNode } from "react";
+import { withSeedBackupCopy } from "./seed-backup-copy.js";
 import { sameRecord, useStableList } from "./stable-list.js";
 import { oncePerSessionToastKey } from "./components/Toast.js";
 import { perfMeasure, versionTapToggle, PerfZone } from "./perf-probe.js";
@@ -583,7 +584,7 @@ export default function App() {
     seedRecovery,
     fundingInProgress,
     claimPayoutInProgress,
-  }, actions] = useEscrow({
+  }, rawActions] = useEscrow({
     relays: DEFAULT_RELAYS,
     defaultPlatformFeeBps: 50,
     onClaimProgress: (p) => {
@@ -617,6 +618,14 @@ export default function App() {
       }
     },
   });
+  // M10: an on-chain step refused because the key backup isn't confirmed on
+  // relays reaches every screen in the reader's language.
+  const actions = useMemo(() => ({
+    ...rawActions,
+    createEscrow: withSeedBackupCopy(rawActions.createEscrow),
+    joinEscrow: withSeedBackupCopy(rawActions.joinEscrow),
+    prepareOnchainFunding: withSeedBackupCopy(rawActions.prepareOnchainFunding),
+  }), [rawActions]);
 
   const [view, setView] = useState<View>("guided");
   // v4.1 C1 coach-mark tour: shown once after the user's first sign-in, on the
@@ -4942,6 +4951,9 @@ export default function App() {
               onWithdrawEcash={() => setShowEcashExport(true)}
               onExportStrandedClaim={(entry) => setStrandedClaimExport(entry)}
               onReabsorbBearerNotes={handleReabsorbBearerNotes}
+              readLeftovers={actions.readHeldLeftovers}
+              leftoversRevision={bondsRevision}
+              onOpenBond={() => setShowBondCeremony(true)}
             />
           }
           readyToCollectCount={needsYouTrades.filter(e =>

@@ -35,3 +35,39 @@ for (const stock of [undefined, 1]) {
   assert.match(room(listing(stock)), /Agree &amp; join|Agree & join/, `a listing with stock ${stock} still joins in the room`);
 }
 console.log('PASS a multi-unit listing is bought by quantity, never joined whole from the trade room');
+
+// A Storefront (menu) is one order, and "Max / order" is not stock Chama
+// counts. Sellers and buyers read it as stock (Jet, 6.4.31-rc.1), so both the
+// seller's form and the buyer's picker say so, only on a Store.
+{
+  const { readFileSync } = await import('node:fs');
+  const { translate } = await import('../i18n/index.js');
+  const create = readFileSync(new URL('./screens/CreateForm.tsx', import.meta.url), 'utf8');
+  const trade = readFileSync(new URL('./screens/TradeDetail.tsx', import.meta.url), 'utf8');
+  assert.match(create, /vertical === "marketplace" && \(\s*<div data-store-stock-note/, 'seller note only on a market menu');
+  assert.match(create, /listingMode === "menu" && vertical === "marketplace" && \(\s*<div data-store-stock-tip/, 'Units in stock tip only in Storefront mode');
+  assert.match(trade, /state\.category === "marketplace" && \(\s*<div data-store-order-note/, 'buyer note only on a market menu');
+  for (const lang of ['en', 'es', 'fr', 'sw'] as const) for (const key of ['create.menuStockNoteMarket', 'create.menuStockTipMarket', 'trade.storeOneOrderNote']) {
+    const text = translate(lang, key as any);
+    assert.ok(text && text !== key, `${key} is written in ${lang}`);
+    assert.doesNotMatch(text, /trustless|insured|bank-grade/i);
+  }
+  assert.match(translate('en', 'create.menuStockNoteMarket' as any), /doesn’t count stock/);
+  console.log('PASS a Storefront says Chama does not count its stock, in every language');
+}
+
+// The optional long description stays folded until wanted, and its label is a
+// plain grey label, never raw formatting syntax (Jet, 6.4.31-rc.1 pass).
+{
+  const { ListingDetailsField } = await import('./screens/CreateForm.js');
+  const field = (body: string) => renderToStaticMarkup(<LangProvider>
+    <ListingDetailsField body={body} onChange={() => {}} inputStyle={{}} /></LangProvider>);
+  const empty = field('');
+  assert.match(empty, /data-listing-details-add/, 'no body: only "+ Add details"');
+  assert.doesNotMatch(empty, /<textarea/, 'no body: no open box');
+  const filled = field('Handmade, **red**');
+  assert.match(filled, /<textarea[^>]*rows="3"/, 'a draft with a body opens at 3 rows');
+  assert.match(filled, /Details · optional/);
+  for (const html of [empty, filled]) assert.doesNotMatch(html, /\*\*bold\*\*|\[label\]\(https/, 'no raw syntax in the label');
+  console.log('PASS the long description is optional, folded and labelled in plain words');
+}
