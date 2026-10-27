@@ -2,8 +2,8 @@
 // Chama — Home hero (v7 redesign, canvas "Home")
 // ══════════════════════════════════════════════════════════════════════════
 //
-// The top of the Home tab: where your money is, then what needs you, then
-// what else is running. Presentation only — every number comes from the same
+// The top of the Home tab: the sats Chama holds for you (only when it holds
+// any), then what needs you, then what else is running. Presentation only — every number comes from the same
 // selectors the status bar and Me already use (wallet balance, the live
 // escrow commitment, selectNeedsYouTrades), so Home can never disagree with
 // them. "Ready to collect" is a COUNT of claimable trades, not a summed
@@ -17,23 +17,14 @@ import { useT } from "../../i18n/index.js";
 import { T, fmtSats } from "../theme.js";
 import { AttentionQueue } from "./AttentionQueue.js";
 import { Badge, LockGlyph } from "./Badge.js";
-import { estimateFiatForMsats, formatFiatAmount, normalizeFiatCurrency } from "../amount-display.js";
-import { useBitcoinPrice } from "../hooks/useBitcoinPrice.js";
-import { useFiatRates } from "../hooks/useFiatRates.js";
 import type { NostrProfileNameMap } from "../nostr-profiles.js";
 
 export function HomeHero({
-  balanceMsats, inEscrowMsats, readyToCollectCount, needsYou, alsoGoingOn,
-  pubkey, profileNames, kind0Enabled, onchainObservations, onOpenTrade, quoteCurrency,
-  pendingNoteMsats = 0, onOpenPendingNote,
+  inEscrowMsats, readyToCollectCount, needsYou, alsoGoingOn,
+  pubkey, profileNames, kind0Enabled, onchainObservations, onOpenTrade,
+  heldSats,
   children,
 }: {
-  balanceMsats: number;
-  /** Sats in a pending ecash export: they left the wallet and live only in
-   *  the note until it is imported or returned (Jet, 6.4.26: ₿0 here with no
-   *  word about the note read as lost sats). */
-  pendingNoteMsats?: number;
-  onOpenPendingNote?: () => void;
   /** activeCommittedMsats — the same figure as the status bar's in-trade pill. */
   inEscrowMsats: number;
   readyToCollectCount: number;
@@ -46,17 +37,13 @@ export function HomeHero({
   kind0Enabled?: boolean;
   onchainObservations?: ReadonlyMap<string, OnchainObservation>;
   onOpenTrade: (id: string) => void;
-  quoteCurrency?: string | null;
+  /** Every sat Chama holds for you outside a live trade, each with its way
+   *  out (HeldSats). Chama is not a wallet, so there is no balance hero. */
+  heldSats?: ReactNode;
   /** Rendered in the second column on wide screens (the standing dashboard). */
   children?: ReactNode;
 }) {
   const { t } = useT();
-  const price = useBitcoinPrice();
-  const rates = useFiatRates();
-  const currency = normalizeFiatCurrency(quoteCurrency) ?? "USD";
-  const fiat = balanceMsats > 0
-    ? estimateFiatForMsats({ amountMsats: balanceMsats, currency, usdPerBtc: price.usd, usdFiatRates: rates.rates })
-    : null;
 
   return (
     <div className="chama-home">
@@ -68,47 +55,31 @@ export function HomeHero({
           {t("dash.homeTitle")}
         </h1>
 
-        <section style={{
-          background: T.surface, border: `1px solid ${T.line}`, borderRadius: T.rCard,
-          padding: 18, display: "flex", flexDirection: "column", gap: 14,
-        }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-            <Label icon={<WalletGlyph />}>{t("dash.inWallet")}</Label>
-            <Sats msats={balanceMsats} size={T.fs.amount} />
-            {fiat != null && (
-              <div style={{ fontSize: T.fs.fiat, color: T.ink2, fontFamily: T.sans }}>
-                {t("dash.fiatApprox", { amount: formatFiatAmount(fiat, currency) })}
-              </div>
-            )}
-            {pendingNoteMsats > 0 && (
-              <button type="button" data-home-pending-note onClick={onOpenPendingNote} style={{
-                marginTop: 6, alignSelf: "flex-start", minHeight: T.size.touch, padding: "8px 12px",
-                borderRadius: 12, border: `1px solid ${T.attn}`, background: T.attnBg, color: T.attnInk,
-                fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 600, textAlign: "left", cursor: "pointer",
-              }}>
-                {t("dash.pendingNote", { sats: fmtSats(pendingNoteMsats) })} ›
-              </button>
-            )}
-          </div>
+        {heldSats}
+
+        {(inEscrowMsats > 0 || readyToCollectCount > 0) && (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10 }}>
-            <div style={{ background: T.raised, borderRadius: 14, padding: 12, display: "flex", flexDirection: "column", gap: 4 }}>
-              <Label icon={<LockGlyph size={15} />}>{t("dash.inEscrowForYou")}</Label>
-              <Sats msats={inEscrowMsats} size={T.fs.title2} />
-            </div>
-            <div style={{
-              background: readyToCollectCount > 0 ? T.attnBg : T.raised,
-              border: `1px solid ${readyToCollectCount > 0 ? T.attn : "transparent"}`,
-              borderRadius: 14, padding: 12, display: "flex", flexDirection: "column", gap: 4,
-            }}>
-              <Label icon={<CollectGlyph />} color={readyToCollectCount > 0 ? T.attnInk : T.ink2}>
-                {t("dash.readyToCollect")}
-              </Label>
-              <div style={{ fontFamily: T.sans, fontSize: T.fs.title2, fontWeight: 700, color: T.ink }}>
-                {t("dash.readyTrades", { count: readyToCollectCount })}
+            {inEscrowMsats > 0 && (
+              <div data-home-in-escrow style={{ background: T.raised, borderRadius: 14, padding: 12, display: "flex", flexDirection: "column", gap: 4 }}>
+                <Label icon={<LockGlyph size={15} />}>{t("dash.inEscrowForYou")}</Label>
+                <Sats msats={inEscrowMsats} size={T.fs.title2} />
               </div>
-            </div>
+            )}
+            {readyToCollectCount > 0 && (
+              <div style={{
+                background: T.attnBg, border: `1px solid ${T.attn}`,
+                borderRadius: 14, padding: 12, display: "flex", flexDirection: "column", gap: 4,
+              }}>
+                <Label icon={<CollectGlyph />} color={T.attnInk}>
+                  {t("dash.readyToCollect")}
+                </Label>
+                <div style={{ fontFamily: T.sans, fontSize: T.fs.title2, fontWeight: 700, color: T.ink }}>
+                  {t("dash.readyTrades", { count: readyToCollectCount })}
+                </div>
+              </div>
+            )}
           </div>
-        </section>
+        )}
 
         <AttentionQueue
           profileNames={profileNames} kind0Enabled={kind0Enabled}
@@ -176,16 +147,6 @@ function Label({ icon, children, color = T.ink2 }: { icon: ReactNode; children: 
     }}>
       {icon}{children}
     </div>
-  );
-}
-
-function WalletGlyph() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"
-      strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M3 7h15a3 3 0 0 1 3 3v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" /><path d="M3 7l12-4v4" />
-      <circle cx="16.5" cy="14" r="1.2" />
-    </svg>
   );
 }
 

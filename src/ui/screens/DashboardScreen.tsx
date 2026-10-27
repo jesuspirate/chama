@@ -299,7 +299,6 @@ export function DashboardScreen({
           sub={volume.liveSats > 0 ? t("dash.liveEscrow", { sats: volume.liveSats.toLocaleString() }) : undefined} />
         <StatTile label={t("dash.ratingTile")} value={ratePct !== null ? `${ratePct}%` : "—"}
           sub={ratings && ratings.count > 0 ? t("me.ratingsFromTradesMany", { count: ratings.count }) : t("me.reputationNone")} />
-        <StatTile label={t("dash.onDevice")} value={Math.floor(balanceMsats / 1000).toLocaleString()} accent={T.accent} sub="sats" />
       </div>
 
       {noShowCount > 0 && (

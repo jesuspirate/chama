@@ -49,9 +49,10 @@ export const me: Record<string, string> = {
   "backup.identityOnly": "Esta clave eres tú, no tus sats. No la compartas.",
   "backup.reading": "Leyendo tu clave…",
 
-  "me.walletBalance": "En tu cartera Chama:",
+  "me.walletBalance": "Quedan en Chama:",
   "me.parkedWalletsTitle": "También en este dispositivo:",
   "me.parkedWalletLine": "{sats} sats en {name} la última vez que la usaste",
+  "me.parkedWalletLineUnchecked": "{name}: saldo sin comprobar la última vez que la usaste",
   "me.parkedWalletUnlisted": "una federación que Chama no lista",
   "me.parkedWalletsHint": "Cada federación guarda sus propios sats. Abre un intercambio en esa federación para usarlos.",
 
@@ -93,7 +94,6 @@ export const me: Record<string, string> = {
   // Rediseño de Yo: héroe de atención + acordeones.
   "me.accArbiter": "Árbitro",
   "me.tabCommunity": "Comunidad",
-  "me.tabSats": "Billetera",
   "me.recentSettlements": "Liquidaciones recientes",
   "me.settledReleased": "liberada",
   "me.settledRefunded": "reembolsada",
@@ -352,4 +352,8 @@ export const me: Record<string, string> = {
   "me.groupTrading": "Intercambios",
   "me.groupBond": "Fianza",
   "me.groupHelp": "Ayuda y más",
+  "me.heldSatsOnHome": "Algunos de tus sats te necesitan. Míralos en Inicio",
+  "me.groupGettingPaid": "Dónde te pagan",
+  "backup.rowTitle": "Tu clave",
+  "backup.rowHint": "Úsala para entrar en otro dispositivo",
 };

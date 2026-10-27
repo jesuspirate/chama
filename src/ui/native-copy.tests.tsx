@@ -107,13 +107,14 @@ console.log("PASS browser Advanced: OPFS copy stays where it is true");
 console.log("PASS sandbox and recovery copy: no OPFS");
 
 {
-  // Me → Wallet and the stranded-claim surfaces pick the app's sentence in
-  // the app, and the app's sentences never mention a browser.
+  // Home's held sats and the stranded-claim surfaces pick the app's sentence
+  // in the app, and the app's sentences never mention a browser.
   const me = read("./screens/MeScreen.tsx");
-  assert.equal(me.match(/t\("me\.withdrawEcashBackupHint"\)/g), null, "no hard-coded browser hint left");
-  assert.equal(me.match(/t\(withdrawEcashHintKey\(\)\)/g)?.length, 2, "both Withdraw-as-ecash hints are platform-aware");
+  const held = read("./components/HeldSats.tsx");
+  for (const src of [me, held]) assert.equal(src.match(/t\("me\.withdrawEcashBackupHint"\)/g), null, "no hard-coded browser hint left");
+  assert.equal(held.match(/t\(withdrawEcashHintKey\(\)\)/g)?.length, 2, "both Withdraw-as-ecash hints are platform-aware");
   assert.match(me, /home === "app" \? "me\.withdrawEcashBackupHintApp"\n\s+: home === "node" \? "me\.withdrawEcashBackupHintNode"/);
-  assert.match(me, /walletHome\(\) === "app" \? "me\.strandedClaimBodyApp" : "me\.strandedClaimBody"/);
+  assert.match(held, /walletHome\(\) === "app" \? "me\.strandedClaimBodyApp" : "me\.strandedClaimBody"/);
   assert.match(me, /isNativeAppShell\(\) \? "me\.bgPushBlockedApp" : "me\.bgPushBlocked"/);
   assert.match(read("./App.tsx"), /walletHome\(\) === "app" \? "app\.strandedClaimBodyApp" : "app\.strandedClaimBody"/);
   assert.match(read("./screens/ConnectScreen.tsx"), /isTauriRuntime\(\) \? "connect\.lastChamaHereApp" : "connect\.lastChamaHere"/);
@@ -133,7 +134,7 @@ console.log("PASS sandbox and recovery copy: no OPFS");
   }
   assert.match(translate("en", "me.withdrawEcashBackupHintNode"), /Whoever runs that node holds its sats/);
 }
-console.log("PASS Me → Wallet, stranded claims, alerts and sign-in: the app's own sentences");
+console.log("PASS Home held sats, stranded claims, alerts and sign-in: the app's own sentences");
 
 setShell(false);
 storage.clear();
