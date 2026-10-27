@@ -322,8 +322,8 @@ export function AssistedCanvas({
           {missingPaymentRails.map(key => {
             const rail = getRailByKey(key);
             const draft = paymentDetailDrafts[key] ?? "";
-            const showCountryCodeNudge = rail?.placeholder?.includes("+") === true
-              && (!draft.trim() || paymentHandleNeedsCountryCode(key, draft));
+            const showCountryCodeNudge = (rail?.placeholder?.includes("+") === true && !draft.trim())
+              || paymentHandleNeedsCountryCode(key, draft);
             return <label key={key}>
               {/* Where the handle is typed, the full name says what to share
                   ("$cashtag (Cash App)"); chips and listings show the label. */}

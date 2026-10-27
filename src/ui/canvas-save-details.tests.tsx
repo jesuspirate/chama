@@ -49,4 +49,26 @@ const { addSavedHandle, listSavedHandles } = await import("../payments/saved-han
   const strike = listPayoutDestinations().find(d => isStrikeLightningAddress(d.address));
   assert.equal(strike && strikeUsernameFromAddress(strike.address), "jet", "the next Strike claim is pre-filled");
 }
-console.log("PASS saved details: canvas moving on saves what was typed, stops on one that can't be saved; claim addresses kept before payout");
+{
+  // Jet (Oct 27): one set of rules for payment details on every screen.
+  const { paymentHandleNeedsCountryCode } = await import("../payments/saved-handles.js");
+  for (const rail of ["zelle", "phone-number", "paypal", "venmo", "cashtag"]) {
+    assert.equal(paymentHandleNeedsCountryCode(rail, "336 647 6911"), true, `${rail}: a number needs its country code`);
+    assert.throws(() => addSavedHandle(rail, "3366476911"), /country code/, `${rail}: refused at save`);
+    assert.equal(addSavedHandle(rail, "+13366476911").handle, "+1 336-647-6911", `${rail}: saved in one format`);
+  }
+  for (const [rail, value] of [["paypal", "jet@example.com"], ["venmo", "@jet"], ["cashtag", "$jet"], ["bank-transfer", "3366476911"], ["strike", "jet"]]) {
+    assert.equal(paymentHandleNeedsCountryCode(rail, value), false, `${rail}: ${value} is not a phone number`);
+  }
+  // Settings, Create and the funding step all show the nudge from the same
+  // rule and save through the same checked function; a refused save says why.
+  const settings = readFileSync(new URL("./panels/SavedHandlesPanel.tsx", import.meta.url), "utf8");
+  const canvas = readFileSync(new URL("./screens/AssistedCanvas.tsx", import.meta.url), "utf8");
+  const funding = readFileSync(new URL("./components/TradePaymentDetails.tsx", import.meta.url), "utf8");
+  assert.match(settings, /\|\| paymentHandleNeedsCountryCode\(selectedRail\.key, addValue\)/);
+  assert.match(canvas, /\|\| paymentHandleNeedsCountryCode\(key, draft\)/);
+  assert.match(funding, /paymentHandleNeedsCountryCode\(rail, handle\) && <div data-payment-country-code/);
+  assert.match(funding, /try \{\n\s+const saved = addSavedHandle\(rail, handle\.trim\(\)\)[^\n]*\n\s+\} catch \(e\) \{\n\s+setSaveError\(/, "funding: a refused save is shown, not swallowed");
+  assert.match(funding, /\{saveError && <div role="alert"/);
+}
+console.log("PASS saved details: canvas moving on saves what was typed, stops on one that can't be saved; claim addresses kept before payout; phone rules match on every screen");
