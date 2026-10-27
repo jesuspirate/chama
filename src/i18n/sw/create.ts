@@ -2,7 +2,9 @@ export const create: Record<string, string> = {
   "create.billHealthSha": "Afya — SHA/SHIF",
   "create.billTv": "Runinga (DSTV/GOtv/Zuku)",
   "create.billElectricityKplc": "Umeme — KPLC",
-  "create.listingBody": "Maelezo — aya, orodha, **nzito**, *italiki*, [maandishi](https://…)",
+  "create.listingBody": "Maelezo zaidi · si lazima",
+  "create.listingBodyAdd": "+ Ongeza maelezo",
+  "create.listingBodyHint": "Unaweza kutumia herufi nzito, italiki, orodha na viungo.",
   "create.recurringToggleLabel": "Inajirudia kila mwezi",
   "create.publishingTitle": "Inachapisha ofa yako…",
   "create.publishingSub": "Inaiweka hai katika jamii yako. Hii inachukua muda mfupi tu.",
@@ -28,7 +30,7 @@ export const create: Record<string, string> = {
   "create.aprPlaceholder": "APR",
   "create.autoFromChama": "otomatiki kutoka Chama {flag}",
   "create.autoFromChamaSentence": "Otomatiki kutoka Chama {flag}.",
-  "create.backButton": "‹ Rudi",
+  "create.backButton": "Rudi",
   "create.billLabelPlain": "bili",
   "create.billLabelWithAmount": "bili ya {amount}",
   "create.billTypeHint":
@@ -130,6 +132,8 @@ export const create: Record<string, string> = {
   "create.menuModeExchange": "Ubadilishanaji ulioteuliwa",
   "create.menuModeLending": "Kitabu cha mikopo",
   "create.menuModeMarket": "Duka",
+  "create.menuStockNoteMarket": "Ndivyo ilivyoundwa: Chama haihesabu bidhaa zilizopo kwenye Duka. “Kikomo / oda” ni kiasi cha juu ambacho oda moja inaweza kuchukua kwa kila bidhaa. Weka hesabu yako mwenyewe, na hakikisha unazo kabla ya kutuma.",
+  "create.menuStockTipMarket": "Unauza bidhaa moja mara nyingi? Chagua Moja na uweke “Vipande stoo”, na Chama itapunguza kila oda.",
   "create.menuPartialBillPay": "Kamilisha majina ya bili na sats kabla ya {stage}.",
   "create.menuPartialExchange":
     "Kamilisha majina ya chaguo na sats halali za chini/juu kabla ya {stage}.",

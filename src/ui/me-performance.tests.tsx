@@ -121,7 +121,7 @@ console.log("PASS Me stays still: memoised tabs and rows, stable callbacks, stab
   // which discards its layout, so every card was laid out again.
   const me = readFileSync("src/ui/screens/MeScreen.tsx", "utf8");
   assert.doesNotMatch(me, /hidden=\{shownTab !== /, "no Me tab hides with display:none where content-visibility works");
-  for (const pane of ["trades", "seller", "sats", "arbiter", "profile", "settings", "community"]) {
+  for (const pane of ["trades", "seller", "arbiter", "profile", "settings", "community"]) {
     assert.match(me, new RegExp(`<MePane store=\\{tabs\\} id="${pane}">`), `${pane} sits behind a MePane gate`);
   }
   assert.match(me, /CSS\.supports\("content-visibility", "hidden"\)/, "feature-checked, with the display:none fallback");
@@ -209,14 +209,14 @@ console.log("PASS timing readout: off by default, 7 taps or ?perf=1, per-tap tot
   assert.equal(store.getPressed(), "settings", "the pill highlights at once");
   assert.equal(store.getShown(), "trades", "the pane waits for the next frame");
   assert.equal(notified, 1);
-  store.press("sats");
+  store.press("profile");
   frames.shift()!();
   await new Promise(r => setTimeout(r, 5));
   assert.equal(store.getShown(), "trades", "a superseded press never shows its pane");
   frames.shift()!();
   await new Promise(r => setTimeout(r, 5));
-  assert.equal(store.getShown(), "sats");
-  assert.equal(store.isVisited("sats"), true);
+  assert.equal(store.getShown(), "profile");
+  assert.equal(store.isVisited("profile"), true);
   assert.equal(store.isVisited("settings"), false, "a tab only flashed past is not mounted");
   store.set("community");
   assert.equal(store.getPressed(), "community");

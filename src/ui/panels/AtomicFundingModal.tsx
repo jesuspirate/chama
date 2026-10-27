@@ -72,6 +72,7 @@ import {
 } from "../../payments/chapsmart-onramp.js";
 import type { OnchainDepositProgress, OnchainInfo } from "../../fedimint/fedimint-client.js";
 import type { EscrowState, SelectedMenuItem } from "../../escrow-engine/types.js";
+import { BackButton } from "../components/BackButton.js";
 
 
 export interface AtomicFundingModalProps {
@@ -1632,14 +1633,7 @@ function ChapsmartMpesaPanel({
           {state.message}
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-          <button onClick={onBack} style={{
-            padding: "10px 16px", borderRadius: T.rs,
-            background: T.surface, border: `1px solid ${T.border}`,
-            color: T.muted, fontFamily: T.mono, fontSize: 11, fontWeight: 700,
-            cursor: "pointer",
-          }}>
-            {t("fund.backToInvoice")}
-          </button>
+          <BackButton onClick={onBack} label={t("fund.backToInvoice")} style={{ alignSelf: "stretch", whiteSpace: "normal" }} />
           <button onClick={() => void loadQuote()} style={{
             padding: "10px 16px", borderRadius: T.rs,
             background: T.tealDim, border: `1px solid ${T.teal}66`,

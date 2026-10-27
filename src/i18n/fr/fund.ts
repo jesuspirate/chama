@@ -79,7 +79,7 @@ export const fund: Record<string, string> = {
   "fund.askingWalletBefore": "Demande à votre portefeuille de payer",
   "fund.autoPayArrow": "Paiement auto →",
   "fund.autoPayWithNwc": "Paiement auto via NWC",
-  "fund.backToInvoice": "← Retour à la facture",
+  "fund.backToInvoice": "Retour à la facture",
   "fund.balanceUpdatedClosing": "Solde mis à jour · fermeture…",
   "fund.bestForAlmostEveryone":
     "Le meilleur choix pour presque tout le monde. Réglé en quelques secondes, en général.",
