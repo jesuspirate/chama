@@ -4,7 +4,7 @@ export const chat: Record<string, string> = {
   "chat.altChatAttachment": "adjunto del chat",
   "chat.altSelectedReceipt": "recibo seleccionado",
   "chat.attachTitle": "Adjuntar imagen del recibo",
-  "chat.back": "← Volver",
+  "chat.back": "Volver",
   "chat.chatHeader": "Chat",
   "chat.closed": "💬 El chat está cerrado — este intercambio está liquidado.",
   "chat.confirmRouteSwitch": "Confirma el cambio de ruta",

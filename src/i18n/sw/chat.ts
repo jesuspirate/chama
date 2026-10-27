@@ -3,7 +3,7 @@ export const chat: Record<string, string> = {
   "chat.altChatAttachment": "kiambatisho cha mazungumzo",
   "chat.altSelectedReceipt": "risiti iliyochaguliwa",
   "chat.attachTitle": "Ambatisha picha ya risiti",
-  "chat.back": "← Rudi",
+  "chat.back": "Rudi",
   "chat.chatHeader": "Mazungumzo",
   "chat.closed": "💬 Mazungumzo yamefungwa — biashara hii imekamilika.",
   "chat.confirmRouteSwitch": "Thibitisha kubadili njia",

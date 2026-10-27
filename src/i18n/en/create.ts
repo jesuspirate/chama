@@ -38,7 +38,7 @@ export const create: Record<string, string> = {
   "create.aprPlaceholder": "APR",
   "create.autoFromChama": "auto from {flag} Chama",
   "create.autoFromChamaSentence": "Auto from {flag} Chama.",
-  "create.backButton": "‹ Back",
+  "create.backButton": "Back",
   "create.billLabelPlain": "bill",
   "create.billLabelWithAmount": "{amount} bill",
   "create.billTypeHint":

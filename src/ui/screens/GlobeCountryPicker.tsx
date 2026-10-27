@@ -21,6 +21,7 @@ import {
   getCommunityBySlug,
   isRealLocalChama,
 } from "../../communities/registry.js";
+import { BackButton as SharedBackButton } from "../components/BackButton.js";
 
 // v2.6 / v4.1 "US-activation": the full-world "Hey Chama, where's home?" picker
 // (PHILOSOPHY.md §6). A spinning globe hero + a searchable, full-world country
@@ -599,18 +600,7 @@ function BackButton({ label, onClick }: { label: string; onClick: () => void }) 
   // (centered) shell on a wide viewport.
   return (
     <div style={{ width: "100%", maxWidth: 380, marginBottom: 12, textAlign: "left" }}>
-      <button
-        onClick={onClick}
-        style={{
-          display: "inline-flex", alignItems: "center", gap: 6,
-          padding: "6px 10px", borderRadius: T.rs,
-          background: T.surface, border: `1px solid ${T.border}`,
-          color: T.muted, fontFamily: T.sans, fontSize: T.fs.secondary, cursor: "pointer",
-        }}
-      >
-        <span style={{ fontSize: 12, lineHeight: 1 }}>←</span>
-        {label}
-      </button>
+      <SharedBackButton onClick={onClick} label={label} />
     </div>
   );
 }

@@ -113,6 +113,7 @@ import { ensureRemoteListingImage, MAX_LISTING_IMAGE_REFS, type ListingImageUplo
 import { SwipeImageGallery } from "../components/SwipeImageGallery.js";
 import { SheetSelect } from "../components/SheetSelect.js";
 import { VerticalIcon } from "../components/VerticalIcon.js";
+import { BackButton } from "../components/BackButton.js";
 
 type Step = 1 | 2 | 3;
 /** Verticals whose value is divisible, so a trade can be settled in slices.
@@ -3832,14 +3833,7 @@ function Step2({
       )}
 
       <div style={{ display: "flex", gap: 8 }}>
-        <button data-chama-shortcut="back" onClick={onBack} style={{
-          flex: 1, padding: "14px",
-          background: T.surface, border: `1px solid ${T.border}`, borderRadius: T.rs,
-          color: T.text, fontFamily: T.mono, fontSize: 13, fontWeight: 700,
-          cursor: "pointer",
-        }}>
-          {t("create.backButton")}
-        </button>
+        <BackButton data-chama-shortcut="back" onClick={onBack} label={t("create.backButton")} style={{ flex: 1, alignSelf: "stretch" }} />
         <button data-chama-shortcut="enter" onClick={onNext} disabled={!ready} style={{
           flex: 2, padding: "14px",
           background: ready ? T.accent : T.surface,
@@ -4192,14 +4186,7 @@ function Step3({
       </div>
 
       <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-        <button data-chama-shortcut="back" onClick={onBack} style={{
-          flex: 1, padding: "14px",
-          background: T.surface, border: `1px solid ${T.border}`, borderRadius: T.rs,
-          color: T.text, fontFamily: T.mono, fontSize: 13, fontWeight: 700,
-          cursor: "pointer",
-        }}>
-          {t("create.backButton")}
-        </button>
+        <BackButton data-chama-shortcut="back" onClick={onBack} label={t("create.backButton")} style={{ flex: 1, alignSelf: "stretch" }} />
         <button onClick={onSaveDraft} style={{
           flex: 1, padding: "14px",
           background: T.surface, border: `1px solid ${T.border}`, borderRadius: T.rs,

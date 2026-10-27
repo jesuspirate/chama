@@ -41,6 +41,7 @@ import {
 } from "../../fedimint/native-bridge-adapter.js";
 import { readBrowserWalletRecoveryJournal } from "../../fedimint/browser-wallet-recovery-journal.js";
 import { walletHome } from "../wallet-location.js";
+import { BackButton } from "../components/BackButton.js";
 
 // Settings → Advanced — the home of Power-user mode (formerly
 // "Sandbox mode" through v0.4.1) and the federation-switching tools
@@ -103,6 +104,7 @@ export function SettingsAdvanced({
    *  production path. */
   onSandboxFund?: () => void;
 }) {
+  const { t } = useT();
   const [powerUserOn, setPowerUserOn] = useState(isPowerUserModeOn);
   // v2.5: inline reset error (window.alert is a no-op in the webview).
   const [resetError, setResetError] = useState<string | null>(null);
@@ -169,12 +171,7 @@ export function SettingsAdvanced({
         display: "flex", justifyContent: "space-between",
         alignItems: "center", marginBottom: 20,
       }}>
-        <button onClick={onBack} style={{
-          background: "none", border: "none", color: T.muted,
-          fontFamily: T.sans, fontSize: T.fs.secondary, cursor: "pointer", padding: 0,
-        }}>
-          ← Back
-        </button>
+        <BackButton onClick={onBack} label={t("common.back")} />
         <span style={{ fontSize: 18, fontWeight: 700, color: T.text, fontFamily: T.sans }}>
           Advanced
         </span>
