@@ -20,6 +20,7 @@ import { VerticalIcon } from "../components/VerticalIcon.js";
 import { T, fmtSats } from "../theme.js";
 import { useT, type TFunc } from "../../i18n/index.js";
 import { shareTradeLink } from "../share-link.js";
+import { BackButton } from "../components/BackButton.js";
 
 export function circleTimeText(seconds: number, t: TFunc): string {
   if (seconds >= 86400) return t("circle.days", { count: Math.ceil(seconds / 86400) });
@@ -120,7 +121,7 @@ export function CircleSurface({ parent, escrows, viewerPubkey, backLabel, childr
       @keyframes circleFly3{from{opacity:1;transform:translate(0,0)}to{opacity:0;transform:translate(0,150px)}}
       @media (prefers-reduced-motion: reduce){.circle-lock-btn,.circle-loader-arc,.circle-loader-seat,.circle-lock-btn.charging::after{animation:none}.circle-locked-burst{animation:circleBurstPop 1.7s forwards}}
     `}</style>
-    <button type="button" data-chama-shortcut="back" onClick={onBack} style={{ background: "none", border: 0, color: T.muted, padding: "8px 0", cursor: "pointer" }}>‹ {backLabel}</button>
+    <BackButton data-chama-shortcut="back" onClick={onBack} label={backLabel} />
     <div style={{ display: "flex", alignItems: "center", gap: 9, color: T.accent, font: `700 ${T.fs.secondary} ${T.sans}`, letterSpacing: 2 }}><VerticalIcon vertical="chama" size={30} />CHAMA</div>
     <h1 style={{ fontSize: "clamp(32px, 6vw, 52px)", letterSpacing: "-.05em", margin: "10px 0 8px" }}>{circle.name}{circle.roundIndex > 1 && <span style={{ color: T.muted, fontWeight: 500 }}> · {isCollectionRound ? t("circle.roundOf", { n: circle.roundIndex, total: rot!.totalRounds }) : t("circle.roundN", { n: circle.roundIndex })}</span>}</h1>
     {viewerIsHost ? (

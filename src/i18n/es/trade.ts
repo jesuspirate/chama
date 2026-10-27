@@ -191,6 +191,7 @@ export const trade: Record<string, string> = {
   "trade.lockedSatsReturned": "los sats bloqueados se devuelven",
   "trade.markItDone": "Márcalo como hecho — hice mi parte",
   "trade.maxQty": "máx {count}",
+  "trade.storeOneOrderNote": "Un solo pedido para esta Tienda. Chama no cuenta el stock del vendedor aquí; el vendedor comprueba que lo tiene antes de enviar.",
   "trade.menuAmountOptions": "Opciones de monto",
   "trade.menuBillBundle": "Paquete de facturas",
   "trade.menuLoanOffers": "Ofertas de préstamo",

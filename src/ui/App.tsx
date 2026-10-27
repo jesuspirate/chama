@@ -29,6 +29,7 @@ import { nextRoundTemplate } from "../chama/circle.js";
 import type { CircleRound } from "../chama/types.js";
 import { getTrustedArbiterPool } from "../arbiters/pool.js";
 import { useState, useEffect, useMemo, useRef, useCallback, lazy, Suspense, type ReactNode } from "react";
+import { withSeedBackupCopy } from "./seed-backup-copy.js";
 import { sameRecord, useStableList } from "./stable-list.js";
 import { oncePerSessionToastKey } from "./components/Toast.js";
 import { perfMeasure, versionTapToggle, PerfZone } from "./perf-probe.js";
@@ -196,6 +197,7 @@ import { ChamaLoader } from "./components/ChamaLoader.js";
 import { isExpiredUnfundedListing } from "../escrow-engine/expired-listing.js";
 import { BottomNav, BOTTOM_NAV_HEIGHT, CreateButton, navCss, type Tab } from "./components/BottomNav.js";
 import { HomeHero, homeCss } from "./components/HomeHero.js";
+import { HeldSats } from "./components/HeldSats.js";
 import { CirclesHome } from "./screens/CirclesHome.js";
 import { CoachMarkTour, readCoachSeen, type CoachStep } from "./components/CoachMarkTour.js";
 import { BitcoinPricePill } from "./components/BitcoinPricePill.js";
@@ -285,6 +287,7 @@ import {
   writeAmountDisplayMode,
   type AmountDisplayMode,
 } from "./amount-display.js";
+import { BackButton } from "./components/BackButton.js";
 
 const QRScanner = lazy(() => import("./QRScanner.js"));
 
@@ -553,8 +556,8 @@ export default function App() {
   // guess where "back" goes.
   const [, setStateRefreshTick] = useState(0);
   const [walletOverlay, setWalletOverlay] = useState<null | "lightning" | "payment-methods">(null);
-  const [meRequestTabRaw, setMeRequestTabRaw] = useState<{ tab: "sats" | "settings" | "live-trades" | "community"; n: number; country?: string } | null>(null);
-  const setMeRequestTab = (tab: "sats" | "settings" | "live-trades" | "community", country?: string) =>
+  const [meRequestTabRaw, setMeRequestTabRaw] = useState<{ tab: "settings" | "live-trades" | "community"; n: number; country?: string } | null>(null);
+  const setMeRequestTab = (tab: "settings" | "live-trades" | "community", country?: string) =>
     setMeRequestTabRaw(prev => ({ tab, country, n: (prev?.n ?? 0) + 1 }));
   const openCommunity = (country?: string) => { setMeRequestTab("community", country); setView("me"); };
   const advancedReturnRef = useRef<View>("me");
@@ -583,7 +586,7 @@ export default function App() {
     seedRecovery,
     fundingInProgress,
     claimPayoutInProgress,
-  }, actions] = useEscrow({
+  }, rawActions] = useEscrow({
     relays: DEFAULT_RELAYS,
     defaultPlatformFeeBps: 50,
     onClaimProgress: (p) => {
@@ -617,6 +620,14 @@ export default function App() {
       }
     },
   });
+  // M10: an on-chain step refused because the key backup isn't confirmed on
+  // relays reaches every screen in the reader's language.
+  const actions = useMemo(() => ({
+    ...rawActions,
+    createEscrow: withSeedBackupCopy(rawActions.createEscrow),
+    joinEscrow: withSeedBackupCopy(rawActions.joinEscrow),
+    prepareOnchainFunding: withSeedBackupCopy(rawActions.prepareOnchainFunding),
+  }), [rawActions]);
 
   const [view, setView] = useState<View>("guided");
   // v4.1 C1 coach-mark tour: shown once after the user's first sign-in, on the
@@ -2079,7 +2090,7 @@ export default function App() {
   useEffect(() => {
     if (view !== "payout-destinations" && view !== "saved-handles") return;
     setWalletOverlay(view === "saved-handles" ? "payment-methods" : "lightning");
-    setMeRequestTab("sats");
+    setMeRequestTab("settings");
     setView("me");
   }, [view]);
 
@@ -3594,7 +3605,7 @@ export default function App() {
             communitySlug={routeCommunitySlug}
             activeInvite={liveActiveInvite}
             chamaLabel={chamaBarLabel}
-            onTapStranded={() => unseenPaidLockMsats > 0 ? (setMeRequestTab("sats"), setView("me")) : setPendingRecovery({
+            onTapStranded={() => unseenPaidLockMsats > 0 ? (setView("dashboard"), window.scrollTo?.(0, 0)) : setPendingRecovery({
               title: t("app.recoverSatsTitle"),
               traceContext: recoveryTraceContext,
             })}
@@ -4337,7 +4348,7 @@ export default function App() {
             await refreshCircle(selected.id);
           }}
           onNextRound={circle => { setCircleInitial(nextRoundTemplate(circle, { circleId: "", startSec: Math.floor(Date.now() / 1000) })); setView("circle-create"); }} />
-        : <div style={{ padding: 30 }}><button onClick={() => { ++circleRouteRequest.current; setView(detailBackView); }}>‹ {t("common.back")}</button><p role="status">{circleLoadError ?? t("circle.loading")}</p>
+        : <div style={{ padding: 30 }}><BackButton onClick={() => { ++circleRouteRequest.current; setView(detailBackView); }} label={t("common.back")} /><p role="status">{circleLoadError ?? t("circle.loading")}</p>
           {circleLoadError && selectedId && <button onClick={() => {
             setCircleLoadError(null);
             void refreshCircle(selectedId).catch(error => setCircleLoadError(error.message));
@@ -4902,10 +4913,58 @@ export default function App() {
         // on) leads; v5.0's standing Dashboard follows — beside it on wide
         // screens, below it on phones.
         <HomeHero
-          balanceMsats={fedimint.balanceMsats ?? 0}
           inEscrowMsats={committedMsats}
-          pendingNoteMsats={getEcashExport()?.amountMsats ?? 0}
-          onOpenPendingNote={() => { setView("me"); window.scrollTo?.(0, 0); }}
+          heldSats={
+            // Chama is not a wallet: every sat it holds for you shows here,
+            // with its way out, and nothing else does (Jet, Oct 19).
+            <HeldSats
+              pubkey={pubkey!}
+              balanceMsats={fedimint.balanceMsats ?? 0}
+              balanceKnown={fedimint.joined && !fedimint.balanceReadFailed}
+              walletInvite={fedimint.joined ? liveActiveInvite ?? undefined : undefined}
+              walletNeedsTap={signerNeedsUserAction && !fedimint.joined}
+              onUseWallet={() => {
+                if (signerNeedsUserAction && !fedimint.joined && !fedimint.busy) {
+                  void actions.initFedimint().catch(error => setToast({ message: error.message, type: "error" }));
+                }
+              }}
+              balanceUnreadable={fedimint.joined && Boolean(fedimint.balanceReadFailed) && !fedimint.busy}
+              pendingCards={(nativeLockResume || pendingPayoutCard) ? <>
+                {nativeLockResume && (
+                  <PendingLockCard
+                    entry={nativeLockResume}
+                    tradeDescription={escrows.get(nativeLockResume.escrowId)?.description ?? null}
+                    busy={pendingLockBusy}
+                    onFinishLock={handleFinishPendingLock}
+                    onOpenTrade={() => openEscrow(nativeLockResume.escrowId)}
+                  />
+                )}
+                {pendingPayoutCard && (
+                  <PendingPayoutCard
+                    entry={pendingPayoutCard}
+                    onOpenTrade={() => openEscrow(pendingPayoutCard.escrowId)}
+                  />
+                )}
+              </> : undefined}
+              hasActiveCommitment={hasActiveCommitment}
+              paidLockFederationId={fedimint.federationId ?? undefined}
+              satsTrace={displayedSatsTrace}
+              hasPendingNativeLock={hasPendingNativeLock}
+              hasPendingClaimPayout={hasPendingClaimPayout}
+              stuckNativeLocks={nativeLockSummary.stuck}
+              onRecoverSats={() => setPendingRecovery({
+                title: t("app.recoverSatsTitle"),
+                traceContext: recoveryTraceContext,
+              })}
+              onOpenTrade={openEscrow}
+              onWithdrawEcash={() => setShowEcashExport(true)}
+              onExportStrandedClaim={(entry) => setStrandedClaimExport(entry)}
+              onReabsorbBearerNotes={handleReabsorbBearerNotes}
+              readLeftovers={actions.readHeldLeftovers}
+              leftoversRevision={bondsRevision}
+              onOpenBond={() => setShowBondCeremony(true)}
+            />
+          }
           readyToCollectCount={needsYouTrades.filter(e =>
             needsYouReasonFor(e, pubkey!, now, settledClaimIds, onchainObservations?.get(e.id)) === "claim").length}
           needsYou={needsYouTrades}
@@ -4916,7 +4975,6 @@ export default function App() {
           kind0Enabled={kind0Enabled}
           onchainObservations={onchainObservations}
           onOpenTrade={openEscrow}
-          quoteCurrency={getCommunityBySlug(routeCommunitySlug)?.currency ?? null}
         >
         <DashboardScreen
           knownTrades={knownTradesForConcentration}
@@ -4958,13 +5016,7 @@ export default function App() {
 
           {!myTradesLoading && <RecurringBillCard series={recurringSeries} onStop={cancelRecurring} />}
           <PerfZone id="Me screen"><MeScreen
-            walletInvite={fedimint.joined ? liveActiveInvite ?? undefined : undefined}
-            balanceKnown={fedimint.joined && fedimint.balanceMsats !== null}
-            onUseWallet={() => {
-              if (signerNeedsUserAction && !fedimint.joined && !fedimint.busy) {
-                void actions.initFedimint().catch(error => setToast({ message: error.message, type: "error" }));
-              }
-            }}
+            onOpenHome={() => { setView("dashboard"); window.scrollTo?.(0, 0); }}
             loadActiveRecoveryKey={actions.exportActiveRecoveryKey}
             storeAutoRenew={{ enabled: storeAutoRenewEnabled, onChange: changeStoreAutoRenew }}
             pubkey={pubkey!}
@@ -5046,7 +5098,7 @@ export default function App() {
             fedimint={fedimint}
             focusExplorer={advancedFocusExplorer}
             focusNwc={advancedFocusNwc}
-            onManageSavedWallets={() => { setView("me"); setWalletOverlay("lightning"); }}
+            onManageSavedWallets={() => { setMeRequestTab("settings"); setView("me"); setWalletOverlay("lightning"); }}
             onBack={closeAdvanced}
             onSandboxFund={() => setShowFundModal(true)}
             communitySlug={browseCommunity}

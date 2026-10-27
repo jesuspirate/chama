@@ -142,9 +142,11 @@ export function RecoveryKeyRow({ pubkey, loadKey }: { pubkey: string; loadKey?: 
   const saved = useRecoveryKeyBackup(pubkey);
   const [open, setOpen] = useState(false);
   return <>
-    <SettingsRow label={t("backup.title")} hint={t(saved ? "backup.saved" : "backup.unsaved")}
+    {/* Your sign-in key, not a wallet backup: it brings back your name and
+        trades on any device, never sats (Jet, Oct 19). */}
+    <SettingsRow label={t("backup.rowTitle")} hint={`${t("backup.rowHint")} · ${t(saved ? "backup.saved" : "backup.unsaved")}`}
       data-recovery-row data-key-reveal aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen(true)} />
-    {open && <OverlaySheet title={t("backup.title")} onClose={() => setOpen(false)}>
+    {open && <OverlaySheet title={t("backup.rowTitle")} onClose={() => setOpen(false)}>
       <RecoveryKeyBlock key={pubkey} pubkey={pubkey} loadKey={loadKey} />
     </OverlaySheet>}
   </>;

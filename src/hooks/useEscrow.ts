@@ -1,4 +1,5 @@
 import { suppressedVoteError } from '../escrow-engine/vote-suppression.js';
+import { refreshBalanceInto, withBalanceReadState } from "./balance-read-state.js";
 import { decideReconcileBalance } from "../fedimint/reconcile-balance.js";
 import { recoverOwnedBonds, findOwnedBond, type BondRecoveryReport } from '../bond-multisig/bond-recovery.js';
 import { getExistingSeed, confirmSeedBackupOnRelays, SeedBackupUnconfirmed } from '../fedimint/seed-manager.js';
@@ -849,6 +850,10 @@ export interface FedimintState {
    * in ChamaBar handles UX, not the new unreachable variant.
    */
   bootProbeState: "pending" | "ok" | "failed";
+  /** The last attempt to read the balance failed, so `balanceMsats` may be
+   *  stale (0 on a fresh open). "Can't read" is never "none": Home says so
+   *  instead of showing nothing. Cleared by any successful balance update. */
+  balanceReadFailed?: boolean;
 }
 
 export interface UseEscrowState {
@@ -1558,7 +1563,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
   });
 
   const updateFedimint = useCallback((partial: Partial<FedimintState>) => {
-    setState(prev => ({ ...prev, fedimint: { ...prev.fedimint, ...partial } }));
+    setState(prev => ({ ...prev, fedimint: { ...prev.fedimint, ...withBalanceReadState(partial) } }));
   }, []);
 
   // PR 5: keep stateRef in sync with state on every render so callbacks
@@ -4160,12 +4165,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
   const refreshBalance = useCallback(async () => {
     const fedimint = fedimintRef.current;
     if (!fedimint || !fedimint.isJoined()) return;
-    try {
-      const balanceMsats = await fedimint.getBalance();
-      updateFedimint({ balanceMsats });
-    } catch (e) {
-      console.debug("[chama] refreshBalance error:", e);
-    }
+    await refreshBalanceInto(fedimint, updateFedimint);
   }, [updateFedimint]);
 
   const readBalance = useCallback(async (): Promise<number> => {
@@ -4173,7 +4173,13 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     if (!fedimint || !fedimint.isJoined()) {
       return stateRef.current?.fedimint.balanceMsats ?? 0;
     }
-    const balanceMsats = await fedimint.getBalance();
+    let balanceMsats: number;
+    try {
+      balanceMsats = await fedimint.getBalance();
+    } catch (e) {
+      updateFedimint({ balanceReadFailed: true });
+      throw e;
+    }
     updateFedimint({ balanceMsats });
     return balanceMsats;
   }, [updateFedimint]);
@@ -4803,10 +4809,13 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
 
       // Read initial balance
       let balanceMsats = 0;
+      let initialBalanceReadFailed = false;
       try {
         balanceMsats = await fedimint.getBalance();
       } catch {
-        // fresh wallet — balance fetch may fail briefly after join
+        // fresh wallet — balance fetch may fail briefly after join. The 0
+        // below is a placeholder, not a reading, so it is marked unread.
+        initialBalanceReadFailed = true;
       }
 
       // v0.1.68: Drain any pending-redemption stash in the background.
@@ -4898,6 +4907,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
           ?? (usingCustom ? "External route" : BP_FEDERATION_NAME),
         isCustom: usingCustom,
         balanceMsats,
+        balanceReadFailed: initialBalanceReadFailed,
         busy: false,
         error: null,
         lastHealthOk: true,

@@ -188,6 +188,7 @@ export const trade: Record<string, string> = {
   "trade.lockedSatsReturned": "sats zilizofungwa zinarudishwa",
   "trade.markItDone": "Weka alama imefanyika — nimefanya sehemu yangu",
   "trade.maxQty": "kikomo {count}",
+  "trade.storeOneOrderNote": "Oda moja kwa Duka hili. Chama haihesabu bidhaa za muuzaji hapa; muuzaji anahakikisha anazo kabla ya kutuma.",
   "trade.menuAmountOptions": "Chaguo za kiasi",
   "trade.menuBillBundle": "Kifurushi cha bili",
   "trade.menuLoanOffers": "Ofa za mikopo",

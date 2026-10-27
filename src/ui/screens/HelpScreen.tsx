@@ -17,6 +17,7 @@ import { getFaqIntro, getFaqSections, getFaqGlossary, FAQ_HELP, type FaqItem } f
 import { isTauriRuntime } from "../sign-in-environment.js";
 import { openExternalUrl } from "../open-url.js";
 import { useT } from "../../i18n/index.js";
+import { BackButton } from "../components/BackButton.js";
 
 // v4.1 B (#16): under Tauri an `<a target="_blank">` is a silent no-op, so the
 // footer links were dead on desktop/APK. Keep the anchor (browser middle-click /
@@ -107,12 +108,7 @@ export function HelpScreen({ onBack }: { onBack: () => void }) {
     <div style={{ maxWidth: 520, margin: "0 auto", padding: "4px 2px", paddingBottom: "calc(72px + env(safe-area-inset-bottom, 0px))" }}>
       {/* Header — stays full (it's navigation; the back button must never recede). */}
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
-        <button onClick={onBack} aria-label={t("help.back")} style={{
-          width: 38, height: 38, flex: "0 0 auto", borderRadius: 999,
-          background: T.surface, border: `1px solid ${T.border}`, color: T.text,
-          fontFamily: T.sans, fontSize: 20, fontWeight: 700, cursor: "pointer",
-          display: "grid", placeItems: "center", lineHeight: 1,
-        }}>←</button>
+        <BackButton onClick={onBack} label={t("help.back")} style={{ flex: "0 0 auto" }} />
         <div style={{ minWidth: 0 }}>
           <div style={{ fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700, color: T.accent, marginBottom: 2 }}>
             {t("help.helpFaq")}

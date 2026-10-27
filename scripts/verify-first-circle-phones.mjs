@@ -167,36 +167,35 @@ try {
  await go('mode=me');await page.evaluate(()=>localStorage.removeItem(`chama_key_backup_v1:${window.viewer}`));await page.reload();await page.waitForSelector('[data-recovery-reminder]');
  assert.equal(await page.$('[data-recovery-row]'),null,'key has no reveal on Me home');
  await page.click('[data-key-reminder-copy]');await page.waitForSelector('[role=alert]');
- assert.equal(await page.$('[data-recovery-key]'),null,'Me reminder copy does not open Wallet or plaintext');
+ assert.equal(await page.$('[data-recovery-key]'),null,'Me reminder copy does not open Settings or plaintext');
  assert.equal(await page.evaluate(()=>window.walletUses??0),0,'copy does not initialize wallet secrets');
- await page.$$eval('button',buttons=>buttons.find(b=>b.textContent==='Wallet').click());await page.waitForSelector('[data-recovery-row]');
- assert.match(await page.$eval('[data-wallet-balance]',e=>e.textContent),/—/,'unopened extension wallet is unknown, not zero');
- assert.equal(await page.evaluate(()=>window.walletUses),1,'explicit Wallet tap starts wallet action');
+ await page.$$eval('button',buttons=>buttons.find(b=>b.textContent==='Settings').click());await page.waitForSelector('[data-recovery-row]');
+ assert.equal(await page.evaluate(()=>window.walletUses??0),0,'opening Settings never starts the wallet');
  await page.click('[data-key-reveal]');await page.waitForSelector('[data-recovery-key]');
  assert.equal(await page.$eval('[data-recovery-key]',e=>!!e.closest('[role=dialog]')),true,'key is contained in overlay');
  await page.keyboard.press('Tab');assert.equal(await page.evaluate(()=>!!document.activeElement.closest('[role=dialog]')),true);
  await page.keyboard.down('Shift');await page.keyboard.press('Tab');await page.keyboard.up('Shift');assert.equal(await page.evaluate(()=>!!document.activeElement.closest('[role=dialog]')),true);
  await page.keyboard.press('Escape');await page.waitForFunction(()=>!document.querySelector('[role=dialog]'));
  assert.equal(await page.$('[data-recovery-key]'),null,'closing unmounts plaintext');
- assert.equal(await page.evaluate(()=>document.activeElement.hasAttribute('data-key-reveal')),true,'focus returns to Wallet row');
+ assert.equal(await page.evaluate(()=>document.activeElement.hasAttribute('data-key-reveal')),true,'focus returns to the key row');
  await page.click('[data-key-reveal]');await page.waitForSelector('[data-recovery-key]');
  await page.$$eval('[role=dialog] button',buttons=>buttons.find(b=>b.textContent==='Done').click());await page.waitForFunction(()=>!document.querySelector('[role=dialog]'));
  await page.$$eval('button',buttons=>buttons.find(b=>b.textContent.includes('Payment methods')).click());await page.waitForSelector('[role=dialog][aria-label="Payment methods"]');
  assert.ok(await page.$('[role=dialog] input'),'payment methods editor opens in overlay');
  await page.$$eval('[role=dialog] button',buttons=>buttons.find(b=>b.textContent==='Done').click());await page.waitForFunction(()=>!document.querySelector('[role=dialog]'));
- assert.ok(await page.$('[data-recovery-row]'),'payment methods closes to same Wallet tab');
+ assert.ok(await page.$('[data-recovery-row]'),'payment methods closes to the same Settings tab');
  await page.$$eval('button',buttons=>buttons.find(b=>b.textContent.includes('Payment methods')).click());await page.waitForSelector('[role=dialog]');
  await page.mouse.click(2,2);await page.waitForFunction(()=>!document.querySelector('[role=dialog]'));
- assert.ok(await page.$('[data-recovery-row]'),'backdrop closes to same Wallet tab');
+ assert.ok(await page.$('[data-recovery-row]'),'backdrop closes to the same Settings tab');
  await page.click('[data-key-reveal]');await page.waitForSelector('[data-recovery-key]');
  await page.keyboard.press('Escape');await page.waitForFunction(()=>!document.querySelector('[role=dialog]'));
  await page.click('[data-key-confirm]');await page.waitForFunction(()=>!document.querySelector('[data-recovery-reminder]'));
  await page.reload();await page.waitForSelector('main');assert.equal(await page.$('[data-recovery-reminder]'),null);assert.equal(await page.$('[data-recovery-row]'),null);
- await page.$$eval('button',buttons=>buttons.find(b=>b.textContent==='Wallet').click());await page.waitForSelector('[data-recovery-row]');
+ await page.$$eval('button',buttons=>buttons.find(b=>b.textContent==='Settings').click());await page.waitForSelector('[data-recovery-row]');
  assert.match(await page.$eval('[data-recovery-row]',e=>e.textContent),/Saved ✓/);
  for(const theme of ['light','dark']){
-  await go(`mode=me&theme=${theme}`);await page.$$eval('button',buttons=>buttons.find(b=>b.textContent==='Wallet').click());await page.waitForSelector('[data-recovery-row]');
-  assert.equal(await page.$eval('[data-recovery-row]',e=>getComputedStyle(e).boxShadow),'none','recovery key matches flat Wallet rows');
+  await go(`mode=me&theme=${theme}`);await page.$$eval('button',buttons=>buttons.find(b=>b.textContent==='Settings').click());await page.waitForSelector('[data-recovery-row]');
+  assert.equal(await page.$eval('[data-recovery-row]',e=>getComputedStyle(e).boxShadow),'none','key row matches flat Settings rows');
   await page.screenshot({path:`outputs/first-circle-phones/wallet-${theme}.png`,fullPage:true});
   await page.click('[data-key-reveal]');await page.waitForSelector('[data-recovery-key]');
   await page.screenshot({path:`outputs/first-circle-phones/wallet-key-${theme}.png`,fullPage:true});
@@ -276,5 +275,5 @@ try {
   assert.deepEqual(await page.evaluate(()=>window.communitySelections),[],'chip never switches the wallet');
  }
  assert.deepEqual(errors,[]);
- console.log('PASS 390px light/dark cards; two-door chooser and isolated flows, automatic paste/Enter, explicit extension/refusal retry; single Save & continue without a receipt; Me confirmation, Copy/Save receipts and failure cases; flat Wallet rows, key/payment overlays, Done/Escape/backdrop dismissal and focus return; paste unaffected; sign-out reveal and persistent receipt; tap-only/reduced-motion scrolling; held/live/count-only arrivals, deduplication and subscription cleanup. M timezone nudge, persistent dismissal, preselected Me switcher, active-trade lock, APK suppression, Browse/canvas chips. Chromium UI checks; physical phones remain separate.');
+ console.log('PASS 390px light/dark cards; two-door chooser and isolated flows, automatic paste/Enter, explicit extension/refusal retry; single Save & continue without a receipt; Me confirmation, Copy/Save receipts and failure cases; flat Settings rows, key/payment overlays, Done/Escape/backdrop dismissal and focus return; paste unaffected; sign-out reveal and persistent receipt; tap-only/reduced-motion scrolling; held/live/count-only arrivals, deduplication and subscription cleanup. M timezone nudge, persistent dismissal, preselected Me switcher, active-trade lock, APK suppression, Browse/canvas chips. Chromium UI checks; physical phones remain separate.');
 } finally {await browser.close();}

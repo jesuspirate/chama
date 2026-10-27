@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useState } from "react";
 import { T } from "../theme.js";
 import { useT } from "../../i18n/index.js";
+import { BackButton } from "./BackButton.js";
 
 // v4.1 C1 "US-activation": a one-time, NymChat-style coach-mark tour shown once
 // after a user's first sign-in. It spotlights the home screen's reachable
@@ -168,17 +169,7 @@ export function CoachMarkTour({ steps, onDone }: {
           </button>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             {i > 0 && (
-              <button
-                type="button" onClick={() => setI(i - 1)}
-                style={{
-                  padding: "9px 14px", borderRadius: T.rs,
-                  background: T.surface, border: `1px solid ${T.border}`,
-                  color: T.text, fontFamily: T.sans, fontSize: T.fs.secondary, fontWeight: 700,
-                  cursor: "pointer",
-                }}
-              >
-                {t("common.back")}
-              </button>
+              <BackButton onClick={() => setI(i - 1)} label={t("common.back")} />
             )}
             <button
               type="button"
