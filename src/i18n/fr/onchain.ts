@@ -74,4 +74,6 @@ export const onchain: Record<string, string> = {
   "onchain.payoutSending": "Envoi…",
   "onchain.payoutSend": "Envoyer ce solde on-chain",
   "onchain.payoutSent": "{amount} sats envoyés (frais de minage : {fee} sats).",
+  "onchain.seedBackupUnconfirmed": "Chama n'a pas pu confirmer que la sauvegarde de vos clés d'échange on-chain est enregistrée sur le réseau, il s'est donc arrêté avant cette étape. Aucun sat n'a bougé. Vérifiez votre connexion, puis réessayez.",
+  "onchain.seedBackupDifferent": "Le réseau détient une sauvegarde de vos clés d'échange on-chain différente de celle de cet appareil, Chama s'est donc arrêté avant cette étape. Aucun sat n'a bougé.",
 };

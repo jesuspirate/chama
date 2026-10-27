@@ -73,4 +73,6 @@ export const onchain: Record<string, string> = {
   "onchain.payoutSending": "Inatuma…",
   "onchain.payoutSend": "Tuma salio hili la mnyororo",
   "onchain.payoutSent": "Imetuma sats {amount} (ada ya mchimbaji sats {fee}).",
+  "onchain.seedBackupUnconfirmed": "Chama haikuweza kuthibitisha kwamba nakala ya funguo zako za biashara za on-chain imehifadhiwa kwenye mtandao, kwa hiyo ilisimama kabla ya hatua hii. Hakuna sats zilizohamishwa. Angalia muunganisho wako, kisha ujaribu tena.",
+  "onchain.seedBackupDifferent": "Mtandao una nakala ya funguo zako za biashara za on-chain tofauti na ile kifaa hiki kinatumia, kwa hiyo Chama ilisimama kabla ya hatua hii. Hakuna sats zilizohamishwa.",
 };

@@ -6,6 +6,7 @@ import { PaymentButton } from "../components/PaymentCard.js";
 import { isTauriRuntime } from "../sign-in-environment.js";
 import { validateRecoveryKeyInput } from "../../escrow-engine/nsec-signer.js";
 import { useT } from "../../i18n/index.js";
+import { BackButton } from "../components/BackButton.js";
 
 // Save & continue submits visible credential fields; only Me can confirm a manager backup.
 export function NsecLogin({
@@ -298,8 +299,7 @@ export function NsecLogin({
       )}
 
       {friendly && (
-        <PaymentButton
-          type="button"
+        <BackButton
           disabled={submitting}
           onClick={() => {
             setMode("choice");
@@ -308,14 +308,9 @@ export function NsecLogin({
             setGeneratedNsec(null);
             setInputError(null);
           }}
-          style={{
-            background: "transparent", border: "none", color: T.muted,
-            fontFamily: T.mono, fontSize: 10, cursor: "pointer",
-            marginBottom: 10,
-          }}
-        >
-          {t("chat.back")}
-        </PaymentButton>
+          label={t("chat.back")}
+          style={{ marginBottom: 10 }}
+        />
       )}
 
       {showPasteInput && (

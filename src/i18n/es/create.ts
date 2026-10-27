@@ -8,7 +8,9 @@ export const create: Record<string, string> = {
   "create.billHealthSha": "Salud — SHA/SHIF",
   "create.billTv": "TV (DSTV/GOtv/Zuku)",
   "create.billElectricityKplc": "Electricidad — KPLC",
-  "create.listingBody": "Descripción — párrafos, listas, **negrita**, *cursiva*, [texto](https://…)",
+  "create.listingBody": "Detalles · opcional",
+  "create.listingBodyAdd": "+ Añadir detalles",
+  "create.listingBodyHint": "Puedes usar negrita, cursiva, listas y enlaces.",
   // CBP mensual — interruptor de factura recurrente (solo pago de facturas).
   "create.recurringToggleLabel": "Mensual recurrente",
   "create.recurringToggleHint": "Vuelve a publicar esta factura en tu comunidad cada mes mientras estás en línea. Sin fianza — detenlo cuando quieras desde Yo.",
@@ -33,7 +35,7 @@ export const create: Record<string, string> = {
   "create.aprPlaceholder": "TAE",
   "create.autoFromChama": "auto desde {flag} Chama",
   "create.autoFromChamaSentence": "Auto desde {flag} Chama.",
-  "create.backButton": "‹ Atrás",
+  "create.backButton": "Atrás",
   "create.billLabelPlain": "factura",
   "create.billLabelWithAmount": "factura de {amount}",
   "create.billTypeHint":
@@ -135,6 +137,8 @@ export const create: Record<string, string> = {
   "create.menuModeExchange": "Intercambios seleccionados",
   "create.menuModeLending": "Libro de préstamos",
   "create.menuModeMarket": "Tienda",
+  "create.menuStockNoteMarket": "Así está pensado: Chama no cuenta el stock de una Tienda. “Máx / pedido” es lo máximo que un pedido puede llevar de cada artículo. Lleva tu propia cuenta y comprueba que lo tienes antes de enviar.",
+  "create.menuStockTipMarket": "¿Vendes un mismo producto muchas veces? Elige Único y pon “Unidades en stock”, y Chama descuenta cada pedido.",
   "create.menuPartialBillPay": "Completa los nombres de las facturas y los sats antes de {stage}.",
   "create.menuPartialExchange":
     "Completa los nombres de las opciones y sats mín/máx válidos antes de {stage}.",
