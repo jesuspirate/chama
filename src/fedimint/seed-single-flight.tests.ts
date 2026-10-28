@@ -75,6 +75,37 @@ try {
     assert.equal(pool.published.length, 1);
     assert.equal(pool.reads(), 2, 'the relays are read once more before creating');
   }
+  {
+    // Another tab holds the creation lock (e.g. an unanswered signer prompt):
+    // this tab stops and lets reconnect retry. It never creates without it.
+    clearSeedCache(); values.clear();
+    const pool = relays([[]]);
+    const held = { request: (_name: string, options: { signal?: AbortSignal }) => new Promise((_, reject) => {
+      options.signal?.addEventListener('abort', () => reject(new DOMException('timed out', 'AbortError')));
+      setTimeout(() => reject(new DOMException('timed out', 'AbortError')), 20);
+    }) };
+    Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { locks: held } });
+    try {
+      await assert.rejects(getOrCreateSeed(pool.client, signer), (e: any) => e?.code !== undefined || /relay/i.test(String(e?.message)));
+      assert.equal(pool.published.length, 0, 'no backup made without the lock');
+    } finally {
+      Object.defineProperty(globalThis, 'navigator', { configurable: true, value: undefined });
+    }
+  }
+  {
+    // With a working cross-tab lock, two sign-ins still publish one backup.
+    clearSeedCache(); values.clear();
+    const pool = relays([[]]);
+    let tail: Promise<unknown> = Promise.resolve();
+    const locks = { request: (_name: string, _options: unknown, fn: () => Promise<unknown>) => { const run = tail.then(fn, fn); tail = run.catch(() => {}); return run; } };
+    Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { locks } });
+    try {
+      await Promise.all([getOrCreateSeed(pool.client, signer), getOrCreateSeed(pool.client, signer)]);
+      assert.equal(pool.published.length, 1);
+    } finally {
+      Object.defineProperty(globalThis, 'navigator', { configurable: true, value: undefined });
+    }
+  }
 } finally {
   quiet.forEach(([k, fn]) => { console[k] = fn; });
 }

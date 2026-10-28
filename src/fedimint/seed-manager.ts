@@ -752,7 +752,9 @@ export async function getOrCreateSeed(
   // tabs, and it reads the relays once more first: if any backup or marker
   // appeared meanwhile, it opens that one instead of making another.
   const created = await withSeedCreationLock(pubkey, async () => {
-    if (cachedSeed && cachedForPubkey === pubkey) return { words: cachedSeed };
+    // A call in this page created it meanwhile: the re-read below takes the
+    // cached path, which keeps its restore-confirmation checks.
+    if (cachedSeed && cachedForPubkey === pubkey) return null;
     if (loadSeedPublishedMarker(pubkey)) return null;
     const again = (await client.queryOnce(seedFilter, SEED_RECOVERY_TIMEOUT_MS))
       .filter(event => isChamaSeedEvent(event, pubkey) || isProtectedSeedEvent(event, pubkey));
@@ -806,11 +808,29 @@ export async function getOrCreateSeed(
 
 const seedCreationQueue = new Map<string, Promise<unknown>>();
 
+/** How long another tab may wait for the creation lock, e.g. behind a signer
+ *  prompt nobody answers, before it stops and lets reconnect retry. */
+const SEED_CREATION_LOCK_WAIT_MS = 60_000;
+
+type LockManagerLike = { request?: (name: string, options: { signal?: AbortSignal }, fn: () => Promise<unknown>) => Promise<unknown> };
+
 /** Run `create` for one identity at a time: in this page by a queue, and in
  *  other tabs of this browser through the Web Locks API where it exists. */
 async function withSeedCreationLock<T>(pubkey: string, create: () => Promise<T>): Promise<T> {
-  const locks = (globalThis as { navigator?: { locks?: { request?: (name: string, fn: () => Promise<T>) => Promise<T> } } }).navigator?.locks;
-  const run = () => typeof locks?.request === "function" ? locks.request(`chama-seed-create:${pubkey}`, create) : create();
+  const locks = (globalThis as { navigator?: { locks?: LockManagerLike } }).navigator?.locks;
+  const run = async (): Promise<T> => {
+    if (typeof locks?.request !== "function") return create();
+    let started = false;
+    try {
+      const signal = typeof AbortSignal?.timeout === "function" ? AbortSignal.timeout(SEED_CREATION_LOCK_WAIT_MS) : undefined;
+      return await locks.request(`chama-seed-create:${pubkey}`, signal ? { signal } : {}, () => { started = true; return create(); }) as T;
+    } catch (error) {
+      if (started) throw error;
+      // Never create without the lock another tab may hold: stop instead.
+      console.warn("[chama] Seed creation lock unavailable:", error);
+      throw seedRecoveryRelaysUnreadyError();
+    }
+  };
   const previous = seedCreationQueue.get(pubkey) ?? Promise.resolve();
   const next = previous.catch(() => {}).then(run);
   seedCreationQueue.set(pubkey, next);
