@@ -10,6 +10,7 @@ import { profileNameFor, type NostrProfileNameMap } from "../nostr-profiles.js";
 import { useEffect, useRef, useState } from "react";
 import { EscrowStatus, Outcome, Role, getEffectiveParticipantsAt, type EscrowState } from "../../escrow-engine/types.js";
 import { getWinner } from "../../escrow-engine/state-machine.js";
+import { payoutRecipientFor } from "../../escrow-engine/recipients.js";
 import { fundingArbiter } from "../../escrow-engine/onchain-funding-terms.js";
 import { deriveOnchainView } from "../../escrow-engine/onchain-escrow-view.js";
 import type { SettlementCheck } from "../../bond-multisig/onchain-escrow-settle.js";
@@ -107,6 +108,7 @@ export function OnchainTradeControls({ state, pubkey, profileNames, kind0Enabled
   const choosingWithVote = state.status === EscrowStatus.LOCKED && role === winner?.role && state.votes[role] === undefined && !!actions.onReleaseWithPayout;
   const choice = winnerSettlementChoice(state);
   const stalled = stalledPayoutEligibility(state, now);
+  const funderName = profileNameFor(profileNames, payoutRecipientFor(state, Outcome.REFUND)?.pubkey, kind0Enabled);
   const waitingName = profileNameFor(profileNames, stalled ? state.participants[stalled.other] : null, kind0Enabled) ?? "the other participant";
   const remaining = stalled ? Math.max(0, stalled.availableAt - now) : 0;
   const refundHeight = state.lock.onchain?.refundLockUntil;
@@ -276,7 +278,7 @@ export function OnchainTradeControls({ state, pubkey, profileNames, kind0Enabled
           const result = await actions.onRefundOnchainEscrow!(state.id); setNote(`Refund broadcast: ${result.txid}`);
         })}>Recover deposit</button>}
       </>}
-    </div> : <OnchainEscrowPanel refundHeight={(state.lock.onchain ?? state.onchainFundingTerms)?.refundLockUntil} settlementUnavailable={unavailable} view={view} network={ESCROW_NETWORK_LABEL} settlementCheck={unavailable ? null : checkedChoice === choice?.id ? check : check?.ok === false ? check : null} signing={busy} signedByViewer={signed}
+    </div> : <OnchainEscrowPanel refundHeight={(state.lock.onchain ?? state.onchainFundingTerms)?.refundLockUntil} settlementUnavailable={unavailable} view={view} funderName={funderName} network={ESCROW_NETWORK_LABEL} settlementCheck={unavailable ? null : checkedChoice === choice?.id ? check : check?.ok === false ? check : null} signing={busy} signedByViewer={signed}
       checking={busy} fundingNote={state.onchainFundingTerms && unavailable && state.status === EscrowStatus.CREATED ? "Couldn’t check the deposit yet — retrying" : note} depositStatus={depositStatus} publishing={busy} refunding={busy}
       onPrepareFunding={prepareFailed && !awaitingCashChoice && !state.onchainFundingTerms && view.viewerFunds && participants.buyer && participants.seller && actions.onPrepareOnchainFunding
         ? () => void run(() => prepareFunding()) : undefined}
