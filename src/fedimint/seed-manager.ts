@@ -49,6 +49,8 @@ export interface SeedReadOptions {
   recoveryCode?: string;
   restoreConfirmed?: boolean;
   requireRestoreConfirmation?: boolean;
+  /** Internal: set on the read that follows a skipped creation. */
+  afterCreationLock?: boolean;
 }
 function isProtectedSeedEvent(event: NostrEvent, pubkey: string): boolean {
   return event.kind === CHAMA_SEED_KIND && event.pubkey === pubkey
@@ -743,44 +745,97 @@ export async function getOrCreateSeed(
   }
 
   // ── 3. True first launch — no marker, no recovery. Generate fresh. ──
-  mlog("SEED-FIRST-LAUNCH", { pubkey: pubkey.slice(0, 8) });
-  const mnemonic = generateSeedWords(); // 12-word BIP-39 via @scure/bip39
-  const words = mnemonic.trim().split(/\s+/);
+  // Oct 27 2026: two first sign-ins at once (two tabs, or a retry while the
+  // first was still running) each made and published a seed, so the identity
+  // ended up with two backups and the device kept the one relays no longer
+  // serve. Only one creation runs per identity at a time, here and across
+  // tabs, and it reads the relays once more first: if any backup or marker
+  // appeared meanwhile, it opens that one instead of making another.
+  const created = await withSeedCreationLock(pubkey, async () => {
+    // A call in this page created it meanwhile: the re-read below takes the
+    // cached path, which keeps its restore-confirmation checks.
+    if (cachedSeed && cachedForPubkey === pubkey) return null;
+    if (loadSeedPublishedMarker(pubkey)) return null;
+    const again = (await client.queryOnce(seedFilter, SEED_RECOVERY_TIMEOUT_MS))
+      .filter(event => isChamaSeedEvent(event, pubkey) || isProtectedSeedEvent(event, pubkey));
+    if (again.length > 0 || !client.hasRecoveryReadQuorum() || options.afterCreationLock) return null;
+    mlog("SEED-FIRST-LAUNCH", { pubkey: pubkey.slice(0, 8) });
+    const mnemonic = generateSeedWords(); // 12-word BIP-39 via @scure/bip39
+    const words = mnemonic.trim().split(/\s+/);
 
-  const ciphertext = await signer.nip44Encrypt(mnemonic, pubkey);
+    const ciphertext = await signer.nip44Encrypt(mnemonic, pubkey);
 
-  const now = Math.floor(Date.now() / 1000);
-  const unsigned: UnsignedEvent = {
-    kind: CHAMA_SEED_KIND,
-    created_at: now,
-    tags: [
-      ["d", CHAMA_SEED_D_TAG],
-      ["client", "chama"],
-    ],
-    content: ciphertext,
-  };
+    const now = Math.floor(Date.now() / 1000);
+    const unsigned: UnsignedEvent = {
+      kind: CHAMA_SEED_KIND,
+      created_at: now,
+      tags: [
+        ["d", CHAMA_SEED_D_TAG],
+        ["client", "chama"],
+      ],
+      content: ciphertext,
+    };
 
-  const signed: NostrEvent = await signer.signEvent(unsigned);
-  await client.publishRaw(signed);
-  recordSeedPublished();
+    const signed: NostrEvent = await signer.signEvent(unsigned);
+    await client.publishRaw(signed);
+    recordSeedPublished();
 
-  // v0.1.74 seed safety: record the marker so future sessions on this
-  // device know this pubkey has had a seed published before, and won't
-  // be allowed to silently regenerate on a relay timeout.
-  saveSeedPublishedMarker(pubkey, signed.id);
-  saveLocalSeedEvent(pubkey, signed);
-  savePendingFirstJoin(pubkey, signed.id);
-  mlog("SEED-PUBLISH-OK", {
-    pubkey: pubkey.slice(0, 8),
-    eventId: signed.id.slice(0, 8),
-    source: "first-launch",
+    // v0.1.74 seed safety: record the marker so future sessions on this
+    // device know this pubkey has had a seed published before, and won't
+    // be allowed to silently regenerate on a relay timeout.
+    saveSeedPublishedMarker(pubkey, signed.id);
+    saveLocalSeedEvent(pubkey, signed);
+    savePendingFirstJoin(pubkey, signed.id);
+    mlog("SEED-PUBLISH-OK", {
+      pubkey: pubkey.slice(0, 8),
+      eventId: signed.id.slice(0, 8),
+      source: "first-launch",
+    });
+
+    cachedSeed = words;
+    cachedForPubkey = pubkey;
+    cachedSeedSource = "fresh";
+    console.info("[chama] Fresh Fedimint seed generated and published to relays");
+    return { words };
   });
+  if (created) return created.words;
+  mlog("SEED-FIRST-LAUNCH-DEFERRED", { pubkey: pubkey.slice(0, 8) });
+  // Never generate on the second pass: if the backup that stopped this one
+  // can't be read yet, fail closed and let reconnect retry.
+  if (options.afterCreationLock) throw seedRecoveryRelaysUnreadyError();
+  return getOrCreateSeed(client, signer, { ...options, afterCreationLock: true });
+}
 
-  cachedSeed = words;
-  cachedForPubkey = pubkey;
-  cachedSeedSource = "fresh";
-  console.info("[chama] Fresh Fedimint seed generated and published to relays");
-  return words;
+const seedCreationQueue = new Map<string, Promise<unknown>>();
+
+/** How long another tab may wait for the creation lock, e.g. behind a signer
+ *  prompt nobody answers, before it stops and lets reconnect retry. */
+const SEED_CREATION_LOCK_WAIT_MS = 60_000;
+
+type LockManagerLike = { request?: (name: string, options: { signal?: AbortSignal }, fn: () => Promise<unknown>) => Promise<unknown> };
+
+/** Run `create` for one identity at a time: in this page by a queue, and in
+ *  other tabs of this browser through the Web Locks API where it exists. */
+async function withSeedCreationLock<T>(pubkey: string, create: () => Promise<T>): Promise<T> {
+  const locks = (globalThis as { navigator?: { locks?: LockManagerLike } }).navigator?.locks;
+  const run = async (): Promise<T> => {
+    if (typeof locks?.request !== "function") return create();
+    let started = false;
+    try {
+      const signal = typeof AbortSignal?.timeout === "function" ? AbortSignal.timeout(SEED_CREATION_LOCK_WAIT_MS) : undefined;
+      return await locks.request(`chama-seed-create:${pubkey}`, signal ? { signal } : {}, () => { started = true; return create(); }) as T;
+    } catch (error) {
+      if (started) throw error;
+      // Never create without the lock another tab may hold: stop instead.
+      console.warn("[chama] Seed creation lock unavailable:", error);
+      throw seedRecoveryRelaysUnreadyError();
+    }
+  };
+  const previous = seedCreationQueue.get(pubkey) ?? Promise.resolve();
+  const next = previous.catch(() => {}).then(run);
+  seedCreationQueue.set(pubkey, next);
+  try { return await next; }
+  finally { if (seedCreationQueue.get(pubkey) === next) seedCreationQueue.delete(pubkey); }
 }
 
 /**
