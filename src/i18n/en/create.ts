@@ -16,6 +16,8 @@ export const create: Record<string, string> = {
   "create.publishingTitle": "Publishing your offer…",
   "create.publishingSub": "Putting it live in your community. This only takes a moment.",
   "create.reviewManually": "Review manually",
+  "create.coverUseEcash": "Use ecash",
+  "create.coverChangeAmount": "Change amount",
   "create.recurringToggleHint": "Auto-re-post this bill to your community every month while you're online. No bond needed — stop it any time from Me.",
   // Store permanence (#49) Tier 3 — bond-gated tenure note on the review step.
   "create.tenureBondedTitle": "Bonded storefront",

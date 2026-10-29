@@ -324,6 +324,17 @@ a source of evidence, never of authority.
 > clients fail to load more of these trades; they never compute a different
 > state. Plan and findings in `docs/replay-hardening-brief.md`.
 >
+> **Migration (repeated on-chain LOCK).** Before 6.4.32 a second on-chain
+> LOCK from the funder failed the replay (`INVALID_STATE`), even when it only
+> restated the accepted LOCK; a funder's repeated taps made a mainnet trade
+> unloadable on 2026-10-28. From 6.4.32, a LOCK that fails after an on-chain
+> LOCK was accepted is ignored when it is signed by the same author and its
+> payload equals the accepted one in every field except `lockedAt`. Deadlines
+> run from the accepted (first applied) LOCK. Any other difference, and any
+> other author, keeps the earlier rule. Older clients fail to load these
+> trades; they never compute a different state. A client MUST also never sign
+> a second LOCK for a trade it has seen locked.
+>
 > **Migration (deadline author).** Chama before 6.4.30 lets any late event
 > cause the deadline transition. From 6.4.30, for a funded trade whose CREATE
 > is signed at or after 2026-12-01T00:00:00Z, a late event from a

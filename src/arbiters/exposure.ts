@@ -255,7 +255,7 @@ export function assignableBondedArbiters(params: {
    *  floor multiplier, so a caller that cannot resolve tenure gets a STRICTER
    *  result, never a looser one — which is exactly why the gate defaults OFF
    *  (see TENURE_GATED_CAPACITY). Pass `tenureGated: true` to opt in. */
-  bonds: readonly { npub: string; actualSats: bigint; tenureDays?: number | null }[];
+  bonds: readonly CapacityBond[];
   tradeMsats: number;
   allTrades: Iterable<EscrowState>;
   excludeTradeId?: string | null;
@@ -263,22 +263,80 @@ export function assignableBondedArbiters(params: {
 }): string[] {
   const materialized = [...params.allTrades];
   const subFloor = params.tradeMsats < UNBONDED_FLOOR_MSATS;
-  const tenureGated = params.tenureGated ?? TENURE_GATED_CAPACITY;
   const out: string[] = [];
-  const seen = new Set<string>();
-  for (const b of params.bonds) {
-    const npub = normPk(b.npub);
-    if (!npub || seen.has(npub)) continue;
-    seen.add(npub);
+  for (const [npub, bondMsats] of arbiterBondCapacities(params.bonds, params.tenureGated)) {
     if (subFloor) { out.push(npub); continue; }
-    const bondMsats = tenureGated
-      ? effectiveBondCapacityMsats(b.actualSats, b.tenureDays)
-      : Number(b.actualSats) * 1000;
     const sumOther = sumOpenExposure(getOpenBondedTrades(npub, materialized, { excludeId: params.excludeTradeId }));
     // Both caps use ≤ — the bond must COVER its exposure (brief 2026-06-22).
     if (params.tradeMsats <= bondMsats && sumOther + params.tradeMsats <= bondMsats) out.push(npub);
   }
   return out;
+}
+
+/** A bond as the capacity rules see it. `address` identifies the bond so the
+ *  same deposit listed twice is counted once; absent, each row is its own. */
+export interface CapacityBond {
+  npub: string;
+  actualSats: bigint;
+  address?: string;
+  tenureDays?: number | null;
+  /** Funding txid, and the renewal ancestry the announcement claims. A bond
+   *  that another bond of the same arbiter names as its ancestor is the same
+   *  sats moved forward, so it never counts beside its successor. */
+  fundingTxid?: string;
+  lineage?: { hops: readonly { fromTxid: string }[] };
+}
+
+/** Each arbiter's TOTAL bond capacity in msats, in first-seen order. An
+ *  arbiter may hold several bonds (a top-up at a new lock height is a second
+ *  address); every distinct one counts toward the same §8 caps. The caller
+ *  passes only funded, active bonds that license arbitration. */
+export function arbiterBondCapacities(
+  bonds: readonly CapacityBond[],
+  tenureGated: boolean = TENURE_GATED_CAPACITY,
+): Map<string, number> {
+  const out = new Map<string, number>();
+  const seenBonds = new Set<string>();
+  const renewed = new Set<string>();
+  for (const b of bonds) {
+    const npub = normPk(b.npub);
+    for (const hop of b.lineage?.hops ?? []) if (npub && hop?.fromTxid) renewed.add(`${npub}|${hop.fromTxid.toLowerCase()}`);
+  }
+  bonds.forEach((b, index) => {
+    const npub = normPk(b.npub);
+    if (!npub) return;
+    if (b.fundingTxid && renewed.has(`${npub}|${b.fundingTxid.toLowerCase()}`)) return;
+    const bondKey = `${npub}|${b.address ?? `#${index}`}`;
+    if (seenBonds.has(bondKey)) return;
+    seenBonds.add(bondKey);
+    const msats = tenureGated
+      ? effectiveBondCapacityMsats(b.actualSats, b.tenureDays)
+      : Number(b.actualSats) * 1000;
+    out.set(npub, (out.get(npub) ?? 0) + msats);
+  });
+  return out;
+}
+
+/** The largest on-chain trade any single eligible arbiter can still cover,
+ *  in whole sats: total bond minus their open bonded trades this device knows
+ *  about, floored at 0. It is the number CREATE's refusal names, so a screen
+ *  showing it in advance can never disagree with the refusal. A device that
+ *  knows fewer open trades sees a higher number; Publish re-checks. */
+export function largestOnchainCoverSats(params: {
+  bonds: readonly CapacityBond[];
+  allTrades: Iterable<EscrowState>;
+  excludePubkey?: string | null;
+  tenureGated?: boolean;
+}): number {
+  const materialized = [...params.allTrades];
+  const self = normPk(params.excludePubkey);
+  let largest = 0;
+  for (const [npub, bondMsats] of arbiterBondCapacities(params.bonds, params.tenureGated)) {
+    if (self && npub === self) continue;
+    const freeMsats = bondMsats - sumOpenExposure(getOpenBondedTrades(npub, materialized));
+    largest = Math.max(largest, Math.floor(Math.max(0, freeMsats) / 1000));
+  }
+  return largest;
 }
 
 /** §L display band for a bond size. Display-only; the cap is the bond amount. */

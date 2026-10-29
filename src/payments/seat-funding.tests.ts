@@ -18,6 +18,9 @@ const data = new Map<string, string>();
 Object.assign(globalThis, { localStorage: {getItem: (k: string) => data.get(k) ?? null,
   setItem: (k: string, v: string) => data.set(k, v), removeItem: (k: string) => data.delete(k)} });
 setLocalStorageUserScope('brief02-seller');
+const { addSavedHandle } = await import('./saved-handles.js');
+// A cash trade funds only with where the cash goes (Jet, 6.4.31).
+const cashTo = addSavedHandle('m-pesa', '+255 700 555 666');
 const now = Date.now();
 assert.equal(fundingInvoiceSeconds(now / 1000 + 360, now), 300, 'six minutes left cannot produce a fifteen-minute invoice');
 assert.equal(fundingInvoiceSeconds(undefined, now), 900);
@@ -35,19 +38,19 @@ let state: typeof f.state = {...f.state, escrowMode: 'ecash' as const, joinHolds
   expiresAt: now / 1000 + 240, orderFinalizedAt: now / 1000 - 30}}};
 const client = {getState: () => state, getPubkey: async () => f.pks.seller};
 const bridge = new EscrowFedimintBridge(client as any, {} as any, {} as any);
-await bridge.preflightLock(state.id, { paymentDetailsInChat: true });
+await bridge.preflightLock(state.id, { savedHandleId: cashTo.id });
 assert.throws(() => assertOnchainFundingWindow(state, now), /under 10 minutes/);
 const selectedItems = [{itemId: 'one', label: 'One', quantity: 1, amountMsats: state.amountMsats}];
 state.joinHolds!.buyer!.selectedItems = selectedItems;
 state = {...state, items: [{id: 'one', label: 'One', amountMsats: state.amountMsats}]};
-await assert.rejects(bridge.preflightLock(state.id, { paymentDetailsInChat: true }), /Select/);
-await bridge.preflightLock(state.id, {selectedItems, paymentDetailsInChat: true});
+await assert.rejects(bridge.preflightLock(state.id, { savedHandleId: cashTo.id }), /Select/);
+await bridge.preflightLock(state.id, {selectedItems, savedHandleId: cashTo.id});
 state.joinHolds!.buyer!.orderFinalizedAt = 0;
-await assert.rejects(bridge.preflightLock(state.id, {selectedItems, paymentDetailsInChat: true}), /finalize/);
+await assert.rejects(bridge.preflightLock(state.id, {selectedItems, savedHandleId: cashTo.id}), /finalize/);
 state.joinHolds!.buyer!.expiresAt = now / 1000 - 121;
-await assert.rejects(bridge.preflightLock(state.id, {selectedItems, paymentDetailsInChat: true}), /lapsed/);
+await assert.rejects(bridge.preflightLock(state.id, {selectedItems, savedHandleId: cashTo.id}), /lapsed/);
 state = {...state, status: EscrowStatus.CANCELLED};
-await assert.rejects(bridge.preflightLock(state.id, {selectedItems, paymentDetailsInChat: true}), /no longer lockable/);
+await assert.rejects(bridge.preflightLock(state.id, {selectedItems, savedHandleId: cashTo.id}), /no longer lockable/);
 const claim = f.event(EscrowEventKind.CLAIM, 'buyer', {type: 'escrow:claim', claimerRole: Role.BUYER, notesHashVerification: 'missing', claimedAt: Math.floor(now / 1000)});
 const cancelledClaim = applyEvent(state, claim);
 assert(!cancelledClaim.ok && cancelledClaim.error.code === 'TERMINAL_STATE', 'a cancelled trade cannot accept CLAIM');
