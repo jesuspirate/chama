@@ -138,5 +138,6 @@ export const recovery: Record<string, string> = {
   "recovery.savedKey.retry": "Réessayer",
   "recovery.savedKey.retrying": "Nouvel essai…",
   "recovery.savedKey.signInAnotherWay": "Me connecter avec ma clé",
-  "recovery.savedKey.anotherWayNote": "La copie enregistrée reste sur cet appareil, mise de côté, au cas où elle s’ouvrirait plus tard.",
+  "recovery.savedKey.anotherWayNote": "Si vous vous connectez avec votre clé, la copie enregistrée reste sur cet appareil. Rien n’est supprimé.",
+  "recovery.savedKey.stillUnreadable": "Elle ne s’ouvre toujours pas. Rien n’a été supprimé. Réessayez plus tard, ou connectez-vous avec votre clé.",
 };

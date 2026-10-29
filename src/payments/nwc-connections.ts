@@ -10,20 +10,14 @@
 import {
   getLocalStorageUserScope,
   getScopedStorageItem,
-  getStrictScopedStorageItem,
-  removeStrictScopedStorageItem,
   scopedStorageKey,
   setScopedStorageItem,
-  setStrictScopedStorageItem,
 } from "../storage/user-scope.js";
 import { randomId } from "../storage/random-id.js";
 import { parseNwcConnectionString } from "./nwc.js";
 
 export const NWC_CONNECTIONS_STORAGE_KEY = "chama_nwc_connections";
 export const NWC_CONNECTIONS_BACKUP_STORAGE_KEY = "chama_nwc_connections_backup";
-/** Set (per identity, plain, not secret) once the saved list lives only in
- *  the encrypted store. Versions before 6.4.32 never write it. */
-export const NWC_SEALED_ONLY_MARKER_KEY = "chama_nwc_connections_sealed_only";
 
 export interface SavedNwcConnection {
   id: string;
@@ -112,33 +106,7 @@ function readStored(key: string): SavedNwcConnection[] {
   }
 }
 
-function parseList(raw: string | null): SavedNwcConnection[] {
-  try {
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return dedupeConnections(parsed.filter(isSavedNwcConnection));
-  } catch {
-    return [];
-  }
-}
-
-/** True when this identity's list is kept plainly (by any version: a deleted
- *  last wallet is kept as "[]"). */
-function hasPlainList(): boolean {
-  return getScopedStorageItem(NWC_CONNECTIONS_STORAGE_KEY) !== null
-    || getScopedStorageItem(NWC_CONNECTIONS_BACKUP_STORAGE_KEY) !== null;
-}
-
-function sealedOnly(): boolean {
-  return !hasPlainList() && getStrictScopedStorageItem(NWC_SEALED_ONLY_MARKER_KEY) === "1";
-}
-
 function readRaw(): SavedNwcConnection[] {
-  if (sealedOnly()) {
-    const cached = sealedCache.get(getLocalStorageUserScope() ?? "");
-    return Array.isArray(cached) ? cached : [];
-  }
   const primary = readStored(NWC_CONNECTIONS_STORAGE_KEY);
   if (primary.length > 0) return primary;
 
@@ -156,10 +124,6 @@ function writeRaw(
   opts: { allowEmptyOverwrite?: boolean } = {},
 ): void {
   const normalized = dedupeConnections(connections);
-  if (sealedOnly()) {
-    writeSealedOnly(normalized, opts);
-    return;
-  }
   try {
     if (normalized.length === 0 && !opts.allowEmptyOverwrite) {
       const existing = readStored(NWC_CONNECTIONS_STORAGE_KEY);
@@ -175,156 +139,96 @@ function writeRaw(
   } catch {
     // localStorage unavailable / quota exceeded. NWC can still be used once.
   }
-  mirrorSealed();
 }
 
-/** Plain copies, used when the encrypted store fails in sealed-only mode or
- *  when a release that keeps plain copies meets a sealed-only list. */
-function writePlainList(list: SavedNwcConnection[]): void {
-  const serialized = JSON.stringify(list);
-  setScopedStorageItem(NWC_CONNECTIONS_STORAGE_KEY, serialized);
-  setScopedStorageItem(NWC_CONNECTIONS_BACKUP_STORAGE_KEY, serialized);
-  removeStrictScopedStorageItem(NWC_SEALED_ONLY_MARKER_KEY);
-}
-
-function writeSealedOnly(list: SavedNwcConnection[], opts: { allowEmptyOverwrite?: boolean }): void {
-  const scope = getLocalStorageUserScope();
-  if (!scope) return;
-  const cached = sealedCache.get(scope);
-  if (cached === undefined || cached === "unreadable") {
-    // The stored list hasn't been, or can't be, opened: archive it as it
-    // is, then keep this change plainly, so nothing unread is replaced.
-    const sealer = mirrorSealer;
-    if (sealer) queueSealed(async () => { await sealer.archive(scopedStorageKey(NWC_CONNECTIONS_STORAGE_KEY, scope)); });
-    try { if (list.length > 0) writePlainList(list); } catch {}
-    return;
-  }
-  if (list.length === 0 && !opts.allowEmptyOverwrite && (cached?.length ?? 0) > 0) {
-    console.warn("[chama] Refusing to overwrite NWC connections with an empty list");
-    return;
-  }
-  sealedCache.set(scope, list);
-  const sealer = mirrorSealer;
-  const write = async () => {
-    try {
-      if (!sealer) throw new Error("No encrypted store");
-      await sealer.set(scopedStorageKey(NWC_CONNECTIONS_STORAGE_KEY, scope), JSON.stringify(list));
-    } catch (e) {
-      // Never leave a change only in memory: keep it plainly instead.
-      console.warn("[chama] saved wallets not written encrypted; kept plainly", e);
-      if (getLocalStorageUserScope() === scope) { try { writePlainList(sealedCache.get(scope) as SavedNwcConnection[]); } catch {} }
-    }
-  };
-  queueSealed(write);
-}
-
-// M9 (sealed-store.ts). 6.4.29 wrote an encrypted copy of every saved list
-// and read only the plain one. 6.4.32 adds the reader:
-//  - a plain list, when there is one, is the list, because every version up
-//    to 6.4.32 writes it;
-//  - with no plain list, the encrypted list is the list only when the
-//    sealed-only marker says a release that removes plain copies put it there;
-//  - an encrypted list that can't be opened is never replaced unread: it is
-//    archived first, and a sealed-only list that can't be opened keeps new
-//    changes plainly beside it.
-// The encrypted copy follows the plain one; a failure to write it changes
-// nothing, and a deletion here is deleted there too.
+// M9, step 2 (6.4.32): the reader. The plain list is still the one kept and
+// written, so 6.4.29-6.4.31 still see the wallets if they run again here.
+// What this release adds, once per sign-in:
+//  - with no plain list, a list kept sealed under the new name (by the
+//    release that stops writing plain lists) is the list: it is written back
+//    plainly and, once that reads back, the sealed copy is removed. One that
+//    can't be opened stays where it is;
+//  - the copy 6.4.29-6.4.31 wrote is no longer written. A copy equal to the
+//    plain list is deleted; any other is archived first, never deleted unread.
 export interface NwcSealer {
   get(name: string): Promise<string | null>;
-  set(name: string, value: string): Promise<void>;
+  delete(name: string): Promise<void>;
   /** Copy the stored record, unread, to an archive name (sealedArchive). */
   archive(name: string): Promise<string | null>;
 }
 
-/** M9 step 2's switch: remove the plain list once the encrypted one reads
- *  back. Off in 6.4.32 (the reader); turned on one release later. */
-export let DROP_PLAIN_NWC = false;
-/** Test hook for the switch. */
-export function setDropPlainNwcForTests(on: boolean): void { DROP_PLAIN_NWC = on; }
+/** Where a release that stops keeping plain lists keeps them, sealed; a name
+ *  6.4.29-6.4.31 never touch. */
+export const NWC_SEALED_STORAGE_KEY = "chama_nwc_connections_sealed_v2";
 
-let mirrorSealer: NwcSealer | null = null;
-let sealedWrites: Promise<void> = Promise.resolve();
-/** Per identity: the sealed-only list, or "unreadable" when it is stored but
- *  can't be opened (never read as an empty list). */
-const sealedCache = new Map<string, SavedNwcConnection[] | "unreadable">();
+let sealedReads: Promise<void> = Promise.resolve();
 
-function queueSealed(write: () => Promise<void>): void {
-  // A store that never answers gives up its turn, so later changes still follow.
-  const bounded = () => new Promise<void>((resolve) => {
-    const timer = setTimeout(resolve, 10_000);
+function bounded(op: () => Promise<void>): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("The encrypted store did not answer")), 10_000);
     (timer as unknown as { unref?: () => void }).unref?.();
-    write().catch(() => {}).finally(() => { clearTimeout(timer); resolve(); });
-  });
-  sealedWrites = sealedWrites.then(bounded, bounded);
-}
-
-function mirrorSealed(): void {
-  const sealer = mirrorSealer;
-  const scope = getLocalStorageUserScope();
-  if (!sealer || !scope) return;
-  queueSealed(async () => {
-    // Copy the plain list as it is when this write runs, so a burst of
-    // changes always ends with the latest one.
-    if (getLocalStorageUserScope() !== scope) return;
-    let raw: string | null = null;
-    try { raw = getScopedStorageItem(NWC_CONNECTIONS_STORAGE_KEY); } catch { return; }
-    const name = scopedStorageKey(NWC_CONNECTIONS_STORAGE_KEY, scope);
-    try {
-      let current: string | null = null;
-      let unreadable = false;
-      try { current = await sealer.get(name); } catch { unreadable = true; }
-      // Archive what can't be read, and a list with wallets that no plain
-      // list stands behind; the copy of a plain list just follows it.
-      if (unreadable || (raw === null && parseList(current).length > 0)) await sealer.archive(name);
-      await sealer.set(name, raw ?? "[]");
-      if (DROP_PLAIN_NWC && raw !== null && getLocalStorageUserScope() === scope
-        && getScopedStorageItem(NWC_CONNECTIONS_STORAGE_KEY) === raw) {
-        // Sealed and read back (sealedSet checks): the plain copies go.
-        sealedCache.set(scope, parseList(raw));
-        setStrictScopedStorageItem(NWC_SEALED_ONLY_MARKER_KEY, "1");
-        removeStrictScopedStorageItem(NWC_CONNECTIONS_STORAGE_KEY);
-        removeStrictScopedStorageItem(NWC_CONNECTIONS_BACKUP_STORAGE_KEY);
-      }
-    } catch (e) {
-      console.warn("[chama] encrypted copy of saved wallets not written; plain copy kept", e);
-    }
+    op().then(resolve, reject).finally(() => clearTimeout(timer));
   });
 }
 
-/** Start keeping an encrypted copy of the signed-in user's saved NWC
- *  connections, and read the encrypted list when it is the only one. Call
- *  after the user scope is set. */
+/** Read this identity's sealed list when there is no plain one, and clear
+ *  the old encrypted copy. Call after the user scope is set. */
 export async function hydrateSavedNwcConnections(sealer: NwcSealer): Promise<void> {
-  mirrorSealer = sealer;
   const scope = getLocalStorageUserScope();
   if (!scope) return;
-  if (sealedOnly()) {
-    const name = scopedStorageKey(NWC_CONNECTIONS_STORAGE_KEY, scope);
-    let list: SavedNwcConnection[] | "unreadable";
-    try { list = parseList(await sealer.get(name)); } catch { list = "unreadable"; }
+  const run = async () => {
     if (getLocalStorageUserScope() !== scope) return;
-    sealedCache.set(scope, list);
-    // A release that keeps plain copies writes this list back plainly, so
-    // a version that reads only plain lists finds the wallets again.
-    if (list !== "unreadable" && !DROP_PLAIN_NWC) { try { writePlainList(list); } catch {} }
-    if (typeof window !== "undefined") window.dispatchEvent(new Event("chama:saved-wallets"));
-    return;
-  }
-  mirrorSealed();
-  await sealedWrites;
+    const plain = getScopedStorageItem(NWC_CONNECTIONS_STORAGE_KEY);
+    const sealedName = scopedStorageKey(NWC_SEALED_STORAGE_KEY, scope);
+    if (plain === null && getScopedStorageItem(NWC_CONNECTIONS_BACKUP_STORAGE_KEY) === null) {
+      let sealed: string | null = null;
+      try { sealed = await sealer.get(sealedName); } catch (e) {
+        console.warn("[chama] saved wallets kept encrypted can't be opened right now; left in place", e);
+      }
+      const list = sealed === null ? [] : parseKeptList(sealed);
+      if (list && list.length > 0 && getLocalStorageUserScope() === scope) {
+        const serialized = JSON.stringify(dedupeConnections(list));
+        setScopedStorageItem(NWC_CONNECTIONS_STORAGE_KEY, serialized);
+        setScopedStorageItem(NWC_CONNECTIONS_BACKUP_STORAGE_KEY, serialized);
+        if (getScopedStorageItem(NWC_CONNECTIONS_STORAGE_KEY) === serialized && await sealer.get(sealedName) === sealed) {
+          await sealer.delete(sealedName);
+        }
+        if (typeof window !== "undefined") window.dispatchEvent(new Event("chama:saved-wallets"));
+      }
+    }
+    // The old copy (6.4.29-6.4.31) is never read again.
+    const oldName = scopedStorageKey(NWC_CONNECTIONS_STORAGE_KEY, scope);
+    let old: string | null = null;
+    let unreadable = false;
+    try { old = await sealer.get(oldName); } catch { unreadable = true; }
+    if (!unreadable && old === null) return;
+    const now = getScopedStorageItem(NWC_CONNECTIONS_STORAGE_KEY);
+    if (unreadable || old !== now) await sealer.archive(oldName);
+    await sealer.delete(oldName);
+  };
+  const next = sealedReads.then(() => bounded(run), () => bounded(run));
+  sealedReads = next.catch((e) => console.warn("[chama] saved wallets: encrypted store not read", e));
+  await sealedReads;
 }
 
-/** Wait for pending encrypted writes (tests). */
-export async function flushSealedNwcWrites(): Promise<void> {
-  let seen: Promise<void>;
-  do { seen = sealedWrites; await seen; } while (seen !== sealedWrites);
+/** A kept sealed list, or null when it doesn't parse (left in place). */
+function parseKeptList(raw: string): SavedNwcConnection[] | null {
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter(isSavedNwcConnection) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Wait for pending encrypted reads (tests). */
+export function flushSealedNwcWrites(): Promise<void> {
+  return sealedReads;
 }
 
 /** Test hook. */
 export function resetSealedNwcForTests(): void {
-  mirrorSealer = null;
-  sealedWrites = Promise.resolve();
-  sealedCache.clear();
+  sealedReads = Promise.resolve();
 }
 
 export function listSavedNwcConnections(): SavedNwcConnection[] {

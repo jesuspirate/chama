@@ -438,7 +438,7 @@ import {
 } from "../escrow-engine/discovery-diagnostics.js";
 import { isSimModeOn } from "../sim/simMode.js";
 import { hydrateSavedNwcConnections } from "../payments/nwc-connections.js";
-import { sealedArchive, sealedGet, sealedSet, sealedStoreAvailable } from "../storage/sealed-store.js";
+import { sealedArchive, sealedDelete, sealedGet, sealedStoreAvailable } from "../storage/sealed-store.js";
 import {
   federationIdForInvite,
   federationIdForRememberedInvite,
@@ -1788,10 +1788,11 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
         );
       }
       setLocalStorageUserScope(pubkey);
-      // M9: keep an encrypted copy of this user's saved NWC connections.
+      // M9: read this user's saved NWC list kept encrypted, when there is
+      // no plain one, and clear the old encrypted copy.
       if (sealedStoreAvailable()) {
-        void hydrateSavedNwcConnections({ get: sealedGet, set: sealedSet, archive: sealedArchive })
-          .catch((e) => console.warn("[chama] encrypted copy of saved wallets failed; plain copy kept", e));
+        void hydrateSavedNwcConnections({ get: sealedGet, delete: sealedDelete, archive: sealedArchive })
+          .catch((e) => console.warn("[chama] saved wallets: encrypted store not read; plain list kept", e));
       }
       // v4.3 auth-first RETIRED the v3.5.1 pre-signer pick stash: the globe
       // picker now runs POST-connect and writes the npub scope directly

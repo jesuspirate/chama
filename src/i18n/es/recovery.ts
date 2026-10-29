@@ -127,5 +127,6 @@ export const recovery: Record<string, string> = {
   "recovery.savedKey.retry": "Intentar de nuevo",
   "recovery.savedKey.retrying": "Intentando…",
   "recovery.savedKey.signInAnotherWay": "Iniciar sesión con mi clave",
-  "recovery.savedKey.anotherWayNote": "La copia guardada se queda en este dispositivo, apartada, por si se abre más tarde.",
+  "recovery.savedKey.anotherWayNote": "Si inicias sesión con tu clave, la copia guardada se queda en este dispositivo. No se borra nada.",
+  "recovery.savedKey.stillUnreadable": "Todavía no se abre. No se borró nada. Inténtalo más tarde o inicia sesión con tu clave.",
 };

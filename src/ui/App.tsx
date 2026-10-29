@@ -18,7 +18,7 @@ import { fundingPremiumMsats } from "../payments/funding-premium.js";
 import { nativeLockEarmarks } from "../fedimint/pending-native-locks.js";
 import { spendableBalanceMsats, payoutEarmarks, canLockFromBalance, decideDestroyConfirmRoute } from "./decisions.js";
 import { readBrowserSavedNsec, removeBrowserSavedNsec, saveNsec, SavedKeyUnreadableError, SAVED_NSEC_KEY, NSEC_ORIGIN_KEY, type NsecSealer } from "../storage/saved-nsec.js";
-import { sealedArchive, sealedDelete, sealedGet, sealedSet, sealedStoreAvailable } from "../storage/sealed-store.js";
+import { sealedArchive, sealedArchiveNames, sealedDelete, sealedGet, sealedSet, sealedStoreAvailable } from "../storage/sealed-store.js";
 import { SavedKeyUnreadablePanel } from "./panels/SavedKeyUnreadablePanel.js";
 import { resolveCreateMintUrl,
   liveCommitmentForViewer,
@@ -415,20 +415,26 @@ async function readSavedNsec(): Promise<string | null> {
 }
 
 function browserNsecSealer(): NsecSealer | undefined {
-  return sealedStoreAvailable() ? { get: sealedGet, set: sealedSet, delete: sealedDelete, archive: sealedArchive } : undefined;
+  return sealedStoreAvailable()
+    ? { get: sealedGet, set: sealedSet, delete: sealedDelete, archive: sealedArchive, archives: sealedArchiveNames }
+    : undefined;
 }
 
 async function writeSavedNsec(nsec: string, origin: "generated" | "imported"): Promise<void> {
   const native = Capacitor.isNativePlatform();
-  await saveNsec(nsec, origin, localStorage, native ? Preferences : undefined, native ? undefined : browserNsecSealer());
+  await saveNsec(nsec, origin, localStorage, native ? Preferences : undefined);
 }
 
-async function removeSavedNsec(): Promise<void> {
+/** `wait`: sign-out waits (bounded) for the encrypted side, so the reload
+ *  after it can't find the key; a sign-in never waits on it. */
+async function removeSavedNsec(opts: { wait?: boolean } = {}): Promise<void> {
   if (Capacitor.isNativePlatform()) {
     try { await Preferences.remove({ key: SAVED_NSEC_KEY }); } catch {}
     try { await Preferences.remove({ key: NSEC_ORIGIN_KEY }); } catch {}
   }
-  await removeBrowserSavedNsec(localStorage, Capacitor.isNativePlatform() ? undefined : browserNsecSealer());
+  const current = (window as any).__chama_connect_nsec;
+  await removeBrowserSavedNsec(localStorage, Capacitor.isNativePlatform() ? undefined : browserNsecSealer(),
+    { forget: typeof current === "string" ? current : null, wait: opts.wait });
 }
 
 
@@ -3123,7 +3129,7 @@ export default function App() {
   // it's the last-chance backup reminder, not a silent one-tap wipe.
   const handleSignOut = () => setPendingSignOut(true);
   const performSignOut = async () => {
-    await removeSavedNsec();
+    await removeSavedNsec({ wait: true });
     delete (window as any).__chama_connect_nsec;
     window.location.reload();
   };
@@ -3354,8 +3360,11 @@ export default function App() {
                 (window as any).__chama_connect_nsec = value;
                 actions.connect();
               }
+              return true;
             } catch (e) {
-              if (!(e instanceof SavedKeyUnreadableError)) setSavedKeyUnreadable(false);
+              if (e instanceof SavedKeyUnreadableError) return false;
+              setSavedKeyUnreadable(false);
+              return true;
             }
           }}
           onSignInAnotherWay={() => setSavedKeyUnreadable(false)}

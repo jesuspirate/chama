@@ -126,5 +126,6 @@ export const recovery: Record<string, string> = {
   "recovery.savedKey.retry": "Jaribu tena",
   "recovery.savedKey.retrying": "Inajaribu…",
   "recovery.savedKey.signInAnotherWay": "Ingia kwa ufunguo wangu",
-  "recovery.savedKey.anotherWayNote": "Nakala iliyohifadhiwa inabaki kwenye kifaa hiki, pembeni, ikiwa itafunguka baadaye.",
+  "recovery.savedKey.anotherWayNote": "Ukiingia kwa ufunguo wako, nakala iliyohifadhiwa inabaki kwenye kifaa hiki. Hakuna kinachofutwa.",
+  "recovery.savedKey.stillUnreadable": "Bado haufunguki. Hakuna kilichofutwa. Jaribu tena baadaye, au ingia kwa ufunguo wako.",
 };

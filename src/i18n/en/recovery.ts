@@ -130,5 +130,6 @@ export const recovery: Record<string, string> = {
   "recovery.savedKey.retry": "Try again",
   "recovery.savedKey.retrying": "Trying…",
   "recovery.savedKey.signInAnotherWay": "Sign in with my key",
-  "recovery.savedKey.anotherWayNote": "The saved copy stays on this device, set aside, in case it opens later.",
+  "recovery.savedKey.anotherWayNote": "If you sign in with your key, the saved copy stays on this device. Nothing is deleted.",
+  "recovery.savedKey.stillUnreadable": "It still won’t open. Nothing was deleted. Try again later, or sign in with your key.",
 };

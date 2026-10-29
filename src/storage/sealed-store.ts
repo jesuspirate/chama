@@ -17,10 +17,10 @@
 //
 // First step (6.4.29): callers write an encrypted copy beside the plain one
 // and still read the plain one, so an older app sees the same key and
-// wallets. Second step (6.4.32): callers can read these copies, and a
-// replaced or unreadable copy is archived first (sealedArchive), never lost.
-// Removing the plain copies is a switch in each caller, turned on one
-// release after the reader shipped.
+// wallets. Second step (6.4.32): callers stop writing those copies and can
+// read a value a later release keeps only here, under a new name; a stored
+// copy that isn't known to be redundant is archived (sealedArchive), never
+// deleted unread. Removing the plain copies comes one release later.
 
 const DB_NAME = "chama-sealed-v1";
 const STORE = "items";
@@ -172,6 +172,14 @@ export async function sealedArchive(name: string): Promise<string | null> {
   const copy = await get<SealedRecord>(PREFIX + archived);
   if (!copy || copy.ct.byteLength !== record.ct.byteLength) throw new Error("Archive copy was not saved");
   return archived;
+}
+
+/** Names of the archives sealedArchive made from `name`. */
+export async function sealedArchiveNames(name: string): Promise<string[]> {
+  const db = await openDb();
+  const keys = await request(db.transaction(STORE, "readonly").objectStore(STORE).getAllKeys());
+  const prefix = `${PREFIX}${name}#archived:`;
+  return keys.map(String).filter((key) => key.startsWith(prefix)).map((key) => key.slice(PREFIX.length));
 }
 
 /** Test hook: forget cached handles so a fresh IndexedDB can be used. */
