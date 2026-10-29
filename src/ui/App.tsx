@@ -17,8 +17,9 @@ import { tradeDetailReturnsHome } from "./decisions.js";
 import { fundingPremiumMsats } from "../payments/funding-premium.js";
 import { nativeLockEarmarks } from "../fedimint/pending-native-locks.js";
 import { spendableBalanceMsats, payoutEarmarks, canLockFromBalance, decideDestroyConfirmRoute } from "./decisions.js";
-import { readBrowserSavedNsec, removeBrowserSavedNsec, saveNsec, SAVED_NSEC_KEY, NSEC_ORIGIN_KEY, type NsecSealer } from "../storage/saved-nsec.js";
-import { sealedDelete, sealedGet, sealedSet, sealedStoreAvailable } from "../storage/sealed-store.js";
+import { readBrowserSavedNsec, removeBrowserSavedNsec, saveNsec, SavedKeyUnreadableError, SAVED_NSEC_KEY, NSEC_ORIGIN_KEY, type NsecSealer } from "../storage/saved-nsec.js";
+import { sealedArchive, sealedDelete, sealedGet, sealedSet, sealedStoreAvailable } from "../storage/sealed-store.js";
+import { SavedKeyUnreadablePanel } from "./panels/SavedKeyUnreadablePanel.js";
 import { resolveCreateMintUrl,
   liveCommitmentForViewer,
 } from "./decisions.js";
@@ -403,16 +404,18 @@ async function readSavedNsec(): Promise<string | null> {
     return value?.trim() || null;
   }
   // Browser, PWA and Tauri all read the same per-origin storage; M9 keeps
-  // an encrypted copy beside the plain one (sealed-store.ts).
+  // an encrypted copy beside the plain one (sealed-store.ts). A kept key that
+  // can't be opened throws SavedKeyUnreadableError: never read as "no key".
   try {
     return await readBrowserSavedNsec(localStorage, browserNsecSealer());
-  } catch {
+  } catch (e) {
+    if (e instanceof SavedKeyUnreadableError) throw e;
     return null;
   }
 }
 
 function browserNsecSealer(): NsecSealer | undefined {
-  return sealedStoreAvailable() ? { get: sealedGet, set: sealedSet, delete: sealedDelete } : undefined;
+  return sealedStoreAvailable() ? { get: sealedGet, set: sealedSet, delete: sealedDelete, archive: sealedArchive } : undefined;
 }
 
 async function writeSavedNsec(nsec: string, origin: "generated" | "imported"): Promise<void> {
@@ -1020,6 +1023,9 @@ export default function App() {
   // pending-redemptions stash that automatic retry gave up on).
   const [strandedClaimExport, setStrandedClaimExport] = useState<StrandedRedemption | null>(null);
   const [autoLoginChecked, setAutoLoginChecked] = useState(false);
+  // M9: the kept key is stored but can't be opened. Retry, or sign in with
+  // the key (the stored copy is archived before anything replaces it).
+  const [savedKeyUnreadable, setSavedKeyUnreadable] = useState(false);
   // `actions` is rebuilt as hook state changes, so this effect can re-run while
   // secure-storage I/O is still pending. Latch synchronously before the first
   // await; React's loading state alone cannot prevent already-started reads
@@ -1583,6 +1589,7 @@ export default function App() {
           actions.connect();
         }
       } catch (e) {
+        if (e instanceof SavedKeyUnreadableError) setSavedKeyUnreadable(true);
         console.warn("[chama] auto-login check failed:", e);
       } finally {
         setAutoLoginChecked(true);
@@ -3338,6 +3345,21 @@ export default function App() {
       />}
         <SimModePill />
         <SimEntryModal />
+        {savedKeyUnreadable && <SavedKeyUnreadablePanel
+          onRetry={async () => {
+            try {
+              const value = await readSavedNsec();
+              setSavedKeyUnreadable(false);
+              if (value) {
+                (window as any).__chama_connect_nsec = value;
+                actions.connect();
+              }
+            } catch (e) {
+              if (!(e instanceof SavedKeyUnreadableError)) setSavedKeyUnreadable(false);
+            }
+          }}
+          onSignInAnotherWay={() => setSavedKeyUnreadable(false)}
+        />}
         {showQRScanner && (
           <Suspense fallback={null}>
             <QRScanner

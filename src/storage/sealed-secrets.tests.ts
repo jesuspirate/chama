@@ -20,9 +20,17 @@ const nwc = await import("../payments/nwc-connections.js");
 function fakeSealer(opts: { failSet?: boolean; failGet?: boolean; failDelete?: boolean; hang?: boolean } = {}) {
   const sealed = new Map<string, string>();
   const hang = () => new Promise<never>(() => {});
+  let archives = 0;
   return {
     sealed,
     opts,
+    // Copies the stored record unread, like sealedArchive.
+    archive: async (name: string) => {
+      if (!sealed.has(name)) return null;
+      const to = `${name}#archived:${++archives}`;
+      sealed.set(to, sealed.get(name)!);
+      return to;
+    },
     get: async (name: string) => {
       if (opts.hang) return hang();
       if (opts.failGet) throw new Error("unreadable");
@@ -66,16 +74,19 @@ const olderApp = {
   store.set(SAVED_NSEC_KEY, "nsec1real");
   assert.equal(await readBrowserSavedNsec(localStorage, s), "nsec1real", "the real key still signs in");
   await flushSealedNsecWrites();
-  assert.equal(s.sealed.get(SAVED_NSEC_KEY), "nsec1other", "an unreadable encrypted copy is left as it is");
+  // M9 step 2: the unreadable copy is archived whole before it is replaced.
+  assert.equal(s.sealed.get(`${SAVED_NSEC_KEY}#archived:1`), "nsec1other", "an unreadable encrypted copy is archived, never lost");
+  assert.equal(s.sealed.get(SAVED_NSEC_KEY), "nsec1real");
   assert.equal(store.get(SAVED_NSEC_KEY), "nsec1real");
 
   // Create (or import) while the encrypted copy can't be opened: the new key
-  // is kept plainly and the unreadable record is still not overwritten.
+  // is kept plainly and the record it replaces is archived first.
   store.clear();
   await saveNsec("nsec1created", "generated", localStorage, undefined, s);
   await flushSealedNsecWrites();
   assert.equal(store.get(SAVED_NSEC_KEY), "nsec1created");
-  assert.equal(s.sealed.get(SAVED_NSEC_KEY), "nsec1other", "unreadable record never overwritten by Create");
+  assert.equal(s.sealed.get(`${SAVED_NSEC_KEY}#archived:2`), "nsec1real", "unreadable record archived before Create replaces it");
+  assert.equal(s.sealed.get(`${SAVED_NSEC_KEY}#archived:1`), "nsec1other");
 }
 {
   // Review blocker 2: an older app (stale tab, rollback) still sees the key,

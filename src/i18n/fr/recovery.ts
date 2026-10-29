@@ -133,4 +133,10 @@ export const recovery: Record<string, string> = {
   "recovery.seed.openError": "Impossible d’ouvrir la sauvegarde de votre portefeuille. Vérifiez votre signataire Nostr et votre connexion, puis réessayez.",
   "recovery.seed.restored": "L’accès au portefeuille est rétabli. Réessayez l’action en cours.",
   "recovery.seed.restoring": "Restauration…",
+  "recovery.savedKey.unreadableTitle": "Votre clé enregistrée ne s’ouvre pas",
+  "recovery.savedKey.unreadableBody": "Chama a gardé votre clé sur cet appareil, mais ne peut pas l’ouvrir pour l’instant. Rien n’a été supprimé. Réessayez, ou connectez-vous avec votre clé.",
+  "recovery.savedKey.retry": "Réessayer",
+  "recovery.savedKey.retrying": "Nouvel essai…",
+  "recovery.savedKey.signInAnotherWay": "Me connecter avec ma clé",
+  "recovery.savedKey.anotherWayNote": "La copie enregistrée reste sur cet appareil, mise de côté, au cas où elle s’ouvrirait plus tard.",
 };

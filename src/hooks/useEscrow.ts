@@ -438,7 +438,7 @@ import {
 } from "../escrow-engine/discovery-diagnostics.js";
 import { isSimModeOn } from "../sim/simMode.js";
 import { hydrateSavedNwcConnections } from "../payments/nwc-connections.js";
-import { sealedGet, sealedSet, sealedStoreAvailable } from "../storage/sealed-store.js";
+import { sealedArchive, sealedGet, sealedSet, sealedStoreAvailable } from "../storage/sealed-store.js";
 import {
   federationIdForInvite,
   federationIdForRememberedInvite,
@@ -1790,7 +1790,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       setLocalStorageUserScope(pubkey);
       // M9: keep an encrypted copy of this user's saved NWC connections.
       if (sealedStoreAvailable()) {
-        void hydrateSavedNwcConnections({ get: sealedGet, set: sealedSet })
+        void hydrateSavedNwcConnections({ get: sealedGet, set: sealedSet, archive: sealedArchive })
           .catch((e) => console.warn("[chama] encrypted copy of saved wallets failed; plain copy kept", e));
       }
       // v4.3 auth-first RETIRED the v3.5.1 pre-signer pick stash: the globe

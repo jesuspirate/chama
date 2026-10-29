@@ -125,4 +125,10 @@ export const recovery: Record<string, string> = {
   "recovery.seed.openError": "Couldn’t open your wallet backup. Check your Nostr signer and connection, then try again.",
   "recovery.seed.restored": "Wallet access restored. Retry the action you were doing.",
   "recovery.seed.restoring": "Restoring…",
+  "recovery.savedKey.unreadableTitle": "Your saved key won’t open",
+  "recovery.savedKey.unreadableBody": "Chama kept your key on this device, but can’t open it right now. Nothing was deleted. Try again, or sign in with your key.",
+  "recovery.savedKey.retry": "Try again",
+  "recovery.savedKey.retrying": "Trying…",
+  "recovery.savedKey.signInAnotherWay": "Sign in with my key",
+  "recovery.savedKey.anotherWayNote": "The saved copy stays on this device, set aside, in case it opens later.",
 };
