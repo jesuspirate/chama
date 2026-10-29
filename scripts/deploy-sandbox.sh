@@ -62,12 +62,16 @@ ssh -i "$CHAMA_DEPLOY_KEY" "$CHAMA_DEPLOY_HOST" "set -e
 # Prove the served origin is the sandbox before calling it done.
 # No pipes into grep -q here: under pipefail, grep quitting on the first match
 # sends SIGPIPE to the writer and the hit reads as a failure.
+# The bundler decides which chunk carries the marker (vite 8 moved it out of
+# main-*.js), so check the chunk this build put it in, and that the served
+# index.html is this build's.
 index_html="$(curl -fsSL "$SANDBOX_URL/index.html" || true)"
-served="$(grep -o 'assets/main-[A-Za-z0-9_.-]*\.js' <<<"$index_html" | head -n 1 || true)"
-served_js="$([ -n "$served" ] && curl -fsSL "$SANDBOX_URL/$served" || true)"
+marker_file="$(grep -rls "$MARKER" dist-sandbox/assets | head -n 1 || true)"
+served_js="$([ -n "$marker_file" ] && curl -fsSL "$SANDBOX_URL/${marker_file#dist-sandbox/}" || true)"
 served_ok=0
 case "$served_js" in *"$MARKER"*) served_ok=1 ;; esac
-if [ -z "$served" ] || [ "$served_ok" != "1" ]; then
+[ "$index_html" = "$(cat dist-sandbox/index.html)" ] || served_ok=0
+if [ -z "$marker_file" ] || [ "$served_ok" != "1" ]; then
   echo "❌ $SANDBOX_URL is not serving the sandbox marker after upload. Investigate before using it."
   exit 1
 fi

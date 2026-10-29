@@ -20,8 +20,11 @@ export const CHAMA_SANDBOX: boolean =
 export const SANDBOX_HOST = "poc.getchama.app";
 
 /**
- * String literal baked into the sandbox bundle (as a DOM attribute on the sim
+ * String baked into the sandbox bundle only (as a DOM attribute on the sim
  * pill) so the deploy script can prove a dist is a sandbox build before it
- * uploads, and the live lane can refuse one. Keep it unique and unminifiable.
+ * uploads, and the live lane can refuse one. It comes from a Vite define that
+ * is "" outside sandbox builds, so no other bundle carries the literal
+ * (vite 8 kept a plain constant in every build's shared chunk).
  */
-export const SANDBOX_BUILD_MARKER = "chama-sandbox-build";
+export const SANDBOX_BUILD_MARKER: string =
+  typeof __CHAMA_SANDBOX_MARKER__ !== "undefined" ? __CHAMA_SANDBOX_MARKER__ : "";

@@ -29,6 +29,10 @@ export default defineConfig({
     __APP_VERSION__: JSON.stringify(pkg.version),
     // Sandbox build (poc.getchama.app): sim mode forced on. See src/sim/sandbox-build.ts.
     __CHAMA_SANDBOX__: process.env.VITE_CHAMA_SANDBOX === "1",
+    // The marker string exists only in a sandbox bundle. As a plain constant,
+    // vite 8 kept it in a shared chunk of every build, so the live lane could
+    // no longer tell a live dist from a sandbox one.
+    __CHAMA_SANDBOX_MARKER__: JSON.stringify(process.env.VITE_CHAMA_SANDBOX === "1" ? "chama-sandbox-build" : ""),
     // CHAMA_PROFILING=1 builds React's profiling bundle so the hidden ?perf=1
     // readout can name which part of the app re-rendered and for how long.
     // Release builds leave it off.
