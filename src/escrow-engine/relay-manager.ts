@@ -44,6 +44,8 @@ export enum RelayStatus {
 // ── Subscription filter (subset of NIP-01 filter) ─────────────────────────
 
 export interface NostrFilter {
+  /** Exact event ids (a missing predecessor fetched by id on an explicit open). */
+  ids?: string[];
   kinds?: number[];
   authors?: string[];
   "#d"?: string[];
