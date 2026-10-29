@@ -51,6 +51,10 @@ import { TradeCard } from "../components/TradeCard.js";
 import { circleFromEscrow } from "../../chama/policy.js";
 import { groupBySettlementRail, railHeadersNeeded, settlementRailOf } from "../settlement-rail.js";
 import { guidedEscrowAmounts } from "../guided-escrow.js";
+import { onchainEscrowAvailable } from "../../bond-multisig/onchain-escrow.js";
+import { onchainCoverShort, useCommunityBonds, useOnchainCover } from "../onchain-cover.js";
+import { OnchainCoverLine } from "../components/OnchainCoverLine.js";
+import type { VerifiedBond } from "../../bond-multisig/bond-announcement.js";
 import { OnchainFeeCheckout, useOnchainFeeRate } from "../components/OnchainFeeCheckout.js";
 import { profileNameFor, type NostrProfileNameMap } from "../nostr-profiles.js";
 import { translate, getCurrentLang } from "../../i18n/index.js";
@@ -60,6 +64,7 @@ import { BackButton } from "../components/BackButton.js";
 // Render-time translation (same pattern as decisions.ts) — module-level so the
 // pure copy helpers below (detailCopy, termsCopy, …) localize without threading
 // a t() prop through every little presentational component.
+const NO_TRADES: EscrowState[] = [];
 const tr = (key: string, params?: Record<string, string | number>) =>
   translate(getCurrentLang(), key, params);
 
@@ -109,6 +114,7 @@ export function AssistedCanvas({
   resumeRef,
   allEscrows,
   circleChildrenLoaded,
+  fetchCommunityBonds,
 }: {
   profileNames?: NostrProfileNameMap;
   kind0Enabled?: boolean;
@@ -136,6 +142,9 @@ export function AssistedCanvas({
    *  These feed the seat counts on those cards; optional so the canvas
    *  degrades to honest open-seat labels without them. */
   allEscrows?: EscrowState[];
+  /** The chama's chain-verified bonds, so the amount step can say how large
+   *  an on-chain trade its arbiters can cover before anything is filled in. */
+  fetchCommunityBonds?: (community: string, opts?: { allowCachedFallback?: boolean }) => Promise<VerifiedBond[]>;
   circleChildrenLoaded?: ReadonlySet<string>;
 }) {
   const community = getCommunityBySlug(browseCommunity);
@@ -255,12 +264,12 @@ export function AssistedCanvas({
   const missingPaymentRails = collectsHandles
     ? effectiveRails.filter(key => !configuredRailKeys.has(toRailKey(key)))
     : [];
-  const savePaymentDetail = (railKey: string) => {
+  const savePaymentDetail = (railKey: string): boolean => {
     const value = paymentDetailDrafts[railKey]?.trim() ?? "";
     const rail = getRailByKey(railKey);
     if (!value) {
       setPaymentDetailError(tr("canvas.enterRailDetails", { rail: rail?.displayName ?? railKey }));
-      return;
+      return false;
     }
     try {
       addSavedHandle(toRailKey(railKey), value);
@@ -271,10 +280,17 @@ export function AssistedCanvas({
       });
       setPaymentDetailError(null);
       setSavedHandlesRevision(current => current + 1);
+      return true;
     } catch (cause) {
       setPaymentDetailError(cause instanceof Error ? cause.message : tr("canvas.detailsSaveFailed"));
+      return false;
     }
   };
+  // Jet (Oct 26): details typed here were lost unless Save was tapped, so the
+  // next offer asked again. Moving on now saves every detail typed; one that
+  // can't be saved stops here with its message. Empty boxes are left for
+  // later: funding still requires a real address before any sats move.
+  const saveTypedPaymentDetails = (): boolean => saveTypedDrafts(missingPaymentRails, paymentDetailDrafts, savePaymentDetail);
 
   const toggleRail = (key: string) => setPaymentRails(current => {
     const next = current.includes(key) ? current.filter(k => k !== key) : [...current, key];
@@ -315,8 +331,8 @@ export function AssistedCanvas({
           {missingPaymentRails.map(key => {
             const rail = getRailByKey(key);
             const draft = paymentDetailDrafts[key] ?? "";
-            const showCountryCodeNudge = rail?.placeholder?.includes("+") === true
-              && (!draft.trim() || paymentHandleNeedsCountryCode(key, draft));
+            const showCountryCodeNudge = (rail?.placeholder?.includes("+") === true && !draft.trim())
+              || paymentHandleNeedsCountryCode(key, draft);
             return <label key={key}>
               {/* Where the handle is typed, the full name says what to share
                   ("$cashtag (Cash App)"); chips and listings show the label. */}
@@ -598,7 +614,25 @@ export function AssistedCanvas({
 
   const offeredSats = fiatBring ? estimatedSats ?? 0
     : bring === "goods" ? positiveNumber(terms) ?? 0 : positiveNumber(detail) ?? 0;
-  const escrow = guidedEscrowAmounts(offeredSats, sellRange ? rangeMax ?? 0 : offeredSats, escrowChoice);
+  const maxOfferSats = sellRange ? rangeMax ?? 0 : offeredSats;
+  // Read bonds only once an amount could go on-chain, not on every canvas open.
+  const [coverWanted, setCoverWanted] = useState(false);
+  const onchainPossible = onchainEscrowAvailable(BigInt(Math.max(0, Math.floor(maxOfferSats))));
+  useEffect(() => { if (onchainPossible) setCoverWanted(true); }, [onchainPossible]);
+  const onchainCover = useOnchainCover({
+    bonds: useCommunityBonds(coverWanted ? browseCommunity : null, fetchCommunityBonds),
+    allTrades: allEscrows ?? NO_TRADES,
+    viewerPubkey,
+  });
+  // A bill locks its total with the volunteer bonus; that is what an arbiter covers.
+  const coverageSats = bring === "bill" && billQuote ? billQuote.total : maxOfferSats;
+  const suggested = guidedEscrowAmounts(offeredSats, maxOfferSats, escrowChoice);
+  // Steer the default away from an on-chain trade nobody here can cover. Only
+  // the suggestion moves; a person who picks on-chain still sees the limit,
+  // and Publish still refuses.
+  const escrow = escrowChoice === null && suggested.mode === "onchain" && onchainCoverShort(coverageSats, onchainCover)
+    ? guidedEscrowAmounts(offeredSats, maxOfferSats, "ecash")
+    : suggested;
   const escrowMode = escrow.mode;
   const minimumMessage = tr("payment.bitcoinMinimum");
   const railChoice = escrow.available && <div role="group" aria-label={tr("onchain.modeLabel")} style={{ display: "flex", gap: 8, marginTop: 12 }}>
@@ -606,8 +640,10 @@ export function AssistedCanvas({
       {tr(mode === "onchain" ? "payment.bitcoin" : "onchain.modeEcash")}
     </button>)}
   </div>;
-  const railExplanation = escrow.available && escrowMode === "onchain"
-    && <div style={{fontSize:11, color:T.muted, marginTop:6}}>{tr("payment.bitcoinHeld")}</div>;
+  const railExplanation = escrow.available && <>
+    {escrowMode === "onchain" && <div style={{fontSize:11, color:T.muted, marginTop:6}}>{tr("payment.bitcoinHeld")}</div>}
+    <OnchainCoverLine cover={onchainCover} coverageSats={coverageSats} />
+  </>;
 
   const openPreparedOffer = () => {
     if (!bring || !want || escrow.invalidMinimum) return;
@@ -719,7 +755,7 @@ export function AssistedCanvas({
         <RailGrid railChoices={railChoices} effectiveRails={effectiveRails} onToggle={toggleRail} ariaLabel={tr("canvas.railsAria")} />
         <div className="assisted-rail-help">{effectiveRails.length > 0 ? tr("canvas.nSelected", { count: effectiveRails.length }) : tr("canvas.selectAtLeastOneAccept")}</div>
         {effectiveRails.length > 0 && renderHandleNudge()}
-        <Primary disabled={effectiveRails.length === 0} onClick={() => setSurface("premium")}>{tr("canvas.continue")}</Primary>
+        <Primary disabled={effectiveRails.length === 0} onClick={() => { if (saveTypedPaymentDetails()) setSurface("premium"); }}>{tr("canvas.continue")}</Primary>
       </QuestionCard>
     </CanvasShell>;
   }
@@ -940,7 +976,7 @@ export function AssistedCanvas({
         ) : (
           <div style={amountLineStyle()}><input autoFocus inputMode="numeric" value={terms} onChange={event => setTerms(digitsOnly(event.target.value))} placeholder="50,000" style={bareInputStyle()} /><span>SATS</span></div>
         )}
-        <Primary disabled={!termsValid || matching} onClick={() => void finishRoute()}>{matching ? <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><ChamaLoader size={20} />{tr("canvas.checkingOffersBtn")}</span> : termsConfig.action}</Primary>
+        <Primary disabled={!termsValid || matching} onClick={() => { if (saveTypedPaymentDetails()) void finishRoute(); }}>{matching ? <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><ChamaLoader size={20} />{tr("canvas.checkingOffersBtn")}</span> : termsConfig.action}</Primary>
       </QuestionCard>
       {error && <ErrorBox>{error}</ErrorBox>}
     </CanvasShell>;
@@ -1121,6 +1157,13 @@ export const CanvasAllListings = createContext<(() => void) | null>(null);
  *  its own line under the chip. */
 type BackAction = { run: () => void };
 const CanvasBackSlot = createContext<((back: BackAction | null) => void) | null>(null);
+
+/** Save every payment detail that was typed but not saved yet, in order.
+ *  Empty boxes are skipped; the first one that can't be saved stops the
+ *  step (its message shows) and the rest stay as typed. */
+export function saveTypedDrafts(keys: readonly string[], drafts: Readonly<Record<string, string>>, save: (key: string) => boolean): boolean {
+  return keys.filter(key => (drafts[key]?.trim() ?? "").length > 0).every(key => save(key));
+}
 
 export function CanvasTopRow({ onBack, chip }: { onBack?: (() => void) | null; chip?: ReactNode }) {
   if (!onBack && !chip) return null;

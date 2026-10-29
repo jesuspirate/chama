@@ -9,6 +9,8 @@ export const create: Record<string, string> = {
   "create.publishingTitle": "Inachapisha ofa yako…",
   "create.publishingSub": "Inaiweka hai katika jamii yako. Hii inachukua muda mfupi tu.",
   "create.reviewManually": "Kagua mwenyewe",
+  "create.coverUseEcash": "Tumia ecash",
+  "create.coverChangeAmount": "Badilisha kiasi",
   "create.recurringToggleHint": "Chapisha upya bili hii kwa jamii yako kila mwezi ukiwa mtandaoni. Hakuna dhamana inayohitajika — isitishe wakati wowote kutoka Mimi.",
   "create.tenureBondedTitle": "Duka lenye dhamana",
   "create.tenureBondedBody": "dhamana yako inaliweka duka hili wazi — linajifanya upya ukiwa mtandaoni (umiliki wa siku 7). Kila biashara bado inaisha muda kwa saa 24.",

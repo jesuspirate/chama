@@ -136,6 +136,19 @@ async function run(mode: 'sim' | 'legacy-ecash' | 'durable-ecash' | 'onchain', r
         assert(result.error instanceof Error, 'surface publish failure to the caller');
         assert.equal(seller.getState(id)?.status, S.CREATED, 'a rejected publish cannot pretend to be acknowledged');
         assert.equal(outbox.length, 0);
+        if (onchain) {
+          // Oct 28 mainnet: a retry after a failed publish signed a sibling
+          // LOCK. It must re-send the exact signed event instead.
+          Relay.rejectLocks = false;
+          const retry = seller.lockEscrow(id, { notesHash: '', shares: [], onchain,
+            sellerReceivesMsats: 100_000_000, arbiterFeeMsats: 0, buyerPubkey: buyerPk, arbiterPubkey: arbiterPk });
+          await until(() => Relay.locks.length === 2, 'onchain: retry reaches the relay');
+          assert.equal(Relay.locks[1].id, Relay.locks[0].id, 'retry re-sends the same signed LOCK, never a sibling');
+          Relay.pendingAcks.shift()!();
+          assert.equal((await retry).status, S.LOCKED);
+          assert.equal(seller.getState(id)?.eventChain.filter(event => event.kind === K.LOCK).length, 1);
+          console.log('PASS onchain LOCK retry after rejection re-sends the original signed event');
+        }
       }
     } else {
       assert.equal(result.error, undefined);

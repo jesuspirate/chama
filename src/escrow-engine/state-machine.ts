@@ -2080,6 +2080,19 @@ function replayAuthorEntitled(state: EscrowState, event: ParsedEscrowEvent): boo
  * the load, so the conflict surfaces instead of the trade quietly reading as
  * funded. A CANCEL from anyone else is skipped as an outsider's.
  */
+/** Same author and same terms as the accepted on-chain LOCK; only lockedAt
+ *  may differ. Keys are compared after sorting, so field order is irrelevant. */
+function redundantOnchainLock(state: EscrowState, event: ParsedEscrowEvent<LockPayload>): boolean {
+  const accepted = state.eventChain.find(e => e.kind === EscrowEventKind.LOCK) as ParsedEscrowEvent<LockPayload> | undefined;
+  if (!accepted?.payload.onchain || !event.payload.onchain || !state.lock.onchain) return false;
+  if (accepted.pubkey !== event.pubkey) return false;
+  const canonical = (value: unknown): string => JSON.stringify(value, (_key, v) =>
+    v && typeof v === "object" && !Array.isArray(v) ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => a < b ? -1 : 1)) : v);
+  const { lockedAt: _a, ...committed } = accepted.payload;
+  const { lockedAt: _b, ...repeated } = event.payload;
+  return canonical(committed) === canonical(repeated);
+}
+
 const REPLAY_RULE_BREAKS: Partial<Record<EscrowEventKind, ReadonlySet<string>>> = {
   [EscrowEventKind.VOTE]: new Set(["ROLE_MISMATCH"]),
   [EscrowEventKind.JOIN]: new Set(["ROLE_CONFLICT", "ORDER_ALREADY_FINALIZED", "CHAMA_SEATS_FIXED"]),
@@ -2232,6 +2245,13 @@ export function replayEventChain(
       // braces: without a LOCK in the chain nothing here is forgiven.
       if (result.error.code === "EXPIRY_NOT_IN_TRADE"
           && state?.eventChain.some(e => e.kind === EscrowEventKind.LOCK)) { note(); continue; }
+      // Oct 28 mainnet: a funder's repeated taps signed the same on-chain LOCK
+      // three times, and the trade could not load anywhere. A later LOCK from
+      // the author of the accepted on-chain LOCK, with identical terms (only
+      // its signing time differs), restates committed custody and changes
+      // nothing. Any other difference stays strict below.
+      if (event.kind === EscrowEventKind.LOCK && state && redundantOnchainLock(state, event as ParsedEscrowEvent<LockPayload>)
+          && (result.error.code === "INVALID_STATE" || result.error.code === "TERMINAL_STATE")) { note(true); continue; }
       // Never let a generic duplicate/terminal error forgive a funds transition.
       // Re-delivery of the identical signed ID already succeeds in applyEvent.
       // Strict for the role that can move the money; anyone else's is noise.
