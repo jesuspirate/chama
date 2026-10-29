@@ -583,6 +583,8 @@ export class EscrowClient {
 
   /** Raw events per escrow — escrowId → events[] */
   private rawEvents: Map<string, NostrEvent[]> = new Map();
+  /** On-chain LOCKs signed but not acknowledged by any relay, re-sent as-is. */
+  private unacknowledgedOnchainLocks: Map<string, NostrEvent> = new Map();
 
   /** Last touch per hot raw chain, driving evict-oldest once over cap. */
   private rawEventsTouchedAt: Map<string, number> = new Map();
@@ -1961,7 +1963,7 @@ export class EscrowClient {
 
     // Wire payload — envelope only. Top-level handle/handleId/rail are
     // omitted; receivers resolve from the envelope.
-    const wirePayload: LockPayload = {
+    let wirePayload: LockPayload = {
       type: "escrow:lock",
       notesHash: params.notesHash,
       ...(params.onchain ? { onchain: params.onchain } : {}),
@@ -2017,7 +2019,13 @@ export class EscrowClient {
       content,
     };
 
-    const signed = await this.signWithSimTag(unsigned);
+    const unacknowledged = params.onchain ? this.unacknowledgedOnchainLocks.get(escrowId) : undefined;
+    const resend = !!unacknowledged && unacknowledged.tags.some(tag => tag[0] === TAGS.PREV_EVENT && tag[1] === lastEventId)
+      && JSON.stringify((JSON.parse(unacknowledged.content) as LockPayload).onchain) === JSON.stringify(wirePayload.onchain);
+    // Never sign a sibling of a LOCK that may already sit on a relay.
+    if (unacknowledged && !resend) throw new Error("This trade changed after an earlier lock attempt. Reload Chama before locking again.");
+    if (resend) wirePayload = JSON.parse(unacknowledged!.content) as LockPayload;
+    const signed = resend ? unacknowledged! : await this.signWithSimTag(unsigned);
     if (state.chamaPolicy) {
       const parsed = parseEscrowEvent(signed, JSON.stringify(wirePayload), true, { state });
       if (!parsed.ok) throw new Error(`Invalid share LOCK: ${parsed.error.message}`);
@@ -2035,7 +2043,16 @@ export class EscrowClient {
     } else {
       // Sim/testnet and on-chain locks have no bearer-note outbox, but still
       // need relay delivery. Only mark them acknowledged after publish succeeds.
-      await this.relayManager.publish(signed);
+      try {
+        await this.relayManager.publish(signed);
+        this.unacknowledgedOnchainLocks.delete(escrowId);
+      } catch (error) {
+        // A failed publish may still have reached a relay. Keep this exact
+        // signed event so a retry re-sends it (same id) instead of signing a
+        // sibling LOCK (Oct 28 mainnet). It is not applied until acknowledged.
+        if (params.onchain) this.unacknowledgedOnchainLocks.set(escrowId, signed);
+        throw error;
+      }
       publishOutcome = { custodyDurability: "acknowledged" };
     }
 

@@ -17,7 +17,11 @@ try {
       platform: "node",
       format: "esm",
       outfile,
-      define: { __CHAMA_SANDBOX__: String(sandbox), __APP_VERSION__: '"test"' },
+      define: {
+        __CHAMA_SANDBOX__: String(sandbox),
+        __CHAMA_SANDBOX_MARKER__: JSON.stringify(sandbox ? "chama-sandbox-build" : ""),
+        __APP_VERSION__: '"test"',
+      },
     });
     await import(pathToFileURL(outfile).href);
   }
