@@ -47,7 +47,7 @@ import { settlementWinner, winnerSettlementChoice, assertWinnerMayChoose } from 
 import { findEscrowFundingUtxos, deriveCommittedBondKey, escrowDepositWindowSafe } from "../bond-multisig/onchain-escrow-funding.js";
 import { escrowFundingMinConfs, findCorroboratedEscrowFunding, disputeSpendSet } from "../bond-multisig/escrow-chain-reads.js";
 import { finalRefundSettlementProof, observedRefundSpend } from "../escrow-engine/onchain-settlement-transport.js";
-import { fundingArbiter, fundingTermsError, onchainLockError, onchainFunder } from "../escrow-engine/onchain-funding-terms.js";
+import { fundingArbiter, fundingTermsError, onchainFundingInputsChanged, onchainLockError, onchainFunder } from "../escrow-engine/onchain-funding-terms.js";
 import { assertCreatePaymentMethods, assertJoinPaymentMethods, assertTradePaymentDetails, needsTradePaymentDetails } from "../payments/trade-payment-details.js";
 import { getSavedHandle } from "../payments/saved-handles.js";
 import { getOnchainPaymentChoice, onchainLockHandleParams, saveOnchainPaymentChoice, writeOnchainPaymentChoice } from "../payments/onchain-payment-choice.js";
@@ -3178,7 +3178,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       disputeCsvBlocks: DISPUTE_CSV_BLOCKS, network: ESCROW_NETWORK });
     if (!plan.ready) throw new Error("Waiting for the participants' published keys");
     const current = client.getState(escrowId);
-    if (current !== trade) throw new Error("The order changed while preparing the deposit. Reopen it before paying.");
+    if (!current || onchainFundingInputsChanged(trade, current)) throw new Error("The order changed while preparing the deposit. Reopen it before paying.");
     assertOnchainFundingWindow(current);
     // The address is returned to the UI only AFTER this signed JOIN is published.
     await client.joinEscrow(escrowId, role, { fundingTerms: {
