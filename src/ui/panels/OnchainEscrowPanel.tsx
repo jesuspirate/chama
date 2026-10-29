@@ -43,7 +43,7 @@ export function OnchainEscrowPanel({
   fundingNote,
   depositStatus = "waiting",
   onPublishKey,
-  publishing,
+  publishing, funderName,
   onPrepareFunding, onRefund, refunding,
 }: {
   view: OnchainEscrowView;
@@ -72,6 +72,8 @@ export function OnchainEscrowPanel({
    *  is never asked will never guess that the trade is stalled on them. */
   onPublishKey?: () => void;
   publishing?: boolean;
+  /** Display name of the participant who deposits; shown to everyone else. */
+  funderName?: string | null;
 }) {
   const { t } = useT();
   const btcNetwork = network === "signet" ? SIGNET : MAINNET;
@@ -168,10 +170,15 @@ export function OnchainEscrowPanel({
       )}
 
       {view.stage === "awaiting-funding" && view.address && <>
-        <p style={{ textAlign: "center" }}>{view.viewerFunds && depositStatus === "waiting" ? "Send" : "Deposit:"} {Number(view.expectedSats).toLocaleString()} sats{view.viewerFunds && depositStatus === "waiting" ? " to this address" : ""}</p>
+        {/* The person who is not funding must never read this QR as "pay
+            here": they pay in cash, and only the funder deposits sats. */}
+        <p data-deposit-heading style={{ textAlign: "center" }}>{view.viewerFunds
+          ? t(depositStatus === "waiting" ? "onchain.sendToAddress" : "onchain.depositAmount", { amount: Number(view.expectedSats).toLocaleString() })
+          : t("onchain.funderDeposits", { name: funderName ?? t("onchain.theFunder"), amount: Number(view.expectedSats).toLocaleString() })}</p>
+        {!view.viewerFunds && <p data-deposit-not-yours style={{ textAlign: "center", color: T.muted, fontSize: 13 }}>{t("onchain.notYourDeposit")}</p>}
         {uri && <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}><PaymentTarget uri={uri} copyValue={view.address ?? uri}><QRCode data={uri} size={210} logo="static" errorCorrectionLevel="H" alt={t("onchain.addressLabel")} /></PaymentTarget></div>}
         <PaymentCopyChip value={view.address} address uri={uri ?? undefined} />
-        <p role="status" style={{ color: T.muted, fontSize: 12, textAlign: "center" }}>{depositStatus !== "confirmed" && "Locks after 1 confirmation · "}{t(depositStatus === "seen" ? "onchain.seenMempool" : depositStatus === "confirmed" ? "onchain.depositConfirmed" : "onchain.waitingDeposit")}{!view.viewerFunds && depositStatus === "confirmed" && " · Locks when the funder next opens Chama"}</p>
+        <p role="status" style={{ color: T.muted, fontSize: 12, textAlign: "center" }}>{depositStatus !== "confirmed" && `${t("onchain.locksAfterOneConfirmation")} · `}{t(depositStatus === "seen" ? "onchain.seenMempool" : depositStatus === "confirmed" ? "onchain.depositConfirmed" : "onchain.waitingDeposit")}{!view.viewerFunds && depositStatus === "confirmed" && ` · ${t("onchain.locksWhenFunderOpens")}`}</p>
         {view.viewerFunds && onCheckFunding && <PaymentButton disabled={checking} onClick={onCheckFunding} style={{ width: "100%" }}>
           {checking && <span className="funding-check-spinner" aria-hidden="true" style={{ display: "inline-block", width: 12, height: 12, border: "2px solid currentColor", borderTopColor: "transparent", borderRadius: "50%", animation: "funding-check-spin 1s linear infinite", marginRight: 8 }} />}
           {checking ? t("onchain.checking") : t("onchain.iveSentIt")}

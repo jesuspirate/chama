@@ -20,7 +20,17 @@ assert.match(render("seen", null), /Deposit seen; waiting for confirmation/);
 assert.match(render("confirmed", null), /Deposit confirmed/);
 const buyerHtml = renderToStaticMarkup(<LangProvider><OnchainEscrowPanel view={{ ...view, viewerFunds: false }} network="mainnet" depositStatus="confirmed" /></LangProvider>);
 assert.match(buyerHtml, /funder next opens Chama/);
-console.log("Brief 04 on-chain funding status: waiting, seen and confirmed are explicit");
+// Jet's final pass: the buyer read "Deposit: N sats" beside the QR as "pay
+// this". The non-funder is told who deposits and that they send nothing.
+const buyerWaiting = renderToStaticMarkup(<LangProvider><OnchainEscrowPanel view={{ ...view, viewerFunds: false }} network="mainnet" depositStatus="waiting" funderName="Jetty" /></LangProvider>);
+assert.match(buyerWaiting, /Jetty deposits 100,000 sats at this address\./);
+assert.match(buyerWaiting, /You don(&#x27;|')t send anything to this address\./);
+assert.doesNotMatch(buyerWaiting, /Deposit: |Send 100,000 sats/);
+assert.match(buyerHtml, /The person funding this trade deposits 100,000 sats/, "unnamed funder still named by role");
+assert.match(waiting, /Send 100,000 sats to this address/);
+assert.doesNotMatch(waiting, /don(&#x27;|')t send anything/);
+assert.match(render("seen", null), /Deposit: 100,000 sats/);
+console.log("Brief 04 on-chain funding status: waiting, seen and confirmed are explicit; non-funder is told they send nothing");
 
 // Both guided and full trade controls render this panel. Read-only buyers get
 // the independently derived address/history, never a fund or signing action.

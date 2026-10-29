@@ -320,7 +320,11 @@ export function LiveTradeSurface({
     : `${tr("lts.release")} · ${tr("lts.toCounterparty")}`;
   const releaseAnywayLabel = releaseRecipientName && !releaseToMe ? tr("lts.releaseAnywayTo", { name: releaseRecipientName })
     : `${tr("lts.releaseAnyway")} · ${tr("lts.toCounterparty")}`;
-  const lockerName = profileNameFor(profileNames, payoutRecipientFor(state, Outcome.REFUND)?.pubkey, kind0Enabled) ?? tr("trade.participants");
+  const lockerPubkey = payoutRecipientFor(state, Outcome.REFUND)?.pubkey;
+  const lockerName = profileNameFor(profileNames, lockerPubkey, kind0Enabled) ?? tr("trade.participants");
+  // The agreed-methods card is seen by the one who is paid in cash (the
+  // funder) and by the arbiter; the payer sees BuyerPaymentDetails instead.
+  const cashReceiverIsMe = !!lockerPubkey && lockerPubkey.toLowerCase() === pubkey.toLowerCase();
 
   // One set of Lock options for the press (which may prepare the invoice)
   // and the confirm (which funds): the invoice is adopted only if they match.
@@ -1048,11 +1052,15 @@ export function LiveTradeSurface({
               && (state.category === "p2p-trade" || state.category === "bill-pay")
               && !(myRole === Role.BUYER && needsTradePaymentDetails(state)) && (
               <div data-agreed-methods style={{ marginTop: 16, padding: "12px 14px", borderRadius: 12, background: T.raised, fontFamily: T.sans }}>
-                <div style={{ fontSize: T.fs.secondary, color: T.ink2, marginBottom: 4 }}>{tr("lts.agreedMethods")}</div>
+                <div style={{ fontSize: T.fs.secondary, color: T.ink2, marginBottom: 4 }}>
+                  {tr(cashReceiverIsMe ? "lts.agreedMethodsReceive" : myRole === Role.ARBITER ? "lts.agreedMethodsWatch" : "lts.agreedMethods")}
+                </div>
                 <div style={{ fontSize: T.fs.headline, fontWeight: 600, color: T.ink }}>
                   {state.paymentMethods.map(key => railLabel(key)).join(" · ")}
                 </div>
-                <div style={{ fontSize: T.fs.secondary, color: T.ink2, marginTop: 6 }}>{tr("lts.detailsInChat", { name: lockerName })}</div>
+                <div style={{ fontSize: T.fs.secondary, color: T.ink2, marginTop: 6 }}>
+                  {cashReceiverIsMe ? tr("lts.detailsInChatYou") : tr("lts.detailsInChat", { name: lockerName })}
+                </div>
               </div>
             )}
             {tradeCashDetailsVisible(state) && myRole && state.lock.handle && !(myRole === Role.BUYER && needsTradePaymentDetails(state)) && <details open style={{ marginTop: 16, fontFamily: T.sans }}>
