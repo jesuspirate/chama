@@ -4362,6 +4362,7 @@ export default function App() {
           listings={allVisibleListings}
           allEscrows={[...escrows.values()]}
           circleChildrenLoaded={circleChildrenLoaded}
+          fetchCommunityBonds={actions.fetchCommunityBonds}
           stockByListing={stockByListing}
           browseCommunity={routeCommunitySlug}
           activeMintUrl={myActiveInvite}
