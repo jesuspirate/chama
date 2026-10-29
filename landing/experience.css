@@ -228,18 +228,19 @@ html .real-life .life-symbol .bitcoin-stamp-ring { stroke: var(--life-bg); }
 .foot-col a { display: inline-flex; align-items: center; gap: 12px; padding: 7px 0; font-size: 14px; background: linear-gradient(currentColor,currentColor) left calc(100% - 4px)/0 1px no-repeat; transition: background-size .45s var(--ease-out),color .3s; }
 .foot-col a:hover { background-size: 100% 1px; }
 .foot-col a[target=_blank]:not([rel~=me])::after { content: '↗'; font-size: 11px; color: var(--muted); margin-left: -6px; }
-.foot-social a { background: none; padding: 8px 0; font-size: 13px; }
-.foot-social a:hover { color: var(--dot); }
-.foot-social i { display: grid; place-items: center; width: 34px; height: 34px; border: 1px solid var(--line); border-radius: 50%; transition: border-color .3s; }
-.foot-social a:hover i { border-color: currentColor; }
-.foot-social svg,.foot-social img { width: 15px; height: 15px; object-fit: contain; }
-.foot-social small { display: block; font-size: 9px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin-bottom: 2px; }
+/* Contact navigation must not match generic social-widget blocker selectors. */
+.foot-contact a { background: none; padding: 8px 0; font-size: 13px; }
+.foot-contact a:hover { color: var(--dot); }
+.foot-contact i { display: grid; place-items: center; width: 34px; height: 34px; border: 1px solid var(--line); border-radius: 50%; transition: border-color .3s; }
+.foot-contact a:hover i { border-color: currentColor; }
+.foot-contact svg,.foot-contact img { width: 15px; height: 15px; object-fit: contain; }
+.foot-contact small { display: block; font-size: 9px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin-bottom: 2px; }
 .foot-base { display: flex; justify-content: space-between; align-items: center; gap: 20px; padding-top: 24px; border-top: 1px solid var(--line); font-size: 11px; color: var(--muted); }
 .foot-base a::after { content: '↑'; margin-left: 8px; }
 .foot-base a:hover { color: var(--ink); }
 @media(max-width:1000px) { .foot-top { grid-template-columns: 1fr 1fr 1fr; } .foot-brand { grid-column: 1/-1; } }
-@media(max-width:620px) { .foot-top { grid-template-columns: 1fr 1fr; gap: 40px 24px; padding-bottom: 44px; } .foot-social { grid-column: 1/-1; display: grid; grid-template-columns: 1fr 1fr; column-gap: 24px; } .foot-social .foot-head { grid-column: 1/-1; } .foot-col a { font-size: 13px; } .foot-social a { min-width: 0; } .foot-social span { overflow-wrap: anywhere; } }
-@media(max-width:400px) { .foot-social { grid-template-columns: 1fr; } }
+@media(max-width:620px) { .foot-top { grid-template-columns: 1fr 1fr; gap: 40px 24px; padding-bottom: 44px; } .foot-contact { grid-column: 1/-1; display: grid; grid-template-columns: 1fr 1fr; column-gap: 24px; } .foot-contact .foot-head { grid-column: 1/-1; } .foot-col a { font-size: 13px; } .foot-contact a { min-width: 0; } .foot-contact span { overflow-wrap: anywhere; } }
+@media(max-width:400px) { .foot-contact { grid-template-columns: 1fr; } }
 
 /* ── Readability: nothing a reader must read sits under 12px, body copy at 16px+.
    Sizes inside the trade diagram stay a step smaller so its parts keep their places. */
@@ -277,8 +278,8 @@ html .quiet-link,html .ghost { font-size: 14px; }
 html .medley-toggle,html .fedi-qr { font-size: 13px; }
 html .foot-head { font-size: 12px; }
 html .foot-col a { font-size: 16px; }
-html .foot-social a { font-size: 15px; }
-html .foot-social small { font-size: 11px; }
+html .foot-contact a { font-size: 15px; }
+html .foot-contact small { font-size: 11px; }
 html .foot-base { font-size: 13px; }
 html .ethos small { font-size: 11px; }
 html .ethos strong { font-size: 17px; }

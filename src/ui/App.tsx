@@ -7,6 +7,7 @@ import { buildWakeIndex } from "../notifications/wake-index.js";
 import { deleteListings } from "../escrow-engine/delete-listings.js";
 import { listPaidLockRecoveries } from "../payments/paid-lock-recovery.js";
 import { fundingSeatDeadline } from "../payments/seat-funding.js";
+import { cashOfferMissingMethods } from "../payments/trade-payment-details.js";
 import { listTradeIndex, hasVerifiedTradeCreate } from "../escrow-engine/trade-index.js";
 import { browserWalletStorageError } from "../fedimint/browser-capabilities.js";
 import { useVisualViewport } from './useVisualViewport.js';
@@ -1956,6 +1957,10 @@ export default function App() {
       .slice(0, 5);
     if (renewables.length === 0) return;
     for (const l of renewables) {
+      // An older cash offer with no payment methods can't be posted again
+      // (Jet, 6.4.31). Skip it without spending a renewal; renewing by hand
+      // says why.
+      if (cashOfferMissingMethods(l)) continue;
       autoRenewedRef.current.add(l.id); // mark first so a throw can't hot-loop
       bumpAutoRenewCount(listingIdentityKey(l)); // count this lineage's auto-renew
       void actions
@@ -2053,6 +2058,9 @@ export default function App() {
           ? cfg.seriesId
           : null;
       if (!sourceId) continue;
+      // Same rule for a monthly bill: no methods, no repost, no cycle spent.
+      const source = escrows.get(sourceId);
+      if (source && cashOfferMissingMethods(source)) continue;
       cbpRepostedRef.current.add(cycleKey); // mark first so a throw can't hot-loop
       void actions
         .repostRecurringCbp(sourceId)

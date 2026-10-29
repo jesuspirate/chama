@@ -118,23 +118,33 @@ try {
     supportsOnchain={false} getOnchainInfo={async () => { throw Error('must not prepare'); }} onClose={() => {}} />);
   assert.match(closed, /no longer open/);
   assert.doesNotMatch(closed, /data-funding-rails|textarea|bolt11|Pay within/);
-  assert.throws(() => assertTradePaymentDetails(offer, {}), /Add payment details/);
-  assertTradePaymentDetails(offer, { paymentDetailsInChat: true });
+  // Jet (6.4.31): where the cash goes is mandatory; "send in chat" no longer counts.
+  assert.throws(() => assertTradePaymentDetails(offer, {}), (e: any) => e.code === 'PAYMENT_DETAILS_REQUIRED' && /where the buyer sends the cash.*No sats moved/.test(e.message));
+  assert.throws(() => assertTradePaymentDetails(offer, { paymentDetailsInChat: true }), (e: any) => e.code === 'PAYMENT_DETAILS_REQUIRED');
   const handle = addSavedHandle('cash-app', '$trade-fixture');
   assertTradePaymentDetails(offer, { savedHandleId: handle.id });
   const wrong = addSavedHandle('m-pesa', '+255 700 000 000');
   assert.throws(() => assertTradePaymentDetails(offer, { savedHandleId: wrong.id }), /agreed methods/);
   assert.throws(() => assertTradePaymentDetails(offer, { savedHandleId: 'deleted', paymentDetailsInChat: true }), /agreed methods/);
+  // Chama-share and marketplace trades carry no cash leg and need nothing.
+  assertTradePaymentDetails({ ...offer, category: 'marketplace' } as EscrowState, {});
+  // A listing that agreed no methods still needs a real address, any method.
+  assertTradePaymentDetails({ ...offer, paymentMethods: [] } as EscrowState, { savedHandleId: wrong.id });
+  assert.throws(() => assertTradePaymentDetails({ ...offer, paymentMethods: [] } as EscrowState, {}), /where the buyer sends the cash/);
   const locked = await seller.lockEscrow(escrowId, { notesHash: 'fixture-notes-hash',
     shares: [0, 1, 2].map(shareIndex => ({ shareIndex, encryptedFor: { [buyerPk]: 'share', [sellerPk]: 'share', [arbiterPk]: 'share' } })),
     buyerPubkey: buyerPk, arbiterPubkey: arbiterPk, sellerReceivesMsats: 1_000_000, arbiterFeeMsats: 0,
     handle: handle.handle, rail: handle.rail });
   assert.match(render(<BuyerPaymentDetails state={locked} />), /\$trade-fixture/);
+  // Jet (Oct 26): the buyer sees only the method the seller chose.
+  const chosenOnly = render(<BuyerPaymentDetails state={{ ...locked, paymentMethods: ['zelle', 'cash-app', 'strike'] }} />);
+  assert.doesNotMatch(chosenOnly, /Zelle|Strike/, 'other agreed methods are not shown once the seller chose one');
+  assert.match(chosenOnly, /\$trade-fixture/);
   const buyerState = await buyer.loadEscrow(escrowId, { fullHistory: true });
   assert.equal(buyerState?.lock.handle?.value, '$trade-fixture', 'the buyer decrypts the committed handle');
   const fallback = render(<BuyerPaymentDetails state={{ ...locked, lock: { ...locked.lock, handle: null } }} />);
   assert.match(fallback, /cash-app/); assert.match(fallback, /chat before sending money/);
-  assert.match(render(<TradePaymentDetailsChoice state={offer} value="" onChange={() => {}} />), /send payment details in chat/);
+  assert.doesNotMatch(render(<TradePaymentDetailsChoice state={offer} value="" onChange={() => {}} />), /in chat/);
 
   // Legacy native stash options predate paymentDetailsInChat. Resume the real
   // bridge flow: reabsorb the provably unpublished notes, re-spend, and commit
@@ -164,8 +174,10 @@ try {
       getPublicKey: async () => sellerPk, signEvent: async e => finalizeEvent(e, sellerKey),
       nip44Encrypt: async value => value, nip44Decrypt: async value => value,
     });
-    await assert.rejects(bridge.preflightLock(legacy.escrowId, legacyOpts), /payment details/,
-      'new funding still requires valid payment details or an explicit chat choice');
+    await assert.rejects(bridge.preflightLock(legacy.escrowId, legacyOpts), (e: any) => e.code === 'PAYMENT_DETAILS_REQUIRED',
+      'new funding requires valid payment details');
+    // Once sats moved, the same missing detail never refuses the lock.
+    await bridge.preflightLock(legacy.escrowId, { ...legacyOpts, afterSatsMoved: true });
     const input = { escrowId: legacy.escrowId, amountMsats: 1_000_000,
       federationId: fed, lockOpts: legacyOpts };
     stashNativeLockIntent(input); upgradeNativeLockToSpent({ ...input, oobNotes: notes });

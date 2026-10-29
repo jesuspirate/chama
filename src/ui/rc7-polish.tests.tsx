@@ -20,7 +20,7 @@ Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: {
 } });
 setLocalStorageUserScope('rc7-polish-test');
 const { addSavedHandle } = await import('../payments/saved-handles.js');
-const { TradePaymentDetailsChoice, CHAT_PAYMENT_CHOICE } = await import('./components/TradePaymentDetails.js');
+const { TradePaymentDetailsChoice } = await import('./components/TradePaymentDetails.js');
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf8');
 const src0 = () => read('./components/TradePaymentDetails.tsx');
 
@@ -30,25 +30,25 @@ const src0 = () => read('./components/TradePaymentDetails.tsx');
   const strike = addSavedHandle('strike', 'rc7@strike.me');
   const offer = { id: 'rc7', category: 'p2p-trade', status: EscrowStatus.CREATED, paymentMethods: ['$cashtag (Cash App)', 'Strike'] } as unknown as EscrowState;
   const render = (value: string) => renderToStaticMarkup(<LangProvider><TradePaymentDetailsChoice state={offer} value={value} onChange={() => {}} /></LangProvider>);
-  for (const html of [render(''), render(cash.id), render(CHAT_PAYMENT_CHOICE)]) {
+  for (const html of [render(''), render(cash.id)]) {
     assert.doesNotMatch(html, /<select|<option/, 'no native picker');
     assert.match(html, /data-payment-details-picker[^>]*aria-haspopup="dialog"/, 'the choice is a button that opens the overlay');
   }
   assert.match(render(cash.id), /\$cashtag \(Cash App\) · \$rc7/, 'the chosen saved details show on the button');
   assert.match(render(strike.id), /Strike · rc7@strike\.me/);
-  assert.match(render(CHAT_PAYMENT_CHOICE), /send payment details in chat/);
   const empty = render('');
   assert.match(empty, /role="radio" aria-checked="true"[^>]*>\$cashtag \(Cash App\)<\/button>/, 'adding details: the method is a chip, first one picked');
   assert.match(empty, /role="radio" aria-checked="false"[^>]*>Strike<\/button>/);
   assert.match(empty, /name="trade-payment-detail"/, 'the handle field is still there');
-  assert.match(empty, /data-payment-details-chat[^>]*>I’ll send payment details in chat<\/button>/, 'sending details in chat stays one tap away');
-  assert.match(src0(), /data-payment-details-chat onClick=\{\(\) => onChange\(CHAT_PAYMENT_CHOICE\)\}/);
+  // Jet (6.4.31): a cash trade never locks without a real address, so
+  // "send in chat" is no longer a choice anywhere.
+  assert.doesNotMatch(empty, /data-payment-details-chat|in chat/, 'no send-in-chat option');
+  assert.doesNotMatch(src0(), /CHAT_PAYMENT_CHOICE|sendDetailsInChat/);
   assert.doesNotMatch(render(cash.id), /name="trade-payment-detail"/, 'chosen details hide the add form, as before');
-  // The ids handed to the lock are unchanged: a saved handle's id, 'chat', or
-  // '' to add new details; a freshly saved handle passes its new id.
+  // The ids handed to the lock: a saved handle's id, or '' to add new
+  // details; a freshly saved handle passes its new id.
   const src = read('./components/TradePaymentDetails.tsx');
   assert.match(src, /handles\.map\(h => \(\{ id: h\.id,/);
-  assert.match(src, /\{ id: CHAT_PAYMENT_CHOICE, label: t\('trade\.sendDetailsInChat'\) \}/);
   assert.match(src, /const choose = \(id: string\) => \{ onChange\(id\); setPicking\(false\); \};/);
   assert.match(src, /const saved = addSavedHandle\(rail, handle\.trim\(\)\); onChange\(saved\.id\);/);
   assert.match(src, /<OverlaySheet title=\{t\('trade\.choosePaymentDetails'\)\}/);

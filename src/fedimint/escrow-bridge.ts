@@ -765,10 +765,16 @@ export class EscrowFedimintBridge {
     return resultState;
   }
 
-  async preflightLock(escrowId: string, opts: LockOptions = {}): Promise<{ buyerPubkey: string; seatDeadline?: number }> {
+  async preflightLock(
+    escrowId: string,
+    opts: LockOptions & { afterSatsMoved?: boolean } = {},
+  ): Promise<{ buyerPubkey: string; seatDeadline?: number }> {
     const { buyerPubkey, state } = await this.prepareLockContext(escrowId, opts);
-    // Require a choice before new funding, never while recovering notes already spent.
-    assertTradePaymentDetails(state, opts);
+    // Require where the cash goes before new funding. Once this trade's sats
+    // have arrived (a paid invoice, a claimed deposit) a missing or changed
+    // detail never blocks the lock: it publishes without one and the buyer
+    // sees the agreed methods plus chat (AGENTS.md "after sats move").
+    if (!opts.afterSatsMoved) assertTradePaymentDetails(state, opts);
     return { buyerPubkey, seatDeadline: preLockDeadline(state)?.at };
   }
 

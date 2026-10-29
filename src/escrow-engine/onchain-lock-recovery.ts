@@ -1,4 +1,4 @@
-import { EscrowStatus, type EscrowState } from "./types.js";
+import { EscrowEventKind, EscrowStatus, type EscrowState } from "./types.js";
 import { onchainFunder } from "./onchain-funding-terms.js";
 
 /** Only the signer who committed the terms may publish the observed LOCK. */
@@ -16,4 +16,12 @@ export function pendingOnchainLockRecoveries(
     ids.push(trade.id);
   }
   return ids;
+}
+
+/** True once this device holds a LOCK for the trade. A funder must never
+ *  sign a second LOCK for one deposit: an entitled author's repeat LOCK made
+ *  a mainnet trade unloadable (Oct 28). */
+export function onchainLockAlreadySent(trade: EscrowState): boolean {
+  return !!trade.lock.onchain || trade.lock.lockedAt != null
+    || trade.eventChain.some(event => event.kind === EscrowEventKind.LOCK);
 }
