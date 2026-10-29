@@ -121,4 +121,11 @@ export const recovery: Record<string, string> = {
   "recovery.seed.openError": "Imeshindikana kufungua nakala ya pochi yako. Kagua kisaini chako cha Nostr na muunganisho, kisha ujaribu tena.",
   "recovery.seed.restored": "Ufikiaji wa pochi umerejeshwa. Jaribu tena hatua uliyokuwa ukifanya.",
   "recovery.seed.restoring": "Inarejesha…",
+  "recovery.savedKey.unreadableTitle": "Ufunguo wako uliohifadhiwa haufunguki",
+  "recovery.savedKey.unreadableBody": "Chama ilihifadhi ufunguo wako kwenye kifaa hiki, lakini haiwezi kuufungua sasa hivi. Hakuna kilichofutwa. Jaribu tena, au ingia kwa ufunguo wako.",
+  "recovery.savedKey.retry": "Jaribu tena",
+  "recovery.savedKey.retrying": "Inajaribu…",
+  "recovery.savedKey.signInAnotherWay": "Ingia kwa ufunguo wangu",
+  "recovery.savedKey.anotherWayNote": "Ukiingia kwa ufunguo wako, nakala iliyohifadhiwa inabaki kwenye kifaa hiki. Hakuna kinachofutwa.",
+  "recovery.savedKey.stillUnreadable": "Bado haufunguki. Hakuna kilichofutwa. Jaribu tena baadaye, au ingia kwa ufunguo wako.",
 };

@@ -17,8 +17,9 @@ import { tradeDetailReturnsHome } from "./decisions.js";
 import { fundingPremiumMsats } from "../payments/funding-premium.js";
 import { nativeLockEarmarks } from "../fedimint/pending-native-locks.js";
 import { spendableBalanceMsats, payoutEarmarks, canLockFromBalance, decideDestroyConfirmRoute } from "./decisions.js";
-import { readBrowserSavedNsec, removeBrowserSavedNsec, saveNsec, SAVED_NSEC_KEY, NSEC_ORIGIN_KEY, type NsecSealer } from "../storage/saved-nsec.js";
-import { sealedDelete, sealedGet, sealedSet, sealedStoreAvailable } from "../storage/sealed-store.js";
+import { readBrowserSavedNsec, removeBrowserSavedNsec, saveNsec, SavedKeyUnreadableError, SAVED_NSEC_KEY, NSEC_ORIGIN_KEY, type NsecSealer } from "../storage/saved-nsec.js";
+import { sealedArchive, sealedArchiveNames, sealedDelete, sealedGet, sealedSet, sealedStoreAvailable } from "../storage/sealed-store.js";
+import { SavedKeyUnreadablePanel } from "./panels/SavedKeyUnreadablePanel.js";
 import { resolveCreateMintUrl,
   liveCommitmentForViewer,
 } from "./decisions.js";
@@ -403,29 +404,40 @@ async function readSavedNsec(): Promise<string | null> {
     return value?.trim() || null;
   }
   // Browser, PWA and Tauri all read the same per-origin storage; M9 keeps
-  // an encrypted copy beside the plain one (sealed-store.ts).
+  // an encrypted copy beside the plain one (sealed-store.ts). A kept key that
+  // can't be opened throws SavedKeyUnreadableError: never read as "no key".
   try {
     return await readBrowserSavedNsec(localStorage, browserNsecSealer());
-  } catch {
+  } catch (e) {
+    if (e instanceof SavedKeyUnreadableError) throw e;
     return null;
   }
 }
 
 function browserNsecSealer(): NsecSealer | undefined {
-  return sealedStoreAvailable() ? { get: sealedGet, set: sealedSet, delete: sealedDelete } : undefined;
+  return sealedStoreAvailable()
+    ? { get: sealedGet, set: sealedSet, delete: sealedDelete, archive: sealedArchive, archives: sealedArchiveNames }
+    : undefined;
 }
 
 async function writeSavedNsec(nsec: string, origin: "generated" | "imported"): Promise<void> {
   const native = Capacitor.isNativePlatform();
-  await saveNsec(nsec, origin, localStorage, native ? Preferences : undefined, native ? undefined : browserNsecSealer());
+  await saveNsec(nsec, origin, localStorage, native ? Preferences : undefined);
 }
 
-async function removeSavedNsec(): Promise<void> {
+/** The key this session signed in with (connect consumes the window copy),
+ *  so sign-out knows which key it is forgetting. */
+let sessionNsec: string | null = null;
+
+/** `wait`: sign-out waits (bounded) for the encrypted side, so the reload
+ *  after it can't find the key; a sign-in never waits on it. */
+async function removeSavedNsec(opts: { wait?: boolean } = {}): Promise<void> {
   if (Capacitor.isNativePlatform()) {
     try { await Preferences.remove({ key: SAVED_NSEC_KEY }); } catch {}
     try { await Preferences.remove({ key: NSEC_ORIGIN_KEY }); } catch {}
   }
-  await removeBrowserSavedNsec(localStorage, Capacitor.isNativePlatform() ? undefined : browserNsecSealer());
+  await removeBrowserSavedNsec(localStorage, Capacitor.isNativePlatform() ? undefined : browserNsecSealer(),
+    { forget: sessionNsec, wait: opts.wait });
 }
 
 
@@ -1020,6 +1032,9 @@ export default function App() {
   // pending-redemptions stash that automatic retry gave up on).
   const [strandedClaimExport, setStrandedClaimExport] = useState<StrandedRedemption | null>(null);
   const [autoLoginChecked, setAutoLoginChecked] = useState(false);
+  // M9: the kept key is stored but can't be opened. Retry, or sign in with
+  // the key (the stored copy is archived before anything replaces it).
+  const [savedKeyUnreadable, setSavedKeyUnreadable] = useState(false);
   // `actions` is rebuilt as hook state changes, so this effect can re-run while
   // secure-storage I/O is still pending. Latch synchronously before the first
   // await; React's loading state alone cannot prevent already-started reads
@@ -1579,10 +1594,11 @@ export default function App() {
       try {
         const value = await readSavedNsec();
         if (value) {
-          (window as any).__chama_connect_nsec = value;
+          (window as any).__chama_connect_nsec = sessionNsec = value;
           actions.connect();
         }
       } catch (e) {
+        if (e instanceof SavedKeyUnreadableError) setSavedKeyUnreadable(true);
         console.warn("[chama] auto-login check failed:", e);
       } finally {
         setAutoLoginChecked(true);
@@ -3116,7 +3132,7 @@ export default function App() {
   // it's the last-chance backup reminder, not a silent one-tap wipe.
   const handleSignOut = () => setPendingSignOut(true);
   const performSignOut = async () => {
-    await removeSavedNsec();
+    await removeSavedNsec({ wait: true });
     delete (window as any).__chama_connect_nsec;
     window.location.reload();
   };
@@ -3338,6 +3354,24 @@ export default function App() {
       />}
         <SimModePill />
         <SimEntryModal />
+        {savedKeyUnreadable && <SavedKeyUnreadablePanel
+          onRetry={async () => {
+            try {
+              const value = await readSavedNsec();
+              setSavedKeyUnreadable(false);
+              if (value) {
+                (window as any).__chama_connect_nsec = sessionNsec = value;
+                actions.connect();
+              }
+              return true;
+            } catch (e) {
+              if (e instanceof SavedKeyUnreadableError) return false;
+              setSavedKeyUnreadable(false);
+              return true;
+            }
+          }}
+          onSignInAnotherWay={() => setSavedKeyUnreadable(false)}
+        />}
         {showQRScanner && (
           <Suspense fallback={null}>
             <QRScanner
@@ -3349,7 +3383,7 @@ export default function App() {
                   // to scan their key), and window.confirm() is a silent no-op
                   // in the Capacitor/Tauri webview — so proceed and toast,
                   // rather than gate behind a dialog that never fires.
-                  (window as any).__chama_connect_nsec = scanned;
+                  (window as any).__chama_connect_nsec = sessionNsec = scanned;
                   // A scanned key is imported, never Chama-generated.
                   try { await writeSavedNsec(scanned, "imported"); } catch {}
                   setToast({ message: t("app.keyScanned"), type: "success" });
@@ -3367,7 +3401,7 @@ export default function App() {
         <ConnectScreen
           onConnect={actions.connect}
           onConnectNsec={async (nsec: string, remember: boolean, wasGenerated: boolean, fastSetupWanted?: boolean, setupCommunity?: string) => {
-            (window as any).__chama_connect_nsec = nsec;
+            (window as any).__chama_connect_nsec = sessionNsec = nsec;
             // Someone who pasted their own key already holds it: never ask
             // them "Did you save your key?" (Jet, rc.12). Only a key Chama
             // generated in this login still needs that reminder.

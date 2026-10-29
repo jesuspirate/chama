@@ -17,7 +17,10 @@
 //
 // First step (6.4.29): callers write an encrypted copy beside the plain one
 // and still read the plain one, so an older app sees the same key and
-// wallets. A later release reads these copies and removes the plain ones.
+// wallets. Second step (6.4.32): callers stop writing those copies and can
+// read a value a later release keeps only here, under a new name; a stored
+// copy that isn't known to be redundant is archived (sealedArchive), never
+// deleted unread. Removing the plain copies comes one release later.
 
 const DB_NAME = "chama-sealed-v1";
 const STORE = "items";
@@ -152,6 +155,31 @@ function askToPersist(): void {
 
 export async function sealedDelete(name: string): Promise<void> {
   await del(PREFIX + name);
+}
+
+/** Copy the record stored under `name`, exactly as stored, to an archive
+ *  name, and return that name (null when nothing is stored). The record is
+ *  never decrypted, so one that can't be read right now is kept whole and a
+ *  later read may still open it. Throws unless the copy is in place: callers
+ *  replace or delete the original only after this returns. */
+export async function sealedArchive(name: string): Promise<string | null> {
+  const record = await get<SealedRecord>(PREFIX + name);
+  if (!record) return null;
+  // Named by the record's own random IV, so archiving the same record again
+  // (an unreadable copy met on every start) rewrites one archive, never piles up.
+  const archived = `${name}#archived:${Array.from(new Uint8Array(record.iv), (b) => b.toString(16).padStart(2, "0")).join("")}`;
+  await put(PREFIX + archived, record);
+  const copy = await get<SealedRecord>(PREFIX + archived);
+  if (!copy || copy.ct.byteLength !== record.ct.byteLength) throw new Error("Archive copy was not saved");
+  return archived;
+}
+
+/** Names of the archives sealedArchive made from `name`. */
+export async function sealedArchiveNames(name: string): Promise<string[]> {
+  const db = await openDb();
+  const keys = await request(db.transaction(STORE, "readonly").objectStore(STORE).getAllKeys());
+  const prefix = `${PREFIX}${name}#archived:`;
+  return keys.map(String).filter((key) => key.startsWith(prefix)).map((key) => key.slice(PREFIX.length));
 }
 
 /** Test hook: forget cached handles so a fresh IndexedDB can be used. */
