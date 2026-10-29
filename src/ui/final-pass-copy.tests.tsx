@@ -44,3 +44,27 @@ for (const lang of LANGS) for (const key of ['lts.agreedMethodsReceive', 'lts.ag
   assert.ok(text && !text.startsWith('lts.') && !text.startsWith('onchain.'), `${lang}: ${key}`);
 }
 console.log('PASS agreed-methods card: seller is paid, arbiter watches; new copy in en/es/fr/sw');
+
+// Jet's 6.4.32 rc.1 pass: the arbiter of a settled trade was asked "How was
+// trading with them?" under "Your turn". Only buyer and seller rate.
+const completed = { ...locked, status: EscrowStatus.COMPLETED } as unknown as EscrowState;
+const finished = (pubkey: string) => renderToStaticMarkup(
+  <LangProvider><LiveTradeSurface state={completed} pubkey={pubkey} onBack={() => {}} onOpenFullView={() => {}}
+    onVote={async () => {}} onSendChat={async () => {}} onRateCounterparty={async () => {}} /></LangProvider>);
+const arbiterDone = finished(arbiter);
+assert.doesNotMatch(arbiterDone, /How was trading with them\?/, 'the arbiter is not asked to rate');
+assert.doesNotMatch(arbiterDone, />Your turn</, 'nothing is the arbiter\'s turn on a finished trade');
+assert.match(arbiterDone, /Trade complete\./);
+for (const party of [buyer, seller]) {
+  const html = finished(party);
+  assert.match(html, /How was trading with them\?/, 'buyer and seller still rate each other');
+  assert.match(html, /👍/);
+}
+
+// The dashboard showed the viewer's own arbiter card twice: once on top and
+// again inside "Arbiter record". The roster now skips the viewer.
+import { readFileSync } from 'node:fs';
+const dashboard = readFileSync(new URL('./screens/DashboardScreen.tsx', import.meta.url), 'utf8');
+assert.match(dashboard, /\.filter\(key => key !== pubkey\.toLowerCase\(\)\)/, 'roster excludes the viewer');
+assert.match(dashboard, /otherArbiters\.length > 0 && <details>/, 'no empty "Arbiter record" when you are the only arbiter');
+console.log('PASS finished trade: arbiter gets no rating ask; dashboard lists your own arbiter card once');
