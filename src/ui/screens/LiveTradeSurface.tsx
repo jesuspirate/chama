@@ -760,6 +760,11 @@ export function LiveTradeSurface({
     }
 
     if (status === EscrowStatus.COMPLETED) {
+      // Only the buyer and seller rate each other. The arbiter has nothing to
+      // do on a finished trade, so it gets no "Your turn" card.
+      if (!counterparty) {
+        return <Waiting message={tr("lts.tradeComplete")}>{state.escrowMode === "onchain" && onchainControls}</Waiting>;
+      }
       return (
         <Decision q={tr("lts.howWasTrading")} sub={tr("lts.ratingFeeds")}>
           {state.escrowMode === "onchain" && onchainControls}

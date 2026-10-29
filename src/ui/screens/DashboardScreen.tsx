@@ -213,6 +213,10 @@ export function DashboardScreen({
 
   const ratePct = ratings && ratings.count > 0 ? Math.round((ratings.positive / ratings.count) * 100) : null;
 
+  // Your own record is the card above; the roster lists everyone else once.
+  const otherArbiters = [...new Set(rosterBonds.filter(b => b.funded && b.active).map(b => b.npub.toLowerCase()))]
+    .filter(key => key !== pubkey.toLowerCase());
+
   const kickerStyle = { fontSize: T.fs.secondary, fontWeight: 700, color: T.muted, fontFamily: T.sans, };
   const cardStyle = { background: T.card, border: `1px solid ${T.border}`, borderRadius: T.r, padding: "16px 18px" };
   const windowLabel = (k: WindowKey) => k === "90d" ? t("dash.window90") : k === "year" ? t("dash.windowYear") : t("dash.windowAll");
@@ -229,9 +233,9 @@ export function DashboardScreen({
       {announcedBonds.some(b => b.funded && b.active) && <ArbiterRecordCard expanded record={arbiterRecord(
         pubkey, knownTrades ?? myTrades, announcedBonds, new Map(ratings ? [[pubkey, ratings]] : []), nowSec, bondTip, livenessBlocksPerDay,
       )} />}
-      {rosterBonds.length > 0 && <details>
+      {otherArbiters.length > 0 && <details>
         <summary>{t("trade.arbiterRecord")}</summary>
-        {[...new Set(rosterBonds.filter(b => b.funded && b.active).map(b => b.npub))].map(key =>
+        {otherArbiters.map(key =>
           <ArbiterRecordCard key={key} record={arbiterRecord(key, knownTrades ?? myTrades, rosterBonds, new Map(), nowSec, bondTip, livenessBlocksPerDay)} />)}
       </details>}
       {/* Header: kicker + title + window pills + converter */}
