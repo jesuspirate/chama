@@ -15,8 +15,8 @@ const store = new Map<string, string>();
 const { CHAMA_SANDBOX, SANDBOX_BUILD_MARKER } = await import("./sandbox-build.js");
 const { isSimModeOn, setSimMode, simTagOrNull } = await import("./simMode.js");
 
-assert.equal(SANDBOX_BUILD_MARKER, "chama-sandbox-build",
-  "deploy-sandbox.sh greps the bundle for this exact literal");
+assert.equal(SANDBOX_BUILD_MARKER, CHAMA_SANDBOX ? "chama-sandbox-build" : "",
+  "deploy-sandbox.sh and release.sh grep bundles for this exact literal; only a sandbox build may carry it");
 
 if (CHAMA_SANDBOX) {
   assert.equal(isSimModeOn(), true, "sandbox: sim mode is on without ?sim=1");

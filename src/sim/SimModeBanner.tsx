@@ -74,7 +74,7 @@ export function SimModePill() {
         ref={pillRef}
         role="status"
         aria-live="polite"
-        data-build={CHAMA_SANDBOX ? SANDBOX_BUILD_MARKER : undefined}
+        data-build={CHAMA_SANDBOX ? SANDBOX_BUILD_MARKER || undefined : undefined}
         style={{
           position: "fixed",
           top: 0, left: 0, right: 0,
