@@ -3261,7 +3261,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
    *  this trade in its current state (see shared-chain-read.ts). */
   const checkOnchainFunding = useCallback((escrowId: string) => {
     const trade = clientRef.current?.getState(escrowId);
-    const key = JSON.stringify([stateRef.current?.pubkey, escrowId, trade?.status, trade?.lock.onchain?.fundingTxid, trade?.lock.onchain?.fundingVout,
+    const key = JSON.stringify([stateRef.current?.pubkey, defaultEsploraBase(ESCROW_NETWORK), escrowId, trade?.status, trade?.lock.onchain?.fundingTxid, trade?.lock.onchain?.fundingVout,
       trade?.onchainFundingTerms?.refundLockUntil, trade?.onchainRefundClaimed, trade?.settlements?.length ?? 0]);
     return sharedOnchainFundingRead.current(key, () => checkOnchainFundingFresh(escrowId));
   }, [checkOnchainFundingFresh]);
@@ -3284,7 +3284,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     onchainLockInFlight.current.set(escrowId, attempt);
     return attempt;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [checkOnchainFunding, restoreCashChoice]);
+  }, [checkOnchainFundingFresh, restoreCashChoice]);
   const publishOnchainLockOnce = async (escrowId: string): Promise<EscrowState> => {
     const client = requireClient();
     const state = client.getState(escrowId);
@@ -3293,7 +3293,9 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       throw new Error("This trade is not an on-chain escrow.");
     }
     if (onchainLockAlreadySent(state)) return state;
-    const { plan, verdict, depositStatus, observation } = await checkOnchainFunding(escrowId);
+    // Fresh, not the shared answer: the LOCK re-verifies the chain itself
+    // (tip height and refund window included) at the moment it is signed.
+    const { plan, verdict, depositStatus, observation } = await checkOnchainFundingFresh(escrowId);
     if (isLateOnchainDeposit(state, observation)) throw new Error("A deposit reached a lapsed trade — recover it using the refund controls.");
     if (!plan.ready) throw new Error("The escrow address isn't ready — a key is still missing.");
     if (!verdict?.funded) {

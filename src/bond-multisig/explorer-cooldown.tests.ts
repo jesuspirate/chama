@@ -14,6 +14,7 @@ assert.equal(retryAfterMs('86400'), 15 * 60_000);
 assert.equal(retryAfterMs(new Date(1_000_000 + 300_000).toUTCString(), 1_000_000), 300_000);
 assert.equal(retryAfterMs(null), null);
 assert.equal(retryAfterMs('soon'), null);
+assert.equal(retryAfterMs('0'), 60_000, 'Retry-After: 0 still rests the floor, not the 5-minute default');
 
 // Three failures in a row rest a host for a minute, then two, capped at 15.
 resetExplorerCooldowns();
@@ -57,6 +58,24 @@ try {
     (e: unknown) => e instanceof EsploraUnavailableError && e.causes[0] instanceof ExplorerCoolingDownError);
   assert.equal(asked.length, 0, 'no request while resting');
 
+  // The caller's own deadline (a slow link) never counts against a host,
+  // and a 5xx does.
+  resetExplorerCooldowns();
+  globalThis.fetch = ((url: string, init?: RequestInit) => new Promise((_r, reject) => {
+    asked.push(new URL(String(url)).host);
+    init?.signal?.addEventListener('abort', () => reject(init.signal!.reason));
+  })) as typeof fetch;
+  for (let i = 0; i < 4; i++) {
+    const overall = new AbortController();
+    const read = esploraFetcher('https://own.example/api', { network: MAINNET, signal: overall.signal, timeoutMs: 60_000 })('/blocks/tip/height');
+    overall.abort(new DOMException('liveness deadline', 'TimeoutError'));
+    await assert.rejects(read);
+  }
+  assert.equal(explorerCoolingUntil('own.example'), 0, 'overall deadlines do not rest the host');
+  globalThis.fetch = (async () => new Response('down', { status: 503 })) as typeof fetch;
+  for (let i = 0; i < 3; i++) await assert.rejects(esploraFetcher('https://own.example/api', { network: MAINNET })('/blocks/tip/height'));
+  assert.ok(explorerCoolingUntil('own.example') > 0, 'three 5xx answers rest the host');
+
   // M7 stays: with two of three explorers resting, a deposit read refuses
   // rather than trusting the one host left.
   resetExplorerCooldowns();
@@ -69,6 +88,20 @@ try {
 } finally {
   globalThis.fetch = originalFetch; console.warn = originalWarn; resetExplorerCooldowns();
 }
+
+// Review of #96: an answer from a request sent before a rest never lifts it,
+// and one burst of parallel failures is one incident, not fifteen.
+resetExplorerCooldowns();
+noteExplorerFailure('c.example', { nowMs: 1_000, startedMs: 500, rateLimitedForMs: 600_000 });
+noteExplorerSuccess('c.example', 400);
+assert.equal(explorerCoolingUntil('c.example', 1_000), 601_000, 'an in-flight success does not erase a 429 rest');
+for (let i = 0; i < 15; i++) noteExplorerFailure('d.example', { nowMs: 2_000, startedMs: 1_000 });
+assert.equal(explorerCoolingUntil('d.example', 2_000), 62_000, 'fifteen parallel timeouts rest the host one minute');
+noteExplorerSuccess('d.example', 70_000);
+assert.equal(explorerCoolingUntil('d.example', 70_000), 0, 'an answer sent after the rest clears it');
+for (let i = 0; i < 3; i++) noteExplorerFailure('d.example', { nowMs: 80_000 });
+assert.equal(explorerCoolingUntil('d.example', 80_000), 140_000, 'after a real answer the next rest starts at a minute again');
+resetExplorerCooldowns();
 
 // Shared reads: callers share one read in flight and its answer for the
 // window; a failure is never kept.
@@ -87,5 +120,7 @@ try {
   assert.equal(await shared('other', async () => { reads++; return 1; }), 1, 'keys are separate');
   await assert.rejects(shared('fails', async () => { throw new Error('explorer down'); }));
   assert.equal(await shared('fails', async () => 5), 5, 'a failure is asked again at once');
+  t = 100_000; await shared('late', async () => 2);
+  assert.equal(await shared('trade', async () => { reads++; return 9; }), 9, 'expired answers are dropped');
 }
-console.log('PASS explorer cooldown: Retry-After, failure streak backoff, 429 skips the host, own explorer rests without public fallback, deposit quorum still fails closed, shared reads');
+console.log('PASS explorer cooldown: Retry-After, failure streak backoff, 429 skips the host, own explorer rests without public fallback, deposit quorum still fails closed, shared reads, in-flight success keeps a rest, one burst is one rest, overall deadlines and 5xx');

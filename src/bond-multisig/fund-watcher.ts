@@ -90,7 +90,8 @@ const EXPLORER_FAILURE_STREAK = 3;
 const EXPLORER_COOLDOWN_MIN_MS = 60_000;
 const EXPLORER_COOLDOWN_MAX_MS = 15 * 60_000;
 const DEFAULT_RATE_LIMIT_COOLDOWN_MS = 5 * 60_000;
-const explorerHealth = new Map<string, { failures: number; coolings: number; untilMs: number }>();
+type ExplorerHealth = { failures: number; coolings: number; untilMs: number; restStartedMs: number };
+const explorerHealth = new Map<string, ExplorerHealth>();
 
 /** When a host may be asked again, or 0 when it may be asked now. */
 export function explorerCoolingUntil(host: string, nowMs = Date.now()): number {
@@ -98,26 +99,38 @@ export function explorerCoolingUntil(host: string, nowMs = Date.now()): number {
   return until > nowMs ? until : 0;
 }
 
-/** Seconds from a Retry-After header, clamped; null when absent or unreadable. */
+/** Retry-After as a rest length (seconds or a date), clamped to 1-15
+ *  minutes; null when absent or unreadable. */
 export function retryAfterMs(header: string | null, nowMs = Date.now()): number | null {
   if (!header) return null;
   const seconds = Number(header.trim());
   const ms = Number.isFinite(seconds) ? seconds * 1000 : Date.parse(header) - nowMs;
-  if (!Number.isFinite(ms) || ms <= 0) return null;
+  if (!Number.isFinite(ms)) return null;
   return Math.min(EXPLORER_COOLDOWN_MAX_MS, Math.max(EXPLORER_COOLDOWN_MIN_MS, ms));
 }
 
-export function noteExplorerSuccess(host: string): void {
+/** An answer from a request sent at `startedMs`. One sent before the current
+ *  rest began says nothing about the host since, so it never lifts a rest. */
+export function noteExplorerSuccess(host: string, startedMs = Date.now()): void {
+  const health = explorerHealth.get(host);
+  if (!health) return;
+  if (startedMs < health.restStartedMs) return;
   explorerHealth.delete(host);
 }
 
-export function noteExplorerFailure(host: string, opts: { rateLimitedForMs?: number | null; nowMs?: number } = {}): void {
+/** A failure of a request sent at `startedMs`. Requests sent before the
+ *  current rest began are the burst that caused it and are not counted
+ *  again, so one burst cannot climb to the longest rest. */
+export function noteExplorerFailure(host: string, opts: { rateLimitedForMs?: number | null; nowMs?: number; startedMs?: number } = {}): void {
   const nowMs = opts.nowMs ?? Date.now();
-  const health = explorerHealth.get(host) ?? { failures: 0, coolings: 0, untilMs: 0 };
+  const startedMs = opts.startedMs ?? nowMs;
+  const health = explorerHealth.get(host) ?? { failures: 0, coolings: 0, untilMs: 0, restStartedMs: 0 };
+  if (startedMs < health.restStartedMs) return;
   health.failures += 1;
   if (opts.rateLimitedForMs !== undefined || health.failures >= EXPLORER_FAILURE_STREAK) {
     const backoff = Math.min(EXPLORER_COOLDOWN_MAX_MS, EXPLORER_COOLDOWN_MIN_MS * 2 ** health.coolings);
     health.untilMs = nowMs + (opts.rateLimitedForMs ?? (opts.rateLimitedForMs === null ? DEFAULT_RATE_LIMIT_COOLDOWN_MS : backoff));
+    health.restStartedMs = nowMs;
     health.coolings += 1;
     health.failures = 0;
   }
@@ -201,6 +214,7 @@ export function esploraFetcher(
         started.add(index);
         const host = new URL(candidates[index]).host;
         const coolingUntil = explorerCoolingUntil(host);
+        const startedMs = Date.now();
         if (coolingUntil) {
           queueMicrotask(() => finishFailure(index, new ExplorerCoolingDownError(host, coolingUntil)));
           return;
@@ -216,18 +230,22 @@ export function esploraFetcher(
         void fetch(`${candidates[index]}${path}`, { signal: controller.signal })
           .then(async (res) => {
             if (res.status === 429) {
-              noteExplorerFailure(host, { rateLimitedForMs: retryAfterMs(res.headers?.get?.("retry-after") ?? null) });
+              noteExplorerFailure(host, { startedMs, rateLimitedForMs: retryAfterMs(res.headers?.get?.("retry-after") ?? null) });
               throw new Error(`Esplora 429 for ${path}`);
             }
+            // 4xx is an answer (Esplora says 404 for an unknown tx); 5xx is not.
+            if (res.status >= 500) noteExplorerFailure(host, { startedMs });
             if (!res.ok) throw new Error(`Esplora ${res.status} for ${path}`);
             const value = await res.json();
-            noteExplorerSuccess(host);
+            noteExplorerSuccess(host, startedMs);
             return value;
           }, (error) => {
-            // Losing a hedge race or the caller giving up says nothing about
-            // the host; a timeout or a refused connection does.
-            const lostRace = controller.signal.aborted && (controller.signal.reason as DOMException | undefined)?.name !== "TimeoutError";
-            if (!lostRace) noteExplorerFailure(host);
+            // Only this request's own timeout or a refused connection counts
+            // against the host. Losing a hedge race or the caller's overall
+            // deadline (a slow link, a page closing) says nothing about it.
+            const ownTimeout = controller.signal.aborted
+              && (controller.signal.reason as DOMException | undefined)?.name === "TimeoutError";
+            if (!opts.signal?.aborted && (!controller.signal.aborted || ownTimeout)) noteExplorerFailure(host, { startedMs });
             throw error;
           })
           .then((value) => {
