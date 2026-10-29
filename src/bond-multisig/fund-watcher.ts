@@ -74,6 +74,64 @@ export const MAINNET_HEDGE_EXPLORERS = [
   "https://mempool.emzy.de/api",
 ] as const;
 
+// Oct 28 mainnet: several Chama tabs on one connection polled every explorer
+// until blockstream.info and mempool.space rate-limited the IP (700 requests
+// an hour). Every further poll was then refused too, so the limit never
+// lifted while Chama stayed open. A host that answers 429, or fails three
+// times in a row, is left alone for a while; reads then fail fast as
+// "couldn't check", exactly as if it had answered with an error.
+export class ExplorerCoolingDownError extends Error {
+  constructor(readonly host: string, readonly untilMs: number) {
+    super(`Block explorer ${host} is resting after too many requests`);
+    this.name = "ExplorerCoolingDownError";
+  }
+}
+const EXPLORER_FAILURE_STREAK = 3;
+const EXPLORER_COOLDOWN_MIN_MS = 60_000;
+const EXPLORER_COOLDOWN_MAX_MS = 15 * 60_000;
+const DEFAULT_RATE_LIMIT_COOLDOWN_MS = 5 * 60_000;
+const explorerHealth = new Map<string, { failures: number; coolings: number; untilMs: number }>();
+
+/** When a host may be asked again, or 0 when it may be asked now. */
+export function explorerCoolingUntil(host: string, nowMs = Date.now()): number {
+  const until = explorerHealth.get(host)?.untilMs ?? 0;
+  return until > nowMs ? until : 0;
+}
+
+/** Seconds from a Retry-After header, clamped; null when absent or unreadable. */
+export function retryAfterMs(header: string | null, nowMs = Date.now()): number | null {
+  if (!header) return null;
+  const seconds = Number(header.trim());
+  const ms = Number.isFinite(seconds) ? seconds * 1000 : Date.parse(header) - nowMs;
+  if (!Number.isFinite(ms) || ms <= 0) return null;
+  return Math.min(EXPLORER_COOLDOWN_MAX_MS, Math.max(EXPLORER_COOLDOWN_MIN_MS, ms));
+}
+
+export function noteExplorerSuccess(host: string): void {
+  explorerHealth.delete(host);
+}
+
+export function noteExplorerFailure(host: string, opts: { rateLimitedForMs?: number | null; nowMs?: number } = {}): void {
+  const nowMs = opts.nowMs ?? Date.now();
+  const health = explorerHealth.get(host) ?? { failures: 0, coolings: 0, untilMs: 0 };
+  health.failures += 1;
+  if (opts.rateLimitedForMs !== undefined || health.failures >= EXPLORER_FAILURE_STREAK) {
+    const backoff = Math.min(EXPLORER_COOLDOWN_MAX_MS, EXPLORER_COOLDOWN_MIN_MS * 2 ** health.coolings);
+    health.untilMs = nowMs + (opts.rateLimitedForMs ?? (opts.rateLimitedForMs === null ? DEFAULT_RATE_LIMIT_COOLDOWN_MS : backoff));
+    health.coolings += 1;
+    health.failures = 0;
+  }
+  explorerHealth.set(host, health);
+}
+
+/** Forget every cooldown: the device came back online, or a test starts. */
+export function resetExplorerCooldowns(): void {
+  explorerHealth.clear();
+}
+if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
+  window.addEventListener("online", resetExplorerCooldowns);
+}
+
 export function esploraFetcher(
   base: string,
   opts: { signal?: AbortSignal; timeoutMs?: number; network?: BtcNetwork; hedge?: boolean } = {},
@@ -141,6 +199,12 @@ export function esploraFetcher(
         const controller = controllers[index];
         if (!controller || winner || started.has(index)) return;
         started.add(index);
+        const host = new URL(candidates[index]).host;
+        const coolingUntil = explorerCoolingUntil(host);
+        if (coolingUntil) {
+          queueMicrotask(() => finishFailure(index, new ExplorerCoolingDownError(host, coolingUntil)));
+          return;
+        }
         const timeout = setTimeout(
           () => controller.abort(new DOMException("Esplora request timed out", "TimeoutError")),
           opts.timeoutMs ?? 8_000,
@@ -151,8 +215,20 @@ export function esploraFetcher(
 
         void fetch(`${candidates[index]}${path}`, { signal: controller.signal })
           .then(async (res) => {
+            if (res.status === 429) {
+              noteExplorerFailure(host, { rateLimitedForMs: retryAfterMs(res.headers?.get?.("retry-after") ?? null) });
+              throw new Error(`Esplora 429 for ${path}`);
+            }
             if (!res.ok) throw new Error(`Esplora ${res.status} for ${path}`);
-            return res.json();
+            const value = await res.json();
+            noteExplorerSuccess(host);
+            return value;
+          }, (error) => {
+            // Losing a hedge race or the caller giving up says nothing about
+            // the host; a timeout or a refused connection does.
+            const lostRace = controller.signal.aborted && (controller.signal.reason as DOMException | undefined)?.name !== "TimeoutError";
+            if (!lostRace) noteExplorerFailure(host);
+            throw error;
           })
           .then((value) => {
             if (winner) return;
