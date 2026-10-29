@@ -185,7 +185,7 @@ function getTagValues(tags: string[][], tagName: string): string[] {
 }
 
 /** Get e-tag with "reply" marker, or fallback to last e-tag */
-function getPrevEventId(tags: string[][]): string | null {
+export function getPrevEventId(tags: string[][]): string | null {
   // First try: e-tag with "reply" marker
   const replyTag = tags.find(t => t[0] === "e" && t[3] === "reply");
   if (replyTag) return replyTag[1] ?? null;

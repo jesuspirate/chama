@@ -104,7 +104,7 @@ import { arbiterVotePriority, arbiterPriorityOrder, isPerformanceContest } from 
 import type { VoteShareEnvelope } from "./types.js";
 import { EscrowNotifier } from "./notifier.js";
 import { ENCRYPTION_CONFIG } from "./encryption-config.js";
-import { parseEscrowEvent, sortEventChain } from "./event-parser.js";
+import { getPrevEventId, parseEscrowEvent, sortEventChain } from "./event-parser.js";
 import { appendCachedEvents, getCachedEvents, putCachedEvents } from "./escrow-event-cache.js";
 import { selectBackfillEvents, shouldBackfillNow } from "./relay-backfill.js";
 import { createEnvelope, decryptFromEnvelope } from "./envelope.js";
@@ -338,6 +338,46 @@ export function isPartialReplayDowngrade(current: EscrowState | undefined, incom
 
   const incomingChainIds = new Set(incoming.eventChain.map(event => event.raw.id));
   return current.eventChain.some(event => !incomingChainIds.has(event.raw.id));
+}
+
+/** Rounds of fetching missing predecessors by id on an explicit open: each
+ *  round can reveal an older gap. The bounds (rounds, ids per round, one
+ *  time budget) keep a hostile chain from walking the client through relays. */
+const PREDECESSOR_FETCH_ROUNDS = 3;
+const PREDECESSOR_FETCH_TIMEOUT_MS = 8_000;
+const PREDECESSOR_FETCH_BUDGET_MS = 15_000;
+const MAX_PREDECESSOR_IDS = 20;
+const ESCROW_KINDS = new Set(Object.values(EscrowEventKind).filter((v): v is number => typeof v === "number"));
+
+/** An escrow event of this trade: an escrow kind, and its first d tag (the
+ *  one the parser reads) is the trade id. */
+function belongsToEscrow(event: NostrEvent, escrowId: string): boolean {
+  return ESCROW_KINDS.has(event.kind) && event.tags.find(t => t[0] === "d")?.[1] === escrowId;
+}
+
+/** The fetched events that may fill a gap: asked for, and of this trade. */
+export function usablePredecessors(found: NostrEvent[], wanted: ReadonlySet<string>, escrowId: string): NostrEvent[] {
+  return found.filter(event => wanted.has(event.id) && belongsToEscrow(event, escrowId));
+}
+
+/** Predecessor ids named by these events (as the parser reads them) that
+ *  aren't among them. The predecessor of `first` (the event replay failed
+ *  on) comes first; CHAT never counts (anyone can post one), and ids in
+ *  `asked` are skipped, so junk can't crowd out the real gap. */
+export function missingPredecessorIds(
+  events: NostrEvent[],
+  opts: { first?: string; asked?: ReadonlySet<string> } = {},
+): string[] {
+  const have = new Set(events.map(event => event.id));
+  const missing = new Set<string>();
+  const consider = (event: NostrEvent | undefined) => {
+    if (!event || event.kind === EscrowEventKind.CREATE || event.kind === EscrowEventKind.CHAT) return;
+    const prev = getPrevEventId(event.tags);
+    if (prev && /^[0-9a-f]{64}$/.test(prev) && !have.has(prev) && !opts.asked?.has(prev)) missing.add(prev);
+  };
+  if (opts.first) consider(events.find(event => event.id === opts.first));
+  for (const event of events) consider(event);
+  return [...missing].slice(0, MAX_PREDECESSOR_IDS);
 }
 
 function mergeRawEventsById(primary: NostrEvent[], secondary: NostrEvent[]): NostrEvent[] {
@@ -3573,6 +3613,10 @@ export class EscrowClient {
     // `rawEvents.length === 0` gate exists to prevent. Boot stays relay-only
     // and fast; the repair happens when the user actually opens the trade.
 
+    // What the predecessor fetch below starts from: the fullest set seen so
+    // far (relay answer plus durable cache) and how it replayed.
+    let candidate = rawEvents;
+    let candidateOutcome = outcome;
     if (!outcome.ok && repairFromCache && !durableTried) {
       durableTried = true;
       const durable = await getCachedEvents(escrowId);
@@ -3587,6 +3631,45 @@ export class EscrowClient {
         if (repaired.ok) {
           rawEvents = merged;
           outcome = repaired;
+        }
+        candidate = merged;
+        candidateOutcome = repaired;
+      }
+    }
+
+    // PREDECESSOR FETCH (6.4.32). A chain that fails only because an event
+    // names a predecessor nobody returned under the trade's #d query (a relay
+    // that timed out, an addressable event a public relay kept only the
+    // newest of) may still be whole somewhere: ask the relays for the missing
+    // ids before failing. Consensus is unchanged: the fetched events are
+    // signed and verified by the relay layer, must belong to this trade, and
+    // the replay that follows is the same strict replay; the set is adopted
+    // only if it replays. Explicit opens only, like the cache repair above,
+    // so boot never fans out; one time budget for all rounds.
+    const fetchedPredecessors: NostrEvent[] = [];
+    if (!outcome.ok && repairFromCache) {
+      const asked = new Set<string>();
+      const deadline = Date.now() + PREDECESSOR_FETCH_BUDGET_MS;
+      for (let round = 0; round < PREDECESSOR_FETCH_ROUNDS && !candidateOutcome.ok
+        && candidateOutcome.failure.code === "MISSING_PREDECESSOR"; round++) {
+        const remaining = deadline - Date.now();
+        if (remaining <= 0) break;
+        const missing = missingPredecessorIds(candidate, { first: candidateOutcome.failure.eventId, asked });
+        if (missing.length === 0) break;
+        for (const id of missing) asked.add(id);
+        const wanted = new Set(missing);
+        const found = usablePredecessors(
+          await this.relayManager.fetchOnce({ ids: missing }, Math.min(PREDECESSOR_FETCH_TIMEOUT_MS, remaining),
+            undefined, { quorumBudgetMs: 0, waitForEveryRelay: true }),
+          wanted, escrowId);
+        if (found.length === 0) break;
+        console.debug(`[escrow] loadEscrow ${escrowId}: fetched ${found.length} missing predecessor(s) by id`);
+        fetchedPredecessors.push(...found);
+        candidate = mergeRawEventsById(candidate, found);
+        candidateOutcome = await runReplay(candidate, `${completenessAttempt}-pred${round}`);
+        if (candidateOutcome.ok) {
+          rawEvents = candidate;
+          outcome = candidateOutcome;
         }
       }
     }
@@ -3618,7 +3701,7 @@ export class EscrowClient {
     }
     this.namedCreators.delete(escrowId);
     this.clearLoadFailure(escrowId);
-    this.acknowledgeRelayObservedMoneyEvents(escrowId, fetchedRawEvents, result.state);
+    this.acknowledgeRelayObservedMoneyEvents(escrowId, [...fetchedRawEvents, ...fetchedPredecessors], result.state);
 
     // The relays are missing history this device still holds. Hand it back:
     // escrow events are signed and self-authenticating, so re-publishing them
@@ -3640,6 +3723,8 @@ export class EscrowClient {
         lastBackfillAt: this._lastBackfillAt,
       })
     ) {
+      // Predecessors fetched by id above are backfilled too: the preferred
+      // relay may be one that didn't hold them.
       const missing = selectBackfillEvents(rawEvents, fetchedRawEvents);
       if (missing.length > 0) {
         this._backfilledEscrows.add(escrowId);

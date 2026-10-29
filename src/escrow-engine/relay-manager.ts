@@ -44,6 +44,8 @@ export enum RelayStatus {
 // ── Subscription filter (subset of NIP-01 filter) ─────────────────────────
 
 export interface NostrFilter {
+  /** Exact event ids (a missing predecessor fetched by id on an explicit open). */
+  ids?: string[];
   kinds?: number[];
   authors?: string[];
   "#d"?: string[];
@@ -62,6 +64,10 @@ export interface NostrFilter {
  * open, then deliberately fall back to the normal quorum path themselves. */
 export interface OnceFetchOptions {
   quorumBudgetMs?: number;
+  /** Lookups by id: one relay may be the only one holding the event, so
+   *  don't resolve on a quorum of (empty) answers. Wait for every connected
+   *  relay, or until every asked-for id has arrived, or the timeout. */
+  waitForEveryRelay?: boolean;
 }
 
 // ── Relay events ──────────────────────────────────────────────────────────
@@ -127,6 +133,10 @@ interface PendingOnceFetch {
    *  transport control; absent for seed-recovery / Browse fetches. Purely
    *  read — never gates or alters the fetch. */
   probe?: FetchProbe;
+  /** See OnceFetchOptions.waitForEveryRelay. */
+  waitForEveryRelay?: boolean;
+  /** Ids still awaited, for a waitForEveryRelay lookup by id. */
+  awaitedIds?: Set<string>;
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────
@@ -515,6 +525,9 @@ export class RelayManager {
           if (!onceFetch.seenIds.has(event.id)) {
             onceFetch.seenIds.add(event.id);
             onceFetch.events.push(event);
+            if (onceFetch.awaitedIds?.delete(event.id) && onceFetch.awaitedIds.size === 0) {
+              this.finalizeOnceFetch(subId);
+            }
           }
         }
 
@@ -565,7 +578,7 @@ export class RelayManager {
             // transport).
             fetchState.probe?.noteResolved("eose");
             this.finalizeOnceFetch(subId);
-          } else if (fetchState.eoseCount >= quorum && !fetchState.graceTimer) {
+          } else if (fetchState.eoseCount >= quorum && !fetchState.graceTimer && !fetchState.waitForEveryRelay) {
             // A quorum answered but ≥1 relay is still silent — give a short
             // grace for a near-simultaneous straggler, then resolve so a hung
             // socket can't pin us to the full timeout.
@@ -1248,6 +1261,8 @@ export class RelayManager {
         resolve,
         timer: null,
         probe,
+        waitForEveryRelay: options?.waitForEveryRelay,
+        awaitedIds: options?.waitForEveryRelay && filter.ids ? new Set(filter.ids) : undefined,
       };
       this._pendingOnceFetches.set(subId, fetchState);
 
