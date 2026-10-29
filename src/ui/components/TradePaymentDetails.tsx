@@ -1,7 +1,8 @@
 import { useState, type ReactNode } from 'react';
 import type { EscrowState } from '../../escrow-engine/types.js';
 import { matchingTradeHandles } from '../../payments/trade-payment-details.js';
-import { addSavedHandle } from '../../payments/saved-handles.js';
+import { addSavedHandle, paymentHandleNeedsCountryCode, phonePlaceholderForCountryIso } from '../../payments/saved-handles.js';
+import { getCommunityBySlug } from '../../communities/registry.js';
 import { railLabel, railEntryName, railsForCommunity } from '../../payments/rail-registry.js';
 import { useT } from '../../i18n/index.js';
 import { T, inputStyle } from '../theme.js';
@@ -25,6 +26,7 @@ export function TradePaymentDetailsChoice({ state, value, onChange }: {
   const [rail, setRail] = useState(methods[0] ?? '');
   const [handle, setHandle] = useState('');
   const [picking, setPicking] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const handles = matchingTradeHandles(state);
   // Jet (6.4.31): "send in chat" is gone. Funding needs a real address for
   // one of the agreed methods, so nobody locks without saying where the cash goes.
@@ -51,10 +53,20 @@ export function TradePaymentDetailsChoice({ state, value, onChange }: {
             background: rail === key ? T.ink : T.surface, color: rail === key ? T.onInk : T.ink, border: `1px solid ${rail === key ? T.ink : T.borderHi}` }}>{railEntryName(key)}</button>)}
       </div>}
       {methods.length === 1 && <div style={{ fontSize: T.fs.secondary, fontWeight: 600, color: T.ink2 }}>{railEntryName(methods[0])}</div>}
-      <input {...privatePaymentFieldProps} name="trade-payment-detail" style={{ ...inputStyle, minHeight: 44 }} aria-label={t('trade.paymentHandle')} value={handle} onChange={e => setHandle(e.target.value)} placeholder={t('trade.paymentHandle')} />
+      <input {...privatePaymentFieldProps} name="trade-payment-detail" style={{ ...inputStyle, minHeight: 44 }} aria-label={t('trade.paymentHandle')} value={handle} onChange={e => { setHandle(e.target.value); setSaveError(null); }} placeholder={t('trade.paymentHandle')} />
+      {/* Jet (Oct 27): the same rules as Settings and Create, shown the same
+          way: a number needs its country code, and a refused save says why. */}
+      {paymentHandleNeedsCountryCode(rail, handle) && <div data-payment-country-code style={{ color: T.amber, fontSize: T.fs.secondary }}>
+        {t('claim.phoneCountryCodeNudge', { example: phonePlaceholderForCountryIso(getCommunityBySlug(state.community)?.countries?.[0]) ?? '+1 555 555 5555' })}
+      </div>}
       <PaymentButton type="button" disabled={!rail || !handle.trim()} onClick={() => {
-        const saved = addSavedHandle(rail, handle.trim()); onChange(saved.id); setHandle('');
+        try {
+          const saved = addSavedHandle(rail, handle.trim()); onChange(saved.id); setHandle(''); setSaveError(null);
+        } catch (e) {
+          setSaveError(e instanceof Error ? e.message : t('claim.errSaveMethodFailed'));
+        }
       }}>{t('trade.savePaymentDetails')}</PaymentButton>
+      {saveError && <div role="alert" data-payment-save-error style={{ color: T.amber, fontSize: T.fs.secondary }}>{saveError}</div>}
     </div>}
   </div>;
 }

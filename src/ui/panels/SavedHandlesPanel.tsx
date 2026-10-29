@@ -247,8 +247,8 @@ export function SavedHandlesPanel({ communitySlug, onClose }: {
       })
     : null;
   const selectedRailNeedsCountryCode = selectedRail
-    ? selectedRail.placeholder?.includes("+") === true
-      && (!addValue.trim() || paymentHandleNeedsCountryCode(selectedRail.key, addValue))
+    ? (selectedRail.placeholder?.includes("+") === true && !addValue.trim())
+      || paymentHandleNeedsCountryCode(selectedRail.key, addValue)
     : false;
 
   const handlePhoneInputChange = (rawInput: string) => {
