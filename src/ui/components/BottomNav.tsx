@@ -146,6 +146,29 @@ function isAndroidAppShell(): boolean {
   }
 }
 
+/** Jet (6.4.32-rc.1): Create floated over the Create flow itself, covering
+ *  "Publish it". It belongs only where you start something new: Home, the
+ *  Browse listings and Circles. It hides inside any Create flow (the canvas
+ *  is Create), on trade and circle pages, on Me and its settings, and over
+ *  the create sheet. */
+export const CREATE_FAB_VIEWS: readonly string[] = ["dashboard", "browse", "circles"];
+export function createFabVisible({ view, detailMode, createOverlayOpen }: {
+  view: string; detailMode: boolean; createOverlayOpen: boolean;
+}): boolean {
+  return !detailMode && !createOverlayOpen && CREATE_FAB_VIEWS.includes(view);
+}
+
+/** True while focus is in a field that raises the phone keyboard; Create
+ *  hides then so it never sits over what is being typed. */
+export function isTypingTarget(target: EventTarget | null): boolean {
+  const el = target as (Element & { isContentEditable?: boolean; type?: string }) | null;
+  if (!el || typeof el.tagName !== "string") return false;
+  const tag = el.tagName.toUpperCase();
+  if (tag === "TEXTAREA" || tag === "SELECT" || el.isContentEditable) return true;
+  if (tag !== "INPUT") return false;
+  return !["button", "checkbox", "radio", "range", "submit", "reset", "file", "color", "image"].includes((el.type ?? "text").toLowerCase());
+}
+
 export function CreateButton({ onCreate }: { onCreate: () => void }) {
   const { t } = useT();
   // Every phone-sized screen floats Create at the bottom right (Jet, 6.4.25:
@@ -157,6 +180,18 @@ export function CreateButton({ onCreate }: { onCreate: () => void }) {
   // changes nothing, and touching the button itself does not count.
   const [scrolling, setScrolling] = useState(false);
   const [shrinks] = useState(() => createFabShrinksWhileScrolling());
+  const [typing, setTyping] = useState(() => typeof document !== "undefined" && isTypingTarget(document.activeElement));
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onFocusIn = (event: Event) => setTyping(isTypingTarget(event.target));
+    const onFocusOut = () => setTyping(false);
+    window.addEventListener("focusin", onFocusIn);
+    window.addEventListener("focusout", onFocusOut);
+    return () => {
+      window.removeEventListener("focusin", onFocusIn);
+      window.removeEventListener("focusout", onFocusOut);
+    };
+  }, []);
   useEffect(() => {
     if (typeof window === "undefined") return;
     const activity = trackScrollActivity(setScrolling);
@@ -181,7 +216,7 @@ export function CreateButton({ onCreate }: { onCreate: () => void }) {
     };
   }, []);
   return (
-    <div className={`chama-create-fab-wrap${shrinks ? " chama-create-fab-compact" : ""}${scrolling ? " chama-create-fab-scrolling" : ""}`}>
+    <div className={`chama-create-fab-wrap${shrinks ? " chama-create-fab-compact" : ""}${scrolling ? " chama-create-fab-scrolling" : ""}${typing ? " chama-create-fab-typing" : ""}`}>
       <button type="button" className="chama-create-fab" onClick={onCreate}
         data-coach="fab-create" aria-label={t("browse.createTrade")}>
         <PlusGlyph size={22} /><span className="chama-create-fab-label">{t("browse.navCreate")}</span>
@@ -214,6 +249,7 @@ export function navCss(): string {
   .chama-create-fab-scrolling .chama-create-fab{background:${T.bg}26;-webkit-backdrop-filter:blur(3px) saturate(180%);backdrop-filter:blur(3px) saturate(180%);color:${T.ink};box-shadow:0 0 0 1px ${T.ink}40,0 6px 16px rgba(0,0,0,0.22);text-shadow:0 0 4px ${T.bg},0 0 8px ${T.bg}}
   .chama-create-fab-compact.chama-create-fab-scrolling .chama-create-fab{width:56px;padding:0;justify-content:center;border-radius:28px;background:${T.ink};color:${T.onInk};-webkit-backdrop-filter:none;backdrop-filter:none;box-shadow:0 6px 16px rgba(0,0,0,0.22);text-shadow:none}
   .chama-create-fab-compact.chama-create-fab-scrolling .chama-create-fab-label{display:none}
+  .chama-create-fab-typing{display:none}
   @media (prefers-reduced-transparency: reduce){.chama-create-fab-scrolling .chama-create-fab{background:${T.ink};color:${T.onInk};-webkit-backdrop-filter:none;backdrop-filter:none;box-shadow:0 6px 16px rgba(0,0,0,0.22);text-shadow:none}}
   /* The Android extended FAB floats above the bottom nav; page footers keep
      clear of it so it never covers their links or step dots. */
