@@ -1,5 +1,5 @@
-import { TradePaymentDetailsChoice, BuyerPaymentDetails, CHAT_PAYMENT_CHOICE } from '../components/TradePaymentDetails.js';
-import { matchingTradeHandles, needsTradePaymentDetails } from '../../payments/trade-payment-details.js';
+import { TradePaymentDetailsChoice, BuyerPaymentDetails } from '../components/TradePaymentDetails.js';
+import { matchingTradeHandles, needsTradePaymentDetails, tradeCashDetailsVisible } from '../../payments/trade-payment-details.js';
 import { TradeCustody } from "../components/MoneyCustody.js";
 import { HoldToConfirm, buttonStyle } from "../components/Button.js";
 import { Badge, LockGlyph } from "../components/Badge.js";
@@ -327,8 +327,7 @@ export function LiveTradeSurface({
   const lockOpts = (): LockOpts => ({
     amountMsats: effectiveMsats,
     ...(orderItems?.length ? { selectedItems: orderItems } : {}),
-    ...(paymentChoice && paymentChoice !== CHAT_PAYMENT_CHOICE ? { savedHandleId: paymentChoice } : {}),
-    paymentDetailsInChat: paymentChoice === CHAT_PAYMENT_CHOICE,
+    ...(paymentChoice ? { savedHandleId: paymentChoice } : {}),
   });
 
   const REFUND_REASONS = [tr("lts.reasonNotArrived"), tr("lts.reasonWrongAmount"), tr("lts.reasonChangedMind")];
@@ -372,7 +371,7 @@ export function LiveTradeSurface({
         );
         // Fiat trades reveal the locker's payment details inside the LOCK
         // Payment details ride in the existing private LOCK envelope. Confirm
-        // a matching saved handle, add one here, or explicitly choose chat.
+        // a matching saved handle or add one here; chat is not a choice.
         return (
           <Decision
             q={tr("lts.lockQ", { amount: amountLabel })}
@@ -1039,13 +1038,13 @@ export function LiveTradeSurface({
               <DisputeCard state={state} pubkey={pubkey} amountLabel={amountLabel}
                 nameFor={pk => profileNameFor(profileNames, pk, kind0Enabled)} />
             )}
-            {state.status === EscrowStatus.LOCKED && myRole === Role.BUYER && needsTradePaymentDetails(state) && <BuyerPaymentDetails state={state} />}
+            {tradeCashDetailsVisible(state) && myRole === Role.BUYER && needsTradePaymentDetails(state) && <BuyerPaymentDetails state={state} />}
             {renderDecision()}
             {state.escrowMode === "onchain" && state.status === EscrowStatus.LOCKED && <MoreOptions onClick={() => setOnchainOpen(true)} label="Open on-chain deposit details" />}
             {/* v7 redesign (Jet): where to send the fiat must be visible exactly
                 when it's needed. With a handle on the lock, the panel opens by
                 default; without one, the agreed methods still show. */}
-            {state.status === EscrowStatus.LOCKED && myRole && !state.lock.handle && !!state.paymentMethods?.length
+            {tradeCashDetailsVisible(state) && myRole && !state.lock.handle && !!state.paymentMethods?.length
               && (state.category === "p2p-trade" || state.category === "bill-pay")
               && !(myRole === Role.BUYER && needsTradePaymentDetails(state)) && (
               <div data-agreed-methods style={{ marginTop: 16, padding: "12px 14px", borderRadius: 12, background: T.raised, fontFamily: T.sans }}>
@@ -1056,7 +1055,7 @@ export function LiveTradeSurface({
                 <div style={{ fontSize: T.fs.secondary, color: T.ink2, marginTop: 6 }}>{tr("lts.detailsInChat", { name: lockerName })}</div>
               </div>
             )}
-            {state.status === EscrowStatus.LOCKED && myRole && state.lock.handle && !(myRole === Role.BUYER && needsTradePaymentDetails(state)) && <details open style={{ marginTop: 16, fontFamily: T.sans }}>
+            {tradeCashDetailsVisible(state) && myRole && state.lock.handle && !(myRole === Role.BUYER && needsTradePaymentDetails(state)) && <details open style={{ marginTop: 16, fontFamily: T.sans }}>
               <summary style={{ minHeight: T.size.touch, display: "flex", alignItems: "center", cursor: "pointer", color: T.ink, fontSize: T.fs.body, fontWeight: 600 }}>{tr("lts.howToPay", { name: lockerName })}</summary>
               <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", overflowWrap: "anywhere", background: T.raised, borderRadius: 12 }}>
                 <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>

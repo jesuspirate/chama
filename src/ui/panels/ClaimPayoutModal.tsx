@@ -42,7 +42,7 @@ import { DestinationPicker, lnurlUnreachableText, resolveReceiveCode } from "../
 import { isSimModeOn } from "../../sim/simMode.js";
 import { sandboxClaimInvoice } from "../../sim/sim-wallet.js";
 import { BitcoinAmount } from "../components/BitcoinAmount.js";
-import { displayPayoutDestination, listPayoutDestinations, type PayoutDestination } from "../../payments/payout-destinations.js";
+import { addOrTouchPayoutDestination, displayPayoutDestination, listPayoutDestinations, type PayoutDestination } from "../../payments/payout-destinations.js";
 import {
   addOrTouchSavedNwcConnection, displayNwcConnection, listSavedNwcConnections,
   type SavedNwcConnection,
@@ -378,6 +378,13 @@ export function ClaimPayoutModal({
     nwcConnectionString?: string;
     saveNwcAfter?: boolean;
   }) => {
+    // Jet (Oct 26): an address that just returned an invoice is real, so keep
+    // it now. Saving only after the payout settled lost it whenever the
+    // claim failed or timed out, and it had to be typed again. Saving never
+    // moves sats and its failure never stops the claim.
+    if (opts.saveAfter && opts.addressUsed) {
+      try { addOrTouchPayoutDestination(opts.addressUsed); } catch {}
+    }
     lastDispatchRef.current = {
       bolt11,
       saveAfter: opts.saveAfter,

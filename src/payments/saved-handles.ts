@@ -518,6 +518,8 @@ function normalizeHandleForRail(rail: string, handle: string): string {
     : trimmed;
 }
 
+const PHONE_ALSO_RAILS = new Set(["paypal", "venmo", "cashtag"]);
+
 /** True when a phone-capable payment rail received a phone-shaped value without
  *  an international prefix. Email/user-name alternatives remain untouched.
  *  Shared by every entry surface and enforced again at persistence. */
@@ -525,7 +527,9 @@ export function paymentHandleNeedsCountryCode(rail: string, handle: string): boo
   const trimmed = handle.trim();
   if (!trimmed || trimmed.startsWith("+") || trimmed.includes("@")) return false;
   const meta = getRailByKey(rail);
-  const acceptsPhone = rail === "phone-number" || meta?.placeholder?.includes("+") === true;
+  // Jet (Oct 27): PayPal, Venmo and Cash App also take a phone number, so a
+  // number there follows the same country-code rule as everywhere else.
+  const acceptsPhone = rail === "phone-number" || PHONE_ALSO_RAILS.has(rail) || meta?.placeholder?.includes("+") === true;
   if (!acceptsPhone) return false;
   return /^\(?\d[\d\s().-]+$/.test(trimmed);
 }
