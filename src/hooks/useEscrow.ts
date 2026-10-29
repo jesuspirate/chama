@@ -48,7 +48,7 @@ import { findEscrowFundingUtxos, deriveCommittedBondKey, escrowDepositWindowSafe
 import { escrowFundingMinConfs, findCorroboratedEscrowFunding, disputeSpendSet } from "../bond-multisig/escrow-chain-reads.js";
 import { finalRefundSettlementProof, observedRefundSpend } from "../escrow-engine/onchain-settlement-transport.js";
 import { fundingArbiter, fundingTermsError, onchainLockError, onchainFunder } from "../escrow-engine/onchain-funding-terms.js";
-import { pendingOnchainLockRecoveries } from "../escrow-engine/onchain-lock-recovery.js";
+import { onchainLockAlreadySent, pendingOnchainLockRecoveries } from "../escrow-engine/onchain-lock-recovery.js";
 import { fundingPremiumMsats } from "../payments/funding-premium.js";
 import { nativeLockEarmarks } from "../fedimint/pending-native-locks.js";
 import { lockFromBalance } from "../payments/lock-from-balance.js";
@@ -3215,13 +3215,27 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
    *  funded" — a LOCK published against an unfunded address tells a counterparty
    *  their money is safe when it is not, which is the worst lie this system can
    *  tell. */
-  const publishOnchainLock = useCallback(async (escrowId: string) => {
+  // Oct 28 mainnet: repeated taps plus the background recovery signed three
+  // LOCKs for one deposit. One LOCK per trade: callers share the attempt in
+  // flight, and nothing is signed once this device has seen a LOCK.
+  const onchainLockInFlight = useRef(new Map<string, Promise<EscrowState>>());
+  const publishOnchainLock = useCallback((escrowId: string) => {
+    const pending = onchainLockInFlight.current.get(escrowId);
+    if (pending) return pending;
+    const attempt = publishOnchainLockOnce(escrowId)
+      .finally(() => onchainLockInFlight.current.delete(escrowId));
+    onchainLockInFlight.current.set(escrowId, attempt);
+    return attempt;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [checkOnchainFunding]);
+  const publishOnchainLockOnce = async (escrowId: string): Promise<EscrowState> => {
     const client = requireClient();
     const state = client.getState(escrowId);
     if (!state) throw new Error("Escrow not loaded");
     if ((state.escrowMode ?? "ecash") !== "onchain") {
       throw new Error("This trade is not an on-chain escrow.");
     }
+    if (onchainLockAlreadySent(state)) return state;
     const { plan, verdict, depositStatus, observation } = await checkOnchainFunding(escrowId);
     if (isLateOnchainDeposit(state, observation)) throw new Error("A deposit reached a lapsed trade — recover it using the refund controls.");
     if (!plan.ready) throw new Error("The escrow address isn't ready — a key is still missing.");
@@ -3238,6 +3252,11 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
     const buyerPubkey = state.participants[Role.BUYER];
     const arbiterPubkey = state.participants[Role.ARBITER];
     if (!buyerPubkey || !arbiterPubkey) throw new Error("Buyer and arbiter must both have joined.");
+    // The explorer check awaited above; a LOCK may have arrived meanwhile.
+    const latest = client.getState(escrowId);
+    if (!latest) throw new Error("Escrow not loaded");
+    if (onchainLockAlreadySent(latest)) return latest;
+    if (latest.status !== EscrowStatus.CREATED) throw new Error("This trade can no longer be locked.");
     return client.lockEscrow(escrowId, {
       notesHash: "",
       shares: [],
@@ -3248,7 +3267,7 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
       buyerPubkey,
       arbiterPubkey,
     });
-  }, [checkOnchainFunding]);
+  };
 
   // Seed on launch, discovery and enable, without requiring an own publish.
   useEffect(() => {
