@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { renderToStaticMarkup } from "react-dom/server";
 import { T, STATUS, ON_ATTN, applyThemeMode, typeScaleCss } from "./theme.js";
 import { holdReducer, HOLD_TO_CONFIRM_MS, ASSISTIVE_CONFIRM_WINDOW_MS, type HoldState } from "./components/Button.js";
-import { BottomNav, CreateButton, createFabShrinksWhileScrolling, navCss, trackScrollActivity, SCROLL_STILL_FALLBACK_MS } from "./components/BottomNav.js";
+import { BottomNav, CreateButton, createFabShrinksWhileScrolling, createFabVisible, isTypingTarget, navCss, trackScrollActivity, SCROLL_STILL_FALLBACK_MS } from "./components/BottomNav.js";
 import { Badge } from "./components/Badge.js";
 import { ChamaBar } from "./panels/ChamaBar.js";
 import { StatusBarScrim } from "./components/StatusBarScrim.js";
@@ -162,6 +162,28 @@ console.log("PASS hold to confirm: hold confirms once, early lift cancels, taps 
   assert.equal((app.match(/<style>\{globalCss\(\)\}<\/style>\n\s*\{useSafeAreaInsets && <StatusBarScrim \/>\}/g) ?? []).length, 3);
 }
 console.log("PASS nav: Home/Browse/Circles/Me + Create, one active tab, unique coach targets, sidebar ≥1024px, floating Create on every phone");
+{
+  // Jet (6.4.32-rc.1): Create covered "Publish it" inside the Create flow.
+  // It shows only where you start something: Home, Browse listings, Circles.
+  const base = { detailMode: false, createOverlayOpen: false };
+  for (const view of ["dashboard", "browse", "circles"]) assert.equal(createFabVisible({ ...base, view }), true, `${view} shows Create`);
+  for (const view of ["guided", "create", "circle-create", "me", "saved-handles", "payout-destinations", "advanced", "help", "detail", "circle"]) {
+    assert.equal(createFabVisible({ ...base, view }), false, `${view} hides Create`);
+  }
+  assert.equal(createFabVisible({ view: "browse", detailMode: true, createOverlayOpen: false }), false, "a trade page hides Create");
+  assert.equal(createFabVisible({ view: "dashboard", detailMode: false, createOverlayOpen: true }), false, "the create sheet hides Create");
+  const app = readFileSync(new URL("./App.tsx", import.meta.url), "utf8");
+  assert.equal((app.match(/<CreateButton /g) ?? []).length, 1, "one phone Create mount");
+  assert.match(app, /\{createFabVisible\(\{ view, detailMode, createOverlayOpen \}\) && <CreateButton onCreate=\{openCreate\} \/>\}/, "the mount is gated");
+  // While a field has focus (the phone keyboard is up) Create hides.
+  const el = (tagName: string, extra: Record<string, unknown> = {}) => ({ tagName, ...extra }) as unknown as EventTarget;
+  for (const t of [el("INPUT"), el("input", { type: "number" }), el("INPUT", { type: "tel" }), el("TEXTAREA"), el("SELECT"), el("DIV", { isContentEditable: true })]) {
+    assert.equal(isTypingTarget(t), true);
+  }
+  for (const t of [null, el("BUTTON"), el("INPUT", { type: "checkbox" }), el("INPUT", { type: "radio" }), el("DIV")]) assert.equal(isTypingTarget(t), false);
+  assert.match(navCss(), /\.chama-create-fab-typing\{display:none\}/, "focused field hides the Create wrapper");
+  console.log("PASS Create shows only on Home, Browse listings and Circles, and hides while typing");
+}
 {
   // Create button glass (Jet, 6.4.25; Oct 16): on the moment the page moves,
   // never for a touch alone, solid the instant it is still. No idle delay.

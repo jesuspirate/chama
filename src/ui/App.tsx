@@ -196,7 +196,7 @@ import { BitcoinAmount } from "./components/BitcoinAmount.js";
 import { VerticalIcon } from "./components/VerticalIcon.js";
 import { ChamaLoader } from "./components/ChamaLoader.js";
 import { isExpiredUnfundedListing } from "../escrow-engine/expired-listing.js";
-import { BottomNav, BOTTOM_NAV_HEIGHT, CreateButton, navCss, type Tab } from "./components/BottomNav.js";
+import { BottomNav, BOTTOM_NAV_HEIGHT, CreateButton, createFabVisible, navCss, type Tab } from "./components/BottomNav.js";
 import { HomeHero, homeCss } from "./components/HomeHero.js";
 import { HeldSats } from "./components/HeldSats.js";
 import { CirclesHome } from "./screens/CirclesHome.js";
@@ -3598,7 +3598,7 @@ export default function App() {
                     bundle. ship.sh exports CHAMA_RELEASE=1 → clean version. */}
                 v{__APP_VERSION__}{__BUILD_STAMP__ ? ` · dev ${__BUILD_STAMP__}` : ""}{__BUILD_STAMP__ && sessionBadge ? ` · ${sessionBadge}` : ""}
               </div>
-              <CreateButton onCreate={openCreate} />
+              {createFabVisible({ view, detailMode, createOverlayOpen }) && <CreateButton onCreate={openCreate} />}
             </div>
           </div>
 
