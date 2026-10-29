@@ -18,7 +18,9 @@ type NativePreferences = { set(options: { key: string; value: string }): Promise
 
 /** Where a release that stops keeping the plain copy keeps the key, sealed.
  *  A name 6.4.29-6.4.31 never read, write or delete, so running one of them
- *  again can't overwrite it, and their sign-out can't half-remove it. */
+ *  again can't overwrite it. It counts only beside NSEC_ORIGIN_KEY, which
+ *  that release must keep plainly: every version's sign-out removes it, so a
+ *  sign-out in any version also retires the sealed copy. */
 export const SEALED_NSEC_KEY = "chama_saved_nsec_sealed_v2";
 
 /** The kept key is stored but can't be opened right now. Never "no key":
@@ -56,8 +58,9 @@ export async function saveNsec(
 // the one kept and written, so 6.4.29-6.4.31 still find the key if they run
 // again here. What this release adds:
 //  - with no plain copy, a key kept sealed under SEALED_NSEC_KEY (by the
-//    release that stops writing plain copies) is the kept key; this release
-//    writes it back plainly and then removes the sealed copy;
+//    release that stops writing plain copies) is the kept key while its
+//    plain witness (NSEC_ORIGIN_KEY) is there; this release writes it back
+//    plainly and then removes the sealed copy;
 //  - a sealed key that can't be opened is SavedKeyUnreadableError, never
 //    "no key", and stays where it is;
 //  - the copy 6.4.29-6.4.31 wrote under SAVED_NSEC_KEY is no longer written.
@@ -120,12 +123,34 @@ export async function readBrowserSavedNsec(
       .catch((e) => console.warn("[chama] old encrypted copy of the kept key not cleared", e));
     return plain;
   }
+  // A sealed-only key counts only beside its plain witness: the key's origin,
+  // which a release that stops writing plain keys keeps, and which every
+  // version removes synchronously on sign-out (and on a sign-in that doesn't
+  // keep the key). Without it nothing is kept: the store isn't read for the
+  // answer, and any sealed copy is left over from a sign-out (in 6.4.29-
+  // 6.4.31, or in an older version run after a sealed-only release).
+  let witnessed = false;
+  try { witnessed = storage.getItem(NSEC_ORIGIN_KEY) !== null; } catch {}
+  if (!witnessed) {
+    void queueSealedNsec(async () => {
+      await clearSealed(sealer, SEALED_NSEC_KEY, null);
+      await clearSealed(sealer, SAVED_NSEC_KEY, null);
+    }).catch((e) => console.warn("[chama] left-over encrypted key not cleared", e));
+    return null;
+  }
   let sealed: string | null;
   try {
     sealed = (await queueSealedNsec(() => sealer.get(SEALED_NSEC_KEY)))?.trim() || null;
   } catch (e) {
+    // A key was kept and can't be opened, unless one was saved meanwhile.
+    try { const now = storage.getItem(SAVED_NSEC_KEY)?.trim(); if (now) return now; } catch {}
     throw new SavedKeyUnreadableError(e);
   }
+  // A key saved (or a sign-out) while that read ran wins over what was read.
+  let now: string | null = null;
+  try { now = storage.getItem(SAVED_NSEC_KEY)?.trim() || null; } catch {}
+  if (now) return now;
+  try { if (storage.getItem(NSEC_ORIGIN_KEY) === null) return null; } catch {}
   // Not waited for: a leftover from a sign-out in 6.4.29-6.4.31, never used.
   void queueSealedNsec(() => clearSealed(sealer, SAVED_NSEC_KEY, sealed))
     .catch((e) => console.warn("[chama] old encrypted copy of the kept key not cleared", e));

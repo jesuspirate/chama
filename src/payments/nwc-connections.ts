@@ -187,7 +187,8 @@ export async function hydrateSavedNwcConnections(sealer: NwcSealer): Promise<voi
       }
       const list = sealed === null ? [] : parseKeptList(sealed);
       if (list && list.length > 0 && getLocalStorageUserScope() === scope) {
-        const serialized = JSON.stringify(dedupeConnections(list));
+        // A wallet saved while that read ran is kept beside the read list.
+        const serialized = JSON.stringify(dedupeConnections([...readStored(NWC_CONNECTIONS_STORAGE_KEY), ...list]));
         setScopedStorageItem(NWC_CONNECTIONS_STORAGE_KEY, serialized);
         setScopedStorageItem(NWC_CONNECTIONS_BACKUP_STORAGE_KEY, serialized);
         if (getScopedStorageItem(NWC_CONNECTIONS_STORAGE_KEY) === serialized && await sealer.get(sealedName) === sealed) {

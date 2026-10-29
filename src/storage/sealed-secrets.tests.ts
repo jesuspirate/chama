@@ -124,6 +124,7 @@ console.warn = () => {};
   store.clear();
   const s = fakeSealer();
   s.sealed.set(SEALED_NSEC_KEY, "nsec1sealed");
+  store.set(NSEC_ORIGIN_KEY, "generated"); // the plain witness that release keeps
   assert.equal(await readBrowserSavedNsec(localStorage, s), "nsec1sealed");
   await flushSealedNsecWrites();
   assert.equal(olderApp.readKey(), "nsec1sealed", "an older app finds it again");
@@ -136,6 +137,7 @@ console.warn = () => {};
   store.clear();
   const s = fakeSealer({ failGet: true });
   s.sealed.set(SEALED_NSEC_KEY, "nsec1locked");
+  store.set(NSEC_ORIGIN_KEY, "generated");
   await assert.rejects(readBrowserSavedNsec(localStorage, s), SavedKeyUnreadableError);
   await flushSealedNsecWrites();
   assert.equal(s.sealed.get(SEALED_NSEC_KEY), "nsec1locked", "nothing is deleted");
@@ -149,6 +151,7 @@ console.warn = () => {};
   store.clear();
   const s = fakeSealer({ failGet: true });
   s.sealed.set(SEALED_NSEC_KEY, "nsec1locked");
+  store.set(NSEC_ORIGIN_KEY, "generated");
   await assert.rejects(readBrowserSavedNsec(localStorage, s), SavedKeyUnreadableError);
   await saveNsec("nsec1pasted", "imported", localStorage);
   assert.equal(await readBrowserSavedNsec(localStorage, s), "nsec1pasted");
@@ -187,6 +190,43 @@ console.warn = () => {};
   await saveNsec("nsec1both", "imported", localStorage);
   olderApp.signOut();
   assert.equal(await readBrowserSavedNsec(localStorage, s), null);
+}
+{
+  // Re-review R1: a sealed-only key signed out in an older version (which
+  // removes the origin witness but can't touch the sealed copy) never signs
+  // in again, and is archived.
+  store.clear();
+  const s = fakeSealer();
+  s.sealed.set(SEALED_NSEC_KEY, "nsec1K");
+  store.set(SAVED_NSEC_KEY, "nsec1K");
+  store.set(NSEC_ORIGIN_KEY, "imported");
+  olderApp.signOut();
+  assert.equal(await readBrowserSavedNsec(localStorage, s), null, "signed out in an older app means signed out here");
+  await flushSealedNsecWrites();
+  assert.equal(s.sealed.has(SEALED_NSEC_KEY), false);
+  assert.deepEqual(archived(s, SEALED_NSEC_KEY), ["nsec1K"]);
+
+  // R2: with no key and no witness, a broken or stuck store is never asked
+  // for the answer, so nobody is told a saved key won't open.
+  store.clear();
+  assert.equal(await readBrowserSavedNsec(localStorage, fakeSealer({ failGet: true })), null);
+
+  // R3: a key saved while the sealed read runs wins, and the sealed copy stays.
+  store.clear();
+  let release!: () => void;
+  const slow = fakeSealer();
+  slow.sealed.set(SEALED_NSEC_KEY, "nsec1old");
+  const get = slow.get;
+  slow.get = async (name: string) => { await new Promise<void>((r) => { release = r; }); slow.get = get; return get(name); };
+  store.set(NSEC_ORIGIN_KEY, "generated");
+  const pending = readBrowserSavedNsec(localStorage, slow);
+  await new Promise((r) => setTimeout(r, 0));
+  await saveNsec("nsec1created", "generated", localStorage);
+  release();
+  assert.equal(await pending, "nsec1created", "the key saved meanwhile wins");
+  assert.equal(store.get(SAVED_NSEC_KEY), "nsec1created", "and is never overwritten");
+  await flushSealedNsecWrites();
+  assert.equal(slow.sealed.get(SEALED_NSEC_KEY), "nsec1old", "the sealed copy stays");
 }
 {
   // A sign-out whose sealed delete fails still sticks: the plain copy is what is read.
@@ -275,6 +315,21 @@ function fresh() {
   assert.ok(store.get(primaryKey)?.includes(walletA), "written back plainly for older versions");
   assert.ok(store.get(backupKey)?.includes(walletA));
   assert.equal(s.sealed.has(sealedKey), false);
+}
+{
+  // R3: a wallet added while the sealed list is read is kept beside it.
+  fresh();
+  const s = fakeSealer();
+  s.sealed.set(sealedKey, JSON.stringify([entry(walletA, "b".repeat(64))]));
+  const get = s.get;
+  let release!: () => void;
+  s.get = async (name: string) => { await new Promise<void>((r) => { release = r; }); s.get = get; return get(name); };
+  const pending = nwc.hydrateSavedNwcConnections(s);
+  await new Promise((r) => setTimeout(r, 0));
+  nwc.addOrTouchSavedNwcConnection(conn(walletB, "c".repeat(64)));
+  release();
+  await pending;
+  assert.deepEqual(nwc.listSavedNwcConnections().map((c) => c.walletPubkey).sort(), [walletA, walletB], "both wallets kept");
 }
 {
   // One that can't be opened, or doesn't parse, stays where it is; a wallet

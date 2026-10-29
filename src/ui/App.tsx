@@ -425,6 +425,10 @@ async function writeSavedNsec(nsec: string, origin: "generated" | "imported"): P
   await saveNsec(nsec, origin, localStorage, native ? Preferences : undefined);
 }
 
+/** The key this session signed in with (connect consumes the window copy),
+ *  so sign-out knows which key it is forgetting. */
+let sessionNsec: string | null = null;
+
 /** `wait`: sign-out waits (bounded) for the encrypted side, so the reload
  *  after it can't find the key; a sign-in never waits on it. */
 async function removeSavedNsec(opts: { wait?: boolean } = {}): Promise<void> {
@@ -432,9 +436,8 @@ async function removeSavedNsec(opts: { wait?: boolean } = {}): Promise<void> {
     try { await Preferences.remove({ key: SAVED_NSEC_KEY }); } catch {}
     try { await Preferences.remove({ key: NSEC_ORIGIN_KEY }); } catch {}
   }
-  const current = (window as any).__chama_connect_nsec;
   await removeBrowserSavedNsec(localStorage, Capacitor.isNativePlatform() ? undefined : browserNsecSealer(),
-    { forget: typeof current === "string" ? current : null, wait: opts.wait });
+    { forget: sessionNsec, wait: opts.wait });
 }
 
 
@@ -1591,7 +1594,7 @@ export default function App() {
       try {
         const value = await readSavedNsec();
         if (value) {
-          (window as any).__chama_connect_nsec = value;
+          (window as any).__chama_connect_nsec = sessionNsec = value;
           actions.connect();
         }
       } catch (e) {
@@ -3357,7 +3360,7 @@ export default function App() {
               const value = await readSavedNsec();
               setSavedKeyUnreadable(false);
               if (value) {
-                (window as any).__chama_connect_nsec = value;
+                (window as any).__chama_connect_nsec = sessionNsec = value;
                 actions.connect();
               }
               return true;
@@ -3380,7 +3383,7 @@ export default function App() {
                   // to scan their key), and window.confirm() is a silent no-op
                   // in the Capacitor/Tauri webview — so proceed and toast,
                   // rather than gate behind a dialog that never fires.
-                  (window as any).__chama_connect_nsec = scanned;
+                  (window as any).__chama_connect_nsec = sessionNsec = scanned;
                   // A scanned key is imported, never Chama-generated.
                   try { await writeSavedNsec(scanned, "imported"); } catch {}
                   setToast({ message: t("app.keyScanned"), type: "success" });
@@ -3398,7 +3401,7 @@ export default function App() {
         <ConnectScreen
           onConnect={actions.connect}
           onConnectNsec={async (nsec: string, remember: boolean, wasGenerated: boolean, fastSetupWanted?: boolean, setupCommunity?: string) => {
-            (window as any).__chama_connect_nsec = nsec;
+            (window as any).__chama_connect_nsec = sessionNsec = nsec;
             // Someone who pasted their own key already holds it: never ask
             // them "Did you save your key?" (Jet, rc.12). Only a key Chama
             // generated in this login still needs that reminder.
