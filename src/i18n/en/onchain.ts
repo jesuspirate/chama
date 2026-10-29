@@ -68,6 +68,8 @@ export const onchain: Record<string, string> = {
   "onchain.payoutSending": "Sending…",
   "onchain.payoutSend": "Send this on-chain balance",
   "onchain.payoutSent": "Sent {amount} sats (miner fee {fee} sats).",
+  "onchain.cashChoiceIntro": "Choose where you receive the cash for this trade. Only the other person and the arbiter see it, once your deposit is locked.",
+  "onchain.useCashDetails": "Use these details",
   "onchain.seedBackupUnconfirmed": "Chama couldn't confirm that the backup of your on-chain trade keys is saved on the network, so it stopped before this step. No sats moved. Check your connection, then try again.",
   "onchain.seedBackupDifferent": "The network holds a different backup of your on-chain trade keys than this device uses, so Chama stopped before this step. No sats moved.",
 };

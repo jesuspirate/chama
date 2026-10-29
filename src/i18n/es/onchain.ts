@@ -68,6 +68,8 @@ export const onchain: Record<string, string> = {
   "onchain.payoutSending": "Enviando…",
   "onchain.payoutSend": "Enviar este saldo on-chain",
   "onchain.payoutSent": "Se enviaron {amount} sats (comisión minera: {fee} sats).",
+  "onchain.cashChoiceIntro": "Elige dónde recibes el efectivo de este intercambio. Solo la otra persona y el árbitro lo ven, cuando tu depósito quede bloqueado.",
+  "onchain.useCashDetails": "Usar estos datos",
   "onchain.seedBackupUnconfirmed": "Chama no pudo confirmar que la copia de seguridad de tus claves de intercambio on-chain está guardada en la red, así que se detuvo antes de este paso. No se movió ningún sat. Revisa tu conexión y vuelve a intentarlo.",
   "onchain.seedBackupDifferent": "La red guarda una copia de seguridad de tus claves de intercambio on-chain distinta de la que usa este dispositivo, así que Chama se detuvo antes de este paso. No se movió ningún sat.",
 };
