@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
-import { finalizeEvent, getPublicKey } from 'nostr-tools/pure';
+import { finalizeEvent, getPublicKey, verifyEvent } from 'nostr-tools/pure';
 import { deriveEscrowSigningKey } from '../bond-multisig/onchain-escrow-funding.js';
 import { deriveBondSigningKey } from '../bond-multisig/commitment-bond.js';
 import { SIGNET } from '../bond-multisig/multisig.js';
 import { safetyFixture } from '../../scripts/lib/escrow-safety-fixture.js';
 import { parseEscrowEvent } from './event-parser.js';
-import { EscrowClient, missingPredecessorIds } from './escrow-client.js';
-import { clearEventCache } from './escrow-event-cache.js';
+import { EscrowClient, missingPredecessorIds, usablePredecessors } from './escrow-client.js';
+import { clearEventCache, putCachedEvents } from './escrow-event-cache.js';
+import { RelayManager } from './relay-manager.js';
 import type { NostrFilter } from './relay-manager.js';
 import { EscrowEventKind as Kind, EscrowStatus, Role, type NostrEvent } from './types.js';
 
@@ -83,12 +84,76 @@ async function clientWith(answer: { byD: NostrEvent[]; byId: (ids: string[]) => 
   client.disconnect();
 }
 {
-  // A relay answering with an event that isn't the one asked for, or isn't
-  // this trade's, is ignored: it can't stand in for the missing link.
-  const foreign = finalizeEvent({ kind: Kind.LOCK, created_at: now, content: sibling.raw.content,
+  // Junk can't crowd out the real gap: the failing event's predecessor is
+  // asked for first, and nobody's CHAT counts.
+  const stranger = new Uint8Array(32).fill(77);
+  const junk = Array.from({ length: 25 }, (_, i) => finalizeEvent({ kind: Kind.CHAT, created_at: now + i, content: 'x',
+    tags: [['d', ID], ['e', (i + 1).toString(16).padStart(64, '0'), '', 'reply']] }, stranger) as NostrEvent);
+  const { client, asked } = await clientWith({ byD: [...base, ...junk, onSibling],
+    byId: ids => ids.includes(sibling.raw.id) ? [sibling.raw as NostrEvent] : [] });
+  const state = await client.loadEscrow(ID, { repairFromCache: true });
+  assert.equal(state?.status, EscrowStatus.LOCKED, 'loads despite 25 junk predecessors');
+  assert.equal(asked.find(f => f.ids)?.ids?.[0], sibling.raw.id, 'the real gap is asked for first');
+  assert.ok(asked.flatMap(f => f.ids ?? []).every(id => !junk.some(j => j.tags.some(t => t[1] === id))), 'no CHAT predecessor is asked for');
+  client.disconnect();
+}
+{
+  // The fetch starts from relays plus the durable cache: here the relays
+  // lack CREATE (the cache has it) and the older LOCK (a relay has it).
+  const create = base[0];
+  const { client } = await clientWith({ byD: [...base.slice(1), onSibling],
+    byId: ids => ids.includes(sibling.raw.id) ? [sibling.raw as NostrEvent] : [] });
+  await putCachedEvents(ID, [create], EscrowStatus.LOCKED);
+  const state = await client.loadEscrow(ID, { repairFromCache: true });
+  assert.equal(state?.status, EscrowStatus.LOCKED, 'cache and fetched predecessor together load the trade');
+  client.disconnect();
+}
+{
+  // Only an asked-for event of this trade (first d tag) stands in for a gap.
+  const otherTrade = finalizeEvent({ kind: Kind.LOCK, created_at: now, content: sibling.raw.content,
     tags: [['d', 'another-trade'], ['t', 'escrow:lock']] }, new Uint8Array(32).fill(32)) as NostrEvent;
-  const { client } = await clientWith({ byD: [...base, onSibling], byId: () => [foreign, { ...foreign, id: sibling.raw.id }] });
+  const twoDs = finalizeEvent({ kind: Kind.LOCK, created_at: now, content: sibling.raw.content,
+    tags: [['d', 'another-trade'], ['d', ID]] }, new Uint8Array(32).fill(32)) as NostrEvent;
+  const notAsked = sibling.raw as NostrEvent;
+  const wanted = new Set([otherTrade.id, twoDs.id]);
+  assert.deepEqual(usablePredecessors([otherTrade, twoDs, notAsked], wanted, ID), [], 'wrong trade, second d tag, not asked: all refused');
+  assert.deepEqual(usablePredecessors([notAsked], new Set([notAsked.id]), ID), [notAsked]);
+  const { client } = await clientWith({ byD: [...base, onSibling], byId: () => [otherTrade] });
   assert.equal(await client.loadEscrow(ID, { repairFromCache: true }), null, 'a wrong-trade event is not the predecessor');
   client.disconnect();
+}
+{
+  // Relay level: a lookup by id waits past the quorum grace for the one
+  // relay holding the event, and a tampered copy is dropped by the signature check.
+  class Socket {
+    static all: Socket[] = [];
+    onopen?: (e: Event) => void; onmessage?: (e: MessageEvent) => void; onclose?: () => void; onerror?: () => void;
+    readyState = 1;
+    constructor(public url: string) { Socket.all.push(this); }
+    reply(message: unknown[]) { this.onmessage?.({ data: JSON.stringify(message) } as MessageEvent); }
+    send(text: string) {
+      const [type, subId, filter] = JSON.parse(text);
+      if (type !== 'REQ' || !filter.ids) return;
+      if (this.url.includes('slow')) {
+        setTimeout(() => { this.reply(['EVENT', subId, sibling.raw]); this.reply(['EOSE', subId]); }, 1_500);
+      } else if (this.url.includes('liar')) {
+        this.reply(['EVENT', subId, { ...sibling.raw, content: '{"type":"escrow:lock","forged":true}' }]);
+        this.reply(['EOSE', subId]);
+      } else this.reply(['EOSE', subId]);
+    }
+    close() {}
+  }
+  const relays = new RelayManager(['wss://a.invalid', 'wss://b.invalid', 'wss://liar.invalid', 'wss://slow.invalid'],
+    { verifyEvent: (e) => verifyEvent(e as any) }, Socket as unknown as typeof WebSocket);
+  relays.connect();
+  for (const socket of Socket.all) socket.onopen?.({} as Event);
+  const quick = await relays.fetchOnce({ ids: [sibling.raw.id] }, 8_000, undefined, { quorumBudgetMs: 0 });
+  assert.equal(quick.length, 0, 'without waiting, a quorum of empty answers ends the lookup early');
+  const started = Date.now();
+  const waited = await relays.fetchOnce({ ids: [sibling.raw.id] }, 8_000, undefined, { quorumBudgetMs: 0, waitForEveryRelay: true });
+  assert.equal(waited.length, 1, 'waiting for every relay finds the one that holds it');
+  assert.equal(waited[0].content, sibling.raw.content, 'the tampered copy was dropped');
+  assert.ok(Date.now() - started < 8_000, 'resolves once the asked-for id arrives');
+  relays.disconnect();
 }
 console.log('predecessor-fetch: explicit opens fetch a missing predecessor by id; replay stays strict');
