@@ -59,3 +59,24 @@ export function onchainLockError(state: EscrowState, terms: OnchainLockTerms, at
   if (!/^\d+$/.test(terms.amountSats) || BigInt(terms.amountSats) * 1000n < BigInt(state.amountMsats)) return 'Insufficient deposit amount';
   return null;
 }
+
+/** True when something the deposit address or the funder's JOIN depends on
+ * changed between two reads of one trade. A chat message, replay or custody
+ * overlay replaces the state object without changing any of these, so an
+ * identity comparison refused funding for no reason (Oct 28 mainnet trade). */
+export function onchainFundingInputsChanged(before: EscrowState, after: EscrowState | undefined | null): boolean {
+  if (!after) return true;
+  const roles = [Role.BUYER, Role.SELLER, Role.ARBITER] as const;
+  return before.id !== after.id
+    || before.status !== after.status
+    || before.escrowMode !== after.escrowMode
+    || (before.onchainNetwork ?? 'mainnet') !== (after.onchainNetwork ?? 'mainnet')
+    || before.community !== after.community
+    || before.amountMsats !== after.amountMsats
+    || before.joinHolds?.[Role.BUYER]?.amountMsats !== after.joinHolds?.[Role.BUYER]?.amountMsats
+    || !!after.onchainFundingTerms !== !!before.onchainFundingTerms
+    || onchainFunder(before) !== onchainFunder(after)
+    || fundingArbiter(before) !== fundingArbiter(after)
+    || roles.some(role => before.participants[role] !== after.participants[role]
+      || before.escrowKeys?.[role] !== after.escrowKeys?.[role]);
+}
