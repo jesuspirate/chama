@@ -37,7 +37,8 @@ import { recordPaidLockRecovery, assertPaidLockRecoveryWritable } from "../payme
 import { isLateOnchainDeposit, preLockDeadline, JOIN_HOLD_LOCK_GRACE_SECONDS, getEffectiveParticipantAt } from "../escrow-engine/types.js";
 import { conductStanding, type BondConductProof } from "../escrow-engine/conduct-standing.js";
 import { SIGNET as PUBLIC_SIGNET } from "../bond-multisig/multisig.js";
-import { replayPublicConduct, readConductSpend, publicConductRecord, type PublicConductRecord } from "../escrow-engine/public-conduct.js";
+import { readConductSpend, publicConductRecord, type PublicConductRecord } from "../escrow-engine/public-conduct.js";
+import { readPublicConductTrades } from "../escrow-engine/public-conduct-read.js";
 import { stalledPayoutEligibility } from "../escrow-engine/onchain-stalled.js";
 import type { SettlementPayload } from "../escrow-engine/types.js";
 import { SETTLEMENT_EXPLORER_TIMEOUT_MS } from '../bond-multisig/fund-watcher.js';
@@ -3835,23 +3836,10 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
   const fetchPublicConduct = useCallback(async (pubkey: string): Promise<PublicConductRecord> => {
     const client = requireClient();
     const kinds = Object.values(EscrowEventKind).filter(v=>typeof v === "number") as number[];
-    const reads = await Promise.all([client.queryPublicConduct({kinds,authors:[pubkey],limit:500}),client.queryPublicConduct({kinds,"#p":[pubkey],limit:500})]);
-    let complete = reads.every(r=>r.complete && r.events.length<500);
-    const ids = [...new Set(reads.flatMap(r=>r.events).map(e=>e.tags.find(t=>t[0]==="d")?.[1]).filter((id):id is string=>!!id))].sort();
-    if (ids.length>100) complete=false;
-    const trades: PublicConductRecord["trades"] = [];
-    for (const id of ids.slice(0,100)) {
-      try {
-        const read = await client.queryPublicConduct({kinds,"#d":[id],limit:500});
-        complete &&= read.complete && read.events.length<500;
-        const trade = replayPublicConduct(read.events);
-        if (!trade || !Object.values(trade.participants).includes(pubkey)) { complete=false; continue; }
-        if (!trade.lock.onchain) continue;
-        const network = trade.lock.onchain.network === "mainnet" ? btcSigner.NETWORK : PUBLIC_SIGNET;
-        const spend = await readConductSpend(trade,esploraFetcher(defaultEsploraBase(network),{network})).catch(()=>null);
-        trades.push({state:trade,spend});
-      } catch { complete=false; }
-    }
+    const {trades, complete} = await readPublicConductTrades(pubkey, kinds, filter => client.queryPublicConduct(filter), trade => {
+      const network = trade.lock.onchain!.network === "mainnet" ? btcSigner.NETWORK : PUBLIC_SIGNET;
+      return readConductSpend(trade,esploraFetcher(defaultEsploraBase(network),{network}));
+    });
     const record = publicConductRecord(pubkey,trades,complete);
     const bondProofs: BondConductProof[] = [];
     let bondsKnown = false;
