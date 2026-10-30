@@ -92,3 +92,39 @@ const arbitration=[30,180,300].map((delay,index)=>{
 });
 assert.deepEqual(conductStanding(f.pks.arbiter,publicConductRecord(f.pks.arbiter,arbitration,true),[],true).arbiterSpeed,{medianSeconds:180,samples:3});
 assert.deepEqual(conductStanding(f.pks.arbiter,publicConductRecord(f.pks.arbiter,[...arbitration].reverse(),true),[],true).arbiterSpeed,{medianSeconds:180,samples:3});
+
+// "Public record not loaded yet" on Jet's Pixel: a busy arbiter's record was
+// read one relay query per trade. Trades are now read in chunks, and a chunk
+// the relay cut off falls back to one trade at a time.
+{
+ const { readPublicConductTrades } = await import('./public-conduct-read.js');
+ const tradeId = f.state.id, seller = state!.participants[Role.SELLER]!;
+ const decoys = Array.from({length:24},(_,i)=>finalizeEvent({kind:Kind.CHAT,created_at:1,tags:[['d',`other-${String(i).padStart(2,'0')}`],['p',seller]],content:''},identities.seller));
+ const kinds=[...new Set([...events,...decoys].map(e=>e.kind))];
+ const run = async (cutChunks:boolean) => {
+  const filters:any[]=[];
+  const query = async (filter:any) => {
+   filters.push(filter);
+   const pool=[...events,...decoys];
+   const hits = filter.authors ? pool.filter(e=>filter.authors.includes(e.pubkey))
+     : filter['#p'] ? pool.filter(e=>e.tags.some(t=>t[0]==='p'&&filter['#p'].includes(t[1])))
+     : pool.filter(e=>e.tags.some(t=>t[0]==='d'&&filter['#d'].includes(t[1])));
+   return {events:hits,complete:!(cutChunks && filter['#d']?.length>1)};
+  };
+  const read = await readPublicConductTrades(seller,kinds,query,async()=>({txid,confirmed:true,leaf:'coop' as const}) as any);
+  return {read,filters};
+ };
+ const batched = await run(false);
+ const dReads = batched.filters.filter(q=>q['#d']);
+ assert.equal(dReads.length,3,'25 trades are three relay reads, not 25');
+ assert.ok(dReads.every(q=>q['#d'].length<=10));
+ assert.deepEqual(batched.read.trades.map(t=>t.state.id),[tradeId],'the on-chain trade is found among unrelated ids');
+ assert.equal(batched.read.complete,false,'ids that do not replay keep the record incomplete, as before');
+ const cut = await run(true);
+ assert.equal(cut.filters.filter(q=>q['#d']?.length===1).length,25,'a cut-off chunk is re-read one trade at a time');
+ assert.deepEqual(cut.read.trades.map(t=>t.state.id),[tradeId]);
+ assert.deepEqual(cut.read.trades[0].state.eventChain.map(e=>e.raw.id),batched.read.trades[0].state.eventChain.map(e=>e.raw.id),'batched and per-trade reads replay the same chain');
+ const failing = await readPublicConductTrades(seller,kinds,async(filter:any)=>{ if(filter['#d']) throw new Error('relay down'); return {events:[...events],complete:true}; },async()=>null);
+ assert.deepEqual(failing.trades,[]); assert.equal(failing.complete,false,'a failed read is never a complete record');
+ console.log('PASS public record: trades read in chunks, cut-off chunks re-read per trade, failures stay incomplete');
+}
