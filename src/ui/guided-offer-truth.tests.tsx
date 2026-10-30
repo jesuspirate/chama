@@ -3,7 +3,7 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { EscrowStatus, Role, type EscrowState } from "../escrow-engine/types.js";
 import { matchGuidedListings, rankGuidedCandidates, recommendGuidedCandidates } from "../guided/match-listings.js";
-import { Match, MatchReviewAmount, guidedChooseTitleKey } from "./screens/AssistedCanvas.js";
+import { Match, MatchReviewAmount, guidedChooseTitleKey, keepBestFitMatch } from "./screens/AssistedCanvas.js";
 
 // Exercise the actual per-amount searches that the guided canvas merges.
 function offer(id: string, sats: number, fiat: number, currency = "USD", category = "p2p-trade") {
@@ -71,3 +71,18 @@ assert.ok(reviewAmount.indexOf('21–60,000 sats') < reviewAmount.indexOf('You a
 const single = renderToStaticMarkup(<MatchReviewAmount candidate={a} />);
 assert.ok(!single.includes('You asked for') && !single.includes('–'), 'a single-amount offer just states the amount');
 console.log('PASS review leads with the offer bracket and names the chosen amount underneath');
+
+// A ranged offer probed first at its headline amount and then at what the
+// budget buys must show the budget's amount, not the headline.
+{
+  const headline = { ...rangeCandidate, amountSats: 50_000 };
+  const budget = { ...rangeCandidate, amountSats: 185_000 };
+  const smaller = { ...rangeCandidate, amountSats: 20_000 };
+  const ranged = new Map<string, typeof rangeCandidate>();
+  for (const c of [headline, budget, smaller]) keepBestFitMatch(ranged, c);
+  assert.equal(ranged.get(rangeCandidate.listing.id)!.amountSats, 185_000, "a ranged offer keeps the amount the budget asked for");
+
+  const fixed = new Map<string, typeof a>();
+  for (const c of [a, { ...a, amountSats: 9_999 }]) keepBestFitMatch(fixed, c);
+  assert.equal(fixed.get(a.listing.id)!.amountSats, a.amountSats, "a fixed offer keeps its first match");
+}

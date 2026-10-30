@@ -517,10 +517,7 @@ export function AssistedCanvas({
             })
           : inputs;
         const result = matchGuidedListings(validated.value, inputsForAmount, { viewerPubkey, limit: 20 });
-        for (const candidate of result.candidates) {
-          const key = candidate.listing.id;
-          if (!deduped.has(key)) deduped.set(key, candidate);
-        }
+        for (const candidate of result.candidates) keepBestFitMatch(deduped, candidate);
         // The amount varies per candidate, so a persistent NON-amount code is the
         // real blocker — keep it over a transient AMOUNT_MISMATCH.
         for (const rej of result.rejected) {
@@ -1295,6 +1292,16 @@ function NoMatchRetention({ notified, summary, onNotify, onWiden }: { notified: 
     </div>
   </div>;
 }
+/** One match per listing. Every probed amount already fits the buyer's
+ * budget, so for a ranged offer the most sats is the one the budget asked
+ * for; the listing's headline amount (probed first) used to win instead and
+ * showed "You asked for 50,000 sats" for a $150 budget. */
+export function keepBestFitMatch(deduped: Map<string, GuidedMatchCandidate>, candidate: GuidedMatchCandidate): void {
+  const prev = deduped.get(candidate.listing.id);
+  const ranged = candidate.listing.items?.some(item => item.kind === "exchange-bracket");
+  if (!prev || (ranged && candidate.amountSats > prev.amountSats)) deduped.set(candidate.listing.id, candidate);
+}
+
 export function MatchReviewAmount({ candidate }: { candidate: GuidedMatchCandidate }) {
   const bracket = candidate.listing.items?.find(item => item.kind === "exchange-bracket");
   const low = bracket ? (bracket.minAmountMsats ?? bracket.amountMsats) / 1000 : null;
