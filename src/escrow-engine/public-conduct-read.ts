@@ -1,4 +1,4 @@
-import { replayPublicConduct, type ConductSpend, type ConductTrade } from './public-conduct.js';
+import { replayPublicConductWithVotes, type ConductSpend, type ConductTrade } from './public-conduct.js';
 import type { EscrowState, NostrEvent } from './types.js';
 
 export type ConductQuery = (filter: { kinds: number[]; authors?: string[]; '#p'?: string[]; '#d'?: string[]; limit: number })
@@ -26,10 +26,10 @@ export async function readPublicConductTrades(pubkey: string, kinds: number[], q
   const results: (ConductTrade | null)[] = new Array(wanted.length).fill(null);
 
   const take = async (index: number, events: readonly NostrEvent[]) => {
-    const trade = replayPublicConduct(events);
+    const replayed = replayPublicConductWithVotes(events), trade = replayed?.state;
     if (!trade || !Object.values(trade.participants).includes(pubkey)) { complete = false; return; }
     if (!trade.lock.onchain) return;
-    results[index] = { state: trade, spend: await readSpend(trade).catch(() => null) };
+    results[index] = { state: trade, spend: await readSpend(trade).catch(() => null), votes: replayed!.votes };
   };
   const oneByOne = async (start: number, group: string[]) => {
     for (const [offset, id] of group.entries()) {

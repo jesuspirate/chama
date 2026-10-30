@@ -128,3 +128,45 @@ assert.deepEqual(conductStanding(f.pks.arbiter,publicConductRecord(f.pks.arbiter
  assert.deepEqual(failing.trades,[]); assert.equal(failing.complete,false,'a failed read is never a complete record');
  console.log('PASS public record: trades read in chunks, cut-off chunks re-read per trade, failures stay incomplete');
 }
+
+// 6.4.33 arbiter conduct facts (spec step 1): readers of the public record
+// only, no rule change. Every fact is the same in either order of events.
+{
+ const arb=f.pks.arbiter;
+ const rec=(trades:any[],complete=true)=>publicConductRecord(arb,trades,complete);
+ const s=(trades:any[],complete=true,tip:number|null=null,key=arb)=>conductStanding(key,publicConductRecord(key,trades,complete),[],true,tip);
+ // F1 disputes decided, with how many people.
+ assert.deepEqual(s(arbitration).arbiterDecided,{count:3,people:2,lastYear:null});
+ assert.deepEqual(s([...arbitration].reverse()).arbiterDecided,s(arbitration).arbiterDecided,'order does not change the fact');
+ assert.equal(s(arbitration,false).arbiterDecided,null,'incomplete history is unknown, never a count');
+ const agreed={...arbitration[0],state:{...arbitration[0].state,id:'agreed',eventChain:arbitration[0].state.eventChain.map((e:any)=>e.pubkey===f.pks.seller?{...e,payload:{...e.payload,outcome:Outcome.RELEASE}}:e)}};
+ assert.equal(s([agreed]).arbiterDecided,null,'an agreed trade is not a dispute');
+ const early={...arbitration[0],state:{...arbitration[0].state,id:'early',eventChain:arbitration[0].state.eventChain.map((e:any)=>e.pubkey===arb?{...e,prevEventId:'not-the-dispute'}:e)}};
+ assert.equal(s([early]).arbiterDecided,null,'a ruling that does not follow the dispute is not counted');
+ // F5 last year, from the tip block time.
+ const times=arbitration.map(t=>t.state.eventChain.find((e:any)=>e.pubkey===arb)!.timestamp).sort((a,b)=>a-b);
+ const tip=times[0]+365*86400+1;
+ assert.equal(s(arbitration,true,tip).arbiterDecided!.lastYear,times.filter(t=>t>=tip-365*86400).length);
+ assert.equal(s(arbitration,true,times[2]).arbiterDecided!.lastYear,null,'no suffix when every ruling is within the year');
+ // F4 ruled for the same person.
+ assert.deepEqual(s(arbitration).arbiterSamePerson,{count:3,total:3});
+ assert.equal(s(arbitration.slice(0,2)).arbiterSamePerson,null,'needs three rulings');
+ // F2 a backup decided instead.
+ const seatedKey='d'.repeat(64);
+ const seatedElsewhere=arbitration.map(t=>({...t,state:{...t.state,participants:{...t.state.participants,arbiter:seatedKey}}}));
+ assert.deepEqual(s(seatedElsewhere,true,null,seatedKey).arbiterBackedUp,{count:3,total:3});
+ assert.equal(s(arbitration).arbiterBackedUp,null,'the seated arbiter who decided is not backed up');
+ // F3 two opposite rulings, read from every signed vote.
+ const ruling=arbitration[0].state.eventChain.find((e:any)=>e.pubkey===arb)!;
+ const flip={...ruling,payload:{...ruling.payload,outcome:Outcome.REFUND},raw:{...ruling.raw,id:'flip'}};
+ const withVotes=(votes:any[])=>[{...arbitration[0],votes}];
+ assert.equal(s(withVotes([ruling])).arbiterTwoRulings,null);
+ assert.equal(s(withVotes([ruling,{...ruling,raw:{...ruling.raw,id:'same'}}])).arbiterTwoRulings,null,'two votes with the same outcome are not opposite');
+ assert.deepEqual(s(withVotes([ruling,flip])).arbiterTwoRulings,{count:1,partial:false});
+ assert.deepEqual(s(withVotes([flip,ruling])).arbiterTwoRulings,{count:1,partial:false},'either order');
+ assert.equal(s(withVotes([ruling,{...flip,pubkey:'e'.repeat(64)}])).arbiterTwoRulings,null,'two different keys are not one key ruling twice');
+ assert.equal(s(withVotes([ruling,{...flip,prevEventId:'elsewhere'}])).arbiterTwoRulings,null,'a vote that is not part of this dispute does not count');
+ assert.deepEqual(s(withVotes([ruling,flip]),false).arbiterTwoRulings,{count:1,partial:true},'still shown on incomplete history, as "at least"');
+ assert.equal(rec(withVotes([ruling,flip])).trades[0].state.votes[Role.ARBITER],arbitration[0].state.votes[Role.ARBITER],'the replayed state is untouched');
+ console.log('PASS arbiter conduct facts: decided, last year, same person, backed up, two opposite rulings; order-free, unknown when incomplete');
+}

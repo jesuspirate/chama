@@ -3859,7 +3859,8 @@ export function useEscrow(config?: UseEscrowConfig): [UseEscrowState, UseEscrowA
           tipTime:Array.isArray(blocks) && Number.isSafeInteger(blocks[0]?.timestamp)?blocks[0].timestamp:null});
       }
     } catch { bondsKnown=false; }
-    return {...record,standing:conductStanding(pubkey,record,bondProofs,bondsKnown)};
+    const tipTime = bondProofs.reduce<number|null>((latest,p)=>p.tipTime!==null && (latest===null || p.tipTime>latest) ? p.tipTime : latest, null);
+    return {...record,standing:conductStanding(pubkey,record,bondProofs,bondsKnown,tipTime)};
   }, []);
 
   const scanMyOnchainPayouts = useCallback(async () => {

@@ -1673,7 +1673,7 @@ export function TradeDetail({
 
         {repFor && <OverlaySheet title={profileNameFor(profileNames, repFor, kind0Enabled) ?? t("trade.participants")}
           subtitle={repFor} onClose={() => setRepFor(null)}>
-          <ConductFacts pubkey={repFor} showEmpty />
+          <ConductFacts pubkey={repFor} showEmpty detail />
           <CopyButton value={repFor} />
 
           {fetchRatingSummary && <ReputationReadout pubkey={repFor}
