@@ -279,6 +279,12 @@ export function AtomicFundingModal({
   const [savedNwcConnections, setSavedNwcConnections] = useState<SavedNwcConnection[]>(
     () => disableNwc ? [] : listSavedNwcConnections(),
   );
+  useEffect(() => {
+    if (disableNwc) return;
+    const refresh = () => setSavedNwcConnections(listSavedNwcConnections());
+    window.addEventListener("chama:saved-wallets", refresh);
+    return () => window.removeEventListener("chama:saved-wallets", refresh);
+  }, [disableNwc]);
   const [nwcInput, setNwcInput] = useState("");
   const [rememberNwc, setRememberNwc] = useState(true);
   const [selectedNwcConnection, setSelectedNwcConnection] = useState<string | null>(null);

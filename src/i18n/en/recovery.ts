@@ -129,6 +129,7 @@ export const recovery: Record<string, string> = {
   "recovery.savedKey.unreadableBody": "Chama kept your key on this device, but can’t open it right now. Nothing was deleted. Try again, or sign in with your key.",
   "recovery.savedKey.retry": "Try again",
   "recovery.savedKey.retrying": "Trying…",
+  "recovery.savedKey.opening": "Opening your saved key…",
   "recovery.savedKey.signInAnotherWay": "Sign in with my key",
   "recovery.savedKey.anotherWayNote": "If you sign in with your key, the saved copy stays on this device. Nothing is deleted.",
   "recovery.savedKey.stillUnreadable": "It still won’t open. Nothing was deleted. Try again later, or sign in with your key.",

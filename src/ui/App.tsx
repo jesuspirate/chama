@@ -415,6 +415,13 @@ async function readSavedNsec(): Promise<string | null> {
   }
 }
 
+/** A key is kept sealed in this browser (its plain witness is there and no
+ *  plain copy), so the sign-in screen waits for it to be read. */
+function keptKeyWitnessed(): boolean {
+  if (Capacitor.isNativePlatform()) return false;
+  try { return localStorage.getItem(NSEC_ORIGIN_KEY) !== null && localStorage.getItem(SAVED_NSEC_KEY) === null; } catch { return false; }
+}
+
 function browserNsecSealer(): NsecSealer | undefined {
   return sealedStoreAvailable()
     ? { get: sealedGet, set: sealedSet, delete: sealedDelete, archive: sealedArchive, archives: sealedArchiveNames }
@@ -1036,6 +1043,9 @@ export default function App() {
   // M9: the kept key is stored but can't be opened. Retry, or sign in with
   // the key (the stored copy is archived before anything replaces it).
   const [savedKeyUnreadable, setSavedKeyUnreadable] = useState(false);
+  // "Sign in with my key" from that panel: the stored copy stays, even when
+  // this sign-in isn't kept, so Retry is offered again next time.
+  const keepUnreadableKeyRef = useRef(false);
   // `actions` is rebuilt as hook state changes, so this effect can re-run while
   // secure-storage I/O is still pending. Latch synchronously before the first
   // await; React's loading state alone cannot prevent already-started reads
@@ -3335,6 +3345,21 @@ export default function App() {
     connected && !!pubkey
       && (changeHomeAfterConnect || needsHomePick || getUserCommunitySlugRaw() === null);
 
+  // M9: a key kept sealed is being opened. Until that read answers (bounded),
+  // show that instead of the sign-in screen, so nobody creates or pastes a
+  // key over the one they kept.
+  if (!connected && !autoLoginChecked && keptKeyWitnessed()) {
+    return (
+      <div style={{
+        background: T.bg, color: T.text, minHeight: "100dvh", fontFamily: T.sans,
+        paddingTop: shellPaddingTop, display: "flex", alignItems: "center", justifyContent: "center",
+      }}>
+        <style>{globalCss()}</style>
+        <p style={{ fontSize: 17, color: T.muted }}>{t("recovery.savedKey.opening")}</p>
+      </div>
+    );
+  }
+
   if (!connected) {
     return (
       <div style={{
@@ -3371,7 +3396,7 @@ export default function App() {
               return true;
             }
           }}
-          onSignInAnotherWay={() => setSavedKeyUnreadable(false)}
+          onSignInAnotherWay={() => { keepUnreadableKeyRef.current = true; setSavedKeyUnreadable(false); }}
         />}
         {showQRScanner && (
           <Suspense fallback={null}>
@@ -3431,8 +3456,9 @@ export default function App() {
               }
             } else {
               // "Keep me signed in" unchecked: this login is written nowhere,
-              // and any stale kept key from an earlier login goes with it.
-              try { await removeSavedNsec(); } catch {}
+              // and any stale kept key from an earlier login goes with it,
+              // unless it is the saved key that wouldn't open (it stays).
+              if (!keepUnreadableKeyRef.current) { try { await removeSavedNsec(); } catch {} }
             }
             actions.connect();
           }}

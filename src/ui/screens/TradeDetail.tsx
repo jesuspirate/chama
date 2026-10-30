@@ -424,6 +424,13 @@ export function TradeDetail({
   const [directNwcFundPhase, setDirectNwcFundPhase] = useState<string | null>(null);
   const [directNwcClaimPhase, setDirectNwcClaimPhase] = useState<string | null>(null);
   const refreshSavedNwcs = () => setSavedNwcs(listSavedNwcConnections());
+  // Saved wallets are read from the encrypted store after sign-in (M9):
+  // pick them up when they arrive, or when another tab changes them.
+  useEffect(() => {
+    const refresh = () => setSavedNwcs(listSavedNwcConnections());
+    window.addEventListener("chama:saved-wallets", refresh);
+    return () => window.removeEventListener("chama:saved-wallets", refresh);
+  }, []);
   // v0.3.0 Phase 3: claiming flag survives the ClaimPayoutModal lifetime
   // via the promise-based onClaim contract (mirrors Phase 2's onLock).
   // Disables the Claim button while the modal is open so re-taps can't

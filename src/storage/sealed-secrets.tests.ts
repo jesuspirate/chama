@@ -22,6 +22,10 @@ const {
 } = await import("./saved-nsec.js");
 const { setLocalStorageUserScope, scopedStorageKey } = await import("./user-scope.js");
 const nwc = await import("../payments/nwc-connections.js");
+const { setSealedNsecSettleDelayForTests, setSealedNsecWaitForTests, resetSealedNsecForTests } = await import("./saved-nsec.js");
+// The later checks (a drop that waits, the watch after a drop) run quickly here.
+setSealedNsecSettleDelayForTests(5);
+nwc.setSealedSettleDelayForTests(5);
 
 function fakeSealer(opts: { failGet?: boolean; failArchive?: boolean; failDelete?: boolean; hang?: boolean } = {}) {
   const sealed = new Map<string, string>();
@@ -55,6 +59,17 @@ const olderApp = {
   readKey: () => store.get(SAVED_NSEC_KEY) ?? null,
   signOut: () => { store.delete(SAVED_NSEC_KEY); store.delete(NSEC_ORIGIN_KEY); },
 };
+/** A fake op that waits until released. */
+function gate() {
+  let open!: () => void;
+  const opened = new Promise<void>((r) => { open = r; });
+  return { opened, open };
+}
+const tick = () => new Promise((r) => setTimeout(r, 0));
+async function until(check: () => boolean, what: string) {
+  for (let i = 0; i < 200 && !check(); i++) await tick();
+  assert.ok(check(), what);
+}
 const quiet = console.warn;
 console.warn = () => {};
 
@@ -337,9 +352,80 @@ console.warn = () => {};
   assert.equal(await readBrowserSavedNsec(localStorage, s), null, "no sign-in after sign-out");
 }
 {
-  // Last for the key (a stuck op holds the queue until its time runs out):
+  // Second review B1: a 6.4.32 tab wrote the sealed key back plainly and is
+  // about to delete the sealed copy. This version, meeting the plain copy
+  // with the same key already sealed, doesn't drop the plain copy at once:
+  // it checks again later, finds the sealed copy gone, and keeps it.
+  store.clear();
+  setSealedNsecSettleDelayForTests(100);
+  const s = fakeSealer();
+  s.sealed.set(SEALED_NSEC_KEY, "nsec1K");
+  store.set(NSEC_ORIGIN_KEY, "generated");
+  store.set(SAVED_NSEC_KEY, "nsec1K"); // 6.4.32's write-back
+  assert.equal(await readBrowserSavedNsec(localStorage, s), "nsec1K");
+  for (let i = 0; i < 5; i++) await tick();
+  assert.equal(store.get(SAVED_NSEC_KEY), "nsec1K", "not dropped before it checks again");
+  s.sealed.delete(SEALED_NSEC_KEY); // 6.4.32's delete lands
+  await flushSealedNsecWrites();
+  assert.equal(store.get(SAVED_NSEC_KEY), "nsec1K", "the plain copy stays when the sealed one went");
+  setSealedNsecSettleDelayForTests(5);
+  assert.equal(await readBrowserSavedNsec(localStorage, s), "nsec1K");
+  await flushSealedNsecWrites();
+  assert.equal(s.sealed.get(SEALED_NSEC_KEY), "nsec1K", "moved again on the next start");
+  assert.equal(store.has(SAVED_NSEC_KEY), false);
+
+  // With no older tab, the delayed drop goes ahead.
+  store.set(SAVED_NSEC_KEY, "nsec1K");
+  assert.equal(await readBrowserSavedNsec(localStorage, s), "nsec1K");
+  await flushSealedNsecWrites();
+  assert.equal(store.has(SAVED_NSEC_KEY), false);
+  assert.equal(s.sealed.get(SEALED_NSEC_KEY), "nsec1K");
+
+  // And after any drop, if the sealed copy is gone a moment later while the
+  // key is still kept, it is written back plainly: never left nowhere.
+  store.clear();
+  const w = fakeSealer();
+  await saveNsec("nsec1W", "generated", localStorage, undefined, w);
+  await until(() => !store.has(SAVED_NSEC_KEY), "moved");
+  w.sealed.delete(SEALED_NSEC_KEY); // another version deletes it
+  await flushSealedNsecWrites();
+  assert.equal(store.get(SAVED_NSEC_KEY), "nsec1W", "written back plainly");
+  // ...but never after a sign-out.
+  store.clear();
+  const x = fakeSealer();
+  await saveNsec("nsec1X", "generated", localStorage, undefined, x);
+  await until(() => !store.has(SAVED_NSEC_KEY), "moved");
+  store.delete(NSEC_ORIGIN_KEY); // signed out (in any version)
+  x.sealed.delete(SEALED_NSEC_KEY);
+  await flushSealedNsecWrites();
+  assert.equal(store.has(SAVED_NSEC_KEY), false, "a signed-out key is not written back");
+}
+{
+  // Second review B2: a sealed write that outlasts its caller's wait still
+  // finishes before the next sealed operation starts, so it can't land late
+  // over a newer key, and a key signed out meanwhile stays signed out.
+  setSealedNsecWaitForTests(30);
+  store.clear();
+  const s = fakeSealer();
+  const g = gate();
+  const set = s.set;
+  s.set = async (name: string, value: string) => { s.set = set; await g.opened; return set(name, value); };
+  await saveNsec("nsec1K", "generated", localStorage, undefined, s);
+  await new Promise((r) => setTimeout(r, 60)); // longer than the caller's wait
+  await removeBrowserSavedNsec(localStorage, s, { forget: "nsec1K", wait: true }); // gives up waiting
+  await saveNsec("nsec1K2", "generated", localStorage, undefined, s);
+  g.open(); // K's write lands only now
+  await flushSealedNsecWrites();
+  assert.equal(s.sealed.get(SEALED_NSEC_KEY), "nsec1K2", "the newer key is what is kept");
+  assert.equal(await readBrowserSavedNsec(localStorage, s), "nsec1K2", "the signed-out key never signs in");
+  assert.ok(!archived(s, SEALED_NSEC_KEY).includes("nsec1K2"));
+  setSealedNsecWaitForTests(10_000);
+}
+{
+  // Last for the key (a stuck op holds the queue: only callers stop waiting):
   // a stuck store never holds up sign-in, and a sign-in that clears a stale
   // key doesn't wait for it.
+  setSealedNsecWaitForTests(50);
   store.clear();
   store.set(SAVED_NSEC_KEY, "nsec1plain");
   const stuck = fakeSealer({ hang: true });
@@ -548,6 +634,105 @@ const walletC = "e".repeat(64);
   await nwc.flushSealedNwcWrites();
   assert.deepEqual(sealedWallets(s), [walletA, walletB, walletC]);
   assert.equal(store.has(primaryKey), false, "merged, then dropped");
+}
+{
+  // Second review B1 (wallets): a 6.4.32 tab wrote the sealed list back
+  // plainly and is about to delete the sealed one; the plain list is kept.
+  fresh();
+  const s = fakeSealer();
+  const list = JSON.stringify([entry(walletA, "1".repeat(64))]);
+  s.sealed.set(sealedKey, list);
+  store.set(primaryKey, list);
+  store.set(backupKey, list);
+  await nwc.hydrateSavedNwcConnections(s);
+  s.sealed.delete(sealedKey); // 6.4.32's delete lands
+  await nwc.flushSealedNwcWrites();
+  assert.ok(store.get(primaryKey)?.includes(walletA), "the plain list stays when the sealed one went");
+  assert.deepEqual(wallets(), [walletA]);
+
+  // After a drop, a sealed list that vanishes is written back plainly.
+  fresh();
+  const w = fakeSealer();
+  nwc.addOrTouchSavedNwcConnection(conn(walletA, "2".repeat(64)));
+  await nwc.hydrateSavedNwcConnections(w);
+  await until(() => !store.has(primaryKey), "dropped");
+  w.sealed.delete(sealedKey);
+  await nwc.flushSealedNwcWrites();
+  assert.ok(store.get(primaryKey)?.includes(walletA), "written back plainly");
+}
+{
+  // Second review B2 (wallets): a write that outlasts its caller's wait is
+  // kept plainly, and the next change waits for it, so it can't land late
+  // over a newer list.
+  nwc.setSealedWaitForTests(30);
+  fresh();
+  const s = fakeSealer();
+  s.sealed.set(sealedKey, JSON.stringify([entry(walletA, "3".repeat(64))]));
+  await nwc.hydrateSavedNwcConnections(s);
+  const g = gate();
+  const set = s.set;
+  s.set = async (name: string, value: string) => { s.set = set; await g.opened; return set(name, value); };
+  nwc.addOrTouchSavedNwcConnection(conn(walletB, "4".repeat(64)));
+  await new Promise((r) => setTimeout(r, 60));
+  assert.ok(store.get(primaryKey)?.includes(walletB), "kept plainly once the wait ran out");
+  nwc.addOrTouchSavedNwcConnection(conn(walletC, "5".repeat(64)));
+  g.open();
+  await nwc.flushSealedNwcWrites();
+  assert.deepEqual(sealedWallets(s), [walletA, walletB, walletC], "nothing written over");
+  nwc.resetSealedNwcForTests();
+  await nwc.hydrateSavedNwcConnections(s);
+  assert.deepEqual(wallets(), [walletA, walletB, walletC]);
+  nwc.setSealedWaitForTests(10_000);
+}
+{
+  // Second review B3: another tab's change read in just before this tab's
+  // sealed write fails: this tab's own change is still kept (plainly).
+  fresh();
+  const s = fakeSealer();
+  s.sealed.set(sealedKey, JSON.stringify([entry(walletA, "6".repeat(64))]));
+  await nwc.hydrateSavedNwcConnections(s);
+  s.sealed.set(sealedKey, JSON.stringify([entry(walletA, "6".repeat(64)), entry(walletC, "7".repeat(64))]));
+  nwc.refreshSavedNwcForTests(user); // tab B announced C
+  const set = s.set;
+  s.set = async () => { s.set = set; throw new Error("quota"); };
+  nwc.addOrTouchSavedNwcConnection(conn(walletB, "8".repeat(64)));
+  await nwc.flushSealedNwcWrites();
+  assert.deepEqual(wallets(), [walletA, walletB, walletC], "this tab's wallet is still there");
+  assert.ok(store.get(primaryKey)?.includes(walletB), "kept plainly");
+  nwc.resetSealedNwcForTests();
+  await nwc.hydrateSavedNwcConnections(s);
+  assert.deepEqual(wallets(), [walletA, walletB, walletC], "and after a restart");
+}
+{
+  // Second review S1: a wallet removed while the sealed write fails doesn't
+  // come back on the next start.
+  fresh();
+  const s = fakeSealer();
+  s.sealed.set(sealedKey, JSON.stringify([entry(walletA, "9".repeat(64)), entry(walletB, "a".repeat(64))]));
+  await nwc.hydrateSavedNwcConnections(s);
+  const set = s.set;
+  s.set = async () => { s.set = set; throw new Error("quota"); };
+  nwc.deleteSavedNwcConnection(entry(walletA, "").id);
+  await nwc.flushSealedNwcWrites();
+  assert.deepEqual(wallets(), [walletB]);
+  nwc.resetSealedNwcForTests();
+  await nwc.hydrateSavedNwcConnections(s);
+  assert.deepEqual(wallets(), [walletB], "the removed wallet stays removed");
+  assert.deepEqual(sealedWallets(s), [walletB], "and is gone from the sealed list");
+  assert.equal(store.has(scopedStorageKey(nwc.NWC_REMOVED_STORAGE_KEY, user)), false, "nothing left to remember");
+}
+{
+  // Second review N2: a rewrite that would drop an entry this version can't
+  // read archives the stored list first.
+  fresh();
+  const s = fakeSealer();
+  const odd = { ...entry(walletB, "b".repeat(64)), relayCount: undefined };
+  s.sealed.set(sealedKey, JSON.stringify([entry(walletA, "c".repeat(64)), odd]));
+  nwc.addOrTouchSavedNwcConnection(conn(walletC, "d".repeat(64)));
+  await nwc.hydrateSavedNwcConnections(s);
+  assert.equal(archived(s, sealedKey).length, 1, "archived before the rewrite");
+  assert.ok(archived(s, sealedKey)[0].includes(walletB));
+  assert.deepEqual(sealedWallets(s), [walletA, walletC]);
 }
 {
   // Each identity has its own list.

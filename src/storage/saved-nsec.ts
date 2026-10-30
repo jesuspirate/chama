@@ -80,35 +80,49 @@ export async function saveNsec(
 //    version that didn't wait for the delete, or one that can't be opened)
 //    is archived first. It is never signed in with.
 //
-// Sealed operations run one at a time, in order, each bounded, so a stuck
-// store can't hold up the next one forever.
+// Sealed operations run one at a time, in order (across tabs too, with Web
+// Locks where the browser has them), each for as long as it really takes, so
+// a late write can never land after a newer one. Only the caller's wait is
+// bounded: a stuck store holds later sealed work back, which is safe, since
+// a plain copy is dropped only once a sealed operation confirms.
 let sealedNsecOps: Promise<unknown> = Promise.resolve();
-const SEALED_OP_TIMEOUT_MS = 10_000;
+let sealedOpTimeoutMs = 10_000;
+/** Checks scheduled for later (tests wait for them too). */
+const settling = new Set<Promise<void>>();
+let settleDelayMs = 3_000;
 
 class SealedTimeoutError extends Error {
   constructor() { super("The encrypted store did not answer"); this.name = "SealedTimeoutError"; }
 }
 
-function bounded<T>(op: () => Promise<T>): Promise<T> {
+/** Bound how long a caller waits; the operation itself runs on. */
+function bounded<T>(run: Promise<T>): Promise<T> {
   return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new SealedTimeoutError()), SEALED_OP_TIMEOUT_MS);
-    (timer as unknown as { unref?: () => void }).unref?.();
-    op().then(resolve, reject).finally(() => clearTimeout(timer));
+    const timer = setTimeout(() => reject(new SealedTimeoutError()), sealedOpTimeoutMs);
+    run.then(resolve, reject).finally(() => clearTimeout(timer));
   });
 }
 
 /** Tabs of one browser share the store: where the browser offers it, a
- *  sealed operation also holds a lock other tabs wait on. */
+ *  sealed operation also holds a lock other tabs wait on, until it is done. */
 function acrossTabs<T>(op: () => Promise<T>): Promise<T> {
   const locks = (globalThis as { navigator?: { locks?: { request?: (name: string, cb: () => Promise<T>) => Promise<T> } } })
     .navigator?.locks;
-  return typeof locks?.request === "function" ? locks.request("chama-sealed-nsec", () => bounded(op)) : bounded(op);
+  return typeof locks?.request === "function" ? locks.request("chama-sealed-nsec", op) : op();
 }
 
 function queueSealedNsec<T>(op: () => Promise<T>): Promise<T> {
   const run = sealedNsecOps.then(() => acrossTabs(op), () => acrossTabs(op));
   sealedNsecOps = run.catch(() => {});
-  return run;
+  return bounded(run);
+}
+
+/** Run `op` in the queue after the settle delay. */
+function later(op: () => Promise<void>): void {
+  const done: Promise<void> = new Promise<void>((resolve) => {
+    setTimeout(resolve, settleDelayMs);
+  }).then(() => queueSealedNsec(op)).catch(() => {}).finally(() => { settling.delete(done); });
+  settling.add(done);
 }
 
 function readPlain(storage: Partial<Pick<Storage, "getItem">>): string | null {
@@ -127,15 +141,49 @@ async function sealKept(sealer: NsecSealer, storage: Partial<Pick<Storage, "getI
   // deleted"), and the plain copy stays beside it until it opens.
   if (unreadable) return;
   if (current !== null && current !== nsec && !await sealer.archive(SEALED_NSEC_KEY)) return;
-  if (current !== nsec) await sealer.set(SEALED_NSEC_KEY, nsec);
+  const wrote = current !== nsec;
+  if (wrote) {
+    if (readPlain(storage) !== nsec) return;
+    await sealer.set(SEALED_NSEC_KEY, nsec);
+  }
   if ((await sealer.get(SEALED_NSEC_KEY))?.trim() !== nsec) return;
   // A sign-out, or another key saved, while that ran wins.
   if (readPlain(storage) !== nsec) return;
   try {
     if (storage.getItem?.(NSEC_ORIGIN_KEY) == null) storage.setItem?.(NSEC_ORIGIN_KEY, "imported");
     if (storage.getItem?.(NSEC_ORIGIN_KEY) == null) return;
+  } catch { return; }
+  if (!wrote) {
+    // The sealed copy was already there: a tab of 6.4.32 may have just
+    // written it back plainly and be about to delete the sealed one. Drop
+    // later, after checking again.
+    later(async () => {
+      if (readPlain(storage) !== nsec) return;
+      if ((await sealer.get(SEALED_NSEC_KEY))?.trim() !== nsec || readPlain(storage) !== nsec) return;
+      if (dropPlain(storage, nsec)) watchSealed(sealer, storage, nsec);
+    });
+    return;
+  }
+  if (dropPlain(storage, nsec)) watchSealed(sealer, storage, nsec);
+}
+
+function dropPlain(storage: Partial<Pick<Storage, "getItem" | "removeItem">>, nsec: string): boolean {
+  try {
+    if (readPlain(storage) !== nsec || storage.getItem?.(NSEC_ORIGIN_KEY) == null) return false;
     storage.removeItem?.(SAVED_NSEC_KEY);
-  } catch {}
+    return true;
+  } catch { return false; }
+}
+
+/** After the plain copy is dropped: if the sealed copy is gone a moment
+ *  later while the key is still kept (witness there, no sign-out), write it
+ *  back plainly. Another version deleted it; the key is never left nowhere. */
+function watchSealed(sealer: NsecSealer, storage: Partial<Pick<Storage, "getItem" | "setItem">>, nsec: string): void {
+  later(async () => {
+    if (readPlain(storage) !== null || storage.getItem?.(NSEC_ORIGIN_KEY) == null) return;
+    if (await sealer.get(SEALED_NSEC_KEY) !== null) return;
+    if (readPlain(storage) === null && storage.getItem?.(NSEC_ORIGIN_KEY) != null) storage.setItem?.(SAVED_NSEC_KEY, nsec);
+  });
 }
 
 function queueSealKept(sealer: NsecSealer, storage: Partial<Pick<Storage, "getItem" | "setItem" | "removeItem">>, nsec: string): void {
@@ -154,10 +202,26 @@ async function clearSealed(sealer: NsecSealer, name: string, forget: string | nu
   await sealer.delete(name);
 }
 
-/** Wait for queued sealed operations (tests). */
+/** Wait for queued sealed operations and later checks (tests). */
 export async function flushSealedNsecWrites(): Promise<void> {
-  let seen: Promise<unknown>;
-  do { seen = sealedNsecOps; await seen; } while (seen !== sealedNsecOps);
+  for (;;) {
+    const seen = sealedNsecOps;
+    await seen;
+    if (settling.size > 0) { await Promise.all([...settling]); continue; }
+    if (seen === sealedNsecOps) return;
+  }
+}
+
+/** Test hooks. */
+export function resetSealedNsecForTests(): void {
+  sealedNsecOps = Promise.resolve();
+  settling.clear();
+}
+export function setSealedNsecSettleDelayForTests(ms: number): void {
+  settleDelayMs = ms;
+}
+export function setSealedNsecWaitForTests(ms: number): void {
+  sealedOpTimeoutMs = ms;
 }
 
 /** The kept browser key, or null when none is kept. Throws

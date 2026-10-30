@@ -1,7 +1,7 @@
 import { listSavedNwcConnections, renameSavedNwcConnection, deleteSavedNwcConnection, displayNwcConnection } from "../../payments/nwc-connections.js";
 import { walletName } from "../wallet-names.js";
 import { SavedWalletRow } from "../components/SavedWalletRow.js";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { T } from "../theme.js";
 import { useT } from "../../i18n/index.js";
 import { OverlaySheet } from "../components/OverlaySheet.js";
@@ -22,6 +22,11 @@ export function PayoutDestinationsPanel({ onClose }: {
   );
 
   const [connections, setConnections] = useState(listSavedNwcConnections);
+  useEffect(() => {
+    const refresh = () => setConnections(listSavedNwcConnections());
+    window.addEventListener("chama:saved-wallets", refresh);
+    return () => window.removeEventListener("chama:saved-wallets", refresh);
+  }, []);
 
   const handleDelete = (id: string) => {
     deletePayoutDestination(id);
