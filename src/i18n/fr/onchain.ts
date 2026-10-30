@@ -65,6 +65,7 @@ export const onchain: Record<string, string> = {
   "onchain.noCapableArbiter": "Le séquestre sur chaîne exige un arbitre avec une clé de caution vérifiée et une caution libre suffisante pour cet échange. Le maximum qu’un arbitre d’ici peut couvrir aujourd’hui est de {amount} sats. Réduisez le montant ou choisissez ecash.",
   "onchain.coverLimit": "Les arbitres d’ici peuvent couvrir aujourd’hui des échanges sur chaîne jusqu’à {amount} sats. Au-delà, utilisez ecash ou réduisez le montant.",
   "onchain.coverNone": "Aucun arbitre d’ici ne peut couvrir aujourd’hui un échange sur chaîne de ce montant. Utilisez ecash.",
+  "onchain.coverOwnBond": "Votre propre caution ne couvre jamais votre propre annonce.",
   "onchain.coverUnchecked": "Impossible de vérifier la couverture des arbitres pour l’instant. La publication vérifie à nouveau.",
   "onchain.coverUncheckedPublish": "Impossible de vérifier pour l’instant combien de temps les cautions des arbitres restent bloquées. Réessayez ou choisissez ecash.",
   "onchain.bondCovering": "La caution de {name} couvre déjà : {trades}.",

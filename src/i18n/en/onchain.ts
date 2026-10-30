@@ -67,6 +67,7 @@ export const onchain: Record<string, string> = {
   "onchain.noCapableArbiter": "On-chain escrow needs an arbiter with a verified bond key and enough free bond to cover this trade. The most any arbiter here can cover today is {amount} sats. Lower the amount or choose ecash.",
   "onchain.coverLimit": "Arbiters here can cover on-chain trades up to {amount} sats today. Above that, use ecash or lower the amount.",
   "onchain.coverNone": "No arbiter here can cover an on-chain trade this size today. Use ecash.",
+  "onchain.coverOwnBond": "Your own bond never covers your own listing.",
   "onchain.coverUnchecked": "Couldn't check arbiter cover just now. Publish checks again.",
   "onchain.coverUncheckedPublish": "Couldn't check how long arbiters' bonds stay locked just now. Try again, or choose ecash.",
   "onchain.bondCovering": "{name}'s bond is covering: {trades}.",

@@ -15,14 +15,14 @@ import { defaultEsploraBase, esploraFetcher, esploraTipHeight } from "../bond-mu
 import { MAINNET, SIGNET } from "../bond-multisig/multisig.js";
 import { defaultEscrowModeForAmount, REFUND_CLTV_BLOCKS } from "../bond-multisig/onchain-escrow.js";
 import type { EscrowState } from "../escrow-engine/types.js";
-import { isOpenExposure, largestOnchainCoverSats, tradesWithUnspentExposure } from "../arbiters/exposure.js";
+import { arbiterBondCapacities, isOpenExposure, largestOnchainCoverSats, tradesWithUnspentExposure } from "../arbiters/exposure.js";
 import { Role } from "../escrow-engine/types.js";
 import { declaresArbiterRole } from "../arbiters/live-chama.js";
 
 export type OnchainCover =
   | { status: "loading" }
   | { status: "unchecked" }
-  | { status: "ready"; sats: number };
+  | { status: "ready"; sats: number; ownBond?: boolean };
 
 /** How long a bond must stay locked, in blocks from now, to count toward an
  *  on-chain trade (Jet, 2026-10-26: "count only bonds that outlast it"). The
@@ -40,6 +40,13 @@ export function seatableOnchainBonds(bonds: readonly VerifiedBond[], tipHeight: 
   if (tipHeight === null || !Number.isFinite(tipHeight)) return [];
   return bonds.filter(b => b.funded && b.active && declaresArbiterRole(b) && !!b.ownerXonly
     && b.lockUntil >= tipHeight + ONCHAIN_COVER_HORIZON_BLOCKS);
+}
+
+/** True when `viewerPubkey` holds one of these seatable bonds. CREATE leaves
+ *  the seller's own bonds out of the cover, so a bonded seller is told why. */
+export function holdsSeatableBond(seatable: readonly VerifiedBond[], viewerPubkey: string | null | undefined): boolean {
+  const self = viewerPubkey?.trim().toLowerCase();
+  return !!self && arbiterBondCapacities(seatable).has(self);
 }
 
 /** Bitcoin's current height, which bonds lock against (bonds live on mainnet;
@@ -123,9 +130,13 @@ export function useOnchainCover(params: {
       .then(([exposure, tip]) => {
         if (cancelled) return;
         if (tip === null) { setCover({ status: "unchecked" }); return; }
+        const seatable = seatableOnchainBonds(bonds, tip);
         setCover({
           status: "ready",
-          sats: largestOnchainCoverSats({ bonds: seatableOnchainBonds(bonds, tip), allTrades: exposure, excludePubkey: viewerPubkey }),
+          sats: largestOnchainCoverSats({ bonds: seatable, allTrades: exposure, excludePubkey: viewerPubkey }),
+          // A seller is never their own arbiter, so their bonds are left out
+          // above; say so, or a bonded seller reads the cover as a bug.
+          ownBond: holdsSeatableBond(seatable, viewerPubkey),
         });
       })
       .catch(() => { if (!cancelled) setCover({ status: "unchecked" }); });
