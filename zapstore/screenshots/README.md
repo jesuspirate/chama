@@ -2,7 +2,7 @@
 
 ## October 2026 set (current, app version 6.4.32)
 
-These eight images are what `zapstore.yaml` lists, in display order. Each one is a real capture of the Chama web client at tag `v6.4.32` (commit `0ac4c089`), built with `CHAMA_RELEASE=1` so the version chip reads `v6.4.32` with no dev stamp. Viewport 412 × 915 at 2.625× (a Pixel-sized phone), dark theme. The capture is placed under a short caption drawn from the landing page's reasons, on a 1080 × 2340 canvas in DM Sans.
+These eight images are what `zapstore.yaml` lists, in display order. Each one is a real capture of the Chama web client at tag `v6.4.32` (commit `0ac4c089`), built with `CHAMA_RELEASE=1` so the version chip reads `v6.4.32` with no dev stamp. Viewport 412 × 915 at 2.625× (a Pixel-sized phone), light theme (Settings > light mode), chosen for visibility on the store card. The capture is placed under a short caption drawn from the landing page's reasons, on a 1080 × 2340 canvas in DM Sans.
 
 | File | Screen | Caption |
 | --- | --- | --- |
