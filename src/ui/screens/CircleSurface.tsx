@@ -210,7 +210,7 @@ export function CircleSurface({ parent, escrows, viewerPubkey, backLabel, childr
           </div>;
         })}
     </div>
-    {profile && <OverlaySheet title={nym(profile)} subtitle={profile} onClose={()=>setProfile(null)}>{ownShare?.participants[Role.ARBITER] !== profile && <ConductFacts pubkey={profile} showEmpty />}<CopyButton value={profile} />{ownShare?.participants[Role.ARBITER] === profile && <TradeArbiterRecord state={ownShare} trades={allStates} fetchBonds={fetchBonds} profileNames={profileNames} kind0Enabled={kind0Enabled}/>}</OverlaySheet>}
+    {profile && <OverlaySheet title={nym(profile)} subtitle={profile} onClose={()=>setProfile(null)}>{ownShare?.participants[Role.ARBITER] !== profile && <ConductFacts pubkey={profile} showEmpty detail />}<CopyButton value={profile} />{ownShare?.participants[Role.ARBITER] === profile && <TradeArbiterRecord state={ownShare} trades={allStates} fetchBonds={fetchBonds} profileNames={profileNames} kind0Enabled={kind0Enabled}/>}</OverlaySheet>}
     <p style={{ textAlign: "center", color: T.muted, lineHeight: 1.7, fontSize: 13, margin: "22px auto 0", maxWidth: 430 }}>{t("circle.footer")}</p>
   </section>;
 }

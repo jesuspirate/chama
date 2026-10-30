@@ -6,7 +6,7 @@ import type { EsploraFetch } from '../bond-multisig/fund-watcher.js';
 import { parseEscrowEvent, sortEventChain } from './event-parser.js';
 import { replayEventChain, getWinner } from './state-machine.js';
 import { finalArbiterSettlementProof, finalCoopSettlementProof, settlementUnsignedId } from './onchain-settlement-transport.js';
-import { EscrowEventKind as Kind, Outcome, Role, type EscrowPayload, type EscrowState, type NostrEvent, type VotePayload } from './types.js';
+import { EscrowEventKind as Kind, Outcome, Role, type EscrowPayload, type EscrowState, type NostrEvent, type ParsedEscrowEvent, type VotePayload } from './types.js';
 
 /** Only newly advertised public-conduct trades disclose these minimal facts.
  * Never disclose historical encrypted events, chat, fiat handles or shares. */
@@ -22,7 +22,7 @@ export function publicConductTags(state: EscrowState, payload: EscrowPayload): s
 }
 
 /** Public replay never uses the viewer's decrypted/private trade cache. */
-export function replayPublicConduct(events: readonly NostrEvent[]): EscrowState | null {
+function parsePublicConduct(events: readonly NostrEvent[]): ParsedEscrowEvent[] | null {
   const verified = events.filter(e=>{
     try { return verifyEvent({id:e.id,sig:e.sig,pubkey:e.pubkey,kind:e.kind,created_at:e.created_at,tags:e.tags,content:e.content}); } catch { return false; }
   });
@@ -31,14 +31,29 @@ export function replayPublicConduct(events: readonly NostrEvent[]): EscrowState 
   if (!create) return null;
   const root = parseEscrowEvent(create,create.content);
   if (!root.ok || root.event.payload.type!=='escrow:create' || !root.event.payload.onchainPublicConduct) return null;
-  const parsed = signed.flatMap(e=>{
+  return signed.flatMap(e=>{
     const tags = e.tags.filter(t=>t[0]==='conduct');
     if (tags.length>1) return [];
     const result = parseEscrowEvent(e,tags[0]?.[1] ?? e.content,true);
     return result.ok ? [result.event] : [];
   });
+}
+
+export function replayPublicConduct(events: readonly NostrEvent[]): EscrowState | null {
+  const parsed = parsePublicConduct(events);
+  if (!parsed) return null;
   const result = replayEventChain(sortEventChain(parsed));
   return result.ok ? result.state : null;
+}
+
+/** Every signed, parseable VOTE of a public trade, including ones the replay
+ * refused (a second vote by the same key). Only these show a key that signed
+ * two opposite rulings; the replayed state keeps the first and drops the rest. */
+export function replayPublicConductWithVotes(events: readonly NostrEvent[]): { state: EscrowState; votes: ParsedEscrowEvent[] } | null {
+  const parsed = parsePublicConduct(events);
+  if (!parsed) return null;
+  const result = replayEventChain(sortEventChain(parsed));
+  return result.ok ? { state: result.state, votes: parsed.filter(e=>e.kind===Kind.VOTE) } : null;
 }
 
 export interface ConductSpend {
@@ -47,7 +62,7 @@ export interface ConductSpend {
   /** Actual witness leaf reported for every escrow input, not a PSBT claim. */
   leaf: 'coop' | 'dispute' | 'other' | 'unspent';
 }
-export interface ConductTrade { state: EscrowState; spend: ConductSpend | null; }
+export interface ConductTrade { state: EscrowState; spend: ConductSpend | null; votes?: ParsedEscrowEvent[]; }
 export interface PublicConductRecord { standing?: import("./conduct-standing.js").ConductStanding; marks: number; complete: boolean; trades: ConductTrade[]; }
 
 export async function readConductSpend(state: EscrowState, fetchJson: EsploraFetch): Promise<ConductSpend | null> {
