@@ -722,6 +722,27 @@ const walletC = "e".repeat(64);
   assert.equal(store.has(scopedStorageKey(nwc.NWC_REMOVED_STORAGE_KEY, user)), false, "nothing left to remember");
 }
 {
+  // Re-review RR1: the same wallet saved again after a removal that never
+  // reached the sealed list stays saved.
+  fresh();
+  const s = fakeSealer();
+  s.sealed.set(sealedKey, JSON.stringify([entry(walletA, "e".repeat(64))]));
+  await nwc.hydrateSavedNwcConnections(s);
+  const set = s.set;
+  s.set = async () => { s.set = set; throw new Error("quota"); };
+  nwc.deleteSavedNwcConnection(entry(walletA, "").id);
+  await nwc.flushSealedNwcWrites();
+  assert.deepEqual(wallets(), []);
+  nwc.addOrTouchSavedNwcConnection(conn(walletA, "e".repeat(64)));
+  assert.deepEqual(wallets(), [walletA], "shows again");
+  await nwc.flushSealedNwcWrites();
+  assert.deepEqual(wallets(), [walletA], "and stays");
+  nwc.resetSealedNwcForTests();
+  await nwc.hydrateSavedNwcConnections(s);
+  assert.deepEqual(wallets(), [walletA], "after a restart too");
+  assert.deepEqual(sealedWallets(s), [walletA]);
+}
+{
   // Second review N2: a rewrite that would drop an entry this version can't
   // read archives the stored list first.
   fresh();

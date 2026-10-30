@@ -426,6 +426,8 @@ export function TradeDetail({
   const refreshSavedNwcs = () => setSavedNwcs(listSavedNwcConnections());
   // Saved wallets are read from the encrypted store after sign-in (M9):
   // pick them up when they arrive, or when another tab changes them.
+  // The Fund and Claim holds reset when the wallet they would pay from
+  // changes (resetKey), so a hold never pays a wallet it didn't start with.
   useEffect(() => {
     const refresh = () => setSavedNwcs(listSavedNwcConnections());
     window.addEventListener("chama:saved-wallets", refresh);
@@ -2230,7 +2232,7 @@ export function TradeDetail({
               <HoldToConfirm
                 disabled={(fiatCategory && !selectedHandleId) || locking || directNwcFundPhase !== null || fundingInProgress || !participants.buyer || fundUnavailable || lockBlockedByNoArbiter || menuSelectionMissing || menuOrderNotFinal}
                 busy={locking || directNwcFundPhase !== null}
-                resetKey={`${state.id}:lock`}
+                resetKey={`${state.id}:lock:${activeNwc?.id ?? ""}`}
                 hint={t("common.holdToConfirm")}
                 armedLabel={t("common.holdArmed")}
                 onConfirm={() => { void (async () => {
@@ -2830,7 +2832,7 @@ export function TradeDetail({
                 plain={!(collectIsHold() || (!forceClaimMethodChooser && !!activeNwc && !!onClaimDirectNwc))}
                 disabled={claiming || directNwcClaimPhase !== null || bootProbeFailed || claimRetryBlocked || payoutConfirming}
                 busy={claiming || directNwcClaimPhase !== null}
-                resetKey={`${state.id}:claim:${state.status}`}
+                resetKey={`${state.id}:claim:${state.status}:${activeNwc?.id ?? ""}`}
                 hint={t("common.holdToConfirm")}
                 armedLabel={t("common.holdArmed")}
                 onConfirm={() => { void (async () => {

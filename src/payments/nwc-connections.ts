@@ -165,7 +165,9 @@ function writeRaw(
 //    over; other tabs are told to read it again, and keep changes of their
 //    own that aren't stored yet;
 //  - a wallet removed here is remembered (by its id, never its secret) until
-//    the sealed list without it is stored, so a merge can't bring it back;
+//    the sealed list without it is stored, so a merge can't bring it back.
+//    Removed wallets are taken out before a change is applied, so the same
+//    wallet saved again gets a new id and stays;
 //  - while the sealed list can't be read, or doesn't parse, nothing is
 //    written over it: the list stays plain, as before, and is merged later.
 //    A rewrite that would drop an entry this version can't read archives
@@ -380,8 +382,8 @@ function refreshFromStore(scope: unknown): void {
   void queueSealedNwc(async () => {
     const read = await readSealed(k.sealer, k.scope);
     if (read === "unreadable" || kept !== k) return;
-    k.list = withoutRemoved(k.scope, k.pending.reduce((list, change) => change(list),
-      dedupeConnections([...plainSnapshot(k.scope).list, ...read.list])));
+    k.list = k.pending.reduce((list, change) => change(list),
+      withoutRemoved(k.scope, [...plainSnapshot(k.scope).list, ...read.list]));
     if (typeof window !== "undefined") window.dispatchEvent(new Event("chama:saved-wallets"));
   }).catch(() => {});
 }
@@ -395,7 +397,7 @@ function commit(change: Change, opts: { allowEmptyOverwrite?: boolean } = {}): v
     writeRaw(change(readRaw()), opts);
     return;
   }
-  k.list = withoutRemoved(scope, change(readRaw()));
+  k.list = change(readRaw());
   k.pending.push(change);
   const forget = () => { const i = k.pending.indexOf(change); if (i !== -1) k.pending.splice(i, 1); };
   void queueSealedNwc(async () => {
@@ -405,12 +407,12 @@ function commit(change: Change, opts: { allowEmptyOverwrite?: boolean } = {}): v
     if (read === "unreadable") throw new Error("Saved wallets can't be read right now");
     const plain = plainSnapshot(k.scope);
     const removed = readRemoved(k.scope);
-    const next = withoutRemoved(k.scope, change(dedupeConnections([...plain.list, ...read.list])));
+    const next = dedupeConnections(change(withoutRemoved(k.scope, [...plain.list, ...read.list])));
     await storeSealed(k.sealer, k.scope, next, read, plain.text);
     // Removals now stored are no longer remembered.
     writeRemoved(k.scope, readRemoved(k.scope).filter(id => !removed.includes(id)));
     forget();
-    if (kept === k) k.list = withoutRemoved(k.scope, k.pending.reduce((list, c) => c(list), next));
+    if (kept === k) k.list = k.pending.reduce((list, c) => c(list), withoutRemoved(k.scope, next));
     announce(k.scope);
   }).catch((e) => {
     // Never lost: this change is kept plainly, and merged into the sealed
@@ -418,7 +420,7 @@ function commit(change: Change, opts: { allowEmptyOverwrite?: boolean } = {}): v
     console.warn("[chama] saved wallets: encrypted store not written in time; kept plainly", e);
     forget();
     if (kept === k && getLocalStorageUserScope() === k.scope) {
-      writeRaw(withoutRemoved(k.scope, change(dedupeConnections([...readRawPlain(), ...k.list]))), { allowEmptyOverwrite: true });
+      writeRaw(change(withoutRemoved(k.scope, [...readRawPlain(), ...k.list])), { allowEmptyOverwrite: true });
     }
   });
 }
