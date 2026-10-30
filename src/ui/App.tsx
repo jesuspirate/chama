@@ -404,8 +404,9 @@ async function readSavedNsec(): Promise<string | null> {
     return value?.trim() || null;
   }
   // Browser, PWA and Tauri all read the same per-origin storage; M9 keeps
-  // an encrypted copy beside the plain one (sealed-store.ts). A kept key that
-  // can't be opened throws SavedKeyUnreadableError: never read as "no key".
+  // the key sealed only (sealed-store.ts), with its origin plainly beside it
+  // as the witness. A kept key that can't be opened throws
+  // SavedKeyUnreadableError: never read as "no key".
   try {
     return await readBrowserSavedNsec(localStorage, browserNsecSealer());
   } catch (e) {
@@ -422,7 +423,7 @@ function browserNsecSealer(): NsecSealer | undefined {
 
 async function writeSavedNsec(nsec: string, origin: "generated" | "imported"): Promise<void> {
   const native = Capacitor.isNativePlatform();
-  await saveNsec(nsec, origin, localStorage, native ? Preferences : undefined);
+  await saveNsec(nsec, origin, localStorage, native ? Preferences : undefined, native ? undefined : browserNsecSealer());
 }
 
 /** The key this session signed in with (connect consumes the window copy),

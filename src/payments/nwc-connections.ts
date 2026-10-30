@@ -106,7 +106,15 @@ function readStored(key: string): SavedNwcConnection[] {
   }
 }
 
+/** The saved list: the sealed list once read, with any plain list beside it. */
 function readRaw(): SavedNwcConnection[] {
+  const k = keptFor(getLocalStorageUserScope());
+  if (!k) return readRawPlain();
+  const plain = readStored(NWC_CONNECTIONS_STORAGE_KEY);
+  return dedupeConnections([...(plain.length > 0 ? plain : readStored(NWC_CONNECTIONS_BACKUP_STORAGE_KEY)), ...k.list]);
+}
+
+function readRawPlain(): SavedNwcConnection[] {
   const primary = readStored(NWC_CONNECTIONS_STORAGE_KEY);
   if (primary.length > 0) return primary;
 
@@ -141,27 +149,37 @@ function writeRaw(
   }
 }
 
-// M9, step 2 (6.4.32): the reader. The plain list is still the one kept and
-// written, so 6.4.29-6.4.31 still see the wallets if they run again here.
-// What this release adds, once per sign-in:
-//  - with no plain list, a list kept sealed under the new name (by the
-//    release that stops writing plain lists) is the list: it is written back
-//    plainly and, once that reads back, the sealed copy is removed. One that
-//    can't be opened stays where it is;
-//  - the copy 6.4.29-6.4.31 wrote is no longer written. A copy equal to the
+// M9. Step 2 (6.4.32) was the reader; the last step (6.4.33) keeps the list
+// sealed only, once this identity's list has been read (hydrate, at sign-in):
+//  - a plain list (older version, or written before hydrate, or while the
+//    store couldn't be read) is merged into the sealed list, and dropped only
+//    once the merged list reads back and the plain one hasn't changed since;
+//  - every change is applied again, inside the queue, to the sealed list as
+//    stored right then, so a change made in another tab is never written
+//    over; other tabs are told to read it again;
+//  - while the sealed list can't be read, or doesn't parse, nothing is
+//    written over it: the list stays plain, as before, and is merged later;
+//  - a sealed write that fails falls back to the plain list, never lost;
+//  - the copy 6.4.29-6.4.31 wrote is never written. A copy equal to the
 //    plain list is deleted; any other is archived first, never deleted unread.
+// 6.4.32 still reads the sealed list; 6.4.29-6.4.31 can't, and show no saved
+// wallets (they are still here, under a name they never touch).
 export interface NwcSealer {
   get(name: string): Promise<string | null>;
+  /** Store, then read back; throws unless it reads back (sealedSet). */
+  set(name: string, value: string): Promise<void>;
   delete(name: string): Promise<void>;
   /** Copy the stored record, unread, to an archive name (sealedArchive). */
   archive(name: string): Promise<string | null>;
 }
 
-/** Where a release that stops keeping plain lists keeps them, sealed; a name
- *  6.4.29-6.4.31 never touch. */
+/** Where saved wallets are kept, sealed; a name 6.4.29-6.4.31 never touch. */
 export const NWC_SEALED_STORAGE_KEY = "chama_nwc_connections_sealed_v2";
 
-let sealedReads: Promise<void> = Promise.resolve();
+/** The sealed list as last read or written, for the identity it belongs to.
+ *  Null until hydrate has read it: until then the plain list is used. */
+let kept: { scope: string; sealer: NwcSealer; list: SavedNwcConnection[] } | null = null;
+let sealedOps: Promise<void> = Promise.resolve();
 
 function bounded(op: () => Promise<void>): Promise<void> {
   return new Promise<void>((resolve, reject) => {
@@ -171,29 +189,149 @@ function bounded(op: () => Promise<void>): Promise<void> {
   });
 }
 
-/** Read this identity's sealed list when there is no plain one, and clear
- *  the old encrypted copy. Call after the user scope is set. */
+/** One at a time in this tab and, where the browser offers it, across tabs. */
+function queueSealedNwc(op: () => Promise<void>): Promise<void> {
+  const locks = (globalThis as { navigator?: { locks?: { request?: (name: string, cb: () => Promise<void>) => Promise<void> } } })
+    .navigator?.locks;
+  const run = () => typeof locks?.request === "function" ? locks.request("chama-sealed-nwc", () => bounded(op)) : bounded(op);
+  const next = sealedOps.then(run, run);
+  sealedOps = next.catch(() => {});
+  return next;
+}
+
+function keptFor(scope: string | null): typeof kept {
+  return scope && kept?.scope === scope ? kept : null;
+}
+
+function plainName(base: string, scope: string): string {
+  return scopedStorageKey(base, scope);
+}
+
+/** This identity's plain list as stored right now (primary, else backup),
+ *  and its exact stored text, so a later drop can check nothing changed. */
+function plainSnapshot(scope: string): { list: SavedNwcConnection[]; text: string } {
+  if (getLocalStorageUserScope() === scope) readRawPlain(); // legacy key moves under the scope
+  let primary: string | null = null;
+  let backup: string | null = null;
+  try {
+    primary = localStorage.getItem(plainName(NWC_CONNECTIONS_STORAGE_KEY, scope));
+    backup = localStorage.getItem(plainName(NWC_CONNECTIONS_BACKUP_STORAGE_KEY, scope));
+  } catch {}
+  const list = parsePlain(primary);
+  return { list: list.length > 0 ? list : parsePlain(backup), text: `${primary}\u0000${backup}` };
+}
+
+function parsePlain(raw: string | null): SavedNwcConnection[] {
+  try {
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? dedupeConnections(parsed.filter(isSavedNwcConnection)) : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Drop the plain list, only if it is still exactly `text`. */
+function dropPlain(scope: string, text: string): void {
+  if (plainSnapshot(scope).text !== text) return;
+  try {
+    localStorage.removeItem(plainName(NWC_CONNECTIONS_STORAGE_KEY, scope));
+    localStorage.removeItem(plainName(NWC_CONNECTIONS_BACKUP_STORAGE_KEY, scope));
+  } catch {}
+}
+
+/** Read the sealed list: null when none, "unreadable" when it can't be read
+ *  or doesn't parse (left in place either way). */
+async function readSealed(sealer: NwcSealer, scope: string): Promise<{ list: SavedNwcConnection[]; raw: string | null } | "unreadable"> {
+  let raw: string | null;
+  try { raw = await sealer.get(plainName(NWC_SEALED_STORAGE_KEY, scope)); } catch { return "unreadable"; }
+  if (raw === null) return { list: [], raw };
+  const list = parseKeptList(raw);
+  return list ? { list: dedupeConnections(list), raw } : "unreadable";
+}
+
+/** Write `list` sealed for `scope` (read back), then drop the plain list if
+ *  it is unchanged since `plainText`. */
+async function storeSealed(sealer: NwcSealer, scope: string, list: SavedNwcConnection[], prevRaw: string | null, plainText: string): Promise<void> {
+  const name = plainName(NWC_SEALED_STORAGE_KEY, scope);
+  const serialized = JSON.stringify(dedupeConnections(list));
+  if (serialized !== prevRaw) await sealer.set(name, serialized);
+  if (await sealer.get(name) !== serialized) throw new Error("Saved wallets did not read back");
+  dropPlain(scope, plainText);
+}
+
+function announce(scope: string): void {
+  if (typeof window !== "undefined") window.dispatchEvent(new Event("chama:saved-wallets"));
+  try { channel()?.postMessage({ scope }); } catch {}
+}
+
+let bc: BroadcastChannel | null | undefined;
+function channel(): BroadcastChannel | null {
+  if (bc !== undefined) return bc;
+  bc = typeof BroadcastChannel === "function" ? new BroadcastChannel("chama-saved-wallets") : null;
+  (bc as unknown as { unref?: () => void } | null)?.unref?.(); // never keeps a Node test alive
+  if (bc) bc.onmessage = (event: MessageEvent) => {
+    const scope = (event.data as { scope?: unknown } | null)?.scope;
+    const k = kept;
+    if (!k || typeof scope !== "string" || scope !== k.scope) return;
+    // Another tab changed this identity's list: read it again.
+    void queueSealedNwc(async () => {
+      const read = await readSealed(k.sealer, k.scope);
+      if (read === "unreadable" || kept !== k) return;
+      k.list = dedupeConnections([...plainSnapshot(k.scope).list, ...read.list]);
+      if (typeof window !== "undefined") window.dispatchEvent(new Event("chama:saved-wallets"));
+    }).catch(() => {});
+  };
+  return bc;
+}
+
+/** Apply `change` to the saved list, and keep the result: sealed when this
+ *  identity's sealed list has been read, plainly otherwise. */
+function commit(change: (list: SavedNwcConnection[]) => SavedNwcConnection[], opts: { allowEmptyOverwrite?: boolean } = {}): void {
+  const scope = getLocalStorageUserScope();
+  const k = keptFor(scope);
+  if (!k || !scope) {
+    writeRaw(change(readRaw()), opts);
+    return;
+  }
+  k.list = dedupeConnections(change(readRaw()));
+  void queueSealedNwc(async () => {
+    // Applied again to the list as stored right now, so nothing another tab
+    // wrote meanwhile is written over.
+    const read = await readSealed(k.sealer, k.scope);
+    if (read === "unreadable") throw new Error("Saved wallets can't be read right now");
+    const plain = plainSnapshot(k.scope);
+    const next = dedupeConnections(change(dedupeConnections([...plain.list, ...read.list])));
+    await storeSealed(k.sealer, k.scope, next, read.raw, plain.text);
+    if (kept === k) k.list = next;
+    announce(k.scope);
+  }).catch((e) => {
+    // Never lost: kept plainly, and merged into the sealed list next time.
+    console.warn("[chama] saved wallets: encrypted store not written; kept plainly", e);
+    if (kept === k && getLocalStorageUserScope() === k.scope) writeRaw(dedupeConnections([...readRawPlain(), ...k.list]), { allowEmptyOverwrite: true });
+  });
+}
+
+/** At sign-in: read this identity's sealed list, merge any plain list into
+ *  it, and keep it sealed from then on. Clears the old encrypted copy. Call
+ *  after the user scope is set. */
 export async function hydrateSavedNwcConnections(sealer: NwcSealer): Promise<void> {
   const scope = getLocalStorageUserScope();
   if (!scope) return;
+  if (kept && kept.scope !== scope) kept = null;
+  channel();
   const run = async () => {
     if (getLocalStorageUserScope() !== scope) return;
-    const plain = getScopedStorageItem(NWC_CONNECTIONS_STORAGE_KEY);
-    const sealedName = scopedStorageKey(NWC_SEALED_STORAGE_KEY, scope);
-    if (plain === null && getScopedStorageItem(NWC_CONNECTIONS_BACKUP_STORAGE_KEY) === null) {
-      let sealed: string | null = null;
-      try { sealed = await sealer.get(sealedName); } catch (e) {
-        console.warn("[chama] saved wallets kept encrypted can't be opened right now; left in place", e);
+    const read = await readSealed(sealer, scope);
+    if (read === "unreadable") {
+      console.warn("[chama] saved wallets kept encrypted can't be opened right now; left in place, plain list used");
+    } else if (getLocalStorageUserScope() === scope) {
+      const plain = plainSnapshot(scope);
+      const merged = dedupeConnections([...plain.list, ...read.list]);
+      if (plain.list.length > 0 || JSON.stringify(merged) !== read.raw) {
+        await storeSealed(sealer, scope, merged, read.raw, plain.text);
       }
-      const list = sealed === null ? [] : parseKeptList(sealed);
-      if (list && list.length > 0 && getLocalStorageUserScope() === scope) {
-        // A wallet saved while that read ran is kept beside the read list.
-        const serialized = JSON.stringify(dedupeConnections([...readStored(NWC_CONNECTIONS_STORAGE_KEY), ...list]));
-        setScopedStorageItem(NWC_CONNECTIONS_STORAGE_KEY, serialized);
-        setScopedStorageItem(NWC_CONNECTIONS_BACKUP_STORAGE_KEY, serialized);
-        if (getScopedStorageItem(NWC_CONNECTIONS_STORAGE_KEY) === serialized && await sealer.get(sealedName) === sealed) {
-          await sealer.delete(sealedName);
-        }
+      if (getLocalStorageUserScope() === scope) {
+        kept = { scope, sealer, list: merged };
         if (typeof window !== "undefined") window.dispatchEvent(new Event("chama:saved-wallets"));
       }
     }
@@ -203,13 +341,12 @@ export async function hydrateSavedNwcConnections(sealer: NwcSealer): Promise<voi
     let unreadable = false;
     try { old = await sealer.get(oldName); } catch { unreadable = true; }
     if (!unreadable && old === null) return;
-    const now = getScopedStorageItem(NWC_CONNECTIONS_STORAGE_KEY);
+    const keptNow = keptFor(scope);
+    const now = keptNow ? JSON.stringify(keptNow.list) : getScopedStorageItem(NWC_CONNECTIONS_STORAGE_KEY);
     if (unreadable || old !== now) await sealer.archive(oldName);
     await sealer.delete(oldName);
   };
-  const next = sealedReads.then(() => bounded(run), () => bounded(run));
-  sealedReads = next.catch((e) => console.warn("[chama] saved wallets: encrypted store not read", e));
-  await sealedReads;
+  await queueSealedNwc(run).catch((e) => console.warn("[chama] saved wallets: encrypted store not read; plain list kept", e));
 }
 
 /** A kept sealed list, or null when it doesn't parse (left in place). */
@@ -222,14 +359,16 @@ function parseKeptList(raw: string): SavedNwcConnection[] | null {
   }
 }
 
-/** Wait for pending encrypted reads (tests). */
-export function flushSealedNwcWrites(): Promise<void> {
-  return sealedReads;
+/** Wait for pending encrypted reads and writes (tests). */
+export async function flushSealedNwcWrites(): Promise<void> {
+  let seen: Promise<void>;
+  do { seen = sealedOps; await seen; } while (seen !== sealedOps);
 }
 
 /** Test hook. */
 export function resetSealedNwcForTests(): void {
-  sealedReads = Promise.resolve();
+  sealedOps = Promise.resolve();
+  kept = null;
 }
 
 export function listSavedNwcConnections(): SavedNwcConnection[] {
@@ -241,7 +380,7 @@ export function listSavedNwcConnections(): SavedNwcConnection[] {
 }
 
 export function deleteSavedNwcConnection(id: string): void {
-  writeRaw(readRaw().filter(c => c.id !== id), { allowEmptyOverwrite: true });
+  commit(list => list.filter(c => c.id !== id), { allowEmptyOverwrite: true });
   if (typeof window !== "undefined") window.dispatchEvent(new Event("chama:saved-wallets"));
 }
 
@@ -249,29 +388,7 @@ export function addOrTouchSavedNwcConnection(connectionString: string): SavedNwc
   const normalized = normalizeConnectionString(connectionString);
   const parsed = parseNwcConnectionString(normalized);
   const key = connectionKey(normalized);
-  const connections = readRaw();
   const nowSec = Math.floor(Date.now() / 1000);
-  const idx = connections.findIndex(c => {
-    try {
-      return connectionKey(c.connectionString) === key;
-    } catch {
-      return false;
-    }
-  });
-  if (idx !== -1) {
-    const next: SavedNwcConnection = {
-      ...connections[idx],
-      connectionString: normalized,
-      label: connections[idx].label || parsed.lud16 || labelForConnection(normalized),
-      walletPubkey: parsed.walletPubkey,
-      relayCount: parsed.relays.length,
-      lastUsedAt: nowSec,
-    };
-    connections[idx] = next;
-    writeRaw(connections);
-    return next;
-  }
-
   const entry: SavedNwcConnection = {
     id: generateId(),
     connectionString: normalized,
@@ -281,12 +398,36 @@ export function addOrTouchSavedNwcConnection(connectionString: string): SavedNwc
     createdAt: nowSec,
     lastUsedAt: nowSec,
   };
-  writeRaw([entry, ...connections]);
-  return entry;
+  // The same change applies to whichever list is current when it is kept.
+  const upsert = (connections: SavedNwcConnection[]): SavedNwcConnection[] => {
+    const idx = connections.findIndex(c => {
+      try {
+        return connectionKey(c.connectionString) === key;
+      } catch {
+        return false;
+      }
+    });
+    if (idx === -1) return [entry, ...connections];
+    const next = [...connections];
+    next[idx] = {
+      ...connections[idx],
+      connectionString: normalized,
+      label: connections[idx].label || parsed.lud16 || labelForConnection(normalized),
+      walletPubkey: parsed.walletPubkey,
+      relayCount: parsed.relays.length,
+      lastUsedAt: nowSec,
+    };
+    return next;
+  };
+  const saved = upsert(readRaw()).find(c => {
+    try { return connectionKey(c.connectionString) === key; } catch { return false; }
+  })!;
+  commit(upsert);
+  return saved;
 }
 
 export function renameSavedNwcConnection(id: string, label: string): void {
-  writeRaw(readRaw().map(connection => connection.id === id
+  commit(list => list.map(connection => connection.id === id
     ? { ...connection, label: label.trim().slice(0, 64) || labelForConnection(connection.connectionString) } : connection));
   if (typeof window !== "undefined") window.dispatchEvent(new Event("chama:saved-wallets"));
 }
