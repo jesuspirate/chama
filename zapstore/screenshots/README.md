@@ -21,6 +21,7 @@ How they were made, so the next refresh can repeat it:
 - Nobody joined, locked or funded anything. The arbiter name in image 2 is the app's own automatic pick.
 - One edit, disclosed: the test browser cannot reach a Fedimint federation, so the federation pill stayed on "Connecting...". Before each capture, that pill's text and dot were set to the state the app shows once the federation answers ("Ready", "Tayari" in Kiswahili). Nothing else on screen was changed.
 - No recovery key appears in any image.
+- Size: Zapstore's CDN refused the first 462-567 KB PNGs ("upload exceeds the size limit"). The images are now 256-colour PNGs from libimagequant (dithering 0.5, max quality 90), 133-146 KB each, still 1080 × 2340. `scripts/check-zapstore-images.mjs` refuses any listing image over 190,000 bytes, in `npm test` and before every Zapstore publish, dry runs included.
 
 The older September 2026 captures (`*-v6.png`, 6.4.2 UI) are kept in this folder but are no longer listed.
 

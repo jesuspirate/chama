@@ -221,6 +221,12 @@ echo "  repo    : ${REPO:-not required}"
 [ "$DRY_RUN" = "1" ] && echo "  mode    : dry-run"
 echo "────────────────────────────────────────────────────────────────"
 
+# Check listing images even on --dry-run, so a refused upload shows up in
+# the rehearsal instead of in the middle of the signed publish.
+if [[ "$TARGET" =~ ^(zapstore|zapstore-listing|full)$ ]]; then
+  node "$ROOT_DIR/scripts/check-zapstore-images.mjs" "${CHAMA_ZAPSTORE_CONFIG:-$ROOT_DIR/zapstore.yaml}"
+fi
+
 case "$TARGET" in
   github)
     BRANCH=$(git branch --show-current)
