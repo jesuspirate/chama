@@ -66,6 +66,7 @@ export const onchain: Record<string, string> = {
   "onchain.noCapableArbiter": "Escrow ya mnyororo inahitaji msuluhishi mwenye ufunguo wa dhamana uliothibitishwa na dhamana ya kutosha kwa biashara hii. Kiwango cha juu ambacho msuluhishi yeyote hapa anaweza kufunika leo ni sats {amount}. Punguza kiasi au chagua ecash.",
   "onchain.coverLimit": "Wasuluhishi hapa wanaweza kufunika biashara za mnyororo hadi sats {amount} leo. Zaidi ya hapo, tumia ecash au punguza kiasi.",
   "onchain.coverNone": "Leo hakuna msuluhishi hapa anayeweza kufunika biashara ya mnyororo ya kiasi hiki. Tumia ecash.",
+  "onchain.coverOwnBond": "Dhamana yako mwenyewe haifuniki kamwe tangazo lako mwenyewe.",
   "onchain.coverUnchecked": "Hatukuweza kukagua dhamana za wasuluhishi sasa hivi. Kuchapisha kutakagua tena.",
   "onchain.coverUncheckedPublish": "Hatukuweza kukagua sasa hivi dhamana za wasuluhishi zitabaki zimefungwa kwa muda gani. Jaribu tena, au chagua ecash.",
   "onchain.bondCovering": "Dhamana ya {name} inafunika: {trades}.",

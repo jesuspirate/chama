@@ -15,5 +15,6 @@ export function OnchainCoverLine({ cover, coverageSats }: { cover: OnchainCover;
   const text = cover.sats < Number(ONCHAIN_ESCROW_MINIMUM_SATS)
     ? t("onchain.coverNone")
     : t("onchain.coverLimit", { amount: cover.sats.toLocaleString() });
-  return <div role="status" data-onchain-cover-limit style={{ fontSize: 12.5, color: T.amber, marginTop: 8, lineHeight: 1.45, fontWeight: 700 }}>{text}</div>;
+  const own = cover.ownBond ? ` ${t("onchain.coverOwnBond")}` : "";
+  return <div role="status" data-onchain-cover-limit style={{ fontSize: 12.5, color: T.amber, marginTop: 8, lineHeight: 1.45, fontWeight: 700 }}>{text}{own}</div>;
 }

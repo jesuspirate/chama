@@ -19,7 +19,7 @@ Object.defineProperty(globalThis, "localStorage", { configurable: true, value: {
 
 const { writeCachedCommunityBonds, readCachedCommunityBonds } = await import("../arbiters/bonded-pool-cache.js");
 const { assignableBondedArbiters, largestOnchainCoverSats, arbiterBondCapacities } = await import("../arbiters/exposure.js");
-const { seatableOnchainBonds, suggestedEscrowMode, onchainCoverShort, pinnedEscrowModeOnNext } = await import("./onchain-cover.js");
+const { holdsSeatableBond, seatableOnchainBonds, suggestedEscrowMode, onchainCoverShort, pinnedEscrowModeOnNext } = await import("./onchain-cover.js");
 const { OnchainCoverLine } = await import("./components/OnchainCoverLine.js");
 
 const arb = "a".repeat(64), other = "c".repeat(64), seller = "d".repeat(64), key = "b".repeat(64);
@@ -157,9 +157,25 @@ assert.match(line(ready(128_400), 150_000), /up to 128,400 sats today\. Above th
 assert.equal(line(ready(128_400), 128_400), "", "silent when the amount fits");
 assert.equal(line({ status: "loading" }, 150_000), "", "never shows a number it has not read");
 assert.match(line(ready(20_000), 150_000), /No arbiter here can cover an on-chain trade this size today/, "under the on-chain minimum there is no on-chain choice to name");
+assert.match(line({ status: "ready", sats: 0, ownBond: true }, 150_000),
+  /No arbiter here can cover an on-chain trade this size today\. Use ecash\. Your own bond never covers your own listing\./,
+  "a bonded seller is told their own bond is left out (Jet, rc.1 step 4)");
+assert.doesNotMatch(line(ready(0), 150_000), /Your own bond/, "a seller with no bond is not told about one");
+assert.equal(line({ status: "ready", sats: 200_000, ownBond: true }, 150_000), "", "still silent when the amount fits");
+// The flag comes from the same seatable set the cover reads.
+assert.equal(holdsSeatableBond(seatableOnchainBonds([older, topUp], TIP), arb.toUpperCase()), true, "the bonded seller (rc.1: Bitcrazy)");
+assert.equal(largestOnchainCoverSats({ bonds: seatableOnchainBonds([older, topUp], TIP), allTrades: [], excludePubkey: arb }), 0,
+  "and their own bonds still cover nothing for them");
+assert.equal(holdsSeatableBond(seatableOnchainBonds([older, topUp], TIP), seller), false, "a seller without a bond");
+assert.equal(holdsSeatableBond(seatableOnchainBonds([bond({ lockUntil: TIP + 10 })], TIP), arb), false,
+  "a bond under the horizon is not one the seller holds for this purpose");
+assert.equal(holdsSeatableBond(seatableOnchainBonds([older], null), arb), false, "unknown height: nothing claimed");
+assert.equal(holdsSeatableBond(seatableOnchainBonds([older], TIP), null), false);
+assert.match(readFileSync(new URL("./onchain-cover.ts", import.meta.url), "utf8"),
+  /ownBond: holdsSeatableBond\(seatable, viewerPubkey\)/, "the hook sets the flag from the seatable set");
 assert.match(line({ status: "unchecked" }, 150_000), /Couldn&#x27;t check arbiter cover just now/);
 for (const lang of LANGS) {
-  for (const k of ["onchain.coverLimit", "onchain.coverNone", "onchain.coverUnchecked", "onchain.coverUncheckedPublish", "onchain.bondCovering", "onchain.bondCoveringTrade", "create.coverUseEcash", "create.coverChangeAmount"]) {
+  for (const k of ["onchain.coverLimit", "onchain.coverNone", "onchain.coverOwnBond", "onchain.coverUnchecked", "onchain.coverUncheckedPublish", "onchain.bondCovering", "onchain.bondCoveringTrade", "create.coverUseEcash", "create.coverChangeAmount"]) {
     assert.notEqual(translate(lang, k), k, `${lang} ${k}`);
   }
   assert.doesNotMatch(translate(lang, "onchain.noCapableArbiter"), /another|otro árbitro|autre arbitre|msuluhishi mwingine/, `${lang}: no "another arbiter"`);
