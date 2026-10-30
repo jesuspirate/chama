@@ -65,6 +65,7 @@ export const onchain: Record<string, string> = {
   "onchain.noCapableArbiter": "El depósito en cadena necesita un árbitro con una clave de fianza verificada y suficiente fianza libre para cubrir este intercambio. Lo máximo que un árbitro de aquí puede cubrir hoy es {amount} sats. Reduce el importe o elige ecash.",
   "onchain.coverLimit": "Los árbitros de aquí pueden cubrir hoy intercambios en cadena de hasta {amount} sats. Por encima de eso, usa ecash o reduce el importe.",
   "onchain.coverNone": "Hoy ningún árbitro de aquí puede cubrir un intercambio en cadena de este tamaño. Usa ecash.",
+  "onchain.coverOwnBond": "Tu propia fianza nunca cubre tu propio anuncio.",
   "onchain.coverUnchecked": "No pudimos comprobar la cobertura de los árbitros ahora. Al publicar se comprueba de nuevo.",
   "onchain.coverUncheckedPublish": "No pudimos comprobar ahora cuánto tiempo siguen bloqueadas las fianzas de los árbitros. Inténtalo de nuevo o elige ecash.",
   "onchain.bondCovering": "La fianza de {name} está cubriendo: {trades}.",
