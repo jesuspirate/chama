@@ -311,6 +311,10 @@ EOF
     exit 1
   fi
 
+  # An oversized image makes zsp stop mid-publish (Oct 30 2026); refuse it
+  # here, before the signer starts or anything uploads.
+  node "$ROOT_DIR/scripts/check-zapstore-images.mjs" "$ZAPSTORE_CONFIG"
+
   source "$ROOT_DIR/scripts/zapstore-signer.sh"
   chama_zapstore_signer
 
