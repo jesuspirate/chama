@@ -70,6 +70,6 @@ export function ConductFactLines({record, showEmpty = false, detail = false}: {r
     {detail && standing?.arbiterSamePerson && <span data-conduct-same-person style={{display:'block'}}>{t("circle.conductSamePerson",{count:standing.arbiterSamePerson.count,total:standing.arbiterSamePerson.total})}</span>}
     {standing?.bonded && <span style={{display:'block'}}>{t(standing.bonded.days === 1 ? "trade.bondedAmountDaysOne" : "trade.bondedAmountDaysMany", { amount: Number(standing.bonded.sats).toLocaleString(), count: standing.bonded.days })}</span>}
     {standing?.settledTrades != null && standing.settledTrades>0 && <span style={{display:'block'}}>{t(standing.settledTrades === 1 ? "circle.conductSettledOne" : "circle.conductSettled",{count:standing.settledTrades})}</span>}
-    {detail && (arbiterFacts || standing?.arbiterSpeed) && <span data-conduct-ecash-note style={{display:'block',opacity:0.85}}>{t("circle.conductEcashPrivate")}</span>}
+    {detail && arbiterFacts && <span data-conduct-ecash-note style={{display:'block',opacity:0.85}}>{t("circle.conductEcashPrivate")}</span>}
   </span>;
 }

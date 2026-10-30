@@ -63,24 +63,27 @@ export function conductStanding(pubkey:string, record:PublicConductRecord, bondP
     if(buyerVote && sellerVote && (buyerVote.payload as VotePayload).outcome!==(sellerVote.payload as VotePayload).outcome) {
       const opened=buyerVote.timestamp>sellerVote.timestamp?buyerVote:sellerVote;
       const ruling=votes.find(e=>e.pubkey===pubkey && (e.payload as VotePayload).role===Role.ARBITER && references(e,opened,chain));
-      if(ruling) {
-        arbiter.push(ruling.timestamp-opened.timestamp);
+      if(ruling) arbiter.push(ruling.timestamp-opened.timestamp);
+      // Decided means the ruling that counted: with backups on a trade the
+      // replay picks the acting arbiter by priority, not the first to vote.
+      if(ruling && state.actingArbiter===pubkey) {
         decided.push({at:ruling.timestamp, people:[buyerVote.pubkey,sellerVote.pubkey],
           beneficiary:payoutRecipientFor(state,(ruling.payload as VotePayload).outcome)?.pubkey ?? null});
       }
       if(state.participants.arbiter===pubkey) {
         seated++;
-        const counted=votes.find(e=>(e.payload as VotePayload).role===Role.ARBITER && references(e,opened,chain));
-        if(counted && counted.pubkey!==pubkey) backedUp++;
+        if(state.actingArbiter && state.actingArbiter!==pubkey) backedUp++;
       }
     }
-    // Opposite rulings are read from every signed vote, not the replay, which
-    // keeps only the first. Both must belong to this trade, and to its dispute
-    // when there is one, so a refused early vote is not mistaken for a ruling.
-    const anchor=buyerVote && sellerVote ? (buyerVote.timestamp>sellerVote.timestamp?buyerVote:sellerVote) : chain[0];
-    const mine=[...new Map((signedVotes ?? []).map(e=>[e.raw.id,e])).values()]
-      .filter(e=>e.pubkey===pubkey && (e.payload as VotePayload).role===Role.ARBITER && anchor && references(e,anchor,chain));
-    if(new Set(mine.map(e=>(e.payload as VotePayload).outcome)).size>1) twoRulings++;
+    // Opposite rulings are read from every signed vote, because the replay
+    // keeps the accepted ruling and drops a second one. The second counts only
+    // if it references the accepted ruling, i.e. it was signed knowing it. A
+    // stale second device that never saw the first vote, or a refused early
+    // vote, cannot reference it and is never marked.
+    const accepted=chain.find(e=>e.kind===Kind.VOTE && e.pubkey===pubkey && (e.payload as VotePayload).role===Role.ARBITER);
+    if(accepted && [...new Map((signedVotes ?? []).map(e=>[e.raw.id,e])).values()].some(e=>e.raw.id!==accepted.raw.id && e.pubkey===pubkey
+      && (e.payload as VotePayload).role===Role.ARBITER && (e.payload as VotePayload).outcome!==(accepted.payload as VotePayload).outcome
+      && references(e,accepted,chain))) twoRulings++;
   }
   const bonds=[...new Map(bondProofs.filter(p=>p.bond.npub===pubkey && p.bond.funded && p.bond.active).map(p=>[p.bond.address,p])).values()];
   const dated=bonds.length>0 && bonds.every(p=>p.fundedAtTime!==null && p.tipTime!==null && p.tipTime>=p.fundedAtTime);
