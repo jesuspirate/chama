@@ -380,6 +380,90 @@ exact pick function is part of this NIP's test vectors.
 > the arbiter early; they wait for the deadline. Policies MAY close this
 > (the shipped policy below does, after its ship-by date).
 
+### Proposal: drawn arbiter (not in force)
+
+> **Proposal, 2026-10-30.** Nothing in this section is implemented or
+> enforced. No client may create, fund or replay a trade under the policies
+> named here until a release ships their reader, and creating one waits a
+> further release (readers ship before writers). The section exists so the
+> rule can be reviewed before any code is written. Background: Chama's
+> `roadmap/arbiter-module-spec-review.md`.
+
+Today the arbiter is picked by hashing the CREATE id. Whoever signs the
+CREATE can re-sign it until the pick lands on a friend, at no cost. This
+proposal seats the arbiter by a draw that no party to the trade can steer.
+
+**Policies.** `ecash-drawn-arbiter-v1` and `onchain-drawn-arbiter-v1`. A
+client that does not implement them rejects the CREATE, as
+[Versioning](#versioning) requires. The rules apply only to CREATEs signed at
+or after a gate date fixed when the reader ships, and the date never moves
+earlier.
+
+**Filter, in CREATE.** Both principals agree to rules, not to a name:
+
+```jsonc
+"arbiterFilter": {
+  "minBondSats": "150000",    // at least the trade amount; clients raise it if lower
+  "maxFeeBps": 150,           // within the protocol's fee cap
+  "exclude": ["<hex>", "…"],  // at most 8 keys the creator refuses
+  "minPool": 3                // fewer candidates: the trade cannot be joined
+},
+"arbiterCandidates": ["<hex>", "…"]  // sorted, every key the creator's client found eligible
+```
+
+The creator's client fills `arbiterCandidates` automatically from verified
+bonds: each key must pass the filter, have free bond cover for this trade,
+and be neither principal. The joiner's client re-checks every candidate
+before joining and refuses one that fails. It also warns, before joining, when
+it sees eligible arbiters the list leaves out. Leaving keys out is the one
+way a creator can still narrow the draw; the warning is the defence.
+
+**Draw height, in JOIN.** The joiner's JOIN carries `drawHeight`, a Bitcoin
+block height above the tip their client sees (proposed: tip + 2). Nobody on the
+trade can know that block's hash when the height is committed. The joiner may
+also exclude up to 8 candidates.
+
+**Draw.** Once block `drawHeight` has at least 3 confirmations, every client
+computes the same order:
+
+```
+E      = arbiterCandidates minus both principals' exclusions, sorted by key
+seed   = SHA256(blockHash(drawHeight) || tradeId)
+pick_i = E[ SHA256(seed || u32be(i)) mod |E| ], skipping keys already picked
+```
+
+`pick_0` is offered the seat; `pick_1`, `pick_2`, … are the backup order. The
+seated arbiter is the first pick whose arbiter JOIN accepts the trade and
+repeats its fee terms. A pick that has not joined when its window passes
+(proposed: 72 blocks after the previous pick's window opened) is skipped.
+
+**Vetoes, before funding only.** Each principal may veto the offered pick at
+most twice per trade with a signed event before LOCK. A veto moves the offer
+to the next pick. After LOCK there is no veto: the arbiter's key is already in
+the ecash share split or the Taproot address.
+
+**What LOCK stamps.** LOCK carries `drawBlockHash` and the index of the
+seated pick. Replay recomputes the order from the stamped hash and checks the
+index, with no chain read. The locker's client checks `drawBlockHash` against
+its own chain read **before any sats move**; an unknown or mismatched read
+means wait, never fund.
+
+**Limits.**
+
+- A creator can still narrow the draw by leaving eligible keys out of
+  `arbiterCandidates`; the joiner sees a warning and decides.
+- A miner could withhold a block to change one draw, giving up the block
+  reward. That costs more than any trade this policy is meant for.
+- A reorg deeper than 3 blocks after `drawHeight` could change the hash.
+  Clients use the stamped `drawBlockHash` once LOCK is accepted.
+- Ecash trades gain one chain read, before funding only.
+- The draw does not make any arbiter honest. It removes the parties' power to
+  choose one.
+
+**Open questions before a reader.** The exact skip window, whether the
+creator should also commit to a height so neither side picks the timing
+alone, and the conformance vectors for the draw function.
+
 ## Money modules
 
 A trade's `escrowMode` names its money module. A client MUST refuse to fund
