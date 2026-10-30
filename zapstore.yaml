@@ -33,17 +33,14 @@ description: |
 website: https://getchama.app
 icon: public/icons/android-chrome-512x512.png
 images:
-  - zapstore/screenshots/canvas-v6.png
-  - zapstore/screenshots/payment-methods-v6.png
-  - zapstore/screenshots/en-converter-usd-v6.png
-  - zapstore/screenshots/fr-canvas-eur-v6.png
-  - zapstore/screenshots/fr-converter-eur-v6.png
-  - zapstore/screenshots/es-converter-mxn-light-v6.png
-  - zapstore/screenshots/sw-converter-kes-v6.png
-  - zapstore/screenshots/en-planner-usd-v6.png
-  - zapstore/screenshots/sw-market-kes-v6.png
-  - zapstore/screenshots/fr-country-v6.png
-  - zapstore/screenshots/welcome-v6.png
+  - zapstore/screenshots/01-people-not-platforms.png
+  - zapstore/screenshots/02-two-of-three.png
+  - zapstore/screenshots/03-match-that-fits.png
+  - zapstore/screenshots/04-pay-your-way.png
+  - zapstore/screenshots/05-post-an-offer.png
+  - zapstore/screenshots/06-save-together.png
+  - zapstore/screenshots/07-your-language.png
+  - zapstore/screenshots/08-your-key.png
 tags:
   - bitcoin
   - nostr
