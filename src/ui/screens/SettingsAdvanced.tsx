@@ -154,6 +154,11 @@ export function SettingsAdvanced({
   }, [focusNwc]);
 
   const refreshNwcConnections = () => setSavedNwcConnections(listSavedNwcConnections());
+  useEffect(() => {
+    window.addEventListener("chama:saved-wallets", refreshNwcConnections);
+    return () => window.removeEventListener("chama:saved-wallets", refreshNwcConnections);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const handleSaveNwc = () => {
     setNwcError(null);
     try {

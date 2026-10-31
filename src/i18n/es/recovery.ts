@@ -126,6 +126,7 @@ export const recovery: Record<string, string> = {
   "recovery.savedKey.unreadableBody": "Chama guardó tu clave en este dispositivo, pero ahora no puede abrirla. No se borró nada. Inténtalo de nuevo o inicia sesión con tu clave.",
   "recovery.savedKey.retry": "Intentar de nuevo",
   "recovery.savedKey.retrying": "Intentando…",
+  "recovery.savedKey.opening": "Abriendo tu clave guardada…",
   "recovery.savedKey.signInAnotherWay": "Iniciar sesión con mi clave",
   "recovery.savedKey.anotherWayNote": "Si inicias sesión con tu clave, la copia guardada se queda en este dispositivo. No se borra nada.",
   "recovery.savedKey.stillUnreadable": "Todavía no se abre. No se borró nada. Inténtalo más tarde o inicia sesión con tu clave.",

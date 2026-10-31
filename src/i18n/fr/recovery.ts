@@ -137,6 +137,7 @@ export const recovery: Record<string, string> = {
   "recovery.savedKey.unreadableBody": "Chama a gardé votre clé sur cet appareil, mais ne peut pas l’ouvrir pour l’instant. Rien n’a été supprimé. Réessayez, ou connectez-vous avec votre clé.",
   "recovery.savedKey.retry": "Réessayer",
   "recovery.savedKey.retrying": "Nouvel essai…",
+  "recovery.savedKey.opening": "Ouverture de votre clé enregistrée…",
   "recovery.savedKey.signInAnotherWay": "Me connecter avec ma clé",
   "recovery.savedKey.anotherWayNote": "Si vous vous connectez avec votre clé, la copie enregistrée reste sur cet appareil. Rien n’est supprimé.",
   "recovery.savedKey.stillUnreadable": "Elle ne s’ouvre toujours pas. Rien n’a été supprimé. Réessayez plus tard, ou connectez-vous avec votre clé.",
