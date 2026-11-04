@@ -154,7 +154,7 @@ console.log('PASS on-chain choice: kept as agreed, per trade, and never faked wh
   fixture.apply(fixture.event(Kind.JOIN, 'seller', { type: 'escrow:join', role: Role.SELLER, joinedAt: Date.now() / 1000, fundingTerms: fixture.terms }));
   const lockTerms = { ...fixture.terms, amountSats: '100000', fundingTxid: '11'.repeat(32), fundingVout: 0 };
   const base = { type: 'escrow:lock' as const, notesHash: '', shares: [], onchain: lockTerms,
-    buyerPubkey: fixture.pks.buyer, arbiterPubkey: fixture.pks.arbiter, sellerReceivesMsats: 100000000, arbiterFeeMsats: 0, lockedAt: Date.now() / 1000 };
+    buyerPubkey: fixture.pks.buyer, arbiterPubkey: fixture.pks.arbiter, sellerReceivesMsats: 100000000, arbiterFeeMsats: 0, lockedAt: Math.floor(Date.now() / 1000) };
   const withHandle = applyEvent(fixture.state, fixture.event(Kind.LOCK, 'seller', { ...base, handleId: 'h1', handle: '+255 700 333 444', rail: 'm-pesa' }));
   assert(withHandle.ok, 'an on-chain LOCK accepts the handle');
   assert.equal(withHandle.state.lock.handle?.value, '+255 700 333 444');
